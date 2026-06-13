@@ -7,6 +7,7 @@ import { normalizeSequencerEvolveConfigs } from './sequencer/useEuclideanSequenc
 import { stepOverridesForEngineSubLaneState } from './sequencer/engineStepOverrides';
 import { createEmptyStepOverrides, deserializeStepOverrides } from './sequencer/stepOverrideSerialization';
 import { inferLegacySequencerSubLaneStatesFromOverrides } from './sequencer/sequencePresetLane';
+import { clampEuclideanSubLaneSteps } from './sequencer/sequencerLimits';
 import { drumPitchBaseMidiFromState, drumPitchUiValuesToEngineOffsets } from './sequencer/drumPitchSequencer';
 import { SCALES, scaleDegreeToSemitone, type ClockDivision, type PitchBindingMode } from '../audio/drumSeqTypes';
 import { calculateDriftedRoot } from '../audio/harmony';
@@ -125,7 +126,9 @@ function clampSequencerUnit(value: number): number {
 
 function sanitizeSequencerSubLaneState(lane: SubLaneKind, state: Partial<SubLaneState> | undefined): SubLaneState {
   const fallback = defaultEvolvedSubLaneState(lane);
-  const steps = typeof state?.steps === 'number' && Number.isFinite(state.steps) ? Math.max(1, Math.min(16, Math.floor(state.steps))) : fallback.steps;
+  const steps = typeof state?.steps === 'number' && Number.isFinite(state.steps)
+    ? clampEuclideanSubLaneSteps(Math.floor(state.steps), fallback.steps)
+    : fallback.steps;
   const next: SubLaneState = {
     ...fallback,
     enabled: state?.enabled === true,

@@ -1,10 +1,36 @@
-export type AnchorWalkerMode = 'hybrid' | 'compactPad' | 'fullMidi';
-export type AnchorSource = 'harmonyRoot' | 'selectedNote' | 'lastPlayed' | 'manualLatch';
+export type AnchorWalkerMode = 'hybrid' | 'compactPad';
+export type AnchorSource = 'harmonyRoot' | 'manualLatch';
 export type SnapSource = 'harmonyEngine' | 'manualVoicing' | 'chordStep' | 'customPitchClasses' | 'liveBlueKeys';
+export type AnchorWalkerSnapSource = 'harmonyEngine' | 'customPitchClasses';
 export type WalkFeel = 'straight' | 'dotted' | 'triplet';
 export type WalkRate = 'off' | '1/1' | '1/2' | '1/4' | '1/8' | '1/16' | '1/32';
+export type WalkerPlayMode = 'hybridPlay' | 'gridPattern';
+export type WalkerTriggerMode = 'gestureHold' | 'stepGrid' | 'autoClock';
+export type WalkerBoundaryMode = 'fold' | 'wrap' | 'clamp';
+export type WalkerVisualizerRange = 'oneOctave' | 'twoOctaves';
 export type WalkerLayerTuning = 'rawTranspose' | 'snapAfterTranspose' | 'diatonicOffset';
-export type WalkerLayerMotion = 'linked' | 'inverted' | 'independent';
+export type WalkerLayerMotion = 'linked' | 'inverted';
+export type AnchorWalkerBoundaryEvent =
+  | 'none'
+  | 'foldTop'
+  | 'foldBottom'
+  | 'wrapTop'
+  | 'wrapBottom'
+  | 'clampTop'
+  | 'clampBottom';
+export type AnchorWalkerPerformanceAction =
+  | 'gestureTap'
+  | 'gestureDown'
+  | 'gestureUp'
+  | 'resetCursor'
+  | 'setManualAnchor';
+
+export interface AnchorWalkerPerformanceEvent {
+  action: AnchorWalkerPerformanceAction;
+  delta?: number;
+  velocity?: number;
+  midi?: number;
+}
 
 export interface AnchorWalkerLayerConfig {
   id: string;
@@ -18,19 +44,22 @@ export interface AnchorWalkerLayerConfig {
   gateRatio: number;
   velocityScale: number;
   velocityOffset: number;
-  rateOverride: 'follow' | '1/1' | '1/2' | '1/4' | '1/8' | '1/16' | '1/32';
-  feelOverride: 'follow' | WalkFeel;
   targetSourceId: 'follow' | number;
 }
 
 export interface AnchorWalkerConfig {
   enabled: boolean;
   mode: AnchorWalkerMode;
+  playMode: WalkerPlayMode;
   targetSourceId: number;
   anchorSource: AnchorSource;
   manualAnchorMidi: number;
-  snapSource: SnapSource;
+  snapSource: AnchorWalkerSnapSource;
   customPitchClasses: number[];
+  triggerMode: WalkerTriggerMode;
+  boundaryMode: WalkerBoundaryMode;
+  keyboardRange: WalkerVisualizerRange;
+  showLinkedOutputs: boolean;
   autoRate: WalkRate;
   autoFeel: WalkFeel;
   swing: number;
@@ -52,11 +81,16 @@ export interface AnchorWalkerConfig {
 export interface AnchorWalkerRuntimeViewState {
   anchorMidi: number | null;
   cursorMidi: number | null;
+  previousCursorMidi: number | null;
   cursorDegree: number;
   activeSnapPitchClasses: number[];
   layerOutputMidis: number[];
+  linkedOutputMidis?: Array<{ slotIndex: number; midi: number; velocity: number }>;
   lastGestureDelta: number;
+  direction: 'up' | 'down' | 'none';
+  isGestureHeld: boolean;
   isWalking: boolean;
+  boundaryEvent: AnchorWalkerBoundaryEvent;
 }
 
 export interface AnchorWalkerLayerPreset {
@@ -97,8 +131,6 @@ export function createWalkerLayer(
     gateRatio: clamp(finiteNumber(patch.gateRatio, 0.75), 0.05, 1),
     velocityScale: clamp(finiteNumber(patch.velocityScale, 1), 0, 2),
     velocityOffset: clamp(finiteNumber(patch.velocityOffset, 0), -1, 1),
-    rateOverride: patch.rateOverride ?? 'follow',
-    feelOverride: patch.feelOverride ?? 'follow',
     targetSourceId: patch.targetSourceId ?? 'follow',
   };
 }
@@ -175,7 +207,6 @@ export const ANCHOR_WALKER_LAYER_PRESETS: readonly AnchorWalkerLayerPreset[] = [
 
 export function applyAnchorWalkerLayerPreset(config: AnchorWalkerConfig, presetId: string): AnchorWalkerConfig {
   const preset = ANCHOR_WALKER_LAYER_PRESETS.find((item) => item.id === presetId)
-    ?? ANCHOR_WALKER_LAYER_PRESETS[2]
     ?? ANCHOR_WALKER_LAYER_PRESETS[0];
   if (!preset) return config;
   const layers = Array.from({ length: WALKER_LAYER_COUNT }, (_, index) => (
@@ -199,28 +230,33 @@ export function createDefaultAnchorWalkerConfig(slotIndex = 0): AnchorWalkerConf
   return applyAnchorWalkerLayerPreset({
     enabled: true,
     mode: 'hybrid',
+    playMode: 'hybridPlay',
     targetSourceId: 3,
     anchorSource: 'harmonyRoot',
     manualAnchorMidi: 60 + slotIndex * 2,
     snapSource: 'harmonyEngine',
     customPitchClasses: [0, 2, 4, 5, 7, 9, 11],
-    autoRate: '1/8',
+    triggerMode: 'gestureHold',
+    boundaryMode: 'fold',
+    keyboardRange: 'oneOctave',
+    showLinkedOutputs: false,
+    autoRate: 'off',
     autoFeel: 'straight',
     swing: 0,
-    leadMode: true,
+    leadMode: false,
     mwToVelocity: false,
     pitchWheelWalk: false,
-    gesturePattern: [2, -1, 2, -1, 4, -1, 2, -1],
-    gesturePatternLength: 8,
-    activePadDelta: 1,
-    layerPreset: 'triadRoll',
+    gesturePattern: [1, -1, 2, -1],
+    gesturePatternLength: 4,
+    activePadDelta: 0,
+    layerPreset: 'solo',
     layerTuning: 'diatonicOffset',
-    spreadMs: 35,
+    spreadMs: 0,
     layers: [],
     outputRangeMin: 36,
     outputRangeMax: 96,
     seed: 1001 + slotIndex,
-  }, 'triadRoll');
+  }, 'solo');
 }
 
 function normalizePitchClasses(value: unknown, fallback: readonly number[]): number[] {
@@ -251,9 +287,7 @@ function normalizeLayer(value: unknown, index: number, fallback: AnchorWalkerLay
     ...record,
     enabled: typeof record.enabled === 'boolean' ? record.enabled : fallback.enabled,
     tuning: enumValue(record.tuning, ['rawTranspose', 'snapAfterTranspose', 'diatonicOffset'] as const, fallback.tuning),
-    motion: enumValue(record.motion, ['linked', 'inverted', 'independent'] as const, fallback.motion),
-    rateOverride: enumValue(record.rateOverride, ['follow', '1/1', '1/2', '1/4', '1/8', '1/16', '1/32'] as const, fallback.rateOverride),
-    feelOverride: enumValue(record.feelOverride, ['follow', 'straight', 'dotted', 'triplet'] as const, fallback.feelOverride),
+    motion: enumValue(record.motion, ['linked', 'inverted'] as const, fallback.motion),
     targetSourceId: record.targetSourceId === 'follow'
       ? 'follow'
       : Math.max(1, Math.min(7, Math.round(finiteNumber(record.targetSourceId, fallback.targetSourceId === 'follow' ? 3 : fallback.targetSourceId)))),
@@ -266,21 +300,27 @@ export function normalizeAnchorWalkerConfig(value: unknown, slotIndex = 0): Anch
   const rangeMin = clamp(finiteNumber(record.outputRangeMin, fallback.outputRangeMin), 0, 127);
   const rangeMax = clamp(finiteNumber(record.outputRangeMax, fallback.outputRangeMax), rangeMin, 127);
   const rawLayers = Array.isArray(record.layers) ? record.layers : fallback.layers;
+  const playMode = enumValue(record.playMode, ['hybridPlay', 'gridPattern'] as const, fallback.playMode);
   return {
     ...fallback,
     enabled: typeof record.enabled === 'boolean' ? record.enabled : fallback.enabled,
-    mode: enumValue(record.mode, ['hybrid', 'compactPad', 'fullMidi'] as const, fallback.mode),
+    mode: enumValue(record.mode, ['hybrid', 'compactPad'] as const, fallback.mode),
+    playMode,
     targetSourceId: Math.max(1, Math.min(7, Math.round(finiteNumber(record.targetSourceId, fallback.targetSourceId)))),
-    anchorSource: enumValue(record.anchorSource, ['harmonyRoot', 'selectedNote', 'lastPlayed', 'manualLatch'] as const, fallback.anchorSource),
+    anchorSource: enumValue(record.anchorSource, ['harmonyRoot', 'manualLatch'] as const, fallback.anchorSource),
     manualAnchorMidi: clamp(finiteNumber(record.manualAnchorMidi, fallback.manualAnchorMidi), 0, 127),
-    snapSource: enumValue(record.snapSource, ['harmonyEngine', 'manualVoicing', 'chordStep', 'customPitchClasses', 'liveBlueKeys'] as const, fallback.snapSource),
+    snapSource: enumValue(record.snapSource, ['harmonyEngine', 'customPitchClasses'] as const, fallback.snapSource),
     customPitchClasses: normalizePitchClasses(record.customPitchClasses, fallback.customPitchClasses),
-    autoRate: enumValue(record.autoRate, ['off', '1/1', '1/2', '1/4', '1/8', '1/16', '1/32'] as const, fallback.autoRate),
-    autoFeel: enumValue(record.autoFeel, ['straight', 'dotted', 'triplet'] as const, fallback.autoFeel),
-    swing: clamp(finiteNumber(record.swing, fallback.swing), 0, 0.75),
-    leadMode: typeof record.leadMode === 'boolean' ? record.leadMode : fallback.leadMode,
-    mwToVelocity: typeof record.mwToVelocity === 'boolean' ? record.mwToVelocity : fallback.mwToVelocity,
-    pitchWheelWalk: typeof record.pitchWheelWalk === 'boolean' ? record.pitchWheelWalk : fallback.pitchWheelWalk,
+    triggerMode: playMode === 'gridPattern' ? 'stepGrid' : 'gestureHold',
+    boundaryMode: enumValue(record.boundaryMode, ['fold', 'wrap', 'clamp'] as const, fallback.boundaryMode),
+    keyboardRange: 'oneOctave',
+    showLinkedOutputs: false,
+    autoRate: 'off',
+    autoFeel: 'straight',
+    swing: 0,
+    leadMode: false,
+    mwToVelocity: false,
+    pitchWheelWalk: false,
     gesturePattern: normalizeGesturePattern(record.gesturePattern, fallback.gesturePattern),
     gesturePatternLength: clamp(Math.round(finiteNumber(record.gesturePatternLength, fallback.gesturePatternLength)), 1, 16),
     activePadDelta: clamp(Math.round(finiteNumber(record.activePadDelta, fallback.activePadDelta)), -7, 7),

@@ -1,5 +1,6 @@
 import { normalizeSynthSequencerFaceState, type SequencerMode } from '../ui/sequencer/sequencerModeTypes';
-import type { AnchorWalkerConfig, AnchorWalkerLayerConfig, SnapSource, WalkFeel, WalkRate } from '../ui/sequencer/anchorWalkerTypes';
+import type { AnchorWalkerConfig, AnchorWalkerLayerConfig, SnapSource, WalkerBoundaryMode, WalkerPlayMode, WalkerTriggerMode } from '../ui/sequencer/anchorWalkerTypes';
+import { adjustedOrbitSpeedValue } from '../ui/sequencer/orbitSequencerMath';
 import type { OrbitNoteConfig, OrbitSequencerConfig } from '../ui/sequencer/orbitSequencerTypes';
 import type { ProductAnchorWalkerLayerSnapshot, ProductAnchorWalkerSnapshot, ProductOrbitNoteSnapshot, ProductOrbitSequencerSnapshot } from './coreProductSnapshotTypes';
 import { clamp } from './coreProductSnapshotState';
@@ -13,13 +14,15 @@ export const SEQUENCER_MODE_IDS: Record<SequencerMode, number> = {
 const ANCHOR_WALKER_MODE_IDS = {
   hybrid: 0,
   compactPad: 1,
-  fullMidi: 2,
 } as const;
+
+const WALKER_PLAY_MODE_IDS: Record<WalkerPlayMode, number> = {
+  hybridPlay: 0,
+  gridPattern: 1,
+};
 
 const ANCHOR_SOURCE_IDS = {
   harmonyRoot: 0,
-  selectedNote: 1,
-  lastPlayed: 2,
   manualLatch: 3,
 } as const;
 
@@ -31,20 +34,16 @@ const SNAP_SOURCE_IDS: Record<SnapSource, number> = {
   liveBlueKeys: 4,
 };
 
-const WALK_RATE_IDS: Record<WalkRate, number> = {
-  off: 0,
-  '1/1': 1,
-  '1/2': 2,
-  '1/4': 3,
-  '1/8': 4,
-  '1/16': 5,
-  '1/32': 6,
+const WALKER_TRIGGER_MODE_IDS: Record<WalkerTriggerMode, number> = {
+  gestureHold: 0,
+  stepGrid: 1,
+  autoClock: 2,
 };
 
-const WALK_FEEL_IDS: Record<WalkFeel, number> = {
-  straight: 0,
-  dotted: 1,
-  triplet: 2,
+const WALKER_BOUNDARY_MODE_IDS: Record<WalkerBoundaryMode, number> = {
+  fold: 0,
+  wrap: 1,
+  clamp: 2,
 };
 
 const WALKER_LAYER_PRESET_IDS: Record<string, number> = {
@@ -66,7 +65,6 @@ const WALKER_LAYER_TUNING_IDS = {
 const WALKER_LAYER_MOTION_IDS = {
   linked: 0,
   inverted: 1,
-  independent: 2,
 } as const;
 
 const ORBIT_SPEED_MODE_IDS = {
@@ -78,6 +76,7 @@ const ORBIT_PITCH_MODE_IDS = {
   fixedMidi: 0,
   harmonyDegree: 1,
   rangeSnap: 2,
+  harmonyBloom: 3,
 } as const;
 
 function pitchClassMaskFromClasses(classes: readonly number[]): number {
@@ -112,7 +111,13 @@ function productAnchorWalkerLayer(layer: AnchorWalkerLayerConfig): ProductAnchor
   };
 }
 
-export function productAnchorWalkerFromConfig(config: AnchorWalkerConfig, slotIndex: number): ProductAnchorWalkerSnapshot {
+export function productAnchorWalkerFromConfig(
+  config: AnchorWalkerConfig,
+  slotIndex: number,
+  targetSourceId = config.targetSourceId,
+): ProductAnchorWalkerSnapshot {
+  const snapSource = config.snapSource === 'customPitchClasses' ? 'customPitchClasses' : 'harmonyEngine';
+  const triggerMode = config.playMode === 'gridPattern' ? 'stepGrid' : 'gestureHold';
   const layers = Array.from({ length: 4 }, (_, index) => productAnchorWalkerLayer(
     config.layers[index] ?? config.layers[0] ?? {
       id: `fallback-${index}`,
@@ -126,29 +131,32 @@ export function productAnchorWalkerFromConfig(config: AnchorWalkerConfig, slotIn
       gateRatio: 0.75,
       velocityScale: 1,
       velocityOffset: 0,
-      rateOverride: 'follow',
-      feelOverride: 'follow',
       targetSourceId: 'follow',
     },
   ));
   return {
     enabled: config.enabled,
     mode: ANCHOR_WALKER_MODE_IDS[config.mode] ?? 0,
-    targetSourceId: Math.round(clamp(config.targetSourceId, 1, 7)),
+    playMode: WALKER_PLAY_MODE_IDS[config.playMode] ?? 0,
+    targetSourceId: Math.round(clamp(targetSourceId, 1, 7)),
     anchorSource: ANCHOR_SOURCE_IDS[config.anchorSource] ?? 0,
     manualAnchorMidi: clamp(config.manualAnchorMidi, 0, 127),
-    snapSource: SNAP_SOURCE_IDS[config.snapSource] ?? 0,
+    snapSource: SNAP_SOURCE_IDS[snapSource] ?? 0,
     customPitchClassMask: pitchClassMaskFromClasses(config.customPitchClasses),
-    autoRate: WALK_RATE_IDS[config.autoRate] ?? 4,
-    autoFeel: WALK_FEEL_IDS[config.autoFeel] ?? 0,
-    swing: clamp(config.swing, 0, 0.75),
-    leadMode: config.leadMode,
-    mwToVelocity: config.mwToVelocity,
-    pitchWheelWalk: config.pitchWheelWalk,
+    triggerMode: WALKER_TRIGGER_MODE_IDS[triggerMode] ?? 0,
+    boundaryMode: WALKER_BOUNDARY_MODE_IDS[config.boundaryMode] ?? 0,
+    keyboardRange: 0,
+    showLinkedOutputs: false,
+    autoRate: 0,
+    autoFeel: 0,
+    swing: 0,
+    leadMode: false,
+    mwToVelocity: false,
+    pitchWheelWalk: false,
     gesturePattern: fixedPattern(config.gesturePattern, config.gesturePatternLength),
     gesturePatternLength: Math.round(clamp(config.gesturePatternLength, 1, 16)),
     activePadDelta: Math.round(clamp(config.activePadDelta, -7, 7)),
-    layerPreset: WALKER_LAYER_PRESET_IDS[config.layerPreset] ?? 2,
+    layerPreset: WALKER_LAYER_PRESET_IDS[config.layerPreset] ?? 0,
     spreadSeconds: clamp(config.spreadMs, 0, 500) / 1000,
     layerCount: layers.filter((layer) => layer.enabled).length || 1,
     layers,
@@ -158,16 +166,17 @@ export function productAnchorWalkerFromConfig(config: AnchorWalkerConfig, slotIn
   };
 }
 
-function productOrbitNoteFromConfig(note: OrbitNoteConfig, index: number): ProductOrbitNoteSnapshot {
+function productOrbitNoteFromConfig(note: OrbitNoteConfig, index: number, speedOffset: number): ProductOrbitNoteSnapshot {
   const velocityMin = clamp(note.velocityMin, 0, 1);
   const gateMin = clamp(note.gateMinBeats, 0.05, 8);
   const pitchMin = clamp(note.pitchRangeMin, 0, 127);
+  const speedValue = adjustedOrbitSpeedValue(note.speedMode, note.speedValue, note.radiusNorm, speedOffset);
   return {
     enabled: note.enabled,
     radiusNorm: clamp(note.radiusNorm, 0.08, 1),
     phase: note.phase,
     speedMode: ORBIT_SPEED_MODE_IDS[note.speedMode] ?? 1,
-    speedValue: clamp(note.speedValue, 0.125, 800),
+    speedValue: clamp(speedValue, 0.125, 800),
     direction: note.direction === 'ccw' ? -1 : 1,
     pitchMode: ORBIT_PITCH_MODE_IDS[note.pitchMode] ?? 1,
     midiNote: clamp(note.midiNote, 0, 127),
@@ -188,12 +197,16 @@ function productOrbitNoteFromConfig(note: OrbitNoteConfig, index: number): Produ
   };
 }
 
-export function productOrbitFromConfig(config: OrbitSequencerConfig, slotIndex: number): ProductOrbitSequencerSnapshot {
+export function productOrbitFromConfig(
+  config: OrbitSequencerConfig,
+  slotIndex: number,
+  targetSourceId = config.targetSourceId,
+): ProductOrbitSequencerSnapshot {
   const pitchMin = clamp(config.pitchRangeMin, 0, 127);
   return {
     enabled: config.enabled,
-    targetSourceId: Math.round(clamp(config.targetSourceId, 1, 7)),
-    triggerLineCount: Math.round(clamp(config.triggerLineCount, 1, 5)),
+    targetSourceId: Math.round(clamp(targetSourceId, 1, 7)),
+    triggerLineCount: Math.round(clamp(config.triggerLineCount, 1, 8)),
     clockMode: config.clockMode === 'freeBpmPercent' ? 1 : 0,
     bpmPercent: clamp(config.bpmPercent, 1, 800),
     quantizeToHarmony: config.quantizeToHarmony,
@@ -236,7 +249,7 @@ export function productOrbitFromConfig(config: OrbitSequencerConfig, slotIndex: 
         probability: 1,
         targetSourceId: 'follow',
         seed: 2001 + index,
-      }, index)
+      }, index, config.speedOffset)
     )),
   };
 }

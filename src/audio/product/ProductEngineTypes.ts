@@ -1,6 +1,7 @@
 import type { DecodedCoreProductAsset } from '../coreProductAssets';
 import type { CoreProductEvent } from '../coreProductEvents';
 import type {
+  CoreProductAnchorWalkerVisualLaneState,
   CoreProductSequencerUiState,
   CoreProductTelemetrySnapshot,
 } from '../coreProductTelemetry';
@@ -170,6 +171,23 @@ export type ProductDynamicsVisualTelemetry = Readonly<{
 }>;
 
 export type ProductSequencerStepPositionCallback = (steps: number[], hitCounts: number[]) => void;
+
+export type ProductSynthOrbitVisualLaneState = {
+  noteCount: number;
+  baseAngle: number;
+  noteAngles: number[];
+  noteFlashes: number[];
+};
+
+export type ProductSynthOrbitVisualStateCallback = (
+  lanes: Array<ProductSynthOrbitVisualLaneState | null>,
+) => void;
+
+export type ProductSynthAnchorWalkerVisualLaneState = CoreProductAnchorWalkerVisualLaneState;
+
+export type ProductSynthAnchorWalkerVisualStateCallback = (
+  lanes: Array<ProductSynthAnchorWalkerVisualLaneState | null>,
+) => void;
 
 export type ProductSequencerEvolveTriggerCallback = (laneIndex: number) => void;
 

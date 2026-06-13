@@ -48,6 +48,8 @@ export function useProductRuntimePageRuntimeBridges({
   setProductDrumStepPositionCallback,
   setProductDrumTriggerCallback,
   setProductSynthEvolveTriggerCallback,
+  setProductSynthAnchorWalkerVisualStateCallback,
+  setProductSynthOrbitVisualStateCallback,
   setProductSynthStepPositionCallback,
   ...options
 }: ProductRuntimePageRuntimeBridgeOptions) {
@@ -99,6 +101,8 @@ export function useProductRuntimePageRuntimeBridges({
     setSelectedDrumStepPositionCallback: setProductDrumStepPositionCallback,
     setSelectedDrumTriggerCallback: setProductDrumTriggerCallback,
     setSelectedSynthEvolveTriggerCallback: setProductSynthEvolveTriggerCallback,
+    setSelectedSynthAnchorWalkerVisualStateCallback: setProductSynthAnchorWalkerVisualStateCallback,
+    setSelectedSynthOrbitVisualStateCallback: setProductSynthOrbitVisualStateCallback,
     setSelectedSynthStepPositionCallback: setProductSynthStepPositionCallback,
   };
 

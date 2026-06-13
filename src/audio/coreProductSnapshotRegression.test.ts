@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { createCoreProductSnapshot } from './coreProductSnapshot';
+import { buildCoreProductSnapshotDiff } from './CoreProductRuntimeAdapter';
 import { CORE_PRODUCT_SOURCE_IDS, resolveCoreProductRangeTargets } from './coreProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
+import { createDefaultSynthSequencerFaceState } from '../ui/sequencer/sequencerModeTypes';
+import { TAU, resolveAngularSpeed } from '../ui/sequencer/orbitSequencerMath';
 
 const disabledDelaySnapshot = createCoreProductSnapshot({
   padEnabled: true,
@@ -65,4 +68,129 @@ for (const [sourceValue, expectedSourceId] of synthSourceAliasCases) {
     expectedSourceId,
     `Product synth sequencer source ${sourceValue} should map to the intended source ID`,
   );
+}
+
+for (const mode of ['anchorWalker', 'orbit'] as const) {
+  for (const [sourceValue, expectedSourceId] of [
+    ['pad1', CORE_PRODUCT_SOURCE_IDS.pad1],
+    ['pad2', CORE_PRODUCT_SOURCE_IDS.pad2],
+    ['lead1', CORE_PRODUCT_SOURCE_IDS.lead1],
+  ] as const) {
+    const faces = createDefaultSynthSequencerFaceState();
+    faces.slots[0] = {
+      ...faces.slots[0]!,
+      mode,
+    };
+    const snapshot = createCoreProductSnapshot({
+      synthEuclideanMasterEnabled: true,
+      synthEuclid1Enabled: true,
+      synthEuclid1Source: sourceValue,
+      synthSequencerFaces: faces,
+    });
+    assert.equal(
+      snapshot.synthLanes[0]?.targetSourceId,
+      expectedSourceId,
+      `${mode} lane should follow Seq source ${sourceValue}`,
+    );
+    if (mode === 'orbit') {
+      assert.equal(
+        snapshot.synthLanes[0]?.orbit.targetSourceId,
+        expectedSourceId,
+        `Orbit face target should follow Seq source ${sourceValue}`,
+      );
+    } else {
+      assert.equal(
+        snapshot.synthLanes[0]?.anchorWalker.targetSourceId,
+        expectedSourceId,
+        `Walker face target should follow Seq source ${sourceValue}`,
+      );
+    }
+  }
+}
+
+{
+  const nativeBaseAt60Bpm = TAU * (60 / 60) * 1 * 0.25;
+  assert.equal(
+    resolveAngularSpeed('bpmPercent', 100, 100, 60),
+    nativeBaseAt60Bpm,
+    'Orbit visualizer speed should match Product Core base angular velocity at 60 BPM',
+  );
+  assert.equal(
+    resolveAngularSpeed('syncDivisor', 800, 100, 120),
+    resolveAngularSpeed('syncDivisor', 64, 100, 120),
+    'Orbit visualizer sync divisors should use the same max clamp as Product Core',
+  );
+}
+
+{
+  const faces = createDefaultSynthSequencerFaceState();
+  const firstSlot = faces.slots[0]!;
+  faces.slots[0] = {
+    ...firstSlot,
+    mode: 'orbit',
+  };
+  const baseState = {
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthSequencerFaces: faces,
+  };
+  const baseSnapshot = createCoreProductSnapshot(baseState);
+
+  const speedFaces = structuredClone(faces);
+  speedFaces.slots[0]!.orbit.speedOffset = 1;
+  const speedDiff = buildCoreProductSnapshotDiff(baseSnapshot, createCoreProductSnapshot({
+    ...baseState,
+    synthSequencerFaces: speedFaces,
+  }));
+  assert.equal(speedDiff.applied, true, 'Orbit speed offset should stay on the live dirty-diff path');
+  assert(
+    speedDiff.applied && speedDiff.events.some((event) => (
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitNoteSpeedValue
+    )),
+    'Orbit speed offset should emit note speed-value events',
+  );
+
+  const phaseFaces = structuredClone(faces);
+  phaseFaces.slots[0]!.orbit.globalOffset = 0.25;
+  phaseFaces.slots[0]!.orbit.notes = phaseFaces.slots[0]!.orbit.notes.map((note) => ({
+    ...note,
+    phase: note.phase + TAU * 0.25,
+  }));
+  const phaseDiff = buildCoreProductSnapshotDiff(baseSnapshot, createCoreProductSnapshot({
+    ...baseState,
+    synthSequencerFaces: phaseFaces,
+  }));
+  assert.equal(phaseDiff.applied, true, 'Orbit phase offsets should stay on the live dirty-diff path');
+  assert(
+    phaseDiff.applied && phaseDiff.events.some((event) => (
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitNotePhase
+    )),
+    'Orbit phase offsets should emit note phase events',
+  );
+}
+
+{
+  const faces = createDefaultSynthSequencerFaceState();
+  const firstSlot = faces.slots[0]!;
+  faces.slots[0] = {
+    ...firstSlot,
+    mode: 'orbit',
+    orbit: {
+      ...firstSlot.orbit,
+      pitchLayout: 'harmonyBloom',
+      notes: firstSlot.orbit.notes.map((note, index) => ({
+        ...note,
+        pitchMode: index === 0 ? 'harmonyBloom' : note.pitchMode,
+        speedMode: index === 0 ? 'bpmPercent' : note.speedMode,
+        speedValue: index === 0 ? 100 : note.speedValue,
+      })),
+    },
+  };
+  const snapshot = createCoreProductSnapshot({
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthSequencerFaces: faces,
+  });
+  assert.equal(snapshot.synthLanes[0]?.orbit.notes[0]?.pitchMode, 3, 'Orbit Harmony Bloom pitch mode should encode as Product Core mode 3');
+  assert.equal(snapshot.synthLanes[0]?.orbit.notes[0]?.speedValue, 100, 'Orbit Harmony Bloom note should preserve shared loop speed');
 }

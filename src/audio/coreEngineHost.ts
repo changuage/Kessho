@@ -108,6 +108,7 @@ const DYNAMICS_DRIFT_DISABLED_CONFIG_KEY = 'dynamics-drift:disabled-v1';
 const HOST_PIANO_SAMPLE_CACHE_LIMIT_PER_VARIANT = 16;
 const CORE_SOFT_STOP_SOURCE_FADE_SECONDS = 0.18;
 const CORE_SOFT_STOP_CLEANUP_DELAY_MS = Math.ceil(CORE_SOFT_STOP_SOURCE_FADE_SECONDS * 1000) + 120;
+const EUCLIDEAN_STEP_MAX = 32;
 type CoreEvolvedAudioSubLane = 'pitch' | 'expression' | 'morph' | 'distance';
 type CoreEvolvedSubLanePatch = Partial<Record<CoreEvolvedAudioSubLane, { enabled: boolean; steps: number; direction: LaneDirection; scaleQuantize?: boolean }>>;
 type CoreDrumEvolvedSubLane = CoreEvolvedAudioSubLane | 'slice' | 'reverse';
@@ -121,7 +122,7 @@ function synthEvolvedSubLaneStatePatch(overrides: SynthLaneOverrides): CoreEvolv
     if (!Array.isArray(values)) return;
     patch[lane] = {
       enabled: true,
-      steps: Math.max(1, Math.min(16, values.length)),
+      steps: Math.max(1, Math.min(EUCLIDEAN_STEP_MAX, values.length)),
       direction: direction ?? 'forward',
     };
   };
@@ -148,7 +149,7 @@ function drumStepOverrideSubLaneStatePatch(
     const direction = overrides[directionKey]?.[laneIndex] ?? fallback?.[directionKey]?.[laneIndex] ?? 'forward';
     patch[lane] = {
       enabled: Array.isArray(values),
-      steps: Math.max(1, Math.min(16, Array.isArray(values)
+      steps: Math.max(1, Math.min(EUCLIDEAN_STEP_MAX, Array.isArray(values)
         ? values.length
         : Array.isArray(fallbackValues) ? fallbackValues.length : 1)),
       direction,

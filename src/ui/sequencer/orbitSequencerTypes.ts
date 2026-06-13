@@ -1,8 +1,11 @@
 import type { SnapSource } from './anchorWalkerTypes';
+import { MAX_ORBIT_TRIGGER_LINES } from './orbitSequencerMath';
 
 export type OrbitSpeedMode = 'bpmPercent' | 'syncDivisor';
 export type OrbitDirection = 'cw' | 'ccw';
-export type OrbitPitchMode = 'fixedMidi' | 'harmonyDegree' | 'rangeSnap';
+export type OrbitPitchMode = 'fixedMidi' | 'harmonyDegree' | 'rangeSnap' | 'harmonyBloom';
+export type OrbitPitchLayout = 'freeOrbit' | 'harmonyBloom';
+export type OrbitTriggerLineCount = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 export interface OrbitNoteConfig {
   id: string;
@@ -41,10 +44,17 @@ export interface OrbitSplineConfig {
 
 export interface OrbitSequencerConfig {
   enabled: boolean;
+  pitchLayout: OrbitPitchLayout;
   targetSourceId: number;
-  triggerLineCount: 1 | 2 | 3 | 4 | 5;
+  triggerLineCount: OrbitTriggerLineCount;
   clockMode: 'transport' | 'freeBpmPercent';
   bpmPercent: number;
+  speedOffset: number;
+  globalOffset: number;
+  evenOffset: number;
+  freeOffset: number;
+  quantizedOffset: number;
+  dragQuantize: boolean;
   quantizeToHarmony: boolean;
   snapSource: SnapSource;
   pitchRangeMin: number;
@@ -59,6 +69,13 @@ export interface OrbitRuntimeViewState {
   lineAngles: number[];
   notePositions: Array<{ id: string; x: number; y: number; flash: number }>;
   lastTriggerIds: string[];
+}
+
+export interface OrbitRuntimeVisualState {
+  noteCount: number;
+  baseAngle: number;
+  noteAngles: number[];
+  noteFlashes: number[];
 }
 
 export const MAX_ORBIT_NOTES = 32;
@@ -106,16 +123,23 @@ export function createDefaultOrbitNote(index: number, patch: Partial<OrbitNoteCo
 
 export function createDefaultOrbitSequencerConfig(slotIndex = 0): OrbitSequencerConfig {
   const demoNotes: Array<Partial<OrbitNoteConfig>> = [
-    { radiusNorm: 0.375, phase: Math.PI * 1.5, midiNote: 60, speedMode: 'syncDivisor', speedValue: 1 },
-    { radiusNorm: 0.65, phase: 0, midiNote: 64, speedMode: 'syncDivisor', speedValue: 2 },
-    { radiusNorm: 0.9, phase: Math.PI * 0.5, midiNote: 67, speedMode: 'syncDivisor', speedValue: 4 },
+    { radiusNorm: 0.375, phase: Math.PI * 1.5, midiNote: 60, pitchMode: 'harmonyBloom', speedMode: 'bpmPercent', speedValue: 100 },
+    { radiusNorm: 0.65, phase: 0, midiNote: 64, pitchMode: 'harmonyBloom', speedMode: 'bpmPercent', speedValue: 100 },
+    { radiusNorm: 0.9, phase: Math.PI * 0.5, midiNote: 67, pitchMode: 'harmonyBloom', speedMode: 'bpmPercent', speedValue: 100 },
   ];
   return {
     enabled: true,
+    pitchLayout: 'harmonyBloom',
     targetSourceId: 3,
     triggerLineCount: 1,
     clockMode: 'transport',
     bpmPercent: 100,
+    speedOffset: 0,
+    globalOffset: 0,
+    evenOffset: 0,
+    freeOffset: 0,
+    quantizedOffset: 4,
+    dragQuantize: true,
     quantizeToHarmony: true,
     snapSource: 'harmonyEngine',
     pitchRangeMin: 48,
@@ -159,7 +183,7 @@ function normalizeOrbitNote(value: unknown, index: number, fallback: OrbitNoteCo
     enabled: typeof record.enabled === 'boolean' ? record.enabled : fallback.enabled,
     speedMode: enumValue(record.speedMode, ['bpmPercent', 'syncDivisor'] as const, fallback.speedMode),
     direction: enumValue(record.direction, ['cw', 'ccw'] as const, fallback.direction),
-    pitchMode: enumValue(record.pitchMode, ['fixedMidi', 'harmonyDegree', 'rangeSnap'] as const, fallback.pitchMode),
+    pitchMode: enumValue(record.pitchMode, ['fixedMidi', 'harmonyDegree', 'rangeSnap', 'harmonyBloom'] as const, fallback.pitchMode),
     velocityRangeEnabled: typeof record.velocityRangeEnabled === 'boolean' ? record.velocityRangeEnabled : fallback.velocityRangeEnabled,
     gateRangeEnabled: typeof record.gateRangeEnabled === 'boolean' ? record.gateRangeEnabled : fallback.gateRangeEnabled,
     pitchRangeMin,
@@ -184,10 +208,17 @@ export function normalizeOrbitSequencerConfig(value: unknown, slotIndex = 0): Or
   return {
     ...fallback,
     enabled: typeof record.enabled === 'boolean' ? record.enabled : fallback.enabled,
+    pitchLayout: enumValue(record.pitchLayout, ['freeOrbit', 'harmonyBloom'] as const, fallback.pitchLayout),
     targetSourceId: Math.max(1, Math.min(7, Math.round(finiteNumber(record.targetSourceId, fallback.targetSourceId)))),
-    triggerLineCount: Math.max(1, Math.min(5, Math.round(finiteNumber(record.triggerLineCount, fallback.triggerLineCount)))) as 1 | 2 | 3 | 4 | 5,
+    triggerLineCount: Math.max(1, Math.min(MAX_ORBIT_TRIGGER_LINES, Math.round(finiteNumber(record.triggerLineCount, fallback.triggerLineCount)))) as OrbitTriggerLineCount,
     clockMode: enumValue(record.clockMode, ['transport', 'freeBpmPercent'] as const, fallback.clockMode),
     bpmPercent: clamp(finiteNumber(record.bpmPercent, fallback.bpmPercent), 1, 800),
+    speedOffset: clamp(finiteNumber(record.speedOffset, fallback.speedOffset), -0.9, 1),
+    globalOffset: clamp(finiteNumber(record.globalOffset, fallback.globalOffset), -1, 1),
+    evenOffset: clamp(finiteNumber(record.evenOffset, fallback.evenOffset), -1, 1),
+    freeOffset: clamp(finiteNumber(record.freeOffset, fallback.freeOffset), 0, 1),
+    quantizedOffset: Math.max(1, Math.min(32, Math.round(finiteNumber(record.quantizedOffset, fallback.quantizedOffset)))),
+    dragQuantize: typeof record.dragQuantize === 'boolean' ? record.dragQuantize : fallback.dragQuantize,
     quantizeToHarmony: typeof record.quantizeToHarmony === 'boolean' ? record.quantizeToHarmony : fallback.quantizeToHarmony,
     snapSource: enumValue(record.snapSource, ['harmonyEngine', 'manualVoicing', 'chordStep', 'customPitchClasses', 'liveBlueKeys'] as const, fallback.snapSource),
     pitchRangeMin,

@@ -21,6 +21,7 @@ import type {
   SubLaneState,
 } from './useEuclideanSequencer';
 import { normalizeSequencerEvolveConfig } from './useEuclideanSequencer';
+import { clampEuclideanSubLaneSteps } from './sequencerLimits';
 
 const SEQUENCE_PRESET_SOURCE_LANE = 0;
 const SUB_LANE_KINDS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'slice', 'reverse'];
@@ -94,7 +95,7 @@ function cloneSequenceLaneArray(lane: StepOverrideArrayLane | undefined): StepOv
 function cloneSubLaneState(state: SubLaneState | SerializedSubLaneState | undefined): SerializedSubLaneState | undefined {
   if (!state) return undefined;
   const steps = typeof state.steps === 'number' && Number.isFinite(state.steps)
-    ? Math.max(1, Math.min(16, Math.floor(state.steps)))
+    ? clampEuclideanSubLaneSteps(Math.floor(state.steps))
     : 1;
   const rangeMin = typeof state.rangeMin === 'number' && Number.isFinite(state.rangeMin) ? clampUnit(state.rangeMin) : undefined;
   const rangeMax = typeof state.rangeMax === 'number' && Number.isFinite(state.rangeMax) ? clampUnit(state.rangeMax) : undefined;
@@ -162,7 +163,7 @@ function inferLegacySubLaneStatesFromLoadedOverrides(
     const range = rangeField ? loaded[rangeField]?.[sourceLane] : null;
     inferred[lane] = {
       enabled: true,
-      steps: Math.max(1, Math.min(16, values.length)),
+      steps: clampEuclideanSubLaneSteps(values.length),
       direction,
       ...(range ? { valueMode: 'range', rangeMin: range.min, rangeMax: range.max } : {}),
     };

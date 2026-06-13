@@ -945,7 +945,7 @@
 .drum-root .seq-step-grid {
   display: grid; grid-template-columns: repeat(16, 1fr); gap: 3px; margin: 6px 0;
 }
-/* Column count is handled by JS (adaptive 8/16 based on step count) — no CSS overrides */
+/* Cell padding is handled by JS; visual columns cap at 16 so 32-step lanes stack. */
 .drum-root .seq-step { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .drum-root .seq-step-num {
   font-size: 0.55rem;
@@ -1738,9 +1738,8 @@
     padding: 2px 6px; font-size: 0.55rem; min-height: 28px;
   }
 
-  /* ── Step grid: force 8 columns on mobile (2 rows of 8 for 16-step patterns) ── */
+  /* ── Step grid: JS keeps column count aligned with sequence length ── */
   .drum-root .seq-step-grid {
-    grid-template-columns: repeat(8, 1fr) !important;
     gap: 3px;
   }
   .drum-root .seq-step-num { font-size: 0.55rem; height: 12px; line-height: 12px; }

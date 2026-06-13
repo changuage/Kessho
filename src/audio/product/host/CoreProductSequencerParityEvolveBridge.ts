@@ -474,7 +474,7 @@ function synthEvolvedSubLaneStatePatch(overrides: SynthLaneOverrides): SubLanePa
 
 function addSynthSubLanePatch(patch: SubLanePatch, lane: keyof SubLanePatch, values: number[] | null, direction: LaneDirection | null): void {
   if (!Array.isArray(values)) return;
-  patch[lane] = { enabled: true, steps: Math.max(1, Math.min(16, values.length)), direction: direction ?? 'forward' };
+  patch[lane] = { enabled: true, steps: Math.max(1, Math.min(32, values.length)), direction: direction ?? 'forward' };
 }
 
 function drumSubLanePatch(sequencer: SequencerState): DrumSubLanePatch {

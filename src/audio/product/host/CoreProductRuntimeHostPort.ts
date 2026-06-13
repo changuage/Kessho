@@ -4,31 +4,7 @@ import type { DawOutputRoutingConfig } from '../../dawOutputRouting';
 import type { ProductRuntimeCapabilityReport } from '../ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from '../ProductRuntimeDiagnostics';
 import type { ProductLiveNoteEvent } from '../liveNoteEvents';
-import type {
-  ProductAssetHandle,
-  ProductAssetRegistration,
-  ProductDrumTriggerCallback,
-  ProductDrumVoice,
-  ProductDynamicsVisualTelemetry,
-  ProductEngineStartOptions,
-  ProductEngineState,
-  ProductEvent,
-  ProductEvolveOverridesCallback,
-  ProductExternalState,
-  ProductManualSynthNote,
-  ProductMidiMessage,
-  ProductRange,
-  ProductRangeMap,
-  ProductResolvedStateCommit,
-  ProductResolvedStateCommitReceipt,
-  ProductRuntimeWalkPositionsCallback,
-  ProductSequencerEvolveTriggerCallback,
-  ProductSequencerStepPositionCallback,
-  ProductSnapshotPatch,
-  ProductSnapshotPatchReason,
-  ProductSynthNoteRangeEvolvedCallback,
-  ProductTelemetrySnapshot,
-} from '../ProductEngineTypes';
+import type { ProductAssetHandle, ProductAssetRegistration, ProductDrumTriggerCallback, ProductDrumVoice, ProductDynamicsVisualTelemetry, ProductEngineStartOptions, ProductEngineState, ProductEvent, ProductEvolveOverridesCallback, ProductExternalState, ProductManualSynthNote, ProductMidiMessage, ProductRange, ProductRangeMap, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductRuntimeWalkPositionsCallback, ProductSequencerEvolveTriggerCallback, ProductSequencerStepPositionCallback, ProductSnapshotPatch, ProductSnapshotPatchReason, ProductSynthAnchorWalkerVisualStateCallback, ProductSynthNoteRangeEvolvedCallback, ProductSynthOrbitVisualStateCallback, ProductTelemetrySnapshot } from '../ProductEngineTypes';
 
 // TODO(product-core-burn-down): replace this bound WebProductEngine host port with product-owned
 // generated runtime APIs once the web adapter no longer binds Product host method names itself.
@@ -37,6 +13,8 @@ type CoreProductRuntimeCallbackName =
   | 'drumTrigger'
   | 'drumStepPosition'
   | 'synthStepPosition'
+  | 'synthOrbitVisualState'
+  | 'synthAnchorWalkerVisualState'
   | 'drumEuclidEvolve'
   | 'synthEuclidEvolve'
   | 'runtimeWalkPositions'
@@ -50,6 +28,8 @@ const CORE_PRODUCT_RUNTIME_CALLBACK_METHODS: Record<CoreProductRuntimeCallbackNa
   drumTrigger: 'setDrumTriggerCallback',
   drumStepPosition: 'setDrumStepPositionCallback',
   synthStepPosition: 'setSynthStepPositionCallback',
+  synthOrbitVisualState: 'setSynthOrbitVisualStateCallback',
+  synthAnchorWalkerVisualState: 'setSynthAnchorWalkerVisualStateCallback',
   drumEuclidEvolve: 'setDrumEuclidEvolveTriggerCallback',
   synthEuclidEvolve: 'setSynthEuclidEvolveTriggerCallback',
   runtimeWalkPositions: 'setRuntimeWalkPositionsCallback',
@@ -175,6 +155,14 @@ export const coreProductRuntimeHostPort = {
 
   setSynthStepPositionCallback(callback: ProductSequencerStepPositionCallback | null): void {
     setCoreProductRuntimeCallback('synthStepPosition', callback);
+  },
+
+  setSynthOrbitVisualStateCallback(callback: ProductSynthOrbitVisualStateCallback | null): void {
+    setCoreProductRuntimeCallback('synthOrbitVisualState', callback);
+  },
+
+  setSynthAnchorWalkerVisualStateCallback(callback: ProductSynthAnchorWalkerVisualStateCallback | null): void {
+    setCoreProductRuntimeCallback('synthAnchorWalkerVisualState', callback);
   },
 
   setDrumEuclidEvolveTriggerCallback(callback: ProductSequencerEvolveTriggerCallback | null): void {

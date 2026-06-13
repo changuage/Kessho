@@ -85,7 +85,7 @@ export function evolveCoreProductSequencerSubLaneConfigs(sequencer: SequencerKin
     const picked = candidates[Math.floor(hashUnit(seed ^ 0x2c1b3c6d) * candidates.length)]!;
     const laneConfig = next[picked.index]!;
     const minSteps = sequencer === 'synth' ? 2 : 1;
-    const maxSteps = 16;
+    const maxSteps = 32;
     const delta = hashUnit(seed ^ 0x51f15ca9) < 0.5 ? -1 : 1;
     const steps = Math.max(minSteps, Math.min(maxSteps, laneConfig.steps + delta));
     if (steps !== laneConfig.steps) {

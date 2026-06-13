@@ -17,14 +17,14 @@ void require(bool condition, const char* message) {
 
 int main() {
   static_assert(sizeof(KesshoProductSourceSnapshot) == 3720, "source snapshot ABI size changed");
-  static_assert(sizeof(KesshoProductSequencerLaneSnapshot) == 92, "sequencer lane snapshot ABI size changed");
-  static_assert(sizeof(KesshoProductSnapshotV2) == 31788, "product snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductSequencerLaneSnapshot) == 96, "sequencer lane snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductSnapshotV2) == 135212, "product snapshot ABI size changed");
   static_assert(sizeof(KesshoProductEvent) == 40, "product event ABI size changed");
   static_assert(sizeof(KesshoSequencerEvent) == 60, "sequencer event ABI size changed");
   static_assert(sizeof(KesshoProductGranularVisualEvent) == 32, "granular visual event ABI size changed");
   static_assert(sizeof(KesshoProductDebugSourceState) == 32, "product debug source telemetry ABI size changed");
   static_assert(sizeof(KesshoProductDebugVoiceSpawn) == 48, "product debug voice telemetry ABI size changed");
-  static_assert(sizeof(KesshoProductTelemetry) == 9760, "product telemetry ABI size changed");
+  static_assert(sizeof(KesshoProductTelemetry) == 15008, "product telemetry ABI size changed");
   static_assert(sizeof(KesshoProductSequencerLaneUiState) == 3024, "sequencer UI lane state ABI size changed");
   static_assert(sizeof(KesshoProductSequencerUiState) == 96804, "sequencer UI state ABI size changed");
 
@@ -106,6 +106,48 @@ int main() {
   require(
       offsetof(KesshoProductTelemetry, debug_voice_spawns) == 8992,
       "telemetry debug voice spawns offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, synth_orbit_visual_note_counts) == 9760,
+      "telemetry synth Orbit visual note-count offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, synth_orbit_visual_base_angles) == 9824,
+      "telemetry synth Orbit visual base-angle offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, synth_orbit_visual_note_angles) == 9888,
+      "telemetry synth Orbit visual note-angle offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, synth_orbit_visual_note_flashes) == 11936,
+      "telemetry synth Orbit visual note-flash offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_visual_flags) == 13984,
+      "telemetry synth Anchor Walker visual flags offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_cursor_degrees) == 14048,
+      "telemetry synth Anchor Walker cursor-degree offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_last_gesture_deltas) == 14112,
+      "telemetry synth Anchor Walker gesture-delta offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_boundary_events) == 14176,
+      "telemetry synth Anchor Walker boundary-event offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_output_counts) == 14240,
+      "telemetry synth Anchor Walker output-count offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_anchor_midis) == 14304,
+      "telemetry synth Anchor Walker anchor-MIDI offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_cursor_midis) == 14368,
+      "telemetry synth Anchor Walker cursor-MIDI offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_previous_cursor_midis) == 14432,
+      "telemetry synth Anchor Walker previous-cursor-MIDI offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_output_midis) == 14496,
+      "telemetry synth Anchor Walker output-MIDI offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_output_velocities) == 14752,
+      "telemetry synth Anchor Walker output-velocity offset changed");
   require(
       offsetof(KesshoProductSequencerLaneUiState, probability_overrides) == 168,
       "sequencer UI probability override offset changed");

@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import type { OrbitNoteConfig, OrbitSequencerConfig, OrbitSplineConfig } from './orbitSequencerTypes';
+import type { OrbitNoteConfig, OrbitRuntimeVisualState, OrbitSequencerConfig, OrbitSplineConfig } from './orbitSequencerTypes';
 import {
   ORBIT_RADIUS_SCALE,
+  adjustedOrbitSpeedValue,
   cartesianToPolar,
   directionSign,
   lineAngleOffset,
@@ -9,6 +10,7 @@ import {
   resolveAngularSpeed,
   rotateOrbitPoint,
   sampleBezierSpline,
+  snapOrbitPhase,
   splineAngleAtRadius,
   wrapRadians,
   type OrbitPoint,
@@ -19,6 +21,8 @@ interface OrbitSequencerCanvasProps {
   color: string;
   selectedNoteId: string | null;
   active: boolean;
+  transportBpm?: number;
+  runtimeVisualState?: OrbitRuntimeVisualState | null;
   onSelectNote: (id: string | null) => void;
   onAddNote: (radiusNorm: number, phase: number) => void;
   onMoveNote: (id: string, radiusNorm: number, phase: number) => void;
@@ -81,6 +85,15 @@ function rotatedHandlePoints(spline: OrbitSplineConfig): OrbitPoint[] {
   ];
 }
 
+function splineWithRuntimeBaseAngle(
+  spline: OrbitSplineConfig,
+  runtimeBaseAngle: number | undefined,
+): OrbitSplineConfig {
+  return typeof runtimeBaseAngle === 'number' && Number.isFinite(runtimeBaseAngle)
+    ? { ...spline, baseAngle: runtimeBaseAngle }
+    : spline;
+}
+
 function nearestHandleIndex(spline: OrbitSplineConfig, x: number, y: number, size: number): 0 | 1 | 2 | null {
   const handles = rotatedHandlePoints(spline);
   for (let index = 0; index < handles.length; index += 1) {
@@ -104,6 +117,13 @@ function nearestNoteId(notes: readonly OrbitNoteConfig[], runtimes: Map<string, 
     }
   }
   return bestId;
+}
+
+function snapPolarForConfig(radiusNorm: number, angle: number, config: OrbitSequencerConfig) {
+  return {
+    radiusNorm,
+    angle: config.dragQuantize ? snapOrbitPhase(angle, config.quantizedOffset) : angle,
+  };
 }
 
 function drawControlHandles(ctx: CanvasRenderingContext2D, spline: OrbitSplineConfig, radius: number, color: string) {
@@ -144,12 +164,14 @@ function drawOrbit(ctx: CanvasRenderingContext2D, args: {
   runtimes: Map<string, RuntimeNote>;
   width: number;
   height: number;
+  runtimeBaseAngle?: number;
 }) {
-  const { config, color, selectedNoteId, runtimes, width, height } = args;
+  const { config, color, selectedNoteId, runtimes, width, height, runtimeBaseAngle } = args;
   const size = Math.min(width, height);
   const cx = width * 0.5;
   const cy = height * 0.5;
   const radius = canvasRadius(size);
+  const spline = splineWithRuntimeBaseAngle(config.spline, runtimeBaseAngle);
   ctx.clearRect(0, 0, width, height);
 
   ctx.save();
@@ -163,10 +185,10 @@ function drawOrbit(ctx: CanvasRenderingContext2D, args: {
     ctx.stroke();
   }
 
-  const baseSamples = sampleBezierSpline(config.spline, 64, config.spline.baseAngle);
+  const baseSamples = sampleBezierSpline(spline, 64, spline.baseAngle);
   for (let line = 0; line < config.triggerLineCount; line += 1) {
     const offset = lineAngleOffset(line, config.triggerLineCount);
-    const samples = sampleBezierSpline(config.spline, 64, config.spline.baseAngle + offset);
+    const samples = sampleBezierSpline(spline, 64, spline.baseAngle + offset);
     ctx.beginPath();
     samples.forEach((sample, index) => {
       const x = sample.x * radius;
@@ -181,7 +203,7 @@ function drawOrbit(ctx: CanvasRenderingContext2D, args: {
     ctx.stroke();
   }
   ctx.shadowBlur = 0;
-  drawControlHandles(ctx, config.spline, radius, color);
+  drawControlHandles(ctx, spline, radius, color);
 
   for (const note of config.notes) {
     const runtime = runtimes.get(note.id);
@@ -223,6 +245,8 @@ export function OrbitSequencerCanvas({
   color,
   selectedNoteId,
   active,
+  transportBpm = 120,
+  runtimeVisualState = null,
   onSelectNote,
   onAddNote,
   onMoveNote,
@@ -232,18 +256,32 @@ export function OrbitSequencerCanvas({
   const configRef = useRef(config);
   const selectedNoteIdRef = useRef(selectedNoteId);
   const activeRef = useRef(active);
+  const transportBpmRef = useRef(transportBpm);
+  const runtimeVisualStateRef = useRef<OrbitRuntimeVisualState | null>(runtimeVisualState);
   const runtimeRef = useRef<Map<string, RuntimeNote>>(new Map());
+  const phaseRef = useRef<Map<string, number>>(new Map());
   const dragStateRef = useRef<DragState>(null);
   const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
 
   useEffect(() => {
     configRef.current = config;
     const runtimes = runtimeRef.current;
+    const phases = phaseRef.current;
     for (const note of config.notes) {
-      if (!runtimes.has(note.id)) runtimes.set(note.id, { id: note.id, angle: note.phase, flash: 0 });
+      const previousPhase = phases.get(note.id);
+      const runtime = runtimes.get(note.id);
+      if (!runtime) {
+        runtimes.set(note.id, { id: note.id, angle: note.phase, flash: 0 });
+      } else if (previousPhase === undefined || Math.abs(note.phase - previousPhase) > 1e-6) {
+        runtime.angle = note.phase;
+      }
+      phases.set(note.id, note.phase);
     }
     for (const id of Array.from(runtimes.keys())) {
-      if (!config.notes.some((note) => note.id === id)) runtimes.delete(id);
+      if (!config.notes.some((note) => note.id === id)) {
+        runtimes.delete(id);
+        phases.delete(id);
+      }
     }
   }, [config]);
 
@@ -254,6 +292,47 @@ export function OrbitSequencerCanvas({
   useEffect(() => {
     activeRef.current = active;
   }, [active]);
+
+  useEffect(() => {
+    transportBpmRef.current = transportBpm;
+  }, [transportBpm]);
+
+  useEffect(() => {
+    runtimeVisualStateRef.current = runtimeVisualState;
+    if (!runtimeVisualState) return;
+    const runtimes = runtimeRef.current;
+    for (let index = 0; index < configRef.current.notes.length; index += 1) {
+      const note = configRef.current.notes[index];
+      if (!note) continue;
+      const angle = runtimeVisualState.noteAngles[index];
+      if (typeof angle !== 'number' || !Number.isFinite(angle)) continue;
+      const flash = Math.max(0, runtimeVisualState.noteFlashes[index] ?? 0);
+      const runtime = runtimes.get(note.id);
+      if (runtime) {
+        runtime.angle = angle;
+        runtime.flash = flash;
+      } else {
+        runtimes.set(note.id, { id: note.id, angle, flash });
+      }
+    }
+  }, [runtimeVisualState]);
+
+  const drawStaticOrbit = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    const { width, height, dpr } = sizeRef.current;
+    if (!canvas || !ctx || width <= 0 || height <= 0) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawOrbit(ctx, {
+      config: configRef.current,
+      color,
+      selectedNoteId: selectedNoteIdRef.current,
+      runtimes: runtimeRef.current,
+      width,
+      height,
+      runtimeBaseAngle: runtimeVisualStateRef.current?.baseAngle,
+    });
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -275,29 +354,72 @@ export function OrbitSequencerCanvas({
 
   useEffect(() => {
     let raf = 0;
+    let idleTimer = 0;
     let lastTime = performance.now();
+
+    const scheduleNext = () => {
+      if (activeRef.current || dragStateRef.current) {
+        raf = requestAnimationFrame(loop);
+        return;
+      }
+      idleTimer = window.setTimeout(() => {
+        loop(performance.now());
+      }, 180);
+    };
+
     const loop = (time: number) => {
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext('2d');
       const { width, height, dpr } = sizeRef.current;
-      if (canvas && ctx && width > 0 && height > 0 && activeRef.current) {
+      if (canvas && ctx && width > 0 && height > 0) {
         const configNow = configRef.current;
-        const dt = Math.min(0.05, Math.max(0, (time - lastTime) / 1000));
+        const dt = Math.max(0, (time - lastTime) / 1000);
+        const decayDt = Math.min(0.05, dt);
+        const shouldAdvance = activeRef.current;
+        const transportBpmNow = transportBpmRef.current;
+        const nativeRuntime = runtimeVisualStateRef.current;
+        const useNativeRuntime = shouldAdvance && nativeRuntime !== null && nativeRuntime.noteAngles.length > 0;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        for (const note of configNow.notes) {
+        for (let noteIndex = 0; noteIndex < configNow.notes.length; noteIndex += 1) {
+          const note = configNow.notes[noteIndex];
+          if (!note) continue;
           const runtime = runtimeRef.current.get(note.id);
           if (!runtime) continue;
-          if (note.enabled) {
-            runtime.angle = wrapRadians(runtime.angle + directionSign(note.direction) * resolveAngularSpeed(note.speedMode, note.speedValue, configNow.bpmPercent) * dt);
+          if (useNativeRuntime) {
+            const nativeAngle = nativeRuntime.noteAngles[noteIndex];
+            if (typeof nativeAngle === 'number' && Number.isFinite(nativeAngle)) {
+              runtime.angle = nativeAngle;
+              runtime.flash = Math.max(0, nativeRuntime.noteFlashes[noteIndex] ?? runtime.flash);
+            }
+          } else if (shouldAdvance && note.enabled) {
+            const speedValue = adjustedOrbitSpeedValue(
+              note.speedMode,
+              note.speedValue,
+              note.radiusNorm,
+              configNow.speedOffset,
+            );
+            runtime.angle = wrapRadians(
+              runtime.angle +
+              directionSign(note.direction) *
+              resolveAngularSpeed(note.speedMode, speedValue, configNow.bpmPercent, transportBpmNow) *
+              dt,
+            );
           }
-          runtime.flash = Math.max(0, runtime.flash - dt * 2.5);
+          if (!useNativeRuntime) {
+            runtime.flash = Math.max(0, runtime.flash - decayDt * 2.5);
+          }
         }
-        if (configNow.spline.spinEnabled) {
+        if (shouldAdvance && configNow.spline.spinEnabled && !useNativeRuntime) {
           configRef.current = {
             ...configNow,
             spline: {
               ...configNow.spline,
-              baseAngle: wrapRadians(configNow.spline.baseAngle + directionSign(configNow.spline.spinDirection) * resolveAngularSpeed('bpmPercent', 100, configNow.bpmPercent) * dt),
+              baseAngle: wrapRadians(
+                configNow.spline.baseAngle +
+                directionSign(configNow.spline.spinDirection) *
+                resolveAngularSpeed('bpmPercent', 100, configNow.bpmPercent, transportBpmNow) *
+                dt,
+              ),
             },
           };
         }
@@ -308,13 +430,17 @@ export function OrbitSequencerCanvas({
           runtimes: runtimeRef.current,
           width,
           height,
+          runtimeBaseAngle: useNativeRuntime ? nativeRuntime.baseAngle : undefined,
         });
       }
       lastTime = time;
-      raf = requestAnimationFrame(loop);
+      scheduleNext();
     };
     raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(idleTimer);
+    };
   }, [color]);
 
   const canvasPointer = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -336,25 +462,30 @@ export function OrbitSequencerCanvas({
           if (!point) return;
           event.currentTarget.setPointerCapture(event.pointerId);
           const configNow = configRef.current;
-          const handleIndex = nearestHandleIndex(configNow.spline, point.x, point.y, point.size);
+          const visualSpline = splineWithRuntimeBaseAngle(configNow.spline, runtimeVisualStateRef.current?.baseAngle);
+          const handleIndex = nearestHandleIndex(visualSpline, point.x, point.y, point.size);
           if (handleIndex !== null) {
             dragStateRef.current = { type: 'handle', index: handleIndex };
             onSelectNote(null);
+            drawStaticOrbit();
             return;
           }
           const hitId = nearestNoteId(configNow.notes, runtimeRef.current, point.x, point.y, point.size);
           if (hitId) {
             dragStateRef.current = { type: 'note', id: hitId };
             onSelectNote(hitId);
+            drawStaticOrbit();
             return;
           }
           if (selectedNoteIdRef.current) {
             onSelectNote(null);
+            drawStaticOrbit();
             return;
           }
           const normalized = normalizedFromCanvas(point.x, point.y, point.size);
           if (Math.hypot(normalized.x, normalized.y) <= 1.1) {
-            const polar = cartesianToPolar(point.x, point.y, point.size);
+            const rawPolar = cartesianToPolar(point.x, point.y, point.size);
+            const polar = snapPolarForConfig(rawPolar.radiusNorm, rawPolar.angle, configNow);
             onAddNote(polar.radiusNorm, polar.angle);
           }
         }}
@@ -366,8 +497,9 @@ export function OrbitSequencerCanvas({
           if (dragState.type === 'handle') {
             const configNow = configRef.current;
             const normalized = clampNormalizedPoint(normalizedFromCanvas(point.x, point.y, point.size));
+            const visualBaseAngle = runtimeVisualStateRef.current?.baseAngle ?? configNow.spline.baseAngle;
             const basePoint = configNow.spline.spinEnabled
-              ? rotateOrbitPoint(normalized, -configNow.spline.baseAngle)
+              ? rotateOrbitPoint(normalized, -visualBaseAngle)
               : normalized;
             const key = HANDLE_KEYS[dragState.index];
             const spline = {
@@ -379,18 +511,24 @@ export function OrbitSequencerCanvas({
               spline,
             };
             onUpdateSpline({ [key]: basePoint } as Partial<OrbitSplineConfig>);
+            drawStaticOrbit();
             return;
           }
-          const polar = cartesianToPolar(point.x, point.y, point.size);
+          const rawPolar = cartesianToPolar(point.x, point.y, point.size);
+          const polar = snapPolarForConfig(rawPolar.radiusNorm, rawPolar.angle, configRef.current);
           const runtime = runtimeRef.current.get(dragState.id);
           if (runtime) runtime.angle = polar.angle;
           onMoveNote(dragState.id, polar.radiusNorm, polar.angle);
+          drawStaticOrbit();
         }}
         onPointerUp={(event) => {
           dragStateRef.current = null;
           event.currentTarget.releasePointerCapture(event.pointerId);
         }}
         onPointerCancel={() => {
+          dragStateRef.current = null;
+        }}
+        onLostPointerCapture={() => {
           dragStateRef.current = null;
         }}
       />

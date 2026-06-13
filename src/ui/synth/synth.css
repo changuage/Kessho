@@ -2890,7 +2890,7 @@
   .synth-root .seq-lane-controls button { width: auto; height: auto; min-height: 28px; padding: 4px 6px; font-size: 0.55rem; line-height: 1; }
   .synth-root .seq-lane-controls select { min-height: 24px; font-size: 0.5rem; padding: 1px 2px; max-width: 56px; min-width: 0; }
   .synth-root .seq-lane-enable-btn { padding: 2px 6px; font-size: 0.55rem; min-height: 28px; }
-  .synth-root .seq-step-grid { grid-template-columns: repeat(8, 1fr) !important; gap: 3px; }
+  .synth-root .seq-step-grid { gap: 3px; }
   .synth-root .seq-step-num { font-size: 0.55rem; height: 12px; line-height: 12px; }
   .synth-root .seq-step-cell { min-width: 0; min-height: 24px; border-width: 1.5px; }
   .synth-root .seq-step-cell .prob-label { font-size: 0.45rem; }
@@ -3315,9 +3315,58 @@
   letter-spacing: 0;
 }
 
+.synth-root .walker-ensemble-strip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(18, 17, 15, 0.82);
+  color: rgba(232, 220, 196, 0.72);
+}
+
+.synth-root .walker-ensemble-title,
+.synth-root .walker-ensemble-meta {
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.synth-root .walker-ensemble-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.synth-root .walker-ensemble-options button {
+  min-height: 26px;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #e8dcc4;
+  font-size: 0.62rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.synth-root .walker-ensemble-options button.active {
+  border-color: rgba(212, 165, 32, 0.6);
+  background: rgba(212, 165, 32, 0.18);
+  color: #f5df9e;
+}
+
 @media (max-width: 900px) {
   .synth-root .seq-arp-toolbar {
     grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .synth-root .walker-ensemble-strip {
+    grid-template-columns: 1fr;
   }
 
   .synth-root .seq-arp-select {

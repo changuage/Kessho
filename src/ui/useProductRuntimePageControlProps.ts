@@ -1,7 +1,12 @@
 import { useMemo } from 'react';
 import type { MutableRefObject } from 'react';
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
-import type { ProductDrumVoice, ProductManualSynthNote } from '../audio/product/ProductEngineTypes';
+import type {
+  ProductDrumVoice,
+  ProductManualSynthNote,
+  ProductSynthAnchorWalkerVisualStateCallback,
+  ProductSynthOrbitVisualStateCallback,
+} from '../audio/product/ProductEngineTypes';
 import type { SliderState } from './state';
 
 export type ProductRuntimeManualTriggers = {
@@ -19,6 +24,8 @@ export type ProductRuntimePageControlProps = {
   setProductDrumStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
   setProductDrumTriggerCallback: (callback: ((voice: string, velocity: number) => void) | null) => void;
   setProductSynthEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
+  setProductSynthAnchorWalkerVisualStateCallback: (callback: ProductSynthAnchorWalkerVisualStateCallback | null) => void;
+  setProductSynthOrbitVisualStateCallback: (callback: ProductSynthOrbitVisualStateCallback | null) => void;
   setProductSynthStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
 };
 
@@ -32,6 +39,8 @@ export function useProductRuntimePageControlProps({
   setProductDrumStepPositionCallback,
   setProductDrumTriggerCallback,
   setProductSynthEvolveTriggerCallback,
+  setProductSynthAnchorWalkerVisualStateCallback,
+  setProductSynthOrbitVisualStateCallback,
   setProductSynthStepPositionCallback,
 }: ProductRuntimePageControlProps): ProductRuntimePageControlProps {
   return useMemo(() => ({
@@ -44,6 +53,8 @@ export function useProductRuntimePageControlProps({
     setProductDrumStepPositionCallback,
     setProductDrumTriggerCallback,
     setProductSynthEvolveTriggerCallback,
+    setProductSynthAnchorWalkerVisualStateCallback,
+    setProductSynthOrbitVisualStateCallback,
     setProductSynthStepPositionCallback,
   }), [
     onRequestPlaybackStart,
@@ -55,6 +66,8 @@ export function useProductRuntimePageControlProps({
     setProductDrumStepPositionCallback,
     setProductDrumTriggerCallback,
     setProductSynthEvolveTriggerCallback,
+    setProductSynthAnchorWalkerVisualStateCallback,
+    setProductSynthOrbitVisualStateCallback,
     setProductSynthStepPositionCallback,
   ]);
 }

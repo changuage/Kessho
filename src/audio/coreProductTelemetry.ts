@@ -60,6 +60,43 @@ export type CoreProductSequencerUiState = {
   drumLanes: CoreProductSequencerLaneUiState[];
 };
 
+export type CoreProductOrbitVisualLaneState = {
+  noteCount: number;
+  baseAngle: number;
+  noteAngles: number[];
+  noteFlashes: number[];
+};
+
+export type CoreProductAnchorWalkerBoundaryEvent =
+  | 'none'
+  | 'foldTop'
+  | 'foldBottom'
+  | 'wrapTop'
+  | 'wrapBottom'
+  | 'clampTop'
+  | 'clampBottom';
+
+export type CoreProductAnchorWalkerOutputState = {
+  slotIndex: number;
+  midi: number;
+  velocity: number;
+};
+
+export type CoreProductAnchorWalkerVisualLaneState = {
+  enabled: boolean;
+  gestureHeld: boolean;
+  cursorValid: boolean;
+  anchorValid: boolean;
+  walking: boolean;
+  cursorDegree: number;
+  lastGestureDelta: number;
+  boundaryEvent: CoreProductAnchorWalkerBoundaryEvent;
+  anchorMidi: number;
+  cursorMidi: number;
+  previousCursorMidi: number;
+  outputMidis: CoreProductAnchorWalkerOutputState[];
+};
+
 export type CoreProductGranularVisualEvent = {
   position: number;
   pan: number;
@@ -192,6 +229,8 @@ export type CoreProductTelemetrySnapshot = {
   drumSequencerHitCounts?: number[];
   synthSequencerCurrentSteps?: number[];
   drumSequencerCurrentSteps?: number[];
+  synthOrbitVisualLanes?: Array<CoreProductOrbitVisualLaneState | null>;
+  synthAnchorWalkerVisualLanes?: Array<CoreProductAnchorWalkerVisualLaneState | null>;
 };
 
 export type CoreProductModulationDebugEntry = {
@@ -244,6 +283,8 @@ export type CoreProductVisualTelemetrySnapshot = Pick<
   | 'drumSequencerHitCounts'
   | 'synthSequencerCurrentSteps'
   | 'drumSequencerCurrentSteps'
+  | 'synthOrbitVisualLanes'
+  | 'synthAnchorWalkerVisualLanes'
   | 'workletOutputPeak'
   | 'workletStemPeaks'
   | 'workletMasterStemPeak'

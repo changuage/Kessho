@@ -15,6 +15,8 @@ import {
 import type { SubLaneValueConfig } from './seqEvolveTypes';
 import { clamp, chance, drift, tensionGate, randomOtherDirection, maskByWriteOffset, mutateRatchetHomeBiased } from './seqEvolveCore';
 
+const EUCLIDEAN_STEP_MAX = 32;
+
 // ═══════════════════════════════════════════════════════════════════════
 // Types
 // ═══════════════════════════════════════════════════════════════════════
@@ -420,7 +422,7 @@ export function evolveSynthLane(
         const vals = getValues(next, lane);
         if (vals) {
           const dir = rng() < 0.5 ? -1 : 1;
-          const newLen = clamp(vals.length + dir, 2, 16);
+          const newLen = clamp(vals.length + dir, 2, EUCLIDEAN_STEP_MAX);
           if (newLen !== vals.length) {
             if (newLen > vals.length) {
               // Grow: duplicate last value

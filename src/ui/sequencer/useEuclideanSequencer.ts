@@ -34,6 +34,7 @@ import {
   normalizeSequencerPitchSettingsArray,
 } from '../../audio/sequencerPitchSettings';
 import { normalizeSequencerSwing, normalizeSequencerSwings } from '../../audio/sequencerSwing';
+import { clampEuclideanSubLaneSteps } from './sequencerLimits';
 
 // ── Types ──
 
@@ -364,7 +365,7 @@ function getDefaultSubLaneState(lane: SubLaneKind): SubLaneState {
 function normalizeSubLaneState(lane: SubLaneKind, state?: Partial<SubLaneState>): SubLaneState {
   const fallback = getDefaultSubLaneState(lane);
   const steps = typeof state?.steps === 'number' && Number.isFinite(state.steps)
-    ? Math.max(1, Math.min(16, Math.floor(state.steps)))
+    ? clampEuclideanSubLaneSteps(Math.floor(state.steps), fallback.steps)
     : fallback.steps;
   const next: SubLaneState = {
     ...fallback,
@@ -627,7 +628,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
   }, []);
 
   const setSubLaneSteps = useCallback((seqIdx: number, lane: SubLaneKind, steps: number) => {
-    const newSteps = Math.max(1, Math.min(16, steps));
+    const newSteps = clampEuclideanSubLaneSteps(steps);
     setSubLaneStates(prev => prev.map((s, i) =>
       i === seqIdx ? { ...s, [lane]: { ...s[lane], steps: newSteps } } : s
     ));

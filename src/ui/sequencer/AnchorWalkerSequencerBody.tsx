@@ -1,12 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { HarmonyState } from '../../audio/harmony';
 import { TEXT_SYMBOLS } from '../../designSystem/textSymbols';
-import {
-  formatMidiNoteName,
-  formatPitchClassName,
-  pitchClass,
-} from './anchorWalkerMath';
-import type { AnchorWalkerConfig, WalkRate } from './anchorWalkerTypes';
+import type { AnchorWalkerConfig, AnchorWalkerPerformanceEvent, AnchorWalkerRuntimeViewState, WalkerPlayMode } from './anchorWalkerTypes';
+import { formatPitchClassName } from './anchorWalkerMath';
+import AnchorWalkerKeyboardVisualizer from './AnchorWalkerKeyboardVisualizer';
 import { useAnchorWalkerSequencer } from './useAnchorWalkerSequencer';
 import './AnchorWalkerSequencer.css';
 
@@ -15,18 +12,30 @@ interface AnchorWalkerSequencerBodyProps {
   laneIndex: number;
   color: string;
   harmonyState?: HarmonyState | null;
+  runtimeState?: AnchorWalkerRuntimeViewState | null;
   onChange: (config: AnchorWalkerConfig) => void;
+  onPerformanceEvent?: (event: AnchorWalkerPerformanceEvent) => void;
 }
 
-const WALK_RATES: readonly WalkRate[] = ['off', '1/1', '1/2', '1/4', '1/8', '1/16', '1/32'];
-
 const GESTURE_BUTTONS = [
-  { delta: 2, label: 'Up 3rd' },
-  { delta: -1, label: 'Down 2nd' },
-  { delta: 1, label: 'Up 2nd' },
-  { delta: 4, label: 'Up 5th' },
-  { delta: -2, label: 'Down 3rd' },
+  { delta: 4, label: '+5th', shortcut: 'H' },
+  { delta: -2, label: '-3rd', shortcut: 'S' },
+  { delta: 2, label: '+3rd', shortcut: 'G' },
+  { delta: -1, label: '-2nd', shortcut: 'D' },
+  { delta: 1, label: '+2nd', shortcut: 'F' },
+  { delta: -4, label: '-5th', shortcut: 'A' },
 ] as const;
+
+const KEYBOARD_GESTURES: Readonly<Record<string, number>> = {
+  a: -4,
+  s: -2,
+  d: -1,
+  f: 1,
+  g: 2,
+  h: 4,
+};
+
+const PITCH_CLASSES = Array.from({ length: 12 }, (_, index) => index);
 
 function layerSummary(layer: AnchorWalkerConfig['layers'][number]): string {
   if (layer.tuning === 'diatonicOffset') return `${layer.diatonicOffset >= 0 ? '+' : ''}${layer.diatonicOffset} deg`;
@@ -38,20 +47,121 @@ export function AnchorWalkerSequencerBody({
   laneIndex,
   color,
   harmonyState,
+  runtimeState,
   onChange,
+  onPerformanceEvent,
 }: AnchorWalkerSequencerBodyProps) {
-  const walker = useAnchorWalkerSequencer({ config, harmonyState, onChange });
-  const activePitchClasses = walker.runtime.activeSnapPitchClasses;
-  const visibleNotes = useMemo(() => {
-    const baseOctave = Math.floor((walker.runtime.anchorMidi ?? 60) / 12) * 12;
-    return activePitchClasses.map((pc) => baseOctave + pc);
-  }, [activePitchClasses, walker.runtime.anchorMidi]);
-  const layerPitchClasses = new Set(walker.runtime.layerOutputMidis.map(pitchClass));
-  const cursorPitchClass = walker.runtime.cursorMidi == null ? null : pitchClass(walker.runtime.cursorMidi);
-  const anchorPitchClass = walker.runtime.anchorMidi == null ? null : pitchClass(walker.runtime.anchorMidi);
+  const walker = useAnchorWalkerSequencer({ config, harmonyState, onChange, onPerformanceEvent, runtimeState });
+  const gestureDownRef = useRef(walker.gestureDown);
+  const gestureUpRef = useRef(walker.gestureUp);
+  const latchManualAnchorRef = useRef(walker.latchManualAnchor);
+  const releaseManualAnchorRef = useRef(walker.releaseManualAnchor);
+  const heldKeysRef = useRef(new Set<string>());
+  const [activeGestureDeltas, setActiveGestureDeltas] = useState<Set<number>>(() => new Set());
+  gestureDownRef.current = walker.gestureDown;
+  gestureUpRef.current = walker.gestureUp;
+  latchManualAnchorRef.current = walker.latchManualAnchor;
+  releaseManualAnchorRef.current = walker.releaseManualAnchor;
   const chordLabel = harmonyState
-    ? `${formatPitchClassName(harmonyState.effectiveRoot ?? 0)} ${harmonyState.scaleFamily.name}`
+    ? (walker.config.snapSource === 'customPitchClasses' ? 'Custom Scale' : harmonyState.scaleFamily.name)
     : 'Harmony';
+
+  useEffect(() => {
+    const editableSelector = 'input, select, textarea, [contenteditable="true"]';
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(editableSelector)) return;
+      if (event.code === 'Space' && config.anchorSource === 'manualLatch') {
+        if (heldKeysRef.current.has('space')) return;
+        heldKeysRef.current.add('space');
+        latchManualAnchorRef.current();
+        event.preventDefault();
+        return;
+      }
+      const key = event.key.toLowerCase();
+      const delta = KEYBOARD_GESTURES[key];
+      if (delta == null || heldKeysRef.current.has(key)) return;
+      heldKeysRef.current.add(key);
+      setActiveGestureDeltas((current) => {
+        const next = new Set(current);
+        next.add(delta);
+        return next;
+      });
+      gestureDownRef.current(delta);
+      event.preventDefault();
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === 'Space') {
+        if (!heldKeysRef.current.delete('space')) return;
+        if (config.anchorSource === 'manualLatch') {
+          releaseManualAnchorRef.current();
+          event.preventDefault();
+        }
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (!heldKeysRef.current.delete(key)) return;
+      const delta = KEYBOARD_GESTURES[key];
+      if (delta == null) return;
+      setActiveGestureDeltas((current) => {
+        const next = new Set(current);
+        next.delete(delta);
+        return next;
+      });
+      gestureUpRef.current(delta);
+      event.preventDefault();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      if (heldKeysRef.current.size > 0) {
+        gestureUpRef.current();
+        heldKeysRef.current.clear();
+        setActiveGestureDeltas(new Set());
+      }
+    };
+  }, [config.anchorSource]);
+
+  const markGestureActive = (delta: number, active: boolean) => {
+    setActiveGestureDeltas((current) => {
+      const next = new Set(current);
+      if (active) next.add(delta);
+      else next.delete(delta);
+      return next;
+    });
+  };
+
+  const setPlayMode = (playMode: WalkerPlayMode) => {
+    walker.updateConfig({
+      playMode,
+      triggerMode: playMode === 'gridPattern' ? 'stepGrid' : 'gestureHold',
+      mode: 'hybrid',
+    });
+  };
+
+  const setScaleSource = (snapSource: AnchorWalkerConfig['snapSource']) => {
+    if (snapSource === 'customPitchClasses' && walker.config.snapSource !== 'customPitchClasses') {
+      walker.updateConfig({ snapSource, customPitchClasses: walker.runtime.activeSnapPitchClasses });
+      return;
+    }
+    walker.updateConfig({ snapSource });
+  };
+
+  const toggleCustomPitchClass = (pitchClass: number) => {
+    const current = new Set(walker.config.customPitchClasses);
+    if (current.has(pitchClass)) {
+      if (current.size > 1) current.delete(pitchClass);
+    } else {
+      current.add(pitchClass);
+    }
+    walker.updateConfig({
+      snapSource: 'customPitchClasses',
+      customPitchClasses: [...current],
+    });
+  };
 
   return (
     <div
@@ -61,17 +171,26 @@ export function AnchorWalkerSequencerBody({
     >
       <div className="anchor-walker-top">
         <label className="anchor-walker-label">
-          {TEXT_SYMBOLS.snap} Snap
+          Input
           <select
             className="anchor-walker-select"
+            value={walker.config.playMode}
+            onChange={(event) => setPlayMode(event.target.value as WalkerPlayMode)}
+          >
+            <option value="hybridPlay">Hybrid</option>
+            <option value="gridPattern">Grid</option>
+          </select>
+        </label>
+        <label className="anchor-walker-label">
+          Scale
+          <select
+            className="anchor-walker-select"
+            aria-label="Walker scale"
             value={walker.config.snapSource}
-            onChange={(event) => walker.updateConfig({ snapSource: event.target.value as AnchorWalkerConfig['snapSource'] })}
+            onChange={(event) => setScaleSource(event.target.value as AnchorWalkerConfig['snapSource'])}
           >
             <option value="harmonyEngine">Harmony</option>
-            <option value="manualVoicing">Voicing</option>
-            <option value="chordStep">Chord</option>
             <option value="customPitchClasses">Custom</option>
-            <option value="liveBlueKeys">Blue Keys</option>
           </select>
         </label>
         <label className="anchor-walker-label">
@@ -82,47 +201,21 @@ export function AnchorWalkerSequencerBody({
             onChange={(event) => walker.updateConfig({ anchorSource: event.target.value as AnchorWalkerConfig['anchorSource'] })}
           >
             <option value="harmonyRoot">Root</option>
-            <option value="selectedNote">Selected</option>
-            <option value="lastPlayed">Last</option>
             <option value="manualLatch">Latch</option>
           </select>
         </label>
         <label className="anchor-walker-label">
-          Mode
+          Boundary
           <select
             className="anchor-walker-select"
-            value={walker.config.mode}
-            onChange={(event) => walker.updateConfig({ mode: event.target.value as AnchorWalkerConfig['mode'] })}
+            value={walker.config.boundaryMode}
+            onChange={(event) => walker.updateConfig({ boundaryMode: event.target.value as AnchorWalkerConfig['boundaryMode'] })}
           >
-            <option value="hybrid">Hybrid</option>
-            <option value="compactPad">Pad</option>
-            <option value="fullMidi">Full MIDI</option>
+            <option value="fold">Fold</option>
+            <option value="wrap">Wrap</option>
+            <option value="clamp">Clamp</option>
           </select>
         </label>
-        <label className="anchor-walker-label">
-          Auto
-          <select
-            className="anchor-walker-select"
-            value={walker.config.autoRate}
-            onChange={(event) => walker.updateConfig({ autoRate: event.target.value as WalkRate })}
-          >
-            {WALK_RATES.map((rate) => <option key={rate} value={rate}>{rate === 'off' ? 'Off' : rate}</option>)}
-          </select>
-        </label>
-        <button
-          type="button"
-          className={`anchor-walker-toggle${walker.config.leadMode ? ' on' : ''}`}
-          onClick={() => walker.updateConfig({ leadMode: !walker.config.leadMode })}
-        >
-          Lead
-        </button>
-        <button
-          type="button"
-          className={`anchor-walker-toggle${walker.config.mwToVelocity ? ' on' : ''}`}
-          onClick={() => walker.updateConfig({ mwToVelocity: !walker.config.mwToVelocity })}
-        >
-          MW-&gt;Vel
-        </button>
       </div>
 
       <div className="anchor-walker-main">
@@ -131,24 +224,38 @@ export function AnchorWalkerSequencerBody({
             <span>{chordLabel}</span>
             <span>Anchor {walker.anchorLabel} / Cursor {walker.cursorLabel}</span>
           </div>
-          <div className="anchor-walker-pitch-strip">
-            {visibleNotes.map((midi) => {
-              const pc = pitchClass(midi);
-              return (
-                <div
-                  key={pc}
-                  className={[
-                    'anchor-walker-note',
-                    pc === anchorPitchClass ? 'anchor' : '',
-                    pc === cursorPitchClass ? 'cursor' : '',
-                    layerPitchClasses.has(pc) ? 'layers' : '',
-                  ].filter(Boolean).join(' ')}
-                >
-                  {formatPitchClassName(pc)}
-                </div>
-              );
-            })}
-          </div>
+          {walker.config.snapSource === 'customPitchClasses' ? (
+            <div className="anchor-walker-scale-editor" aria-label="Custom Walker scale">
+              {PITCH_CLASSES.map((pitchClass) => {
+                const active = walker.config.customPitchClasses.includes(pitchClass);
+                return (
+                  <button
+                    key={pitchClass}
+                    type="button"
+                    className={`anchor-walker-scale-note${active ? ' active' : ''}`}
+                    onClick={() => toggleCustomPitchClass(pitchClass)}
+                  >
+                    {formatPitchClassName(pitchClass)}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          <AnchorWalkerKeyboardVisualizer
+            anchorMidi={walker.runtime.anchorMidi}
+            cursorMidi={walker.runtime.cursorMidi}
+            previousCursorMidi={walker.runtime.previousCursorMidi}
+            snapPitchClasses={walker.runtime.activeSnapPitchClasses}
+            layerOutputMidis={walker.runtime.layerOutputMidis}
+            linkedOutputMidis={[]}
+            outputRangeMin={walker.config.outputRangeMin}
+            outputRangeMax={walker.config.outputRangeMax}
+            range="oneOctave"
+            direction={walker.runtime.direction}
+            boundaryEvent={walker.runtime.boundaryEvent}
+            color={color}
+            onAnchorSelect={(midi) => walker.setManualAnchor(midi)}
+          />
         </div>
 
         <div className="anchor-walker-card">
@@ -161,11 +268,32 @@ export function AnchorWalkerSequencerBody({
               <button
                 key={button.delta}
                 type="button"
-                className="anchor-walker-pad-button"
+                className={`anchor-walker-pad-button${activeGestureDeltas.has(button.delta) ? ' active' : ''}`}
                 data-delta={button.delta}
-                onClick={() => walker.moveByDelta(button.delta)}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  markGestureActive(button.delta, true);
+                  walker.gestureDown(button.delta);
+                }}
+                onPointerUp={(event) => {
+                  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                    event.currentTarget.releasePointerCapture(event.pointerId);
+                  }
+                  markGestureActive(button.delta, false);
+                  walker.gestureUp(button.delta);
+                }}
+                onPointerCancel={() => {
+                  markGestureActive(button.delta, false);
+                  walker.gestureUp(button.delta);
+                }}
+                onBlur={() => {
+                  markGestureActive(button.delta, false);
+                  walker.gestureUp(button.delta);
+                }}
               >
-                {button.label}
+                <span>{button.label}</span>
+                <kbd>{button.shortcut}</kbd>
               </button>
             ))}
           </div>
@@ -220,21 +348,6 @@ export function AnchorWalkerSequencerBody({
         </div>
       </div>
 
-      <div className="anchor-walker-card">
-        <div className="anchor-walker-card-title">
-          <span>Gesture Pattern</span>
-          <span>{walker.config.autoFeel}</span>
-        </div>
-        <div className="anchor-walker-pattern">
-          {walker.config.gesturePattern.slice(0, walker.config.gesturePatternLength).map((delta, index) => (
-            <span key={`${index}-${delta}`}>{delta > 0 ? `+${delta}` : delta}</span>
-          ))}
-        </div>
-        <div className="anchor-walker-card-title" style={{ marginTop: 8, marginBottom: 0 }}>
-          <span>Layer Output</span>
-          <span>{walker.runtime.layerOutputMidis.map(formatMidiNoteName).join(' / ') || 'Off'}</span>
-        </div>
-      </div>
     </div>
   );
 }

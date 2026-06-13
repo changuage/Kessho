@@ -301,6 +301,132 @@ float degreeMidiFromMask(float anchor_midi, int32_t degree, float min_value, flo
   return kessho::product::internal::clampFloat(anchor_midi, static_cast<float>(low), static_cast<float>(high));
 }
 
+float radiusMidiFromMask(float radius_norm, float min_value, float max_value, uint16_t mask) {
+  int low = 0;
+  int high = 127;
+  midiRange(min_value, max_value, low, high);
+  int count = 0;
+  for (int candidate = low; candidate <= high; ++candidate) {
+    if (maskContainsMidi(mask, candidate)) {
+      ++count;
+    }
+  }
+  const float radius = kessho::product::internal::clampFloat(radius_norm, 0.0f, 1.0f);
+  if (count <= 0) {
+    return kessho::product::internal::clampFloat(
+        static_cast<float>(low) + radius * static_cast<float>(high - low),
+        static_cast<float>(low),
+        static_cast<float>(high));
+  }
+  const int target_index = std::clamp(
+      static_cast<int>(std::lround(radius * static_cast<float>(count - 1))),
+      0,
+      count - 1);
+  int index = 0;
+  for (int candidate = low; candidate <= high; ++candidate) {
+    if (!maskContainsMidi(mask, candidate)) {
+      continue;
+    }
+    if (index == target_index) {
+      return static_cast<float>(candidate);
+    }
+    ++index;
+  }
+  return static_cast<float>(low);
+}
+
+int positiveModuloInt(int value, int divisor) {
+  if (divisor <= 0) {
+    return 0;
+  }
+  const int remainder = value % divisor;
+  return remainder < 0 ? remainder + divisor : remainder;
+}
+
+int walkerBoundedLatticeIndex(int target_index, int count, uint32_t boundary_mode) {
+  if (count <= 1) {
+    return 0;
+  }
+  if (boundary_mode == 1u) {
+    return positiveModuloInt(target_index, count);
+  }
+  if (boundary_mode == 0u) {
+    const int period = (count - 1) * 2;
+    const int folded = positiveModuloInt(target_index, period);
+    return folded <= count - 1 ? folded : period - folded;
+  }
+  return std::clamp(target_index, 0, count - 1);
+}
+
+uint32_t walkerBoundaryEvent(int target_index, int count, uint32_t boundary_mode) {
+  if (count <= 1 || (target_index >= 0 && target_index < count)) {
+    return KESSHO_PRODUCT_ANCHOR_WALKER_BOUNDARY_NONE;
+  }
+  const bool hit_top = target_index >= count;
+  if (boundary_mode == 1u) {
+    return hit_top
+        ? KESSHO_PRODUCT_ANCHOR_WALKER_BOUNDARY_WRAP_TOP
+        : KESSHO_PRODUCT_ANCHOR_WALKER_BOUNDARY_WRAP_BOTTOM;
+  }
+  if (boundary_mode == 0u) {
+    return hit_top
+        ? KESSHO_PRODUCT_ANCHOR_WALKER_BOUNDARY_FOLD_TOP
+        : KESSHO_PRODUCT_ANCHOR_WALKER_BOUNDARY_FOLD_BOTTOM;
+  }
+  return hit_top
+      ? KESSHO_PRODUCT_ANCHOR_WALKER_BOUNDARY_CLAMP_TOP
+      : KESSHO_PRODUCT_ANCHOR_WALKER_BOUNDARY_CLAMP_BOTTOM;
+}
+
+float walkerDegreeMidiFromMask(
+    float anchor_midi,
+    int32_t degree,
+    float min_value,
+    float max_value,
+    uint16_t mask,
+    uint32_t boundary_mode,
+    uint32_t* boundary_event = nullptr) {
+  int low = 0;
+  int high = 127;
+  midiRange(min_value, max_value, low, high);
+  int count = 0;
+  int nearest_index = 0;
+  float nearest_distance = 1000.0f;
+  for (int candidate = low; candidate <= high; ++candidate) {
+    if (!maskContainsMidi(mask, candidate)) {
+      continue;
+    }
+    const float distance = std::abs(static_cast<float>(candidate) - anchor_midi);
+    if (distance < nearest_distance) {
+      nearest_distance = distance;
+      nearest_index = count;
+    }
+    ++count;
+  }
+  if (count <= 0) {
+    if (boundary_event != nullptr) {
+      *boundary_event = KESSHO_PRODUCT_ANCHOR_WALKER_BOUNDARY_NONE;
+    }
+    return kessho::product::internal::clampFloat(anchor_midi, static_cast<float>(low), static_cast<float>(high));
+  }
+  const int raw_target_index = nearest_index + degree;
+  if (boundary_event != nullptr) {
+    *boundary_event = walkerBoundaryEvent(raw_target_index, count, boundary_mode);
+  }
+  const int target_index = walkerBoundedLatticeIndex(raw_target_index, count, boundary_mode);
+  int index = 0;
+  for (int candidate = low; candidate <= high; ++candidate) {
+    if (!maskContainsMidi(mask, candidate)) {
+      continue;
+    }
+    if (index == target_index) {
+      return static_cast<float>(candidate);
+    }
+    ++index;
+  }
+  return kessho::product::internal::clampFloat(anchor_midi, static_cast<float>(low), static_cast<float>(high));
+}
+
 float hashedMidiFromMask(float min_value, float max_value, uint16_t mask, uint32_t seed) {
   int low = 0;
   int high = 127;
@@ -469,6 +595,124 @@ bool enqueueFaceEvent(
   return true;
 }
 
+bool emitAnchorWalkerTrigger(
+    KesshoProductEngine& engine,
+    kessho::product::internal::LaneState& lane,
+    kessho::product::internal::AnchorWalkerState& walker,
+    uint32_t lane_index,
+    uint64_t event_sample,
+    uint64_t tick_index,
+    uint32_t pattern_index,
+    int32_t gesture_delta,
+    float gesture_velocity,
+    uint16_t pitch_mask) {
+  using namespace kessho::product::internal;
+  const int32_t safe_gesture_delta = clampInt(gesture_delta, -7, 7);
+  if (safe_gesture_delta == 0) {
+    return true;
+  }
+  walker.anchor_midi = walkerAnchorMidi(engine, walker);
+  walker.anchor_valid = true;
+  walker.previous_cursor_midi = walker.cursor_valid ? walker.cursor_midi : walker.anchor_midi;
+  walker.cursor_degree = clampInt(walker.cursor_degree + safe_gesture_delta, -4096, 4096);
+  uint32_t boundary_event = KESSHO_PRODUCT_ANCHOR_WALKER_BOUNDARY_NONE;
+  walker.cursor_midi = walkerDegreeMidiFromMask(
+      walker.anchor_midi,
+      walker.cursor_degree,
+      walker.output_range_min,
+      walker.output_range_max,
+      pitch_mask,
+      walker.boundary_mode,
+      &boundary_event);
+  walker.cursor_valid = true;
+  walker.last_gesture_delta = safe_gesture_delta;
+  walker.boundary_event = boundary_event;
+  uint32_t active_layer_count = 0u;
+  for (uint32_t layer_index = 0u; layer_index < kMaxAnchorWalkerLayers; ++layer_index) {
+    if (walker.layers[layer_index].enabled) {
+      ++active_layer_count;
+    }
+  }
+  active_layer_count = std::max(1u, active_layer_count);
+  uint32_t layer_event_index = 0u;
+  walker.last_output_count = 0u;
+  for (uint32_t layer_index = 0u; layer_index < kMaxAnchorWalkerLayers; ++layer_index) {
+    const AnchorWalkerLayerState& layer = walker.layers[layer_index];
+    if (!layer.enabled) {
+      continue;
+    }
+    const int32_t layer_degree = layer.motion == 1u ? -walker.cursor_degree : walker.cursor_degree;
+    float layer_midi = walker.cursor_midi;
+    if (layer.tuning == 0u) {
+      layer_midi = walker.cursor_midi + static_cast<float>(layer.transpose_semitones);
+    } else if (layer.tuning == 1u) {
+      layer_midi = snapMidiToMask(
+          walker.cursor_midi + static_cast<float>(layer.transpose_semitones),
+          walker.output_range_min,
+          walker.output_range_max,
+          pitch_mask);
+    } else {
+      layer_midi = walkerDegreeMidiFromMask(
+          walker.anchor_midi,
+          layer_degree + layer.diatonic_offset,
+          walker.output_range_min,
+          walker.output_range_max,
+          pitch_mask,
+          walker.boundary_mode) + static_cast<float>(layer.transpose_semitones);
+      layer_midi = snapMidiToMask(layer_midi, walker.output_range_min, walker.output_range_max, pitch_mask);
+    }
+    const float velocity = clampFloat(
+        lane.velocity * clampFloat(gesture_velocity, 0.0f, 1.0f) * layer.velocity_scale + layer.velocity_offset,
+        0.0f,
+        1.0f);
+    const float hold_seconds = clampFloat(lane.hold_seconds * layer.gate_ratio, 0.001f, 20.0f);
+    const double layer_delay_seconds = layer.delay_seconds > 0.0f
+        ? static_cast<double>(layer.delay_seconds)
+        : static_cast<double>(walker.spread_seconds) * static_cast<double>(layer_index);
+    const uint64_t layer_sample = event_sample + static_cast<uint64_t>(
+        std::llround(std::max(0.0, layer_delay_seconds) * engine.sample_rate));
+    const uint32_t event_seed = hashU32(
+        engine.rng_seed ^
+        walker.seed ^
+        lane.seed ^
+        static_cast<uint32_t>(tick_index * 2654435761ull) ^
+        (layer_index * 16777619u));
+    const uint32_t event_source = sourceOrFollow(layer.target_source_id, walker.target_source_id);
+    if (!sequencerTargetSourceEnabled(engine, event_source)) {
+      continue;
+    }
+    KesshoSequencerEvent event = makeFaceSequencerEvent(
+        engine,
+        lane,
+        lane_index,
+        pattern_index,
+        event_source,
+        layer_midi,
+        velocity,
+        hold_seconds,
+        event_seed,
+        layer_index);
+    if (layer_event_index < kMaxAnchorWalkerLayers) {
+      walker.last_output_midis[layer_event_index] = event.midi_note;
+      walker.last_output_velocities[layer_event_index] = event.velocity;
+      walker.last_output_source_ids[layer_event_index] = event.source_id;
+      walker.last_output_count = layer_event_index + 1u;
+    }
+    enqueueFaceEvent(
+        lane,
+        tick_index,
+        layer_sample,
+        lane_index,
+        pattern_index,
+        layer_event_index,
+        active_layer_count,
+        event);
+    ++layer_event_index;
+  }
+  lane.emitted_hit_count += 1u;
+  return true;
+}
+
 bool generateAnchorWalkerLaneEvents(
     KesshoProductEngine& engine,
     kessho::product::internal::LaneState& lane,
@@ -479,144 +723,203 @@ bool generateAnchorWalkerLaneEvents(
   const uint64_t block_start = engine.transport.sample_frame;
   const uint64_t block_end = block_start + frames;
   AnchorWalkerState& walker = lane.anchor_walker;
-  const double samples_per_tick = walkerSamplesPerTick(engine, walker);
-  if (!lane.enabled || !walker.enabled || !std::isfinite(samples_per_tick) || samples_per_tick <= 0.0) {
+  if (!lane.enabled || !walker.enabled) {
     engine.resetSequencerLaneRuntime(lane);
     return true;
   }
+
+  const bool gesture_hold = walker.trigger_mode == 0u;
+  const bool step_grid = walker.trigger_mode == 1u;
+  const bool auto_clock = walker.trigger_mode == 2u;
+  double samples_per_period = 0.0;
+  if (gesture_hold || auto_clock) {
+    samples_per_period = walkerSamplesPerTick(engine, walker);
+  } else if (step_grid) {
+    if (lane.step_count == 0u || lane.clock_division == 0u) {
+      engine.resetSequencerLaneRuntime(lane);
+      return true;
+    }
+    samples_per_period =
+        sequencerSamplesPerStep(engine.transport, engine.sample_rate, lane.clock_division) /
+        static_cast<double>(clampFloat(lane.tempo_multiplier, 0.25f, 12.0f));
+  }
+  if ((step_grid || auto_clock) && (!std::isfinite(samples_per_period) || samples_per_period <= 0.0)) {
+    engine.resetSequencerLaneRuntime(lane);
+    return true;
+  }
+
   if (!lane.sequencer_runtime_initialized || !walker.runtime_initialized || block_start < walker.runtime_sample_frame) {
     const bool wait_for_join_boundary = lane.sequencer_join_pending;
+    const bool preserved_gesture_held = walker.gesture_held;
+    const int32_t preserved_held_gesture_delta = walker.held_gesture_delta;
+    const float preserved_held_gesture_velocity = walker.held_gesture_velocity;
+    const uint64_t preserved_gesture_started_sample = walker.gesture_started_sample;
+    const uint64_t preserved_next_gesture_walk_sample = walker.next_gesture_walk_sample;
+    const uint32_t preserved_pending_gesture_steps = walker.pending_gesture_steps;
     engine.resetSequencerLaneRuntime(lane);
-    const uint64_t start_sample = wait_for_join_boundary
-        ? sequencerLaneStartSampleFrame(engine.transport, lane, engine.sample_rate, block_start, samples_per_tick)
-        : sequencerAlignForwardSampleFrame(block_start, samples_per_tick);
+    walker.gesture_held = preserved_gesture_held;
+    walker.held_gesture_delta = preserved_held_gesture_delta;
+    walker.held_gesture_velocity = preserved_held_gesture_velocity;
+    walker.gesture_started_sample = preserved_gesture_started_sample;
+    walker.next_gesture_walk_sample = preserved_next_gesture_walk_sample;
+    walker.pending_gesture_steps = preserved_pending_gesture_steps;
+    const uint64_t start_sample = gesture_hold
+        ? block_start
+        : (wait_for_join_boundary
+            ? sequencerLaneStartSampleFrame(engine.transport, lane, engine.sample_rate, block_start, samples_per_period)
+            : sequencerAlignForwardSampleFrame(block_start, samples_per_period));
     lane.sequencer_start_sample_frame = start_sample;
     lane.sequencer_runtime_initialized = true;
     lane.sequencer_join_pending = false;
     walker.runtime_initialized = true;
     walker.runtime_sample_frame = block_start;
     walker.next_walk_sample = start_sample;
+    walker.next_gesture_walk_sample = start_sample;
     walker.anchor_midi = walkerAnchorMidi(engine, walker);
     walker.anchor_valid = true;
     walker.cursor_degree = 0;
-    walker.cursor_midi = degreeMidiFromMask(
+    walker.cursor_midi = walkerDegreeMidiFromMask(
         walker.anchor_midi,
         0,
         walker.output_range_min,
         walker.output_range_max,
-        walkerPitchClassMask(engine, walker));
+        walkerPitchClassMask(engine, walker),
+        walker.boundary_mode);
     walker.cursor_valid = true;
   }
   if (!drainPendingRatchets(lane, block_start, block_end, engine, out, engine.telemetry)) {
     return false;
   }
+
   const uint16_t pitch_mask = walkerPitchClassMask(engine, walker);
   const uint32_t pattern_length = clampU32(walker.gesture_pattern_length, 1u, kMaxAnchorWalkerPatternSteps);
-  const double swing_samples = samples_per_tick * 0.5 * clampFloat(walker.swing, 0.0f, 0.75f);
-  uint32_t scheduled_ticks = 0u;
-  while (walker.next_walk_sample < block_end && scheduled_ticks < 64u) {
-    const uint64_t tick_index = lane.emitted_hit_count;
-    const uint32_t pattern_index = static_cast<uint32_t>(tick_index % pattern_length);
-    const double swung_sample = static_cast<double>(walker.next_walk_sample) +
-        (((tick_index & 1u) != 0u) ? swing_samples : 0.0);
-    const uint64_t event_sample = static_cast<uint64_t>(std::llround(swung_sample));
-    const uint64_t tick_advance = static_cast<uint64_t>(std::max<long long>(
-        1ll,
-        std::llround(samples_per_tick)));
-    walker.next_walk_sample += tick_advance;
-    ++scheduled_ticks;
-    if (event_sample < block_start) {
-      continue;
-    }
-    if (!engine.trigConditionPass(lane.trig_condition, event_sample)) {
-      continue;
-    }
-    const int32_t gesture_delta = clampInt(walker.gesture_pattern[pattern_index], -7, 7);
-    walker.anchor_midi = walkerAnchorMidi(engine, walker);
-    walker.anchor_valid = true;
-    walker.cursor_degree = clampInt(walker.cursor_degree + gesture_delta, -256, 256);
-    walker.cursor_midi = degreeMidiFromMask(
-        walker.anchor_midi,
-        walker.cursor_degree,
-        walker.output_range_min,
-        walker.output_range_max,
-        pitch_mask);
-    walker.cursor_valid = true;
-    uint32_t active_layer_count = 0u;
-    for (uint32_t layer_index = 0u; layer_index < kMaxAnchorWalkerLayers; ++layer_index) {
-      if (walker.layers[layer_index].enabled) {
-        ++active_layer_count;
-      }
-    }
-    active_layer_count = std::max(1u, active_layer_count);
-    uint32_t layer_event_index = 0u;
-    for (uint32_t layer_index = 0u; layer_index < kMaxAnchorWalkerLayers; ++layer_index) {
-      const AnchorWalkerLayerState& layer = walker.layers[layer_index];
-      if (!layer.enabled) {
-        continue;
-      }
-      const int32_t layer_degree = layer.motion == 1u ? -walker.cursor_degree : walker.cursor_degree;
-      float layer_midi = walker.cursor_midi;
-      if (layer.tuning == 0u) {
-        layer_midi = walker.cursor_midi + static_cast<float>(layer.transpose_semitones);
-      } else if (layer.tuning == 1u) {
-        layer_midi = snapMidiToMask(
-            walker.cursor_midi + static_cast<float>(layer.transpose_semitones),
-            walker.output_range_min,
-            walker.output_range_max,
-            pitch_mask);
-      } else {
-        layer_midi = degreeMidiFromMask(
-            walker.anchor_midi,
-            layer_degree + layer.diatonic_offset,
-            walker.output_range_min,
-            walker.output_range_max,
-            pitch_mask) + static_cast<float>(layer.transpose_semitones);
-        layer_midi = snapMidiToMask(layer_midi, walker.output_range_min, walker.output_range_max, pitch_mask);
-      }
-      const float velocity = clampFloat(
-          lane.velocity * layer.velocity_scale + layer.velocity_offset,
-          0.0f,
-          1.0f);
-      const float hold_seconds = clampFloat(lane.hold_seconds * layer.gate_ratio, 0.001f, 20.0f);
-      const double layer_delay_seconds = layer.delay_seconds > 0.0f
-          ? static_cast<double>(layer.delay_seconds)
-          : static_cast<double>(walker.spread_seconds) * static_cast<double>(layer_index);
-      const uint64_t layer_sample = event_sample + static_cast<uint64_t>(
-          std::llround(std::max(0.0, layer_delay_seconds) * engine.sample_rate));
-      const uint32_t event_seed = hashU32(
-          engine.rng_seed ^
-          walker.seed ^
-          lane.seed ^
-          static_cast<uint32_t>(tick_index * 2654435761ull) ^
-          (layer_index * 16777619u));
-      const uint32_t event_source = sourceOrFollow(layer.target_source_id, walker.target_source_id);
-      if (!sequencerTargetSourceEnabled(engine, event_source)) {
-        continue;
-      }
-      KesshoSequencerEvent event = makeFaceSequencerEvent(
+  if (gesture_hold) {
+    uint32_t scheduled_ticks = 0u;
+    while (walker.pending_gesture_steps > 0u && scheduled_ticks < 4u) {
+      --walker.pending_gesture_steps;
+      ++scheduled_ticks;
+      const uint64_t tick_index = lane.emitted_hit_count;
+      emitAnchorWalkerTrigger(
           engine,
           lane,
+          walker,
           lane_index,
-          pattern_index,
-          event_source,
-          layer_midi,
-          velocity,
-          hold_seconds,
-          event_seed,
-          layer_index);
-      enqueueFaceEvent(
-          lane,
+          block_start,
           tick_index,
-          layer_sample,
-          lane_index,
-          pattern_index,
-          layer_event_index,
-          active_layer_count,
-          event);
-      ++layer_event_index;
+          static_cast<uint32_t>(tick_index % pattern_length),
+          walker.held_gesture_delta,
+          walker.held_gesture_velocity,
+          pitch_mask);
     }
-    lane.emitted_hit_count += 1u;
+    if (walker.gesture_held && std::isfinite(samples_per_period) && samples_per_period > 0.0) {
+      const uint64_t tick_advance = static_cast<uint64_t>(std::max<long long>(
+          1ll,
+          std::llround(samples_per_period)));
+      if (walker.next_gesture_walk_sample <= block_start) {
+        walker.next_gesture_walk_sample = block_start + tick_advance;
+      }
+      while (walker.next_gesture_walk_sample < block_end && scheduled_ticks < 64u) {
+        const uint64_t event_sample = walker.next_gesture_walk_sample;
+        walker.next_gesture_walk_sample += tick_advance;
+        ++scheduled_ticks;
+        if (event_sample < block_start) {
+          continue;
+        }
+        if (!engine.trigConditionPass(lane.trig_condition, event_sample)) {
+          continue;
+        }
+        const uint64_t tick_index = lane.emitted_hit_count;
+        emitAnchorWalkerTrigger(
+            engine,
+            lane,
+            walker,
+            lane_index,
+            event_sample,
+            tick_index,
+            static_cast<uint32_t>(tick_index % pattern_length),
+            walker.held_gesture_delta,
+            walker.held_gesture_velocity,
+            pitch_mask);
+      }
+    }
+  } else if (auto_clock) {
+    const double swing_samples = samples_per_period * 0.5 * clampFloat(walker.swing, 0.0f, 0.75f);
+    uint32_t scheduled_ticks = 0u;
+    while (walker.next_walk_sample < block_end && scheduled_ticks < 64u) {
+      const uint64_t tick_index = lane.emitted_hit_count;
+      const uint32_t pattern_index = static_cast<uint32_t>(tick_index % pattern_length);
+      const int32_t gesture_delta = clampInt(walker.gesture_pattern[pattern_index], -7, 7);
+      const double swung_sample = static_cast<double>(walker.next_walk_sample) +
+          (((tick_index & 1u) != 0u) ? swing_samples : 0.0);
+      const uint64_t event_sample = static_cast<uint64_t>(std::llround(swung_sample));
+      const uint64_t tick_advance = static_cast<uint64_t>(std::max<long long>(
+          1ll,
+          std::llround(samples_per_period)));
+      walker.next_walk_sample += tick_advance;
+      ++scheduled_ticks;
+      if (event_sample < block_start) {
+        continue;
+      }
+      if (!engine.trigConditionPass(lane.trig_condition, event_sample)) {
+        continue;
+      }
+      emitAnchorWalkerTrigger(engine, lane, walker, lane_index, event_sample, tick_index, pattern_index, gesture_delta, 1.0f, pitch_mask);
+    }
+  } else if (step_grid) {
+    if (block_end <= lane.sequencer_start_sample_frame) {
+      walker.runtime_sample_frame = block_end;
+      lane.sequencer_runtime_sample_frame = block_end;
+      return true;
+    }
+    const double swing_samples = sequencerSwingSamples(engine.transport, lane, samples_per_period);
+    const int64_t first_step = sequencerFirstRelativeStep(block_start, lane.sequencer_start_sample_frame, samples_per_period);
+    const int64_t last_step = sequencerLastRelativeStep(block_end, lane.sequencer_start_sample_frame, samples_per_period);
+    for (int64_t relative_step = first_step; relative_step <= last_step; ++relative_step) {
+      if (relative_step < 0) {
+        continue;
+      }
+      const uint32_t step_id = static_cast<uint32_t>(relative_step % static_cast<int64_t>(lane.step_count));
+      if (!engine.manualMaskHit(lane, step_id)) {
+        continue;
+      }
+      double event_sample_double = static_cast<double>(lane.sequencer_start_sample_frame) +
+          static_cast<double>(relative_step) * samples_per_period;
+      if ((step_id & 1u) != 0u) {
+        event_sample_double += swing_samples;
+      }
+      const uint64_t event_sample = static_cast<uint64_t>(std::llround(event_sample_double));
+      if (event_sample < block_start || event_sample >= block_end) {
+        continue;
+      }
+      if (!engine.trigConditionPass(lane.trig_condition, event_sample)) {
+        continue;
+      }
+      if (!engine.stepTrigConditionPass(lane, step_id, relative_step)) {
+        continue;
+      }
+      const uint64_t tick_index = lane.emitted_hit_count;
+      const uint32_t probability_step_id = engine.subLaneStepForField(
+          lane,
+          KESSHO_PRODUCT_STEP_FIELD_PROBABILITY,
+          step_id,
+          relative_step,
+          tick_index);
+      const float probability = engine.stepFloatValue(
+          probability_step_id,
+          lane.probability_override_set_low,
+          lane.probability_override_set_high,
+          lane.probability_overrides,
+          lane.probability);
+      const uint32_t probability_seed = lane.seed ^
+          static_cast<uint32_t>(relative_step * 2654435761ull) ^
+          (lane_index * 16777619u);
+      if (hashUnit(probability_seed) > clampFloat(probability, 0.0f, 1.0f)) {
+        continue;
+      }
+      const uint32_t pattern_index = static_cast<uint32_t>(tick_index % pattern_length);
+      const int32_t gesture_delta = clampInt(walker.gesture_pattern[pattern_index], -7, 7);
+      emitAnchorWalkerTrigger(engine, lane, walker, lane_index, event_sample, tick_index, pattern_index, gesture_delta, 1.0f, pitch_mask);
+    }
   }
   if (!drainPendingRatchets(lane, block_start, block_end, engine, out, engine.telemetry)) {
     return false;
@@ -750,6 +1053,9 @@ float orbitNoteMidi(
   }
   if (note.pitch_mode == 2u) {
     return hashedMidiFromMask(low, high, pitch_mask, event_seed ^ note.seed);
+  }
+  if (note.pitch_mode == 3u) {
+    return radiusMidiFromMask(note.radius_norm, low, high, pitch_mask);
   }
   return degreeMidiFromMask(
       kessho::product::internal::clampFloat(engine.harmony.root_midi, 0.0f, 127.0f),

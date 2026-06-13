@@ -1,5 +1,28 @@
 #include "../KesshoProductEngineInternal.h"
 
+namespace {
+
+void armAnchorWalkerGesture(
+    AnchorWalkerState& walker,
+    int32_t delta,
+    float velocity,
+    uint64_t sample_frame,
+    bool held) {
+  const int32_t safe_delta = static_cast<int32_t>(clampInt(delta, -7, 7));
+  if (safe_delta == 0) {
+    return;
+  }
+  walker.active_pad_delta = safe_delta;
+  walker.gesture_held = held;
+  walker.held_gesture_delta = safe_delta;
+  walker.held_gesture_velocity = clampFloat(velocity, 0.0f, 1.0f);
+  walker.gesture_started_sample = sample_frame;
+  walker.next_gesture_walk_sample = sample_frame;
+  walker.pending_gesture_steps = std::min<uint32_t>(walker.pending_gesture_steps + 1u, 4u);
+}
+
+} // namespace
+
   bool KesshoProductEngine::isSequencerLaneParam(uint32_t param_id) const {
   switch (param_id) {
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_ENABLED_ID:
@@ -27,6 +50,12 @@
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_SCALE_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_NOTE_RANGE_MIN_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_NOTE_RANGE_MAX_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_PLAY_MODE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_TRIGGER_MODE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_BOUNDARY_MODE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_KEYBOARD_RANGE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_SHOW_LINKED_OUTPUTS_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_ACTIVE_PAD_DELTA_ID:
       return true;
     default:
       return param_id >= KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MODE_ID &&
@@ -62,6 +91,8 @@
       }
       const uint32_t source_id = static_cast<uint32_t>(std::lround(event.value));
       lane.target_source_id = source_id;
+      lane.anchor_walker.target_source_id = source_id;
+      lane.orbit.target_source_id = source_id;
       if (source_id != KESSHO_PRODUCT_SOURCE_DRUM) {
         lane.drum_voice_mask = 0u;
       }
@@ -178,12 +209,20 @@
       const uint32_t mode = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), kSequencerModeEuclid, kSequencerModeOrbit);
       if (lane.sequencer_mode != mode) {
         lane.sequencer_mode = mode;
+        if (mode == kSequencerModeAnchorWalker) {
+          lane.anchor_walker.target_source_id = lane.target_source_id;
+        } else if (mode == kSequencerModeOrbit) {
+          lane.orbit.target_source_id = lane.target_source_id;
+        }
         resetSequencerLaneRuntime(lane);
       }
       break;
     }
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_MODE_ID:
       lane.anchor_walker.mode = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 2u);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_PLAY_MODE_ID:
+      lane.anchor_walker.play_mode = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 2u);
       break;
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_ANCHOR_SOURCE_ID:
       lane.anchor_walker.anchor_source = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 3u);
@@ -198,12 +237,47 @@
       lane.anchor_walker.custom_pitch_class_mask = static_cast<uint16_t>(
           clampU32(static_cast<uint32_t>(std::lround(std::max(1.0f, event.value))), 1u, 0x0fffu));
       break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_TRIGGER_MODE_ID: {
+      const uint32_t trigger_mode = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 2u);
+      if (lane.anchor_walker.trigger_mode != trigger_mode) {
+        lane.anchor_walker.trigger_mode = trigger_mode;
+        resetSequencerLaneRuntime(lane);
+      } else {
+        lane.anchor_walker.trigger_mode = trigger_mode;
+      }
+      break;
+    }
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_BOUNDARY_MODE_ID:
+      lane.anchor_walker.boundary_mode = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 2u);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_KEYBOARD_RANGE_ID:
+      lane.anchor_walker.keyboard_range = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 1u);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_SHOW_LINKED_OUTPUTS_ID:
+      lane.anchor_walker.show_linked_outputs = event.value >= 0.5f;
+      break;
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_AUTO_RATE_ID:
-      lane.anchor_walker.auto_rate = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 6u);
+    {
+      const uint32_t auto_rate = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 6u);
+      if (lane.anchor_walker.auto_rate != auto_rate) {
+        lane.anchor_walker.auto_rate = auto_rate;
+        resetSequencerLaneRuntime(lane);
+      } else {
+        lane.anchor_walker.auto_rate = auto_rate;
+      }
       break;
+    }
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_AUTO_FEEL_ID:
-      lane.anchor_walker.auto_feel = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 2u);
+    {
+      const uint32_t auto_feel = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 2u);
+      if (lane.anchor_walker.auto_feel != auto_feel) {
+        lane.anchor_walker.auto_feel = auto_feel;
+        resetSequencerLaneRuntime(lane);
+      } else {
+        lane.anchor_walker.auto_feel = auto_feel;
+      }
       break;
+    }
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LEAD_MODE_ID:
       lane.anchor_walker.lead_mode = event.value >= 0.5f;
       break;
@@ -224,6 +298,21 @@
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_GESTURE_PATTERN_LENGTH_ID:
       lane.anchor_walker.gesture_pattern_length = clampU32(static_cast<uint32_t>(std::lround(std::max(1.0f, event.value))), 1u, kMaxAnchorWalkerPatternSteps);
       break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_ACTIVE_PAD_DELTA_ID: {
+      const int32_t delta = static_cast<int32_t>(clampInt(static_cast<int32_t>(std::lround(event.value)), -7, 7));
+      lane.anchor_walker.active_pad_delta = delta;
+      if (delta == 0) {
+        lane.anchor_walker.gesture_held = false;
+      } else {
+        lane.anchor_walker.gesture_held = true;
+        lane.anchor_walker.held_gesture_delta = delta;
+        lane.anchor_walker.held_gesture_velocity = 1.0f;
+        lane.anchor_walker.gesture_started_sample = transport.sample_frame;
+        lane.anchor_walker.next_gesture_walk_sample = transport.sample_frame;
+        lane.anchor_walker.pending_gesture_steps = std::min<uint32_t>(lane.anchor_walker.pending_gesture_steps + 1u, 4u);
+      }
+      break;
+    }
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_PRESET_ID:
       lane.anchor_walker.layer_preset = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 6u);
       break;
@@ -294,7 +383,11 @@
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPLINE_TIP_Y_ID: lane.orbit.spline_tip_y = clampFloat(event.value, -1.2f, 1.2f); break;
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPLINE_SPIN_ENABLED_ID: lane.orbit.spline_spin_enabled = event.value >= 0.5f; break;
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPLINE_SPIN_DIRECTION_ID: lane.orbit.spline_spin_direction = event.value < 0.0f ? -1 : 1; break;
-    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPLINE_BASE_ANGLE_ID: lane.orbit.base_angle = wrapRadians(event.value); lane.orbit.prev_base_angle = lane.orbit.base_angle; break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPLINE_BASE_ANGLE_ID:
+      lane.orbit.authored_base_angle = wrapRadians(event.value);
+      lane.orbit.base_angle = lane.orbit.authored_base_angle;
+      lane.orbit.prev_base_angle = lane.orbit.base_angle;
+      break;
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_COUNT_ID:
       lane.orbit.note_count = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, kMaxOrbitSequencerNotes);
       break;
@@ -326,11 +419,15 @@
       switch (event.param_id) {
         case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_ENABLED_ID: note.enabled = event.value >= 0.5f; break;
         case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_RADIUS_ID: note.radius_norm = clampFloat(event.value, 0.08f, 1.0f); break;
-        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_PHASE_ID: note.angle = wrapRadians(event.value); note.prev_angle = note.angle; break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_PHASE_ID:
+          note.authored_phase = wrapRadians(event.value);
+          note.angle = note.authored_phase;
+          note.prev_angle = note.angle;
+          break;
         case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_SPEED_MODE_ID: note.speed_mode = event.value >= 0.5f ? 1u : 0u; break;
         case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_SPEED_VALUE_ID: note.speed_value = clampFloat(event.value, 0.125f, 800.0f); break;
         case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_DIRECTION_ID: note.direction = event.value < 0.0f ? -1 : 1; break;
-        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_PITCH_MODE_ID: note.pitch_mode = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 2u); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_PITCH_MODE_ID: note.pitch_mode = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 3u); break;
         case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_MIDI_ID: note.midi_note = clampFloat(event.value, 0.0f, 127.0f); break;
         case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_HARMONY_DEGREE_ID: note.harmony_degree = static_cast<int32_t>(clampInt(static_cast<int32_t>(std::lround(event.value)), -32, 32)); break;
         case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_VELOCITY_ID: note.velocity = clampFloat(event.value, 0.0f, 1.0f); break;
@@ -366,6 +463,78 @@
     default:
       break;
   }
+  telemetry.last_error_code = KESSHO_PRODUCT_OK;
+}
+
+  void KesshoProductEngine::applyAnchorWalkerPerformanceEvent(const KesshoProductEvent& event) {
+  uint32_t lane_count = 0;
+  LaneState* lanes = sequencerLanesForEvent(event, lane_count);
+  if (lanes == nullptr) {
+    return;
+  }
+  if (event.index >= lane_count) {
+    telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SEQUENCER_LANE;
+    return;
+  }
+
+  AnchorWalkerState& walker = lanes[event.index].anchor_walker;
+  switch (event.param_id) {
+    case KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_TAP:
+      armAnchorWalkerGesture(
+          walker,
+          static_cast<int32_t>(std::lround(event.value)),
+          event.value2,
+          transport.sample_frame,
+          false);
+      break;
+    case KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_DOWN:
+      armAnchorWalkerGesture(
+          walker,
+          static_cast<int32_t>(std::lround(event.value)),
+          event.value2,
+          transport.sample_frame,
+          true);
+      break;
+    case KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_UP:
+      walker.active_pad_delta = 0;
+      walker.gesture_held = false;
+      break;
+    case KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_RESET_CURSOR: {
+      const float anchor_midi = walker.anchor_valid ? walker.anchor_midi : walker.manual_anchor_midi;
+      walker.previous_cursor_midi = walker.cursor_valid ? walker.cursor_midi : anchor_midi;
+      walker.cursor_degree = 0;
+      walker.cursor_midi = clampFloat(anchor_midi, 0.0f, 127.0f);
+      walker.cursor_valid = false;
+      walker.boundary_event = KESSHO_PRODUCT_ANCHOR_WALKER_BOUNDARY_NONE;
+      walker.pending_gesture_steps = 0u;
+      walker.active_pad_delta = 0;
+      walker.gesture_held = false;
+      walker.held_gesture_delta = 0;
+      break;
+    }
+    case KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_SET_MANUAL_ANCHOR: {
+      const float manual_anchor = clampFloat(event.value3, 0.0f, 127.0f);
+      walker.anchor_source = 3u;
+      walker.manual_anchor_midi = manual_anchor;
+      walker.anchor_midi = manual_anchor;
+      walker.anchor_valid = true;
+      walker.previous_cursor_midi = walker.cursor_valid ? walker.cursor_midi : manual_anchor;
+      walker.cursor_degree = 0;
+      walker.cursor_midi = manual_anchor;
+      walker.cursor_valid = true;
+      walker.boundary_event = KESSHO_PRODUCT_ANCHOR_WALKER_BOUNDARY_NONE;
+      walker.pending_gesture_steps = 0u;
+      walker.active_pad_delta = 0;
+      walker.gesture_held = false;
+      walker.held_gesture_delta = 0;
+      walker.held_gesture_velocity = 1.0f;
+      break;
+    }
+    default:
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      return;
+  }
+  markSequencerUiStateChanged(event.target_id, event.index, KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_PERFORMANCE);
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
 }
 

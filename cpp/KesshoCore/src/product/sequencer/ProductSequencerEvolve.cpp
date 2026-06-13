@@ -886,7 +886,7 @@ void KesshoProductEngine::applyParityEvolveSequencerLaneEvent(const KesshoProduc
       const int32_t dir = randomUnit(rng) < 0.5f ? -1 : 1;
       config.enabled = true;
       config.direction = config.direction > KESSHO_PRODUCT_SUBLANE_DIRECTION_PINGPONG ? KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD : config.direction;
-      config.steps = clampU32(static_cast<uint32_t>(std::max(drum_lane ? 1 : 2, static_cast<int32_t>(current_steps) + dir)), drum_lane ? 1u : 2u, 16u);
+      config.steps = clampU32(static_cast<uint32_t>(std::max(drum_lane ? 1 : 2, static_cast<int32_t>(current_steps) + dir)), drum_lane ? 1u : 2u, 32u);
     }
   }
 

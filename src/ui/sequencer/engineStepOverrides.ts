@@ -1,4 +1,5 @@
 import type { StepOverrides, SubLaneKind, SubLaneState } from './useEuclideanSequencer';
+import { clampEuclideanSubLaneSteps } from './sequencerLimits';
 
 const SUB_LANE_VALUE_FIELDS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'slice', 'reverse'];
 const SUB_LANE_RANGE_FIELDS = {
@@ -18,7 +19,7 @@ const SUB_LANE_DEFAULT_VALUES: Record<SubLaneKind, number> = {
 
 function visibleSubLaneSteps(state: SubLaneState | undefined, fallback: number): number {
   const source = typeof state?.steps === 'number' && Number.isFinite(state.steps) ? state.steps : fallback;
-  return Math.max(1, Math.min(16, Math.floor(source)));
+  return clampEuclideanSubLaneSteps(Math.floor(source), fallback);
 }
 
 function engineLaneValues(

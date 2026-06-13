@@ -1431,6 +1431,8 @@ const App: React.FC = () => {
     setProductDrumEvolveTriggerCallback,
     setProductDrumTriggerCallback,
     setProductSynthStepPositionCallback,
+    setProductSynthAnchorWalkerVisualStateCallback,
+    setProductSynthOrbitVisualStateCallback,
     setProductSynthEvolveTriggerCallback,
     setProductLeadExpressionCallback,
     setProductLeadMorphCallback,
@@ -3956,6 +3958,8 @@ const App: React.FC = () => {
       setProductDrumStepPositionCallback,
       setProductDrumTriggerCallback,
       setProductSynthEvolveTriggerCallback,
+      setProductSynthAnchorWalkerVisualStateCallback,
+      setProductSynthOrbitVisualStateCallback,
       setProductSynthStepPositionCallback,
     },
   });

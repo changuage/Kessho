@@ -3,6 +3,11 @@ import type { SequencerState, ClockDivision, TrigCondition } from '../../audio/d
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import { DRUM_VOICE_ORDER, DRUM_VOICES } from '../../audio/drumVoiceConfig';
 import DragNumber from './DragNumber';
+import {
+  EUCLIDEAN_STEP_MAX,
+  sequencerGridCellCount,
+  sequencerGridColumnCount,
+} from '../sequencer/sequencerLimits';
 
 const OV_PROB_DRAG_PX = 80;
 
@@ -44,7 +49,7 @@ const SeqOverview: React.FC<SeqOverviewProps> = ({
             <div className="seq-ov-controls" onClick={(e) => e.stopPropagation()}>
               <DragNumber
                 value={seq.trigger.steps}
-                min={2} max={16} label="S" shapeByDrag
+                min={2} max={EUCLIDEAN_STEP_MAX} label="S" shapeByDrag
                 onChange={(v) => onSetParam?.(row, 'Steps', v)}
               />
               <DragNumber
@@ -99,11 +104,11 @@ const SeqOverview: React.FC<SeqOverviewProps> = ({
           </div>
           <div className="seq-ov-grid-wrap">
             {(() => {
-              // Adaptive: 8 columns when steps < 9, 16 when >= 9 (matches detail view)
-              const maxCells = seq.trigger.steps < 9 ? 8 : 16;
+              const visibleCells = sequencerGridCellCount(seq.trigger.steps);
+              const columnCount = sequencerGridColumnCount(seq.trigger.steps);
               return (
-            <div className="seq-step-grid" style={{ gridTemplateColumns: `repeat(${maxCells}, 1fr)` }}>
-              {new Array(maxCells).fill(0).map((_, step) => {
+            <div className="seq-step-grid" style={{ gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}>
+              {new Array(visibleCells).fill(0).map((_, step) => {
                 const inRange = step < seq.trigger.steps;
                 const hit = inRange ? (seq.trigger.pattern[step] ?? false) : false;
                 const isPlayhead = inRange && ((playheads[row] ?? 0) % seq.trigger.steps === step);

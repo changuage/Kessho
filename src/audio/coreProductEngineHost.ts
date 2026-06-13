@@ -6,7 +6,7 @@ import type { ProductLiveNoteEvent } from './product/liveNoteEvents';
 import type { DecodedCoreProductAsset } from './coreProductAssets';
 import type { CoreProductSnapshot } from './coreProductSnapshot';
 import { CORE_PRODUCT_SEQUENCER_IDS, type CoreProductEvent, type CoreProductStepValueField, createCoreProductJourneyEvent, createCoreProductJourneyStateEvent, createCoreProductSequencerDiceEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSequencerPitchSettingEvents, createCoreProductSequencerResetHomeEvent, createCoreProductStartEvent, createCoreProductStopEvent } from './coreProductEvents';
-import { type CoreProductTelemetrySnapshot, type CoreProductVisualTelemetrySnapshot } from './coreProductTelemetry';
+import { type CoreProductAnchorWalkerVisualLaneState, type CoreProductOrbitVisualLaneState, type CoreProductTelemetrySnapshot, type CoreProductVisualTelemetrySnapshot } from './coreProductTelemetry';
 import type { RuntimeFallbackClassification } from './CoreProductFallbackDiagnostics';
 import { shouldForwardCoreProductRngDiffs, type SnapshotReloadReason } from './CoreProductRuntimeAdapter';
 import { normalizeClockDivisionValue, type SequencerKind } from './CoreProductHostSequencerAdapter';
@@ -19,7 +19,7 @@ import { CoreProductRuntime, type CoreProductGraphTapCaptureChunk } from './core
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 import { shouldRejoinCoreProductSequencerClocks } from './CoreProductHostSequencerClock';
-import { publishCoreProductSequencerVisuals } from './CoreProductHostSequencerVisuals';
+import { currentCoreProductSynthAnchorWalkerVisualState, currentCoreProductSynthOrbitVisualState, publishCoreProductSequencerVisuals, publishCoreProductSynthAnchorWalkerVisualState, publishCoreProductSynthOrbitVisualState } from './CoreProductHostSequencerVisuals';
 import { createCoreProductSequencerHomeStore } from './CoreProductHostSequencerHome';
 import { createCoreProductHostMidiEvent, createCoreProductLiveNoteEvent } from './CoreProductHostMidi';
 import { CoreProductAssetRegistrar } from './product/host/CoreProductAssetRegistrar';
@@ -549,20 +549,13 @@ class CoreProductEngineHost {
   setDrumEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: unknown) => void) | null): void { this.setDisplayCallback('drumEvolveOverrides', callback); }
   setSynthEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: unknown) => void) | null): void { this.setDisplayCallback('synthEvolveOverrides', callback); }
   setSynthNoteRangeEvolvedCallback(callback: ((laneIndex: number, noteMin: number, noteMax: number) => void) | null): void { this.setDisplayCallback('synthNoteRangeEvolved', callback); }
-  setDrumStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void {
-    this.setDisplayCallback('drumStepPosition', callback);
-    this.publishCurrentSequencerVisualsOnCallbackRegistration(callback);
-  }
-  setSynthStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void {
-    this.setDisplayCallback('synthStepPosition', callback);
-    this.publishCurrentSequencerVisualsOnCallbackRegistration(callback);
-  }
+  setDrumStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void { this.setDisplayCallback('drumStepPosition', callback); this.publishCurrentSequencerVisualsOnCallbackRegistration(callback); }
+  setSynthStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void { this.setDisplayCallback('synthStepPosition', callback); this.publishCurrentSequencerVisualsOnCallbackRegistration(callback); }
+  setSynthOrbitVisualStateCallback(callback: ((lanes: Array<CoreProductOrbitVisualLaneState | null>) => void) | null): void { this.setDisplayCallback('synthOrbitVisualState', callback); callback?.(currentCoreProductSynthOrbitVisualState(this.running ? this.latestTelemetry : null, PRODUCT_VISIBLE_SYNTH_LANE_COUNT)); }
+  setSynthAnchorWalkerVisualStateCallback(callback: ((lanes: Array<CoreProductAnchorWalkerVisualLaneState | null>) => void) | null): void { this.setDisplayCallback('synthAnchorWalkerVisualState', callback); callback?.(currentCoreProductSynthAnchorWalkerVisualState(this.running ? this.latestTelemetry : null, PRODUCT_VISIBLE_SYNTH_LANE_COUNT)); }
   setDrumEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void { this.setDisplayCallback('drumEuclidEvolve', callback); }
   setSynthEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void { this.setDisplayCallback('synthEuclidEvolve', callback); }
-  setGranularUiActive(active: boolean): void {
-    this.displayCallbacks.setValue('granularUiActive', active);
-    this.runtime.setGranularWaveformTelemetryActive(active);
-  }
+  setGranularUiActive(active: boolean): void { this.displayCallbacks.setValue('granularUiActive', active); this.runtime.setGranularWaveformTelemetryActive(active); }
 
   async triggerDrumVoice(
     voice: unknown,
@@ -792,16 +785,11 @@ class CoreProductEngineHost {
 
   private publishSequencerVisuals(telemetry: CoreProductTelemetrySnapshot | null): void {
     publishCoreProductSequencerVisuals({ telemetry, snapshot: this.latestProductSnapshot, state: this.latestSliderState ? { ...this.latestSliderState, ...this.adapterState } : this.adapterState, synthToggles: selectCoreProductSequencerCache(this.sequencerCache, 'synth').toggles, drumToggles: selectCoreProductSequencerCache(this.sequencerCache, 'drum').toggles, sampleRate: telemetry?.sampleRate ?? this.runtime.audioContext?.sampleRate ?? 48000, publish: (name, steps, hitCounts) => this.invokeDisplayCallback(name, steps, hitCounts) });
+    publishCoreProductSynthOrbitVisualState({ telemetry, visibleLaneCount: PRODUCT_VISIBLE_SYNTH_LANE_COUNT, hasCallback: (name) => this.displayCallbacks.has(name), publish: (name, lanes) => this.invokeDisplayCallback(name, lanes) });
+    publishCoreProductSynthAnchorWalkerVisualState({ telemetry, visibleLaneCount: PRODUCT_VISIBLE_SYNTH_LANE_COUNT, hasCallback: (name) => this.displayCallbacks.has(name), publish: (name, lanes) => this.invokeDisplayCallback(name, lanes) });
   }
 
-  private publishCurrentSequencerVisualsOnCallbackRegistration(callback: ((steps: number[], hitCounts: number[]) => void) | null): void {
-    if (!callback) return;
-    if (this.running) {
-      if (this.latestTelemetry) this.publishSequencerVisuals(this.latestTelemetry);
-      return;
-    }
-    callback([0, 0, 0, 0], [0, 0, 0, 0]);
-  }
+  private publishCurrentSequencerVisualsOnCallbackRegistration(callback: ((steps: number[], hitCounts: number[]) => void) | null): void { if (!callback) return; if (this.running) { if (this.latestTelemetry) this.publishSequencerVisuals(this.latestTelemetry); return; } callback([0, 0, 0, 0], [0, 0, 0, 0]); }
 
   private resetSequencerVisuals(): void { this.publishSequencerVisuals(null); this.clearSequencerMorphFeedback(); }
 

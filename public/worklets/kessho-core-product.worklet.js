@@ -1,7 +1,7 @@
 const EVENT_BYTES = 40;
-const TELEMETRY_BYTES = 9760;
+const TELEMETRY_BYTES = 15008;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
-const EXPECTED_PRODUCT_SCHEMA_HASH = 0xb5f0ef5c;
+const EXPECTED_PRODUCT_SCHEMA_HASH = 0x16c13985;
 const SEQUENCER_UI_STATE_LANES = 16;
 const SEQUENCER_UI_STATE_STEPS = 64;
 const SEQUENCER_UI_LANE_BYTES = 3024;
@@ -12,6 +12,7 @@ const SEQUENCER_UI_DRUM_LANES_OFFSET =
 const SEQUENCER_UI_CHANGE_DICE = 3;
 const SEQUENCER_UI_CHANGE_RESET_HOME = 4;
 const SEQUENCER_UI_CHANGE_EVOLUTION = 5;
+const SEQUENCER_UI_CHANGE_PERFORMANCE = 6;
 const PRODUCT_EVENT_IDS = Object.freeze({
   SetParam: 1,
   SetTransport: 2,
@@ -37,6 +38,7 @@ const PRODUCT_EVENT_IDS = Object.freeze({
   ResetSequencerLaneHome: 28,
   DiceSequencerLane: 29,
   SetSourceOverride: 30,
+  AnchorWalkerPerformance: 46,
 });
 const PRODUCT_EVENT_ID_SET = new Set(Object.values(PRODUCT_EVENT_IDS));
 const PRODUCT_SOURCE_IDS = new Set([1, 2, 3, 4, 5, 6, 7]);
@@ -68,6 +70,29 @@ const TELEMETRY_DEBUG_VOICE_COUNT_OFFSET = 8984;
 const TELEMETRY_DEBUG_VOICE_OFFSET = 8992;
 const TELEMETRY_DEBUG_VOICE_BYTES = 48;
 const TELEMETRY_DEBUG_VOICE_CAPACITY = 16;
+const TELEMETRY_SYNTH_ORBIT_NOTE_COUNTS_OFFSET = 9760;
+const TELEMETRY_SYNTH_ORBIT_BASE_ANGLES_OFFSET = 9824;
+const TELEMETRY_SYNTH_ORBIT_NOTE_ANGLES_OFFSET = 9888;
+const TELEMETRY_SYNTH_ORBIT_NOTE_FLASHES_OFFSET = 11936;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_FLAGS_OFFSET = 13984;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_DEGREES_OFFSET = 14048;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_LAST_GESTURE_DELTAS_OFFSET = 14112;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_BOUNDARY_EVENTS_OFFSET = 14176;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_COUNTS_OFFSET = 14240;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_ANCHOR_MIDIS_OFFSET = 14304;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_MIDIS_OFFSET = 14368;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_PREVIOUS_CURSOR_MIDIS_OFFSET = 14432;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_MIDIS_OFFSET = 14496;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_VELOCITIES_OFFSET = 14752;
+const ORBIT_VISUAL_LANES = 16;
+const ORBIT_VISUAL_NOTES = 32;
+const ANCHOR_WALKER_VISUAL_LANES = 16;
+const ANCHOR_WALKER_VISUAL_OUTPUTS = 4;
+const ANCHOR_WALKER_VISUAL_FLAG_ENABLED = 1 << 0;
+const ANCHOR_WALKER_VISUAL_FLAG_GESTURE_HELD = 1 << 1;
+const ANCHOR_WALKER_VISUAL_FLAG_CURSOR_VALID = 1 << 2;
+const ANCHOR_WALKER_VISUAL_FLAG_ANCHOR_VALID = 1 << 3;
+const ANCHOR_WALKER_VISUAL_FLAG_WALKING = 1 << 4;
 const STEP_TOGGLE_CLEAR_LANE = 2;
 const STEP_FIELD_MASK = 15 << 8;
 const STEP_FIELD_SUBLANE_CONFIG = 8 << 8;
@@ -696,7 +721,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     if (!event || typeof event !== 'object') {
       throw new Error('Kessho Product Core event must be an object');
     }
-    const eventKind = this.requireUint(event, 'eventKind', 1, 30);
+    const eventKind = this.requireUint(event, 'eventKind', 1, 46);
     if (!PRODUCT_EVENT_ID_SET.has(eventKind)) {
       throw new Error(`Unknown Kessho Product Core event kind: ${eventKind}`);
     }
@@ -826,6 +851,14 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         normalized.value3 = this.optionalFloat(event, 'value3', 0);
         normalized.value4 = this.optionalFloat(event, 'value4', 0);
         normalized.flags = this.requireUint(event, 'flags', 0, 0xffffffff);
+        return normalized;
+      case PRODUCT_EVENT_IDS.AnchorWalkerPerformance:
+        normalized.targetId = this.requireSequencerId(this.requireUint(event, 'targetId', 1, 2), 'targetId');
+        normalized.index = this.requireUint(event, 'index', 0, SEQUENCER_UI_STATE_LANES - 1);
+        normalized.paramId = this.requireUint(event, 'paramId', 1, 5);
+        normalized.value = this.optionalFloat(event, 'value', 0, -7, 7);
+        normalized.value2 = this.optionalFloat(event, 'value2', 0, 0, 1);
+        normalized.value3 = this.optionalFloat(event, 'value3', 0, 0, 127);
         return normalized;
       default:
         throw new Error(`Unhandled Kessho Product Core event kind: ${eventKind}`);
@@ -1220,6 +1253,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const productModulationDebug = this.readProductModulationDebug(ptr);
     const productDebugSourceStates = this.readProductDebugSourceStates(ptr);
     const productDebugVoiceSpawns = this.readProductDebugVoiceSpawns(ptr);
+    const synthOrbitVisualLanes = this.readSynthOrbitVisualLanes(ptr);
+    const synthAnchorWalkerVisualLanes = this.readSynthAnchorWalkerVisualLanes(ptr);
     return {
       schemaHash: this.view.getUint32(ptr, true),
       sampleRate: this.view.getFloat64(ptr + 8, true),
@@ -1292,10 +1327,13 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       drumSequencerHitCounts,
       synthSequencerCurrentSteps,
       drumSequencerCurrentSteps,
+      synthOrbitVisualLanes,
+      synthAnchorWalkerVisualLanes,
       sequencerUiState,
       sequencerUiChangeDice: SEQUENCER_UI_CHANGE_DICE,
       sequencerUiChangeResetHome: SEQUENCER_UI_CHANGE_RESET_HOME,
       sequencerUiChangeEvolution: SEQUENCER_UI_CHANGE_EVOLUTION,
+      sequencerUiChangePerformance: SEQUENCER_UI_CHANGE_PERFORMANCE,
       workletOutputPeak: this.lastOutputPeak,
       workletStemPeaks: this.lastStemPeaks,
       workletGraphTapPeaks: this.lastGraphTapPeaks,
@@ -1514,6 +1552,89 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     return events;
   }
 
+  readSynthOrbitVisualLanes(ptr) {
+    const lanes = [];
+    for (let laneIndex = 0; laneIndex < ORBIT_VISUAL_LANES; laneIndex += 1) {
+      const noteCount = Math.min(
+        this.view.getUint32(ptr + TELEMETRY_SYNTH_ORBIT_NOTE_COUNTS_OFFSET + laneIndex * 4, true),
+        ORBIT_VISUAL_NOTES,
+      );
+      if (noteCount <= 0) {
+        lanes.push(null);
+        continue;
+      }
+      const noteAngles = [];
+      const noteFlashes = [];
+      const noteBase = laneIndex * ORBIT_VISUAL_NOTES;
+      for (let noteIndex = 0; noteIndex < noteCount; noteIndex += 1) {
+        const offset = (noteBase + noteIndex) * 4;
+        noteAngles.push(this.view.getFloat32(ptr + TELEMETRY_SYNTH_ORBIT_NOTE_ANGLES_OFFSET + offset, true));
+        noteFlashes.push(this.view.getFloat32(ptr + TELEMETRY_SYNTH_ORBIT_NOTE_FLASHES_OFFSET + offset, true));
+      }
+      lanes.push({
+        noteCount,
+        baseAngle: this.view.getFloat32(ptr + TELEMETRY_SYNTH_ORBIT_BASE_ANGLES_OFFSET + laneIndex * 4, true),
+        noteAngles,
+        noteFlashes,
+      });
+    }
+    return lanes;
+  }
+
+  anchorWalkerBoundaryEventName(code) {
+    switch (code) {
+      case 1: return 'foldTop';
+      case 2: return 'foldBottom';
+      case 3: return 'wrapTop';
+      case 4: return 'wrapBottom';
+      case 5: return 'clampTop';
+      case 6: return 'clampBottom';
+      default: return 'none';
+    }
+  }
+
+  readSynthAnchorWalkerVisualLanes(ptr) {
+    const lanes = [];
+    for (let laneIndex = 0; laneIndex < ANCHOR_WALKER_VISUAL_LANES; laneIndex += 1) {
+      const flags = this.view.getUint32(ptr + TELEMETRY_SYNTH_ANCHOR_WALKER_FLAGS_OFFSET + laneIndex * 4, true);
+      const outputCount = Math.min(
+        this.view.getUint32(ptr + TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_COUNTS_OFFSET + laneIndex * 4, true),
+        ANCHOR_WALKER_VISUAL_OUTPUTS,
+      );
+      if (flags === 0 && outputCount <= 0) {
+        lanes.push(null);
+        continue;
+      }
+      const outputs = [];
+      const outputBase = laneIndex * ANCHOR_WALKER_VISUAL_OUTPUTS;
+      for (let outputIndex = 0; outputIndex < outputCount; outputIndex += 1) {
+        const offset = (outputBase + outputIndex) * 4;
+        outputs.push({
+          slotIndex: outputIndex,
+          midi: this.view.getFloat32(ptr + TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_MIDIS_OFFSET + offset, true),
+          velocity: this.view.getFloat32(ptr + TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_VELOCITIES_OFFSET + offset, true),
+        });
+      }
+      lanes.push({
+        enabled: (flags & ANCHOR_WALKER_VISUAL_FLAG_ENABLED) !== 0,
+        gestureHeld: (flags & ANCHOR_WALKER_VISUAL_FLAG_GESTURE_HELD) !== 0,
+        cursorValid: (flags & ANCHOR_WALKER_VISUAL_FLAG_CURSOR_VALID) !== 0,
+        anchorValid: (flags & ANCHOR_WALKER_VISUAL_FLAG_ANCHOR_VALID) !== 0,
+        walking: (flags & ANCHOR_WALKER_VISUAL_FLAG_WALKING) !== 0,
+        cursorDegree: this.view.getInt32(ptr + TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_DEGREES_OFFSET + laneIndex * 4, true),
+        lastGestureDelta: this.view.getInt32(ptr + TELEMETRY_SYNTH_ANCHOR_WALKER_LAST_GESTURE_DELTAS_OFFSET + laneIndex * 4, true),
+        boundaryEvent: this.anchorWalkerBoundaryEventName(
+          this.view.getUint32(ptr + TELEMETRY_SYNTH_ANCHOR_WALKER_BOUNDARY_EVENTS_OFFSET + laneIndex * 4, true),
+        ),
+        anchorMidi: this.view.getFloat32(ptr + TELEMETRY_SYNTH_ANCHOR_WALKER_ANCHOR_MIDIS_OFFSET + laneIndex * 4, true),
+        cursorMidi: this.view.getFloat32(ptr + TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_MIDIS_OFFSET + laneIndex * 4, true),
+        previousCursorMidi: this.view.getFloat32(ptr + TELEMETRY_SYNTH_ANCHOR_WALKER_PREVIOUS_CURSOR_MIDIS_OFFSET + laneIndex * 4, true),
+        outputMidis: outputs,
+      });
+    }
+    return lanes;
+  }
+
   readVisualTelemetry(includeGranularWaveform = false) {
     if (!this.telemetryPtr || this.api.copyTelemetry(this.engine, this.telemetryPtr) !== 1) {
       return null;
@@ -1566,6 +1687,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       drumSequencerHitCounts,
       synthSequencerCurrentSteps,
       drumSequencerCurrentSteps,
+      synthOrbitVisualLanes: this.readSynthOrbitVisualLanes(ptr),
+      synthAnchorWalkerVisualLanes: this.readSynthAnchorWalkerVisualLanes(ptr),
       workletOutputPeak: this.lastOutputPeak,
       workletStemPeaks: this.lastStemPeaks,
       workletMasterStemPeak: this.lastStemPeaks[0] || 0,

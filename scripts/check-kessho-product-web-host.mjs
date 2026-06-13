@@ -2020,7 +2020,7 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 134572',
+  'const SNAPSHOT_BYTES = 135212',
   'const SOURCE_BYTES = 3720',
   'const LANE_BYTES = 96',
   'KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES',
@@ -2742,7 +2742,7 @@ for (const token of [
   'noteRangeMax: this.view.getFloat32(ptr + 3020, true)',
   'expressionRangeSetLow: this.view.getUint32(ptr + 2216, true)',
   'expressionRangeMaxes: this.readFloatOverrides(',
-  'const TELEMETRY_BYTES = 9760;',
+  'const TELEMETRY_BYTES = 13984;',
   'rngSeed: this.view.getUint32(ptr + 928, true)',
   'rngState: this.view.getUint32(ptr + 932, true)',
   'sourcePresetIds.push(this.view.getUint32(ptr + 936 + index * 4, true));',

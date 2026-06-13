@@ -88,11 +88,16 @@ export type ProductAnchorWalkerLayerSnapshot = {
 export type ProductAnchorWalkerSnapshot = {
   enabled: boolean;
   mode: number;
+  playMode: number;
   targetSourceId: number;
   anchorSource: number;
   manualAnchorMidi: number;
   snapSource: number;
   customPitchClassMask: number;
+  triggerMode: number;
+  boundaryMode: number;
+  keyboardRange: number;
+  showLinkedOutputs: boolean;
   autoRate: number;
   autoFeel: number;
   swing: number;

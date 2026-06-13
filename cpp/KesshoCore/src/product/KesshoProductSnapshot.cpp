@@ -61,6 +61,35 @@ struct SequencerLaneRuntimePhase {
   uint64_t sequencer_runtime_sample_frame = 0u;
   uint64_t sequencer_start_sample_frame = 0u;
 };
+
+double wrappedAngleDistance(double left, double right) {
+  using namespace kessho::product::internal;
+  const double diff = std::fmod(std::abs(left - right), kTwoPi);
+  return std::min(diff, kTwoPi - diff);
+}
+
+bool anglesMatch(double left, double right) {
+  return wrappedAngleDistance(left, right) < 1.0e-5;
+}
+
+bool orbitAuthoredTimingMatches(
+    const kessho::product::internal::OrbitSequencerState& orbit,
+    const KesshoProductOrbitSequencerSnapshot& snapshot) {
+  using namespace kessho::product::internal;
+  if (!anglesMatch(orbit.authored_base_angle, wrapRadians(snapshot.base_angle))) {
+    return false;
+  }
+  const uint32_t next_note_count = clampU32(snapshot.note_count, 0u, kMaxOrbitSequencerNotes);
+  if (orbit.note_count != next_note_count) {
+    return false;
+  }
+  for (uint32_t note_index = 0u; note_index < next_note_count; ++note_index) {
+    if (!anglesMatch(orbit.notes[note_index].authored_phase, wrapRadians(snapshot.notes[note_index].phase))) {
+      return false;
+    }
+  }
+  return true;
+}
 } // namespace
 
 int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapshot) {
@@ -753,7 +782,16 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   const uint32_t count = std::min<uint32_t>(snapshot.lane_count, kMaxLaneCount);
   for (uint32_t i = 0; i < count; ++i) {
     const KesshoProductSequencerLaneSnapshot& lane = snapshot.lanes[i];
+    const KesshoProductAnchorWalkerSnapshot& walker_snapshot = snapshot.mode_states[i].anchor_walker;
     const uint32_t next_mode = clampU32(lane.sequencer_mode, kSequencerModeEuclid, kSequencerModeOrbit);
+    const bool walker_timing_matches =
+        next_mode != kSequencerModeAnchorWalker ||
+        (lanes[i].anchor_walker.trigger_mode == clampU32(walker_snapshot.trigger_mode, 0u, 2u) &&
+         lanes[i].anchor_walker.auto_rate == clampU32(walker_snapshot.auto_rate, 0u, 6u) &&
+         lanes[i].anchor_walker.auto_feel == clampU32(walker_snapshot.auto_feel, 0u, 2u));
+    const bool orbit_timing_matches =
+        next_mode != kSequencerModeOrbit ||
+        orbitAuthoredTimingMatches(lanes[i].orbit, snapshot.mode_states[i].orbit);
     const bool preserve_phase =
         preserve_running_runtime &&
         lanes[i].enabled &&
@@ -761,7 +799,9 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
         lanes[i].sequencer_mode == next_mode &&
         lanes[i].sequencer_runtime_initialized &&
         lanes[i].step_count != 0u &&
-        lanes[i].clock_division != 0u;
+        lanes[i].clock_division != 0u &&
+        walker_timing_matches &&
+        orbit_timing_matches;
     const SequencerLaneRuntimePhase preserved_phase{
         lanes[i].emitted_hit_count,
         lanes[i].sequencer_runtime_sample_frame,
@@ -772,6 +812,15 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     const bool preserved_walker_cursor_valid = lanes[i].anchor_walker.cursor_valid;
     const float preserved_walker_anchor_midi = lanes[i].anchor_walker.anchor_midi;
     const bool preserved_walker_anchor_valid = lanes[i].anchor_walker.anchor_valid;
+    const bool preserved_walker_gesture_held = lanes[i].anchor_walker.gesture_held;
+    const int32_t preserved_walker_held_gesture_delta = lanes[i].anchor_walker.held_gesture_delta;
+    const float preserved_walker_held_gesture_velocity = lanes[i].anchor_walker.held_gesture_velocity;
+    const uint64_t preserved_walker_gesture_started_sample = lanes[i].anchor_walker.gesture_started_sample;
+    const uint64_t preserved_walker_next_gesture_walk_sample = lanes[i].anchor_walker.next_gesture_walk_sample;
+    const uint32_t preserved_walker_pending_gesture_steps = lanes[i].anchor_walker.pending_gesture_steps;
+    const float preserved_walker_previous_cursor_midi = lanes[i].anchor_walker.previous_cursor_midi;
+    const int32_t preserved_walker_last_gesture_delta = lanes[i].anchor_walker.last_gesture_delta;
+    const uint32_t preserved_walker_boundary_event = lanes[i].anchor_walker.boundary_event;
     const uint64_t preserved_walker_runtime_sample_frame = lanes[i].anchor_walker.runtime_sample_frame;
     const uint64_t preserved_walker_next_walk_sample = lanes[i].anchor_walker.next_walk_sample;
     const bool preserved_walker_runtime_initialized = lanes[i].anchor_walker.runtime_initialized;
@@ -830,16 +879,20 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
             : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SEQUENCER_INITIAL_START_DELAY_SECONDS;
     lanes[i].manual_step_mask_low = lane.manual_step_mask_low;
     lanes[i].manual_step_mask_high = lane.manual_step_mask_high;
-    const KesshoProductAnchorWalkerSnapshot& walker_snapshot = snapshot.mode_states[i].anchor_walker;
     AnchorWalkerState& walker = lanes[i].anchor_walker;
     walker.enabled = walker_snapshot.enabled != 0u;
     walker.mode = clampU32(walker_snapshot.mode, 0u, 2u);
+    walker.play_mode = clampU32(walker_snapshot.play_mode, 0u, 2u);
     walker.target_source_id = clampU32(walker_snapshot.target_source_id, 1u, kSourceCount);
     walker.anchor_source = clampU32(walker_snapshot.anchor_source, 0u, 3u);
     walker.manual_anchor_midi = clampFloat(walker_snapshot.manual_anchor_midi, 0.0f, 127.0f);
     walker.snap_source = clampU32(walker_snapshot.snap_source, 0u, 4u);
     walker.custom_pitch_class_mask = static_cast<uint16_t>(
         clampU32(walker_snapshot.custom_pitch_class_mask, 1u, 0x0fffu));
+    walker.trigger_mode = clampU32(walker_snapshot.trigger_mode, 0u, 2u);
+    walker.boundary_mode = clampU32(walker_snapshot.boundary_mode, 0u, 2u);
+    walker.keyboard_range = clampU32(walker_snapshot.keyboard_range, 0u, 1u);
+    walker.show_linked_outputs = walker_snapshot.show_linked_outputs != 0u;
     walker.auto_rate = clampU32(walker_snapshot.auto_rate, 0u, 6u);
     walker.auto_feel = clampU32(walker_snapshot.auto_feel, 0u, 2u);
     walker.swing = clampFloat(walker_snapshot.swing, 0.0f, 0.75f);
@@ -895,6 +948,7 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     orbit.spline_spin_direction = orbit_snapshot.spline_spin_direction < 0 ? -1 : 1;
     orbit.base_angle = wrapRadians(orbit_snapshot.base_angle);
     orbit.prev_base_angle = orbit.base_angle;
+    orbit.authored_base_angle = orbit.base_angle;
     orbit.note_count = clampU32(orbit_snapshot.note_count, 0u, kMaxOrbitSequencerNotes);
     orbit.seed = orbit_snapshot.seed == 0u ? rng_seed + 3000u + i : orbit_snapshot.seed;
     for (uint32_t note_index = 0u; note_index < kMaxOrbitSequencerNotes; ++note_index) {
@@ -904,10 +958,11 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
       note.radius_norm = clampFloat(note_snapshot.radius_norm, 0.08f, 1.0f);
       note.angle = wrapRadians(note_snapshot.phase);
       note.prev_angle = note.angle;
+      note.authored_phase = note.angle;
       note.speed_mode = note_snapshot.speed_mode > 0u ? 1u : 0u;
       note.speed_value = clampFloat(note_snapshot.speed_value, 0.125f, 800.0f);
       note.direction = note_snapshot.direction < 0 ? -1 : 1;
-      note.pitch_mode = clampU32(note_snapshot.pitch_mode, 0u, 2u);
+      note.pitch_mode = clampU32(note_snapshot.pitch_mode, 0u, 3u);
       note.midi_note = clampFloat(note_snapshot.midi_note, 0.0f, 127.0f);
       note.harmony_degree = static_cast<int32_t>(clampInt(note_snapshot.harmony_degree, -32, 32));
       note.pitch_range_min = clampFloat(note_snapshot.pitch_range_min, 0.0f, 127.0f);
@@ -942,6 +997,15 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
         lanes[i].anchor_walker.cursor_valid = preserved_walker_cursor_valid;
         lanes[i].anchor_walker.anchor_midi = preserved_walker_anchor_midi;
         lanes[i].anchor_walker.anchor_valid = preserved_walker_anchor_valid;
+        lanes[i].anchor_walker.gesture_held = preserved_walker_gesture_held;
+        lanes[i].anchor_walker.held_gesture_delta = preserved_walker_held_gesture_delta;
+        lanes[i].anchor_walker.held_gesture_velocity = preserved_walker_held_gesture_velocity;
+        lanes[i].anchor_walker.gesture_started_sample = preserved_walker_gesture_started_sample;
+        lanes[i].anchor_walker.next_gesture_walk_sample = preserved_walker_next_gesture_walk_sample;
+        lanes[i].anchor_walker.pending_gesture_steps = preserved_walker_pending_gesture_steps;
+        lanes[i].anchor_walker.previous_cursor_midi = preserved_walker_previous_cursor_midi;
+        lanes[i].anchor_walker.last_gesture_delta = preserved_walker_last_gesture_delta;
+        lanes[i].anchor_walker.boundary_event = preserved_walker_boundary_event;
         lanes[i].anchor_walker.runtime_sample_frame = preserved_walker_runtime_sample_frame;
         lanes[i].anchor_walker.next_walk_sample = preserved_walker_next_walk_sample;
         lanes[i].anchor_walker.runtime_initialized = preserved_walker_runtime_initialized;

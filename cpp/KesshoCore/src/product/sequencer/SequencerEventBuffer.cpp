@@ -35,6 +35,21 @@
   lane.anchor_walker.cursor_valid = false;
   lane.anchor_walker.anchor_midi = lane.anchor_walker.manual_anchor_midi;
   lane.anchor_walker.anchor_valid = false;
+  lane.anchor_walker.gesture_held = false;
+  lane.anchor_walker.held_gesture_delta = 0;
+  lane.anchor_walker.held_gesture_velocity = 1.0f;
+  lane.anchor_walker.gesture_started_sample = 0u;
+  lane.anchor_walker.next_gesture_walk_sample = 0u;
+  lane.anchor_walker.pending_gesture_steps = 0u;
+  lane.anchor_walker.previous_cursor_midi = lane.anchor_walker.manual_anchor_midi;
+  lane.anchor_walker.last_gesture_delta = 0;
+  lane.anchor_walker.boundary_event = 0u;
+  lane.anchor_walker.last_output_count = 0u;
+  for (uint32_t output_index = 0u; output_index < kMaxAnchorWalkerLayers; ++output_index) {
+    lane.anchor_walker.last_output_midis[output_index] = 0.0f;
+    lane.anchor_walker.last_output_velocities[output_index] = 0.0f;
+    lane.anchor_walker.last_output_source_ids[output_index] = 0u;
+  }
   lane.anchor_walker.runtime_sample_frame = 0u;
   lane.anchor_walker.next_walk_sample = 0u;
   lane.anchor_walker.runtime_initialized = false;

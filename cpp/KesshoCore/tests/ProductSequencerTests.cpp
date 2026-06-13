@@ -441,7 +441,7 @@ void requireProductSequencerRatchetPendingClearTests() {
   }
 }
 
-KesshoProductSnapshotV2 makeAnchorWalkerSnapshot() {
+KesshoProductSnapshotV2 makeAnchorWalkerSnapshot(uint32_t trigger_mode = 2u) {
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   snapshot.harmony.root_midi = 60.0f;
   snapshot.harmony.scale_id = 1u;
@@ -457,17 +457,23 @@ KesshoProductSnapshotV2 makeAnchorWalkerSnapshot() {
   KesshoProductAnchorWalkerSnapshot& walker = snapshot.synth_euclid.mode_states[0].anchor_walker;
   walker.enabled = 1u;
   walker.mode = 0u;
+  walker.play_mode = trigger_mode == 1u ? 1u : 0u;
   walker.target_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
   walker.anchor_source = 0u;
   walker.manual_anchor_midi = 60.0f;
   walker.snap_source = 0u;
   walker.custom_pitch_class_mask = 0x0ab5u;
+  walker.trigger_mode = trigger_mode;
+  walker.boundary_mode = 0u;
+  walker.keyboard_range = 0u;
+  walker.show_linked_outputs = 1u;
   walker.auto_rate = 4u;
   walker.auto_feel = 0u;
   walker.swing = 0.0f;
   walker.lead_mode = 1u;
-  walker.gesture_pattern[0] = 0;
+  walker.gesture_pattern[0] = 1;
   walker.gesture_pattern_length = 1u;
+  walker.active_pad_delta = 0;
   walker.layer_preset = 2u;
   walker.spread_seconds = 0.01f;
   walker.layer_count = 2u;
@@ -603,10 +609,20 @@ void requireProductSequencerModeEventTests() {
     require(events[0].source_id == KESSHO_PRODUCT_SOURCE_LEAD1, "Anchor Walker source mismatch");
     require(events[0].sample_offset == 0u, "Anchor Walker root layer should emit on the walk tick");
     require(events[1].sample_offset == 480u, "Anchor Walker delayed layer should use Product Core pending queue");
-    require(std::fabs(events[0].midi_note - 60.0f) < 0.001f, "Anchor Walker root pitch should follow harmony root");
-    require(std::fabs(events[1].midi_note - 64.0f) < 0.001f, "Anchor Walker diatonic layer should follow harmony snap");
+    require(std::fabs(events[0].midi_note - 62.0f) < 0.001f, "Anchor Walker root pitch should step from harmony root");
+    require(std::fabs(events[1].midi_note - 65.0f) < 0.001f, "Anchor Walker diatonic layer should follow the stepped cursor");
     const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
     require(telemetry.synth_sequencer_hit_counts[0] == 1u, "Anchor Walker should count one parent walk tick");
+    require(telemetry.synth_anchor_walker_output_counts[0] == 2u, "Anchor Walker visual telemetry should expose layered output notes");
+    require(
+        std::fabs(telemetry.synth_anchor_walker_output_midis[0] - events[0].midi_note) < 0.001f,
+        "Anchor Walker visual telemetry first output should match the emitted root layer");
+    require(
+        std::fabs(telemetry.synth_anchor_walker_output_midis[1] - events[1].midi_note) < 0.001f,
+        "Anchor Walker visual telemetry second output should match the emitted delayed layer");
+    require(
+        telemetry.synth_anchor_walker_last_gesture_deltas[0] == 1,
+        "Anchor Walker visual telemetry should expose the last gesture delta");
     kessho_product_destroy(engine);
   }
 
@@ -622,6 +638,279 @@ void requireProductSequencerModeEventTests() {
     require(events[0].sample_offset > 0u && events[0].sample_offset < 2048u, "Orbit crossing should land inside the rendered block");
     require(std::fabs(events[0].midi_note - 60.0f) < 0.001f, "Orbit harmony degree should resolve through Product Core harmony");
     require(engine->synth_lanes[0].orbit.runtime_initialized, "Orbit runtime should initialize in Product Core");
+    const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+    require(telemetry.synth_orbit_visual_note_counts[0] == 1u, "Orbit visual telemetry should expose one runtime note");
+    require(
+        std::fabs(telemetry.synth_orbit_visual_base_angles[0] - engine->synth_lanes[0].orbit.base_angle) < 0.000001f,
+        "Orbit visual telemetry base angle should match the Product Core runtime");
+    require(
+        std::fabs(telemetry.synth_orbit_visual_note_angles[0] - engine->synth_lanes[0].orbit.notes[0].angle) < 0.000001f,
+        "Orbit visual telemetry note angle should match the Product Core runtime");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Orbit Bloom pitch engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeOrbitSnapshot();
+    KesshoProductOrbitSequencerSnapshot& orbit = snapshot.synth_euclid.mode_states[0].orbit;
+    orbit.pitch_range_min = 60.0f;
+    orbit.pitch_range_max = 72.0f;
+    KesshoProductOrbitNoteSnapshot& note = orbit.notes[0];
+    note.pitch_mode = 3u;
+    note.radius_norm = 1.0f;
+    note.pitch_range_min = 60.0f;
+    note.pitch_range_max = 72.0f;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Orbit Bloom pitch snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 2048u);
+    require(event_count == 1, "Orbit Bloom pitch should emit a crossing event");
+    require(std::fabs(events[0].midi_note - 72.0f) < 0.001f, "Orbit Bloom radius should resolve to the highest scale note in range");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Orbit lane-source sync engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSnapshot();
+    snapshot.drum_euclid.lane_count = 0u;
+    snapshot.synth_euclid.lane_count = 1u;
+    snapshot.synth_euclid.lanes[0].target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+    snapshot.synth_euclid.lanes[0].sequencer_mode = kSequencerModeEuclid;
+    snapshot.synth_euclid.mode_states[0].orbit.target_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Orbit lane-source sync snapshot load failed");
+
+    KesshoProductEvent mode_event{};
+    mode_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+    mode_event.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    mode_event.index = 0u;
+    mode_event.param_id = KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MODE_ID;
+    mode_event.value = static_cast<float>(kSequencerModeOrbit);
+    engine->applySequencerLaneParamEvent(mode_event);
+    require(engine->synth_lanes[0].sequencer_mode == kSequencerModeOrbit, "Orbit lane-source sync should switch to Orbit mode");
+    require(engine->synth_lanes[0].orbit.target_source_id == KESSHO_PRODUCT_SOURCE_PAD1, "Orbit mode switch should inherit the Pad lane source");
+
+    KesshoProductEvent target_event{};
+    target_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+    target_event.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    target_event.index = 0u;
+    target_event.param_id = KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TARGET_SOURCE_ID;
+    target_event.value = static_cast<float>(KESSHO_PRODUCT_SOURCE_PAD2);
+    engine->applySequencerLaneParamEvent(target_event);
+    require(engine->synth_lanes[0].target_source_id == KESSHO_PRODUCT_SOURCE_PAD2, "Pad2 lane-source sync should update lane target");
+    require(engine->synth_lanes[0].orbit.target_source_id == KESSHO_PRODUCT_SOURCE_PAD2, "Orbit lane-source sync should follow live Pad source changes");
+    require(engine->synth_lanes[0].anchor_walker.target_source_id == KESSHO_PRODUCT_SOURCE_PAD2, "Walker lane-source sync should follow live Pad source changes");
+    kessho_product_destroy(engine);
+  }
+}
+
+void requireAnchorWalkerTriggerAndBoundaryTests() {
+  constexpr double sample_rate = 48000.0;
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Anchor Walker step-grid engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeAnchorWalkerSnapshot(1u);
+    KesshoProductSequencerLaneSnapshot& lane = snapshot.synth_euclid.lanes[0];
+    lane.step_count = 4u;
+    lane.fill_count = 2u;
+    lane.clock_division = 4u;
+    KesshoProductAnchorWalkerSnapshot& walker = snapshot.synth_euclid.mode_states[0].anchor_walker;
+    walker.layer_count = 1u;
+    walker.layers[1].enabled = 0u;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Anchor Walker step-grid snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 50000u);
+    require(event_count == 1, "Anchor Walker step-grid should emit only on valid sequencer hits");
+    require(events[0].sample_offset == 24000u, "Anchor Walker step-grid hit offset mismatch");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Anchor Walker manual-mask engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeAnchorWalkerSnapshot(1u);
+    KesshoProductSequencerLaneSnapshot& lane = snapshot.synth_euclid.lanes[0];
+    lane.step_count = 4u;
+    lane.fill_count = 4u;
+    lane.clock_division = 4u;
+    lane.manual_step_mask_low = 1u;
+    KesshoProductAnchorWalkerSnapshot& walker = snapshot.synth_euclid.mode_states[0].anchor_walker;
+    walker.layer_count = 1u;
+    walker.layers[1].enabled = 0u;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Anchor Walker manual-mask snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 50000u);
+    require(event_count == 1, "Anchor Walker step-grid should honor manual step masks");
+    require(events[0].sample_offset == 0u, "Anchor Walker manual-mask hit offset mismatch");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Anchor Walker fold-boundary engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeAnchorWalkerSnapshot(2u);
+    KesshoProductAnchorWalkerSnapshot& walker = snapshot.synth_euclid.mode_states[0].anchor_walker;
+    walker.boundary_mode = 0u;
+    walker.gesture_pattern[0] = 1;
+    walker.gesture_pattern_length = 1u;
+    walker.layer_count = 1u;
+    walker.layers[1].enabled = 0u;
+    walker.output_range_min = 60.0f;
+    walker.output_range_max = 72.0f;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Anchor Walker fold-boundary snapshot load failed");
+    KesshoSequencerEvent events[16]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 16u, 150000u);
+    require(event_count >= 10, "Anchor Walker fold-boundary setup should render enough ticks");
+    bool saw_top = false;
+    bool folded_down = false;
+    for (int32_t index = 0; index < event_count; ++index) {
+      if (std::fabs(events[index].midi_note - 72.0f) < 0.001f) {
+        saw_top = true;
+      } else if (saw_top && events[index].midi_note < 72.0f) {
+        folded_down = true;
+      }
+    }
+    require(saw_top, "Anchor Walker fold-boundary should reach the top note");
+    require(folded_down, "Anchor Walker fold-boundary should descend after the top note");
+    const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+    require(
+        telemetry.synth_anchor_walker_boundary_events[0] != KESSHO_PRODUCT_ANCHOR_WALKER_BOUNDARY_NONE,
+        "Anchor Walker fold-boundary should publish native boundary telemetry");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Anchor Walker gesture-hold engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeAnchorWalkerSnapshot(0u);
+    KesshoProductAnchorWalkerSnapshot& walker = snapshot.synth_euclid.mode_states[0].anchor_walker;
+    walker.auto_rate = 0u;
+    walker.layer_count = 1u;
+    walker.layers[1].enabled = 0u;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Anchor Walker gesture-hold snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 4096u);
+    require(event_count == 0, "Anchor Walker gesture-hold should not free-run without a held gesture");
+
+    KesshoProductEvent down{};
+    down.event_kind = KESSHO_PRODUCT_EVENT_KIND_ANCHOR_WALKER_PERFORMANCE;
+    down.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    down.index = 0u;
+    down.param_id = KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_DOWN;
+    down.value = 1.0f;
+    down.value2 = 1.0f;
+    engine->applyControlEvent(down);
+    require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "Anchor Walker gesture down event should apply");
+    KesshoProductEvent up = down;
+    up.param_id = KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_UP;
+    up.value = 0.0f;
+    up.value2 = 0.0f;
+    engine->applyControlEvent(up);
+    require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "Anchor Walker gesture up event should apply");
+
+    event_count = kessho_product_debug_render_events(engine, events, 8u, 4096u);
+    require(event_count == 1, "Anchor Walker gesture tap should emit exactly one step");
+    require(std::fabs(events[0].midi_note - 62.0f) < 0.001f, "Anchor Walker gesture tap should use the held gesture delta");
+    const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+    require(telemetry.synth_anchor_walker_output_counts[0] == 1u, "Anchor Walker gesture tap should publish one output note");
+    require(
+        std::fabs(telemetry.synth_anchor_walker_output_midis[0] - events[0].midi_note) < 0.001f,
+        "Anchor Walker gesture tap telemetry should match emitted MIDI");
+    require(
+        telemetry.synth_anchor_walker_last_gesture_deltas[0] == 1,
+        "Anchor Walker gesture tap telemetry should publish the last gesture delta");
+    require(
+        (telemetry.synth_anchor_walker_visual_flags[0] & (1u << 1u)) == 0u,
+        "Anchor Walker gesture tap release should not leave held telemetry set");
+    event_count = kessho_product_debug_render_events(engine, events, 8u, 12000u);
+    require(event_count == 0, "Anchor Walker gesture tap should not repeat after release with Auto off");
+    kessho_product_destroy(engine);
+  }
+}
+
+void requireAnchorWalkerStuckNoteEdgeTests() {
+  constexpr double sample_rate = 48000.0;
+
+  auto gesture_down = []() {
+    KesshoProductEvent event{};
+    event.event_kind = KESSHO_PRODUCT_EVENT_KIND_ANCHOR_WALKER_PERFORMANCE;
+    event.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    event.index = 0u;
+    event.param_id = KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_DOWN;
+    event.value = 2.0f;
+    event.value2 = 1.0f;
+    return event;
+  };
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Anchor Walker stop-clear engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeAnchorWalkerSnapshot(0u);
+    snapshot.synth_euclid.mode_states[0].anchor_walker.auto_rate = 0u;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Anchor Walker stop-clear snapshot load failed");
+    KesshoProductEvent down = gesture_down();
+    engine->applyControlEvent(down);
+    require(engine->synth_lanes[0].anchor_walker.gesture_held, "Anchor Walker stop-clear setup should hold a gesture");
+    require(engine->synth_lanes[0].anchor_walker.pending_gesture_steps > 0u, "Anchor Walker stop-clear setup should queue a gesture step");
+    KesshoProductEvent stop{};
+    stop.event_kind = KESSHO_PRODUCT_EVENT_KIND_STOP;
+    engine->applyControlEvent(stop);
+    require(!engine->synth_lanes[0].anchor_walker.gesture_held, "transport stop should clear Anchor Walker held gesture");
+    require(engine->synth_lanes[0].anchor_walker.pending_gesture_steps == 0u, "transport stop should clear Anchor Walker pending gestures");
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 4096u);
+    require(event_count == 0, "transport stop should not emit stale Anchor Walker gestures");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Anchor Walker mode-clear engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeAnchorWalkerSnapshot(0u);
+    snapshot.synth_euclid.mode_states[0].anchor_walker.auto_rate = 0u;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Anchor Walker mode-clear snapshot load failed");
+    KesshoProductEvent down = gesture_down();
+    engine->applyControlEvent(down);
+    require(engine->synth_lanes[0].anchor_walker.gesture_held, "Anchor Walker mode-clear setup should hold a gesture");
+    KesshoProductEvent mode{};
+    mode.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+    mode.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    mode.index = 0u;
+    mode.param_id = KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MODE_ID;
+    mode.value = static_cast<float>(kSequencerModeOrbit);
+    engine->applyControlEvent(mode);
+    require(engine->synth_lanes[0].sequencer_mode == kSequencerModeOrbit, "Anchor Walker mode-clear should switch lane mode");
+    require(!engine->synth_lanes[0].anchor_walker.gesture_held, "slot mode change should clear Anchor Walker held gesture");
+    require(engine->synth_lanes[0].anchor_walker.pending_gesture_steps == 0u, "slot mode change should clear Anchor Walker pending gestures");
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 4096u);
+    require(event_count == 0, "slot mode change should not emit stale Anchor Walker gestures");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Anchor Walker release-clear engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeAnchorWalkerSnapshot(0u);
+    snapshot.synth_euclid.mode_states[0].anchor_walker.auto_rate = 0u;
+    snapshot.synth_euclid.mode_states[0].anchor_walker.layer_count = 1u;
+    snapshot.synth_euclid.mode_states[0].anchor_walker.layers[1].enabled = 0u;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Anchor Walker release-clear snapshot load failed");
+    KesshoProductEvent down = gesture_down();
+    engine->applyControlEvent(down);
+    KesshoProductEvent up = down;
+    up.param_id = KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_UP;
+    up.value = 0.0f;
+    up.value2 = 0.0f;
+    engine->applyControlEvent(up);
+    require(!engine->synth_lanes[0].anchor_walker.gesture_held, "pad release should clear Anchor Walker held gesture");
+    KesshoSequencerEvent events[8]{};
+    int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 4096u);
+    require(event_count == 1, "pad release should preserve the queued Anchor Walker tap");
+    event_count = kessho_product_debug_render_events(engine, events, 8u, 12000u);
+    require(event_count == 0, "pad release should not repeat Anchor Walker gestures after the queued tap drains");
+    require(engine->synth_lanes[0].anchor_walker.pending_gesture_steps == 0u, "pad release should drain Anchor Walker pending gestures");
     kessho_product_destroy(engine);
   }
 }
@@ -661,6 +950,12 @@ void requireProductSequencerModeRuntimePreservationTests() {
     require(std::fabs(engine->synth_lanes[0].orbit.notes[0].angle - angle_before) < 0.000001f, "Orbit source hot-swap should preserve note angle");
     event_count = kessho_product_debug_render_events(engine, events, 8u, 128u);
     require(event_count == 0, "Orbit source hot-swap should not restart crossing phase");
+
+    KesshoProductSnapshotV2 phase_hot_swap = hot_swap;
+    phase_hot_swap.synth_euclid.mode_states[0].orbit.notes[0].phase = 0.25f;
+    require(kessho_product_load_snapshot_v2(engine, &phase_hot_swap, sizeof(phase_hot_swap)) == KESSHO_PRODUCT_OK, "Orbit phase hot-swap should load");
+    require(std::fabs(engine->synth_lanes[0].orbit.notes[0].angle - 0.25f) < 0.000001f, "Orbit phase hot-swap should apply the authored phase");
+    require(std::fabs(engine->synth_lanes[0].orbit.notes[0].authored_phase - 0.25f) < 0.000001f, "Orbit phase hot-swap should update authored phase");
     kessho_product_destroy(engine);
   }
 }
@@ -2411,6 +2706,8 @@ int main() {
   requireProductSequencerRatchetNearBlockEndTest();
   requireProductSequencerRatchetPendingClearTests();
   requireProductSequencerModeEventTests();
+  requireAnchorWalkerTriggerAndBoundaryTests();
+  requireAnchorWalkerStuckNoteEdgeTests();
   requireProductSequencerDisabledTargetSourceTests();
   requireProductSequencerModeRuntimePreservationTests();
   requireDirectSequencerCoverage();

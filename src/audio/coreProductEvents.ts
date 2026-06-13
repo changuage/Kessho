@@ -86,6 +86,14 @@ export const CORE_PRODUCT_SEQUENCER_IDS = Object.freeze({
   drum: 2,
 } as const);
 
+export const CORE_PRODUCT_ANCHOR_WALKER_ACTIONS = Object.freeze({
+  gestureTap: 1,
+  gestureDown: 2,
+  gestureUp: 3,
+  resetCursor: 4,
+  setManualAnchor: 5,
+} as const);
+
 export const CORE_PRODUCT_STEP_TOGGLE_FLAGS = Object.freeze({
   active: 1,
   clearLane: 2,
@@ -342,6 +350,9 @@ export type CoreProductStepValueField =
 
 export type CoreProductSubLaneDirection =
   (typeof CORE_PRODUCT_SUBLANE_DIRECTIONS)[keyof typeof CORE_PRODUCT_SUBLANE_DIRECTIONS];
+
+export type CoreProductAnchorWalkerPerformanceAction =
+  keyof typeof CORE_PRODUCT_ANCHOR_WALKER_ACTIONS;
 
 export type CoreProductRangeTarget = {
   targetId: number;
@@ -1730,6 +1741,43 @@ export function createCoreProductSequencerLaneParamEvent(
     paramId: requireParamId(paramId),
     value: requireFiniteNumber(value, 'value'),
     flags,
+  };
+}
+
+export function createCoreProductAnchorWalkerPerformanceEvent(
+  sequencer: keyof typeof CORE_PRODUCT_SEQUENCER_IDS,
+  laneIndex: number,
+  action: CoreProductAnchorWalkerPerformanceAction,
+  options: {
+    delta?: number;
+    velocity?: number;
+    midi?: number;
+  } = {},
+): CoreProductEvent {
+  const actionId = CORE_PRODUCT_ANCHOR_WALKER_ACTIONS[action];
+  if (actionId == null) {
+    throw productBridgeError(`anchor walker action is not known: ${String(action)}`);
+  }
+  const delta = action === 'gestureDown' || action === 'gestureTap'
+    ? requireIntegerInRange(Math.round(requireFiniteNumber(options.delta, 'delta')), 'delta', -7, 7)
+    : 0;
+  if ((action === 'gestureDown' || action === 'gestureTap') && delta === 0) {
+    throw productBridgeError('delta must be non-zero for anchor walker gesture events');
+  }
+  const velocity = action === 'gestureDown' || action === 'gestureTap'
+    ? requirePositiveUnitValue(options.velocity ?? 1, 'velocity')
+    : 0;
+  const midi = action === 'setManualAnchor'
+    ? requireNumberInRange(options.midi, 'midi', 0, 127)
+    : 0;
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.AnchorWalkerPerformance,
+    targetId: requireSequencerId(sequencer),
+    index: requireIntegerInRange(laneIndex, 'laneIndex', 0, 15),
+    paramId: actionId,
+    value: delta,
+    value2: velocity,
+    value3: midi,
   };
 }
 

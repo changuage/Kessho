@@ -1,5 +1,5 @@
 import type { CoreProductSnapshot } from './coreProductSnapshot';
-import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
+import type { CoreProductAnchorWalkerVisualLaneState, CoreProductOrbitVisualLaneState, CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import type { SequencerStepToggleOverride } from './CoreProductHostSequencerAdapter';
 import { defaultDrumEuclidPattern, defaultSynthEuclidPattern, euclideanMaskHit, euclideanPatternMask, resolveEuclidPatternParams } from './euclideanPatterns';
 import { sequencerClockDivisionToNumericValue } from './sequencerClockDivisions';
@@ -24,6 +24,15 @@ type PublishSequencerVisualsInput = {
   sampleRate: number;
   publish: (name: 'synthStepPosition' | 'drumStepPosition', steps: number[], hitCounts: number[]) => void;
 };
+
+type PublishSynthVisualStateInput<Name extends string, Lane> = {
+  telemetry: CoreProductTelemetrySnapshot | null;
+  visibleLaneCount: number;
+  hasCallback: (name: Name) => boolean;
+  publish: (name: Name, lanes: Array<Lane | null>) => void;
+};
+type PublishSynthOrbitVisualStateInput = PublishSynthVisualStateInput<'synthOrbitVisualState', CoreProductOrbitVisualLaneState>;
+type PublishSynthAnchorWalkerVisualStateInput = PublishSynthVisualStateInput<'synthAnchorWalkerVisualState', CoreProductAnchorWalkerVisualLaneState>;
 
 const ZERO_STEPS = [0, 0, 0, 0];
 const ZERO_HITS = [0, 0, 0, 0];
@@ -151,4 +160,20 @@ export function publishCoreProductSequencerVisuals(input: PublishSequencerVisual
   const drum = visualPositionsFor('drum', input);
   input.publish('synthStepPosition', synth.steps, synth.hitCounts);
   input.publish('drumStepPosition', drum.steps, drum.hitCounts);
+}
+
+function currentSynthVisualState<VisualLane>(lanes: Array<VisualLane | null> | undefined, visibleLaneCount: number): Array<VisualLane | null> {
+  return Array.from({ length: visibleLaneCount }, (_, laneIndex) => lanes?.[laneIndex] ?? null);
+}
+
+export function currentCoreProductSynthOrbitVisualState(telemetry: CoreProductTelemetrySnapshot | null, visibleLaneCount: number): Array<CoreProductOrbitVisualLaneState | null> { return currentSynthVisualState(telemetry?.synthOrbitVisualLanes, visibleLaneCount); }
+export function publishCoreProductSynthOrbitVisualState(input: PublishSynthOrbitVisualStateInput): void {
+  if (!input.hasCallback('synthOrbitVisualState')) return;
+  input.publish('synthOrbitVisualState', currentCoreProductSynthOrbitVisualState(input.telemetry, input.visibleLaneCount));
+}
+
+export function currentCoreProductSynthAnchorWalkerVisualState(telemetry: CoreProductTelemetrySnapshot | null, visibleLaneCount: number): Array<CoreProductAnchorWalkerVisualLaneState | null> { return currentSynthVisualState(telemetry?.synthAnchorWalkerVisualLanes, visibleLaneCount); }
+export function publishCoreProductSynthAnchorWalkerVisualState(input: PublishSynthAnchorWalkerVisualStateInput): void {
+  if (!input.hasCallback('synthAnchorWalkerVisualState')) return;
+  input.publish('synthAnchorWalkerVisualState', currentCoreProductSynthAnchorWalkerVisualState(input.telemetry, input.visibleLaneCount));
 }

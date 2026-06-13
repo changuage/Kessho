@@ -24,6 +24,7 @@ function randomActiveStep(s: SequencerState): number | null {
 // Sub-lane accessor helpers (type-safe access to the differently-named values arrays)
 // ═══════════════════════════════════════════════════════════════════════
 export type SubLaneName = 'expression' | 'morph' | 'distance' | 'pitch' | 'slice' | 'reverse';
+const EUCLIDEAN_STEP_MAX = 32;
 const DRUM_AUDIO_SUB_LANES: SubLaneName[] = ['expression', 'morph', 'distance', 'pitch'];
 const DRUM_AUDIO_SUB_LANE_SET = new Set<SubLaneName>(DRUM_AUDIO_SUB_LANES);
 const DRUM_SUB_LANE_DEFAULT_VALUES: Record<SubLaneName, number> = {
@@ -386,7 +387,7 @@ export function evolveSequencer(
     const lane = pickSubLane(activeLanes, next.rng);
     if (lane) {
       const stepDir = next.rng() < 0.5 ? -1 : 1;
-      setSubLaneSteps(next, lane, clamp(getSubLaneSteps(next, lane) + stepDir, 1, 16));
+      setSubLaneSteps(next, lane, clamp(getSubLaneSteps(next, lane) + stepDir, 1, EUCLIDEAN_STEP_MAX));
     }
   }
 

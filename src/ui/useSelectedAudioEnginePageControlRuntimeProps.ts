@@ -10,6 +10,8 @@ export type SelectedAudioEnginePageControlRuntimeProps = Pick<
   | 'setSelectedDrumStepPositionCallback'
   | 'setSelectedDrumTriggerCallback'
   | 'setSelectedSynthEvolveTriggerCallback'
+  | 'setSelectedSynthAnchorWalkerVisualStateCallback'
+  | 'setSelectedSynthOrbitVisualStateCallback'
   | 'setSelectedSynthStepPositionCallback'
 >;
 
@@ -21,6 +23,8 @@ export function useSelectedAudioEnginePageControlRuntimeProps({
   setSelectedDrumStepPositionCallback,
   setSelectedDrumTriggerCallback,
   setSelectedSynthEvolveTriggerCallback,
+  setSelectedSynthAnchorWalkerVisualStateCallback,
+  setSelectedSynthOrbitVisualStateCallback,
   setSelectedSynthStepPositionCallback,
 }: SelectedAudioEnginePageControlRuntimeProps): SelectedAudioEnginePageControlRuntimeProps {
   return useMemo(() => ({
@@ -31,6 +35,8 @@ export function useSelectedAudioEnginePageControlRuntimeProps({
     setSelectedDrumStepPositionCallback,
     setSelectedDrumTriggerCallback,
     setSelectedSynthEvolveTriggerCallback,
+    setSelectedSynthAnchorWalkerVisualStateCallback,
+    setSelectedSynthOrbitVisualStateCallback,
     setSelectedSynthStepPositionCallback,
   }), [
     onRequestPlaybackStart,
@@ -40,6 +46,8 @@ export function useSelectedAudioEnginePageControlRuntimeProps({
     setSelectedDrumStepPositionCallback,
     setSelectedDrumTriggerCallback,
     setSelectedSynthEvolveTriggerCallback,
+    setSelectedSynthAnchorWalkerVisualStateCallback,
+    setSelectedSynthOrbitVisualStateCallback,
     setSelectedSynthStepPositionCallback,
   ]);
 }

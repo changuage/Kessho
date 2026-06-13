@@ -1,5 +1,5 @@
 import type { HarmonyState } from '../../audio/harmony';
-import type { AnchorWalkerLayerConfig, SnapSource } from './anchorWalkerTypes';
+import type { AnchorWalkerLayerConfig, AnchorWalkerSnapSource, WalkerBoundaryMode } from './anchorWalkerTypes';
 
 export const CHROMATIC_PITCH_CLASS_MASK = 0x0fff;
 
@@ -73,9 +73,33 @@ export function findNearestLatticeIndex(lattice: readonly number[], midi: number
 }
 
 export function degreeToMidi(cursorDegree: number, lattice: readonly number[], anchorMidi = 60): number {
+  return degreeToMidiBounded(cursorDegree, lattice, anchorMidi, 'clamp');
+}
+
+function positiveModulo(value: number, divisor: number): number {
+  return ((value % divisor) + divisor) % divisor;
+}
+
+function boundedLatticeIndex(index: number, length: number, boundaryMode: WalkerBoundaryMode): number {
+  if (length <= 1) return 0;
+  if (boundaryMode === 'wrap') return positiveModulo(index, length);
+  if (boundaryMode === 'fold') {
+    const period = (length - 1) * 2;
+    const folded = positiveModulo(index, period);
+    return folded <= length - 1 ? folded : period - folded;
+  }
+  return clamp(index, 0, length - 1);
+}
+
+export function degreeToMidiBounded(
+  cursorDegree: number,
+  lattice: readonly number[],
+  anchorMidi = 60,
+  boundaryMode: WalkerBoundaryMode = 'fold',
+): number {
   if (lattice.length === 0) return clamp(Math.round(anchorMidi), 0, 127);
   const anchorIndex = findNearestLatticeIndex(lattice, anchorMidi);
-  const index = clamp(anchorIndex + Math.round(cursorDegree), 0, lattice.length - 1);
+  const index = boundedLatticeIndex(anchorIndex + Math.round(cursorDegree), lattice.length, boundaryMode);
   return lattice[index] ?? lattice[anchorIndex] ?? clamp(Math.round(anchorMidi), 0, 127);
 }
 
@@ -122,22 +146,13 @@ export function resolveHarmonySnapMask(harmonyState?: HarmonyState | null): numb
   return pitchClassesToMask(intervals.map((interval) => root + interval));
 }
 
-export function resolveHarmonyChordMask(harmonyState?: HarmonyState | null): number {
-  const notes = harmonyState?.currentChord?.midiNotes;
-  if (!notes || notes.length === 0) return resolveHarmonySnapMask(harmonyState);
-  return pitchClassesToMask(notes);
-}
-
 export function resolveAnchorWalkerSnapMask(args: {
-  snapSource: SnapSource;
+  snapSource: AnchorWalkerSnapSource;
   customPitchClasses: readonly number[];
   harmonyState?: HarmonyState | null;
 }): number {
-  if (args.snapSource === 'customPitchClasses' || args.snapSource === 'liveBlueKeys') {
+  if (args.snapSource === 'customPitchClasses') {
     return pitchClassesToMask(args.customPitchClasses);
-  }
-  if (args.snapSource === 'manualVoicing' || args.snapSource === 'chordStep') {
-    return resolveHarmonyChordMask(args.harmonyState);
   }
   return resolveHarmonySnapMask(args.harmonyState);
 }

@@ -48,6 +48,7 @@ export type SelectedProductRuntime = SelectedRuntimeTarget & {
   setDrumTriggerCallback(callback: unknown): void;
   setDrumStepPositionCallback(callback: unknown): void;
   setSynthStepPositionCallback(callback: unknown): void;
+  setSynthAnchorWalkerVisualStateCallback(callback: unknown): void;
   setDrumEuclidEvolveTriggerCallback(callback: unknown): void;
   setSynthEuclidEvolveTriggerCallback(callback: unknown): void;
   setRuntimeWalkPositionsCallback(callback: unknown): void;

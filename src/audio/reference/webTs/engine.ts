@@ -255,6 +255,7 @@ type EvolvedDrumSubLane = EvolvedAudioSubLane | 'slice' | 'reverse';
 type EvolvedDrumSubLanePatch = Partial<Record<EvolvedDrumSubLane, { enabled: boolean; steps: number; direction: LaneDirection; scaleQuantize?: boolean }>>;
 type SynthEvolveOverridesPayload = Partial<SynthLaneOverrides> & { swing?: number; subLaneStates?: EvolvedSubLanePatch; pitchSettings?: (SequencerPitchSettings | null)[] };
 type DrumEvolveOverridesPayload = Partial<DrumStepOverrides> & { swing?: number; subLaneStates?: EvolvedDrumSubLanePatch; pitchSettings?: (SequencerPitchSettings | null)[] };
+const EUCLIDEAN_STEP_MAX = 32;
 
 type StereoWidthProcessor = {
   input: GainNode;
@@ -273,7 +274,7 @@ function synthEvolvedSubLaneStatePatch(overrides: SynthLaneOverrides): EvolvedSu
     if (!Array.isArray(values)) return;
     patch[lane] = {
       enabled: true,
-      steps: Math.max(1, Math.min(16, values.length)),
+      steps: Math.max(1, Math.min(EUCLIDEAN_STEP_MAX, values.length)),
       direction: direction ?? 'forward',
     };
   };
@@ -300,7 +301,7 @@ function drumStepOverrideSubLaneStatePatch(
     const direction = overrides[directionKey]?.[laneIndex] ?? fallback?.[directionKey]?.[laneIndex] ?? 'forward';
     patch[lane] = {
       enabled: Array.isArray(values),
-      steps: Math.max(1, Math.min(16, Array.isArray(values)
+      steps: Math.max(1, Math.min(EUCLIDEAN_STEP_MAX, Array.isArray(values)
         ? values.length
         : Array.isArray(fallbackValues) ? fallbackValues.length : 1)),
       direction,
@@ -5512,7 +5513,7 @@ export class AudioEngine {
     const stateKey = `drumEuclid${laneIndex + 1}Steps` as keyof SliderState;
     const raw = state?.[stateKey];
     if (typeof raw === 'number' && Number.isFinite(raw)) {
-      return Math.max(2, Math.min(16, Math.round(raw)));
+      return Math.max(2, Math.min(EUCLIDEAN_STEP_MAX, Math.round(raw)));
     }
     const overrides = this.pendingStepOverrides;
     const length = [
@@ -5523,7 +5524,7 @@ export class AudioEngine {
       overrides?.morph[laneIndex],
       overrides?.distance[laneIndex],
     ].find((values): values is number[] => Array.isArray(values) && values.length > 0)?.length;
-    return Math.max(2, Math.min(16, Math.round(length ?? 16)));
+    return Math.max(2, Math.min(EUCLIDEAN_STEP_MAX, Math.round(length ?? 16)));
   }
 
   private publishPendingDrumEvolveOverrides(

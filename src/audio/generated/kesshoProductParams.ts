@@ -64,10 +64,15 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SequencerLaneNoteRangeMax: 224,
   SequencerLaneMode: 225,
   SequencerAnchorWalkerMode: 226,
+  SequencerAnchorWalkerPlayMode: 1195,
   SequencerAnchorWalkerAnchorSource: 227,
   SequencerAnchorWalkerManualAnchorMidi: 228,
   SequencerAnchorWalkerSnapSource: 229,
   SequencerAnchorWalkerCustomPitchClassMask: 230,
+  SequencerAnchorWalkerTriggerMode: 1193,
+  SequencerAnchorWalkerBoundaryMode: 1194,
+  SequencerAnchorWalkerKeyboardRange: 1196,
+  SequencerAnchorWalkerShowLinkedOutputs: 1197,
   SequencerAnchorWalkerAutoRate: 231,
   SequencerAnchorWalkerAutoFeel: 232,
   SequencerAnchorWalkerLeadMode: 233,
@@ -75,6 +80,7 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SequencerAnchorWalkerPitchWheelWalk: 235,
   SequencerAnchorWalkerGesturePatternStep: 236,
   SequencerAnchorWalkerGesturePatternLength: 237,
+  SequencerAnchorWalkerActivePadDelta: 1198,
   SequencerAnchorWalkerLayerPreset: 238,
   SequencerAnchorWalkerSpreadMs: 239,
   SequencerAnchorWalkerLayerEnabled: 240,
@@ -1061,6 +1067,14 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "max": 2
   },
   {
+    "name": "SequencerAnchorWalkerPlayMode",
+    "path": "sequencers.*.lanes.*.anchorWalker.playMode",
+    "type": "uint",
+    "id": 1195,
+    "min": 0,
+    "max": 2
+  },
+  {
     "name": "SequencerAnchorWalkerAnchorSource",
     "path": "sequencers.*.lanes.*.anchorWalker.anchorSource",
     "type": "uint",
@@ -1091,6 +1105,36 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 230,
     "min": 1,
     "max": 4095
+  },
+  {
+    "name": "SequencerAnchorWalkerTriggerMode",
+    "path": "sequencers.*.lanes.*.anchorWalker.triggerMode",
+    "type": "uint",
+    "id": 1193,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "SequencerAnchorWalkerBoundaryMode",
+    "path": "sequencers.*.lanes.*.anchorWalker.boundaryMode",
+    "type": "uint",
+    "id": 1194,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "SequencerAnchorWalkerKeyboardRange",
+    "path": "sequencers.*.lanes.*.anchorWalker.keyboardRange",
+    "type": "uint",
+    "id": 1196,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "SequencerAnchorWalkerShowLinkedOutputs",
+    "path": "sequencers.*.lanes.*.anchorWalker.showLinkedOutputs",
+    "type": "bool",
+    "id": 1197
   },
   {
     "name": "SequencerAnchorWalkerAutoRate",
@@ -1141,6 +1185,14 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 237,
     "min": 1,
     "max": 16
+  },
+  {
+    "name": "SequencerAnchorWalkerActivePadDelta",
+    "path": "sequencers.*.lanes.*.anchorWalker.activePadDelta",
+    "type": "int",
+    "id": 1198,
+    "min": -7,
+    "max": 7
   },
   {
     "name": "SequencerAnchorWalkerLayerPreset",
@@ -1258,7 +1310,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "uint",
     "id": 252,
     "min": 1,
-    "max": 5
+    "max": 8
   },
   {
     "name": "SequencerOrbitBpmPercent",

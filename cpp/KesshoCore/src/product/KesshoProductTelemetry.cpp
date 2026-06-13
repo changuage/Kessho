@@ -46,6 +46,12 @@ uint32_t mixDebugFloat(uint32_t hash, float value) {
   return mixDebugHash(hash, floatDebugBits(value));
 }
 
+constexpr uint32_t kAnchorWalkerVisualFlagEnabled = 1u << 0u;
+constexpr uint32_t kAnchorWalkerVisualFlagGestureHeld = 1u << 1u;
+constexpr uint32_t kAnchorWalkerVisualFlagCursorValid = 1u << 2u;
+constexpr uint32_t kAnchorWalkerVisualFlagAnchorValid = 1u << 3u;
+constexpr uint32_t kAnchorWalkerVisualFlagWalking = 1u << 4u;
+
 uint32_t overrideBlockHash(
     uint32_t hash,
     uint32_t count,
@@ -402,9 +408,68 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
     telemetry.drum_sequencer_hit_counts[i] = 0u;
     telemetry.synth_sequencer_current_steps[i] = 0u;
     telemetry.drum_sequencer_current_steps[i] = 0u;
+    telemetry.synth_orbit_visual_note_counts[i] = 0u;
+    telemetry.synth_orbit_visual_base_angles[i] = 0.0f;
+    telemetry.synth_anchor_walker_visual_flags[i] = 0u;
+    telemetry.synth_anchor_walker_cursor_degrees[i] = 0;
+    telemetry.synth_anchor_walker_last_gesture_deltas[i] = 0;
+    telemetry.synth_anchor_walker_boundary_events[i] = KESSHO_PRODUCT_ANCHOR_WALKER_BOUNDARY_NONE;
+    telemetry.synth_anchor_walker_output_counts[i] = 0u;
+    telemetry.synth_anchor_walker_anchor_midis[i] = 0.0f;
+    telemetry.synth_anchor_walker_cursor_midis[i] = 0.0f;
+    telemetry.synth_anchor_walker_previous_cursor_midis[i] = 0.0f;
+    for (uint32_t note_index = 0u; note_index < KESSHO_PRODUCT_ORBIT_VISUAL_NOTES; ++note_index) {
+      const uint32_t visual_index = i * KESSHO_PRODUCT_ORBIT_VISUAL_NOTES + note_index;
+      telemetry.synth_orbit_visual_note_angles[visual_index] = 0.0f;
+      telemetry.synth_orbit_visual_note_flashes[visual_index] = 0.0f;
+    }
+    for (uint32_t output_index = 0u; output_index < KESSHO_PRODUCT_ANCHOR_WALKER_VISUAL_OUTPUTS; ++output_index) {
+      const uint32_t visual_index = i * KESSHO_PRODUCT_ANCHOR_WALKER_VISUAL_OUTPUTS + output_index;
+      telemetry.synth_anchor_walker_output_midis[visual_index] = 0.0f;
+      telemetry.synth_anchor_walker_output_velocities[visual_index] = 0.0f;
+    }
   }
   for (uint32_t i = 0; i < std::min<uint32_t>(synth_lane_count, KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES); ++i) {
     const LaneState& lane = synth_lanes[i];
+    if (lane.sequencer_mode == kSequencerModeOrbit) {
+      const uint32_t note_count = std::min<uint32_t>(
+          lane.orbit.note_count,
+          std::min<uint32_t>(KESSHO_PRODUCT_ORBIT_VISUAL_NOTES, kMaxOrbitSequencerNotes));
+      telemetry.synth_orbit_visual_note_counts[i] = note_count;
+      telemetry.synth_orbit_visual_base_angles[i] = lane.orbit.base_angle;
+      for (uint32_t note_index = 0u; note_index < note_count; ++note_index) {
+        const uint32_t visual_index = i * KESSHO_PRODUCT_ORBIT_VISUAL_NOTES + note_index;
+        telemetry.synth_orbit_visual_note_angles[visual_index] = lane.orbit.notes[note_index].angle;
+        telemetry.synth_orbit_visual_note_flashes[visual_index] = lane.orbit.notes[note_index].flash;
+      }
+    }
+    if (lane.sequencer_mode == kSequencerModeAnchorWalker) {
+      const AnchorWalkerState& walker = lane.anchor_walker;
+      uint32_t flags = 0u;
+      if (lane.enabled && walker.enabled) flags |= kAnchorWalkerVisualFlagEnabled;
+      if (walker.gesture_held) flags |= kAnchorWalkerVisualFlagGestureHeld;
+      if (walker.cursor_valid) flags |= kAnchorWalkerVisualFlagCursorValid;
+      if (walker.anchor_valid) flags |= kAnchorWalkerVisualFlagAnchorValid;
+      if (lane.sequencer_runtime_initialized && walker.runtime_initialized) flags |= kAnchorWalkerVisualFlagWalking;
+      telemetry.synth_anchor_walker_visual_flags[i] = flags;
+      telemetry.synth_anchor_walker_cursor_degrees[i] = walker.cursor_degree;
+      telemetry.synth_anchor_walker_last_gesture_deltas[i] = walker.last_gesture_delta;
+      telemetry.synth_anchor_walker_boundary_events[i] = walker.boundary_event;
+      telemetry.synth_anchor_walker_anchor_midis[i] = walker.anchor_midi;
+      telemetry.synth_anchor_walker_cursor_midis[i] = walker.cursor_midi;
+      telemetry.synth_anchor_walker_previous_cursor_midis[i] = walker.previous_cursor_midi;
+      const uint32_t output_count = std::min<uint32_t>(
+          walker.last_output_count,
+          std::min<uint32_t>(
+              KESSHO_PRODUCT_ANCHOR_WALKER_VISUAL_OUTPUTS,
+              kMaxAnchorWalkerLayers));
+      telemetry.synth_anchor_walker_output_counts[i] = output_count;
+      for (uint32_t output_index = 0u; output_index < output_count; ++output_index) {
+        const uint32_t visual_index = i * KESSHO_PRODUCT_ANCHOR_WALKER_VISUAL_OUTPUTS + output_index;
+        telemetry.synth_anchor_walker_output_midis[visual_index] = walker.last_output_midis[output_index];
+        telemetry.synth_anchor_walker_output_velocities[visual_index] = walker.last_output_velocities[output_index];
+      }
+    }
     if (!lane.enabled || !lane.sequencer_runtime_initialized || lane.step_count == 0u || lane.clock_division == 0u) {
       continue;
     }

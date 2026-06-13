@@ -44,6 +44,7 @@
     { "name": "HarmonyGenerateSequence", "id": 42 },
     { "name": "HarmonyGenerateBoth", "id": 43 },
     { "name": "HarmonyRegenerateUnlocked", "id": 44 },
-    { "name": "HarmonyCommitBaselineMap", "id": 45 }
+    { "name": "HarmonyCommitBaselineMap", "id": 45 },
+    { "name": "AnchorWalkerPerformance", "id": 46 }
   ]
 }

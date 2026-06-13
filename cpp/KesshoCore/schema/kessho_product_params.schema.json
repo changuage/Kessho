@@ -485,6 +485,14 @@
       "max": 2
     },
     {
+      "name": "SequencerAnchorWalkerPlayMode",
+      "path": "sequencers.*.lanes.*.anchorWalker.playMode",
+      "type": "uint",
+      "id": 1195,
+      "min": 0,
+      "max": 2
+    },
+    {
       "name": "SequencerAnchorWalkerAnchorSource",
       "path": "sequencers.*.lanes.*.anchorWalker.anchorSource",
       "type": "uint",
@@ -515,6 +523,36 @@
       "id": 230,
       "min": 1,
       "max": 4095
+    },
+    {
+      "name": "SequencerAnchorWalkerTriggerMode",
+      "path": "sequencers.*.lanes.*.anchorWalker.triggerMode",
+      "type": "uint",
+      "id": 1193,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "SequencerAnchorWalkerBoundaryMode",
+      "path": "sequencers.*.lanes.*.anchorWalker.boundaryMode",
+      "type": "uint",
+      "id": 1194,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "SequencerAnchorWalkerKeyboardRange",
+      "path": "sequencers.*.lanes.*.anchorWalker.keyboardRange",
+      "type": "uint",
+      "id": 1196,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SequencerAnchorWalkerShowLinkedOutputs",
+      "path": "sequencers.*.lanes.*.anchorWalker.showLinkedOutputs",
+      "type": "bool",
+      "id": 1197
     },
     {
       "name": "SequencerAnchorWalkerAutoRate",
@@ -565,6 +603,14 @@
       "id": 237,
       "min": 1,
       "max": 16
+    },
+    {
+      "name": "SequencerAnchorWalkerActivePadDelta",
+      "path": "sequencers.*.lanes.*.anchorWalker.activePadDelta",
+      "type": "int",
+      "id": 1198,
+      "min": -7,
+      "max": 7
     },
     {
       "name": "SequencerAnchorWalkerLayerPreset",
@@ -682,7 +728,7 @@
       "type": "uint",
       "id": 252,
       "min": 1,
-      "max": 5
+      "max": 8
     },
     {
       "name": "SequencerOrbitBpmPercent",

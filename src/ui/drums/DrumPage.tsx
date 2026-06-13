@@ -45,6 +45,11 @@ import {
   copySequenceLaneStateForPreset,
   type SerializedSequenceLanePresetState,
 } from '../sequencer/sequencePresetLane';
+import {
+  clampEuclideanSubLaneSteps,
+  clampEuclideanTriggerSteps,
+  EUCLIDEAN_STEP_MAX,
+} from '../sequencer/sequencerLimits';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import { SEQUENCER_LANE_COLORS, SEQUENCER_SUB_LANE_COLORS } from '../../designSystem/colors';
 import {
@@ -717,7 +722,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   const adjustDrumKeyboardLaneSteps = useCallback((direction: 1 | -1) => {
     if (activeKeyboardLane === 'trigger') {
       const currentSteps = seq.sequencerModels[seq.activeTab]?.trigger.steps ?? 16;
-      const nextSteps = Math.max(2, Math.min(16, currentSteps + direction));
+      const nextSteps = clampEuclideanTriggerSteps(currentSteps + direction, currentSteps);
       if (nextSteps === currentSteps) return;
       seq.setParam(seq.activeTab, 'Steps', nextSteps);
       selectDrumKeyboardStep(seq.activeTab, 'trigger', Math.min(activeKeyboardStep, nextSteps - 1));
@@ -725,7 +730,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     }
 
     const currentSteps = seq.subLaneStates[seq.activeTab]?.[activeKeyboardLane]?.steps ?? 0;
-    const nextSteps = Math.max(1, Math.min(16, currentSteps + direction));
+    const nextSteps = clampEuclideanSubLaneSteps(currentSteps + direction, currentSteps);
     if (nextSteps === currentSteps) return;
     seq.setSubLaneSteps(seq.activeTab, activeKeyboardLane, nextSteps);
     selectDrumKeyboardStep(seq.activeTab, activeKeyboardLane, Math.min(activeKeyboardStep, nextSteps - 1));
@@ -1521,7 +1526,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                       <DragNumber
                         value={activeSeq.trigger.steps}
                         min={2}
-                        max={16}
+                        max={EUCLIDEAN_STEP_MAX}
                         label="Steps"
                         shapeByDrag
                         onChange={(v) => seq.setParam(seq.activeTab, 'Steps', v)}

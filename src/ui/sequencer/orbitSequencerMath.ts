@@ -2,6 +2,7 @@ import type { OrbitDirection, OrbitSplineConfig } from './orbitSequencerTypes';
 
 export const TAU = Math.PI * 2;
 export const ORBIT_RADIUS_SCALE = 0.44;
+export const MAX_ORBIT_TRIGGER_LINES = 8;
 
 export interface OrbitPoint {
   x: number;
@@ -28,13 +29,19 @@ export function wrapRadians(angle: number): number {
   return wrapped < 0 ? wrapped + TAU : wrapped;
 }
 
+export function snapOrbitPhase(angle: number, division: number): number {
+  const steps = Math.max(1, Math.min(64, Math.round(division)));
+  const step = TAU / steps;
+  return wrapRadians(Math.round(wrapRadians(angle) / step) * step);
+}
+
 export function signedRadians(angle: number): number {
   const wrapped = wrapRadians(angle + Math.PI) - Math.PI;
   return wrapped <= -Math.PI ? wrapped + TAU : wrapped;
 }
 
 export function lineAngleOffset(index: number, count: number): number {
-  const safeCount = Math.max(1, Math.min(5, Math.round(count)));
+  const safeCount = Math.max(1, Math.min(MAX_ORBIT_TRIGGER_LINES, Math.round(count)));
   return TAU * Math.max(0, Math.round(index)) / safeCount;
 }
 
@@ -124,15 +131,40 @@ export function directionSign(direction: OrbitDirection): number {
   return direction === 'ccw' ? -1 : 1;
 }
 
-export function resolveAngularSpeed(speedMode: 'bpmPercent' | 'syncDivisor', speedValue: number, bpmPercent: number): number {
-  const base = (TAU / 2) * clamp(bpmPercent, 1, 800) / 100;
+export function resolveAngularSpeed(
+  speedMode: 'bpmPercent' | 'syncDivisor',
+  speedValue: number,
+  bpmPercent: number,
+  transportBpm = 120,
+): number {
+  const beatsPerSecond = Math.max(1, Number.isFinite(transportBpm) ? transportBpm : 120) / 60;
+  const base = TAU * beatsPerSecond * (clamp(bpmPercent, 1, 800) / 100) * 0.25;
   if (speedMode === 'bpmPercent') {
     return base * clamp(speedValue, 1, 800) / 100;
   }
-  return base / Math.max(0.125, speedValue);
+  return base / clamp(speedValue, 0.125, 64);
+}
+
+export function orbitSpeedOffsetFactor(radiusNorm: number, speedOffset: number): number {
+  const offset = clamp(speedOffset, -0.9, 1);
+  const radius = clamp(radiusNorm, 0, 1);
+  return clamp(1 + offset * radius, 0.125, 2);
+}
+
+export function adjustedOrbitSpeedValue(
+  speedMode: 'bpmPercent' | 'syncDivisor',
+  speedValue: number,
+  radiusNorm: number,
+  speedOffset: number,
+): number {
+  const factor = orbitSpeedOffsetFactor(radiusNorm, speedOffset);
+  if (speedMode === 'bpmPercent') {
+    return clamp(speedValue * factor, 1, 800);
+  }
+  return clamp(speedValue / factor, 0.125, 800);
 }
 
 export function lineAngles(baseAngle: number, count: number): number[] {
-  const safeCount = Math.max(1, Math.min(5, Math.round(count)));
+  const safeCount = Math.max(1, Math.min(MAX_ORBIT_TRIGGER_LINES, Math.round(count)));
   return Array.from({ length: safeCount }, (_, index) => wrapRadians(baseAngle + lineAngleOffset(index, safeCount)));
 }

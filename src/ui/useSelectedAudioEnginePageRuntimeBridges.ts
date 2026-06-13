@@ -4,7 +4,12 @@ import type { DynamicsVisualTelemetrySnapshot, EarthTextureDebugState } from '..
 import { useDrumPageRuntimeBridge } from './useDrumPageRuntimeBridge';
 import { useDrumPageSequencerBridge } from './useDrumPageSequencerBridge';
 import { useSynthPageSequencerBridge } from './useSynthPageSequencerBridge';
-import type { ProductDrumVoice, ProductManualSynthNote } from '../audio/product/ProductEngineTypes';
+import type {
+  ProductDrumVoice,
+  ProductManualSynthNote,
+  ProductSynthAnchorWalkerVisualStateCallback,
+  ProductSynthOrbitVisualStateCallback,
+} from '../audio/product/ProductEngineTypes';
 import type { SliderState } from './state';
 
 export type SelectedAudioEnginePageRuntimeBridgeOptions =
@@ -37,6 +42,8 @@ export type SelectedAudioEnginePageRuntimeBridgeOptions =
     setSelectedDrumTriggerCallback: (callback: ((voice: string, velocity: number) => void) | null) => void;
     setSelectedGranularUiActive: (active: boolean) => void;
     setSelectedSynthEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
+    setSelectedSynthAnchorWalkerVisualStateCallback: (callback: ProductSynthAnchorWalkerVisualStateCallback | null) => void;
+    setSelectedSynthOrbitVisualStateCallback: (callback: ProductSynthOrbitVisualStateCallback | null) => void;
     setSelectedSynthStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
     textureDebugAvailable: boolean;
   };
@@ -54,6 +61,8 @@ export function useSelectedAudioEnginePageRuntimeBridges(options: SelectedAudioE
     getPadFilterFreq: options.getSelectedPadFilterFreq,
     getPadLfoValue: options.getSelectedPadLfoValue,
     setStepPositionCallback: options.setSelectedSynthStepPositionCallback,
+    setOrbitVisualStateCallback: options.setSelectedSynthOrbitVisualStateCallback,
+    setAnchorWalkerVisualStateCallback: options.setSelectedSynthAnchorWalkerVisualStateCallback,
     setEvolveTriggerCallback: options.setSelectedSynthEvolveTriggerCallback,
   }), [
     options.getSelectedLeadMorphedParams,
@@ -63,6 +72,8 @@ export function useSelectedAudioEnginePageRuntimeBridges(options: SelectedAudioE
     options.onRequestPlaybackStart,
     options.productRuntimeManualTriggers.auditionSynthNote,
     options.setSelectedSynthEvolveTriggerCallback,
+    options.setSelectedSynthAnchorWalkerVisualStateCallback,
+    options.setSelectedSynthOrbitVisualStateCallback,
     options.setSelectedSynthStepPositionCallback,
   ]);
   const drumPageRuntimeProps = useMemo(() => ({

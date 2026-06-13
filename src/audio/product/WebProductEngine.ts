@@ -32,6 +32,8 @@ import type {
   ProductScalarCallback,
   ProductSequencerEvolveTriggerCallback,
   ProductSequencerStepPositionCallback,
+  ProductSynthAnchorWalkerVisualStateCallback,
+  ProductSynthOrbitVisualStateCallback,
   ProductSequencerUiState,
   ProductSnapshotPatch,
   ProductSnapshotPatchReason,
@@ -215,6 +217,14 @@ export class WebProductEngine implements ProductEnginePort {
 
   setSynthStepPositionCallback(callback: ProductSequencerStepPositionCallback | null): void {
     coreProductRuntimeHostPort.setSynthStepPositionCallback(callback);
+  }
+
+  setSynthOrbitVisualStateCallback(callback: ProductSynthOrbitVisualStateCallback | null): void {
+    coreProductRuntimeHostPort.setSynthOrbitVisualStateCallback(callback);
+  }
+
+  setSynthAnchorWalkerVisualStateCallback(callback: ProductSynthAnchorWalkerVisualStateCallback | null): void {
+    coreProductRuntimeHostPort.setSynthAnchorWalkerVisualStateCallback(callback);
   }
 
   setDrumEuclidEvolveTriggerCallback(callback: ProductSequencerEvolveTriggerCallback | null): void {

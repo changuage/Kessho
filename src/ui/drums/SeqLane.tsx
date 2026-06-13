@@ -12,6 +12,11 @@ import {
 import DragNumber from './DragNumber';
 import { SliderPrimitive } from '../sliderSystem';
 import { SEQUENCER_SUB_LANE_COLORS } from '../../designSystem/colors';
+import {
+  EUCLIDEAN_SUB_LANE_STEP_MAX,
+  sequencerGridCellCount,
+  sequencerGridColumnCount,
+} from '../sequencer/sequencerLimits';
 
 type LaneKind = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance' | 'slice' | 'reverse';
 
@@ -289,7 +294,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
             <DragNumber
               value={laneSteps}
               min={1}
-              max={16}
+              max={EUCLIDEAN_SUB_LANE_STEP_MAX}
               label="Steps"
               onChange={(v) => onChangeSteps?.(v)}
               disabled={linked}
@@ -451,15 +456,14 @@ const SeqLane: React.FC<SeqLaneProps> = ({
       ) : (
       <div className="seq-lane-body">
         {(() => {
-          // Adaptive: 8 columns when steps < 9, 16 when steps >= 9
-          const visibleSteps = selectedStep != null && selectedStep >= 0 ? Math.max(laneSteps, selectedStep + 1) : laneSteps;
-          const maxCells = visibleSteps < 9 ? 8 : 16;
+          const visibleCells = sequencerGridCellCount(laneSteps, selectedStep);
+          const columnCount = sequencerGridColumnCount(laneSteps, selectedStep);
           return (
         <div
           className="seq-step-grid"
-          style={{ gridTemplateColumns: `repeat(${maxCells}, 1fr)` }}
+          style={{ gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}
         >
-          {new Array(maxCells).fill(0).map((_, step) => {
+          {new Array(visibleCells).fill(0).map((_, step) => {
             const inRange = step < laneSteps;
             const value = inRange ? getValue(step) : 0;
             const isSelected = selectedStep === step && (lane === 'pitch' || inRange);

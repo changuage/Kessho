@@ -273,6 +273,7 @@ struct KesshoProductEngine : ProductGraphState {
   void applySequencerStepEvent(const KesshoProductEvent& event);
   bool isSequencerLaneParam(uint32_t param_id) const;
   void applySequencerLaneParamEvent(const KesshoProductEvent& event);
+  void applyAnchorWalkerPerformanceEvent(const KesshoProductEvent& event);
   LaneState* sequencerLanesForEvent(const KesshoProductEvent& event, uint32_t& lane_count);
   void applyResetSequencerLaneHomeEvent(const KesshoProductEvent& event);
   bool dicePatternHit(uint32_t step, uint32_t steps, uint32_t fills, uint32_t rotation) const;

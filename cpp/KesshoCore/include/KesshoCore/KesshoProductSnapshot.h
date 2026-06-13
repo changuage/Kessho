@@ -135,11 +135,16 @@ typedef struct KesshoProductAnchorWalkerLayerSnapshot {
 typedef struct KesshoProductAnchorWalkerSnapshot {
   uint32_t enabled;
   uint32_t mode;
+  uint32_t play_mode;
   uint32_t target_source_id;
   uint32_t anchor_source;
   float manual_anchor_midi;
   uint32_t snap_source;
   uint32_t custom_pitch_class_mask;
+  uint32_t trigger_mode;
+  uint32_t boundary_mode;
+  uint32_t keyboard_range;
+  uint32_t show_linked_outputs;
   uint32_t auto_rate;
   uint32_t auto_feel;
   float swing;

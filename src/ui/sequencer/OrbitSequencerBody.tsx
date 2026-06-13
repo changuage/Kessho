@@ -1,10 +1,18 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import type { HarmonyState } from '../../audio/harmony';
 import { TEXT_SYMBOLS } from '../../designSystem/textSymbols';
 import { formatMidiNoteName } from './anchorWalkerMath';
 import { OrbitSequencerCanvas } from './OrbitSequencerCanvas';
-import type { OrbitDirection, OrbitNoteConfig, OrbitPitchMode, OrbitSequencerConfig, OrbitSpeedMode } from './orbitSequencerTypes';
-import { useOrbitSequencer } from './useOrbitSequencer';
+import type { OrbitDirection, OrbitNoteConfig, OrbitPitchLayout, OrbitPitchMode, OrbitRuntimeVisualState, OrbitSequencerConfig, OrbitSpeedMode, OrbitTriggerLineCount } from './orbitSequencerTypes';
+import {
+  ORBIT_BLOOM_NOTE_OPTIONS,
+  ORBIT_LOOP_BEAT_OPTIONS,
+  ORBIT_QUANTIZED_OFFSET_OPTIONS,
+  orbitHashUnit,
+  loopBeatsFromBpmPercent,
+  useOrbitSequencer,
+} from './useOrbitSequencer';
+import { TAU, wrapRadians } from './orbitSequencerMath';
 import './OrbitSequencer.css';
 
 interface OrbitSequencerBodyProps {
@@ -12,6 +20,9 @@ interface OrbitSequencerBodyProps {
   laneIndex: number;
   color: string;
   harmonyState?: HarmonyState | null;
+  isRunning?: boolean;
+  transportBpm?: number;
+  runtimeVisualState?: OrbitRuntimeVisualState | null;
   onChange: (config: OrbitSequencerConfig) => void;
 }
 
@@ -21,9 +32,46 @@ function updateNumeric(value: string, fallback: number): number {
 }
 
 function noteLabel(note: OrbitNoteConfig): string {
+  if (note.pitchMode === 'harmonyBloom') return `Bloom ${Math.round(note.radiusNorm * 100)}%`;
   if (note.pitchMode === 'fixedMidi') return formatMidiNoteName(note.midiNote);
   if (note.pitchMode === 'harmonyDegree') return `D${note.harmonyDegree + 1}`;
   return `${formatMidiNoteName(note.pitchRangeMin)}-${formatMidiNoteName(note.pitchRangeMax)}`;
+}
+
+type OrbitOffsetDraftKey = 'speedOffset' | 'globalOffset' | 'evenOffset' | 'freeOffset';
+type OrbitOffsetDrafts = Partial<Record<OrbitOffsetDraftKey, number>>;
+
+function draftValue(drafts: OrbitOffsetDrafts, key: OrbitOffsetDraftKey, fallback: number): number {
+  const value = drafts[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function offsetPreviewConfig(config: OrbitSequencerConfig, drafts: OrbitOffsetDrafts): OrbitSequencerConfig {
+  const speedOffset = draftValue(drafts, 'speedOffset', config.speedOffset);
+  const globalOffset = draftValue(drafts, 'globalOffset', config.globalOffset);
+  const evenOffset = draftValue(drafts, 'evenOffset', config.evenOffset);
+  const freeOffset = draftValue(drafts, 'freeOffset', config.freeOffset);
+  const globalDelta = globalOffset - config.globalOffset;
+  const evenDelta = evenOffset - config.evenOffset;
+  const freeDelta = freeOffset - config.freeOffset;
+  const hasPhasePreview = Math.abs(globalDelta) > 1e-9 || Math.abs(evenDelta) > 1e-9 || Math.abs(freeDelta) > 1e-9;
+  return {
+    ...config,
+    speedOffset,
+    globalOffset,
+    evenOffset,
+    freeOffset,
+    notes: hasPhasePreview
+      ? config.notes.map((note, index) => {
+        const jitter = orbitHashUnit(config.seed + index * 97 + 41) - 0.5;
+        const phaseDelta = (globalDelta + (index % 2 === 1 ? evenDelta : 0) + freeDelta * jitter) * TAU;
+        return {
+          ...note,
+          phase: wrapRadians(note.phase + phaseDelta),
+        };
+      })
+      : config.notes,
+  };
 }
 
 export function OrbitSequencerBody({
@@ -31,11 +79,37 @@ export function OrbitSequencerBody({
   laneIndex,
   color,
   harmonyState,
+  isRunning = false,
+  transportBpm = 120,
+  runtimeVisualState = null,
   onChange,
 }: OrbitSequencerBodyProps) {
   const orbit = useOrbitSequencer({ config, onChange });
   const selected = orbit.selectedNote;
   const scaleLabel = harmonyState?.scaleFamily.name ?? 'Harmony';
+  const loopBeats = loopBeatsFromBpmPercent(orbit.config.bpmPercent);
+  const [offsetDrafts, setOffsetDrafts] = useState<OrbitOffsetDrafts>({});
+  const previewConfig = useMemo(() => offsetPreviewConfig(orbit.config, offsetDrafts), [orbit.config, offsetDrafts]);
+  const speedOffsetValue = draftValue(offsetDrafts, 'speedOffset', orbit.config.speedOffset);
+  const globalOffsetValue = draftValue(offsetDrafts, 'globalOffset', orbit.config.globalOffset);
+  const evenOffsetValue = draftValue(offsetDrafts, 'evenOffset', orbit.config.evenOffset);
+  const freeOffsetValue = draftValue(offsetDrafts, 'freeOffset', orbit.config.freeOffset);
+  const bloomNoteOptions = ORBIT_BLOOM_NOTE_OPTIONS.includes(orbit.config.notes.length as (typeof ORBIT_BLOOM_NOTE_OPTIONS)[number])
+    ? ORBIT_BLOOM_NOTE_OPTIONS
+    : [...ORBIT_BLOOM_NOTE_OPTIONS, orbit.config.notes.length].sort((left, right) => left - right);
+  const setOffsetDraft = (key: OrbitOffsetDraftKey, value: number) => {
+    setOffsetDrafts((current) => ({ ...current, [key]: value }));
+  };
+  const commitOffsetDraft = (key: OrbitOffsetDraftKey, commit: (value: number) => void) => {
+    const draft = offsetDrafts[key];
+    if (typeof draft !== 'number' || !Number.isFinite(draft)) return;
+    setOffsetDrafts((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    commit(draft);
+  };
 
   return (
     <div
@@ -45,6 +119,17 @@ export function OrbitSequencerBody({
     >
       <div className="orbit-sequencer-top">
         <span className="orbit-label">{TEXT_SYMBOLS.orbit} Orbit</span>
+        <label className="orbit-label">
+          Layout
+          <select
+            className="orbit-select"
+            value={orbit.config.pitchLayout}
+            onChange={(event) => orbit.setPitchLayout(event.target.value as OrbitPitchLayout)}
+          >
+            <option value="harmonyBloom">Bloom</option>
+            <option value="freeOrbit">Free</option>
+          </select>
+        </label>
         <button
           type="button"
           className={`orbit-toggle${orbit.config.spline.spinEnabled ? ' on' : ''}`}
@@ -61,14 +146,14 @@ export function OrbitSequencerBody({
         </button>
         <button type="button" className="orbit-action" onClick={orbit.straightenSpline}>STRT</button>
         <label className="orbit-label">
-          Lines
+          Bars
           <span className="orbit-line-count">
-            {([1, 2, 3, 4, 5] as const).map((count) => (
+            {([1, 2, 3, 4, 5, 6, 7, 8] as const).map((count) => (
               <button
                 key={count}
                 type="button"
                 className={orbit.config.triggerLineCount === count ? 'active' : ''}
-                onClick={() => orbit.setTriggerLineCount(count)}
+                onClick={() => orbit.setTriggerLineCount(count as OrbitTriggerLineCount)}
               >
                 {count}
               </button>
@@ -76,7 +161,7 @@ export function OrbitSequencerBody({
           </span>
         </label>
         <label className="orbit-label">
-          Scale
+          Source
           <select
             className="orbit-select"
             value={orbit.config.snapSource}
@@ -89,33 +174,129 @@ export function OrbitSequencerBody({
           </select>
         </label>
         <label className="orbit-label">
-          BPM %
-          <input
-            className="orbit-input"
-            type="number"
-            min={1}
-            max={800}
-            value={Math.round(orbit.config.bpmPercent)}
-            onChange={(event) => orbit.updateConfig({ bpmPercent: updateNumeric(event.target.value, orbit.config.bpmPercent) })}
-          />
+          Loop
+          <select
+            className="orbit-select"
+            value={loopBeats}
+            onChange={(event) => orbit.setLoopBeats(updateNumeric(event.target.value, loopBeats))}
+          >
+            {ORBIT_LOOP_BEAT_OPTIONS.map((beats) => (
+              <option key={beats} value={beats}>{beats} beat{beats === 1 ? '' : 's'}</option>
+            ))}
+          </select>
         </label>
         <button
           type="button"
           className={`orbit-toggle${orbit.config.quantizeToHarmony ? ' on' : ''}`}
           onClick={() => orbit.updateConfig({ quantizeToHarmony: !orbit.config.quantizeToHarmony })}
         >
-          Snap
+          Pitch Snap
         </button>
         <button type="button" className="orbit-action" onClick={orbit.randomizeOrbits}>Random</button>
         <button type="button" className="orbit-action" onClick={orbit.resetPhase}>Reset Phase</button>
       </div>
 
+      <div className="orbit-bloom-tools">
+        <label className="orbit-field compact">
+          Nodes
+          <select
+            value={orbit.config.notes.length}
+            onChange={(event) => orbit.setBloomNoteCount(updateNumeric(event.target.value, orbit.config.notes.length))}
+          >
+            {bloomNoteOptions.map((count) => (
+              <option key={count} value={count}>{count}</option>
+            ))}
+          </select>
+        </label>
+        <button type="button" className="orbit-action" onClick={orbit.rebloomNotes}>Bloom</button>
+        <label className="orbit-field compact">
+          Speed Offset
+          <input
+            type="range"
+            min={-0.9}
+            max={1}
+            step={0.01}
+            value={speedOffsetValue}
+            onChange={(event) => setOffsetDraft('speedOffset', updateNumeric(event.target.value, speedOffsetValue))}
+            onPointerUp={() => commitOffsetDraft('speedOffset', orbit.setSpeedOffset)}
+            onPointerCancel={() => commitOffsetDraft('speedOffset', orbit.setSpeedOffset)}
+            onKeyUp={() => commitOffsetDraft('speedOffset', orbit.setSpeedOffset)}
+            onBlur={() => commitOffsetDraft('speedOffset', orbit.setSpeedOffset)}
+          />
+        </label>
+        <label className="orbit-field compact">
+          Global Offset
+          <input
+            type="range"
+            min={-1}
+            max={1}
+            step={0.01}
+            value={globalOffsetValue}
+            onChange={(event) => setOffsetDraft('globalOffset', updateNumeric(event.target.value, globalOffsetValue))}
+            onPointerUp={() => commitOffsetDraft('globalOffset', orbit.setGlobalOffset)}
+            onPointerCancel={() => commitOffsetDraft('globalOffset', orbit.setGlobalOffset)}
+            onKeyUp={() => commitOffsetDraft('globalOffset', orbit.setGlobalOffset)}
+            onBlur={() => commitOffsetDraft('globalOffset', orbit.setGlobalOffset)}
+          />
+        </label>
+        <label className="orbit-field compact">
+          Even Offset
+          <input
+            type="range"
+            min={-1}
+            max={1}
+            step={0.01}
+            value={evenOffsetValue}
+            onChange={(event) => setOffsetDraft('evenOffset', updateNumeric(event.target.value, evenOffsetValue))}
+            onPointerUp={() => commitOffsetDraft('evenOffset', orbit.setEvenOffset)}
+            onPointerCancel={() => commitOffsetDraft('evenOffset', orbit.setEvenOffset)}
+            onKeyUp={() => commitOffsetDraft('evenOffset', orbit.setEvenOffset)}
+            onBlur={() => commitOffsetDraft('evenOffset', orbit.setEvenOffset)}
+          />
+        </label>
+        <label className="orbit-field compact">
+          Free Offset
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={freeOffsetValue}
+            onChange={(event) => setOffsetDraft('freeOffset', updateNumeric(event.target.value, freeOffsetValue))}
+            onPointerUp={() => commitOffsetDraft('freeOffset', orbit.setFreeOffset)}
+            onPointerCancel={() => commitOffsetDraft('freeOffset', orbit.setFreeOffset)}
+            onKeyUp={() => commitOffsetDraft('freeOffset', orbit.setFreeOffset)}
+            onBlur={() => commitOffsetDraft('freeOffset', orbit.setFreeOffset)}
+          />
+        </label>
+        <label className="orbit-field compact">
+          Grid
+          <select
+            value={orbit.config.quantizedOffset}
+            onChange={(event) => orbit.setQuantizedOffset(updateNumeric(event.target.value, orbit.config.quantizedOffset))}
+          >
+            {ORBIT_QUANTIZED_OFFSET_OPTIONS.map((division) => (
+              <option key={division} value={division}>1/{division}</option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className={`orbit-toggle${orbit.config.dragQuantize ? ' on' : ''}`}
+          onClick={orbit.toggleDragQuantize}
+        >
+          Quantize
+        </button>
+      </div>
+
       <div className="orbit-main">
         <OrbitSequencerCanvas
-          config={orbit.config}
+          config={previewConfig}
           color={color}
           selectedNoteId={orbit.selectedNoteId}
-          active
+          active={isRunning}
+          transportBpm={transportBpm}
+          runtimeVisualState={runtimeVisualState}
           onSelectNote={orbit.setSelectedNoteId}
           onAddNote={orbit.addNote}
           onMoveNote={orbit.moveNote}
@@ -179,22 +360,30 @@ export function OrbitSequencerBody({
                     onChange={(event) => orbit.updateNote(selected.id, { pitchMode: event.target.value as OrbitPitchMode })}
                   >
                     <option value="harmonyDegree">Degree</option>
+                    <option value="harmonyBloom">Bloom</option>
                     <option value="fixedMidi">Fixed</option>
                     <option value="rangeSnap">Range</option>
                   </select>
                 </label>
                 <label className="orbit-field">
-                  Note
+                  {selected.pitchMode === 'harmonyBloom' ? 'Scale Pos' : selected.pitchMode === 'harmonyDegree' ? 'Degree' : 'Note'}
                   <input
                     type="number"
                     min={0}
-                    max={127}
-                    value={selected.pitchMode === 'harmonyDegree' ? selected.harmonyDegree + 1 : Math.round(selected.midiNote)}
+                    max={selected.pitchMode === 'harmonyBloom' ? 100 : 127}
+                    value={selected.pitchMode === 'harmonyBloom' ? Math.round(selected.radiusNorm * 100) : selected.pitchMode === 'harmonyDegree' ? selected.harmonyDegree + 1 : Math.round(selected.midiNote)}
                     onChange={(event) => {
-                      const value = updateNumeric(event.target.value, selected.pitchMode === 'harmonyDegree' ? selected.harmonyDegree + 1 : selected.midiNote);
-                      orbit.updateNote(selected.id, selected.pitchMode === 'harmonyDegree'
-                        ? { harmonyDegree: Math.max(0, Math.min(6, Math.round(value - 1))) }
-                        : { midiNote: Math.max(0, Math.min(127, Math.round(value))) });
+                      const fallback = selected.pitchMode === 'harmonyBloom'
+                        ? selected.radiusNorm * 100
+                        : selected.pitchMode === 'harmonyDegree'
+                          ? selected.harmonyDegree + 1
+                          : selected.midiNote;
+                      const value = updateNumeric(event.target.value, fallback);
+                      orbit.updateNote(selected.id, selected.pitchMode === 'harmonyBloom'
+                        ? { radiusNorm: Math.max(0.06, Math.min(1, value / 100)) }
+                        : selected.pitchMode === 'harmonyDegree'
+                          ? { harmonyDegree: Math.max(0, Math.min(6, Math.round(value - 1))) }
+                          : { midiNote: Math.max(0, Math.min(127, Math.round(value))) });
                     }}
                   />
                 </label>

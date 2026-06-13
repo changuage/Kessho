@@ -40,6 +40,8 @@ import {
 } from './transport';
 import { SEQUENCER_VISUAL_SYNC_OFFSET_MS } from './sequencerVisualSync';
 
+const EUCLIDEAN_STEP_MAX = 32;
+
 const DRUM_AUDIO_SUB_LANE_KEYS = ['expression', 'morph', 'distance', 'pitch'] as const;
 
 export type DrumVoiceType = 'sub' | 'kick' | 'click' | 'beepHi' | 'beepLo' | 'noise' | 'membrane';
@@ -1184,7 +1186,7 @@ export class DrumSynth {
       sequencer.pitch.scale = pitchSettings.scale;
     }
     if (typeof pitchState?.steps === 'number' && Number.isFinite(pitchState.steps)) {
-      const steps = Math.max(1, Math.min(16, Math.round(pitchState.steps)));
+      const steps = Math.max(1, Math.min(EUCLIDEAN_STEP_MAX, Math.round(pitchState.steps)));
       if (sequencer.pitch.offsets.length !== steps) {
         const offsets = sequencer.pitch.offsets.slice(0, steps);
         const fallback = offsets[offsets.length - 1] ?? 0;

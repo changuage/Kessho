@@ -23,6 +23,13 @@ import {
   type SequencerSlotModeState,
 } from '../sequencer/sequencerModeTypes';
 import {
+  applyAnchorWalkerLayerPreset,
+  normalizeAnchorWalkerConfig,
+  type AnchorWalkerPerformanceEvent,
+  type AnchorWalkerConfig,
+  type AnchorWalkerRuntimeViewState,
+} from '../sequencer/anchorWalkerTypes';
+import {
   applySequencePresetClockDivs,
   applySequencePresetEvolveConfigs,
   applySequencePresetLinked,
@@ -35,6 +42,13 @@ import {
   copySequenceLaneStateForPreset,
   type SerializedSequenceLanePresetState,
 } from '../sequencer/sequencePresetLane';
+import {
+  clampEuclideanSubLaneSteps,
+  clampEuclideanTriggerSteps,
+  EUCLIDEAN_STEP_MAX,
+  sequencerGridCellCount,
+  sequencerGridColumnCount,
+} from '../sequencer/sequencerLimits';
 // DrumStepOverrides no longer needed — SynthPage uses StepOverrides from the shared hook
 import DragNumber from '../drums/DragNumber';
 import SeqLane from '../drums/SeqLane';
@@ -53,6 +67,12 @@ import {
 } from '../../audio/sequencerPitchBinding';
 import { normalizeSequencerPitchSettings } from '../../audio/sequencerPitchSettings';
 import type { HarmonyState } from '../../audio/harmony';
+import type {
+  ProductSynthAnchorWalkerVisualLaneState,
+  ProductSynthOrbitVisualLaneState,
+} from '../../audio/product/ProductEngineTypes';
+import { createCoreProductAnchorWalkerPerformanceEvent } from '../../audio/coreProductEvents';
+import { productEngine } from '../../audio/product/ProductEngineProxy';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { SliderPrimitive } from '../sliderSystem';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
@@ -99,7 +119,7 @@ import {
 } from '../../audio/lead4opfm';
 import type { ManualSynthNoteOptions, ManualSynthSource } from '../../audio/engineSharedTypes';
 import type { TransportDebugSnapshot } from '../../audio/transport';
-import { getPhraseDurationForClockSource } from '../../audio/transport';
+import { getEffectiveSequencerBpm, getPhraseDurationForClockSource } from '../../audio/transport';
 import { chordIntervalSecondsFromState } from '../../audio/chordPhraseTiming';
 import {
   applyLeadDistanceEnvelope,
@@ -181,6 +201,101 @@ const LANE_CONFIGS = [
   { color: SEQUENCER_LANE_COLORS[2], name: 'Seq 3' },
   { color: SEQUENCER_LANE_COLORS[3], name: 'Seq 4' },
 ];
+
+type WalkerEnsemblePreset = 'off' | 'wide' | 'roll' | 'diatonic' | 'counter';
+
+const WALKER_ENSEMBLE_LABELS: Record<WalkerEnsemblePreset, string> = {
+  off: 'Off',
+  wide: 'Wide',
+  roll: 'Roll',
+  diatonic: 'Diatonic',
+  counter: 'Counter',
+};
+
+type WalkerEnsembleSlotPatch = {
+  transposeSemitones: number;
+  diatonicOffset: number;
+  tuning: AnchorWalkerConfig['layerTuning'];
+  motion: AnchorWalkerConfig['layers'][number]['motion'];
+  delayMs: number;
+  gesturePattern?: number[];
+  triggerMode?: AnchorWalkerConfig['triggerMode'];
+};
+
+function walkerEnsembleSlotPatches(preset: WalkerEnsemblePreset): WalkerEnsembleSlotPatch[] {
+  switch (preset) {
+    case 'wide':
+      return [
+        { transposeSemitones: 0, diatonicOffset: 0, tuning: 'rawTranspose', motion: 'linked', delayMs: 0 },
+        { transposeSemitones: 7, diatonicOffset: 0, tuning: 'rawTranspose', motion: 'linked', delayMs: 0 },
+        { transposeSemitones: 15, diatonicOffset: 0, tuning: 'rawTranspose', motion: 'linked', delayMs: 0 },
+        { transposeSemitones: 19, diatonicOffset: 0, tuning: 'rawTranspose', motion: 'linked', delayMs: 0 },
+      ];
+    case 'roll':
+      return [
+        { transposeSemitones: 0, diatonicOffset: 0, tuning: 'rawTranspose', motion: 'linked', delayMs: 0 },
+        { transposeSemitones: 7, diatonicOffset: 0, tuning: 'rawTranspose', motion: 'linked', delayMs: 25 },
+        { transposeSemitones: 15, diatonicOffset: 0, tuning: 'rawTranspose', motion: 'linked', delayMs: 55 },
+        { transposeSemitones: 19, diatonicOffset: 0, tuning: 'rawTranspose', motion: 'linked', delayMs: 90 },
+      ];
+    case 'diatonic':
+      return [
+        { transposeSemitones: 0, diatonicOffset: 0, tuning: 'diatonicOffset', motion: 'linked', delayMs: 0 },
+        { transposeSemitones: 0, diatonicOffset: 2, tuning: 'diatonicOffset', motion: 'linked', delayMs: 25 },
+        { transposeSemitones: 0, diatonicOffset: 4, tuning: 'diatonicOffset', motion: 'linked', delayMs: 50 },
+        { transposeSemitones: 0, diatonicOffset: 6, tuning: 'diatonicOffset', motion: 'linked', delayMs: 75 },
+      ];
+    case 'counter':
+      return [
+        { transposeSemitones: 0, diatonicOffset: 0, tuning: 'rawTranspose', motion: 'linked', delayMs: 0 },
+        { transposeSemitones: 12, diatonicOffset: 0, tuning: 'rawTranspose', motion: 'inverted', delayMs: 0 },
+        { transposeSemitones: 7, diatonicOffset: 0, tuning: 'rawTranspose', motion: 'linked', delayMs: 45 },
+        { transposeSemitones: 0, diatonicOffset: 0, tuning: 'diatonicOffset', motion: 'linked', delayMs: 75, gesturePattern: [-1, 2, -1, 1] },
+      ];
+    case 'off':
+    default:
+      return [];
+  }
+}
+
+function walkerEnsembleConfig(
+  base: AnchorWalkerConfig,
+  slotIndex: number,
+  patch: WalkerEnsembleSlotPatch,
+): AnchorWalkerConfig {
+  const solo = applyAnchorWalkerLayerPreset({
+    ...base,
+    enabled: true,
+    mode: 'hybrid',
+    playMode: 'hybridPlay',
+    triggerMode: patch.triggerMode ?? 'gestureHold',
+    boundaryMode: 'fold',
+    autoRate: base.autoRate,
+    leadMode: false,
+    layerPreset: 'solo',
+    spreadMs: 0,
+    activePadDelta: 0,
+    gesturePattern: patch.gesturePattern ?? base.gesturePattern,
+    gesturePatternLength: patch.gesturePattern?.length ?? base.gesturePatternLength,
+  }, 'solo');
+  const layers = solo.layers.map((layer, index) => ({
+    ...layer,
+    enabled: index === 0,
+    label: index === 0 ? `Seq ${slotIndex + 1}` : layer.label,
+    transposeSemitones: index === 0 ? patch.transposeSemitones : 0,
+    diatonicOffset: index === 0 ? patch.diatonicOffset : 0,
+    tuning: index === 0 ? patch.tuning : layer.tuning,
+    motion: index === 0 ? patch.motion : layer.motion,
+    delayMs: index === 0 ? patch.delayMs : 0,
+  }));
+  return normalizeAnchorWalkerConfig({
+    ...solo,
+    layers,
+    layerTuning: patch.tuning,
+    spreadMs: 0,
+    seed: Math.max(1, Math.round(base.seed + slotIndex * 97)),
+  }, slotIndex);
+}
 
 const SYNTH_LANE_ENABLED_KEYS = [
   'synthEuclid1Enabled',
@@ -708,6 +823,38 @@ function isTextEntryTarget(target: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
 }
 
+function finiteWalkerMidi(value: number, valid = true): number | null {
+  if (!valid || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.min(127, value));
+}
+
+function anchorWalkerRuntimeFromVisualState(
+  laneIndex: number,
+  lanes: Array<ProductSynthAnchorWalkerVisualLaneState | null>,
+): AnchorWalkerRuntimeViewState | null {
+  const lane = lanes[laneIndex] ?? null;
+  if (!lane) return null;
+  const cursorMidi = finiteWalkerMidi(lane.cursorMidi, lane.cursorValid);
+  const previousCursorMidi = finiteWalkerMidi(lane.previousCursorMidi, lane.cursorValid);
+  return {
+    anchorMidi: finiteWalkerMidi(lane.anchorMidi, lane.anchorValid),
+    cursorMidi,
+    previousCursorMidi,
+    cursorDegree: Number.isFinite(lane.cursorDegree) ? lane.cursorDegree : 0,
+    activeSnapPitchClasses: [],
+    layerOutputMidis: lane.outputMidis
+      .map((output) => output.midi)
+      .filter((midi) => Number.isFinite(midi)),
+    lastGestureDelta: Number.isFinite(lane.lastGestureDelta) ? lane.lastGestureDelta : 0,
+    direction: cursorMidi !== null && previousCursorMidi !== null
+      ? (cursorMidi > previousCursorMidi ? 'up' : cursorMidi < previousCursorMidi ? 'down' : 'none')
+      : 'none',
+    isGestureHeld: lane.gestureHeld,
+    isWalking: lane.walking,
+    boundaryEvent: lane.boundaryEvent,
+  };
+}
+
 const PAD_VARIANT_PROGRESS = [0.2, 0.4, 0.65, 0.85, 1] as const;
 const PAD_WALK_BLEND = 0.34;
 const PAD_WALK_DISCRETE_THRESHOLD = 0.34;
@@ -814,6 +961,8 @@ export interface SynthPageProps {
   getPadFilterFreq: (pad: 'pad1' | 'pad2') => number;
   getPadLfoValue: (pad: 'pad1' | 'pad2') => number;
   setStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
+  setOrbitVisualStateCallback: (callback: ((lanes: Array<ProductSynthOrbitVisualLaneState | null>) => void) | null) => void;
+  setAnchorWalkerVisualStateCallback: (callback: ((lanes: Array<ProductSynthAnchorWalkerVisualLaneState | null>) => void) | null) => void;
   setEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
   /** Evolve configs change callback */
   onEvolveConfigsChange?: (configs: EvolveConfig[]) => void;
@@ -895,6 +1044,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     getPadFilterFreq,
     getPadLfoValue,
     setStepPositionCallback,
+    setOrbitVisualStateCallback,
+    setAnchorWalkerVisualStateCallback,
     setEvolveTriggerCallback,
     onEvolveConfigsChange,
     onStepOverridesChange,
@@ -979,6 +1130,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   });
   const [playheads, setPlayheads] = useState<number[]>([0, 0, 0, 0]);
   const [hitCounts, setHitCounts] = useState<number[]>([0, 0, 0, 0]);
+  const [orbitVisualStates, setOrbitVisualStates] = useState<Array<ProductSynthOrbitVisualLaneState | null>>([null, null, null, null]);
+  const [walkerVisualStates, setWalkerVisualStates] = useState<Array<ProductSynthAnchorWalkerVisualLaneState | null>>([null, null, null, null]);
   const [evolveFlashing, setEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
   const {
     presets: pad1EnginePresets,
@@ -1144,6 +1297,47 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       setStepPositionCallback(null);
     };
   }, [setStepPositionCallback]);
+
+  useEffect(() => {
+    let rafId: number | null = null;
+    let pendingStates: Array<ProductSynthOrbitVisualLaneState | null> = [null, null, null, null];
+    setOrbitVisualStateCallback((nextStates: Array<ProductSynthOrbitVisualLaneState | null>) => {
+      if (document.visibilityState !== 'visible') return;
+      pendingStates = [0, 1, 2, 3].map((index) => nextStates[index] ?? null);
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        setOrbitVisualStates(pendingStates);
+      });
+    });
+    return () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+      setOrbitVisualStateCallback(null);
+    };
+  }, [setOrbitVisualStateCallback]);
+
+  useEffect(() => {
+    let rafId: number | null = null;
+    let pendingStates: Array<ProductSynthAnchorWalkerVisualLaneState | null> = [null, null, null, null];
+    setAnchorWalkerVisualStateCallback((nextStates: Array<ProductSynthAnchorWalkerVisualLaneState | null>) => {
+      if (document.visibilityState !== 'visible') return;
+      pendingStates = [0, 1, 2, 3].map((index) => nextStates[index] ?? null);
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        setWalkerVisualStates(pendingStates);
+      });
+    });
+    return () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+      setAnchorWalkerVisualStateCallback(null);
+    };
+  }, [setAnchorWalkerVisualStateCallback]);
+
   useEffect(() => {
     const flashTimers: Array<number | null> = [null, null, null, null];
     setEvolveTriggerCallback((laneIndex: number) => {
@@ -2814,8 +3008,19 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     () => normalizeSynthSequencerFaceState(state.synthSequencerFaces),
     [state.synthSequencerFaces],
   );
+  const [walkerEnsemblePreset, setWalkerEnsemblePreset] = useState<WalkerEnsemblePreset>('off');
+  const walkerEnsembleRestoreRef = useRef<SequencerSlotModeState[] | null>(null);
+  const hasWalkerSlot = sequencerFaceState.slots.some((slot) => slot.mode === 'anchorWalker');
   const activeSequencerSlot = sequencerFaceState.slots[seq.activeTab] ?? sequencerFaceState.slots[0];
   const activeSequencerMode = activeSequencerSlot?.mode ?? 'euclid';
+  const activeAnchorWalkerRuntimeState = useMemo(() => (
+    activeSequencerMode === 'anchorWalker'
+      ? anchorWalkerRuntimeFromVisualState(
+          seq.activeTab,
+          walkerVisualStates,
+        )
+      : null
+  ), [activeSequencerMode, seq.activeTab, walkerVisualStates]);
   const updateSequencerSlot = useCallback((laneIdx: number, updater: (slot: SequencerSlotModeState) => SequencerSlotModeState): void => {
     const safeLaneIdx = Math.max(0, Math.min(LANE_CONFIGS.length - 1, Math.round(laneIdx)));
     const next = {
@@ -2829,6 +3034,90 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const setSequencerMode = useCallback((laneIdx: number, mode: SequencerMode): void => {
     updateSequencerSlot(laneIdx, (slot) => ({ ...slot, mode }));
   }, [updateSequencerSlot]);
+  const applyWalkerEnsemble = useCallback((preset: WalkerEnsemblePreset): void => {
+    setWalkerEnsemblePreset(preset);
+    const patches = walkerEnsembleSlotPatches(preset);
+    if (patches.length === 0) {
+      const restoreSlots = walkerEnsembleRestoreRef.current;
+      walkerEnsembleRestoreRef.current = null;
+      if (!restoreSlots) return;
+      const next = {
+        ...sequencerFaceState,
+        slots: sequencerFaceState.slots.map((slot, index) => restoreSlots[index] ?? slot),
+      };
+      onSelectChange('synthSequencerFaces' as keyof SliderState, next as SliderState[keyof SliderState]);
+      return;
+    }
+    if (walkerEnsemblePreset === 'off' && walkerEnsembleRestoreRef.current === null) {
+      walkerEnsembleRestoreRef.current = sequencerFaceState.slots.map((slot) => ({
+        ...slot,
+        anchorWalker: normalizeAnchorWalkerConfig(slot.anchorWalker),
+      }));
+    }
+    const next = {
+      ...sequencerFaceState,
+      slots: sequencerFaceState.slots.map((slot, index) => {
+        const patch = patches[index];
+        if (!patch) return slot;
+        return {
+          ...slot,
+          mode: 'anchorWalker' as const,
+          anchorWalker: walkerEnsembleConfig(slot.anchorWalker, index, patch),
+        };
+      }),
+    };
+    onSelectChange('synthSequencerFaces' as keyof SliderState, next as SliderState[keyof SliderState]);
+  }, [onSelectChange, sequencerFaceState, walkerEnsemblePreset]);
+  const sendAnchorWalkerPerformanceEvent = useCallback((laneIdx: number, event: AnchorWalkerPerformanceEvent): void => {
+    const safeLaneIdx = Math.max(0, Math.min(LANE_CONFIGS.length - 1, Math.round(laneIdx)));
+    const shouldBroadcast =
+      walkerEnsemblePreset !== 'off' &&
+      safeLaneIdx === 0 &&
+      sequencerFaceState.slots[0]?.mode === 'anchorWalker';
+    const targets = shouldBroadcast
+      ? sequencerFaceState.slots
+          .slice(0, LANE_CONFIGS.length)
+          .map((slot, index) => slot.mode === 'anchorWalker' ? index : -1)
+          .filter((index) => index >= 0)
+      : [safeLaneIdx];
+    for (const targetLane of targets) {
+      try {
+        productEngine.enqueueEvent(createCoreProductAnchorWalkerPerformanceEvent('synth', targetLane, event.action, {
+          delta: event.delta,
+          velocity: event.velocity,
+          midi: event.midi,
+        }));
+      } catch (error) {
+        console.warn('Failed to enqueue Anchor Walker performance event', error);
+      }
+    }
+  }, [sequencerFaceState.slots, walkerEnsemblePreset]);
+  const updateAnchorWalkerSlot = useCallback((laneIdx: number, nextConfig: AnchorWalkerConfig): void => {
+    const safeLaneIdx = Math.max(0, Math.min(LANE_CONFIGS.length - 1, Math.round(laneIdx)));
+    const shouldBroadcastGesture =
+      walkerEnsemblePreset !== 'off' &&
+      safeLaneIdx === 0 &&
+      nextConfig.playMode === 'hybridPlay';
+    const next = {
+      ...sequencerFaceState,
+      slots: sequencerFaceState.slots.map((slot, index) => {
+        if (index === safeLaneIdx) {
+          return { ...slot, anchorWalker: nextConfig };
+        }
+        if (!shouldBroadcastGesture || index >= LANE_CONFIGS.length || slot.mode !== 'anchorWalker') {
+          return slot;
+        }
+        return {
+          ...slot,
+          anchorWalker: normalizeAnchorWalkerConfig({
+            ...slot.anchorWalker,
+            triggerMode: nextConfig.triggerMode,
+          }, index),
+        };
+      }),
+    };
+    onSelectChange('synthSequencerFaces' as keyof SliderState, next as SliderState[keyof SliderState]);
+  }, [onSelectChange, sequencerFaceState, walkerEnsemblePreset]);
 
   // ── Source key helpers ──
   const getSourceKey = (laneIdx: number): keyof SliderState =>
@@ -3315,7 +3604,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const adjustSynthKeyboardLaneSteps = useCallback((direction: 1 | -1) => {
     if (activeKeyboardEditLane === 'trigger') {
       const currentSteps = getTriggerStepCountForLane(seq.activeTab);
-      const nextSteps = Math.max(2, Math.min(16, currentSteps + direction));
+      const nextSteps = clampEuclideanTriggerSteps(currentSteps + direction, currentSteps);
       if (nextSteps === currentSteps) return;
       seq.setParam(seq.activeTab, 'Steps', nextSteps);
       selectSynthKeyboardLaneStep(seq.activeTab, 'trigger', Math.min(activeTriggerCursorStep, nextSteps - 1));
@@ -3325,7 +3614,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const currentSteps = activeKeyboardEditLane === 'pitch'
       ? getVisiblePitchStepCountForLane(seq.activeTab)
       : seq.subLaneStates[seq.activeTab]?.[activeKeyboardEditLane]?.steps ?? 0;
-    const nextSteps = Math.max(1, Math.min(16, currentSteps + direction));
+    const nextSteps = clampEuclideanSubLaneSteps(currentSteps + direction, currentSteps);
     if (nextSteps === currentSteps) return;
     seq.setSubLaneSteps(seq.activeTab, activeKeyboardEditLane, nextSteps);
     selectSynthKeyboardLaneStep(seq.activeTab, activeKeyboardEditLane, Math.min(activeSynthKeyboardStep, nextSteps - 1));
@@ -6420,7 +6709,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       <DragNumber
                         value={activeSeq.trigger.steps}
                         min={2}
-                        max={16}
+                        max={EUCLIDEAN_STEP_MAX}
                         label="Steps"
                         shapeByDrag
                         onChange={(v) => seq.setParam(seq.activeTab, 'Steps', v)}
@@ -6713,16 +7002,35 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   })}
                 </div>
                   </>
-                ) : activeSequencerMode === 'anchorWalker' && activeSequencerSlot ? (
+                ) : (
+                  <>
+                    {hasWalkerSlot ? (
+                      <div className="walker-ensemble-strip">
+                        <span className="walker-ensemble-title">Walker Ensemble</span>
+                        <div className="walker-ensemble-options">
+                          {(Object.keys(WALKER_ENSEMBLE_LABELS) as WalkerEnsemblePreset[]).map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              className={walkerEnsemblePreset === preset ? 'active' : ''}
+                              onClick={() => applyWalkerEnsemble(preset)}
+                            >
+                              {WALKER_ENSEMBLE_LABELS[preset]}
+                            </button>
+                          ))}
+                        </div>
+                        <span className="walker-ensemble-meta">Master Seq 1</span>
+                      </div>
+                    ) : null}
+                    {activeSequencerMode === 'anchorWalker' && activeSequencerSlot ? (
                   <AnchorWalkerSequencerBody
                     config={activeSequencerSlot.anchorWalker}
                     laneIndex={seq.activeTab}
                     color={activeSeq.color}
                     harmonyState={harmonyState}
-                    onChange={(nextConfig) => updateSequencerSlot(seq.activeTab, (slot) => ({
-                      ...slot,
-                      anchorWalker: nextConfig,
-                    }))}
+                    runtimeState={activeAnchorWalkerRuntimeState}
+                    onChange={(nextConfig) => updateAnchorWalkerSlot(seq.activeTab, nextConfig)}
+                    onPerformanceEvent={(event) => sendAnchorWalkerPerformanceEvent(seq.activeTab, event)}
                   />
                 ) : activeSequencerSlot ? (
                   <OrbitSequencerBody
@@ -6730,12 +7038,17 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     laneIndex={seq.activeTab}
                     color={activeSeq.color}
                     harmonyState={harmonyState}
+                    isRunning={isRunning}
+                    transportBpm={transportDebug?.effectiveBpm ?? getEffectiveSequencerBpm(state)}
+                    runtimeVisualState={orbitVisualStates[seq.activeTab] ?? null}
                     onChange={(nextConfig) => updateSequencerSlot(seq.activeTab, (slot) => ({
                       ...slot,
                       orbit: nextConfig,
                     }))}
                   />
-                ) : null}
+                    ) : null}
+                  </>
+                )}
               </div>
 
               {/* Mini overview at bottom */}
@@ -6767,7 +7080,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         <div className="seq-ov-controls" onClick={(e) => e.stopPropagation()}>
                           <DragNumber
                             value={seqModel.trigger.steps}
-                            min={2} max={16} label="S" shapeByDrag
+                            min={2} max={EUCLIDEAN_STEP_MAX} label="S" shapeByDrag
                             onChange={(v) => seq.setParam(row, 'Steps', v)}
                           />
                           <DragNumber
@@ -6820,10 +7133,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       {/* Trigger grid */}
                       <div className="seq-ov-grid-wrap">
                         {(() => {
-                          const maxCells = seqModel.trigger.steps < 9 ? 8 : 16;
+                          const visibleCells = sequencerGridCellCount(seqModel.trigger.steps);
+                          const columnCount = sequencerGridColumnCount(seqModel.trigger.steps);
                           return (
-                            <div className="seq-step-grid" style={{ gridTemplateColumns: `repeat(${maxCells}, 1fr)` }}>
-                              {new Array(maxCells).fill(0).map((_, step) => {
+                            <div className="seq-step-grid" style={{ gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}>
+                              {new Array(visibleCells).fill(0).map((_, step) => {
                                 const inRange = step < seqModel.trigger.steps;
                                 const hit = inRange ? (seqModel.trigger.pattern[step] ?? false) : false;
                                 const isPlayhead = inRange && ((seq.playheads[row] ?? 0) % seqModel.trigger.steps === step);

@@ -17,6 +17,16 @@
   background: rgba(0,0,0,0.18);
 }
 
+.orbit-bloom-tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.14);
+}
+
 .orbit-label {
   display: inline-flex;
   align-items: center;
@@ -150,6 +160,10 @@
   text-transform: uppercase;
 }
 
+.orbit-field.compact {
+  font-size: 0.55rem;
+}
+
 .orbit-field input,
 .orbit-field select {
   width: 100%;
@@ -159,6 +173,11 @@
   background: rgba(0,0,0,0.32);
   color: #e8dcc4;
   font-size: 0.68rem;
+}
+
+.orbit-field.compact input,
+.orbit-field.compact select {
+  min-height: 26px;
 }
 
 .orbit-actions {
@@ -196,6 +215,10 @@
 }
 
 @media (max-width: 720px) {
+  .orbit-bloom-tools {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .orbit-main {
     grid-template-columns: 1fr;
   }

@@ -45,14 +45,14 @@ function appendIndexedLaneParamDiff(
 
 function anchorWalkerLayerDiffDefaults(index: number): ProductLaneSnapshot['anchorWalker']['layers'][number] {
   return {
-    enabled: index < 3,
+    enabled: index === 0,
     transposeSemitones: 0,
-    diatonicOffset: index === 1 ? 2 : index === 2 ? 4 : 0,
+    diatonicOffset: 0,
     tuning: 2,
     motion: 0,
-    delaySeconds: index * 0.035,
+    delaySeconds: 0,
     gateRatio: 0.75,
-    velocityScale: index === 1 ? 0.9 : index === 2 ? 0.82 : 1,
+    velocityScale: 1,
     velocityOffset: 0,
     targetSourceId: 0,
   };
@@ -62,23 +62,28 @@ function anchorWalkerDiffDefaults(): ProductLaneSnapshot['anchorWalker'] {
   return {
     enabled: true,
     mode: 0,
+    playMode: 0,
     targetSourceId: CORE_PRODUCT_SOURCE_IDS.lead1,
     anchorSource: 0,
     manualAnchorMidi: 60,
     snapSource: 0,
     customPitchClassMask: 0x0ab5,
-    autoRate: 4,
+    triggerMode: 0,
+    boundaryMode: 0,
+    keyboardRange: 0,
+    showLinkedOutputs: false,
+    autoRate: 0,
     autoFeel: 0,
     swing: 0,
-    leadMode: true,
+    leadMode: false,
     mwToVelocity: false,
     pitchWheelWalk: false,
-    gesturePattern: [2, -1, 2, -1, 4, -1, 2, -1, 0, 0, 0, 0, 0, 0, 0, 0],
-    gesturePatternLength: 8,
-    activePadDelta: 1,
-    layerPreset: 2,
-    spreadSeconds: 0.035,
-    layerCount: 3,
+    gesturePattern: [1, -1, 2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    gesturePatternLength: 4,
+    activePadDelta: 0,
+    layerPreset: 0,
+    spreadSeconds: 0,
+    layerCount: 1,
     layers: Array.from({ length: 4 }, (_, index) => anchorWalkerLayerDiffDefaults(index)),
     outputRangeMin: 36,
     outputRangeMax: 96,
@@ -157,16 +162,22 @@ export function appendSequencerModeConfigDiffs(
   const prevWalker = previous.anchorWalker ?? anchorWalkerDiffDefaults();
   const nextWalker = next.anchorWalker ?? anchorWalkerDiffDefaults();
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerMode, prevWalker.mode, nextWalker.mode);
+  appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerPlayMode, prevWalker.playMode, nextWalker.playMode);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerAnchorSource, prevWalker.anchorSource, nextWalker.anchorSource);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerManualAnchorMidi, prevWalker.manualAnchorMidi, nextWalker.manualAnchorMidi);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerSnapSource, prevWalker.snapSource, nextWalker.snapSource);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerCustomPitchClassMask, prevWalker.customPitchClassMask, nextWalker.customPitchClassMask);
+  appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerTriggerMode, prevWalker.triggerMode, nextWalker.triggerMode);
+  appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerBoundaryMode, prevWalker.boundaryMode, nextWalker.boundaryMode);
+  appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerKeyboardRange, prevWalker.keyboardRange, nextWalker.keyboardRange);
+  appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerShowLinkedOutputs, prevWalker.showLinkedOutputs, nextWalker.showLinkedOutputs);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerAutoRate, prevWalker.autoRate, nextWalker.autoRate);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerAutoFeel, prevWalker.autoFeel, nextWalker.autoFeel);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerLeadMode, prevWalker.leadMode, nextWalker.leadMode);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerMwToVelocity, prevWalker.mwToVelocity, nextWalker.mwToVelocity);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerPitchWheelWalk, prevWalker.pitchWheelWalk, nextWalker.pitchWheelWalk);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerGesturePatternLength, prevWalker.gesturePatternLength, nextWalker.gesturePatternLength);
+  appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerActivePadDelta, prevWalker.activePadDelta, nextWalker.activePadDelta);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerLayerPreset, prevWalker.layerPreset, nextWalker.layerPreset);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerSpreadMs, prevWalker.spreadSeconds * 1000, nextWalker.spreadSeconds * 1000);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerOutputRangeMin, prevWalker.outputRangeMin, nextWalker.outputRangeMin);

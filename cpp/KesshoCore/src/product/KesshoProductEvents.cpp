@@ -390,6 +390,28 @@ const GranularVoiceParamSpec* findGranularExtVoiceParamSpec(uint32_t offset) {
       return isSequencerLaneParam(event.param_id)
           ? KESSHO_PRODUCT_OK
           : KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+    case KESSHO_PRODUCT_EVENT_KIND_ANCHOR_WALKER_PERFORMANCE:
+      if (!valid_sequencer(event.target_id) || event.index >= kMaxLaneCount) {
+        return KESSHO_PRODUCT_ERROR_INVALID_SEQUENCER_LANE;
+      }
+      switch (event.param_id) {
+        case KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_TAP:
+        case KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_DOWN:
+          return event.value >= -7.0f && event.value <= 7.0f &&
+                  event.value != 0.0f &&
+                  event.value2 > 0.0f && event.value2 <= 1.0f
+              ? KESSHO_PRODUCT_OK
+              : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+        case KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_UP:
+        case KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_RESET_CURSOR:
+          return KESSHO_PRODUCT_OK;
+        case KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_SET_MANUAL_ANCHOR:
+          return event.value3 >= 0.0f && event.value3 <= 127.0f
+              ? KESSHO_PRODUCT_OK
+              : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+        default:
+          return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      }
     case KESSHO_PRODUCT_EVENT_KIND_RESET_SEQUENCER_LANE_HOME:
     case KESSHO_PRODUCT_EVENT_KIND_DICE_SEQUENCER_LANE:
       return valid_sequencer(event.target_id) && event.index < kMaxLaneCount
@@ -502,6 +524,9 @@ void KesshoProductEngine::sortControlEvents() {
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE:
       applySequencerLaneParamEvent(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_ANCHOR_WALKER_PERFORMANCE:
+      applyAnchorWalkerPerformanceEvent(event);
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_STATE:
       applyJourneyStateEvent(event);

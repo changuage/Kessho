@@ -26,6 +26,8 @@ import type {
   ProductSequencerEvolveTriggerCallback,
   ProductSequencerStepPositionCallback,
   ProductSequencerUiState,
+  ProductSynthAnchorWalkerVisualStateCallback,
+  ProductSynthOrbitVisualStateCallback,
   ProductSnapshotPatch,
   ProductSnapshotPatchReason,
   ProductSynthNoteRangeEvolvedCallback,
@@ -90,6 +92,8 @@ export type ProductEngineSequencerPort = {
   setDrumTriggerCallback(callback: ProductDrumTriggerCallback | null): void;
   setDrumStepPositionCallback(callback: ProductSequencerStepPositionCallback | null): void;
   setSynthStepPositionCallback(callback: ProductSequencerStepPositionCallback | null): void;
+  setSynthOrbitVisualStateCallback(callback: ProductSynthOrbitVisualStateCallback | null): void;
+  setSynthAnchorWalkerVisualStateCallback(callback: ProductSynthAnchorWalkerVisualStateCallback | null): void;
   setDrumEuclidEvolveTriggerCallback(callback: ProductSequencerEvolveTriggerCallback | null): void;
   setSynthEuclidEvolveTriggerCallback(callback: ProductSequencerEvolveTriggerCallback | null): void;
   setDrumEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void;
