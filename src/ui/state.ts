@@ -32,6 +32,11 @@ import {
   normalizeSynthSequencerFaceState,
   type SynthSequencerFaceState,
 } from './sequencer/sequencerModeTypes';
+import {
+  createDefaultSequencerChainState,
+  normalizeSequencerChainState,
+  type SequencerChainState,
+} from '../audio/sequencerChain';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
 export type GranularQuality = 'eco' | 'balanced' | 'hq';
@@ -922,6 +927,7 @@ export interface SliderState {
   synthEuclidBaseBPM: number;            // Base BPM mirror for synth Euclidean (40-300)
   synthEuclideanTempo: number;           // 0.25..12 - tempo multiplier for all lanes
   synthSequencerFaces: SynthSequencerFaceState; // Per-slot UI face configs; Euclid remains default/back-compatible
+  synthSequencerChain: SequencerChainState;
   // Lane 1
   synthEuclid1Enabled: boolean;
   synthEuclid1Preset: string;
@@ -1197,6 +1203,7 @@ export interface SliderState {
   drumEuclidMasterEnabled: boolean;        // Master enable
   drumEuclidBaseBPM: number;               // Base BPM mirror (40-300)
   drumEuclidTempo: number;                 // 0.25..4 tempo multiplier
+  drumSequencerChain: SequencerChainState;
   drumEuclidSwing: number;                 // 0..100% swing
   drumEuclidDivision: number;              // 4, 8, 16, 32
   
@@ -2177,6 +2184,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthEuclidBaseBPM',
   'synthEuclideanTempo',
   'synthSequencerFaces',
+  'synthSequencerChain',
   'synthEuclid1Enabled',
   'synthEuclid1Preset',
   'synthEuclid1Steps',
@@ -2408,6 +2416,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumEuclidMasterEnabled',
   'drumEuclidBaseBPM',
   'drumEuclidTempo',
+  'drumSequencerChain',
   'drumEuclidSwing',
   'drumEuclidDivision',
   'drumEuclid1Enabled',
@@ -2591,6 +2600,8 @@ const HARMONY_JSON_STATE_KEYS = new Set<keyof SliderState>([
   'harmonyChordSequenceA',
   'harmonyChordSequenceB',
   'synthSequencerFaces',
+  'synthSequencerChain',
+  'drumSequencerChain',
 ]);
 
 /**
@@ -3197,6 +3208,7 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclidBaseBPM: 120,
   synthEuclideanTempo: 1,
   synthSequencerFaces: createDefaultSynthSequencerFaceState(),
+  synthSequencerChain: createDefaultSequencerChainState(),
   // Lane 1 - main pulse (lancaran) - mid register
   synthEuclid1Enabled: true,
   synthEuclid1Preset: 'lancaran',
@@ -3462,6 +3474,7 @@ export const DEFAULT_STATE: SliderState = {
   drumEuclidMasterEnabled: false,
   drumEuclidBaseBPM: 120,
   drumEuclidTempo: 1,
+  drumSequencerChain: createDefaultSequencerChainState(),
   drumEuclidSwing: 0,
   drumEuclidDivision: 8,
   
@@ -5106,6 +5119,14 @@ function decodeHarmonyJsonStateValue(state: SliderState, key: keyof SliderState,
     state.synthSequencerFaces = normalizeSynthSequencerFaceState(parsed);
     return true;
   }
+  if (key === 'synthSequencerChain') {
+    state.synthSequencerChain = normalizeSequencerChainState(parsed);
+    return true;
+  }
+  if (key === 'drumSequencerChain') {
+    state.drumSequencerChain = normalizeSequencerChainState(parsed);
+    return true;
+  }
   return false;
 }
 
@@ -5885,6 +5906,9 @@ export function migratePreset(preset: any): SavedPreset {
   };
   drumEvolveConfigs = migrateEvolveArray(drumEvolveConfigs);
   synthEvolveConfigs = migrateEvolveArray(synthEvolveConfigs);
+
+  state.synthSequencerChain = normalizeSequencerChainState(state.synthSequencerChain);
+  state.drumSequencerChain = normalizeSequencerChainState(state.drumSequencerChain);
 
   sanitizeGranularStateCompatibility(state);
 

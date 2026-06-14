@@ -8,6 +8,8 @@ import {
   sequencerGridCellCount,
   sequencerGridColumnCount,
 } from '../sequencer/sequencerLimits';
+import { sequencerChainBadgeLabel } from '../sequencer/SequencerChainRail';
+import type { SequencerChainState } from '../../audio/sequencerChain';
 
 const OV_PROB_DRAG_PX = 80;
 
@@ -24,6 +26,8 @@ interface SeqOverviewProps {
   onSetProbability?: (seqIdx: number, step: number, value: number) => void;
   onResetProbability?: (seqIdx: number, step: number) => void;
   onCycleTrigCondition?: (seqIdx: number, step: number) => void;
+  chain?: SequencerChainState;
+  activeChainLaneIndex?: number | null;
 }
 
 const SeqOverview: React.FC<SeqOverviewProps> = ({
@@ -32,21 +36,30 @@ const SeqOverview: React.FC<SeqOverviewProps> = ({
   onSetClockDiv,
   onToggleTriggerStep, onSetProbability, onResetProbability,
   onCycleTrigCondition,
+  chain,
+  activeChainLaneIndex = null,
 }) => {
   const [dragPopup, setDragPopup] = useState<{ x: number; y: number; text: string } | null>(null);
 
   return (
     <div className="seq-overview">
-      {sequencers.map((seq, row) => (
-        <div
-          key={seq.id}
-          className={`seq-ov-row${seq.muted ? ' muted' : ''}`}
-          style={{ '--sc': seq.color } as React.CSSProperties}
-        >
-          <div className="seq-ov-header" onClick={() => onSelectSequencer?.(row)}>
-            <span className="seq-ov-name">{seq.name}</span>
-            {/* Inline controls: Steps, Hits, Rotation, Clock, Sources, M/S */}
-            <div className="seq-ov-controls" onClick={(e) => e.stopPropagation()}>
+      {sequencers.map((seq, row) => {
+        const chainBadge = chain ? sequencerChainBadgeLabel(chain, row) : null;
+        return (
+          <div
+            key={seq.id}
+            className={`seq-ov-row${seq.muted ? ' muted' : ''}`}
+            style={{ '--sc': seq.color } as React.CSSProperties}
+          >
+            <div className="seq-ov-header" onClick={() => onSelectSequencer?.(row)}>
+              <span className="seq-ov-name">{seq.name}</span>
+              {chainBadge && (
+                <span className={`seq-chain-badge${activeChainLaneIndex === row ? ' active' : ''}`}>
+                  {chainBadge}
+                </span>
+              )}
+              {/* Inline controls: Steps, Hits, Rotation, Clock, Sources, M/S */}
+              <div className="seq-ov-controls" onClick={(e) => e.stopPropagation()}>
               <DragNumber
                 value={seq.trigger.steps}
                 min={2} max={EUCLIDEAN_STEP_MAX} label="S" shapeByDrag
@@ -101,12 +114,12 @@ const SeqOverview: React.FC<SeqOverviewProps> = ({
                 onClick={(e) => { e.stopPropagation(); onToggleSolo?.(row); }}
               >S</button>
             </div>
-          </div>
-          <div className="seq-ov-grid-wrap">
-            {(() => {
-              const visibleCells = sequencerGridCellCount(seq.trigger.steps);
-              const columnCount = sequencerGridColumnCount(seq.trigger.steps);
-              return (
+            </div>
+            <div className="seq-ov-grid-wrap">
+              {(() => {
+                const visibleCells = sequencerGridCellCount(seq.trigger.steps);
+                const columnCount = sequencerGridColumnCount(seq.trigger.steps);
+                return (
             <div className="seq-step-grid" style={{ gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}>
               {new Array(visibleCells).fill(0).map((_, step) => {
                 const inRange = step < seq.trigger.steps;
@@ -173,11 +186,12 @@ const SeqOverview: React.FC<SeqOverviewProps> = ({
                 );
               })}
             </div>
-              );
-            })()}
+                );
+              })()}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       {dragPopup && (
         <div className="seq-drag-popup" style={{ left: dragPopup.x, top: dragPopup.y }}>
           {dragPopup.text}

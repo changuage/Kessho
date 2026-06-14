@@ -274,6 +274,24 @@ function exactLeadParamsForPreset(preset, leadPresetModule) {
   return { exactLeadParamCount: leadParamCount, exactLeadParams };
 }
 
+const drumParamIndexByKey = new Map(drumParamSpecs.map(([key, index]) => [key, index]));
+
+function applyDrumCompatibilityAliases(exactDrumParams, params) {
+  const source = params ?? {};
+  const excPosIndex = drumParamIndexByKey.get('drumMembraneExcPos');
+  const strikePositionIndex = drumParamIndexByKey.get('drumMembraneStrikePosition');
+  if (excPosIndex === undefined || strikePositionIndex === undefined) {
+    return;
+  }
+  const hasExcPos = Object.prototype.hasOwnProperty.call(source, 'drumMembraneExcPos');
+  const hasStrikePosition = Object.prototype.hasOwnProperty.call(source, 'drumMembraneStrikePosition');
+  if (hasExcPos && !hasStrikePosition) {
+    exactDrumParams[strikePositionIndex] = exactDrumParams[excPosIndex];
+  } else if (hasStrikePosition && !hasExcPos) {
+    exactDrumParams[excPosIndex] = exactDrumParams[strikePositionIndex];
+  }
+}
+
 function exactDrumParamsForPreset(preset) {
   if (preset.source !== 'drum') {
     const exactDrumParams = Array.from({ length: drumParamCount }, () => 0);
@@ -284,6 +302,7 @@ function exactDrumParamsForPreset(preset) {
   for (const [key, index, map, fallback] of drumParamSpecs) {
     exactDrumParams[index] = padParamValue(preset.params?.[key], map, fallback);
   }
+  applyDrumCompatibilityAliases(exactDrumParams, preset.params);
   return { exactDrumParamCount: drumParamCount, exactDrumParams };
 }
 
@@ -294,6 +313,7 @@ function drumVoicePresetParams(preset) {
       exactDrumParams[index] = padParamValue(preset.params[key], map, fallback);
     }
   }
+  applyDrumCompatibilityAliases(exactDrumParams, preset.params);
   return exactDrumParams;
 }
 

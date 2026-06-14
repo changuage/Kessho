@@ -9,7 +9,7 @@ import {
   type AnchorWalkerRuntimeViewState,
 } from './anchorWalkerTypes';
 import {
-  applyLayer,
+  applyLayerBounded,
   buildPitchLattice,
   degreeToMidiBounded,
   formatMidiNoteName,
@@ -70,9 +70,18 @@ export function useAnchorWalkerSequencer({
 
   const layerOutputMidis = useMemo(() => safeConfig.layers
     .filter((layer) => layer.enabled)
-    .map((layer) => applyLayer(cursorMidi, layer, snapMask, anchorMidi, safeConfig.outputRangeMin, safeConfig.outputRangeMax)), [
+    .map((layer) => applyLayerBounded(
+      cursorMidi,
+      layer,
+      snapMask,
+      anchorMidi,
+      safeConfig.outputRangeMin,
+      safeConfig.outputRangeMax,
+      safeConfig.boundaryMode,
+    )), [
     anchorMidi,
     cursorMidi,
+    safeConfig.boundaryMode,
     safeConfig.layers,
     safeConfig.outputRangeMax,
     safeConfig.outputRangeMin,

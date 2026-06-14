@@ -1,111 +1,1372 @@
 {
   "paramSpecs": [
-    { "key": "drumSubFreq", "index": 0, "enumMap": null, "fallback": 60 },
-    { "key": "drumSubDecay", "index": 1, "enumMap": null, "fallback": 200 },
-    { "key": "drumSubLevel", "index": 2, "enumMap": null, "fallback": 0.8 },
-    { "key": "drumSubTone", "index": 3, "enumMap": null, "fallback": 0 },
-    { "key": "drumSubShape", "index": 4, "enumMap": null, "fallback": 0 },
-    { "key": "drumSubPitchEnv", "index": 5, "enumMap": null, "fallback": 0 },
-    { "key": "drumSubPitchDecay", "index": 6, "enumMap": null, "fallback": 50 },
-    { "key": "drumSubDrive", "index": 7, "enumMap": null, "fallback": 0 },
-    { "key": "drumSubSub", "index": 8, "enumMap": null, "fallback": 0 },
-    { "key": "drumSubAttack", "index": 9, "enumMap": null, "fallback": 0 },
-    { "key": "drumSubVariation", "index": 10, "enumMap": null, "fallback": 0 },
-    { "key": "drumSubDistance", "index": 11, "enumMap": null, "fallback": 0.5 },
-    { "key": "drumKickFreq", "index": 12, "enumMap": null, "fallback": 55 },
-    { "key": "drumKickPitchEnv", "index": 13, "enumMap": null, "fallback": 24 },
-    { "key": "drumKickPitchDecay", "index": 14, "enumMap": null, "fallback": 60 },
-    { "key": "drumKickDecay", "index": 15, "enumMap": null, "fallback": 300 },
-    { "key": "drumKickLevel", "index": 16, "enumMap": null, "fallback": 0.8 },
-    { "key": "drumKickClick", "index": 17, "enumMap": null, "fallback": 0.3 },
-    { "key": "drumKickBody", "index": 18, "enumMap": null, "fallback": 0.5 },
-    { "key": "drumKickPunch", "index": 19, "enumMap": null, "fallback": 0.5 },
-    { "key": "drumKickTail", "index": 20, "enumMap": null, "fallback": 0 },
-    { "key": "drumKickTone", "index": 21, "enumMap": null, "fallback": 0 },
-    { "key": "drumKickAttack", "index": 22, "enumMap": null, "fallback": 0 },
-    { "key": "drumKickVariation", "index": 23, "enumMap": null, "fallback": 0 },
-    { "key": "drumKickDistance", "index": 24, "enumMap": null, "fallback": 0.5 },
-    { "key": "drumClickDecay", "index": 25, "enumMap": null, "fallback": 30 },
-    { "key": "drumClickFilter", "index": 26, "enumMap": null, "fallback": 4000 },
-    { "key": "drumClickTone", "index": 27, "enumMap": null, "fallback": 0.5 },
-    { "key": "drumClickLevel", "index": 28, "enumMap": null, "fallback": 0.7 },
-    { "key": "drumClickResonance", "index": 29, "enumMap": null, "fallback": 0.5 },
-    { "key": "drumClickPitch", "index": 30, "enumMap": null, "fallback": 2000 },
-    { "key": "drumClickPitchEnv", "index": 31, "enumMap": null, "fallback": 0 },
-    { "key": "drumClickMode", "index": 32, "enumMap": { "impulse": 0, "noise": 1, "tonal": 2, "granular": 3, "continuous": 4 }, "fallback": 0 },
-    { "key": "drumClickGrainCount", "index": 33, "enumMap": null, "fallback": 1 },
-    { "key": "drumClickGrainSpread", "index": 34, "enumMap": null, "fallback": 0 },
-    { "key": "drumClickStereoWidth", "index": 35, "enumMap": null, "fallback": 0 },
-    { "key": "drumClickExciterColor", "index": 36, "enumMap": null, "fallback": 0 },
-    { "key": "drumClickAttack", "index": 37, "enumMap": null, "fallback": 0 },
-    { "key": "drumClickVariation", "index": 38, "enumMap": null, "fallback": 0 },
-    { "key": "drumClickDistance", "index": 39, "enumMap": null, "fallback": 0.5 },
-    { "key": "drumBeepHiFreq", "index": 40, "enumMap": null, "fallback": 4000 },
-    { "key": "drumBeepHiAttack", "index": 41, "enumMap": null, "fallback": 1 },
-    { "key": "drumBeepHiDecay", "index": 42, "enumMap": null, "fallback": 100 },
-    { "key": "drumBeepHiLevel", "index": 43, "enumMap": null, "fallback": 0.6 },
-    { "key": "drumBeepHiTone", "index": 44, "enumMap": null, "fallback": 0.3 },
-    { "key": "drumBeepHiInharmonic", "index": 45, "enumMap": null, "fallback": 0 },
-    { "key": "drumBeepHiPartials", "index": 46, "enumMap": null, "fallback": 1 },
-    { "key": "drumBeepHiShimmer", "index": 47, "enumMap": null, "fallback": 0 },
-    { "key": "drumBeepHiShimmerRate", "index": 48, "enumMap": null, "fallback": 4 },
-    { "key": "drumBeepHiBrightness", "index": 49, "enumMap": null, "fallback": 0.5 },
-    { "key": "drumBeepHiFeedback", "index": 50, "enumMap": null, "fallback": 0 },
-    { "key": "drumBeepHiModEnvDecay", "index": 51, "enumMap": null, "fallback": 0 },
-    { "key": "drumBeepHiNoiseInMod", "index": 52, "enumMap": null, "fallback": 0 },
-    { "key": "drumBeepHiModRatio", "index": 53, "enumMap": null, "fallback": 2 },
-    { "key": "drumBeepHiModRatioFine", "index": 54, "enumMap": null, "fallback": 0.01 },
-    { "key": "drumBeepHiModEnvEnd", "index": 55, "enumMap": null, "fallback": 0.2 },
-    { "key": "drumBeepHiNoiseDecay", "index": 56, "enumMap": null, "fallback": 0 },
-    { "key": "drumBeepHiVariation", "index": 57, "enumMap": null, "fallback": 0 },
-    { "key": "drumBeepHiDistance", "index": 58, "enumMap": null, "fallback": 0.5 },
-    { "key": "drumBeepLoFreq", "index": 59, "enumMap": null, "fallback": 200 },
-    { "key": "drumBeepLoAttack", "index": 60, "enumMap": null, "fallback": 1 },
-    { "key": "drumBeepLoDecay", "index": 61, "enumMap": null, "fallback": 200 },
-    { "key": "drumBeepLoLevel", "index": 62, "enumMap": null, "fallback": 0.7 },
-    { "key": "drumBeepLoTone", "index": 63, "enumMap": null, "fallback": 0 },
-    { "key": "drumBeepLoPitchEnv", "index": 64, "enumMap": null, "fallback": 0 },
-    { "key": "drumBeepLoPitchDecay", "index": 65, "enumMap": null, "fallback": 50 },
-    { "key": "drumBeepLoBody", "index": 66, "enumMap": null, "fallback": 0.3 },
-    { "key": "drumBeepLoPluck", "index": 67, "enumMap": null, "fallback": 0 },
-    { "key": "drumBeepLoPluckDamp", "index": 68, "enumMap": null, "fallback": 0.5 },
-    { "key": "drumBeepLoModal", "index": 69, "enumMap": null, "fallback": 0 },
-    { "key": "drumBeepLoModalQ", "index": 70, "enumMap": null, "fallback": 10 },
-    { "key": "drumBeepLoModalInharmonic", "index": 71, "enumMap": null, "fallback": 0 },
-    { "key": "drumBeepLoModalSpread", "index": 72, "enumMap": null, "fallback": 0 },
-    { "key": "drumBeepLoModalCut", "index": 73, "enumMap": null, "fallback": 0 },
-    { "key": "drumBeepLoOscGain", "index": 74, "enumMap": null, "fallback": 1 },
-    { "key": "drumBeepLoModalGain", "index": 75, "enumMap": null, "fallback": 1 },
-    { "key": "drumBeepLoVariation", "index": 76, "enumMap": null, "fallback": 0 },
-    { "key": "drumBeepLoDistance", "index": 77, "enumMap": null, "fallback": 0.5 },
-    { "key": "drumNoiseFilterFreq", "index": 78, "enumMap": null, "fallback": 2000 },
-    { "key": "drumNoiseDecay", "index": 79, "enumMap": null, "fallback": 100 },
-    { "key": "drumNoiseLevel", "index": 80, "enumMap": null, "fallback": 0.6 },
-    { "key": "drumNoiseFilterQ", "index": 81, "enumMap": null, "fallback": 1 },
-    { "key": "drumNoiseFilterType", "index": 82, "enumMap": { "lowpass": 0, "highpass": 1, "bandpass": 2, "notch": 3 }, "fallback": 0 },
-    { "key": "drumNoiseAttack", "index": 83, "enumMap": null, "fallback": 1 },
-    { "key": "drumNoiseFormant", "index": 84, "enumMap": null, "fallback": 0 },
-    { "key": "drumNoiseBreath", "index": 85, "enumMap": null, "fallback": 0 },
-    { "key": "drumNoiseFilterEnv", "index": 86, "enumMap": null, "fallback": 0 },
-    { "key": "drumNoiseFilterEnvDecay", "index": 87, "enumMap": null, "fallback": 100 },
-    { "key": "drumNoiseDensity", "index": 88, "enumMap": null, "fallback": 1 },
-    { "key": "drumNoiseColorLFO", "index": 89, "enumMap": null, "fallback": 0 },
-    { "key": "drumNoiseVariation", "index": 90, "enumMap": null, "fallback": 0 },
-    { "key": "drumNoiseDistance", "index": 91, "enumMap": null, "fallback": 0.5 },
-    { "key": "drumMembranePitchEnv", "index": 92, "enumMap": null, "fallback": 3 },
-    { "key": "drumMembraneDecay", "index": 93, "enumMap": null, "fallback": 500 },
-    { "key": "drumMembraneLevel", "index": 94, "enumMap": null, "fallback": 0.7 },
-    { "key": "drumMembraneStiffness", "index": 95, "enumMap": null, "fallback": 0.5 },
-    { "key": "drumMembraneMaterial", "index": 96, "enumMap": { "skin": 0, "metal": 1, "wood": 2, "glass": 3, "plastic": 4 }, "fallback": 0 },
-    { "key": "drumMembraneSize", "index": 97, "enumMap": null, "fallback": 150 },
-    { "key": "drumMembraneDamping", "index": 98, "enumMap": null, "fallback": 0.3 },
-    { "key": "drumMembraneExcPos", "index": 99, "enumMap": null, "fallback": 0.5 },
-    { "key": "drumMembraneWireMix", "index": 100, "enumMap": null, "fallback": 0 },
-    { "key": "drumMembraneAttack", "index": 101, "enumMap": null, "fallback": 1 },
-    { "key": "drumMembraneVariation", "index": 102, "enumMap": null, "fallback": 0 },
-    { "key": "drumMembraneDistance", "index": 103, "enumMap": null, "fallback": 0.5 },
-    { "key": "drumLevel", "index": 122, "enumMap": null, "fallback": 0.8 },
-    { "key": "drumReverbSend", "index": 123, "enumMap": null, "fallback": 0.1 }
+    {
+      "key": "drumSubFreq",
+      "index": 0,
+      "enumMap": null,
+      "fallback": 60
+    },
+    {
+      "key": "drumSubDecay",
+      "index": 1,
+      "enumMap": null,
+      "fallback": 200
+    },
+    {
+      "key": "drumSubLevel",
+      "index": 2,
+      "enumMap": null,
+      "fallback": 0.8
+    },
+    {
+      "key": "drumSubTone",
+      "index": 3,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumSubShape",
+      "index": 4,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumSubPitchEnv",
+      "index": 5,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumSubPitchDecay",
+      "index": 6,
+      "enumMap": null,
+      "fallback": 50
+    },
+    {
+      "key": "drumSubDrive",
+      "index": 7,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumSubSub",
+      "index": 8,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumSubAttack",
+      "index": 9,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumSubVariation",
+      "index": 10,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumSubDistance",
+      "index": 11,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumKickFreq",
+      "index": 12,
+      "enumMap": null,
+      "fallback": 55
+    },
+    {
+      "key": "drumKickPitchEnv",
+      "index": 13,
+      "enumMap": null,
+      "fallback": 24
+    },
+    {
+      "key": "drumKickPitchDecay",
+      "index": 14,
+      "enumMap": null,
+      "fallback": 60
+    },
+    {
+      "key": "drumKickDecay",
+      "index": 15,
+      "enumMap": null,
+      "fallback": 300
+    },
+    {
+      "key": "drumKickLevel",
+      "index": 16,
+      "enumMap": null,
+      "fallback": 0.8
+    },
+    {
+      "key": "drumKickClick",
+      "index": 17,
+      "enumMap": null,
+      "fallback": 0.3
+    },
+    {
+      "key": "drumKickBody",
+      "index": 18,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumKickPunch",
+      "index": 19,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumKickTail",
+      "index": 20,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumKickTone",
+      "index": 21,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumKickAttack",
+      "index": 22,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumKickVariation",
+      "index": 23,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumKickDistance",
+      "index": 24,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumClickDecay",
+      "index": 25,
+      "enumMap": null,
+      "fallback": 30
+    },
+    {
+      "key": "drumClickFilter",
+      "index": 26,
+      "enumMap": null,
+      "fallback": 4000
+    },
+    {
+      "key": "drumClickTone",
+      "index": 27,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumClickLevel",
+      "index": 28,
+      "enumMap": null,
+      "fallback": 0.7
+    },
+    {
+      "key": "drumClickResonance",
+      "index": 29,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumClickPitch",
+      "index": 30,
+      "enumMap": null,
+      "fallback": 2000
+    },
+    {
+      "key": "drumClickPitchEnv",
+      "index": 31,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickMode",
+      "index": 32,
+      "enumMap": {
+        "impulse": 0,
+        "noise": 1,
+        "tonal": 2,
+        "granular": 3,
+        "continuous": 4
+      },
+      "fallback": 0
+    },
+    {
+      "key": "drumClickGrainCount",
+      "index": 33,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumClickGrainSpread",
+      "index": 34,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickStereoWidth",
+      "index": 35,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickExciterColor",
+      "index": 36,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickAttack",
+      "index": 37,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickVariation",
+      "index": 38,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickDistance",
+      "index": 39,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumBeepHiFreq",
+      "index": 40,
+      "enumMap": null,
+      "fallback": 4000
+    },
+    {
+      "key": "drumBeepHiAttack",
+      "index": 41,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumBeepHiDecay",
+      "index": 42,
+      "enumMap": null,
+      "fallback": 100
+    },
+    {
+      "key": "drumBeepHiLevel",
+      "index": 43,
+      "enumMap": null,
+      "fallback": 0.6
+    },
+    {
+      "key": "drumBeepHiTone",
+      "index": 44,
+      "enumMap": null,
+      "fallback": 0.3
+    },
+    {
+      "key": "drumBeepHiInharmonic",
+      "index": 45,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepHiPartials",
+      "index": 46,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumBeepHiShimmer",
+      "index": 47,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepHiShimmerRate",
+      "index": 48,
+      "enumMap": null,
+      "fallback": 4
+    },
+    {
+      "key": "drumBeepHiBrightness",
+      "index": 49,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumBeepHiFeedback",
+      "index": 50,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepHiModEnvDecay",
+      "index": 51,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepHiNoiseInMod",
+      "index": 52,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepHiModRatio",
+      "index": 53,
+      "enumMap": null,
+      "fallback": 2
+    },
+    {
+      "key": "drumBeepHiModRatioFine",
+      "index": 54,
+      "enumMap": null,
+      "fallback": 0.01
+    },
+    {
+      "key": "drumBeepHiModEnvEnd",
+      "index": 55,
+      "enumMap": null,
+      "fallback": 0.2
+    },
+    {
+      "key": "drumBeepHiNoiseDecay",
+      "index": 56,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepHiVariation",
+      "index": 57,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepHiDistance",
+      "index": 58,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumBeepLoFreq",
+      "index": 59,
+      "enumMap": null,
+      "fallback": 200
+    },
+    {
+      "key": "drumBeepLoAttack",
+      "index": 60,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumBeepLoDecay",
+      "index": 61,
+      "enumMap": null,
+      "fallback": 200
+    },
+    {
+      "key": "drumBeepLoLevel",
+      "index": 62,
+      "enumMap": null,
+      "fallback": 0.7
+    },
+    {
+      "key": "drumBeepLoTone",
+      "index": 63,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoPitchEnv",
+      "index": 64,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoPitchDecay",
+      "index": 65,
+      "enumMap": null,
+      "fallback": 50
+    },
+    {
+      "key": "drumBeepLoBody",
+      "index": 66,
+      "enumMap": null,
+      "fallback": 0.3
+    },
+    {
+      "key": "drumBeepLoPluck",
+      "index": 67,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoPluckDamp",
+      "index": 68,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumBeepLoModal",
+      "index": 69,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoModalQ",
+      "index": 70,
+      "enumMap": null,
+      "fallback": 10
+    },
+    {
+      "key": "drumBeepLoModalInharmonic",
+      "index": 71,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoModalSpread",
+      "index": 72,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoModalCut",
+      "index": 73,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoOscGain",
+      "index": 74,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumBeepLoModalGain",
+      "index": 75,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumBeepLoVariation",
+      "index": 76,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoDistance",
+      "index": 77,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumNoiseFilterFreq",
+      "index": 78,
+      "enumMap": null,
+      "fallback": 2000
+    },
+    {
+      "key": "drumNoiseDecay",
+      "index": 79,
+      "enumMap": null,
+      "fallback": 100
+    },
+    {
+      "key": "drumNoiseLevel",
+      "index": 80,
+      "enumMap": null,
+      "fallback": 0.6
+    },
+    {
+      "key": "drumNoiseFilterQ",
+      "index": 81,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumNoiseFilterType",
+      "index": 82,
+      "enumMap": {
+        "lowpass": 0,
+        "highpass": 1,
+        "bandpass": 2,
+        "notch": 3
+      },
+      "fallback": 0
+    },
+    {
+      "key": "drumNoiseAttack",
+      "index": 83,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumNoiseFormant",
+      "index": 84,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumNoiseBreath",
+      "index": 85,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumNoiseFilterEnv",
+      "index": 86,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumNoiseFilterEnvDecay",
+      "index": 87,
+      "enumMap": null,
+      "fallback": 100
+    },
+    {
+      "key": "drumNoiseDensity",
+      "index": 88,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumNoiseColorLFO",
+      "index": 89,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumNoiseVariation",
+      "index": 90,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumNoiseDistance",
+      "index": 91,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumMembranePitchEnv",
+      "index": 92,
+      "enumMap": null,
+      "fallback": 3
+    },
+    {
+      "key": "drumMembraneDecay",
+      "index": 93,
+      "enumMap": null,
+      "fallback": 500
+    },
+    {
+      "key": "drumMembraneLevel",
+      "index": 94,
+      "enumMap": null,
+      "fallback": 0.7
+    },
+    {
+      "key": "drumMembraneStiffness",
+      "index": 95,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumMembraneMaterial",
+      "index": 96,
+      "enumMap": {
+        "skin": 0,
+        "metal": 1,
+        "wood": 2,
+        "glass": 3,
+        "plastic": 4
+      },
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneSize",
+      "index": 97,
+      "enumMap": null,
+      "fallback": 150
+    },
+    {
+      "key": "drumMembraneDamping",
+      "index": 98,
+      "enumMap": null,
+      "fallback": 0.3
+    },
+    {
+      "key": "drumMembraneExcPos",
+      "index": 99,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumMembraneWireMix",
+      "index": 100,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneAttack",
+      "index": 101,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumMembraneVariation",
+      "index": 102,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneDistance",
+      "index": 103,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumLevel",
+      "index": 122,
+      "enumMap": null,
+      "fallback": 0.8
+    },
+    {
+      "key": "drumReverbSend",
+      "index": 123,
+      "enumMap": null,
+      "fallback": 0.1
+    },
+    {
+      "key": "drumBeepHiModPhase",
+      "index": 126,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumNoiseParticleRandom",
+      "index": 127,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumNoiseParticleRandomRate",
+      "index": 128,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumNoiseParticleSize",
+      "index": 129,
+      "enumMap": null,
+      "fallback": 5
+    },
+    {
+      "key": "drumNoiseRatchetCount",
+      "index": 130,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumNoiseRatchetTime",
+      "index": 131,
+      "enumMap": null,
+      "fallback": 30
+    },
+    {
+      "key": "drumMembraneExciter",
+      "index": 132,
+      "enumMap": {
+        "impulse": 0,
+        "stick": 1,
+        "mallet": 2,
+        "brush": 3,
+        "noise": 4
+      },
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneExcDur",
+      "index": 133,
+      "enumMap": null,
+      "fallback": 2
+    },
+    {
+      "key": "drumMembraneExcBright",
+      "index": 134,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumMembraneStrikePosition",
+      "index": 135,
+      "enumMap": null,
+      "fallback": 0.35
+    },
+    {
+      "key": "drumMembraneBody",
+      "index": 136,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumMembraneRing",
+      "index": 137,
+      "enumMap": null,
+      "fallback": 0.3
+    },
+    {
+      "key": "drumMembraneNonlin",
+      "index": 138,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneOvertones",
+      "index": 139,
+      "enumMap": null,
+      "fallback": 4
+    },
+    {
+      "key": "drumMembranePitchDecay",
+      "index": 140,
+      "enumMap": null,
+      "fallback": 40
+    },
+    {
+      "key": "drumMembraneWireDensity",
+      "index": 141,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumMembraneWireDecay",
+      "index": 142,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumMembraneWireTone",
+      "index": 143,
+      "enumMap": null,
+      "fallback": 0.5
+    },
+    {
+      "key": "drumSubFmTransientMix",
+      "index": 144,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumSubFmTransientRatio",
+      "index": 145,
+      "enumMap": null,
+      "fallback": 2
+    },
+    {
+      "key": "drumSubFmTransientAmount",
+      "index": 146,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumSubFmTransientDecay",
+      "index": 147,
+      "enumMap": null,
+      "fallback": 30
+    },
+    {
+      "key": "drumSubFmTransientFeedback",
+      "index": 148,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumSubFmTransientNoise",
+      "index": 149,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumSubFmTransientClip",
+      "index": 150,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumSubDamageMix",
+      "index": 151,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumSubDamageBits",
+      "index": 152,
+      "enumMap": null,
+      "fallback": 16
+    },
+    {
+      "key": "drumSubDamageSampleHold",
+      "index": 153,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumSubDamageFold",
+      "index": 154,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumSubDamageClip",
+      "index": 155,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumKickFmTransientMix",
+      "index": 156,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumKickFmTransientRatio",
+      "index": 157,
+      "enumMap": null,
+      "fallback": 2
+    },
+    {
+      "key": "drumKickFmTransientAmount",
+      "index": 158,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumKickFmTransientDecay",
+      "index": 159,
+      "enumMap": null,
+      "fallback": 30
+    },
+    {
+      "key": "drumKickFmTransientFeedback",
+      "index": 160,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumKickFmTransientNoise",
+      "index": 161,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumKickFmTransientClip",
+      "index": 162,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumKickDamageMix",
+      "index": 163,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumKickDamageBits",
+      "index": 164,
+      "enumMap": null,
+      "fallback": 16
+    },
+    {
+      "key": "drumKickDamageSampleHold",
+      "index": 165,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumKickDamageFold",
+      "index": 166,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumKickDamageClip",
+      "index": 167,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumKickMetallicMix",
+      "index": 168,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumKickMetallicTune",
+      "index": 169,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumKickMetallicSpread",
+      "index": 170,
+      "enumMap": null,
+      "fallback": 0.35
+    },
+    {
+      "key": "drumKickMetallicDecay",
+      "index": 171,
+      "enumMap": null,
+      "fallback": 120
+    },
+    {
+      "key": "drumKickMetallicPhaseRandom",
+      "index": 172,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickFmTransientMix",
+      "index": 173,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickFmTransientRatio",
+      "index": 174,
+      "enumMap": null,
+      "fallback": 2
+    },
+    {
+      "key": "drumClickFmTransientAmount",
+      "index": 175,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickFmTransientDecay",
+      "index": 176,
+      "enumMap": null,
+      "fallback": 30
+    },
+    {
+      "key": "drumClickFmTransientFeedback",
+      "index": 177,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickFmTransientNoise",
+      "index": 178,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickFmTransientClip",
+      "index": 179,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickDamageMix",
+      "index": 180,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickDamageBits",
+      "index": 181,
+      "enumMap": null,
+      "fallback": 16
+    },
+    {
+      "key": "drumClickDamageSampleHold",
+      "index": 182,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumClickDamageFold",
+      "index": 183,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickDamageClip",
+      "index": 184,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickMetallicMix",
+      "index": 185,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickMetallicTune",
+      "index": 186,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumClickMetallicSpread",
+      "index": 187,
+      "enumMap": null,
+      "fallback": 0.35
+    },
+    {
+      "key": "drumClickMetallicDecay",
+      "index": 188,
+      "enumMap": null,
+      "fallback": 120
+    },
+    {
+      "key": "drumClickMetallicPhaseRandom",
+      "index": 189,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepHiDamageMix",
+      "index": 190,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepHiDamageBits",
+      "index": 191,
+      "enumMap": null,
+      "fallback": 16
+    },
+    {
+      "key": "drumBeepHiDamageSampleHold",
+      "index": 192,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumBeepHiDamageFold",
+      "index": 193,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepHiDamageClip",
+      "index": 194,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepHiMetallicMix",
+      "index": 195,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepHiMetallicTune",
+      "index": 196,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepHiMetallicSpread",
+      "index": 197,
+      "enumMap": null,
+      "fallback": 0.35
+    },
+    {
+      "key": "drumBeepHiMetallicDecay",
+      "index": 198,
+      "enumMap": null,
+      "fallback": 120
+    },
+    {
+      "key": "drumBeepHiMetallicPhaseRandom",
+      "index": 199,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoFmTransientMix",
+      "index": 200,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoFmTransientRatio",
+      "index": 201,
+      "enumMap": null,
+      "fallback": 2
+    },
+    {
+      "key": "drumBeepLoFmTransientAmount",
+      "index": 202,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoFmTransientDecay",
+      "index": 203,
+      "enumMap": null,
+      "fallback": 30
+    },
+    {
+      "key": "drumBeepLoFmTransientFeedback",
+      "index": 204,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoFmTransientNoise",
+      "index": 205,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoFmTransientClip",
+      "index": 206,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoDamageMix",
+      "index": 207,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoDamageBits",
+      "index": 208,
+      "enumMap": null,
+      "fallback": 16
+    },
+    {
+      "key": "drumBeepLoDamageSampleHold",
+      "index": 209,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumBeepLoDamageFold",
+      "index": 210,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoDamageClip",
+      "index": 211,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoMetallicMix",
+      "index": 212,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoMetallicTune",
+      "index": 213,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumBeepLoMetallicSpread",
+      "index": 214,
+      "enumMap": null,
+      "fallback": 0.35
+    },
+    {
+      "key": "drumBeepLoMetallicDecay",
+      "index": 215,
+      "enumMap": null,
+      "fallback": 120
+    },
+    {
+      "key": "drumBeepLoMetallicPhaseRandom",
+      "index": 216,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumNoiseDamageMix",
+      "index": 217,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumNoiseDamageBits",
+      "index": 218,
+      "enumMap": null,
+      "fallback": 16
+    },
+    {
+      "key": "drumNoiseDamageSampleHold",
+      "index": 219,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumNoiseDamageFold",
+      "index": 220,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumNoiseDamageClip",
+      "index": 221,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumNoiseMetallicMix",
+      "index": 222,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumNoiseMetallicTune",
+      "index": 223,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumNoiseMetallicSpread",
+      "index": 224,
+      "enumMap": null,
+      "fallback": 0.35
+    },
+    {
+      "key": "drumNoiseMetallicDecay",
+      "index": 225,
+      "enumMap": null,
+      "fallback": 120
+    },
+    {
+      "key": "drumNoiseMetallicPhaseRandom",
+      "index": 226,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneFmTransientMix",
+      "index": 227,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneFmTransientRatio",
+      "index": 228,
+      "enumMap": null,
+      "fallback": 2
+    },
+    {
+      "key": "drumMembraneFmTransientAmount",
+      "index": 229,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneFmTransientDecay",
+      "index": 230,
+      "enumMap": null,
+      "fallback": 30
+    },
+    {
+      "key": "drumMembraneFmTransientFeedback",
+      "index": 231,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneFmTransientNoise",
+      "index": 232,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneFmTransientClip",
+      "index": 233,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneDamageMix",
+      "index": 234,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneDamageBits",
+      "index": 235,
+      "enumMap": null,
+      "fallback": 16
+    },
+    {
+      "key": "drumMembraneDamageSampleHold",
+      "index": 236,
+      "enumMap": null,
+      "fallback": 1
+    },
+    {
+      "key": "drumMembraneDamageFold",
+      "index": 237,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneDamageClip",
+      "index": 238,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneMetallicMix",
+      "index": 239,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneMetallicTune",
+      "index": 240,
+      "enumMap": null,
+      "fallback": 0
+    },
+    {
+      "key": "drumMembraneMetallicSpread",
+      "index": 241,
+      "enumMap": null,
+      "fallback": 0.35
+    },
+    {
+      "key": "drumMembraneMetallicDecay",
+      "index": 242,
+      "enumMap": null,
+      "fallback": 120
+    },
+    {
+      "key": "drumMembraneMetallicPhaseRandom",
+      "index": 243,
+      "enumMap": null,
+      "fallback": 0
+    }
   ],
   "defaultParamValues": {
     "92": 150,
@@ -124,13 +1385,34 @@
     "125": 0
   },
   "voiceParamRanges": {
-    "sub": [0, 12],
-    "kick": [12, 13],
-    "click": [25, 15],
-    "beepHi": [40, 19],
-    "beepLo": [59, 19],
-    "noise": [78, 14],
-    "membrane": [92, 12]
+    "sub": [
+      0,
+      12
+    ],
+    "kick": [
+      12,
+      13
+    ],
+    "click": [
+      25,
+      15
+    ],
+    "beepHi": [
+      40,
+      19
+    ],
+    "beepLo": [
+      59,
+      19
+    ],
+    "noise": [
+      78,
+      14
+    ],
+    "membrane": [
+      92,
+      12
+    ]
   },
   "voicePresetExportNames": {
     "sub": "SUB_PRESETS",

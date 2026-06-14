@@ -14,6 +14,10 @@ import { normalizeNoteDegreeOffset } from '../../audio/drumSeqTypes';
 import { getPresetNames as getDrumPresetNames } from '../../audio/drumPresets';
 import { DRUM_VOICES as VOICE_CONFIG, DRUM_VOICE_ORDER } from '../../audio/drumVoiceConfig';
 import { useEuclideanSequencer, type EvolveConfig, type PitchSettings, type StepOverrides, type SubLaneKind, type SubLaneState } from '../sequencer/useEuclideanSequencer';
+import SequencerChainRail, {
+  createSequencerChainUiRuntimeState,
+  useSequencerChainUiPosition,
+} from '../sequencer/SequencerChainRail';
 import { liveOverdubTargetStep, useLiveOverdubRecorder } from '../sequencer/useLiveOverdubRecorder';
 import { stepOverridesForEngineSubLaneState } from '../sequencer/engineStepOverrides';
 import {
@@ -277,6 +281,23 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     initialEvolveConfigs,
     resetKey: presetVersion,
   });
+
+  const drumChainRuntimeState = React.useMemo(
+    () => createSequencerChainUiRuntimeState('drum', state as unknown as Record<string, unknown>, seq.clockDivs),
+    [state, seq.clockDivs],
+  );
+  const drumChainPosition = useSequencerChainUiPosition({
+    kind: 'drum',
+    state: drumChainRuntimeState,
+    chain: state.drumSequencerChain,
+    running: isRunning,
+  });
+  const setDrumSequencerChain = useCallback(
+    (chain: SliderState['drumSequencerChain']) => {
+      onSelectChange('drumSequencerChain', chain);
+    },
+    [onSelectChange],
+  );
 
   const drumEuclideanPatternOptions = React.useMemo<UsePresetsOptions[]>(() => LANE_CONFIGS.map((_, laneIdx) => ({
     customExtract: (currentState) => {
@@ -1666,9 +1687,19 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
           {/* ── Overview Mode ── */}
           {seq.viewMode === 'overview' && (
             <>
+              <SequencerChainRail
+                chain={state.drumSequencerChain}
+                lanes={seq.sequencerModels.map((model) => ({ name: model.name, color: model.color }))}
+                selectedLaneIndex={seq.activeTab}
+                activeEntryIndex={drumChainPosition?.activeEntryIndex ?? null}
+                onChange={setDrumSequencerChain}
+                onSelectLane={(index) => seq.setActiveTab(index)}
+              />
               <SeqOverview
                 sequencers={seq.sequencerModels}
                 playheads={seq.playheads}
+                chain={state.drumSequencerChain}
+                activeChainLaneIndex={drumChainPosition?.activeLaneIndex ?? null}
                 onSelectSequencer={(index) => {
                   seq.setActiveTab(index);
                   seq.setViewMode('detail');

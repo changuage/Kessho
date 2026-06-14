@@ -409,10 +409,18 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     };
   }
 
+  if (key === 'synthSequencerChain' || key === 'drumSequencerChain') {
+    return {
+      path: 'sequencer-chain-host-events',
+      evidence: ['src/audio/CoreProductHostSequencerChain.ts', 'src/audio/coreProductEvents.ts#createCoreProductSequencerLaneParamEvent', 'cpp/KesshoCore/src/product/KesshoProductEvents.cpp'],
+      reason: 'Structured sequencer chain state is projected by the Product host into generated lane-enabled sequencer events.',
+    };
+  }
+
   if (key === 'synthVoiceMask' || key === 'pad2VoiceAssign') {
     return {
       path: 'pad-voice-routing-snapshot',
-      evidence: ['src/audio/coreProductSnapshotPadVoiceRouting.ts', 'src/audio/CoreProductRuntimeAdapter.ts#appendSequencerLaneDiffs', 'src/audio/coreProductArrangementScheduler.ts'],
+      evidence: ['src/audio/coreProductSnapshotPadVoiceRouting.ts', 'src/audio/CoreProductRuntimeAdapter.ts#appendSequencerLaneDiffs', 'src/audio/coreProductArrangementPadChord.ts'],
     };
   }
 
@@ -609,7 +617,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
   ].includes(key)) {
     return {
       path: 'arrangement-scheduler-event',
-      evidence: ['src/audio/coreProductArrangementScheduler.ts', 'src/audio/coreProductEvents.ts#createCoreProductManualNoteEvent'],
+      evidence: ['src/audio/coreProductArrangementScheduler.ts', 'src/audio/coreProductArrangementPadChord.ts', 'src/audio/coreProductArrangementSchedulerUtils.ts', 'src/audio/coreProductEvents.ts#createCoreProductManualNoteEvent'],
       reason: 'Host arrangement scheduling turns this control into Product Core manual-note events and scheduler restarts rather than scalar Product params.',
     };
   }
@@ -936,7 +944,9 @@ const PRODUCT_SNAPSHOT_KEY_PATHS = [
   'src/audio/coreProductSequencerFaceSnapshot.ts',
   'src/audio/coreProductSequencerHold.ts',
   'src/audio/coreProductAssets.ts',
+  'src/audio/coreProductArrangementPadChord.ts',
   'src/audio/coreProductArrangementScheduler.ts',
+  'src/audio/coreProductArrangementSchedulerUtils.ts',
   'src/audio/granularMacroCore.ts',
   'src/audio/transport.ts',
 ];
@@ -1081,6 +1091,9 @@ function collectProductWiredKeys(sliderKeys) {
   const keys = collectProductSnapshotReferencedKeys(sliderKeys);
   for (const key of objectKeysInConst('src/audio/coreProductEvents.ts', 'RANGE_KEY_TARGETS')) {
     keys.add(key);
+  }
+  for (const key of ['synthSequencerChain', 'drumSequencerChain']) {
+    if (sliderKeys.has(key)) keys.add(key);
   }
 
   return keys;

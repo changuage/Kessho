@@ -19,8 +19,12 @@ const soundscapesSnapshotPath = 'src/audio/coreProductSoundscapesSnapshot.ts';
 const soundscapesSnapshot = read(soundscapesSnapshotPath);
 const snapshotEncoderPath = 'src/audio/coreProductSnapshotEncoder.ts';
 const snapshotEncoder = read(snapshotEncoderPath);
+const snapshotSequencerFaceEncoderPath = 'src/audio/coreProductSequencerFaceEncoder.ts';
+const snapshotSequencerFaceEncoder = read(snapshotSequencerFaceEncoderPath);
 const snapshotDefaultsPath = 'src/audio/coreProductSnapshotDefaults.ts';
 const snapshotDefaults = read(snapshotDefaultsPath);
+const snapshotSequencerFacePath = 'src/audio/coreProductSequencerFaceSnapshot.ts';
+const snapshotSequencerFace = read(snapshotSequencerFacePath);
 const snapshotReverbPath = 'src/audio/coreProductReverbSnapshot.ts';
 const snapshotReverb = read(snapshotReverbPath);
 const presetIdsPath = 'src/audio/CoreProductPresetIds.ts';
@@ -31,7 +35,7 @@ const padPatchPath = 'src/audio/CoreProductPadPatch.ts';
 const padPatch = read(padPatchPath);
 const drumPatchPath = 'src/audio/CoreProductDrumPatch.ts';
 const drumPatch = read(drumPatchPath);
-const snapshotAuthoritySurface = `${snapshot}\n${soundscapesSnapshot}\n${snapshotEncoder}\n${snapshotDefaults}\n${snapshotReverb}\n${presetIds}\n${leadPatch}\n${padPatch}\n${drumPatch}`;
+const snapshotAuthoritySurface = `${snapshot}\n${soundscapesSnapshot}\n${snapshotEncoder}\n${snapshotSequencerFaceEncoder}\n${snapshotDefaults}\n${snapshotSequencerFace}\n${snapshotReverb}\n${presetIds}\n${leadPatch}\n${padPatch}\n${drumPatch}`;
 
 const allowedImports = new Set([
   './generated/kesshoProductSchema',
@@ -47,8 +51,10 @@ const allowedImports = new Set([
   './coreProductAssets',
   './coreProductSequencerMacroDefaults',
   './coreProductSequencerHold',
+  './coreProductSequencerFaceSnapshot',
   './coreProductReverbSnapshot',
   './coreProductSoundscapesSnapshot',
+  './coreProductSnapshotDefaults',
   './coreProductSnapshotEncoder',
   './coreProductSnapshotPadVoiceRouting',
   './coreProductSnapshotState',
@@ -89,6 +95,7 @@ const encoderAllowedImports = new Set([
   './coreProductEvents',
   './coreProductSoundscapesSnapshot',
   './coreProductSnapshotDefaults',
+  './coreProductSequencerFaceEncoder',
   './coreProductSnapshot',
 ]);
 const encoderImports = Array.from(snapshotEncoder.matchAll(/from '([^']+)'/g), (match) => match[1]);

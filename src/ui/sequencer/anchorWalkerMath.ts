@@ -80,7 +80,7 @@ function positiveModulo(value: number, divisor: number): number {
   return ((value % divisor) + divisor) % divisor;
 }
 
-function boundedLatticeIndex(index: number, length: number, boundaryMode: WalkerBoundaryMode): number {
+export function applyBoundaryIndex(index: number, length: number, boundaryMode: WalkerBoundaryMode): number {
   if (length <= 1) return 0;
   if (boundaryMode === 'wrap') return positiveModulo(index, length);
   if (boundaryMode === 'fold') {
@@ -99,7 +99,7 @@ export function degreeToMidiBounded(
 ): number {
   if (lattice.length === 0) return clamp(Math.round(anchorMidi), 0, 127);
   const anchorIndex = findNearestLatticeIndex(lattice, anchorMidi);
-  const index = boundedLatticeIndex(anchorIndex + Math.round(cursorDegree), lattice.length, boundaryMode);
+  const index = applyBoundaryIndex(anchorIndex + Math.round(cursorDegree), lattice.length, boundaryMode);
   return lattice[index] ?? lattice[anchorIndex] ?? clamp(Math.round(anchorMidi), 0, 127);
 }
 
@@ -136,6 +136,32 @@ export function applyLayer(
   const transposed = baseMidi + Math.round(layer.transposeSemitones);
   if (layer.tuning === 'snapAfterTranspose') {
     return snapMidiToMask(transposed, snapMask, minMidi, maxMidi);
+  }
+  return clamp(Math.round(transposed), 0, 127);
+}
+
+export function applyLayerBounded(
+  baseMidi: number,
+  layer: AnchorWalkerLayerConfig,
+  snapMask: number,
+  anchorMidi = baseMidi,
+  minMidi = 0,
+  maxMidi = 127,
+  boundaryMode: WalkerBoundaryMode = 'fold',
+): number {
+  if (layer.tuning === 'diatonicOffset') {
+    const lattice = buildPitchLattice(anchorMidi, snapMask, minMidi, maxMidi);
+    const baseIndex = findNearestLatticeIndex(lattice, baseMidi);
+    const index = applyBoundaryIndex(
+      baseIndex + Math.round(layer.diatonicOffset),
+      lattice.length,
+      boundaryMode,
+    );
+    return lattice[index] ?? baseMidi;
+  }
+  const transposed = baseMidi + Math.round(layer.transposeSemitones);
+  if (layer.tuning === 'snapAfterTranspose') {
+    return snapMidiToMask(clamp(Math.round(transposed), 0, 127), snapMask, minMidi, maxMidi);
   }
   return clamp(Math.round(transposed), 0, 127);
 }

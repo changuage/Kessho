@@ -93,7 +93,7 @@ const SEQUENCER_UI_LANE_BASE_OFFSET = 36;
 const SEQUENCER_UI_LANE_SIZE = 3024;
 const LANE_EXPRESSION_OVERRIDE_SET_LOW_OFFSET = 76;
 const LANE_EXPRESSION_OVERRIDES_OFFSET = 1448;
-const TELEMETRY_BYTES = 13984;
+const TELEMETRY_BYTES = 15008;
 const TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET = 8756;
 const TELEMETRY_DEBUG_SOURCE_OFFSET = 8760;
 const TELEMETRY_DEBUG_SOURCE_BYTES = 32;
@@ -351,6 +351,7 @@ function fakeWebAssemblyWithTelemetryHash(schemaHash) {
     kessho_product_load_snapshot_v2: () => 1,
     kessho_product_enqueue_event: () => 1,
     kessho_product_copy_telemetry: copyTelemetry,
+    kessho_product_drain_generated_sequencer_capture_events: () => 0,
     kessho_product_copy_granular_waveform: () => 1,
     kessho_product_copy_sequencer_ui_state: () => 1,
     kessho_product_register_asset_buffer: () => 1,

@@ -204,6 +204,7 @@ export function appendSequencerModeConfigDiffs(
   const prevOrbit = previous.orbit ?? orbitDiffDefaults();
   const nextOrbit = next.orbit ?? orbitDiffDefaults();
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitTriggerLineCount, prevOrbit.triggerLineCount, nextOrbit.triggerLineCount);
+  appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitClockMode, prevOrbit.clockMode, nextOrbit.clockMode);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitBpmPercent, prevOrbit.bpmPercent, nextOrbit.bpmPercent);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitQuantizeToHarmony, prevOrbit.quantizeToHarmony, nextOrbit.quantizeToHarmony);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitSnapSource, prevOrbit.snapSource, nextOrbit.snapSource);

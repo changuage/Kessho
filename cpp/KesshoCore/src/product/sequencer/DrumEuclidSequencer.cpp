@@ -25,6 +25,7 @@ void armAnchorWalkerGesture(
 
   bool KesshoProductEngine::isSequencerLaneParam(uint32_t param_id) const {
   switch (param_id) {
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_CLOCK_MODE_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_ENABLED_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TARGET_SOURCE_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_STEP_COUNT_ID:
@@ -358,6 +359,9 @@ void armAnchorWalkerGesture(
     }
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_TRIGGER_LINE_COUNT_ID:
       lane.orbit.trigger_line_count = clampU32(static_cast<uint32_t>(std::lround(std::max(1.0f, event.value))), 1u, kMaxOrbitTriggerLines);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_CLOCK_MODE_ID:
+      lane.orbit.clock_mode = event.value >= 0.5f ? 1u : 0u;
       break;
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_BPM_PERCENT_ID:
       lane.orbit.bpm_percent = clampFloat(event.value, 1.0f, 800.0f);

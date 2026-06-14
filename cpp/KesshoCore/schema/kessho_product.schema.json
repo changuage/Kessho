@@ -1,6 +1,6 @@
 {
   "name": "kessho-product",
-  "version": 10,
+  "version": 11,
   "groups": [
     "transport",
     "harmony",
@@ -111,11 +111,12 @@
       ]
     },
     "drum": {
-      "paramCount": 126,
+      "paramCount": 244,
       "presetSnapParamIndices": [
         32,
         82,
-        96
+        96,
+        132
       ]
     }
   },

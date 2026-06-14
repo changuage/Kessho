@@ -324,7 +324,7 @@
           "file": "src/audio/coreProductSnapshot.ts",
           "tokens": [
             "distanceAdjustedNumberFromState",
-            "applyLeadDistanceEnvelope",
+            "getVoiceDistanceKey(voice)",
             "applyDistanceValue(key, distanceState, voice, distance)",
             "source.level = distanceAdjustedNumberFromState(state, 'lead1Level', 'lead1'",
             "source.reverbSend = distanceAdjustedNumberFromState(state, 'lead1ReverbSend', 'lead1'",

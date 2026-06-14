@@ -1,5 +1,4 @@
 #pragma once
-
 #include "ProductBuffers.h"
 #include "ProductForwardDecls.h"
 #include "ProductGraphState.h"
@@ -10,7 +9,7 @@
 #include "ProductSequencerState.h"
 #include "ProductTransportState.h"
 #include "ProductVoiceState.h"
-
+#include "KesshoCore/KesshoProductGeneratedSequencerCapture.h"
 #include <array>
 #include <memory>
 
@@ -51,6 +50,9 @@ struct KesshoProductEngine : ProductGraphState {
   QueuedProductEvent control_events[kessho::product::generated::KESSHO_PRODUCT_MAX_CONTROL_EVENTS]{};
   uint32_t control_event_count = 0;
   uint32_t next_control_sequence = 1;
+  KesshoProductGeneratedSequencerCaptureConfig generated_sequencer_capture_config{};
+  kessho::product::GeneratedSequencerCaptureRing<2048> generated_sequencer_capture_ring{};
+  uint64_t generated_sequencer_capture_event_counter = 1u;
   bool snapshot_loaded_once = false;
   SequencerBuffer sequencer_events{};
   KesshoProductTelemetry telemetry{};
@@ -411,6 +413,7 @@ struct KesshoProductEngine : ProductGraphState {
       float drum_ratchet_decay_cap,
       float drum_ratchet_attack_cap,
       float synth_ratchet_factor,
+      uint32_t sample_seed,
       uint32_t pad_voice_index = kPadVoiceNoPreference,
       uint32_t* out_module_voice_index = nullptr);
   uint32_t triggerVoice(

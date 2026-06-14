@@ -9,7 +9,7 @@ namespace kessho::core {
 
 constexpr uint32_t KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT = 53u;
 constexpr uint32_t KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT = 112u;
-constexpr uint32_t KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT = 126u;
+constexpr uint32_t KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT = 244u;
 
 struct KesshoSourcePresetPatch {
   uint32_t exact_pad_param_count = 0u;

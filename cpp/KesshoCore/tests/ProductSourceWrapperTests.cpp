@@ -10,9 +10,12 @@
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoProductParamIds.h"
 #include "KesshoProductSchema.h"
+#include "../src/modules/KesshoModule.h"
 #include "ProductSnapshotTestHelpers.h"
 
 namespace {
+
+constexpr float kDrumSubMidiNote = 35.0f;
 
 void require(bool condition, const char* message) {
   if (!condition) {
@@ -406,7 +409,8 @@ void requireExactSourcePresetMetadata() {
       drum_patch.exact_drum_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT,
       "generated DrumDefault exact drum param count missing");
   require(
-      kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT == 126u,
+      kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT ==
+          kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT,
       "generated drum param count must match module layout");
   require(
       kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT == 7u,
@@ -869,7 +873,7 @@ void requireDrumOverridesStayStructured() {
       std::fabs(loaded.source_preset_patch.exact_drum_params[kDrumSubFreqParamIndex] - kSubFreqOverride) < 0.00001f,
       "drum sparse override did not compile into generated Drum source patch");
 
-  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, 36.0f);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, kDrumSubMidiNote);
   require(renderPeakBlocks(engine, 8u) > 0.0001f, "drum sparse override source did not render");
   require(engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].source_preset_patch_valid, "drum sparse override trigger lost generated source patch");
   require(engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].drum_override_count == 1u, "drum sparse override trigger lost structured override state");
@@ -957,7 +961,7 @@ void requireDrumLiveOverrideEventStaysStructured() {
   require(
       std::fabs(engine->drum_module->params()[kDrumSubFreqParamIndex] - kSubFreqOverride) < 0.00001f,
       "drum live override event did not update module patch");
-  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, 36.0f);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, kDrumSubMidiNote);
   require(renderPeakBlocks(engine, 8u) > 0.0001f, "drum live override source did not render");
   require(engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].drum_override_count == 1u, "drum live override trigger lost structured override state");
   kessho_product_destroy(engine);
@@ -1926,7 +1930,7 @@ float renderDrumSubWithSparseLevel(float sub_level) {
   appendDrumOverride(source, 2u, sub_level);
 
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "sparse Drum override snapshot load failed");
-  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, 36.0f);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, kDrumSubMidiNote);
   const float result = renderPeakBlocks(engine);
   kessho_product_destroy(engine);
   return result;
@@ -1971,7 +1975,7 @@ void requireLiveSparseDrumParamsSurviveTrigger() {
   require(std::fabs(loaded.drum_override_values[0]) < 0.0001f, "live sparse Drum param missed source state value");
   require(std::fabs(drum_params[kSubLevelParamIndex]) < 0.0001f, "live sparse Drum param missed module params");
 
-  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, 36.0f);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, kDrumSubMidiNote);
   require(std::fabs(drum_params[kSubLevelParamIndex]) < 0.0001f, "drum trigger restored stale source preset over live sparse params");
   kessho_product_destroy(engine);
 }
@@ -1992,7 +1996,7 @@ float renderDrumSubWithGeneratedVoicePreset(const char* preset_name) {
   source.drum_voice_morphs[0] = 0.0f;
 
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "generated drum voice preset snapshot load failed");
-  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, 36.0f);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, kDrumSubMidiNote);
   const float result = renderPeakBlocks(engine);
   kessho_product_destroy(engine);
   return result;
@@ -2033,7 +2037,7 @@ std::vector<float> renderDrumSubReconstructionProof(const char* preset_name, boo
   require(
       kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
       "drum reconstruction proof snapshot load failed");
-  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, 36.0f);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, kDrumSubMidiNote);
 
   std::vector<float> left(128);
   std::vector<float> right(128);

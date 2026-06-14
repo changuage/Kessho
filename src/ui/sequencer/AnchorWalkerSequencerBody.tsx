@@ -13,6 +13,7 @@ interface AnchorWalkerSequencerBodyProps {
   color: string;
   harmonyState?: HarmonyState | null;
   runtimeState?: AnchorWalkerRuntimeViewState | null;
+  captureSlot?: React.ReactNode;
   onChange: (config: AnchorWalkerConfig) => void;
   onPerformanceEvent?: (event: AnchorWalkerPerformanceEvent) => void;
 }
@@ -48,6 +49,7 @@ export function AnchorWalkerSequencerBody({
   color,
   harmonyState,
   runtimeState,
+  captureSlot,
   onChange,
   onPerformanceEvent,
 }: AnchorWalkerSequencerBodyProps) {
@@ -216,6 +218,11 @@ export function AnchorWalkerSequencerBody({
             <option value="clamp">Clamp</option>
           </select>
         </label>
+        {captureSlot ? (
+          <div className="anchor-walker-capture-row">
+            {captureSlot}
+          </div>
+        ) : null}
       </div>
 
       <div className="anchor-walker-main">

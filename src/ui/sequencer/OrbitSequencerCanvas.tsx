@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import type { OrbitNoteConfig, OrbitRuntimeVisualState, OrbitSequencerConfig, OrbitSplineConfig } from './orbitSequencerTypes';
 import {
   ORBIT_RADIUS_SCALE,
@@ -14,6 +14,7 @@ import {
   splineAngleAtRadius,
   wrapRadians,
   type OrbitPoint,
+  type OrbitSplineSample,
 } from './orbitSequencerMath';
 
 interface OrbitSequencerCanvasProps {
@@ -43,6 +44,86 @@ type DragState =
 const HANDLE_KEYS = ['handle1', 'handle2', 'tip'] as const;
 const HANDLE_HIT_RADIUS = 14;
 const NOTE_HIT_RADIUS = 18;
+const MAX_SPLINE_SAMPLE_CACHE_SIZE = 96;
+
+type SplineSampleCacheKey = string;
+
+const splineSampleCache = new Map<SplineSampleCacheKey, OrbitSplineSample[]>();
+
+function splineCacheKey(
+  spline: OrbitSplineConfig,
+  steps: number,
+  angle: number,
+): SplineSampleCacheKey {
+  return [
+    steps,
+    spline.handle1.x.toFixed(4),
+    spline.handle1.y.toFixed(4),
+    spline.handle2.x.toFixed(4),
+    spline.handle2.y.toFixed(4),
+    spline.tip.x.toFixed(4),
+    spline.tip.y.toFixed(4),
+    angle.toFixed(4),
+  ].join(':');
+}
+
+function cachedSampleBezierSpline(
+  spline: OrbitSplineConfig,
+  steps: number,
+  angle: number,
+): OrbitSplineSample[] {
+  const key = splineCacheKey(spline, steps, angle);
+  const cached = splineSampleCache.get(key);
+  if (cached) return cached;
+
+  const samples = sampleBezierSpline(spline, steps, angle);
+  splineSampleCache.set(key, samples);
+  if (splineSampleCache.size > MAX_SPLINE_SAMPLE_CACHE_SIZE) {
+    const firstKey = splineSampleCache.keys().next().value;
+    if (firstKey) splineSampleCache.delete(firstKey);
+  }
+  return samples;
+}
+
+function useRafCommit<T>(commit: (value: T) => void): [(value: T) => void, () => void] {
+  const commitRef = useRef(commit);
+  const rafRef = useRef<number | null>(null);
+  const latestRef = useRef<T | null>(null);
+
+  useEffect(() => {
+    commitRef.current = commit;
+  }, [commit]);
+
+  useEffect(() => () => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }, []);
+
+  const schedule = useCallback((value: T) => {
+    latestRef.current = value;
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const latest = latestRef.current;
+      latestRef.current = null;
+      if (latest !== null) commitRef.current(latest);
+    });
+  }, []);
+
+  const flush = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    const latest = latestRef.current;
+    latestRef.current = null;
+    if (latest !== null) commitRef.current(latest);
+  }, []);
+
+  return [schedule, flush];
+}
 
 function canvasRadius(size: number) {
   return size * ORBIT_RADIUS_SCALE;
@@ -185,10 +266,10 @@ function drawOrbit(ctx: CanvasRenderingContext2D, args: {
     ctx.stroke();
   }
 
-  const baseSamples = sampleBezierSpline(spline, 64, spline.baseAngle);
+  const baseSamples = cachedSampleBezierSpline(spline, 64, spline.baseAngle);
   for (let line = 0; line < config.triggerLineCount; line += 1) {
     const offset = lineAngleOffset(line, config.triggerLineCount);
-    const samples = sampleBezierSpline(spline, 64, spline.baseAngle + offset);
+    const samples = cachedSampleBezierSpline(spline, 64, spline.baseAngle + offset);
     ctx.beginPath();
     samples.forEach((sample, index) => {
       const x = sample.x * radius;
@@ -262,6 +343,12 @@ export function OrbitSequencerCanvas({
   const phaseRef = useRef<Map<string, number>>(new Map());
   const dragStateRef = useRef<DragState>(null);
   const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
+  const [commitMoveNote, flushMoveNote] = useRafCommit<{
+    id: string;
+    radiusNorm: number;
+    phase: number;
+  }>(({ id, radiusNorm, phase }) => onMoveNote(id, radiusNorm, phase));
+  const [commitUpdateSpline, flushUpdateSpline] = useRafCommit<Partial<OrbitSplineConfig>>(onUpdateSpline);
 
   useEffect(() => {
     configRef.current = config;
@@ -300,10 +387,12 @@ export function OrbitSequencerCanvas({
   useEffect(() => {
     runtimeVisualStateRef.current = runtimeVisualState;
     if (!runtimeVisualState) return;
+    const dragState = dragStateRef.current;
     const runtimes = runtimeRef.current;
     for (let index = 0; index < configRef.current.notes.length; index += 1) {
       const note = configRef.current.notes[index];
       if (!note) continue;
+      if (dragState?.type === 'note' && dragState.id === note.id) continue;
       const angle = runtimeVisualState.noteAngles[index];
       if (typeof angle !== 'number' || !Number.isFinite(angle)) continue;
       const flash = Math.max(0, runtimeVisualState.noteFlashes[index] ?? 0);
@@ -378,13 +467,19 @@ export function OrbitSequencerCanvas({
         const shouldAdvance = activeRef.current;
         const transportBpmNow = transportBpmRef.current;
         const nativeRuntime = runtimeVisualStateRef.current;
-        const useNativeRuntime = shouldAdvance && nativeRuntime !== null && nativeRuntime.noteAngles.length > 0;
+        const dragState = dragStateRef.current;
+        const draggingNoteId = dragState?.type === 'note' ? dragState.id : null;
+        const useNativeRuntime = shouldAdvance && draggingNoteId === null && nativeRuntime !== null && nativeRuntime.noteAngles.length > 0;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         for (let noteIndex = 0; noteIndex < configNow.notes.length; noteIndex += 1) {
           const note = configNow.notes[noteIndex];
           if (!note) continue;
           const runtime = runtimeRef.current.get(note.id);
           if (!runtime) continue;
+          if (note.id === draggingNoteId) {
+            runtime.flash = Math.max(0, runtime.flash - decayDt * 2.5);
+            continue;
+          }
           if (useNativeRuntime) {
             const nativeAngle = nativeRuntime.noteAngles[noteIndex];
             if (typeof nativeAngle === 'number' && Number.isFinite(nativeAngle)) {
@@ -510,25 +605,55 @@ export function OrbitSequencerCanvas({
               ...configNow,
               spline,
             };
-            onUpdateSpline({ [key]: basePoint } as Partial<OrbitSplineConfig>);
+            commitUpdateSpline({ [key]: basePoint } as Partial<OrbitSplineConfig>);
             drawStaticOrbit();
             return;
           }
           const rawPolar = cartesianToPolar(point.x, point.y, point.size);
           const polar = snapPolarForConfig(rawPolar.radiusNorm, rawPolar.angle, configRef.current);
+          configRef.current = {
+            ...configRef.current,
+            notes: configRef.current.notes.map((note) => (
+              note.id === dragState.id
+                ? { ...note, radiusNorm: polar.radiusNorm, phase: polar.angle }
+                : note
+            )),
+          };
           const runtime = runtimeRef.current.get(dragState.id);
           if (runtime) runtime.angle = polar.angle;
-          onMoveNote(dragState.id, polar.radiusNorm, polar.angle);
+          commitMoveNote({
+            id: dragState.id,
+            radiusNorm: polar.radiusNorm,
+            phase: polar.angle,
+          });
           drawStaticOrbit();
         }}
         onPointerUp={(event) => {
+          const dragState = dragStateRef.current;
+          if (dragState?.type === 'note') {
+            flushMoveNote();
+          } else if (dragState?.type === 'handle') {
+            flushUpdateSpline();
+          }
           dragStateRef.current = null;
           event.currentTarget.releasePointerCapture(event.pointerId);
         }}
         onPointerCancel={() => {
+          const dragState = dragStateRef.current;
+          if (dragState?.type === 'note') {
+            flushMoveNote();
+          } else if (dragState?.type === 'handle') {
+            flushUpdateSpline();
+          }
           dragStateRef.current = null;
         }}
         onLostPointerCapture={() => {
+          const dragState = dragStateRef.current;
+          if (dragState?.type === 'note') {
+            flushMoveNote();
+          } else if (dragState?.type === 'handle') {
+            flushUpdateSpline();
+          }
           dragStateRef.current = null;
         }}
       />

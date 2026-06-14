@@ -1781,6 +1781,27 @@ export function createCoreProductAnchorWalkerPerformanceEvent(
   };
 }
 
+export type CoreProductGeneratedSequencerCaptureMode = 'anchorWalker' | 'orbit';
+
+export function createCoreProductGeneratedSequencerCaptureEvent(request: {
+  enabled: boolean;
+  sourceLaneIndex: number;
+  targetLaneIndex: number;
+  sourceMode: CoreProductGeneratedSequencerCaptureMode;
+}): CoreProductEvent {
+  const sourceModeId = request.sourceMode === 'anchorWalker'
+    ? 1
+    : 2;
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.GeneratedSequencerCapture,
+    targetId: requireSequencerId('synth'),
+    index: requireIntegerInRange(request.sourceLaneIndex, 'sourceLaneIndex', 0, 15),
+    paramId: requireIntegerInRange(request.targetLaneIndex, 'targetLaneIndex', 0, 15),
+    value: request.enabled ? 1 : 0,
+    value2: sourceModeId,
+  };
+}
+
 export function createCoreProductSequencerClockDivisionEvents(
   sequencer: keyof typeof CORE_PRODUCT_SEQUENCER_IDS,
   divs: readonly unknown[],

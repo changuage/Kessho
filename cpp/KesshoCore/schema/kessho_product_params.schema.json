@@ -731,6 +731,14 @@
       "max": 8
     },
     {
+      "name": "SequencerOrbitClockMode",
+      "path": "sequencers.*.lanes.*.orbit.clockMode",
+      "type": "uint",
+      "id": 290,
+      "min": 0,
+      "max": 1
+    },
+    {
       "name": "SequencerOrbitBpmPercent",
       "path": "sequencers.*.lanes.*.orbit.bpmPercent",
       "type": "float",

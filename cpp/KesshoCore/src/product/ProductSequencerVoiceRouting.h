@@ -4,7 +4,47 @@
 
 #include <cstdint>
 
+#include "kessho_drum.h"
+
 namespace kessho::product::internal {
+
+struct DrumKitMapEntry {
+  uint8_t voice = DRUM_VOICE_KICK;
+  int preset_slot = -1;
+  float pitch_semis = 0.0f;
+  float velocity_to_level = 1.0f;
+  float velocity_to_morph = 0.0f;
+  float velocity_to_expression = 1.0f;
+  uint8_t choke_group = 0u;
+  uint32_t seed_salt = 0u;
+};
+
+inline DrumKitMapEntry defaultDrumKitMapEntry(float midi_note) {
+  const int note = static_cast<int>(midi_note >= 0.0f ? midi_note + 0.5f : midi_note - 0.5f);
+  switch (note) {
+    case 35: return {DRUM_VOICE_SUB, -1, -2.0f, 1.0f, 0.05f, 1.0f, 0u, 35u};
+    case 36: return {DRUM_VOICE_KICK, -1, 0.0f, 1.0f, 0.0f, 1.0f, 0u, 36u};
+    case 37: return {DRUM_VOICE_CLICK, -1, 0.0f, 1.0f, 0.0f, 1.0f, 0u, 37u};
+    case 38: return {DRUM_VOICE_MEMBRANE, -1, 0.0f, 1.0f, 0.0f, 1.0f, 0u, 38u};
+    case 39: return {DRUM_VOICE_NOISE, -1, -3.0f, 1.0f, 0.2f, 1.0f, 0u, 39u};
+    case 40: return {DRUM_VOICE_MEMBRANE, -1, 2.0f, 1.0f, 0.1f, 1.0f, 0u, 40u};
+    case 41: return {DRUM_VOICE_MEMBRANE, -1, -7.0f, 1.0f, 0.0f, 1.0f, 0u, 41u};
+    case 42: return {DRUM_VOICE_NOISE, -1, 0.0f, 1.0f, 0.0f, 1.0f, 1u, 42u};
+    case 43: return {DRUM_VOICE_MEMBRANE, -1, -5.0f, 1.0f, 0.0f, 1.0f, 0u, 43u};
+    case 44: return {DRUM_VOICE_NOISE, -1, -1.0f, 1.0f, 0.1f, 1.0f, 1u, 44u};
+    case 45: return {DRUM_VOICE_MEMBRANE, -1, -2.0f, 1.0f, 0.0f, 1.0f, 0u, 45u};
+    case 46: return {DRUM_VOICE_NOISE, -1, 2.0f, 1.0f, 0.25f, 1.0f, 1u, 46u};
+    case 50: return {DRUM_VOICE_BEEP_LO, -1, 0.0f, 1.0f, 0.0f, 1.0f, 0u, 50u};
+    case 51:
+    case 53:
+    case 56:
+      return {DRUM_VOICE_BEEP_HI, -1, static_cast<float>(note - 51), 1.0f, 0.0f, 1.0f, 0u, static_cast<uint32_t>(note)};
+    default: {
+      const int legacy = std::max(0, std::min(DRUM_NUM_VOICE_TYPES - 1, note - 36));
+      return {static_cast<uint8_t>(legacy), -1, 0.0f, 1.0f, 0.0f, 1.0f, 0u, static_cast<uint32_t>(std::max(0, note))};
+    }
+  }
+}
 
 inline uint32_t drumVoiceMaskFromEncodedSeed(uint32_t seed) {
   return (seed & kDrumVoiceMaskSeedFlag) != 0u

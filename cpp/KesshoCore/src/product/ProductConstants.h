@@ -64,6 +64,9 @@ static_assert(
     "Lead override snapshot ABI count must match module Lead param count");
 constexpr uint32_t kProductDrumRuntimeParamIdBase = 3000u;
 constexpr uint32_t kProductDrumRuntimeParamCount = kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT;
+static_assert(
+    kProductDrumRuntimeParamCount == KESSHO_PRODUCT_DRUM_OVERRIDE_PARAM_COUNT,
+    "Drum override snapshot ABI count must match module Drum param count");
 constexpr uint32_t kProductDrumMasterLevelParam = 122u;
 constexpr uint32_t kProductDrumReverbSendParam = 123u;
 constexpr uint32_t kMaxSoundscapeAssetRefs = 16;

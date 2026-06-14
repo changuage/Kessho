@@ -81,6 +81,7 @@ static_assert(kLeadAttackParamIndex < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PA
       float drum_ratchet_decay_cap,
       float drum_ratchet_attack_cap,
       float synth_ratchet_factor,
+      uint32_t sample_seed,
       uint32_t pad_voice_index,
       uint32_t* out_module_voice_index) {
   if (out_module_voice_index != nullptr) {
@@ -183,21 +184,26 @@ static_assert(kLeadAttackParamIndex < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PA
         telemetry.last_error_code = KESSHO_PRODUCT_ERROR_ALLOCATION_FAILURE;
         return true;
       }
-      const int voice_type = std::clamp(roundedInt(midi_note - 36.0f), 0, DRUM_NUM_VOICE_TYPES - 1);
+      const DrumKitMapEntry kit_entry = defaultDrumKitMapEntry(midi_note);
+      const int voice_type = std::clamp(static_cast<int>(kit_entry.voice), 0, DRUM_NUM_VOICE_TYPES - 1);
       if (preset_patch != nullptr) {
         drum_module->setSourcePresetPatch(0, *preset_patch);
       }
       if (std::isfinite(drum_delay_send) && drum_delay_send >= 0.0f) {
         drum_module->setVoiceSend(voice_type, drum_delay_send);
       }
+      drum_module->prepareRandomSeed(sample_seed ^ kit_entry.seed_salt);
+      const float mapped_morph = morph >= 0.0f
+          ? clampFloat(morph + clamped_velocity * kit_entry.velocity_to_morph, 0.0f, 1.0f)
+          : morph;
       drum_module->setTriggerControls(
-          morph,
+          mapped_morph,
           distance,
-          expression,
-          drum_pitch_offset,
+          expression * kit_entry.velocity_to_expression,
+          drum_pitch_offset + kit_entry.pitch_semis,
           drum_ratchet_decay_cap,
           drum_ratchet_attack_cap);
-      drum_module->noteOn(0.0f, clamped_velocity, 0.0f, voice_type);
+      drum_module->noteOn(0.0f, clamped_velocity * kit_entry.velocity_to_level, 0.0f, voice_type);
       drum_module_trigger_pending = true;
       if (out_module_voice_index != nullptr) {
         *out_module_voice_index = static_cast<uint32_t>(voice_type);

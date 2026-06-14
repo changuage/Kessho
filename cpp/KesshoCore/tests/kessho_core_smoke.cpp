@@ -28,7 +28,7 @@ constexpr int kPadParamRelease = 36;
 constexpr int kPadParamLevel = 52;
 constexpr int kPadParamReverbSend = 106;
 constexpr int kPadParamOutputSelect = 107;
-constexpr int kDrumParamCount = 126;
+constexpr int kDrumParamCount = 244;
 constexpr int kDrumParamReverbSend = 123;
 constexpr int kDrumParamOutputSelect = 125;
 constexpr int kSoundscapesParamCount = 96;
@@ -80,6 +80,18 @@ float maxAbsRange(const std::vector<float>& values, size_t start, size_t end) {
     peak = std::max(peak, std::fabs(value));
   }
 
+  return peak;
+}
+
+float maxAbsInterleavedRange(const float* values, size_t start_frame, size_t end_frame) {
+  float peak = 0.0f;
+  for (size_t frame = start_frame; frame < end_frame; ++frame) {
+    for (size_t channel = 0; channel < 2; ++channel) {
+      const float value = values[frame * 2 + channel];
+      require(std::isfinite(value), "drum render produced a non-finite sample");
+      peak = std::max(peak, std::fabs(value));
+    }
+  }
   return peak;
 }
 
@@ -1294,6 +1306,49 @@ int main() {
     drum_peak = std::max(drum_peak, maxAbs(module_output));
   }
   require(drum_peak > 1.0e-5f, "drum module should produce non-zero output after trigger");
+
+  KesshoDrumInstance* offset_drum = drum_instance_create(static_cast<float>(sample_rate));
+  require(offset_drum != nullptr, "offset drum instance create failed");
+  drum_instance_trigger(offset_drum, DRUM_VOICE_CLICK, 1.0f, 37);
+  drum_instance_process_block(offset_drum, block_size);
+  float* offset_output = drum_instance_get_output_ptr(offset_drum);
+  require(offset_output != nullptr, "offset drum output missing");
+  require(
+      maxAbsInterleavedRange(offset_output, 0, 36) == 0.0f,
+      "drum trigger rendered before its sample offset");
+  require(
+      maxAbsInterleavedRange(offset_output, 37, 64) > 1.0e-5f,
+      "drum trigger did not render at its sample offset");
+  drum_instance_destroy(offset_drum);
+
+  KesshoDrumInstance* ratchet_drum = drum_instance_create(static_cast<float>(sample_rate));
+  require(ratchet_drum != nullptr, "ratchet drum instance create failed");
+  KesshoDrumTriggerEvent ratchet_event{};
+  ratchet_event.voice = DRUM_VOICE_CLICK;
+  ratchet_event.velocity = 1.0f;
+  ratchet_event.sample_offset = 10;
+  ratchet_event.morph = -1.0f;
+  ratchet_event.distance = -1.0f;
+  ratchet_event.expression = 1.0f;
+  ratchet_event.pitch_semis = 0.0f;
+  ratchet_event.delay_send_override = -1.0f;
+  ratchet_event.ratchet_count = 4;
+  ratchet_event.ratchet_spacing_samples = 16;
+  ratchet_event.ratchet_jitter = 0.0f;
+  ratchet_event.ratchet_decay_cap = 1.0e10f;
+  ratchet_event.ratchet_decay_scale = 1.0f;
+  ratchet_event.ratchet_attack_cap = 1.0e10f;
+  ratchet_event.seed = 1234u;
+  drum_instance_trigger_event(ratchet_drum, &ratchet_event);
+  drum_instance_process_block(ratchet_drum, block_size);
+  float* ratchet_output = drum_instance_get_output_ptr(ratchet_drum);
+  require(ratchet_output != nullptr, "ratchet drum output missing");
+  require(maxAbsInterleavedRange(ratchet_output, 0, 9) == 0.0f, "ratchet rendered before parent offset");
+  require(maxAbsInterleavedRange(ratchet_output, 10, 18) > 1.0e-5f, "ratchet sub-hit 0 missing");
+  require(maxAbsInterleavedRange(ratchet_output, 26, 34) > 1.0e-5f, "ratchet sub-hit 1 missing");
+  require(maxAbsInterleavedRange(ratchet_output, 42, 50) > 1.0e-5f, "ratchet sub-hit 2 missing");
+  require(maxAbsInterleavedRange(ratchet_output, 58, 66) > 1.0e-5f, "ratchet sub-hit 3 missing");
+  drum_instance_destroy(ratchet_drum);
 
   require(
       kessho_module_note_on(drum_module_b, 0.0f, 0.72f, 0.0f, DRUM_VOICE_NOISE) == 1,

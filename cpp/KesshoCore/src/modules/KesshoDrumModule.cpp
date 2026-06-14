@@ -25,10 +25,80 @@ constexpr int kParamMasterLevel = kParamTrigger + 5;
 constexpr int kParamReverbSend = kParamMasterLevel + 1;
 constexpr int kParamSeed = kParamMasterLevel + 2;
 constexpr int kParamOutputSelect = kParamMasterLevel + 3;
-constexpr int kParamCount = kParamOutputSelect + 1;
+constexpr int kParamBeepHiModPhase = kParamOutputSelect + 1;
+constexpr int kParamNoiseParticle = kParamBeepHiModPhase + 1;
+constexpr int kParamMembraneCompat = kParamNoiseParticle + 5;
+constexpr int kParamSubFm = kParamMembraneCompat + 12;
+constexpr int kParamSubDamage = kParamSubFm + 7;
+constexpr int kParamKickFm = kParamSubDamage + 5;
+constexpr int kParamKickDamage = kParamKickFm + 7;
+constexpr int kParamKickMetallic = kParamKickDamage + 5;
+constexpr int kParamClickFm = kParamKickMetallic + 5;
+constexpr int kParamClickDamage = kParamClickFm + 7;
+constexpr int kParamClickMetallic = kParamClickDamage + 5;
+constexpr int kParamBeepHiDamage = kParamClickMetallic + 5;
+constexpr int kParamBeepHiMetallic = kParamBeepHiDamage + 5;
+constexpr int kParamBeepLoFm = kParamBeepHiMetallic + 5;
+constexpr int kParamBeepLoDamage = kParamBeepLoFm + 7;
+constexpr int kParamBeepLoMetallic = kParamBeepLoDamage + 5;
+constexpr int kParamNoiseDamage = kParamBeepLoMetallic + 5;
+constexpr int kParamNoiseMetallic = kParamNoiseDamage + 5;
+constexpr int kParamMembraneFm = kParamNoiseMetallic + 5;
+constexpr int kParamMembraneDamage = kParamMembraneFm + 7;
+constexpr int kParamMembraneMetallic = kParamMembraneDamage + 5;
+constexpr int kParamCount = kParamMembraneMetallic + 5;
 
 int roundedInt(float value) {
   return static_cast<int>(value >= 0.0f ? value + 0.5f : value - 0.5f);
+}
+
+KesshoDrumFmTransientParams fmParamsAt(const std::array<float, kParamCount>& params, int start) {
+  return {
+      params[start + 0],
+      params[start + 1],
+      params[start + 2],
+      params[start + 3],
+      params[start + 4],
+      params[start + 5],
+      params[start + 6]};
+}
+
+KesshoDrumDamageParams damageParamsAt(const std::array<float, kParamCount>& params, int start) {
+  return {
+      params[start + 0],
+      params[start + 1],
+      params[start + 2],
+      params[start + 3],
+      params[start + 4]};
+}
+
+KesshoDrumMetallicParams metallicParamsAt(const std::array<float, kParamCount>& params, int start) {
+  return {
+      params[start + 0],
+      params[start + 1],
+      params[start + 2],
+      params[start + 3],
+      params[start + 4]};
+}
+
+KesshoDrumTriggerEvent makeDefaultTriggerEvent() {
+  KesshoDrumTriggerEvent event{};
+  event.voice = 0;
+  event.velocity = 1.0f;
+  event.sample_offset = 0;
+  event.morph = -1.0f;
+  event.distance = -1.0f;
+  event.expression = 1.0f;
+  event.pitch_semis = 0.0f;
+  event.delay_send_override = -1.0f;
+  event.ratchet_count = 0;
+  event.ratchet_spacing_samples = 0;
+  event.ratchet_jitter = 0.0f;
+  event.ratchet_decay_cap = 1.0e10f;
+  event.ratchet_decay_scale = 1.0f;
+  event.ratchet_attack_cap = 1.0e10f;
+  event.seed = 0u;
+  return event;
 }
 
 std::array<float, kParamCount> makeDefaultParams() {
@@ -162,6 +232,65 @@ std::array<float, kParamCount> makeDefaultParams() {
   params[kParamReverbSend] = 0.1f;
   params[kParamSeed] = 42.0f;
   params[kParamOutputSelect] = 0.0f;
+
+  params[kParamBeepHiModPhase] = 0.0f;
+  params[kParamNoiseParticle + 0] = 0.0f;
+  params[kParamNoiseParticle + 1] = 0.5f;
+  params[kParamNoiseParticle + 2] = 5.0f;
+  params[kParamNoiseParticle + 3] = 0.0f;
+  params[kParamNoiseParticle + 4] = 30.0f;
+  params[kParamMembraneCompat + 0] = 0.0f;
+  params[kParamMembraneCompat + 1] = 2.0f;
+  params[kParamMembraneCompat + 2] = 0.5f;
+  params[kParamMembraneCompat + 3] = params[kParamMembrane + 7];
+  params[kParamMembraneCompat + 4] = 0.5f;
+  params[kParamMembraneCompat + 5] = 0.3f;
+  params[kParamMembraneCompat + 6] = 0.0f;
+  params[kParamMembraneCompat + 7] = 4.0f;
+  params[kParamMembraneCompat + 8] = 40.0f;
+  params[kParamMembraneCompat + 9] = 0.5f;
+  params[kParamMembraneCompat + 10] = 0.5f;
+  params[kParamMembraneCompat + 11] = 0.5f;
+
+  const int fmStarts[] = {kParamSubFm, kParamKickFm, kParamClickFm, kParamBeepLoFm, kParamMembraneFm};
+  for (int start : fmStarts) {
+    params[start + 0] = 0.0f;
+    params[start + 1] = 2.0f;
+    params[start + 2] = 0.0f;
+    params[start + 3] = 30.0f;
+    params[start + 4] = 0.0f;
+    params[start + 5] = 0.0f;
+    params[start + 6] = 0.0f;
+  }
+  const int damageStarts[] = {
+      kParamSubDamage,
+      kParamKickDamage,
+      kParamClickDamage,
+      kParamBeepHiDamage,
+      kParamBeepLoDamage,
+      kParamNoiseDamage,
+      kParamMembraneDamage};
+  for (int start : damageStarts) {
+    params[start + 0] = 0.0f;
+    params[start + 1] = 16.0f;
+    params[start + 2] = 1.0f;
+    params[start + 3] = 0.0f;
+    params[start + 4] = 0.0f;
+  }
+  const int metallicStarts[] = {
+      kParamKickMetallic,
+      kParamClickMetallic,
+      kParamBeepHiMetallic,
+      kParamBeepLoMetallic,
+      kParamNoiseMetallic,
+      kParamMembraneMetallic};
+  for (int start : metallicStarts) {
+    params[start + 0] = 0.0f;
+    params[start + 1] = 0.0f;
+    params[start + 2] = 0.35f;
+    params[start + 3] = 120.0f;
+    params[start + 4] = 0.0f;
+  }
   return params;
 }
 
@@ -274,6 +403,20 @@ public:
     return params_.data();
   }
 
+  int setIndexedParam(int param_index, float value) override {
+    if (!std::isfinite(value) || param_index < 0 || param_index >= paramCount()) {
+      return 0;
+    }
+    params_[param_index] = value;
+    if (param_index == kParamMembrane + 7) {
+      params_[kParamMembraneCompat + 3] = value;
+    } else if (param_index == kParamMembraneCompat + 3) {
+      params_[kParamMembrane + 7] = value;
+    }
+    commitParams();
+    return 1;
+  }
+
   void commitParams() override {
     if (instance_ == nullptr) {
       return;
@@ -291,6 +434,8 @@ public:
     drum_instance_set_sub_attack(instance_, params_[kParamSub + 9]);
     drum_instance_set_sub_variation(instance_, params_[kParamSub + 10]);
     drum_instance_set_sub_distance(instance_, params_[kParamSub + 11]);
+    drum_instance_set_sub_fm_transient(instance_, fmParamsAt(params_, kParamSubFm));
+    drum_instance_set_sub_damage(instance_, damageParamsAt(params_, kParamSubDamage));
 
     drum_instance_set_kick_freq(instance_, params_[kParamKick + 0]);
     drum_instance_set_kick_pitch_env(instance_, params_[kParamKick + 1]);
@@ -305,6 +450,9 @@ public:
     drum_instance_set_kick_attack(instance_, params_[kParamKick + 10]);
     drum_instance_set_kick_variation(instance_, params_[kParamKick + 11]);
     drum_instance_set_kick_distance(instance_, params_[kParamKick + 12]);
+    drum_instance_set_kick_fm_transient(instance_, fmParamsAt(params_, kParamKickFm));
+    drum_instance_set_kick_damage(instance_, damageParamsAt(params_, kParamKickDamage));
+    drum_instance_set_kick_metallic(instance_, metallicParamsAt(params_, kParamKickMetallic));
 
     drum_instance_set_click_decay(instance_, params_[kParamClick + 0]);
     drum_instance_set_click_filter(instance_, params_[kParamClick + 1]);
@@ -321,6 +469,9 @@ public:
     drum_instance_set_click_attack(instance_, params_[kParamClick + 12]);
     drum_instance_set_click_variation(instance_, params_[kParamClick + 13]);
     drum_instance_set_click_distance(instance_, params_[kParamClick + 14]);
+    drum_instance_set_click_fm_transient(instance_, fmParamsAt(params_, kParamClickFm));
+    drum_instance_set_click_damage(instance_, damageParamsAt(params_, kParamClickDamage));
+    drum_instance_set_click_metallic(instance_, metallicParamsAt(params_, kParamClickMetallic));
 
     drum_instance_set_beep_hi_freq(instance_, params_[kParamBeepHi + 0]);
     drum_instance_set_beep_hi_attack(instance_, params_[kParamBeepHi + 1]);
@@ -339,8 +490,11 @@ public:
     drum_instance_set_beep_hi_mod_ratio_fine(instance_, params_[kParamBeepHi + 14]);
     drum_instance_set_beep_hi_mod_env_end(instance_, params_[kParamBeepHi + 15]);
     drum_instance_set_beep_hi_noise_decay(instance_, params_[kParamBeepHi + 16]);
+    drum_instance_set_beep_hi_mod_phase(instance_, params_[kParamBeepHiModPhase]);
     drum_instance_set_beep_hi_variation(instance_, params_[kParamBeepHi + 17]);
     drum_instance_set_beep_hi_distance(instance_, params_[kParamBeepHi + 18]);
+    drum_instance_set_beep_hi_damage(instance_, damageParamsAt(params_, kParamBeepHiDamage));
+    drum_instance_set_beep_hi_metallic(instance_, metallicParamsAt(params_, kParamBeepHiMetallic));
 
     drum_instance_set_beep_lo_freq(instance_, params_[kParamBeepLo + 0]);
     drum_instance_set_beep_lo_attack(instance_, params_[kParamBeepLo + 1]);
@@ -361,6 +515,9 @@ public:
     drum_instance_set_beep_lo_modal_gain(instance_, params_[kParamBeepLo + 16]);
     drum_instance_set_beep_lo_variation(instance_, params_[kParamBeepLo + 17]);
     drum_instance_set_beep_lo_distance(instance_, params_[kParamBeepLo + 18]);
+    drum_instance_set_beep_lo_fm_transient(instance_, fmParamsAt(params_, kParamBeepLoFm));
+    drum_instance_set_beep_lo_damage(instance_, damageParamsAt(params_, kParamBeepLoDamage));
+    drum_instance_set_beep_lo_metallic(instance_, metallicParamsAt(params_, kParamBeepLoMetallic));
 
     drum_instance_set_noise_freq(instance_, params_[kParamNoise + 0]);
     drum_instance_set_noise_decay(instance_, params_[kParamNoise + 1]);
@@ -374,8 +531,15 @@ public:
     drum_instance_set_noise_filter_env_decay(instance_, params_[kParamNoise + 9]);
     drum_instance_set_noise_density(instance_, params_[kParamNoise + 10]);
     drum_instance_set_noise_color_lfo(instance_, params_[kParamNoise + 11]);
+    drum_instance_set_noise_particle_random(instance_, params_[kParamNoiseParticle + 0]);
+    drum_instance_set_noise_particle_random_rate(instance_, params_[kParamNoiseParticle + 1]);
+    drum_instance_set_noise_particle_size(instance_, params_[kParamNoiseParticle + 2]);
+    drum_instance_set_noise_ratchet_count(instance_, roundedInt(params_[kParamNoiseParticle + 3]));
+    drum_instance_set_noise_ratchet_time(instance_, params_[kParamNoiseParticle + 4]);
     drum_instance_set_noise_variation(instance_, params_[kParamNoise + 12]);
     drum_instance_set_noise_distance(instance_, params_[kParamNoise + 13]);
+    drum_instance_set_noise_damage(instance_, damageParamsAt(params_, kParamNoiseDamage));
+    drum_instance_set_noise_metallic(instance_, metallicParamsAt(params_, kParamNoiseMetallic));
 
     drum_instance_set_membrane_freq(instance_, params_[kParamMembrane + 0]);
     drum_instance_set_membrane_decay(instance_, params_[kParamMembrane + 1]);
@@ -387,8 +551,22 @@ public:
     drum_instance_set_membrane_strike(instance_, params_[kParamMembrane + 7]);
     drum_instance_set_membrane_wire_buzz(instance_, params_[kParamMembrane + 8]);
     drum_instance_set_membrane_attack(instance_, params_[kParamMembrane + 9]);
+    drum_instance_set_membrane_exciter(instance_, roundedInt(params_[kParamMembraneCompat + 0]));
+    drum_instance_set_membrane_exciter_duration(instance_, params_[kParamMembraneCompat + 1]);
+    drum_instance_set_membrane_exciter_brightness(instance_, params_[kParamMembraneCompat + 2]);
+    drum_instance_set_membrane_body(instance_, params_[kParamMembraneCompat + 4]);
+    drum_instance_set_membrane_ring(instance_, params_[kParamMembraneCompat + 5]);
+    drum_instance_set_membrane_nonlin(instance_, params_[kParamMembraneCompat + 6]);
+    drum_instance_set_membrane_overtones(instance_, roundedInt(params_[kParamMembraneCompat + 7]));
+    drum_instance_set_membrane_pitch_decay(instance_, params_[kParamMembraneCompat + 8]);
+    drum_instance_set_membrane_wire_density(instance_, params_[kParamMembraneCompat + 9]);
+    drum_instance_set_membrane_wire_decay(instance_, params_[kParamMembraneCompat + 10]);
+    drum_instance_set_membrane_wire_tone(instance_, params_[kParamMembraneCompat + 11]);
     drum_instance_set_membrane_variation(instance_, params_[kParamMembrane + 10]);
     drum_instance_set_membrane_distance(instance_, params_[kParamMembrane + 11]);
+    drum_instance_set_membrane_fm_transient(instance_, fmParamsAt(params_, kParamMembraneFm));
+    drum_instance_set_membrane_damage(instance_, damageParamsAt(params_, kParamMembraneDamage));
+    drum_instance_set_membrane_metallic(instance_, metallicParamsAt(params_, kParamMembraneMetallic));
 
     drum_instance_set_delay_enabled(instance_, params_[kParamDelay + 0] > 0.5f ? 1 : 0);
     drum_instance_set_delay_time_l(instance_, params_[kParamDelay + 1]);
@@ -400,18 +578,7 @@ public:
       drum_instance_set_delay_send(instance_, voice, params_[kParamDelaySends + voice]);
     }
 
-    drum_instance_clear_trigger_overrides(instance_);
-    if (params_[kParamTrigger + 0] >= 0.0f) {
-      drum_instance_set_trigger_morph(instance_, params_[kParamTrigger + 0]);
-    }
-    if (params_[kParamTrigger + 1] >= 0.0f) {
-      drum_instance_set_trigger_distance(instance_, params_[kParamTrigger + 1]);
-    }
-    drum_instance_set_trigger_pitch(instance_, params_[kParamTrigger + 2]);
-    drum_instance_set_trigger_ratchet_cap(
-        instance_,
-        params_[kParamTrigger + 3],
-        params_[kParamTrigger + 4]);
+    refreshTriggerDefaultsFromParams();
     drum_instance_set_master_level(instance_, params_[kParamMasterLevel]);
     drum_instance_set_reverb_send(instance_, params_[kParamReverbSend]);
     drum_instance_set_rng_seed(instance_, static_cast<unsigned int>(std::max(0, roundedInt(params_[kParamSeed]))));
@@ -428,8 +595,11 @@ public:
     }
 
     const int voice_type = std::clamp(lead_index, 0, DRUM_NUM_VOICE_TYPES - 1);
-    const int sample_offset = std::max(0, roundedInt(hold_seconds));
-    drum_instance_trigger(instance_, voice_type, velocity, sample_offset);
+    KesshoDrumTriggerEvent event = trigger_defaults_;
+    event.voice = static_cast<uint8_t>(voice_type);
+    event.velocity = std::clamp(velocity, 0.0f, 1.0f);
+    event.sample_offset = std::max(0, roundedInt(hold_seconds));
+    drum_instance_trigger_event(instance_, &event);
     return 1;
   }
 
@@ -444,7 +614,6 @@ public:
       float pitch,
       float ratchet_decay_cap,
       float ratchet_attack_cap) override {
-    (void)expression;
     if (instance_ == nullptr) {
       return 0;
     }
@@ -457,7 +626,8 @@ public:
     params_[kParamTrigger + 4] = std::isfinite(ratchet_attack_cap) && ratchet_attack_cap >= 0.0f
         ? ratchet_attack_cap
         : 1.0e10f;
-    commitParams();
+    trigger_defaults_.expression = std::isfinite(expression) ? std::clamp(expression, 0.0f, 1.5f) : 1.0f;
+    refreshTriggerDefaultsFromParams();
     return 1;
   }
 
@@ -466,7 +636,7 @@ public:
       return 0;
     }
     params_[kParamDelaySends + voice_index] = std::isfinite(delay_send) ? std::clamp(delay_send, 0.0f, 1.0f) : 0.0f;
-    commitParams();
+    drum_instance_set_delay_send(instance_, voice_index, params_[kParamDelaySends + voice_index]);
     return 1;
   }
 
@@ -480,10 +650,33 @@ public:
         return 0;
       }
     }
+    bool changed = false;
     for (uint32_t index = 0; index < KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT && index < params_.size(); ++index) {
-      params_[index] = patch.exact_drum_params[index];
+      if (params_[index] != patch.exact_drum_params[index]) {
+        params_[index] = patch.exact_drum_params[index];
+        changed = true;
+      }
     }
-    commitParams();
+    if (changed) {
+      if (params_[kParamMembraneCompat + 3] != params_[kParamMembrane + 7]) {
+        params_[kParamMembraneCompat + 3] = params_[kParamMembrane + 7];
+      }
+      commitParams();
+    }
+    return 1;
+  }
+
+  int setRandomSeed(uint32_t seed) override {
+    params_[kParamSeed] = static_cast<float>(seed);
+    trigger_defaults_.seed = seed;
+    if (instance_ != nullptr) {
+      drum_instance_set_rng_seed(instance_, seed);
+    }
+    return 1;
+  }
+
+  int prepareRandomSeed(uint32_t seed) override {
+    trigger_defaults_.seed = seed;
     return 1;
   }
 
@@ -498,6 +691,33 @@ public:
   }
 
 private:
+  void refreshTriggerDefaultsFromParams() {
+    trigger_defaults_.morph = params_[kParamTrigger + 0] >= 0.0f
+        ? std::clamp(params_[kParamTrigger + 0], 0.0f, 1.0f)
+        : -1.0f;
+    trigger_defaults_.distance = params_[kParamTrigger + 1] >= 0.0f
+        ? std::clamp(params_[kParamTrigger + 1], 0.0f, 1.0f)
+        : -1.0f;
+    trigger_defaults_.pitch_semis = std::isfinite(params_[kParamTrigger + 2])
+        ? std::clamp(params_[kParamTrigger + 2], -24.0f, 24.0f)
+        : 0.0f;
+    trigger_defaults_.delay_send_override = -1.0f;
+    trigger_defaults_.ratchet_count = 0;
+    trigger_defaults_.ratchet_spacing_samples = 0;
+    trigger_defaults_.ratchet_jitter = 0.0f;
+    trigger_defaults_.ratchet_decay_cap = params_[kParamTrigger + 3] >= 0.0f
+        ? params_[kParamTrigger + 3]
+        : 1.0e10f;
+    trigger_defaults_.ratchet_decay_scale = 1.0f;
+    trigger_defaults_.ratchet_attack_cap = params_[kParamTrigger + 4] >= 0.0f
+        ? params_[kParamTrigger + 4]
+        : 1.0e10f;
+    trigger_defaults_.seed = static_cast<uint32_t>(std::max(0, roundedInt(params_[kParamSeed])));
+    if (!std::isfinite(trigger_defaults_.expression)) {
+      trigger_defaults_.expression = 1.0f;
+    }
+  }
+
   int outputSelect() const {
     return std::clamp(roundedInt(params_[kParamOutputSelect]), 0, 1);
   }
@@ -535,6 +755,7 @@ private:
   float sample_rate_ = 48000.0f;
   int max_block_size_ = kDrumBlockSize;
   std::array<float, kParamCount> params_ = makeDefaultParams();
+  KesshoDrumTriggerEvent trigger_defaults_ = makeDefaultTriggerEvent();
 };
 
 } // namespace

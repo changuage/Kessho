@@ -1,3 +1,5 @@
+import type { GeneratedSequencerCaptureEvent } from './coreProductGeneratedSequencerCaptureTypes';
+
 export type CoreProductSequencerLaneUiState = {
   enabled: boolean;
   targetSourceId: number;
@@ -231,6 +233,8 @@ export type CoreProductTelemetrySnapshot = {
   drumSequencerCurrentSteps?: number[];
   synthOrbitVisualLanes?: Array<CoreProductOrbitVisualLaneState | null>;
   synthAnchorWalkerVisualLanes?: Array<CoreProductAnchorWalkerVisualLaneState | null>;
+  generatedSequencerCaptureEvents?: GeneratedSequencerCaptureEvent[];
+  generatedSequencerCaptureOverflowCount?: number;
 };
 
 export type CoreProductModulationDebugEntry = {

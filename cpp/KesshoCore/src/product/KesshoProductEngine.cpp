@@ -63,6 +63,9 @@
   sequencer_evolve_rng_stream_seed = 0u;
   sequencer_evolve_rng_stream_state = 0u;
   sequencer_evolve_rng_stream_initialized = false;
+  generated_sequencer_capture_config = {};
+  generated_sequencer_capture_ring.reset();
+  generated_sequencer_capture_event_counter = 1u;
   evolution_amount = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_EVOLUTION_AMOUNT;
   evolution_state = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_EVOLUTION_STATE;
   journey_running = false;
@@ -203,6 +206,9 @@
   std::fill(delay_a_cross_carry_r, delay_a_cross_carry_r + kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES, 0.0f);
   resetDiffuseRuntime();
   rng_state = rng_seed;
+  generated_sequencer_capture_config = {};
+  generated_sequencer_capture_ring.reset();
+  generated_sequencer_capture_event_counter = 1u;
   debug_voice_spawn_sequence = 0u;
   telemetry.debug_voice_spawn_count = 0u;
   sequencer_evolve_rng_stream_seed = 0u;

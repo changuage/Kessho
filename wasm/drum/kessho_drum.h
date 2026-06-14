@@ -21,6 +21,50 @@ extern "C" {
 
 typedef struct KesshoDrumInstance KesshoDrumInstance;
 
+typedef struct KesshoDrumFmTransientParams {
+    float mix;
+    float ratio;
+    float amount;
+    float decay_ms;
+    float feedback;
+    float noise;
+    float clip;
+} KesshoDrumFmTransientParams;
+
+typedef struct KesshoDrumDamageParams {
+    float mix;
+    float bits;
+    float sample_hold;
+    float fold;
+    float clip;
+} KesshoDrumDamageParams;
+
+typedef struct KesshoDrumMetallicParams {
+    float mix;
+    float tune;
+    float spread;
+    float decay_ms;
+    float phase_random;
+} KesshoDrumMetallicParams;
+
+typedef struct KesshoDrumTriggerEvent {
+    uint8_t voice;
+    float velocity;
+    int32_t sample_offset;
+    float morph;
+    float distance;
+    float expression;
+    float pitch_semis;
+    float delay_send_override;
+    uint8_t ratchet_count;
+    int32_t ratchet_spacing_samples;
+    float ratchet_jitter;
+    float ratchet_decay_cap;
+    float ratchet_decay_scale;
+    float ratchet_attack_cap;
+    uint32_t seed;
+} KesshoDrumTriggerEvent;
+
 // ═══════════════ Constants ═══════════════
 
 #define DRUM_NUM_VOICE_TYPES   7
@@ -93,6 +137,7 @@ void drum_process_block(int block_size);
  * @param sample_offset  Sample offset within the current/next block for precise timing
  */
 void drum_trigger(int voice_type, float velocity, int sample_offset);
+void drum_trigger_event(const KesshoDrumTriggerEvent* event);
 
 // ═══════════════ Per-Voice Parameters ═══════════════
 
@@ -109,6 +154,8 @@ void drum_set_sub_sub_octave(float amount);
 void drum_set_sub_attack(float attack_ms);
 void drum_set_sub_variation(float variation);
 void drum_set_sub_distance(float distance);
+void drum_set_sub_fm_transient(KesshoDrumFmTransientParams params);
+void drum_set_sub_damage(KesshoDrumDamageParams params);
 
 // --- Kick ---
 void drum_set_kick_freq(float freq);
@@ -124,6 +171,9 @@ void drum_set_kick_tone(float tone);
 void drum_set_kick_attack(float attack_ms);
 void drum_set_kick_variation(float variation);
 void drum_set_kick_distance(float distance);
+void drum_set_kick_fm_transient(KesshoDrumFmTransientParams params);
+void drum_set_kick_damage(KesshoDrumDamageParams params);
+void drum_set_kick_metallic(KesshoDrumMetallicParams params);
 
 // --- Click ---
 void drum_set_click_decay(float decay_ms);
@@ -141,6 +191,9 @@ void drum_set_click_exciter_color(float color);
 void drum_set_click_attack(float attack_ms);
 void drum_set_click_variation(float variation);
 void drum_set_click_distance(float distance);
+void drum_set_click_fm_transient(KesshoDrumFmTransientParams params);
+void drum_set_click_damage(KesshoDrumDamageParams params);
+void drum_set_click_metallic(KesshoDrumMetallicParams params);
 
 // --- BeepHi ---
 void drum_set_beep_hi_freq(float freq);
@@ -160,8 +213,11 @@ void drum_set_beep_hi_mod_ratio(float ratio);
 void drum_set_beep_hi_mod_ratio_fine(float fine);
 void drum_set_beep_hi_mod_env_end(float end);
 void drum_set_beep_hi_noise_decay(float decay);
+void drum_set_beep_hi_mod_phase(float cycles);
 void drum_set_beep_hi_variation(float variation);
 void drum_set_beep_hi_distance(float distance);
+void drum_set_beep_hi_damage(KesshoDrumDamageParams params);
+void drum_set_beep_hi_metallic(KesshoDrumMetallicParams params);
 
 // --- BeepLo ---
 void drum_set_beep_lo_freq(float freq);
@@ -183,6 +239,9 @@ void drum_set_beep_lo_osc_gain(float gain);
 void drum_set_beep_lo_modal_gain(float gain);
 void drum_set_beep_lo_variation(float variation);
 void drum_set_beep_lo_distance(float distance);
+void drum_set_beep_lo_fm_transient(KesshoDrumFmTransientParams params);
+void drum_set_beep_lo_damage(KesshoDrumDamageParams params);
+void drum_set_beep_lo_metallic(KesshoDrumMetallicParams params);
 
 // --- Noise ---
 void drum_set_noise_freq(float freq);
@@ -197,8 +256,15 @@ void drum_set_noise_filter_env_depth(float depth);
 void drum_set_noise_filter_env_decay(float decay_ms);
 void drum_set_noise_density(float density);
 void drum_set_noise_color_lfo(float rate);
+void drum_set_noise_particle_random(float amount);
+void drum_set_noise_particle_random_rate(float rate);
+void drum_set_noise_particle_size(float size_ms);
+void drum_set_noise_ratchet_count(int count);
+void drum_set_noise_ratchet_time(float time_ms);
 void drum_set_noise_variation(float variation);
 void drum_set_noise_distance(float distance);
+void drum_set_noise_damage(KesshoDrumDamageParams params);
+void drum_set_noise_metallic(KesshoDrumMetallicParams params);
 
 // --- Membrane ---
 void drum_set_membrane_freq(float freq);
@@ -211,8 +277,22 @@ void drum_set_membrane_damping(float damping);
 void drum_set_membrane_strike(float strike);
 void drum_set_membrane_wire_buzz(float buzz);
 void drum_set_membrane_attack(float attack_ms);
+void drum_set_membrane_exciter(int exciter);
+void drum_set_membrane_exciter_duration(float duration_ms);
+void drum_set_membrane_exciter_brightness(float brightness);
+void drum_set_membrane_body(float body);
+void drum_set_membrane_ring(float ring);
+void drum_set_membrane_nonlin(float nonlin);
+void drum_set_membrane_overtones(int overtones);
+void drum_set_membrane_pitch_decay(float decay_ms);
+void drum_set_membrane_wire_density(float density);
+void drum_set_membrane_wire_decay(float decay);
+void drum_set_membrane_wire_tone(float tone);
 void drum_set_membrane_variation(float variation);
 void drum_set_membrane_distance(float distance);
+void drum_set_membrane_fm_transient(KesshoDrumFmTransientParams params);
+void drum_set_membrane_damage(KesshoDrumDamageParams params);
+void drum_set_membrane_metallic(KesshoDrumMetallicParams params);
 
 // ═══════════════ Delay Effect ═══════════════
 
@@ -255,6 +335,7 @@ float* drum_instance_get_output_ptr(KesshoDrumInstance* instance);
 float* drum_instance_get_reverb_send_ptr(KesshoDrumInstance* instance);
 void drum_instance_process_block(KesshoDrumInstance* instance, int block_size);
 void drum_instance_trigger(KesshoDrumInstance* instance, int voice_type, float velocity, int sample_offset);
+void drum_instance_trigger_event(KesshoDrumInstance* instance, const KesshoDrumTriggerEvent* event);
 
 void drum_instance_set_sub_freq(KesshoDrumInstance* instance, float freq);
 void drum_instance_set_sub_decay(KesshoDrumInstance* instance, float decay_ms);
@@ -268,6 +349,8 @@ void drum_instance_set_sub_sub_octave(KesshoDrumInstance* instance, float amount
 void drum_instance_set_sub_attack(KesshoDrumInstance* instance, float attack_ms);
 void drum_instance_set_sub_variation(KesshoDrumInstance* instance, float variation);
 void drum_instance_set_sub_distance(KesshoDrumInstance* instance, float distance);
+void drum_instance_set_sub_fm_transient(KesshoDrumInstance* instance, KesshoDrumFmTransientParams params);
+void drum_instance_set_sub_damage(KesshoDrumInstance* instance, KesshoDrumDamageParams params);
 
 void drum_instance_set_kick_freq(KesshoDrumInstance* instance, float freq);
 void drum_instance_set_kick_pitch_env(KesshoDrumInstance* instance, float semitones);
@@ -282,6 +365,9 @@ void drum_instance_set_kick_tone(KesshoDrumInstance* instance, float tone);
 void drum_instance_set_kick_attack(KesshoDrumInstance* instance, float attack_ms);
 void drum_instance_set_kick_variation(KesshoDrumInstance* instance, float variation);
 void drum_instance_set_kick_distance(KesshoDrumInstance* instance, float distance);
+void drum_instance_set_kick_fm_transient(KesshoDrumInstance* instance, KesshoDrumFmTransientParams params);
+void drum_instance_set_kick_damage(KesshoDrumInstance* instance, KesshoDrumDamageParams params);
+void drum_instance_set_kick_metallic(KesshoDrumInstance* instance, KesshoDrumMetallicParams params);
 
 void drum_instance_set_click_decay(KesshoDrumInstance* instance, float decay_ms);
 void drum_instance_set_click_filter(KesshoDrumInstance* instance, float freq);
@@ -298,6 +384,9 @@ void drum_instance_set_click_exciter_color(KesshoDrumInstance* instance, float c
 void drum_instance_set_click_attack(KesshoDrumInstance* instance, float attack_ms);
 void drum_instance_set_click_variation(KesshoDrumInstance* instance, float variation);
 void drum_instance_set_click_distance(KesshoDrumInstance* instance, float distance);
+void drum_instance_set_click_fm_transient(KesshoDrumInstance* instance, KesshoDrumFmTransientParams params);
+void drum_instance_set_click_damage(KesshoDrumInstance* instance, KesshoDrumDamageParams params);
+void drum_instance_set_click_metallic(KesshoDrumInstance* instance, KesshoDrumMetallicParams params);
 
 void drum_instance_set_beep_hi_freq(KesshoDrumInstance* instance, float freq);
 void drum_instance_set_beep_hi_attack(KesshoDrumInstance* instance, float attack_ms);
@@ -316,8 +405,11 @@ void drum_instance_set_beep_hi_mod_ratio(KesshoDrumInstance* instance, float rat
 void drum_instance_set_beep_hi_mod_ratio_fine(KesshoDrumInstance* instance, float fine);
 void drum_instance_set_beep_hi_mod_env_end(KesshoDrumInstance* instance, float end);
 void drum_instance_set_beep_hi_noise_decay(KesshoDrumInstance* instance, float decay);
+void drum_instance_set_beep_hi_mod_phase(KesshoDrumInstance* instance, float cycles);
 void drum_instance_set_beep_hi_variation(KesshoDrumInstance* instance, float variation);
 void drum_instance_set_beep_hi_distance(KesshoDrumInstance* instance, float distance);
+void drum_instance_set_beep_hi_damage(KesshoDrumInstance* instance, KesshoDrumDamageParams params);
+void drum_instance_set_beep_hi_metallic(KesshoDrumInstance* instance, KesshoDrumMetallicParams params);
 
 void drum_instance_set_beep_lo_freq(KesshoDrumInstance* instance, float freq);
 void drum_instance_set_beep_lo_attack(KesshoDrumInstance* instance, float attack_ms);
@@ -338,6 +430,9 @@ void drum_instance_set_beep_lo_osc_gain(KesshoDrumInstance* instance, float gain
 void drum_instance_set_beep_lo_modal_gain(KesshoDrumInstance* instance, float gain);
 void drum_instance_set_beep_lo_variation(KesshoDrumInstance* instance, float variation);
 void drum_instance_set_beep_lo_distance(KesshoDrumInstance* instance, float distance);
+void drum_instance_set_beep_lo_fm_transient(KesshoDrumInstance* instance, KesshoDrumFmTransientParams params);
+void drum_instance_set_beep_lo_damage(KesshoDrumInstance* instance, KesshoDrumDamageParams params);
+void drum_instance_set_beep_lo_metallic(KesshoDrumInstance* instance, KesshoDrumMetallicParams params);
 
 void drum_instance_set_noise_freq(KesshoDrumInstance* instance, float freq);
 void drum_instance_set_noise_decay(KesshoDrumInstance* instance, float decay_ms);
@@ -351,8 +446,15 @@ void drum_instance_set_noise_filter_env_depth(KesshoDrumInstance* instance, floa
 void drum_instance_set_noise_filter_env_decay(KesshoDrumInstance* instance, float decay_ms);
 void drum_instance_set_noise_density(KesshoDrumInstance* instance, float density);
 void drum_instance_set_noise_color_lfo(KesshoDrumInstance* instance, float rate);
+void drum_instance_set_noise_particle_random(KesshoDrumInstance* instance, float amount);
+void drum_instance_set_noise_particle_random_rate(KesshoDrumInstance* instance, float rate);
+void drum_instance_set_noise_particle_size(KesshoDrumInstance* instance, float size_ms);
+void drum_instance_set_noise_ratchet_count(KesshoDrumInstance* instance, int count);
+void drum_instance_set_noise_ratchet_time(KesshoDrumInstance* instance, float time_ms);
 void drum_instance_set_noise_variation(KesshoDrumInstance* instance, float variation);
 void drum_instance_set_noise_distance(KesshoDrumInstance* instance, float distance);
+void drum_instance_set_noise_damage(KesshoDrumInstance* instance, KesshoDrumDamageParams params);
+void drum_instance_set_noise_metallic(KesshoDrumInstance* instance, KesshoDrumMetallicParams params);
 
 void drum_instance_set_membrane_freq(KesshoDrumInstance* instance, float freq);
 void drum_instance_set_membrane_decay(KesshoDrumInstance* instance, float decay_ms);
@@ -364,8 +466,22 @@ void drum_instance_set_membrane_damping(KesshoDrumInstance* instance, float damp
 void drum_instance_set_membrane_strike(KesshoDrumInstance* instance, float strike);
 void drum_instance_set_membrane_wire_buzz(KesshoDrumInstance* instance, float buzz);
 void drum_instance_set_membrane_attack(KesshoDrumInstance* instance, float attack_ms);
+void drum_instance_set_membrane_exciter(KesshoDrumInstance* instance, int exciter);
+void drum_instance_set_membrane_exciter_duration(KesshoDrumInstance* instance, float duration_ms);
+void drum_instance_set_membrane_exciter_brightness(KesshoDrumInstance* instance, float brightness);
+void drum_instance_set_membrane_body(KesshoDrumInstance* instance, float body);
+void drum_instance_set_membrane_ring(KesshoDrumInstance* instance, float ring);
+void drum_instance_set_membrane_nonlin(KesshoDrumInstance* instance, float nonlin);
+void drum_instance_set_membrane_overtones(KesshoDrumInstance* instance, int overtones);
+void drum_instance_set_membrane_pitch_decay(KesshoDrumInstance* instance, float decay_ms);
+void drum_instance_set_membrane_wire_density(KesshoDrumInstance* instance, float density);
+void drum_instance_set_membrane_wire_decay(KesshoDrumInstance* instance, float decay);
+void drum_instance_set_membrane_wire_tone(KesshoDrumInstance* instance, float tone);
 void drum_instance_set_membrane_variation(KesshoDrumInstance* instance, float variation);
 void drum_instance_set_membrane_distance(KesshoDrumInstance* instance, float distance);
+void drum_instance_set_membrane_fm_transient(KesshoDrumInstance* instance, KesshoDrumFmTransientParams params);
+void drum_instance_set_membrane_damage(KesshoDrumInstance* instance, KesshoDrumDamageParams params);
+void drum_instance_set_membrane_metallic(KesshoDrumInstance* instance, KesshoDrumMetallicParams params);
 
 void drum_instance_set_delay_enabled(KesshoDrumInstance* instance, int enabled);
 void drum_instance_set_delay_time_l(KesshoDrumInstance* instance, float samples);

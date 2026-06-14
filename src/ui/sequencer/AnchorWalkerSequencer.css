@@ -37,6 +37,12 @@
   text-transform: uppercase;
 }
 
+.anchor-walker-capture-row {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
 .anchor-walker-toggle {
   padding: 4px 8px;
   cursor: pointer;

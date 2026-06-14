@@ -1,7 +1,9 @@
 const EVENT_BYTES = 40;
+const GENERATED_CAPTURE_EVENT_BYTES = 56;
+const GENERATED_CAPTURE_EVENT_CAPACITY = 256;
 const TELEMETRY_BYTES = 15008;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
-const EXPECTED_PRODUCT_SCHEMA_HASH = 0x16c13985;
+const EXPECTED_PRODUCT_SCHEMA_HASH = 0x9ffa2e7b;
 const SEQUENCER_UI_STATE_LANES = 16;
 const SEQUENCER_UI_STATE_STEPS = 64;
 const SEQUENCER_UI_LANE_BYTES = 3024;
@@ -39,6 +41,7 @@ const PRODUCT_EVENT_IDS = Object.freeze({
   DiceSequencerLane: 29,
   SetSourceOverride: 30,
   AnchorWalkerPerformance: 46,
+  GeneratedSequencerCapture: 47,
 });
 const PRODUCT_EVENT_ID_SET = new Set(Object.values(PRODUCT_EVENT_IDS));
 const PRODUCT_SOURCE_IDS = new Set([1, 2, 3, 4, 5, 6, 7]);
@@ -109,6 +112,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.eventPtr = 0;
     this.snapshotPtr = 0;
     this.telemetryPtr = 0;
+    this.generatedCaptureEventsPtr = 0;
+    this.generatedCaptureOverflowPtr = 0;
     this.granularWaveformPtr = 0;
     this.granularWaveformReportCounter = 0;
     this.sequencerUiStatePtr = 0;
@@ -234,6 +239,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         loadSnapshot: this.resolve('kessho_product_load_snapshot_v2'),
         enqueueEvent: this.resolve('kessho_product_enqueue_event'),
         copyTelemetry: this.resolve('kessho_product_copy_telemetry'),
+        drainGeneratedSequencerCaptureEvents: this.resolve('kessho_product_drain_generated_sequencer_capture_events'),
         copyGranularWaveform: this.resolve('kessho_product_copy_granular_waveform'),
         copySequencerUiState: this.resolve('kessho_product_copy_sequencer_ui_state'),
         registerAsset: this.resolve('kessho_product_register_asset_buffer'),
@@ -244,10 +250,22 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       this.rightPtr = this.api.malloc(bytesPerFrame);
       this.eventPtr = this.api.malloc(EVENT_BYTES);
       this.telemetryPtr = this.api.malloc(TELEMETRY_BYTES);
+      this.generatedCaptureEventsPtr = this.api.malloc(GENERATED_CAPTURE_EVENT_BYTES * GENERATED_CAPTURE_EVENT_CAPACITY);
+      this.generatedCaptureOverflowPtr = this.api.malloc(4);
       this.granularWaveformPtr = this.api.malloc(GRANULAR_WAVEFORM_BYTES);
       this.sequencerUiStatePtr = this.api.malloc(SEQUENCER_UI_STATE_BYTES);
       this.engine = this.api.create(sampleRate, this.frames, 0);
-      if (!this.engine || !this.leftPtr || !this.rightPtr || !this.eventPtr || !this.telemetryPtr || !this.granularWaveformPtr || !this.sequencerUiStatePtr) {
+      if (
+        !this.engine ||
+        !this.leftPtr ||
+        !this.rightPtr ||
+        !this.eventPtr ||
+        !this.telemetryPtr ||
+        !this.generatedCaptureEventsPtr ||
+        !this.generatedCaptureOverflowPtr ||
+        !this.granularWaveformPtr ||
+        !this.sequencerUiStatePtr
+      ) {
         throw new Error('Failed to allocate Kessho Product Core worklet state');
       }
       if (this.api.copyTelemetry(this.engine, this.telemetryPtr) !== 1) {
@@ -721,7 +739,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     if (!event || typeof event !== 'object') {
       throw new Error('Kessho Product Core event must be an object');
     }
-    const eventKind = this.requireUint(event, 'eventKind', 1, 46);
+    const eventKind = this.requireUint(event, 'eventKind', 1, 47);
     if (!PRODUCT_EVENT_ID_SET.has(eventKind)) {
       throw new Error(`Unknown Kessho Product Core event kind: ${eventKind}`);
     }
@@ -859,6 +877,13 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         normalized.value = this.optionalFloat(event, 'value', 0, -7, 7);
         normalized.value2 = this.optionalFloat(event, 'value2', 0, 0, 1);
         normalized.value3 = this.optionalFloat(event, 'value3', 0, 0, 127);
+        return normalized;
+      case PRODUCT_EVENT_IDS.GeneratedSequencerCapture:
+        normalized.targetId = this.requireSequencerId(this.requireUint(event, 'targetId', 1, 2), 'targetId');
+        normalized.index = this.requireUint(event, 'index', 0, SEQUENCER_UI_STATE_LANES - 1);
+        normalized.paramId = this.requireUint(event, 'paramId', 0, SEQUENCER_UI_STATE_LANES - 1);
+        normalized.value = this.requireFloat(event, 'value', 0, 1);
+        normalized.value2 = this.requireFloat(event, 'value2', 1, 2);
         return normalized;
       default:
         throw new Error(`Unhandled Kessho Product Core event kind: ${eventKind}`);
@@ -1009,6 +1034,55 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const low = this.view.getUint32(byteOffset, true);
     const high = this.view.getUint32(byteOffset + 4, true);
     return high * 4294967296 + low;
+  }
+
+  generatedCaptureModeName(mode) {
+    if (mode === 1) return 'anchorWalker';
+    if (mode === 2) return 'orbit';
+    return 'euclid';
+  }
+
+  readGeneratedSequencerCaptureEvents() {
+    if (!this.generatedCaptureEventsPtr || !this.generatedCaptureOverflowPtr) {
+      return {
+        events: [],
+        overflowCount: 0,
+      };
+    }
+    this.view.setUint32(this.generatedCaptureOverflowPtr, 0, true);
+    const count = this.api.drainGeneratedSequencerCaptureEvents(
+      this.engine,
+      this.generatedCaptureEventsPtr,
+      GENERATED_CAPTURE_EVENT_CAPACITY,
+      this.generatedCaptureOverflowPtr,
+    );
+    const safeCount = Math.max(0, Math.min(GENERATED_CAPTURE_EVENT_CAPACITY, Number(count) || 0));
+    const events = [];
+    for (let index = 0; index < safeCount; index += 1) {
+      const ptr = this.generatedCaptureEventsPtr + index * GENERATED_CAPTURE_EVENT_BYTES;
+      const sourceStepIndex = this.view.getInt32(ptr + 40, true);
+      const sourceLayerIndex = this.view.getInt32(ptr + 44, true);
+      const sourceNoteIndex = this.view.getInt32(ptr + 48, true);
+      const targetStepIndex = this.view.getInt32(ptr + 52, true);
+      events.push({
+        eventId: this.readUint64Number(ptr),
+        absoluteSample: this.readUint64Number(ptr + 8),
+        sourceLaneIndex: this.view.getUint32(ptr + 16, true),
+        sourceMode: this.generatedCaptureModeName(this.view.getUint32(ptr + 20, true)),
+        targetSourceId: this.view.getUint32(ptr + 24, true),
+        midiNote: this.view.getFloat32(ptr + 28, true),
+        velocity: this.view.getFloat32(ptr + 32, true),
+        gateSeconds: this.view.getFloat32(ptr + 36, true),
+        sourceStepIndex: sourceStepIndex >= 0 ? sourceStepIndex : null,
+        sourceLayerIndex: sourceLayerIndex >= 0 ? sourceLayerIndex : null,
+        sourceNoteIndex: sourceNoteIndex >= 0 ? sourceNoteIndex : null,
+        targetStepIndex: targetStepIndex >= 0 ? targetStepIndex : null,
+      });
+    }
+    return {
+      events,
+      overflowCount: this.view.getUint32(this.generatedCaptureOverflowPtr, true),
+    };
   }
 
   hash32Hex(value) {
@@ -1255,6 +1329,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const productDebugVoiceSpawns = this.readProductDebugVoiceSpawns(ptr);
     const synthOrbitVisualLanes = this.readSynthOrbitVisualLanes(ptr);
     const synthAnchorWalkerVisualLanes = this.readSynthAnchorWalkerVisualLanes(ptr);
+    const generatedSequencerCapture = this.readGeneratedSequencerCaptureEvents();
     return {
       schemaHash: this.view.getUint32(ptr, true),
       sampleRate: this.view.getFloat64(ptr + 8, true),
@@ -1329,6 +1404,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       drumSequencerCurrentSteps,
       synthOrbitVisualLanes,
       synthAnchorWalkerVisualLanes,
+      generatedSequencerCaptureEvents: generatedSequencerCapture.events,
+      generatedSequencerCaptureOverflowCount: generatedSequencerCapture.overflowCount,
       sequencerUiState,
       sequencerUiChangeDice: SEQUENCER_UI_CHANGE_DICE,
       sequencerUiChangeResetHome: SEQUENCER_UI_CHANGE_RESET_HOME,

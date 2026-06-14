@@ -96,6 +96,7 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SequencerAnchorWalkerOutputRangeMin: 250,
   SequencerAnchorWalkerOutputRangeMax: 251,
   SequencerOrbitTriggerLineCount: 252,
+  SequencerOrbitClockMode: 290,
   SequencerOrbitBpmPercent: 253,
   SequencerOrbitQuantizeToHarmony: 254,
   SequencerOrbitSnapSource: 255,
@@ -1311,6 +1312,14 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 252,
     "min": 1,
     "max": 8
+  },
+  {
+    "name": "SequencerOrbitClockMode",
+    "path": "sequencers.*.lanes.*.orbit.clockMode",
+    "type": "uint",
+    "id": 290,
+    "min": 0,
+    "max": 1
   },
   {
     "name": "SequencerOrbitBpmPercent",

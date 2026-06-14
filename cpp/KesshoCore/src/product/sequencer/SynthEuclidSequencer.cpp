@@ -1,5 +1,7 @@
 #include "../KesshoProductEngineInternal.h"
 
+#include <limits>
+
 namespace {
 
 float selectedDrumVoiceMidi(const kessho::product::internal::LaneState& lane, uint64_t hit_count, uint32_t seed) {
@@ -595,6 +597,71 @@ bool enqueueFaceEvent(
   return true;
 }
 
+int32_t captureRelativeStepIndexForSample(
+    const KesshoProductEngine& engine,
+    const kessho::product::internal::LaneState& lane,
+    uint64_t absolute_sample) {
+  using namespace kessho::product::internal;
+  if (!lane.sequencer_runtime_initialized || lane.step_count == 0u || lane.clock_division == 0u) {
+    return -1;
+  }
+  if (absolute_sample < lane.sequencer_start_sample_frame) {
+    return -1;
+  }
+  const double samples_per_step =
+      sequencerSamplesPerStep(engine.transport, engine.sample_rate, lane.clock_division) /
+      static_cast<double>(clampFloat(lane.tempo_multiplier, 0.25f, 12.0f));
+  if (!std::isfinite(samples_per_step) || samples_per_step <= 0.0) {
+    return -1;
+  }
+  const double relative_sample =
+      static_cast<double>(absolute_sample) - static_cast<double>(lane.sequencer_start_sample_frame);
+  const double relative_step = std::floor(relative_sample / samples_per_step);
+  if (!std::isfinite(relative_step) || relative_step < 0.0) {
+    return -1;
+  }
+  if (relative_step > static_cast<double>(std::numeric_limits<int32_t>::max())) {
+    return std::numeric_limits<int32_t>::max();
+  }
+  return static_cast<int32_t>(relative_step);
+}
+
+void maybeCaptureGeneratedFaceEvent(
+    KesshoProductEngine& engine,
+    const kessho::product::internal::LaneState& lane,
+    uint64_t absolute_sample,
+    uint32_t lane_index,
+    uint32_t source_mode,
+    uint32_t target_source_id,
+    float midi_note,
+    float velocity,
+    float gate_seconds,
+    int32_t source_step_index,
+    int32_t source_layer_index,
+    int32_t source_note_index) {
+  const KesshoProductGeneratedSequencerCaptureConfig& config =
+      engine.generated_sequencer_capture_config;
+  if (!kessho::product::shouldCaptureGeneratedSequencerEvent(config, lane_index, source_mode)) {
+    return;
+  }
+
+  KesshoProductGeneratedSequencerCaptureEvent captured{};
+  captured.event_id = engine.generated_sequencer_capture_event_counter++;
+  captured.absolute_sample = absolute_sample;
+  captured.source_lane_index = lane_index;
+  captured.source_mode = source_mode;
+  captured.target_source_id = target_source_id;
+  captured.midi_note = kessho::product::internal::clampFloat(midi_note, 0.0f, 127.0f);
+  captured.velocity = kessho::product::internal::clampFloat(velocity, 0.0f, 1.0f);
+  captured.gate_seconds = kessho::product::internal::clampFloat(gate_seconds, 0.001f, 20.0f);
+  captured.source_step_index = source_step_index;
+  captured.source_layer_index = source_layer_index;
+  captured.source_note_index = source_note_index;
+  captured.target_step_index = captureRelativeStepIndexForSample(engine, lane, absolute_sample);
+
+  engine.generated_sequencer_capture_ring.push(captured);
+}
+
 bool emitAnchorWalkerTrigger(
     KesshoProductEngine& engine,
     kessho::product::internal::LaneState& lane,
@@ -707,6 +774,19 @@ bool emitAnchorWalkerTrigger(
         layer_event_index,
         active_layer_count,
         event);
+    maybeCaptureGeneratedFaceEvent(
+        engine,
+        lane,
+        layer_sample,
+        lane_index,
+        KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_ANCHOR_WALKER,
+        event.source_id,
+        event.midi_note,
+        event.velocity,
+        event.hold_seconds,
+        static_cast<int32_t>(pattern_index),
+        static_cast<int32_t>(layer_index),
+        -1);
     ++layer_event_index;
   }
   lane.emitted_hit_count += 1u;
@@ -1191,6 +1271,19 @@ bool generateOrbitLaneEvents(
           line_index,
           line_count,
           event);
+      maybeCaptureGeneratedFaceEvent(
+          engine,
+          lane,
+          event_sample,
+          lane_index,
+          KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_ORBIT,
+          event.source_id,
+          event.midi_note,
+          event.velocity,
+          event.hold_seconds,
+          -1,
+          -1,
+          static_cast<int32_t>(note_index));
       lane.emitted_hit_count += 1u;
       triggered = true;
     }
@@ -1362,7 +1455,7 @@ bool generateOrbitLaneEvents(
           1.0f);
       const uint32_t event_seed = probability_seed;
       const uint32_t drum_voice = drum_lane
-          ? static_cast<uint32_t>(std::clamp(roundedInt(trigger_midi_note - 36.0f), 0, DRUM_NUM_VOICE_TYPES - 1))
+          ? static_cast<uint32_t>(defaultDrumKitMapEntry(trigger_midi_note).voice)
           : DRUM_NUM_VOICE_TYPES;
       const bool morph_field_active = sequencerStepFieldActive(*this, lane, KESSHO_PRODUCT_STEP_FIELD_MORPH, macro_evolution_active);
       const bool distance_field_active = sequencerStepFieldActive(*this, lane, KESSHO_PRODUCT_STEP_FIELD_DISTANCE, macro_evolution_active);

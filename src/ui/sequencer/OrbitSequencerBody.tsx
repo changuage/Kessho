@@ -23,6 +23,7 @@ interface OrbitSequencerBodyProps {
   isRunning?: boolean;
   transportBpm?: number;
   runtimeVisualState?: OrbitRuntimeVisualState | null;
+  captureSlot?: React.ReactNode;
   onChange: (config: OrbitSequencerConfig) => void;
 }
 
@@ -82,6 +83,7 @@ export function OrbitSequencerBody({
   isRunning = false,
   transportBpm = 120,
   runtimeVisualState = null,
+  captureSlot,
   onChange,
 }: OrbitSequencerBodyProps) {
   const orbit = useOrbitSequencer({ config, onChange });
@@ -119,6 +121,11 @@ export function OrbitSequencerBody({
     >
       <div className="orbit-sequencer-top">
         <span className="orbit-label">{TEXT_SYMBOLS.orbit} Orbit</span>
+        {captureSlot ? (
+          <div className="orbit-capture-row">
+            {captureSlot}
+          </div>
+        ) : null}
         <label className="orbit-label">
           Layout
           <select

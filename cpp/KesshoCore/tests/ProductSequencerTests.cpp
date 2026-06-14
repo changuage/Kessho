@@ -2128,9 +2128,10 @@ void requireDrumExactRuntimeRangesApplyToSourceAndModule() {
   require(drum_sh != nullptr, "drum exact sample-hold engine allocation failed");
   KesshoProductEvent range{};
   range.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
-  range.target_id = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE;
+  constexpr uint32_t kKickFreqParamIndex = 12u;
+  range.target_id = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + 1u;
   range.index = 1002u;
-  range.param_id = kProductDrumRuntimeParamIdBase;
+  range.param_id = kProductDrumRuntimeParamIdBase + kKickFreqParamIndex;
   range.value = 80.0f;
   range.value2 = 90.0f;
   range.value3 = static_cast<float>(KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD);
@@ -2143,7 +2144,9 @@ void requireDrumExactRuntimeRangesApplyToSourceAndModule() {
   require(drum_sh->drum_module != nullptr, "drum module missing for exact sample-hold");
   drum_params = drum_sh->drum_module->params();
   require(drum_params != nullptr, "drum module params missing for exact sample-hold");
-  require(drum_params[0] >= 80.0f && drum_params[0] <= 90.0f, "Drum exact sample-hold did not apply to triggered voice patch");
+  require(
+      drum_params[kKickFreqParamIndex] >= 80.0f && drum_params[kKickFreqParamIndex] <= 90.0f,
+      "Drum exact sample-hold did not apply to triggered voice patch");
   kessho_product_destroy(drum_sh);
 }
 
@@ -2210,11 +2213,11 @@ void requireDrumSequencerMorphBuildsPerHitPresetPatch() {
   const float* drum_params = engine->drum_module->params();
   require(drum_params != nullptr, "drum module params missing for sequencer morph patch test");
 
-  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 37.0f, 1.0f, 0.12f, 0.0f);
+  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 36.0f, 1.0f, 0.12f, 0.0f);
   require(
       std::fabs(drum_params[kKickFreqParamIndex] - preset_a->params[kKickFreqParamIndex]) < 0.001f,
       "drum trigger morph endpoint A did not reach per-hit exact patch");
-  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 37.0f, 1.0f, 0.12f, 1.0f);
+  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 36.0f, 1.0f, 0.12f, 1.0f);
   require(
       std::fabs(drum_params[kKickFreqParamIndex] - preset_b->params[kKickFreqParamIndex]) < 0.001f,
       "drum trigger morph endpoint B did not reach per-hit exact patch");
@@ -2233,7 +2236,7 @@ void requireDrumSequencerMorphBuildsPerHitPresetPatch() {
   require(
       std::fabs(drum_params[kKickFreqParamIndex] - preset_c->params[kKickFreqParamIndex]) < 0.001f,
       "drum preset B endpoint event did not refresh current exact drum patch");
-  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 37.0f, 1.0f, 0.12f, 1.0f);
+  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 36.0f, 1.0f, 0.12f, 1.0f);
   require(
       std::fabs(drum_params[kKickFreqParamIndex] - preset_c->params[kKickFreqParamIndex]) < 0.001f,
       "drum preset B endpoint event did not update per-hit morph patch");
@@ -2244,8 +2247,11 @@ void requireDrumSequencerMembraneMorphHitsPresetB() {
   constexpr uint32_t kMembraneVoiceIndex = 6u;
   constexpr uint32_t kMembraneParamStart = 92u;
   constexpr uint32_t kMembraneParamCount = 12u;
-  const auto* preset_a = findDrumVoicePreset(kMembraneVoiceIndex, 3701u);
-  const auto* preset_b = findDrumVoicePreset(kMembraneVoiceIndex, 3716u);
+  constexpr float kMembraneMidiNote = 38.0f;
+  constexpr uint32_t kSnareClassicPresetId = 3717u;
+  constexpr uint32_t kEtherealSkinPresetId = 3704u;
+  const auto* preset_a = findDrumVoicePreset(kMembraneVoiceIndex, kSnareClassicPresetId);
+  const auto* preset_b = findDrumVoicePreset(kMembraneVoiceIndex, kEtherealSkinPresetId);
   require(preset_a != nullptr && preset_b != nullptr, "drum membrane morph test presets missing");
   require(std::fabs(preset_a->params[kMembraneParamStart] - 3.0f) < 0.001f, "Snare Classic membrane pitch envelope bridge regressed");
   require(std::fabs(preset_b->params[kMembraneParamStart] - 0.0f) < 0.001f, "Ethereal Skin membrane pitch envelope bridge regressed");
@@ -2266,7 +2272,7 @@ void requireDrumSequencerMembraneMorphHitsPresetB() {
   snapshot.drum_euclid.lanes[0].fill_count = 4;
   snapshot.drum_euclid.lanes[0].clock_division = 16;
   snapshot.drum_euclid.lanes[0].manual_step_mask_low = 0x0fu;
-  snapshot.drum_euclid.lanes[0].midi_note = 42.0f;
+  snapshot.drum_euclid.lanes[0].midi_note = kMembraneMidiNote;
   snapshot.drum_euclid.lanes[0].morph = 0.0f;
   snapshot.drum_euclid.lanes[0].seed = 4242u;
 
@@ -2297,7 +2303,7 @@ void requireDrumSequencerMembraneMorphHitsPresetB() {
   KesshoSequencerEvent events[8]{};
   const int32_t event_count = kessho_product_debug_render_events(engine, events, 8, 48000);
   require(event_count >= 4, "drum membrane morph sub-lane should emit four hits");
-  require(std::fabs(events[2].midi_note - 42.0f) < 0.001f, "drum membrane morph test emitted wrong voice");
+  require(std::fabs(events[2].midi_note - kMembraneMidiNote) < 0.001f, "drum membrane morph test emitted wrong voice");
   require(events[2].morph >= 0.999f, "drum membrane morph sub-lane step 3 should emit preset B morph");
 
   engine->triggerSequencerEvent(events[2]);
@@ -2316,9 +2322,13 @@ void requireDrumSequencerMembranePresetBChangeUpdatesRunningMorph() {
   constexpr uint32_t kMembraneVoiceIndex = 6u;
   constexpr uint32_t kMembraneParamStart = 92u;
   constexpr uint32_t kMembraneParamCount = 12u;
-  const auto* preset_a = findDrumVoicePreset(kMembraneVoiceIndex, 3701u);
-  const auto* old_preset_b = findDrumVoicePreset(kMembraneVoiceIndex, 3714u);
-  const auto* new_preset_b = findDrumVoicePreset(kMembraneVoiceIndex, 3716u);
+  constexpr float kMembraneMidiNote = 38.0f;
+  constexpr uint32_t kBrushSwirlPresetId = 3701u;
+  constexpr uint32_t kRainOnTinPresetId = 3714u;
+  constexpr uint32_t kSingingBowlPresetId = 3716u;
+  const auto* preset_a = findDrumVoicePreset(kMembraneVoiceIndex, kBrushSwirlPresetId);
+  const auto* old_preset_b = findDrumVoicePreset(kMembraneVoiceIndex, kRainOnTinPresetId);
+  const auto* new_preset_b = findDrumVoicePreset(kMembraneVoiceIndex, kSingingBowlPresetId);
   require(preset_a != nullptr && old_preset_b != nullptr && new_preset_b != nullptr, "drum membrane live preset B change test presets missing");
 
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
@@ -2336,7 +2346,7 @@ void requireDrumSequencerMembranePresetBChangeUpdatesRunningMorph() {
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum membrane live preset B snapshot load failed");
   require(engine->drum_module != nullptr, "drum module missing for live membrane preset B test");
 
-  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 42.0f, 1.0f, 0.12f, 1.0f);
+  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, kMembraneMidiNote, 1.0f, 0.12f, 1.0f);
   const float* drum_params = engine->drum_module->params();
   require(drum_params != nullptr, "drum module params missing for live membrane preset B test");
   for (uint32_t offset = 0; offset < kMembraneParamCount; ++offset) {
@@ -2356,7 +2366,7 @@ void requireDrumSequencerMembranePresetBChangeUpdatesRunningMorph() {
   engine->applySourcePresetEvent(preset_b_event);
   require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "drum membrane live preset B endpoint event failed");
 
-  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 42.0f, 1.0f, 0.12f, 1.0f);
+  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, kMembraneMidiNote, 1.0f, 0.12f, 1.0f);
   for (uint32_t offset = 0; offset < kMembraneParamCount; ++offset) {
     const uint32_t param_index = kMembraneParamStart + offset;
     require(
@@ -2364,7 +2374,7 @@ void requireDrumSequencerMembranePresetBChangeUpdatesRunningMorph() {
         "drum membrane live preset B endpoint change did not update the running morph step");
   }
 
-  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 42.0f, 1.0f, 0.12f, 0.0f);
+  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, kMembraneMidiNote, 1.0f, 0.12f, 0.0f);
   for (uint32_t offset = 0; offset < kMembraneParamCount; ++offset) {
     const uint32_t param_index = kMembraneParamStart + offset;
     require(
@@ -4063,6 +4073,7 @@ int main() {
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "modulation snapshot load failed");
+  constexpr uint32_t kDefaultDrumMorphRangeTarget = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + DRUM_VOICE_KICK;
   KesshoProductEvent synth_range{};
   synth_range.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
   synth_range.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
@@ -4075,7 +4086,7 @@ int main() {
   require(kessho_product_enqueue_event(engine, &synth_range) == KESSHO_PRODUCT_OK, "synth modulation range enqueue failed");
   KesshoProductEvent drum_range{};
   drum_range.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
-  drum_range.target_id = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE;
+  drum_range.target_id = kDefaultDrumMorphRangeTarget;
   drum_range.index = 102u;
   drum_range.param_id = KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID;
   drum_range.value = 0.35f;
@@ -4101,7 +4112,7 @@ int main() {
       KESSHO_PRODUCT_SOURCE_PAD1,
       KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID);
   ModulationRange* drum_morph_range = engine->findModulationRange(
-      KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE,
+      kDefaultDrumMorphRangeTarget,
       KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID);
   require(synth_expression_range != nullptr, "source expression modulation range missing after sequencer generation");
   require(drum_morph_range != nullptr, "drum morph modulation range missing after sequencer generation");

@@ -47,7 +47,7 @@ export function useSelectedAudioEngineTransportDebug({
     });
   }, [getSelectedTransportDebugState, setEngineState]);
 
-  useVisibleInterval(updateTransportDebug, 100, {
+  useVisibleInterval(updateTransportDebug, 1000, {
     enabled,
   });
 }

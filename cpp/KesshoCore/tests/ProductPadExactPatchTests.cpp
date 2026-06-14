@@ -592,8 +592,8 @@ void requireNamedPluckPresetParams() {
   requireParamClose("PadSoftPluck output trim", 52u, soft[52], 0.5f);
 
   const PadParams buchla = exactPadParamsFromPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_BUCHLA_PLUCK);
-  requireParamClose("PadBuchlaPluck fold amount", 18u, buchla[18], 0.45f);
-  requireParamClose("PadBuchlaPluck attack", 33u, buchla[33], 0.005f);
+  requireParamClose("PadBuchlaPluck fold amount", 18u, buchla[18], 0.28f);
+  requireParamClose("PadBuchlaPluck attack", 33u, buchla[33], 0.003f);
   requireParamClose("PadBuchlaPluck mod env enabled", 45u, buchla[45], 1.0f);
 }
 

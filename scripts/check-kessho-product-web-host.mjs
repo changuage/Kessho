@@ -155,7 +155,9 @@ const snapshotPadVoiceRouting = read('src/audio/coreProductSnapshotPadVoiceRouti
 const snapshotTypes = read('src/audio/coreProductSnapshotTypes.ts');
 const generatedParams = read('src/audio/generated/kesshoProductParams.ts');
 const sequencerHold = read('src/audio/coreProductSequencerHold.ts');
+const arrangementPadChord = read('src/audio/coreProductArrangementPadChord.ts');
 const arrangementScheduler = read('src/audio/coreProductArrangementScheduler.ts');
+const arrangementSchedulerSurface = `${arrangementScheduler}\n${arrangementPadChord}`;
 const snapshotEncoder = read('src/audio/coreProductSnapshotEncoder.ts');
 const snapshotDefaults = read('src/audio/coreProductSnapshotDefaults.ts');
 const snapshotReverb = read('src/audio/coreProductReverbSnapshot.ts');
@@ -1988,15 +1990,15 @@ for (const token of [
   'updateHarmonyState',
   'getScaleNotesInRange',
   'createCoreProductManualNoteEvent',
-  "coreProductPadEnvelopeGateSecondsFromState(this.state, 'pad1'",
-  "coreProductPadEnvelopeGateSecondsFromState(this.state, 'pad2'",
+  "coreProductPadEnvelopeGateSecondsFromState(state, 'pad1'",
+  "coreProductPadEnvelopeGateSecondsFromState(state, 'pad2'",
   'coreProductSynthSequencerHoldSecondsFromState(this.state, sourceId, 0.5) * 1000',
   "boundedNumber(this.state, 'lead1Density', 0.5, 0.1, 12)",
   'const timingSeconds = (this.rng() * phraseMs) / 1000;',
   'pickChordWeightedNote(this.rng, availableNotes',
-  'this.scheduleNote(delaySeconds',
+  'this.scheduleNote(note.delaySeconds',
 ]) {
-  assert(arrangementScheduler.includes(token), `Product arrangement scheduler must preserve web timing/music intent: missing ${token}`);
+  assert(arrangementSchedulerSurface.includes(token), `Product arrangement scheduler must preserve web timing/music intent: missing ${token}`);
 }
 
 assert(
@@ -2020,8 +2022,8 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 135212',
-  'const SOURCE_BYTES = 3720',
+  'const SNAPSHOT_BYTES = 145124',
+  'const SOURCE_BYTES = 5136',
   'const LANE_BYTES = 96',
   'KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES',
   'KESSHO_PRODUCT_DRUM_PARAM_COUNT',
@@ -2742,7 +2744,7 @@ for (const token of [
   'noteRangeMax: this.view.getFloat32(ptr + 3020, true)',
   'expressionRangeSetLow: this.view.getUint32(ptr + 2216, true)',
   'expressionRangeMaxes: this.readFloatOverrides(',
-  'const TELEMETRY_BYTES = 13984;',
+  'const TELEMETRY_BYTES = 15008;',
   'rngSeed: this.view.getUint32(ptr + 928, true)',
   'rngState: this.view.getUint32(ptr + 932, true)',
   'sourcePresetIds.push(this.view.getUint32(ptr + 936 + index * 4, true));',
@@ -3141,6 +3143,7 @@ const hostImportAllowlist = new Set([
   './product/host/CoreProductSequencerStepPostingBridge',
   './product/host/CoreProductSequencerSubLaneEnabledEventBridge',
   './product/host/CoreProductSequencerUiAdapter',
+  './CoreProductHostSequencerChain',
   './CoreProductHostSynthNoteRangeEvolve',
   './CoreProductHostSynthPitch',
   './CoreProductHostRuntimeGuards',

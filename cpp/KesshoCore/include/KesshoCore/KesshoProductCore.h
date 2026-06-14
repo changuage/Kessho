@@ -2,6 +2,7 @@
 
 #include "KesshoCore/KesshoProductAssets.h"
 #include "KesshoCore/KesshoProductEvents.h"
+#include "KesshoCore/KesshoProductGeneratedSequencerCapture.h"
 #include "KesshoCore/KesshoProductSnapshot.h"
 #include "KesshoCore/KesshoProductTelemetry.h"
 #include "KesshoCore/KesshoProductTypes.h"
@@ -67,6 +68,12 @@ KesshoProductTelemetry kessho_product_get_telemetry(KesshoProductEngine* engine)
 int32_t kessho_product_copy_telemetry(
     KesshoProductEngine* engine,
     KesshoProductTelemetry* out_telemetry);
+
+uint32_t kessho_product_drain_generated_sequencer_capture_events(
+    KesshoProductEngine* engine,
+    KesshoProductGeneratedSequencerCaptureEvent* out_events,
+    uint32_t max_event_count,
+    uint32_t* out_overflow_count);
 
 int32_t kessho_product_copy_granular_waveform(
     KesshoProductEngine* engine,

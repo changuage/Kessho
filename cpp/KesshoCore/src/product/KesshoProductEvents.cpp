@@ -258,6 +258,14 @@ const GranularVoiceParamSpec* findGranularExtVoiceParamSpec(uint32_t offset) {
       return KESSHO_PRODUCT_OK;
     case KESSHO_PRODUCT_EVENT_KIND_SET_TRANSPORT:
       return event.value > 0.0f ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_GENERATED_SEQUENCER_CAPTURE:
+      return valid_sequencer(event.target_id) &&
+              event.index < kMaxLaneCount &&
+              event.param_id < kMaxLaneCount &&
+              event.value >= 0.0f && event.value <= 1.0f &&
+              event.value2 >= 1.0f && event.value2 <= 2.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     case KESSHO_PRODUCT_EVENT_KIND_SET_PARAM:
       return event.param_id == 0u ? KESSHO_PRODUCT_ERROR_INVALID_PARAM : KESSHO_PRODUCT_OK;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_ENABLED:
@@ -528,6 +536,18 @@ void KesshoProductEngine::sortControlEvents() {
     case KESSHO_PRODUCT_EVENT_KIND_ANCHOR_WALKER_PERFORMANCE:
       applyAnchorWalkerPerformanceEvent(event);
       break;
+    case KESSHO_PRODUCT_EVENT_KIND_GENERATED_SEQUENCER_CAPTURE: {
+      const uint32_t source_mode = static_cast<uint32_t>(std::lround(event.value2));
+      generated_sequencer_capture_config.enabled = event.value >= 0.5f ? 1u : 0u;
+      generated_sequencer_capture_config.source_lane_index = static_cast<int32_t>(event.index);
+      generated_sequencer_capture_config.target_lane_index = static_cast<int32_t>(event.param_id);
+      generated_sequencer_capture_config.source_mode_mask =
+          kessho::product::generatedSequencerCaptureModeBit(source_mode);
+      if (generated_sequencer_capture_config.enabled != 0u) {
+        generated_sequencer_capture_ring.reset();
+      }
+      break;
+    }
     case KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_STATE:
       applyJourneyStateEvent(event);
       break;
@@ -1165,8 +1185,9 @@ void KesshoProductEngine::sortControlEvents() {
     return;
   }
   if (
-      event.param_id >= KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MODE_ID &&
-      event.param_id <= KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_GATE_RANGE_ENABLED_ID) {
+      (event.param_id >= KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MODE_ID &&
+       event.param_id <= KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_GATE_RANGE_ENABLED_ID) ||
+      event.param_id == KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_CLOCK_MODE_ID) {
     applySequencerLaneParamEvent(event);
     return;
   }

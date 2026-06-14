@@ -107,7 +107,7 @@ uint32_t KesshoProductEngine::triggerVoice(
   float drum_delay_send = -1.0f;
   uint32_t drum_voice = 0u;
   if (drum_source) {
-    drum_voice = static_cast<uint32_t>(std::clamp(roundedInt(midi_note - 36.0f), 0, DRUM_NUM_VOICE_TYPES - 1));
+    drum_voice = defaultDrumKitMapEntry(midi_note).voice;
     const uint32_t drum_target = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + drum_voice;
     if (!event_morph_override) {
       morph = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, morph, resolved_seed);
@@ -257,6 +257,7 @@ uint32_t KesshoProductEngine::triggerVoice(
           drum_ratchet_decay_cap,
           drum_ratchet_attack_cap,
           synth_ratchet_factor,
+          resolved_seed,
           pad_voice_index,
           &module_voice_index)) {
     if (module_voice_index != kProductInvalidVoiceIndex) {

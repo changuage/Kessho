@@ -3,6 +3,10 @@ import { createCoreProductSnapshot } from './coreProductSnapshot';
 import { buildCoreProductSnapshotDiff } from './CoreProductRuntimeAdapter';
 import { CORE_PRODUCT_SOURCE_IDS, resolveCoreProductRangeTargets } from './coreProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
+import {
+  normalizeSequencerChainState,
+  resolveSequencerChainPosition,
+} from './sequencerChain';
 import { createDefaultSynthSequencerFaceState } from '../ui/sequencer/sequencerModeTypes';
 import { TAU, resolveAngularSpeed } from '../ui/sequencer/orbitSequencerMath';
 
@@ -45,6 +49,51 @@ assert.equal(delayBEnableTargets.length, 1, 'Delay B enable should have one live
 assert.equal(delayBEnableTargets[0]?.paramId, KESSHO_PRODUCT_PARAM_IDS.FxDelayBEnabled);
 assert.equal(delayBEnableTargets[0]?.mapValue?.(0, {}), 0);
 assert.equal(delayBEnableTargets[0]?.mapValue?.(1, {}), 1);
+
+{
+  const chain = normalizeSequencerChainState({
+    enabled: true,
+    entries: [
+      { laneIndex: 0, repeats: 2 },
+      { laneIndex: 8, repeats: 99 },
+      { laneIndex: 1, repeats: 2 },
+    ],
+  });
+  assert.deepEqual(chain, {
+    version: 1,
+    enabled: true,
+    entries: [
+      { laneIndex: 0, repeats: 2 },
+      { laneIndex: 3, repeats: 16 },
+      { laneIndex: 1, repeats: 2 },
+    ],
+  });
+
+  const positionA = resolveSequencerChainPosition(chain, [
+    { laneIndex: 0, durationSeconds: 1 },
+    { laneIndex: 1, durationSeconds: 1 },
+    { laneIndex: 2, durationSeconds: 1 },
+    { laneIndex: 3, durationSeconds: 1 },
+  ], 1.5);
+  assert.equal(positionA?.activeLaneIndex, 0, 'chain should repeat Seq 1 before advancing');
+  assert.equal(positionA?.activeEntryIndex, 0);
+
+  const positionB = resolveSequencerChainPosition(chain, [
+    { laneIndex: 0, durationSeconds: 1 },
+    { laneIndex: 1, durationSeconds: 1 },
+    { laneIndex: 2, durationSeconds: 1 },
+    { laneIndex: 3, durationSeconds: 1 },
+  ], 18.25);
+  assert.equal(positionB?.activeLaneIndex, 1, 'chain should advance to Seq 2 after earlier repeats');
+  assert.equal(positionB?.activeEntryIndex, 2);
+
+  const positionWithSkippedLane = resolveSequencerChainPosition(chain, [
+    { laneIndex: 0, durationSeconds: 1 },
+    { laneIndex: 1, durationSeconds: 1 },
+  ], 2.25);
+  assert.equal(positionWithSkippedLane?.activeLaneIndex, 1, 'chain should skip entries for lanes that are not playable');
+  assert.equal(positionWithSkippedLane?.activeEntryIndex, 2);
+}
 
 const synthSourceAliasCases = [
   ['lead', CORE_PRODUCT_SOURCE_IDS.lead1],

@@ -12,11 +12,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatIndexedDelayDivision, getSliderNumericValue, type SerializedStepOverrides, type SliderMode, type SliderState } from '../state';
 import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubLaneKind, type SubLaneState, type PitchSettings } from '../sequencer/useEuclideanSequencer';
+import SequencerChainRail, {
+  createSequencerChainUiRuntimeState,
+  sequencerChainBadgeLabel,
+  useSequencerChainUiPosition,
+} from '../sequencer/SequencerChainRail';
 import { liveOverdubTargetStep, useLiveOverdubRecorder } from '../sequencer/useLiveOverdubRecorder';
 import { stepOverridesForEngineSubLaneState } from '../sequencer/engineStepOverrides';
 import { serializeStepOverrides } from '../sequencer/stepOverrideSerialization';
 import AnchorWalkerSequencerBody from '../sequencer/AnchorWalkerSequencerBody';
 import OrbitSequencerBody from '../sequencer/OrbitSequencerBody';
+import SequencerCaptureButton from '../sequencer/SequencerCaptureButton';
+import SequencerCapturePreviewOverlay from '../sequencer/SequencerCapturePreviewOverlay';
+import { useGeneratedSequenceCapture } from '../sequencer/useGeneratedSequenceCapture';
 import {
   normalizeSynthSequencerFaceState,
   type SequencerMode,
@@ -71,7 +79,10 @@ import type {
   ProductSynthAnchorWalkerVisualLaneState,
   ProductSynthOrbitVisualLaneState,
 } from '../../audio/product/ProductEngineTypes';
-import { createCoreProductAnchorWalkerPerformanceEvent } from '../../audio/coreProductEvents';
+import {
+  createCoreProductAnchorWalkerPerformanceEvent,
+  createCoreProductGeneratedSequencerCaptureEvent,
+} from '../../audio/coreProductEvents';
 import { productEngine } from '../../audio/product/ProductEngineProxy';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { SliderPrimitive } from '../sliderSystem';
@@ -2478,6 +2489,23 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     resetKey: presetVersion,
   });
 
+  const synthChainRuntimeState = useMemo(
+    () => createSequencerChainUiRuntimeState('synth', state as unknown as Record<string, unknown>, seq.clockDivs),
+    [state, seq.clockDivs],
+  );
+  const synthChainPosition = useSequencerChainUiPosition({
+    kind: 'synth',
+    state: synthChainRuntimeState,
+    chain: state.synthSequencerChain,
+    running: isRunning,
+  });
+  const setSynthSequencerChain = useCallback(
+    (chain: SliderState['synthSequencerChain']) => {
+      onSelectChange('synthSequencerChain', chain);
+    },
+    [onSelectChange],
+  );
+
   const [arpConfigs, setArpConfigs] = useState<ProductArpConfig[]>(() => normalizeProductArpConfigs(initialArpConfigs, 4));
   const [arpRuntimeTick, setArpRuntimeTick] = useState(0);
   const arpHarmonyContext = useMemo(() => createProductArpHarmonyContext(
@@ -3118,6 +3146,82 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     };
     onSelectChange('synthSequencerFaces' as keyof SliderState, next as SliderState[keyof SliderState]);
   }, [onSelectChange, sequencerFaceState, walkerEnsemblePreset]);
+
+  const lastGeneratedCaptureTelemetryEventIdRef = useRef(0);
+  const setGeneratedSequencerCaptureEnabled = useCallback((
+    request: Parameters<typeof createCoreProductGeneratedSequencerCaptureEvent>[0],
+  ): void => {
+    if (request.enabled) {
+      lastGeneratedCaptureTelemetryEventIdRef.current = 0;
+    }
+    try {
+      productEngine.enqueueEvent(createCoreProductGeneratedSequencerCaptureEvent(request));
+    } catch (error) {
+      console.warn('Failed to enqueue generated sequencer capture event', error);
+    }
+  }, []);
+  const setGeneratedCaptureSequencerMode = useCallback((laneIndex: number, mode: 'euclid'): void => {
+    setSequencerMode(laneIndex, mode);
+  }, [setSequencerMode]);
+  const setGeneratedCapturePitchBindingMode = useCallback((laneIndex: number, mode: 'sequence'): void => {
+    setPitchBindingMode(laneIndex, mode);
+  }, [setPitchBindingMode]);
+  const generatedSequenceCapture = useGeneratedSequenceCapture({
+    isRunning,
+    activeLaneIndex: seq.activeTab,
+    activeLaneMode: activeSequencerMode,
+    seq,
+    setSequencerMode: setGeneratedCaptureSequencerMode,
+    setPitchBindingMode: setGeneratedCapturePitchBindingMode,
+    setProductCaptureEnabled: setGeneratedSequencerCaptureEnabled,
+  });
+  const {
+    session: generatedCaptureSession,
+    isCapturing: generatedCaptureIsCapturing,
+    capturedCount: generatedCaptureCount,
+    startCapture: startGeneratedCapture,
+    stopAndCommit: stopGeneratedCapture,
+    cancelCapture: cancelGeneratedCapture,
+    ingestProductEvents: ingestGeneratedCaptureEvents,
+    markCurrentStepFromPlayhead: markGeneratedCaptureStepFromPlayhead,
+  } = generatedSequenceCapture;
+
+  useEffect(() => {
+    if (!generatedCaptureIsCapturing) return;
+
+    let rafId = window.requestAnimationFrame(function markCaptureStep() {
+      markGeneratedCaptureStepFromPlayhead();
+      rafId = window.requestAnimationFrame(markCaptureStep);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [generatedCaptureIsCapturing, markGeneratedCaptureStepFromPlayhead]);
+
+  useVisibleInterval(() => {
+    if (!generatedCaptureIsCapturing) return;
+    const telemetry = productEngine.getTelemetry();
+    const events = telemetry?.generatedSequencerCaptureEvents ?? [];
+    const freshEvents = events.filter((event) => (
+      event.eventId > lastGeneratedCaptureTelemetryEventIdRef.current
+    ));
+    if (freshEvents.length > 0) {
+      for (const event of freshEvents) {
+        lastGeneratedCaptureTelemetryEventIdRef.current = Math.max(
+          lastGeneratedCaptureTelemetryEventIdRef.current,
+          event.eventId,
+        );
+      }
+    }
+    const overflowCount = telemetry?.generatedSequencerCaptureOverflowCount ?? 0;
+    if (freshEvents.length > 0 || overflowCount > 0) {
+      ingestGeneratedCaptureEvents(freshEvents, overflowCount);
+    }
+  }, generatedCaptureIsCapturing ? 50 : null, {
+    enabled: generatedCaptureIsCapturing,
+    immediate: true,
+  });
 
   // ── Source key helpers ──
   const getSourceKey = (laneIdx: number): keyof SliderState =>
@@ -7029,6 +7133,17 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     color={activeSeq.color}
                     harmonyState={harmonyState}
                     runtimeState={activeAnchorWalkerRuntimeState}
+                    captureSlot={(
+                      <SequencerCaptureButton
+                        laneIndex={seq.activeTab}
+                        mode="anchorWalker"
+                        session={generatedCaptureSession}
+                        capturedCount={generatedCaptureCount}
+                        onStart={() => startGeneratedCapture(seq.activeTab)}
+                        onStop={stopGeneratedCapture}
+                        onCancel={cancelGeneratedCapture}
+                      />
+                    )}
                     onChange={(nextConfig) => updateAnchorWalkerSlot(seq.activeTab, nextConfig)}
                     onPerformanceEvent={(event) => sendAnchorWalkerPerformanceEvent(seq.activeTab, event)}
                   />
@@ -7041,6 +7156,17 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     isRunning={isRunning}
                     transportBpm={transportDebug?.effectiveBpm ?? getEffectiveSequencerBpm(state)}
                     runtimeVisualState={orbitVisualStates[seq.activeTab] ?? null}
+                    captureSlot={(
+                      <SequencerCaptureButton
+                        laneIndex={seq.activeTab}
+                        mode="orbit"
+                        session={generatedCaptureSession}
+                        capturedCount={generatedCaptureCount}
+                        onStart={() => startGeneratedCapture(seq.activeTab)}
+                        onStop={stopGeneratedCapture}
+                        onCancel={cancelGeneratedCapture}
+                      />
+                    )}
                     onChange={(nextConfig) => updateSequencerSlot(seq.activeTab, (slot) => ({
                       ...slot,
                       orbit: nextConfig,
@@ -7049,6 +7175,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     ) : null}
                   </>
                 )}
+                <SequencerCapturePreviewOverlay
+                  session={generatedCaptureSession}
+                  laneIndex={seq.activeTab}
+                />
               </div>
 
               {/* Mini overview at bottom */}
@@ -7065,10 +7195,19 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           {/* ══════ OVERVIEW MODE ══════ */}
           {seq.viewMode === 'overview' && (
             <>
+              <SequencerChainRail
+                chain={state.synthSequencerChain}
+                lanes={seq.sequencerModels.map((model) => ({ name: model.name, color: model.color }))}
+                selectedLaneIndex={seq.activeTab}
+                activeEntryIndex={synthChainPosition?.activeEntryIndex ?? null}
+                onChange={setSynthSequencerChain}
+                onSelectLane={(index) => seq.setActiveTab(index)}
+              />
               <div className="seq-overview">
                 {seq.sequencerModels.map((seqModel, row) => {
                   const source = synthSourceSelectValue(state[getSourceKey(row)] ?? 'lead1');
                   const sourceInfo = SYNTH_SOURCES.find(s => s.value === source);
+                  const chainBadge = sequencerChainBadgeLabel(state.synthSequencerChain, row);
                   return (
                     <div
                       key={seqModel.id}
@@ -7077,6 +7216,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     >
                       <div className="seq-ov-header" onClick={() => { seq.setActiveTab(row); seq.setViewMode('detail'); }}>
                         <span className="seq-ov-name">{seqModel.name}</span>
+                        {chainBadge && (
+                          <span className={`seq-chain-badge${synthChainPosition?.activeLaneIndex === row ? ' active' : ''}`}>
+                            {chainBadge}
+                          </span>
+                        )}
                         <div className="seq-ov-controls" onClick={(e) => e.stopPropagation()}>
                           <DragNumber
                             value={seqModel.trigger.steps}

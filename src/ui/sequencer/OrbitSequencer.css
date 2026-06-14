@@ -36,6 +36,12 @@
   text-transform: uppercase;
 }
 
+.orbit-capture-row {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
 .orbit-select,
 .orbit-input,
 .orbit-toggle,

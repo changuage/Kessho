@@ -19,6 +19,7 @@ import { CoreProductRuntime, type CoreProductGraphTapCaptureChunk } from './core
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 import { shouldRejoinCoreProductSequencerClocks } from './CoreProductHostSequencerClock';
+import { CoreProductHostSequencerChain } from './CoreProductHostSequencerChain';
 import { currentCoreProductSynthAnchorWalkerVisualState, currentCoreProductSynthOrbitVisualState, publishCoreProductSequencerVisuals, publishCoreProductSynthAnchorWalkerVisualState, publishCoreProductSynthOrbitVisualState } from './CoreProductHostSequencerVisuals';
 import { createCoreProductSequencerHomeStore } from './CoreProductHostSequencerHome';
 import { createCoreProductHostMidiEvent, createCoreProductLiveNoteEvent } from './CoreProductHostMidi';
@@ -77,6 +78,7 @@ class CoreProductEngineHost {
   private readonly runtime = new CoreProductRuntime();
   private readonly graphTapBridge = new CoreProductGraphTapBridge(this.runtime);
   private readonly arrangementBridge = new CoreProductArrangementBridge((event) => this.runtime.postEvent(event), () => this.runtime.audioContext, (name, ...payload) => this.invokeDisplayCallback(name, ...payload));
+  private readonly sequencerChain = new CoreProductHostSequencerChain({ post: (event) => this.runtime.postEvent(event), nowMs: () => this.nowMs() });
   private latestSliderState: Record<string, unknown> | null = null;
   private readonly assetRegistrar = new CoreProductAssetRegistrar(this.runtime, () => this.latestSliderState);
   private readonly displayCallbacks = new CoreProductDisplayCallbackRegistry();
@@ -399,9 +401,9 @@ class CoreProductEngineHost {
     await this.assetRegistrar.ensureDefaultAssetsForState(); this.resetSequencerEvolveState();
     await this.loadLatestSnapshot('runtime-start');
     await this.runtime.resume();
+    this.running = true; this.sequencerChain.start(this.latestSliderState, this.adapterState);
     this.runtime.postEvent(createCoreProductStartEvent());
     this.modulationRangeBridge.flushModulationRanges();
-    this.running = true;
     this.arrangementBridge.start(this.latestSliderState, this.adapterState);
     this.stateChangeCallback?.(this.createEngineState(true));
   }
@@ -409,14 +411,14 @@ class CoreProductEngineHost {
   async resume(): Promise<void> {
     await this.runtime.resume(); this.resetSequencerEvolveState();
     await this.loadLatestSnapshot('runtime-start', true);
+    this.running = true; this.sequencerChain.start(this.latestSliderState, this.adapterState);
     this.runtime.postEvent(createCoreProductStartEvent());
-    this.running = true;
     this.arrangementBridge.start(this.latestSliderState, this.adapterState);
     this.stateChangeCallback?.(this.createEngineState(true));
   }
 
   async suspend(): Promise<void> {
-    this.arrangementBridge.stop();
+    this.sequencerChain.stop(); this.arrangementBridge.stop();
     this.runtime.postEvent(createCoreProductStopEvent());
     await this.runtime.suspend(); this.resetSequencerEvolveState();
     this.running = false; this.synthNoteRangeOverrides = [null, null, null, null];
@@ -425,7 +427,7 @@ class CoreProductEngineHost {
   }
 
   stop(): void {
-    this.arrangementBridge.stop();
+    this.sequencerChain.stop(); this.arrangementBridge.stop();
     if (this.runtimeReady) {
       this.runtime.postEvent(createCoreProductStopEvent());
     }
@@ -436,7 +438,7 @@ class CoreProductEngineHost {
   }
 
   dispose(): void {
-    this.arrangementBridge.stop();
+    this.sequencerChain.stop(); this.arrangementBridge.stop();
     if (this.runtimeReady) {
       this.runtime.postEvent(createCoreProductStopEvent());
     }
@@ -649,6 +651,7 @@ class CoreProductEngineHost {
       afterLoad: () => this.afterProductSnapshotLoad(),
     });
     this.latestProductSnapshot = result.snapshot;
+    this.sequencerChain.update(this.latestSliderState, this.adapterState, true);
     this.diagnostics.recordFullSnapshotReload(result.reason, result.cpuMs);
   }
 
@@ -682,6 +685,7 @@ class CoreProductEngineHost {
     }).then((result): ProductPatchApplyReceipt => {
       this.latestProductSnapshot = result.snapshot;
       this.pendingSnapshotReloadReason = null;
+      this.sequencerChain.update(this.latestSliderState, this.adapterState, result.mode === 'full-snapshot' || this.sequencerChain.active(this.latestSliderState, this.adapterState));
       if (result.mode === 'dirty-diff') {
         this.diagnostics.recordDirtyDiff();
         return { applied: true, mode: 'dirty-diff' };
@@ -959,11 +963,8 @@ class CoreProductEngineHost {
     this.syncSequencerStepToggles('synth', false);
     this.syncSequencerStepToggles('drum', false);
   }
-
   private syncSynthPitchBindingModes(): void { if (!this.runtimeReady) return; const modes = Array.isArray(this.adapterState.synthPitchBindingModes) ? this.adapterState.synthPitchBindingModes : []; for (let laneIndex = 0; laneIndex < Math.min(16, modes.length); laneIndex += 1) this.runtime.postEvent(createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchBindingMode, sequencerPitchBindingModeToProductId(modes[laneIndex]))); }
-
   private syncSequencerPitchSettings(sequencer?: SequencerKind): void { if (!this.runtimeReady) return; const targets: SequencerKind[] = sequencer ? [sequencer] : ['synth', 'drum']; for (const target of targets) { const key = target === 'synth' ? 'synthPitchSettings' : 'drumPitchSettings'; const settings = Array.isArray(this.adapterState[key]) ? this.adapterState[key] as SequencerPitchSettings[] : []; for (const event of createCoreProductSequencerPitchSettingEvents(target, settings)) this.postProductEvent(event); } }
-
   private postSequencerControlEvent(event: CoreProductEvent): void {
     const post = () => this.runtime.postEvent(event);
     if (this.runtimeReady) {
@@ -975,11 +976,8 @@ class CoreProductEngineHost {
       return this.loadLatestSnapshot('runtime-bootstrap');
     }).then(post);
   }
-
   private postManualSynthDiceEvent(event: CoreProductEvent): void { if (this.runtimeReady) { this.runtime.postEvent(event); return; } void this.runtime.ensureStarted().then(() => { this.runtimeReady = true; return this.loadLatestSnapshot('runtime-bootstrap'); }).then(() => this.runtime.postEvent(event)); }
-
   private stepValueFieldEnabled(sequencer: SequencerKind, laneIndex: number, field: CoreProductStepValueField): boolean { return coreProductStepValueFieldEnabled(this.synthSubLaneEnabled, this.drumSubLaneEnabled, sequencer, laneIndex, field); }
-
   private syncSequencerStepToggles(sequencer: SequencerKind, forceClear: boolean): void {
     if (!this.runtimeReady) return;
     syncCoreProductSequencerStepState({ sequencer, cache: this.sequencerCacheState(), forceClear, synthSubLaneEnabled: this.synthSubLaneEnabled, drumSubLaneEnabled: this.drumSubLaneEnabled, post: (event) => this.runtime.postEvent(event) });
@@ -993,7 +991,5 @@ class CoreProductEngineHost {
     this.displayCallbacks.invoke(name, ...args);
   }
 }
-
 const host = new CoreProductEngineHost();
-
 export const coreProductEngineHost = createCoreProductEngineHostProxy(host);

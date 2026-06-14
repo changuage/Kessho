@@ -150,13 +150,14 @@ export function controlDomain(key) {
   if (/^(synthAttack|synthDecay|synthSustain|synthHold|synthRelease|synthLevel|synthVoiceMask)$/.test(key)) return 'source.pad';
   if (/^(pad|pad2|filter|lfo|env|warmth|hardness|presence|motion|shimmer|bloom|noise|drive|sub|dist|velocity|retrigger|stereo|chorus)/.test(key)) return 'source.pad';
   if (/^lead[12]?/.test(key)) return 'source.lead';
+  if (/^drumSequencerChain$/.test(key)) return 'music.sequencer';
   if (/^drum/.test(key)) return 'source.drum';
   if (/^(ocean|birds|birds2|frogs|nature|water|insects|insDelay[AB]Send)/.test(key)) return 'source.soundscape';
   if (/^granular/.test(key) || /^(grainProbability|maxGrains|grainSize|density|spray|jitter|pitchSpread|wetHPF|wetLPF|feedback)$/.test(key)) return 'fx.granular';
   if (/^delay/.test(key)) return 'fx.delay';
   if (/^reverb/.test(key) || /^spectralFreeze/.test(key) || /^(damping|predelay|width)$/.test(key)) return 'fx.reverb';
   if (/^(drift|degrade|erosion|dynamics|endComp|sidechain|masterLimiter)/.test(key)) return 'fx.dynamics';
-  if (/^(synthEuclid|synthSequencerFaces|drumEuclid|sequencer|transport|chordProgression|cof|harmony|randomWalk|rootNote|scaleMode|manualScale|tension|phraseLength|chordRate|voicingSpread|waveSpread|detune|seedWindow|synthChordSequencer|synthOctave|randomness)/.test(key)) return 'music.sequencer';
+  if (/^(synthEuclid|synthSequencer(?:Faces|Chain)|drumEuclid|sequencer|transport|chordProgression|cof|harmony|randomWalk|rootNote|scaleMode|manualScale|tension|phraseLength|chordRate|voicingSpread|waveSpread|detune|seedWindow|synthChordSequencer|synthOctave|randomness)/.test(key)) return 'music.sequencer';
   if (/^master/.test(key)) return 'master';
   return 'misc';
 }
@@ -256,6 +257,11 @@ export const behaviorEvidenceByAppVisibleGroup = {
     owner: 'Product Core sequencer owner',
     reason: 'Structured synth sequencer face controls must apply through generated indexed lane params and alter Product Core generated event output.',
     evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#requireProductSequencerModeEventTests', 'ProductSequencerTests.cpp#requireProductSequencerModeRuntimePreservationTests', 'src/audio/CoreProductRuntimeAdapter.ts#appendSequencerModeConfigDiffs'],
+  },
+  'music.sequencer|sequencer-chain-host-events': {
+    owner: 'Product Core sequencer owner',
+    reason: 'Structured sequencer chain controls must gate active lanes through generated lane-enabled events without expanding the Product snapshot schema.',
+    evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#requireDirectSequencerCoverage', 'src/audio/CoreProductHostSequencerChain.ts'],
   },
   'music.sequencer|sequencer-clock-rejoin-policy': {
     owner: 'Product Core sequencer owner',
@@ -598,11 +604,9 @@ export const productDeferredClassifications = [
     owner: 'C++ Product Core drum module parity owner',
     allowWiredReferences: true,
     reason:
-      'The Product Drum bridge carries every generated shared drum-module param; these newer web drum-synth extras are not present in the current C++ drum module ABI.',
+      'The Product Drum bridge carries generated shared drum-module params; remaining web drum-synth extras need explicit generated params or should retire.',
     patterns: [
-      /^drumBeepHiModPhase$/,
-      /^drumNoise(ParticleSize|ParticleRandom|ParticleRandomRate|RatchetCount|RatchetTime)$/,
-      /^drumMembrane(Exciter|ExcBright|ExcDur|Nonlin|WireDensity|WireTone|WireDecay|Body|Ring|Overtones|PitchEnv|PitchDecay|ScaleBlend)$/,
+      /^drumMembraneScaleBlend$/,
     ],
   },
   {
@@ -740,24 +744,7 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
     'synthEuclid4Preset',
   ],
   'drum-module-extra-deferred': [
-    'drumBeepHiModPhase',
-    'drumMembraneBody',
-    'drumMembraneExcBright',
-    'drumMembraneExcDur',
-    'drumMembraneExciter',
-    'drumMembraneNonlin',
-    'drumMembraneOvertones',
-    'drumMembranePitchDecay',
-    'drumMembraneRing',
     'drumMembraneScaleBlend',
-    'drumMembraneWireDecay',
-    'drumMembraneWireDensity',
-    'drumMembraneWireTone',
-    'drumNoiseParticleRandom',
-    'drumNoiseParticleRandomRate',
-    'drumNoiseParticleSize',
-    'drumNoiseRatchetCount',
-    'drumNoiseRatchetTime',
   ],
   'legacy-timbre-alias': [
     'leadTimbre',
@@ -820,6 +807,14 @@ export const EXPECTED_PARAM_REGISTRY_OMISSIONS = [
   {
     key: 'synthSequencerFaces',
     reason: 'Structured synth sequencer face state resolves into Product Core sequencer snapshots and generated sequencer lane param events instead of ParamRegistry scalar params.',
+  },
+  {
+    key: 'synthSequencerChain',
+    reason: 'Structured synth sequencer chain state is enforced by the host through generated sequencer lane-enabled events instead of ParamRegistry scalar params.',
+  },
+  {
+    key: 'drumSequencerChain',
+    reason: 'Structured drum sequencer chain state is enforced by the host through generated sequencer lane-enabled events instead of ParamRegistry scalar params.',
   },
   {
     key: 'sidechainDelayATarget',

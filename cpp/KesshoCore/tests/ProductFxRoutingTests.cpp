@@ -210,7 +210,7 @@ void triggerKick(KesshoProductEngine* engine, float velocity = 1.0f) {
   KesshoProductEvent note{};
   note.event_kind = KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON;
   note.target_id = KESSHO_PRODUCT_SOURCE_DRUM;
-  note.value = 37.0f;
+  note.value = 36.0f;
   note.value2 = velocity;
   note.value3 = 0.05f;
   require(kessho_product_enqueue_event(engine, &note) == KESSHO_PRODUCT_OK, "manual kick enqueue failed");

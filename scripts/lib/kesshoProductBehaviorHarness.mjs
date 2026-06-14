@@ -397,12 +397,37 @@ export function loadCoreProductHostHarness(options = {}) {
     }
   }
 
+  class CoreProductHostSequencerChain {
+    running = false;
+    state = null;
+
+    start(state) {
+      this.running = true;
+      this.state = state ? { ...state } : null;
+    }
+
+    update(state) {
+      this.state = state ? { ...state } : null;
+    }
+
+    stop() {
+      this.running = false;
+      this.state = null;
+    }
+
+    forceApply() {}
+    active() {
+      return false;
+    }
+  }
+
   const context = {
     console: consoleCapture.console,
     performance: { now: () => ++nowMs },
     __IMPORT_META_ENV__: { DEV: options.dev === true },
     CoreProductRuntime,
     CoreProductAssetRegistrar,
+    CoreProductHostSequencerChain,
     CORE_PRODUCT_MEMORY_BUDGETS: {
       webWorkletHeapBytes: 1,
       totalRegisteredDecodedBytes: 1,
@@ -478,6 +503,24 @@ export function loadCoreProductHostHarness(options = {}) {
     publishCoreProductSequencerVisuals: (input) => {
       input.publish('synthStepPosition', [0, 0, 0, 0], [0, 0, 0, 0]);
       input.publish('drumStepPosition', [0, 0, 0, 0], [0, 0, 0, 0]);
+    },
+    currentCoreProductSynthOrbitVisualState: (telemetry, visibleLaneCount) =>
+      Array.from({ length: visibleLaneCount }, (_, laneIndex) => telemetry?.synthOrbitVisualLanes?.[laneIndex] ?? null),
+    publishCoreProductSynthOrbitVisualState: (input) => {
+      if (!input.hasCallback('synthOrbitVisualState')) return;
+      input.publish(
+        'synthOrbitVisualState',
+        Array.from({ length: input.visibleLaneCount }, (_, laneIndex) => input.telemetry?.synthOrbitVisualLanes?.[laneIndex] ?? null),
+      );
+    },
+    currentCoreProductSynthAnchorWalkerVisualState: (telemetry, visibleLaneCount) =>
+      Array.from({ length: visibleLaneCount }, (_, laneIndex) => telemetry?.synthAnchorWalkerVisualLanes?.[laneIndex] ?? null),
+    publishCoreProductSynthAnchorWalkerVisualState: (input) => {
+      if (!input.hasCallback('synthAnchorWalkerVisualState')) return;
+      input.publish(
+        'synthAnchorWalkerVisualState',
+        Array.from({ length: input.visibleLaneCount }, (_, laneIndex) => input.telemetry?.synthAnchorWalkerVisualLanes?.[laneIndex] ?? null),
+      );
     },
     createCoreProductHostHarmonySnapshot: (state, telemetry) => ({
       harmonyState: null,

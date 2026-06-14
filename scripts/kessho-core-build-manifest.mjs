@@ -184,6 +184,7 @@ export const kesshoCoreWasmExportedFunctions = Object.freeze([
   'kessho_product_set_graph_taps_enabled',
   'kessho_product_get_telemetry',
   'kessho_product_copy_telemetry',
+  'kessho_product_drain_generated_sequencer_capture_events',
   'kessho_product_copy_granular_waveform',
   'kessho_product_copy_sequencer_ui_state',
   'kessho_product_register_asset_buffer',

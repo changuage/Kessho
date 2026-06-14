@@ -30,6 +30,8 @@ struct SubParams {
     float shape = 0, pitch_env = 0, pitch_decay_ms = 50;
     float drive = 0, sub_octave = 0, attack_ms = 0;
     float variation = 0, distance = 0.5f;
+    KesshoDrumFmTransientParams fm = {0, 2, 0, 30, 0, 0, 0};
+    KesshoDrumDamageParams damage = {0, 16, 1, 0, 0};
 };
 
 struct KickParams {
@@ -37,6 +39,9 @@ struct KickParams {
     float decay_ms = 300, level = 0.8f, click = 0.3f;
     float body = 0.5f, punch = 0.5f, tail = 0, tone = 0;
     float attack_ms = 0, variation = 0, distance = 0.5f;
+    KesshoDrumFmTransientParams fm = {0, 2, 0, 30, 0, 0, 0};
+    KesshoDrumDamageParams damage = {0, 16, 1, 0, 0};
+    KesshoDrumMetallicParams metallic = {0, 0, 0.35f, 120, 0};
 };
 
 struct ClickParams {
@@ -46,6 +51,9 @@ struct ClickParams {
     int   mode = DRUM_CLICK_IMPULSE, grain_count = 1;
     float grain_spread_ms = 0, stereo_width = 0;
     float variation = 0, distance = 0.5f;
+    KesshoDrumFmTransientParams fm = {0, 2, 0, 30, 0, 0, 0};
+    KesshoDrumDamageParams damage = {0, 16, 1, 0, 0};
+    KesshoDrumMetallicParams metallic = {0, 0, 0.35f, 120, 0};
 };
 
 struct BeepHiParams {
@@ -55,8 +63,10 @@ struct BeepHiParams {
     float shimmer = 0, shimmer_rate = 4, brightness = 0.5f;
     float feedback = 0, mod_env_decay = 0, noise_in_mod = 0;
     float mod_ratio = 2, mod_ratio_fine = 0.01f;
-    float mod_env_end = 0.2f, noise_decay = 0;
+    float mod_env_end = 0.2f, noise_decay = 0, mod_phase = 0;
     float variation = 0, distance = 0.5f;
+    KesshoDrumDamageParams damage = {0, 16, 1, 0, 0};
+    KesshoDrumMetallicParams metallic = {0, 0, 0.35f, 120, 0};
 };
 
 struct BeepLoParams {
@@ -67,6 +77,9 @@ struct BeepLoParams {
     float modal_spread = 0, modal_cut = 0;
     float osc_gain = 1, modal_gain = 1;
     float variation = 0, distance = 0.5f;
+    KesshoDrumFmTransientParams fm = {0, 2, 0, 30, 0, 0, 0};
+    KesshoDrumDamageParams damage = {0, 16, 1, 0, 0};
+    KesshoDrumMetallicParams metallic = {0, 0, 0.35f, 120, 0};
 };
 
 struct NoiseParams {
@@ -76,7 +89,12 @@ struct NoiseParams {
     float formant = 0, breath = 0;
     float filter_env_depth = 0, filter_env_decay_ms = 100;
     float density = 1, color_lfo = 0;
+    float particle_random = 0, particle_random_rate = 0.5f, particle_size_ms = 5;
+    int ratchet_count = 0;
+    float ratchet_time_ms = 30;
     float variation = 0, distance = 0.5f;
+    KesshoDrumDamageParams damage = {0, 16, 1, 0, 0};
+    KesshoDrumMetallicParams metallic = {0, 0, 0.35f, 120, 0};
 };
 
 struct MembraneParams {
@@ -84,7 +102,16 @@ struct MembraneParams {
     float tension = 0.5f, material = 0; // 0=skin,1=metal,2=wood,3=glass,4=plastic
     float size = 150, damping = 0.3f, strike = 0.5f;
     float wire_buzz = 0, attack_ms = 1;
+    int exciter = 0;
+    float exciter_duration_ms = 2, exciter_brightness = 0.5f;
+    float body = 0.5f, ring = 0.3f, nonlin = 0;
+    int overtones = 4;
+    float pitch_decay_ms = 40;
+    float wire_density = 0.5f, wire_decay = 0.5f, wire_tone = 0.5f;
     float variation = 0, distance = 0.5f;
+    KesshoDrumFmTransientParams fm = {0, 2, 0, 30, 0, 0, 0};
+    KesshoDrumDamageParams damage = {0, 16, 1, 0, 0};
+    KesshoDrumMetallicParams metallic = {0, 0, 0.35f, 120, 0};
 };
 
 // Variation multipliers (same as TS computeVariation)
@@ -110,11 +137,40 @@ struct Distance {
 #define MODAL_MAX_MODES 8
 // Karplus-Strong max delay (for beepLo pluck)
 #define KS_MAX_DELAY 2048
+// Optional metallic bank size
+#define METALLIC_PARTIALS 6
+
+struct FmTransientState {
+    KesshoDrumFmTransientParams params = {0, 2, 0, 30, 0, 0, 0};
+    Oscillator carrier;
+    Oscillator mod;
+    float carrier_base_freq = 440;
+    float env = 0;
+    float decay_rate = 0;
+    float last_mod = 0;
+};
+
+struct DamageState {
+    KesshoDrumDamageParams params = {0, 16, 1, 0, 0};
+    int hold_counter = 0;
+    int hold_samples = 1;
+    float held = 0;
+    float quant_scale = 65536;
+};
+
+struct MetallicState {
+    KesshoDrumMetallicParams params = {0, 0, 0.35f, 120, 0};
+    Oscillator osc[METALLIC_PARTIALS];
+    float env = 0;
+    float decay_rate = 0;
+    int active = 0;
+};
 
 struct DrumVoice {
     int   voice_type = -1;
     int   active = 0;
     float age = 0;           // samples since trigger (for oldest-steal)
+    int   start_offset = 0;
 
     // Common oscillator state
     Oscillator osc1;
@@ -205,8 +261,14 @@ struct DrumVoice {
     float wire_env_value = 0;
     float wire_env_decay_rate = 0;
     float wire_level = 0;
+    float wire_density = 0.5f;
+    float wire_tone = 0.5f;
     SVF   wire_hp;
     SVF   wire_bp;
+    float membrane_burst_samples = 0;
+    float membrane_burst_brightness = 0.5f;
+    int membrane_exciter = 0;
+    float membrane_nonlin = 0;
 
     // Click exciter color levels
     float click_impulse_level = 0;
@@ -246,14 +308,22 @@ struct DrumVoice {
     float color_lfo_phase = 0;
     float color_lfo_rate = 0;
     float color_lfo_depth = 0;
+    float noise_particle_random = 0;
+    float noise_particle_rate = 0.5f;
+    float noise_particle_size_samples = 0;
 
     // BeepHi FM feedback
     float feedback_delay_sample = 0;
     float feedback_gain = 0;
 
+    FmTransientState fm_transient;
+    DamageState damage;
+    MetallicState metallic;
+
     void reset() {
         active = 0;
         age = 0;
+        start_offset = 0;
         osc1 = {};
         osc2 = {};
         sub_osc = {};
@@ -270,11 +340,17 @@ struct DrumVoice {
         num_modes = 0;
         num_partials = 0;
         wire_env_value = 0;
+        wire_density = 0.5f;
+        wire_tone = 0.5f;
         shimmer_phase = 0;
         fm_mod_env_value = 0;
         pink.reset();
         wire_hp.reset();
         wire_bp.reset();
+        membrane_burst_samples = 0;
+        membrane_burst_brightness = 0.5f;
+        membrane_exciter = 0;
+        membrane_nonlin = 0;
         tail_level = 0;
         tail_env.reset();
         formant_mix = 0;
@@ -283,16 +359,20 @@ struct DrumVoice {
         breath_phase = 0;
         color_lfo_depth = 0;
         color_lfo_phase = 0;
+        noise_particle_random = 0;
+        noise_particle_rate = 0.5f;
+        noise_particle_size_samples = 0;
         feedback_gain = 0;
         feedback_delay_sample = 0;
         num_grains = 0;
+        fm_transient = {};
+        damage = {};
+        metallic = {};
     }
 };
 
 struct DrumTriggerEntry {
-    int   voice_type;
-    float velocity;
-    int   sample_offset;
+    KesshoDrumTriggerEvent event;
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -320,7 +400,9 @@ struct DrumState {
 
     float g_morph_override = -1;
     float g_distance_override = -1;
+    float g_expression_override = 1;
     float g_pitch_override = 0;
+    float g_delay_send_override = -1;
     float g_ratchet_decay_cap = 1e10f;
     float g_ratchet_attack_cap = 1e10f;
 
@@ -382,7 +464,9 @@ struct KesshoDrumInstance {
 #define g_trigger_write drum_current_state().g_trigger_write
 #define g_morph_override drum_current_state().g_morph_override
 #define g_distance_override drum_current_state().g_distance_override
+#define g_expression_override drum_current_state().g_expression_override
 #define g_pitch_override drum_current_state().g_pitch_override
+#define g_delay_send_override drum_current_state().g_delay_send_override
 #define g_ratchet_decay_cap drum_current_state().g_ratchet_decay_cap
 #define g_ratchet_attack_cap drum_current_state().g_ratchet_attack_cap
 #define g_delay drum_current_state().g_delay
@@ -441,6 +525,236 @@ static float ms_to_samples(float ms) {
     return ms * g_sample_rate / 1000.0f;
 }
 
+static float clamp01(float value) {
+    return std::max(0.0f, std::min(1.0f, value));
+}
+
+static float soft_clip(float x, float amount) {
+    if (amount <= 0.0001f) return x;
+    float drive = 1.0f + amount * 8.0f;
+    float y = x * drive;
+    return y / (1.0f + fabsf(y));
+}
+
+static float foldback(float x, float amount) {
+    if (amount <= 0.0001f) return x;
+    const float limit = std::max(0.05f, 1.0f - amount * 0.9f);
+    while (x > limit || x < -limit) {
+        if (x > limit) x = limit - (x - limit);
+        if (x < -limit) x = -limit - (x + limit);
+    }
+    return x;
+}
+
+static void configure_fm_transient(FmTransientState& state, KesshoDrumFmTransientParams params, float base_freq, float velocity) {
+    params.mix = clamp01(params.mix);
+    params.ratio = std::max(0.125f, std::min(16.0f, params.ratio));
+    params.amount = clamp01(params.amount);
+    params.decay_ms = std::max(1.0f, std::min(2000.0f, params.decay_ms));
+    params.feedback = std::max(0.0f, std::min(1.0f, params.feedback));
+    params.noise = clamp01(params.noise);
+    params.clip = clamp01(params.clip);
+    state.params = params;
+    state.carrier_base_freq = std::max(20.0f, std::min(20000.0f, base_freq));
+    state.carrier.freq = state.carrier_base_freq;
+    state.carrier.phase = 0.0f;
+    state.mod.freq = std::max(20.0f, std::min(20000.0f, base_freq * params.ratio));
+    state.mod.phase = 0.0f;
+    state.env = params.mix > 0.0001f ? velocity : 0.0f;
+    state.decay_rate = fast_expf(-1.0f / std::max(1.0f, ms_to_samples(params.decay_ms)));
+    state.last_mod = 0.0f;
+}
+
+static float process_fm_transient(FmTransientState& state, PRNG& rng) {
+    const KesshoDrumFmTransientParams& p = state.params;
+    if (p.mix <= 0.0001f || state.env <= 0.00001f) return 0.0f;
+    state.mod.freq += state.last_mod * p.feedback * state.mod.freq * 0.02f;
+    state.mod.advance(g_sample_rate);
+    float mod = state.mod.generate(WAVE_SINE, g_sample_rate, g_sine);
+    state.mod.freq -= state.last_mod * p.feedback * state.mod.freq * 0.02f;
+    state.last_mod = mod;
+
+    state.carrier.freq = state.carrier_base_freq + mod * p.amount * state.carrier_base_freq;
+    if (p.noise > 0.0001f) {
+        state.carrier.freq += rng.next_bipolar() * p.noise * state.carrier_base_freq * 0.1f;
+    }
+    state.carrier.advance(g_sample_rate);
+    float y = state.carrier.generate(WAVE_SINE, g_sample_rate, g_sine) * state.env * p.mix;
+    state.carrier.freq = state.carrier_base_freq;
+    if (p.clip > 0.0001f) {
+        y = soft_clip(y, p.clip);
+    }
+    state.env *= state.decay_rate;
+    return y;
+}
+
+static void configure_damage(DamageState& state, KesshoDrumDamageParams params) {
+    params.mix = clamp01(params.mix);
+    params.bits = std::max(1.0f, std::min(16.0f, params.bits));
+    params.sample_hold = std::max(1.0f, std::min(256.0f, params.sample_hold));
+    params.fold = clamp01(params.fold);
+    params.clip = clamp01(params.clip);
+    state.params = params;
+    state.hold_counter = 0;
+    state.hold_samples = std::max(1, (int)std::lround(params.sample_hold));
+    state.held = 0.0f;
+    state.quant_scale = std::max(2.0f, std::floor(std::ldexp(1.0f, (int)std::floor(params.bits))));
+}
+
+static float process_damage(DamageState& state, float x) {
+    const KesshoDrumDamageParams& p = state.params;
+    if (p.mix <= 0.0001f) return x;
+    float y = x;
+    if (state.hold_samples > 1) {
+        if (++state.hold_counter >= state.hold_samples) {
+            state.held = y;
+            state.hold_counter = 0;
+        }
+        y = state.held;
+    }
+    if (p.bits < 15.999f) {
+        y = std::round(y * state.quant_scale) / state.quant_scale;
+    }
+    y = foldback(y, p.fold);
+    y = soft_clip(y, p.clip);
+    return x + (y - x) * p.mix;
+}
+
+static void configure_metallic(MetallicState& state, KesshoDrumMetallicParams params, float base_freq, float velocity, PRNG& rng) {
+    static constexpr float kRatios[METALLIC_PARTIALS] = {1.000f, 1.342f, 1.613f, 1.926f, 2.297f, 2.654f};
+    params.mix = clamp01(params.mix);
+    params.tune = std::max(-36.0f, std::min(36.0f, params.tune));
+    params.spread = std::max(0.0f, std::min(2.0f, params.spread));
+    params.decay_ms = std::max(1.0f, std::min(5000.0f, params.decay_ms));
+    params.phase_random = clamp01(params.phase_random);
+    state.params = params;
+    state.active = params.mix > 0.0001f ? 1 : 0;
+    state.env = state.active ? velocity * params.mix : 0.0f;
+    state.decay_rate = fast_expf(-1.0f / std::max(1.0f, ms_to_samples(params.decay_ms)));
+    const float tuned = base_freq * semitones_to_ratio(params.tune);
+    for (int i = 0; i < METALLIC_PARTIALS; ++i) {
+        const float spread_ratio = kRatios[i] + params.spread * (float)i * 0.17f;
+        state.osc[i].freq = std::max(20.0f, std::min(20000.0f, tuned * spread_ratio));
+        state.osc[i].phase = params.phase_random > 0.0001f ? rng.next() * params.phase_random : 0.0f;
+    }
+}
+
+static float process_metallic(MetallicState& state) {
+    if (!state.active || state.env <= 0.00001f) return 0.0f;
+    float y = 0.0f;
+    for (int i = 0; i < METALLIC_PARTIALS; ++i) {
+        state.osc[i].advance(g_sample_rate);
+        y += state.osc[i].generate(WAVE_SINE, g_sample_rate, g_sine) / (float)(i + 1);
+    }
+    y *= state.env / 2.45f;
+    state.env *= state.decay_rate;
+    if (state.env <= 0.00001f) state.active = 0;
+    return y;
+}
+
+static float resolve_delay_send(int voice_type) {
+    return g_delay_send_override >= 0.0f
+        ? std::min(1.0f, g_delay_send_override)
+        : g_delay_sends[voice_type];
+}
+
+static int find_voice_slot(int voice_type);
+static void trigger_sub(DrumVoice& v, float velocity);
+static void trigger_kick(DrumVoice& v, float velocity);
+static void trigger_click(DrumVoice& v, float velocity);
+static void trigger_beep_hi(DrumVoice& v, float velocity);
+static void trigger_beep_lo(DrumVoice& v, float velocity);
+static void trigger_noise(DrumVoice& v, float velocity);
+static void trigger_membrane(DrumVoice& v, float velocity);
+
+static uint32_t trigger_hash(uint32_t seed, uint32_t index) {
+    uint32_t x = seed ^ (index * 0x9e3779b9u);
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return x;
+}
+
+static float trigger_hash_bipolar(uint32_t seed, uint32_t index) {
+    return ((trigger_hash(seed, index) & 0x00ffffffu) / 8388607.5f) - 1.0f;
+}
+
+static void trigger_voice_from_event(const KesshoDrumTriggerEvent& event, int sample_offset) {
+    const int voice_type = std::max(0, std::min(DRUM_NUM_VOICE_TYPES - 1, (int)event.voice));
+    const float velocity = clamp01(event.velocity);
+    if (velocity <= 0.0f) return;
+
+    const float previous_morph = g_morph_override;
+    const float previous_distance = g_distance_override;
+    const float previous_expression = g_expression_override;
+    const float previous_pitch = g_pitch_override;
+    const float previous_delay_send = g_delay_send_override;
+    const float previous_decay_cap = g_ratchet_decay_cap;
+    const float previous_attack_cap = g_ratchet_attack_cap;
+
+    g_morph_override = event.morph >= 0.0f ? clamp01(event.morph) : -1.0f;
+    g_distance_override = event.distance >= 0.0f ? clamp01(event.distance) : -1.0f;
+    g_expression_override = std::isfinite(event.expression) ? std::max(0.0f, std::min(1.5f, event.expression)) : 1.0f;
+    g_pitch_override = std::isfinite(event.pitch_semis) ? std::max(-24.0f, std::min(24.0f, event.pitch_semis)) : 0.0f;
+    g_delay_send_override = event.delay_send_override >= 0.0f ? clamp01(event.delay_send_override) : -1.0f;
+    g_ratchet_decay_cap = event.ratchet_decay_cap >= 0.0f ? event.ratchet_decay_cap : 1.0e10f;
+    g_ratchet_attack_cap = event.ratchet_attack_cap >= 0.0f ? event.ratchet_attack_cap : 1.0e10f;
+    if (event.seed != 0u) {
+        g_rng.seed(event.seed);
+    }
+
+    int slot = find_voice_slot(voice_type);
+    DrumVoice& v = g_voices[slot];
+    v.reset();
+    v.start_offset = std::max(0, std::min(DRUM_MAX_BLOCK_SIZE - 1, sample_offset));
+
+    switch (voice_type) {
+        case DRUM_VOICE_SUB:      trigger_sub(v, velocity); break;
+        case DRUM_VOICE_KICK:     trigger_kick(v, velocity); break;
+        case DRUM_VOICE_CLICK:    trigger_click(v, velocity); break;
+        case DRUM_VOICE_BEEP_HI:  trigger_beep_hi(v, velocity); break;
+        case DRUM_VOICE_BEEP_LO:  trigger_beep_lo(v, velocity); break;
+        case DRUM_VOICE_NOISE:    trigger_noise(v, velocity); break;
+        case DRUM_VOICE_MEMBRANE: trigger_membrane(v, velocity); break;
+    }
+
+    g_morph_override = previous_morph;
+    g_distance_override = previous_distance;
+    g_expression_override = previous_expression;
+    g_pitch_override = previous_pitch;
+    g_delay_send_override = previous_delay_send;
+    g_ratchet_decay_cap = previous_decay_cap;
+    g_ratchet_attack_cap = previous_attack_cap;
+}
+
+static void dispatch_trigger_event(const KesshoDrumTriggerEvent& event, int block_size) {
+    const int voice_type = std::max(0, std::min(DRUM_NUM_VOICE_TYPES - 1, (int)event.voice));
+    int ratchet_count = event.ratchet_count;
+    int spacing = event.ratchet_spacing_samples;
+    float decay_scale = event.ratchet_decay_scale > 0.0f ? std::min(1.0f, event.ratchet_decay_scale) : 1.0f;
+    if (ratchet_count == 0 && voice_type == DRUM_VOICE_NOISE && g_noise.ratchet_count > 0) {
+        ratchet_count = g_noise.ratchet_count;
+        spacing = std::max(1, (int)std::lround(ms_to_samples(g_noise.ratchet_time_ms)));
+        decay_scale = 0.82f;
+    }
+    const int sub_hit_count = ratchet_count > 0 ? std::min(16, ratchet_count) : 1;
+    const int base_offset = std::max(0, std::min(block_size - 1, event.sample_offset));
+    float velocity = event.velocity;
+    for (int i = 0; i < sub_hit_count; ++i) {
+        KesshoDrumTriggerEvent sub = event;
+        const float jitter = event.ratchet_jitter > 0.0f
+            ? trigger_hash_bipolar(event.seed != 0u ? event.seed : 0x6d2b79f5u, (uint32_t)i) * event.ratchet_jitter * (float)spacing
+            : 0.0f;
+        const int offset = base_offset + i * std::max(0, spacing) + (int)std::lround(jitter);
+        sub.velocity = velocity;
+        sub.seed = event.seed != 0u ? event.seed + (uint32_t)i * 747796405u : 0u;
+        trigger_voice_from_event(sub, std::max(0, std::min(block_size - 1, offset)));
+        velocity *= decay_scale;
+    }
+}
+
 // Find oldest voice of given type for stealing, or first inactive
 static int find_voice_slot(int voice_type) {
     int base = voice_type * DRUM_MAX_POLYPHONY;
@@ -472,7 +786,7 @@ static void trigger_sub(DrumVoice& v, float velocity) {
     float freq = p.freq * var.vPitch * tuning;
     float attack = std::max(0.0001f, (p.attack_ms / 1000.0f) * var.vAttack * dist.dAttack);
     float decay = std::min((p.decay_ms / 1000.0f) * var.vDecay * dist.dDecay, g_ratchet_decay_cap);
-    float level = velocity * p.level * var.vLevel * dist.dLevel;
+    float level = velocity * clamp01(g_expression_override) * p.level * var.vLevel * dist.dLevel;
     attack = std::min(attack, g_ratchet_attack_cap);
 
     v.voice_type = DRUM_VOICE_SUB;
@@ -480,7 +794,9 @@ static void trigger_sub(DrumVoice& v, float velocity) {
     v.age = 0;
     v.output_level = level;
     v.pan = 0;
-    v.delay_send = g_delay_sends[DRUM_VOICE_SUB];
+    v.delay_send = resolve_delay_send(DRUM_VOICE_SUB);
+    configure_fm_transient(v.fm_transient, p.fm, freq, velocity);
+    configure_damage(v.damage, p.damage);
 
     // Main oscillator
     v.osc1.freq = freq;
@@ -529,14 +845,17 @@ static void trigger_kick(DrumVoice& v, float velocity) {
     float freq = p.freq * var.vPitch * tuning;
     float attack = std::min(std::max(0.0001f, (p.attack_ms / 1000.0f) * var.vAttack * dist.dAttack), g_ratchet_attack_cap);
     float decay = std::min((p.decay_ms / 1000.0f) * var.vDecay * dist.dDecay, g_ratchet_decay_cap);
-    float level = velocity * p.level * var.vLevel * dist.dLevel;
+    float level = velocity * clamp01(g_expression_override) * p.level * var.vLevel * dist.dLevel;
 
     v.voice_type = DRUM_VOICE_KICK;
     v.active = 1;
     v.age = 0;
     v.output_level = level;
     v.pan = 0;
-    v.delay_send = g_delay_sends[DRUM_VOICE_KICK];
+    v.delay_send = resolve_delay_send(DRUM_VOICE_KICK);
+    configure_fm_transient(v.fm_transient, p.fm, freq, velocity);
+    configure_damage(v.damage, p.damage);
+    configure_metallic(v.metallic, p.metallic, freq, velocity, g_rng);
 
     // Main sine oscillator
     v.osc1.freq = freq;
@@ -599,7 +918,7 @@ static void trigger_click(DrumVoice& v, float velocity) {
     Variation var = compute_variation(p.variation, g_rng);
     Distance dist = compute_distance(resolve_distance(p.distance));
 
-    float level = std::min(1.0f, velocity * p.level * var.vLevel * dist.dLevel);
+    float level = std::min(1.0f, velocity * clamp01(g_expression_override) * p.level * var.vLevel * dist.dLevel);
     float decay = std::min((p.decay_ms / 1000.0f) * var.vDecay * dist.dDecay, g_ratchet_decay_cap);
     float attack = std::min(std::max(0.0001f, (p.attack_ms / 1000.0f) * var.vAttack * dist.dAttack), g_ratchet_attack_cap);
     float eff_filter = p.filter * var.vBright * dist.dBright;
@@ -612,7 +931,10 @@ static void trigger_click(DrumVoice& v, float velocity) {
     v.age = 0;
     v.output_level = level;
     v.pan = 0;
-    v.delay_send = g_delay_sends[DRUM_VOICE_CLICK];
+    v.delay_send = resolve_delay_send(DRUM_VOICE_CLICK);
+    configure_fm_transient(v.fm_transient, p.fm, eff_pitch, velocity);
+    configure_damage(v.damage, p.damage);
+    configure_metallic(v.metallic, p.metallic, eff_pitch, velocity, g_rng);
 
     // Noise source (initialized via PRNG)
     v.noise_rng.seed(g_rng.next());
@@ -692,7 +1014,7 @@ static void trigger_beep_hi(DrumVoice& v, float velocity) {
     float freq = p.freq * var.vPitch * tuning;
     float attack = std::min(std::max(0.0001f, (p.attack_ms / 1000.0f) * var.vAttack * dist.dAttack), g_ratchet_attack_cap);
     float decay = std::min((p.decay_ms / 1000.0f) * var.vDecay * dist.dDecay, g_ratchet_decay_cap);
-    float level = std::min(1.0f, velocity * p.level * var.vLevel * dist.dLevel * dist.dBody);
+    float level = std::min(1.0f, velocity * clamp01(g_expression_override) * p.level * var.vLevel * dist.dLevel * dist.dBody);
     float eff_brightness = p.brightness * dist.dBright;
 
     v.voice_type = DRUM_VOICE_BEEP_HI;
@@ -700,7 +1022,9 @@ static void trigger_beep_hi(DrumVoice& v, float velocity) {
     v.age = 0;
     v.output_level = level;
     v.pan = 0;
-    v.delay_send = g_delay_sends[DRUM_VOICE_BEEP_HI];
+    v.delay_send = resolve_delay_send(DRUM_VOICE_BEEP_HI);
+    configure_damage(v.damage, p.damage);
+    configure_metallic(v.metallic, p.metallic, freq, velocity, g_rng);
 
     // Brightness filter
     v.filter1.reset();
@@ -732,14 +1056,14 @@ static void trigger_beep_hi(DrumVoice& v, float velocity) {
     if (eff_tone > 0.1f) {
         float eff_ratio = p.mod_ratio + p.mod_ratio_fine;
         v.mod_osc.freq = freq * eff_ratio;
-        v.mod_osc.phase = 0;
+        v.mod_osc.phase = p.mod_phase - std::floor(p.mod_phase);
         v.fm_index = eff_tone * freq * 0.3f;
 
         // FM self-feedback (DX7-style)
         float eff_feedback = p.feedback + dist.t * 0.3f; // CL_ED: [0.3, 0, 'add']
         if (fabsf(eff_feedback) > 0.01f) {
             v.feedback_gain = eff_feedback * freq * 0.5f;
-            v.feedback_delay_sample = 0;
+        v.feedback_delay_sample = 0;
         }
 
         // Mod envelope
@@ -782,14 +1106,17 @@ static void trigger_beep_lo(DrumVoice& v, float velocity) {
     float freq = p.freq * var.vPitch * tuning;
     float attack = std::min(std::max(0.0001f, (p.attack_ms / 1000.0f) * var.vAttack * dist.dAttack), g_ratchet_attack_cap);
     float decay = std::min((p.decay_ms / 1000.0f) * var.vDecay * dist.dDecay, g_ratchet_decay_cap);
-    float level = std::min(1.0f, velocity * p.level * var.vLevel * dist.dLevel);
+    float level = std::min(1.0f, velocity * clamp01(g_expression_override) * p.level * var.vLevel * dist.dLevel);
 
     v.voice_type = DRUM_VOICE_BEEP_LO;
     v.active = 1;
     v.age = 0;
     v.output_level = level;
     v.pan = 0;
-    v.delay_send = g_delay_sends[DRUM_VOICE_BEEP_LO];
+    v.delay_send = resolve_delay_send(DRUM_VOICE_BEEP_LO);
+    configure_fm_transient(v.fm_transient, p.fm, freq, velocity);
+    configure_damage(v.damage, p.damage);
+    configure_metallic(v.metallic, p.metallic, freq, velocity, g_rng);
 
     // Equal-power crossfade between osc and modal
     float osc_amp = cosf(p.modal * KESSHO_HALF_PI) * p.osc_gain;
@@ -893,7 +1220,7 @@ static void trigger_noise(DrumVoice& v, float velocity) {
 
     float decay = std::min((p.decay_ms / 1000.0f) * var.vDecay * dist.dDecay, g_ratchet_decay_cap);
     float attack = std::min(std::max(0.0001f, (p.attack_ms / 1000.0f) * var.vAttack * dist.dAttack), g_ratchet_attack_cap);
-    float level = std::min(1.0f, velocity * p.level * var.vLevel * dist.dLevel);
+    float level = std::min(1.0f, velocity * clamp01(g_expression_override) * p.level * var.vLevel * dist.dLevel);
     float eff_filter = std::max(20.0f, std::min(20000.0f, p.freq * var.vBright * dist.dBright));
 
     v.voice_type = DRUM_VOICE_NOISE;
@@ -901,7 +1228,9 @@ static void trigger_noise(DrumVoice& v, float velocity) {
     v.age = 0;
     v.output_level = level;
     v.pan = 0;
-    v.delay_send = g_delay_sends[DRUM_VOICE_NOISE];
+    v.delay_send = resolve_delay_send(DRUM_VOICE_NOISE);
+    configure_damage(v.damage, p.damage);
+    configure_metallic(v.metallic, p.metallic, eff_filter, velocity, g_rng);
 
     // Noise source
     v.noise_rng.seed(g_rng.next());
@@ -954,6 +1283,10 @@ static void trigger_noise(DrumVoice& v, float velocity) {
         v.color_lfo_depth = eff_filter * 0.3f;
         v.color_lfo_phase = 0;
     }
+
+    v.noise_particle_random = clamp01(p.particle_random);
+    v.noise_particle_rate = clamp01(p.particle_random_rate);
+    v.noise_particle_size_samples = std::max(1.0f, ms_to_samples(p.particle_size_ms));
 }
 
 static void trigger_membrane(DrumVoice& v, float velocity) {
@@ -965,14 +1298,17 @@ static void trigger_membrane(DrumVoice& v, float velocity) {
     float freq = p.size * var.vPitch * tuning;
     float attack = std::min((p.attack_ms / 1000.0f) * var.vAttack * dist.dAttack, g_ratchet_attack_cap);
     float decay = std::min((p.decay_ms / 1000.0f) * var.vDecay * dist.dDecay, g_ratchet_decay_cap);
-    float level = std::min(1.0f, velocity * p.level * var.vLevel * dist.dLevel);
+    float level = std::min(1.0f, velocity * clamp01(g_expression_override) * p.level * var.vLevel * dist.dLevel);
 
     v.voice_type = DRUM_VOICE_MEMBRANE;
     v.active = 1;
     v.age = 0;
     v.output_level = level;
     v.pan = 0;
-    v.delay_send = g_delay_sends[DRUM_VOICE_MEMBRANE];
+    v.delay_send = resolve_delay_send(DRUM_VOICE_MEMBRANE);
+    configure_fm_transient(v.fm_transient, p.fm, freq, velocity);
+    configure_damage(v.damage, p.damage);
+    configure_metallic(v.metallic, p.metallic, freq, velocity, g_rng);
 
     // Material properties
     struct MatProps { float inharm, damp, bright; };
@@ -986,9 +1322,16 @@ static void trigger_membrane(DrumVoice& v, float velocity) {
         default: mat = {0.0f, 1.0f, 1.0f}; break;    // skin
     }
 
-    // Membrane modal ratios (circular drum membrane)
-    float mode_ratios[] = {1.0f, 1.59f, 2.14f, 2.30f, 2.65f, 2.92f, 3.16f, 3.50f};
-    int num_modes = std::min(8, (int)MODAL_MAX_MODES);
+    static constexpr float kSkinRatios[MODAL_MAX_MODES] = {1.00f, 1.59f, 2.14f, 2.30f, 2.65f, 2.92f, 3.16f, 3.50f};
+    static constexpr float kMetalRatios[MODAL_MAX_MODES] = {1.00f, 1.37f, 1.91f, 2.47f, 2.92f, 3.55f, 4.23f, 5.10f};
+    static constexpr float kWoodRatios[MODAL_MAX_MODES] = {1.00f, 1.84f, 2.75f, 3.60f, 4.40f, 5.15f, 6.10f, 7.20f};
+    const float* mode_ratios = kSkinRatios;
+    if (mat_idx == 1 || mat_idx == 3) {
+        mode_ratios = kMetalRatios;
+    } else if (mat_idx == 2) {
+        mode_ratios = kWoodRatios;
+    }
+    int num_modes = std::max(1, std::min((int)MODAL_MAX_MODES, p.overtones));
     v.num_modes = num_modes;
 
     float inharm = mat.inharm + p.tension * 0.0f; // tension affects pitch, not inharmonicity
@@ -1002,7 +1345,8 @@ static void trigger_membrane(DrumVoice& v, float velocity) {
         float pos_amp = (m == 0) ? 1.0f : (1.0f - fabsf(exc_pos - 0.5f) * ((m % 2 == 0) ? 1.5f : 0.3f));
         float mode_freq = std::min(18000.0f, freq * ratio * (0.5f + p.tension * 1.0f));
         float mode_q = (5.0f + (1.0f - p.damping) * 30.0f) * mat.damp / (1.0f + (float)m * 0.3f);
-        float mode_level = level * std::max(0.05f, pos_amp) * mat.bright / (1.0f + (float)m * 0.4f);
+        float ring_weight = 0.25f + p.ring * 0.75f;
+        float mode_level = level * std::max(0.05f, pos_amp) * mat.bright * ring_weight / (1.0f + (float)m * 0.4f);
 
         v.modes[m].filter.reset();
         v.modes[m].freq = mode_freq;
@@ -1015,24 +1359,31 @@ static void trigger_membrane(DrumVoice& v, float velocity) {
     // Pitch envelope applied to mode frequencies (handled in render)
     v.pitch_start = semitones_to_ratio(p.freq); // used differently: store pitch env amount
     v.pitch_target = 1.0f;
-    v.pitch_decay_samples = 0.05f * g_sample_rate; // quick pitch drop
+    v.pitch_decay_samples = ms_to_samples(p.pitch_decay_ms);
 
     // Body oscillator
-    if (dist.dBody > 0.1f) {
+    if (p.body * dist.dBody > 0.01f) {
         v.osc1.freq = freq;
         v.osc1.phase = 0;
-        v.env.trigger(level * dist.dBody * 0.4f, attack, decay);
+        v.env.trigger(level * p.body * dist.dBody * 0.4f, attack, decay);
     }
 
     // Wire buzz
     if (p.wire_buzz > 0.01f) {
-        v.wire_level = level * p.wire_buzz * 0.5f;
-        float wire_dec = decay * 0.3f + p.wire_buzz * decay * 1.4f;
+        v.wire_density = clamp01(p.wire_density);
+        v.wire_tone = clamp01(p.wire_tone);
+        v.wire_level = level * p.wire_buzz * (0.25f + v.wire_density * 0.45f);
+        float wire_dec = decay * (0.15f + clamp01(p.wire_decay) * 1.25f);
         v.wire_env_value = v.wire_level;
         v.wire_env_decay_rate = fast_expf(-1.0f / (wire_dec * g_sample_rate));
         v.wire_hp.reset();
         v.wire_bp.reset();
     }
+
+    v.membrane_exciter = std::max(0, std::min(4, p.exciter));
+    v.membrane_burst_samples = std::max(1.0f, ms_to_samples(p.exciter_duration_ms));
+    v.membrane_burst_brightness = clamp01(p.exciter_brightness);
+    v.membrane_nonlin = clamp01(p.nonlin);
 
     // Overall envelope (for master output)
     v.env2.trigger(level, attack, decay);
@@ -1046,6 +1397,9 @@ static void render_voice(DrumVoice& v, float* out_l, float* out_r, int block_siz
     if (!v.active) return;
 
     for (int n = 0; n < block_size; n++) {
+        if (v.age <= 0.0f && n < v.start_offset) {
+            continue;
+        }
         float sample = 0;
         v.age += 1;
 
@@ -1298,6 +1652,13 @@ static void render_voice(DrumVoice& v, float* out_l, float* out_r, int block_siz
 
         case DRUM_VOICE_NOISE: {
             float noise = v.noise_rng.next_bipolar();
+            if (v.noise_particle_random > 0.0001f) {
+                const float gate = v.noise_particle_random * (0.0005f + v.noise_particle_rate * 0.006f);
+                if (v.noise_rng.next() < gate) {
+                    noise += v.noise_rng.next_bipolar() * (0.5f + v.noise_particle_random);
+                    v.filter_env_progress = std::min(v.filter_env_progress, v.noise_particle_size_samples);
+                }
+            }
 
             // Filter envelope
             float current_cutoff = v.filter_cutoff;
@@ -1345,10 +1706,17 @@ static void render_voice(DrumVoice& v, float* out_l, float* out_r, int block_siz
         case DRUM_VOICE_MEMBRANE: {
             // Noise excitation (short burst)
             float excite = 0;
-            float burst_samples = 0.005f * g_sample_rate;
+            float burst_samples = std::max(1.0f, v.membrane_burst_samples);
             if (v.age < burst_samples) {
                 float t = v.age / burst_samples;
-                excite = v.noise_rng.next_bipolar() * (1.0f - t) * 40.0f;
+                float shape = 1.0f - t;
+                if (v.membrane_exciter == 2) {
+                    shape = 0.5f - 0.5f * cosf((1.0f - t) * KESSHO_HALF_PI * 2.0f);
+                } else if (v.membrane_exciter == 3) {
+                    shape = sqrtf(std::max(0.0f, shape));
+                }
+                float exciter_noise = v.membrane_exciter == 0 ? 1.0f : v.noise_rng.next_bipolar();
+                excite = exciter_noise * shape * (20.0f + v.membrane_burst_brightness * 45.0f);
             }
 
             // Modal resonator bank
@@ -1370,13 +1738,16 @@ static void render_voice(DrumVoice& v, float* out_l, float* out_r, int block_siz
             float wire_sample = 0;
             if (v.wire_level > 0.001f) {
                 float wire_noise = v.noise_rng.next_bipolar();
-                wire_noise = v.wire_hp.process(wire_noise, 2000.0f, 1.0f, g_sample_rate, SVF_HIGHPASS);
-                wire_noise = v.wire_bp.process(wire_noise, 5000.0f, 3.0f, g_sample_rate, SVF_BANDPASS);
+                const float wire_hp = 800.0f + v.wire_tone * 4200.0f;
+                const float wire_bp = 2200.0f + v.wire_tone * 8800.0f;
+                wire_noise = v.wire_hp.process(wire_noise, wire_hp, 1.0f + v.wire_density * 2.0f, g_sample_rate, SVF_HIGHPASS);
+                wire_noise = v.wire_bp.process(wire_noise, wire_bp, 1.5f + v.wire_density * 6.0f, g_sample_rate, SVF_BANDPASS);
                 wire_sample = wire_noise * v.wire_env_value;
                 v.wire_env_value *= v.wire_env_decay_rate;
             }
 
             sample = modal_sum + body_sample + wire_sample;
+            sample = soft_clip(sample, v.membrane_nonlin);
 
             // Master envelope
             float master_env = v.env2.process(g_sample_rate);
@@ -1390,6 +1761,10 @@ static void render_voice(DrumVoice& v, float* out_l, float* out_r, int block_siz
             v.active = 0;
             break;
         }
+
+        sample += process_fm_transient(v.fm_transient, v.noise_rng);
+        sample += process_metallic(v.metallic);
+        sample = process_damage(v.damage, sample);
 
         // Accumulate to output with stereo panning
         if (v.pan != 0) {
@@ -1466,20 +1841,7 @@ void drum_process_block(int block_size) {
     // Drain trigger queue
     while (g_trigger_read != g_trigger_write) {
         DrumTriggerEntry& trig = g_trigger_queue[g_trigger_read];
-        int slot = find_voice_slot(trig.voice_type);
-        DrumVoice& v = g_voices[slot];
-        v.reset();
-
-        switch (trig.voice_type) {
-            case DRUM_VOICE_SUB:      trigger_sub(v, trig.velocity); break;
-            case DRUM_VOICE_KICK:     trigger_kick(v, trig.velocity); break;
-            case DRUM_VOICE_CLICK:    trigger_click(v, trig.velocity); break;
-            case DRUM_VOICE_BEEP_HI:  trigger_beep_hi(v, trig.velocity); break;
-            case DRUM_VOICE_BEEP_LO:  trigger_beep_lo(v, trig.velocity); break;
-            case DRUM_VOICE_NOISE:    trigger_noise(v, trig.velocity); break;
-            case DRUM_VOICE_MEMBRANE: trigger_membrane(v, trig.velocity); break;
-        }
-
+        dispatch_trigger_event(trig.event, block_size);
         g_trigger_read = (g_trigger_read + 1) % DRUM_TRIGGER_QUEUE_SIZE;
     }
 
@@ -1528,11 +1890,31 @@ void drum_process_block(int block_size) {
 }
 
 void drum_trigger(int voice_type, float velocity, int sample_offset) {
-    if (voice_type < 0 || voice_type >= DRUM_NUM_VOICE_TYPES) return;
+    KesshoDrumTriggerEvent event{};
+    event.voice = (uint8_t)std::max(0, std::min(DRUM_NUM_VOICE_TYPES - 1, voice_type));
+    event.velocity = velocity;
+    event.sample_offset = sample_offset;
+    event.morph = -1.0f;
+    event.distance = -1.0f;
+    event.expression = 1.0f;
+    event.pitch_semis = 0.0f;
+    event.delay_send_override = -1.0f;
+    event.ratchet_count = 0;
+    event.ratchet_spacing_samples = 0;
+    event.ratchet_jitter = 0.0f;
+    event.ratchet_decay_cap = 1.0e10f;
+    event.ratchet_decay_scale = 1.0f;
+    event.ratchet_attack_cap = 1.0e10f;
+    event.seed = 0u;
+    drum_trigger_event(&event);
+}
+
+void drum_trigger_event(const KesshoDrumTriggerEvent* event) {
+    if (event == nullptr || event->voice >= DRUM_NUM_VOICE_TYPES) return;
     int next_write = (g_trigger_write + 1) % DRUM_TRIGGER_QUEUE_SIZE;
     if (next_write == g_trigger_read) return; // queue full
 
-    g_trigger_queue[g_trigger_write] = { voice_type, velocity, sample_offset };
+    g_trigger_queue[g_trigger_write] = { *event };
     g_trigger_write = next_write;
 }
 
@@ -1553,6 +1935,8 @@ void drum_set_sub_sub_octave(float v) { g_sub.sub_octave = v; }
 void drum_set_sub_attack(float v) { g_sub.attack_ms = v; }
 void drum_set_sub_variation(float v) { g_sub.variation = v; }
 void drum_set_sub_distance(float v) { g_sub.distance = v; }
+void drum_set_sub_fm_transient(KesshoDrumFmTransientParams v) { g_sub.fm = v; }
+void drum_set_sub_damage(KesshoDrumDamageParams v) { g_sub.damage = v; }
 
 // --- Kick ---
 void drum_set_kick_freq(float v) { g_kick.freq = v; }
@@ -1568,6 +1952,9 @@ void drum_set_kick_tone(float v) { g_kick.tone = v; }
 void drum_set_kick_attack(float v) { g_kick.attack_ms = v; }
 void drum_set_kick_variation(float v) { g_kick.variation = v; }
 void drum_set_kick_distance(float v) { g_kick.distance = v; }
+void drum_set_kick_fm_transient(KesshoDrumFmTransientParams v) { g_kick.fm = v; }
+void drum_set_kick_damage(KesshoDrumDamageParams v) { g_kick.damage = v; }
+void drum_set_kick_metallic(KesshoDrumMetallicParams v) { g_kick.metallic = v; }
 
 // --- Click ---
 void drum_set_click_decay(float v) { g_click.decay_ms = v; }
@@ -1585,6 +1972,9 @@ void drum_set_click_exciter_color(float v) { g_click.exciter_color = v; }
 void drum_set_click_attack(float v) { g_click.attack_ms = v; }
 void drum_set_click_variation(float v) { g_click.variation = v; }
 void drum_set_click_distance(float v) { g_click.distance = v; }
+void drum_set_click_fm_transient(KesshoDrumFmTransientParams v) { g_click.fm = v; }
+void drum_set_click_damage(KesshoDrumDamageParams v) { g_click.damage = v; }
+void drum_set_click_metallic(KesshoDrumMetallicParams v) { g_click.metallic = v; }
 
 // --- BeepHi ---
 void drum_set_beep_hi_freq(float v) { g_beep_hi.freq = v; }
@@ -1604,8 +1994,11 @@ void drum_set_beep_hi_mod_ratio(float v) { g_beep_hi.mod_ratio = v; }
 void drum_set_beep_hi_mod_ratio_fine(float v) { g_beep_hi.mod_ratio_fine = v; }
 void drum_set_beep_hi_mod_env_end(float v) { g_beep_hi.mod_env_end = v; }
 void drum_set_beep_hi_noise_decay(float v) { g_beep_hi.noise_decay = v; }
+void drum_set_beep_hi_mod_phase(float v) { g_beep_hi.mod_phase = v; }
 void drum_set_beep_hi_variation(float v) { g_beep_hi.variation = v; }
 void drum_set_beep_hi_distance(float v) { g_beep_hi.distance = v; }
+void drum_set_beep_hi_damage(KesshoDrumDamageParams v) { g_beep_hi.damage = v; }
+void drum_set_beep_hi_metallic(KesshoDrumMetallicParams v) { g_beep_hi.metallic = v; }
 
 // --- BeepLo ---
 void drum_set_beep_lo_freq(float v) { g_beep_lo.freq = v; }
@@ -1627,6 +2020,9 @@ void drum_set_beep_lo_osc_gain(float v) { g_beep_lo.osc_gain = v; }
 void drum_set_beep_lo_modal_gain(float v) { g_beep_lo.modal_gain = v; }
 void drum_set_beep_lo_variation(float v) { g_beep_lo.variation = v; }
 void drum_set_beep_lo_distance(float v) { g_beep_lo.distance = v; }
+void drum_set_beep_lo_fm_transient(KesshoDrumFmTransientParams v) { g_beep_lo.fm = v; }
+void drum_set_beep_lo_damage(KesshoDrumDamageParams v) { g_beep_lo.damage = v; }
+void drum_set_beep_lo_metallic(KesshoDrumMetallicParams v) { g_beep_lo.metallic = v; }
 
 // --- Noise ---
 void drum_set_noise_freq(float v) { g_noise.freq = v; }
@@ -1641,8 +2037,15 @@ void drum_set_noise_filter_env_depth(float v) { g_noise.filter_env_depth = v; }
 void drum_set_noise_filter_env_decay(float v) { g_noise.filter_env_decay_ms = v; }
 void drum_set_noise_density(float v) { g_noise.density = v; }
 void drum_set_noise_color_lfo(float v) { g_noise.color_lfo = v; }
+void drum_set_noise_particle_random(float v) { g_noise.particle_random = v; }
+void drum_set_noise_particle_random_rate(float v) { g_noise.particle_random_rate = v; }
+void drum_set_noise_particle_size(float v) { g_noise.particle_size_ms = v; }
+void drum_set_noise_ratchet_count(int v) { g_noise.ratchet_count = v; }
+void drum_set_noise_ratchet_time(float v) { g_noise.ratchet_time_ms = v; }
 void drum_set_noise_variation(float v) { g_noise.variation = v; }
 void drum_set_noise_distance(float v) { g_noise.distance = v; }
+void drum_set_noise_damage(KesshoDrumDamageParams v) { g_noise.damage = v; }
+void drum_set_noise_metallic(KesshoDrumMetallicParams v) { g_noise.metallic = v; }
 
 // --- Membrane ---
 void drum_set_membrane_freq(float v) { g_membrane.freq = v; }
@@ -1655,8 +2058,22 @@ void drum_set_membrane_damping(float v) { g_membrane.damping = v; }
 void drum_set_membrane_strike(float v) { g_membrane.strike = v; }
 void drum_set_membrane_wire_buzz(float v) { g_membrane.wire_buzz = v; }
 void drum_set_membrane_attack(float v) { g_membrane.attack_ms = v; }
+void drum_set_membrane_exciter(int v) { g_membrane.exciter = v; }
+void drum_set_membrane_exciter_duration(float v) { g_membrane.exciter_duration_ms = v; }
+void drum_set_membrane_exciter_brightness(float v) { g_membrane.exciter_brightness = v; }
+void drum_set_membrane_body(float v) { g_membrane.body = v; }
+void drum_set_membrane_ring(float v) { g_membrane.ring = v; }
+void drum_set_membrane_nonlin(float v) { g_membrane.nonlin = v; }
+void drum_set_membrane_overtones(int v) { g_membrane.overtones = v; }
+void drum_set_membrane_pitch_decay(float v) { g_membrane.pitch_decay_ms = v; }
+void drum_set_membrane_wire_density(float v) { g_membrane.wire_density = v; }
+void drum_set_membrane_wire_decay(float v) { g_membrane.wire_decay = v; }
+void drum_set_membrane_wire_tone(float v) { g_membrane.wire_tone = v; }
 void drum_set_membrane_variation(float v) { g_membrane.variation = v; }
 void drum_set_membrane_distance(float v) { g_membrane.distance = v; }
+void drum_set_membrane_fm_transient(KesshoDrumFmTransientParams v) { g_membrane.fm = v; }
+void drum_set_membrane_damage(KesshoDrumDamageParams v) { g_membrane.damage = v; }
+void drum_set_membrane_metallic(KesshoDrumMetallicParams v) { g_membrane.metallic = v; }
 
 // --- Delay ---
 void drum_set_delay_enabled(int v) { g_delay.enabled = v != 0; }
@@ -1757,6 +2174,12 @@ void drum_instance_trigger(KesshoDrumInstance* instance, int voice_type, float v
     drum_trigger(voice_type, velocity, sample_offset);
 }
 
+void drum_instance_trigger_event(KesshoDrumInstance* instance, const KesshoDrumTriggerEvent* event) {
+    if (!instance) return;
+    ScopedDrumState scoped(&instance->state);
+    drum_trigger_event(event);
+}
+
 #define DRUM_INSTANCE_SETTER1(name, type_a) \
     void drum_instance_##name(KesshoDrumInstance* instance, type_a a) { \
         if (!instance) return; \
@@ -1783,6 +2206,8 @@ DRUM_INSTANCE_SETTER1(set_sub_sub_octave, float)
 DRUM_INSTANCE_SETTER1(set_sub_attack, float)
 DRUM_INSTANCE_SETTER1(set_sub_variation, float)
 DRUM_INSTANCE_SETTER1(set_sub_distance, float)
+DRUM_INSTANCE_SETTER1(set_sub_fm_transient, KesshoDrumFmTransientParams)
+DRUM_INSTANCE_SETTER1(set_sub_damage, KesshoDrumDamageParams)
 
 DRUM_INSTANCE_SETTER1(set_kick_freq, float)
 DRUM_INSTANCE_SETTER1(set_kick_pitch_env, float)
@@ -1797,6 +2222,9 @@ DRUM_INSTANCE_SETTER1(set_kick_tone, float)
 DRUM_INSTANCE_SETTER1(set_kick_attack, float)
 DRUM_INSTANCE_SETTER1(set_kick_variation, float)
 DRUM_INSTANCE_SETTER1(set_kick_distance, float)
+DRUM_INSTANCE_SETTER1(set_kick_fm_transient, KesshoDrumFmTransientParams)
+DRUM_INSTANCE_SETTER1(set_kick_damage, KesshoDrumDamageParams)
+DRUM_INSTANCE_SETTER1(set_kick_metallic, KesshoDrumMetallicParams)
 
 DRUM_INSTANCE_SETTER1(set_click_decay, float)
 DRUM_INSTANCE_SETTER1(set_click_filter, float)
@@ -1813,6 +2241,9 @@ DRUM_INSTANCE_SETTER1(set_click_exciter_color, float)
 DRUM_INSTANCE_SETTER1(set_click_attack, float)
 DRUM_INSTANCE_SETTER1(set_click_variation, float)
 DRUM_INSTANCE_SETTER1(set_click_distance, float)
+DRUM_INSTANCE_SETTER1(set_click_fm_transient, KesshoDrumFmTransientParams)
+DRUM_INSTANCE_SETTER1(set_click_damage, KesshoDrumDamageParams)
+DRUM_INSTANCE_SETTER1(set_click_metallic, KesshoDrumMetallicParams)
 
 DRUM_INSTANCE_SETTER1(set_beep_hi_freq, float)
 DRUM_INSTANCE_SETTER1(set_beep_hi_attack, float)
@@ -1831,8 +2262,11 @@ DRUM_INSTANCE_SETTER1(set_beep_hi_mod_ratio, float)
 DRUM_INSTANCE_SETTER1(set_beep_hi_mod_ratio_fine, float)
 DRUM_INSTANCE_SETTER1(set_beep_hi_mod_env_end, float)
 DRUM_INSTANCE_SETTER1(set_beep_hi_noise_decay, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_mod_phase, float)
 DRUM_INSTANCE_SETTER1(set_beep_hi_variation, float)
 DRUM_INSTANCE_SETTER1(set_beep_hi_distance, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_damage, KesshoDrumDamageParams)
+DRUM_INSTANCE_SETTER1(set_beep_hi_metallic, KesshoDrumMetallicParams)
 
 DRUM_INSTANCE_SETTER1(set_beep_lo_freq, float)
 DRUM_INSTANCE_SETTER1(set_beep_lo_attack, float)
@@ -1853,6 +2287,9 @@ DRUM_INSTANCE_SETTER1(set_beep_lo_osc_gain, float)
 DRUM_INSTANCE_SETTER1(set_beep_lo_modal_gain, float)
 DRUM_INSTANCE_SETTER1(set_beep_lo_variation, float)
 DRUM_INSTANCE_SETTER1(set_beep_lo_distance, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_fm_transient, KesshoDrumFmTransientParams)
+DRUM_INSTANCE_SETTER1(set_beep_lo_damage, KesshoDrumDamageParams)
+DRUM_INSTANCE_SETTER1(set_beep_lo_metallic, KesshoDrumMetallicParams)
 
 DRUM_INSTANCE_SETTER1(set_noise_freq, float)
 DRUM_INSTANCE_SETTER1(set_noise_decay, float)
@@ -1866,8 +2303,15 @@ DRUM_INSTANCE_SETTER1(set_noise_filter_env_depth, float)
 DRUM_INSTANCE_SETTER1(set_noise_filter_env_decay, float)
 DRUM_INSTANCE_SETTER1(set_noise_density, float)
 DRUM_INSTANCE_SETTER1(set_noise_color_lfo, float)
+DRUM_INSTANCE_SETTER1(set_noise_particle_random, float)
+DRUM_INSTANCE_SETTER1(set_noise_particle_random_rate, float)
+DRUM_INSTANCE_SETTER1(set_noise_particle_size, float)
+DRUM_INSTANCE_SETTER1(set_noise_ratchet_count, int)
+DRUM_INSTANCE_SETTER1(set_noise_ratchet_time, float)
 DRUM_INSTANCE_SETTER1(set_noise_variation, float)
 DRUM_INSTANCE_SETTER1(set_noise_distance, float)
+DRUM_INSTANCE_SETTER1(set_noise_damage, KesshoDrumDamageParams)
+DRUM_INSTANCE_SETTER1(set_noise_metallic, KesshoDrumMetallicParams)
 
 DRUM_INSTANCE_SETTER1(set_membrane_freq, float)
 DRUM_INSTANCE_SETTER1(set_membrane_decay, float)
@@ -1879,8 +2323,22 @@ DRUM_INSTANCE_SETTER1(set_membrane_damping, float)
 DRUM_INSTANCE_SETTER1(set_membrane_strike, float)
 DRUM_INSTANCE_SETTER1(set_membrane_wire_buzz, float)
 DRUM_INSTANCE_SETTER1(set_membrane_attack, float)
+DRUM_INSTANCE_SETTER1(set_membrane_exciter, int)
+DRUM_INSTANCE_SETTER1(set_membrane_exciter_duration, float)
+DRUM_INSTANCE_SETTER1(set_membrane_exciter_brightness, float)
+DRUM_INSTANCE_SETTER1(set_membrane_body, float)
+DRUM_INSTANCE_SETTER1(set_membrane_ring, float)
+DRUM_INSTANCE_SETTER1(set_membrane_nonlin, float)
+DRUM_INSTANCE_SETTER1(set_membrane_overtones, int)
+DRUM_INSTANCE_SETTER1(set_membrane_pitch_decay, float)
+DRUM_INSTANCE_SETTER1(set_membrane_wire_density, float)
+DRUM_INSTANCE_SETTER1(set_membrane_wire_decay, float)
+DRUM_INSTANCE_SETTER1(set_membrane_wire_tone, float)
 DRUM_INSTANCE_SETTER1(set_membrane_variation, float)
 DRUM_INSTANCE_SETTER1(set_membrane_distance, float)
+DRUM_INSTANCE_SETTER1(set_membrane_fm_transient, KesshoDrumFmTransientParams)
+DRUM_INSTANCE_SETTER1(set_membrane_damage, KesshoDrumDamageParams)
+DRUM_INSTANCE_SETTER1(set_membrane_metallic, KesshoDrumMetallicParams)
 
 DRUM_INSTANCE_SETTER1(set_delay_enabled, int)
 DRUM_INSTANCE_SETTER1(set_delay_time_l, float)
