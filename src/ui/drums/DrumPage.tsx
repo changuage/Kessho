@@ -35,6 +35,7 @@ import SeqMiniOverview from './SeqMiniOverview';
 import SeqLane from './SeqLane';
 import SeqSparkline from './SeqSparkline';
 import { useSliderHelp } from '../SliderHelpOverlay';
+import { useVisualFeatureToggle } from '../hooks/useVisualFeatureToggle';
 import { SliderPrimitive } from '../sliderSystem';
 import { serializeStepOverrides } from '../sequencer/stepOverrideSerialization';
 import {
@@ -232,6 +233,10 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   const presetVersion = props.presetVersion;
 
   const { announceHelp } = useSliderHelp();
+  const drumLiveVizToggle = useVisualFeatureToggle(
+    'kessho.visualizers.drumLiveCapture.enabled',
+    !isMobile,
+  );
 
   const [diceIntensity, setDiceIntensity] = useState(0.5);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -1163,6 +1168,17 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
             </button>
           </div>
 
+          <div className="drum-live-viz-row">
+            <button
+              type="button"
+              className={`drum-live-viz-toggle${drumLiveVizToggle.enabled ? ' on' : ''}`}
+              aria-pressed={drumLiveVizToggle.enabled}
+              onClick={() => drumLiveVizToggle.setEnabled(!drumLiveVizToggle.enabled)}
+            >
+              {drumLiveVizToggle.enabled ? 'Hide live spectrograms' : 'Show live spectrograms'}
+            </button>
+          </div>
+
           {/* Voice cards */}
           <div className="voice-cards">
             <DrumPanel
@@ -1181,6 +1197,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               triggeredVoices={triggeredVoices}
               getAnalyserNode={getAnalyserNode}
               preloadAudioEngine={preloadAudioEngine}
+              liveCaptureEnabled={drumLiveVizToggle.enabled}
             />
           </div>
 

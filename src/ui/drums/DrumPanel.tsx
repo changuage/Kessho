@@ -20,6 +20,7 @@ interface DrumPanelProps {
   triggeredVoices?: Record<string, boolean>;
   getAnalyserNode?: (voice: DrumVoiceType) => AnalyserNode | undefined;
   preloadAudioEngine?: () => Promise<unknown>;
+  liveCaptureEnabled?: boolean;
 }
 
 const VOICE_PANEL_IDS: Record<DrumVoiceType, string> = {
@@ -48,6 +49,7 @@ const DrumPanel: React.FC<DrumPanelProps> = ({
   triggeredVoices,
   getAnalyserNode,
   preloadAudioEngine,
+  liveCaptureEnabled = true,
 }) => {
   return (
     <>
@@ -72,6 +74,7 @@ const DrumPanel: React.FC<DrumPanelProps> = ({
           isTriggered={triggeredVoices?.[voice] ?? false}
           getAnalyserNode={getAnalyserNode}
           preloadAudioEngine={preloadAudioEngine}
+          liveCaptureEnabled={liveCaptureEnabled}
         />
       ))}
     </>

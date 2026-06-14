@@ -38,7 +38,7 @@ export function orbitHashUnit(seed: number): number {
 const KIRLIAN_RADIUS_PITCHES = [48, 52, 55, 57, 60, 62, 64, 67, 69, 72, 74, 76, 79, 81, 84];
 export const ORBIT_LOOP_BEAT_OPTIONS = [1, 2, 4, 8, 16] as const;
 export const ORBIT_BLOOM_NOTE_OPTIONS = [3, 5, 8, 13, 21, 32] as const;
-export const ORBIT_QUANTIZED_OFFSET_OPTIONS = [1, 2, 3, 4, 5, 6, 8, 12, 16, 32] as const;
+export const ORBIT_QUANTIZED_OFFSET_OPTIONS = [1, 2, 3, 4, 5, 6, 8, 12, 13, 16, 21, 32] as const;
 
 function pitchForRadius(radiusNorm: number): number {
   const index = Math.max(0, Math.min(
@@ -70,6 +70,12 @@ function bloomRadius(index: number, count: number): number {
 
 function bloomPhase(index: number, count: number): number {
   return wrapRadians((index * TAU) / Math.max(1, count));
+}
+
+function quantizedOffsetForNodeCount(count: number): number | null {
+  return ORBIT_QUANTIZED_OFFSET_OPTIONS.includes(count as (typeof ORBIT_QUANTIZED_OFFSET_OPTIONS)[number])
+    ? count
+    : null;
 }
 
 function notePatchForLayout(note: OrbitNoteConfig, layout: OrbitPitchLayout): Partial<OrbitNoteConfig> {
@@ -173,6 +179,7 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
 
   const setBloomNoteCount = useCallback((count: number) => {
     const nextCount = Math.max(1, Math.min(MAX_ORBIT_NOTES, Math.round(count)));
+    const nextQuantizedOffset = quantizedOffsetForNodeCount(nextCount);
     const nextNotes = Array.from({ length: nextCount }, (_, index) => {
       const existing = safeConfig.notes[index];
       const radiusNorm = bloomRadius(index, nextCount);
@@ -189,11 +196,15 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
     setSelectedNoteId((current) => (
       current && nextNotes.some((note) => note.id === current) ? current : null
     ));
-    updateConfig({ notes: nextNotes });
+    updateConfig({
+      notes: nextNotes,
+      ...(nextQuantizedOffset !== null ? { quantizedOffset: nextQuantizedOffset } : {}),
+    });
   }, [makeBloomNote, safeConfig.notes, safeConfig.pitchLayout, updateConfig]);
 
   const rebloomNotes = useCallback(() => {
     const count = Math.max(1, safeConfig.notes.length);
+    const nextQuantizedOffset = quantizedOffsetForNodeCount(count);
     updateConfig({
       notes: safeConfig.notes.map((note, index) => ({
         ...note,
@@ -202,6 +213,7 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
         phase: bloomPhase(index, count),
         midiNote: note.pitchMode === 'fixedMidi' ? pitchForRadius(bloomRadius(index, count)) : note.midiNote,
       })),
+      ...(nextQuantizedOffset !== null ? { quantizedOffset: nextQuantizedOffset } : {}),
     });
   }, [safeConfig.notes, safeConfig.pitchLayout, updateConfig]);
 
@@ -217,28 +229,31 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
 
   const toggleDragQuantize = useCallback(() => {
     const nextDragQuantize = !safeConfig.dragQuantize;
+    const nextQuantizedOffset = nextDragQuantize
+      ? quantizedOffsetForNodeCount(safeConfig.notes.length) ?? safeConfig.quantizedOffset
+      : safeConfig.quantizedOffset;
     updateConfig({
       dragQuantize: nextDragQuantize,
+      quantizedOffset: nextQuantizedOffset,
       notes: nextDragQuantize
         ? safeConfig.notes.map((note) => ({
           ...note,
-          phase: snapOrbitPhase(note.phase, safeConfig.quantizedOffset),
+          phase: snapOrbitPhase(note.phase, nextQuantizedOffset),
         }))
         : safeConfig.notes,
     });
   }, [safeConfig.dragQuantize, safeConfig.notes, safeConfig.quantizedOffset, updateConfig]);
 
-  const setGlobalOffset = useCallback((globalOffset: number) => {
-    const next = clamp(globalOffset, -1, 1);
-    const delta = next - safeConfig.globalOffset;
+  const setQuantizedOffset = useCallback((quantizedOffset: number) => {
+    const division = Math.max(1, Math.min(32, Math.round(quantizedOffset)));
     updateConfig({
-      globalOffset: next,
-      notes: safeConfig.notes.map((note) => ({
+      quantizedOffset: division,
+      notes: safeConfig.notes.map((note, index) => ({
         ...note,
-        phase: wrapRadians(note.phase + delta * TAU),
+        phase: wrapRadians(((index % division) * TAU) / division),
       })),
     });
-  }, [safeConfig.globalOffset, safeConfig.notes, updateConfig]);
+  }, [safeConfig.notes, updateConfig]);
 
   const setEvenOffset = useCallback((evenOffset: number) => {
     const next = clamp(evenOffset, -1, 1);
@@ -267,18 +282,6 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
     });
   }, [safeConfig.freeOffset, safeConfig.notes, safeConfig.seed, updateConfig]);
 
-  const setQuantizedOffset = useCallback((quantizedOffset: number) => {
-    const division = Math.max(1, Math.min(32, Math.round(quantizedOffset)));
-    const base = safeConfig.globalOffset * TAU;
-    updateConfig({
-      quantizedOffset: division,
-      notes: safeConfig.notes.map((note, index) => ({
-        ...note,
-        phase: wrapRadians(base + ((index % division) * TAU) / division),
-      })),
-    });
-  }, [safeConfig.globalOffset, safeConfig.notes, updateConfig]);
-
   const toggleSplineSpin = useCallback(() => {
     updateConfig({
       spline: {
@@ -294,6 +297,15 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
       spinDirection: safeConfig.spline.spinDirection === 'cw' ? 'ccw' : 'cw',
     });
   }, [safeConfig.spline.spinDirection, updateSpline]);
+
+  const invertDirections = useCallback(() => {
+    updateConfig({
+      notes: safeConfig.notes.map((note) => ({
+        ...note,
+        direction: note.direction === 'cw' ? 'ccw' : 'cw',
+      })),
+    });
+  }, [safeConfig.notes, updateConfig]);
 
   const straightenSpline = useCallback(() => {
     updateSpline({
@@ -340,6 +352,7 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
   }, [safeConfig.notes, safeConfig.pitchLayout, safeConfig.seed, updateConfig]);
 
   const resetPhase = useCallback(() => {
+    const nextQuantizedOffset = quantizedOffsetForNodeCount(safeConfig.notes.length);
     updateConfig({
       notes: safeConfig.notes.map((note, index) => ({
         ...note,
@@ -349,6 +362,7 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
         ...safeConfig.spline,
         baseAngle: 0,
       },
+      ...(nextQuantizedOffset !== null ? { quantizedOffset: nextQuantizedOffset } : {}),
     });
   }, [safeConfig.notes, safeConfig.spline, updateConfig]);
 
@@ -369,10 +383,9 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
     setSpeedOffset,
     setBloomNoteCount,
     rebloomNotes,
-    setGlobalOffset,
+    setQuantizedOffset,
     setEvenOffset,
     setFreeOffset,
-    setQuantizedOffset,
     toggleDragQuantize,
     addNote,
     moveNote,
@@ -383,6 +396,7 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
     setTriggerLineCount,
     toggleSplineSpin,
     toggleSplineDirection,
+    invertDirections,
     straightenSpline,
   };
 }

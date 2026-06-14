@@ -42,6 +42,7 @@ import {
   type DynamicsSliderControlDefinition,
 } from './dynamicsControlSchema';
 import { getProductSliderValue } from '../controls/productControlSchema';
+import { useVisualFeatureToggle } from '../hooks/useVisualFeatureToggle';
 import './dynamics.css';
 
 const DRUM_KEY_OPTIONS: Array<{ value: SliderState['sidechainKeyA']; label: string }> = [
@@ -253,6 +254,10 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
 }) => {
   const Slider = SliderComponent as React.ComponentType<any>;
   const { announceHelp, announceSlider } = useSliderHelp();
+  const dynamicsVisualizersToggle = useVisualFeatureToggle(
+    'kessho.visualizers.dynamics.enabled',
+    !isMobile,
+  );
   const [degradePresetName, setDegradePresetName] = useState<string | undefined>();
   const [degradePresetDescription, setDegradePresetDescription] = useState<string>('');
   const [sidechainPresetName, setSidechainPresetName] = useState<string | undefined>();
@@ -418,6 +423,22 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
     }
   }, [onParamChange, onSelectChange, onStateChange]);
 
+  const renderDynamicsVisualizer = (label: string, node: React.ReactNode) => {
+    if (dynamicsVisualizersToggle.enabled) {
+      return node;
+    }
+
+    return (
+      <button
+        type="button"
+        className="dynamics-viz-placeholder"
+        onClick={dynamicsVisualizersToggle.show}
+      >
+        Show {label}
+      </button>
+    );
+  };
+
   const renderEqModule = (config: DynamicsEqControlSet) => {
     const enabled = Boolean(state[config.enabledKey]);
     const presetName = config.id === 'eq1' ? eq1PresetName : eq2PresetName;
@@ -492,11 +513,14 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
               </div>
             </div>
             <div {...bindHelp('dynamicsEqVisualizer', { label: `${config.label} Visualizer`, page: 'texture' })}>
-              <DynamicsEqVisualizer
-                state={state}
-                eqId={config.id}
-                onParamChange={onParamChange}
-              />
+              {renderDynamicsVisualizer(
+                `${config.label} meter`,
+                <DynamicsEqVisualizer
+                  state={state}
+                  eqId={config.id}
+                  onParamChange={onParamChange}
+                />,
+              )}
             </div>
             <div className="dynamics-subsection">Trim</div>
             <div className="dynamics-grid-2">
@@ -534,7 +558,20 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
         <div className="dynamics-column dynamics-left">
           <div className="dynamics-global-bar fx-page-header">
             <span className="dynamics-title fx-page-title">Texture</span>
+            <button
+              type="button"
+              className={`dynamics-visualizers-toggle${dynamicsVisualizersToggle.enabled ? ' on' : ''}`}
+              aria-pressed={dynamicsVisualizersToggle.enabled}
+              onClick={() => dynamicsVisualizersToggle.setEnabled(!dynamicsVisualizersToggle.enabled)}
+            >
+              {dynamicsVisualizersToggle.enabled ? 'Hide meters' : 'Show meters'}
+            </button>
           </div>
+          {isMobile && !dynamicsVisualizersToggle.enabled ? (
+            <p className="dynamics-visualizers-hint">
+              Meters are hidden on mobile to reduce battery and keep controls responsive.
+            </p>
+          ) : null}
 
           <section className="dynamics-section-card dynamics-preset-card">
             <div className="dynamics-section-head">
@@ -620,12 +657,15 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                 ))}
               </div>
               <div {...bindHelp('driftVisualizer', { label: 'Visualizer', page: 'texture' })}>
-                <DynamicsDriftVisualizer
-                  state={state}
-                  onParamChange={onParamChange}
-                  getDynamicsAnalyser={getDynamicsAnalyser}
-                  getDynamicsTelemetry={getDynamicsTelemetry}
-                />
+                {renderDynamicsVisualizer(
+                  'drift meter',
+                  <DynamicsDriftVisualizer
+                    state={state}
+                    onParamChange={onParamChange}
+                    getDynamicsAnalyser={getDynamicsAnalyser}
+                    getDynamicsTelemetry={getDynamicsTelemetry}
+                  />,
+                )}
               </div>
               <div className="dynamics-grid-2">
                 {DYNAMICS_DRIFT_QUALITY_CONTROLS.map(renderDynamicsSlider)}
@@ -681,11 +721,14 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                     </button>
                   ))}
                 </div>
-                <DynamicsErosionVisualizer
-                  state={state}
-                  getDynamicsAnalyser={getDynamicsAnalyser}
-                  getDynamicsTelemetry={getDynamicsTelemetry}
-                />
+                {renderDynamicsVisualizer(
+                  'erosion meter',
+                  <DynamicsErosionVisualizer
+                    state={state}
+                    getDynamicsAnalyser={getDynamicsAnalyser}
+                    getDynamicsTelemetry={getDynamicsTelemetry}
+                  />,
+                )}
                 <div className="dynamics-grid-2">
                   {DYNAMICS_EROSION_QUALITY_CONTROLS.map(renderDynamicsSlider)}
                   {DYNAMICS_EROSION_CONTROLS.map(renderDynamicsSlider)}
@@ -827,12 +870,15 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                       </div>
 
                       <div {...bindHelp('sidechainVisualizer', { label: 'Visualizer', page: 'texture' })}>
-                        <DynamicsSidechainVisualizer
-                          state={state}
-                          onParamChange={onParamChange}
-                          getDynamicsAnalyser={getDynamicsAnalyser}
-                          getDynamicsTelemetry={getDynamicsTelemetry}
-                        />
+                        {renderDynamicsVisualizer(
+                          'sidechain meter',
+                          <DynamicsSidechainVisualizer
+                            state={state}
+                            onParamChange={onParamChange}
+                            getDynamicsAnalyser={getDynamicsAnalyser}
+                            getDynamicsTelemetry={getDynamicsTelemetry}
+                          />,
+                        )}
                       </div>
 
                       <div className="dynamics-grid-2">
@@ -936,11 +982,14 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                 ))}
               </div>
               <div {...bindHelp('dynamicsSaturationVisualizer', { label: 'Visualizer', page: 'texture' })}>
-                <DynamicsSaturationVisualizer
-                  state={state}
-                  getDynamicsAnalyser={getDynamicsAnalyser}
-                  getDynamicsTelemetry={getDynamicsTelemetry}
-                />
+                {renderDynamicsVisualizer(
+                  'saturation meter',
+                  <DynamicsSaturationVisualizer
+                    state={state}
+                    getDynamicsAnalyser={getDynamicsAnalyser}
+                    getDynamicsTelemetry={getDynamicsTelemetry}
+                  />,
+                )}
               </div>
               <div className="dynamics-grid-2">
                 {DYNAMICS_SATURATION_CONTROLS.map(renderDynamicsSlider)}
@@ -994,11 +1043,14 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                 ))}
               </div>
               <div {...bindHelp('endChainCompressionVisualizer', { label: 'Visualizer', page: 'texture' })}>
-                <DynamicsCompressorVisualizer
-                  state={state}
-                  getDynamicsAnalyser={getDynamicsAnalyser}
-                  getDynamicsTelemetry={getDynamicsTelemetry}
-                />
+                {renderDynamicsVisualizer(
+                  'end chain meter',
+                  <DynamicsCompressorVisualizer
+                    state={state}
+                    getDynamicsAnalyser={getDynamicsAnalyser}
+                    getDynamicsTelemetry={getDynamicsTelemetry}
+                  />,
+                )}
               </div>
               <div className="dynamics-grid-2">
                 {DYNAMICS_END_CHAIN_CONTROLS.map(renderDynamicsSlider)}

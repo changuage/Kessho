@@ -107,6 +107,9 @@ import {
 } from './presets/statePresetRuntime';
 import { buildPresetVersionMetadata } from './presets/versionMetadataHelpers';
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
+import { OptionalVisualizerGate } from './ui/components/OptionalVisualizerGate';
+import { useIsMobileViewport } from './ui/hooks/useIsMobileViewport';
+import { useVisualFeatureToggle } from './ui/hooks/useVisualFeatureToggle';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './ui/sequencer/useEuclideanSequencer';
 import { serializeStepOverrides } from './ui/sequencer/stepOverrideSerialization';
 import { type ClockDivision, type PitchBindingMode } from './audio/drumSeqTypes';
@@ -1681,6 +1684,11 @@ const App: React.FC = () => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+  const isMobileViewport = useIsMobileViewport();
+  const reactiveVisualizerToggle = useVisualFeatureToggle(
+    'kessho.visualizers.reactive.enabled',
+    !isMobileViewport,
+  );
 
   // ── Mobile-responsive style overrides ──
   const m = useMemo(() => {
@@ -5717,16 +5725,32 @@ const App: React.FC = () => {
 
             {/* === VISUALIZER MODE === */}
             {activeTab === 'visualizer' && (
-              <ReactiveVisualizerPage
-                state={state}
-                sliderModes={sliderModes}
-                dualRanges={dualSliderRanges as Record<string, { min: number; max: number }>}
-                engineState={engineState}
-                isPlaying={(playbackIsRunning || isJourneyPlaying) && !macAirPlayPerformanceActive}
-                {...productPageRuntimeSurface.visualizerPageRuntimeProps}
-                linkedPresetRequest={linkedVisualizerPresetRequest}
-                onVisualizerPresetChange={setVisualizerPresetName}
-              />
+              <OptionalVisualizerGate
+                enabled={reactiveVisualizerToggle.enabled}
+                title="Reactive visualizer is off"
+                description={
+                  isMobileViewport
+                    ? 'Mobile starts with this visualizer hidden to save battery and keep controls responsive. Enable it when you want the full reactive canvas.'
+                    : 'Visualizer rendering is paused while hidden. Enable it to show the full reactive canvas.'
+                }
+                enableLabel="Enable Visualizer"
+                hideLabel="Hide Visualizer"
+                onEnable={reactiveVisualizerToggle.show}
+                onHide={reactiveVisualizerToggle.hide}
+              >
+                <ReactiveVisualizerPage
+                  state={state}
+                  sliderModes={sliderModes}
+                  dualRanges={dualSliderRanges as Record<string, { min: number; max: number }>}
+                  engineState={engineState}
+                  isPlaying={(playbackIsRunning || isJourneyPlaying) && !macAirPlayPerformanceActive}
+                  {...productPageRuntimeSurface.visualizerPageRuntimeProps}
+                  linkedPresetRequest={linkedVisualizerPresetRequest}
+                  onVisualizerPresetChange={setVisualizerPresetName}
+                  enabled={reactiveVisualizerToggle.enabled}
+                  mobileReducedVisuals={isMobileViewport}
+                />
+              </OptionalVisualizerGate>
             )}
 
             {/* === SYNTH + LEAD TAB === */}

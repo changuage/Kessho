@@ -9,6 +9,7 @@ interface EnvelopeVisualizerProps {
   state: SliderState;
   analyserNode?: AnalyserNode;
   isTriggered: boolean;
+  liveCaptureEnabled?: boolean;
 }
 
 // ── Constants matching prototype ──
@@ -102,7 +103,13 @@ function modeledWaveform(voice: DrumVoiceType, envelope: number, phase: number, 
   return waveform;
 }
 
-const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, analyserNode, isTriggered }) => {
+const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({
+  voice,
+  state,
+  analyserNode,
+  isTriggered,
+  liveCaptureEnabled = true,
+}) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -404,6 +411,16 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
     if (!isTriggered || prevTriggeredRef.current === isTriggered) return;
     prevTriggeredRef.current = isTriggered;
 
+    if (!liveCaptureEnabled) {
+      const canvas = canvasRef.current;
+      spectRef.current = null;
+      if (labelRef.current) labelRef.current.textContent = 'envelopes';
+      if (canvas && canAnimate) {
+        drawCombinedViz(canvas);
+      }
+      return;
+    }
+
     // Clean up previous capture
     if (captureTimerRef.current) clearInterval(captureTimerRef.current);
     if (fadeTimerRef.current) clearInterval(fadeTimerRef.current);
@@ -484,7 +501,31 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
     if (canAnimate) {
       rafRef.current = requestAnimationFrame(renderFrame);
     }
-  }, [isTriggered, analyserNode, getEnvelopeParams, drawCombinedViz, canAnimate, renderFrame, voice]);
+  }, [isTriggered, liveCaptureEnabled, analyserNode, getEnvelopeParams, drawCombinedViz, canAnimate, renderFrame, voice]);
+
+  useEffect(() => {
+    if (liveCaptureEnabled) return;
+
+    if (captureTimerRef.current) {
+      clearInterval(captureTimerRef.current);
+      captureTimerRef.current = null;
+    }
+    if (fadeTimerRef.current) {
+      clearInterval(fadeTimerRef.current);
+      fadeTimerRef.current = null;
+    }
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    spectRef.current = null;
+    if (labelRef.current) labelRef.current.textContent = 'envelopes';
+
+    const canvas = canvasRef.current;
+    if (canvas && canAnimate) {
+      drawCombinedViz(canvas);
+    }
+  }, [liveCaptureEnabled, canAnimate, drawCombinedViz]);
 
   // Reset trigger tracking when trigger goes false
   useEffect(() => {

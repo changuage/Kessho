@@ -13,6 +13,7 @@ interface VoiceCardAdvancedProps {
   SliderComponent: React.ComponentType<Record<string, unknown>>;
   isTriggered?: boolean;
   analyserNode?: AnalyserNode;
+  liveCaptureEnabled?: boolean;
 }
 
 function formatAdvancedValue(value: number, unit?: string): string {
@@ -30,11 +31,18 @@ const VoiceCardAdvanced: React.FC<VoiceCardAdvancedProps> = ({
   SliderComponent,
   isTriggered = false,
   analyserNode,
+  liveCaptureEnabled = true,
 }) => {
   const Slider = SliderComponent as React.ComponentType<Record<string, unknown>>;
   return (
     <div>
-      <EnvelopeVisualizer voice={voice} state={state} analyserNode={analyserNode} isTriggered={isTriggered} />
+      <EnvelopeVisualizer
+        voice={voice}
+        state={state}
+        analyserNode={analyserNode}
+        isTriggered={isTriggered}
+        liveCaptureEnabled={liveCaptureEnabled}
+      />
       {Object.entries(config.sections).map(([sectionName, defs]) => {
         if (sectionName === 'Variation') return null;
         return (

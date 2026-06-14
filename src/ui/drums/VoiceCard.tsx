@@ -26,6 +26,7 @@ interface VoiceCardProps {
   isTriggered?: boolean;
   getAnalyserNode?: (voice: DrumVoiceType) => AnalyserNode | undefined;
   preloadAudioEngine?: () => Promise<unknown>;
+  liveCaptureEnabled?: boolean;
 }
 
 const DELAY_SEND_KEYS: Partial<Record<DrumVoiceType, keyof SliderState>> = {
@@ -62,6 +63,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
   isTriggered = false,
   getAnalyserNode,
   preloadAudioEngine,
+  liveCaptureEnabled = true,
 }) => {
   const isEditing = editingVoice === voice;
   const macros = VARIATION_KEYS[voice];
@@ -77,7 +79,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
   }), [announceHelp]);
 
   useEffect(() => {
-    if (!isEditing || !getAnalyserNode) {
+    if (!isEditing || !liveCaptureEnabled || !getAnalyserNode) {
       setAnalyserNode(undefined);
       return;
     }
@@ -102,7 +104,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [getAnalyserNode, isEditing, isTriggered, preloadAudioEngine, voice]);
+  }, [getAnalyserNode, isEditing, isTriggered, liveCaptureEnabled, preloadAudioEngine, voice]);
 
   return (
     <div
@@ -200,6 +202,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
             SliderComponent={SliderComponent}
             isTriggered={isTriggered}
             analyserNode={analyserNode}
+            liveCaptureEnabled={liveCaptureEnabled}
           />
 
           {/* Delay send at bottom of advanced */}

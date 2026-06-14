@@ -1,0 +1,68 @@
+.optional-visualizer-placeholder {
+  border: 1px solid color-mix(in srgb, var(--page-accent, currentColor) 26%, rgba(247, 250, 252, 0.1));
+  border-radius: var(--k-radius-card, 8px);
+  padding: 18px;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  background: var(--k-bg-card, rgba(24, 23, 21, 0.85));
+  color: var(--text-primary, var(--k-text, #f7fafc));
+  box-shadow: var(--k-shadow-glass, none);
+}
+
+.optional-visualizer-placeholder__text h2 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.optional-visualizer-placeholder__text p {
+  margin: 0;
+  color: var(--text-secondary, rgba(247, 250, 252, 0.7));
+  line-height: 1.45;
+}
+
+.optional-visualizer-placeholder__button,
+.optional-visualizer-hide-button {
+  min-height: 44px;
+  border: 1px solid color-mix(in srgb, var(--page-accent, currentColor) 32%, rgba(247, 250, 252, 0.12));
+  border-radius: var(--k-radius-control, 6px);
+  padding: 0 18px;
+  background: color-mix(in srgb, var(--page-accent, #b8e0ff) 18%, rgba(255, 255, 255, 0.055));
+  color: var(--text-primary, #f7fafc);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.optional-visualizer-placeholder__button:hover,
+.optional-visualizer-hide-button:hover {
+  background: color-mix(in srgb, var(--page-accent, #b8e0ff) 26%, rgba(255, 255, 255, 0.09));
+}
+
+.optional-visualizer-active {
+  min-width: 0;
+}
+
+.optional-visualizer-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 767px) {
+  .optional-visualizer-placeholder {
+    min-height: 140px;
+    padding: 14px;
+  }
+
+  .optional-visualizer-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    padding-block: 8px;
+    backdrop-filter: blur(12px);
+  }
+}

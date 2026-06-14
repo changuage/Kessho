@@ -326,6 +326,7 @@ interface DynamicsCanvasSurfaceProps {
   ariaLabel: string;
   className?: string;
   draw: (args: CanvasDrawArgs) => void;
+  enabled?: boolean;
   interactive?: boolean;
   onPointerDown?: (event: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerMove?: (event: ReactPointerEvent<HTMLCanvasElement>) => void;
@@ -333,6 +334,17 @@ interface DynamicsCanvasSurfaceProps {
 }
 
 function DynamicsCanvasSurface({
+  enabled = true,
+  ...props
+}: DynamicsCanvasSurfaceProps) {
+  if (!enabled) {
+    return null;
+  }
+
+  return <DynamicsCanvasSurfaceInner {...props} />;
+}
+
+function DynamicsCanvasSurfaceInner({
   ariaLabel,
   className = '',
   draw,
@@ -340,7 +352,7 @@ function DynamicsCanvasSurface({
   onPointerDown,
   onPointerMove,
   onPointerUp,
-}: DynamicsCanvasSurfaceProps) {
+}: Omit<DynamicsCanvasSurfaceProps, 'enabled'>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef(0);
@@ -376,17 +388,23 @@ function DynamicsCanvasSurface({
   }, [draw]);
 
   useEffect(() => {
-    drawFrame(typeof performance === 'undefined' ? 0 : performance.now() / 1000);
-  }, [drawFrame]);
+    if (canAnimate) {
+      drawFrame(typeof performance === 'undefined' ? 0 : performance.now() / 1000);
+    }
+  }, [canAnimate, drawFrame]);
 
   useEffect(() => {
+    if (!canAnimate) {
+      return undefined;
+    }
+
     let rafId = 0;
     let lastDraw = 0;
-    let mounted = true;
+    let disposed = false;
 
     const tick = (now: number) => {
-      if (!mounted) return;
-      if (canAnimate && (lastDraw === 0 || now - lastDraw >= 33)) {
+      if (disposed) return;
+      if (lastDraw === 0 || now - lastDraw >= 33) {
         lastDraw = now;
         frameRef.current += 1;
         drawFrame(now / 1000);
@@ -396,7 +414,7 @@ function DynamicsCanvasSurface({
 
     rafId = window.requestAnimationFrame(tick);
     return () => {
-      mounted = false;
+      disposed = true;
       window.cancelAnimationFrame(rafId);
     };
   }, [canAnimate, drawFrame]);

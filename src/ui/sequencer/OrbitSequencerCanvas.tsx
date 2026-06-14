@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { OrbitNoteConfig, OrbitRuntimeVisualState, OrbitSequencerConfig, OrbitSplineConfig } from './orbitSequencerTypes';
 import {
   ORBIT_RADIUS_SCALE,
@@ -24,6 +24,7 @@ interface OrbitSequencerCanvasProps {
   active: boolean;
   transportBpm?: number;
   runtimeVisualState?: OrbitRuntimeVisualState | null;
+  playbackEditActive?: boolean;
   onSelectNote: (id: string | null) => void;
   onAddNote: (radiusNorm: number, phase: number) => void;
   onMoveNote: (id: string, radiusNorm: number, phase: number) => void;
@@ -45,6 +46,7 @@ const HANDLE_KEYS = ['handle1', 'handle2', 'tip'] as const;
 const HANDLE_HIT_RADIUS = 14;
 const NOTE_HIT_RADIUS = 18;
 const MAX_SPLINE_SAMPLE_CACHE_SIZE = 96;
+const AUTHORED_VISUAL_GUARD_MS = 900;
 
 type SplineSampleCacheKey = string;
 
@@ -83,6 +85,28 @@ function cachedSampleBezierSpline(
     if (firstKey) splineSampleCache.delete(firstKey);
   }
   return samples;
+}
+
+function splineVisualSignature(spline: OrbitSplineConfig): string {
+  return [
+    spline.handle1.x.toFixed(4),
+    spline.handle1.y.toFixed(4),
+    spline.handle2.x.toFixed(4),
+    spline.handle2.y.toFixed(4),
+    spline.tip.x.toFixed(4),
+    spline.tip.y.toFixed(4),
+    spline.baseAngle.toFixed(4),
+    spline.spinEnabled ? 1 : 0,
+    spline.spinDirection,
+  ].join('|');
+}
+
+function noteVisualSignature(note: OrbitNoteConfig): string {
+  return [
+    note.enabled ? 1 : 0,
+    note.radiusNorm.toFixed(4),
+    note.phase.toFixed(4),
+  ].join('|');
 }
 
 function useRafCommit<T>(commit: (value: T) => void): [(value: T) => void, () => void] {
@@ -207,6 +231,20 @@ function snapPolarForConfig(radiusNorm: number, angle: number, config: OrbitSequ
   };
 }
 
+function syncRuntimeToAuthoredNotes(
+  runtimes: Map<string, RuntimeNote>,
+  notes: readonly OrbitNoteConfig[],
+): void {
+  for (const note of notes) {
+    const runtime = runtimes.get(note.id);
+    if (runtime) {
+      runtime.angle = note.phase;
+    } else {
+      runtimes.set(note.id, { id: note.id, angle: note.phase, flash: 0 });
+    }
+  }
+}
+
 function drawControlHandles(ctx: CanvasRenderingContext2D, spline: OrbitSplineConfig, radius: number, color: string) {
   const handles = rotatedHandlePoints(spline);
   const points = [{ x: 0, y: 0 }, ...handles];
@@ -328,6 +366,7 @@ export function OrbitSequencerCanvas({
   active,
   transportBpm = 120,
   runtimeVisualState = null,
+  playbackEditActive = false,
   onSelectNote,
   onAddNote,
   onMoveNote,
@@ -337,12 +376,18 @@ export function OrbitSequencerCanvas({
   const configRef = useRef(config);
   const selectedNoteIdRef = useRef(selectedNoteId);
   const activeRef = useRef(active);
+  const playbackEditActiveRef = useRef(playbackEditActive);
   const transportBpmRef = useRef(transportBpm);
   const runtimeVisualStateRef = useRef<OrbitRuntimeVisualState | null>(runtimeVisualState);
   const runtimeRef = useRef<Map<string, RuntimeNote>>(new Map());
   const phaseRef = useRef<Map<string, number>>(new Map());
+  const speedOffsetRef = useRef(config.speedOffset);
   const dragStateRef = useRef<DragState>(null);
   const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
+  const splineVisualSignatureRef = useRef<string | null>(null);
+  const noteVisualSignatureRef = useRef<Map<string, string>>(new Map());
+  const authoredNoteGuardUntilRef = useRef<Map<string, number>>(new Map());
+  const authoredVisualGuardUntilRef = useRef(0);
   const [commitMoveNote, flushMoveNote] = useRafCommit<{
     id: string;
     radiusNorm: number;
@@ -350,11 +395,41 @@ export function OrbitSequencerCanvas({
   }>(({ id, radiusNorm, phase }) => onMoveNote(id, radiusNorm, phase));
   const [commitUpdateSpline, flushUpdateSpline] = useRafCommit<Partial<OrbitSplineConfig>>(onUpdateSpline);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     configRef.current = config;
+    const now = performance.now();
+    const speedOffsetChanged = Math.abs(config.speedOffset - speedOffsetRef.current) > 1e-6;
+    speedOffsetRef.current = config.speedOffset;
+    if (speedOffsetChanged) {
+      authoredNoteGuardUntilRef.current.clear();
+      authoredVisualGuardUntilRef.current = 0;
+      dragStateRef.current = null;
+    }
+    const nextVisualSignature = splineVisualSignature(config.spline);
+    if (
+      splineVisualSignatureRef.current !== null &&
+      splineVisualSignatureRef.current !== nextVisualSignature
+    ) {
+      authoredVisualGuardUntilRef.current = now + AUTHORED_VISUAL_GUARD_MS;
+    }
+    splineVisualSignatureRef.current = nextVisualSignature;
     const runtimes = runtimeRef.current;
     const phases = phaseRef.current;
+    const noteSignatures = noteVisualSignatureRef.current;
+    const noteGuards = authoredNoteGuardUntilRef.current;
+    const hadPreviousNotes = noteSignatures.size > 0;
+    const nextNoteIds = new Set<string>();
     for (const note of config.notes) {
+      nextNoteIds.add(note.id);
+      const nextNoteSignature = noteVisualSignature(note);
+      const previousNoteSignature = noteSignatures.get(note.id);
+      if (
+        (previousNoteSignature !== undefined && previousNoteSignature !== nextNoteSignature) ||
+        (previousNoteSignature === undefined && hadPreviousNotes)
+      ) {
+        noteGuards.set(note.id, now + AUTHORED_VISUAL_GUARD_MS);
+      }
+      noteSignatures.set(note.id, nextNoteSignature);
       const previousPhase = phases.get(note.id);
       const runtime = runtimes.get(note.id);
       if (!runtime) {
@@ -368,7 +443,12 @@ export function OrbitSequencerCanvas({
       if (!config.notes.some((note) => note.id === id)) {
         runtimes.delete(id);
         phases.delete(id);
+        noteSignatures.delete(id);
+        noteGuards.delete(id);
       }
+    }
+    for (const id of Array.from(noteSignatures.keys())) {
+      if (!nextNoteIds.has(id)) noteSignatures.delete(id);
     }
   }, [config]);
 
@@ -378,7 +458,19 @@ export function OrbitSequencerCanvas({
 
   useEffect(() => {
     activeRef.current = active;
+    if (!active) {
+      syncRuntimeToAuthoredNotes(runtimeRef.current, configRef.current.notes);
+    }
   }, [active]);
+
+  useEffect(() => {
+    playbackEditActiveRef.current = playbackEditActive;
+    if (playbackEditActive) {
+      authoredNoteGuardUntilRef.current.clear();
+      authoredVisualGuardUntilRef.current = 0;
+      dragStateRef.current = null;
+    }
+  }, [playbackEditActive]);
 
   useEffect(() => {
     transportBpmRef.current = transportBpm;
@@ -387,12 +479,21 @@ export function OrbitSequencerCanvas({
   useEffect(() => {
     runtimeVisualStateRef.current = runtimeVisualState;
     if (!runtimeVisualState) return;
+    if (!activeRef.current) return;
+    const now = performance.now();
     const dragState = dragStateRef.current;
+    if (dragState?.type === 'handle') return;
+    const ignoreAuthoredGuards = playbackEditActiveRef.current;
+    const draggingNoteId = !ignoreAuthoredGuards && dragState?.type === 'note' ? dragState.id : null;
     const runtimes = runtimeRef.current;
+    const noteGuards = authoredNoteGuardUntilRef.current;
     for (let index = 0; index < configRef.current.notes.length; index += 1) {
       const note = configRef.current.notes[index];
       if (!note) continue;
-      if (dragState?.type === 'note' && dragState.id === note.id) continue;
+      if (note.id === draggingNoteId) continue;
+      const noteGuardUntil = ignoreAuthoredGuards ? 0 : noteGuards.get(note.id) ?? 0;
+      if (noteGuardUntil > now) continue;
+      if (!ignoreAuthoredGuards && noteGuardUntil > 0) noteGuards.delete(note.id);
       const angle = runtimeVisualState.noteAngles[index];
       if (typeof angle !== 'number' || !Number.isFinite(angle)) continue;
       const flash = Math.max(0, runtimeVisualState.noteFlashes[index] ?? 0);
@@ -419,7 +520,7 @@ export function OrbitSequencerCanvas({
       runtimes: runtimeRef.current,
       width,
       height,
-      runtimeBaseAngle: runtimeVisualStateRef.current?.baseAngle,
+      runtimeBaseAngle: activeRef.current ? runtimeVisualStateRef.current?.baseAngle : undefined,
     });
   };
 
@@ -468,19 +569,26 @@ export function OrbitSequencerCanvas({
         const transportBpmNow = transportBpmRef.current;
         const nativeRuntime = runtimeVisualStateRef.current;
         const dragState = dragStateRef.current;
-        const draggingNoteId = dragState?.type === 'note' ? dragState.id : null;
-        const useNativeRuntime = shouldAdvance && draggingNoteId === null && nativeRuntime !== null && nativeRuntime.noteAngles.length > 0;
+        const playbackEditActiveNow = playbackEditActiveRef.current;
+        const draggingNoteId = !playbackEditActiveNow && dragState?.type === 'note' ? dragState.id : null;
+        const authoredVisualGuardActive = !playbackEditActiveNow && time < authoredVisualGuardUntilRef.current;
+        const hasNativeRuntime = shouldAdvance && nativeRuntime !== null && nativeRuntime.noteAngles.length > 0;
+        const noteGuards = authoredNoteGuardUntilRef.current;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         for (let noteIndex = 0; noteIndex < configNow.notes.length; noteIndex += 1) {
           const note = configNow.notes[noteIndex];
           if (!note) continue;
           const runtime = runtimeRef.current.get(note.id);
           if (!runtime) continue;
-          if (note.id === draggingNoteId) {
+          const noteGuardUntil = playbackEditActiveNow ? 0 : noteGuards.get(note.id) ?? 0;
+          const noteAuthoredActive = !shouldAdvance || note.id === draggingNoteId || noteGuardUntil > time;
+          if (noteAuthoredActive) {
+            runtime.angle = note.phase;
             runtime.flash = Math.max(0, runtime.flash - decayDt * 2.5);
             continue;
           }
-          if (useNativeRuntime) {
+          if (!playbackEditActiveNow && noteGuardUntil > 0) noteGuards.delete(note.id);
+          if (hasNativeRuntime) {
             const nativeAngle = nativeRuntime.noteAngles[noteIndex];
             if (typeof nativeAngle === 'number' && Number.isFinite(nativeAngle)) {
               runtime.angle = nativeAngle;
@@ -500,11 +608,16 @@ export function OrbitSequencerCanvas({
               dt,
             );
           }
-          if (!useNativeRuntime) {
+          if (!hasNativeRuntime) {
             runtime.flash = Math.max(0, runtime.flash - decayDt * 2.5);
           }
         }
-        if (shouldAdvance && configNow.spline.spinEnabled && !useNativeRuntime) {
+        if (
+          shouldAdvance &&
+          configNow.spline.spinEnabled &&
+          !hasNativeRuntime &&
+          !authoredVisualGuardActive
+        ) {
           configRef.current = {
             ...configNow,
             spline: {
@@ -525,7 +638,7 @@ export function OrbitSequencerCanvas({
           runtimes: runtimeRef.current,
           width,
           height,
-          runtimeBaseAngle: useNativeRuntime ? nativeRuntime.baseAngle : undefined,
+          runtimeBaseAngle: hasNativeRuntime && !authoredVisualGuardActive ? nativeRuntime.baseAngle : undefined,
         });
       }
       lastTime = time;
@@ -557,7 +670,13 @@ export function OrbitSequencerCanvas({
           if (!point) return;
           event.currentTarget.setPointerCapture(event.pointerId);
           const configNow = configRef.current;
-          const visualSpline = splineWithRuntimeBaseAngle(configNow.spline, runtimeVisualStateRef.current?.baseAngle);
+          if (!activeRef.current) {
+            syncRuntimeToAuthoredNotes(runtimeRef.current, configNow.notes);
+          }
+          const visualSpline = splineWithRuntimeBaseAngle(
+            configNow.spline,
+            activeRef.current ? runtimeVisualStateRef.current?.baseAngle : undefined,
+          );
           const handleIndex = nearestHandleIndex(visualSpline, point.x, point.y, point.size);
           if (handleIndex !== null) {
             dragStateRef.current = { type: 'handle', index: handleIndex };
@@ -592,7 +711,9 @@ export function OrbitSequencerCanvas({
           if (dragState.type === 'handle') {
             const configNow = configRef.current;
             const normalized = clampNormalizedPoint(normalizedFromCanvas(point.x, point.y, point.size));
-            const visualBaseAngle = runtimeVisualStateRef.current?.baseAngle ?? configNow.spline.baseAngle;
+            const visualBaseAngle = activeRef.current
+              ? runtimeVisualStateRef.current?.baseAngle ?? configNow.spline.baseAngle
+              : configNow.spline.baseAngle;
             const basePoint = configNow.spline.spinEnabled
               ? rotateOrbitPoint(normalized, -visualBaseAngle)
               : normalized;
@@ -620,7 +741,11 @@ export function OrbitSequencerCanvas({
             )),
           };
           const runtime = runtimeRef.current.get(dragState.id);
-          if (runtime) runtime.angle = polar.angle;
+          if (runtime) {
+            runtime.angle = polar.angle;
+          } else {
+            runtimeRef.current.set(dragState.id, { id: dragState.id, angle: polar.angle, flash: 0 });
+          }
           commitMoveNote({
             id: dragState.id,
             radiusNorm: polar.radiusNorm,

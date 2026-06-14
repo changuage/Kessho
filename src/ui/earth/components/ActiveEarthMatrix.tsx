@@ -740,9 +740,7 @@ export function ActiveEarthMatrix({
     () => SHARED_COLUMNS.find((column) => column.id === activeSharedColumn) ?? SHARED_COLUMNS[0]!,
     [activeSharedColumn],
   );
-  const [textureDebugState, setTextureDebugState] = useState<EarthTextureDebugState>(() => (
-    textureDebugAvailable ? getEarthTextureDebugState() : EMPTY_EARTH_TEXTURE_DEBUG_STATE
-  ));
+  const [textureDebugState, setTextureDebugState] = useState<EarthTextureDebugState>(EMPTY_EARTH_TEXTURE_DEBUG_STATE);
   const sectionRef = useRef<HTMLElement>(null);
   const { canAnimate: canPollTextureDebug } = useAnimationVisibility(sectionRef, { rootMargin: '220px' });
 
@@ -760,15 +758,6 @@ export function ActiveEarthMatrix({
     mediaQuery.addListener(updateLayout);
     return () => mediaQuery.removeListener(updateLayout);
   }, []);
-
-  useEffect(() => {
-    if (!textureDebugAvailable || activeTextureDebugKeys.length === 0) return;
-    const nextState = getEarthTextureDebugState();
-    setTextureDebugState((prev) => {
-      const changed = activeTextureDebugKeys.some((key) => !snapshotsEqual(prev[key], nextState[key]));
-      return changed ? nextState : prev;
-    });
-  }, [activeTextureDebugKeys, getEarthTextureDebugState, textureDebugAvailable]);
 
   const updateTextureDebugState = useCallback(() => {
     if (!textureDebugAvailable) return;

@@ -43,7 +43,13 @@ interface ReactiveVisualizerPageProps {
   getActiveGrains: () => number;
   linkedPresetRequest: { name: string; nonce: number } | null;
   onVisualizerPresetChange: React.Dispatch<React.SetStateAction<string>>;
+  enabled?: boolean;
+  mobileReducedVisuals?: boolean;
 }
+
+type ReactiveVisualizerPageInnerProps = Omit<ReactiveVisualizerPageProps, 'enabled'> & {
+  mobileReducedVisuals: boolean;
+};
 
 type NumericControlKey = Exclude<keyof ReactiveVisualizerControls, 'focus'>;
 
@@ -498,7 +504,7 @@ function fpsFromControl(value: number): number {
   return Math.round(36 + value * 24);
 }
 
-const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
+const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = ({
   state,
   sliderModes,
   dualRanges,
@@ -507,6 +513,7 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
   getActiveGrains,
   linkedPresetRequest: _linkedPresetRequest,
   onVisualizerPresetChange: _onVisualizerPresetChange,
+  mobileReducedVisuals,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
@@ -519,6 +526,7 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
   const engineStateRef = useRef(engineState);
   const isPlayingRef = useRef(isPlaying);
   const getActiveGrainsRef = useRef(getActiveGrains);
+  const mobileReducedVisualsRef = useRef(mobileReducedVisuals);
   const sizeRef = useRef({ width: 960, height: 640 });
   const lastFrameRef = useRef(0);
   const [controls, setControls] = useState<ReactiveVisualizerControls>(DEFAULT_CONTROLS);
@@ -558,6 +566,7 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
   engineStateRef.current = engineState;
   isPlayingRef.current = isPlaying;
   getActiveGrainsRef.current = getActiveGrains;
+  mobileReducedVisualsRef.current = mobileReducedVisuals;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -609,12 +618,18 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
       const renderer = rendererRef.current;
       if (renderer) {
         const controlState = controlsRef.current;
-        const fps = isPlayingRef.current ? fpsFromControl(controlState.frameRate) : Math.min(24, fpsFromControl(controlState.frameRate));
-        const frameInterval = 1000 / clamp(fps, 12, 60);
+        const requestedFps = isPlayingRef.current
+          ? fpsFromControl(controlState.frameRate)
+          : Math.min(24, fpsFromControl(controlState.frameRate));
+        const maxFps = mobileReducedVisualsRef.current ? 24 : 60;
+        const fps = clamp(requestedFps, 12, maxFps);
+        const frameInterval = 1000 / fps;
         if (timeMs - lastFrameRef.current >= frameInterval) {
           lastFrameRef.current = timeMs;
           const { width, height } = sizeRef.current;
-          const dpr = getCappedCanvasDpr(1.1, 1.35);
+          const dpr = mobileReducedVisualsRef.current
+            ? getCappedCanvasDpr(1.0, 1.35)
+            : getCappedCanvasDpr(1.1, 1.35);
           const snapshot = buildSnapshot(
             stateRef.current,
             sliderModesRef.current,
@@ -643,7 +658,8 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
             controls: modulatedControls,
             seed: seedRef.current,
           });
-          if (timeMs - meterUpdateRef.current > 180) {
+          const meterUpdateIntervalMs = mobileReducedVisualsRef.current ? 300 : 180;
+          if (timeMs - meterUpdateRef.current >= meterUpdateIntervalMs) {
             meterUpdateRef.current = timeMs;
             setMeterSnapshot(snapshot);
             setModulatedControlsState(modulatedControls);
@@ -775,6 +791,10 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
   }, []);
 
   const [metersOpen, setMetersOpen] = useState(false);
+  const displayedRequestedFps = isPlaying
+    ? fpsFromControl(controls.frameRate)
+    : Math.min(24, fpsFromControl(controls.frameRate));
+  const displayedFps = clamp(displayedRequestedFps, 12, mobileReducedVisuals ? 24 : 60);
 
   // Per-slider mode: single (value line) / walk (range band + indicator) / sampleHold
   const [vizSliderModes, setVizSliderModes] = useState<Record<string, SliderMode>>({});
@@ -799,7 +819,7 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
         <div className="visualizer-status-row">
           <span>{rendererMode === 'webgl2' ? 'WebGL2' : '2D'}</span>
           <span>{isPlaying ? 'Live' : 'Idle'}</span>
-          <span>{fpsFromControl(controls.frameRate)} FPS</span>
+          <span>{displayedFps} FPS</span>
           <span>{formatSeed(seed)}</span>
         </div>
       </div>
@@ -1036,5 +1056,22 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
     </div>
   );
 };
+
+function ReactiveVisualizerPage({
+  enabled = true,
+  mobileReducedVisuals = false,
+  ...props
+}: ReactiveVisualizerPageProps) {
+  if (!enabled) {
+    return null;
+  }
+
+  return (
+    <ReactiveVisualizerPageInner
+      {...props}
+      mobileReducedVisuals={mobileReducedVisuals}
+    />
+  );
+}
 
 export default ReactiveVisualizerPage;

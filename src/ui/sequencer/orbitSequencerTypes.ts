@@ -50,7 +50,6 @@ export interface OrbitSequencerConfig {
   clockMode: 'transport' | 'freeBpmPercent';
   bpmPercent: number;
   speedOffset: number;
-  globalOffset: number;
   evenOffset: number;
   freeOffset: number;
   quantizedOffset: number;
@@ -135,7 +134,6 @@ export function createDefaultOrbitSequencerConfig(slotIndex = 0): OrbitSequencer
     clockMode: 'transport',
     bpmPercent: 100,
     speedOffset: 0,
-    globalOffset: 0,
     evenOffset: 0,
     freeOffset: 0,
     quantizedOffset: 4,
@@ -214,7 +212,6 @@ export function normalizeOrbitSequencerConfig(value: unknown, slotIndex = 0): Or
     clockMode: enumValue(record.clockMode, ['transport', 'freeBpmPercent'] as const, fallback.clockMode),
     bpmPercent: clamp(finiteNumber(record.bpmPercent, fallback.bpmPercent), 1, 800),
     speedOffset: clamp(finiteNumber(record.speedOffset, fallback.speedOffset), -0.9, 1),
-    globalOffset: clamp(finiteNumber(record.globalOffset, fallback.globalOffset), -1, 1),
     evenOffset: clamp(finiteNumber(record.evenOffset, fallback.evenOffset), -1, 1),
     freeOffset: clamp(finiteNumber(record.freeOffset, fallback.freeOffset), 0, 1),
     quantizedOffset: Math.max(1, Math.min(32, Math.round(finiteNumber(record.quantizedOffset, fallback.quantizedOffset)))),

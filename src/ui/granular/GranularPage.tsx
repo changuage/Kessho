@@ -22,6 +22,7 @@ import type { CanvasVoiceVisual } from './GranularBufferCanvas';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
 import { useDocumentVisibility } from '../hooks/useDocumentVisibility';
+import { useVisualFeatureToggle } from '../hooks/useVisualFeatureToggle';
 import { useRuntimeSliderVersion } from '../runtimeSliderState';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import { extractParams } from '../../presets/codec';
@@ -289,7 +290,11 @@ const GranularPage: React.FC<GranularPageProps> = ({
   const [grainEvents, setGrainEvents] = useState<readonly CoreProductGranularVisualEvent[]>([]);
   const lastGrainEventsRef = useRef<readonly CoreProductGranularVisualEvent[] | null>(null);
   const documentVisible = useDocumentVisibility();
-  const [visualizerEnabled, setVisualizerEnabled] = useState(() => liveBufferTelemetryAvailable && !isMobile);
+  const liveBufferVisualizerToggle = useVisualFeatureToggle(
+    'kessho.visualizers.granular.enabled',
+    liveBufferTelemetryAvailable && !isMobile,
+  );
+  const visualizerEnabled = liveBufferTelemetryAvailable && liveBufferVisualizerToggle.enabled;
 
   const syncGranularUi = useCallback(() => {
     const nextActiveGrains = getActiveGrainCount();
@@ -355,11 +360,6 @@ const GranularPage: React.FC<GranularPageProps> = ({
     };
   }, [documentVisible, isRunning, liveBufferTelemetryAvailable, setGranularUiActive, visualizerEnabled]);
 
-  useEffect(() => {
-    if (!liveBufferTelemetryAvailable) {
-      setVisualizerEnabled(false);
-    }
-  }, [liveBufferTelemetryAvailable]);
   const delayBExternallyDriven =
     (state.delayAToBSend ?? 0) > 0.001 ||
     (state.pad1DelayBSend ?? 0) > 0.001 ||
@@ -787,6 +787,15 @@ const GranularPage: React.FC<GranularPageProps> = ({
             {liveBufferTelemetryAvailable && (
               visualizerEnabled ? (
                 <>
+                  <div className="granular-buffer-toolbar">
+                    <button
+                      type="button"
+                      className="granular-chip-btn"
+                      onClick={liveBufferVisualizerToggle.hide}
+                    >
+                      Hide Visualizer
+                    </button>
+                  </div>
                   {bufferVoiceVisuals.length > 0 && (
                     <div className="granular-buffer-readouts">
                       {bufferVoiceVisuals.map((voice) => (
@@ -834,7 +843,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
                   <button
                     type="button"
                     className="granular-chip-btn active"
-                    onClick={() => setVisualizerEnabled(true)}
+                    onClick={liveBufferVisualizerToggle.show}
                   >
                     Enable Visualizer
                   </button>

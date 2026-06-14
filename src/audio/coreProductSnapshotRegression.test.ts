@@ -9,6 +9,7 @@ import {
 } from './sequencerChain';
 import { createDefaultSynthSequencerFaceState } from '../ui/sequencer/sequencerModeTypes';
 import { TAU, resolveAngularSpeed } from '../ui/sequencer/orbitSequencerMath';
+import { createDefaultOrbitNote } from '../ui/sequencer/orbitSequencerTypes';
 
 const disabledDelaySnapshot = createCoreProductSnapshot({
   padEnabled: true,
@@ -199,8 +200,49 @@ for (const mode of ['anchorWalker', 'orbit'] as const) {
     'Orbit speed offset should emit note speed-value events',
   );
 
+  const eightNodeFaces = structuredClone(faces);
+  eightNodeFaces.slots[0]!.orbit = {
+    ...eightNodeFaces.slots[0]!.orbit,
+    quantizedOffset: 8,
+    notes: Array.from({ length: 8 }, (_, index) => createDefaultOrbitNote(index, {
+      id: `orbit-note-${index + 1}`,
+      radiusNorm: 0.2 + index * 0.1,
+      phase: (TAU * index) / 8,
+      pitchMode: 'harmonyBloom',
+      speedMode: 'bpmPercent',
+      speedValue: 100,
+      midiNote: 60 + index,
+      harmonyDegree: index % 7,
+    })),
+  };
+  const eightNodeBaseState = {
+    ...baseState,
+    synthSequencerFaces: eightNodeFaces,
+  };
+  const eightNodeBaseSnapshot = createCoreProductSnapshot(eightNodeBaseState);
+  const eightNodeSpeedFaces = structuredClone(eightNodeFaces);
+  eightNodeSpeedFaces.slots[0]!.orbit.speedOffset = 1;
+  const eightNodeSpeedDiff = buildCoreProductSnapshotDiff(eightNodeBaseSnapshot, createCoreProductSnapshot({
+    ...eightNodeBaseState,
+    synthSequencerFaces: eightNodeSpeedFaces,
+  }));
+  assert.equal(eightNodeSpeedDiff.applied, true, 'Orbit 8-node speed offset should stay on the live dirty-diff path');
+  const eightNodeSpeedEventIndices = new Set(eightNodeSpeedDiff.applied
+    ? eightNodeSpeedDiff.events
+      .filter((event) => (
+        event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitNoteSpeedValue &&
+        event.index === 0
+      ))
+      .map((event) => event.flags ?? 0)
+    : []);
+  for (let noteIndex = 0; noteIndex < 8; noteIndex += 1) {
+    assert(
+      eightNodeSpeedEventIndices.has(noteIndex),
+      `Orbit speed offset should emit speed-value event for visible node index ${noteIndex}`,
+    );
+  }
+
   const phaseFaces = structuredClone(faces);
-  phaseFaces.slots[0]!.orbit.globalOffset = 0.25;
   phaseFaces.slots[0]!.orbit.notes = phaseFaces.slots[0]!.orbit.notes.map((note) => ({
     ...note,
     phase: note.phase + TAU * 0.25,
@@ -209,13 +251,65 @@ for (const mode of ['anchorWalker', 'orbit'] as const) {
     ...baseState,
     synthSequencerFaces: phaseFaces,
   }));
-  assert.equal(phaseDiff.applied, true, 'Orbit phase offsets should stay on the live dirty-diff path');
+  assert.equal(phaseDiff.applied, true, 'Orbit phase changes should stay on the live dirty-diff path');
   assert(
     phaseDiff.applied && phaseDiff.events.some((event) => (
       event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitNotePhase
     )),
-    'Orbit phase offsets should emit note phase events',
+    'Orbit phase changes should emit note phase events',
   );
+}
+
+{
+  const faces = createDefaultSynthSequencerFaceState();
+  const firstSlot = faces.slots[0]!;
+  faces.slots[0] = {
+    ...firstSlot,
+    mode: 'orbit',
+  };
+  const baseState = {
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthSequencerFaces: faces,
+  };
+  const baseSnapshot = createCoreProductSnapshot(baseState);
+
+  const fiveNodeFaces = structuredClone(faces);
+  fiveNodeFaces.slots[0]!.orbit = {
+    ...fiveNodeFaces.slots[0]!.orbit,
+    quantizedOffset: 5,
+    notes: Array.from({ length: 5 }, (_, index) => createDefaultOrbitNote(index, {
+      id: `orbit-note-${index + 1}`,
+      radiusNorm: 0.24 + index * 0.14,
+      phase: (TAU * index) / 5,
+      pitchMode: 'harmonyBloom',
+      speedMode: 'bpmPercent',
+      speedValue: 100,
+      midiNote: 60 + index,
+      harmonyDegree: (index * 2) % 7,
+    })),
+  };
+  const fiveNodeDiff = buildCoreProductSnapshotDiff(baseSnapshot, createCoreProductSnapshot({
+    ...baseState,
+    synthSequencerFaces: fiveNodeFaces,
+  }));
+  assert.equal(fiveNodeDiff.applied, true, 'Orbit 5-node Bloom layout should stay on the live dirty-diff path');
+  assert(
+    fiveNodeDiff.applied && fiveNodeDiff.events.some((event) => (
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitNoteCount &&
+      event.value === 5
+    )),
+    'Orbit 5-node Bloom layout should emit the native note count',
+  );
+  for (const noteIndex of [3, 4]) {
+    assert(
+      fiveNodeDiff.applied && fiveNodeDiff.events.some((event) => (
+        event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitNotePhase &&
+        event.flags === noteIndex
+      )),
+      `Orbit 5-node Bloom layout should emit phase for node index ${noteIndex}`,
+    );
+  }
 }
 
 {

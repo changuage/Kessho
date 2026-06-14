@@ -402,6 +402,12 @@
   padding: 0 10px;
 }
 
+.granular-root .granular-buffer-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 10px 8px;
+}
+
 .granular-root .granular-buffer-readout {
   --voice-color: rgba(255,255,255,0.5);
   padding: 3px 8px;

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import type { HarmonyState } from '../../audio/harmony';
 import { TEXT_SYMBOLS } from '../../designSystem/textSymbols';
 import { formatMidiNoteName } from './anchorWalkerMath';
@@ -39,7 +39,7 @@ function noteLabel(note: OrbitNoteConfig): string {
   return `${formatMidiNoteName(note.pitchRangeMin)}-${formatMidiNoteName(note.pitchRangeMax)}`;
 }
 
-type OrbitOffsetDraftKey = 'speedOffset' | 'globalOffset' | 'evenOffset' | 'freeOffset';
+type OrbitOffsetDraftKey = 'evenOffset' | 'freeOffset';
 type OrbitOffsetDrafts = Partial<Record<OrbitOffsetDraftKey, number>>;
 
 function draftValue(drafts: OrbitOffsetDrafts, key: OrbitOffsetDraftKey, fallback: number): number {
@@ -48,30 +48,24 @@ function draftValue(drafts: OrbitOffsetDrafts, key: OrbitOffsetDraftKey, fallbac
 }
 
 function offsetPreviewConfig(config: OrbitSequencerConfig, drafts: OrbitOffsetDrafts): OrbitSequencerConfig {
-  const speedOffset = draftValue(drafts, 'speedOffset', config.speedOffset);
-  const globalOffset = draftValue(drafts, 'globalOffset', config.globalOffset);
   const evenOffset = draftValue(drafts, 'evenOffset', config.evenOffset);
   const freeOffset = draftValue(drafts, 'freeOffset', config.freeOffset);
-  const globalDelta = globalOffset - config.globalOffset;
   const evenDelta = evenOffset - config.evenOffset;
   const freeDelta = freeOffset - config.freeOffset;
-  const hasPhasePreview = Math.abs(globalDelta) > 1e-9 || Math.abs(evenDelta) > 1e-9 || Math.abs(freeDelta) > 1e-9;
+  const hasPhasePreview = Math.abs(evenDelta) > 1e-9 || Math.abs(freeDelta) > 1e-9;
+  if (!hasPhasePreview) return config;
   return {
     ...config,
-    speedOffset,
-    globalOffset,
     evenOffset,
     freeOffset,
-    notes: hasPhasePreview
-      ? config.notes.map((note, index) => {
-        const jitter = orbitHashUnit(config.seed + index * 97 + 41) - 0.5;
-        const phaseDelta = (globalDelta + (index % 2 === 1 ? evenDelta : 0) + freeDelta * jitter) * TAU;
-        return {
-          ...note,
-          phase: wrapRadians(note.phase + phaseDelta),
-        };
-      })
-      : config.notes,
+    notes: config.notes.map((note, index) => {
+      const jitter = orbitHashUnit(config.seed + index * 97 + 41) - 0.5;
+      const phaseDelta = ((index % 2 === 1 ? evenDelta : 0) + freeDelta * jitter) * TAU;
+      return {
+        ...note,
+        phase: wrapRadians(note.phase + phaseDelta),
+      };
+    }),
   };
 }
 
@@ -91,9 +85,8 @@ export function OrbitSequencerBody({
   const scaleLabel = harmonyState?.scaleFamily.name ?? 'Harmony';
   const loopBeats = loopBeatsFromBpmPercent(orbit.config.bpmPercent);
   const [offsetDrafts, setOffsetDrafts] = useState<OrbitOffsetDrafts>({});
-  const previewConfig = useMemo(() => offsetPreviewConfig(orbit.config, offsetDrafts), [orbit.config, offsetDrafts]);
-  const speedOffsetValue = draftValue(offsetDrafts, 'speedOffset', orbit.config.speedOffset);
-  const globalOffsetValue = draftValue(offsetDrafts, 'globalOffset', orbit.config.globalOffset);
+  const [speedOffsetEditing, setSpeedOffsetEditing] = useState(false);
+  const previewConfig = offsetPreviewConfig(orbit.config, offsetDrafts);
   const evenOffsetValue = draftValue(offsetDrafts, 'evenOffset', orbit.config.evenOffset);
   const freeOffsetValue = draftValue(offsetDrafts, 'freeOffset', orbit.config.freeOffset);
   const bloomNoteOptions = ORBIT_BLOOM_NOTE_OPTIONS.includes(orbit.config.notes.length as (typeof ORBIT_BLOOM_NOTE_OPTIONS)[number])
@@ -216,6 +209,7 @@ export function OrbitSequencerBody({
           </select>
         </label>
         <button type="button" className="orbit-action" onClick={orbit.rebloomNotes}>Bloom</button>
+        <button type="button" className="orbit-action" onClick={orbit.invertDirections}>Invert All</button>
         <label className="orbit-field compact">
           Speed Offset
           <input
@@ -223,27 +217,18 @@ export function OrbitSequencerBody({
             min={-0.9}
             max={1}
             step={0.01}
-            value={speedOffsetValue}
-            onChange={(event) => setOffsetDraft('speedOffset', updateNumeric(event.target.value, speedOffsetValue))}
-            onPointerUp={() => commitOffsetDraft('speedOffset', orbit.setSpeedOffset)}
-            onPointerCancel={() => commitOffsetDraft('speedOffset', orbit.setSpeedOffset)}
-            onKeyUp={() => commitOffsetDraft('speedOffset', orbit.setSpeedOffset)}
-            onBlur={() => commitOffsetDraft('speedOffset', orbit.setSpeedOffset)}
-          />
-        </label>
-        <label className="orbit-field compact">
-          Global Offset
-          <input
-            type="range"
-            min={-1}
-            max={1}
-            step={0.01}
-            value={globalOffsetValue}
-            onChange={(event) => setOffsetDraft('globalOffset', updateNumeric(event.target.value, globalOffsetValue))}
-            onPointerUp={() => commitOffsetDraft('globalOffset', orbit.setGlobalOffset)}
-            onPointerCancel={() => commitOffsetDraft('globalOffset', orbit.setGlobalOffset)}
-            onKeyUp={() => commitOffsetDraft('globalOffset', orbit.setGlobalOffset)}
-            onBlur={() => commitOffsetDraft('globalOffset', orbit.setGlobalOffset)}
+            value={orbit.config.speedOffset}
+            onFocus={() => setSpeedOffsetEditing(true)}
+            onPointerDown={() => setSpeedOffsetEditing(true)}
+            onPointerUp={() => setSpeedOffsetEditing(false)}
+            onPointerCancel={() => setSpeedOffsetEditing(false)}
+            onKeyDown={() => setSpeedOffsetEditing(true)}
+            onKeyUp={() => setSpeedOffsetEditing(false)}
+            onBlur={() => setSpeedOffsetEditing(false)}
+            onChange={(event) => {
+              setSpeedOffsetEditing(true);
+              orbit.setSpeedOffset(updateNumeric(event.target.value, orbit.config.speedOffset));
+            }}
           />
         </label>
         <label className="orbit-field compact">
@@ -304,6 +289,7 @@ export function OrbitSequencerBody({
           active={isRunning}
           transportBpm={transportBpm}
           runtimeVisualState={runtimeVisualState}
+          playbackEditActive={speedOffsetEditing}
           onSelectNote={orbit.setSelectedNoteId}
           onAddNote={orbit.addNote}
           onMoveNote={orbit.moveNote}
