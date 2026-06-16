@@ -98,6 +98,12 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SequencerOrbitTriggerLineCount: 252,
   SequencerOrbitClockMode: 290,
   SequencerOrbitBpmPercent: 253,
+  SequencerOrbitSpeedOffset: 1199,
+  SequencerOrbitGlobalOffset: 1200,
+  SequencerOrbitEvenOffset: 1201,
+  SequencerOrbitFreeOffset: 1202,
+  SequencerOrbitEvenReverseMode: 1203,
+  SequencerOrbitConstellationMode: 1204,
   SequencerOrbitQuantizeToHarmony: 254,
   SequencerOrbitSnapSource: 255,
   SequencerOrbitPitchRangeMin: 256,
@@ -1328,6 +1334,54 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 253,
     "min": 1,
     "max": 800
+  },
+  {
+    "name": "SequencerOrbitSpeedOffset",
+    "path": "sequencers.*.lanes.*.orbit.speedOffset",
+    "type": "float",
+    "id": 1199,
+    "min": -1,
+    "max": 1
+  },
+  {
+    "name": "SequencerOrbitGlobalOffset",
+    "path": "sequencers.*.lanes.*.orbit.globalOffset",
+    "type": "float",
+    "id": 1200,
+    "min": -1,
+    "max": 1
+  },
+  {
+    "name": "SequencerOrbitEvenOffset",
+    "path": "sequencers.*.lanes.*.orbit.evenOffset",
+    "type": "float",
+    "id": 1201,
+    "min": -1,
+    "max": 1
+  },
+  {
+    "name": "SequencerOrbitFreeOffset",
+    "path": "sequencers.*.lanes.*.orbit.freeOffset",
+    "type": "float",
+    "id": 1202,
+    "min": -1,
+    "max": 1
+  },
+  {
+    "name": "SequencerOrbitEvenReverseMode",
+    "path": "sequencers.*.lanes.*.orbit.evenReverseMode",
+    "type": "uint",
+    "id": 1203,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "SequencerOrbitConstellationMode",
+    "path": "sequencers.*.lanes.*.orbit.constellationMode",
+    "type": "uint",
+    "id": 1204,
+    "min": 0,
+    "max": 5
   },
   {
     "name": "SequencerOrbitQuantizeToHarmony",

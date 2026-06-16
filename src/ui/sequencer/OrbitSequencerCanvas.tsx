@@ -5,7 +5,12 @@ import {
   adjustedOrbitSpeedValue,
   cartesianToPolar,
   directionSign,
+  effectiveOrbitDirection,
   lineAngleOffset,
+  orbitClockedBpmPercent,
+  orbitAuthoredPhaseFromVisual,
+  orbitSpeedOffsetStats,
+  orbitVisualPhase,
   polarToCartesian,
   resolveAngularSpeed,
   rotateOrbitPoint,
@@ -23,6 +28,9 @@ interface OrbitSequencerCanvasProps {
   selectedNoteId: string | null;
   active: boolean;
   transportBpm?: number;
+  clockDivision?: unknown;
+  stepCount?: number;
+  tempoMultiplier?: number;
   runtimeVisualState?: OrbitRuntimeVisualState | null;
   playbackEditActive?: boolean;
   onSelectNote: (id: string | null) => void;
@@ -34,6 +42,7 @@ interface OrbitSequencerCanvasProps {
 interface RuntimeNote {
   id: string;
   angle: number;
+  nativeAngle?: number;
   flash: number;
 }
 
@@ -153,8 +162,86 @@ function canvasRadius(size: number) {
   return size * ORBIT_RADIUS_SCALE;
 }
 
-function noteScreenPoint(note: OrbitNoteConfig, runtime: RuntimeNote | undefined, size: number) {
-  return polarToCartesian(note.radiusNorm, runtime?.angle ?? note.phase, size);
+function finalVisualAngleForNote(
+  note: OrbitNoteConfig,
+  index: number,
+  config: OrbitSequencerConfig,
+  runtime: RuntimeNote | undefined,
+): number {
+  if (typeof runtime?.nativeAngle === 'number' && Number.isFinite(runtime.nativeAngle)) {
+    // Product Core sends final visual angles after global/even/free offsets.
+    return runtime.nativeAngle;
+  }
+  return orbitVisualPhase(runtime?.angle ?? note.phase, {
+    index,
+    seed: config.seed,
+    globalOffset: config.globalOffset,
+    evenOffset: config.evenOffset,
+    freeOffset: config.freeOffset,
+  });
+}
+
+function authoredPhaseForVisualPlacement(
+  visualPhase: number,
+  index: number,
+  config: OrbitSequencerConfig,
+): number {
+  return orbitAuthoredPhaseFromVisual(visualPhase, {
+    index,
+    seed: config.seed,
+    globalOffset: config.globalOffset,
+    evenOffset: config.evenOffset,
+    freeOffset: config.freeOffset,
+  });
+}
+
+function nativeRuntimeCoversNotes(
+  runtime: OrbitRuntimeVisualState | null | undefined,
+  config: OrbitSequencerConfig,
+): runtime is OrbitRuntimeVisualState {
+  return !!runtime &&
+    runtime.noteCount === config.notes.length &&
+    runtime.noteAngles.length >= config.notes.length;
+}
+
+function advanceFallbackRuntimeNote(
+  runtime: RuntimeNote,
+  note: OrbitNoteConfig,
+  noteIndex: number,
+  config: OrbitSequencerConfig,
+  transportBpm: number,
+  orbitBpmPercent: number,
+  dt: number,
+  speedStats = orbitSpeedOffsetStats(config.notes),
+): void {
+  if (!note.enabled) return;
+  const speedValue = adjustedOrbitSpeedValue(
+    note.speedMode,
+    note.speedValue,
+    note.radiusNorm,
+    config.speedOffset,
+    speedStats,
+  );
+  const direction = effectiveOrbitDirection(note.direction, noteIndex, {
+    evenOffset: config.evenOffset,
+    evenReverseMode: config.evenReverseMode,
+  });
+  runtime.angle = wrapRadians(
+    runtime.angle +
+    directionSign(direction) *
+    resolveAngularSpeed(note.speedMode, speedValue, orbitBpmPercent, transportBpm) *
+    dt,
+  );
+}
+
+function noteScreenPoint(
+  note: OrbitNoteConfig,
+  index: number,
+  config: OrbitSequencerConfig,
+  runtime: RuntimeNote | undefined,
+  size: number,
+) {
+  return polarToCartesian(note.radiusNorm, finalVisualAngleForNote(note, index, config, runtime), size);
 }
 
 function normalizedFromCanvas(x: number, y: number, size: number): OrbitPoint {
@@ -210,11 +297,13 @@ function nearestHandleIndex(spline: OrbitSplineConfig, x: number, y: number, siz
   return null;
 }
 
-function nearestNoteId(notes: readonly OrbitNoteConfig[], runtimes: Map<string, RuntimeNote>, x: number, y: number, size: number): string | null {
+function nearestNoteId(config: OrbitSequencerConfig, runtimes: Map<string, RuntimeNote>, x: number, y: number, size: number): string | null {
   let bestId: string | null = null;
   let bestDistance = NOTE_HIT_RADIUS;
-  for (const note of notes) {
-    const point = noteScreenPoint(note, runtimes.get(note.id), size);
+  for (let index = 0; index < config.notes.length; index += 1) {
+    const note = config.notes[index];
+    if (!note) continue;
+    const point = noteScreenPoint(note, index, config, runtimes.get(note.id), size);
     const distance = Math.hypot(point.x - x, point.y - y);
     if (distance < bestDistance) {
       bestDistance = distance;
@@ -239,6 +328,7 @@ function syncRuntimeToAuthoredNotes(
     const runtime = runtimes.get(note.id);
     if (runtime) {
       runtime.angle = note.phase;
+      runtime.nativeAngle = undefined;
     } else {
       runtimes.set(note.id, { id: note.id, angle: note.phase, flash: 0 });
     }
@@ -324,9 +414,11 @@ function drawOrbit(ctx: CanvasRenderingContext2D, args: {
   ctx.shadowBlur = 0;
   drawControlHandles(ctx, spline, radius, color);
 
-  for (const note of config.notes) {
+  for (let noteIndex = 0; noteIndex < config.notes.length; noteIndex += 1) {
+    const note = config.notes[noteIndex];
+    if (!note) continue;
     const runtime = runtimes.get(note.id);
-    const angle = runtime?.angle ?? note.phase;
+    const angle = finalVisualAngleForNote(note, noteIndex, config, runtime);
     const point = polarToCartesian(note.radiusNorm, angle, size);
     const x = point.x - size * 0.5;
     const y = point.y - size * 0.5;
@@ -365,6 +457,9 @@ export function OrbitSequencerCanvas({
   selectedNoteId,
   active,
   transportBpm = 120,
+  clockDivision = 8,
+  stepCount = 16,
+  tempoMultiplier = 1,
   runtimeVisualState = null,
   playbackEditActive = false,
   onSelectNote,
@@ -378,6 +473,9 @@ export function OrbitSequencerCanvas({
   const activeRef = useRef(active);
   const playbackEditActiveRef = useRef(playbackEditActive);
   const transportBpmRef = useRef(transportBpm);
+  const clockDivisionRef = useRef(clockDivision);
+  const stepCountRef = useRef(stepCount);
+  const tempoMultiplierRef = useRef(tempoMultiplier);
   const runtimeVisualStateRef = useRef<OrbitRuntimeVisualState | null>(runtimeVisualState);
   const runtimeRef = useRef<Map<string, RuntimeNote>>(new Map());
   const phaseRef = useRef<Map<string, number>>(new Map());
@@ -436,6 +534,7 @@ export function OrbitSequencerCanvas({
         runtimes.set(note.id, { id: note.id, angle: note.phase, flash: 0 });
       } else if (previousPhase === undefined || Math.abs(note.phase - previousPhase) > 1e-6) {
         runtime.angle = note.phase;
+        runtime.nativeAngle = undefined;
       }
       phases.set(note.id, note.phase);
     }
@@ -477,9 +576,29 @@ export function OrbitSequencerCanvas({
   }, [transportBpm]);
 
   useEffect(() => {
+    clockDivisionRef.current = clockDivision;
+  }, [clockDivision]);
+
+  useEffect(() => {
+    stepCountRef.current = stepCount;
+  }, [stepCount]);
+
+  useEffect(() => {
+    tempoMultiplierRef.current = tempoMultiplier;
+  }, [tempoMultiplier]);
+
+  useEffect(() => {
     runtimeVisualStateRef.current = runtimeVisualState;
     if (!runtimeVisualState) return;
     if (!activeRef.current) return;
+    const configNow = configRef.current;
+    if (!nativeRuntimeCoversNotes(runtimeVisualState, configNow)) {
+      for (const note of configNow.notes) {
+        const runtime = runtimeRef.current.get(note.id);
+        if (runtime) runtime.nativeAngle = undefined;
+      }
+      return;
+    }
     const now = performance.now();
     const dragState = dragStateRef.current;
     if (dragState?.type === 'handle') return;
@@ -487,22 +606,26 @@ export function OrbitSequencerCanvas({
     const draggingNoteId = !ignoreAuthoredGuards && dragState?.type === 'note' ? dragState.id : null;
     const runtimes = runtimeRef.current;
     const noteGuards = authoredNoteGuardUntilRef.current;
-    for (let index = 0; index < configRef.current.notes.length; index += 1) {
-      const note = configRef.current.notes[index];
+    for (let index = 0; index < configNow.notes.length; index += 1) {
+      const note = configNow.notes[index];
       if (!note) continue;
       if (note.id === draggingNoteId) continue;
       const noteGuardUntil = ignoreAuthoredGuards ? 0 : noteGuards.get(note.id) ?? 0;
-      if (noteGuardUntil > now) continue;
+      if (noteGuardUntil > now) {
+        const runtime = runtimes.get(note.id);
+        if (runtime) runtime.nativeAngle = undefined;
+        continue;
+      }
       if (!ignoreAuthoredGuards && noteGuardUntil > 0) noteGuards.delete(note.id);
       const angle = runtimeVisualState.noteAngles[index];
       if (typeof angle !== 'number' || !Number.isFinite(angle)) continue;
       const flash = Math.max(0, runtimeVisualState.noteFlashes[index] ?? 0);
       const runtime = runtimes.get(note.id);
       if (runtime) {
-        runtime.angle = angle;
+        runtime.nativeAngle = angle;
         runtime.flash = flash;
       } else {
-        runtimes.set(note.id, { id: note.id, angle, flash });
+        runtimes.set(note.id, { id: note.id, angle: note.phase, nativeAngle: angle, flash });
       }
     }
   }, [runtimeVisualState]);
@@ -512,15 +635,19 @@ export function OrbitSequencerCanvas({
     const ctx = canvas?.getContext('2d');
     const { width, height, dpr } = sizeRef.current;
     if (!canvas || !ctx || width <= 0 || height <= 0) return;
+    const configNow = configRef.current;
+    const nativeRuntime = runtimeVisualStateRef.current;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawOrbit(ctx, {
-      config: configRef.current,
+      config: configNow,
       color,
       selectedNoteId: selectedNoteIdRef.current,
       runtimes: runtimeRef.current,
       width,
       height,
-      runtimeBaseAngle: activeRef.current ? runtimeVisualStateRef.current?.baseAngle : undefined,
+      runtimeBaseAngle: activeRef.current && nativeRuntimeCoversNotes(nativeRuntime, configNow)
+        ? nativeRuntime.baseAngle
+        : undefined,
     });
   };
 
@@ -567,12 +694,24 @@ export function OrbitSequencerCanvas({
         const decayDt = Math.min(0.05, dt);
         const shouldAdvance = activeRef.current;
         const transportBpmNow = transportBpmRef.current;
+        const orbitBpmPercent = configNow.clockMode === 'transport'
+          ? orbitClockedBpmPercent(
+            stepCountRef.current,
+            clockDivisionRef.current,
+            tempoMultiplierRef.current,
+            configNow.bpmPercent / 100,
+          )
+          : configNow.bpmPercent;
         const nativeRuntime = runtimeVisualStateRef.current;
+        const activeNativeRuntime = shouldAdvance && nativeRuntimeCoversNotes(nativeRuntime, configNow)
+          ? nativeRuntime
+          : null;
+        const speedStats = orbitSpeedOffsetStats(configNow.notes);
         const dragState = dragStateRef.current;
         const playbackEditActiveNow = playbackEditActiveRef.current;
         const draggingNoteId = !playbackEditActiveNow && dragState?.type === 'note' ? dragState.id : null;
         const authoredVisualGuardActive = !playbackEditActiveNow && time < authoredVisualGuardUntilRef.current;
-        const hasNativeRuntime = shouldAdvance && nativeRuntime !== null && nativeRuntime.noteAngles.length > 0;
+        const hasNativeRuntime = activeNativeRuntime !== null;
         const noteGuards = authoredNoteGuardUntilRef.current;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         for (let noteIndex = 0; noteIndex < configNow.notes.length; noteIndex += 1) {
@@ -584,29 +723,24 @@ export function OrbitSequencerCanvas({
           const noteAuthoredActive = !shouldAdvance || note.id === draggingNoteId || noteGuardUntil > time;
           if (noteAuthoredActive) {
             runtime.angle = note.phase;
+            runtime.nativeAngle = undefined;
             runtime.flash = Math.max(0, runtime.flash - decayDt * 2.5);
             continue;
           }
           if (!playbackEditActiveNow && noteGuardUntil > 0) noteGuards.delete(note.id);
+          if (!hasNativeRuntime) {
+            runtime.nativeAngle = undefined;
+          }
           if (hasNativeRuntime) {
-            const nativeAngle = nativeRuntime.noteAngles[noteIndex];
+            const nativeAngle = activeNativeRuntime.noteAngles[noteIndex];
             if (typeof nativeAngle === 'number' && Number.isFinite(nativeAngle)) {
-              runtime.angle = nativeAngle;
-              runtime.flash = Math.max(0, nativeRuntime.noteFlashes[noteIndex] ?? runtime.flash);
+              runtime.nativeAngle = nativeAngle;
+              runtime.flash = Math.max(0, activeNativeRuntime.noteFlashes[noteIndex] ?? runtime.flash);
+            } else {
+              runtime.nativeAngle = undefined;
             }
           } else if (shouldAdvance && note.enabled) {
-            const speedValue = adjustedOrbitSpeedValue(
-              note.speedMode,
-              note.speedValue,
-              note.radiusNorm,
-              configNow.speedOffset,
-            );
-            runtime.angle = wrapRadians(
-              runtime.angle +
-              directionSign(note.direction) *
-              resolveAngularSpeed(note.speedMode, speedValue, configNow.bpmPercent, transportBpmNow) *
-              dt,
-            );
+            advanceFallbackRuntimeNote(runtime, note, noteIndex, configNow, transportBpmNow, orbitBpmPercent, dt, speedStats);
           }
           if (!hasNativeRuntime) {
             runtime.flash = Math.max(0, runtime.flash - decayDt * 2.5);
@@ -625,7 +759,7 @@ export function OrbitSequencerCanvas({
               baseAngle: wrapRadians(
                 configNow.spline.baseAngle +
                 directionSign(configNow.spline.spinDirection) *
-                resolveAngularSpeed('bpmPercent', 100, configNow.bpmPercent, transportBpmNow) *
+                resolveAngularSpeed('bpmPercent', 100, orbitBpmPercent, transportBpmNow) *
                 dt,
               ),
             },
@@ -638,7 +772,9 @@ export function OrbitSequencerCanvas({
           runtimes: runtimeRef.current,
           width,
           height,
-          runtimeBaseAngle: hasNativeRuntime && !authoredVisualGuardActive ? nativeRuntime.baseAngle : undefined,
+          runtimeBaseAngle: activeNativeRuntime && !authoredVisualGuardActive
+            ? activeNativeRuntime.baseAngle
+            : undefined,
         });
       }
       lastTime = time;
@@ -673,9 +809,13 @@ export function OrbitSequencerCanvas({
           if (!activeRef.current) {
             syncRuntimeToAuthoredNotes(runtimeRef.current, configNow.notes);
           }
+          const nativeRuntime = runtimeVisualStateRef.current;
+          const runtimeBaseAngle = activeRef.current && nativeRuntimeCoversNotes(nativeRuntime, configNow)
+            ? nativeRuntime.baseAngle
+            : undefined;
           const visualSpline = splineWithRuntimeBaseAngle(
             configNow.spline,
-            activeRef.current ? runtimeVisualStateRef.current?.baseAngle : undefined,
+            runtimeBaseAngle,
           );
           const handleIndex = nearestHandleIndex(visualSpline, point.x, point.y, point.size);
           if (handleIndex !== null) {
@@ -684,7 +824,7 @@ export function OrbitSequencerCanvas({
             drawStaticOrbit();
             return;
           }
-          const hitId = nearestNoteId(configNow.notes, runtimeRef.current, point.x, point.y, point.size);
+          const hitId = nearestNoteId(configNow, runtimeRef.current, point.x, point.y, point.size);
           if (hitId) {
             dragStateRef.current = { type: 'note', id: hitId };
             onSelectNote(hitId);
@@ -700,7 +840,9 @@ export function OrbitSequencerCanvas({
           if (Math.hypot(normalized.x, normalized.y) <= 1.1) {
             const rawPolar = cartesianToPolar(point.x, point.y, point.size);
             const polar = snapPolarForConfig(rawPolar.radiusNorm, rawPolar.angle, configNow);
-            onAddNote(polar.radiusNorm, polar.angle);
+            const newIndex = configNow.notes.length;
+            const authoredPhase = authoredPhaseForVisualPlacement(polar.angle, newIndex, configNow);
+            onAddNote(polar.radiusNorm, authoredPhase);
           }
         }}
         onPointerMove={(event) => {
@@ -710,9 +852,10 @@ export function OrbitSequencerCanvas({
           if (!point) return;
           if (dragState.type === 'handle') {
             const configNow = configRef.current;
+            const nativeRuntime = runtimeVisualStateRef.current;
             const normalized = clampNormalizedPoint(normalizedFromCanvas(point.x, point.y, point.size));
-            const visualBaseAngle = activeRef.current
-              ? runtimeVisualStateRef.current?.baseAngle ?? configNow.spline.baseAngle
+            const visualBaseAngle = activeRef.current && nativeRuntimeCoversNotes(nativeRuntime, configNow)
+              ? nativeRuntime.baseAngle
               : configNow.spline.baseAngle;
             const basePoint = configNow.spline.spinEnabled
               ? rotateOrbitPoint(normalized, -visualBaseAngle)
@@ -730,26 +873,31 @@ export function OrbitSequencerCanvas({
             drawStaticOrbit();
             return;
           }
+          const configNow = configRef.current;
+          const noteIndex = configNow.notes.findIndex((note) => note.id === dragState.id);
+          if (noteIndex < 0) return;
           const rawPolar = cartesianToPolar(point.x, point.y, point.size);
-          const polar = snapPolarForConfig(rawPolar.radiusNorm, rawPolar.angle, configRef.current);
+          const polar = snapPolarForConfig(rawPolar.radiusNorm, rawPolar.angle, configNow);
+          const authoredPhase = authoredPhaseForVisualPlacement(polar.angle, noteIndex, configNow);
           configRef.current = {
-            ...configRef.current,
-            notes: configRef.current.notes.map((note) => (
+            ...configNow,
+            notes: configNow.notes.map((note) => (
               note.id === dragState.id
-                ? { ...note, radiusNorm: polar.radiusNorm, phase: polar.angle }
+                ? { ...note, radiusNorm: polar.radiusNorm, phase: authoredPhase }
                 : note
             )),
           };
           const runtime = runtimeRef.current.get(dragState.id);
           if (runtime) {
-            runtime.angle = polar.angle;
+            runtime.angle = authoredPhase;
+            runtime.nativeAngle = undefined;
           } else {
-            runtimeRef.current.set(dragState.id, { id: dragState.id, angle: polar.angle, flash: 0 });
+            runtimeRef.current.set(dragState.id, { id: dragState.id, angle: authoredPhase, flash: 0 });
           }
           commitMoveNote({
             id: dragState.id,
             radiusNorm: polar.radiusNorm,
-            phase: polar.angle,
+            phase: authoredPhase,
           });
           drawStaticOrbit();
         }}

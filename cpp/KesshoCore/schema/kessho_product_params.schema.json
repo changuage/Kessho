@@ -747,6 +747,54 @@
       "max": 800
     },
     {
+      "name": "SequencerOrbitSpeedOffset",
+      "path": "sequencers.*.lanes.*.orbit.speedOffset",
+      "type": "float",
+      "id": 1199,
+      "min": -1,
+      "max": 1
+    },
+    {
+      "name": "SequencerOrbitGlobalOffset",
+      "path": "sequencers.*.lanes.*.orbit.globalOffset",
+      "type": "float",
+      "id": 1200,
+      "min": -1,
+      "max": 1
+    },
+    {
+      "name": "SequencerOrbitEvenOffset",
+      "path": "sequencers.*.lanes.*.orbit.evenOffset",
+      "type": "float",
+      "id": 1201,
+      "min": -1,
+      "max": 1
+    },
+    {
+      "name": "SequencerOrbitFreeOffset",
+      "path": "sequencers.*.lanes.*.orbit.freeOffset",
+      "type": "float",
+      "id": 1202,
+      "min": -1,
+      "max": 1
+    },
+    {
+      "name": "SequencerOrbitEvenReverseMode",
+      "path": "sequencers.*.lanes.*.orbit.evenReverseMode",
+      "type": "uint",
+      "id": 1203,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SequencerOrbitConstellationMode",
+      "path": "sequencers.*.lanes.*.orbit.constellationMode",
+      "type": "uint",
+      "id": 1204,
+      "min": 0,
+      "max": 5
+    },
+    {
       "name": "SequencerOrbitQuantizeToHarmony",
       "path": "sequencers.*.lanes.*.orbit.quantizeToHarmony",
       "type": "bool",

@@ -16,6 +16,8 @@ import {
   commitGeneratedCaptureToEuclid,
 } from './commitGeneratedCaptureToEuclid';
 
+const GENERATED_CAPTURE_COMMIT_FLUSH_MS = 320;
+
 export interface UseGeneratedSequenceCaptureArgs {
   isRunning: boolean;
   activeLaneIndex: number;
@@ -48,6 +50,12 @@ export interface GeneratedSequenceCaptureApi {
   startCapture: (targetLaneIndex?: number) => void;
   stopAndCommit: () => void;
   cancelCapture: () => void;
+  captureManualNote: (note: {
+    midiNote: number;
+    velocity?: number;
+    gateSeconds?: number;
+    targetStepIndex?: number;
+  }) => boolean;
   ingestProductEvents: (
     events: readonly GeneratedSequencerCaptureEvent[],
     overflowCount?: number,
@@ -81,11 +89,17 @@ export function useGeneratedSequenceCapture({
   const [session, setSession] = useState<CaptureSession | null>(null);
   const sessionRef = useRef<CaptureSession | null>(null);
   const previewRafRef = useRef<number | null>(null);
+  const commitFlushTimerRef = useRef<number | null>(null);
+  const manualEventIdRef = useRef(-1);
 
   useEffect(() => () => {
     if (previewRafRef.current !== null) {
       cancelAnimationFrame(previewRafRef.current);
       previewRafRef.current = null;
+    }
+    if (commitFlushTimerRef.current !== null) {
+      window.clearTimeout(commitFlushTimerRef.current);
+      commitFlushTimerRef.current = null;
     }
   }, []);
 
@@ -101,6 +115,10 @@ export function useGeneratedSequenceCapture({
   const startCapture = useCallback((targetLaneIndex = activeLaneIndex) => {
     const sourceMode = sourceModeForLaneMode(activeLaneMode);
     if (!sourceMode) return;
+    if (commitFlushTimerRef.current !== null) {
+      window.clearTimeout(commitFlushTimerRef.current);
+      commitFlushTimerRef.current = null;
+    }
 
     const rawSteps = seq.getParam(targetLaneIndex, 'Steps');
     const stepCount = typeof rawSteps === 'number' && Number.isFinite(rawSteps)
@@ -137,6 +155,10 @@ export function useGeneratedSequenceCapture({
 
   const cancelCapture = useCallback(() => {
     const current = sessionRef.current;
+    if (commitFlushTimerRef.current !== null) {
+      window.clearTimeout(commitFlushTimerRef.current);
+      commitFlushTimerRef.current = null;
+    }
     if (current) {
       setProductCaptureEnabled({
         enabled: false,
@@ -152,6 +174,7 @@ export function useGeneratedSequenceCapture({
   const stopAndCommit = useCallback(() => {
     const current = sessionRef.current;
     if (!current) return;
+    if (current.status === 'committing') return;
 
     setProductCaptureEnabled({
       enabled: false,
@@ -160,37 +183,94 @@ export function useGeneratedSequenceCapture({
       sourceMode: current.sourceMode,
     });
 
-    commitGeneratedCaptureToEuclid({
-      scratch: current.scratch,
-      targetLaneIndex: current.targetLaneIndex,
-      seq,
-      setSequencerMode,
-      setPitchBindingMode,
+    publishSession({
+      ...current,
+      status: 'committing',
     });
 
-    sessionRef.current = {
-      ...current,
-      active: false,
-      status: 'committed',
-    };
-    setSession(sessionRef.current);
+    if (commitFlushTimerRef.current !== null) {
+      window.clearTimeout(commitFlushTimerRef.current);
+    }
+    commitFlushTimerRef.current = window.setTimeout(() => {
+      commitFlushTimerRef.current = null;
+      const latest = sessionRef.current;
+      if (!latest?.active) return;
 
-    window.setTimeout(() => {
-      if (sessionRef.current?.status === 'committed') {
-        sessionRef.current = null;
-        setSession(null);
+      const capturedCount = captureStepCount(latest.scratch);
+      if (capturedCount > 0) {
+        commitGeneratedCaptureToEuclid({
+          scratch: latest.scratch,
+          targetLaneIndex: latest.targetLaneIndex,
+          seq,
+          setSequencerMode,
+          setPitchBindingMode,
+        });
       }
-    }, 1200);
+
+      sessionRef.current = {
+        ...latest,
+        active: false,
+        status: capturedCount > 0 ? 'committed' : 'empty',
+      };
+      setSession(sessionRef.current);
+
+      window.setTimeout(() => {
+        const status = sessionRef.current?.status;
+        if (status === 'committed' || status === 'empty') {
+          sessionRef.current = null;
+          setSession(null);
+        }
+      }, 1200);
+    }, GENERATED_CAPTURE_COMMIT_FLUSH_MS);
   }, [
+    publishSession,
     seq,
     setPitchBindingMode,
     setProductCaptureEnabled,
     setSequencerMode,
   ]);
 
+  const captureManualNote = useCallback((note: {
+    midiNote: number;
+    velocity?: number;
+    gateSeconds?: number;
+    targetStepIndex?: number;
+  }): boolean => {
+    const current = sessionRef.current;
+    if (!current?.active || current.status === 'committing') return false;
+
+    const rawStep = typeof note.targetStepIndex === 'number' && Number.isFinite(note.targetStepIndex)
+      ? note.targetStepIndex
+      : currentStepFromPlayhead(seq.playheads[current.targetLaneIndex] ?? 0, current.targetStepCount);
+    const stepIndex = positiveModulo(Math.round(rawStep), current.targetStepCount);
+    const previousStep = current.scratch.lastStepIndex;
+    let cycleIndex = current.scratch.cycleIndex;
+    if (previousStep !== null && stepIndex < previousStep) {
+      cycleIndex += 1;
+    }
+
+    const scratch = writeCaptureEventToStep(
+      current.scratch,
+      stepIndex,
+      cycleIndex,
+      {
+        eventId: manualEventIdRef.current--,
+        midiNote: note.midiNote,
+        velocity: note.velocity ?? 1,
+        gateSeconds: note.gateSeconds ?? 0.18,
+      },
+    );
+    publishSession({
+      ...current,
+      scratch,
+    });
+    return true;
+  }, [publishSession, seq.playheads]);
+
   const markCurrentStepFromPlayhead = useCallback(() => {
     const current = sessionRef.current;
     if (!current?.active || !isRunning) return;
+    if (current.status === 'committing') return;
 
     const playhead = seq.playheads[current.targetLaneIndex] ?? 0;
     const stepIndex = currentStepFromPlayhead(playhead, current.targetStepCount);
@@ -276,6 +356,7 @@ export function useGeneratedSequenceCapture({
     startCapture,
     stopAndCommit,
     cancelCapture,
+    captureManualNote,
     ingestProductEvents,
     markCurrentStepFromPlayhead,
   };

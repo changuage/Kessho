@@ -934,6 +934,12 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     orbit.trigger_line_count = clampU32(orbit_snapshot.trigger_line_count, 1u, kMaxOrbitTriggerLines);
     orbit.clock_mode = orbit_snapshot.clock_mode > 0u ? 1u : 0u;
     orbit.bpm_percent = clampFloat(orbit_snapshot.bpm_percent, 1.0f, 800.0f);
+    orbit.speed_offset = clampFloat(orbit_snapshot.speed_offset, -1.0f, 1.0f);
+    orbit.global_offset = clampFloat(orbit_snapshot.global_offset, -1.0f, 1.0f);
+    orbit.even_offset = clampFloat(orbit_snapshot.even_offset, -1.0f, 1.0f);
+    orbit.free_offset = clampFloat(orbit_snapshot.free_offset, -1.0f, 1.0f);
+    orbit.even_reverse_mode = orbit_snapshot.even_reverse_mode > 0u ? 1u : 0u;
+    orbit.constellation_mode = clampU32(orbit_snapshot.constellation_mode, 0u, 5u);
     orbit.quantize_to_harmony = orbit_snapshot.quantize_to_harmony != 0u;
     orbit.snap_source = clampU32(orbit_snapshot.snap_source, 0u, 4u);
     orbit.pitch_range_min = clampFloat(orbit_snapshot.pitch_range_min, 0.0f, 127.0f);

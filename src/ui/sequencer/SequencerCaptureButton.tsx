@@ -23,14 +23,32 @@ export function SequencerCaptureButton({
   const isThisLane = session?.sourceLaneIndex === laneIndex;
   const active = isThisLane && session?.active;
 
+  if (isThisLane && session?.status === 'committing') {
+    return (
+      <div className="seq-capture-pill seq-capture-pill--active">
+        <span className="seq-capture-dot" />
+        <span>Saving to Euclid...</span>
+        <span className="seq-capture-count">{capturedCount} steps</span>
+      </div>
+    );
+  }
+
   if (active) {
     return (
       <div className="seq-capture-pill seq-capture-pill--active">
         <span className="seq-capture-dot" />
-        <span>Capturing → Euclid · Stop to save the last loop</span>
-        <span className="seq-capture-count">{capturedCount} notes</span>
+        <span>Capturing → Euclid · generated + live keys · Stop to save the last loop</span>
+        <span className="seq-capture-count">{capturedCount} steps</span>
         <button type="button" onClick={onStop}>Stop</button>
         <button type="button" onClick={onCancel} aria-label="Cancel capture">Cancel</button>
+      </div>
+    );
+  }
+
+  if (isThisLane && session?.status === 'empty') {
+    return (
+      <div className="seq-capture-pill seq-capture-pill--empty">
+        No notes captured
       </div>
     );
   }
@@ -48,7 +66,7 @@ export function SequencerCaptureButton({
       type="button"
       className="seq-capture-button"
       onClick={onStart}
-      title="Record this generated pattern into a normal Euclidean sequence. It keeps overwriting the loop until you press Stop."
+      title="Record this generated pattern and live keyboard notes into a normal Euclidean sequence. It keeps overwriting the loop until you press Stop."
       aria-label={`Capture ${mode === 'orbit' ? 'Orbit' : 'Walker'} to Euclid`}
     >
       Capture

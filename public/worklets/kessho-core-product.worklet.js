@@ -3,7 +3,7 @@ const GENERATED_CAPTURE_EVENT_BYTES = 56;
 const GENERATED_CAPTURE_EVENT_CAPACITY = 256;
 const TELEMETRY_BYTES = 15008;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
-const EXPECTED_PRODUCT_SCHEMA_HASH = 0x9ffa2e7b;
+const EXPECTED_PRODUCT_SCHEMA_HASH = 0xaa00cf51;
 const SEQUENCER_UI_STATE_LANES = 16;
 const SEQUENCER_UI_STATE_STEPS = 64;
 const SEQUENCER_UI_LANE_BYTES = 3024;
@@ -832,6 +832,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         normalized.index = this.requireUint(event, 'index', 0, SEQUENCER_UI_STATE_LANES - 1);
         normalized.paramId = this.requireUint(event, 'paramId', 1, 0xffffffff);
         normalized.value = this.requireFloat(event, 'value');
+        normalized.flags = this.optionalUint(event, 'flags', 0, 0, 0xffffffff);
         return normalized;
       case PRODUCT_EVENT_IDS.SetJourneyState:
         normalized.value = this.requireFloat(event, 'value', 0, 1);

@@ -6,6 +6,8 @@ export type OrbitDirection = 'cw' | 'ccw';
 export type OrbitPitchMode = 'fixedMidi' | 'harmonyDegree' | 'rangeSnap' | 'harmonyBloom';
 export type OrbitPitchLayout = 'freeOrbit' | 'harmonyBloom';
 export type OrbitTriggerLineCount = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+export type OrbitEvenReverseMode = 'off' | 'negativeHalf';
+export type OrbitConstellationMode = 'auto' | 'golden' | 'fibonacci' | 'pythagorean' | 'harmonicRose' | 'euclidean';
 
 export interface OrbitNoteConfig {
   id: string;
@@ -50,8 +52,11 @@ export interface OrbitSequencerConfig {
   clockMode: 'transport' | 'freeBpmPercent';
   bpmPercent: number;
   speedOffset: number;
+  globalOffset: number;
   evenOffset: number;
   freeOffset: number;
+  evenReverseMode: OrbitEvenReverseMode;
+  constellationMode: OrbitConstellationMode;
   quantizedOffset: number;
   dragQuantize: boolean;
   quantizeToHarmony: boolean;
@@ -134,8 +139,11 @@ export function createDefaultOrbitSequencerConfig(slotIndex = 0): OrbitSequencer
     clockMode: 'transport',
     bpmPercent: 100,
     speedOffset: 0,
+    globalOffset: 0,
     evenOffset: 0,
     freeOffset: 0,
+    evenReverseMode: 'off',
+    constellationMode: 'auto',
     quantizedOffset: 4,
     dragQuantize: true,
     quantizeToHarmony: true,
@@ -211,9 +219,12 @@ export function normalizeOrbitSequencerConfig(value: unknown, slotIndex = 0): Or
     triggerLineCount: Math.max(1, Math.min(MAX_ORBIT_TRIGGER_LINES, Math.round(finiteNumber(record.triggerLineCount, fallback.triggerLineCount)))) as OrbitTriggerLineCount,
     clockMode: enumValue(record.clockMode, ['transport', 'freeBpmPercent'] as const, fallback.clockMode),
     bpmPercent: clamp(finiteNumber(record.bpmPercent, fallback.bpmPercent), 1, 800),
-    speedOffset: clamp(finiteNumber(record.speedOffset, fallback.speedOffset), -0.9, 1),
+    speedOffset: clamp(finiteNumber(record.speedOffset, fallback.speedOffset), -1, 1),
+    globalOffset: clamp(finiteNumber(record.globalOffset, fallback.globalOffset), -1, 1),
     evenOffset: clamp(finiteNumber(record.evenOffset, fallback.evenOffset), -1, 1),
-    freeOffset: clamp(finiteNumber(record.freeOffset, fallback.freeOffset), 0, 1),
+    freeOffset: clamp(finiteNumber(record.freeOffset, fallback.freeOffset), -1, 1),
+    evenReverseMode: enumValue(record.evenReverseMode, ['off', 'negativeHalf'] as const, fallback.evenReverseMode),
+    constellationMode: enumValue(record.constellationMode, ['auto', 'golden', 'fibonacci', 'pythagorean', 'harmonicRose', 'euclidean'] as const, fallback.constellationMode),
     quantizedOffset: Math.max(1, Math.min(32, Math.round(finiteNumber(record.quantizedOffset, fallback.quantizedOffset)))),
     dragQuantize: typeof record.dragQuantize === 'boolean' ? record.dragQuantize : fallback.dragQuantize,
     quantizeToHarmony: typeof record.quantizeToHarmony === 'boolean' ? record.quantizeToHarmony : fallback.quantizeToHarmony,

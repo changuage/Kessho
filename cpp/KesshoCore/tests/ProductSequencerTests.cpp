@@ -29,6 +29,12 @@ float maxAbs(const std::vector<float>& values) {
   return peak;
 }
 
+float wrapTestRadians(float value) {
+  float wrapped = std::fmod(value, static_cast<float>(kessho::product::internal::kTwoPi));
+  if (wrapped < 0.0f) wrapped += static_cast<float>(kessho::product::internal::kTwoPi);
+  return wrapped;
+}
+
 float renderPadModulePeakBlocks(KesshoProductEngine* engine, uint32_t blocks) {
   require(engine != nullptr, "pad render engine missing");
   require(engine->pad_module != nullptr, "pad render module missing");
@@ -541,6 +547,23 @@ KesshoProductSnapshotV2 makeOrbitSnapshot() {
   return snapshot;
 }
 
+void enableGeneratedSequencerCapture(
+    KesshoProductEngine* engine,
+    uint32_t source_lane_index,
+    uint32_t target_lane_index,
+    uint32_t source_mode,
+    const char* label) {
+  require(engine != nullptr, label);
+  KesshoProductEvent capture{};
+  capture.event_kind = KESSHO_PRODUCT_EVENT_KIND_GENERATED_SEQUENCER_CAPTURE;
+  capture.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  capture.index = source_lane_index;
+  capture.param_id = target_lane_index;
+  capture.value = 1.0f;
+  capture.value2 = static_cast<float>(source_mode);
+  require(kessho_product_enqueue_event(engine, &capture) == KESSHO_PRODUCT_OK, label);
+}
+
 void requireProductSequencerDisabledTargetSourceTests() {
   constexpr double sample_rate = 48000.0;
 
@@ -646,6 +669,256 @@ void requireProductSequencerModeEventTests() {
     require(
         std::fabs(telemetry.synth_orbit_visual_note_angles[0] - engine->synth_lanes[0].orbit.notes[0].angle) < 0.000001f,
         "Orbit visual telemetry note angle should match the Product Core runtime");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Anchor Walker generated capture engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeAnchorWalkerSnapshot();
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Anchor Walker generated capture snapshot load failed");
+    enableGeneratedSequencerCapture(
+        engine,
+        0u,
+        0u,
+        KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_ANCHOR_WALKER,
+        "Anchor Walker generated capture enable failed");
+
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 1024u);
+    require(event_count == 2, "Anchor Walker generated capture setup should emit layered events");
+
+    KesshoProductGeneratedSequencerCaptureEvent captured[8]{};
+    uint32_t overflow_count = 0u;
+    const uint32_t captured_count = kessho_product_drain_generated_sequencer_capture_events(engine, captured, 8u, &overflow_count);
+    require(overflow_count == 0u, "Anchor Walker generated capture should not overflow");
+    require(captured_count == 2u, "Anchor Walker generated capture should drain layered events");
+    require(captured[0].event_id > 0u && captured[1].event_id > captured[0].event_id, "Anchor Walker generated capture event ids should increase");
+    require(captured[0].source_lane_index == 0u, "Anchor Walker generated capture lane mismatch");
+    require(captured[0].source_mode == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_ANCHOR_WALKER, "Anchor Walker generated capture mode mismatch");
+    require(captured[0].target_step_index == 0, "Anchor Walker generated capture should map first layer to target step zero");
+    require(captured[1].target_step_index == 0, "Anchor Walker generated capture should map delayed layer to target step zero");
+    require(std::fabs(captured[0].midi_note - events[0].midi_note) < 0.001f, "Anchor Walker generated capture MIDI should match emitted event");
+    require(std::fabs(captured[1].midi_note - events[1].midi_note) < 0.001f, "Anchor Walker delayed capture MIDI should match emitted event");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Orbit generated capture engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeOrbitSnapshot();
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Orbit generated capture snapshot load failed");
+    enableGeneratedSequencerCapture(
+        engine,
+        0u,
+        0u,
+        KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_ORBIT,
+        "Orbit generated capture enable failed");
+
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 2048u);
+    require(event_count == 1, "Orbit generated capture setup should emit a crossing event");
+
+    KesshoProductGeneratedSequencerCaptureEvent captured[8]{};
+    uint32_t overflow_count = 0u;
+    const uint32_t captured_count = kessho_product_drain_generated_sequencer_capture_events(engine, captured, 8u, &overflow_count);
+    require(overflow_count == 0u, "Orbit generated capture should not overflow");
+    require(captured_count == 1u, "Orbit generated capture should drain one crossing event");
+    require(captured[0].event_id > 0u, "Orbit generated capture event id should be positive");
+    require(captured[0].source_lane_index == 0u, "Orbit generated capture lane mismatch");
+    require(captured[0].source_mode == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_ORBIT, "Orbit generated capture mode mismatch");
+    require(captured[0].source_note_index == 0, "Orbit generated capture should expose the source note index");
+    require(captured[0].target_step_index == 0, "Orbit generated capture should map crossing to target step zero");
+    require(std::fabs(captured[0].midi_note - events[0].midi_note) < 0.001f, "Orbit generated capture MIDI should match emitted event");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* clocked_engine = kessho_product_create(sample_rate, 4096u, 0);
+    KesshoProductEngine* double_clocked_engine = kessho_product_create(sample_rate, 4096u, 0);
+    KesshoProductEngine* free_engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(clocked_engine != nullptr && double_clocked_engine != nullptr && free_engine != nullptr, "Orbit clock-mode engines create failed");
+    KesshoProductSnapshotV2 clocked_snapshot = makeOrbitSnapshot();
+    KesshoProductSnapshotV2 double_clocked_snapshot = makeOrbitSnapshot();
+    KesshoProductSnapshotV2 free_snapshot = makeOrbitSnapshot();
+    clocked_snapshot.synth_euclid.lanes[0].clock_division = 8u;
+    double_clocked_snapshot.synth_euclid.lanes[0].clock_division = 8u;
+    free_snapshot.synth_euclid.lanes[0].clock_division = 8u;
+    clocked_snapshot.synth_euclid.mode_states[0].orbit.clock_mode = 0u;
+    double_clocked_snapshot.synth_euclid.mode_states[0].orbit.clock_mode = 0u;
+    double_clocked_snapshot.synth_euclid.mode_states[0].orbit.bpm_percent = 200.0f;
+    free_snapshot.synth_euclid.mode_states[0].orbit.clock_mode = 1u;
+    clocked_snapshot.synth_euclid.mode_states[0].orbit.notes[0].phase = 0.0f;
+    double_clocked_snapshot.synth_euclid.mode_states[0].orbit.notes[0].phase = 0.0f;
+    free_snapshot.synth_euclid.mode_states[0].orbit.notes[0].phase = 0.0f;
+    clocked_snapshot.synth_euclid.mode_states[0].orbit.notes[0].speed_mode = 0u;
+    double_clocked_snapshot.synth_euclid.mode_states[0].orbit.notes[0].speed_mode = 0u;
+    free_snapshot.synth_euclid.mode_states[0].orbit.notes[0].speed_mode = 0u;
+    clocked_snapshot.synth_euclid.mode_states[0].orbit.notes[0].speed_value = 100.0f;
+    double_clocked_snapshot.synth_euclid.mode_states[0].orbit.notes[0].speed_value = 100.0f;
+    free_snapshot.synth_euclid.mode_states[0].orbit.notes[0].speed_value = 100.0f;
+    require(kessho_product_load_snapshot_v2(clocked_engine, &clocked_snapshot, sizeof(clocked_snapshot)) == KESSHO_PRODUCT_OK, "Orbit clocked snapshot load failed");
+    require(kessho_product_load_snapshot_v2(double_clocked_engine, &double_clocked_snapshot, sizeof(double_clocked_snapshot)) == KESSHO_PRODUCT_OK, "Orbit double-clocked snapshot load failed");
+    require(kessho_product_load_snapshot_v2(free_engine, &free_snapshot, sizeof(free_snapshot)) == KESSHO_PRODUCT_OK, "Orbit free snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    (void) kessho_product_debug_render_events(clocked_engine, events, 8u, 48000u);
+    (void) kessho_product_debug_render_events(double_clocked_engine, events, 8u, 48000u);
+    (void) kessho_product_debug_render_events(free_engine, events, 8u, 48000u);
+    const float clocked_delta = wrapTestRadians(clocked_engine->synth_lanes[0].orbit.notes[0].angle);
+    const float double_clocked_delta = wrapTestRadians(double_clocked_engine->synth_lanes[0].orbit.notes[0].angle);
+    const float free_delta = wrapTestRadians(free_engine->synth_lanes[0].orbit.notes[0].angle);
+    require(
+        std::fabs(clocked_delta - static_cast<float>(kessho::product::internal::kTwoPi * 0.25)) < 0.001f,
+        "Clocked Orbit should complete one quarter-cycle across a 16-step 1/8 pattern second at 120 BPM");
+    require(
+        std::fabs(double_clocked_delta - static_cast<float>(kessho::product::internal::kTwoPi * 0.5)) < 0.001f,
+        "2x Clock Orbit should double the clock-relative pattern cycle speed");
+    require(
+        std::fabs(free_delta - static_cast<float>(kessho::product::internal::kTwoPi * 0.5)) < 0.001f,
+        "Free Orbit 100% should keep the legacy four-beat cycle");
+    kessho_product_destroy(clocked_engine);
+    kessho_product_destroy(double_clocked_engine);
+    kessho_product_destroy(free_engine);
+  }
+
+  {
+    KesshoProductEngine* negative_engine = kessho_product_create(sample_rate, 4096u, 0);
+    KesshoProductEngine* positive_engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(negative_engine != nullptr && positive_engine != nullptr, "Orbit speed-offset engines create failed");
+    KesshoProductSnapshotV2 negative_snapshot = makeOrbitSnapshot();
+    KesshoProductSnapshotV2 positive_snapshot = makeOrbitSnapshot();
+    negative_snapshot.synth_euclid.mode_states[0].orbit.speed_offset = -1.0f;
+    positive_snapshot.synth_euclid.mode_states[0].orbit.speed_offset = 1.0f;
+    KesshoProductOrbitSequencerSnapshot& negative_orbit = negative_snapshot.synth_euclid.mode_states[0].orbit;
+    KesshoProductOrbitSequencerSnapshot& positive_orbit = positive_snapshot.synth_euclid.mode_states[0].orbit;
+    negative_orbit.note_count = 2u;
+    positive_orbit.note_count = 2u;
+    negative_orbit.notes[1] = negative_orbit.notes[0];
+    positive_orbit.notes[1] = positive_orbit.notes[0];
+    for (uint32_t index = 0u; index < 2u; ++index) {
+      negative_orbit.notes[index].phase = 1.0f;
+      positive_orbit.notes[index].phase = 1.0f;
+      negative_orbit.notes[index].speed_mode = 0u;
+      positive_orbit.notes[index].speed_mode = 0u;
+      negative_orbit.notes[index].speed_value = 100.0f;
+      positive_orbit.notes[index].speed_value = 100.0f;
+      negative_orbit.notes[index].enabled = true;
+      positive_orbit.notes[index].enabled = true;
+    }
+    negative_orbit.notes[0].radius_norm = 0.08f;
+    positive_orbit.notes[0].radius_norm = 0.08f;
+    negative_orbit.notes[1].radius_norm = 1.0f;
+    positive_orbit.notes[1].radius_norm = 1.0f;
+    require(kessho_product_load_snapshot_v2(negative_engine, &negative_snapshot, sizeof(negative_snapshot)) == KESSHO_PRODUCT_OK, "Orbit negative speed snapshot load failed");
+    require(kessho_product_load_snapshot_v2(positive_engine, &positive_snapshot, sizeof(positive_snapshot)) == KESSHO_PRODUCT_OK, "Orbit positive speed snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    (void) kessho_product_debug_render_events(negative_engine, events, 8u, 12000u);
+    (void) kessho_product_debug_render_events(positive_engine, events, 8u, 12000u);
+    const float negative_inner_delta = negative_engine->synth_lanes[0].orbit.notes[0].angle - 1.0f;
+    const float negative_outer_delta = negative_engine->synth_lanes[0].orbit.notes[1].angle - 1.0f;
+    const float positive_inner_delta = positive_engine->synth_lanes[0].orbit.notes[0].angle - 1.0f;
+    const float positive_outer_delta = positive_engine->synth_lanes[0].orbit.notes[1].angle - 1.0f;
+    require(negative_inner_delta > negative_outer_delta + 0.0001f, "Orbit negative speed offset should make inner nodes faster than outer nodes");
+    require(positive_outer_delta > positive_inner_delta + 0.0001f, "Orbit positive speed offset should make outer nodes faster than inner nodes");
+    require(
+        std::fabs((negative_inner_delta + negative_outer_delta) - (positive_inner_delta + positive_outer_delta)) < 0.00001f,
+        "Equivalent positive/negative Orbit speed offsets should preserve average Product Core speed");
+    kessho_product_destroy(negative_engine);
+    kessho_product_destroy(positive_engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Orbit speed-offset event engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeOrbitSnapshot();
+    KesshoProductOrbitSequencerSnapshot& orbit = snapshot.synth_euclid.mode_states[0].orbit;
+    orbit.note_count = 2u;
+    orbit.speed_offset = 0.0f;
+    orbit.notes[1] = orbit.notes[0];
+    for (uint32_t index = 0u; index < 2u; ++index) {
+      orbit.notes[index].phase = 1.0f;
+      orbit.notes[index].speed_mode = 0u;
+      orbit.notes[index].speed_value = 100.0f;
+      orbit.notes[index].enabled = true;
+    }
+    orbit.notes[0].radius_norm = 0.08f;
+    orbit.notes[1].radius_norm = 1.0f;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Orbit speed-offset event snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    (void) kessho_product_debug_render_events(engine, events, 8u, 12000u);
+    const float moving_inner_angle = engine->synth_lanes[0].orbit.notes[0].angle;
+    const float moving_outer_angle = engine->synth_lanes[0].orbit.notes[1].angle;
+    require(moving_inner_angle > 1.0f && moving_outer_angle > 1.0f, "Orbit speed-offset event test should start from moving nodes");
+    KesshoProductEvent speed_offset{};
+    speed_offset.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+    speed_offset.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    speed_offset.index = 0u;
+    speed_offset.param_id = KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPEED_OFFSET_ID;
+    speed_offset.value = -1.0f;
+    require(kessho_product_enqueue_event(engine, &speed_offset) == KESSHO_PRODUCT_OK, "Orbit speed-offset event enqueue failed");
+    (void) kessho_product_debug_render_events(engine, events, 8u, 12000u);
+    const float inner_delta = engine->synth_lanes[0].orbit.notes[0].angle - moving_inner_angle;
+    const float outer_delta = engine->synth_lanes[0].orbit.notes[1].angle - moving_outer_angle;
+    require(inner_delta > 0.0f, "Orbit live -1 speed-offset event should keep inner nodes moving in Product Core");
+    require(std::fabs(outer_delta) < 0.000001f, "Orbit live -1 speed-offset event should stop the outer node when paired with an inner node");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Orbit offset telemetry engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeOrbitSnapshot();
+    KesshoProductOrbitSequencerSnapshot& orbit = snapshot.synth_euclid.mode_states[0].orbit;
+    orbit.note_count = 2u;
+    orbit.speed_offset = 0.0f;
+    orbit.global_offset = 0.125f;
+    orbit.even_offset = 0.25f;
+    orbit.free_offset = 0.0f;
+    orbit.even_reverse_mode = 1u;
+    orbit.notes[1] = orbit.notes[0];
+    orbit.notes[0].phase = 1.0f;
+    orbit.notes[1].phase = 1.0f;
+    orbit.notes[0].seed = 9201u;
+    orbit.notes[1].seed = 9202u;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Orbit offset telemetry snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    (void) kessho_product_debug_render_events(engine, events, 8u, 256u);
+    const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+    const float odd_expected = wrapTestRadians(
+        engine->synth_lanes[0].orbit.notes[0].angle +
+        static_cast<float>(kessho::product::internal::kTwoPi * 0.125));
+    const float even_expected = wrapTestRadians(
+        engine->synth_lanes[0].orbit.notes[1].angle +
+        static_cast<float>(kessho::product::internal::kTwoPi * 0.375));
+    require(
+        std::fabs(telemetry.synth_orbit_visual_note_angles[0] - odd_expected) < 0.00001f,
+        "Orbit telemetry odd visible node should include global offset only");
+    require(
+        std::fabs(telemetry.synth_orbit_visual_note_angles[1] - even_expected) < 0.00001f,
+        "Orbit telemetry user-visible even node should include global and even offsets");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Orbit even reverse engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeOrbitSnapshot();
+    KesshoProductOrbitSequencerSnapshot& orbit = snapshot.synth_euclid.mode_states[0].orbit;
+    orbit.note_count = 2u;
+    orbit.even_offset = -0.5f;
+    orbit.even_reverse_mode = 1u;
+    orbit.notes[1] = orbit.notes[0];
+    orbit.notes[1].phase = 1.0f;
+    orbit.notes[1].radius_norm = 0.5f;
+    orbit.notes[1].speed_mode = 0u;
+    orbit.notes[1].speed_value = 100.0f;
+    orbit.notes[1].direction = 1;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Orbit even reverse snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    (void) kessho_product_debug_render_events(engine, events, 8u, 12000u);
+    require(
+        engine->synth_lanes[0].orbit.notes[1].angle < 1.0f,
+        "Orbit even reverse mode should reverse user-visible even nodes at -50%");
     kessho_product_destroy(engine);
   }
 

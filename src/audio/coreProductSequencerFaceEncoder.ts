@@ -5,7 +5,7 @@ import type { CoreProductSnapshot } from './coreProductSnapshot';
 type ProductLaneSnapshot = CoreProductSnapshot['synthLanes'][number];
 
 const ANCHOR_WALKER_BYTES = 332;
-const ORBIT_BYTES = 2896;
+const ORBIT_BYTES = 2920;
 export const KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES = ANCHOR_WALKER_BYTES + ORBIT_BYTES;
 
 function bool(value: unknown): number {
@@ -82,6 +82,12 @@ export function encodeCoreProductSequencerFaceModes(
     u32(orbit.triggerLineCount);
     u32(orbit.clockMode);
     f32(orbit.bpmPercent);
+    f32(orbit.speedOffset);
+    f32(orbit.globalOffset);
+    f32(orbit.evenOffset);
+    f32(orbit.freeOffset);
+    u32(orbit.evenReverseMode);
+    u32(orbit.constellationMode);
     u32(bool(orbit.quantizeToHarmony));
     u32(orbit.snapSource);
     f32(orbit.pitchRangeMin);

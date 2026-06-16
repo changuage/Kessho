@@ -147,6 +147,12 @@ export type ProductOrbitSequencerSnapshot = {
   triggerLineCount: number;
   clockMode: number;
   bpmPercent: number;
+  speedOffset: number;
+  globalOffset: number;
+  evenOffset: number;
+  freeOffset: number;
+  evenReverseMode: number;
+  constellationMode: number;
   quantizeToHarmony: boolean;
   snapSource: number;
   pitchRangeMin: number;

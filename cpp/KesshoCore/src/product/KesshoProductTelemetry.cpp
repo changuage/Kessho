@@ -1,5 +1,6 @@
 #include "KesshoProductEngineInternal.h"
 
+#include <algorithm>
 #include <array>
 
 namespace {
@@ -25,6 +26,36 @@ float normalizedModulationPosition(const kessho::product::internal::ModulationRa
     return 0.0f;
   }
   return kessho::product::internal::clampFloat((range.current_value - range.min_value) / span, 0.0f, 1.0f);
+}
+
+double telemetryOrbitClampOffset(float value) {
+  return std::clamp(std::isfinite(value) ? static_cast<double>(value) : 0.0, -1.0, 1.0);
+}
+
+bool telemetryOrbitEvenNode(uint32_t index) {
+  return (index % 2u) == 1u;
+}
+
+double telemetryOrbitPhaseOffsetTurns(
+    const kessho::product::internal::OrbitSequencerState& orbit,
+    uint32_t note_index) {
+  const double global = telemetryOrbitClampOffset(orbit.global_offset);
+  const double even = telemetryOrbitEvenNode(note_index)
+      ? std::max(telemetryOrbitClampOffset(orbit.even_offset), -0.5)
+      : 0.0;
+  const double jitter = static_cast<double>(
+      kessho::product::internal::hashUnit(orbit.seed + note_index * 97u + 41u)) - 0.5;
+  return global + even + telemetryOrbitClampOffset(orbit.free_offset) * jitter;
+}
+
+float telemetryOrbitVisualAngle(
+    const kessho::product::internal::OrbitSequencerState& orbit,
+    uint32_t note_index) {
+  return kessho::product::internal::wrapRadians(
+      orbit.notes[note_index].angle +
+      static_cast<float>(
+          telemetryOrbitPhaseOffsetTurns(orbit, note_index) *
+          kessho::product::internal::kTwoPi));
 }
 
 uint32_t mixDebugHash(uint32_t hash, uint32_t value) {
@@ -439,7 +470,7 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
       telemetry.synth_orbit_visual_base_angles[i] = lane.orbit.base_angle;
       for (uint32_t note_index = 0u; note_index < note_count; ++note_index) {
         const uint32_t visual_index = i * KESSHO_PRODUCT_ORBIT_VISUAL_NOTES + note_index;
-        telemetry.synth_orbit_visual_note_angles[visual_index] = lane.orbit.notes[note_index].angle;
+        telemetry.synth_orbit_visual_note_angles[visual_index] = telemetryOrbitVisualAngle(lane.orbit, note_index);
         telemetry.synth_orbit_visual_note_flashes[visual_index] = lane.orbit.notes[note_index].flash;
       }
     }

@@ -35,6 +35,11 @@
   border-color: rgba(125, 211, 252, 0.4);
 }
 
+.seq-capture-pill--empty {
+  border-color: rgba(251, 191, 36, 0.38);
+  color: rgba(245, 236, 214, 0.72);
+}
+
 .seq-capture-dot {
   width: 7px;
   height: 7px;

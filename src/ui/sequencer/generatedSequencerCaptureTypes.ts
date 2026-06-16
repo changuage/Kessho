@@ -5,6 +5,7 @@ export type CaptureCommitStatus =
   | 'recording'
   | 'committing'
   | 'committed'
+  | 'empty'
   | 'overflow';
 
 export interface CaptureCell {

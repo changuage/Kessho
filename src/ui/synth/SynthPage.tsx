@@ -3182,6 +3182,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     startCapture: startGeneratedCapture,
     stopAndCommit: stopGeneratedCapture,
     cancelCapture: cancelGeneratedCapture,
+    captureManualNote: captureGeneratedManualNote,
     ingestProductEvents: ingestGeneratedCaptureEvents,
     markCurrentStepFromPlayhead: markGeneratedCaptureStepFromPlayhead,
   } = generatedSequenceCapture;
@@ -3973,7 +3974,21 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const layout = MANUAL_KEYBOARD_LAYOUT[keyIndex];
     if (!layout) return;
     const midi = keyboardBaseMidi + layout.semitone;
-    if (synthLiveOverdub.isRecording) {
+    if (generatedCaptureIsCapturing) {
+      const targetLaneIndex = generatedCaptureSession?.targetLaneIndex ?? seq.activeTab;
+      const targetStepCount = generatedCaptureSession?.targetStepCount ?? getTriggerStepCountForLane(targetLaneIndex);
+      const targetStep = liveOverdubTargetStep(
+        seq.playheads[targetLaneIndex],
+        activeTriggerCursorStep,
+        targetStepCount,
+      );
+      captureGeneratedManualNote({
+        midiNote: midi,
+        velocity: MANUAL_KEYBOARD_VELOCITY,
+        gateSeconds: 0.18,
+        targetStepIndex: targetStep,
+      });
+    } else if (synthLiveOverdub.isRecording) {
       recordSynthLiveOverdubNote(midi);
     } else if (!synthLiveOverdub.isArmed && keyboardInputMode === 'sequence' && canWriteSequenceNotes) {
       writeKeyboardSequenceNote(seq.activeTab, midi);
@@ -3998,13 +4013,20 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     activeLaneSource,
     activeLaneUsesPadVoiceMask,
     activeLaneVoiceMask,
+    activeTriggerCursorStep,
     canWriteSequenceNotes,
+    captureGeneratedManualNote,
     effectiveKeyboardSource,
+    generatedCaptureIsCapturing,
+    generatedCaptureSession?.targetLaneIndex,
+    generatedCaptureSession?.targetStepCount,
+    getTriggerStepCountForLane,
     keyboardBaseMidi,
     keyboardInputMode,
     onAuditionNote,
     recordSynthLiveOverdubNote,
     seq.activeTab,
+    seq.playheads,
     synthLiveOverdub.isArmed,
     synthLiveOverdub.isRecording,
     writeKeyboardSequenceNote,
@@ -7155,6 +7177,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     harmonyState={harmonyState}
                     isRunning={isRunning}
                     transportBpm={transportDebug?.effectiveBpm ?? getEffectiveSequencerBpm(state)}
+                    clockDivision={seq.clockDivs[seq.activeTab]}
+                    stepCount={activeSeq.trigger.steps}
+                    tempoMultiplier={Number.isFinite(state.synthEuclideanTempo) ? state.synthEuclideanTempo : 1}
                     runtimeVisualState={orbitVisualStates[seq.activeTab] ?? null}
                     captureSlot={(
                       <SequencerCaptureButton

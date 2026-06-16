@@ -57,6 +57,12 @@ void armAnchorWalkerGesture(
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_KEYBOARD_RANGE_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_SHOW_LINKED_OUTPUTS_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_ACTIVE_PAD_DELTA_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPEED_OFFSET_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_GLOBAL_OFFSET_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_EVEN_OFFSET_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_FREE_OFFSET_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_EVEN_REVERSE_MODE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_CONSTELLATION_MODE_ID:
       return true;
     default:
       return param_id >= KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MODE_ID &&
@@ -365,6 +371,24 @@ void armAnchorWalkerGesture(
       break;
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_BPM_PERCENT_ID:
       lane.orbit.bpm_percent = clampFloat(event.value, 1.0f, 800.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPEED_OFFSET_ID:
+      lane.orbit.speed_offset = clampFloat(event.value, -1.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_GLOBAL_OFFSET_ID:
+      lane.orbit.global_offset = clampFloat(event.value, -1.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_EVEN_OFFSET_ID:
+      lane.orbit.even_offset = clampFloat(event.value, -1.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_FREE_OFFSET_ID:
+      lane.orbit.free_offset = clampFloat(event.value, -1.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_EVEN_REVERSE_MODE_ID:
+      lane.orbit.even_reverse_mode = event.value >= 0.5f ? 1u : 0u;
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_CONSTELLATION_MODE_ID:
+      lane.orbit.constellation_mode = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 5u);
       break;
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_QUANTIZE_TO_HARMONY_ID:
       lane.orbit.quantize_to_harmony = event.value >= 0.5f;

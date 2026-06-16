@@ -195,6 +195,12 @@ typedef struct KesshoProductOrbitSequencerSnapshot {
   uint32_t trigger_line_count;
   uint32_t clock_mode;
   float bpm_percent;
+  float speed_offset;
+  float global_offset;
+  float even_offset;
+  float free_offset;
+  uint32_t even_reverse_mode;
+  uint32_t constellation_mode;
   uint32_t quantize_to_harmony;
   uint32_t snap_source;
   float pitch_range_min;

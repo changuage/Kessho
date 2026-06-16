@@ -8,8 +8,23 @@ import {
   resolveSequencerChainPosition,
 } from './sequencerChain';
 import { createDefaultSynthSequencerFaceState } from '../ui/sequencer/sequencerModeTypes';
-import { TAU, resolveAngularSpeed } from '../ui/sequencer/orbitSequencerMath';
-import { createDefaultOrbitNote } from '../ui/sequencer/orbitSequencerTypes';
+import {
+  ORBIT_EVEN_REVERSE_THRESHOLD,
+  TAU,
+  adjustedOrbitSpeedValue,
+  effectiveOrbitDirection,
+  orbitClockedBpmPercent,
+  orbitClockedLoopBeats,
+  orbitAuthoredPhaseFromVisual,
+  orbitPhaseOffsetTurns,
+  orbitSpeedOffsetFactor,
+  orbitSpeedOffsetStats,
+  orbitVisualPhase,
+  resolveAngularSpeed,
+  snapOrbitPhase,
+} from '../ui/sequencer/orbitSequencerMath';
+import { generateOrbitConstellation } from '../ui/sequencer/orbitConstellation';
+import { createDefaultOrbitNote, normalizeOrbitSequencerConfig } from '../ui/sequencer/orbitSequencerTypes';
 
 const disabledDelaySnapshot = createCoreProductSnapshot({
   padEnabled: true,
@@ -170,6 +185,159 @@ for (const mode of ['anchorWalker', 'orbit'] as const) {
     resolveAngularSpeed('syncDivisor', 64, 100, 120),
     'Orbit visualizer sync divisors should use the same max clamp as Product Core',
   );
+  assert.equal(orbitClockedLoopBeats(16, '1/8', 1), 8, 'Orbit clocked loop should match a full 16-step 1/8 Euclid cycle');
+  assert.equal(orbitClockedBpmPercent(16, '1/8', 1), 50, 'Orbit clocked speed should convert the Euclid cycle to BPM percent');
+  assert.equal(orbitClockedLoopBeats(16, '1/16', 1), 4, 'Orbit clocked loop should follow clock division changes');
+  assert.equal(orbitClockedLoopBeats(16, '1/8', 2), 4, 'Orbit clocked loop should follow lane tempo multiplier');
+  assert.equal(orbitClockedLoopBeats(16, '1/8', 1, 0.5), 16, 'Orbit clocked loop should support half-clock timing');
+  assert.equal(orbitClockedLoopBeats(16, '1/8', 1, 2), 4, 'Orbit clocked loop should support double-clock timing');
+  assert.equal(orbitClockedBpmPercent(16, '1/8', 1, 2), 100, 'Orbit double-clock timing should map to the expected effective BPM percent');
+}
+
+{
+  const config = normalizeOrbitSequencerConfig({
+    speedOffset: -2,
+    globalOffset: 0.125,
+    evenOffset: 0.25,
+    freeOffset: -0.5,
+    notes: Array.from({ length: 8 }, (_, index) => createDefaultOrbitNote(index, {
+      phase: (TAU * index) / 8,
+    })),
+    seed: 123,
+  });
+  assert.equal(config.speedOffset, -1, 'Orbit speed offset should normalize to the full -1..1 range');
+  assert.equal(config.freeOffset, -0.5, 'Orbit free offset should support negative values');
+  const speedStats = orbitSpeedOffsetStats([
+    { radiusNorm: 0 },
+    { radiusNorm: 0.5 },
+    { radiusNorm: 1 },
+  ]);
+  assert.equal(orbitSpeedOffsetFactor(0, -1, speedStats), 2, 'Negative speed offset should speed inner nodes');
+  assert.equal(orbitSpeedOffsetFactor(0.5, -1, speedStats), 1, 'Negative speed offset should keep mean-radius notes neutral');
+  assert.equal(orbitSpeedOffsetFactor(1, -1, speedStats), 0, 'Negative speed offset should slow outer nodes');
+  assert.equal(orbitSpeedOffsetFactor(0, 1, speedStats), 0, 'Positive speed offset should slow inner nodes');
+  assert.equal(orbitSpeedOffsetFactor(0.5, 1, speedStats), 1, 'Positive speed offset should keep mean-radius notes neutral');
+  assert.equal(orbitSpeedOffsetFactor(1, 1, speedStats), 2, 'Positive speed offset should speed outer nodes');
+  for (const offset of [0.25, 0.5, 1]) {
+    const positiveAverage = (
+      orbitSpeedOffsetFactor(0, offset, speedStats) +
+      orbitSpeedOffsetFactor(0.5, offset, speedStats) +
+      orbitSpeedOffsetFactor(1, offset, speedStats)
+    ) / 3;
+    const negativeAverage = (
+      orbitSpeedOffsetFactor(0, -offset, speedStats) +
+      orbitSpeedOffsetFactor(0.5, -offset, speedStats) +
+      orbitSpeedOffsetFactor(1, -offset, speedStats)
+    ) / 3;
+    assert(Math.abs(positiveAverage - negativeAverage) < 1e-9, 'Equivalent positive/negative speed offsets should keep the same average factor');
+    assert(Math.abs(positiveAverage - 1) < 1e-9, 'Orbit speed offset should preserve average speed');
+  }
+  assert.equal(
+    resolveAngularSpeed('bpmPercent', adjustedOrbitSpeedValue('bpmPercent', 100, 1, -1, speedStats), 100, 120),
+    0,
+    'Orbit -1 speed offset should stop outer nodes in BPM percent mode',
+  );
+  assert.equal(
+    resolveAngularSpeed('syncDivisor', adjustedOrbitSpeedValue('syncDivisor', 4, 1, -1, speedStats), 100, 120),
+    0,
+    'Orbit -1 speed offset should stop outer nodes in sync divisor mode',
+  );
+
+  const oddNodeOffset = orbitPhaseOffsetTurns({
+    index: 0,
+    seed: config.seed,
+    globalOffset: config.globalOffset,
+    evenOffset: config.evenOffset,
+    freeOffset: 0,
+  });
+  const evenNodeOffset = orbitPhaseOffsetTurns({
+    index: 1,
+    seed: config.seed,
+    globalOffset: config.globalOffset,
+    evenOffset: config.evenOffset,
+    freeOffset: 0,
+  });
+  assert.equal(oddNodeOffset, 0.125, 'Global offset should affect odd-indexed visible nodes');
+  assert.equal(evenNodeOffset, 0.375, 'Even offset should add only to user-visible even nodes');
+
+  const visualPhase = orbitVisualPhase(0.2, {
+    index: 1,
+    seed: config.seed,
+    globalOffset: config.globalOffset,
+    evenOffset: config.evenOffset,
+    freeOffset: config.freeOffset,
+  });
+  const authoredPhase = orbitAuthoredPhaseFromVisual(visualPhase, {
+    index: 1,
+    seed: config.seed,
+    globalOffset: config.globalOffset,
+    evenOffset: config.evenOffset,
+    freeOffset: config.freeOffset,
+  });
+  assert(Math.abs(authoredPhase - 0.2) < 1e-9, 'Visual/authored orbit phase conversion should round-trip');
+
+  const snappedVisual = snapOrbitPhase(visualPhase, 8);
+  const storedAuthored = orbitAuthoredPhaseFromVisual(snappedVisual, {
+    index: 1,
+    seed: config.seed,
+    globalOffset: config.globalOffset,
+    evenOffset: config.evenOffset,
+    freeOffset: config.freeOffset,
+  });
+  const restoredSnappedVisual = orbitVisualPhase(storedAuthored, {
+    index: 1,
+    seed: config.seed,
+    globalOffset: config.globalOffset,
+    evenOffset: config.evenOffset,
+    freeOffset: config.freeOffset,
+  });
+  assert(
+    Math.abs(restoredSnappedVisual - snappedVisual) < 1e-9,
+    'Quantizing should snap visual phase while storing inverse authored phase',
+  );
+
+  assert.equal(
+    effectiveOrbitDirection('cw', 1, { evenOffset: ORBIT_EVEN_REVERSE_THRESHOLD + 0.01, evenReverseMode: 'negativeHalf' }),
+    'cw',
+    'Even reverse mode should not reverse above -0.5',
+  );
+  assert.equal(
+    effectiveOrbitDirection('cw', 1, { evenOffset: ORBIT_EVEN_REVERSE_THRESHOLD, evenReverseMode: 'negativeHalf' }),
+    'ccw',
+    'Even reverse mode should reverse at -0.5',
+  );
+  assert.equal(
+    effectiveOrbitDirection('cw', 0, { evenOffset: -1, evenReverseMode: 'negativeHalf' }),
+    'cw',
+    'Even offset should not reverse odd visible nodes',
+  );
+
+  for (const mode of ['auto', 'golden', 'fibonacci', 'pythagorean', 'harmonicRose', 'euclidean'] as const) {
+    for (const nodeCount of [3, 5, 8, 13, 21, 32]) {
+      const first = generateOrbitConstellation({
+        mode,
+        seed: 123,
+        nodeCount,
+        pitchLayout: 'harmonyBloom',
+        pitchRangeMin: 48,
+        pitchRangeMax: 84,
+      });
+      const second = generateOrbitConstellation({
+        mode,
+        seed: 123,
+        nodeCount,
+        pitchLayout: 'harmonyBloom',
+        pitchRangeMin: 48,
+        pitchRangeMax: 84,
+      });
+      assert.deepEqual(first, second, `Orbit constellation ${mode}/${nodeCount} should be deterministic`);
+      assert.equal(first.length, nodeCount, `Orbit constellation ${mode}/${nodeCount} should keep node count`);
+      for (const point of first) {
+        assert(point.radiusNorm >= 0.08 && point.radiusNorm <= 1, 'Orbit constellation radius should stay in range');
+        assert(point.phase >= 0 && point.phase < TAU, 'Orbit constellation phase should stay wrapped');
+      }
+    }
+  }
 }
 
 {
@@ -195,9 +363,46 @@ for (const mode of ['anchorWalker', 'orbit'] as const) {
   assert.equal(speedDiff.applied, true, 'Orbit speed offset should stay on the live dirty-diff path');
   assert(
     speedDiff.applied && speedDiff.events.some((event) => (
-      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitNoteSpeedValue
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitSpeedOffset &&
+      event.value === 1
     )),
-    'Orbit speed offset should emit note speed-value events',
+    'Orbit speed offset should emit a scalar orbit speed-offset event',
+  );
+
+  const globalOffsetFaces = structuredClone(faces);
+  globalOffsetFaces.slots[0]!.orbit.globalOffset = 0.125;
+  const globalOffsetDiff = buildCoreProductSnapshotDiff(baseSnapshot, createCoreProductSnapshot({
+    ...baseState,
+    synthSequencerFaces: globalOffsetFaces,
+  }));
+  assert(
+    globalOffsetDiff.applied && globalOffsetDiff.events.some((event) => (
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitGlobalOffset &&
+      event.value === 0.125
+    )),
+    'Orbit global offset should emit a scalar live event',
+  );
+
+  const evenOffsetFaces = structuredClone(faces);
+  evenOffsetFaces.slots[0]!.orbit.evenOffset = -0.5;
+  evenOffsetFaces.slots[0]!.orbit.freeOffset = -0.25;
+  const offsetDiff = buildCoreProductSnapshotDiff(baseSnapshot, createCoreProductSnapshot({
+    ...baseState,
+    synthSequencerFaces: evenOffsetFaces,
+  }));
+  assert(
+    offsetDiff.applied && offsetDiff.events.some((event) => (
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitEvenOffset &&
+      event.value === -0.5
+    )),
+    'Orbit even offset should emit a scalar live event',
+  );
+  assert(
+    offsetDiff.applied && offsetDiff.events.some((event) => (
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitFreeOffset &&
+      event.value === -0.25
+    )),
+    'Orbit free offset should emit a scalar live event',
   );
 
   const eightNodeFaces = structuredClone(faces);
@@ -227,20 +432,13 @@ for (const mode of ['anchorWalker', 'orbit'] as const) {
     synthSequencerFaces: eightNodeSpeedFaces,
   }));
   assert.equal(eightNodeSpeedDiff.applied, true, 'Orbit 8-node speed offset should stay on the live dirty-diff path');
-  const eightNodeSpeedEventIndices = new Set(eightNodeSpeedDiff.applied
-    ? eightNodeSpeedDiff.events
-      .filter((event) => (
-        event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitNoteSpeedValue &&
-        event.index === 0
-      ))
-      .map((event) => event.flags ?? 0)
-    : []);
-  for (let noteIndex = 0; noteIndex < 8; noteIndex += 1) {
-    assert(
-      eightNodeSpeedEventIndices.has(noteIndex),
-      `Orbit speed offset should emit speed-value event for visible node index ${noteIndex}`,
-    );
-  }
+  assert(
+    eightNodeSpeedDiff.applied && eightNodeSpeedDiff.events.some((event) => (
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitSpeedOffset &&
+      event.value === 1
+    )),
+    'Orbit speed offset should emit one scalar speed-offset event for multi-node layouts',
+  );
 
   const phaseFaces = structuredClone(faces);
   phaseFaces.slots[0]!.orbit.notes = phaseFaces.slots[0]!.orbit.notes.map((note) => ({
@@ -310,6 +508,60 @@ for (const mode of ['anchorWalker', 'orbit'] as const) {
       `Orbit 5-node Bloom layout should emit phase for node index ${noteIndex}`,
     );
   }
+
+  const thirteenNodeFaces = structuredClone(faces);
+  const thirteenNodePoints = generateOrbitConstellation({
+    mode: 'auto',
+    seed: thirteenNodeFaces.slots[0]!.orbit.seed,
+    nodeCount: 13,
+    pitchLayout: 'harmonyBloom',
+    pitchRangeMin: 48,
+    pitchRangeMax: 84,
+  });
+  thirteenNodeFaces.slots[0]!.orbit = {
+    ...thirteenNodeFaces.slots[0]!.orbit,
+    quantizedOffset: 13,
+    notes: thirteenNodePoints.map((point, index) => createDefaultOrbitNote(index, {
+      id: `orbit-note-${index + 1}`,
+      radiusNorm: point.radiusNorm,
+      phase: point.phase,
+      pitchMode: 'harmonyBloom',
+      speedMode: 'bpmPercent',
+      speedValue: point.speedValue ?? 100,
+      direction: point.direction,
+      midiNote: point.midiNote,
+      harmonyDegree: point.harmonyDegree,
+    })),
+  };
+  const thirteenNodeDiff = buildCoreProductSnapshotDiff(baseSnapshot, createCoreProductSnapshot({
+    ...baseState,
+    synthSequencerFaces: thirteenNodeFaces,
+  }));
+  assert.equal(thirteenNodeDiff.applied, true, 'Orbit 13-node Bloom layout should stay on the live dirty-diff path');
+  assert(
+    thirteenNodeDiff.applied && thirteenNodeDiff.events.some((event) => (
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitNoteCount &&
+      event.value === 13
+    )),
+    'Orbit 13-node Bloom layout should emit the native note count',
+  );
+  for (const noteIndex of [1, 2, 3, 12]) {
+    assert(
+      thirteenNodeDiff.applied && thirteenNodeDiff.events.some((event) => (
+        event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitNotePhase &&
+        event.flags === noteIndex
+      )),
+      `Orbit 13-node Bloom layout should emit phase for node index ${noteIndex}`,
+    );
+  }
+  assert(
+    thirteenNodeDiff.applied && thirteenNodeDiff.events.some((event) => (
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitNoteEnabled &&
+      event.flags === 12 &&
+      event.value === 1
+    )),
+    'Orbit 13-node Bloom layout should enable newly-added node slots',
+  );
 }
 
 {

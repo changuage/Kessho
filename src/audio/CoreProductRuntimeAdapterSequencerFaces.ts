@@ -131,6 +131,12 @@ function orbitDiffDefaults(): ProductLaneSnapshot['orbit'] {
     triggerLineCount: 1,
     clockMode: 0,
     bpmPercent: 100,
+    speedOffset: 0,
+    globalOffset: 0,
+    evenOffset: 0,
+    freeOffset: 0,
+    evenReverseMode: 0,
+    constellationMode: 0,
     quantizeToHarmony: true,
     snapSource: 0,
     pitchRangeMin: 48,
@@ -206,6 +212,12 @@ export function appendSequencerModeConfigDiffs(
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitTriggerLineCount, prevOrbit.triggerLineCount, nextOrbit.triggerLineCount);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitClockMode, prevOrbit.clockMode, nextOrbit.clockMode);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitBpmPercent, prevOrbit.bpmPercent, nextOrbit.bpmPercent);
+  appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitSpeedOffset, prevOrbit.speedOffset, nextOrbit.speedOffset);
+  appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitGlobalOffset, prevOrbit.globalOffset, nextOrbit.globalOffset);
+  appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitEvenOffset, prevOrbit.evenOffset, nextOrbit.evenOffset);
+  appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitFreeOffset, prevOrbit.freeOffset, nextOrbit.freeOffset);
+  appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitEvenReverseMode, prevOrbit.evenReverseMode, nextOrbit.evenReverseMode);
+  appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitConstellationMode, prevOrbit.constellationMode, nextOrbit.constellationMode);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitQuantizeToHarmony, prevOrbit.quantizeToHarmony, nextOrbit.quantizeToHarmony);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitSnapSource, prevOrbit.snapSource, nextOrbit.snapSource);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitPitchRangeMin, prevOrbit.pitchRangeMin, nextOrbit.pitchRangeMin);
@@ -221,9 +233,8 @@ export function appendSequencerModeConfigDiffs(
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitSplineBaseAngle, prevOrbit.splineBaseAngle, nextOrbit.splineBaseAngle);
   appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitNoteCount, prevOrbit.noteCount, nextOrbit.noteCount);
   for (let index = 0; index < 32; index += 1) {
-    const previousNote = prevOrbit.notes[index];
-    const nextNote = nextOrbit.notes[index];
-    if (!previousNote || !nextNote) continue;
+    const previousNote = prevOrbit.notes[index] ?? orbitNoteDiffDefaults(index);
+    const nextNote = nextOrbit.notes[index] ?? orbitNoteDiffDefaults(index);
     appendIndexedLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitNoteEnabled, previousNote.enabled, nextNote.enabled, index);
     appendIndexedLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitNoteRadius, previousNote.radiusNorm, nextNote.radiusNorm, index);
     appendIndexedLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerOrbitNotePhase, previousNote.phase, nextNote.phase, index);

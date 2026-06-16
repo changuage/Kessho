@@ -1049,34 +1049,150 @@ bool crossingFraction(double previous, double current, double& fraction) {
   return false;
 }
 
+bool isUserVisibleEvenOrbitNode(uint32_t index) {
+  return (index % 2u) == 1u;
+}
+
+double clampOrbitOffset(float value) {
+  return std::clamp(std::isfinite(value) ? static_cast<double>(value) : 0.0, -1.0, 1.0);
+}
+
+struct OrbitSpeedOffsetStats {
+  double center = 0.0;
+  double span = 0.0;
+};
+
+OrbitSpeedOffsetStats orbitSpeedOffsetStats(const kessho::product::internal::OrbitSequencerState& orbit) {
+  const uint32_t note_count = std::min<uint32_t>(orbit.note_count, kessho::product::internal::kMaxOrbitSequencerNotes);
+  double sum = 0.0;
+  uint32_t count = 0u;
+  for (uint32_t index = 0u; index < note_count; ++index) {
+    const kessho::product::internal::OrbitNoteState& note = orbit.notes[index];
+    if (!note.enabled) {
+      continue;
+    }
+    sum += std::clamp(std::isfinite(note.radius_norm) ? static_cast<double>(note.radius_norm) : 0.0, 0.0, 1.0);
+    ++count;
+  }
+  if (count <= 1u) {
+    return {};
+  }
+  OrbitSpeedOffsetStats stats{};
+  stats.center = sum / static_cast<double>(count);
+  for (uint32_t index = 0u; index < note_count; ++index) {
+    const kessho::product::internal::OrbitNoteState& note = orbit.notes[index];
+    if (!note.enabled) {
+      continue;
+    }
+    const double radius = std::clamp(std::isfinite(note.radius_norm) ? static_cast<double>(note.radius_norm) : 0.0, 0.0, 1.0);
+    stats.span = std::max(stats.span, std::abs(radius - stats.center));
+  }
+  if (stats.span <= 1.0e-6) {
+    stats.span = 0.0;
+  }
+  return stats;
+}
+
+double orbitSpeedOffsetFactor(float radius_norm, float speed_offset, const OrbitSpeedOffsetStats& stats) {
+  const double offset = clampOrbitOffset(speed_offset);
+  const double radius = std::clamp(std::isfinite(radius_norm) ? static_cast<double>(radius_norm) : 0.0, 0.0, 1.0);
+  if (std::abs(offset) < 1.0e-6 || stats.span <= 1.0e-6) {
+    return 1.0;
+  }
+  return std::clamp(1.0 + offset * ((radius - stats.center) / stats.span), 0.0, 2.0);
+}
+
+double effectiveEvenPhaseOffsetTurns(float even_offset) {
+  const double value = clampOrbitOffset(even_offset);
+  return value <= -0.5 ? -0.5 : value;
+}
+
+double orbitFreeOffsetJitter(uint32_t seed, uint32_t index) {
+  return static_cast<double>(kessho::product::internal::hashUnit(seed + index * 97u + 41u)) - 0.5;
+}
+
+double orbitPhaseOffsetTurns(
+    const kessho::product::internal::OrbitSequencerState& orbit,
+    uint32_t note_index) {
+  const double global = clampOrbitOffset(orbit.global_offset);
+  const double even = isUserVisibleEvenOrbitNode(note_index)
+      ? effectiveEvenPhaseOffsetTurns(orbit.even_offset)
+      : 0.0;
+  const double free = clampOrbitOffset(orbit.free_offset) * orbitFreeOffsetJitter(orbit.seed, note_index);
+  return global + even + free;
+}
+
+double orbitVisualAngle(
+    const kessho::product::internal::OrbitSequencerState& orbit,
+    uint32_t note_index,
+    double authored_angle) {
+  return wrapRadiansDouble(authored_angle + orbitPhaseOffsetTurns(orbit, note_index) * kessho::product::internal::kTwoPi);
+}
+
+int32_t orbitEffectiveDirection(
+    const kessho::product::internal::OrbitSequencerState& orbit,
+    const kessho::product::internal::OrbitNoteState& note,
+    uint32_t note_index) {
+  const int32_t base_direction = note.direction < 0 ? -1 : 1;
+  if (
+      orbit.even_reverse_mode == 1u &&
+      isUserVisibleEvenOrbitNode(note_index) &&
+      orbit.even_offset <= -0.5f) {
+    return -base_direction;
+  }
+  return base_direction;
+}
+
 double orbitBaseAngularVelocity(
     const KesshoProductEngine& engine,
+    const kessho::product::internal::LaneState& lane,
     const kessho::product::internal::OrbitSequencerState& orbit) {
   const double beats_per_second = std::max(1.0f, engine.transport.bpm) / 60.0;
-  const double orbit_multiplier = static_cast<double>(kessho::product::internal::clampFloat(
+  double orbit_multiplier = static_cast<double>(kessho::product::internal::clampFloat(
       orbit.bpm_percent,
       1.0f,
       800.0f)) / 100.0;
+  if (orbit.clock_mode == 0u) {
+    const double steps = static_cast<double>(std::max(1u, lane.step_count));
+    const double division = static_cast<double>(std::max(1u, lane.clock_division));
+    const double tempo = static_cast<double>(kessho::product::internal::clampFloat(
+        lane.tempo_multiplier,
+        0.25f,
+        12.0f));
+    const double clock_rate = static_cast<double>(kessho::product::internal::clampFloat(
+        orbit.bpm_percent,
+        1.0f,
+        800.0f)) / 100.0;
+    orbit_multiplier = std::clamp((division * tempo / steps) * clock_rate, 0.01, 8.0);
+  }
   return kessho::product::internal::kTwoPi * beats_per_second * orbit_multiplier * 0.25;
 }
 
 double orbitAngularVelocity(
     const KesshoProductEngine& engine,
+    const kessho::product::internal::LaneState& lane,
     const kessho::product::internal::OrbitSequencerState& orbit,
-    const kessho::product::internal::OrbitNoteState& note) {
-  double angular_velocity = orbitBaseAngularVelocity(engine, orbit);
+    const kessho::product::internal::OrbitNoteState& note,
+    uint32_t note_index,
+    const OrbitSpeedOffsetStats& speed_stats) {
+  double angular_velocity = orbitBaseAngularVelocity(engine, lane, orbit);
+  const double factor = orbitSpeedOffsetFactor(note.radius_norm, orbit.speed_offset, speed_stats);
+  if (factor <= 0.0) {
+    return 0.0;
+  }
   if (note.speed_mode == 0u) {
     angular_velocity *= static_cast<double>(kessho::product::internal::clampFloat(
         note.speed_value,
         1.0f,
-        800.0f)) / 100.0;
+        800.0f)) / 100.0 * factor;
   } else {
-    angular_velocity /= static_cast<double>(kessho::product::internal::clampFloat(
-        note.speed_value,
-        0.125f,
-        64.0f));
+    const double divisor = std::clamp(
+        static_cast<double>(kessho::product::internal::clampFloat(note.speed_value, 0.125f, 800.0f)) / factor,
+        0.125,
+        64.0);
+    angular_velocity /= divisor;
   }
-  return angular_velocity * (note.direction < 0 ? -1.0 : 1.0);
+  return angular_velocity * static_cast<double>(orbitEffectiveDirection(orbit, note, note_index));
 }
 
 double orbitSplineAngleAtRadius(
@@ -1176,7 +1292,7 @@ bool generateOrbitLaneEvents(
   }
   const double block_seconds = static_cast<double>(frames) / std::max(1.0, engine.sample_rate);
   const double base_velocity = orbit.spline_spin_enabled
-      ? orbitBaseAngularVelocity(engine, orbit) * (orbit.spline_spin_direction < 0 ? -1.0 : 1.0)
+      ? orbitBaseAngularVelocity(engine, lane, orbit) * (orbit.spline_spin_direction < 0 ? -1.0 : 1.0)
       : 0.0;
   const double previous_base_angle = orbit.base_angle;
   orbit.prev_base_angle = static_cast<float>(previous_base_angle);
@@ -1184,6 +1300,7 @@ bool generateOrbitLaneEvents(
   const uint16_t pitch_mask = orbitPitchClassMask(engine, orbit);
   const uint32_t line_count = clampU32(orbit.trigger_line_count, 1u, kMaxOrbitTriggerLines);
   const uint32_t note_count = std::min<uint32_t>(orbit.note_count, kMaxOrbitSequencerNotes);
+  const OrbitSpeedOffsetStats speed_stats = orbitSpeedOffsetStats(orbit);
   for (uint32_t note_index = 0u; note_index < note_count; ++note_index) {
     OrbitNoteState& note = orbit.notes[note_index];
     if (!note.enabled) {
@@ -1194,8 +1311,10 @@ bool generateOrbitLaneEvents(
     const double previous_angle = note.angle;
     note.prev_angle = static_cast<float>(previous_angle);
     const double current_angle = wrapRadiansDouble(
-        previous_angle + orbitAngularVelocity(engine, orbit, note) * block_seconds);
+        previous_angle + orbitAngularVelocity(engine, lane, orbit, note, note_index, speed_stats) * block_seconds);
     note.angle = static_cast<float>(current_angle);
+    const double previous_visual_angle = orbitVisualAngle(orbit, note_index, previous_angle);
+    const double current_visual_angle = orbitVisualAngle(orbit, note_index, current_angle);
     bool triggered = false;
     for (uint32_t line_index = 0u; line_index < line_count; ++line_index) {
       const double line_angle = (kTwoPi * static_cast<double>(line_index)) / static_cast<double>(line_count);
@@ -1207,8 +1326,8 @@ bool generateOrbitLaneEvents(
           orbit,
           note.radius_norm,
           static_cast<double>(orbit.base_angle) + line_angle);
-      const double previous_relative = wrapRadiansDouble(previous_angle - previous_spline_angle);
-      const double current_relative = wrapRadiansDouble(current_angle - current_spline_angle);
+      const double previous_relative = wrapRadiansDouble(previous_visual_angle - previous_spline_angle);
+      const double current_relative = wrapRadiansDouble(current_visual_angle - current_spline_angle);
       double fraction = 0.0;
       if (!crossingFraction(previous_relative, current_relative, fraction)) {
         continue;

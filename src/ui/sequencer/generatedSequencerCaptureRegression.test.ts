@@ -223,7 +223,61 @@ function testCommitGeneratedCaptureToEuclid(): void {
   });
 }
 
+function testEmptyCaptureDoesNotOverwriteEuclidLane(): void {
+  const targetLaneIndex = 2;
+  const params: Array<[number, string, number]> = [];
+  const selects: Array<[number, string, unknown]> = [];
+  let selectedMode: [number, 'euclid'] | null = null;
+  let selectedPitchBinding: [number, 'sequence'] | null = null;
+  let stepOverrides = makeStepOverrides();
+  let subLaneStates = makeSubLaneStates();
+  let pitchSettings: PitchSettings[] = Array.from({ length: 4 }, () => ({
+    mode: 'semitones',
+    root: 48,
+    scale: 'Major',
+  }));
+
+  const seq: CommitGeneratedCaptureArgs['seq'] = {
+    setParam: (laneIndex, suffix, value) => params.push([laneIndex, suffix, value]),
+    setParamSelect: (laneIndex, suffix, value) => selects.push([laneIndex, suffix, value]),
+    setStepOverrides: (action) => {
+      stepOverrides = applyStateAction(stepOverrides, action);
+    },
+    setSubLaneStates: (action) => {
+      subLaneStates = applyStateAction(subLaneStates, action);
+    },
+    setPitchSettings: (action) => {
+      pitchSettings = applyStateAction(pitchSettings, action);
+    },
+    setOpenLane: () => {},
+  };
+
+  const previousStepOverrides = stepOverrides;
+  const previousSubLaneStates = subLaneStates;
+  const previousPitchSettings = pitchSettings;
+
+  commitGeneratedCaptureToEuclid({
+    scratch: createCaptureScratch(8),
+    targetLaneIndex,
+    seq,
+    setSequencerMode: (laneIndex, mode) => {
+      selectedMode = [laneIndex, mode];
+    },
+    setPitchBindingMode: (laneIndex, mode) => {
+      selectedPitchBinding = [laneIndex, mode];
+    },
+  });
+
+  assert.equal(selectedMode, null);
+  assert.equal(selectedPitchBinding, null);
+  assert.deepEqual(selects, []);
+  assert.deepEqual(params, []);
+  assert.equal(stepOverrides, previousStepOverrides);
+  assert.equal(subLaneStates, previousSubLaneStates);
+  assert.equal(pitchSettings, previousPitchSettings);
+}
+
 testCaptureScratch();
 testCapturedPitchConversion();
 testCommitGeneratedCaptureToEuclid();
-
+testEmptyCaptureDoesNotOverwriteEuclidLane();

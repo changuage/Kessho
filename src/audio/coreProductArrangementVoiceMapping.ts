@@ -56,8 +56,9 @@ export function padEuclidOwnedVoiceMask(state: Record<string, unknown>): number 
 
 export function enabledChordMidiForMask(chordMidi: number[], voiceMask: number): number[] {
   const enabledMidi: number[] = [];
-  for (let voiceIndex = 0; voiceIndex < PAD_VOICE_COUNT; voiceIndex += 1) {
-    const midi = chordMidi[voiceIndex % Math.max(1, chordMidi.length)];
+  const mappedVoiceCount = Math.min(PAD_VOICE_COUNT, chordMidi.length);
+  for (let voiceIndex = 0; voiceIndex < mappedVoiceCount; voiceIndex += 1) {
+    const midi = chordMidi[voiceIndex];
     if ((voiceMask & (1 << voiceIndex)) !== 0 && midi !== undefined) enabledMidi.push(midi);
   }
   if (enabledMidi.length === 0 && chordMidi.length > 0) enabledMidi.push(chordMidi[0]!);

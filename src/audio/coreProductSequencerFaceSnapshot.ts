@@ -1,6 +1,5 @@
 import { normalizeSynthSequencerFaceState, type SequencerMode } from '../ui/sequencer/sequencerModeTypes';
 import type { AnchorWalkerConfig, AnchorWalkerLayerConfig, SnapSource, WalkerBoundaryMode, WalkerPlayMode, WalkerTriggerMode } from '../ui/sequencer/anchorWalkerTypes';
-import { adjustedOrbitSpeedValue } from '../ui/sequencer/orbitSequencerMath';
 import type { OrbitNoteConfig, OrbitSequencerConfig } from '../ui/sequencer/orbitSequencerTypes';
 import type { ProductAnchorWalkerLayerSnapshot, ProductAnchorWalkerSnapshot, ProductOrbitNoteSnapshot, ProductOrbitSequencerSnapshot } from './coreProductSnapshotTypes';
 import { clamp } from './coreProductSnapshotState';
@@ -77,6 +76,20 @@ const ORBIT_PITCH_MODE_IDS = {
   harmonyDegree: 1,
   rangeSnap: 2,
   harmonyBloom: 3,
+} as const;
+
+const ORBIT_EVEN_REVERSE_MODE_IDS = {
+  off: 0,
+  negativeHalf: 1,
+} as const;
+
+const ORBIT_CONSTELLATION_MODE_IDS = {
+  auto: 0,
+  golden: 1,
+  fibonacci: 2,
+  pythagorean: 3,
+  harmonicRose: 4,
+  euclidean: 5,
 } as const;
 
 function pitchClassMaskFromClasses(classes: readonly number[]): number {
@@ -166,17 +179,16 @@ export function productAnchorWalkerFromConfig(
   };
 }
 
-function productOrbitNoteFromConfig(note: OrbitNoteConfig, index: number, speedOffset: number): ProductOrbitNoteSnapshot {
+function productOrbitNoteFromConfig(note: OrbitNoteConfig, index: number): ProductOrbitNoteSnapshot {
   const velocityMin = clamp(note.velocityMin, 0, 1);
   const gateMin = clamp(note.gateMinBeats, 0.05, 8);
   const pitchMin = clamp(note.pitchRangeMin, 0, 127);
-  const speedValue = adjustedOrbitSpeedValue(note.speedMode, note.speedValue, note.radiusNorm, speedOffset);
   return {
     enabled: note.enabled,
     radiusNorm: clamp(note.radiusNorm, 0.08, 1),
     phase: note.phase,
     speedMode: ORBIT_SPEED_MODE_IDS[note.speedMode] ?? 1,
-    speedValue: clamp(speedValue, 0.125, 800),
+    speedValue: clamp(note.speedValue, 0.125, 800),
     direction: note.direction === 'ccw' ? -1 : 1,
     pitchMode: ORBIT_PITCH_MODE_IDS[note.pitchMode] ?? 1,
     midiNote: clamp(note.midiNote, 0, 127),
@@ -209,6 +221,12 @@ export function productOrbitFromConfig(
     triggerLineCount: Math.round(clamp(config.triggerLineCount, 1, 8)),
     clockMode: config.clockMode === 'freeBpmPercent' ? 1 : 0,
     bpmPercent: clamp(config.bpmPercent, 1, 800),
+    speedOffset: clamp(config.speedOffset, -1, 1),
+    globalOffset: clamp(config.globalOffset, -1, 1),
+    evenOffset: clamp(config.evenOffset, -1, 1),
+    freeOffset: clamp(config.freeOffset, -1, 1),
+    evenReverseMode: ORBIT_EVEN_REVERSE_MODE_IDS[config.evenReverseMode] ?? 0,
+    constellationMode: ORBIT_CONSTELLATION_MODE_IDS[config.constellationMode] ?? 0,
     quantizeToHarmony: config.quantizeToHarmony,
     snapSource: SNAP_SOURCE_IDS[config.snapSource] ?? 0,
     pitchRangeMin: pitchMin,
@@ -249,7 +267,7 @@ export function productOrbitFromConfig(
         probability: 1,
         targetSourceId: 'follow',
         seed: 2001 + index,
-      }, index, config.speedOffset)
+      }, index)
     )),
   };
 }

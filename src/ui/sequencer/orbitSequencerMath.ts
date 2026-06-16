@@ -1,8 +1,16 @@
 import type { OrbitDirection, OrbitSplineConfig } from './orbitSequencerTypes';
+import { sequencerClockDivisionToNumericValue } from '../../audio/sequencerClockDivisions';
 
 export const TAU = Math.PI * 2;
 export const ORBIT_RADIUS_SCALE = 0.44;
 export const MAX_ORBIT_TRIGGER_LINES = 8;
+export const ORBIT_OFFSET_MIN = -1;
+export const ORBIT_OFFSET_MAX = 1;
+export const ORBIT_SPEED_OFFSET_MIN = -1;
+export const ORBIT_SPEED_OFFSET_MAX = 1;
+export const ORBIT_FREE_OFFSET_MIN = -1;
+export const ORBIT_FREE_OFFSET_MAX = 1;
+export const ORBIT_EVEN_REVERSE_THRESHOLD = -0.5;
 
 export interface OrbitPoint {
   x: number;
@@ -14,6 +22,16 @@ export interface OrbitPolar {
   angle: number;
 }
 
+export interface OrbitSpeedOffsetStats {
+  center: number;
+  span: number;
+}
+
+interface OrbitSpeedOffsetRadius {
+  radiusNorm: number;
+  enabled?: boolean;
+}
+
 export interface OrbitSplineSample extends OrbitPoint {
   radiusNorm: number;
   angle: number;
@@ -23,10 +41,24 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+export function clampUnitOffset(value: number): number {
+  return clamp(Number.isFinite(value) ? value : 0, ORBIT_OFFSET_MIN, ORBIT_OFFSET_MAX);
+}
+
 export function wrapRadians(angle: number): number {
   if (!Number.isFinite(angle)) return 0;
   const wrapped = angle % TAU;
   return wrapped < 0 ? wrapped + TAU : wrapped;
+}
+
+export function orbitHashUnit(seed: number): number {
+  let x = seed >>> 0;
+  x ^= x >>> 16;
+  x = Math.imul(x, 0x7feb352d) >>> 0;
+  x ^= x >>> 15;
+  x = Math.imul(x, 0x846ca68b) >>> 0;
+  x ^= x >>> 16;
+  return (x >>> 0) / 0x100000000;
 }
 
 export function snapOrbitPhase(angle: number, division: number): number {
@@ -131,6 +163,73 @@ export function directionSign(direction: OrbitDirection): number {
   return direction === 'ccw' ? -1 : 1;
 }
 
+export function isUserVisibleEvenOrbitNode(index: number): boolean {
+  return index % 2 === 1;
+}
+
+export function orbitFreeOffsetJitter(seed: number, index: number): number {
+  return orbitHashUnit(seed + index * 97 + 41) - 0.5;
+}
+
+export function effectiveEvenPhaseOffsetTurns(evenOffset: number): number {
+  const value = clampUnitOffset(evenOffset);
+  return value <= ORBIT_EVEN_REVERSE_THRESHOLD ? ORBIT_EVEN_REVERSE_THRESHOLD : value;
+}
+
+export function orbitPhaseOffsetTurns(args: {
+  index: number;
+  seed: number;
+  globalOffset?: number;
+  evenOffset: number;
+  freeOffset: number;
+}): number {
+  const global = clampUnitOffset(args.globalOffset ?? 0);
+  const even = isUserVisibleEvenOrbitNode(args.index)
+    ? effectiveEvenPhaseOffsetTurns(args.evenOffset)
+    : 0;
+  const free = clampUnitOffset(args.freeOffset) * orbitFreeOffsetJitter(args.seed, args.index);
+  return global + even + free;
+}
+
+export function orbitVisualPhase(authoredPhase: number, args: {
+  index: number;
+  seed: number;
+  globalOffset?: number;
+  evenOffset: number;
+  freeOffset: number;
+}): number {
+  return wrapRadians(authoredPhase + orbitPhaseOffsetTurns(args) * TAU);
+}
+
+export function orbitAuthoredPhaseFromVisual(visualPhase: number, args: {
+  index: number;
+  seed: number;
+  globalOffset?: number;
+  evenOffset: number;
+  freeOffset: number;
+}): number {
+  return wrapRadians(visualPhase - orbitPhaseOffsetTurns(args) * TAU);
+}
+
+export function oppositeOrbitDirection(direction: OrbitDirection): OrbitDirection {
+  return direction === 'cw' ? 'ccw' : 'cw';
+}
+
+export function effectiveOrbitDirection(
+  direction: OrbitDirection,
+  index: number,
+  config: { evenOffset: number; evenReverseMode?: 'off' | 'negativeHalf' },
+): OrbitDirection {
+  if (
+    config.evenReverseMode === 'negativeHalf' &&
+    isUserVisibleEvenOrbitNode(index) &&
+    config.evenOffset <= ORBIT_EVEN_REVERSE_THRESHOLD
+  ) {
+    return oppositeOrbitDirection(direction);
+  }
+  return direction;
+}
+
 export function resolveAngularSpeed(
   speedMode: 'bpmPercent' | 'syncDivisor',
   speedValue: number,
@@ -140,15 +239,65 @@ export function resolveAngularSpeed(
   const beatsPerSecond = Math.max(1, Number.isFinite(transportBpm) ? transportBpm : 120) / 60;
   const base = TAU * beatsPerSecond * (clamp(bpmPercent, 1, 800) / 100) * 0.25;
   if (speedMode === 'bpmPercent') {
+    if (Number.isFinite(speedValue) && speedValue <= 0) return 0;
     return base * clamp(speedValue, 1, 800) / 100;
   }
+  if (!Number.isFinite(speedValue)) return 0;
   return base / clamp(speedValue, 0.125, 64);
 }
 
-export function orbitSpeedOffsetFactor(radiusNorm: number, speedOffset: number): number {
-  const offset = clamp(speedOffset, -0.9, 1);
-  const radius = clamp(radiusNorm, 0, 1);
-  return clamp(1 + offset * radius, 0.125, 2);
+export function orbitClockedLoopBeats(
+  stepCount: number,
+  clockDivision: unknown,
+  tempoMultiplier = 1,
+  clockRate = 1,
+): number {
+  const steps = Math.max(1, Math.min(64, Math.round(Number.isFinite(stepCount) ? stepCount : 16)));
+  const division = sequencerClockDivisionToNumericValue(clockDivision, 8);
+  const tempo = clamp(Number.isFinite(tempoMultiplier) ? tempoMultiplier : 1, 0.25, 12);
+  const rate = clamp(Number.isFinite(clockRate) ? clockRate : 1, 0.01, 8);
+  return (steps * 4) / Math.max(1, division) / tempo / rate;
+}
+
+export function orbitClockedBpmPercent(
+  stepCount: number,
+  clockDivision: unknown,
+  tempoMultiplier = 1,
+  clockRate = 1,
+): number {
+  const loopBeats = orbitClockedLoopBeats(stepCount, clockDivision, tempoMultiplier, clockRate);
+  return clamp(400 / Math.max(0.5, loopBeats), 1, 800);
+}
+
+export function orbitSpeedOffsetStats(radii: readonly OrbitSpeedOffsetRadius[]): OrbitSpeedOffsetStats {
+  let count = 0;
+  let sum = 0;
+  for (const item of radii) {
+    if (item.enabled === false) continue;
+    const radius = Number.isFinite(item.radiusNorm) ? clamp(item.radiusNorm, 0, 1) : 0;
+    sum += radius;
+    count += 1;
+  }
+  if (count <= 1) return { center: 0, span: 0 };
+  const center = sum / count;
+  let span = 0;
+  for (const item of radii) {
+    if (item.enabled === false) continue;
+    const radius = Number.isFinite(item.radiusNorm) ? clamp(item.radiusNorm, 0, 1) : 0;
+    span = Math.max(span, Math.abs(radius - center));
+  }
+  return { center, span: span > 1e-6 ? span : 0 };
+}
+
+export function orbitSpeedOffsetFactor(
+  radiusNorm: number,
+  speedOffset: number,
+  stats: OrbitSpeedOffsetStats = { center: 0, span: 1 },
+): number {
+  const offset = clampUnitOffset(speedOffset);
+  const radius = clamp(Number.isFinite(radiusNorm) ? radiusNorm : 0, 0, 1);
+  if (Math.abs(offset) < 1e-6 || stats.span <= 1e-6) return 1;
+  return clamp(1 + offset * ((radius - stats.center) / stats.span), 0, 2);
 }
 
 export function adjustedOrbitSpeedValue(
@@ -156,8 +305,12 @@ export function adjustedOrbitSpeedValue(
   speedValue: number,
   radiusNorm: number,
   speedOffset: number,
+  stats?: OrbitSpeedOffsetStats,
 ): number {
-  const factor = orbitSpeedOffsetFactor(radiusNorm, speedOffset);
+  const factor = orbitSpeedOffsetFactor(radiusNorm, speedOffset, stats);
+  if (factor <= 0) {
+    return speedMode === 'bpmPercent' ? 0 : Number.POSITIVE_INFINITY;
+  }
   if (speedMode === 'bpmPercent') {
     return clamp(speedValue * factor, 1, 800);
   }

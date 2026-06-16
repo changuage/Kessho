@@ -2022,7 +2022,7 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 145124',
+  'const SNAPSHOT_BYTES = 145892',
   'const SOURCE_BYTES = 5136',
   'const LANE_BYTES = 96',
   'KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES',

@@ -18,7 +18,7 @@ void require(bool condition, const char* message) {
 int main() {
   static_assert(sizeof(KesshoProductSourceSnapshot) == 5136, "source snapshot ABI size changed");
   static_assert(sizeof(KesshoProductSequencerLaneSnapshot) == 96, "sequencer lane snapshot ABI size changed");
-  static_assert(sizeof(KesshoProductSnapshotV2) == 145124, "product snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductSnapshotV2) == 145892, "product snapshot ABI size changed");
   static_assert(sizeof(KesshoProductEvent) == 40, "product event ABI size changed");
   static_assert(sizeof(KesshoSequencerEvent) == 60, "sequencer event ABI size changed");
   static_assert(sizeof(KesshoProductGranularVisualEvent) == 32, "granular visual event ABI size changed");

@@ -74,6 +74,7 @@ export function commitGeneratedCaptureToEuclid({
 }: CommitGeneratedCaptureArgs): void {
   const stepCount = scratch.stepCount;
   const capturedCount = captureStepCount(scratch);
+  if (capturedCount === 0) return;
   const hits = Math.max(1, Math.min(stepCount, capturedCount));
   const midisByStep = scratch.cells.map((cell) => (
     cell.hasNote ? cell.midiNote : null

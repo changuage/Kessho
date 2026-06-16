@@ -115,6 +115,12 @@ struct OrbitSequencerState {
   uint32_t trigger_line_count = 1u;
   uint32_t clock_mode = 0u;
   float bpm_percent = 100.0f;
+  float speed_offset = 0.0f;
+  float global_offset = 0.0f;
+  float even_offset = 0.0f;
+  float free_offset = 0.0f;
+  uint32_t even_reverse_mode = 0u;
+  uint32_t constellation_mode = 0u;
   bool quantize_to_harmony = true;
   uint32_t snap_source = 0u;
   float pitch_range_min = 48.0f;
