@@ -17,6 +17,33 @@ function drumEuclidTargetStructuralKeys() {
   return keys;
 }
 
+function drumScatterMemorySlotKeys() {
+  const keys = [];
+  for (const lane of [5, 6]) {
+    for (const suffix of [
+      'Enabled',
+      'Preset',
+      'Steps',
+      'Hits',
+      'Rotation',
+      'TargetSub',
+      'TargetKick',
+      'TargetClick',
+      'TargetBeepHi',
+      'TargetBeepLo',
+      'TargetNoise',
+      'TargetMembrane',
+      'Probability',
+      'VelocityMin',
+      'VelocityMax',
+      'Level',
+    ]) {
+      keys.push(`drumEuclid${lane}${suffix}`);
+    }
+  }
+  return keys;
+}
+
 function drumExactPatchPresetKeys() {
   const keys = [];
   for (const voice of ['Sub', 'Kick', 'Click', 'BeepHi', 'BeepLo', 'Noise', 'Membrane']) {
@@ -376,7 +403,7 @@ export const behaviorEvidenceByAppVisibleGroup = {
   'source.soundscape|soundscape-structured-full-snapshot': {
     owner: 'Product Core soundscape source owner',
     reason: 'Soundscape structured snapshot controls must remain paired with asset render and layer policy probes.',
-    evidence: ['core:product:assets', 'ProductAssetTests.cpp#layered soundscape assets did not mix', 'ProductAssetTests.cpp#birds soundscape policy should render wider C++-owned stereo spread than water'],
+    evidence: ['core:product:assets', 'ProductAssetTests.cpp#layered soundscape assets did not mix', 'ProductAssetTests.cpp#birds soundscape policy should keep a wider C++-owned spread range than water'],
   },
 };
 
@@ -600,6 +627,16 @@ export const productDeferredClassifications = [
     ],
   },
   {
+    id: 'drum-scatter-memory-slots',
+    owner: 'Drum Scatter phrase memory owner',
+    allowWiredReferences: true,
+    reason:
+      'Drum Euclid slots 5 and 6 are UI phrase-memory parking slots for generated Scatter phrases; Product Core committed playback remains limited to lanes 1-4.',
+    patterns: [
+      /^drumEuclid[5-6](Enabled|Preset|Steps|Hits|Rotation|TargetSub|TargetKick|TargetClick|TargetBeepHi|TargetBeepLo|TargetNoise|TargetMembrane|Probability|VelocityMin|VelocityMax|Level)$/,
+    ],
+  },
+  {
     id: 'drum-module-extra-deferred',
     owner: 'C++ Product Core drum module parity owner',
     allowWiredReferences: true,
@@ -743,6 +780,7 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
     'synthEuclid3Preset',
     'synthEuclid4Preset',
   ],
+  'drum-scatter-memory-slots': drumScatterMemorySlotKeys(),
   'drum-module-extra-deferred': [
     'drumMembraneScaleBlend',
   ],
@@ -775,6 +813,10 @@ export const EXPECTED_PARAM_REGISTRY_OMISSIONS = [
   {
     key: 'harmonyChordSequenceEnabled',
     reason: 'Structured harmony sequence enable state resolves into Product Core harmony sequence events instead of ParamRegistry scalar params.',
+  },
+  {
+    key: 'harmonyChordSequenceLength',
+    reason: 'Structured harmony sequence length resolves into Product Core harmony sequence events instead of ParamRegistry scalar params.',
   },
   {
     key: 'harmonyChordSequenceStepIndex',

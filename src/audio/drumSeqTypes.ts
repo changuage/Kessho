@@ -42,6 +42,27 @@ export function scaleDegreeToSemitone(degree: number, scale: readonly number[]):
   return oct * 12 + (scale[idx] ?? 0);
 }
 
+export function semitoneToScaleDegree(semitone: number, scale: readonly number[]): number {
+  if (scale.length === 0) return 0;
+  const octave = Math.floor(semitone / 12);
+  const remainder = ((semitone % 12) + 12) % 12;
+  let bestDegree = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let degree = 0; degree < scale.length; degree += 1) {
+    const interval = scale[degree] ?? 0;
+    const distance = Math.abs(interval - remainder);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestDegree = degree;
+    }
+  }
+  return octave * scale.length + bestDegree;
+}
+
+export function clampMidiNote(value: number): number {
+  return Math.max(0, Math.min(127, Math.round(value)));
+}
+
 /** Elektron-style trig condition: [n, N] means fire on nth of every N cycles */
 export type TrigCondition = [number, number];
 
@@ -82,6 +103,9 @@ export interface TriggerLane {
   probability: number[];
   ratchet: number[];
   trigCondition: TrigCondition[];
+  sourceOrigin?: 'euclidean' | 'scatter' | 'recorded' | 'manual' | 'preset' | 'legacy';
+  sourceLabel?: string;
+  sourceDirty?: boolean;
 }
 
 export interface SubLane {

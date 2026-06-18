@@ -3,6 +3,7 @@ import type { SequencerState, LaneDirection, ScaleName, PitchMode, PitchBindingM
 import type { SubLaneValueMode } from '../sequencer/useEuclideanSequencer';
 import { seqLaneIndex } from '../../audio/drumSequencer';
 import {
+  clampMidiNote,
   NOTE_DEGREE_OFFSET_MIN,
   NOTE_DEGREE_OFFSET_RANGE,
   SCALES,
@@ -155,8 +156,6 @@ interface SeqLaneProps {
   pitchDisplayRoot?: number;
   /** Scale intervals used for pitch note labels after caller-specific resolution. */
   pitchDisplayScaleIntervals?: readonly number[];
-  /** Pitch-specific: toggle scale quantize */
-  onToggleScaleQuantize?: () => void;
   /** Hide note-range mode when the caller needs direct note entry. */
   hidePitchNoteRange?: boolean;
   /** Optional selected step highlight, used for keyboard note-entry targeting. */
@@ -203,7 +202,6 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   pitchRootDisplayValue,
   pitchDisplayRoot,
   pitchDisplayScaleIntervals,
-  onToggleScaleQuantize,
   selectedStep = null,
   selectedStepLabel = 'Step',
   onSelectStep,
@@ -331,7 +329,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                     <option value="sequence">Sequence</option>
                   </select>
                 )}
-                {sequencer.pitch.mode !== 'noteRange' && (
+                {sequencer.pitch.mode !== 'notes' && (
                   <>
                     {showPitchRootControl && (
                       <DragNumber
@@ -352,14 +350,6 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
-                    <label className="seq-scale-quantize" title="Snap pitch offsets to the selected scale">
-                      <input
-                        type="checkbox"
-                        checked={sequencer.pitch.scaleQuantize ?? false}
-                        onChange={() => onToggleScaleQuantize?.()}
-                      />
-                      Q
-                    </label>
                   </>
                 )}
               </div>
@@ -519,9 +509,9 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                         el.removeEventListener('pointermove', onMove);
                         el.removeEventListener('pointerup', onUp);
                         setDragPopup(null);
-                        if (!dragged) {
-                          if (onSelectStep) onSelectStep(step);
-                          else onToggleTriggerStep?.(step);
+                        if (!dragged && inRange) {
+                          onSelectStep?.(step);
+                          onToggleTriggerStep?.(step);
                         }
                       };
                       el.addEventListener('pointermove', onMove);
@@ -552,14 +542,19 @@ const SeqLane: React.FC<SeqLaneProps> = ({
 
             if (lane === 'pitch') {
               /* ── Pitch bar: bipolar -24..+24 or tonal -3..14 ── */
-              const isNotes = sequencer.pitch.mode === 'notes';
+              const isScaleDegrees = sequencer.pitch.mode === 'semitones';
+              const isFixedNotes = sequencer.pitch.mode === 'notes';
               const off = value;
               let barStyle: React.CSSProperties;
               let valText: string;
-              if (isNotes) {
+              if (isScaleDegrees) {
                 const pct = normalizeNoteDegreeOffset(off) * 100;
                 barStyle = { bottom: 0, top: `${100 - pct}%`, height: `${pct}%` };
                 valText = `${off}`;
+              } else if (isFixedNotes) {
+                const pct = (clampMidiNote(off) / 127) * 100;
+                barStyle = { bottom: 0, top: `${100 - pct}%`, height: `${pct}%` };
+                valText = midiToName(off);
               } else {
                 const norm = (off + 24) / 48;
                 if (off >= 0) {
@@ -570,9 +565,11 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                 valText = (off >= 0 ? '+' : '') + off;
               }
               let noteName = '';
-              if (isNotes) {
+              if (isScaleDegrees) {
                 const midi = resolvedPitchRoot + scaleDegreeToSemitone(off, resolvedPitchScale);
                 noteName = midiToName(midi);
+              } else if (isFixedNotes) {
+                noteName = midiToName(off);
               }
 
               return (
@@ -586,20 +583,28 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                       const wrap = e.currentTarget;
                       wrap.setPointerCapture(e.pointerId);
                       const startY = e.clientY;
-                      const startNorm = isNotes
+                      const startNorm = isScaleDegrees
                         ? normalizeNoteDegreeOffset(off)
-                        : Math.max(0, Math.min(1, (off + 24) / 48));
+                        : isFixedNotes
+                          ? clampMidiNote(off) / 127
+                          : Math.max(0, Math.min(1, (off + 24) / 48));
                       let dragged = false;
                       const onMove = (ev: PointerEvent) => {
                         if (Math.abs(ev.clientY - startY) > 5) dragged = true;
                         const rect = wrap.getBoundingClientRect();
                         const dragRange = rect.height * SEQ_BIPOLAR_DRAG_DISTANCE_FACTOR;
                         const pct = Math.max(0, Math.min(1, startNorm + (startY - ev.clientY) / dragRange));
-                        const val = isNotes
+                        const val = isScaleDegrees
                           ? Math.round(NOTE_DEGREE_OFFSET_MIN + pct * NOTE_DEGREE_OFFSET_RANGE)
+                          : isFixedNotes
+                            ? clampMidiNote(pct * 127)
                           : Math.round((pct - 0.5) * 48);
                         onChangeValue?.(step, val);
-                        const label = isNotes ? `deg ${val}` : `${val >= 0 ? '+' : ''}${val} st`;
+                        const label = isScaleDegrees
+                          ? `deg ${val}`
+                          : isFixedNotes
+                            ? midiToName(val)
+                            : `${val >= 0 ? '+' : ''}${val} st`;
                         setDragPopup({ x: ev.clientX, y: ev.clientY, text: label });
                       };
                       const onUp = () => {
@@ -613,18 +618,18 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                       wrap.addEventListener('pointermove', onMove);
                       wrap.addEventListener('pointerup', onUp);
                     }}
-                    onDoubleClick={() => onChangeValue?.(step, 0)}
+                    onDoubleClick={() => onChangeValue?.(step, isFixedNotes ? 60 : 0)}
                   >
-                    {!isNotes && <div className="pitch-center" />}
+                    {!isScaleDegrees && !isFixedNotes && <div className="pitch-center" />}
                     {isSelected && (
                       <span className="seq-step-cursor" style={cursorMarkerStyle} aria-hidden="true">
                         {selectedStepLabel}
                       </span>
                     )}
                     <div className="pitch-bar" style={barStyle} />
-                    <div className="pitch-val" style={off >= 0 || isNotes ? { top: 2 } : { bottom: 2 }}>{valText}</div>
+                    <div className="pitch-val" style={off >= 0 || isScaleDegrees || isFixedNotes ? { top: 2 } : { bottom: 2 }}>{valText}</div>
                   </div>
-                  {isNotes && <div className="seq-pitch-note-name">{noteName}</div>}
+                  {(isScaleDegrees || isFixedNotes) && <div className="seq-pitch-note-name">{noteName}</div>}
                 </div>
               );
             }

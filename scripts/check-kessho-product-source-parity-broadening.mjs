@@ -74,7 +74,7 @@ requireTokens('cpp/KesshoCore/tests/ProductAssetTests.cpp', [
   'soundscape texture sequence did not continue after unrelated param patch',
   'soundscape parity fixture telemetry did not label parity mode',
   'short soundscape texture telemetry did not report no-offset-variation reason',
-  'birds soundscape policy should render wider C++-owned stereo spread than water',
+  'birds soundscape policy should keep a wider C++-owned spread range than water',
 ]);
 
 requireTokens('src/audio/coreProductSoundscapesSnapshot.ts', [

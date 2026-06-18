@@ -453,7 +453,12 @@ function testSequenceLanePresetRoundTripKeepsRuntimeLaneState(): void {
 
   const targetSubLaneStates = Array.from({ length: 4 }, makeSubLaneState);
   const appliedSubLaneStates = applySequencePresetSubLaneStates(targetSubLaneStates, serializedState, 1);
-  assert.deepStrictEqual(appliedSubLaneStates[1]?.pitch, sourceSubLaneStates[2]?.pitch);
+  assert.deepStrictEqual(appliedSubLaneStates[1]?.pitch, {
+    enabled: true,
+    steps: 7,
+    direction: 'pingpong',
+    scaleQuantize: false,
+  });
   assert.deepStrictEqual(appliedSubLaneStates[1]?.expression, sourceSubLaneStates[2]?.expression);
   assert.deepStrictEqual(appliedSubLaneStates[1]?.slice, sourceSubLaneStates[2]?.slice);
   assert.deepStrictEqual(appliedSubLaneStates[1]?.reverse, sourceSubLaneStates[2]?.reverse);
@@ -465,9 +470,9 @@ function testSequenceLanePresetRoundTripKeepsRuntimeLaneState(): void {
   } as any, 1);
   assert.deepStrictEqual(sanitizedSubLaneStates[1]?.pitch, {
     enabled: true,
-    steps: 16,
+    steps: 32,
     direction: 'forward',
-    scaleQuantize: true,
+    scaleQuantize: false,
   });
   assert.deepStrictEqual(sanitizedSubLaneStates[1]?.expression, {
     enabled: true,
@@ -630,18 +635,18 @@ function testDrumPitchPresetRestoreUsesEngineOffsets(): void {
     drumEuclid1TargetKick: false,
     drumEuclid1TargetNoise: true,
   };
-  const settings: PitchSettings = { mode: 'notes', root: 60, scale: 'Major' };
+  const settings: PitchSettings = { mode: 'semitones', root: 60, scale: 'Major' };
   const baseMidi = drumPitchBaseMidiFromState(state, 0);
   assert.equal(baseMidi, 41, 'drum pitch base should follow the loaded lane target');
   assert.deepStrictEqual(
     drumPitchUiValuesToEngineOffsets([0, 2], settings, baseMidi),
     [19, 23],
-    'drum pitch preset restore must convert saved scale degrees to engine pitch offsets',
+    'drum semitones preset restore must convert saved scale degrees to engine pitch offsets',
   );
   assert.deepStrictEqual(
-    drumPitchUiValuesToEngineOffsets([1], { mode: 'semitones', root: 60, scale: 'Major' }, baseMidi, true),
-    [0],
-    'drum semitone offsets should keep scale-quantize behavior during preset restore',
+    drumPitchUiValuesToEngineOffsets([60, 64], { mode: 'notes', root: 48, scale: 'Minor' }, baseMidi),
+    [19, 23],
+    'drum notes preset restore must treat saved values as fixed MIDI notes',
   );
   assert.equal(
     drumPitchUiValuesToEngineOffsets([0], { mode: 'noteRange', root: 60, scale: 'Major' }, baseMidi),

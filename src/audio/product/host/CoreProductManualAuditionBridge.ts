@@ -79,11 +79,14 @@ export async function triggerCoreProductDrumVoice(
     post();
     return;
   }
+  const shouldApplyExternalState = Boolean(externalState);
   if (externalState) context.setLatestSliderState({ ...externalState, drumEnabled: true });
   await context.runtime.ensureStarted();
   context.setRuntimeReady(true);
   await context.runtime.resume();
-  if (!productSourceEnabled(context, CORE_PRODUCT_SOURCE_IDS.drum)) await context.applyLatestSnapshotUpdate('runtime-bootstrap');
+  if (shouldApplyExternalState || !productSourceEnabled(context, CORE_PRODUCT_SOURCE_IDS.drum)) {
+    await context.applyLatestSnapshotUpdate('runtime-bootstrap');
+  }
   post();
 }
 
@@ -129,13 +132,16 @@ export async function auditionCoreProductSynthNote(
     postManualSynthNote(context, manualNote);
     return;
   }
-  if (!productSourceEnabled(context, targetSourceId)) {
+  const shouldApplyExternalState = Boolean(externalState);
+  if (!productSourceEnabled(context, targetSourceId) || shouldApplyExternalState) {
     context.setLatestSliderState(manualAuditionState(manualNote.source, externalState ?? context.latestSliderState() ?? undefined));
   }
   await context.runtime.ensureStarted();
   context.setRuntimeReady(true);
   await context.runtime.resume();
-  if (!productSourceEnabled(context, targetSourceId)) await context.applyLatestSnapshotUpdate(manualNote.source === 'piano' ? 'manual-piano-asset' : 'runtime-bootstrap');
+  if (shouldApplyExternalState || !productSourceEnabled(context, targetSourceId)) {
+    await context.applyLatestSnapshotUpdate(manualNote.source === 'piano' ? 'manual-piano-asset' : 'runtime-bootstrap');
+  }
   if (manualNote.source === 'piano') await context.assetRegistrar.ensurePianoAssetForNote(manualNote.midi, manualNote.velocity);
   postManualSynthNote(context, manualNote);
 }
@@ -152,7 +158,8 @@ export async function auditionCoreProductSynthNotes(
     for (const note of manualNotes) postManualSynthNote(context, note);
     return;
   }
-  if (!productSourcesEnabled(context, targetSourceIds)) {
+  const shouldApplyExternalState = Boolean(externalState);
+  if (!productSourcesEnabled(context, targetSourceIds) || shouldApplyExternalState) {
     let nextState = { ...(externalState ?? context.latestSliderState() ?? {}) };
     for (const note of manualNotes) nextState = manualAuditionState(note.source, nextState);
     context.setLatestSliderState(nextState);
@@ -160,7 +167,9 @@ export async function auditionCoreProductSynthNotes(
   await context.runtime.ensureStarted();
   context.setRuntimeReady(true);
   await context.runtime.resume();
-  if (!productSourcesEnabled(context, targetSourceIds)) await context.applyLatestSnapshotUpdate(manualNotes.some((note) => note.source === 'piano') ? 'manual-piano-asset' : 'runtime-bootstrap');
+  if (shouldApplyExternalState || !productSourcesEnabled(context, targetSourceIds)) {
+    await context.applyLatestSnapshotUpdate(manualNotes.some((note) => note.source === 'piano') ? 'manual-piano-asset' : 'runtime-bootstrap');
+  }
   await ensurePianoAssetsForManualNotes(context, manualNotes);
   for (const note of manualNotes) postManualSynthNote(context, note);
 }

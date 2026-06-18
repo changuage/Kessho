@@ -768,6 +768,9 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   drum_lane_count = std::min<uint32_t>(snapshot.drum_euclid.lane_count, kMaxLaneCount);
   loadLaneSnapshots(snapshot.synth_euclid, synth_lanes, KESSHO_PRODUCT_SOURCE_PAD1, preserve_running_sequencer_runtime);
   loadLaneSnapshots(snapshot.drum_euclid, drum_lanes, KESSHO_PRODUCT_SOURCE_DRUM, preserve_running_sequencer_runtime);
+  if (!transport.running) {
+    stopSoundscapeTransportRuntime();
+  }
   markSequencerUiStateChanged(0u, 0xffffffffu, KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_SNAPSHOT);
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
   snapshot_loaded_once = true;

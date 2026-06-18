@@ -1,8 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ProductEngineState } from '../../audio/product/ProductEngineTypes';
-import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
+import { useAnimationVisibility } from '../hooks/useAnimationVisibility';
 import { getRuntimeSliderPosition } from '../runtimeSliderState';
 import { getRuntimeValue } from '../runtimeValueState';
+import {
+  resolveDualSliderAutomation,
+  type DualSliderAutomationState,
+} from '../shared/dualSliderAutomation';
 import { SliderPrimitive } from '../sliderSystem';
 import type { SliderMode, SliderState } from '../state';
 import {
@@ -21,6 +25,25 @@ import {
   getDriversForTarget,
   getEffectiveReactionDepth,
 } from './visualizerModulation';
+import {
+  DEFAULT_LAYER_STACK,
+  DEFAULT_VISUALIZER_MACROS,
+  VISUALIZER_LAYER_DEFS,
+  derivePerformanceMacroPatch,
+  layerOrderToStack,
+  moveLayerInStack,
+  normalizeLayerOrder,
+  stackToLayerOrder,
+  updateControlsPatch,
+  type VisualizerLayerId,
+  type VisualizerPerformanceMacroId,
+  type VisualizerPerformanceMacros,
+  type VisualizerQualityMode,
+} from './visualizerControls';
+import {
+  resolveVisualizerQualityMode,
+  type VisualizerQualitySettings,
+} from './visualizerQuality';
 import {
   type VisualizerPresetData,
   listVisualizerPresets,
@@ -51,7 +74,7 @@ type ReactiveVisualizerPageInnerProps = Omit<ReactiveVisualizerPageProps, 'enabl
   mobileReducedVisuals: boolean;
 };
 
-type NumericControlKey = Exclude<keyof ReactiveVisualizerControls, 'focus'>;
+type NumericControlKey = VisualizerNumericControlKey;
 
 type ControlDefinition = {
   key: NumericControlKey;
@@ -107,21 +130,29 @@ const DEFAULT_CONTROLS: ReactiveVisualizerControls = {
   kaleidoSpin: 0,
   kaleidoType: 0,
   kaleidoReflections: 0,
+  kaleidoPattern: 0,
   brightness: 0,
   vibrance: 0,
   saturation: 0,
   impactFlash: 0,
   visualLimiter: 0,
-  layerOrder: [0, 1, 2, 3],  // shapes, atmos, glitch, kaleido
+  pointCloudAmount: 0,
+  pointCloudSize: 0,
+  pointCloudDensity: 0,
+  pointCloudScatter: 0,
+  pointCloudColor: 0,
+  layerOrder: [0, 1, 2, 3, 4],  // shapes, atmosphere, glitch, kaleidoscope, pointCloud
   focus: 'stringWaves',
 };
 
 const DEFAULT_REACTION: VisualizerReactionSettings = {
-  reactionAmount: 0.72,
+  reactionAmount: 0.5,
   morphAroundPreset: 0.5,
-  afterglow: 0.4,
+  afterglow: 0.5,
   mode: 'auto',
 };
+
+const DEFAULT_QUALITY_MODE: VisualizerQualityMode = 'auto';
 
 const FOCUS_OPTIONS: Array<{ value: VisualizerFocus; label: string }> = [
   { value: 'stringWaves', label: 'String Waves' },
@@ -148,7 +179,7 @@ const CONTROL_GROUPS: Array<{ label: string; collapsed?: boolean; controls: Cont
   {
     label: 'Color',
     controls: [
-      { key: 'color', label: 'Palette', left: 'Electric', right: 'Jewel' },
+      { key: 'color', label: 'Palette', left: 'Neon', right: 'Pastel' },
       { key: 'background', label: 'Background', left: 'Indigo', right: 'Blush' },
       { key: 'backdropFade', label: 'Backdrop', left: 'Hidden', right: 'Glow' },
     ],
@@ -188,11 +219,23 @@ const CONTROL_GROUPS: Array<{ label: string; collapsed?: boolean; controls: Cont
     label: 'Kaleidoscope',
     collapsed: true,
     controls: [
-      { key: 'kaleidoscope', label: 'Intensity', left: 'Shards', right: 'Glass' },
+      { key: 'kaleidoscope', label: 'Intensity', left: 'Fractal', right: 'Glass' },
       { key: 'kaleidoSegments', label: 'Segments', left: 'Few', right: 'Many' },
       { key: 'kaleidoSpin', label: 'Spin', left: 'Reverse', right: 'Forward' },
       { key: 'kaleidoType', label: 'Mode', left: 'Prism', right: 'Liquid' },
+      { key: 'kaleidoPattern', label: 'Pattern', left: 'Radial', right: 'Repeat' },
       { key: 'kaleidoSize', label: 'Coverage', left: 'Center', right: 'Full' },
+    ],
+  },
+  {
+    label: 'Point Cloud',
+    collapsed: true,
+    controls: [
+      { key: 'pointCloudAmount', label: 'Amount', left: 'Off', right: 'Cloud' },
+      { key: 'pointCloudSize', label: 'Dot Size', left: 'Fine', right: 'Large' },
+      { key: 'pointCloudDensity', label: 'Density', left: 'Sparse', right: 'Dense' },
+      { key: 'pointCloudScatter', label: 'Scatter', left: 'Grid', right: 'Jitter' },
+      { key: 'pointCloudColor', label: 'Color Boost', left: 'Source', right: 'Neon' },
     ],
   },
   {
@@ -226,6 +269,28 @@ const ENGINE_METERS: EngineMeter[] = [
   { key: 'dynamics', label: 'Dynamics', color: '#CC7DB8' },
 ];
 
+const PERFORMANCE_MACRO_LABELS: Record<VisualizerPerformanceMacroId, string> = {
+  soft: 'Soft',
+  pulse: 'Pulse',
+  particles: 'Particles',
+  glitch: 'Glitch',
+  bright: 'Bright',
+};
+
+const PERFORMANCE_MACRO_HERO: Record<VisualizerPerformanceMacroId, string> = {
+  soft: '#a7d8ff',
+  pulse: '#8fffd0',
+  particles: '#ffdc6d',
+  glitch: '#ff7adf',
+  bright: '#fff47a',
+};
+
+const QUALITY_MODE_LABELS: Record<VisualizerQualityMode, string> = {
+  auto: 'Auto',
+  mobileSafe: 'Mobile Safe',
+  desktopBeauty: 'Desktop Beauty',
+};
+
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));
@@ -257,6 +322,64 @@ function readNumber(state: SliderState, key: string, fallback = 0): number {
 function readBoolean(state: SliderState, key: string, fallback = false): boolean {
   const value = (state as unknown as Record<string, unknown>)[key];
   return typeof value === 'boolean' ? value : fallback;
+}
+
+function getBrowserDpr(): number {
+  return typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+}
+
+function resolveCurrentQuality(
+  requestedMode: VisualizerQualityMode,
+  mobileReducedVisuals: boolean,
+  isCoarsePointer: boolean,
+): VisualizerQualitySettings {
+  return resolveVisualizerQualityMode({
+    requestedMode,
+    isMobileReducedVisuals: mobileReducedVisuals,
+    isCoarsePointer,
+    devicePixelRatio: getBrowserDpr(),
+  });
+}
+
+function isVisualizerQualityMode(value: unknown): value is VisualizerQualityMode {
+  return value === 'auto' || value === 'mobileSafe' || value === 'desktopBeauty';
+}
+
+function sanitizeVisualizerControls(source: Partial<ReactiveVisualizerControls> | undefined): ReactiveVisualizerControls {
+  const controls = source ?? {};
+  const focus = FOCUS_OPTIONS.some((option) => option.value === controls.focus)
+    ? controls.focus as VisualizerFocus
+    : DEFAULT_CONTROLS.focus;
+  return {
+    ...DEFAULT_CONTROLS,
+    ...controls,
+    pointCloudAmount: controls.pointCloudAmount ?? DEFAULT_CONTROLS.pointCloudAmount,
+    pointCloudSize: controls.pointCloudSize ?? DEFAULT_CONTROLS.pointCloudSize,
+    pointCloudDensity: controls.pointCloudDensity ?? DEFAULT_CONTROLS.pointCloudDensity,
+    pointCloudScatter: controls.pointCloudScatter ?? DEFAULT_CONTROLS.pointCloudScatter,
+    pointCloudColor: controls.pointCloudColor ?? DEFAULT_CONTROLS.pointCloudColor,
+    kaleidoPattern: controls.kaleidoPattern ?? DEFAULT_CONTROLS.kaleidoPattern,
+    layerOrder: normalizeLayerOrder(controls.layerOrder),
+    focus,
+  };
+}
+
+function sanitizePerformanceMacros(source: Partial<VisualizerPerformanceMacros> | undefined): VisualizerPerformanceMacros {
+  return {
+    soft: clamp01(source?.soft ?? DEFAULT_VISUALIZER_MACROS.soft),
+    pulse: clamp01(source?.pulse ?? DEFAULT_VISUALIZER_MACROS.pulse),
+    particles: clamp01(source?.particles ?? DEFAULT_VISUALIZER_MACROS.particles),
+    glitch: clamp01(source?.glitch ?? DEFAULT_VISUALIZER_MACROS.glitch),
+    bright: clamp01(source?.bright ?? DEFAULT_VISUALIZER_MACROS.bright),
+  };
+}
+
+function resolveVisualizerSliderMode(
+  key: VisualizerNumericControlKey,
+  modes: Record<string, SliderMode>,
+  _ranges: VisualizerReactiveRanges,
+): SliderMode {
+  return modes[key] ?? 'single';
 }
 
 function normalizedRange(value: number, min: number, max: number): number {
@@ -412,6 +535,8 @@ function buildSnapshot(
     value('drumEuclid2Level'),
     value('drumEuclid3Level'),
     value('drumEuclid4Level'),
+    value('drumEuclid5Level'),
+    value('drumEuclid6Level'),
   );
 
   const earthLevel = value('earthLevel', 1);
@@ -528,10 +653,16 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   const getActiveGrainsRef = useRef(getActiveGrains);
   const mobileReducedVisualsRef = useRef(mobileReducedVisuals);
   const sizeRef = useRef({ width: 960, height: 640 });
+  const renderSizeRef = useRef({ width: 0, height: 0, dpr: 0 });
   const lastFrameRef = useRef(0);
+  const coarsePointerRef = useRef(false);
+  const vizAutomationStateRef = useRef<Record<string, DualSliderAutomationState>>({});
   const [controls, setControls] = useState<ReactiveVisualizerControls>(DEFAULT_CONTROLS);
   const [seed, setSeed] = useState(createVisualizerSeed);
   const seedRef = useRef(seed);
+  const [performanceMacros, setPerformanceMacros] = useState<VisualizerPerformanceMacros>(DEFAULT_VISUALIZER_MACROS);
+  const [qualityMode, setQualityMode] = useState<VisualizerQualityMode>(DEFAULT_QUALITY_MODE);
+  const qualityModeRef = useRef(qualityMode);
   const [rendererMode, setRendererMode] = useState<'webgl2' | 'canvas2d'>('webgl2');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenFallback, setFullscreenFallback] = useState(false);
@@ -549,8 +680,11 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   );
   const reactionRef = useRef(reaction);
   const reactiveRangesRef = useRef(reactiveRanges);
+  const [vizSliderModes, setVizSliderModes] = useState<Record<string, SliderMode>>({});
+  const vizSliderModesRef = useRef(vizSliderModes);
   reactionRef.current = reaction;
   reactiveRangesRef.current = reactiveRanges;
+  vizSliderModesRef.current = vizSliderModes;
 
   // --- Preset state ---
   const [presetList, setPresetList] = useState<PresetSummary[]>([]);
@@ -560,6 +694,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
 
   controlsRef.current = controls;
   seedRef.current = seed;
+  qualityModeRef.current = qualityMode;
   stateRef.current = state;
   sliderModesRef.current = sliderModes;
   dualRangesRef.current = dualRanges;
@@ -609,6 +744,19 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mediaQuery = window.matchMedia('(pointer: coarse)');
+    const updatePointerMode = () => {
+      coarsePointerRef.current = mediaQuery.matches;
+    };
+    updatePointerMode();
+    mediaQuery.addEventListener?.('change', updatePointerMode);
+    return () => {
+      mediaQuery.removeEventListener?.('change', updatePointerMode);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!canAnimate) {
       lastFrameRef.current = 0;
       return undefined;
@@ -618,18 +766,23 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
       const renderer = rendererRef.current;
       if (renderer) {
         const controlState = controlsRef.current;
+        const quality = resolveCurrentQuality(
+          qualityModeRef.current,
+          mobileReducedVisualsRef.current,
+          coarsePointerRef.current,
+        );
         const requestedFps = isPlayingRef.current
           ? fpsFromControl(controlState.frameRate)
           : Math.min(24, fpsFromControl(controlState.frameRate));
-        const maxFps = mobileReducedVisualsRef.current ? 24 : 60;
-        const fps = clamp(requestedFps, 12, maxFps);
+        const fps = clamp(requestedFps, 12, quality.targetFps);
         const frameInterval = 1000 / fps;
         if (timeMs - lastFrameRef.current >= frameInterval) {
+          const deltaSeconds = lastFrameRef.current > 0
+            ? clamp((timeMs - lastFrameRef.current) / 1000, 0, 0.25)
+            : 1 / 60;
           lastFrameRef.current = timeMs;
           const { width, height } = sizeRef.current;
-          const dpr = mobileReducedVisualsRef.current
-            ? getCappedCanvasDpr(1.0, 1.35)
-            : getCappedCanvasDpr(1.1, 1.35);
+          const dpr = quality.maxDpr;
           const snapshot = buildSnapshot(
             stateRef.current,
             sliderModesRef.current,
@@ -639,16 +792,62 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
             controlState,
             timeMs,
           );
+          const automatedControls: ReactiveVisualizerControls = {
+            ...controlState,
+            layerOrder: [...controlState.layerOrder],
+          };
+          const triggerAmount = Math.max(
+            snapshot.pulses.global,
+            snapshot.pulses.drums,
+            snapshot.pulses.lead,
+            snapshot.pulses.sequencer,
+          );
+          const currentSliderModes = vizSliderModesRef.current;
+          const currentRanges = reactiveRangesRef.current;
+          for (const [key, range] of Object.entries(currentRanges) as Array<[VisualizerNumericControlKey, { min: number; max: number } | undefined]>) {
+            const mode = resolveVisualizerSliderMode(key, currentSliderModes, currentRanges);
+            if (mode !== 'walk' && mode !== 'sampleHold') continue;
+            if (!range) continue;
+            const baseValue = controlState[key];
+            if (typeof baseValue !== 'number') continue;
+            const result = resolveDualSliderAutomation({
+              key,
+              baseValue,
+              minValue: -1,
+              maxValue: 1,
+              mode,
+              lowerBound: range.min,
+              upperBound: range.max,
+              nowSeconds: timeMs / 1000,
+              deltaSeconds,
+              triggerAmount,
+              seed: seedRef.current,
+              state: vizAutomationStateRef.current[key],
+              walkMode: stateRef.current.randomWalkMode,
+              walkSpeed: stateRef.current.randomWalkSpeed,
+              seedWindow: stateRef.current.seedWindow,
+            });
+            vizAutomationStateRef.current[key] = result.state;
+            (automatedControls as Record<VisualizerNumericControlKey, number>)[key] = result.value;
+          }
           // Apply modulation: visual buses → mod matrix → modulated controls
           const currentReaction = reactionRef.current;
           const buses = buildVisualBuses(snapshot, currentReaction);
           const modulatedControls = applyVisualizerModulation(
-            controlState,
+            automatedControls,
             reactiveRangesRef.current,
             buses,
             currentReaction,
           );
-          renderer.resize(width, height, dpr);
+          const lastRenderSize = renderSizeRef.current;
+          if (
+            Math.abs(lastRenderSize.width - width) > 0.5 ||
+            Math.abs(lastRenderSize.height - height) > 0.5 ||
+            Math.abs(lastRenderSize.dpr - dpr) > 0.001
+          ) {
+            renderer.resize(width, height, dpr);
+            renderSizeRef.current = { width, height, dpr };
+          }
           renderer.render({
             timeMs,
             width,
@@ -657,6 +856,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
             snapshot,
             controls: modulatedControls,
             seed: seedRef.current,
+            quality,
           });
           const meterUpdateIntervalMs = mobileReducedVisualsRef.current ? 300 : 180;
           if (timeMs - meterUpdateRef.current >= meterUpdateIntervalMs) {
@@ -673,10 +873,21 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   }, [canAnimate]);
 
   const updateControl = useCallback((key: NumericControlKey, value: number) => {
+    const nextControlsForRange = {
+      ...controlsRef.current,
+      [key]: value,
+    };
+    const nextRange = createDefaultReactiveRanges(nextControlsForRange)[key as VisualizerNumericControlKey];
     setControls((prev) => ({
       ...prev,
       [key]: value,
     }));
+    if (nextRange) {
+      setReactiveRanges((prev) => ({
+        ...prev,
+        [key]: nextRange,
+      }));
+    }
   }, []);
 
   const updateFocus = useCallback((focus: VisualizerFocus) => {
@@ -719,6 +930,10 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
     setControls(DEFAULT_CONTROLS);
     setReactiveRanges(createDefaultReactiveRanges(DEFAULT_CONTROLS));
     setReaction(DEFAULT_REACTION);
+    setPerformanceMacros(DEFAULT_VISUALIZER_MACROS);
+    setQualityMode(DEFAULT_QUALITY_MODE);
+    setVizSliderModes({});
+    vizAutomationStateRef.current = {};
     setActivePresetName(null);
   }, []);
 
@@ -744,6 +959,8 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
       controls,
       reactiveRanges,
       reaction,
+      performanceMacros,
+      qualityMode,
       seed,
     };
     await saveVisualizerPreset(name, data);
@@ -751,16 +968,24 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
     _onVisualizerPresetChange(name);
     refreshPresets();
     setPresetSaving(false);
-  }, [presetName, controls, reactiveRanges, reaction, seed, refreshPresets, _onVisualizerPresetChange]);
+  }, [presetName, controls, reactiveRanges, reaction, performanceMacros, qualityMode, seed, refreshPresets, _onVisualizerPresetChange]);
 
   const handleLoadPreset = useCallback(async (name: string) => {
     const result = await loadVisualizerPreset(name);
     if (!result) return;
     const { data } = result;
-    setControls(data.controls);
-    setReactiveRanges(data.reactiveRanges);
-    setReaction(data.reaction);
-    setSeed(data.seed);
+    const nextControls = sanitizeVisualizerControls(data.controls);
+    setControls(nextControls);
+    setReactiveRanges({
+      ...createDefaultReactiveRanges(nextControls),
+      ...(data.reactiveRanges ?? {}),
+    });
+    setReaction(data.reaction ?? DEFAULT_REACTION);
+    setPerformanceMacros(sanitizePerformanceMacros(data.performanceMacros));
+    setQualityMode(isVisualizerQualityMode(data.qualityMode) ? data.qualityMode : DEFAULT_QUALITY_MODE);
+    setSeed(Number.isFinite(data.seed) ? data.seed : createVisualizerSeed());
+    setVizSliderModes({});
+    vizAutomationStateRef.current = {};
     setActivePresetName(name);
     setPresetName(name);
     _onVisualizerPresetChange(name);
@@ -794,16 +1019,56 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   const displayedRequestedFps = isPlaying
     ? fpsFromControl(controls.frameRate)
     : Math.min(24, fpsFromControl(controls.frameRate));
-  const displayedFps = clamp(displayedRequestedFps, 12, mobileReducedVisuals ? 24 : 60);
+  const displayedQuality = resolveCurrentQuality(qualityMode, mobileReducedVisuals, coarsePointerRef.current);
+  const displayedFps = clamp(displayedRequestedFps, 12, displayedQuality.targetFps);
 
   // Per-slider mode: single (value line) / walk (range band + indicator) / sampleHold
-  const [vizSliderModes, setVizSliderModes] = useState<Record<string, SliderMode>>({});
   const cycleVizMode = useCallback((key: string) => {
     setVizSliderModes((prev) => {
-      const current = prev[key] ?? 'walk';
+      const current = prev[key] ?? 'single';
       const next: SliderMode = current === 'single' ? 'walk' : current === 'walk' ? 'sampleHold' : 'single';
       return { ...prev, [key]: next };
     });
+  }, []);
+
+  useEffect(() => {
+    const activeKeys = new Set<string>(
+      (Object.keys(reactiveRanges) as VisualizerNumericControlKey[])
+        .filter((key) => {
+          const mode = resolveVisualizerSliderMode(key, vizSliderModes, reactiveRanges);
+          return mode === 'walk' || mode === 'sampleHold';
+        }),
+    );
+    for (const key of Object.keys(vizAutomationStateRef.current)) {
+      if (!activeKeys.has(key)) {
+        delete vizAutomationStateRef.current[key];
+      }
+    }
+  }, [reactiveRanges, vizSliderModes]);
+
+  const layerStack = useMemo(() => layerOrderToStack(controls.layerOrder), [controls.layerOrder]);
+
+  const moveVisualizerLayer = useCallback((layer: VisualizerLayerId, direction: -1 | 1) => {
+    setControls((prev) => {
+      const stack = layerOrderToStack(prev.layerOrder);
+      const nextStack = moveLayerInStack(stack, layer, direction);
+      return updateControlsPatch(prev, { layerOrder: stackToLayerOrder(nextStack) });
+    });
+    setActivePresetName(null);
+  }, []);
+
+  const resetLayerStack = useCallback(() => {
+    setControls((prev) => updateControlsPatch(prev, { layerOrder: stackToLayerOrder(DEFAULT_LAYER_STACK) }));
+    setActivePresetName(null);
+  }, []);
+
+  const updatePerformanceMacro = useCallback((macroKey: VisualizerPerformanceMacroId, value: number) => {
+    setPerformanceMacros((prev) => {
+      const next = sanitizePerformanceMacros({ ...prev, [macroKey]: value });
+      setControls((controlPrev) => updateControlsPatch(controlPrev, derivePerformanceMacroPatch(next)));
+      return next;
+    });
+    setActivePresetName(null);
   }, []);
 
   const formatBipolar = useCallback((percent: number) => {
@@ -875,6 +1140,97 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
             })}
           </div>
         )}
+
+        <section className="visualizer-quality-panel" aria-label="Visualizer quality mode">
+          <div className="visualizer-panel-header">
+            <h3>Visual Quality</h3>
+            <span>{QUALITY_MODE_LABELS[displayedQuality.effectiveMode]}</span>
+          </div>
+          <div className="visualizer-quality-options">
+            {(['auto', 'mobileSafe', 'desktopBeauty'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={qualityMode === mode ? 'is-active' : undefined}
+                onClick={() => {
+                  setQualityMode(mode);
+                  setActivePresetName(null);
+                }}
+              >
+                {QUALITY_MODE_LABELS[mode]}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="visualizer-performance-panel" aria-label="Visualizer performance macros">
+          <div className="visualizer-panel-header">
+            <h3>Performance Macros</h3>
+          </div>
+          <div className="visualizer-performance-macro-grid">
+            {(['soft', 'pulse', 'particles', 'glitch', 'bright'] as const).map((macroKey) => (
+              <div className="visualizer-performance-macro" key={macroKey}>
+                <SliderPrimitive
+                  label={PERFORMANCE_MACRO_LABELS[macroKey]}
+                  mode="single"
+                  value={performanceMacros[macroKey] * 100}
+                  variant="full"
+                  density="compact"
+                  hero={PERFORMANCE_MACRO_HERO[macroKey]}
+                  formatValue={(p) => `${Math.round(p)}%`}
+                  displayValue={`${Math.round(performanceMacros[macroKey] * 100)}%`}
+                  onValueChange={(p) => updatePerformanceMacro(macroKey, p / 100)}
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="visualizer-layer-panel" aria-label="Visualizer layer order">
+          <div className="visualizer-layer-panel-header">
+            <h3>Layers</h3>
+            <button type="button" onClick={resetLayerStack} title="Reset layer order">
+              Reset
+            </button>
+          </div>
+          <ol className="visualizer-layer-list">
+            {layerStack.map((layerId, index) => {
+              const def = VISUALIZER_LAYER_DEFS.find((entry) => entry.id === layerId);
+              if (!def) return null;
+              const isBottom = index === 0;
+              const isTop = index === layerStack.length - 1;
+              return (
+                <li className={`visualizer-layer-chip visualizer-layer-chip--${def.kind}`} key={layerId} title={def.description}>
+                  <div className="visualizer-layer-meta">
+                    <span className="visualizer-layer-position">{index + 1}</span>
+                    <div>
+                      <strong>{def.label}</strong>
+                      <small>{def.kind === 'source' ? 'Source' : 'Effect'}</small>
+                    </div>
+                  </div>
+                  <div className="visualizer-layer-actions">
+                    <button
+                      type="button"
+                      disabled={isBottom}
+                      onClick={() => moveVisualizerLayer(layerId, -1)}
+                      title={`Move ${def.label} lower`}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isTop}
+                      onClick={() => moveVisualizerLayer(layerId, 1)}
+                      title={`Move ${def.label} higher`}
+                    >
+                      ↑
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
 
         {/* ─── Macros: Reactivity & Intensity ─── */}
         <section className="visualizer-macros">
@@ -993,7 +1349,11 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
                 const drivers = getDriversForTarget(def.key as VisualizerNumericControlKey);
                 const modActive = Math.abs(modPercent - percent) > 0.5;
                 // Per-slider mode (default walk if has range, else single)
-                const sliderMode = vizSliderModes[def.key] ?? (sliderRange ? 'walk' : 'single');
+                const sliderMode = resolveVisualizerSliderMode(
+                  def.key as VisualizerNumericControlKey,
+                  vizSliderModes,
+                  reactiveRanges,
+                );
                 return (
                   <div className="visualizer-slider-wrap" key={def.key}>
                     <SliderPrimitive
@@ -1015,7 +1375,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
                       }
                       onValueChange={(nextPercent) => {
                         const bipolar = (nextPercent / 50) - 1;
-                        updateControl(def.key, Math.round(bipolar * 100) / 100);
+                        updateControl(def.key, clamp(bipolar, -1, 1));
                       }}
                       onRangeChange={sliderMode !== 'single' ? (nextRange) => {
                         const bipolarMin = (nextRange.min / 50) - 1;

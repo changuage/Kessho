@@ -19,6 +19,7 @@ interface VoiceCardProps {
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   getPresetNames: (voice: DrumVoiceType) => string[];
   triggerVoice: (voice: DrumVoiceType) => void;
+  onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
   CollapsiblePanelComponent: React.ComponentType<Record<string, unknown>>;
   editingVoice?: string | null;
@@ -57,6 +58,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
   sliderProps,
   getPresetNames,
   triggerVoice,
+  onStateChange,
   SliderComponent,
   editingVoice,
   onToggleEditing,
@@ -150,6 +152,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
             state={state}
             getPresetNames={getPresetNames}
             onParamChange={onParamChange}
+            onStateChange={onStateChange}
             sliderProps={sliderProps}
             SliderComponent={SliderComponent}
           />
@@ -191,6 +194,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
             state={state}
             color={config.color}
             onParamChange={onParamChange}
+            onStateChange={onStateChange}
           />
 
           <VoiceCardAdvanced

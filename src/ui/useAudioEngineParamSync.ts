@@ -163,6 +163,10 @@ function resolvedCommitTriggerCritical(
   );
 }
 
+function canWaitForProductSnapshotAck(): boolean {
+  return productEngine.getLifecycleState() === 'running';
+}
+
 function shouldFlushImmediatelyForResolvedCommit(
   previousState: SliderState | null,
   nextState: SliderState,
@@ -199,9 +203,11 @@ export function useAudioEngineParamSync(audioEngineRuntimeMode: AudioEngineRunti
       const reason = inferProductPatchReason(patch, options?.reason);
       const forceFullSnapshot = requiresSourceCoreFullSnapshot(patch, reason, options);
       if (requiresResolvedCommit(reason, patch, options)) {
+        const triggerCritical = resolvedCommitTriggerCritical(reason, forceFullSnapshot, patch, options) &&
+          canWaitForProductSnapshotAck();
         void commitProductControlPatchForProduct(productEngine, nextState, patch, {
           reason,
-          triggerCritical: resolvedCommitTriggerCritical(reason, forceFullSnapshot, patch, options),
+          triggerCritical,
           forceFullSnapshot,
         }).catch((error) => {
           console.warn('Product resolved-state commit failed:', error);

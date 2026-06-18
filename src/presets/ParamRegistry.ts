@@ -985,7 +985,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumMembraneLevel:       { level: 1, scope: 'drumMembrane' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Drum Euclidean Engine (69 params)
+  // L1: Drum Euclidean Engine (101 params)
   // ═══════════════════════════════════════════════════════════════════════
   drumEuclidMasterEnabled: { level: 1, scope: 'drumEuclidean' },
   drumEuclidBaseBPM:       { level: 1, scope: 'drumEuclidean' },
@@ -1060,6 +1060,40 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumEuclid4VelocityMin:  { level: 1, scope: 'drumEuclidean' },
   drumEuclid4VelocityMax:  { level: 1, scope: 'drumEuclidean' },
   drumEuclid4Level:        { level: 1, scope: 'drumEuclidean' },
+  // Lane 5 (16)
+  drumEuclid5Enabled:      { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5Preset:       { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5Steps:        { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5Hits:         { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5Rotation:     { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5TargetSub:    { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5TargetKick:   { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5TargetClick:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5TargetBeepHi: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5TargetBeepLo: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5TargetNoise:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5TargetMembrane: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5Probability:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5VelocityMin:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5VelocityMax:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5Level:        { level: 1, scope: 'drumEuclidean' },
+  // Lane 6 (16)
+  drumEuclid6Enabled:      { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6Preset:       { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6Steps:        { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6Hits:         { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6Rotation:     { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6TargetSub:    { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6TargetKick:   { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6TargetClick:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6TargetBeepHi: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6TargetBeepLo: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6TargetNoise:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6TargetMembrane: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6Probability:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6VelocityMin:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6VelocityMax:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6Level:        { level: 1, scope: 'drumEuclidean' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L1: Water Engine
@@ -1376,7 +1410,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1145) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1145`);
+  if (count !== 1177) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1177`);
   }
 }

@@ -502,7 +502,11 @@ export function loadCoreProductHostHarness(options = {}) {
     loadProductLead4opFMPresetVerified: async () => ({}),
     publishCoreProductSequencerVisuals: (input) => {
       input.publish('synthStepPosition', [0, 0, 0, 0], [0, 0, 0, 0]);
-      input.publish('drumStepPosition', [0, 0, 0, 0], [0, 0, 0, 0]);
+      input.publish(
+        'drumStepPosition',
+        Array.from({ length: input.drumVisibleLaneCount ?? 6 }, () => 0),
+        Array.from({ length: input.drumVisibleLaneCount ?? 6 }, () => 0),
+      );
     },
     currentCoreProductSynthOrbitVisualState: (telemetry, visibleLaneCount) =>
       Array.from({ length: visibleLaneCount }, (_, laneIndex) => telemetry?.synthOrbitVisualLanes?.[laneIndex] ?? null),

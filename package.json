@@ -7,6 +7,7 @@
     "build": "npm run core:product:wasm && tsc && vite build",
     "test:preset-metadata": "node scripts/run-preset-metadata-regression.mjs",
     "test:generated-sequencer-capture": "node scripts/run-generated-sequencer-capture-regression.mjs",
+    "test:drum-scatter-sequencer": "node scripts/run-drum-scatter-sequencer-regression.mjs",
     "test:preset-dedup": "node scripts/run-preset-dedup-regression.mjs",
     "test:preset-soft-delete": "node scripts/run-preset-soft-delete-regression.mjs",
     "test:lead4opfm-v2-presets": "node scripts/check-lead4opfm-v2-preset-assets.mjs",

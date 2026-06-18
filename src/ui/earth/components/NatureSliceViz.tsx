@@ -35,6 +35,22 @@ function formatSemitones(cents: number): string {
   return `${rounded >= 0 ? '+' : ''}${rounded.toFixed(1)}st`;
 }
 
+function formatSourceOffsetSeconds(slice: EarthTextureSliceDebug | null): string {
+  if (!slice || !Number.isFinite(slice.offset)) return 'src -';
+  return `src ${slice.offset.toFixed(1)}s`;
+}
+
+function visibleSourceSlice(
+  snapshot: EarthTexturePlayerDebugSnapshot | null | undefined,
+): EarthTextureSliceDebug | null {
+  if (!snapshot || snapshot.activeSlices.length === 0) return null;
+  const sorted = [...snapshot.activeSlices].sort((a, b) => a.startTime - b.startTime);
+  return sorted.find((slice) => slice.startTime <= snapshot.nowTime && slice.endTime >= snapshot.nowTime)
+    ?? sorted.find((slice) => slice.startTime > snapshot.nowTime)
+    ?? sorted[sorted.length - 1]
+    ?? null;
+}
+
 function drawRoundedRect(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -240,16 +256,22 @@ export function NatureSliceViz({ snapshot, accent, label = 'Texture' }: NatureSl
   const liveCount = snapshot?.playingSliceCount ?? 0;
   const stagedCount = snapshot?.activeSliceCount ?? 0;
   const statusText = snapshot?.inactiveReason ?? (snapshot?.active ? 'active' : 'idle');
+  const sourceSlice = visibleSourceSlice(snapshot);
+  const sourceOffsetText = formatSourceOffsetSeconds(sourceSlice);
+  const sourceOffsetTitle = snapshot?.fileName && sourceSlice
+    ? `${snapshot.fileName} source offset ${sourceSlice.offset.toFixed(2)}s`
+    : undefined;
 
   return (
     <div
       className="earth-nature-slice-panel"
       style={{ '--row-accent': accent } as CSSProperties}
-      title="Each lane is one slice. The vertical line inside a slice shows pitch detune in semitones, and the bottom dot shows playback-speed variation."
+      title={sourceOffsetTitle ?? 'Each lane is one texture slice. The meta src value is the source sample start offset.'}
     >
       <div className="earth-nature-slice-meta">
         <span>{snapshot ? `${snapshot.sliceDuration.toFixed(1)}s` : '—'}</span>
         <span>{snapshot ? `dens ${Math.round(snapshot.density * 100)}%` : 'dens —'}</span>
+        <span>{sourceOffsetText}</span>
         <span>{liveCount} live</span>
         <span>{stagedCount > 0 ? `x${layout.peakOverlap} peak` : statusText}</span>
       </div>

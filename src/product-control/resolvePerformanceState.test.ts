@@ -766,6 +766,7 @@ function expectSoundActionChangesResolvedOutput(
 
 {
   const calls: string[] = [];
+  let triggerSliders: SliderState | null = null;
   let committedRevision = 20;
   const capturedCommits: ProductResolvedStateCommit[] = [];
   const fakeProductEngine = {
@@ -781,13 +782,43 @@ function expectSoundActionChangesResolvedOutput(
     fakeProductEngine,
     stateWith({ synthLevel: 0.88 }),
     { type: 'manual-trigger/request', source: 'pad1' },
-    (revision) => calls.push(`trigger:${revision}`),
+    (revision, resolvedSliders) => {
+      triggerSliders = resolvedSliders;
+      calls.push(`trigger:${revision}`);
+    },
   );
   const capturedCommit = capturedCommits[0];
   assert.ok(capturedCommit, 'manual trigger helper should commit the visible ProductControl state');
   assert.equal(capturedCommit.revision, 21, 'first manual trigger should allocate a revision for the visible state sync');
   assert.equal(capturedCommit.patch.synthLevel, 0.88, 'manual trigger helper should commit current visible sliders before triggering');
+  assert.ok(triggerSliders, 'manual trigger callback should receive resolved sliders');
+  assert.equal((triggerSliders as SliderState).synthLevel, 0.88, 'manual trigger callback should receive the committed resolved sliders');
   assert.deepEqual(calls, ['commit:21', 'trigger:21'], 'manual trigger helper should commit before invoking trigger callback');
+}
+
+{
+  let committedRevision = 40;
+  const capturedCommits: ProductResolvedStateCommit[] = [];
+  const fakeProductEngine = {
+    commitResolvedState: async (commit: ProductResolvedStateCommit) => {
+      capturedCommits.push(commit);
+      committedRevision = commit.revision;
+      return { revision: commit.revision, applied: true, mode: 'full-snapshot' as const, audioThreadApplied: true };
+    },
+    getCommittedStateRevision: () => committedRevision,
+  } as unknown as ProductEnginePort;
+  await commitProductControlActionThenTrigger(
+    fakeProductEngine,
+    stateWith({ drumKickPresetA: '808 Deep' }),
+    { type: 'manual-trigger/request', source: 'drum:kick', kind: 'drum-voice', voice: 'kick', velocity: 0.8 },
+    () => undefined,
+    { triggerCritical: true, forceFullSnapshot: true },
+  );
+  const capturedCommit = capturedCommits[0];
+  assert.ok(capturedCommit, 'trigger-critical manual preview should commit before playback');
+  assert.equal(capturedCommit.triggerCritical, true, 'trigger-critical manual preview should retain trigger-critical metadata');
+  assert.equal(capturedCommit.applyMode, 'full-snapshot', 'trigger-critical manual preview should be able to force an acknowledged snapshot');
+  assert.equal(capturedCommit.patch.drumKickPresetA, '808 Deep', 'trigger-critical manual preview should commit the selected drum preset');
 }
 
 {

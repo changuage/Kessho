@@ -180,6 +180,8 @@ function pianoPath(pattern, index) {
 
 const manifest = readJson(manifestPath);
 const webAssets = read('src/audio/coreProductAssets.ts');
+const coreEngineHost = read('src/audio/coreEngineHost.ts');
+const webTsReferenceEngine = read('src/audio/reference/webTs/engine.ts');
 const productAssetTests = read('cpp/KesshoCore/tests/ProductAssetTests.cpp');
 const productAssetPolicySource = read('cpp/KesshoCore/src/product/assets/ProductAssets.cpp');
 const doc = read('docs/kessho-product-asset-manifest-decode-matrix.md');
@@ -277,6 +279,18 @@ for (const asset of manifest.soundscapes) {
   const info = parseOggVorbisInfo(asset.path);
   assert(info.productChannelCount <= 2, `soundscape ${asset.key} must stay bounded to two Product Core channels`);
   soundscapeInfos.push({ ...info, key: asset.key });
+}
+
+const soundscapeByKey = new Map(manifest.soundscapes.map((asset) => [asset.key, asset]));
+for (const [key, path] of Object.entries({
+  ocean: 'Ghetary-Waves-Rocks_120s_m_441_cl-normalized.ogg',
+  birds: 'Alps Birds 2_noiseremoval_441_m.ogg',
+  birds2: 'Fujian Birds 2_441_m_normalized.ogg',
+  frogs: 'Fujian_Frogs_m_441_normalized.ogg',
+})) {
+  assert(soundscapeByKey.get(key)?.path === path, `Product Core ${key} texture sample must match Web TS: ${path}`);
+  assert(coreEngineHost.includes(`fileName: '${path}'`), `Web host texture runtime missing ${path}`);
+  assert(webTsReferenceEngine.includes(`fileName: '${path}'`), `Web TS reference texture runtime missing ${path}`);
 }
 
 assert(manifest.scenePolicies && Array.isArray(manifest.scenePolicies.soundscapeLayers), 'scene policy manifest is missing soundscapeLayers');
@@ -382,7 +396,7 @@ for (const token of [
   'missing soundscape asset should not fake host playback',
   'soundscape loop seam was not crossfaded toward loop start',
   'soundscape layer did not start at the deterministic randomized asset offset',
-  'birds soundscape policy should render wider C++-owned stereo spread than water',
+  'birds soundscape policy should keep a wider C++-owned spread range than water',
 ]) {
   assert(productAssetTests.includes(token), `Product asset tests are missing ${token}`);
 }

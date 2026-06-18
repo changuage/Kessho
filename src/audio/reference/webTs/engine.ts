@@ -5193,8 +5193,12 @@ export class AudioEngine {
       this.drumHomePitchSettings[index] = normalizeSequencerPitchSettings(pitchSettings, this.drumHomePitchSettings[index] ?? undefined);
     }
     if (pitchState) {
-      this.drumHomePitchSubLaneStates[index] = { steps: pitchState.steps, direction: pitchState.direction, scaleQuantize: pitchState.scaleQuantize };
-      if (typeof pitchState.scaleQuantize === 'boolean') this.drumHomePitchScaleQuantize[index] = pitchState.scaleQuantize;
+      this.drumHomePitchSubLaneStates[index] = {
+        steps: pitchState.steps,
+        direction: pitchState.direction,
+        scaleQuantize: typeof pitchState.scaleQuantize === 'boolean' ? false : pitchState.scaleQuantize,
+      };
+      if (typeof pitchState.scaleQuantize === 'boolean') this.drumHomePitchScaleQuantize[index] = false;
     }
     if (this.drumSynth) this.drumSynth.captureEuclidLaneHome(index, this.drumHomePitchSettings[index], pitchState);
     else this.pendingDrumPresetHomeCapture = true;
@@ -5284,8 +5288,10 @@ export class AudioEngine {
     state.home = captureSynthHomeSnapshot(current);
     state.homeSwing = this.synthEuclidSwings[laneIndex] ?? 0;
     state.homePitchSettings = ps ? { ...ps } : null;
-    state.homePitchScaleQuantize = typeof pitchState?.scaleQuantize === 'boolean' ? pitchState.scaleQuantize : null;
-    state.homePitchSubLaneState = pitchState ? { steps: pitchState.steps, direction: pitchState.direction, scaleQuantize: pitchState.scaleQuantize } : null;
+    state.homePitchScaleQuantize = typeof pitchState?.scaleQuantize === 'boolean' ? false : null;
+    state.homePitchSubLaneState = pitchState
+      ? { steps: pitchState.steps, direction: pitchState.direction, scaleQuantize: typeof pitchState.scaleQuantize === 'boolean' ? false : pitchState.scaleQuantize }
+      : null;
     const sliderState = this.sliderState as unknown as Record<string, unknown> | null;
     if (ps?.mode === 'noteRange' && sliderState) {
       const lane = laneIndex + 1;
@@ -5406,7 +5412,7 @@ export class AudioEngine {
 
   /** Convert absolute MIDI pitch array → UI offsets (semitone offsets or scale degree indices). */
   private midiToOffsets(midi: number[], ps: { mode: PitchMode; root: number; scale: ScaleName }): number[] {
-    if (ps.mode === 'notes') {
+    if (ps.mode === 'semitones') {
       const si = SCALES[ps.scale] || [0, 2, 4, 5, 7, 9, 11];
       return midi.map(m => {
         const semi = m - ps.root;
@@ -5422,13 +5428,13 @@ export class AudioEngine {
         return octave * si.length + bestDeg;
       });
     }
-    // semitones mode (and noteRange fallback): offset = midi - root
-    return midi.map(m => m - ps.root);
+    if (ps.mode === 'noteRange') return midi.map(m => m - ps.root);
+    return midi.map(m => Math.max(0, Math.min(127, Math.round(m))));
   }
 
   /** Convert UI offsets (semitone offsets or scale degree indices) → absolute MIDI. */
   private offsetsToMidi(offsets: number[], ps: { mode: PitchMode; root: number; scale: ScaleName }): number[] {
-    if (ps.mode === 'notes') {
+    if (ps.mode === 'semitones') {
       const si = SCALES[ps.scale] || [0, 2, 4, 5, 7, 9, 11];
       return offsets.map(deg => {
         const oct = Math.floor(deg / si.length);
@@ -5436,8 +5442,8 @@ export class AudioEngine {
         return Math.max(0, Math.min(127, ps.root + oct * 12 + (si[idx] ?? 0)));
       });
     }
-    // semitones mode: midi = root + offset
-    return offsets.map(off => Math.max(0, Math.min(127, ps.root + off)));
+    if (ps.mode === 'noteRange') return offsets.map(off => Math.max(0, Math.min(127, ps.root + off)));
+    return offsets.map(midi => Math.max(0, Math.min(127, Math.round(midi))));
   }
 
   /** Set per-lane clock divisions for the drum Euclidean sequencer. */
@@ -12030,7 +12036,7 @@ export class AudioEngine {
                 if (laneOv.pitch && ps && ps.mode !== 'noteRange') {
                   laneOv.pitch = this.midiToOffsets(laneOv.pitch, ps);
                 }
-                const si = ps?.mode === 'notes' ? (SCALES[ps.scale] || [0, 2, 4, 5, 7, 9, 11]) : undefined;
+                const si = ps?.mode === 'semitones' ? (SCALES[ps.scale] || [0, 2, 4, 5, 7, 9, 11]) : undefined;
                 // Pass current noteRange bounds (from override or sliderState) for noteRange mode evolution
                 const nrOverride = this.synthNoteRangeOverrides[laneIndex];
                 const currentNoteMin = nrOverride ? nrOverride.min : lane.noteMin;
@@ -12134,10 +12140,22 @@ export class AudioEngine {
                   const nrOv = this.synthNoteRangeOverrides[laneIndex];
                   const effNoteMin = nrOv ? nrOv.min : lane.noteMin;
                   const effNoteMax = nrOv ? nrOv.max : lane.noteMax;
-                  let availableNotes = getScaleNotesInRange(scale, Math.max(24, effNoteMin), Math.min(108, effNoteMax), rootNote);
+                  const pitchSettings = this.synthPitchSettings[laneIndex];
+                  const rangeScale = pitchSettings && pitchSettings.scale !== 'Harmony'
+                    ? {
+                        name: pitchSettings.scale,
+                        intervals: SCALES[pitchSettings.scale] || SCALES.Major,
+                        tensionLevel: 'consonant' as const,
+                        tensionValue: 0,
+                      }
+                    : scale;
+                  const rangeRoot = pitchSettings && pitchSettings.scale !== 'Harmony'
+                    ? ((Math.round(pitchSettings.root) % 12) + 12) % 12
+                    : rootNote;
+                  let availableNotes = getScaleNotesInRange(rangeScale, Math.max(24, effNoteMin), Math.min(108, effNoteMax), rangeRoot);
                   if (availableNotes.length === 0) {
                     const midPoint = (effNoteMin + effNoteMax) / 2;
-                    const allScaleNotes = getScaleNotesInRange(scale, 24, 108, rootNote);
+                    const allScaleNotes = getScaleNotesInRange(rangeScale, 24, 108, rangeRoot);
                     if (allScaleNotes.length > 0) {
                       let nearest = allScaleNotes[0] ?? midPoint;
                       let nearestDist = Math.abs((allScaleNotes[0] ?? midPoint) - midPoint);

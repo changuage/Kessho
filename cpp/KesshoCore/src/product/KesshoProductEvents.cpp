@@ -502,6 +502,7 @@ void KesshoProductEngine::sortControlEvents() {
       break;
     case KESSHO_PRODUCT_EVENT_KIND_STOP:
       transport.running = false;
+      stopSoundscapeTransportRuntime();
       for (uint32_t i = 0; i < synth_lane_count; ++i) {
         resetSequencerLaneRuntime(synth_lanes[i]);
       }
@@ -1202,6 +1203,7 @@ void KesshoProductEngine::sortControlEvents() {
     case KESSHO_PRODUCT_PARAM_TRANSPORT_RUNNING_ID:
       transport.running = event.value >= 0.5f;
       if (!transport.running) {
+        stopSoundscapeTransportRuntime();
         for (uint32_t i = 0; i < synth_lane_count; ++i) {
           resetSequencerLaneRuntime(synth_lanes[i]);
         }

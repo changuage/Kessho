@@ -101,6 +101,7 @@ const secondStageCaps = [
   ['cpp/KesshoCore/src/product/sources/SourceMidiRuntime.cpp', 340],
   ['cpp/KesshoCore/src/product/sources/SourceVoiceRelease.cpp', 60],
   ['cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp', 200],
+  ['cpp/KesshoCore/src/product/sources/SoundscapeTextureSource.cpp', 200],
   ['cpp/KesshoCore/src/product/fx/ProductFx.cpp', 80],
   ['cpp/KesshoCore/src/product/fx/ProductFxModules.cpp', 220],
   ['cpp/KesshoCore/src/product/fx/ProductDynamicsModRoutes.cpp', 40],
@@ -154,6 +155,7 @@ const allocationFreeHotPathFiles = [
   'cpp/KesshoCore/src/product/sources/SourceMidiRuntime.cpp',
   'cpp/KesshoCore/src/product/sources/SourceVoiceRelease.cpp',
   'cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp',
+  'cpp/KesshoCore/src/product/sources/SoundscapeTextureSource.cpp',
   'cpp/KesshoCore/src/product/sequencer/SynthEuclidSequencer.cpp',
   'cpp/KesshoCore/src/product/sequencer/DrumEuclidSequencer.cpp',
   'cpp/KesshoCore/src/product/sequencer/SequencerClock.cpp',
@@ -248,6 +250,7 @@ for (const forbidden of [
   'triggerModuleSource(',
   'triggerVoice(',
   'ensureSoundscapeVoice(',
+  'ensureSoundscapeTextureVoice(',
   'releaseSourceVoices(',
 ]) {
   assert(!read('cpp/KesshoCore/src/product/sources/ProductSources.cpp').includes(`KesshoProductEngine::${forbidden}`), `ProductSources.cpp must not reclaim focused source runtime method: ${forbidden}`);
@@ -370,6 +373,7 @@ const focusedSourceContracts = [
   ],
   ['cpp/KesshoCore/src/product/sources/SourceVoiceRelease.cpp', ['KesshoProductEngine::releaseSourceVoices(']],
   ['cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp', ['KesshoProductEngine::ensureSoundscapeVoice(']],
+  ['cpp/KesshoCore/src/product/sources/SoundscapeTextureSource.cpp', ['KesshoProductEngine::ensureSoundscapeTextureVoice(']],
 ];
 for (const [path, tokens] of focusedSourceContracts) {
   const source = read(path);
@@ -551,6 +555,7 @@ const componentFiles = [
   'cpp/KesshoCore/src/product/sources/SourceMidiRuntime.cpp',
   'cpp/KesshoCore/src/product/sources/SourceVoiceRelease.cpp',
   'cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp',
+  'cpp/KesshoCore/src/product/sources/SoundscapeTextureSource.cpp',
   'cpp/KesshoCore/src/product/transport/MusicalClock.cpp',
   'cpp/KesshoCore/src/product/transport/ProductTransport.cpp',
 ];

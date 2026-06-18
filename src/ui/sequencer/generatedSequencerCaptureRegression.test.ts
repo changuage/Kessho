@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import type { PitchBindingMode } from '../../audio/drumSeqTypes';
 
 import {
   commitGeneratedCaptureToEuclid,
@@ -102,10 +103,45 @@ function testCaptureScratch(): void {
     velocity: 0.9,
     gateSeconds: 0.2,
   });
-  assert.equal(captureStepCount(scratch), 1);
+  assert.equal(captureStepCount(scratch), 2);
   assert.equal(scratch.cells[2]?.sourceEventId, 3, 'last event should win per step');
   assert.equal(scratch.cells[2]?.midiNote, 67);
   assert.equal(scratch.cells[2]?.velocity, 0.9);
+}
+
+function testCaptureScratchKeepsLatestCycleOnly(): void {
+  let scratch = createCaptureScratch(8);
+  scratch = writeCaptureEventToStep(scratch, 1, 0, {
+    eventId: 100,
+    midiNote: 60,
+    velocity: 0.5,
+    gateSeconds: 0.1,
+  });
+  scratch = writeCaptureEventToStep(scratch, 5, 0, {
+    eventId: 101,
+    midiNote: 64,
+    velocity: 0.8,
+    gateSeconds: 0.1,
+  });
+  assert.equal(captureStepCount(scratch), 2);
+
+  scratch = markCaptureStepVisited(scratch, 0, 1);
+  assert.equal(captureStepCount(scratch), 0, 'new cycle should clear the previous full pass');
+  assert.equal(scratch.cells[1]?.hasNote, false);
+  assert.equal(scratch.cells[5]?.hasNote, false);
+
+  scratch = writeCaptureEventToStep(scratch, 3, 1, {
+    eventId: 102,
+    midiNote: 67,
+    velocity: 1,
+    gateSeconds: 0.1,
+  });
+
+  assert.equal(captureStepCount(scratch), 1);
+  assert.equal(scratch.cells[3]?.hasNote, true);
+  assert.equal(scratch.cells[3]?.midiNote, 67);
+  assert.equal(scratch.cells[1]?.hasNote, false);
+  assert.equal(scratch.cells[5]?.hasNote, false);
 }
 
 function testCapturedPitchConversion(): void {
@@ -125,6 +161,18 @@ function testCapturedPitchConversion(): void {
 
   const clamped = capturedMidisToSemitonePitchValues([0, 127]);
   assert.deepEqual(clamped.pitchValues, [-48, 48]);
+
+  const scaleCaptured = capturedMidisToSemitonePitchValues([60, 63, 67], {
+    root: 60,
+    scale: 'Minor',
+    scaleIntervals: [0, 2, 3, 5, 7, 8, 10],
+  });
+  assert.deepEqual(scaleCaptured.pitchValues, [0, 2, 4]);
+  assert.deepEqual(scaleCaptured.pitchSettings, {
+    mode: 'semitones',
+    root: 60,
+    scale: 'Minor',
+  });
 }
 
 function testCommitGeneratedCaptureToEuclid(): void {
@@ -146,7 +194,7 @@ function testCommitGeneratedCaptureToEuclid(): void {
   const params: Array<[number, string, number]> = [];
   const selects: Array<[number, string, unknown]> = [];
   let selectedMode: [number, 'euclid'] | null = null;
-  let selectedPitchBinding: [number, 'sequence'] | null = null;
+  let selectedPitchBinding: [number, PitchBindingMode] | null = null;
   let openLane: LaneKind | null = null;
   let stepOverrides = makeStepOverrides();
   let subLaneStates = makeSubLaneStates();
@@ -188,7 +236,7 @@ function testCommitGeneratedCaptureToEuclid(): void {
   });
 
   assert.deepEqual(selectedMode, [targetLaneIndex, 'euclid']);
-  assert.deepEqual(selectedPitchBinding, [targetLaneIndex, 'sequence']);
+  assert.deepEqual(selectedPitchBinding, [targetLaneIndex, 'polyrhythmic']);
   assert.deepEqual(selects, [[targetLaneIndex, 'Preset', 'custom']]);
   assert.deepEqual(params, [
     [targetLaneIndex, 'Steps', 4],
@@ -202,20 +250,177 @@ function testCommitGeneratedCaptureToEuclid(): void {
     Array.from({ length: 4 }, (_, step) => triggerMap?.get(step) === true),
     [true, false, true, false],
   );
-  assert.deepEqual(stepOverrides.pitch[targetLaneIndex], [0, 0, 7, 0]);
-  assert.deepEqual(stepOverrides.expression[targetLaneIndex], [0.5, 1, 0.8, 1]);
+  assert.deepEqual(stepOverrides.pitch[targetLaneIndex], [0, 7]);
+  assert.deepEqual(stepOverrides.expression[targetLaneIndex], [0.5, 0.8]);
   assert.deepEqual(stepOverrides.probability[targetLaneIndex], [1, 1, 1, 1]);
   assert.deepEqual(stepOverrides.trigCondition[targetLaneIndex], [[1, 1], [1, 1], [1, 1], [1, 1]]);
   assert.equal(stepOverrides.pitchDirection[targetLaneIndex], 'forward');
   assert.equal(stepOverrides.expressionDirection[targetLaneIndex], 'forward');
 
   assert.equal(subLaneStates[targetLaneIndex]?.pitch.enabled, true);
-  assert.equal(subLaneStates[targetLaneIndex]?.pitch.steps, 4);
+  assert.equal(subLaneStates[targetLaneIndex]?.pitch.steps, 2);
   assert.equal(subLaneStates[targetLaneIndex]?.pitch.scaleQuantize, false);
   assert.equal(subLaneStates[targetLaneIndex]?.expression.enabled, true);
-  assert.equal(subLaneStates[targetLaneIndex]?.expression.steps, 4);
+  assert.equal(subLaneStates[targetLaneIndex]?.expression.steps, 2);
   assert.equal(subLaneStates[targetLaneIndex]?.expression.valueMode, 'sequence');
   assert.equal(subLaneStates[targetLaneIndex]?.expression.rangeMin, 0.2, 'existing expression range should be preserved');
+  assert.deepEqual(pitchSettings[targetLaneIndex], {
+    mode: 'semitones',
+    root: 60,
+    scale: 'Chromatic',
+  });
+}
+
+function testCommitUsesLatestCaptureCycle(): void {
+  const targetLaneIndex = 0;
+  let scratch = createCaptureScratch(8);
+  scratch = writeCaptureEventToStep(scratch, 1, 0, {
+    eventId: 30,
+    midiNote: 60,
+    velocity: 0.4,
+    gateSeconds: 0.1,
+  });
+  scratch = writeCaptureEventToStep(scratch, 5, 0, {
+    eventId: 31,
+    midiNote: 64,
+    velocity: 0.6,
+    gateSeconds: 0.1,
+  });
+  scratch = markCaptureStepVisited(scratch, 0, 1);
+  scratch = writeCaptureEventToStep(scratch, 2, 1, {
+    eventId: 32,
+    midiNote: 60,
+    velocity: 0.8,
+    gateSeconds: 0.1,
+  });
+  scratch = writeCaptureEventToStep(scratch, 6, 1, {
+    eventId: 33,
+    midiNote: 64,
+    velocity: 1,
+    gateSeconds: 0.1,
+  });
+
+  const params: Array<[number, string, number]> = [];
+  let stepOverrides = makeStepOverrides();
+  let subLaneStates = makeSubLaneStates();
+  let pitchSettings: PitchSettings[] = Array.from({ length: 4 }, () => ({
+    mode: 'semitones',
+    root: 48,
+    scale: 'Major',
+  }));
+
+  const seq: CommitGeneratedCaptureArgs['seq'] = {
+    setParam: (laneIndex, suffix, value) => params.push([laneIndex, suffix, value]),
+    setParamSelect: () => {},
+    setStepOverrides: (action) => {
+      stepOverrides = applyStateAction(stepOverrides, action);
+    },
+    setSubLaneStates: (action) => {
+      subLaneStates = applyStateAction(subLaneStates, action);
+    },
+    setPitchSettings: (action) => {
+      pitchSettings = applyStateAction(pitchSettings, action);
+    },
+    setOpenLane: () => {},
+  };
+
+  commitGeneratedCaptureToEuclid({
+    scratch,
+    targetLaneIndex,
+    seq,
+    setSequencerMode: () => {},
+    setPitchBindingMode: () => {},
+  });
+
+  assert.deepEqual(params, [
+    [targetLaneIndex, 'Steps', 8],
+    [targetLaneIndex, 'Hits', 2],
+    [targetLaneIndex, 'Rotation', 0],
+  ]);
+  const triggerMap = stepOverrides.triggerToggles[targetLaneIndex];
+  assert.deepEqual(
+    Array.from({ length: 8 }, (_, step) => triggerMap?.get(step) === true),
+    [false, false, true, false, false, false, true, false],
+  );
+  assert.deepEqual(stepOverrides.pitch[targetLaneIndex], [0, 4]);
+  assert.deepEqual(stepOverrides.expression[targetLaneIndex], [0.8, 1]);
+  assert.equal(subLaneStates[targetLaneIndex]?.pitch.steps, 2);
+  assert.deepEqual(pitchSettings[targetLaneIndex], {
+    mode: 'semitones',
+    root: 60,
+    scale: 'Chromatic',
+  });
+}
+
+function testSameStepCapturePacksPitchAndDistributesTriggers(): void {
+  const targetLaneIndex = 0;
+  let scratch = createCaptureScratch(8);
+  scratch = writeCaptureEventToStep(scratch, 0, 0, {
+    eventId: 20,
+    midiNote: 60,
+    velocity: 0.4,
+    gateSeconds: 0.1,
+  });
+  scratch = writeCaptureEventToStep(scratch, 0, 0, {
+    eventId: 21,
+    midiNote: 64,
+    velocity: 0.6,
+    gateSeconds: 0.1,
+  });
+  scratch = writeCaptureEventToStep(scratch, 0, 0, {
+    eventId: 22,
+    midiNote: 67,
+    velocity: 0.8,
+    gateSeconds: 0.1,
+  });
+
+  const params: Array<[number, string, number]> = [];
+  let stepOverrides = makeStepOverrides();
+  let subLaneStates = makeSubLaneStates();
+  let pitchSettings: PitchSettings[] = Array.from({ length: 4 }, () => ({
+    mode: 'semitones',
+    root: 48,
+    scale: 'Major',
+  }));
+
+  const seq: CommitGeneratedCaptureArgs['seq'] = {
+    setParam: (laneIndex, suffix, value) => params.push([laneIndex, suffix, value]),
+    setParamSelect: () => {},
+    setStepOverrides: (action) => {
+      stepOverrides = applyStateAction(stepOverrides, action);
+    },
+    setSubLaneStates: (action) => {
+      subLaneStates = applyStateAction(subLaneStates, action);
+    },
+    setPitchSettings: (action) => {
+      pitchSettings = applyStateAction(pitchSettings, action);
+    },
+    setOpenLane: () => {},
+  };
+
+  commitGeneratedCaptureToEuclid({
+    scratch,
+    targetLaneIndex,
+    seq,
+    setSequencerMode: () => {},
+    setPitchBindingMode: () => {},
+  });
+
+  assert.deepEqual(params, [
+    [targetLaneIndex, 'Steps', 8],
+    [targetLaneIndex, 'Hits', 3],
+    [targetLaneIndex, 'Rotation', 0],
+  ]);
+  const triggerMap = stepOverrides.triggerToggles[targetLaneIndex];
+  assert.equal(
+    Array.from({ length: 8 }, (_, step) => triggerMap?.get(step) === true).filter(Boolean).length,
+    3,
+    'colliding capture events should be redistributed as three trigger hits',
+  );
+  assert.deepEqual(stepOverrides.pitch[targetLaneIndex], [0, 4, 7]);
+  assert.deepEqual(stepOverrides.expression[targetLaneIndex], [0.4, 0.6, 0.8]);
+  assert.equal(subLaneStates[targetLaneIndex]?.pitch.steps, 3);
+  assert.equal(subLaneStates[targetLaneIndex]?.expression.steps, 3);
   assert.deepEqual(pitchSettings[targetLaneIndex], {
     mode: 'semitones',
     root: 60,
@@ -228,7 +433,7 @@ function testEmptyCaptureDoesNotOverwriteEuclidLane(): void {
   const params: Array<[number, string, number]> = [];
   const selects: Array<[number, string, unknown]> = [];
   let selectedMode: [number, 'euclid'] | null = null;
-  let selectedPitchBinding: [number, 'sequence'] | null = null;
+  let selectedPitchBinding: [number, PitchBindingMode] | null = null;
   let stepOverrides = makeStepOverrides();
   let subLaneStates = makeSubLaneStates();
   let pitchSettings: PitchSettings[] = Array.from({ length: 4 }, () => ({
@@ -278,6 +483,9 @@ function testEmptyCaptureDoesNotOverwriteEuclidLane(): void {
 }
 
 testCaptureScratch();
+testCaptureScratchKeepsLatestCycleOnly();
 testCapturedPitchConversion();
 testCommitGeneratedCaptureToEuclid();
+testCommitUsesLatestCaptureCycle();
+testSameStepCapturePacksPitchAndDistributesTriggers();
 testEmptyCaptureDoesNotOverwriteEuclidLane();

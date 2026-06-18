@@ -45,6 +45,7 @@ export const kesshoCoreSourceFiles = Object.freeze([
   'cpp/KesshoCore/src/product/sources/SourceMidiRuntime.cpp',
   'cpp/KesshoCore/src/product/sources/SourceVoiceRelease.cpp',
   'cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp',
+  'cpp/KesshoCore/src/product/sources/SoundscapeTextureSource.cpp',
   'cpp/KesshoCore/src/product/assets/ProductAssets.cpp',
   'cpp/KesshoCore/src/product/fx/ProductFx.cpp',
   'cpp/KesshoCore/src/product/fx/ProductFxModules.cpp',

@@ -6,13 +6,15 @@ Product-core exposes production debug data through `ProductEngineProxy` telemetr
 
 Telemetry carries one compact row for each Earth texture slot: `waves`, `birds`, `birds2`, and `frogs`.
 
-Each row includes asset id, filename label, active state, inactive reason, active and playing slice counts, last slice id, last offset, last start time, slice duration, output duration, detune cents, speed multiplier, total playback rate, density, fade time, seed, parity fixture state, texture param availability, asset duration, and max offset.
+Each row includes asset id, filename label, active state, inactive reason, active and playing slice counts, last slice id, last offset, last start time, slice duration, output duration, detune cents, speed multiplier, total playback rate, density, fade time, seed, parity fixture state, texture param availability, texture-slice usage, asset-too-short state, asset duration, and max offset.
+
+Texture params are optional. Missing params are exposed through `textureParamsAvailable = false`, but texture-capable assets still use default texture-slice scheduling unless the parity fixture is enabled.
 
 Inactive reasons are normalized to readable strings:
 
 | Code | Reason |
 |---:|---|
-| 1 | texture params missing |
+| 1 | texture params missing (legacy/raw diagnostic; not a normal inactive reason) |
 | 2 | parity fixture enabled |
 | 3 | asset not registered |
 | 4 | asset not found |

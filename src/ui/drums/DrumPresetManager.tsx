@@ -16,6 +16,7 @@ import {
 } from '../../audio/drumPresets';
 import type { PresetEntry } from '../../presets/types';
 import { canRateDrumPreset, rateDrumPreset } from './drumPresetRating';
+import { applyDrumPresetSlotChange } from './drumPresetApply';
 
 const DRUM_ENGINE_SCOPES: Record<DrumVoiceType, string> = {
   sub: 'drumSub',
@@ -60,6 +61,7 @@ interface DrumPresetManagerProps {
   state: SliderState;
   color: string;
   onParamChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
+  onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
 }
 
 /* ── Styles (matching L4 PresetFamilyTree) ── */
@@ -256,6 +258,7 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
   state,
   color,
   onParamChange,
+  onStateChange,
 }) => {
   const engineScope = DRUM_ENGINE_SCOPES[voice];
   const { presets, save, load, remove, refresh, updateMetadata } = usePresets('engine', engineScope);
@@ -345,8 +348,12 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
   /* ── Load preset into morph slot ── */
   const handleLoadToSlot = useCallback((slot: 'A' | 'B') => {
     if (!selectedPresetName) return;
+    if (onStateChange) {
+      onStateChange((previous) => applyDrumPresetSlotChange(previous, voice, slot, selectedPresetName));
+      return;
+    }
     onParamChange(morphKeys[slot === 'A' ? 'a' : 'b'], selectedPresetName as SliderState[keyof SliderState]);
-  }, [selectedPresetName, morphKeys, onParamChange]);
+  }, [selectedPresetName, morphKeys, onParamChange, onStateChange, voice]);
 
   /* ── Save (overwrite) ── */
   const handleSaveOverwrite = useCallback(async () => {

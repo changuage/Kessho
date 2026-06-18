@@ -32,7 +32,10 @@ export type SequencerChainRuntimePosition = {
   nextBoundarySeconds: number;
 };
 
-export const SEQUENCER_CHAIN_LANE_COUNT = 4;
+export const SYNTH_SEQUENCER_CHAIN_LANE_COUNT = 4;
+export const DRUM_SEQUENCER_CHAIN_LANE_COUNT = 4;
+export const SEQUENCER_CHAIN_LANE_COUNT = SYNTH_SEQUENCER_CHAIN_LANE_COUNT;
+export const SEQUENCER_CHAIN_MAX_LANE_COUNT = DRUM_SEQUENCER_CHAIN_LANE_COUNT;
 export const SEQUENCER_CHAIN_MAX_ENTRIES = 16;
 export const SEQUENCER_CHAIN_MAX_REPEATS = 16;
 
@@ -58,7 +61,7 @@ function normalizeEntry(value: unknown): SequencerChainEntry | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Partial<SequencerChainEntry>;
   return {
-    laneIndex: integerInRange(record.laneIndex, 0, 0, SEQUENCER_CHAIN_LANE_COUNT - 1),
+    laneIndex: integerInRange(record.laneIndex, 0, 0, SEQUENCER_CHAIN_MAX_LANE_COUNT - 1),
     repeats: integerInRange(record.repeats, 1, 1, SEQUENCER_CHAIN_MAX_REPEATS),
   };
 }
@@ -107,6 +110,10 @@ export function sequencerChainStateKey(kind: SequencerChainKind): 'synthSequence
   return kind === 'synth' ? 'synthSequencerChain' : 'drumSequencerChain';
 }
 
+export function sequencerChainLaneCount(kind: SequencerChainKind): number {
+  return kind === 'drum' ? DRUM_SEQUENCER_CHAIN_LANE_COUNT : SYNTH_SEQUENCER_CHAIN_LANE_COUNT;
+}
+
 export function sequencerChainEnabledForLane(
   kind: SequencerChainKind,
   state: Record<string, unknown> | null | undefined,
@@ -153,7 +160,7 @@ export function sequencerChainRuntimeLanes(
   kind: SequencerChainKind,
   state: Record<string, unknown> | null | undefined,
 ): SequencerChainLaneRuntime[] {
-  return Array.from({ length: SEQUENCER_CHAIN_LANE_COUNT }, (_, laneIndex) => ({
+  return Array.from({ length: sequencerChainLaneCount(kind) }, (_, laneIndex) => ({
     laneIndex,
     durationSeconds: sequencerChainLaneDurationSeconds(kind, state, laneIndex),
   }));

@@ -180,9 +180,7 @@ export interface EvolveContext {
   enabledSubLanes?: SubLaneName[];
   /** Per-engine effective tension (0-1), used for method probability bias */
   effectiveTension?: number;
-  /** Current harmony scale intervals (e.g. [0,2,4,5,7,9,11] for Major).
-   *  When present AND pitch scaleQuantize is enabled, pitchWalk uses
-   *  scale-degree steps instead of chromatic ±1 semitones. */
+  /** Current pitch scale intervals for semitones mode scale-degree walking. */
   scaleIntervals?: readonly number[];
 }
 
@@ -305,8 +303,7 @@ export function evolveSequencer(
 
   // 7. Pitch Walk — ±1 or ±2 steps, clamped ±5 from home (bespoke: home-relative constraint)
   //    Bypasses tension gate so pitch always evolves at full probability.
-  //    When scaleQuantize is enabled and scaleIntervals are available,
-  //    walk by scale degrees (interval jumps) instead of chromatic ±1 semitones.
+  //    In semitones mode, values are scale-degree offsets and walk by degree.
   if (methods.pitchWalk && activeLanes.includes('pitch') && chance(next.rng, 0.55 * intensity)) {
     // Walk multiple steps at high intensity
     const walkStepCount = intensity > 0.8 ? (next.rng() < 0.5 ? 2 : 1) : 1;
@@ -315,27 +312,12 @@ export function evolveSequencer(
       const currentOffset = next.pitch.offsets[idx] ?? 0;
       const orig = home ? (home.pitch.offsets[idx] ?? 0) : 0;
       const si = ctx.scaleIntervals;
-      const useScaleDegrees = next.pitch.scaleQuantize && si && si.length > 0;
+      const useScaleDegrees = next.pitch.mode === 'semitones' && si && si.length > 0;
 
       if (useScaleDegrees) {
-        // Walk by one scale degree up or down
-        const octaves = Math.floor(currentOffset / 12);
-        const rem = ((currentOffset % 12) + 12) % 12;
-        // Find nearest scale degree index
-        let bestDeg = 0;
-        let bestDist = 99;
-        for (let d = 0; d < si.length; d++) {
-          const degree = si[d] ?? rem;
-          const dist = Math.min(Math.abs(degree - rem), 12 - Math.abs(degree - rem));
-          if (dist < bestDist) { bestDist = dist; bestDeg = d; }
-        }
         const dir = next.rng() < 0.5 ? -1 : 1;
-        let newDeg = bestDeg + dir;
-        let newOct = octaves;
-        if (newDeg < 0) { newDeg = si.length - 1; newOct--; }
-        else if (newDeg >= si.length) { newDeg = 0; newOct++; }
-        const newVal = newOct * 12 + (si[newDeg] ?? rem);
-        if (Math.abs(newVal - orig) <= 14) {
+        const newVal = currentOffset + dir;
+        if (Math.abs(newVal - orig) <= 7) {
           next.pitch.offsets[idx] = newVal;
         }
       } else {

@@ -17,11 +17,26 @@ type ProductRuntimeManualTriggers = {
 
 const DEFAULT_MANUAL_DRUM_VELOCITY = 0.8;
 
+function shouldWaitForManualTriggerSnapshot(): boolean {
+  return productEngine.getLifecycleState() === 'running';
+}
+
+function manualTriggerCommitOptions(triggerCritical: boolean): {
+  triggerCritical: boolean;
+  forceFullSnapshot: boolean;
+} {
+  return {
+    triggerCritical,
+    forceFullSnapshot: triggerCritical,
+  };
+}
+
 export function useProductRuntimeManualTriggers({
   stateRef,
 }: ProductRuntimeManualTriggersOptions): ProductRuntimeManualTriggers {
   const auditionSynthNote = useCallback((note: ProductManualSynthNote): void => {
     const externalState = stateRef.current;
+    const triggerCritical = shouldWaitForManualTriggerSnapshot();
     void commitProductControlActionThenTrigger(
       productEngine,
       externalState,
@@ -32,12 +47,14 @@ export function useProductRuntimeManualTriggers({
         note,
         velocity: note.velocity,
       },
-      () => productEngine.auditionSynthNote(note),
+      (_revision, resolvedSliders) => productEngine.auditionSynthNote(note, resolvedSliders),
+      manualTriggerCommitOptions(triggerCritical),
     );
   }, [stateRef]);
 
   const triggerDrumVoice = useCallback((voice: ProductDrumVoice): void => {
     const externalState = stateRef.current;
+    const triggerCritical = shouldWaitForManualTriggerSnapshot();
     void commitProductControlActionThenTrigger(
       productEngine,
       externalState,
@@ -48,7 +65,8 @@ export function useProductRuntimeManualTriggers({
         voice,
         velocity: DEFAULT_MANUAL_DRUM_VELOCITY,
       },
-      () => productEngine.triggerDrumVoice(voice, DEFAULT_MANUAL_DRUM_VELOCITY),
+      (_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, DEFAULT_MANUAL_DRUM_VELOCITY, resolvedSliders),
+      manualTriggerCommitOptions(triggerCritical),
     );
   }, [stateRef]);
 

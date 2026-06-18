@@ -33,8 +33,8 @@ for (const [file, text] of productTriggerFiles) {
 assert(
   productManual.includes("import { productEngine } from '../audio/product/ProductEngineProxy'") &&
     productManual.includes('commitProductControlActionThenTrigger') &&
-    productManual.includes('productEngine.auditionSynthNote(note)') &&
-    productManual.includes('productEngine.triggerDrumVoice(voice, DEFAULT_MANUAL_DRUM_VELOCITY)'),
+    productManual.includes('(_revision, resolvedSliders) => productEngine.auditionSynthNote(note, resolvedSliders)') &&
+    productManual.includes('(_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, DEFAULT_MANUAL_DRUM_VELOCITY, resolvedSliders)'),
   'Product manual triggers must commit Product Control state before calling productEngine trigger APIs.',
 );
 assert(

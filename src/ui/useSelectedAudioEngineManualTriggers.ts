@@ -16,6 +16,20 @@ type SelectedAudioEngineManualTriggers = {
   triggerDrumVoice: (voice: ProductDrumVoice) => void;
 };
 
+function shouldWaitForManualTriggerSnapshot(): boolean {
+  return productEngine.getLifecycleState() === 'running';
+}
+
+function manualTriggerCommitOptions(triggerCritical: boolean): {
+  triggerCritical: boolean;
+  forceFullSnapshot: boolean;
+} {
+  return {
+    triggerCritical,
+    forceFullSnapshot: triggerCritical,
+  };
+}
+
 export function useSelectedAudioEngineManualTriggers({
   audioEngineRuntimeMode,
   stateRef,
@@ -23,6 +37,7 @@ export function useSelectedAudioEngineManualTriggers({
   const auditionSynthNote = useCallback((note: ProductManualSynthNote): void => {
     const externalState = stateRef.current;
     if (audioEngineRuntimeMode === 'core-product') {
+      const triggerCritical = shouldWaitForManualTriggerSnapshot();
       void commitProductControlActionThenTrigger(
         productEngine,
         externalState,
@@ -33,7 +48,8 @@ export function useSelectedAudioEngineManualTriggers({
           note,
           velocity: note.velocity,
         },
-        () => productEngine.auditionSynthNote(note),
+        (_revision, resolvedSliders) => productEngine.auditionSynthNote(note, resolvedSliders),
+        manualTriggerCommitOptions(triggerCritical),
       );
       return;
     }
@@ -43,6 +59,7 @@ export function useSelectedAudioEngineManualTriggers({
   const triggerDrumVoice = useCallback((voice: ProductDrumVoice): void => {
     const externalState = stateRef.current;
     if (audioEngineRuntimeMode === 'core-product') {
+      const triggerCritical = shouldWaitForManualTriggerSnapshot();
       void commitProductControlActionThenTrigger(
         productEngine,
         externalState,
@@ -53,7 +70,8 @@ export function useSelectedAudioEngineManualTriggers({
           voice,
           velocity: 0.8,
         },
-        () => productEngine.triggerDrumVoice(voice, 0.8),
+        (_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, 0.8, resolvedSliders),
+        manualTriggerCommitOptions(triggerCritical),
       );
       return;
     }

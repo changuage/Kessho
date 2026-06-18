@@ -1,9 +1,20 @@
+import {
+  SCALES,
+  semitoneToScaleDegree,
+  type ScaleName,
+} from '../../audio/drumSeqTypes';
 import type { PitchSettings } from './useEuclideanSequencer';
 
 export interface CapturedPitchCommit {
   pitchSettings: PitchSettings;
   pitchValues: number[];
   rootMidi: number;
+}
+
+export interface CapturedPitchReference {
+  root: number;
+  scale: ScaleName;
+  scaleIntervals?: readonly number[];
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -28,14 +39,19 @@ export function chooseCaptureRootMidi(midis: readonly number[]): number {
 
 export function capturedMidisToSemitonePitchValues(
   midisByStep: readonly (number | null)[],
+  reference?: CapturedPitchReference | null,
 ): CapturedPitchCommit {
   const capturedMidis = midisByStep.filter((value): value is number => (
     typeof value === 'number' && Number.isFinite(value)
   ));
-  const rootMidi = chooseCaptureRootMidi(capturedMidis);
+  const rootMidi = reference
+    ? clamp(Math.round(reference.root), 0, 127)
+    : chooseCaptureRootMidi(capturedMidis);
+  const scale = reference?.scale ?? 'Chromatic';
+  const scaleIntervals = reference?.scaleIntervals ?? SCALES[scale] ?? SCALES.Chromatic;
   const pitchValues = midisByStep.map((midi) => {
     if (typeof midi !== 'number' || !Number.isFinite(midi)) return 0;
-    return clamp(Math.round(midi - rootMidi), -48, 48);
+    return clamp(semitoneToScaleDegree(Math.round(midi) - rootMidi, scaleIntervals), -48, 48);
   });
 
   return {
@@ -44,7 +60,7 @@ export function capturedMidisToSemitonePitchValues(
     pitchSettings: {
       mode: 'semitones',
       root: rootMidi,
-      scale: 'Chromatic',
+      scale,
     },
   };
 }

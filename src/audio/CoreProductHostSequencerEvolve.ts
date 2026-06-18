@@ -84,9 +84,9 @@ function tickConfigs(name: EvolveName, configs: unknown, lastBars: number[], cyc
   }
 }
 export function createCoreProductSequencerEvolveClock() {
-  const synthLastBars = [0, 0, 0, 0], drumLastBars = [0, 0, 0, 0];
+  const synthLastBars = [0, 0, 0, 0], drumLastBars = [0, 0, 0, 0, 0, 0];
   const synthCycles = Array.from({ length: 4 }, () => ({ previousStep: -1, cycle: 0 }));
-  const drumCycles = Array.from({ length: 4 }, () => ({ previousStep: -1, cycle: 0 }));
+  const drumCycles = Array.from({ length: 6 }, () => ({ previousStep: -1, cycle: 0 }));
   const reset = () => { synthLastBars.fill(0); drumLastBars.fill(0); for (const cycle of [...synthCycles, ...drumCycles]) { cycle.previousStep = -1; cycle.cycle = 0; } };
   return {
     reset,

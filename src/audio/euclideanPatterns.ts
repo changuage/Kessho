@@ -16,6 +16,8 @@ const DRUM_EUCLID_DEFAULTS = [
   { steps: 16, hits: 3, rotation: 0 },
   { steps: 12, hits: 5, rotation: 0 },
   { steps: 8, hits: 3, rotation: 0 },
+  { steps: 16, hits: 4, rotation: 2 },
+  { steps: 12, hits: 4, rotation: 1 },
 ] as const satisfies readonly EuclideanPatternParams[];
 
 function defaultLane(defaults: readonly EuclideanPatternParams[], laneIndex: number): EuclideanPatternParams {

@@ -48,8 +48,10 @@ function cloneHomeState(state: CoreProductSequencerHomeState): CoreProductSequen
     swing: state.swing,
     noteRange: state.noteRange ? { ...state.noteRange } : state.noteRange,
     pitchSettings: state.pitchSettings ? { ...state.pitchSettings } : state.pitchSettings,
-    pitchScaleQuantize: state.pitchScaleQuantize,
-    pitchSubLaneState: state.pitchSubLaneState ? { ...state.pitchSubLaneState } : state.pitchSubLaneState,
+    pitchScaleQuantize: state.pitchScaleQuantize == null ? state.pitchScaleQuantize : false,
+    pitchSubLaneState: state.pitchSubLaneState
+      ? { ...state.pitchSubLaneState, ...(typeof state.pitchSubLaneState.scaleQuantize === 'boolean' ? { scaleQuantize: false } : {}) }
+      : state.pitchSubLaneState,
   };
 }
 
@@ -75,7 +77,7 @@ function mergePitchSubLaneState(
     next.direction = patch.direction;
   }
   if (typeof patch.scaleQuantize === 'boolean') {
-    next.scaleQuantize = patch.scaleQuantize;
+    next.scaleQuantize = false;
   }
   return next;
 }

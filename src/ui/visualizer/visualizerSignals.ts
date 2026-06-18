@@ -63,7 +63,7 @@ const pulses: Record<VisualizerPulseKey, PulseState> = {
 
 const sequencers: Record<VisualizerSequencerKind, SequencerState> = {
   synth: { steps: [0, 0, 0, 0], hitCounts: [0, 0, 0, 0], updatedAt: 0 },
-  drum: { steps: [0, 0, 0, 0], hitCounts: [0, 0, 0, 0], updatedAt: 0 },
+  drum: { steps: [0, 0, 0, 0, 0, 0], hitCounts: [0, 0, 0, 0, 0, 0], updatedAt: 0 },
 };
 
 function nowMs(): number {

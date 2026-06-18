@@ -94,6 +94,8 @@ struct Voice {
   uint32_t asset_slot = 0;
   bool sample_voice = false;
   bool soundscape_texture_voice = false;
+  uint8_t soundscape_texture_slot = kSoundscapeTextureSlotCount;
+  uint8_t soundscape_layer = kSoundscapeLayerCount;
   bool soundscape_releasing = false;
   uint32_t soundscape_texture_slice_id = 0;
   uint64_t soundscape_texture_start_frame = 0u;
@@ -130,24 +132,24 @@ struct Voice {
   uint32_t start_delay_frames = 0;
 };
 
+enum SoundscapeTextureFallbackReason : uint32_t {
+  kSoundscapeTextureFallbackNone = 0u, kSoundscapeTextureFallbackNotTextureAsset = 1u,
+  kSoundscapeTextureFallbackParityFixture = 2u, kSoundscapeTextureFallbackTextureParamsUnavailable = 3u,
+  kSoundscapeTextureFallbackMissingAsset = 4u, kSoundscapeTextureFallbackInvalidAssetMetadata = 5u,
+  kSoundscapeTextureFallbackAllocatorFull = 6u, kSoundscapeTextureFallbackAssetTooShortForSlice = 7u,
+};
+
 struct SoundscapeTextureRuntime {
   bool initialized = false;
-  uint32_t seed = 0u;
-  uint32_t rng_state = 0u;
+  uint32_t seed = 0u, rng_state = 0u;
   uint64_t next_start_frame = 0u;
-  uint32_t next_slice_id = 1u;
-  uint32_t last_slice_id = 0u;
+  uint32_t next_slice_id = 1u, last_slice_id = 0u;
   uint64_t last_start_frame = 0u;
-  float last_offset_seconds = 0.0f;
-  float last_slice_duration = 0.0f;
-  float last_output_duration = 0.0f;
-  float last_detune_cents = 0.0f;
-  float last_speed_multiplier = 1.0f;
-  float last_total_rate = 1.0f;
-  float last_density = 0.0f;
-  float last_fade_time = 0.0f;
-  float last_asset_duration = 0.0f;
-  float last_max_offset = 0.0f;
+  float last_offset_seconds = 0.0f, last_slice_duration = 0.0f, last_output_duration = 0.0f;
+  float last_detune_cents = 0.0f, last_speed_multiplier = 1.0f, last_total_rate = 1.0f;
+  float last_density = 0.0f, last_fade_time = 0.0f, last_asset_duration = 0.0f, last_max_offset = 0.0f;
+  uint32_t last_fallback_reason = kSoundscapeTextureFallbackNone;
+  uint32_t runtime_reset_count = 0u;
   float recent_offsets[6]{};
   uint32_t recent_offset_count = 0u;
   bool spatial_enabled = false;

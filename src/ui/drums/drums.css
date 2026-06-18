@@ -2173,6 +2173,64 @@
   border-bottom-color: rgba(255,255,255,0.08);
 }
 
+.detail-generate-strip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  background: rgba(18, 17, 15, 0.42);
+}
+
+.detail-generate-strip > span {
+  font-size: 0.72rem;
+  color: rgba(232, 220, 196, 0.72);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.detail-generate-strip button {
+  border: 1px solid rgba(232, 220, 196, 0.18);
+  background: rgba(18, 17, 15, 0.72);
+  color: #e8dcc4;
+  border-radius: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.detail-generate-strip button:hover {
+  border-color: var(--sc, #a870e8);
+}
+
+.detail-generate-preview {
+  display: grid;
+  grid-template-columns: minmax(160px, 240px) auto auto auto;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+}
+
+.seq-source-badge,
+.seq-ov-readonly-hits {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border: 1px solid rgba(232, 220, 196, 0.18);
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 0.68rem;
+  color: rgba(232, 220, 196, 0.76);
+  background: rgba(18, 17, 15, 0.62);
+}
+
+.seq-source-badge--scatter {
+  border-color: rgba(168, 112, 232, 0.62);
+  color: #e8dcc4;
+}
+
 /* Final narrow-width polish for dense drum cards and sequencer controls. */
 @media (max-width: 420px) {
   .drum-root .drums-source-preset-bar,

@@ -1,4 +1,5 @@
 import type { VisualizerPulseSnapshot } from './visualizerSignals';
+import type { VisualizerQualitySettings } from './visualizerQuality';
 
 export type VisualizerFocus =
   | 'all'
@@ -46,12 +47,18 @@ export interface ReactiveVisualizerControls {
   kaleidoSpin: number;
   kaleidoType: number;
   kaleidoReflections: number;
+  kaleidoPattern: number;
   brightness: number;
   vibrance: number;
   saturation: number;
   impactFlash: number;
   visualLimiter: number;
-  layerOrder: number[];  // [shapesPos, atmosPos, glitchPos, kaleidoPos] each 0-3
+  pointCloudAmount: number;
+  pointCloudSize: number;
+  pointCloudDensity: number;
+  pointCloudScatter: number;
+  pointCloudColor: number;
+  layerOrder: number[];  // [shapesPos, atmosPos, glitchPos, kaleidoPos, pointCloudPos] each 0-4
   focus: VisualizerFocus;
 }
 
@@ -82,6 +89,7 @@ export interface ReactiveVisualizerFrame {
   snapshot: ReactiveVisualizerSnapshot;
   controls: ReactiveVisualizerControls;
   seed: number;
+  quality: VisualizerQualitySettings;
 }
 
 type UniformName =
@@ -99,8 +107,12 @@ type UniformName =
   | 'u_controlF'
   | 'u_controlG'
   | 'u_controlH'
+  | 'u_kaleidoPattern'
   | 'u_post'
   | 'u_layerOrder'
+  | 'u_pointCloudA'
+  | 'u_pointCloudB'
+  | 'u_quality'
   | 'u_environment'
   | 'u_pulseA'
   | 'u_pulseB';
@@ -135,8 +147,12 @@ uniform vec4 u_controlE;
 uniform vec4 u_controlF;
 uniform vec4 u_controlG;
 uniform vec4 u_controlH;
+uniform float u_kaleidoPattern;
 uniform vec4 u_post;
 uniform vec4 u_layerOrder;
+uniform vec4 u_pointCloudA;
+uniform vec4 u_pointCloudB;
+uniform vec4 u_quality;
 uniform vec4 u_environment;
 uniform vec4 u_pulseA;
 uniform vec4 u_pulseB;
@@ -174,44 +190,47 @@ float fbm(vec2 p, float octaves) {
   return v;
 }
 
-/* ─── Kessho palette ─── */
-vec3 kesshoWarm(float t) {
-  // Bold brand colors matching the Kessho design system
-  vec3 icy = vec3(0.72, 0.88, 1.0);      // #B8E0FF
-  vec3 sage = vec3(0.48, 0.60, 0.43);    // #7B9A6D
-  vec3 clay = vec3(0.77, 0.45, 0.31);    // #C4724E
-  vec3 gold = vec3(0.83, 0.65, 0.13);    // #D4A520
-  vec3 violet = vec3(0.55, 0.36, 0.96);  // #8B5CF6
-  vec3 coral = vec3(0.93, 0.42, 0.34);   // warm red-orange
-  vec3 teal = vec3(0.22, 0.78, 0.72);    // vibrant teal
-  vec3 magenta = vec3(0.85, 0.28, 0.68); // hot pink
+mat2 rotate2d(float angle) {
+  float s = sin(angle);
+  float c = cos(angle);
+  return mat2(c, -s, s, c);
+}
 
-  float s = fract(t) * 8.0;
-  if (s < 1.0) return mix(icy, violet, s);
-  if (s < 2.0) return mix(violet, coral, s - 1.0);
-  if (s < 3.0) return mix(coral, gold, s - 2.0);
-  if (s < 4.0) return mix(gold, teal, s - 3.0);
-  if (s < 5.0) return mix(teal, sage, s - 4.0);
-  if (s < 6.0) return mix(sage, magenta, s - 5.0);
-  if (s < 7.0) return mix(magenta, clay, s - 6.0);
-  return mix(clay, icy, s - 7.0);
+/* ─── Kessho neon/pastel palette ─── */
+vec3 kesshoNeonPastel(float t) {
+  vec3 cyan = vec3(0.00, 0.92, 1.00);
+  vec3 mint = vec3(0.32, 1.00, 0.72);
+  vec3 lemon = vec3(1.00, 0.96, 0.30);
+  vec3 peach = vec3(1.00, 0.64, 0.48);
+  vec3 coral = vec3(1.00, 0.34, 0.46);
+  vec3 bubblegum = vec3(1.00, 0.44, 0.86);
+  vec3 lavender = vec3(0.76, 0.58, 1.00);
+  vec3 periwinkle = vec3(0.48, 0.70, 1.00);
+  vec3 electricBlue = vec3(0.10, 0.28, 1.00);
+  vec3 lime = vec3(0.60, 1.00, 0.20);
+
+  float s = fract(t) * 10.0;
+  if (s < 1.0) return mix(cyan, mint, s);
+  if (s < 2.0) return mix(mint, lemon, s - 1.0);
+  if (s < 3.0) return mix(lemon, peach, s - 2.0);
+  if (s < 4.0) return mix(peach, coral, s - 3.0);
+  if (s < 5.0) return mix(coral, bubblegum, s - 4.0);
+  if (s < 6.0) return mix(bubblegum, lavender, s - 5.0);
+  if (s < 7.0) return mix(lavender, periwinkle, s - 6.0);
+  if (s < 8.0) return mix(periwinkle, electricBlue, s - 7.0);
+  if (s < 9.0) return mix(electricBlue, lime, s - 8.0);
+  return mix(lime, cyan, s - 9.0);
 }
 
 vec3 palette(float t, float bias) {
-  vec3 base = kesshoWarm(t);
-  // brighter, poppier baseline
-  base = pow(base, vec3(0.7)) * 1.25;
+  vec3 base = kesshoNeonPastel(t);
+  base = pow(base, vec3(0.72)) * 1.12;
   float lum = dot(base, vec3(0.299, 0.587, 0.114));
-  // Left (-1): Vivid/electric — bright, high-luminance, neon push
-  vec3 saturated = clamp(lum + (base - lum) * 3.5, 0.0, 1.0);
-  vec3 vivid = saturated * 1.5;
-  // Right (+1): Jewel tones — deep, rich, low-luminance saturated
-  vec3 deepBase = pow(base, vec3(1.6)) * 1.1;  // darken but keep hue
-  float deepLum = dot(deepBase, vec3(0.299, 0.587, 0.114));
-  vec3 jewel = clamp(deepLum + (deepBase - deepLum) * 4.0, 0.0, 1.0) * 0.85; // high saturation, low brightness
-  // Blend: left = vivid, center = base, right = jewel
-  vec3 color = mix(base, vivid, max(-bias, 0.0));
-  return mix(color, jewel, max(bias, 0.0));
+  vec3 neon = clamp(lum + (base - lum) * 2.8, 0.0, 1.0) * 1.24;
+  vec3 pastel = mix(vec3(1.0), clamp(base, 0.0, 1.0), 0.58) * 1.06;
+  pastel = clamp(pastel, 0.0, 1.0);
+  vec3 color = mix(base, neon, max(-bias, 0.0));
+  return clamp(mix(color, pastel, max(bias, 0.0)), 0.0, 1.35);
 }
 
 /* ─── SDF primitives ─── */
@@ -401,6 +420,136 @@ vec2 pointToUv(vec2 point, vec2 aspect) {
   return point / max(aspect * 2.0, vec2(0.0001)) + 0.5;
 }
 
+vec2 kaleidoRepeatingPatternCoord(
+  vec2 point,
+  float spin,
+  float sector,
+  float segments,
+  float amount,
+  float time,
+  float seed
+) {
+  float pattern = clamp(amount, 0.0, 1.0);
+  float tileCount = mix(1.4, 4.8 + segments * 0.08, pattern);
+  vec2 rotated = rotate2d(spin * 0.28 + seed * 0.00007) * point;
+
+  // Skew into a triangular/hex-like lattice, mirror each cell, then unskew it.
+  vec2 lattice = vec2(rotated.x + rotated.y * 0.577350269, rotated.y * 1.154700538);
+  vec2 grid = lattice * tileCount + vec2(0.5);
+  vec2 cell = floor(grid);
+  vec2 local = fract(grid);
+  vec2 mirrored = abs(local * 2.0 - 1.0);
+  float parity = mod(cell.x + cell.y, 2.0);
+  if (parity > 0.5) mirrored.x = 1.0 - mirrored.x;
+
+  vec2 centered = mirrored - 0.5;
+  vec2 tiled = vec2(centered.x - centered.y * 0.5, centered.y * 0.866025404);
+  tiled *= mix(1.75, 2.45, pattern) / max(tileCount, 0.001);
+
+  float cellHash = hash(cell + vec2(seed * 0.001, 23.7));
+  float cellSpin = floor(cellHash * max(segments, 3.0)) * sector
+    + (parity - 0.5) * sector * mix(0.45, 1.35, pattern);
+  vec2 cellPoint = rotate2d(cellSpin + spin * 0.12) * tiled;
+  vec2 folded = kaleidoFoldCoord(
+    cellPoint,
+    spin * 0.2 + cellHash * sector,
+    sector * mix(0.95, 0.42, pattern)
+  );
+
+  float radius = length(folded);
+  if (radius < 0.0001) return folded;
+  float angle = atan(folded.y, folded.x);
+  float ringCount = mix(2.0, 7.0, pattern);
+  float ringCoord = radius * ringCount;
+  float ringIndex = floor(ringCoord);
+  float ringPhase = fract(ringCoord);
+  float ringMirror = mix(ringPhase, 1.0 - ringPhase, mod(ringIndex + parity, 2.0));
+  float ringRadius = (ringIndex + ringMirror) / ringCount;
+  float ringTurn = (ringIndex + cellHash * 2.0) * sector * 0.5 * pattern + time * 0.015 * pattern;
+  return kaleidoFoldCoord(
+    vec2(cos(angle + ringTurn), sin(angle + ringTurn)) * ringRadius,
+    spin * 0.08,
+    sector * mix(0.9, 0.36, pattern)
+  );
+}
+
+vec2 kaleidoTriangleCopyCoord(
+  vec2 point,
+  float spin,
+  float sector,
+  float segments,
+  float amount,
+  float patternAmount,
+  float seed
+) {
+  float depth = clamp(amount, 0.0, 1.0);
+  float pattern = clamp(patternAmount, 0.0, 1.0);
+  float copyScale = mix(4.2, 15.0 + segments * 0.36, depth) * mix(1.0, 1.55, pattern);
+  vec2 rotated = rotate2d(spin * 0.18 + seed * 0.00005) * point * copyScale;
+
+  // Equilateral-triangle lattice. Each cell is reflected back into one
+  // central seed triangle, matching the reflected/translated-copy model of
+  // physical kaleidoscope generators.
+  vec2 lattice = vec2(rotated.x - rotated.y * 0.577350269, rotated.y * 1.154700538);
+  vec2 cell = floor(lattice);
+  vec2 local = fract(lattice);
+
+  float upperTriangle = step(1.0, local.x + local.y);
+  local = mix(local, 1.0 - local.yx, upperTriangle);
+
+  float xParity = mod(cell.x, 2.0);
+  float yParity = mod(cell.y, 2.0);
+  local.x = mix(local.x, 1.0 - local.x, xParity);
+  local.y = mix(local.y, 1.0 - local.y, yParity);
+  if (mod(cell.x + cell.y + upperTriangle, 2.0) > 0.5) {
+    local = local.yx;
+  }
+
+  vec2 trianglePoint = vec2(local.x + local.y * 0.5, local.y * 0.866025404);
+  trianglePoint -= vec2(0.5, 0.288675135);
+
+  float rowTurn = (cell.x - cell.y + upperTriangle) * sector * 0.5;
+  float mirrorTurn = (xParity - yParity) * sector * mix(0.35, 1.15, depth);
+  vec2 seedTriangle = rotate2d(rowTurn + mirrorTurn + spin * 0.06) * trianglePoint;
+
+  return seedTriangle / mix(0.68, 1.42, depth);
+}
+
+vec2 kaleidoFractalMirrorCoord(
+  vec2 point,
+  float spin,
+  float sector,
+  float segments,
+  float amount,
+  float patternAmount,
+  float time,
+  float seed
+) {
+  float depth = clamp(amount, 0.0, 1.0);
+  float pattern = clamp(patternAmount, 0.0, 1.0);
+  float radius = length(point);
+  if (radius < 0.0001) return vec2(0.0);
+
+  float localSector = sector * mix(1.0, 0.64, pattern * depth);
+  float angle = atan(point.y, point.x) + spin;
+  float sectorAngle = mod(angle + localSector * 0.5, localSector);
+  float foldedAngle = abs(sectorAngle - localSector * 0.5);
+
+  float radialMirrorAmount = depth * mix(0.28, 0.92, pattern);
+  float ringCount = mix(1.0, 3.0 + segments * 0.34, radialMirrorAmount);
+  float radialCoord = radius * ringCount;
+  float ringIndex = floor(radialCoord);
+  float ringPhase = fract(radialCoord);
+  float mirroredPhase = mix(ringPhase, 1.0 - ringPhase, mod(ringIndex, 2.0));
+  float mirroredRadius = (ringIndex + mirroredPhase) / max(ringCount, 0.001);
+  float ringRadius = mix(radius, mirroredRadius, radialMirrorAmount);
+
+  float symmetricRipple = sin(ringIndex * 1.7 + foldedAngle / max(localSector, 0.001) * PI * 2.0 + time * 0.025);
+  ringRadius += symmetricRipple * 0.012 * depth * (0.25 + pattern * 0.75);
+
+  return vec2(cos(foldedAngle - spin), sin(foldedAngle - spin)) * ringRadius;
+}
+
 vec2 applyKaleidoLayerCoord(
   vec2 point,
   float foldSpin,
@@ -414,6 +563,7 @@ vec2 applyKaleidoLayerCoord(
   float softGlassAmount,
   float delayMod,
   float reflectionSlider,
+  float patternSlider,
   float time,
   float seed
 ) {
@@ -424,7 +574,8 @@ vec2 applyKaleidoLayerCoord(
   float rotatedAngle = pointAngle + foldSpin;
   float sectorAngle = mod(rotatedAngle, foldSector);
   float foldedAngle = min(sectorAngle, foldSector - sectorAngle);
-  float prismAmount = sharpMirrorAmount * 0.9;
+  float trueKaleidoAmount = clamp(sharpMirrorAmount * mix(0.35, 1.0, foldAmount), 0.0, 1.0);
+  float prismAmount = sharpMirrorAmount * 0.9 * (1.0 - trueKaleidoAmount);
   float liquidAmount = softGlassAmount * 0.9;
 
   float prismWarp = sin(foldedAngle * foldSegments * 2.0) * prismAmount * 0.04
@@ -435,14 +586,15 @@ vec2 applyKaleidoLayerCoord(
   float flowWarp = sin(foldedAngle * 3.0 + time * 0.12 + pointRadius * 5.0) * liquidAmount * 0.06 * (0.4 + delayMod * 0.6)
     + cos(foldedAngle * 5.0 - time * 0.09 + pointRadius * 3.0) * liquidAmount * 0.03;
 
-  float shardFacet = sharpMirrorAmount * foldAmount;
+  float shardFacet = sharpMirrorAmount * foldAmount * (1.0 - trueKaleidoAmount);
   float angularFacet = abs(fract((foldedAngle / max(foldSector, 0.001)) * mix(2.0, 5.0, sharpMirrorAmount) + pointRadius * 0.35) - 0.5);
   float radialFacet = abs(fract(pointRadius * (2.5 + foldSegments * 0.22)) - 0.5);
   float shardWarp = ((angularFacet - 0.25) * 0.18 + (radialFacet - 0.25) * 0.1) * shardFacet;
 
   float centerMask = smoothstep(kaleidoScale * 2.0, kaleidoScale * 0.1, pointRadius);
   float fullFoldCoverage = smoothstep(0.55, 0.95, kaleidoGate);
-  float kaleidoMask = mix(centerMask, 1.0, fullFoldCoverage);
+  float patternAmount = smoothstep(0.02, 1.0, max(patternSlider, 0.0));
+  float kaleidoMask = mix(centerMask, 1.0, max(fullFoldCoverage, patternAmount * 0.95));
   vec2 typedP = kaleidoTypeCoord(point, foldSpin, foldSector, kaleidoTypeControl, foldAmount * kaleidoMask, time, seed);
   float typedRadius = length(typedP);
   float typedAngle = atan(typedP.y, typedP.x);
@@ -460,6 +612,49 @@ vec2 applyKaleidoLayerCoord(
       reflectionDepth
     ) / reflectionScale;
     reflectedP = mix(foldedP, chamberP, reflectionDepth);
+  }
+  if (trueKaleidoAmount > 0.001) {
+    vec2 treeP = kaleidoFractalMirrorCoord(
+      point,
+      foldSpin + seed * 0.00017,
+      foldSector,
+      foldSegments,
+      trueKaleidoAmount,
+      patternAmount,
+      time,
+      seed
+    );
+    vec2 treeTypedP = kaleidoTypeCoord(
+      treeP,
+      foldSpin * 0.24 + seed * 0.00019,
+      foldSector * mix(0.72, 0.42, trueKaleidoAmount),
+      mix(-1.0, kaleidoTypeControl, max(patternAmount, 0.18)),
+      clamp(0.65 + trueKaleidoAmount * 0.35 + patternAmount * 0.2, 0.0, 1.0),
+      time,
+      seed + 67.0
+    );
+    reflectedP = mix(reflectedP, mix(treeP, treeTypedP, patternAmount * 0.35), trueKaleidoAmount);
+  }
+  if (patternAmount > 0.001) {
+    vec2 repeatP = kaleidoRepeatingPatternCoord(
+      point,
+      foldSpin + seed * 0.00009,
+      foldSector,
+      foldSegments,
+      patternAmount,
+      time,
+      seed
+    );
+    vec2 repeatTypedP = kaleidoTypeCoord(
+      repeatP,
+      foldSpin * 0.42 + seed * 0.00011,
+      foldSector * mix(1.0, 0.62, patternAmount),
+      kaleidoTypeControl,
+      clamp(foldAmount * kaleidoMask + patternAmount * 0.35, 0.0, 1.0),
+      time,
+      seed + 31.0
+    );
+    reflectedP = mix(reflectedP, repeatTypedP, patternAmount);
   }
   return mix(point, reflectedP, foldAmount * kaleidoMask);
 }
@@ -530,6 +725,7 @@ vec2 applyLayerEffectStack(
   float softGlassAmount,
   float delayMod,
   float reflectionSlider,
+  float patternSlider,
   float seed,
   float glitchTime,
   float glitchActive,
@@ -547,18 +743,175 @@ vec2 applyLayerEffectStack(
   if (glitchAbove && kaleidoAbove) {
     if (glitchPos > kaleidoPos) {
       coord = applyGlitchLayerCoord(coord, aspect, seed, glitchTime, glitchActive, glitchDigital, glitchDisplaceAmount, glitchAnalog, glitchScale, glitchRate, time);
-      coord = applyKaleidoLayerCoord(coord, foldSpin, foldSector, foldSegments, kaleidoTypeControl, foldAmount, kaleidoScale, kaleidoGate, sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider, time, seed);
+      coord = applyKaleidoLayerCoord(coord, foldSpin, foldSector, foldSegments, kaleidoTypeControl, foldAmount, kaleidoScale, kaleidoGate, sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider, patternSlider, time, seed);
     } else {
-      coord = applyKaleidoLayerCoord(coord, foldSpin, foldSector, foldSegments, kaleidoTypeControl, foldAmount, kaleidoScale, kaleidoGate, sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider, time, seed);
+      coord = applyKaleidoLayerCoord(coord, foldSpin, foldSector, foldSegments, kaleidoTypeControl, foldAmount, kaleidoScale, kaleidoGate, sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider, patternSlider, time, seed);
       coord = applyGlitchLayerCoord(coord, aspect, seed, glitchTime, glitchActive, glitchDigital, glitchDisplaceAmount, glitchAnalog, glitchScale, glitchRate, time);
     }
   } else if (glitchAbove) {
     coord = applyGlitchLayerCoord(coord, aspect, seed, glitchTime, glitchActive, glitchDigital, glitchDisplaceAmount, glitchAnalog, glitchScale, glitchRate, time);
   } else if (kaleidoAbove) {
-    coord = applyKaleidoLayerCoord(coord, foldSpin, foldSector, foldSegments, kaleidoTypeControl, foldAmount, kaleidoScale, kaleidoGate, sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider, time, seed);
+    coord = applyKaleidoLayerCoord(coord, foldSpin, foldSector, foldSegments, kaleidoTypeControl, foldAmount, kaleidoScale, kaleidoGate, sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider, patternSlider, time, seed);
   }
 
   return coord;
+}
+
+float pointCloudMask(
+  vec2 coord,
+  float amount,
+  float sizeControl,
+  float densityControl,
+  float scatterControl,
+  float seed,
+  float time,
+  float pulse
+) {
+  if (amount <= 0.001) return 1.0;
+
+  float densityNorm = clamp((densityControl + 1.0) * 0.5, 0.0, 1.0);
+  float sizeNorm = clamp((sizeControl + 1.0) * 0.5, 0.0, 1.0);
+  float scatterNorm = clamp((scatterControl + 1.0) * 0.5, 0.0, 1.0);
+
+  float maxGrid = max(18.0, u_quality.y);
+  float densityScale = clamp(u_quality.z, 0.25, 1.0);
+  float grid = mix(18.0, maxGrid, densityNorm * densityScale);
+
+  vec2 gridCoord = coord * grid;
+  vec2 cell = floor(gridCoord);
+  vec2 local = fract(gridCoord) - 0.5;
+
+  vec2 jitter = vec2(
+    hash(cell + vec2(seed * 0.011, 12.7)),
+    hash(cell + vec2(91.3, seed * 0.017))
+  ) - 0.5;
+
+  float breathing = 1.0 + pulse * 0.22 + sin(time * 1.7 + hash(cell) * TAU) * 0.04;
+  local -= jitter * scatterNorm * 0.62;
+
+  float radius = mix(0.07, 0.34, sizeNorm) * breathing;
+  float softness = mix(0.025, 0.085, sizeNorm);
+  float dotShape = 1.0 - smoothstep(radius, radius + softness, length(local));
+
+  float keepChance = mix(0.38, 0.96, densityNorm * densityScale);
+  float keep = step(hash(cell + vec2(37.0, 73.0) + seed * 0.001), keepChance);
+  float twinkle = mix(0.82, 1.16, hash(cell + floor(time * mix(2.0, 4.0, u_quality.x)) + seed));
+  float cloud = clamp(dotShape * keep * twinkle, 0.0, 1.0);
+  return mix(1.0, cloud, amount);
+}
+
+vec3 applyPointCloudToComposite(
+  vec3 sourceColor,
+  vec2 coord,
+  float amountControl,
+  float sizeControl,
+  float densityControl,
+  float scatterControl,
+  float colorControl,
+  float seed,
+  float time,
+  float pulse
+) {
+  float amount = clamp((amountControl + 1.0) * 0.5, 0.0, 1.0);
+  if (amount <= 0.001) return sourceColor;
+
+  float mask = pointCloudMask(coord, amount, sizeControl, densityControl, scatterControl, seed, time, pulse);
+  vec3 boosted = sourceColor;
+  float colorBoost = clamp((colorControl + 1.0) * 0.5, 0.0, 1.0);
+  float lum = dot(boosted, vec3(0.299, 0.587, 0.114));
+  boosted = mix(boosted, lum + (boosted - lum) * 1.85, colorBoost);
+  boosted *= mix(1.0, 1.32, colorBoost);
+  return mix(sourceColor, boosted * mask + sourceColor * 0.08 * amount, amount);
+}
+
+vec3 kaleidoFractalDetailColor(
+  vec2 point,
+  vec2 sourcePoint,
+  vec3 sourceColor,
+  float sourceEdge,
+  float amount,
+  float patternAmount,
+  float foldSpin,
+  float foldSector,
+  float foldSegments,
+  float root,
+  float colorControl,
+  float seed,
+  float time,
+  float pulse
+) {
+  float strength = clamp(amount, 0.0, 1.0);
+  if (strength <= 0.001) return vec3(0.0);
+
+  float pattern = clamp(patternAmount, 0.0, 1.0);
+  float symmetry = clamp(foldSegments + mix(0.0, 6.0, pattern), 6.0, 28.0);
+  float sector = TAU / symmetry;
+  float radius = length(point);
+  float angle = atan(point.y, point.x) + foldSpin * 0.035 + seed * 0.00001;
+  float sectorAngle = mod(angle + sector * 0.5, sector);
+  float foldedAngle = abs(sectorAngle - sector * 0.5);
+  float wedgeNorm = foldedAngle / max(sector * 0.5, 0.0001);
+  vec2 canonical = vec2(cos(foldedAngle), sin(foldedAngle)) * radius;
+  float sourceLuma = dot(sourceColor, vec3(0.299, 0.587, 0.114));
+  vec2 sourceFlow = sourcePoint * (3.0 + pattern * 5.5) + vec2(time * 0.055, -time * 0.043);
+  float sourceMotion = fbm(sourceFlow + vec2(seed * 0.0013, root * 2.0), 3.0);
+  float sourceThread = smoothstep(0.4, 0.82, sourceMotion + sourceLuma * 0.36 + sourceEdge * 0.22);
+
+  float visibleDisc = smoothstep(1.72, 0.04, radius);
+  float radialRepeats = mix(4.4, 8.8, pattern);
+  float radialCoord = radius * radialRepeats + (sourceMotion - 0.5) * strength * mix(0.18, 0.48, pattern);
+  float ringId = floor(radialCoord);
+  float ringPhase = fract(radialCoord);
+  float mirroredRing = abs(ringPhase * 2.0 - 1.0);
+  float ringSeed = hash(vec2(ringId, seed * 0.001));
+
+  float centerBloom = exp(-radius * radius * 22.0);
+  float axisLine = 1.0 - smoothstep(0.014, 0.09, wedgeNorm);
+  float mirrorLine = 1.0 - smoothstep(0.018, 0.1, abs(1.0 - wedgeNorm));
+  float ringLine = 1.0 - smoothstep(0.035, 0.12, min(ringPhase, 1.0 - ringPhase));
+  float ringCore = 1.0 - smoothstep(0.06, 0.28, abs(ringPhase - 0.5));
+
+  float petalCenter = 0.31 + 0.11 * cos(wedgeNorm * PI);
+  float petal = (1.0 - smoothstep(0.028, 0.11, abs(mirroredRing - petalCenter)))
+    * smoothstep(0.96, 0.18, wedgeNorm);
+  float scallop = 1.0 - smoothstep(0.02, 0.075, abs(mirroredRing - (0.74 + 0.09 * sin(wedgeNorm * PI))));
+  float nestedStar = smoothstep(0.72, 1.0, abs(sin((radius * radialRepeats + wedgeNorm * 2.0) * PI)));
+
+  vec2 beadCell = fract(vec2(radialCoord * mix(1.4, 2.3, pattern), wedgeNorm * mix(4.0, 7.0, pattern))) - 0.5;
+  float beads = (1.0 - smoothstep(0.1, 0.28, length(beadCell))) * smoothstep(0.98, 0.05, wedgeNorm);
+
+  float lace = fbm(
+    canonical * (5.0 + pattern * 6.0) +
+    sourcePoint * (1.2 + pattern * 1.9) +
+    vec2(ringId * 0.31 + time * 0.018, seed * 0.001),
+    3.0
+  );
+  float laceMask = smoothstep(0.55, 0.82, lace + sourceThread * 0.16) * ringCore;
+
+  float rosette = clamp(
+    centerBloom * 1.08 +
+    axisLine * 0.7 +
+    mirrorLine * 0.48 +
+    ringLine * 0.56 +
+    petal * 0.98 +
+    scallop * 0.58 +
+    nestedStar * ringCore * 0.38 +
+    beads * 0.34 +
+    laceMask * 0.34 +
+    sourceThread * ringCore * 0.26 +
+    sourceEdge * (ringLine + petal) * 0.28,
+    0.0,
+    1.0
+  ) * visibleDisc;
+
+  vec3 colorA = palette(root + ringSeed * 0.34 + ringId * 0.055, colorControl);
+  vec3 colorB = palette(root + 0.44 + wedgeNorm * 0.12 + ringId * 0.035, mix(colorControl, -0.7, 0.38));
+  vec3 color = mix(colorA, colorB, smoothstep(0.1, 0.95, ringCore + petal * 0.35));
+  vec3 sourceTint = normalize(max(sourceColor, vec3(0.025)) + vec3(0.08));
+  color = mix(color, color * sourceTint * 1.8, clamp(0.18 + sourceLuma * 1.1 + sourceEdge * 0.25, 0.0, 0.62));
+  float fill = visibleDisc * (centerBloom * 0.18 + ringCore * 0.055 + lace * 0.045);
+  float glow = (rosette * 1.36 + fill) * (0.58 + sourceLuma * 0.72 + sourceEdge * 0.28 + pulse * 0.28 + strength * 0.42);
+  return color * glow * strength;
 }
 
 void main() {
@@ -613,6 +966,7 @@ void main() {
   float kaleidoSpin = clamp(u_controlH.y, -1.0, 1.0);        // -1 reverse fast, +1 forward fast
   float kaleidoType = clamp(u_controlH.z, -1.0, 1.0);        // -1 classic, -0.33 mandala, +0.33 crystal, +1 organic
   float kaleidoReflections = clamp(u_controlH.w, -1.0, 1.0); // -1 current, +1 nested mirror chamber
+  float kaleidoPattern = clamp(u_kaleidoPattern, -1.0, 1.0);  // <=0 radial/glass, +1 repeating mandala
   float brightnessControl = clamp(u_post.x, -1.0, 1.0);
   float vibranceControl = clamp(u_post.y, -1.0, 1.0);
   float saturationControl = clamp(u_post.z, -1.0, 1.0);
@@ -653,8 +1007,8 @@ void main() {
     u_pulseB.x * 0.28 + u_pulseB.y * 0.24 + seqPulse * 0.2,
     0.0, 1.0
   );
-  float triggerLift = hitEnergy * mix(0.82, 1.4, max(triggerControl, 0.0));
-  triggerLift += hitEnergy * max(-triggerControl, 0.0) * 0.5;
+  float triggerLift = hitEnergy * mix(0.95, 1.72, max(triggerControl, 0.0));
+  triggerLift += hitEnergy * max(-triggerControl, 0.0) * 0.62;
 
   /* ─── Time & motion ─── */
   float motionSpeed = 0.014 + max(motionControl, 0.0) * 0.035 + max(-motionControl, 0.0) * 0.1;
@@ -687,14 +1041,21 @@ void main() {
   float reflectionSlider = smoothstep(0.0, 1.0, (kaleidoReflections + 1.0) * 0.5);
 
   /* ═══════════════════════════════════════════════════════════
-     LAYER ORDER — bottom=0, top=3
-     u_layerOrder: (shapesPos, atmosPos, glitchPos, kaleidoPos) 0=bottom 3=top
-     Effect layers transform every source layer below them in stack order.
+     LAYER ORDER — bottom=0, top=4
+     u_layerOrder: (shapesPos, atmosPos, glitchPos, kaleidoPos)
+     u_pointCloudA.x: pointCloudPos
+     Effect layers process visual content below them in stack order.
      ═══════════════════════════════════════════════════════════ */
   int shapesPos = int(u_layerOrder.x);
   int atmosPos = int(u_layerOrder.y);
   int glitchPos = int(u_layerOrder.z);
   int kaleidoPos = int(u_layerOrder.w);
+  int pointCloudPos = int(u_pointCloudA.x);
+  float pointCloudAmount = clamp(u_pointCloudA.y, -1.0, 1.0);
+  float pointCloudSize = clamp(u_pointCloudA.z, -1.0, 1.0);
+  float pointCloudDensity = clamp(u_pointCloudA.w, -1.0, 1.0);
+  float pointCloudScatter = clamp(u_pointCloudB.x, -1.0, 1.0);
+  float pointCloudColor = clamp(u_pointCloudB.y, -1.0, 1.0);
 
   /* ═══════════════════════════════════════════════════════════
      GLITCH LAYER — two modes driven by granular engine
@@ -713,7 +1074,7 @@ void main() {
   vec2 shapesUV = applyLayerEffectStack(
     p, shapesPos, glitchPos, kaleidoPos, aspect,
     foldSpin, foldSector, foldSegments, kaleidoType, foldAmount, kaleidoScale, kaleidoGate,
-    sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider,
+    sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider, kaleidoPattern,
     seed, glitchTime, glitchActive, glitchDigital, glitchDisplaceAmount, glitchAnalog, glitchScale, glitchRate, u_time
   );
   bool sameSourceEffectStack =
@@ -724,10 +1085,16 @@ void main() {
     atmosUV = applyLayerEffectStack(
       p, atmosPos, glitchPos, kaleidoPos, aspect,
       foldSpin, foldSector, foldSegments, kaleidoType, foldAmount, kaleidoScale, kaleidoGate,
-      sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider,
+      sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider, kaleidoPattern,
       seed, glitchTime, glitchActive, glitchDigital, glitchDisplaceAmount, glitchAnalog, glitchScale, glitchRate, u_time
     );
   }
+  vec2 pointCloudUV = applyLayerEffectStack(
+    p, pointCloudPos, glitchPos, kaleidoPos, aspect,
+    foldSpin, foldSector, foldSegments, kaleidoType, foldAmount, kaleidoScale, kaleidoGate,
+    sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider, kaleidoPattern,
+    seed, glitchTime, glitchActive, glitchDigital, glitchDisplaceAmount, glitchAnalog, glitchScale, glitchRate, u_time
+  );
 
   /* ═══════════════════════════════════════════════════════════
      BACKGROUND — colored, not just grey
@@ -783,24 +1150,6 @@ void main() {
 	    ) * baseDistance;
 	    center.x += sin(u_time * 0.02 + fi * 2.1) * 0.08;
 	    center.y += cos(u_time * 0.018 + fi * 1.7) * 0.07;
-	    if (shapesPos < kaleidoPos) {
-	      center = applyKaleidoLayerCoord(
-	        center,
-	        foldSpin,
-	        foldSector,
-	        foldSegments,
-	        kaleidoType,
-	        foldAmount,
-	        kaleidoScale,
-	        kaleidoGate,
-	        sharpMirrorAmount,
-	        softGlassAmount,
-	        delayMod,
-	        reflectionSlider,
-	        u_time,
-	        seed
-	      );
-	    }
 
     float shapeAngle = u_time * (0.015 + hash(vec2(id, 29.5)) * 0.03) + hash(vec2(id, 30.1)) * TAU;
     float ca = cos(shapeAngle), sa = sin(shapeAngle);
@@ -821,7 +1170,7 @@ void main() {
     ) * pulseMod;
     engineAffinity += sin(u_time * (0.3 + hash(vec2(id, 38.0)) * 0.5) + id * 2.3) * 0.3 * freeDrift;
     float baseRadius = (0.18 + hash(vec2(id, 40.5)) * 0.28 + shapeDense * 0.08) * shapeScale;
-    float size = baseRadius + engineAffinity * 0.06 + triggerLift * 0.04 * pulseMod;
+    float size = baseRadius + engineAffinity * 0.075 + triggerLift * 0.06 * pulseMod;
 
     float perShapeOffset = (hash(vec2(id, 42.3)) - 0.5) * 0.3;
     float shapeSel = clamp(shapeControl + perShapeOffset, -1.0, 1.0);
@@ -844,7 +1193,7 @@ void main() {
     float fade = 0.5 + 0.5 * sin(u_time * (0.02 + orbitSpeed * 0.4) + seed * 0.002 + fi * 1.9);
     fade = smoothstep(0.15 + shapeSparse * 0.2, 0.85, fade);
     float densityGate = smoothstep(fi - 0.5, fi + 1.2, 4.0 + shapeDense * 8.0 - shapeSparse * 3.0);
-    float energy = fade * densityGate * (0.32 + engineAffinity * 0.55 + triggerLift * 0.4) * shapeOpacity;
+    float energy = fade * densityGate * (0.30 + engineAffinity * 0.62 + triggerLift * 0.52) * shapeOpacity;
     energy = clamp(energy, 0.0, 1.0);
 
     vec3 shapeColor = palette(
@@ -996,12 +1345,72 @@ void main() {
     atmosField.b *= 1.0 + chromatic * cos(glitchTime * 1.7 + atmosUV.y * 25.0);
   }
   vec3 atmosLayerColor = atmosField * atmosLayerMix;
+  if (shapesPos < pointCloudPos) {
+    shapeLayerColor = applyPointCloudToComposite(
+      shapeLayerColor,
+      pointCloudUV,
+      pointCloudAmount,
+      pointCloudSize,
+      pointCloudDensity,
+      pointCloudScatter,
+      pointCloudColor,
+      seed,
+      u_time,
+      triggerLift
+    );
+  }
+  if (atmosPos < pointCloudPos) {
+    atmosLayerColor = applyPointCloudToComposite(
+      atmosLayerColor,
+      pointCloudUV,
+      pointCloudAmount,
+      pointCloudSize,
+      pointCloudDensity,
+      pointCloudScatter,
+      pointCloudColor,
+      seed + 17.0,
+      u_time,
+      triggerLift
+    );
+  }
   if (shapesPos < atmosPos) {
     field += shapeLayerColor;
     field += atmosLayerColor;
   } else {
     field += atmosLayerColor;
     field += shapeLayerColor;
+  }
+
+  float fractalKaleidoAmount = clamp(sharpMirrorAmount * mix(0.35, 1.0, foldAmount), 0.0, 1.0);
+  bool kaleidoHasSourceBelow = shapesPos < kaleidoPos || atmosPos < kaleidoPos || pointCloudPos < kaleidoPos;
+  if (fractalKaleidoAmount > 0.001 && kaleidoHasSourceBelow) {
+    float patternAmount = smoothstep(0.02, 1.0, max(kaleidoPattern, 0.0));
+    float sourceLuma = dot(field, vec3(0.299, 0.587, 0.114));
+    float sourceLift = smoothstep(0.015, 0.52, sourceLuma);
+    float sourceEdge = clamp(length(vec2(dFdx(sourceLuma), dFdy(sourceLuma))) * 12.0, 0.0, 1.0);
+    vec2 detailSourcePoint = mix(shapesUV, atmosUV, 0.58);
+    vec3 fractalDetail = kaleidoFractalDetailColor(
+      p,
+      detailSourcePoint,
+      field,
+      sourceEdge,
+      fractalKaleidoAmount,
+      patternAmount,
+      foldSpin,
+      foldSector,
+      foldSegments,
+      root,
+      colorControl,
+      seed,
+      u_time,
+      triggerLift
+    );
+    float generatedGuideAmount = 1.0 - smoothstep(0.72, 0.98, fractalKaleidoAmount);
+    generatedGuideAmount *= mix(0.28, 0.42, patternAmount);
+    float detailBlend = fractalKaleidoAmount * generatedGuideAmount * (0.72 + sourceLift * 0.62 + sourceEdge * 0.34);
+    vec3 reactiveDetail = fractalDetail * (1.24 + sourceLift * 1.28 + sourceEdge * 0.82);
+    field = mix(field, max(field, reactiveDetail), clamp(detailBlend * 0.38, 0.0, 0.32));
+    field += reactiveDetail * detailBlend * (0.22 + sourceLift * 0.42 + sourceEdge * 0.28);
   }
 
   /* ═══════════════════════════════════════════════════════════
@@ -1017,7 +1426,7 @@ void main() {
     bloomFalloff = max(0.3, bloomFalloff - washWiden);
   }
   float bloom = exp(-bloomD * bloomD * bloomFalloff);
-  bloom *= (0.09 + drums * 0.28 + reverb * 0.14 + triggerLift * 0.32);
+  bloom *= (0.10 + drums * 0.34 + reverb * 0.16 + triggerLift * 0.44);
   // backdropFade: -1 = hide completely, 0 = normal, +1 = full (edge-affected)
   float bloomVisibility = clamp(1.0 + backdropFade, 0.0, 1.0);  // -1→0, 0→1, +1→1
   bloom *= bloomVisibility;
@@ -1258,8 +1667,12 @@ export class ReactiveVisualizerRenderer {
       'u_controlF',
       'u_controlG',
       'u_controlH',
+      'u_kaleidoPattern',
       'u_post',
       'u_layerOrder',
+      'u_pointCloudA',
+      'u_pointCloudB',
+      'u_quality',
       'u_environment',
       'u_pulseA',
       'u_pulseB',
@@ -1292,6 +1705,7 @@ export class ReactiveVisualizerRenderer {
   private renderGl(gl: WebGL2RenderingContext, frame: ReactiveVisualizerFrame): void {
     const snapshot = frame.snapshot;
     const controls = frame.controls;
+    const quality = frame.quality;
     const pulses = snapshot.pulses;
     const width = Math.max(1, Math.floor(frame.width * frame.dpr));
     const height = Math.max(1, Math.floor(frame.height * frame.dpr));
@@ -1337,7 +1751,7 @@ export class ReactiveVisualizerRenderer {
     gl.uniform4f(
       this.uniform('u_controlA'),
       clamp(controls.style, -1, 1),
-      clamp(controls.kaleidoscope + snapshot.activeGrains * 0.0015, -1, 1),
+      clamp(controls.kaleidoscope + Math.max(0, controls.kaleidoscope) * snapshot.activeGrains * 0.0015, -1, 1),
       clamp(controls.triggerResponse, -1, 1),
       clamp(controls.ripples, -1, 1),
     );
@@ -1390,6 +1804,10 @@ export class ReactiveVisualizerRenderer {
       clamp(controls.kaleidoType ?? -1, -1, 1),
       clamp(controls.kaleidoReflections ?? -1, -1, 1),
     );
+    gl.uniform1f(
+      this.uniform('u_kaleidoPattern'),
+      clamp(controls.kaleidoPattern ?? 0, -1, 1),
+    );
     gl.uniform4f(
       this.uniform('u_post'),
       clamp(controls.brightness ?? 0, -1, 1),
@@ -1397,20 +1815,49 @@ export class ReactiveVisualizerRenderer {
       clamp(controls.saturation ?? 0, -1, 1),
       clamp(controls.visualLimiter ?? 0, -1, 1),
     );
-    const order = controls.layerOrder;
+    const rawOrder = controls.layerOrder?.length >= 5
+      ? controls.layerOrder
+      : [
+          controls.layerOrder?.[0] ?? 0,
+          controls.layerOrder?.[1] ?? 1,
+          controls.layerOrder?.[2] ?? 2,
+          controls.layerOrder?.[3] ?? 3,
+          4,
+        ];
     gl.uniform4f(
       this.uniform('u_layerOrder'),
-      clamp(Math.round(order[0] ?? 0), 0, 3),
-      clamp(Math.round(order[1] ?? 1), 0, 3),
-      clamp(Math.round(order[2] ?? 2), 0, 3),
-      clamp(Math.round(order[3] ?? 3), 0, 3),
+      clamp(Math.round(rawOrder[0] ?? 0), 0, 4),
+      clamp(Math.round(rawOrder[1] ?? 1), 0, 4),
+      clamp(Math.round(rawOrder[2] ?? 2), 0, 4),
+      clamp(Math.round(rawOrder[3] ?? 3), 0, 4),
+    );
+    gl.uniform4f(
+      this.uniform('u_pointCloudA'),
+      clamp(Math.round(rawOrder[4] ?? 4), 0, 4),
+      clamp(controls.pointCloudAmount ?? -1, -1, 1),
+      clamp(controls.pointCloudSize ?? 0, -1, 1),
+      clamp(controls.pointCloudDensity ?? 0, -1, 1),
+    );
+    gl.uniform4f(
+      this.uniform('u_pointCloudB'),
+      clamp(controls.pointCloudScatter ?? 0, -1, 1),
+      clamp(controls.pointCloudColor ?? 0, -1, 1),
+      0,
+      0,
+    );
+    gl.uniform4f(
+      this.uniform('u_quality'),
+      quality.shaderDetail,
+      quality.maxPointCloudGrid,
+      quality.pointCloudDensityScale,
+      0,
     );
     gl.uniform4f(
       this.uniform('u_environment'),
       clamp(frame.seed, 0.001, 0.999999),
       clamp(controls.background, -1, 1),
-      clamp(controls.shapeCount, -1, 1),
-      clamp(controls.noiseDensity, -1, 1),
+      clamp(controls.shapeCount * quality.shapeCountScale, -1, 1),
+      clamp(controls.noiseDensity * quality.noiseDensityScale, -1, 1),
     );
     gl.uniform4f(
       this.uniform('u_pulseA'),

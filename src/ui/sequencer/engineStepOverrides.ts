@@ -1,5 +1,6 @@
 import type { StepOverrides, SubLaneKind, SubLaneState } from './useEuclideanSequencer';
 import { clampEuclideanSubLaneSteps } from './sequencerLimits';
+import { triggerClipToLegacyEuclideanParams } from './triggerClipLegacyBridge';
 
 const SUB_LANE_VALUE_FIELDS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'slice', 'reverse'];
 const SUB_LANE_RANGE_FIELDS = {
@@ -60,6 +61,13 @@ export function stepOverridesForEngineSubLaneState(
     morphRanges: [...(overrides.morphRanges ?? [])],
     distanceRanges: [...(overrides.distanceRanges ?? [])],
   };
+  if (overrides.triggerClips?.some(Boolean)) {
+    next.triggerToggles = overrides.triggerToggles.map((map, laneIndex) => {
+      const clip = overrides.triggerClips?.[laneIndex];
+      return clip ? triggerClipToLegacyEuclideanParams(clip).triggerToggles : new Map(map);
+    });
+    next.triggerClips = undefined;
+  }
   next.ratchet = overrides.ratchet.map((values, laneIndex) =>
     engineRatchetValues(values, subLaneStates[laneIndex]?.expression)
   );

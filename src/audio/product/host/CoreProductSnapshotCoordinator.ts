@@ -61,7 +61,9 @@ export async function loadCoreProductSnapshot(options: CoreProductSnapshotLoadOp
     ? { ...options.metadata, encodedSnapshotHash }
     : undefined;
   logEncodedSnapshotForDebug(options.snapshot, options.reason, encodedSnapshot, options.metadata);
-  const receiptPromise = options.runtime.loadSnapshot(encodedSnapshot, metadata);
+  const receiptPromise = options.awaitAudioThreadAck
+    ? options.runtime.loadSnapshot(encodedSnapshot, metadata)
+    : options.runtime.loadSnapshot(encodedSnapshot);
   const receipt = options.awaitAudioThreadAck ? await receiptPromise : undefined;
   if (!options.awaitAudioThreadAck) {
     void receiptPromise.catch((error: unknown) => {

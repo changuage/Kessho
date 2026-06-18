@@ -7,12 +7,14 @@ import {
   getFactoryPresetNames,
   setUserPresets,
 } from '../../audio/drumPresets';
+import { applyDrumPresetSlotChange } from './drumPresetApply';
 
 interface MorphSliderProps {
   voice: DrumVoiceType;
   state: SliderState;
   getPresetNames: (voice: DrumVoiceType) => string[];
   onParamChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
+  onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
 }
@@ -62,6 +64,7 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
   state,
   getPresetNames,
   onParamChange,
+  onStateChange,
   sliderProps: getSliderProps,
   SliderComponent,
 }) => {
@@ -84,12 +87,20 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
   }, [clearLiveMorphValue, onParamChange]);
   const handlePresetAChange = useCallback((value: string) => {
     clearLiveMorphValue();
+    if (onStateChange) {
+      onStateChange((previous) => applyDrumPresetSlotChange(previous, voice, 'A', value));
+      return;
+    }
     onParamChange(morph.a, value as SliderState[keyof SliderState]);
-  }, [clearLiveMorphValue, morph.a, onParamChange]);
+  }, [clearLiveMorphValue, morph.a, onParamChange, onStateChange, voice]);
   const handlePresetBChange = useCallback((value: string) => {
     clearLiveMorphValue();
+    if (onStateChange) {
+      onStateChange((previous) => applyDrumPresetSlotChange(previous, voice, 'B', value));
+      return;
+    }
     onParamChange(morph.b, value as SliderState[keyof SliderState]);
-  }, [clearLiveMorphValue, morph.b, onParamChange]);
+  }, [clearLiveMorphValue, morph.b, onParamChange, onStateChange, voice]);
 
   for (const name of knownPresetNames) {
     if (factoryPresetNames.includes(name)) continue;

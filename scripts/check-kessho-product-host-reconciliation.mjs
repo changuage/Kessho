@@ -1519,7 +1519,7 @@ await runCheckWithReport({
         synthSequencePresetResetPayload.pitchSettings?.[0]?.mode === 'semitones' &&
         synthSequencePresetResetPayload.subLaneStates?.pitch?.steps === 8 &&
         synthSequencePresetResetPayload.subLaneStates.pitch.direction === 'pingpong' &&
-        synthSequencePresetResetPayload.subLaneStates?.pitch?.scaleQuantize === true &&
+        synthSequencePresetResetPayload.subLaneStates?.pitch?.scaleQuantize === false &&
         Array.isArray(synthSequencePresetResetPayload.expression) &&
         synthSequencePresetResetPayload.expression[0] === 0.6,
       'Product synth sequence preset lane-home capture must make reset restore the loaded sequence preset home',
@@ -1543,7 +1543,7 @@ await runCheckWithReport({
         drumSequencePresetResetPayload.pitchSettings[0].scale === 'Minor' &&
         drumSequencePresetResetPayload.subLaneStates?.pitch?.steps === 8 &&
         drumSequencePresetResetPayload.subLaneStates.pitch.direction === 'pingpong' &&
-        drumSequencePresetResetPayload.subLaneStates?.pitch?.scaleQuantize === true &&
+        drumSequencePresetResetPayload.subLaneStates?.pitch?.scaleQuantize === false &&
         Array.isArray(drumSequencePresetResetPayload.expression?.[0]) &&
         drumSequencePresetResetPayload.expression[0][0] === 0.45,
       'Product drum sequence preset lane-home capture must make reset restore the loaded sequence preset home',

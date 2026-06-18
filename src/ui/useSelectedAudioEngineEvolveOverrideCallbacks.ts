@@ -20,7 +20,7 @@ type SynthNoteRangeCallback = (laneIndex: number, noteMin: number, noteMax: numb
 
 type UseSelectedAudioEngineEvolveOverrideCallbacksOptions = {
   activeTab: string;
-  createDefaultPitchSettings: () => PitchSettings[];
+  createDefaultPitchSettings: (laneCount?: number) => PitchSettings[];
   drumStepOverridesRef: MutableRefObject<StepOverrides | undefined>;
   drumSubLaneStatesRef: MutableRefObject<Record<SubLaneKind, SubLaneState>[] | undefined>;
   drumSwingsRef: MutableRefObject<number[] | undefined>;
@@ -39,7 +39,10 @@ type SelectedAudioEngineEvolveOverrideState = {
   synthEvolvedOverrides: EvolvedOverrideState | undefined;
 };
 
-const DEFAULT_EUCLIDEAN_SWINGS = [0, 0, 0, 0];
+const SYNTH_EUCLIDEAN_LANE_COUNT = 4;
+const DRUM_EUCLIDEAN_LANE_COUNT = 6;
+const DEFAULT_SYNTH_EUCLIDEAN_SWINGS = Array.from({ length: SYNTH_EUCLIDEAN_LANE_COUNT }, () => 0);
+const DEFAULT_DRUM_EUCLIDEAN_SWINGS = Array.from({ length: DRUM_EUCLIDEAN_LANE_COUNT }, () => 0);
 const EVOLVED_SUBLANE_KEYS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance'];
 const EVOLVED_SUBLANE_RANGE_DEFAULTS: Partial<Record<SubLaneKind, { min: number; max: number }>> = {
   expression: { min: 0.75, max: 1 },
@@ -79,8 +82,8 @@ function normalizeEvolvedSubLanePatch(value: unknown): EvolvedSubLanePatch | und
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-function emptyEvolvedRangeOverrides(): (EvolvedRangeOverride | null)[] {
-  return [null, null, null, null];
+function emptyEvolvedRangeOverrides(laneCount = SYNTH_EUCLIDEAN_LANE_COUNT): (EvolvedRangeOverride | null)[] {
+  return Array.from({ length: laneCount }, () => null);
 }
 
 function mergeEvolvedSubLanePatch(
@@ -130,13 +133,13 @@ export function useSelectedAudioEngineEvolveOverrideCallbacks({
         : undefined;
       const subLaneStates = normalizeEvolvedSubLanePatch(payload.subLaneStates);
       if (swing !== undefined) {
-        const nextSwings = [...(drumSwingsRef.current ?? DEFAULT_EUCLIDEAN_SWINGS)];
+        const nextSwings = [...(drumSwingsRef.current ?? DEFAULT_DRUM_EUCLIDEAN_SWINGS)];
         nextSwings[laneIndex] = swing;
         drumSwingsRef.current = nextSwings;
       }
       drumSubLaneStatesRef.current = mergeEvolvedSubLanePatch(drumSubLaneStatesRef.current, laneIndex, subLaneStates);
       if (payload.pitchSettings?.[laneIndex]) {
-        const nextPitchSettings = [...(drumPitchSettingsRef.current ?? createDefaultPitchSettings())];
+        const nextPitchSettings = [...(drumPitchSettingsRef.current ?? createDefaultPitchSettings(DRUM_EUCLIDEAN_LANE_COUNT))];
         nextPitchSettings[laneIndex] = payload.pitchSettings[laneIndex]!;
         drumPitchSettingsRef.current = nextPitchSettings;
       }
@@ -159,7 +162,7 @@ export function useSelectedAudioEngineEvolveOverrideCallbacks({
         const rangeKeys = ['expressionRanges', 'morphRanges', 'distanceRanges'] as const;
         for (const key of rangeKeys) {
           if (payload[key]?.[laneIndex] != null) {
-            const arr = [...((prev[key] as (EvolvedRangeOverride | null)[] | undefined) ?? emptyEvolvedRangeOverrides())];
+            const arr = [...((prev[key] as (EvolvedRangeOverride | null)[] | undefined) ?? emptyEvolvedRangeOverrides(DRUM_EUCLIDEAN_LANE_COUNT))];
             arr[laneIndex] = payload[key]![laneIndex] as EvolvedRangeOverride;
             (next as Record<string, unknown>)[key] = arr;
           }
@@ -224,7 +227,7 @@ export function useSelectedAudioEngineEvolveOverrideCallbacks({
         : undefined;
       const subLaneStates = normalizeEvolvedSubLanePatch(payload.subLaneStates);
       if (swing !== undefined) {
-        const nextSwings = [...(synthSwingsRef.current ?? DEFAULT_EUCLIDEAN_SWINGS)];
+        const nextSwings = [...(synthSwingsRef.current ?? DEFAULT_SYNTH_EUCLIDEAN_SWINGS)];
         nextSwings[laneIndex] = swing;
         synthSwingsRef.current = nextSwings;
       }
@@ -233,7 +236,7 @@ export function useSelectedAudioEngineEvolveOverrideCallbacks({
       if (payload.manualDiceHome === true) data.manualDiceHome = true;
       if (payload.pitchSettings?.[laneIndex]) {
         data.pitchSettings = payload.pitchSettings;
-        const nextPitchSettings = [...(synthPitchSettingsRef.current ?? createDefaultPitchSettings())];
+        const nextPitchSettings = [...(synthPitchSettingsRef.current ?? createDefaultPitchSettings(SYNTH_EUCLIDEAN_LANE_COUNT))];
         nextPitchSettings[laneIndex] = payload.pitchSettings[laneIndex]!;
         synthPitchSettingsRef.current = nextPitchSettings;
       }

@@ -6,7 +6,6 @@ import {
 import type {
   OrbitConstellationMode,
   OrbitDirection,
-  OrbitPitchLayout,
 } from './orbitSequencerTypes';
 
 export type { OrbitConstellationMode } from './orbitSequencerTypes';
@@ -15,7 +14,6 @@ export interface OrbitConstellationOptions {
   mode: OrbitConstellationMode;
   seed: number;
   nodeCount: number;
-  pitchLayout: OrbitPitchLayout;
   pitchRangeMin: number;
   pitchRangeMax: number;
 }
@@ -76,7 +74,7 @@ function modeFromAuto(nodeCount: number): Exclude<OrbitConstellationMode, 'auto'
 function midiForDegree(degree: number, options: OrbitConstellationOptions): number {
   const min = clamp(options.pitchRangeMin, 0, 127);
   const max = clamp(options.pitchRangeMax, min, 127);
-  const base = options.pitchLayout === 'harmonyBloom' ? min : Math.max(min, Math.min(max, 60));
+  const base = min;
   const octave = Math.floor(Math.max(0, degree) / PITCH_DEGREE_OFFSETS.length) * 12;
   const offset = PITCH_DEGREE_OFFSETS[((degree % PITCH_DEGREE_OFFSETS.length) + PITCH_DEGREE_OFFSETS.length) % PITCH_DEGREE_OFFSETS.length] ?? 0;
   return Math.round(clamp(base + octave + offset, min, max));

@@ -266,6 +266,9 @@ uint32_t KesshoProductEngine::triggerVoice(
     return module_voice_index;
   }
   const uint32_t voice_index = allocateVoice();
+  if (voice_index == kProductInvalidVoiceIndex) {
+    return kProductInvalidVoiceIndex;
+  }
   clearMidiRuntimeForSampleVoice(voice_index);
   Voice& voice = voices[voice_index];
   voice = {};
@@ -295,7 +298,10 @@ uint32_t KesshoProductEngine::triggerVoice(
     voice.sample_voice = true;
     voice.asset_slot = slot;
     if (source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
-      voice.soundscape_asset_level = soundscapeAssetRefLevel(source, assets[slot].asset_id);
+      const uint32_t soundscape_asset_id = assets[slot].asset_id;
+      voice.soundscape_asset_level = soundscapeAssetRefLevel(source, soundscape_asset_id);
+      voice.soundscape_layer = static_cast<uint8_t>(soundscapeLayerIndexForAsset(soundscape_asset_id));
+      voice.soundscape_texture_slot = static_cast<uint8_t>(soundscapeTextureSlotForAsset(soundscape_asset_id));
     }
     voice.sample_position = 0.0;
     const double base_step = assets[slot].sample_rate / sample_rate;

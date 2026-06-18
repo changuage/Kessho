@@ -342,7 +342,9 @@
   position: absolute;
   top: 8px;
   right: 8px;
+  max-width: calc(100% - 18px);
   padding: 2px 6px;
+  overflow: hidden;
   border-radius: 999px;
   border: 1px solid rgba(232, 220, 196, 0.12);
   background: rgba(255,255,255,0.035);
@@ -351,6 +353,8 @@
   font-weight: 900;
   letter-spacing: 0.07em;
   text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .harmony-engine-panel .harmony-source-badge.source-manualControl,
@@ -370,8 +374,33 @@
   margin-top: 8px;
 }
 
+.harmony-engine-panel .harmony-lab-popup {
+  padding: 14px 18px 16px;
+}
+
 .harmony-engine-panel .harmony-popup-header.chord-lab-header {
   align-items: flex-start;
+}
+
+.harmony-engine-panel .harmony-lab-status-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.harmony-engine-panel .harmony-lab-status-pills span {
+  min-height: 26px;
+  padding: 6px 9px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(232, 220, 196, 0.12);
+  background: rgba(255,255,255,0.035);
+  color: rgba(232, 220, 196, 0.72);
+  font-size: 0.56rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .harmony-engine-panel .harmony-lock-message {
@@ -737,42 +766,9 @@
   font-weight: 700;
 }
 
-.harmony-engine-panel .harmony-slot-strip {
-  margin-top: 10px;
-}
-
-.harmony-engine-panel .harmony-lab-tabs {
-  display: flex;
-  overflow: hidden;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(232, 220, 196, 0.12);
-}
-
-.harmony-engine-panel .harmony-lab-tab {
-  min-height: 30px;
-  padding: 5px 11px;
-  border: 0;
-  border-right: 1px solid rgba(232, 220, 196, 0.1);
-  background: rgba(255,255,255,0.025);
-  color: rgba(232, 220, 196, 0.62);
-  font-size: 0.6rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.harmony-engine-panel .harmony-lab-tab:last-child {
-  border-right: 0;
-}
-
-.harmony-engine-panel .harmony-lab-tab.active {
-  background: rgba(184, 224, 255, 0.12);
-  color: var(--harmony-ice);
-}
-
 .harmony-engine-panel .harmony-slot-bank {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(94px, 1fr));
   gap: 8px;
 }
 
@@ -781,18 +777,20 @@
   position: relative;
   display: grid;
   min-width: 0;
-  gap: 4px;
-  padding: 9px;
+  gap: 6px;
+  padding: 11px;
   overflow: hidden;
   text-align: left;
   border-radius: var(--radius-md);
   border: 1px solid rgba(232, 220, 196, 0.1);
   background: rgba(255,255,255,0.025);
   color: rgba(232, 220, 196, 0.76);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .harmony-engine-panel .harmony-slot-object {
-  min-height: 92px;
+  min-height: 74px;
+  padding: 9px 10px;
 }
 
 .harmony-engine-panel .harmony-slot-object:hover,
@@ -802,13 +800,25 @@
 
 .harmony-engine-panel .harmony-slot-object.selected,
 .harmony-engine-panel .harmony-step-object.selected {
-  border-color: rgba(184, 224, 255, 0.44);
-  background: rgba(184, 224, 255, 0.08);
+  border-color: rgba(184, 224, 255, 0.34);
+  background: rgba(184, 224, 255, 0.07);
+}
+
+.harmony-engine-panel .harmony-slot-object.referenced {
+  border-color: rgba(184, 224, 255, 0.22);
+  background: rgba(184, 224, 255, 0.045);
 }
 
 .harmony-engine-panel .harmony-slot-object.active,
 .harmony-engine-panel .harmony-step-object.active {
-  box-shadow: inset 3px 0 0 rgba(123, 154, 109, 0.84);
+  border-color: rgba(232, 220, 196, 0.22);
+  background: rgba(232, 220, 196, 0.045);
+}
+
+.harmony-engine-panel .harmony-slot-object.selected.active,
+.harmony-engine-panel .harmony-step-object.selected.active {
+  border-color: rgba(184, 224, 255, 0.36);
+  background: rgba(184, 224, 255, 0.075);
 }
 
 .harmony-engine-panel .harmony-slot-object.locked,
@@ -845,45 +855,259 @@
 
 .harmony-engine-panel .harmony-sequence-strip {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(var(--harmony-step-count, 8), minmax(0, 1fr));
+  gap: 4px;
+  padding: 9px 10px 10px;
+  background: rgba(0,0,0,0.13);
 }
 
 .harmony-engine-panel .harmony-step-object {
-  min-height: 88px;
-  padding-bottom: 12px;
+  display: grid;
+  grid-template-rows: 12px minmax(54px, 1fr);
+  gap: 3px;
+  min-height: 78px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: center;
 }
 
 .harmony-engine-panel .harmony-step-object.muted {
-  opacity: 0.58;
+  opacity: 0.42;
+}
+
+.harmony-engine-panel .harmony-step-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(232, 220, 196, 0.38);
+  font-size: 0.54rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.harmony-engine-panel .harmony-step-cell {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 3px;
+  padding: 8px 6px 10px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  border: 2px solid rgba(232, 220, 196, 0.12);
+  background: rgba(12, 14, 18, 0.78);
+  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
+}
+
+.harmony-engine-panel .harmony-step-object:hover .harmony-step-cell {
+  border-color: rgba(184, 224, 255, 0.28);
+  background: rgba(184, 224, 255, 0.045);
+}
+
+.harmony-engine-panel .harmony-step-object.selected .harmony-step-cell {
+  border-color: rgba(184, 224, 255, 0.52);
+  background: rgba(184, 224, 255, 0.08);
+}
+
+.harmony-engine-panel .harmony-step-object.active .harmony-step-cell {
+  border-color: rgba(184, 224, 255, 0.72);
+  box-shadow: 0 0 10px rgba(184, 224, 255, 0.24);
+}
+
+.harmony-engine-panel .harmony-step-object.active .harmony-step-number {
+  color: var(--harmony-ice);
 }
 
 .harmony-engine-panel .harmony-step-object i {
   position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 6px;
+  left: 7px;
+  right: 7px;
+  bottom: 5px;
   height: 3px;
   transform-origin: left center;
   border-radius: 999px;
-  background: rgba(255, 140, 166, 0.8);
+  background: rgba(184, 224, 255, 0.58);
+}
+
+.harmony-engine-panel .harmony-step-object strong,
+.harmony-engine-panel .harmony-step-object em {
+  position: relative;
+  z-index: 1;
 }
 
 .harmony-engine-panel .harmony-inspector {
-  margin-top: 10px;
+  margin-top: 14px;
+}
+
+.harmony-engine-panel .harmony-inspector-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.harmony-engine-panel .harmony-inspector-heading small,
+.harmony-engine-panel .harmony-lab-section-title small {
+  color: rgba(232, 220, 196, 0.5);
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.harmony-engine-panel .harmony-lab-section-title > span {
+  min-width: 0;
+}
+
+.harmony-engine-panel .harmony-lab-section-title .harmony-segment {
+  min-height: 26px;
+  padding: 4px 9px;
+}
+
+.harmony-engine-panel .harmony-progression-lane {
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(232, 220, 196, 0.1);
+  background: rgba(0,0,0,0.14);
+}
+
+.harmony-engine-panel .harmony-progression-lane .harmony-lab-section-title {
+  margin-bottom: 0;
+  padding: 7px 9px;
+  border-bottom: 1px solid rgba(232, 220, 196, 0.08);
+  background: rgba(255,255,255,0.035);
+}
+
+.harmony-engine-panel .harmony-progression-lane.disabled .harmony-sequence-strip {
+  opacity: 0.42;
+}
+
+.harmony-engine-panel .harmony-progression-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.harmony-engine-panel .harmony-seq-enable,
+.harmony-engine-panel .harmony-step-count-pills button {
+  min-height: 22px;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(232, 220, 196, 0.14);
+  background: rgba(255,255,255,0.035);
+  color: rgba(232, 220, 196, 0.72);
+  font-size: 0.56rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.harmony-engine-panel .harmony-seq-enable.on,
+.harmony-engine-panel .harmony-step-count-pills button.active {
+  border-color: rgba(184, 224, 255, 0.38);
+  background: rgba(184, 224, 255, 0.12);
+  color: var(--harmony-ice);
+}
+
+.harmony-engine-panel .harmony-step-count-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(232, 220, 196, 0.58);
+  font-size: 0.56rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.harmony-engine-panel .harmony-step-count-control input {
+  width: 36px;
+  min-height: 22px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(232, 220, 196, 0.14);
+  background: rgba(0,0,0,0.22);
+  color: rgba(255,255,255,0.9);
+  font-size: 0.62rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.harmony-engine-panel .harmony-step-count-pills {
+  display: flex;
+  gap: 3px;
 }
 
 .harmony-engine-panel .harmony-inspector-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 8px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px 14px;
+  margin-top: 12px;
+  align-items: end;
 }
 
 .harmony-engine-panel .harmony-inspector-grid label {
   display: grid;
   gap: 4px;
+  grid-column: span 4;
   min-width: 0;
+}
+
+.harmony-engine-panel .harmony-inspector-grid .harmony-segment-group {
+  grid-column: span 4;
+  align-self: stretch;
+}
+
+.harmony-engine-panel .harmony-inspector-grid .harmony-segment-group.wrap {
+  grid-column: 1 / -1;
+}
+
+.harmony-engine-panel .harmony-inspector-grid .harmony-segment-group.compact {
+  align-content: end;
+}
+
+.harmony-engine-panel .harmony-step-slot-actions {
+  display: grid;
+  grid-column: span 8;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+  min-height: 58px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(232, 220, 196, 0.1);
+  background: rgba(0,0,0,0.14);
+}
+
+.harmony-engine-panel .harmony-step-slot-actions > span {
+  grid-column: 1 / -1;
+  color: rgba(232, 220, 196, 0.5);
+  font-size: 0.56rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.harmony-engine-panel .harmony-step-slot-actions strong {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(255,255,255,0.9);
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.harmony-engine-panel .harmony-step-slot-actions div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .harmony-engine-panel .harmony-inspector-grid label span {
@@ -911,15 +1135,126 @@
   display: flex;
   flex-wrap: wrap;
   grid-column: 1 / -1;
-  gap: 6px;
+  gap: 8px;
 }
 
 .harmony-engine-panel .harmony-range-control.inspector-range {
+  grid-column: span 4;
   display: flex;
+  min-height: 34px;
+  padding: 6px 10px;
 }
 
 .harmony-engine-panel .harmony-generate-panel {
   margin-top: 10px;
+}
+
+.harmony-engine-panel .harmony-create-disclosure {
+  margin-top: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(232, 220, 196, 0.1);
+  background: rgba(0,0,0,0.14);
+}
+
+.harmony-engine-panel .harmony-create-disclosure summary {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  color: rgba(232, 220, 196, 0.68);
+  cursor: pointer;
+  list-style: none;
+}
+
+.harmony-engine-panel .harmony-create-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.harmony-engine-panel .harmony-create-disclosure summary::after {
+  content: "+";
+  color: rgba(184, 224, 255, 0.82);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.harmony-engine-panel .harmony-create-disclosure[open] summary::after {
+  content: "-";
+}
+
+.harmony-engine-panel .harmony-create-disclosure summary span {
+  color: var(--harmony-ice);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.harmony-engine-panel .harmony-create-disclosure summary em {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(232, 220, 196, 0.58);
+  font-size: 0.58rem;
+  font-style: normal;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.harmony-engine-panel .harmony-create-disclosure .harmony-generate-panel {
+  margin-top: 0;
+  padding: 0 10px 10px;
+  border: 0;
+  background: transparent;
+}
+
+.harmony-engine-panel .harmony-theory-recipe {
+  display: grid;
+  grid-template-columns: minmax(110px, 1.1fr) repeat(3, minmax(90px, 1fr));
+  gap: 8px;
+  align-items: stretch;
+  margin-bottom: 10px;
+}
+
+.harmony-engine-panel .harmony-theory-recipe > span,
+.harmony-engine-panel .harmony-theory-recipe div {
+  min-width: 0;
+  padding: 8px 9px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(232, 220, 196, 0.1);
+  background: rgba(184, 224, 255, 0.045);
+}
+
+.harmony-engine-panel .harmony-theory-recipe > span,
+.harmony-engine-panel .harmony-theory-recipe small {
+  display: block;
+  font-size: 0.54rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(232, 220, 196, 0.5);
+}
+
+.harmony-engine-panel .harmony-theory-recipe strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(255,255,255,0.92);
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.harmony-engine-panel .harmony-theory-recipe em {
+  display: block;
+  margin-top: 2px;
+  color: var(--harmony-ice);
+  font-size: 0.58rem;
+  font-style: normal;
+  font-weight: 900;
 }
 
 .harmony-engine-panel .harmony-wide-range {
@@ -968,6 +1303,17 @@
     grid-template-columns: 1fr;
   }
 
+  .harmony-engine-panel .harmony-inspector-grid label,
+  .harmony-engine-panel .harmony-inspector-grid .harmony-segment-group,
+  .harmony-engine-panel .harmony-range-control.inspector-range,
+  .harmony-engine-panel .harmony-step-slot-actions {
+    grid-column: 1 / -1;
+  }
+
+  .harmony-engine-panel .harmony-lab-status-pills {
+    justify-content: flex-start;
+  }
+
   .harmony-engine-panel .harmony-manual-preview {
     grid-template-columns: 1fr;
     align-items: stretch;
@@ -982,7 +1328,16 @@
   }
 
   .harmony-engine-panel .harmony-sequence-strip {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+    gap: 8px;
+  }
+
+  .harmony-engine-panel .harmony-tension-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .harmony-engine-panel .harmony-tension-character {
+    justify-content: flex-start;
   }
 }
 
@@ -995,6 +1350,14 @@
     grid-template-columns: 1fr;
   }
 
+  .harmony-engine-panel .harmony-step-slot-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .harmony-engine-panel .harmony-step-slot-actions div {
+    justify-content: flex-start;
+  }
+
   .harmony-engine-panel .harmony-sequence-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1002,12 +1365,29 @@
   .harmony-engine-panel .harmony-degree-pad-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .harmony-engine-panel .harmony-tension-label {
+    flex-wrap: wrap;
+  }
+
+  .harmony-engine-panel .harmony-tension-label span {
+    width: 100%;
+  }
+
+  .harmony-engine-panel .harmony-tension-stops {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .harmony-engine-panel .harmony-theory-recipe {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* ═══════════════ Compact Sequence Strip (below summary) ═══════════════ */
 
 .harmony-engine-panel .harmony-tension-strip {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   margin-top: 8px;
@@ -1022,6 +1402,7 @@
   align-items: center;
   gap: 8px;
   width: 100%;
+  min-width: 0;
 }
 
 .harmony-engine-panel .harmony-tension-label span {
@@ -1035,6 +1416,7 @@
 
 .harmony-engine-panel .harmony-tension-label input {
   flex: 1;
+  min-width: 80px;
   height: 3px;
   accent-color: var(--harmony-ice);
 }
@@ -1044,6 +1426,85 @@
   text-align: right;
   color: rgba(255,255,255,0.88);
   font-size: 0.64rem;
+}
+
+.harmony-engine-panel .harmony-tension-character {
+  display: flex;
+  min-width: 92px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.harmony-engine-panel .harmony-tension-character span {
+  font-size: 0.54rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(232, 220, 196, 0.48);
+}
+
+.harmony-engine-panel .harmony-tension-character strong {
+  max-width: 92px;
+  overflow: hidden;
+  color: var(--harmony-ice);
+  font-size: 0.64rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.harmony-engine-panel .harmony-tension-stops {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.harmony-engine-panel .harmony-tension-stops button {
+  min-width: 0;
+  min-height: 22px;
+  padding: 2px 5px;
+  overflow: hidden;
+  border: 1px solid rgba(232, 220, 196, 0.1);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.025);
+  color: rgba(232, 220, 196, 0.58);
+  font-size: 0.52rem;
+  font-weight: 900;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.harmony-engine-panel .harmony-tension-stops button.active {
+  border-color: rgba(184, 224, 255, 0.36);
+  background: rgba(184, 224, 255, 0.1);
+  color: var(--harmony-ice);
+}
+
+@media (max-width: 760px) {
+  .harmony-engine-panel .harmony-tension-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .harmony-engine-panel .harmony-tension-character {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 420px) {
+  .harmony-engine-panel .harmony-tension-label {
+    flex-wrap: wrap;
+  }
+
+  .harmony-engine-panel .harmony-tension-label span {
+    width: 100%;
+  }
+
+  .harmony-engine-panel .harmony-tension-stops {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 /* ── Palette strip (Root / Scale / Family) ── */
@@ -1113,12 +1574,12 @@
 .harmony-engine-panel .harmony-compact-sequence {
   display: flex;
   align-items: stretch;
-  gap: 6px;
+  gap: 8px;
   margin-top: 8px;
-  padding: 6px 8px;
+  padding: 7px 9px;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(123, 154, 109, 0.22);
-  background: rgba(123, 154, 109, 0.06);
+  border: 1px solid rgba(232, 220, 196, 0.1);
+  background: rgba(0,0,0,0.14);
 }
 
 .harmony-engine-panel .harmony-compact-seq-toggle {
@@ -1126,9 +1587,9 @@
   min-height: 30px;
   padding: 4px 8px;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(123, 154, 109, 0.3);
-  background: rgba(123, 154, 109, 0.12);
-  color: rgba(184, 220, 168, 0.9);
+  border: 1px solid rgba(232, 220, 196, 0.14);
+  background: rgba(255,255,255,0.035);
+  color: rgba(232, 220, 196, 0.76);
   font-size: 0.56rem;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -1138,14 +1599,15 @@
 }
 
 .harmony-engine-panel .harmony-compact-seq-toggle.active {
-  background: rgba(123, 154, 109, 0.28);
-  border-color: rgba(123, 154, 109, 0.5);
+  background: rgba(184, 224, 255, 0.1);
+  border-color: rgba(184, 224, 255, 0.32);
+  color: var(--harmony-ice);
 }
 
 .harmony-engine-panel .harmony-compact-seq-steps {
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
-  gap: 4px;
+  gap: 6px;
   flex: 1;
   min-width: 0;
 }
@@ -1172,9 +1634,8 @@
 }
 
 .harmony-engine-panel .harmony-compact-step.active {
-  border-color: rgba(123, 154, 109, 0.5);
-  background: rgba(123, 154, 109, 0.14);
-  box-shadow: inset 2px 0 0 rgba(123, 154, 109, 0.7);
+  border-color: rgba(184, 224, 255, 0.3);
+  background: rgba(184, 224, 255, 0.08);
 }
 
 .harmony-engine-panel .harmony-compact-step.muted {

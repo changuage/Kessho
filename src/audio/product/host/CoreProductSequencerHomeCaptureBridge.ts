@@ -59,7 +59,7 @@ export function captureCoreProductSequencerHomeLane(options: CoreProductSequence
         ? { direction: options.pitchState.direction }
         : {}),
       ...(typeof options.pitchState.scaleQuantize === 'boolean'
-        ? { scaleQuantize: options.pitchState.scaleQuantize }
+        ? { scaleQuantize: false }
         : {}),
     }
     : null;

@@ -18,12 +18,23 @@ export interface CaptureCell {
   sourceEventId: number | null;
 }
 
+export interface CaptureEvent {
+  eventOrder: number;
+  sourceEventId: number;
+  targetStepIndex: number;
+  cycleIndex: number;
+  midiNote: number;
+  velocity: number;
+  gateSeconds: number;
+}
+
 export interface CaptureScratch {
   stepCount: number;
   cycleIndex: number;
   lastStepIndex: number | null;
   nextEventOrder: number;
   cells: CaptureCell[];
+  events: CaptureEvent[];
 }
 
 export interface CaptureSession {

@@ -328,8 +328,11 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
   }, 18, {
     waves: null,
     birds: {
-      fileName: 'Alps Birds_441_m_normalized.ogg',
+      fileName: 'Alps Birds 2_noiseremoval_441_m.ogg',
       active: true,
+      textureParamsAvailable: false,
+      useTextureSlices: true,
+      assetTooShortForRequestedSlice: false,
       seed: 2,
       sliceDuration: 20,
       fadeTime: 3.2,
@@ -346,6 +349,13 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
   const birds = debugState.birds;
   assert(birds, 'Birds texture debug snapshot should exist');
   assert.equal(birds.active, true, 'Enabled audible birds should be marked active');
+  assert.equal(birds.textureParamsAvailable, false, 'Product Core Birds debug should preserve missing texture params');
+  assert.equal(birds.useTextureSlices, true, 'Product Core Birds debug should mark texture slices enabled');
+  assert.equal(
+    birds.assetTooShortForRequestedSlice,
+    false,
+    'Product Core Birds debug should not flag a long asset as too short',
+  );
   assert(birds.activeSliceCount >= 4, 'Product Core texture debug must track queued/staged slices');
   assert(
     birds.activeSlices.length > 0 && birds.activeSlices.length <= 3,

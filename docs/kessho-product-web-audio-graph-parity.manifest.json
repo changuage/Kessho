@@ -626,7 +626,7 @@
         ]
         },
         {
-          "file": "cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp",
+          "file": "cpp/KesshoCore/src/product/sources/SoundscapeTextureSource.cpp",
           "tokens": [
             "ensureSoundscapeTextureVoice",
             "kSoundscapeTextureMinimumQueuedSlices",

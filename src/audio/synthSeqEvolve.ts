@@ -163,7 +163,7 @@ export interface SynthEvolveContext {
   effectiveTension?: number;
   swing?: number;       // current lane swing value, returned mutated
   steps?: number;       // sequencer step count, used to auto-init null sub-lanes
-  scaleIntervals?: number[];  // scale intervals for scale-degree-aware pitch walking
+  scaleIntervals?: number[];  // scale intervals for semitones mode scale-degree walking
   pitchMode?: 'semitones' | 'notes' | 'noteRange';  // pitch mode for scale-aware walking
   noteRangeMin?: number;  // current noteRange min (MIDI), for noteRange mode evolution
   noteRangeMax?: number;  // current noteRange max (MIDI), for noteRange mode evolution
@@ -284,7 +284,7 @@ export function evolveSynthLane(
   // ═══════════════════════════════════════════════════════════════════
   if (methods.pitchWalk && chance(rng, 0.6 * intensity) && enabledSubs.has('pitch') && next.pitch) {
     const si = ctx.scaleIntervals;
-    const useScaleDegrees = ctx.pitchMode === 'notes' && si && si.length > 0;
+    const useScaleDegrees = ctx.pitchMode === 'semitones' && si && si.length > 0;
     // Walk multiple steps at high intensity
     const walkStepCount = intensity > 0.7 ? (rng() < intensity ? 2 : 1) : 1;
     for (let w = 0; w < walkStepCount; w++) {
@@ -301,7 +301,7 @@ export function evolveSynthLane(
           next.pitch[idx] = newVal;
         }
       } else {
-        // Semitone mode: ±1 or ±2 semitone offsets
+        // Fixed notes mode: ±1 or ±2 MIDI notes
         const step = (intensity > 0.6 && rng() < intensity) ? 2 : 1;
         const dir = rng() < 0.5 ? -step : step;
         const newVal = currentPitch + dir;

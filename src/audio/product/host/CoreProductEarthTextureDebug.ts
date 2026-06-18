@@ -46,7 +46,7 @@ const CORE_PRODUCT_EARTH_TEXTURES: readonly CoreProductEarthTextureConfig[] = [
     fallbackSliceDuration: 20,
     fallbackDensity: 0.45,
     fadeTime: 3.2,
-    assetDuration: 53.159841,
+    assetDuration: 118.685057,
   },
   {
     key: 'birds2',
@@ -281,6 +281,8 @@ function textureDebugSnapshot(
     inactiveReason: active ? null : (telemetrySnapshot?.inactiveReason ?? (booleanFromState(state, config.enabledKey) ? 'level muted' : 'source disabled')),
     parityFixture: telemetrySnapshot?.parityFixture,
     textureParamsAvailable: telemetrySnapshot?.textureParamsAvailable ?? true,
+    useTextureSlices: telemetrySnapshot?.useTextureSlices ?? active,
+    assetTooShortForRequestedSlice: telemetrySnapshot?.assetTooShortForRequestedSlice ?? false,
     assetDuration,
     maxOffset: Math.max(0, assetDuration - sliceDuration - 0.02),
     seed: seed >>> 0,

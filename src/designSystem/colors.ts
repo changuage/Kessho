@@ -103,6 +103,8 @@ export const SEQUENCER_LANE_COLORS = [
   JOURNEY_COLORS.gold,
   JOURNEY_COLORS.sage,
   JOURNEY_COLORS.cream,
+  JOURNEY_COLORS.violet,
+  JOURNEY_COLORS.clay,
 ] as const;
 
 export const SEQUENCER_SUB_LANE_COLORS = {

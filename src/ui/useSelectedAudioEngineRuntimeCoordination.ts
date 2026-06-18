@@ -15,7 +15,7 @@ type ProductRange = { min: number; max: number };
 
 type SelectedAudioEngineRuntimeCoordinationOptions = {
   activeTab: string;
-  createDefaultPitchSettings: () => PitchSettings[];
+  createDefaultPitchSettings: (laneCount?: number) => PitchSettings[];
   drumMorphKeyToVoice: Record<string, ProductDrumVoice>;
   drumMorphKeys: Set<keyof SliderState>;
   drumPitchSettingsRef: MutableRefObject<PitchSettings[] | undefined>;

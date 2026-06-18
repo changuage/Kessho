@@ -47,7 +47,7 @@ function decodePitchState(
   const direction = decodeDirection(event.value3);
   if (direction) state.direction = direction;
   if ((valueFlags & CORE_PRODUCT_HOME_CAPTURE_FLAGS.pitchScaleQuantizeSet) !== 0) {
-    state.scaleQuantize = (valueFlags & CORE_PRODUCT_HOME_CAPTURE_FLAGS.pitchScaleQuantize) !== 0;
+    state.scaleQuantize = false;
   }
   return state;
 }

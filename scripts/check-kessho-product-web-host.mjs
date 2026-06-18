@@ -669,8 +669,8 @@ for (const token of [
   assert(useEuclideanSequencer.includes(token), `Shared sequencer evolve config defaults are missing ${token}`);
 }
 assert(
-  presetSequencerRestore.includes("normalizeSequencerEvolveConfigs('drum', preset.drumEvolveConfigs, 4)") &&
-    presetSequencerRestore.includes("normalizeSequencerEvolveConfigs('synth', preset.synthEvolveConfigs, 4)"),
+  presetSequencerRestore.includes("normalizeSequencerEvolveConfigs('drum', preset.drumEvolveConfigs, DRUM_EUCLIDEAN_LANE_COUNT)") &&
+    presetSequencerRestore.includes("normalizeSequencerEvolveConfigs('synth', preset.synthEvolveConfigs, SYNTH_EUCLIDEAN_LANE_COUNT)"),
   'State preset restore must normalize drum and synth evolve configs before syncing Product/Web engines',
 );
 assert(
@@ -1653,9 +1653,9 @@ for (const token of [
   'synthSubLaneStates?.map((state) => state.pitch)',
   'synthPitchOverridesForEngine(',
   'rangeOverridesFromSubLaneStates(',
-  'restoreSequencerSubLaneStates(preset.drumSubLaneStates, preset.drumStepOverrides)',
-  'restoreSequencerSubLaneStates(preset.synthSubLaneStates, preset.synthStepOverrides)',
-  'inferLegacySequencerSubLaneStatesFromOverrides(overrides)',
+  'restoreSequencerSubLaneStates(preset.drumSubLaneStates, preset.drumStepOverrides, DRUM_EUCLIDEAN_LANE_COUNT)',
+  'restoreSequencerSubLaneStates(preset.synthSubLaneStates, preset.synthStepOverrides, SYNTH_EUCLIDEAN_LANE_COUNT)',
+  'inferLegacySequencerSubLaneStatesFromOverrides(overrides, laneCount)',
   '...(inferred[laneIndex] ?? {})',
   '...(states[laneIndex] ?? {})',
   'scaleDegreeToSemitone(degree, scaleIntervals)',
@@ -1691,7 +1691,6 @@ for (const token of [
   'export function drumPitchBaseMidiFromState(',
   'export function drumPitchUiValuesToEngineOffsets(',
   'if (settings.mode === \'noteRange\') return null;',
-  'scaleQuantize = false',
   'scaleDegreeToSemitone(degree, scaleIntervals) - baseMidi',
 ]) {
   assert(drumPitchSequencer.includes(token), `Shared drum sequencer pitch conversion is missing ${token}`);
@@ -2371,7 +2370,7 @@ assert(
   'Synth live filter visualizer must use one visible interval instead of duplicate Product Core polling loops',
 );
 assert(
-  /const DRUM_LANE_ENABLED_KEYS = \[[\s\S]*'drumEuclid1Enabled'[\s\S]*'drumEuclid4Enabled'[\s\S]*\] as const/.test(drumPage) &&
+  /const DRUM_LANE_ENABLED_KEYS = \[[\s\S]*'drumEuclid1Enabled'[\s\S]*'drumEuclid6Enabled'[\s\S]*\] as const/.test(drumPage) &&
     /const toggleDrumSequencerTransport = useCallback[\s\S]*const startPatch: Partial<SliderState> = next \? \{ drumEuclidMasterEnabled: true \} : \{\};[\s\S]*if \(next && !state\.drumEnabled\) \{[\s\S]*startPatch\.drumEnabled = true;[\s\S]*if \(next && !DRUM_LANE_ENABLED_KEYS\.some\(\(key\) => Boolean\(state\[key\]\)\)\) \{[\s\S]*startPatch\[activeLaneEnabledKey\] = true;[\s\S]*onSelectChange\('drumEuclidMasterEnabled', next\);[\s\S]*if \(next && !isRunning\) \{[\s\S]*onRequestPlaybackStart\?\.\(startPatch\);/.test(drumPage),
   'Drum keyboard/button transport must enable the drum engine, an audible lane, and start Product with the requested state patch',
 );

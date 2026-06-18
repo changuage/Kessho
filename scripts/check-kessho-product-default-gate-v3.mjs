@@ -998,7 +998,7 @@ assert(
     presetSequencerRestore.includes('drumStepOverridesForEngineRestore(') &&
     presetSequencerRestore.includes('synthStepOverridesForEngineRestore(') &&
     presetSequencerRestore.includes('normalizeSequencerEvolveConfigs(') &&
-    presetSequencerRestore.includes('restoreSequencerSubLaneStates(preset.synthSubLaneStates, preset.synthStepOverrides)'),
+    presetSequencerRestore.includes('restoreSequencerSubLaneStates(preset.synthSubLaneStates, preset.synthStepOverrides, SYNTH_EUCLIDEAN_LANE_COUNT)'),
   'App must delegate preset dual-range and sequencer selected-runtime restore sync to usePresetRestoreRuntimeSurface',
 );
 assert(

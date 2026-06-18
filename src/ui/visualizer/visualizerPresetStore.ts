@@ -3,6 +3,10 @@ import { getPresetStore } from '../../presets/PresetStore';
 import type { PresetEntry, PresetSummary } from '../../presets/types';
 import type { ReactiveVisualizerControls } from './ReactiveVisualizerRenderer';
 import type {
+  VisualizerPerformanceMacros,
+  VisualizerQualityMode,
+} from './visualizerControls';
+import type {
   VisualizerMode,
   VisualizerReactionSettings,
   VisualizerReactiveRanges,
@@ -18,6 +22,8 @@ export type VisualizerPresetData = {
   controls: ReactiveVisualizerControls;
   reactiveRanges: VisualizerReactiveRanges;
   reaction: VisualizerReactionSettings;
+  performanceMacros?: VisualizerPerformanceMacros;
+  qualityMode?: VisualizerQualityMode;
   seed: number;
 };
 

@@ -1,5 +1,6 @@
 export const HARMONY_SLOT_COUNT = 8 as const;
 export const HARMONY_SEQUENCE_STEP_COUNT = 8 as const;
+export const HARMONY_SEQUENCE_STEP_MIN = 3 as const;
 export const HARMONY_POOL_MAX_NOTES = 8 as const;
 
 export const HARMONY_SLOT_TRIGGER_KEYS = ['z', 'x', 'c', 'v', 'b', 'n', 'm', ','] as const;
@@ -111,6 +112,7 @@ export interface L4HarmonyStateExtension {
   chordSlots: HarmonyChordSlot[];
   chordSequence: HarmonySequenceStep[];
   chordSequenceEnabled: boolean;
+  chordSequenceLength: number;
   chordSequenceStepIndex: number;
   resolvedHarmonyFrame: ResolvedHarmonyFrame;
 }
@@ -433,6 +435,10 @@ export function sanitizeHarmonySequence(value: unknown): HarmonySequenceStep[] {
   });
 }
 
+export function sanitizeHarmonySequenceLength(value: unknown): number {
+  return clamp(finiteInteger(value, HARMONY_SEQUENCE_STEP_COUNT), HARMONY_SEQUENCE_STEP_MIN, HARMONY_SEQUENCE_STEP_COUNT);
+}
+
 export function sanitizeManualHarmonyControl(value: unknown): ManualHarmonyControlState {
   const fallback = defaultManualHarmonyControlState();
   if (!value || typeof value !== 'object') return fallback;
@@ -478,12 +484,17 @@ export function buildBaselineHarmonyIntent(args: {
 export function resolveSequenceIntent(args: {
   sequenceEnabled: boolean;
   stepIndex: number;
+  sequenceLength?: number;
   sequence: readonly HarmonySequenceStep[];
   slots: readonly HarmonyChordSlot[];
 }): HarmonyIntent | null {
   if (!args.sequenceEnabled) return null;
-  const step = args.sequence[clamp(Math.round(args.stepIndex), 0, HARMONY_SEQUENCE_STEP_COUNT - 1)];
+  const sequenceLength = sanitizeHarmonySequenceLength(args.sequenceLength);
+  const step = args.sequence[((Math.round(args.stepIndex) % sequenceLength) + sequenceLength) % sequenceLength];
   if (!step || !step.enabled || step.probability <= 0) return null;
+  if (step.mode === 'slotCopy' && step.intent) {
+    return { ...step.intent, source: 'sequence' };
+  }
   if ((step.mode === 'slotCopy' || step.mode === 'slotFollow') && step.slotId !== null) {
     const slot = args.slots[step.slotId];
     return slot ? { ...slot.intent, source: 'sequence' } : null;
@@ -628,14 +639,17 @@ export function resolveNextHarmonyFrame(args: {
   tension: number;
   sequenceEnabled: boolean;
   stepIndex: number;
+  sequenceLength: number;
   sequence: readonly HarmonySequenceStep[];
   slots: readonly HarmonyChordSlot[];
   baselineIntent: HarmonyIntent;
 }): Pick<ResolvedHarmonyFrame, 'nextNotePool' | 'nextSource' | 'nextStepIndex'> {
-  const nextStepIndex = args.sequenceEnabled ? (args.stepIndex + 1) % HARMONY_SEQUENCE_STEP_COUNT : null;
+  const sequenceLength = sanitizeHarmonySequenceLength(args.sequenceLength);
+  const stepIndex = ((Math.round(args.stepIndex) % sequenceLength) + sequenceLength) % sequenceLength;
+  const nextStepIndex = args.sequenceEnabled ? (stepIndex + 1) % sequenceLength : null;
   const nextIntent = nextStepIndex === null
     ? { ...args.baselineIntent, degree: (args.baselineIntent.degree + 3) % 7 }
-    : resolveSequenceIntent({ sequenceEnabled: true, stepIndex: nextStepIndex, sequence: args.sequence, slots: args.slots }) ?? args.baselineIntent;
+    : resolveSequenceIntent({ sequenceEnabled: true, stepIndex: nextStepIndex, sequenceLength, sequence: args.sequence, slots: args.slots }) ?? args.baselineIntent;
   return {
     nextNotePool: resolveHarmonyIntentToNotePool({ intent: nextIntent, rootMidi: args.rootMidi, scaleId: args.scaleId, tension: args.tension }),
     nextSource: nextIntent.source,
@@ -667,7 +681,9 @@ export function resolveProductHarmonyState(args: {
       : state.harmonyChordSequenceA ?? state.harmonyChordSequence,
   );
   const chordSequenceEnabled = boolValue(state.harmonyChordSequenceEnabled, false);
-  const chordSequenceStepIndex = clamp(finiteInteger(state.harmonyChordSequenceStepIndex, 0), 0, HARMONY_SEQUENCE_STEP_COUNT - 1);
+  const chordSequenceLength = sanitizeHarmonySequenceLength(state.harmonyChordSequenceLength);
+  const rawChordSequenceStepIndex = clamp(finiteInteger(state.harmonyChordSequenceStepIndex, 0), 0, HARMONY_SEQUENCE_STEP_COUNT - 1);
+  const chordSequenceStepIndex = rawChordSequenceStepIndex % chordSequenceLength;
   const baselineIntent = buildBaselineHarmonyIntent({
     rootMidi: args.rootMidi,
     scaleId: args.scaleId,
@@ -676,7 +692,7 @@ export function resolveProductHarmonyState(args: {
     barIndex: args.barIndex ?? 0,
     phraseIndex: args.phraseIndex ?? 0,
   });
-  const sequenceIntent = resolveSequenceIntent({ sequenceEnabled: chordSequenceEnabled, stepIndex: chordSequenceStepIndex, sequence: chordSequence, slots: chordSlots });
+  const sequenceIntent = resolveSequenceIntent({ sequenceEnabled: chordSequenceEnabled, stepIndex: chordSequenceStepIndex, sequenceLength: chordSequenceLength, sequence: chordSequence, slots: chordSlots });
   const slotTriggerIntent = resolveSlotTriggerIntent({ manualControl, slots: chordSlots, morphPercent: morphContext.morphPercent });
   const manualControlIntent = resolveManualControlIntent({ manualControl, morphPercent: morphContext.morphPercent });
   const activeIntent = chooseActiveHarmonyIntent({ baselineIntent, sequenceIntent, slotTriggerIntent, manualControlIntent, morphPercent: morphContext.morphPercent });
@@ -686,6 +702,7 @@ export function resolveProductHarmonyState(args: {
     tension: args.tension,
     sequenceEnabled: chordSequenceEnabled,
     stepIndex: chordSequenceStepIndex,
+    sequenceLength: chordSequenceLength,
     sequence: chordSequence,
     slots: chordSlots,
     baselineIntent,
@@ -711,29 +728,146 @@ export function resolveProductHarmonyState(args: {
     chordSlots,
     chordSequence,
     chordSequenceEnabled,
+    chordSequenceLength,
     chordSequenceStepIndex,
     resolvedHarmonyFrame,
   };
 }
 
+export interface HarmonyGenerationParams {
+  rootMidi?: number;
+  scaleId?: number;
+  tension?: number;
+  variation?: number;
+  complexity?: number;
+  motion?: number;
+  respectLocks?: boolean;
+}
+
+type HarmonyGenerationCharacter = 'resolved' | 'dreamy' | 'warmMinor' | 'melancholy' | 'dramatic' | 'unsettled' | 'high';
+
+interface NormalizedHarmonyGenerationSettings {
+  tension: number;
+  variation: number;
+  motion: number;
+  respectLocks: boolean;
+  character: HarmonyGenerationCharacter;
+}
+
+const GENERATED_CHARACTER_PATTERNS: Readonly<Record<HarmonyGenerationCharacter, readonly (readonly number[])[]>> = {
+  resolved: [
+    [0, 0, 3, 0, 4, 0, 3, 0],
+    [0, 3, 0, 4, 0, 3, 4, 0],
+  ],
+  dreamy: [
+    [0, 3, 1, 4, 0, 3, 4, 1],
+    [0, 1, 3, 4, 0, 3, 1, 4],
+    [0, 4, 3, 1, 0, 3, 4, 0],
+  ],
+  warmMinor: [
+    [0, 3, 4, 0, 0, 5, 3, 4],
+    [0, 5, 3, 4, 1, 4, 0, 0],
+    [0, 3, 1, 4, 0, 5, 3, 4],
+  ],
+  melancholy: [
+    [0, 3, 0, 5, 3, 0, 4, 3],
+    [0, 2, 3, 5, 0, 3, 5, 4],
+    [0, 4, 1, 3, 0, 5, 3, 4],
+  ],
+  dramatic: [
+    [0, 1, 3, 6, 0, 2, 4, 6],
+    [0, 2, 3, 1, 4, 3, 6, 2],
+    [0, 3, 6, 1, 4, 2, 5, 6],
+  ],
+  unsettled: [
+    [0, 6, 5, 6, 1, 4, 2, 5],
+    [0, 5, 1, 6, 3, 2, 6, 4],
+    [0, 1, 6, 5, 2, 6, 4, 1],
+  ],
+  high: [
+    [0, 2, 3, 4, 5, 3, 6, 1],
+    [0, 3, 5, 6, 1, 4, 2, 5],
+    [0, 2, 4, 6, 1, 3, 5, 6],
+  ],
+};
+
+function generationCharacterFromTension(tension: number): HarmonyGenerationCharacter {
+  if (tension <= 0.1) return 'resolved';
+  if (tension <= 0.2) return 'dreamy';
+  if (tension <= 0.3) return 'warmMinor';
+  if (tension <= 0.4) return 'melancholy';
+  if (tension <= 0.55) return 'dramatic';
+  if (tension <= 0.8) return 'unsettled';
+  return 'high';
+}
+
+function normalizeGenerationParams(params: HarmonyGenerationParams): NormalizedHarmonyGenerationSettings {
+  const tension = clamp(finiteNumber(params.tension, 0.35), 0, 1);
+  return {
+    tension,
+    variation: clamp(finiteNumber(params.variation, finiteNumber(params.complexity, 0.35)), 0, 1),
+    motion: clamp(finiteNumber(params.motion, tension), 0, 1),
+    respectLocks: params.respectLocks !== false,
+    character: generationCharacterFromTension(tension),
+  };
+}
+
+function pickGeneratedQuality(unit: number, qualities: readonly HarmonyChordQuality[]): HarmonyChordQuality {
+  return qualities[Math.min(qualities.length - 1, Math.floor(unit * qualities.length))] ?? 'auto';
+}
+
+function generatedHarmonyQuality(unit: number, settings: NormalizedHarmonyGenerationSettings): HarmonyChordQuality {
+  const color = settings.tension;
+  if (settings.character === 'resolved') {
+    return pickGeneratedQuality(unit, color < 0.5 ? ['auto', 'maj', 'min'] : ['auto', 'maj', 'sus', 'six']);
+  }
+  if (settings.character === 'dreamy') {
+    return pickGeneratedQuality(unit, color < 0.55 ? ['maj', 'sus', 'add9', 'six'] : ['sus', 'add9', 'six', 'maj7']);
+  }
+  if (settings.character === 'warmMinor') {
+    return pickGeneratedQuality(unit, color < 0.55 ? ['auto', 'min', 'sus', 'add9'] : ['min7', 'add9', 'six', 'dom7']);
+  }
+  if (settings.character === 'melancholy') {
+    return pickGeneratedQuality(unit, color < 0.55 ? ['sus', 'add9', 'six', 'maj7'] : ['add9', 'sixNine', 'maj7', 'nine']);
+  }
+  if (settings.character === 'dramatic') {
+    return pickGeneratedQuality(unit, color < 0.55 ? ['min', 'min7', 'dom7', 'add9'] : ['min7', 'dom7', 'nine', 'sixNine']);
+  }
+  if (settings.character === 'unsettled') {
+    return pickGeneratedQuality(unit, color < 0.55 ? ['sus', 'add9', 'quartal', 'six'] : ['quartal', 'sixNine', 'add9', 'nine']);
+  }
+  return pickGeneratedQuality(unit, color < 0.55 ? ['min7', 'dom7', 'quartal', 'nine'] : ['quartal', 'nine', 'cluster', 'sixNine']);
+}
+
+function generatedSequenceDegree(id: number, unit: number, settings: NormalizedHarmonyGenerationSettings): number {
+  const patterns = GENERATED_CHARACTER_PATTERNS[settings.character];
+  const patternIndex = Math.min(patterns.length - 1, Math.floor(settings.motion * patterns.length));
+  const pattern = patterns[patternIndex] ?? patterns[0]!;
+  const baseDegree = pattern[id % pattern.length] ?? id % 7;
+  const variationChance = settings.character === 'resolved'
+    ? settings.variation * settings.motion * 0.12
+    : settings.variation * (0.08 + settings.motion * 0.22 + settings.tension * 0.08);
+  return unit < variationChance ? Math.floor(unit * 997) % 7 : baseDegree;
+}
+
 export function generateHarmonySlots(
   seed: number,
-  params: { rootMidi?: number; scaleId?: number; tension?: number } = {},
+  params: HarmonyGenerationParams = {},
   existingSlots: readonly HarmonyChordSlot[] = [],
 ): HarmonyChordSlot[] {
+  const settings = normalizeGenerationParams(params);
   const slots = sanitizeHarmonyChordSlots(existingSlots);
   return slots.map((slot, id) => {
-    if (slot.locked) return slot;
+    if (settings.respectLocks && slot.locked) return slot;
     const unit = unitFromSeed((seed >>> 0) ^ Math.imul(id + 1, 0x9e3779b9));
-    const quality: HarmonyChordQuality = unit > 0.72 ? 'auto' : unit > 0.5 ? 'min7' : unit > 0.28 ? 'add9' : 'maj';
     return {
       ...slot,
       id,
       name: slot.name || `Slot ${id + 1}`,
       intent: {
-        ...defaultHarmonyIntent('slot', (id * 3 + Math.round(unit * 6)) % 7),
+        ...defaultHarmonyIntent('slot', generatedSequenceDegree(id, unit, settings)),
         rootNote: pitchClass(params.rootMidi ?? 60),
-        quality,
+        quality: generatedHarmonyQuality(unit, settings),
       },
     };
   });
@@ -741,25 +875,26 @@ export function generateHarmonySlots(
 
 export function generateHarmonySequence(
   seed: number,
-  params: { rootMidi?: number; scaleId?: number; tension?: number } = {},
+  params: HarmonyGenerationParams = {},
   existingSequence: readonly HarmonySequenceStep[] = [],
   slots: readonly HarmonyChordSlot[] = [],
 ): HarmonySequenceStep[] {
-  void params;
+  const settings = normalizeGenerationParams(params);
   const sequence = sanitizeHarmonySequence(existingSequence);
   const slotBank = sanitizeHarmonyChordSlots(slots);
   return sequence.map((step, id) => {
-    if (step.locked) return step;
+    if (settings.respectLocks && step.locked) return step;
     const unit = unitFromSeed((seed >>> 0) ^ Math.imul(id + 17, 0x85ebca6b));
-    const useSlot = unit > 0.65;
+    const slotUseChance = 0.12 + settings.motion * 0.18 + settings.variation * 0.18;
+    const useSlot = unit > 1 - slotUseChance;
     const slotId = useSlot ? id % HARMONY_SLOT_COUNT : null;
     return {
       ...step,
       id,
       enabled: true,
       mode: useSlot ? 'slotCopy' : 'auto',
-      degree: useSlot ? slotBank[slotId ?? 0]?.intent.degree ?? id % 7 : [0, 3, 4, 5, 1, 4, 6, 0][id] ?? id % 7,
-      quality: unit > 0.45 ? 'auto' : 'maj',
+      degree: useSlot ? slotBank[slotId ?? 0]?.intent.degree ?? id % 7 : generatedSequenceDegree(id, unit, settings),
+      quality: generatedHarmonyQuality(unit, settings),
       intent: null,
       slotId,
       probability: 1,
@@ -769,7 +904,7 @@ export function generateHarmonySequence(
 
 export function generateHarmonySlotsAndSequence(
   seed: number,
-  params: { rootMidi?: number; scaleId?: number; tension?: number } = {},
+  params: HarmonyGenerationParams = {},
   existingSlots: readonly HarmonyChordSlot[] = [],
   existingSequence: readonly HarmonySequenceStep[] = [],
 ): { slots: HarmonyChordSlot[]; sequence: HarmonySequenceStep[] } {

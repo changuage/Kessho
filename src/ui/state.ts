@@ -15,6 +15,7 @@ import {
   defaultManualHarmonyControlState,
   sanitizeHarmonyChordSlots,
   sanitizeHarmonySequence,
+  sanitizeHarmonySequenceLength,
   sanitizeManualHarmonyControl,
   type HarmonyChordSlot,
   type HarmonySequenceStep,
@@ -37,6 +38,7 @@ import {
   normalizeSequencerChainState,
   type SequencerChainState,
 } from '../audio/sequencerChain';
+import type { SerializedTriggerClip } from './sequencer/triggerClip';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
 export type GranularQuality = 'eco' | 'balanced' | 'hq';
@@ -224,6 +226,7 @@ export interface SerializedStepToggle {
  * presets must store trigger toggles as sorted arrays to survive DB/file JSON.
  */
 export interface SerializedStepOverrides {
+  triggerClips?: (SerializedTriggerClip | null)[];
   triggerToggles?: SerializedStepToggle[][];
   probability?: (number[] | null)[];
   ratchet?: (number[] | null)[];
@@ -576,6 +579,7 @@ export interface SliderState {
   harmonyChordSequenceA: HarmonySequenceStep[] | undefined;
   harmonyChordSequenceB: HarmonySequenceStep[] | undefined;
   harmonyChordSequenceEnabled: boolean;
+  harmonyChordSequenceLength: number;
   harmonyChordSequenceStepIndex: number;
   // Synth voice ADSR
   synthAttack: number;        // 0.001..16 seconds
@@ -1279,6 +1283,42 @@ export interface SliderState {
   drumEuclid4VelocityMax: number;
   drumEuclid4Level: number;
 
+  // Drum Euclidean Lane 5
+  drumEuclid5Enabled: boolean;
+  drumEuclid5Preset: string;
+  drumEuclid5Steps: number;
+  drumEuclid5Hits: number;
+  drumEuclid5Rotation: number;
+  drumEuclid5TargetSub: boolean;
+  drumEuclid5TargetKick: boolean;
+  drumEuclid5TargetClick: boolean;
+  drumEuclid5TargetBeepHi: boolean;
+  drumEuclid5TargetBeepLo: boolean;
+  drumEuclid5TargetNoise: boolean;
+  drumEuclid5TargetMembrane: boolean;
+  drumEuclid5Probability: number;
+  drumEuclid5VelocityMin: number;
+  drumEuclid5VelocityMax: number;
+  drumEuclid5Level: number;
+
+  // Drum Euclidean Lane 6
+  drumEuclid6Enabled: boolean;
+  drumEuclid6Preset: string;
+  drumEuclid6Steps: number;
+  drumEuclid6Hits: number;
+  drumEuclid6Rotation: number;
+  drumEuclid6TargetSub: boolean;
+  drumEuclid6TargetKick: boolean;
+  drumEuclid6TargetClick: boolean;
+  drumEuclid6TargetBeepHi: boolean;
+  drumEuclid6TargetBeepLo: boolean;
+  drumEuclid6TargetNoise: boolean;
+  drumEuclid6TargetMembrane: boolean;
+  drumEuclid6Probability: number;
+  drumEuclid6VelocityMin: number;
+  drumEuclid6VelocityMax: number;
+  drumEuclid6Level: number;
+
   // Waves sample
   earthLevel: number;            // 0..1 master Earth bus level (waves + water + insects)
   oceanSampleEnabled: boolean;   // on/off toggle for real sample
@@ -1905,6 +1945,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'harmonyChordSequenceA',
   'harmonyChordSequenceB',
   'harmonyChordSequenceEnabled',
+  'harmonyChordSequenceLength',
   'harmonyChordSequenceStepIndex',
   'synthAttack',
   'synthDecay',
@@ -2483,6 +2524,38 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumEuclid4VelocityMin',
   'drumEuclid4VelocityMax',
   'drumEuclid4Level',
+  'drumEuclid5Enabled',
+  'drumEuclid5Preset',
+  'drumEuclid5Steps',
+  'drumEuclid5Hits',
+  'drumEuclid5Rotation',
+  'drumEuclid5TargetSub',
+  'drumEuclid5TargetKick',
+  'drumEuclid5TargetClick',
+  'drumEuclid5TargetBeepHi',
+  'drumEuclid5TargetBeepLo',
+  'drumEuclid5TargetNoise',
+  'drumEuclid5TargetMembrane',
+  'drumEuclid5Probability',
+  'drumEuclid5VelocityMin',
+  'drumEuclid5VelocityMax',
+  'drumEuclid5Level',
+  'drumEuclid6Enabled',
+  'drumEuclid6Preset',
+  'drumEuclid6Steps',
+  'drumEuclid6Hits',
+  'drumEuclid6Rotation',
+  'drumEuclid6TargetSub',
+  'drumEuclid6TargetKick',
+  'drumEuclid6TargetClick',
+  'drumEuclid6TargetBeepHi',
+  'drumEuclid6TargetBeepLo',
+  'drumEuclid6TargetNoise',
+  'drumEuclid6TargetMembrane',
+  'drumEuclid6Probability',
+  'drumEuclid6VelocityMin',
+  'drumEuclid6VelocityMax',
+  'drumEuclid6Level',
   // Ocean
   'earthLevel',
   'oceanSampleEnabled',
@@ -2896,6 +2969,7 @@ export const DEFAULT_STATE: SliderState = {
   harmonyChordSequenceA: undefined,
   harmonyChordSequenceB: undefined,
   harmonyChordSequenceEnabled: false,
+  harmonyChordSequenceLength: 8,
   harmonyChordSequenceStepIndex: 0,
   synthAttack: 6.0,
   synthDecay: 1.0,
@@ -3470,7 +3544,7 @@ export const DEFAULT_STATE: SliderState = {
   drumNoiseDelaySend: 0.7,
   drumMembraneDelaySend: 0.2,
 
-  // Euclidean sequencer (4 lanes)
+  // Euclidean sequencer (6 lanes)
   drumEuclidMasterEnabled: false,
   drumEuclidBaseBPM: 120,
   drumEuclidTempo: 1,
@@ -3549,6 +3623,42 @@ export const DEFAULT_STATE: SliderState = {
   drumEuclid4VelocityMin: 1.0,
   drumEuclid4VelocityMax: 1.0,
   drumEuclid4Level: 0.8,
+
+  // Lane 5 - BeepLo
+  drumEuclid5Enabled: false,
+  drumEuclid5Preset: 'custom',
+  drumEuclid5Steps: 16,
+  drumEuclid5Hits: 4,
+  drumEuclid5Rotation: 2,
+  drumEuclid5TargetSub: false,
+  drumEuclid5TargetKick: false,
+  drumEuclid5TargetClick: false,
+  drumEuclid5TargetBeepHi: false,
+  drumEuclid5TargetBeepLo: true,
+  drumEuclid5TargetNoise: false,
+  drumEuclid5TargetMembrane: false,
+  drumEuclid5Probability: 1.0,
+  drumEuclid5VelocityMin: 1.0,
+  drumEuclid5VelocityMax: 1.0,
+  drumEuclid5Level: 0.8,
+
+  // Lane 6 - Membrane
+  drumEuclid6Enabled: false,
+  drumEuclid6Preset: 'custom',
+  drumEuclid6Steps: 12,
+  drumEuclid6Hits: 4,
+  drumEuclid6Rotation: 1,
+  drumEuclid6TargetSub: false,
+  drumEuclid6TargetKick: false,
+  drumEuclid6TargetClick: false,
+  drumEuclid6TargetBeepHi: false,
+  drumEuclid6TargetBeepLo: false,
+  drumEuclid6TargetNoise: false,
+  drumEuclid6TargetMembrane: true,
+  drumEuclid6Probability: 1.0,
+  drumEuclid6VelocityMin: 1.0,
+  drumEuclid6VelocityMax: 1.0,
+  drumEuclid6Level: 0.8,
 
   // Waves sample
   earthLevel: 1.0,
@@ -4241,6 +4351,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   detune: { min: 0, max: 25, step: 1 },
   harmonyMorphPercent: { min: 0, max: 100, step: 1 },
   harmonyGenerationSeed: { min: 0, max: 2147483647, step: 1 },
+  harmonyChordSequenceLength: { min: 3, max: 8, step: 1 },
   harmonyChordSequenceStepIndex: { min: 0, max: 7, step: 1 },
   synthVoiceMask: { min: 0, max: 255, step: 1 },
   // Pad/pad2 shared source params. Saved preset keys stay flat.
@@ -4581,6 +4692,20 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   drumEuclid4VelocityMin: { min: 0, max: 1, step: 0.01 },
   drumEuclid4VelocityMax: { min: 0, max: 1, step: 0.01 },
   drumEuclid4Level: { min: 0, max: 1, step: 0.01 },
+  drumEuclid5Steps: { min: 2, max: 32, step: 1 },
+  drumEuclid5Hits: { min: 0, max: 32, step: 1 },
+  drumEuclid5Rotation: { min: 0, max: 31, step: 1 },
+  drumEuclid5Probability: { min: 0, max: 1, step: 0.01 },
+  drumEuclid5VelocityMin: { min: 0, max: 1, step: 0.01 },
+  drumEuclid5VelocityMax: { min: 0, max: 1, step: 0.01 },
+  drumEuclid5Level: { min: 0, max: 1, step: 0.01 },
+  drumEuclid6Steps: { min: 2, max: 32, step: 1 },
+  drumEuclid6Hits: { min: 0, max: 32, step: 1 },
+  drumEuclid6Rotation: { min: 0, max: 31, step: 1 },
+  drumEuclid6Probability: { min: 0, max: 1, step: 0.01 },
+  drumEuclid6VelocityMin: { min: 0, max: 1, step: 0.01 },
+  drumEuclid6VelocityMax: { min: 0, max: 1, step: 0.01 },
+  drumEuclid6Level: { min: 0, max: 1, step: 0.01 },
   // Ocean / Earth
   earthLevel: { min: 0, max: 1, step: 0.01 },
   oceanSampleLevel: { min: 0, max: 1, step: 0.01 },
@@ -5113,6 +5238,10 @@ function decodeHarmonyJsonStateValue(state: SliderState, key: keyof SliderState,
   }
   if (key === 'harmonyChordSequenceB') {
     state.harmonyChordSequenceB = sanitizeHarmonySequence(parsed);
+    return true;
+  }
+  if (key === 'harmonyChordSequenceLength') {
+    state.harmonyChordSequenceLength = sanitizeHarmonySequenceLength(parsed);
     return true;
   }
   if (key === 'synthSequencerFaces') {

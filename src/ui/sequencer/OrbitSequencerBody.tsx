@@ -5,7 +5,7 @@ import { formatMidiNoteName } from './anchorWalkerMath';
 import { OrbitRange } from './OrbitRange';
 import { OrbitSequencerCanvas } from './OrbitSequencerCanvas';
 import { orbitClockedLoopBeats } from './orbitSequencerMath';
-import type { OrbitConstellationMode, OrbitDirection, OrbitNoteConfig, OrbitPitchLayout, OrbitPitchMode, OrbitRuntimeVisualState, OrbitSequencerConfig, OrbitSpeedMode, OrbitTriggerLineCount } from './orbitSequencerTypes';
+import type { OrbitConstellationMode, OrbitDirection, OrbitNoteConfig, OrbitPitchMode, OrbitRuntimeVisualState, OrbitSequencerConfig, OrbitSpeedMode, OrbitTriggerLineCount } from './orbitSequencerTypes';
 import {
   ORBIT_BLOOM_NOTE_OPTIONS,
   ORBIT_LOOP_BEAT_OPTIONS,
@@ -120,17 +120,6 @@ export function OrbitSequencerBody({
             {captureSlot}
           </div>
         ) : null}
-        <label className="orbit-label">
-          Layout
-          <select
-            className="orbit-select"
-            value={orbit.config.pitchLayout}
-            onChange={(event) => orbit.setPitchLayout(event.target.value as OrbitPitchLayout)}
-          >
-            <option value="harmonyBloom">Bloom</option>
-            <option value="freeOrbit">Free</option>
-          </select>
-        </label>
         <button
           type="button"
           className={`orbit-toggle${orbit.config.spline.spinEnabled ? ' on' : ''}`}
@@ -146,19 +135,6 @@ export function OrbitSequencerBody({
           {orbit.config.spline.spinDirection === 'ccw' ? 'DIR: CCW' : 'DIR: CW'}
         </button>
         <button type="button" className="orbit-action" onClick={orbit.straightenSpline}>STRT</button>
-        <label className="orbit-label">
-          Source
-          <select
-            className="orbit-select"
-            value={orbit.config.snapSource}
-            onChange={(event) => orbit.updateConfig({ snapSource: event.target.value as OrbitSequencerConfig['snapSource'] })}
-          >
-            <option value="harmonyEngine">Harmony</option>
-            <option value="manualVoicing">Voicing</option>
-            <option value="chordStep">Chord</option>
-            <option value="customPitchClasses">Custom</option>
-          </select>
-        </label>
         <label className="orbit-label">
           Loop
           <select

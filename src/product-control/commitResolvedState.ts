@@ -376,7 +376,7 @@ export async function commitProductControlActionThenTrigger<T>(
   productEngine: ProductEnginePort,
   sliders: SliderState,
   action: ProductControlAction,
-  trigger: (revision: number) => Promise<T> | T,
+  trigger: (revision: number, resolvedSliders: SliderState) => Promise<T> | T,
   options: ProductControlActionTriggerOptions = {},
 ): Promise<T> {
   return enqueueProductControlCommit(productEngine, async () => {
@@ -410,7 +410,7 @@ export async function commitProductControlActionThenTrigger<T>(
     if (receipt.applied) {
       productControlStateByEngine.set(productEngine, nextControlState);
     }
-    return trigger(resolved.revision);
+    return trigger(resolved.revision, resolved.sliders);
   });
 }
 

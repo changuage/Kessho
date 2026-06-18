@@ -3,6 +3,7 @@ import {
   normalizeSequencerChainState,
   resolveSequencerChainPosition,
   sequencerChainPlayableRuntimeLanes,
+  sequencerChainLaneCount,
   sequencerChainStateKey,
   type SequencerChainKind,
   type SequencerChainRuntimePosition,
@@ -71,7 +72,8 @@ export function createSequencerChainUiRuntimeState(
     ...state,
     [sequencerChainStateKey(kind)]: state[sequencerChainStateKey(kind)],
   };
-  for (let laneIndex = 0; laneIndex < Math.min(clockDivs.length, 4); laneIndex += 1) {
+  const laneCount = sequencerChainLaneCount(kind);
+  for (let laneIndex = 0; laneIndex < Math.min(clockDivs.length, laneCount); laneIndex += 1) {
     next[`${prefix}${laneIndex + 1}ClockDivision`] = clockDivs[laneIndex];
   }
   return next;

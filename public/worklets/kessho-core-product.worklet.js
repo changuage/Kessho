@@ -1446,14 +1446,27 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       const assetDuration = this.view.getFloat32(base + 256 + index * 4, true);
       const maxOffset = this.view.getFloat32(base + 272 + index * 4, true);
       const active = (flags & 1) !== 0;
+      const inactiveReason = active ? null : this.earthTextureInactiveReason(inactiveReasonCode);
+      const parityFixture = (flags & 2) !== 0;
+      const useTextureSlices = !parityFixture && (
+        active ||
+        inactiveReasonCode === 5 ||
+        inactiveReasonCode === 9
+      );
       const key = keys[index];
       state[key] = {
         fileName: this.earthTextureAssetLabel(assetId),
         assetId,
         active,
-        inactiveReason: active ? null : this.earthTextureInactiveReason(inactiveReasonCode),
-        parityFixture: (flags & 2) !== 0,
+        inactiveReason,
+        parityFixture,
         textureParamsAvailable: (flags & 4) !== 0,
+        useTextureSlices,
+        assetTooShortForRequestedSlice: inactiveReasonCode === 5 || (
+          assetDuration > 0 &&
+          maxOffset <= 0.0001 &&
+          useTextureSlices
+        ),
         assetDuration,
         maxOffset,
         seed,
@@ -1486,7 +1499,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   earthTextureAssetLabel(assetId) {
     switch (assetId) {
       case 7101: return 'Ghetary-Waves-Rocks_120s_m_441_cl-normalized.ogg';
-      case 7102: return 'Alps Birds_441_m_normalized.ogg';
+      case 7102: return 'Alps Birds 2_noiseremoval_441_m.ogg';
       case 7105: return 'Fujian Birds 2_441_m_normalized.ogg';
       case 7103: return 'Fujian_Frogs_m_441_normalized.ogg';
       default: return assetId ? `asset:${assetId}` : 'unassigned';

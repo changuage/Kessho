@@ -1,9 +1,9 @@
 import { createCoreProductSequencerLaneParamEvent, type CoreProductEvent } from './coreProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 import {
-  SEQUENCER_CHAIN_LANE_COUNT,
   normalizeSequencerChainState,
   resolveSequencerChainPosition,
+  sequencerChainLaneCount,
   sequencerChainEnabledForLane,
   sequencerChainPlayableRuntimeLanes,
   sequencerChainStateKey,
@@ -120,7 +120,7 @@ export class CoreProductHostSequencerChain {
 
   private desiredEnabled(kind: SequencerChainKind, nowSeconds: number): { enabled: boolean[]; nextBoundarySeconds: number | null } {
     const state = this.state;
-    const base = Array.from({ length: SEQUENCER_CHAIN_LANE_COUNT }, (_, laneIndex) =>
+    const base = Array.from({ length: sequencerChainLaneCount(kind) }, (_, laneIndex) =>
       sequencerChainEnabledForLane(kind, state, laneIndex)
     );
     if (!state) return { enabled: base, nextBoundarySeconds: null };

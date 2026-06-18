@@ -22,6 +22,7 @@ import type {
 } from './useEuclideanSequencer';
 import { normalizeSequencerEvolveConfig } from './useEuclideanSequencer';
 import { clampEuclideanSubLaneSteps } from './sequencerLimits';
+import { deserializeTriggerClip, serializeTriggerClip } from './triggerClip';
 
 const SEQUENCE_PRESET_SOURCE_LANE = 0;
 const SUB_LANE_KINDS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'slice', 'reverse'];
@@ -103,7 +104,7 @@ function cloneSubLaneState(state: SubLaneState | SerializedSubLaneState | undefi
     enabled: Boolean(state.enabled),
     steps,
     direction: normalizeSequencerLaneDirection(state.direction),
-    ...(typeof state.scaleQuantize === 'boolean' ? { scaleQuantize: state.scaleQuantize } : {}),
+    ...(typeof state.scaleQuantize === 'boolean' ? { scaleQuantize: false } : {}),
     ...(state.valueMode === 'sequence' || state.valueMode === 'range' ? { valueMode: state.valueMode } : {}),
     ...(rangeMin !== undefined ? { rangeMin: Math.min(rangeMin, rangeMax ?? rangeMin) } : {}),
     ...(rangeMax !== undefined ? { rangeMax: Math.max(rangeMax, rangeMin ?? rangeMax) } : {}),
@@ -201,6 +202,9 @@ function replaceLane<T>(current: T[], laneIdx: number, value: T | undefined): T[
 
 export function copySequenceLaneForPreset(overrides: StepOverrides, laneIdx: number): StepOverrides {
   const next = createEmptyStepOverrides();
+  next.triggerClips![SEQUENCE_PRESET_SOURCE_LANE] = deserializeTriggerClip(
+    serializeTriggerClip(overrides.triggerClips?.[laneIdx] ?? null),
+  );
   next.triggerToggles[SEQUENCE_PRESET_SOURCE_LANE] = new Map(overrides.triggerToggles[laneIdx] ?? []);
 
   for (const field of STEP_OVERRIDE_ARRAY_FIELDS) {
@@ -259,9 +263,11 @@ export function applySequencePresetOverrides(
 ): StepOverrides {
   const loaded = deserializeStepOverrides(serialized);
   if (!loaded) return current;
+  const fallbackLaneCount = Math.max(4, current.triggerToggles.length, laneIdx + 1);
 
   const next: StepOverrides = {
     ...current,
+    triggerClips: [...(current.triggerClips ?? Array.from({ length: fallbackLaneCount }, () => null))],
     triggerToggles: [...current.triggerToggles],
     probability: [...current.probability],
     ratchet: [...current.ratchet],
@@ -278,11 +284,14 @@ export function applySequencePresetOverrides(
     pitchDirection: [...current.pitchDirection],
     sliceDirection: [...current.sliceDirection],
     reverseDirection: [...current.reverseDirection],
-    expressionRanges: [...(current.expressionRanges ?? Array.from({ length: 4 }, () => null))],
-    morphRanges: [...(current.morphRanges ?? Array.from({ length: 4 }, () => null))],
-    distanceRanges: [...(current.distanceRanges ?? Array.from({ length: 4 }, () => null))],
+    expressionRanges: [...(current.expressionRanges ?? Array.from({ length: fallbackLaneCount }, () => null))],
+    morphRanges: [...(current.morphRanges ?? Array.from({ length: fallbackLaneCount }, () => null))],
+    distanceRanges: [...(current.distanceRanges ?? Array.from({ length: fallbackLaneCount }, () => null))],
   };
 
+  next.triggerClips![laneIdx] = deserializeTriggerClip(
+    serializeTriggerClip(loaded.triggerClips?.[SEQUENCE_PRESET_SOURCE_LANE] ?? null),
+  );
   next.triggerToggles[laneIdx] = new Map(loaded.triggerToggles[SEQUENCE_PRESET_SOURCE_LANE] ?? []);
 
   for (const field of STEP_OVERRIDE_ARRAY_FIELDS) {

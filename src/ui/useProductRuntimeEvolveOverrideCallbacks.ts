@@ -18,7 +18,7 @@ type ProductRuntimeSynthNoteRangeCallback = (laneIndex: number, noteMin: number,
 
 export type ProductRuntimeEvolveOverrideCallbacksOptions = {
   activeTab: string;
-  createDefaultPitchSettings: () => PitchSettings[];
+  createDefaultPitchSettings: (laneCount?: number) => PitchSettings[];
   drumStepOverridesRef: MutableRefObject<StepOverrides | undefined>;
   drumSubLaneStatesRef: MutableRefObject<Record<SubLaneKind, SubLaneState>[] | undefined>;
   drumSwingsRef: MutableRefObject<number[] | undefined>;

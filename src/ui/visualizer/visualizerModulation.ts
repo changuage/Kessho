@@ -90,11 +90,17 @@ const DEFAULT_RANGE_RADIUS: Partial<Record<VisualizerNumericControlKey, number>>
   kaleidoSpin: 0.56,
   kaleidoType: 0.28,
   kaleidoReflections: 0.5,
+  kaleidoPattern: 0.5,
   brightness: 0.26,
   vibrance: 0.32,
   saturation: 0.3,
   impactFlash: 0.58,
   visualLimiter: 0.24,
+  pointCloudAmount: 0.46,
+  pointCloudSize: 0.42,
+  pointCloudDensity: 0.48,
+  pointCloudScatter: 0.4,
+  pointCloudColor: 0.34,
 };
 
 export const VISUAL_MOD_MATRIX: VisualModRoute[] = [
@@ -116,6 +122,8 @@ export const VISUAL_MOD_MATRIX: VisualModRoute[] = [
   { bus: 'fragment', signal: 'density', target: 'glitchRate', amount: 0.66, engines: ['Granular'], label: 'Granular density' },
   { bus: 'fragment', signal: 'pulse', target: 'glitchChromatic', amount: 0.48, engines: ['Granular', 'Dynamics'], label: 'Granular spread + drive', eventDriven: true },
   { bus: 'fragment', signal: 'level', target: 'charGrain', amount: 0.24, engines: ['Granular'], label: 'Granular residue' },
+  { bus: 'fragment', signal: 'density', target: 'pointCloudDensity', amount: 0.42, engines: ['Granular'], label: 'Granular point density' },
+  { bus: 'fragment', signal: 'pulse', target: 'pointCloudScatter', amount: 0.36, engines: ['Granular', 'Sequencer'], label: 'Granular particle spray', eventDriven: true },
 
   { bus: 'echo', signal: 'level', target: 'kaleidoscope', amount: 0.68, engines: ['Delay'], label: 'Delay mix + feedback' },
   { bus: 'echo', signal: 'density', target: 'kaleidoSegments', amount: 0.46, engines: ['Delay', 'Harmony'], label: 'Delay repeats + root' },
@@ -132,6 +140,7 @@ export const VISUAL_MOD_MATRIX: VisualModRoute[] = [
   { bus: 'impact', signal: 'pulse', target: 'triggerResponse', amount: 0.86, engines: ['Drums', 'Lead'], label: 'Drum velocity + expression', eventDriven: true },
   { bus: 'impact', signal: 'pulse', target: 'ripples', amount: 0.7, engines: ['Drums', 'Earth'], label: 'Kick hits + earth pulse', eventDriven: true },
   { bus: 'impact', signal: 'pulse', target: 'bloomSize', amount: 0.74, engines: ['Drums', 'Reverb'], label: 'Kick velocity + reverb tail', eventDriven: true },
+  { bus: 'impact', signal: 'pulse', target: 'pointCloudSize', amount: 0.4, engines: ['Drums', 'Lead'], label: 'Impact particle size', eventDriven: true },
   { bus: 'impact', signal: 'pulse', target: 'impactFlash', amount: 0.9, engines: ['Drums', 'Dynamics'], label: 'Drum velocity + master peak', eventDriven: true },
   { bus: 'impact', signal: 'level', target: 'brightness', amount: 0.26, engines: ['Drums', 'Global'], label: 'Impact energy' },
   { bus: 'impact', signal: 'level', target: 'visualLimiter', amount: 0.22, engines: ['Drums', 'Dynamics'], label: 'Impact safety ceiling' },
@@ -139,6 +148,7 @@ export const VISUAL_MOD_MATRIX: VisualModRoute[] = [
   { bus: 'geometry', signal: 'density', target: 'color', amount: 0.22, engines: ['Harmony', 'Lead'], label: 'Harmony + lead density' },
   { bus: 'atmosphere', signal: 'level', target: 'saturation', amount: 0.24, engines: ['Pad', 'Reverb'], label: 'Pad/reverb color field' },
   { bus: 'texture', signal: 'level', target: 'vibrance', amount: 0.22, engines: ['Earth', 'Global'], label: 'Earth/global texture color' },
+  { bus: 'texture', signal: 'level', target: 'pointCloudColor', amount: 0.28, engines: ['Earth', 'Global'], label: 'Texture particle color' },
 ];
 
 export const VISUAL_MOD_TARGETS = Array.from(
@@ -233,7 +243,8 @@ export function buildVisualBuses(
 
 export function getEffectiveReactionDepth(settings: VisualizerReactionSettings): number {
   const modeDepth = settings.mode === 'preset' ? clamp01(settings.morphAroundPreset) : 1;
-  return clamp01(settings.reactionAmount) * modeDepth;
+  const depth = clamp01(settings.reactionAmount) * modeDepth;
+  return Math.min(1, depth * 1.28 + 0.04);
 }
 
 export function getEffectiveReactiveRange(
@@ -277,7 +288,10 @@ export function applyVisualizerModulation(
     const baseValue = baseControls[target] as number;
     const drive = clamp(rawDrive, -1, 1);
     const range = ranges[target] ?? { min: baseValue, max: baseValue };
-    const destination = drive >= 0 ? range.max : range.min;
+    let destination = drive >= 0 ? range.max : range.min;
+    if (target === 'kaleidoscope' && baseValue <= -0.75) {
+      destination = Math.min(destination, -0.82);
+    }
     (next as Record<VisualizerNumericControlKey, number>)[target] = clamp(
       baseValue + (destination - baseValue) * Math.abs(drive) * depth,
       -1,

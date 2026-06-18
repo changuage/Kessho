@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GeneratedSequencerCaptureEvent } from '../../audio/coreProductGeneratedSequencerCaptureTypes';
+import type { PitchBindingMode } from '../../audio/drumSeqTypes';
 import type { UseEuclideanSequencerResult } from './useEuclideanSequencer';
 import type {
   CaptureSession,
@@ -15,6 +16,7 @@ import {
 import {
   commitGeneratedCaptureToEuclid,
 } from './commitGeneratedCaptureToEuclid';
+import type { CapturedPitchReference } from './generatedSequencerCapturePitch';
 
 const GENERATED_CAPTURE_COMMIT_FLUSH_MS = 320;
 
@@ -34,7 +36,8 @@ export interface UseGeneratedSequenceCaptureArgs {
     | 'setOpenLane'
   >;
   setSequencerMode: (laneIndex: number, mode: 'euclid') => void;
-  setPitchBindingMode?: (laneIndex: number, mode: 'sequence') => void;
+  setPitchBindingMode?: (laneIndex: number, mode: PitchBindingMode) => void;
+  capturePitchReference?: CapturedPitchReference | null;
   setProductCaptureEnabled: (request: {
     enabled: boolean;
     sourceLaneIndex: number;
@@ -47,7 +50,11 @@ export interface GeneratedSequenceCaptureApi {
   session: CaptureSession | null;
   isCapturing: boolean;
   capturedCount: number;
-  startCapture: (targetLaneIndex?: number) => void;
+  startCapture: (request?: number | {
+    sourceLaneIndex?: number;
+    targetLaneIndex?: number;
+    sourceMode?: 'anchorWalker' | 'orbit';
+  }) => void;
   stopAndCommit: () => void;
   cancelCapture: () => void;
   captureManualNote: (note: {
@@ -84,6 +91,7 @@ export function useGeneratedSequenceCapture({
   seq,
   setSequencerMode,
   setPitchBindingMode,
+  capturePitchReference,
   setProductCaptureEnabled,
 }: UseGeneratedSequenceCaptureArgs): GeneratedSequenceCaptureApi {
   const [session, setSession] = useState<CaptureSession | null>(null);
@@ -91,6 +99,7 @@ export function useGeneratedSequenceCapture({
   const previewRafRef = useRef<number | null>(null);
   const commitFlushTimerRef = useRef<number | null>(null);
   const manualEventIdRef = useRef(-1);
+  const capturePitchReferenceRef = useRef<CapturedPitchReference | null>(null);
 
   useEffect(() => () => {
     if (previewRafRef.current !== null) {
@@ -112,8 +121,17 @@ export function useGeneratedSequenceCapture({
     });
   }, []);
 
-  const startCapture = useCallback((targetLaneIndex = activeLaneIndex) => {
-    const sourceMode = sourceModeForLaneMode(activeLaneMode);
+  const startCapture = useCallback((request?: number | {
+    sourceLaneIndex?: number;
+    targetLaneIndex?: number;
+    sourceMode?: 'anchorWalker' | 'orbit';
+  }) => {
+    const requested = typeof request === 'number'
+      ? { targetLaneIndex: request }
+      : request;
+    const sourceLaneIndex = requested?.sourceLaneIndex ?? activeLaneIndex;
+    const targetLaneIndex = requested?.targetLaneIndex ?? activeLaneIndex;
+    const sourceMode = requested?.sourceMode ?? sourceModeForLaneMode(activeLaneMode);
     if (!sourceMode) return;
     if (commitFlushTimerRef.current !== null) {
       window.clearTimeout(commitFlushTimerRef.current);
@@ -127,7 +145,7 @@ export function useGeneratedSequenceCapture({
 
     const next: CaptureSession = {
       active: true,
-      sourceLaneIndex: activeLaneIndex,
+      sourceLaneIndex,
       targetLaneIndex,
       sourceMode,
       targetStepCount: stepCount,
@@ -138,17 +156,19 @@ export function useGeneratedSequenceCapture({
       overflowCount: 0,
     };
 
+    capturePitchReferenceRef.current = capturePitchReference ?? null;
     sessionRef.current = next;
     setSession(next);
     setProductCaptureEnabled({
       enabled: true,
-      sourceLaneIndex: activeLaneIndex,
+      sourceLaneIndex,
       targetLaneIndex,
       sourceMode,
     });
   }, [
     activeLaneIndex,
     activeLaneMode,
+    capturePitchReference,
     seq,
     setProductCaptureEnabled,
   ]);
@@ -204,6 +224,7 @@ export function useGeneratedSequenceCapture({
           seq,
           setSequencerMode,
           setPitchBindingMode,
+          capturePitchReference: capturePitchReferenceRef.current,
         });
       }
 

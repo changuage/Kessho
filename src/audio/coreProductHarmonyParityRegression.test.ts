@@ -12,7 +12,7 @@ import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 import { KESSHO_PRODUCT_SOURCE_IDS, KESSHO_PRODUCT_SOURCE_PRESET_IDS } from './generated/kesshoProductSchema';
 import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES } from './lead4opfm';
 import { applyPadPresetMorphParamsToState } from './padPresets';
-import { drumPitchUiValuesToEngineOffsets, quantizeDrumPitchOffsetToScale } from '../ui/sequencer/drumPitchSequencer';
+import { drumPitchUiValuesToEngineOffsets } from '../ui/sequencer/drumPitchSequencer';
 import { reactiveVisualizerRootPitchClass } from '../ui/visualizer/reactiveVisualizerHarmony';
 import { DEFAULT_STATE } from '../ui/state';
 import {
@@ -321,16 +321,15 @@ try {
 }
 
 const selectedScaleDrumPitch = drumPitchUiValuesToEngineOffsets(
-  [4, 6],
+  [0, 2],
   { mode: 'semitones', root: 60, scale: 'Major' },
-  37,
-  true,
+  60,
 );
-assert.deepEqual(selectedScaleDrumPitch, [4, 5], 'drum pitch Q should quantize engine offsets to the selected pitch scale');
-assert.equal(
-  quantizeDrumPitchOffsetToScale(4, [0, 3, 5, 7, 10]),
-  3,
-  'regression fixture should detect an accidental second harmony-scale quantize',
+assert.deepEqual(selectedScaleDrumPitch, [0, 4], 'drum semitones mode should store scale-degree offsets from root and scale');
+assert.deepEqual(
+  drumPitchUiValuesToEngineOffsets([60, 64], { mode: 'notes', root: 60, scale: 'Major' }, 60),
+  [0, 4],
+  'drum notes mode should store fixed MIDI notes independent of root and scale',
 );
 
 const defaultSynthLaneCenters = [

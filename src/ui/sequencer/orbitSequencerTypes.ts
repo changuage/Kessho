@@ -1,10 +1,8 @@
-import type { SnapSource } from './anchorWalkerTypes';
 import { MAX_ORBIT_TRIGGER_LINES } from './orbitSequencerMath';
 
 export type OrbitSpeedMode = 'bpmPercent' | 'syncDivisor';
 export type OrbitDirection = 'cw' | 'ccw';
 export type OrbitPitchMode = 'fixedMidi' | 'harmonyDegree' | 'rangeSnap' | 'harmonyBloom';
-export type OrbitPitchLayout = 'freeOrbit' | 'harmonyBloom';
 export type OrbitTriggerLineCount = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 export type OrbitEvenReverseMode = 'off' | 'negativeHalf';
 export type OrbitConstellationMode = 'auto' | 'golden' | 'fibonacci' | 'pythagorean' | 'harmonicRose' | 'euclidean';
@@ -46,7 +44,6 @@ export interface OrbitSplineConfig {
 
 export interface OrbitSequencerConfig {
   enabled: boolean;
-  pitchLayout: OrbitPitchLayout;
   targetSourceId: number;
   triggerLineCount: OrbitTriggerLineCount;
   clockMode: 'transport' | 'freeBpmPercent';
@@ -60,7 +57,7 @@ export interface OrbitSequencerConfig {
   quantizedOffset: number;
   dragQuantize: boolean;
   quantizeToHarmony: boolean;
-  snapSource: SnapSource;
+  snapSource: 'harmonyEngine';
   pitchRangeMin: number;
   pitchRangeMax: number;
   spline: OrbitSplineConfig;
@@ -133,7 +130,6 @@ export function createDefaultOrbitSequencerConfig(slotIndex = 0): OrbitSequencer
   ];
   return {
     enabled: true,
-    pitchLayout: 'harmonyBloom',
     targetSourceId: 3,
     triggerLineCount: 1,
     clockMode: 'transport',
@@ -206,15 +202,27 @@ function normalizeOrbitNote(value: unknown, index: number, fallback: OrbitNoteCo
 
 export function normalizeOrbitSequencerConfig(value: unknown, slotIndex = 0): OrbitSequencerConfig {
   const fallback = createDefaultOrbitSequencerConfig(slotIndex);
-  const record = typeof value === 'object' && value !== null ? value as Partial<OrbitSequencerConfig> : {};
+  const rawRecord = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
+  const record = rawRecord as Partial<OrbitSequencerConfig>;
   const pitchRangeMin = clamp(finiteNumber(record.pitchRangeMin, fallback.pitchRangeMin), 0, 127);
   const pitchRangeMax = clamp(finiteNumber(record.pitchRangeMax, fallback.pitchRangeMax), pitchRangeMin, 127);
   const rawNotes = Array.isArray(record.notes) ? record.notes.slice(0, MAX_ORBIT_NOTES) : fallback.notes;
   const rawSpline = typeof record.spline === 'object' && record.spline !== null ? record.spline as Partial<OrbitSplineConfig> : {};
+  const legacyFreeLayout = rawRecord.pitchLayout === 'freeOrbit';
+  const notes = rawNotes.map((note, index) => {
+    const normalized = normalizeOrbitNote(note, index, fallback.notes[index] ?? createDefaultOrbitNote(index));
+    return legacyFreeLayout
+      ? {
+        ...normalized,
+        pitchMode: 'harmonyBloom' as const,
+        speedMode: 'bpmPercent' as const,
+        speedValue: 100,
+      }
+      : normalized;
+  });
   return {
     ...fallback,
     enabled: typeof record.enabled === 'boolean' ? record.enabled : fallback.enabled,
-    pitchLayout: enumValue(record.pitchLayout, ['freeOrbit', 'harmonyBloom'] as const, fallback.pitchLayout),
     targetSourceId: Math.max(1, Math.min(7, Math.round(finiteNumber(record.targetSourceId, fallback.targetSourceId)))),
     triggerLineCount: Math.max(1, Math.min(MAX_ORBIT_TRIGGER_LINES, Math.round(finiteNumber(record.triggerLineCount, fallback.triggerLineCount)))) as OrbitTriggerLineCount,
     clockMode: enumValue(record.clockMode, ['transport', 'freeBpmPercent'] as const, fallback.clockMode),
@@ -228,7 +236,7 @@ export function normalizeOrbitSequencerConfig(value: unknown, slotIndex = 0): Or
     quantizedOffset: Math.max(1, Math.min(32, Math.round(finiteNumber(record.quantizedOffset, fallback.quantizedOffset)))),
     dragQuantize: typeof record.dragQuantize === 'boolean' ? record.dragQuantize : fallback.dragQuantize,
     quantizeToHarmony: typeof record.quantizeToHarmony === 'boolean' ? record.quantizeToHarmony : fallback.quantizeToHarmony,
-    snapSource: enumValue(record.snapSource, ['harmonyEngine', 'manualVoicing', 'chordStep', 'customPitchClasses', 'liveBlueKeys'] as const, fallback.snapSource),
+    snapSource: 'harmonyEngine',
     pitchRangeMin,
     pitchRangeMax,
     spline: {
@@ -239,7 +247,7 @@ export function normalizeOrbitSequencerConfig(value: unknown, slotIndex = 0): Or
       spinDirection: enumValue(rawSpline.spinDirection, ['cw', 'ccw'] as const, fallback.spline.spinDirection),
       baseAngle: finiteNumber(rawSpline.baseAngle, fallback.spline.baseAngle),
     },
-    notes: rawNotes.map((note, index) => normalizeOrbitNote(note, index, fallback.notes[index] ?? createDefaultOrbitNote(index))),
+    notes,
     seed: Math.max(1, Math.round(finiteNumber(record.seed, fallback.seed))),
   };
 }

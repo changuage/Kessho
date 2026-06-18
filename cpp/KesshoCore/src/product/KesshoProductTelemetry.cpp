@@ -611,9 +611,7 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
     for (const Voice& voice : voices) {
       if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE ||
           !voice.sample_voice || !voice.soundscape_texture_voice ||
-          voice.asset_slot >= kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS ||
-          !assets[voice.asset_slot].active ||
-          assets[voice.asset_slot].asset_id != asset_id) {
+          voice.soundscape_texture_slot != slot) {
         continue;
       }
       ++active_slice_count;
@@ -628,8 +626,6 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
     const uint32_t asset_slot = findAssetSlot(asset_id);
     if (!soundscape_active) {
       reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_SOURCE_DISABLED;
-    } else if (!texture_params_available) {
-      reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_TEXTURE_PARAMS_MISSING;
     } else if (parity_fixture) {
       reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_PARITY_FIXTURE_ENABLED;
     } else if (!soundscapeWantsAsset(soundscape, asset_id)) {
@@ -662,6 +658,10 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
       if (max_offset <= 0.0001) {
         reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_ASSET_TOO_SHORT;
       }
+    }
+    if (reason == KESSHO_PRODUCT_EARTH_TEXTURE_REASON_NONE &&
+        runtime.last_fallback_reason == kSoundscapeTextureFallbackAllocatorFull) {
+      reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_VOICE_BUDGET_EXCEEDED;
     }
     telemetry.earth_texture_inactive_reasons[slot] = reason;
     if (reason == KESSHO_PRODUCT_EARTH_TEXTURE_REASON_NONE) {

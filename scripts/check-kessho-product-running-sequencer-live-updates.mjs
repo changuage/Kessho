@@ -199,7 +199,8 @@ check(
   const callbackRegistrationBody = methodBody(files.host, 'publishCurrentSequencerVisualsOnCallbackRegistration');
   check(
     'running-step-callback-no-zero-reset-static',
-    count(files.host, 'publishCurrentSequencerVisualsOnCallbackRegistration(callback)') >= 2 &&
+    files.host.includes('publishCurrentSequencerVisualsOnCallbackRegistration(callback, PRODUCT_VISIBLE_DRUM_LANE_COUNT)') &&
+      files.host.includes('publishCurrentSequencerVisualsOnCallbackRegistration(callback, PRODUCT_VISIBLE_SYNTH_LANE_COUNT)') &&
       callbackRegistrationBody.includes('if (this.running)') &&
       callbackRegistrationBody.includes('this.publishSequencerVisuals(this.latestTelemetry)') &&
       !files.host.includes('callback?.([0, 0, 0, 0], [0, 0, 0, 0]);') &&
@@ -266,15 +267,15 @@ check(
 );
 
 check(
-  'manual-trigger-core-no-external-state',
+  'manual-trigger-core-resolved-state',
   files.manualTriggers.includes('commitProductControlActionThenTrigger(') &&
     files.manualTriggers.includes("type: 'manual-trigger/request'") &&
-    files.manualTriggers.includes('productEngine.auditionSynthNote(note),') &&
-    files.manualTriggers.includes('productEngine.triggerDrumVoice(voice, 0.8),') &&
+    files.manualTriggers.includes('(_revision, resolvedSliders) => productEngine.auditionSynthNote(note, resolvedSliders),') &&
+    files.manualTriggers.includes('(_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, 0.8, resolvedSliders),') &&
     !files.manualTriggers.includes('createInitialProductControlState(') &&
     !files.manualTriggers.includes('productEngine.auditionSynthNote(note, externalState)') &&
     !files.manualTriggers.includes('productEngine.triggerDrumVoice(voice, 0.8, externalState)'),
-  'core-product manual triggers must commit current ProductControl state and not pass externalState to Product triggers',
+  'core-product manual triggers must commit current ProductControl state and pass resolved sliders to Product triggers',
 );
 
 check(

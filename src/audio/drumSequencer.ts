@@ -58,9 +58,9 @@ function defaultSources(id: number): Record<DrumVoiceType, boolean> {
     kick: id === 0,
     click: id === 2,
     beepHi: id === 1,
-    beepLo: false,
+    beepLo: id === 4,
     noise: id === 3,
-    membrane: false,
+    membrane: id === 5,
   };
 }
 
@@ -68,8 +68,12 @@ function defaultClockDiv(id: number): ClockDivision {
   if (id === 0) return '1/8';
   if (id === 1) return '1/16';
   if (id === 2) return '1/8T';
+  if (id === 4) return '1/16';
+  if (id === 5) return '1/8';
   return '1/4';
 }
+
+const DEFAULT_SEQUENCER_COLORS = ['#ef4444', '#f97316', '#22c55e', '#8b5cf6', '#06b6d4', '#eab308'] as const;
 
 function defaultStepsHits(id: number): { steps: number; hits: number } {
   const defaults = defaultDrumEuclidPattern(id);
@@ -89,7 +93,7 @@ export function createSequencer(id: number, seed = 'drum-seq'): SequencerState {
   return {
     id,
     rng: createSeededRng(`${seed}-${id}`),
-    color: ['#ef4444', '#f97316', '#22c55e', '#8b5cf6'][id] ?? '#a855f7',
+    color: DEFAULT_SEQUENCER_COLORS[id] ?? '#a855f7',
     name: `Seq ${id + 1}`,
     muted: false,
     solo: false,

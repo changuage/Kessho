@@ -23,6 +23,30 @@ float pickIndexedNote(const float* notes, int count, uint32_t seed) {
   return notes[index];
 }
 
+int collectScaleNotesInRange(
+    float root_midi,
+    const int* intervals,
+    uint32_t interval_count,
+    int low,
+    int high,
+    float* notes,
+    int capacity) {
+  if (interval_count == 0u || capacity <= 0) {
+    return 0;
+  }
+  const uint32_t root_pitch_class = kessho::product::internal::positiveModulo(
+      kessho::product::internal::roundedInt(root_midi),
+      12u);
+  int count = 0;
+  for (int midi = low; midi <= high && count < capacity; ++midi) {
+    const uint32_t scale_interval = kessho::product::internal::positiveModulo(midi - static_cast<int>(root_pitch_class), 12u);
+    if (scaleContainsInterval(intervals, interval_count, scale_interval)) {
+      notes[count++] = static_cast<float>(midi);
+    }
+  }
+  return count;
+}
+
 int nearestOctaveOffset(float center, float root_midi) {
   return static_cast<int>(std::round((center - root_midi) / 12.0f));
 }
@@ -40,6 +64,36 @@ int nearestOctaveOffset(float center, float root_midi) {
   if (lane.seed >= 3000u && lane.seed < 5000u) {
     return clampFloat(lane.midi_note, 0.0f, 127.0f);
   }
+
+  if (lane.pitch_mode == kSequencerPitchModeNoteRange) {
+    int pitch_intervals[kMaxScaleNotes]{};
+    uint32_t pitch_scale_count = 0u;
+    if (lane.pitch_scale_id == kSequencerPitchScaleChromatic) {
+      for (uint32_t interval = 0u; interval < 12u && interval < kMaxScaleNotes; ++interval) {
+        pitch_intervals[interval] = static_cast<int>(interval);
+      }
+      pitch_scale_count = std::min<uint32_t>(12u, kMaxScaleNotes);
+    } else {
+      pitch_scale_count = scaleIntervals(lane.pitch_scale_id, pitch_intervals);
+    }
+    const int low = std::max(24, roundedInt(std::min(lane.note_range_min, lane.note_range_max)));
+    const int high = std::min(108, roundedInt(std::max(lane.note_range_min, lane.note_range_max)));
+    const float root = lane.pitch_scale_id == kSequencerPitchScaleChromatic ? 60.0f : lane.pitch_root;
+    float notes[kPassingToneCapacity]{};
+    const int count = collectScaleNotesInRange(root, pitch_intervals, pitch_scale_count, low, high, notes, kPassingToneCapacity);
+    if (count > 0) {
+      const uint32_t event_seed = hashU32(
+          rng_seed ^
+          lane.seed ^
+          static_cast<uint32_t>(step_id * 2654435761u) ^
+          static_cast<uint32_t>(lane_index * 16777619u) ^
+          static_cast<uint32_t>(absolute_sample) ^
+          static_cast<uint32_t>(absolute_sample >> 32));
+      return clampFloat(pickIndexedNote(notes, count, event_seed ^ 0x27d4eb2du), 24.0f, 108.0f);
+    }
+    return clampFloat((static_cast<float>(low) + static_cast<float>(high)) * 0.5f, 24.0f, 108.0f);
+  }
+
   if (harmony.note_pool_count > 0u) {
     const uint32_t pool_count = std::min<uint32_t>(harmony.note_pool_count, 8u);
     const uint32_t event_seed = hashU32(

@@ -16,7 +16,14 @@ import { defaultDrumEuclidPattern, defaultSynthEuclidPattern, seqEuclidean } fro
 import { createSequencer } from '../../drumSequencer';
 import { captureHomeSnapshot, evolveSequencer } from '../../drumSeqEvolve';
 import type { LaneDirection, SequencerSnapshot, SequencerState } from '../../drumSeqTypes';
-import { SCALES, type PitchMode, type ScaleName, type TrigCondition } from '../../drumSeqTypes';
+import {
+  SCALES,
+  scaleDegreeToSemitone,
+  semitoneToScaleDegree,
+  type PitchMode,
+  type ScaleName,
+  type TrigCondition,
+} from '../../drumSeqTypes';
 import {
   captureSynthHomeSnapshot,
   defaultSynthEvolveState,
@@ -46,6 +53,7 @@ type SubLanePatch = Partial<Record<'pitch' | 'expression' | 'morph' | 'distance'
 type DrumSubLanePatch = SubLanePatch & Partial<Record<'slice' | 'reverse', { enabled: boolean; steps: number; direction: LaneDirection; scaleQuantize?: boolean }>>;
 
 const DRUM_VOICE_TYPES = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'] as const;
+const CORE_PRODUCT_VISIBLE_DRUM_LANE_COUNT = 6;
 const PRODUCT_DRUM_VOICE_MASK_SEED_FLAG = 0x80000000;
 const PRODUCT_DRUM_VOICE_MASK_SEED_SHIFT = 24;
 const PRODUCT_DRUM_VOICE_MASK = 0x7f;
@@ -61,8 +69,8 @@ export type CoreProductSequencerParityEvolveState = {
 export function createCoreProductSequencerParityEvolveState(): CoreProductSequencerParityEvolveState {
   return {
     synthStates: [defaultSynthEvolveState(), defaultSynthEvolveState(), defaultSynthEvolveState(), defaultSynthEvolveState()],
-    drumHomes: [null, null, null, null],
-    drumLastEvolveBars: [0, 0, 0, 0],
+    drumHomes: Array.from({ length: CORE_PRODUCT_VISIBLE_DRUM_LANE_COUNT }, () => null),
+    drumLastEvolveBars: Array.from({ length: CORE_PRODUCT_VISIBLE_DRUM_LANE_COUNT }, () => 0),
     rngKey: null,
     rng: null,
   };
@@ -70,8 +78,8 @@ export function createCoreProductSequencerParityEvolveState(): CoreProductSequen
 
 export function resetCoreProductSequencerParityEvolveState(state: CoreProductSequencerParityEvolveState): void {
   state.synthStates = [defaultSynthEvolveState(), defaultSynthEvolveState(), defaultSynthEvolveState(), defaultSynthEvolveState()];
-  state.drumHomes = [null, null, null, null];
-  state.drumLastEvolveBars = [0, 0, 0, 0];
+  state.drumHomes = Array.from({ length: CORE_PRODUCT_VISIBLE_DRUM_LANE_COUNT }, () => null);
+  state.drumLastEvolveBars = Array.from({ length: CORE_PRODUCT_VISIBLE_DRUM_LANE_COUNT }, () => 0);
   state.rngKey = null;
   state.rng = null;
 }
@@ -151,7 +159,7 @@ function evolveSynthLaneWithSharedModel(options: Parameters<typeof evolveCorePro
       effectiveTension: coreProductSynthSequencerEffectiveEvolveTension(options.latestSliderState, lane.targetSourceId),
       swing: lane.swing,
       steps: lane.stepCount,
-      scaleIntervals: pitchSettings.mode === 'notes' ? (SCALES[pitchSettings.scale] ?? SCALES.Major) : undefined,
+      scaleIntervals: pitchSettings.mode === 'semitones' ? (SCALES[pitchSettings.scale] ?? SCALES.Major) : undefined,
       pitchMode: pitchSettings.mode,
       noteRangeMin: currentRange.min,
       noteRangeMax: currentRange.max,
@@ -344,14 +352,14 @@ function drumSequencerFromCache(
   sequencer.expression = { ...sequencer.expression, ...subLaneState(values, configs, CORE_PRODUCT_STEP_VALUE_FIELDS.expression, lane.stepCount, 0.8, options.drumSubLaneEnabled[options.laneIndex]?.expression === true, 'velocities') };
   sequencer.morph = { ...sequencer.morph, ...subLaneState(values, configs, CORE_PRODUCT_STEP_VALUE_FIELDS.morph, lane.stepCount, 0, options.drumSubLaneEnabled[options.laneIndex]?.morph === true, 'values') };
   sequencer.distance = { ...sequencer.distance, ...subLaneState(values, configs, CORE_PRODUCT_STEP_VALUE_FIELDS.distance, lane.stepCount, 0.5, options.drumSubLaneEnabled[options.laneIndex]?.distance === true, 'values') };
-  sequencer.pitch.offsets = drumPitchOffsets(values, configs, lane.stepCount, lane.midiNote);
+  sequencer.pitch.offsets = drumPitchOffsets(values, configs, lane.stepCount, lane.midiNote, pitchSettings);
   sequencer.pitch.steps = sequencer.pitch.offsets.length;
   sequencer.pitch.enabled = options.drumSubLaneEnabled[options.laneIndex]?.pitch === true && sequencer.pitch.offsets.length > 0;
   sequencer.pitch.direction = directionForField(configs, CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote) ?? 'forward';
   sequencer.pitch.mode = pitchSettings.mode;
   sequencer.pitch.root = pitchSettings.root;
   sequencer.pitch.scale = pitchSettings.scale;
-  sequencer.pitch.scaleQuantize = pitchSettings.mode === 'notes';
+  sequencer.pitch.scaleQuantize = false;
   sequencer.sources = drumSourcesFromSeed(lane.seed);
   return sequencer;
 }
@@ -415,7 +423,7 @@ function valuesFromDrumSequencer(sequencer: SequencerState, baseMidi: number): S
     ...valuesFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.probability, sequencer.trigger.probability),
     ...valuesFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet, sequencer.trigger.ratchet, true),
     ...trigConditionValues(sequencer.trigger.trigCondition),
-    ...valuesFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote, sequencer.pitch.offsets.map((value) => value + baseMidi)),
+    ...valuesFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote, drumPitchValuesToMidi(sequencer.pitch.offsets, sequencer.pitch, baseMidi)),
     ...valuesFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.expression, sequencer.expression.velocities),
     ...valuesFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.morph, sequencer.morph.values),
     ...valuesFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.distance, sequencer.distance.values),
@@ -574,7 +582,7 @@ function drumPitchSettings(adapterState: Record<string, unknown>, state: Record<
   const settings = normalizeSequencerPitchSettings(adapterSettings, legacyStateSettings);
   return {
     ...settings,
-    scaleIntervals: settings.mode === 'notes' ? (SCALES[settings.scale] ?? SCALES.Major) : undefined,
+    scaleIntervals: settings.mode === 'semitones' ? (SCALES[settings.scale] ?? SCALES.Major) : undefined,
   };
 }
 
@@ -605,13 +613,31 @@ function drumPitchOffsets(
   configs: SequencerStepValueConfig[],
   stepCount: number,
   baseMidi: number,
+  settings: SequencerPitchSettings,
 ): number[] {
   const midi = numberArrayForField(values, configs, CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote, stepCount, baseMidi);
-  return midi ? midi.map((value) => Math.round(value - baseMidi)) : new Array(stepCount).fill(0);
+  if (!midi) return new Array(stepCount).fill(0);
+  if (settings.mode === 'semitones') {
+    const intervals = SCALES[settings.scale] ?? SCALES.Major;
+    return midi.map((note) => semitoneToScaleDegree(Math.round(note) - settings.root, intervals));
+  }
+  if (settings.mode === 'notes') return midi.map((note) => Math.max(0, Math.min(127, Math.round(note))));
+  return midi.map((value) => Math.round(value - baseMidi));
+}
+
+function drumPitchValuesToMidi(values: readonly number[], pitch: SequencerState['pitch'], baseMidi: number): number[] {
+  if (pitch.mode === 'semitones') {
+    const intervals = SCALES[pitch.scale] ?? SCALES.Major;
+    return values.map((degree) => Math.max(0, Math.min(127, Math.round(
+      pitch.root + scaleDegreeToSemitone(degree, intervals),
+    ))));
+  }
+  if (pitch.mode === 'notes') return values.map((midi) => Math.max(0, Math.min(127, Math.round(midi))));
+  return values.map((offset) => Math.max(0, Math.min(127, Math.round(baseMidi + offset))));
 }
 
 function midiToOffsets(midi: number[], settings: SequencerPitchSettings): number[] {
-  if (settings.mode === 'notes') {
+  if (settings.mode === 'semitones') {
     const intervals = SCALES[settings.scale] ?? SCALES.Major;
     return midi.map((note) => {
       const semitone = note - settings.root;
@@ -629,11 +655,12 @@ function midiToOffsets(midi: number[], settings: SequencerPitchSettings): number
       return octave * intervals.length + bestDegree;
     });
   }
-  return midi.map((note) => note - settings.root);
+  if (settings.mode === 'noteRange') return midi.map((note) => note - settings.root);
+  return midi.map((note) => Math.max(0, Math.min(127, Math.round(note))));
 }
 
 function offsetsToMidi(offsets: number[], settings: SequencerPitchSettings): number[] {
-  if (settings.mode === 'notes') {
+  if (settings.mode === 'semitones') {
     const intervals = SCALES[settings.scale] ?? SCALES.Major;
     return offsets.map((degree) => {
       const octave = Math.floor(degree / intervals.length);
@@ -641,7 +668,8 @@ function offsetsToMidi(offsets: number[], settings: SequencerPitchSettings): num
       return Math.max(0, Math.min(127, settings.root + octave * 12 + (intervals[index] ?? 0)));
     });
   }
-  return offsets.map((offset) => Math.max(0, Math.min(127, settings.root + offset)));
+  if (settings.mode === 'noteRange') return offsets.map((offset) => Math.max(0, Math.min(127, settings.root + offset)));
+  return offsets.map((midi) => Math.max(0, Math.min(127, Math.round(midi))));
 }
 
 function drumSourcesFromSeed(seed: number): SequencerState['sources'] {

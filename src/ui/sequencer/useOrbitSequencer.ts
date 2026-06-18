@@ -6,7 +6,6 @@ import {
   type OrbitConstellationMode,
   type OrbitEvenReverseMode,
   type OrbitNoteConfig,
-  type OrbitPitchLayout,
   type OrbitSequencerConfig,
   type OrbitSplineConfig,
   type OrbitTriggerLineCount,
@@ -43,6 +42,7 @@ export const ORBIT_LOOP_BEAT_OPTIONS = [1, 2, 4, 8, 16] as const;
 export const ORBIT_BLOOM_NOTE_OPTIONS = [3, 5, 8, 13, 21, 32] as const;
 export const ORBIT_QUANTIZED_OFFSET_OPTIONS = [1, 2, 3, 4, 5, 6, 8, 12, 13, 16, 21, 32] as const;
 const ORBIT_CONSTELLATION_BLOOM_MIN_NOTES = 13;
+const STRAIGHT_NODE_VISUAL_PHASE = Math.PI * 0.5;
 
 function pitchForRadius(radiusNorm: number): number {
   const index = Math.max(0, Math.min(
@@ -101,21 +101,12 @@ function orbitVisualPhaseArgs(config: OrbitSequencerConfig, index: number) {
   };
 }
 
-function notePatchForLayout(note: OrbitNoteConfig, layout: OrbitPitchLayout): Partial<OrbitNoteConfig> {
-  if (layout === 'harmonyBloom') {
-    return {
-      pitchMode: 'harmonyBloom',
-      speedMode: 'bpmPercent',
-      speedValue: 100,
-    };
-  }
-  if (note.pitchMode === 'harmonyBloom') {
-    return {
-      pitchMode: 'fixedMidi',
-      midiNote: pitchForRadius(note.radiusNorm),
-    };
-  }
-  return {};
+function bloomNotePatch(): Partial<OrbitNoteConfig> {
+  return {
+    pitchMode: 'harmonyBloom',
+    speedMode: 'bpmPercent',
+    speedValue: 100,
+  };
 }
 
 export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
@@ -139,12 +130,11 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
 
   const addNote = useCallback((radiusNorm: number, phase: number) => {
     if (safeConfig.notes.length >= MAX_ORBIT_NOTES) return;
-    const isBloomLayout = safeConfig.pitchLayout === 'harmonyBloom';
     const note = createDefaultOrbitNote(safeConfig.notes.length, {
       id: nextNoteId(safeConfig.notes),
       radiusNorm,
       phase: wrapRadians(phase),
-      pitchMode: isBloomLayout ? 'harmonyBloom' : 'fixedMidi',
+      pitchMode: 'harmonyBloom',
       midiNote: pitchForRadius(radiusNorm),
       speedMode: 'bpmPercent',
       speedValue: 100,
@@ -152,7 +142,7 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
     });
     setSelectedNoteId(note.id);
     updateConfig({ notes: [...safeConfig.notes, note] });
-  }, [safeConfig.notes, safeConfig.pitchLayout, safeConfig.seed, updateConfig]);
+  }, [safeConfig.notes, safeConfig.seed, updateConfig]);
 
   const makeBloomNote = useCallback((index: number, count: number, patch: Partial<OrbitNoteConfig> = {}) => {
     const radiusNorm = patch.radiusNorm ?? bloomRadius(index, count);
@@ -160,14 +150,14 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
       id: patch.id ?? `orbit-note-${index + 1}`,
       radiusNorm,
       phase: patch.phase ?? bloomPhase(index, count),
-      pitchMode: patch.pitchMode ?? (safeConfig.pitchLayout === 'harmonyBloom' ? 'harmonyBloom' : 'fixedMidi'),
+      pitchMode: patch.pitchMode ?? 'harmonyBloom',
       midiNote: patch.midiNote ?? pitchForRadius(radiusNorm),
       speedMode: patch.speedMode ?? 'bpmPercent',
       speedValue: patch.speedValue ?? 100,
       seed: patch.seed ?? (safeConfig.seed + index + 1),
       ...patch,
     });
-  }, [safeConfig.pitchLayout, safeConfig.seed]);
+  }, [safeConfig.seed]);
 
   const moveNote = useCallback((noteId: string, radiusNorm: number, phase: number) => {
     updateNote(noteId, {
@@ -211,7 +201,6 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
         mode: safeConfig.constellationMode,
         seed: safeConfig.seed,
         nodeCount: nextCount,
-        pitchLayout: safeConfig.pitchLayout,
         pitchRangeMin: safeConfig.pitchRangeMin,
         pitchRangeMax: safeConfig.pitchRangeMax,
       })
@@ -224,7 +213,7 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
       if (existing) {
         return {
           ...existing,
-          ...notePatchForLayout(existing, safeConfig.pitchLayout),
+          ...bloomNotePatch(),
           radiusNorm,
           phase,
           ...(point
@@ -259,7 +248,6 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
     makeBloomNote,
     safeConfig.constellationMode,
     safeConfig.notes,
-    safeConfig.pitchLayout,
     safeConfig.pitchRangeMax,
     safeConfig.pitchRangeMin,
     safeConfig.seed,
@@ -274,7 +262,6 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
         mode: safeConfig.constellationMode,
         seed: safeConfig.seed,
         nodeCount: count,
-        pitchLayout: safeConfig.pitchLayout,
         pitchRangeMin: safeConfig.pitchRangeMin,
         pitchRangeMax: safeConfig.pitchRangeMax,
       })
@@ -285,7 +272,7 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
         const radiusNorm = point?.radiusNorm ?? bloomRadius(index, count);
         return {
           ...note,
-          ...notePatchForLayout(note, safeConfig.pitchLayout),
+          ...bloomNotePatch(),
           radiusNorm,
           phase: point?.phase ?? bloomPhase(index, count),
           harmonyDegree: point?.harmonyDegree ?? note.harmonyDegree,
@@ -301,22 +288,11 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
   }, [
     safeConfig.constellationMode,
     safeConfig.notes,
-    safeConfig.pitchLayout,
     safeConfig.pitchRangeMax,
     safeConfig.pitchRangeMin,
     safeConfig.seed,
     updateConfig,
   ]);
-
-  const setPitchLayout = useCallback((pitchLayout: OrbitPitchLayout) => {
-    updateConfig({
-      pitchLayout,
-      notes: safeConfig.notes.map((note) => ({
-        ...note,
-        ...notePatchForLayout(note, pitchLayout),
-      })),
-    });
-  }, [safeConfig.notes, updateConfig]);
 
   const toggleDragQuantize = useCallback(() => {
     const nextDragQuantize = !safeConfig.dragQuantize;
@@ -421,12 +397,24 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
   }, [safeConfig.notes, updateConfig]);
 
   const straightenSpline = useCallback(() => {
-    updateSpline({
-      handle1: { x: 0, y: -0.3 },
-      handle2: { x: 0, y: -0.65 },
-      tip: { x: 0, y: -1 },
+    updateConfig({
+      globalOffset: 0,
+      evenOffset: 0,
+      freeOffset: 0,
+      spline: {
+        ...safeConfig.spline,
+        handle1: { x: 0, y: -1 / 3 },
+        handle2: { x: 0, y: -2 / 3 },
+        tip: { x: 0, y: -1 },
+        spinEnabled: false,
+        baseAngle: 0,
+      },
+      notes: safeConfig.notes.map((note) => ({
+        ...note,
+        phase: STRAIGHT_NODE_VISUAL_PHASE,
+      })),
     });
-  }, [updateSpline]);
+  }, [safeConfig.notes, safeConfig.spline, updateConfig]);
 
   const duplicateSelected = useCallback(() => {
     if (!selectedNote || safeConfig.notes.length >= MAX_ORBIT_NOTES) return;
@@ -446,23 +434,16 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
       notes: safeConfig.notes.map((note, index) => {
         const a = orbitHashUnit(safeConfig.seed + index * 17 + 1);
         const r = orbitHashUnit(safeConfig.seed + index * 17 + 7);
-        const s = orbitHashUnit(safeConfig.seed + index * 17 + 11);
         return {
           ...note,
           phase: a * Math.PI * 2,
           radiusNorm: 0.18 + r * 0.78,
-          speedValue: safeConfig.pitchLayout === 'harmonyBloom'
-            ? note.speedValue
-            : (
-              note.speedMode === 'syncDivisor'
-                ? [1, 2, 3, 4, 6, 8][Math.floor(s * 6)] ?? 2
-                : 50 + Math.round(s * 250)
-            ),
+          speedValue: note.speedValue,
         };
       }),
       seed: safeConfig.seed + 1,
     });
-  }, [safeConfig.notes, safeConfig.pitchLayout, safeConfig.seed, updateConfig]);
+  }, [safeConfig.notes, safeConfig.seed, updateConfig]);
 
   const constellateNotes = useCallback((mode: OrbitConstellationMode = safeConfig.constellationMode) => {
     const count = Math.max(1, safeConfig.notes.length);
@@ -470,7 +451,6 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
       mode,
       seed: safeConfig.seed + 1,
       nodeCount: count,
-      pitchLayout: safeConfig.pitchLayout,
       pitchRangeMin: safeConfig.pitchRangeMin,
       pitchRangeMax: safeConfig.pitchRangeMax,
     });
@@ -490,7 +470,7 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
       }),
       seed: safeConfig.seed + 1,
     });
-  }, [safeConfig.constellationMode, safeConfig.notes, safeConfig.pitchLayout, safeConfig.pitchRangeMax, safeConfig.pitchRangeMin, safeConfig.seed, updateConfig]);
+  }, [safeConfig.constellationMode, safeConfig.notes, safeConfig.pitchRangeMax, safeConfig.pitchRangeMin, safeConfig.seed, updateConfig]);
 
   const resetPhase = useCallback(() => {
     const nextQuantizedOffset = quantizedOffsetForNodeCount(safeConfig.notes.length);
@@ -519,7 +499,6 @@ export function useOrbitSequencer({ config, onChange }: UseOrbitSequencerArgs) {
     updateConfig,
     updateNote,
     updateSpline,
-    setPitchLayout,
     setLoopBeats,
     setSpeedOffset,
     setBloomNoteCount,

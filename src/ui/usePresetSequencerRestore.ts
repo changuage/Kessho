@@ -77,9 +77,14 @@ type PresetSequencerRestoreOptions = {
   synthSwingsRef: MutableRefObject<number[] | undefined>;
 };
 
-const DEFAULT_EUCLIDEAN_CLOCK_DIVS: ClockDivision[] = ['1/8', '1/16', '1/8T', '1/4'];
-const DEFAULT_EUCLIDEAN_SWINGS = [0, 0, 0, 0];
-const DEFAULT_EUCLIDEAN_LINKED = [false, false, false, false];
+const SYNTH_EUCLIDEAN_LANE_COUNT = 4;
+const DRUM_EUCLIDEAN_LANE_COUNT = 6;
+const DEFAULT_SYNTH_EUCLIDEAN_CLOCK_DIVS: ClockDivision[] = ['1/8', '1/16', '1/8T', '1/4'];
+const DEFAULT_DRUM_EUCLIDEAN_CLOCK_DIVS: ClockDivision[] = ['1/8', '1/16', '1/8T', '1/4', '1/16', '1/8'];
+const DEFAULT_SYNTH_EUCLIDEAN_SWINGS = Array.from({ length: SYNTH_EUCLIDEAN_LANE_COUNT }, () => 0);
+const DEFAULT_DRUM_EUCLIDEAN_SWINGS = Array.from({ length: DRUM_EUCLIDEAN_LANE_COUNT }, () => 0);
+const DEFAULT_SYNTH_EUCLIDEAN_LINKED = Array.from({ length: SYNTH_EUCLIDEAN_LANE_COUNT }, () => false);
+const DEFAULT_DRUM_EUCLIDEAN_LINKED = Array.from({ length: DRUM_EUCLIDEAN_LANE_COUNT }, () => false);
 const DEFAULT_SYNTH_PITCH_BINDING_MODES: PitchBindingMode[] = ['polyrhythmic', 'polyrhythmic', 'polyrhythmic', 'polyrhythmic'];
 const EVOLVED_SUBLANE_RANGE_DEFAULTS: Partial<Record<SubLaneKind, { min: number; max: number }>> = {
   expression: { min: 0.75, max: 1 },
@@ -87,16 +92,20 @@ const EVOLVED_SUBLANE_RANGE_DEFAULTS: Partial<Record<SubLaneKind, { min: number;
   distance: { min: 0, max: 1 },
 };
 
-export function createDefaultPitchSettings(): PitchSettings[] {
-  return Array.from({ length: 4 }, () => ({
+const STEP_OVERRIDE_ARRAY_FIELDS = ['probability', 'ratchet', 'trigCondition', 'expression', 'pitch', 'morph', 'distance', 'slice', 'reverse'] as const;
+const STEP_OVERRIDE_DIRECTION_FIELDS = ['expressionDirection', 'morphDirection', 'distanceDirection', 'pitchDirection', 'sliceDirection', 'reverseDirection'] as const;
+const STEP_OVERRIDE_RANGE_FIELDS = ['expressionRanges', 'morphRanges', 'distanceRanges'] as const;
+
+export function createDefaultPitchSettings(laneCount = SYNTH_EUCLIDEAN_LANE_COUNT): PitchSettings[] {
+  return Array.from({ length: laneCount }, () => ({
     mode: 'semitones',
     root: 60,
     scale: 'Major',
   }));
 }
 
-function createDefaultSynthPitchSettings(): PitchSettings[] {
-  return Array.from({ length: 4 }, () => ({
+function createDefaultSynthPitchSettings(laneCount = SYNTH_EUCLIDEAN_LANE_COUNT): PitchSettings[] {
+  return Array.from({ length: laneCount }, () => ({
     mode: 'semitones',
     root: 60,
     scale: 'Harmony',
@@ -120,6 +129,24 @@ function defaultEvolvedSubLaneState(lane: SubLaneKind): SubLaneState {
   };
 }
 
+function expandStepOverridesToLaneCount(overrides: StepOverrides, laneCount: number): StepOverrides {
+  const expanded = createEmptyStepOverrides(laneCount);
+  expanded.triggerToggles = Array.from({ length: laneCount }, (_, index) => new Map(overrides.triggerToggles?.[index] ?? []));
+  for (const field of STEP_OVERRIDE_ARRAY_FIELDS) {
+    expanded[field] = Array.from({ length: laneCount }, (_, index) => overrides[field]?.[index] ?? null) as never;
+  }
+  for (const field of STEP_OVERRIDE_DIRECTION_FIELDS) {
+    expanded[field] = Array.from({ length: laneCount }, (_, index) => overrides[field]?.[index] ?? null) as never;
+  }
+  for (const field of STEP_OVERRIDE_RANGE_FIELDS) {
+    expanded[field] = Array.from({ length: laneCount }, (_, index) => {
+      const range = overrides[field]?.[index];
+      return range ? { min: range.min, max: range.max } : null;
+    }) as never;
+  }
+  return expanded;
+}
+
 function clampSequencerUnit(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
@@ -136,7 +163,7 @@ function sanitizeSequencerSubLaneState(lane: SubLaneKind, state: Partial<SubLane
     direction: normalizeSequencerLaneDirection(state?.direction, fallback.direction),
   };
   if (lane === 'pitch') {
-    next.scaleQuantize = state?.scaleQuantize === true;
+    next.scaleQuantize = false;
   }
   const rangeFallback = EVOLVED_SUBLANE_RANGE_DEFAULTS[lane];
   if (rangeFallback) {
@@ -169,17 +196,18 @@ export function sanitizeSequencerSubLaneStates(
 function restoreSequencerSubLaneStates(
   states: Partial<Record<SubLaneKind, Partial<SubLaneState>>>[] | undefined,
   overrides: SerializedStepOverrides | undefined,
+  laneCount = SYNTH_EUCLIDEAN_LANE_COUNT,
 ): Record<SubLaneKind, SubLaneState>[] | undefined {
-  const inferred = inferLegacySequencerSubLaneStatesFromOverrides(overrides);
+  const inferred = inferLegacySequencerSubLaneStatesFromOverrides(overrides, laneCount);
   if (!states || states.length === 0) {
     return sanitizeSequencerSubLaneStates(inferred);
   }
   if (!inferred || inferred.length === 0) {
     return sanitizeSequencerSubLaneStates(states);
   }
-  const laneCount = Math.max(states.length, inferred.length);
+  const mergedLaneCount = Math.max(laneCount, states.length, inferred.length);
   return sanitizeSequencerSubLaneStates(
-    Array.from({ length: laneCount }, (_, laneIndex) => ({
+    Array.from({ length: mergedLaneCount }, (_, laneIndex) => ({
       ...(inferred[laneIndex] ?? {}),
       ...(states[laneIndex] ?? {}),
     })),
@@ -189,8 +217,9 @@ function restoreSequencerSubLaneStates(
 function mapSubLaneStatesToEnabledFlags(
   states: Record<SubLaneKind, SubLaneState>[] | undefined,
   arpConfigs?: ProductArpConfig[],
+  laneCount = SYNTH_EUCLIDEAN_LANE_COUNT,
 ): Record<string, boolean>[] {
-  return Array.from({ length: 4 }, (_, index) => ({
+  return Array.from({ length: laneCount }, (_, index) => ({
     pitch: states?.[index]?.pitch.enabled === true || arpConfigs?.[index]?.enabled === true,
     expression: states?.[index]?.expression.enabled === true,
     ratchet: states?.[index]?.expression.enabled === true,
@@ -209,18 +238,19 @@ function rangeOverrideFromSubLaneState(lane: SubLaneState | undefined, fallbackM
   return { min: Math.min(min, max), max: Math.max(min, max) };
 }
 
-function rangeOverridesFromSubLaneStates(states: Record<SubLaneKind, SubLaneState>[] | undefined): Pick<StepOverrides, 'expressionRanges' | 'morphRanges' | 'distanceRanges'> {
+function rangeOverridesFromSubLaneStates(states: Record<SubLaneKind, SubLaneState>[] | undefined, laneCount = SYNTH_EUCLIDEAN_LANE_COUNT): Pick<StepOverrides, 'expressionRanges' | 'morphRanges' | 'distanceRanges'> {
+  const count = Math.max(laneCount, states?.length ?? 0);
   return {
-    expressionRanges: Array.from({ length: 4 }, (_, index) => rangeOverrideFromSubLaneState(states?.[index]?.expression, 0.75, 1)),
-    morphRanges: Array.from({ length: 4 }, (_, index) => rangeOverrideFromSubLaneState(states?.[index]?.morph, 0, 1)),
-    distanceRanges: Array.from({ length: 4 }, (_, index) => rangeOverrideFromSubLaneState(states?.[index]?.distance, 0, 1)),
+    expressionRanges: Array.from({ length: count }, (_, index) => rangeOverrideFromSubLaneState(states?.[index]?.expression, 0.75, 1)),
+    morphRanges: Array.from({ length: count }, (_, index) => rangeOverrideFromSubLaneState(states?.[index]?.morph, 0, 1)),
+    distanceRanges: Array.from({ length: count }, (_, index) => rangeOverrideFromSubLaneState(states?.[index]?.distance, 0, 1)),
   };
 }
 
-function stepOverridesWithRestoredRanges(overrides: StepOverrides, subLaneStates: Record<SubLaneKind, SubLaneState>[] | undefined): StepOverrides {
+function stepOverridesWithRestoredRanges(overrides: StepOverrides, subLaneStates: Record<SubLaneKind, SubLaneState>[] | undefined, laneCount = SYNTH_EUCLIDEAN_LANE_COUNT): StepOverrides {
   return {
     ...overrides,
-    ...rangeOverridesFromSubLaneStates(subLaneStates),
+    ...rangeOverridesFromSubLaneStates(subLaneStates, laneCount),
   };
 }
 
@@ -229,15 +259,16 @@ function drumStepOverridesForEngineRestore(
   subLaneStates: Record<SubLaneKind, SubLaneState>[] | undefined,
   pitchSettings: PitchSettings[],
   state: SliderState,
+  laneCount = DRUM_EUCLIDEAN_LANE_COUNT,
 ): StepOverrides {
   const pitch = overrides.pitch.map((offsets, laneIdx) => {
     if (!offsets) return null;
     if (!subLaneStates?.[laneIdx]?.pitch?.enabled) return null;
-    return drumPitchUiValuesToEngineOffsets(offsets, pitchSettings[laneIdx], drumPitchBaseMidiFromState(state, laneIdx), subLaneStates[laneIdx]?.pitch?.scaleQuantize === true);
+    return drumPitchUiValuesToEngineOffsets(offsets, pitchSettings[laneIdx], drumPitchBaseMidiFromState(state, laneIdx));
   });
   return stepOverridesForEngineSubLaneState(
     {
-      ...stepOverridesWithRestoredRanges(overrides, subLaneStates),
+      ...stepOverridesWithRestoredRanges(overrides, subLaneStates, laneCount),
       pitch,
     },
     subLaneStates,
@@ -286,6 +317,9 @@ function synthPitchOverridesForEngine(
     if (settings.mode === 'noteRange') return null;
     const resolvedPitch = restoredSynthPitchRootAndScale(settings, state);
     if (settings.mode === 'notes') {
+      return offsets.map((midi) => Math.max(0, Math.min(127, Math.round(midi))));
+    }
+    if (settings.mode === 'semitones') {
       const { root, scaleIntervals } = resolvedPitch;
       return offsets.map((degree) => root + scaleDegreeToSemitone(degree, scaleIntervals));
     }
@@ -298,10 +332,11 @@ function synthStepOverridesForEngineRestore(
   subLaneStates: Record<SubLaneKind, SubLaneState>[] | undefined,
   pitchSettings: PitchSettings[],
   state: SliderState,
+  laneCount = SYNTH_EUCLIDEAN_LANE_COUNT,
 ): StepOverrides {
   return stepOverridesForEngineSubLaneState(
     {
-      ...stepOverridesWithRestoredRanges(overrides, subLaneStates),
+      ...stepOverridesWithRestoredRanges(overrides, subLaneStates, laneCount),
       pitch: synthPitchOverridesForEngine(overrides, subLaneStates, pitchSettings, state),
     },
     subLaneStates,
@@ -344,57 +379,63 @@ export function usePresetSequencerRestore({
 }: PresetSequencerRestoreOptions): (preset: SequencerRestorePreset) => void {
   return useCallback(
     (preset: SequencerRestorePreset) => {
-      const drumConfigs = normalizeSequencerEvolveConfigs('drum', preset.drumEvolveConfigs, 4);
+      const drumConfigs = normalizeSequencerEvolveConfigs('drum', preset.drumEvolveConfigs, DRUM_EUCLIDEAN_LANE_COUNT);
       drumEvolveConfigsRef.current = drumConfigs;
       setSelectedDrumEuclidEvolveConfigs(drumConfigs);
 
-      const synthConfigs = normalizeSequencerEvolveConfigs('synth', preset.synthEvolveConfigs, 4);
+      const synthConfigs = normalizeSequencerEvolveConfigs('synth', preset.synthEvolveConfigs, SYNTH_EUCLIDEAN_LANE_COUNT);
       synthEvolveConfigsRef.current = synthConfigs;
       setSelectedSynthEuclidEvolveConfigs(synthConfigs);
 
-      const drumClockDivs = normalizeSequencerClockDivisions(preset.drumClockDivs ?? DEFAULT_EUCLIDEAN_CLOCK_DIVS, 4);
+      const drumClockDivs = normalizeSequencerClockDivisions(preset.drumClockDivs ?? DEFAULT_DRUM_EUCLIDEAN_CLOCK_DIVS, DRUM_EUCLIDEAN_LANE_COUNT);
       drumClockDivsRef.current = drumClockDivs;
       setSelectedDrumEuclidClockDivs(drumClockDivs);
-      const synthClockDivs = normalizeSequencerClockDivisions(preset.synthClockDivs ?? DEFAULT_EUCLIDEAN_CLOCK_DIVS, 4);
+      const synthClockDivs = normalizeSequencerClockDivisions(preset.synthClockDivs ?? DEFAULT_SYNTH_EUCLIDEAN_CLOCK_DIVS, SYNTH_EUCLIDEAN_LANE_COUNT);
       synthClockDivsRef.current = synthClockDivs;
       setSelectedSynthEuclidClockDivs(synthClockDivs);
 
-      const drumSwings = normalizeSequencerSwings(preset.drumSwings ?? DEFAULT_EUCLIDEAN_SWINGS, 4);
+      const drumSwings = normalizeSequencerSwings(preset.drumSwings ?? DEFAULT_DRUM_EUCLIDEAN_SWINGS, DRUM_EUCLIDEAN_LANE_COUNT);
       drumSwingsRef.current = drumSwings;
       setSelectedDrumEuclidSwings(drumSwings);
-      const synthSwings = normalizeSequencerSwings(preset.synthSwings ?? DEFAULT_EUCLIDEAN_SWINGS, 4);
+      const synthSwings = normalizeSequencerSwings(preset.synthSwings ?? DEFAULT_SYNTH_EUCLIDEAN_SWINGS, SYNTH_EUCLIDEAN_LANE_COUNT);
       synthSwingsRef.current = synthSwings;
       setSelectedSynthEuclidSwings(synthSwings);
 
-      drumLinkedRef.current = preset.drumLinked ?? [...DEFAULT_EUCLIDEAN_LINKED];
-      synthLinkedRef.current = preset.synthLinked ?? [...DEFAULT_EUCLIDEAN_LINKED];
+      drumLinkedRef.current = Array.from({ length: DRUM_EUCLIDEAN_LANE_COUNT }, (_, index) => preset.drumLinked?.[index] === true || DEFAULT_DRUM_EUCLIDEAN_LINKED[index] === true);
+      synthLinkedRef.current = Array.from({ length: SYNTH_EUCLIDEAN_LANE_COUNT }, (_, index) => preset.synthLinked?.[index] === true || DEFAULT_SYNTH_EUCLIDEAN_LINKED[index] === true);
 
-      const drumSubLaneStates = restoreSequencerSubLaneStates(preset.drumSubLaneStates, preset.drumStepOverrides);
-      const synthSubLaneStates = restoreSequencerSubLaneStates(preset.synthSubLaneStates, preset.synthStepOverrides);
+      const drumSubLaneStates = restoreSequencerSubLaneStates(preset.drumSubLaneStates, preset.drumStepOverrides, DRUM_EUCLIDEAN_LANE_COUNT);
+      const synthSubLaneStates = restoreSequencerSubLaneStates(preset.synthSubLaneStates, preset.synthStepOverrides, SYNTH_EUCLIDEAN_LANE_COUNT);
       drumSubLaneStatesRef.current = drumSubLaneStates;
       synthSubLaneStatesRef.current = synthSubLaneStates;
-      const drumPitchSettings = normalizeSequencerPitchSettingsArray(preset.drumPitchSettings ?? createDefaultPitchSettings(), 4) as PitchSettings[];
-      const synthPitchSettings = normalizeSequencerPitchSettingsArray(preset.synthPitchSettings ?? createDefaultSynthPitchSettings(), 4) as PitchSettings[];
+      const drumPitchSettings = normalizeSequencerPitchSettingsArray(preset.drumPitchSettings ?? createDefaultPitchSettings(DRUM_EUCLIDEAN_LANE_COUNT), DRUM_EUCLIDEAN_LANE_COUNT) as PitchSettings[];
+      const synthPitchSettings = normalizeSequencerPitchSettingsArray(preset.synthPitchSettings ?? createDefaultSynthPitchSettings(), SYNTH_EUCLIDEAN_LANE_COUNT) as PitchSettings[];
       drumPitchSettingsRef.current = drumPitchSettings;
       synthPitchSettingsRef.current = synthPitchSettings;
-      const synthArpConfigs = normalizeProductArpConfigs(preset.synthArpConfigs, 4);
+      const synthArpConfigs = normalizeProductArpConfigs(preset.synthArpConfigs, SYNTH_EUCLIDEAN_LANE_COUNT);
       synthArpConfigsRef.current = synthArpConfigs;
 
-      setSelectedDrumSubLaneEnabled(mapSubLaneStatesToEnabledFlags(drumSubLaneStates));
-      setSelectedSynthSubLaneEnabled(mapSubLaneStatesToEnabledFlags(synthSubLaneStates, synthArpConfigs));
+      setSelectedDrumSubLaneEnabled(mapSubLaneStatesToEnabledFlags(drumSubLaneStates, undefined, DRUM_EUCLIDEAN_LANE_COUNT));
+      setSelectedSynthSubLaneEnabled(mapSubLaneStatesToEnabledFlags(synthSubLaneStates, synthArpConfigs, SYNTH_EUCLIDEAN_LANE_COUNT));
       setSelectedDrumPitchSettings(drumPitchSettings);
       setSelectedSynthPitchSettings(synthPitchSettings);
 
-      const synthPitchBindingModes = normalizeSequencerPitchBindingModes(preset.synthPitchBindingModes ?? DEFAULT_SYNTH_PITCH_BINDING_MODES, 4);
+      const synthPitchBindingModes = normalizeSequencerPitchBindingModes(preset.synthPitchBindingModes ?? DEFAULT_SYNTH_PITCH_BINDING_MODES, SYNTH_EUCLIDEAN_LANE_COUNT);
       synthPitchBindingModesRef.current = synthPitchBindingModes;
       setSelectedSynthPitchBindingModes(synthPitchBindingModes);
 
-      const drumStepOverrides = deserializeStepOverrides(preset.drumStepOverrides) ?? createEmptyStepOverrides();
+      const drumStepOverrides = expandStepOverridesToLaneCount(
+        deserializeStepOverrides(preset.drumStepOverrides) ?? createEmptyStepOverrides(DRUM_EUCLIDEAN_LANE_COUNT),
+        DRUM_EUCLIDEAN_LANE_COUNT,
+      );
       drumStepOverridesRef.current = drumStepOverrides;
-      setSelectedDrumStepOverrides(drumStepOverridesForEngineRestore(drumStepOverrides, drumSubLaneStates, drumPitchSettings, preset.state));
-      const synthStepOverrides = deserializeStepOverrides(preset.synthStepOverrides) ?? createEmptyStepOverrides();
+      setSelectedDrumStepOverrides(drumStepOverridesForEngineRestore(drumStepOverrides, drumSubLaneStates, drumPitchSettings, preset.state, DRUM_EUCLIDEAN_LANE_COUNT));
+      const synthStepOverrides = expandStepOverridesToLaneCount(
+        deserializeStepOverrides(preset.synthStepOverrides) ?? createEmptyStepOverrides(SYNTH_EUCLIDEAN_LANE_COUNT),
+        SYNTH_EUCLIDEAN_LANE_COUNT,
+      );
       synthStepOverridesRef.current = synthStepOverrides;
-      setSelectedSynthStepOverrides(synthStepOverridesForEngineRestore(synthStepOverrides, synthSubLaneStates, synthPitchSettings, preset.state));
+      setSelectedSynthStepOverrides(synthStepOverridesForEngineRestore(synthStepOverrides, synthSubLaneStates, synthPitchSettings, preset.state, SYNTH_EUCLIDEAN_LANE_COUNT));
       setSelectedSequencerPresetHomeSnapshots(
         drumPitchSettings,
         drumSubLaneStates?.map((state) => state.pitch),

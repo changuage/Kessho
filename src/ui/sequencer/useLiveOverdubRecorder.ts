@@ -5,6 +5,8 @@ export type LiveOverdubStatus = 'idle' | 'count-in' | 'recording';
 type LiveOverdubOptions = {
   bpm: number;
   countInBeats?: number;
+  metronomeEnabled?: boolean;
+  onMetronomeEnabledChange?: (enabled: boolean) => void;
   onCountInComplete?: () => void;
 };
 
@@ -50,11 +52,14 @@ export function liveOverdubTargetStep(
 export function useLiveOverdubRecorder({
   bpm,
   countInBeats = 4,
+  metronomeEnabled: controlledMetronomeEnabled,
+  onMetronomeEnabledChange,
   onCountInComplete,
 }: LiveOverdubOptions): LiveOverdubRecorder {
   const [status, setStatus] = useState<LiveOverdubStatus>('idle');
   const [countInRemaining, setCountInRemaining] = useState(0);
-  const [metronomeEnabled, setMetronomeEnabled] = useState(true);
+  const [uncontrolledMetronomeEnabled, setUncontrolledMetronomeEnabled] = useState(true);
+  const metronomeEnabled = controlledMetronomeEnabled ?? uncontrolledMetronomeEnabled;
   const audioContextRef = useRef<AudioContext | null>(null);
   const statusRef = useRef(status);
   const bpmRef = useRef(bpm);
@@ -121,8 +126,12 @@ export function useLiveOverdubRecorder({
   }, [stop]);
 
   const toggleMetronome = useCallback(() => {
-    setMetronomeEnabled((current) => !current);
-  }, []);
+    const next = !metronomeEnabled;
+    if (controlledMetronomeEnabled === undefined) {
+      setUncontrolledMetronomeEnabled(next);
+    }
+    onMetronomeEnabledChange?.(next);
+  }, [controlledMetronomeEnabled, metronomeEnabled, onMetronomeEnabledChange]);
 
   useEffect(() => {
     if (status !== 'count-in') return undefined;

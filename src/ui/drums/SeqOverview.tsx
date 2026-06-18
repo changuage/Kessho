@@ -18,6 +18,7 @@ interface SeqOverviewProps {
   playheads: number[];
   onSelectSequencer?: (index: number) => void;
   onSetParam?: (seqIdx: number, param: string, value: number) => void;
+  onRotateSequence?: (seqIdx: number, direction: 1 | -1) => void;
   onToggleSource?: (seqIdx: number, voice: string, on: boolean) => void;
   onToggleMute?: (seqIdx: number) => void;
   onToggleSolo?: (seqIdx: number) => void;
@@ -32,7 +33,7 @@ interface SeqOverviewProps {
 
 const SeqOverview: React.FC<SeqOverviewProps> = ({
   sequencers, playheads, onSelectSequencer,
-  onSetParam, onToggleSource, onToggleMute, onToggleSolo,
+  onSetParam, onRotateSequence, onToggleSource, onToggleMute, onToggleSolo,
   onSetClockDiv,
   onToggleTriggerStep, onSetProbability, onResetProbability,
   onCycleTrigCondition,
@@ -53,6 +54,10 @@ const SeqOverview: React.FC<SeqOverviewProps> = ({
           >
             <div className="seq-ov-header" onClick={() => onSelectSequencer?.(row)}>
               <span className="seq-ov-name">{seq.name}</span>
+              <span className={`seq-source-badge seq-source-badge--${seq.trigger.sourceOrigin ?? 'euclidean'}`}>
+                {(seq.trigger.sourceLabel ?? seq.trigger.sourceOrigin ?? 'Euclid').replace('Euclidean', 'Euclid')}
+                {seq.trigger.sourceDirty ? '*' : ''}
+              </span>
               {chainBadge && (
                 <span className={`seq-chain-badge${activeChainLaneIndex === row ? ' active' : ''}`}>
                   {chainBadge}
@@ -65,15 +70,30 @@ const SeqOverview: React.FC<SeqOverviewProps> = ({
                 min={2} max={EUCLIDEAN_STEP_MAX} label="S" shapeByDrag
                 onChange={(v) => onSetParam?.(row, 'Steps', v)}
               />
-              <DragNumber
-                value={seq.trigger.hits}
-                min={0} max={seq.trigger.steps} label="H"
-                onChange={(v) => onSetParam?.(row, 'Hits', v)}
-              />
+              {seq.trigger.sourceOrigin && seq.trigger.sourceOrigin !== 'euclidean' ? (
+                <span
+                  className="seq-ov-readonly-hits"
+                  title="This phrase is a printed pattern. Generate or print another phrase to change hit density."
+                >
+                  H {seq.trigger.hits}
+                </span>
+              ) : (
+                <DragNumber
+                  value={seq.trigger.hits}
+                  min={0} max={seq.trigger.steps} label="H"
+                  onChange={(v) => onSetParam?.(row, 'Hits', v)}
+                />
+              )}
               <div className="seq-rotation-control seq-ov-rot">
-                <button onClick={() => onSetParam?.(row, 'Rotation', seq.trigger.rotation - 1)}>←</button>
+                <button onClick={() => {
+                  if (onRotateSequence) onRotateSequence(row, -1);
+                  else onSetParam?.(row, 'Rotation', seq.trigger.rotation - 1);
+                }}>←</button>
                 <span className="seq-rotation-val">{seq.trigger.rotation}</span>
-                <button onClick={() => onSetParam?.(row, 'Rotation', seq.trigger.rotation + 1)}>→</button>
+                <button onClick={() => {
+                  if (onRotateSequence) onRotateSequence(row, 1);
+                  else onSetParam?.(row, 'Rotation', seq.trigger.rotation + 1);
+                }}>→</button>
               </div>
               <select
                 className="seq-ov-select seq-ov-clk"

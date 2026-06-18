@@ -207,6 +207,20 @@ for (const mode of ['anchorWalker', 'orbit'] as const) {
   });
   assert.equal(config.speedOffset, -1, 'Orbit speed offset should normalize to the full -1..1 range');
   assert.equal(config.freeOffset, -0.5, 'Orbit free offset should support negative values');
+  const legacyFreeConfig = normalizeOrbitSequencerConfig({
+    pitchLayout: 'freeOrbit',
+    snapSource: 'chordStep',
+    notes: [createDefaultOrbitNote(0, {
+      pitchMode: 'fixedMidi',
+      speedMode: 'syncDivisor',
+      speedValue: 4,
+    })],
+  });
+  assert.equal('pitchLayout' in legacyFreeConfig, false, 'Orbit layout should no longer survive normalization');
+  assert.equal(legacyFreeConfig.snapSource, 'harmonyEngine', 'Orbit snap source should normalize to Harmony');
+  assert.equal(legacyFreeConfig.notes[0]?.pitchMode, 'harmonyBloom', 'Legacy Free Orbit nodes should normalize back to Bloom pitch');
+  assert.equal(legacyFreeConfig.notes[0]?.speedMode, 'bpmPercent', 'Legacy Free Orbit nodes should normalize back to Bloom speed mode');
+  assert.equal(legacyFreeConfig.notes[0]?.speedValue, 100, 'Legacy Free Orbit nodes should normalize to shared Bloom speed');
   const speedStats = orbitSpeedOffsetStats([
     { radiusNorm: 0 },
     { radiusNorm: 0.5 },
@@ -318,7 +332,6 @@ for (const mode of ['anchorWalker', 'orbit'] as const) {
         mode,
         seed: 123,
         nodeCount,
-        pitchLayout: 'harmonyBloom',
         pitchRangeMin: 48,
         pitchRangeMax: 84,
       });
@@ -326,7 +339,6 @@ for (const mode of ['anchorWalker', 'orbit'] as const) {
         mode,
         seed: 123,
         nodeCount,
-        pitchLayout: 'harmonyBloom',
         pitchRangeMin: 48,
         pitchRangeMax: 84,
       });
@@ -514,7 +526,6 @@ for (const mode of ['anchorWalker', 'orbit'] as const) {
     mode: 'auto',
     seed: thirteenNodeFaces.slots[0]!.orbit.seed,
     nodeCount: 13,
-    pitchLayout: 'harmonyBloom',
     pitchRangeMin: 48,
     pitchRangeMax: 84,
   });
@@ -572,7 +583,6 @@ for (const mode of ['anchorWalker', 'orbit'] as const) {
     mode: 'orbit',
     orbit: {
       ...firstSlot.orbit,
-      pitchLayout: 'harmonyBloom',
       notes: firstSlot.orbit.notes.map((note, index) => ({
         ...note,
         pitchMode: index === 0 ? 'harmonyBloom' : note.pitchMode,

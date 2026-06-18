@@ -54,6 +54,17 @@
   return asset_id == kSoundscapeAssetWater || asset_id == kSoundscapeAssetInsects;
 }
 
+  bool KesshoProductEngine::isSoundscapeTextureAsset(uint32_t asset_id) const {
+  return soundscapeTextureSlotForAsset(asset_id) < kSoundscapeTextureSlotCount;
+}
+
+  bool KesshoProductEngine::shouldUseSoundscapeTextureSlices(const SourceState& source, uint32_t asset_id) const {
+  if (!isSoundscapeTextureAsset(asset_id)) {
+    return false;
+  }
+  return !soundscapeParityFixtureEnabled(source);
+}
+
   bool KesshoProductEngine::hasActiveSoundscapeVoice(uint32_t asset_id) const {
   for (const Voice& voice : voices) {
     if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE || !voice.sample_voice) {
@@ -285,6 +296,13 @@
   }
 }
 
+  void KesshoProductEngine::suspendSoundscapeTextureRuntimes() {
+  for (uint32_t slot = 0u; slot < kSoundscapeTextureSlotCount; ++slot) {
+    SoundscapeTextureRuntime& runtime = soundscape_texture_runtimes[slot];
+    runtime.next_start_frame = 0u;
+  }
+}
+
   void KesshoProductEngine::releaseSoundscapeTextureVoices(uint32_t asset_id) {
   for (Voice& voice : voices) {
     if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE ||
@@ -347,11 +365,10 @@
       kSoundscapeTextureHaasDelayMaxFrames - 1u);
 }
 
-  void KesshoProductEngine::processSoundscapeTextureSpatial(
-      uint32_t asset_id,
+  void KesshoProductEngine::processSoundscapeTextureSpatialForSlot(
+      uint32_t slot,
       float& left,
       float& right) {
-  const uint32_t slot = soundscapeTextureSlotForAsset(asset_id);
   if (slot >= kSoundscapeTextureSlotCount) {
     return;
   }

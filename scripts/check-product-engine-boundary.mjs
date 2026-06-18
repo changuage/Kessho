@@ -1838,9 +1838,9 @@ for (const rootDir of sourceRoots) {
         'stateRef.current',
         'commitProductControlActionThenTrigger(',
         "type: 'manual-trigger/request'",
-        'productEngine.auditionSynthNote(note),',
+        '(_revision, resolvedSliders) => productEngine.auditionSynthNote(note, resolvedSliders),',
         'selectedProductRuntime.auditionSynthNote(note, externalState)',
-        'productEngine.triggerDrumVoice(voice, 0.8),',
+        '(_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, 0.8, resolvedSliders),',
         'selectedProductRuntime.triggerDrumVoice(voice, 0.8, externalState)',
       ]) {
         if (!source.includes(requiredSnippet)) {
@@ -1861,8 +1861,8 @@ for (const rootDir of sourceRoots) {
         "type: 'manual-trigger/request'",
         "kind: 'synth-note'",
         "kind: 'drum-voice'",
-        'productEngine.auditionSynthNote(note)',
-        'productEngine.triggerDrumVoice(voice, DEFAULT_MANUAL_DRUM_VELOCITY)',
+        '(_revision, resolvedSliders) => productEngine.auditionSynthNote(note, resolvedSliders)',
+        '(_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, DEFAULT_MANUAL_DRUM_VELOCITY, resolvedSliders)',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product manual trigger surface must own Product Core commit-before-trigger dispatch; missing ${requiredSnippet}`);
@@ -3046,7 +3046,7 @@ for (const rootDir of sourceRoots) {
         'drumStepOverridesForEngineRestore(',
         'synthStepOverridesForEngineRestore(',
         'normalizeSequencerEvolveConfigs(',
-        'restoreSequencerSubLaneStates(preset.synthSubLaneStates, preset.synthStepOverrides)',
+        'restoreSequencerSubLaneStates(preset.synthSubLaneStates, preset.synthStepOverrides, SYNTH_EUCLIDEAN_LANE_COUNT)',
         'setSelectedDrumStepOverrides(drumStepOverridesForEngineRestore(',
         'setSelectedSynthStepOverrides(synthStepOverridesForEngineRestore(',
       ]) {

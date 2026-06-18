@@ -76,7 +76,8 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
       return i;
     }
   }
-  return 0;
+  telemetry.last_error_code = KESSHO_PRODUCT_ERROR_ALLOCATION_FAILURE;
+  return kProductInvalidVoiceIndex;
 }
 
   void KesshoProductEngine::markActiveVoiceListDirty() {

@@ -556,6 +556,7 @@ const DRUM_TARGETS = [
   { suffix: 'Noise', voiceIndex: 5 },
   { suffix: 'Membrane', voiceIndex: 6 },
 ] as const;
+const DRUM_SEQUENCER_LANE_NUMBERS = [1, 2, 3, 4, 5, 6] as const;
 
 const DRUM_VOICE_MASK_SEED_FLAG = 0x80000000;
 const DRUM_VOICE_MASK_SEED_SHIFT = 24;
@@ -565,6 +566,8 @@ function defaultDrumTargetSuffix(laneNumber: number): (typeof DRUM_TARGETS)[numb
   if (laneNumber === 2) return 'BeepHi';
   if (laneNumber === 3) return 'Click';
   if (laneNumber === 4) return 'Noise';
+  if (laneNumber === 5) return 'BeepLo';
+  if (laneNumber === 6) return 'Membrane';
   return 'Kick';
 }
 
@@ -645,7 +648,7 @@ function drumLanesFromState(
   transport: CoreProductSnapshot['transport'],
 ): ProductLaneSnapshot[] {
   const lanes: ProductLaneSnapshot[] = [];
-  for (const laneNumber of [1, 2, 3, 4]) {
+  for (const laneNumber of DRUM_SEQUENCER_LANE_NUMBERS) {
     const prefix = `drumEuclid${laneNumber}`;
     if (lanes.length >= 16) return lanes;
     lanes.push(drumLaneBaseFromState(

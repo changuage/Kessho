@@ -96,8 +96,8 @@ requireTokens('src/audio/CoreProductHostHarmonyState.ts', [
 
 requireTokens('src/audio/coreProductHarmonyParityRegression.test.ts', [
   'drumPitchUiValuesToEngineOffsets',
-  'drum pitch Q should quantize engine offsets to the selected pitch scale',
-  'regression fixture should detect an accidental second harmony-scale quantize',
+  'drum semitones mode should store scale-degree offsets from root and scale',
+  'drum notes mode should store fixed MIDI notes independent of root and scale',
 ]);
 
 rejectTokens('src/audio/drumSynth.ts', [

@@ -12,7 +12,6 @@
 #include "KesshoCore/KesshoProductGeneratedSequencerCapture.h"
 #include <array>
 #include <memory>
-
 #include "../modules/KesshoModule.h"
 #include "kessho_drum.h"
 #include "kessho_pad.h"
@@ -391,11 +390,14 @@ struct KesshoProductEngine : ProductGraphState {
   bool soundscapeModuleParamsAvailable(const SourceState& source) const;
   bool soundscapeModuleShouldRun(const SourceState& source) const;
   bool soundscapeAssetUsesModule(const SourceState& source, uint32_t asset_id) const;
+  bool isSoundscapeTextureAsset(uint32_t asset_id) const;
+  bool shouldUseSoundscapeTextureSlices(const SourceState& source, uint32_t asset_id) const;
   bool hasActiveSoundscapeVoice(uint32_t asset_id) const;
   bool hasActiveLegacySoundscapeVoice(uint32_t asset_id) const;
   void releaseUnwantedSoundscapeVoices(const SourceState& source);
   void releaseLegacySoundscapeVoices(uint32_t asset_id);
   void releaseSoundscapeTextureVoice(Voice& voice, float release_asset_level);
+  void stopSoundscapeTransportRuntime();
   void reportMissingSourceAsset(SourceState& source);
   void reportMissingSourceAsset(SourceState& source, uint32_t asset_id);
   bool triggerModuleSource(
@@ -518,13 +520,11 @@ struct KesshoProductEngine : ProductGraphState {
   double soundscapeTextureStrideSeconds(double output_duration, double fade, float density) const;
   void resetSoundscapeTextureRuntime(uint32_t slot);
   void resetSoundscapeTextureRuntimes();
+  void suspendSoundscapeTextureRuntimes();
   void releaseSoundscapeTextureVoices(uint32_t asset_id);
   void ensureSoundscapeTextureVoice(SourceState& source, uint32_t asset_id, uint32_t asset_slot);
   void configureSoundscapeTextureSpatialRuntime(uint32_t asset_id, SoundscapeTextureRuntime& runtime) const;
-  void processSoundscapeTextureSpatial(
-      uint32_t asset_id,
-      float& left,
-      float& right);
+  void processSoundscapeTextureSpatialForSlot(uint32_t slot, float& left, float& right);
   float soundscapeLayerRouteSend(const SourceState& source, uint32_t layer, uint32_t route, float fallback) const;
   float sampleVoiceEnvelope(const Voice& voice) const;
   float assetSample(const AssetSlot& asset, uint32_t channel, uint32_t frame) const;

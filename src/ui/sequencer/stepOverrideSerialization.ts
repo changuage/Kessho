@@ -2,8 +2,12 @@ import type { LaneDirection, TrigCondition } from '../../audio/drumSeqTypes';
 import { normalizeOptionalSequencerLaneDirection } from '../../audio/sequencerLaneDirection';
 import type { SerializedStepOverrides, SerializedStepToggle } from '../state';
 import type { StepOverrides } from './useEuclideanSequencer';
+import {
+  deserializeTriggerClip,
+  serializeTriggerClip,
+} from './triggerClip';
 
-const LANE_COUNT = 4;
+const DEFAULT_LANE_COUNT = 4;
 
 const ARRAY_FIELDS = [
   'probability',
@@ -37,8 +41,8 @@ function cloneArrayLane(value: number[] | TrigCondition[] | null | undefined): n
   return value.map((item) => (Array.isArray(item) ? [...item] : item)) as number[] | TrigCondition[];
 }
 
-function normalizeLaneArray<T>(lanes: (T | null)[] | undefined, fallback: T | null = null): (T | null)[] {
-  return Array.from({ length: LANE_COUNT }, (_, index) => lanes?.[index] ?? fallback);
+function normalizeLaneArray<T>(lanes: (T | null)[] | undefined, fallback: T | null = null, laneCount = DEFAULT_LANE_COUNT): (T | null)[] {
+  return Array.from({ length: laneCount }, (_, index) => lanes?.[index] ?? fallback);
 }
 
 function clampUnit(value: number): number {
@@ -97,8 +101,9 @@ function deserializeToggleMap(toggles: unknown): Map<number, boolean> {
   return map;
 }
 
-export function createEmptyStepOverrides(laneCount = LANE_COUNT): StepOverrides {
+export function createEmptyStepOverrides(laneCount = DEFAULT_LANE_COUNT): StepOverrides {
   return {
+    triggerClips: Array.from({ length: laneCount }, () => null),
     triggerToggles: Array.from({ length: laneCount }, () => new Map<number, boolean>()),
     probability: Array.from({ length: laneCount }, () => null),
     ratchet: Array.from({ length: laneCount }, () => null),
@@ -121,11 +126,44 @@ export function createEmptyStepOverrides(laneCount = LANE_COUNT): StepOverrides 
   };
 }
 
+function stepOverrideLaneCount(overrides: StepOverrides): number {
+  let laneCount = DEFAULT_LANE_COUNT;
+  laneCount = Math.max(laneCount, overrides.triggerClips?.length ?? 0);
+  laneCount = Math.max(laneCount, overrides.triggerToggles?.length ?? 0);
+  for (const field of ARRAY_FIELDS) laneCount = Math.max(laneCount, overrides[field]?.length ?? 0);
+  for (const field of DIRECTION_FIELDS) laneCount = Math.max(laneCount, overrides[field]?.length ?? 0);
+  for (const field of RANGE_FIELDS) laneCount = Math.max(laneCount, overrides[field]?.length ?? 0);
+  return laneCount;
+}
+
+function serializedStepOverrideLaneCount(serialized: SerializedStepOverrides): number {
+  let laneCount = DEFAULT_LANE_COUNT;
+  const values = [
+    serialized.triggerClips,
+    serialized.triggerToggles,
+    ...ARRAY_FIELDS.map((field) => serialized[field] as unknown),
+    ...DIRECTION_FIELDS.map((field) => serialized[field] as unknown),
+    ...RANGE_FIELDS.map((field) => serialized[field] as unknown),
+  ];
+  for (const value of values) {
+    if (Array.isArray(value)) laneCount = Math.max(laneCount, value.length);
+  }
+  return laneCount;
+}
+
 export function serializeStepOverrides(overrides: StepOverrides | undefined): SerializedStepOverrides | undefined {
   if (!overrides) return undefined;
+  const laneCount = stepOverrideLaneCount(overrides);
 
   const serialized: SerializedStepOverrides = {};
-  const triggerToggles = Array.from({ length: LANE_COUNT }, (_, index) => (
+  const triggerClips = Array.from({ length: laneCount }, (_, index) => (
+    serializeTriggerClip(overrides.triggerClips?.[index] ?? null)
+  ));
+  if (triggerClips.some(Boolean)) {
+    serialized.triggerClips = triggerClips;
+  }
+
+  const triggerToggles = Array.from({ length: laneCount }, (_, index) => (
     serializeToggleMap(overrides.triggerToggles?.[index])
   ));
   if (triggerToggles.some((lane) => lane.length > 0)) {
@@ -133,7 +171,7 @@ export function serializeStepOverrides(overrides: StepOverrides | undefined): Se
   }
 
   for (const field of ARRAY_FIELDS) {
-    const lanes = normalizeLaneArray(overrides[field]?.map(cloneArrayLane) as never);
+    const lanes = normalizeLaneArray(overrides[field]?.map(cloneArrayLane) as never, null, laneCount);
     if (hasLaneArrayContent(lanes as (unknown[] | null)[])) {
       (serialized as Record<string, unknown>)[field] = lanes;
     }
@@ -142,6 +180,8 @@ export function serializeStepOverrides(overrides: StepOverrides | undefined): Se
   for (const field of DIRECTION_FIELDS) {
     const lanes = normalizeLaneArray(
       (overrides[field] as (LaneDirection | null)[] | undefined)?.map(normalizeOptionalSequencerLaneDirection),
+      null,
+      laneCount,
     );
     if (hasDirectionContent(lanes)) {
       (serialized as Record<string, unknown>)[field] = lanes;
@@ -151,7 +191,7 @@ export function serializeStepOverrides(overrides: StepOverrides | undefined): Se
   for (const field of RANGE_FIELDS) {
     const lanes = normalizeLaneArray(overrides[field]?.map((range) => (
       normalizeRange(range)
-    )));
+    )), null, laneCount);
     if (hasRangeContent(lanes)) {
       (serialized as Record<string, unknown>)[field] = lanes;
     }
@@ -162,9 +202,13 @@ export function serializeStepOverrides(overrides: StepOverrides | undefined): Se
 
 export function deserializeStepOverrides(serialized: SerializedStepOverrides | undefined): StepOverrides | undefined {
   if (!serialized) return undefined;
+  const laneCount = serializedStepOverrideLaneCount(serialized);
 
-  const overrides = createEmptyStepOverrides();
-  overrides.triggerToggles = Array.from({ length: LANE_COUNT }, (_, index) => (
+  const overrides = createEmptyStepOverrides(laneCount);
+  overrides.triggerClips = Array.from({ length: laneCount }, (_, index) => (
+    deserializeTriggerClip(serialized.triggerClips?.[index])
+  ));
+  overrides.triggerToggles = Array.from({ length: laneCount }, (_, index) => (
     deserializeToggleMap(serialized.triggerToggles?.[index])
   ));
 
@@ -172,18 +216,24 @@ export function deserializeStepOverrides(serialized: SerializedStepOverrides | u
     overrides[field] = normalizeLaneArray(
       (serialized[field] as (number[] | TrigCondition[] | null)[] | undefined)
         ?.map(cloneArrayLane) as never,
+      null,
+      laneCount,
     ) as never;
   }
 
   for (const field of DIRECTION_FIELDS) {
     overrides[field] = normalizeLaneArray(
       (serialized[field] as unknown[] | undefined)?.map(normalizeOptionalSequencerLaneDirection),
+      null,
+      laneCount,
     ) as never;
   }
 
   for (const field of RANGE_FIELDS) {
     const lanes = normalizeLaneArray(
       (serialized[field] as unknown[] | undefined)?.map(normalizeRange),
+      null,
+      laneCount,
     );
     if (lanes.some(Boolean)) {
       overrides[field] = lanes;

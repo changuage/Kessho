@@ -898,8 +898,8 @@ function hasUnsignedFlag(flags: number | undefined, flag: number): boolean {
   assert.equal(result.handled, true, 'shared-model synth evolve should handle telemetry-backed base MIDI parity cases');
   assert.deepEqual(
     published.find((entry) => entry.name === 'synthEvolveOverrides')?.payload.pitch,
-    [2],
-    'shared-model synth evolve should convert MIDI overrides against live Product Core base MIDI, not stale snapshot MIDI',
+    [1],
+    'shared-model synth evolve should convert MIDI overrides to scale degrees against live Product Core base MIDI, not stale snapshot MIDI',
   );
   assert.deepEqual(
     selectCoreProductSequencerCache(cache, 'synth').values[0]?.filter((entry) => entry.field === CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote).map((entry) => entry.value),

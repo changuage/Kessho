@@ -2185,6 +2185,7 @@ void requireRepresentativeFullArrangementProbe() {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "full arrangement engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.transport.running = 1;
   snapshot.master.gain = 0.55f;
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].preset_id =
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_GLASS_SHIMMER;

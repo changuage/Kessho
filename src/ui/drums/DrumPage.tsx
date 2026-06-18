@@ -10,10 +10,16 @@ import type { SerializedStepOverrides, SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumStepOverrides } from '../../audio/drumSeqTypes';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
-import { normalizeNoteDegreeOffset } from '../../audio/drumSeqTypes';
+import {
+  SCALES,
+  clampMidiNote,
+  normalizeNoteDegreeOffset,
+  scaleDegreeToSemitone,
+  semitoneToScaleDegree,
+} from '../../audio/drumSeqTypes';
 import { getPresetNames as getDrumPresetNames } from '../../audio/drumPresets';
 import { DRUM_VOICES as VOICE_CONFIG, DRUM_VOICE_ORDER } from '../../audio/drumVoiceConfig';
-import { useEuclideanSequencer, type EvolveConfig, type PitchSettings, type StepOverrides, type SubLaneKind, type SubLaneState } from '../sequencer/useEuclideanSequencer';
+import { useEuclideanSequencer, type EvolveConfig, type PitchSettings, type SequencerViewMode, type StepOverrides, type SubLaneKind, type SubLaneState } from '../sequencer/useEuclideanSequencer';
 import SequencerChainRail, {
   createSequencerChainUiRuntimeState,
   useSequencerChainUiPosition,
@@ -29,8 +35,13 @@ import { normalizeSequencerPitchSettings } from '../../audio/sequencerPitchSetti
 import DrumPanel from './DrumPanel';
 import DragNumber from './DragNumber';
 import SeqOverview from './SeqOverview';
-import SeqSimple from './SeqSimple';
 import type { SeqSimpleState } from './SeqSimple';
+import ScatterPage from './scatter/ScatterPage';
+import type { GeneratedDrumPhrase, SeqScatterState } from './scatter/scatterTypes';
+import { normalizeSeqScatterState } from './scatter/scatterDefaults';
+import { generateScatterPhrase } from './scatter/scatterPhraseGenerator';
+import { printGeneratedPhraseToLane, type PhrasePrintMode } from './scatter/scatterPhrasePrinter';
+import PhraseGlyphCard from './scatter/PhraseGlyphCard';
 import SeqMiniOverview from './SeqMiniOverview';
 import SeqLane from './SeqLane';
 import SeqSparkline from './SeqSparkline';
@@ -66,18 +77,24 @@ import {
 import type { PresetEntry } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
 
-const LANE_CONFIGS = [
-  { color: SEQUENCER_LANE_COLORS[0], name: 'Seq 1' },
-  { color: SEQUENCER_LANE_COLORS[1], name: 'Seq 2' },
-  { color: SEQUENCER_LANE_COLORS[2], name: 'Seq 3' },
-  { color: SEQUENCER_LANE_COLORS[3], name: 'Seq 4' },
-];
+const DRUM_SEQUENCER_LANE_COUNT = 6;
+
+function makeDrumLaneArray<T>(factory: (laneIndex: number) => T): T[] {
+  return Array.from({ length: DRUM_SEQUENCER_LANE_COUNT }, (_, laneIndex) => factory(laneIndex));
+}
+
+const LANE_CONFIGS = makeDrumLaneArray((laneIndex) => ({
+  color: SEQUENCER_LANE_COLORS[laneIndex] ?? SEQUENCER_LANE_COLORS[0],
+  name: `Seq ${laneIndex + 1}`,
+}));
 
 const DRUM_LANE_ENABLED_KEYS = [
   'drumEuclid1Enabled',
   'drumEuclid2Enabled',
   'drumEuclid3Enabled',
   'drumEuclid4Enabled',
+  'drumEuclid5Enabled',
+  'drumEuclid6Enabled',
 ] as const satisfies readonly (keyof SliderState)[];
 
 type EvolvedSequencerPatch = {
@@ -103,17 +120,96 @@ const DRUM_TARGET_SUFFIX_BY_VOICE: Record<DrumVoiceType, string> = {
   membrane: 'Membrane',
 };
 
+function drumTargetParamForVoice(voice: DrumVoiceType): string {
+  return `Target${DRUM_TARGET_SUFFIX_BY_VOICE[voice]}`;
+}
+
+function drumStateWithPrintedLaneTarget(
+  baseState: SliderState,
+  laneIndex: number,
+  engine: DrumVoiceType,
+): SliderState {
+  const next = { ...baseState } as SliderState;
+  const nextRecord = next as unknown as Record<string, unknown>;
+  const laneNumber = laneIndex + 1;
+  for (const voice of DRUM_VOICE_ORDER) {
+    nextRecord[`drumEuclid${laneNumber}${drumTargetParamForVoice(voice)}`] = voice === engine;
+  }
+  return next;
+}
+
+function drumStepOverridesForEngineState(
+  overrides: StepOverrides,
+  subLaneStates: Record<SubLaneKind, SubLaneState>[],
+  pitchSettings: PitchSettings[],
+  baseState: SliderState,
+): DrumStepOverrides {
+  const convertedPitch = overrides.pitch.map((offsets, laneIdx) => {
+    if (!offsets || !subLaneStates[laneIdx]?.pitch?.enabled) return null;
+    const baseMidi = drumPitchBaseMidiFromState(baseState, laneIdx);
+    return drumPitchUiValuesToEngineOffsets(
+      offsets,
+      pitchSettings[laneIdx],
+      baseMidi,
+    );
+  });
+  const expressionRanges = subLaneStates.map((laneState) => {
+    const lane = laneState.expression;
+    return lane.enabled && lane.valueMode === 'range'
+      ? { min: Math.min(lane.rangeMin ?? 0.75, lane.rangeMax ?? 1), max: Math.max(lane.rangeMin ?? 0.75, lane.rangeMax ?? 1) }
+      : null;
+  });
+  const morphRanges = subLaneStates.map((laneState) => {
+    const lane = laneState.morph;
+    return lane.enabled && lane.valueMode === 'range'
+      ? { min: Math.min(lane.rangeMin ?? 0, lane.rangeMax ?? 1), max: Math.max(lane.rangeMin ?? 0, lane.rangeMax ?? 1) }
+      : null;
+  });
+  const distanceRanges = subLaneStates.map((laneState) => {
+    const lane = laneState.distance;
+    return lane.enabled && lane.valueMode === 'range'
+      ? { min: Math.min(lane.rangeMin ?? 0, lane.rangeMax ?? 1), max: Math.max(lane.rangeMin ?? 0, lane.rangeMax ?? 1) }
+      : null;
+  });
+  return stepOverridesForEngineSubLaneState({
+    ...overrides,
+    pitch: convertedPitch,
+    expressionRanges,
+    morphRanges,
+    distanceRanges,
+  }, subLaneStates) as DrumStepOverrides;
+}
+
 type DrumKeyboardLane = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance';
 const DRUM_KEYBOARD_LANES: readonly DrumKeyboardLane[] = ['trigger', 'pitch', 'expression', 'morph', 'distance'] as const;
 
 function makeDefaultKeyboardLaneSteps(): Record<DrumKeyboardLane, number[]> {
   return {
-    trigger: [0, 0, 0, 0],
-    pitch: [0, 0, 0, 0],
-    expression: [0, 0, 0, 0],
-    morph: [0, 0, 0, 0],
-    distance: [0, 0, 0, 0],
+    trigger: makeDrumLaneArray(() => 0),
+    pitch: makeDrumLaneArray(() => 0),
+    expression: makeDrumLaneArray(() => 0),
+    morph: makeDrumLaneArray(() => 0),
+    distance: makeDrumLaneArray(() => 0),
   };
+}
+
+function drumBaseMidiForVoice(voice: DrumVoiceType): number {
+  return 36 + Math.max(0, DRUM_VOICE_ORDER.indexOf(voice));
+}
+
+function convertDrumPitchValuesForMode(
+  values: readonly number[],
+  settings: PitchSettings,
+  nextMode: PitchSettings['mode'],
+): number[] {
+  if (settings.mode === nextMode || settings.mode === 'noteRange' || nextMode === 'noteRange') {
+    return values.map((value) => Math.round(value));
+  }
+  const intervals = SCALES[settings.scale] || SCALES.Major || [0, 2, 4, 5, 7, 9, 11];
+  if (nextMode === 'notes') {
+    return values.map((degree) => clampMidiNote(settings.root + scaleDegreeToSemitone(degree, intervals)));
+  }
+  return values.map((midi) => semitoneToScaleDegree(clampMidiNote(midi) - settings.root, intervals));
 }
 
 function getDrumKeyboardLane(openLane: string): DrumKeyboardLane {
@@ -166,9 +262,9 @@ export interface DrumPageProps {
   /** Called when pitch settings change, so parent can persist across tab switches */
   onPitchSettingsChange?: (settings: PitchSettings[]) => void;
   /** Initial view mode to restore across tab switches */
-  initialViewMode?: 'simple' | 'detail' | 'overview';
+  initialViewMode?: SequencerViewMode;
   /** Called when view mode changes so parent can persist it */
-  onViewModeChange?: (mode: 'simple' | 'detail' | 'overview') => void;
+  onViewModeChange?: (mode: SequencerViewMode) => void;
   /** Evolved step overrides pushed from audio engine (for visual sync) */
   evolvedOverrides?: EvolvedSequencerPatch;
   /** Called when per-lane clock divisions change */
@@ -183,6 +279,8 @@ export interface DrumPageProps {
   initialSeqSimpleState?: SeqSimpleState;
   /** Called when simple sequencer state changes */
   onSeqSimpleStateChange?: (state: SeqSimpleState) => void;
+  initialSeqScatterState?: SeqScatterState;
+  onSeqScatterStateChange?: (state: SeqScatterState) => void;
 }
 
 const DrumPage: React.FC<DrumPageProps> = (props) => {
@@ -240,15 +338,19 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
 
   const [diceIntensity, setDiceIntensity] = useState(0.5);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [seqScatterState, setSeqScatterState] = useState<SeqScatterState>(() =>
+    normalizeSeqScatterState(props.initialSeqScatterState, props.initialSeqSimpleState)
+  );
+  const [pendingDetailPhrase, setPendingDetailPhrase] = useState<GeneratedDrumPhrase | null>(null);
   const [keyboardLaneSteps, setKeyboardLaneSteps] = useState<Record<DrumKeyboardLane, number[]>>(() => makeDefaultKeyboardLaneSteps());
-  const [playheads, setPlayheads] = useState<number[]>([0, 0, 0, 0]);
-  const [hitCounts, setHitCounts] = useState<number[]>([0, 0, 0, 0]);
-  const [evolveFlashing, setEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
+  const [playheads, setPlayheads] = useState<number[]>(() => makeDrumLaneArray(() => 0));
+  const [hitCounts, setHitCounts] = useState<number[]>(() => makeDrumLaneArray(() => 0));
+  const [evolveFlashing, setEvolveFlashing] = useState<boolean[]>(() => makeDrumLaneArray(() => false));
   const [triggeredVoices, setTriggeredVoices] = useState<Record<string, boolean>>({});
   const leftShiftHeldRef = useRef(false);
   const zHeldRef = useRef(false);
   const drumTriggerTimersRef = useRef<Record<string, number | null>>({});
-  const evolveFlashTimersRef = useRef<Array<number | null>>([null, null, null, null]);
+  const evolveFlashTimersRef = useRef<Array<number | null>>(makeDrumLaneArray(() => null));
 
   const bindHelp = useCallback((helpKey: string, options: { label?: string } = {}) => ({
     onMouseEnter: () => announceHelp(helpKey, options),
@@ -257,7 +359,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   }), [announceHelp]);
 
   // ── Shared Euclidean pattern bank ──
-  const [euclidPresetNames, setEuclidPresetNames] = useState<Array<string | undefined>>(() => Array(4).fill(undefined));
+  const [euclidPresetNames, setEuclidPresetNames] = useState<Array<string | undefined>>(() => makeDrumLaneArray(() => undefined));
   const [kitPresetName, setKitPresetName] = useState<string | undefined>();
   const setEuclidPresetNameForLane = useCallback((laneIdx: number, name: string | undefined) => {
     setEuclidPresetNames(prev => prev.map((value, index) => (index === laneIdx ? name : value)));
@@ -271,12 +373,12 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     onParamChange,
     onSelectChange,
     prefix: 'drum',
-    laneCount: 4,
+    laneCount: DRUM_SEQUENCER_LANE_COUNT,
     lanes: LANE_CONFIGS,
     playheads,
     hitCounts,
     evolveFlashing,
-    initialViewMode,
+    initialViewMode: initialViewMode === 'simple' ? 'scatter' : initialViewMode,
     initialStepOverrides,
     initialSubLaneStates,
     initialPitchSettings,
@@ -286,6 +388,149 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     initialEvolveConfigs,
     resetKey: presetVersion,
   });
+
+  useEffect(() => {
+    setSeqScatterState(normalizeSeqScatterState(props.initialSeqScatterState, props.initialSeqSimpleState));
+  }, [presetVersion]);
+
+  const updateSeqScatterState = useCallback((next: SeqScatterState) => {
+    setSeqScatterState(next);
+    props.onSeqScatterStateChange?.(next);
+    props.onSeqSimpleStateChange?.({
+      active: next.active,
+      speed: 0.25,
+      voices: Object.fromEntries(DRUM_VOICE_ORDER.map((voice) => [
+        voice,
+        {
+          enabled: next.engines[voice].enabled,
+          density: next.engines[voice].triggerProbability,
+        },
+      ])) as SeqSimpleState['voices'],
+    });
+  }, [props]);
+
+  const handlePrintScatterPhrase = useCallback((phrase: GeneratedDrumPhrase, laneIndex: number, mode: PhrasePrintMode) => {
+    const safeLaneIndex = Math.max(0, Math.min(seq.sequencerModels.length - 1, laneIndex));
+    const printedTargetState = drumStateWithPrintedLaneTarget(state, safeLaneIndex, phrase.engine);
+    const laneEnabledKey = DRUM_LANE_ENABLED_KEYS[safeLaneIndex] ?? DRUM_LANE_ENABLED_KEYS[0];
+    const startPatch: Partial<SliderState> = {
+      drumEnabled: true,
+      drumEuclidMasterEnabled: true,
+    };
+    const startPatchRecord = startPatch as Record<string, unknown>;
+    if (laneEnabledKey) startPatch[laneEnabledKey] = true;
+    startPatchRecord[`drumEuclid${safeLaneIndex + 1}Preset`] = 'custom';
+    startPatchRecord[`drumEuclid${safeLaneIndex + 1}Steps`] = phrase.triggerClip.steps;
+    startPatchRecord[`drumEuclid${safeLaneIndex + 1}Hits`] = 0;
+    startPatchRecord[`drumEuclid${safeLaneIndex + 1}Rotation`] = 0;
+    for (const voice of DRUM_VOICE_ORDER) {
+      startPatchRecord[`drumEuclid${safeLaneIndex + 1}${drumTargetParamForVoice(voice)}`] = voice === phrase.engine;
+    }
+    if (!state.drumEnabled) onSelectChange('drumEnabled', true);
+    if (!state.drumEuclidMasterEnabled) onSelectChange('drumEuclidMasterEnabled', true);
+    if (laneEnabledKey && !Boolean(state[laneEnabledKey])) onSelectChange(laneEnabledKey, true);
+    seq.setParamSelect(safeLaneIndex, 'Preset', 'custom' as never);
+    seq.setParam(safeLaneIndex, 'Steps', phrase.triggerClip.steps);
+    seq.setParam(safeLaneIndex, 'Hits', 0);
+    seq.setParam(safeLaneIndex, 'Rotation', 0);
+    DRUM_VOICE_ORDER.forEach((voice) => {
+      seq.setParamSelect(
+        safeLaneIndex,
+        drumTargetParamForVoice(voice),
+        (voice === phrase.engine) as never,
+      );
+    });
+    const printed = printGeneratedPhraseToLane({
+      phrase,
+      laneIndex: safeLaneIndex,
+      mode,
+      currentStepOverrides: seq.stepOverrides,
+      currentSubLaneStates: seq.subLaneStates,
+    });
+    seq.setStepOverrides(printed.stepOverrides);
+    seq.setSubLaneStates(printed.subLaneStates);
+    onRawStepOverridesChange?.(printed.stepOverrides);
+    onStepOverridesChange?.(drumStepOverridesForEngineState(
+      printed.stepOverrides,
+      printed.subLaneStates,
+      seq.pitchSettings,
+      printedTargetState,
+    ));
+    if (printed.clockDiv) seq.setClockDiv(safeLaneIndex, printed.clockDiv);
+    if (typeof printed.swing === 'number') seq.setSwing(safeLaneIndex, printed.swing);
+    seq.setActiveTab(safeLaneIndex);
+    if (!isRunning) onRequestPlaybackStart?.(startPatch);
+  }, [
+    isRunning,
+    onRawStepOverridesChange,
+    onRequestPlaybackStart,
+    onSelectChange,
+    onStepOverridesChange,
+    seq,
+    state,
+  ]);
+
+  const activeDrumEngineForLane = useCallback((laneIndex: number): DrumVoiceType => {
+    const model = seq.sequencerModels[laneIndex];
+    return DRUM_VOICE_ORDER.find((voice) => model?.sources[voice]) ?? seqScatterState.selectedEngine;
+  }, [seq.sequencerModels, seqScatterState.selectedEngine]);
+
+  const generateDetailPreviewPhrase = useCallback((shape: 'pulse' | 'rise' | 'fall' | 'wave' | 'fracture' | 'scatter') => {
+    const engine = activeDrumEngineForLane(seq.activeTab);
+    const base = seqScatterState.engines[engine];
+    const feelByShape = {
+      pulse: { feelX: 0, feelY: -0.9 },
+      rise: { feelX: 0.8, feelY: -0.15 },
+      fall: { feelX: -0.8, feelY: -0.15 },
+      wave: { feelX: 0, feelY: 0.05 },
+      fracture: { feelX: 0.2, feelY: 0.62 },
+      scatter: { feelX: 0.25, feelY: 0.92 },
+    }[shape];
+    const phrase = generateScatterPhrase({
+      engine,
+      engineState: {
+        ...base,
+        ...feelByShape,
+      },
+      previousPhrases: seqScatterState.recentPhrasesByEngine[engine] ?? [],
+      seed: Math.floor(Date.now() % 2147483647),
+    });
+    setPendingDetailPhrase(phrase);
+  }, [activeDrumEngineForLane, seq.activeTab, seqScatterState]);
+
+  const commitDetailPreviewPhrase = useCallback((mode: PhrasePrintMode = 'replace') => {
+    if (!pendingDetailPhrase) return;
+    handlePrintScatterPhrase(pendingDetailPhrase, seq.activeTab, mode);
+    updateSeqScatterState({
+      ...seqScatterState,
+      recentPhrasesByEngine: {
+        ...seqScatterState.recentPhrasesByEngine,
+        [pendingDetailPhrase.engine]: [
+          pendingDetailPhrase,
+          ...(seqScatterState.recentPhrasesByEngine[pendingDetailPhrase.engine] ?? []),
+        ].slice(0, 3),
+      },
+    });
+    setPendingDetailPhrase(null);
+  }, [handlePrintScatterPhrase, pendingDetailPhrase, seq.activeTab, seqScatterState, updateSeqScatterState]);
+
+  const setDrumPitchMode = useCallback((laneIdx: number, mode: PitchSettings['mode']) => {
+    const baseMidi = drumPitchBaseMidiFromState(state, laneIdx);
+    const currentSettings = seq.pitchSettings[laneIdx] ?? { mode: 'semitones' as const, root: baseMidi, scale: 'Chromatic' as const };
+    if (currentSettings.mode !== mode) {
+      seq.setStepOverrides((previous) => ({
+        ...previous,
+        pitch: previous.pitch.map((values, index) => (
+          index === laneIdx && values
+            ? convertDrumPitchValuesForMode(values, currentSettings, mode)
+            : values
+        )),
+      }));
+    }
+    seq.setPitchSettings((previous) => previous.map((settings, index) => (
+      index === laneIdx ? { ...settings, mode } : settings
+    )));
+  }, [seq, state]);
 
   const drumChainRuntimeState = React.useMemo(
     () => createSequencerChainUiRuntimeState('drum', state as unknown as Record<string, unknown>, seq.clockDivs),
@@ -327,7 +572,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
 
   const pendingSequenceHomeCaptureRef = useRef<number | null>(null);
   const pendingSequenceResetHomeRef = useRef<number | null>(null);
-  const sequenceSubLaneHomeRef = useRef<(Record<SubLaneKind, SubLaneState> | null)[]>([null, null, null, null]);
+  const sequenceSubLaneHomeRef = useRef<(Record<SubLaneKind, SubLaneState> | null)[]>(makeDrumLaneArray(() => null));
   const [sequenceHomeCaptureVersion, setSequenceHomeCaptureVersion] = useState(0);
   const handleEuclidSequenceLoad = useCallback((laneIdx: number, entry: PresetEntry, data: Record<string, unknown>) => {
     setEuclidPresetNameForLane(laneIdx, entry.name);
@@ -389,8 +634,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
 
   useEffect(() => {
     let rafId: number | null = null;
-    let pendingSteps: number[] = [0, 0, 0, 0];
-    let pendingHitCounts: number[] = [0, 0, 0, 0];
+    let pendingSteps: number[] = makeDrumLaneArray(() => 0);
+    let pendingHitCounts: number[] = makeDrumLaneArray(() => 0);
     setStepPositionCallback((nextSteps: number[], nextHitCounts: number[]) => {
       if (document.visibilityState !== 'visible') return;
       pendingSteps = [...nextSteps];
@@ -413,7 +658,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   useEffect(() => {
     setEvolveTriggerCallback((laneIndex: number) => {
       if (document.visibilityState !== 'visible') return;
-      if (laneIndex < 0 || laneIndex > 3) return;
+      if (laneIndex < 0 || laneIndex >= DRUM_SEQUENCER_LANE_COUNT) return;
       setEvolveFlashing(prev => prev.map((value, index) => (index === laneIndex ? true : value)));
 
       const existingTimer = evolveFlashTimersRef.current[laneIndex];
@@ -534,7 +779,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       const rangeKeys = ['expressionRanges', 'morphRanges', 'distanceRanges'] as const;
       for (const key of rangeKeys) {
         if (data[key]?.[laneIndex] != null) {
-          const arr = [...(prev[key] ?? [null, null, null, null])];
+          const arr = [...(prev[key] ?? makeDrumLaneArray(() => null))];
           arr[laneIndex] = data[key]![laneIndex];
           (next as Record<string, unknown>)[key] = arr;
         }
@@ -600,42 +845,12 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       onRawStepOverridesChange?.(seq.stepOverrides);
     }
 
-    const convertedPitch = seq.stepOverrides.pitch.map((offsets, laneIdx) => {
-      if (!offsets || !seq.subLaneStates[laneIdx]?.pitch?.enabled) return null;
-      const settings = seq.pitchSettings[laneIdx];
-      const baseMidi = drumPitchBaseMidiFromState(state, laneIdx);
-      return drumPitchUiValuesToEngineOffsets(
-        offsets,
-        settings,
-        baseMidi,
-        seq.subLaneStates[laneIdx]?.pitch?.scaleQuantize === true,
-      );
-    });
-    const expressionRanges = seq.subLaneStates.map((laneState) => {
-      const lane = laneState.expression;
-      return lane.enabled && lane.valueMode === 'range'
-        ? { min: Math.min(lane.rangeMin ?? 0.75, lane.rangeMax ?? 1), max: Math.max(lane.rangeMin ?? 0.75, lane.rangeMax ?? 1) }
-        : null;
-    });
-    const morphRanges = seq.subLaneStates.map((laneState) => {
-      const lane = laneState.morph;
-      return lane.enabled && lane.valueMode === 'range'
-        ? { min: Math.min(lane.rangeMin ?? 0, lane.rangeMax ?? 1), max: Math.max(lane.rangeMin ?? 0, lane.rangeMax ?? 1) }
-        : null;
-    });
-    const distanceRanges = seq.subLaneStates.map((laneState) => {
-      const lane = laneState.distance;
-      return lane.enabled && lane.valueMode === 'range'
-        ? { min: Math.min(lane.rangeMin ?? 0, lane.rangeMax ?? 1), max: Math.max(lane.rangeMin ?? 0, lane.rangeMax ?? 1) }
-        : null;
-    });
-    onStepOverridesChange?.(stepOverridesForEngineSubLaneState({
-      ...seq.stepOverrides,
-      pitch: convertedPitch,
-      expressionRanges,
-      morphRanges,
-      distanceRanges,
-    }, seq.subLaneStates));
+    onStepOverridesChange?.(drumStepOverridesForEngineState(
+      seq.stepOverrides,
+      seq.subLaneStates,
+      seq.pitchSettings,
+      state,
+    ));
   }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, state, onStepOverridesChange, onRawStepOverridesChange]);
 
   // Persist sub-lane states (enabled/steps/direction) across tab switches
@@ -692,6 +907,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   const activeKeyboardLane = getDrumKeyboardLane(seq.openLane);
   const activeKeyboardStep = keyboardLaneSteps[activeKeyboardLane][seq.activeTab] ?? 0;
   const activeTriggerKeyboardStep = keyboardLaneSteps.trigger[seq.activeTab] ?? 0;
+  const drumLaneEnabledSignature = DRUM_LANE_ENABLED_KEYS.map((key) => (state[key] ? '1' : '0')).join('');
 
   const getDrumKeyboardLaneStepCount = useCallback((laneIdx: number, lane: DrumKeyboardLane) => {
     if (lane === 'trigger') return seq.sequencerModels[laneIdx]?.trigger.steps ?? 0;
@@ -720,7 +936,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     setKeyboardLaneSteps((prev) => {
       const next = makeDefaultKeyboardLaneSteps();
       DRUM_KEYBOARD_LANES.forEach((lane) => {
-        next[lane] = prev[lane].map((step, laneIdx) => {
+        next[lane] = makeDrumLaneArray((laneIdx) => {
+          const step = prev[lane][laneIdx] ?? 0;
           const stepCount = getDrumKeyboardLaneStepCount(laneIdx, lane);
           if (stepCount <= 0) return 0;
           if (!Number.isFinite(step) || step < 0 || step >= stepCount) return 0;
@@ -821,7 +1038,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   triggerVoiceRef.current = triggerVoice;
 
   const cycleDrumViewMode = useCallback((direction: 1 | -1) => {
-    const modes: Array<'simple' | 'detail' | 'overview'> = ['simple', 'detail', 'overview'];
+    const modes: SequencerViewMode[] = ['overview', 'detail', 'scatter'];
     const currentIndex = modes.indexOf(seq.viewMode);
     const nextMode = modes[(currentIndex + direction + modes.length) % modes.length] ?? 'detail';
     seq.setViewMode(nextMode);
@@ -848,11 +1065,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     onRequestPlaybackStart,
     onSelectChange,
     seq.activeTab,
+    drumLaneEnabledSignature,
     state.drumEnabled,
-    state.drumEuclid1Enabled,
-    state.drumEuclid2Enabled,
-    state.drumEuclid3Enabled,
-    state.drumEuclid4Enabled,
     state.drumEuclidMasterEnabled,
   ]);
 
@@ -875,11 +1089,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     onRequestPlaybackStart,
     onSelectChange,
     seq.activeTab,
+    drumLaneEnabledSignature,
     state.drumEnabled,
-    state.drumEuclid1Enabled,
-    state.drumEuclid2Enabled,
-    state.drumEuclid3Enabled,
-    state.drumEuclid4Enabled,
     state.drumEuclidMasterEnabled,
   ]);
 
@@ -894,9 +1105,12 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     if (triggerStepCount <= 0) return;
     const targetStep = liveOverdubTargetStep(seq.playheads[laneIdx], activeTriggerKeyboardStep, triggerStepCount);
 
-    if (seq.pitchSettings[laneIdx]?.mode !== 'semitones') {
-      seq.setPitchMode(laneIdx, 'semitones');
-    }
+    const voiceBaseMidi = drumBaseMidiForVoice(voice);
+    seq.setPitchSettings((previous) => previous.map((settings, index) => (
+      index === laneIdx
+        ? { ...settings, mode: 'semitones', root: voiceBaseMidi, scale: 'Chromatic' }
+        : settings
+    )));
     seq.setSubLaneStates((prev) => prev.map((laneState, index) => (
       index === laneIdx
         ? {
@@ -910,7 +1124,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
         : laneState
     )));
     DRUM_VOICE_ORDER.forEach((candidate) => {
-      seq.setParamSelect(laneIdx, `Target${DRUM_TARGET_SUFFIX_BY_VOICE[candidate]}`, candidate === voice);
+      seq.setParamSelect(laneIdx, drumTargetParamForVoice(candidate), candidate === voice);
     });
     seq.setTriggerStep(laneIdx, targetStep, true);
     seq.changeStepValue(laneIdx, 'pitch', targetStep, 0);
@@ -968,6 +1182,21 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     if (e.defaultPrevented) return;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.repeat) return;
+
+    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyC') {
+      if (activeKeyboardLane === 'trigger' && seq.linked[seq.activeTab]) {
+        e.preventDefault();
+        seq.copyLinkedTriggerCell(seq.activeTab, activeTriggerKeyboardStep);
+      }
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyV') {
+      if (activeKeyboardLane === 'trigger' && seq.linked[seq.activeTab]) {
+        e.preventDefault();
+        seq.pasteLinkedTriggerCell(seq.activeTab, activeTriggerKeyboardStep);
+      }
+      return;
+    }
 
     if (e.code === 'ShiftLeft') {
       leftShiftHeldRef.current = true;
@@ -1083,6 +1312,9 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     moveDrumKeyboardStep,
     recordDrumLiveOverdubVoice,
     seq.activeTab,
+    seq.copyLinkedTriggerCell,
+    seq.linked,
+    seq.pasteLinkedTriggerCell,
     toggleDrumKeyboardLane,
     toggleDrumSequencerTransport,
   ]);
@@ -1190,6 +1422,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               sliderProps={sliderProps}
               getPresetNames={getDrumPresetNames}
               triggerVoice={triggerVoice}
+              onStateChange={onStateChange}
               SliderComponent={SliderComponent}
               CollapsiblePanelComponent={CollapsiblePanelComponent}
               editingVoice={editingVoice}
@@ -1248,11 +1481,11 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
             </div>
             <div className="seq-view-toggle">
               <button
-                className={`seq-view-btn${seq.viewMode === 'simple' ? ' active' : ''}`}
-                onClick={() => seq.setViewMode('simple')}
-                {...bindHelp('drumSeqViewSimple')}
+                className={`seq-view-btn${seq.viewMode === 'overview' ? ' active' : ''}`}
+                onClick={() => seq.setViewMode('overview')}
+                {...bindHelp('drumSeqViewOverview')}
               >
-                Simple
+                Overview
               </button>
               <button
                 className={`seq-view-btn${seq.viewMode === 'detail' ? ' active' : ''}`}
@@ -1262,29 +1495,25 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                 Detail
               </button>
               <button
-                className={`seq-view-btn${seq.viewMode === 'overview' ? ' active' : ''}`}
-                onClick={() => seq.setViewMode('overview')}
-                {...bindHelp('drumSeqViewOverview')}
+                className={`seq-view-btn${seq.viewMode === 'scatter' ? ' active' : ''}`}
+                onClick={() => seq.setViewMode('scatter')}
+                {...bindHelp('drumSeqViewSimple')}
               >
-                Overview
+                Scatter
               </button>
 
             </div>
           </div>
 
-          {/* ── Simple Mode (standalone random trigger) ── */}
-          {seq.viewMode === 'simple' && (
-            <SeqSimple
-              triggerVoice={triggerVoice}
-              drumEnabled={state.drumEnabled as boolean}
-              masterEnabled={state.drumEuclidMasterEnabled as boolean}
-              onEnableDrums={() => {
-                if (!state.drumEnabled) {
-                  onSelectChange('drumEnabled', true);
-                }
-              }}
-              initialState={props.initialSeqSimpleState}
-              onStateChange={props.onSeqSimpleStateChange}
+          {/* ── Scatter Mode ── */}
+          {seq.viewMode === 'scatter' && (
+            <ScatterPage
+              state={seqScatterState}
+              laneCount={seq.sequencerModels.length}
+              laneNames={seq.sequencerModels.map((model) => model.name)}
+              onStateChange={updateSeqScatterState}
+              onPrintPhrase={handlePrintScatterPhrase}
+              onPreviewEngine={(voice) => triggerVoiceRef.current(voice)}
             />
           )}
 
@@ -1330,7 +1559,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                         key={voice}
                         className={`seq-source-toggle${isOn ? ' active' : ''}`}
                         style={{ '--vc': cfg.color } as React.CSSProperties}
-                        onClick={() => seq.setParamSelect(seq.activeTab, `Target${voice.charAt(0).toUpperCase() + voice.slice(1)}`, !isOn as any)}
+                        onClick={() => seq.setParamSelect(seq.activeTab, drumTargetParamForVoice(voice), !isOn as any)}
                         title={cfg.label}
                         {...bindHelp('drumSeqSourceToggle', { label: cfg.label })}
                       >
@@ -1395,6 +1624,25 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                 </div>{/* end seq-sources */}
                 <div className="seq-sequence-preset-row">
                   {renderSequencePresetControl(seq.activeTab)}
+                </div>
+
+                <div className="detail-generate-strip">
+                  <span>Generate Phrase</span>
+                  {(['pulse', 'rise', 'fall', 'wave', 'fracture', 'scatter'] as const).map((shape) => (
+                    <button key={shape} type="button" onClick={() => generateDetailPreviewPhrase(shape)}>
+                      {shape.charAt(0).toUpperCase() + shape.slice(1)}
+                    </button>
+                  ))}
+                  {pendingDetailPhrase && (
+                    <div className="detail-generate-preview">
+                      <PhraseGlyphCard phrase={pendingDetailPhrase} />
+                      <button type="button" onClick={() => commitDetailPreviewPhrase('replace')}>Commit</button>
+                      <button type="button" onClick={() => generateDetailPreviewPhrase(
+                        pendingDetailPhrase.feel.zone === 'gesture' ? 'wave' : pendingDetailPhrase.feel.zone,
+                      )}>Reroll</button>
+                      <button type="button" onClick={() => setPendingDetailPhrase(null)}>Cancel</button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Evolution panel */}
@@ -1561,6 +1809,10 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                       {activeSeq.muted ? 'Off' : 'On'}
                     </button>
                     <div className="seq-lane-controls">
+                      <span className={`seq-source-badge seq-source-badge--${activeSeq.trigger.sourceOrigin ?? 'euclidean'}`}>
+                        {(activeSeq.trigger.sourceLabel ?? activeSeq.trigger.sourceOrigin ?? 'Euclid').replace('Euclidean', 'Euclid')}
+                        {activeSeq.trigger.sourceDirty ? '*' : ''}
+                      </span>
                       <DragNumber
                         value={activeSeq.trigger.steps}
                         min={2}
@@ -1569,17 +1821,26 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                         shapeByDrag
                         onChange={(v) => seq.setParam(seq.activeTab, 'Steps', v)}
                       />
-                      <DragNumber
-                        value={activeSeq.trigger.hits}
-                        min={0}
-                        max={activeSeq.trigger.steps}
-                        label="Hits"
-                        onChange={(v) => seq.setParam(seq.activeTab, 'Hits', v)}
-                      />
+                      {activeSeq.trigger.sourceOrigin && activeSeq.trigger.sourceOrigin !== 'euclidean' ? (
+                        <span
+                          className="seq-ov-readonly-hits"
+                          title="This phrase is a printed pattern. Generate or print another phrase to change hit density."
+                        >
+                          Hits {activeSeq.trigger.hits}
+                        </span>
+                      ) : (
+                        <DragNumber
+                          value={activeSeq.trigger.hits}
+                          min={0}
+                          max={activeSeq.trigger.steps}
+                          label="Hits"
+                          onChange={(v) => seq.setParam(seq.activeTab, 'Hits', v)}
+                        />
+                      )}
                       <div className="seq-rotation-control">
-                        <button onClick={() => seq.setParam(seq.activeTab, 'Rotation', activeSeq.trigger.rotation - 1)}>←</button>
+                        <button onClick={() => seq.rotateSequence(seq.activeTab, -1)}>←</button>
                         <span className="seq-rotation-val">{activeSeq.trigger.rotation}</span>
-                        <button onClick={() => seq.setParam(seq.activeTab, 'Rotation', activeSeq.trigger.rotation + 1)}>→</button>
+                        <button onClick={() => seq.rotateSequence(seq.activeTab, 1)}>→</button>
                       </div>
                     </div>
                   </div>
@@ -1612,9 +1873,11 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                           values={
                             laneKind === 'pitch'
                               ? activeSeq.pitch.offsets.map(off =>
-                                  activeSeq.pitch.mode === 'notes'
+                                  activeSeq.pitch.mode === 'semitones'
                                     ? normalizeNoteDegreeOffset(off)
-                                    : (off + 24) / 48
+                                    : activeSeq.pitch.mode === 'notes'
+                                      ? clampMidiNote(off) / 127
+                                      : 0.5
                                 )
                               : laneKind === 'expression' && subState?.valueMode === 'range'
                                 ? new Array(subState.steps).fill(((subState.rangeMin ?? 0.75) + (subState.rangeMax ?? 1)) * 0.5)
@@ -1632,10 +1895,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                           playhead={seq.playheads[seq.activeTab]}
                           hitCount={seq.hitCounts[seq.activeTab]}
                           direction={subState?.direction ?? 'forward'}
-                          bipolar={
-                            laneKind === 'morph' ||
-                            (laneKind === 'pitch' && activeSeq.pitch.mode !== 'notes')
-                          }
+                          bipolar={laneKind === 'morph'}
                           invertFill={laneKind === 'expression'}
                           enabled={subState?.enabled ?? false}
                           expanded={seq.openLane === laneKind}
@@ -1675,10 +1935,9 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                                 onCycleRatchet: (step: number) => seq.cycleStepRatchet(seq.activeTab, step),
                               } : {})}
                               {...(laneKind === 'pitch' ? {
-                                onChangePitchMode: (mode) => seq.setPitchMode(seq.activeTab, mode),
+                                onChangePitchMode: (mode) => setDrumPitchMode(seq.activeTab, mode),
                                 onChangePitchRoot: (root) => seq.setPitchRoot(seq.activeTab, root),
                                 onChangePitchScale: (scale) => seq.setPitchScale(seq.activeTab, scale),
-                                onToggleScaleQuantize: () => seq.toggleScaleQuantize(seq.activeTab),
                                 hidePitchNoteRange: true,
                               } : {})}
                             />
@@ -1722,7 +1981,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                   seq.setViewMode('detail');
                 }}
                 onSetParam={(seqIdx, param, value) => seq.setParam(seqIdx, param, value)}
-                onToggleSource={(seqIdx, voice, on) => seq.setParamSelect(seqIdx, `Target${voice.charAt(0).toUpperCase() + voice.slice(1)}`, on as any)}
+                onRotateSequence={(seqIdx, direction) => seq.rotateSequence(seqIdx, direction)}
+                onToggleSource={(seqIdx, voice, on) => seq.setParamSelect(seqIdx, drumTargetParamForVoice(voice as DrumVoiceType), on as any)}
                 onToggleMute={(seqIdx) => seq.toggleMute(seqIdx)}
                 onToggleSolo={(seqIdx) => seq.toggleSolo(seqIdx)}
                 onSetClockDiv={(seqIdx, div) => seq.setClockDiv(seqIdx, div)}

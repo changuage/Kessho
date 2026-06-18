@@ -34,6 +34,8 @@ export type EarthTexturePlayerDebugSnapshot = {
   inactiveReason?: string | null;
   parityFixture?: boolean;
   textureParamsAvailable?: boolean;
+  useTextureSlices?: boolean;
+  assetTooShortForRequestedSlice?: boolean;
   assetDuration?: number;
   maxOffset?: number;
   seed?: number;

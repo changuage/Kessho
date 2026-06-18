@@ -15,6 +15,11 @@ void clearFrameBuffer(float (&buffer)[RowCount][FrameCapacity], uint32_t frames)
   }
 }
 
+struct SoundscapeRenderBlockCache {
+  float earth_level = 1.0f;
+  float layer_route_sends[kSoundscapeLayerCount][kSoundscapeLayerRouteStride]{};
+};
+
 } // namespace
 
   void KesshoProductEngine::resetDiffuseRuntime() {
@@ -151,6 +156,26 @@ void clearFrameBuffer(float (&buffer)[RowCount][FrameCapacity], uint32_t frames)
   if (active_voice_count == 0u) {
     return;
   }
+  const SourceState& soundscape_source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
+  SoundscapeRenderBlockCache soundscape_cache{};
+  if (soundscapeModuleParamsAvailable(soundscape_source) &&
+      soundscape_source.soundscape_module_param_count > kSoundscapeModuleEarthLevelParam) {
+    soundscape_cache.earth_level =
+        clampFloat(soundscape_source.soundscape_module_params[kSoundscapeModuleEarthLevelParam], 0.0f, 2.0f);
+  }
+  const float soundscape_route_fallbacks[kSoundscapeLayerRouteStride] = {
+    soundscape_source.reverb_send,
+    soundscape_source.delay_a_send,
+    soundscape_source.delay_b_send,
+    soundscape_source.granular_send,
+    soundscape_source.degrade_send,
+  };
+  for (uint32_t layer = 0u; layer < kSoundscapeLayerCount; ++layer) {
+    for (uint32_t route = 0u; route < kSoundscapeLayerRouteStride; ++route) {
+      soundscape_cache.layer_route_sends[layer][route] =
+          soundscapeLayerRouteSend(soundscape_source, layer, route, soundscape_route_fallbacks[route]);
+    }
+  }
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
     float source_gates[kSourceCount]{};
@@ -180,9 +205,8 @@ void clearFrameBuffer(float (&buffer)[RowCount][FrameCapacity], uint32_t frames)
           voice.sample_voice &&
           voice.soundscape_texture_voice &&
           voice.age_frames > 0u &&
-          voice.asset_slot < kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS &&
-          assets[voice.asset_slot].active) {
-        processSoundscapeTextureSpatial(assets[voice.asset_slot].asset_id, value_l, value_r);
+          voice.soundscape_texture_slot < kSoundscapeTextureSlotCount) {
+        processSoundscapeTextureSpatialForSlot(voice.soundscape_texture_slot, value_l, value_r);
       }
       const float pan_l = voice.pan <= 0.0f ? 1.0f : 1.0f - voice.pan * 0.5f;
       const float pan_r = voice.pan >= 0.0f ? 1.0f : 1.0f + voice.pan * 0.5f;
@@ -218,15 +242,14 @@ void clearFrameBuffer(float (&buffer)[RowCount][FrameCapacity], uint32_t frames)
       float layer_send_left = send_left;
       float layer_send_right = send_right;
       if (soundscape_sample) {
-        soundscape_layer = soundscapeLayerIndexForAsset(assets[voice.asset_slot].asset_id);
+        soundscape_layer = voice.soundscape_layer < kSoundscapeLayerCount
+            ? voice.soundscape_layer
+            : soundscapeLayerIndexForAsset(assets[voice.asset_slot].asset_id);
         soundscape_asset_level = voice.soundscape_releasing
             ? voice.soundscape_asset_level
             : soundscapeAssetRefLevel(source, assets[voice.asset_slot].asset_id);
         voice.soundscape_asset_level = soundscape_asset_level;
-        if (source.soundscape_module_param_count > kSoundscapeModuleEarthLevelParam) {
-          soundscape_earth_level =
-              clampFloat(source.soundscape_module_params[kSoundscapeModuleEarthLevelParam], 0.0f, 2.0f);
-        }
+        soundscape_earth_level = soundscape_cache.earth_level;
         graph_dry_left = dry_left * soundscape_asset_level;
         graph_dry_right = dry_right * soundscape_asset_level;
         output_dry_left = graph_dry_left * soundscape_earth_level;
@@ -259,11 +282,11 @@ void clearFrameBuffer(float (&buffer)[RowCount][FrameCapacity], uint32_t frames)
       float degrade_send = source.degrade_send;
       if (soundscape_sample) {
         if (soundscape_layer < kSoundscapeLayerCount) {
-          reverb_send = soundscapeLayerRouteSend(source, soundscape_layer, kSoundscapeLayerRouteReverb, reverb_send);
-          delay_a_send = soundscapeLayerRouteSend(source, soundscape_layer, kSoundscapeLayerRouteDelayA, delay_a_send);
-          delay_b_send = soundscapeLayerRouteSend(source, soundscape_layer, kSoundscapeLayerRouteDelayB, delay_b_send);
-          granular_send = soundscapeLayerRouteSend(source, soundscape_layer, kSoundscapeLayerRouteGranular, granular_send);
-          degrade_send = soundscapeLayerRouteSend(source, soundscape_layer, kSoundscapeLayerRouteDegrade, degrade_send);
+          reverb_send = soundscape_cache.layer_route_sends[soundscape_layer][kSoundscapeLayerRouteReverb];
+          delay_a_send = soundscape_cache.layer_route_sends[soundscape_layer][kSoundscapeLayerRouteDelayA];
+          delay_b_send = soundscape_cache.layer_route_sends[soundscape_layer][kSoundscapeLayerRouteDelayB];
+          granular_send = soundscape_cache.layer_route_sends[soundscape_layer][kSoundscapeLayerRouteGranular];
+          degrade_send = soundscape_cache.layer_route_sends[soundscape_layer][kSoundscapeLayerRouteDegrade];
           if (graph_taps_enabled) {
             graph_soundscape_layer_dry_l[soundscape_layer][frame] += graph_dry_left;
             graph_soundscape_layer_dry_r[soundscape_layer][frame] += graph_dry_right;
@@ -606,7 +629,11 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
   advanceModulationRanges(frames);
   advanceGranularPhraseReseed();
   advanceReverbHarmonyCoupling(frames);
-  ensureSoundscapeVoice();
+  if (transport.running) {
+    ensureSoundscapeVoice();
+  } else {
+    stopSoundscapeTransportRuntime();
+  }
   uint32_t sequencer_event_total = 0u;
   uint32_t cursor = 0;
   while (cursor < frames) {

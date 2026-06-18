@@ -85,6 +85,7 @@ KesshoProductSnapshotV2 makeSnapshot(uint32_t asset_id) {
 
 KesshoProductSnapshotV2 makeSoundscapeSnapshot(uint32_t asset_id) {
   KesshoProductSnapshotV2 snapshot = makeSnapshot(0);
+  snapshot.transport.running = 1;
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PIANO - 1].enabled = 0;
   snapshot.sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1].enabled = 1;
   snapshot.sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1].asset_id = asset_id;
@@ -140,6 +141,52 @@ uint32_t distinctRecentSoundscapeOffsets(
     }
   }
   return distinct;
+}
+
+float firstActiveSoundscapeTextureOffsetSeconds(
+    const KesshoProductEngine* engine,
+    uint32_t asset_id,
+    uint32_t* out_slice_id = nullptr) {
+  using namespace kessho::product::internal;
+  uint32_t first_slice_id = UINT32_MAX;
+  float first_offset = -1.0f;
+  if (out_slice_id != nullptr) {
+    *out_slice_id = 0u;
+  }
+  for (const Voice& voice : engine->voices) {
+    if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE ||
+        !voice.sample_voice || !voice.soundscape_texture_voice ||
+        voice.asset_slot >= kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS ||
+        !engine->assets[voice.asset_slot].active ||
+        engine->assets[voice.asset_slot].asset_id != asset_id) {
+      continue;
+    }
+    if (voice.soundscape_texture_slice_id < first_slice_id) {
+      first_slice_id = voice.soundscape_texture_slice_id;
+      first_offset = voice.soundscape_texture_start_offset_seconds;
+    }
+  }
+  if (first_slice_id != UINT32_MAX && out_slice_id != nullptr) {
+    *out_slice_id = first_slice_id;
+  }
+  return first_offset;
+}
+
+uint32_t activeSoundscapeTextureVoiceCount(
+    const KesshoProductEngine* engine,
+    uint32_t asset_id) {
+  using namespace kessho::product::internal;
+  uint32_t count = 0u;
+  for (const Voice& voice : engine->voices) {
+    if (voice.active && voice.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE &&
+        voice.sample_voice && voice.soundscape_texture_voice &&
+        voice.asset_slot < kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS &&
+        engine->assets[voice.asset_slot].active &&
+        engine->assets[voice.asset_slot].asset_id == asset_id) {
+      ++count;
+    }
+  }
+  return count;
 }
 
 void triggerPianoNoteWithVelocity(KesshoProductEngine* engine, float midi_note, float velocity) {
@@ -379,7 +426,7 @@ int main() {
       slow_attack_param_peak < fast_attack_peak * 0.2f,
       "piano source attack param event did not shape Product Core sample playback");
 
-  constexpr uint32_t soundscape_asset_id = 7101;
+  constexpr uint32_t soundscape_asset_id = 7104;
   KesshoProductEngine* soundscape_engine = kessho_product_create(48000.0, 128, 0);
   require(soundscape_engine != nullptr, "soundscape engine create failed");
   KesshoProductSnapshotV2 soundscape_snapshot = makeSoundscapeSnapshot(soundscape_asset_id);
@@ -423,7 +470,7 @@ int main() {
   kessho_product_destroy(soundscape_engine);
 
   constexpr uint32_t soundscape_layer_a_id = 7104;
-  constexpr uint32_t soundscape_layer_b_id = 7105;
+  constexpr uint32_t soundscape_layer_b_id = 7110;
   KesshoProductEngine* soundscape_layer_engine = kessho_product_create(48000.0, 128, 0);
   require(soundscape_layer_engine != nullptr, "soundscape layer engine create failed");
   KesshoProductSnapshotV2 soundscape_layer_snapshot = makeSoundscapeSnapshot(soundscape_layer_a_id);
@@ -545,102 +592,144 @@ int main() {
   kessho_product_destroy(soundscape_random_engine);
 
   using namespace kessho::product::internal;
-  KesshoProductEngine* birds_texture_transition_engine = kessho_product_create(48000.0, 128, 0);
-  require(birds_texture_transition_engine != nullptr, "Birds texture transition engine create failed");
-  KesshoProductSnapshotV2 birds_legacy_snapshot = makeSoundscapeSnapshot(kSoundscapeAssetBirds);
+  KesshoProductEngine* birds_default_texture_engine = kessho_product_create(48000.0, 128, 0);
+  require(birds_default_texture_engine != nullptr, "Birds default texture engine create failed");
+  KesshoProductSnapshotV2 birds_default_texture_snapshot = makeSoundscapeSnapshot(kSoundscapeAssetBirds);
   require(
       kessho_product_load_snapshot_v2(
-          birds_texture_transition_engine,
-          &birds_legacy_snapshot,
-          sizeof(birds_legacy_snapshot)) == KESSHO_PRODUCT_OK,
-      "Birds legacy soundscape snapshot load failed");
-  std::vector<float> birds_transition_data(48000u * 54u);
-  for (uint32_t i = 0; i < birds_transition_data.size(); ++i) {
-    birds_transition_data[i] = 0.25f * std::sin(static_cast<float>(i) * 0.011f);
+          birds_default_texture_engine,
+          &birds_default_texture_snapshot,
+          sizeof(birds_default_texture_snapshot)) == KESSHO_PRODUCT_OK,
+      "Birds default texture snapshot load failed");
+  std::vector<float> birds_default_texture_data(48000u * 54u);
+  for (uint32_t i = 0; i < birds_default_texture_data.size(); ++i) {
+    birds_default_texture_data[i] = 0.25f * std::sin(static_cast<float>(i) * 0.011f);
   }
-  const float* birds_transition_channels[1] = {birds_transition_data.data()};
+  const float* birds_default_texture_channels[1] = {birds_default_texture_data.data()};
   require(
       kessho_product_register_asset_buffer(
-          birds_texture_transition_engine,
+          birds_default_texture_engine,
           kSoundscapeAssetBirds,
-          birds_transition_channels,
+          birds_default_texture_channels,
           1,
-          static_cast<uint32_t>(birds_transition_data.size()),
+          static_cast<uint32_t>(birds_default_texture_data.size()),
           48000.0,
           KESSHO_PRODUCT_ASSET_LOOP | KESSHO_PRODUCT_ASSET_SOUNDSCAPE) == KESSHO_PRODUCT_OK,
-      "Birds transition asset registration failed");
+      "Birds default texture asset registration failed");
   std::fill(left.begin(), left.end(), 0.0f);
   std::fill(right.begin(), right.end(), 0.0f);
-  kessho_product_render(birds_texture_transition_engine, left.data(), right.data(), 128);
-  uint32_t birds_legacy_voice_count = 0u;
-  bool birds_legacy_voice_looping = false;
-  for (const Voice& voice : birds_texture_transition_engine->voices) {
-    if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE ||
-        !voice.sample_voice || voice.soundscape_texture_voice ||
-        voice.asset_slot >= kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS ||
-        !birds_texture_transition_engine->assets[voice.asset_slot].active ||
-        birds_texture_transition_engine->assets[voice.asset_slot].asset_id != kSoundscapeAssetBirds) {
-      continue;
-    }
-    ++birds_legacy_voice_count;
-    birds_legacy_voice_looping = birds_legacy_voice_looping || voice.looping;
-  }
-  require(birds_legacy_voice_count > 0u, "Birds legacy soundscape loop did not start before texture params arrived");
-  require(birds_legacy_voice_looping, "Birds legacy soundscape fixture was not looping");
-
-  KesshoProductSnapshotV2 birds_texture_transition_snapshot =
-      makeTextureSoundscapeSnapshot(kSoundscapeAssetBirds, false, 20.0f, 0.0f, 3.2f);
-  require(
-      kessho_product_load_snapshot_v2(
-          birds_texture_transition_engine,
-          &birds_texture_transition_snapshot,
-          sizeof(birds_texture_transition_snapshot)) == KESSHO_PRODUCT_OK,
-      "Birds texture transition snapshot load failed");
-  std::fill(left.begin(), left.end(), 0.0f);
-  std::fill(right.begin(), right.end(), 0.0f);
-  kessho_product_render(birds_texture_transition_engine, left.data(), right.data(), 128);
-  uint32_t birds_transition_texture_voice_count = 0u;
-  bool birds_transition_legacy_looping = false;
-  for (const Voice& voice : birds_texture_transition_engine->voices) {
+  kessho_product_render(birds_default_texture_engine, left.data(), right.data(), 128);
+  uint32_t birds_default_texture_voice_count = 0u;
+  uint32_t birds_default_legacy_voice_count = 0u;
+  for (const Voice& voice : birds_default_texture_engine->voices) {
     if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE ||
         !voice.sample_voice ||
         voice.asset_slot >= kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS ||
-        !birds_texture_transition_engine->assets[voice.asset_slot].active ||
-        birds_texture_transition_engine->assets[voice.asset_slot].asset_id != kSoundscapeAssetBirds) {
+        !birds_default_texture_engine->assets[voice.asset_slot].active ||
+        birds_default_texture_engine->assets[voice.asset_slot].asset_id != kSoundscapeAssetBirds) {
       continue;
     }
     if (voice.soundscape_texture_voice) {
-      ++birds_transition_texture_voice_count;
+      ++birds_default_texture_voice_count;
+      require(
+          voice.soundscape_texture_slot == kSoundscapeTextureSlotBirds,
+          "Birds default texture voice did not cache its texture slot");
+      require(
+          voice.soundscape_layer == kSoundscapeLayerNature,
+          "Birds default texture voice did not cache its layer");
     } else {
-      birds_transition_legacy_looping = birds_transition_legacy_looping || voice.looping;
+      ++birds_default_legacy_voice_count;
     }
   }
+  const SoundscapeTextureRuntime& birds_default_texture_runtime =
+      birds_default_texture_engine->soundscape_texture_runtimes[kSoundscapeTextureSlotBirds];
   require(
-      birds_transition_texture_voice_count >= kSoundscapeTextureMinimumQueuedSlices,
-      "Birds texture transition did not queue texture slices");
+      birds_default_texture_runtime.initialized,
+      "Birds missing-param texture runtime did not initialize with defaults");
   require(
-      !birds_transition_legacy_looping,
-      "Birds legacy soundscape loop stayed looping after texture mode took ownership");
-  for (uint32_t block = 0u; block < 12u; ++block) {
-    std::fill(left.begin(), left.end(), 0.0f);
-    std::fill(right.begin(), right.end(), 0.0f);
-    kessho_product_render(birds_texture_transition_engine, left.data(), right.data(), 128);
+      birds_default_texture_voice_count >= kSoundscapeTextureMinimumQueuedSlices,
+      "Birds missing-param texture did not queue default texture slices");
+  require(
+      birds_default_legacy_voice_count == 0u,
+      "Birds missing-param texture fell back to legacy soundscape playback");
+  telemetry = kessho_product_get_telemetry(birds_default_texture_engine);
+  require(
+      telemetry.earth_texture_inactive_reasons[kSoundscapeTextureSlotBirds] ==
+          KESSHO_PRODUCT_EARTH_TEXTURE_REASON_NONE,
+      "Birds missing-param texture telemetry reported inactive");
+  require(
+      (telemetry.earth_texture_flags[kSoundscapeTextureSlotBirds] &
+       KESSHO_PRODUCT_EARTH_TEXTURE_PARAMS_AVAILABLE) == 0u,
+      "Birds missing-param texture telemetry incorrectly set params-available flag");
+  require(
+      (telemetry.earth_texture_flags[kSoundscapeTextureSlotBirds] &
+       KESSHO_PRODUCT_EARTH_TEXTURE_ACTIVE) != 0u,
+      "Birds missing-param texture telemetry did not set active flag");
+  kessho_product_destroy(birds_default_texture_engine);
+
+  KesshoProductEngine* texture_allocator_engine = kessho_product_create(48000.0, 128, 0);
+  require(texture_allocator_engine != nullptr, "texture allocator saturation engine create failed");
+  KesshoProductSnapshotV2 texture_allocator_snapshot =
+      makeTextureSoundscapeSnapshot(kSoundscapeAssetBirds, false, 20.0f, 0.45f, 3.2f);
+  require(
+      kessho_product_load_snapshot_v2(
+          texture_allocator_engine,
+          &texture_allocator_snapshot,
+          sizeof(texture_allocator_snapshot)) == KESSHO_PRODUCT_OK,
+      "texture allocator saturation snapshot load failed");
+  std::vector<float> texture_allocator_data(48000u * 54u, 0.2f);
+  const float* texture_allocator_channels[1] = {texture_allocator_data.data()};
+  require(
+      kessho_product_register_asset_buffer(
+          texture_allocator_engine,
+          kSoundscapeAssetBirds,
+          texture_allocator_channels,
+          1,
+          static_cast<uint32_t>(texture_allocator_data.size()),
+          48000.0,
+          KESSHO_PRODUCT_ASSET_LOOP | KESSHO_PRODUCT_ASSET_SOUNDSCAPE) == KESSHO_PRODUCT_OK,
+      "texture allocator saturation asset registration failed");
+  for (uint32_t voice_index = 0u;
+       voice_index < kessho::product::generated::KESSHO_PRODUCT_MAX_VOICES;
+       ++voice_index) {
+    Voice& voice = texture_allocator_engine->voices[voice_index];
+    voice = {};
+    voice.active = true;
+    voice.source_id = KESSHO_PRODUCT_SOURCE_PIANO;
+    voice.sample_voice = false;
+    voice.frequency = 220.0f;
+    voice.amplitude = 0.0f;
+    voice.remaining_frames = 1024u;
+    voice.total_frames = 1024u;
+    voice.phase = static_cast<double>(voice_index);
   }
-  birds_legacy_voice_count = 0u;
-  for (const Voice& voice : birds_texture_transition_engine->voices) {
-    if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE ||
-        !voice.sample_voice || voice.soundscape_texture_voice ||
-        voice.asset_slot >= kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS ||
-        !birds_texture_transition_engine->assets[voice.asset_slot].active ||
-        birds_texture_transition_engine->assets[voice.asset_slot].asset_id != kSoundscapeAssetBirds) {
-      continue;
-    }
-    ++birds_legacy_voice_count;
-  }
+  const Voice allocator_voice0_before = texture_allocator_engine->voices[0];
+  texture_allocator_engine->ensureSoundscapeVoice();
+  texture_allocator_engine->updateTelemetry(128u);
+  const SoundscapeTextureRuntime& allocator_runtime =
+      texture_allocator_engine->soundscape_texture_runtimes[kSoundscapeTextureSlotBirds];
   require(
-      birds_legacy_voice_count == 0u,
-      "Birds legacy soundscape loop was still active after texture transition fade");
-  kessho_product_destroy(birds_texture_transition_engine);
+      allocator_runtime.last_fallback_reason == kSoundscapeTextureFallbackAllocatorFull,
+      "texture allocator saturation did not record allocator-full reason");
+  require(
+      allocator_runtime.last_slice_id == 0u,
+      "texture allocator saturation advanced slice id after allocation failure");
+  const Voice& allocator_voice0_after = texture_allocator_engine->voices[0];
+  require(
+      allocator_voice0_after.active == allocator_voice0_before.active &&
+          allocator_voice0_after.source_id == allocator_voice0_before.source_id &&
+          allocator_voice0_after.phase == allocator_voice0_before.phase &&
+          allocator_voice0_after.remaining_frames == allocator_voice0_before.remaining_frames,
+      "texture allocator saturation overwrote voice 0");
+  telemetry = kessho_product_get_telemetry(texture_allocator_engine);
+  require(
+      telemetry.earth_texture_inactive_reasons[kSoundscapeTextureSlotBirds] ==
+          KESSHO_PRODUCT_EARTH_TEXTURE_REASON_VOICE_BUDGET_EXCEEDED,
+      "texture allocator saturation telemetry did not report voice budget pressure");
+  require(
+      telemetry.last_error_code == KESSHO_PRODUCT_ERROR_ALLOCATION_FAILURE,
+      "texture allocator saturation did not set allocation failure telemetry");
+  kessho_product_destroy(texture_allocator_engine);
 
   constexpr uint32_t soundscape_texture_id = 7101;
   KesshoProductEngine* texture_engine = kessho_product_create(48000.0, 128, 0);
@@ -682,6 +771,9 @@ int main() {
   const SoundscapeTextureRuntime& texture_runtime =
       texture_engine->soundscape_texture_runtimes[kSoundscapeTextureSlotOcean];
   require(texture_runtime.initialized, "normal soundscape texture mode did not initialize texture slices");
+  require(texture_runtime.runtime_reset_count == 1u, "normal soundscape texture runtime reset count mismatch");
+  require(texture_runtime.spatial_enabled, "soundscape texture spatial runtime was not configured after reset");
+  require(texture_runtime.spatial_delay_frames > 1u, "soundscape texture spatial delay was not configured");
   require(texture_runtime.last_slice_id >= 20u, "normal soundscape texture mode did not schedule 20 slices");
   require(texture_runtime.last_max_offset > 10.0f, "soundscape texture max offset was too small for anti-repeat coverage");
   require(
@@ -879,8 +971,173 @@ int main() {
       "Birds density-zero texture telemetry did not set active flag");
   kessho_product_destroy(birds_density_zero_engine);
 
+  KesshoProductEngine* birds_restart_engine = kessho_product_create(48000.0, 128, 0);
+  require(birds_restart_engine != nullptr, "Birds restart texture engine create failed");
+  KesshoProductSnapshotV2 birds_restart_snapshot =
+      makeTextureSoundscapeSnapshot(kSoundscapeAssetBirds, false, 20.0f, 0.45f, 3.2f);
+  require(
+      kessho_product_load_snapshot_v2(
+          birds_restart_engine,
+          &birds_restart_snapshot,
+          sizeof(birds_restart_snapshot)) == KESSHO_PRODUCT_OK,
+      "Birds restart texture snapshot load failed");
+  std::vector<float> birds_restart_data(48000u * 54u, 0.25f);
+  const float* birds_restart_channels[1] = {birds_restart_data.data()};
+  require(
+      kessho_product_register_asset_buffer(
+          birds_restart_engine,
+          kSoundscapeAssetBirds,
+          birds_restart_channels,
+          1,
+          static_cast<uint32_t>(birds_restart_data.size()),
+          48000.0,
+          KESSHO_PRODUCT_ASSET_LOOP | KESSHO_PRODUCT_ASSET_SOUNDSCAPE) == KESSHO_PRODUCT_OK,
+      "Birds restart texture asset registration failed");
+  std::fill(left.begin(), left.end(), 0.0f);
+  std::fill(right.begin(), right.end(), 0.0f);
+  kessho_product_render(birds_restart_engine, left.data(), right.data(), 128);
+  uint32_t first_restart_slice_id = 0u;
+  const float first_restart_offset = firstActiveSoundscapeTextureOffsetSeconds(
+      birds_restart_engine,
+      kSoundscapeAssetBirds,
+      &first_restart_slice_id);
+  require(first_restart_slice_id > 0u, "Birds restart texture did not queue an initial slice");
+  require(first_restart_offset > 0.25f, "Birds restart texture queued the first slice at sample start");
+  const SoundscapeTextureRuntime& birds_restart_runtime =
+      birds_restart_engine->soundscape_texture_runtimes[kSoundscapeTextureSlotBirds];
+  require(
+      birds_restart_runtime.runtime_reset_count == 1u,
+      "Birds restart texture runtime did not initialize exactly once before disable");
+
+  KesshoProductSnapshotV2 birds_restart_disabled_snapshot = birds_restart_snapshot;
+  birds_restart_disabled_snapshot.sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1].enabled = 0u;
+  require(
+      kessho_product_load_snapshot_v2(
+          birds_restart_engine,
+          &birds_restart_disabled_snapshot,
+          sizeof(birds_restart_disabled_snapshot)) == KESSHO_PRODUCT_OK,
+      "Birds restart texture disable snapshot load failed");
+  for (uint32_t block = 0u; block < 16u; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(birds_restart_engine, left.data(), right.data(), 128);
+  }
+  const uint32_t restart_next_slice_after_disable = birds_restart_runtime.next_slice_id;
+  const uint32_t restart_rng_after_disable = birds_restart_runtime.rng_state;
+  require(
+      birds_restart_runtime.initialized,
+      "Birds restart texture runtime was cleared while source was disabled");
+  require(
+      birds_restart_runtime.runtime_reset_count == 1u,
+      "Birds restart texture runtime reset while source was disabled");
+
+  require(
+      kessho_product_load_snapshot_v2(
+          birds_restart_engine,
+          &birds_restart_snapshot,
+          sizeof(birds_restart_snapshot)) == KESSHO_PRODUCT_OK,
+      "Birds restart texture re-enable snapshot load failed");
+  std::fill(left.begin(), left.end(), 0.0f);
+  std::fill(right.begin(), right.end(), 0.0f);
+  kessho_product_render(birds_restart_engine, left.data(), right.data(), 128);
+  uint32_t second_restart_slice_id = 0u;
+  const float second_restart_offset = firstActiveSoundscapeTextureOffsetSeconds(
+      birds_restart_engine,
+      kSoundscapeAssetBirds,
+      &second_restart_slice_id);
+  require(
+      second_restart_slice_id >= restart_next_slice_after_disable,
+      "Birds restart texture reused the first slice id after re-enable");
+  require(
+      std::fabs(second_restart_offset - first_restart_offset) > 0.25f,
+      "Birds restart texture reused the same first sample offset after re-enable");
+  require(
+      birds_restart_runtime.rng_state != restart_rng_after_disable,
+      "Birds restart texture did not advance RNG after re-enable");
+  require(
+      birds_restart_runtime.runtime_reset_count == 1u,
+      "Birds restart texture reset RNG instead of preserving it across re-enable");
+  kessho_product_destroy(birds_restart_engine);
+
+  KesshoProductEngine* birds_transport_stop_engine = kessho_product_create(48000.0, 128, 0);
+  require(birds_transport_stop_engine != nullptr, "Birds transport-stop texture engine create failed");
+  KesshoProductSnapshotV2 birds_transport_stop_snapshot =
+      makeTextureSoundscapeSnapshot(kSoundscapeAssetBirds, false, 20.0f, 0.45f, 3.2f);
+  require(
+      kessho_product_load_snapshot_v2(
+          birds_transport_stop_engine,
+          &birds_transport_stop_snapshot,
+          sizeof(birds_transport_stop_snapshot)) == KESSHO_PRODUCT_OK,
+      "Birds transport-stop texture snapshot load failed");
+  std::vector<float> birds_transport_stop_data(48000u * 54u, 0.25f);
+  const float* birds_transport_stop_channels[1] = {birds_transport_stop_data.data()};
+  require(
+      kessho_product_register_asset_buffer(
+          birds_transport_stop_engine,
+          kSoundscapeAssetBirds,
+          birds_transport_stop_channels,
+          1,
+          static_cast<uint32_t>(birds_transport_stop_data.size()),
+          48000.0,
+          KESSHO_PRODUCT_ASSET_LOOP | KESSHO_PRODUCT_ASSET_SOUNDSCAPE) == KESSHO_PRODUCT_OK,
+      "Birds transport-stop texture asset registration failed");
+  std::fill(left.begin(), left.end(), 0.0f);
+  std::fill(right.begin(), right.end(), 0.0f);
+  kessho_product_render(birds_transport_stop_engine, left.data(), right.data(), 128);
+  require(
+      activeSoundscapeTextureVoiceCount(birds_transport_stop_engine, kSoundscapeAssetBirds) >=
+          kSoundscapeTextureMinimumQueuedSlices,
+      "Birds transport-stop setup did not queue texture slices");
+  const uint32_t transport_stop_last_slice =
+      birds_transport_stop_engine->soundscape_texture_runtimes[kSoundscapeTextureSlotBirds].last_slice_id;
+  KesshoProductEvent birds_transport_stop_event{};
+  birds_transport_stop_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_STOP;
+  require(
+      kessho_product_enqueue_event(birds_transport_stop_engine, &birds_transport_stop_event) == KESSHO_PRODUCT_OK,
+      "Birds transport-stop event enqueue failed");
+  for (uint32_t block = 0u; block < 400u; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(birds_transport_stop_engine, left.data(), right.data(), 128);
+    require(
+        std::max(peak(left), peak(right)) == 0.0f,
+        "Birds texture rendered while transport was stopped");
+    require(
+        activeSoundscapeTextureVoiceCount(birds_transport_stop_engine, kSoundscapeAssetBirds) == 0u,
+        "Birds transport stop left queued texture voices active");
+  }
+  const SoundscapeTextureRuntime& birds_transport_stop_runtime =
+      birds_transport_stop_engine->soundscape_texture_runtimes[kSoundscapeTextureSlotBirds];
+  require(
+      birds_transport_stop_runtime.next_start_frame == 0u,
+      "Birds transport stop left a pending texture start frame");
+  require(
+      birds_transport_stop_runtime.last_slice_id == transport_stop_last_slice,
+      "Birds transport stop scheduled new texture slices while stopped");
+  KesshoProductSnapshotV2 birds_already_stopped_snapshot = birds_transport_stop_snapshot;
+  birds_already_stopped_snapshot.transport.running = 0u;
+  require(
+      kessho_product_load_snapshot_v2(
+          birds_transport_stop_engine,
+          &birds_already_stopped_snapshot,
+          sizeof(birds_already_stopped_snapshot)) == KESSHO_PRODUCT_OK,
+      "Birds stopped texture snapshot load failed");
+  for (uint32_t block = 0u; block < 400u; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(birds_transport_stop_engine, left.data(), right.data(), 128);
+    require(
+        std::max(peak(left), peak(right)) == 0.0f,
+        "Birds texture self-started from a stopped transport snapshot");
+    require(
+        activeSoundscapeTextureVoiceCount(birds_transport_stop_engine, kSoundscapeAssetBirds) == 0u,
+        "Birds stopped transport snapshot queued texture voices");
+  }
+  kessho_product_destroy(birds_transport_stop_engine);
+
   const uint32_t texture_seed_before_patch = texture_runtime.seed;
   const uint32_t texture_slice_before_patch = texture_runtime.last_slice_id;
+  const uint32_t texture_reset_count_before_patch = texture_runtime.runtime_reset_count;
   KesshoProductEvent texture_gain_event{};
   texture_gain_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
   texture_gain_event.param_id = KESSHO_PRODUCT_PARAM_MASTER_GAIN_ID;
@@ -902,6 +1159,9 @@ int main() {
   require(
       texture_runtime_after_patch.seed == texture_seed_before_patch,
       "soundscape texture seed reset after unrelated param patch");
+  require(
+      texture_runtime_after_patch.runtime_reset_count == texture_reset_count_before_patch,
+      "soundscape texture runtime reset count changed after unrelated param patch");
   require(
       texture_runtime_after_patch.last_slice_id > texture_slice_before_patch,
       "soundscape texture sequence did not continue after unrelated param patch");
@@ -968,6 +1228,11 @@ int main() {
   std::fill(right.begin(), right.end(), 0.0f);
   kessho_product_render(short_texture_engine, left.data(), right.data(), 128);
   telemetry = kessho_product_get_telemetry(short_texture_engine);
+  const SoundscapeTextureRuntime& short_texture_runtime =
+      short_texture_engine->soundscape_texture_runtimes[kSoundscapeTextureSlotOcean];
+  require(
+      short_texture_runtime.last_fallback_reason == kSoundscapeTextureFallbackAssetTooShortForSlice,
+      "short soundscape texture runtime did not record short-asset reason");
   require(
       telemetry.earth_texture_inactive_reasons[kSoundscapeTextureSlotOcean] ==
           KESSHO_PRODUCT_EARTH_TEXTURE_REASON_ASSET_TOO_SHORT,
@@ -1025,12 +1290,15 @@ int main() {
   const float water_policy_spread = stereoSpread(left, right);
   std::fill(left.begin(), left.end(), 0.0f);
   std::fill(right.begin(), right.end(), 0.0f);
-  kessho_product_render(birds_policy_engine, left.data(), right.data(), 128);
-  const float birds_policy_spread = stereoSpread(left, right);
   require(water_policy_spread > 0.0001f, "water soundscape policy did not render stereo spread");
+  const SoundscapeLayerPolicy water_layer_policy =
+      water_policy_engine->soundscapeLayerPolicy(soundscape_water_policy_id);
+  const SoundscapeLayerPolicy birds_layer_policy =
+      birds_policy_engine->soundscapeLayerPolicy(soundscape_birds_policy_id);
   require(
-      birds_policy_spread > water_policy_spread * 2.0f,
-      "birds soundscape policy should render wider C++-owned stereo spread than water");
+      birds_layer_policy.pan_base + birds_layer_policy.pan_distance >
+          (water_layer_policy.pan_base + water_layer_policy.pan_distance) * 2.0f,
+      "birds soundscape policy should keep a wider C++-owned spread range than water");
   kessho_product_destroy(water_policy_engine);
   kessho_product_destroy(birds_policy_engine);
 

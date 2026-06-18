@@ -21,6 +21,8 @@ const DRUM_LANE_ENABLED_KEYS = [
   'drumEuclid2Enabled',
   'drumEuclid3Enabled',
   'drumEuclid4Enabled',
+  'drumEuclid5Enabled',
+  'drumEuclid6Enabled',
 ] as const satisfies readonly (keyof SliderState)[];
 
 type SelectStateChange = <K extends keyof SliderState>(key: K, value: SliderState[K]) => void;

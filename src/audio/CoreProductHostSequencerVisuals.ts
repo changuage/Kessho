@@ -21,6 +21,8 @@ type PublishSequencerVisualsInput = {
   state: Record<string, unknown> | null;
   synthToggles: SequencerStepToggleOverride[][];
   drumToggles: SequencerStepToggleOverride[][];
+  synthVisibleLaneCount: number;
+  drumVisibleLaneCount: number;
   sampleRate: number;
   publish: (name: 'synthStepPosition' | 'drumStepPosition', steps: number[], hitCounts: number[]) => void;
 };
@@ -34,22 +36,13 @@ type PublishSynthVisualStateInput<Name extends string, Lane> = {
 type PublishSynthOrbitVisualStateInput = PublishSynthVisualStateInput<'synthOrbitVisualState', CoreProductOrbitVisualLaneState>;
 type PublishSynthAnchorWalkerVisualStateInput = PublishSynthVisualStateInput<'synthAnchorWalkerVisualState', CoreProductAnchorWalkerVisualLaneState>;
 
-const ZERO_STEPS = [0, 0, 0, 0];
-const ZERO_HITS = [0, 0, 0, 0];
+function zeroLaneValues(laneCount: number): number[] { return Array.from({ length: Math.max(0, Math.trunc(laneCount)) }, () => 0); }
 
-function numberFromState(state: Record<string, unknown> | null, key: string, fallback: number): number {
-  const value = state?.[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
+function numberFromState(state: Record<string, unknown> | null, key: string, fallback: number): number { const value = state?.[key]; return typeof value === 'number' && Number.isFinite(value) ? value : fallback; }
 
-function booleanFromState(state: Record<string, unknown> | null, key: string, fallback: boolean): boolean {
-  const value = state?.[key];
-  return typeof value === 'boolean' ? value : fallback;
-}
+function booleanFromState(state: Record<string, unknown> | null, key: string, fallback: boolean): boolean { const value = state?.[key]; return typeof value === 'boolean' ? value : fallback; }
 
-function clockDivisionFromState(state: Record<string, unknown> | null, key: string, fallback: number): number {
-  return sequencerClockDivisionToNumericValue(state?.[key], fallback);
-}
+function clockDivisionFromState(state: Record<string, unknown> | null, key: string, fallback: number): number { return sequencerClockDivisionToNumericValue(state?.[key], fallback); }
 
 function defaultClockDivision(laneNumber: number): number {
   return laneNumber === 1 ? 8 : laneNumber === 2 ? 16 : laneNumber === 3 ? 12 : 4;
@@ -113,7 +106,8 @@ function visualPositionsFor(
   const synthTempo = Math.max(0.25, Math.min(12, numberFromState(input.state, 'synthEuclideanTempo', 1)));
   const drumTempo = Math.max(0.25, Math.min(4, numberFromState(input.state, 'drumEuclidTempo', 1)));
   const absoluteSampleTime = input.telemetry?.absoluteSampleTime ?? 0;
-  const lanes = Array.from({ length: 4 }, (_, laneIndex) =>
+  const visibleLaneCount = kind === 'synth' ? input.synthVisibleLaneCount : input.drumVisibleLaneCount;
+  const lanes = Array.from({ length: visibleLaneCount }, (_, laneIndex) =>
     visualLaneFromState(kind, input.state, laneIndex, kind === 'synth' ? input.synthToggles : input.drumToggles),
   );
   const steps = lanes.map((lane, laneIndex) => {
@@ -152,8 +146,8 @@ function visualPositionsFor(
 
 export function publishCoreProductSequencerVisuals(input: PublishSequencerVisualsInput): void {
   if (!input.telemetry?.transportRunning) {
-    input.publish('synthStepPosition', ZERO_STEPS, ZERO_HITS);
-    input.publish('drumStepPosition', ZERO_STEPS, ZERO_HITS);
+    input.publish('synthStepPosition', zeroLaneValues(input.synthVisibleLaneCount), zeroLaneValues(input.synthVisibleLaneCount));
+    input.publish('drumStepPosition', zeroLaneValues(input.drumVisibleLaneCount), zeroLaneValues(input.drumVisibleLaneCount));
     return;
   }
   const synth = visualPositionsFor('synth', input);

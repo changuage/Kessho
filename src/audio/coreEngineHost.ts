@@ -1724,12 +1724,34 @@ function createEmptySynthEuclidPreview(): CoreSynthEuclidPreview {
   };
 }
 
+function synthNoteRangeScaleContext(
+  pitchSettings: { mode: PitchMode; root: number; scale: ScaleName } | undefined,
+  harmonyState: HarmonyState,
+) {
+  if (!pitchSettings || pitchSettings.scale === 'Harmony') {
+    return {
+      scale: harmonyState.scaleFamily,
+      root: harmonyState.effectiveRoot,
+    };
+  }
+  return {
+    scale: {
+      name: pitchSettings.scale,
+      intervals: SCALES[pitchSettings.scale] ?? SCALES.Major,
+      tensionLevel: 'consonant' as const,
+      tensionValue: 0,
+    },
+    root: ((Math.round(pitchSettings.root) % 12) + 12) % 12,
+  };
+}
+
 function chooseCoreSynthEuclidMidi(
   sliderState: SliderState,
   harmonyState: HarmonyState,
   rng: () => number,
   laneIndex: number,
   noteRangeOverride: { min: number; max: number } | null = null,
+  pitchSettings?: { mode: PitchMode; root: number; scale: ScaleName },
 ): number {
   const state = sliderState as unknown as Record<string, unknown>;
   const lane = (laneIndex + 1) as 1 | 2 | 3 | 4;
@@ -1741,9 +1763,10 @@ function chooseCoreSynthEuclidMidi(
     : boundedInteger(state[`synthEuclid${lane}NoteMax`], laneIndex === 1 ? 88 : laneIndex === 2 ? 64 : laneIndex === 3 ? 96 : 76, 24, 108);
   const low = Math.min(noteMin, noteMax);
   const high = Math.max(noteMin, noteMax);
-  const scale = harmonyState.scaleFamily;
+  const scaleContext = synthNoteRangeScaleContext(pitchSettings, harmonyState);
+  const scale = scaleContext.scale;
   const availableNotes = scale
-    ? getScaleNotesInRange(scale, low, high, harmonyState.effectiveRoot)
+    ? getScaleNotesInRange(scale, low, high, scaleContext.root)
     : [];
   const notes = availableNotes.length > 0
     ? availableNotes
@@ -1871,7 +1894,7 @@ function createSynthEuclidPreview(
             }
           }
           if (midi === null) {
-            midi = chooseCoreSynthEuclidMidi(sliderState, harmonyState, rng, laneIndex, noteRangeOverride);
+            midi = chooseCoreSynthEuclidMidi(sliderState, harmonyState, rng, laneIndex, noteRangeOverride, runtime.pitchSettings[laneIndex]);
           }
 
           const expressionValue = expressionRange
@@ -5265,7 +5288,7 @@ export class CoreEngineHost {
         effectiveTension: Math.max(0, evolveTension),
         swing: this.synthEuclidSwings[laneIndex] ?? 0,
         steps: patternParams.steps,
-        scaleIntervals: pitchSettings?.mode === 'notes' ? (SCALES[pitchSettings.scale] || [0, 2, 4, 5, 7, 9, 11]) : undefined,
+        scaleIntervals: pitchSettings?.mode === 'semitones' ? (SCALES[pitchSettings.scale] || [0, 2, 4, 5, 7, 9, 11]) : undefined,
         pitchMode: pitchSettings?.mode,
         noteRangeMin: noteMin,
         noteRangeMax: noteMax,
@@ -5350,8 +5373,12 @@ export class CoreEngineHost {
       this.drumHomePitchSettings[index] = normalizeSequencerPitchSettings(pitchSettings, this.drumHomePitchSettings[index] ?? undefined);
     }
     if (pitchState) {
-      this.drumHomePitchSubLaneStates[index] = { steps: pitchState.steps, direction: pitchState.direction, scaleQuantize: pitchState.scaleQuantize };
-      if (typeof pitchState.scaleQuantize === 'boolean') this.drumHomePitchScaleQuantize[index] = pitchState.scaleQuantize;
+      this.drumHomePitchSubLaneStates[index] = {
+        steps: pitchState.steps,
+        direction: pitchState.direction,
+        scaleQuantize: typeof pitchState.scaleQuantize === 'boolean' ? false : pitchState.scaleQuantize,
+      };
+      if (typeof pitchState.scaleQuantize === 'boolean') this.drumHomePitchScaleQuantize[index] = false;
     }
   }
 
@@ -6080,8 +6107,10 @@ export class CoreEngineHost {
     state.home = captureSynthHomeSnapshot(current);
     state.homeSwing = this.synthEuclidSwings[index] ?? 0;
     state.homePitchSettings = pitchSettings ? { ...pitchSettings } : null;
-    state.homePitchScaleQuantize = typeof pitchState?.scaleQuantize === 'boolean' ? pitchState.scaleQuantize : null;
-    state.homePitchSubLaneState = pitchState ? { steps: pitchState.steps, direction: pitchState.direction, scaleQuantize: pitchState.scaleQuantize } : null;
+    state.homePitchScaleQuantize = typeof pitchState?.scaleQuantize === 'boolean' ? false : null;
+    state.homePitchSubLaneState = pitchState
+      ? { steps: pitchState.steps, direction: pitchState.direction, scaleQuantize: typeof pitchState.scaleQuantize === 'boolean' ? false : pitchState.scaleQuantize }
+      : null;
     const lane = (index + 1) as 1 | 2 | 3 | 4;
     const sliderState = this.lastSliderState as Record<string, unknown> | null;
     if (pitchSettings?.mode === 'noteRange' && sliderState) {
@@ -6194,7 +6223,7 @@ export class CoreEngineHost {
   }
 
   private midiToOffsets(midi: number[], settings: { mode: PitchMode; root: number; scale: ScaleName }): number[] {
-    if (settings.mode === 'notes') {
+    if (settings.mode === 'semitones') {
       const intervals = SCALES[settings.scale] || SCALES.Major;
       return midi.map((note) => {
         const semitone = note - settings.root;
@@ -6212,11 +6241,12 @@ export class CoreEngineHost {
         return octave * intervals.length + bestDegree;
       });
     }
-    return midi.map((note) => note - settings.root);
+    if (settings.mode === 'noteRange') return midi.map((note) => note - settings.root);
+    return midi.map((note) => clamp(Math.round(note), 0, 127));
   }
 
   private offsetsToMidi(offsets: number[], settings: { mode: PitchMode; root: number; scale: ScaleName }): number[] {
-    if (settings.mode === 'notes') {
+    if (settings.mode === 'semitones') {
       const intervals = SCALES[settings.scale] || SCALES.Major;
       return offsets.map((degree) => {
         const octave = Math.floor(degree / intervals.length);
@@ -6224,7 +6254,8 @@ export class CoreEngineHost {
         return clamp(settings.root + octave * 12 + (intervals[index] ?? 0), 0, 127);
       });
     }
-    return offsets.map((offset) => clamp(settings.root + offset, 0, 127));
+    if (settings.mode === 'noteRange') return offsets.map((offset) => clamp(settings.root + offset, 0, 127));
+    return offsets.map((midi) => clamp(Math.round(midi), 0, 127));
   }
 
   pushMidiMessage(message: KesshoMidiMessage): void {

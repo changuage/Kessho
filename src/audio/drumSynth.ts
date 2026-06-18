@@ -41,6 +41,13 @@ import {
 import { SEQUENCER_VISUAL_SYNC_OFFSET_MS } from './sequencerVisualSync';
 
 const EUCLIDEAN_STEP_MAX = 32;
+const DRUM_EUCLID_LANE_COUNT = 6;
+const DRUM_EUCLID_LANE_INDICES = [0, 1, 2, 3, 4, 5] as const;
+const DRUM_EUCLID_CLOCK_DIV_DEFAULTS: ClockDivision[] = ['1/8', '1/16', '1/8T', '1/4', '1/16', '1/8'];
+
+function makeDrumEuclidLaneArray<T>(factory: (laneIndex: number) => T): T[] {
+  return Array.from({ length: DRUM_EUCLID_LANE_COUNT }, (_, laneIndex) => factory(laneIndex));
+}
 
 const DRUM_AUDIO_SUB_LANE_KEYS = ['expression', 'morph', 'distance', 'pitch'] as const;
 
@@ -174,18 +181,18 @@ export class DrumSynth {
   
   // Euclidean scheduling
   private euclidScheduleTimer: number | null = null;
-  private euclidCurrentStep: number[] = [0, 0, 0, 0]; // Step position per lane
-  private euclidVisualHitCounts: number[] = [0, 0, 0, 0];
+  private euclidCurrentStep: number[] = makeDrumEuclidLaneArray(() => 0); // Step position per lane
+  private euclidVisualHitCounts: number[] = makeDrumEuclidLaneArray(() => 0);
   private euclidVisualTimers = new Set<number>();
   private euclidGlobalStepCount = 0;
   private euclidSequencers: SequencerState[] = [];
-  private prevLaneEnabled: boolean[] = [false, false, false, false];
+  private prevLaneEnabled: boolean[] = makeDrumEuclidLaneArray(() => false);
   /** Persistent storage for per-lane clock divisions (survives sequencer recreation). */
-  private euclidClockDivs: ClockDivision[] = ['1/8', '1/16', '1/8T', '1/4'];
+  private euclidClockDivs: ClockDivision[] = [...DRUM_EUCLID_CLOCK_DIV_DEFAULTS];
   /** Persistent storage for per-lane swing (survives sequencer recreation). */
-  private euclidSwings: number[] = [0, 0, 0, 0];
+  private euclidSwings: number[] = makeDrumEuclidLaneArray(() => 0);
   // Per-lane, per-step visit counters for Elektron-style trig conditions [n:N]
-  private trigConditionCounters: number[][] = [[], [], [], []];
+  private trigConditionCounters: number[][] = makeDrumEuclidLaneArray(() => []);
   private euclidEvolveConfigs: DrumEuclidEvolveConfig[] = [
     defaultEvolveConfig(),
     defaultEvolveConfig(),
@@ -408,11 +415,11 @@ export class DrumSynth {
   }
 
   resetTransportAlignment(resetCounters: boolean): void {
-    this.prevLaneEnabled = [false, false, false, false];
+    this.prevLaneEnabled = makeDrumEuclidLaneArray(() => false);
     if (resetCounters) {
-      this.euclidCurrentStep = [0, 0, 0, 0];
+      this.euclidCurrentStep = makeDrumEuclidLaneArray(() => 0);
       this.euclidGlobalStepCount = 0;
-      this.trigConditionCounters = [[], [], [], []];
+      this.trigConditionCounters = makeDrumEuclidLaneArray(() => []);
     }
     for (const sequencer of this.euclidSequencers) {
       sequencer.nextTime = 0;
@@ -763,8 +770,8 @@ export class DrumSynth {
     }
     this.euclidVisualTimers.clear();
     if (resetVisualState) {
-      this.euclidCurrentStep = [0, 0, 0, 0];
-      this.euclidVisualHitCounts = [0, 0, 0, 0];
+      this.euclidCurrentStep = makeDrumEuclidLaneArray(() => 0);
+      this.euclidVisualHitCounts = makeDrumEuclidLaneArray(() => 0);
     }
   }
 
@@ -1198,7 +1205,7 @@ export class DrumSynth {
     if (pitchState?.direction === 'forward' || pitchState?.direction === 'reverse' || pitchState?.direction === 'pingpong') {
       sequencer.pitch.direction = pitchState.direction;
     }
-    if (typeof pitchState?.scaleQuantize === 'boolean') sequencer.pitch.scaleQuantize = pitchState.scaleQuantize;
+    if (typeof pitchState?.scaleQuantize === 'boolean') sequencer.pitch.scaleQuantize = false;
     sequencer.evolve.home = captureHomeSnapshot(sequencer);
     this.captureEuclidLaneRangeHome(index);
   }
@@ -1334,9 +1341,9 @@ export class DrumSynth {
       this.euclidScheduleTimer = null;
     }
     this.clearEuclidVisualTimers(true);
-    this.prevLaneEnabled = [false, false, false, false];
+    this.prevLaneEnabled = makeDrumEuclidLaneArray(() => false);
     this.euclidSequencers = [];
-    this.onStepPositionChange?.([0, 0, 0, 0], [0, 0, 0, 0]);
+    this.onStepPositionChange?.(makeDrumEuclidLaneArray(() => 0), makeDrumEuclidLaneArray(() => 0));
 
     const now = this.ctx.currentTime;
     const endTime = now + Math.max(0.01, fadeSeconds);
@@ -3296,14 +3303,14 @@ export class DrumSynth {
     if (this.euclidScheduleTimer) return;
     
     // Reset step counters
-    this.euclidCurrentStep = [0, 0, 0, 0];
-    this.euclidVisualHitCounts = [0, 0, 0, 0];
+    this.euclidCurrentStep = makeDrumEuclidLaneArray(() => 0);
+    this.euclidVisualHitCounts = makeDrumEuclidLaneArray(() => 0);
     this.clearEuclidVisualTimers();
     this.euclidGlobalStepCount = 0;
-    this.trigConditionCounters = [[], [], [], []];
-    this.prevLaneEnabled = [false, false, false, false];
+    this.trigConditionCounters = makeDrumEuclidLaneArray(() => []);
+    this.prevLaneEnabled = makeDrumEuclidLaneArray(() => false);
 
-    this.euclidSequencers = [0, 1, 2, 3].map((id) => {
+    this.euclidSequencers = DRUM_EUCLID_LANE_INDICES.map((id) => {
       const sequencer = createSequencer(id, `drum-euclid-${id}`);
       sequencer.nextTime = 0; // Align to shared transport grid on first scheduler tick
       // Apply persisted clock div & swing (survives sequencer recreation)
@@ -3339,7 +3346,7 @@ export class DrumSynth {
 
       // Helper to build array of enabled voices for a lane
       // Supports both new boolean toggles and legacy single-target property
-      const getEnabledVoices = (laneNum: 1 | 2 | 3 | 4): DrumVoiceType[] => {
+      const getEnabledVoices = (laneNum: 1 | 2 | 3 | 4 | 5 | 6): DrumVoiceType[] => {
         const voices: DrumVoiceType[] = [];
         const p = this.params as any; // Allow access to legacy properties
         
@@ -3366,36 +3373,26 @@ export class DrumSynth {
       };
 
       // Get lane parameters with preset resolution
-      const lanes = [
-        { 
-          enabled: this.params.drumEuclid1Enabled, 
-          ...resolveDrumEuclidPatternParams(this.params.drumEuclid1Preset, this.params.drumEuclid1Steps, this.params.drumEuclid1Hits, this.params.drumEuclid1Rotation),
-          voices: getEnabledVoices(1), prob: this.params.drumEuclid1Probability,
-          velMin: this.params.drumEuclid1VelocityMin, velMax: this.params.drumEuclid1VelocityMax,
-          level: this.params.drumEuclid1Level 
-        },
-        { 
-          enabled: this.params.drumEuclid2Enabled, 
-          ...resolveDrumEuclidPatternParams(this.params.drumEuclid2Preset, this.params.drumEuclid2Steps, this.params.drumEuclid2Hits, this.params.drumEuclid2Rotation),
-          voices: getEnabledVoices(2), prob: this.params.drumEuclid2Probability,
-          velMin: this.params.drumEuclid2VelocityMin, velMax: this.params.drumEuclid2VelocityMax,
-          level: this.params.drumEuclid2Level 
-        },
-        { 
-          enabled: this.params.drumEuclid3Enabled, 
-          ...resolveDrumEuclidPatternParams(this.params.drumEuclid3Preset, this.params.drumEuclid3Steps, this.params.drumEuclid3Hits, this.params.drumEuclid3Rotation),
-          voices: getEnabledVoices(3), prob: this.params.drumEuclid3Probability,
-          velMin: this.params.drumEuclid3VelocityMin, velMax: this.params.drumEuclid3VelocityMax,
-          level: this.params.drumEuclid3Level 
-        },
-        { 
-          enabled: this.params.drumEuclid4Enabled, 
-          ...resolveDrumEuclidPatternParams(this.params.drumEuclid4Preset, this.params.drumEuclid4Steps, this.params.drumEuclid4Hits, this.params.drumEuclid4Rotation),
-          voices: getEnabledVoices(4), prob: this.params.drumEuclid4Probability,
-          velMin: this.params.drumEuclid4VelocityMin, velMax: this.params.drumEuclid4VelocityMax,
-          level: this.params.drumEuclid4Level 
-        },
-      ];
+      const params = this.params as Record<string, any>;
+      const laneNumbers = [1, 2, 3, 4, 5, 6] as const;
+      const lanes = laneNumbers.map((laneNum) => {
+        const prefix = `drumEuclid${laneNum}`;
+        const defaults = defaultDrumEuclidPattern(laneNum - 1);
+        return {
+          enabled: Boolean(params[`${prefix}Enabled`]),
+          ...resolveDrumEuclidPatternParams(
+            String(params[`${prefix}Preset`] ?? 'custom'),
+            Number(params[`${prefix}Steps`] ?? defaults.steps),
+            Number(params[`${prefix}Hits`] ?? defaults.hits),
+            Number(params[`${prefix}Rotation`] ?? defaults.rotation),
+          ),
+          voices: getEnabledVoices(laneNum),
+          prob: Number(params[`${prefix}Probability`] ?? 1),
+          velMin: Number(params[`${prefix}VelocityMin`] ?? 1),
+          velMax: Number(params[`${prefix}VelocityMax`] ?? 1),
+          level: Number(params[`${prefix}Level`] ?? 0.8),
+        };
+      });
       
       // Schedule ahead ~100ms for timing accuracy
       const lookAhead = 0.1;
@@ -3628,9 +3625,9 @@ export class DrumSynth {
       this.euclidScheduleTimer = null;
     }
     this.clearEuclidVisualTimers(true);
-    this.prevLaneEnabled = [false, false, false, false];
+    this.prevLaneEnabled = makeDrumEuclidLaneArray(() => false);
     this.euclidSequencers = [];
-    this.onStepPositionChange?.([0, 0, 0, 0], [0, 0, 0, 0]);
+    this.onStepPositionChange?.(makeDrumEuclidLaneArray(() => 0), makeDrumEuclidLaneArray(() => 0));
 
     // Release all active voice pool entries so sounds don't sustain past stop
     const now = this.ctx.currentTime;

@@ -91,6 +91,7 @@ import { ENGINE_GROUPS as SNOWFLAKE_ENGINE_GROUPS } from './ui/snowflakeV2';
 import { SOURCE_COLORS } from './designSystem/colors';
 import { APP_TAB_SYMBOLS, TEXT_SYMBOLS } from './designSystem/textSymbols';
 import type { SeqSimpleState } from './ui/drums/SeqSimple';
+import type { SeqScatterState } from './ui/drums/scatter/scatterTypes';
 import { useJourneyPresets } from './presets/useJourneyPresets';
 import { isLocalPresetStoreOverride } from './presets/sharedMode';
 import { loadPresetsFromFolder } from './presets/bundledPresetLoader';
@@ -107,10 +108,11 @@ import {
 } from './presets/statePresetRuntime';
 import { buildPresetVersionMetadata } from './presets/versionMetadataHelpers';
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
+
 import { OptionalVisualizerGate } from './ui/components/OptionalVisualizerGate';
 import { useIsMobileViewport } from './ui/hooks/useIsMobileViewport';
 import { useVisualFeatureToggle } from './ui/hooks/useVisualFeatureToggle';
-import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './ui/sequencer/useEuclideanSequencer';
+import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig, SequencerViewMode } from './ui/sequencer/useEuclideanSequencer';
 import { serializeStepOverrides } from './ui/sequencer/stepOverrideSerialization';
 import { type ClockDivision, type PitchBindingMode } from './audio/drumSeqTypes';
 import { sanitizeProductArpConfigs, type ProductArpConfig } from './audio/productArpeggiator';
@@ -156,6 +158,23 @@ const GlobalPage = React.lazy(() => import('./ui/global/GlobalPage'));
 const SynthPage = React.lazy(() => import('./ui/synth/SynthPage'));
 const ReverbPage = React.lazy(() => import('./ui/reverb/ReverbPage'));
 const DrumPage = React.lazy(() => import('./ui/drums/DrumPage'));
+
+const DRUM_PRESET_SLOT_CHANGE: Record<string, { voice: DrumPresetVoice; endpoint: 0 | 1 }> = {
+  drumSubPresetA: { voice: 'sub', endpoint: 0 },
+  drumSubPresetB: { voice: 'sub', endpoint: 1 },
+  drumKickPresetA: { voice: 'kick', endpoint: 0 },
+  drumKickPresetB: { voice: 'kick', endpoint: 1 },
+  drumClickPresetA: { voice: 'click', endpoint: 0 },
+  drumClickPresetB: { voice: 'click', endpoint: 1 },
+  drumBeepHiPresetA: { voice: 'beepHi', endpoint: 0 },
+  drumBeepHiPresetB: { voice: 'beepHi', endpoint: 1 },
+  drumBeepLoPresetA: { voice: 'beepLo', endpoint: 0 },
+  drumBeepLoPresetB: { voice: 'beepLo', endpoint: 1 },
+  drumNoisePresetA: { voice: 'noise', endpoint: 0 },
+  drumNoisePresetB: { voice: 'noise', endpoint: 1 },
+  drumMembranePresetA: { voice: 'membrane', endpoint: 0 },
+  drumMembranePresetB: { voice: 'membrane', endpoint: 1 },
+};
 
 const LEAD_PRESET_SLOT_KEYS = [
   'lead1PresetA',
@@ -1918,7 +1937,7 @@ const App: React.FC = () => {
     [],
   );
   const [drumEditingVoice, setDrumEditingVoice] = useState<string | null>(null);
-  const drumViewModeRef = useRef<'simple' | 'detail' | 'overview'>('detail');
+  const drumViewModeRef = useRef<SequencerViewMode>('detail');
   const drumStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
   const drumSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
   const drumEvolveConfigsRef = useRef<EvolveConfig[] | undefined>(undefined);
@@ -1927,9 +1946,10 @@ const App: React.FC = () => {
   const drumLinkedRef = useRef<boolean[] | undefined>(undefined);
   const drumPitchSettingsRef = useRef<PitchSettings[] | undefined>(undefined);
   const drumSeqSimpleStateRef = useRef<SeqSimpleState | undefined>(undefined);
+  const drumSeqScatterStateRef = useRef<SeqScatterState | undefined>(undefined);
 
   // ── Lead/Synth Euclidean sequencer state ──
-  const synthViewModeRef = useRef<'simple' | 'detail' | 'overview'>('simple');
+  const synthViewModeRef = useRef<SequencerViewMode>('simple');
   const synthStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
   const synthSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
   const synthClockDivsRef = useRef<ClockDivision[] | undefined>(undefined);
@@ -3722,12 +3742,31 @@ const App: React.FC = () => {
           pendingImmediateLeadPresetSyncRef.current = true;
           nextState = applyLiveLeadMorphToChangedPresetSlots(prev, nextState);
         }
+        let drumMorphOverrideState = getCurrentDrumMorphOverrideState(prev);
+        let drumPresetSlotChanged = false;
+        for (const [key, config] of Object.entries(DRUM_PRESET_SLOT_CHANGE)) {
+          const stateKey = key as keyof SliderState;
+          if (Object.is(prev[stateKey], nextState[stateKey])) continue;
+          drumPresetSlotChanged = true;
+          drumMorphOverrideState = dispatchDrumMorphProductControlAction(prev, {
+            type: 'drum-morph/endpoint-clear',
+            voice: config.voice,
+            endpoint: config.endpoint,
+          });
+          nextState = {
+            ...nextState,
+            ...applyMorphToState(nextState, config.voice, drumMorphOverrideState),
+          };
+        }
+        if (drumPresetSlotChanged) {
+          pendingImmediateLeadPresetSyncRef.current = true;
+        }
         rememberChangedPadMorphEndpointStates(padMorphEndpointOverridesRef.current, prev, nextState);
         applyMorphEndpointStatePatch(prev, nextState);
         return nextState;
       });
     },
-    [applyMorphEndpointStatePatch],
+    [applyMorphEndpointStatePatch, dispatchDrumMorphProductControlAction, getCurrentDrumMorphOverrideState],
   );
 
   useEffect(() => {
@@ -5864,6 +5903,10 @@ const App: React.FC = () => {
                 initialSeqSimpleState={drumSeqSimpleStateRef.current}
                 onSeqSimpleStateChange={(s) => {
                   drumSeqSimpleStateRef.current = s;
+                }}
+                initialSeqScatterState={drumSeqScatterStateRef.current}
+                onSeqScatterStateChange={(s) => {
+                  drumSeqScatterStateRef.current = s;
                 }}
               />
             )}
