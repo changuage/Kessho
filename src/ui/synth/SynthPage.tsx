@@ -19,6 +19,7 @@ import SequencerChainRail, {
 } from '../sequencer/SequencerChainRail';
 import { liveOverdubTargetStep, useLiveOverdubRecorder } from '../sequencer/useLiveOverdubRecorder';
 import { stepOverridesForEngineSubLaneState } from '../sequencer/engineStepOverrides';
+import { NUDGE_EPSILON, clampNudge, computeNudgeFromContinuousStep } from '../sequencer/nudgeTiming';
 import { serializeStepOverrides } from '../sequencer/stepOverrideSerialization';
 import AnchorWalkerSequencerBody from '../sequencer/AnchorWalkerSequencerBody';
 import OrbitSequencerBody from '../sequencer/OrbitSequencerBody';
@@ -339,6 +340,7 @@ type EvolvedSequencerPatch = {
 
 type SynthLiveOverdubCaptureEvent = {
   targetStepIndex: number;
+  targetStepFloat: number;
   pitchValue: number;
   eventOrder: number;
 };
@@ -358,9 +360,9 @@ type GeneratedCaptureStartArm = {
   previousStep: number | null;
 };
 
-const STEP_OVERRIDE_VALUE_KEYS = ['expression', 'morph', 'distance', 'probability', 'ratchet', 'trigCondition', 'pitch'] as const;
+const STEP_OVERRIDE_VALUE_KEYS = ['expression', 'morph', 'distance', 'probability', 'ratchet', 'trigCondition', 'pitch', 'nudge'] as const;
 const STEP_OVERRIDE_RANGE_KEYS = ['expressionRanges', 'morphRanges', 'distanceRanges'] as const;
-const STEP_OVERRIDE_DIRECTION_KEYS = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection'] as const;
+const STEP_OVERRIDE_DIRECTION_KEYS = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection', 'nudgeDirection'] as const;
 const SYNTH_DICE_SYNC_SUPPRESSION_MS = 4000;
 
 function sortedToggleEntries(value: Map<number, boolean> | null | undefined): [number, boolean][] {
@@ -377,11 +379,13 @@ function stepOverrideLaneSignature(overrides: StepOverrides, laneIndex: number):
     ratchet: overrides.ratchet[laneIndex] ?? null,
     trigCondition: overrides.trigCondition[laneIndex] ?? null,
     pitch: overrides.pitch[laneIndex] ?? null,
+    nudge: overrides.nudge[laneIndex] ?? null,
     expressionRanges: overrides.expressionRanges?.[laneIndex] ?? null,
     morphRanges: overrides.morphRanges?.[laneIndex] ?? null,
     distanceRanges: overrides.distanceRanges?.[laneIndex] ?? null,
     expressionDirection: overrides.expressionDirection[laneIndex] ?? null,
     pitchDirection: overrides.pitchDirection[laneIndex] ?? null,
+    nudgeDirection: overrides.nudgeDirection[laneIndex] ?? null,
     morphDirection: overrides.morphDirection[laneIndex] ?? null,
     distanceDirection: overrides.distanceDirection[laneIndex] ?? null,
   });
@@ -411,6 +415,65 @@ function synthLiveCaptureTriggerPattern(
   }
 
   return seqEuclidean(stepCount, Math.min(stepCount, events.length), 0);
+}
+
+function synthLiveTriggerSteps(pattern: readonly boolean[]): number[] {
+  const steps: number[] = [];
+  pattern.forEach((enabled, step) => {
+    if (enabled) steps.push(step);
+  });
+  return steps;
+}
+
+function synthLiveAdjacentTriggerSteps(
+  triggerSteps: readonly number[],
+  currentStep: number,
+  stepCount: number,
+): { previous: number; next: number } {
+  if (triggerSteps.length <= 1) {
+    return {
+      previous: currentStep - stepCount,
+      next: currentStep + stepCount,
+    };
+  }
+  let previous = triggerSteps[triggerSteps.length - 1]! - stepCount;
+  let next = triggerSteps[0]! + stepCount;
+  for (const step of triggerSteps) {
+    if (step < currentStep) previous = step;
+    if (step > currentStep) {
+      next = step;
+      break;
+    }
+  }
+  return { previous, next };
+}
+
+function nearestContinuousStep(targetStepFloat: number, currentStep: number, stepCount: number): number {
+  let target = Number.isFinite(targetStepFloat) ? targetStepFloat : currentStep;
+  const halfCycle = Math.max(1, stepCount) * 0.5;
+  while (target - currentStep > halfCycle) target -= stepCount;
+  while (currentStep - target > halfCycle) target += stepCount;
+  return target;
+}
+
+function synthLiveNudgeValues(
+  events: readonly SynthLiveOverdubCaptureEvent[],
+  triggerPattern: readonly boolean[],
+  preserveTriggerSteps: boolean,
+): number[] {
+  if (!preserveTriggerSteps) return new Array(events.length).fill(0);
+  const stepCount = Math.max(1, triggerPattern.length);
+  const triggerSteps = synthLiveTriggerSteps(triggerPattern);
+  return events.map((event) => {
+    const currentStep = event.targetStepIndex;
+    const { previous, next } = synthLiveAdjacentTriggerSteps(triggerSteps, currentStep, stepCount);
+    return computeNudgeFromContinuousStep(
+      nearestContinuousStep(event.targetStepFloat, currentStep, stepCount),
+      previous,
+      currentStep,
+      next,
+    );
+  });
 }
 
 function normalizedRecorderStep(playheadStep: number | undefined, stepCount: number): number {
@@ -564,7 +627,7 @@ function getKeyboardCursorMarkerStyle(color: string): React.CSSProperties {
 type KeyboardInputMode = 'play' | 'sequence';
 type KeyboardHarmonyStatus = 'root' | 'chord' | 'scale' | 'outside';
 type KeyboardSequenceCursorTarget = 'trigger' | 'pitch';
-type SynthKeyboardEditLane = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance';
+type SynthKeyboardEditLane = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge';
 type SynthDetailOpenLane = SubLaneKind | 'trigger' | 'arp';
 type LeadPresetSlotKey = 'lead1PresetA' | 'lead1PresetB' | 'lead2PresetC' | 'lead2PresetD';
 type LeadPresetFallbackId = 'soft_rhodes' | 'gamelan';
@@ -627,7 +690,7 @@ export interface SynthKeyboardUiState {
   sequenceCursorTarget?: KeyboardSequenceCursorTarget;
 }
 
-const SYNTH_KEYBOARD_EDIT_LANES: readonly SynthKeyboardEditLane[] = ['trigger', 'pitch', 'expression', 'morph', 'distance'] as const;
+const SYNTH_KEYBOARD_EDIT_LANES: readonly SynthKeyboardEditLane[] = ['trigger', 'pitch', 'expression', 'morph', 'distance', 'nudge'] as const;
 const ARP_DIRECTION_OPTIONS: Array<{ value: ProductArpDirection; label: string }> = [
   { value: 'up', label: 'Up' },
   { value: 'down', label: 'Down' },
@@ -733,7 +796,7 @@ function nextArpSlotChoice(choice: ProductArpSlotChoice, delta: 1 | -1): Product
 }
 
 function getSynthKeyboardEditLane(openLane: string): SynthKeyboardEditLane {
-  if (openLane === 'pitch' || openLane === 'expression' || openLane === 'morph' || openLane === 'distance') return openLane;
+  if (openLane === 'pitch' || openLane === 'expression' || openLane === 'morph' || openLane === 'distance' || openLane === 'nudge') return openLane;
   return 'trigger';
 }
 
@@ -1066,7 +1129,7 @@ export interface SynthPageProps {
   /** Preset version counter for triggering UI reset on preset load */
   presetVersion?: number;
   /** Step overrides change callback (sends MIDI-converted pitch for engine) */
-  onStepOverridesChange?: (overrides: StepOverrides) => void;
+  onStepOverridesChange?: (overrides: StepOverrides, subLaneStates?: Record<SubLaneKind, SubLaneState>[]) => void;
   /** Raw step overrides change callback (unconverted pitch offsets for persistence/round-trip) */
   onRawStepOverridesChange?: (overrides: StepOverrides) => void;
   /** Initial step overrides to restore across tab switches */
@@ -1201,6 +1264,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     normalizeKeyboardStepArray()
   );
   const [distanceKeyboardSteps, setDistanceKeyboardSteps] = useState<number[]>(() =>
+    normalizeKeyboardStepArray()
+  );
+  const [nudgeKeyboardSteps, setNudgeKeyboardSteps] = useState<number[]>(() =>
     normalizeKeyboardStepArray()
   );
   const [keyboardSequenceCursorTarget, setKeyboardSequenceCursorTarget] = useState<KeyboardSequenceCursorTarget>(
@@ -2763,6 +2829,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     setPitchBindingModes(normalizeSequencerPitchBindingModes(initialPitchBindingModes, 4));
     setTriggerKeyboardSteps(normalizeKeyboardStepArray());
     setPitchKeyboardSteps(normalizeKeyboardStepArray());
+    setExpressionKeyboardSteps(normalizeKeyboardStepArray());
+    setMorphKeyboardSteps(normalizeKeyboardStepArray());
+    setDistanceKeyboardSteps(normalizeKeyboardStepArray());
+    setNudgeKeyboardSteps(normalizeKeyboardStepArray());
     setKeyboardSequenceCursorTarget('pitch');
   }, [initialPitchBindingModes, presetVersion]);
 
@@ -2910,7 +2980,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const effectiveSubLaneStates = sequenceHome
       ? Object.fromEntries(Object.entries(sequenceHome).map(([key, value]) => [
           key,
-          { ...value, ...((subLaneStates as Partial<Record<SubLaneKind, Partial<SubLaneState>>> | undefined)?.[key as SubLaneKind] ?? {}) },
+          { ...((subLaneStates as Partial<Record<SubLaneKind, Partial<SubLaneState>>> | undefined)?.[key as SubLaneKind] ?? {}), ...value },
         ])) as Partial<Record<SubLaneKind, Partial<SubLaneState>>>
       : pitchHomeState
       ? { ...(subLaneStates ?? {}), pitch: { ...pitchHomeState, ...(subLaneStates?.pitch ?? {}) } }
@@ -3071,14 +3141,17 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           : null;
       });
       // Send MIDI-converted pitch to audio engine
-      onStepOverridesChange?.(stepOverridesForEngineSubLaneState({
-        ...seq.stepOverrides,
-        pitch: convertedPitch,  // Send MIDI notes, not raw offsets
-        pitchDirection,
-        expressionRanges,
-        morphRanges,
-        distanceRanges,
-      }, engineSubLaneStates));
+      onStepOverridesChange?.(
+        stepOverridesForEngineSubLaneState({
+          ...seq.stepOverrides,
+          pitch: convertedPitch,  // Send MIDI notes, not raw offsets
+          pitchDirection,
+          expressionRanges,
+          morphRanges,
+          distanceRanges,
+        }, engineSubLaneStates),
+        engineSubLaneStates,
+      );
     }
   }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, arpConfigs, arpHarmonyContext, arpRuntimeTick, harmonyState, onStepOverridesChange, onRawStepOverridesChange]);
 
@@ -3528,6 +3601,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       }
       return step;
     }));
+    setNudgeKeyboardSteps((prev) => prev.map((step, laneIdx) => {
+      const stepCount = getSynthKeyboardLaneStepCount(laneIdx, 'nudge');
+      if (stepCount <= 0) return 0;
+      if (!Number.isFinite(step) || step < 0 || step >= stepCount) {
+        return getFirstSynthKeyboardLaneStep(laneIdx, 'nudge');
+      }
+      return step;
+    }));
   }, [getFirstSynthKeyboardLaneStep, getSynthKeyboardLaneStepCount]);
 
   const selectTriggerSequenceStep = useCallback((laneIdx: number, step: number) => {
@@ -3567,7 +3648,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       setMorphKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
       return;
     }
-    setDistanceKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
+    if (lane === 'distance') {
+      setDistanceKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
+      return;
+    }
+    setNudgeKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
   }, [getSynthKeyboardLaneStepCount, seq]);
 
   const activeLaneSource = normalizeSynthEuclidSource(state[getSourceKey(seq.activeTab)] ?? 'lead1');
@@ -3582,6 +3667,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const activeExpressionCursorStep = expressionKeyboardSteps[seq.activeTab] ?? getFirstSynthKeyboardLaneStep(seq.activeTab, 'expression');
   const activeMorphCursorStep = morphKeyboardSteps[seq.activeTab] ?? getFirstSynthKeyboardLaneStep(seq.activeTab, 'morph');
   const activeDistanceCursorStep = distanceKeyboardSteps[seq.activeTab] ?? getFirstSynthKeyboardLaneStep(seq.activeTab, 'distance');
+  const activeNudgeCursorStep = nudgeKeyboardSteps[seq.activeTab] ?? getFirstSynthKeyboardLaneStep(seq.activeTab, 'nudge');
   const sequenceWritesToTriggerGrid = activePitchBindingMode === 'sequence';
   const activeKeyboardEditLane = getSynthKeyboardEditLane(seq.openLane);
   const activeSynthKeyboardStep = activeKeyboardEditLane === 'trigger'
@@ -3592,7 +3678,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         ? activeExpressionCursorStep
         : activeKeyboardEditLane === 'morph'
           ? activeMorphCursorStep
-          : activeDistanceCursorStep;
+          : activeKeyboardEditLane === 'distance'
+            ? activeDistanceCursorStep
+            : activeNudgeCursorStep;
 
   const keyboardBaseMidi = 12 * (keyboardOctave + 1);
   const keyboardSourceInfo = MANUAL_KEYBOARD_SOURCES.find((source) => source.value === effectiveKeyboardSource) ?? MANUAL_KEYBOARD_SOURCES[0]!;
@@ -3684,7 +3772,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               ? 'Expression lane is active. Left/Right moves steps and Up/Down changes the value.'
               : activeKeyboardEditLane === 'morph'
                 ? 'Morph lane is active. Left/Right moves steps and Up/Down changes the value.'
-                : 'Distance lane is active. Left/Right moves steps and Up/Down changes the value.';
+                : activeKeyboardEditLane === 'distance'
+                  ? 'Distance lane is active. Left/Right moves steps and Up/Down changes the value.'
+                  : 'Nudge lane is active. Left/Right moves hits and Up/Down changes timing.';
   const keyboardSequenceStatus = `Seq ${seq.activeTab + 1} | ${SYNTH_SOURCES.find((source) => source.value === activeLaneSourceDisplay)?.label ?? 'Lead 1'} | Lane ${activeKeyboardEditLane === 'trigger' ? 'Sequence' : activeKeyboardEditLane.charAt(0).toUpperCase() + activeKeyboardEditLane.slice(1)} | Step ${String(activeSynthKeyboardStep + 1).padStart(2, '0')}${activeKeyboardEditLane === 'trigger' ? ` | ${activeSequenceTriggerEnabled ? 'On' : 'Off'}` : ''}${activeKeyboardEditLane === 'pitch' && activePitchCursorLabel ? ` | ${activePitchCursorLabel}` : ''}${activeKeyboardEditLane === 'pitch' && activePitchBindingMode === 'polyrhythmic' && activePitchCursorIsBeyondVisibleRange ? ' | Hidden' : ''}`;
 
   const compactPitchTargetForTriggerStep = useCallback((laneIdx: number, triggerStep: number) => {
@@ -3836,6 +3926,16 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       return;
     }
 
+    if (activeKeyboardEditLane === 'nudge') {
+      const currentNudge = seq.stepOverrides.nudge[seq.activeTab]?.[activeNudgeCursorStep]
+        ?? activeSeq.nudge.values[activeNudgeCursorStep % Math.max(1, activeSeq.nudge.values.length)]
+        ?? 0;
+      const nudgeDelta = coarse ? 0.2 : 0.05;
+      const nextNudge = Math.round(clampNudge(currentNudge + direction * nudgeDelta) * 20) / 20;
+      seq.changeStepValue(seq.activeTab, 'nudge', activeNudgeCursorStep, nextNudge);
+      return;
+    }
+
     const currentDistance = seq.stepOverrides.distance[seq.activeTab]?.[activeDistanceCursorStep]
       ?? activeSeq.distance.values[activeDistanceCursorStep % Math.max(1, activeSeq.distance.values.length)]
       ?? 0;
@@ -3848,10 +3948,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     activeKeyboardEditLane,
     activeLanePitchSettings.mode,
     activeMorphCursorStep,
+    activeNudgeCursorStep,
     activePitchCursorStep,
     activeSeq.distance.values,
     activeSeq.expression.velocities,
     activeSeq.morph.values,
+    activeSeq.nudge.values,
     activeSeq.pitch.offsets,
     activeSeq.trigger.probability,
     activeTriggerCursorStep,
@@ -3867,6 +3969,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       selectSynthKeyboardLaneStep(seq.activeTab, 'trigger', Math.min(activeTriggerCursorStep, nextSteps - 1));
       return;
     }
+
+    if (activeKeyboardEditLane === 'nudge') return;
 
     const currentSteps = activeKeyboardEditLane === 'pitch'
       ? getVisiblePitchStepCountForLane(seq.activeTab)
@@ -4093,9 +4197,16 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onCountInComplete: startSynthPlaybackForOverdub,
   });
 
-  const writeSynthLiveOverdubCaptureNote = useCallback((laneIdx: number, triggerStep: number, pitchValue: number) => {
+  const writeSynthLiveOverdubCaptureNote = useCallback((
+    laneIdx: number,
+    triggerStep: number,
+    targetStepFloat: number,
+    pitchValue: number,
+  ) => {
     const triggerStepCount = getTriggerStepCountForLane(laneIdx);
-    if (triggerStepCount <= 0) return { pitchStep: 0, pitchStepCount: 1 };
+    if (triggerStepCount <= 0) {
+      return { pitchStep: 0, pitchStepCount: 1, nudgeStepCount: 1, hasNudge: false };
+    }
     const normalizedTriggerStep = ((triggerStep % triggerStepCount) + triggerStepCount) % triggerStepCount;
     let session = synthLiveOverdubCaptureRef.current;
     if (!session || session.laneIndex !== laneIdx) {
@@ -4112,6 +4223,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
     const event: SynthLiveOverdubCaptureEvent = {
       targetStepIndex: normalizedTriggerStep,
+      targetStepFloat,
       pitchValue,
       eventOrder: session.nextEventOrder,
     };
@@ -4128,6 +4240,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const pitchStepCount = clampEuclideanSubLaneSteps(Math.max(1, capturedEvents.length));
     const pitchValues = capturedEvents.map((capturedEvent) => capturedEvent.pitchValue);
     const triggerPattern = synthLiveCaptureTriggerPattern(capturedEvents, triggerStepCount);
+    const nudgeValues = synthLiveNudgeValues(capturedEvents, triggerPattern, preserveTriggerSteps);
+    const hasNudge = nudgeValues.some((value) => Math.abs(value) > NUDGE_EPSILON);
     const pitchStep = Math.max(0, capturedEvents.findIndex((capturedEvent) => capturedEvent.eventOrder === event.eventOrder));
 
     seq.setStepOverrides((previous) => {
@@ -4143,20 +4257,30 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         pitch: previous.pitch.map((values, index) => (
           index === laneIdx ? pitchValues : values
         )),
+        nudge: previous.nudge.map((values, index) => (
+          index === laneIdx ? nudgeValues : values
+        )),
         pitchDirection: previous.pitchDirection.map((direction, index) => (
+          index === laneIdx ? 'forward' : direction
+        )),
+        nudgeDirection: previous.nudgeDirection.map((direction, index) => (
           index === laneIdx ? 'forward' : direction
         )),
       };
     });
 
-    return { pitchStep, pitchStepCount };
+    return { pitchStep, pitchStepCount, nudgeStepCount: pitchStepCount, hasNudge };
   }, [getTriggerStepCountForLane, harmonyState, seq]);
 
   const recordSynthLiveOverdubNote = useCallback((midi: number) => {
     const laneIdx = seq.activeTab;
     const triggerStepCount = getTriggerStepCountForLane(laneIdx);
     if (triggerStepCount <= 0) return;
-    const targetStep = liveOverdubTargetStep(seq.playheads[laneIdx], activeTriggerCursorStep, triggerStepCount);
+    const playheadStep = seq.playheads[laneIdx];
+    const rawTargetStep = typeof playheadStep === 'number' && Number.isFinite(playheadStep)
+      ? playheadStep
+      : activeTriggerCursorStep;
+    const targetStep = liveOverdubTargetStep(playheadStep, activeTriggerCursorStep, triggerStepCount);
     const session = synthLiveOverdubCaptureRef.current;
     const currentSettings = session?.laneIndex === laneIdx
       ? session.pitchSettings
@@ -4166,7 +4290,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       setPitchBindingMode(laneIdx, 'polyrhythmic');
     }
     const pitchValue = midiToPitchOffsetForSettings(midi, currentSettings, null);
-    const compactTarget = writeSynthLiveOverdubCaptureNote(laneIdx, targetStep, pitchValue);
+    const compactTarget = writeSynthLiveOverdubCaptureNote(laneIdx, targetStep, rawTargetStep, pitchValue);
     seq.setSubLaneStates((prev) => prev.map((laneState, index) => (
       index === laneIdx
         ? {
@@ -4176,12 +4300,20 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               enabled: true,
               steps: compactTarget.pitchStepCount,
             },
+            nudge: {
+              ...laneState.nudge,
+              enabled: compactTarget.hasNudge,
+              steps: compactTarget.nudgeStepCount,
+              direction: 'forward',
+              followTriggerHits: true,
+            },
           }
         : laneState
     )));
     setKeyboardSequenceCursorTarget('trigger');
     setTriggerKeyboardSteps((prev) => prev.map((value, index) => index === laneIdx ? targetStep : value));
     setPitchKeyboardSteps((prev) => prev.map((value, index) => index === laneIdx ? compactTarget.pitchStep : value));
+    setNudgeKeyboardSteps((prev) => prev.map((value, index) => index === laneIdx ? compactTarget.pitchStep : value));
     seq.setViewMode('detail');
     seq.setOpenLane('pitch');
   }, [
@@ -4232,6 +4364,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 enabled: true,
                 steps: 1,
               },
+              nudge: {
+                ...laneState.nudge,
+                enabled: false,
+                steps: 1,
+                direction: 'forward',
+                followTriggerHits: true,
+              },
             }
           : laneState
       )));
@@ -4248,7 +4387,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           pitch: previous.pitch.map((values, index) => (
             index === laneIdx ? [0] : values
           )),
+          nudge: previous.nudge.map((values, index) => (
+            index === laneIdx ? [0] : values
+          )),
           pitchDirection: previous.pitchDirection.map((direction, index) => (
+            index === laneIdx ? 'forward' : direction
+          )),
+          nudgeDirection: previous.nudgeDirection.map((direction, index) => (
             index === laneIdx ? 'forward' : direction
           )),
         };
@@ -7430,7 +7575,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       </React.Fragment>
                     );
                   })()}
-                  {(['pitch', 'expression', 'morph', 'distance'] as const).map((laneKind) => {
+                  {(['pitch', 'expression', 'morph', 'distance', 'nudge'] as const).map((laneKind) => {
                     const subState = seq.subLaneStates[seq.activeTab]?.[laneKind];
                     const laneColor = SEQUENCER_SUB_LANE_COLORS[laneKind];
                     const activePlayhead = seq.playheads[seq.activeTab] ?? 0;
@@ -7461,9 +7606,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                     ? new Array(subState.steps).fill(((subState.rangeMin ?? 0.25) + (subState.rangeMax ?? 0.75)) * 0.5)
                                     : laneKind === 'morph'
                                       ? activeSeq.morph.values
-                                      : subState?.valueMode === 'range'
+                                      : laneKind === 'distance' && subState?.valueMode === 'range'
                                         ? new Array(subState.steps).fill(((subState.rangeMin ?? 0) + (subState.rangeMax ?? 1)) * 0.5)
-                                        : activeSeq.distance.values
+                                        : laneKind === 'distance'
+                                          ? activeSeq.distance.values
+                                          : activeSeq.nudge.values
                           }
                           color={laneColor}
                           playhead={activePlayhead}
@@ -7471,6 +7618,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           playheadMode={laneKind === 'pitch' && activePitchBindingMode === 'sequence' ? 'step' : 'hit'}
                           direction={subState?.direction ?? 'forward'}
                           bipolar={laneKind === 'morph'}
+                          mode={laneKind === 'nudge' ? 'signed' : undefined}
                           invertFill={laneKind === 'expression'}
                           enabled={subState?.enabled ?? false}
                           expanded={seq.openLane === laneKind}
@@ -7487,9 +7635,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                   ? activeKeyboardEditLane === 'morph'
                                     ? activeMorphCursorStep
                                     : null
-                                  : activeKeyboardEditLane === 'distance'
-                                    ? activeDistanceCursorStep
-                                    : null
+                                  : laneKind === 'distance'
+                                    ? activeKeyboardEditLane === 'distance'
+                                      ? activeDistanceCursorStep
+                                      : null
+                                    : activeKeyboardEditLane === 'nudge'
+                                      ? activeNudgeCursorStep
+                                      : null
                           ) : null}
                           onClick={() => seq.setOpenLane(seq.openLane === laneKind ? 'trigger' : laneKind)}
                           onToggleEnabled={() => seq.toggleSubLaneEnabled(seq.activeTab, laneKind)}
@@ -7515,9 +7667,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                       ? activeKeyboardEditLane === 'morph'
                                         ? activeMorphCursorStep
                                         : null
-                                      : activeKeyboardEditLane === 'distance'
-                                        ? activeDistanceCursorStep
-                                        : null
+                                      : laneKind === 'distance'
+                                        ? activeKeyboardEditLane === 'distance'
+                                          ? activeDistanceCursorStep
+                                          : null
+                                        : activeKeyboardEditLane === 'nudge'
+                                          ? activeNudgeCursorStep
+                                          : null
                               ) : null}
                               selectedStepLabel={keyboardTargetLabel}
                               onSelectStep={keyboardTargetVisible

@@ -131,7 +131,7 @@
     drum_lanes[i].sequencer_mode = kSequencerModeEuclid;
     drum_lanes[i].enabled = i == 0u;
     drum_lanes[i].target_source_id = KESSHO_PRODUCT_SOURCE_DRUM;
-    drum_lanes[i].midi_note = 36.0f + static_cast<float>(i);
+    drum_lanes[i].midi_note = midiNoteForDrumVoice(std::min<uint32_t>(i, DRUM_NUM_VOICE_TYPES - 1u));
     drum_lanes[i].fill_count = (i == 0) ? 4u : 2u;
     drum_lanes[i].seed = rng_seed + 100u + i;
   }

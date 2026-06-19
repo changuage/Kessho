@@ -112,6 +112,7 @@ export const SEQUENCER_SUB_LANE_COLORS = {
   expression: JOURNEY_COLORS.gold,
   morph: JOURNEY_COLORS.violet,
   distance: JOURNEY_COLORS.slate,
+  nudge: TAB_HERO_COLORS.delay,
   slice: JOURNEY_COLORS.sage,
   reverse: JOURNEY_COLORS.clay,
 } as const;

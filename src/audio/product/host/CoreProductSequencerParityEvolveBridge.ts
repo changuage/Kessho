@@ -32,6 +32,7 @@ import {
   type SynthLaneOverrides,
 } from '../../synthSeqEvolve';
 import { patchCoreProductSequencerLaneSwing } from '../../CoreProductHostSequencerSwing';
+import { drumVoiceBaseMidiFromIndex } from '../../drumVoiceMidi';
 import { postCoreProductSequencerLaneStepState, type CoreProductSequencerHomeState } from '../../CoreProductHostSequencerHome';
 import { normalizeSequencerPitchSettings, type SequencerPitchSettings } from '../../sequencerPitchSettings';
 import type {
@@ -49,7 +50,7 @@ import {
 type NoteRange = { min: number; max: number };
 type Rng = () => number;
 type EvolveResult = { handled: boolean; changed: boolean; adapterState?: Record<string, unknown> };
-type SubLanePatch = Partial<Record<'pitch' | 'expression' | 'morph' | 'distance', { enabled: boolean; steps: number; direction: LaneDirection; scaleQuantize?: boolean }>>;
+type SubLanePatch = Partial<Record<'pitch' | 'expression' | 'morph' | 'distance' | 'nudge', { enabled: boolean; steps: number; direction: LaneDirection; scaleQuantize?: boolean; followTriggerHits?: boolean }>>;
 type DrumSubLanePatch = SubLanePatch & Partial<Record<'slice' | 'reverse', { enabled: boolean; steps: number; direction: LaneDirection; scaleQuantize?: boolean }>>;
 
 const DRUM_VOICE_TYPES = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'] as const;
@@ -301,7 +302,7 @@ function drumLaneParams(options: Parameters<typeof evolveCoreProductSequencerLan
     fillCount: boundedLaneNumber(uiLane?.fillCount ?? snapshotLane?.fillCount, defaults.hits, 0, stepCount),
     rotation: boundedLaneNumber(uiLane?.rotation ?? snapshotLane?.rotation, defaults.rotation, -64, 64),
     swing: boundedSwing(uiLane?.swing ?? snapshotLane?.swing, 0),
-    midiNote: boundedLaneNumber(uiLane?.baseMidiNote ?? snapshotLane?.midiNote, 36 + options.laneIndex, 0, 127),
+    midiNote: boundedLaneNumber(uiLane?.baseMidiNote ?? snapshotLane?.midiNote, drumVoiceBaseMidiFromIndex(options.laneIndex), 0, 127),
     seed: boundedLaneNumber(snapshotLane?.seed, options.seed, 1, 0xffffffff),
   };
 }
@@ -322,6 +323,8 @@ function synthOverridesFromCache(
     morphDirection: directionForField(configs, CORE_PRODUCT_STEP_VALUE_FIELDS.morph),
     distance: numberArrayForField(values, configs, CORE_PRODUCT_STEP_VALUE_FIELDS.distance, stepCount, 0.5),
     distanceDirection: directionForField(configs, CORE_PRODUCT_STEP_VALUE_FIELDS.distance),
+    nudge: numberArrayForField(values, configs, CORE_PRODUCT_STEP_VALUE_FIELDS.nudge, stepCount, 0),
+    nudgeDirection: directionForField(configs, CORE_PRODUCT_STEP_VALUE_FIELDS.nudge),
     probability: numberArrayForField(values, configs, CORE_PRODUCT_STEP_VALUE_FIELDS.probability, stepCount, 1),
     ratchet: numberArrayForField(values, configs, CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet, stepCount, 1),
     trigCondition: trigConditionsForField(values, configs, stepCount),
@@ -352,6 +355,7 @@ function drumSequencerFromCache(
   sequencer.expression = { ...sequencer.expression, ...subLaneState(values, configs, CORE_PRODUCT_STEP_VALUE_FIELDS.expression, lane.stepCount, 0.8, options.drumSubLaneEnabled[options.laneIndex]?.expression === true, 'velocities') };
   sequencer.morph = { ...sequencer.morph, ...subLaneState(values, configs, CORE_PRODUCT_STEP_VALUE_FIELDS.morph, lane.stepCount, 0, options.drumSubLaneEnabled[options.laneIndex]?.morph === true, 'values') };
   sequencer.distance = { ...sequencer.distance, ...subLaneState(values, configs, CORE_PRODUCT_STEP_VALUE_FIELDS.distance, lane.stepCount, 0.5, options.drumSubLaneEnabled[options.laneIndex]?.distance === true, 'values') };
+  sequencer.nudge = { ...sequencer.nudge, ...subLaneState(values, configs, CORE_PRODUCT_STEP_VALUE_FIELDS.nudge, lane.stepCount, 0, options.drumSubLaneEnabled[options.laneIndex]?.nudge === true, 'values') };
   sequencer.pitch.offsets = drumPitchOffsets(values, configs, lane.stepCount, lane.midiNote, pitchSettings);
   sequencer.pitch.steps = sequencer.pitch.offsets.length;
   sequencer.pitch.enabled = options.drumSubLaneEnabled[options.laneIndex]?.pitch === true && sequencer.pitch.offsets.length > 0;
@@ -415,6 +419,7 @@ function valuesFromSynthOverrides(overrides: SynthLaneOverrides): SequencerStepV
     ...valuesFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.expression, overrides.expression),
     ...valuesFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.morph, overrides.morph),
     ...valuesFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.distance, overrides.distance),
+    ...valuesFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.nudge, overrides.nudge),
   ].sort(compareStepValues);
 }
 
@@ -427,6 +432,7 @@ function valuesFromDrumSequencer(sequencer: SequencerState, baseMidi: number): S
     ...valuesFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.expression, sequencer.expression.velocities),
     ...valuesFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.morph, sequencer.morph.values),
     ...valuesFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.distance, sequencer.distance.values),
+    ...valuesFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.nudge, sequencer.nudge.values),
   ].sort(compareStepValues);
 }
 
@@ -436,6 +442,7 @@ function configsFromSynthOverrides(overrides: SynthLaneOverrides): SequencerStep
     configFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.expression, overrides.expression, overrides.expressionDirection),
     configFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.morph, overrides.morph, overrides.morphDirection),
     configFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.distance, overrides.distance, overrides.distanceDirection),
+    configFromArray(CORE_PRODUCT_STEP_VALUE_FIELDS.nudge, overrides.nudge, overrides.nudgeDirection),
   ].filter((entry): entry is SequencerStepValueConfig => entry !== null);
 }
 
@@ -445,6 +452,7 @@ function configsFromDrumSequencer(sequencer: SequencerState): SequencerStepValue
     { field: CORE_PRODUCT_STEP_VALUE_FIELDS.expression, steps: sequencer.expression.steps, direction: productDirection(sequencer.expression.direction) },
     { field: CORE_PRODUCT_STEP_VALUE_FIELDS.morph, steps: sequencer.morph.steps, direction: productDirection(sequencer.morph.direction) },
     { field: CORE_PRODUCT_STEP_VALUE_FIELDS.distance, steps: sequencer.distance.steps, direction: productDirection(sequencer.distance.direction) },
+    { field: CORE_PRODUCT_STEP_VALUE_FIELDS.nudge, steps: sequencer.nudge.steps, direction: productDirection(sequencer.nudge.direction) },
   ];
 }
 
@@ -461,10 +469,12 @@ function drumPayloadFromSequencer(laneIndex: number, sequencer: SequencerState):
     pitch: laneArray([...sequencer.pitch.offsets]),
     morph: laneArray([...sequencer.morph.values]),
     distance: laneArray([...sequencer.distance.values]),
+    nudge: laneArray([...sequencer.nudge.values]),
     expressionDirection: laneArray(sequencer.expression.direction),
     pitchDirection: laneArray(sequencer.pitch.direction),
     morphDirection: laneArray(sequencer.morph.direction),
     distanceDirection: laneArray(sequencer.distance.direction),
+    nudgeDirection: laneArray(sequencer.nudge.direction),
     swing: sequencer.swing,
     subLaneStates: drumSubLanePatch(sequencer),
     pitchSettings: laneArray({ mode: sequencer.pitch.mode, root: sequencer.pitch.root, scale: sequencer.pitch.scale }),
@@ -477,12 +487,18 @@ function synthEvolvedSubLaneStatePatch(overrides: SynthLaneOverrides): SubLanePa
   addSynthSubLanePatch(patch, 'expression', overrides.expression, overrides.expressionDirection);
   addSynthSubLanePatch(patch, 'morph', overrides.morph, overrides.morphDirection);
   addSynthSubLanePatch(patch, 'distance', overrides.distance, overrides.distanceDirection);
+  addSynthSubLanePatch(patch, 'nudge', overrides.nudge, overrides.nudgeDirection);
   return patch;
 }
 
 function addSynthSubLanePatch(patch: SubLanePatch, lane: keyof SubLanePatch, values: number[] | null, direction: LaneDirection | null): void {
   if (!Array.isArray(values)) return;
-  patch[lane] = { enabled: true, steps: Math.max(1, Math.min(32, values.length)), direction: direction ?? 'forward' };
+  patch[lane] = {
+    enabled: true,
+    steps: Math.max(1, Math.min(32, values.length)),
+    direction: direction ?? 'forward',
+    ...(lane === 'nudge' ? { followTriggerHits: true } : {}),
+  };
 }
 
 function drumSubLanePatch(sequencer: SequencerState): DrumSubLanePatch {
@@ -491,6 +507,7 @@ function drumSubLanePatch(sequencer: SequencerState): DrumSubLanePatch {
     expression: { enabled: sequencer.expression.enabled, steps: sequencer.expression.steps, direction: sequencer.expression.direction },
     morph: { enabled: sequencer.morph.enabled, steps: sequencer.morph.steps, direction: sequencer.morph.direction },
     distance: { enabled: sequencer.distance.enabled, steps: sequencer.distance.steps, direction: sequencer.distance.direction },
+    nudge: { enabled: sequencer.nudge.enabled, steps: sequencer.nudge.steps, direction: sequencer.nudge.direction, followTriggerHits: true },
     slice: { enabled: sequencer.slice.enabled, steps: sequencer.slice.steps, direction: sequencer.slice.direction },
     reverse: { enabled: sequencer.reverse.enabled, steps: sequencer.reverse.steps, direction: sequencer.reverse.direction },
   };

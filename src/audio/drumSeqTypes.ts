@@ -79,12 +79,14 @@ export interface DrumStepOverrides {
   pitch: (number[] | null)[];
   morph: (number[] | null)[];
   distance: (number[] | null)[];
+  nudge: (number[] | null)[];
   slice: (number[] | null)[];
   reverse: (number[] | null)[];
-  /** Per-lane sub-lane directions (expression, morph, distance, pitch, slice, reverse) */
+  /** Per-lane sub-lane directions (expression, morph, distance, nudge, pitch, slice, reverse) */
   expressionDirection: (LaneDirection | null)[];
   morphDirection: (LaneDirection | null)[];
   distanceDirection: (LaneDirection | null)[];
+  nudgeDirection: (LaneDirection | null)[];
   pitchDirection: (LaneDirection | null)[];
   sliceDirection: (LaneDirection | null)[];
   reverseDirection: (LaneDirection | null)[];
@@ -135,6 +137,10 @@ export interface DistanceLane extends SubLane {
   values: number[];
 }
 
+export interface NudgeLane extends SubLane {
+  values: number[];
+}
+
 export interface SliceLane extends SubLane {
   values: number[];  // 0-15 slice index per step
 }
@@ -173,6 +179,11 @@ export interface SequencerSnapshot {
     direction: LaneDirection;
   };
   distance: {
+    values: number[];
+    steps: number;
+    direction: LaneDirection;
+  };
+  nudge: {
     values: number[];
     steps: number;
     direction: LaneDirection;
@@ -216,6 +227,7 @@ export interface SequencerState {
   expression: ExpressionLane;
   morph: MorphLane;
   distance: DistanceLane;
+  nudge: NudgeLane;
   slice: SliceLane;
   reverse: ReverseLane;
   stepIndex: number;

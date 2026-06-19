@@ -1,16 +1,21 @@
 import {
-  CORE_PRODUCT_SUBLANE_DIRECTIONS,
   CORE_PRODUCT_STEP_VALUE_FIELDS,
   type CoreProductStepValueField,
-  type CoreProductSubLaneDirection,
 } from './coreProductEvents';
+import {
+  addSubLaneStateConfigs,
+  normalizeSubLaneDirection,
+  type SequencerStepValueConfig as SequencerStepValueConfigBase,
+  type SequencerSubLaneConfigState as SequencerSubLaneConfigStateBase,
+} from './CoreProductHostSequencerSubLaneConfig';
 import { sequencerClockDivisionToNumericValue } from './sequencerClockDivisions';
 
 export type SequencerKind = 'synth' | 'drum';
 
 export type SequencerStepToggleOverride = { step: number; value: boolean };
 export type SequencerStepValueOverride = { step: number; field: CoreProductStepValueField; value: number; value2?: number; range?: boolean };
-export type SequencerStepValueConfig = { field: CoreProductStepValueField; steps: number; direction: CoreProductSubLaneDirection };
+export type SequencerStepValueConfig = SequencerStepValueConfigBase;
+export type SequencerSubLaneConfigState = SequencerSubLaneConfigStateBase;
 
 export function normalizedUnitValue(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value)
@@ -172,6 +177,7 @@ function normalizeSequencerStepValueOverridesInternal(
   addNumericField('expression', CORE_PRODUCT_STEP_VALUE_FIELDS.expression, 0, 1);
   addNumericField('morph', CORE_PRODUCT_STEP_VALUE_FIELDS.morph, 0, 1);
   addNumericField('distance', CORE_PRODUCT_STEP_VALUE_FIELDS.distance, 0, 1);
+  addNumericField('nudge', CORE_PRODUCT_STEP_VALUE_FIELDS.nudge, -1, 1);
   addRangeField(source.expressionRanges, CORE_PRODUCT_STEP_VALUE_FIELDS.expression, lanes);
   addRangeField(source.morphRanges, CORE_PRODUCT_STEP_VALUE_FIELDS.morph, lanes);
   addRangeField(source.distanceRanges, CORE_PRODUCT_STEP_VALUE_FIELDS.distance, lanes);
@@ -190,6 +196,7 @@ export function normalizeSequencerStepValueConfigs(
   overrides: unknown,
   fallback: SequencerStepValueConfig[][],
   includeMidiNote: boolean,
+  subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[],
 ): SequencerStepValueConfig[][] {
   const source = overrides && typeof overrides === 'object' && !Array.isArray(overrides) && !(overrides instanceof Map)
     ? overrides as Record<string, unknown>
@@ -229,15 +236,10 @@ export function normalizeSequencerStepValueConfigs(
   addConfig('expression', 'expressionDirection', CORE_PRODUCT_STEP_VALUE_FIELDS.expression);
   addConfig('morph', 'morphDirection', CORE_PRODUCT_STEP_VALUE_FIELDS.morph);
   addConfig('distance', 'distanceDirection', CORE_PRODUCT_STEP_VALUE_FIELDS.distance);
+  addConfig('nudge', 'nudgeDirection', CORE_PRODUCT_STEP_VALUE_FIELDS.nudge);
+  addSubLaneStateConfigs(lanes, subLaneStates, includeMidiNote);
 
   return lanes;
-}
-
-function normalizeSubLaneDirection(value: unknown): CoreProductSubLaneDirection {
-  const text = String(value ?? 'forward').toLowerCase();
-  if (text === 'reverse') return CORE_PRODUCT_SUBLANE_DIRECTIONS.reverse;
-  if (text === 'pingpong') return CORE_PRODUCT_SUBLANE_DIRECTIONS.pingpong;
-  return CORE_PRODUCT_SUBLANE_DIRECTIONS.forward;
 }
 
 function collectNumericStepValues(

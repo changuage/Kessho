@@ -1,16 +1,11 @@
-import {
-  CORE_PRODUCT_SUBLANE_DIRECTIONS,
-  CORE_PRODUCT_STEP_VALUE_FIELDS,
-  type CoreProductStepValueField,
-  type CoreProductSubLaneDirection,
-} from './coreProductEvents';
+import { CORE_PRODUCT_SUBLANE_DIRECTIONS, CORE_PRODUCT_STEP_VALUE_FIELDS, type CoreProductStepValueField, type CoreProductSubLaneDirection } from './coreProductEvents';
 import type { CoreProductSequencerLaneUiState } from './coreProductTelemetry';
 import type { SequencerStepValueConfig, SequencerStepValueOverride } from './CoreProductHostSequencerAdapter';
 import { coreProductSynthMidiToUiPitch } from './CoreProductHostSynthPitch';
 import { addCoreProductRangePayload, applyCoreProductRangeSubLanePatch } from './CoreProductHostSequencerRangePayload';
 
 type LaneDirectionName = 'forward' | 'reverse' | 'pingpong';
-type SubLaneName = 'pitch' | 'expression' | 'morph' | 'distance';
+type SubLaneName = 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge';
 type SubLanePatch = Partial<Record<SubLaneName, { enabled?: boolean; steps?: number; direction?: LaneDirectionName; valueMode?: 'range'; rangeMin?: number; rangeMax?: number }>>;
 type MaskKey =
   | 'probabilityOverrideSetLow' | 'probabilityOverrideSetHigh'
@@ -20,6 +15,7 @@ type MaskKey =
   | 'expressionOverrideSetLow' | 'expressionOverrideSetHigh'
   | 'morphOverrideSetLow' | 'morphOverrideSetHigh'
   | 'distanceOverrideSetLow' | 'distanceOverrideSetHigh'
+  | 'nudgeOverrideSetLow' | 'nudgeOverrideSetHigh'
   | 'expressionRangeSetLow' | 'expressionRangeSetHigh'
   | 'morphRangeSetLow' | 'morphRangeSetHigh'
   | 'distanceRangeSetLow' | 'distanceRangeSetHigh';
@@ -31,6 +27,7 @@ const VALUE_FIELDS = [
   { key: 'expression', field: CORE_PRODUCT_STEP_VALUE_FIELDS.expression, low: 'expressionOverrideSetLow', high: 'expressionOverrideSetHigh', min: 0, max: 1, rangeLow: 'expressionRangeSetLow', rangeHigh: 'expressionRangeSetHigh', rangeMaxKey: 'expressionRangeMaxes' },
   { key: 'morph', field: CORE_PRODUCT_STEP_VALUE_FIELDS.morph, low: 'morphOverrideSetLow', high: 'morphOverrideSetHigh', min: 0, max: 1, rangeLow: 'morphRangeSetLow', rangeHigh: 'morphRangeSetHigh', rangeMaxKey: 'morphRangeMaxes' },
   { key: 'distance', field: CORE_PRODUCT_STEP_VALUE_FIELDS.distance, low: 'distanceOverrideSetLow', high: 'distanceOverrideSetHigh', min: 0, max: 1, rangeLow: 'distanceRangeSetLow', rangeHigh: 'distanceRangeSetHigh', rangeMaxKey: 'distanceRangeMaxes' },
+  { key: 'nudge', field: CORE_PRODUCT_STEP_VALUE_FIELDS.nudge, low: 'nudgeOverrideSetLow', high: 'nudgeOverrideSetHigh', min: -1, max: 1 },
 ] as const;
 
 const SUB_LANE_FIELDS = [
@@ -38,6 +35,7 @@ const SUB_LANE_FIELDS = [
   { name: 'expression', key: 'expressionDirection', field: CORE_PRODUCT_STEP_VALUE_FIELDS.expression },
   { name: 'morph', key: 'morphDirection', field: CORE_PRODUCT_STEP_VALUE_FIELDS.morph },
   { name: 'distance', key: 'distanceDirection', field: CORE_PRODUCT_STEP_VALUE_FIELDS.distance },
+  { name: 'nudge', key: 'nudgeDirection', field: CORE_PRODUCT_STEP_VALUE_FIELDS.nudge },
 ] as const;
 
 function stepFieldId(field: CoreProductStepValueField): number {
@@ -178,7 +176,7 @@ export function coreProductSynthEvolvePayloadFromLane(
   const payload: Record<string, unknown> = { triggerToggles: lane.triggerToggles, swing: lane.swing };
   const valueOverrides = coreProductStepValueOverridesFromLane(lane, true);
   const pitch = Array.isArray(lane.midiNote) ? coreProductSynthMidiToUiPitch(lane.midiNote, pitchSettings, laneIndex, baseMidi) : null;
-  for (const [key, values] of Object.entries({ pitch, expression: lane.expression, morph: lane.morph, distance: lane.distance, probability: lane.probability, ratchet: lane.ratchet, trigCondition: lane.trigCondition })) {
+  for (const [key, values] of Object.entries({ pitch, expression: lane.expression, morph: lane.morph, distance: lane.distance, nudge: lane.nudge, probability: lane.probability, ratchet: lane.ratchet, trigCondition: lane.trigCondition })) {
     if (Array.isArray(values) || includeEmpty) payload[key] = Array.isArray(values) ? values : [];
   }
   addCoreProductRangePayload(payload, 'synth', laneIndex, valueOverrides);
@@ -208,6 +206,7 @@ export function coreProductDrumEvolvePayloadFromLane(
     pitch: laneArray(pitch, laneIndex, includeEmpty),
     morph: laneArray(lane.morph, laneIndex, includeEmpty),
     distance: laneArray(lane.distance, laneIndex, includeEmpty),
+    nudge: laneArray(lane.nudge, laneIndex, includeEmpty),
   };
   addCoreProductRangePayload(payload, 'drum', laneIndex, valueOverrides);
   for (const [key, direction] of Object.entries(directionPayloads(lane, true))) payload[key] = laneArray([direction], laneIndex, false).map((values) => values?.[0] ?? null);

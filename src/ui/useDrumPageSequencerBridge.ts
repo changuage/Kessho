@@ -1,11 +1,16 @@
-import { useCallback, useMemo, type MutableRefObject } from 'react';
+import { useCallback, useMemo, useRef, type MutableRefObject } from 'react';
 
 import type { ClockDivision, DrumStepOverrides } from '../audio/drumSeqTypes';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './sequencer/useEuclideanSequencer';
 import { sanitizeSequencerSubLaneStates } from './usePresetSequencerRestore';
 
 type DrumPageSequencerBridgeOptions = {
-  captureSelectedDrumEuclidLaneHome: (laneIdx: number, pitchSettings?: PitchSettings, pitchState?: SubLaneState | null) => void;
+  captureSelectedDrumEuclidLaneHome: (
+    laneIdx: number,
+    pitchSettings?: PitchSettings,
+    pitchState?: SubLaneState | null,
+    options?: { stepOverrides?: DrumStepOverrides; subLaneStates?: Record<SubLaneKind, SubLaneState>[] },
+  ) => void;
   diceSelectedDrumEuclidLane: (laneIdx: number, intensity: number) => void;
   drumClockDivsRef: MutableRefObject<ClockDivision[] | undefined>;
   drumEvolveConfigsRef: MutableRefObject<EvolveConfig[] | undefined>;
@@ -19,7 +24,7 @@ type DrumPageSequencerBridgeOptions = {
   setSelectedDrumEuclidEvolveConfigs: (configs: EvolveConfig[]) => void;
   setSelectedDrumEuclidSwings: (swings: number[]) => void;
   setSelectedDrumPitchSettings: (settings: PitchSettings[]) => void;
-  setSelectedDrumStepOverrides: (overrides: DrumStepOverrides) => void;
+  setSelectedDrumStepOverrides: (overrides: DrumStepOverrides, subLaneStates?: Record<SubLaneKind, SubLaneState>[]) => void;
   setSelectedDrumSubLaneEnabled: (enabled: Record<string, boolean>[]) => void;
 };
 
@@ -52,6 +57,8 @@ export function useDrumPageSequencerBridge({
   setSelectedDrumStepOverrides,
   setSelectedDrumSubLaneEnabled,
 }: DrumPageSequencerBridgeOptions) {
+  const engineStepOverridesRef = useRef<DrumStepOverrides | undefined>(undefined);
+
   const onEvolveConfigsChange = useCallback((configs: EvolveConfig[]) => {
     drumEvolveConfigsRef.current = configs;
     setSelectedDrumEuclidEvolveConfigs(configs);
@@ -61,9 +68,13 @@ export function useDrumPageSequencerBridge({
     drumStepOverridesRef.current = raw;
   }, [drumStepOverridesRef]);
 
-  const onStepOverridesChange = useCallback((overrides: DrumStepOverrides) => {
-    setSelectedDrumStepOverrides(overrides);
-  }, [setSelectedDrumStepOverrides]);
+  const onStepOverridesChange = useCallback((
+    overrides: DrumStepOverrides,
+    subLaneStates?: Record<SubLaneKind, SubLaneState>[],
+  ) => {
+    engineStepOverridesRef.current = overrides;
+    setSelectedDrumStepOverrides(overrides, subLaneStates ?? drumSubLaneStatesRef.current);
+  }, [drumSubLaneStatesRef, setSelectedDrumStepOverrides]);
 
   const onPitchSettingsChange = useCallback((settings: PitchSettings[]) => {
     drumPitchSettingsRef.current = settings;
@@ -95,6 +106,10 @@ export function useDrumPageSequencerBridge({
       laneIdx,
       drumPitchSettingsRef.current?.[laneIdx],
       pitchState ?? drumSubLaneStatesRef.current?.[laneIdx]?.pitch,
+      {
+        stepOverrides: engineStepOverridesRef.current,
+        subLaneStates: drumSubLaneStatesRef.current,
+      },
     );
   }, [captureSelectedDrumEuclidLaneHome, drumPitchSettingsRef, drumSubLaneStatesRef]);
 

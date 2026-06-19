@@ -92,7 +92,9 @@ struct LaneState {
   uint32_t distance_range_set_high = 0;
   float distance_overrides[64]{};
   float distance_range_maxes[64]{};
-  StepValueSubLaneConfig step_value_configs[8]{};
+  uint32_t nudge_override_set_low = 0, nudge_override_set_high = 0;
+  float nudge_overrides[64]{};
+  StepValueSubLaneConfig step_value_configs[9]{};
   LaneEvolveHomeState evolve_home{};
   uint64_t emitted_hit_count = 0;
   bool last_emitted_morph_valid = false;

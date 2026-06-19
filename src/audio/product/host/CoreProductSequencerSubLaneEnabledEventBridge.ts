@@ -13,6 +13,8 @@ type SubLaneEnabledResult = {
   drumSubLaneEnabled: Record<string, boolean>[];
 };
 
+const SUB_LANE_ENABLED_STEP_FIELD_MASK = 0xff00;
+
 export function applyCoreProductSequencerSubLaneEnabledEvent(options: {
   event: CoreProductEvent;
   sequencer: SequencerKind;
@@ -24,7 +26,10 @@ export function applyCoreProductSequencerSubLaneEnabledEvent(options: {
   const base = { handled: false, synthSubLaneEnabled: options.synthSubLaneEnabled, drumSubLaneEnabled: options.drumSubLaneEnabled };
   if (event.eventKind !== KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep) return base;
   const flags = event.flags ?? 0;
-  if ((flags & CORE_PRODUCT_STEP_TOGGLE_FLAGS.subLaneEnabledState) === 0 || (flags & CORE_PRODUCT_STEP_VALUE_FIELDS.subLaneConfig) === 0) return base;
+  if (
+    (flags & CORE_PRODUCT_STEP_TOGGLE_FLAGS.subLaneEnabledState) === 0 ||
+    (flags & SUB_LANE_ENABLED_STEP_FIELD_MASK) !== CORE_PRODUCT_STEP_VALUE_FIELDS.subLaneConfig
+  ) return base;
   const key = subLaneKeyFromFieldIndex(event.paramId);
   if (!key) return { ...base, handled: true };
   const enabled = event.value === 1;
@@ -60,6 +65,8 @@ function subLaneKeyFromFieldIndex(value: unknown): string | null {
       return 'morph';
     case CORE_PRODUCT_STEP_VALUE_FIELDS.distance:
       return 'distance';
+    case CORE_PRODUCT_STEP_VALUE_FIELDS.nudge:
+      return 'nudge';
     default:
       return null;
   }

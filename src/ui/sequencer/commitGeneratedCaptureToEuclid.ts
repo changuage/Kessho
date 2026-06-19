@@ -15,6 +15,7 @@ import {
   captureEventsInOrder,
   captureStepCount,
 } from './generatedSequencerCaptureScratch';
+import { NUDGE_EPSILON, computeNudgeFromContinuousStep } from './nudgeTiming';
 import { clampEuclideanSubLaneSteps } from './sequencerLimits';
 
 export interface CommitGeneratedCaptureArgs {
@@ -46,11 +47,13 @@ function cloneStepOverrides(prev: StepOverrides): StepOverrides {
     pitch: [...prev.pitch],
     morph: [...prev.morph],
     distance: [...prev.distance],
+    nudge: [...prev.nudge],
     slice: [...prev.slice],
     reverse: [...prev.reverse],
     expressionDirection: [...prev.expressionDirection],
     morphDirection: [...prev.morphDirection],
     distanceDirection: [...prev.distanceDirection],
+    nudgeDirection: [...prev.nudgeDirection],
     pitchDirection: [...prev.pitchDirection],
     sliceDirection: [...prev.sliceDirection],
     reverseDirection: [...prev.reverseDirection],
@@ -72,6 +75,21 @@ function ensureSubLane(
     steps,
     direction: previous?.direction ?? 'forward',
     ...(lane === 'pitch' ? { scaleQuantize: false } : { valueMode: 'sequence' as const }),
+  };
+}
+
+function ensureNudgeSubLane(
+  prevLane: Record<string, SubLaneState> | undefined,
+  steps: number,
+  enabled: boolean,
+): SubLaneState {
+  const previous = prevLane?.nudge;
+  return {
+    ...previous,
+    enabled,
+    steps,
+    direction: previous?.direction ?? 'forward',
+    followTriggerHits: true,
   };
 }
 
@@ -98,6 +116,61 @@ function capturedTriggerPattern(
   return seqEuclidean(scratch.stepCount, Math.min(scratch.stepCount, events.length), 0);
 }
 
+function triggerStepPositions(pattern: readonly boolean[]): number[] {
+  const positions: number[] = [];
+  pattern.forEach((enabled, step) => {
+    if (enabled) positions.push(step);
+  });
+  return positions;
+}
+
+function adjacentTriggerSteps(
+  triggerSteps: readonly number[],
+  currentStep: number,
+  stepCount: number,
+): { previous: number; next: number } {
+  if (triggerSteps.length <= 1) {
+    return {
+      previous: currentStep - stepCount,
+      next: currentStep + stepCount,
+    };
+  }
+  let previous = triggerSteps[triggerSteps.length - 1]! - stepCount;
+  let next = triggerSteps[0]! + stepCount;
+  for (const step of triggerSteps) {
+    if (step < currentStep) previous = step;
+    if (step > currentStep) {
+      next = step;
+      break;
+    }
+  }
+  return { previous, next };
+}
+
+function capturedNudgeValues(
+  events: readonly CaptureEvent[],
+  triggerPattern: readonly boolean[],
+  preserveTriggerSteps: boolean,
+): number[] {
+  if (!preserveTriggerSteps) return new Array(events.length).fill(0);
+  const stepCount = Math.max(1, triggerPattern.length);
+  const triggerSteps = triggerStepPositions(triggerPattern);
+  return events.map((event) => {
+    const currentCycleBase = event.cycleIndex * stepCount;
+    const currentStep = currentCycleBase + event.targetStepIndex;
+    const targetStepFloat = typeof event.targetStepFloat === 'number' && Number.isFinite(event.targetStepFloat)
+      ? event.targetStepFloat
+      : currentStep + event.nudge;
+    const { previous, next } = adjacentTriggerSteps(triggerSteps, event.targetStepIndex, stepCount);
+    return computeNudgeFromContinuousStep(
+      targetStepFloat,
+      currentCycleBase + previous,
+      currentStep,
+      currentCycleBase + next,
+    );
+  });
+}
+
 export function commitGeneratedCaptureToEuclid({
   scratch,
   targetLaneIndex,
@@ -121,6 +194,8 @@ export function commitGeneratedCaptureToEuclid({
   const capturedMidis = capturedEvents.map((event) => event.midiNote);
   const capturedVelocities = capturedEvents.map((event) => event.velocity);
   const triggerPattern = capturedTriggerPattern(scratch, capturedEvents);
+  const nudgeValues = capturedNudgeValues(capturedEvents, triggerPattern, preserveTriggerSteps);
+  const hasNudge = nudgeValues.some((value) => Math.abs(value) > NUDGE_EPSILON);
   const pitchCommit = capturedMidisToSemitonePitchValues(capturedMidis, capturePitchReference);
 
   setSequencerMode(targetLaneIndex, 'euclid');
@@ -140,6 +215,7 @@ export function commitGeneratedCaptureToEuclid({
       ...laneState,
       pitch: ensureSubLane(laneState, 'pitch', capturedCount),
       expression: ensureSubLane(laneState, 'expression', capturedCount),
+      nudge: ensureNudgeSubLane(laneState, capturedCount, hasNudge),
     };
   }));
 
@@ -154,6 +230,7 @@ export function commitGeneratedCaptureToEuclid({
     if (next.triggerClips) next.triggerClips[targetLaneIndex] = null;
     next.pitch[targetLaneIndex] = pitchCommit.pitchValues;
     next.expression[targetLaneIndex] = capturedVelocities;
+    next.nudge[targetLaneIndex] = nudgeValues;
     next.probability[targetLaneIndex] = new Array(stepCount).fill(1);
     next.trigCondition[targetLaneIndex] = Array.from(
       { length: stepCount },
@@ -161,6 +238,7 @@ export function commitGeneratedCaptureToEuclid({
     );
     next.pitchDirection[targetLaneIndex] = 'forward';
     next.expressionDirection[targetLaneIndex] = 'forward';
+    next.nudgeDirection[targetLaneIndex] = 'forward';
 
     return next;
   });

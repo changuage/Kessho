@@ -226,10 +226,7 @@ export function clearProductDrumMorphEndpointOverrides(
   for (const param of Object.keys(nextValueVoice)) {
     const override = nextValueVoice[param];
     if (!override?.isEndpoint) continue;
-    if (
-      (endpoint === 0 && override.morphPosition < 0.01) ||
-      (endpoint === 1 && override.morphPosition > 0.99)
-    ) {
+    if (override.morphPosition === endpoint) {
       delete nextValueVoice[param];
       changed = true;
     }

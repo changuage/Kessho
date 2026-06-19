@@ -30,6 +30,8 @@ typedef struct KesshoProductGeneratedSequencerCaptureEvent {
   int32_t source_layer_index;
   int32_t source_note_index;
   int32_t target_step_index;
+  float target_step_float;
+  float nudge;
 } KesshoProductGeneratedSequencerCaptureEvent;
 
 typedef struct KesshoProductGeneratedSequencerCaptureConfig {
@@ -48,7 +50,7 @@ typedef struct KesshoProductGeneratedSequencerCaptureConfig {
 namespace kessho::product {
 
 static_assert(
-    sizeof(KesshoProductGeneratedSequencerCaptureEvent) == 56u,
+    sizeof(KesshoProductGeneratedSequencerCaptureEvent) == 64u,
     "Generated sequencer capture event ABI size changed");
 
 inline uint32_t generatedSequencerCaptureModeBit(uint32_t mode) noexcept {

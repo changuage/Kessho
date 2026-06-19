@@ -53,7 +53,7 @@ export function applyCoreProductSequencerStepEventToCache(options: ApplyStepEven
     return true;
   }
 
-  if ((flags & CORE_PRODUCT_STEP_VALUE_FIELDS.subLaneConfig) !== 0) {
+  if (valueField(event) === CORE_PRODUCT_STEP_VALUE_FIELDS.subLaneConfig) {
     const field = subLaneConfigField(event);
     if (field === null) return true;
     const current = (lane.configs[laneIndex] ?? []).filter((config) => config.field !== field);

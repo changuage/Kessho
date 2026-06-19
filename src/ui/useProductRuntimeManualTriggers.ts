@@ -10,9 +10,15 @@ type ProductRuntimeManualTriggersOptions = {
   stateRef: MutableRefObject<SliderState>;
 };
 
+export type ProductDrumVoiceTriggerOptions = {
+  velocity?: number;
+  statePatch?: Partial<SliderState>;
+  triggerCritical?: boolean;
+};
+
 type ProductRuntimeManualTriggers = {
   auditionSynthNote: (note: ProductManualSynthNote) => void;
-  triggerDrumVoice: (voice: ProductDrumVoice) => void;
+  triggerDrumVoice: (voice: ProductDrumVoice, options?: ProductDrumVoiceTriggerOptions) => void;
 };
 
 const DEFAULT_MANUAL_DRUM_VELOCITY = 0.8;
@@ -52,9 +58,12 @@ export function useProductRuntimeManualTriggers({
     );
   }, [stateRef]);
 
-  const triggerDrumVoice = useCallback((voice: ProductDrumVoice): void => {
-    const externalState = stateRef.current;
-    const triggerCritical = shouldWaitForManualTriggerSnapshot();
+  const triggerDrumVoice = useCallback((voice: ProductDrumVoice, options: ProductDrumVoiceTriggerOptions = {}): void => {
+    const velocity = options.velocity ?? DEFAULT_MANUAL_DRUM_VELOCITY;
+    const externalState = options.statePatch
+      ? { ...stateRef.current, ...options.statePatch } as SliderState
+      : stateRef.current;
+    const triggerCritical = options.triggerCritical ?? shouldWaitForManualTriggerSnapshot();
     void commitProductControlActionThenTrigger(
       productEngine,
       externalState,
@@ -63,9 +72,9 @@ export function useProductRuntimeManualTriggers({
         source: `drum:${String(voice)}`,
         kind: 'drum-voice',
         voice,
-        velocity: DEFAULT_MANUAL_DRUM_VELOCITY,
+        velocity,
       },
-      (_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, DEFAULT_MANUAL_DRUM_VELOCITY, resolvedSliders),
+      (_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, velocity, resolvedSliders),
       manualTriggerCommitOptions(triggerCritical),
     );
   }, [stateRef]);

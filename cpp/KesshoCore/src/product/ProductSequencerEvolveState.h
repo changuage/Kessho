@@ -49,7 +49,10 @@ struct LaneEvolveHomeState {
   uint32_t distance_override_set_low = 0;
   uint32_t distance_override_set_high = 0;
   float distance_overrides[64]{};
-  StepValueSubLaneConfig step_value_configs[8]{};
+  uint32_t nudge_override_set_low = 0;
+  uint32_t nudge_override_set_high = 0;
+  float nudge_overrides[64]{};
+  StepValueSubLaneConfig step_value_configs[9]{};
 };
 
 } // namespace kessho::product::internal

@@ -31,6 +31,7 @@ const STEP_VALUE_PAYLOAD_KEYS = {
   [CORE_PRODUCT_STEP_VALUE_FIELDS.expression]: 'expression',
   [CORE_PRODUCT_STEP_VALUE_FIELDS.morph]: 'morph',
   [CORE_PRODUCT_STEP_VALUE_FIELDS.distance]: 'distance',
+  [CORE_PRODUCT_STEP_VALUE_FIELDS.nudge]: 'nudge',
 } as const satisfies Partial<Record<CoreProductStepValueField, string>>;
 
 const DIRECTION_PAYLOAD_KEYS = {
@@ -38,6 +39,7 @@ const DIRECTION_PAYLOAD_KEYS = {
   [CORE_PRODUCT_STEP_VALUE_FIELDS.expression]: 'expressionDirection',
   [CORE_PRODUCT_STEP_VALUE_FIELDS.morph]: 'morphDirection',
   [CORE_PRODUCT_STEP_VALUE_FIELDS.distance]: 'distanceDirection',
+  [CORE_PRODUCT_STEP_VALUE_FIELDS.nudge]: 'nudgeDirection',
 } as const satisfies Partial<Record<CoreProductStepValueField, string>>;
 
 function cloneHomeState(state: CoreProductSequencerHomeState): CoreProductSequencerHomeState {

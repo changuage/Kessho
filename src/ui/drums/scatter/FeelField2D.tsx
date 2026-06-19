@@ -22,6 +22,7 @@ const FeelField2D: React.FC<FeelField2DProps> = ({
   onGenerate,
 }) => {
   const ref = useRef<HTMLDivElement | null>(null);
+  const chaos = Math.max(0, Math.min(1, (value.y + 1) / 2));
 
   const updateFromEvent = useCallback((event: PointerEvent | React.PointerEvent<HTMLDivElement>) => {
     const rect = ref.current?.getBoundingClientRect();
@@ -39,6 +40,7 @@ const FeelField2D: React.FC<FeelField2DProps> = ({
         '--engine-color': color,
         '--feel-x': value.x,
         '--feel-y': value.y,
+        '--chaos': chaos,
       } as React.CSSProperties}
       onDoubleClick={(event) => {
         event.stopPropagation();
@@ -59,12 +61,15 @@ const FeelField2D: React.FC<FeelField2DProps> = ({
         target.addEventListener('pointerup', onUp);
       }}
     >
+      <span className="scatter-feel-field__mist" />
+      <span className="scatter-feel-field__orbit orbit-a" />
+      <span className="scatter-feel-field__orbit orbit-b" />
       {size === 'large' && (
         <>
-          <span className="scatter-feel-axis scatter-feel-axis--left">fall</span>
-          <span className="scatter-feel-axis scatter-feel-axis--right">rise</span>
-          <span className="scatter-feel-axis scatter-feel-axis--top">scatter</span>
-          <span className="scatter-feel-axis scatter-feel-axis--bottom">pulse</span>
+          <span className="scatter-feel-hint left">fall</span>
+          <span className="scatter-feel-hint right">rise</span>
+          <span className="scatter-feel-hint top">fracture</span>
+          <span className="scatter-feel-hint bottom">pulse</span>
         </>
       )}
       <span className="scatter-feel-field__puck" />

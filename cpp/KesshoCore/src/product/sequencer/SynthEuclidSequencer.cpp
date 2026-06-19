@@ -26,7 +26,7 @@ float selectedDrumVoiceMidi(const kessho::product::internal::LaneState& lane, ui
       continue;
     }
     if (seen == selected) {
-      return 36.0f + static_cast<float>(voice);
+      return kessho::product::internal::midiNoteForDrumVoice(voice);
     }
     ++seen;
   }
@@ -73,6 +73,144 @@ bool sequencerTargetSourceEnabled(const KesshoProductEngine& engine, uint32_t so
   return source_id >= 1u &&
       source_id <= kessho::product::internal::kSourceCount &&
       engine.sources[source_id - 1u].enabled;
+}
+
+uint32_t relativeStepId(const kessho::product::internal::LaneState& lane, int64_t relative_step) {
+  const int64_t steps = static_cast<int64_t>(std::max(1u, lane.step_count));
+  int64_t step = relative_step % steps;
+  if (step < 0) {
+    step += steps;
+  }
+  return static_cast<uint32_t>(step);
+}
+
+double sequencerAnchorSample(
+    const kessho::product::internal::LaneState& lane,
+    int64_t relative_step,
+    double samples_per_step,
+    double swing_samples) {
+  double sample = static_cast<double>(lane.sequencer_start_sample_frame) +
+      static_cast<double>(relative_step) * samples_per_step;
+  if ((relativeStepId(lane, relative_step) & 1u) != 0u) {
+    sample += swing_samples;
+  }
+  return sample;
+}
+
+uint64_t roundedSampleFrame(double sample) {
+  if (!std::isfinite(sample) || sample <= 0.0) {
+    return 0u;
+  }
+  return static_cast<uint64_t>(std::llround(sample));
+}
+
+uint32_t activeTriggerCount(
+    const KesshoProductEngine& engine,
+    const kessho::product::internal::LaneState& lane) {
+  const uint32_t steps = std::max(1u, lane.step_count);
+  uint32_t count = 0u;
+  for (uint32_t step = 0u; step < steps; ++step) {
+    if (engine.manualMaskHit(lane, step)) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+uint64_t activeHitOrdinalForRelativeStep(
+    const KesshoProductEngine& engine,
+    const kessho::product::internal::LaneState& lane,
+    int64_t relative_step,
+    uint32_t active_count) {
+  if (relative_step <= 0 || active_count == 0u) {
+    return 0u;
+  }
+  const uint32_t steps = std::max(1u, lane.step_count);
+  const uint64_t cycles = static_cast<uint64_t>(relative_step / static_cast<int64_t>(steps));
+  const uint32_t step_id = static_cast<uint32_t>(relative_step % static_cast<int64_t>(steps));
+  uint64_t ordinal = cycles * static_cast<uint64_t>(active_count);
+  for (uint32_t step = 0u; step < step_id; ++step) {
+    if (engine.manualMaskHit(lane, step)) {
+      ++ordinal;
+    }
+  }
+  return ordinal;
+}
+
+int64_t adjacentActiveRelativeStep(
+    const KesshoProductEngine& engine,
+    const kessho::product::internal::LaneState& lane,
+    int64_t relative_step,
+    int32_t direction) {
+  const uint32_t steps = std::max(1u, lane.step_count);
+  for (uint32_t offset = 1u; offset <= steps; ++offset) {
+    const int64_t candidate = relative_step + static_cast<int64_t>(direction) * static_cast<int64_t>(offset);
+    if (engine.manualMaskHit(lane, relativeStepId(lane, candidate))) {
+      return candidate;
+    }
+  }
+  return relative_step;
+}
+
+bool nudgeSchedulingActive(
+    const KesshoProductEngine& engine,
+    const kessho::product::internal::LaneState& lane) {
+  const uint32_t field_id = engine.stepFieldId(KESSHO_PRODUCT_STEP_FIELD_NUDGE);
+  return engine.validStepFieldId(field_id) &&
+      lane.step_value_configs[field_id].enabled &&
+      (lane.nudge_override_set_low != 0u || lane.nudge_override_set_high != 0u);
+}
+
+float nudgeValueForRelativeStep(
+    const KesshoProductEngine& engine,
+    const kessho::product::internal::LaneState& lane,
+    uint32_t trigger_step,
+    int64_t relative_step,
+    uint64_t active_hit_ordinal) {
+  if (!nudgeSchedulingActive(engine, lane)) {
+    return 0.0f;
+  }
+  const uint32_t nudge_step_id = engine.subLaneStepForField(
+      lane,
+      KESSHO_PRODUCT_STEP_FIELD_NUDGE,
+      trigger_step,
+      relative_step,
+      active_hit_ordinal);
+  return kessho::product::internal::clampFloat(
+      engine.stepFloatValue(
+          nudge_step_id,
+          lane.nudge_override_set_low,
+          lane.nudge_override_set_high,
+          lane.nudge_overrides,
+          0.0f),
+      -1.0f,
+      1.0f);
+}
+
+uint64_t nudgedSequencerEventSample(
+    const KesshoProductEngine& engine,
+    const kessho::product::internal::LaneState& lane,
+    uint32_t trigger_step,
+    int64_t relative_step,
+    double samples_per_step,
+    double swing_samples,
+    uint32_t active_count) {
+  const double base_sample = sequencerAnchorSample(lane, relative_step, samples_per_step, swing_samples);
+  if (active_count == 0u) {
+    return roundedSampleFrame(base_sample);
+  }
+  const uint64_t active_ordinal = activeHitOrdinalForRelativeStep(engine, lane, relative_step, active_count);
+  const float nudge = nudgeValueForRelativeStep(engine, lane, trigger_step, relative_step, active_ordinal);
+  if (std::fabs(nudge) <= 0.000001f) {
+    return roundedSampleFrame(base_sample);
+  }
+  const int64_t neighbor_step = adjacentActiveRelativeStep(engine, lane, relative_step, nudge < 0.0f ? -1 : 1);
+  if (neighbor_step == relative_step) {
+    return roundedSampleFrame(base_sample);
+  }
+  const double neighbor_sample = sequencerAnchorSample(lane, neighbor_step, samples_per_step, swing_samples);
+  const double nudged_sample = base_sample + (neighbor_sample - base_sample) * std::fabs(static_cast<double>(nudge));
+  return roundedSampleFrame(nudged_sample);
 }
 
 void recordDrainedRatchet(
@@ -597,33 +735,59 @@ bool enqueueFaceEvent(
   return true;
 }
 
+float captureRelativeStepFloatForSample(
+    const KesshoProductEngine& engine,
+    const kessho::product::internal::LaneState& lane,
+    uint64_t absolute_sample);
+
 int32_t captureRelativeStepIndexForSample(
+    const KesshoProductEngine& engine,
+    const kessho::product::internal::LaneState& lane,
+    uint64_t absolute_sample) {
+  const double target_step = captureRelativeStepFloatForSample(engine, lane, absolute_sample);
+  if (!std::isfinite(target_step) || target_step < 0.0) {
+    return -1;
+  }
+  if (target_step > static_cast<double>(std::numeric_limits<int32_t>::max())) {
+    return std::numeric_limits<int32_t>::max();
+  }
+  return static_cast<int32_t>(std::llround(target_step));
+}
+
+float captureRelativeStepFloatForSample(
     const KesshoProductEngine& engine,
     const kessho::product::internal::LaneState& lane,
     uint64_t absolute_sample) {
   using namespace kessho::product::internal;
   if (!lane.sequencer_runtime_initialized || lane.step_count == 0u || lane.clock_division == 0u) {
-    return -1;
+    return -1.0f;
   }
   if (absolute_sample < lane.sequencer_start_sample_frame) {
-    return -1;
+    return -1.0f;
   }
   const double samples_per_step =
       sequencerSamplesPerStep(engine.transport, engine.sample_rate, lane.clock_division) /
       static_cast<double>(clampFloat(lane.tempo_multiplier, 0.25f, 12.0f));
   if (!std::isfinite(samples_per_step) || samples_per_step <= 0.0) {
-    return -1;
+    return -1.0f;
   }
   const double relative_sample =
       static_cast<double>(absolute_sample) - static_cast<double>(lane.sequencer_start_sample_frame);
-  const double relative_step = std::floor(relative_sample / samples_per_step);
+  const double relative_step = relative_sample / samples_per_step;
   if (!std::isfinite(relative_step) || relative_step < 0.0) {
-    return -1;
+    return -1.0f;
   }
-  if (relative_step > static_cast<double>(std::numeric_limits<int32_t>::max())) {
-    return std::numeric_limits<int32_t>::max();
+  return static_cast<float>(relative_step);
+}
+
+float captureNudgeForTargetStep(double target_step_float, int32_t target_step_index) {
+  if (!std::isfinite(target_step_float) || target_step_index < 0) {
+    return 0.0f;
   }
-  return static_cast<int32_t>(relative_step);
+  return kessho::product::internal::clampFloat(
+      static_cast<float>(target_step_float - static_cast<double>(target_step_index)),
+      -1.0f,
+      1.0f);
 }
 
 void maybeCaptureGeneratedFaceEvent(
@@ -657,7 +821,10 @@ void maybeCaptureGeneratedFaceEvent(
   captured.source_step_index = source_step_index;
   captured.source_layer_index = source_layer_index;
   captured.source_note_index = source_note_index;
+  const float target_step_float = captureRelativeStepFloatForSample(engine, lane, absolute_sample);
   captured.target_step_index = captureRelativeStepIndexForSample(engine, lane, absolute_sample);
+  captured.target_step_float = target_step_float;
+  captured.nudge = captureNudgeForTargetStep(static_cast<double>(target_step_float), captured.target_step_index);
 
   engine.generated_sequencer_capture_ring.push(captured);
 }
@@ -1477,8 +1644,17 @@ bool generateOrbitLaneEvents(
       continue;
     }
     const double swing_samples = sequencerSwingSamples(transport, lane, samples_per_step);
-    const int64_t first_step = sequencerFirstRelativeStep(block_start, lane.sequencer_start_sample_frame, samples_per_step);
-    const int64_t last_step = sequencerLastRelativeStep(block_end, lane.sequencer_start_sample_frame, samples_per_step);
+    const bool nudge_active = nudgeSchedulingActive(*this, lane);
+    const uint32_t nudge_active_count = nudge_active ? activeTriggerCount(*this, lane) : 0u;
+    const int64_t nudge_scan_padding = nudge_active_count > 0u
+        ? static_cast<int64_t>(std::max(1u, lane.step_count))
+        : 0;
+    const int64_t first_step =
+        sequencerFirstRelativeStep(block_start, lane.sequencer_start_sample_frame, samples_per_step) -
+        nudge_scan_padding;
+    const int64_t last_step =
+        sequencerLastRelativeStep(block_end, lane.sequencer_start_sample_frame, samples_per_step) +
+        nudge_scan_padding;
     for (int64_t relative_step = first_step; relative_step <= last_step; ++relative_step) {
       if (relative_step < 0) {
         continue;
@@ -1487,12 +1663,14 @@ bool generateOrbitLaneEvents(
       if (!manualMaskHit(lane, step_id)) {
         continue;
       }
-      double event_sample_double = static_cast<double>(lane.sequencer_start_sample_frame) +
-          static_cast<double>(relative_step) * samples_per_step;
-      if ((step_id & 1u) != 0u) {
-        event_sample_double += swing_samples;
-      }
-      const uint64_t event_sample = static_cast<uint64_t>(std::llround(event_sample_double));
+      const uint64_t event_sample = nudgedSequencerEventSample(
+          *this,
+          lane,
+          step_id,
+          relative_step,
+          samples_per_step,
+          swing_samples,
+          nudge_active_count);
       if (event_sample < block_start || event_sample >= block_end) {
         continue;
       }

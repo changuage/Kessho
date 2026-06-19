@@ -16,6 +16,8 @@ export interface GeneratedSequencerCaptureEvent {
   sourceLayerIndex: number | null;
   sourceNoteIndex: number | null;
   targetStepIndex: number | null;
+  targetStepFloat: number | null;
+  nudge: number;
 }
 
 export function productCaptureModeFromId(id: number): GeneratedSequencerCaptureSourceMode {

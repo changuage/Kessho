@@ -1119,9 +1119,11 @@ assert(
     !app.includes('getLeadMorphedParams={getSelectedLeadMorphedParams}') &&
     !app.includes('onRequestPlaybackStart={requestSequencerPlaybackStart}') &&
     !app.includes('setStepPositionCallback={setSelectedSynthStepPositionCallback}') &&
-    synthPageSequencerBridge.includes('setSelectedSynthStepOverrides(synthEngineStepOverrides(overrides))') &&
+    synthPageSequencerBridge.includes('const engineOverrides = synthEngineStepOverrides(overrides)') &&
+    synthPageSequencerBridge.includes('setSelectedSynthStepOverrides(engineOverrides,') &&
     synthPageSequencerBridge.includes('setSelectedSynthEuclidEvolveConfigs(configs)') &&
-    synthPageSequencerBridge.includes('captureSelectedSynthEuclidLaneHome(laneIdx, pitchState ?? synthSubLaneStatesRef.current?.[laneIdx]?.pitch)'),
+    synthPageSequencerBridge.includes('captureSelectedSynthEuclidLaneHome(') &&
+    synthPageSequencerBridge.includes('stepOverrides: engineStepOverridesRef.current'),
   'App must delegate Synth page selected-runtime sequencer bridge wiring through useSelectedAudioEnginePageRuntimeBridges',
 );
 assert(
@@ -1169,9 +1171,10 @@ assert(
     !app.includes('setTriggerCallback={setSelectedDrumTriggerCallback}') &&
     selectedPageRuntimeBridges.includes('const dynamicsPageRuntimeProps = useMemo(() => ({') &&
     selectedPageRuntimeBridges.includes('getDynamicsAnalyser: options.productRuntimeDebugAnalysers.dynamicsAnalyser') &&
-    drumPageSequencerBridge.includes('setSelectedDrumStepOverrides(overrides)') &&
+    drumPageSequencerBridge.includes('setSelectedDrumStepOverrides(overrides,') &&
     drumPageSequencerBridge.includes('setSelectedDrumEuclidEvolveConfigs(configs)') &&
-    drumPageSequencerBridge.includes('captureSelectedDrumEuclidLaneHome('),
+    drumPageSequencerBridge.includes('captureSelectedDrumEuclidLaneHome(') &&
+    drumPageSequencerBridge.includes('stepOverrides: engineStepOverridesRef.current'),
   'App must delegate Drum page selected-runtime sequencer bridge wiring through useSelectedAudioEnginePageRuntimeBridges',
 );
 assert(

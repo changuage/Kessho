@@ -18,6 +18,7 @@ import {
   semitoneToScaleDegree,
 } from '../../audio/drumSeqTypes';
 import { getPresetNames as getDrumPresetNames } from '../../audio/drumPresets';
+import { drumVoiceBaseMidi } from '../../audio/drumVoiceMidi';
 import { DRUM_VOICES as VOICE_CONFIG, DRUM_VOICE_ORDER } from '../../audio/drumVoiceConfig';
 import { useEuclideanSequencer, type EvolveConfig, type PitchSettings, type SequencerViewMode, type StepOverrides, type SubLaneKind, type SubLaneState } from '../sequencer/useEuclideanSequencer';
 import SequencerChainRail, {
@@ -26,6 +27,7 @@ import SequencerChainRail, {
 } from '../sequencer/SequencerChainRail';
 import { liveOverdubTargetStep, useLiveOverdubRecorder } from '../sequencer/useLiveOverdubRecorder';
 import { stepOverridesForEngineSubLaneState } from '../sequencer/engineStepOverrides';
+import { clampNudge } from '../sequencer/nudgeTiming';
 import {
   drumPitchBaseMidiFromState,
   drumPitchUiValuesToEngineOffsets,
@@ -38,6 +40,7 @@ import SeqOverview from './SeqOverview';
 import type { SeqSimpleState } from './SeqSimple';
 import ScatterPage from './scatter/ScatterPage';
 import type { GeneratedDrumPhrase, SeqScatterState } from './scatter/scatterTypes';
+import type { ScatterPreviewTriggerOptions } from './scatter/useScatterPhrasePlayer';
 import { normalizeSeqScatterState } from './scatter/scatterDefaults';
 import { generateScatterPhrase } from './scatter/scatterPhraseGenerator';
 import { printGeneratedPhraseToLane, type PhrasePrintMode } from './scatter/scatterPhrasePrinter';
@@ -180,8 +183,8 @@ function drumStepOverridesForEngineState(
   }, subLaneStates) as DrumStepOverrides;
 }
 
-type DrumKeyboardLane = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance';
-const DRUM_KEYBOARD_LANES: readonly DrumKeyboardLane[] = ['trigger', 'pitch', 'expression', 'morph', 'distance'] as const;
+type DrumKeyboardLane = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge';
+const DRUM_KEYBOARD_LANES: readonly DrumKeyboardLane[] = ['trigger', 'pitch', 'expression', 'morph', 'distance', 'nudge'] as const;
 
 function makeDefaultKeyboardLaneSteps(): Record<DrumKeyboardLane, number[]> {
   return {
@@ -190,11 +193,12 @@ function makeDefaultKeyboardLaneSteps(): Record<DrumKeyboardLane, number[]> {
     expression: makeDrumLaneArray(() => 0),
     morph: makeDrumLaneArray(() => 0),
     distance: makeDrumLaneArray(() => 0),
+    nudge: makeDrumLaneArray(() => 0),
   };
 }
 
 function drumBaseMidiForVoice(voice: DrumVoiceType): number {
-  return 36 + Math.max(0, DRUM_VOICE_ORDER.indexOf(voice));
+  return drumVoiceBaseMidi(voice);
 }
 
 function convertDrumPitchValuesForMode(
@@ -213,7 +217,7 @@ function convertDrumPitchValuesForMode(
 }
 
 function getDrumKeyboardLane(openLane: string): DrumKeyboardLane {
-  if (openLane === 'pitch' || openLane === 'expression' || openLane === 'morph' || openLane === 'distance') return openLane;
+  if (openLane === 'pitch' || openLane === 'expression' || openLane === 'morph' || openLane === 'distance' || openLane === 'nudge') return openLane;
   return 'trigger';
 }
 
@@ -228,7 +232,7 @@ export interface DrumPageProps {
   onRequestPlaybackStart?: (statePatch?: Partial<SliderState>) => void;
   togglePanel: (id: string) => void;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
-  triggerVoice: (voice: DrumVoiceType) => void;
+  triggerVoice: (voice: DrumVoiceType, options?: ScatterPreviewTriggerOptions) => void;
   getAnalyserNode?: (voice: DrumVoiceType) => AnalyserNode | undefined;
   preloadAudioEngine?: () => Promise<unknown>;
   setStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
@@ -248,7 +252,7 @@ export interface DrumPageProps {
   /** Preset version counter for triggering UI reset on preset load */
   presetVersion?: number;
   /** Called when step overrides change, so parent can sync to audio engine */
-  onStepOverridesChange?: (overrides: DrumStepOverrides) => void;
+  onStepOverridesChange?: (overrides: DrumStepOverrides, subLaneStates?: Record<SubLaneKind, SubLaneState>[]) => void;
   /** Called with unconverted UI step overrides for preset round trips */
   onRawStepOverridesChange?: (overrides: StepOverrides) => void;
   /** Initial step overrides to restore across tab switches */
@@ -450,12 +454,15 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     seq.setStepOverrides(printed.stepOverrides);
     seq.setSubLaneStates(printed.subLaneStates);
     onRawStepOverridesChange?.(printed.stepOverrides);
-    onStepOverridesChange?.(drumStepOverridesForEngineState(
-      printed.stepOverrides,
+    onStepOverridesChange?.(
+      drumStepOverridesForEngineState(
+        printed.stepOverrides,
+        printed.subLaneStates,
+        seq.pitchSettings,
+        printedTargetState,
+      ),
       printed.subLaneStates,
-      seq.pitchSettings,
-      printedTargetState,
-    ));
+    );
     if (printed.clockDiv) seq.setClockDiv(safeLaneIndex, printed.clockDiv);
     if (typeof printed.swing === 'number') seq.setSwing(safeLaneIndex, printed.swing);
     seq.setActiveTab(safeLaneIndex);
@@ -736,7 +743,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     const effectiveSubLaneStates = sequenceHome
       ? Object.fromEntries(Object.entries(sequenceHome).map(([key, value]) => [
           key,
-          { ...value, ...((subLaneStates as Record<string, Partial<SubLaneState>> | undefined)?.[key] ?? {}) },
+          { ...((subLaneStates as Record<string, Partial<SubLaneState>> | undefined)?.[key] ?? {}), ...value },
         ])) as Partial<Record<SubLaneKind, Partial<SubLaneState>>>
       : subLaneStates;
     if (restoredPitchSettings) {
@@ -765,7 +772,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
         arr[laneIndex] = new Map(data.triggerToggles[laneIndex]);
         next.triggerToggles = arr;
       }
-      const keys = ['probability', 'ratchet', 'trigCondition', 'expression', 'pitch', 'morph', 'distance', 'slice', 'reverse'] as const;
+      const keys = ['probability', 'ratchet', 'trigCondition', 'expression', 'pitch', 'morph', 'distance', 'nudge', 'slice', 'reverse'] as const;
       for (const key of keys) {
         if (data[key] && data[key]![laneIndex] != null) {
           const arr = [...prev[key]];
@@ -784,7 +791,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
           (next as Record<string, unknown>)[key] = arr;
         }
       }
-      const directionKeys = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection', 'sliceDirection', 'reverseDirection'] as const;
+      const directionKeys = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection', 'nudgeDirection', 'sliceDirection', 'reverseDirection'] as const;
       for (const key of directionKeys) {
         if (data[key]?.[laneIndex] != null) {
           const arr = [...prev[key]];
@@ -803,6 +810,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
           pitch: data.pitch?.[laneIndex]?.length,
           morph: data.morph?.[laneIndex]?.length,
           distance: data.distance?.[laneIndex]?.length,
+          nudge: data.nudge?.[laneIndex]?.length,
           slice: data.slice?.[laneIndex]?.length,
           reverse: data.reverse?.[laneIndex]?.length,
         } as const;
@@ -811,10 +819,11 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
           pitch: data.pitchDirection?.[laneIndex],
           morph: data.morphDirection?.[laneIndex],
           distance: data.distanceDirection?.[laneIndex],
+          nudge: data.nudgeDirection?.[laneIndex],
           slice: data.sliceDirection?.[laneIndex],
           reverse: data.reverseDirection?.[laneIndex],
         } as const;
-        for (const lane of ['expression', 'pitch', 'morph', 'distance', 'slice', 'reverse'] as const) {
+        for (const lane of ['expression', 'pitch', 'morph', 'distance', 'nudge', 'slice', 'reverse'] as const) {
           const steps = lengthFields[lane];
           const direction = directionFields[lane];
           if (steps == null && direction == null) continue;
@@ -845,12 +854,15 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       onRawStepOverridesChange?.(seq.stepOverrides);
     }
 
-    onStepOverridesChange?.(drumStepOverridesForEngineState(
-      seq.stepOverrides,
+    onStepOverridesChange?.(
+      drumStepOverridesForEngineState(
+        seq.stepOverrides,
+        seq.subLaneStates,
+        seq.pitchSettings,
+        state,
+      ),
       seq.subLaneStates,
-      seq.pitchSettings,
-      state,
-    ));
+    );
   }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, state, onStepOverridesChange, onRawStepOverridesChange]);
 
   // Persist sub-lane states (enabled/steps/direction) across tab switches
@@ -972,6 +984,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       return;
     }
 
+    if (activeKeyboardLane === 'nudge') return;
+
     const currentSteps = seq.subLaneStates[seq.activeTab]?.[activeKeyboardLane]?.steps ?? 0;
     const nextSteps = clampEuclideanSubLaneSteps(currentSteps + direction, currentSteps);
     if (nextSteps === currentSteps) return;
@@ -1022,6 +1036,16 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       const delta = coarse ? 0.1 : 0.025;
       const next = Math.max(0, Math.min(1, Math.round((current + direction * delta) * 40) / 40));
       seq.changeStepValue(seq.activeTab, 'morph', activeKeyboardStep, next);
+      return;
+    }
+
+    if (activeKeyboardLane === 'nudge') {
+      const current = seq.stepOverrides.nudge[seq.activeTab]?.[activeKeyboardStep]
+        ?? activeSeq.nudge.values[activeKeyboardStep % Math.max(1, activeSeq.nudge.values.length)]
+        ?? 0;
+      const delta = coarse ? 0.2 : 0.05;
+      const next = Math.round(clampNudge(current + direction * delta) * 20) / 20;
+      seq.changeStepValue(seq.activeTab, 'nudge', activeKeyboardStep, next);
       return;
     }
 
@@ -1511,9 +1535,12 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               state={seqScatterState}
               laneCount={seq.sequencerModels.length}
               laneNames={seq.sequencerModels.map((model) => model.name)}
+              isRunning={isRunning}
+              getBpm={() => Number(state.sequencerMasterBPM ?? state.drumEuclidBaseBPM ?? 120)}
               onStateChange={updateSeqScatterState}
               onPrintPhrase={handlePrintScatterPhrase}
               onPreviewEngine={(voice) => triggerVoiceRef.current(voice)}
+              onPreviewEngineWithState={(voice, options) => triggerVoiceRef.current(voice, options)}
             />
           )}
 
@@ -1862,7 +1889,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
 
                 {/* ── Sub-lane sparkline accordion (4 sub-lanes only) ── */}
                 <div className="seq-spark-container">
-                  {(['pitch', 'expression', 'morph', 'distance'] as const).map((laneKind) => {
+                  {(['pitch', 'expression', 'morph', 'distance', 'nudge'] as const).map((laneKind) => {
                     const subState = seq.subLaneStates[seq.activeTab]?.[laneKind];
                     const laneColor = SEQUENCER_SUB_LANE_COLORS[laneKind];
                     return (
@@ -1887,15 +1914,18 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                                     ? new Array(subState.steps).fill(((subState.rangeMin ?? 0.25) + (subState.rangeMax ?? 0.75)) * 0.5)
                                     : laneKind === 'morph'
                                       ? activeSeq.morph.values
-                                      : subState?.valueMode === 'range'
+                                      : laneKind === 'distance' && subState?.valueMode === 'range'
                                         ? new Array(subState.steps).fill(((subState.rangeMin ?? 0) + (subState.rangeMax ?? 1)) * 0.5)
-                                        : activeSeq.distance.values
+                                        : laneKind === 'distance'
+                                          ? activeSeq.distance.values
+                                          : activeSeq.nudge.values
                           }
                           color={laneColor}
                           playhead={seq.playheads[seq.activeTab]}
                           hitCount={seq.hitCounts[seq.activeTab]}
                           direction={subState?.direction ?? 'forward'}
                           bipolar={laneKind === 'morph'}
+                          mode={laneKind === 'nudge' ? 'signed' : undefined}
                           invertFill={laneKind === 'expression'}
                           enabled={subState?.enabled ?? false}
                           expanded={seq.openLane === laneKind}

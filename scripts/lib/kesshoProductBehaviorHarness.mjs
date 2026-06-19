@@ -424,6 +424,8 @@ export function loadCoreProductHostHarness(options = {}) {
   const context = {
     console: consoleCapture.console,
     performance: { now: () => ++nowMs },
+    setTimeout,
+    clearTimeout,
     __IMPORT_META_ENV__: { DEV: options.dev === true },
     CoreProductRuntime,
     CoreProductAssetRegistrar,
@@ -662,7 +664,8 @@ export function loadCoreProductHostHarness(options = {}) {
       expression: 5 << 8,
       morph: 6 << 8,
       distance: 7 << 8,
-      subLaneConfig: 8 << 8,
+      nudge: 8 << 8,
+      subLaneConfig: 9 << 8,
     },
     CORE_PRODUCT_SOURCE_IDS: harnessSourceIds,
     CORE_PRODUCT_GRAPH_TAP_IDS: {
@@ -845,6 +848,15 @@ Object.assign(globalThis, {
   sequencerClockDivisionToSeconds,
   normalizeSequencerClockDivisions,
 });`, context, { filename: clockDivisionsPath });
+
+  const subLaneConfigPath = 'src/audio/CoreProductHostSequencerSubLaneConfig.ts';
+  const subLaneConfigSource = stripImportsAndExports(readProjectFile(subLaneConfigPath));
+  const subLaneConfigJs = transpileForVm(subLaneConfigSource, resolve(root, subLaneConfigPath));
+  vm.runInNewContext(`${subLaneConfigJs}
+Object.assign(globalThis, {
+  addSubLaneStateConfigs,
+  normalizeSubLaneDirection,
+});`, context, { filename: subLaneConfigPath });
 
   const adapterPath = 'src/audio/CoreProductHostSequencerAdapter.ts';
   const adapterSource = stripImportsAndExports(readProjectFile(adapterPath));
@@ -1283,6 +1295,14 @@ Object.assign(globalThis, {
 Object.assign(globalThis, {
   snapshotReloadReasonForProductPatch,
 });`, context, { filename: patchClassifierPath });
+
+  const statePatchQueuePath = 'src/audio/product/host/CoreProductStatePatchQueue.ts';
+  const statePatchQueueSource = stripImportsAndExports(readProjectFile(statePatchQueuePath));
+  const statePatchQueueJs = transpileForVm(statePatchQueueSource, resolve(root, statePatchQueuePath));
+  vm.runInNewContext(`${statePatchQueueJs}
+Object.assign(globalThis, {
+  CoreProductStatePatchQueue,
+});`, context, { filename: statePatchQueuePath });
 
   const resolvedStateCommitServicePath = 'src/audio/product/host/CoreProductResolvedStateCommitService.ts';
   const resolvedStateCommitServiceSource = stripImportsAndExports(readProjectFile(resolvedStateCommitServicePath));

@@ -43,7 +43,7 @@ const SYNTH_EUCLIDEAN_LANE_COUNT = 4;
 const DRUM_EUCLIDEAN_LANE_COUNT = 6;
 const DEFAULT_SYNTH_EUCLIDEAN_SWINGS = Array.from({ length: SYNTH_EUCLIDEAN_LANE_COUNT }, () => 0);
 const DEFAULT_DRUM_EUCLIDEAN_SWINGS = Array.from({ length: DRUM_EUCLIDEAN_LANE_COUNT }, () => 0);
-const EVOLVED_SUBLANE_KEYS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance'];
+const EVOLVED_SUBLANE_KEYS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'nudge'];
 const EVOLVED_SUBLANE_RANGE_DEFAULTS: Partial<Record<SubLaneKind, { min: number; max: number }>> = {
   expression: { min: 0.75, max: 1 },
   morph: { min: 0.25, max: 0.75 },
@@ -67,6 +67,7 @@ function defaultEvolvedSubLaneStates(laneCount: number): Record<SubLaneKind, Sub
     expression: defaultEvolvedSubLaneState('expression'),
     morph: defaultEvolvedSubLaneState('morph'),
     distance: defaultEvolvedSubLaneState('distance'),
+    nudge: defaultEvolvedSubLaneState('nudge'),
     slice: defaultEvolvedSubLaneState('slice'),
     reverse: defaultEvolvedSubLaneState('reverse'),
   }));
@@ -151,7 +152,7 @@ export function useSelectedAudioEngineEvolveOverrideCallbacks({
           arr[laneIndex] = new Map(payload.triggerToggles[laneIndex]);
           next.triggerToggles = arr;
         }
-        const arrayKeys = ['probability', 'ratchet', 'trigCondition', 'expression', 'pitch', 'morph', 'distance', 'slice', 'reverse'] as const;
+        const arrayKeys = ['probability', 'ratchet', 'trigCondition', 'expression', 'pitch', 'morph', 'distance', 'nudge', 'slice', 'reverse'] as const;
         for (const key of arrayKeys) {
           if (payload[key]?.[laneIndex] != null) {
             const arr = [...prev[key]];
@@ -167,7 +168,7 @@ export function useSelectedAudioEngineEvolveOverrideCallbacks({
             (next as Record<string, unknown>)[key] = arr;
           }
         }
-        const directionKeys = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection', 'sliceDirection', 'reverseDirection'] as const;
+        const directionKeys = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection', 'nudgeDirection', 'sliceDirection', 'reverseDirection'] as const;
         for (const key of directionKeys) {
           if (payload[key]?.[laneIndex] != null) {
             const arr = [...prev[key]];
@@ -206,6 +207,7 @@ export function useSelectedAudioEngineEvolveOverrideCallbacks({
         expression?: number[] | null;
         morph?: number[] | null;
         distance?: number[] | null;
+        nudge?: number[] | null;
         probability?: number[] | null;
         ratchet?: number[] | null;
         trigCondition?: TrigCondition[] | null;
@@ -217,6 +219,7 @@ export function useSelectedAudioEngineEvolveOverrideCallbacks({
         pitchDirection?: LaneDirection | null;
         morphDirection?: LaneDirection | null;
         distanceDirection?: LaneDirection | null;
+        nudgeDirection?: LaneDirection | null;
         swing?: unknown;
         subLaneStates?: unknown;
         pitchSettings?: (PitchSettings | null)[];
@@ -245,7 +248,7 @@ export function useSelectedAudioEngineEvolveOverrideCallbacks({
         arr[laneIndex] = new Map(payload.triggerToggles);
         data.triggerToggles = arr;
       }
-      const keys = ['expression', 'morph', 'distance', 'probability', 'ratchet'] as const;
+      const keys = ['expression', 'morph', 'distance', 'nudge', 'probability', 'ratchet'] as const;
       for (const key of keys) {
         if (payload[key] != null) {
           const arr: (number[] | null)[] = [null, null, null, null];
@@ -271,7 +274,7 @@ export function useSelectedAudioEngineEvolveOverrideCallbacks({
           (data as Record<string, unknown>)[key] = arr;
         }
       }
-      const directionKeys = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection'] as const;
+      const directionKeys = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection', 'nudgeDirection'] as const;
       for (const key of directionKeys) {
         if (payload[key] != null) {
           const arr = [null, null, null, null] as StepOverrides[typeof key];
@@ -287,7 +290,7 @@ export function useSelectedAudioEngineEvolveOverrideCallbacks({
           arr[laneIndex] = new Map(data.triggerToggles[laneIndex]);
           next.triggerToggles = arr;
         }
-        const mergeKeys = ['expression', 'morph', 'distance', 'probability', 'ratchet', 'trigCondition', 'pitch'] as const;
+        const mergeKeys = ['expression', 'morph', 'distance', 'nudge', 'probability', 'ratchet', 'trigCondition', 'pitch'] as const;
         for (const key of mergeKeys) {
           if (data[key] && data[key]![laneIndex] != null) {
             const arr = [...prev[key]];

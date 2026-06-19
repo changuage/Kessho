@@ -20,7 +20,7 @@ typedef struct KesshoProductCapabilityReport {
 
 #define KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES 16u
 #define KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS 64u
-#define KESSHO_PRODUCT_SEQUENCER_UI_STATE_SUBLANES 8u
+#define KESSHO_PRODUCT_SEQUENCER_UI_STATE_SUBLANES 9u
 #define KESSHO_PRODUCT_ORBIT_VISUAL_LANES KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES
 #define KESSHO_PRODUCT_ORBIT_VISUAL_NOTES 32u
 #define KESSHO_PRODUCT_ANCHOR_WALKER_VISUAL_LANES KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES
@@ -81,6 +81,8 @@ typedef struct KesshoProductSequencerLaneUiState {
   uint32_t morph_override_set_high;
   uint32_t distance_override_set_low;
   uint32_t distance_override_set_high;
+  uint32_t nudge_override_set_low;
+  uint32_t nudge_override_set_high;
   uint32_t step_value_config_enabled_mask;
   uint32_t step_value_config_steps[KESSHO_PRODUCT_SEQUENCER_UI_STATE_SUBLANES];
   uint32_t step_value_config_directions[KESSHO_PRODUCT_SEQUENCER_UI_STATE_SUBLANES];
@@ -92,6 +94,7 @@ typedef struct KesshoProductSequencerLaneUiState {
   float expression_overrides[KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS];
   float morph_overrides[KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS];
   float distance_overrides[KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS];
+  float nudge_overrides[KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS];
   uint32_t expression_range_set_low;
   uint32_t expression_range_set_high;
   uint32_t morph_range_set_low;

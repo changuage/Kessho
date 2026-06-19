@@ -25,8 +25,8 @@ int main() {
   static_assert(sizeof(KesshoProductDebugSourceState) == 32, "product debug source telemetry ABI size changed");
   static_assert(sizeof(KesshoProductDebugVoiceSpawn) == 48, "product debug voice telemetry ABI size changed");
   static_assert(sizeof(KesshoProductTelemetry) == 15008, "product telemetry ABI size changed");
-  static_assert(sizeof(KesshoProductSequencerLaneUiState) == 3024, "sequencer UI lane state ABI size changed");
-  static_assert(sizeof(KesshoProductSequencerUiState) == 96804, "sequencer UI state ABI size changed");
+  static_assert(sizeof(KesshoProductSequencerLaneUiState) == 3296, "sequencer UI lane state ABI size changed");
+  static_assert(sizeof(KesshoProductSequencerUiState) == 105508, "sequencer UI state ABI size changed");
 
   require(offsetof(KesshoProductSnapshotV2, schema_hash) == 4, "snapshot schema hash offset changed");
   require(offsetof(KesshoProductSnapshotV2, sources) == 164, "snapshot sources offset changed");
@@ -149,19 +149,31 @@ int main() {
       offsetof(KesshoProductTelemetry, synth_anchor_walker_output_velocities) == 14752,
       "telemetry synth Anchor Walker output-velocity offset changed");
   require(
-      offsetof(KesshoProductSequencerLaneUiState, probability_overrides) == 168,
+      offsetof(KesshoProductSequencerLaneUiState, nudge_override_set_low) == 100,
+      "sequencer UI nudge override low offset changed");
+  require(
+      offsetof(KesshoProductSequencerLaneUiState, step_value_config_enabled_mask) == 108,
+      "sequencer UI sub-lane config mask offset changed");
+  require(
+      offsetof(KesshoProductSequencerLaneUiState, probability_overrides) == 184,
       "sequencer UI probability override offset changed");
   require(
-      offsetof(KesshoProductSequencerLaneUiState, swing) == 3008,
+      offsetof(KesshoProductSequencerLaneUiState, nudge_overrides) == 2232,
+      "sequencer UI nudge override values offset changed");
+  require(
+      offsetof(KesshoProductSequencerLaneUiState, expression_range_set_low) == 2488,
+      "sequencer UI expression range mask offset changed");
+  require(
+      offsetof(KesshoProductSequencerLaneUiState, swing) == 3280,
       "sequencer UI lane swing offset changed");
   require(
-      offsetof(KesshoProductSequencerLaneUiState, midi_note) == 3012,
+      offsetof(KesshoProductSequencerLaneUiState, midi_note) == 3284,
       "sequencer UI lane base MIDI offset changed");
   require(
-      offsetof(KesshoProductSequencerLaneUiState, note_range_min) == 3016,
+      offsetof(KesshoProductSequencerLaneUiState, note_range_min) == 3288,
       "sequencer UI lane note-range min offset changed");
   require(
-      offsetof(KesshoProductSequencerLaneUiState, note_range_max) == 3020,
+      offsetof(KesshoProductSequencerLaneUiState, note_range_max) == 3292,
       "sequencer UI lane note-range max offset changed");
   require(
       offsetof(KesshoProductSequencerUiState, synth_lanes) == 36,

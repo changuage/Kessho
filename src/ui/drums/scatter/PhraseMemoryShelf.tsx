@@ -12,7 +12,13 @@ interface PhraseMemoryShelfProps {
 const PhraseMemoryShelf: React.FC<PhraseMemoryShelfProps> = ({ phrases, onPrint, onPin, onMutate }) => (
   <div className="scatter-phrase-shelf">
     {phrases.length === 0 ? (
-      <div className="scatter-phrase-empty">No phrases yet</div>
+      Array.from({ length: 3 }, (_, index) => (
+        <div key={index} className="scatter-phrase-empty" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+      ))
     ) : phrases.map((phrase) => (
       <PhraseGlyphCard
         key={phrase.id}

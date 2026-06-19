@@ -50,6 +50,7 @@ import {
   evolvedDrumPitchOffsetToUiValue,
 } from '../ui/sequencer/drumPitchSequencer';
 import type { PitchBindingMode } from '../audio/drumSeqTypes';
+import { drumVoiceBaseMidi } from '../audio/drumVoiceMidi';
 import { createDiamondJourney, createJourneyConnection } from '../audio/journeyTypes';
 import {
   decodeJourneyPresetData,
@@ -169,6 +170,7 @@ function makeSubLaneState(): Record<SubLaneKind, SubLaneState> {
     expression: { enabled: false, steps: 4, direction: 'forward', valueMode: 'sequence', rangeMin: 0.75, rangeMax: 1 },
     morph: { enabled: false, steps: 4, direction: 'forward', valueMode: 'sequence', rangeMin: 0.25, rangeMax: 0.75 },
     distance: { enabled: false, steps: 4, direction: 'forward', valueMode: 'sequence', rangeMin: 0, rangeMax: 1 },
+    nudge: { enabled: false, steps: 4, direction: 'forward' },
     slice: { enabled: false, steps: 4, direction: 'forward' },
     reverse: { enabled: false, steps: 4, direction: 'forward' },
   };
@@ -637,15 +639,17 @@ function testDrumPitchPresetRestoreUsesEngineOffsets(): void {
   };
   const settings: PitchSettings = { mode: 'semitones', root: 60, scale: 'Major' };
   const baseMidi = drumPitchBaseMidiFromState(state, 0);
-  assert.equal(baseMidi, 41, 'drum pitch base should follow the loaded lane target');
+  const expectedBaseMidi = drumVoiceBaseMidi('noise');
+  const expectedOffsets = [60 - expectedBaseMidi, 64 - expectedBaseMidi];
+  assert.equal(baseMidi, expectedBaseMidi, 'drum pitch base should follow the loaded lane target');
   assert.deepStrictEqual(
     drumPitchUiValuesToEngineOffsets([0, 2], settings, baseMidi),
-    [19, 23],
+    expectedOffsets,
     'drum semitones preset restore must convert saved scale degrees to engine pitch offsets',
   );
   assert.deepStrictEqual(
     drumPitchUiValuesToEngineOffsets([60, 64], { mode: 'notes', root: 48, scale: 'Minor' }, baseMidi),
-    [19, 23],
+    expectedOffsets,
     'drum notes preset restore must treat saved values as fixed MIDI notes',
   );
   assert.equal(
@@ -654,7 +658,7 @@ function testDrumPitchPresetRestoreUsesEngineOffsets(): void {
     'drum note-range pitch mode should not send a stale pitch sequence to the engine',
   );
   assert.equal(
-    evolvedDrumPitchOffsetToUiValue(19, settings, baseMidi),
+    evolvedDrumPitchOffsetToUiValue(expectedOffsets[0]!, settings, baseMidi),
     0,
     'drum evolved pitch offsets should round-trip back to saved scale degrees',
   );

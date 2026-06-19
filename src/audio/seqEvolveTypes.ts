@@ -41,6 +41,7 @@ export const SUB_LANE_VALUE_CONFIGS: Record<string, SubLaneValueConfig> = {
   expression:  { type: 'continuous', min: 0.2, max: 1.0, driftScale: 0.08 },
   morph:       { type: 'continuous', min: 0,   max: 1.0, driftScale: 0.05 },
   distance:    { type: 'continuous', min: 0,   max: 1.0, driftScale: 0.06 },
+  nudge:       { type: 'continuous', min: -1,  max: 1,   driftScale: 0.05 },
   pitch:       { type: 'integer',    min: -12, max: 12,  driftScale: 1 },
   slice:       { type: 'integer',    min: 0,   max: 15,  driftScale: 1 },
   reverse:     { type: 'binary',     min: 0,   max: 1,   driftScale: 1 },

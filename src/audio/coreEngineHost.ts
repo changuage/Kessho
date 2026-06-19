@@ -111,7 +111,7 @@ const CORE_SOFT_STOP_CLEANUP_DELAY_MS = Math.ceil(CORE_SOFT_STOP_SOURCE_FADE_SEC
 const EUCLIDEAN_STEP_MAX = 32;
 type CoreEvolvedAudioSubLane = 'pitch' | 'expression' | 'morph' | 'distance';
 type CoreEvolvedSubLanePatch = Partial<Record<CoreEvolvedAudioSubLane, { enabled: boolean; steps: number; direction: LaneDirection; scaleQuantize?: boolean }>>;
-type CoreDrumEvolvedSubLane = CoreEvolvedAudioSubLane | 'slice' | 'reverse';
+type CoreDrumEvolvedSubLane = CoreEvolvedAudioSubLane | 'nudge' | 'slice' | 'reverse';
 type CoreDrumEvolvedSubLanePatch = Partial<Record<CoreDrumEvolvedSubLane, { enabled: boolean; steps: number; direction: LaneDirection; scaleQuantize?: boolean }>>;
 type CoreSynthEvolveOverridesPayload = Partial<SynthLaneOverrides> & { swing?: number; subLaneStates?: CoreEvolvedSubLanePatch; pitchSettings?: (SequencerPitchSettings | null)[] };
 type CoreDrumEvolveOverridesPayload = Partial<DrumStepOverrides> & { swing?: number; subLaneStates?: CoreDrumEvolvedSubLanePatch; pitchSettings?: (SequencerPitchSettings | null)[] };
@@ -141,8 +141,8 @@ function drumStepOverrideSubLaneStatePatch(
   const patch: CoreDrumEvolvedSubLanePatch = {};
   const add = (
     lane: CoreDrumEvolvedSubLane,
-    valueKey: 'pitch' | 'expression' | 'morph' | 'distance' | 'slice' | 'reverse',
-    directionKey: 'pitchDirection' | 'expressionDirection' | 'morphDirection' | 'distanceDirection' | 'sliceDirection' | 'reverseDirection',
+    valueKey: 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge' | 'slice' | 'reverse',
+    directionKey: 'pitchDirection' | 'expressionDirection' | 'morphDirection' | 'distanceDirection' | 'nudgeDirection' | 'sliceDirection' | 'reverseDirection',
   ): void => {
     const values = overrides[valueKey]?.[laneIndex] ?? null;
     const fallbackValues = fallback?.[valueKey]?.[laneIndex] ?? null;
@@ -159,6 +159,7 @@ function drumStepOverrideSubLaneStatePatch(
   add('expression', 'expression', 'expressionDirection');
   add('morph', 'morph', 'morphDirection');
   add('distance', 'distance', 'distanceDirection');
+  add('nudge', 'nudge', 'nudgeDirection');
   add('slice', 'slice', 'sliceDirection');
   add('reverse', 'reverse', 'reverseDirection');
   return patch;
@@ -372,6 +373,8 @@ type CoreSynthEuclidStepOverrides = {
   distance: (number[] | null)[];
   distanceDirection: (LaneDirection | null)[];
   distanceRanges: ({ min: number; max: number } | null)[];
+  nudge: (number[] | null)[];
+  nudgeDirection: (LaneDirection | null)[];
   probability: (number[] | null)[];
   ratchet: (number[] | null)[];
   trigCondition: (TrigCondition[] | null)[];
@@ -1154,6 +1157,8 @@ function createEmptyCoreSynthStepOverrides(): CoreSynthEuclidStepOverrides {
     distance: [null, null, null, null],
     distanceDirection: [null, null, null, null],
     distanceRanges: [null, null, null, null],
+    nudge: [null, null, null, null],
+    nudgeDirection: [null, null, null, null],
     probability: [null, null, null, null],
     ratchet: [null, null, null, null],
     trigCondition: [null, null, null, null],
@@ -1170,11 +1175,13 @@ function createEmptyCoreDrumStepOverrides(): DrumStepOverrides {
     pitch: [null, null, null, null],
     morph: [null, null, null, null],
     distance: [null, null, null, null],
+    nudge: [null, null, null, null],
     slice: [null, null, null, null],
     reverse: [null, null, null, null],
     expressionDirection: [null, null, null, null],
     morphDirection: [null, null, null, null],
     distanceDirection: [null, null, null, null],
+    nudgeDirection: [null, null, null, null],
     pitchDirection: [null, null, null, null],
     sliceDirection: [null, null, null, null],
     reverseDirection: [null, null, null, null],
@@ -1194,11 +1201,13 @@ function cloneCoreDrumStepOverrides(overrides: DrumStepOverrides): DrumStepOverr
     pitch: CORE_DRUM_LANE_INDICES.map((index) => overrides.pitch?.[index] ? [...overrides.pitch[index]!] : null),
     morph: CORE_DRUM_LANE_INDICES.map((index) => overrides.morph[index] ? [...overrides.morph[index]!] : null),
     distance: CORE_DRUM_LANE_INDICES.map((index) => overrides.distance[index] ? [...overrides.distance[index]!] : null),
+    nudge: CORE_DRUM_LANE_INDICES.map((index) => overrides.nudge?.[index] ? [...overrides.nudge[index]!] : null),
     slice: CORE_DRUM_LANE_INDICES.map((index) => overrides.slice?.[index] ? [...overrides.slice[index]!] : null),
     reverse: CORE_DRUM_LANE_INDICES.map((index) => overrides.reverse?.[index] ? [...overrides.reverse[index]!] : null),
     expressionDirection: CORE_DRUM_LANE_INDICES.map((index) => overrides.expressionDirection?.[index] ?? null),
     morphDirection: CORE_DRUM_LANE_INDICES.map((index) => overrides.morphDirection?.[index] ?? null),
     distanceDirection: CORE_DRUM_LANE_INDICES.map((index) => overrides.distanceDirection?.[index] ?? null),
+    nudgeDirection: CORE_DRUM_LANE_INDICES.map((index) => overrides.nudgeDirection?.[index] ?? null),
     pitchDirection: CORE_DRUM_LANE_INDICES.map((index) => overrides.pitchDirection?.[index] ?? null),
     sliceDirection: CORE_DRUM_LANE_INDICES.map((index) => overrides.sliceDirection?.[index] ?? null),
     reverseDirection: CORE_DRUM_LANE_INDICES.map((index) => overrides.reverseDirection?.[index] ?? null),
@@ -5987,6 +5996,8 @@ export class CoreEngineHost {
     distance?: (number[] | null)[];
     distanceDirection?: (LaneDirection | null)[];
     distanceRanges?: ({ min: number; max: number } | null)[];
+    nudge?: (number[] | null)[];
+    nudgeDirection?: (LaneDirection | null)[];
     probability?: (number[] | null)[];
     ratchet?: (number[] | null)[];
     trigCondition?: (TrigCondition[] | null)[];
@@ -6004,6 +6015,8 @@ export class CoreEngineHost {
       distance: CORE_SYNTH_LANE_INDICES.map((index) => overrides.distance?.[index] ? [...overrides.distance[index]!] : this.synthStepOverrides.distance[index] ?? null),
       distanceDirection: CORE_SYNTH_LANE_INDICES.map((index) => overrides.distanceDirection?.[index] ?? this.synthStepOverrides.distanceDirection[index] ?? null),
       distanceRanges: CORE_SYNTH_LANE_INDICES.map((index) => overrides.distanceRanges?.[index] ?? this.synthStepOverrides.distanceRanges[index] ?? null),
+      nudge: CORE_SYNTH_LANE_INDICES.map((index) => overrides.nudge?.[index] ? [...overrides.nudge[index]!] : this.synthStepOverrides.nudge[index] ?? null),
+      nudgeDirection: CORE_SYNTH_LANE_INDICES.map((index) => overrides.nudgeDirection?.[index] ?? this.synthStepOverrides.nudgeDirection[index] ?? null),
       probability: CORE_SYNTH_LANE_INDICES.map((index) => overrides.probability?.[index] ? [...overrides.probability[index]!] : this.synthStepOverrides.probability[index] ?? null),
       ratchet: CORE_SYNTH_LANE_INDICES.map((index) => overrides.ratchet?.[index] ? [...overrides.ratchet[index]!] : this.synthStepOverrides.ratchet[index] ?? null),
       trigCondition: CORE_SYNTH_LANE_INDICES.map((index) => overrides.trigCondition?.[index] ? [...overrides.trigCondition[index]!] : this.synthStepOverrides.trigCondition[index] ?? null),
@@ -6147,6 +6160,8 @@ export class CoreEngineHost {
       morphDirection: null,
       distance: Array.from({ length: steps }, () => clamp(rng(), 0, 1)),
       distanceDirection: null,
+      nudge: current.nudge ? [...current.nudge] : null,
+      nudgeDirection: current.nudgeDirection,
       probability: Array.from({ length: steps }, () => clamp(0.55 + rng() * 0.45, 0, 1)),
       ratchet: Array.from({ length: steps }, () => rng() < 0.2 * amount ? 2 + Math.floor(rng() * 3) : 1),
       trigCondition: current.trigCondition ? current.trigCondition.map((entry) => [entry[0], entry[1]]) : null,
@@ -6201,6 +6216,8 @@ export class CoreEngineHost {
       morphDirection: ov.morphDirection[laneIndex] ?? null,
       distance: ov.distance[laneIndex] ? [...ov.distance[laneIndex]!] : null,
       distanceDirection: ov.distanceDirection[laneIndex] ?? null,
+      nudge: ov.nudge[laneIndex] ? [...ov.nudge[laneIndex]!] : null,
+      nudgeDirection: ov.nudgeDirection[laneIndex] ?? null,
       probability: ov.probability[laneIndex] ? [...ov.probability[laneIndex]!] : null,
       ratchet: ov.ratchet[laneIndex] ? [...ov.ratchet[laneIndex]!] : null,
       trigCondition: ov.trigCondition[laneIndex] ? ov.trigCondition[laneIndex]!.map((entry) => [entry[0], entry[1]]) : null,
@@ -6217,6 +6234,8 @@ export class CoreEngineHost {
     this.synthStepOverrides.morphDirection[laneIndex] = ov.morphDirection;
     this.synthStepOverrides.distance[laneIndex] = ov.distance ? [...ov.distance] : null;
     this.synthStepOverrides.distanceDirection[laneIndex] = ov.distanceDirection;
+    this.synthStepOverrides.nudge[laneIndex] = ov.nudge ? [...ov.nudge] : null;
+    this.synthStepOverrides.nudgeDirection[laneIndex] = ov.nudgeDirection;
     this.synthStepOverrides.probability[laneIndex] = ov.probability ? [...ov.probability] : null;
     this.synthStepOverrides.ratchet[laneIndex] = ov.ratchet ? [...ov.ratchet] : null;
     this.synthStepOverrides.trigCondition[laneIndex] = ov.trigCondition ? ov.trigCondition.map((entry) => [entry[0], entry[1]]) : null;

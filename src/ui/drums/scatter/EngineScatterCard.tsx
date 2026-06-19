@@ -9,6 +9,7 @@ interface EngineScatterCardProps {
   state: EngineScatterState;
   phrases: GeneratedDrumPhrase[];
   selected: boolean;
+  activeUntil?: number;
   onSelect: () => void;
   onToggleEnabled: () => void;
   onChange: (state: EngineScatterState) => void;
@@ -21,6 +22,7 @@ const EngineScatterCard: React.FC<EngineScatterCardProps> = ({
   state,
   phrases,
   selected,
+  activeUntil,
   onSelect,
   onToggleEnabled,
   onChange,
@@ -29,9 +31,10 @@ const EngineScatterCard: React.FC<EngineScatterCardProps> = ({
 }) => {
   const cfg = DRUM_VOICES[voice];
   const chaos = Math.round(((state.feelY + 1) / 2) * 100);
+  const isPulsing = (activeUntil ?? 0) > Date.now();
   return (
     <div
-      className={`scatter-engine-card${selected ? ' scatter-engine-card--selected' : ''}${state.enabled ? ' enabled' : ''}`}
+      className={`scatter-engine-card${selected ? ' scatter-engine-card--selected' : ''}${state.enabled ? ' enabled' : ''}${isPulsing ? ' pulsing' : ''}`}
       style={{ '--engine-color': cfg.color } as React.CSSProperties}
       onClick={onSelect}
     >

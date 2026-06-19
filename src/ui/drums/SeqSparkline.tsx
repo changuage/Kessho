@@ -20,8 +20,8 @@ interface SeqSparklineProps {
   onToggleEnabled?: () => void;
   expanded?: boolean;
   selectedStep?: number | null;
-  /** Display mode: 'reverse' renders direction-aware up/down bars instead of magnitudes */
-  mode?: 'default' | 'reverse';
+  /** Display mode: 'reverse' renders direction-aware bars, 'signed' renders -1..1 values around center. */
+  mode?: 'default' | 'reverse' | 'signed';
 }
 
 const SeqSparkline: React.FC<SeqSparklineProps> = ({ values, color, label, steps, playhead = -1, hitCount = 0, direction = 'forward', playheadMode = 'hit', bipolar = false, invertFill = false, enabled = true, onClick, onToggleEnabled, expanded = false, selectedStep = null, mode = 'default' }) => {
@@ -55,7 +55,7 @@ const SeqSparkline: React.FC<SeqSparklineProps> = ({ values, color, label, steps
             <line key={`g${b}`} x1={b * (width / 4)} y1={0} x2={b * (width / 4)} y2={height} stroke="rgba(255,255,255,0.06)" strokeWidth={0.5} />
           ))}
 
-          {bipolar && (
+          {(bipolar || mode === 'signed') && (
             /* Dashed center line for bipolar sparklines */
             <line x1={0} y1={height / 2} x2={width} y2={height / 2} stroke="rgba(255,255,255,0.15)" strokeWidth={0.5} strokeDasharray="2,2" />
           )}
@@ -70,6 +70,18 @@ const SeqSparkline: React.FC<SeqSparklineProps> = ({ values, color, label, steps
             const v = Math.max(0, Math.min(1, rawV));
             const x = i * barW + 1;
             const w = Math.max(1, barW - 2);
+
+            if (mode === 'signed') {
+              if (!inRange) return <rect key={i} x={x} y={height * 0.35} width={w} height={height * 0.3} rx={0.6} fill={color} opacity={0.04} />;
+              const signed = Math.max(-1, Math.min(1, rawV));
+              if (Math.abs(signed) < 0.01) return null;
+              const midY = height / 2;
+              const barH = Math.min(Math.abs(signed) * (midY - 1), midY - 1);
+              const opacity = Math.min(1, 0.25 + Math.abs(signed) * 0.65);
+              return signed > 0
+                ? <rect key={i} x={x} y={midY - barH} width={w} height={barH} rx={0.8} fill={color} opacity={opacity} />
+                : <rect key={i} x={x} y={midY} width={w} height={barH} rx={0.8} fill={color} opacity={opacity} />;
+            }
 
             if (mode === 'reverse') {
               /* ── Reverse lane: directional bars ──

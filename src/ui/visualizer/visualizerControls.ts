@@ -199,7 +199,8 @@ export function derivePerformanceMacroPatch(
     pulseSync: clampBipolar(-0.05 + pulse * 1.02),
     triggerResponse: clampBipolar(0.08 + pulse * 0.9),
     ripples: clampBipolar(-0.2 + pulse * 0.75),
-    shapeSize: clampBipolar(0.05 + pulse * 0.34 + particles * 0.15),
+    shapeSize: clampBipolar(-0.08 + pulse * 0.38 + particles * 0.22 - soft * 0.18),
+    shapeSpread: clampBipolar(-0.18 + particles * 0.44 + pulse * 0.28 - soft * 0.24),
     bloomSize: clampBipolar(0.04 + pulse * 0.28 + bright * 0.28),
     pointCloudAmount: clampBipolar(-1 + particles * 2),
     pointCloudDensity: clampBipolar(-0.25 + particles * 1.1),
@@ -212,9 +213,9 @@ export function derivePerformanceMacroPatch(
     kaleidoscope: clampBipolar(glitch * 0.54),
     kaleidoSegments: clampBipolar(glitch * 0.42),
     kaleidoSpin: clampBipolar(glitch * 0.26),
-    brightness: clampBipolar(-0.05 + bright * 0.68 - soft * 0.12),
+    brightness: clampBipolar(-0.22 + bright * 1.08 + pulse * 0.12 - soft * 0.34),
     vibrance: clampBipolar(0.05 + bright * 0.92),
-    saturation: clampBipolar(0.04 + bright * 0.72),
+    saturation: clampBipolar(-0.16 + bright * 0.88 + particles * 0.18 - soft * 0.28),
     color: clampBipolar(-0.2 + bright * 0.9),
   };
 }

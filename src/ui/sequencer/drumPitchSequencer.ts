@@ -8,6 +8,7 @@ import {
 } from '../../audio/drumSeqTypes';
 import type { SliderState } from '../state';
 import type { PitchSettings } from './useEuclideanSequencer';
+import { drumVoiceBaseMidiFromIndex } from '../../audio/drumVoiceMidi';
 
 const DRUM_PITCH_BASE_TARGETS = [
   { suffix: 'Sub', voiceIndex: 0 },
@@ -33,7 +34,7 @@ export function drumPitchBaseMidiFromState(state: SliderState, laneIdx: number):
   const selected = DRUM_PITCH_BASE_TARGETS.find((target) => Boolean(
     state[`${prefix}Target${target.suffix}` as keyof SliderState] ?? target.suffix === fallbackSuffix,
   ));
-  return 36 + (selected?.voiceIndex ?? 1);
+  return drumVoiceBaseMidiFromIndex(selected?.voiceIndex ?? 1);
 }
 
 export function clampDrumPitchOffset(value: number): number {

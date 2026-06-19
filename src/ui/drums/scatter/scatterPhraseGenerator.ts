@@ -118,6 +118,13 @@ function trigConditionFor(chaos: number, rng: () => number): TrigCondition {
   return rngPick(rng, [[1, 2], [2, 2], [1, 3], [2, 3], [1, 4]] as const).slice() as TrigCondition;
 }
 
+function nudgeForHit(chaos: number, fracture: number, rng: () => number): number {
+  const chance = Math.min(0.7, chaos * 0.45 + fracture * 0.25);
+  if (rng() > chance) return 0;
+  const spread = Math.min(0.45, 0.06 + chaos * 0.16 + fracture * 0.18);
+  return Math.round((rng() * 2 - 1) * spread * 20) / 20;
+}
+
 function labelFor(engine: DrumVoiceType, hits: number, zone: ScatterFeelZone, contour: ScatterContour): string {
   const voice = DRUM_VOICES[engine]?.label ?? engine;
   return `${voice} · ${hits} · ${contour === 'flat' ? zone : contour}`;
@@ -177,11 +184,15 @@ export function generateScatterPhrase(args: {
   const reverse = Array.from({ length: steps }, (_, step) => (
     pattern[step] && rng() < fracture * 0.22 ? 1 : 0
   ));
+  const nudge = pattern
+    .filter(Boolean)
+    .map(() => nudgeForHit(chaos, fracture, rng));
   const directions = {
     pitch: directionFor(zone, contour, rng),
     expression: zone === 'wave' ? 'pingpong' as const : 'forward' as const,
     morph: directionFor(zone, contour, rng),
     distance: directionFor(zone, contour, rng),
+    nudge: 'forward' as const,
     slice: zone === 'scatter' && rng() < 0.5 ? 'reverse' as const : 'forward' as const,
     reverse: 'forward' as const,
   };
@@ -204,6 +215,7 @@ export function generateScatterPhrase(args: {
   });
   const hasSlice = slice.some((value) => value > 0);
   const hasReverse = reverse.some((value) => value > 0);
+  const hasNudge = nudge.some((value) => Math.abs(value) > 0.001);
 
   return {
     id: `${engine}-${seed}`,
@@ -221,6 +233,7 @@ export function generateScatterPhrase(args: {
     expression,
     morph,
     distance,
+    nudge,
     slice,
     reverse,
     directions,
@@ -229,6 +242,7 @@ export function generateScatterPhrase(args: {
       expression: true,
       morph: chaos > 0.35 || motion > 0.55,
       distance: chaos > 0.25 || motion > 0.5,
+      nudge: hasNudge,
       slice: hasSlice,
       reverse: hasReverse,
     },

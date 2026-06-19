@@ -22,10 +22,12 @@ export interface CaptureEvent {
   eventOrder: number;
   sourceEventId: number;
   targetStepIndex: number;
+  targetStepFloat: number | null;
   cycleIndex: number;
   midiNote: number;
   velocity: number;
   gateSeconds: number;
+  nudge: number;
 }
 
 export interface CaptureScratch {

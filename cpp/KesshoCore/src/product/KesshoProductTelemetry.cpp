@@ -243,6 +243,8 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
   out.morph_override_set_high = lane.morph_override_set_high;
   out.distance_override_set_low = lane.distance_override_set_low;
   out.distance_override_set_high = lane.distance_override_set_high;
+  out.nudge_override_set_low = lane.nudge_override_set_low;
+  out.nudge_override_set_high = lane.nudge_override_set_high;
   out.expression_range_set_low = lane.expression_range_set_low;
   out.expression_range_set_high = lane.expression_range_set_high;
   out.morph_range_set_low = lane.morph_range_set_low;
@@ -258,6 +260,7 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
        out.expression_override_set_low != 0u || out.expression_override_set_high != 0u ||
        out.morph_override_set_low != 0u || out.morph_override_set_high != 0u ||
        out.distance_override_set_low != 0u || out.distance_override_set_high != 0u ||
+       out.nudge_override_set_low != 0u || out.nudge_override_set_high != 0u ||
        out.expression_range_set_low != 0u || out.expression_range_set_high != 0u ||
        out.morph_range_set_low != 0u || out.morph_range_set_high != 0u ||
        out.distance_range_set_low != 0u || out.distance_range_set_high != 0u)
@@ -279,6 +282,7 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
     out.expression_overrides[i] = lane.expression_overrides[i];
     out.morph_overrides[i] = lane.morph_overrides[i];
     out.distance_overrides[i] = lane.distance_overrides[i];
+    out.nudge_overrides[i] = lane.nudge_overrides[i];
     out.expression_range_maxes[i] = lane.expression_range_maxes[i];
     out.morph_range_maxes[i] = lane.morph_range_maxes[i];
     out.distance_range_maxes[i] = lane.distance_range_maxes[i];

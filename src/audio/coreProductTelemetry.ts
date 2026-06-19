@@ -27,6 +27,8 @@ export type CoreProductSequencerLaneUiState = {
   morphOverrideSetHigh?: number;
   distanceOverrideSetLow?: number;
   distanceOverrideSetHigh?: number;
+  nudgeOverrideSetLow?: number;
+  nudgeOverrideSetHigh?: number;
   expressionRangeSetLow?: number;
   expressionRangeSetHigh?: number;
   morphRangeSetLow?: number;
@@ -43,6 +45,7 @@ export type CoreProductSequencerLaneUiState = {
   expression: number[] | null;
   morph: number[] | null;
   distance: number[] | null;
+  nudge?: number[] | null;
   expressionRangeMaxes?: number[] | null;
   morphRangeMaxes?: number[] | null;
   distanceRangeMaxes?: number[] | null;

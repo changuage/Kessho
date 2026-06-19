@@ -1049,6 +1049,7 @@
 .synth-root .seq-lane-pitch .seq-lane-enable-btn.on { background: var(--accent-pink); }
 .synth-root .seq-lane-expr .seq-lane-enable-btn.on { background: var(--accent-orange); }
 .synth-root .seq-lane-morph .seq-lane-enable-btn.on { background: var(--accent-lavender); }
+.synth-root .seq-lane-nudge .seq-lane-enable-btn.on { background: var(--lane-color, var(--accent-teal)); }
 
 /* ── Lane ── */
 .synth-root .seq-lane {
@@ -1065,6 +1066,7 @@
 .synth-root .seq-lane-pitch .seq-lane-title { color: var(--accent-pink); }
 .synth-root .seq-lane-expr .seq-lane-title { color: var(--accent-orange); }
 .synth-root .seq-lane-morph .seq-lane-title { color: var(--accent-lavender); }
+.synth-root .seq-lane-nudge .seq-lane-title { color: var(--lane-color, var(--accent-teal)); }
 .synth-root .seq-lane-body { padding: 8px 10px; background: rgba(0,0,0,0.15); }
 .synth-root .seq-lane.disabled .seq-lane-body { opacity: 0.3; pointer-events: none; }
 .synth-root .seq-lane-controls { display: flex; gap: 8px; align-items: center; }

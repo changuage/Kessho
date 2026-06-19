@@ -113,6 +113,7 @@ const DEFAULT_CONTROLS: ReactiveVisualizerControls = {
   noiseColor: 0,
   pulseSync: 0,
   shapeSize: 0,
+  shapeSpread: 0,
   shapeCount: 0,
   noiseSize: 0,
   noiseDensity: 0,
@@ -170,7 +171,8 @@ const CONTROL_GROUPS: Array<{ label: string; collapsed?: boolean; controls: Cont
     controls: [
       { key: 'shape', label: 'Geometry', left: 'Angular', right: 'Round' },
       { key: 'shapeCount', label: 'Count', left: 'Few', right: 'Many' },
-      { key: 'shapeSize', label: 'Spread', left: 'Tight', right: 'Fill' },
+      { key: 'shapeSize', label: 'Size', left: 'Small', right: 'Large' },
+      { key: 'shapeSpread', label: 'Spread', left: 'Cluster', right: 'Wide' },
       { key: 'organic', label: 'Organic', left: 'Uniform', right: 'Irregular' },
       { key: 'edges', label: 'Edges', left: 'Amoeba', right: 'Gradient' },
       { key: 'diffusion', label: 'Opacity', left: 'Solid', right: 'Faded' },
@@ -179,7 +181,9 @@ const CONTROL_GROUPS: Array<{ label: string; collapsed?: boolean; controls: Cont
   {
     label: 'Color',
     controls: [
-      { key: 'color', label: 'Palette', left: 'Neon', right: 'Pastel' },
+      { key: 'color', label: 'Palette', left: 'Electric', right: 'Pastel' },
+      { key: 'brightness', label: 'Brightness', left: 'Dim', right: 'Bright' },
+      { key: 'saturation', label: 'Saturation', left: 'Muted', right: 'Rich' },
       { key: 'background', label: 'Background', left: 'Indigo', right: 'Blush' },
       { key: 'backdropFade', label: 'Backdrop', left: 'Hidden', right: 'Glow' },
     ],
@@ -359,6 +363,7 @@ function sanitizeVisualizerControls(source: Partial<ReactiveVisualizerControls> 
     pointCloudScatter: controls.pointCloudScatter ?? DEFAULT_CONTROLS.pointCloudScatter,
     pointCloudColor: controls.pointCloudColor ?? DEFAULT_CONTROLS.pointCloudColor,
     kaleidoPattern: controls.kaleidoPattern ?? DEFAULT_CONTROLS.kaleidoPattern,
+    shapeSpread: controls.shapeSpread ?? DEFAULT_CONTROLS.shapeSpread,
     layerOrder: normalizeLayerOrder(controls.layerOrder),
     focus,
   };

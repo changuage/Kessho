@@ -166,7 +166,8 @@ export const CORE_PRODUCT_STEP_VALUE_FIELDS = Object.freeze({
   expression: 5 << 8,
   morph: 6 << 8,
   distance: 7 << 8,
-  subLaneConfig: 8 << 8,
+  nudge: 8 << 8,
+  subLaneConfig: 9 << 8,
 } as const);
 
 export const CORE_PRODUCT_SUBLANE_DIRECTIONS = Object.freeze({

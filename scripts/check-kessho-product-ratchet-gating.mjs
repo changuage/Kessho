@@ -35,15 +35,16 @@ function check(id: string, condition: unknown, message: string): void {
 
 function isStepValueField(event: CoreProductEvent, field: number): boolean {
   const flags = event.flags ?? 0;
+  const stepField = flags & 0xff00;
   return event.eventKind === KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep &&
-    (flags & CORE_PRODUCT_STEP_VALUE_FIELDS.subLaneConfig) === 0 &&
-    (flags & field) === field;
+    stepField !== CORE_PRODUCT_STEP_VALUE_FIELDS.subLaneConfig &&
+    stepField === field;
 }
 
 function isConfigField(event: CoreProductEvent, field: number): boolean {
   const flags = event.flags ?? 0;
   return event.eventKind === KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep &&
-    (flags & CORE_PRODUCT_STEP_VALUE_FIELDS.subLaneConfig) !== 0 &&
+    (flags & 0xff00) === CORE_PRODUCT_STEP_VALUE_FIELDS.subLaneConfig &&
     event.paramId === field >> 8;
 }
 

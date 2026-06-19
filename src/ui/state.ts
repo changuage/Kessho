@@ -214,6 +214,7 @@ export interface SerializedSubLaneState {
   valueMode?: 'sequence' | 'range';
   rangeMin?: number;
   rangeMax?: number;
+  followTriggerHits?: boolean;
 }
 
 export interface SerializedStepToggle {
@@ -235,11 +236,13 @@ export interface SerializedStepOverrides {
   pitch?: (number[] | null)[];
   morph?: (number[] | null)[];
   distance?: (number[] | null)[];
+  nudge?: (number[] | null)[];
   slice?: (number[] | null)[];
   reverse?: (number[] | null)[];
   expressionDirection?: (LaneDirection | null)[];
   morphDirection?: (LaneDirection | null)[];
   distanceDirection?: (LaneDirection | null)[];
+  nudgeDirection?: (LaneDirection | null)[];
   pitchDirection?: (LaneDirection | null)[];
   sliceDirection?: (LaneDirection | null)[];
   reverseDirection?: (LaneDirection | null)[];

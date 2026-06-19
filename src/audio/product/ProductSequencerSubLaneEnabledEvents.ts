@@ -16,6 +16,7 @@ const SUB_LANE_FIELDS: ReadonlyArray<readonly [string, CoreProductStepValueField
   ['expression', CORE_PRODUCT_STEP_VALUE_FIELDS.expression],
   ['morph', CORE_PRODUCT_STEP_VALUE_FIELDS.morph],
   ['distance', CORE_PRODUCT_STEP_VALUE_FIELDS.distance],
+  ['nudge', CORE_PRODUCT_STEP_VALUE_FIELDS.nudge],
 ] as const);
 
 export function createCoreProductSequencerSubLaneEnabledEvents(

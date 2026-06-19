@@ -1,13 +1,13 @@
 const EVENT_BYTES = 40;
-const GENERATED_CAPTURE_EVENT_BYTES = 56;
+const GENERATED_CAPTURE_EVENT_BYTES = 64;
 const GENERATED_CAPTURE_EVENT_CAPACITY = 256;
 const TELEMETRY_BYTES = 15008;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
 const EXPECTED_PRODUCT_SCHEMA_HASH = 0xaa00cf51;
 const SEQUENCER_UI_STATE_LANES = 16;
 const SEQUENCER_UI_STATE_STEPS = 64;
-const SEQUENCER_UI_LANE_BYTES = 3024;
-const SEQUENCER_UI_STATE_BYTES = 96804;
+const SEQUENCER_UI_LANE_BYTES = 3296;
+const SEQUENCER_UI_STATE_BYTES = 105508;
 const SEQUENCER_UI_SYNTH_LANES_OFFSET = 36;
 const SEQUENCER_UI_DRUM_LANES_OFFSET =
   SEQUENCER_UI_SYNTH_LANES_OFFSET + SEQUENCER_UI_STATE_LANES * SEQUENCER_UI_LANE_BYTES;
@@ -1065,6 +1065,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       const sourceLayerIndex = this.view.getInt32(ptr + 44, true);
       const sourceNoteIndex = this.view.getInt32(ptr + 48, true);
       const targetStepIndex = this.view.getInt32(ptr + 52, true);
+      const targetStepFloat = this.view.getFloat32(ptr + 56, true);
+      const nudge = this.view.getFloat32(ptr + 60, true);
       events.push({
         eventId: this.readUint64Number(ptr),
         absoluteSample: this.readUint64Number(ptr + 8),
@@ -1078,6 +1080,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         sourceLayerIndex: sourceLayerIndex >= 0 ? sourceLayerIndex : null,
         sourceNoteIndex: sourceNoteIndex >= 0 ? sourceNoteIndex : null,
         targetStepIndex: targetStepIndex >= 0 ? targetStepIndex : null,
+        targetStepFloat: Number.isFinite(targetStepFloat) && targetStepFloat >= 0 ? targetStepFloat : null,
+        nudge: Number.isFinite(nudge) ? Math.max(-1, Math.min(1, nudge)) : 0,
       });
     }
     return {
@@ -1138,8 +1142,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const values = [];
     for (let step = 0; step <= lastStep; step += 1) {
       values.push([
-        this.view.getUint32(ptr + 680 + step * 4, true),
-        this.view.getUint32(ptr + 936 + step * 4, true),
+        this.view.getUint32(ptr + 696 + step * 4, true),
+        this.view.getUint32(ptr + 952 + step * 4, true),
       ]);
     }
     return values;
@@ -1185,26 +1189,28 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       morphOverrideSetHigh: this.view.getUint32(ptr + 88, true),
       distanceOverrideSetLow: this.view.getUint32(ptr + 92, true),
       distanceOverrideSetHigh: this.view.getUint32(ptr + 96, true),
-      stepValueConfigEnabledMask: this.view.getUint32(ptr + 100, true),
-      stepValueConfigSteps: this.readUint32Array(ptr, 104, 8),
-      stepValueConfigDirections: this.readUint32Array(ptr, 136, 8),
-      expressionRangeSetLow: this.view.getUint32(ptr + 2216, true),
-      expressionRangeSetHigh: this.view.getUint32(ptr + 2220, true),
-      morphRangeSetLow: this.view.getUint32(ptr + 2224, true),
-      morphRangeSetHigh: this.view.getUint32(ptr + 2228, true),
-      distanceRangeSetLow: this.view.getUint32(ptr + 2232, true),
-      distanceRangeSetHigh: this.view.getUint32(ptr + 2236, true),
+      nudgeOverrideSetLow: this.view.getUint32(ptr + 100, true),
+      nudgeOverrideSetHigh: this.view.getUint32(ptr + 104, true),
+      stepValueConfigEnabledMask: this.view.getUint32(ptr + 108, true),
+      stepValueConfigSteps: this.readUint32Array(ptr, 112, 9),
+      stepValueConfigDirections: this.readUint32Array(ptr, 148, 9),
+      expressionRangeSetLow: this.view.getUint32(ptr + 2488, true),
+      expressionRangeSetHigh: this.view.getUint32(ptr + 2492, true),
+      morphRangeSetLow: this.view.getUint32(ptr + 2496, true),
+      morphRangeSetHigh: this.view.getUint32(ptr + 2500, true),
+      distanceRangeSetLow: this.view.getUint32(ptr + 2504, true),
+      distanceRangeSetHigh: this.view.getUint32(ptr + 2508, true),
       probability: this.readFloatOverrides(
         ptr,
         this.view.getUint32(ptr + 44, true),
         this.view.getUint32(ptr + 48, true),
-        168,
+        184,
       ),
       ratchet: this.readUintOverrides(
         ptr,
         this.view.getUint32(ptr + 52, true),
         this.view.getUint32(ptr + 56, true),
-        424,
+        440,
       ),
       trigCondition: this.readTrigConditionOverrides(
         ptr,
@@ -1215,48 +1221,54 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         ptr,
         this.view.getUint32(ptr + 68, true),
         this.view.getUint32(ptr + 72, true),
-        1192,
+        1208,
       ),
       expression: this.readFloatOverrides(
         ptr,
         this.view.getUint32(ptr + 76, true),
         this.view.getUint32(ptr + 80, true),
-        1448,
+        1464,
       ),
       morph: this.readFloatOverrides(
         ptr,
         this.view.getUint32(ptr + 84, true),
         this.view.getUint32(ptr + 88, true),
-        1704,
+        1720,
       ),
       distance: this.readFloatOverrides(
         ptr,
         this.view.getUint32(ptr + 92, true),
         this.view.getUint32(ptr + 96, true),
-        1960,
+        1976,
+      ),
+      nudge: this.readFloatOverrides(
+        ptr,
+        this.view.getUint32(ptr + 100, true),
+        this.view.getUint32(ptr + 104, true),
+        2232,
       ),
       expressionRangeMaxes: this.readFloatOverrides(
         ptr,
-        this.view.getUint32(ptr + 2216, true),
-        this.view.getUint32(ptr + 2220, true),
-        2240,
+        this.view.getUint32(ptr + 2488, true),
+        this.view.getUint32(ptr + 2492, true),
+        2512,
       ),
       morphRangeMaxes: this.readFloatOverrides(
         ptr,
-        this.view.getUint32(ptr + 2224, true),
-        this.view.getUint32(ptr + 2228, true),
-        2496,
+        this.view.getUint32(ptr + 2496, true),
+        this.view.getUint32(ptr + 2500, true),
+        2768,
       ),
       distanceRangeMaxes: this.readFloatOverrides(
         ptr,
-        this.view.getUint32(ptr + 2232, true),
-        this.view.getUint32(ptr + 2236, true),
-        2752,
+        this.view.getUint32(ptr + 2504, true),
+        this.view.getUint32(ptr + 2508, true),
+        3024,
       ),
-      swing: this.view.getFloat32(ptr + 3008, true),
-      baseMidiNote: this.view.getFloat32(ptr + 3012, true),
-      noteRangeMin: this.view.getFloat32(ptr + 3016, true),
-      noteRangeMax: this.view.getFloat32(ptr + 3020, true),
+      swing: this.view.getFloat32(ptr + 3280, true),
+      baseMidiNote: this.view.getFloat32(ptr + 3284, true),
+      noteRangeMin: this.view.getFloat32(ptr + 3288, true),
+      noteRangeMax: this.view.getFloat32(ptr + 3292, true),
     };
   }
 

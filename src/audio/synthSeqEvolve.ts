@@ -52,6 +52,8 @@ export interface SynthLaneOverrides {
   morphDirection: LaneDirection | null;
   distance: number[] | null;
   distanceDirection: LaneDirection | null;
+  nudge: number[] | null;
+  nudgeDirection: LaneDirection | null;
   probability: number[] | null;
   ratchet: number[] | null;
   trigCondition: TrigCondition[] | null;
@@ -149,6 +151,8 @@ export function captureSynthHomeSnapshot(ov: SynthLaneOverrides): SynthLaneOverr
     morphDirection: ov.morphDirection,
     distance: ov.distance ? [...ov.distance] : null,
     distanceDirection: ov.distanceDirection,
+    nudge: ov.nudge ? [...ov.nudge] : null,
+    nudgeDirection: ov.nudgeDirection,
     probability: ov.probability ? [...ov.probability] : null,
     ratchet: ov.ratchet ? [...ov.ratchet] : null,
     trigCondition: ov.trigCondition ? ov.trigCondition.map((entry) => [entry[0], entry[1]] as TrigCondition) : null,
@@ -205,6 +209,8 @@ export function evolveSynthLane(
     morphDirection: overrides.morphDirection,
     distance: overrides.distance ? [...overrides.distance] : null,
     distanceDirection: overrides.distanceDirection,
+    nudge: overrides.nudge ? [...overrides.nudge] : null,
+    nudgeDirection: overrides.nudgeDirection,
     probability: overrides.probability ? [...overrides.probability] : null,
     ratchet: overrides.ratchet ? [...overrides.ratchet] : null,
     trigCondition: overrides.trigCondition ? overrides.trigCondition.map((entry) => [entry[0], entry[1]] as TrigCondition) : null,

@@ -11,6 +11,7 @@ import type {
   SequencerStepValueConfig,
   SequencerStepValueOverride,
 } from '../../CoreProductHostSequencerAdapter';
+import { DRUM_VOICE_BASE_MIDI } from '../../drumVoiceMidi';
 import {
   selectCoreProductSequencerCache,
   type CoreProductSequencerCacheState,
@@ -277,7 +278,13 @@ function laneSeedFromEncodedDrumVoiceMask(seed: number): number {
 }
 
 function drumVoiceFromMidi(midiNote: number): DrumVoiceName {
-  const index = Math.max(0, Math.min(DRUM_VOICE_NAMES.length - 1, Math.round(midiNote - 36)));
+  const rounded = Math.round(midiNote);
+  const mapped = DRUM_VOICE_NAMES.find((voice) => DRUM_VOICE_BASE_MIDI[voice] === rounded);
+  if (mapped) return mapped;
+  if (rounded === 39 || rounded === 42 || rounded === 44 || rounded === 46) return 'noise';
+  if (rounded === 38 || rounded === 40 || rounded === 41 || rounded === 43 || rounded === 45) return 'membrane';
+  if (rounded === 51 || rounded === 53 || rounded === 56) return 'beepHi';
+  const index = Math.max(0, Math.min(DRUM_VOICE_NAMES.length - 1, rounded - 36));
   return DRUM_VOICE_NAMES[index] ?? 'kick';
 }
 

@@ -1862,7 +1862,7 @@ for (const rootDir of sourceRoots) {
         "kind: 'synth-note'",
         "kind: 'drum-voice'",
         '(_revision, resolvedSliders) => productEngine.auditionSynthNote(note, resolvedSliders)',
-        '(_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, DEFAULT_MANUAL_DRUM_VELOCITY, resolvedSliders)',
+        '(_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, velocity, resolvedSliders)',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product manual trigger surface must own Product Core commit-before-trigger dispatch; missing ${requiredSnippet}`);
@@ -3047,8 +3047,12 @@ for (const rootDir of sourceRoots) {
         'synthStepOverridesForEngineRestore(',
         'normalizeSequencerEvolveConfigs(',
         'restoreSequencerSubLaneStates(preset.synthSubLaneStates, preset.synthStepOverrides, SYNTH_EUCLIDEAN_LANE_COUNT)',
-        'setSelectedDrumStepOverrides(drumStepOverridesForEngineRestore(',
-        'setSelectedSynthStepOverrides(synthStepOverridesForEngineRestore(',
+        'const drumEngineStepOverrides = drumStepOverridesForEngineRestore(',
+        'const synthEngineStepOverrides = synthStepOverridesForEngineRestore(',
+        'setSelectedDrumStepOverrides(',
+        'drumEngineStepOverrides,',
+        'setSelectedSynthStepOverrides(',
+        'synthEngineStepOverrides,',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: preset sequencer restore hook must own selected-runtime sequencer restore sync; missing ${requiredSnippet}`);
@@ -3058,12 +3062,14 @@ for (const rootDir of sourceRoots) {
 
     if (relative === 'src/ui/useSynthPageSequencerBridge.ts') {
       for (const requiredSnippet of [
-        'setSelectedSynthStepOverrides(synthEngineStepOverrides(overrides))',
+        'const engineOverrides = synthEngineStepOverrides(overrides)',
+        'setSelectedSynthStepOverrides(engineOverrides,',
         'setSelectedSynthEuclidEvolveConfigs(configs)',
         'setSelectedSynthSubLaneEnabled(subLaneEnabledFlags(sanitized',
         'setSelectedSynthPitchSettings(settings)',
         'setSelectedSynthPitchBindingModes(modes)',
-        'captureSelectedSynthEuclidLaneHome(laneIdx, pitchState ?? synthSubLaneStatesRef.current?.[laneIdx]?.pitch)',
+        'captureSelectedSynthEuclidLaneHome(',
+        'stepOverrides: engineStepOverridesRef.current',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: Synth page sequencer bridge hook must own selected-runtime Synth page sequencer wiring; missing ${requiredSnippet}`);
@@ -3073,7 +3079,8 @@ for (const rootDir of sourceRoots) {
 
     if (relative === 'src/ui/useDrumPageSequencerBridge.ts') {
       for (const requiredSnippet of [
-        'setSelectedDrumStepOverrides(overrides)',
+        'setSelectedDrumStepOverrides(overrides,',
+        'stepOverrides: engineStepOverridesRef.current',
         'setSelectedDrumEuclidEvolveConfigs(configs)',
         'setSelectedDrumSubLaneEnabled(subLaneEnabledFlags(sanitized))',
         'setSelectedDrumEuclidClockDivs(divs)',

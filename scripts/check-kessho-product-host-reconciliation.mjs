@@ -58,6 +58,7 @@ const SUB_LANE_ENABLED_FIELD_KEYS = [
   ['expression', 'expression'],
   ['morph', 'morph'],
   ['distance', 'distance'],
+  ['nudge', 'nudge'],
 ];
 
 function setSubLaneEnabledViaEvents(harness, sequencer, states) {
@@ -510,7 +511,7 @@ await runCheckWithReport({
 
     const loadSnapshotBody = hostMethodBody('afterProductSnapshotLoad');
     assert(
-      loadSnapshotBody.includes('this.flushSequencerStepToggles();'),
+      loadSnapshotBody.includes('this.collectSequencerStepToggles(events);'),
       'full snapshot reloads must replay reconciled sequencer UI caches after load',
     );
 
@@ -780,13 +781,15 @@ await runCheckWithReport({
     const stepValueHarness = loadCoreProductHostHarness();
     stepValueHarness.host.runtimeReady = true;
     const { CORE_PRODUCT_STEP_VALUE_FIELDS, CORE_PRODUCT_SUBLANE_DIRECTIONS } = stepValueHarness.context;
-    setSubLaneEnabledViaEvents(stepValueHarness, 'synth', [{ expression: true, morph: true }]);
+    setSubLaneEnabledViaEvents(stepValueHarness, 'synth', [{ expression: true, morph: true, nudge: true }]);
     const beforeSynthStepValueEvents = stepValueHarness.runtime.events.length;
     stepValueHarness.host.setSynthStepOverrides({
       expression: [[0.55, 0.65]],
       expressionDirection: ['forward'],
       morph: [[0.2, 0.8]],
       morphDirection: ['reverse'],
+      nudge: [[0, 0.5]],
+      nudgeDirection: ['forward'],
       ratchet: [[1, 3]],
     });
     const synthStepValueEvents = stepValueHarness.runtime.events.slice(beforeSynthStepValueEvents);
@@ -829,13 +832,34 @@ await runCheckWithReport({
           event.value === 3),
       'Product host must post live synth ratchet step values into Core',
     );
+    assert(
+      synthStepValueEvents.some((event) =>
+        event.type === 'sequencer-sublane-config' &&
+          event.sequencer === 'synth' &&
+          event.laneIndex === 0 &&
+          event.field === CORE_PRODUCT_STEP_VALUE_FIELDS.nudge &&
+          event.steps === 2),
+      'Product host must post live synth nudge sub-lane length into Core',
+    );
+    assert(
+      synthStepValueEvents.some((event) =>
+        event.type === 'sequencer-step-value' &&
+          event.sequencer === 'synth' &&
+          event.laneIndex === 0 &&
+          event.step === 1 &&
+          event.field === CORE_PRODUCT_STEP_VALUE_FIELDS.nudge &&
+          event.value === 0.5),
+      'Product host must post live synth nudge step values into Core',
+    );
 
-    setSubLaneEnabledViaEvents(stepValueHarness, 'drum', [{ expression: true, morph: true }]);
+    setSubLaneEnabledViaEvents(stepValueHarness, 'drum', [{ expression: true, morph: true, nudge: true }]);
     const beforeDrumStepValueEvents = stepValueHarness.runtime.events.length;
     setDrumStepOverridesViaEvents(stepValueHarness, {
       expressionDirection: ['reverse'],
       morph: [[0.1, 0.6]],
       morphDirection: ['pingpong'],
+      nudge: [[0, -0.5]],
+      nudgeDirection: ['forward'],
       ratchet: [[2, 4]],
     });
     const drumStepValueEvents = stepValueHarness.runtime.events.slice(beforeDrumStepValueEvents);
@@ -858,6 +882,25 @@ await runCheckWithReport({
           event.field === CORE_PRODUCT_STEP_VALUE_FIELDS.morph &&
           event.value === 0.6),
       'Product host must post live drum preset-morph step values into Core',
+    );
+    assert(
+      drumStepValueEvents.some((event) =>
+        event.type === 'sequencer-sublane-config' &&
+          event.sequencer === 'drum' &&
+          event.laneIndex === 0 &&
+          event.field === CORE_PRODUCT_STEP_VALUE_FIELDS.nudge &&
+          event.steps === 2),
+      'Product host must post live drum nudge sub-lane length into Core',
+    );
+    assert(
+      drumStepValueEvents.some((event) =>
+        event.type === 'sequencer-step-value' &&
+          event.sequencer === 'drum' &&
+          event.laneIndex === 0 &&
+          event.step === 1 &&
+          event.field === CORE_PRODUCT_STEP_VALUE_FIELDS.nudge &&
+          event.value === -0.5),
+      'Product host must post live drum nudge step values into Core',
     );
     assert(
       drumStepValueEvents.some((event) =>
@@ -1729,8 +1772,10 @@ await runCheckWithReport({
     );
 
     const eventCountBeforeReload = harness.runtime.events.length;
+    harness.runtime.audioContext = { state: 'running', sampleRate: 48000, currentTime: 0 };
     harness.host.runtimeReady = true;
-    harness.host.loadLatestSnapshot('adapter-update');
+    await harness.host.loadLatestSnapshot('adapter-update');
+    harness.host.flushPostSnapshotEventQueue();
     const replayedEvents = harness.runtime.events.slice(eventCountBeforeReload);
     assert(harness.runtime.snapshots.length === 1, 'full snapshot reload must call runtime.loadSnapshot');
     assert(

@@ -23,6 +23,7 @@ const BASE_SUB_LANE_SPARK_INDEX = Object.freeze({
   expression: 1,
   morph: 2,
   distance: 3,
+  nudge: 4,
 });
 const SYNTH_SUB_LANE_SPARK_INDEX = Object.freeze({
   arp: 0,
@@ -30,6 +31,7 @@ const SYNTH_SUB_LANE_SPARK_INDEX = Object.freeze({
   expression: 2,
   morph: 3,
   distance: 4,
+  nudge: 5,
 });
 let activeParityTab = 'drums';
 
@@ -68,6 +70,8 @@ const VISIBLE_SUB_LANE_LABELS = Object.freeze({
   morph: 'morph',
   d: 'distance',
   distance: 'distance',
+  n: 'nudge',
+  nudge: 'nudge',
 });
 const RANGE_SUB_LANES = Object.freeze(['expression', 'morph', 'distance']);
 const MIDI_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];

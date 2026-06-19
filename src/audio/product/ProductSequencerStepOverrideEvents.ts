@@ -14,6 +14,7 @@ import {
   normalizeSequencerStepValueConfigs,
   normalizeSequencerStepValueOverrides,
   type SequencerKind,
+  type SequencerSubLaneConfigState,
   type SequencerStepToggleOverride,
   type SequencerStepValueConfig,
   type SequencerStepValueOverride,
@@ -23,17 +24,23 @@ function emptyLaneState<T>(): T[][] {
   return [[], [], [], []];
 }
 
-export function createCoreProductSynthSequencerStepOverrideEvents(overrides: unknown): CoreProductEvent[] {
+export function createCoreProductSynthSequencerStepOverrideEvents(
+  overrides: unknown,
+  subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[],
+): CoreProductEvent[] {
   const toggles = normalizeSequencerStepToggleOverrides(overrides, emptyLaneState());
   const values = normalizeSequencerStepValueOverrides(overrides, emptyLaneState(), true);
-  const configs = normalizeSequencerStepValueConfigs(overrides, emptyLaneState(), true);
+  const configs = normalizeSequencerStepValueConfigs(overrides, emptyLaneState(), true, subLaneStates);
   return createCoreProductSequencerStepOverrideEvents('synth', toggles, values, configs);
 }
 
-export function createCoreProductDrumSequencerStepOverrideEvents(overrides: unknown): CoreProductEvent[] {
+export function createCoreProductDrumSequencerStepOverrideEvents(
+  overrides: unknown,
+  subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[],
+): CoreProductEvent[] {
   const toggles = normalizeSequencerStepToggleOverrides(overrides, emptyLaneState());
   const values = normalizeDrumSequencerStepOffsetOverrides(overrides, emptyLaneState());
-  const configs = normalizeSequencerStepValueConfigs(overrides, emptyLaneState(), true);
+  const configs = normalizeSequencerStepValueConfigs(overrides, emptyLaneState(), true, subLaneStates);
   return createCoreProductSequencerStepOverrideEvents(
     'drum',
     toggles,

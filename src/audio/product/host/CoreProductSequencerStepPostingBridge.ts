@@ -1,20 +1,7 @@
-import {
-  CORE_PRODUCT_STEP_TOGGLE_FLAGS,
-  CORE_PRODUCT_STEP_VALUE_FIELDS,
-  createCoreProductSequencerClearStepsEvent,
-  createCoreProductSequencerStepEvent,
-  createCoreProductSequencerStepValueEvent,
-  createCoreProductSequencerSubLaneConfigEvent,
-  type CoreProductEvent,
-  type CoreProductStepValueField,
-} from '../../coreProductEvents';
+import { CORE_PRODUCT_STEP_TOGGLE_FLAGS, CORE_PRODUCT_STEP_VALUE_FIELDS, createCoreProductSequencerClearStepsEvent, createCoreProductSequencerStepEvent, createCoreProductSequencerStepValueEvent, createCoreProductSequencerSubLaneConfigEvent, type CoreProductEvent, type CoreProductStepValueField } from '../../coreProductEvents';
 import type { SequencerKind, SequencerStepValueConfig, SequencerStepValueOverride } from '../../CoreProductHostSequencerAdapter';
 import { coreProductSynthMidiToUiPitch } from '../../CoreProductHostSynthPitch';
-import {
-  coreProductSequencerLaneCacheCount,
-  selectCoreProductSequencerCache,
-  type CoreProductSequencerCacheState,
-} from './CoreProductSequencerCacheBridge';
+import { coreProductSequencerLaneCacheCount, selectCoreProductSequencerCache, type CoreProductSequencerCacheState } from './CoreProductSequencerCacheBridge';
 
 export function coreProductStepValueFieldSubLaneKey(field: CoreProductStepValueField): string | null {
   switch (field) {
@@ -28,6 +15,8 @@ export function coreProductStepValueFieldSubLaneKey(field: CoreProductStepValueF
       return 'morph';
     case CORE_PRODUCT_STEP_VALUE_FIELDS.distance:
       return 'distance';
+    case CORE_PRODUCT_STEP_VALUE_FIELDS.nudge:
+      return 'nudge';
     default:
       return null;
   }
@@ -53,10 +42,10 @@ export function createCoreProductEvolvedStepValuePayload(options: {
   overrides: SequencerStepValueOverride[];
   baseMidi: number;
   synthPitchSettings?: unknown;
-}): { key: 'pitch' | 'expression' | 'morph' | 'distance'; values: number[] } | null {
+}): { key: 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge'; values: number[] } | null {
   if (options.field === CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet) return null;
   const key = coreProductStepValueFieldSubLaneKey(options.field);
-  if (key !== 'pitch' && key !== 'expression' && key !== 'morph' && key !== 'distance') return null;
+  if (key !== 'pitch' && key !== 'expression' && key !== 'morph' && key !== 'distance' && key !== 'nudge') return null;
   const entries = options.overrides.filter(isStepValueOverride).filter((entry) => entry.field === options.field).sort((left, right) => left.step - right.step);
   if (entries.length === 0) return null;
   const values = entries.map((entry) => entry.value);
@@ -115,4 +104,9 @@ export function syncCoreProductSequencerStepState(options: {
 
 function isStepValueOverride(entry: SequencerStepValueOverride | null | undefined): entry is SequencerStepValueOverride { return typeof entry === 'object' && entry !== null && typeof entry.field === 'number'; }
 
-function isStepValueConfig(entry: SequencerStepValueConfig | null | undefined): entry is SequencerStepValueConfig { return typeof entry === 'object' && entry !== null && typeof entry.field === 'number'; }
+function isStepValueConfig(entry: SequencerStepValueConfig | null | undefined): entry is SequencerStepValueConfig {
+  return typeof entry === 'object' &&
+    entry !== null &&
+    typeof entry.field === 'number' &&
+    coreProductStepValueFieldSubLaneKey(entry.field) !== null;
+}

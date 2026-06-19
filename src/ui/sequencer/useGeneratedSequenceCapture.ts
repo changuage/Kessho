@@ -279,6 +279,7 @@ export function useGeneratedSequenceCapture({
         midiNote: note.midiNote,
         velocity: note.velocity ?? 1,
         gateSeconds: note.gateSeconds ?? 0.18,
+        targetStepFloat: rawStep,
       },
     );
     publishSession({
@@ -353,6 +354,10 @@ export function useGeneratedSequenceCapture({
           midiNote: event.midiNote,
           velocity: event.velocity,
           gateSeconds: event.gateSeconds,
+          targetStepFloat: typeof event.targetStepFloat === 'number' && Number.isFinite(event.targetStepFloat)
+            ? event.targetStepFloat
+            : relativeTargetStep,
+          nudge: event.nudge,
         },
       );
     }

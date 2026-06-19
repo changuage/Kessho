@@ -25,7 +25,7 @@ import { clampEuclideanSubLaneSteps } from './sequencerLimits';
 import { deserializeTriggerClip, serializeTriggerClip } from './triggerClip';
 
 const SEQUENCE_PRESET_SOURCE_LANE = 0;
-const SUB_LANE_KINDS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'slice', 'reverse'];
+const SUB_LANE_KINDS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'nudge', 'slice', 'reverse'];
 
 const STEP_OVERRIDE_ARRAY_FIELDS = [
   'probability',
@@ -35,6 +35,7 @@ const STEP_OVERRIDE_ARRAY_FIELDS = [
   'pitch',
   'morph',
   'distance',
+  'nudge',
   'slice',
   'reverse',
 ] as const;
@@ -43,6 +44,7 @@ const STEP_OVERRIDE_DIRECTION_FIELDS = [
   'expressionDirection',
   'morphDirection',
   'distanceDirection',
+  'nudgeDirection',
   'pitchDirection',
   'sliceDirection',
   'reverseDirection',
@@ -62,6 +64,7 @@ const SUB_LANE_DIRECTION_FIELDS: Record<SubLaneKind, StepOverrideDirectionField>
   expression: 'expressionDirection',
   morph: 'morphDirection',
   distance: 'distanceDirection',
+  nudge: 'nudgeDirection',
   pitch: 'pitchDirection',
   slice: 'sliceDirection',
   reverse: 'reverseDirection',
@@ -105,6 +108,7 @@ function cloneSubLaneState(state: SubLaneState | SerializedSubLaneState | undefi
     steps,
     direction: normalizeSequencerLaneDirection(state.direction),
     ...(typeof state.scaleQuantize === 'boolean' ? { scaleQuantize: false } : {}),
+    ...(typeof state.followTriggerHits === 'boolean' ? { followTriggerHits: state.followTriggerHits } : {}),
     ...(state.valueMode === 'sequence' || state.valueMode === 'range' ? { valueMode: state.valueMode } : {}),
     ...(rangeMin !== undefined ? { rangeMin: Math.min(rangeMin, rangeMax ?? rangeMin) } : {}),
     ...(rangeMax !== undefined ? { rangeMax: Math.max(rangeMax, rangeMin ?? rangeMax) } : {}),
@@ -276,11 +280,13 @@ export function applySequencePresetOverrides(
     pitch: [...current.pitch],
     morph: [...current.morph],
     distance: [...current.distance],
+    nudge: [...current.nudge],
     slice: [...current.slice],
     reverse: [...current.reverse],
     expressionDirection: [...current.expressionDirection],
     morphDirection: [...current.morphDirection],
     distanceDirection: [...current.distanceDirection],
+    nudgeDirection: [...current.nudgeDirection],
     pitchDirection: [...current.pitchDirection],
     sliceDirection: [...current.sliceDirection],
     reverseDirection: [...current.reverseDirection],

@@ -131,7 +131,7 @@ bool fieldEnabled(uint32_t flags, uint32_t field) {
 
 uint32_t fieldStepCount(const LaneState& lane, uint32_t field) {
   const uint32_t id = fieldId(field);
-  if (id < 8u) {
+  if (id < 9u) {
     const StepValueSubLaneConfig& config = lane.step_value_configs[id];
     if (config.enabled && config.steps > 0u) {
       return kessho::product::internal::clampU32(config.steps, 1u, 64u);
@@ -183,6 +183,10 @@ float homeValue(const LaneEvolveHomeState& home, uint32_t field, uint32_t step, 
       return maskHas(home.distance_override_set_low, home.distance_override_set_high, step)
           ? home.distance_overrides[step]
           : home.distance;
+    case KESSHO_PRODUCT_STEP_FIELD_NUDGE:
+      return maskHas(home.nudge_override_set_low, home.nudge_override_set_high, step)
+          ? home.nudge_overrides[step]
+          : 0.0f;
     default:
       return fallback;
   }
@@ -214,6 +218,10 @@ float laneValue(const LaneState& lane, uint32_t field, uint32_t step) {
       return maskHas(lane.distance_override_set_low, lane.distance_override_set_high, step)
           ? lane.distance_overrides[step]
           : lane.distance;
+    case KESSHO_PRODUCT_STEP_FIELD_NUDGE:
+      return maskHas(lane.nudge_override_set_low, lane.nudge_override_set_high, step)
+          ? lane.nudge_overrides[step]
+          : 0.0f;
     default:
       return 0.0f;
   }
@@ -251,6 +259,10 @@ void setLaneValue(LaneState& lane, uint32_t field, uint32_t step, float value) {
       setMask(lane.distance_override_set_low, lane.distance_override_set_high, step);
       clearMask(lane.distance_range_set_low, lane.distance_range_set_high, step);
       break;
+    case KESSHO_PRODUCT_STEP_FIELD_NUDGE:
+      lane.nudge_overrides[step] = kessho::product::internal::clampFloat(value, -1.0f, 1.0f);
+      setMask(lane.nudge_override_set_low, lane.nudge_override_set_high, step);
+      break;
     default:
       break;
   }
@@ -282,6 +294,9 @@ void clearLaneValue(LaneState& lane, uint32_t field, uint32_t step) {
       clearMask(lane.distance_override_set_low, lane.distance_override_set_high, step);
       clearMask(lane.distance_range_set_low, lane.distance_range_set_high, step);
       break;
+    case KESSHO_PRODUCT_STEP_FIELD_NUDGE:
+      clearMask(lane.nudge_override_set_low, lane.nudge_override_set_high, step);
+      break;
     default:
       break;
   }
@@ -301,6 +316,8 @@ bool originalHasFieldValue(const LaneState& lane, uint32_t field, uint32_t step)
       return maskHas(lane.morph_override_set_low, lane.morph_override_set_high, step);
     case KESSHO_PRODUCT_STEP_FIELD_DISTANCE:
       return maskHas(lane.distance_override_set_low, lane.distance_override_set_high, step);
+    case KESSHO_PRODUCT_STEP_FIELD_NUDGE:
+      return maskHas(lane.nudge_override_set_low, lane.nudge_override_set_high, step);
     default:
       return false;
   }
@@ -600,6 +617,8 @@ void copyLaneHome(LaneEvolveHomeState& home, const LaneState& lane) {
   home.morph_override_set_high = lane.morph_override_set_high;
   home.distance_override_set_low = lane.distance_override_set_low;
   home.distance_override_set_high = lane.distance_override_set_high;
+  home.nudge_override_set_low = lane.nudge_override_set_low;
+  home.nudge_override_set_high = lane.nudge_override_set_high;
   for (uint32_t step = 0u; step < 64u; ++step) {
     home.probability_overrides[step] = lane.probability_overrides[step];
     home.ratchet_overrides[step] = lane.ratchet_overrides[step];
@@ -607,8 +626,9 @@ void copyLaneHome(LaneEvolveHomeState& home, const LaneState& lane) {
     home.expression_overrides[step] = lane.expression_overrides[step];
     home.morph_overrides[step] = lane.morph_overrides[step];
     home.distance_overrides[step] = lane.distance_overrides[step];
+    home.nudge_overrides[step] = lane.nudge_overrides[step];
   }
-  for (uint32_t field = 0u; field < 8u; ++field) {
+  for (uint32_t field = 0u; field < 9u; ++field) {
     home.step_value_configs[field] = lane.step_value_configs[field];
   }
 }

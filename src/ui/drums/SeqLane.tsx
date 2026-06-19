@@ -18,8 +18,9 @@ import {
   sequencerGridCellCount,
   sequencerGridColumnCount,
 } from '../sequencer/sequencerLimits';
+import { clampNudge, nudgeLabel } from '../sequencer/nudgeTiming';
 
-type LaneKind = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance' | 'slice' | 'reverse';
+type LaneKind = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge' | 'slice' | 'reverse';
 
 const DIRECTION_LABELS: Record<LaneDirection, string> = {
   forward: '→ Forward',
@@ -37,6 +38,7 @@ const FALLBACK_LANE_COLORS: Record<LaneKind, string> = {
   expression: SEQUENCER_SUB_LANE_COLORS.expression,
   morph: SEQUENCER_SUB_LANE_COLORS.morph,
   distance: SEQUENCER_SUB_LANE_COLORS.distance,
+  nudge: SEQUENCER_SUB_LANE_COLORS.nudge,
   slice: SEQUENCER_SUB_LANE_COLORS.slice,
   reverse: SEQUENCER_SUB_LANE_COLORS.reverse,
 };
@@ -230,17 +232,20 @@ const SeqLane: React.FC<SeqLaneProps> = ({
         ? sequencer.expression.steps
         : lane === 'morph'
           ? sequencer.morph.steps
-          : lane === 'slice'
-            ? sequencer.slice.steps
-            : lane === 'reverse'
-              ? sequencer.reverse.steps
-              : sequencer.distance.steps;
+          : lane === 'distance'
+            ? sequencer.distance.steps
+            : lane === 'nudge'
+              ? sequencer.nudge.steps
+              : lane === 'slice'
+                ? sequencer.slice.steps
+                : sequencer.reverse.steps;
 
   const getValue = (step: number): number => {
     if (lane === 'pitch') return sequencer.pitch.offsets[step % sequencer.pitch.offsets.length] ?? 0;
     if (lane === 'expression') return sequencer.expression.velocities[step % sequencer.expression.velocities.length] ?? 0;
     if (lane === 'morph') return sequencer.morph.values[step % sequencer.morph.values.length] ?? 0.5;
     if (lane === 'distance') return sequencer.distance.values[step % sequencer.distance.values.length] ?? 0;
+    if (lane === 'nudge') return sequencer.nudge.values[step % sequencer.nudge.values.length] ?? 0;
     if (lane === 'slice') return sequencer.slice.values[step % sequencer.slice.values.length] ?? 0;
     if (lane === 'reverse') return sequencer.reverse.values[step % sequencer.reverse.values.length] ?? 0;
     return sequencer.trigger.pattern[step] ? 1 : 0;
@@ -255,6 +260,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
     expression: 'seq-lane-expr',
     morph: 'seq-lane-morph',
     distance: 'seq-lane-dist',
+    nudge: 'seq-lane-nudge',
     slice: 'seq-lane-slice',
     reverse: 'seq-lane-reverse',
   };
@@ -265,6 +271,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
     expression: '● EXPRESSION',
     morph: '● MORPH',
     distance: '● DISTANCE',
+    nudge: '● NUDGE',
     slice: '● SLICE',
     reverse: '● REVERSE',
   };
@@ -295,7 +302,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
               max={EUCLIDEAN_SUB_LANE_STEP_MAX}
               label="Steps"
               onChange={(v) => onChangeSteps?.(v)}
-              disabled={linked}
+              disabled={linked || lane === 'nudge'}
             />
             <button
               className="seq-spark-ctrl-btn"
@@ -776,6 +783,65 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                     <div className="morph-val" style={val >= 0.5 ? { top: 2 } : { bottom: 2 }}>{labelText}</div>
                     <div className="morph-label-a">B</div>
                     <div className="morph-label-b">A</div>
+                  </div>
+                </div>
+              );
+            }
+
+            if (lane === 'nudge') {
+              /* ── Nudge bar: signed timing offset, early below center and late above ── */
+              const val = clampNudge(value);
+              const heightPct = Math.abs(val) * 50;
+              const barStyle: React.CSSProperties = val >= 0
+                ? { top: `${50 - heightPct}%`, height: `${heightPct}%` }
+                : { top: '50%', height: `${heightPct}%` };
+              const labelText = nudgeLabel(val);
+
+              return (
+                <div key={step} className="seq-step">
+                  <span className="seq-step-num" style={{ color: laneAccent }}>{isBeatHead ? step + 1 : ''}</span>
+                  <div
+                    className={`seq-morph-bar-wrap${isPlayhead ? ' playing' : ''}${isSelected ? ' selected' : ''}${!inRange ? ' inactive' : ''}`}
+                    style={{ touchAction: 'none' } as React.CSSProperties}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      const wrap = e.currentTarget;
+                      wrap.setPointerCapture(e.pointerId);
+                      const startY = e.clientY;
+                      const startVal = val;
+                      let dragged = false;
+                      const onMove = (ev: PointerEvent) => {
+                        if (Math.abs(ev.clientY - startY) > 5) dragged = true;
+                        const rect = wrap.getBoundingClientRect();
+                        const dragRange = rect.height * SEQ_BIPOLAR_DRAG_DISTANCE_FACTOR;
+                        const raw = clampNudge(startVal + ((startY - ev.clientY) / dragRange) * 2);
+                        const snapVal = Math.round(raw * 20) / 20;
+                        onChangeValue?.(step, snapVal);
+                        setDragPopup({ x: ev.clientX, y: ev.clientY, text: nudgeLabel(snapVal) });
+                      };
+                      const onUp = () => {
+                        wrap.removeEventListener('pointermove', onMove);
+                        wrap.removeEventListener('pointerup', onUp);
+                        setDragPopup(null);
+                        if (!dragged && inRange) {
+                          onSelectStep?.(step);
+                        }
+                      };
+                      wrap.addEventListener('pointermove', onMove);
+                      wrap.addEventListener('pointerup', onUp);
+                    }}
+                    onDoubleClick={() => onChangeValue?.(step, 0)}
+                  >
+                    {isSelected && (
+                      <span className="seq-step-cursor" style={cursorMarkerStyle} aria-hidden="true">
+                        {selectedStepLabel}
+                      </span>
+                    )}
+                    <div className="morph-center" />
+                    <div className="morph-bar" style={barStyle} />
+                    <div className="morph-val" style={val >= 0 ? { top: 2 } : { bottom: 2 }}>{labelText}</div>
+                    <div className="morph-label-a">late</div>
+                    <div className="morph-label-b">early</div>
                   </div>
                 </div>
               );

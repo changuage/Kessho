@@ -52,7 +52,7 @@ function makeDrumEuclidLaneArray<T>(factory: (laneIndex: number) => T): T[] {
 const DRUM_AUDIO_SUB_LANE_KEYS = ['expression', 'morph', 'distance', 'pitch'] as const;
 
 export type DrumVoiceType = 'sub' | 'kick' | 'click' | 'beepHi' | 'beepLo' | 'noise' | 'membrane';
-type DrumEvolvedSubLane = 'pitch' | 'expression' | 'morph' | 'distance' | 'slice' | 'reverse';
+type DrumEvolvedSubLane = 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge' | 'slice' | 'reverse';
 type DrumEvolvedSubLanePatch = Partial<Record<DrumEvolvedSubLane, { enabled: boolean; steps: number; direction: LaneDirection; scaleQuantize?: boolean }>>;
 type DrumEvolveOverridesPayload = Partial<DrumStepOverrides> & {
   swing?: number;
@@ -105,6 +105,7 @@ function drumEvolvedSubLaneStatePatch(s: SequencerState): DrumEvolvedSubLanePatc
     expression: { enabled: s.expression.enabled, steps: s.expression.steps, direction: s.expression.direction },
     morph: { enabled: s.morph.enabled, steps: s.morph.steps, direction: s.morph.direction },
     distance: { enabled: s.distance.enabled, steps: s.distance.steps, direction: s.distance.direction },
+    nudge: { enabled: s.nudge.enabled, steps: s.nudge.steps, direction: s.nudge.direction },
     slice: { enabled: s.slice.enabled, steps: s.slice.steps, direction: s.slice.direction },
     reverse: { enabled: s.reverse.enabled, steps: s.reverse.steps, direction: s.reverse.direction },
   };
@@ -272,11 +273,13 @@ export class DrumSynth {
     pitch: [null, null, null, null],
     morph: [null, null, null, null],
     distance: [null, null, null, null],
+    nudge: [null, null, null, null],
     slice: [null, null, null, null],
     reverse: [null, null, null, null],
     expressionDirection: [null, null, null, null],
     morphDirection: [null, null, null, null],
     distanceDirection: [null, null, null, null],
+    nudgeDirection: [null, null, null, null],
     pitchDirection: [null, null, null, null],
     sliceDirection: [null, null, null, null],
     reverseDirection: [null, null, null, null],
@@ -1046,6 +1049,7 @@ export class DrumSynth {
       pitch: [null, null, null, null] as (number[] | null)[],
       morph: [null, null, null, null] as (number[] | null)[],
       distance: [null, null, null, null] as (number[] | null)[],
+      nudge: [null, null, null, null] as (number[] | null)[],
       slice: [null, null, null, null] as (number[] | null)[],
       reverse: [null, null, null, null] as (number[] | null)[],
       expressionRanges: [null, null, null, null],
@@ -1055,6 +1059,7 @@ export class DrumSynth {
       pitchDirection: [null, null, null, null],
       morphDirection: [null, null, null, null],
       distanceDirection: [null, null, null, null],
+      nudgeDirection: [null, null, null, null],
       sliceDirection: [null, null, null, null],
       reverseDirection: [null, null, null, null],
       swing: s.swing,
@@ -1068,6 +1073,7 @@ export class DrumSynth {
     partial.pitch![laneIndex] = [...s.pitch.offsets];
     partial.morph![laneIndex] = [...s.morph.values];
     partial.distance![laneIndex] = [...s.distance.values];
+    partial.nudge![laneIndex] = [...s.nudge.values];
     partial.slice![laneIndex] = [...s.slice.values];
     partial.reverse![laneIndex] = [...s.reverse.values];
     partial.expressionRanges![laneIndex] = (useHomeRanges ? this.homeExpressionSubLaneRanges[laneIndex] : this.expressionSubLaneRanges[laneIndex]) ?? null;
@@ -1078,6 +1084,7 @@ export class DrumSynth {
     partial.pitchDirection![laneIndex] = s.pitch.direction;
     partial.morphDirection![laneIndex] = s.morph.direction;
     partial.distanceDirection![laneIndex] = s.distance.direction;
+    partial.nudgeDirection![laneIndex] = s.nudge.direction;
     partial.sliceDirection![laneIndex] = s.slice.direction;
     partial.reverseDirection![laneIndex] = s.reverse.direction;
     this.onEvolveOverridesChanged(laneIndex, partial);
@@ -1141,11 +1148,13 @@ export class DrumSynth {
       pitch: overrides.pitch ?? [null, null, null, null],
       morph: overrides.morph,
       distance: overrides.distance,
+      nudge: overrides.nudge ?? [null, null, null, null],
       slice: overrides.slice ?? [null, null, null, null],
       reverse: overrides.reverse ?? [null, null, null, null],
       expressionDirection: overrides.expressionDirection ?? [null, null, null, null],
       morphDirection: overrides.morphDirection ?? [null, null, null, null],
       distanceDirection: overrides.distanceDirection ?? [null, null, null, null],
+      nudgeDirection: overrides.nudgeDirection ?? [null, null, null, null],
       pitchDirection: overrides.pitchDirection ?? [null, null, null, null],
       sliceDirection: overrides.sliceDirection ?? [null, null, null, null],
       reverseDirection: overrides.reverseDirection ?? [null, null, null, null],
@@ -1245,12 +1254,14 @@ export class DrumSynth {
     if (enabled.expression === true && ov.expression[laneIndex]) { sequencer.expression.velocities = ov.expression[laneIndex]!; sequencer.expression.steps = ov.expression[laneIndex]!.length; sequencer.expression.enabled = true; } else sequencer.expression.enabled = false;
     if (enabled.morph === true && ov.morph[laneIndex]) { sequencer.morph.values = ov.morph[laneIndex]!; sequencer.morph.steps = ov.morph[laneIndex]!.length; sequencer.morph.enabled = true; } else sequencer.morph.enabled = false;
     if (enabled.distance === true && ov.distance[laneIndex]) { sequencer.distance.values = ov.distance[laneIndex]!; sequencer.distance.steps = ov.distance[laneIndex]!.length; sequencer.distance.enabled = true; } else sequencer.distance.enabled = false;
+    if (enabled.nudge === true && ov.nudge[laneIndex]) { sequencer.nudge.values = ov.nudge[laneIndex]!; sequencer.nudge.steps = ov.nudge[laneIndex]!.length; sequencer.nudge.enabled = true; } else sequencer.nudge.enabled = false;
     if (enabled.pitch === true && ov.pitch[laneIndex]) { sequencer.pitch.offsets = ov.pitch[laneIndex]!; sequencer.pitch.steps = ov.pitch[laneIndex]!.length; sequencer.pitch.enabled = true; } else sequencer.pitch.enabled = false;
     if (enabled.slice === true && ov.slice[laneIndex]) { sequencer.slice.values = ov.slice[laneIndex]!; sequencer.slice.steps = ov.slice[laneIndex]!.length; sequencer.slice.enabled = true; } else sequencer.slice.enabled = false;
     if (enabled.reverse === true && ov.reverse[laneIndex]) { sequencer.reverse.values = ov.reverse[laneIndex]!; sequencer.reverse.steps = ov.reverse[laneIndex]!.length; sequencer.reverse.enabled = true; } else sequencer.reverse.enabled = false;
     sequencer.expression.direction = ov.expressionDirection[laneIndex] ?? sequencer.expression.direction;
     sequencer.morph.direction = ov.morphDirection[laneIndex] ?? sequencer.morph.direction;
     sequencer.distance.direction = ov.distanceDirection[laneIndex] ?? sequencer.distance.direction;
+    sequencer.nudge.direction = ov.nudgeDirection[laneIndex] ?? sequencer.nudge.direction;
     sequencer.pitch.direction = ov.pitchDirection[laneIndex] ?? sequencer.pitch.direction;
     sequencer.slice.direction = ov.sliceDirection[laneIndex] ?? sequencer.slice.direction;
     sequencer.reverse.direction = ov.reverseDirection[laneIndex] ?? sequencer.reverse.direction;

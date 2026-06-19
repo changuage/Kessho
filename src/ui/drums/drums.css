@@ -721,6 +721,7 @@
 .drum-root .seq-lane-expr .seq-lane-enable-btn.on { background: var(--accent-orange); }
 .drum-root .seq-lane-morph .seq-lane-enable-btn.on { background: var(--accent-lavender); }
 .drum-root .seq-lane-dist .seq-lane-enable-btn.on { background: var(--accent-teal); }
+.drum-root .seq-lane-nudge .seq-lane-enable-btn.on { background: var(--lane-color, var(--accent-teal)); }
 
 .drum-root .seq-lane {
   margin-bottom: 6px; border-radius: var(--radius-md); overflow: hidden;
@@ -737,6 +738,7 @@
 .drum-root .seq-lane-expr .seq-lane-title { color: var(--accent-orange); }
 .drum-root .seq-lane-morph .seq-lane-title { color: var(--accent-lavender); }
 .drum-root .seq-lane-dist .seq-lane-title { color: var(--accent-teal); }
+.drum-root .seq-lane-nudge .seq-lane-title { color: var(--lane-color, var(--accent-teal)); }
 
 /* ── Sparkline Accordion ── */
 .drum-root .seq-spark-container {

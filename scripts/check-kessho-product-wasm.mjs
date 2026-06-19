@@ -90,7 +90,7 @@ const EVOLVE_METHOD_VALUE_SCRAMBLE = 1 << 16;
 const EVOLVE_MANUAL_COMMIT = 1 << 28;
 const EVOLVE_MODE_PARITY = 0x80000000;
 const SEQUENCER_UI_LANE_BASE_OFFSET = 36;
-const SEQUENCER_UI_LANE_SIZE = 3024;
+const SEQUENCER_UI_LANE_SIZE = 3296;
 const LANE_EXPRESSION_OVERRIDE_SET_LOW_OFFSET = 76;
 const LANE_EXPRESSION_OVERRIDES_OFFSET = 1448;
 const TELEMETRY_BYTES = 15008;
@@ -106,7 +106,7 @@ const leftPtr = malloc(frames * Float32Array.BYTES_PER_ELEMENT);
 const rightPtr = malloc(frames * Float32Array.BYTES_PER_ELEMENT);
 const eventPtr = malloc(40);
 const telemetryPtr = malloc(TELEMETRY_BYTES);
-const sequencerUiStatePtr = malloc(96804);
+const sequencerUiStatePtr = malloc(105508);
 const engine = create(48000, frames, 0);
 assert(leftPtr && rightPtr && eventPtr && telemetryPtr && sequencerUiStatePtr && engine, 'WASM product smoke allocation failed');
 

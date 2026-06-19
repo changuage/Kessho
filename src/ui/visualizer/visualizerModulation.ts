@@ -72,7 +72,8 @@ const DEFAULT_RANGE_RADIUS: Partial<Record<VisualizerNumericControlKey, number>>
   noiseSpeed: 0.42,
   noiseColor: 0.32,
   pulseSync: 0.34,
-  shapeSize: 0.48,
+  shapeSize: 0.38,
+  shapeSpread: 0.48,
   shapeCount: 0.5,
   noiseSize: 0.44,
   noiseDensity: 0.52,
@@ -105,7 +106,8 @@ const DEFAULT_RANGE_RADIUS: Partial<Record<VisualizerNumericControlKey, number>>
 
 export const VISUAL_MOD_MATRIX: VisualModRoute[] = [
   { bus: 'geometry', signal: 'level', target: 'shapeCount', amount: 0.58, engines: ['Synth', 'Lead'], label: 'Synth/Lead level' },
-  { bus: 'geometry', signal: 'pulse', target: 'shapeSize', amount: 0.66, engines: ['Lead', 'Synth', 'Sequencer'], label: 'Lead expression + synth hits', eventDriven: true },
+  { bus: 'geometry', signal: 'pulse', target: 'shapeSize', amount: 0.42, engines: ['Lead', 'Synth', 'Sequencer'], label: 'Lead expression + synth hits', eventDriven: true },
+  { bus: 'geometry', signal: 'density', target: 'shapeSpread', amount: 0.44, engines: ['Synth', 'Lead', 'Sequencer'], label: 'Synth/Lead spread' },
   { bus: 'geometry', signal: 'pulse', target: 'edges', amount: 0.38, engines: ['Lead', 'Harmony'], label: 'Lead expression + tension', eventDriven: true },
   { bus: 'geometry', signal: 'density', target: 'shape', amount: 0.26, engines: ['Synth', 'Sequencer'], label: 'Synth density' },
   { bus: 'geometry', signal: 'phase', target: 'pulseSync', amount: 0.3, engines: ['Sequencer'], label: 'Synth sequencer phase' },

@@ -8,6 +8,7 @@ const entryPoints = [
   'src/ui/sequencer/triggerClip.test.ts',
   'src/ui/sequencer/triggerClipLegacyBridge.test.ts',
   'src/ui/drums/scatter/scatterPresetHash.test.ts',
+  'src/ui/drums/scatter/scatterPhrasePrinter.test.ts',
 ];
 
 const tempDir = await mkdtemp(path.join(tmpdir(), 'drum-scatter-sequencer-regression-'));

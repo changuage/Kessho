@@ -143,6 +143,13 @@ export function createSequencer(id: number, seed = 'drum-seq'): SequencerState {
       _ppForward: true,
       values: makeArray(stepCount, 0.5),
     },
+    nudge: {
+      enabled: false,
+      steps: stepCount,
+      direction: defaultDirection(),
+      _ppForward: true,
+      values: makeArray(stepCount, 0),
+    },
     slice: {
       enabled: false,
       steps: stepCount,

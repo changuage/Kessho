@@ -317,6 +317,17 @@ std::vector<uint32_t> expectedRatchetOffsets(uint32_t ratchet, uint32_t parent_o
   return offsets;
 }
 
+void enqueueSequencerStep(
+    KesshoProductEngine* engine,
+    uint32_t target_id,
+    uint32_t lane_index,
+    uint32_t step,
+    uint32_t field,
+    float value,
+    float value2,
+    float value3,
+    uint32_t extra_flags);
+
 KesshoProductSnapshotV2 makeSingleRatchetSnapshot(
     uint32_t source_id,
     uint32_t ratchet,
@@ -444,6 +455,98 @@ void requireProductSequencerRatchetPendingClearTests() {
     require(events.empty(), "tempo change should clear pending ratchets with old absolute timing");
     require(engine->synth_lanes[0].pending_ratchet_count == 0u, "tempo change should empty pending ratchet queue");
     kessho_product_destroy(engine);
+  }
+}
+
+KesshoProductSnapshotV2 makeNudgeSchedulingSnapshot(uint32_t source_id) {
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  const bool drum = source_id == KESSHO_PRODUCT_SOURCE_DRUM;
+  snapshot.synth_euclid.lane_count = drum ? 0u : 1u;
+  snapshot.drum_euclid.lane_count = drum ? 1u : 0u;
+  auto& lane = drum ? snapshot.drum_euclid.lanes[0] : snapshot.synth_euclid.lanes[0];
+  lane.enabled = 1;
+  lane.target_source_id = source_id;
+  lane.step_count = 4;
+  lane.fill_count = 2;
+  lane.manual_step_mask_low = (1u << 0u) | (1u << 2u);
+  lane.manual_step_mask_high = 0u;
+  lane.clock_division = 16;
+  lane.probability = 1.0f;
+  lane.ratchet = 2u;
+  lane.initial_start_delay_seconds = 0.0f;
+  lane.midi_note = drum ? 36.0f : 60.0f;
+  lane.hold_seconds = drum ? 0.08f : 0.1f;
+  return snapshot;
+}
+
+void configureNudgeLane(
+    KesshoProductEngine* engine,
+    uint32_t target_id,
+    float first_hit_nudge,
+    float second_hit_nudge) {
+  enqueueSequencerStep(
+      engine,
+      target_id,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_NUDGE >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      2.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD),
+      0u);
+  enqueueSequencerStep(engine, target_id, 0u, 0u, KESSHO_PRODUCT_STEP_FIELD_NUDGE, first_hit_nudge, 0.0f, 0.0f, 0u);
+  enqueueSequencerStep(engine, target_id, 0u, 1u, KESSHO_PRODUCT_STEP_FIELD_NUDGE, second_hit_nudge, 0.0f, 0.0f, 0u);
+}
+
+void requireProductSequencerNudgeSchedulingTests() {
+  constexpr double sample_rate = 48000.0;
+  constexpr uint32_t step_frames = 6000u;
+  const uint32_t sources[] = {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_SOURCE_DRUM};
+
+  for (uint32_t source_id : sources) {
+    const uint32_t target_id = source_id == KESSHO_PRODUCT_SOURCE_DRUM
+        ? KESSHO_PRODUCT_SEQUENCER_DRUM
+        : KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    {
+      KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+      require(engine != nullptr, "positive nudge scheduling engine create failed");
+      KesshoProductSnapshotV2 snapshot = makeNudgeSchedulingSnapshot(source_id);
+      require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "positive nudge scheduling snapshot load failed");
+      configureNudgeLane(engine, target_id, 0.25f, 0.0f);
+      const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, 64u, step_frames * 2u);
+      expectAbsoluteOffsets(
+          events,
+          {step_frames / 2u, step_frames},
+          "positive nudge should schedule late toward the next active trigger and anchor ratchets at the nudged sample");
+      kessho_product_destroy(engine);
+    }
+
+    {
+      KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+      require(engine != nullptr, "nudge scheduling engine create failed");
+      KesshoProductSnapshotV2 snapshot = makeNudgeSchedulingSnapshot(source_id);
+      require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "nudge scheduling snapshot load failed");
+      configureNudgeLane(engine, target_id, 0.0f, -0.5f);
+      const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, 64u, step_frames * 2u);
+      expectAbsoluteOffsets(
+          events,
+          {0u, step_frames / 2u, step_frames, step_frames + step_frames / 2u},
+          "negative nudge should schedule early and anchor ratchets at the nudged sample");
+      kessho_product_destroy(engine);
+    }
+
+    {
+      KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+      require(engine != nullptr, "disabled nudge scheduling engine create failed");
+      KesshoProductSnapshotV2 snapshot = makeNudgeSchedulingSnapshot(source_id);
+      require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "disabled nudge scheduling snapshot load failed");
+      const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, 64u, step_frames * 2u);
+      expectAbsoluteOffsets(
+          events,
+          {0u, step_frames / 2u},
+          "disabled nudge lane should keep later hit quantized outside the early render window");
+      kessho_product_destroy(engine);
+    }
   }
 }
 
@@ -698,6 +801,10 @@ void requireProductSequencerModeEventTests() {
     require(captured[0].source_mode == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_ANCHOR_WALKER, "Anchor Walker generated capture mode mismatch");
     require(captured[0].target_step_index == 0, "Anchor Walker generated capture should map first layer to target step zero");
     require(captured[1].target_step_index == 0, "Anchor Walker generated capture should map delayed layer to target step zero");
+    require(std::fabs(captured[0].target_step_float) < 0.000001f, "Anchor Walker generated capture should expose first layer continuous step");
+    require(captured[1].target_step_float > 0.0f, "Anchor Walker generated capture should expose delayed layer continuous step");
+    require(std::fabs(captured[0].nudge) < 0.000001f, "Anchor Walker generated capture first layer nudge should be quantized");
+    require(captured[1].nudge > 0.0f, "Anchor Walker delayed layer nudge should be positive");
     require(std::fabs(captured[0].midi_note - events[0].midi_note) < 0.001f, "Anchor Walker generated capture MIDI should match emitted event");
     require(std::fabs(captured[1].midi_note - events[1].midi_note) < 0.001f, "Anchor Walker delayed capture MIDI should match emitted event");
     kessho_product_destroy(engine);
@@ -729,6 +836,8 @@ void requireProductSequencerModeEventTests() {
     require(captured[0].source_mode == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_ORBIT, "Orbit generated capture mode mismatch");
     require(captured[0].source_note_index == 0, "Orbit generated capture should expose the source note index");
     require(captured[0].target_step_index == 0, "Orbit generated capture should map crossing to target step zero");
+    require(captured[0].target_step_float >= 0.0f, "Orbit generated capture should expose continuous target step");
+    require(captured[0].nudge >= -1.0f && captured[0].nudge <= 1.0f, "Orbit generated capture should expose normalized nudge");
     require(std::fabs(captured[0].midi_note - events[0].midi_note) < 0.001f, "Orbit generated capture MIDI should match emitted event");
     kessho_product_destroy(engine);
   }
@@ -1255,7 +1364,9 @@ bool laneHasGeneratedOverrides(const LaneState& lane) {
       lane.distance_override_set_low != 0u ||
       lane.distance_override_set_high != 0u ||
       lane.distance_range_set_low != 0u ||
-      lane.distance_range_set_high != 0u;
+      lane.distance_range_set_high != 0u ||
+      lane.nudge_override_set_low != 0u ||
+      lane.nudge_override_set_high != 0u;
 }
 
 void requireLaneMutationStateEqual(const LaneState& actual, const LaneState& expected, const char* message) {
@@ -1283,6 +1394,8 @@ void requireLaneMutationStateEqual(const LaneState& actual, const LaneState& exp
   require(actual.distance_override_set_high == expected.distance_override_set_high, message);
   require(actual.distance_range_set_low == expected.distance_range_set_low, message);
   require(actual.distance_range_set_high == expected.distance_range_set_high, message);
+  require(actual.nudge_override_set_low == expected.nudge_override_set_low, message);
+  require(actual.nudge_override_set_high == expected.nudge_override_set_high, message);
   for (uint32_t i = 0; i < 64u; ++i) {
     require(std::fabs(actual.probability_overrides[i] - expected.probability_overrides[i]) < 0.000001f, message);
     require(actual.ratchet_overrides[i] == expected.ratchet_overrides[i], message);
@@ -1295,8 +1408,9 @@ void requireLaneMutationStateEqual(const LaneState& actual, const LaneState& exp
     require(std::fabs(actual.morph_range_maxes[i] - expected.morph_range_maxes[i]) < 0.000001f, message);
     require(std::fabs(actual.distance_overrides[i] - expected.distance_overrides[i]) < 0.000001f, message);
     require(std::fabs(actual.distance_range_maxes[i] - expected.distance_range_maxes[i]) < 0.000001f, message);
+    require(std::fabs(actual.nudge_overrides[i] - expected.nudge_overrides[i]) < 0.000001f, message);
   }
-  for (uint32_t i = 0; i < 8u; ++i) {
+  for (uint32_t i = 0; i < 9u; ++i) {
     require(actual.step_value_configs[i].enabled == expected.step_value_configs[i].enabled, message);
     require(actual.step_value_configs[i].steps == expected.step_value_configs[i].steps, message);
     require(actual.step_value_configs[i].direction == expected.step_value_configs[i].direction, message);
@@ -1445,6 +1559,15 @@ void replaySequencerUiLane(
           is_range ? lane.distance_range_maxes[step] : 0.0f,
           0.0f,
           is_range ? KESSHO_PRODUCT_STEP_TOGGLE_RANGE_VALUE : 0u);
+    }
+    if (maskHas(lane.nudge_override_set_low, lane.nudge_override_set_high, step)) {
+      enqueueSequencerStep(
+          engine,
+          target_id,
+          lane_index,
+          step,
+          KESSHO_PRODUCT_STEP_FIELD_NUDGE,
+          lane.nudge_overrides[step]);
     }
   }
 }
@@ -2988,6 +3111,7 @@ int main() {
   requireProductSequencerRatchetCrossBlockTest();
   requireProductSequencerRatchetNearBlockEndTest();
   requireProductSequencerRatchetPendingClearTests();
+  requireProductSequencerNudgeSchedulingTests();
   requireProductSequencerModeEventTests();
   requireAnchorWalkerTriggerAndBoundaryTests();
   requireAnchorWalkerStuckNoteEdgeTests();

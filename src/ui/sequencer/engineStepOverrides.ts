@@ -1,8 +1,9 @@
 import type { StepOverrides, SubLaneKind, SubLaneState } from './useEuclideanSequencer';
 import { clampEuclideanSubLaneSteps } from './sequencerLimits';
 import { triggerClipToLegacyEuclideanParams } from './triggerClipLegacyBridge';
+import { clampNudge } from './nudgeTiming';
 
-const SUB_LANE_VALUE_FIELDS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'slice', 'reverse'];
+const SUB_LANE_VALUE_FIELDS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'nudge', 'slice', 'reverse'];
 const SUB_LANE_RANGE_FIELDS = {
   expression: 'expressionRanges',
   morph: 'morphRanges',
@@ -14,6 +15,7 @@ const SUB_LANE_DEFAULT_VALUES: Record<SubLaneKind, number> = {
   expression: 1,
   morph: 0,
   distance: 0,
+  nudge: 0,
   slice: 0,
   reverse: 0,
 };
@@ -34,7 +36,7 @@ function engineLaneValues(
   if (next.length < steps) {
     next.push(...Array.from({ length: steps - next.length }, () => SUB_LANE_DEFAULT_VALUES[lane]));
   }
-  return next;
+  return lane === 'nudge' ? next.map(clampNudge) : next;
 }
 
 function engineRatchetValues(

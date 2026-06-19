@@ -51,19 +51,25 @@ type PresetSequencerRestoreOptions = {
   setSelectedDrumEuclidEvolveConfigs: (configs: EvolveConfig[]) => void;
   setSelectedDrumEuclidSwings: (swings: number[]) => void;
   setSelectedDrumPitchSettings: (settings: PitchSettings[]) => void;
-  setSelectedDrumStepOverrides: (overrides: StepOverrides) => void;
+  setSelectedDrumStepOverrides: (overrides: StepOverrides, subLaneStates?: Record<SubLaneKind, SubLaneState>[]) => void;
   setSelectedDrumSubLaneEnabled: (enabled: Record<string, boolean>[]) => void;
   setSelectedSequencerPresetHomeSnapshots: (
     drumPitchSettings?: PitchSettings[],
     drumPitchStates?: (SubLaneState | null | undefined)[],
     synthPitchStates?: (SubLaneState | null | undefined)[],
+    options?: {
+      drumStepOverrides?: StepOverrides;
+      drumSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
+      synthStepOverrides?: StepOverrides;
+      synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
+    },
   ) => void;
   setSelectedSynthEuclidClockDivs: (clockDivs: ClockDivision[]) => void;
   setSelectedSynthEuclidEvolveConfigs: (configs: EvolveConfig[]) => void;
   setSelectedSynthEuclidSwings: (swings: number[]) => void;
   setSelectedSynthPitchBindingModes: (modes: PitchBindingMode[]) => void;
   setSelectedSynthPitchSettings: (settings: PitchSettings[]) => void;
-  setSelectedSynthStepOverrides: (overrides: StepOverrides) => void;
+  setSelectedSynthStepOverrides: (overrides: StepOverrides, subLaneStates?: Record<SubLaneKind, SubLaneState>[]) => void;
   setSelectedSynthSubLaneEnabled: (enabled: Record<string, boolean>[]) => void;
   setSynthPresetVersion: Dispatch<SetStateAction<number>>;
   synthClockDivsRef: MutableRefObject<ClockDivision[] | undefined>;
@@ -92,8 +98,8 @@ const EVOLVED_SUBLANE_RANGE_DEFAULTS: Partial<Record<SubLaneKind, { min: number;
   distance: { min: 0, max: 1 },
 };
 
-const STEP_OVERRIDE_ARRAY_FIELDS = ['probability', 'ratchet', 'trigCondition', 'expression', 'pitch', 'morph', 'distance', 'slice', 'reverse'] as const;
-const STEP_OVERRIDE_DIRECTION_FIELDS = ['expressionDirection', 'morphDirection', 'distanceDirection', 'pitchDirection', 'sliceDirection', 'reverseDirection'] as const;
+const STEP_OVERRIDE_ARRAY_FIELDS = ['probability', 'ratchet', 'trigCondition', 'expression', 'pitch', 'morph', 'distance', 'nudge', 'slice', 'reverse'] as const;
+const STEP_OVERRIDE_DIRECTION_FIELDS = ['expressionDirection', 'morphDirection', 'distanceDirection', 'nudgeDirection', 'pitchDirection', 'sliceDirection', 'reverseDirection'] as const;
 const STEP_OVERRIDE_RANGE_FIELDS = ['expressionRanges', 'morphRanges', 'distanceRanges'] as const;
 
 export function createDefaultPitchSettings(laneCount = SYNTH_EUCLIDEAN_LANE_COUNT): PitchSettings[] {
@@ -119,6 +125,7 @@ function defaultEvolvedSubLaneState(lane: SubLaneKind): SubLaneState {
     steps: lane === 'pitch' ? 5 : 4,
     direction: 'forward',
     ...(lane === 'pitch' ? { scaleQuantize: false } : {}),
+    ...(lane === 'nudge' ? { followTriggerHits: true } : {}),
     ...(range
       ? {
           valueMode: 'sequence' as const,
@@ -165,6 +172,9 @@ function sanitizeSequencerSubLaneState(lane: SubLaneKind, state: Partial<SubLane
   if (lane === 'pitch') {
     next.scaleQuantize = false;
   }
+  if (lane === 'nudge') {
+    next.followTriggerHits = true;
+  }
   const rangeFallback = EVOLVED_SUBLANE_RANGE_DEFAULTS[lane];
   if (rangeFallback) {
     const min = typeof state?.rangeMin === 'number' && Number.isFinite(state.rangeMin) ? clampSequencerUnit(state.rangeMin) : rangeFallback.min;
@@ -187,6 +197,7 @@ export function sanitizeSequencerSubLaneStates(
       expression: sanitizeSequencerSubLaneState('expression', partial.expression),
       morph: sanitizeSequencerSubLaneState('morph', partial.morph),
       distance: sanitizeSequencerSubLaneState('distance', partial.distance),
+      nudge: sanitizeSequencerSubLaneState('nudge', partial.nudge),
       slice: sanitizeSequencerSubLaneState('slice', partial.slice),
       reverse: sanitizeSequencerSubLaneState('reverse', partial.reverse),
     };
@@ -225,6 +236,7 @@ function mapSubLaneStatesToEnabledFlags(
     ratchet: states?.[index]?.expression.enabled === true,
     morph: states?.[index]?.morph.enabled === true,
     distance: states?.[index]?.distance.enabled === true,
+    nudge: states?.[index]?.nudge.enabled === true,
     slice: states?.[index]?.slice.enabled === true,
     reverse: states?.[index]?.reverse.enabled === true,
     arp: arpConfigs?.[index]?.enabled === true,
@@ -429,17 +441,43 @@ export function usePresetSequencerRestore({
         DRUM_EUCLIDEAN_LANE_COUNT,
       );
       drumStepOverridesRef.current = drumStepOverrides;
-      setSelectedDrumStepOverrides(drumStepOverridesForEngineRestore(drumStepOverrides, drumSubLaneStates, drumPitchSettings, preset.state, DRUM_EUCLIDEAN_LANE_COUNT));
+      const drumEngineStepOverrides = drumStepOverridesForEngineRestore(
+        drumStepOverrides,
+        drumSubLaneStates,
+        drumPitchSettings,
+        preset.state,
+        DRUM_EUCLIDEAN_LANE_COUNT,
+      );
+      setSelectedDrumStepOverrides(
+        drumEngineStepOverrides,
+        drumSubLaneStates,
+      );
       const synthStepOverrides = expandStepOverridesToLaneCount(
         deserializeStepOverrides(preset.synthStepOverrides) ?? createEmptyStepOverrides(SYNTH_EUCLIDEAN_LANE_COUNT),
         SYNTH_EUCLIDEAN_LANE_COUNT,
       );
       synthStepOverridesRef.current = synthStepOverrides;
-      setSelectedSynthStepOverrides(synthStepOverridesForEngineRestore(synthStepOverrides, synthSubLaneStates, synthPitchSettings, preset.state, SYNTH_EUCLIDEAN_LANE_COUNT));
+      const synthEngineStepOverrides = synthStepOverridesForEngineRestore(
+        synthStepOverrides,
+        synthSubLaneStates,
+        synthPitchSettings,
+        preset.state,
+        SYNTH_EUCLIDEAN_LANE_COUNT,
+      );
+      setSelectedSynthStepOverrides(
+        synthEngineStepOverrides,
+        synthSubLaneStates,
+      );
       setSelectedSequencerPresetHomeSnapshots(
         drumPitchSettings,
         drumSubLaneStates?.map((state) => state.pitch),
         synthSubLaneStates?.map((state) => state.pitch),
+        {
+          drumStepOverrides: drumEngineStepOverrides,
+          drumSubLaneStates,
+          synthStepOverrides: synthEngineStepOverrides,
+          synthSubLaneStates,
+        },
       );
 
       setDrumPresetVersion((v) => v + 1);

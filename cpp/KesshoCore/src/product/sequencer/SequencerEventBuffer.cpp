@@ -168,6 +168,8 @@
   lane.distance_override_set_high = 0;
   lane.distance_range_set_low = 0;
   lane.distance_range_set_high = 0;
+  lane.nudge_override_set_low = 0;
+  lane.nudge_override_set_high = 0;
   for (StepValueSubLaneConfig& config : lane.step_value_configs) {
     config = {};
   }
@@ -178,7 +180,7 @@
 }
 
   bool KesshoProductEngine::validStepFieldId(uint32_t field_id) const {
-  return field_id < 8u;
+  return field_id < 9u;
 }
 
   void KesshoProductEngine::applyStepFieldConfig(LaneState& lane, const KesshoProductEvent& event) {
@@ -263,6 +265,9 @@
       clearStepMask(lane.distance_override_set_low, lane.distance_override_set_high, step);
       clearStepMask(lane.distance_range_set_low, lane.distance_range_set_high, step);
       break;
+    case KESSHO_PRODUCT_STEP_FIELD_NUDGE:
+      clearStepMask(lane.nudge_override_set_low, lane.nudge_override_set_high, step);
+      break;
     case KESSHO_PRODUCT_STEP_FIELD_TRIGGER:
     default:
       clearStepOverride(lane, step);
@@ -319,6 +324,10 @@
         clearStepMask(lane.distance_range_set_low, lane.distance_range_set_high, step);
       }
       setStepMask(lane.distance_override_set_low, lane.distance_override_set_high, step);
+      break;
+    case KESSHO_PRODUCT_STEP_FIELD_NUDGE:
+      lane.nudge_overrides[step] = clampFloat(value, -1.0f, 1.0f);
+      setStepMask(lane.nudge_override_set_low, lane.nudge_override_set_high, step);
       break;
     case KESSHO_PRODUCT_STEP_FIELD_TRIGGER:
     default:

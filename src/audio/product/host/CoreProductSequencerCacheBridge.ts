@@ -74,6 +74,6 @@ export function enabledCoreProductSequencerSubLanes(
   return [
     'probability',
     ...(state.expression === true && state.ratchet !== false ? ['ratchet'] : []),
-    ...['pitch', 'expression', 'morph', 'distance'].filter((lane) => state[lane] === true),
+    ...['pitch', 'expression', 'morph', 'distance', 'nudge'].filter((lane) => state[lane] === true),
   ];
 }

@@ -92,6 +92,13 @@ import { SOURCE_COLORS } from './designSystem/colors';
 import { APP_TAB_SYMBOLS, TEXT_SYMBOLS } from './designSystem/textSymbols';
 import type { SeqSimpleState } from './ui/drums/SeqSimple';
 import type { SeqScatterState } from './ui/drums/scatter/scatterTypes';
+import {
+  DRUM_VOICE_PARAM_ROUTES,
+  getDrumVoiceMorphRoute,
+  getDrumVoiceParamRoute,
+  getDrumVoicePresetRoute,
+  isDrumVoiceParamKey,
+} from './ui/drums/drumVoiceParamRouting';
 import { useJourneyPresets } from './presets/useJourneyPresets';
 import { isLocalPresetStoreOverride } from './presets/sharedMode';
 import { loadPresetsFromFolder } from './presets/bundledPresetLoader';
@@ -159,22 +166,13 @@ const SynthPage = React.lazy(() => import('./ui/synth/SynthPage'));
 const ReverbPage = React.lazy(() => import('./ui/reverb/ReverbPage'));
 const DrumPage = React.lazy(() => import('./ui/drums/DrumPage'));
 
-const DRUM_PRESET_SLOT_CHANGE: Record<string, { voice: DrumPresetVoice; endpoint: 0 | 1 }> = {
-  drumSubPresetA: { voice: 'sub', endpoint: 0 },
-  drumSubPresetB: { voice: 'sub', endpoint: 1 },
-  drumKickPresetA: { voice: 'kick', endpoint: 0 },
-  drumKickPresetB: { voice: 'kick', endpoint: 1 },
-  drumClickPresetA: { voice: 'click', endpoint: 0 },
-  drumClickPresetB: { voice: 'click', endpoint: 1 },
-  drumBeepHiPresetA: { voice: 'beepHi', endpoint: 0 },
-  drumBeepHiPresetB: { voice: 'beepHi', endpoint: 1 },
-  drumBeepLoPresetA: { voice: 'beepLo', endpoint: 0 },
-  drumBeepLoPresetB: { voice: 'beepLo', endpoint: 1 },
-  drumNoisePresetA: { voice: 'noise', endpoint: 0 },
-  drumNoisePresetB: { voice: 'noise', endpoint: 1 },
-  drumMembranePresetA: { voice: 'membrane', endpoint: 0 },
-  drumMembranePresetB: { voice: 'membrane', endpoint: 1 },
-};
+const DRUM_PRESET_SLOT_CHANGE: Record<string, { voice: DrumPresetVoice; endpoint: 0 | 1 }> =
+  Object.fromEntries(
+    DRUM_VOICE_PARAM_ROUTES.flatMap((route) => [
+      [route.presetAKey, { voice: route.voice, endpoint: 0 }] as const,
+      [route.presetBKey, { voice: route.voice, endpoint: 1 }] as const,
+    ]),
+  ) as Record<string, { voice: DrumPresetVoice; endpoint: 0 | 1 }>;
 
 const LEAD_PRESET_SLOT_KEYS = [
   'lead1PresetA',
@@ -2038,21 +2036,15 @@ const App: React.FC = () => {
 
   // Drum morph keys - these use per-trigger randomization, not random walk
   const drumMorphKeys = useMemo(
-    () => new Set<keyof SliderState>(['drumSubMorph', 'drumKickMorph', 'drumClickMorph', 'drumBeepHiMorph', 'drumBeepLoMorph', 'drumNoiseMorph', 'drumMembraneMorph']),
+    () => new Set<keyof SliderState>(DRUM_VOICE_PARAM_ROUTES.map((route) => route.morphKey)),
     [],
   );
 
   // Map drum morph keys to voice names for engine API
   const drumMorphKeyToVoice = useMemo<Record<string, DrumPresetVoice>>(
-    () => ({
-      drumSubMorph: 'sub',
-      drumKickMorph: 'kick',
-      drumClickMorph: 'click',
-      drumBeepHiMorph: 'beepHi',
-      drumBeepLoMorph: 'beepLo',
-      drumNoiseMorph: 'noise',
-      drumMembraneMorph: 'membrane',
-    }),
+    () => Object.fromEntries(
+      DRUM_VOICE_PARAM_ROUTES.map((route) => [route.morphKey, route.voice]),
+    ) as Record<string, DrumPresetVoice>,
     [],
   );
 
@@ -2061,8 +2053,7 @@ const App: React.FC = () => {
     () =>
       new Set(
         Object.keys(state).filter((key) => {
-          if (!/^drum(Sub|Kick|Click|BeepHi|BeepLo|Noise|Membrane)/.test(key)) return false;
-          if (key.includes('Morph') || key.includes('Preset')) return false;
+          if (!isDrumVoiceParamKey(key)) return false;
           return typeof state[key as keyof SliderState] === 'number';
         }),
       ),
@@ -2094,31 +2085,9 @@ const App: React.FC = () => {
       }
       const isMorphActive = morphPresetA !== null || morphPresetB !== null;
 
-      // Check if this is a drum synth param and get its voice/morph key
-      let drumVoice: DrumPresetVoice | null = null;
-      let drumMorphKey: keyof SliderState | null = null;
-      if (keyStr.startsWith('drumSub') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'sub';
-        drumMorphKey = 'drumSubMorph';
-      } else if (keyStr.startsWith('drumKick') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'kick';
-        drumMorphKey = 'drumKickMorph';
-      } else if (keyStr.startsWith('drumClick') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'click';
-        drumMorphKey = 'drumClickMorph';
-      } else if (keyStr.startsWith('drumBeepHi') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'beepHi';
-        drumMorphKey = 'drumBeepHiMorph';
-      } else if (keyStr.startsWith('drumBeepLo') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'beepLo';
-        drumMorphKey = 'drumBeepLoMorph';
-      } else if (keyStr.startsWith('drumNoise') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'noise';
-        drumMorphKey = 'drumNoiseMorph';
-      } else if (keyStr.startsWith('drumMembrane') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'membrane';
-        drumMorphKey = 'drumMembraneMorph';
-      }
+      const drumParamRoute = getDrumVoiceParamRoute(key);
+      const drumVoice = drumParamRoute?.voice ?? null;
+      const drumMorphKey = drumParamRoute?.morphKey ?? null;
 
       // Cycle: single → walk → sampleHold → single (walk-only keys skip sampleHold)
       const current = sliderModes[keyStr] ?? 'single';
@@ -2325,7 +2294,6 @@ const App: React.FC = () => {
       dualSliderRanges,
       sliderModes,
       state,
-      drumMorphKeys,
       morphPosition,
       morphPresetA,
       morphPresetB,
@@ -2369,31 +2337,9 @@ const App: React.FC = () => {
         }
       }
 
-      // Check if this is a drum synth param and update drum morph override
-      let drumVoice: DrumPresetVoice | null = null;
-      let drumMorphKey: keyof SliderState | null = null;
-      if (keyStr.startsWith('drumSub') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'sub';
-        drumMorphKey = 'drumSubMorph';
-      } else if (keyStr.startsWith('drumKick') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'kick';
-        drumMorphKey = 'drumKickMorph';
-      } else if (keyStr.startsWith('drumClick') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'click';
-        drumMorphKey = 'drumClickMorph';
-      } else if (keyStr.startsWith('drumBeepHi') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'beepHi';
-        drumMorphKey = 'drumBeepHiMorph';
-      } else if (keyStr.startsWith('drumBeepLo') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'beepLo';
-        drumMorphKey = 'drumBeepLoMorph';
-      } else if (keyStr.startsWith('drumNoise') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'noise';
-        drumMorphKey = 'drumNoiseMorph';
-      } else if (keyStr.startsWith('drumMembrane') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'membrane';
-        drumMorphKey = 'drumMembraneMorph';
-      }
+      const drumParamRoute = getDrumVoiceParamRoute(key);
+      const drumVoice = drumParamRoute?.voice ?? null;
+      const drumMorphKey = drumParamRoute?.morphKey ?? null;
 
       // Update drum morph dual range override at endpoints
       if (drumVoice && drumMorphKey) {
@@ -2613,32 +2559,9 @@ const App: React.FC = () => {
       const keyStr = key as string;
       const padMorphParamChange = getPadMorphParamChange(key);
 
-      // Detect which voice this param belongs to based on prefix
-      let drumVoice: DrumPresetVoice | null = null;
-      let drumMorphKey: keyof SliderState | null = null;
-
-      if (keyStr.startsWith('drumSub') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'sub';
-        drumMorphKey = 'drumSubMorph';
-      } else if (keyStr.startsWith('drumKick') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'kick';
-        drumMorphKey = 'drumKickMorph';
-      } else if (keyStr.startsWith('drumClick') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'click';
-        drumMorphKey = 'drumClickMorph';
-      } else if (keyStr.startsWith('drumBeepHi') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'beepHi';
-        drumMorphKey = 'drumBeepHiMorph';
-      } else if (keyStr.startsWith('drumBeepLo') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'beepLo';
-        drumMorphKey = 'drumBeepLoMorph';
-      } else if (keyStr.startsWith('drumNoise') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'noise';
-        drumMorphKey = 'drumNoiseMorph';
-      } else if (keyStr.startsWith('drumMembrane') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
-        drumVoice = 'membrane';
-        drumMorphKey = 'drumMembraneMorph';
-      }
+      const drumParamRoute = getDrumVoiceParamRoute(key);
+      const drumVoice = drumParamRoute?.voice ?? null;
+      const drumMorphKey = drumParamRoute?.morphKey ?? null;
 
       // If this is a drum synth param, check for drum morph endpoint and save override
       if (drumVoice && drumMorphKey && isStateNumericValue) {
@@ -3156,36 +3079,15 @@ const App: React.FC = () => {
           newState.insects2Enabled = false;
         }
 
-        // When drum morph slider or preset selectors change, apply morphed values to sliders
-        const morphKeys: Record<string, DrumPresetVoice> = {
-          drumSubMorph: 'sub',
-          drumSubPresetA: 'sub',
-          drumSubPresetB: 'sub',
-          drumKickMorph: 'kick',
-          drumKickPresetA: 'kick',
-          drumKickPresetB: 'kick',
-          drumClickMorph: 'click',
-          drumClickPresetA: 'click',
-          drumClickPresetB: 'click',
-          drumBeepHiMorph: 'beepHi',
-          drumBeepHiPresetA: 'beepHi',
-          drumBeepHiPresetB: 'beepHi',
-          drumBeepLoMorph: 'beepLo',
-          drumBeepLoPresetA: 'beepLo',
-          drumBeepLoPresetB: 'beepLo',
-          drumNoiseMorph: 'noise',
-          drumNoisePresetA: 'noise',
-          drumNoisePresetB: 'noise',
-          drumMembraneMorph: 'membrane',
-          drumMembranePresetA: 'membrane',
-          drumMembranePresetB: 'membrane',
-        };
-
-        const voice = morphKeys[key];
-        if (voice) {
+        // When drum morph slider or preset selectors change, apply morphed values to sliders.
+        const drumPresetRoute = getDrumVoicePresetRoute(key);
+        const drumMorphRoute = getDrumVoiceMorphRoute(key);
+        const drumSelectorRoute = drumPresetRoute ?? drumMorphRoute;
+        if (drumSelectorRoute) {
+          const voice = drumSelectorRoute.voice;
           // Clear only the relevant endpoint's overrides when a preset changes
           // This preserves user edits at the OTHER endpoint
-          if (keyStr.includes('PresetA')) {
+          if (key === drumSelectorRoute.presetAKey) {
             const nextDrumMorphOverrideState = dispatchDrumMorphProductControlAction(prev, {
               type: 'drum-morph/endpoint-clear',
               voice,
@@ -3194,7 +3096,7 @@ const App: React.FC = () => {
             drumMorphProductControlChanged = drumMorphProductControlChanged
               || nextDrumMorphOverrideState !== drumMorphOverrideState;
             drumMorphOverrideState = nextDrumMorphOverrideState;
-          } else if (keyStr.includes('PresetB')) {
+          } else if (key === drumSelectorRoute.presetBKey) {
             const nextDrumMorphOverrideState = dispatchDrumMorphProductControlAction(prev, {
               type: 'drum-morph/endpoint-clear',
               voice,
@@ -3206,7 +3108,7 @@ const App: React.FC = () => {
           }
 
           // Clear mid-morph overrides when reaching an endpoint (keep endpoint edits)
-          if (keyStr.includes('Morph') && !keyStr.includes('Auto') && !keyStr.includes('Speed') && !keyStr.includes('Mode')) {
+          if (key === drumSelectorRoute.morphKey) {
             const morphValue = value as number;
             if (isAtEndpoint0(morphValue) || isAtEndpoint1(morphValue)) {
               const nextDrumMorphOverrideState = dispatchDrumMorphProductControlAction(prev, {
@@ -3317,57 +3219,15 @@ const App: React.FC = () => {
         });
       }
 
-      // Map of voice to its drum synth param prefixes
-      const voiceParamPrefixes: Record<DrumPresetVoice, string> = {
-        sub: 'drumSub',
-        kick: 'drumKick',
-        click: 'drumClick',
-        beepHi: 'drumBeepHi',
-        beepLo: 'drumBeepLo',
-        noise: 'drumNoise',
-        membrane: 'drumMembrane',
-      };
-
-      // Map preset keys to their voice
-      const presetVoiceMap: Record<string, DrumPresetVoice> = {
-        drumSubPresetA: 'sub',
-        drumSubPresetB: 'sub',
-        drumKickPresetA: 'kick',
-        drumKickPresetB: 'kick',
-        drumClickPresetA: 'click',
-        drumClickPresetB: 'click',
-        drumBeepHiPresetA: 'beepHi',
-        drumBeepHiPresetB: 'beepHi',
-        drumBeepLoPresetA: 'beepLo',
-        drumBeepLoPresetB: 'beepLo',
-        drumNoisePresetA: 'noise',
-        drumNoisePresetB: 'noise',
-        drumMembranePresetA: 'membrane',
-        drumMembranePresetB: 'membrane',
-      };
-
-      // Map voice to its morph key to get current position
-      const voiceMorphKeys: Record<DrumPresetVoice, keyof SliderState> = {
-        sub: 'drumSubMorph',
-        kick: 'drumKickMorph',
-        click: 'drumClickMorph',
-        beepHi: 'drumBeepHiMorph',
-        beepLo: 'drumBeepLoMorph',
-        noise: 'drumNoiseMorph',
-        membrane: 'drumMembraneMorph',
-      };
-
       // When a preset changes, only reset dual slider modes/ranges if we're at that endpoint
       // If preset A changes and we're at endpoint 1 (B), preserve the current dual modes
-      const presetVoice = presetVoiceMap[key];
-      if (presetVoice) {
-        const prefix = voiceParamPrefixes[presetVoice];
-        const morphKey = voiceMorphKeys[presetVoice];
-        const currentMorph = state[morphKey] as number;
+      const presetRoute = getDrumVoicePresetRoute(key);
+      if (presetRoute) {
+        const currentMorph = state[presetRoute.morphKey] as number;
 
         // Determine if we should reset dual modes
         // Only reset if we're at the endpoint matching the changed preset
-        const isPresetA = keyStr.includes('PresetA');
+        const isPresetA = key === presetRoute.presetAKey;
         const atEndpoint0 = isAtEndpoint0(currentMorph);
         const atEndpoint1 = isAtEndpoint1(currentMorph);
 
@@ -3381,7 +3241,7 @@ const App: React.FC = () => {
           setSliderModes((prev) => {
             const next = { ...prev };
             for (const modeKey of Object.keys(prev)) {
-              if (modeKey.startsWith(prefix) && !modeKey.includes('Morph') && !modeKey.includes('Preset')) {
+              if (getDrumVoiceParamRoute(modeKey)?.voice === presetRoute.voice) {
                 delete next[modeKey];
               }
             }
@@ -3391,7 +3251,7 @@ const App: React.FC = () => {
           setDualSliderRanges((prev) => {
             const newRanges = { ...prev };
             for (const rangeKey of Object.keys(prev)) {
-              if (rangeKey.startsWith(prefix) && !rangeKey.includes('Morph') && !rangeKey.includes('Preset')) {
+              if (getDrumVoiceParamRoute(rangeKey)?.voice === presetRoute.voice) {
                 delete newRanges[rangeKey as keyof typeof newRanges];
               }
             }
@@ -3403,18 +3263,9 @@ const App: React.FC = () => {
       // Apply interpolated dual range overrides for drum morph
       // This happens at EVERY morph position, not just endpoints
       // Mimics lerpPresets behavior: ranges interpolate smoothly, mode only snaps when range collapses
-      const drumMorphVoiceKeys: Record<string, DrumPresetVoice> = {
-        drumSubMorph: 'sub',
-        drumKickMorph: 'kick',
-        drumClickMorph: 'click',
-        drumBeepHiMorph: 'beepHi',
-        drumBeepLoMorph: 'beepLo',
-        drumNoiseMorph: 'noise',
-        drumMembraneMorph: 'membrane',
-      };
-
-      const morphVoice = drumMorphVoiceKeys[key];
-      if (morphVoice && keyStr.includes('Morph') && !keyStr.includes('Auto') && !keyStr.includes('Speed') && !keyStr.includes('Mode')) {
+      const morphRoute = getDrumVoiceMorphRoute(key);
+      if (morphRoute) {
+        const morphVoice = morphRoute.voice;
         const morphValue = value as number;
 
         // Build current values map for fallback

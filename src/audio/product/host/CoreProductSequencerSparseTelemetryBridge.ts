@@ -15,6 +15,7 @@ const CONFIG_VALUE_FIELDS: { key: keyof CoreProductSequencerLaneUiState; field: 
   { key: 'expression', field: CORE_PRODUCT_STEP_VALUE_FIELDS.expression },
   { key: 'morph', field: CORE_PRODUCT_STEP_VALUE_FIELDS.morph },
   { key: 'distance', field: CORE_PRODUCT_STEP_VALUE_FIELDS.distance },
+  { key: 'nudge', field: CORE_PRODUCT_STEP_VALUE_FIELDS.nudge },
 ];
 
 function laneIncludesStepValueConfig(lane: CoreProductSequencerLaneUiState): boolean {

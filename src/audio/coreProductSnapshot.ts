@@ -15,6 +15,7 @@ import { computeGranularRuntimeSeed, getUtcBucket } from './rng';
 import { defaultDrumEuclidPattern, defaultSynthEuclidPattern, euclideanPatternMask, resolveEuclidPatternParams } from './euclideanPatterns';
 import { sequencerClockDivisionToNumericValue } from './sequencerClockDivisions';
 import { normalizeSequencerSwing } from './sequencerSwing';
+import { drumVoiceBaseMidiFromIndex } from './drumVoiceMidi';
 import { delayBTapeHeadLevelsFromState, delayBTapeHeadMaskFromState, delayBTapeHeadPansFromState, delayDivisionMs } from './coreProductDelaySnapshot';
 import { booleanFromState, clamp, numberFromState } from './coreProductSnapshotState';
 import { resolveReverbSnapshotParams, scaleIdFromState, shouldUseMobileReverbQualityOverride } from './coreProductReverbSnapshot';
@@ -592,7 +593,7 @@ function drumLaneBaseFromState(
 ): ProductLaneSnapshot {
   const prefix = `drumEuclid${laneNumber}`;
   const voiceIndex = voiceIndices[0] ?? 1;
-  const lane = laneDefaults(CORE_PRODUCT_SOURCE_IDS.drum, 36 + voiceIndex);
+  const lane = laneDefaults(CORE_PRODUCT_SOURCE_IDS.drum, drumVoiceBaseMidiFromIndex(voiceIndex));
   const macroDefaults = coreProductDrumLaneMacroDefaultsFromState(state, voiceIndices);
   lane.morph = macroDefaults.morph;
   lane.distance = macroDefaults.distance;

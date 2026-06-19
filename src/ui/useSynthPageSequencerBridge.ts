@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type MutableRefObject } from 'react';
+import { useCallback, useMemo, useRef, type MutableRefObject } from 'react';
 
 import type { ClockDivision, PitchBindingMode } from '../audio/drumSeqTypes';
 import type { ProductArpConfig } from '../audio/productArpeggiator';
@@ -8,7 +8,11 @@ import { sanitizeSequencerSubLaneStates } from './usePresetSequencerRestore';
 type SynthPitchHomeState = { steps?: number; direction?: string; scaleQuantize?: boolean };
 
 type SynthPageSequencerBridgeOptions = {
-  captureSelectedSynthEuclidLaneHome: (laneIdx: number, pitchState?: SynthPitchHomeState | null) => void;
+  captureSelectedSynthEuclidLaneHome: (
+    laneIdx: number,
+    pitchState?: SynthPitchHomeState | null,
+    options?: { stepOverrides?: Partial<StepOverrides>; subLaneStates?: Record<SubLaneKind, SubLaneState>[] },
+  ) => void;
   diceSelectedSynthEuclidLane: (laneIdx: number, intensity: number) => void;
   resetSelectedSynthEuclidLaneHome: (laneIdx: number) => void;
   setSelectedSynthEuclidClockDivs: (divs: ClockDivision[]) => void;
@@ -16,7 +20,7 @@ type SynthPageSequencerBridgeOptions = {
   setSelectedSynthEuclidSwings: (swings: number[]) => void;
   setSelectedSynthPitchBindingModes: (modes: PitchBindingMode[]) => void;
   setSelectedSynthPitchSettings: (settings: PitchSettings[]) => void;
-  setSelectedSynthStepOverrides: (overrides: Partial<StepOverrides>) => void;
+  setSelectedSynthStepOverrides: (overrides: Partial<StepOverrides>, subLaneStates?: Record<SubLaneKind, SubLaneState>[]) => void;
   setSelectedSynthSubLaneEnabled: (enabled: Record<string, boolean>[]) => void;
   synthClockDivsRef: MutableRefObject<ClockDivision[] | undefined>;
   synthEvolveConfigsRef: MutableRefObject<EvolveConfig[] | undefined>;
@@ -62,6 +66,8 @@ function synthEngineStepOverrides(overrides: StepOverrides): Partial<StepOverrid
     distance: overrides.distance,
     distanceDirection: overrides.distanceDirection,
     distanceRanges: overrides.distanceRanges,
+    nudge: overrides.nudge,
+    nudgeDirection: overrides.nudgeDirection,
     probability: overrides.probability,
     ratchet: overrides.ratchet,
     trigCondition: overrides.trigCondition,
@@ -89,6 +95,8 @@ export function useSynthPageSequencerBridge({
   synthSubLaneStatesRef,
   synthSwingsRef,
 }: SynthPageSequencerBridgeOptions) {
+  const engineStepOverridesRef = useRef<Partial<StepOverrides> | undefined>(undefined);
+
   const onSubLaneStatesChange = useCallback((states: Record<SubLaneKind, SubLaneState>[]) => {
     const sanitized = sanitizeSequencerSubLaneStates(states) ?? states;
     synthSubLaneStatesRef.current = sanitized;
@@ -114,9 +122,14 @@ export function useSynthPageSequencerBridge({
     synthStepOverridesRef.current = raw;
   }, [synthStepOverridesRef]);
 
-  const onStepOverridesChange = useCallback((overrides: StepOverrides) => {
-    setSelectedSynthStepOverrides(synthEngineStepOverrides(overrides));
-  }, [setSelectedSynthStepOverrides]);
+  const onStepOverridesChange = useCallback((
+    overrides: StepOverrides,
+    subLaneStates?: Record<SubLaneKind, SubLaneState>[],
+  ) => {
+    const engineOverrides = synthEngineStepOverrides(overrides);
+    engineStepOverridesRef.current = engineOverrides;
+    setSelectedSynthStepOverrides(engineOverrides, subLaneStates ?? synthSubLaneStatesRef.current);
+  }, [setSelectedSynthStepOverrides, synthSubLaneStatesRef]);
 
   const onClockDivsChange = useCallback((divs: ClockDivision[]) => {
     synthClockDivsRef.current = divs;
@@ -138,7 +151,14 @@ export function useSynthPageSequencerBridge({
   }, [setSelectedSynthEuclidEvolveConfigs, synthEvolveConfigsRef]);
 
   const captureEvolveHome = useCallback((laneIdx: number, pitchState?: { steps?: number; direction?: string; scaleQuantize?: boolean } | null) => {
-    captureSelectedSynthEuclidLaneHome(laneIdx, pitchState ?? synthSubLaneStatesRef.current?.[laneIdx]?.pitch);
+    captureSelectedSynthEuclidLaneHome(
+      laneIdx,
+      pitchState ?? synthSubLaneStatesRef.current?.[laneIdx]?.pitch,
+      {
+        stepOverrides: engineStepOverridesRef.current,
+        subLaneStates: synthSubLaneStatesRef.current,
+      },
+    );
   }, [captureSelectedSynthEuclidLaneHome, synthSubLaneStatesRef]);
 
   return useMemo(() => ({

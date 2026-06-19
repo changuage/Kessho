@@ -19,6 +19,19 @@ struct DrumKitMapEntry {
   uint32_t seed_salt = 0u;
 };
 
+inline float midiNoteForDrumVoice(uint32_t voice) {
+  switch (voice) {
+    case DRUM_VOICE_SUB: return 35.0f;
+    case DRUM_VOICE_KICK: return 36.0f;
+    case DRUM_VOICE_CLICK: return 37.0f;
+    case DRUM_VOICE_BEEP_HI: return 51.0f;
+    case DRUM_VOICE_BEEP_LO: return 50.0f;
+    case DRUM_VOICE_NOISE: return 42.0f;
+    case DRUM_VOICE_MEMBRANE: return 38.0f;
+    default: return 36.0f;
+  }
+}
+
 inline DrumKitMapEntry defaultDrumKitMapEntry(float midi_note) {
   const int note = static_cast<int>(midi_note >= 0.0f ? midi_note + 0.5f : midi_note - 0.5f);
   switch (note) {

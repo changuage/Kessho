@@ -81,6 +81,8 @@ export function writeCaptureEventToStep(
     midiNote: number;
     velocity: number;
     gateSeconds: number;
+    targetStepFloat?: number | null;
+    nudge?: number | null;
   },
 ): CaptureScratch {
   if (scratch.events.some((captured) => captured.sourceEventId === event.eventId)) {
@@ -105,10 +107,16 @@ export function writeCaptureEventToStep(
     eventOrder,
     sourceEventId: event.eventId,
     targetStepIndex: safeStep,
+    targetStepFloat: typeof event.targetStepFloat === 'number' && Number.isFinite(event.targetStepFloat)
+      ? event.targetStepFloat
+      : null,
     cycleIndex,
     midiNote: cells[safeStep]?.midiNote ?? 60,
     velocity: cells[safeStep]?.velocity ?? 1,
     gateSeconds: cells[safeStep]?.gateSeconds ?? 0.001,
+    nudge: typeof event.nudge === 'number' && Number.isFinite(event.nudge)
+      ? Math.max(-1, Math.min(1, event.nudge))
+      : 0,
   };
 
   return {

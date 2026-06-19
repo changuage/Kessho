@@ -47,6 +47,7 @@ export interface GeneratedDrumPhrase {
   expression: number[];
   morph: number[];
   distance: number[];
+  nudge: number[];
   slice: number[];
   reverse: number[];
   directions: {
@@ -54,6 +55,7 @@ export interface GeneratedDrumPhrase {
     expression: LaneDirection;
     morph: LaneDirection;
     distance: LaneDirection;
+    nudge: LaneDirection;
     slice: LaneDirection;
     reverse: LaneDirection;
   };
@@ -62,6 +64,7 @@ export interface GeneratedDrumPhrase {
     expression: boolean;
     morph: boolean;
     distance: boolean;
+    nudge: boolean;
     slice: boolean;
     reverse: boolean;
   };

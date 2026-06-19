@@ -50,13 +50,14 @@ import {
   legacyEuclideanParamsToTriggerClip,
 } from './triggerClipLegacyBridge';
 import { createEuclideanTriggerClip } from './euclideanTriggerGenerator';
+import { clampNudge } from './nudgeTiming';
 
 // ── Types ──
 
 /** Pitch sub-lane display settings (mode, root note, scale) */
 export type PitchSettings = { mode: PitchMode; root: number; scale: ScaleName };
 
-export type LaneKind = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance' | 'slice' | 'reverse';
+export type LaneKind = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge' | 'slice' | 'reverse';
 export type SubLaneKind = Exclude<LaneKind, 'trigger'>;
 export type RangeSubLaneKind = Extract<SubLaneKind, 'expression' | 'morph' | 'distance'>;
 export type SubLaneValueMode = 'sequence' | 'range';
@@ -69,6 +70,7 @@ type StepArrayOverrideKey =
   | 'pitch'
   | 'morph'
   | 'distance'
+  | 'nudge'
   | 'slice'
   | 'reverse';
 
@@ -83,6 +85,8 @@ export interface SubLaneState {
   valueMode?: SubLaneValueMode;
   rangeMin?: number;
   rangeMax?: number;
+  /** Nudge remains indexed by active trigger hits even when global linking is off. */
+  followTriggerHits?: boolean;
 }
 
 export interface StepOverrides {
@@ -95,11 +99,13 @@ export interface StepOverrides {
   pitch: (number[] | null)[];
   morph: (number[] | null)[];
   distance: (number[] | null)[];
+  nudge: (number[] | null)[];
   slice: (number[] | null)[];
   reverse: (number[] | null)[];
   expressionDirection: (LaneDirection | null)[];
   morphDirection: (LaneDirection | null)[];
   distanceDirection: (LaneDirection | null)[];
+  nudgeDirection: (LaneDirection | null)[];
   pitchDirection: (LaneDirection | null)[];
   sliceDirection: (LaneDirection | null)[];
   reverseDirection: (LaneDirection | null)[];
@@ -381,6 +387,7 @@ function getDefaultSubLaneState(lane: SubLaneKind): SubLaneState {
     steps: lane === 'pitch' ? 5 : 4,
     direction: 'forward' as LaneDirection,
     ...(lane === 'pitch' ? { scaleQuantize: false } : {}),
+    ...(lane === 'nudge' ? { followTriggerHits: true } : {}),
   };
   if (isRangeSubLane(lane)) {
     return {
@@ -405,6 +412,9 @@ function normalizeSubLaneState(lane: SubLaneKind, state?: Partial<SubLaneState>)
   };
   if (lane === 'pitch') {
     next.scaleQuantize = false;
+  }
+  if (lane === 'nudge') {
+    next.followTriggerHits = true;
   }
   if (isRangeSubLane(lane)) {
     Object.assign(next, normalizeRangeState(lane, state));
@@ -447,11 +457,13 @@ function createEmptyStepOverrides(laneCount: number): StepOverrides {
     pitch: Array.from({ length: laneCount }, () => null as number[] | null),
     morph: Array.from({ length: laneCount }, () => null as number[] | null),
     distance: Array.from({ length: laneCount }, () => null as number[] | null),
+    nudge: Array.from({ length: laneCount }, () => null as number[] | null),
     slice: Array.from({ length: laneCount }, () => null as number[] | null),
     reverse: Array.from({ length: laneCount }, () => null as number[] | null),
     expressionDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
     morphDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
     distanceDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
+    nudgeDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
     pitchDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
     sliceDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
     reverseDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
@@ -469,11 +481,12 @@ const STEP_ARRAY_OVERRIDE_KEYS: StepArrayOverrideKey[] = [
   'pitch',
   'morph',
   'distance',
+  'nudge',
   'slice',
   'reverse',
 ];
 
-const SUB_LANE_KINDS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'slice', 'reverse'];
+const SUB_LANE_KINDS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'nudge', 'slice', 'reverse'];
 
 type LinkedTriggerCellClipboard = {
   enabled: boolean;
@@ -628,11 +641,13 @@ function normalizeStepOverrides(overrides: StepOverrides | undefined, laneCount:
     pitch: overrides.pitch ?? fallback.pitch,
     morph: overrides.morph ?? fallback.morph,
     distance: overrides.distance ?? fallback.distance,
+    nudge: overrides.nudge ?? fallback.nudge,
     slice: overrides.slice ?? fallback.slice,
     reverse: overrides.reverse ?? fallback.reverse,
     expressionDirection: overrides.expressionDirection ?? fallback.expressionDirection,
     morphDirection: overrides.morphDirection ?? fallback.morphDirection,
     distanceDirection: overrides.distanceDirection ?? fallback.distanceDirection,
+    nudgeDirection: overrides.nudgeDirection ?? fallback.nudgeDirection,
     pitchDirection: overrides.pitchDirection ?? fallback.pitchDirection,
     sliceDirection: overrides.sliceDirection ?? fallback.sliceDirection,
     reverseDirection: overrides.reverseDirection ?? fallback.reverseDirection,
@@ -653,6 +668,7 @@ function normalizeSubLaneStates(
       expression: normalizeSubLaneState('expression', incoming?.expression),
       morph: normalizeSubLaneState('morph', incoming?.morph),
       distance: normalizeSubLaneState('distance', incoming?.distance),
+      nudge: normalizeSubLaneState('nudge', incoming?.nudge),
       slice: normalizeSubLaneState('slice', incoming?.slice),
       reverse: normalizeSubLaneState('reverse', incoming?.reverse),
     };
@@ -780,16 +796,12 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
         setStepOverrides(old => {
           if (old[lane][seqIdx] != null) return old; // already has data
           const next = { ...old, [lane]: [...old[lane]] };
-          const defaults = lane === 'pitch' ? new Array(subSteps).fill(0)
-            : lane === 'expression' ? new Array(subSteps).fill(1.0)
-            : lane === 'morph' ? new Array(subSteps).fill(0)
-            : lane === 'slice' ? new Array(subSteps).fill(0)
-            : lane === 'reverse' ? new Array(subSteps).fill(0)
-            : new Array(subSteps).fill(0); // distance
+          const defaultValue = defaultSubLaneValue(lane);
+          const defaults = new Array(subSteps).fill(defaultValue);
           (next[lane] as (number[] | null)[])[seqIdx] = defaults;
           return next;
         });
-      } else {
+      } else if (lane !== 'nudge') {
         // Clear override data when disabling
         setStepOverrides(old => {
           if (old[lane][seqIdx] == null) return old; // already null
@@ -812,7 +824,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       const existing = old[lane][seqIdx];
       if (!existing) return old; // no data to resize
       const next = { ...old, [lane]: [...old[lane]] };
-      const defaultVal = lane === 'pitch' ? 0 : lane === 'expression' ? 1.0 : lane === 'morph' ? 0 : lane === 'slice' ? 0 : lane === 'reverse' ? 0 : 0;
+      const defaultVal = defaultSubLaneValue(lane);
       const resized = [...existing];
       if (resized.length < newSteps) {
         resized.push(...new Array(newSteps - resized.length).fill(defaultVal));
@@ -915,6 +927,29 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       });
     });
   }, [linked, state, prefix, stepOverrides]);
+
+  useEffect(() => {
+    setSubLaneStates(prev => {
+      let dirty = false;
+      const next = prev.map((laneState, seqIdx) => {
+        const nudgeState = laneState.nudge;
+        if (nudgeState?.followTriggerHits === false) return laneState;
+        const pattern = triggerPatternForLane(state, prefix, seqIdx, stepOverrides);
+        const activeHits = Math.max(1, activeHitCount(pattern));
+        if (nudgeState.steps === activeHits && nudgeState.followTriggerHits === true) return laneState;
+        dirty = true;
+        return {
+          ...laneState,
+          nudge: {
+            ...nudgeState,
+            steps: activeHits,
+            followTriggerHits: true,
+          },
+        };
+      });
+      return dirty ? next : prev;
+    });
+  }, [state, prefix, stepOverrides]);
 
   // ── Param helpers ──
   const getParam = useCallback(
@@ -1138,6 +1173,13 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
           direction: subLaneStates[idx]?.distance.direction ?? 'forward',
           _ppForward: true,
           values: stepOverrides.distance[idx] ?? new Array(subLaneStates[idx]?.distance.steps ?? 4).fill(0),
+        },
+        nudge: {
+          enabled: subLaneStates[idx]?.nudge.enabled ?? false,
+          steps: subLaneStates[idx]?.nudge.steps ?? 4,
+          direction: subLaneStates[idx]?.nudge.direction ?? 'forward',
+          _ppForward: true,
+          values: stepOverrides.nudge[idx] ?? new Array(subLaneStates[idx]?.nudge.steps ?? 4).fill(0),
         },
         slice: {
           enabled: subLaneStates[idx]?.slice.enabled ?? false,
@@ -1436,7 +1478,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       setStepOverrides((prev) => {
         const next = { ...prev, [lane]: [...prev[lane]] };
         const subSteps = subLaneStates[laneIdx]?.[subLane]?.steps ?? 5;
-        const defaultValue = lane === 'pitch' ? 0 : lane === 'expression' ? 1.0 : lane === 'morph' ? 0 : lane === 'slice' ? 0 : lane === 'reverse' ? 0 : 0;
+        const defaultValue = defaultSubLaneValue(subLane);
         const targetLength = Math.max(subSteps, step + 1);
         const arr = next[lane][laneIdx]
           ? [...(next[lane][laneIdx] as number[])]
@@ -1444,7 +1486,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
         if (arr.length < targetLength) {
           arr.push(...new Array(targetLength - arr.length).fill(defaultValue));
         }
-        arr[step] = value;
+        arr[step] = subLane === 'nudge' ? clampNudge(value) : value;
         (next[lane] as (number[] | null)[])[laneIdx] = arr;
         return next;
       });

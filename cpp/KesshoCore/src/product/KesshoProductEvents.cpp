@@ -594,7 +594,7 @@ void KesshoProductEngine::sortControlEvents() {
       applyMidiEvent(event);
       break;
     case KESSHO_PRODUCT_EVENT_KIND_TRIGGER_DRUM_VOICE:
-      triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 36.0f + static_cast<float>(event.target_id), event.value, 0.12f);
+      triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, midiNoteForDrumVoice(event.target_id), event.value, 0.12f);
       break;
     case KESSHO_PRODUCT_EVENT_KIND_START_JOURNEY_MORPH_CLOCK:
       journey_running = true;

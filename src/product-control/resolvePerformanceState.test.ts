@@ -1,5 +1,15 @@
 import assert from 'node:assert/strict';
 
+import {
+  getFactoryPresetNames,
+  getPreset,
+  type DrumVoicePreset,
+  type DrumVoiceType,
+} from '../audio/drumPresets';
+import { createCoreProductDrumTriggerEvent } from '../audio/coreProductEvents';
+import { createCoreProductSnapshot } from '../audio/coreProductSnapshot';
+import { drumVoiceBaseMidiFromIndex } from '../audio/drumVoiceMidi';
+import { drumVoiceIndex } from '../audio/CoreProductHostRuntimeGuards';
 import type { ProductEnginePort } from '../audio/product/ProductEnginePort';
 import type { ProductResolvedStateCommit } from '../audio/product/ProductEngineTypes';
 import { DEFAULT_STATE, type SliderState } from '../ui/state';
@@ -23,6 +33,58 @@ import {
 
 function stateWith(patch: Partial<SliderState>): SliderState {
   return { ...DEFAULT_STATE, ...patch };
+}
+
+type NumericPresetPair = {
+  voice: DrumVoiceType;
+  key: string;
+  presetA: DrumVoicePreset;
+  presetB: DrumVoicePreset;
+  valueA: number;
+  valueB: number;
+};
+
+function findDifferingNumericPresetPair(voice: DrumVoiceType): NumericPresetPair {
+  const presetNames = getFactoryPresetNames(voice);
+  for (let indexA = 0; indexA < presetNames.length; indexA += 1) {
+    const presetA = getPreset(voice, presetNames[indexA]!);
+    if (!presetA) continue;
+    for (let indexB = indexA + 1; indexB < presetNames.length; indexB += 1) {
+      const presetB = getPreset(voice, presetNames[indexB]!);
+      if (!presetB) continue;
+      for (const key of Object.keys(presetA.params)) {
+        const valueA = presetA.params[key];
+        const valueB = presetB.params[key];
+        if (
+          typeof valueA === 'number' &&
+          typeof valueB === 'number' &&
+          Number.isFinite(valueA) &&
+          Number.isFinite(valueB) &&
+          !Object.is(valueA, valueB)
+        ) {
+          return { voice, key, presetA, presetB, valueA, valueB };
+        }
+      }
+    }
+  }
+  throw new Error(`No differing numeric drum preset params found for ${voice}`);
+}
+
+function stateWithDrumPresetPair(pair: NumericPresetPair, morph: number): SliderState {
+  const state = {
+    ...DEFAULT_STATE,
+    drumKickPresetA: pair.presetA.name,
+    drumKickPresetB: pair.presetB.name,
+    drumKickMorph: morph,
+  } as Record<string, unknown>;
+  state[pair.key] = Math.max(pair.valueA, pair.valueB) + 12345;
+  return state as unknown as SliderState;
+}
+
+function getNumberRecordValue(record: unknown, key: string): number {
+  const value = (record as Record<string, unknown>)[key];
+  assert.equal(typeof value, 'number', `${key} should resolve to a numeric value`);
+  return value as number;
 }
 
 function controlState(
@@ -89,6 +151,34 @@ function expectSoundActionChangesResolvedOutput(
   return after;
 }
 
+{
+  const expectedVoices: Array<[DrumVoiceType, number, number]> = [
+    ['sub', 0, 35],
+    ['kick', 1, 36],
+    ['click', 2, 37],
+    ['beepHi', 3, 51],
+    ['beepLo', 4, 50],
+    ['noise', 5, 42],
+    ['membrane', 6, 38],
+  ];
+  for (const [voice, voiceIndex, midiNote] of expectedVoices) {
+    assert.equal(drumVoiceIndex(voice), voiceIndex, `${voice} preview should resolve to the native voice index`);
+    assert.equal(
+      createCoreProductDrumTriggerEvent(voiceIndex, 0.8).targetId,
+      voiceIndex,
+      `${voice} preview event should target the same native voice index`,
+    );
+    assert.equal(drumVoiceBaseMidiFromIndex(voiceIndex), midiNote, `${voice} sequencer base MIDI should match the native drum kit map`);
+  }
+  const snapshot = createCoreProductSnapshot(DEFAULT_STATE as unknown as Record<string, unknown>);
+  assert.equal(snapshot.drumLanes[0]?.midiNote, 36, 'default drum lane 1 should target kick, not click');
+  assert.equal(snapshot.drumLanes[1]?.midiNote, 51, 'default drum lane 2 should target the high beep engine');
+  assert.equal(snapshot.drumLanes[2]?.midiNote, 37, 'default drum lane 3 should target click');
+  assert.equal(snapshot.drumLanes[3]?.midiNote, 42, 'default drum lane 4 should target noise');
+  assert.equal(snapshot.drumLanes[4]?.midiNote, 50, 'default drum lane 5 should target the low beep engine');
+  assert.equal(snapshot.drumLanes[5]?.midiNote, 38, 'default drum lane 6 should target membrane');
+}
+
 // ProductControl state authority invariants.
 {
   let next = controlState({ padPostLPF: 1000, synthAttack: 0.1 });
@@ -152,6 +242,57 @@ function expectSoundActionChangesResolvedOutput(
     next.sequencer.patch.synthEuclid1Source,
     undefined,
     'overlapping sequencer patch source key should be removed after raw source changes',
+  );
+}
+
+{
+  const pair = findDifferingNumericPresetPair('kick');
+  const atA = resolvePerformanceState(
+    createInitialProductControlState(stateWithDrumPresetPair(pair, 0)),
+  );
+  assert.equal(
+    getNumberRecordValue(atA.sliders, pair.key),
+    pair.valueA,
+    'drum morph position 0 should resolve factory preset A params into visible sliders',
+  );
+  assert.equal(
+    getNumberRecordValue(atA.productPatch, pair.key),
+    pair.valueA,
+    'drum morph position 0 should write factory preset A params into the Product patch',
+  );
+
+  const atB = resolvePerformanceState(
+    createInitialProductControlState(stateWithDrumPresetPair(pair, 1)),
+  );
+  assert.equal(
+    getNumberRecordValue(atB.sliders, pair.key),
+    pair.valueB,
+    'drum morph position 1 should resolve factory preset B params into visible sliders',
+  );
+  assert.equal(
+    getNumberRecordValue(atB.productPatch, pair.key),
+    pair.valueB,
+    'drum morph position 1 should write factory preset B params into the Product patch',
+  );
+
+  const midpoint = resolvePerformanceState(
+    createInitialProductControlState(stateWithDrumPresetPair(pair, 0.5)),
+  );
+  const midpointValue = getNumberRecordValue(midpoint.sliders, pair.key);
+  assert.notEqual(
+    midpointValue,
+    Math.max(pair.valueA, pair.valueB) + 12345,
+    'drum preset morphing should replace stale raw slider values even without user overrides',
+  );
+  assert.ok(
+    midpointValue > Math.min(pair.valueA, pair.valueB) &&
+      midpointValue < Math.max(pair.valueA, pair.valueB),
+    'drum morph midpoint should interpolate between factory preset A and B params',
+  );
+  assert.equal(
+    getNumberRecordValue(midpoint.productPatch, pair.key),
+    midpointValue,
+    'drum morph midpoint should write interpolated params into the Product patch',
   );
 }
 

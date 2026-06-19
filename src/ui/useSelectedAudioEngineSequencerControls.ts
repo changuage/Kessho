@@ -23,8 +23,19 @@ import { selectedProductRuntime } from '../audio/product/SelectedProductRuntime'
 import type { ProductEvent } from '../audio/product/ProductEngineTypes';
 import { commitProductControlActionForProduct } from '../product-control';
 import type { SliderState } from './state';
+import type { SequencerSubLaneConfigState } from '../audio/CoreProductHostSequencerAdapter';
 
 type SequencerPitchState = { steps?: number; direction?: string; scaleQuantize?: boolean } | null;
+type SequencerLaneHomeCaptureOptions = {
+  stepOverrides?: unknown;
+  subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[];
+};
+type SequencerPresetHomeSnapshotOptions = {
+  drumStepOverrides?: unknown;
+  drumSubLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[];
+  synthStepOverrides?: unknown;
+  synthSubLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[];
+};
 
 type SelectedAudioEngineSequencerControls = {
   setSelectedDrumEuclidEvolveConfigs: (configs: readonly unknown[]) => void;
@@ -38,18 +49,24 @@ type SelectedAudioEngineSequencerControls = {
   setSelectedDrumPitchSettings: (settings: readonly unknown[]) => void;
   setSelectedSynthPitchSettings: (settings: readonly unknown[]) => void;
   setSelectedSynthPitchBindingModes: (modes: readonly unknown[]) => void;
-  setSelectedDrumStepOverrides: (overrides: unknown) => void;
-  setSelectedSynthStepOverrides: (overrides: unknown) => void;
+  setSelectedDrumStepOverrides: (overrides: unknown, subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[]) => void;
+  setSelectedSynthStepOverrides: (overrides: unknown, subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[]) => void;
   setSelectedSequencerPresetHomeSnapshots: (
     drumPitchSettings?: readonly unknown[],
     drumPitchStates?: readonly (SequencerPitchState | undefined)[],
     synthPitchStates?: readonly (SequencerPitchState | undefined)[],
+    options?: SequencerPresetHomeSnapshotOptions,
   ) => void;
   resetSelectedSynthEuclidLaneHome: (laneIndex: number) => void;
-  captureSelectedSynthEuclidLaneHome: (laneIndex: number, pitchState?: SequencerPitchState) => void;
+  captureSelectedSynthEuclidLaneHome: (laneIndex: number, pitchState?: SequencerPitchState, options?: SequencerLaneHomeCaptureOptions) => void;
   diceSelectedSynthEuclidLane: (laneIndex: number, intensity?: number) => void;
   resetSelectedDrumEuclidLaneHome: (laneIndex: number) => void;
-  captureSelectedDrumEuclidLaneHome: (laneIndex: number, pitchSettings?: unknown, pitchState?: SequencerPitchState) => void;
+  captureSelectedDrumEuclidLaneHome: (
+    laneIndex: number,
+    pitchSettings?: unknown,
+    pitchState?: SequencerPitchState,
+    options?: SequencerLaneHomeCaptureOptions,
+  ) => void;
   diceSelectedDrumEuclidLane: (laneIndex: number, intensity?: number) => void;
 };
 
@@ -224,24 +241,30 @@ export function useSelectedAudioEngineSequencerControls(
     selectedProductRuntime.setSynthPitchBindingModes(modes);
   }, [audioEngineRuntimeMode, stateRef]);
 
-  const setSelectedDrumStepOverrides = useCallback((overrides: unknown): void => {
+  const setSelectedDrumStepOverrides = useCallback((
+    overrides: unknown,
+    subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[],
+  ): void => {
     if (audioEngineRuntimeMode === 'core-product') {
       commitCoreProductSequencerEvents(
         stateRef,
         sequencerPatch('drumStepOverrides', overrides),
-        createCoreProductDrumSequencerStepOverrideEvents(overrides),
+        createCoreProductDrumSequencerStepOverrideEvents(overrides, subLaneStates),
       );
       return;
     }
     selectedProductRuntime.setDrumStepOverrides(overrides);
   }, [audioEngineRuntimeMode, stateRef]);
 
-  const setSelectedSynthStepOverrides = useCallback((overrides: unknown): void => {
+  const setSelectedSynthStepOverrides = useCallback((
+    overrides: unknown,
+    subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[],
+  ): void => {
     if (audioEngineRuntimeMode === 'core-product') {
       commitCoreProductSequencerEvents(
         stateRef,
         sequencerPatch('synthStepOverrides', overrides),
-        createCoreProductSynthSequencerStepOverrideEvents(overrides),
+        createCoreProductSynthSequencerStepOverrideEvents(overrides, subLaneStates),
       );
       return;
     }
@@ -252,13 +275,23 @@ export function useSelectedAudioEngineSequencerControls(
     drumPitchSettings?: readonly unknown[],
     drumPitchStates?: readonly (SequencerPitchState | undefined)[],
     synthPitchStates?: readonly (SequencerPitchState | undefined)[],
+    options?: SequencerPresetHomeSnapshotOptions,
   ): void => {
     void drumPitchSettings;
     if (audioEngineRuntimeMode === 'core-product') {
+      const events = [
+        ...(options?.synthStepOverrides
+          ? createCoreProductSynthSequencerStepOverrideEvents(options.synthStepOverrides, options.synthSubLaneStates)
+          : []),
+        ...(options?.drumStepOverrides
+          ? createCoreProductDrumSequencerStepOverrideEvents(options.drumStepOverrides, options.drumSubLaneStates)
+          : []),
+        ...createCoreProductSequencerPresetHomeCaptureEvents(drumPitchStates, synthPitchStates),
+      ];
       commitCoreProductSequencerEvents(
         stateRef,
         sequencerPatch('sequencerPresetHomeSnapshots', { drumPitchStates, synthPitchStates }),
-        createCoreProductSequencerPresetHomeCaptureEvents(drumPitchStates, synthPitchStates),
+        events,
       );
       return;
     }
@@ -277,12 +310,22 @@ export function useSelectedAudioEngineSequencerControls(
     selectedProductRuntime.resetSynthEuclidLaneHome(laneIndex);
   }, [audioEngineRuntimeMode, stateRef]);
 
-  const captureSelectedSynthEuclidLaneHome = useCallback((laneIndex: number, pitchState?: SequencerPitchState): void => {
+  const captureSelectedSynthEuclidLaneHome = useCallback((
+    laneIndex: number,
+    pitchState?: SequencerPitchState,
+    options?: SequencerLaneHomeCaptureOptions,
+  ): void => {
     if (audioEngineRuntimeMode === 'core-product') {
+      const events = [
+        ...(options?.stepOverrides
+          ? createCoreProductSynthSequencerStepOverrideEvents(options.stepOverrides, options.subLaneStates)
+          : []),
+        createCoreProductSequencerLaneHomeCaptureEvent('synth', laneIndex, pitchState),
+      ];
       commitCoreProductSequencerEvents(
         stateRef,
         sequencerPatch('synthEuclidLaneHomeAction', { type: 'capture', laneIndex, pitchState }),
-        [createCoreProductSequencerLaneHomeCaptureEvent('synth', laneIndex, pitchState)],
+        events,
       );
       return;
     }
@@ -313,12 +356,23 @@ export function useSelectedAudioEngineSequencerControls(
     selectedProductRuntime.resetDrumEuclidLaneHome(laneIndex);
   }, [audioEngineRuntimeMode, stateRef]);
 
-  const captureSelectedDrumEuclidLaneHome = useCallback((laneIndex: number, pitchSettings?: unknown, pitchState?: SequencerPitchState): void => {
+  const captureSelectedDrumEuclidLaneHome = useCallback((
+    laneIndex: number,
+    pitchSettings?: unknown,
+    pitchState?: SequencerPitchState,
+    options?: SequencerLaneHomeCaptureOptions,
+  ): void => {
     if (audioEngineRuntimeMode === 'core-product') {
+      const events = [
+        ...(options?.stepOverrides
+          ? createCoreProductDrumSequencerStepOverrideEvents(options.stepOverrides, options.subLaneStates)
+          : []),
+        createCoreProductSequencerLaneHomeCaptureEvent('drum', laneIndex, pitchState),
+      ];
       commitCoreProductSequencerEvents(
         stateRef,
         sequencerPatch('drumEuclidLaneHomeAction', { type: 'capture', laneIndex, pitchSettings, pitchState }),
-        [createCoreProductSequencerLaneHomeCaptureEvent('drum', laneIndex, pitchState)],
+        events,
       );
       return;
     }

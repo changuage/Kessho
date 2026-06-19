@@ -33,11 +33,13 @@ function makeStepOverrides(laneCount = 4): StepOverrides {
     pitch: Array.from({ length: laneCount }, () => null),
     morph: Array.from({ length: laneCount }, () => null),
     distance: Array.from({ length: laneCount }, () => null),
+    nudge: Array.from({ length: laneCount }, () => null),
     slice: Array.from({ length: laneCount }, () => null),
     reverse: Array.from({ length: laneCount }, () => null),
     expressionDirection: Array.from({ length: laneCount }, () => null),
     morphDirection: Array.from({ length: laneCount }, () => null),
     distanceDirection: Array.from({ length: laneCount }, () => null),
+    nudgeDirection: Array.from({ length: laneCount }, () => null),
     pitchDirection: Array.from({ length: laneCount }, () => null),
     sliceDirection: Array.from({ length: laneCount }, () => null),
     reverseDirection: Array.from({ length: laneCount }, () => null),
@@ -59,6 +61,7 @@ function makeSubLaneStates(laneCount = 4): Record<SubLaneKind, SubLaneState>[] {
     expression: makeSubLaneState({ valueMode: 'range', rangeMin: 0.2, rangeMax: 0.9 }),
     morph: makeSubLaneState(),
     distance: makeSubLaneState(),
+    nudge: makeSubLaneState(),
     slice: makeSubLaneState(),
     reverse: makeSubLaneState(),
   }));
@@ -252,6 +255,7 @@ function testCommitGeneratedCaptureToEuclid(): void {
   );
   assert.deepEqual(stepOverrides.pitch[targetLaneIndex], [0, 7]);
   assert.deepEqual(stepOverrides.expression[targetLaneIndex], [0.5, 0.8]);
+  assert.deepEqual(stepOverrides.nudge[targetLaneIndex], [0, 0]);
   assert.deepEqual(stepOverrides.probability[targetLaneIndex], [1, 1, 1, 1]);
   assert.deepEqual(stepOverrides.trigCondition[targetLaneIndex], [[1, 1], [1, 1], [1, 1], [1, 1]]);
   assert.equal(stepOverrides.pitchDirection[targetLaneIndex], 'forward');
@@ -264,6 +268,70 @@ function testCommitGeneratedCaptureToEuclid(): void {
   assert.equal(subLaneStates[targetLaneIndex]?.expression.steps, 2);
   assert.equal(subLaneStates[targetLaneIndex]?.expression.valueMode, 'sequence');
   assert.equal(subLaneStates[targetLaneIndex]?.expression.rangeMin, 0.2, 'existing expression range should be preserved');
+  assert.equal(subLaneStates[targetLaneIndex]?.nudge.enabled, false);
+  assert.equal(subLaneStates[targetLaneIndex]?.nudge.steps, 2);
+  assert.equal(subLaneStates[targetLaneIndex]?.nudge.followTriggerHits, true);
+  assert.deepEqual(pitchSettings[targetLaneIndex], {
+    mode: 'semitones',
+    root: 60,
+    scale: 'Chromatic',
+  });
+}
+
+function testCommitGeneratedCaptureWritesNudge(): void {
+  const targetLaneIndex = 1;
+  let scratch = createCaptureScratch(4);
+  scratch = writeCaptureEventToStep(scratch, 0, 0, {
+    eventId: 40,
+    midiNote: 60,
+    velocity: 0.5,
+    gateSeconds: 0.1,
+    targetStepFloat: 0,
+  });
+  scratch = writeCaptureEventToStep(scratch, 2, 0, {
+    eventId: 41,
+    midiNote: 64,
+    velocity: 0.8,
+    gateSeconds: 0.1,
+    targetStepFloat: 1.5,
+  });
+
+  let stepOverrides = makeStepOverrides();
+  let subLaneStates = makeSubLaneStates();
+  let pitchSettings: PitchSettings[] = Array.from({ length: 4 }, () => ({
+    mode: 'semitones',
+    root: 48,
+    scale: 'Major',
+  }));
+
+  const seq: CommitGeneratedCaptureArgs['seq'] = {
+    setParam: () => {},
+    setParamSelect: () => {},
+    setStepOverrides: (action) => {
+      stepOverrides = applyStateAction(stepOverrides, action);
+    },
+    setSubLaneStates: (action) => {
+      subLaneStates = applyStateAction(subLaneStates, action);
+    },
+    setPitchSettings: (action) => {
+      pitchSettings = applyStateAction(pitchSettings, action);
+    },
+    setOpenLane: () => {},
+  };
+
+  commitGeneratedCaptureToEuclid({
+    scratch,
+    targetLaneIndex,
+    seq,
+    setSequencerMode: () => {},
+    setPitchBindingMode: () => {},
+  });
+
+  assert.deepEqual(stepOverrides.nudge[targetLaneIndex], [0, -0.25]);
+  assert.equal(stepOverrides.nudgeDirection[targetLaneIndex], 'forward');
+  assert.equal(subLaneStates[targetLaneIndex]?.nudge.enabled, true);
+  assert.equal(subLaneStates[targetLaneIndex]?.nudge.steps, 2);
+  assert.equal(subLaneStates[targetLaneIndex]?.nudge.followTriggerHits, true);
   assert.deepEqual(pitchSettings[targetLaneIndex], {
     mode: 'semitones',
     root: 60,
@@ -486,6 +554,7 @@ testCaptureScratch();
 testCaptureScratchKeepsLatestCycleOnly();
 testCapturedPitchConversion();
 testCommitGeneratedCaptureToEuclid();
+testCommitGeneratedCaptureWritesNudge();
 testCommitUsesLatestCaptureCycle();
 testSameStepCapturePacksPitchAndDistributesTriggers();
 testEmptyCaptureDoesNotOverwriteEuclidLane();

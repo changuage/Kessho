@@ -7,7 +7,6 @@ import type {
 import { getAllMorphedDrumParams } from '../audio/drumMorph';
 import type { SliderState } from '../ui/state';
 import { buildResolvedProductPatch } from './buildResolvedProductPatch';
-import { PRODUCT_DRUM_MORPH_VOICES } from './drumMorphOverrideState';
 import {
   clampMorphPosition,
   type MorphState,
@@ -73,14 +72,6 @@ function applyMorph(resolved: SliderState, morph: MorphState): SliderState {
   return next as unknown as SliderState;
 }
 
-function hasDrumMorphOverrides(controlState: ProductControlState): boolean {
-  for (const voice of PRODUCT_DRUM_MORPH_VOICES) {
-    if (Object.keys(controlState.drumMorphOverrides.valueOverrides[voice]).length > 0) return true;
-    if (Object.keys(controlState.drumMorphOverrides.dualRangeOverrides[voice]).length > 0) return true;
-  }
-  return false;
-}
-
 export function resolvePerformanceState(
   controlState: ProductControlState,
   options: ResolvePerformanceStateOptions = {},
@@ -92,12 +83,10 @@ export function resolvePerformanceState(
     ...sliders,
     ...controlState.sequencer.patch,
   } as SliderState;
-  if (hasDrumMorphOverrides(controlState)) {
-    sliders = {
-      ...sliders,
-      ...getAllMorphedDrumParams(sliders, controlState.drumMorphOverrides),
-    } as SliderState;
-  }
+  sliders = {
+    ...sliders,
+    ...getAllMorphedDrumParams(sliders, controlState.drumMorphOverrides),
+  } as SliderState;
   sliders = {
     ...sliders,
     ...controlState.overrides.visibleMidpoint.synth,

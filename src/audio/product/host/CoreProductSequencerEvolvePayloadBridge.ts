@@ -4,7 +4,7 @@ import type { SequencerKind, SequencerStepValueOverride } from '../../CoreProduc
 import type { CoreProductSubLaneEvolveResult } from '../../CoreProductHostSequencerSubLaneEvolve';
 
 type EvolvedStepValuePayload = {
-  key: 'pitch' | 'expression' | 'morph' | 'distance';
+  key: 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge';
   values: number[];
 };
 

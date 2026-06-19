@@ -142,11 +142,9 @@ export function interpolatePresets(
       
       if (override.isEndpoint) {
         // Endpoint override: replace the appropriate preset value.
-        // Use tolerance-based detection matching ProductControl endpoint clears.
-        if (override.morphPosition < 0.01) {
+        if (override.morphPosition === 0) {
           valueA = override.value;
-        } else {
-          // morphPosition > 0.99 (endpoint 1)
+        } else if (override.morphPosition === 1) {
           valueB = override.value;
         }
       } else {

@@ -161,6 +161,11 @@ export function captureHomeSnapshot(s: SequencerState): SequencerSnapshot {
       steps: s.distance.steps,
       direction: s.distance.direction,
     },
+    nudge: {
+      values: [...s.nudge.values],
+      steps: s.nudge.steps,
+      direction: s.nudge.direction,
+    },
     slice: {
       values: [...s.slice.values],
       steps: s.slice.steps,
@@ -205,6 +210,7 @@ export function evolveSequencer(
     expression: { ...s.expression, velocities: [...s.expression.velocities] },
     morph: { ...s.morph, values: [...s.morph.values] },
     distance: { ...s.distance, values: [...s.distance.values] },
+    nudge: { ...s.nudge, values: [...s.nudge.values] },
     slice: { ...s.slice, values: [...s.slice.values] },
     reverse: { ...s.reverse, values: [...s.reverse.values] },
     evolve: { ...s.evolve, lastEvolveBar: currentBar },
@@ -502,6 +508,12 @@ export function resetSequencerToHome(s: SequencerState): SequencerState {
       values: [...home.distance.values],
       steps: home.distance.steps,
       direction: home.distance.direction,
+    },
+    nudge: {
+      ...s.nudge,
+      values: [...home.nudge.values],
+      steps: home.nudge.steps,
+      direction: home.nudge.direction,
     },
     slice: {
       ...s.slice,

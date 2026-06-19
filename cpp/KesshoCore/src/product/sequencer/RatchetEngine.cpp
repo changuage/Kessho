@@ -47,7 +47,7 @@ uint32_t diceStepFieldId(uint32_t field) {
 
 uint32_t diceFieldStepCount(const LaneState& lane, uint32_t field, uint32_t fallback_steps) {
   const uint32_t field_id = diceStepFieldId(field);
-  if (field_id < 8u) {
+  if (field_id < 9u) {
     const StepValueSubLaneConfig& config = lane.step_value_configs[field_id];
     if (config.enabled && config.steps > 0u) {
       return clampU32(config.steps, 1u, 64u);
