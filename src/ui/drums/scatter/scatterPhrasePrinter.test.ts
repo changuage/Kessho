@@ -1,15 +1,22 @@
 import assert from 'node:assert/strict';
 
+import { DEFAULT_STATE } from '../../state';
 import type { TrigCondition } from '../../../audio/drumSeqTypes';
+import { drumVoiceBaseMidi } from '../../../audio/drumVoiceMidi';
+import { drumPitchUiValuesToEngineOffsets } from '../../sequencer/drumPitchSequencer';
 import { createEmptyStepOverrides } from '../../sequencer/stepOverrideSerialization';
-import { createBitmapTriggerClip, serializeTriggerClip } from '../../sequencer/triggerClip';
+import { createBitmapTriggerClip, resolveTriggerClip, serializeTriggerClip } from '../../sequencer/triggerClip';
 import type { SubLaneKind, SubLaneState } from '../../sequencer/useEuclideanSequencer';
+import { generateScatterPhrase } from './scatterPhraseGenerator';
 import { printGeneratedPhraseToLane } from './scatterPhrasePrinter';
-import type { GeneratedDrumPhrase } from './scatterTypes';
+import { statePatchForScatterStep } from './scatterPreviewState';
+import { scatterPhraseCooldownMs, scatterPhraseStepMs } from './useScatterSequencerRuntime';
+import type { EngineScatterState, GeneratedDrumPhrase } from './scatterTypes';
 
 type ScatterPhraseSubLane = SubLaneKind;
 
-const SUB_LANES: ScatterPhraseSubLane[] = ['pitch', 'expression', 'morph', 'distance', 'nudge', 'slice', 'reverse'];
+const AUDIBLE_SUB_LANES: ScatterPhraseSubLane[] = ['pitch', 'expression', 'morph', 'distance'];
+const DISABLED_SCATTER_SUB_LANES: ScatterPhraseSubLane[] = ['nudge', 'slice', 'reverse'];
 
 function laneState(enabled = false): SubLaneState {
   return {
@@ -88,6 +95,22 @@ function makePhrase(): GeneratedDrumPhrase {
   };
 }
 
+function enabledIndexes(pattern: readonly boolean[]): number[] {
+  const indexes: number[] = [];
+  pattern.forEach((enabled, index) => {
+    if (enabled) indexes.push(index);
+  });
+  return indexes;
+}
+
+function activeValues(values: readonly number[], pattern: readonly boolean[]): number[] {
+  return enabledIndexes(pattern).map((index) => values[index] ?? 0);
+}
+
+function roundedVariation(values: readonly number[], indexes: readonly number[], scale = 1): number {
+  return new Set(indexes.map((index) => Math.round((values[index] ?? 0) * scale))).size;
+}
+
 {
   const phrase = makePhrase();
   const previous = createEmptyStepOverrides(6);
@@ -100,6 +123,7 @@ function makePhrase(): GeneratedDrumPhrase {
     currentStepOverrides: previous,
     currentSubLaneStates: makeSubLaneStates(6),
   });
+  const activePattern = resolveTriggerClip(phrase.triggerClip);
 
   assert.deepEqual(
     serializeTriggerClip(result.stepOverrides.triggerClips?.[0] ?? null),
@@ -107,12 +131,17 @@ function makePhrase(): GeneratedDrumPhrase {
     'replace should copy the phrase trigger clip exactly',
   );
   assert.deepEqual(result.stepOverrides.probability[0], phrase.probability, 'replace should write probability');
-  assert.deepEqual(result.stepOverrides.ratchet[0], phrase.ratchet, 'replace should write ratchet');
+  assert.deepEqual(result.stepOverrides.ratchet[0], activeValues(phrase.ratchet, activePattern), 'replace should write ratchet per active hit');
   assert.deepEqual(result.stepOverrides.trigCondition[0], phrase.trigCondition, 'replace should write trig conditions');
-  for (const lane of SUB_LANES) {
-    assert.deepEqual(result.stepOverrides[lane][0], phrase[lane], `replace should write ${lane} lane values`);
+  for (const lane of AUDIBLE_SUB_LANES) {
+    assert.deepEqual(result.stepOverrides[lane][0], activeValues(phrase[lane], activePattern), `replace should write ${lane} values only for active trigger hits`);
     assert.equal(result.subLaneStates[0]![lane].enabled, phrase.subLaneEnabled[lane], `replace should write ${lane} enabled state`);
+    assert.equal(result.subLaneStates[0]![lane].steps, enabledIndexes(activePattern).length, `replace should size ${lane} lane to active trigger hits`);
     assert.equal(result.subLaneStates[0]![lane].direction, phrase.directions[lane], `replace should write ${lane} direction`);
+  }
+  for (const lane of DISABLED_SCATTER_SUB_LANES) {
+    assert.equal(result.stepOverrides[lane][0], null, `replace should not wire ${lane} from scatter`);
+    assert.equal(result.subLaneStates[0]![lane].enabled, false, `replace should disable ${lane} for scatter`);
   }
   assert.deepEqual(result.stepOverrides.probability[1], [0.11, 0.22], 'printing lane 0 should preserve lane 1 probability');
   assert.deepEqual(result.stepOverrides.pitch[1], [9, 8, 7], 'printing lane 0 should preserve lane 1 pitch');
@@ -136,7 +165,136 @@ function makePhrase(): GeneratedDrumPhrase {
     serializeTriggerClip(phrase.triggerClip),
     'replace should print into active lane 6',
   );
-  assert.deepEqual(result.stepOverrides.morph[5], phrase.morph, 'lane 6 should receive phrase morph lane');
+  assert.deepEqual(result.stepOverrides.morph[5], [phrase.morph[0], phrase.morph[2], phrase.morph[5], phrase.morph[7]], 'lane 6 should receive phrase morph values per active hit');
+}
+
+{
+  const phrase: GeneratedDrumPhrase = {
+    ...makePhrase(),
+    triggerClip: createBitmapTriggerClip({
+      steps: 8,
+      bits: [true, false, true, false, false, true, false, false],
+      origin: 'scatter',
+      label: 'Tail rest test',
+    }),
+    ratchet: [1, 8, 2, 8, 8, 3, 8, 8],
+    pitch: [10, 99, 11, 99, 99, 12, 99, 99],
+    expression: [0.71, 0, 0.82, 0, 0, 0.93, 0, 0],
+    morph: [0.2, 0, 0.4, 0, 0, 0.6, 0, 0],
+    distance: [0.3, 0, 0.5, 0, 0, 0.7, 0, 0],
+  };
+  const result = printGeneratedPhraseToLane({
+    phrase,
+    laneIndex: 0,
+    mode: 'replace',
+    currentStepOverrides: createEmptyStepOverrides(6),
+    currentSubLaneStates: makeSubLaneStates(6),
+  });
+
+  assert.deepEqual(result.stepOverrides.pitch[0], [10, 11, 12], 'printed scatter pitch should skip empty trigger steps and tail rests');
+  assert.deepEqual(result.stepOverrides.expression[0], [0.71, 0.82, 0.93], 'printed scatter expression should be indexed by active hits');
+  assert.deepEqual(result.stepOverrides.morph[0], [0.2, 0.4, 0.6], 'printed scatter morph should be indexed by active hits');
+  assert.deepEqual(result.stepOverrides.distance[0], [0.3, 0.5, 0.7], 'printed scatter distance should be indexed by active hits');
+  assert.deepEqual(result.stepOverrides.ratchet[0], [1, 2, 3], 'printed scatter ratchet should be indexed by active hits');
+  assert.equal(result.subLaneStates[0]!.pitch.steps, 3, 'printed scatter pitch lane should end at the last active hit, not at tail rests');
+}
+
+{
+  const engineState: EngineScatterState = {
+    enabled: true,
+    triggerProbability: 1,
+    burstProbability: 1,
+    feelX: 0,
+    feelY: -0.95,
+    rules: {
+      anchor: 1,
+      breath: 0,
+      memory: 0.5,
+      motion: 1,
+      fracture: 0.6,
+      spread: 1,
+    },
+  };
+  const phrase = generateScatterPhrase({
+    engine: 'click',
+    engineState,
+    previousPhrases: [],
+    seed: 1729,
+  });
+  const pattern = resolveTriggerClip(phrase.triggerClip);
+  const hits = enabledIndexes(pattern);
+
+  assert.ok(hits.length > 1, 'dense scatter phrase should produce multiple hits');
+  assert.ok(roundedVariation(phrase.pitch, hits) > 1, 'generated scatter phrase should vary pitch on active hits');
+  assert.ok(roundedVariation(phrase.morph, hits, 100) > 1, 'generated scatter phrase should vary morph on active hits');
+  assert.ok(roundedVariation(phrase.distance, hits, 100) > 1, 'generated scatter phrase should vary distance on active hits');
+  assert.equal(phrase.subLaneEnabled.pitch, true, 'pitch sub-lane should be enabled when generated pitch varies');
+  assert.equal(phrase.subLaneEnabled.morph, true, 'morph sub-lane should be enabled when generated morph varies');
+  assert.equal(phrase.subLaneEnabled.distance, true, 'distance sub-lane should be enabled when generated distance varies');
+  assert.equal(phrase.subLaneEnabled.nudge, false, 'scatter generator should not enable nudge');
+  assert.equal(phrase.subLaneEnabled.slice, false, 'scatter generator should not enable slice');
+  assert.equal(phrase.subLaneEnabled.reverse, false, 'scatter generator should not enable reverse');
+  assert.deepEqual(phrase.nudge, new Array(hits.length).fill(0), 'scatter generator should emit neutral nudge values');
+  assert.ok(phrase.slice.every((value) => value === 0), 'scatter generator should emit neutral slice values');
+  assert.ok(phrase.reverse.every((value) => value === 0), 'scatter generator should emit neutral reverse values');
+}
+
+{
+  const phrase = makePhrase();
+  const clickPhrase: GeneratedDrumPhrase = {
+    ...phrase,
+    engine: 'click',
+    pitch: [12, ...phrase.pitch.slice(1)],
+  };
+  const patch = statePatchForScatterStep(clickPhrase, 0, {
+    ...DEFAULT_STATE,
+    drumClickPresetA: 'Data Point',
+    drumClickPresetB: 'Data Point',
+    drumClickPitch: 1000,
+    drumClickFilter: 4000,
+  });
+
+  assert.equal(patch.drumClickPitch, 2000, 'scatter preview pitch should transpose the click pitch parameter');
+  assert.equal(patch.drumClickFilter, 8000, 'scatter preview pitch should transpose click filter for impulse/noise click modes');
+  assert.equal(patch.drumClickMorph, clickPhrase.morph[0], 'scatter preview should still patch the routed morph parameter');
+  assert.equal(patch.drumClickDistance, clickPhrase.distance[0], 'scatter preview should still patch the routed distance parameter');
+  assert.notEqual(patch.drumClickPresetB, undefined, 'scatter preview should add a distinct B endpoint when morph would otherwise be silent');
+  assert.notEqual(patch.drumClickPresetB, 'Data Point', 'scatter preview morph endpoint should differ from preset A');
+
+  const routedMorphPatch = statePatchForScatterStep(clickPhrase, 0, {
+    ...DEFAULT_STATE,
+    drumClickPresetA: 'Data Point',
+    drumClickPresetB: 'Seed Pod',
+  });
+  assert.equal(routedMorphPatch.drumClickPresetB, undefined, 'scatter preview should preserve an existing distinct morph endpoint');
+}
+
+{
+  const clickBaseMidi = drumVoiceBaseMidi('click');
+  const phrasePitch = [-7, -1, 7, 12];
+  const engineOffsets = drumPitchUiValuesToEngineOffsets(
+    phrasePitch,
+    { mode: 'semitones', root: clickBaseMidi, scale: 'Chromatic' },
+    clickBaseMidi,
+  );
+
+  assert.deepEqual(engineOffsets, phrasePitch, 'scatter print pitch settings should preserve semitone offsets exactly');
+}
+
+{
+  const phrase = {
+    ...makePhrase(),
+    clockDiv: '1/8' as const,
+    triggerClip: createBitmapTriggerClip({
+      steps: 8,
+      bits: [true, false, false, false, false, false, false, true],
+      origin: 'scatter',
+      label: 'Cooldown test',
+    }),
+  };
+  const stepMs = scatterPhraseStepMs(phrase, 120);
+  assert.equal(stepMs, 250, 'scatter runtime should derive phrase timing from the phrase clock division');
+  assert.equal(scatterPhraseCooldownMs(phrase, 120), 2250, 'scatter runtime cooldown should cover the full phrase plus a guard step');
 }
 
 console.log('Scatter phrase printer tests passed');

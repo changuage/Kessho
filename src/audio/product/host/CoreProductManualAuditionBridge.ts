@@ -75,12 +75,16 @@ export async function triggerCoreProductDrumVoice(
     context.runtime.postEvent(createCoreProductDrumTriggerEvent(voiceIndex, triggerVelocity));
     context.publish('drumTrigger', voice, triggerVelocity);
   };
-  if (runtimeCanPostEventsImmediately(context) && productSourceEnabled(context, CORE_PRODUCT_SOURCE_IDS.drum)) {
+  const shouldApplyExternalState = Boolean(externalState);
+  if (externalState) context.setLatestSliderState({ ...externalState, drumEnabled: true });
+  if (
+    !shouldApplyExternalState &&
+    runtimeCanPostEventsImmediately(context) &&
+    productSourceEnabled(context, CORE_PRODUCT_SOURCE_IDS.drum)
+  ) {
     post();
     return;
   }
-  const shouldApplyExternalState = Boolean(externalState);
-  if (externalState) context.setLatestSliderState({ ...externalState, drumEnabled: true });
   await context.runtime.ensureStarted();
   context.setRuntimeReady(true);
   await context.runtime.resume();

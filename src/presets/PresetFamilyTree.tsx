@@ -15,6 +15,7 @@ import type { SliderMode } from '../ui/state';
 import { DERIVED_PAD_KEYS } from '../audio/padPresets';
 import { isStatePresetDiffKeyActive, normalizeStatePresetDiffData } from './statePresetDiffs';
 import { buildPresetVersionMetadata, getPresetVersionSnapshot } from './versionMetadataHelpers';
+import { blurSelectAfterChange } from '../ui/shared/selectFocus';
 
 const MAX_CHILDREN = 10;
 const FAMILY_TREE_SELECTION_STORAGE_PREFIX = 'preset-family-tree:selected:';
@@ -724,6 +725,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   // Select parent from dropdown (no auto-load — just show tree)
   const handleSelectParent = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedParentName(e.target.value);
+    blurSelectAfterChange(e.currentTarget);
   }, []);
 
   // Open save-child dialog

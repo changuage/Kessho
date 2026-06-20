@@ -73,8 +73,15 @@ function logToLinear(value: number, min: number, max: number): number {
   return (Math.log(value) - minLog) / (maxLog - minLog);
 }
 
+function getEffectiveLogMin(info: DualSliderParamInfo): number | null {
+  if (info.max <= 0) return null;
+  if (info.min > 0) return info.min;
+  const stepFloor = info.step > 0 ? info.step : info.max * 0.001;
+  return Math.max(1e-9, Math.min(info.max, stepFloor));
+}
+
 function canUseLog(info: DualSliderParamInfo, logarithmic?: boolean): boolean {
-  return Boolean(logarithmic && info.min > 0 && info.max > 0);
+  return Boolean(logarithmic && getEffectiveLogMin(info) != null);
 }
 
 function normalizePercent(value: number): number {
@@ -123,15 +130,18 @@ export function DualSlider<K extends string = string>({
   const valueToPercent = React.useCallback((nextValue: number) => {
     const clamped = clamp(nextValue, info.min, info.max);
     if (canUseLog(info, logarithmic)) {
-      return normalizePercent(logToLinear(clamped, info.min, info.max) * 100);
+      const effectiveLogMin = getEffectiveLogMin(info) ?? info.min;
+      if (clamped <= info.min) return 0;
+      return normalizePercent(logToLinear(Math.max(effectiveLogMin, clamped), effectiveLogMin, info.max) * 100);
     }
     return normalizePercent(((clamped - info.min) / Math.max(1e-9, info.max - info.min)) * 100);
   }, [info, logarithmic]);
 
   const percentToValue = React.useCallback((percent: number) => {
     const normalized = normalizePercent(percent) / 100;
-    const raw = canUseLog(info, logarithmic)
-      ? linearToLog(normalized, info.min, info.max)
+    const effectiveLogMin = getEffectiveLogMin(info);
+    const raw = canUseLog(info, logarithmic) && effectiveLogMin != null
+      ? (normalized <= 0 && info.min <= 0 ? info.min : linearToLog(normalized, effectiveLogMin, info.max))
       : info.min + normalized * (info.max - info.min);
     return quantizeFn(paramKey, raw);
   }, [info, logarithmic, paramKey, quantizeFn]);

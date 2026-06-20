@@ -108,7 +108,7 @@ struct MembraneParams {
     int overtones = 4;
     float pitch_decay_ms = 40;
     float wire_density = 0.5f, wire_decay = 0.5f, wire_tone = 0.5f;
-    float variation = 0, distance = 0.5f;
+    float variation = 0, distance = 0.5f, scale_blend = 0.3f;
     KesshoDrumFmTransientParams fm = {0, 2, 0, 30, 0, 0, 0};
     KesshoDrumDamageParams damage = {0, 16, 1, 0, 0};
     KesshoDrumMetallicParams metallic = {0, 0, 0.35f, 120, 0};
@@ -207,6 +207,9 @@ struct DrumVoice {
     // Waveshaper
     WaveshaperCurve waveshaper;
     float drive = 0;
+    float sub_shape = 0;
+    float beep_lo_tone = 0;
+    float beep_lo_body = 0;
 
     // Noise state (LFSR-based)
     PRNG noise_rng;
@@ -311,6 +314,10 @@ struct DrumVoice {
     float noise_particle_random = 0;
     float noise_particle_rate = 0.5f;
     float noise_particle_size_samples = 0;
+    float noise_particle_size_mix = 0;
+    float noise_particle_env = 0;
+    float noise_particle_decay = 0;
+    float noise_density = 1;
 
     // BeepHi FM feedback
     float feedback_delay_sample = 0;
@@ -331,11 +338,20 @@ struct DrumVoice {
         env.reset();
         env2.reset();
         env3.reset();
+        pitch_start = 440;
+        pitch_target = 440;
+        pitch_decay_samples = 0;
+        pitch_progress = 0;
         filter1.reset();
         filter2.reset();
         waveshaper.set_drive(0);
+        drive = 0;
+        sub_shape = 0;
+        beep_lo_tone = 0;
+        beep_lo_body = 0;
         memset(ks_buffer, 0, sizeof(ks_buffer));
         ks_write_pos = 0;
+        ks_delay_len = 0;
         ks_z1 = 0;
         num_modes = 0;
         num_partials = 0;
@@ -362,6 +378,10 @@ struct DrumVoice {
         noise_particle_random = 0;
         noise_particle_rate = 0.5f;
         noise_particle_size_samples = 0;
+        noise_particle_size_mix = 0;
+        noise_particle_env = 0;
+        noise_particle_decay = 0;
+        noise_density = 1;
         feedback_gain = 0;
         feedback_delay_sample = 0;
         num_grains = 0;
@@ -536,6 +556,27 @@ static float soft_clip(float x, float amount) {
     return y / (1.0f + fabsf(y));
 }
 
+static float scale_align_ratio(float ratio, float blend) {
+    static constexpr float kScaleIntervals[] = {0.0f, 2.0f, 4.0f, 5.0f, 7.0f, 9.0f, 11.0f};
+    const float mix = clamp01(blend);
+    if (mix <= 0.0001f) return ratio;
+
+    float best_ratio = ratio;
+    float best_distance = 1.0e20f;
+    for (int oct = 0; oct < 3; ++oct) {
+        const float octave = static_cast<float>(1 << oct);
+        for (float interval : kScaleIntervals) {
+            const float scale_ratio = octave * semitones_to_ratio(interval);
+            const float distance = fabsf(scale_ratio - ratio);
+            if (distance < best_distance) {
+                best_distance = distance;
+                best_ratio = scale_ratio;
+            }
+        }
+    }
+    return ratio + mix * (best_ratio - ratio);
+}
+
 static float foldback(float x, float amount) {
     if (amount <= 0.0001f) return x;
     const float limit = std::max(0.05f, 1.0f - amount * 0.9f);
@@ -575,11 +616,16 @@ static float process_fm_transient(FmTransientState& state, PRNG& rng) {
     state.last_mod = mod;
 
     state.carrier.freq = state.carrier_base_freq + mod * p.amount * state.carrier_base_freq;
+    float noise_mod = 0.0f;
     if (p.noise > 0.0001f) {
-        state.carrier.freq += rng.next_bipolar() * p.noise * state.carrier_base_freq * 0.1f;
+        noise_mod = rng.next_bipolar() * p.noise;
+        state.carrier.freq += noise_mod * state.carrier_base_freq * 0.75f;
     }
     state.carrier.advance(g_sample_rate);
     float y = state.carrier.generate(WAVE_SINE, g_sample_rate, g_sine) * state.env * p.mix;
+    if (p.noise > 0.0001f) {
+        y += noise_mod * state.env * p.mix * (0.42f + p.amount * 0.18f);
+    }
     state.carrier.freq = state.carrier_base_freq;
     if (p.clip > 0.0001f) {
         y = soft_clip(y, p.clip);
@@ -635,7 +681,7 @@ static void configure_metallic(MetallicState& state, KesshoDrumMetallicParams pa
     for (int i = 0; i < METALLIC_PARTIALS; ++i) {
         const float spread_ratio = kRatios[i] + params.spread * (float)i * 0.17f;
         state.osc[i].freq = std::max(20.0f, std::min(20000.0f, tuned * spread_ratio));
-        state.osc[i].phase = params.phase_random > 0.0001f ? rng.next() * params.phase_random : 0.0f;
+        state.osc[i].phase = params.phase_random > 0.0001f ? rng.next_unipolar() * params.phase_random : 0.0f;
     }
 }
 
@@ -729,6 +775,18 @@ static void trigger_voice_from_event(const KesshoDrumTriggerEvent& event, int sa
     g_ratchet_attack_cap = previous_attack_cap;
 }
 
+static int trigger_queue_count() {
+    return (g_trigger_write - g_trigger_read + DRUM_TRIGGER_QUEUE_SIZE) % DRUM_TRIGGER_QUEUE_SIZE;
+}
+
+static void enqueue_trigger_event(const KesshoDrumTriggerEvent& event) {
+    if (event.voice >= DRUM_NUM_VOICE_TYPES) return;
+    int next_write = (g_trigger_write + 1) % DRUM_TRIGGER_QUEUE_SIZE;
+    if (next_write == g_trigger_read) return;
+    g_trigger_queue[g_trigger_write] = { event };
+    g_trigger_write = next_write;
+}
+
 static void dispatch_trigger_event(const KesshoDrumTriggerEvent& event, int block_size) {
     const int voice_type = std::max(0, std::min(DRUM_NUM_VOICE_TYPES - 1, (int)event.voice));
     int ratchet_count = event.ratchet_count;
@@ -740,7 +798,7 @@ static void dispatch_trigger_event(const KesshoDrumTriggerEvent& event, int bloc
         decay_scale = 0.82f;
     }
     const int sub_hit_count = ratchet_count > 0 ? std::min(16, ratchet_count) : 1;
-    const int base_offset = std::max(0, std::min(block_size - 1, event.sample_offset));
+    const int base_offset = std::max(0, event.sample_offset);
     float velocity = event.velocity;
     for (int i = 0; i < sub_hit_count; ++i) {
         KesshoDrumTriggerEvent sub = event;
@@ -750,7 +808,14 @@ static void dispatch_trigger_event(const KesshoDrumTriggerEvent& event, int bloc
         const int offset = base_offset + i * std::max(0, spacing) + (int)std::lround(jitter);
         sub.velocity = velocity;
         sub.seed = event.seed != 0u ? event.seed + (uint32_t)i * 747796405u : 0u;
-        trigger_voice_from_event(sub, std::max(0, std::min(block_size - 1, offset)));
+        if (offset >= block_size) {
+            sub.ratchet_count = 1;
+            sub.ratchet_spacing_samples = 0;
+            sub.sample_offset = offset - block_size;
+            enqueue_trigger_event(sub);
+        } else {
+            trigger_voice_from_event(sub, std::max(0, offset));
+        }
         velocity *= decay_scale;
     }
 }
@@ -795,12 +860,14 @@ static void trigger_sub(DrumVoice& v, float velocity) {
     v.output_level = level;
     v.pan = 0;
     v.delay_send = resolve_delay_send(DRUM_VOICE_SUB);
+    v.noise_rng.seed(g_rng.next());
     configure_fm_transient(v.fm_transient, p.fm, freq, velocity);
     configure_damage(v.damage, p.damage);
 
     // Main oscillator
     v.osc1.freq = freq;
     v.osc1.phase = 0;
+    v.sub_shape = clamp01(p.shape);
     v.filter_mode = SVF_LOWPASS;
     v.filter_cutoff = 20000;
     v.filter_q = 0.7f;
@@ -947,12 +1014,12 @@ static void trigger_click(DrumVoice& v, float velocity) {
         v.num_grains = grain_count;
 
         for (int i = 0; i < grain_count; i++) {
-            v.grains[i].delay_samples = g_rng.next() * spread_samples;
+            v.grains[i].delay_samples = g_rng.next_unipolar() * spread_samples;
             v.grains[i].pan = (g_rng.next_bipolar()) * p.stereo_width;
             v.grains[i].level = grain_level;
-            v.grains[i].filter_freq = eff_filter * (0.8f + g_rng.next() * 0.4f);
+            v.grains[i].filter_freq = eff_filter * (0.8f + g_rng.next_unipolar() * 0.4f);
             v.grains[i].filter.reset();
-            float grain_decay = decay * (0.5f + g_rng.next() * 0.5f);
+            float grain_decay = decay * (0.5f + g_rng.next_unipolar() * 0.5f);
             v.grains[i].env.trigger(grain_level, attack, grain_decay);
         }
 
@@ -961,45 +1028,50 @@ static void trigger_click(DrumVoice& v, float velocity) {
         return;
     }
 
-    // Continuous exciter color mode
-    float color = p.exciter_color;
-
-    // Impulse layer (dominant when color ~0)
-    v.click_impulse_level = std::max(0.0f, 1.0f - color * 2.0f);
-    // Tonal layer (peaks at color ~0.5)
-    v.click_tonal_level = 1.0f - fabsf(color - 0.5f) * 2.0f;
-    // Noise layer (dominant when color ~1)
-    v.click_noise_level = std::max(0.0f, (color - 0.5f) * 2.0f);
-
-    // Noise source (initialized via PRNG)
-    v.noise_rng.seed(g_rng.next());
-
-    // Filter for impulse/noise layers
+    v.click_impulse_level = 0.0f;
+    v.click_tonal_level = 0.0f;
+    v.click_noise_level = 0.0f;
     v.filter1.reset();
+    v.filter2.reset();
     v.filter_cutoff = eff_filter;
     v.filter_q = 0.5f + eff_res * 15.0f;
 
-    // Configure based on dominant mode
-    float actual_decay;
-    if (color < 0.33f) {
-        // Impulse dominant
-        v.filter_mode = SVF_HIGHPASS;
-        actual_decay = decay * (0.1f + eff_tone * 0.2f);
-    } else if (color > 0.67f) {
-        // Noise dominant
-        v.filter_mode = SVF_BANDPASS;
+    float actual_decay = decay;
+    if (p.exciter_color > 0.01f) {
+        float color = p.exciter_color;
+        v.click_impulse_level = std::max(0.0f, 1.0f - color * 2.0f);
+        v.click_tonal_level = 1.0f - fabsf(color - 0.5f) * 2.0f;
+        v.click_noise_level = std::max(0.0f, (color - 0.5f) * 2.0f);
+        if (v.click_tonal_level > 0.01f) {
+            v.osc1.freq = eff_pitch;
+            v.osc1.phase = 0;
+            v.pitch_start = eff_pitch * semitones_to_ratio(p.pitch_env);
+            v.pitch_target = eff_pitch;
+            v.pitch_decay_samples = decay * 0.3f * g_sample_rate;
+            v.pitch_progress = 0;
+        }
+        if (color < 0.33f) {
+            actual_decay = decay * (0.1f + eff_tone * 0.2f);
+        } else if (color > 0.67f) {
+            v.filter_q = 1.0f + eff_res * 10.0f;
+            actual_decay = decay * (0.5f + eff_tone * 0.5f);
+        }
+    } else if (p.mode == DRUM_CLICK_NOISE) {
+        v.click_noise_level = 1.0f;
         v.filter_q = 1.0f + eff_res * 10.0f;
         actual_decay = decay * (0.5f + eff_tone * 0.5f);
-    } else {
-        // Tonal dominant
+    } else if (p.mode == DRUM_CLICK_TONAL || p.mode == DRUM_CLICK_CONTINUOUS) {
+        v.click_tonal_level = 1.0f;
         v.osc1.freq = eff_pitch;
         v.osc1.phase = 0;
         v.pitch_start = eff_pitch * semitones_to_ratio(p.pitch_env);
         v.pitch_target = eff_pitch;
         v.pitch_decay_samples = decay * 0.3f * g_sample_rate;
         v.pitch_progress = 0;
-        v.filter_mode = SVF_LOWPASS;
-        actual_decay = decay;
+    } else {
+        v.click_impulse_level = 1.0f;
+        v.filter_mode = SVF_HIGHPASS;
+        actual_decay = decay * (0.1f + eff_tone * 0.2f);
     }
 
     v.env.trigger(level, attack, actual_decay);
@@ -1056,7 +1128,7 @@ static void trigger_beep_hi(DrumVoice& v, float velocity) {
     if (eff_tone > 0.1f) {
         float eff_ratio = p.mod_ratio + p.mod_ratio_fine;
         v.mod_osc.freq = freq * eff_ratio;
-        v.mod_osc.phase = p.mod_phase - std::floor(p.mod_phase);
+        v.mod_osc.phase = clamp01(p.mod_phase) * 0.5f;
         v.fm_index = eff_tone * freq * 0.3f;
 
         // FM self-feedback (DX7-style)
@@ -1066,15 +1138,17 @@ static void trigger_beep_hi(DrumVoice& v, float velocity) {
         v.feedback_delay_sample = 0;
         }
 
+        const float end_scale = 0.2f + clamp01(p.mod_env_end) * 4.0f;
+
         // Mod envelope
         if (p.mod_env_decay > 0.01f) {
-            float env_dur = 0.005f + p.mod_env_decay * 0.295f;
+            float env_dur = 0.004f + p.mod_env_decay * 0.120f;
             v.fm_mod_env_value = v.fm_index * (1.0f + p.mod_env_decay * 4.0f);
-            v.fm_mod_env_end = std::max(0.01f, v.fm_index * p.mod_env_end);
+            v.fm_mod_env_end = std::max(0.01f, v.fm_index * end_scale);
             v.fm_mod_env_decay_rate = fast_expf(-1.0f / (env_dur * g_sample_rate));
         } else {
-            v.fm_mod_env_value = v.fm_index;
-            v.fm_mod_env_end = v.fm_index;
+            v.fm_mod_env_value = v.fm_index * end_scale;
+            v.fm_mod_env_end = v.fm_mod_env_value;
             v.fm_mod_env_decay_rate = 1.0f; // no decay
         }
     } else {
@@ -1082,10 +1156,11 @@ static void trigger_beep_hi(DrumVoice& v, float velocity) {
     }
 
     // Noise-in-mod: inject noise into carrier frequency for metallic transients
-    if (p.noise_in_mod > 0.01f) {
+    if (p.noise_in_mod > 0.01f || p.noise_decay > 0.01f) {
         v.noise_rng.seed(g_rng.next());
         // Noise depth and duration stored in filter_env fields (reused for beepHi)
-        float noise_depth = p.noise_in_mod * freq * 0.5f;
+        float noise_amount = std::max(p.noise_in_mod, p.noise_decay * 0.12f);
+        float noise_depth = noise_amount * freq * 0.5f;
         float noise_dur = 0.005f + p.noise_decay * (attack + decay * 0.8f);
         v.filter_env_start = noise_depth;
         v.filter_env_target = 0.01f;
@@ -1117,6 +1192,8 @@ static void trigger_beep_lo(DrumVoice& v, float velocity) {
     configure_fm_transient(v.fm_transient, p.fm, freq, velocity);
     configure_damage(v.damage, p.damage);
     configure_metallic(v.metallic, p.metallic, freq, velocity, g_rng);
+    v.beep_lo_tone = clamp01(p.tone);
+    v.beep_lo_body = clamp01(p.body);
 
     // Equal-power crossfade between osc and modal
     float osc_amp = cosf(p.modal * KESSHO_HALF_PI) * p.osc_gain;
@@ -1180,7 +1257,6 @@ static void trigger_beep_lo(DrumVoice& v, float velocity) {
             // Init KS delay line
             int delay_len = std::max(2, std::min(KS_MAX_DELAY - 1, (int)(g_sample_rate / freq)));
             v.ks_delay_len = delay_len;
-            v.ks_write_pos = 0;
             v.ks_damp = p.pluck_damp * dist.dBright;
             v.ks_z1 = 0;
 
@@ -1188,9 +1264,11 @@ static void trigger_beep_lo(DrumVoice& v, float velocity) {
             for (int i = 0; i < delay_len; i++) {
                 v.ks_buffer[i] = g_rng.next_bipolar() * level * p.pluck;
             }
+            v.ks_write_pos = delay_len % KS_MAX_DELAY;
             v.env.trigger(osc_amp * level, attack, decay);
         } else {
             // Standard oscillator
+            v.ks_delay_len = 0;
             v.osc1.freq = freq;
             v.osc1.phase = 0;
 
@@ -1201,7 +1279,7 @@ static void trigger_beep_lo(DrumVoice& v, float velocity) {
             v.pitch_progress = 0;
 
             // Body resonance filter
-            if (p.body > 0.1f) {
+            if (p.body > 0.01f) {
                 v.filter1.reset();
                 v.filter_cutoff = freq * 4.0f * dist.dBright;
                 v.filter_q = 0.7f;
@@ -1248,6 +1326,7 @@ static void trigger_noise(DrumVoice& v, float velocity) {
         default: fmode = SVF_LOWPASS; break;
     }
     v.filter_mode = fmode;
+    v.noise_density = clamp01(p.density);
 
     // Filter envelope
     float env_depth = p.filter_env_depth * eff_filter;
@@ -1272,7 +1351,7 @@ static void trigger_noise(DrumVoice& v, float velocity) {
 
     // Breath AM LFO (8-12 Hz random rate)
     if (p.breath > 0.05f) {
-        v.breath_rate = 8.0f + g_rng.next() * 4.0f;
+        v.breath_rate = 8.0f + g_rng.next_unipolar() * 4.0f;
         v.breath_depth = p.breath * 0.3f * level;
         v.breath_phase = 0;
     }
@@ -1287,6 +1366,9 @@ static void trigger_noise(DrumVoice& v, float velocity) {
     v.noise_particle_random = clamp01(p.particle_random);
     v.noise_particle_rate = clamp01(p.particle_random_rate);
     v.noise_particle_size_samples = std::max(1.0f, ms_to_samples(p.particle_size_ms));
+    v.noise_particle_size_mix = clamp01(p.particle_size_ms / 50.0f);
+    v.noise_particle_env = 0.0f;
+    v.noise_particle_decay = fast_expf(-1.0f / v.noise_particle_size_samples);
 }
 
 static void trigger_membrane(DrumVoice& v, float velocity) {
@@ -1341,7 +1423,7 @@ static void trigger_membrane(DrumVoice& v, float velocity) {
     v.noise_rng.seed(g_rng.next());
 
     for (int m = 0; m < num_modes; m++) {
-        float ratio = mode_ratios[m] + inharm * ((float)m * 0.08f);
+        float ratio = scale_align_ratio(mode_ratios[m] + inharm * ((float)m * 0.08f), p.scale_blend);
         float pos_amp = (m == 0) ? 1.0f : (1.0f - fabsf(exc_pos - 0.5f) * ((m % 2 == 0) ? 1.5f : 0.3f));
         float mode_freq = std::min(18000.0f, freq * ratio * (0.5f + p.tension * 1.0f));
         float mode_q = (5.0f + (1.0f - p.damping) * 30.0f) * mat.damp / (1.0f + (float)m * 0.3f);
@@ -1360,6 +1442,7 @@ static void trigger_membrane(DrumVoice& v, float velocity) {
     v.pitch_start = semitones_to_ratio(p.freq); // used differently: store pitch env amount
     v.pitch_target = 1.0f;
     v.pitch_decay_samples = ms_to_samples(p.pitch_decay_ms);
+    v.pitch_progress = 0;
 
     // Body oscillator
     if (p.body * dist.dBody > 0.01f) {
@@ -1412,7 +1495,17 @@ static void render_voice(DrumVoice& v, float* out_l, float* out_r, int block_siz
                 v.pitch_progress += 1;
             }
             v.osc1.advance(g_sample_rate);
-            sample = v.osc1.generate(WAVE_SINE, g_sample_rate, g_sine);
+            const float sine = v.osc1.generate(WAVE_SINE, g_sample_rate, g_sine);
+            if (v.sub_shape > 0.0001f) {
+                const float triangle = v.osc1.generate(WAVE_TRIANGLE, g_sample_rate, g_sine);
+                const float square = v.osc1.generate(WAVE_SQUARE, g_sample_rate, g_sine);
+                const float first_mix = std::min(1.0f, v.sub_shape * 2.0f);
+                const float second_mix = std::max(0.0f, v.sub_shape * 2.0f - 1.0f);
+                const float sine_to_triangle = sine + (triangle - sine) * first_mix;
+                sample = sine_to_triangle + (square - sine_to_triangle) * second_mix;
+            } else {
+                sample = sine;
+            }
 
             // Drive
             if (v.drive > 0.05f) {
@@ -1632,7 +1725,14 @@ static void render_voice(DrumVoice& v, float* out_l, float* out_r, int block_siz
                     v.pitch_progress += 1;
                 }
                 v.osc1.advance(g_sample_rate);
-                sample = v.osc1.generate(WAVE_SINE, g_sample_rate, g_sine) * env_val;
+                const float sine = v.osc1.generate(WAVE_SINE, g_sample_rate, g_sine);
+                const float square = v.osc1.generate(WAVE_SQUARE, g_sample_rate, g_sine);
+                float osc_sample = sine + (square - sine) * v.beep_lo_tone;
+                if (v.beep_lo_body > 0.01f) {
+                    const float body_sample = v.filter1.process(osc_sample, v.filter_cutoff, v.filter_q, g_sample_rate, SVF_LOWPASS);
+                    osc_sample = osc_sample + (body_sample - osc_sample) * v.beep_lo_body;
+                }
+                sample = osc_sample * env_val;
             }
 
             // Modal resonator bank
@@ -1652,12 +1752,18 @@ static void render_voice(DrumVoice& v, float* out_l, float* out_r, int block_siz
 
         case DRUM_VOICE_NOISE: {
             float noise = v.noise_rng.next_bipolar();
+            if (v.noise_density < 0.999f) {
+                const float density_gate = 0.04f + v.noise_density * 0.96f;
+                noise *= v.noise_rng.next_unipolar() <= density_gate ? (0.15f + v.noise_density * 0.85f) : 0.0f;
+            }
             if (v.noise_particle_random > 0.0001f) {
-                const float gate = v.noise_particle_random * (0.0005f + v.noise_particle_rate * 0.006f);
-                if (v.noise_rng.next() < gate) {
-                    noise += v.noise_rng.next_bipolar() * (0.5f + v.noise_particle_random);
-                    v.filter_env_progress = std::min(v.filter_env_progress, v.noise_particle_size_samples);
+                const float gate = v.noise_particle_random * (0.0005f + v.noise_particle_rate * 0.012f);
+                if (v.noise_rng.next_unipolar() < gate) {
+                    v.noise_particle_env = 1.0f;
                 }
+                noise += v.noise_rng.next_bipolar() * v.noise_particle_random * (0.03f + v.noise_particle_rate * 0.07f + v.noise_particle_size_mix * 0.10f);
+                noise += v.noise_rng.next_bipolar() * v.noise_particle_env * (0.5f + v.noise_particle_random);
+                v.noise_particle_env *= v.noise_particle_decay;
             }
 
             // Filter envelope
@@ -1704,6 +1810,13 @@ static void render_voice(DrumVoice& v, float* out_l, float* out_r, int block_siz
         }
 
         case DRUM_VOICE_MEMBRANE: {
+            float pitch_ratio = 1.0f;
+            if (v.pitch_progress < v.pitch_decay_samples) {
+                const float t = v.pitch_progress / v.pitch_decay_samples;
+                pitch_ratio = v.pitch_start * powf(v.pitch_target / v.pitch_start, t);
+                v.pitch_progress += 1;
+            }
+
             // Noise excitation (short burst)
             float excite = 0;
             float burst_samples = std::max(1.0f, v.membrane_burst_samples);
@@ -1722,7 +1835,7 @@ static void render_voice(DrumVoice& v, float* out_l, float* out_r, int block_siz
             // Modal resonator bank
             float modal_sum = 0;
             for (int m = 0; m < v.num_modes; m++) {
-                float mode_out = v.modes[m].filter.process(excite, v.modes[m].freq, v.modes[m].q, g_sample_rate, SVF_BANDPASS);
+                float mode_out = v.modes[m].filter.process(excite, v.modes[m].freq * pitch_ratio, v.modes[m].q, g_sample_rate, SVF_BANDPASS);
                 v.modes[m].env_value *= v.modes[m].decay_rate;
                 modal_sum += mode_out * v.modes[m].env_value;
             }
@@ -1838,10 +1951,17 @@ void drum_process_block(int block_size) {
     memset(g_output, 0, block_size * 2 * sizeof(float));
     memset(g_reverb_output, 0, block_size * 2 * sizeof(float));
 
-    // Drain trigger queue
-    while (g_trigger_read != g_trigger_write) {
+    // Drain events that were ready at the start of this block. Future ratchet
+    // hits may be requeued here and should not be consumed until later blocks.
+    const int triggers_to_process = trigger_queue_count();
+    for (int trigger_index = 0; trigger_index < triggers_to_process && g_trigger_read != g_trigger_write; ++trigger_index) {
         DrumTriggerEntry& trig = g_trigger_queue[g_trigger_read];
-        dispatch_trigger_event(trig.event, block_size);
+        if (trig.event.sample_offset >= block_size) {
+            trig.event.sample_offset -= block_size;
+            enqueue_trigger_event(trig.event);
+        } else {
+            dispatch_trigger_event(trig.event, block_size);
+        }
         g_trigger_read = (g_trigger_read + 1) % DRUM_TRIGGER_QUEUE_SIZE;
     }
 
@@ -1911,11 +2031,7 @@ void drum_trigger(int voice_type, float velocity, int sample_offset) {
 
 void drum_trigger_event(const KesshoDrumTriggerEvent* event) {
     if (event == nullptr || event->voice >= DRUM_NUM_VOICE_TYPES) return;
-    int next_write = (g_trigger_write + 1) % DRUM_TRIGGER_QUEUE_SIZE;
-    if (next_write == g_trigger_read) return; // queue full
-
-    g_trigger_queue[g_trigger_write] = { *event };
-    g_trigger_write = next_write;
+    enqueue_trigger_event(*event);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2071,6 +2187,7 @@ void drum_set_membrane_wire_decay(float v) { g_membrane.wire_decay = v; }
 void drum_set_membrane_wire_tone(float v) { g_membrane.wire_tone = v; }
 void drum_set_membrane_variation(float v) { g_membrane.variation = v; }
 void drum_set_membrane_distance(float v) { g_membrane.distance = v; }
+void drum_set_membrane_scale_blend(float v) { g_membrane.scale_blend = v; }
 void drum_set_membrane_fm_transient(KesshoDrumFmTransientParams v) { g_membrane.fm = v; }
 void drum_set_membrane_damage(KesshoDrumDamageParams v) { g_membrane.damage = v; }
 void drum_set_membrane_metallic(KesshoDrumMetallicParams v) { g_membrane.metallic = v; }
@@ -2336,6 +2453,7 @@ DRUM_INSTANCE_SETTER1(set_membrane_wire_decay, float)
 DRUM_INSTANCE_SETTER1(set_membrane_wire_tone, float)
 DRUM_INSTANCE_SETTER1(set_membrane_variation, float)
 DRUM_INSTANCE_SETTER1(set_membrane_distance, float)
+DRUM_INSTANCE_SETTER1(set_membrane_scale_blend, float)
 DRUM_INSTANCE_SETTER1(set_membrane_fm_transient, KesshoDrumFmTransientParams)
 DRUM_INSTANCE_SETTER1(set_membrane_damage, KesshoDrumDamageParams)
 DRUM_INSTANCE_SETTER1(set_membrane_metallic, KesshoDrumMetallicParams)

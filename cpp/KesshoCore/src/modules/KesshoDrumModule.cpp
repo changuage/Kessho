@@ -46,7 +46,8 @@ constexpr int kParamNoiseMetallic = kParamNoiseDamage + 5;
 constexpr int kParamMembraneFm = kParamNoiseMetallic + 5;
 constexpr int kParamMembraneDamage = kParamMembraneFm + 7;
 constexpr int kParamMembraneMetallic = kParamMembraneDamage + 5;
-constexpr int kParamCount = kParamMembraneMetallic + 5;
+constexpr int kParamMembraneScaleBlend = kParamMembraneMetallic + 5;
+constexpr int kParamCount = kParamMembraneScaleBlend + 1;
 
 int roundedInt(float value) {
   return static_cast<int>(value >= 0.0f ? value + 0.5f : value - 0.5f);
@@ -251,6 +252,7 @@ std::array<float, kParamCount> makeDefaultParams() {
   params[kParamMembraneCompat + 9] = 0.5f;
   params[kParamMembraneCompat + 10] = 0.5f;
   params[kParamMembraneCompat + 11] = 0.5f;
+  params[kParamMembraneScaleBlend] = 0.3f;
 
   const int fmStarts[] = {kParamSubFm, kParamKickFm, kParamClickFm, kParamBeepLoFm, kParamMembraneFm};
   for (int start : fmStarts) {
@@ -564,6 +566,7 @@ public:
     drum_instance_set_membrane_wire_tone(instance_, params_[kParamMembraneCompat + 11]);
     drum_instance_set_membrane_variation(instance_, params_[kParamMembrane + 10]);
     drum_instance_set_membrane_distance(instance_, params_[kParamMembrane + 11]);
+    drum_instance_set_membrane_scale_blend(instance_, params_[kParamMembraneScaleBlend]);
     drum_instance_set_membrane_fm_transient(instance_, fmParamsAt(params_, kParamMembraneFm));
     drum_instance_set_membrane_damage(instance_, damageParamsAt(params_, kParamMembraneDamage));
     drum_instance_set_membrane_metallic(instance_, metallicParamsAt(params_, kParamMembraneMetallic));

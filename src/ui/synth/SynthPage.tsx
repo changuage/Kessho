@@ -97,6 +97,7 @@ import { SliderPrimitive } from '../sliderSystem';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
 import { removeRuntimeValues, useRuntimeValue } from '../runtimeValueState';
 import { useRuntimeSliderPosition } from '../runtimeSliderState';
+import { blurSelectAfterChange } from '../shared/selectFocus';
 import './synth.css';
 import SynthPresetManager from './SynthPresetManager';
 import { usePresets } from '../../presets/usePresets';
@@ -2315,7 +2316,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       <div className="sc-preset-loader">
         <select
           value={resolvedPresetId}
-          onChange={(e) => handleLoaderSelectChange(e.target.value)}
+          onChange={(e) => {
+            handleLoaderSelectChange(e.target.value);
+            blurSelectAfterChange(e.currentTarget);
+          }}
           className="sc-preset-loader-select"
           title="Select preset"
         >
@@ -5090,7 +5094,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-preset-slot">
                   <select
                     value={state.padPresetA}
-                    onChange={(e) => handlePresetEndpointSelectChange('padPresetA' as keyof SliderState, e.target.value)}
+                    onChange={(e) => {
+                      handlePresetEndpointSelectChange('padPresetA' as keyof SliderState, e.target.value);
+                      blurSelectAfterChange(e.currentTarget);
+                    }}
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(74,158,255,0.3)' }}
                   >
@@ -5103,7 +5110,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-preset-slot">
                   <select
                     value={state.padPresetB}
-                    onChange={(e) => handlePresetEndpointSelectChange('padPresetB' as keyof SliderState, e.target.value)}
+                    onChange={(e) => {
+                      handlePresetEndpointSelectChange('padPresetB' as keyof SliderState, e.target.value);
+                      blurSelectAfterChange(e.currentTarget);
+                    }}
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(139,92,246,0.3)' }}
                   >
@@ -5730,7 +5740,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-preset-slot">
                   <select
                     value={state.pad2PresetA}
-                    onChange={(e) => handlePresetEndpointSelectChange('pad2PresetA' as keyof SliderState, e.target.value)}
+                    onChange={(e) => {
+                      handlePresetEndpointSelectChange('pad2PresetA' as keyof SliderState, e.target.value);
+                      blurSelectAfterChange(e.currentTarget);
+                    }}
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(139,92,246,0.3)' }}
                   >
@@ -5743,7 +5756,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-preset-slot">
                   <select
                     value={state.pad2PresetB}
-                    onChange={(e) => handlePresetEndpointSelectChange('pad2PresetB' as keyof SliderState, e.target.value)}
+                    onChange={(e) => {
+                      handlePresetEndpointSelectChange('pad2PresetB' as keyof SliderState, e.target.value);
+                      blurSelectAfterChange(e.currentTarget);
+                    }}
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(236,72,153,0.3)' }}
                   >
@@ -6378,7 +6394,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-preset-slot">
                   <select
                     value={resolveLeadPresetSelectionId(state.lead1PresetA)}
-                    onChange={(e) => handlePresetEndpointSelectChange('lead1PresetA' as keyof SliderState, e.target.value)}
+                    onChange={(e) => {
+                      handlePresetEndpointSelectChange('lead1PresetA' as keyof SliderState, e.target.value);
+                      blurSelectAfterChange(e.currentTarget);
+                    }}
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(245,158,11,0.3)' }}
                   >
@@ -6391,7 +6410,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-preset-slot">
                   <select
                     value={resolveLeadPresetSelectionId(state.lead1PresetB)}
-                    onChange={(e) => handlePresetEndpointSelectChange('lead1PresetB' as keyof SliderState, e.target.value)}
+                    onChange={(e) => {
+                      handlePresetEndpointSelectChange('lead1PresetB' as keyof SliderState, e.target.value);
+                      blurSelectAfterChange(e.currentTarget);
+                    }}
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(139,92,246,0.3)' }}
                   >
@@ -6546,7 +6568,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   <div className="sc-preset-slot">
                     <select
                       value={resolveLeadPresetSelectionId(state.lead2PresetC)}
-                      onChange={(e) => handlePresetEndpointSelectChange('lead2PresetC' as keyof SliderState, e.target.value)}
+                      onChange={(e) => {
+                        handlePresetEndpointSelectChange('lead2PresetC' as keyof SliderState, e.target.value);
+                        blurSelectAfterChange(e.currentTarget);
+                      }}
                       className="sc-preset-select"
                       style={{ borderColor: 'rgba(6,182,212,0.3)' }}
                     >
@@ -6559,7 +6584,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   <div className="sc-preset-slot">
                     <select
                       value={resolveLeadPresetSelectionId(state.lead2PresetD)}
-                      onChange={(e) => handlePresetEndpointSelectChange('lead2PresetD' as keyof SliderState, e.target.value)}
+                      onChange={(e) => {
+                        handlePresetEndpointSelectChange('lead2PresetD' as keyof SliderState, e.target.value);
+                        blurSelectAfterChange(e.currentTarget);
+                      }}
                       className="sc-preset-select"
                       style={{ borderColor: 'rgba(167,139,250,0.3)' }}
                     >

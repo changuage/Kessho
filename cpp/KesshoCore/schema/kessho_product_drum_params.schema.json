@@ -1366,6 +1366,12 @@
       "index": 243,
       "enumMap": null,
       "fallback": 0
+    },
+    {
+      "key": "drumMembraneScaleBlend",
+      "index": 244,
+      "enumMap": null,
+      "fallback": 0.3
     }
   ],
   "defaultParamValues": {

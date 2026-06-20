@@ -637,16 +637,6 @@ export const productDeferredClassifications = [
     ],
   },
   {
-    id: 'drum-module-extra-deferred',
-    owner: 'C++ Product Core drum module parity owner',
-    allowWiredReferences: true,
-    reason:
-      'The Product Drum bridge carries generated shared drum-module params; remaining web drum-synth extras need explicit generated params or should retire.',
-    patterns: [
-      /^drumMembraneScaleBlend$/,
-    ],
-  },
-  {
     id: 'legacy-timbre-alias',
     owner: 'Legacy preset compatibility cleanup',
     reason: '`leadTimbre` is documented as a legacy ignored key; Product Core uses generated Lead preset IDs plus bounded sparse Lead override fields for reconstructable sources.',
@@ -781,9 +771,6 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
     'synthEuclid4Preset',
   ],
   'drum-scatter-memory-slots': drumScatterMemorySlotKeys(),
-  'drum-module-extra-deferred': [
-    'drumMembraneScaleBlend',
-  ],
   'legacy-timbre-alias': [
     'leadTimbre',
   ],
@@ -893,10 +880,6 @@ export const EXPECTED_PARAM_REGISTRY_OMISSIONS = [
   {
     key: 'sidechainReverbTarget',
     reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
-  },
-  {
-    key: 'drumMembraneScaleBlend',
-    reason: 'Drum membrane module extra not present in the current Product Drum ABI.',
   },
   {
     key: 'dynamicsEnabled',

@@ -2,13 +2,14 @@ import type { ClockDivision } from '../../../audio/drumSeqTypes';
 import type { DrumVoiceType } from '../../../audio/drumSynth';
 import type { StepOverrides, SubLaneKind, SubLaneState } from '../../sequencer/useEuclideanSequencer';
 import type { GeneratedDrumPhrase } from './scatterTypes';
-import { deserializeTriggerClip, serializeTriggerClip } from '../../sequencer/triggerClip';
+import { deserializeTriggerClip, resolveTriggerClip, serializeTriggerClip } from '../../sequencer/triggerClip';
 
 export type PhrasePrintMode = 'replace';
 
 type ScatterPhraseSubLane = SubLaneKind;
 
-const SUB_LANES: ScatterPhraseSubLane[] = ['pitch', 'expression', 'morph', 'distance', 'nudge', 'slice', 'reverse'];
+const AUDIBLE_SUB_LANES: ScatterPhraseSubLane[] = ['pitch', 'expression', 'morph', 'distance'];
+const DISABLED_SCATTER_SUB_LANES: ScatterPhraseSubLane[] = ['nudge', 'slice', 'reverse'];
 
 function cloneStepOverrides(overrides: StepOverrides): StepOverrides {
   const laneCount = overrides.triggerToggles.length;
@@ -49,8 +50,32 @@ function cloneSubLaneStates(states: Record<SubLaneKind, SubLaneState>[]): Record
   });
 }
 
-function phraseValues(phrase: GeneratedDrumPhrase, lane: ScatterPhraseSubLane): number[] {
-  return phrase[lane].slice();
+const SUB_LANE_DEFAULT_VALUES: Record<ScatterPhraseSubLane, number> = {
+  pitch: 0,
+  expression: 1,
+  morph: 0,
+  distance: 0,
+  nudge: 0,
+  slice: 0,
+  reverse: 0,
+};
+
+function activeTriggerIndexes(phrase: GeneratedDrumPhrase): number[] {
+  const indexes: number[] = [];
+  resolveTriggerClip(phrase.triggerClip).forEach((enabled, index) => {
+    if (enabled) indexes.push(index);
+  });
+  return indexes;
+}
+
+function phraseValuesForActiveHits(
+  phrase: GeneratedDrumPhrase,
+  lane: ScatterPhraseSubLane,
+  triggerIndexes: readonly number[],
+): number[] {
+  const values = phrase[lane];
+  const fallback = SUB_LANE_DEFAULT_VALUES[lane];
+  return triggerIndexes.map((stepIndex) => values[stepIndex] ?? fallback);
 }
 
 function phraseDirection(phrase: GeneratedDrumPhrase, lane: ScatterPhraseSubLane) {
@@ -84,6 +109,7 @@ export function printGeneratedPhraseToLane(args: {
   const { phrase, laneIndex } = args;
   const stepOverrides = cloneStepOverrides(args.currentStepOverrides);
   const subLaneStates = cloneSubLaneStates(args.currentSubLaneStates);
+  const triggerIndexes = activeTriggerIndexes(phrase);
   const laneCount = Math.max(stepOverrides.triggerToggles.length, laneIndex + 1);
   if (!stepOverrides.triggerClips) {
     stepOverrides.triggerClips = Array.from({ length: laneCount }, () => null);
@@ -93,11 +119,12 @@ export function printGeneratedPhraseToLane(args: {
   stepOverrides.triggerClips[laneIndex] = deserializeTriggerClip(serializeTriggerClip(phrase.triggerClip));
   stepOverrides.triggerToggles[laneIndex] = new Map();
   stepOverrides.probability[laneIndex] = phrase.probability.slice();
-  stepOverrides.ratchet[laneIndex] = phrase.ratchet.slice();
+  stepOverrides.ratchet[laneIndex] = triggerIndexes.map((stepIndex) => phrase.ratchet[stepIndex] ?? 1);
   stepOverrides.trigCondition[laneIndex] = phrase.trigCondition.map((condition) => [condition[0], condition[1]]);
 
-  for (const lane of SUB_LANES) {
-    stepOverrides[lane][laneIndex] = phraseValues(phrase, lane);
+  for (const lane of AUDIBLE_SUB_LANES) {
+    const values = phraseValuesForActiveHits(phrase, lane, triggerIndexes);
+    stepOverrides[lane][laneIndex] = values;
     const field = directionField(lane);
     stepOverrides[field][laneIndex] = phraseDirection(phrase, lane);
     const targetLaneState = subLaneStates[laneIndex];
@@ -105,12 +132,26 @@ export function printGeneratedPhraseToLane(args: {
     if (laneState) {
       targetLaneState[lane] = {
         ...laneState,
-        enabled: phrase.subLaneEnabled[lane],
-        steps: phraseValues(phrase, lane).length,
+        enabled: phrase.subLaneEnabled[lane] && values.length > 0,
+        steps: Math.max(1, values.length),
         direction: phraseDirection(phrase, lane),
         ...(lane === 'nudge' ? { followTriggerHits: true } : {}),
         ...(lane === 'pitch' ? { scaleQuantize: false } : {}),
         ...(lane === 'expression' || lane === 'morph' || lane === 'distance' ? { valueMode: 'sequence' as const } : {}),
+      };
+    }
+  }
+  for (const lane of DISABLED_SCATTER_SUB_LANES) {
+    stepOverrides[lane][laneIndex] = null;
+    const field = directionField(lane);
+    stepOverrides[field][laneIndex] = null;
+    const targetLaneState = subLaneStates[laneIndex];
+    const laneState = targetLaneState?.[lane];
+    if (laneState) {
+      targetLaneState[lane] = {
+        ...laneState,
+        enabled: false,
+        steps: phrase.triggerClip.steps,
       };
     }
   }

@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DrumVoiceType } from '../../../audio/drumSynth';
 import { DRUM_VOICE_ORDER, DRUM_VOICES } from '../../../audio/drumVoiceConfig';
+import type { SliderState } from '../../state';
 import type { EngineScatterState, GeneratedDrumPhrase, SeqScatterState } from './scatterTypes';
 import { generateScatterPhrase } from './scatterPhraseGenerator';
 import type { PhrasePrintMode } from './scatterPhrasePrinter';
@@ -11,12 +12,13 @@ import PhraseMemoryShelf from './PhraseMemoryShelf';
 import PhraseGlyphCard from './PhraseGlyphCard';
 import ScatterTrailField from './ScatterTrailField';
 import ScatterAdvancedDrawer from './ScatterAdvancedDrawer';
-import { useScatterPhrasePlayer, type ScatterPreviewTriggerOptions } from './useScatterPhrasePlayer';
+import { useScatterPhrasePlayer, type ScatterPreviewTriggerOptions, type ScatterStepVisualEvent } from './useScatterPhrasePlayer';
 import { useScatterSequencerRuntime } from './useScatterSequencerRuntime';
 import './scatter.css';
 
 interface ScatterPageProps {
   state: SeqScatterState;
+  sliderState: SliderState;
   laneCount: number;
   laneNames: string[];
   isRunning: boolean;
@@ -33,6 +35,7 @@ function nextSeed(): number {
 
 const ScatterPage: React.FC<ScatterPageProps> = ({
   state,
+  sliderState,
   laneCount,
   laneNames,
   isRunning,
@@ -44,6 +47,12 @@ const ScatterPage: React.FC<ScatterPageProps> = ({
 }) => {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [activePulses, setActivePulses] = useState<Record<string, number>>({});
+  const [activeStepVisual, setActiveStepVisual] = useState<{
+    phraseId: string;
+    stepIndex: number;
+    ratchetIndex: number;
+  } | null>(null);
+  const activeStepTimeoutRef = useRef<number | null>(null);
   const selectedEngine = state.selectedEngine;
   const selectedEngineState = state.engines[selectedEngine];
   const selectedColor = DRUM_VOICES[selectedEngine].color;
@@ -95,8 +104,25 @@ const ScatterPage: React.FC<ScatterPageProps> = ({
     }
   }, [onPreviewEngine, onPreviewEngineWithState]);
 
-  const handleScatterStepVisual = useCallback((phrase: GeneratedDrumPhrase) => {
-    pulseEngine(phrase.engine, 'burst');
+  const handleScatterStepVisual = useCallback((event: ScatterStepVisualEvent) => {
+    pulseEngine(event.phrase.engine, 'burst');
+    setActiveStepVisual({
+      phraseId: event.phrase.id,
+      stepIndex: event.stepIndex,
+      ratchetIndex: event.ratchetIndex,
+    });
+    if (activeStepTimeoutRef.current !== null) {
+      window.clearTimeout(activeStepTimeoutRef.current);
+    }
+    activeStepTimeoutRef.current = window.setTimeout(() => {
+      setActiveStepVisual((current) => (
+        current?.phraseId === event.phrase.id &&
+        current.stepIndex === event.stepIndex &&
+        current.ratchetIndex === event.ratchetIndex
+          ? null
+          : current
+      ));
+    }, event.ratchetCount > 1 ? 120 : 180);
   }, [pulseEngine]);
 
   const triggerSingleScatterEngine = useCallback((voice: DrumVoiceType) => {
@@ -109,6 +135,7 @@ const ScatterPage: React.FC<ScatterPageProps> = ({
 
   const { playPhrase, clear: clearPhrasePlayback } = useScatterPhrasePlayer({
     getBpm,
+    sliderState,
     trigger: previewEngineWithOptions,
     onStepVisual: handleScatterStepVisual,
   });
@@ -117,6 +144,12 @@ const ScatterPage: React.FC<ScatterPageProps> = ({
     if (!state.active) clearPhrasePlayback();
   }, [clearPhrasePlayback, state.active]);
 
+  useEffect(() => () => {
+    if (activeStepTimeoutRef.current !== null) {
+      window.clearTimeout(activeStepTimeoutRef.current);
+    }
+  }, []);
+
   useScatterSequencerRuntime({
     active: state.active,
     isRunning,
@@ -124,9 +157,12 @@ const ScatterPage: React.FC<ScatterPageProps> = ({
     setState: onStateChange,
     getBpm,
     playPhrase,
-    triggerSingle: triggerSingleScatterEngine,
     onVisualPulse: pulseEngine,
   });
+
+  const selectedActiveStepVisual = activeStepVisual && phraseToPrint && activeStepVisual.phraseId === phraseToPrint.id
+    ? activeStepVisual
+    : null;
 
   return (
     <div className={`scatter-page${phraseToPrint ? ' has-selected-phrase' : ''}`}>
@@ -164,7 +200,7 @@ const ScatterPage: React.FC<ScatterPageProps> = ({
             onToggleEnabled={() => updateEngine(voice, { ...state.engines[voice], enabled: !state.engines[voice].enabled })}
             onChange={(engineState) => updateEngine(voice, engineState)}
             onGenerate={() => generateFor(voice)}
-            onPreview={onPreviewEngine ? () => onPreviewEngine(voice) : undefined}
+            onPreview={() => triggerSingleScatterEngine(voice)}
           />
         ))}
       </div>
@@ -175,27 +211,32 @@ const ScatterPage: React.FC<ScatterPageProps> = ({
             <div className="scatter-selected__label" style={{ color: selectedColor }}>
               {DRUM_VOICES[selectedEngine].label}
             </div>
-            {onPreviewEngine && (
-              <button
-                type="button"
-                className="scatter-selected__preview"
-                onClick={() => onPreviewEngine(selectedEngine)}
-                title={`Preview ${DRUM_VOICES[selectedEngine].label}`}
-              >
-                ▶
-              </button>
-            )}
+            <button
+              type="button"
+              className="scatter-selected__preview"
+              onClick={() => (phraseToPrint ? playPhrase(phraseToPrint) : triggerSingleScatterEngine(selectedEngine))}
+              title={phraseToPrint ? `Play ${phraseToPrint.label}` : `Preview ${DRUM_VOICES[selectedEngine].label}`}
+            >
+              ▶
+            </button>
           </div>
           <div className="scatter-selected__field-stack">
-            <ScatterTrailField phrase={selectedPhrases[0] ?? null} color={selectedColor} />
-            <FeelField2D
-              value={{ x: selectedEngineState.feelX, y: selectedEngineState.feelY }}
+            <ScatterTrailField
+              phrase={phraseToPrint}
               color={selectedColor}
-              size="large"
-              disabled={!selectedEngineState.enabled}
-              onChange={(value) => updateEngine(selectedEngine, { ...selectedEngineState, feelX: value.x, feelY: value.y })}
-              onGenerate={() => generateFor(selectedEngine)}
+              activeStep={selectedActiveStepVisual?.stepIndex ?? null}
+              activeRatchet={selectedActiveStepVisual?.ratchetIndex ?? null}
             />
+            <div className="scatter-selected__feel-panel">
+              <FeelField2D
+                value={{ x: selectedEngineState.feelX, y: selectedEngineState.feelY }}
+                color={selectedColor}
+                size="large"
+                disabled={!selectedEngineState.enabled}
+                onChange={(value) => updateEngine(selectedEngine, { ...selectedEngineState, feelX: value.x, feelY: value.y })}
+                onGenerate={() => generateFor(selectedEngine)}
+              />
+            </div>
           </div>
         </div>
 

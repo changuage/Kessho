@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { DrumVoiceType } from '../../../audio/drumSynth';
 import { DRUM_VOICE_ORDER } from '../../../audio/drumVoiceConfig';
+import { sequencerClockDivisionToSeconds } from '../../../audio/sequencerClockDivisions';
 import { generateScatterPhrase } from './scatterPhraseGenerator';
 import { pushRecentPhrase } from './scatterDefaults';
 import type { GeneratedDrumPhrase, SeqScatterState } from './scatterTypes';
@@ -14,7 +15,6 @@ type UseScatterSequencerRuntimeArgs = {
   setState: (state: SeqScatterState) => void;
   getBpm: () => number;
   playPhrase: (phrase: GeneratedDrumPhrase) => void;
-  triggerSingle: (voice: DrumVoiceType) => void;
   onVisualPulse?: (voice: DrumVoiceType, kind: ScatterPulseKind) => void;
 };
 
@@ -23,9 +23,20 @@ function nextSeed(voice: DrumVoiceType): number {
   return Math.floor((Date.now() + Math.random() * 100000 + voiceOffset * 997) % 2147483647);
 }
 
+export function scatterPhraseStepMs(phrase: GeneratedDrumPhrase, bpm: number): number {
+  const safeBpm = Math.max(1, bpm);
+  return Math.max(16, sequencerClockDivisionToSeconds(phrase.clockDiv, 60 / safeBpm) * 1000);
+}
+
+export function scatterPhraseCooldownMs(phrase: GeneratedDrumPhrase, bpm: number): number {
+  const stepMs = scatterPhraseStepMs(phrase, bpm);
+  return Math.max(120, phrase.triggerClip.steps * stepMs + stepMs);
+}
+
 export function useScatterSequencerRuntime(args: UseScatterSequencerRuntimeArgs): void {
   const stateRef = useRef(args.state);
   const cooldownRef = useRef<Partial<Record<DrumVoiceType, number>>>({});
+  const phraseCooldownRef = useRef(0);
 
   useEffect(() => {
     stateRef.current = args.state;
@@ -43,14 +54,24 @@ export function useScatterSequencerRuntime(args: UseScatterSequencerRuntimeArgs)
       const now = performance.now();
       let nextState = stateRef.current;
       let changed = false;
+      const phraseCandidates: DrumVoiceType[] = [];
 
-      for (const voice of DRUM_VOICE_ORDER) {
-        const engine = nextState.engines[voice];
-        if (!engine?.enabled) continue;
-        if ((cooldownRef.current[voice] ?? 0) > now) continue;
-        if (Math.random() > Math.max(0, Math.min(1, engine.triggerProbability))) continue;
+      if (phraseCooldownRef.current <= now) {
+        for (const voice of DRUM_VOICE_ORDER) {
+          const engine = nextState.engines[voice];
+          if (!engine?.enabled) continue;
+          if ((cooldownRef.current[voice] ?? 0) > now) continue;
+          if (Math.random() > Math.max(0, Math.min(1, engine.triggerProbability))) continue;
+          if (Math.random() > Math.max(0, Math.min(1, engine.burstProbability))) continue;
+          phraseCandidates.push(voice);
+        }
 
-        if (Math.random() < Math.max(0, Math.min(1, engine.burstProbability))) {
+        const voice = phraseCandidates.length > 0
+          ? phraseCandidates[Math.floor(Math.random() * phraseCandidates.length)]
+          : null;
+
+        if (voice) {
+          const engine = nextState.engines[voice];
           const phrase = generateScatterPhrase({
             engine: voice,
             engineState: engine,
@@ -64,12 +85,9 @@ export function useScatterSequencerRuntime(args: UseScatterSequencerRuntimeArgs)
           args.onVisualPulse?.(voice, 'burst');
 
           const bpm = args.getBpm();
-          const sixteenthMs = 60000 / Math.max(1, bpm) / 4;
-          cooldownRef.current[voice] = now + Math.max(120, phrase.triggerClip.steps * sixteenthMs * 0.8);
-        } else {
-          args.triggerSingle(voice);
-          args.onVisualPulse?.(voice, 'single');
-          cooldownRef.current[voice] = now + 80;
+          const cooldownMs = scatterPhraseCooldownMs(phrase, bpm);
+          cooldownRef.current[voice] = now + cooldownMs;
+          phraseCooldownRef.current = now + cooldownMs;
         }
       }
 
@@ -95,7 +113,6 @@ export function useScatterSequencerRuntime(args: UseScatterSequencerRuntimeArgs)
     args.getBpm,
     args.playPhrase,
     args.setState,
-    args.triggerSingle,
     args.onVisualPulse,
   ]);
 }

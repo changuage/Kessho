@@ -17,6 +17,7 @@ import {
 import type { PresetEntry } from '../../presets/types';
 import { canRateDrumPreset, rateDrumPreset } from './drumPresetRating';
 import { applyDrumPresetSlotChange } from './drumPresetApply';
+import { blurSelectAfterChange } from '../shared/selectFocus';
 
 const DRUM_ENGINE_SCOPES: Record<DrumVoiceType, string> = {
   sub: 'drumSub',
@@ -454,7 +455,10 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
           <div style={s.presetRow}>
             <select
               value={selectedPresetName}
-              onChange={e => setSelectedPresetName(e.target.value)}
+              onChange={(e) => {
+                setSelectedPresetName(e.target.value);
+                blurSelectAfterChange(e.currentTarget);
+              }}
               style={s.select}
               title="Select preset"
             >
@@ -562,7 +566,10 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
         <div style={s.presetRow}>
           <select
             value={selectedPresetName}
-            onChange={e => setSelectedPresetName(e.target.value)}
+            onChange={(e) => {
+              setSelectedPresetName(e.target.value);
+              blurSelectAfterChange(e.currentTarget);
+            }}
             style={s.select}
             title="Select preset"
           >

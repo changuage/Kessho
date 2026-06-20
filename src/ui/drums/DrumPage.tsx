@@ -44,6 +44,7 @@ import type { ScatterPreviewTriggerOptions } from './scatter/useScatterPhrasePla
 import { normalizeSeqScatterState } from './scatter/scatterDefaults';
 import { generateScatterPhrase } from './scatter/scatterPhraseGenerator';
 import { printGeneratedPhraseToLane, type PhrasePrintMode } from './scatter/scatterPhrasePrinter';
+import { scatterMorphEndpointPatchForVoice } from './scatter/scatterMorphEndpoint';
 import PhraseGlyphCard from './scatter/PhraseGlyphCard';
 import SeqMiniOverview from './SeqMiniOverview';
 import SeqLane from './SeqLane';
@@ -415,13 +416,18 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
 
   const handlePrintScatterPhrase = useCallback((phrase: GeneratedDrumPhrase, laneIndex: number, mode: PhrasePrintMode) => {
     const safeLaneIndex = Math.max(0, Math.min(seq.sequencerModels.length - 1, laneIndex));
-    const printedTargetState = drumStateWithPrintedLaneTarget(state, safeLaneIndex, phrase.engine);
+    const morphEndpointPatch = phrase.subLaneEnabled.morph
+      ? scatterMorphEndpointPatchForVoice(phrase.engine, state)
+      : {};
+    const stateWithMorphEndpoint = { ...state, ...morphEndpointPatch } as SliderState;
+    const printedTargetState = drumStateWithPrintedLaneTarget(stateWithMorphEndpoint, safeLaneIndex, phrase.engine);
     const laneEnabledKey = DRUM_LANE_ENABLED_KEYS[safeLaneIndex] ?? DRUM_LANE_ENABLED_KEYS[0];
     const startPatch: Partial<SliderState> = {
       drumEnabled: true,
       drumEuclidMasterEnabled: true,
     };
     const startPatchRecord = startPatch as Record<string, unknown>;
+    Object.assign(startPatchRecord, morphEndpointPatch);
     if (laneEnabledKey) startPatch[laneEnabledKey] = true;
     startPatchRecord[`drumEuclid${safeLaneIndex + 1}Preset`] = 'custom';
     startPatchRecord[`drumEuclid${safeLaneIndex + 1}Steps`] = phrase.triggerClip.steps;
@@ -433,6 +439,9 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     if (!state.drumEnabled) onSelectChange('drumEnabled', true);
     if (!state.drumEuclidMasterEnabled) onSelectChange('drumEuclidMasterEnabled', true);
     if (laneEnabledKey && !Boolean(state[laneEnabledKey])) onSelectChange(laneEnabledKey, true);
+    for (const [key, value] of Object.entries(morphEndpointPatch) as [keyof SliderState, SliderState[keyof SliderState]][]) {
+      if (state[key] !== value) onSelectChange(key, value);
+    }
     seq.setParamSelect(safeLaneIndex, 'Preset', 'custom' as never);
     seq.setParam(safeLaneIndex, 'Steps', phrase.triggerClip.steps);
     seq.setParam(safeLaneIndex, 'Hits', 0);
@@ -451,14 +460,25 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       currentStepOverrides: seq.stepOverrides,
       currentSubLaneStates: seq.subLaneStates,
     });
+    const nextPitchSettings = seq.pitchSettings.map((settings, index) => (
+      index === safeLaneIndex
+        ? {
+            ...settings,
+            mode: 'semitones' as const,
+            root: drumBaseMidiForVoice(phrase.engine),
+            scale: 'Chromatic' as const,
+          }
+        : settings
+    ));
     seq.setStepOverrides(printed.stepOverrides);
     seq.setSubLaneStates(printed.subLaneStates);
+    seq.setPitchSettings(nextPitchSettings);
     onRawStepOverridesChange?.(printed.stepOverrides);
     onStepOverridesChange?.(
       drumStepOverridesForEngineState(
         printed.stepOverrides,
         printed.subLaneStates,
-        seq.pitchSettings,
+        nextPitchSettings,
         printedTargetState,
       ),
       printed.subLaneStates,
@@ -1533,6 +1553,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
           {seq.viewMode === 'scatter' && (
             <ScatterPage
               state={seqScatterState}
+              sliderState={state}
               laneCount={seq.sequencerModels.length}
               laneNames={seq.sequencerModels.map((model) => model.name)}
               isRunning={isRunning}

@@ -174,6 +174,37 @@ const DRUM_PRESET_SLOT_CHANGE: Record<string, { voice: DrumPresetVoice; endpoint
     ]),
   ) as Record<string, { voice: DrumPresetVoice; endpoint: 0 | 1 }>;
 
+const DRUM_EUCLID_LANE_ENABLED_KEYS = [
+  'drumEuclid1Enabled',
+  'drumEuclid2Enabled',
+  'drumEuclid3Enabled',
+  'drumEuclid4Enabled',
+  'drumEuclid5Enabled',
+  'drumEuclid6Enabled',
+] as const satisfies readonly (keyof SliderState)[];
+
+function isDrumSequencerActive(state: SliderState): boolean {
+  return Boolean(state.drumEuclidMasterEnabled)
+    && DRUM_EUCLID_LANE_ENABLED_KEYS.some((key) => Boolean(state[key]));
+}
+
+function preserveRunningDrumSequencerSource(
+  previous: SliderState,
+  next: SliderState,
+  options: { allowExplicitDrumDisable?: boolean } = {},
+): SliderState {
+  if (options.allowExplicitDrumDisable && previous.drumEnabled !== next.drumEnabled && next.drumEnabled === false) {
+    return next;
+  }
+  if (!isDrumSequencerActive(previous) && !isDrumSequencerActive(next)) {
+    return next;
+  }
+  if (next.drumEnabled === true) {
+    return next;
+  }
+  return { ...next, drumEnabled: true };
+}
+
 const LEAD_PRESET_SLOT_KEYS = [
   'lead1PresetA',
   'lead1PresetB',
@@ -959,19 +990,24 @@ function isEditableShortcutTarget(target: EventTarget | null): boolean {
   return !!target.closest('input, textarea, select, [contenteditable="true"]');
 }
 
-// Logarithmic scaling helpers for frequency sliders
+// Logarithmic scaling helpers for frequency and time sliders.
 function linearToLog(value: number, min: number, max: number): number {
-  // Convert linear slider position (0-1) to logarithmic frequency
   const minLog = Math.log(min);
   const maxLog = Math.log(max);
   return Math.exp(minLog + value * (maxLog - minLog));
 }
 
 function logToLinear(value: number, min: number, max: number): number {
-  // Convert logarithmic frequency to linear slider position (0-1)
   const minLog = Math.log(min);
   const maxLog = Math.log(max);
   return (Math.log(value) - minLog) / (maxLog - minLog);
+}
+
+function getEffectiveLogMin(min: number, max: number, step: number): number | null {
+  if (max <= 0) return null;
+  if (min > 0) return min;
+  const stepFloor = step > 0 ? step : max * 0.001;
+  return Math.max(1e-9, Math.min(max, stepFloor));
 }
 
 // Slider component - now a simple component, DualSlider handles dual mode
@@ -1172,15 +1208,20 @@ const Slider: React.FC<SliderProps> = ({
   // Fallback sliders still use the same primitive; they just do not expose dual-mode editing.
   const valueToPercent = (nextValue: number) => {
     const clampedValue = Math.max(info.min, Math.min(info.max, nextValue));
-    if (logarithmic) {
-      return logToLinear(clampedValue, info.min, info.max) * 100;
+    const effectiveLogMin = logarithmic ? getEffectiveLogMin(info.min, info.max, info.step) : null;
+    if (effectiveLogMin != null) {
+      if (clampedValue <= info.min) return 0;
+      return logToLinear(Math.max(effectiveLogMin, clampedValue), effectiveLogMin, info.max) * 100;
     }
     return ((clampedValue - info.min) / Math.max(1e-9, info.max - info.min)) * 100;
   };
 
   const percentToValue = (percent: number) => {
     const normalized = Math.max(0, Math.min(100, percent)) / 100;
-    const raw = logarithmic ? linearToLog(normalized, info.min, info.max) : info.min + normalized * (info.max - info.min);
+    const effectiveLogMin = logarithmic ? getEffectiveLogMin(info.min, info.max, info.step) : null;
+    const raw = effectiveLogMin != null
+      ? (normalized <= 0 && info.min <= 0 ? info.min : linearToLog(normalized, effectiveLogMin, info.max))
+      : info.min + normalized * (info.max - info.min);
     return quantizeWithInfo(paramKey, raw);
   };
 
@@ -2890,6 +2931,8 @@ const App: React.FC = () => {
           }
         }
 
+        newState = preserveRunningDrumSequencerSource(prev, newState as SliderState);
+
         const pad1WetActive =
           (newState.synthLevel ?? 0) > 0 ||
           (newState.pad1ReverbSend ?? 0) > 0 ||
@@ -2980,6 +3023,7 @@ const App: React.FC = () => {
           (newState.granularPianoSend ?? 0) > 0 ||
           (newState.degradePianoSend ?? 0) > 0;
         const drumWetActive =
+          isDrumSequencerActive(newState as SliderState) ||
           (newState.drumLevel ?? 0) > 0 ||
           (newState.drumReverbSend ?? 0) > 0 ||
           (newState.drumDelayASend ?? 0) > 0 ||
@@ -3169,6 +3213,7 @@ const App: React.FC = () => {
             ...newState,
             ...preservedEnabledFlags,
           };
+          newState = preserveRunningDrumSequencerSource(prev, newState as SliderState);
         }
 
         applyMorphEndpointStatePatch(prev, newState);
@@ -3511,7 +3556,10 @@ const App: React.FC = () => {
           newState.leadRandomEnabled = false;
         }
 
-        const normalizedState = normalizePadFilterCutoffPairs(newState, key);
+        let normalizedState = normalizePadFilterCutoffPairs(newState, key);
+        normalizedState = preserveRunningDrumSequencerSource(prev, normalizedState, {
+          allowExplicitDrumDisable: key === 'drumEnabled',
+        });
         if (padMorphParamChange) {
           rememberPadMorphEndpointState(padMorphEndpointOverridesRef.current, normalizedState, padMorphParamChange.scope);
         }
@@ -3612,6 +3660,7 @@ const App: React.FC = () => {
         if (drumPresetSlotChanged) {
           pendingImmediateLeadPresetSyncRef.current = true;
         }
+        nextState = preserveRunningDrumSequencerSource(prev, nextState);
         rememberChangedPadMorphEndpointStates(padMorphEndpointOverridesRef.current, prev, nextState);
         applyMorphEndpointStatePatch(prev, nextState);
         return nextState;
@@ -4953,8 +5002,10 @@ const App: React.FC = () => {
       }
     }
     if (nextResolvedState) {
-      setState(nextResolvedState);
-      scheduleProductRuntimeParamUpdate(nextResolvedState, {
+      const currentState = stateRef.current;
+      const liveResolvedState = preserveRunningDrumSequencerSource(currentState, nextResolvedState);
+      setState(liveResolvedState);
+      scheduleProductRuntimeParamUpdate(liveResolvedState, {
         immediate: true,
         reason: 'morph-control-change',
         triggerCritical: true,

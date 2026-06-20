@@ -960,7 +960,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumNoiseRatchetTime:  { level: 1, scope: 'drumNoise' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Drum Membrane Engine (21 params)
+  // L1: Drum Membrane Engine (22 params)
   // ═══════════════════════════════════════════════════════════════════════
   drumMembraneExciter:     { level: 1, scope: 'drumMembrane' },
   drumMembraneExcPos:      { level: 1, scope: 'drumMembrane' },
@@ -978,6 +978,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumMembraneBody:        { level: 1, scope: 'drumMembrane' },
   drumMembraneRing:        { level: 1, scope: 'drumMembrane' },
   drumMembraneOvertones:   { level: 1, scope: 'drumMembrane' },
+  drumMembraneScaleBlend:  { level: 1, scope: 'drumMembrane' },
   drumMembranePitchEnv:    { level: 1, scope: 'drumMembrane' },
   drumMembranePitchDecay:  { level: 1, scope: 'drumMembrane' },
   drumMembraneAttack:      { level: 1, scope: 'drumMembrane' },
@@ -1410,7 +1411,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1177) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1177`);
+  if (count !== 1178) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1178`);
   }
 }

@@ -15,36 +15,68 @@ export type ScatterPreviewTriggerOptions = {
   triggerCritical?: boolean;
 };
 
+export type ScatterStepVisualEvent = {
+  phrase: GeneratedDrumPhrase;
+  stepIndex: number;
+  hitIndex: number;
+  ratchetIndex: number;
+  ratchetCount: number;
+  scheduledMs: number;
+};
+
 type UseScatterPhrasePlayerArgs = {
   getBpm: () => number;
+  sliderState?: SliderState;
   trigger: (voice: DrumVoiceType, options: ScatterPreviewTriggerOptions) => void;
-  onStepVisual?: (phrase: GeneratedDrumPhrase, stepIndex: number) => void;
+  onStepVisual?: (event: ScatterStepVisualEvent) => void;
+};
+
+type ScheduledScatterTimeout = {
+  id: number;
+  voice: DrumVoiceType;
 };
 
 export function useScatterPhrasePlayer({
   getBpm,
+  sliderState,
   trigger,
   onStepVisual,
 }: UseScatterPhrasePlayerArgs): {
   playPhrase: (phrase: GeneratedDrumPhrase) => void;
   clear: () => void;
 } {
-  const timeoutIdsRef = useRef<number[]>([]);
+  const timeoutIdsRef = useRef<ScheduledScatterTimeout[]>([]);
 
   const clear = useCallback(() => {
-    for (const timeoutId of timeoutIdsRef.current) {
-      window.clearTimeout(timeoutId);
+    for (const timeout of timeoutIdsRef.current) {
+      window.clearTimeout(timeout.id);
     }
     timeoutIdsRef.current = [];
   }, []);
 
+  const clearVoice = useCallback((voice: DrumVoiceType) => {
+    const remaining: ScheduledScatterTimeout[] = [];
+    for (const timeout of timeoutIdsRef.current) {
+      if (timeout.voice === voice) {
+        window.clearTimeout(timeout.id);
+      } else {
+        remaining.push(timeout);
+      }
+    }
+    timeoutIdsRef.current = remaining;
+  }, []);
+
   const playPhrase = useCallback((phrase: GeneratedDrumPhrase) => {
+    clearVoice(phrase.engine);
     const bpm = Math.max(1, getBpm());
     const stepMs = Math.max(16, sequencerClockDivisionToSeconds(phrase.clockDiv, 60 / bpm) * 1000);
     const pattern = resolveTriggerClip(phrase.triggerClip);
 
+    let hitIndex = -1;
     pattern.forEach((enabled, stepIndex) => {
       if (!enabled) return;
+      hitIndex += 1;
+      const currentHitIndex = hitIndex;
       const probability = Math.max(0, Math.min(1, phrase.probability[stepIndex] ?? 1));
       if (Math.random() > probability) return;
 
@@ -54,18 +86,25 @@ export function useScatterPhrasePlayer({
       for (let ratchetIndex = 0; ratchetIndex < ratchetCount; ratchetIndex += 1) {
         const delayMs = Math.max(0, stepIndex * stepMs + ratchetIndex * ratchetMs);
         const timeoutId = window.setTimeout(() => {
-          timeoutIdsRef.current = timeoutIdsRef.current.filter((id) => id !== timeoutId);
+          timeoutIdsRef.current = timeoutIdsRef.current.filter((timeout) => timeout.id !== timeoutId);
           trigger(phrase.engine, {
             velocity: velocityForScatterStep(phrase, stepIndex) * (ratchetIndex === 0 ? 1 : 0.82),
-            statePatch: statePatchForScatterStep(phrase, stepIndex),
+            statePatch: statePatchForScatterStep(phrase, stepIndex, sliderState),
             triggerCritical: false,
           });
-          onStepVisual?.(phrase, stepIndex);
+          onStepVisual?.({
+            phrase,
+            stepIndex,
+            hitIndex: currentHitIndex,
+            ratchetIndex,
+            ratchetCount,
+            scheduledMs: delayMs,
+          });
         }, delayMs);
-        timeoutIdsRef.current.push(timeoutId);
+        timeoutIdsRef.current.push({ id: timeoutId, voice: phrase.engine });
       }
     });
-  }, [getBpm, onStepVisual, trigger]);
+  }, [clearVoice, getBpm, onStepVisual, sliderState, trigger]);
 
   useEffect(() => clear, [clear]);
 

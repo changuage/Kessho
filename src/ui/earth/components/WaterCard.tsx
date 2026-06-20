@@ -7,6 +7,7 @@ import {
   EarthPresetOption,
   EarthPresetOptions,
 } from './EarthControls';
+import { blurSelectAfterChange } from '../../shared/selectFocus';
 
 type WaterCardProps = {
   state: SliderState;
@@ -114,7 +115,10 @@ export function WaterCard({
         <select
           className="sc-preset-loader-select"
           value={selectedWaterPreset}
-          onChange={(e) => onWaterPresetSelect(e.target.value)}
+          onChange={(e) => {
+            onWaterPresetSelect(e.target.value);
+            blurSelectAfterChange(e.currentTarget);
+          }}
           title="Select Water preset"
         >
           <EarthPresetOptions options={waterPresetOptions} />
@@ -161,9 +165,10 @@ export function WaterCard({
           <select
             className="sc-preset-select"
             value={String(state.waterMorphA)}
-            onChange={e =>
-              onSelectChange('waterMorphA', Number(e.target.value) as SliderState['waterMorphA'])
-            }
+            onChange={(e) => {
+              onSelectChange('waterMorphA', Number(e.target.value) as SliderState['waterMorphA']);
+              blurSelectAfterChange(e.currentTarget);
+            }}
           >
             <EarthPresetOptions options={waterPresetOptions} />
           </select>
@@ -177,9 +182,10 @@ export function WaterCard({
           <select
             className="sc-preset-select"
             value={String(state.waterMorphB)}
-            onChange={e =>
-              onSelectChange('waterMorphB', Number(e.target.value) as SliderState['waterMorphB'])
-            }
+            onChange={(e) => {
+              onSelectChange('waterMorphB', Number(e.target.value) as SliderState['waterMorphB']);
+              blurSelectAfterChange(e.currentTarget);
+            }}
           >
             <EarthPresetOptions options={waterPresetOptions} />
           </select>

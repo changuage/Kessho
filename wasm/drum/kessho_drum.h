@@ -290,6 +290,7 @@ void drum_set_membrane_wire_decay(float decay);
 void drum_set_membrane_wire_tone(float tone);
 void drum_set_membrane_variation(float variation);
 void drum_set_membrane_distance(float distance);
+void drum_set_membrane_scale_blend(float blend);
 void drum_set_membrane_fm_transient(KesshoDrumFmTransientParams params);
 void drum_set_membrane_damage(KesshoDrumDamageParams params);
 void drum_set_membrane_metallic(KesshoDrumMetallicParams params);
@@ -479,6 +480,7 @@ void drum_instance_set_membrane_wire_decay(KesshoDrumInstance* instance, float d
 void drum_instance_set_membrane_wire_tone(KesshoDrumInstance* instance, float tone);
 void drum_instance_set_membrane_variation(KesshoDrumInstance* instance, float variation);
 void drum_instance_set_membrane_distance(KesshoDrumInstance* instance, float distance);
+void drum_instance_set_membrane_scale_blend(KesshoDrumInstance* instance, float blend);
 void drum_instance_set_membrane_fm_transient(KesshoDrumInstance* instance, KesshoDrumFmTransientParams params);
 void drum_instance_set_membrane_damage(KesshoDrumInstance* instance, KesshoDrumDamageParams params);
 void drum_instance_set_membrane_metallic(KesshoDrumInstance* instance, KesshoDrumMetallicParams params);

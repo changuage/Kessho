@@ -60,6 +60,7 @@ const allowedImports = new Set([
   './coreProductSnapshotState',
   './coreProductSnapshotTypes',
   './distanceMacro',
+  './drumVoiceMidi',
   './euclideanPatterns',
   './granularMacroCore',
   './outputTrims',

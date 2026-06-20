@@ -2032,8 +2032,8 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 145892',
-  'const SOURCE_BYTES = 5136',
+  'const SNAPSHOT_BYTES = 145976',
+  'const SOURCE_BYTES = 5148',
   'const LANE_BYTES = 96',
   'KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES',
   'KESSHO_PRODUCT_DRUM_PARAM_COUNT',
@@ -3085,6 +3085,7 @@ const snapshotImportAllowlist = new Set([
   './coreProductSnapshotState',
   './coreProductSnapshotTypes',
   './distanceMacro',
+  './drumVoiceMidi',
   './euclideanPatterns',
   './generated/kesshoProductSchema',
   './granularMacroCore',
@@ -3176,6 +3177,7 @@ const hostImportAllowlist = new Set([
   './coreProductSnapshot',
   './coreProductTelemetry',
   './dawOutputRouting',
+  './drumVoiceMidi',
   './drumSeqTypes',
   './engine',
   './engineSharedTypes',

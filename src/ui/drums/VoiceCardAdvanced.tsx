@@ -22,6 +22,15 @@ function formatAdvancedValue(value: number, unit?: string): string {
   return value.toFixed(2);
 }
 
+function isEnvelopeTimeSlider(sectionName: string, def: DrumVoiceConfig['sections'][string][number]): boolean {
+  if (def.type !== 'range') return false;
+  if (def.key === 'drumBeepHiModEnvDecay' || def.key === 'drumBeepHiNoiseDecay') return true;
+  if (def.unit !== 'ms') return false;
+  return sectionName === 'Envelope'
+    || sectionName === 'Pitch Env'
+    || def.key.toLowerCase().includes('envdecay');
+}
+
 const VoiceCardAdvanced: React.FC<VoiceCardAdvancedProps> = ({
   voice,
   config,
@@ -83,6 +92,7 @@ const VoiceCardAdvanced: React.FC<VoiceCardAdvancedProps> = ({
                       onChange={onParamChange as (key: keyof SliderState, value: number) => void}
                       format={(value: number) => formatAdvancedValue(value, def.unit)}
                       unit={def.unit === '%' ? '%' : undefined}
+                      logarithmic={isEnvelopeTimeSlider(sectionName, def)}
                       {...sliderProps(paramKey)}
                     />
                   </div>

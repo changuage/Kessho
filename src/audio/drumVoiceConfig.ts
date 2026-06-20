@@ -94,7 +94,7 @@ export const DRUM_VOICES: Record<DrumVoiceType, DrumVoiceConfig> = {
       Mode: [
         { key: 'drumClickMode', label: 'Mode', type: 'select', options: ['impulse', 'noise', 'tonal', 'granular'], def: 'impulse' },
         { key: 'drumClickGrainCount', label: 'Grains', type: 'range', min: 1, max: 8, step: 1, def: 1 },
-        { key: 'drumClickGrainSpread', label: 'Grain Spread', type: 'range', min: 0, max: 1, step: 0.01, unit: '%', def: 0 },
+        { key: 'drumClickGrainSpread', label: 'Grain Spread', type: 'range', min: 0, max: 50, step: 1, unit: 'ms', def: 0 },
         { key: 'drumClickStereoWidth', label: 'Stereo Width', type: 'range', min: 0, max: 1, step: 0.01, unit: '%', def: 0 },
       ],
       Envelope: [

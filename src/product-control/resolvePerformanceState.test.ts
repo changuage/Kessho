@@ -6,10 +6,18 @@ import {
   type DrumVoicePreset,
   type DrumVoiceType,
 } from '../audio/drumPresets';
-import { createCoreProductDrumTriggerEvent } from '../audio/coreProductEvents';
-import { createCoreProductSnapshot } from '../audio/coreProductSnapshot';
+import { createCoreProductDrumTriggerEvent, type CoreProductEvent } from '../audio/coreProductEvents';
+import {
+  createCoreProductSnapshot,
+  encodeCoreProductSnapshot,
+  KESSHO_PRODUCT_SNAPSHOT_BYTES,
+} from '../audio/coreProductSnapshot';
 import { drumVoiceBaseMidiFromIndex } from '../audio/drumVoiceMidi';
 import { drumVoiceIndex } from '../audio/CoreProductHostRuntimeGuards';
+import {
+  triggerCoreProductDrumVoice,
+  type CoreProductManualAuditionContext,
+} from '../audio/product/host/CoreProductManualAuditionBridge';
 import type { ProductEnginePort } from '../audio/product/ProductEnginePort';
 import type { ProductResolvedStateCommit } from '../audio/product/ProductEngineTypes';
 import { DEFAULT_STATE, type SliderState } from '../ui/state';
@@ -33,6 +41,18 @@ import {
 
 function stateWith(patch: Partial<SliderState>): SliderState {
   return { ...DEFAULT_STATE, ...patch };
+}
+
+{
+  const encoded = encodeCoreProductSnapshot(createCoreProductSnapshot(stateWith({
+    drumEnabled: true,
+    drumMembraneScaleBlend: 0.9,
+  }) as unknown as Record<string, unknown>));
+  assert.equal(
+    encoded.byteLength,
+    KESSHO_PRODUCT_SNAPSHOT_BYTES,
+    'Product snapshot encoder should allocate enough bytes for the generated Drum snapshot ABI',
+  );
 }
 
 type NumericPresetPair = {
@@ -177,6 +197,57 @@ function expectSoundActionChangesResolvedOutput(
   assert.equal(snapshot.drumLanes[3]?.midiNote, 42, 'default drum lane 4 should target noise');
   assert.equal(snapshot.drumLanes[4]?.midiNote, 50, 'default drum lane 5 should target the low beep engine');
   assert.equal(snapshot.drumLanes[5]?.midiNote, 38, 'default drum lane 6 should target membrane');
+}
+
+{
+  const postedEvents: CoreProductEvent[] = [];
+  const callOrder: string[] = [];
+  let latestState: Record<string, unknown> | null = DEFAULT_STATE as unknown as Record<string, unknown>;
+  const snapshot = createCoreProductSnapshot(stateWith({ drumEnabled: true }) as unknown as Record<string, unknown>);
+  const context: CoreProductManualAuditionContext = {
+    runtime: {
+      audioContext: { state: 'running' } as unknown as AudioContext,
+      ensureStarted: async () => { callOrder.push('ensureStarted'); },
+      postEvent: (event) => {
+        callOrder.push('postEvent');
+        postedEvents.push(event);
+      },
+      resume: async () => { callOrder.push('resume'); },
+    },
+    assetRegistrar: {
+      ensurePianoAssetForNote: async () => {},
+    },
+    latestSliderState: () => latestState,
+    setLatestSliderState: (state) => {
+      callOrder.push('setLatestSliderState');
+      latestState = state;
+    },
+    latestProductSnapshot: () => snapshot,
+    runtimeReady: () => true,
+    setRuntimeReady: (ready) => { callOrder.push(`setRuntimeReady:${String(ready)}`); },
+    applyProductStatePatch: async () => {},
+    applyLatestSnapshotUpdate: async (reason) => { callOrder.push(`applyLatestSnapshotUpdate:${reason}`); },
+    recordSoundTrigger: () => { callOrder.push('recordSoundTrigger'); },
+    publish: (name) => { callOrder.push(`publish:${name}`); },
+  };
+  await triggerCoreProductDrumVoice(context, 'kick', 0.75, {
+    ...DEFAULT_STATE,
+    drumEnabled: true,
+    drumKickFreq: 118,
+  } as unknown as Record<string, unknown>);
+
+  assert.equal(latestState?.drumKickFreq, 118, 'running drum preview should install external slider state before triggering');
+  assert.equal(latestState?.drumEnabled, true, 'running drum preview should force the Product drum source enabled');
+  assert.equal(postedEvents.length, 1, 'running drum preview should post exactly one trigger event');
+  assert.deepEqual(
+    postedEvents[0],
+    createCoreProductDrumTriggerEvent(1, 0.75),
+    'running drum preview should still target the selected native drum voice',
+  );
+  const applyIndex = callOrder.indexOf('applyLatestSnapshotUpdate:runtime-bootstrap');
+  const postIndex = callOrder.indexOf('postEvent');
+  assert.ok(applyIndex >= 0, 'running drum preview with external state should apply a Product snapshot update');
+  assert.ok(postIndex > applyIndex, 'running drum preview should apply external state before posting the trigger');
 }
 
 // ProductControl state authority invariants.

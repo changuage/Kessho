@@ -2316,6 +2316,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumClickGrainCount',
   'drumClickGrainSpread',
   'drumClickStereoWidth',
+  'drumClickExciterColor',
   'drumClickAttack',
   'drumClickVariation',
   'drumClickDistance',
@@ -2393,6 +2394,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumMembraneBody',
   'drumMembraneRing',
   'drumMembraneOvertones',
+  'drumMembraneScaleBlend',
   'drumMembranePitchEnv',
   'drumMembranePitchDecay',
   'drumMembraneAttack',
@@ -5407,6 +5409,26 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           ['lowpass', 'bandpass', 'highpass', 'notch'].includes(value)
         ) {
           state.filterType = value as SliderState['filterType'];
+        } else if (
+          key === 'drumClickMode' &&
+          ['impulse', 'noise', 'tonal', 'granular'].includes(value)
+        ) {
+          state.drumClickMode = value as SliderState['drumClickMode'];
+        } else if (
+          key === 'drumNoiseFilterType' &&
+          ['lowpass', 'bandpass', 'highpass'].includes(value)
+        ) {
+          state.drumNoiseFilterType = value as SliderState['drumNoiseFilterType'];
+        } else if (
+          key === 'drumMembraneExciter' &&
+          ['impulse', 'noise', 'stick', 'brush', 'mallet'].includes(value)
+        ) {
+          state.drumMembraneExciter = value as SliderState['drumMembraneExciter'];
+        } else if (
+          key === 'drumMembraneMaterial' &&
+          ['skin', 'metal', 'wood', 'glass', 'plastic'].includes(value)
+        ) {
+          state.drumMembraneMaterial = value as SliderState['drumMembraneMaterial'];
         } else if (
           key === 'oceanFilterType' &&
           ['lowpass', 'bandpass', 'highpass', 'notch'].includes(value)

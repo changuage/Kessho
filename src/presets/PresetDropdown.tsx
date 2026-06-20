@@ -14,6 +14,7 @@ import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 import { PresetRatingStars } from './PresetRatingStars';
 import { DEFAULT_STATE, type SliderMode, type SliderState } from '../ui/state';
 import type { UsePresetsOptions } from './usePresets';
+import { blurSelectAfterChange } from '../ui/shared/selectFocus';
 
 type PresetLoadResult = boolean | void | Promise<boolean | void>;
 
@@ -274,7 +275,9 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
 
   // Handle preset selection from dropdown
   const handleSelect = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const name = e.target.value;
+    const select = e.currentTarget;
+    const name = select.value;
+    blurSelectAfterChange(select);
     if (!name) return;
     const requestId = ++loadRequestIdRef.current;
     setSelectedName(name);

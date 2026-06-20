@@ -118,11 +118,49 @@ function trigConditionFor(chaos: number, rng: () => number): TrigCondition {
   return rngPick(rng, [[1, 2], [2, 2], [1, 3], [2, 3], [1, 4]] as const).slice() as TrigCondition;
 }
 
-function nudgeForHit(chaos: number, fracture: number, rng: () => number): number {
-  const chance = Math.min(0.7, chaos * 0.45 + fracture * 0.25);
-  if (rng() > chance) return 0;
-  const spread = Math.min(0.45, 0.06 + chaos * 0.16 + fracture * 0.18);
-  return Math.round((rng() * 2 - 1) * spread * 20) / 20;
+function enabledStepIndexes(pattern: readonly boolean[]): number[] {
+  const indexes: number[] = [];
+  pattern.forEach((enabled, step) => {
+    if (enabled) indexes.push(step);
+  });
+  return indexes;
+}
+
+function hasRoundedVariation(values: readonly number[], indexes: readonly number[], scale = 100): boolean {
+  if (indexes.length < 2) return false;
+  const rounded = new Set(indexes.map((step) => Math.round((values[step] ?? 0) * scale)));
+  return rounded.size > 1;
+}
+
+function hasPitchVariation(values: readonly number[], indexes: readonly number[]): boolean {
+  if (indexes.length < 2) return false;
+  const pitches = new Set(indexes.map((step) => Math.round(values[step] ?? 0)));
+  return pitches.size > 1;
+}
+
+function ensureUnitVariation(values: number[], pattern: readonly boolean[], amount: number): void {
+  const hitSteps = enabledStepIndexes(pattern);
+  if (hitSteps.length < 2 || hasRoundedVariation(values, hitSteps)) return;
+
+  const safeAmount = Math.max(0.03, Math.min(0.35, amount));
+  hitSteps.forEach((step, index) => {
+    const phase = hitSteps.length <= 1 ? 0 : index / (hitSteps.length - 1);
+    const sweep = (phase - 0.5) * safeAmount;
+    const alternate = (index % 2 === 0 ? -1 : 1) * safeAmount * 0.45;
+    values[step] = clampUnit((values[step] ?? 0.5) + sweep + alternate);
+  });
+}
+
+function ensurePitchVariation(values: number[], pattern: readonly boolean[], spread: number): void {
+  const hitSteps = enabledStepIndexes(pattern);
+  if (hitSteps.length < 2 || hasPitchVariation(values, hitSteps)) return;
+
+  const interval = Math.max(1, Math.min(12, Math.round(spread / 3)));
+  hitSteps.forEach((step, index) => {
+    const phase = hitSteps.length <= 1 ? 0 : index / (hitSteps.length - 1);
+    const direction = index % 2 === 0 ? -1 : 1;
+    values[step] = direction * Math.max(1, Math.round(interval + phase * interval));
+  });
 }
 
 function labelFor(engine: DrumVoiceType, hits: number, zone: ScatterFeelZone, contour: ScatterContour): string {
@@ -157,6 +195,7 @@ export function generateScatterPhrase(args: {
   const contour = contourFor(engineState.feelX, zone, rng);
   const motion = clampUnit(engineState.rules.motion + chaos * 0.3);
   const fracture = clampUnit(engineState.rules.fracture + chaos * 0.5);
+  const spread = clampUnit(engineState.rules.spread + chaos * 0.35);
   const probability = Array.from({ length: steps }, (_, step) => (
     pattern[step] ? clampUnit(0.95 - chaos * 0.2 + rng() * chaos * 0.2) : 1
   ));
@@ -166,27 +205,33 @@ export function generateScatterPhrase(args: {
     const contourAmount = contourValue(contour, step, steps, rng, chaos);
     return clampUnit(engineState.feelX > 0 ? 1 - contourAmount * 0.6 : 0.35 + contourAmount * 0.55);
   });
-  const pitchSpread = Math.max(2, Math.round(4 + chaos * 12));
+  const pitchSpread = Math.max(2, Math.round(3 + chaos * 10 + spread * 14 + motion * 4));
   const pitch = Array.from({ length: steps }, (_, step) => {
     const centered = contourValue(contour, step, steps, rng, chaos) - 0.5;
     return Math.round(centered * pitchSpread);
   });
+  ensureUnitVariation(expression, pattern, 0.05 + motion * 0.08 + fracture * 0.07);
+  ensureUnitVariation(morph, pattern, 0.07 + motion * 0.18);
+  ensureUnitVariation(distance, pattern, 0.08 + spread * 0.16 + fracture * 0.08);
+  ensurePitchVariation(pitch, pattern, pitchSpread);
+
   const ratchet = Array.from({ length: steps }, (_, step) => {
     if (!pattern[step]) return 1;
     if (zone === 'pulse') return 1;
     if (rng() < fracture * 0.3) return rngInt(rng, 2, zone === 'scatter' ? 4 : 3);
     return 1;
   });
+  if (hits > 1 && !ratchet.some((value) => value > 1) && (fracture > 0.22 || motion > 0.45)) {
+    const hitSteps = enabledStepIndexes(pattern);
+    const ratchetStep = hitSteps[Math.floor(hitSteps.length / 2)];
+    if (ratchetStep !== undefined) ratchet[ratchetStep] = fracture > 0.66 ? 3 : 2;
+  }
   const trigCondition = Array.from({ length: steps }, () => trigConditionFor(chaos, rng));
-  const slice = Array.from({ length: steps }, (_, step) => (
-    pattern[step] && rng() < fracture * 0.35 ? rngInt(rng, 1, 15) : 0
-  ));
-  const reverse = Array.from({ length: steps }, (_, step) => (
-    pattern[step] && rng() < fracture * 0.22 ? 1 : 0
-  ));
+  const slice = Array.from({ length: steps }, () => 0);
+  const reverse = Array.from({ length: steps }, () => 0);
   const nudge = pattern
     .filter(Boolean)
-    .map(() => nudgeForHit(chaos, fracture, rng));
+    .map(() => 0);
   const directions = {
     pitch: directionFor(zone, contour, rng),
     expression: zone === 'wave' ? 'pingpong' as const : 'forward' as const,
@@ -216,6 +261,10 @@ export function generateScatterPhrase(args: {
   const hasSlice = slice.some((value) => value > 0);
   const hasReverse = reverse.some((value) => value > 0);
   const hasNudge = nudge.some((value) => Math.abs(value) > 0.001);
+  const hitSteps = enabledStepIndexes(pattern);
+  const pitchVaries = hasPitchVariation(pitch, hitSteps);
+  const morphVaries = hasRoundedVariation(morph, hitSteps);
+  const distanceVaries = hasRoundedVariation(distance, hitSteps);
 
   return {
     id: `${engine}-${seed}`,
@@ -238,10 +287,10 @@ export function generateScatterPhrase(args: {
     reverse,
     directions,
     subLaneEnabled: {
-      pitch: chaos > 0.2 || motion > 0.45,
+      pitch: pitchVaries,
       expression: true,
-      morph: chaos > 0.35 || motion > 0.55,
-      distance: chaos > 0.25 || motion > 0.5,
+      morph: morphVaries,
+      distance: distanceVaries,
       nudge: hasNudge,
       slice: hasSlice,
       reverse: hasReverse,

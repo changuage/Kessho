@@ -103,7 +103,11 @@ struct SineTable {
 
     /** Lookup with linear interpolation. Phase is 0..1. */
     float lookup(float phase) const {
-        const float idx = phase * (float)KESSHO_SINE_TABLE_SIZE;
+        float wrapped = phase;
+        if (wrapped < 0.0f || wrapped >= 1.0f) {
+            wrapped -= floorf(wrapped);
+        }
+        const float idx = wrapped * (float)KESSHO_SINE_TABLE_SIZE;
         const int i0 = (int)idx;
         const float frac = idx - (float)i0;
         return table[i0] + frac * (table[i0 + 1] - table[i0]);

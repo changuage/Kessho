@@ -18,6 +18,7 @@ import {
 } from '../../audio/padPresets';
 import type { PresetEntry } from '../../presets/types';
 import { canRatePadPreset, findPadPresetSummary, ratePadPreset } from './padPresetRating';
+import { blurSelectAfterChange } from '../shared/selectFocus';
 
 const humanize = (key: string) =>
   key.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()).trim();
@@ -521,7 +522,10 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
           <div style={s.presetRow}>
             <select
               value={selectedPresetId}
-              onChange={e => setSelectedPresetId(e.target.value)}
+              onChange={(e) => {
+                setSelectedPresetId(e.target.value);
+                blurSelectAfterChange(e.currentTarget);
+              }}
               style={s.select}
               title="Select preset"
             >
@@ -618,7 +622,10 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
         <div style={s.presetRow}>
           <select
             value={selectedPresetId}
-            onChange={e => setSelectedPresetId(e.target.value)}
+            onChange={(e) => {
+              setSelectedPresetId(e.target.value);
+              blurSelectAfterChange(e.currentTarget);
+            }}
             style={s.select}
             title="Select preset"
           >
