@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import { DEFAULT_STATE } from '../../state';
 import type { TrigCondition } from '../../../audio/drumSeqTypes';
+import { seqEuclidean } from '../../../audio/drumSequencer';
 import { drumVoiceBaseMidi } from '../../../audio/drumVoiceMidi';
 import { drumPitchUiValuesToEngineOffsets } from '../../sequencer/drumPitchSequencer';
 import { createEmptyStepOverrides } from '../../sequencer/stepOverrideSerialization';
@@ -111,6 +112,37 @@ function roundedVariation(values: readonly number[], indexes: readonly number[],
   return new Set(indexes.map((index) => Math.round((values[index] ?? 0) * scale))).size;
 }
 
+function generatedEngineState(overrides: Partial<EngineScatterState> = {}): EngineScatterState {
+  const rules = {
+    anchor: 1,
+    breath: 0.55,
+    memory: 0.5,
+    motion: 0.6,
+    fracture: 0.2,
+    spread: 0.45,
+    ...(overrides.rules ?? {}),
+  };
+  return {
+    enabled: true,
+    triggerProbability: 0.5,
+    burstProbability: 0.5,
+    feelX: -0.75,
+    feelY: 0,
+    ...overrides,
+    rules,
+  };
+}
+
+function activeRange(values: readonly number[], pattern: readonly boolean[]): number {
+  const active = activeValues(values, pattern);
+  if (active.length < 2) return 0;
+  return Math.max(...active) - Math.min(...active);
+}
+
+function hasAdjacentHits(pattern: readonly boolean[]): boolean {
+  return pattern.some((enabled, index) => enabled && Boolean(pattern[(index + 1) % pattern.length]));
+}
+
 {
   const phrase = makePhrase();
   const previous = createEmptyStepOverrides(6);
@@ -125,11 +157,7 @@ function roundedVariation(values: readonly number[], indexes: readonly number[],
   });
   const activePattern = resolveTriggerClip(phrase.triggerClip);
 
-  assert.deepEqual(
-    serializeTriggerClip(result.stepOverrides.triggerClips?.[0] ?? null),
-    serializeTriggerClip(phrase.triggerClip),
-    'replace should copy the phrase trigger clip exactly',
-  );
+  assert.equal(result.stepOverrides.triggerClips?.[0] ?? null, null, 'replace should leave rhythm to Euclidean steps/hits/rotation instead of a trigger clip override');
   assert.deepEqual(result.stepOverrides.probability[0], phrase.probability, 'replace should write probability');
   assert.deepEqual(result.stepOverrides.ratchet[0], activeValues(phrase.ratchet, activePattern), 'replace should write ratchet per active hit');
   assert.deepEqual(result.stepOverrides.trigCondition[0], phrase.trigCondition, 'replace should write trig conditions');
@@ -160,11 +188,7 @@ function roundedVariation(values: readonly number[], indexes: readonly number[],
     currentSubLaneStates: makeSubLaneStates(6),
   });
 
-  assert.deepEqual(
-    serializeTriggerClip(result.stepOverrides.triggerClips?.[5] ?? null),
-    serializeTriggerClip(phrase.triggerClip),
-    'replace should print into active lane 6',
-  );
+  assert.equal(result.stepOverrides.triggerClips?.[5] ?? null, null, 'lane 6 should use Euclidean steps/hits/rotation instead of a trigger clip override');
   assert.deepEqual(result.stepOverrides.morph[5], [phrase.morph[0], phrase.morph[2], phrase.morph[5], phrase.morph[7]], 'lane 6 should receive phrase morph values per active hit');
 }
 
@@ -226,6 +250,12 @@ function roundedVariation(values: readonly number[], indexes: readonly number[],
 
   assert.ok(hits.length > 1, 'dense scatter phrase should produce multiple hits');
   assert.ok(roundedVariation(phrase.pitch, hits) > 1, 'generated scatter phrase should vary pitch on active hits');
+  assert.ok(hits.some((step) => (phrase.pitch[step] ?? 0) < 0), 'generated scatter phrase should include negative pitch offsets');
+  assert.ok(hits.some((step) => (phrase.pitch[step] ?? 0) > 0), 'generated scatter phrase should include positive pitch offsets');
+  assert.ok(
+    Math.max(...hits.map((step) => Math.abs(phrase.pitch[step] ?? 0))) >= 16,
+    'generated scatter pitch variation should be large enough to hear on drum engines',
+  );
   assert.ok(roundedVariation(phrase.morph, hits, 100) > 1, 'generated scatter phrase should vary morph on active hits');
   assert.ok(roundedVariation(phrase.distance, hits, 100) > 1, 'generated scatter phrase should vary distance on active hits');
   assert.equal(phrase.subLaneEnabled.pitch, true, 'pitch sub-lane should be enabled when generated pitch varies');
@@ -237,6 +267,247 @@ function roundedVariation(values: readonly number[], indexes: readonly number[],
   assert.deepEqual(phrase.nudge, new Array(hits.length).fill(0), 'scatter generator should emit neutral nudge values');
   assert.ok(phrase.slice.every((value) => value === 0), 'scatter generator should emit neutral slice values');
   assert.ok(phrase.reverse.every((value) => value === 0), 'scatter generator should emit neutral reverse values');
+}
+
+{
+  for (const burstProbability of [0, 0.25, 0.5, 0.75, 1]) {
+    const phrase = generateScatterPhrase({
+      engine: 'click',
+      engineState: generatedEngineState({
+        triggerProbability: 0.05,
+        burstProbability,
+        feelX: -1,
+        feelY: 0.05,
+        rules: {
+          anchor: 1,
+          breath: 1,
+          memory: 0.5,
+          motion: 0.45,
+          fracture: 0,
+          spread: 0.2,
+        },
+      }),
+      previousPhrases: [],
+      seed: 2400,
+    });
+    const pattern = resolveTriggerClip(phrase.triggerClip);
+    const expectedHits = Math.max(1, Math.min(pattern.length, Math.round(pattern.length * burstProbability)));
+
+    assert.equal(
+      enabledIndexes(pattern).length,
+      expectedHits,
+      `burst ${burstProbability} should map to hit count as a percentage of generated steps`,
+    );
+    assert.equal(phrase.triggerClip.origin, 'euclidean', 'scatter-generated rhythms should be printable as Euclidean lane controls');
+    assert.equal(phrase.triggerClip.generator?.kind, 'euclidean', 'scatter-generated trigger clips should carry Euclidean steps/hits/rotation metadata');
+    assert.deepEqual(
+      pattern,
+      seqEuclidean(phrase.summary.steps, phrase.summary.hits, phrase.summary.rotation ?? 0),
+      'scatter-generated trigger pattern should exactly match its Euclidean steps/hits/rotation',
+    );
+  }
+}
+
+{
+  const engineState = generatedEngineState({
+    triggerProbability: 1,
+    burstProbability: 0.4,
+    feelX: 1,
+    feelY: 0.9,
+    rules: {
+      anchor: 0,
+      breath: 0,
+      memory: 0.5,
+      motion: 0.75,
+      fracture: 1,
+      spread: 0.6,
+    },
+  });
+
+  for (let seed = 6000; seed < 6080; seed += 1) {
+    const phrase = generateScatterPhrase({
+      engine: 'click',
+      engineState,
+      previousPhrases: [],
+      seed,
+    });
+    const pattern = resolveTriggerClip(phrase.triggerClip);
+    const hits = enabledIndexes(pattern).length;
+
+    if (hits <= Math.floor(pattern.length / 2)) {
+      assert.equal(
+        hasAdjacentHits(pattern),
+        false,
+        `sparse Euclidean-rooted scatter phrase should not create avoidable adjacent hits for ${pattern.length} steps / ${hits} hits`,
+      );
+    }
+  }
+}
+
+{
+  const lowTriggerPhrase = generateScatterPhrase({
+    engine: 'noise',
+    engineState: generatedEngineState({
+      triggerProbability: 0.05,
+      burstProbability: 0.5,
+      feelX: 0.85,
+      feelY: 0.7,
+    }),
+    previousPhrases: [],
+    seed: 3017,
+  });
+  const highTriggerPhrase = generateScatterPhrase({
+    engine: 'noise',
+    engineState: generatedEngineState({
+      triggerProbability: 1,
+      burstProbability: 0.5,
+      feelX: 0.85,
+      feelY: 0.7,
+    }),
+    previousPhrases: [],
+    seed: 3017,
+  });
+
+  assert.deepEqual(
+    serializeTriggerClip(highTriggerPhrase.triggerClip),
+    serializeTriggerClip(lowTriggerPhrase.triggerClip),
+    'trigger probability should not shape the generated rhythm',
+  );
+  assert.deepEqual(highTriggerPhrase.pitch, lowTriggerPhrase.pitch, 'trigger probability should not shape generated pitch cells');
+  assert.deepEqual(highTriggerPhrase.expression, lowTriggerPhrase.expression, 'trigger probability should not shape generated expression cells');
+  assert.deepEqual(highTriggerPhrase.morph, lowTriggerPhrase.morph, 'trigger probability should not shape generated morph cells');
+  assert.deepEqual(highTriggerPhrase.distance, lowTriggerPhrase.distance, 'trigger probability should not shape generated distance cells');
+}
+
+{
+  const phrase = generateScatterPhrase({
+    engine: 'click',
+    engineState: generatedEngineState({
+      triggerProbability: 1,
+      burstProbability: 0.55,
+      feelX: 0.9,
+      feelY: 0.75,
+      rules: {
+        anchor: 0.65,
+        breath: 0.3,
+        memory: 0.5,
+        motion: 0.9,
+        fracture: 0.7,
+        spread: 0.8,
+      },
+    }),
+    previousPhrases: [],
+    seed: 4091,
+  });
+  const pattern = resolveTriggerClip(phrase.triggerClip);
+  const hits = enabledIndexes(pattern);
+  const result = printGeneratedPhraseToLane({
+    phrase,
+    laneIndex: 2,
+    mode: 'replace',
+    currentStepOverrides: createEmptyStepOverrides(6),
+    currentSubLaneStates: makeSubLaneStates(6),
+  });
+
+  assert.ok(hits.length > 1, 'generated phrase should have multiple trigger hits for hit-indexed print coverage');
+  assert.deepEqual(phrase.probability, new Array(pattern.length).fill(1), 'scatter-generated trigger hits should not add hidden per-hit probability gates');
+  assert.ok(phrase.trigCondition.every((condition) => condition[0] === 1 && condition[1] === 1), 'scatter-generated trigger hits should not add hidden trig-condition skips');
+  assert.equal(result.stepOverrides.pitch[2]?.length, hits.length, 'printed pitch cells should match trigger-hit count');
+  assert.equal(result.stepOverrides.expression[2]?.length, hits.length, 'printed expression cells should match trigger-hit count');
+  assert.equal(result.stepOverrides.morph[2]?.length, hits.length, 'printed morph cells should match trigger-hit count');
+  assert.equal(result.stepOverrides.distance[2]?.length, hits.length, 'printed distance cells should match trigger-hit count');
+  assert.equal(result.stepOverrides.ratchet[2]?.length, hits.length, 'printed ratchet cells should match trigger-hit count');
+}
+
+{
+  const stableState = generatedEngineState({
+    triggerProbability: 1,
+    burstProbability: 0.8,
+    feelX: -1,
+    feelY: -0.85,
+    rules: {
+      anchor: 1,
+      breath: 1,
+      memory: 0.5,
+      motion: 0.35,
+      fracture: 0,
+      spread: 0.15,
+    },
+  });
+  const extremeState = generatedEngineState({
+    triggerProbability: 1,
+    burstProbability: 0.8,
+    feelX: 1,
+    feelY: 0.95,
+    rules: {
+      anchor: 0.2,
+      breath: 0,
+      memory: 0.5,
+      motion: 0.9,
+      fracture: 0.9,
+      spread: 0.85,
+    },
+  });
+  const stableExpressionRange = Array.from({ length: 12 }, (_, index) => {
+    const phrase = generateScatterPhrase({ engine: 'click', engineState: stableState, previousPhrases: [], seed: 5200 + index });
+    return activeRange(phrase.expression, resolveTriggerClip(phrase.triggerClip));
+  }).reduce((sum, range) => sum + range, 0) / 12;
+  const extremeExpressionRange = Array.from({ length: 12 }, (_, index) => {
+    const phrase = generateScatterPhrase({ engine: 'click', engineState: extremeState, previousPhrases: [], seed: 5200 + index });
+    return activeRange(phrase.expression, resolveTriggerClip(phrase.triggerClip));
+  }).reduce((sum, range) => sum + range, 0) / 12;
+
+  assert.ok(
+    extremeExpressionRange > stableExpressionRange + 0.08,
+    'expression should become more extreme when Feel X is unstable and Feel Y is high',
+  );
+}
+
+{
+  const lowWalkPhrase = generateScatterPhrase({
+    engine: 'click',
+    engineState: generatedEngineState({
+      burstProbability: 0.65,
+      feelX: -0.8,
+      feelY: 0,
+      randomWalk: 0,
+      randomWalkEnabled: true,
+    }),
+    previousPhrases: [],
+    seed: 6100,
+  });
+  const highWalkPhrase = generateScatterPhrase({
+    engine: 'click',
+    engineState: generatedEngineState({
+      burstProbability: 0.65,
+      feelX: -0.8,
+      feelY: 0,
+      randomWalk: 1,
+      randomWalkEnabled: true,
+    }),
+    previousPhrases: [],
+    seed: 6100,
+  });
+
+  assert.notEqual(lowWalkPhrase.summary.contour, 'randomWalk', 'low Walk should not force random-walk contours');
+  assert.equal(highWalkPhrase.summary.contour, 'randomWalk', 'Walk should shape the next generated phrase when generation runs');
+}
+
+{
+  const regularPhrase = generateScatterPhrase({
+    engine: 'click',
+    engineState: generatedEngineState({
+      burstProbability: 0.65,
+      feelX: -0.8,
+      feelY: 0,
+      randomWalk: 1,
+      randomWalkEnabled: false,
+    }),
+    previousPhrases: [],
+    seed: 6100,
+  });
+
+  assert.notEqual(regularPhrase.summary.contour, 'randomWalk', 'regular chance mode should ignore stored Walk amount');
 }
 
 {
@@ -258,8 +529,7 @@ function roundedVariation(values: readonly number[], indexes: readonly number[],
   assert.equal(patch.drumClickFilter, 8000, 'scatter preview pitch should transpose click filter for impulse/noise click modes');
   assert.equal(patch.drumClickMorph, clickPhrase.morph[0], 'scatter preview should still patch the routed morph parameter');
   assert.equal(patch.drumClickDistance, clickPhrase.distance[0], 'scatter preview should still patch the routed distance parameter');
-  assert.notEqual(patch.drumClickPresetB, undefined, 'scatter preview should add a distinct B endpoint when morph would otherwise be silent');
-  assert.notEqual(patch.drumClickPresetB, 'Data Point', 'scatter preview morph endpoint should differ from preset A');
+  assert.equal(patch.drumClickPresetB, undefined, 'scatter preview should not replace a visible matching B preset');
 
   const routedMorphPatch = statePatchForScatterStep(clickPhrase, 0, {
     ...DEFAULT_STATE,
@@ -271,7 +541,7 @@ function roundedVariation(values: readonly number[], indexes: readonly number[],
 
 {
   const clickBaseMidi = drumVoiceBaseMidi('click');
-  const phrasePitch = [-7, -1, 7, 12];
+  const phrasePitch = [-48, -7, -1, 7, 12, 48];
   const engineOffsets = drumPitchUiValuesToEngineOffsets(
     phrasePitch,
     { mode: 'semitones', root: clickBaseMidi, scale: 'Chromatic' },

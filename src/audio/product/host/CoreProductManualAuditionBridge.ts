@@ -76,7 +76,6 @@ export async function triggerCoreProductDrumVoice(
     context.publish('drumTrigger', voice, triggerVelocity);
   };
   const shouldApplyExternalState = Boolean(externalState);
-  if (externalState) context.setLatestSliderState({ ...externalState, drumEnabled: true });
   if (
     !shouldApplyExternalState &&
     runtimeCanPostEventsImmediately(context) &&
@@ -85,6 +84,7 @@ export async function triggerCoreProductDrumVoice(
     post();
     return;
   }
+  if (externalState) context.setLatestSliderState({ ...externalState, drumEnabled: true });
   await context.runtime.ensureStarted();
   context.setRuntimeReady(true);
   await context.runtime.resume();
@@ -131,12 +131,12 @@ export async function auditionCoreProductSynthNote(
 ): Promise<void> {
   const manualNote = requireManualNote(note);
   const targetSourceId = sourceId(manualNote.source);
-  if (runtimeCanPostEventsImmediately(context) && productSourceEnabled(context, targetSourceId)) {
+  const shouldApplyExternalState = Boolean(externalState);
+  if (!shouldApplyExternalState && runtimeCanPostEventsImmediately(context) && productSourceEnabled(context, targetSourceId)) {
     if (manualNote.source === 'piano') await context.assetRegistrar.ensurePianoAssetForNote(manualNote.midi, manualNote.velocity);
     postManualSynthNote(context, manualNote);
     return;
   }
-  const shouldApplyExternalState = Boolean(externalState);
   if (!productSourceEnabled(context, targetSourceId) || shouldApplyExternalState) {
     context.setLatestSliderState(manualAuditionState(manualNote.source, externalState ?? context.latestSliderState() ?? undefined));
   }
@@ -157,12 +157,12 @@ export async function auditionCoreProductSynthNotes(
 ): Promise<void> {
   const manualNotes = notes.map(requireManualNote);
   const targetSourceIds = manualNotes.map((note) => sourceId(note.source));
-  if (runtimeCanPostEventsImmediately(context) && productSourcesEnabled(context, targetSourceIds)) {
+  const shouldApplyExternalState = Boolean(externalState);
+  if (!shouldApplyExternalState && runtimeCanPostEventsImmediately(context) && productSourcesEnabled(context, targetSourceIds)) {
     await ensurePianoAssetsForManualNotes(context, manualNotes);
     for (const note of manualNotes) postManualSynthNote(context, note);
     return;
   }
-  const shouldApplyExternalState = Boolean(externalState);
   if (!productSourcesEnabled(context, targetSourceIds) || shouldApplyExternalState) {
     let nextState = { ...(externalState ?? context.latestSliderState() ?? {}) };
     for (const note of manualNotes) nextState = manualAuditionState(note.source, nextState);

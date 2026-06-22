@@ -15,6 +15,7 @@ import {
   markCaptureStepVisited,
   writeCaptureEventToStep,
 } from './generatedSequencerCaptureScratch';
+import { resolveTriggerClip } from './triggerClip';
 import type {
   LaneKind,
   PitchSettings,
@@ -236,6 +237,7 @@ function testCommitGeneratedCaptureToEuclid(): void {
     setPitchBindingMode: (laneIndex, mode) => {
       selectedPitchBinding = [laneIndex, mode];
     },
+    sourceMode: 'orbit',
   });
 
   assert.deepEqual(selectedMode, [targetLaneIndex, 'euclid']);
@@ -248,11 +250,11 @@ function testCommitGeneratedCaptureToEuclid(): void {
   ]);
   assert.equal(openLane, 'pitch');
 
-  const triggerMap = stepOverrides.triggerToggles[targetLaneIndex];
-  assert.deepEqual(
-    Array.from({ length: 4 }, (_, step) => triggerMap?.get(step) === true),
-    [true, false, true, false],
-  );
+  const triggerClip = stepOverrides.triggerClips?.[targetLaneIndex];
+  assert.equal(triggerClip?.origin, 'recorded');
+  assert.equal(triggerClip?.label, 'Orbit capture');
+  assert.deepEqual(resolveTriggerClip(triggerClip!), [true, false, true, false]);
+  assert.equal(stepOverrides.triggerToggles[targetLaneIndex]?.size, 0);
   assert.deepEqual(stepOverrides.pitch[targetLaneIndex], [0, 7]);
   assert.deepEqual(stepOverrides.expression[targetLaneIndex], [0.5, 0.8]);
   assert.deepEqual(stepOverrides.nudge[targetLaneIndex], [0, 0]);
@@ -325,6 +327,7 @@ function testCommitGeneratedCaptureWritesNudge(): void {
     seq,
     setSequencerMode: () => {},
     setPitchBindingMode: () => {},
+    sourceMode: 'anchorWalker',
   });
 
   assert.deepEqual(stepOverrides.nudge[targetLaneIndex], [0, -0.25]);
@@ -398,6 +401,7 @@ function testCommitUsesLatestCaptureCycle(): void {
     seq,
     setSequencerMode: () => {},
     setPitchBindingMode: () => {},
+    sourceMode: 'anchorWalker',
   });
 
   assert.deepEqual(params, [
@@ -405,11 +409,14 @@ function testCommitUsesLatestCaptureCycle(): void {
     [targetLaneIndex, 'Hits', 2],
     [targetLaneIndex, 'Rotation', 0],
   ]);
-  const triggerMap = stepOverrides.triggerToggles[targetLaneIndex];
+  const triggerClip = stepOverrides.triggerClips?.[targetLaneIndex];
+  assert.equal(triggerClip?.origin, 'recorded');
+  assert.equal(triggerClip?.label, 'Walker capture');
   assert.deepEqual(
-    Array.from({ length: 8 }, (_, step) => triggerMap?.get(step) === true),
+    resolveTriggerClip(triggerClip!),
     [false, false, true, false, false, false, true, false],
   );
+  assert.equal(stepOverrides.triggerToggles[targetLaneIndex]?.size, 0);
   assert.deepEqual(stepOverrides.pitch[targetLaneIndex], [0, 4]);
   assert.deepEqual(stepOverrides.expression[targetLaneIndex], [0.8, 1]);
   assert.equal(subLaneStates[targetLaneIndex]?.pitch.steps, 2);
@@ -479,12 +486,14 @@ function testSameStepCapturePacksPitchAndDistributesTriggers(): void {
     [targetLaneIndex, 'Hits', 3],
     [targetLaneIndex, 'Rotation', 0],
   ]);
-  const triggerMap = stepOverrides.triggerToggles[targetLaneIndex];
+  const triggerClip = stepOverrides.triggerClips?.[targetLaneIndex];
+  assert.equal(triggerClip?.origin, 'recorded');
   assert.equal(
-    Array.from({ length: 8 }, (_, step) => triggerMap?.get(step) === true).filter(Boolean).length,
+    resolveTriggerClip(triggerClip!).filter(Boolean).length,
     3,
     'colliding capture events should be redistributed as three trigger hits',
   );
+  assert.equal(stepOverrides.triggerToggles[targetLaneIndex]?.size, 0);
   assert.deepEqual(stepOverrides.pitch[targetLaneIndex], [0, 4, 7]);
   assert.deepEqual(stepOverrides.expression[targetLaneIndex], [0.4, 0.6, 0.8]);
   assert.equal(subLaneStates[targetLaneIndex]?.pitch.steps, 3);

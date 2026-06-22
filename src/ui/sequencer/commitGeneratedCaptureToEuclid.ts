@@ -15,6 +15,7 @@ import {
   captureEventsInOrder,
   captureStepCount,
 } from './generatedSequencerCaptureScratch';
+import { createBitmapTriggerClip } from './triggerClip';
 import { NUDGE_EPSILON, computeNudgeFromContinuousStep } from './nudgeTiming';
 import { clampEuclideanSubLaneSteps } from './sequencerLimits';
 
@@ -29,10 +30,16 @@ export interface CommitGeneratedCaptureArgs {
     | 'setSubLaneStates'
     | 'setPitchSettings'
     | 'setOpenLane'
-  >;
+  > & {
+    setTriggerShapeParams?: (
+      laneIdx: number,
+      params: { preset?: string; steps: number; hits: number; rotation: number },
+    ) => void;
+  };
   setSequencerMode: (laneIndex: number, mode: 'euclid') => void;
   setPitchBindingMode?: (laneIndex: number, mode: PitchBindingMode) => void;
   capturePitchReference?: CapturedPitchReference | null;
+  sourceMode?: 'anchorWalker' | 'orbit';
 }
 
 function cloneStepOverrides(prev: StepOverrides): StepOverrides {
@@ -116,6 +123,12 @@ function capturedTriggerPattern(
   return seqEuclidean(scratch.stepCount, Math.min(scratch.stepCount, events.length), 0);
 }
 
+function captureSourceLabel(sourceMode: 'anchorWalker' | 'orbit' | undefined): string {
+  if (sourceMode === 'orbit') return 'Orbit capture';
+  if (sourceMode === 'anchorWalker') return 'Walker capture';
+  return 'Recorded capture';
+}
+
 function triggerStepPositions(pattern: readonly boolean[]): number[] {
   const positions: number[] = [];
   pattern.forEach((enabled, step) => {
@@ -178,6 +191,7 @@ export function commitGeneratedCaptureToEuclid({
   setSequencerMode,
   setPitchBindingMode,
   capturePitchReference,
+  sourceMode,
 }: CommitGeneratedCaptureArgs): void {
   const stepCount = scratch.stepCount;
   if (captureStepCount(scratch) === 0) return;
@@ -197,12 +211,32 @@ export function commitGeneratedCaptureToEuclid({
   const nudgeValues = capturedNudgeValues(capturedEvents, triggerPattern, preserveTriggerSteps);
   const hasNudge = nudgeValues.some((value) => Math.abs(value) > NUDGE_EPSILON);
   const pitchCommit = capturedMidisToSemitonePitchValues(capturedMidis, capturePitchReference);
+  const triggerClip = createBitmapTriggerClip({
+    steps: stepCount,
+    bits: triggerPattern,
+    origin: 'recorded',
+    generator: {
+      kind: 'recorded',
+      takeId: `${sourceMode ?? 'generated'}-capture`,
+      quantize: stepCount,
+    },
+    label: captureSourceLabel(sourceMode),
+  });
 
   setSequencerMode(targetLaneIndex, 'euclid');
-  seq.setParamSelect(targetLaneIndex, 'Preset', 'custom' as never);
-  seq.setParam(targetLaneIndex, 'Steps', stepCount);
-  seq.setParam(targetLaneIndex, 'Hits', hits);
-  seq.setParam(targetLaneIndex, 'Rotation', 0);
+  if (seq.setTriggerShapeParams) {
+    seq.setTriggerShapeParams(targetLaneIndex, {
+      preset: 'custom',
+      steps: stepCount,
+      hits,
+      rotation: 0,
+    });
+  } else {
+    seq.setParamSelect(targetLaneIndex, 'Preset', 'custom' as never);
+    seq.setParam(targetLaneIndex, 'Steps', stepCount);
+    seq.setParam(targetLaneIndex, 'Hits', hits);
+    seq.setParam(targetLaneIndex, 'Rotation', 0);
+  }
   setPitchBindingMode?.(targetLaneIndex, 'polyrhythmic');
 
   seq.setPitchSettings((previous) => previous.map((settings, index) => (
@@ -221,13 +255,12 @@ export function commitGeneratedCaptureToEuclid({
 
   seq.setStepOverrides((previous) => {
     const next = cloneStepOverrides(previous);
-    const triggerMap = new Map<number, boolean>();
-    for (let step = 0; step < stepCount; step += 1) {
-      triggerMap.set(step, triggerPattern[step] === true);
+    if (!next.triggerClips) {
+      next.triggerClips = Array.from({ length: Math.max(next.triggerToggles.length, targetLaneIndex + 1) }, () => null);
     }
-
-    next.triggerToggles[targetLaneIndex] = triggerMap;
-    if (next.triggerClips) next.triggerClips[targetLaneIndex] = null;
+    while (next.triggerClips.length <= targetLaneIndex) next.triggerClips.push(null);
+    next.triggerClips[targetLaneIndex] = triggerClip;
+    next.triggerToggles[targetLaneIndex] = new Map();
     next.pitch[targetLaneIndex] = pitchCommit.pitchValues;
     next.expression[targetLaneIndex] = capturedVelocities;
     next.nudge[targetLaneIndex] = nudgeValues;

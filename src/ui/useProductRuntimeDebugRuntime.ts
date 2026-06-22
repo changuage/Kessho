@@ -26,7 +26,8 @@ type ProductRuntimeDebugRuntime = {
 export function useProductRuntimeDebugRuntime(
   productRuntimeMode: ProductRuntimeSelectionMode,
 ): ProductRuntimeDebugRuntime {
-  // TODO(product-runtime-compat-10A): keep selected debug/runtime names isolated here until
+  // TODO(product-fallback-retire:runtime-debug-runtime): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
+  // Keep selected debug/runtime names isolated here until
   // the debug surface itself is product-owned.
   const {
     getSelectedGranularBufferWaveform: getProductGranularBufferWaveform,

@@ -1,3 +1,4 @@
+import { DRUM_EUCLIDEAN_LANE_COUNT, SYNTH_EUCLIDEAN_LANE_COUNT } from './sequencerLaneCounts';
 import {
   defaultDrumEuclidPattern,
   defaultSynthEuclidPattern,
@@ -32,8 +33,8 @@ export type SequencerChainRuntimePosition = {
   nextBoundarySeconds: number;
 };
 
-export const SYNTH_SEQUENCER_CHAIN_LANE_COUNT = 4;
-export const DRUM_SEQUENCER_CHAIN_LANE_COUNT = 4;
+export const SYNTH_SEQUENCER_CHAIN_LANE_COUNT = SYNTH_EUCLIDEAN_LANE_COUNT;
+export const DRUM_SEQUENCER_CHAIN_LANE_COUNT = DRUM_EUCLIDEAN_LANE_COUNT;
 export const SEQUENCER_CHAIN_LANE_COUNT = SYNTH_SEQUENCER_CHAIN_LANE_COUNT;
 export const SEQUENCER_CHAIN_MAX_LANE_COUNT = DRUM_SEQUENCER_CHAIN_LANE_COUNT;
 export const SEQUENCER_CHAIN_MAX_ENTRIES = 16;

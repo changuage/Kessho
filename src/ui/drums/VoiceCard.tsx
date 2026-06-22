@@ -19,6 +19,7 @@ interface VoiceCardProps {
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   getPresetNames: (voice: DrumVoiceType) => string[];
   triggerVoice: (voice: DrumVoiceType) => void;
+  onAuditionPresetPreview?: (voice: DrumVoiceType, externalState: SliderState) => void | Promise<void>;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
   CollapsiblePanelComponent: React.ComponentType<Record<string, unknown>>;
@@ -58,6 +59,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
   sliderProps,
   getPresetNames,
   triggerVoice,
+  onAuditionPresetPreview,
   onStateChange,
   SliderComponent,
   editingVoice,
@@ -72,6 +74,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
   const varVal = state[macros.variation] as number;
   const distVal = state[macros.distance] as number;
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | undefined>(undefined);
+  const [poolPopupSlot, setPoolPopupSlot] = useState<'A' | 'B' | null>(null);
   const { announceHelp } = useSliderHelp();
   const delaySendKey = DELAY_SEND_KEYS[voice];
   const bindHelp = useCallback((helpKey: string) => ({
@@ -155,6 +158,9 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
             onStateChange={onStateChange}
             sliderProps={sliderProps}
             SliderComponent={SliderComponent}
+            onAuditionPresetPreview={onAuditionPresetPreview}
+            poolPopupSlot={poolPopupSlot}
+            onPoolPopupSlotChange={setPoolPopupSlot}
           />
 
           {/* Macro sliders: Variation + Distance in 2-column grid */}
@@ -195,6 +201,9 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
             color={config.color}
             onParamChange={onParamChange}
             onStateChange={onStateChange}
+            onOpenPool={() => setPoolPopupSlot('A')}
+            poolButtonTitle="Edit drum preset pool"
+            poolButtonAriaLabel="Edit drum preset pool"
           />
 
           <VoiceCardAdvanced

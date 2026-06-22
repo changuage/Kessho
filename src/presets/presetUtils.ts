@@ -12,6 +12,7 @@ import type {
   PresetVersionMetadata,
 } from './types';
 import { normalizeJourneyPresetPreview } from './journeyPresetPreview';
+import { normalizePresetPoolMetadata, normalizePresetTags } from './presetPool';
 import {
   arePresetScopesCompatible,
   canonicalizePresetScope,
@@ -39,6 +40,7 @@ const METADATA_FIELDS = [
   'synthPitchSettings',
   'synthPitchBindingModes',
   'journeyPreview',
+  'presetPool',
 ] as const;
 
 const LEGACY_DELAY_A_KEY_ALIASES = {
@@ -160,8 +162,7 @@ function isImplicitFactorySeed(
 }
 
 function normalizeTags(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const tags = value.map(tag => coerceString(tag)).filter((tag): tag is string => Boolean(tag));
+  const tags = normalizePresetTags(value);
   return tags.length ? tags : undefined;
 }
 
@@ -299,7 +300,9 @@ export function normalizePresetVersion(input: unknown): PresetVersion | null {
   for (const field of METADATA_FIELDS) {
     const normalized = field === 'journeyPreview'
       ? normalizeJourneyPresetPreview(input[field])
-      : normalizeMetadataField(input[field]);
+      : field === 'presetPool'
+        ? normalizePresetPoolMetadata(input[field])
+        : normalizeMetadataField(input[field]);
     if (normalized !== undefined) {
       if ((field === 'dualRanges' || field === 'sliderModes') && isPlainObject(normalized)) {
         migrateLegacyDelayAKeys(normalized as Record<string, unknown>);

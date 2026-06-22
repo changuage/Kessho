@@ -62,7 +62,6 @@ export function useScatterSequencerRuntime(args: UseScatterSequencerRuntimeArgs)
           if (!engine?.enabled) continue;
           if ((cooldownRef.current[voice] ?? 0) > now) continue;
           if (Math.random() > Math.max(0, Math.min(1, engine.triggerProbability))) continue;
-          if (Math.random() > Math.max(0, Math.min(1, engine.burstProbability))) continue;
           phraseCandidates.push(voice);
         }
 

@@ -1,6 +1,7 @@
+import { euclideanLaneCount } from './sequencerLaneCounts';
+
 type SequencerClockKind = 'synth' | 'drum';
 
-const PRODUCT_VISIBLE_LANE_COUNT = 4;
 const CORE_PRODUCT_CLOCK_START_DELAY_STATE_KEY = '__coreProductClockStartDelay';
 const CORE_PRODUCT_SNAPSHOT_WALL_SEC_STATE_KEY = '__coreProductSnapshotWallSec';
 
@@ -39,7 +40,8 @@ function shouldRejoinSequencerKind(
     `${prefix}JoinPolicy`,
   ];
   if (timingKeys.some((key) => previous[key] !== next[key])) return true;
-  for (let lane = 1; lane <= PRODUCT_VISIBLE_LANE_COUNT; lane += 1) {
+  const laneCount = euclideanLaneCount(kind);
+  for (let lane = 1; lane <= laneCount; lane += 1) {
     if (!resolvedSequencerLaneEnabled(previous, kind, lane) && resolvedSequencerLaneEnabled(next, kind, lane)) return true;
   }
   return false;

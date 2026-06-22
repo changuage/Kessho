@@ -196,7 +196,15 @@ assert(
     !app.includes('useSelectedAudioEngineRecordingRuntime(audioEngineRuntimeMode)') &&
     !app.includes("from './ui/useAudioRecording'") &&
     productRuntimeLifecycleSurface.includes('useProductRuntimeRecordingRuntime(options.productRuntimeMode)') &&
-    productRuntimeRecordingRuntime.includes('useSelectedAudioEngineRecordingRuntime(productRuntimeMode)') &&
+    productRuntimeRecordingRuntime.includes("import { unavailableProductRecordingBridge } from '../audio/product/ProductRecordingBridge'") &&
+    productRuntimeRecordingRuntime.includes('const recordingAvailable = unavailableProductRecordingBridge.available;') &&
+    productRuntimeRecordingRuntime.includes('visible: recordingAvailable') &&
+    productRuntimeRecordingRuntime.includes('stemRecordingAvailable: recordingAvailable') &&
+    !productRuntimeRecordingRuntime.includes('useSelectedAudioEngineRecordingRuntime') &&
+    !productRuntimeRecordingRuntime.includes('useAudioRecording') &&
+    !productRuntimeRecordingRuntime.includes('referenceAudioEngineDebug') &&
+    !productRuntimeRecordingRuntime.includes('getLimiterNode') &&
+    !productRuntimeRecordingRuntime.includes('getRecordableBusNodes') &&
     selectedAudioEngineRecordingRuntime.includes('useAudioRecording(audioEngineRuntimeMode)') &&
     selectedAudioEngineRecordingRuntime.includes('advancedRecordingButton') &&
     selectedAudioEngineRecordingRuntime.includes('globalRecordingProps') &&
@@ -295,7 +303,8 @@ assert(
     !app.includes('getLeadMorphedParams={getSelectedLeadMorphedParams}') &&
     !app.includes('liveLeadMorphedParamsAvailable={liveLeadMorphedParamsAvailable}') &&
     selectedAudioEngineDebugSurface.includes('liveLeadMorphedParamsAvailable: referenceRuntimeActive') &&
-    selectedAudioEngineDebugSurface.includes("audioEngineRuntimeMode === 'core-product' ? null : referenceAudioEngineDebug.getLeadMorphedParams(lead)") &&
+    selectedAudioEngineDebugSurface.includes("audioEngineRuntimeMode === 'core-product'") &&
+    selectedAudioEngineDebugSurface.includes('readOptionalReferenceDebugValue(() => referenceAudioEngineDebug.getLeadMorphedParams(lead), null)') &&
     !host.includes('getLeadMorphedParams('),
   'core-product Synth UI must keep Lead morphed preview polling disabled and retired from the Product Core host surface',
 );

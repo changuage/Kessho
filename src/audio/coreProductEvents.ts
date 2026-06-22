@@ -283,6 +283,11 @@ function requireSourceId(sourceId: unknown, label = 'sourceId'): number {
   return value;
 }
 
+function requireManualNoteOffSourceId(sourceId: unknown): number {
+  if (sourceId === 0) return 0;
+  return requireSourceId(sourceId);
+}
+
 function coreProductSourceOverrideParamCount(sourceId: number): number {
   switch (sourceId) {
     case CORE_PRODUCT_SOURCE_IDS.pad1:
@@ -1474,6 +1479,22 @@ export function createCoreProductManualNoteEvent(
     value3: requirePositiveFinite(durationMs, 'durationMs') / 1000,
     ...(flags ? { flags } : {}),
   };
+}
+
+export function createCoreProductManualNoteOffEvent(
+  sourceId: number,
+  options: { hard?: boolean } = {},
+): CoreProductEvent {
+  const event: CoreProductEvent = {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.ManualNoteOff,
+    targetId: requireManualNoteOffSourceId(sourceId),
+  };
+  if (options.hard) event.value = 1;
+  return event;
+}
+
+export function createCoreProductManualNoteKillEvent(sourceId: number): CoreProductEvent {
+  return createCoreProductManualNoteOffEvent(sourceId, { hard: true });
 }
 
 export function createCoreProductDrumTriggerEvent(voiceIndex: number, velocity: number): CoreProductEvent {

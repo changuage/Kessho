@@ -6,7 +6,7 @@
 // - list() merges local stock with cloud presets, deduplicating by name
 // - load() prefers cloud, then falls back to local stock
 
-import type { PresetEntry, PresetLevel, PresetSummary } from './types';
+import type { PresetEntry, PresetLevel, PresetRenameIdentity, PresetSummary } from './types';
 import type { IPresetStore } from './PresetStore';
 import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 
@@ -90,6 +90,23 @@ export class HybridPresetStore implements IPresetStore {
     return this.cloud ? null : local;
   }
 
+  async loadById(id: string, version?: number): Promise<PresetEntry | null> {
+    if (this.cloud) {
+      try {
+        const cloudEntry = await this.cloud.loadById(id, version);
+        if (cloudEntry) return cloudEntry;
+        if (SHARED_PRESET_TEST_MODE) return null;
+      } catch (e) {
+        console.warn('Cloud id load failed:', e);
+        if (SHARED_PRESET_TEST_MODE) return null;
+      }
+    }
+
+    const local = await this.local.loadById(id, version);
+    if (local && (local.library === 'stock' || local.author === 'factory')) return local;
+    return this.cloud ? null : local;
+  }
+
   async list(type: PresetLevel, scope?: string): Promise<PresetSummary[]> {
     const localList = await this.local.list(type, scope);
     if (!this.cloud) return localList;
@@ -143,6 +160,29 @@ export class HybridPresetStore implements IPresetStore {
     if (this.cloud) {
       await this.cloud.delete(type, name, scope);
     }
+  }
+
+  async rename(
+    type: PresetLevel,
+    name: string,
+    nextName: string,
+    scope?: string,
+    identity?: PresetRenameIdentity,
+  ): Promise<PresetEntry | null> {
+    const trimmedName = nextName.trim();
+    if (!trimmedName) return null;
+
+    if (this.cloud) {
+      const cloudEntry = await this.cloud.load(type, name, scope);
+      if (cloudEntry) {
+        const renamed = await this.cloud.rename(type, name, trimmedName, scope, identity);
+        await this.local.delete(type, name, scope);
+        return renamed;
+      }
+      if (SHARED_PRESET_TEST_MODE) return null;
+    }
+
+    return this.local.rename(type, name, trimmedName, scope, identity);
   }
 
   async exists(type: PresetLevel, name: string, scope?: string): Promise<boolean> {

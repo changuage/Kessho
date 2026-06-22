@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 
-import { extractCascade, extractParams, getCascadeKeys } from './codec';
+import { extractCascade, extractParams, getCascadeKeys, validateRegistry } from './codec';
+import {
+  buildDrumEuclideanStateFromPatternData,
+  buildSynthEuclideanStateFromPatternData,
+  extractEuclideanPatternDataFromDrumState,
+  extractEuclideanPatternDataFromSynthState,
+} from './euclideanPatternBank';
 import {
   getPresetChildSpecs,
   hashCanonicalJson,
@@ -56,6 +62,52 @@ function bumped<K extends keyof SliderState>(state: SliderState, key: K, amount:
     ...state,
     [key]: Number(state[key] ?? 0) + amount,
   } as SliderState;
+}
+
+function withSynthFaceMode(state: SliderState, slotIndex: number, mode: 'euclid' | 'anchorWalker' | 'orbit'): SliderState {
+  return {
+    ...state,
+    synthSequencerFaces: {
+      ...state.synthSequencerFaces,
+      slots: state.synthSequencerFaces.slots.map((slot, index) => (
+        index === slotIndex ? { ...slot, mode } : slot
+      )),
+    },
+  };
+}
+
+function withSynthChain(state: SliderState): SliderState {
+  return {
+    ...state,
+    synthSequencerChain: {
+      version: 1,
+      enabled: true,
+      entries: [
+        { laneIndex: 1, repeats: 2 },
+        { laneIndex: 3, repeats: 1 },
+      ],
+    },
+  };
+}
+
+function withDrumChain(state: SliderState): SliderState {
+  return {
+    ...state,
+    drumSequencerChain: {
+      version: 1,
+      enabled: true,
+      entries: [
+        { laneIndex: 4, repeats: 3 },
+        { laneIndex: 5, repeats: 1 },
+      ],
+    },
+  };
+}
+
+function testRegistryCoversPresetOwnedState(): void {
+  const result = validateRegistry(Object.keys(DEFAULT_STATE));
+  assert.deepStrictEqual(result.missing, [], 'registry keys should exist on DEFAULT_STATE');
+  assert.deepStrictEqual(result.unassigned, [], 'preset-owned DEFAULT_STATE keys should be assigned to the hierarchy');
 }
 
 function testGraphCoversAllCompositeLevels(): void {
@@ -170,12 +222,15 @@ function testCascadeExtractionIsRecursive(): void {
   assert.equal(synthKeys.has('pad2Attack'), true, 'synth source should include L1 pad2 params through pad2Kit');
   assert.equal(synthKeys.has('lead1Attack'), true, 'synth source should include L1 lead1 params through lead1Kit');
   assert.equal(synthKeys.has('lead2Attack'), true, 'synth source should include L1 lead2 params through lead2Kit');
+  assert.equal(synthKeys.has('synthSequencerFaces'), true, 'synth source should include sequencer face state through its Euclidean child');
+  assert.equal(synthKeys.has('synthSequencerChain'), true, 'synth source should include sequencer chain state through its Euclidean child');
 
   const drumKeys = new Set(getCascadeKeys(3, 'drums'));
   assert.equal(drumKeys.has('drumEnabled'), true, 'drums source should include direct L3 params');
   assert.equal(drumKeys.has('drumKickPresetA'), true, 'drums source should include L2 drum kit params');
   assert.equal(drumKeys.has('drumKickFreq'), true, 'drums source should include L1 drum voice params through drumKit');
   assert.equal(drumKeys.has('drumEuclid1Steps'), true, 'drums source should include shared Euclidean trigger params');
+  assert.equal(drumKeys.has('drumSequencerChain'), true, 'drums source should include sequencer chain state through its Euclidean child');
 
   const granularKeys = new Set(getCascadeKeys(3, 'granular'));
   assert.equal(granularKeys.has('granularEnabled'), true, 'granular source should include direct L3 params');
@@ -224,6 +279,18 @@ function testCascadeExtractionIsRecursive(): void {
 }
 
 function testOverlapIsStrippedAtEachLevel(): void {
+  const stateData = extractCascade(DEFAULT_STATE, 4);
+  const stateOverride = stripReferencedChildData(
+    stateData,
+    childRefData(getPresetChildSpecs('state', undefined), stateData),
+  );
+  assert.equal('dynamicsEnabled' in stateOverride, true, 'global Dynamics enable should remain in the L4 state override');
+  assert.equal('harmonyChordSlots' in stateOverride, true, 'global structured harmony slots should remain in the L4 state override');
+  assert.equal('chordProgressionHits' in stateOverride, true, 'global chord progression template controls should remain in the L4 state override');
+  assert.equal('synthSequencerFaces' in stateOverride, false, 'synth sequencer faces should move out of L4 override into the synth Euclidean child');
+  assert.equal('synthSequencerChain' in stateOverride, false, 'synth sequencer chain should move out of L4 override into the synth Euclidean child');
+  assert.equal('drumSequencerChain' in stateOverride, false, 'drum sequencer chain should move out of L4 override into the drum Euclidean child');
+
   const synthData = extractCascade(DEFAULT_STATE, 3, 'synth');
   const synthOverride = stripReferencedChildData(
     synthData,
@@ -232,6 +299,8 @@ function testOverlapIsStrippedAtEachLevel(): void {
   assert.equal('leadEnabled' in synthOverride, true, 'source-owned synth params should remain in L3 override');
   assert.equal('padPresetA' in synthOverride, false, 'L2 pad kit selector should move out of L3 override');
   assert.equal('synthEuclid2Steps' in synthOverride, false, 'all synth Euclidean lanes should move out of L3 override');
+  assert.equal('synthSequencerFaces' in synthOverride, false, 'synth sequencer face state should move out of L3 override');
+  assert.equal('synthSequencerChain' in synthOverride, false, 'synth sequencer chain state should move out of L3 override');
   assert.equal('padOscAWave' in synthOverride, false, 'L1 pad params should move out of L3 override through pad1Kit');
   assert.equal('lead1Attack' in synthOverride, false, 'L1 lead params should move out of L3 override through lead1Kit');
 
@@ -242,6 +311,7 @@ function testOverlapIsStrippedAtEachLevel(): void {
   );
   assert.equal('drumEnabled' in drumsOverride, true, 'source-owned drum params should remain in L3 override');
   assert.equal('drumEuclid4Hits' in drumsOverride, false, 'all drum Euclidean lanes should move out of L3 override');
+  assert.equal('drumSequencerChain' in drumsOverride, false, 'drum sequencer chain state should move out of L3 override');
 
   const drumKitData = extractCascade(DEFAULT_STATE, 2, 'drumKit');
   const drumKitOverride = stripReferencedChildData(
@@ -407,10 +477,28 @@ async function testEuclideanStepOverridesAffectOnlyEuclideanChildHash(): Promise
     synthHashWithClock,
     'custom synth clock divisions should create a distinct Euclidean child hash',
   );
+
+  const synthFacesState = withSynthFaceMode(DEFAULT_STATE, 1, 'orbit');
+  const synthChainState = withSynthChain(DEFAULT_STATE);
+  assert.notEqual(
+    synthHash,
+    await childHash('source', 'synth', 'euclideanPattern', synthFacesState),
+    'custom synth sequencer face state should create a distinct Euclidean child hash',
+  );
+  assert.notEqual(
+    synthHash,
+    await childHash('source', 'synth', 'euclideanPattern', synthChainState),
+    'custom synth sequencer chain state should create a distinct Euclidean child hash',
+  );
   assert.equal(
     padHash,
     padHashWithOverrides,
     'sequencer metadata should not affect unrelated L1 child hashes',
+  );
+  assert.equal(
+    padHash,
+    await childHash('kit', 'pad1Kit', 'pad1', synthChainState),
+    'synth sequencer chain state should not affect unrelated pad child hashes',
   );
 
   const drumHash = await childHash('source', 'drums', 'euclideanPattern', DEFAULT_STATE);
@@ -431,6 +519,63 @@ async function testEuclideanStepOverridesAffectOnlyEuclideanChildHash(): Promise
     drumHash,
     drumHashWithPitchSettings,
     'custom drum pitch settings should create a distinct Euclidean child hash',
+  );
+
+  const drumChainState = withDrumChain(DEFAULT_STATE);
+  assert.notEqual(
+    drumHash,
+    await childHash('source', 'drums', 'euclideanPattern', drumChainState),
+    'custom drum sequencer chain state should create a distinct Euclidean child hash',
+  );
+  assert.equal(
+    await childHash('kit', 'drumKit', 'drumKick', DEFAULT_STATE),
+    await childHash('kit', 'drumKit', 'drumKick', drumChainState),
+    'drum sequencer chain state should not affect unrelated drum kit child hashes',
+  );
+}
+
+function testEuclideanSpecificDataPreservesStructuredSequencerState(): void {
+  const synthState = withSynthChain(withSynthFaceMode(DEFAULT_STATE, 2, 'anchorWalker'));
+  const synthData = extractEuclideanPatternDataFromSynthState(synthState);
+  assert.deepStrictEqual(
+    synthData.synthSequencerFaces,
+    synthState.synthSequencerFaces,
+    'synth Euclidean extraction should include structured face state',
+  );
+  assert.deepStrictEqual(
+    synthData.synthSequencerChain,
+    synthState.synthSequencerChain,
+    'synth Euclidean extraction should include structured chain state',
+  );
+  assert.deepStrictEqual(
+    buildSynthEuclideanStateFromPatternData(synthData).synthSequencerFaces,
+    synthState.synthSequencerFaces,
+    'synth Euclidean child rehydration should preserve structured face state',
+  );
+  assert.deepStrictEqual(
+    buildSynthEuclideanStateFromPatternData(synthData).synthSequencerChain,
+    synthState.synthSequencerChain,
+    'synth Euclidean child rehydration should preserve structured chain state',
+  );
+  assert.deepStrictEqual(
+    buildSynthEuclideanStateFromPatternData({
+      synthChordSequencer: synthState.synthChordSequencer,
+    }).synthChordSequencer,
+    synthState.synthChordSequencer,
+    'synth Euclidean child rehydration should preserve structured chord sequencer-only payloads',
+  );
+
+  const drumState = withDrumChain(DEFAULT_STATE);
+  const drumData = extractEuclideanPatternDataFromDrumState(drumState);
+  assert.deepStrictEqual(
+    drumData.drumSequencerChain,
+    drumState.drumSequencerChain,
+    'drum Euclidean extraction should include structured chain state',
+  );
+  assert.deepStrictEqual(
+    buildDrumEuclideanStateFromPatternData(drumData).drumSequencerChain,
+    drumState.drumSequencerChain,
+    'drum Euclidean child rehydration should preserve structured chain state',
   );
 }
 
@@ -538,11 +683,13 @@ function testJourneyDedupKeepsGraphAsResolvedPayload(): void {
 }
 
 async function run(): Promise<void> {
+  testRegistryCoversPresetOwnedState();
   testGraphCoversAllCompositeLevels();
   testLegacyDegradeChildScopesAliasToCanonical();
   testCascadeExtractionIsRecursive();
   testOverlapIsStrippedAtEachLevel();
   await testEuclideanStepOverridesAffectOnlyEuclideanChildHash();
+  testEuclideanSpecificDataPreservesStructuredSequencerState();
   await testIdenticalUnsavedChildrenResolveToSameDerivedName();
   await testMissingDefaultKeysDoNotCreateFalseDifferences();
   testVersionStorageSignatureTreatsMetadataAndRefsAsContent();

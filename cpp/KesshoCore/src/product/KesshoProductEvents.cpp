@@ -588,7 +588,11 @@ void KesshoProductEngine::sortControlEvents() {
       break;
     }
     case KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_OFF:
-      releaseSourceVoices(event.target_id);
+      if (event.value >= 1.0f) {
+        killSourceVoices(event.target_id);
+      } else {
+        releaseSourceVoices(event.target_id);
+      }
       break;
     case KESSHO_PRODUCT_EVENT_KIND_MIDI_EVENT:
       applyMidiEvent(event);

@@ -52,6 +52,7 @@ import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 import type {
   PresetEntry,
   PresetLevel,
+  PresetRenameIdentity,
   PresetRecoveryWarning,
   PresetRef,
   PresetSummary,
@@ -872,6 +873,71 @@ export class SupabasePresetStore implements IPresetStore {
     return !!data && data.length > 0;
   }
 
+  private buildRenamePayloadFromRow(
+    row: {
+      name: string;
+      creator?: string | null;
+      description?: string | null;
+      visibility?: string | null;
+      family_name?: string | null;
+      variant_name?: string | null;
+      variant_rank?: number | null;
+      rating?: number | null;
+      tags?: string[] | null;
+    },
+    nextName: string,
+    identity?: PresetRenameIdentity,
+  ): Record<string, unknown> {
+    const payload: Record<string, unknown> = {
+      name: nextName,
+      creator: identity && 'creator' in identity ? identity.creator ?? null : row.creator ?? null,
+      description: identity && 'description' in identity ? identity.description ?? null : row.description ?? null,
+      visibility: identity && 'visibility' in identity ? identity.visibility ?? 'private' : row.visibility ?? 'private',
+      family_name: identity && 'familyName' in identity ? identity.familyName ?? null : row.family_name ?? null,
+      variant_name: identity && 'variantName' in identity ? identity.variantName ?? null : row.variant_name ?? null,
+      variant_rank: identity && 'variantRank' in identity ? identity.variantRank ?? null : row.variant_rank ?? null,
+      rating: identity && 'rating' in identity ? identity.rating ?? null : row.rating ?? null,
+    };
+    if (identity && 'tags' in identity) {
+      payload.tags = identity.tags ?? [];
+    } else if (row.tags) {
+      payload.tags = row.tags;
+    }
+    return payload;
+  }
+
+  private async renameLegacy(
+    type: PresetLevel,
+    name: string,
+    nextName: string,
+    scope?: string,
+    identity?: PresetRenameIdentity,
+  ): Promise<PresetEntry | null> {
+    const target = await this.fetchLegacyDetailRpc(type, name, scope);
+    if (!target) return null;
+
+    const conflict = await this.fetchLegacyDetailRpc(type, nextName, scope);
+    if (conflict && conflict.id !== target.id) {
+      throw new Error(`A preset named "${nextName}" already exists.`);
+    }
+
+    const { data, error } = await this.client
+      .from('presets')
+      .update(this.buildRenamePayloadFromRow(target, nextName, identity))
+      .eq('id', target.id)
+      .select('*')
+      .single();
+
+    if (error) {
+      throw new Error(`Legacy cloud preset rename failed: ${error.message}`);
+    }
+    if (!data) {
+      throw new Error(`Legacy cloud preset rename failed: "${name}" was not updated.`);
+    }
+
+    return legacyRowToEntry(data as PresetRow);
+  }
+
   private async queryPresetRowsV2(
     type: PresetLevel,
     name: string,
@@ -928,6 +994,41 @@ export class SupabasePresetStore implements IPresetStore {
     );
 
     return ((data ?? []) as unknown as PresetV2Row[])[0] ?? null;
+  }
+
+  private async renameV2(
+    type: PresetLevel,
+    name: string,
+    nextName: string,
+    scope?: string,
+    identity?: PresetRenameIdentity,
+  ): Promise<PresetEntry | null> {
+    const targetRows = await this.queryPresetRowsV2(type, name, scope, { scopeAliases: true });
+    const target = targetRows[0] ?? null;
+    if (!target) return null;
+
+    const conflictRows = await this.queryPresetRowsV2(type, nextName, scope, { scopeAliases: true });
+    const conflict = conflictRows.find(row => row.id !== target.id);
+    if (conflict) {
+      throw new Error(`A preset named "${nextName}" already exists.`);
+    }
+
+    const { data, error } = await this.client
+      .from('presets_v2')
+      .update(this.buildRenamePayloadFromRow(target, nextName, identity))
+      .eq('id', target.id)
+      .select('*')
+      .single();
+
+    if (error) {
+      if (this.markV2UnavailableIfMissing(error)) throw error;
+      throw new Error(`Cloud preset rename failed: ${error.message}`);
+    }
+    if (!data) {
+      throw new Error(`Cloud preset rename failed: "${name}" was not updated.`);
+    }
+
+    return this.loadV2ByRow(data as PresetV2Row);
   }
 
   private getExplicitRefTargetSpec(
@@ -1931,6 +2032,37 @@ export class SupabasePresetStore implements IPresetStore {
     }
   }
 
+  async loadById(id: string, version?: number): Promise<PresetEntry | null> {
+    const targetId = id.trim();
+    if (!targetId || this.shouldSkipReadForCircuit()) return null;
+
+    try {
+      if (await this.supportsV2()) {
+        if (this.shouldSkipReadForCircuit()) return null;
+        const row = await this.findPresetRowByIdV2(targetId);
+        if (row) return this.loadV2ByRow(row, version);
+        if (SHARED_PRESET_TEST_MODE) return null;
+      }
+
+      if (this.shouldSkipReadForCircuit()) return null;
+      const rpcRow = await this.fetchLegacyDetailRpc(undefined, undefined, undefined, targetId);
+      if (!rpcRow) return null;
+      const entry = legacyRowToEntry(rpcRow);
+      await this.rewriteLegacyDelayAKeysIfOwned(rpcRow, entry);
+      if (version !== undefined) {
+        const selected = entry.versions.find(v => v.v === version);
+        return selected ? { ...entry, currentVersion: selected.v } : null;
+      }
+      return entry;
+    } catch (error) {
+      if (isTerminalSupabaseListError(error)) {
+        this.openListCircuitIfTerminal(error);
+        return null;
+      }
+      throw error;
+    }
+  }
+
   async list(type: PresetLevel, scope?: string): Promise<PresetSummary[]> {
     const key = this.getListCacheKey(type, scope);
     const now = Date.now();
@@ -1976,6 +2108,27 @@ export class SupabasePresetStore implements IPresetStore {
       });
     this.listInFlight.set(key, request);
     return clonePresetSummaries(await request);
+  }
+
+  async rename(
+    type: PresetLevel,
+    name: string,
+    nextName: string,
+    scope?: string,
+    identity?: PresetRenameIdentity,
+  ): Promise<PresetEntry | null> {
+    const trimmedName = nextName.trim();
+    if (!trimmedName) return null;
+
+    if (await this.supportsV2()) {
+      const renamed = await this.renameV2(type, name, trimmedName, scope, identity);
+      this.clearListCache();
+      if (renamed || SHARED_PRESET_TEST_MODE) return renamed;
+    }
+
+    const renamed = await this.renameLegacy(type, name, trimmedName, scope, identity);
+    this.clearListCache();
+    return renamed;
   }
 
   private async listUncached(type: PresetLevel, scope?: string): Promise<PresetSummary[]> {

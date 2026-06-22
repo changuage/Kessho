@@ -3,6 +3,7 @@ import { normalizeSequencerSwing } from '../audio/sequencerSwing';
 import { mergeRuntimeValues } from './runtimeValueState';
 import { emitVisualizerPulse } from './visualizer/visualizerSignals';
 import type { LaneDirection, TrigCondition } from '../audio/drumSeqTypes';
+import { DRUM_EUCLIDEAN_LANE_COUNT, SYNTH_EUCLIDEAN_LANE_COUNT } from '../audio/sequencerLaneCounts';
 import type { PitchSettings, StepOverrides, SubLaneKind, SubLaneState } from './sequencer/useEuclideanSequencer';
 
 type EvolvedSubLanePatch = Partial<Record<SubLaneKind, Partial<SubLaneState>>>;
@@ -39,8 +40,6 @@ type SelectedAudioEngineEvolveOverrideState = {
   synthEvolvedOverrides: EvolvedOverrideState | undefined;
 };
 
-const SYNTH_EUCLIDEAN_LANE_COUNT = 4;
-const DRUM_EUCLIDEAN_LANE_COUNT = 6;
 const DEFAULT_SYNTH_EUCLIDEAN_SWINGS = Array.from({ length: SYNTH_EUCLIDEAN_LANE_COUNT }, () => 0);
 const DEFAULT_DRUM_EUCLIDEAN_SWINGS = Array.from({ length: DRUM_EUCLIDEAN_LANE_COUNT }, () => 0);
 const EVOLVED_SUBLANE_KEYS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'nudge'];
@@ -83,7 +82,7 @@ function normalizeEvolvedSubLanePatch(value: unknown): EvolvedSubLanePatch | und
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-function emptyEvolvedRangeOverrides(laneCount = SYNTH_EUCLIDEAN_LANE_COUNT): (EvolvedRangeOverride | null)[] {
+function emptyEvolvedRangeOverrides(laneCount: number = SYNTH_EUCLIDEAN_LANE_COUNT): (EvolvedRangeOverride | null)[] {
   return Array.from({ length: laneCount }, () => null);
 }
 

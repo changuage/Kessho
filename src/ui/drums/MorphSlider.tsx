@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import { usePresets } from '../../presets/usePresets';
@@ -8,6 +8,10 @@ import {
   setUserPresets,
 } from '../../audio/drumPresets';
 import { applyDrumPresetSlotChange } from './drumPresetApply';
+import { PresetPoolPopup } from '../../presets/PresetPoolPopup';
+import { usePresetPoolCandidates } from '../../presets/PresetPoolContext';
+import { getPresetPoolLabel, type PresetPoolCandidate } from '../../presets/presetPool';
+import { rateDrumPreset } from './drumPresetRating';
 
 interface MorphSliderProps {
   voice: DrumVoiceType;
@@ -17,6 +21,9 @@ interface MorphSliderProps {
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
+  onAuditionPresetPreview?: (voice: DrumVoiceType, externalState: SliderState) => void | Promise<void>;
+  poolPopupSlot?: 'A' | 'B' | null;
+  onPoolPopupSlotChange?: (slot: 'A' | 'B' | null) => void;
 }
 
 const MORPH_KEYS: Record<DrumVoiceType, { a: keyof SliderState; b: keyof SliderState; morph: keyof SliderState }> = {
@@ -38,6 +45,26 @@ const DRUM_ENGINE_SCOPES: Record<DrumVoiceType, string> = {
   noise: 'drumNoise',
   membrane: 'drumMembrane',
 };
+
+const DRUM_POOL_PREVIEW_LEVEL_FLOOR = 0.68;
+
+function applyDrumPoolPreviewLevelFloor(state: SliderState): SliderState {
+  if (
+    state.drumEnabled === true &&
+    typeof state.drumLevel === 'number' &&
+    state.drumLevel >= DRUM_POOL_PREVIEW_LEVEL_FLOOR
+  ) {
+    return state;
+  }
+  return {
+    ...state,
+    drumEnabled: true,
+    drumLevel: Math.max(
+      typeof state.drumLevel === 'number' ? state.drumLevel : 0,
+      DRUM_POOL_PREVIEW_LEVEL_FLOOR,
+    ),
+  };
+}
 
 function createRuntimeDrumPreset(
   voice: DrumVoiceType,
@@ -67,17 +94,64 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
   onStateChange,
   sliderProps: getSliderProps,
   SliderComponent,
+  onAuditionPresetPreview,
+  poolPopupSlot: controlledPoolPopupSlot,
+  onPoolPopupSlotChange,
 }) => {
   const morph = MORPH_KEYS[voice];
   const engineScope = DRUM_ENGINE_SCOPES[voice];
-  const { presets: enginePresets, load } = usePresets('engine', engineScope);
+  const { presets: enginePresets, save, load, remove, updateMetadata } = usePresets('engine', engineScope);
+  const [internalPoolPopupSlot, setInternalPoolPopupSlot] = useState<'A' | 'B' | null>(null);
+  const poolPopupSlot = controlledPoolPopupSlot !== undefined ? controlledPoolPopupSlot : internalPoolPopupSlot;
+  const setPoolPopupSlot = onPoolPopupSlotChange ?? setInternalPoolPopupSlot;
   const liveMorphValue = useRuntimeValue(String(morph.morph));
   const morphValue = liveMorphValue ?? (state[morph.morph] as number);
   const factoryPresetNames = getFactoryPresetNames(voice);
   const knownPresetNames = getPresetNames(voice);
-  const summaryByName = new Map(enginePresets.map(preset => [preset.name, preset]));
+  const summaryByName = useMemo(() => new Map(enginePresets.map(preset => [preset.name, preset])), [enginePresets]);
   const userPresetNames: string[] = [];
   const cloudPresetNames: string[] = [];
+  const poolCandidates = useMemo<PresetPoolCandidate[]>(() => {
+    const candidates: PresetPoolCandidate[] = factoryPresetNames.map((name) => {
+      const summary = summaryByName.get(name);
+      return {
+        id: summary?.id ?? summary?.remoteId ?? name,
+        name,
+        library: summary?.library ?? 'stock',
+        tags: summary?.tags,
+        aliases: [name, summary?.id, summary?.remoteId].filter((value): value is string => Boolean(value)),
+        updatedAt: summary?.updatedAt,
+        rating: summary?.rating,
+      };
+    });
+    for (const name of knownPresetNames) {
+      if (factoryPresetNames.includes(name)) continue;
+      const summary = summaryByName.get(name);
+      candidates.push({
+        id: summary?.id ?? summary?.remoteId ?? name,
+        name,
+        library: summary?.library ?? 'user',
+        tags: summary?.tags,
+        aliases: [name, summary?.id, summary?.remoteId].filter((value): value is string => Boolean(value)),
+        updatedAt: summary?.updatedAt,
+        rating: summary?.rating,
+      });
+    }
+    return candidates;
+  }, [factoryPresetNames, knownPresetNames, summaryByName]);
+  const pool = usePresetPoolCandidates('engine', engineScope, poolCandidates, [
+    String(state[morph.a] ?? ''),
+    String(state[morph.b] ?? ''),
+  ]);
+  const visiblePresetNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const candidate of pool.filteredCandidates) {
+      names.add(candidate.name);
+      for (const alias of candidate.aliases ?? []) names.add(alias);
+    }
+    return names;
+  }, [pool.filteredCandidates]);
+  const pooledFactoryPresetNames = factoryPresetNames.filter(name => visiblePresetNames.has(name));
   const clearLiveMorphValue = useCallback(() => {
     removeRuntimeValues([String(morph.morph)]);
   }, [morph.morph]);
@@ -101,9 +175,47 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
     }
     onParamChange(morph.b, value as SliderState[keyof SliderState]);
   }, [clearLiveMorphValue, morph.b, onParamChange, onStateChange, voice]);
+  const handlePoolLoad = useCallback((candidate: PresetPoolCandidate) => {
+    if (poolPopupSlot === 'A') {
+      handlePresetAChange(candidate.name);
+    } else if (poolPopupSlot === 'B') {
+      handlePresetBChange(candidate.name);
+    }
+    setPoolPopupSlot(null);
+  }, [handlePresetAChange, handlePresetBChange, poolPopupSlot]);
+
+  const handlePoolAudition = useCallback((candidate: PresetPoolCandidate) => {
+    if (!poolPopupSlot || !onAuditionPresetPreview) return;
+    const endpointState = {
+      ...state,
+      [morph.morph]: poolPopupSlot === 'A' ? 0 : 1,
+    } as SliderState;
+    const previewState = applyDrumPoolPreviewLevelFloor(applyDrumPresetSlotChange(endpointState, voice, poolPopupSlot, candidate.name));
+    void onAuditionPresetPreview(voice, previewState);
+  }, [morph.morph, onAuditionPresetPreview, poolPopupSlot, state, voice]);
+
+  const handlePoolDelete = useCallback((candidate: PresetPoolCandidate) => {
+    return remove(candidate.name);
+  }, [remove]);
+
+  const handlePoolRate = useCallback(async (candidate: PresetPoolCandidate, rating: number) => {
+    try {
+      await rateDrumPreset({
+        voice,
+        name: candidate.name,
+        rating,
+        presets: enginePresets,
+        save,
+        updateMetadata,
+      });
+    } catch (ratingError) {
+      console.warn(`Failed to update ${voice} preset rating:`, ratingError);
+    }
+  }, [enginePresets, save, updateMetadata, voice]);
 
   for (const name of knownPresetNames) {
     if (factoryPresetNames.includes(name)) continue;
+    if (!visiblePresetNames.has(name)) continue;
     const summary = summaryByName.get(name);
     if (summary?.library === 'cloud') {
       cloudPresetNames.push(name);
@@ -159,7 +271,7 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
           title="Preset A"
         >
           <optgroup label="Stock">
-            {factoryPresetNames.map((name) => <option key={name} value={name}>{name}</option>)}
+            {pooledFactoryPresetNames.map((name) => <option key={name} value={name}>{name}</option>)}
           </optgroup>
           {userPresetNames.length > 0 && (
             <optgroup label="My Presets">
@@ -195,7 +307,7 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
           title="Preset B"
         >
           <optgroup label="Stock">
-            {factoryPresetNames.map((name) => <option key={name} value={name}>{name}</option>)}
+            {pooledFactoryPresetNames.map((name) => <option key={name} value={name}>{name}</option>)}
           </optgroup>
           {userPresetNames.length > 0 && (
             <optgroup label="My Presets">
@@ -210,6 +322,19 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
         </select>
       </div>
       <span className="morph-label">B</span>
+      <PresetPoolPopup
+        open={Boolean(poolPopupSlot)}
+        title={`Preset Pool: ${getPresetPoolLabel(pool.poolKey ?? engineScope)}`}
+        candidates={poolCandidates}
+        poolIds={pool.poolIds}
+        onChange={pool.setPoolIds}
+        onReset={pool.resetPoolIds}
+        onClose={() => setPoolPopupSlot(null)}
+        onAudition={handlePoolAudition}
+        onLoad={handlePoolLoad}
+        onDelete={handlePoolDelete}
+        onRate={handlePoolRate}
+      />
     </div>
   );
 };

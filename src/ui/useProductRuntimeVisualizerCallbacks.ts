@@ -32,7 +32,8 @@ export function useProductRuntimeVisualizerCallbacks({
   setProductSynthStepPositionCallback,
   uiMode,
 }: ProductRuntimeVisualizerCallbacksOptions): void {
-  // TODO(product-runtime-compat-10E): visualizer registration still delegates to the
+  // TODO(product-fallback-retire:runtime-visualizer-callbacks): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
+  // Visualizer registration still delegates to the
   // selected-runtime compatibility hook until callback registration is product-owned.
   useSelectedAudioEngineVisualizerCallbacks({
     activeTab,

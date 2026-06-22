@@ -1,9 +1,10 @@
+import { useCallback } from 'react';
+import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import type {
   ProductSynthAnchorWalkerVisualStateCallback,
   ProductSynthOrbitVisualStateCallback,
 } from '../audio/product/ProductEngineTypes';
-import { useSelectedAudioEngineSequencerCallbacks } from './useSelectedAudioEngineSequencerCallbacks';
 
 type ProductRuntimeSequencerCallbacks = {
   setProductDrumStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
@@ -16,17 +17,45 @@ type ProductRuntimeSequencerCallbacks = {
 };
 
 export function useProductRuntimeSequencerCallbacks(
-  productRuntimeMode: ProductRuntimeSelectionMode,
+  _productRuntimeMode: ProductRuntimeSelectionMode,
 ): ProductRuntimeSequencerCallbacks {
-  const sequencerCallbacks = useSelectedAudioEngineSequencerCallbacks(productRuntimeMode);
+  const setProductDrumStepPositionCallback = useCallback((callback: ((steps: number[], hitCounts: number[]) => void) | null): void => {
+    productEngine.setDrumStepPositionCallback(callback);
+  }, []);
+
+  const setProductDrumEvolveTriggerCallback = useCallback((callback: ((laneIndex: number) => void) | null): void => {
+    productEngine.setDrumEuclidEvolveTriggerCallback(callback);
+  }, []);
+
+  const setProductDrumTriggerCallback = useCallback((callback: ((voice: string, velocity: number) => void) | null): void => {
+    productEngine.setDrumTriggerCallback(callback ? (voice, velocity) => {
+      callback(String(voice), velocity);
+    } : null);
+  }, []);
+
+  const setProductSynthStepPositionCallback = useCallback((callback: ((steps: number[], hitCounts: number[]) => void) | null): void => {
+    productEngine.setSynthStepPositionCallback(callback);
+  }, []);
+
+  const setProductSynthOrbitVisualStateCallback = useCallback((callback: ProductSynthOrbitVisualStateCallback | null): void => {
+    productEngine.setSynthOrbitVisualStateCallback(callback);
+  }, []);
+
+  const setProductSynthAnchorWalkerVisualStateCallback = useCallback((callback: ProductSynthAnchorWalkerVisualStateCallback | null): void => {
+    productEngine.setSynthAnchorWalkerVisualStateCallback(callback);
+  }, []);
+
+  const setProductSynthEvolveTriggerCallback = useCallback((callback: ((laneIndex: number) => void) | null): void => {
+    productEngine.setSynthEuclidEvolveTriggerCallback(callback);
+  }, []);
 
   return {
-    setProductDrumStepPositionCallback: sequencerCallbacks.setSelectedDrumStepPositionCallback,
-    setProductDrumEvolveTriggerCallback: sequencerCallbacks.setSelectedDrumEvolveTriggerCallback,
-    setProductDrumTriggerCallback: sequencerCallbacks.setSelectedDrumTriggerCallback,
-    setProductSynthStepPositionCallback: sequencerCallbacks.setSelectedSynthStepPositionCallback,
-    setProductSynthOrbitVisualStateCallback: sequencerCallbacks.setSelectedSynthOrbitVisualStateCallback,
-    setProductSynthAnchorWalkerVisualStateCallback: sequencerCallbacks.setSelectedSynthAnchorWalkerVisualStateCallback,
-    setProductSynthEvolveTriggerCallback: sequencerCallbacks.setSelectedSynthEvolveTriggerCallback,
+    setProductDrumStepPositionCallback,
+    setProductDrumEvolveTriggerCallback,
+    setProductDrumTriggerCallback,
+    setProductSynthStepPositionCallback,
+    setProductSynthOrbitVisualStateCallback,
+    setProductSynthAnchorWalkerVisualStateCallback,
+    setProductSynthEvolveTriggerCallback,
   };
 }

@@ -7,6 +7,7 @@ import type {
   PresetFamilySummary,
   PresetIdentityMetadata,
   PresetLevel,
+  PresetRenameIdentity,
   PresetSaveIdentity,
   PresetSummary,
   PresetVersionMetadata,
@@ -15,6 +16,7 @@ import { getPresetStore, subscribePresetStore } from './PresetStore';
 import { extractParams, applyParams, extractCascade, applyCascade, compressVersions, getVersionData } from './codec';
 import { extractPresetVersionMetadata, presetValuesEqual } from './presetUtils';
 import { buildPresetFamilies } from './catalog';
+import { normalizePresetTags } from './presetPool';
 import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE, isSharedPresetCloudOnlyMode } from './sharedMode';
 import type { ParamLevel } from './ParamRegistry';
 import type { SliderState } from '../ui/state';
@@ -92,8 +94,12 @@ export interface UsePresetsResult {
   ) => Promise<void>;
   /** Load a preset by name, returns the full entry */
   load: (name: string, version?: number) => Promise<PresetEntry | null>;
+  /** Load a preset by stable id, returns the full entry */
+  loadById: (id: string, version?: number) => Promise<PresetEntry | null>;
   /** Delete a preset by name (only user presets) */
   remove: (name: string) => Promise<boolean>;
+  /** Rename a preset in place without creating a new preset id/version */
+  rename: (name: string, nextName: string, identity?: PresetRenameIdentity) => Promise<PresetEntry | null>;
   /** Refresh the preset list from the store */
   refresh: () => Promise<void>;
   /** Extract params from state for the current level/scope */
@@ -101,7 +107,7 @@ export interface UsePresetsResult {
   /** Apply preset data to state, returning new state */
   apply: (state: SliderState, data: Record<string, unknown>) => SliderState;
   /** Update metadata on a preset without creating a new version */
-  updateMetadata: (name: string, meta: Partial<PresetIdentityMetadata>) => Promise<void>;
+  updateMetadata: (name: string, meta: Partial<PresetIdentityMetadata> & { tags?: string[] }) => Promise<void>;
 }
 
 export interface UsePresetsOptions {
@@ -219,8 +225,11 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
         identity?.variantId === undefined &&
         identity?.variantName === undefined &&
         identity?.variantRank === undefined &&
+        identity?.rating === undefined &&
         identity?.visibility === undefined;
-      const tagsUnchanged = !tags;
+      const normalizedTags = tags === undefined ? undefined : normalizePresetTags(tags);
+      const tagsUnchanged = normalizedTags === undefined
+        || presetValuesEqual(existing.tags ?? [], normalizedTags);
 
       if (sameData && sameMetadata && identityUnchanged && tagsUnchanged && !note?.trim()) {
         await refresh();
@@ -238,7 +247,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
       existing.currentVersion = maxV + 1;
       existing.updatedAt = now;
       if (SHARED_PRESET_TEST_MODE) existing.visibility = 'public';
-      if (tags) existing.tags = tags;
+      if (normalizedTags !== undefined) existing.tags = normalizedTags;
       if (identity?.creator !== undefined) existing.creator = identity.creator;
       if (identity?.description !== undefined) existing.description = identity.description;
       if (identity?.familyId !== undefined) existing.familyId = identity.familyId;
@@ -246,6 +255,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
       if (identity?.variantId !== undefined) existing.variantId = identity.variantId;
       if (identity?.variantName !== undefined) existing.variantName = identity.variantName;
       if (identity?.variantRank !== undefined) existing.variantRank = identity.variantRank;
+      if (identity?.rating !== undefined) existing.rating = identity.rating;
       if (identity?.visibility !== undefined) existing.visibility = identity.visibility;
       if (!existing.remoteId) {
         compressVersions(existing);
@@ -269,7 +279,8 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
         variantId: identity?.variantId ?? existing?.variantId,
         variantName: identity?.variantName ?? existing?.variantName ?? targetName,
         variantRank: identity?.variantRank ?? existing?.variantRank,
-        tags: tags || existing?.tags || [],
+        rating: identity?.rating ?? existing?.rating,
+        tags: tags !== undefined ? normalizePresetTags(tags) : existing?.tags || [],
         versions: [{
           v: 1,
           note: note || '',
@@ -302,6 +313,21 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     }
     return entry;
   }, [type, storeScope, store]);
+
+  const loadById = useCallback(async (id: string, version?: number): Promise<PresetEntry | null> => {
+    const activeStore = getPresetStore();
+    const entry = await activeStore.loadById(id, version);
+    if (entry && !entry.remoteId && entry.author === 'user' && entry.versions.length > 1) {
+      const needsCompression = entry.versions.some(
+        (v, i) => i > 0 && !v._isDelta
+      );
+      if (needsCompression) {
+        compressVersions(entry);
+        activeStore.save(entry).catch(() => {});
+      }
+    }
+    return entry;
+  }, [store]);
 
   const remove = useCallback(async (name: string): Promise<boolean> => {
     if (!PRESET_DELETE_ENABLED) return false;
@@ -349,6 +375,39 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     }
   }, [type, storeScope, store, refresh]);
 
+  const rename = useCallback(async (
+    name: string,
+    nextName: string,
+    identity?: PresetRenameIdentity,
+  ): Promise<PresetEntry | null> => {
+    const currentName = name.trim();
+    const trimmedName = nextName.trim();
+    if (!currentName || !trimmedName) return null;
+    if (currentName === trimmedName) return load(currentName);
+
+    const activeStore = getPresetStore();
+    const entry = await activeStore.load(type, currentName, storeScope);
+    if (!entry) return null;
+    if (!SHARED_PRESET_TEST_MODE && (entry.library === 'stock' || entry.author === 'factory')) {
+      if (typeof window !== 'undefined') {
+        window.alert(`Cannot rename read-only preset "${currentName}".`);
+      }
+      return null;
+    }
+
+    const nameConflict = findActiveNameConflict(presets, trimmedName);
+    if (nameConflict && normalizePresetNameKey(nameConflict.name) !== normalizePresetNameKey(currentName)) {
+      if (typeof window !== 'undefined') {
+        window.alert(`A preset named "${nameConflict.name}" already exists. Rename canceled.`);
+      }
+      return null;
+    }
+
+    const renamed = await activeStore.rename(type, currentName, trimmedName, storeScope, identity);
+    await refresh();
+    return renamed;
+  }, [type, storeScope, store, refresh, load, presets]);
+
   const extract = useCallback((state: SliderState): Record<string, unknown> => {
     return options?.customExtract
       ? options.customExtract(state)
@@ -364,7 +423,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
       : applyParams(state, data, paramLevel, scope);
   }, [paramLevel, scope, options]);
 
-  const updateMetadata = useCallback(async (name: string, meta: Partial<PresetIdentityMetadata>) => {
+  const updateMetadata = useCallback(async (name: string, meta: Partial<PresetIdentityMetadata> & { tags?: string[] }) => {
     const activeStore = getPresetStore();
     const entry = await activeStore.load(type, name, storeScope);
     if (!entry) return;
@@ -373,10 +432,11 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     if (meta.visibility !== undefined) entry.visibility = meta.visibility;
     else if (SHARED_PRESET_TEST_MODE) entry.visibility = 'public';
     if (meta.creator !== undefined) entry.creator = meta.creator;
+    if (meta.tags !== undefined) entry.tags = normalizePresetTags(meta.tags);
     entry.updatedAt = Date.now();
     await activeStore.save(entry);
     await refresh();
   }, [type, storeScope, store, refresh]);
 
-  return { presets, families, loading, save, load, remove, refresh, extract, apply, updateMetadata };
+  return { presets, families, loading, save, load, loadById, remove, rename, refresh, extract, apply, updateMetadata };
 }

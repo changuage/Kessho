@@ -5,6 +5,7 @@ import type {
   ProductResolvedStateCommitReceipt,
   ProductSnapshotPatchReason,
 } from '../audio/product/ProductEngineTypes';
+import { resolveProductApplyModeForReason } from '../audio/product/ProductSnapshotPolicy';
 import { hashJson } from '../debug/productStateDebugHash';
 import { logProductStateDebug } from '../debug/productStateDebug';
 import type { SliderState } from '../ui/state';
@@ -114,9 +115,10 @@ function getAlignedProductControlStateForEngine(
 
 function applyModeForCommitOptions(
   options: Pick<ResolveVisibleSliderStateCommitOptions, 'applyMode' | 'forceFullSnapshot'>,
+  reason: ProductSnapshotPatchReason | ProductControlReason | string = 'ui-control-change',
 ): ProductResolvedStateApplyMode | undefined {
-  if (options.forceFullSnapshot) return 'full-snapshot';
-  return options.applyMode;
+  const requestedMode = options.forceFullSnapshot ? 'full-snapshot' : options.applyMode;
+  return resolveProductApplyModeForReason(reason, requestedMode);
 }
 
 function alignProductControlStateRevision(
@@ -265,6 +267,7 @@ export function resolveVisibleSliderStateForProductCommit(
   options: ResolveVisibleSliderStateCommitOptions = {},
 ): ResolvedPerformanceState {
   const reason = options.reason ?? 'ui-control-change';
+  const applyMode = applyModeForCommitOptions(options, reason);
   const controlState = {
     ...createInitialProductControlState(sliders, {
       revision: options.revision ?? 0,
@@ -276,7 +279,7 @@ export function resolveVisibleSliderStateForProductCommit(
     reason,
     triggerCritical: options.triggerCritical ?? true,
     ...(options.productEvents ? { productEvents: options.productEvents } : {}),
-    ...(applyModeForCommitOptions(options) ? { applyMode: applyModeForCommitOptions(options) } : {}),
+    ...(applyMode ? { applyMode } : {}),
   });
 }
 
@@ -292,9 +295,10 @@ export async function commitVisibleSliderStateForProduct(
       collectProductControlSliderPatch(previousControlState.rawSliders, sliders),
     );
     const nextControlState = reduceVisibleSliderPatchForProductCommit(previousControlState, sliders, patch, options);
-    const applyMode = applyModeForCommitOptions(options);
+    const reason = options.reason ?? nextControlState.lastReason;
+    const applyMode = applyModeForCommitOptions(options, reason);
     const resolved = resolvePerformanceState(nextControlState, {
-      reason: options.reason ?? nextControlState.lastReason,
+      reason,
       triggerCritical: options.triggerCritical ?? nextControlState.triggerCritical,
       ...(options.productEvents ? { productEvents: options.productEvents } : {}),
       ...(applyMode ? { applyMode } : {}),
@@ -320,9 +324,10 @@ export async function commitProductControlPatchForProduct(
       patch as ProductControlStatePatch,
     );
     const nextControlState = reduceVisibleSliderPatchForProductCommit(previousControlState, sliders, hydratedPatch, options);
-    const applyMode = applyModeForCommitOptions(options);
+    const reason = options.reason ?? nextControlState.lastReason;
+    const applyMode = applyModeForCommitOptions(options, reason);
     const resolved = resolvePerformanceState(nextControlState, {
-      reason: options.reason ?? nextControlState.lastReason,
+      reason,
       triggerCritical: options.triggerCritical ?? nextControlState.triggerCritical,
       ...(options.productEvents ? { productEvents: options.productEvents } : {}),
       ...(applyMode ? { applyMode } : {}),
@@ -357,9 +362,10 @@ export async function commitProductControlActionForProduct(
       }
     }
     nextControlState = reduceProductControlState(nextControlState, action);
-    const applyMode = applyModeForCommitOptions(options);
+    const reason = options.reason ?? nextControlState.lastReason;
+    const applyMode = applyModeForCommitOptions(options, reason);
     const resolved = resolvePerformanceState(nextControlState, {
-      reason: options.reason ?? nextControlState.lastReason,
+      reason,
       triggerCritical: options.triggerCritical ?? nextControlState.triggerCritical,
       ...(options.productEvents ? { productEvents: options.productEvents } : {}),
       ...(applyMode ? { applyMode } : {}),
@@ -395,9 +401,10 @@ export async function commitProductControlActionThenTrigger<T>(
       }
     }
     nextControlState = reduceProductControlState(nextControlState, action);
-    const applyMode = applyModeForCommitOptions(options);
+    const reason = options.reason ?? nextControlState.lastReason;
+    const applyMode = applyModeForCommitOptions(options, reason);
     const resolved = resolvePerformanceState(nextControlState, {
-      reason: options.reason ?? nextControlState.lastReason,
+      reason,
       triggerCritical: options.triggerCritical ?? nextControlState.triggerCritical,
       ...(options.productEvents ? { productEvents: options.productEvents } : {}),
       ...(applyMode ? { applyMode } : {}),

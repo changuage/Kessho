@@ -145,6 +145,7 @@ const productRuntimeSurfaces = read('src/ui/useProductRuntimeSurfaces.ts');
 const selectedAudioEngineRuntimeSurfaces = read('src/ui/useSelectedAudioEngineRuntimeSurfaces.ts');
 const productRuntimeLifecycleSurface = read('src/ui/useProductRuntimeLifecycleSurface.ts');
 const productRuntimeRecordingRuntime = read('src/ui/useProductRuntimeRecordingRuntime.ts');
+const productRecordingBridge = read('src/audio/product/ProductRecordingBridge.ts');
 const productRuntimeTelemetry = read('src/ui/useProductRuntimeTelemetry.ts');
 const selectedRuntimeCapabilities = read('src/ui/useSelectedAudioEngineRuntimeCapabilities.ts');
 const selectedRuntimeTelemetry = read('src/ui/useSelectedAudioEngineRuntimeTelemetry.ts');
@@ -554,7 +555,6 @@ for (const token of [
 for (const [label, source, token] of [
   ['Product host adapter', hostSequencerAdapter, 'sequencerClockDivisionToNumericValue'],
   ['Product snapshot', snapshot, 'sequencerClockDivisionToNumericValue'],
-  ['Product sequencer visuals', hostSequencerVisuals, 'sequencerClockDivisionToNumericValue'],
   ['Legacy Web engine', webEngine, 'sequencerClockDivisionToSeconds'],
   ['Core-Web host', coreEngineHost, 'sequencerClockDivisionToSeconds'],
   ['Legacy Web drum synth', drumSynth, 'sequencerClockDivisionToSeconds'],
@@ -1010,7 +1010,7 @@ for (const token of [
 	  'stopped trigger playhead kept moving',
 	  'proofSynthKeyboardHarmonyContext',
 	  'assertSynthHarmonyContextParity',
-	  'synth harmony root set mismatch',
+	  'synth running harmony root mismatch',
 	  '.synth-keyboard-key.harmony-root, .synth-keyboard-key.harmony-chord, .synth-keyboard-key.harmony-scale',
 	  'subLaneSparkSamples',
 	  "await page.keyboard.press('Space')",
@@ -1395,27 +1395,28 @@ for (const token of [
 for (const token of [
   'visualLaneFromState(',
   'resolveEuclidPatternParams(',
-  'euclideanPatternMask(',
-  'defaultClockDivision(laneNumber)',
-  'synthEuclideanTempo',
-  'drumEuclidTempo',
-  "const tempoMultiplier = kind === 'synth' ? synthTempo : drumTempo",
-  'hitCountThroughStep(',
-  'const fallbackStep = samplesPerStep > 0',
-  'if (normalizedNative === 0 && fallbackStep !== 0) return fallbackStep;',
-  'const normalizedNative = Math.max(0, Math.floor(nativeHitCount));',
+  'defaultSynthEuclidPattern(laneIndex)',
+  'defaultDrumEuclidPattern(laneIndex)',
   'input.telemetry?.synthSequencerCurrentSteps?.[laneIndex]',
   'input.telemetry?.drumSequencerCurrentSteps?.[laneIndex]',
   'input.telemetry?.synthSequencerHitCounts?.[laneIndex]',
   'input.telemetry?.drumSequencerHitCounts?.[laneIndex]',
+  'input.diagnostics && (input.diagnostics.derivedVisualFallbackCount += 1);',
+  'steps[laneIndex] = 0;',
+  'hitCounts[laneIndex] = 0;',
+  'zeroLaneValues(input.drumVisibleLaneCount)',
   "input.publish('synthStepPosition'",
   "input.publish('drumStepPosition'",
 ]) {
   assert(hostSequencerVisuals.includes(token), `Product sequencer visuals bridge is missing ${token}`);
 }
 assert(
-  !hostSequencerVisuals.includes("if (kind === 'synth') return Math.max(normalizedNative, fallbackHitCount);"),
-  'Product synth sequencer visuals must trust native emitted-hit telemetry instead of advancing from fallback pattern hits',
+  !hostSequencerVisuals.includes('euclideanPatternMask(') &&
+    !hostSequencerVisuals.includes('hitCountThroughStep(') &&
+    !hostSequencerVisuals.includes('const fallbackStep = samplesPerStep > 0') &&
+    !hostSequencerVisuals.includes('sequencerClockDivisionToNumericValue') &&
+    !hostSequencerVisuals.includes("if (kind === 'synth') return Math.max(normalizedNative, fallbackHitCount);"),
+  'Product sequencer visuals must trust native telemetry instead of rebuilding fallback playheads in JS',
 );
 assert(
   !synthPage.includes('derivedHitCount') &&
@@ -1634,14 +1635,17 @@ assert(
     !app.includes("from './ui/useSelectedAudioEngineTelemetrySurface'") &&
     app.includes('const dualModeSupported = !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);') &&
     productRuntimeLifecycleSurface.includes('useProductRuntimeTelemetry({') &&
-    productRuntimeTelemetry.includes('audioEngineRuntimeMode: productRuntimeMode') &&
+    productRuntimeTelemetry.includes('import { isCoreProductRangeKeySupported }') &&
+    productRuntimeTelemetry.includes('return isCoreProductRangeKeySupported(key);') &&
+    productRuntimeTelemetry.includes("const active = uiMode === 'advanced' && documentVisible;") &&
+    productRuntimeTelemetry.includes('productEngine.setVisualTelemetryActive(active);') &&
     selectedRuntimeTelemetry.includes('useSelectedAudioEngineTelemetrySurface(audioEngineRuntimeMode)') &&
     selectedRuntimeTelemetry.includes('useSelectedAudioEngineRuntimeCapabilities({') &&
     selectedRuntimeTelemetry.includes('setSelectedVisualTelemetryActive: telemetrySurface.setSelectedVisualTelemetryActive') &&
     selectedRuntimeCapabilities.includes('import { isCoreProductRangeKeySupported }') &&
     selectedRuntimeCapabilities.includes("audioEngineRuntimeMode !== 'core-product' || isCoreProductRangeKeySupported(key)") &&
     selectedRuntimeCapabilities.includes("const active = audioEngineRuntimeMode === 'core-product' && uiMode === 'advanced'"),
-  'selected runtime capabilities must own Product Core unsupported-control and visual telemetry gating',
+  'product and selected runtime capabilities must own Product Core unsupported-control and visual telemetry gating',
 );
 assert(
   app.includes('const dualModeSupported = !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);'),
@@ -1800,12 +1804,21 @@ assert(
     productRuntimePageControlProps.includes('preloadProductRuntime,') &&
     productRuntimePageRuntimeBridges.includes('const selectedOptions = {') &&
     !productRuntimePageRuntimeBridges.includes('SelectedAudioEnginePageRuntimeBridgeOptions') &&
+    productRuntimePageRuntimeBridges.includes('useSelectedAudioEngineCallbackSurfaces(productRuntimeMode)') &&
+    productRuntimePageRuntimeBridges.includes('useSelectedAudioEngineControlSurfaces(productRuntimeMode)') &&
+    productRuntimePageRuntimeBridges.includes("const useProductRuntimePageSurfaces = productRuntimeMode === 'core-product';") &&
     productRuntimePageRuntimeBridges.includes('getSelectedDynamicsVisualTelemetry: getProductDynamicsVisualTelemetry') &&
     productRuntimePageRuntimeBridges.includes('setSelectedGranularUiActive: setProductGranularUiActive') &&
-    productRuntimePageRuntimeBridges.includes('captureSelectedSynthEuclidLaneHome: captureProductSynthEuclidLaneHome') &&
-    productRuntimePageRuntimeBridges.includes('setSelectedDrumStepOverrides: setProductDrumStepOverrides') &&
+    productRuntimePageRuntimeBridges.includes('captureSelectedSynthEuclidLaneHome: useProductRuntimePageSurfaces') &&
+    productRuntimePageRuntimeBridges.includes('? captureProductSynthEuclidLaneHome') &&
+    productRuntimePageRuntimeBridges.includes(': selectedRuntimeControls.captureSelectedSynthEuclidLaneHome') &&
+    productRuntimePageRuntimeBridges.includes('setSelectedDrumStepOverrides: useProductRuntimePageSurfaces') &&
+    productRuntimePageRuntimeBridges.includes('? setProductDrumStepOverrides') &&
+    productRuntimePageRuntimeBridges.includes(': selectedRuntimeControls.setSelectedDrumStepOverrides') &&
     productRuntimePageRuntimeBridges.includes('preloadSelectedAudioEngine: preloadProductRuntime') &&
-    productRuntimePageRuntimeBridges.includes('setSelectedDrumStepPositionCallback: setProductDrumStepPositionCallback') &&
+    productRuntimePageRuntimeBridges.includes('setSelectedDrumStepPositionCallback: useProductRuntimePageSurfaces') &&
+    productRuntimePageRuntimeBridges.includes('? setProductDrumStepPositionCallback') &&
+    productRuntimePageRuntimeBridges.includes(': selectedRuntimeCallbacks.setSelectedDrumStepPositionCallback') &&
     productRuntimePageRuntimeBridges.includes('useSelectedAudioEnginePageRuntimeBridges(selectedOptions)') &&
     !productRuntimePageSurface.includes('productEngine') &&
     !productRuntimePageSurface.includes('selectedProductRuntime') &&
@@ -2988,7 +3001,13 @@ assert(
     !app.includes('useSelectedAudioEngineRecordingRuntime(audioEngineRuntimeMode)') &&
     !app.includes("from './ui/useAudioRecording'") &&
     productRuntimeLifecycleSurface.includes('useProductRuntimeRecordingRuntime(options.productRuntimeMode)') &&
-    productRuntimeRecordingRuntime.includes('useSelectedAudioEngineRecordingRuntime(productRuntimeMode)') &&
+    productRuntimeRecordingRuntime.includes("import { unavailableProductRecordingBridge } from '../audio/product/ProductRecordingBridge'") &&
+    productRuntimeRecordingRuntime.includes('const recordingAvailable = unavailableProductRecordingBridge.available;') &&
+    productRuntimeRecordingRuntime.includes('await unavailableProductRecordingBridge.startMixRecording();') &&
+    productRuntimeRecordingRuntime.includes('await unavailableProductRecordingBridge.stopMixRecording();') &&
+    !productRuntimeRecordingRuntime.includes('useSelectedAudioEngineRecordingRuntime') &&
+    productRecordingBridge.includes('available: false') &&
+    productRecordingBridge.includes("throw new Error('Product recording bridge is not implemented yet.')") &&
     selectedAudioEngineRecordingRuntime.includes('useAudioRecording(audioEngineRuntimeMode)') &&
     selectedAudioEngineRecordingRuntime.includes('startArmedRecordingAfterPlaybackStart') &&
     selectedAudioEngineRecordingRuntime.includes('globalRecordingProps') &&
@@ -3187,6 +3206,7 @@ const hostImportAllowlist = new Set([
   './product/liveNoteEvents',
   './product/ProductRuntimeCapabilityReport',
   './product/ProductRuntimeDiagnostics',
+  './sequencerLaneCounts',
   './sequencerLaneDirection',
   './sequencerPitchBinding',
   './sequencerPitchSettings',

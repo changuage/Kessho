@@ -41,7 +41,8 @@ export function useProductRuntimeEvolveOverrideCallbacks({
   drumEvolvedOverrides: ProductRuntimeEvolvedOverrideState | undefined;
   synthEvolvedOverrides: ProductRuntimeEvolvedOverrideState | undefined;
 } {
-  // TODO(product-runtime-compat-10E): selected evolve override callback processing remains
+  // TODO(product-fallback-retire:runtime-evolve-override-callbacks): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
+  // Selected evolve override callback processing remains
   // the compatibility implementation behind product-named callback registration.
   return useSelectedAudioEngineEvolveOverrideCallbacks({
     ...options,

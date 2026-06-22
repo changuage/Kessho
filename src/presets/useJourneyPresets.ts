@@ -32,6 +32,7 @@ export interface UseJourneyPresetsResult {
   refresh: () => Promise<void>;
   load: (name: string) => Promise<LoadedJourneyPreset | null>;
   save: (name: string, config: JourneyConfig, options?: SaveJourneyPresetOptions) => Promise<PresetEntry | null>;
+  rename: (name: string, nextName: string, options?: SaveJourneyPresetOptions) => Promise<PresetEntry | null>;
   remove: (name: string) => Promise<boolean>;
   restoreBackup: (name: string) => Promise<LoadedJourneyPreset | null>;
   hasBackup: (name: string) => Promise<boolean>;
@@ -55,7 +56,10 @@ function versionToConfig(entry: PresetEntry, version?: PresetVersion): JourneyCo
   if (!version) return null;
   const data = getVersionData(entry, version.v);
   if (!data) return null;
-  return decodeJourneyPresetData(data, version.refs, entry.name);
+  return {
+    ...decodeJourneyPresetData(data, version.refs, entry.name),
+    name: entry.name,
+  };
 }
 
 function clonePresetData(data: Record<string, unknown>): Record<string, unknown> {
@@ -283,6 +287,27 @@ export function useJourneyPresets(): UseJourneyPresetsResult {
     return true;
   }, [refresh, store]);
 
+  const rename = useCallback(async (
+    name: string,
+    nextName: string,
+    options: SaveJourneyPresetOptions = {},
+  ): Promise<PresetEntry | null> => {
+    const trimmedCurrent = name.trim();
+    const trimmedNext = nextName.trim();
+    if (!trimmedCurrent || !trimmedNext) return null;
+    const renamed = await getPresetStore().rename(
+      'journey',
+      trimmedCurrent,
+      trimmedNext,
+      undefined,
+      'description' in options
+        ? { description: options.description?.trim() || undefined }
+        : undefined,
+    );
+    await refresh();
+    return renamed;
+  }, [refresh, store]);
+
   const restoreBackup = useCallback(async (name: string): Promise<LoadedJourneyPreset | null> => {
     const entry = await getPresetStore().load('journey', name);
     if (!entry) return null;
@@ -326,6 +351,7 @@ export function useJourneyPresets(): UseJourneyPresetsResult {
     refresh,
     load,
     save,
+    rename,
     remove,
     restoreBackup,
     hasBackup,

@@ -20,7 +20,8 @@ export function useProductRuntimeMediaSession({
   suspendProductRuntime,
   stopProductRuntime,
 }: UseProductRuntimeMediaSessionOptions): ProductRuntimeMediaSession {
-  // TODO(product-runtime-compat-10C): keep media-session reference runtime behavior behind this
+  // TODO(product-fallback-retire:runtime-media-session): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
+  // Keep media-session reference runtime behavior behind this
   // compatibility facade until the underlying helpers use product runtime naming directly.
   const selectedMediaSession = useSelectedAudioEngineMediaSession({
     audioEngineRuntimeMode: productRuntimeMode,

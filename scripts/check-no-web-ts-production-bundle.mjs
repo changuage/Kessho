@@ -84,11 +84,13 @@ assert(!app.includes("from './audio/referenceAudioRuntime'"), 'App production sh
 assert(!productEngineProxy.includes('referenceAudioRuntime'), 'ProductEngineProxy must not load the web-ts reference runtime', failures);
 assert(!productEngineProxy.includes('reference/webTs'), 'ProductEngineProxy must not import the web-ts reference engine', failures);
 assert(
-  productEngineProxy.includes("requested === 'web-ts'") &&
-    productEngineProxy.includes("requested === 'web-audio'") &&
-    productEngineProxy.includes("requested === 'core-smoke'") &&
-    productEngineProxy.includes("resolvedRuntimeMode = 'core-product'"),
-  'ProductEngineProxy must resolve web-ts/web-audio/core-smoke production requests to core-product',
+  productEngineProxy.includes("export function getProductEngineRuntimeMode(): 'core-product'") &&
+    productEngineProxy.includes("return 'core-product';") &&
+    productEngineProxy.includes('new WebProductEngine()') &&
+    !productEngineProxy.includes('URLSearchParams') &&
+    !productEngineProxy.includes('window.location') &&
+    !productEngineProxy.includes('resolvedRuntimeMode'),
+  'ProductEngineProxy must be a direct core-product WebProductEngine runtime without runtime mode parsing',
   failures,
 );
 

@@ -256,7 +256,15 @@ await runCheckWithReport({
         !app.includes('useSelectedAudioEngineRecordingRuntime(audioEngineRuntimeMode)') &&
         !app.includes("from './ui/useAudioRecording'") &&
         productRuntimeLifecycleSurface.includes('useProductRuntimeRecordingRuntime(options.productRuntimeMode)') &&
-        productRuntimeRecordingRuntime.includes('useSelectedAudioEngineRecordingRuntime(productRuntimeMode)') &&
+        productRuntimeRecordingRuntime.includes("import { unavailableProductRecordingBridge } from '../audio/product/ProductRecordingBridge'") &&
+        productRuntimeRecordingRuntime.includes('const recordingAvailable = unavailableProductRecordingBridge.available;') &&
+        productRuntimeRecordingRuntime.includes('visible: recordingAvailable') &&
+        productRuntimeRecordingRuntime.includes('stemRecordingAvailable: recordingAvailable') &&
+        !productRuntimeRecordingRuntime.includes('useSelectedAudioEngineRecordingRuntime') &&
+        !productRuntimeRecordingRuntime.includes('useAudioRecording') &&
+        !productRuntimeRecordingRuntime.includes('referenceAudioEngineDebug') &&
+        !productRuntimeRecordingRuntime.includes('getLimiterNode') &&
+        !productRuntimeRecordingRuntime.includes('getRecordableBusNodes') &&
         selectedAudioEngineRecordingRuntime.includes('useAudioRecording(audioEngineRuntimeMode)') &&
         selectedAudioEngineRecordingRuntime.includes('startArmedRecordingAfterPlaybackStart') &&
         selectedAudioEngineRecordingRuntime.includes('globalRecordingProps') &&
@@ -277,13 +285,19 @@ await runCheckWithReport({
         app.includes('const dualModeSupported = !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);') &&
         selectedRuntimeTelemetry.includes('useSelectedAudioEngineTelemetrySurface(audioEngineRuntimeMode)') &&
         productRuntimeLifecycleSurface.includes('useProductRuntimeTelemetry({') &&
-        productRuntimeTelemetry.includes('audioEngineRuntimeMode: productRuntimeMode') &&
+        productRuntimeLifecycleSurface.includes('productRuntimeMode: options.productRuntimeMode') &&
+        productRuntimeTelemetry.includes("import { isCoreProductRangeKeySupported }") &&
+        productRuntimeTelemetry.includes('return isCoreProductRangeKeySupported(key);') &&
+        productRuntimeTelemetry.includes("const active = uiMode === 'advanced' && documentVisible;") &&
+        productRuntimeTelemetry.includes('productEngine.setVisualTelemetryActive(active);') &&
+        !productRuntimeTelemetry.includes('useSelectedAudioEngine') &&
+        !productRuntimeTelemetry.includes('useSelectedAudioEngineTelemetrySurface') &&
         selectedRuntimeTelemetry.includes('useSelectedAudioEngineRuntimeCapabilities({') &&
         selectedRuntimeTelemetry.includes('setSelectedVisualTelemetryActive: telemetrySurface.setSelectedVisualTelemetryActive') &&
         selectedRuntimeCapabilities.includes('import { isCoreProductRangeKeySupported }') &&
         selectedRuntimeCapabilities.includes("audioEngineRuntimeMode !== 'core-product' || isCoreProductRangeKeySupported(key)") &&
         selectedRuntimeCapabilities.includes("const active = audioEngineRuntimeMode === 'core-product' && uiMode === 'advanced'"),
-      'selected runtime capabilities must own Product Core unsupported-control and visual telemetry gating',
+      'Product runtime telemetry must own Product Core unsupported-control and visual telemetry gating while selected telemetry keeps reference/runtime-switcher coverage',
     );
     assert(
       app.includes('const dualModeSupported = !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);'),

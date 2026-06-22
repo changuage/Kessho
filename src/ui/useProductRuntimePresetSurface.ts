@@ -41,7 +41,8 @@ export function useProductRuntimePresetSurface({
   resetProductCofDrift,
   ...options
 }: ProductRuntimePresetSurfaceOptions): ProductRuntimePresetSurface {
-  // TODO(product-runtime-compat-10B): keep selected-audio-engine preset sync hidden behind this
+  // TODO(product-fallback-retire:runtime-preset-surface): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
+  // Keep selected-audio-engine preset sync hidden behind this
   // product runtime facade until preset/session orchestration is fully product-owned.
   const selectedPresetSurface = useSelectedAudioEnginePresetRuntimeSurface({
     ...options,

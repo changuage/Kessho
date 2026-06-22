@@ -54,7 +54,7 @@ export function synthEuclidUsesSourceId(state: Record<string, unknown> | undefin
 
 export function synthChordSequencerUsesSourceId(state: Record<string, unknown> | undefined, sourceId: number): boolean {
   if (!booleanFromState(state, 'synthChordSequencerEnabled', false)) return false;
-  const source = String(state?.synthChordSequencerSource ?? 'both').trim().toLowerCase();
+  const source = String(state?.synthChordSequencerSource ?? 'piano').trim().toLowerCase();
   switch (sourceId) {
     case CORE_PRODUCT_SOURCE_IDS.pad1:
       return source === 'pad1' || source === 'pad' || source === 'both';

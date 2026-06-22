@@ -6,15 +6,23 @@ import {
   type DrumVoicePreset,
   type DrumVoiceType,
 } from '../audio/drumPresets';
-import { createCoreProductDrumTriggerEvent, type CoreProductEvent } from '../audio/coreProductEvents';
+import {
+  CORE_PRODUCT_SOURCE_IDS,
+  createCoreProductDrumTriggerEvent,
+  createCoreProductManualNoteEvent,
+  createCoreProductManualNoteOffEvent,
+  type CoreProductEvent,
+} from '../audio/coreProductEvents';
 import {
   createCoreProductSnapshot,
   encodeCoreProductSnapshot,
   KESSHO_PRODUCT_SNAPSHOT_BYTES,
 } from '../audio/coreProductSnapshot';
+import { KESSHO_PRODUCT_EVENT_IDS } from '../audio/generated/kesshoProductEvents';
 import { drumVoiceBaseMidiFromIndex } from '../audio/drumVoiceMidi';
 import { drumVoiceIndex } from '../audio/CoreProductHostRuntimeGuards';
 import {
+  auditionCoreProductSynthNote,
   triggerCoreProductDrumVoice,
   type CoreProductManualAuditionContext,
 } from '../audio/product/host/CoreProductManualAuditionBridge';
@@ -248,6 +256,112 @@ function expectSoundActionChangesResolvedOutput(
   const postIndex = callOrder.indexOf('postEvent');
   assert.ok(applyIndex >= 0, 'running drum preview with external state should apply a Product snapshot update');
   assert.ok(postIndex > applyIndex, 'running drum preview should apply external state before posting the trigger');
+}
+
+{
+  const runSynthPreview = async (
+    note: Parameters<typeof auditionCoreProductSynthNote>[1],
+    snapshotState: SliderState,
+    externalState: Record<string, unknown>,
+  ) => {
+    const postedEvents: CoreProductEvent[] = [];
+    const callOrder: string[] = [];
+    let latestState: Record<string, unknown> | null = DEFAULT_STATE as unknown as Record<string, unknown>;
+    const snapshot = createCoreProductSnapshot(snapshotState as unknown as Record<string, unknown>);
+    const context: CoreProductManualAuditionContext = {
+      runtime: {
+        audioContext: { state: 'running' } as unknown as AudioContext,
+        ensureStarted: async () => { callOrder.push('ensureStarted'); },
+        postEvent: (event) => {
+          callOrder.push('postEvent');
+          postedEvents.push(event);
+        },
+        resume: async () => { callOrder.push('resume'); },
+      },
+      assetRegistrar: {
+        ensurePianoAssetForNote: async () => {},
+      },
+      latestSliderState: () => latestState,
+      setLatestSliderState: (state) => {
+        callOrder.push('setLatestSliderState');
+        latestState = state;
+      },
+      latestProductSnapshot: () => snapshot,
+      runtimeReady: () => true,
+      setRuntimeReady: (ready) => { callOrder.push(`setRuntimeReady:${String(ready)}`); },
+      applyProductStatePatch: async () => {},
+      applyLatestSnapshotUpdate: async (reason) => { callOrder.push(`applyLatestSnapshotUpdate:${reason}`); },
+      recordSoundTrigger: () => { callOrder.push('recordSoundTrigger'); },
+      publish: (name) => { callOrder.push(`publish:${name}`); },
+    };
+
+    await auditionCoreProductSynthNote(context, note, externalState);
+    return { callOrder, latestState, postedEvents };
+  };
+
+  const padPreview = await runSynthPreview(
+    { source: 'pad1', midi: 60, velocity: 0.82, durationMs: 1100 },
+    stateWith({ padEnabled: true }),
+    {
+      ...DEFAULT_STATE,
+      padEnabled: true,
+      padPresetA: 'preview_pad',
+      synthAttack: 0.234,
+      synthDecay: 1.75,
+      synthSustain: 0.42,
+      synthRelease: 9.5,
+      padPostLPF: 1234,
+    } as unknown as Record<string, unknown>,
+  );
+  assert.equal(padPreview.latestState?.padPresetA, 'preview_pad', 'running pad preview should install external preset state before triggering');
+  assert.equal(padPreview.latestState?.synthAttack, 0.234, 'running pad preview should keep candidate envelope attack');
+  assert.equal(padPreview.latestState?.synthRelease, 9.5, 'running pad preview should keep candidate envelope release');
+  assert.equal(padPreview.latestState?.padPostLPF, 1234, 'running pad preview should keep candidate tone params');
+  assert.deepEqual(
+    padPreview.postedEvents[0],
+    createCoreProductManualNoteEvent(CORE_PRODUCT_SOURCE_IDS.pad1, 60, 0.82, 1100),
+    'running pad preview should still post the requested manual note',
+  );
+  assert.ok(
+    padPreview.callOrder.indexOf('postEvent') > padPreview.callOrder.indexOf('applyLatestSnapshotUpdate:runtime-bootstrap'),
+    'running pad preview should apply external state before posting the note',
+  );
+
+  const leadPreview = await runSynthPreview(
+    { source: 'lead1', midi: 67, velocity: 0.84, durationMs: 720 },
+    stateWith({ leadEnabled: true }),
+    {
+      ...DEFAULT_STATE,
+      leadEnabled: true,
+      lead1PresetB: 'preview_lead',
+      lead1Morph: 1,
+      lead1UseCustomAdsr: true,
+      lead1Attack: 0.321,
+      lead1Decay: 1.25,
+      lead1Sustain: 0.37,
+      lead1Release: 6.5,
+    } as unknown as Record<string, unknown>,
+  );
+  assert.equal(leadPreview.latestState?.lead1PresetB, 'preview_lead', 'running lead preview should install external preset state before triggering');
+  assert.equal(leadPreview.latestState?.leadEnabled, true, 'running lead preview should keep the target source enabled');
+  assert.equal(leadPreview.latestState?.lead1UseCustomAdsr, true, 'running lead preview should keep candidate envelope mode');
+  assert.equal(leadPreview.latestState?.lead1Attack, 0.321, 'running lead preview should keep candidate envelope attack');
+  assert.equal(leadPreview.latestState?.lead1Release, 6.5, 'running lead preview should keep candidate envelope release');
+  assert.deepEqual(
+    leadPreview.postedEvents[0],
+    createCoreProductManualNoteEvent(CORE_PRODUCT_SOURCE_IDS.lead1, 67, 0.84, 720),
+    'running lead preview should still post the requested manual note',
+  );
+  assert.ok(
+    leadPreview.callOrder.indexOf('postEvent') > leadPreview.callOrder.indexOf('applyLatestSnapshotUpdate:runtime-bootstrap'),
+    'running lead preview should apply external state before posting the note',
+  );
+
+  assert.deepEqual(
+    createCoreProductManualNoteOffEvent(CORE_PRODUCT_SOURCE_IDS.lead1),
+    { eventKind: KESSHO_PRODUCT_EVENT_IDS.ManualNoteOff, targetId: CORE_PRODUCT_SOURCE_IDS.lead1 },
+    'manual note off should target the previous audition source',
+  );
 }
 
 // ProductControl state authority invariants.
@@ -737,7 +851,7 @@ function expectSoundActionChangesResolvedOutput(
   assert.equal(resolved.revision, 12, 'visible slider commit should use the supplied revision');
   assert.equal(resolved.reason, 'morph-control-change', 'visible slider commit should preserve the transaction reason');
   assert.equal(resolved.triggerCritical, true, 'visible slider commit should preserve trigger-critical intent');
-  assert.equal(resolved.applyMode, 'full-snapshot', 'visible slider commit should preserve explicit full-snapshot intent');
+  assert.equal(resolved.applyMode, undefined, 'morph-control visible slider commit should not request a full snapshot');
   assert.equal(resolved.sliders.synthLevel, 0.64, 'visible slider commit should resolve from visible sliders');
   assert.equal(resolved.productPatch.synthLevel, 0.64, 'visible slider commit patch should match visible sliders');
   assert.equal(resolved.productPatch.padMorph, 74, 'visible morph position should be included in the resolved patch');
@@ -860,12 +974,13 @@ function expectSoundActionChangesResolvedOutput(
     fakeProductEngine,
     stateWith({ lead1PresetB: 'soft_rhodes' }),
     { lead1PresetB: 'soft_rhodes' },
-    { reason: 'ui-control-change', triggerCritical: true, forceFullSnapshot: true },
+    { reason: 'asset-reference-change', triggerCritical: true, forceFullSnapshot: true },
   );
   const capturedCommit = capturedCommits[0];
   assert.ok(capturedCommit, 'Lead preset ProductControl commit should call commitResolvedState');
   assert.equal(capturedCommit.revision, 41, 'Lead preset data hydration should share the preset edit revision');
   assert.equal(capturedCommit.patch.lead1PresetB, 'soft_rhodes', 'Lead preset commit should include the selected endpoint id');
+  assert.equal(capturedCommit.applyMode, 'full-snapshot', 'asset reference ProductControl commit may request a full snapshot');
   assert.equal(
     (capturedCommit.patch.lead1PresetBData as Record<string, unknown> | undefined)?.id,
     'soft_rhodes',
@@ -1029,7 +1144,7 @@ function expectSoundActionChangesResolvedOutput(
   const capturedCommit = capturedCommits[0];
   assert.ok(capturedCommit, 'trigger-critical manual preview should commit before playback');
   assert.equal(capturedCommit.triggerCritical, true, 'trigger-critical manual preview should retain trigger-critical metadata');
-  assert.equal(capturedCommit.applyMode, 'full-snapshot', 'trigger-critical manual preview should be able to force an acknowledged snapshot');
+  assert.equal(capturedCommit.applyMode, undefined, 'trigger-critical manual preview should not request a full snapshot');
   assert.equal(capturedCommit.patch.drumKickPresetA, '808 Deep', 'trigger-critical manual preview should commit the selected drum preset');
 }
 

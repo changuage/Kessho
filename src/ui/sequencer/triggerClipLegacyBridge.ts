@@ -34,7 +34,7 @@ export function triggerClipToLegacyEuclideanParams(clip: TriggerClip): {
   const pattern = resolveTriggerClip(clip);
   const triggerToggles = new Map<number, boolean>();
   pattern.forEach((enabled, step) => {
-    if (enabled) triggerToggles.set(step, true);
+    triggerToggles.set(step, enabled);
   });
 
   return {

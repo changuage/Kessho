@@ -50,6 +50,16 @@ const SEQUENCER_TRANSPORT_TRIGGER_KEYS = new Set<string>([
   'drumEuclidMasterEnabled',
 ]);
 
+const SEQUENCER_LANE_ENABLED_KEY_PATTERNS: readonly RegExp[] = [
+  /^synthEuclid[1-4]Enabled$/,
+  /^drumEuclid[1-6]Enabled$/,
+];
+
+const SEQUENCER_TARGET_KEY_PATTERNS: readonly RegExp[] = [
+  /^synthEuclid[1-4]Source$/,
+  /^drumEuclid[1-6]Target(Sub|Kick|Click|BeepHi|BeepLo|Noise|Membrane)$/,
+];
+
 const SOURCE_PRESET_DATA_RESOLVED_COMMIT_KEY_PATTERNS: readonly RegExp[] = [
   /^lead(?:1Preset[AB]|2Preset[CD])Data$/,
 ];
@@ -99,6 +109,14 @@ function isSequencerTransportTriggerPatchKey(key: string): boolean {
   return SEQUENCER_TRANSPORT_TRIGGER_KEYS.has(key);
 }
 
+function isSequencerLaneEnabledPatchKey(key: string): boolean {
+  return SEQUENCER_LANE_ENABLED_KEY_PATTERNS.some((pattern) => pattern.test(key));
+}
+
+function isSequencerTargetPatchKey(key: string): boolean {
+  return SEQUENCER_TARGET_KEY_PATTERNS.some((pattern) => pattern.test(key));
+}
+
 function isSourceCoreResolvedCommitPatchKey(key: string): boolean {
   return SOURCE_PRESET_ENDPOINT_RESOLVED_COMMIT_KEYS.has(key) ||
     SOURCE_PRESET_DATA_RESOLVED_COMMIT_KEY_PATTERNS.some((pattern) => pattern.test(key));
@@ -106,6 +124,14 @@ function isSourceCoreResolvedCommitPatchKey(key: string): boolean {
 
 function requiresSequencerTransportResolvedCommit(patch: Partial<SliderState>): boolean {
   return Object.keys(patch).some(isSequencerTransportTriggerPatchKey);
+}
+
+function requiresSequencerLaneEnabledResolvedCommit(patch: Partial<SliderState>): boolean {
+  return Object.keys(patch).some(isSequencerLaneEnabledPatchKey);
+}
+
+function requiresSequencerTargetResolvedCommit(patch: Partial<SliderState>): boolean {
+  return Object.keys(patch).some(isSequencerTargetPatchKey);
 }
 
 function requiresSourceCoreResolvedCommit(patch: Partial<SliderState>): boolean {
@@ -129,6 +155,7 @@ function inferProductPatchReason(
 ): ProductSnapshotPatchReason {
   if (explicitReason) return explicitReason;
   const keys = Object.keys(patch);
+  if (keys.length > 0 && keys.some(isSourceCoreResolvedCommitPatchKey)) return 'asset-reference-change';
   if (keys.length > 0 && keys.some(isMorphControlPatchKey)) return 'morph-control-change';
   if (keys.length > 0 && keys.some(isTransportControlPatchKey)) return 'transport-change';
   if (keys.length > 0 && keys.some(isSequencerControlPatchKey)) return 'sequencer-control-change';
@@ -144,6 +171,8 @@ function requiresResolvedCommit(
     || options?.immediate === true
     || options?.forceFullSnapshot === true
     || requiresSequencerTransportResolvedCommit(patch)
+    || requiresSequencerLaneEnabledResolvedCommit(patch)
+    || requiresSequencerTargetResolvedCommit(patch)
     || requiresSourceCoreResolvedCommit(patch)
     || requiresSourceCoreFullSnapshot(patch, reason, options)
     || reason === 'preset-load';
@@ -158,6 +187,8 @@ function resolvedCommitTriggerCritical(
   return options?.triggerCritical ?? (
     forceFullSnapshot ||
     requiresSequencerTransportResolvedCommit(patch) ||
+    requiresSequencerLaneEnabledResolvedCommit(patch) ||
+    requiresSequencerTargetResolvedCommit(patch) ||
     requiresSourceCoreResolvedCommit(patch) ||
     reason === 'preset-load'
   );
@@ -177,6 +208,8 @@ function shouldFlushImmediatelyForResolvedCommit(
   const patch = collectChangedStatePatch(previousState, nextState);
   const reason = inferProductPatchReason(patch, options?.reason);
   if (requiresSequencerTransportResolvedCommit(patch)) return true;
+  if (requiresSequencerLaneEnabledResolvedCommit(patch)) return true;
+  if (requiresSequencerTargetResolvedCommit(patch)) return true;
   if (requiresSourceCoreResolvedCommit(patch)) return true;
   if (requiresSourceCoreFullSnapshot(patch, reason, options)) return true;
   return reason === 'preset-load';

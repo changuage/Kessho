@@ -33,7 +33,8 @@ export function useProductRuntimePlaybackControls({
   connectProductMediaSessionToAudio,
   stopProductIOSMediaSession,
 }: UseProductRuntimePlaybackControlsOptions): ProductRuntimePlaybackControls {
-  // TODO(product-runtime-compat-10C): this maps product playback names onto the selected-audio-engine
+  // TODO(product-fallback-retire:runtime-playback-controls): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
+  // This maps product playback names onto the selected-audio-engine
   // implementation while Batch 10 continues moving lifecycle/media code behind product runtime surfaces.
   const selectedPlaybackControls = useSelectedAudioEnginePlaybackControls({
     capacitorAudioSessionDiagnosticActive,

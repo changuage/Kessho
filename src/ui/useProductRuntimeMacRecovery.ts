@@ -1,7 +1,8 @@
-import type { MutableRefObject } from 'react';
+import { useRef, type MutableRefObject } from 'react';
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
+import { productEngine } from '../audio/product/ProductEngineProxy';
+import { useVisibleInterval } from './hooks/useVisibleInterval';
 import type { SliderState } from './state';
-import { useSelectedAudioEngineMacRecovery } from './useSelectedAudioEngineMacRecovery';
 
 type ProductRuntimeMacRecoveryOptions = {
   productRuntimeMode: ProductRuntimeSelectionMode;
@@ -11,13 +12,32 @@ type ProductRuntimeMacRecoveryOptions = {
 };
 
 export function useProductRuntimeMacRecovery({
-  productRuntimeMode,
-  ...options
+  macShellAvailable,
+  playbackIsRunning,
+  stateRef,
 }: ProductRuntimeMacRecoveryOptions): void {
-  // TODO(product-runtime-compat-10C): Mac recovery still delegates to the selected-runtime
-  // recovery implementation while the product lifecycle surface owns product naming.
-  useSelectedAudioEngineMacRecovery({
-    ...options,
-    audioEngineRuntimeMode: productRuntimeMode,
+  const recoveryInFlightRef = useRef(false);
+
+  useVisibleInterval(() => {
+    if (!macShellAvailable || !playbackIsRunning || recoveryInFlightRef.current) return;
+    if (productEngine.getLifecycleState() !== 'suspended') return;
+
+    recoveryInFlightRef.current = true;
+    const recover = async () => {
+      try {
+        productEngine.resume();
+        if (productEngine.getLifecycleState() === 'stopped') {
+          await productEngine.start({ initialState: stateRef.current as unknown as Readonly<Record<string, unknown>> });
+        }
+      } catch (error) {
+        console.warn('Product audio lifecycle recovery failed:', error);
+      } finally {
+        recoveryInFlightRef.current = false;
+      }
+    };
+    void recover();
+  }, 2000, {
+    enabled: macShellAvailable && playbackIsRunning,
+    pauseWhenHidden: false,
   });
 }

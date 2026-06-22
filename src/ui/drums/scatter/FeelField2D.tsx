@@ -22,7 +22,6 @@ const FeelField2D: React.FC<FeelField2DProps> = ({
   onGenerate,
 }) => {
   const ref = useRef<HTMLDivElement | null>(null);
-  const chaos = Math.max(0, Math.min(1, (value.y + 1) / 2));
 
   const updateFromEvent = useCallback((event: PointerEvent | React.PointerEvent<HTMLDivElement>) => {
     const rect = ref.current?.getBoundingClientRect();
@@ -40,7 +39,6 @@ const FeelField2D: React.FC<FeelField2DProps> = ({
         '--engine-color': color,
         '--feel-x': value.x,
         '--feel-y': value.y,
-        '--chaos': chaos,
       } as React.CSSProperties}
       onDoubleClick={(event) => {
         event.stopPropagation();
@@ -62,8 +60,6 @@ const FeelField2D: React.FC<FeelField2DProps> = ({
       }}
     >
       <span className="scatter-feel-field__mist" />
-      <span className="scatter-feel-field__orbit orbit-a" />
-      <span className="scatter-feel-field__orbit orbit-b" />
       {size === 'large' && (
         <>
           <span className="scatter-feel-hint left">fall</span>

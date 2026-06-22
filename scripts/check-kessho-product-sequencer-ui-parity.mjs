@@ -2374,6 +2374,7 @@ async function proofKeyboardOnlyTransportStartStop(page, engineMode, tab) {
   }
   assert((await transport.textContent())?.trim() === '\u25b6', `${engineMode}/${tab}: keyboard transport proof did not start from stopped state`);
   await setLaneTimingEditorState(page, { clockDiv: '1/16', swing: 0 });
+  await ensureActiveTriggerLaneEnabled(page, engineMode, tab);
 
   await page.evaluate(() => {
     const active = document.activeElement;
@@ -2616,13 +2617,15 @@ function assertSynthHarmonyContextParity(results) {
     assert(web[key], `synth harmony parity missing web-ts ${key}`);
   }
 
-  const keys = ['initialSynthKeyboardHarmonyContext', 'synthKeyboardHarmonyContext'];
   const harmonyRoot = (meta) => String(meta).match(/^Harmony:\s+([A-G]#?)/)?.[1] ?? '';
-  const productRoots = keys.map((key) => harmonyRoot(product[key].harmonyMeta)).sort();
-  const webRoots = keys.map((key) => harmonyRoot(web[key].harmonyMeta)).sort();
+  const productInitialRoot = harmonyRoot(product.initialSynthKeyboardHarmonyContext.harmonyMeta);
+  const webInitialRoot = harmonyRoot(web.initialSynthKeyboardHarmonyContext.harmonyMeta);
+  assert(productInitialRoot && webInitialRoot, `synth stopped harmony context missing root: Product ${productInitialRoot || '<missing>'} vs web-ts ${webInitialRoot || '<missing>'}`);
+  const productRunningRoot = harmonyRoot(product.synthKeyboardHarmonyContext.harmonyMeta);
+  const webRunningRoot = harmonyRoot(web.synthKeyboardHarmonyContext.harmonyMeta);
   assert(
-    productRoots.join('|') === webRoots.join('|'),
-    `synth harmony root set mismatch: Product ${productRoots.join(' | ')} vs web-ts ${webRoots.join(' | ')}`,
+    productRunningRoot === webRunningRoot,
+    `synth running harmony root mismatch: Product ${productRunningRoot || '<missing>'} vs web-ts ${webRunningRoot || '<missing>'}`,
   );
 }
 

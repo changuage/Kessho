@@ -1,6 +1,7 @@
+import { useCallback } from 'react';
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import type { ProductDrumVoice } from '../audio/product/ProductEngineTypes';
-import { useSelectedAudioEngineModulationRanges } from './useSelectedAudioEngineModulationRanges';
+import { productEngine } from '../audio/product/ProductEngineProxy';
 
 type ProductRuntimeRange = { min: number; max: number };
 
@@ -12,16 +13,34 @@ type ProductRuntimeModulationRanges = {
   setProductRuntimeWalkRanges: (ranges: Partial<Record<string, ProductRuntimeRange>>) => void;
 };
 
-export function useProductRuntimeModulationRanges(productRuntimeMode: ProductRuntimeSelectionMode) {
-  // TODO(product-runtime-compat-10E): selected modulation range hooks remain the temporary
-  // implementation while product surfaces expose product runtime names.
-  const modulationRanges = useSelectedAudioEngineModulationRanges(productRuntimeMode);
+export function useProductRuntimeModulationRanges(
+  _productRuntimeMode: ProductRuntimeSelectionMode,
+): ProductRuntimeModulationRanges {
+  const setProductRuntimeWalkPositionsCallback = useCallback((callback: ((positions: Record<string, number>) => void) | null): void => {
+    productEngine.setRuntimeWalkPositionsCallback(callback);
+  }, []);
+
+  const setProductDrumMorphRange = useCallback((voice: ProductDrumVoice, range: ProductRuntimeRange | null): void => {
+    productEngine.setDrumMorphRange(voice, range);
+  }, []);
+
+  const setProductDrumParamSHRange = useCallback((key: string, range: ProductRuntimeRange | null): void => {
+    productEngine.setDrumParamSHRange(key, range);
+  }, []);
+
+  const setProductDualRanges = useCallback((ranges: Partial<Record<string, ProductRuntimeRange>>): void => {
+    productEngine.setDualRanges(ranges);
+  }, []);
+
+  const setProductRuntimeWalkRanges = useCallback((ranges: Partial<Record<string, ProductRuntimeRange>>): void => {
+    productEngine.setRuntimeWalkRanges(ranges);
+  }, []);
 
   return {
-    setProductRuntimeWalkPositionsCallback: modulationRanges.setSelectedRuntimeWalkPositionsCallback,
-    setProductDrumMorphRange: modulationRanges.setSelectedDrumMorphRange,
-    setProductDrumParamSHRange: modulationRanges.setSelectedDrumParamSHRange,
-    setProductDualRanges: modulationRanges.setSelectedDualRanges,
-    setProductRuntimeWalkRanges: modulationRanges.setSelectedRuntimeWalkRanges,
-  } satisfies ProductRuntimeModulationRanges;
+    setProductRuntimeWalkPositionsCallback,
+    setProductDrumMorphRange,
+    setProductDrumParamSHRange,
+    setProductDualRanges,
+    setProductRuntimeWalkRanges,
+  };
 }

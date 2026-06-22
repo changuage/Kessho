@@ -59,6 +59,7 @@ type UseMorphSlotLoadRuntimeSurfaceOptions<TPreset extends SavedPreset> = {
   ) => void;
   restoreEvolveConfigs: (preset: SavedPreset) => void;
   confirmOverrideArmedJourneyForStatePreset: (presetName: string) => Promise<boolean>;
+  onPresetPoolLoad?: (preset: TPreset) => void;
 };
 
 type MorphSlotLoadRuntimeSurface = {
@@ -72,6 +73,7 @@ function presetEntryToSavedPreset(entry: PresetEntry, data: Record<string, unkno
     name: entry.name,
     timestamp: new Date().toISOString(),
     state: normalizeState(data as unknown as SliderState),
+    tags: entry.tags,
     ...(extractPresetVersionMetadata(version) ?? {}),
   });
 }
@@ -114,6 +116,7 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
   applyDualRangesFromPreset,
   restoreEvolveConfigs,
   confirmOverrideArmedJourneyForStatePreset,
+  onPresetPoolLoad,
 }: UseMorphSlotLoadRuntimeSurfaceOptions<TPreset>): MorphSlotLoadRuntimeSurface {
   const captureCurrentMorphBasis = useCallback((): void => {
     morphCapturedStateRef.current = { ...state };
@@ -236,6 +239,7 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
         applyLinkedVisualizerPreset(entry);
         applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
         restoreEvolveConfigs(result.preset);
+        onPresetPoolLoad?.(result.preset as TPreset);
       }
       return true;
     },
@@ -249,6 +253,7 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
       morphPosition,
       morphPresetB,
       normalizeState,
+      onPresetPoolLoad,
       presetEngineUpdateOptions,
       restoreEvolveConfigs,
       setMorphPresetA,
@@ -286,6 +291,7 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
         applyLinkedVisualizerPreset(entry);
         applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
         restoreEvolveConfigs(result.preset);
+        onPresetPoolLoad?.(result.preset as TPreset);
       }
       return true;
     },
@@ -299,6 +305,7 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
       morphPosition,
       morphPresetA,
       normalizeState,
+      onPresetPoolLoad,
       presetEngineUpdateOptions,
       restoreEvolveConfigs,
       setMorphPresetB,

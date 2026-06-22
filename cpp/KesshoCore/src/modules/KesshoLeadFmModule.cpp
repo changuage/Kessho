@@ -420,6 +420,15 @@ public:
     return instance_ != nullptr ? lead_fm_instance_note_off(instance_, voice_index) : 0;
   }
 
+  int killVoice(int voice_index) override {
+    (void)voice_index;
+    if (instance_ == nullptr) {
+      return 0;
+    }
+    reset();
+    return 1;
+  }
+
   int lastTriggeredVoiceIndex() const override {
     return last_triggered_voice_index_;
   }

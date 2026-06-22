@@ -193,6 +193,16 @@ export function flattenTriggerClipEdits(clip: TriggerClip): TriggerClip {
   };
 }
 
+export function flattenTriggerClipToManual(clip: TriggerClip, label = 'Step'): TriggerClip {
+  const flattened = flattenTriggerClipEdits(clip);
+  return {
+    ...flattened,
+    origin: 'manual',
+    generator: { kind: 'manual' },
+    label,
+  };
+}
+
 export function rotateTriggerClip(clip: TriggerClip, delta: number): TriggerClip {
   const flattened = flattenTriggerClipEdits(clip);
   const basePattern = rotateArray(flattened.basePattern, delta);

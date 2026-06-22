@@ -1,5 +1,9 @@
 import { applyParams, extractParams } from './codec';
 import type { SliderState } from '../ui/state';
+import {
+  DRUM_EUCLIDEAN_LANE_COUNT,
+  SYNTH_EUCLIDEAN_LANE_COUNT,
+} from '../audio/sequencerLaneCounts';
 
 export interface EuclideanPatternDefinition {
   steps: number;
@@ -81,9 +85,10 @@ function normalizePatternData(data: Record<string, unknown>): NormalizedEuclidea
   };
 }
 
-function getLaneNumber(laneIndex: number): 1 | 2 | 3 | 4 {
-  const normalized = Math.max(0, Math.min(3, Math.floor(laneIndex)));
-  return (normalized + 1) as 1 | 2 | 3 | 4;
+function getLaneNumber(prefix: 'drum' | 'synth', laneIndex: number): number {
+  const laneCount = prefix === 'drum' ? DRUM_EUCLIDEAN_LANE_COUNT : SYNTH_EUCLIDEAN_LANE_COUNT;
+  const normalized = Math.max(0, Math.min(laneCount - 1, Math.floor(laneIndex)));
+  return normalized + 1;
 }
 
 function extractLanePatternData(
@@ -91,7 +96,7 @@ function extractLanePatternData(
   prefix: 'drum' | 'synth',
   laneIndex: number,
 ): Record<string, unknown> {
-  const lane = getLaneNumber(laneIndex);
+  const lane = getLaneNumber(prefix, laneIndex);
   const stateRecord = state as unknown as Record<string, unknown>;
   const data: Record<string, unknown> = {
     euclideanPatternEnabled: stateRecord[`${prefix}Euclid${lane}Enabled`],
@@ -113,7 +118,7 @@ function normalizeSpecificLanePatternData(
   prefix: 'drum' | 'synth',
   laneIndex: number,
 ): NormalizedEuclideanPatternData | null {
-  const lane = getLaneNumber(laneIndex);
+  const lane = getLaneNumber(prefix, laneIndex);
   const lanePrefix = `${prefix}Euclid${lane}`;
   const hasLaneData = Object.keys(data).some((key) => key.startsWith(lanePrefix));
   if (!hasLaneData) return null;
@@ -133,7 +138,7 @@ function buildLaneStateFromPatternData(
   prefix: 'drum' | 'synth',
   laneIndex: number,
 ): Record<string, unknown> {
-  const lane = getLaneNumber(laneIndex);
+  const lane = getLaneNumber(prefix, laneIndex);
   const alternatePrefix = prefix === 'drum' ? 'synth' : 'drum';
   const pattern = normalizeSpecificLanePatternData(data, prefix, laneIndex)
     ?? normalizeSpecificLanePatternData(data, alternatePrefix, laneIndex)
@@ -148,7 +153,7 @@ function buildLaneStateFromPatternData(
     [`${prefix}Euclid${lane}Rotation`]: pattern.rotation,
   };
   if (prefix === 'synth') {
-    const sourceLane = getLaneNumber(laneIndex);
+    const sourceLane = getLaneNumber(prefix, laneIndex);
     const sourcePrefix = `synthEuclid${sourceLane}`;
     const lowFallback = lane === 1 ? 64 : lane === 2 ? 76 : lane === 3 ? 52 : 88;
     const highFallback = lane === 1 ? 76 : lane === 2 ? 88 : lane === 3 ? 64 : 96;
@@ -168,7 +173,15 @@ function buildLaneStateFromPatternData(
   return next;
 }
 
-function buildNeutralDrumLaneDefaults(lane: 2 | 3 | 4): Record<string, unknown> {
+function buildNeutralDrumLaneDefaults(lane: 2 | 3 | 4 | 5 | 6): Record<string, unknown> {
+  const targetDefaults: Record<2 | 3 | 4 | 5 | 6, Partial<Record<'TargetBeepHi' | 'TargetBeepLo' | 'TargetNoise' | 'TargetMembrane', boolean>>> = {
+    2: { TargetBeepHi: true },
+    3: { TargetBeepLo: true },
+    4: { TargetNoise: true },
+    5: { TargetBeepLo: true },
+    6: { TargetMembrane: true },
+  };
+  const targets = targetDefaults[lane];
   return {
     [`drumEuclid${lane}Enabled`]: false,
     [`drumEuclid${lane}Preset`]: 'custom',
@@ -178,10 +191,10 @@ function buildNeutralDrumLaneDefaults(lane: 2 | 3 | 4): Record<string, unknown> 
     [`drumEuclid${lane}TargetSub`]: false,
     [`drumEuclid${lane}TargetKick`]: false,
     [`drumEuclid${lane}TargetClick`]: false,
-    [`drumEuclid${lane}TargetBeepHi`]: lane === 2,
-    [`drumEuclid${lane}TargetBeepLo`]: lane === 3,
-    [`drumEuclid${lane}TargetNoise`]: lane === 4,
-    [`drumEuclid${lane}TargetMembrane`]: false,
+    [`drumEuclid${lane}TargetBeepHi`]: targets.TargetBeepHi === true,
+    [`drumEuclid${lane}TargetBeepLo`]: targets.TargetBeepLo === true,
+    [`drumEuclid${lane}TargetNoise`]: targets.TargetNoise === true,
+    [`drumEuclid${lane}TargetMembrane`]: targets.TargetMembrane === true,
     [`drumEuclid${lane}Probability`]: 1,
     [`drumEuclid${lane}VelocityMin`]: 0.5,
     [`drumEuclid${lane}VelocityMax`]: 1,
@@ -250,17 +263,30 @@ export function extractEuclideanPatternLaneDataFromSynthState(
 
 function hasSpecificEuclideanData(data: Record<string, unknown>, prefix: 'drum' | 'synth'): boolean {
   const masterKey = prefix === 'drum' ? 'drumEuclidMasterEnabled' : 'synthEuclideanMasterEnabled';
-  return masterKey in data || Object.keys(data).some((key) => key.startsWith(`${prefix}Euclid`));
+  const structuredKeys = prefix === 'drum'
+    ? new Set(['drumSequencerChain'])
+    : new Set(['synthSequencerFaces', 'synthSequencerChain']);
+  return masterKey in data
+    || Object.keys(data).some((key) => (
+      key.startsWith(`${prefix}Euclid`)
+      || structuredKeys.has(key)
+      || (prefix === 'synth' && key.startsWith('synthChordSequencer'))
+    ));
 }
 
 function pickSpecificEuclideanData(data: Record<string, unknown>, prefix: 'drum' | 'synth'): Record<string, unknown> {
   const picked: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
-    const isDrumKey = prefix === 'drum' && key.startsWith('drumEuclid');
+    const isDrumKey = prefix === 'drum' && (
+      key.startsWith('drumEuclid')
+      || key === 'drumSequencerChain'
+    );
     const isSynthKey = prefix === 'synth' && (
       key.startsWith('synthEuclid')
       || key === 'synthEuclideanMasterEnabled'
       || key === 'synthEuclideanTempo'
+      || key === 'synthSequencerFaces'
+      || key === 'synthSequencerChain'
       || key.startsWith('synthChordSequencer')
     );
     if (
@@ -309,6 +335,8 @@ export function buildDrumEuclideanStateFromPatternData(
     ...buildNeutralDrumLaneDefaults(2),
     ...buildNeutralDrumLaneDefaults(3),
     ...buildNeutralDrumLaneDefaults(4),
+    ...buildNeutralDrumLaneDefaults(5),
+    ...buildNeutralDrumLaneDefaults(6),
   };
 }
 

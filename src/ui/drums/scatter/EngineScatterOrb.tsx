@@ -104,64 +104,40 @@ const EngineScatterOrb: React.FC<EngineScatterOrbProps> = ({
       </div>
 
       <div className="scatter-orb__controls" onClick={(event) => event.stopPropagation()}>
-        <div className="scatter-orb__control-row">
+        <button
+          type="button"
+          className={`scatter-orb__enable${state.enabled ? ' on' : ''}`}
+          aria-pressed={state.enabled}
+          onClick={() => {
+            onSelect();
+            onToggleEnabled();
+          }}
+          title={state.enabled ? `Disable ${cfg.label}` : `Enable ${cfg.label}`}
+        />
+        {onPreview && (
           <button
             type="button"
-            className={`scatter-orb__enable${state.enabled ? ' on' : ''}`}
-            aria-pressed={state.enabled}
+            className="scatter-orb__preview"
             onClick={() => {
               onSelect();
-              onToggleEnabled();
+              onPreview();
             }}
-            title={state.enabled ? `Disable ${cfg.label}` : `Enable ${cfg.label}`}
-          />
-          {onPreview && (
-            <button
-              type="button"
-              className="scatter-orb__preview"
-              onClick={() => {
-                onSelect();
-                onPreview();
-              }}
-              title={`Preview ${cfg.label}`}
-            >
-              ▶
-            </button>
-          )}
-          <button
-            type="button"
-            className="scatter-orb__generate"
-            onClick={() => {
-              onSelect();
-              onGenerate();
-            }}
-            title={`Generate ${cfg.label} burst`}
+            title={`Preview ${cfg.label}`}
           >
-            ✦
+            ▶
           </button>
-        </div>
-        <label>
-          <span>Trigger</span>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={triggerProbability}
-            onChange={(event) => onChange({ ...state, triggerProbability: Number(event.target.value) })}
-          />
-        </label>
-        <label>
-          <span>Burst</span>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={burstProbability}
-            onChange={(event) => onChange({ ...state, burstProbability: Number(event.target.value) })}
-          />
-        </label>
+        )}
+        <button
+          type="button"
+          className="scatter-orb__generate"
+          onClick={() => {
+            onSelect();
+            onGenerate();
+          }}
+          title={`Generate ${cfg.label} burst`}
+        >
+          ✦
+        </button>
       </div>
     </div>
   );

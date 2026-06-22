@@ -607,6 +607,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     'leadRandomSource',
     'leadRandomSyncPolicy',
     'seedWindow',
+    'synthChordSequencer',
     'synthChordSequencerEnabled',
     'synthChordSequencerSource',
     'synthChordSequencerVoiceCount',

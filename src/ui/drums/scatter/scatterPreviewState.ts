@@ -1,8 +1,8 @@
 import type { DrumVoiceType } from '../../../audio/drumSynth';
 import { getParamInfo, quantize, type SliderState } from '../../state';
 import { getDrumVoiceRoute } from '../drumVoiceParamRouting';
+import { DRUM_PITCH_OFFSET_LIMIT } from '../../sequencer/drumPitchSequencer';
 import type { GeneratedDrumPhrase } from './scatterTypes';
-import { scatterMorphEndpointPatchForVoice } from './scatterMorphEndpoint';
 
 const DRUM_VOICE_DISTANCE_KEYS: Record<DrumVoiceType, keyof SliderState> = {
   sub: 'drumSubDistance',
@@ -31,7 +31,7 @@ function clampUnit(value: number, fallback = 0): number {
 
 function clampSemitones(value: number): number {
   if (!Number.isFinite(value)) return 0;
-  return Math.max(-24, Math.min(24, value));
+  return Math.max(-DRUM_PITCH_OFFSET_LIMIT, Math.min(DRUM_PITCH_OFFSET_LIMIT, value));
 }
 
 function stepValue(values: readonly number[], index: number, fallback: number): number {
@@ -82,7 +82,6 @@ export function statePatchForScatterStep(
   return {
     [route.morphKey]: morphValue,
     [distanceKey]: distanceValue,
-    ...(morphValue > 0.001 ? scatterMorphEndpointPatchForVoice(phrase.engine, sliderState) : {}),
     ...pitchPatchForScatterStep(phrase, stepIndex, sliderState),
   } as Partial<SliderState>;
 }

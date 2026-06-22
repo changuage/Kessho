@@ -30,6 +30,7 @@ export interface UseGeneratedSequenceCaptureArgs {
     | 'getParam'
     | 'setParam'
     | 'setParamSelect'
+    | 'setTriggerShapeParams'
     | 'setStepOverrides'
     | 'setSubLaneStates'
     | 'setPitchSettings'
@@ -225,6 +226,7 @@ export function useGeneratedSequenceCapture({
           setSequencerMode,
           setPitchBindingMode,
           capturePitchReference: capturePitchReferenceRef.current,
+          sourceMode: latest.sourceMode,
         });
       }
 

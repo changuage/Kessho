@@ -17,11 +17,21 @@ import { buildPresetVersionMetadata, getPresetVersionSnapshot } from './versionM
 import { buildJourneyPresetPreview } from './journeyPresetPreview';
 import { normalizePresetSummary } from './presetUtils';
 import {
+  collectPresetPoolTags,
+  filterPresetPoolCandidates,
+  getDefaultPresetPoolIds,
+  normalizePresetPoolMetadata,
+  normalizePresetTags,
+  presetPoolCandidateMatches,
+  resolvePresetPoolKey,
+  type PresetPoolCandidate,
+} from './presetPool';
+import {
   applyEuclideanPatternToDrumState,
   applyEuclideanPatternToSynthLaneState,
   extractEuclideanPatternLaneDataFromSynthState,
 } from './euclideanPatternBank';
-import type { PresetEntry } from './types';
+import type { PresetEntry, PresetPoolMetadata } from './types';
 import { DEFAULT_STATE, decodeStateFromUrl, encodeStateToUrl, migratePreset, type SavedPreset } from '../ui/state';
 import { createEmptyStepOverrides, deserializeStepOverrides, serializeStepOverrides } from '../ui/sequencer/stepOverrideSerialization';
 import {
@@ -272,6 +282,14 @@ function testBuildPresetVersionMetadataIncludesAllSupportedFields(): void {
       { mode: 'notes', root: 57, scale: 'Minor' },
     ],
     synthPitchBindingModes: [...SYNTH_BINDING_MODES],
+    presetPool: {
+      version: 1,
+      pools: {
+        pad: ['saturated_drift', 'buchla_pluck'],
+        lead4opfm: ['soft_rhodes', 'gamelan'],
+        drumKick: [],
+      },
+    },
   });
 
   assert.deepStrictEqual(metadata, {
@@ -310,7 +328,146 @@ function testBuildPresetVersionMetadataIncludesAllSupportedFields(): void {
       { mode: 'notes', root: 57, scale: 'Minor' },
     ],
     synthPitchBindingModes: [...SYNTH_BINDING_MODES],
+    presetPool: {
+      version: 1,
+      pools: {
+        pad: ['saturated_drift', 'buchla_pluck'],
+        lead4opfm: ['soft_rhodes', 'gamelan'],
+        drumKick: [],
+      },
+    },
   });
+}
+
+function testPresetPoolDefaultsUseStableIdsAndSharedEngineScopes(): void {
+  const padCandidates: PresetPoolCandidate[] = [
+    { id: 'pad-saturated-id', name: 'Saturated Drift', aliases: ['saturated_drift'], tags: ['warm', 'drift'] },
+    { id: 'pad-buchla-id', name: 'Buchla Pluck', aliases: ['buchla_pluck'], tags: ['pluck'] },
+    { id: 'pad-soft-id', name: 'Soft Pluck', aliases: ['soft_pluck'], tags: ['soft', 'pluck'] },
+    { id: 'pad-extra-id', name: 'Cathedral Organ', tags: ['organ'] },
+  ];
+  const leadCandidates: PresetPoolCandidate[] = [
+    { id: 'lead-rhodes-id', name: 'Soft Rhodes', aliases: ['soft_rhodes'], tags: ['keys'] },
+    { id: 'lead-gamelan-id', name: 'Gamelan', aliases: ['gamelan'], tags: ['bell'] },
+    { id: 'lead-extra-id', name: 'Classic Mono', tags: ['lead'] },
+  ];
+  const drumCandidates: PresetPoolCandidate[] = [
+    { id: 'drum-a', name: 'A' },
+    { id: 'drum-b', name: 'B' },
+    { id: 'drum-c', name: 'C' },
+    { id: 'drum-d', name: 'D' },
+  ];
+
+  assert.equal(resolvePresetPoolKey('engine', 'pad1'), 'pad');
+  assert.equal(resolvePresetPoolKey('engine', 'pad2'), 'pad');
+  assert.equal(resolvePresetPoolKey('engine', 'lead1'), 'lead4opfm');
+  assert.equal(resolvePresetPoolKey('engine', 'lead2'), 'lead4opfm');
+  assert.equal(resolvePresetPoolKey('engine', 'lead4opfm'), 'lead4opfm');
+  assert.equal(resolvePresetPoolKey('engine', 'drumKick'), 'drumKick');
+  assert.equal(resolvePresetPoolKey('state', 'global'), null);
+
+  assert.deepStrictEqual(
+    getDefaultPresetPoolIds('pad', padCandidates),
+    ['pad-saturated-id', 'pad-buchla-id', 'pad-soft-id'],
+    'pad/synth pool defaults should store candidate ids, not full presets or display names',
+  );
+  assert.deepStrictEqual(
+    getDefaultPresetPoolIds('lead4opfm', leadCandidates),
+    ['lead-rhodes-id', 'lead-gamelan-id'],
+    'lead pool defaults should store the Soft Rhodes and Gamelan candidate ids',
+  );
+  assert.equal(
+    getDefaultPresetPoolIds('drumKick', drumCandidates).length,
+    3,
+    'drum engine defaults should choose three candidates',
+  );
+}
+
+function testPresetPoolMatchingNormalizationAndTags(): void {
+  const candidates: PresetPoolCandidate[] = [
+    { id: 'cloud-123', name: 'Renamed Preset', aliases: ['Original Name'], tags: ['Warm', 'Keys'] },
+    { id: 'local-456', name: 'Local Pad', tags: ['warm', 'Pad'] },
+    { id: 'stock-789', name: 'Stock Tone', tags: ['Init'] },
+  ];
+
+  assert.equal(
+    presetPoolCandidateMatches(candidates[0]!, ['original name']),
+    true,
+    'pool membership should survive a rename via candidate aliases while keeping the stable id available',
+  );
+  assert.deepStrictEqual(
+    filterPresetPoolCandidates(candidates, ['cloud-123'], ['stock tone']).map(candidate => candidate.id),
+    ['cloud-123', 'stock-789'],
+    'pool filtering should include selected pool ids plus the explicitly loaded keep id',
+  );
+  assert.deepStrictEqual(
+    normalizePresetPoolMetadata({
+      version: 1,
+      pools: {
+        pad: ['Cloud-123', 'cloud-123', '  local-456  '],
+        lead4opfm: [],
+        invalid: [null, ''],
+      },
+    }),
+    {
+      version: 1,
+      pools: {
+        pad: ['Cloud-123', 'local-456'],
+        lead4opfm: [],
+        invalid: [],
+      },
+    },
+    'pool metadata should persist ids only, preserving explicit empty pools',
+  );
+  assert.deepStrictEqual(normalizePresetTags(['Warm', ' warm ', 'Keys', '', 'Pad Synth']), ['warm', 'keys', 'pad synth']);
+  assert.deepStrictEqual(collectPresetPoolTags(candidates), ['init', 'keys', 'pad', 'warm']);
+}
+
+function testPresetPoolMetadataRoundTripsThroughL4SavedPreset(): void {
+  const presetPool: PresetPoolMetadata = {
+    version: 1,
+    pools: {
+      pad: ['pad-saturated-id', 'pad-buchla-id'],
+      lead4opfm: ['lead-rhodes-id'],
+      drumKick: [],
+    },
+  };
+  const migrated = migratePreset({
+    name: 'Pool State',
+    timestamp: '2026-06-21T00:00:00.000Z',
+    state: { ...DEFAULT_STATE, masterVolume: 0.72 },
+    presetPool,
+  } as SavedPreset);
+
+  assert.deepStrictEqual(
+    migrated.presetPool,
+    presetPool,
+    'L4 SavedPreset migration should preserve ID-only preset pool metadata',
+  );
+
+  const entry: PresetEntry = {
+    type: 'state',
+    scope: 'global',
+    name: 'Pool State',
+    author: 'user',
+    versions: [
+      {
+        v: 1,
+        note: 'pool ids',
+        timestamp: 1,
+        data: { masterVolume: 0.72 },
+        presetPool,
+      },
+    ],
+    currentVersion: 1,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  assert.deepStrictEqual(
+    getPresetVersionSnapshot(entry, 1)?.metadata?.presetPool,
+    presetPool,
+    'L4 version snapshot metadata should expose preset pool ids for app-level pool restore',
+  );
 }
 
 function testGetPresetVersionSnapshotReturnsSelectedVersionMetadata(): void {
@@ -1042,6 +1199,9 @@ async function run(): Promise<void> {
   testEngineStepOverridesTrimHiddenSubLaneValues();
   testMigratePresetPreservesSynthPitchBindingModes();
   testBuildPresetVersionMetadataIncludesAllSupportedFields();
+  testPresetPoolDefaultsUseStableIdsAndSharedEngineScopes();
+  testPresetPoolMatchingNormalizationAndTags();
+  testPresetPoolMetadataRoundTripsThroughL4SavedPreset();
   testGetPresetVersionSnapshotReturnsSelectedVersionMetadata();
   testLegacyImportPreservesSynthPitchBindingModes();
   testSequenceLanePresetRoundTripKeepsRuntimeLaneState();

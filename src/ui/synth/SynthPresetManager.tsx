@@ -7,7 +7,9 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { SliderState } from '../state';
 import { usePresets } from '../../presets/usePresets';
 import { PresetRatingStars } from '../../presets/PresetRatingStars';
+import { PresetTagEditor } from '../../presets/PresetTagEditor';
 import { getVersionData } from '../../presets/codec';
+import { PRESET_POOL_ICON } from '../../presets/presetPool';
 import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from '../../presets/sharedMode';
 import {
   getFactoryPadPresetIdByName,
@@ -27,7 +29,7 @@ const PAD2_TO_PAD1_KEY = Object.fromEntries(
   Object.entries(PAD1_TO_PAD2_KEY).map(([pad1Key, pad2Key]) => [pad2Key, pad1Key]),
 ) as Record<string, string>;
 
-function createRuntimePadPreset(scope: 'pad1' | 'pad2', name: string, data: Record<string, unknown>): PadPreset {
+function createRuntimePadPreset(scope: 'pad1' | 'pad2', name: string, data: Record<string, unknown>, tags?: string[]): PadPreset {
   const params: Record<string, number | string | boolean> = {};
 
   if (scope === 'pad1') {
@@ -48,7 +50,7 @@ function createRuntimePadPreset(scope: 'pad1' | 'pad2', name: string, data: Reco
 
   return {
     name,
-    tags: [],
+    tags: tags ?? [],
     params,
   };
 }
@@ -70,6 +72,10 @@ interface SynthPresetManagerProps {
   state: SliderState;
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
   color: string;
+  onOpenPool?: () => void;
+  poolButtonTitle?: string;
+  poolButtonAriaLabel?: string;
+  poolButtonLabel?: React.ReactNode;
   variationControls?: {
     canArm: boolean;
     canVariant: boolean;
@@ -185,6 +191,25 @@ const s: Record<string, React.CSSProperties> = {
     minHeight: 22,
     color: '#8f5f5f',
   },
+  poolBtn: {
+    background: 'none',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: 'rgba(165,196,212,0.35)',
+    borderRadius: 3,
+    cursor: 'pointer',
+    padding: '3px 6px',
+    fontSize: '0.72rem',
+    lineHeight: 1.2,
+    transition: 'color 0.15s, border-color 0.15s, background 0.15s',
+    flexShrink: 0,
+    minWidth: 26,
+    minHeight: 22,
+    color: '#a5c4d4',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   expandBtn: {
     background: 'none',
     borderWidth: 1,
@@ -287,9 +312,10 @@ const s: Record<string, React.CSSProperties> = {
   dialogBtn: {
     padding: '5px 14px',
     borderRadius: 4,
-    border: 'none',
+    border: '1px solid rgba(244,237,228,0.12)',
     cursor: 'pointer',
     fontSize: '0.72rem',
+    fontWeight: 700,
   },
 };
 
@@ -302,9 +328,13 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
   state,
   onSelectChange,
   color,
+  onOpenPool,
+  poolButtonTitle = 'Edit preset pool',
+  poolButtonAriaLabel = 'Edit preset pool',
+  poolButtonLabel = PRESET_POOL_ICON,
   variationControls,
 }) => {
-  const { presets, save, load, remove, refresh, updateMetadata } = usePresets('engine', engineScope);
+  const { presets, save, load, remove, rename, refresh, updateMetadata } = usePresets('engine', engineScope);
 
   const slotAValue = String(state[slotAKey] || '');
   const presetOptions = useMemo(() => getPadPresetOptions(engineScope), [engineScope, presets]);
@@ -327,10 +357,18 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
   // UI state
   const [saveDialog, setSaveDialog] = useState<{ originalName: string } | null>(null);
   const [saveAsName, setSaveAsName] = useState('');
+  const [saveTags, setSaveTags] = useState<string[]>([]);
   const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [versionEntry, setVersionEntry] = useState<PresetEntry | null>(null);
   const [showVersions, setShowVersions] = useState(false);
   const [localRatings, setLocalRatings] = useState<Record<string, number>>({});
+  const tagSuggestions = useMemo(() => {
+    const tags = new Set<string>();
+    for (const preset of presets) {
+      for (const tag of preset.tags ?? []) tags.add(tag);
+    }
+    return [...tags].sort((left, right) => left.localeCompare(right));
+  }, [presets]);
 
   // Auto-select slot A preset on scope change
   useEffect(() => {
@@ -398,7 +436,7 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
   /* ── Save (overwrite) ── */
   const handleSaveOverwrite = useCallback(async () => {
     if (!saveDialog || !selectedEntryName) return;
-    await save(saveDialog.originalName, state, 'Updated from synth editor');
+    await save(saveDialog.originalName, state, 'Updated from synth editor', saveTags);
     await refresh();
     const entry = await load(saveDialog.originalName);
     if (entry) {
@@ -410,14 +448,14 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
           id: runtimeId,
           name: entry.name,
           library: toEditablePadLibrary(entry.library),
-          preset: createRuntimePadPreset(engineScope, entry.name, version.data),
+          preset: createRuntimePadPreset(engineScope, entry.name, version.data, entry.tags),
         });
       }
       if (selectedEntryName === entry.name) setVersionEntry(entry);
       setSelectedPresetId(resolveRuntimePadPresetId(entry));
     }
     setSaveDialog(null);
-  }, [engineScope, load, refresh, save, saveDialog, selectedEntryName, state]);
+  }, [engineScope, load, refresh, save, saveDialog, saveTags, selectedEntryName, state]);
 
   /* ── Save As ── */
   const handleSaveAs = useCallback(async () => {
@@ -430,7 +468,7 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
       setConfirm({
         message: `"${targetName}" already exists. Overwrite?`,
         onConfirm: async () => {
-          await save(targetName, state, 'Overwritten from synth editor');
+          await save(targetName, state, 'Overwritten from synth editor', saveTags);
           await refresh();
           const entry = await load(targetName);
           if (entry) {
@@ -442,7 +480,7 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
                 id: runtimeId,
                 name: entry.name,
                 library: toEditablePadLibrary(entry.library),
-                preset: createRuntimePadPreset(engineScope, entry.name, version.data),
+                preset: createRuntimePadPreset(engineScope, entry.name, version.data, entry.tags),
               });
             }
             setSelectedPresetId(resolveRuntimePadPresetId(entry));
@@ -454,7 +492,7 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
       return;
     }
 
-    await save(targetName, state, 'Saved from synth editor');
+    await save(targetName, state, 'Saved from synth editor', saveTags);
     await refresh();
     const entry = await load(targetName);
     if (entry) {
@@ -466,14 +504,39 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
           id: runtimeId,
           name: entry.name,
           library: toEditablePadLibrary(entry.library),
-          preset: createRuntimePadPreset(engineScope, entry.name, version.data),
+          preset: createRuntimePadPreset(engineScope, entry.name, version.data, entry.tags),
         });
       }
       setSelectedPresetId(resolveRuntimePadPresetId(entry));
     }
     setSaveDialog(null);
     setSaveAsName('');
-  }, [engineScope, load, presets, refresh, save, saveAsName, state]);
+  }, [engineScope, load, presets, refresh, save, saveAsName, saveTags, state]);
+
+  const handleRename = useCallback(async () => {
+    if (!saveDialog || !saveAsName.trim()) return;
+    const targetName = saveAsName.trim();
+    if (targetName === saveDialog.originalName) return;
+
+    const renamed = await rename(saveDialog.originalName, targetName, { tags: saveTags });
+    if (!renamed) return;
+
+    const version = renamed.versions.find(item => item.v === renamed.currentVersion)
+      || renamed.versions[renamed.versions.length - 1];
+    if (version) {
+      const runtimeId = resolveRuntimePadPresetId(renamed);
+      upsertUserPadPreset(engineScope, {
+        id: runtimeId,
+        name: renamed.name,
+        library: toEditablePadLibrary(renamed.library),
+        preset: createRuntimePadPreset(engineScope, renamed.name, version.data, renamed.tags),
+      });
+      setSelectedPresetId(runtimeId);
+    }
+    setVersionEntry(renamed);
+    setSaveDialog(null);
+    setSaveAsName('');
+  }, [engineScope, rename, saveAsName, saveDialog, saveTags]);
 
   /* ── Rate ── */
   const handleRate = useCallback(async (rating: number) => {
@@ -559,10 +622,24 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
               onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
               title={`Load into Slot ${slotBLabel}`}
             >{slotBLabel}</button>
+            {onOpenPool && (
+              <button
+                type="button"
+                style={{ ...s.poolBtn, color, borderColor: `${color}55` }}
+                onClick={onOpenPool}
+                onMouseEnter={e => { e.currentTarget.style.background = `${color}22`; e.currentTarget.style.borderColor = `${color}88`; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.borderColor = `${color}55`; }}
+                title={poolButtonTitle}
+                aria-label={poolButtonAriaLabel}
+              >
+                {poolButtonLabel}
+              </button>
+            )}
             <button
               style={s.saveBtn}
               onClick={() => {
                 setSaveAsName('');
+                setSaveTags(selectedSummary?.tags ?? []);
                 setSaveDialog({ originalName: selectedEntryName });
               }}
               onMouseEnter={e => { e.currentTarget.style.color = '#8fd18f'; e.currentTarget.style.background = 'rgba(95,143,95,0.1)'; }}
@@ -730,8 +807,9 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
               onClick={handleSaveOverwrite}
               style={{
                 ...s.dialogBtn,
-                background: '#2a5a8a',
-                color: 'white',
+                background: 'rgba(184,224,255,0.14)',
+                borderColor: 'rgba(184,224,255,0.34)',
+                color: '#B8E0FF',
                 width: '100%',
                 marginBottom: 10,
                 padding: '8px 16px',
@@ -739,7 +817,7 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
             >Save &quot;{saveDialog.originalName}&quot;</button>
 
             <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: 4 }}>
-              Save as new preset:
+              New preset name:
             </div>
             <input
               type="text"
@@ -753,18 +831,47 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
                 if (e.key === 'Escape') setSaveDialog(null);
               }}
             />
+            <PresetTagEditor
+              value={saveTags}
+              onChange={setSaveTags}
+              suggestions={tagSuggestions}
+              accentColor="#B8E0FF"
+            />
             <div style={s.dialogBtnRow}>
               <button
                 onClick={() => setSaveDialog(null)}
-                style={{ ...s.dialogBtn, background: 'rgba(255,255,255,0.08)', color: '#999' }}
+                style={{
+                  ...s.dialogBtn,
+                  background: 'rgba(255,255,255,0.05)',
+                  borderColor: 'rgba(244,237,228,0.12)',
+                  color: 'rgba(244,237,228,0.66)',
+                }}
               >Cancel</button>
+              <button
+                onClick={() => void handleRename()}
+                disabled={!saveAsName.trim() || saveAsName.trim() === saveDialog.originalName}
+                style={{
+                  ...s.dialogBtn,
+                  background: saveAsName.trim() && saveAsName.trim() !== saveDialog.originalName
+                    ? 'rgba(214,178,111,0.14)'
+                    : 'rgba(255,255,255,0.04)',
+                  borderColor: saveAsName.trim() && saveAsName.trim() !== saveDialog.originalName
+                    ? 'rgba(214,178,111,0.34)'
+                    : 'rgba(255,255,255,0.08)',
+                  color: saveAsName.trim() && saveAsName.trim() !== saveDialog.originalName
+                    ? '#d6b26f'
+                    : 'rgba(244,237,228,0.32)',
+                }}
+                title="Rename without changing the preset ID"
+              >Rename</button>
               <button
                 onClick={() => void handleSaveAs()}
                 disabled={!saveAsName.trim()}
                 style={{
                   ...s.dialogBtn,
-                  background: saveAsName.trim() ? '#2a6a4a' : '#333',
-                  color: saveAsName.trim() ? 'white' : '#666',
+                  background: saveAsName.trim() ? 'rgba(159,215,170,0.14)' : 'rgba(255,255,255,0.04)',
+                  borderColor: saveAsName.trim() ? 'rgba(159,215,170,0.32)' : 'rgba(255,255,255,0.08)',
+                  color: saveAsName.trim() ? '#9fd7aa' : 'rgba(244,237,228,0.32)',
                 }}
               >Save As</button>
             </div>
@@ -779,11 +886,21 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
             <div>{confirm.message}</div>
             <div style={s.dialogBtnRow}>
               <button
-                style={{ ...s.dialogBtn, background: '#c45c5c', color: 'white' }}
+                style={{
+                  ...s.dialogBtn,
+                  background: 'rgba(196,92,92,0.14)',
+                  borderColor: 'rgba(196,92,92,0.34)',
+                  color: '#d88f8f',
+                }}
                 onClick={() => { confirm.onConfirm(); }}
               >Yes</button>
               <button
-                style={{ ...s.dialogBtn, background: 'rgba(255,255,255,0.1)', color: '#ccc' }}
+                style={{
+                  ...s.dialogBtn,
+                  background: 'rgba(255,255,255,0.05)',
+                  borderColor: 'rgba(244,237,228,0.12)',
+                  color: 'rgba(244,237,228,0.66)',
+                }}
                 onClick={() => setConfirm(null)}
               >Cancel</button>
             </div>

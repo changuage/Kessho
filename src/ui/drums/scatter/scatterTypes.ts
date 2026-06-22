@@ -15,6 +15,8 @@ export interface EngineScatterState {
   enabled: boolean;
   triggerProbability: number;
   burstProbability: number;
+  randomWalk?: number;
+  randomWalkEnabled?: boolean;
   feelX: number;
   feelY: number;
   rules: ScatterRuleState;
@@ -25,11 +27,17 @@ export interface SeqScatterState {
   selectedEngine: DrumVoiceType;
   engines: Record<DrumVoiceType, EngineScatterState>;
   recentPhrasesByEngine: Record<DrumVoiceType, GeneratedDrumPhrase[]>;
-  pinnedPhrases: GeneratedDrumPhrase[];
 }
 
 export type ScatterFeelZone = 'pulse' | 'gesture' | 'wave' | 'fracture' | 'scatter';
-export type ScatterContour = 'flat' | 'rise' | 'fall' | 'wave' | 'zigzag' | 'randomWalk' | 'scatter';
+export type ScatterContour =
+  | 'linear'
+  | 'exponential'
+  | 'logarithmic'
+  | 'stepped'
+  | 'wave'
+  | 'randomWalk'
+  | 'scatter';
 
 export interface GeneratedDrumPhrase {
   id: string;
@@ -77,6 +85,7 @@ export interface GeneratedDrumPhrase {
   summary: {
     steps: number;
     hits: number;
+    rotation?: number;
     contour: ScatterContour;
     hasRatchet: boolean;
     hasSlice: boolean;

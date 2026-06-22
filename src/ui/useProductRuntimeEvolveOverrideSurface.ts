@@ -13,7 +13,8 @@ type ProductRuntimeEvolveOverrideSurface = {
 export function useProductRuntimeEvolveOverrideSurface(
   productRuntimeMode: ProductRuntimeSelectionMode,
 ): ProductRuntimeEvolveOverrideSurface {
-  // TODO(product-runtime-compat-10E): selected evolve override callbacks remain the temporary
+  // TODO(product-fallback-retire:runtime-evolve-override-surface): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
+  // Selected evolve override callbacks remain the temporary
   // implementation while product surfaces expose product runtime names.
   const evolveOverrideSurface = useSelectedAudioEngineEvolveOverrideSurface(productRuntimeMode);
 

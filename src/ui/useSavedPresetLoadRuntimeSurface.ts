@@ -48,6 +48,7 @@ type UseSavedPresetLoadRuntimeSurfaceOptions<TPreset extends SavedPreset> = {
     presetSliderModes?: Record<string, SliderMode>,
   ) => void;
   restoreEvolveConfigs: (preset: TPreset) => void;
+  onPresetPoolLoad?: (preset: TPreset) => void;
 };
 
 type SavedPresetLoadRuntimeSurface<TPreset extends SavedPreset> = {
@@ -80,6 +81,7 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
   normalizeState,
   applyDualRangesFromPreset,
   restoreEvolveConfigs,
+  onPresetPoolLoad,
 }: UseSavedPresetLoadRuntimeSurfaceOptions<TPreset>): SavedPresetLoadRuntimeSurface<TPreset> {
   const captureCurrentMorphBasis = useCallback((): void => {
     morphCapturedStateRef.current = { ...state };
@@ -155,6 +157,7 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
         setStatePresetName(resolvedPreset.name);
         applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
         restoreEvolveConfigs(result.preset as TPreset);
+        onPresetPoolLoad?.(result.preset as TPreset);
       }
 
       return true;
@@ -169,6 +172,7 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
       morphPosition,
       morphPresetB,
       normalizeState,
+      onPresetPoolLoad,
       presetEngineUpdateOptions,
       resolveSavedPresetForLoad,
       restoreEvolveConfigs,

@@ -1,5 +1,6 @@
 import React from 'react';
 import { resolveTriggerClip } from '../../sequencer/triggerClip';
+import { DRUM_PITCH_OFFSET_LIMIT } from '../../sequencer/drumPitchSequencer';
 import type { GeneratedDrumPhrase } from './scatterTypes';
 
 interface ScatterTrailFieldProps {
@@ -40,7 +41,7 @@ function stepViewsForPhrase(phrase: GeneratedDrumPhrase): StepView[] {
 
   return pattern.map((enabled, index) => {
     const t = steps <= 1 ? 0 : index / (steps - 1);
-    const pitch = clamp(phrase.pitch[index] ?? 0, -24, 24);
+    const pitch = clamp(phrase.pitch[index] ?? 0, -DRUM_PITCH_OFFSET_LIMIT, DRUM_PITCH_OFFSET_LIMIT);
     const expression = clamp(phrase.expression[index] ?? 0.78, 0, 1);
     const probability = clamp(phrase.probability[index] ?? 1, 0, 1);
 
@@ -48,8 +49,8 @@ function stepViewsForPhrase(phrase: GeneratedDrumPhrase): StepView[] {
       index,
       enabled,
       x: 6 + t * 88,
-      y: clamp(52 - pitch * 1.7, 14, 82),
-      radius: enabled ? 3.5 + expression * 4.5 : 1.8,
+      y: clamp(52 - (pitch / DRUM_PITCH_OFFSET_LIMIT) * 40, 14, 82),
+      radius: enabled ? 9 + expression * 9 : 5,
       opacity: enabled ? Math.max(0.28, probability) : 0.14,
       pitch,
       expression,
@@ -71,7 +72,10 @@ const ScatterTrailField: React.FC<ScatterTrailFieldProps> = ({
 
   const steps = stepViewsForPhrase(phrase);
   const enabledSteps = steps.filter((step) => step.enabled);
-  const points = enabledSteps.map((step) => `${step.x},${step.y}`).join(' ');
+  const connectorSegments = enabledSteps.slice(1).map((step, index) => ({
+    from: enabledSteps[index],
+    to: step,
+  })).filter((segment): segment is { from: StepView; to: StepView } => Boolean(segment.from));
   const activeView = activeStep !== null ? steps[activeStep] : null;
   const swingPercent = Math.round((phrase.swing ?? 0) * 100);
 
@@ -90,7 +94,7 @@ const ScatterTrailField: React.FC<ScatterTrailFieldProps> = ({
       </div>
 
       <div className="scatter-trail__plot">
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <svg className="scatter-trail__connector-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           {steps.map((step) => (
             <line
               key={`grid-${step.index}`}
@@ -102,7 +106,17 @@ const ScatterTrailField: React.FC<ScatterTrailFieldProps> = ({
             />
           ))}
           <line className="scatter-trail__zero-line" x1="4" x2="96" y1="52" y2="52" />
-          {enabledSteps.length > 1 && <polyline className="scatter-trail__line" points={points} />}
+          {connectorSegments.map((segment) => (
+            <line
+              key={`${segment.from.index}-${segment.to.index}`}
+              className="scatter-trail__connector"
+              x1={segment.from.x}
+              y1={segment.from.y}
+              x2={segment.to.x}
+              y2={segment.to.y}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
           {activeView && (
             <line
               className="scatter-trail__playhead"
@@ -112,29 +126,36 @@ const ScatterTrailField: React.FC<ScatterTrailFieldProps> = ({
               y2="95"
             />
           )}
-          {steps.map((step) => (
-            <g key={step.index} transform={`translate(${step.x} ${step.y})`}>
-              <circle
-                className={[
-                  'scatter-trail__bead',
-                  step.enabled ? 'on' : 'off',
-                  activeStep === step.index ? 'active' : '',
-                ].filter(Boolean).join(' ')}
-                r={step.radius}
-                style={{ opacity: step.opacity }}
-              />
-              {step.enabled && step.ratchet > 1 && Array.from({ length: step.ratchet }, (_, ratchetIndex) => (
-                <circle
-                  key={ratchetIndex}
-                  className={`scatter-trail__ratchet-dot${activeStep === step.index && activeRatchet === ratchetIndex ? ' active' : ''}`}
-                  cx={-step.radius + ratchetIndex * 2.6}
-                  cy={step.radius + 3.2}
-                  r="0.9"
-                />
-              ))}
-            </g>
-          ))}
         </svg>
+        <div className="scatter-trail__dot-map" aria-hidden="true">
+          {steps.map((step) => (
+            <span
+              key={step.index}
+              className={[
+                'scatter-trail__dot',
+                step.enabled ? 'on' : 'off',
+                activeStep === step.index ? 'active' : '',
+              ].filter(Boolean).join(' ')}
+              style={{
+                left: `${step.x}%`,
+                top: `${step.y}%`,
+                opacity: step.opacity,
+                '--dot-size': `${step.radius}px`,
+              } as React.CSSProperties}
+            >
+              {step.enabled && step.ratchet > 1 && (
+                <span className="scatter-trail__ratchets">
+                  {Array.from({ length: step.ratchet }, (_, ratchetIndex) => (
+                    <i
+                      key={ratchetIndex}
+                      className={activeStep === step.index && activeRatchet === ratchetIndex ? 'active' : ''}
+                    />
+                  ))}
+                </span>
+              )}
+            </span>
+          ))}
+        </div>
       </div>
 
       <div

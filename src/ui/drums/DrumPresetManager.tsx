@@ -8,10 +8,13 @@ import type { SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import { usePresets } from '../../presets/usePresets';
 import { PresetRatingStars } from '../../presets/PresetRatingStars';
+import { PresetTagEditor } from '../../presets/PresetTagEditor';
 import { getVersionData } from '../../presets/codec';
+import { PRESET_POOL_ICON } from '../../presets/presetPool';
 import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from '../../presets/sharedMode';
 import {
   getFactoryPresetNames,
+  renameUserPreset,
   upsertUserPreset,
 } from '../../audio/drumPresets';
 import type { PresetEntry } from '../../presets/types';
@@ -63,6 +66,10 @@ interface DrumPresetManagerProps {
   color: string;
   onParamChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
+  onOpenPool?: () => void;
+  poolButtonTitle?: string;
+  poolButtonAriaLabel?: string;
+  poolButtonLabel?: React.ReactNode;
 }
 
 /* ── Styles (matching L4 PresetFamilyTree) ── */
@@ -173,6 +180,25 @@ const s: Record<string, React.CSSProperties> = {
     minHeight: 22,
     color: '#8f5f5f',
   },
+  poolBtn: {
+    background: 'none',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: 'rgba(165,196,212,0.35)',
+    borderRadius: 3,
+    cursor: 'pointer',
+    padding: '3px 6px',
+    fontSize: '0.72rem',
+    lineHeight: 1.2,
+    transition: 'color 0.15s, border-color 0.15s, background 0.15s',
+    flexShrink: 0,
+    minWidth: 26,
+    minHeight: 22,
+    color: '#a5c4d4',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   expandBtn: {
     background: 'none',
     borderWidth: 1,
@@ -248,9 +274,10 @@ const s: Record<string, React.CSSProperties> = {
   dialogBtn: {
     padding: '5px 14px',
     borderRadius: 4,
-    border: 'none',
+    border: '1px solid rgba(244,237,228,0.12)',
     cursor: 'pointer',
     fontSize: '0.72rem',
+    fontWeight: 700,
   },
 };
 
@@ -260,9 +287,13 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
   color,
   onParamChange,
   onStateChange,
+  onOpenPool,
+  poolButtonTitle = 'Edit drum preset pool',
+  poolButtonAriaLabel = 'Edit drum preset pool',
+  poolButtonLabel = PRESET_POOL_ICON,
 }) => {
   const engineScope = DRUM_ENGINE_SCOPES[voice];
-  const { presets, save, load, remove, refresh, updateMetadata } = usePresets('engine', engineScope);
+  const { presets, save, load, remove, rename, refresh, updateMetadata } = usePresets('engine', engineScope);
 
   const morphKeys = MORPH_KEYS[voice];
   const presetAName = String(state[morphKeys.a] || '');
@@ -285,10 +316,18 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
   // UI state
   const [saveDialog, setSaveDialog] = useState<{ originalName: string } | null>(null);
   const [saveAsName, setSaveAsName] = useState('');
+  const [saveTags, setSaveTags] = useState<string[]>([]);
   const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [versionEntry, setVersionEntry] = useState<PresetEntry | null>(null);
   const [showVersions, setShowVersions] = useState(false);
   const [localRatings, setLocalRatings] = useState<Record<string, number>>({});
+  const tagSuggestions = useMemo(() => {
+    const tags = new Set<string>();
+    for (const preset of presets) {
+      for (const tag of preset.tags ?? []) tags.add(tag);
+    }
+    return [...tags].sort((left, right) => left.localeCompare(right));
+  }, [presets]);
 
   // Auto-select preset A on voice change
   useEffect(() => {
@@ -359,7 +398,7 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
   /* ── Save (overwrite) ── */
   const handleSaveOverwrite = useCallback(async () => {
     if (!saveDialog) return;
-    await save(saveDialog.originalName, state, 'Updated from voice editor');
+    await save(saveDialog.originalName, state, 'Updated from voice editor', saveTags);
     await refresh();
     const entry = await load(saveDialog.originalName);
     if (entry) {
@@ -368,7 +407,7 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
       if (selectedPresetName === entry.name) setVersionEntry(entry);
     }
     setSaveDialog(null);
-  }, [saveDialog, save, state, refresh, load, voice, selectedPresetName]);
+  }, [saveDialog, save, saveTags, state, refresh, load, voice, selectedPresetName]);
 
   /* ── Save As ── */
   const handleSaveAs = useCallback(async () => {
@@ -381,7 +420,7 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
       setConfirm({
         message: `"${targetName}" already exists. Overwrite?`,
         onConfirm: async () => {
-          await save(targetName, state, 'Overwritten from voice editor');
+          await save(targetName, state, 'Overwritten from voice editor', saveTags);
           await refresh();
           const entry = await load(targetName);
           if (entry) {
@@ -395,7 +434,7 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
       return;
     }
 
-    await save(targetName, state, 'Saved from voice editor');
+    await save(targetName, state, 'Saved from voice editor', saveTags);
     await refresh();
     const entry = await load(targetName);
     if (entry) {
@@ -405,7 +444,44 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
     setSaveDialog(null);
     setSaveAsName('');
     setSelectedPresetName(targetName);
-  }, [saveAsName, presets, save, state, refresh, load, voice]);
+  }, [saveAsName, saveTags, presets, save, state, refresh, load, voice]);
+
+  const handleRename = useCallback(async () => {
+    if (!saveDialog || !saveAsName.trim()) return;
+    const targetName = saveAsName.trim();
+    if (targetName === saveDialog.originalName) return;
+
+    const renamed = await rename(saveDialog.originalName, targetName, { tags: saveTags });
+    if (!renamed) return;
+
+    const version = renamed.versions.find(item => item.v === renamed.currentVersion)
+      || renamed.versions[renamed.versions.length - 1];
+    if (version) {
+      renameUserPreset(voice, saveDialog.originalName, createRuntimeDrumPreset(voice, renamed.name, version.data, renamed.tags));
+    }
+    if (onStateChange) {
+      onStateChange((previous) => {
+        let next = previous;
+        for (const key of [morphKeys.a, morphKeys.b]) {
+          if (previous[key] !== saveDialog.originalName) continue;
+          if (next === previous) next = { ...previous };
+          (next as unknown as Record<keyof SliderState, unknown>)[key] = renamed.name;
+        }
+        return next;
+      });
+    } else {
+      if (state[morphKeys.a] === saveDialog.originalName) {
+        onParamChange(morphKeys.a, renamed.name as SliderState[keyof SliderState]);
+      }
+      if (state[morphKeys.b] === saveDialog.originalName) {
+        onParamChange(morphKeys.b, renamed.name as SliderState[keyof SliderState]);
+      }
+    }
+    setSelectedPresetName(renamed.name);
+    setVersionEntry(renamed);
+    setSaveDialog(null);
+    setSaveAsName('');
+  }, [morphKeys.a, morphKeys.b, onParamChange, onStateChange, rename, saveAsName, saveDialog, saveTags, state, voice]);
 
   /* ── Rate ── */
   const handleRate = useCallback(async (rating: number) => {
@@ -503,10 +579,24 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
               onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
               title="Load into Slot B"
             >B</button>
+            {onOpenPool && (
+              <button
+                type="button"
+                style={{ ...s.poolBtn, color, borderColor: `${color}55` }}
+                onClick={onOpenPool}
+                onMouseEnter={e => { e.currentTarget.style.background = `${color}22`; e.currentTarget.style.borderColor = `${color}88`; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.borderColor = `${color}55`; }}
+                title={poolButtonTitle}
+                aria-label={poolButtonAriaLabel}
+              >
+                {poolButtonLabel}
+              </button>
+            )}
             <button
               style={s.saveBtn}
               onClick={() => {
                 setSaveAsName('');
+                setSaveTags(selectedSummary?.tags ?? []);
                 setSaveDialog({ originalName: selectedPresetName });
               }}
               onMouseEnter={e => { e.currentTarget.style.color = '#8fd18f'; e.currentTarget.style.background = 'rgba(95,143,95,0.1)'; }}
@@ -607,17 +697,17 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
               onClick={handleSaveOverwrite}
               style={{
                 ...s.dialogBtn,
-                background: '#2a5a8a',
-                color: 'white',
+                background: 'rgba(184,224,255,0.14)',
+                borderColor: 'rgba(184,224,255,0.34)',
+                color: '#B8E0FF',
                 width: '100%',
                 marginBottom: 10,
                 padding: '8px 16px',
               }}
             >Save &quot;{saveDialog.originalName}&quot;</button>
 
-            {/* Save As */}
             <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: 4 }}>
-              Save as new preset:
+              New preset name:
             </div>
             <input
               type="text"
@@ -631,18 +721,47 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
                 if (e.key === 'Escape') setSaveDialog(null);
               }}
             />
+            <PresetTagEditor
+              value={saveTags}
+              onChange={setSaveTags}
+              suggestions={tagSuggestions}
+              accentColor="#B8E0FF"
+            />
             <div style={s.dialogBtnRow}>
               <button
                 onClick={() => setSaveDialog(null)}
-                style={{ ...s.dialogBtn, background: 'rgba(255,255,255,0.08)', color: '#999' }}
+                style={{
+                  ...s.dialogBtn,
+                  background: 'rgba(255,255,255,0.05)',
+                  borderColor: 'rgba(244,237,228,0.12)',
+                  color: 'rgba(244,237,228,0.66)',
+                }}
               >Cancel</button>
+              <button
+                onClick={() => void handleRename()}
+                disabled={!saveAsName.trim() || saveAsName.trim() === saveDialog.originalName}
+                style={{
+                  ...s.dialogBtn,
+                  background: saveAsName.trim() && saveAsName.trim() !== saveDialog.originalName
+                    ? 'rgba(214,178,111,0.14)'
+                    : 'rgba(255,255,255,0.04)',
+                  borderColor: saveAsName.trim() && saveAsName.trim() !== saveDialog.originalName
+                    ? 'rgba(214,178,111,0.34)'
+                    : 'rgba(255,255,255,0.08)',
+                  color: saveAsName.trim() && saveAsName.trim() !== saveDialog.originalName
+                    ? '#d6b26f'
+                    : 'rgba(244,237,228,0.32)',
+                }}
+                title="Rename without changing the preset ID"
+              >Rename</button>
               <button
                 onClick={() => void handleSaveAs()}
                 disabled={!saveAsName.trim()}
                 style={{
                   ...s.dialogBtn,
-                  background: saveAsName.trim() ? '#2a6a4a' : '#333',
-                  color: saveAsName.trim() ? 'white' : '#666',
+                  background: saveAsName.trim() ? 'rgba(159,215,170,0.14)' : 'rgba(255,255,255,0.04)',
+                  borderColor: saveAsName.trim() ? 'rgba(159,215,170,0.32)' : 'rgba(255,255,255,0.08)',
+                  color: saveAsName.trim() ? '#9fd7aa' : 'rgba(244,237,228,0.32)',
                 }}
               >Save As</button>
             </div>
@@ -657,11 +776,21 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
             <div>{confirm.message}</div>
             <div style={s.dialogBtnRow}>
               <button
-                style={{ ...s.dialogBtn, background: '#c45c5c', color: 'white' }}
+                style={{
+                  ...s.dialogBtn,
+                  background: 'rgba(196,92,92,0.14)',
+                  borderColor: 'rgba(196,92,92,0.34)',
+                  color: '#d88f8f',
+                }}
                 onClick={() => { confirm.onConfirm(); }}
               >Yes</button>
               <button
-                style={{ ...s.dialogBtn, background: 'rgba(255,255,255,0.1)', color: '#ccc' }}
+                style={{
+                  ...s.dialogBtn,
+                  background: 'rgba(255,255,255,0.05)',
+                  borderColor: 'rgba(244,237,228,0.12)',
+                  color: 'rgba(244,237,228,0.66)',
+                }}
                 onClick={() => setConfirm(null)}
               >Cancel</button>
             </div>

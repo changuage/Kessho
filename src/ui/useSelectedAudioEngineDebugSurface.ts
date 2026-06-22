@@ -16,6 +16,20 @@ const EMPTY_EARTH_TEXTURE_DEBUG_STATE: EarthTextureDebugState = {
   frogs: null,
 };
 
+function isReferenceRuntimeNotReady(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('unavailable before web-ts has initialized');
+}
+
+function readOptionalReferenceDebugValue<T>(read: () => T, fallback: T): T {
+  try {
+    return read();
+  } catch (error) {
+    if (isReferenceRuntimeNotReady(error)) return fallback;
+    throw error;
+  }
+}
+
 export type SelectedAudioEngineDebugSurface = {
   getSelectedGranularBufferWaveform: () => Float32Array | null;
   getSelectedReferenceAudioContextState: () => ReferenceAudioContextState | null;
@@ -66,7 +80,9 @@ export function useSelectedAudioEngineDebugSurface(
   ), [audioEngineRuntimeMode]);
 
   const getSelectedLeadMorphedParams = useCallback((lead: 1 | 2): LeadMorphedParams => (
-    audioEngineRuntimeMode === 'core-product' ? null : referenceAudioEngineDebug.getLeadMorphedParams(lead)
+    audioEngineRuntimeMode === 'core-product'
+      ? null
+      : readOptionalReferenceDebugValue(() => referenceAudioEngineDebug.getLeadMorphedParams(lead), null)
   ), [audioEngineRuntimeMode]);
 
   const getSelectedDrumVoiceAnalyser = useCallback((voice: unknown): AnalyserNode | undefined => (

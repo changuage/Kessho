@@ -20,7 +20,8 @@ export function useProductRuntimeWalkSync({
   setProductRuntimeWalkRanges,
   ...options
 }: ProductRuntimeWalkSyncOptions): void {
-  // TODO(product-runtime-compat-10E): selected runtime walk sync remains the compatibility
+  // TODO(product-fallback-retire:runtime-walk-sync): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
+  // Selected runtime walk sync remains the compatibility
   // implementation while product range support is exposed through product-named props.
   useSelectedAudioEngineRuntimeWalkSync({
     ...options,

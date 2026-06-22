@@ -19,6 +19,7 @@ const RATING_VALUES = [0, 1, 2, 3, 4, 5] as const;
 const POPOVER_WIDTH = 214;
 const POPOVER_HEIGHT = 52;
 const VIEWPORT_MARGIN = 8;
+const POPOVER_Z_INDEX = 10002;
 
 function normalizeRating(value: number | undefined): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
@@ -97,7 +98,7 @@ export const PresetRatingStars = React.memo(function PresetRatingStars({
       left,
       top,
       width: POPOVER_WIDTH,
-      zIndex: 10000,
+      zIndex: POPOVER_Z_INDEX,
     });
   }, []);
 
@@ -186,7 +187,7 @@ export const PresetRatingStars = React.memo(function PresetRatingStars({
         onClick={(event) => event.stopPropagation()}
         onKeyDown={handlePopoverKeyDown}
         style={{
-          ...(popoverStyle ?? { position: 'fixed', left: VIEWPORT_MARGIN, top: VIEWPORT_MARGIN, width: POPOVER_WIDTH, zIndex: 10000 }),
+          ...(popoverStyle ?? { position: 'fixed', left: VIEWPORT_MARGIN, top: VIEWPORT_MARGIN, width: POPOVER_WIDTH, zIndex: POPOVER_Z_INDEX }),
           display: 'flex',
           alignItems: 'center',
           gap: 4,

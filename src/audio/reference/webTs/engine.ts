@@ -2403,6 +2403,11 @@ export class AudioEngine {
     this.killAllPadVoicesNow();
   }
 
+  private stopManualLeadAuditionTails(): void {
+    if (this.isRunning || !this.leadFmWasmReady || !this.leadFmWasmNode) return;
+    this.leadFmWasmNode.port.postMessage({ type: 'reset' });
+  }
+
   private warnPadWasmUnavailable(context: string): void {
     if (this.padWasmUnavailableWarned) return;
     this.padWasmUnavailableWarned = true;
@@ -5919,9 +5924,11 @@ export class AudioEngine {
     try {
       switch (note.source) {
         case 'lead1':
+          this.stopManualLeadAuditionTails();
           this.playLeadNote(frequency, velocity, 'lead1', null, true);
           break;
         case 'lead2':
+          this.stopManualLeadAuditionTails();
           this.playLeadNote(frequency, velocity, 'lead2', null, true);
           break;
         case 'piano':
@@ -6015,6 +6022,9 @@ export class AudioEngine {
     try {
       if (entries.some((entry) => entry.voiceIndex !== null)) {
         this.clearManualPadAuditionTails();
+      }
+      if (entries.some((entry) => entry.source === 'lead1' || entry.source === 'lead2')) {
+        this.stopManualLeadAuditionTails();
       }
       for (const entry of entries) {
         switch (entry.source) {
@@ -12389,9 +12399,9 @@ export class AudioEngine {
       this.postPadWasmAllNotesOff();
     }
 
-    // Also tell WASM lead FM to release all notes
+    // Also reset WASM lead FM so long release tails do not ring after stop.
     if (this.leadFmWasmReady && this.leadFmWasmNode) {
-      this.leadFmWasmNode.port.postMessage({ type: 'allNotesOff' });
+      this.leadFmWasmNode.port.postMessage({ type: 'reset' });
     }
 
   }

@@ -182,24 +182,6 @@
   border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 4px 8px; min-width: 0;
   transition: border-color 0.15s;
 }
-.drum-root .morph-slot-save {
-  flex: 0 0 auto;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.05);
-  color: #aebacc;
-  font-size: 0.58rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-}
-.drum-root .morph-slot-save:hover {
-  border-color: color-mix(in srgb, var(--vc, var(--accent-primary)) 45%, rgba(255,255,255,0.12));
-  color: #edf7ff;
-  background: color-mix(in srgb, var(--vc, var(--accent-primary)) 18%, rgba(255,255,255,0.05));
-}
 .drum-root .vc-morph-row select:hover { border-color: rgba(255,255,255,0.35); }
 .drum-root .vc-morph-row select:focus { border-color: var(--vc, var(--accent-primary)); outline: none; }
 .drum-root .vc-morph-row .morph-label { font-size: 0.6rem; color: #666; flex-shrink: 0; }
@@ -2175,46 +2157,6 @@
   border-bottom-color: rgba(255,255,255,0.08);
 }
 
-.detail-generate-strip {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex-wrap: wrap;
-  margin: 8px 0;
-  padding: 8px;
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 8px;
-  background: rgba(18, 17, 15, 0.42);
-}
-
-.detail-generate-strip > span {
-  font-size: 0.72rem;
-  color: rgba(232, 220, 196, 0.72);
-  text-transform: uppercase;
-  font-weight: 700;
-}
-
-.detail-generate-strip button {
-  border: 1px solid rgba(232, 220, 196, 0.18);
-  background: rgba(18, 17, 15, 0.72);
-  color: #e8dcc4;
-  border-radius: 6px;
-  padding: 5px 8px;
-  cursor: pointer;
-}
-
-.detail-generate-strip button:hover {
-  border-color: var(--sc, #a870e8);
-}
-
-.detail-generate-preview {
-  display: grid;
-  grid-template-columns: minmax(160px, 240px) auto auto auto;
-  align-items: center;
-  gap: 7px;
-  width: 100%;
-}
-
 .seq-source-badge,
 .seq-ov-readonly-hits {
   display: inline-flex;
@@ -2228,9 +2170,52 @@
   background: rgba(18, 17, 15, 0.62);
 }
 
-.seq-source-badge--scatter {
+.seq-source-badge--scatter,
+.seq-source-badge--recorded {
   border-color: rgba(168, 112, 232, 0.62);
   color: #e8dcc4;
+}
+
+.drum-root .seq-lane-controls .seq-source-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+}
+
+.drum-root .seq-lane-controls .seq-source-mode-toggle button.seq-source-mode-button {
+  width: auto;
+  height: 28px;
+  min-width: 64px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--seq-source-mode-color);
+  border-radius: var(--radius-md);
+  background: var(--seq-source-mode-fill);
+  color: var(--seq-source-mode-color);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.drum-root .seq-lane-controls .seq-source-mode-toggle button.seq-source-mode-button.euclid {
+  --seq-source-mode-color: #9fc8df;
+  --seq-source-mode-fill: rgba(159, 200, 223, 0.08);
+}
+
+.drum-root .seq-lane-controls .seq-source-mode-toggle button.seq-source-mode-button.step {
+  --seq-source-mode-color: #e0b36b;
+  --seq-source-mode-fill: rgba(224, 179, 107, 0.08);
+}
+
+.drum-root .seq-lane-controls .seq-source-mode-toggle button.seq-source-mode-button:hover,
+.drum-root .seq-lane-controls .seq-source-mode-toggle button.seq-source-mode-button:focus-visible {
+  background: color-mix(in srgb, var(--seq-source-mode-color), transparent 84%);
+  border-color: color-mix(in srgb, var(--seq-source-mode-color), white 18%);
+  outline: none;
 }
 
 /* Final narrow-width polish for dense drum cards and sequencer controls. */

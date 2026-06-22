@@ -80,7 +80,7 @@ assert.equal(delayBEnableTargets[0]?.mapValue?.(1, {}), 1);
     enabled: true,
     entries: [
       { laneIndex: 0, repeats: 2 },
-      { laneIndex: 3, repeats: 16 },
+      { laneIndex: 5, repeats: 16 },
       { laneIndex: 1, repeats: 2 },
     ],
   });

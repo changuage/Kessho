@@ -1,18 +1,13 @@
 import type { CoreProductSnapshot } from './coreProductSnapshot';
 import type { CoreProductAnchorWalkerVisualLaneState, CoreProductOrbitVisualLaneState, CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import type { SequencerStepToggleOverride } from './CoreProductHostSequencerAdapter';
-import { defaultDrumEuclidPattern, defaultSynthEuclidPattern, euclideanMaskHit, euclideanPatternMask, resolveEuclidPatternParams } from './euclideanPatterns';
-import { sequencerClockDivisionToNumericValue } from './sequencerClockDivisions';
+import { defaultDrumEuclidPattern, defaultSynthEuclidPattern, resolveEuclidPatternParams } from './euclideanPatterns';
 
 type SequencerVisualKind = 'synth' | 'drum';
 
 type SequencerVisualLane = {
   enabled: boolean;
   stepCount: number;
-  clockDivision: number;
-  manualStepMaskLow: number;
-  manualStepMaskHigh: number;
-  toggles: SequencerStepToggleOverride[];
 };
 
 type PublishSequencerVisualsInput = {
@@ -24,6 +19,9 @@ type PublishSequencerVisualsInput = {
   synthVisibleLaneCount: number;
   drumVisibleLaneCount: number;
   sampleRate: number;
+  diagnostics?: {
+    derivedVisualFallbackCount: number;
+  };
   publish: (name: 'synthStepPosition' | 'drumStepPosition', steps: number[], hitCounts: number[]) => void;
 };
 
@@ -36,23 +34,22 @@ type PublishSynthVisualStateInput<Name extends string, Lane> = {
 type PublishSynthOrbitVisualStateInput = PublishSynthVisualStateInput<'synthOrbitVisualState', CoreProductOrbitVisualLaneState>;
 type PublishSynthAnchorWalkerVisualStateInput = PublishSynthVisualStateInput<'synthAnchorWalkerVisualState', CoreProductAnchorWalkerVisualLaneState>;
 
-function zeroLaneValues(laneCount: number): number[] { return Array.from({ length: Math.max(0, Math.trunc(laneCount)) }, () => 0); }
+function zeroLaneValues(laneCount: number): number[] {
+  const count = Math.max(0, Math.trunc(laneCount));
+  const values = new Array<number>(count);
+  for (let index = 0; index < count; index += 1) values[index] = 0;
+  return values;
+}
 
 function numberFromState(state: Record<string, unknown> | null, key: string, fallback: number): number { const value = state?.[key]; return typeof value === 'number' && Number.isFinite(value) ? value : fallback; }
 
 function booleanFromState(state: Record<string, unknown> | null, key: string, fallback: boolean): boolean { const value = state?.[key]; return typeof value === 'boolean' ? value : fallback; }
 
-function clockDivisionFromState(state: Record<string, unknown> | null, key: string, fallback: number): number { return sequencerClockDivisionToNumericValue(state?.[key], fallback); }
-
-function defaultClockDivision(laneNumber: number): number {
-  return laneNumber === 1 ? 8 : laneNumber === 2 ? 16 : laneNumber === 3 ? 12 : 4;
-}
-
 function visualLaneFromState(
   kind: SequencerVisualKind,
   state: Record<string, unknown> | null,
   laneIndex: number,
-  toggles: SequencerStepToggleOverride[][],
+  _toggles: SequencerStepToggleOverride[][],
 ): SequencerVisualLane {
   const laneNumber = laneIndex + 1;
   const prefix = kind === 'synth' ? `synthEuclid${laneNumber}` : `drumEuclid${laneNumber}`;
@@ -65,37 +62,14 @@ function visualLaneFromState(
     numberFromState(state, `${prefix}Hits`, defaults.hits),
     numberFromState(state, `${prefix}Rotation`, defaults.rotation),
   );
-  const mask = euclideanPatternMask(resolved.steps, resolved.hits, resolved.rotation);
+  const stepCount = Math.max(1, Math.min(64, Math.round(resolved.steps)));
   const enabled = kind === 'synth'
     ? booleanFromState(state, 'synthEuclideanMasterEnabled', false) && booleanFromState(state, `${prefix}Enabled`, laneNumber === 1)
     : booleanFromState(state, 'drumEnabled', false) && booleanFromState(state, 'drumEuclidMasterEnabled', false) && booleanFromState(state, `${prefix}Enabled`, false);
   return {
     enabled,
-    stepCount: Math.max(1, Math.min(64, Math.round(resolved.steps))),
-    clockDivision: clockDivisionFromState(state, `${prefix}ClockDivision`, defaultClockDivision(laneNumber)),
-    manualStepMaskLow: numberFromState(state, `${prefix}ManualStepMaskLow`, mask.low) >>> 0,
-    manualStepMaskHigh: numberFromState(state, `${prefix}ManualStepMaskHigh`, mask.high) >>> 0,
-    toggles: toggles[laneIndex] ?? [],
+    stepCount,
   };
-}
-
-function laneHitAtStep(lane: SequencerVisualLane, step: number): boolean {
-  const override = lane.toggles.find((entry) => entry.step === step);
-  if (override) return override.value;
-  return euclideanMaskHit(lane.manualStepMaskLow, lane.manualStepMaskHigh, step);
-}
-
-function hitCountThroughStep(lane: SequencerVisualLane, absoluteStep: number, step: number): number {
-  let cycleHits = 0;
-  for (let index = 0; index < lane.stepCount; index += 1) {
-    if (laneHitAtStep(lane, index)) cycleHits += 1;
-  }
-  const cycles = Math.max(0, Math.floor(absoluteStep / lane.stepCount));
-  let count = cycles * cycleHits;
-  for (let index = 0; index <= step; index += 1) {
-    if (laneHitAtStep(lane, index)) count += 1;
-  }
-  return count;
 }
 
 function visualPositionsFor(
@@ -103,44 +77,40 @@ function visualPositionsFor(
   input: PublishSequencerVisualsInput,
 ): { steps: number[]; hitCounts: number[] } {
   const bpm = input.snapshot?.transport.bpm ?? 120;
-  const synthTempo = Math.max(0.25, Math.min(12, numberFromState(input.state, 'synthEuclideanTempo', 1)));
-  const drumTempo = Math.max(0.25, Math.min(4, numberFromState(input.state, 'drumEuclidTempo', 1)));
-  const absoluteSampleTime = input.telemetry?.absoluteSampleTime ?? 0;
   const visibleLaneCount = kind === 'synth' ? input.synthVisibleLaneCount : input.drumVisibleLaneCount;
-  const lanes = Array.from({ length: visibleLaneCount }, (_, laneIndex) =>
-    visualLaneFromState(kind, input.state, laneIndex, kind === 'synth' ? input.synthToggles : input.drumToggles),
-  );
-  const steps = lanes.map((lane, laneIndex) => {
-    if (!lane.enabled || bpm <= 0 || input.sampleRate <= 0) return 0;
-    const tempoMultiplier = kind === 'synth' ? synthTempo : drumTempo;
-    const samplesPerStep = (60 / bpm) * input.sampleRate * 4 / Math.max(1, lane.clockDivision) / tempoMultiplier;
-    const fallbackStep = samplesPerStep > 0
-      ? Math.floor(absoluteSampleTime / samplesPerStep) % lane.stepCount
-      : 0;
+  const toggles = kind === 'synth' ? input.synthToggles : input.drumToggles;
+  const lanes = new Array<SequencerVisualLane>(visibleLaneCount);
+  for (let laneIndex = 0; laneIndex < visibleLaneCount; laneIndex += 1) {
+    lanes[laneIndex] = visualLaneFromState(kind, input.state, laneIndex, toggles);
+  }
+  const steps = new Array<number>(visibleLaneCount);
+  const hitCounts = new Array<number>(visibleLaneCount);
+  for (let laneIndex = 0; laneIndex < visibleLaneCount; laneIndex += 1) {
+    const lane = lanes[laneIndex];
+    if (!lane || !lane.enabled || bpm <= 0 || input.sampleRate <= 0) {
+      steps[laneIndex] = 0;
+      hitCounts[laneIndex] = 0;
+      continue;
+    }
     const nativeStep = kind === 'synth'
       ? input.telemetry?.synthSequencerCurrentSteps?.[laneIndex]
       : input.telemetry?.drumSequencerCurrentSteps?.[laneIndex];
     if (typeof nativeStep === 'number' && Number.isFinite(nativeStep)) {
-      const normalizedNative = Math.max(0, Math.floor(nativeStep)) % lane.stepCount;
-      if (normalizedNative === 0 && fallbackStep !== 0) return fallbackStep;
-      return normalizedNative;
+      steps[laneIndex] = Math.max(0, Math.floor(nativeStep)) % lane.stepCount;
+    } else {
+      input.diagnostics && (input.diagnostics.derivedVisualFallbackCount += 1);
+      steps[laneIndex] = 0;
     }
-    return fallbackStep;
-  });
-  const hitCounts = lanes.map((lane, laneIndex) => {
-    if (!lane.enabled || bpm <= 0 || input.sampleRate <= 0) return 0;
     const nativeHitCount = kind === 'synth'
       ? input.telemetry?.synthSequencerHitCounts?.[laneIndex]
       : input.telemetry?.drumSequencerHitCounts?.[laneIndex];
     if (typeof nativeHitCount === 'number' && Number.isFinite(nativeHitCount)) {
-      const normalizedNative = Math.max(0, Math.floor(nativeHitCount));
-      return normalizedNative;
+      hitCounts[laneIndex] = Math.max(0, Math.floor(nativeHitCount));
+      continue;
     }
-    const tempoMultiplier = kind === 'synth' ? synthTempo : drumTempo;
-    const samplesPerStep = (60 / bpm) * input.sampleRate * 4 / Math.max(1, lane.clockDivision) / tempoMultiplier;
-    const absoluteStep = samplesPerStep > 0 ? Math.floor(absoluteSampleTime / samplesPerStep) : 0;
-    return hitCountThroughStep(lane, absoluteStep, steps[laneIndex] ?? 0);
-  });
+    input.diagnostics && (input.diagnostics.derivedVisualFallbackCount += 1);
+    hitCounts[laneIndex] = 0;
+  }
   return { steps, hitCounts };
 }
 

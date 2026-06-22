@@ -247,6 +247,22 @@ check(
   'sequencer master transport keys must route through immediate resolved ProductControl commits',
 );
 check(
+  'audio-sync-sequencer-lane-enabled-resolved',
+  files.audioSync.includes('SEQUENCER_LANE_ENABLED_KEY_PATTERNS') &&
+    files.audioSync.includes('/^synthEuclid[1-4]Enabled$/') &&
+    files.audioSync.includes('/^drumEuclid[1-6]Enabled$/') &&
+    count(files.audioSync, 'requiresSequencerLaneEnabledResolvedCommit(patch)') >= 3,
+  'sequencer lane enable/mute keys must route through immediate trigger-critical ProductControl commits',
+);
+check(
+  'audio-sync-sequencer-target-resolved',
+  files.audioSync.includes('SEQUENCER_TARGET_KEY_PATTERNS') &&
+    files.audioSync.includes('/^synthEuclid[1-4]Source$/') &&
+    files.audioSync.includes('/^drumEuclid[1-6]Target(Sub|Kick|Click|BeepHi|BeepLo|Noise|Membrane)$/') &&
+    count(files.audioSync, 'requiresSequencerTargetResolvedCommit(patch)') >= 3,
+  'sequencer source/target keys must route through immediate trigger-critical ProductControl commits so running lanes update selected engines',
+);
+check(
   'audio-sync-source-core-resolved-full-snapshot-boundary',
   files.audioSync.includes('SOURCE_PRESET_ENDPOINT_RESOLVED_COMMIT_KEYS') &&
     files.audioSync.includes('SOURCE_PRESET_DATA_RESOLVED_COMMIT_KEY_PATTERNS') &&
@@ -301,7 +317,7 @@ check(
 );
 check(
   'synth-step-overrides-generated-events',
-  files.sequencerControls.includes('createCoreProductSynthSequencerStepOverrideEvents(overrides)') &&
+  files.sequencerControls.includes('createCoreProductSynthSequencerStepOverrideEvents(overrides') &&
     files.sequencerControls.includes("sequencerPatch('synthStepOverrides', overrides)") &&
     files.sequencerStepOverrideEvents.includes('createCoreProductSequencerStepValueEvent') &&
     !files.productTypes.includes("kind: 'synth-step-overrides'"),
@@ -309,7 +325,7 @@ check(
 );
 check(
   'drum-step-overrides-generated-events',
-  files.sequencerControls.includes('createCoreProductDrumSequencerStepOverrideEvents(overrides)') &&
+  files.sequencerControls.includes('createCoreProductDrumSequencerStepOverrideEvents(overrides') &&
     files.sequencerControls.includes("sequencerPatch('drumStepOverrides', overrides)") &&
     files.sequencerStepOverrideEvents.includes('createCoreProductDrumSequencerStepOverrideEvents') &&
     files.sequencerStepOverrideEvents.includes('drumPitchOffsetValue') &&

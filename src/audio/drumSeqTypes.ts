@@ -27,8 +27,8 @@ export type ScaleName =
   | 'Japanese'
   | 'Arabic';
 
-export const NOTE_DEGREE_OFFSET_MIN = -3;
-export const NOTE_DEGREE_OFFSET_MAX = 14;
+export const NOTE_DEGREE_OFFSET_MIN = -48;
+export const NOTE_DEGREE_OFFSET_MAX = 48;
 export const NOTE_DEGREE_OFFSET_RANGE = NOTE_DEGREE_OFFSET_MAX - NOTE_DEGREE_OFFSET_MIN;
 
 export function normalizeNoteDegreeOffset(offset: number): number {

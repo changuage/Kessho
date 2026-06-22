@@ -181,7 +181,7 @@ export function manualNoteSourceEnabled(state: Record<string, unknown>, sourceId
 
 export function padChordHasEnabledTarget(state: Record<string, unknown>): boolean {
   if (!booleanFromState(state, 'synthChordSequencerEnabled', false)) return false;
-  const source = String(state.synthChordSequencerSource ?? 'both').trim().toLowerCase();
+  const source = String(state.synthChordSequencerSource ?? 'piano').trim().toLowerCase();
   if (source === 'lead1' || source === 'lead') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.lead1);
   if (source === 'lead2') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.lead2);
   if (source === 'piano') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.piano);

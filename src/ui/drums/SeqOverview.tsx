@@ -9,6 +9,7 @@ import {
   sequencerGridColumnCount,
 } from '../sequencer/sequencerLimits';
 import { sequencerChainBadgeLabel } from '../sequencer/SequencerChainRail';
+import { triggerSourceDisplayLabel } from '../sequencer/triggerSourceLabel';
 import type { SequencerChainState } from '../../audio/sequencerChain';
 
 const OV_PROB_DRAG_PX = 80;
@@ -55,7 +56,7 @@ const SeqOverview: React.FC<SeqOverviewProps> = ({
             <div className="seq-ov-header" onClick={() => onSelectSequencer?.(row)}>
               <span className="seq-ov-name">{seq.name}</span>
               <span className={`seq-source-badge seq-source-badge--${seq.trigger.sourceOrigin ?? 'euclidean'}`}>
-                {(seq.trigger.sourceLabel ?? seq.trigger.sourceOrigin ?? 'Euclid').replace('Euclidean', 'Euclid')}
+                {triggerSourceDisplayLabel(seq.trigger.sourceLabel, seq.trigger.sourceOrigin)}
                 {seq.trigger.sourceDirty ? '*' : ''}
               </span>
               {chainBadge && (

@@ -69,6 +69,7 @@ interface JourneyModeViewProps {
   journeyValidation: JourneyValidationResult;
   onLoadJourneyPreset: (name: string) => Promise<void>;
   onSaveJourneyPreset: (name: string, description?: string) => Promise<PresetEntry | null>;
+  onRenameJourneyPreset: (name: string, nextName: string, description?: string) => Promise<PresetEntry | null>;
   onDeleteJourneyPreset: (name: string) => Promise<boolean>;
   onUndoJourneyPreset: () => Promise<void>;
   onRateJourneyPreset: (name: string, rating: number) => Promise<void>;
@@ -89,6 +90,7 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
   journeyValidation,
   onLoadJourneyPreset,
   onSaveJourneyPreset,
+  onRenameJourneyPreset,
   onDeleteJourneyPreset,
   onUndoJourneyPreset,
   onRateJourneyPreset,
@@ -196,6 +198,14 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
     await onSaveJourneyPreset(targetName, saveDescription);
     setSaveDialogOpen(false);
   }, [onSaveJourneyPreset, saveAsName, saveDescription]);
+
+  const handleRename = useCallback(async () => {
+    if (!currentJourneySaveName) return;
+    const targetName = saveAsName.trim();
+    if (!targetName || targetName === currentJourneySaveName) return;
+    await onRenameJourneyPreset(currentJourneySaveName, targetName, saveDescription);
+    setSaveDialogOpen(false);
+  }, [currentJourneySaveName, onRenameJourneyPreset, saveAsName, saveDescription]);
 
   const handleRating = useCallback(async (name: string, rating: number) => {
     setLocalRatings((prev) => ({ ...prev, [name]: rating }));
@@ -444,7 +454,7 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
                 Save "{currentJourneySaveName}"
               </button>
             )}
-            <div style={styles.dialogSectionLabel}>Save as new journey:</div>
+            <div style={styles.dialogSectionLabel}>New journey name:</div>
             <input
               value={saveAsName}
               onChange={(e) => setSaveAsName(e.target.value)}
@@ -466,11 +476,35 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
             )}
             <div style={styles.dialogActions}>
               <button type="button" style={styles.dialogButton} onClick={() => setSaveDialogOpen(false)}>Cancel</button>
+              {currentJourneySaveName && (
+                <button
+                  type="button"
+                  style={{
+                    ...styles.dialogButton,
+                    background: saveAsName.trim() && saveAsName.trim() !== currentJourneySaveName
+                      ? 'rgba(214,178,111,0.14)'
+                      : 'rgba(255,255,255,0.06)',
+                    borderColor: saveAsName.trim() && saveAsName.trim() !== currentJourneySaveName
+                      ? 'rgba(214,178,111,0.34)'
+                      : 'rgba(255,255,255,0.10)',
+                    color: saveAsName.trim() && saveAsName.trim() !== currentJourneySaveName
+                      ? '#d6b26f'
+                      : 'rgba(244,237,228,0.42)',
+                  }}
+                  disabled={!saveAsName.trim() || saveAsName.trim() === currentJourneySaveName}
+                  onClick={() => {
+                    void handleRename();
+                  }}
+                  title="Rename without changing the journey preset ID"
+                >
+                  Rename
+                </button>
+              )}
               <button
                 type="button"
                 style={{
                   ...styles.dialogButton,
-                  ...styles.dialogPrimaryButton,
+                  ...styles.dialogSaveAsButton,
                   opacity: saveAsName.trim() ? 1 : 0.45,
                 }}
                 disabled={!saveAsName.trim()}
@@ -834,8 +868,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '0 12px',
     borderRadius: 7,
     border: '1px solid rgba(184,224,255,0.32)',
-    background: 'rgba(184,224,255,0.18)',
-    color: '#f4ede4',
+    background: 'rgba(184,224,255,0.14)',
+    color: '#B8E0FF',
     cursor: 'pointer',
     fontWeight: 760,
     fontFamily: 'inherit',
@@ -889,14 +923,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '0 12px',
     border: '1px solid rgba(255, 255, 255, 0.14)',
     borderRadius: 6,
-    background: 'rgba(255, 255, 255, 0.06)',
-    color: '#f4ede4',
+    background: 'rgba(255, 255, 255, 0.05)',
+    color: 'rgba(244,237,228,0.66)',
     cursor: 'pointer',
+    fontWeight: 700,
   },
-  dialogPrimaryButton: {
-    background: 'rgba(184,224,255,0.18)',
-    borderColor: 'rgba(184,224,255,0.38)',
-    color: '#B8E0FF',
+  dialogSaveAsButton: {
+    background: 'rgba(159,215,170,0.14)',
+    borderColor: 'rgba(159,215,170,0.32)',
+    color: '#9fd7aa',
   },
 };
 

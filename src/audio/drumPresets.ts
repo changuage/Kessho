@@ -8255,6 +8255,11 @@ export function upsertUserPreset(voice: DrumVoiceType, preset: DrumVoicePreset):
   USER_DRUM_VOICE_PRESETS[voice].set(preset.name, preset);
 }
 
+export function renameUserPreset(voice: DrumVoiceType, previousName: string, preset: DrumVoicePreset): void {
+  USER_DRUM_VOICE_PRESETS[voice].delete(previousName);
+  USER_DRUM_VOICE_PRESETS[voice].set(preset.name, preset);
+}
+
 export function getPreset(voice: DrumVoiceType, name: string): DrumVoicePreset | undefined {
   const userPreset = USER_DRUM_VOICE_PRESETS[voice].get(name);
   if (userPreset) return userPreset;

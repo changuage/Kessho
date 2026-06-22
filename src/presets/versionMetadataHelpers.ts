@@ -1,5 +1,6 @@
 import { getVersionData } from './codec';
 import { extractPresetVersionMetadata } from './presetUtils';
+import { normalizePresetPoolMetadata } from './presetPool';
 import type { PresetEntry, PresetVersionMetadata } from './types';
 
 function cloneJson<T>(value: T): T {
@@ -126,6 +127,12 @@ export function buildPresetVersionMetadata(
 
   if (source.journeyPreview) {
     metadata.journeyPreview = cloneJson(source.journeyPreview);
+    hasMetadata = true;
+  }
+
+  const presetPool = normalizePresetPoolMetadata(source.presetPool);
+  if (presetPool && Object.keys(presetPool.pools).length > 0) {
+    metadata.presetPool = presetPool;
     hasMetadata = true;
   }
 

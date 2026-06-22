@@ -13,6 +13,7 @@ interface DrumPanelProps {
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   getPresetNames: (voice: DrumVoiceType) => string[];
   triggerVoice: (voice: DrumVoiceType) => void;
+  onAuditionPresetPreview?: (voice: DrumVoiceType, externalState: SliderState) => void | Promise<void>;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
   CollapsiblePanelComponent: React.ComponentType<Record<string, unknown>>;
@@ -43,6 +44,7 @@ const DrumPanel: React.FC<DrumPanelProps> = ({
   sliderProps,
   getPresetNames,
   triggerVoice,
+  onAuditionPresetPreview,
   onStateChange,
   SliderComponent,
   CollapsiblePanelComponent,
@@ -69,6 +71,7 @@ const DrumPanel: React.FC<DrumPanelProps> = ({
           sliderProps={sliderProps}
           getPresetNames={getPresetNames}
           triggerVoice={triggerVoice}
+          onAuditionPresetPreview={onAuditionPresetPreview}
           onStateChange={onStateChange}
           SliderComponent={SliderComponent}
           CollapsiblePanelComponent={CollapsiblePanelComponent}

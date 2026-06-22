@@ -10,6 +10,7 @@
  *   'params'      – morphed preset parameter updates
  *   'noteOn'      – { frequency, velocity, hold }
  *   'allNotesOff' – release all notes
+ *   'reset'       – immediately clear notes and delay state
  *   'delay'       – delay parameter updates
  *   'enablePerf'  – toggle CPU measurement
  *   'destroy'     – cleanup
@@ -54,6 +55,8 @@ class LeadFMWasmProcessor extends AudioWorkletProcessor {
 
     this.pendingParams = [];
     this.pendingNotes = [];
+    this.currentParams = null;
+    this.currentDelay = null;
 
     this.port.onmessage = (event) => this.handleMessage(event.data);
   }
@@ -115,6 +118,9 @@ class LeadFMWasmProcessor extends AudioWorkletProcessor {
       case 'allNotesOff':
         if (this.ready) this.wasm.lead_fm_all_notes_off();
         break;
+      case 'reset':
+        this.resetLeadFm();
+        break;
       case 'params':
         if (this.ready) this.applyParams(data);
         else this.pendingParams.push(data);
@@ -141,9 +147,31 @@ class LeadFMWasmProcessor extends AudioWorkletProcessor {
     }
   }
 
+  resetLeadFm() {
+    if (!this.ready || !this.wasm) return;
+    if (this.wasm.lead_fm_reset) {
+      this.wasm.lead_fm_reset(sampleRate);
+    } else {
+      try { this.wasm.lead_fm_destroy(); } catch (e) { /* */ }
+      const result = this.wasm.lead_fm_init(sampleRate);
+      if (result !== 0) {
+        console.error('[LeadFM-WASM] Reset failed:', result);
+        this.ready = false;
+        return;
+      }
+      this.outputPtr = this.wasm.lead_fm_get_output_ptr();
+      this.output2Ptr = this.wasm.lead_fm_get_output2_ptr();
+      this.heap = new Float32Array(0);
+    }
+    this.pendingNotes = [];
+    if (this.currentParams) this.applyParams({ params: this.currentParams });
+    if (this.currentDelay) this.applyDelay({ params: this.currentDelay });
+  }
+
   applyParams(data) {
     const w = this.wasm;
     const p = data.params || data;
+    this.currentParams = { ...p };
 
     if (p.algorithm !== undefined) {
       w.lead_fm_set_algorithm(typeof p.algorithm === 'string' ? (ALG_MAP[p.algorithm] ?? 0) : p.algorithm);
@@ -241,6 +269,7 @@ class LeadFMWasmProcessor extends AudioWorkletProcessor {
   applyDelay(data) {
     const w = this.wasm;
     const p = data.params || data;
+    this.currentDelay = { ...p };
     if (p.enabled !== undefined) w.lead_fm_set_delay_enabled(p.enabled ? 1 : 0);
     if (p.timeL !== undefined) w.lead_fm_set_delay_time_l(p.timeL / 1000 * sampleRate);
     if (p.timeR !== undefined) w.lead_fm_set_delay_time_r(p.timeR / 1000 * sampleRate);

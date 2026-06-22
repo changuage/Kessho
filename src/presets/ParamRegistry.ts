@@ -124,6 +124,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   dynamicsDelayBBus:     { level: 4, scope: 'global' },
   dynamicsDegradeBus:    { level: 4, scope: 'global' },
   dynamicsReverbBus:     { level: 4, scope: 'global' },
+  dynamicsEnabled:       { level: 4, scope: 'global' },
   seedWindow:            { level: 4, scope: 'global' },
   randomness:            { level: 4, scope: 'global' },
   rootNote:              { level: 4, scope: 'global' },
@@ -140,6 +141,18 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   voicingSpread:         { level: 4, scope: 'global' },
   randomWalkSpeed:       { level: 4, scope: 'global' },
   randomWalkMode:        { level: 4, scope: 'global' },
+  harmonyMorphPercent:   { level: 4, scope: 'global' },
+  harmonyGenerationSeed: { level: 4, scope: 'global' },
+  manualHarmonyControl:  { level: 4, scope: 'global' },
+  harmonyChordSlots:     { level: 4, scope: 'global' },
+  harmonyChordSlotsA:    { level: 4, scope: 'global' },
+  harmonyChordSlotsB:    { level: 4, scope: 'global' },
+  harmonyChordSequence:  { level: 4, scope: 'global' },
+  harmonyChordSequenceA: { level: 4, scope: 'global' },
+  harmonyChordSequenceB: { level: 4, scope: 'global' },
+  harmonyChordSequenceEnabled: { level: 4, scope: 'global' },
+  harmonyChordSequenceLength: { level: 4, scope: 'global' },
+  harmonyChordSequenceStepIndex: { level: 4, scope: 'global' },
   transportPrimaryClock: { level: 4, scope: 'global' },
   transportBarsPerPhrase:{ level: 4, scope: 'global' },
   transportBeatsPerBar:  { level: 4, scope: 'global' },
@@ -158,6 +171,8 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   chordProgressionStepEnabled: { level: 4, scope: 'global' },
   chordProgressionPhraseMultiplier: { level: 4, scope: 'global' },
   chordProgressionClockSource: { level: 4, scope: 'global' },
+  chordProgressionHits:  { level: 4, scope: 'global' },
+  chordProgressionRotation: { level: 4, scope: 'global' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L3: Synth Source
@@ -800,6 +815,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthChordSequencerEnabled:  { level: 1, scope: 'synthEuclidean' },
   synthChordSequencerSource:   { level: 1, scope: 'synthEuclidean' },
   synthChordSequencerVoiceCount: { level: 1, scope: 'synthEuclidean' },
+  synthChordSequencer:         { level: 1, scope: 'synthEuclidean' },
+  synthSequencerFaces:         { level: 1, scope: 'synthEuclidean' },
+  synthSequencerChain:         { level: 1, scope: 'synthEuclidean' },
   // Lane 1 (10)
   synthEuclid1Enabled:     { level: 1, scope: 'synthEuclidean' },
   synthEuclid1Preset:      { level: 1, scope: 'synthEuclidean' },
@@ -986,13 +1004,14 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumMembraneLevel:       { level: 1, scope: 'drumMembrane' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Drum Euclidean Engine (101 params)
+  // L1: Drum Euclidean Engine
   // ═══════════════════════════════════════════════════════════════════════
   drumEuclidMasterEnabled: { level: 1, scope: 'drumEuclidean' },
   drumEuclidBaseBPM:       { level: 1, scope: 'drumEuclidean' },
   drumEuclidTempo:         { level: 1, scope: 'drumEuclidean' },
   drumEuclidSwing:         { level: 1, scope: 'drumEuclidean' },
   drumEuclidDivision:      { level: 1, scope: 'drumEuclidean' },
+  drumSequencerChain:      { level: 1, scope: 'drumEuclidean' },
   // Lane 1 (16)
   drumEuclid1Enabled:      { level: 1, scope: 'drumEuclidean' },
   drumEuclid1Preset:       { level: 1, scope: 'drumEuclidean' },
@@ -1411,7 +1430,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1178) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1178`);
+  if (count !== 1197) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1197`);
   }
 }

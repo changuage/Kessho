@@ -10,7 +10,7 @@ const ARRANGEMENT_RESTART_KEYS = [
   'chordProgressionEnabled', 'chordProgressionPattern', 'chordProgressionSteps',
   'chordProgressionStepEnabled', 'cofDriftEnabled', 'cofDriftRate', 'cofDriftDirection',
   'cofDriftRange', 'voicingSpread', 'synthChordSequencerEnabled', 'synthChordSequencerSource',
-  'synthChordSequencerVoiceCount', 'synthEuclideanMasterEnabled',
+  'synthChordSequencerVoiceCount', 'synthChordSequencer', 'synthEuclideanMasterEnabled',
   'synthEuclid1Enabled', 'synthEuclid1Source', 'synthEuclid1VoiceMask',
   'synthEuclid2Enabled', 'synthEuclid2Source', 'synthEuclid2VoiceMask',
   'synthEuclid3Enabled', 'synthEuclid3Source', 'synthEuclid3VoiceMask',

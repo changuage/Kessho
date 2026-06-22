@@ -2,7 +2,7 @@
 // Phase 1 — PresetStore abstraction with localStorage backend.
 // The async interface allows transparent swap to IndexedDB (Phase 12).
 
-import type { PresetEntry, PresetLevel, PresetSummary } from './types';
+import type { PresetEntry, PresetLevel, PresetRenameIdentity, PresetSummary } from './types';
 import { compressVersions } from './codec';
 import {
   buildPresetKeyCandidates,
@@ -33,7 +33,10 @@ function getBrowserPresetStorage(): Storage | null {
 export interface IPresetStore {
   save(entry: PresetEntry): Promise<void>;
   load(type: PresetLevel, name: string, scope?: string, version?: number): Promise<PresetEntry | null>;
+  loadById(id: string, version?: number): Promise<PresetEntry | null>;
   list(type: PresetLevel, scope?: string): Promise<PresetSummary[]>;
+  /** Rename a preset in place, preserving its stable id/versions */
+  rename(type: PresetLevel, name: string, nextName: string, scope?: string, identity?: PresetRenameIdentity): Promise<PresetEntry | null>;
   delete(type: PresetLevel, name: string, scope?: string): Promise<void>;
   exists(type: PresetLevel, name: string, scope?: string): Promise<boolean>;
   /** Find higher-level presets that reference this preset by name */
@@ -126,6 +129,34 @@ export class LocalStoragePresetStore implements IPresetStore {
     return null;
   }
 
+  async loadById(id: string, version?: number): Promise<PresetEntry | null> {
+    const storage = getBrowserPresetStorage();
+    const targetId = id.trim();
+    if (!storage || !targetId) return null;
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (!key?.startsWith(PREFIX)) continue;
+      const raw = storage.getItem(key);
+      if (!raw) continue;
+      const entry = readNormalizedEntry(raw);
+      if (!entry) continue;
+      if (entry.id !== targetId && entry.remoteId !== targetId) continue;
+      if (LEGACY_DELAY_A_KEY_PATTERN.test(raw)) {
+        storage.setItem(key, JSON.stringify(entry));
+      }
+      if (version !== undefined) {
+        const selected = entry.versions.find(v => v.v === version);
+        if (!selected) return null;
+        return {
+          ...entry,
+          currentVersion: selected.v,
+        };
+      }
+      return entry;
+    }
+    return null;
+  }
+
   async list(type: PresetLevel, scope?: string): Promise<PresetSummary[]> {
     const storage = getBrowserPresetStorage();
     if (!storage) return [];
@@ -170,6 +201,53 @@ export class LocalStoragePresetStore implements IPresetStore {
     for (const key of buildPresetKeyCandidates(type, name, scope)) {
       storage.removeItem(key);
     }
+  }
+
+  async rename(
+    type: PresetLevel,
+    name: string,
+    nextName: string,
+    scope?: string,
+    identity?: PresetRenameIdentity,
+  ): Promise<PresetEntry | null> {
+    const storage = getBrowserPresetStorage();
+    const trimmedName = nextName.trim();
+    if (!storage || !trimmedName) return null;
+
+    const entry = await this.load(type, name, scope);
+    if (!entry) return null;
+
+    const existing = await this.load(type, trimmedName, scope);
+    if (existing && existing.id !== entry.id) {
+      throw new Error(`A preset named "${trimmedName}" already exists.`);
+    }
+
+    const previousScope = getPresetScope(entry, type);
+    const renamed = normalizePresetEntry({
+      ...entry,
+      ...identity,
+      name: trimmedName,
+      tags: identity?.tags ?? entry.tags,
+      remoteId: entry.remoteId,
+      updatedAt: Date.now(),
+    });
+    if (!renamed) throw new Error('Invalid preset rename payload');
+
+    compressVersions(renamed);
+    renamed.updatedAt = Date.now();
+
+    const nextScope = getPresetScope(renamed, type);
+    const nextKey = getLogicalKey(renamed);
+    for (const candidate of [
+      ...buildPresetKeyCandidates(type, name, previousScope),
+      ...buildPresetKeyCandidates(type, trimmedName, nextScope),
+    ]) {
+      if (candidate !== nextKey) {
+        storage.removeItem(candidate);
+      }
+    }
+    storage.setItem(nextKey, JSON.stringify(renamed));
+    return renamed;
   }
 
   async exists(type: PresetLevel, name: string, scope?: string): Promise<boolean> {

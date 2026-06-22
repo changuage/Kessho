@@ -1154,7 +1154,9 @@ function makeInternalDerivedEntry(
 class NoopPresetStore implements IPresetStore {
   async save(_entry: PresetEntry): Promise<void> {}
   async load(_type: PresetLevel, _name: string, _scope?: string, _version?: number): Promise<PresetEntry | null> { return null; }
+  async loadById(_id: string, _version?: number): Promise<PresetEntry | null> { return null; }
   async list(_type: PresetLevel, _scope?: string): Promise<PresetSummary[]> { return []; }
+  async rename(_type: PresetLevel, _name: string, _nextName: string, _scope?: string): Promise<PresetEntry | null> { return null; }
   async delete(_type: PresetLevel, _name: string, _scope?: string): Promise<void> {}
   async exists(_type: PresetLevel, _name: string, _scope?: string): Promise<boolean> { return false; }
   async findReferences(_type: PresetLevel, _name: string): Promise<string[]> { return []; }
@@ -1925,6 +1927,33 @@ async function testSharedV2DoesNotLeakLegacyRows(): Promise<void> {
   );
 }
 
+async function testSupabaseRenamePreservesPresetId(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '55555555-5555-4555-8555-555555555555';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const data = extractParams(DEFAULT_STATE, 1, 'pad1');
+  await store.save(makePresetEntry('engine', 'pad1', 'Rename In Place', data));
+  const originalRow = findPresetRow(client, 'engine', 'pad1', 'Rename In Place');
+  const originalVersionCount = client.tables.preset_versions_v2.filter(version => version.preset_id === originalRow.id).length;
+
+  const renamed = await store.rename('engine', 'Rename In Place', 'Renamed In Place', 'pad1');
+
+  assert.ok(renamed, 'rename should return the updated preset entry');
+  assert.equal(renamed.id, originalRow.id, 'rename should preserve the Supabase preset id');
+  assert.equal(renamed.remoteId, originalRow.id, 'rename should preserve the remote id');
+  assert.equal(findPresetRow(client, 'engine', 'pad1', 'Renamed In Place').id, originalRow.id, 'renamed row should reuse the original row');
+  assert.equal(await store.load('engine', 'Rename In Place', 'pad1'), null, 'old name should no longer load');
+  assert.equal((await store.load('engine', 'Renamed In Place', 'pad1'))?.id, originalRow.id, 'new name should load the same row id');
+  assert.equal(
+    client.tables.preset_versions_v2.filter(version => version.preset_id === originalRow.id).length,
+    originalVersionCount,
+    'rename should not create an extra preset version',
+  );
+}
+
 await testSupabaseDeleteMovesPresetToRecycleBin();
 await testCompactDetailPayloadBundleLoadsByContentHash();
 await testActiveDependencyBlocksSoftDeleteAcrossL1ToL4();
@@ -1945,3 +1974,4 @@ await testLegacyDeleteUsesSoftDeleteRpc();
 testRecycleBinSqlContainsGraphGuards();
 await testHybridSharedDeletePropagatesCloudFailure();
 await testSharedV2DoesNotLeakLegacyRows();
+await testSupabaseRenamePreservesPresetId();

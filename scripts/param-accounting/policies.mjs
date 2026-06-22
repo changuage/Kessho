@@ -778,74 +778,6 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
 
 export const EXPECTED_PARAM_REGISTRY_OMISSIONS = [
   {
-    key: 'chordProgressionHits',
-    reason: 'Derived chord progression Euclidean template helper; Product Core receives explicit enabled steps/pattern state.',
-  },
-  {
-    key: 'chordProgressionRotation',
-    reason: 'Derived chord progression Euclidean template helper; Product Core receives explicit enabled steps/pattern state.',
-  },
-  {
-    key: 'harmonyChordSequence',
-    reason: 'Structured harmony sequence state resolves into Product Core harmony sequence events instead of ParamRegistry scalar params.',
-  },
-  {
-    key: 'harmonyChordSequenceA',
-    reason: 'Structured harmony bank-A sequence state resolves into Product Core harmony sequence events instead of ParamRegistry scalar params.',
-  },
-  {
-    key: 'harmonyChordSequenceB',
-    reason: 'Structured harmony bank-B sequence state resolves into Product Core harmony sequence events instead of ParamRegistry scalar params.',
-  },
-  {
-    key: 'harmonyChordSequenceEnabled',
-    reason: 'Structured harmony sequence enable state resolves into Product Core harmony sequence events instead of ParamRegistry scalar params.',
-  },
-  {
-    key: 'harmonyChordSequenceLength',
-    reason: 'Structured harmony sequence length resolves into Product Core harmony sequence events instead of ParamRegistry scalar params.',
-  },
-  {
-    key: 'harmonyChordSequenceStepIndex',
-    reason: 'Structured harmony sequence step selection resolves into Product Core harmony sequence events instead of ParamRegistry scalar params.',
-  },
-  {
-    key: 'harmonyChordSlots',
-    reason: 'Structured harmony slot state resolves into Product Core harmony slot events instead of ParamRegistry scalar params.',
-  },
-  {
-    key: 'harmonyChordSlotsA',
-    reason: 'Structured harmony bank-A slot state resolves into Product Core harmony slot events instead of ParamRegistry scalar params.',
-  },
-  {
-    key: 'harmonyChordSlotsB',
-    reason: 'Structured harmony bank-B slot state resolves into Product Core harmony slot events instead of ParamRegistry scalar params.',
-  },
-  {
-    key: 'harmonyGenerationSeed',
-    reason: 'UI generation salt for deterministic harmony material creation; generated slots and sequence carry the Product Core state.',
-  },
-  {
-    key: 'harmonyMorphPercent',
-    reason: 'Structured harmony morph state resolves into Product Core harmony frames instead of ParamRegistry scalar params.',
-  },
-  {
-    key: 'manualHarmonyControl',
-    reason: 'Structured manual harmony control resolves into Product Core harmony manual-intent events instead of ParamRegistry scalar params.',
-  },
-  {
-    key: 'synthSequencerFaces',
-    reason: 'Structured synth sequencer face state resolves into Product Core sequencer snapshots and generated sequencer lane param events instead of ParamRegistry scalar params.',
-  },
-  {
-    key: 'synthSequencerChain',
-    reason: 'Structured synth sequencer chain state is enforced by the host through generated sequencer lane-enabled events instead of ParamRegistry scalar params.',
-  },
-  {
-    key: 'drumSequencerChain',
-    reason: 'Structured drum sequencer chain state is enforced by the host through generated sequencer lane-enabled events instead of ParamRegistry scalar params.',
-  },
-  {
     key: 'sidechainDelayATarget',
     reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
   },
@@ -880,10 +812,6 @@ export const EXPECTED_PARAM_REGISTRY_OMISSIONS = [
   {
     key: 'sidechainReverbTarget',
     reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
-  },
-  {
-    key: 'dynamicsEnabled',
-    reason: 'Legacy Texture page runtime gate; presets are owned by separate L3 Degrade, Dynamics Bus, and Master FX scopes.',
   },
   {
     key: 'granularVisualDetail',

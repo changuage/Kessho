@@ -5,6 +5,7 @@ import {
   countTriggerHits,
   deserializeTriggerClip,
   flattenTriggerClipEdits,
+  flattenTriggerClipToManual,
   resizeTriggerClip,
   resolveTriggerClip,
   rotateTriggerClip,
@@ -21,6 +22,28 @@ import {
   });
   assert.deepEqual(resolveTriggerClip(clip), [true, false, true, false]);
   assert.equal(countTriggerHits(clip), 2);
+}
+
+{
+  const clip = setTriggerClipStep(createBitmapTriggerClip({
+    steps: 4,
+    bits: [true, false, false, true],
+    origin: 'euclidean',
+    generator: {
+      kind: 'euclidean',
+      preset: 'custom',
+      steps: 4,
+      hits: 2,
+      rotation: 0,
+    },
+  }), 1, true);
+  const manual = flattenTriggerClipToManual(clip);
+  assert.deepEqual(resolveTriggerClip(manual), [true, true, false, true]);
+  assert.equal(manual.origin, 'manual');
+  assert.equal(manual.generator?.kind, 'manual');
+  assert.equal(manual.label, 'Step');
+  assert.equal(manual.dirty, false);
+  assert.equal(manual.edits.size, 0);
 }
 
 {

@@ -21,6 +21,7 @@ export type ProductSnapshotPatchReason =
   | 'transport-change'
   | 'asset-reference-change'
   | 'preset-load'
+  | 'session-restore'
   | 'runtime-start'
   | 'runtime-bootstrap'
   | 'debug-force-reload';

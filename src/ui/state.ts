@@ -28,6 +28,8 @@ import {
   normalizeChordsPerPhrase,
 } from '../audio/chordPhraseTiming';
 import { hydrateOptimizedStatePresetData } from '../presets/statePresetOptimization';
+import { normalizePresetPoolMetadata } from '../presets/presetPool';
+import type { PresetPoolMetadata } from '../presets/types';
 import {
   createDefaultSynthSequencerFaceState,
   normalizeSynthSequencerFaceState,
@@ -38,6 +40,11 @@ import {
   normalizeSequencerChainState,
   type SequencerChainState,
 } from '../audio/sequencerChain';
+import {
+  defaultSynthChordSequencerConfig,
+  sanitizeSynthChordSequencerConfig,
+  type SynthChordSequencerConfig,
+} from '../audio/synthChordSequencer';
 import type { SerializedTriggerClip } from './sequencer/triggerClip';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
@@ -266,6 +273,7 @@ export interface SavedPreset {
   state: SliderState;
   source?: 'bundled' | 'device-local' | 'cloud';
   deferred?: boolean;
+  tags?: string[];
   familyId?: string;
   familyName?: string;
   variantId?: string;
@@ -291,6 +299,7 @@ export interface SavedPreset {
   drumPitchSettings?: SerializedPitchSettings[];
   synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
+  presetPool?: PresetPoolMetadata;
 }
 
 export interface SliderState {
@@ -988,6 +997,7 @@ export interface SliderState {
   synthChordSequencerEnabled: boolean;
   synthChordSequencerSource: SynthChordSequencerSource;
   synthChordSequencerVoiceCount: number;
+  synthChordSequencer: SynthChordSequencerConfig;
 
   // ─── Ikeda-Style Drum Synth ───
   drumEnabled: boolean;                    // Master on/off
@@ -2276,6 +2286,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthChordSequencerEnabled',
   'synthChordSequencerSource',
   'synthChordSequencerVoiceCount',
+  'synthChordSequencer',
   // Drum Synth
   'drumEnabled',
   'drumLevel',
@@ -2680,6 +2691,7 @@ const HARMONY_JSON_STATE_KEYS = new Set<keyof SliderState>([
   'synthSequencerFaces',
   'synthSequencerChain',
   'drumSequencerChain',
+  'synthChordSequencer',
 ]);
 
 /**
@@ -3339,8 +3351,9 @@ export const DEFAULT_STATE: SliderState = {
   
   // Synth chord sequencer routing
   synthChordSequencerEnabled: false,
-  synthChordSequencerSource: 'both' as const,
+  synthChordSequencerSource: 'piano' as const,
   synthChordSequencerVoiceCount: 6,
+  synthChordSequencer: defaultSynthChordSequencerConfig(),
 
   // ─── Ikeda-Style Drum Synth ───
   drumEnabled: false,
@@ -5261,6 +5274,10 @@ function decodeHarmonyJsonStateValue(state: SliderState, key: keyof SliderState,
     state.drumSequencerChain = normalizeSequencerChainState(parsed);
     return true;
   }
+  if (key === 'synthChordSequencer') {
+    state.synthChordSequencer = sanitizeSynthChordSequencerConfig(parsed);
+    return true;
+  }
   return false;
 }
 
@@ -6070,6 +6087,7 @@ export function migratePreset(preset: any): SavedPreset {
     name: preset.name || 'Untitled',
     timestamp: preset.timestamp || new Date().toISOString(),
     state: state as SliderState,
+    tags: Array.isArray(preset.tags) ? preset.tags : undefined,
     dualRanges: Object.keys(dualRanges).length > 0 ? dualRanges : undefined,
     sliderModes: Object.keys(sliderModes).length > 0 ? sliderModes : undefined,
     drumEvolveConfigs,
@@ -6088,5 +6106,6 @@ export function migratePreset(preset: any): SavedPreset {
     drumPitchSettings: preset.drumPitchSettings,
     synthPitchSettings: preset.synthPitchSettings,
     synthPitchBindingModes: preset.synthPitchBindingModes,
+    presetPool: normalizePresetPoolMetadata(preset.presetPool),
   };
 }

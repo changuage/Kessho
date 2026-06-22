@@ -75,6 +75,7 @@ type UseJourneyMorphRuntimeSurfaceOptions<TPreset extends JourneyMorphPreset> = 
   startJourneyMorphClock: (callback: (now: number) => void) => void;
   stopJourneyMorphClock: () => void;
   setIsJourneyPlaying: Dispatch<SetStateAction<boolean>>;
+  onPresetPoolLoad?: (preset: TPreset) => void;
 };
 
 type JourneyMorphRuntimeSurface = {
@@ -120,6 +121,7 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
   startJourneyMorphClock,
   stopJourneyMorphClock,
   setIsJourneyPlaying,
+  onPresetPoolLoad,
 }: UseJourneyMorphRuntimeSurfaceOptions<TPreset>): JourneyMorphRuntimeSurface {
   const applyJourneyDualSnapshot = useCallback((nextDualModes: Record<string, SliderMode>, nextDualRanges: Partial<Record<keyof SliderState, DualSliderRange>>) => {
     setSliderModes((prev) => {
@@ -339,6 +341,7 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
           if (progress >= 1) {
             commitJourneyRuntimeState();
             setStatePresetName(preset.name);
+            onPresetPoolLoad?.(preset);
             journeyMorphDirectionRef.current = direction === 'toB' ? 'toA' : 'toB';
             stopJourneyMorphPlayback(false);
           }
@@ -359,6 +362,7 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
       journeyPresetARef,
       journeyPresetBRef,
       lerpPresets,
+      onPresetPoolLoad,
       phraseLength,
       resetCofDrift,
       resolveSavedPresetByName,

@@ -25,7 +25,8 @@ export function useProductRuntimePlaybackUiProps({
   stopProductPlayback,
   ...options
 }: ProductRuntimePlaybackUiPropsOptions) {
-  // TODO(product-runtime-compat-10C): playback UI prop assembly still delegates to the
+  // TODO(product-fallback-retire:runtime-playback-ui-props): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
+  // Playback UI prop assembly still delegates to the
   // selected-runtime implementation while the product surface exposes product names.
   return useSelectedAudioEnginePlaybackUiProps({
     ...options,

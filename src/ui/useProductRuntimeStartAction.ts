@@ -21,7 +21,8 @@ export function useProductRuntimeStartAction({
   startProductPlayback,
   ...options
 }: ProductRuntimeStartActionOptions) {
-  // TODO(product-runtime-compat-10C): selected-audio-engine start action remains the temporary
+  // TODO(product-fallback-retire:runtime-start-action): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
+  // Selected-audio-engine start action remains the temporary
   // compatibility implementation behind this product runtime facade.
   return useSelectedAudioEngineStartAction({
     ...options,

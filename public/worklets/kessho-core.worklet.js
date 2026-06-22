@@ -1414,18 +1414,31 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     if (!this.sourceModule) return;
     this.sourcePendingNotes = [];
     this.sourcePendingNoteOffs = [];
-    if (
-      this.sourceModuleType === KESSHO_MODULE_LEAD_FM ||
-      this.sourceModuleType === KESSHO_MODULE_DRUM ||
-      this.sourceModuleType === KESSHO_MODULE_SOUNDSCAPES
-    ) {
-      this.api.moduleAllNotesOff(this.sourceModule);
+    this.killModuleVoices(this.sourceModule, this.sourceModuleType, 'sourceModuleKillVoice');
+  }
+
+  killModuleVoices(module, moduleType, label) {
+    if (!module) return;
+    if (moduleType === KESSHO_MODULE_LEAD_FM) {
+      const ok = this.api.moduleKillVoice(module, 0) === 1;
+      if (!ok) this.api.moduleAllNotesOff(module);
+      return;
+    }
+    if (moduleType !== KESSHO_MODULE_PAD) {
+      this.api.moduleAllNotesOff(module);
       return;
     }
     for (let voiceIndex = 0; voiceIndex < KESSHO_PAD_VOICE_COUNT; voiceIndex += 1) {
-      const ok = this.api.moduleKillVoice(this.sourceModule, voiceIndex) === 1;
-      if (!ok) this.postQueueFailure('sourceModuleKillVoice');
+      const ok = this.api.moduleKillVoice(module, voiceIndex) === 1;
+      if (!ok) this.postQueueFailure(label);
     }
+  }
+
+  killSourceSlotVoices(slot) {
+    if (!slot?.module) return;
+    slot.pendingNotes = [];
+    slot.pendingNoteOffs = [];
+    this.killModuleVoices(slot.module, slot.moduleType, `${slot.slotId}SourceModuleKillVoice`);
   }
 
   applyNoteParamsOverride(module, moduleType, note, baseParams) {
@@ -1491,6 +1504,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
   triggerSourceNote(note) {
     if (!this.sourceModule) return;
     if (!note || typeof note !== 'object') return;
+    if (note.manualPreviewKill === true) this.killSourceVoices();
     this.applyNoteParamsOverride(this.sourceModule, this.sourceModuleType, note, this.sourceBaseParams);
     this.applyDrumNoteOverrides(this.sourceModule, this.sourceModuleType, note);
     const ok = this.api.moduleNoteOn(
@@ -1579,6 +1593,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
   triggerSlotNote(slot, note) {
     if (!slot?.module) return;
     if (!note || typeof note !== 'object') return;
+    if (note.manualPreviewKill === true) this.killSourceSlotVoices(slot);
     this.applyNoteParamsOverride(slot.module, slot.moduleType, note, slot.baseParams);
     this.applyDrumNoteOverrides(slot.module, slot.moduleType, note);
     const ok = this.api.moduleNoteOn(
@@ -1772,13 +1787,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
       );
       this.sourceSamplesUntilChord = initialStartDelaySamples + Math.max(this.frames, this.sourceChordIntervalSamples - initialChordLeadSamples);
       if (message.triggerInitial === false) {
-        const nextIsManual = noteKey.startsWith('manual:');
-        const previousWasManual = this.sourceNoteKey.startsWith('manual:');
-        if (nextIsManual && previousWasManual) {
-          this.sourcePendingNotes = [];
-        } else {
-          this.killSourceVoices();
-        }
+        this.killSourceVoices();
       } else {
         this.scheduleSourceChord(this.sourceChordSets[0], initialStartDelaySamples);
       }
@@ -1918,15 +1927,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
       );
       slot.samplesUntilChord = initialStartDelaySamples + Math.max(this.frames, slot.chordIntervalSamples - initialChordLeadSamples);
       if (message.triggerInitial === false) {
-        const nextIsManual = noteKey.startsWith('manual:');
-        const previousWasManual = slot.noteKey.startsWith('manual:');
-        if (nextIsManual && previousWasManual) {
-          slot.pendingNotes = [];
-        } else {
-          this.api.moduleAllNotesOff(slot.module);
-          slot.pendingNotes = [];
-          slot.pendingNoteOffs = [];
-        }
+        this.killSourceSlotVoices(slot);
       } else {
         this.scheduleSlotChord(slot, slot.chordSets[0], initialStartDelaySamples);
       }

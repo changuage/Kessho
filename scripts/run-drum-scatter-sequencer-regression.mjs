@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -14,6 +14,39 @@ const entryPoints = [
 const tempDir = await mkdtemp(path.join(tmpdir(), 'drum-scatter-sequencer-regression-'));
 
 try {
+  const [appSource, drumPageSource, scatterPageSource] = await Promise.all([
+    readFile('src/App.tsx', 'utf8'),
+    readFile('src/ui/drums/DrumPage.tsx', 'utf8'),
+    readFile('src/ui/drums/scatter/ScatterPage.tsx', 'utf8'),
+  ]);
+  const appScatterRuntimeIndex = appSource.indexOf('useScatterSequencerRuntime({');
+  const appScatterPhrasePlayerIndex = appSource.indexOf('useScatterPhrasePlayer({');
+  const appDrumPageRenderIndex = appSource.indexOf("{activeTab === 'drums'");
+  if (appScatterRuntimeIndex < 0) {
+    throw new Error('Scatter runtime scheduler must be mounted above DrumPage so it survives main tab changes.');
+  }
+  if (appScatterPhrasePlayerIndex < 0) {
+    throw new Error('App must own the headless scatter phrase player for background Scatter playback.');
+  }
+  if (
+    appDrumPageRenderIndex >= 0 &&
+    (appScatterRuntimeIndex > appDrumPageRenderIndex || appScatterPhrasePlayerIndex > appDrumPageRenderIndex)
+  ) {
+    throw new Error('App-owned Scatter playback hooks must run before the conditional DrumPage render branch.');
+  }
+  if (!scatterPageSource.includes('useScatterPhrasePlayer({')) {
+    throw new Error('ScatterPage should keep the UI-local phrase player for manual Scatter phrase audition.');
+  }
+  if (drumPageSource.includes('useScatterPhrasePlayer({')) {
+    throw new Error('DrumPage should not own Scatter phrase playback because main tab changes unmount it.');
+  }
+  if (drumPageSource.includes('useScatterSequencerRuntime({')) {
+    throw new Error('DrumPage is unmounted by main tab changes and must not own the background Scatter scheduler.');
+  }
+  if (scatterPageSource.includes('useScatterSequencerRuntime')) {
+    throw new Error('ScatterPage is conditionally rendered by view mode and must not own the background Scatter scheduler.');
+  }
+
   for (const entryPoint of entryPoints) {
     const outfile = path.join(tempDir, `${path.basename(entryPoint, '.ts')}.mjs`);
     await build({

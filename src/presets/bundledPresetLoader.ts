@@ -13,6 +13,7 @@ import type {
   SubLaneState,
 } from '../ui/sequencer/useEuclideanSequencer';
 import type { SavedPresetSource } from './savedPresetSource';
+import type { PresetPoolMetadata } from './types';
 
 const BUNDLED_PRESET_FALLBACK_FILES = [
   'Ethereal_Ambient.json',
@@ -29,6 +30,7 @@ export interface BundledSavedPreset {
   state: SliderState;
   source?: SavedPresetSource;
   deferred?: boolean;
+  tags?: string[];
   familyId?: string;
   familyName?: string;
   variantId?: string;
@@ -54,6 +56,7 @@ export interface BundledSavedPreset {
   drumPitchSettings?: PitchSettings[];
   synthPitchSettings?: PitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
+  presetPool?: PresetPoolMetadata;
 }
 
 function bundledPresetFromFileData(
@@ -65,6 +68,7 @@ function bundledPresetFromFileData(
     name: typeof data.name === 'string' && data.name.trim() ? data.name : fallbackName,
     timestamp: typeof data.timestamp === 'string' ? data.timestamp : new Date().toISOString(),
     state: (data.state && typeof data.state === 'object' ? data.state : data) as SliderState,
+    tags: Array.isArray(data.tags) ? data.tags : undefined,
     dualRanges: data.dualRanges,
     sliderModes: data.sliderModes,
     drumEvolveConfigs: data.drumEvolveConfigs,
@@ -83,6 +87,7 @@ function bundledPresetFromFileData(
     drumPitchSettings: data.drumPitchSettings,
     synthPitchSettings: data.synthPitchSettings,
     synthPitchBindingModes: data.synthPitchBindingModes,
+    presetPool: data.presetPool,
   });
   return { ...migrated, source } as BundledSavedPreset;
 }

@@ -21,7 +21,8 @@ export function useProductRuntimeCapacitorAudioSession({
   stopProductPlayback,
   ...options
 }: ProductRuntimeCapacitorAudioSessionOptions): NativeProductRendererDiagnosticStatus {
-  // TODO(product-runtime-compat-10C): Capacitor session diagnostics still delegate to the
+  // TODO(product-fallback-retire:runtime-capacitor-audio-session): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
+  // Capacitor session diagnostics still delegate to the
   // selected-runtime remote command handler while product surfaces expose product playback names.
   return useSelectedAudioEngineCapacitorAudioSession({
     ...options,

@@ -76,6 +76,9 @@ export interface PadPresetOption {
   name: string;
   library: PresetLibrary;
   scope?: 'pad1' | 'pad2';
+  tags?: string[];
+  updatedAt?: number;
+  rating?: number;
 }
 
 interface RuntimePadPresetEntry extends PadPresetOption {
@@ -696,6 +699,7 @@ export function getPadPresetOptions(scope?: 'pad1' | 'pad2'): PadPresetOption[] 
       id,
       name: PAD_PRESETS[id]?.name ?? id,
       library: 'stock',
+      tags: PAD_PRESETS[id]?.tags,
     });
   }
 
@@ -706,6 +710,9 @@ export function getPadPresetOptions(scope?: 'pad1' | 'pad2'): PadPresetOption[] 
         name: entry.name,
         library: entry.library,
         scope: entry.scope,
+        tags: entry.preset.tags,
+        updatedAt: entry.updatedAt,
+        rating: entry.rating,
       });
     }
   }
@@ -715,7 +722,7 @@ export function getPadPresetOptions(scope?: 'pad1' | 'pad2'): PadPresetOption[] 
 
 export function setUserPadPresets(
   scope: 'pad1' | 'pad2',
-  presets: Array<{ id: string; name: string; library: Exclude<PresetLibrary, 'stock'>; preset: PadPreset }>,
+  presets: Array<{ id: string; name: string; library: Exclude<PresetLibrary, 'stock'>; preset: PadPreset; updatedAt?: number; rating?: number }>,
 ): void {
   for (const [runtimeKey, entry] of USER_PAD_PRESETS.entries()) {
     if (entry.scope === scope) {
@@ -732,7 +739,7 @@ export function setUserPadPresets(
 
 export function upsertUserPadPreset(
   scope: 'pad1' | 'pad2',
-  preset: { id: string; name: string; library: Exclude<PresetLibrary, 'stock'>; preset: PadPreset },
+  preset: { id: string; name: string; library: Exclude<PresetLibrary, 'stock'>; preset: PadPreset; updatedAt?: number; rating?: number },
 ): void {
   USER_PAD_PRESETS.set(makeRuntimePadPresetKey(scope, preset.id), {
     ...preset,

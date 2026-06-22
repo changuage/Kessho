@@ -60,12 +60,13 @@ import { applyCoreProductDrumSequencerStepOverrideEvent } from './product/host/C
 import { applyCoreProductSequencerStepEventToCache } from './product/host/CoreProductSequencerStepEventBridge';
 import { applyCoreProductSequencerSubLaneEnabledEvent } from './product/host/CoreProductSequencerSubLaneEnabledEventBridge';
 import { coreProductStepValueFieldEnabled, syncCoreProductSequencerStepState } from './product/host/CoreProductSequencerStepPostingBridge';
+import { DRUM_EUCLIDEAN_LANE_COUNT, SYNTH_EUCLIDEAN_LANE_COUNT } from './sequencerLaneCounts';
 import type { ProductEngineState, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductSnapshotPatchReason } from './product/ProductEngineTypes';
 import { createWebProductRuntimeCapabilityReport, type ProductRuntimeCapabilityReport } from './product/ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from './product/ProductRuntimeDiagnostics';
 import { CoreProductArrangementBridge } from './product/host/CoreProductArrangementBridge';
-const PRODUCT_VISIBLE_SYNTH_LANE_COUNT = 4;
-const PRODUCT_VISIBLE_DRUM_LANE_COUNT = 6;
+const PRODUCT_VISIBLE_SYNTH_LANE_COUNT = SYNTH_EUCLIDEAN_LANE_COUNT;
+const PRODUCT_VISIBLE_DRUM_LANE_COUNT = DRUM_EUCLIDEAN_LANE_COUNT;
 const POST_SNAPSHOT_EVENT_FLUSH_BATCH_SIZE = 48;
 const POST_SNAPSHOT_EVENT_FLUSH_RETRY_MS = 40;
 type SequencerLanePitchState = { steps?: number; direction?: LaneDirection; scaleQuantize?: boolean };
@@ -97,8 +98,8 @@ class CoreProductEngineHost {
     },
   });
   private readonly debugSurface = new CoreProductHostDebugSurface({ engineMode: 'core-product', runtime: this.runtime, running: () => this.running, runtimeReady: () => this.runtimeReady, latestProductSnapshot: () => this.latestProductSnapshot, latestSliderState: () => this.latestSliderState, latestTelemetry: () => this.latestTelemetry, runtimeWalkDebug: () => this.modulationRangeBridge.getRuntimeWalkDebugState() });
-  private synthSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
-  private drumSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
+  private synthSubLaneEnabled: Record<string, boolean>[] = Array.from({ length: PRODUCT_VISIBLE_SYNTH_LANE_COUNT }, () => ({}));
+  private drumSubLaneEnabled: Record<string, boolean>[] = Array.from({ length: PRODUCT_VISIBLE_DRUM_LANE_COUNT }, () => ({}));
   private latestTelemetry: CoreProductTelemetrySnapshot | null = null;
   private runtimeReady = false;
   private running = false;

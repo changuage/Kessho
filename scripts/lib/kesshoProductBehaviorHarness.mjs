@@ -668,6 +668,33 @@ export function loadCoreProductHostHarness(options = {}) {
       subLaneConfig: 9 << 8,
     },
     CORE_PRODUCT_SOURCE_IDS: harnessSourceIds,
+    SYNTH_EUCLIDEAN_LANE_COUNT: 4,
+    DRUM_EUCLIDEAN_LANE_COUNT: 6,
+    DRUM_VOICE_BASE_MIDI: {
+      sub: 35,
+      kick: 36,
+      click: 37,
+      beepHi: 51,
+      beepLo: 50,
+      noise: 42,
+      membrane: 38,
+    },
+    drumVoiceBaseMidiFromIndex: (voiceIndex, fallback = 'kick') => {
+      const drumVoiceOrder = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'];
+      const voice = drumVoiceOrder[Math.max(0, Math.min(drumVoiceOrder.length - 1, Math.round(voiceIndex)))] ?? fallback;
+      const midiByVoice = {
+        sub: 35,
+        kick: 36,
+        click: 37,
+        beepHi: 51,
+        beepLo: 50,
+        noise: 42,
+        membrane: 38,
+      };
+      return midiByVoice[voice] ?? midiByVoice[fallback] ?? 36;
+    },
+    euclideanLaneCount: (kind) => (kind === 'drum' ? 6 : 4),
+    euclideanLaneNumbers: (kind) => (kind === 'drum' ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4]),
     CORE_PRODUCT_GRAPH_TAP_IDS: {
       master: 1,
       pad: 2,

@@ -29,7 +29,8 @@ export type ProductRuntimePlaybackStartStateOptions = {
 };
 
 export function useProductRuntimePlaybackStartState(options: ProductRuntimePlaybackStartStateOptions) {
-  // TODO(product-runtime-compat-10C): default preset start-state preparation still delegates
+  // TODO(product-fallback-retire:runtime-playback-start-state): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
+  // Default preset start-state preparation still delegates
   // to the selected-runtime compatibility hook until preset playback ownership is product-only.
   return useSelectedAudioEnginePlaybackStartState(options);
 }

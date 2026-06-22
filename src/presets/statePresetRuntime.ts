@@ -223,6 +223,7 @@ function savedPresetFromSummary(summary: PresetSummary): SavedPreset {
     state: DEFAULT_STATE,
     source: savedPresetSourceFor(summary),
     deferred: true,
+    tags: summary.tags,
     familyId: summary.familyId,
     familyName: summary.familyName,
     variantId: summary.variantId,
@@ -256,6 +257,7 @@ export function statePresetEntryToSavedPreset(entry: PresetEntry, versionSelecti
   return {
     ...migrated,
     source: savedPresetSourceFor(entry),
+    tags: entry.tags,
     familyId: entry.familyId,
     familyName: entry.familyName ?? entry.name,
     variantId: entry.variantId,

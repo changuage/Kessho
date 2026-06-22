@@ -1,5 +1,6 @@
+import { useCallback } from 'react';
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
-import { useSelectedAudioEngineMorphRuntimeSurface } from './useSelectedAudioEngineMorphRuntimeSurface';
+import { productEngine } from '../audio/product/ProductEngineProxy';
 
 type ProductJourneyMorphClockCallback = (now: number) => void;
 
@@ -11,14 +12,28 @@ type ProductRuntimeMorphRuntimeSurface = {
 };
 
 export function useProductRuntimeMorphRuntimeSurface(
-  productRuntimeMode: ProductRuntimeSelectionMode,
+  _productRuntimeMode: ProductRuntimeSelectionMode,
 ): ProductRuntimeMorphRuntimeSurface {
-  const morphRuntimeSurface = useSelectedAudioEngineMorphRuntimeSurface(productRuntimeMode);
+  const setProductJourneyMorphClockCallback = useCallback((callback: ProductJourneyMorphClockCallback | null): void => {
+    productEngine.setJourneyMorphClockCallback(callback);
+  }, []);
+
+  const startProductJourneyMorphClock = useCallback((): void => {
+    productEngine.startJourneyMorphClock();
+  }, []);
+
+  const stopProductJourneyMorphClock = useCallback((): void => {
+    productEngine.stopJourneyMorphClock();
+  }, []);
+
+  const resetProductCofDrift = useCallback((): void => {
+    productEngine.resetCofDrift();
+  }, []);
 
   return {
-    resetProductCofDrift: morphRuntimeSurface.resetSelectedCofDrift,
-    setProductJourneyMorphClockCallback: morphRuntimeSurface.setSelectedJourneyMorphClockCallback,
-    startProductJourneyMorphClock: morphRuntimeSurface.startSelectedJourneyMorphClock,
-    stopProductJourneyMorphClock: morphRuntimeSurface.stopSelectedJourneyMorphClock,
+    resetProductCofDrift,
+    setProductJourneyMorphClockCallback,
+    startProductJourneyMorphClock,
+    stopProductJourneyMorphClock,
   };
 }

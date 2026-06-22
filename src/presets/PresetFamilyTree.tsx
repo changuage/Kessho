@@ -3,13 +3,14 @@
 // Children share the parent's familyId but have distinct variantName + description.
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import type { PresetLevel, PresetEntry, PresetSummary, PresetSaveIdentity, PresetVersionMetadata } from './types';
+import type { PresetLevel, PresetEntry, PresetRenameIdentity, PresetSummary, PresetSaveIdentity, PresetVersionMetadata } from './types';
 import { usePresets } from './usePresets';
 import { getVersionData } from './codec';
 import { extractCascade, getCascadeKeys } from './codec';
 import { presetValuesEqual } from './presetUtils';
 import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 import { PresetRatingStars } from './PresetRatingStars';
+import { PresetTagEditor } from './PresetTagEditor';
 import { DEFAULT_STATE, migratePreset, type SliderState } from '../ui/state';
 import type { SliderMode } from '../ui/state';
 import { DERIVED_PAD_KEYS } from '../audio/padPresets';
@@ -252,11 +253,11 @@ const treeStyles = {
   confirmBtnOk: {
     padding: '8px 20px',
     borderRadius: 4,
-    border: 'none',
+    border: '1px solid rgba(184,224,255,0.34)',
     cursor: 'pointer',
     fontSize: '0.85rem',
-    background: '#2a5a8a',
-    color: 'white',
+    background: 'rgba(184,224,255,0.14)',
+    color: '#B8E0FF',
     minWidth: 60,
   },
   slotA: {
@@ -396,9 +397,10 @@ const treeStyles = {
   dialogBtn: {
     padding: '6px 16px',
     borderRadius: 4,
-    border: 'none',
+    border: '1px solid rgba(244,237,228,0.12)',
     cursor: 'pointer',
     fontSize: '0.8rem',
+    fontWeight: 700,
   },
   parentLabel: {
     fontSize: '0.7rem',
@@ -425,7 +427,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     () => (customExtract ? { customExtract } : undefined),
     [customExtract],
   );
-  const { presets, families, save, load, remove, refresh, updateMetadata } = usePresets(level, scope, presetOptions);
+  const { presets, families, save, load, remove, rename, refresh, updateMetadata } = usePresets(level, scope, presetOptions);
   const selectionStorageKey = useMemo(() => getFamilyTreeSelectionStorageKey(level, scope), [level, scope]);
   const normalizeDiffData = useCallback((data: Record<string, unknown>): Record<string, unknown> => {
     return level === 'state' ? normalizeStatePresetDiffData(data) : data;
@@ -467,6 +469,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   const [showChildDialog, setShowChildDialog] = useState(false);
   const [childModifier, setChildModifier] = useState('');
   const [childDescription, setChildDescription] = useState('');
+  const [childTags, setChildTags] = useState<string[]>([]);
 
   // Confirmation dialog
   const [confirmAction, setConfirmAction] = useState<{
@@ -481,6 +484,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     parentName?: string;       // parent name if it's a child
   } | null>(null);
   const [saveAsName, setSaveAsName] = useState('');
+  const [saveTags, setSaveTags] = useState<string[]>([]);
 
   // Tooltip
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -570,6 +574,13 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     () => [...dedupedDropdownPresets].sort((left, right) => left.name.localeCompare(right.name)),
     [dedupedDropdownPresets],
   );
+  const tagSuggestions = useMemo(() => {
+    const tags = new Set<string>();
+    for (const preset of presets) {
+      for (const tag of preset.tags ?? []) tags.add(tag);
+    }
+    return [...tags].sort((left, right) => left.localeCompare(right));
+  }, [presets]);
 
   // Keys relevant to this preset level+scope (used to filter version diffs)
   const relevantKeys = useMemo(() => {
@@ -633,6 +644,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     const isChild = !!(preset && preset.variantName !== preset.familyName);
     const parentName = isChild ? preset?.familyName : undefined;
     setSaveAsName('');
+    setSaveTags(preset?.tags ?? []);
     setSaveDialog({ originalName: name, isChild, parentName });
   }, [presets]);
 
@@ -640,13 +652,48 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   const handleSaveOverwrite = useCallback(async () => {
     if (!saveDialog) return;
     const saveMeta = getCurrentSaveMetadata();
-    await save(saveDialog.originalName, state, undefined, undefined, saveMeta, undefined);
+    await save(saveDialog.originalName, state, undefined, saveTags, saveMeta, undefined);
     await refresh();
     // Reload version entry so the version panel updates immediately
     const updated = await load(saveDialog.originalName);
     if (updated) setVersionEntries(prev => ({ ...prev, [saveDialog.originalName]: updated }));
     setSaveDialog(null);
-  }, [saveDialog, save, state, refresh, load, getCurrentSaveMetadata]);
+  }, [saveDialog, save, saveTags, state, refresh, load, getCurrentSaveMetadata]);
+
+  const handleRename = useCallback(async () => {
+    if (!saveDialog || !saveAsName.trim()) return;
+    const nextLabel = saveAsName.trim();
+    const targetName = saveDialog.isChild && saveDialog.parentName
+      ? `${saveDialog.parentName} · ${nextLabel}`
+      : nextLabel;
+    if (targetName === saveDialog.originalName) return;
+
+    const identity: PresetRenameIdentity | undefined = saveDialog.isChild && saveDialog.parentName
+      ? {
+        familyName: saveDialog.parentName,
+        variantName: nextLabel,
+        tags: saveTags,
+      }
+      : { tags: saveTags };
+    const renamed = await rename(saveDialog.originalName, targetName, identity);
+    if (!renamed) return;
+
+    await refresh();
+    setVersionEntries(prev => {
+      const next = { ...prev };
+      const cached = next[saveDialog.originalName];
+      delete next[saveDialog.originalName];
+      if (cached) next[renamed.name] = { ...cached, name: renamed.name };
+      return next;
+    });
+    setExpandedVersions(prev => {
+      const next = new Set(prev);
+      if (next.delete(saveDialog.originalName)) next.add(renamed.name);
+      return next;
+    });
+    setSelectedParentName(saveDialog.isChild && saveDialog.parentName ? saveDialog.parentName : renamed.name);
+    setSaveDialog(null);
+  }, [saveDialog, saveAsName, saveTags, rename, refresh]);
 
   // Execute save as
   const handleSaveAs = useCallback(async () => {
@@ -694,10 +741,10 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
           familyName: parentFamilyName,
           variantName: newName,
         };
-        await save(targetName, state, undefined, undefined, saveMeta, identity);
+        await save(targetName, state, undefined, saveTags, saveMeta, identity);
       }
     } else {
-      await save(targetName, state, undefined, undefined, saveMeta, undefined);
+      await save(targetName, state, undefined, saveTags, saveMeta, undefined);
     }
     await refresh();
     // Reload version entry so the version panel updates immediately
@@ -707,7 +754,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
 
     // Auto-select the new preset in the dropdown
     setSelectedParentName(dialog.isChild && dialog.parentName ? dialog.parentName : targetName);
-  }, [save, load, state, refresh, level, scope, getCurrentSaveMetadata]);
+  }, [save, saveTags, load, state, refresh, level, scope, getCurrentSaveMetadata]);
 
   // Delete preset (with confirmation)
   const requestDelete = useCallback((name: string) => {
@@ -732,8 +779,9 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   const handleOpenChildDialog = useCallback(() => {
     setChildModifier('');
     setChildDescription('');
+    setChildTags(presets.find(preset => preset.name === selectedParentName)?.tags ?? []);
     setShowChildDialog(true);
-  }, []);
+  }, [presets, selectedParentName]);
 
   // Save child
   const handleSaveChild = useCallback(async () => {
@@ -756,13 +804,13 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
 
     const saveMeta = getCurrentSaveMetadata();
 
-    await save(childName, state, undefined, undefined, saveMeta, identity);
+    await save(childName, state, undefined, childTags, saveMeta, identity);
     await refresh();
     // Reload version entry so the version panel updates immediately
     const updated = await load(childName);
     if (updated) setVersionEntries(prev => ({ ...prev, [childName]: updated }));
     setShowChildDialog(false);
-  }, [childModifier, childDescription, selectedParentName, load, save, state, refresh, level, scope, getCurrentSaveMetadata]);
+  }, [childModifier, childDescription, childTags, selectedParentName, load, save, state, refresh, level, scope, getCurrentSaveMetadata]);
 
   // Update (resave) — now goes through confirmation
   const handleUpdateChild = useCallback((name: string) => {
@@ -1265,8 +1313,9 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
               onClick={handleSaveOverwrite}
               style={{
                 ...treeStyles.dialogBtn,
-                background: '#2a5a8a',
-                color: 'white',
+                background: 'rgba(184,224,255,0.14)',
+                borderColor: 'rgba(184,224,255,0.34)',
+                color: '#B8E0FF',
                 width: '100%',
                 marginBottom: 10,
                 padding: '8px 16px',
@@ -1275,17 +1324,16 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
               Save "{saveDialog.originalName}"
             </button>
 
-            {/* Save As */}
             <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: 4 }}>
               {saveDialog.isChild
-                ? `Save as new child of "${saveDialog.parentName}":`
-                : 'Save as new preset:'}
+                ? `New child name for "${saveDialog.parentName}":`
+                : 'New preset name:'}
             </div>
             <input
               type="text"
               value={saveAsName}
               onChange={e => setSaveAsName(e.target.value)}
-              placeholder={saveDialog.isChild ? 'New modifier name' : 'New preset name'}
+              placeholder={saveDialog.isChild ? 'New child name' : 'New preset name'}
               style={treeStyles.input}
               maxLength={40}
               onKeyDown={e => {
@@ -1295,23 +1343,64 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
             />
             {saveDialog.isChild && saveAsName.trim() && (
               <div style={{ fontSize: '0.65rem', color: '#666', marginBottom: 4 }}>
-                Will be saved as: <span style={{ color: '#999' }}>{saveDialog.parentName} · {saveAsName.trim()}</span>
+                Will be used as: <span style={{ color: '#999' }}>{saveDialog.parentName} · {saveAsName.trim()}</span>
               </div>
             )}
+            <PresetTagEditor
+              value={saveTags}
+              onChange={setSaveTags}
+              suggestions={tagSuggestions}
+              accentColor="#B8E0FF"
+            />
             <div style={treeStyles.dialogBtnRow}>
               <button
                 onClick={() => setSaveDialog(null)}
-                style={{ ...treeStyles.dialogBtn, background: 'rgba(255,255,255,0.08)', color: '#999' }}
+                style={{
+                  ...treeStyles.dialogBtn,
+                  background: 'rgba(255,255,255,0.05)',
+                  borderColor: 'rgba(244,237,228,0.12)',
+                  color: 'rgba(244,237,228,0.66)',
+                }}
               >
                 Cancel
+              </button>
+              <button
+                onClick={handleRename}
+                disabled={!saveAsName.trim() || (
+                  saveDialog.isChild && saveDialog.parentName
+                    ? `${saveDialog.parentName} · ${saveAsName.trim()}` === saveDialog.originalName
+                    : saveAsName.trim() === saveDialog.originalName
+                )}
+                style={{
+                  ...treeStyles.dialogBtn,
+                  background: saveAsName.trim() && (
+                    saveDialog.isChild && saveDialog.parentName
+                      ? `${saveDialog.parentName} · ${saveAsName.trim()}` !== saveDialog.originalName
+                      : saveAsName.trim() !== saveDialog.originalName
+                  ) ? 'rgba(214,178,111,0.14)' : 'rgba(255,255,255,0.04)',
+                  borderColor: saveAsName.trim() && (
+                    saveDialog.isChild && saveDialog.parentName
+                      ? `${saveDialog.parentName} · ${saveAsName.trim()}` !== saveDialog.originalName
+                      : saveAsName.trim() !== saveDialog.originalName
+                  ) ? 'rgba(214,178,111,0.34)' : 'rgba(255,255,255,0.08)',
+                  color: saveAsName.trim() && (
+                    saveDialog.isChild && saveDialog.parentName
+                      ? `${saveDialog.parentName} · ${saveAsName.trim()}` !== saveDialog.originalName
+                      : saveAsName.trim() !== saveDialog.originalName
+                  ) ? '#d6b26f' : 'rgba(244,237,228,0.32)',
+                }}
+                title="Rename without changing the preset ID"
+              >
+                Rename
               </button>
               <button
                 onClick={handleSaveAs}
                 disabled={!saveAsName.trim()}
                 style={{
                   ...treeStyles.dialogBtn,
-                  background: saveAsName.trim() ? '#2a6a4a' : '#333',
-                  color: saveAsName.trim() ? 'white' : '#666',
+                  background: saveAsName.trim() ? 'rgba(159,215,170,0.14)' : 'rgba(255,255,255,0.04)',
+                  borderColor: saveAsName.trim() ? 'rgba(159,215,170,0.32)' : 'rgba(255,255,255,0.08)',
+                  color: saveAsName.trim() ? '#9fd7aa' : 'rgba(244,237,228,0.32)',
                 }}
               >
                 Save As
@@ -1372,10 +1461,21 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
             <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: 4 }}>
               Will be saved as: <span style={{ color: '#999' }}>{selectedParentName} · {childModifier.trim() || '...'}</span>
             </div>
+            <PresetTagEditor
+              value={childTags}
+              onChange={setChildTags}
+              suggestions={tagSuggestions}
+              accentColor="#9fd7aa"
+            />
             <div style={treeStyles.dialogBtnRow}>
               <button
                 onClick={() => setShowChildDialog(false)}
-                style={{ ...treeStyles.dialogBtn, background: 'rgba(255,255,255,0.08)', color: '#999' }}
+                style={{
+                  ...treeStyles.dialogBtn,
+                  background: 'rgba(255,255,255,0.05)',
+                  borderColor: 'rgba(244,237,228,0.12)',
+                  color: 'rgba(244,237,228,0.66)',
+                }}
               >
                 Cancel
               </button>
@@ -1384,8 +1484,9 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                 disabled={!childModifier.trim()}
                 style={{
                   ...treeStyles.dialogBtn,
-                  background: childModifier.trim() ? '#2a5a8a' : '#333',
-                  color: childModifier.trim() ? 'white' : '#666',
+                  background: childModifier.trim() ? 'rgba(159,215,170,0.14)' : 'rgba(255,255,255,0.04)',
+                  borderColor: childModifier.trim() ? 'rgba(159,215,170,0.32)' : 'rgba(255,255,255,0.08)',
+                  color: childModifier.trim() ? '#9fd7aa' : 'rgba(244,237,228,0.32)',
                 }}
               >
                 Save Child

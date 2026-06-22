@@ -12,6 +12,10 @@ import { getPresetDisplayLabel } from './catalog';
 import { getVersionData } from './codec';
 import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 import { PresetRatingStars } from './PresetRatingStars';
+import { PresetPoolPopup } from './PresetPoolPopup';
+import { PresetTagEditor } from './PresetTagEditor';
+import { usePresetPoolCandidates } from './PresetPoolContext';
+import { PRESET_POOL_ICON, getPresetPoolLabel, type PresetPoolCandidate } from './presetPool';
 import { DEFAULT_STATE, type SliderMode, type SliderState } from '../ui/state';
 import type { UsePresetsOptions } from './usePresets';
 import { blurSelectAfterChange } from '../ui/shared/selectFocus';
@@ -29,6 +33,8 @@ export interface PresetDropdownProps {
   currentName?: string;
   /** Called when a preset is loaded */
   onLoad: (entry: PresetEntry, data: Record<string, unknown>) => PresetLoadResult;
+  /** Optional non-destructive audio preview for preset-pool audition buttons */
+  onAudition?: (entry: PresetEntry, data: Record<string, unknown>) => void | Promise<void>;
   /** Called when state is updated after applying preset */
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   /** Optional: accent color for focus ring */
@@ -132,9 +138,10 @@ const dropdownStyles: Record<string, React.CSSProperties> = {
   dialogBtn: {
     padding: '6px 16px',
     borderRadius: '4px',
-    border: 'none',
+    border: '1px solid rgba(244,237,228,0.12)',
     cursor: 'pointer',
     fontSize: '0.8rem',
+    fontWeight: 700,
     marginRight: '8px',
   },
 };
@@ -174,6 +181,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   state,
   currentName,
   onLoad,
+  onAudition,
   onStateChange,
   accentColor,
   className,
@@ -188,10 +196,12 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   dualSliderRanges,
   onDualStateChange,
 }) => {
-  const { presets, save, load, remove, refresh, extract, apply, updateMetadata } = usePresets(level, scope, presetOptions);
+  const { presets, save, load, loadById, remove, rename, refresh, extract, apply, updateMetadata } = usePresets(level, scope, presetOptions);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showPoolPopup, setShowPoolPopup] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [saveNote, setSaveNote] = useState('');
+  const [saveTags, setSaveTags] = useState<string[]>([]);
   const [savePublic, setSavePublic] = useState(SHARED_PRESET_TEST_MODE);
   const [selectedName, setSelectedName] = useState(currentName || '');
   const [loadedEntry, setLoadedEntry] = useState<PresetEntry | null>(null);
@@ -203,16 +213,57 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     () => [...dedupedPresets].sort((left, right) => left.name.localeCompare(right.name)),
     [dedupedPresets],
   );
+  const poolCandidates = useMemo<PresetPoolCandidate[]>(() => sortedPresets.map(preset => ({
+    id: preset.id ?? preset.remoteId ?? preset.name,
+    name: preset.name,
+    library: preset.library,
+    tags: preset.tags,
+    aliases: [preset.remoteId, preset.name].filter((value): value is string => Boolean(value)),
+    subtitle: preset.creator,
+    updatedAt: preset.updatedAt,
+    rating: localRatings[preset.name] ?? preset.rating,
+  })), [localRatings, sortedPresets]);
   const selectedPresetSummary = useMemo<PresetSummary | null>(() => {
     if (!selectedName) return null;
     return sortedPresets.find(p => p.name === selectedName) ?? null;
   }, [sortedPresets, selectedName]);
+  const selectedPoolKeepIds = useMemo(() => {
+    if (selectedPresetSummary) {
+      return [selectedPresetSummary.id, selectedPresetSummary.remoteId, selectedPresetSummary.name]
+        .filter((value): value is string => Boolean(value));
+    }
+    return selectedName ? [selectedName] : [];
+  }, [selectedName, selectedPresetSummary]);
+  const {
+    poolKey,
+    poolIds,
+    filteredCandidates: filteredPoolCandidates,
+    setPoolIds,
+    resetPoolIds,
+  } = usePresetPoolCandidates(level, scope, poolCandidates, selectedPoolKeepIds);
+  const visiblePresets = useMemo(() => {
+    if (!poolKey) return sortedPresets;
+    const visibleNames = new Set(filteredPoolCandidates.map(candidate => candidate.name));
+    return sortedPresets.filter(preset => visibleNames.has(preset.name));
+  }, [filteredPoolCandidates, poolKey, sortedPresets]);
+  const tagSuggestions = useMemo(() => {
+    const tags = new Set<string>();
+    for (const preset of sortedPresets) {
+      for (const tag of preset.tags ?? []) tags.add(tag);
+    }
+    return [...tags].sort((left, right) => left.localeCompare(right));
+  }, [sortedPresets]);
   const recoveryMessage = useMemo(
     () => formatRecoveryWarning(loadedEntry?.recoveryWarnings ?? []),
     [loadedEntry],
   );
   const canChangeVisibility = !SHARED_PRESET_TEST_MODE && selectedPresetSummary?.library !== 'stock';
   const isSelectedPresetPublic = selectedPresetSummary?.visibility === 'public';
+  const canRenameSelectedPreset = Boolean(
+    selectedName
+    && selectedPresetSummary
+    && (SHARED_PRESET_TEST_MODE || selectedPresetSummary.library !== 'stock'),
+  );
 
   const canonicalizeLoadedData = useCallback((data: Record<string, unknown>) => {
     const canonicalState = apply(DEFAULT_STATE, data);
@@ -273,6 +324,45 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     };
   }, [dualSliderRanges, sliderModes]);
 
+  const applyPresetEntry = useCallback(async (
+    entry: PresetEntry,
+    requestId: number,
+    commitSelection: boolean,
+  ): Promise<boolean> => {
+    const version = getSelectedVersion(entry);
+    if (!version) return false;
+
+    const versionData = getVersionData(entry);
+    if (requestId !== loadRequestIdRef.current) return false;
+    if (!versionData) return false;
+
+    const didLoad = await onLoad(entry, versionData);
+    if (requestId !== loadRequestIdRef.current) return false;
+    if (didLoad === false) {
+      if (commitSelection) setSelectedName(currentName ?? '');
+      return false;
+    }
+
+    if (commitSelection) {
+      setSelectedName(entry.name);
+      setLoadedEntry(entry);
+      setLoadedData(canonicalizeLoadedData(versionData));
+    }
+    applyLoadedData(versionData);
+    onDualStateChange?.(
+      Object.keys(versionData),
+      version.dualRanges,
+      version.sliderModes as Record<string, SliderMode> | undefined,
+    );
+    return true;
+  }, [applyLoadedData, canonicalizeLoadedData, currentName, getSelectedVersion, onDualStateChange, onLoad]);
+
+  const resolvePresetCandidateEntry = useCallback(async (candidate: PresetPoolCandidate): Promise<PresetEntry | null> => {
+    const byId = await loadById(candidate.id);
+    if (byId && isPresetCompatibleWithSlot(byId, level, scope)) return byId;
+    return load(candidate.name);
+  }, [level, load, loadById, scope]);
+
   // Handle preset selection from dropdown
   const handleSelect = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const select = e.currentTarget;
@@ -284,39 +374,59 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     const entry = await load(name);
     if (requestId !== loadRequestIdRef.current) return;
     if (!entry) return;
-    const version = getSelectedVersion(entry);
-    if (!version) return;
+    await applyPresetEntry(entry, requestId, true);
+  }, [load, applyPresetEntry]);
 
-    // Get latest version data (reconstituted from delta if compressed)
+  const handlePoolAudition = useCallback(async (candidate: PresetPoolCandidate) => {
+    if (!onAudition) return;
+    const requestId = ++loadRequestIdRef.current;
+    const entry = await resolvePresetCandidateEntry(candidate);
+    if (requestId !== loadRequestIdRef.current || !entry) return;
     const versionData = getVersionData(entry);
-    if (requestId !== loadRequestIdRef.current) return;
     if (!versionData) return;
+    await onAudition(entry, versionData);
+  }, [onAudition, resolvePresetCandidateEntry]);
 
-    const didLoad = await onLoad(entry, versionData);
-    if (requestId !== loadRequestIdRef.current) return;
-    if (didLoad === false) {
-      setSelectedName(currentName ?? '');
-      return;
+  const handlePoolLoad = useCallback(async (candidate: PresetPoolCandidate) => {
+    const requestId = ++loadRequestIdRef.current;
+    const entry = await resolvePresetCandidateEntry(candidate);
+    if (requestId !== loadRequestIdRef.current || !entry) return;
+    const loaded = await applyPresetEntry(entry, requestId, true);
+    if (loaded) setShowPoolPopup(false);
+  }, [applyPresetEntry, resolvePresetCandidateEntry]);
+
+  const handlePoolDelete = useCallback(async (candidate: PresetPoolCandidate): Promise<boolean> => {
+    const entry = await resolvePresetCandidateEntry(candidate);
+    if (!entry) return false;
+    const removed = await remove(entry.name);
+    if (!removed) return false;
+    if (selectedName === entry.name) {
+      setSelectedName('');
+      setLoadedEntry(null);
+      setLoadedData(null);
     }
+    return true;
+  }, [remove, resolvePresetCandidateEntry, selectedName]);
 
-    setLoadedEntry(entry);
-    setLoadedData(canonicalizeLoadedData(versionData));
-    // Apply params to state and notify
-    applyLoadedData(versionData);
-    onDualStateChange?.(
-      Object.keys(versionData),
-      version.dualRanges,
-      version.sliderModes as Record<string, SliderMode> | undefined,
-    );
-  }, [load, getSelectedVersion, onLoad, onDualStateChange, canonicalizeLoadedData, applyLoadedData, currentName]);
+  const handlePoolRate = useCallback(async (candidate: PresetPoolCandidate, rating: number) => {
+    const entry = await resolvePresetCandidateEntry(candidate);
+    if (!entry) return;
+    setLocalRatings(prev => ({ ...prev, [entry.name]: rating }));
+    try {
+      await updateMetadata(entry.name, { rating });
+    } catch (ratingError) {
+      console.warn('Failed to update preset rating:', ratingError);
+    }
+  }, [resolvePresetCandidateEntry, updateMetadata]);
 
   // Open save dialog
   const handleSaveClick = useCallback(() => {
     setSaveName(selectedName || defaultSaveName || `My ${scope || level} Preset`);
     setSaveNote('');
+    setSaveTags(selectedPresetSummary?.tags ?? loadedEntry?.tags ?? []);
     setSavePublic(SHARED_PRESET_TEST_MODE || selectedPresetSummary?.visibility === 'public');
     setShowSaveDialog(true);
-  }, [defaultSaveName, selectedName, scope, level, selectedPresetSummary]);
+  }, [defaultSaveName, selectedName, scope, level, selectedPresetSummary, loadedEntry]);
 
   // Confirm save
   const handleSaveConfirm = useCallback(async () => {
@@ -341,7 +451,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
       trimmedName,
       state,
       saveNote.trim() || undefined,
-      undefined,
+      saveTags,
       Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined,
       { visibility },
     );
@@ -357,7 +467,24 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     }
     setSelectedName(savedEntry?.name ?? trimmedName);
     setShowSaveDialog(false);
-  }, [saveName, saveNote, savePublic, state, save, loadedEntry, selectedName, refresh, load, getSelectedVersion, extractCurrentDualMetadata, extract, canonicalizeLoadedData]);
+  }, [saveName, saveNote, saveTags, savePublic, state, save, loadedEntry, refresh, load, getSelectedVersion, extractCurrentDualMetadata, extract, canonicalizeLoadedData]);
+
+  const handleRenameConfirm = useCallback(async () => {
+    if (!canRenameSelectedPreset || !selectedName) return;
+    const trimmedName = saveName.trim();
+    if (!trimmedName || trimmedName === selectedName) return;
+
+    const renamedEntry = await rename(selectedName, trimmedName, { tags: saveTags });
+    if (!renamedEntry) return;
+
+    const savedEntry = await load(renamedEntry.name);
+    setLoadedEntry(savedEntry ?? renamedEntry);
+    const verData = getVersionData(savedEntry ?? renamedEntry);
+    setLoadedData(verData ? canonicalizeLoadedData(verData) : null);
+    setSelectedName(renamedEntry.name);
+    setSaveName(renamedEntry.name);
+    setShowSaveDialog(false);
+  }, [canRenameSelectedPreset, selectedName, saveName, saveTags, rename, load, canonicalizeLoadedData]);
 
   // Export current preset
   const handleExport = useCallback(async () => {
@@ -501,7 +628,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
           title={`${level} preset`}
         >
           <option value="">— Select —</option>
-          {sortedPresets.map(p => (
+          {visiblePresets.map(p => (
             <option key={`${p.library}:${p.name}`} value={p.name}>
               {getPresetDisplayLabel(p)} {p.visibility === 'public' ? '[public] ' : ''}{p.versionCount > 1 ? `(v${p.currentVersion})` : ''}
             </option>
@@ -517,6 +644,30 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
             hitSize={compact ? '0.95rem' : '1.05rem'}
             style={{ gap: 0 }}
           />
+        )}
+
+        {poolKey && poolCandidates.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowPoolPopup(true)}
+            style={{
+              ...dropdownStyles.iconBtn,
+              color: poolIds.length > 0 ? accentColor ?? '#B8E0FF' : '#8a7a52',
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: compact ? 24 : 26,
+              height: compact ? 24 : 26,
+              padding: 0,
+              fontSize: compact ? '0.78rem' : '0.86rem',
+              minHeight: compact ? 24 : 26,
+            }}
+            title={`Edit ${getPresetPoolLabel(poolKey)} preset pool`}
+            aria-label={`Edit ${getPresetPoolLabel(poolKey)} preset pool`}
+          >
+            {PRESET_POOL_ICON}
+          </button>
         )}
 
         {showSaveButton && (
@@ -590,6 +741,23 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
         )}
       </div>
 
+      {poolKey && (
+        <PresetPoolPopup
+          open={showPoolPopup}
+          title={`Preset Pool: ${getPresetPoolLabel(poolKey)}`}
+          candidates={poolCandidates}
+          poolIds={poolIds}
+          accentColor={accentColor}
+          onChange={setPoolIds}
+          onReset={resetPoolIds}
+          onClose={() => setShowPoolPopup(false)}
+          onAudition={onAudition ? handlePoolAudition : undefined}
+          onLoad={handlePoolLoad}
+          onDelete={handlePoolDelete}
+          onRate={handlePoolRate}
+        />
+      )}
+
       {/* Save dialog */}
       {showSaveDialog && (
         <div style={dropdownStyles.saveDialog} onClick={() => setShowSaveDialog(false)}>
@@ -614,6 +782,12 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
               style={{ ...dropdownStyles.input, fontSize: '0.8rem' }}
               onKeyDown={e => { if (e.key === 'Enter') handleSaveConfirm(); if (e.key === 'Escape') setShowSaveDialog(false); }}
             />
+            <PresetTagEditor
+              value={saveTags}
+              onChange={setSaveTags}
+              suggestions={tagSuggestions}
+              accentColor={accentColor}
+            />
             {SHARED_PRESET_TEST_MODE ? (
               <div style={{ fontSize: '0.8rem', color: '#999', marginTop: 4 }}>
                 Shared testing mode: saves are public for everyone.
@@ -632,13 +806,44 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
               <button
                 onClick={() => setShowSaveDialog(false)}
-                style={{ ...dropdownStyles.dialogBtn, background: 'rgba(255,255,255,0.08)', color: '#999' }}
+                style={{
+                  ...dropdownStyles.dialogBtn,
+                  background: 'rgba(255,255,255,0.05)',
+                  borderColor: 'rgba(244,237,228,0.12)',
+                  color: 'rgba(244,237,228,0.66)',
+                }}
               >
                 Cancel
               </button>
+              {canRenameSelectedPreset && (
+                <button
+                  onClick={handleRenameConfirm}
+                  disabled={!saveName.trim() || saveName.trim() === selectedName}
+                  style={{
+                    ...dropdownStyles.dialogBtn,
+                    background: saveName.trim() && saveName.trim() !== selectedName
+                      ? 'rgba(214,178,111,0.14)'
+                      : 'rgba(255,255,255,0.04)',
+                    borderColor: saveName.trim() && saveName.trim() !== selectedName
+                      ? 'rgba(214,178,111,0.34)'
+                      : 'rgba(255,255,255,0.08)',
+                    color: saveName.trim() && saveName.trim() !== selectedName
+                      ? '#d6b26f'
+                      : 'rgba(244,237,228,0.32)',
+                  }}
+                  title="Rename the selected preset without changing its preset ID"
+                >
+                  Rename
+                </button>
+              )}
               <button
                 onClick={handleSaveConfirm}
-                style={{ ...dropdownStyles.dialogBtn, background: '#2a5a8a', color: 'white' }}
+                style={{
+                  ...dropdownStyles.dialogBtn,
+                  background: 'rgba(184,224,255,0.14)',
+                  borderColor: 'rgba(184,224,255,0.34)',
+                  color: '#B8E0FF',
+                }}
               >
                 Save
               </button>

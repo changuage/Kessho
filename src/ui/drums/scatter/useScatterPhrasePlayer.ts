@@ -46,6 +46,11 @@ export function useScatterPhrasePlayer({
   clear: () => void;
 } {
   const timeoutIdsRef = useRef<ScheduledScatterTimeout[]>([]);
+  const sliderStateRef = useRef(sliderState);
+
+  useEffect(() => {
+    sliderStateRef.current = sliderState;
+  }, [sliderState]);
 
   const clear = useCallback(() => {
     for (const timeout of timeoutIdsRef.current) {
@@ -89,7 +94,7 @@ export function useScatterPhrasePlayer({
           timeoutIdsRef.current = timeoutIdsRef.current.filter((timeout) => timeout.id !== timeoutId);
           trigger(phrase.engine, {
             velocity: velocityForScatterStep(phrase, stepIndex) * (ratchetIndex === 0 ? 1 : 0.82),
-            statePatch: statePatchForScatterStep(phrase, stepIndex, sliderState),
+            statePatch: statePatchForScatterStep(phrase, stepIndex, sliderStateRef.current),
             triggerCritical: false,
           });
           onStepVisual?.({
@@ -104,7 +109,7 @@ export function useScatterPhrasePlayer({
         timeoutIdsRef.current.push({ id: timeoutId, voice: phrase.engine });
       }
     });
-  }, [clearVoice, getBpm, onStepVisual, sliderState, trigger]);
+  }, [clearVoice, getBpm, onStepVisual, trigger]);
 
   useEffect(() => clear, [clear]);
 

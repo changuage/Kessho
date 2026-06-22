@@ -83,6 +83,7 @@ export function validateRegistry(stateKeys: string[]): {
   const dropped = new Set([
     'leadTimbre',
     'granularPreset',
+    'granularVisualDetail',
     'sidechainDelayATarget',
     'sidechainDelayBTarget',
     'sidechainGranularTarget',

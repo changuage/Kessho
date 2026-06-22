@@ -2,7 +2,7 @@ import type { ClockDivision } from '../../../audio/drumSeqTypes';
 import type { DrumVoiceType } from '../../../audio/drumSynth';
 import type { StepOverrides, SubLaneKind, SubLaneState } from '../../sequencer/useEuclideanSequencer';
 import type { GeneratedDrumPhrase } from './scatterTypes';
-import { deserializeTriggerClip, resolveTriggerClip, serializeTriggerClip } from '../../sequencer/triggerClip';
+import { resolveTriggerClip } from '../../sequencer/triggerClip';
 
 export type PhrasePrintMode = 'replace';
 
@@ -116,7 +116,7 @@ export function printGeneratedPhraseToLane(args: {
   }
   while (stepOverrides.triggerClips.length < laneCount) stepOverrides.triggerClips.push(null);
 
-  stepOverrides.triggerClips[laneIndex] = deserializeTriggerClip(serializeTriggerClip(phrase.triggerClip));
+  stepOverrides.triggerClips[laneIndex] = null;
   stepOverrides.triggerToggles[laneIndex] = new Map();
   stepOverrides.probability[laneIndex] = phrase.probability.slice();
   stepOverrides.ratchet[laneIndex] = triggerIndexes.map((stepIndex) => phrase.ratchet[stepIndex] ?? 1);

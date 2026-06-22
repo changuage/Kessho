@@ -183,6 +183,61 @@ function importsLegacyProductAudioCompat(source) {
 const failures = [];
 const warnings = [];
 
+const productNativeRuntimeHookFiles = new Set([
+  'src/ui/useProductRuntimeGlobalSurface.ts',
+  'src/ui/useProductRuntimeMacRecovery.ts',
+  'src/ui/useProductRuntimeModulationRanges.ts',
+  'src/ui/useProductRuntimeMorphRuntimeSurface.ts',
+  'src/ui/useProductRuntimeRecordingRuntime.ts',
+  'src/ui/useProductRuntimeSequencerCallbacks.ts',
+  'src/ui/useProductRuntimeSequencerControls.ts',
+  'src/ui/useProductRuntimeStateRuntime.ts',
+  'src/ui/useProductRuntimeTelemetry.ts',
+]);
+
+function assertProductNativeRuntimeHook(relative, source) {
+  for (const forbiddenToken of [
+    'ProductAudioEngineCompat',
+    'SelectedProductRuntime',
+    'selectedProductRuntime',
+    'referenceAudioEngineDebug',
+    'useSelectedAudioEngine',
+  ]) {
+    if (source.includes(forbiddenToken)) {
+      failures.push(`${relative}: product-native runtime hook must not delegate through selected/reference compatibility surface ${forbiddenToken}`);
+    }
+  }
+}
+
+function assertProductPageRuntimeBridgeBoundary(relative, source) {
+  for (const requiredSnippet of [
+    "import { useSelectedAudioEnginePageRuntimeBridges } from './useSelectedAudioEnginePageRuntimeBridges'",
+    "import { useSelectedAudioEngineCallbackSurfaces } from './useSelectedAudioEngineCallbackSurfaces'",
+    "import { useSelectedAudioEngineControlSurfaces } from './useSelectedAudioEngineControlSurfaces'",
+    'const selectedRuntimeCallbacks = useSelectedAudioEngineCallbackSurfaces(productRuntimeMode)',
+    'const selectedRuntimeControls = useSelectedAudioEngineControlSurfaces(productRuntimeMode)',
+    "const useProductRuntimePageSurfaces = productRuntimeMode === 'core-product'",
+    'useProductRuntimePageSurfaces',
+    'useSelectedAudioEnginePageRuntimeBridges(selectedOptions)',
+  ]) {
+    if (!source.includes(requiredSnippet)) {
+      failures.push(`${relative}: product page runtime bridge must explicitly choose Product surfaces for core-product and selected surfaces for reference modes; missing ${requiredSnippet}`);
+    }
+  }
+  for (const forbiddenToken of [
+    'productEngine',
+    'selectedProductRuntime',
+    'referenceAudioEngineDebug',
+    "from '../audio/product/ProductEngineProxy'",
+    "from '../audio/product/SelectedProductRuntime'",
+    "from '../audio/product/WebProductEngine'",
+  ]) {
+    if (source.includes(forbiddenToken)) {
+      failures.push(`${relative}: product page runtime bridge must not touch runtime implementations directly (${forbiddenToken})`);
+    }
+  }
+}
+
 if (fs.existsSync(path.join(root, 'src/audio/engine.ts'))) {
   failures.push('src/audio/engine.ts must not exist at the production audio root; keep web-ts under src/audio/reference/webTs/engine.ts');
 }
@@ -406,6 +461,17 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/App.tsx' && source.includes('legacy-adapter-update')) {
       failures.push(`${relative}: common production UI controls must not use legacy-adapter-update as a Product patch reason`);
     }
+
+    if (productNativeRuntimeHookFiles.has(relative)) {
+      assertProductNativeRuntimeHook(relative, source);
+      continue;
+    }
+
+    if (relative === 'src/ui/useProductRuntimePageRuntimeBridges.ts') {
+      assertProductPageRuntimeBridgeBoundary(relative, source);
+      continue;
+    }
+
     if (relative === 'src/App.tsx') {
       if (source.includes('audioEngine.') || source.includes('productEngine.')) {
         failures.push(`${relative}: App must consume selected runtime hooks instead of directly calling audioEngine/productEngine`);
@@ -2456,7 +2522,7 @@ for (const rootDir of sourceRoots) {
         'export function useProductRuntimeCapacitorAudioSession({',
         'startPlayback: startProductPlayback',
         'stopPlayback: stopProductPlayback',
-        'TODO(product-runtime-compat-10C)',
+        'TODO(product-fallback-retire:runtime-capacitor-audio-session)',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product runtime Capacitor audio session must delegate through selected-runtime compatibility hook; missing ${requiredSnippet}`);
@@ -4013,22 +4079,17 @@ for (const rootDir of sourceRoots) {
       if (source.includes('coreProductEngineHost') || source.includes('referenceAudioRuntime')) {
         failures.push(`${relative}: ProductEngineProxy must only load ProductEnginePort runtimes, not legacy host/reference facades`);
       }
-      if (!/\brequested\s*===\s*['"]native-product['"]/.test(source) || !/\brequested\s*===\s*['"]test-product['"]/.test(source)) {
-        failures.push(`${relative}: native-product/test-product query modes must be handled explicitly`);
+      for (const forbiddenToken of ['URLSearchParams', 'window.location', 'native-product', 'test-product', 'web-ts', 'web-audio', 'core-smoke', 'resolvedRuntimeMode']) {
+        if (source.includes(forbiddenToken)) {
+          failures.push(`${relative}: ProductEngineProxy must be core-product only and must not contain runtime selection token ${forbiddenToken}`);
+        }
       }
       if (
-        !/if\s*\(\s*isDevRuntime\(\)\s*\)\s*\{[\s\S]*throw new Error/.test(source) ||
-        !/resolvedRuntimeMode\s*=\s*['"]core-product['"]/.test(source)
+        !source.includes("export function getProductEngineRuntimeMode(): 'core-product'") ||
+        !source.includes("return 'core-product';") ||
+        !source.includes('new WebProductEngine()')
       ) {
-        failures.push(`${relative}: unimplemented native-product/test-product modes must be dev-only and resolve to core-product in production`);
-      }
-      if (
-        !/\brequested\s*===\s*['"]web-ts['"]/.test(source) ||
-        !/\brequested\s*===\s*['"]web-audio['"]/.test(source) ||
-        !/\brequested\s*===\s*['"]core-smoke['"]/.test(source) ||
-        !/resolvedRuntimeMode\s*=\s*['"]core-product['"]/.test(source)
-      ) {
-        failures.push(`${relative}: web-ts/web-audio/core-smoke must be rejected as ProductEngineProxy production runtime modes`);
+        failures.push(`${relative}: ProductEngineProxy must expose a direct core-product WebProductEngine runtime`);
       }
     }
 

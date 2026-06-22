@@ -20,6 +20,8 @@ const DRUM_PITCH_BASE_TARGETS = [
   { suffix: 'Membrane', voiceIndex: 6 },
 ] as const;
 
+export const DRUM_PITCH_OFFSET_LIMIT = 48;
+
 function defaultDrumPitchTargetSuffix(laneNumber: number): (typeof DRUM_PITCH_BASE_TARGETS)[number]['suffix'] {
   if (laneNumber === 2) return 'BeepHi';
   if (laneNumber === 3) return 'Click';
@@ -38,7 +40,7 @@ export function drumPitchBaseMidiFromState(state: SliderState, laneIdx: number):
 }
 
 export function clampDrumPitchOffset(value: number): number {
-  return Math.max(-24, Math.min(24, Math.round(value)));
+  return Math.max(-DRUM_PITCH_OFFSET_LIMIT, Math.min(DRUM_PITCH_OFFSET_LIMIT, Math.round(value)));
 }
 
 export function drumPitchUiValuesToEngineOffsets(

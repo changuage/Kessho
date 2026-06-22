@@ -438,6 +438,7 @@ struct KesshoProductEngine : ProductGraphState {
   void configurePianoSampleVoiceEnvelope(Voice& voice, const SourceState& source, float velocity, float distance, uint32_t resolved_seed, uint32_t asset_slot);
   void ensureSoundscapeVoice();
   void releaseSourceVoices(uint32_t source_id);
+  void killSourceVoices(uint32_t source_id);
   void resetMidiRuntimeState();
   void clearMidiRuntimeForSource(uint32_t source_id);
   void clearMidiRuntimeForSampleVoice(uint32_t voice_index);

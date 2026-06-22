@@ -10,6 +10,11 @@ function read(path) {
   return readFileSync(resolve(root, path), 'utf8');
 }
 
+function readOptional(path) {
+  const fullPath = resolve(root, path);
+  return existsSync(fullPath) ? readFileSync(fullPath, 'utf8') : '';
+}
+
 function readJson(path) {
   return JSON.parse(read(path));
 }
@@ -142,7 +147,9 @@ const selectedAudioEngineGlobalRuntimeProps = read('src/ui/useSelectedAudioEngin
 const productRuntimeGlobalSurface = read('src/ui/useProductRuntimeGlobalSurface.ts');
 const selectedAudioEngineGlobalRuntimeSurface = read('src/ui/useSelectedAudioEngineGlobalRuntimeSurface.ts');
 const productEngineProxy = read('src/audio/product/ProductEngineProxy.ts');
-const productAudioEngineCompat = read('src/audio/product/ProductAudioEngineCompat.ts');
+const productAudioEngineCompatPath = 'src/audio/product/ProductAudioEngineCompat.ts';
+const productAudioEngineCompat = readOptional(productAudioEngineCompatPath);
+const productAudioEngineCompatDeleted = !existsSync(resolve(root, productAudioEngineCompatPath));
 const selectedProductRuntime = read('src/audio/product/SelectedProductRuntime.ts');
 const productAudioRuntimeSelection = read('src/audio/product/ProductAudioRuntimeSelection.ts');
 const productRuntimeCapabilityReport = read('src/audio/product/ProductRuntimeCapabilityReport.ts');
@@ -299,14 +306,16 @@ assert(
     productRuntimeMacRecovery.includes('type ProductRuntimeMacRecoveryOptions = {') &&
     productRuntimeMacRecovery.includes('productRuntimeMode: ProductRuntimeSelectionMode') &&
     productRuntimeMacRecovery.includes('stateRef: MutableRefObject<SliderState>') &&
-    productRuntimeMacRecovery.includes('audioEngineRuntimeMode: productRuntimeMode') &&
-    productRuntimeMacRecovery.includes('TODO(product-runtime-compat-10C)') &&
+    productRuntimeMacRecovery.includes("import { productEngine } from '../audio/product/ProductEngineProxy'") &&
+    productRuntimeMacRecovery.includes("productEngine.getLifecycleState() !== 'suspended'") &&
+    productRuntimeMacRecovery.includes('productEngine.resume();') &&
+    productRuntimeMacRecovery.includes('await productEngine.start({ initialState: stateRef.current as unknown as Readonly<Record<string, unknown>> });') &&
     !productRuntimeMacRecovery.includes('SelectedRuntimeMacRecoveryOptions') &&
     !productRuntimeMacRecovery.includes('Parameters<typeof useSelectedAudioEngineMacRecovery>') &&
     selectedAudioEngineMacRecovery.includes('getSelectedReferenceAudioContextState') &&
     selectedAudioEngineMacRecovery.includes('disposeSelectedReferenceEngine') &&
     selectedAudioEngineMacRecovery.includes('startSelectedAudioEngine(stateRef.current)'),
-  'App must delegate macOS reference audio-context recovery to the selected runtime recovery hook',
+  'Product macOS recovery must stay product-native while selected runtime recovery owns reference audio-context recovery',
 );
 assert(
   app.includes("from './ui/useProductRuntimeLifecycleSurface'") &&
@@ -324,8 +333,10 @@ assert(
     productRuntimeTelemetry.includes('type ProductRuntimeTelemetry = {') &&
     productRuntimeTelemetry.includes('getProductDynamicsVisualTelemetry: () => ProductDynamicsVisualTelemetry') &&
     productRuntimeTelemetry.includes('pushProductMidiMessage: (message: KesshoMidiMessage) => void') &&
-    productRuntimeTelemetry.includes('useSelectedAudioEngineRuntimeTelemetry({') &&
-    productRuntimeTelemetry.includes('productRuntimeSupportsRangeKey: selectedRuntimeSupportsRangeKey') &&
+    productRuntimeTelemetry.includes("import { isCoreProductRangeKeySupported } from '../audio/coreProductEvents'") &&
+    productRuntimeTelemetry.includes('return isCoreProductRangeKeySupported(key);') &&
+    productRuntimeTelemetry.includes("const active = uiMode === 'advanced' && documentVisible;") &&
+    productRuntimeTelemetry.includes('productEngine.setVisualTelemetryActive(active);') &&
     !productRuntimeTelemetry.includes('SelectedRuntimeTelemetryOptions') &&
     !productRuntimeTelemetry.includes('Parameters<typeof useSelectedAudioEngineRuntimeTelemetry>') &&
     selectedAudioEngineRuntimeTelemetry.includes('useSelectedAudioEngineTelemetrySurface(audioEngineRuntimeMode)') &&
@@ -334,7 +345,7 @@ assert(
     selectedAudioEngineRuntimeCapabilities.includes("import { isCoreProductRangeKeySupported } from '../audio/coreProductEvents'") &&
     selectedAudioEngineRuntimeCapabilities.includes("audioEngineRuntimeMode !== 'core-product' || isCoreProductRangeKeySupported(key)") &&
     selectedAudioEngineRuntimeCapabilities.includes("const active = audioEngineRuntimeMode === 'core-product' && uiMode === 'advanced'"),
-  'App must delegate Product Core range and visual telemetry support decisions to selected runtime telemetry',
+  'App must route Product Core range and visual telemetry support decisions through product telemetry while selected telemetry owns compatibility',
 );
 assert(
   app.includes("from './ui/useProductRuntimeCallbackRegistrations'") &&
@@ -547,9 +558,11 @@ assert(
     productRuntimeStateRuntime.includes('productRuntimeMode: ProductRuntimeSelectionMode') &&
     productRuntimeStateRuntime.includes("getProductTransportDebugState: () => ProductEngineState['transportDebug']") &&
     productRuntimeStateRuntime.includes('setEngineState: Dispatch<SetStateAction<ProductEngineState>>') &&
-    productRuntimeStateRuntime.includes('useSelectedAudioEngineStateRuntime({') &&
-    productRuntimeStateRuntime.includes('audioEngineRuntimeMode: productRuntimeMode') &&
-    productRuntimeStateRuntime.includes('getSelectedTransportDebugState: getProductTransportDebugState') &&
+    productRuntimeStateRuntime.includes("import { productEngine } from '../audio/product/ProductEngineProxy'") &&
+    productRuntimeStateRuntime.includes('productEngine.setStateChangeCallback((nextState) =>') &&
+    productRuntimeStateRuntime.includes('const fxOwnersChanged = FX_OWNERSHIP_BUSES.some((bus) =>') &&
+    productRuntimeStateRuntime.includes('fxOwners: fxOwnersChanged ? nextState.fxOwners : prev.fxOwners') &&
+    !productRuntimeStateRuntime.includes('useSelectedAudioEngineStateRuntime({') &&
     !productRuntimeStateRuntime.includes('SelectedRuntimeStateRuntimeOptions') &&
     !productRuntimeStateRuntime.includes('Parameters<typeof useSelectedAudioEngineStateRuntime>') &&
     selectedAudioEngineStateRuntime.includes('useSelectedAudioEngineStateReconciliationSurface(audioEngineRuntimeMode)') &&
@@ -559,7 +572,7 @@ assert(
     selectedAudioEngineStateReconciliation.includes('setSelectedEngineStateChangeCallback((nextState) =>') &&
     selectedAudioEngineStateReconciliation.includes('const fxOwnersChanged') &&
     selectedAudioEngineStateReconciliation.includes('fxOwners: fxOwnersChanged ? nextState.fxOwners : prev.fxOwners'),
-  'App must delegate selected engine-state callback reconciliation to the state runtime hook',
+  'Product state runtime must stay product-native while selected state runtime owns reference reconciliation',
 );
 assert(
   app.includes("from './ui/useProductRuntimeLifecycleSurface'") &&
@@ -569,11 +582,14 @@ assert(
     !app.includes('useVisibleInterval(updateTransportDebug') &&
     !app.includes('const updateTransportDebug = useCallback(') &&
     productRuntimeLifecycleSurface.includes('getProductTransportDebugState: options.getProductTransportDebugState') &&
+    productRuntimeStateRuntime.includes('const updateTransportDebug = useCallback(') &&
+    productRuntimeStateRuntime.includes('const transportDebug = getProductTransportDebugState();') &&
+    productRuntimeStateRuntime.includes('useVisibleInterval(updateTransportDebug, 1000') &&
     selectedAudioEngineStateRuntime.includes('getSelectedTransportDebugState,') &&
     selectedAudioEngineTransportDebug.includes('getSelectedTransportDebugState()') &&
     selectedAudioEngineTransportDebug.includes('Math.abs(current.effectiveBpm - transportDebug.effectiveBpm) < 0.05') &&
     selectedAudioEngineTransportDebug.includes('useVisibleInterval(updateTransportDebug, 1000'),
-  'App must delegate selected transport debug polling to the state runtime hook',
+  'Product state runtime must own Product transport debug polling while selected state runtime owns reference polling',
 );
 assert(
   app.includes("from './ui/useProductRuntimeSession'") &&
@@ -797,7 +813,7 @@ assert(
     productRuntimeCapacitorAudioSession.includes('stopProductPlayback: () => void') &&
     productRuntimeCapacitorAudioSession.includes('startPlayback: startProductPlayback') &&
     productRuntimeCapacitorAudioSession.includes('stopPlayback: stopProductPlayback') &&
-    productRuntimeCapacitorAudioSession.includes('TODO(product-runtime-compat-10C)') &&
+    productRuntimeCapacitorAudioSession.includes('TODO(product-fallback-retire:runtime-capacitor-audio-session)') &&
     !productRuntimeCapacitorAudioSession.includes('Parameters<typeof useSelectedAudioEngineCapacitorAudioSession>') &&
     selectedAudioEngineCapacitorAudioSession.includes('useSelectedAudioEngineRemoteCommandPlayback({') &&
     selectedAudioEngineCapacitorAudioSession.includes('useCapacitorAudioSessionDiagnostics({') &&
@@ -1046,12 +1062,21 @@ assert(
     productRuntimePageControlProps.includes('preloadProductRuntime,') &&
     productRuntimePageRuntimeBridges.includes('const selectedOptions = {') &&
     !productRuntimePageRuntimeBridges.includes('SelectedAudioEnginePageRuntimeBridgeOptions') &&
+    productRuntimePageRuntimeBridges.includes('useSelectedAudioEngineCallbackSurfaces(productRuntimeMode)') &&
+    productRuntimePageRuntimeBridges.includes('useSelectedAudioEngineControlSurfaces(productRuntimeMode)') &&
+    productRuntimePageRuntimeBridges.includes("const useProductRuntimePageSurfaces = productRuntimeMode === 'core-product';") &&
     productRuntimePageRuntimeBridges.includes('getSelectedDynamicsVisualTelemetry: getProductDynamicsVisualTelemetry') &&
     productRuntimePageRuntimeBridges.includes('setSelectedGranularUiActive: setProductGranularUiActive') &&
-    productRuntimePageRuntimeBridges.includes('captureSelectedSynthEuclidLaneHome: captureProductSynthEuclidLaneHome') &&
-    productRuntimePageRuntimeBridges.includes('setSelectedDrumStepOverrides: setProductDrumStepOverrides') &&
+    productRuntimePageRuntimeBridges.includes('captureSelectedSynthEuclidLaneHome: useProductRuntimePageSurfaces') &&
+    productRuntimePageRuntimeBridges.includes('? captureProductSynthEuclidLaneHome') &&
+    productRuntimePageRuntimeBridges.includes(': selectedRuntimeControls.captureSelectedSynthEuclidLaneHome') &&
+    productRuntimePageRuntimeBridges.includes('setSelectedDrumStepOverrides: useProductRuntimePageSurfaces') &&
+    productRuntimePageRuntimeBridges.includes('? setProductDrumStepOverrides') &&
+    productRuntimePageRuntimeBridges.includes(': selectedRuntimeControls.setSelectedDrumStepOverrides') &&
     productRuntimePageRuntimeBridges.includes('preloadSelectedAudioEngine: preloadProductRuntime') &&
-    productRuntimePageRuntimeBridges.includes('setSelectedDrumStepPositionCallback: setProductDrumStepPositionCallback') &&
+    productRuntimePageRuntimeBridges.includes('setSelectedDrumStepPositionCallback: useProductRuntimePageSurfaces') &&
+    productRuntimePageRuntimeBridges.includes('? setProductDrumStepPositionCallback') &&
+    productRuntimePageRuntimeBridges.includes(': selectedRuntimeCallbacks.setSelectedDrumStepPositionCallback') &&
     productRuntimePageRuntimeBridges.includes('useSelectedAudioEnginePageRuntimeBridges(selectedOptions)') &&
     !productRuntimePageSurface.includes('productEngine') &&
     !productRuntimePageSurface.includes('selectedProductRuntime') &&
@@ -1182,13 +1207,16 @@ assert(
     app.includes('useProductRuntimeGlobalSurface({') &&
     !app.includes("from './ui/useSelectedAudioEngineGlobalRuntimeSurface'") &&
     !app.includes('useSelectedAudioEngineGlobalRuntimeSurface({') &&
-    productRuntimeGlobalSurface.includes("import { useSelectedAudioEngineGlobalRuntimeSurface } from './useSelectedAudioEngineGlobalRuntimeSurface'") &&
     productRuntimeGlobalSurface.includes("import type { GlobalPageProps } from './global/GlobalPage'") &&
+    productRuntimeGlobalSurface.includes("import { useVisibleInterval } from './hooks/useVisibleInterval'") &&
     productRuntimeGlobalSurface.includes('type ProductRuntimeGlobalProps = Pick<') &&
     productRuntimeGlobalSurface.includes('type ProductRuntimeGlobalRecordingProps = Pick<') &&
     productRuntimeGlobalSurface.includes('stopProductPlayback: () => void') &&
     productRuntimeGlobalSurface.includes('recordingProps: ProductRuntimeGlobalRecordingProps') &&
-    productRuntimeGlobalSurface.includes('stopSelectedPlayback: stopProductPlayback') &&
+    productRuntimeGlobalSurface.includes('const playbackTimerTargetTimeRef = useRef<number | null>(null)') &&
+    productRuntimeGlobalSurface.includes('const updatePlaybackTimerCountdown = useCallback(() =>') &&
+    productRuntimeGlobalSurface.includes('stopProductPlayback();') &&
+    productRuntimeGlobalSurface.includes('useVisibleInterval(updatePlaybackTimerCountdown, 1000') &&
     !productRuntimeGlobalSurface.includes('SelectedAudioEngineGlobalRuntimeSurfaceOptions') &&
     !productRuntimeGlobalSurface.includes('Parameters<typeof useSelectedAudioEngineGlobalRuntimeSurface>') &&
     !productRuntimeGlobalSurface.includes('productEngine') &&
@@ -1213,7 +1241,7 @@ assert(
     selectedAudioEnginePlaybackTimer.includes('const updatePlaybackTimerCountdown = useCallback(() =>') &&
     selectedAudioEnginePlaybackTimer.includes('stopSelectedPlayback();') &&
     selectedAudioEnginePlaybackTimer.includes('useVisibleInterval(updatePlaybackTimerCountdown, 1000'),
-  'App must delegate playback timer countdown and expiry stop handling to the playback timer hook',
+  'Product global surface must own Product playback timer while selected global surface owns selected timer hook',
 );
 assert(
   productAudioRuntimeSelection.includes("const PRODUCT_RUNTIME_MODES = ['core-product']"),
@@ -1355,10 +1383,11 @@ assert(
 );
 assert(selectedProductRuntime.includes('return productEngine.preload().then(() => productEngine);'), 'SelectedProductRuntime must preload core-product through ProductEngineProxy');
 assert(
-  productAudioEngineCompat.includes('TODO(product-core-runtime-closure)') &&
-    productAudioEngineCompat.includes("from './SelectedProductRuntime'") &&
-    !productAudioEngineCompat.includes("import('../referenceAudioRuntime')"),
-  'ProductAudioEngineCompat must remain a deprecated alias, not a runtime owner',
+  productAudioEngineCompatDeleted ||
+    (productAudioEngineCompat.includes('TODO(product-core-runtime-closure)') &&
+      productAudioEngineCompat.includes("from './SelectedProductRuntime'") &&
+      !productAudioEngineCompat.includes("import('../referenceAudioRuntime')")),
+  'ProductAudioEngineCompat must be deleted or remain a deprecated alias, not a runtime owner',
 );
 assert(globalRuntimeComparisonPanel.includes("currentMode === 'core-product' ? 'running' : 'stopped'"), 'Global runtime comparison panel must highlight Product Core as the running product mode');
 for (const token of [
@@ -1442,6 +1471,14 @@ const requiredPrerequisiteSteps = [
   'migration:product-boundary',
   'migration:docs',
   'migration:no-web-ts-bundle',
+  'core:product:sequencer-lane-count',
+  'core:product:sequencer-ui-lane-count',
+  'core:product:sequencer-visual-lane-count',
+  'core:product:sequencer-lane-count-guards',
+  'test:preset-exact-load',
+  'test:preset-dedup',
+  'test:preset-sequencer-hash-coverage',
+  'test:product-snapshot-policy',
   'core:product:patch-bridges',
   'core:product:snapshot-authority',
   'core:product:snapshot-regression',
@@ -1449,8 +1486,11 @@ const requiredPrerequisiteSteps = [
   'core:product:dirty-diff',
   'core:product:runtime-fallbacks',
   'core:product:getter-policies',
-  'migration:unsupported-surface:gate',
   'core:product:reference-isolation',
+  'core:product:runtime-selection-isolation',
+  'core:product:legacy-boundary',
+  'core:product:no-temporary-runtime-compat',
+  'migration:unsupported-surface:gate',
   'core:product:param-accounting',
   'core:product:abi',
   'core:build:wasm',

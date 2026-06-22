@@ -23,7 +23,8 @@ export function useProductRuntimeRangeSync({
   setProductDualRanges,
   ...options
 }: ProductRuntimeRangeSyncOptions): void {
-  // TODO(product-runtime-compat-10E): selected runtime range sync remains the compatibility
+  // TODO(product-fallback-retire:runtime-range-sync): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
+  // Selected runtime range sync remains the compatibility
   // implementation while product range ownership is exposed through product-named props.
   useSelectedAudioEngineRangeSync({
     ...options,

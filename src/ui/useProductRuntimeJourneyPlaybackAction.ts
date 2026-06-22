@@ -18,7 +18,8 @@ export function useProductRuntimeJourneyPlaybackAction({
   startProductPlayback,
   ...options
 }: ProductRuntimeJourneyPlaybackActionOptions) {
-  // TODO(product-runtime-compat-10C): journey playback still delegates through the selected-audio-engine
+  // TODO(product-fallback-retire:runtime-journey-playback-action): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
+  // Journey playback still delegates through the selected-audio-engine
   // action while Batch 10 isolates compatibility names behind product runtime facades.
   return useSelectedAudioEngineJourneyPlaybackAction({
     ...options,

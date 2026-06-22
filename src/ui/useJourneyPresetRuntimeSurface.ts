@@ -20,7 +20,7 @@ type JourneyPresetRuntimeSurface = {
 type JourneyPresetActionSurfaceOptions = {
   activeJourneyPresetName: string;
   journey: Pick<UseJourneyResult, 'config' | 'setConfig' | 'stop'>;
-  journeyPresets: Pick<UseJourneyPresetsResult, 'load' | 'save' | 'remove' | 'restoreBackup' | 'hasBackup' | 'validate'>;
+  journeyPresets: Pick<UseJourneyPresetsResult, 'load' | 'save' | 'rename' | 'remove' | 'restoreBackup' | 'hasBackup' | 'validate'>;
   fadeOutAndStopForPresetLoad: () => Promise<void>;
   stopJourneyMorphPlayback: (commitRuntimeState?: boolean) => void;
   setIsJourneyPlaying: Dispatch<SetStateAction<boolean>>;
@@ -32,6 +32,7 @@ type JourneyPresetActionSurfaceOptions = {
 type JourneyPresetActionSurface = {
   handleLoadJourneyPreset: (name: string) => Promise<void>;
   handleSaveJourneyPreset: (name: string, description?: string) => Promise<Awaited<ReturnType<UseJourneyPresetsResult['save']>>>;
+  handleRenameJourneyPreset: (name: string, nextName: string, description?: string) => Promise<Awaited<ReturnType<UseJourneyPresetsResult['rename']>>>;
   handleDeleteJourneyPreset: (name: string) => Promise<boolean>;
   handleUndoJourneyPreset: () => Promise<void>;
 };
@@ -126,6 +127,21 @@ export function useJourneyPresetActionSurface({
     [journey.config, journeyPresets, setActiveJourneyHasBackup, setActiveJourneyPresetName, setActiveJourneyValidation],
   );
 
+  const handleRenameJourneyPreset = useCallback(
+    async (name: string, nextName: string, description?: string) => {
+      const entry = await journeyPresets.rename(name, nextName, description === undefined ? undefined : { description });
+      if (!entry) return null;
+      if (journey.config) {
+        journey.setConfig({ ...journey.config, name: entry.name });
+        setActiveJourneyValidation(journeyPresets.validate({ ...journey.config, name: entry.name }));
+      }
+      setActiveJourneyPresetName(entry.name);
+      setActiveJourneyHasBackup(await journeyPresets.hasBackup(entry.name));
+      return entry;
+    },
+    [journey, journeyPresets, setActiveJourneyHasBackup, setActiveJourneyPresetName, setActiveJourneyValidation],
+  );
+
   const handleDeleteJourneyPreset = useCallback(
     async (name: string) => {
       const removed = await journeyPresets.remove(name);
@@ -166,6 +182,7 @@ export function useJourneyPresetActionSurface({
   return {
     handleLoadJourneyPreset,
     handleSaveJourneyPreset,
+    handleRenameJourneyPreset,
     handleDeleteJourneyPreset,
     handleUndoJourneyPreset,
   };

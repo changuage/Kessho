@@ -92,6 +92,10 @@ import { SOURCE_COLORS } from './designSystem/colors';
 import { APP_TAB_SYMBOLS, TEXT_SYMBOLS } from './designSystem/textSymbols';
 import type { SeqSimpleState } from './ui/drums/SeqSimple';
 import type { SeqScatterState } from './ui/drums/scatter/scatterTypes';
+import { normalizeSeqScatterState, seqSimpleStateFromScatterState } from './ui/drums/scatter/scatterDefaults';
+import { useScatterPhrasePlayer, type ScatterPreviewTriggerOptions, type ScatterStepVisualEvent } from './ui/drums/scatter/useScatterPhrasePlayer';
+import { useScatterSequencerRuntime } from './ui/drums/scatter/useScatterSequencerRuntime';
+import type { DrumVoiceType } from './audio/drumSynth';
 import {
   DRUM_VOICE_PARAM_ROUTES,
   getDrumVoiceMorphRoute,
@@ -114,6 +118,8 @@ import {
   type SavedPreset,
 } from './presets/statePresetRuntime';
 import { buildPresetVersionMetadata } from './presets/versionMetadataHelpers';
+import { PresetPoolProvider } from './presets/PresetPoolContext';
+import { createEmptyPresetPool, normalizePresetPoolMetadata } from './presets/presetPool';
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
 
 import { OptionalVisualizerGate } from './ui/components/OptionalVisualizerGate';
@@ -1697,6 +1703,10 @@ const App: React.FC = () => {
   const handleWelcomeSliderChange = useCallback((key: keyof SliderState, value: number) => {
     setWelcomeDisplayState((prev) => ({ ...prev, [key]: value }));
   }, []);
+  const [activePresetPool, setActivePresetPool] = useState(() => createEmptyPresetPool());
+  const handlePresetPoolLoad = useCallback((preset: { presetPool?: unknown }) => {
+    setActivePresetPool(normalizePresetPoolMetadata(preset.presetPool) ?? createEmptyPresetPool());
+  }, []);
 
   // Journey mode playing state - when true, sliders should be read-only
   const [isJourneyPlaying, setIsJourneyPlaying] = useState(false);
@@ -1851,6 +1861,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdvancedTab>('global');
   const activePageAccent = ADVANCED_TAB_COLORS[activeTab];
   const activeTabStyle = useMemo(() => getAdvancedTabActiveStyle(activePageAccent), [activePageAccent]);
+  const activeTabRef = useRef(activeTab);
   const activePageAccentStyle = useMemo(
     () =>
       ({
@@ -1858,6 +1869,9 @@ const App: React.FC = () => {
       }) as React.CSSProperties,
     [activePageAccent],
   );
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
   useProductRuntimeCallbackRegistrations({
     activeTab,
     setProductDrumEvolveTriggerCallback,
@@ -1985,7 +1999,67 @@ const App: React.FC = () => {
   const drumLinkedRef = useRef<boolean[] | undefined>(undefined);
   const drumPitchSettingsRef = useRef<PitchSettings[] | undefined>(undefined);
   const drumSeqSimpleStateRef = useRef<SeqSimpleState | undefined>(undefined);
-  const drumSeqScatterStateRef = useRef<SeqScatterState | undefined>(undefined);
+  const [drumSeqScatterState, setDrumSeqScatterState] = useState<SeqScatterState>(() =>
+    normalizeSeqScatterState(undefined, drumSeqSimpleStateRef.current)
+  );
+  const [drumScatterRuntimePulses, setDrumScatterRuntimePulses] = useState<Record<string, number>>({});
+
+  const handleDrumSeqScatterStateChange = useCallback((next: SeqScatterState) => {
+    drumSeqSimpleStateRef.current = seqSimpleStateFromScatterState(next);
+    setDrumSeqScatterState(next);
+  }, []);
+
+  const getDrumScatterBpm = useCallback(() => (
+    Number(stateRef.current.sequencerMasterBPM ?? stateRef.current.drumEuclidBaseBPM ?? 120)
+  ), []);
+
+  const triggerDrumScatterRuntimeStep = useCallback((voice: DrumVoiceType, options: ScatterPreviewTriggerOptions) => {
+    productRuntimeManualTriggers.triggerDrumVoice(voice, options);
+  }, [productRuntimeManualTriggers.triggerDrumVoice]);
+
+  const pulseDrumScatterRuntimeEngine = useCallback((voice: DrumVoiceType, kind: 'single' | 'burst') => {
+    if (activeTabRef.current !== 'drums') return;
+    setDrumScatterRuntimePulses((prev) => ({
+      ...prev,
+      [voice]: Date.now() + (kind === 'burst' ? 520 : 180),
+    }));
+  }, []);
+
+  const handleDrumScatterRuntimeStepVisual = useCallback((event: ScatterStepVisualEvent) => {
+    pulseDrumScatterRuntimeEngine(event.phrase.engine, 'burst');
+  }, [pulseDrumScatterRuntimeEngine]);
+
+  const {
+    playPhrase: playDrumScatterRuntimePhrase,
+    clear: clearDrumScatterRuntimePlayback,
+  } = useScatterPhrasePlayer({
+    getBpm: getDrumScatterBpm,
+    sliderState: state,
+    trigger: triggerDrumScatterRuntimeStep,
+    onStepVisual: handleDrumScatterRuntimeStepVisual,
+  });
+
+  useEffect(() => {
+    if (!drumSeqScatterState.active || !playbackIsRunning) {
+      clearDrumScatterRuntimePlayback();
+    }
+  }, [clearDrumScatterRuntimePlayback, drumSeqScatterState.active, playbackIsRunning]);
+
+  useEffect(() => {
+    if (activeTab !== 'drums') {
+      setDrumScatterRuntimePulses((prev) => (Object.keys(prev).length > 0 ? {} : prev));
+    }
+  }, [activeTab]);
+
+  useScatterSequencerRuntime({
+    active: drumSeqScatterState.active,
+    isRunning: playbackIsRunning,
+    state: drumSeqScatterState,
+    setState: handleDrumSeqScatterStateChange,
+    getBpm: getDrumScatterBpm,
+    playPhrase: playDrumScatterRuntimePhrase,
+    onVisualPulse: pulseDrumScatterRuntimeEngine,
+  });
 
   // ── Lead/Synth Euclidean sequencer state ──
   const synthViewModeRef = useRef<SequencerViewMode>('simple');
@@ -2062,6 +2136,7 @@ const App: React.FC = () => {
         drumPitchSettings: normalizeSequencerPitchSettingsArray(drumPitchSettingsRef.current, 4) as PitchSettings[],
         synthPitchSettings: normalizeSequencerPitchSettingsArray(synthPitchSettingsRef.current, 4) as PitchSettings[],
         synthPitchBindingModes: synthPitchBindingModesRef.current,
+        presetPool: activePresetPool,
         refs: visualizerPresetName
           ? {
               visualizer: {
@@ -2072,7 +2147,7 @@ const App: React.FC = () => {
             }
           : undefined,
       }),
-    [dualSliderRanges, sliderModes, visualizerPresetName],
+    [activePresetPool, dualSliderRanges, sliderModes, visualizerPresetName],
   );
 
   // Drum morph keys - these use per-trigger randomization, not random walk
@@ -5087,6 +5162,7 @@ const App: React.FC = () => {
     applyDualRangesFromPreset,
     restoreEvolveConfigs,
     confirmOverrideArmedJourneyForStatePreset,
+    onPresetPoolLoad: handlePresetPoolLoad,
   });
 
   const { handleLoadPresetFromList } = useSavedPresetLoadRuntimeSurface<SavedPreset>({
@@ -5115,6 +5191,7 @@ const App: React.FC = () => {
     normalizeState: normalizePresetForWeb,
     applyDualRangesFromPreset,
     restoreEvolveConfigs,
+    onPresetPoolLoad: handlePresetPoolLoad,
   });
 
   // ========================================================================
@@ -5154,6 +5231,7 @@ const App: React.FC = () => {
     startJourneyMorphClock,
     stopJourneyMorphClock,
     setIsJourneyPlaying,
+    onPresetPoolLoad: handlePresetPoolLoad,
   });
   stopJourneyMorphPlaybackRef.current = stopJourneyMorphPlayback;
 
@@ -5173,7 +5251,7 @@ const App: React.FC = () => {
     journeyMorphToRef.current = handleJourneyMorphTo;
   }, [handleJourneyLoadPreset, handleJourneyMorphTo]);
 
-  const { handleLoadJourneyPreset, handleSaveJourneyPreset, handleDeleteJourneyPreset, handleUndoJourneyPreset } = useJourneyPresetActionSurface({
+  const { handleLoadJourneyPreset, handleSaveJourneyPreset, handleRenameJourneyPreset, handleDeleteJourneyPreset, handleUndoJourneyPreset } = useJourneyPresetActionSurface({
     activeJourneyPresetName,
     journey,
     journeyPresets,
@@ -5262,6 +5340,12 @@ const App: React.FC = () => {
     [applyMorphEndpointStatePatch],
   );
 
+  const renderWithPresetPoolProvider = (children: React.ReactNode) => (
+    <PresetPoolProvider value={activePresetPool} onChange={setActivePresetPool}>
+      {children}
+    </PresetPoolProvider>
+  );
+
   if (isSnowflakeGeneratorRoute) {
     const clearGeneratorRoute = () => {
       if (typeof window === 'undefined') return;
@@ -5307,7 +5391,7 @@ const App: React.FC = () => {
 
   // Render journey mode UI
   if (uiMode === 'journey') {
-    return (
+    return renderWithPresetPoolProvider(
       <>
         <React.Suspense fallback={LAZY_PAGE_FALLBACK}>
           <JourneyModeView
@@ -5319,6 +5403,7 @@ const App: React.FC = () => {
             journeyValidation={activeJourneyValidation}
             onLoadJourneyPreset={handleLoadJourneyPreset}
             onSaveJourneyPreset={handleSaveJourneyPreset}
+            onRenameJourneyPreset={handleRenameJourneyPreset}
             onDeleteJourneyPreset={handleDeleteJourneyPreset}
             onUndoJourneyPreset={handleUndoJourneyPreset}
             onRateJourneyPreset={(name, rating) => journeyPresets.updateMetadata(name, { rating })}
@@ -5332,13 +5417,13 @@ const App: React.FC = () => {
         {renderJourneyOverridePrompt()}
         {renderMacAudioStatusPill()}
         {renderBackgroundAudioStatusPill()}
-      </>
+      </>,
     );
   }
 
   // Render snowflake UI
   if (uiMode === 'snowflake') {
-    return (
+    return renderWithPresetPoolProvider(
       <>
         {/* Splash Screen */}
         {showSplash &&
@@ -5466,14 +5551,15 @@ const App: React.FC = () => {
           />
         </div>
         {renderJourneyOverridePrompt()}
-      </>
+      </>,
     );
   }
 
   // Render advanced UI
   return (
-    <SliderHelpProvider activePage={activeTab === 'visualizer' ? 'global' : activeTab}>
-      <MidiLearnProvider
+    <PresetPoolProvider value={activePresetPool} onChange={setActivePresetPool}>
+      <SliderHelpProvider activePage={activeTab === 'visualizer' ? 'global' : activeTab}>
+        <MidiLearnProvider
         onParamChange={handleRoutingParamChange}
         onMidiMessage={pushProductMidiMessage}
         onOpenMidiPage={() => {
@@ -5743,6 +5829,7 @@ const App: React.FC = () => {
                 diceLane={productPageRuntimeSurface.synthPageSequencerBridge.diceLane}
                 evolvedOverrides={synthEvolvedOverrides}
                 {...productPageRuntimeSurface.synthPageRuntimeProps}
+                onAuditionPresetPreview={productRuntimeManualTriggers.auditionSynthNoteWithState}
                 harmonyState={engineState.harmonyState}
               />
             )}
@@ -5774,6 +5861,7 @@ const App: React.FC = () => {
                 togglePanel={togglePanel}
                 sliderProps={sliderProps}
                 {...productPageRuntimeSurface.drumPageRuntimeProps}
+                previewTriggerVoice={productRuntimeManualTriggers.triggerDrumVoiceWithState}
                 resetEvolveHome={productPageRuntimeSurface.drumPageSequencerBridge.resetEvolveHome}
                 captureEvolveHome={productPageRuntimeSurface.drumPageSequencerBridge.captureEvolveHome}
                 diceLane={productPageRuntimeSurface.drumPageSequencerBridge.diceLane}
@@ -5806,10 +5894,9 @@ const App: React.FC = () => {
                 onSeqSimpleStateChange={(s) => {
                   drumSeqSimpleStateRef.current = s;
                 }}
-                initialSeqScatterState={drumSeqScatterStateRef.current}
-                onSeqScatterStateChange={(s) => {
-                  drumSeqScatterStateRef.current = s;
-                }}
+                initialSeqScatterState={drumSeqScatterState}
+                onSeqScatterStateChange={handleDrumSeqScatterStateChange}
+                scatterRuntimeActivePulses={drumScatterRuntimePulses}
               />
             )}
 
@@ -6191,6 +6278,7 @@ const App: React.FC = () => {
       </div>
       </MidiLearnProvider>
     </SliderHelpProvider>
+    </PresetPoolProvider>
   );
 };
 

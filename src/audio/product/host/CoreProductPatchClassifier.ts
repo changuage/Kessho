@@ -14,6 +14,7 @@ export function snapshotReloadReasonForProductPatch(reason: ProductSnapshotPatch
     case 'sequencer-edit':
       return 'sequencer-structure-change';
     case 'preset-load':
+    case 'session-restore':
     case 'transport-change':
     case 'sequencer-control-change':
     case 'midi-cc-control-change':

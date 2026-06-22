@@ -21,6 +21,7 @@ import { liveOverdubTargetStep, useLiveOverdubRecorder } from '../sequencer/useL
 import { stepOverridesForEngineSubLaneState } from '../sequencer/engineStepOverrides';
 import { NUDGE_EPSILON, clampNudge, computeNudgeFromContinuousStep } from '../sequencer/nudgeTiming';
 import { serializeStepOverrides } from '../sequencer/stepOverrideSerialization';
+import { shouldShowTriggerSourceBadge, triggerSourceDisplayLabel } from '../sequencer/triggerSourceLabel';
 import AnchorWalkerSequencerBody from '../sequencer/AnchorWalkerSequencerBody';
 import OrbitSequencerBody from '../sequencer/OrbitSequencerBody';
 import SequencerCapturePreviewOverlay from '../sequencer/SequencerCapturePreviewOverlay';
@@ -71,7 +72,7 @@ import {
   scaleDegreeToSemitone,
   semitoneToScaleDegree,
 } from '../../audio/drumSeqTypes';
-import type { ClockDivision, PitchBindingMode } from '../../audio/drumSeqTypes';
+import type { ClockDivision, PitchBindingMode, SequencerState } from '../../audio/drumSeqTypes';
 import {
   resolveHarmonyIntentToNotePool,
   type HarmonyChordSlot,
@@ -100,9 +101,13 @@ import { useRuntimeSliderPosition } from '../runtimeSliderState';
 import { blurSelectAfterChange } from '../shared/selectFocus';
 import './synth.css';
 import SynthPresetManager from './SynthPresetManager';
+import { ratePadPreset } from './padPresetRating';
 import { usePresets } from '../../presets/usePresets';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import { PresetRatingStars } from '../../presets/PresetRatingStars';
+import { PresetPoolPopup } from '../../presets/PresetPoolPopup';
+import { usePresetPoolCandidates } from '../../presets/PresetPoolContext';
+import { PRESET_POOL_ICON, getPresetPoolLabel, type PresetPoolCandidate } from '../../presets/presetPool';
 import {
   EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY,
   EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY,
@@ -172,6 +177,20 @@ import {
   type ProductArpSlotChoice,
   type ProductArpSourceMode,
 } from '../../audio/productArpeggiator';
+import {
+  SYNTH_CHORD_ARP_SPEEDS,
+  SYNTH_CHORD_SUB_LANE_NAMES,
+  sanitizeSynthChordSequencerConfig,
+  type SynthChordSequencerArpHoldMode,
+  type SynthChordSequencerArpOrder,
+  type SynthChordSequencerArpSpeed,
+  type SynthChordSequencerConfig,
+  type SynthChordSequencerPlaybackMode,
+  type SynthChordSequencerSubLaneConfig,
+  type SynthChordSequencerSubLaneDirection,
+  type SynthChordSequencerSubLaneName,
+  type SynthChordSequencerStrumDirection,
+} from '../../audio/synthChordSequencer';
 import { normalizeSynthEuclidSource } from '../../audio/coreProductSourceMapping';
 
 const OV_PROB_DRAG_PX = 80;
@@ -221,6 +240,9 @@ const LANE_CONFIGS = [
   { color: SEQUENCER_LANE_COLORS[2], name: 'Seq 3' },
   { color: SEQUENCER_LANE_COLORS[3], name: 'Seq 4' },
 ];
+const CHORD_SEQUENCER_LANE_NAME = 'Seq 5';
+const CHORD_SEQUENCER_LANE_COLOR = SEQUENCER_LANE_COLORS[4] ?? '#22d3ee';
+const CHORD_SEQUENCER_STEP_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 
 type WalkerEnsemblePreset = 'off' | 'wide' | 'roll' | 'diatonic' | 'counter';
 
@@ -529,13 +551,78 @@ const SYNTH_SOURCES = [
 ];
 
 const CHORD_SEQUENCER_SOURCES = [
-  { value: 'both', label: 'Both Pads', color: SOURCE_COLORS.pad1 },
-  { value: 'pad1', label: 'Pad 1', color: SOURCE_COLORS.pad1 },
-  { value: 'pad2', label: 'Pad 2', color: SOURCE_COLORS.pad2 },
+  { value: 'piano', label: 'Piano', color: SOURCE_COLORS.piano },
   { value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1 },
   { value: 'lead2', label: 'Lead 2', color: SOURCE_COLORS.lead2 },
-  { value: 'piano', label: 'Piano', color: SOURCE_COLORS.piano },
+  { value: 'pad1', label: 'Pad 1', color: SOURCE_COLORS.pad1 },
+  { value: 'pad2', label: 'Pad 2', color: SOURCE_COLORS.pad2 },
+  { value: 'both', label: 'Pad 1+2', color: SOURCE_COLORS.pad1 },
 ] as const;
+
+const CHORD_PLAYBACK_MODES: Array<{ value: SynthChordSequencerPlaybackMode; label: string }> = [
+  { value: 'chord', label: 'Chord' },
+  { value: 'arp', label: 'Arp' },
+  { value: 'strum', label: 'Strum' },
+];
+
+const CHORD_ARP_ORDERS: Array<{ value: SynthChordSequencerArpOrder; label: string }> = [
+  { value: 'upDown', label: 'Up/Down' },
+  { value: 'up', label: 'Up' },
+  { value: 'down', label: 'Down' },
+  { value: 'downUp', label: 'Down/Up' },
+  { value: 'outsideIn', label: 'Outside In' },
+  { value: 'insideOut', label: 'Inside Out' },
+  { value: 'random', label: 'Random' },
+];
+
+const CHORD_ARP_HOLDS: Array<{ value: SynthChordSequencerArpHoldMode; label: string }> = [
+  { value: 'step', label: 'Step' },
+  { value: 'untilNextTrigger', label: 'Hold' },
+];
+
+const CHORD_STRUM_DIRECTIONS: Array<{ value: SynthChordSequencerStrumDirection; label: string }> = [
+  { value: 'up', label: 'Up' },
+  { value: 'down', label: 'Down' },
+  { value: 'upDown', label: 'Up/Down' },
+  { value: 'downUp', label: 'Down/Up' },
+  { value: 'random', label: 'Random' },
+];
+
+const CHORD_SUB_LANE_DIRECTIONS: Array<{ value: SynthChordSequencerSubLaneDirection; label: string }> = [
+  { value: 'forward', label: 'Fwd' },
+  { value: 'reverse', label: 'Rev' },
+  { value: 'pingpong', label: 'Ping' },
+];
+
+const CHORD_SUB_LANE_META: Record<SynthChordSequencerSubLaneName, {
+  label: string;
+  color: string;
+}> = {
+  chord: {
+    label: 'Chord',
+    color: CHORD_SEQUENCER_LANE_COLOR,
+  },
+  pitch: {
+    label: 'Pitch',
+    color: SEQUENCER_SUB_LANE_COLORS.pitch,
+  },
+  expression: {
+    label: 'Expression',
+    color: SEQUENCER_SUB_LANE_COLORS.expression,
+  },
+  morph: {
+    label: 'Morph',
+    color: SEQUENCER_SUB_LANE_COLORS.morph,
+  },
+  distance: {
+    label: 'Distance',
+    color: SEQUENCER_SUB_LANE_COLORS.distance,
+  },
+  nudge: {
+    label: 'Nudge',
+    color: SEQUENCER_SUB_LANE_COLORS.nudge,
+  },
+};
 
 const PAD_VOICE_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 const PAD_VOICE_MASK_ALL = 0xff;
@@ -636,6 +723,9 @@ type LeadPresetOption = {
   id: string;
   name: string;
   library: 'stock' | 'user' | 'cloud';
+  tags?: string[];
+  updatedAt?: number;
+  rating?: number;
   runtime?: boolean;
   slotKey?: LeadPresetSlotKey;
   sourceId?: string;
@@ -648,6 +738,132 @@ function leadPresetOptionPriority(option: LeadPresetOption): number {
   if (option.library === 'cloud') return 3;
   if (option.library === 'user') return 2;
   return 1;
+}
+
+function normalizePoolMatchKey(value: string | undefined): string | null {
+  const normalized = value?.trim().toLowerCase();
+  return normalized ? normalized : null;
+}
+
+function padOptionToPoolCandidate(option: PadPresetOption): PresetPoolCandidate {
+  return {
+    id: option.id,
+    name: option.name,
+    library: option.library,
+    tags: option.tags,
+    updatedAt: option.updatedAt,
+    rating: option.rating,
+    aliases: [option.id, option.name],
+  };
+}
+
+function leadOptionToPoolCandidate(option: LeadPresetOption): PresetPoolCandidate {
+  return {
+    id: option.sourceId ?? option.id,
+    name: option.sourceName ?? option.name,
+    library: option.sourceLibrary ?? option.library,
+    tags: option.tags,
+    updatedAt: option.updatedAt,
+    rating: option.rating,
+    aliases: [option.id, option.name, option.sourceId, option.sourceName].filter((value): value is string => Boolean(value)),
+  };
+}
+
+function candidateMatchesOption(candidate: PresetPoolCandidate, optionValues: Array<string | undefined>): boolean {
+  const candidateKeys = new Set(
+    [candidate.id, candidate.name, ...(candidate.aliases ?? [])]
+      .map(normalizePoolMatchKey)
+      .filter((key): key is string => Boolean(key)),
+  );
+  return optionValues
+    .map(normalizePoolMatchKey)
+    .filter((key): key is string => Boolean(key))
+    .some(key => candidateKeys.has(key));
+}
+
+function filterPadOptionsByPool(options: PadPresetOption[], candidates: PresetPoolCandidate[]): PadPresetOption[] {
+  if (candidates.length === 0) return [];
+  return options.filter(option => candidates.some(candidate => candidateMatchesOption(candidate, [option.id, option.name])));
+}
+
+function filterLeadOptionsByPool(options: LeadPresetOption[], candidates: PresetPoolCandidate[]): LeadPresetOption[] {
+  if (candidates.length === 0) return [];
+  return options.filter(option => candidates.some(candidate => candidateMatchesOption(candidate, [
+    option.id,
+    option.name,
+    option.sourceId,
+    option.sourceName,
+  ])));
+}
+
+const POOL_PREVIEW_PAD_LEVEL_FLOOR = 0.72;
+const POOL_PREVIEW_LEAD_LEVEL_FLOOR = 0.76;
+
+type PoolPreviewLevelKey = 'synthLevel' | 'pad2Level' | 'lead1Level' | 'lead2Level';
+
+function applyPoolPreviewLevelFloor(state: SliderState, key: PoolPreviewLevelKey, floor: number): void {
+  const current = state[key];
+  if (current < floor) {
+    state[key] = floor;
+  }
+}
+
+function previewStateForPadPoolSlot(state: SliderState, slotKey: keyof SliderState, presetId: string): SliderState {
+  const next = { ...state, [slotKey]: presetId } as SliderState;
+  if (slotKey === 'padPresetA') {
+    next.padMorph = 0;
+    next.padEnabled = true;
+    applyPoolPreviewLevelFloor(next, 'synthLevel', POOL_PREVIEW_PAD_LEVEL_FLOOR);
+  }
+  if (slotKey === 'padPresetB') {
+    next.padMorph = 1;
+    next.padEnabled = true;
+    applyPoolPreviewLevelFloor(next, 'synthLevel', POOL_PREVIEW_PAD_LEVEL_FLOOR);
+  }
+  if (slotKey === 'pad2PresetA') {
+    next.pad2Morph = 0;
+    next.pad2Enabled = true;
+    applyPoolPreviewLevelFloor(next, 'pad2Level', POOL_PREVIEW_PAD_LEVEL_FLOOR);
+  }
+  if (slotKey === 'pad2PresetB') {
+    next.pad2Morph = 1;
+    next.pad2Enabled = true;
+    applyPoolPreviewLevelFloor(next, 'pad2Level', POOL_PREVIEW_PAD_LEVEL_FLOOR);
+  }
+  return next;
+}
+
+function previewStateForLeadPoolSlot(state: SliderState, slotKey: LeadPresetSlotKey, presetId: string): SliderState {
+  const next = { ...state, [slotKey]: presetId } as SliderState;
+  if (slotKey === 'lead1PresetA') {
+    next.lead1Morph = 0;
+    next.lead1UseCustomAdsr = false;
+    next.leadEnabled = true;
+    applyPoolPreviewLevelFloor(next, 'lead1Level', POOL_PREVIEW_LEAD_LEVEL_FLOOR);
+  }
+  if (slotKey === 'lead1PresetB') {
+    next.lead1Morph = 1;
+    next.lead1UseCustomAdsr = false;
+    next.leadEnabled = true;
+    applyPoolPreviewLevelFloor(next, 'lead1Level', POOL_PREVIEW_LEAD_LEVEL_FLOOR);
+  }
+  if (slotKey === 'lead2PresetC') {
+    next.lead2Morph = 0;
+    next.lead2UseCustomAdsr = false;
+    next.lead2Enabled = true;
+    applyPoolPreviewLevelFloor(next, 'lead2Level', POOL_PREVIEW_LEAD_LEVEL_FLOOR);
+  }
+  if (slotKey === 'lead2PresetD') {
+    next.lead2Morph = 1;
+    next.lead2UseCustomAdsr = false;
+    next.lead2Enabled = true;
+    applyPoolPreviewLevelFloor(next, 'lead2Level', POOL_PREVIEW_LEAD_LEVEL_FLOOR);
+  }
+  return next;
+}
+
+function leadManualSourceForSlot(slotKey: LeadPresetSlotKey): ManualSynthSource {
+  return slotKey === 'lead1PresetA' || slotKey === 'lead1PresetB' ? 'lead1' : 'lead2';
 }
 
 const STOCK_LEAD4OP_PRESETS: Array<{ id: string; name: string }> = [
@@ -1063,7 +1279,12 @@ const SYNTH_SOURCE_CARD_IDS = ['pad1', 'pad2', 'lead1', 'lead2', 'piano'] as con
 type SynthSourceCardId = typeof SYNTH_SOURCE_CARD_IDS[number];
 type SynthSourceCardExpansion = Partial<Record<SynthSourceCardId, boolean>>;
 
-function createRuntimePadPreset(scope: 'pad1' | 'pad2', name: string, data: Record<string, unknown>): PadPreset {
+function createRuntimePadPreset(
+  scope: 'pad1' | 'pad2',
+  name: string,
+  data: Record<string, unknown>,
+  tags: string[] = [],
+): PadPreset {
   const params: Record<string, number | string | boolean> = {};
 
   if (scope === 'pad1') {
@@ -1084,7 +1305,7 @@ function createRuntimePadPreset(scope: 'pad1' | 'pad2', name: string, data: Reco
 
   return {
     name,
-    tags: [],
+    tags,
     params,
   };
 }
@@ -1177,6 +1398,8 @@ export interface SynthPageProps {
   onArpConfigsChange?: (configs: ProductArpConfig[]) => void;
   /** Fire a one-shot manual audition note from the synth keyboard */
   onAuditionNote?: (note: ManualSynthNoteOptions) => void | Promise<void>;
+  /** Fire a one-shot manual audition note using a temporary, non-UI preset state */
+  onAuditionPresetPreview?: (note: ManualSynthNoteOptions, externalState: SliderState) => void | Promise<void>;
   /** Current harmony snapshot for keyboard note coloring */
   harmonyState?: HarmonyState | null;
 }
@@ -1232,6 +1455,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     initialArpConfigs,
     onArpConfigsChange,
     onAuditionNote,
+    onAuditionPresetPreview,
     harmonyState,
   } = props;
   const onStateChange = props.onStateChange;
@@ -1245,6 +1469,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const pendingDiceSyncUntilRef = useRef<number[]>(Array.from({ length: LANE_CONFIGS.length }, () => 0));
   const pendingDiceExpectedSignatureRef = useRef<(string | null)[]>(Array.from({ length: LANE_CONFIGS.length }, () => null));
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [chordSequencerSelected, setChordSequencerSelected] = useState(false);
+  const [chordSequencerOpenLane, setChordSequencerOpenLane] = useState<SynthChordSequencerSubLaneName | 'trigger'>('chord');
   const [showKeyboard, setShowKeyboard] = useState(initialKeyboardUiState?.open ?? false);
   const [keyboardInputMode, setKeyboardInputMode] = useState<KeyboardInputMode>(initialKeyboardUiState?.inputMode ?? 'play');
   const [keyboardSource, setKeyboardSource] = useState<ManualSynthSource>(initialKeyboardUiState?.source ?? 'lead1');
@@ -1284,6 +1510,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [lead1LoaderPresetId, setLead1LoaderPresetId] = useState(() => String(state.lead1PresetA ?? ''));
   const [lead2LoaderPresetId, setLead2LoaderPresetId] = useState(() => String(state.lead2PresetC ?? ''));
   const [leadLocalRatings, setLeadLocalRatings] = useState<Record<string, number>>({});
+  const [padPoolPopupSlot, setPadPoolPopupSlot] = useState<{
+    scope: 'pad1' | 'pad2';
+    slotKey: keyof SliderState;
+  } | null>(null);
+  const [leadPoolPopupSlot, setLeadPoolPopupSlot] = useState<LeadPresetSlotKey | null>(null);
   const [livePadViz, setLivePadViz] = useState({
     pad1FilterFreq: 1000,
     pad1LfoValue: 0,
@@ -1299,17 +1530,22 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     presets: pad1EnginePresets,
     save: savePad1Preset,
     load: loadPad1Preset,
+    remove: removePad1Preset,
     refresh: refreshPad1Presets,
+    updateMetadata: updatePad1PresetMetadata,
   } = usePresets('engine', 'pad1');
   const {
     presets: pad2EnginePresets,
     save: savePad2Preset,
     load: loadPad2Preset,
+    remove: removePad2Preset,
     refresh: refreshPad2Presets,
+    updateMetadata: updatePad2PresetMetadata,
   } = usePresets('engine', 'pad2');
   const {
     presets: leadFmPresets,
     load: loadLeadFmPresetEntry,
+    remove: removeLeadFmPreset,
     refresh: refreshLeadFmPresets,
     updateMetadata: updateLeadFmPresetMetadata,
   } = usePresets('engine', 'lead4opfm');
@@ -1727,6 +1963,409 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onSelectChange(key, value);
   }, [onSelectChange]);
 
+  const chordSequencerConfig = useMemo(
+    () => sanitizeSynthChordSequencerConfig(state.synthChordSequencer),
+    [state.synthChordSequencer],
+  );
+
+  const updateChordSequencerConfig = useCallback((
+    updater: (current: SynthChordSequencerConfig) => SynthChordSequencerConfig,
+  ) => {
+    const next = sanitizeSynthChordSequencerConfig(updater(chordSequencerConfig));
+    onSelectChange('synthChordSequencer' as keyof SliderState, next as SliderState[keyof SliderState]);
+  }, [chordSequencerConfig, onSelectChange]);
+
+  const updateChordSequencerStep = useCallback((
+    stepIndex: number,
+    patch: Partial<SynthChordSequencerConfig['steps'][number]>,
+  ) => {
+    updateChordSequencerConfig((current) => ({
+      ...current,
+      steps: current.steps.map((step, index) => index === stepIndex ? { ...step, ...patch } : step),
+    }));
+  }, [updateChordSequencerConfig]);
+
+  const updateChordSequencerSubLane = useCallback((
+    laneName: SynthChordSequencerSubLaneName,
+    updater: (current: SynthChordSequencerSubLaneConfig) => SynthChordSequencerSubLaneConfig,
+  ) => {
+    updateChordSequencerConfig((current) => ({
+      ...current,
+      subLanes: {
+        ...current.subLanes,
+        [laneName]: updater(current.subLanes[laneName]),
+      },
+    }));
+  }, [updateChordSequencerConfig]);
+
+  const updateChordSequencerSubLaneValue = useCallback((
+    laneName: SynthChordSequencerSubLaneName,
+    stepIndex: number,
+    value: number,
+  ) => {
+    updateChordSequencerSubLane(laneName, (lane) => ({
+      ...lane,
+      values: lane.values.map((currentValue, index) => index === stepIndex ? value : currentValue),
+    }));
+  }, [updateChordSequencerSubLane]);
+
+  const chordSequencerEnabled = state.synthChordSequencerEnabled === true;
+  const chordSequencerSourceValue = String(state.synthChordSequencerSource ?? 'piano');
+  const chordSequencerSourceInfo =
+    CHORD_SEQUENCER_SOURCES.find((source) => source.value === chordSequencerSourceValue) ?? {
+      value: 'piano',
+      label: 'Piano',
+      color: SOURCE_COLORS.piano,
+    };
+  const chordSequencerActiveStepCount = chordSequencerConfig.steps
+    .slice(0, chordSequencerConfig.stepCount)
+    .filter((step) => step.enabled).length;
+
+  const chordSequencerLaneModel = useMemo<SequencerState>(() => {
+    const makeSubLane = (laneName: SynthChordSequencerSubLaneName) => ({
+      enabled: chordSequencerConfig.subLanes[laneName].enabled,
+      steps: chordSequencerConfig.subLanes[laneName].steps,
+      direction: chordSequencerConfig.subLanes[laneName].direction,
+      _ppForward: true,
+      values: chordSequencerConfig.subLanes[laneName].values,
+    });
+    const triggerPattern = chordSequencerConfig.steps.map((step, index) => index < chordSequencerConfig.stepCount && step.enabled);
+    const triggerLength = chordSequencerConfig.steps.length;
+    return {
+      id: 4,
+      rng: () => 0.5,
+      color: CHORD_SEQUENCER_LANE_COLOR,
+      name: CHORD_SEQUENCER_LANE_NAME,
+      muted: !chordSequencerEnabled,
+      solo: false,
+      clockDiv: '1/4' as ClockDivision,
+      swing: 0,
+      sources: {} as SequencerState['sources'],
+      trigger: {
+        enabled: chordSequencerEnabled,
+        steps: chordSequencerConfig.stepCount,
+        hits: chordSequencerActiveStepCount,
+        rotation: 0,
+        pattern: triggerPattern,
+        overrides: new Set<number>(),
+        probability: chordSequencerConfig.steps.map((step) => step.probability),
+        ratchet: new Array(triggerLength).fill(1),
+        trigCondition: new Array(triggerLength).fill([1, 1]),
+      },
+      pitch: {
+        ...makeSubLane('pitch'),
+        offsets: chordSequencerConfig.subLanes.pitch.values,
+        mode: 'semitones',
+        root: HARMONY_PITCH_ROOT_OCTAVE_MIDI,
+        scale: HARMONY_PITCH_SCALE,
+        scaleQuantize: true,
+      },
+      expression: {
+        ...makeSubLane('expression'),
+        velocities: chordSequencerConfig.subLanes.expression.values,
+      },
+      morph: makeSubLane('morph'),
+      distance: makeSubLane('distance'),
+      nudge: makeSubLane('nudge'),
+      slice: {
+        ...makeSubLane('chord'),
+        _ppForward: true,
+        values: chordSequencerConfig.subLanes.chord.values,
+      },
+      reverse: {
+        enabled: false,
+        steps: 4,
+        direction: 'forward',
+        _ppForward: true,
+        values: new Array(8).fill(0),
+      },
+      stepIndex: 0,
+      hitCount: 0,
+      nextTime: 0,
+      lastDisplayStep: 0,
+      totalStepCount: chordSequencerConfig.stepCount,
+      linked: false,
+      evolve: {
+        enabled: false,
+        everyBars: 4,
+        evolution: 0,
+        writeOffset: 'auto',
+        mutationMode: 'biased',
+        lastEvolveBar: -1,
+        methods: {} as SequencerState['evolve']['methods'],
+        home: null,
+      },
+    };
+  }, [chordSequencerActiveStepCount, chordSequencerConfig, chordSequencerEnabled]);
+
+  const renderChordSequencerControls = (variant: 'detail' | 'simple' = 'detail') => (
+    <div className={`synth-chord-editor synth-chord-editor--${variant}`}>
+      <div className="seq-sources seq-chord-sources">
+        <select
+          className="synth-source-select"
+          aria-label="Chord sequencer source"
+          value={chordSequencerSourceValue}
+          onChange={(e) => onSelectChange('synthChordSequencerSource' as keyof SliderState, e.target.value as SliderState[keyof SliderState])}
+          style={{
+            borderColor: `${chordSequencerSourceInfo.color}60`,
+            color: chordSequencerSourceInfo.color,
+          }}
+        >
+          {CHORD_SEQUENCER_SOURCES.map((source) => (
+            <option key={source.value} value={source.value}>{source.label}</option>
+          ))}
+        </select>
+        <label className="synth-source-label">
+          Voices
+          <select
+            className="synth-source-select"
+            value={state.synthChordSequencerVoiceCount ?? 6}
+            onChange={(e) => onParamChange('synthChordSequencerVoiceCount', Number(e.target.value))}
+          >
+            {PAD_VOICE_NUMBERS.map((voice) => (
+              <option key={voice} value={voice}>{voice}</option>
+            ))}
+          </select>
+        </label>
+        <label className="synth-source-label">
+          Mode
+          <select
+            className="synth-source-select"
+            value={chordSequencerConfig.playbackMode}
+            onChange={(event) => updateChordSequencerConfig((current) => ({
+              ...current,
+              playbackMode: event.target.value as SynthChordSequencerPlaybackMode,
+            }))}
+          >
+            {CHORD_PLAYBACK_MODES.map((mode) => (
+              <option key={mode.value} value={mode.value}>{mode.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="synth-source-label">
+          Steps
+          <select
+            className="synth-source-select"
+            value={chordSequencerConfig.stepCount}
+            onChange={(event) => updateChordSequencerConfig((current) => ({
+              ...current,
+              stepCount: Number(event.target.value),
+            }))}
+          >
+            {CHORD_SEQUENCER_STEP_OPTIONS.map((count) => (
+              <option key={count} value={count}>{count}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {chordSequencerConfig.playbackMode === 'arp' && (
+        <div className="synth-chord-mode-panel">
+          <label className="synth-source-label">
+            Order
+            <select
+              className="synth-source-select"
+              value={chordSequencerConfig.arp.order}
+              onChange={(event) => updateChordSequencerConfig((current) => ({
+                ...current,
+                arp: { ...current.arp, order: event.target.value as SynthChordSequencerArpOrder },
+              }))}
+            >
+              {CHORD_ARP_ORDERS.map((order) => (
+                <option key={order.value} value={order.value}>{order.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="synth-source-label">
+            Hold
+            <select
+              className="synth-source-select"
+              value={chordSequencerConfig.arp.hold}
+              onChange={(event) => updateChordSequencerConfig((current) => ({
+                ...current,
+                arp: { ...current.arp, hold: event.target.value as SynthChordSequencerArpHoldMode },
+              }))}
+            >
+              {CHORD_ARP_HOLDS.map((hold) => (
+                <option key={hold.value} value={hold.value}>{hold.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="synth-source-label">
+            Speed
+            <select
+              className="synth-source-select"
+              value={chordSequencerConfig.arp.speed}
+              onChange={(event) => updateChordSequencerConfig((current) => ({
+                ...current,
+                arp: { ...current.arp, speed: event.target.value as SynthChordSequencerArpSpeed },
+              }))}
+            >
+              {SYNTH_CHORD_ARP_SPEEDS.map((speed) => (
+                <option key={speed} value={speed}>{speed}</option>
+              ))}
+            </select>
+          </label>
+          <label className="synth-source-label">
+            Gate
+            <input
+              className="synth-chord-mini-range"
+              type="range"
+              min={0.05}
+              max={1}
+              step={0.01}
+              value={chordSequencerConfig.arp.gate}
+              onChange={(event) => updateChordSequencerConfig((current) => ({
+                ...current,
+                arp: { ...current.arp, gate: Number(event.target.value) },
+              }))}
+            />
+          </label>
+        </div>
+      )}
+      {chordSequencerConfig.playbackMode === 'strum' && (
+        <div className="synth-chord-mode-panel">
+          <label className="synth-source-label">
+            Dir
+            <select
+              className="synth-source-select"
+              value={chordSequencerConfig.strum.direction}
+              onChange={(event) => updateChordSequencerConfig((current) => ({
+                ...current,
+                strum: { ...current.strum, direction: event.target.value as SynthChordSequencerStrumDirection },
+              }))}
+            >
+              {CHORD_STRUM_DIRECTIONS.map((direction) => (
+                <option key={direction.value} value={direction.value}>{direction.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="synth-source-label">
+            Spread
+            <input
+              className="synth-chord-mini-range"
+              type="range"
+              min={0}
+              max={400}
+              step={1}
+              value={chordSequencerConfig.strum.spreadMs}
+              onChange={(event) => updateChordSequencerConfig((current) => ({
+                ...current,
+                strum: { ...current.strum, spreadMs: Number(event.target.value) },
+              }))}
+            />
+          </label>
+          <label className="synth-source-label">
+            Curve
+            <input
+              className="synth-chord-mini-range"
+              type="range"
+              min={-1}
+              max={1}
+              step={0.01}
+              value={chordSequencerConfig.strum.curve}
+              onChange={(event) => updateChordSequencerConfig((current) => ({
+                ...current,
+                strum: { ...current.strum, curve: Number(event.target.value) },
+              }))}
+            />
+          </label>
+          <label className="synth-source-label">
+            Gate
+            <input
+              className="synth-chord-mini-range"
+              type="range"
+              min={0.05}
+              max={1}
+              step={0.01}
+              value={chordSequencerConfig.strum.gate}
+              onChange={(event) => updateChordSequencerConfig((current) => ({
+                ...current,
+                strum: { ...current.strum, gate: Number(event.target.value) },
+              }))}
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderChordTriggerLane = () => (
+    <div className="seq-trigger-always seq-chord-trigger-lane">
+      <SeqLane
+        sequencer={chordSequencerLaneModel}
+        lane="trigger"
+        color={CHORD_SEQUENCER_LANE_COLOR}
+        playhead={0}
+        hitCount={0}
+        onToggleTriggerStep={(step) => updateChordSequencerStep(step, {
+          enabled: !chordSequencerConfig.steps[step]?.enabled,
+        })}
+        onSetProbability={(step, value) => updateChordSequencerStep(step, { probability: value })}
+        onResetProbability={(step) => updateChordSequencerStep(step, { probability: 1 })}
+      />
+    </div>
+  );
+
+  const renderChordSubLaneEditor = (laneName: SynthChordSequencerSubLaneName) => {
+    const lane = chordSequencerConfig.subLanes[laneName];
+    const meta = CHORD_SUB_LANE_META[laneName];
+    const sparkValues = laneName === 'chord'
+      ? lane.values.map((value) => (Math.max(1, Math.min(8, Math.round(value))) - 1) / 7)
+      : laneName === 'pitch'
+      ? lane.values.map((value) => normalizeNoteDegreeOffset(value))
+      : lane.values;
+    return (
+      <React.Fragment key={laneName}>
+        <SeqSparkline
+          label={`${meta.label.charAt(0)}:`}
+          steps={lane.steps}
+          values={sparkValues}
+          color={meta.color}
+          playhead={0}
+          hitCount={0}
+          playheadMode="hit"
+          direction={lane.direction}
+          bipolar={laneName === 'morph'}
+          mode={laneName === 'nudge' ? 'signed' : undefined}
+          invertFill={laneName === 'expression'}
+          enabled={lane.enabled}
+          expanded={chordSequencerOpenLane === laneName}
+          onClick={() => setChordSequencerOpenLane(chordSequencerOpenLane === laneName ? 'trigger' : laneName)}
+          onToggleEnabled={() => updateChordSequencerSubLane(laneName, (current) => ({ ...current, enabled: !current.enabled }))}
+        />
+        {chordSequencerOpenLane === laneName && (
+          <div className="seq-lane-editor-wrap">
+            <SeqLane
+              sequencer={chordSequencerLaneModel}
+              lane={laneName}
+              color={meta.color}
+              playhead={0}
+              hitCount={0}
+              enabled={lane.enabled}
+              direction={lane.direction}
+              onToggleEnabled={() => updateChordSequencerSubLane(laneName, (current) => ({ ...current, enabled: !current.enabled }))}
+              onChangeSteps={(steps) => updateChordSequencerSubLane(laneName, (current) => ({
+                ...current,
+                steps: Math.max(1, Math.min(8, Math.round(steps))),
+              }))}
+              onCycleDirection={() => updateChordSequencerSubLane(laneName, (current) => {
+                const currentIndex = CHORD_SUB_LANE_DIRECTIONS.findIndex((direction) => direction.value === current.direction);
+                const nextDirection = CHORD_SUB_LANE_DIRECTIONS[(currentIndex + 1) % CHORD_SUB_LANE_DIRECTIONS.length]?.value ?? 'forward';
+                return { ...current, direction: nextDirection };
+              })}
+              onChangeValue={(step, value) => updateChordSequencerSubLaneValue(
+                laneName,
+                step,
+                laneName === 'chord' ? Math.max(1, Math.min(8, Math.round(value))) : value,
+              )}
+              maxSubLaneSteps={8}
+            />
+          </div>
+        )}
+      </React.Fragment>
+    );
+  };
+
   const synthLivePollMs = useMemo(() => {
     const pad1FilterModEnvActive =
       !!state.padModEnvEnabled &&
@@ -1945,20 +2584,31 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       summaries: typeof pad1EnginePresets,
       loadPreset: typeof loadPad1Preset,
     ) => {
+      type RuntimePadPresetSyncEntry = {
+        id: string;
+        name: string;
+        library: Exclude<PadPresetOption['library'], 'stock'>;
+        preset: PadPreset;
+        updatedAt?: number;
+        rating?: number;
+      };
       const runtimePresets = await Promise.all(
         summaries
-          .map(async (preset) => {
+          .map(async (preset): Promise<RuntimePadPresetSyncEntry | null> => {
             const entry = await loadPreset(preset.name);
             if (!entry) return null;
             const version = entry.versions.find(v => v.v === entry.currentVersion)
               || entry.versions[entry.versions.length - 1];
             if (!version) return null;
             const stockId = getFactoryPadPresetIdByName(entry.name);
+            const library: Exclude<PadPresetOption['library'], 'stock'> = entry.library === 'cloud' ? 'cloud' : 'user';
             return {
               id: stockId ?? entry.id ?? entry.name,
               name: entry.name,
-              library: entry.library === 'cloud' ? 'cloud' : 'user',
-              preset: createRuntimePadPreset(scope, entry.name, version.data),
+              library,
+              preset: createRuntimePadPreset(scope, entry.name, version.data, entry.tags ?? []),
+              updatedAt: entry.updatedAt,
+              rating: entry.rating,
             };
           }),
       );
@@ -1966,12 +2616,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       if (!cancelled) {
         setUserPadPresets(
           scope,
-          runtimePresets.filter((preset): preset is {
-            id: string;
-            name: string;
-            library: Exclude<PadPresetOption['library'], 'stock'>;
-            preset: PadPreset;
-          } => Boolean(preset)),
+          runtimePresets.filter((preset): preset is RuntimePadPresetSyncEntry => Boolean(preset)),
         );
       }
     };
@@ -2084,6 +2729,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         sourceId: preset.id,
         sourceName: preset.name,
         sourceLibrary: preset.library,
+        tags: preset.tags,
+        updatedAt: preset.updatedAt,
+        rating: preset.rating,
       });
     }
 
@@ -2113,6 +2761,35 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     if (!rawValue) return rawValue;
     return findLeadPresetOption(rawValue)?.id ?? rawValue;
   }, [findLeadPresetOption]);
+  const pad1PoolCandidates = useMemo(() => pad1PresetOptions.map(padOptionToPoolCandidate), [pad1PresetOptions]);
+  const pad2PoolCandidates = useMemo(() => pad2PresetOptions.map(padOptionToPoolCandidate), [pad2PresetOptions]);
+  const leadPoolCandidates = useMemo(() => leadPresetOptions.map(leadOptionToPoolCandidate), [leadPresetOptions]);
+  const pad1Pool = usePresetPoolCandidates('engine', 'pad1', pad1PoolCandidates, [
+    String(state.padPresetA ?? ''),
+    String(state.padPresetB ?? ''),
+  ]);
+  const pad2Pool = usePresetPoolCandidates('engine', 'pad2', pad2PoolCandidates, [
+    String(state.pad2PresetA ?? ''),
+    String(state.pad2PresetB ?? ''),
+  ]);
+  const leadPool = usePresetPoolCandidates('engine', 'lead4opfm', leadPoolCandidates, [
+    resolveLeadPresetSelectionId(state.lead1PresetA),
+    resolveLeadPresetSelectionId(state.lead1PresetB),
+    resolveLeadPresetSelectionId(state.lead2PresetC),
+    resolveLeadPresetSelectionId(state.lead2PresetD),
+  ]);
+  const pad1PooledPresetOptions = useMemo(
+    () => filterPadOptionsByPool(pad1PresetOptions, pad1Pool.filteredCandidates),
+    [pad1Pool.filteredCandidates, pad1PresetOptions],
+  );
+  const pad2PooledPresetOptions = useMemo(
+    () => filterPadOptionsByPool(pad2PresetOptions, pad2Pool.filteredCandidates),
+    [pad2Pool.filteredCandidates, pad2PresetOptions],
+  );
+  const leadPooledPresetOptions = useMemo(
+    () => filterLeadOptionsByPool(leadPresetOptions, leadPool.filteredCandidates),
+    [leadPool.filteredCandidates, leadPresetOptions],
+  );
   useEffect(() => {
     const selectedPresetLoads = [
       { slotKey: 'lead1PresetA' as const, value: state.lead1PresetA },
@@ -2323,7 +3000,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           className="sc-preset-loader-select"
           title="Select preset"
         >
-          {renderLeadPresetOptions(leadPresetOptions, resolvedPresetId)}
+          {renderLeadPresetOptions(leadPooledPresetOptions, resolvedPresetId)}
         </select>
         {selectedOption && (
           <PresetRatingStars
@@ -2345,9 +3022,138 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             {slot.slotLabel.replace('Slot ', '')}
           </button>
         ))}
+        {slots[0] && (
+          <button
+            className="sc-preset-loader-slot"
+            type="button"
+            style={{ '--slot-color': color } as React.CSSProperties}
+            onClick={() => setLeadPoolPopupSlot(slots[0]!.slotKey)}
+            title="Edit lead preset pool"
+            aria-label="Edit lead preset pool"
+          >
+            {PRESET_POOL_ICON}
+          </button>
+        )}
       </div>
     );
   };
+  const activePadPool = padPoolPopupSlot?.scope === 'pad2' ? pad2Pool : pad1Pool;
+  const activePadPoolCandidates = padPoolPopupSlot?.scope === 'pad2' ? pad2PoolCandidates : pad1PoolCandidates;
+  const handlePadPoolLoad = useCallback((candidate: PresetPoolCandidate) => {
+    if (!padPoolPopupSlot) return;
+    const options = padPoolPopupSlot.scope === 'pad2' ? pad2PresetOptions : pad1PresetOptions;
+    const option = options.find(candidateOption => candidateMatchesOption(candidate, [candidateOption.id, candidateOption.name]));
+    const presetId = option?.id ?? candidate.id;
+    handlePresetEndpointSelectChange(padPoolPopupSlot.slotKey, presetId as SliderState[keyof SliderState]);
+    setPadPoolPopupSlot(null);
+  }, [handlePresetEndpointSelectChange, pad1PresetOptions, pad2PresetOptions, padPoolPopupSlot]);
+
+  const handlePadPoolAudition = useCallback((candidate: PresetPoolCandidate) => {
+    if (!padPoolPopupSlot || !onAuditionPresetPreview) return;
+    const options = padPoolPopupSlot.scope === 'pad2' ? pad2PresetOptions : pad1PresetOptions;
+    const option = options.find(candidateOption => candidateMatchesOption(candidate, [candidateOption.id, candidateOption.name]));
+    const presetId = option?.id ?? candidate.id;
+    const source: ManualSynthSource = padPoolPopupSlot.scope === 'pad2' ? 'pad2' : 'pad1';
+    const previewState = previewStateForPadPoolSlot(state, padPoolPopupSlot.slotKey, presetId);
+    void onAuditionPresetPreview({
+      source,
+      midi: source === 'pad2' ? 62 : 60,
+      velocity: 0.82,
+      durationMs: 1100,
+    }, previewState);
+  }, [onAuditionPresetPreview, pad1PresetOptions, pad2PresetOptions, padPoolPopupSlot, state]);
+
+  const handlePadPoolDelete = useCallback((candidate: PresetPoolCandidate) => {
+    if (!padPoolPopupSlot) return false;
+    const options = padPoolPopupSlot.scope === 'pad2' ? pad2PresetOptions : pad1PresetOptions;
+    const option = options.find(candidateOption => candidateMatchesOption(candidate, [candidateOption.id, candidateOption.name]));
+    const removePreset = padPoolPopupSlot.scope === 'pad2' ? removePad2Preset : removePad1Preset;
+    return removePreset(option?.name ?? candidate.name);
+  }, [pad1PresetOptions, pad2PresetOptions, padPoolPopupSlot, removePad1Preset, removePad2Preset]);
+
+  const handlePadPoolRate = useCallback(async (candidate: PresetPoolCandidate, rating: number) => {
+    if (!padPoolPopupSlot) return;
+    const isPad2 = padPoolPopupSlot.scope === 'pad2';
+    const options = isPad2 ? pad2PresetOptions : pad1PresetOptions;
+    const option = options.find(candidateOption => candidateMatchesOption(candidate, [candidateOption.id, candidateOption.name]));
+    if (!option) return;
+
+    try {
+      await ratePadPreset({
+        scope: isPad2 ? 'pad2' : 'pad1',
+        option,
+        rating,
+        presets: isPad2 ? pad2EnginePresets : pad1EnginePresets,
+        save: isPad2 ? savePad2Preset : savePad1Preset,
+        updateMetadata: isPad2 ? updatePad2PresetMetadata : updatePad1PresetMetadata,
+      });
+    } catch (ratingError) {
+      console.warn('Failed to update pad preset rating:', ratingError);
+    }
+  }, [
+    pad1EnginePresets,
+    pad1PresetOptions,
+    pad2EnginePresets,
+    pad2PresetOptions,
+    padPoolPopupSlot,
+    savePad1Preset,
+    savePad2Preset,
+    updatePad1PresetMetadata,
+    updatePad2PresetMetadata,
+  ]);
+
+  const handleLeadPoolLoad = useCallback((candidate: PresetPoolCandidate) => {
+    if (!leadPoolPopupSlot) return;
+    const option = leadPresetOptions.find(candidateOption => candidateMatchesOption(candidate, [
+      candidateOption.id,
+      candidateOption.name,
+      candidateOption.sourceId,
+      candidateOption.sourceName,
+    ]));
+    const presetId = option?.id ?? candidate.aliases?.[0] ?? candidate.id;
+    handlePresetEndpointSelectChange(leadPoolPopupSlot, presetId as SliderState[keyof SliderState]);
+    setLeadPoolPopupSlot(null);
+  }, [handlePresetEndpointSelectChange, leadPoolPopupSlot, leadPresetOptions]);
+
+  const handleLeadPoolAudition = useCallback((candidate: PresetPoolCandidate) => {
+    if (!leadPoolPopupSlot || !onAuditionPresetPreview) return;
+    const option = leadPresetOptions.find(candidateOption => candidateMatchesOption(candidate, [
+      candidateOption.id,
+      candidateOption.name,
+      candidateOption.sourceId,
+      candidateOption.sourceName,
+    ]));
+    const presetId = option?.id ?? candidate.aliases?.[0] ?? candidate.id;
+    const source = leadManualSourceForSlot(leadPoolPopupSlot);
+    const previewState = previewStateForLeadPoolSlot(state, leadPoolPopupSlot, presetId);
+    void onAuditionPresetPreview({
+      source,
+      midi: source === 'lead2' ? 74 : 67,
+      velocity: 0.84,
+      durationMs: 720,
+    }, previewState);
+  }, [leadPoolPopupSlot, leadPresetOptions, onAuditionPresetPreview, state]);
+
+  const handleLeadPoolDelete = useCallback((candidate: PresetPoolCandidate) => {
+    const option = leadPresetOptions.find(candidateOption => candidateMatchesOption(candidate, [
+      candidateOption.id,
+      candidateOption.name,
+      candidateOption.sourceId,
+      candidateOption.sourceName,
+    ]));
+    return removeLeadFmPreset(option?.sourceName ?? option?.name ?? candidate.name);
+  }, [leadPresetOptions, removeLeadFmPreset]);
+
+  const handleLeadPoolRate = useCallback(async (candidate: PresetPoolCandidate, rating: number) => {
+    const option = leadPresetOptions.find(candidateOption => candidateMatchesOption(candidate, [
+      candidateOption.id,
+      candidateOption.name,
+      candidateOption.sourceId,
+      candidateOption.sourceName,
+    ]));
+    if (!option) return;
+    await handleLeadPresetRate(option, rating);
+  }, [handleLeadPresetRate, leadPresetOptions]);
   const activeLeadEditorSlot = leadEditorSlot
     ? leadEditorSlot.slots.find(slot => slot.slotKey === leadEditorSlot.slotKey) ?? leadEditorSlot.slots[0]
     : undefined;
@@ -5086,6 +5892,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 state={state}
                 onSelectChange={handlePresetEndpointSelectChange}
                 color="#4a9eff"
+                onOpenPool={() => setPadPoolPopupSlot({ scope: 'pad1', slotKey: 'padPresetA' as keyof SliderState })}
+                poolButtonTitle="Edit pad preset pool"
+                poolButtonAriaLabel="Edit pad preset pool"
                 variationControls={buildPadVariationControls('pad1')}
               />
               {/* Preset A / Morph / B — single row */}
@@ -5101,7 +5910,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(74,158,255,0.3)' }}
                   >
-                    {renderPadPresetOptions(pad1PresetOptions)}
+                    {renderPadPresetOptions(pad1PooledPresetOptions)}
                   </select>
                 </div>
                 <div className="sc-morph-slider">
@@ -5117,7 +5926,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(139,92,246,0.3)' }}
                   >
-                    {renderPadPresetOptions(pad1PresetOptions)}
+                    {renderPadPresetOptions(pad1PooledPresetOptions)}
                   </select>
                 </div>
                 <span className="sc-morph-tag" style={{ color: '#8b5cf6' }}>B</span>
@@ -5731,6 +6540,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 state={state}
                 onSelectChange={handlePresetEndpointSelectChange}
                 color="#8b5cf6"
+                onOpenPool={() => setPadPoolPopupSlot({ scope: 'pad2', slotKey: 'pad2PresetA' as keyof SliderState })}
+                poolButtonTitle="Edit pad preset pool"
+                poolButtonAriaLabel="Edit pad preset pool"
                 variationControls={buildPadVariationControls('pad2')}
               />
               {/* Preset A/B morph */}
@@ -5747,7 +6559,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(139,92,246,0.3)' }}
                   >
-                    {renderPadPresetOptions(pad2PresetOptions)}
+                    {renderPadPresetOptions(pad2PooledPresetOptions)}
                   </select>
                 </div>
                 <div className="sc-morph-slider">
@@ -5763,7 +6575,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(236,72,153,0.3)' }}
                   >
-                    {renderPadPresetOptions(pad2PresetOptions)}
+                    {renderPadPresetOptions(pad2PooledPresetOptions)}
                   </select>
                 </div>
                 <span className="sc-morph-tag" style={{ color: '#ec4899' }}>B</span>
@@ -6401,7 +7213,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(245,158,11,0.3)' }}
                   >
-                    {renderLeadPresetOptions(leadPresetOptions, resolveLeadPresetSelectionId(state.lead1PresetA))}
+                    {renderLeadPresetOptions(leadPooledPresetOptions, resolveLeadPresetSelectionId(state.lead1PresetA))}
                   </select>
                 </div>
                 <div className="sc-morph-slider">
@@ -6417,7 +7229,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(139,92,246,0.3)' }}
                   >
-                    {renderLeadPresetOptions(leadPresetOptions, resolveLeadPresetSelectionId(state.lead1PresetB))}
+                    {renderLeadPresetOptions(leadPooledPresetOptions, resolveLeadPresetSelectionId(state.lead1PresetB))}
                   </select>
                 </div>
                 <span className="sc-morph-tag" style={{ color: '#8b5cf6' }}>B</span>
@@ -6575,7 +7387,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       className="sc-preset-select"
                       style={{ borderColor: 'rgba(6,182,212,0.3)' }}
                     >
-                      {renderLeadPresetOptions(leadPresetOptions, resolveLeadPresetSelectionId(state.lead2PresetC))}
+                      {renderLeadPresetOptions(leadPooledPresetOptions, resolveLeadPresetSelectionId(state.lead2PresetC))}
                     </select>
                   </div>
                   <div className="sc-morph-slider">
@@ -6591,7 +7403,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       className="sc-preset-select"
                       style={{ borderColor: 'rgba(167,139,250,0.3)' }}
                     >
-                      {renderLeadPresetOptions(leadPresetOptions, resolveLeadPresetSelectionId(state.lead2PresetD))}
+                      {renderLeadPresetOptions(leadPooledPresetOptions, resolveLeadPresetSelectionId(state.lead2PresetD))}
                     </select>
                   </div>
                   <span className="sc-morph-tag" style={{ color: '#a78bfa' }}>D</span>
@@ -6991,10 +7803,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           {/* ══════ SIMPLE MODE ══════ */}
           {seq.viewMode === 'simple' && (
             <div className="synth-simple-seq">
-              {/* ── Pad Synth Chord Sequencer ── */}
+              {/* ── Synth Chord Sequencer ── */}
               <div className="synth-simple-section">
                 <div className="synth-simple-header">
-                  <span>Pad — Chord Sequencer</span>
+                  <span>Chord Sequencer</span>
                   <button
                     className={`synth-simple-enable${state.synthChordSequencerEnabled === true ? ' on' : ''}`}
                     onClick={() => onSelectChange('synthChordSequencerEnabled' as keyof SliderState, !(state.synthChordSequencerEnabled === true))}
@@ -7008,11 +7820,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       <select
                         className="synth-source-select"
                         aria-label="Chord sequencer source"
-                        value={state.synthChordSequencerSource ?? 'both'}
+                        value={state.synthChordSequencerSource ?? 'piano'}
                         onChange={(e) => onSelectChange('synthChordSequencerSource' as keyof SliderState, e.target.value as SliderState[keyof SliderState])}
                         style={{
-                          borderColor: `${CHORD_SEQUENCER_SOURCES.find((source) => source.value === (state.synthChordSequencerSource ?? 'both'))?.color ?? '#888'}60`,
-                          color: CHORD_SEQUENCER_SOURCES.find((source) => source.value === (state.synthChordSequencerSource ?? 'both'))?.color ?? '#888',
+                          borderColor: `${CHORD_SEQUENCER_SOURCES.find((source) => source.value === (state.synthChordSequencerSource ?? 'piano'))?.color ?? '#888'}60`,
+                          color: CHORD_SEQUENCER_SOURCES.find((source) => source.value === (state.synthChordSequencerSource ?? 'piano'))?.color ?? '#888',
                         }}
                       >
                         {CHORD_SEQUENCER_SOURCES.map((source) => (
@@ -7032,6 +7844,167 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         </select>
                       </label>
                     </div>
+                    <div className="synth-chord-seq-row">
+                      <label className="synth-source-label">
+                        Mode
+                        <select
+                          className="synth-source-select"
+                          value={chordSequencerConfig.playbackMode}
+                          onChange={(event) => updateChordSequencerConfig((current) => ({
+                            ...current,
+                            playbackMode: event.target.value as SynthChordSequencerPlaybackMode,
+                          }))}
+                        >
+                          {CHORD_PLAYBACK_MODES.map((mode) => (
+                            <option key={mode.value} value={mode.value}>{mode.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="synth-source-label">
+                        Steps
+                        <select
+                          className="synth-source-select"
+                          value={chordSequencerConfig.stepCount}
+                          onChange={(event) => updateChordSequencerConfig((current) => ({
+                            ...current,
+                            stepCount: Number(event.target.value),
+                          }))}
+                        >
+                          {[1, 2, 3, 4, 5, 6, 7, 8].map((count) => (
+                            <option key={count} value={count}>{count}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    {renderChordTriggerLane()}
+                    {chordSequencerConfig.playbackMode === 'arp' && (
+                      <div className="synth-chord-mode-panel">
+                        <label className="synth-source-label">
+                          Order
+                          <select
+                            className="synth-source-select"
+                            value={chordSequencerConfig.arp.order}
+                            onChange={(event) => updateChordSequencerConfig((current) => ({
+                              ...current,
+                              arp: { ...current.arp, order: event.target.value as SynthChordSequencerArpOrder },
+                            }))}
+                          >
+                            {CHORD_ARP_ORDERS.map((order) => (
+                              <option key={order.value} value={order.value}>{order.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="synth-source-label">
+                          Hold
+                          <select
+                            className="synth-source-select"
+                            value={chordSequencerConfig.arp.hold}
+                            onChange={(event) => updateChordSequencerConfig((current) => ({
+                              ...current,
+                              arp: { ...current.arp, hold: event.target.value as SynthChordSequencerArpHoldMode },
+                            }))}
+                          >
+                            {CHORD_ARP_HOLDS.map((hold) => (
+                              <option key={hold.value} value={hold.value}>{hold.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="synth-source-label">
+                          Speed
+                          <select
+                            className="synth-source-select"
+                            value={chordSequencerConfig.arp.speed}
+                            onChange={(event) => updateChordSequencerConfig((current) => ({
+                              ...current,
+                              arp: { ...current.arp, speed: event.target.value as SynthChordSequencerArpSpeed },
+                            }))}
+                          >
+                            {SYNTH_CHORD_ARP_SPEEDS.map((speed) => (
+                              <option key={speed} value={speed}>{speed}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="synth-source-label">
+                          Gate
+                          <input
+                            className="synth-chord-mini-range"
+                            type="range"
+                            min={0.05}
+                            max={1}
+                            step={0.01}
+                            value={chordSequencerConfig.arp.gate}
+                            onChange={(event) => updateChordSequencerConfig((current) => ({
+                              ...current,
+                              arp: { ...current.arp, gate: Number(event.target.value) },
+                            }))}
+                          />
+                        </label>
+                      </div>
+                    )}
+                    {chordSequencerConfig.playbackMode === 'strum' && (
+                      <div className="synth-chord-mode-panel">
+                        <label className="synth-source-label">
+                          Dir
+                          <select
+                            className="synth-source-select"
+                            value={chordSequencerConfig.strum.direction}
+                            onChange={(event) => updateChordSequencerConfig((current) => ({
+                              ...current,
+                              strum: { ...current.strum, direction: event.target.value as SynthChordSequencerStrumDirection },
+                            }))}
+                          >
+                            {CHORD_STRUM_DIRECTIONS.map((direction) => (
+                              <option key={direction.value} value={direction.value}>{direction.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="synth-source-label">
+                          Spread
+                          <input
+                            className="synth-chord-mini-range"
+                            type="range"
+                            min={0}
+                            max={400}
+                            step={1}
+                            value={chordSequencerConfig.strum.spreadMs}
+                            onChange={(event) => updateChordSequencerConfig((current) => ({
+                              ...current,
+                              strum: { ...current.strum, spreadMs: Number(event.target.value) },
+                            }))}
+                          />
+                        </label>
+                        <label className="synth-source-label">
+                          Curve
+                          <input
+                            className="synth-chord-mini-range"
+                            type="range"
+                            min={-1}
+                            max={1}
+                            step={0.01}
+                            value={chordSequencerConfig.strum.curve}
+                            onChange={(event) => updateChordSequencerConfig((current) => ({
+                              ...current,
+                              strum: { ...current.strum, curve: Number(event.target.value) },
+                            }))}
+                          />
+                        </label>
+                        <label className="synth-source-label">
+                          Gate
+                          <input
+                            className="synth-chord-mini-range"
+                            type="range"
+                            min={0.05}
+                            max={1}
+                            step={0.01}
+                            value={chordSequencerConfig.strum.gate}
+                            onChange={(event) => updateChordSequencerConfig((current) => ({
+                              ...current,
+                              strum: { ...current.strum, gate: Number(event.target.value) },
+                            }))}
+                          />
+                        </label>
+                      </div>
+                    )}
                     <Slider label="Chords / Phrase" value={state.chordRate} paramKey="chordRate" onChange={onParamChange} {...sliderProps('chordRate')} />
                     <Slider label="Voicing Spread" value={state.voicingSpread} paramKey="voicingSpread" onChange={onParamChange} {...sliderProps('voicingSpread')} />
                     <Slider label="Wave Spread" value={state.waveSpread} paramKey="waveSpread" onChange={onParamChange} {...sliderProps('waveSpread')} />
@@ -7109,9 +8082,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 {seq.sequencerModels.map((seqModel, idx) => (
                   <div
                     key={seqModel.id}
-                    className={`seq-tab${idx === seq.activeTab ? ' active' : ''}${seqModel.muted ? ' muted' : ''}${seq.evolveFlashing[idx] ? ' seq-evolve-flash' : ''}`}
+                    className={`seq-tab${!chordSequencerSelected && idx === seq.activeTab ? ' active' : ''}${seqModel.muted ? ' muted' : ''}${seq.evolveFlashing[idx] ? ' seq-evolve-flash' : ''}`}
                     style={{ '--sc': seqModel.color } as React.CSSProperties}
-                    onClick={() => seq.setActiveTab(idx)}
+                    onClick={() => {
+                      setChordSequencerSelected(false);
+                      seq.setActiveTab(idx);
+                    }}
                     role="button"
                     tabIndex={0}
                   >
@@ -7128,9 +8104,30 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     </div>
                   </div>
                 ))}
+                <div
+                  className={`seq-tab seq-tab--chord${chordSequencerSelected ? ' active' : ''}${!chordSequencerEnabled ? ' muted' : ''}`}
+                  style={{ '--sc': CHORD_SEQUENCER_LANE_COLOR } as React.CSSProperties}
+                  onClick={() => setChordSequencerSelected(true)}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <span>{CHORD_SEQUENCER_LANE_NAME}</span>
+                  <div className="seq-tab-ms">
+                    <button
+                      className={`mute-btn${!chordSequencerEnabled ? ' on' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectChange('synthChordSequencerEnabled' as keyof SliderState, !chordSequencerEnabled);
+                      }}
+                    >
+                      M
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Seq body */}
+              {!chordSequencerSelected && (
               <div className={`seq-body${seq.evolveFlashing[seq.activeTab] ? ' seq-evolve-flash' : ''}`} style={{ '--sc': activeSeq.color } as React.CSSProperties}>
 
                 {/* ── Source selector + per-seq controls ── */}
@@ -7447,6 +8444,30 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       {activeSeq.muted ? 'Off' : 'On'}
                     </button>
                     <div className="seq-lane-controls">
+                      {shouldShowTriggerSourceBadge(activeSeq.trigger.sourceOrigin, activeSeq.trigger.sourceDirty) && (
+                        <span className={`seq-source-badge seq-source-badge--${activeSeq.trigger.sourceOrigin ?? 'euclidean'}`}>
+                          {triggerSourceDisplayLabel(activeSeq.trigger.sourceLabel, activeSeq.trigger.sourceOrigin)}
+                          {activeSeq.trigger.sourceDirty ? '*' : ''}
+                        </span>
+                      )}
+                      <div className="seq-source-mode-toggle" aria-label="Trigger pattern source">
+                        <button
+                          type="button"
+                          className={(activeSeq.trigger.sourceOrigin ?? 'euclidean') === 'euclidean' ? 'active' : ''}
+                          aria-pressed={(activeSeq.trigger.sourceOrigin ?? 'euclidean') === 'euclidean'}
+                          onClick={() => seq.setTriggerClipEuclideanEnabled(seq.activeTab, true)}
+                        >
+                          Euclid
+                        </button>
+                        <button
+                          type="button"
+                          className={(activeSeq.trigger.sourceOrigin ?? 'euclidean') !== 'euclidean' ? 'active' : ''}
+                          aria-pressed={(activeSeq.trigger.sourceOrigin ?? 'euclidean') !== 'euclidean'}
+                          onClick={() => seq.setTriggerClipEuclideanEnabled(seq.activeTab, false)}
+                        >
+                          Step
+                        </button>
+                      </div>
                       <DragNumber
                         value={activeSeq.trigger.steps}
                         min={2}
@@ -7455,13 +8476,22 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         shapeByDrag
                         onChange={(v) => seq.setParam(seq.activeTab, 'Steps', v)}
                       />
-                      <DragNumber
-                        value={activeSeq.trigger.hits}
-                        min={0}
-                        max={activeSeq.trigger.steps}
-                        label="Hits"
-                        onChange={(v) => seq.setParam(seq.activeTab, 'Hits', v)}
-                      />
+                      {activeSeq.trigger.sourceOrigin && activeSeq.trigger.sourceOrigin !== 'euclidean' ? (
+                        <span
+                          className="seq-ov-readonly-hits"
+                          title="Step patterns preserve the written trigger cells. Switch to Euclid to reshape by hit count."
+                        >
+                          Hits {activeSeq.trigger.hits}
+                        </span>
+                      ) : (
+                        <DragNumber
+                          value={activeSeq.trigger.hits}
+                          min={0}
+                          max={activeSeq.trigger.steps}
+                          label="Hits"
+                          onChange={(v) => seq.setParam(seq.activeTab, 'Hits', v)}
+                        />
+                      )}
                       <div className="seq-rotation-control">
                         <button onClick={() => seq.rotateSequence(seq.activeTab, -1)}>{'\u2190'}</button>
                         <span className="seq-rotation-val">{activeSeq.trigger.rotation}</span>
@@ -7805,6 +8835,52 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   laneIndex={seq.activeTab}
                 />
               </div>
+              )}
+              {chordSequencerSelected && (
+                <div
+                  className="seq-body seq-chord-body"
+                  style={{ '--sc': CHORD_SEQUENCER_LANE_COLOR } as React.CSSProperties}
+                >
+                  <div className="seq-chord-header">
+                    <button
+                      type="button"
+                      className={`seq-lane-enable-btn trigger-toggle${chordSequencerEnabled ? ' on' : ''}`}
+                      style={chordSequencerEnabled ? { background: CHORD_SEQUENCER_LANE_COLOR, color: '#001018' } as React.CSSProperties : undefined}
+                      onClick={() => onSelectChange('synthChordSequencerEnabled' as keyof SliderState, !chordSequencerEnabled)}
+                    >
+                      {chordSequencerEnabled ? 'On' : 'Off'}
+                    </button>
+                    <div className="seq-chord-title">
+                      <span>{CHORD_SEQUENCER_LANE_NAME}</span>
+                      <strong>Chord Sequencer</strong>
+                    </div>
+                    <div className="seq-chord-meta">
+                      <span>{chordSequencerConfig.playbackMode}</span>
+                      <span>{chordSequencerActiveStepCount}/{chordSequencerConfig.stepCount}</span>
+                      <span>{chordSequencerSourceInfo.label}</span>
+                    </div>
+                  </div>
+                  {renderChordSequencerControls('detail')}
+                  {renderChordTriggerLane()}
+                  <div className="seq-chord-performance-row">
+                    <Slider label="Chords / Phrase" value={state.chordRate} paramKey="chordRate" onChange={onParamChange} {...sliderProps('chordRate')} />
+                    <Slider label="Voicing Spread" value={state.voicingSpread} paramKey="voicingSpread" onChange={onParamChange} {...sliderProps('voicingSpread')} />
+                    <Slider label="Wave Spread" value={state.waveSpread} paramKey="waveSpread" onChange={onParamChange} {...sliderProps('waveSpread')} />
+                    <Slider label="Octave Offset" value={state.synthOctave} paramKey="synthOctave" onChange={onParamChange} {...sliderProps('synthOctave')} />
+                  </div>
+                  <div className="seq-spark-container seq-chord-sublane-grid">
+                    {SYNTH_CHORD_SUB_LANE_NAMES.map(renderChordSubLaneEditor)}
+                  </div>
+                  <div className="seq-chord-preview">
+                    <SimplePhraseVisualizer
+                      kind="padChord"
+                      state={liveSimpleSequencerState}
+                      isRunning={isRunning}
+                      transportDebug={transportDebug}
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Mini overview at bottom */}
               <SeqMiniOverview
@@ -7812,8 +8888,33 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 playheads={seq.playheads}
                 colors={LANE_CONFIGS.map(c => c.color)}
                 sequencers={seq.sequencerModels}
-                onRowClick={(idx) => seq.setActiveTab(idx)}
+                onRowClick={(idx) => {
+                  setChordSequencerSelected(false);
+                  seq.setActiveTab(idx);
+                }}
               />
+              <div className="seq-mini-overview seq-mini-overview--chord">
+                <div
+                  className={`seq-mini-row seq-mini-row--chord${chordSequencerSelected ? ' active' : ''}${!chordSequencerEnabled ? ' muted' : ''}`}
+                  style={{ '--sc': CHORD_SEQUENCER_LANE_COLOR } as React.CSSProperties}
+                  onClick={() => setChordSequencerSelected(true)}
+                >
+                  <div className="seq-mini-label">
+                    <span>{CHORD_SEQUENCER_LANE_NAME}</span>
+                    <span className="mini-ms">{chordSequencerConfig.playbackMode}</span>
+                  </div>
+                  <div className="seq-mini-dots">
+                    {chordSequencerConfig.steps.map((step, index) => (
+                      <span
+                        key={step.id}
+                        className={index < chordSequencerConfig.stepCount && step.enabled ? 'dot-hit' : 'dot-rest'}
+                      >
+                        {index < chordSequencerConfig.stepCount && step.enabled ? '●' : '·'}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -7826,7 +8927,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 selectedLaneIndex={seq.activeTab}
                 activeEntryIndex={synthChainPosition?.activeEntryIndex ?? null}
                 onChange={setSynthSequencerChain}
-                onSelectLane={(index) => seq.setActiveTab(index)}
+                onSelectLane={(index) => {
+                  setChordSequencerSelected(false);
+                  seq.setActiveTab(index);
+                }}
               />
               <div className="seq-overview">
                 {seq.sequencerModels.map((seqModel, row) => {
@@ -7839,7 +8943,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       className={`seq-ov-row${seqModel.muted ? ' muted' : ''}`}
                       style={{ '--sc': seqModel.color } as React.CSSProperties}
                     >
-                      <div className="seq-ov-header" onClick={() => { seq.setActiveTab(row); seq.setViewMode('detail'); }}>
+                      <div className="seq-ov-header" onClick={() => {
+                        setChordSequencerSelected(false);
+                        seq.setActiveTab(row);
+                        seq.setViewMode('detail');
+                      }}>
                         <span className="seq-ov-name">{seqModel.name}</span>
                         {chainBadge && (
                           <span className={`seq-chain-badge${synthChainPosition?.activeLaneIndex === row ? ' active' : ''}`}>
@@ -7994,6 +9102,82 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     </div>
                   );
                 })}
+                <div
+                  className={`seq-ov-row seq-ov-row--chord${!chordSequencerEnabled ? ' muted' : ''}`}
+                  style={{ '--sc': CHORD_SEQUENCER_LANE_COLOR } as React.CSSProperties}
+                >
+                  <div className="seq-ov-header" onClick={() => {
+                    setChordSequencerSelected(true);
+                    seq.setViewMode('detail');
+                  }}>
+                    <span className="seq-ov-name">{CHORD_SEQUENCER_LANE_NAME}</span>
+                    <span className="seq-chain-badge active">Chord</span>
+                    <div className="seq-ov-controls" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className={`ov-mute-btn${!chordSequencerEnabled ? ' on' : ''}`}
+                        onClick={() => onSelectChange('synthChordSequencerEnabled' as keyof SliderState, !chordSequencerEnabled)}
+                      >
+                        M
+                      </button>
+                      <select
+                        className="seq-ov-select synth-ov-source"
+                        value={chordSequencerSourceValue}
+                        onChange={(event) => onSelectChange('synthChordSequencerSource' as keyof SliderState, event.target.value as SliderState[keyof SliderState])}
+                        style={{ color: chordSequencerSourceInfo.color }}
+                      >
+                        {CHORD_SEQUENCER_SOURCES.map((source) => (
+                          <option key={source.value} value={source.value}>{source.label}</option>
+                        ))}
+                      </select>
+                      <select
+                        className="seq-ov-select"
+                        value={chordSequencerConfig.playbackMode}
+                        onChange={(event) => updateChordSequencerConfig((current) => ({
+                          ...current,
+                          playbackMode: event.target.value as SynthChordSequencerPlaybackMode,
+                        }))}
+                      >
+                        {CHORD_PLAYBACK_MODES.map((mode) => (
+                          <option key={mode.value} value={mode.value}>{mode.label}</option>
+                        ))}
+                      </select>
+                      <select
+                        className="seq-ov-select"
+                        value={chordSequencerConfig.stepCount}
+                        onChange={(event) => updateChordSequencerConfig((current) => ({
+                          ...current,
+                          stepCount: Number(event.target.value),
+                        }))}
+                      >
+                        {CHORD_SEQUENCER_STEP_OPTIONS.map((count) => (
+                          <option key={count} value={count}>{count}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="seq-ov-grid-wrap seq-ov-grid-wrap--chord">
+                    <div className="seq-step-grid seq-chord-overview-grid" style={{ gridTemplateColumns: 'repeat(8, 1fr)' }}>
+                      {chordSequencerConfig.steps.map((step, index) => {
+                        const inRange = index < chordSequencerConfig.stepCount;
+                        return (
+                          <div key={step.id} className="seq-step">
+                            <span className="seq-step-num">{index + 1}</span>
+                            <button
+                              type="button"
+                              className={`seq-step-cell seq-chord-overview-cell${inRange && step.enabled ? ' active' : ''}${!inRange ? ' inactive' : ''}`}
+                              onClick={() => inRange && updateChordSequencerStep(index, { enabled: !step.enabled })}
+                            >
+                              <span className="seq-chord-overview-label">
+                                {Math.round((step.probability ?? 1) * 100)}%
+                              </span>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
               </div>
               {dragPopup && (
                 <div className="seq-drag-popup" style={{ left: dragPopup.x, top: dragPopup.y }}>
@@ -8006,10 +9190,36 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 colors={LANE_CONFIGS.map(c => c.color)}
                 sequencers={seq.sequencerModels}
                 onRowClick={(idx) => {
+                  setChordSequencerSelected(false);
                   seq.setActiveTab(idx);
                   seq.setViewMode('detail');
                 }}
               />
+              <div className="seq-mini-overview seq-mini-overview--chord">
+                <div
+                  className={`seq-mini-row seq-mini-row--chord${chordSequencerSelected ? ' active' : ''}${!chordSequencerEnabled ? ' muted' : ''}`}
+                  style={{ '--sc': CHORD_SEQUENCER_LANE_COLOR } as React.CSSProperties}
+                  onClick={() => {
+                    setChordSequencerSelected(true);
+                    seq.setViewMode('detail');
+                  }}
+                >
+                  <div className="seq-mini-label">
+                    <span>{CHORD_SEQUENCER_LANE_NAME}</span>
+                    <span className="mini-ms">{chordSequencerConfig.playbackMode}</span>
+                  </div>
+                  <div className="seq-mini-dots">
+                    {chordSequencerConfig.steps.map((step, index) => (
+                      <span
+                        key={step.id}
+                        className={index < chordSequencerConfig.stepCount && step.enabled ? 'dot-hit' : 'dot-rest'}
+                      >
+                        {index < chordSequencerConfig.stepCount && step.enabled ? '●' : '·'}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </>
           )}
         </div>
@@ -8039,6 +9249,34 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           onApply={handleLeadEditorApply}
         />
       )}
+      <PresetPoolPopup
+        open={Boolean(padPoolPopupSlot)}
+        title={`Preset Pool: ${getPresetPoolLabel(activePadPool.poolKey ?? 'pad')}`}
+        candidates={activePadPoolCandidates}
+        poolIds={activePadPool.poolIds}
+        accentColor={padPoolPopupSlot?.scope === 'pad2' ? '#8b5cf6' : '#4a9eff'}
+        onChange={activePadPool.setPoolIds}
+        onReset={activePadPool.resetPoolIds}
+        onClose={() => setPadPoolPopupSlot(null)}
+        onAudition={handlePadPoolAudition}
+        onLoad={handlePadPoolLoad}
+        onDelete={handlePadPoolDelete}
+        onRate={handlePadPoolRate}
+      />
+      <PresetPoolPopup
+        open={Boolean(leadPoolPopupSlot)}
+        title={`Preset Pool: ${getPresetPoolLabel(leadPool.poolKey ?? 'lead4opfm')}`}
+        candidates={leadPoolCandidates}
+        poolIds={leadPool.poolIds}
+        accentColor="#f59e0b"
+        onChange={leadPool.setPoolIds}
+        onReset={leadPool.resetPoolIds}
+        onClose={() => setLeadPoolPopupSlot(null)}
+        onAudition={handleLeadPoolAudition}
+        onLoad={handleLeadPoolLoad}
+        onDelete={handleLeadPoolDelete}
+        onRate={handleLeadPoolRate}
+      />
     </div>
   );
 };

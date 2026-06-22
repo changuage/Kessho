@@ -35,6 +35,13 @@ export interface PresetIdentityMetadata {
 
 export interface PresetSaveIdentity extends PresetIdentityMetadata {}
 
+export type PresetRenameIdentity = Pick<
+  PresetIdentityMetadata,
+  'creator' | 'description' | 'visibility' | 'familyName' | 'variantName' | 'variantRank' | 'rating'
+> & {
+  tags?: string[];
+};
+
 export interface JourneyPresetPreviewNode {
   position: DiamondPosition;
   filled: boolean;
@@ -48,6 +55,11 @@ export interface JourneyPresetPreviewConnection {
 export interface JourneyPresetPreview {
   nodes: JourneyPresetPreviewNode[];
   connections: JourneyPresetPreviewConnection[];
+}
+
+export interface PresetPoolMetadata {
+  version: 1;
+  pools: Record<string, string[]>;
 }
 
 export interface PresetVersionMetadata {
@@ -70,6 +82,7 @@ export interface PresetVersionMetadata {
   synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
   journeyPreview?: JourneyPresetPreview;
+  presetPool?: PresetPoolMetadata;
   refs?: Record<string, PresetRef>;
 }
 

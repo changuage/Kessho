@@ -39,6 +39,7 @@ import type { TriggerClip } from './triggerClip';
 import {
   countTriggerHits,
   deserializeTriggerClip,
+  flattenTriggerClipToManual,
   resolveTriggerClip,
   resizeTriggerClip,
   rotateTriggerClip,
@@ -199,12 +200,18 @@ export interface UseEuclideanSequencerResult {
   cycleStepRatchet: (laneIdx: number, step: number) => void;
   cycleTrigCondition: (laneIdx: number, step: number) => void;
   resetStepProbability: (laneIdx: number, step: number) => void;
+  setTriggerClipEuclideanEnabled: (laneIdx: number, enabled: boolean) => void;
 
   // ── Per-Seq Param Helpers ──
   /** Get a per-lane param value: getParam(0, 'Steps') → state[`${prefix}Euclid1Steps`] */
   getParam: (laneIdx: number, suffix: string) => SliderState[keyof SliderState];
   /** Set a per-lane numeric param */
   setParam: (laneIdx: number, suffix: string, value: number) => void;
+  /** Set trigger shape params from trusted print/capture paths without source-mode guards. */
+  setTriggerShapeParams: (
+    laneIdx: number,
+    params: { preset?: string; steps: number; hits: number; rotation: number },
+  ) => void;
   /** Set a per-lane non-numeric param */
   setParamSelect: (laneIdx: number, suffix: string, value: SliderState[keyof SliderState]) => void;
   /** Get a global param: getGlobalParam('Division') → state[`${prefix}EuclidDivision`] */
@@ -957,9 +964,65 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     [state, prefix]
   );
 
+  const setTriggerClipEuclideanEnabled = useCallback((laneIdx: number, enabled: boolean) => {
+    if (laneIdx < 0 || laneIdx >= laneCount) return;
+    const currentClip = triggerClipForLane(stateRef.current, prefix, laneIdx, stepOverrides);
+    const nextClipForParams = enabled
+      ? createEuclideanTriggerClip({
+          preset: 'custom',
+          steps: currentClip.steps,
+          hits: countTriggerHits(currentClip),
+          rotation: 0,
+        })
+      : flattenTriggerClipToManual(currentClip);
+    const laneNum = laneIdx + 1;
+
+    setStepOverrides((prev) => {
+      const sourceClip = triggerClipForLane(stateRef.current, prefix, laneIdx, prev);
+      const nextClip = enabled
+        ? createEuclideanTriggerClip({
+            preset: 'custom',
+            steps: sourceClip.steps,
+            hits: countTriggerHits(sourceClip),
+            rotation: 0,
+          })
+        : flattenTriggerClipToManual(sourceClip);
+      const triggerClips = [
+        ...(prev.triggerClips ?? Array.from({ length: laneCount }, () => null)),
+      ];
+      while (triggerClips.length <= laneIdx) triggerClips.push(null);
+      triggerClips[laneIdx] = nextClip;
+      return {
+        ...prev,
+        triggerClips,
+        triggerToggles: prev.triggerToggles.map((map, index) => (
+          index === laneIdx ? new Map<number, boolean>() : new Map(map)
+        )),
+      };
+    });
+
+    onSelectChange(makeKey(prefix, laneNum, 'Preset'), 'custom' as never);
+    onParamChange(makeKey(prefix, laneNum, 'Steps'), nextClipForParams.steps);
+    onParamChange(makeKey(prefix, laneNum, 'Hits'), countTriggerHits(nextClipForParams));
+    onParamChange(makeKey(prefix, laneNum, 'Rotation'), 0);
+  }, [laneCount, onParamChange, onSelectChange, prefix, stepOverrides]);
+
   const setParam = useCallback(
     (laneIdx: number, suffix: string, value: number) => {
-      if (suffix === 'Steps' || suffix === 'Hits' || suffix === 'Rotation') {
+      const isTriggerShapeParam = suffix === 'Steps' || suffix === 'Hits' || suffix === 'Rotation';
+      const currentClipForParam = isTriggerShapeParam
+        ? triggerClipForLane(stateRef.current, prefix, laneIdx, stepOverrides)
+        : null;
+      const currentClipIsEuclidean = currentClipForParam?.generator?.kind === 'euclidean';
+      if (
+        currentClipForParam
+        && !currentClipIsEuclidean
+        && (suffix === 'Hits' || suffix === 'Rotation')
+      ) {
+        return;
+      }
+
+      if (isTriggerShapeParam) {
         setStepOverrides((prev) => {
           const clip = cloneTriggerClip(prev.triggerClips?.[laneIdx] ?? null);
           if (!clip) return prev;
@@ -1003,16 +1066,38 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
         });
       }
       onParamChange(makeKey(prefix, laneIdx + 1, suffix), value);
+      if (
+        currentClipForParam
+        && !currentClipIsEuclidean
+        && suffix === 'Steps'
+      ) {
+        const resized = resizeTriggerClip(currentClipForParam, value);
+        onParamChange(makeKey(prefix, laneIdx + 1, 'Hits'), countTriggerHits(resized));
+        onParamChange(makeKey(prefix, laneIdx + 1, 'Rotation'), 0);
+      }
       // Auto-switch to 'custom' when Steps/Hits/Rotation are manually changed
-      if (suffix === 'Steps' || suffix === 'Hits' || suffix === 'Rotation') {
+      if (isTriggerShapeParam) {
         const currentPreset = state[makeKey(prefix, laneIdx + 1, 'Preset')];
         if (currentPreset !== 'custom') {
           onSelectChange(makeKey(prefix, laneIdx + 1, 'Preset'), 'custom' as any);
         }
       }
     },
-    [laneCount, onParamChange, onSelectChange, state, prefix]
+    [laneCount, onParamChange, onSelectChange, state, prefix, stepOverrides]
   );
+
+  const setTriggerShapeParams = useCallback((
+    laneIdx: number,
+    params: { preset?: string; steps: number; hits: number; rotation: number },
+  ) => {
+    const laneNum = laneIdx + 1;
+    if (params.preset !== undefined) {
+      onSelectChange(makeKey(prefix, laneNum, 'Preset'), params.preset as never);
+    }
+    onParamChange(makeKey(prefix, laneNum, 'Steps'), params.steps);
+    onParamChange(makeKey(prefix, laneNum, 'Hits'), params.hits);
+    onParamChange(makeKey(prefix, laneNum, 'Rotation'), params.rotation);
+  }, [onParamChange, onSelectChange, prefix]);
 
   const setParamSelect = useCallback(
     (laneIdx: number, suffix: string, value: SliderState[keyof SliderState]) =>
@@ -1711,8 +1796,10 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     cycleStepRatchet,
     cycleTrigCondition,
     resetStepProbability,
+    setTriggerClipEuclideanEnabled,
     getParam,
     setParam,
+    setTriggerShapeParams,
     setParamSelect,
     getGlobalParam,
     setGlobalParam,

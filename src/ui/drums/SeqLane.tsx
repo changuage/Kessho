@@ -13,6 +13,7 @@ import {
 import DragNumber from './DragNumber';
 import { SliderPrimitive } from '../sliderSystem';
 import { SEQUENCER_SUB_LANE_COLORS } from '../../designSystem/colors';
+import { DRUM_PITCH_OFFSET_LIMIT } from '../sequencer/drumPitchSequencer';
 import {
   EUCLIDEAN_SUB_LANE_STEP_MAX,
   sequencerGridCellCount,
@@ -20,7 +21,7 @@ import {
 } from '../sequencer/sequencerLimits';
 import { clampNudge, nudgeLabel } from '../sequencer/nudgeTiming';
 
-type LaneKind = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge' | 'slice' | 'reverse';
+type LaneKind = 'trigger' | 'chord' | 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge' | 'slice' | 'reverse';
 
 const DIRECTION_LABELS: Record<LaneDirection, string> = {
   forward: '→ Forward',
@@ -34,6 +35,7 @@ const SEQ_SUBSEQ_DRAG_DISTANCE_FACTOR = 1.8;
 
 const FALLBACK_LANE_COLORS: Record<LaneKind, string> = {
   trigger: SEQUENCER_SUB_LANE_COLORS.pitch,
+  chord: SEQUENCER_SUB_LANE_COLORS.pitch,
   pitch: SEQUENCER_SUB_LANE_COLORS.pitch,
   expression: SEQUENCER_SUB_LANE_COLORS.expression,
   morph: SEQUENCER_SUB_LANE_COLORS.morph,
@@ -175,6 +177,7 @@ interface SeqLaneProps {
   pitchNoteMax?: number;
   onChangePitchNoteMin?: (v: number) => void;
   onChangePitchNoteMax?: (v: number) => void;
+  maxSubLaneSteps?: number;
 }
 
 const SeqLane: React.FC<SeqLaneProps> = ({
@@ -217,6 +220,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   onChangePitchNoteMin,
   onChangePitchNoteMax,
   hidePitchNoteRange = false,
+  maxSubLaneSteps = EUCLIDEAN_SUB_LANE_STEP_MAX,
 }) => {
   const laneAccent = color || FALLBACK_LANE_COLORS[lane];
   const cursorMarkerStyle = getCursorMarkerStyle(laneAccent);
@@ -226,6 +230,8 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   const showPitchRootControl = sequencer.pitch.scale !== 'Harmony';
   const laneSteps = lane === 'trigger'
     ? sequencer.trigger.steps
+    : lane === 'chord'
+      ? sequencer.slice.steps
     : lane === 'pitch'
       ? sequencer.pitch.steps
       : lane === 'expression'
@@ -242,6 +248,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
 
   const getValue = (step: number): number => {
     if (lane === 'pitch') return sequencer.pitch.offsets[step % sequencer.pitch.offsets.length] ?? 0;
+    if (lane === 'chord') return sequencer.slice.values[step % sequencer.slice.values.length] ?? 1;
     if (lane === 'expression') return sequencer.expression.velocities[step % sequencer.expression.velocities.length] ?? 0;
     if (lane === 'morph') return sequencer.morph.values[step % sequencer.morph.values.length] ?? 0.5;
     if (lane === 'distance') return sequencer.distance.values[step % sequencer.distance.values.length] ?? 0;
@@ -256,6 +263,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
 
   const laneClassMap: Record<LaneKind, string> = {
     trigger: 'seq-lane-trigger',
+    chord: 'seq-lane-chord',
     pitch: 'seq-lane-pitch',
     expression: 'seq-lane-expr',
     morph: 'seq-lane-morph',
@@ -267,6 +275,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
 
   const laneTitle: Record<LaneKind, string> = {
     trigger: '● TRIGGER (Euclidean)',
+    chord: '● CHORD',
     pitch: '● PITCH',
     expression: '● EXPRESSION',
     morph: '● MORPH',
@@ -276,7 +285,15 @@ const SeqLane: React.FC<SeqLaneProps> = ({
     reverse: '● REVERSE',
   };
 
-  const supportsRangeMode = lane === 'expression' || lane === 'morph' || lane === 'distance';
+  const hasPitchControls = lane === 'pitch' && Boolean(
+    onChangePitchMode ||
+    onChangePitchBindingMode ||
+    onChangePitchRoot ||
+    onChangePitchScale ||
+    onChangePitchNoteMin ||
+    onChangePitchNoteMax,
+  );
+  const supportsRangeMode = (lane === 'expression' || lane === 'morph' || lane === 'distance') && Boolean(onChangeValueMode && onChangeRange);
   const normalizedRangeMin = clampUnit(rangeMin ?? (lane === 'expression' ? 0.75 : lane === 'distance' ? 0 : 0.25));
   const normalizedRangeMax = clampUnit(rangeMax ?? (lane === 'expression' ? 1 : lane === 'distance' ? 1 : 0.75));
   const rangeLow = Math.min(normalizedRangeMin, normalizedRangeMax);
@@ -299,7 +316,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
             <DragNumber
               value={laneSteps}
               min={1}
-              max={EUCLIDEAN_SUB_LANE_STEP_MAX}
+              max={maxSubLaneSteps}
               label="Steps"
               onChange={(v) => onChangeSteps?.(v)}
               disabled={linked || lane === 'nudge'}
@@ -313,7 +330,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
             </button>
             {linked && <span className="seq-link-badge">🔗</span>}
             {/* Pitch-specific controls */}
-            {lane === 'pitch' && (
+            {hasPitchControls && (
               <div className="seq-pitch-controls">
                 <select
                   className="seq-pitch-mode"
@@ -378,7 +395,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
       </div>
       )}
       {/* Step grid — or noteRange controls when pitch mode is noteRange */}
-      {lane === 'pitch' && sequencer.pitch.mode === 'noteRange' ? (
+      {hasPitchControls && lane === 'pitch' && sequencer.pitch.mode === 'noteRange' ? (
         <div className="seq-lane-body seq-noterange-body">
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '8px 4px' }}>
             <div style={{ flex: 1 }}>
@@ -547,8 +564,68 @@ const SeqLane: React.FC<SeqLaneProps> = ({
               );
             }
 
+            if (lane === 'chord') {
+              const slot = Math.max(1, Math.min(8, Math.round(value)));
+              const norm = (slot - 1) / 7;
+              const heightPct = 12.5 + norm * 87.5;
+
+              return (
+                <div key={step} className="seq-step">
+                  <span className="seq-step-num" style={{ color: laneAccent }}>{isBeatHead ? step + 1 : ''}</span>
+                  <div
+                    className={`seq-vel-bar-wrap${isPlayhead ? ' playing' : ''}${isSelected ? ' selected' : ''}${!inRange ? ' inactive' : ''}`}
+                    style={{ touchAction: 'none' } as React.CSSProperties}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      const wrap = e.currentTarget;
+                      wrap.setPointerCapture(e.pointerId);
+                      const startY = e.clientY;
+                      const startNorm = norm;
+                      let dragged = false;
+                      const onMove = (ev: PointerEvent) => {
+                        if (Math.abs(ev.clientY - startY) > 5) dragged = true;
+                        const rect = wrap.getBoundingClientRect();
+                        const dragRange = rect.height * SEQ_SUBSEQ_DRAG_DISTANCE_FACTOR;
+                        const raw = Math.max(0, Math.min(1, startNorm + (startY - ev.clientY) / dragRange));
+                        const nextSlot = Math.max(1, Math.min(8, Math.round(raw * 7) + 1));
+                        onChangeValue?.(step, nextSlot);
+                        setDragPopup({ x: ev.clientX, y: ev.clientY, text: `Chord ${nextSlot}` });
+                      };
+                      const onUp = () => {
+                        wrap.removeEventListener('pointermove', onMove);
+                        wrap.removeEventListener('pointerup', onUp);
+                        setDragPopup(null);
+                        if (!dragged && inRange) {
+                          onSelectStep?.(step);
+                        }
+                      };
+                      wrap.addEventListener('pointermove', onMove);
+                      wrap.addEventListener('pointerup', onUp);
+                    }}
+                    onDoubleClick={() => onChangeValue?.(step, 1)}
+                  >
+                    {isSelected && (
+                      <span className="seq-step-cursor" style={cursorMarkerStyle} aria-hidden="true">
+                        {selectedStepLabel}
+                      </span>
+                    )}
+                    <div
+                      className="seq-vel-bar"
+                      style={{
+                        height: `${heightPct}%`,
+                        background: laneAccent,
+                        opacity: 0.28 + norm * 0.62,
+                      }}
+                    />
+                    <div className="seq-vel-label">{slot}</div>
+                    <div className="seq-chord-slot-name">Slot</div>
+                  </div>
+                </div>
+              );
+            }
+
             if (lane === 'pitch') {
-              /* ── Pitch bar: bipolar -24..+24 or tonal -3..14 ── */
+              /* ── Pitch bar: bipolar drum offsets or tonal scale degrees ── */
               const isScaleDegrees = sequencer.pitch.mode === 'semitones';
               const isFixedNotes = sequencer.pitch.mode === 'notes';
               const off = value;
@@ -563,7 +640,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                 barStyle = { bottom: 0, top: `${100 - pct}%`, height: `${pct}%` };
                 valText = midiToName(off);
               } else {
-                const norm = (off + 24) / 48;
+                const norm = (off + DRUM_PITCH_OFFSET_LIMIT) / (DRUM_PITCH_OFFSET_LIMIT * 2);
                 if (off >= 0) {
                   barStyle = { top: `${(1 - norm) * 100}%`, height: `${norm * 100 - 50}%` };
                 } else {
@@ -594,7 +671,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                         ? normalizeNoteDegreeOffset(off)
                         : isFixedNotes
                           ? clampMidiNote(off) / 127
-                          : Math.max(0, Math.min(1, (off + 24) / 48));
+                          : Math.max(0, Math.min(1, (off + DRUM_PITCH_OFFSET_LIMIT) / (DRUM_PITCH_OFFSET_LIMIT * 2)));
                       let dragged = false;
                       const onMove = (ev: PointerEvent) => {
                         if (Math.abs(ev.clientY - startY) > 5) dragged = true;
@@ -605,7 +682,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                           ? Math.round(NOTE_DEGREE_OFFSET_MIN + pct * NOTE_DEGREE_OFFSET_RANGE)
                           : isFixedNotes
                             ? clampMidiNote(pct * 127)
-                          : Math.round((pct - 0.5) * 48);
+                          : Math.round((pct - 0.5) * DRUM_PITCH_OFFSET_LIMIT * 2);
                         onChangeValue?.(step, val);
                         const label = isScaleDegrees
                           ? `deg ${val}`

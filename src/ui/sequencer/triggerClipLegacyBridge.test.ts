@@ -47,7 +47,16 @@ function resolveLegacy(args: {
   assert.equal(legacy.steps, 8);
   assert.equal(legacy.hits, 0);
   assert.equal(legacy.rotation, 0);
-  assert.deepEqual([...legacy.triggerToggles.entries()], [[0, true], [2, true], [5, true]]);
+  assert.deepEqual([...legacy.triggerToggles.entries()], [
+    [0, true],
+    [1, false],
+    [2, true],
+    [3, false],
+    [4, false],
+    [5, true],
+    [6, false],
+    [7, false],
+  ]);
   assert.deepEqual(resolveLegacy(legacy), resolveTriggerClip(clip));
 }
 

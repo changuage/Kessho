@@ -14,7 +14,8 @@ type ProductRuntimeLifecycle = {
 export function useProductRuntimeLifecycle(
   productRuntimeMode: ProductRuntimeSelectionMode,
 ): ProductRuntimeLifecycle {
-  // TODO(product-runtime-compat-10C): burn this adapter down after the selected-audio-engine lifecycle
+  // TODO(product-fallback-retire:runtime-lifecycle): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
+  // Burn this adapter down after the selected-audio-engine lifecycle
   // helpers are either product-renamed or isolated under reference/dev runtime code.
   const selectedLifecycle = useSelectedAudioEngineLifecycle(productRuntimeMode);
 

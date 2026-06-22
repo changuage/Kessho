@@ -299,6 +299,7 @@ type PreviewNote = {
   pitchOverride?: number | null;
   ratchetDecayCap?: number;
   ratchetAttackCap?: number;
+  manualPreviewKill?: boolean;
 };
 
 type PreviewSourceConfig = {
@@ -1647,7 +1648,7 @@ function createPadPreviewChordNotes(
   const fallbackRootMidi = 48 + fallbackRoot;
   const fallbackFrequencies = [0, 7, 10, 14, 17, 24].map((interval) => midiToFreq(fallbackRootMidi + interval));
   const frequencies = rawFrequencies.length > 0 ? rawFrequencies : fallbackFrequencies;
-  const source = String(state.synthChordSequencerSource ?? 'both').trim().toLowerCase();
+  const source = String(state.synthChordSequencerSource ?? 'piano').trim().toLowerCase();
   if (source === 'lead1' || source === 'lead' || source === 'lead2' || source === 'piano') return [];
   const voiceCount = boundedInteger(state.synthChordSequencerVoiceCount, 6, 1, PAD_VOICE_COUNT);
   const pad2Assign = boundedInteger(state.pad2VoiceAssign, 0, 0, PAD_VOICE_MASK_ALL) & PAD_VOICE_MASK_ALL;
@@ -2430,6 +2431,7 @@ function createManualPadSourceConfig(
     route: source === 'pad2' ? voiceIndex + PAD_VOICE_COUNT : voiceIndex,
     delaySeconds: 0,
     holdSeconds: note.durationMs === undefined ? 0 : Math.max(80, note.durationMs) / 1000,
+    manualPreviewKill: true,
   };
   const noteKey = `manual:${source}:${voiceIndex}`;
   const postKey = Object.values(postChain)
@@ -2491,6 +2493,7 @@ function createManualPadBatchSourceConfig(
       route: source === 'pad2' ? voiceIndex + PAD_VOICE_COUNT : voiceIndex,
       delaySeconds: 0,
       holdSeconds: note.durationMs === undefined ? 0 : Math.max(80, note.durationMs) / 1000,
+      manualPreviewKill: index === 0,
     };
   });
   const noteKey = `manual:${source}:batch:${voiceIndices.map((voiceIndex) => clamp(voiceIndex, 0, PAD_VOICE_COUNT - 1)).join(',')}`;
@@ -2786,6 +2789,7 @@ function createManualLeadSourceConfig(
     route: outputSelect,
     delaySeconds: 0,
     holdSeconds,
+    manualPreviewKill: true,
   };
   const noteKey = `manual:${source}:${safeMidi}`;
   const postKey = Object.values(postChain)
