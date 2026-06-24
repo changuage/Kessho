@@ -931,6 +931,30 @@
   cursor: pointer; padding: 0; line-height: 20px;
 }
 .drum-root .seq-lane-controls button:hover { background: var(--bg-control-hover); }
+.drum-root .seq-lane-controls button.seq-trigger-clip-btn {
+  width: auto;
+  min-width: 42px;
+  height: 28px;
+  line-height: 1;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.drum-root .seq-lane-controls button.seq-trigger-clip-btn.on,
+.drum-root .seq-lane-controls button.seq-trigger-clip-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--sc, var(--accent-cyan)) 65%, rgba(255, 255, 255, 0.12));
+  background: color-mix(in srgb, var(--sc, var(--accent-cyan)) 22%, rgba(255, 255, 255, 0.04));
+  color: var(--text-bright);
+}
+.drum-root .seq-lane-controls button.seq-trigger-clip-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
 .drum-root .seq-lane-controls select {
   background: var(--bg-input);
   color: #fff;
@@ -961,16 +985,43 @@
   display: grid; grid-template-columns: repeat(16, 1fr); gap: 3px; margin: 6px 0;
 }
 /* Cell padding is handled by JS; visual columns cap at 16 so 32-step lanes stack. */
-.drum-root .seq-step { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.drum-root .seq-step { display: flex; flex-direction: column; align-items: center; gap: 5px; }
 .drum-root .seq-step-num {
   font-size: 0.55rem;
   color: #555;
-  height: 12px;
-  min-height: 12px;
-  line-height: 12px;
+  height: 16px;
+  min-height: 16px;
+  line-height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.drum-root .seq-step-select-btn {
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #555;
+  font: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.drum-root .seq-step-select-btn:hover,
+.drum-root .seq-step-select-btn.selected,
+.drum-root .seq-step-select-btn.target {
+  color: var(--sc, var(--accent-cyan));
+}
+.drum-root .seq-step-select-btn.active-step,
+.drum-root .seq-step-select-btn.target {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--sc, var(--accent-cyan));
+}
+.drum-root .seq-step-select-btn:disabled {
+  color: #333;
+  cursor: default;
+  opacity: 1;
 }
 .drum-root .seq-step-cell {
   width: 100%; aspect-ratio: 1; border-radius: var(--radius-sm); cursor: pointer;
@@ -978,6 +1029,10 @@
   transition: all 0.1s; position: relative; overflow: hidden;
 }
 .drum-root .seq-step-cell.active { background: transparent; border-color: var(--sc, var(--accent-cyan)); }
+.drum-root .seq-step-cell.target {
+  outline: 1px solid color-mix(in srgb, var(--sc, var(--accent-cyan)) 58%, transparent);
+  outline-offset: -3px;
+}
 .drum-root .seq-step-cell.playing { box-shadow: 0 0 12px var(--sc, var(--accent-cyan)); transform: scale(1.08); }
 .drum-root .seq-step-cell.inactive { opacity: 0.25; pointer-events: none; }
 

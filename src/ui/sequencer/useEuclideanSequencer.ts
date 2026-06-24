@@ -34,12 +34,13 @@ import {
   normalizeSequencerPitchSettingsArray,
 } from '../../audio/sequencerPitchSettings';
 import { normalizeSequencerSwing, normalizeSequencerSwings } from '../../audio/sequencerSwing';
-import { clampEuclideanSubLaneSteps } from './sequencerLimits';
+import { EUCLIDEAN_SUB_LANE_STEP_MAX, clampEuclideanSubLaneSteps } from './sequencerLimits';
 import type { TriggerClip } from './triggerClip';
 import {
   countTriggerHits,
   deserializeTriggerClip,
   flattenTriggerClipToManual,
+  retagTriggerClipAsEuclidean,
   resolveTriggerClip,
   resizeTriggerClip,
   rotateTriggerClip,
@@ -52,6 +53,12 @@ import {
 } from './triggerClipLegacyBridge';
 import { createEuclideanTriggerClip } from './euclideanTriggerGenerator';
 import { clampNudge } from './nudgeTiming';
+import {
+  copyTriggerStamp,
+  pasteTriggerStamp,
+  type SubLaneLike,
+  type TriggerStamp,
+} from './sequencerTriggerStamp';
 
 // ── Types ──
 
@@ -495,14 +502,6 @@ const STEP_ARRAY_OVERRIDE_KEYS: StepArrayOverrideKey[] = [
 
 const SUB_LANE_KINDS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'nudge', 'slice', 'reverse'];
 
-type LinkedTriggerCellClipboard = {
-  enabled: boolean;
-  probability: number;
-  trigCondition: TrigCondition;
-  ratchet?: number;
-  subLaneValues: Partial<Record<SubLaneKind, number>>;
-};
-
 function positiveModulo(value: number, divisor: number): number {
   const safeDivisor = Math.max(1, Math.round(divisor));
   return ((Math.round(value) % safeDivisor) + safeDivisor) % safeDivisor;
@@ -521,13 +520,6 @@ function rotateFullStepArray(values: readonly unknown[] | null | undefined, step
 
 function defaultSubLaneValue(lane: SubLaneKind): number {
   if (lane === 'expression') return 1;
-  return 0;
-}
-
-function defaultStepArrayValue(field: StepArrayOverrideKey): number | TrigCondition {
-  if (field === 'expression') return 1;
-  if (field === 'ratchet') return 1;
-  if (field === 'trigCondition') return [1, 1];
   return 0;
 }
 
@@ -595,13 +587,17 @@ function triggerPatternForLane(
   return resolveTriggerClip(triggerClipForLane(sliderState, prefix, laneIdx, overrides));
 }
 
-function hitIndexForTriggerStep(pattern: readonly boolean[], step: number): number | null {
-  if (!pattern[step]) return null;
-  let hitIndex = -1;
-  for (let index = 0; index <= step; index += 1) {
-    if (pattern[index]) hitIndex += 1;
-  }
-  return hitIndex >= 0 ? hitIndex : null;
+function manualTriggerClipFromPattern(pattern: readonly boolean[], label = 'Stamp'): TriggerClip {
+  const basePattern = pattern.map(Boolean);
+  return {
+    steps: Math.max(1, basePattern.length),
+    basePattern,
+    edits: new Map(),
+    origin: 'manual',
+    generator: { kind: 'manual' },
+    dirty: true,
+    label,
+  };
 }
 
 function activeHitCount(pattern: readonly boolean[]): number {
@@ -619,6 +615,26 @@ function normalizeLinkedSubLanes(subLanes?: readonly SubLaneKind[]): SubLaneKind
     if (SUB_LANE_KINDS.includes(lane) && !unique.includes(lane)) unique.push(lane);
   }
   return unique.length > 0 ? unique : [...SUB_LANE_KINDS];
+}
+
+function sequencerStampSubLane(
+  lane: SubLaneKind,
+  laneIdx: number,
+  overrides: StepOverrides,
+  subLaneStates: Record<SubLaneKind, SubLaneState>[],
+): SubLaneLike {
+  const state = subLaneStates[laneIdx]?.[lane];
+  const steps = Math.max(1, state?.steps ?? 1);
+  return {
+    enabled: state?.enabled ?? true,
+    steps,
+    direction: state?.direction ?? 'forward',
+    values: ensureStepArray(
+      overrides[lane][laneIdx] as number[] | null | undefined,
+      steps,
+      defaultSubLaneValue(lane),
+    ),
+  };
 }
 
 function explicitTriggerMapCoversStepCount(
@@ -719,7 +735,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
 
   // ── Step Overrides ──
   const [stepOverrides, setStepOverrides] = useState<StepOverrides>(() => normalizeStepOverrides(initialStepOverrides, laneCount));
-  const linkedTriggerCellClipboardRef = useRef<LinkedTriggerCellClipboard | null>(null);
+  const linkedTriggerCellClipboardRef = useRef<TriggerStamp | null>(null);
 
   // ── Evolve ──
   const [evolveConfigs, setEvolveConfigs] = useState<EvolveConfig[]>(() =>
@@ -968,24 +984,14 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     if (laneIdx < 0 || laneIdx >= laneCount) return;
     const currentClip = triggerClipForLane(stateRef.current, prefix, laneIdx, stepOverrides);
     const nextClipForParams = enabled
-      ? createEuclideanTriggerClip({
-          preset: 'custom',
-          steps: currentClip.steps,
-          hits: countTriggerHits(currentClip),
-          rotation: 0,
-        })
+      ? retagTriggerClipAsEuclidean(currentClip, 'custom', currentClip.label ?? 'Euclid')
       : flattenTriggerClipToManual(currentClip);
     const laneNum = laneIdx + 1;
 
     setStepOverrides((prev) => {
       const sourceClip = triggerClipForLane(stateRef.current, prefix, laneIdx, prev);
       const nextClip = enabled
-        ? createEuclideanTriggerClip({
-            preset: 'custom',
-            steps: sourceClip.steps,
-            hits: countTriggerHits(sourceClip),
-            rotation: 0,
-          })
+        ? retagTriggerClipAsEuclidean(sourceClip, 'custom', sourceClip.label ?? 'Euclid')
         : flattenTriggerClipToManual(sourceClip);
       const triggerClips = [
         ...(prev.triggerClips ?? Array.from({ length: laneCount }, () => null)),
@@ -1001,7 +1007,9 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       };
     });
 
-    onSelectChange(makeKey(prefix, laneNum, 'Preset'), 'custom' as never);
+    if (enabled) {
+      onSelectChange(makeKey(prefix, laneNum, 'Preset'), 'custom' as never);
+    }
     onParamChange(makeKey(prefix, laneNum, 'Steps'), nextClipForParams.steps);
     onParamChange(makeKey(prefix, laneNum, 'Hits'), countTriggerHits(nextClipForParams));
     onParamChange(makeKey(prefix, laneNum, 'Rotation'), 0);
@@ -1397,20 +1405,11 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     if (pattern.length === 0) return false;
 
     const targetStep = positiveModulo(step, pattern.length);
-    const enabled = pattern[targetStep] === true;
-    const hitIndex = enabled ? hitIndexForTriggerStep(pattern, targetStep) : null;
+    if (pattern[targetStep] !== true) return false;
     const linkedSubLanes = normalizeLinkedSubLanes(subLanes);
-    const subLaneValues: Partial<Record<SubLaneKind, number>> = {};
-
-    if (hitIndex !== null) {
-      for (const lane of linkedSubLanes) {
-        const values = stepOverrides[lane][laneIdx] as number[] | null | undefined;
-        const value = values?.[hitIndex] ?? defaultSubLaneValue(lane);
-        if (typeof value === 'number' && Number.isFinite(value)) {
-          subLaneValues[lane] = value;
-        }
-      }
-    }
+    const subLaneMap = Object.fromEntries(
+      linkedSubLanes.map((lane) => [lane, sequencerStampSubLane(lane, laneIdx, stepOverrides, subLaneStates)]),
+    ) as Record<string, SubLaneLike>;
 
     const probabilityFallback = stateRef.current[makeKey(prefix, laneIdx + 1, 'Probability')] as number;
     const probabilityValue = stepOverrides.probability[laneIdx]?.[targetStep] ?? probabilityFallback ?? 1;
@@ -1418,17 +1417,27 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       ? Math.max(0, Math.min(1, probabilityValue))
       : 1;
 
-    linkedTriggerCellClipboardRef.current = {
-      enabled,
-      probability,
-      trigCondition: cloneTrigCondition(stepOverrides.trigCondition[laneIdx]?.[targetStep]),
-      ...(hitIndex !== null && linkedSubLanes.includes('expression')
-        ? { ratchet: stepOverrides.ratchet[laneIdx]?.[hitIndex] ?? 1 }
-        : {}),
-      subLaneValues,
-    };
+    const stamp = copyTriggerStamp({
+      source: 'synthLane',
+      stepIndex: targetStep,
+      trigger: {
+        steps: pattern.length,
+        pattern,
+        probability: ensureStepArray(stepOverrides.probability[laneIdx], pattern.length, probability),
+        ratchet: ensureStepArray(stepOverrides.ratchet[laneIdx], Math.max(1, activeHitCount(pattern)), 1),
+        trigCondition: ensureStepArray(stepOverrides.trigCondition[laneIdx], pattern.length, [1, 1] as TrigCondition),
+      },
+      subLanes: subLaneMap,
+      extraTriggerData: {
+        probability,
+        trigCondition: cloneTrigCondition(stepOverrides.trigCondition[laneIdx]?.[targetStep]) as [number, number],
+      },
+      label: `${lanes[laneIdx]?.name ?? `Seq ${laneIdx + 1}`} · Trigger ${targetStep + 1}`,
+    });
+    if (!stamp) return false;
+    linkedTriggerCellClipboardRef.current = stamp;
     return true;
-  }, [laneCount, prefix, stepOverrides]);
+  }, [laneCount, lanes, prefix, stepOverrides, subLaneStates]);
 
   const pasteLinkedTriggerCell = useCallback((
     laneIdx: number,
@@ -1448,113 +1457,70 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     if (currentPattern.length === 0) return false;
 
     const targetStep = positiveModulo(step, currentPattern.length);
-    const nextPattern = [...currentPattern];
-    nextPattern[targetStep] = clipboard.enabled;
-    const nextHitCount = Math.max(1, activeHitCount(nextPattern));
-    const previousHitIndex = hitIndexForTriggerStep(currentPattern, targetStep);
-    const nextHitIndex = clipboard.enabled ? hitIndexForTriggerStep(nextPattern, targetStep) : null;
+    const subLaneMap = Object.fromEntries(
+      linkedSubLanes.map((lane) => [lane, sequencerStampSubLane(lane, laneIdx, stepOverrides, subLaneStates)]),
+    ) as Record<string, SubLaneLike>;
+    const probabilityFallback = stateRef.current[makeKey(prefix, laneIdx + 1, 'Probability')] as number;
+    const probabilityDefault = typeof probabilityFallback === 'number' && Number.isFinite(probabilityFallback)
+      ? Math.max(0, Math.min(1, probabilityFallback))
+      : 1;
+    const stampResult = pasteTriggerStamp({
+      stamp: clipboard,
+      stepIndex: targetStep,
+      trigger: {
+        steps: currentPattern.length,
+        pattern: currentPattern,
+        probability: ensureStepArray(stepOverrides.probability[laneIdx], currentPattern.length, probabilityDefault),
+        ratchet: ensureStepArray(stepOverrides.ratchet[laneIdx], Math.max(1, activeHitCount(currentPattern)), 1),
+        trigCondition: ensureStepArray(stepOverrides.trigCondition[laneIdx], currentPattern.length, [1, 1] as TrigCondition),
+      },
+      subLanes: subLaneMap,
+      maxSubLaneSteps: EUCLIDEAN_SUB_LANE_STEP_MAX,
+    });
 
     setStepOverrides((prev) => {
-      const existingClip = cloneTriggerClip(prev.triggerClips?.[laneIdx] ?? null);
       const next: StepOverrides = {
         ...prev,
         triggerClips: [...(prev.triggerClips ?? Array.from({ length: laneCount }, () => null))],
         triggerToggles: [...prev.triggerToggles],
         probability: [...prev.probability],
+        ratchet: [...prev.ratchet],
         trigCondition: [...prev.trigCondition],
       };
 
-      if (existingClip) {
-        next.triggerClips![laneIdx] = setTriggerClipStep(existingClip, targetStep, clipboard.enabled);
-        next.triggerToggles[laneIdx] = new Map();
-      } else {
-        const basePattern = resolveTriggerClip(legacyTriggerClipForLane(
-          stateRef.current,
-          prefix,
-          laneIdx,
-        ));
-        const toggleMap = new Map(next.triggerToggles[laneIdx]);
-        if (clipboard.enabled === (basePattern[targetStep] ?? false)) {
-          toggleMap.delete(targetStep);
-        } else {
-          toggleMap.set(targetStep, clipboard.enabled);
-        }
-        next.triggerToggles[laneIdx] = toggleMap;
-      }
-
-      const probabilityFallback = stateRef.current[makeKey(prefix, laneIdx + 1, 'Probability')] as number;
-      const probabilityDefault = typeof probabilityFallback === 'number' && Number.isFinite(probabilityFallback)
-        ? Math.max(0, Math.min(1, probabilityFallback))
-        : 1;
-      const probability = ensureStepArray(
-        prev.probability[laneIdx],
-        currentPattern.length,
-        probabilityDefault,
-      );
-      probability[targetStep] = clipboard.probability;
-      next.probability[laneIdx] = probability;
-
-      const trigCondition = ensureStepArray(
-        prev.trigCondition[laneIdx],
-        currentPattern.length,
-        defaultStepArrayValue('trigCondition') as TrigCondition,
-      );
-      trigCondition[targetStep] = cloneTrigCondition(clipboard.trigCondition);
-      next.trigCondition[laneIdx] = trigCondition;
-
-      if (linkedSubLanes.includes('expression') && (previousHitIndex !== null || nextHitIndex !== null)) {
-        next.ratchet = [...prev.ratchet];
-        const ratchetValues = ensureStepArray(
-          prev.ratchet[laneIdx],
-          Math.max(1, activeHitCount(currentPattern)),
-          1,
-        );
-        if (previousHitIndex !== null) {
-          ratchetValues.splice(previousHitIndex, 1);
-        }
-        if (nextHitIndex !== null) {
-          const insertIndex = previousHitIndex !== null && previousHitIndex < nextHitIndex
-            ? nextHitIndex - 1
-            : nextHitIndex;
-          ratchetValues.splice(insertIndex, 0, clipboard.ratchet ?? 1);
-        }
-        while (ratchetValues.length < nextHitCount) ratchetValues.push(1);
-        if (ratchetValues.length > nextHitCount) ratchetValues.length = nextHitCount;
-        next.ratchet[laneIdx] = ratchetValues;
-      }
+      next.triggerClips![laneIdx] = manualTriggerClipFromPattern(stampResult.pattern, clipboard.label);
+      next.triggerToggles[laneIdx] = new Map();
+      next.probability[laneIdx] = stampResult.probability ?? null;
+      next.trigCondition[laneIdx] = (stampResult.trigCondition as TrigCondition[] | undefined) ?? null;
+      if (linkedSubLanes.includes('expression')) next.ratchet[laneIdx] = stampResult.ratchet ?? null;
 
       for (const lane of linkedSubLanes) {
-        if (previousHitIndex === null && nextHitIndex === null) continue;
-        const copiedValue = clipboard.subLaneValues[lane] ?? defaultSubLaneValue(lane);
-        const currentHitCount = Math.max(1, activeHitCount(currentPattern));
-        const values = ensureStepArray(
-          prev[lane][laneIdx] as number[] | null | undefined,
-          currentHitCount,
-          defaultSubLaneValue(lane),
-        );
-
-        if (previousHitIndex !== null) {
-          values.splice(previousHitIndex, 1);
-        }
-        if (nextHitIndex !== null) {
-          const insertIndex = previousHitIndex !== null && previousHitIndex < nextHitIndex
-            ? nextHitIndex - 1
-            : nextHitIndex;
-          values.splice(insertIndex, 0, copiedValue);
-        }
-        while (values.length < nextHitCount) values.push(defaultSubLaneValue(lane));
-        if (values.length > nextHitCount) values.length = nextHitCount;
-
         const field = [...prev[lane]] as (number[] | null)[];
-        field[laneIdx] = values;
+        field[laneIdx] = stampResult.subLanes[lane]?.values ?? null;
         (next as unknown as Record<SubLaneKind, (number[] | null)[]>)[lane] = field;
       }
 
       return next;
     });
 
+    setSubLaneStates((prev) => prev.map((laneState, index) => {
+      if (index !== laneIdx) return laneState;
+      const nextState = { ...laneState };
+      for (const lane of linkedSubLanes) {
+        const pastedLane = stampResult.subLanes[lane];
+        if (!pastedLane) continue;
+        nextState[lane] = {
+          ...nextState[lane],
+          enabled: pastedLane.enabled,
+          steps: pastedLane.steps,
+          direction: pastedLane.direction,
+        };
+      }
+      return nextState;
+    }));
+
     return true;
-  }, [laneCount, prefix, stepOverrides]);
+  }, [laneCount, prefix, stepOverrides, subLaneStates]);
 
   const changeStepValue = useCallback(
     (laneIdx: number, lane: LaneKind, step: number, value: number) => {

@@ -203,6 +203,23 @@ export function flattenTriggerClipToManual(clip: TriggerClip, label = 'Step'): T
   };
 }
 
+export function retagTriggerClipAsEuclidean(clip: TriggerClip, preset = 'custom', label = 'Euclid'): TriggerClip {
+  const flattened = flattenTriggerClipEdits(clip);
+  const hits = countTriggerHits(flattened);
+  return {
+    ...flattened,
+    origin: 'euclidean',
+    generator: {
+      kind: 'euclidean',
+      preset,
+      steps: flattened.steps,
+      hits,
+      rotation: 0,
+    },
+    label,
+  };
+}
+
 export function rotateTriggerClip(clip: TriggerClip, delta: number): TriggerClip {
   const flattened = flattenTriggerClipEdits(clip);
   const basePattern = rotateArray(flattened.basePattern, delta);

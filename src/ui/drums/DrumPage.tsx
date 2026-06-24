@@ -354,6 +354,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     normalizeSeqScatterState(props.initialSeqScatterState, props.initialSeqSimpleState)
   );
   const [keyboardLaneSteps, setKeyboardLaneSteps] = useState<Record<DrumKeyboardLane, number[]>>(() => makeDefaultKeyboardLaneSteps());
+  const [triggerStampReady, setTriggerStampReady] = useState(false);
+  const [triggerStampMode, setTriggerStampMode] = useState(false);
   const [playheads, setPlayheads] = useState<number[]>(() => makeDrumLaneArray(() => 0));
   const [hitCounts, setHitCounts] = useState<number[]>(() => makeDrumLaneArray(() => 0));
   const [evolveFlashing, setEvolveFlashing] = useState<boolean[]>(() => makeDrumLaneArray(() => false));
@@ -917,6 +919,36 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     seq.toggleMute(laneIdx);
   }, [seq]);
 
+  const copyActiveDrumTriggerStamp = useCallback(() => {
+    const copied = seq.copyLinkedTriggerCell(seq.activeTab, activeTriggerKeyboardStep);
+    if (copied) {
+      setTriggerStampReady(true);
+      setTriggerStampMode(true);
+    }
+    return copied;
+  }, [activeTriggerKeyboardStep, seq]);
+
+  const pasteActiveDrumTriggerStamp = useCallback(() => {
+    if (!triggerStampReady) return false;
+    return seq.pasteLinkedTriggerCell(seq.activeTab, activeTriggerKeyboardStep);
+  }, [activeTriggerKeyboardStep, seq, triggerStampReady]);
+
+  const pasteDrumTriggerStampAtStep = useCallback((step: number) => {
+    if (!triggerStampReady) return false;
+    return seq.pasteLinkedTriggerCell(seq.activeTab, step);
+  }, [seq, triggerStampReady]);
+
+  useEffect(() => {
+    if (!triggerStampMode) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('.seq-step-cell, .seq-step-select-btn, .seq-trigger-clip-btn')) return;
+      setTriggerStampMode(false);
+    };
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    return () => window.removeEventListener('pointerdown', handlePointerDown, true);
+  }, [triggerStampMode]);
+
   const getDrumKeyboardLaneStepCount = useCallback((laneIdx: number, lane: DrumKeyboardLane) => {
     if (lane === 'trigger') return seq.sequencerModels[laneIdx]?.trigger.steps ?? 0;
     return seq.subLaneStates[laneIdx]?.[lane]?.steps ?? 0;
@@ -1206,17 +1238,22 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     if (e.repeat) return;
 
     if ((e.metaKey || e.ctrlKey) && e.code === 'KeyC') {
-      if (activeKeyboardLane === 'trigger' && seq.linked[seq.activeTab]) {
+      if (activeKeyboardLane === 'trigger') {
         e.preventDefault();
-        seq.copyLinkedTriggerCell(seq.activeTab, activeTriggerKeyboardStep);
+        copyActiveDrumTriggerStamp();
       }
       return;
     }
     if ((e.metaKey || e.ctrlKey) && e.code === 'KeyV') {
-      if (activeKeyboardLane === 'trigger' && seq.linked[seq.activeTab]) {
+      if (activeKeyboardLane === 'trigger') {
         e.preventDefault();
-        seq.pasteLinkedTriggerCell(seq.activeTab, activeTriggerKeyboardStep);
+        pasteActiveDrumTriggerStamp();
       }
+      return;
+    }
+    if (e.code === 'Escape' && triggerStampMode) {
+      e.preventDefault();
+      setTriggerStampMode(false);
       return;
     }
 
@@ -1327,6 +1364,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     adjustDrumKeyboardLaneValue,
     adjustDrumKeyboardLaneSteps,
     activeTriggerKeyboardStep,
+    copyActiveDrumTriggerStamp,
     cycleDrumKeyboardLane,
     cycleDrumKeyboardSequencer,
     cycleDrumViewMode,
@@ -1334,9 +1372,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     moveDrumKeyboardStep,
     recordDrumLiveOverdubVoice,
     seq.activeTab,
-    seq.copyLinkedTriggerCell,
-    seq.linked,
-    seq.pasteLinkedTriggerCell,
+    pasteActiveDrumTriggerStamp,
+    triggerStampMode,
     toggleDrumLaneMute,
     toggleDrumKeyboardLane,
     toggleDrumSequencerTransport,
@@ -1864,6 +1901,22 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                         <span className="seq-rotation-val">{activeSeq.trigger.rotation}</span>
                         <button onClick={() => seq.rotateSequence(seq.activeTab, 1)}>→</button>
                       </div>
+                      <button
+                        type="button"
+                        className="seq-trigger-clip-btn"
+                        disabled={activeSeq.trigger.pattern[activeTriggerKeyboardStep] !== true}
+                        onClick={copyActiveDrumTriggerStamp}
+                      >
+                        Copy
+                      </button>
+                      <button
+                        type="button"
+                        className={`seq-trigger-clip-btn${triggerStampMode ? ' on' : ''}`}
+                        disabled={!triggerStampReady}
+                        onClick={() => setTriggerStampMode((value) => !value)}
+                      >
+                        Stamp
+                      </button>
                     </div>
                   </div>
                   <SeqLane
@@ -1874,7 +1927,11 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                     hitCount={seq.hitCounts[seq.activeTab] ?? 0}
                     selectedStep={activeKeyboardLane === 'trigger' ? activeKeyboardStep : null}
                     selectedStepLabel="⌖"
-                    onToggleTriggerStep={(step) => seq.toggleTriggerStep(seq.activeTab, step)}
+                    onToggleTriggerStep={(step) => {
+                      if (triggerStampMode && pasteDrumTriggerStampAtStep(step)) return;
+                      seq.toggleTriggerStep(seq.activeTab, step);
+                    }}
+                    onSelectStep={(step) => selectDrumKeyboardStep(seq.activeTab, 'trigger', step)}
                     onSetProbability={(step, value) => seq.setStepProbability(seq.activeTab, step, value)}
                     onResetProbability={(step) => seq.resetStepProbability(seq.activeTab, step)}
                     onCycleRatchet={(step) => seq.cycleStepRatchet(seq.activeTab, step)}

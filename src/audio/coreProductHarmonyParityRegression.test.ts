@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
 import { createCoreProductHostHarmonySnapshot } from './CoreProductHostHarmonyState';
+import {
+  createCoreProductChordGeneratorSchedule,
+  createCoreProductChordSequencerSchedule,
+} from './coreProductArrangementPadChord';
+import { arrangementRestartKey } from './coreProductArrangementVoiceMapping';
 import { CoreProductArrangementScheduler } from './coreProductArrangementScheduler';
 import { createHarmonyState } from './harmony';
 import { PRODUCT_HARMONY_SCALE_IDS } from './coreProductHarmonyScaleIds';
@@ -268,6 +273,17 @@ try {
     detune: 0,
     seedWindow: 'hour',
     synthChordSequencerEnabled: true,
+    synthChordSequencerSource: 'pad1',
+    synthChordSequencer: {
+      ...DEFAULT_STATE.synthChordSequencer,
+      subLanes: {
+        ...DEFAULT_STATE.synthChordSequencer.subLanes,
+        chord: {
+          ...DEFAULT_STATE.synthChordSequencer.subLanes.chord,
+          enabled: false,
+        },
+      },
+    },
     padEnabled: true,
     pad2Enabled: false,
     synthVoiceMask: 1,
@@ -303,6 +319,17 @@ try {
     detune: 0,
     seedWindow: 'hour',
     synthChordSequencerEnabled: true,
+    synthChordSequencerSource: 'pad1',
+    synthChordSequencer: {
+      ...DEFAULT_STATE.synthChordSequencer,
+      subLanes: {
+        ...DEFAULT_STATE.synthChordSequencer.subLanes,
+        chord: {
+          ...DEFAULT_STATE.synthChordSequencer.subLanes.chord,
+          enabled: false,
+        },
+      },
+    },
     padEnabled: true,
     pad2Enabled: false,
     synthVoiceMask: 1 << 5,
@@ -898,5 +925,136 @@ const auditionState = resolveProductHarmonyState({
   seed: 1,
 });
 assert.equal(auditionState.resolvedHarmonyFrame.activeSource, 'baseline', 'audition should not mutate active resolved harmony');
+
+{
+  const harmonyState = createHarmonyState('chord-generator-seq5-regression', 0.3, 16, 0.5, 0, 'manual', 'Major (Ionian)', 0);
+  const baseState = {
+    ...DEFAULT_STATE,
+    pianoEnabled: true,
+    padEnabled: false,
+    pad2Enabled: false,
+    leadEnabled: false,
+    lead2Enabled: false,
+    rootNote: 0,
+    scaleMode: 'manual' as const,
+    manualScale: 'Major (Ionian)',
+    chordRate: 4,
+    phraseLength: 16,
+    sequencerMasterBPM: 120,
+    synthChordGeneratorSource: 'piano' as const,
+    synthChordGeneratorVoiceCount: 2,
+    synthChordSequencerSource: 'piano' as const,
+    synthChordSequencerVoiceCount: 1,
+    synthChordSequencerClockDivision: '1/8' as const,
+  };
+  const generatorSchedule = createCoreProductChordGeneratorSchedule({
+    state: {
+      ...baseState,
+      synthChordGeneratorEnabled: true,
+      synthChordSequencerEnabled: false,
+    },
+    harmonyState,
+    rng: () => 0,
+    anchors: null,
+    nowWallSec: 0,
+  });
+  assert.equal(generatorSchedule.scheduledNotes.length, 2, 'Chord Generator should emit without Seq 5');
+
+  const seq5Schedule = createCoreProductChordSequencerSchedule({
+    state: {
+      ...baseState,
+      synthChordGeneratorEnabled: false,
+      synthChordSequencerEnabled: true,
+      synthChordSequencer: {
+        ...DEFAULT_STATE.synthChordSequencer,
+        stepCount: 4,
+        steps: DEFAULT_STATE.synthChordSequencer.steps.map((step, index) => ({
+          ...step,
+          enabled: index === 0,
+        })),
+      },
+    },
+    harmonyState,
+    rng: () => 0,
+    anchors: null,
+    nowWallSec: 0,
+  });
+  assert.equal(seq5Schedule.scheduledNotes.length, 1, 'Seq 5 should emit without Chord Generator');
+  assert.equal(seq5Schedule.triggerIntervalSeconds, 0.25, 'Seq 5 should use sequencer BPM and clock division for step timing');
+  assert.equal(seq5Schedule.phraseSeconds, 1, 'Seq 5 cycle length should be step interval times Seq 5 step count');
+
+  const heldArpSchedule = createCoreProductChordSequencerSchedule({
+    state: {
+      ...baseState,
+      synthChordSequencerEnabled: true,
+      synthChordSequencer: {
+        ...DEFAULT_STATE.synthChordSequencer,
+        stepCount: 4,
+        playbackMode: 'arp' as const,
+        arp: {
+          ...DEFAULT_STATE.synthChordSequencer.arp,
+          speed: '1/16' as const,
+          gate: 0.5,
+          shape: 'custom' as const,
+          patternLength: 4 as const,
+          pattern: DEFAULT_STATE.synthChordSequencer.arp.pattern.map((step, index) => ({
+            ...step,
+            active: index < 4,
+            tone: (index % 4) + 1,
+            octave: 0 as const,
+          })),
+        },
+        steps: DEFAULT_STATE.synthChordSequencer.steps.map((step, index) => ({
+          ...step,
+          enabled: index === 0,
+          holdSteps: index === 0 ? 3 : 1,
+        })),
+      },
+    },
+    harmonyState,
+    rng: () => 0,
+    anchors: null,
+    nowWallSec: 0,
+  });
+  assert(heldArpSchedule.scheduledNotes.length > seq5Schedule.scheduledNotes.length, 'Seq 5 holdSteps should extend arp pulses across multiple steps');
+
+  const bothSchedules = [
+    createCoreProductChordGeneratorSchedule({
+      state: { ...baseState, synthChordGeneratorEnabled: true },
+      harmonyState,
+      rng: () => 0,
+      anchors: null,
+      nowWallSec: 0,
+    }),
+    createCoreProductChordSequencerSchedule({
+      state: { ...baseState, synthChordSequencerEnabled: true },
+      harmonyState,
+      rng: () => 0,
+      anchors: null,
+      nowWallSec: 0,
+    }),
+  ];
+  assert.equal(
+    bothSchedules.reduce((count, schedule) => count + schedule.scheduledNotes.length, 0),
+    3,
+    'Chord Generator and Seq 5 schedules should both emit when enabled independently',
+  );
+
+  const restartKey = arrangementRestartKey({ ...baseState, synthChordSequencerEnabled: true });
+  assert.equal(
+    arrangementRestartKey({
+      ...baseState,
+      synthChordSequencerEnabled: false,
+      synthChordSequencerSource: 'lead1' as const,
+      synthChordSequencerVoiceCount: 4,
+      synthChordSequencer: {
+        ...DEFAULT_STATE.synthChordSequencer,
+        stepCount: 4,
+      },
+    }),
+    restartKey,
+    'Seq 5 live edits should not reset arrangement transport anchors',
+  );
+}
 
 console.log('Kessho Product harmony parity regression passed');

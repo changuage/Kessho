@@ -126,6 +126,11 @@ interface SeqLaneProps {
   /** Current direction for sub-lanes */
   direction?: LaneDirection;
   onToggleTriggerStep?: (step: number) => void;
+  onCycleTriggerHold?: (step: number) => void;
+  onSetTriggerHold?: (step: number, holdSteps: number) => void;
+  triggerHoldSteps?: readonly number[];
+  triggerTieSteps?: readonly boolean[];
+  triggerStepLabels?: readonly (string | null | undefined)[];
   onChangeValue?: (step: number, value: number) => void;
   /** Set per-step probability (trigger lane) */
   onSetProbability?: (step: number, value: number) => void;
@@ -165,6 +170,7 @@ interface SeqLaneProps {
   /** Optional selected step highlight, used for keyboard note-entry targeting. */
   selectedStep?: number | null;
   selectedStepLabel?: string;
+  selectedStepKeyboardFocus?: boolean;
   onSelectStep?: (step: number) => void;
   /** Expression / morph / distance can switch to per-trigger range mode */
   valueMode?: SubLaneValueMode;
@@ -189,6 +195,11 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   enabled = true,
   direction = 'forward',
   onToggleTriggerStep,
+  onCycleTriggerHold,
+  onSetTriggerHold,
+  triggerHoldSteps,
+  triggerTieSteps,
+  triggerStepLabels,
   onChangeValue,
   onSetProbability,
   onResetProbability,
@@ -209,6 +220,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   pitchDisplayScaleIntervals,
   selectedStep = null,
   selectedStepLabel = 'Step',
+  selectedStepKeyboardFocus = true,
   onSelectStep,
   valueMode = 'sequence',
   onChangeValueMode,
@@ -481,6 +493,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
             const inRange = step < laneSteps;
             const value = inRange ? getValue(step) : 0;
             const isSelected = selectedStep === step && (lane === 'pitch' || inRange);
+            const isKeyboardSelected = isSelected && selectedStepKeyboardFocus;
             // Trigger lane: playhead tracks the trigger step.
             // Sub-lanes: playhead derived from hitCount (Elektron-style, advance on trigger only).
             let isPlayhead: boolean;
@@ -499,14 +512,38 @@ const SeqLane: React.FC<SeqLaneProps> = ({
             if (lane === 'trigger') {
               /* ── Trigger cell ── */
               const active = Boolean(value);
+              const tie = Boolean(triggerTieSteps?.[step]);
+              const startHoldSteps = Math.max(1, Math.round(triggerHoldSteps?.[step] ?? 1));
+              const maxHoldSteps = Math.max(1, sequencer.trigger.steps);
               const prob = sequencer.trigger.probability[step] ?? 1.0;
               const probPct = Math.round(prob * 100);
               const trigCond: TrigCondition = sequencer.trigger.trigCondition?.[step] ?? [1, 1];
-              const cellClass = ['seq-step-cell', active ? 'active' : '', isPlayhead ? 'playing' : '', isSelected ? 'selected' : '', !inRange ? 'inactive' : ''].filter(Boolean).join(' ');
+              const cellClass = ['seq-step-cell', active ? 'active' : '', tie ? 'tie' : '', isPlayhead ? 'playing' : '', isKeyboardSelected ? 'selected' : '', isSelected ? 'target' : '', !inRange ? 'inactive' : ''].filter(Boolean).join(' ');
+              const showStepNumber = inRange && (isBeatHead || active || isSelected);
+              const stepNumberClass = [
+                'seq-step-num',
+                'seq-step-select-btn',
+                active ? 'active-step' : '',
+                isKeyboardSelected ? 'selected' : '',
+                isSelected ? 'target' : '',
+              ].filter(Boolean).join(' ');
 
               return (
                 <div key={step} className="seq-step">
-                  <span className="seq-step-num">{isBeatHead ? step + 1 : ''}</span>
+                  <button
+                    type="button"
+                    className={stepNumberClass}
+                    style={{ '--sc': color } as React.CSSProperties}
+                    disabled={!showStepNumber || !onSelectStep}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (showStepNumber) onSelectStep?.(step);
+                    }}
+                    title={showStepNumber ? `Select trigger step ${step + 1}` : undefined}
+                  >
+                    {showStepNumber ? step + 1 : ''}
+                  </button>
                   <button
                     type="button"
                     className={cellClass}
@@ -515,13 +552,33 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                       e.preventDefault();
                       const el = e.currentTarget;
                       el.setPointerCapture(e.pointerId);
+                      const startX = e.clientX;
                       const startY = e.clientY;
                       const startProb = prob;
+                      const cycleHold = e.shiftKey;
+                      let dragMode: 'none' | 'probability' | 'hold' = 'none';
                       let dragged = false;
 
                       const onMove = (ev: PointerEvent) => {
-                        if (Math.abs(ev.clientY - startY) > 5) dragged = true;
-                        if (!dragged) return;
+                        const deltaX = ev.clientX - startX;
+                        const deltaY = ev.clientY - startY;
+                        if (dragMode === 'none') {
+                          const absX = Math.abs(deltaX);
+                          const absY = Math.abs(deltaY);
+                          if (onSetTriggerHold && active && absX > 6 && absX > absY * 1.15) {
+                            dragMode = 'hold';
+                          } else if (absY > 5) {
+                            dragMode = 'probability';
+                          }
+                        }
+                        if (dragMode === 'none') return;
+                        dragged = true;
+                        if (dragMode === 'hold') {
+                          const nextHold = Math.max(1, Math.min(maxHoldSteps, startHoldSteps + Math.round(deltaX / 38)));
+                          onSetTriggerHold?.(step, nextHold);
+                          setDragPopup({ x: ev.clientX, y: ev.clientY, text: `Hold ${nextHold}` });
+                          return;
+                        }
                         const pct = Math.max(0, Math.min(1,
                           startProb + (startY - ev.clientY) / PROB_DRAG_RANGE_PX
                         ));
@@ -535,7 +592,11 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                         setDragPopup(null);
                         if (!dragged && inRange) {
                           onSelectStep?.(step);
-                          onToggleTriggerStep?.(step);
+                          if (cycleHold && active && onCycleTriggerHold) {
+                            onCycleTriggerHold(step);
+                          } else {
+                            onToggleTriggerStep?.(step);
+                          }
                         }
                       };
                       el.addEventListener('pointermove', onMove);
@@ -545,7 +606,10 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                   >
                     <div className="prob-fill" style={{ height: `${probPct}%` }} />
                     <span className="prob-label">{probPct}%</span>
-                    {isSelected && (
+                    {triggerStepLabels?.[step] ? (
+                      <span className="seq-step-hold-label">{triggerStepLabels[step]}</span>
+                    ) : null}
+                    {isKeyboardSelected && (
                       <span className="seq-step-cursor" style={cursorMarkerStyle} aria-hidden="true">
                         {selectedStepLabel}
                       </span>

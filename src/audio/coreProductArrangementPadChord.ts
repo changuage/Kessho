@@ -2,11 +2,12 @@ import { CORE_PRODUCT_SOURCE_IDS, createCoreProductManualNoteEvent, createCorePr
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 import {
   PAD_VOICE_COUNT,
-  enabledChordMidiForMask,
-  enabledVoiceRank,
-  padChordVoiceMasksForSource,
-  padEuclidOwnedVoiceMask,
 } from './coreProductArrangementVoiceMapping';
+import {
+  resolveCoreProductChordVoices,
+  type CoreProductChordVoice,
+} from './coreProductChordVoices';
+import { coreProductChordSequencerClockSource, coreProductChordSequencerStepSeconds } from './coreProductChordSequencerClock';
 import { coreProductPadEnvelopeGateSecondsFromState, coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
 import { HARMONY_SLOT_COUNT } from './CoreProductHarmonyControl';
 import type { HarmonyState } from './harmony';
@@ -18,10 +19,8 @@ import {
 } from './simpleSequencerPhrasePreview';
 import {
   boundedInteger,
-  boundedNumber,
   clamp,
   harmonyPhraseSeconds,
-  manualNoteSourceEnabled,
   padChordTriggerIntervalSeconds,
   phraseTimingForClockSource,
   runtimeSourceFromSourceId,
@@ -32,11 +31,12 @@ import {
   createSynthChordSlotResolutionContext,
   resolveSynthChordStepMidiPool,
   sanitizeSynthChordSequencerConfig,
+  synthChordArpPatternForShape,
   synthChordArpSpeedSeconds,
+  type SynthChordSequencerArpPatternStep,
   synthChordSequencerTriggerOrdinalForTick,
   synthChordSequencerStepForTick,
   synthChordSubLaneValue,
-  ticksUntilNextEnabledSynthChordStep,
   type SynthChordSequencerArpOrder,
   type SynthChordSequencerStrumDirection,
 } from './synthChordSequencer';
@@ -54,13 +54,7 @@ export type CoreProductPadChordSchedule = {
   scheduledNotes: CoreProductArrangementScheduledNote[];
 };
 
-type ChordVoice = {
-  sourceId: number;
-  midi: number;
-  voiceIndex: number;
-  baseDelaySeconds: number;
-  velocity: number;
-};
+type ChordVoice = CoreProductChordVoice;
 
 const CHORD_MORPH_SOURCE_IDS = new Set<number>([
   CORE_PRODUCT_SOURCE_IDS.pad1,
@@ -126,6 +120,16 @@ export function createCoreProductPadChordSchedule(args: {
   anchors: TransportAnchors | null;
   nowWallSec: number;
 }): CoreProductPadChordSchedule {
+  return createCoreProductChordSequencerSchedule(args);
+}
+
+export function createCoreProductChordGeneratorSchedule(args: {
+  state: Record<string, unknown>;
+  harmonyState: HarmonyState;
+  rng: () => number;
+  anchors: TransportAnchors | null;
+  nowWallSec: number;
+}): CoreProductPadChordSchedule {
   const { state, harmonyState, rng, anchors, nowWallSec } = args;
   const sliderState = sliderStateFromRecord(state);
   const phraseSeconds = harmonyPhraseSeconds(sliderState);
@@ -142,8 +146,113 @@ export function createCoreProductPadChordSchedule(args: {
     runtimeNotes,
     scheduledNotes,
   };
+  const source = String(state.synthChordGeneratorSource ?? 'piano').trim().toLowerCase();
+  const voiceCount = boundedInteger(state, 'synthChordGeneratorVoiceCount', 6, 1, PAD_VOICE_COUNT);
+  const chordMidi = harmonyState.currentChord.midiNotes.length > 0
+    ? harmonyState.currentChord.midiNotes
+    : [48 + boundedInteger(state, 'rootNote', 4, 0, 11)];
+  const octaveShift = boundedInteger(state, 'synthOctave', 0, -2, 2) * 12;
+  const voices = resolveCoreProductChordVoices({
+    state,
+    source,
+    voiceCount,
+    chordMidi,
+    octaveShift,
+    triggerIntervalSeconds,
+    rng,
+    velocity: 1,
+  });
+  if (voices.length === 0) return schedule;
+
+  const addRuntimeNote = (
+    sourceId: number,
+    midi: number,
+    delaySeconds: number,
+    voiceIndex: number,
+    velocity = 1,
+    holdSeconds?: number,
+  ) => {
+    if (!timing) return;
+    const vizSource = runtimeSourceFromSourceId(sourceId);
+    const triggerWallSec = nowWallSec + delaySeconds;
+    const envelope = envelopeForSource(sliderState, vizSource, delaySeconds, triggerIntervalSeconds);
+    if (typeof holdSeconds === 'number' && Number.isFinite(holdSeconds)) {
+      envelope.gateSeconds = clamp(holdSeconds, 0.02, 24);
+    }
+    runtimeNotes.push({
+      id: `chord-generator:${timing.phraseIndex}:${triggerWallSec.toFixed(4)}:${vizSource}:${voiceIndex}:${Math.round(midi)}:${runtimeNotes.length}`,
+      source: vizSource,
+      midi,
+      label: midiNoteLabel(midi),
+      voiceIndex,
+      triggerSeconds: triggerWallSec - timing.phraseStartWallSec,
+      triggerWallSec,
+      velocity,
+      envelope,
+    });
+  };
+
+  const holdSecondsForVoice = (voice: ChordVoice, delaySeconds: number): number => {
+    if (voice.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1) {
+      return coreProductPadEnvelopeGateSecondsFromState(state, 'pad1', {
+        triggerIntervalSeconds,
+        voiceDelaySeconds: delaySeconds,
+      });
+    }
+    if (voice.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2) {
+      return coreProductPadEnvelopeGateSecondsFromState(state, 'pad2', {
+        triggerIntervalSeconds,
+        voiceDelaySeconds: delaySeconds,
+      });
+    }
+    return coreProductSynthSequencerHoldSecondsFromState(state, voice.sourceId, 0.5);
+  };
+
+  for (const voice of voices) {
+    const delaySeconds = voice.baseDelaySeconds;
+    const holdSeconds = holdSecondsForVoice(voice, delaySeconds);
+    addRuntimeNote(voice.sourceId, voice.midi, delaySeconds, voice.voiceIndex, voice.velocity, holdSeconds);
+    scheduledNotes.push({
+      delaySeconds,
+      event: createCoreProductManualNoteEvent(
+        voice.sourceId,
+        voice.midi,
+        clamp(voice.velocity, 0.001, 1),
+        holdSeconds * 1000,
+        voice.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 || voice.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2
+          ? voice.voiceIndex
+          : undefined,
+      ),
+    });
+  }
+  return schedule;
+}
+
+export function createCoreProductChordSequencerSchedule(args: {
+  state: Record<string, unknown>;
+  harmonyState: HarmonyState;
+  rng: () => number;
+  anchors: TransportAnchors | null;
+  nowWallSec: number;
+}): CoreProductPadChordSchedule {
+  const { state, harmonyState, rng, anchors, nowWallSec } = args;
+  const sliderState = sliderStateFromRecord(state);
   const config = sanitizeSynthChordSequencerConfig(state.synthChordSequencer);
-  const ticksPerPhrase = Math.max(1, Math.round(phraseSeconds / Math.max(0.001, triggerIntervalSeconds)));
+  const triggerIntervalSeconds = coreProductChordSequencerStepSeconds(state);
+  const phraseSeconds = triggerIntervalSeconds * config.stepCount;
+  const timing = anchors
+    ? phraseTimingForClockSource(coreProductChordSequencerClockSource(state), phraseSeconds, anchors, nowWallSec)
+    : null;
+  const runtimeNotes: SimpleSequencerVizNote[] = [];
+  const scheduledNotes: CoreProductArrangementScheduledNote[] = [];
+  const schedule: CoreProductPadChordSchedule = {
+    phraseSeconds,
+    triggerIntervalSeconds,
+    timing,
+    runtimeNotes,
+    scheduledNotes,
+  };
+  const ticksPerPhrase = config.stepCount;
   const phraseTickIndex = timing
     ? clamp(Math.floor((nowWallSec - timing.phraseStartWallSec + 0.002) / Math.max(0.001, triggerIntervalSeconds)), 0, ticksPerPhrase - 1)
     : 0;
@@ -161,13 +270,8 @@ export function createCoreProductPadChordSchedule(args: {
   const chordDistance = synthChordSubLaneValue(config, 'distance', chordTriggerOrdinal);
   const chordNudgeSeconds = clamp(synthChordSubLaneValue(config, 'nudge', chordTriggerOrdinal) ?? 0, -1, 1) * triggerIntervalSeconds * 0.45;
 
-  const maskLimit = (1 << PAD_VOICE_COUNT) - 1;
   const source = String(state.synthChordSequencerSource ?? 'piano').trim().toLowerCase();
   const voiceCount = boundedInteger(state, 'synthChordSequencerVoiceCount', 6, 1, PAD_VOICE_COUNT);
-  const euclidOwnedMask = padEuclidOwnedVoiceMask(state);
-  const rawVoiceMask = boundedInteger(state, 'synthVoiceMask', 63, 0, maskLimit) & maskLimit;
-  const pad2Assign = boundedInteger(state, 'pad2VoiceAssign', 0, 0, maskLimit) & maskLimit;
-  const availablePadMask = rawVoiceMask & ~euclidOwnedMask;
   const fallbackChordMidi = harmonyState.currentChord.midiNotes.length > 0
     ? harmonyState.currentChord.midiNotes
     : [48 + boundedInteger(state, 'rootNote', 4, 0, 11)];
@@ -179,7 +283,16 @@ export function createCoreProductPadChordSchedule(args: {
   });
   const chordMidi = resolvedChordMidi.length > 0 ? resolvedChordMidi : fallbackChordMidi;
   const octaveShift = boundedInteger(state, 'synthOctave', 0, -2, 2) * 12;
-  const voices: ChordVoice[] = [];
+  const voices = resolveCoreProductChordVoices({
+    state,
+    source,
+    voiceCount,
+    chordMidi,
+    octaveShift,
+    triggerIntervalSeconds,
+    rng,
+    velocity: chordVelocityScale,
+  });
   const addRuntimeNote = (
     sourceId: number,
     midi: number,
@@ -208,62 +321,6 @@ export function createCoreProductPadChordSchedule(args: {
       envelope,
     });
   };
-  const waveSpreadSeconds =
-    boundedNumber(state, 'waveSpread', 0.125, 0, 1) *
-    triggerIntervalSeconds;
-  const voiceOffsets = Array.from({ length: PAD_VOICE_COUNT }, () => rng() * waveSpreadSeconds).sort((a, b) => a - b);
-  const nonPadSourceId = source === 'lead1' || source === 'lead'
-    ? CORE_PRODUCT_SOURCE_IDS.lead1
-    : source === 'lead2'
-      ? CORE_PRODUCT_SOURCE_IDS.lead2
-      : source === 'piano'
-        ? CORE_PRODUCT_SOURCE_IDS.piano
-        : 0;
-  if (nonPadSourceId !== 0) {
-    if (!manualNoteSourceEnabled(state, nonPadSourceId)) return schedule;
-    for (let index = 0; index < voiceCount; index += 1) {
-      const midi = clamp(chordMidi[index % chordMidi.length]! + octaveShift, 0, 127);
-      voices.push({
-        sourceId: nonPadSourceId,
-        midi,
-        voiceIndex: index,
-        baseDelaySeconds: voiceOffsets[index] ?? 0,
-        velocity: chordVelocityScale,
-      });
-    }
-  } else {
-    const rawPadMasks = padChordVoiceMasksForSource(source, availablePadMask, pad2Assign, voiceCount);
-    const pad1Mask = manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad1) ? rawPadMasks.pad1Mask : 0;
-    const pad2Mask = manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad2) ? rawPadMasks.pad2Mask : 0;
-    if ((pad1Mask | pad2Mask) === 0) return schedule;
-    const pad1ChordMidi = enabledChordMidiForMask(chordMidi, pad1Mask);
-    const pad2ChordMidi = enabledChordMidiForMask(chordMidi, pad2Mask);
-    for (let voiceIndex = 0; voiceIndex < PAD_VOICE_COUNT; voiceIndex += 1) {
-      const bit = 1 << voiceIndex;
-      const delaySeconds = voiceOffsets[voiceIndex] ?? 0;
-      if ((pad1Mask & bit) !== 0) {
-        const enabledIndex = enabledVoiceRank(pad1Mask, voiceIndex);
-        voices.push({
-          sourceId: CORE_PRODUCT_SOURCE_IDS.pad1,
-          midi: clamp(pad1ChordMidi[enabledIndex % pad1ChordMidi.length]! + octaveShift, 0, 127),
-          voiceIndex,
-          baseDelaySeconds: delaySeconds,
-          velocity: chordVelocityScale,
-        });
-      }
-      if ((pad2Mask & bit) !== 0) {
-        const enabledIndex = enabledVoiceRank(pad2Mask, voiceIndex);
-        voices.push({
-          sourceId: CORE_PRODUCT_SOURCE_IDS.pad2,
-          midi: clamp(pad2ChordMidi[enabledIndex % pad2ChordMidi.length]! + octaveShift, 0, 127),
-          voiceIndex,
-          baseDelaySeconds: delaySeconds,
-          velocity: chordVelocityScale,
-        });
-      }
-    }
-  }
-
   const holdSecondsForVoice = (voice: ChordVoice, delaySeconds: number, intervalSeconds: number): number => {
     if (voice.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1) {
       return coreProductPadEnvelopeGateSecondsFromState(state, 'pad1', {
@@ -337,16 +394,19 @@ export function createCoreProductPadChordSchedule(args: {
   emitChordSourceParams();
 
   if (config.playbackMode === 'arp') {
-    const ordered = orderedChordVoices(voices, config.arp.order, rng);
+    const ordered = orderedChordVoicesForTokenPattern(voices);
+    const pattern = config.arp.shape === 'custom'
+      ? config.arp.pattern
+      : synthChordArpPatternForShape(config.arp.shape, config.arp.patternLength);
     const speedSeconds = synthChordArpSpeedSeconds(state, config.arp.speed);
-    const heldTicks = config.arp.hold === 'untilNextTrigger'
-      ? ticksUntilNextEnabledSynthChordStep(config, absoluteTickIndex)
-      : 1;
-    const spanSeconds = clamp(heldTicks * triggerIntervalSeconds, speedSeconds, triggerIntervalSeconds * config.stepCount);
+    const holdTicks = Math.max(1, Math.min(config.stepCount, step.holdSteps ?? 1));
+    const spanSeconds = Math.max(speedSeconds, holdTicks * triggerIntervalSeconds);
     const pulseCount = clamp(Math.floor((spanSeconds + 0.0001) / speedSeconds), 1, 128);
     const holdSeconds = clamp(speedSeconds * config.arp.gate, 0.02, Math.max(0.02, speedSeconds * 0.98));
     for (let pulse = 0; pulse < pulseCount; pulse += 1) {
-      const voice = ordered[pulse % ordered.length] ?? ordered[0]!;
+      const patternStep = pattern[pulse % config.arp.patternLength] ?? pattern[0];
+      const voice = patternStep ? resolveArpPatternVoice(ordered, patternStep) : null;
+      if (!voice) continue;
       emitVoice(voice, pulse * speedSeconds, voice.velocity, speedSeconds, holdSeconds);
     }
     return schedule;
@@ -361,6 +421,8 @@ export function createCoreProductPadChordSchedule(args: {
     const ordered = orderedChordVoices(voices, direction, rng);
     const spreadSeconds = config.strum.spreadMs / 1000;
     const denom = Math.max(1, ordered.length - 1);
+    const holdTicks = Math.max(1, Math.min(config.stepCount, step.holdSteps ?? 1));
+    const holdSpanSeconds = holdTicks * triggerIntervalSeconds;
     for (let index = 0; index < ordered.length; index += 1) {
       const voice = ordered[index]!;
       const linear = index / denom;
@@ -369,14 +431,37 @@ export function createCoreProductPadChordSchedule(args: {
         : 1 - Math.pow(1 - linear, 1 + Math.abs(config.strum.curve) * 2);
       const velocity = clamp(voice.velocity * (1 - config.strum.velocityFalloff * linear), 0.001, 1);
       const delaySeconds = curved * spreadSeconds;
-      const holdSeconds = Math.max(0.02, holdSecondsForVoice(voice, delaySeconds, triggerIntervalSeconds) * config.strum.gate);
+      const holdSeconds = Math.max(0.02, holdSpanSeconds - delaySeconds) * config.strum.gate;
       emitVoice(voice, delaySeconds, velocity, triggerIntervalSeconds, holdSeconds);
     }
     return schedule;
   }
 
+  const holdTicks = Math.max(1, Math.min(config.stepCount, step.holdSteps ?? 1));
+  const holdSpanSeconds = holdTicks * triggerIntervalSeconds;
   for (const voice of voices) {
-    emitVoice(voice, voice.baseDelaySeconds, voice.velocity, triggerIntervalSeconds);
+    const holdSeconds = Math.max(0.02, holdSpanSeconds - voice.baseDelaySeconds);
+    emitVoice(voice, voice.baseDelaySeconds, voice.velocity, triggerIntervalSeconds, holdSeconds);
   }
   return schedule;
+}
+
+function orderedChordVoicesForTokenPattern(voices: readonly ChordVoice[]): ChordVoice[] {
+  return [...voices].sort((left, right) => left.midi - right.midi || left.voiceIndex - right.voiceIndex);
+}
+
+function resolveArpPatternVoice(
+  ordered: readonly ChordVoice[],
+  step: SynthChordSequencerArpPatternStep,
+): ChordVoice | null {
+  if (!step.active || ordered.length === 0) return null;
+  const zeroTone = Math.max(0, Math.round(step.tone) - 1);
+  const baseVoice = ordered[zeroTone % ordered.length] ?? ordered[0];
+  if (!baseVoice) return null;
+  const wrapOctave = Math.floor(zeroTone / ordered.length);
+  const octaveShift = (wrapOctave + step.octave) * 12;
+  return {
+    ...baseVoice,
+    midi: clamp(baseVoice.midi + octaveShift, 0, 127),
+  };
 }

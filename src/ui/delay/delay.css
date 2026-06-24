@@ -67,6 +67,7 @@
 /* ─── Card Pattern ─── */
 
 .delay-card {
+  --page-accent: var(--sc, var(--accent-primary));
   background: var(--k-bg-card);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-md);
@@ -323,6 +324,14 @@
 
 .delay-rhythm-map { height: 210px; }
 
+.delay-card-body > .optional-visualizer-placeholder {
+  min-height: 210px;
+}
+
+.delay-card-body > .optional-visualizer-active {
+  min-width: 0;
+}
+
 .delay-rhythm-map canvas {
   width: 100%;
   height: 100%;
@@ -455,7 +464,8 @@
 
 /* ─── Mobile ─── */
 
-.delay-root.mobile .delay-rhythm-map { height: 150px; }
+.delay-root.mobile .delay-rhythm-map,
+.delay-root.mobile .delay-card-body > .optional-visualizer-placeholder { height: 150px; min-height: 150px; }
 .delay-root.mobile .delay-card-body { padding: 6px 8px; }
 
 .delay-root.mobile .delay-control-grid,

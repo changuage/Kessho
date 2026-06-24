@@ -10,6 +10,7 @@ import {
 import type { TransportDebugSnapshot } from '../../audio/transport';
 import type { SliderState } from '../state';
 import { SOURCE_COLORS } from '../../designSystem/colors';
+import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
 
 interface SimplePhraseVisualizerProps {
   kind: SimpleSequencerVizKind;
@@ -227,7 +228,7 @@ function drawVisualizer(
   const rect = canvas.getBoundingClientRect();
   const cssWidth = Math.max(1, rect.width);
   const cssHeight = Math.max(1, rect.height);
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const dpr = getCappedCanvasDpr();
   const nextWidth = Math.floor(cssWidth * dpr);
   const nextHeight = Math.floor(cssHeight * dpr);
   if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
@@ -361,6 +362,7 @@ export const SimplePhraseVisualizer: React.FC<SimplePhraseVisualizerProps> = ({
   transportDebug,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const { canAnimate } = useAnimationVisibility(canvasRef, { rootMargin: '120px' });
   const animationRef = useRef<number | null>(null);
   const lastFrameRef = useRef(0);
   const lastPhaseRef = useRef(0);
@@ -477,23 +479,34 @@ export const SimplePhraseVisualizer: React.FC<SimplePhraseVisualizerProps> = ({
   }, [currentPreview.phraseSeconds, isRunning]);
 
   useEffect(() => {
+    if (!canAnimate) return;
+
+    const drawFrame = (time: number) => {
+      const phase = phraseProgress(anchorRef.current, currentPreview.phraseSeconds, isRunning);
+      if (isRunning && lastPhaseRef.current > currentPreview.phraseSeconds * 0.75 && phase < currentPreview.phraseSeconds * 0.25) {
+        setPhrasePlan((plan) => ({
+          index: plan.index + 1,
+          previousState: plan.currentState,
+          currentState: latestStateRef.current,
+        }));
+      }
+      lastPhaseRef.current = phase;
+      const canvas = canvasRef.current;
+      if (transitionRef.current && time - transitionRef.current.startedAtMs >= transitionRef.current.durationMs) {
+        transitionRef.current = null;
+      }
+      if (canvas) drawVisualizer(canvas, currentPreview, previousPreview, phase, transitionRef.current, time);
+    };
+
+    if (!isRunning && !transitionRef.current) {
+      drawFrame(performance.now());
+      return;
+    }
+
     const tick = (time: number) => {
       if (time - lastFrameRef.current >= FRAME_MS) {
         lastFrameRef.current = time;
-        const phase = phraseProgress(anchorRef.current, currentPreview.phraseSeconds, isRunning);
-        if (isRunning && lastPhaseRef.current > currentPreview.phraseSeconds * 0.75 && phase < currentPreview.phraseSeconds * 0.25) {
-          setPhrasePlan((plan) => ({
-            index: plan.index + 1,
-            previousState: plan.currentState,
-            currentState: latestStateRef.current,
-          }));
-        }
-        lastPhaseRef.current = phase;
-        const canvas = canvasRef.current;
-        if (transitionRef.current && time - transitionRef.current.startedAtMs >= transitionRef.current.durationMs) {
-          transitionRef.current = null;
-        }
-        if (canvas) drawVisualizer(canvas, currentPreview, previousPreview, phase, transitionRef.current, time);
+        drawFrame(time);
       }
       animationRef.current = window.requestAnimationFrame(tick);
     };
@@ -503,7 +516,7 @@ export const SimplePhraseVisualizer: React.FC<SimplePhraseVisualizerProps> = ({
       if (animationRef.current !== null) window.cancelAnimationFrame(animationRef.current);
       animationRef.current = null;
     };
-  }, [currentPreview, isRunning, previousPreview]);
+  }, [canAnimate, currentPreview, isRunning, previousPreview]);
 
   return (
     <div className="simple-phrase-viz" aria-label={kind === 'padChord' ? 'Pad chord phrase visualizer' : 'Random timing phrase visualizer'}>

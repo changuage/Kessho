@@ -1,4 +1,4 @@
-import { CORE_PRODUCT_SOURCE_IDS, createCoreProductManualNoteEvent, type CoreProductEvent } from './coreProductEvents';
+import { createCoreProductManualNoteEvent, type CoreProductEvent } from './coreProductEvents';
 import { createCoreProductHarmonyParamEvents } from './coreProductHarmonyParamEvents';
 import { arrangementRestartKey } from './coreProductArrangementVoiceMapping';
 import { coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
@@ -21,7 +21,12 @@ import {
   type SimpleSequencerPhrasePreview,
   type SimpleSequencerVizNote,
 } from './simpleSequencerPhrasePreview';
-import { createCoreProductPadChordSchedule } from './coreProductArrangementPadChord';
+import {
+  createCoreProductChordGeneratorSchedule,
+  createCoreProductChordSequencerSchedule,
+  type CoreProductPadChordSchedule,
+} from './coreProductArrangementPadChord';
+import { startCoreProductChordSequencerTimer } from './coreProductChordSequencerClock';
 import {
   booleanFromState,
   boundedInteger,
@@ -38,8 +43,8 @@ import {
   pickChordWeightedNote,
   phraseTimingForClockSource,
   progressionPhraseSeconds,
+  publishManualNoteTriggerForEvent,
   sliderStateFromRecord,
-  sourceDistanceValue,
 } from './coreProductArrangementSchedulerUtils';
 import {
   cloneRuntimePlan,
@@ -59,6 +64,7 @@ export class CoreProductArrangementScheduler {
   private chordSubTickCount = 0;
   private harmonyTimer: number | null = null;
   private leadPhraseTimer: number | null = null;
+  private chordSequencerTimer: number | null = null;
   private readonly padNoteTimers = new Set<number>();
   private readonly leadNoteTimers = new Set<number>();
   private padChordPlan: SimpleSequencerPhrasePreview | null = null;
@@ -71,7 +77,8 @@ export class CoreProductArrangementScheduler {
     private readonly getContext: () => AudioContext | null,
     private readonly publishTrigger?: PublishTrigger,
   ) {}
-  start(state: Record<string, unknown> | null | undefined): void {
+  start(state: Record<string, unknown> | null | undefined, preserveAnchors = false): void {
+    const previousAnchors = preserveAnchors ? this.anchors : null;
     this.stop();
     if (!state) return;
     this.restartKey = arrangementRestartKey(state);
@@ -80,7 +87,7 @@ export class CoreProductArrangementScheduler {
     this.running = true;
     const sliderState = sliderStateFromRecord(this.state);
     const nowWallSec = Date.now() / 1000;
-    this.anchors = {
+    this.anchors = previousAnchors ?? {
       localPhraseWallStartSec: nowWallSec,
       localBeatWallStartSec: nowWallSec,
       localBeatCtxStartSec: this.getContext()?.currentTime ?? 0,
@@ -89,9 +96,8 @@ export class CoreProductArrangementScheduler {
     this.rng = createRng(`${bucket}|E_ROOT`);
     this.harmonyState = createSchedulerHarmonyState(sliderState);
     for (const event of createCoreProductHarmonyParamEvents(this.harmonyState)) this.postEvent(event);
-    if (booleanFromState(this.state, 'synthChordSequencerEnabled', false)) {
-      this.triggerPadChord();
-    }
+    if (booleanFromState(this.state, 'synthChordGeneratorEnabled', false)) this.triggerPadChord(createCoreProductChordGeneratorSchedule, true);
+    if (booleanFromState(this.state, 'synthChordSequencerEnabled', false)) this.startChordSequencer();
     this.scheduleHarmonyTicks();
     if (booleanFromState(this.state, 'leadRandomEnabled', false)) {
       this.startLeadMelody((sliderState.leadRandomSyncPolicy ?? 'nextPhrase') === 'nextPhrase');
@@ -113,10 +119,15 @@ export class CoreProductArrangementScheduler {
     }
     const nextRestartKey = arrangementRestartKey(state);
     if (nextRestartKey !== this.restartKey) {
-      this.start(state);
+      this.start(state, true);
       return;
     }
     this.state = { ...state };
+    if (booleanFromState(this.state, 'synthChordSequencerEnabled', false)) {
+      if (this.chordSequencerTimer === null) this.startChordSequencer();
+    } else {
+      this.clearTimer('chordSequencerTimer');
+    }
     if (!padChordHasEnabledTarget(this.state)) {
       this.clearPadNoteTimers();
       this.padChordPlan = null;
@@ -133,6 +144,7 @@ export class CoreProductArrangementScheduler {
     this.running = false;
     this.clearTimer('harmonyTimer');
     this.clearTimer('leadPhraseTimer');
+    this.clearTimer('chordSequencerTimer');
     for (const timer of this.padNoteTimers) {
       window.clearTimeout(timer);
     }
@@ -274,7 +286,7 @@ export class CoreProductArrangementScheduler {
     this.randomTimingPlan = updateRuntimePlanNotes(this.randomTimingPlan, notes, rangeMinMidi, rangeMaxMidi);
   }
 
-  private clearTimer(key: 'harmonyTimer' | 'leadPhraseTimer'): void {
+  private clearTimer(key: 'harmonyTimer' | 'leadPhraseTimer' | 'chordSequencerTimer'): void {
     const timer = this[key];
     if (timer !== null) {
       window.clearTimeout(timer);
@@ -286,7 +298,7 @@ export class CoreProductArrangementScheduler {
       const targetId = event.targetId;
       if (!this.state || typeof targetId !== 'number' || !manualNoteSourceEnabled(this.state, targetId)) return;
       this.postEvent(event);
-      this.publishManualNoteTrigger(event);
+      publishManualNoteTriggerForEvent(event, this.state, this.publishTrigger);
     };
     const delayMs = Math.max(0, delaySeconds * 1000);
     if (delayMs <= 1) {
@@ -299,29 +311,6 @@ export class CoreProductArrangementScheduler {
       if (this.running) post();
     }, delayMs);
     timers.add(timer);
-  }
-
-  private publishManualNoteTrigger(event: CoreProductEvent): void {
-    if (!this.publishTrigger || !this.state) return;
-    switch (event.targetId) {
-      case CORE_PRODUCT_SOURCE_IDS.pad1:
-        this.publishTrigger('padDistance', sourceDistanceValue(this.state, 'padDistance'));
-        break;
-      case CORE_PRODUCT_SOURCE_IDS.pad2:
-        this.publishTrigger('pad2Distance', sourceDistanceValue(this.state, 'pad2Distance'));
-        break;
-      case CORE_PRODUCT_SOURCE_IDS.lead1:
-        this.publishTrigger('leadDistance', { lead1: sourceDistanceValue(this.state, 'lead1Distance'), lead2: -1 });
-        break;
-      case CORE_PRODUCT_SOURCE_IDS.lead2:
-        this.publishTrigger('leadDistance', { lead1: -1, lead2: sourceDistanceValue(this.state, 'lead2Distance') });
-        break;
-      case CORE_PRODUCT_SOURCE_IDS.piano:
-        this.publishTrigger('pianoDistance', sourceDistanceValue(this.state, 'pianoDistance'));
-        break;
-      default:
-        break;
-    }
   }
 
   private scheduleHarmonyTicks(): void {
@@ -406,28 +395,40 @@ export class CoreProductArrangementScheduler {
       isPhraseBoundary,
     );
     if (isPhraseBoundary) for (const event of createCoreProductHarmonyParamEvents(this.harmonyState)) this.postEvent(event);
-    if (booleanFromState(this.state, 'synthChordSequencerEnabled', false)) {
-      this.triggerPadChord();
-    }
+    if (booleanFromState(this.state, 'synthChordGeneratorEnabled', false)) this.triggerPadChord(createCoreProductChordGeneratorSchedule, true);
+    if (booleanFromState(this.state, 'synthChordSequencerEnabled', false) && this.chordSequencerTimer === null) this.startChordSequencer();
   }
 
-  private triggerPadChord(): void {
+  private startChordSequencer(): void {
+    this.clearTimer('chordSequencerTimer');
+    startCoreProductChordSequencerTimer({
+      getState: () => this.state,
+      getAnchors: () => this.anchors,
+      isRunning: () => this.running,
+      isEnabled: () => Boolean(this.state && booleanFromState(this.state, 'synthChordSequencerEnabled', false)),
+      trigger: () => this.triggerPadChord(createCoreProductChordSequencerSchedule, false, true),
+      setTimer: (timer) => { this.chordSequencerTimer = timer; },
+    });
+  }
+
+  private triggerPadChord(
+    createSchedule: (args: { state: Record<string, unknown>; harmonyState: HarmonyState; rng: () => number; anchors: TransportAnchors | null; nowWallSec: number }) => CoreProductPadChordSchedule,
+    appendRuntimePlan: boolean,
+    liveState = false,
+  ): void {
     if (!this.state || !this.harmonyState || !this.rng) return;
-    const state = this.getPhraseState();
+    const state = liveState ? this.state : this.getPhraseState();
     if (!state) return;
-    const schedule = createCoreProductPadChordSchedule({
+    const { phraseSeconds, triggerIntervalSeconds, timing, runtimeNotes, scheduledNotes } = createSchedule({
       state,
       harmonyState: this.harmonyState,
       rng: this.rng,
       anchors: this.anchors,
       nowWallSec: Date.now() / 1000,
     });
-    const { phraseSeconds, triggerIntervalSeconds, timing, runtimeNotes, scheduledNotes } = schedule;
-    if (timing) {
-      this.ensurePadChordPlan(phraseSeconds, triggerIntervalSeconds, timing.phraseIndex, timing.phraseStartWallSec);
-    }
+    if (appendRuntimePlan && timing) this.ensurePadChordPlan(phraseSeconds, triggerIntervalSeconds, timing.phraseIndex, timing.phraseStartWallSec);
     for (const note of scheduledNotes) this.scheduleNote(note.delaySeconds, note.event, 'pad');
-    this.appendPadChordPlanNotes(runtimeNotes);
+    if (appendRuntimePlan) this.appendPadChordPlanNotes(runtimeNotes);
   }
 
   private startLeadMelody(deferToBoundary: boolean): void {

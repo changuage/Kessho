@@ -270,6 +270,7 @@ function hasSpecificEuclideanData(data: Record<string, unknown>, prefix: 'drum' 
     || Object.keys(data).some((key) => (
       key.startsWith(`${prefix}Euclid`)
       || structuredKeys.has(key)
+      || (prefix === 'synth' && key.startsWith('synthChordGenerator'))
       || (prefix === 'synth' && key.startsWith('synthChordSequencer'))
     ));
 }
@@ -287,6 +288,7 @@ function pickSpecificEuclideanData(data: Record<string, unknown>, prefix: 'drum'
       || key === 'synthEuclideanTempo'
       || key === 'synthSequencerFaces'
       || key === 'synthSequencerChain'
+      || key.startsWith('synthChordGenerator')
       || key.startsWith('synthChordSequencer')
     );
     if (

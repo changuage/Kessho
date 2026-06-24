@@ -153,6 +153,33 @@ export function sourceDistanceValue(state: Record<string, unknown>, key: string)
   return boundedNumber(state, key, 0, 0, 1);
 }
 
+export function publishManualNoteTriggerForEvent(
+  event: { targetId?: number },
+  state: Record<string, unknown>,
+  publishTrigger: ((name: string, ...payload: unknown[]) => void) | undefined,
+): void {
+  if (!publishTrigger) return;
+  switch (event.targetId) {
+    case CORE_PRODUCT_SOURCE_IDS.pad1:
+      publishTrigger('padDistance', sourceDistanceValue(state, 'padDistance'));
+      break;
+    case CORE_PRODUCT_SOURCE_IDS.pad2:
+      publishTrigger('pad2Distance', sourceDistanceValue(state, 'pad2Distance'));
+      break;
+    case CORE_PRODUCT_SOURCE_IDS.lead1:
+      publishTrigger('leadDistance', { lead1: sourceDistanceValue(state, 'lead1Distance'), lead2: -1 });
+      break;
+    case CORE_PRODUCT_SOURCE_IDS.lead2:
+      publishTrigger('leadDistance', { lead1: -1, lead2: sourceDistanceValue(state, 'lead2Distance') });
+      break;
+    case CORE_PRODUCT_SOURCE_IDS.piano:
+      publishTrigger('pianoDistance', sourceDistanceValue(state, 'pianoDistance'));
+      break;
+    default:
+      break;
+  }
+}
+
 export function leadRandomSourceEnabled(state: Record<string, unknown>, source: 'lead1' | 'lead2' | 'piano'): boolean {
   if (!booleanFromState(state, 'leadRandomEnabled', false)) return false;
   if (source === 'lead2') return booleanFromState(state, 'lead2Enabled', false);
@@ -180,8 +207,14 @@ export function manualNoteSourceEnabled(state: Record<string, unknown>, sourceId
 }
 
 export function padChordHasEnabledTarget(state: Record<string, unknown>): boolean {
-  if (!booleanFromState(state, 'synthChordSequencerEnabled', false)) return false;
-  const source = String(state.synthChordSequencerSource ?? 'piano').trim().toLowerCase();
+  const generatorEnabled = booleanFromState(state, 'synthChordGeneratorEnabled', false);
+  const sequencerEnabled = booleanFromState(state, 'synthChordSequencerEnabled', false);
+  if (!generatorEnabled && !sequencerEnabled) return false;
+  const source = String(
+    generatorEnabled
+      ? state.synthChordGeneratorSource ?? state.synthChordSequencerSource ?? 'piano'
+      : state.synthChordSequencerSource ?? 'piano',
+  ).trim().toLowerCase();
   if (source === 'lead1' || source === 'lead') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.lead1);
   if (source === 'lead2') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.lead2);
   if (source === 'piano') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.piano);

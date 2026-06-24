@@ -8,6 +8,8 @@ import { applyParams, extractParams } from '../../presets/codec';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import type { PresetEntry } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
+import { OptionalVisualizerGate } from '../components/OptionalVisualizerGate';
+import { useVisualFeatureToggle } from '../hooks/useVisualFeatureToggle';
 import DelayRhythmMap from './DelayRhythmMap';
 import './delay.css';
 
@@ -92,6 +94,10 @@ const DelayPage: React.FC<DelayPageProps> = ({
 }) => {
   const Slider = SliderComponent as React.ComponentType<any>;
   const { announceHelp, announceSlider } = useSliderHelp();
+  const delayRhythmMapToggle = useVisualFeatureToggle(
+    'kessho.visualizers.delayRhythmMap.enabled',
+    !isMobile,
+  );
   const echoPresetOptions = useCallback<NonNullable<UsePresetsOptions['customExtract']>>((snapshot) => ({
     ...extractParams(snapshot, 1, 'echoLine'),
     ...extractParams(snapshot, 1, 'leadDelay'),
@@ -325,41 +331,51 @@ const DelayPage: React.FC<DelayPageProps> = ({
         {/* ── Delay Visualizer ── */}
         <div className="delay-card" style={{ '--sc': 'var(--accent-primary)' } as React.CSSProperties}>
           <div className="delay-card-body" style={{ padding: '8px 10px 10px' }}>
-            <DelayRhythmMap
-              bpm={bpm}
-              echoTimeL={echoTimeL}
-              echoTimeR={echoTimeR}
-              echoFeedback={state.delayAFeedback ?? 0.3}
-              echoPingPong={state.delayAPingPong ?? false}
-              echoWidth={state.delayAWidth ?? 0.5}
-              clockedPattern={state.delayBPattern ?? 'cascade'}
-              clockedWarp={state.delayBWarp ?? 'clean'}
-              clockedActivity={state.granularDelayActivity ?? 0.5}
-              clockedBaseTime={clockedBaseTime}
-              clockedSpread={state.delayBSpread ?? 0.5}
-              delayBAlgorithm={delayBAlgorithm}
-              tapeSpacing={delayBTapeSpacing}
-              tapeHeadEnabled={[
-                state.delayBTapeHead1Enabled ?? true,
-                state.delayBTapeHead2Enabled ?? true,
-                state.delayBTapeHead3Enabled ?? true,
-                state.delayBTapeHead4Enabled ?? true,
-              ]}
-              tapeHeadLevels={[
-                state.delayBTapeHead1Level ?? 0.72,
-                state.delayBTapeHead2Level ?? 0.8,
-                state.delayBTapeHead3Level ?? 0.88,
-                state.delayBTapeHead4Level ?? 1,
-              ]}
-              tapeHeadPans={[
-                state.delayBTapeHead1Pan ?? 0.28,
-                state.delayBTapeHead2Pan ?? 0.72,
-                state.delayBTapeHead3Pan ?? 0.38,
-                state.delayBTapeHead4Pan ?? 0.62,
-              ]}
-              aToBSend={state.delayAToBSend ?? 0}
-              bToASend={state.delayBToASend ?? 0}
-            />
+            <OptionalVisualizerGate
+              enabled={delayRhythmMapToggle.enabled}
+              title="Delay rhythm map"
+              description="Paused by default on mobile."
+              enableLabel="Show rhythm map"
+              hideLabel="Hide rhythm map"
+              onEnable={delayRhythmMapToggle.show}
+              onHide={delayRhythmMapToggle.hide}
+            >
+              <DelayRhythmMap
+                bpm={bpm}
+                echoTimeL={echoTimeL}
+                echoTimeR={echoTimeR}
+                echoFeedback={state.delayAFeedback ?? 0.3}
+                echoPingPong={state.delayAPingPong ?? false}
+                echoWidth={state.delayAWidth ?? 0.5}
+                clockedPattern={state.delayBPattern ?? 'cascade'}
+                clockedWarp={state.delayBWarp ?? 'clean'}
+                clockedActivity={state.granularDelayActivity ?? 0.5}
+                clockedBaseTime={clockedBaseTime}
+                clockedSpread={state.delayBSpread ?? 0.5}
+                delayBAlgorithm={delayBAlgorithm}
+                tapeSpacing={delayBTapeSpacing}
+                tapeHeadEnabled={[
+                  state.delayBTapeHead1Enabled ?? true,
+                  state.delayBTapeHead2Enabled ?? true,
+                  state.delayBTapeHead3Enabled ?? true,
+                  state.delayBTapeHead4Enabled ?? true,
+                ]}
+                tapeHeadLevels={[
+                  state.delayBTapeHead1Level ?? 0.72,
+                  state.delayBTapeHead2Level ?? 0.8,
+                  state.delayBTapeHead3Level ?? 0.88,
+                  state.delayBTapeHead4Level ?? 1,
+                ]}
+                tapeHeadPans={[
+                  state.delayBTapeHead1Pan ?? 0.28,
+                  state.delayBTapeHead2Pan ?? 0.72,
+                  state.delayBTapeHead3Pan ?? 0.38,
+                  state.delayBTapeHead4Pan ?? 0.62,
+                ]}
+                aToBSend={state.delayAToBSend ?? 0}
+                bToASend={state.delayBToASend ?? 0}
+              />
+            </OptionalVisualizerGate>
           </div>
         </div>
 

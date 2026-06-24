@@ -6,8 +6,8 @@ import {
   type HarmonyChordSlot,
 } from './CoreProductHarmonyControl';
 import { productHarmonyScaleIdFromName } from './coreProductHarmonyScaleIds';
+import { coreProductSequencerBeatDurationSeconds } from './coreProductChordSequencerClock';
 import type { HarmonyState } from './harmony';
-import { getTransportMetrics } from './transport';
 
 export const SYNTH_CHORD_SEQUENCER_STEP_COUNT = 8 as const;
 
@@ -15,6 +15,9 @@ export type SynthChordSequencerPlaybackMode = 'chord' | 'arp' | 'strum';
 export type SynthChordSequencerArpHoldMode = 'step' | 'untilNextTrigger';
 export type SynthChordSequencerArpOrder = 'up' | 'down' | 'upDown' | 'downUp' | 'outsideIn' | 'insideOut' | 'random';
 export type SynthChordSequencerArpSpeed = '1/4' | '1/8' | '1/8T' | '1/16' | '1/16T' | '1/32';
+export type SynthChordSequencerArpShape = 'up' | 'down' | 'upDown' | 'skip' | 'octave' | 'custom';
+export type SynthChordSequencerArpPatternLength = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+export type SynthChordSequencerArpOctave = -1 | 0 | 1;
 export type SynthChordSequencerStrumDirection = 'up' | 'down' | 'upDown' | 'downUp' | 'random';
 export type SynthChordSequencerSlotId = number | null;
 export type SynthChordSequencerSubLaneName = 'chord' | 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge';
@@ -25,6 +28,13 @@ export interface SynthChordSequencerStep {
   enabled: boolean;
   slotId: SynthChordSequencerSlotId;
   probability: number;
+  holdSteps: number;
+}
+
+export interface SynthChordSequencerArpPatternStep {
+  active: boolean;
+  tone: number;
+  octave: SynthChordSequencerArpOctave;
 }
 
 export interface SynthChordSequencerArpConfig {
@@ -32,6 +42,9 @@ export interface SynthChordSequencerArpConfig {
   hold: SynthChordSequencerArpHoldMode;
   speed: SynthChordSequencerArpSpeed;
   gate: number;
+  shape: SynthChordSequencerArpShape;
+  patternLength: SynthChordSequencerArpPatternLength;
+  pattern: SynthChordSequencerArpPatternStep[];
 }
 
 export interface SynthChordSequencerStrumConfig {
@@ -61,6 +74,8 @@ export interface SynthChordSequencerConfig {
 const PLAYBACK_MODES: readonly SynthChordSequencerPlaybackMode[] = ['chord', 'arp', 'strum'];
 const ARP_HOLD_MODES: readonly SynthChordSequencerArpHoldMode[] = ['step', 'untilNextTrigger'];
 const ARP_ORDERS: readonly SynthChordSequencerArpOrder[] = ['up', 'down', 'upDown', 'downUp', 'outsideIn', 'insideOut', 'random'];
+const ARP_SHAPES: readonly SynthChordSequencerArpShape[] = ['up', 'down', 'upDown', 'skip', 'octave', 'custom'];
+const ARP_PATTERN_LENGTHS: readonly SynthChordSequencerArpPatternLength[] = [1, 2, 3, 4, 5, 6, 7, 8];
 export const SYNTH_CHORD_ARP_SPEEDS: readonly SynthChordSequencerArpSpeed[] = ['1/4', '1/8', '1/8T', '1/16', '1/16T', '1/32'];
 const STRUM_DIRECTIONS: readonly SynthChordSequencerStrumDirection[] = ['up', 'down', 'upDown', 'downUp', 'random'];
 export const SYNTH_CHORD_SUB_LANE_NAMES: readonly SynthChordSequencerSubLaneName[] = ['chord', 'expression', 'morph', 'distance', 'nudge'];
@@ -104,6 +119,72 @@ function boolValue(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback;
 }
 
+const DEFAULT_SYNTH_CHORD_ARP_PATTERN: SynthChordSequencerArpPatternStep[] = [
+  { active: true, tone: 1, octave: 0 },
+  { active: true, tone: 3, octave: 0 },
+  { active: true, tone: 2, octave: 0 },
+  { active: true, tone: 4, octave: 1 },
+  { active: false, tone: 1, octave: 0 },
+  { active: true, tone: 2, octave: 0 },
+  { active: true, tone: 1, octave: 1 },
+  { active: true, tone: 3, octave: -1 },
+  { active: true, tone: 1, octave: 0 },
+  { active: true, tone: 3, octave: 0 },
+  { active: true, tone: 2, octave: 0 },
+  { active: true, tone: 4, octave: 1 },
+  { active: false, tone: 1, octave: 0 },
+  { active: true, tone: 2, octave: 0 },
+  { active: true, tone: 1, octave: 1 },
+  { active: true, tone: 3, octave: -1 },
+];
+
+function sanitizeArpPatternStep(value: unknown, fallback: SynthChordSequencerArpPatternStep): SynthChordSequencerArpPatternStep {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
+  const record = value as Record<string, unknown>;
+  return {
+    active: boolValue(record.active, fallback.active),
+    tone: clamp(finiteInteger(record.tone, fallback.tone), 1, 8),
+    octave: clamp(finiteInteger(record.octave, fallback.octave), -1, 1) as SynthChordSequencerArpOctave,
+  };
+}
+
+export function synthChordArpPatternForShape(
+  shape: SynthChordSequencerArpShape,
+  length: SynthChordSequencerArpPatternLength,
+): SynthChordSequencerArpPatternStep[] {
+  const tone = (n: number, octave = 0, active = true): SynthChordSequencerArpPatternStep => ({
+    active,
+    tone: clamp(Math.round(n), 1, 8),
+    octave: clamp(Math.round(octave), -1, 1) as SynthChordSequencerArpOctave,
+  });
+  const safeLength = clamp(Math.round(length), 1, 8);
+  const seed = Array.from({ length: safeLength }, (_, index) => {
+    const position = index + 1;
+    if (shape === 'down') return tone(safeLength - index);
+    if (shape === 'upDown') {
+      const upCount = Math.ceil(safeLength / 2);
+      const downStart = safeLength % 2 === 0 ? upCount : upCount - 1;
+      return index < upCount
+        ? tone(position)
+        : tone(Math.max(1, downStart - (index - upCount)));
+    }
+    if (shape === 'skip') {
+      const oddCount = Math.ceil(safeLength / 2);
+      const oddTone = index < oddCount ? index * 2 + 1 : (index - oddCount + 1) * 2;
+      return tone(clamp(oddTone, 1, safeLength));
+    }
+    if (shape === 'octave') {
+      const baseTone = Math.floor(index / 2) + 1;
+      return tone(Math.min(safeLength, baseTone), index % 2 === 1 ? 1 : 0);
+    }
+    return tone(position);
+  });
+  return Array.from({ length: 16 }, (_, index) => {
+    const source = seed[index % safeLength] ?? tone(1);
+    return { ...source };
+  });
+}
+
 function sanitizeSlotId(value: unknown): SynthChordSequencerSlotId {
   if (value === null || value === undefined || value === -1) return null;
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
@@ -117,6 +198,7 @@ export function defaultSynthChordSequencerStep(id: number): SynthChordSequencerS
     enabled: true,
     slotId: null,
     probability: 1,
+    holdSteps: 1,
   };
 }
 
@@ -142,6 +224,9 @@ export function defaultSynthChordSequencerConfig(): SynthChordSequencerConfig {
       hold: 'step',
       speed: '1/8',
       gate: 0.62,
+      shape: 'custom',
+      patternLength: 8,
+      pattern: DEFAULT_SYNTH_CHORD_ARP_PATTERN.map((step) => ({ ...step })),
     },
     strum: {
       direction: 'up',
@@ -196,6 +281,7 @@ export function sanitizeSynthChordSequencerConfig(value: unknown): SynthChordSeq
       enabled: boolValue(step.enabled, fallback.steps[id]!.enabled),
       slotId: sanitizeSlotId(step.slotId),
       probability: clamp(finiteNumber(step.probability, fallback.steps[id]!.probability), 0, 1),
+      holdSteps: clamp(finiteInteger(step.holdSteps, fallback.steps[id]!.holdSteps), 1, SYNTH_CHORD_SEQUENCER_STEP_COUNT),
     };
   });
   const rawArp = record.arp && typeof record.arp === 'object' && !Array.isArray(record.arp)
@@ -228,6 +314,14 @@ export function sanitizeSynthChordSequencerConfig(value: unknown): SynthChordSeq
       hold: enumValue(rawArp.hold, ARP_HOLD_MODES, fallback.arp.hold),
       speed: enumValue(rawArp.speed, SYNTH_CHORD_ARP_SPEEDS, fallback.arp.speed),
       gate: clamp(finiteNumber(rawArp.gate, fallback.arp.gate), 0.05, 1),
+      shape: enumValue(rawArp.shape, ARP_SHAPES, fallback.arp.shape),
+      patternLength: ARP_PATTERN_LENGTHS.includes(rawArp.patternLength as SynthChordSequencerArpPatternLength)
+        ? rawArp.patternLength as SynthChordSequencerArpPatternLength
+        : fallback.arp.patternLength,
+      pattern: Array.from({ length: 16 }, (_, index) => sanitizeArpPatternStep(
+        Array.isArray(rawArp.pattern) ? rawArp.pattern[index] : undefined,
+        fallback.arp.pattern[index] ?? DEFAULT_SYNTH_CHORD_ARP_PATTERN[index]!,
+      )),
     },
     strum: {
       direction: enumValue(rawStrum.direction, STRUM_DIRECTIONS, fallback.strum.direction),
@@ -315,8 +409,7 @@ export function synthChordSubLaneValue(
 }
 
 export function synthChordArpSpeedSeconds(state: Record<string, unknown>, speed: SynthChordSequencerArpSpeed): number {
-  const metrics = getTransportMetrics(state as never);
-  const beat = Math.max(0.001, metrics.beatDurationSec);
+  const beat = Math.max(0.001, coreProductSequencerBeatDurationSeconds(state));
   switch (speed) {
     case '1/4':
       return beat;

@@ -993,10 +993,16 @@ export interface SliderState {
   synthEuclid4Source: SynthEuclidSource;
   synthEuclid4VoiceMask: number;
   
-  // Synth chord sequencer routing (when disabled, synth only plays from random timing/Euclidean/manual triggers)
+  // Simple-page automatic chord texture. This is separate from detailed Seq 5.
+  synthChordGeneratorEnabled: boolean;
+  synthChordGeneratorSource: SynthChordSequencerSource;
+  synthChordGeneratorVoiceCount: number;
+
+  // Detailed Seq 5 chord/arp sequencer routing.
   synthChordSequencerEnabled: boolean;
   synthChordSequencerSource: SynthChordSequencerSource;
   synthChordSequencerVoiceCount: number;
+  synthChordSequencerClockDivision: ClockDivision;
   synthChordSequencer: SynthChordSequencerConfig;
 
   // ─── Ikeda-Style Drum Synth ───
@@ -2283,9 +2289,13 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthEuclid4Probability',
   'synthEuclid4Source',
   'synthEuclid4VoiceMask',
+  'synthChordGeneratorEnabled',
+  'synthChordGeneratorSource',
+  'synthChordGeneratorVoiceCount',
   'synthChordSequencerEnabled',
   'synthChordSequencerSource',
   'synthChordSequencerVoiceCount',
+  'synthChordSequencerClockDivision',
   'synthChordSequencer',
   // Drum Synth
   'drumEnabled',
@@ -3349,10 +3359,16 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclid4Source: 'lead1' as const,
   synthEuclid4VoiceMask: 128,
   
-  // Synth chord sequencer routing
+  // Simple chord generator routing
+  synthChordGeneratorEnabled: false,
+  synthChordGeneratorSource: 'piano' as const,
+  synthChordGeneratorVoiceCount: 6,
+
+  // Detailed Seq 5 chord/arp sequencer routing
   synthChordSequencerEnabled: false,
   synthChordSequencerSource: 'piano' as const,
   synthChordSequencerVoiceCount: 6,
+  synthChordSequencerClockDivision: '1/4' as const,
   synthChordSequencer: defaultSynthChordSequencerConfig(),
 
   // ─── Ikeda-Style Drum Synth ───
@@ -4677,6 +4693,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   synthEuclid4Level: { min: 0, max: 1, step: 0.01 },
   synthEuclid4Probability: { min: 0, max: 1, step: 0.01 },
   synthEuclid4VoiceMask: { min: 1, max: 255, step: 1 },
+  synthChordGeneratorVoiceCount: { min: 1, max: 8, step: 1 },
   synthChordSequencerVoiceCount: { min: 1, max: 8, step: 1 },
   // Drum Euclidean sequencer
   drumEuclidBaseBPM: { min: 40, max: 300, step: 1 },
@@ -5365,6 +5382,11 @@ export function decodeStateFromUrl(search: string): SliderState | null {
         ) {
           state.synthEuclidClockSource = value;
         } else if (
+          key === 'synthChordSequencerClockDivision' &&
+          ['1/4', '1/4T', '1/8', '1/8T', '1/16', '1/16T', '1/32', '1/32T', '1/64'].includes(value)
+        ) {
+          state.synthChordSequencerClockDivision = value as ClockDivision;
+        } else if (
           key === 'drumEuclidClockSource' &&
           (value === 'localBeat' || value === 'globalBeat')
         ) {
@@ -5636,6 +5658,11 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.synthEuclid3Preset = value;
         } else if (key === 'synthEuclid4Preset') {
           state.synthEuclid4Preset = value;
+        } else if (
+          (key === 'synthChordGeneratorSource' || key === 'synthChordSequencerSource') &&
+          ['pad1', 'pad2', 'both', 'lead1', 'lead2', 'piano'].includes(value)
+        ) {
+          (state as Record<string, unknown>)[key] = value;
         } else if (key === 'oceanSampleEnabled') {
           state.oceanSampleEnabled = value === 'true';
         } else if (key === 'birdsEnabled') {
@@ -5695,6 +5722,7 @@ export function decodeStateFromUrl(search: string): SliderState | null {
       state.chordRate = normalizeChordsPerPhrase(state.chordRate);
     }
 
+    migrateChordGeneratorAndSeq5(state as unknown as Record<string, unknown>);
     sanitizeGranularStateCompatibility(state as unknown as Record<string, unknown>);
     return state;
   } catch {
@@ -5749,6 +5777,34 @@ export const DRUM_MORPH_KEYS = new Set<keyof SliderState>([
   'drumBeepHiMorph', 'drumBeepLoMorph', 'drumNoiseMorph', 'drumMembraneMorph'
 ] as (keyof SliderState)[]);
 
+function isDefaultSynthChordSequencerConfig(value: unknown): boolean {
+  return JSON.stringify(sanitizeSynthChordSequencerConfig(value)) === JSON.stringify(defaultSynthChordSequencerConfig());
+}
+
+function migrateChordGeneratorAndSeq5(record: Record<string, unknown>): void {
+  const hasGeneratorKeys =
+    Object.prototype.hasOwnProperty.call(record, 'synthChordGeneratorEnabled') ||
+    Object.prototype.hasOwnProperty.call(record, 'synthChordGeneratorSource') ||
+    Object.prototype.hasOwnProperty.call(record, 'synthChordGeneratorVoiceCount');
+  if (hasGeneratorKeys) return;
+
+  const oldEnabled = record.synthChordSequencerEnabled === true;
+  const oldSource = record.synthChordSequencerSource;
+  const oldVoiceCount = record.synthChordSequencerVoiceCount;
+  const oldConfigLooksDefault = isDefaultSynthChordSequencerConfig(record.synthChordSequencer);
+  if (oldEnabled && oldConfigLooksDefault) {
+    record.synthChordGeneratorEnabled = true;
+    record.synthChordGeneratorSource = typeof oldSource === 'string' ? oldSource : 'piano';
+    record.synthChordGeneratorVoiceCount = typeof oldVoiceCount === 'number' ? oldVoiceCount : 6;
+    record.synthChordSequencerEnabled = false;
+    return;
+  }
+
+  record.synthChordGeneratorEnabled = false;
+  record.synthChordGeneratorSource = 'piano';
+  record.synthChordGeneratorVoiceCount = 6;
+}
+
 /**
  * Migration map for converting old *Min/*Max preset fields to unified single-value + dualRanges format.
  */
@@ -5782,6 +5838,7 @@ export function migratePreset(preset: any): SavedPreset {
   applyLegacyStateKeyAliases(state as Record<string, unknown>);
   applyLegacyStateKeyAliases(dualRanges as Record<string, unknown>);
   applyLegacyStateKeyAliases(sliderModes as Record<string, unknown>);
+  migrateChordGeneratorAndSeq5(state as Record<string, unknown>);
 
   // Migrate *Min/*Max pairs → single value + dualRanges + sliderModes
   for (const { minKey, maxKey, newKey, defaultMode, threshold } of PRESET_MIGRATION_MAP) {

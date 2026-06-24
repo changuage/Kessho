@@ -13,6 +13,11 @@ function assert(condition, message) {
 const leadEditor = read('src/ui/synth/Lead4opFMEditorOverlay.tsx');
 const sliderHelp = read('src/ui/SliderHelpOverlay.tsx');
 const synthPage = read('src/ui/synth/SynthPage.tsx');
+const simplePhraseVisualizer = read('src/ui/synth/SimplePhraseVisualizer.tsx');
+const delayPage = read('src/ui/delay/DelayPage.tsx');
+const delayRhythmMap = read('src/ui/delay/DelayRhythmMap.tsx');
+const delayCss = read('src/ui/delay/delay.css');
+const optionalVisualizerGateCss = read('src/ui/components/optionalVisualizerGate.css');
 const ratingStars = read('src/presets/PresetRatingStars.tsx');
 const presetDropdown = read('src/presets/PresetDropdown.tsx');
 const presetFamilyTree = read('src/presets/PresetFamilyTree.tsx');
@@ -50,6 +55,56 @@ assert(
     synthPage.includes('const leadPresetOptionById = useMemo') &&
     synthPage.includes('const findLeadPresetOption = useCallback'),
   'Synth lead preset lookup structures must stay memoized'
+);
+
+assert(
+  synthPage.includes("useVisualFeatureToggle(\n    'kessho.visualizers.synthSimple.chordGenerator.v2.enabled',\n    false") &&
+    synthPage.includes("useVisualFeatureToggle(\n    'kessho.visualizers.synthSimple.randomTiming.v2.enabled',\n    false") &&
+    synthPage.includes('simpleChordPhraseVizToggle.enabled') &&
+    synthPage.includes('simpleRandomTimingVizToggle.enabled') &&
+    synthPage.includes('<OptionalVisualizerGate'),
+  'Synth simple phrase visualizers must stay opt-in and hidden by default'
+);
+
+assert(
+  optionalVisualizerGateCss.includes('.optional-visualizer-hide-button {\n  min-height: 28px') &&
+    optionalVisualizerGateCss.includes('font-size: 0.72rem') &&
+    optionalVisualizerGateCss.includes('padding-block: 4px'),
+  'Active visualizer hide control must stay compact'
+);
+
+assert(
+  simplePhraseVisualizer.includes('getCappedCanvasDpr') &&
+    simplePhraseVisualizer.includes('useAnimationVisibility') &&
+    simplePhraseVisualizer.includes('if (!canAnimate) return') &&
+    simplePhraseVisualizer.includes('if (!isRunning && !transitionRef.current)') &&
+    !simplePhraseVisualizer.includes('Math.min(2, window.devicePixelRatio'),
+  'Synth simple phrase visualizers must pause offscreen/stopped and use capped mobile DPR'
+);
+
+assert(
+  synthPage.includes("const livePadFilterVizMounted = isSynthSourceCardExpanded('pad1') || isSynthSourceCardExpanded('pad2')") &&
+    synthPage.includes('enabled: isRunning && liveSourceTelemetryAvailable && livePadFilterVizMounted'),
+  'Synth live filter telemetry polling must only run while pad filter visualizers are mounted'
+);
+
+assert(
+  delayPage.includes("useVisualFeatureToggle(\n    'kessho.visualizers.delayRhythmMap.enabled',\n    !isMobile") &&
+    delayPage.includes('delayRhythmMapToggle.enabled') &&
+    delayPage.includes('<OptionalVisualizerGate') &&
+    delayPage.includes('Show rhythm map') &&
+    delayPage.includes('<DelayRhythmMap'),
+  'Delay rhythm map must stay hidden by default on mobile and opt-in through the visualizer gate'
+);
+
+assert(
+  delayRhythmMap.includes('getCappedCanvasDpr') &&
+    delayRhythmMap.includes('useAnimationVisibility') &&
+    delayRhythmMap.includes('const shouldAnimate = canAnimate && hasAnimatedContent') &&
+    delayRhythmMap.includes('if (shouldAnimate)') &&
+    delayCss.includes('.delay-root.mobile .delay-rhythm-map,') &&
+    delayCss.includes('.delay-root.mobile .delay-card-body > .optional-visualizer-placeholder'),
+  'Delay rhythm map must keep capped DPR, offscreen pause, and mobile placeholder sizing'
 );
 
 assert(
