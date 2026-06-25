@@ -955,6 +955,18 @@
   opacity: 0.38;
   cursor: not-allowed;
 }
+.drum-root .seq-trigger-stamp-pill {
+  align-self: center;
+  border: 1px solid color-mix(in srgb, var(--sc, var(--accent-cyan)) 55%, rgba(255, 255, 255, 0.12));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sc, var(--accent-cyan)) 18%, rgba(0, 0, 0, 0.42));
+  color: var(--text-bright);
+  padding: 5px 10px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
 .drum-root .seq-lane-controls select {
   background: var(--bg-input);
   color: #fff;

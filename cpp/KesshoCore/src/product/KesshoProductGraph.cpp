@@ -363,7 +363,7 @@ uint32_t KesshoProductEngine::computeActiveModuleMask() const {
   }
   if (
       soundscapes_module &&
-      soundscapes_module->activeVoiceCount() > 0 &&
+      transport.running &&
       soundscapeModuleShouldRun(sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u])) {
     mask |= kModuleSoundscape;
   }

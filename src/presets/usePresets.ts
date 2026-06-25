@@ -39,6 +39,26 @@ function normalizePresetNameKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
+function isInternalDerivedPresetRefName(name: string): boolean {
+  return name.startsWith('__derived__/');
+}
+
+function stripInternalDerivedPresetRefs(
+  metadata: PresetVersionMetadata | undefined,
+): PresetVersionMetadata | undefined {
+  if (!metadata?.refs) return metadata;
+
+  const refs = Object.fromEntries(
+    Object.entries(metadata.refs).filter(([, ref]) => !isInternalDerivedPresetRefName(ref.name)),
+  );
+  if (Object.keys(refs).length === Object.keys(metadata.refs).length) return metadata;
+
+  const next: PresetVersionMetadata = { ...metadata };
+  if (Object.keys(refs).length > 0) next.refs = refs;
+  else delete next.refs;
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
 function findActiveNameConflict(presets: PresetSummary[], name: string): PresetSummary | null {
   const nameKey = normalizePresetNameKey(name);
   return presets.find((preset) => normalizePresetNameKey(preset.name) === nameKey) ?? null;
@@ -209,10 +229,16 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     const existingVersion = existing?.versions.find(v => v.v === existing.currentVersion)
       || existing?.versions[existing.versions.length - 1];
     // Merge: start with preserved metadata from prior version, then overlay any caller-supplied fields
-    const preserved = extractPresetVersionMetadata(existingVersion);
-    const preservedMetadata = metadata
+    const previousMetadata = extractPresetVersionMetadata(existingVersion);
+    const preserved = type === 'journey'
+      ? previousMetadata
+      : stripInternalDerivedPresetRefs(previousMetadata);
+    const mergedMetadata = metadata
       ? { ...(preserved || {}), ...metadata }
       : preserved;
+    const preservedMetadata = type === 'journey'
+      ? mergedMetadata
+      : stripInternalDerivedPresetRefs(mergedMetadata);
     if (existing && !shouldForkExisting) {
       const currentVersionData = getVersionData(existing) ?? existingVersion?.data ?? {};
       const sameData = presetValuesEqual(currentVersionData, data);

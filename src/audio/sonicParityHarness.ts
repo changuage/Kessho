@@ -111,6 +111,7 @@ type HarnessEngine = ProductGraphCaptureHost & ModulationRangeHost & {
   getLimiterNode?: () => AudioNode | null;
   getRecordableBusNodes?: () => Record<string, RecordableTrackSource>;
   getSonicParityDebugState?: () => unknown;
+  requestSonicParityTelemetry?: () => void;
   resetSonicParityFx?: () => void;
   auditionSynthNote: (note: ManualSynthNoteOptions, externalState?: SliderState) => Promise<void> | void;
   auditionSynthNotes?: (notes: ManualSynthNoteOptions[], externalState?: SliderState) => Promise<void> | void;
@@ -505,10 +506,14 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
       const getDebugState = typeof engine.getSonicParityDebugState === 'function'
         ? () => engine.getSonicParityDebugState!()
         : null;
+      const requestTelemetry = typeof engine.requestSonicParityTelemetry === 'function'
+        ? () => engine.requestSonicParityTelemetry!()
+        : null;
       const telemetryPeaks: Record<string, number> = {};
       let latestDebugState: unknown;
       const collectTelemetryPeaks = (): void => {
         if (!getDebugState) return;
+        requestTelemetry?.();
         latestDebugState = getDebugState();
         const telemetry = objectRecord(objectRecord(latestDebugState)?.latestTelemetry);
         if (!telemetry) return;

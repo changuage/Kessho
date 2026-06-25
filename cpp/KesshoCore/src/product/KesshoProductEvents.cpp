@@ -499,6 +499,7 @@ void KesshoProductEngine::sortControlEvents() {
         }
       }
       transport.running = true;
+      configureSoundscapesModuleFromSource();
       break;
     case KESSHO_PRODUCT_EVENT_KIND_STOP:
       transport.running = false;

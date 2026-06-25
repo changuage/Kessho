@@ -187,6 +187,32 @@ struct LFOState {
     }
 };
 
+struct PadLadderLP {
+    float y1 = 0.0f;
+    float y2 = 0.0f;
+    float y3 = 0.0f;
+    float y4 = 0.0f;
+
+    void reset() {
+        y1 = y2 = y3 = y4 = 0.0f;
+    }
+
+    float process(float input, float cutoff_hz, float resonance, float drive, float sample_rate) {
+        cutoff_hz = std::max(20.0f, std::min(cutoff_hz, sample_rate * 0.45f));
+        const float wc = KESSHO_TWO_PI * cutoff_hz / sample_rate;
+        const float g = std::max(0.0f, std::min(0.65f, wc / (1.0f + wc)));
+        const float k = std::max(0.0f, std::min(3.8f, resonance));
+        const float d = 1.0f + 2.0f * std::max(0.0f, drive);
+
+        float x = fast_tanhf(d * (input - k * y4));
+        y1 += g * (x - fast_tanhf(y1));
+        y2 += g * (fast_tanhf(y1) - fast_tanhf(y2));
+        y3 += g * (fast_tanhf(y2) - fast_tanhf(y3));
+        y4 += g * (fast_tanhf(y3) - fast_tanhf(y4));
+        return y4;
+    }
+};
+
 struct PadVoice {
     int   active = 0;
     int   pad_idx = 0;         // 0=pad1, 1=pad2
@@ -209,6 +235,7 @@ struct PadVoice {
     SVF filter_a_slope3;
     SVF filter_a_slope4;
     SVF filter_b;
+    PadLadderLP ladder_a;
 
     // Warmth + presence (biquad)
     Biquad warmth_filter;
@@ -230,6 +257,15 @@ struct PadVoice {
     LFOState lfo1;
     LFOState lfo2;
 
+    float osc_a_drift_cents = 0.0f;
+    float osc_a2_drift_cents = 0.0f;
+    float osc_b_drift_cents = 0.0f;
+    float osc_sub_drift_cents = 0.0f;
+    float drift_phase_a = 0.0f;
+    float drift_phase_b = 0.0f;
+    float drift_rate_a = 0.035f;
+    float drift_rate_b = 0.052f;
+
     void reset() {
         active = 0;
         osc_a = {};
@@ -241,6 +277,7 @@ struct PadVoice {
         filter_a_slope3.reset();
         filter_a_slope4.reset();
         filter_b.reset();
+        ladder_a.reset();
         warmth_filter = {};
         presence_filter = {};
         amp_env.reset();
@@ -248,6 +285,14 @@ struct PadVoice {
         lfo1.reset();
         lfo2.reset();
         pink.reset();
+        osc_a_drift_cents = 0.0f;
+        osc_a2_drift_cents = 0.0f;
+        osc_b_drift_cents = 0.0f;
+        osc_sub_drift_cents = 0.0f;
+        drift_phase_a = 0.0f;
+        drift_phase_b = 0.0f;
+        drift_rate_a = 0.035f;
+        drift_rate_b = 0.052f;
     }
 };
 
@@ -325,6 +370,54 @@ struct KesshoPadInstance {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════════
+
+static constexpr float kPadOutputCalibration = 0.28f;
+static constexpr float kPadLimiterCeiling = 0.92f;
+
+static float pad_clamp01(float value) {
+    return std::isfinite(value) ? std::max(0.0f, std::min(1.0f, value)) : 0.0f;
+}
+
+static int pad_clamp_filter_type(int type) {
+    return std::max(PAD_FILTER_LP, std::min(PAD_FILTER_LADDER_LP, type));
+}
+
+static float pad_soft_limit(float x) {
+    constexpr float knee = 1.0f - kPadLimiterCeiling;
+    if (x > kPadLimiterCeiling) {
+        return kPadLimiterCeiling + knee * fast_tanhf((x - kPadLimiterCeiling) / knee);
+    }
+    if (x < -kPadLimiterCeiling) {
+        return -kPadLimiterCeiling + knee * fast_tanhf((x + kPadLimiterCeiling) / knee);
+    }
+    return x;
+}
+
+static float pad_voice_sum_compensation(int active_voice_count) {
+    const int count = std::max(1, active_voice_count);
+    return 1.0f / powf(static_cast<float>(count), 0.35f);
+}
+
+static float rng_unipolar() {
+    return g_rng.next_unipolar();
+}
+
+static float rng_triangular() {
+    return rng_unipolar() - rng_unipolar();
+}
+
+static float cents_to_ratio(float cents) {
+    const float x = std::max(-12.0f, std::min(12.0f, cents)) * 0.00057762265f;
+    return 1.0f + x + 0.5f * x * x;
+}
+
+static float advance_drift_lfo(float& phase, float rate_hz, float sample_rate) {
+    phase += rate_hz / sample_rate;
+    if (phase >= 1.0f) {
+        phase -= 1.0f;
+    }
+    return fast_sinf(phase * KESSHO_TWO_PI);
+}
 
 static Waveform wave_index_to_waveform(int idx) {
     switch (idx) {
@@ -408,7 +501,8 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
                          float* pf_pad2_l, float* pf_pad2_r,
                          float* post_pad1_l, float* post_pad1_r,
                          float* post_pad2_l, float* post_pad2_r,
-                         int block_size) {
+                         int block_size,
+                         int active_voice_count) {
     if (!v.active) return;
 
     const PadParams& p = g_pads[v.pad_idx];
@@ -437,6 +531,9 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
     int filter_a_stage_count = slope_to_stage_count(p.filter_slope);
 
     float eff_q = p.filter_q + p.filter_resonance * p.hardness * 5.0f;
+    const float drift_amount = pad_clamp01(0.20f + p.warmth * 0.55f + p.osc_a_detune * 0.0025f);
+    const float voice_compensation = pad_voice_sum_compensation(active_voice_count);
+    const float safe_level = pad_clamp01(p.level);
 
     for (int n = 0; n < block_size; n++) {
         // LFOs
@@ -468,10 +565,16 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
 
         // Apply pitch modulation to frequencies
         float pitch_mult = 1.0f + pitch_mod;
-        float eff_freq_a = freq_a * pitch_mult;
-        float eff_freq_a2 = freq_a2 * pitch_mult;
-        float eff_freq_b = freq_b * pitch_mult;
-        float eff_freq_sub = freq_sub * pitch_mult;
+        const float slow_a = advance_drift_lfo(v.drift_phase_a, v.drift_rate_a, g_sample_rate)
+                           * 0.25f
+                           * drift_amount;
+        const float slow_b = advance_drift_lfo(v.drift_phase_b, v.drift_rate_b, g_sample_rate)
+                           * 0.25f
+                           * drift_amount;
+        float eff_freq_a = freq_a * pitch_mult * cents_to_ratio(v.osc_a_drift_cents + slow_a);
+        float eff_freq_a2 = freq_a2 * pitch_mult * cents_to_ratio(v.osc_a2_drift_cents + slow_a);
+        float eff_freq_b = freq_b * pitch_mult * cents_to_ratio(v.osc_b_drift_cents + slow_b);
+        float eff_freq_sub = freq_sub * pitch_mult * cents_to_ratio(v.osc_sub_drift_cents);
 
         // Generate oscillators
         v.osc_a.freq = eff_freq_a;
@@ -528,10 +631,14 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
             float fb_cutoff = std::max(20.0f, std::min(18000.0f, p.filter_b_cutoff * (1.0f + filter_b_mod)));
             filtered = v.filter_b.process(sample, fb_cutoff, p.filter_b_q, g_sample_rate, filt_b_mode);
         } else if (p.filter_routing == PAD_ROUTE_A_ONLY || !p.filter_b_enabled) {
-            filtered = process_filter_a(v, sample, filter_cutoff, eff_q, filt_a_mode, filter_a_stage_count);
+            filtered = p.filter_type == PAD_FILTER_LADDER_LP
+                ? v.ladder_a.process(sample, filter_cutoff, eff_q, p.hardness, g_sample_rate)
+                : process_filter_a(v, sample, filter_cutoff, eff_q, filt_a_mode, filter_a_stage_count);
         } else {
-            // Series: A → B
-            filtered = process_filter_a(v, sample, filter_cutoff, eff_q, filt_a_mode, filter_a_stage_count);
+            // Series: A -> B
+            filtered = p.filter_type == PAD_FILTER_LADDER_LP
+                ? v.ladder_a.process(sample, filter_cutoff, eff_q, p.hardness, g_sample_rate)
+                : process_filter_a(v, sample, filter_cutoff, eff_q, filt_a_mode, filter_a_stage_count);
             float fb_cutoff = std::max(20.0f, std::min(18000.0f, p.filter_b_cutoff * (1.0f + filter_b_mod)));
             filtered = v.filter_b.process(filtered, fb_cutoff, p.filter_b_q, g_sample_rate, filt_b_mode);
         }
@@ -570,17 +677,21 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
         float final_amp = env_val * (1.0f + amp_mod);
         final_amp = std::max(0.0f, final_amp);
 
-        float output = filtered * final_amp * p.level * v.velocity;
+        const float prefader_voice = filtered * final_amp * v.velocity;
+        const float postfader_voice = prefader_voice
+                                    * safe_level
+                                    * kPadOutputCalibration
+                                    * voice_compensation;
 
         // Mono → stereo (center for now, could add pan per voice later)
-        out_l[n] += output;
-        out_r[n] += output;
+        out_l[n] += postfader_voice;
+        out_r[n] += postfader_voice;
 
         // Pre-fader output (for granular)
-        target_pf_l[n] += filtered * final_amp * v.velocity;
-        target_pf_r[n] += filtered * final_amp * v.velocity;
-        target_post_l[n] += output;
-        target_post_r[n] += output;
+        target_pf_l[n] += prefader_voice;
+        target_pf_r[n] += prefader_voice;
+        target_post_l[n] += postfader_voice;
+        target_post_r[n] += postfader_voice;
     }
 }
 
@@ -687,11 +798,19 @@ void pad_process_block(int block_size) {
     float post_pad2_l[PAD_MAX_BLOCK_SIZE] = {};
     float post_pad2_r[PAD_MAX_BLOCK_SIZE] = {};
     bool active_pads[PAD_NUM_PADS] = {};
+    int active_voice_counts[PAD_NUM_PADS] = {};
 
     for (int i = 0; i < PAD_NUM_VOICES; i++) {
         if (g_voices[i].active) {
             const int pad_idx = std::max(0, std::min(PAD_NUM_PADS - 1, g_voices[i].pad_idx));
             active_pads[pad_idx] = true;
+            active_voice_counts[pad_idx]++;
+        }
+    }
+
+    for (int i = 0; i < PAD_NUM_VOICES; i++) {
+        if (g_voices[i].active) {
+            const int pad_idx = std::max(0, std::min(PAD_NUM_PADS - 1, g_voices[i].pad_idx));
             render_voice(
                 g_voices[i],
                 dry_l,
@@ -704,7 +823,8 @@ void pad_process_block(int block_size) {
                 post_pad1_r,
                 post_pad2_l,
                 post_pad2_r,
-                block_size
+                block_size,
+                active_voice_counts[pad_idx]
             );
         }
     }
@@ -715,20 +835,20 @@ void pad_process_block(int block_size) {
     }
 
     for (int n = 0; n < block_size; n++) {
-        g_output[n * 2]     = dry_l[n];
-        g_output[n * 2 + 1] = dry_r[n];
+        g_output[n * 2]     = pad_soft_limit(dry_l[n]);
+        g_output[n * 2 + 1] = pad_soft_limit(dry_r[n]);
 
-        g_reverb_output[n * 2]     = (pf_pad1_l[n] + pf_pad2_l[n]) * g_reverb_send_level;
-        g_reverb_output[n * 2 + 1] = (pf_pad1_r[n] + pf_pad2_r[n]) * g_reverb_send_level;
+        g_reverb_output[n * 2]     = pad_soft_limit((post_pad1_l[n] + post_pad2_l[n]) * g_reverb_send_level);
+        g_reverb_output[n * 2 + 1] = pad_soft_limit((post_pad1_r[n] + post_pad2_r[n]) * g_reverb_send_level);
 
         g_prefader_pad1_output[n * 2]     = pf_pad1_l[n];
         g_prefader_pad1_output[n * 2 + 1] = pf_pad1_r[n];
         g_prefader_pad2_output[n * 2]     = pf_pad2_l[n];
         g_prefader_pad2_output[n * 2 + 1] = pf_pad2_r[n];
-        g_postfader_pad1_output[n * 2]     = post_pad1_l[n];
-        g_postfader_pad1_output[n * 2 + 1] = post_pad1_r[n];
-        g_postfader_pad2_output[n * 2]     = post_pad2_l[n];
-        g_postfader_pad2_output[n * 2 + 1] = post_pad2_r[n];
+        g_postfader_pad1_output[n * 2]     = pad_soft_limit(post_pad1_l[n]);
+        g_postfader_pad1_output[n * 2 + 1] = pad_soft_limit(post_pad1_r[n]);
+        g_postfader_pad2_output[n * 2]     = pad_soft_limit(post_pad2_l[n]);
+        g_postfader_pad2_output[n * 2 + 1] = pad_soft_limit(post_pad2_r[n]);
     }
 }
 
@@ -743,10 +863,26 @@ void pad_note_on(int voice_idx, float frequency, float velocity) {
     const PadParams& p = g_pads[v.pad_idx];
 
     // Setup oscillators
-    v.osc_a.phase = 0;
-    v.osc_a2.phase = 0;
-    v.osc_b.phase = 0;
-    v.osc_sub.phase = 0;
+    v.osc_a.phase = rng_unipolar();
+    v.osc_a2.phase = rng_unipolar();
+    v.osc_b.phase = rng_unipolar();
+    v.osc_sub.phase = rng_unipolar();
+    v.filter_a.reset();
+    v.filter_a_slope2.reset();
+    v.filter_a_slope3.reset();
+    v.filter_a_slope4.reset();
+    v.filter_b.reset();
+    v.ladder_a.reset();
+
+    const float drift_amount = pad_clamp01(0.20f + p.warmth * 0.55f + p.osc_a_detune * 0.0025f);
+    v.osc_a_drift_cents = rng_triangular() * 0.7f * drift_amount;
+    v.osc_a2_drift_cents = rng_triangular() * 1.0f * drift_amount;
+    v.osc_b_drift_cents = rng_triangular() * 0.8f * drift_amount;
+    v.osc_sub_drift_cents = rng_triangular() * 0.2f * drift_amount;
+    v.drift_phase_a = rng_unipolar();
+    v.drift_phase_b = rng_unipolar();
+    v.drift_rate_a = 0.025f + rng_unipolar() * 0.035f;
+    v.drift_rate_b = 0.035f + rng_unipolar() * 0.055f;
 
     // Retriggered pad voices must not inherit the previous note's sustain or
     // release value; long attacks should always start from silence.
@@ -834,7 +970,7 @@ void pad_set_presence(int p, float v)      { PAD_CHECK(p); g_pads[p].presence = 
 void pad_set_fold_amount(int p, float v)     { PAD_CHECK(p); g_pads[p].fold_amount = std::max(0.0f, std::min(1.0f, v)); }
 void pad_set_fold_mode(int p, int v)         { PAD_CHECK(p); g_pads[p].fold_mode = std::max(PAD_FOLD_BUCHLA, std::min(PAD_FOLD_SERGE, v)); }
 
-void pad_set_filter_type(int p, int v)         { PAD_CHECK(p); g_pads[p].filter_type = v; }
+void pad_set_filter_type(int p, int v)         { PAD_CHECK(p); g_pads[p].filter_type = pad_clamp_filter_type(v); }
 void pad_set_filter_cutoff_min(int p, float v) { PAD_CHECK(p); g_pads[p].filter_cutoff_min = clamp_hz(v); }
 void pad_set_filter_cutoff_max(int p, float v) { PAD_CHECK(p); g_pads[p].filter_cutoff_max = clamp_hz(v); }
 void pad_set_filter_resonance(int p, float v)  { PAD_CHECK(p); g_pads[p].filter_resonance = v; }
@@ -843,7 +979,7 @@ void pad_set_filter_slope(int p, float v)      { PAD_CHECK(p); g_pads[p].filter_
 void pad_set_filter_key_tracking(int p, float v) { PAD_CHECK(p); g_pads[p].filter_key_tracking = std::max(0.0f, std::min(1.0f, v)); }
 
 void pad_set_filter_b_enabled(int p, int v)    { PAD_CHECK(p); g_pads[p].filter_b_enabled = v; }
-void pad_set_filter_b_type(int p, int v)       { PAD_CHECK(p); g_pads[p].filter_b_type = v; }
+void pad_set_filter_b_type(int p, int v)       { PAD_CHECK(p); g_pads[p].filter_b_type = std::max(PAD_FILTER_LP, std::min(PAD_FILTER_NOTCH, v)); }
 void pad_set_filter_b_cutoff(int p, float v)   { PAD_CHECK(p); g_pads[p].filter_b_cutoff = v; }
 void pad_set_filter_b_resonance(int p, float v){ PAD_CHECK(p); g_pads[p].filter_b_resonance = v; }
 void pad_set_filter_b_q(int p, float v)        { PAD_CHECK(p); g_pads[p].filter_b_q = v; }
@@ -872,8 +1008,8 @@ void pad_set_mod_env_release(int p, float v)   { PAD_CHECK(p); g_pads[p].mod_env
 void pad_set_mod_env_depth(int p, float v)     { PAD_CHECK(p); g_pads[p].mod_env_depth = v; }
 void pad_set_mod_env_dest(int p, int v)        { PAD_CHECK(p); g_pads[p].mod_env_dest = v; }
 
-void pad_set_level(int p, float v)     { PAD_CHECK(p); g_pads[p].level = v; }
-void pad_set_reverb_send(float v)      { g_reverb_send_level = v; }
+void pad_set_level(int p, float v)     { PAD_CHECK(p); g_pads[p].level = pad_clamp01(v); }
+void pad_set_reverb_send(float v)      { g_reverb_send_level = pad_clamp01(v); }
 
 int pad_get_active_count(void) {
     int count = 0;

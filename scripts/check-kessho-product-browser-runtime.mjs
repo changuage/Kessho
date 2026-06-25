@@ -171,7 +171,7 @@ function stringWavesArrangementPatch() {
     rootNote: 0,
     tension: 0.3,
     padEnabled: true,
-    synthLevel: 0.07,
+    synthLevel: 0.25,
     synthChordSequencerEnabled: true,
     synthEuclideanMasterEnabled: false,
     synthVoiceMask: 63,
@@ -607,7 +607,7 @@ try {
       durationMs: 18200,
       settleMs: 800,
       statePatch: stringWavesArrangementPatch(),
-      manualNotes: [],
+      manualNotes: [{ source: 'pad1', midi: 60, velocity: 0.8, durationMs: 20000 }],
       baseUrl: vite.url,
     },
   ];

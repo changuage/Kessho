@@ -520,7 +520,7 @@ inline const kessho::core::KesshoSourcePresetPatch* resolveSourcePresetEndpointP
   }
   const bool pad_structured_override =
       pad_source &&
-      (distance > 0.0001f || source.pad_override_count > 0u);
+      source.pad_override_count > 0u;
   const bool lead_structured_override =
       lead_source &&
       (source.lead_envelope_override_enabled || source.lead_algorithm_preset_a_enabled || distance > 0.0001f ||
@@ -546,7 +546,6 @@ inline const kessho::core::KesshoSourcePresetPatch* resolveSourcePresetEndpointP
     applyLeadStructuredOverridesToPatch(scratch_patch, source, source_id, morph, distance);
   }
   if (pad_structured_override) {
-    applyPadDistanceToPatch(scratch_patch, distance);
     applyPadStructuredOverridesToPatch(scratch_patch, source, morph);
   }
   return &scratch_patch;

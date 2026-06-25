@@ -36,7 +36,7 @@ constexpr int kTapeHeadCount = 4;
 constexpr int kOutputTapCount = 5;
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kWebAudioCompressorLookaheadSeconds = 0.006f;
-constexpr float kWebAudioCompressorMakeupGain = 1.477f;
+constexpr float kWebAudioCompressorMakeupGain = 1.0f;
 constexpr std::array<float, kTapCount> kDiffuseTapFactors{
     0.78f, 1.07f, 1.41f, 1.86f, 2.34f, 2.93f, 3.58f, 4.26f};
 constexpr std::array<float, kTapCount> kDiffuseTapWeights{

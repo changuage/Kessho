@@ -35,6 +35,12 @@ function waitForProbeUiCommit(): Promise<void> {
   });
 }
 
+function waitForTelemetryResponse(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, 75);
+  });
+}
+
 declare global {
   interface Window {
     __kesshoProductRuntimeProbe?: {
@@ -123,6 +129,8 @@ export function useProductRuntimeParityProbe({
       setState(nextState);
       await waitForProbeUiCommit();
       await runtime.start({ initialState: nextState as unknown as Record<string, unknown> });
+      runtime.requestTelemetryOnce();
+      await waitForTelemetryResponse();
     };
 
     const stateWithPatch = (patch: Partial<SliderState> | undefined): SliderState => {
@@ -139,6 +147,8 @@ export function useProductRuntimeParityProbe({
         setState(nextState);
         await waitForProbeUiCommit();
         await runtime.start({ initialState: nextState as unknown as Record<string, unknown> });
+        runtime.requestTelemetryOnce();
+        await waitForTelemetryResponse();
       },
       async applyStatePatch(options) {
         const nextState = stateWithPatch(options.patch);
@@ -148,6 +158,7 @@ export function useProductRuntimeParityProbe({
         await waitForProbeUiCommit();
       },
       readProductStateProbe() {
+        runtime.requestTelemetryOnce();
         return {
           telemetry: runtime.getTelemetry(),
           diagnostics: runtime.getDiagnostics(),
@@ -198,6 +209,7 @@ export function useProductRuntimeParityProbe({
         await waitForProbeUiCommit();
       },
       readRuntimeWalkProbe(key) {
+        runtime.requestTelemetryOnce();
         return {
           position: getRuntimeSliderPosition(key, 'walk'),
           runtimeSliderDebug: getRuntimeSliderDebugState(),
@@ -206,6 +218,7 @@ export function useProductRuntimeParityProbe({
         };
       },
       readSampleHoldProbe(key) {
+        runtime.requestTelemetryOnce();
         return {
           position: getRuntimeSliderPosition(key, 'sampleHold'),
           flashing: getRuntimeSliderFlashing(key, 'sampleHold'),

@@ -162,7 +162,7 @@ static_assert(
     kSoundscapeTextureParamCount == KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT,
     "Soundscape texture snapshot ABI count must match Product Core texture params");
 constexpr uint32_t kSoundscapeTextureMinimumQueuedSlices = 4u;
-constexpr double kSoundscapeTextureInitialDelaySeconds = 0.158;
+constexpr double kSoundscapeTextureInitialDelaySeconds = 0.025;
 constexpr double kSoundscapeTextureLookAheadSeconds = 0.5;
 constexpr float kSoundscapeTexturePitchRangeCents = 200.0f;
 constexpr float kSoundscapeTextureSpeedVariation = 0.2f;

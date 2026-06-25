@@ -490,8 +490,7 @@ assert(
 );
 {
   const enqueueEventsBody = methodBody(webProductEngine, 'enqueueEvents(events: readonly ProductEvent[])');
-  assert(enqueueEventsBody.includes('for (const event of events)'), 'WebProductEngine.enqueueEvents must keep batched event posting explicit');
-  assert(enqueueEventsBody.includes('coreProductRuntimeHostPort.postEvent(event)'), 'WebProductEngine.enqueueEvents must post each generated ProductEvent');
+  assert(enqueueEventsBody.includes('coreProductRuntimeHostPort.postEvents(events)'), 'WebProductEngine.enqueueEvents must post generated ProductEvent batches through the host batch path');
   assert(
     (enqueueEventsBody.match(/this\.scheduleDiagnosticsPublish\(\)/g) ?? []).length === 1,
     'WebProductEngine.enqueueEvents must schedule diagnostics exactly once per event batch',
@@ -2363,7 +2362,8 @@ for (const token of [
   'unregisterAsset(assetId: number): void',
   "type: 'request-telemetry'",
   "type: 'visual-telemetry'",
-  'CORE_PRODUCT_VISUAL_TELEMETRY_INTERVAL_MS',
+  'CORE_PRODUCT_VISUAL_TELEMETRY_DESKTOP_INTERVAL_MS',
+  'CORE_PRODUCT_VISUAL_TELEMETRY_MOBILE_INTERVAL_MS',
   "type: 'telemetry'",
   'get outputNode(): AudioNode | null',
   'context.createGain()',
@@ -2395,7 +2395,8 @@ assert(
 );
 assert(
   /const DRUM_LANE_ENABLED_KEYS = \[[\s\S]*'drumEuclid1Enabled'[\s\S]*'drumEuclid6Enabled'[\s\S]*\] as const/.test(drumPage) &&
-    /const toggleDrumSequencerTransport = useCallback[\s\S]*const startPatch: Partial<SliderState> = next \? \{ drumEuclidMasterEnabled: true \} : \{\};[\s\S]*if \(next && !state\.drumEnabled\) \{[\s\S]*startPatch\.drumEnabled = true;[\s\S]*if \(next && !DRUM_LANE_ENABLED_KEYS\.some\(\(key\) => Boolean\(state\[key\]\)\)\) \{[\s\S]*startPatch\[activeLaneEnabledKey\] = true;[\s\S]*onSelectChange\('drumEuclidMasterEnabled', next\);[\s\S]*if \(next && !isRunning\) \{[\s\S]*onRequestPlaybackStart\?\.\(startPatch\);/.test(drumPage),
+    /const anyDrumLaneEnabled = DRUM_LANE_ENABLED_KEYS\.some\(\(key\) => Boolean\(state\[key\]\)\);/.test(drumPage) &&
+    /const toggleDrumSequencerTransport = useCallback[\s\S]*const startPatch: Partial<SliderState> = next \? \{ drumEuclidMasterEnabled: true \} : \{\};[\s\S]*if \(next && !state\.drumEnabled\) \{[\s\S]*startPatch\.drumEnabled = true;[\s\S]*shouldAutoEnableDrumLaneOnTransportStart\(\{[\s\S]*starting: next,[\s\S]*anyLaneEnabled: anyDrumLaneEnabled,[\s\S]*startPatch\[activeLaneEnabledKey\] = true;[\s\S]*onSelectChange\('drumEuclidMasterEnabled', next\);[\s\S]*if \(next && !isRunning\) \{[\s\S]*onRequestPlaybackStart\?\.\(startPatch\);/.test(drumPage),
   'Drum keyboard/button transport must enable the drum engine, an audible lane, and start Product with the requested state patch',
 );
 assert(
@@ -3151,9 +3152,11 @@ const hostImportAllowlist = new Set([
   './product/host/CoreProductResolvedStateCommitService',
   './product/host/CoreProductStatePatchQueue',
   './product/host/CoreProductPatchClassifier',
+  './product/host/CoreProductPostSnapshotEventQueue',
   './product/host/CoreProductLeadPresetDataLoader',
   './product/host/CoreProductModulationRangeBridge',
   './product/host/CoreProductManualAuditionBridge',
+  './product/host/CoreProductRuntimeEventBatcher',
   './product/host/CoreProductHostSnapshotFactory',
   './product/host/CoreProductSnapshotCoordinator',
   './product/host/CoreProductTelemetryAdapter',

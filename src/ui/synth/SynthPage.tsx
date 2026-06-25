@@ -1536,8 +1536,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [chordSequencerOpenLane, setChordSequencerOpenLane] = useState<SynthChordSequencerSubLaneName | 'trigger'>('chord');
   const [triggerStamp, setTriggerStamp] = useState<TriggerStamp | null>(null);
   const [triggerStampMode, setTriggerStampMode] = useState(false);
+  const [triggerStampPickSource, setTriggerStampPickSource] = useState(false);
   const [linkedTriggerStampReady, setLinkedTriggerStampReady] = useState(false);
   const [linkedTriggerStampMode, setLinkedTriggerStampMode] = useState(false);
+  const [linkedTriggerStampPickSource, setLinkedTriggerStampPickSource] = useState(false);
+  const [linkedTriggerStampSummary, setLinkedTriggerStampSummary] = useState('');
   const [showKeyboard, setShowKeyboard] = useState(initialKeyboardUiState?.open ?? false);
   const [keyboardInputMode, setKeyboardInputMode] = useState<KeyboardInputMode>(initialKeyboardUiState?.inputMode ?? 'play');
   const [keyboardSource, setKeyboardSource] = useState<ManualSynthSource>(initialKeyboardUiState?.source ?? 'lead1');
@@ -2230,7 +2233,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     0,
     Math.min(chordSequencerConfig.stepCount - 1, chordSequencerSelectedTriggerStep),
   );
-  const selectedChordSequencerTrigger = chordSequencerConfig.steps[selectedChordSequencerTriggerStep];
   const canPasteChordSequencerTrigger = triggerStamp?.source === 'seq5Chord';
 
   useEffect(() => {
@@ -2321,6 +2323,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   const copyChordSequencerTriggerStamp = useCallback((stepIndex: number): boolean => {
     const safeStep = Math.max(0, Math.min(chordSequencerConfig.stepCount - 1, Math.round(stepIndex)));
+    const labels = [
+      chordSequencerConfig.subLanes.chord.enabled ? 'C' : '',
+      chordSequencerConfig.subLanes.expression.enabled ? 'E' : '',
+      chordSequencerConfig.subLanes.morph.enabled ? 'M' : '',
+      chordSequencerConfig.subLanes.distance.enabled ? 'D' : '',
+      chordSequencerConfig.subLanes.nudge.enabled ? 'N' : '',
+    ].filter(Boolean);
+    const summary = `Trig ${safeStep + 1}${labels.length ? ` + ${labels.join(' ')}` : ''}`;
     const stamp = copyTriggerStamp({
       source: 'seq5Chord',
       stepIndex: safeStep,
@@ -2333,13 +2343,19 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       extraTriggerData: {
         holdSteps: chordSequencerConfig.steps[safeStep]?.holdSteps ?? 1,
       },
-      label: `${CHORD_SEQUENCER_LANE_NAME} · Trigger ${safeStep + 1}`,
+      label: summary,
     });
     if (!stamp) return false;
     setTriggerStamp(stamp);
     setTriggerStampMode(true);
+    setTriggerStampPickSource(false);
     return true;
   }, [chordSequencerConfig, chordSequencerStampSubLanes]);
+
+  const beginChordSequencerTriggerStampSourcePick = useCallback(() => {
+    setTriggerStampPickSource(true);
+    setTriggerStampMode(false);
+  }, []);
 
   const pasteChordSequencerTriggerStamp = useCallback((stepIndex: number): boolean => {
     if (!triggerStamp || triggerStamp.source !== 'seq5Chord') return false;
@@ -2524,20 +2540,16 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           />
           <button
             type="button"
-            className="seq-chord-clip-btn"
-            disabled={!selectedChordSequencerTrigger?.enabled}
-            onClick={() => copyChordSequencerTriggerStamp(selectedChordSequencerTriggerStep)}
+            className={`seq-chord-clip-btn${triggerStampPickSource ? ' on' : ''}`}
+            onClick={beginChordSequencerTriggerStampSourcePick}
           >
             Copy
           </button>
-          <button
-            type="button"
-            className={`seq-chord-clip-btn${triggerStampMode ? ' on' : ''}`}
-            disabled={!canPasteChordSequencerTrigger}
-            onClick={() => setTriggerStampMode((value) => !value)}
-          >
-            Stamp
-          </button>
+          {(triggerStampPickSource || triggerStampMode) ? (
+            <span className="seq-trigger-stamp-pill">
+              {triggerStampPickSource ? 'Select source trigger' : triggerStamp?.label}
+            </span>
+          ) : null}
         </div>
       </div>
       <SeqLane
@@ -2550,6 +2562,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         selectedStepLabel="Seq 5"
         onSelectStep={setChordSequencerSelectedTriggerStep}
         onToggleTriggerStep={(step) => {
+          if (triggerStampPickSource) {
+            setChordSequencerSelectedTriggerStep(step);
+            if (chordSequencerConfig.steps[step]?.enabled) copyChordSequencerTriggerStamp(step);
+            return;
+          }
           if (triggerStampMode && canPasteChordSequencerTrigger) {
             pasteChordSequencerTriggerStamp(step);
             return;
@@ -4952,14 +4969,34 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             ? activeDistanceCursorStep
             : activeNudgeCursorStep;
 
-  const copyActiveLinkedTriggerStamp = useCallback(() => {
-    const copied = seq.copyLinkedTriggerCell(seq.activeTab, activeTriggerCursorStep);
+  const formatLinkedTriggerStampSummary = useCallback((step: number) => {
+    const laneState = seq.subLaneStates[seq.activeTab];
+    const labels = [
+      laneState?.pitch.enabled ? 'P' : '',
+      laneState?.expression.enabled ? 'E' : '',
+      laneState?.morph.enabled ? 'M' : '',
+      laneState?.distance.enabled ? 'D' : '',
+      laneState?.nudge.enabled ? 'N' : '',
+    ].filter(Boolean);
+    return `Trig ${step + 1}${labels.length ? ` + ${labels.join(' ')}` : ''}`;
+  }, [seq.activeTab, seq.subLaneStates]);
+
+  const copyLinkedTriggerStampAtStep = useCallback((step: number) => {
+    const copied = seq.copyLinkedTriggerCell(seq.activeTab, step);
     if (copied) {
       setLinkedTriggerStampReady(true);
       setLinkedTriggerStampMode(true);
+      setLinkedTriggerStampPickSource(false);
+      setLinkedTriggerStampSummary(formatLinkedTriggerStampSummary(step));
     }
     return copied;
-  }, [activeTriggerCursorStep, seq]);
+  }, [formatLinkedTriggerStampSummary, seq]);
+
+  const beginLinkedTriggerStampSourcePick = useCallback(() => {
+    setLinkedTriggerStampPickSource(true);
+    setLinkedTriggerStampMode(false);
+    setLinkedTriggerStampSummary('Select source trigger');
+  }, []);
 
   const pasteActiveLinkedTriggerStamp = useCallback(() => {
     if (!linkedTriggerStampReady) return false;
@@ -4972,16 +5009,18 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, [linkedTriggerStampReady, seq]);
 
   useEffect(() => {
-    if (!triggerStampMode && !linkedTriggerStampMode) return;
+    if (!triggerStampMode && !linkedTriggerStampMode && !triggerStampPickSource && !linkedTriggerStampPickSource) return;
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest('.seq-step-cell, .seq-step-select-btn, .seq-trigger-clip-btn, .seq-chord-clip-btn')) return;
       setTriggerStampMode(false);
+      setTriggerStampPickSource(false);
       setLinkedTriggerStampMode(false);
+      setLinkedTriggerStampPickSource(false);
     };
     window.addEventListener('pointerdown', handlePointerDown, true);
     return () => window.removeEventListener('pointerdown', handlePointerDown, true);
-  }, [linkedTriggerStampMode, triggerStampMode]);
+  }, [linkedTriggerStampMode, linkedTriggerStampPickSource, triggerStampMode, triggerStampPickSource]);
 
   const keyboardBaseMidi = 12 * (keyboardOctave + 1);
   const keyboardSourceInfo = MANUAL_KEYBOARD_SOURCES.find((source) => source.value === effectiveKeyboardSource) ?? MANUAL_KEYBOARD_SOURCES[0]!;
@@ -6139,12 +6178,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         if ((event.metaKey || event.ctrlKey) && event.code === 'KeyC') {
           if (chordSequencerSelected) {
             event.preventDefault();
-            copyChordSequencerTriggerStamp(activeTriggerCursorStep);
+            beginChordSequencerTriggerStampSourcePick();
             return;
           }
           if (activeKeyboardEditLane === 'trigger') {
             event.preventDefault();
-            copyActiveLinkedTriggerStamp();
+            beginLinkedTriggerStampSourcePick();
           }
           return;
         }
@@ -6160,10 +6199,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           }
           return;
         }
-        if (event.code === 'Escape' && (triggerStampMode || linkedTriggerStampMode)) {
+        if (event.code === 'Escape' && (triggerStampMode || linkedTriggerStampMode || triggerStampPickSource || linkedTriggerStampPickSource)) {
           event.preventDefault();
           setTriggerStampMode(false);
+          setTriggerStampPickSource(false);
           setLinkedTriggerStampMode(false);
+          setLinkedTriggerStampPickSource(false);
           return;
         }
         if (event.code === 'Tab') {
@@ -6271,8 +6312,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     activeTriggerCursorStep,
     adjustSynthKeyboardLaneValue,
     adjustSynthKeyboardLaneSteps,
+    beginChordSequencerTriggerStampSourcePick,
+    beginLinkedTriggerStampSourcePick,
     chordSequencerSelected,
-    copyActiveLinkedTriggerStamp,
     copyChordSequencerTriggerStamp,
     cycleSynthKeyboardLane,
     cycleSynthKeyboardSequencer,
@@ -6280,6 +6322,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     keyboardInputMode,
     leftShiftHeldRef,
     linkedTriggerStampMode,
+    linkedTriggerStampPickSource,
     pasteActiveLinkedTriggerStamp,
     pasteChordSequencerTriggerStamp,
     selectSynthKeyboardLaneStep,
@@ -6287,6 +6330,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     setKeyboardCodeActive,
     showKeyboard,
     toggleSynthKeyboardLane,
+    triggerStampPickSource,
     triggerStampMode,
     triggerKeyboardNote,
   ]);
@@ -6630,6 +6674,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'bandpass', label: 'BP' },
                         { value: 'highpass', label: 'HP' },
                         { value: 'notch', label: 'Notch' },
+                        { value: 'ladderLp', label: 'Ladder LP' },
                       ]}
                       onChange={(v: string) => onSelectChange('filterType' as keyof SliderState, v)}
                     />
@@ -7310,6 +7355,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'bandpass', label: 'BP' },
                         { value: 'highpass', label: 'HP' },
                         { value: 'notch', label: 'Notch' },
+                        { value: 'ladderLp', label: 'Ladder LP' },
                       ]}
                       onChange={(v: string) => onSelectChange('pad2FilterType' as keyof SliderState, v)}
                     />
@@ -8941,20 +8987,16 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       </div>
                       <button
                         type="button"
-                        className="seq-trigger-clip-btn"
-                        disabled={activeSeq.trigger.pattern[activeTriggerCursorStep] !== true}
-                        onClick={copyActiveLinkedTriggerStamp}
+                        className={`seq-trigger-clip-btn${linkedTriggerStampPickSource ? ' on' : ''}`}
+                        onClick={beginLinkedTriggerStampSourcePick}
                       >
                         Copy
                       </button>
-                      <button
-                        type="button"
-                        className={`seq-trigger-clip-btn${linkedTriggerStampMode ? ' on' : ''}`}
-                        disabled={!linkedTriggerStampReady}
-                        onClick={() => setLinkedTriggerStampMode((value) => !value)}
-                      >
-                        Stamp
-                      </button>
+                      {(linkedTriggerStampPickSource || linkedTriggerStampMode) && linkedTriggerStampSummary ? (
+                        <span className="seq-trigger-stamp-pill">
+                          {linkedTriggerStampSummary}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                   <SeqLane
@@ -8964,6 +9006,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     playhead={seq.playheads[seq.activeTab] ?? 0}
                     hitCount={seq.hitCounts[seq.activeTab] ?? 0}
                     onToggleTriggerStep={(step) => {
+                      if (linkedTriggerStampPickSource) {
+                        selectTriggerSequenceStep(seq.activeTab, step);
+                        if (activeSeq.trigger.pattern[step] === true) copyLinkedTriggerStampAtStep(step);
+                        return;
+                      }
                       if (linkedTriggerStampMode && pasteLinkedTriggerStampAtStep(step)) return;
                       seq.toggleTriggerStep(seq.activeTab, step);
                     }}

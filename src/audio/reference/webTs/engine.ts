@@ -6544,14 +6544,14 @@ export class AudioEngine {
       this.drumSynth.start();
     }
 
+    this.isRunning = true;
     this.isStarting = false;
 
     // Media session is now handled in App.tsx for proper iOS support.
-    // Apply params only after the startup guard is lowered so Earth textures,
-    // soundscape engines, and other runtime-controlled sources actually start.
+    // Apply params after the startup guard is lowered and while the transport is
+    // marked running so self-running soundscape layers can start immediately.
     this.applyParams(this.sliderState!);
 
-    this.isRunning = true;
     this.notifyStateChange();
   }
 
@@ -7915,45 +7915,7 @@ export class AudioEngine {
     // (and optionally inserts spectralFreezeNode in pre or post position)
     this.applySpectralFreezeRouting();
 
-    // Lead FM WASM node outputs (parallel to JS lead path — JS lead silenced when WASM active)
-    // WASM has 2 outputs: [0]=lead1 stereo, [1]=lead2 stereo.
-    // Each output routes through per-lead dry fader → post LPF/width → lead dry path. Send taps come directly from the WASM outputs,
-    // so the FX feed remains available even when the dry fader is at 0.
-    if (this.leadFmWasmNode) {
-      // Lead 1 dry path: output[0] → per-lead level gain → post chain → lead dry → master
-      this.leadWasmLevelGain = ctx.createGain();
-      this.leadWasmLevelGain.gain.value = this.sliderState?.lead1Level ?? 0.8;
-      this.leadFmWasmNode.connect(this.leadWasmLevelGain, 0);
-      this.leadWasmLevelGain.connect(this.lead1SpatialChain!.postLpf);
-      // Lead 1 pre-fader sends
-        this.leadFmWasmNode.connect(this.lead1ReverbSend!, 0);
-        if (this.granularLead1Send) {
-          this.leadFmWasmNode.connect(this.granularLead1Send, 0);
-        }
-        if (this.lead1DelayASend) {
-          this.leadFmWasmNode.connect(this.lead1DelayASend, 0);
-        }
-        if (this.lead1DelayBSend) {
-          this.leadFmWasmNode.connect(this.lead1DelayBSend, 0);
-        }
-
-      // Lead 2 dry path: output[1] → per-lead level gain → post chain → lead dry → master
-      this.leadWasmLead2LevelGain = ctx.createGain();
-      this.leadWasmLead2LevelGain.gain.value = this.sliderState?.lead2Level ?? 0.6;
-      this.leadFmWasmNode.connect(this.leadWasmLead2LevelGain, 1);
-      this.leadWasmLead2LevelGain.connect(this.lead2SpatialChain!.postLpf);
-      // Lead 2 pre-fader sends
-        this.leadFmWasmNode.connect(this.lead2ReverbSend!, 1);
-        if (this.granularLead2Send) {
-          this.leadFmWasmNode.connect(this.granularLead2Send, 1);
-        }
-        if (this.lead2DelayASend) {
-          this.leadFmWasmNode.connect(this.lead2DelayASend, 1);
-        }
-        if (this.lead2DelayBSend) {
-          this.leadFmWasmNode.connect(this.lead2DelayBSend, 1);
-        }
-      }
+    this.connectLeadFmWasmOutputs(ctx);
 
     // Drum Synth WASM node outputs (parallel to JS DrumSynth — JS drums silenced when WASM active)
     if (this.drumWasmNode) {
@@ -9169,11 +9131,21 @@ export class AudioEngine {
     if (!this.leadFmWasmNode || !this.lead1SpatialChain || !this.lead2SpatialChain) return;
 
     if (this.leadWasmLevelGain) {
+      try { this.leadFmWasmNode.disconnect(this.leadWasmLevelGain, 0); } catch { /* noop */ }
       try { this.leadWasmLevelGain.disconnect(); } catch { /* noop */ }
     }
     if (this.leadWasmLead2LevelGain) {
+      try { this.leadFmWasmNode.disconnect(this.leadWasmLead2LevelGain, 1); } catch { /* noop */ }
       try { this.leadWasmLead2LevelGain.disconnect(); } catch { /* noop */ }
     }
+    if (this.lead1ReverbSend) try { this.leadFmWasmNode.disconnect(this.lead1ReverbSend, 0); } catch { /* noop */ }
+    if (this.granularLead1Send) try { this.leadFmWasmNode.disconnect(this.granularLead1Send, 0); } catch { /* noop */ }
+    if (this.lead1DelayASend) try { this.leadFmWasmNode.disconnect(this.lead1DelayASend, 0); } catch { /* noop */ }
+    if (this.lead1DelayBSend) try { this.leadFmWasmNode.disconnect(this.lead1DelayBSend, 0); } catch { /* noop */ }
+    if (this.lead2ReverbSend) try { this.leadFmWasmNode.disconnect(this.lead2ReverbSend, 1); } catch { /* noop */ }
+    if (this.granularLead2Send) try { this.leadFmWasmNode.disconnect(this.granularLead2Send, 1); } catch { /* noop */ }
+    if (this.lead2DelayASend) try { this.leadFmWasmNode.disconnect(this.lead2DelayASend, 1); } catch { /* noop */ }
+    if (this.lead2DelayBSend) try { this.leadFmWasmNode.disconnect(this.lead2DelayBSend, 1); } catch { /* noop */ }
 
     this.leadWasmLevelGain = ctx.createGain();
     this.leadWasmLevelGain.gain.value = this.sliderState?.lead1Level ?? 0.8;

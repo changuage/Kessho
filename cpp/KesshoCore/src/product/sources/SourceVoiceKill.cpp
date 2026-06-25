@@ -1,15 +1,17 @@
 #include "../KesshoProductEngineInternal.h"
 
-void KesshoProductEngine::releaseSourceVoices(uint32_t source_id) {
+void KesshoProductEngine::killSourceVoices(uint32_t source_id) {
   if ((source_id == 0u || source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) && pad_module) {
-    pad_module->allNotesOff();
+    for (uint32_t voice = 0u; voice < kProductPadVoiceCount; ++voice) {
+      pad_module->killVoice(static_cast<int>(voice));
+    }
     clearPadVoiceReleases(0u);
   }
   if ((source_id == 0u || source_id == KESSHO_PRODUCT_SOURCE_LEAD1) && lead_modules[0]) {
-    lead_modules[0]->allNotesOff();
+    lead_modules[0]->killVoice(0);
   }
   if ((source_id == 0u || source_id == KESSHO_PRODUCT_SOURCE_LEAD2) && lead_modules[1]) {
-    lead_modules[1]->allNotesOff();
+    lead_modules[1]->killVoice(0);
   }
   if ((source_id == 0u || source_id == KESSHO_PRODUCT_SOURCE_DRUM) && drum_module) {
     drum_module->allNotesOff();
@@ -18,13 +20,17 @@ void KesshoProductEngine::releaseSourceVoices(uint32_t source_id) {
     soundscapes_module->allNotesOff();
     soundscapes_module_params_configured = false;
   }
+  bool changed = false;
   for (Voice& voice : voices) {
     if (voice.active && (source_id == 0u || voice.source_id == source_id)) {
+      voice.active = false;
       voice.looping = false;
       voice.start_delay_frames = 0u;
-      voice.remaining_frames = std::min<uint32_t>(voice.remaining_frames, static_cast<uint32_t>(0.02 * sample_rate));
-      voice.total_frames = std::max<uint32_t>(1u, voice.remaining_frames);
+      voice.remaining_frames = 0u;
+      voice.total_frames = 1u;
+      changed = true;
     }
   }
+  if (changed) markActiveVoiceListDirty();
   clearMidiRuntimeForSource(source_id);
 }

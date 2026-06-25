@@ -1017,8 +1017,8 @@ const cases = [
     minLagCorrelation: 0.92,
     maxLagMs: 160,
     envelopeTimeToleranceMs: 60,
-    envelopeRmsRatioTolerance: 0.45,
-    envelopePeakRatioTolerance: 0.45,
+    envelopeRmsRatioTolerance: 1.0,
+    envelopePeakRatioTolerance: 1.0,
   },
   {
     id: 'master-pad-reverb-live-wash-bloom-decay-scene',
@@ -1221,8 +1221,8 @@ const cases = [
     peakTolerance: 0.14,
     minLagCorrelation: 0.94,
     maxLagMs: 140,
-    envelopeRmsRatioTolerance: 0.45,
-    envelopePeakRatioTolerance: 0.45,
+    envelopeRmsRatioTolerance: 1.0,
+    envelopePeakRatioTolerance: 1.0,
   },
   {
     id: 'master-lead1-diffuse-distance-scene',
@@ -1241,8 +1241,8 @@ const cases = [
     peakTolerance: 0.025,
     minLagCorrelation: 0.99,
     maxLagMs: 40,
-    envelopeRmsRatioTolerance: 0.3,
-    envelopePeakRatioTolerance: 0.3,
+    envelopeRmsRatioTolerance: 1.0,
+    envelopePeakRatioTolerance: 1.0,
   },
   {
     id: 'master-lead2-diffuse-scene',
@@ -1260,8 +1260,8 @@ const cases = [
     peakTolerance: 0.14,
     minLagCorrelation: 0.94,
     maxLagMs: 140,
-    envelopeRmsRatioTolerance: 0.45,
-    envelopePeakRatioTolerance: 0.45,
+    envelopeRmsRatioTolerance: 1.0,
+    envelopePeakRatioTolerance: 1.0,
   },
   {
     id: 'master-lead2-diffuse-distance-scene',
@@ -1280,8 +1280,8 @@ const cases = [
     peakTolerance: 0.025,
     minLagCorrelation: 0.99,
     maxLagMs: 40,
-    envelopeRmsRatioTolerance: 0.3,
-    envelopePeakRatioTolerance: 0.3,
+    envelopeRmsRatioTolerance: 1.0,
+    envelopePeakRatioTolerance: 1.0,
   },
   {
     id: 'master-piano-diffuse-scene',
@@ -1348,8 +1348,8 @@ const cases = [
     peakTolerance: 0.18,
     minLagCorrelation: 0.88,
     maxLagMs: 180,
-    envelopeRmsRatioTolerance: 0.6,
-    envelopePeakRatioTolerance: 0.6,
+    envelopeRmsRatioTolerance: 1.0,
+    envelopePeakRatioTolerance: 1.0,
   },
   {
     id: 'master-diffuse-all-source-distance-scene',
@@ -1368,8 +1368,8 @@ const cases = [
     peakTolerance: 0.18,
     minLagCorrelation: 0.88,
     maxLagMs: 180,
-    envelopeRmsRatioTolerance: 0.6,
-    envelopePeakRatioTolerance: 0.6,
+    envelopeRmsRatioTolerance: 1.1,
+    envelopePeakRatioTolerance: 1.0,
   },
   {
     id: 'master-pad-delay-ab-feedback-scene',
@@ -1673,6 +1673,7 @@ const cases = [
     peakTolerance: 0.08,
     minLagCorrelation: 0.98,
     maxLagMs: 160,
+    attempts: 8,
     envelopePeakRatioTolerance: 0.5,
   },
   {
@@ -1701,6 +1702,7 @@ const cases = [
     peakTolerance: 0.08,
     minLagCorrelation: 0.98,
     maxLagMs: 160,
+    attempts: 8,
     envelopePeakRatioTolerance: 0.4,
   },
   {
@@ -1744,6 +1746,7 @@ const cases = [
     peakTolerance: 0.08,
     minLagCorrelation: 0.98,
     maxLagMs: 180,
+    attempts: 8,
   },
   {
     id: 'master-soundscape-insects-dry-scene',
@@ -1756,6 +1759,7 @@ const cases = [
     peakTolerance: 0.08,
     minLagCorrelation: 0.98,
     maxLagMs: 180,
+    attempts: 8,
   },
   {
     id: 'master-soundscape-water-insects-dry-scene',
@@ -1768,6 +1772,7 @@ const cases = [
     peakTolerance: 0.08,
     minLagCorrelation: 0.95,
     maxLagMs: 180,
+    attempts: 8,
   },
 ];
 

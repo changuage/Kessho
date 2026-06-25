@@ -1472,6 +1472,62 @@ async function testAutoDerivedParentDoesNotBindVisibleSameHashChild(): Promise<v
   assert.equal(visibleKit.deleted_at, null, 'visible same-hash child should remain visible and independent');
 }
 
+async function testStaleInternalDerivedRefDoesNotBlockOverwriteSave(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '14141414-1414-4141-8141-141414141414';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const stateName = 'State Stale Derived Ref Overwrite';
+  await store.save(makePresetEntry('state', 'global', stateName, DEFAULT_STATE as unknown as Record<string, unknown>));
+
+  const loaded = await store.load('state', stateName, 'global');
+  assert.ok(loaded, 'setup should load the saved state preset with graph refs');
+  const loadedVersion = loaded.versions.find(version => version.v === loaded.currentVersion);
+  assert.ok(loadedVersion?.refs?.delay, 'setup should materialize a hidden delay graph ref');
+  assert.equal(
+    loadedVersion.refs.delay.name.startsWith('__derived__/delay/'),
+    true,
+    'setup delay ref should be an internal derived implementation ref',
+  );
+
+  const currentData = getVersionData(loaded) ?? loadedVersion.data;
+  const nextVersion = loaded.currentVersion + 1;
+  const nextData = {
+    ...currentData,
+    delayATime: Number(currentData.delayATime ?? 0) + 1,
+  };
+  const staleRefs = structuredClone(loadedVersion.refs);
+  const staleDelayRef = staleRefs.delay;
+  assert.ok(staleDelayRef, 'setup should provide a delay ref to make stale');
+  staleRefs.delay = {
+    ...staleDelayRef,
+    name: '__derived__/delay/stale-missing-child',
+  };
+  loaded.versions.push({
+    v: nextVersion,
+    note: 'stale internal derived ref should be ignored',
+    timestamp: Date.parse('2026-05-19T12:30:00.000Z'),
+    data: nextData,
+    refs: staleRefs,
+  });
+  loaded.currentVersion = nextVersion;
+  loaded.updatedAt = Date.parse('2026-05-19T12:30:00.000Z');
+
+  await store.save(loaded);
+
+  const state = findPresetRow(client, 'state', 'global', stateName);
+  const target = latestRefTarget(client, state, 'delay');
+  assert.ok(target, 'latest state version should keep a delay graph ref');
+  assert.equal(isInternalDerivedPresetRow(target), true, 'delay graph ref should still target an internal-derived child');
+  assert.notEqual(
+    target.name,
+    '__derived__/delay/stale-missing-child',
+    'stale internal-derived ref names should not replace the recomputed child ref',
+  );
+}
+
 async function testJourneyRefsPersistAsSupabaseV2GraphEdges(): Promise<void> {
   const client = new FakeSupabaseClient();
   const store = new SupabasePresetStore(client as never);
@@ -1963,6 +2019,7 @@ await testOrphanInternalDerivedChainPrunesAllLevels();
 await testConcurrentSameIdentitySaveKeepsOneActiveV2Row();
 await testLegacyCaseFoldedNameSemanticsStayConsistent();
 await testAutoDerivedParentDoesNotBindVisibleSameHashChild();
+await testStaleInternalDerivedRefDoesNotBlockOverwriteSave();
 await testJourneyRefsPersistAsSupabaseV2GraphEdges();
 await testUnresolvedJourneyRefFailsClosed();
 await testAtomicSaveRollsBackWhenRefInsertFails();

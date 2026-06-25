@@ -267,7 +267,8 @@
           "lowpass": 0,
           "bandpass": 1,
           "highpass": 2,
-          "notch": 3
+          "notch": 3,
+          "ladderLp": 4
         },
         "fallback": 0
       },

@@ -11,13 +11,15 @@ import {
   sanitizeDawOutputRoutingConfig,
   type DawOutputRoutingConfig,
 } from './dawOutputRouting';
+import { CORE_PRODUCT_RUNTIME_ASSET_VERSION } from './generated/coreProductRuntimeAssetVersion';
 import { isIOSLikeDevice, isMobileDevice } from '../platform';
 import { logProductStateDebug } from '../debug/productStateDebug';
 
 const CORE_PRODUCT_GRAPH_TAP_COUNT = 110;
-const CORE_PRODUCT_TELEMETRY_INTERVAL_MS = 250;
-const CORE_PRODUCT_VISUAL_TELEMETRY_INTERVAL_MS = 33;
-const CORE_PRODUCT_RUNTIME_ASSET_VERSION = String(Date.now());
+const CORE_PRODUCT_TELEMETRY_DESKTOP_INTERVAL_MS = 250;
+const CORE_PRODUCT_TELEMETRY_MOBILE_INTERVAL_MS = 500;
+const CORE_PRODUCT_VISUAL_TELEMETRY_DESKTOP_INTERVAL_MS = 33;
+const CORE_PRODUCT_VISUAL_TELEMETRY_MOBILE_INTERVAL_MS = 67;
 const CORE_PRODUCT_RUNTIME_ASSET_RETRY_COUNT = 2;
 const SNAPSHOT_APPLIED_TIMEOUT_MS = 1000;
 const CORE_PRODUCT_GRAPH_CAPTURE_ALLOWED =
@@ -107,6 +109,8 @@ export class CoreProductRuntime {
   private visualTelemetryTimer: number | null = null;
   private telemetryCallback: ((telemetry: CoreProductTelemetrySnapshot) => void) | null = null;
   private visualTelemetryCallback: ((telemetry: CoreProductVisualTelemetrySnapshot) => void) | null = null;
+  private telemetryPollingEnabled = false;
+  private transportRunningForTelemetry = false;
   private visualTelemetryActive = false;
   private granularWaveformTelemetryActive = false;
   private perfMonitorEnabled = false;
@@ -115,7 +119,11 @@ export class CoreProductRuntime {
   private readonly pendingSnapshotReceipts = new Map<number, PendingSnapshotReceipt>();
   private readonly graphTapCaptureSessions = new Map<number, GraphTapCaptureSession>();
   private readonly handleVisibilityChange = (): void => {
+    this.syncTelemetryLoop();
     this.syncVisualTelemetryLoop();
+    if (this.isDocumentVisible()) {
+      this.requestTelemetryOnce('visibility-resume');
+    }
   };
 
   get audioContext(): AudioContext | null {
@@ -178,7 +186,9 @@ export class CoreProductRuntime {
     const wasmUrl = productAssetUrl('worklets/kessho_core.wasm');
     const wasmBinary = await withRuntimeAssetRetries(async (attempt) => {
       const attemptWasmUrl = productAssetUrl('worklets/kessho_core.wasm', attempt);
-      const response = await fetch(attemptWasmUrl, { cache: 'no-store' });
+      const response = await fetch(attemptWasmUrl, {
+        cache: attempt > 0 ? 'reload' : 'default',
+      });
       if (!response.ok) throw new Error(`Failed to fetch ${wasmUrl}: ${response.status}`);
       return response.arrayBuffer();
     });
@@ -248,7 +258,7 @@ export class CoreProductRuntime {
       };
       node.connect(outputGain);
       this.connectOutputToBrowserSink(context, outputGain);
-      this.startTelemetryLoop();
+      this.syncTelemetryLoop();
       this.syncVisualTelemetryLoop();
     });
   }
@@ -296,6 +306,16 @@ export class CoreProductRuntime {
 
   setTelemetryCallback(callback: ((telemetry: CoreProductTelemetrySnapshot) => void) | null): void {
     this.telemetryCallback = callback;
+  }
+
+  setTelemetryPollingEnabled(enabled: boolean): void {
+    this.telemetryPollingEnabled = enabled;
+    this.syncTelemetryLoop();
+  }
+
+  setTelemetryTransportRunning(running: boolean): void {
+    this.transportRunningForTelemetry = running;
+    this.syncTelemetryLoop();
   }
 
   setVisualTelemetryCallback(callback: ((telemetry: CoreProductVisualTelemetrySnapshot) => void) | null): void {
@@ -360,6 +380,18 @@ export class CoreProductRuntime {
 
   postEvent(event: CoreProductEvent): void {
     this.requireNode('postEvent').port.postMessage({ type: 'event', event });
+  }
+
+  postEvents(events: readonly CoreProductEvent[]): void {
+    if (events.length === 0) return;
+    this.requireNode('postEvents').port.postMessage({
+      type: 'events',
+      events: [...events],
+    });
+  }
+
+  requestTelemetryOnce(_reason: 'visibility-resume' | 'manual' = 'manual'): void {
+    this.node?.port.postMessage({ type: 'request-telemetry' });
   }
 
   loadSnapshot(
@@ -506,6 +538,19 @@ export class CoreProductRuntime {
       wasmUrl,
       graphCaptureAllowed: CORE_PRODUCT_GRAPH_CAPTURE_ALLOWED,
     };
+
+    if (isIOSLikeDevice()) {
+      return new AudioWorkletNode(context, 'kessho-core-product', {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+        channelCount: 2,
+        channelCountMode: 'explicit',
+        channelInterpretation: 'speakers',
+        processorOptions,
+      });
+    }
+
     const multichannelOptions: AudioWorkletNodeOptions = {
       numberOfInputs: 0,
       numberOfOutputs: 1,
@@ -524,6 +569,8 @@ export class CoreProductRuntime {
         numberOfInputs: 0,
         numberOfOutputs: 1,
         outputChannelCount: [2],
+        channelCount: 2,
+        channelCountMode: 'explicit',
         processorOptions,
       });
     }
@@ -650,11 +697,34 @@ export class CoreProductRuntime {
     return chunks;
   }
 
-  private startTelemetryLoop(): void {
-    if (this.telemetryTimer !== null) return;
-    this.telemetryTimer = window.setInterval(() => {
+  private telemetryIntervalMs(): number {
+    return isMobileDevice() || isIOSLikeDevice()
+      ? CORE_PRODUCT_TELEMETRY_MOBILE_INTERVAL_MS
+      : CORE_PRODUCT_TELEMETRY_DESKTOP_INTERVAL_MS;
+  }
+
+  private visualTelemetryIntervalMs(): number {
+    return isMobileDevice() || isIOSLikeDevice()
+      ? CORE_PRODUCT_VISUAL_TELEMETRY_MOBILE_INTERVAL_MS
+      : CORE_PRODUCT_VISUAL_TELEMETRY_DESKTOP_INTERVAL_MS;
+  }
+
+  private shouldPollTelemetry(): boolean {
+    return this.telemetryPollingEnabled && this.transportRunningForTelemetry && this.isDocumentVisible();
+  }
+
+  private syncTelemetryLoop(): void {
+    if (this.telemetryTimer !== null) {
+      window.clearInterval(this.telemetryTimer);
+      this.telemetryTimer = null;
+    }
+    if (!this.node || !this.shouldPollTelemetry()) return;
+    const requestTelemetry = () => {
+      if (!this.shouldPollTelemetry()) return;
       this.node?.port.postMessage({ type: 'request-telemetry' });
-    }, CORE_PRODUCT_TELEMETRY_INTERVAL_MS);
+    };
+    requestTelemetry();
+    this.telemetryTimer = window.setInterval(requestTelemetry, this.telemetryIntervalMs());
   }
 
   private syncVisualTelemetryLoop(): void {
@@ -673,7 +743,7 @@ export class CoreProductRuntime {
       });
     };
     requestVisualTelemetry();
-    this.visualTelemetryTimer = window.setInterval(requestVisualTelemetry, CORE_PRODUCT_VISUAL_TELEMETRY_INTERVAL_MS);
+    this.visualTelemetryTimer = window.setInterval(requestVisualTelemetry, this.visualTelemetryIntervalMs());
   }
 
   private assertGraphCaptureAllowed(): void {

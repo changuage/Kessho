@@ -6,6 +6,7 @@ import { enrichCoreProductModulationDebug } from './CoreProductModulationDebugEn
 import { createCoreProductSampleHoldDebugState, snapshotCoreProductSampleHoldDebugState, updateCoreProductSampleHoldTriggerFeedback, type CoreProductSampleHoldDebugState } from './CoreProductSampleHoldFeedbackBridge';
 import { createCoreProductRuntimeWalkDebugState, snapshotCoreProductRuntimeWalkDebugState, type CoreProductRuntimeWalkDebugState } from './CoreProductRuntimeWalkDebug';
 type ProductRangeState = { range: { min: number; max: number }; targets: CoreProductRangeTarget[] };
+type RuntimeWalkPositionUpdateOptions = Readonly<{ publish?: boolean }>;
 type CoreProductModulationRangeBridgeOptions = {
   isRuntimeReady: () => boolean;
   latestProductSnapshot: () => CoreProductSnapshot | null;
@@ -68,11 +69,9 @@ export class CoreProductModulationRangeBridge {
       for (const target of state.targets) this.postModulationRange(target, state.range, CORE_PRODUCT_MODULATION_RANGE_MODE.randomWalk, key);
     }
   }
-  updateRuntimeWalkPositions(telemetry: CoreProductTelemetrySnapshot): void {
+  updateRuntimeWalkPositions(telemetry: CoreProductTelemetrySnapshot, options: RuntimeWalkPositionUpdateOptions = {}): void {
     this.runtimeWalkDebugState.telemetryUpdateCount += 1;
-    this.runtimeWalkDebugState.telemetryValueCount = telemetry.runtimeWalkValues
-      ? Object.keys(telemetry.runtimeWalkValues).length
-      : 0;
+    this.runtimeWalkDebugState.telemetryValueCount = telemetry.runtimeWalkValues ? Object.keys(telemetry.runtimeWalkValues).length : 0;
     const next = runtimeWalkPositionsFromTelemetry(
       telemetry.runtimeWalkValues,
       this.runtimeWalkControlNames,
@@ -80,10 +79,14 @@ export class CoreProductModulationRangeBridge {
     );
     if (!next) return;
     this.runtimeWalkPositions = next;
-    this.runtimeWalkDebugState.publishedPositionCount += 1;
-    this.runtimeWalkDebugState.lastPositionKeys = Object.keys(next).sort();
-    this.options.publish('runtimeWalkPositions', { ...next });
     this.publishRuntimeWalkStatePatch();
+    if (options.publish === false) return;
+    this.publishRuntimeWalkPositions();
+  }
+  publishRuntimeWalkPositions(): void {
+    this.runtimeWalkDebugState.publishedPositionCount += 1;
+    this.runtimeWalkDebugState.lastPositionKeys = Object.keys(this.runtimeWalkPositions).sort();
+    this.options.publish('runtimeWalkPositions', { ...this.runtimeWalkPositions });
   }
   private publishRuntimeWalkStatePatch(): void {
     if (!this.options.applyRuntimeWalkStatePatch) return;

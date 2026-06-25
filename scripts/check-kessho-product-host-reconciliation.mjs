@@ -541,7 +541,7 @@ await runCheckWithReport({
     const telemetryBody = hostMethodBody('handleTelemetry');
     for (const token of [
       'this.reconcileSequencerUiState(hostTelemetry)',
-      'this.modulationRangeBridge.updateRuntimeWalkPositions(hostTelemetry)',
+      'this.modulationRangeBridge.updateRuntimeWalkPositions(hostTelemetry,',
       'this.updateSequencerMorphFeedback(hostTelemetry)',
     ]) {
       assert(telemetryBody.includes(token), `handleTelemetry() must reconcile Core-owned state from telemetry: ${token}`);

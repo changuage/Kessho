@@ -1437,6 +1437,22 @@ Object.assign(globalThis, {
   mergeCoreProductVisualTelemetry,
 });`, context, { filename: telemetryAdapterPath });
 
+  const postSnapshotEventQueuePath = 'src/audio/product/host/CoreProductPostSnapshotEventQueue.ts';
+  const postSnapshotEventQueueSource = stripImportsAndExports(readProjectFile(postSnapshotEventQueuePath));
+  const postSnapshotEventQueueJs = transpileForVm(postSnapshotEventQueueSource, resolve(root, postSnapshotEventQueuePath));
+  vm.runInNewContext(`${postSnapshotEventQueueJs}
+Object.assign(globalThis, {
+  CoreProductPostSnapshotEventQueue,
+});`, context, { filename: postSnapshotEventQueuePath });
+
+  const runtimeEventBatcherPath = 'src/audio/product/host/CoreProductRuntimeEventBatcher.ts';
+  const runtimeEventBatcherSource = stripImportsAndExports(readProjectFile(runtimeEventBatcherPath));
+  const runtimeEventBatcherJs = transpileForVm(runtimeEventBatcherSource, resolve(root, runtimeEventBatcherPath));
+  vm.runInNewContext(`${runtimeEventBatcherJs}
+Object.assign(globalThis, {
+  CoreProductRuntimeEventBatcher,
+});`, context, { filename: runtimeEventBatcherPath });
+
   const path = 'src/audio/coreProductEngineHost.ts';
   const source = stripImportsAndExports(readProjectFile(path)).replaceAll('import.meta.env', '__IMPORT_META_ENV__');
   const js = transpileForVm(source, resolve(root, path));

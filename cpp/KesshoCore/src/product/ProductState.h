@@ -17,7 +17,6 @@
 #include "kessho_pad.h"
 
 using namespace kessho::product::internal;
-
 struct KesshoProductEngine : ProductGraphState {
   explicit KesshoProductEngine(double in_sample_rate, uint32_t in_max_block_size, uint32_t in_flags);
 

@@ -102,6 +102,8 @@ void requireDirectGraphCoverage() {
   pad.enabled = true;
   pad.source_id = KESSHO_PRODUCT_SOURCE_PAD1;
   pad.preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_PLUCK_BELL;
+  direct.compileSourcePresetRuntime(pad);
+  require(pad.source_preset_patch_valid, "direct graph pad preset did not compile");
   pad.level = 0.5f;
   pad.dry_gain = 1.0f;
   pad.reverb_send = 0.25f;
@@ -274,14 +276,14 @@ void requireSoundscapeLayerRouteGraphCoverage() {
       std::fabs(ocean_reverb * 0.10f - ocean_delay_a * 0.25f) < 0.00001f,
       "ocean layer reverb send did not use layer route");
   require(
-      std::fabs(ocean_reverb - ocean_dry * 0.25f) < 0.00001f,
-      "ocean layer reverb send bypassed asset level");
+      std::fabs(ocean_reverb - (ocean_dry / source.asset_ref_levels[0]) * 0.25f) < 0.00001f,
+      "ocean layer reverb send did not use pre-asset-level layer signal");
   require(
       std::fabs(water_reverb * 0.30f - water_delay_a * 0.75f) < 0.00001f,
       "water layer reverb send did not use layer route");
   require(
-      std::fabs(water_reverb - water_dry * 0.75f) < 0.00001f,
-      "water layer reverb send bypassed asset level");
+      std::fabs(water_reverb - (water_dry / source.asset_ref_levels[1]) * 0.75f) < 0.00001f,
+      "water layer reverb send did not use pre-asset-level layer signal");
   require(
       std::fabs(water_granular * 0.30f - water_delay_a * 0.40f) < 0.00001f,
       "water layer Delay A send did not use layer route");

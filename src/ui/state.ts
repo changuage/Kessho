@@ -618,7 +618,7 @@ export interface SliderState {
 
   // Timbre / Drive
   hardness: number;           // 0..1 step 0.01 — saturation drive + resonance boost
-  filterType: 'lowpass' | 'bandpass' | 'highpass' | 'notch';
+  filterType: 'lowpass' | 'bandpass' | 'highpass' | 'notch' | 'ladderLp';
   filterCutoffMin: number;    // 40..8000 Hz - lower bound of filter sweep
   filterCutoffMax: number;    // 40..8000 Hz - upper bound of filter sweep
   filterResonance: number;    // 0..1 step 0.01 (resonance peak)
@@ -717,7 +717,7 @@ export interface SliderState {
   pad2FoldMode: number;
   pad2OscMix: number;
   // Filter A
-  pad2FilterType: 'lowpass' | 'bandpass' | 'highpass' | 'notch';
+  pad2FilterType: 'lowpass' | 'bandpass' | 'highpass' | 'notch' | 'ladderLp';
   pad2FilterCutoffMin: number;
   pad2FilterCutoffMax: number;
   pad2FilterResonance: number;
@@ -5445,7 +5445,7 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           }
         } else if (
           key === 'filterType' &&
-          ['lowpass', 'bandpass', 'highpass', 'notch'].includes(value)
+          ['lowpass', 'bandpass', 'highpass', 'notch', 'ladderLp'].includes(value)
         ) {
           state.filterType = value as SliderState['filterType'];
         } else if (

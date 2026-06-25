@@ -25,6 +25,14 @@ const drumPresetManager = read('src/ui/drums/DrumPresetManager.tsx');
 const synthPresetManager = read('src/ui/synth/SynthPresetManager.tsx');
 const earthPage = read('src/ui/earth/EarthPage.tsx');
 const synthCss = read('src/ui/synth/synth.css');
+const coreProductRuntime = read('src/audio/coreProductRuntime.ts');
+const coreProductEvents = read('src/audio/coreProductEvents.ts');
+const modulationRangeBridge = read('src/audio/product/host/CoreProductModulationRangeBridge.ts');
+const runtimeSliderState = read('src/ui/runtimeSliderState.ts');
+const runtimeWalkPositionSync = read('src/ui/runtimeWalkPositionSync.ts');
+const telemetryRateLimits = read('src/ui/productRuntimeTelemetryRateLimits.ts');
+const webProductEngine = read('src/audio/product/WebProductEngine.ts');
+const worklet = read('public/worklets/kessho-core-product.worklet.js');
 
 assert(
   leadEditor.includes('closeAuditionContext') &&
@@ -134,6 +142,95 @@ assert(
     synthPage,
   ].every(source => source.includes('catch (ratingError)')),
   'Preset rating writes must catch failures before updating local rating state'
+);
+
+assert(
+  !coreProductRuntime.includes('String(Date.now())'),
+  'Core Product runtime asset version must be content-hash based, not Date.now based.'
+);
+
+assert(
+  !coreProductRuntime.includes("cache: 'no-store'") && !coreProductRuntime.includes('cache: "no-store"'),
+  'Core Product WASM first fetch must be browser-cacheable; retries may use reload.'
+);
+
+assert(
+  coreProductRuntime.includes("cache: attempt > 0 ? 'reload' : 'default'"),
+  'Core Product WASM fetch must use default browser cache first and reload only retries.'
+);
+
+assert(
+  coreProductRuntime.includes('syncTelemetryLoop') &&
+    coreProductRuntime.includes('requestTelemetryOnce') &&
+    coreProductRuntime.includes('visibility-resume'),
+  'Core Product runtime must gate telemetry and request one telemetry sync on visibility resume.'
+);
+
+assert(
+  coreProductRuntime.includes('const CORE_PRODUCT_TELEMETRY_DESKTOP_INTERVAL_MS = 250') &&
+    coreProductRuntime.includes('const CORE_PRODUCT_TELEMETRY_MOBILE_INTERVAL_MS = 500') &&
+    coreProductRuntime.includes('const CORE_PRODUCT_VISUAL_TELEMETRY_DESKTOP_INTERVAL_MS = 33') &&
+    coreProductRuntime.includes('const CORE_PRODUCT_VISUAL_TELEMETRY_MOBILE_INTERVAL_MS = 67'),
+  'Core Product runtime must have slower mobile telemetry/visual telemetry cadence.'
+);
+
+assert(
+  coreProductRuntime.includes('return this.telemetryPollingEnabled && this.transportRunningForTelemetry && this.isDocumentVisible();'),
+  'Core Product recurring telemetry must require callback registration, running transport, and visible document.'
+);
+
+assert(
+  coreProductRuntime.includes("document.addEventListener('visibilitychange', this.handleVisibilityChange)") &&
+    coreProductRuntime.includes("document.removeEventListener('visibilitychange', this.handleVisibilityChange)"),
+  'Core Product runtime must cleanly bind/unbind visibility resume telemetry sync.'
+);
+
+assert(
+  modulationRangeBridge.includes('CORE_PRODUCT_MODULATION_RANGE_MODE.randomWalk') &&
+    modulationRangeBridge.includes('runtimeWalkValues') &&
+    modulationRangeBridge.includes('publishRuntimeWalkPositions'),
+  'Runtime walk positions must be Product Core telemetry-backed and publishable on visible resume.'
+);
+
+assert(
+  !runtimeWalkPositionSync.includes('requestAnimationFrame(') &&
+    !runtimeWalkPositionSync.includes('setInterval(') &&
+    !runtimeWalkPositionSync.includes('setTimeout('),
+  'runtimeWalkPositionSync must not advance audible walk/sampleHold values from UI timers.'
+);
+
+assert(
+  !runtimeSliderState.includes('Math.random()') &&
+    !runtimeSliderState.includes('Date.now()') &&
+    !runtimeSliderState.includes('performance.now()'),
+  'runtimeSliderState must remain a UI mirror, not a random-walk clock/source.'
+);
+
+assert(
+  coreProductEvents.includes('sampleHold') && coreProductEvents.includes('randomWalk'),
+  'Product event layer must retain sampleHold/randomWalk modulation range modes.'
+);
+
+assert(
+  telemetryRateLimits.includes('PRODUCT_RUNTIME_SLIDER_HZ'),
+  'Runtime slider UI cadence must remain explicit and guardable.'
+);
+
+assert(
+  coreProductRuntime.includes('isIOSLikeDevice()') &&
+    coreProductRuntime.includes('outputChannelCount: [2]'),
+  'iOS Product worklet must instantiate stereo output directly.'
+);
+
+assert(
+  worklet.includes("message.type === 'events'") || worklet.includes('message.type === "events"'),
+  'Product worklet must accept ordered event batches.'
+);
+
+assert(
+  webProductEngine.includes('postEvents(events)') &&
+    !webProductEngine.includes('for (const event of events) {\n      coreProductRuntimeHostPort.postEvent(event);\n    }'),
+  'WebProductEngine.enqueueEvents must use the batched Product runtime host port.'
 );
 
 const failed = checks.filter(check => !check.ok);

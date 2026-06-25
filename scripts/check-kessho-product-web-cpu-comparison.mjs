@@ -159,7 +159,7 @@ function stringWavesArrangementPatch() {
     rootNote: 0,
     tension: 0.3,
     padEnabled: true,
-    synthLevel: 0.07,
+    synthLevel: 0.25,
     synthChordSequencerEnabled: true,
     synthEuclideanMasterEnabled: false,
     synthVoiceMask: 63,

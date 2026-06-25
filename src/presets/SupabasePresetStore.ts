@@ -479,6 +479,10 @@ function isInternalDerivedEntry(entry: Pick<PresetEntry, 'name' | 'tags'>): bool
   return entry.name.startsWith('__derived__/') || isInternalDerivedTags(entry.tags);
 }
 
+function isInternalDerivedRef(ref: Pick<PresetRef, 'name'>): boolean {
+  return ref.name.startsWith('__derived__/');
+}
+
 function makeDerivedPresetName(scope: string, resolvedHash: string): string {
   return `__derived__/${canonicalizePresetScope(scope) ?? scope}/${resolvedHash.slice(0, 12)}`;
 }
@@ -1050,6 +1054,7 @@ export class SupabasePresetStore implements IPresetStore {
     parentScope: string | undefined,
     refs: Record<string, PresetRef> | undefined,
     excludePresetId?: string | null,
+    computedRefsBySlot?: ReadonlyMap<string, PendingVersionRefV2>,
   ): Promise<PendingVersionRefV2[]> {
     if (!refs) return [];
 
@@ -1057,6 +1062,7 @@ export class SupabasePresetStore implements IPresetStore {
     for (const [slot, ref] of Object.entries(refs).sort(([left], [right]) => left.localeCompare(right))) {
       const targetSpec = this.getExplicitRefTargetSpec(parentType, parentScope, slot);
       if (!targetSpec) continue;
+      if (isInternalDerivedRef(ref) && computedRefsBySlot?.has(slot)) continue;
       const targetType = targetSpec.type;
       let target: PresetV2Row | null = ref.id ? await this.findPresetRowByIdV2(ref.id) : null;
       if (target?.type !== targetType) target = null;
@@ -1914,7 +1920,16 @@ export class SupabasePresetStore implements IPresetStore {
         });
       }
 
-      for (const explicitRef of await this.resolveExplicitVersionRefsV2(normalized.type, scope, version.refs, presetRow?.id)) {
+      const computedRefsBySlot = version.refs
+        ? new Map(refsToInsert.map(ref => [ref.slot, ref]))
+        : undefined;
+      for (const explicitRef of await this.resolveExplicitVersionRefsV2(
+        normalized.type,
+        scope,
+        version.refs,
+        presetRow?.id,
+        computedRefsBySlot,
+      )) {
         const existingIndex = refsToInsert.findIndex(ref => ref.slot === explicitRef.slot);
         if (existingIndex >= 0) {
           refsToInsert[existingIndex] = explicitRef;

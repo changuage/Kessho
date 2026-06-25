@@ -356,6 +356,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   const [keyboardLaneSteps, setKeyboardLaneSteps] = useState<Record<DrumKeyboardLane, number[]>>(() => makeDefaultKeyboardLaneSteps());
   const [triggerStampReady, setTriggerStampReady] = useState(false);
   const [triggerStampMode, setTriggerStampMode] = useState(false);
+  const [triggerStampPickSource, setTriggerStampPickSource] = useState(false);
+  const [triggerStampSummary, setTriggerStampSummary] = useState('');
   const [playheads, setPlayheads] = useState<number[]>(() => makeDrumLaneArray(() => 0));
   const [hitCounts, setHitCounts] = useState<number[]>(() => makeDrumLaneArray(() => 0));
   const [evolveFlashing, setEvolveFlashing] = useState<boolean[]>(() => makeDrumLaneArray(() => false));
@@ -919,14 +921,34 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     seq.toggleMute(laneIdx);
   }, [seq]);
 
-  const copyActiveDrumTriggerStamp = useCallback(() => {
-    const copied = seq.copyLinkedTriggerCell(seq.activeTab, activeTriggerKeyboardStep);
+  const formatDrumTriggerStampSummary = useCallback((step: number) => {
+    const laneState = seq.subLaneStates[seq.activeTab];
+    const labels = [
+      laneState?.pitch.enabled ? 'P' : '',
+      laneState?.expression.enabled ? 'E' : '',
+      laneState?.morph.enabled ? 'M' : '',
+      laneState?.distance.enabled ? 'D' : '',
+      laneState?.nudge.enabled ? 'N' : '',
+    ].filter(Boolean);
+    return `Trig ${step + 1}${labels.length ? ` + ${labels.join(' ')}` : ''}`;
+  }, [seq.activeTab, seq.subLaneStates]);
+
+  const copyDrumTriggerStampAtStep = useCallback((step: number) => {
+    const copied = seq.copyLinkedTriggerCell(seq.activeTab, step);
     if (copied) {
       setTriggerStampReady(true);
       setTriggerStampMode(true);
+      setTriggerStampPickSource(false);
+      setTriggerStampSummary(formatDrumTriggerStampSummary(step));
     }
     return copied;
-  }, [activeTriggerKeyboardStep, seq]);
+  }, [formatDrumTriggerStampSummary, seq]);
+
+  const beginDrumTriggerStampSourcePick = useCallback(() => {
+    setTriggerStampPickSource(true);
+    setTriggerStampMode(false);
+    setTriggerStampSummary('Select source trigger');
+  }, []);
 
   const pasteActiveDrumTriggerStamp = useCallback(() => {
     if (!triggerStampReady) return false;
@@ -939,15 +961,16 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   }, [seq, triggerStampReady]);
 
   useEffect(() => {
-    if (!triggerStampMode) return;
+    if (!triggerStampMode && !triggerStampPickSource) return;
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest('.seq-step-cell, .seq-step-select-btn, .seq-trigger-clip-btn')) return;
       setTriggerStampMode(false);
+      setTriggerStampPickSource(false);
     };
     window.addEventListener('pointerdown', handlePointerDown, true);
     return () => window.removeEventListener('pointerdown', handlePointerDown, true);
-  }, [triggerStampMode]);
+  }, [triggerStampMode, triggerStampPickSource]);
 
   const getDrumKeyboardLaneStepCount = useCallback((laneIdx: number, lane: DrumKeyboardLane) => {
     if (lane === 'trigger') return seq.sequencerModels[laneIdx]?.trigger.steps ?? 0;
@@ -1240,7 +1263,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     if ((e.metaKey || e.ctrlKey) && e.code === 'KeyC') {
       if (activeKeyboardLane === 'trigger') {
         e.preventDefault();
-        copyActiveDrumTriggerStamp();
+        beginDrumTriggerStampSourcePick();
       }
       return;
     }
@@ -1251,9 +1274,10 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       }
       return;
     }
-    if (e.code === 'Escape' && triggerStampMode) {
+    if (e.code === 'Escape' && (triggerStampMode || triggerStampPickSource)) {
       e.preventDefault();
       setTriggerStampMode(false);
+      setTriggerStampPickSource(false);
       return;
     }
 
@@ -1364,7 +1388,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     adjustDrumKeyboardLaneValue,
     adjustDrumKeyboardLaneSteps,
     activeTriggerKeyboardStep,
-    copyActiveDrumTriggerStamp,
+    beginDrumTriggerStampSourcePick,
     cycleDrumKeyboardLane,
     cycleDrumKeyboardSequencer,
     cycleDrumViewMode,
@@ -1373,6 +1397,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     recordDrumLiveOverdubVoice,
     seq.activeTab,
     pasteActiveDrumTriggerStamp,
+    triggerStampPickSource,
     triggerStampMode,
     toggleDrumLaneMute,
     toggleDrumKeyboardLane,
@@ -1903,20 +1928,16 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                       </div>
                       <button
                         type="button"
-                        className="seq-trigger-clip-btn"
-                        disabled={activeSeq.trigger.pattern[activeTriggerKeyboardStep] !== true}
-                        onClick={copyActiveDrumTriggerStamp}
+                        className={`seq-trigger-clip-btn${triggerStampPickSource ? ' on' : ''}`}
+                        onClick={beginDrumTriggerStampSourcePick}
                       >
                         Copy
                       </button>
-                      <button
-                        type="button"
-                        className={`seq-trigger-clip-btn${triggerStampMode ? ' on' : ''}`}
-                        disabled={!triggerStampReady}
-                        onClick={() => setTriggerStampMode((value) => !value)}
-                      >
-                        Stamp
-                      </button>
+                      {(triggerStampPickSource || triggerStampMode) && triggerStampSummary ? (
+                        <span className="seq-trigger-stamp-pill">
+                          {triggerStampSummary}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                   <SeqLane
@@ -1928,6 +1949,10 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                     selectedStep={activeKeyboardLane === 'trigger' ? activeKeyboardStep : null}
                     selectedStepLabel="⌖"
                     onToggleTriggerStep={(step) => {
+                      if (triggerStampPickSource) {
+                        if (activeSeq.trigger.pattern[step] === true) copyDrumTriggerStampAtStep(step);
+                        return;
+                      }
                       if (triggerStampMode && pasteDrumTriggerStampAtStep(step)) return;
                       seq.toggleTriggerStep(seq.activeTab, step);
                     }}

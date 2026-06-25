@@ -86,6 +86,11 @@ export const coreProductRuntimeHostPort = {
 
   postEvent(event: ProductEvent): void { callCoreProductHost<void>('postProductEvent', event); },
 
+  postEvents(events: readonly ProductEvent[]): void {
+    if (events.length === 0) return;
+    callCoreProductHost<void>('postProductEvents', events);
+  },
+
   pushMidiMessage(message: ProductMidiMessage): void {
     callCoreProductHost<void>('pushMidiMessage', message);
   },
@@ -117,6 +122,10 @@ export const coreProductRuntimeHostPort = {
 
   readTelemetry(): ProductTelemetrySnapshot | null {
     return callCoreProductHost<ProductTelemetrySnapshot | null>('getProductTelemetry');
+  },
+
+  requestTelemetryOnce(): void {
+    callCoreProductHost<void>('requestProductTelemetryOnce');
   },
 
   readDynamicsVisualTelemetry(): ProductDynamicsVisualTelemetry {

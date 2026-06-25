@@ -301,7 +301,7 @@ public:
       pad_instance_set_presence(instance_, pad, params_[base + kPresence]);
       pad_instance_set_fold_amount(instance_, pad, params_[base + kFoldAmount]);
       pad_instance_set_fold_mode(instance_, pad, clampedRounded(params_[base + kFoldMode], 0, 2));
-      pad_instance_set_filter_type(instance_, pad, clampedRounded(params_[base + kFilterType], 0, 3));
+      pad_instance_set_filter_type(instance_, pad, clampedRounded(params_[base + kFilterType], 0, 4));
       pad_instance_set_filter_cutoff_min(instance_, pad, params_[base + kFilterCutoffMin]);
       pad_instance_set_filter_cutoff_max(instance_, pad, params_[base + kFilterCutoffMax]);
       pad_instance_set_filter_resonance(instance_, pad, params_[base + kFilterResonance]);
@@ -541,7 +541,7 @@ private:
         pad_instance_set_fold_mode(instance_, pad, clampedRounded(params_[base + kFoldMode], 0, 2));
         break;
       case kFilterType:
-        pad_instance_set_filter_type(instance_, pad, clampedRounded(params_[base + kFilterType], 0, 3));
+        pad_instance_set_filter_type(instance_, pad, clampedRounded(params_[base + kFilterType], 0, 4));
         break;
       case kFilterCutoffMin:
         pad_instance_set_filter_cutoff_min(instance_, pad, params_[base + kFilterCutoffMin]);

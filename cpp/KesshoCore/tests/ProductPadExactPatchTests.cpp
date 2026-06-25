@@ -8,6 +8,7 @@
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoProductSchema.h"
 #include "ProductSnapshotTestHelpers.h"
+#include "kessho_pad.h"
 
 namespace {
 
@@ -256,6 +257,85 @@ float renderPadPeakBlocks(KesshoProductEngine* engine, uint32_t blocks) {
   return peak;
 }
 
+float maxInterleavedPeak(const float* interleaved, int frames, const char* context) {
+  require(interleaved != nullptr, context);
+  float peak = 0.0f;
+  for (int frame = 0; frame < frames; ++frame) {
+    const float left = interleaved[frame * 2];
+    const float right = interleaved[frame * 2 + 1];
+    require(std::isfinite(left) && std::isfinite(right), context);
+    peak = std::max(peak, std::fabs(left));
+    peak = std::max(peak, std::fabs(right));
+  }
+  return peak;
+}
+
+void requirePadGainSafetyAndLadderRender() {
+  KesshoPadInstance* pad = pad_instance_create(48000.0f);
+  require(pad != nullptr, "pad safety instance create failed");
+
+  pad_instance_set_level(pad, 0, 2.0f);
+  pad_instance_set_reverb_send(pad, 2.0f);
+  pad_instance_set_attack(pad, 0, 0.001f);
+  pad_instance_set_decay(pad, 0, 0.01f);
+  pad_instance_set_sustain(pad, 0, 1.0f);
+  pad_instance_set_release(pad, 0, 8.0f);
+  pad_instance_set_osc_a_level(pad, 0, 1.0f);
+  pad_instance_set_osc_b_level(pad, 0, 1.0f);
+  pad_instance_set_sub_enabled(pad, 0, 1);
+  pad_instance_set_sub_level(pad, 0, 0.8f);
+  pad_instance_set_filter_type(pad, 0, PAD_FILTER_LADDER_LP);
+  pad_instance_set_filter_cutoff_min(pad, 0, 4800.0f);
+  pad_instance_set_filter_cutoff_max(pad, 0, 12000.0f);
+  pad_instance_set_filter_q(pad, 0, 8.0f);
+  pad_instance_set_filter_resonance(pad, 0, 1.0f);
+  pad_instance_set_hardness(pad, 0, 1.0f);
+  pad_instance_set_warmth(pad, 0, 0.8f);
+  pad_instance_set_presence(pad, 0, 0.7f);
+
+  const float chord[] = {261.6256f, 329.6276f, 391.9954f, 493.8833f, 659.2551f, 783.9909f};
+  for (int voice = 0; voice < 6; ++voice) {
+    pad_instance_set_voice_pad(pad, voice, 0);
+    pad_instance_note_on(pad, voice, chord[voice], 1.0f);
+  }
+
+  float main_peak = 0.0f;
+  float reverb_peak = 0.0f;
+  float prefader_peak = 0.0f;
+  float postfader_peak = 0.0f;
+  for (int block = 0; block < 48; ++block) {
+    pad_instance_process_block(pad, 128);
+    main_peak = std::max(main_peak, maxInterleavedPeak(pad_instance_get_output_ptr(pad), 128, "pad main safety output"));
+    reverb_peak = std::max(reverb_peak, maxInterleavedPeak(pad_instance_get_reverb_send_ptr(pad), 128, "pad reverb safety output"));
+    prefader_peak = std::max(prefader_peak, maxInterleavedPeak(pad_instance_get_prefader_pad1_ptr(pad), 128, "pad prefader safety output"));
+    postfader_peak = std::max(postfader_peak, maxInterleavedPeak(pad_instance_get_postfader_pad1_ptr(pad), 128, "pad postfader safety output"));
+  }
+
+  require(main_peak > 0.01f, "pad safety render did not produce audible output");
+  require(main_peak < 0.999f, "pad safety main output exceeded limiter bounds");
+  require(reverb_peak < 0.999f, "pad safety reverb send exceeded limiter bounds");
+  require(postfader_peak < 0.999f, "pad safety postfader tap exceeded limiter bounds");
+  require(prefader_peak > postfader_peak, "pad prefader tap was unexpectedly calibrated with postfader trim");
+
+  pad_instance_set_level(pad, 0, -1.0f);
+  pad_instance_process_block(pad, 128);
+  require(
+      maxInterleavedPeak(pad_instance_get_output_ptr(pad), 128, "pad negative level clamp output") <= 0.000001f,
+      "pad negative level did not clamp to silence");
+  require(
+      maxInterleavedPeak(pad_instance_get_prefader_pad1_ptr(pad), 128, "pad negative level prefader") > 0.0001f,
+      "pad negative level clamp incorrectly muted prefader tap");
+
+  pad_instance_set_filter_type(pad, 0, 99);
+  pad_instance_set_level(pad, 0, 1.0f);
+  pad_instance_process_block(pad, 128);
+  require(
+      maxInterleavedPeak(pad_instance_get_output_ptr(pad), 128, "pad filter clamp output") < 0.999f,
+      "pad out-of-range filter type render exceeded limiter bounds");
+
+  pad_instance_destroy(pad);
+}
+
 void requirePadRuntimeOverride(
     KesshoProductEngine* engine,
     uint32_t source_id,
@@ -484,7 +564,7 @@ void requireEndpointPadMorphMatchesWebPolicy(float morph) {
       morph);
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "endpoint exact pad snapshot load failed");
 
-  const PadParams expected = expectedEndpointMorphParams(morph, 1.0f);
+  const PadParams expected = expectedEndpointMorphParams(morph);
   triggerPadAndExpectParams(
       engine,
       KESSHO_PRODUCT_SOURCE_PAD1,
@@ -506,7 +586,7 @@ void requireGeneratedEndpointPadSnapshotDoesNotNeedExactPatch(uint32_t source_id
       kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
       "generated endpoint pad snapshot load failed");
 
-  const PadParams expected = expectedEndpointMorphParams(morph, 1.0f);
+  const PadParams expected = expectedEndpointMorphParams(morph);
   triggerPadAndExpectParams(
       engine,
       source_id,
@@ -610,6 +690,7 @@ int main() {
   requireStableEndpointPadPatchIsCachedAcrossTriggers();
   requirePadRetriggerRespectsLongAttack();
   requirePadExactSampleHoldRangeAppliesOnTrigger();
+  requirePadGainSafetyAndLadderRender();
 
   std::cout << "Kessho Product Pad Exact Patch tests passed\n";
   return 0;

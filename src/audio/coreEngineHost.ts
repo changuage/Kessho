@@ -1043,6 +1043,7 @@ const PAD_PARAM_INDEX = {
 } as const;
 
 const PAD_WAVE_VALUES: Record<string, number> = { sine: 0, triangle: 1, sawtooth: 2, square: 3 };
+const PAD_MAIN_FILTER_VALUES: Record<string, number> = { lowpass: 0, bandpass: 1, highpass: 2, notch: 3, ladderLp: 4 };
 const PAD_FILTER_VALUES: Record<string, number> = { lowpass: 0, bandpass: 1, highpass: 2, notch: 3 };
 const PAD_LFO_WAVE_VALUES: Record<string, number> = {
   sine: 0,
@@ -1087,7 +1088,7 @@ const PAD_PARAM_SPECS = [
   ['presence', PAD_PARAM_INDEX.presence, null, 0.4],
   ['padFoldAmount', PAD_PARAM_INDEX.foldAmount, null, 0],
   ['padFoldMode', PAD_PARAM_INDEX.foldMode, null, 0],
-  ['filterType', PAD_PARAM_INDEX.filterType, PAD_FILTER_VALUES, 0],
+  ['filterType', PAD_PARAM_INDEX.filterType, PAD_MAIN_FILTER_VALUES, 0],
   ['filterCutoffMin', PAD_PARAM_INDEX.filterCutoffMin, null, 80],
   ['filterCutoffMax', PAD_PARAM_INDEX.filterCutoffMax, null, 1800],
   ['filterResonance', PAD_PARAM_INDEX.filterResonance, null, 0.2],

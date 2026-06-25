@@ -42,6 +42,7 @@ typedef struct KesshoPadInstance KesshoPadInstance;
 #define PAD_FILTER_BP      1
 #define PAD_FILTER_HP      2
 #define PAD_FILTER_NOTCH   3
+#define PAD_FILTER_LADDER_LP 4
 
 // Filter routing
 #define PAD_ROUTE_SERIES   0

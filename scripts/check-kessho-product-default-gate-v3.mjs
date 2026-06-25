@@ -258,6 +258,7 @@ const hostReconciliationReport = readJson('docs/reports/kessho-product-host-reco
 const sequencerUiReport = readJson('docs/reports/kessho-product-sequencer-ui-parity-latest.json');
 const patchBridgeReport = readJson('docs/reports/kessho-product-patch-bridges.json');
 const assetManifestReport = readJson('docs/reports/kessho-product-asset-manifest-latest.json');
+const productCiFreshnessScriptFiles = collectFiles('scripts').filter((path) => path !== 'scripts/check-kessho-product-default-gate-v3.mjs');
 
 const appRuntimeModeBody = sourceSlice(productAudioRuntimeSelection, 'export function getProductRuntimeMode()', 'export function getProductRuntimeModes()');
 assert(
@@ -1415,7 +1416,7 @@ assert(
   'Product runtime capability report must expose the generated Product schema hash',
 );
 
-assert(packageJson.scripts?.build === 'npm run core:product:wasm && tsc && vite build', 'main build must rebuild/verify Product Core WASM before Vite build');
+assert(packageJson.scripts?.build === 'npm run core:pad:wasm && npm run core:product:wasm && tsc && vite build', 'main build must rebuild Pad WASM and verify Product Core WASM before Vite build');
 assert(packageJson.scripts?.['core:product:browser-runtime'] === 'node scripts/check-kessho-product-browser-runtime.mjs', 'package.json must expose core:product:browser-runtime');
 assert(
   packageJson.scripts?.['core:product:sequencer-evolve'] === 'node scripts/run-kessho-product-sequencer-evolve-regression.mjs',
@@ -1530,7 +1531,7 @@ requireFreshReport('docs/reports/kessho-product-ci-latest.json', productCiReport
   'package.json',
   'scripts/run-kessho-product-ci.mjs',
   '.github/workflows/product-core-ci.yml',
-  ...collectFiles('scripts'),
+  ...productCiFreshnessScriptFiles,
   ...collectFiles('src'),
   ...collectFiles('cpp/KesshoCore'),
   ...collectFiles('public/worklets'),

@@ -137,9 +137,8 @@ export class WebProductEngine implements ProductEnginePort {
   }
 
   enqueueEvents(events: readonly ProductEvent[]): void {
-    for (const event of events) {
-      coreProductRuntimeHostPort.postEvent(event);
-    }
+    if (events.length === 0) return;
+    coreProductRuntimeHostPort.postEvents(events);
     this.scheduleDiagnosticsPublish();
   }
 
@@ -181,6 +180,10 @@ export class WebProductEngine implements ProductEnginePort {
 
   getTelemetry(): ProductTelemetrySnapshot | null {
     return coreProductRuntimeHostPort.readTelemetry();
+  }
+
+  requestTelemetryOnce(): void {
+    coreProductRuntimeHostPort.requestTelemetryOnce();
   }
 
   getSequencerUiState(): ProductSequencerUiState | null {

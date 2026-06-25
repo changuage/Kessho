@@ -227,7 +227,6 @@ public:
     }
 
     maybeSetWaterSeed();
-    syncWaterActive();
     water_instance_set_preset(water_, std::clamp(roundedInt(params_[kParamWaterPreset]), 0, 7));
     water_instance_set_params(
         water_,
@@ -286,13 +285,13 @@ public:
         params_[kParamWaterDensityLoop + 4],
         params_[kParamWaterDensityLoop + 5],
         params_[kParamWaterDensityLoop + 6]);
+    syncWaterActive();
 
     maybeSetInsectsSeed(insects_, kParamInsectsSeed);
-    syncInsectsActive();
     commitInsectsParams(insects_, kParamInsectsEngine, kParamInsectsParams);
+    syncInsectsActive();
 
     maybeSetInsects2Seed();
-    syncInsects2Active();
     insects2_instance_set_engine(insects2_, std::clamp(roundedInt(params_[kParamInsects2Engine]), 0, 6));
     insects2_instance_set_params(
         insects2_,
@@ -303,6 +302,7 @@ public:
         params_[kParamInsects2Params + 8], params_[kParamInsects2Params + 9],
         params_[kParamInsects2Params + 10], params_[kParamInsects2Params + 11],
         params_[kParamInsects2Params + 12], params_[kParamInsects2Params + 13]);
+    syncInsects2Active();
   }
 
   void allNotesOff() override {

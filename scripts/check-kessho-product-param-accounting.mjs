@@ -944,6 +944,7 @@ const PRODUCT_SNAPSHOT_KEY_PATHS = [
   'src/audio/CoreProductLeadPatch.ts',
   'src/audio/CoreProductPadPatch.ts',
   'src/audio/CoreProductDrumPatch.ts',
+  'src/audio/coreProductSnapshotPadVoiceRouting.ts',
   'src/audio/coreProductDelaySnapshot.ts',
   'src/audio/coreProductReverbSnapshot.ts',
   'src/audio/coreProductSequencerFaceSnapshot.ts',
@@ -953,6 +954,7 @@ const PRODUCT_SNAPSHOT_KEY_PATHS = [
   'src/audio/coreProductArrangementScheduler.ts',
   'src/audio/coreProductArrangementSchedulerUtils.ts',
   'src/audio/coreProductChordSequencerClock.ts',
+  'src/audio/coreProductChordVoices.ts',
   'src/audio/granularMacroCore.ts',
   'src/audio/transport.ts',
 ];
@@ -1007,9 +1009,14 @@ function addGeneratedProductSnapshotKeys(keys) {
   }
 }
 
+function addArrangementSchedulerSnapshotKeys(keys) {
+  keys.add('waveSpread');
+}
+
 function collectProductSnapshotReferencedKeys(sliderKeys) {
   const keys = collectStateReferencedKeysInProductFiles(sliderKeys, PRODUCT_SNAPSHOT_KEY_PATHS);
   addGeneratedProductSnapshotKeys(keys);
+  addArrangementSchedulerSnapshotKeys(keys);
   addDynamicSequencerKeys(keys);
   addDynamicGranularVoiceKeys(keys);
   return keys;

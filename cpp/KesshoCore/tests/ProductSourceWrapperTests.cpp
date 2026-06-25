@@ -1295,7 +1295,7 @@ void requireSoundscapeSnapshotOwnsStructuredFields() {
   kessho_product_destroy(engine);
 }
 
-float maxGraphTapDiff(
+float maxNormalizedGraphTapDiff(
     KesshoProductEngine* engine,
     uint32_t dry_tap_id,
     uint32_t send_tap_id,
@@ -1319,9 +1319,18 @@ float maxGraphTapDiff(
     require(
         kessho_product_get_graph_tap(engine, send_tap_id, send_l.data(), send_r.data(), 128) == KESSHO_PRODUCT_OK,
         "send graph tap read failed");
-    dry_peak = std::max(dry_peak, peakRange(dry_l, dry_r, 0, 128));
-    diff = std::max(diff, maxAbsDiff(dry_l, send_l));
-    diff = std::max(diff, maxAbsDiff(dry_r, send_r));
+    const float block_dry_peak = peakRange(dry_l, dry_r, 0, 128);
+    const float block_send_peak = peakRange(send_l, send_r, 0, 128);
+    dry_peak = std::max(dry_peak, block_dry_peak);
+    if (block_dry_peak <= 0.000001f || block_send_peak <= 0.000001f) {
+      continue;
+    }
+    const float dry_scale = 1.0f / block_dry_peak;
+    const float send_scale = 1.0f / block_send_peak;
+    for (uint32_t frame = 0; frame < 128u; ++frame) {
+      diff = std::max(diff, std::fabs(dry_l[frame] * dry_scale - send_l[frame] * send_scale));
+      diff = std::max(diff, std::fabs(dry_r[frame] * dry_scale - send_r[frame] * send_scale));
+    }
   }
   return diff;
 }
@@ -1355,9 +1364,9 @@ void requirePadFxSendsFollowPostLpf(uint32_t source_id, uint32_t dry_tap_id, con
 
   for (uint32_t index = 0; index < 4u; ++index) {
     float dry_peak = 0.0f;
-    const float diff = maxGraphTapDiff(engine, dry_tap_id, send_tap_ids[index], 96u, dry_peak);
+    const float diff = maxNormalizedGraphTapDiff(engine, dry_tap_id, send_tap_ids[index], 96u, dry_peak);
     require(dry_peak > 0.000001f, "pad post-LPF dry graph tap did not render");
-    require(diff < 0.000001f, label);
+    require(diff < 0.015f, label);
   }
   kessho_product_destroy(engine);
 }

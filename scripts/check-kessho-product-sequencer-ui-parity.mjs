@@ -576,7 +576,7 @@ async function setTriggerControlViaDrag(page, controlIndex, desiredValue, engine
     const startY = box.y + box.height / 2;
     const delta = desiredValue - current;
     const dragPixels = controlIndex === 0
-      ? Math.max(36, Math.ceil(Math.pow(Math.abs(delta) * 30, 1 / 1.12)))
+      ? Math.max(24, Math.ceil(Math.pow(Math.abs(delta) * 15, 1 / 1.12)))
       : Math.max(80, Math.abs(delta) * 90);
     await page.mouse.move(startX, startY);
     await page.mouse.down();

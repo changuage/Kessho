@@ -16,8 +16,20 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SRC="$SCRIPT_DIR/kessho_pad.cpp"
 OUT="$SCRIPT_DIR/kessho_pad.wasm"
+
+if ! command -v emcc >/dev/null 2>&1 && [ -x "$ROOT_DIR/emsdk/upstream/emscripten/emcc" ]; then
+    export EMSDK="$ROOT_DIR/emsdk"
+    export EM_CONFIG="$ROOT_DIR/emsdk/.emscripten"
+    PATH_PARTS=(
+        "$ROOT_DIR/emsdk/python/3.13.3_64bit/bin"
+        "$ROOT_DIR/emsdk/node/22.16.0_64bit/bin"
+        "$ROOT_DIR/emsdk/upstream/emscripten"
+    )
+    export PATH="$(IFS=:; echo "${PATH_PARTS[*]}"):$PATH"
+fi
 
 EXPORTS="[
   '_pad_init',

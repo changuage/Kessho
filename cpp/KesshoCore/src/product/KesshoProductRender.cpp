@@ -254,8 +254,8 @@ struct SoundscapeRenderBlockCache {
         graph_dry_right = dry_right * soundscape_asset_level;
         output_dry_left = graph_dry_left * soundscape_earth_level;
         output_dry_right = graph_dry_right * soundscape_earth_level;
-        layer_send_left = send_left * soundscape_asset_level;
-        layer_send_right = send_right * soundscape_asset_level;
+        layer_send_left = send_left;
+        layer_send_right = send_right;
       }
       const float left = output_dry_left;
       const float right = output_dry_right;

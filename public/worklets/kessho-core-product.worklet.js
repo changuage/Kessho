@@ -3,7 +3,7 @@ const GENERATED_CAPTURE_EVENT_BYTES = 64;
 const GENERATED_CAPTURE_EVENT_CAPACITY = 256;
 const TELEMETRY_BYTES = 15008;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
-const EXPECTED_PRODUCT_SCHEMA_HASH = 0x026099c1;
+const EXPECTED_PRODUCT_SCHEMA_HASH = 0x32f36316;
 const SEQUENCER_UI_STATE_LANES = 16;
 const SEQUENCER_UI_STATE_STEPS = 64;
 const SEQUENCER_UI_LANE_BYTES = 3296;
@@ -290,6 +290,13 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     try {
       if (message.type === 'event') {
         this.enqueueEvent(message.event);
+        return;
+      }
+      if (message.type === 'events') {
+        const events = Array.isArray(message.events) ? message.events : [];
+        for (const event of events) {
+          this.enqueueEvent(event);
+        }
         return;
       }
       if (message.type === 'snapshot') {

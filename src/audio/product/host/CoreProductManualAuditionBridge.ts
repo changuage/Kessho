@@ -3,16 +3,7 @@ import type { CoreProductSnapshot } from '../../coreProductSnapshot';
 import type { CoreProductRuntime } from '../../coreProductRuntime';
 import { CORE_PRODUCT_SOURCE_IDS, createCoreProductDrumTriggerEvent, createCoreProductManualNoteEvent } from '../../coreProductEvents';
 import type { SnapshotReloadReason } from '../../CoreProductRuntimeAdapter';
-import {
-  drumVoiceIndex,
-  manualAuditionState,
-  midiFromFrequency,
-  requireFiniteRange,
-  requireManualNote,
-  requirePositive,
-  sourceId,
-  type RequiredManualSynthNote,
-} from '../../CoreProductHostRuntimeGuards';
+import { drumVoiceIndex, manualAuditionState, midiFromFrequency, requireFiniteRange, requireManualNote, requirePositive, sourceId, type RequiredManualSynthNote } from '../../CoreProductHostRuntimeGuards';
 import type { CoreProductAssetRegistrar } from './CoreProductAssetRegistrar';
 
 export type CoreProductManualAuditionContext = {
@@ -39,6 +30,10 @@ function productSourceEnabled(context: CoreProductManualAuditionContext, sourceI
 
 function productSourcesEnabled(context: CoreProductManualAuditionContext, sourceIds: readonly number[]): boolean {
   return sourceIds.every((sourceIdValue) => productSourceEnabled(context, sourceIdValue));
+}
+
+function shouldApplyExternalState(context: CoreProductManualAuditionContext, externalState?: Record<string, unknown>): boolean {
+  return externalState != null && externalState !== context.latestSliderState();
 }
 
 async function ensurePianoAssetsForManualNotes(
@@ -75,9 +70,9 @@ export async function triggerCoreProductDrumVoice(
     context.runtime.postEvent(createCoreProductDrumTriggerEvent(voiceIndex, triggerVelocity));
     context.publish('drumTrigger', voice, triggerVelocity);
   };
-  const shouldApplyExternalState = Boolean(externalState);
+  const applyExternalState = shouldApplyExternalState(context, externalState);
   if (
-    !shouldApplyExternalState &&
+    !applyExternalState &&
     runtimeCanPostEventsImmediately(context) &&
     productSourceEnabled(context, CORE_PRODUCT_SOURCE_IDS.drum)
   ) {
@@ -88,7 +83,7 @@ export async function triggerCoreProductDrumVoice(
   await context.runtime.ensureStarted();
   context.setRuntimeReady(true);
   await context.runtime.resume();
-  if (shouldApplyExternalState || !productSourceEnabled(context, CORE_PRODUCT_SOURCE_IDS.drum)) {
+  if (applyExternalState || !productSourceEnabled(context, CORE_PRODUCT_SOURCE_IDS.drum)) {
     await context.applyLatestSnapshotUpdate('runtime-bootstrap');
   }
   post();
@@ -131,19 +126,19 @@ export async function auditionCoreProductSynthNote(
 ): Promise<void> {
   const manualNote = requireManualNote(note);
   const targetSourceId = sourceId(manualNote.source);
-  const shouldApplyExternalState = Boolean(externalState);
-  if (!shouldApplyExternalState && runtimeCanPostEventsImmediately(context) && productSourceEnabled(context, targetSourceId)) {
+  const applyExternalState = shouldApplyExternalState(context, externalState);
+  if (!applyExternalState && runtimeCanPostEventsImmediately(context) && productSourceEnabled(context, targetSourceId)) {
     if (manualNote.source === 'piano') await context.assetRegistrar.ensurePianoAssetForNote(manualNote.midi, manualNote.velocity);
     postManualSynthNote(context, manualNote);
     return;
   }
-  if (!productSourceEnabled(context, targetSourceId) || shouldApplyExternalState) {
+  if (!productSourceEnabled(context, targetSourceId) || applyExternalState) {
     context.setLatestSliderState(manualAuditionState(manualNote.source, externalState ?? context.latestSliderState() ?? undefined));
   }
   await context.runtime.ensureStarted();
   context.setRuntimeReady(true);
   await context.runtime.resume();
-  if (shouldApplyExternalState || !productSourceEnabled(context, targetSourceId)) {
+  if (applyExternalState || !productSourceEnabled(context, targetSourceId)) {
     await context.applyLatestSnapshotUpdate(manualNote.source === 'piano' ? 'manual-piano-asset' : 'runtime-bootstrap');
   }
   if (manualNote.source === 'piano') await context.assetRegistrar.ensurePianoAssetForNote(manualNote.midi, manualNote.velocity);
@@ -157,13 +152,13 @@ export async function auditionCoreProductSynthNotes(
 ): Promise<void> {
   const manualNotes = notes.map(requireManualNote);
   const targetSourceIds = manualNotes.map((note) => sourceId(note.source));
-  const shouldApplyExternalState = Boolean(externalState);
-  if (!shouldApplyExternalState && runtimeCanPostEventsImmediately(context) && productSourcesEnabled(context, targetSourceIds)) {
+  const applyExternalState = shouldApplyExternalState(context, externalState);
+  if (!applyExternalState && runtimeCanPostEventsImmediately(context) && productSourcesEnabled(context, targetSourceIds)) {
     await ensurePianoAssetsForManualNotes(context, manualNotes);
     for (const note of manualNotes) postManualSynthNote(context, note);
     return;
   }
-  if (!productSourcesEnabled(context, targetSourceIds) || shouldApplyExternalState) {
+  if (!productSourcesEnabled(context, targetSourceIds) || applyExternalState) {
     let nextState = { ...(externalState ?? context.latestSliderState() ?? {}) };
     for (const note of manualNotes) nextState = manualAuditionState(note.source, nextState);
     context.setLatestSliderState(nextState);
@@ -171,7 +166,7 @@ export async function auditionCoreProductSynthNotes(
   await context.runtime.ensureStarted();
   context.setRuntimeReady(true);
   await context.runtime.resume();
-  if (shouldApplyExternalState || !productSourcesEnabled(context, targetSourceIds)) {
+  if (applyExternalState || !productSourcesEnabled(context, targetSourceIds)) {
     await context.applyLatestSnapshotUpdate(manualNotes.some((note) => note.source === 'piano') ? 'manual-piano-asset' : 'runtime-bootstrap');
   }
   await ensurePianoAssetsForManualNotes(context, manualNotes);

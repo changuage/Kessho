@@ -65,16 +65,16 @@ import type { ProductEngineState, ProductResolvedStateCommit, ProductResolvedSta
 import { createWebProductRuntimeCapabilityReport, type ProductRuntimeCapabilityReport } from './product/ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from './product/ProductRuntimeDiagnostics';
 import { CoreProductArrangementBridge } from './product/host/CoreProductArrangementBridge';
+import { CoreProductPostSnapshotEventQueue } from './product/host/CoreProductPostSnapshotEventQueue';
+import { CoreProductRuntimeEventBatcher } from './product/host/CoreProductRuntimeEventBatcher';
 const PRODUCT_VISIBLE_SYNTH_LANE_COUNT = SYNTH_EUCLIDEAN_LANE_COUNT;
 const PRODUCT_VISIBLE_DRUM_LANE_COUNT = DRUM_EUCLIDEAN_LANE_COUNT;
-const POST_SNAPSHOT_EVENT_FLUSH_BATCH_SIZE = 48;
-const POST_SNAPSHOT_EVENT_FLUSH_RETRY_MS = 40;
 type SequencerLanePitchState = { steps?: number; direction?: LaneDirection; scaleQuantize?: boolean };
 class CoreProductEngineHost {
   private readonly runtime = new CoreProductRuntime();
   private readonly graphTapBridge = new CoreProductGraphTapBridge(this.runtime);
-  private readonly arrangementBridge = new CoreProductArrangementBridge((event) => this.runtime.postEvent(event), () => this.runtime.audioContext, (name, ...payload) => this.invokeDisplayCallback(name, ...payload));
-  private readonly sequencerChain = new CoreProductHostSequencerChain({ post: (event) => this.runtime.postEvent(event), nowMs: () => this.nowMs() });
+  private readonly arrangementBridge = new CoreProductArrangementBridge((event) => this.postRuntimeProductEvent(event), () => this.runtime.audioContext, (name, ...payload) => this.invokeDisplayCallback(name, ...payload));
+  private readonly sequencerChain = new CoreProductHostSequencerChain({ post: (event) => this.postRuntimeProductEvent(event), nowMs: () => this.nowMs() });
   private latestSliderState: Record<string, unknown> | null = null;
   private readonly assetRegistrar = new CoreProductAssetRegistrar(this.runtime, () => this.latestSliderState);
   private readonly displayCallbacks = new CoreProductDisplayCallbackRegistry();
@@ -89,7 +89,7 @@ class CoreProductEngineHost {
     isRuntimeReady: () => this.runtimeReady,
     latestProductSnapshot: () => this.latestProductSnapshot,
     latestSliderState: () => this.latestSliderState,
-    post: (event) => this.runtime.postEvent(event),
+    post: (event) => this.postRuntimeProductEvent(event),
     publish: (name, ...payload) => this.invokeDisplayCallback(name, ...payload),
     reportUnsupportedRangeKey: (key) => this.diagnostics.reportUnsupportedRangeKey(key),
     applyRuntimeWalkStatePatch: (patch) => {
@@ -116,9 +116,9 @@ class CoreProductEngineHost {
   private synthNoteRangeOverrides: ({ min: number; max: number } | null)[] = [null, null, null, null];
   private readonly sequencerHome = createCoreProductSequencerHomeStore();
   private readonly manualSynthDiceState = createCoreProductManualSynthDiceState();
-  private readonly postSnapshotEventQueue: CoreProductEvent[] = [];
-  private postSnapshotEventFlushTimer: number | null = null;
-  private readonly sequencerEvolveBridge = new CoreProductSequencerEvolveRuntimeBridge({ adapterState: () => this.adapterState, latestSliderState: () => this.latestSliderState, latestProductSnapshot: () => this.latestProductSnapshot, runtimeReady: () => this.runtimeReady, captureLaneHome: (sequencer, laneIndex) => { if (sequencer === 'synth') this.captureSequencerHomeLane('synth', laneIndex); else this.captureSequencerHomeLane('drum', laneIndex); }, getEnabledSubLanes: (sequencer, laneIndex) => this.enabledSequencerSubLanes(sequencer, laneIndex), postWithHomeCapture: (event) => { this.captureSequencerHomeForEvent(event); this.runtime.postEvent(event); }, publish: (name, ...payload) => this.invokeDisplayCallback(name, ...payload) });
+  private readonly productEventBatcher = new CoreProductRuntimeEventBatcher(this.runtime);
+  private readonly postSnapshotEvents = new CoreProductPostSnapshotEventQueue({ canFlush: () => this.runtimeReady && this.runtime.audioContext?.state === 'running', post: (events) => this.postRuntimeProductEvents(events) });
+  private readonly sequencerEvolveBridge = new CoreProductSequencerEvolveRuntimeBridge({ adapterState: () => this.adapterState, latestSliderState: () => this.latestSliderState, latestProductSnapshot: () => this.latestProductSnapshot, runtimeReady: () => this.runtimeReady, captureLaneHome: (sequencer, laneIndex) => { if (sequencer === 'synth') this.captureSequencerHomeLane('synth', laneIndex); else this.captureSequencerHomeLane('drum', laneIndex); }, getEnabledSubLanes: (sequencer, laneIndex) => this.enabledSequencerSubLanes(sequencer, laneIndex), postWithHomeCapture: (event) => { this.captureSequencerHomeForEvent(event); this.postRuntimeProductEvent(event); }, publish: (name, ...payload) => this.invokeDisplayCallback(name, ...payload) });
   private readonly harmonyStateBridge = new CoreProductHarmonyStateBridge();
   readonly engineMode = 'core-product';
   constructor() {
@@ -140,6 +140,7 @@ class CoreProductEngineHost {
   flushSonicParityGraphCapture(tapId: number): Promise<CoreProductGraphTapCaptureChunk[]> { return this.graphTapBridge.flushCapture(tapId); }
   stopSonicParityGraphCapture(tapId: number): Promise<CoreProductGraphTapCaptureChunk[]> { return this.graphTapBridge.stopCapture(tapId); }
   getSonicParityDebugState(): Record<string, unknown> { return this.debugSurface.getSonicParityDebugState(); }
+  requestSonicParityTelemetry(): void { this.runtime.requestTelemetryOnce('manual'); }
   getTransportDebugState(): TransportDebugSnapshot | null {
     const transportDebug = this.debugSurface.getTransportDebugState();
     const arrangementDebug = this.arrangementBridge.getTransportDebugState();
@@ -197,6 +198,7 @@ class CoreProductEngineHost {
   }
   setProductTelemetryCallback(callback: ((telemetry: CoreProductTelemetrySnapshot) => void) | null): void {
     this.productTelemetryCallback = callback;
+    this.updateRuntimeTelemetryPolling();
     if (callback && this.latestTelemetry) {
       callback(this.latestTelemetry);
     }
@@ -204,6 +206,10 @@ class CoreProductEngineHost {
 
   getProductTelemetry(): CoreProductTelemetrySnapshot | null {
     return this.latestTelemetry;
+  }
+
+  requestProductTelemetryOnce(): void {
+    this.runtime.requestTelemetryOnce('manual');
   }
 
   getProductRuntimeDiagnostics(): ProductRuntimeDiagnostics {
@@ -219,7 +225,16 @@ class CoreProductEngineHost {
     if (!this.runtimeReady) {
       throw new Error('Core Product runtime cannot enqueue product events before the product worklet is initialized');
     }
-    this.runtime.postEvent(event);
+    this.postRuntimeProductEvent(event);
+  }
+
+  postProductEvents(events: readonly CoreProductEvent[]): void {
+    if (events.length === 0) return;
+    this.withRuntimeProductEventBatch(() => {
+      for (const event of events) {
+        this.postProductEvent(event);
+      }
+    });
   }
 
   reportRuntimeFallback(method: string, classification: RuntimeFallbackClassification): void {
@@ -337,7 +352,8 @@ class CoreProductEngineHost {
     await this.loadLatestSnapshot('runtime-start');
     await this.runtime.resume();
     this.running = true; this.sequencerChain.start(this.latestSliderState, this.adapterState);
-    this.runtime.postEvent(createCoreProductStartEvent());
+    this.updateRuntimeTelemetryPolling();
+    this.postRuntimeProductEvent(createCoreProductStartEvent());
     this.modulationRangeBridge.flushModulationRanges();
     this.arrangementBridge.start(this.latestSliderState, this.adapterState);
     this.stateChangeCallback?.(this.createEngineState(true));
@@ -347,16 +363,18 @@ class CoreProductEngineHost {
     await this.runtime.resume(); this.resetSequencerEvolveState();
     await this.loadLatestSnapshot('runtime-start', true);
     this.running = true; this.sequencerChain.start(this.latestSliderState, this.adapterState);
-    this.runtime.postEvent(createCoreProductStartEvent());
+    this.updateRuntimeTelemetryPolling();
+    this.postRuntimeProductEvent(createCoreProductStartEvent());
     this.arrangementBridge.start(this.latestSliderState, this.adapterState);
     this.stateChangeCallback?.(this.createEngineState(true));
   }
 
   async suspend(): Promise<void> {
     this.sequencerChain.stop(); this.arrangementBridge.stop();
-    this.runtime.postEvent(createCoreProductStopEvent());
+    this.postRuntimeProductEvent(createCoreProductStopEvent());
     await this.runtime.suspend(); this.resetSequencerEvolveState();
     this.running = false; this.synthNoteRangeOverrides = [null, null, null, null];
+    this.updateRuntimeTelemetryPolling();
     this.resetSequencerVisuals();
     this.stateChangeCallback?.(this.createEngineState(false));
   }
@@ -364,10 +382,11 @@ class CoreProductEngineHost {
   stop(): void {
     this.sequencerChain.stop(); this.arrangementBridge.stop();
     if (this.runtimeReady) {
-      this.runtime.postEvent(createCoreProductStopEvent());
+      this.postRuntimeProductEvent(createCoreProductStopEvent());
     }
     void this.runtime.suspend(); this.resetSequencerEvolveState();
     this.running = false; this.synthNoteRangeOverrides = [null, null, null, null];
+    this.updateRuntimeTelemetryPolling();
     this.resetSequencerVisuals();
     this.stateChangeCallback?.(this.createEngineState(false));
   }
@@ -375,13 +394,14 @@ class CoreProductEngineHost {
   dispose(): void {
     this.sequencerChain.stop(); this.arrangementBridge.stop();
     if (this.runtimeReady) {
-      this.runtime.postEvent(createCoreProductStopEvent());
+      this.postRuntimeProductEvent(createCoreProductStopEvent());
     }
-    this.clearPostSnapshotEventQueue();
+    this.postSnapshotEvents.clear();
     this.runtime.dispose();
     this.runtimeReady = false; this.resetSequencerEvolveState();
     this.midiTimestampOriginSeconds = null;
     this.running = false; this.synthNoteRangeOverrides = [null, null, null, null];
+    this.updateRuntimeTelemetryPolling();
     this.latestProductSnapshot = null;
     this.assetRegistrar.clear();
     this.resetSequencerVisuals();
@@ -390,6 +410,27 @@ class CoreProductEngineHost {
 
   private isDocumentVisible(): boolean {
     return typeof document === 'undefined' || document.visibilityState === 'visible';
+  }
+
+  private updateRuntimeTelemetryPolling(): void {
+    const runtime = this.runtime as CoreProductRuntime & {
+      setTelemetryPollingEnabled?: (enabled: boolean) => void;
+      setTelemetryTransportRunning?: (running: boolean) => void;
+    };
+    runtime.setTelemetryPollingEnabled?.(this.productTelemetryCallback !== null);
+    runtime.setTelemetryTransportRunning?.(this.running);
+  }
+
+  private postRuntimeProductEvent(event: CoreProductEvent): void {
+    this.productEventBatcher.post(event);
+  }
+
+  private postRuntimeProductEvents(events: readonly CoreProductEvent[]): void {
+    this.productEventBatcher.postMany(events);
+  }
+
+  private withRuntimeProductEventBatch<T>(operation: () => T): T {
+    return this.productEventBatcher.run(operation);
   }
 
   ensureDrumSynth(sliderState?: Record<string, unknown>): void {
@@ -444,11 +485,11 @@ class CoreProductEngineHost {
     const audioContext = this.runtime.audioContext; const currentTimeSeconds = audioContext?.currentTime ?? 0;
     if (this.midiTimestampOriginSeconds === null && typeof message.timestamp === 'number' && Number.isFinite(message.timestamp)) this.midiTimestampOriginSeconds = message.timestamp - currentTimeSeconds;
     const event = createCoreProductHostMidiEvent(message, { sampleRate: audioContext?.sampleRate ?? 48000, currentTimeSeconds, timestampOriginSeconds: this.midiTimestampOriginSeconds ?? undefined });
-    const post = () => { this.runtime.postEvent(event); };
+    const post = () => { this.postRuntimeProductEvent(event); };
     if (this.runtimeReady) { if (this.runtime.audioContext?.state === 'running') { post(); return; } void this.runtime.resume().then(post); return; }
     void this.runtime.ensureStarted().then(() => { this.runtimeReady = true; return this.loadLatestSnapshot('runtime-bootstrap').then(() => this.runtime.resume()); }).then(post);
   }
-  enqueueLiveNoteEvent(event: ProductLiveNoteEvent): void { const audioContext = this.runtime.audioContext; const currentTimeSeconds = audioContext?.currentTime ?? 0; if (this.midiTimestampOriginSeconds === null && typeof event.timestampMs === 'number' && Number.isFinite(event.timestampMs)) this.midiTimestampOriginSeconds = event.timestampMs / 1000 - currentTimeSeconds; const productEvent = createCoreProductLiveNoteEvent(event, { sampleRate: audioContext?.sampleRate ?? 48000, currentTimeSeconds, timestampOriginSeconds: this.midiTimestampOriginSeconds ?? undefined }); const post = () => { this.runtime.postEvent(productEvent); }; if (this.runtimeReady) { if (this.runtime.audioContext?.state === 'running') { post(); return; } void this.runtime.resume().then(post); return; } void this.runtime.ensureStarted().then(() => { this.runtimeReady = true; return this.loadLatestSnapshot('runtime-bootstrap').then(() => this.runtime.resume()); }).then(post); }
+  enqueueLiveNoteEvent(event: ProductLiveNoteEvent): void { const audioContext = this.runtime.audioContext; const currentTimeSeconds = audioContext?.currentTime ?? 0; if (this.midiTimestampOriginSeconds === null && typeof event.timestampMs === 'number' && Number.isFinite(event.timestampMs)) this.midiTimestampOriginSeconds = event.timestampMs / 1000 - currentTimeSeconds; const productEvent = createCoreProductLiveNoteEvent(event, { sampleRate: audioContext?.sampleRate ?? 48000, currentTimeSeconds, timestampOriginSeconds: this.midiTimestampOriginSeconds ?? undefined }); const post = () => { this.postRuntimeProductEvent(productEvent); }; if (this.runtimeReady) { if (this.runtime.audioContext?.state === 'running') { post(); return; } void this.runtime.resume().then(post); return; } void this.runtime.ensureStarted().then(() => { this.runtimeReady = true; return this.loadLatestSnapshot('runtime-bootstrap').then(() => this.runtime.resume()); }).then(post); }
 
   setRuntimeWalkPositionsCallback(callback: ((positions: Record<string, number>) => void) | null): void {
     this.setDisplayCallback('runtimeWalkPositions', callback);
@@ -647,53 +688,10 @@ class CoreProductEngineHost {
   }
 
   private queuePostSnapshotEvents(events: readonly CoreProductEvent[]): void {
-    if (events.length === 0) return;
-    this.postSnapshotEventQueue.length = 0;
-    this.postSnapshotEventQueue.push(...events);
-    this.schedulePostSnapshotEventFlush();
+    this.postSnapshotEvents.queue(events);
   }
 
-  private schedulePostSnapshotEventFlush(): void {
-    if (this.postSnapshotEventFlushTimer !== null) return;
-    const schedule = typeof window !== 'undefined' && typeof window.setTimeout === 'function'
-      ? window.setTimeout.bind(window)
-      : setTimeout;
-    this.postSnapshotEventFlushTimer = schedule(() => {
-      this.postSnapshotEventFlushTimer = null;
-      this.flushPostSnapshotEventQueue();
-    }, POST_SNAPSHOT_EVENT_FLUSH_RETRY_MS) as unknown as number;
-  }
-
-  private flushPostSnapshotEventQueue(): void {
-    if (this.postSnapshotEventQueue.length === 0) return;
-    if (!this.runtimeReady || this.runtime.audioContext?.state !== 'running') {
-      this.schedulePostSnapshotEventFlush();
-      return;
-    }
-    let posted = 0;
-    while (
-      posted < POST_SNAPSHOT_EVENT_FLUSH_BATCH_SIZE &&
-      this.postSnapshotEventQueue.length > 0
-    ) {
-      const event = this.postSnapshotEventQueue.shift();
-      if (event) this.runtime.postEvent(event);
-      posted += 1;
-    }
-    if (this.postSnapshotEventQueue.length > 0) {
-      this.schedulePostSnapshotEventFlush();
-    }
-  }
-
-  private clearPostSnapshotEventQueue(): void {
-    this.postSnapshotEventQueue.length = 0;
-    if (this.postSnapshotEventFlushTimer === null) return;
-    if (typeof window !== 'undefined' && typeof window.clearTimeout === 'function') {
-      window.clearTimeout(this.postSnapshotEventFlushTimer);
-    } else {
-      clearTimeout(this.postSnapshotEventFlushTimer);
-    }
-    this.postSnapshotEventFlushTimer = null;
-  }
+  flushPostSnapshotEventQueue(): void { this.postSnapshotEvents.flush(); }
 
   private nowMs(): number {
     return typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -727,17 +725,20 @@ class CoreProductEngineHost {
       };
     }
     this.journeyMorphClock.syncAfterTelemetry();
-    this.modulationRangeBridge.updateRuntimeWalkPositions(hostTelemetry);
-    this.modulationRangeBridge.updateSampleHoldTriggerFeedback(hostTelemetry);
+    const documentVisible = this.isDocumentVisible();
+    this.modulationRangeBridge.updateRuntimeWalkPositions(hostTelemetry, {
+      publish: documentVisible,
+    });
+    if (documentVisible) this.modulationRangeBridge.updateSampleHoldTriggerFeedback(hostTelemetry);
     this.reconcileSequencerUiState(hostTelemetry);
-    if (this.isDocumentVisible()) this.updateSequencerMorphFeedback(hostTelemetry);
+    if (documentVisible) this.updateSequencerMorphFeedback(hostTelemetry);
     hostTelemetry.sampleHoldDebug = this.modulationRangeBridge.getSampleHoldDebugState();
     this.tickSequencerEvolveClock(hostTelemetry); this.publishStateIfHarmonyChanged();
     this.productTelemetryCallback?.(hostTelemetry);
-    if (this.isDocumentVisible()) {
+    if (documentVisible) {
       this.publishSequencerVisuals(hostTelemetry);
     }
-    if (this.perfMonitorEnabled && this.isDocumentVisible()) {
+    if (this.perfMonitorEnabled && documentVisible) {
       this.perfUpdateCallback?.(createCoreProductPerfSnapshot(
         hostTelemetry,
         this.diagnostics.snapshot(),
