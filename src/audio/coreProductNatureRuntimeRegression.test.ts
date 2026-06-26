@@ -128,7 +128,7 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
       { targetId: 0, paramId: drumRuntimeParamId('drumLevel') },
     ]],
     ['pianoLevel', [{ targetId: CORE_PRODUCT_SOURCE_IDS.piano, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
-    ['oceanSampleLevel', [{ targetId: CORE_PRODUCT_SOURCE_IDS.soundscape, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['oceanSampleLevel', [{ targetId: assetTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.ocean.assetId), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['waterLevel', [{ targetId: CORE_PRODUCT_SOURCE_IDS.soundscape, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['insectsSharedLevel', [{ targetId: CORE_PRODUCT_SOURCE_IDS.soundscape, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['birdsLevel', [{ targetId: assetTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds.assetId), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
@@ -273,6 +273,28 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
   assertStateBackedEnumValue('endCompMode', 'twoBand', 4);
   assertStateBackedEnumValue('sidechainKeyA', 'kick', 2);
   assertStateBackedEnumValue('sidechainKeyB', 'membrane', 7);
+}
+
+{
+  const targets = resolveCoreProductRangeTargets('oceanSampleLevel');
+  assert.equal(targets.length, 1, 'Waves level must be a Product Core runtime-walk range key');
+  const event = createCoreProductModulationRangeEvent(
+    targets[0]!,
+    { min: 0, max: 0.08 },
+    CORE_PRODUCT_MODULATION_RANGE_MODE.randomWalk,
+    0.04,
+    {
+      randomWalkMode: 'localBrownian',
+      randomWalkSpeed: 1,
+      state: { oceanSampleLevel: 0.04 },
+    },
+  );
+  assert.equal(event.eventKind, KESSHO_PRODUCT_EVENT_IDS.SetModulationRange);
+  assert.equal(event.targetId, CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE + CORE_PRODUCT_SOUNDSCAPE_ASSETS.ocean.assetId);
+  assert.equal(event.paramId, KESSHO_PRODUCT_PARAM_IDS.SourceLevel);
+  assert.equal(event.value, 0);
+  assert.equal(event.value2, 0.08, 'Waves runtime walk must target the ocean asset level');
+  assert.equal(event.value4, 0.04, 'The current Waves level should map to the current asset-ref gain');
 }
 
 {

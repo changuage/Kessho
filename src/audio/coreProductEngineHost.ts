@@ -165,7 +165,10 @@ class CoreProductEngineHost {
   }
   private publishStateIfHarmonyChanged(): void { if (this.refreshUiHarmonySnapshot()) this.stateChangeCallback?.(this.createEngineState()); }
   getState(): ProductEngineState { return this.createEngineState(); }
-  setStateChangeCallback(callback: ((state: ProductEngineState) => void) | null): void { this.stateChangeCallback = callback; }
+  setStateChangeCallback(callback: ((state: ProductEngineState) => void) | null): void {
+    this.stateChangeCallback = callback;
+    this.updateRuntimeTelemetryPolling();
+  }
   setPerfMonitorEnabled(enabled: boolean): void {
     this.perfMonitorEnabled = enabled;
     this.runtime.setPerfMonitorEnabled(enabled);
@@ -417,7 +420,7 @@ class CoreProductEngineHost {
       setTelemetryPollingEnabled?: (enabled: boolean) => void;
       setTelemetryTransportRunning?: (running: boolean) => void;
     };
-    runtime.setTelemetryPollingEnabled?.(this.productTelemetryCallback !== null);
+    runtime.setTelemetryPollingEnabled?.(this.productTelemetryCallback !== null || this.stateChangeCallback !== null);
     runtime.setTelemetryTransportRunning?.(this.running);
   }
 

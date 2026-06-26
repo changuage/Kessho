@@ -218,6 +218,7 @@ export function sortSavedStatePresetsByFreshness(presets: SavedPreset[]): SavedP
 
 function savedPresetFromSummary(summary: PresetSummary): SavedPreset {
   return {
+    id: summary.id,
     name: summary.name,
     timestamp: new Date(summary.updatedAt ?? Date.now()).toISOString(),
     state: DEFAULT_STATE,
@@ -255,6 +256,7 @@ export function statePresetEntryToSavedPreset(entry: PresetEntry, versionSelecti
   });
 
   return {
+    id: entry.id,
     ...migrated,
     source: savedPresetSourceFor(entry),
     tags: entry.tags,
@@ -292,6 +294,13 @@ export async function loadActiveStatePresetStorePresetByName(name: string): Prom
   const { getPresetStore } = await import('./index');
   const store = getPresetStore();
   const entry = await store.load('state', name, CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
+  return entry ? statePresetEntryToSavedPreset(entry) : null;
+}
+
+export async function loadActiveStatePresetStorePresetById(id: string): Promise<SavedPreset | null> {
+  const { getPresetStore } = await import('./index');
+  const store = getPresetStore();
+  const entry = await store.loadById(id);
   return entry ? statePresetEntryToSavedPreset(entry) : null;
 }
 

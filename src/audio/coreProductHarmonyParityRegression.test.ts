@@ -4,6 +4,7 @@ import {
   createCoreProductChordGeneratorSchedule,
   createCoreProductChordSequencerSchedule,
 } from './coreProductArrangementPadChord';
+import { createPadChordPhrasePreview } from './simpleSequencerPhrasePreview';
 import { arrangementRestartKey } from './coreProductArrangementVoiceMapping';
 import { CoreProductArrangementScheduler } from './coreProductArrangementScheduler';
 import { createHarmonyState } from './harmony';
@@ -959,6 +960,13 @@ assert.equal(auditionState.resolvedHarmonyFrame.activeSource, 'baseline', 'audit
     nowWallSec: 0,
   });
   assert.equal(generatorSchedule.scheduledNotes.length, 2, 'Chord Generator should emit without Seq 5');
+  const generatorPreview = createPadChordPhrasePreview({
+    ...baseState,
+    synthChordGeneratorEnabled: true,
+    synthChordSequencerEnabled: false,
+  });
+  assert.equal(generatorPreview.enabled, true, 'Simple Chord Generator preview should follow generator enable, not Seq 5 enable');
+  assert(generatorPreview.notes.length > 0, 'Simple Chord Generator preview should render generator notes without Seq 5');
 
   const seq5Schedule = createCoreProductChordSequencerSchedule({
     state: {
@@ -980,6 +988,21 @@ assert.equal(auditionState.resolvedHarmonyFrame.activeSource, 'baseline', 'audit
     nowWallSec: 0,
   });
   assert.equal(seq5Schedule.scheduledNotes.length, 1, 'Seq 5 should emit without Chord Generator');
+  const seq5OnlyPreview = createPadChordPhrasePreview({
+    ...baseState,
+    synthChordGeneratorEnabled: false,
+    synthChordSequencerEnabled: true,
+    synthChordSequencer: {
+      ...DEFAULT_STATE.synthChordSequencer,
+      stepCount: 4,
+      steps: DEFAULT_STATE.synthChordSequencer.steps.map((step, index) => ({
+        ...step,
+        enabled: index === 0,
+      })),
+    },
+  });
+  assert.equal(seq5OnlyPreview.enabled, false, 'Simple Chord Generator preview should stay off when only Seq 5 is enabled');
+  assert.equal(seq5OnlyPreview.notes.length, 0, 'Simple Chord Generator preview should not render Seq 5 notes');
   assert.equal(seq5Schedule.triggerIntervalSeconds, 0.25, 'Seq 5 should use sequencer BPM and clock division for step timing');
   assert.equal(seq5Schedule.phraseSeconds, 1, 'Seq 5 cycle length should be step interval times Seq 5 step count');
 
@@ -1054,6 +1077,17 @@ assert.equal(auditionState.resolvedHarmonyFrame.activeSource, 'baseline', 'audit
     }),
     restartKey,
     'Seq 5 live edits should not reset arrangement transport anchors',
+  );
+  assert.equal(
+    arrangementRestartKey({
+      ...baseState,
+      synthChordSequencerEnabled: true,
+      cofDriftRate: 1,
+      cofDriftRange: 6,
+      cofDriftDirection: 'ccw' as const,
+    }),
+    restartKey,
+    'CoF drift config edits should update at the next phrase without resetting the active step',
   );
 }
 

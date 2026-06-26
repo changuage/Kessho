@@ -854,8 +854,17 @@
 
 @media (max-width: 600px) {
   .global-root .evolution-cof-content {
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr);
     align-items: center;
+    gap: 10px;
+    width: 100%;
+  }
+  .global-root .evolution-cof-content svg {
+    margin: 0 !important;
+  }
+  .global-root .evolution-cof-params {
+    width: 100%;
   }
   .global-root .evolution-compact-grid {
     grid-template-columns: 1fr;

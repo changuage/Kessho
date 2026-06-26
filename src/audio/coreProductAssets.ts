@@ -197,16 +197,11 @@ export function getCoreProductSoundscapeAssetDescriptorsForState(
   state?: Record<string, unknown> | null,
 ): CoreProductSoundscapeAssetDescriptor[] {
   const natureLevel = clamp01(numberFromState(state, 'natureLevel') ?? 1);
-  const candidates: Array<{ key: CoreProductSoundscapeAssetKey; level: number; required?: boolean }> = [];
+  const candidates: Array<{ key: CoreProductSoundscapeAssetKey; level: number }> = [];
   if (booleanFromState(state, 'oceanSampleEnabled')) {
     const oceanLevel = clamp01(numberFromState(state, 'oceanSampleLevel') ?? 0);
-    const oceanSendActive =
-      clamp01(numberFromState(state, 'oceanReverbSend') ?? 0) > 0.0001 ||
-      clamp01(numberFromState(state, 'oceanDelayASend') ?? 0) > 0.0001 ||
-      clamp01(numberFromState(state, 'oceanDelayBSend') ?? 0) > 0.0001 ||
-      clamp01(numberFromState(state, 'granularWavesSend') ?? 0) > 0.0001;
-    if (oceanLevel > 0.0001 || oceanSendActive) {
-      candidates.push({ key: 'ocean', level: oceanLevel, required: oceanSendActive });
+    if (oceanLevel > 0.0001) {
+      candidates.push({ key: 'ocean', level: oceanLevel });
     }
   }
   if (booleanFromState(state, 'birdsEnabled')) {
@@ -219,9 +214,9 @@ export function getCoreProductSoundscapeAssetDescriptorsForState(
     candidates.push({ key: 'frogs', level: clamp01(numberFromState(state, 'frogsLevel') ?? 0) * natureLevel });
   }
   const seen = new Set<number>();
-  return candidates.flatMap(({ key, level, required }) => {
+  return candidates.flatMap(({ key, level }) => {
     const clampedLevel = clamp01(level);
-    if (clampedLevel <= 0.0001 && required !== true) return [];
+    if (clampedLevel <= 0.0001) return [];
     const asset = CORE_PRODUCT_SOUNDSCAPE_ASSETS[key];
     if (seen.has(asset.assetId)) return [];
     seen.add(asset.assetId);

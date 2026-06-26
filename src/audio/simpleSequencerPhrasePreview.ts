@@ -5,31 +5,13 @@ import {
 } from './distanceMacro';
 import { createHarmonyState, getEffectiveTension, updateHarmonyState, type HarmonyParams, type HarmonyState } from './harmony';
 import { chordIntervalSecondsFromState, resolveChordsPerPhrase } from './chordPhraseTiming';
-import {
-  enabledChordMidiForMask,
-  enabledVoiceRank,
-  padChordVoiceMasksForSource,
-  padEuclidOwnedVoiceMask,
-  PAD_VOICE_COUNT,
-} from './coreProductArrangementVoiceMapping';
+import { PAD_VOICE_COUNT } from './coreProductArrangementVoiceMapping';
+import { resolveCoreProductChordVoices } from './coreProductChordVoices';
+import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 import { createRng, getUtcBucket } from './rng';
 import { getScaleNotesInRange } from './scales';
 import { getPhraseDurationForClockSource } from './transport';
 import { harmonySeedMaterialFromState } from './harmonySeedMaterial';
-import { HARMONY_SLOT_COUNT } from './CoreProductHarmonyControl';
-import {
-  createSynthChordSlotResolutionContext,
-  resolveSynthChordStepMidiPool,
-  sanitizeSynthChordSequencerConfig,
-  synthChordArpSpeedSeconds,
-  synthChordSequencerTriggerOrdinalForTick,
-  synthChordSequencerStepForTick,
-  synthChordSubLaneValue,
-  ticksUntilNextEnabledSynthChordStep,
-  type SynthChordSequencerArpOrder,
-  type SynthChordSequencerConfig,
-  type SynthChordSequencerStrumDirection,
-} from './synthChordSequencer';
 import type {
   SimpleSequencerPhrasePreview,
   SimpleSequencerVizEnvelope,
@@ -147,58 +129,13 @@ function harmonyAtTick(state: SliderState, targetTick: number, ticksPerPhrase: n
   return harmonyState;
 }
 
-function padVoiceDelays(state: SliderState, absoluteChordIndex: number, triggerIntervalSeconds: number): number[] {
+function chordGeneratorRng(state: SliderState, absoluteChordIndex: number): () => number {
   const bucket = getUtcBucket(getSeedWindow(state));
   const rng = createRng(`${bucket}|E_ROOT`);
   for (let skip = 0; skip < absoluteChordIndex * PAD_VOICE_COUNT; skip += 1) {
     rng();
   }
-  const waveSpreadSeconds = boundedNumber(state.waveSpread, 0.125, 0, 1) * triggerIntervalSeconds;
-  return Array.from({ length: PAD_VOICE_COUNT }, () => rng() * waveSpreadSeconds).sort((a, b) => a - b);
-}
-
-function orderedChordNotes(
-  notes: readonly SimpleSequencerVizNote[],
-  order: SynthChordSequencerArpOrder | SynthChordSequencerStrumDirection,
-): SimpleSequencerVizNote[] {
-  const up = [...notes].sort((left, right) => left.midi - right.midi || (left.voiceIndex ?? 0) - (right.voiceIndex ?? 0));
-  if (order === 'up') return up;
-  if (order === 'down') return [...up].reverse();
-  if (order === 'random') {
-    return up.map((note, index) => ({
-      note,
-      key: Math.sin((Math.round(note.midi) + 1) * 12.9898 + (index + 1) * 78.233),
-    })).sort((left, right) => left.key - right.key).map((entry) => entry.note);
-  }
-  if (order === 'outsideIn') {
-    const result: SimpleSequencerVizNote[] = [];
-    let low = 0;
-    let high = up.length - 1;
-    while (low <= high) {
-      if (up[low]) result.push(up[low]!);
-      if (high !== low && up[high]) result.push(up[high]!);
-      low += 1;
-      high -= 1;
-    }
-    return result;
-  }
-  if (order === 'insideOut') {
-    const result: SimpleSequencerVizNote[] = [];
-    let low = Math.floor((up.length - 1) / 2);
-    let high = low + 1;
-    while (low >= 0 || high < up.length) {
-      if (up[low]) result.push(up[low]!);
-      if (up[high]) result.push(up[high]!);
-      low -= 1;
-      high += 1;
-    }
-    return result;
-  }
-  if (order === 'downUp') {
-    const down = [...up].reverse();
-    return down.concat(up.slice(1, -1));
-  }
-  return up.concat([...up].reverse().slice(1, -1));
+  return rng;
 }
 
 function padEnvelope(state: SliderState, source: 'pad1' | 'pad2', voiceDelaySeconds: number, triggerIntervalSeconds: number): SimpleSequencerVizEnvelope {
@@ -273,149 +210,57 @@ export function envelopeForSource(
   return pianoEnvelope(state);
 }
 
-function padChordSource(state: SliderState): string {
-  return String((state as unknown as Record<string, unknown>).synthChordSequencerSource ?? 'piano').trim().toLowerCase();
+function chordGeneratorSource(state: SliderState): string {
+  return String((state as unknown as Record<string, unknown>).synthChordGeneratorSource ?? 'piano').trim().toLowerCase();
 }
 
-function createPadChordTickNotes(
+function vizSourceFromSourceId(sourceId: number): SimpleSequencerVizSource | null {
+  if (sourceId === CORE_PRODUCT_SOURCE_IDS.pad1) return 'pad1';
+  if (sourceId === CORE_PRODUCT_SOURCE_IDS.pad2) return 'pad2';
+  if (sourceId === CORE_PRODUCT_SOURCE_IDS.lead1) return 'lead1';
+  if (sourceId === CORE_PRODUCT_SOURCE_IDS.lead2) return 'lead2';
+  if (sourceId === CORE_PRODUCT_SOURCE_IDS.piano) return 'piano';
+  return null;
+}
+
+function createPadChordGeneratorTickNotes(
   state: SliderState,
   phraseTickIndex: number,
   absoluteTickIndex: number,
   triggerIntervalSeconds: number,
   chordMidi: readonly number[],
-  config: SynthChordSequencerConfig,
 ): SimpleSequencerVizNote[] {
   const record = state as unknown as Record<string, unknown>;
-  const source = padChordSource(state);
-  const voiceCount = boundedInteger(record.synthChordSequencerVoiceCount, 6, 1, PAD_VOICE_COUNT);
+  const source = chordGeneratorSource(state);
+  const voiceCount = boundedInteger(record.synthChordGeneratorVoiceCount, 6, 1, PAD_VOICE_COUNT);
   const octaveShift = boundedInteger(record.synthOctave, 0, -2, 2) * 12;
-  const chordTriggerOrdinal = synthChordSequencerTriggerOrdinalForTick(config, absoluteTickIndex);
-  const velocityScale = clamp(synthChordSubLaneValue(config, 'expression', chordTriggerOrdinal) ?? 1, 0.001, 1);
-  const nudgeSeconds = clamp(synthChordSubLaneValue(config, 'nudge', chordTriggerOrdinal) ?? 0, -1, 1) * triggerIntervalSeconds * 0.45;
-  const midiPool = chordMidi.length > 0
-    ? chordMidi.map((midi) => clamp(midi + octaveShift, 0, 127))
-    : [clamp(48 + boundedInteger(record.rootNote, 4, 0, 11) + octaveShift, 0, 127)];
-  const delays = padVoiceDelays(state, absoluteTickIndex, triggerIntervalSeconds);
-  const tickStartSeconds = Math.max(0, phraseTickIndex * triggerIntervalSeconds + nudgeSeconds);
+  const tickStartSeconds = Math.max(0, phraseTickIndex * triggerIntervalSeconds);
+  const voices = resolveCoreProductChordVoices({
+    state: record,
+    source,
+    voiceCount,
+    chordMidi,
+    octaveShift,
+    triggerIntervalSeconds,
+    rng: chordGeneratorRng(state, absoluteTickIndex),
+    velocity: 1,
+  });
   const notes: SimpleSequencerVizNote[] = [];
-
-  const nonPadSource: SimpleSequencerVizSource | null =
-    source === 'lead1' || source === 'lead' ? 'lead1'
-      : source === 'lead2' ? 'lead2'
-        : source === 'piano' ? 'piano'
-          : null;
-  if (nonPadSource) {
-    for (let index = 0; index < voiceCount; index += 1) {
-      const midi = midiPool[index % midiPool.length] ?? 60;
-      const delay = delays[index] ?? 0;
-      notes.push({
-        id: `pad-chord:${absoluteTickIndex}:${nonPadSource}:${index}`,
-        source: nonPadSource,
-        midi,
-        label: midiNoteLabel(midi),
-        voiceIndex: index,
-        triggerSeconds: tickStartSeconds + delay,
-        velocity: velocityScale,
-        envelope: envelopeForSource(state, nonPadSource, delay, triggerIntervalSeconds),
-      });
-    }
-  }
-  if (!nonPadSource) {
-    const maskLimit = (1 << PAD_VOICE_COUNT) - 1;
-    const rawVoiceMask = boundedInteger(record.synthVoiceMask, 63, 0, maskLimit) & maskLimit;
-    const euclidOwnedMask = padEuclidOwnedVoiceMask(record);
-    const availablePadMask = rawVoiceMask & ~euclidOwnedMask;
-    const pad2Assign = boundedInteger(record.pad2VoiceAssign, 0, 0, maskLimit) & maskLimit;
-    const { pad1Mask, pad2Mask } = padChordVoiceMasksForSource(source, availablePadMask, pad2Assign, voiceCount);
-    const pad1ChordMidi = enabledChordMidiForMask(midiPool, pad1Mask);
-    const pad2ChordMidi = enabledChordMidiForMask(midiPool, pad2Mask);
-
-    for (let voiceIndex = 0; voiceIndex < PAD_VOICE_COUNT; voiceIndex += 1) {
-      const bit = 1 << voiceIndex;
-      const delay = delays[voiceIndex] ?? 0;
-      if ((pad1Mask & bit) !== 0) {
-        const enabledIndex = enabledVoiceRank(pad1Mask, voiceIndex);
-        const midi = pad1ChordMidi[enabledIndex % pad1ChordMidi.length] ?? midiPool[0] ?? 60;
-        notes.push({
-          id: `pad-chord:${absoluteTickIndex}:pad1:${voiceIndex}`,
-          source: 'pad1',
-          midi,
-          label: midiNoteLabel(midi),
-          voiceIndex,
-          triggerSeconds: tickStartSeconds + delay,
-          velocity: velocityScale,
-          envelope: envelopeForSource(state, 'pad1', delay, triggerIntervalSeconds),
-        });
-      }
-      if ((pad2Mask & bit) !== 0) {
-        const enabledIndex = enabledVoiceRank(pad2Mask, voiceIndex);
-        const midi = pad2ChordMidi[enabledIndex % pad2ChordMidi.length] ?? midiPool[0] ?? 60;
-        notes.push({
-          id: `pad-chord:${absoluteTickIndex}:pad2:${voiceIndex}`,
-          source: 'pad2',
-          midi,
-          label: midiNoteLabel(midi),
-          voiceIndex,
-          triggerSeconds: tickStartSeconds + delay,
-          velocity: velocityScale,
-          envelope: envelopeForSource(state, 'pad2', delay, triggerIntervalSeconds),
-        });
-      }
-    }
-  }
-
-  if (notes.length === 0 || config.playbackMode === 'chord') {
-    return notes.sort((left, right) => left.triggerSeconds - right.triggerSeconds || left.midi - right.midi);
-  }
-
-  if (config.playbackMode === 'arp') {
-    const ordered = orderedChordNotes(notes, config.arp.order);
-    const speedSeconds = synthChordArpSpeedSeconds(record, config.arp.speed);
-    const heldTicks = config.arp.hold === 'untilNextTrigger'
-      ? ticksUntilNextEnabledSynthChordStep(config, absoluteTickIndex)
-      : 1;
-    const spanSeconds = clamp(heldTicks * triggerIntervalSeconds, speedSeconds, triggerIntervalSeconds * config.stepCount);
-    const pulseCount = clamp(Math.floor((spanSeconds + 0.0001) / speedSeconds), 1, 128);
-    const gateSeconds = clamp(speedSeconds * config.arp.gate, 0.02, Math.max(0.02, speedSeconds * 0.98));
-    return Array.from({ length: pulseCount }, (_, pulse) => {
-      const sourceNote = ordered[pulse % ordered.length] ?? ordered[0]!;
-      return {
-        ...sourceNote,
-        id: `${sourceNote.id}:arp:${pulse}`,
-        triggerSeconds: tickStartSeconds + pulse * speedSeconds,
-        envelope: {
-          ...sourceNote.envelope,
-          gateSeconds,
-        },
-      };
+  voices.forEach((voice, index) => {
+    const vizSource = vizSourceFromSourceId(voice.sourceId);
+    if (!vizSource) return;
+    const triggerSeconds = tickStartSeconds + voice.baseDelaySeconds;
+    notes.push({
+      id: `pad-chord-generator:${absoluteTickIndex}:${vizSource}:${voice.voiceIndex}:${index}`,
+      source: vizSource,
+      midi: voice.midi,
+      label: midiNoteLabel(voice.midi),
+      voiceIndex: voice.voiceIndex,
+      triggerSeconds,
+      velocity: voice.velocity,
+      envelope: envelopeForSource(state, vizSource, voice.baseDelaySeconds, triggerIntervalSeconds),
     });
-  }
-
-  const direction = config.strum.direction === 'upDown'
-    ? (absoluteTickIndex % 2 === 0 ? 'up' : 'down')
-    : config.strum.direction === 'downUp'
-      ? (absoluteTickIndex % 2 === 0 ? 'down' : 'up')
-      : config.strum.direction;
-  const ordered = orderedChordNotes(notes, direction);
-  const spreadSeconds = config.strum.spreadMs / 1000;
-  const denom = Math.max(1, ordered.length - 1);
-  return ordered.map((note, index) => {
-    const linear = index / denom;
-    const curved = config.strum.curve >= 0
-      ? Math.pow(linear, 1 + config.strum.curve * 2)
-      : 1 - Math.pow(1 - linear, 1 + Math.abs(config.strum.curve) * 2);
-    return {
-      ...note,
-      id: `${note.id}:strum:${index}`,
-      triggerSeconds: tickStartSeconds + curved * spreadSeconds,
-      velocity: clamp(note.velocity * (1 - config.strum.velocityFalloff * linear), 0.001, 1),
-      envelope: {
-        ...note.envelope,
-        gateSeconds: note.envelope.gateSeconds * config.strum.gate,
-      },
-    };
-  }).sort((left, right) => left.triggerSeconds - right.triggerSeconds || left.midi - right.midi);
-
+  });
   return notes.sort((left, right) => left.triggerSeconds - right.triggerSeconds || left.midi - right.midi);
 }
 
@@ -435,7 +280,7 @@ export function createPadChordPhrasePreview(state: SliderState, phraseIndex = 0)
   const phraseSeconds = getPhraseDurationForClockSource(state, state.harmonyClockSource ?? 'globalPhrase');
   const ticksPerPhrase = chordTicksPerPhrase(state, phraseSeconds);
   const triggerIntervalSeconds = phraseSeconds / Math.max(1, ticksPerPhrase);
-  const enabled = (state as unknown as Record<string, unknown>).synthChordSequencerEnabled === true;
+  const enabled = (state as unknown as Record<string, unknown>).synthChordGeneratorEnabled === true;
   if (!enabled) {
     return {
       kind: 'padChord',
@@ -451,32 +296,19 @@ export function createPadChordPhrasePreview(state: SliderState, phraseIndex = 0)
 
   const safePhraseIndex = Math.max(0, Math.round(phraseIndex));
   const startTick = safePhraseIndex * ticksPerPhrase;
-  const config = sanitizeSynthChordSequencerConfig((state as unknown as Record<string, unknown>).synthChordSequencer);
   const notes: SimpleSequencerVizNote[] = [];
   for (let phraseTick = 0; phraseTick < ticksPerPhrase; phraseTick += 1) {
     const absoluteTick = startTick + phraseTick;
-    const step = synthChordSequencerStepForTick(config, absoluteTick);
-    if (!step.enabled || step.probability <= 0) continue;
     const harmonyState = harmonyAtTick(state, absoluteTick, ticksPerPhrase);
-    const slotContext = createSynthChordSlotResolutionContext(state as unknown as Record<string, unknown>, harmonyState);
-    const chordTriggerOrdinal = synthChordSequencerTriggerOrdinalForTick(config, absoluteTick);
-    const chordSlotValue = synthChordSubLaneValue(config, 'chord', chordTriggerOrdinal);
-    const resolvedStep = {
-      ...step,
-      slotId: chordSlotValue == null ? step.slotId : clamp(Math.round(chordSlotValue) - 1, 0, HARMONY_SLOT_COUNT - 1),
-    };
-    const chordMidi = resolveSynthChordStepMidiPool({
-      step: resolvedStep,
-      context: slotContext,
-      fallbackMidi: harmonyState.currentChord.midiNotes,
-    });
-    notes.push(...createPadChordTickNotes(
+    const chordMidi = harmonyState.currentChord.midiNotes.length > 0
+      ? harmonyState.currentChord.midiNotes
+      : [48 + boundedInteger((state as unknown as Record<string, unknown>).rootNote, 4, 0, 11)];
+    notes.push(...createPadChordGeneratorTickNotes(
       state,
       phraseTick,
       absoluteTick,
       triggerIntervalSeconds,
-      chordMidi.length > 0 ? chordMidi : harmonyState.currentChord.midiNotes,
-      config,
+      chordMidi,
     ));
   }
   const range = previewRange(notes);
@@ -487,7 +319,7 @@ export function createPadChordPhrasePreview(state: SliderState, phraseIndex = 0)
     triggerIntervalSeconds,
     notes,
     ...range,
-    key: `padChord:${safePhraseIndex}:${phraseSeconds.toFixed(3)}:${triggerIntervalSeconds.toFixed(3)}:${notes.map((note) => `${note.id}:${note.midi}:${note.triggerSeconds.toFixed(3)}`).join('|')}`,
+    key: `padChord-generator:${safePhraseIndex}:${phraseSeconds.toFixed(3)}:${triggerIntervalSeconds.toFixed(3)}:${notes.map((note) => `${note.id}:${note.midi}:${note.triggerSeconds.toFixed(3)}`).join('|')}`,
   };
 }
 

@@ -400,8 +400,9 @@ export const SimplePhraseVisualizer: React.FC<SimplePhraseVisualizerProps> = ({
     wasRunningRef.current = isRunning;
   }, [isRunning]);
 
-  const runtimeCurrentPlan = runtimePlanForKind(kind, transportDebug);
-  const runtimePreviousPlan = previousRuntimePlanForKind(kind, transportDebug);
+  const allowRuntimePlan = kind !== 'padChord' || state.synthChordGeneratorEnabled === true;
+  const runtimeCurrentPlan = allowRuntimePlan ? runtimePlanForKind(kind, transportDebug) : null;
+  const runtimePreviousPlan = allowRuntimePlan ? previousRuntimePlanForKind(kind, transportDebug) : null;
   const currentPreview = useMemo(
     () => runtimeCurrentPlan ?? (
       kind === 'padChord'

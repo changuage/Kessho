@@ -75,8 +75,7 @@ export function usePresetEngineSync({
       forceFullSnapshot: true,
       triggerCritical: true,
     });
-    resetSelectedCofDrift();
-  }, [audioEngineRuntimeMode, resetSelectedCofDrift, scheduleAudioEngineParamUpdate]);
+  }, [audioEngineRuntimeMode, scheduleAudioEngineParamUpdate]);
 
   const syncScheduledAudioEngineState = useCallback((nextState: SliderState): void => {
     if (immediatelyAppliedAudioEngineStateRef.current === nextState) {

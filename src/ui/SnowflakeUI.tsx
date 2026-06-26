@@ -457,6 +457,15 @@ function getStatePresetVariantName(preset: SavedPreset): string {
   return preset.variantName || preset.name;
 }
 
+function getStatePresetFamilyPrimary(family: StatePresetFamily): SavedPreset | undefined {
+  return (
+    family.variants.find((preset) => preset.name === family.familyName)
+    ?? family.variants.find((preset) => getStatePresetVariantName(preset) === family.familyName)
+    ?? family.variants.find((preset) => preset.variantRank === 0)
+    ?? family.variants[0]
+  );
+}
+
 function getStatePresetUpdatedAt(preset: SavedPreset): number {
   const timestamp = new Date(preset.timestamp).getTime();
   return Number.isFinite(timestamp) ? timestamp : 0;
@@ -2408,10 +2417,10 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
               const hasChildren = family.variants.length > 1;
               const expanded = Boolean(expandedStateFamilies[family.familyId]) || Boolean(presetQuery && hasChildren);
               const familyMatches = family.familyName.toLocaleLowerCase().includes(presetQuery);
-              const visibleVariants = presetQuery && !familyMatches
+              const primary = getStatePresetFamilyPrimary(family);
+              const visibleVariants = (presetQuery && !familyMatches
                 ? family.variants.filter((variant) => stateVariantMatchesQuery(variant, presetQuery))
-                : family.variants;
-              const primary = family.variants[0];
+                : family.variants).filter((variant) => variant !== primary);
               const childCount = Math.max(0, family.variants.length - 1);
               const toggleFamily = () => {
                 setExpandedStateFamilies((prev) => ({

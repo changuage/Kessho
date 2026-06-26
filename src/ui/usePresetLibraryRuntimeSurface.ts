@@ -5,6 +5,7 @@ import { useSavedPresetResolver } from './useSavedPresetResolver';
 export type { CloudSharedPresetPayload } from './usePresetLibraryLoader';
 
 type DeferredSavedPreset = {
+  id?: string;
   name: string;
   deferred?: boolean;
 };
@@ -17,6 +18,7 @@ type UsePresetLibraryRuntimeSurfaceOptions<TSavedPreset extends DeferredSavedPre
   loadCapacitorLocalPresets: () => Promise<TSavedPreset[]>;
   loadCloudBackedPresets: () => Promise<TSavedPreset[]>;
   loadPresetByName: (name: string) => Promise<TSavedPreset | null>;
+  loadPresetById?: (id: string) => Promise<TSavedPreset | null>;
   onCloudSharedPresetLoaded: (preset: TSavedPreset, metadata: { name: string; author: string }) => void;
   reloadKey?: unknown;
   savedPresets: TSavedPreset[];
@@ -35,6 +37,7 @@ export function usePresetLibraryRuntimeSurface<TSavedPreset extends DeferredSave
   loadCapacitorLocalPresets,
   loadCloudBackedPresets,
   loadPresetByName,
+  loadPresetById,
   onCloudSharedPresetLoaded,
   reloadKey,
   savedPresets,
@@ -69,6 +72,7 @@ export function usePresetLibraryRuntimeSurface<TSavedPreset extends DeferredSave
     setSavedPresets,
     usesCloudBackedStatePresetLibrary,
     loadPresetByName,
+    loadPresetById,
     sortPresets,
   });
 }

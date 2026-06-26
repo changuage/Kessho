@@ -25,6 +25,7 @@ const BUNDLED_PRESET_FALLBACK_FILES = [
 ];
 
 export interface BundledSavedPreset {
+  id?: string;
   name: string;
   timestamp: string;
   state: SliderState;

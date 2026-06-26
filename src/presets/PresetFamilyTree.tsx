@@ -3,7 +3,7 @@
 // Children share the parent's familyId but have distinct variantName + description.
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import type { PresetLevel, PresetEntry, PresetRenameIdentity, PresetSummary, PresetSaveIdentity, PresetVersionMetadata } from './types';
+import type { PresetFamilySummary, PresetLevel, PresetEntry, PresetRenameIdentity, PresetSummary, PresetSaveIdentity, PresetVersionMetadata } from './types';
 import { usePresets } from './usePresets';
 import { getVersionData } from './codec';
 import { extractCascade, getCascadeKeys } from './codec';
@@ -43,6 +43,16 @@ function dedupePresetSummaries(presets: PresetSummary[]): PresetSummary[] {
     }
   }
   return Array.from(byKey.values());
+}
+
+function getFamilyParentPreset(family: PresetFamilySummary): PresetSummary | null {
+  return (
+    family.variants.find((preset) => preset.name === family.familyName)
+    ?? family.variants.find((preset) => preset.variantName === family.familyName)
+    ?? family.variants.find((preset) => preset.variantRank === 0)
+    ?? family.variants[0]
+    ?? null
+  );
 }
 
 export interface PresetFamilyTreeProps {
@@ -427,7 +437,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     () => (customExtract ? { customExtract } : undefined),
     [customExtract],
   );
-  const { presets, families, save, load, remove, rename, refresh, updateMetadata } = usePresets(level, scope, presetOptions);
+  const { presets, families, save, load, loadById, remove, rename, refresh, updateMetadata } = usePresets(level, scope, presetOptions);
   const selectionStorageKey = useMemo(() => getFamilyTreeSelectionStorageKey(level, scope), [level, scope]);
   const normalizeDiffData = useCallback((data: Record<string, unknown>): Record<string, unknown> => {
     return level === 'state' ? normalizeStatePresetDiffData(data) : data;
@@ -504,37 +514,18 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
 
   // Find parent presets (those that are NOT children — i.e. familyName === name or no siblings)
   const parentPresets = useMemo(() => {
-    // A parent preset is any that IS the root of its family
-    // (familyName equals its own name, or it's the first variant)
-    const parents: PresetSummary[] = [];
-    const seenFamilies = new Set<string>();
-    for (const p of presets) {
-      // A preset is a parent if its variantName equals its familyName (root preset)
-      // or if it's the first we see for that family
-      if (p.familyName === p.name || p.variantName === p.familyName) {
-        if (!seenFamilies.has(p.familyId)) {
-          parents.push(p);
-          seenFamilies.add(p.familyId);
-        }
-      }
-    }
-    // Also add presets that have no family siblings (standalone = parent of empty tree)
-    for (const p of presets) {
-      if (!seenFamilies.has(p.familyId)) {
-        parents.push(p);
-        seenFamilies.add(p.familyId);
-      }
-    }
-    return parents;
-  }, [presets]);
+    return families
+      .map(getFamilyParentPreset)
+      .filter((preset): preset is PresetSummary => !!preset);
+  }, [families]);
 
   // The selected family
   const selectedFamily = useMemo(() => {
     if (!selectedParentName) return null;
-    const parent = presets.find(p => p.name === selectedParentName);
+    const parent = parentPresets.find(p => p.name === selectedParentName) ?? presets.find(p => p.name === selectedParentName);
     if (!parent) return null;
     return families.find(f => f.familyId === parent.familyId) ?? null;
-  }, [selectedParentName, presets, families]);
+  }, [selectedParentName, parentPresets, presets, families]);
 
   // Children of the selected parent (variants that are NOT the parent itself)
   const children = useMemo(() => {
@@ -555,7 +546,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     const family = families.find(f => f.familyId === preset.familyId);
     if (!family) return '';
 
-    const parent = family.variants.find(v => v.name === v.familyName || v.variantName === v.familyName);
+    const parent = getFamilyParentPreset(family);
     return parent?.name ?? family.variants[0]?.name ?? '';
   }, [currentName, parentPresets, presets, families]);
 
@@ -628,14 +619,15 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     setConfirmAction({
       message: `Load "${name}" to Slot ${slot}?`,
       onConfirm: async () => {
-        const entry = await load(name);
+        const summary = parentPresets.find(p => p.name === name) ?? presets.find(p => p.name === name);
+        const entry = summary?.id ? await loadById(summary.id) : await load(name);
         if (!entry) return;
         const data = getVersionData(entry);
         if (!data) return;
         await slotCb(entry, data);
       },
     });
-  }, [load]);
+  }, [load, loadById, parentPresets, presets]);
 
   // Save preset — opens save dialog with Save / Save As options
   const requestSave = useCallback((name: string) => {

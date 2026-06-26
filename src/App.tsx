@@ -108,6 +108,7 @@ import { isLocalPresetStoreOverride } from './presets/sharedMode';
 import { loadPresetsFromFolder } from './presets/bundledPresetLoader';
 import {
   checkPresetCompatibility,
+  loadActiveStatePresetStorePresetById,
   loadActiveStatePresetStorePresetByName,
   loadActiveStatePresetStorePresets,
   loadBundledPresetByName,
@@ -2505,6 +2506,7 @@ const App: React.FC = () => {
     loadCapacitorLocalPresets: loadCapacitorLocalStatePresets,
     loadCloudBackedPresets: loadActiveStatePresetStorePresets,
     loadPresetByName: loadActiveStatePresetStorePresetByName,
+    loadPresetById: loadActiveStatePresetStorePresetById,
     onCloudSharedPresetLoaded: applyCloudSharedPreset,
     reloadKey: uiMode,
     savedPresets,

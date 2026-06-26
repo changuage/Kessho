@@ -1,6 +1,7 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 
 type DeferredSavedPreset = {
+  id?: string;
   name: string;
   deferred?: boolean;
 };
@@ -10,6 +11,7 @@ type UseSavedPresetResolverOptions<TSavedPreset extends DeferredSavedPreset> = {
   setSavedPresets: Dispatch<SetStateAction<TSavedPreset[]>>;
   usesCloudBackedStatePresetLibrary: boolean;
   loadPresetByName: (name: string) => Promise<TSavedPreset | null>;
+  loadPresetById?: (id: string) => Promise<TSavedPreset | null>;
   sortPresets: (presets: TSavedPreset[]) => TSavedPreset[];
 };
 
@@ -23,27 +25,30 @@ export function useSavedPresetResolver<TSavedPreset extends DeferredSavedPreset>
   setSavedPresets,
   usesCloudBackedStatePresetLibrary,
   loadPresetByName,
+  loadPresetById,
   sortPresets,
 }: UseSavedPresetResolverOptions<TSavedPreset>): SavedPresetResolver<TSavedPreset> {
   const resolveSavedPresetForLoad = useCallback(async (preset: TSavedPreset): Promise<TSavedPreset | null> => {
     if (!preset.deferred) return preset;
 
     try {
-      const loadedPreset = await loadPresetByName(preset.name);
+      const loadedPreset = preset.id && loadPresetById
+        ? await loadPresetById(preset.id)
+        : await loadPresetByName(preset.name);
       if (!loadedPreset) {
         console.warn(`Failed to load preset "${preset.name}" from the preset store.`);
         return null;
       }
 
       setSavedPresets(prev => sortPresets(prev.map(item => (
-        item.name === preset.name ? loadedPreset : item
+        (preset.id && item.id === preset.id) || (!preset.id && item.name === preset.name) ? loadedPreset : item
       ))));
       return loadedPreset;
     } catch (error) {
       console.warn(`Failed to load preset "${preset.name}" from the preset store:`, error);
       return null;
     }
-  }, [loadPresetByName, setSavedPresets, sortPresets]);
+  }, [loadPresetById, loadPresetByName, setSavedPresets, sortPresets]);
 
   const resolveSavedPresetByName = useCallback(async (presetName: string): Promise<TSavedPreset | null> => {
     const preset = savedPresets.find(item => item.name === presetName);

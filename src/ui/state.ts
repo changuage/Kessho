@@ -268,6 +268,7 @@ export interface SerializedPitchSettings {
  * Saved preset structure
  */
 export interface SavedPreset {
+  id?: string;
   name: string;
   timestamp: string;
   state: SliderState;
