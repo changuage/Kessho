@@ -1,6 +1,19 @@
 # ProductEnginePort
 
 `ProductEnginePort` is the production UI engine interface in `src/audio/product/ProductEnginePort.ts`.
+That file is now a compatibility export over focused capability modules in `src/audio/product/ports/`.
+
+## File Layout
+
+- `ports/ProductLifecyclePort.ts`: runtime lifecycle and state callback.
+- `ports/ProductCommandPort.ts`: playback output, MIDI/live-note ingress, and manual audition commands.
+- `ports/ProductControlPort.ts`: generated Product events, snapshot patches, and resolved-state commits.
+- `ports/ProductAssetPort.ts`: product-shaped asset registration and unregistration.
+- `ports/ProductTelemetryPort.ts`: Product state, telemetry, dynamics visuals, and visual telemetry activation.
+- `ports/ProductSequencerPort.ts`: sequencer UI state and sequencer callbacks.
+- `ports/ProductModulationPort.ts`: modulation/range and live trigger callback surfaces.
+- `ports/ProductDiagnosticsPort.ts`: diagnostics, capability report, and perf monitor controls.
+- `ports/ProductEnginePorts.ts`: grouped facets plus the combined `ProductEnginePort` type.
 
 ## Invariants
 
@@ -22,6 +35,7 @@
 ## Verification
 
 `npm run migration:product-boundary` verifies that Product port files do not expose Web Audio object types and that new production imports do not grow the legacy `AudioEngine` surface.
+`npm run architecture:adapter-burndown` verifies the decomposed facet files stay present and Product-shaped.
 
 ## Sequencer Generated Event Burn-down
 

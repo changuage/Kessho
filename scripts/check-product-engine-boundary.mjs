@@ -24,12 +24,27 @@ const directLegacyEngineAllowlist = new Map([
 
 const legacyRuntimeAllowlist = new Map([['src/audio/sonicParityHarness.ts', 'parity harness can use the legacy runtime facade until web-ts reference namespace exists']]);
 
-const productPortFiles = new Set([
+const productPortContractFiles = [
   'src/audio/product/ProductEnginePort.ts',
+  'src/audio/product/ports/ProductLifecyclePort.ts',
+  'src/audio/product/ports/ProductCommandPort.ts',
+  'src/audio/product/ports/ProductControlPort.ts',
+  'src/audio/product/ports/ProductAssetPort.ts',
+  'src/audio/product/ports/ProductTelemetryPort.ts',
+  'src/audio/product/ports/ProductSequencerPort.ts',
+  'src/audio/product/ports/ProductModulationPort.ts',
+  'src/audio/product/ports/ProductDiagnosticsPort.ts',
+  'src/audio/product/ports/ProductEnginePorts.ts',
+];
+const productPortFiles = new Set([
+  ...productPortContractFiles,
   'src/audio/product/ProductEngineTypes.ts',
   'src/audio/product/ProductRuntimeDiagnostics.ts',
   'src/audio/product/ProductRuntimeMode.ts',
 ]);
+const productPortContractSurface = productPortContractFiles
+  .map((file) => fs.readFileSync(path.join(root, file), 'utf8'))
+  .join('\n');
 
 const webAudioBoundaryTypes = ['AudioNode', 'GainNode', 'AnalyserNode', 'AudioContext', 'AudioWorkletNode', 'MediaStream', 'MediaStreamAudioDestinationNode'];
 const migratedSequencerCompatMethodSignatures = [
@@ -91,6 +106,7 @@ const webProductRuntimeTelemetryHostMethods = [
   'setStateChangeCallback',
   'setProductTelemetryCallback',
   'setPerfMonitorEnabled',
+  'setPerfUpdateCallback',
   'setVisualTelemetryActive',
 ];
 const webProductRuntimeCommandHostMethods = [
@@ -464,6 +480,40 @@ for (const rootDir of sourceRoots) {
 
     if (productNativeRuntimeHookFiles.has(relative)) {
       assertProductNativeRuntimeHook(relative, source);
+      if (relative === 'src/ui/useProductRuntimeStateRuntime.ts') {
+        for (const requiredSnippet of [
+          "import { productEngine } from '../audio/product/ProductEngineProxy'",
+          'productRuntimeMode: ProductRuntimeSelectionMode',
+          "if (productRuntimeMode !== 'core-product') {",
+          'productEngine.setStateChangeCallback(null)',
+          'productEngine.setStateChangeCallback((nextState) => {',
+          '}, [productRuntimeMode, setEngineState]);',
+          'useVisibleInterval(updateTransportDebug, 1000, {',
+        ]) {
+          if (!source.includes(requiredSnippet)) {
+            failures.push(`${relative}: Product-native state runtime must detach Product Core callbacks outside core-product mode; missing ${requiredSnippet}`);
+          }
+        }
+      }
+      if (relative === 'src/ui/useProductRuntimeTelemetry.ts') {
+        for (const requiredSnippet of [
+          "import { productEngine } from '../audio/product/ProductEngineProxy'",
+          'const EMPTY_PRODUCT_DYNAMICS_VISUAL_TELEMETRY: ProductDynamicsVisualTelemetry = {',
+          'const productRuntimeActive = productRuntimeMode === \'core-product\';',
+          'if (!productRuntimeActive) return 0;',
+          'if (!productRuntimeActive) return [0, 0, 0, 0];',
+          'if (!productRuntimeActive) return EMPTY_PRODUCT_DYNAMICS_VISUAL_TELEMETRY;',
+          'if (!productRuntimeActive) return;',
+          "return productRuntimeMode !== 'core-product' || isCoreProductRangeKeySupported(key);",
+          "if (productRuntimeMode !== 'core-product') {",
+          'productEngine.setVisualTelemetryActive(false);',
+          '}, [documentVisible, productRuntimeMode, uiMode]);',
+        ]) {
+          if (!source.includes(requiredSnippet)) {
+            failures.push(`${relative}: Product-native telemetry must avoid Product Core reads/writes outside core-product mode; missing ${requiredSnippet}`);
+          }
+        }
+      }
       continue;
     }
 
@@ -1381,32 +1431,38 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimeStateRuntime.ts') {
       for (const requiredSnippet of [
         "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
+        "import { productEngine } from '../audio/product/ProductEngineProxy'",
         "import type { ProductEngineState } from '../audio/product/ProductEngineTypes'",
-        "import { useSelectedAudioEngineStateRuntime } from './useSelectedAudioEngineStateRuntime'",
+        'ProductFxOwnershipBus',
+        "import { useVisibleInterval } from './hooks/useVisibleInterval'",
         'type ProductRuntimeStateRuntimeOptions = {',
         'productRuntimeMode: ProductRuntimeSelectionMode',
         "getProductTransportDebugState: () => ProductEngineState['transportDebug']",
         'setEngineState: Dispatch<SetStateAction<ProductEngineState>>',
         'export function useProductRuntimeStateRuntime({',
-        'getSelectedTransportDebugState: getProductTransportDebugState',
-        'audioEngineRuntimeMode: productRuntimeMode',
+        "if (productRuntimeMode !== 'core-product') {",
+        'productEngine.setStateChangeCallback(null)',
+        'productEngine.setStateChangeCallback((nextState) => {',
+        '}, [productRuntimeMode, setEngineState]);',
+        'useVisibleInterval(updateTransportDebug, 1000, {',
       ]) {
         if (!source.includes(requiredSnippet)) {
-          failures.push(`${relative}: product runtime state runtime must delegate through selected-runtime compatibility hook; missing ${requiredSnippet}`);
+          failures.push(`${relative}: product runtime state runtime must own the Product Core state callback and detach outside core-product mode; missing ${requiredSnippet}`);
         }
       }
       if (
+        source.includes("from './useSelectedAudioEngineStateRuntime'") ||
         source.includes('SelectedRuntimeStateRuntimeOptions') ||
         source.includes('Parameters<typeof useSelectedAudioEngineStateRuntime>') ||
         source.includes('Omit<') ||
-        source.includes('productEngine') ||
         source.includes('selectedProductRuntime') ||
         source.includes('referenceAudioEngineDebug') ||
         (source.includes("from '../audio/product/") &&
           !source.includes("from '../audio/product/ProductAudioRuntimeSelection'") &&
+          !source.includes("from '../audio/product/ProductEngineProxy'") &&
           !source.includes("from '../audio/product/ProductEngineTypes'"))
       ) {
-        failures.push(`${relative}: product runtime state runtime must not touch runtime implementations directly`);
+        failures.push(`${relative}: product runtime state runtime must not route Product Core state callbacks through selected/reference compatibility surfaces`);
       }
     }
 
@@ -3802,6 +3858,7 @@ for (const rootDir of sourceRoots) {
         'coreProductRuntimeHostPort.setSynthEvolveOverridesChangedCallback(callback)',
         'coreProductRuntimeHostPort.setSynthNoteRangeEvolvedCallback(callback)',
         'coreProductRuntimeHostPort.setPerfMonitorEnabled(enabled)',
+        'coreProductRuntimeHostPort.setPerfUpdateCallback(callback)',
         'coreProductRuntimeHostPort.setVisualTelemetryActive(active)',
       ]) {
         if (!source.includes(token)) {
@@ -3939,6 +3996,7 @@ for (const rootDir of sourceRoots) {
         "synthEuclidEvolve: 'setSynthEuclidEvolveTriggerCallback'",
         "setCoreProductRuntimeCallback('stateChange', callback)",
         "callCoreProductHost<void>('setProductTelemetryCallback', callback ?",
+        "callCoreProductHost<void>('setPerfUpdateCallback', callback)",
         'publishDiagnostics();',
         "setCoreProductRuntimeCallback('drumTrigger', callback)",
         "setCoreProductRuntimeCallback('runtimeWalkPositions', callback)",
@@ -4033,7 +4091,7 @@ for (const rootDir of sourceRoots) {
         'setSynthEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void',
         'setSynthNoteRangeEvolvedCallback(callback: ProductSynthNoteRangeEvolvedCallback | null): void',
       ]) {
-        if (!source.includes(method)) {
+        if (!productPortContractSurface.includes(method)) {
           failures.push(`${relative}: ProductEnginePort must expose ${method} so App does not use legacy AudioEngine for Product Core`);
         }
       }
@@ -4043,12 +4101,12 @@ for (const rootDir of sourceRoots) {
         'Record<string, number>',
         '{ min: number; max: number }',
       ]) {
-        if (source.includes(rawCompatibilityShape)) {
+        if (productPortContractSurface.includes(rawCompatibilityShape)) {
           failures.push(`${relative}: ProductEnginePort must use named product-owned types instead of inline ${rawCompatibilityShape}`);
         }
       }
       for (const signature of migratedSequencerCompatMethodSignatures) {
-        if (source.includes(signature)) {
+        if (productPortContractSurface.includes(signature)) {
           failures.push(`${relative}: migrated sequencer control ${signature} must stay off ProductEnginePort; production uses generated ProductEvents`);
         }
       }
@@ -4482,14 +4540,15 @@ for (const rootDir of sourceRoots) {
         "import { productEngine } from '../audio/product/ProductEngineProxy'",
         "import { selectedProductRuntime } from '../audio/product/SelectedProductRuntime'",
         "from './productRuntimeUi'",
-        'createProductPerfData',
+        'filterProductRuntimePerfMetrics',
         'readProductRuntimeCpuSummaries',
         'summarizeProductRuntimeCpu',
         'writeProductRuntimeCpuSummaries',
         'useDocumentVisibility',
         'const nextEnabled = enabled && documentVisible',
         'productEngine.setPerfMonitorEnabled(nextEnabled)',
-        'productEngine.setTelemetryCallback(callback ? (telemetry) => {',
+        'productEngine.setPerfUpdateCallback(callback ? (data) => {',
+        'callback(filterProductRuntimePerfMetrics(data));',
         'setPerfMonitorEnabled?.(nextEnabled)',
         'setPerfUpdateCallback?.(callback)',
         'setProductPerfMonitorEnabled',
@@ -4500,6 +4559,9 @@ for (const rootDir of sourceRoots) {
         }
       }
       const perfAdapterType = source.match(/type ProductRuntimePerfAdapter = \{[\s\S]*?\};/)?.[0] ?? '';
+      if (source.includes('productEngine.setTelemetryCallback')) {
+        failures.push(`${relative}: product perf adapter must use Product perf callbacks, not full Product telemetry callbacks`);
+      }
       for (const forbiddenSnippet of [
         'setSelectedPerfMonitorEnabled',
         'setSelectedPerfUpdateCallback',

@@ -20,6 +20,7 @@ type UpdateCoreProductSampleHoldTriggerFeedbackOptions = {
   triggerCounters: Map<string, number>;
   debugState: CoreProductSampleHoldDebugState;
   publish: (name: string, ...payload: unknown[]) => void;
+  publishFeedback?: boolean;
 };
 
 export function createCoreProductSampleHoldDebugState(): CoreProductSampleHoldDebugState {
@@ -47,12 +48,13 @@ export function updateCoreProductSampleHoldTriggerFeedback({
   triggerCounters,
   debugState,
   publish,
+  publishFeedback = true,
 }: UpdateCoreProductSampleHoldTriggerFeedbackOptions): void {
   debugState.telemetryUpdateCount += 1;
-  const genericPositions: Record<string, number> = {};
-  const leadMorph: { lead1: number; lead2: number } = { lead1: -1, lead2: -1 };
-  const leadDistance: { lead1: number; lead2: number } = { lead1: -1, lead2: -1 };
-  const leadExpression: Record<string, number> = {};
+  const genericPositions: Record<string, number> | null = publishFeedback ? {} : null;
+  const leadMorph: { lead1: number; lead2: number } | null = publishFeedback ? { lead1: -1, lead2: -1 } : null;
+  const leadDistance: { lead1: number; lead2: number } | null = publishFeedback ? { lead1: -1, lead2: -1 } : null;
+  const leadExpression: Record<string, number> | null = publishFeedback ? {} : null;
   let sawLeadMorph = false;
   let sawLeadDistance = false;
   let sawLeadExpression = false;
@@ -67,11 +69,12 @@ export function updateCoreProductSampleHoldTriggerFeedback({
     const previous = triggerCounters.get(triggerKey) ?? 0;
     if (entry.triggerCounter <= previous) continue;
     triggerCounters.set(triggerKey, entry.triggerCounter);
+    changedKeys.push(key);
+    if (!publishFeedback || !genericPositions || !leadMorph || !leadDistance || !leadExpression) continue;
     const position = Number.isFinite(entry.normalizedPosition)
       ? Math.max(0, Math.min(1, entry.normalizedPosition))
       : 0.5;
     genericPositions[key] = position;
-    changedKeys.push(key);
     const published = publishSampleHoldSourceFeedback(entry.targetId, entry.paramId, key, position, {
       leadMorph,
       leadDistance,
@@ -85,19 +88,19 @@ export function updateCoreProductSampleHoldTriggerFeedback({
     drumPublishCount += published.drum;
   }
 
-  if (sawLeadMorph) {
+  if (publishFeedback && leadMorph && sawLeadMorph) {
     publish('leadMorph', leadMorph);
     sourcePublishCount += 1;
   }
-  if (sawLeadDistance) {
+  if (publishFeedback && leadDistance && sawLeadDistance) {
     publish('leadDistance', leadDistance);
     sourcePublishCount += 1;
   }
-  if (sawLeadExpression) {
+  if (publishFeedback && leadExpression && sawLeadExpression) {
     publish('leadExpression', leadExpression);
     sourcePublishCount += 1;
   }
-  if (Object.keys(genericPositions).length > 0) {
+  if (publishFeedback && genericPositions && Object.keys(genericPositions).length > 0) {
     publish('granularSH', genericPositions);
     debugState.publishedGenericCount += 1;
     debugState.lastFlashKeys = Object.keys(genericPositions).sort();

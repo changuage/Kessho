@@ -20,6 +20,9 @@ GRANT EXECUTE ON FUNCTION public.kessho_get_preset_versions_v2(UUID) TO authenti
 GRANT EXECUTE ON FUNCTION public.kessho_get_preset_version_ref_keys_v2(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.kessho_get_latest_ref_targets_v2(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.kessho_get_preset_payloads_v2(TEXT[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.kessho_lookup_preset_id_v2(TEXT, TEXT, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.kessho_get_preset_card_v2(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.kessho_exists_preset_logical_key_v2(TEXT, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.kessho_find_preset_references_v2(TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.kessho_get_preset_storage_stats_v2() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.kessho_save_legacy_preset(JSONB) TO authenticated;

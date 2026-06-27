@@ -4,7 +4,7 @@ import type { DawOutputRoutingConfig } from '../../dawOutputRouting';
 import type { ProductRuntimeCapabilityReport } from '../ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from '../ProductRuntimeDiagnostics';
 import type { ProductLiveNoteEvent } from '../liveNoteEvents';
-import type { ProductAssetHandle, ProductAssetRegistration, ProductDrumTriggerCallback, ProductDrumVoice, ProductDynamicsVisualTelemetry, ProductEngineStartOptions, ProductEngineState, ProductEvent, ProductEvolveOverridesCallback, ProductExternalState, ProductManualSynthNote, ProductMidiMessage, ProductRange, ProductRangeMap, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductRuntimeWalkPositionsCallback, ProductSequencerEvolveTriggerCallback, ProductSequencerStepPositionCallback, ProductSnapshotPatch, ProductSnapshotPatchReason, ProductSynthAnchorWalkerVisualStateCallback, ProductSynthNoteRangeEvolvedCallback, ProductSynthOrbitVisualStateCallback, ProductTelemetrySnapshot } from '../ProductEngineTypes';
+import type { ProductAssetHandle, ProductAssetRegistration, ProductDrumTriggerCallback, ProductDrumVoice, ProductDynamicsVisualTelemetry, ProductEngineStartOptions, ProductEngineState, ProductEvent, ProductEvolveOverridesCallback, ProductExternalState, ProductManualSynthNote, ProductMidiMessage, ProductPerfSnapshot, ProductRange, ProductRangeMap, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductRuntimeWalkPositionsCallback, ProductSequencerEvolveTriggerCallback, ProductSequencerStepPositionCallback, ProductSnapshotPatch, ProductSnapshotPatchReason, ProductSynthAnchorWalkerVisualStateCallback, ProductSynthNoteRangeEvolvedCallback, ProductSynthOrbitVisualStateCallback, ProductTelemetrySnapshot } from '../ProductEngineTypes';
 
 // TODO(product-core-burn-down): replace this bound WebProductEngine host port with product-owned
 // generated runtime APIs once the web adapter no longer binds Product host method names itself.
@@ -48,7 +48,7 @@ export const coreProductRuntimeHostPort = {
     return callCoreProductHost<Promise<void>>('start', initialState);
   },
 
-  stop(): void { callCoreProductHost<void>('stop'); },
+  stop(): Promise<void> { return Promise.resolve(callCoreProductHost<void>('stop')); },
 
   suspend(): Promise<void> {
     return callCoreProductHost<Promise<void>>('suspend');
@@ -239,6 +239,10 @@ export const coreProductRuntimeHostPort = {
 
   setPerfMonitorEnabled(enabled: boolean): void {
     callCoreProductHost<void>('setPerfMonitorEnabled', enabled);
+  },
+
+  setPerfUpdateCallback(callback: ((data: ProductPerfSnapshot) => void) | null): void {
+    callCoreProductHost<void>('setPerfUpdateCallback', callback);
   },
 
   setVisualTelemetryActive(active: boolean): void {

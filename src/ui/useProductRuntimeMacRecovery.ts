@@ -25,7 +25,7 @@ export function useProductRuntimeMacRecovery({
     recoveryInFlightRef.current = true;
     const recover = async () => {
       try {
-        productEngine.resume();
+        await productEngine.resume();
         if (productEngine.getLifecycleState() === 'stopped') {
           await productEngine.start({ initialState: stateRef.current as unknown as Readonly<Record<string, unknown>> });
         }

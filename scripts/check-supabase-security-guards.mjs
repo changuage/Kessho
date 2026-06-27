@@ -10,10 +10,12 @@ const HARDENING_MIGRATION = '20260608003000_harden_preset_shared_permissions.sql
 const DETAIL_RPC_MIGRATION = '20260612000000_preset_detail_read_rpc.sql';
 const SUMMARY_VIEW_REVOKE_SAFE_MIGRATION = '20260612001000_revoke_safe_preset_summary_views.sql';
 const RUNTIME_READ_RPC_MIGRATION = '20260612001500_preset_runtime_read_rpcs.sql';
+const OPTIMIZATION_MIGRATION = '20260627123656_preset_egress_optimization.sql';
 const PENDING_BASE_TABLE_REVOKE_SQL = '20260612002000_revoke_preset_base_table_select.sql';
 const API_SURFACE_AUDIT = 'scripts/audit-supabase-api-surface.mjs';
 const REVOKE_READINESS_AUDIT = 'scripts/check-supabase-revoke-readiness.mjs';
 const APPLY_HARDENING_SCRIPT = 'scripts/apply-supabase-api-hardening.mjs';
+const OPTIMIZATION_DB_PROOF_SCRIPT = 'scripts/audit-supabase-optimization-db-proof.mjs';
 const PACKAGE_JSON = 'package.json';
 const LEAD4OPFM_UPSERT_SCRIPT = 'scripts/upsert-lead4opfm-v2-cloud-presets.mjs';
 const PRESET_V2_MAINTENANCE_SCRIPT = 'scripts/maintain-supabase-presets-v2.mjs';
@@ -104,6 +106,60 @@ const REQUIRED_RUNTIME_READ_RPC_SNIPPETS = [
   'GRANT EXECUTE ON FUNCTION public.kessho_save_legacy_preset(JSONB) TO authenticated',
 ];
 
+const REQUIRED_OPTIMIZATION_SNIPPETS = [
+  'CREATE TRIGGER preset_payloads_v2_hash_kind_consistency',
+  'CREATE OR REPLACE FUNCTION public.kessho_canonical_jsonb_text',
+  'CREATE OR REPLACE FUNCTION public.kessho_assert_payload_hash_matches',
+  'CREATE OR REPLACE FUNCTION public.kessho_assert_preset_payload_hashes_exist',
+  'CREATE OR REPLACE FUNCTION public.kessho_get_preset_latest_manifest_v2',
+  'CREATE OR REPLACE FUNCTION public.kessho_get_missing_preset_payloads_v2',
+  'CREATE OR REPLACE FUNCTION public.kessho_lookup_preset_id_v2',
+  'CREATE OR REPLACE FUNCTION public.kessho_get_preset_card_v2',
+  'CREATE OR REPLACE FUNCTION public.kessho_exists_preset_logical_key_v2',
+  'CREATE OR REPLACE FUNCTION public.kessho_rename_preset_v2',
+  'CREATE OR REPLACE FUNCTION public.kessho_rename_legacy_preset',
+  'CREATE OR REPLACE FUNCTION public.kessho_purge_deleted_presets_v2',
+  "floor(((input_value #>> '{}')::NUMERIC * 1000000) + 0.5) / 1000000",
+  'preset JSON canonicalizer negative rounding self-test failed',
+  '4508c786ddc6d8aa1619da1a2b6235eb2c548ca7e47b3b41e51c5f575e7b5b6b',
+  'preset payload hash mismatch self-test unexpectedly passed',
+  'preset payload missing-hash self-test unexpectedly passed',
+  "SQLERRM NOT LIKE 'Preset payload hash mismatch:%'",
+  "SQLERRM NOT LIKE 'Preset payload hash references missing payload rows:%'",
+  'PERFORM public.kessho_assert_payload_hash_matches',
+  'PERFORM public.kessho_assert_preset_payload_hashes_exist',
+  "ON CONFLICT (hash) DO UPDATE\n      SET last_seen_at = now()\n      WHERE public.preset_payloads_v2.last_seen_at < now() - INTERVAL '7 days'",
+  'pg_try_advisory_xact_lock',
+  'dry_run_mode BOOLEAN DEFAULT TRUE',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_canonical_jsonb_text(JSONB) FROM PUBLIC, anon, authenticated',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_assert_payload_hash_matches(TEXT, JSONB) FROM PUBLIC, anon, authenticated',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_assert_preset_payload_hashes_exist(TEXT[]) FROM PUBLIC, anon, authenticated',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_put_payload_v2(TEXT, TEXT, JSONB) FROM PUBLIC, anon, authenticated',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_save_preset_v2(JSONB, JSONB, JSONB, JSONB) FROM PUBLIC, anon, authenticated',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_lookup_preset_id_v2(TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_get_preset_card_v2(UUID) FROM PUBLIC, anon, authenticated',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_exists_preset_logical_key_v2(TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated',
+  'GRANT EXECUTE ON FUNCTION public.kessho_save_preset_v2(JSONB, JSONB, JSONB, JSONB) TO authenticated',
+  'GRANT EXECUTE ON FUNCTION public.kessho_lookup_preset_id_v2(TEXT, TEXT, TEXT, TEXT) TO authenticated',
+  'GRANT EXECUTE ON FUNCTION public.kessho_get_preset_card_v2(UUID) TO authenticated',
+  'GRANT EXECUTE ON FUNCTION public.kessho_exists_preset_logical_key_v2(TEXT, TEXT, TEXT) TO authenticated',
+  'GRANT EXECUTE ON FUNCTION public.kessho_get_preset_latest_manifest_v2(UUID) TO authenticated',
+  'GRANT EXECUTE ON FUNCTION public.kessho_get_missing_preset_payloads_v2(TEXT[]) TO authenticated',
+  'GRANT EXECUTE ON FUNCTION public.kessho_rename_preset_v2(UUID, JSONB) TO authenticated',
+  'GRANT EXECUTE ON FUNCTION public.kessho_rename_legacy_preset(UUID, JSONB) TO authenticated',
+  'GRANT EXECUTE ON FUNCTION public.kessho_purge_deleted_presets_v2(BOOLEAN, INTERVAL, INTERVAL, INTEGER) TO service_role',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_get_missing_preset_payloads_v2(TEXT[]) FROM PUBLIC, anon, authenticated',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_get_preset_latest_manifest_v2(UUID) FROM PUBLIC, anon, authenticated',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_lookup_preset_id_v2(TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_get_preset_card_v2(UUID) FROM PUBLIC, anon, authenticated',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_exists_preset_logical_key_v2(TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_rename_legacy_preset(UUID, JSONB) FROM PUBLIC, anon, authenticated',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_rename_preset_v2(UUID, JSONB) FROM PUBLIC, anon, authenticated',
+  'REVOKE EXECUTE ON FUNCTION public.kessho_purge_deleted_presets_v2(BOOLEAN, INTERVAL, INTERVAL, INTEGER) FROM PUBLIC, anon, authenticated',
+  'REVOKE EXECUTE ON FUNCTION public.increment_plays(UUID) FROM PUBLIC, anon, authenticated',
+  "NOTIFY pgrst, 'reload schema'",
+];
+
 const REQUIRED_PENDING_REVOKE_SNIPPETS = [
   'GRANT SELECT ON public.preset_summaries_v2 TO anon, authenticated',
   'GRANT SELECT ON public.legacy_preset_summaries TO anon, authenticated',
@@ -112,6 +168,9 @@ const REQUIRED_PENDING_REVOKE_SNIPPETS = [
   'GRANT EXECUTE ON FUNCTION public.kessho_lookup_preset_rows_v2(UUID, TEXT, TEXT, TEXT[], BOOLEAN, TEXT, UUID, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, INTEGER, INTEGER) TO authenticated',
   'GRANT EXECUTE ON FUNCTION public.kessho_get_preset_versions_v2(UUID) TO authenticated',
   'GRANT EXECUTE ON FUNCTION public.kessho_get_preset_payloads_v2(TEXT[]) TO authenticated',
+  'GRANT EXECUTE ON FUNCTION public.kessho_lookup_preset_id_v2(TEXT, TEXT, TEXT, TEXT) TO authenticated',
+  'GRANT EXECUTE ON FUNCTION public.kessho_get_preset_card_v2(UUID) TO authenticated',
+  'GRANT EXECUTE ON FUNCTION public.kessho_exists_preset_logical_key_v2(TEXT, TEXT, TEXT) TO authenticated',
   'GRANT EXECUTE ON FUNCTION public.kessho_save_legacy_preset(JSONB) TO authenticated',
   'GRANT EXECUTE ON FUNCTION public.kessho_save_preset_v2(JSONB, JSONB, JSONB, JSONB) TO authenticated',
   'REVOKE SELECT ON public.presets_v2 FROM anon, authenticated',
@@ -135,7 +194,14 @@ const REQUIRED_API_SURFACE_AUDIT_SNIPPETS = [
   'const RUNTIME_RPC_CHECKS = [',
   "name: 'kessho_get_preset_detail_v2'",
   "name: 'kessho_get_legacy_preset_detail'",
+  "name: 'kessho_get_preset_latest_manifest_v2'",
   "name: 'kessho_lookup_preset_rows_v2'",
+  "name: 'kessho_get_missing_preset_payloads_v2'",
+  "name: 'kessho_lookup_preset_id_v2'",
+  "name: 'kessho_get_preset_card_v2'",
+  "name: 'kessho_exists_preset_logical_key_v2'",
+  "name: 'kessho_rename_preset_v2'",
+  "name: 'kessho_rename_legacy_preset'",
   'page_offset: 0',
   "name: 'kessho_get_preset_storage_stats_v2'",
   'client.auth.signInAnonymously()',
@@ -186,6 +252,32 @@ const REQUIRED_APPLY_HARDENING_SNIPPETS = [
 
 const REQUIRED_PACKAGE_JSON_SNIPPETS = [
   '"audit:supabase-egress:runtime:detail:strict": "node scripts/check-supabase-egress-budget.mjs --open-presets --load-first-preset --require-supabase-calls --fail-supabase-errors"',
+  '"audit:supabase-optimization-db-proof": "node scripts/audit-supabase-optimization-db-proof.mjs"',
+];
+
+const REQUIRED_OPTIMIZATION_DB_PROOF_SNIPPETS = [
+  'DATABASE_URL',
+  'SUPABASE_DATABASE_URL',
+  'SUPABASE_DB_URL',
+  'transactionRolledBack: true',
+  'kessho_save_preset_v2',
+  'kessho_get_preset_latest_manifest_v2',
+  'kessho_get_missing_preset_payloads_v2',
+  'kessho_lookup_preset_id_v2',
+  'kessho_get_preset_card_v2',
+  'kessho_exists_preset_logical_key_v2',
+  'kessho_rename_preset_v2',
+  'kessho_purge_deleted_presets_v2',
+  'narrow id/card/existence/rename RPCs passed',
+  'Narrow preset id lookup did not return the saved preset id',
+  'Narrow logical-key existence check did not find the saved preset',
+  'Narrow rename RPC did not return the renamed preset row',
+  'Preset payload hash mismatch',
+  'Preset payload hash references missing payload rows',
+  'last_seen_at changed on immediate duplicate save',
+  'Expected zero active legacy rows',
+  'Purge dry-run mutated row counts',
+  'rollback',
 ];
 
 const REQUIRED_LEAD4OPFM_UPSERT_SNIPPETS = [
@@ -293,6 +385,18 @@ if (!fs.existsSync(runtimeReadRpcPath)) {
   }
 }
 
+const optimizationPath = path.join(MIGRATIONS_DIR, OPTIMIZATION_MIGRATION);
+if (!fs.existsSync(optimizationPath)) {
+  failures.push(`Missing required optimization migration: ${path.relative(ROOT, optimizationPath)}`);
+} else {
+  const optimizationText = fs.readFileSync(optimizationPath, 'utf8');
+  for (const snippet of REQUIRED_OPTIMIZATION_SNIPPETS) {
+    if (!optimizationText.includes(snippet)) {
+      failures.push(`${path.relative(ROOT, optimizationPath)} missing required snippet: ${snippet}`);
+    }
+  }
+}
+
 const pendingBaseTableRevokePath = path.join(PENDING_DIR, PENDING_BASE_TABLE_REVOKE_SQL);
 if (!fs.existsSync(pendingBaseTableRevokePath)) {
   failures.push(`Missing pending base-table revoke SQL: ${path.relative(ROOT, pendingBaseTableRevokePath)}`);
@@ -349,6 +453,18 @@ if (!fs.existsSync(applyHardeningPath)) {
   for (const snippet of REQUIRED_APPLY_HARDENING_SNIPPETS) {
     if (!applyHardeningText.includes(snippet)) {
       failures.push(`${APPLY_HARDENING_SCRIPT} missing required snippet: ${snippet}`);
+    }
+  }
+}
+
+const optimizationDbProofPath = path.join(ROOT, OPTIMIZATION_DB_PROOF_SCRIPT);
+if (!fs.existsSync(optimizationDbProofPath)) {
+  failures.push(`Missing required optimization DB proof script: ${OPTIMIZATION_DB_PROOF_SCRIPT}`);
+} else {
+  const optimizationDbProofText = fs.readFileSync(optimizationDbProofPath, 'utf8');
+  for (const snippet of REQUIRED_OPTIMIZATION_DB_PROOF_SNIPPETS) {
+    if (!optimizationDbProofText.includes(snippet)) {
+      failures.push(`${OPTIMIZATION_DB_PROOF_SCRIPT} missing required snippet: ${snippet}`);
     }
   }
 }

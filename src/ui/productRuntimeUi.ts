@@ -4,7 +4,7 @@ import {
   getProductRuntimeModes,
   type ProductRuntimeSelectionMode,
 } from '../audio/product/ProductAudioRuntimeSelection';
-import type { ProductTelemetrySnapshot } from '../audio/product/ProductEngineTypes';
+import type { ProductPerfSnapshot, ProductTelemetrySnapshot } from '../audio/product/ProductEngineTypes';
 import {
   DEFAULT_STATE,
   migratePreset,
@@ -157,6 +157,14 @@ export function createProductPerfData(telemetry: ProductTelemetrySnapshot): Reco
       scope: 'worklet',
     },
   };
+}
+
+export function filterProductRuntimePerfMetrics(data: ProductPerfSnapshot): Record<string, ProductRuntimePerfMetric> {
+  const metrics: Record<string, ProductRuntimePerfMetric> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (isProductRuntimePerfMetric(value)) metrics[key] = value;
+  }
+  return metrics;
 }
 
 export function readProductRuntimeCpuSummaries(): ProductRuntimeCpuSummaries {

@@ -11,13 +11,15 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(name: "KesshoProductCore", path: "..")
+        .package(name: "KesshoProductCore", path: ".."),
+        .package(name: "KesshoNativeBridge", path: "../native/KesshoNativeBridge")
     ],
     targets: [
         .executableTarget(
             name: "KesshoCapacitorMac",
             dependencies: [
-                .product(name: "KesshoProductCore", package: "KesshoProductCore")
+                .product(name: "KesshoProductCore", package: "KesshoProductCore"),
+                .product(name: "KesshoNativeBridge", package: "KesshoNativeBridge")
             ],
             path: "Sources/KesshoCapacitorMac"
         )

@@ -4,7 +4,7 @@ import { productEngine } from '../audio/product/ProductEngineProxy';
 import { selectedProductRuntime } from '../audio/product/SelectedProductRuntime';
 import type { CpuOverlayPerfCallback } from './CpuOverlay';
 import {
-  createProductPerfData,
+  filterProductRuntimePerfMetrics,
   readProductRuntimeCpuSummaries,
   summarizeProductRuntimeCpu,
   writeProductRuntimeCpuSummaries,
@@ -94,7 +94,7 @@ export function useProductRuntimePerfAdapter(
   const setProductPerfUpdateCallback = useCallback((callback: CpuOverlayPerfCallback | null): void => {
     if (!documentVisible) {
       if (productRuntimeMode === 'core-product') {
-        productEngine.setTelemetryCallback(null);
+        productEngine.setPerfUpdateCallback(null);
         return;
       }
       (selectedProductRuntime as unknown as {
@@ -103,8 +103,8 @@ export function useProductRuntimePerfAdapter(
       return;
     }
     if (productRuntimeMode === 'core-product') {
-      productEngine.setTelemetryCallback(callback ? (telemetry) => {
-        callback(createProductPerfData(telemetry));
+      productEngine.setPerfUpdateCallback(callback ? (data) => {
+        callback(filterProductRuntimePerfMetrics(data));
       } : null);
       return;
     }

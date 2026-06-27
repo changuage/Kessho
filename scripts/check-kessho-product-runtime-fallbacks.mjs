@@ -287,7 +287,12 @@ await runCheckWithReport({
         productRuntimeLifecycleSurface.includes('useProductRuntimeTelemetry({') &&
         productRuntimeLifecycleSurface.includes('productRuntimeMode: options.productRuntimeMode') &&
         productRuntimeTelemetry.includes("import { isCoreProductRangeKeySupported }") &&
-        productRuntimeTelemetry.includes('return isCoreProductRangeKeySupported(key);') &&
+        productRuntimeTelemetry.includes("const productRuntimeActive = productRuntimeMode === 'core-product';") &&
+        productRuntimeTelemetry.includes('if (!productRuntimeActive) return EMPTY_PRODUCT_DYNAMICS_VISUAL_TELEMETRY;') &&
+        productRuntimeTelemetry.includes('if (!productRuntimeActive) return;') &&
+        productRuntimeTelemetry.includes("return productRuntimeMode !== 'core-product' || isCoreProductRangeKeySupported(key);") &&
+        productRuntimeTelemetry.includes("if (productRuntimeMode !== 'core-product') {") &&
+        productRuntimeTelemetry.includes('productEngine.setVisualTelemetryActive(false);') &&
         productRuntimeTelemetry.includes("const active = uiMode === 'advanced' && documentVisible;") &&
         productRuntimeTelemetry.includes('productEngine.setVisualTelemetryActive(active);') &&
         !productRuntimeTelemetry.includes('useSelectedAudioEngine') &&

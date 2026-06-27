@@ -72,6 +72,12 @@ public/samples/*
 !public/samples/Ghetary-Waves-Rocks_120s_m_441_cl-normalized.ogg
 !public/samples/Piano/
 !public/samples/Piano/**
+!public/samples/Pneuma/
+!public/samples/Pneuma/**
+!public/samples/SoftStringSpurs/
+!public/samples/SoftStringSpurs/**
+!public/samples/ArchiveFoundStrings001/
+!public/samples/ArchiveFoundStrings001/**
 
 # Digitone sysex tools (local development only)
 Digitone/

@@ -257,7 +257,10 @@ class FakeSupabaseClient {
   };
   presetsV2HardDeleteAttempts = 0;
   presetDetailRpcCalls = 0;
+  presetLatestManifestRpcCalls = 0;
+  presetPayloadRpcCalls = 0;
   legacyDetailRpcCalls = 0;
+  rpcCalls: Array<{ functionName: string; args: Record<string, unknown> }> = [];
   failNextAtomicRefInsert = false;
   compactDetailPayloads = false;
   authUserId: string | null = null;
@@ -269,6 +272,8 @@ class FakeSupabaseClient {
   }
 
   async rpc(functionName: string, args: Record<string, unknown>): Promise<{ data: unknown; error: { message: string } | null }> {
+    this.rpcCalls.push({ functionName, args });
+
     if (functionName === 'kessho_soft_delete_preset_v2') {
       return this.softDeletePreset(String(args.target_preset_id));
     }
@@ -293,12 +298,24 @@ class FakeSupabaseClient {
       return this.getPresetDetailV2(args);
     }
 
+    if (functionName === 'kessho_get_preset_latest_manifest_v2') {
+      return this.getPresetLatestManifestV2(String(args.target_preset_id));
+    }
+
     if (functionName === 'kessho_get_legacy_preset_detail') {
       return this.getLegacyPresetDetail(args);
     }
 
     if (functionName === 'kessho_lookup_preset_rows_v2') {
       return this.lookupPresetRowsV2(args);
+    }
+
+    if (functionName === 'kessho_lookup_preset_id_v2') {
+      return this.lookupPresetIdV2(args);
+    }
+
+    if (functionName === 'kessho_exists_preset_logical_key_v2') {
+      return this.existsPresetLogicalKeyV2(args);
     }
 
     if (functionName === 'kessho_get_preset_versions_v2') {
@@ -315,6 +332,18 @@ class FakeSupabaseClient {
 
     if (functionName === 'kessho_get_preset_payloads_v2') {
       return this.getPresetPayloadsV2((args.target_hashes as string[] | null | undefined) ?? []);
+    }
+
+    if (functionName === 'kessho_get_missing_preset_payloads_v2') {
+      return this.getPresetPayloadsV2((args.target_hashes as string[] | null | undefined) ?? []);
+    }
+
+    if (functionName === 'kessho_rename_preset_v2') {
+      return this.renamePresetV2(String(args.target_preset_id), (args.rename_payload as FakeRow | null | undefined) ?? {});
+    }
+
+    if (functionName === 'kessho_rename_legacy_preset') {
+      return this.renameLegacyPreset(String(args.target_preset_id), (args.rename_payload as FakeRow | null | undefined) ?? {});
     }
 
     if (functionName === 'kessho_find_preset_references_v2') {
@@ -711,6 +740,60 @@ class FakeSupabaseClient {
     };
   }
 
+  private getPresetLatestManifestV2(targetPresetId: string): { data: unknown; error: { message: string } | null } {
+    this.presetLatestManifestRpcCalls += 1;
+    if (!this.authUserId) {
+      return {
+        data: null,
+        error: { message: 'Authentication is required to load preset manifests' },
+      };
+    }
+
+    const preset = this.tables.presets_v2.find(row => (
+      row.id === targetPresetId
+      && !row.deleted_at
+      && this.canReadPresetV2(row)
+    ));
+    if (!preset) return { data: null, error: null };
+
+    const latestVersion = this.tables.preset_versions_v2
+      .filter(row => row.preset_id === preset.id)
+      .sort((left, right) => right.version_no - left.version_no || right.created_at.localeCompare(left.created_at))[0] ?? null;
+    if (!latestVersion) return { data: null, error: null };
+
+    const refs = this.tables.preset_version_refs_v2
+      .filter(row => row.version_id === latestVersion.id)
+      .sort((left, right) => String(left.ref_slot).localeCompare(String(right.ref_slot)));
+    const targetIds = new Set(refs.map(row => String(row.target_preset_id)));
+    const targetPresets = this.tables.presets_v2
+      .filter(row => targetIds.has(row.id) && !row.deleted_at && this.canReadPresetV2(row))
+      .sort((left, right) => left.id.localeCompare(right.id));
+    const requiredHashes = new Set<string>();
+    if (latestVersion.override_hash) requiredHashes.add(latestVersion.override_hash);
+    if (latestVersion.metadata_hash) requiredHashes.add(latestVersion.metadata_hash);
+    if (latestVersion.patch_from_prev_hash) requiredHashes.add(latestVersion.patch_from_prev_hash);
+    if (latestVersion.resolved_hash) requiredHashes.add(latestVersion.resolved_hash);
+    if (preset.latest_resolved_hash) requiredHashes.add(preset.latest_resolved_hash);
+    if (preset.latest_metadata_hash) requiredHashes.add(preset.latest_metadata_hash);
+    for (const ref of refs) {
+      if (ref.override_hash) requiredHashes.add(String(ref.override_hash));
+    }
+    for (const target of targetPresets) {
+      if (target.latest_resolved_hash) requiredHashes.add(target.latest_resolved_hash);
+    }
+
+    return {
+      data: {
+        preset,
+        latest_version: latestVersion,
+        refs,
+        target_presets: targetPresets,
+        required_hashes: [...requiredHashes].sort(),
+      },
+      error: null,
+    };
+  }
+
   private getLegacyPresetDetail(args: Record<string, unknown>): { data: unknown; error: { message: string } | null } {
     this.legacyDetailRpcCalls += 1;
     if (!this.authUserId) {
@@ -818,6 +901,55 @@ class FakeSupabaseClient {
     return { data: rows, error: null };
   }
 
+  private lookupPresetIdV2(args: Record<string, unknown>): { data: unknown; error: { message: string } | null } {
+    if (!this.authUserId) return { data: null, error: { message: 'Authentication is required to look up preset ids' } };
+
+    const targetType = (args.target_type as string | null | undefined) ?? null;
+    const targetName = (args.target_name as string | null | undefined) ?? null;
+    const targetScope = (args.target_scope as string | null | undefined) ?? null;
+    const targetResolvedHash = (args.target_resolved_hash as string | null | undefined) ?? null;
+    const normalizedName = targetName?.trim().toLowerCase() ?? null;
+
+    const row = this.tables.presets_v2
+      .filter(candidate => (
+        this.canReadPresetV2(candidate)
+        && candidate.deleted_at === null
+        && (!targetType || candidate.type === targetType)
+        && (!normalizedName || candidate.name.trim().toLowerCase() === normalizedName)
+        && ((targetScope === null && candidate.scope === null) || candidate.scope === targetScope)
+        && (!targetResolvedHash || candidate.latest_resolved_hash === targetResolvedHash)
+      ))
+      .sort((left, right) => {
+        const leftOwn = left.owner_user_id === this.authUserId ? 0 : 1;
+        const rightOwn = right.owner_user_id === this.authUserId ? 0 : 1;
+        if (leftOwn !== rightOwn) return leftOwn - rightOwn;
+        return right.latest_version_no - left.latest_version_no
+          || right.updated_at.localeCompare(left.updated_at)
+          || right.id.localeCompare(left.id);
+      })[0] ?? null;
+
+    return { data: row?.id ?? null, error: null };
+  }
+
+  private existsPresetLogicalKeyV2(args: Record<string, unknown>): { data: unknown; error: { message: string } | null } {
+    if (!this.authUserId) return { data: null, error: { message: 'Authentication is required to check preset existence' } };
+
+    const targetType = (args.target_type as string | null | undefined) ?? null;
+    const targetName = (args.target_name as string | null | undefined) ?? null;
+    const targetScope = (args.target_scope as string | null | undefined) ?? null;
+    const normalizedName = targetName?.trim().toLowerCase() ?? null;
+
+    const exists = this.tables.presets_v2.some(candidate => (
+      this.canReadPresetV2(candidate)
+      && candidate.deleted_at === null
+      && (!targetType || candidate.type === targetType)
+      && (!normalizedName || candidate.name.trim().toLowerCase() === normalizedName)
+      && ((targetScope === null && candidate.scope === null) || candidate.scope === targetScope)
+    ));
+
+    return { data: exists, error: null };
+  }
+
   private getPresetVersionsV2(targetPresetId: string): { data: unknown; error: { message: string } | null } {
     const preset = this.tables.presets_v2.find(row => row.id === targetPresetId && !row.deleted_at && this.canReadPresetV2(row));
     if (!preset) return { data: [], error: null };
@@ -858,6 +990,7 @@ class FakeSupabaseClient {
   }
 
   private getPresetPayloadsV2(targetHashes: string[]): { data: unknown; error: { message: string } | null } {
+    this.presetPayloadRpcCalls += 1;
     const hashSet = new Set(targetHashes);
     return {
       data: this.tables.preset_payloads_v2.filter(row => hashSet.has(row.hash)).sort((left, right) => left.hash.localeCompare(right.hash)),
@@ -937,6 +1070,78 @@ class FakeSupabaseClient {
     if (existing) Object.assign(existing, row);
     else this.tables.presets.push(row);
     return { data: row, error: null };
+  }
+
+  private renamePresetV2(targetPresetId: string, payload: FakeRow): { data: unknown; error: { message: string } | null } {
+    if (!this.authUserId) return { data: null, error: { message: 'Authentication is required to rename presets' } };
+    const target = this.tables.presets_v2.find(row => (
+      row.id === targetPresetId
+      && !row.deleted_at
+      && (row.owner_key === 'public' || row.owner_user_id === this.authUserId)
+    ));
+    if (!target) return { data: null, error: null };
+
+    const nextName = String(payload.name ?? '').trim();
+    if (!nextName) return { data: null, error: { message: 'Preset name is required' } };
+    const conflict = this.tables.presets_v2.find(row => (
+      row.id !== target.id
+      && !row.deleted_at
+      && row.owner_key === target.owner_key
+      && row.type === target.type
+      && (row.scope ?? null) === (target.scope ?? null)
+      && row.name.trim().toLowerCase() === nextName.toLowerCase()
+    ));
+    if (conflict) return { data: null, error: { message: `A preset named "${nextName}" already exists` } };
+
+    Object.assign(target, {
+      name: nextName,
+      creator: payload.creator ?? target.creator,
+      description: payload.description ?? target.description,
+      visibility: payload.visibility ?? target.visibility,
+      family_name: payload.family_name ?? target.family_name,
+      variant_name: payload.variant_name ?? target.variant_name,
+      variant_rank: payload.variant_rank ?? target.variant_rank,
+      rating: payload.rating ?? target.rating,
+      tags: payload.tags ?? target.tags,
+      updated_at: this.now(),
+    });
+    return { data: target, error: null };
+  }
+
+  private renameLegacyPreset(targetPresetId: string, payload: FakeRow): { data: unknown; error: { message: string } | null } {
+    if (!this.authUserId) return { data: null, error: { message: 'Authentication is required to rename legacy presets' } };
+    const target = this.tables.presets.find(row => (
+      row.id === targetPresetId
+      && row.deleted_at == null
+      && (row.user_id === this.authUserId || row.user_id == null)
+    ));
+    if (!target) return { data: null, error: null };
+
+    const nextName = String(payload.name ?? '').trim();
+    if (!nextName) return { data: null, error: { message: 'Preset name is required' } };
+    const conflict = this.tables.presets.find(row => (
+      row.id !== target.id
+      && row.deleted_at == null
+      && row.type === target.type
+      && (row.scope ?? null) === (target.scope ?? null)
+      && String(row.name).trim().toLowerCase() === nextName.toLowerCase()
+      && (row.user_id === this.authUserId || row.user_id == null)
+    ));
+    if (conflict) return { data: null, error: { message: `A preset named "${nextName}" already exists` } };
+
+    Object.assign(target, {
+      name: nextName,
+      creator: payload.creator ?? target.creator,
+      description: payload.description ?? target.description,
+      visibility: payload.visibility ?? target.visibility,
+      family_name: payload.family_name ?? target.family_name,
+      variant_name: payload.variant_name ?? target.variant_name,
+      variant_rank: payload.variant_rank ?? target.variant_rank,
+      rating: payload.rating ?? target.rating,
+      tags: payload.tags ?? target.tags,
+      updated_at: this.now(),
+    });
+    return { data: target, error: null };
   }
 
   private canReadVersion(versionId: string): boolean {
@@ -1208,7 +1413,8 @@ async function testSupabaseDeleteMovesPresetToRecycleBin(): Promise<void> {
   assert.ok(client.tables.preset_payloads_v2.length > 0, 'save should store content-addressed payloads');
   assert.equal((await store.list('engine', 'pad1')).some(preset => preset.name === presetName), true);
   assert.ok(await store.load('engine', presetName, 'pad1'), 'V2 detail load should work before recycle');
-  assert.ok(client.presetDetailRpcCalls > 0, 'V2 detail loads should prefer the narrow detail RPC');
+  assert.ok(client.presetLatestManifestRpcCalls > 0, 'V2 detail loads should prefer the latest-manifest RPC');
+  assert.equal(client.presetDetailRpcCalls, 0, 'default V2 loads should not fetch full detail history');
 
   await store.delete('engine', presetName, 'pad1');
 
@@ -1243,7 +1449,7 @@ async function testCompactDetailPayloadBundleLoadsByContentHash(): Promise<void>
   };
   await store.save(makePresetEntry('engine', 'pad1', presetName, data));
 
-  const loaded = await store.load('engine', presetName, 'pad1');
+  const loaded = await store.load('engine', presetName, 'pad1', 1);
   const loadedData = loaded ? getVersionData(loaded) : null;
 
   assert.ok(loaded, 'V2 detail load should accept compact payload objects from the RPC');
@@ -1251,6 +1457,40 @@ async function testCompactDetailPayloadBundleLoadsByContentHash(): Promise<void>
   assert.equal(loaded?.recoveryWarnings?.length ?? 0, 0, 'compact payload rows should not trigger recovery fallbacks');
   assert.equal(loadedData?.synthAttack, 0.003, 'loaded data should come from the compact resolved payload');
   assert.equal(loadedData?.padFoldAmount, 0.28, 'content-hashed compact payload should populate the resolved map');
+}
+
+async function testLatestManifestPayloadCacheAvoidsRepeatPayloadRpc(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '34343434-3434-4343-8343-343434343434';
+  const presetName = 'Latest Manifest Payload Cache';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const data = {
+    ...extractParams(DEFAULT_STATE, 1, 'pad1'),
+    synthAttack: 0.034343,
+    synthDecay: 0.434343,
+    synthRelease: 0.234343,
+    padFoldAmount: 0.134343,
+  };
+  await store.save(makePresetEntry('engine', 'pad1', presetName, data));
+
+  client.presetDetailRpcCalls = 0;
+  client.presetLatestManifestRpcCalls = 0;
+  client.presetPayloadRpcCalls = 0;
+
+  const first = await store.load('engine', presetName, 'pad1');
+  assert.ok(first, 'first default V2 load should materialize from the latest manifest');
+  assert.equal(client.presetDetailRpcCalls, 0, 'default V2 load should not fetch full detail history');
+  assert.equal(client.presetPayloadRpcCalls, 1, 'first latest-manifest load should fetch missing payload hashes once');
+
+  const payloadCallsAfterFirstLoad = client.presetPayloadRpcCalls;
+  const second = await store.load('engine', presetName, 'pad1');
+  assert.ok(second, 'second default V2 load should still materialize from the latest manifest');
+  assert.equal(client.presetDetailRpcCalls, 0, 'repeat default V2 load should not fetch full detail history');
+  assert.equal(client.presetPayloadRpcCalls, payloadCallsAfterFirstLoad, 'repeat latest-manifest load should reuse cached payload bodies');
+  assert.ok(client.presetLatestManifestRpcCalls >= 2, 'repeat default V2 load should still refresh the lightweight latest manifest');
 }
 
 async function testActiveDependencyBlocksSoftDeleteAcrossL1ToL4(): Promise<void> {
@@ -1994,12 +2234,32 @@ async function testSupabaseRenamePreservesPresetId(): Promise<void> {
   await store.save(makePresetEntry('engine', 'pad1', 'Rename In Place', data));
   const originalRow = findPresetRow(client, 'engine', 'pad1', 'Rename In Place');
   const originalVersionCount = client.tables.preset_versions_v2.filter(version => version.preset_id === originalRow.id).length;
+  const existsLookupRowsBefore = client.rpcCalls.filter(call => call.functionName === 'kessho_lookup_preset_rows_v2').length;
+
+  assert.equal(
+    await store.exists('engine', 'Rename In Place', 'pad1'),
+    true,
+    'saved V2 preset should exist before rename',
+  );
+  assert.equal(
+    client.rpcCalls.filter(call => call.functionName === 'kessho_lookup_preset_rows_v2').length,
+    existsLookupRowsBefore,
+    'V2 exists should use the narrow logical-key RPC and avoid broad row lookup',
+  );
+
+  const lookupRowsBefore = client.rpcCalls.filter(call => call.functionName === 'kessho_lookup_preset_rows_v2').length;
 
   const renamed = await store.rename('engine', 'Rename In Place', 'Renamed In Place', 'pad1');
+  const lookupRowsAfter = client.rpcCalls.filter(call => call.functionName === 'kessho_lookup_preset_rows_v2').length;
 
   assert.ok(renamed, 'rename should return the updated preset entry');
   assert.equal(renamed.id, originalRow.id, 'rename should preserve the Supabase preset id');
   assert.equal(renamed.remoteId, originalRow.id, 'rename should preserve the remote id');
+  assert.equal(
+    lookupRowsAfter,
+    lookupRowsBefore,
+    'V2 rename should use the narrow id lookup and avoid broad row lookup preflight',
+  );
   assert.equal(findPresetRow(client, 'engine', 'pad1', 'Renamed In Place').id, originalRow.id, 'renamed row should reuse the original row');
   assert.equal(await store.load('engine', 'Rename In Place', 'pad1'), null, 'old name should no longer load');
   assert.equal((await store.load('engine', 'Renamed In Place', 'pad1'))?.id, originalRow.id, 'new name should load the same row id');
@@ -2012,6 +2272,7 @@ async function testSupabaseRenamePreservesPresetId(): Promise<void> {
 
 await testSupabaseDeleteMovesPresetToRecycleBin();
 await testCompactDetailPayloadBundleLoadsByContentHash();
+await testLatestManifestPayloadCacheAvoidsRepeatPayloadRpc();
 await testActiveDependencyBlocksSoftDeleteAcrossL1ToL4();
 await testDeletingStatePrunesUnreferencedInternalDerivedGraph();
 await testSharedDerivedChildSurvivesUntilLastVisibleRootDeletes();

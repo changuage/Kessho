@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { appStyles as styles } from './app/appStyles';
 import {
   SliderState,
   SliderMode,
@@ -14,10 +15,8 @@ import {
   getParamInfo,
   getSliderNumericValue,
   getStateValueFromSliderNumber,
-  PAD_FILTER_CUTOFF_KEY_PAIRS,
 } from './ui/state';
-import { DualSlider, DualSliderRange } from './ui/DualSlider';
-import { SliderPrimitive } from './ui/sliderSystem';
+import type { DualSliderRange } from './ui/DualSlider';
 import type { ProductEngineState } from './audio/product/ProductEngineTypes';
 import { ProductRuntimeSwitch } from './ui/ProductRuntimeSwitch';
 import { AppFooterMark } from './ui/AppFooterMark';
@@ -34,32 +33,17 @@ import {
 import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/config';
 import { formatChordDegrees, calculateDriftedRoot } from './audio/harmony';
 import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
-import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS, PAD1_TO_PAD2_KEY, type PadPreset, type PadPresetParamKey } from './audio/padPresets';
 import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, INSECT_ENGINE_DEFAULTS, getWaterPresetDualRanges, getWaterPresetSliderModes } from './audio/waterPresets';
-import { productEngine as productRuntimePort } from './audio/product/ProductEngineProxy';
 import {
-  filterDawOutputRoutingConfigForSources,
   loadDawOutputDeviceSelection,
   loadDawOutputRoutingConfig,
-  saveDawOutputDeviceSelection,
-  saveDawOutputRoutingConfig,
-  sanitizeDawOutputDeviceSelection,
-  sanitizeDawOutputRoutingConfig,
   type DawOutputDeviceSelection,
   type DawOutputRoutingConfig,
-  type DawOutputSourceId,
 } from './audio/dawOutputRouting';
 import {
   applyMorphToState,
 } from './audio/drumMorph';
-import {
-  dispatchProductControlActionForProductEngine,
-  getProductControlStateForProductEngine,
-  getProductDrumMorphDualRangeOverrides,
-  interpolateProductDrumMorphDualRanges,
-  type ProductControlAction,
-  type ProductDrumMorphOverrideState,
-} from './product-control';
+import { getProductDrumMorphDualRangeOverrides, interpolateProductDrumMorphDualRanges } from './product-control';
 
 import { clampMorphPosition, isInMidMorph, isAtEndpoint0, isAtEndpoint1 } from './audio/morphUtils';
 import {
@@ -67,7 +51,6 @@ import {
   getRuntimeSliderPosition,
   removeRuntimeTriggerPositions,
 } from './ui/runtimeSliderState';
-import { getRuntimeValue } from './ui/runtimeValueState';
 import { useProductCoreDebugSummary } from './ui/useProductCoreDebugSummary';
 import { useProductRuntimeParityProbe } from './ui/useProductRuntimeParityProbe';
 import {
@@ -81,15 +64,11 @@ import { getGranularPresetData, getGranularPresetSliderModes, isGranularDelayBSt
 import SnowflakeUI from './ui/SnowflakeUI';
 import SnowflakePrototypePage from './ui/SnowflakePrototypePage';
 import { CpuOverlay } from './ui/CpuOverlay';
-import { SliderHelpProvider, useSliderHelp } from './ui/SliderHelpOverlay';
+import { SliderHelpProvider } from './ui/SliderHelpOverlay';
 import { MidiLearnProvider } from './ui/midiLearn/MidiLearnProvider';
-import { MidiLearnSliderAdornment } from './ui/midiLearn/MidiLearnSliderAdornment';
-import { useMidiLearn } from './ui/midiLearn/useMidiLearn';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import { useJourney } from './ui/journeyState';
-import { ENGINE_GROUPS as SNOWFLAKE_ENGINE_GROUPS } from './ui/snowflakeV2';
-import { SOURCE_COLORS } from './designSystem/colors';
-import { APP_TAB_SYMBOLS, TEXT_SYMBOLS } from './designSystem/textSymbols';
+import { TEXT_SYMBOLS } from './designSystem/textSymbols';
 import type { SeqSimpleState } from './ui/drums/SeqSimple';
 import type { SeqScatterState } from './ui/drums/scatter/scatterTypes';
 import { normalizeSeqScatterState, seqSimpleStateFromScatterState } from './ui/drums/scatter/scatterDefaults';
@@ -131,9 +110,7 @@ import { serializeStepOverrides } from './ui/sequencer/stepOverrideSerialization
 import { type ClockDivision, type PitchBindingMode } from './audio/drumSeqTypes';
 import { sanitizeProductArpConfigs, type ProductArpConfig } from './audio/productArpeggiator';
 import { normalizeSequencerPitchSettingsArray } from './audio/sequencerPitchSettings';
-import type { SliderPageId } from './ui/pages/pageAliases';
 import {
-  getActiveDawOutputSourceIds,
   getRoutingSourceDef,
   getRoutingSourceToggleKeys,
   normalizeDegradeReverbCrossfeed,
@@ -169,6 +146,45 @@ import { useJourneyOverrideRuntimeSurface } from './ui/useJourneyOverrideRuntime
 import { useJourneyMorphRuntimeSurface } from './ui/useJourneyMorphRuntimeSurface';
 import { useMorphPositionRuntimeSurface } from './ui/useMorphPositionRuntimeSurface';
 import { useMorphSlotLoadRuntimeSurface } from './ui/useMorphSlotLoadRuntimeSurface';
+import {
+  HelpButton,
+  Select,
+  SINGLE_ONLY_SLIDER_KEYS,
+  Slider,
+  WALK_ONLY_DUAL_KEYS,
+  normalizeDualSliderMode,
+  normalizePadFilterCutoffPairs,
+} from './app/AppControls';
+import { createSignedSnowflakeWelcomeState } from './app/signedSnowflakeWelcomeState';
+import { useAppSplash } from './app/useAppSplash';
+import { useProductDrumMorphOverrides } from './app/useProductDrumMorphOverrides';
+import { useProductDawOutputSync } from './app/useProductDawOutputSync';
+import { useRoutingMuteGroupRuntimeLevelSync } from './app/useRoutingMuteGroupRuntimeLevelSync';
+import {
+  ADVANCED_EDITOR_TABS,
+  ADVANCED_TAB_COLORS,
+  ADVANCED_TAB_SHORTCUTS,
+  FX_BUS_LABELS,
+  FX_ORIGIN_LABELS,
+  FX_OWNER_LABELS,
+  TOP_LEVEL_SHORTCUTS,
+  getAdvancedTabActiveStyle,
+  isEditableShortcutTarget,
+  type AdvancedTab,
+} from './app/appNavigation';
+import {
+  applyLiveLeadMorphToChangedPresetSlots,
+  applyLiveLeadMorphToPresetChange,
+  applyPadPresetMorphToState,
+  clearPadMorphEndpointState,
+  createPadMorphEndpointOverrides,
+  getPadMorphParamChange,
+  isLeadPresetSlotKey,
+  leadPresetSlotsChanged,
+  rememberChangedPadMorphEndpointStates,
+  rememberPadMorphEndpointState,
+  type PadMorphEndpointOverrides,
+} from './features/morph/morphEndpointMath';
 
 const JourneyModeView = React.lazy(() => import('./ui/JourneyModeView'));
 const GlobalPage = React.lazy(() => import('./ui/global/GlobalPage'));
@@ -215,190 +231,6 @@ function preserveRunningDrumSequencerSource(
   return { ...next, drumEnabled: true };
 }
 
-const LEAD_PRESET_SLOT_KEYS = [
-  'lead1PresetA',
-  'lead1PresetB',
-  'lead2PresetC',
-  'lead2PresetD',
-] as const satisfies readonly (keyof SliderState)[];
-
-type LeadPresetSlotStateKey = typeof LEAD_PRESET_SLOT_KEYS[number];
-
-function isLeadPresetSlotKey(key: keyof SliderState): key is LeadPresetSlotStateKey {
-  return (LEAD_PRESET_SLOT_KEYS as readonly string[]).includes(String(key));
-}
-
-function leadPresetSlotsChanged(previous: SliderState, next: SliderState): boolean {
-  return LEAD_PRESET_SLOT_KEYS.some((key) => previous[key] !== next[key]);
-}
-
-type PadMorphScope = 'pad1' | 'pad2';
-type LeadMorphScope = 'lead1' | 'lead2';
-type PadMorphEndpoint = 'a' | 'b';
-type PadMorphEndpointParamValue = number | string | boolean;
-type PadMorphEndpointParamOverrides = Partial<Record<PadPresetParamKey, PadMorphEndpointParamValue>>;
-type PadMorphEndpointOverrides = Record<PadMorphScope, Record<PadMorphEndpoint, PadMorphEndpointParamOverrides>>;
-
-const PAD_PRESET_PARAM_KEY_SET = new Set<string>(PAD_PRESET_PARAM_KEYS);
-const PAD2_TO_PAD1_KEY = Object.fromEntries(
-  Object.entries(PAD1_TO_PAD2_KEY).map(([pad1Key, pad2Key]) => [pad2Key, pad1Key]),
-) as Record<string, PadPresetParamKey>;
-
-function createPadMorphEndpointOverrides(): PadMorphEndpointOverrides {
-  return {
-    pad1: { a: {}, b: {} },
-    pad2: { a: {}, b: {} },
-  };
-}
-
-function getPadMorphParamChange(key: keyof SliderState): { scope: PadMorphScope; paramKey: PadPresetParamKey } | null {
-  const keyStr = String(key);
-  if (PAD_PRESET_PARAM_KEY_SET.has(keyStr)) {
-    return { scope: 'pad1', paramKey: keyStr as PadPresetParamKey };
-  }
-
-  const pad1Key = PAD2_TO_PAD1_KEY[keyStr];
-  return pad1Key ? { scope: 'pad2', paramKey: pad1Key } : null;
-}
-
-function getPadMorphPosition(state: SliderState, scope: PadMorphScope): number | null {
-  const runtimeKey = scope === 'pad2' ? 'pad2Morph' : 'padMorph';
-  const runtimeMorph = getRuntimeValue(runtimeKey);
-  if (typeof runtimeMorph === 'number' && Number.isFinite(runtimeMorph)) {
-    return runtimeMorph;
-  }
-  const morphPosition = scope === 'pad2' ? state.pad2Morph : state.padMorph;
-  if (typeof morphPosition !== 'number') return null;
-  return morphPosition;
-}
-
-function applyLiveLeadMorphToPresetChange(state: SliderState, scope: LeadMorphScope): void {
-  const runtimeKey = scope === 'lead2' ? 'lead2Morph' : 'lead1Morph';
-  const runtimeMorph = getRuntimeValue(runtimeKey);
-  if (typeof runtimeMorph !== 'number' || !Number.isFinite(runtimeMorph)) return;
-  state[runtimeKey] = clampMorphPosition(runtimeMorph);
-}
-
-function applyLiveLeadMorphToChangedPresetSlots(previous: SliderState, next: SliderState): SliderState {
-  let normalized = next;
-  if (previous.lead1PresetA !== next.lead1PresetA || previous.lead1PresetB !== next.lead1PresetB) {
-    normalized = normalized === next ? { ...next } : normalized;
-    applyLiveLeadMorphToPresetChange(normalized, 'lead1');
-  }
-  if (previous.lead2PresetC !== next.lead2PresetC || previous.lead2PresetD !== next.lead2PresetD) {
-    normalized = normalized === next ? { ...next } : normalized;
-    applyLiveLeadMorphToPresetChange(normalized, 'lead2');
-  }
-  return normalized;
-}
-
-function getPadMorphEndpoint(state: SliderState, scope: PadMorphScope): PadMorphEndpoint | null {
-  const morphPosition = getPadMorphPosition(state, scope);
-  if (morphPosition === null) return null;
-  if (isAtEndpoint0(morphPosition)) return 'a';
-  if (isAtEndpoint1(morphPosition)) return 'b';
-  return null;
-}
-
-function getPadPresetStateKey(scope: PadMorphScope, paramKey: PadPresetParamKey): string | undefined {
-  return scope === 'pad2' ? PAD1_TO_PAD2_KEY[paramKey] : paramKey;
-}
-
-function isPadMorphEndpointParamValue(value: unknown): value is PadMorphEndpointParamValue {
-  return typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean';
-}
-
-function rememberPadMorphEndpointState(
-  overrides: PadMorphEndpointOverrides,
-  state: SliderState,
-  scope: PadMorphScope,
-): void {
-  const endpoint = getPadMorphEndpoint(state, scope);
-  if (!endpoint) return;
-
-  const target = overrides[scope][endpoint];
-  for (const paramKey of PAD_PRESET_PARAM_KEYS) {
-    const stateKey = getPadPresetStateKey(scope, paramKey);
-    if (!stateKey) continue;
-    const value = (state as unknown as Record<string, unknown>)[stateKey];
-    if (isPadMorphEndpointParamValue(value)) {
-      target[paramKey] = value;
-    }
-  }
-}
-
-function padMorphScopeParamsChanged(previous: SliderState, next: SliderState, scope: PadMorphScope): boolean {
-  for (const paramKey of PAD_PRESET_PARAM_KEYS) {
-    const stateKey = getPadPresetStateKey(scope, paramKey);
-    if (!stateKey) continue;
-    const key = stateKey as keyof SliderState;
-    if (previous[key] !== next[key]) return true;
-  }
-  return false;
-}
-
-function rememberChangedPadMorphEndpointStates(
-  overrides: PadMorphEndpointOverrides,
-  previous: SliderState,
-  next: SliderState,
-): void {
-  if (padMorphScopeParamsChanged(previous, next, 'pad1')) {
-    rememberPadMorphEndpointState(overrides, next, 'pad1');
-  }
-  if (padMorphScopeParamsChanged(previous, next, 'pad2')) {
-    rememberPadMorphEndpointState(overrides, next, 'pad2');
-  }
-}
-
-function clearPadMorphEndpointState(
-  overrides: PadMorphEndpointOverrides,
-  scope: PadMorphScope,
-  endpoint: PadMorphEndpoint,
-): void {
-  overrides[scope][endpoint] = {};
-}
-
-function applyPadEndpointOverridesToPreset(
-  preset: PadPreset,
-  overrides: PadMorphEndpointParamOverrides,
-): PadPreset {
-  if (Object.keys(overrides).length === 0) return preset;
-  return {
-    ...preset,
-    params: {
-      ...preset.params,
-      ...overrides,
-    },
-  };
-}
-
-function applyPadPresetMorphToState(
-  state: SliderState,
-  scope: PadMorphScope,
-  overrides: PadMorphEndpointOverrides,
-): void {
-  const presetAKey = scope === 'pad2' ? 'pad2PresetA' : 'padPresetA';
-  const presetBKey = scope === 'pad2' ? 'pad2PresetB' : 'padPresetB';
-  const presetA = getPadPreset(String(state[presetAKey] ?? 'init'), scope);
-  const presetB = getPadPreset(String(state[presetBKey] ?? state[presetAKey] ?? 'init'), scope);
-  if (!presetA || !presetB) return;
-
-  const morphPosition = getPadMorphPosition(state, scope) ?? 0;
-  const morphed = morphPadPresets(
-    applyPadEndpointOverridesToPreset(presetA, overrides[scope].a),
-    applyPadEndpointOverridesToPreset(presetB, overrides[scope].b),
-    morphPosition,
-  );
-  const record = state as unknown as Record<string, unknown>;
-  for (const paramKey of PAD_PRESET_PARAM_KEYS) {
-    if (!(paramKey in morphed)) continue;
-    const targetKey = getPadPresetStateKey(scope, paramKey);
-    if (targetKey) {
-      record[targetKey] = morphed[paramKey];
-    }
-  }
-}
-
 const GranularPage = React.lazy(() => import('./ui/granular/GranularPage'));
 const DelayPage = React.lazy(() => import('./ui/delay/DelayPage'));
 const TexturePage = React.lazy(() => import('./ui/texture/TexturePage'));
@@ -435,461 +267,6 @@ const isSonicParityMode = () => (
 );
 const LAZY_PAGE_FALLBACK = <div style={{ padding: '24px', color: '#9ca3af', textAlign: 'center' }}>Loading...</div>;
 
-// Base for the decorative snowflake shown before activation. This state is
-// local to SnowflakeUI and is not pushed into the product runtime.
-const SNOWFLAKE_WELCOME_STATE: SliderState = {
-  ...DEFAULT_STATE,
-  masterVolume: 0.85,
-  tension: 0.15,
-  reverbLevel: 0.5,
-  reverbDecay: 0.7,
-  reverbDiffusion: 0.3,
-  synthLevel: 0.1,
-  pad2Level: 0.1,
-  granularLevel: 0,
-  leadLevel: 1.0,
-  lead1Level: 0.1,
-  lead2Level: 0.1,
-  pianoLevel: 0.1,
-  drumLevel: 0.1,
-  oceanSampleLevel: 0,
-  padEnabled: true,
-  pad2Enabled: true,
-  leadEnabled: true,
-  lead2Enabled: true,
-  pianoEnabled: true,
-  drumEnabled: true,
-  granularEnabled: false,
-  oceanSampleEnabled: false,
-  waterEnabled: false,
-  insectsEnabled: false,
-  birdsEnabled: false,
-  delayAEnabled: false,
-  granularDelayEnabled: false,
-};
-
-const WELCOME_MACRO_MAGNITUDE = 0.5;
-const WELCOME_STRUCTURE_LOG_CURVE = 80;
-
-function randomWelcomeSign(): 1 | -1 {
-  return Math.random() >= 0.5 ? 1 : -1;
-}
-
-function normalizedLevelForWelcomeStructure(structureMacro: number): number {
-  const clamped = Math.max(-1, Math.min(1, structureMacro));
-  const shifted = (clamped + 1) / 2;
-  return Math.expm1(shifted * Math.log1p(WELCOME_STRUCTURE_LOG_CURVE)) / WELCOME_STRUCTURE_LOG_CURVE;
-}
-
-function setWelcomeValue(state: SliderState, key: keyof SliderState, value: number | boolean | string): void {
-  (state as unknown as Record<string, number | boolean | string>)[String(key)] = value;
-}
-
-function createSignedSnowflakeWelcomeState(): SliderState {
-  const next: SliderState = { ...SNOWFLAKE_WELCOME_STATE };
-  const activeEngineIds = new Set(SNOWFLAKE_ENGINE_GROUPS.slice(0, 6).map((engine) => engine.id));
-  const fractalSign = randomWelcomeSign();
-
-  setWelcomeValue(next, 'granularV1Mode', fractalSign > 0 ? 'granular' : 'clean');
-
-  for (const engine of SNOWFLAKE_ENGINE_GROUPS) {
-    const active = activeEngineIds.has(engine.id);
-    if (engine.enabledKey) setWelcomeValue(next, engine.enabledKey, active);
-
-    const level = active
-      ? normalizedLevelForWelcomeStructure(WELCOME_MACRO_MAGNITUDE)
-      : 0;
-    setWelcomeValue(next, engine.levelKey, engine.levelMin + level * (engine.levelMax - engine.levelMin));
-
-    for (const sendKey of Object.values(engine.sends)) {
-      if (!sendKey) continue;
-      setWelcomeValue(next, sendKey, 0);
-    }
-
-    if (!active) continue;
-    if (engine.sends.granular) {
-      setWelcomeValue(next, engine.sends.granular, WELCOME_MACRO_MAGNITUDE);
-    }
-
-    const densityPositive = randomWelcomeSign() > 0;
-    const primaryDensitySend = densityPositive ? engine.sends.delayA : engine.sends.delayB;
-    const fallbackDensitySend = densityPositive ? engine.sends.delayB : engine.sends.delayA;
-    const densitySend = primaryDensitySend ?? fallbackDensitySend;
-    if (densitySend) setWelcomeValue(next, densitySend, WELCOME_MACRO_MAGNITUDE);
-  }
-
-  return next;
-}
-
-// Styles
-const styles = {
-  container: {
-    maxWidth: '1200px',
-    margin: '0 auto',
-    padding: '10px',
-  } as React.CSSProperties,
-  header: {
-    textAlign: 'center' as const,
-    marginBottom: '20px',
-  } as React.CSSProperties,
-  title: {
-    fontSize: '2rem',
-    fontWeight: 'bold',
-    background: 'linear-gradient(90deg, #a5c4d4, #e8f4f8, #a5c4d4)',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent',
-    marginBottom: '10px',
-    textShadow: '0 0 30px rgba(165, 196, 212, 0.3)',
-  } as React.CSSProperties,
-  subtitle: {
-    color: '#7a9aaf',
-    fontSize: '0.9rem',
-  } as React.CSSProperties,
-  controls: {
-    display: 'flex',
-    gap: '10px',
-    justifyContent: 'center',
-    marginBottom: '30px',
-    paddingTop: 'calc(12px + env(safe-area-inset-top))',
-    flexWrap: 'wrap' as const,
-  } as React.CSSProperties,
-  button: {
-    padding: '10px 20px',
-    fontSize: '0.9rem',
-    fontWeight: 'bold',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-  } as React.CSSProperties,
-  iconButton: {
-    padding: '8px',
-    fontSize: '1.5rem',
-    fontWeight: 'bold',
-    border: 'none',
-    borderRadius: '50%',
-    cursor: 'pointer',
-    background: 'transparent',
-    color: 'rgba(255,255,255,0.7)',
-    transition: 'all 0.2s',
-    textShadow: '0 2px 8px rgba(0,0,0,0.5)',
-    width: '44px',
-    height: '44px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative' as const,
-  } as React.CSSProperties,
-  badge: {
-    position: 'absolute' as const,
-    top: '-5px',
-    right: '-5px',
-    background: '#e74c3c',
-    color: '#fff',
-    fontSize: '0.65rem',
-    fontWeight: 'bold',
-    borderRadius: '50%',
-    width: '18px',
-    height: '18px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  } as React.CSSProperties,
-  startButton: {
-    color: '#FFFFFF',
-  } as React.CSSProperties,
-  stopButton: {
-    color: '#ED5A24',
-  } as React.CSSProperties,
-  recordButton: {
-    color: '#FF4444',
-  } as React.CSSProperties,
-  recordArmedButton: {
-    color: '#FF4444',
-    border: '2px solid #FF4444',
-    animation: 'pulse 2s ease-in-out infinite',
-  } as React.CSSProperties,
-  recordingButton: {
-    color: '#FF4444',
-    animation: 'pulse 1s ease-in-out infinite',
-  } as React.CSSProperties,
-  visualizerButton: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: '0.92rem',
-    lineHeight: 1,
-  } as React.CSSProperties,
-  visualizerButtonActive: {
-    color: 'rgba(255,255,255,0.88)',
-    background: 'rgba(255, 255, 255, 0.08)',
-    border: '1px solid rgba(255, 255, 255, 0.18)',
-    boxShadow: '0 0 14px rgba(255, 255, 255, 0.08)',
-  } as React.CSSProperties,
-  journeyOverrideOverlay: {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 10000,
-    display: 'flex',
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    padding: 'calc(76px + env(safe-area-inset-top)) 14px 14px',
-    background: 'rgba(0, 0, 0, 0.48)',
-    boxSizing: 'border-box',
-  } as React.CSSProperties,
-  journeyOverrideDialog: {
-    width: 'min(360px, 100%)',
-    borderRadius: '8px',
-    border: '1px solid rgba(232, 220, 196, 0.28)',
-    background: 'rgba(20, 20, 35, 0.92)',
-    boxShadow: '0 18px 52px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.08)',
-    padding: '16px',
-    color: '#f4ede4',
-  } as React.CSSProperties,
-  journeyOverrideHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    marginBottom: '10px',
-  } as React.CSSProperties,
-  journeyOverrideIcon: {
-    width: '30px',
-    height: '30px',
-    borderRadius: '7px',
-    display: 'grid',
-    placeItems: 'center',
-    background: 'rgba(184,224,255,0.12)',
-    color: '#B8E0FF',
-    fontSize: '1.05rem',
-    flexShrink: 0,
-  } as React.CSSProperties,
-  journeyOverrideTitle: {
-    color: '#B8E0FF',
-    fontSize: '0.9rem',
-    fontWeight: 800,
-    letterSpacing: 0,
-  } as React.CSSProperties,
-  journeyOverrideBody: {
-    color: 'rgba(244,237,228,0.76)',
-    fontSize: '0.82rem',
-    lineHeight: 1.45,
-    marginBottom: '14px',
-  } as React.CSSProperties,
-  journeyOverrideStrong: {
-    color: '#f4ede4',
-    fontWeight: 800,
-  } as React.CSSProperties,
-  journeyOverrideActions: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    gap: '8px',
-  } as React.CSSProperties,
-  journeyOverrideSecondaryButton: {
-    height: '34px',
-    padding: '0 12px',
-    borderRadius: '6px',
-    border: '1px solid rgba(255,255,255,0.14)',
-    background: 'rgba(255,255,255,0.06)',
-    color: '#f4ede4',
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-    fontWeight: 700,
-  } as React.CSSProperties,
-  journeyOverridePrimaryButton: {
-    height: '34px',
-    padding: '0 12px',
-    borderRadius: '6px',
-    border: '1px solid rgba(184,224,255,0.38)',
-    background: 'rgba(184,224,255,0.18)',
-    color: '#B8E0FF',
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-    fontWeight: 800,
-  } as React.CSSProperties,
-  macAudioStatus: {
-    position: 'fixed',
-    left: '14px',
-    bottom: 'calc(14px + env(safe-area-inset-bottom))',
-    zIndex: 1300,
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    maxWidth: 'min(520px, calc(100vw - 28px))',
-    padding: '8px 10px',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
-    borderRadius: '8px',
-    background: 'rgba(6, 10, 14, 0.82)',
-    boxShadow: '0 10px 24px rgba(0, 0, 0, 0.22)',
-    backdropFilter: 'blur(12px)',
-  } as React.CSSProperties,
-  backgroundAudioStatus: {
-    position: 'fixed',
-    right: '14px',
-    bottom: 'calc(14px + env(safe-area-inset-bottom))',
-    zIndex: 1300,
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    maxWidth: 'min(620px, calc(100vw - 28px))',
-    padding: '8px 10px',
-    border: '1px solid rgba(184, 224, 255, 0.16)',
-    borderRadius: '8px',
-    background: 'rgba(6, 10, 14, 0.82)',
-    boxShadow: '0 10px 24px rgba(0, 0, 0, 0.22)',
-    backdropFilter: 'blur(12px)',
-  } as React.CSSProperties,
-  macAudioStatusText: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    color: 'rgba(255, 255, 255, 0.72)',
-    fontSize: '0.72rem',
-    fontWeight: 700,
-  } as React.CSSProperties,
-  macAudioStatusButton: {
-    flex: '0 0 auto',
-    minHeight: '26px',
-    padding: '5px 9px',
-    border: '1px solid rgba(255, 255, 255, 0.16)',
-    borderRadius: '7px',
-    background: 'rgba(255, 255, 255, 0.06)',
-    color: 'rgba(255, 255, 255, 0.68)',
-    cursor: 'pointer',
-    fontSize: '0.68rem',
-    fontWeight: 800,
-    lineHeight: 1,
-  } as React.CSSProperties,
-  macAudioStatusButtonActive: {
-    borderColor: 'rgba(94, 234, 212, 0.45)',
-    background: 'rgba(20, 184, 166, 0.18)',
-    color: '#99f6e4',
-  } as React.CSSProperties,
-  statusButtonDisabled: {
-    opacity: 0.45,
-    cursor: 'not-allowed',
-  } as React.CSSProperties,
-  snowflakeControls: {
-    position: 'fixed' as const,
-    bottom: '30px',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    display: 'flex',
-    gap: '20px',
-    zIndex: 1000,
-  } as React.CSSProperties,
-  simpleButton: {
-    color: 'rgba(255,255,255,0.7)',
-  } as React.CSSProperties,
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))',
-    gap: '15px',
-    marginBottom: '30px',
-  } as React.CSSProperties,
-  panel: {
-    background: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: '12px',
-    padding: '15px',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    overflow: 'hidden',
-    maxWidth: '100%',
-  } as React.CSSProperties,
-  panelTitle: {
-    fontSize: '1.1rem',
-    fontWeight: 'bold',
-    marginBottom: '15px',
-    color: '#a5c4d4',
-  } as React.CSSProperties,
-  sliderGroup: {
-    marginBottom: '12px',
-  } as React.CSSProperties,
-  sliderLabel: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    marginBottom: '5px',
-    fontSize: '0.85rem',
-    minWidth: 0,
-    gap: '4px',
-  } as React.CSSProperties,
-  select: {
-    width: '100%',
-    padding: '8px',
-    borderRadius: '6px',
-    border: '1px solid rgba(255, 255, 255, 0.2)',
-    background: 'rgba(0, 0, 0, 0.3)',
-    color: 'white',
-    fontSize: '0.9rem',
-    colorScheme: 'dark',
-  } as React.CSSProperties,
-  tabBar: {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: '4px',
-    padding: '8px 16px',
-    background: 'rgba(18, 17, 15, 0.6)',
-    borderRadius: '12px',
-    marginBottom: '16px',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-  } as React.CSSProperties,
-  tab: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    alignItems: 'center',
-    gap: '4px',
-    padding: '8px 16px',
-    background: 'transparent',
-    border: '1px solid transparent',
-    borderRadius: '8px',
-    color: '#666',
-    fontSize: '0.75rem',
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-    minWidth: '60px',
-  } as React.CSSProperties,
-  tabActive: {
-    background: 'rgba(247, 250, 252, 0.09)',
-    color: '#F7FAFC',
-    border: '1px solid rgba(247, 250, 252, 0.24)',
-    boxShadow: '0 0 14px rgba(247, 250, 252, 0.08)',
-  } as React.CSSProperties,
-  tabIcon: {
-    fontSize: '1.2rem',
-    lineHeight: 1,
-  } as React.CSSProperties,
-  debugPanel: {
-    background: 'rgba(15, 25, 40, 0.4)',
-    borderRadius: '12px',
-    padding: '20px',
-    border: '1px solid rgba(100, 150, 200, 0.3)',
-    fontFamily: 'monospace',
-    fontSize: '0.85rem',
-    overflow: 'hidden',
-    maxWidth: '100%',
-  } as React.CSSProperties,
-  debugRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    marginBottom: '8px',
-    gap: '8px',
-    flexWrap: 'wrap' as const,
-  } as React.CSSProperties,
-  debugLabel: {
-    color: '#9ca3af',
-    flexShrink: 0,
-  } as React.CSSProperties,
-  debugValue: {
-    color: '#a5c4d4',
-    fontWeight: 'bold',
-    wordBreak: 'break-all' as const,
-    minWidth: 0,
-  } as React.CSSProperties,
-  copied: {
-    color: '#2ecc71',
-    fontSize: '0.85rem',
-    marginTop: '10px',
-    textAlign: 'center' as const,
-  } as React.CSSProperties,
-};
-
 // Dual slider state type - stores min/max for each parameter when in dual mode
 type DualSliderState = Partial<Record<keyof SliderState, DualSliderRange>>;
 
@@ -902,496 +279,10 @@ function extractNativeDualRanges(ranges: DualSliderState): Record<string, { min:
   return output;
 }
 
-type AdvancedTab = 'global' | 'visualizer' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'texture' | 'routing';
-type AdvancedEditorTab = Exclude<AdvancedTab, 'visualizer'>;
-
-const ADVANCED_TAB_COLORS: Record<AdvancedTab, string> = {
-  global: SOURCE_COLORS.global,
-  visualizer: SOURCE_COLORS.visualizer,
-  synth: SOURCE_COLORS.synth,
-  drums: SOURCE_COLORS.drums,
-  reverb: SOURCE_COLORS.reverb,
-  granular: SOURCE_COLORS.granular,
-  earth: SOURCE_COLORS.earth,
-  delay: SOURCE_COLORS.delayA,
-  texture: SOURCE_COLORS.dynamics,
-  routing: SOURCE_COLORS.routing,
-};
-
-const ADVANCED_EDITOR_TABS = [
-  {
-    id: 'global',
-    helpKey: 'tabGlobal',
-    symbol: APP_TAB_SYMBOLS.global,
-    label: 'Global',
-  },
-  {
-    id: 'synth',
-    helpKey: 'tabSynth',
-    symbol: APP_TAB_SYMBOLS.synth,
-    label: 'Synth',
-  },
-  {
-    id: 'drums',
-    helpKey: 'tabDrums',
-    symbol: APP_TAB_SYMBOLS.drums,
-    label: 'Drums',
-  },
-  {
-    id: 'earth',
-    helpKey: 'tabEarth',
-    symbol: APP_TAB_SYMBOLS.earth,
-    label: 'Earth',
-  },
-  {
-    id: 'granular',
-    helpKey: 'tabGranular',
-    symbol: APP_TAB_SYMBOLS.granular,
-    label: 'Granular',
-  },
-  {
-    id: 'delay',
-    helpKey: 'tabDelay',
-    symbol: APP_TAB_SYMBOLS.delay,
-    label: 'Delay',
-  },
-  {
-    id: 'reverb',
-    helpKey: 'tabReverb',
-    symbol: APP_TAB_SYMBOLS.reverb,
-    label: 'Reverb',
-  },
-  {
-    id: 'texture',
-    helpKey: 'tabDynamics',
-    symbol: APP_TAB_SYMBOLS.dynamics,
-    label: 'Texture',
-  },
-  {
-    id: 'routing',
-    helpKey: 'tabRouting',
-    symbol: APP_TAB_SYMBOLS.routing,
-    label: 'Routing',
-  },
-] as const satisfies readonly {
-  id: AdvancedEditorTab;
-  helpKey: string;
-  symbol: string;
-  label: string;
-}[];
-
-const getAdvancedTabActiveStyle = (accent: string): React.CSSProperties => ({
-  background: `color-mix(in srgb, ${accent} 15%, transparent)`,
-  color: `color-mix(in srgb, ${accent} 88%, white 12%)`,
-  border: `1px solid color-mix(in srgb, ${accent} 34%, rgba(255, 255, 255, 0.08))`,
-  boxShadow: `0 0 14px color-mix(in srgb, ${accent} 18%, transparent)`,
-});
-
-const ADVANCED_TAB_SHORTCUTS: Record<string, AdvancedTab> = {
-  '1': 'global',
-  '2': 'synth',
-  '3': 'drums',
-  '4': 'earth',
-  '5': 'granular',
-  '6': 'delay',
-  '7': 'reverb',
-  '8': 'texture',
-  '9': 'routing',
-};
-
-type TopLevelShortcutTarget = 'snowflake' | 'journey';
-
-const TOP_LEVEL_SHORTCUTS: Record<string, TopLevelShortcutTarget | AdvancedTab> = {
-  '0': 'snowflake',
-  Digit0: 'snowflake',
-  '-': 'journey',
-  Minus: 'journey',
-  '=': 'visualizer',
-  Equal: 'visualizer',
-  '`': 'routing',
-  Backquote: 'routing',
-};
-
-function isEditableShortcutTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  return !!target.closest('input, textarea, select, [contenteditable="true"]');
-}
-
-// Logarithmic scaling helpers for frequency and time sliders.
-function linearToLog(value: number, min: number, max: number): number {
-  const minLog = Math.log(min);
-  const maxLog = Math.log(max);
-  return Math.exp(minLog + value * (maxLog - minLog));
-}
-
-function logToLinear(value: number, min: number, max: number): number {
-  const minLog = Math.log(min);
-  const maxLog = Math.log(max);
-  return (Math.log(value) - minLog) / (maxLog - minLog);
-}
-
-function getEffectiveLogMin(min: number, max: number, step: number): number | null {
-  if (max <= 0) return null;
-  if (min > 0) return min;
-  const stepFloor = step > 0 ? step : max * 0.001;
-  return Math.max(1e-9, Math.min(max, stepFloor));
-}
-
-// Slider component - now a simple component, DualSlider handles dual mode
-interface SliderProps {
-  label: string;
-  value: number;
-  paramKey: keyof SliderState;
-  ghostValue?: number;
-  format?: (value: number) => string;
-  unit?: string;
-  min?: number;
-  max?: number;
-  step?: number;
-  logarithmic?: boolean; // Use logarithmic scaling (for frequency params)
-  helpPage?: SliderPageId;
-  disabled?: boolean;
-  onChange: (key: keyof SliderState, value: number) => void;
-  // Dual slider props (optional)
-  mode?: SliderMode;
-  dualRange?: DualSliderRange;
-  walkPosition?: number;
-  isFlashing?: boolean;
-  onCycleMode?: (key: keyof SliderState) => void;
-  onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
-}
-
-const WALK_ONLY_DUAL_KEYS = new Set<string>([
-  'waterChannelsMorph',
-  'waterChannelsSpeed',
-  'insectsDensity',
-  'insectsTemperature',
-  'insectsDistance',
-  'insectsProximity',
-  'insectsAntiphony',
-  'insectsClickRate',
-  'insectsMotion',
-  'insects2Density',
-  'insects2Temperature',
-  'insects2Distance',
-  'insects2Proximity',
-  'insects2Antiphony',
-  'insects2ClickRate',
-  'insects2Motion',
-]);
-
-const SINGLE_ONLY_SLIDER_KEYS = new Set<string>();
-
-function clampQuantizedSliderValue(key: keyof SliderState, value: number): number {
-  const info = getParamInfo(key);
-  if (!info) return value;
-  return quantize(key, Math.max(info.min, Math.min(info.max, value)));
-}
-
-function normalizePadFilterCutoffPairs(state: SliderState, changedKey?: keyof SliderState): SliderState {
-  const record = state as unknown as Record<string, SliderState[keyof SliderState] | number>;
-  const changedKeyStr = changedKey as string | undefined;
-
-  for (const pair of PAD_FILTER_CUTOFF_KEY_PAIRS) {
-    const { minKey, maxKey } = pair;
-    const minKeyName = String(minKey);
-    const maxKeyName = String(maxKey);
-    const minInfo = getParamInfo(minKey);
-    const maxInfo = getParamInfo(maxKey);
-    if (!minInfo || !maxInfo) continue;
-
-    const rawMin = getSliderNumericValue(minKey, state[minKey]);
-    const rawMax = getSliderNumericValue(maxKey, state[maxKey]);
-    if (rawMin === null || rawMax === null) continue;
-
-    const step = Math.max(minInfo.step, maxInfo.step, 1e-6);
-    let min = clampQuantizedSliderValue(minKey, rawMin);
-    let max = clampQuantizedSliderValue(maxKey, rawMax);
-
-    if (min >= max) {
-      if (changedKeyStr === minKeyName) {
-        max = clampQuantizedSliderValue(maxKey, min + step);
-        if (min >= max) min = clampQuantizedSliderValue(minKey, max - step);
-      } else if (changedKeyStr === maxKeyName) {
-        min = clampQuantizedSliderValue(minKey, max - step);
-        if (min >= max) max = clampQuantizedSliderValue(maxKey, min + step);
-      } else {
-        const low = Math.min(min, max);
-        const high = Math.max(min, max);
-        min = clampQuantizedSliderValue(minKey, low);
-        max = clampQuantizedSliderValue(maxKey, high);
-        if (min >= max) {
-          max = clampQuantizedSliderValue(maxKey, min + step);
-          if (min >= max) min = clampQuantizedSliderValue(minKey, max - step);
-        }
-      }
-    }
-
-    record[pair.minKey] = getStateValueFromSliderNumber(minKey, min) as SliderState[keyof SliderState];
-    record[pair.maxKey] = getStateValueFromSliderNumber(maxKey, max) as SliderState[keyof SliderState];
-  }
-
-  return state;
-}
-
-const FX_BUS_LABELS = {
-  delayA: 'Delay A',
-  delayB: 'Delay B',
-  granular: 'Granular',
-  reverb: 'Reverb',
-} as const;
-
-const FX_OWNER_LABELS = {
-  pad1: 'Pad 1',
-  pad2: 'Pad 2',
-  lead1: 'Lead 1',
-  lead2: 'Lead 2',
-  piano: 'Piano',
-  drum: 'Drums',
-} as const;
-
-const FX_ORIGIN_LABELS = {
-  padChord: 'Chord',
-  padEuclid: 'Euclid',
-  leadNote: 'Lead Note',
-  pianoNote: 'Piano Note',
-  drumHit: 'Drum Hit',
-} as const;
-
-function normalizeDualSliderMode(key: string, mode?: SliderMode): SliderMode | undefined {
-  if (!mode) return mode;
-  if (SINGLE_ONLY_SLIDER_KEYS.has(key)) return undefined;
-  return WALK_ONLY_DUAL_KEYS.has(key) && mode === 'sampleHold' ? 'walk' : mode;
-}
-
-const Slider: React.FC<SliderProps> = ({
-  label,
-  value,
-  paramKey,
-  ghostValue,
-  format,
-  unit,
-  min,
-  max,
-  step,
-  logarithmic,
-  helpPage,
-  disabled = false,
-  onChange,
-  mode = 'single',
-  dualRange,
-  walkPosition,
-  isFlashing,
-  onCycleMode,
-  onDualRangeChange,
-}) => {
-  const { announceSlider } = useSliderHelp();
-  const midiLearn = useMidiLearn();
-  const announceHelp = () => announceSlider(String(paramKey), { label, page: helpPage });
-  const baseInfo = getParamInfo(paramKey);
-  if (!baseInfo) return null;
-
-  const info = {
-    ...baseInfo,
-    min: min ?? baseInfo.min,
-    max: max ?? baseInfo.max,
-    step: step ?? baseInfo.step,
-  };
-
-  const quantizeWithInfo = (_key: keyof SliderState, nextValue: number): number => {
-    const clamped = Math.max(info.min, Math.min(info.max, nextValue));
-    const stepSize = Math.max(info.step, 1e-9);
-    const steps = Math.round((clamped - info.min) / stepSize);
-    return info.min + steps * stepSize;
-  };
-
-  // If dual mode props are provided, use shared DualSlider
-  if (onCycleMode && onDualRangeChange && !SINGLE_ONLY_SLIDER_KEYS.has(String(paramKey))) {
-    return (
-      <DualSlider<keyof SliderState>
-        label={label}
-        value={value}
-        paramKey={paramKey}
-        paramInfo={info}
-        quantizeFn={quantizeWithInfo}
-        unit={unit}
-        logarithmic={logarithmic}
-        format={format}
-        ghostValue={ghostValue}
-        helpPage={helpPage}
-        disabled={disabled}
-        mode={mode}
-        dualRange={dualRange}
-        walkPosition={walkPosition}
-        isFlashing={isFlashing}
-        onChange={onChange}
-        onCycleMode={onCycleMode}
-        onDualRangeChange={onDualRangeChange}
-        groupStyle={styles.sliderGroup}
-      />
-    );
-  }
-
-  // Fallback sliders still use the same primitive; they just do not expose dual-mode editing.
-  const valueToPercent = (nextValue: number) => {
-    const clampedValue = Math.max(info.min, Math.min(info.max, nextValue));
-    const effectiveLogMin = logarithmic ? getEffectiveLogMin(info.min, info.max, info.step) : null;
-    if (effectiveLogMin != null) {
-      if (clampedValue <= info.min) return 0;
-      return logToLinear(Math.max(effectiveLogMin, clampedValue), effectiveLogMin, info.max) * 100;
-    }
-    return ((clampedValue - info.min) / Math.max(1e-9, info.max - info.min)) * 100;
-  };
-
-  const percentToValue = (percent: number) => {
-    const normalized = Math.max(0, Math.min(100, percent)) / 100;
-    const effectiveLogMin = logarithmic ? getEffectiveLogMin(info.min, info.max, info.step) : null;
-    const raw = effectiveLogMin != null
-      ? (normalized <= 0 && info.min <= 0 ? info.min : linearToLog(normalized, effectiveLogMin, info.max))
-      : info.min + normalized * (info.max - info.min);
-    return quantizeWithInfo(paramKey, raw);
-  };
-
-  const formatDisplayValue = (nextValue: number) => (format ? format(nextValue) : info.step < 1 ? nextValue.toFixed(2) : String(Math.round(nextValue)));
-  const displayValue = formatDisplayValue(value);
-  const valuePercent = valueToPercent(value);
-  const ghostPercent = ghostValue == null || !Number.isFinite(ghostValue) ? null : valueToPercent(ghostValue);
-
-  return (
-    <SliderPrimitive
-      className="app-slider-group"
-      style={{ ...styles.sliderGroup, opacity: disabled ? 0.58 : 1 }}
-      label={label}
-      mode="single"
-      value={valuePercent}
-      unit={unit}
-      hero="#a5c4d4"
-      variant="full"
-      density="compact"
-      displayValue={`${displayValue}${unit || ''}`}
-      formatValue={(percent) => formatDisplayValue(percentToValue(percent))}
-      ghostValue={ghostPercent ?? undefined}
-      disabled={disabled}
-      onAnnounce={announceHelp}
-      onValueGestureStart={() => {
-        midiLearn.notifySliderDrag(paramKey, label);
-      }}
-      headAdornment={<MidiLearnSliderAdornment paramKey={paramKey} label={label} />}
-      onValueChange={(nextPercent) => {
-        if (disabled) return;
-        onChange(paramKey, percentToValue(nextPercent));
-      }}
-    />
-  );
-};
-
-const HelpButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { helpKey: string }> = ({ helpKey, onMouseEnter, onPointerDown, onFocus, ...props }) => {
-  const { announceHelp } = useSliderHelp();
-  const triggerHelp = useCallback(() => {
-    announceHelp(helpKey);
-  }, [announceHelp, helpKey]);
-
-  return (
-    <button
-      {...props}
-      onMouseEnter={(e) => {
-        triggerHelp();
-        onMouseEnter?.(e);
-      }}
-      onPointerDown={(e) => {
-        triggerHelp();
-        onPointerDown?.(e);
-      }}
-      onFocus={(e) => {
-        triggerHelp();
-        onFocus?.(e);
-      }}
-    />
-  );
-};
-
-// Select component
-interface SelectProps<T extends string> {
-  label: string;
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (value: T) => void;
-  onMouseEnter?: React.MouseEventHandler<HTMLDivElement>;
-  onPointerDown?: React.PointerEventHandler<HTMLDivElement>;
-  onFocus?: React.FocusEventHandler<HTMLSelectElement>;
-}
-
-function Select<T extends string>({ label, value, options, onChange, onMouseEnter, onPointerDown, onFocus }: SelectProps<T>) {
-  return (
-    <div className="app-slider-group" style={styles.sliderGroup} onMouseEnter={onMouseEnter} onPointerDown={onPointerDown}>
-      <div className="app-slider-label" style={styles.sliderLabel}>
-        <span
-          style={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            minWidth: 0,
-          }}
-        >
-          {label}
-        </span>
-      </div>
-      <select value={value} onChange={(e) => onChange(e.target.value as T)} onFocus={onFocus} className="app-select" style={{ ...styles.select, maxWidth: '100%' }}>
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
 // Main App
 
 const App: React.FC = () => {
-  // Splash screen state
-  const [showSplash, setShowSplash] = useState(true);
-  const [splashOpacity, setSplashOpacity] = useState(0);
-
-  // Splash gradient colors - procedurally generated from app's color palette
-  const [splashGradient] = useState(() => {
-    // App color palette (from SnowflakeUI prongs):
-    // #F7FAFC text white, #C4724E muted orange, #7B9A6D sage green
-    // #D4A520 mustard gold, #8B5CF6 purple, #5A7B8A slate blue
-    // #3C7181 teal, #C1930A gold accent
-    const palettes = [
-      { baseHue: 25, name: 'orange' }, // Muted orange (#C4724E)
-      { baseHue: 95, name: 'sage' }, // Sage green (#7B9A6D)
-      { baseHue: 45, name: 'gold' }, // Mustard gold (#D4A520)
-      { baseHue: 265, name: 'purple' }, // Purple (#8B5CF6)
-      { baseHue: 200, name: 'slate' }, // Slate blue (#5A7B8A)
-      { baseHue: 190, name: 'teal' }, // Teal (#3C7181)
-    ];
-
-    const palette = palettes[Math.floor(Math.random() * palettes.length)] ?? palettes[0]!;
-    const hueVariation = (Math.random() - 0.5) * 20;
-
-    // Muted, desaturated colors to blend with dark theme
-    const inner = `hsl(${palette.baseHue + hueVariation}, ${30 + Math.random() * 15}%, ${40 + Math.random() * 12}%)`;
-    const mid = `hsl(${palette.baseHue}, ${35 + Math.random() * 12}%, ${30 + Math.random() * 8}%)`;
-    const outer = `hsl(${palette.baseHue - 10}, ${25 + Math.random() * 10}%, ${15 + Math.random() * 6}%)`;
-
-    return { inner, mid, outer };
-  });
-
-  // Window size for splash gradient circle sizing
-  const [windowSize, setWindowSize] = useState({
-    width: typeof window !== 'undefined' ? window.innerWidth : 800,
-    height: typeof window !== 'undefined' ? window.innerHeight : 600,
-  });
-
-  useEffect(() => {
-    const handleResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  const { showSplash, splashOpacity, splashGradient, windowSize } = useAppSplash();
 
   const { macShellAvailable, cloudPresetAllowed, usesCapacitorLocalPresetLibrary, usesCloudBackedStatePresetLibrary, shouldInitializeCloudPresetStore } =
     usePlatformRuntimeCapabilities({
@@ -1420,22 +311,6 @@ const App: React.FC = () => {
     usesCloudBackedStatePresetLibrary,
   });
 
-  // Splash screen animation
-  useEffect(() => {
-    // Fade in
-    const fadeInTimer = setTimeout(() => setSplashOpacity(1), 100);
-    // Hold
-    const holdTimer = setTimeout(() => setSplashOpacity(0), 3750);
-    // Hide splash
-    const hideTimer = setTimeout(() => setShowSplash(false), 5250);
-
-    return () => {
-      clearTimeout(fadeInTimer);
-      clearTimeout(holdTimer);
-      clearTimeout(hideTimer);
-    };
-  }, []);
-
   // Load initial state from URL or defaults
   const [state, setState] = useState<SliderState>(() => resolveProductRuntimeInitialState({ normalizeState: normalizePresetForWeb }));
   const [routingMuteGroups, setRoutingMuteGroups] = useState<RoutingMuteGroupsState>(() => loadRoutingMuteGroupsState());
@@ -1443,7 +318,6 @@ const App: React.FC = () => {
   const [dawOutputDevice, setDawOutputDevice] = useState<DawOutputDeviceSelection>(() => loadDawOutputDeviceSelection());
   const stateRef = useRef(state);
   stateRef.current = state;
-  const routingMuteGroupRuntimeLevelsRef = useRef<Partial<Record<keyof SliderState, number>>>({});
   const pendingImmediateLeadPresetSyncRef = useRef(false);
   const padMorphEndpointOverridesRef = useRef<PadMorphEndpointOverrides>(createPadMorphEndpointOverrides());
   const { productRuntimeMode } = useProductRuntimeSession();
@@ -1474,49 +348,7 @@ const App: React.FC = () => {
     setCapacitorAudioSessionDiagnosticActive,
     stateRef,
   });
-  const activeDawOutputSources = useMemo(
-    () => getActiveDawOutputSourceIds(state) as DawOutputSourceId[],
-    [
-      state.padEnabled,
-      state.pad2Enabled,
-      state.leadEnabled,
-      state.lead2Enabled,
-      state.pianoEnabled,
-      state.drumEnabled,
-      state.granularEnabled,
-      state.oceanSampleEnabled,
-      state.waterEnabled,
-      state.insectsEnabled,
-      state.insects2Enabled,
-      state.birdsEnabled,
-      state.birds2Enabled,
-      state.frogsEnabled,
-      state.delayAEnabled,
-      state.granularDelayEnabled,
-      state.degradeEnabled,
-      state.driftEnabled,
-      state.erosionEnabled,
-      state.dynamicsSaturationEnabled,
-      state.degradeReverbSend,
-      state.reverbDegradeSend,
-      state.reverbEnabled,
-      state.dynamicsEnabled,
-    ],
-  );
-
-  useEffect(() => {
-    const config = sanitizeDawOutputRoutingConfig(dawOutputRouting);
-    saveDawOutputRoutingConfig(config);
-    productRuntimePort.setDawOutputRouting(filterDawOutputRoutingConfigForSources(config, activeDawOutputSources));
-  }, [activeDawOutputSources, dawOutputRouting]);
-
-  useEffect(() => {
-    const selection = sanitizeDawOutputDeviceSelection(dawOutputDevice);
-    saveDawOutputDeviceSelection(selection);
-    void productRuntimePort.setDawOutputDeviceId(selection.deviceId || null).catch((error: unknown) => {
-      console.warn('DAW output device selection failed:', error);
-    });
-  }, [dawOutputDevice]);
+  useProductDawOutputSync({ state, dawOutputRouting, dawOutputDevice });
 
   useEffect(() => {
     saveRoutingMuteGroupsState(routingMuteGroups);
@@ -1622,37 +454,21 @@ const App: React.FC = () => {
     updateSelectedReferenceParams: updateProductReferenceParams,
   });
 
-  const applyRoutingMuteGroupRuntimeLevels = useCallback((sourceState: SliderState): SliderState => {
-    const runtimeLevels = routingMuteGroupRuntimeLevelsRef.current;
-    return Object.keys(runtimeLevels).length > 0
-      ? ({ ...sourceState, ...runtimeLevels } as SliderState)
-      : sourceState;
-  }, []);
+  const {
+    applyRoutingMuteGroupRuntimeLevels,
+    handleRoutingMuteGroupRuntimeLevelPatchChange,
+  } = useRoutingMuteGroupRuntimeLevelSync({
+    stateRef,
+    scheduleProductRuntimeParamUpdate,
+  });
 
-  const handleRoutingMuteGroupRuntimeLevelChange = useCallback((key: keyof SliderState, value: number | null) => {
-    const nextRuntimeLevels = { ...routingMuteGroupRuntimeLevelsRef.current };
-    if (value === null) {
-      delete nextRuntimeLevels[key];
-    } else if (Number.isFinite(value)) {
-      nextRuntimeLevels[key] = value;
-    }
-    routingMuteGroupRuntimeLevelsRef.current = nextRuntimeLevels;
-    scheduleProductRuntimeParamUpdate(applyRoutingMuteGroupRuntimeLevels(stateRef.current), {
-      immediate: true,
-      reason: 'ui-control-change',
-    });
-  }, [applyRoutingMuteGroupRuntimeLevels, scheduleProductRuntimeParamUpdate]);
-
+  const {
+    getCurrentDrumMorphOverrideState: getProductDrumMorphOverrideState,
+    dispatchDrumMorphProductControlAction,
+  } = useProductDrumMorphOverrides();
   const getCurrentDrumMorphOverrideState = useCallback(
-    (sourceState: SliderState = stateRef.current): ProductDrumMorphOverrideState =>
-      getProductControlStateForProductEngine(productRuntimePort, sourceState).drumMorphOverrides,
-    [],
-  );
-
-  const dispatchDrumMorphProductControlAction = useCallback(
-    (sourceState: SliderState, action: ProductControlAction): ProductDrumMorphOverrideState =>
-      dispatchProductControlActionForProductEngine(productRuntimePort, sourceState, action).drumMorphOverrides,
-    [],
+    (sourceState: SliderState = stateRef.current) => getProductDrumMorphOverrideState(sourceState),
+    [getProductDrumMorphOverrideState],
   );
 
   const productRuntimeManualTriggers = useProductRuntimeManualTriggers({
@@ -1746,7 +562,7 @@ const App: React.FC = () => {
     stateRef,
     uiMode,
   });
-  const productCoreDebugSummary = useProductCoreDebugSummary(productRuntimeMode, productRuntimePort);
+  const productCoreDebugSummary = useProductCoreDebugSummary(productRuntimeMode);
   // Snowflake welcome state: local-only six-arm macro seed until playback, preset load, or advanced mode activation.
   const [snowflakeActivated, setSnowflakeActivated] = useState(startInAdvancedEditor);
   const [welcomeDisplayState, setWelcomeDisplayState] = useState<SliderState>(() => createSignedSnowflakeWelcomeState());
@@ -2609,7 +1425,6 @@ const App: React.FC = () => {
 
   useProductRuntimeParityProbe({
     enabled: isSonicParityMode(),
-    runtime: productRuntimePort,
     productRuntimeSupportsRangeKey,
     setActiveTab,
     setDualSliderRanges,
@@ -6032,7 +4847,7 @@ const App: React.FC = () => {
                 onRoutingMuteGroupsChange={setRoutingMuteGroups}
                 onParamChange={handleRoutingParamChange}
                 onColumnParamChange={handleRoutingColumnChange}
-                onRuntimeLevelChange={handleRoutingMuteGroupRuntimeLevelChange}
+                onRuntimeLevelPatchChange={handleRoutingMuteGroupRuntimeLevelPatchChange}
                 onBooleanParamChange={handleRoutingBooleanParamChange}
                 onToggleSource={handleRoutingSourceToggle}
                 onMidiMessage={pushProductMidiMessage}

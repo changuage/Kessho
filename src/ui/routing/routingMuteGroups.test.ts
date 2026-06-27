@@ -12,14 +12,18 @@ import {
   ROUTING_MUTE_GROUP_SOURCE_IDS,
   routingMuteGroupSlotMuteCount,
   setRoutingMuteGroupSlot,
+  type RoutingMuteGroupRuntimeLevelPatch,
   type RoutingMuteGroupScheduler,
 } from './routingMuteGroups';
 import { ROUTING_SOURCE_IDS } from './routingSourceRegistry';
 
 type LogEntry =
+  | { type: 'runtime-patch'; patch: RoutingMuteGroupRuntimeLevelPatch }
   | { type: 'runtime-level'; key: keyof SliderState; value: number | null }
   | { type: 'boolean'; key: keyof SliderState; value: boolean }
   | { type: 'active'; value: number | null };
+
+type ExpandedLogEntry = Exclude<LogEntry, { type: 'runtime-patch' }>;
 
 type ScheduledTask = {
   id: number;
@@ -80,8 +84,11 @@ function makeHarness(initialState: SliderState) {
     fadeUpMs: 10,
     enableSettleMs: 2,
     scheduler,
-    onRuntimeLevelChange: (key, value) => {
-      log.push({ type: 'runtime-level', key, value });
+    onRuntimeLevelPatchChange: (patch) => {
+      log.push({ type: 'runtime-patch', patch });
+      for (const [rawKey, value] of Object.entries(patch)) {
+        log.push({ type: 'runtime-level', key: rawKey as keyof SliderState, value: value ?? null });
+      }
     },
     onBooleanParamChange: (key, value) => {
       log.push({ type: 'boolean', key, value });
@@ -98,6 +105,10 @@ function makeHarness(initialState: SliderState) {
     log,
     getState: () => state,
   };
+}
+
+function expandedLog(log: LogEntry[]): ExpandedLogEntry[] {
+  return log.filter((entry): entry is ExpandedLogEntry => entry.type !== 'runtime-patch');
 }
 
 function testNormalizeFiltersIneligibleSources(): void {
@@ -291,9 +302,10 @@ function testTransitionOrderAndSendPreservation(): void {
   assert.equal(harness.getState().synthLevel, 0.7);
   assert.equal(harness.getState().pad1DelayASend, 0.44);
 
-  const releaseStart = harness.log.length;
+  const releaseStart = expandedLog(harness.log).length;
   harness.controller.release();
-  assert.deepStrictEqual(harness.log.slice(releaseStart, releaseStart + 2), [
+  const releaseExpandedLog = expandedLog(harness.log);
+  assert.deepStrictEqual(releaseExpandedLog.slice(releaseStart, releaseStart + 2), [
     { type: 'runtime-level', key: 'synthLevel', value: 0 },
     { type: 'boolean', key: 'padEnabled', value: true },
   ]);
@@ -301,9 +313,33 @@ function testTransitionOrderAndSendPreservation(): void {
   assert.equal(harness.getState().synthLevel, 0.7);
   assert.equal(harness.getState().padEnabled, true);
   assert.equal(harness.getState().pad1DelayASend, 0.44);
-  assert.deepStrictEqual(harness.log.slice(-1), [
+  assert.deepStrictEqual(expandedLog(harness.log).slice(-1), [
     { type: 'runtime-level', key: 'synthLevel', value: null },
   ]);
+}
+
+function testRuntimeRampUpdatesAreBatchedByStep(): void {
+  const harness = makeHarness(makeState({
+    padEnabled: true,
+    synthLevel: 0.8,
+    drumEnabled: true,
+    drumLevel: 0.9,
+  }));
+
+  harness.controller.recall({ mutedSourceIds: ['pad1', 'drums'] }, 0);
+  harness.scheduler.advanceBy(10);
+
+  const runtimePatches = harness.log.filter((entry) => entry.type === 'runtime-patch');
+  assert.equal(runtimePatches.length, 1);
+  assert.deepStrictEqual(runtimePatches[0], {
+    type: 'runtime-patch',
+    patch: {
+      synthLevel: 0,
+      drumLevel: 0,
+    },
+  });
+  assert.equal(harness.getState().synthLevel, 0.8);
+  assert.equal(harness.getState().drumLevel, 0.9);
 }
 
 function testFxReturnTransitionOrder(): void {
@@ -324,15 +360,16 @@ function testFxReturnTransitionOrder(): void {
   assert.equal(harness.getState().delayAMix, 0.66);
   assert.equal(harness.getState().delayAToBSend, 0.4);
 
-  const releaseStart = harness.log.length;
+  const releaseStart = expandedLog(harness.log).length;
   harness.controller.release();
   assert.deepStrictEqual(harness.controller.getEffectiveMutedSourceIds(), []);
-  assert.deepStrictEqual(harness.log.slice(releaseStart, releaseStart + 2), [
+  const releaseExpandedLog = expandedLog(harness.log);
+  assert.deepStrictEqual(releaseExpandedLog.slice(releaseStart, releaseStart + 2), [
     { type: 'runtime-level', key: 'delayAMix', value: 0 },
     { type: 'boolean', key: 'delayAEnabled', value: true },
   ]);
   harness.scheduler.advanceBy(13);
-  assert.deepStrictEqual(harness.log.slice(-1), [
+  assert.deepStrictEqual(expandedLog(harness.log).slice(-1), [
     { type: 'runtime-level', key: 'delayAMix', value: null },
   ]);
   assert.equal(harness.getState().delayAMix, 0.66);
@@ -392,7 +429,7 @@ function testPerformanceMuteSceneRecallAndRelease(): void {
     waterReverbSend: 0.77,
   }));
 
-  harness.controller.recall({
+  const normalizedSlot = normalizeRoutingMuteGroupSlot({
     mutedSourceIds: [],
     statePatch: {
       drumEuclid1Enabled: false,
@@ -404,7 +441,9 @@ function testPerformanceMuteSceneRecallAndRelease(): void {
       waterLayerSurf: 0,
       natureLevel: 0.25,
     },
-  }, 2);
+  });
+  assert.ok(normalizedSlot);
+  harness.controller.recall(normalizedSlot, 2);
 
   assert.equal(harness.getState().drumEuclid1Enabled, false);
   assert.equal(harness.getState().drumEuclid1Solo, true);
@@ -540,6 +579,7 @@ testCollectSequencerMuteBooleanKeysFromStateShape();
 testClearSlot();
 testSlotMetadataAndStoredEmptyScenes();
 testTransitionOrderAndSendPreservation();
+testRuntimeRampUpdatesAreBatchedByStep();
 testFxReturnTransitionOrder();
 testCaptureUsesEffectiveMutedSourcesDuringFade();
 testMultiEnabledKeyRowsRestoreSnapshots();

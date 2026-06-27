@@ -42,9 +42,14 @@ function transportDebugMatchesCurrent(
 export function useProductRuntimeStateRuntime({
   enabled,
   getProductTransportDebugState,
+  productRuntimeMode,
   setEngineState,
 }: ProductRuntimeStateRuntimeOptions): void {
   useEffect(() => {
+    if (productRuntimeMode !== 'core-product') {
+      productEngine.setStateChangeCallback(null);
+      return;
+    }
     productEngine.setStateChangeCallback((nextState) => {
       setEngineState((prev) => {
         const fxOwnersChanged = FX_OWNERSHIP_BUSES.some((bus) => {
@@ -83,7 +88,7 @@ export function useProductRuntimeStateRuntime({
     return () => {
       productEngine.setStateChangeCallback(null);
     };
-  }, [setEngineState]);
+  }, [productRuntimeMode, setEngineState]);
 
   const updateTransportDebug = useCallback(() => {
     const transportDebug = getProductTransportDebugState();

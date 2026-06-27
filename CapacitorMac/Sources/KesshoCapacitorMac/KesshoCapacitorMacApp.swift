@@ -4,6 +4,7 @@ import CoreMIDI
 import CoreAudio
 import Darwin
 import Foundation
+import KesshoNativeBridge
 import KesshoProductCore
 import Network
 import SwiftUI
@@ -104,33 +105,32 @@ final class KesshoMacRuntime: ObservableObject {
     }
 
     func handleBridgeMessage(_ body: Any) {
-        guard
-            let payload = body as? [String: Any],
-            let id = payload["id"] as? String,
-            let plugin = payload["plugin"] as? String,
-            let method = payload["method"] as? String
-        else {
+        let request: KesshoNativeBridgeRequest
+        do {
+            request = try KesshoNativeBridgePolicy.defaultKesshoPolicy.validate(body: body)
+        } catch {
+            if let payload = body as? [String: Any], let id = payload["id"] as? String {
+                rejectBridgeCall(id: id, message: error.localizedDescription)
+            }
             return
         }
 
-        let options = payload["options"] as? [String: Any] ?? [:]
-
         do {
-            switch plugin {
+            switch request.plugin {
             case "KesshoMidiRouting":
-                let result = try handleMidiMethod(method, options: options)
-                resolveBridgeCall(id: id, value: result)
+                let result = try handleMidiMethod(request.method, options: request.options)
+                resolveBridgeCall(id: request.id, value: result)
             case "KesshoAudioSession":
-                let result = try handleAudioSessionMethod(method, options: options)
-                resolveBridgeCall(id: id, value: result)
+                let result = try handleAudioSessionMethod(request.method, options: request.options)
+                resolveBridgeCall(id: request.id, value: result)
             case "KesshoMacShell":
-                let result = try handleShellMethod(method, options: options)
-                resolveBridgeCall(id: id, value: result)
+                let result = try handleShellMethod(request.method, options: request.options)
+                resolveBridgeCall(id: request.id, value: result)
             default:
-                throw BridgeError.unknownPlugin(plugin)
+                throw BridgeError.unknownPlugin(request.plugin)
             }
         } catch {
-            rejectBridgeCall(id: id, message: error.localizedDescription)
+            rejectBridgeCall(id: request.id, message: error.localizedDescription)
         }
     }
 
@@ -363,9 +363,11 @@ struct KesshoWebView: NSViewRepresentable {
         webView.allowsBackForwardNavigationGestures = false
         webView.customUserAgent = "KesshoCapacitorMac/1.0"
         webView.pageZoom = 1.0
+        #if DEBUG
         if #available(macOS 13.3, *) {
             webView.isInspectable = true
         }
+        #endif
 
         runtime.attach(webView)
         runtime.startWebApp { url in

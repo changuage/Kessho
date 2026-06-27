@@ -110,6 +110,29 @@ export interface PresetChildSpec {
 }
 
 const FLOAT_PRECISION = 1_000_000;
+// Existing V2 payload rows use SHA-256 over canonical JSON bytes only.
+// Bump this marker and migration self-tests before changing the hash input.
+export const PRESET_HASH_ALGORITHM = 'kessho-preset-json-sha256-v1';
+export const PRESET_PAYLOAD_CACHE_KEY_PREFIX = 'kessho:presetPayload:v2:';
+const PRESET_PAYLOAD_CACHE_MAX_BYTES = 5 * 1024 * 1024;
+const PRESET_PAYLOAD_CACHE_MAX_ENTRIES = 256;
+const PRESET_PAYLOAD_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const PRESET_TEXT_ENCODER = new TextEncoder();
+const HEX_BYTE_LOOKUP = Array.from({ length: 256 }, (_, byte) => byte.toString(16).padStart(2, '0'));
+
+type CachedPresetPayloadMemoryEntry = {
+  payload: unknown;
+  bytes: number;
+  lastAccess: number;
+};
+
+type CachedPresetPayloadStorageEntry = CachedPresetPayloadMemoryEntry & {
+  version: 1;
+  hash: string;
+  createdAt: number;
+};
+
+const presetPayloadMemoryCache = new Map<string, CachedPresetPayloadMemoryEntry>();
 
 function roundNumber(value: number): number {
   if (!Number.isFinite(value)) return value;
@@ -121,6 +144,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function compareCanonicalKeys(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 export function canonicalizeJson(value: unknown): unknown {
   if (value === undefined) return undefined;
   if (value === null) return null;
@@ -130,11 +157,14 @@ export function canonicalizeJson(value: unknown): unknown {
     return value.map(item => canonicalizeJson(item));
   }
   if (isPlainObject(value)) {
-    const normalizedEntries = Object.entries(value)
-      .filter(([, entryValue]) => entryValue !== undefined)
-      .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
-      .map(([key, entryValue]) => [key, canonicalizeJson(entryValue)]);
-    return Object.fromEntries(normalizedEntries);
+    const keys = Object.keys(value).sort(compareCanonicalKeys);
+    const normalized: Record<string, unknown> = {};
+    for (const key of keys) {
+      const entryValue = value[key];
+      if (entryValue === undefined) continue;
+      normalized[key] = canonicalizeJson(entryValue);
+    }
+    return normalized;
   }
   return value;
 }
@@ -147,17 +177,197 @@ export function stableStringifyCanonical(value: unknown): string {
   return JSON.stringify(canonicalizeJson(value));
 }
 
-export async function hashCanonicalJson(value: unknown): Promise<string> {
+async function hashCanonicalJsonText(canonicalJson: string): Promise<string> {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) {
     throw new Error('Web Crypto is unavailable; cannot hash preset payloads.');
   }
 
-  const bytes = new TextEncoder().encode(stableStringifyCanonical(value));
+  const bytes = PRESET_TEXT_ENCODER.encode(canonicalJson);
   const digest = await subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
+  const digestBytes = new Uint8Array(digest);
+  let hex = '';
+  for (let index = 0; index < digestBytes.length; index += 1) {
+    const byte = digestBytes[index];
+    if (byte !== undefined) hex += HEX_BYTE_LOOKUP[byte] ?? '';
+  }
+  return hex;
+}
+
+export async function hashCanonicalJson(value: unknown): Promise<string> {
+  return hashCanonicalJsonText(stableStringifyCanonical(value));
+}
+
+function isPresetPayloadCacheHash(hash: string): boolean {
+  return /^[0-9a-f]{64}$/.test(hash);
+}
+
+function canUsePresetPayloadPersistentCache(): boolean {
+  return typeof localStorage !== 'undefined';
+}
+
+function getPresetPayloadCacheStorageKey(hash: string): string {
+  return `${PRESET_PAYLOAD_CACHE_KEY_PREFIX}${hash}`;
+}
+
+function getPayloadCacheBytes(payloadJson: string): number {
+  return PRESET_TEXT_ENCODER.encode(payloadJson).byteLength;
+}
+
+function prunePresetPayloadMemoryCache(now = Date.now()): void {
+  for (const [hash, entry] of presetPayloadMemoryCache) {
+    if (entry.lastAccess + PRESET_PAYLOAD_CACHE_MAX_AGE_MS <= now) {
+      presetPayloadMemoryCache.delete(hash);
+    }
+  }
+
+  let totalBytes = 0;
+  for (const entry of presetPayloadMemoryCache.values()) totalBytes += entry.bytes;
+  if (totalBytes <= PRESET_PAYLOAD_CACHE_MAX_BYTES && presetPayloadMemoryCache.size <= PRESET_PAYLOAD_CACHE_MAX_ENTRIES) {
+    return;
+  }
+
+  const oldestEntries = [...presetPayloadMemoryCache.entries()]
+    .sort(([, left], [, right]) => left.lastAccess - right.lastAccess);
+  for (const [hash, entry] of oldestEntries) {
+    if (totalBytes <= PRESET_PAYLOAD_CACHE_MAX_BYTES && presetPayloadMemoryCache.size <= PRESET_PAYLOAD_CACHE_MAX_ENTRIES) break;
+    presetPayloadMemoryCache.delete(hash);
+    totalBytes -= entry.bytes;
+  }
+}
+
+function prunePresetPayloadPersistentCache(now = Date.now()): void {
+  if (!canUsePresetPayloadPersistentCache()) return;
+
+  try {
+    const entries: Array<{ key: string; bytes: number; lastAccess: number; expired: boolean }> = [];
+    let totalBytes = 0;
+    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(PRESET_PAYLOAD_CACHE_KEY_PREFIX)) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) {
+        localStorage.removeItem(key);
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(raw) as Partial<CachedPresetPayloadStorageEntry> | null;
+        const bytes = typeof parsed?.bytes === 'number' ? parsed.bytes : getPayloadCacheBytes(raw);
+        const lastAccess = typeof parsed?.lastAccess === 'number' ? parsed.lastAccess : 0;
+        const expired = lastAccess + PRESET_PAYLOAD_CACHE_MAX_AGE_MS <= now;
+        entries.push({ key, bytes, lastAccess, expired });
+        totalBytes += bytes;
+      } catch {
+        localStorage.removeItem(key);
+      }
+    }
+
+    for (const entry of entries.filter(candidate => candidate.expired)) {
+      localStorage.removeItem(entry.key);
+      totalBytes -= entry.bytes;
+    }
+
+    const activeEntries = entries
+      .filter(candidate => !candidate.expired)
+      .sort((left, right) => left.lastAccess - right.lastAccess);
+    while (
+      activeEntries.length > PRESET_PAYLOAD_CACHE_MAX_ENTRIES
+      || totalBytes > PRESET_PAYLOAD_CACHE_MAX_BYTES
+    ) {
+      const entry = activeEntries.shift();
+      if (!entry) break;
+      localStorage.removeItem(entry.key);
+      totalBytes -= entry.bytes;
+    }
+  } catch {
+    // Persistent payload caching is best-effort.
+  }
+}
+
+export function readPresetPayloadCacheV2(hash: string): unknown | undefined {
+  if (!isPresetPayloadCacheHash(hash)) return undefined;
+  const now = Date.now();
+  const memory = presetPayloadMemoryCache.get(hash);
+  if (memory && memory.lastAccess + PRESET_PAYLOAD_CACHE_MAX_AGE_MS > now) {
+    memory.lastAccess = now;
+    return memory.payload;
+  }
+  if (memory) presetPayloadMemoryCache.delete(hash);
+
+  if (!canUsePresetPayloadPersistentCache()) return undefined;
+
+  try {
+    const storageKey = getPresetPayloadCacheStorageKey(hash);
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as Partial<CachedPresetPayloadStorageEntry> | null;
+    if (
+      !parsed
+      || parsed.version !== 1
+      || parsed.hash !== hash
+      || !('payload' in parsed)
+      || typeof parsed.bytes !== 'number'
+      || typeof parsed.lastAccess !== 'number'
+      || parsed.lastAccess + PRESET_PAYLOAD_CACHE_MAX_AGE_MS <= now
+    ) {
+      localStorage.removeItem(storageKey);
+      return undefined;
+    }
+
+    const entry: CachedPresetPayloadStorageEntry = {
+      version: 1,
+      hash,
+      createdAt: typeof parsed.createdAt === 'number' ? parsed.createdAt : now,
+      lastAccess: now,
+      bytes: parsed.bytes,
+      payload: parsed.payload,
+    };
+    localStorage.setItem(storageKey, JSON.stringify(entry));
+    presetPayloadMemoryCache.set(hash, {
+      payload: entry.payload,
+      bytes: entry.bytes,
+      lastAccess: now,
+    });
+    prunePresetPayloadMemoryCache(now);
+    return entry.payload;
+  } catch {
+    try {
+      localStorage.removeItem(getPresetPayloadCacheStorageKey(hash));
+    } catch {
+      // Ignore storage cleanup failures.
+    }
+    return undefined;
+  }
+}
+
+export async function writePresetPayloadCacheV2(hash: string, payload: unknown): Promise<void> {
+  if (!isPresetPayloadCacheHash(hash) || payload === undefined) return;
+  const payloadJson = stableStringifyCanonical(payload);
+  const computedHash = await hashCanonicalJsonText(payloadJson);
+  if (computedHash !== hash) return;
+
+  const now = Date.now();
+  const bytes = getPayloadCacheBytes(payloadJson);
+  const memoryEntry = { payload, bytes, lastAccess: now };
+  presetPayloadMemoryCache.set(hash, memoryEntry);
+  prunePresetPayloadMemoryCache(now);
+
+  if (!canUsePresetPayloadPersistentCache()) return;
+  try {
+    if (bytes > PRESET_PAYLOAD_CACHE_MAX_BYTES) return;
+    const storageEntry: CachedPresetPayloadStorageEntry = {
+      version: 1,
+      hash,
+      payload,
+      bytes,
+      createdAt: now,
+      lastAccess: now,
+    };
+    localStorage.setItem(getPresetPayloadCacheStorageKey(hash), JSON.stringify(storageEntry));
+    prunePresetPayloadPersistentCache(now);
+  } catch {
+    // Persistent payload caching is best-effort.
+  }
 }
 
 export function presetVersionStorageSignaturesEqual(

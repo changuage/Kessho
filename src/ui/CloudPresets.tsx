@@ -6,10 +6,10 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  fetchCloudPresets,
-  fetchFeaturedPresets,
+  fetchCloudPresetPage,
+  fetchFeaturedPresetPage,
   fetchPresetById,
-  searchCloudPresets,
+  searchCloudPresetPage,
   saveCloudPreset,
   incrementPresetPlays,
   type CloudPresetSummary,
@@ -118,6 +118,18 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '12px',
     fontWeight: 500,
   },
+  loadMoreButton: {
+    width: '100%',
+    padding: '8px 14px',
+    background: 'rgba(255, 255, 255, 0.1)',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    borderRadius: '4px',
+    color: '#fff',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: 500,
+    marginTop: '4px',
+  },
   shareButton: {
     padding: '6px 14px',
     background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
@@ -193,7 +205,9 @@ type Tab = 'browse' | 'featured' | 'share';
 export const CloudPresets: React.FC<CloudPresetsProps> = ({ currentState, onLoadPreset }) => {
   const [activeTab, setActiveTab] = useState<Tab>('browse');
   const [presets, setPresets] = useState<CloudPresetSummary[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -224,25 +238,45 @@ export const CloudPresets: React.FC<CloudPresetsProps> = ({ currentState, onLoad
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  const mergePresetPages = (previous: CloudPresetSummary[], next: CloudPresetSummary[]) => {
+    const byId = new Map(previous.map(preset => [preset.id, preset]));
+    for (const preset of next) byId.set(preset.id, preset);
+    return [...byId.values()];
+  };
+
+  const fetchPresetPage = async (cursor: string | null = null) => {
+    if (activeTab === 'featured') {
+      return fetchFeaturedPresetPage({ cursor });
+    }
+    if (searchQuery.trim()) {
+      return searchCloudPresetPage(searchQuery, { cursor });
+    }
+    return fetchCloudPresetPage({ cursor });
+  };
+
   const loadPresets = async () => {
+    if (activeTab === 'share') return;
     setLoading(true);
     try {
-      const data = activeTab === 'featured' 
-        ? await fetchFeaturedPresets()
-        : await fetchCloudPresets();
-      setPresets(data);
+      const page = await fetchPresetPage();
+      setPresets(page.items);
+      setNextCursor(page.nextCursor);
     } finally {
       setLoading(false);
     }
   };
 
-  const searchPresets = async () => {
-    setLoading(true);
+  const searchPresets = loadPresets;
+
+  const loadMorePresets = async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
     try {
-      const data = await searchCloudPresets(searchQuery);
-      setPresets(data);
+      const page = await fetchPresetPage(nextCursor);
+      setPresets(previous => mergePresetPages(previous, page.items));
+      setNextCursor(page.nextCursor);
     } finally {
-      setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -425,6 +459,15 @@ export const CloudPresets: React.FC<CloudPresetsProps> = ({ currentState, onLoad
                   <button style={styles.loadButton}>Load</button>
                 </div>
               ))
+            )}
+            {!loading && nextCursor && presets.length > 0 && (
+              <button
+                style={{ ...styles.loadMoreButton, opacity: loadingMore ? 0.6 : 1 }}
+                onClick={loadMorePresets}
+                disabled={loadingMore}
+              >
+                {loadingMore ? 'Loading...' : 'Load more'}
+              </button>
             )}
           </div>
         </>

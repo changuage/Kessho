@@ -9,6 +9,7 @@ import {
   normalizeRoutingMuteGroupSlot,
   ROUTING_MUTE_GROUP_SLOT_COUNT,
   setRoutingMuteGroupSlot,
+  type RoutingMuteGroupRuntimeLevelPatch,
   type RoutingMuteGroupsState,
 } from './routingMuteGroups';
 
@@ -16,7 +17,7 @@ type UseRoutingMuteGroupsControllerOptions = {
   state: SliderState;
   routingMuteGroups: RoutingMuteGroupsState;
   onRoutingMuteGroupsChange: (state: RoutingMuteGroupsState) => void;
-  onRuntimeLevelChange: (key: keyof SliderState, value: number | null) => void;
+  onRuntimeLevelPatchChange: (patch: RoutingMuteGroupRuntimeLevelPatch) => void;
   onBooleanParamChange: (key: keyof SliderState, value: boolean) => void;
 };
 
@@ -46,7 +47,7 @@ export function useRoutingMuteGroupsController({
   state,
   routingMuteGroups,
   onRoutingMuteGroupsChange,
-  onRuntimeLevelChange,
+  onRuntimeLevelPatchChange,
   onBooleanParamChange,
 }: UseRoutingMuteGroupsControllerOptions): RoutingMuteGroupsController {
   const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(null);
@@ -55,20 +56,20 @@ export function useRoutingMuteGroupsController({
   const stateRef = useRef(state);
   const muteGroupsRef = useRef(normalizeRoutingMuteGroupsState(routingMuteGroups));
   const activeSlotIndexRef = useRef<number | null>(null);
-  const onRuntimeLevelChangeRef = useRef(onRuntimeLevelChange);
+  const onRuntimeLevelPatchChangeRef = useRef(onRuntimeLevelPatchChange);
   const onBooleanParamChangeRef = useRef(onBooleanParamChange);
   const onRoutingMuteGroupsChangeRef = useRef(onRoutingMuteGroupsChange);
 
   stateRef.current = state;
   muteGroupsRef.current = normalizeRoutingMuteGroupsState(routingMuteGroups);
-  onRuntimeLevelChangeRef.current = onRuntimeLevelChange;
+  onRuntimeLevelPatchChangeRef.current = onRuntimeLevelPatchChange;
   onBooleanParamChangeRef.current = onBooleanParamChange;
   onRoutingMuteGroupsChangeRef.current = onRoutingMuteGroupsChange;
 
   const controller = useMemo(
     () => createRoutingMuteGroupTransitionController({
       getState: () => stateRef.current,
-      onRuntimeLevelChange: (key, value) => onRuntimeLevelChangeRef.current(key, value),
+      onRuntimeLevelPatchChange: (patch) => onRuntimeLevelPatchChangeRef.current(patch),
       onBooleanParamChange: (key, value) => onBooleanParamChangeRef.current(key, value),
       onActiveSlotChange: (slotIndex) => {
         activeSlotIndexRef.current = slotIndex;

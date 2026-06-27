@@ -40,7 +40,12 @@ const env = {
 };
 
 const supabaseUrl = env.VITE_SUPABASE_URL;
-const supabaseKey = env.VITE_SUPABASE_ANON_KEY;
+const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY
+  || env.SUPABASE_SERVICE_KEY
+  || env.SUPABASE_SECRET_KEY
+  || null;
+const supabaseKey = serviceRoleKey || env.VITE_SUPABASE_ANON_KEY;
+const usesPrivilegedKey = Boolean(serviceRoleKey);
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Add them to .env/.env.local or the process env.');
@@ -63,6 +68,113 @@ async function fetchAll(table, select, query = (builder) => builder, pageSize = 
   return rows;
 }
 
+function isPermissionDenied(error) {
+  const text = String(error?.message ?? error ?? '').toLowerCase();
+  return text.includes('permission denied') || text.includes('42501');
+}
+
+async function runLimitedHardenedAudit(reason) {
+  const [
+    summaryRows,
+    legacyRows,
+    storageStatsResult,
+    lookupResult,
+    payloadResult,
+    lookupIdResult,
+    cardResult,
+    existsResult,
+  ] = await Promise.all([
+    fetchAll(
+      'preset_summaries_v2',
+      'id,type,scope,name,latest_version_no,latest_metadata_hash,play_count,deleted_at,updated_at',
+      (builder) => builder.order('updated_at', { ascending: false }).limit(50),
+      50,
+    ),
+    fetchAll(
+      'legacy_preset_summaries',
+      'id,type,scope,name,current_version,plays,updated_at',
+      (builder) => builder.order('updated_at', { ascending: false }).limit(50),
+      50,
+    ),
+    supabase.rpc('kessho_get_preset_storage_stats_v2', {}),
+    supabase.rpc('kessho_lookup_preset_rows_v2', {
+      target_preset_id: null,
+      target_type: null,
+      target_name: '__audit_missing__',
+      target_scopes: null,
+      target_scope_is_null: false,
+      target_resolved_hash: null,
+      exclude_preset_id: null,
+      include_deleted: false,
+      deleted_only: false,
+      include_internal_derived: false,
+      internal_derived_only: false,
+      max_rows: 1,
+      page_offset: 0,
+    }),
+    supabase.rpc('kessho_get_preset_payloads_v2', { target_hashes: [] }),
+    supabase.rpc('kessho_lookup_preset_id_v2', {
+      target_type: 'state',
+      target_name: '__audit_missing__',
+      target_scope: 'global',
+      target_resolved_hash: null,
+    }),
+    supabase.rpc('kessho_get_preset_card_v2', { target_preset_id: '00000000-0000-4000-8000-000000000000' }),
+    supabase.rpc('kessho_exists_preset_logical_key_v2', {
+      target_type: 'state',
+      target_name: '__audit_missing__',
+      target_scope: 'global',
+    }),
+  ]);
+
+  const rpcFailures = [];
+  for (const [label, result] of [
+    ['kessho_get_preset_storage_stats_v2', storageStatsResult],
+    ['kessho_lookup_preset_rows_v2', lookupResult],
+    ['kessho_get_preset_payloads_v2', payloadResult],
+    ['kessho_lookup_preset_id_v2', lookupIdResult],
+    ['kessho_get_preset_card_v2', cardResult],
+    ['kessho_exists_preset_logical_key_v2', existsResult],
+  ]) {
+    if (result.error) rpcFailures.push(`${label}: ${result.error.message}`);
+  }
+
+  const report = {
+    mode: 'limited-hardened-api',
+    reason,
+    counts: {
+      visibleV2Summaries: summaryRows.length,
+      visibleLegacySummaries: legacyRows.length,
+    },
+    storageStats: storageStatsResult.data ?? null,
+    rpcFailures,
+    fullAuditRequires: 'SUPABASE_SERVICE_ROLE_KEY, SUPABASE_SERVICE_KEY, SUPABASE_SECRET_KEY, or direct database access',
+  };
+
+  if (outputJson) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log('Supabase preset V2 audit');
+    console.log('Mode: limited hardened API');
+    console.log(`Reason: ${reason}`);
+    console.log(`Visible summaries: ${summaryRows.length} V2, ${legacyRows.length} legacy`);
+    if (storageStatsResult.data) {
+      console.log(`Storage stats RPC: ${JSON.stringify(storageStatsResult.data)}`);
+    }
+    if (rpcFailures.length > 0) {
+      console.log('RPC issues:');
+      for (const failure of rpcFailures) console.log(`- ${failure}`);
+    } else {
+      console.log('Narrow runtime RPCs: callable');
+    }
+    console.log('Full table-level integrity, hash, duplicate, and orphan-byte checks require service-role or DB credentials.');
+  }
+
+  if (failOnIssues && rpcFailures.length > 0) {
+    process.exit(1);
+  }
+}
+
 function roundNumber(value) {
   if (!Number.isFinite(value)) return value;
   const rounded = Math.round(value * 1_000_000) / 1_000_000;
@@ -79,7 +191,7 @@ function canonicalize(value) {
     return Object.fromEntries(
       Object.entries(value)
         .filter(([, entryValue]) => entryValue !== undefined)
-        .sort(([left], [right]) => left.localeCompare(right))
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
         .map(([key, entryValue]) => [key, canonicalize(entryValue)]),
     );
   }
@@ -111,35 +223,47 @@ function formatBytes(value) {
   return `${(value / 1024 / 1024).toFixed(2)} MB`;
 }
 
-if (!skipAuth) {
+if (!skipAuth && !usesPrivilegedKey) {
   const { error } = await supabase.auth.signInAnonymously();
   if (error) {
     throw new Error(`Anonymous Supabase auth failed: ${error.message}`);
   }
 }
 
-const [presets, versions, refs, payloads] = await Promise.all([
-  fetchAll(
-    'presets_v2',
-    'id,owner_key,type,scope,name,latest_version_no,latest_version_id,latest_resolved_hash,latest_metadata_hash,updated_at,archived,deleted_at,tags',
-    (builder) => builder.order('id', { ascending: true }),
-  ),
-  fetchAll(
-    'preset_versions_v2',
-    'id,preset_id,version_no,parent_version_id,storage_mode,override_hash,metadata_hash,patch_from_prev_hash,resolved_hash,is_checkpoint,created_at',
-    (builder) => builder.order('preset_id', { ascending: true }).order('version_no', { ascending: true }).order('id', { ascending: true }),
-  ),
-  fetchAll(
-    'preset_version_refs_v2',
-    'version_id,ref_slot,target_preset_id,target_version_no,follow_latest,override_hash,created_at',
-    (builder) => builder.order('version_id', { ascending: true }).order('ref_slot', { ascending: true }),
-  ),
-  fetchAll(
-    'preset_payloads_v2',
-    'hash,payload_kind,payload,payload_bytes,created_at,last_seen_at',
-    (builder) => builder.order('hash', { ascending: true }),
-  ),
-]);
+let presets;
+let versions;
+let refs;
+let payloads;
+try {
+  [presets, versions, refs, payloads] = await Promise.all([
+    fetchAll(
+      'presets_v2',
+      'id,owner_key,type,scope,name,latest_version_no,latest_version_id,latest_resolved_hash,latest_metadata_hash,updated_at,archived,deleted_at,tags',
+      (builder) => builder.order('id', { ascending: true }),
+    ),
+    fetchAll(
+      'preset_versions_v2',
+      'id,preset_id,version_no,parent_version_id,storage_mode,override_hash,metadata_hash,patch_from_prev_hash,resolved_hash,is_checkpoint,created_at',
+      (builder) => builder.order('preset_id', { ascending: true }).order('version_no', { ascending: true }).order('id', { ascending: true }),
+    ),
+    fetchAll(
+      'preset_version_refs_v2',
+      'version_id,ref_slot,target_preset_id,target_version_no,follow_latest,override_hash,created_at',
+      (builder) => builder.order('version_id', { ascending: true }).order('ref_slot', { ascending: true }),
+    ),
+    fetchAll(
+      'preset_payloads_v2',
+      'hash,payload_kind,payload,payload_bytes,created_at,last_seen_at',
+      (builder) => builder.order('hash', { ascending: true }),
+    ),
+  ]);
+} catch (error) {
+  if (!usesPrivilegedKey && isPermissionDenied(error)) {
+    await runLimitedHardenedAudit(error.message);
+    process.exit(0);
+  }
+  throw error;
+}
 
 const presetById = new Map(presets.map((row) => [row.id, row]));
 const versionById = new Map(versions.map((row) => [row.id, row]));

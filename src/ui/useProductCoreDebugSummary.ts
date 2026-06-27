@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { CoreProductModulationDebugEntry } from '../audio/coreProductTelemetry';
 import type { ProductEnginePort } from '../audio/product/ProductEnginePort';
+import { productEngine } from '../audio/product/ProductEngineProxy';
 import { useVisibleInterval } from './hooks/useVisibleInterval';
 import { PRODUCT_CORE_DEBUG_SUMMARY_REFRESH_MS } from './productRuntimeTelemetryRateLimits';
 
@@ -27,7 +28,7 @@ function summarizeProductCoreModulation(entries: CoreProductModulationDebugEntry
 
 export function useProductCoreDebugSummary(
   productRuntimeMode: string,
-  runtime: Pick<ProductEnginePort, 'getTelemetry'>,
+  runtime: Pick<ProductEnginePort, 'getTelemetry'> = productEngine,
 ): ProductCoreDebugSummary | null {
   const [summary, setSummary] = useState<ProductCoreDebugSummary | null>(null);
 

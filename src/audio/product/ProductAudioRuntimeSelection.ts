@@ -1,4 +1,5 @@
 import { getProductEngineRuntimeMode } from './ProductEngineProxy';
+import { createProductRuntimePolicy } from './runtime/ProductRuntimePolicy';
 
 export type ProductRuntimeMode = 'core-product';
 export type ProductReferenceRuntimeMode = 'web-ts' | 'core-smoke';
@@ -10,7 +11,7 @@ export const AUDIO_ENGINE_PARAM = 'engine';
 export const AUDIO_ENGINE_SWITCHER_PARAM = 'engineAB';
 
 function isDevRuntime(): boolean {
-  return Boolean((import.meta.env as unknown as { DEV?: boolean }).DEV);
+  return createProductRuntimePolicy().environment !== 'production' && Boolean((import.meta.env as unknown as { DEV?: boolean }).DEV);
 }
 
 function normalizeReferenceRuntimeMode(mode: string | null): ProductReferenceRuntimeMode | null {

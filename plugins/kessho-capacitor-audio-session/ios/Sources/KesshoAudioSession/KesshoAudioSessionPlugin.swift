@@ -1,6 +1,7 @@
 import AVFoundation
 import Capacitor
 import Foundation
+import KesshoNativeBridge
 import KesshoProductCore
 import MediaPlayer
 import UIKit
@@ -286,6 +287,10 @@ private final class KesshoCapacitorAudioSessionHost {
             "type": "routeChange",
             "reason": lastRouteChangeReason,
             "routeChangeCount": routeChangeCount,
+            "nativeLifecyclePolicy": KesshoNativeLifecyclePolicy.policy(
+                for: .routeChange,
+                audioIsPlaying: isPlaying || nativeProductRendererRunning
+            ).dictionary,
             "audioSession": iosAudioSessionTelemetry()
         ])
     }
@@ -295,6 +300,8 @@ private final class KesshoCapacitorAudioSessionHost {
               let type = AVAudioSession.InterruptionType(rawValue: rawType) else {
             return
         }
+        var lifecycleEvent = KesshoNativeLifecycleEvent.audioInterruptionBegan
+        var shouldResume = false
         switch type {
         case .began:
             interruptionBeginCount += 1
@@ -306,7 +313,7 @@ private final class KesshoCapacitorAudioSessionHost {
         case .ended:
             interruptionEndCount += 1
             lastInterruptionType = "ended"
-            var shouldResume = false
+            lifecycleEvent = .audioInterruptionEnded
             if let optionsRaw = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt {
                 let options = AVAudioSession.InterruptionOptions(rawValue: optionsRaw)
                 if options.contains(.shouldResume) {
@@ -333,6 +340,11 @@ private final class KesshoCapacitorAudioSessionHost {
             "interruptionType": lastInterruptionType,
             "interruptionBeginCount": interruptionBeginCount,
             "interruptionEndCount": interruptionEndCount,
+            "nativeLifecyclePolicy": KesshoNativeLifecyclePolicy.policy(
+                for: lifecycleEvent,
+                audioIsPlaying: isPlaying || nativeProductRendererRunning,
+                shouldResume: shouldResume
+            ).dictionary,
             "audioSession": iosAudioSessionTelemetry()
         ])
     }
@@ -357,12 +369,16 @@ private final class KesshoCapacitorAudioSessionHost {
         onAudioSessionEvent?([
             "type": "mediaServicesReset",
             "mediaServicesResetCount": mediaServicesResetCount,
+            "nativeLifecyclePolicy": KesshoNativeLifecyclePolicy.policy(
+                for: .mediaServicesReset,
+                audioIsPlaying: isPlaying || nativeProductRendererRunning
+            ).dictionary,
             "audioSession": iosAudioSessionTelemetry()
         ])
     }
 
     func iosAudioSessionTelemetry() -> [String: Any] {
-        var telemetry = iosAudioSessionCoordinator.telemetry()
+        var telemetry = iosAudioSessionCoordinator.telemetry(audioIsPlaying: isPlaying || nativeProductRendererRunning)
         telemetry["routeChangeCount"] = routeChangeCount
         telemetry["interruptionBeginCount"] = interruptionBeginCount
         telemetry["interruptionEndCount"] = interruptionEndCount

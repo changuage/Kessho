@@ -13,6 +13,27 @@ export const CLOUD_PRESET_DETAIL_SELECT = [
   'data',
 ].join(',');
 
+export const LEGACY_CLOUD_CARD_SELECT = [
+  'id',
+  'name',
+  'author',
+  'description',
+  'created_at',
+  'plays',
+  'visibility',
+].join(',');
+
+export const PRESET_V2_CLOUD_CARD_SELECT = [
+  'id',
+  'name',
+  'creator',
+  'description',
+  'visibility',
+  'play_count',
+  'created_at',
+  'updated_at',
+].join(',');
+
 export const PRESET_V2_SUMMARY_SELECT = [
   'id',
   'owner_user_id',

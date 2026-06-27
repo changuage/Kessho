@@ -1,5 +1,6 @@
 import { CORE_PRODUCT_MEMORY_BUDGETS } from '../../coreProductAssets';
 import type { CoreProductTelemetrySnapshot, CoreProductVisualTelemetrySnapshot } from '../../coreProductTelemetry';
+import type { ProductPerfSnapshot } from '../ProductEngineTypes';
 import type { ProductRuntimeDiagnostics } from '../ProductRuntimeDiagnostics';
 
 export function mergeCoreProductVisualTelemetry(
@@ -41,7 +42,7 @@ export function createCoreProductPerfSnapshot(
   telemetry: CoreProductTelemetrySnapshot,
   diagnostics: ProductRuntimeDiagnostics,
   decodedAssetBytes: number,
-): Record<string, unknown> {
+): ProductPerfSnapshot {
   return {
     product: {
       avgPercent: telemetry.renderCpuPercent ?? 0,

@@ -251,6 +251,23 @@ export type ProductEngineState = {
 
 export type ProductTelemetrySnapshot = CoreProductTelemetrySnapshot;
 
+export type ProductPerfMetric = {
+  avgPercent: number;
+  peakPercent: number;
+  missPercent: number | null;
+  scope?: 'worklet' | 'source';
+};
+
+export type ProductPerfSnapshotValue =
+  | ProductPerfMetric
+  | number
+  | string
+  | boolean
+  | null
+  | readonly string[];
+
+export type ProductPerfSnapshot = Readonly<Record<string, ProductPerfSnapshotValue>>;
+
 export type ProductSequencerUiState = CoreProductSequencerUiState;
 
 export type ProductEngineStartOptions = {

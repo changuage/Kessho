@@ -46,8 +46,9 @@ export const ROUTING_MUTE_GROUP_BOOLEAN_STATE_KEYS: readonly (keyof SliderState)
   ...ROUTING_MUTE_GROUP_EARTH_BOOLEAN_KEYS,
 ]);
 export type RoutingMuteGroupBooleanStateKey = keyof SliderState;
-export type RoutingMuteGroupStatePatchKey = keyof SliderState;
-export type RoutingMuteGroupStatePatch = Partial<SliderState>;
+export type RoutingMuteGroupStatePatchKey = RoutingMuteGroupBooleanStateKey;
+export type RoutingMuteGroupStatePatch = Partial<Record<RoutingMuteGroupBooleanStateKey, boolean>>;
+export type RoutingMuteGroupRuntimeLevelPatch = Partial<Record<keyof SliderState, number | null>>;
 
 export interface RoutingMuteGroupSlot {
   mutedSourceIds: RoutingMuteGroupSourceId[];
@@ -66,6 +67,10 @@ type EnabledSnapshot = Partial<Record<keyof SliderState, boolean>>;
 type RoutingMuteGroupSceneSnapshot = RoutingMuteGroupStatePatch;
 
 type TimeoutHandle = ReturnType<typeof setTimeout>;
+type RampStep = {
+  delayMs: number;
+  value: number;
+};
 
 export type RoutingMuteGroupScheduler = {
   setTimeout: (callback: () => void, delayMs: number) => TimeoutHandle;
@@ -74,7 +79,7 @@ export type RoutingMuteGroupScheduler = {
 
 export type RoutingMuteGroupTransitionControllerOptions = {
   getState: () => SliderState;
-  onRuntimeLevelChange: (key: keyof SliderState, value: number | null) => void;
+  onRuntimeLevelPatchChange: (patch: RoutingMuteGroupRuntimeLevelPatch) => void;
   onBooleanParamChange: (key: keyof SliderState, value: boolean) => void;
   onActiveSlotChange?: (slotIndex: number | null) => void;
   eligibleSourceIds?: readonly RoutingRowId[];
@@ -377,34 +382,37 @@ function sourceBooleanKeys(sourceDefs: readonly RoutingSourceDef[]): Set<keyof S
   return keys;
 }
 
-function scheduleLevelRamp(
+function runtimeLevelPatch(
+  key: keyof SliderState,
+  value: number | null,
+): RoutingMuteGroupRuntimeLevelPatch {
+  return { [key]: value } as RoutingMuteGroupRuntimeLevelPatch;
+}
+
+function levelRampSteps(
   from: number,
   to: number,
   durationMs: number,
-  generation: number,
-  schedule: (delayMs: number, callback: () => void) => void,
-  isCurrentGeneration: (generation: number) => boolean,
-  onValue: (value: number) => void,
-): void {
+): RampStep[] {
   if (durationMs <= 0 || from === to) {
-    onValue(to);
-    return;
+    return [{ delayMs: 0, value: to }];
   }
 
   const stepCount = Math.max(1, Math.min(6, Math.ceil(durationMs / 24)));
+  const steps: RampStep[] = [];
   for (let step = 1; step <= stepCount; step++) {
     const progress = step / stepCount;
-    const delayMs = Math.round(durationMs * progress);
-    schedule(delayMs, () => {
-      if (!isCurrentGeneration(generation)) return;
-      onValue(from + (to - from) * progress);
+    steps.push({
+      delayMs: Math.round(durationMs * progress),
+      value: from + (to - from) * progress,
     });
   }
+  return steps;
 }
 
 export function createRoutingMuteGroupTransitionController({
   getState,
-  onRuntimeLevelChange,
+  onRuntimeLevelPatchChange,
   onBooleanParamChange,
   onActiveSlotChange,
   eligibleSourceIds = DEFAULT_ROUTING_MUTE_GROUP_SOURCE_IDS,
@@ -416,6 +424,7 @@ export function createRoutingMuteGroupTransitionController({
   let generation = 0;
   let activeSlotIndex: number | null = null;
   const pendingTimeouts = new Set<TimeoutHandle>();
+  const scheduledRuntimeLevelPatches = new Map<number, RoutingMuteGroupRuntimeLevelPatch>();
   const groupControlledSources = new Set<RoutingRowId>();
   const targetMutedSourceIds = new Set<RoutingMuteGroupSourceId>();
   let rememberedScene: RoutingMuteGroupSceneSnapshot | null = null;
@@ -430,6 +439,7 @@ export function createRoutingMuteGroupTransitionController({
       scheduler.clearTimeout(timeout);
     }
     pendingTimeouts.clear();
+    scheduledRuntimeLevelPatches.clear();
   };
 
   const schedule = (token: number, delayMs: number, callback: () => void) => {
@@ -439,6 +449,32 @@ export function createRoutingMuteGroupTransitionController({
       callback();
     }, Math.max(0, delayMs));
     pendingTimeouts.add(handle);
+  };
+
+  const applyRuntimeLevelPatch = (patch: RoutingMuteGroupRuntimeLevelPatch) => {
+    if (Object.keys(patch).length > 0) {
+      onRuntimeLevelPatchChange(patch);
+    }
+  };
+
+  const scheduleRuntimeLevelPatch = (
+    token: number,
+    delayMs: number,
+    patch: RoutingMuteGroupRuntimeLevelPatch,
+  ) => {
+    const normalizedDelayMs = Math.max(0, Math.round(delayMs));
+    const existingPatch = scheduledRuntimeLevelPatches.get(normalizedDelayMs);
+    if (existingPatch) {
+      Object.assign(existingPatch, patch);
+      return;
+    }
+
+    const scheduledPatch = { ...patch };
+    scheduledRuntimeLevelPatches.set(normalizedDelayMs, scheduledPatch);
+    schedule(token, normalizedDelayMs, () => {
+      scheduledRuntimeLevelPatches.delete(normalizedDelayMs);
+      applyRuntimeLevelPatch(scheduledPatch);
+    });
   };
 
   const applyScene = (scene: RoutingMuteGroupSceneSnapshot) => {
@@ -469,15 +505,9 @@ export function createRoutingMuteGroupTransitionController({
     groupControlledSources.add(source.id);
     targetMutedSourceIds.add(source.id as RoutingMuteGroupSourceId);
 
-    scheduleLevelRamp(
-      numericLevel(liveState, source.levelKey),
-      0,
-      fadeDownMs,
-      token,
-      (delayMs, callback) => schedule(token, delayMs, callback),
-      isCurrentGeneration,
-      (value) => onRuntimeLevelChange(source.levelKey, value),
-    );
+    for (const step of levelRampSteps(numericLevel(liveState, source.levelKey), 0, fadeDownMs)) {
+      scheduleRuntimeLevelPatch(token, step.delayMs, runtimeLevelPatch(source.levelKey, step.value));
+    }
 
     schedule(token, fadeDownMs, () => {
       for (const key of source.enabledKeys ?? []) {
@@ -503,33 +533,25 @@ export function createRoutingMuteGroupTransitionController({
         restoreEnabledSnapshot(enabledSnapshot, onBooleanParamChange);
       }
       if (wasGroupControlled) {
-        onRuntimeLevelChange(source.levelKey, null);
+        applyRuntimeLevelPatch(runtimeLevelPatch(source.levelKey, null));
         groupControlledSources.delete(source.id);
         targetMutedSourceIds.delete(source.id as RoutingMuteGroupSourceId);
       }
       return;
     }
 
-    onRuntimeLevelChange(source.levelKey, 0);
+    applyRuntimeLevelPatch(runtimeLevelPatch(source.levelKey, 0));
     if (enabledChanged) {
       restoreEnabledSnapshot(enabledSnapshot, onBooleanParamChange);
     }
 
     const targetLevel = numericLevel(liveState, source.levelKey);
-    schedule(token, enableSettleMs, () => {
-      scheduleLevelRamp(
-        0,
-        targetLevel,
-        fadeUpMs,
-        token,
-        (delayMs, callback) => schedule(token, delayMs, callback),
-        isCurrentGeneration,
-        (value) => onRuntimeLevelChange(source.levelKey, value),
-      );
-    });
+    for (const step of levelRampSteps(0, targetLevel, fadeUpMs)) {
+      scheduleRuntimeLevelPatch(token, enableSettleMs + step.delayMs, runtimeLevelPatch(source.levelKey, step.value));
+    }
 
     schedule(token, enableSettleMs + fadeUpMs + 1, () => {
-      onRuntimeLevelChange(source.levelKey, null);
+      applyRuntimeLevelPatch(runtimeLevelPatch(source.levelKey, null));
       groupControlledSources.delete(source.id);
       targetMutedSourceIds.delete(source.id as RoutingMuteGroupSourceId);
     });
@@ -580,11 +602,13 @@ export function createRoutingMuteGroupTransitionController({
     cancel() {
       clearPendingTimeouts();
       generation += 1;
+      const clearedRuntimeLevels: RoutingMuteGroupRuntimeLevelPatch = {};
       for (const source of sourceDefs) {
         if (groupControlledSources.has(source.id)) {
-          onRuntimeLevelChange(source.levelKey, null);
+          clearedRuntimeLevels[source.levelKey] = null;
         }
       }
+      applyRuntimeLevelPatch(clearedRuntimeLevels);
       groupControlledSources.clear();
       targetMutedSourceIds.clear();
     },

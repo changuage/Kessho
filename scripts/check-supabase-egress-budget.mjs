@@ -62,7 +62,7 @@ function parseArgs(argv) {
         '  --preset-selector=CSS          CSS selector for the preset panel control.',
         '  --journey-selector=CSS         CSS selector for the journey tab/control.',
         '  --load-preset-selector=CSS     CSS selector for the preset load control.',
-        '  --reload-count=20              Measure average Supabase bytes across reloads.',
+        '  --reload-count=20              Measure average Supabase bytes across reloads. With --load-first-preset, reload and load the first preset each time.',
         '  --require-supabase-calls       Fail if no Supabase responses are observed.',
         '  --fail-supabase-errors         Fail if any Supabase response has HTTP status >= 400.',
       ].join('\n'));
@@ -273,6 +273,39 @@ async function clickFirstPresetLoadButton(page, selector = '') {
     return true;
   }
 
+  const clickVisibleLoadButton = () => {
+    const buttons = Array.from(document.querySelectorAll('button'));
+    const isVisible = (candidate) => {
+      const style = window.getComputedStyle(candidate);
+      const rect = candidate.getBoundingClientRect();
+      return (
+        style.display !== 'none'
+        && style.visibility !== 'hidden'
+        && rect.width > 0
+        && rect.height > 0
+      );
+    };
+    const isLoadButton = (candidate) => {
+      const labels = [
+        candidate.textContent ?? '',
+        candidate.getAttribute('title') ?? '',
+        candidate.getAttribute('aria-label') ?? '',
+      ];
+      return labels.some((label) => /^Load(?:\s|$)/i.test(label.trim()));
+    };
+    const button = buttons.find((candidate) => isVisible(candidate) && isLoadButton(candidate));
+    if (!button) return false;
+    button.click();
+    return true;
+  };
+
+  try {
+    await page.waitForFunction(clickVisibleLoadButton, null, { timeout: 15_000 });
+    return true;
+  } catch {
+    // Fall through to role-based locators for older Playwright/browser combinations.
+  }
+
   const candidates = [
     page.getByRole('button', { name: /^Load$/ }).first(),
     page.getByRole('button', { name: /^Load\s+/ }).first(),
@@ -292,17 +325,7 @@ async function clickFirstPresetLoadButton(page, selector = '') {
     }
   }
 
-  return page.evaluate(() => {
-    const buttons = Array.from(document.querySelectorAll('button'));
-    const button = buttons.find((candidate) => (
-      candidate.textContent?.trim() === 'Load'
-      || candidate.getAttribute('title')?.startsWith('Load ')
-      || candidate.getAttribute('aria-label')?.startsWith('Load ')
-    ));
-    if (!button) return false;
-    button.click();
-    return true;
-  });
+  return page.evaluate(clickVisibleLoadButton);
 }
 
 function assertNoForbiddenCalls(calls, scenarioId) {
@@ -387,6 +410,16 @@ try {
     return { calls, summary };
   }
 
+  async function openPresetLibrary() {
+    const opened = await clickButtonByTitleOrText(page, 'Presets', args.presetSelector);
+    if (!opened) throw new Error('Could not find the Presets button');
+  }
+
+  async function loadFirstPreset() {
+    const loaded = await clickFirstPresetLoadButton(page, args.loadPresetSelector);
+    if (!loaded) throw new Error('Could not find a preset Load button');
+  }
+
   const fresh = await runScenario('fresh-load', async () => {
     await page.goto(server.url, { waitUntil: 'domcontentloaded' });
   });
@@ -397,15 +430,13 @@ try {
 
   if (args.openPresets || args.openJourney || args.loadFirstPreset) {
     await runScenario('open-preset-library', async () => {
-      const opened = await clickButtonByTitleOrText(page, 'Presets', args.presetSelector);
-      if (!opened) throw new Error('Could not find the Presets button');
+      await openPresetLibrary();
     });
   }
 
   if (args.loadFirstPreset) {
     const detail = await runScenario('load-first-preset', async () => {
-      const loaded = await clickFirstPresetLoadButton(page, args.loadPresetSelector);
-      if (!loaded) throw new Error('Could not find a preset Load button');
+      await loadFirstPreset();
     });
     if (detail.summary.totalBytes > args.detailBudgetBytes) {
       throw new Error(`load-first-preset: ${formatBytes(detail.summary.totalBytes)} exceeds budget ${formatBytes(args.detailBudgetBytes)}`);
@@ -433,17 +464,23 @@ try {
     const startIndex = allCalls.length;
     for (let index = 0; index < args.reloadCount; index += 1) {
       await page.reload({ waitUntil: 'domcontentloaded' });
+      if (args.loadFirstPreset) {
+        await openPresetLibrary();
+        await loadFirstPreset();
+      }
       await page.waitForTimeout(args.waitMs);
     }
     await flushResponseBytes();
     const calls = allCalls.slice(startIndex);
-    assertNoForbiddenCalls(calls, 'reload-average');
-    if (args.failSupabaseErrors) assertNoSupabaseErrors(calls, 'reload-average');
+    const scenarioId = args.loadFirstPreset ? 'reload-load-first-preset-average' : 'reload-average';
+    assertNoForbiddenCalls(calls, scenarioId);
+    if (args.failSupabaseErrors) assertNoSupabaseErrors(calls, scenarioId);
     const summary = summarizeCalls(calls);
     const averageBytes = summary.totalBytes / args.reloadCount;
-    scenarioSummaries.push({ id: 'reload-average', ...summary, averageBytes });
-    if (averageBytes > args.freshBudgetBytes) {
-      throw new Error(`reload-average: ${formatBytes(averageBytes)} exceeds budget ${formatBytes(args.freshBudgetBytes)}`);
+    scenarioSummaries.push({ id: scenarioId, ...summary, averageBytes });
+    const budgetBytes = args.loadFirstPreset ? args.detailBudgetBytes : args.freshBudgetBytes;
+    if (averageBytes > budgetBytes) {
+      throw new Error(`${scenarioId}: ${formatBytes(averageBytes)} exceeds budget ${formatBytes(budgetBytes)}`);
     }
   }
 

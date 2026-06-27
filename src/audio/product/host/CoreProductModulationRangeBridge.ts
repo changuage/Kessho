@@ -4,6 +4,7 @@ import type { CoreProductTelemetrySnapshot } from '../../coreProductTelemetry';
 import { coreProductRangeValueContext, mappedCoreProductRange, runtimeWalkPositionsFromTelemetry } from '../../CoreProductHostRuntimeGuards';
 import { enrichCoreProductModulationDebug } from './CoreProductModulationDebugEnricher';
 import { createCoreProductSampleHoldDebugState, snapshotCoreProductSampleHoldDebugState, updateCoreProductSampleHoldTriggerFeedback, type CoreProductSampleHoldDebugState } from './CoreProductSampleHoldFeedbackBridge';
+import { shouldPublishCoreProductSampleHoldFeedback, type CoreProductSampleHoldFeedbackCallbackLookup } from './CoreProductSampleHoldFeedbackPolicy';
 import { createCoreProductRuntimeWalkDebugState, snapshotCoreProductRuntimeWalkDebugState, type CoreProductRuntimeWalkDebugState } from './CoreProductRuntimeWalkDebug';
 type ProductRangeState = { range: { min: number; max: number }; targets: CoreProductRangeTarget[] };
 type RuntimeWalkPositionUpdateOptions = Readonly<{ publish?: boolean }>;
@@ -12,6 +13,7 @@ type CoreProductModulationRangeBridgeOptions = {
   latestProductSnapshot: () => CoreProductSnapshot | null;
   latestSliderState: () => Record<string, unknown> | null;
   post: (event: CoreProductEvent) => void;
+  hasCallback?: CoreProductSampleHoldFeedbackCallbackLookup;
   publish: (name: string, ...payload: unknown[]) => void;
   reportUnsupportedRangeKey: (key: string) => void;
   applyRuntimeWalkStatePatch?: (patch: Record<string, number>) => void;
@@ -81,13 +83,10 @@ export class CoreProductModulationRangeBridge {
     this.runtimeWalkPositions = next;
     this.publishRuntimeWalkStatePatch();
     if (options.publish === false) return;
+    if (this.options.hasCallback?.('runtimeWalkPositions') === false) return;
     this.publishRuntimeWalkPositions();
   }
-  publishRuntimeWalkPositions(): void {
-    this.runtimeWalkDebugState.publishedPositionCount += 1;
-    this.runtimeWalkDebugState.lastPositionKeys = Object.keys(this.runtimeWalkPositions).sort();
-    this.options.publish('runtimeWalkPositions', { ...this.runtimeWalkPositions });
-  }
+  publishRuntimeWalkPositions(): void { this.runtimeWalkDebugState.publishedPositionCount += 1; this.runtimeWalkDebugState.lastPositionKeys = Object.keys(this.runtimeWalkPositions).sort(); this.options.publish('runtimeWalkPositions', { ...this.runtimeWalkPositions }); }
   private publishRuntimeWalkStatePatch(): void {
     if (!this.options.applyRuntimeWalkStatePatch) return;
     const patch: Record<string, number> = {};
@@ -100,12 +99,13 @@ export class CoreProductModulationRangeBridge {
     }
     this.options.applyRuntimeWalkStatePatch(patch);
   }
-  updateSampleHoldTriggerFeedback(telemetry: CoreProductTelemetrySnapshot): void {
+  updateSampleHoldTriggerFeedback(telemetry: CoreProductTelemetrySnapshot, options: Readonly<{ publish?: boolean }> = {}): void {
     updateCoreProductSampleHoldTriggerFeedback({
       telemetry,
       triggerCounters: this.sampleHoldLastTriggerCounters,
       debugState: this.sampleHoldDebugState,
       publish: this.options.publish,
+      publishFeedback: options.publish ?? shouldPublishCoreProductSampleHoldFeedback(this.options.hasCallback),
     });
   }
   enrichModulationDebug(telemetry: CoreProductTelemetrySnapshot): CoreProductTelemetrySnapshot {

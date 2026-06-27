@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import KesshoNativeBridge
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -15,7 +16,7 @@ final class IOSAudioSessionCoordinator {
     private(set) var backgroundCount = 0
     private(set) var protectedDataUnavailableCount = 0
     private(set) var protectedDataAvailableCount = 0
-    private(set) var lastAppLifecycleEvent = "none"
+    private(set) var lastAppLifecycleEvent = KesshoNativeLifecycleEvent.none.rawValue
 
     private var notificationObservers: [NSObjectProtocol] = []
 
@@ -61,8 +62,12 @@ final class IOSAudioSessionCoordinator {
         return outputs.isEmpty ? "none" : outputs.joined(separator: ", ")
     }
 
-    func telemetry() -> [String: Any] {
+    func telemetry(audioIsPlaying: Bool = true) -> [String: Any] {
         captureActualValues()
+        let lifecyclePolicy = KesshoNativeLifecyclePolicy.policy(
+            forRawValue: lastAppLifecycleEvent,
+            audioIsPlaying: audioIsPlaying
+        )
         return [
             "preferredSampleRate": preferredSampleRate,
             "preferredBufferDurationMs": preferredBufferDuration * 1_000,
@@ -75,7 +80,10 @@ final class IOSAudioSessionCoordinator {
             "backgroundCount": backgroundCount,
             "protectedDataUnavailableCount": protectedDataUnavailableCount,
             "protectedDataAvailableCount": protectedDataAvailableCount,
-            "lastAppLifecycleEvent": lastAppLifecycleEvent
+            "lastAppLifecycleEvent": lastAppLifecycleEvent,
+            "audioMayContinue": lifecyclePolicy.audioMayContinue,
+            "throttleVisualTelemetry": lifecyclePolicy.throttleVisualTelemetry,
+            "nativeLifecyclePolicy": lifecyclePolicy.dictionary
         ]
     }
 
@@ -88,7 +96,7 @@ final class IOSAudioSessionCoordinator {
             queue: .main
         ) { [weak self] _ in
             self?.foregroundCount += 1
-            self?.lastAppLifecycleEvent = "willEnterForeground"
+            self?.lastAppLifecycleEvent = KesshoNativeLifecycleEvent.willEnterForeground.rawValue
             self?.captureActualValues()
         })
         notificationObservers.append(center.addObserver(
@@ -97,7 +105,7 @@ final class IOSAudioSessionCoordinator {
             queue: .main
         ) { [weak self] _ in
             self?.backgroundCount += 1
-            self?.lastAppLifecycleEvent = "didEnterBackground"
+            self?.lastAppLifecycleEvent = KesshoNativeLifecycleEvent.didEnterBackground.rawValue
             self?.captureActualValues()
         })
         notificationObservers.append(center.addObserver(
@@ -106,7 +114,7 @@ final class IOSAudioSessionCoordinator {
             queue: .main
         ) { [weak self] _ in
             self?.protectedDataUnavailableCount += 1
-            self?.lastAppLifecycleEvent = "protectedDataWillBecomeUnavailable"
+            self?.lastAppLifecycleEvent = KesshoNativeLifecycleEvent.protectedDataWillBecomeUnavailable.rawValue
         })
         notificationObservers.append(center.addObserver(
             forName: UIApplication.protectedDataDidBecomeAvailableNotification,
@@ -114,10 +122,10 @@ final class IOSAudioSessionCoordinator {
             queue: .main
         ) { [weak self] _ in
             self?.protectedDataAvailableCount += 1
-            self?.lastAppLifecycleEvent = "protectedDataDidBecomeAvailable"
+            self?.lastAppLifecycleEvent = KesshoNativeLifecycleEvent.protectedDataDidBecomeAvailable.rawValue
         })
 #else
-        lastAppLifecycleEvent = "unavailable"
+        lastAppLifecycleEvent = KesshoNativeLifecycleEvent.unavailable.rawValue
 #endif
     }
 }

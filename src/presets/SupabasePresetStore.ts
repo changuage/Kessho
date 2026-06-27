@@ -39,12 +39,14 @@ import {
   materializePresetVersion,
   normalizeResolvedVersionData,
   presetVersionStorageSignaturesEqual,
+  readPresetPayloadCacheV2,
   type PresetPayloadKind,
   type PresetPayloadV2Row,
   type PresetV2Row,
   type PresetVersionRefV2Row,
   type PresetVersionStorageSignature,
   type PresetVersionV2Row,
+  writePresetPayloadCacheV2,
   stripReferencedChildData,
   stableStringifyCanonical,
 } from './presetStorageV2';
@@ -67,6 +69,7 @@ const PRESET_LIST_MEMORY_CACHE_TTL_MS = 10 * 60_000;
 const PRESET_LIST_SESSION_CACHE_TTL_MS = 45 * 60_000;
 const PRESET_LIST_SESSION_CACHE_PREFIX = 'kessho:supabasePresetList:v1:';
 const PRESET_LIST_ERROR_CIRCUIT_MS = 120_000;
+const PRESET_MANAGEMENT_PAGE_SIZE = 50;
 
 interface V2LookupOptions {
   includeDeleted?: boolean;
@@ -106,6 +109,15 @@ interface PresetV2DetailBundle {
 interface PresetV2RefTargetResult {
   ref_slot: string;
   target: PresetV2Row;
+}
+
+interface PresetV2LatestManifest {
+  preset: PresetV2Row;
+  latest_version: PresetVersionV2Row;
+  refs: PresetVersionRefV2Row[];
+  target_presets?: PresetV2Row[];
+  targetPresets?: PresetV2Row[];
+  required_hashes: string[];
 }
 
 interface PresetStorageStats {
@@ -552,6 +564,7 @@ function isMissingRpcError(error: unknown, functionName: string): boolean {
     || text.includes('schema cache')
     || text.includes(`could not find the function public.${functionName}`.toLowerCase())
     || text.includes(`function public.${functionName}`)
+    || (text.includes('unsupported fake rpc') && text.includes(functionName.toLowerCase()))
     || (text.includes('function') && text.includes(functionName.toLowerCase()) && text.includes('does not exist'));
 }
 
@@ -572,6 +585,8 @@ let sharedV2SchemaAvailable: boolean | null = null;
 let sharedV2ProbeInFlight: Promise<boolean> | null = null;
 let sharedReadCircuitOpenUntil = 0;
 let sharedDetailRpcAvailable: boolean | null = null;
+let sharedLatestManifestRpcAvailable: boolean | null = null;
+let sharedMissingPayloadRpcAvailable: boolean | null = null;
 let sharedLegacyDetailRpcAvailable: boolean | null = null;
 let sharedRuntimeReadRpcAvailable: boolean | null = null;
 let sharedLegacySaveRpcAvailable: boolean | null = null;
@@ -821,7 +836,7 @@ export class SupabasePresetStore implements IPresetStore {
         }
       }
 
-      return query.order('updated_at', { ascending: false }).limit(200);
+      return query.order('updated_at', { ascending: false }).limit(PRESET_MANAGEMENT_PAGE_SIZE);
     };
 
     const { data, error } = await buildQuery();
@@ -910,6 +925,23 @@ export class SupabasePresetStore implements IPresetStore {
     return payload;
   }
 
+  private buildRenamePayload(
+    nextName: string,
+    identity?: PresetRenameIdentity,
+  ): Record<string, unknown> {
+    const payload: Record<string, unknown> = { name: nextName };
+    if (!identity) return payload;
+    if ('creator' in identity) payload.creator = identity.creator ?? null;
+    if ('description' in identity) payload.description = identity.description ?? null;
+    if ('visibility' in identity) payload.visibility = identity.visibility ?? 'private';
+    if ('familyName' in identity) payload.family_name = identity.familyName ?? null;
+    if ('variantName' in identity) payload.variant_name = identity.variantName ?? null;
+    if ('variantRank' in identity) payload.variant_rank = identity.variantRank ?? null;
+    if ('rating' in identity) payload.rating = identity.rating ?? null;
+    if ('tags' in identity) payload.tags = identity.tags ?? [];
+    return payload;
+  }
+
   private async renameLegacy(
     type: PresetLevel,
     name: string,
@@ -925,12 +957,10 @@ export class SupabasePresetStore implements IPresetStore {
       throw new Error(`A preset named "${nextName}" already exists.`);
     }
 
-    const { data, error } = await this.client
-      .from('presets')
-      .update(this.buildRenamePayloadFromRow(target, nextName, identity))
-      .eq('id', target.id)
-      .select('*')
-      .single();
+    const { data, error } = await this.client.rpc('kessho_rename_legacy_preset', {
+      target_preset_id: target.id,
+      rename_payload: this.buildRenamePayloadFromRow(target, nextName, identity),
+    });
 
     if (error) {
       throw new Error(`Legacy cloud preset rename failed: ${error.message}`);
@@ -953,6 +983,7 @@ export class SupabasePresetStore implements IPresetStore {
         ? getPresetScopeReadCandidates(scope)
         : [canonicalizePresetScope(scope) ?? scope])
       : null;
+    // ALLOW_CONSTRAINED_RUNTIME_LOOKUP: logical-key lookup with type/name/scope filters.
     const data = await this.callRuntimeReadRpc<PresetV2Row[] | null>(
       'kessho_lookup_preset_rows_v2',
       {
@@ -978,6 +1009,7 @@ export class SupabasePresetStore implements IPresetStore {
   private async findPresetRowByIdV2(id: string): Promise<PresetV2Row | null> {
     if (!isUuid(id)) return null;
 
+    // ALLOW_CONSTRAINED_RUNTIME_LOOKUP: id lookup, max_rows=1.
     const data = await this.callRuntimeReadRpc<PresetV2Row[] | null>(
       'kessho_lookup_preset_rows_v2',
       {
@@ -1000,6 +1032,55 @@ export class SupabasePresetStore implements IPresetStore {
     return ((data ?? []) as unknown as PresetV2Row[])[0] ?? null;
   }
 
+  private async lookupPresetIdV2(
+    type: PresetLevel,
+    name: string,
+    scope?: string,
+  ): Promise<string | null | undefined> {
+    const scopes = scope ? getPresetScopeReadCandidates(scope) : [null];
+    for (const targetScope of scopes) {
+      const { data, error } = await this.client.rpc('kessho_lookup_preset_id_v2', {
+        target_type: type,
+        target_name: name,
+        target_scope: targetScope,
+        target_resolved_hash: null,
+      });
+
+      if (error) {
+        if (isMissingRpcError(error, 'kessho_lookup_preset_id_v2')) return undefined;
+        if (this.markV2UnavailableIfMissing(error) || isPermissionDeniedError(error)) return undefined;
+        throw new Error(`V2 preset id lookup RPC failed: ${error.message}`);
+      }
+
+      if (typeof data === 'string' && data) return data;
+    }
+    return null;
+  }
+
+  private async existsLogicalKeyV2(
+    type: PresetLevel,
+    name: string,
+    scope?: string,
+  ): Promise<boolean | undefined> {
+    const scopes = scope ? getPresetScopeReadCandidates(scope) : [null];
+    for (const targetScope of scopes) {
+      const { data, error } = await this.client.rpc('kessho_exists_preset_logical_key_v2', {
+        target_type: type,
+        target_name: name,
+        target_scope: targetScope,
+      });
+
+      if (error) {
+        if (isMissingRpcError(error, 'kessho_exists_preset_logical_key_v2')) return undefined;
+        if (this.markV2UnavailableIfMissing(error) || isPermissionDeniedError(error)) return undefined;
+        throw new Error(`V2 preset existence RPC failed: ${error.message}`);
+      }
+
+      if (data === true) return true;
+    }
+    return false;
+  }
+
   private async renameV2(
     type: PresetLevel,
     name: string,
@@ -1007,22 +1088,20 @@ export class SupabasePresetStore implements IPresetStore {
     scope?: string,
     identity?: PresetRenameIdentity,
   ): Promise<PresetEntry | null> {
-    const targetRows = await this.queryPresetRowsV2(type, name, scope, { scopeAliases: true });
-    const target = targetRows[0] ?? null;
+    const targetId = await this.lookupPresetIdV2(type, name, scope);
+    let target: PresetV2Row | null = null;
+    if (targetId === undefined) {
+      const targetRows = await this.queryPresetRowsV2(type, name, scope, { scopeAliases: true });
+      target = targetRows[0] ?? null;
+    } else if (targetId) {
+      target = { id: targetId } as PresetV2Row;
+    }
     if (!target) return null;
 
-    const conflictRows = await this.queryPresetRowsV2(type, nextName, scope, { scopeAliases: true });
-    const conflict = conflictRows.find(row => row.id !== target.id);
-    if (conflict) {
-      throw new Error(`A preset named "${nextName}" already exists.`);
-    }
-
-    const { data, error } = await this.client
-      .from('presets_v2')
-      .update(this.buildRenamePayloadFromRow(target, nextName, identity))
-      .eq('id', target.id)
-      .select('*')
-      .single();
+    const { data, error } = await this.client.rpc('kessho_rename_preset_v2', {
+      target_preset_id: target.id,
+      rename_payload: this.buildRenamePayload(nextName, identity),
+    });
 
     if (error) {
       if (this.markV2UnavailableIfMissing(error)) throw error;
@@ -1099,6 +1178,7 @@ export class SupabasePresetStore implements IPresetStore {
     excludePresetId?: string,
     options: V2HashLookupOptions = {},
   ): Promise<PresetV2Row | null> {
+    // ALLOW_CONSTRAINED_RUNTIME_LOOKUP: hash lookup for ref deduplication with scope and hash filters.
     const data = await this.callRuntimeReadRpc<PresetV2Row[] | null>(
       'kessho_lookup_preset_rows_v2',
       {
@@ -1346,24 +1426,54 @@ export class SupabasePresetStore implements IPresetStore {
   }
 
   private async fetchPayloadMapV2(hashes: string[]): Promise<Map<string, unknown>> {
-    const uniqueHashes = [...new Set(hashes.filter(Boolean))];
+    const uniqueHashes = [...new Set(hashes.filter(hash => /^[0-9a-f]{64}$/.test(hash)))].slice(0, 100);
     const payloadMap = new Map<string, unknown>();
     if (!uniqueHashes.length) return payloadMap;
 
-    const data = await this.callRuntimeReadRpc<PresetPayloadV2Row[] | null>(
-      'kessho_get_preset_payloads_v2',
-      { target_hashes: uniqueHashes },
-      'V2 payload fetch RPC',
-    );
+    const missingHashes: string[] = [];
+    for (const hash of uniqueHashes) {
+      const cached = readPresetPayloadCacheV2(hash);
+      if (cached !== undefined) {
+        payloadMap.set(hash, cached);
+      } else {
+        missingHashes.push(hash);
+      }
+    }
+    if (!missingHashes.length) return payloadMap;
+
+    const functionName = sharedMissingPayloadRpcAvailable === false
+      ? 'kessho_get_preset_payloads_v2'
+      : 'kessho_get_missing_preset_payloads_v2';
+    const { data, error } = await this.client.rpc(functionName, {
+      target_hashes: missingHashes,
+    });
+    if (error) {
+      if (functionName === 'kessho_get_missing_preset_payloads_v2' && isMissingRpcError(error, functionName)) {
+        sharedMissingPayloadRpcAvailable = false;
+        return this.fetchPayloadMapV2(missingHashes);
+      }
+      if (isMissingRpcError(error, functionName)) {
+        sharedRuntimeReadRpcAvailable = false;
+        return payloadMap;
+      }
+      if (this.markV2UnavailableIfMissing(error) || isPermissionDeniedError(error)) return payloadMap;
+      throw new Error(`V2 payload fetch RPC failed: ${error.message}`);
+    }
+    if (functionName === 'kessho_get_missing_preset_payloads_v2') {
+      sharedMissingPayloadRpcAvailable = true;
+    }
 
     for (const row of (data ?? []) as unknown[]) {
       if (isPlainObject(row) && typeof row.hash === 'string' && 'payload' in row) {
         payloadMap.set(row.hash, row.payload);
+        await writePresetPayloadCacheV2(row.hash, row.payload);
         continue;
       }
       if (isPlainObject(row)) {
         const payload = canonicalizeRecord(row);
-        payloadMap.set(await hashCanonicalJson(payload), payload);
+        const hash = await hashCanonicalJson(payload);
+        payloadMap.set(hash, payload);
+        await writePresetPayloadCacheV2(hash, payload);
       }
     }
 
@@ -1375,11 +1485,14 @@ export class SupabasePresetStore implements IPresetStore {
     for (const row of rows) {
       if (isPlainObject(row) && typeof row.hash === 'string' && 'payload' in row) {
         payloadMap.set(row.hash, row.payload);
+        await writePresetPayloadCacheV2(row.hash, row.payload);
         continue;
       }
       if (isPlainObject(row)) {
         const payload = canonicalizeRecord(row);
-        payloadMap.set(await hashCanonicalJson(payload), payload);
+        const hash = await hashCanonicalJson(payload);
+        payloadMap.set(hash, payload);
+        await writePresetPayloadCacheV2(hash, payload);
       }
     }
     return payloadMap;
@@ -1395,6 +1508,7 @@ export class SupabasePresetStore implements IPresetStore {
   }
 
   private async fetchExportRowsV2(): Promise<PresetV2Row[]> {
+    // ALLOW_WIDE_LOOKUP_FOR_EXPORT: explicit backup/export flow, not a hot play/list path.
     const data = await this.callRuntimeReadRpc<PresetV2Row[] | null>(
       'kessho_lookup_preset_rows_v2',
       {
@@ -1429,6 +1543,70 @@ export class SupabasePresetStore implements IPresetStore {
           : [],
       payloads: Array.isArray(data.payloads) ? data.payloads as unknown as PresetPayloadV2Row[] : [],
     };
+  }
+
+  private normalizeLatestManifestV2(data: unknown): PresetV2LatestManifest | null {
+    if (!isPlainObject(data) || !isPlainObject(data.preset) || !isPlainObject(data.latest_version)) return null;
+    return {
+      preset: data.preset as unknown as PresetV2Row,
+      latest_version: data.latest_version as unknown as PresetVersionV2Row,
+      refs: Array.isArray(data.refs) ? data.refs as unknown as PresetVersionRefV2Row[] : [],
+      targetPresets: Array.isArray(data.targetPresets)
+        ? data.targetPresets as unknown as PresetV2Row[]
+        : Array.isArray(data.target_presets)
+          ? data.target_presets as unknown as PresetV2Row[]
+          : [],
+      required_hashes: Array.isArray(data.required_hashes)
+        ? data.required_hashes.filter((hash): hash is string => typeof hash === 'string')
+        : [],
+    };
+  }
+
+  private async fetchLatestManifestRpcV2(id: string): Promise<PresetV2LatestManifest | null | undefined> {
+    if (sharedLatestManifestRpcAvailable === false) return undefined;
+
+    const functionName = 'kessho_get_preset_latest_manifest_v2';
+    const { data, error } = await this.client.rpc(functionName, {
+      target_preset_id: id,
+    });
+
+    if (error) {
+      if (isMissingRpcError(error, functionName)) {
+        sharedLatestManifestRpcAvailable = false;
+        return undefined;
+      }
+      if (this.markV2UnavailableIfMissing(error)) return null;
+      if (isPermissionDeniedError(error)) return undefined;
+      throw new Error(`V2 latest preset manifest RPC failed: ${error.message}`);
+    }
+
+    sharedLatestManifestRpcAvailable = true;
+    return data === null ? null : this.normalizeLatestManifestV2(data);
+  }
+
+  private async materializeLatestManifestV2(manifest: PresetV2LatestManifest): Promise<PresetEntry | null> {
+    const latestVersion = manifest.latest_version;
+    const requiredHashes = [
+      ...manifest.required_hashes,
+      latestVersion.resolved_hash,
+      latestVersion.metadata_hash,
+      latestVersion.override_hash,
+      latestVersion.patch_from_prev_hash,
+    ].filter((hash): hash is string => typeof hash === 'string' && hash.length > 0);
+    const payloadMap = await this.fetchPayloadMapV2(requiredHashes);
+    return this.materializeDetailBundleV2({
+      preset: manifest.preset,
+      versions: [latestVersion],
+      refs: manifest.refs,
+      targetPresets: manifest.targetPresets ?? [],
+      payloads: [],
+    }, undefined, payloadMap);
+  }
+
+  private async loadLatestManifestV2(id: string): Promise<PresetEntry | null | undefined> {
+    const manifest = await this.fetchLatestManifestRpcV2(id);
+    if (manifest === undefined) return undefined;
+    return manifest ? this.materializeLatestManifestV2(manifest) : null;
   }
 
   private async fetchDetailBundleRpcV2(options: {
@@ -1474,6 +1652,7 @@ export class SupabasePresetStore implements IPresetStore {
   private async materializeDetailBundleV2(
     bundle: PresetV2DetailBundle,
     version?: number,
+    preloadedPayloadMap?: Map<string, unknown>,
   ): Promise<PresetEntry | null> {
     const row = bundle.preset;
     const rowScope = canonicalizePresetScope(row.scope);
@@ -1481,7 +1660,7 @@ export class SupabasePresetStore implements IPresetStore {
     if (!versionRows.length) return null;
 
     const targetPresetMap = new Map(bundle.targetPresets.map(candidate => [candidate.id, candidate]));
-    const payloadMap = await this.payloadRowsToMapV2(bundle.payloads);
+    const payloadMap = preloadedPayloadMap ?? await this.payloadRowsToMapV2(bundle.payloads);
     const refsByVersionId = new Map<string, PresetVersionRefV2Row[]>();
     for (const refRow of bundle.refs) {
       const bucket = refsByVersionId.get(refRow.version_id) ?? [];
@@ -1677,6 +1856,11 @@ export class SupabasePresetStore implements IPresetStore {
   }
 
   private async loadV2ByRow(row: PresetV2Row, version?: number, tryRpc = true): Promise<PresetEntry | null> {
+    if (version === undefined && tryRpc) {
+      const latest = await this.loadLatestManifestV2(row.id);
+      if (latest !== undefined) return latest;
+    }
+
     if (tryRpc) {
       const rpcBundle = await this.fetchDetailBundleRpcV2({ id: row.id, version });
       if (rpcBundle !== undefined) {
@@ -1689,6 +1873,13 @@ export class SupabasePresetStore implements IPresetStore {
   }
 
   private async loadV2(type: PresetLevel, name: string, scope?: string, version?: number): Promise<PresetEntry | null> {
+    if (version === undefined) {
+      const rows = await this.queryPresetRowsV2(type, name, scope, { scopeAliases: true });
+      const row = rows[0];
+      if (!row) return null;
+      return this.loadV2ByRow(row);
+    }
+
     const rpcBundle = await this.fetchDetailBundleRpcV2({ type, name, scope, version });
     if (rpcBundle !== undefined) {
       return rpcBundle ? this.materializeDetailBundleV2(rpcBundle, version) : null;
@@ -1714,7 +1905,7 @@ export class SupabasePresetStore implements IPresetStore {
       }
       query = query.is('deleted_at', null);
 
-      return query.order('updated_at', { ascending: false }).limit(200);
+      return query.order('updated_at', { ascending: false }).limit(PRESET_MANAGEMENT_PAGE_SIZE);
     };
 
     const { data, error } = await buildQuery();
@@ -1825,6 +2016,9 @@ export class SupabasePresetStore implements IPresetStore {
   }
 
   private async existsV2(type: PresetLevel, name: string, scope?: string): Promise<boolean> {
+    const exists = await this.existsLogicalKeyV2(type, name, scope);
+    if (exists !== undefined) return exists;
+
     const rows = await this.queryPresetRowsV2(type, name, scope, { scopeAliases: true });
     return rows.length > 0;
   }

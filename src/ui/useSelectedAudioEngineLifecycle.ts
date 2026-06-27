@@ -27,16 +27,14 @@ export function useSelectedAudioEngineLifecycle(
 
   const resumeSelectedAudioEngine = useCallback((): Promise<void> => {
     if (audioEngineRuntimeMode === 'core-product') {
-      productEngine.resume();
-      return Promise.resolve();
+      return productEngine.resume();
     }
     return Promise.resolve(selectedProductRuntime.resume());
   }, [audioEngineRuntimeMode]);
 
   const suspendSelectedAudioEngine = useCallback((): Promise<void> => {
     if (audioEngineRuntimeMode === 'core-product') {
-      productEngine.suspend();
-      return Promise.resolve();
+      return productEngine.suspend();
     }
     return Promise.resolve(selectedProductRuntime.suspend());
   }, [audioEngineRuntimeMode]);

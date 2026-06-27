@@ -28,64 +28,88 @@ type ProductRuntimeTelemetry = {
   productRuntimeSupportsRangeKey: (key: string) => boolean;
 };
 
+const EMPTY_PRODUCT_DYNAMICS_VISUAL_TELEMETRY: ProductDynamicsVisualTelemetry = {
+  contextTime: 0,
+  endCompHandledByWorklet: false,
+  endCompReductionDb: 0,
+  worklet: null,
+  sidechainEvents: [],
+};
+
 export function useProductRuntimeTelemetry({
+  productRuntimeMode,
   uiMode,
 }: ProductRuntimeTelemetryOptions): ProductRuntimeTelemetry {
   const documentVisible = useDocumentVisibility();
+  const productRuntimeActive = productRuntimeMode === 'core-product';
 
   const getProductGranularActiveGrainCount = useCallback((): number => {
+    if (!productRuntimeActive) return 0;
     return productEngine.getTelemetry()?.activeGrains ?? 0;
-  }, []);
+  }, [productRuntimeActive]);
 
   const getProductGranularWriteHeadPosition = useCallback((): number => {
+    if (!productRuntimeActive) return 0;
     return productEngine.getTelemetry()?.granularWriteHeadPosition ?? 0;
-  }, []);
+  }, [productRuntimeActive]);
 
   const getProductGranularVoicePositions = useCallback((): readonly number[] => {
+    if (!productRuntimeActive) return [0, 0, 0, 0];
     return productEngine.getTelemetry()?.granularVoicePositions ?? [0, 0, 0, 0];
-  }, []);
+  }, [productRuntimeActive]);
 
   const getProductGranularVisualEvents = useCallback((): readonly CoreProductGranularVisualEvent[] => {
+    if (!productRuntimeActive) return [];
     return productEngine.getTelemetry()?.granularVisualEvents ?? [];
-  }, []);
+  }, [productRuntimeActive]);
 
   const getProductDynamicsVisualTelemetry = useCallback((): ProductDynamicsVisualTelemetry => {
+    if (!productRuntimeActive) return EMPTY_PRODUCT_DYNAMICS_VISUAL_TELEMETRY;
     return productEngine.getDynamicsVisualTelemetry();
-  }, []);
+  }, [productRuntimeActive]);
 
   const getProductPadFilterFreq = useCallback((pad: 'pad1' | 'pad2'): number => {
+    if (!productRuntimeActive) return 0;
     const telemetry = productEngine.getTelemetry();
     return pad === 'pad2' ? telemetry?.pad2FilterFreq ?? 0 : telemetry?.pad1FilterFreq ?? 0;
-  }, []);
+  }, [productRuntimeActive]);
 
   const getProductPadLfoValue = useCallback((pad: 'pad1' | 'pad2'): number => {
+    if (!productRuntimeActive) return 0;
     const telemetry = productEngine.getTelemetry();
     return pad === 'pad2' ? telemetry?.pad2Lfo1Value ?? 0 : telemetry?.pad1Lfo1Value ?? 0;
-  }, []);
+  }, [productRuntimeActive]);
 
   const pushProductMidiMessage = useCallback((message: KesshoMidiMessage): void => {
+    if (!productRuntimeActive) return;
     productEngine.pushMidiMessage(message);
-  }, []);
+  }, [productRuntimeActive]);
 
   const setProductGranularUiActive = useCallback((active: boolean): void => {
+    if (!productRuntimeActive) return;
     productEngine.setGranularUiActive(active);
-  }, []);
+  }, [productRuntimeActive]);
 
   const setProductVisualTelemetryActive = useCallback((active: boolean): void => {
+    if (!productRuntimeActive) return;
     productEngine.setVisualTelemetryActive(active);
-  }, []);
+  }, [productRuntimeActive]);
 
   const productRuntimeSupportsRangeKey = useCallback((key: string): boolean => {
-    return isCoreProductRangeKeySupported(key);
-  }, []);
+    return productRuntimeMode !== 'core-product' || isCoreProductRangeKeySupported(key);
+  }, [productRuntimeMode]);
 
   useEffect(() => {
+    if (productRuntimeMode !== 'core-product') {
+      productEngine.setVisualTelemetryActive(false);
+      return;
+    }
     const active = uiMode === 'advanced' && documentVisible;
     productEngine.setVisualTelemetryActive(active);
     return () => {
       productEngine.setVisualTelemetryActive(false);
     };
-  }, [documentVisible, uiMode]);
+  }, [documentVisible, productRuntimeMode, uiMode]);
 
   return {
     getProductGranularActiveGrainCount,

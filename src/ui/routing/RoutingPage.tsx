@@ -8,7 +8,7 @@ import type { DawOutputDeviceSelection, DawOutputRoutingConfig } from '../../aud
 import DawOutputPanel from './DawOutputPanel';
 import RoutingMuteGroupsPanel from './RoutingMuteGroupsPanel';
 import { useRoutingMuteGroupsController } from './useRoutingMuteGroupsController';
-import type { RoutingMuteGroupsState } from './routingMuteGroups';
+import type { RoutingMuteGroupRuntimeLevelPatch, RoutingMuteGroupsState } from './routingMuteGroups';
 import './routing.css';
 
 export interface RoutingPageProps {
@@ -18,7 +18,7 @@ export interface RoutingPageProps {
   onRoutingMuteGroupsChange: (state: RoutingMuteGroupsState) => void;
   onParamChange: (key: keyof SliderState, value: number) => void;
   onColumnParamChange: (key: keyof SliderState, value: number) => void;
-  onRuntimeLevelChange: (key: keyof SliderState, value: number | null) => void;
+  onRuntimeLevelPatchChange: (patch: RoutingMuteGroupRuntimeLevelPatch) => void;
   onBooleanParamChange: (key: keyof SliderState, value: boolean) => void;
   onToggleSource: (sourceId: string, enabled: boolean) => void;
   onMidiMessage: (message: KesshoMidiMessage) => void;
@@ -43,7 +43,7 @@ export default function RoutingPage({
   onRoutingMuteGroupsChange,
   onParamChange,
   onColumnParamChange,
-  onRuntimeLevelChange,
+  onRuntimeLevelPatchChange,
   onBooleanParamChange,
   onToggleSource,
   onMidiMessage,
@@ -58,7 +58,7 @@ export default function RoutingPage({
     state,
     routingMuteGroups,
     onRoutingMuteGroupsChange,
-    onRuntimeLevelChange,
+    onRuntimeLevelPatchChange,
     onBooleanParamChange,
   });
 

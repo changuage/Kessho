@@ -7,6 +7,7 @@ import {
   createCoreProductSequencerSubLaneConfigEvent,
 } from '../audio/coreProductEvents';
 import type { ProductEnginePort } from '../audio/product/ProductEnginePort';
+import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { SliderMode, SliderState } from './state';
 import {
   getRuntimeSliderDebugState,
@@ -18,7 +19,7 @@ type ActiveTab = 'global' | 'visualizer' | 'synth' | 'drums' | 'reverb' | 'granu
 
 type ProductRuntimeParityProbeOptions = {
   enabled: boolean;
-  runtime: ProductEnginePort;
+  runtime?: ProductEnginePort;
   productRuntimeSupportsRangeKey: (key: string) => boolean;
   setActiveTab: Dispatch<SetStateAction<ActiveTab>>;
   setDualSliderRanges: Dispatch<SetStateAction<Partial<Record<keyof SliderState, { min: number; max: number }>>>>;
@@ -98,7 +99,7 @@ declare global {
 
 export function useProductRuntimeParityProbe({
   enabled,
-  runtime,
+  runtime = productEngine,
   productRuntimeSupportsRangeKey,
   setActiveTab,
   setDualSliderRanges,

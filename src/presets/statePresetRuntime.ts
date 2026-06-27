@@ -10,6 +10,7 @@ import { DEFAULT_STATE, migratePreset, type SliderState } from '../ui/state';
 import { loadPresetsFromFolder, type BundledSavedPreset } from './bundledPresetLoader';
 import { getVersionData } from './codec';
 import { extractPresetVersionMetadata } from './presetUtils';
+import { enforceProductCorePresetBoundaryState } from './productCorePresetBoundary';
 import { savedPresetSourceFor } from './savedPresetSource';
 import type { PresetEntry, PresetSummary } from './types';
 
@@ -205,7 +206,7 @@ export const normalizePresetForWeb = (state: SliderState): SliderState => {
     }
   }
 
-  return normalizeDegradeReverbCrossfeed(merged);
+  return enforceProductCorePresetBoundaryState(normalizeDegradeReverbCrossfeed(merged));
 };
 
 export function sortSavedStatePresetsByFreshness(presets: SavedPreset[]): SavedPreset[] {

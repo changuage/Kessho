@@ -1154,6 +1154,14 @@ Object.assign(globalThis, {
   CoreProductSequencerMorphFeedbackBridge,
 });`, context, { filename: sequencerMorphFeedbackBridgePath });
 
+  const sequencerVisualBridgePath = 'src/audio/product/host/CoreProductSequencerVisualBridge.ts';
+  const sequencerVisualBridgeSource = stripImportsAndExports(readProjectFile(sequencerVisualBridgePath));
+  const sequencerVisualBridgeJs = transpileForVm(sequencerVisualBridgeSource, resolve(root, sequencerVisualBridgePath));
+  vm.runInNewContext(`${sequencerVisualBridgeJs}
+Object.assign(globalThis, {
+  CoreProductSequencerVisualBridge,
+});`, context, { filename: sequencerVisualBridgePath });
+
   const sequencerEvolvePayloadBridgePath = 'src/audio/product/host/CoreProductSequencerEvolvePayloadBridge.ts';
   const sequencerEvolvePayloadBridgeSource = stripImportsAndExports(readProjectFile(sequencerEvolvePayloadBridgePath));
   const sequencerEvolvePayloadBridgeJs = transpileForVm(sequencerEvolvePayloadBridgeSource, resolve(root, sequencerEvolvePayloadBridgePath));
@@ -1372,16 +1380,24 @@ Object.assign(globalThis, {
 
   const runtimeWalkDebugPath = 'src/audio/product/host/CoreProductRuntimeWalkDebug.ts';
   const runtimeWalkDebugSource = stripImportsAndExports(readProjectFile(runtimeWalkDebugPath));
-  const runtimeWalkDebugJs = transpileForVm(runtimeWalkDebugSource, resolve(root, runtimeWalkDebugPath));
-  vm.runInNewContext(`${runtimeWalkDebugJs}
-Object.assign(globalThis, {
-  createCoreProductRuntimeWalkDebugState,
-  snapshotCoreProductRuntimeWalkDebugState,
-});`, context, { filename: runtimeWalkDebugPath });
+	  const runtimeWalkDebugJs = transpileForVm(runtimeWalkDebugSource, resolve(root, runtimeWalkDebugPath));
+	  vm.runInNewContext(`${runtimeWalkDebugJs}
+	Object.assign(globalThis, {
+	  createCoreProductRuntimeWalkDebugState,
+	  snapshotCoreProductRuntimeWalkDebugState,
+	});`, context, { filename: runtimeWalkDebugPath });
 
-  const sampleHoldFeedbackPath = 'src/audio/product/host/CoreProductSampleHoldFeedbackBridge.ts';
-  const sampleHoldFeedbackSource = stripImportsAndExports(readProjectFile(sampleHoldFeedbackPath));
-  const sampleHoldFeedbackJs = transpileForVm(sampleHoldFeedbackSource, resolve(root, sampleHoldFeedbackPath));
+	  const sampleHoldFeedbackPolicyPath = 'src/audio/product/host/CoreProductSampleHoldFeedbackPolicy.ts';
+	  const sampleHoldFeedbackPolicySource = stripImportsAndExports(readProjectFile(sampleHoldFeedbackPolicyPath));
+	  const sampleHoldFeedbackPolicyJs = transpileForVm(sampleHoldFeedbackPolicySource, resolve(root, sampleHoldFeedbackPolicyPath));
+	  vm.runInNewContext(`${sampleHoldFeedbackPolicyJs}
+	Object.assign(globalThis, {
+	  shouldPublishCoreProductSampleHoldFeedback,
+	});`, context, { filename: sampleHoldFeedbackPolicyPath });
+
+	  const sampleHoldFeedbackPath = 'src/audio/product/host/CoreProductSampleHoldFeedbackBridge.ts';
+	  const sampleHoldFeedbackSource = stripImportsAndExports(readProjectFile(sampleHoldFeedbackPath));
+	  const sampleHoldFeedbackJs = transpileForVm(sampleHoldFeedbackSource, resolve(root, sampleHoldFeedbackPath));
   vm.runInNewContext(`${sampleHoldFeedbackJs}
 Object.assign(globalThis, {
   createCoreProductSampleHoldDebugState,
@@ -1457,6 +1473,38 @@ Object.assign(globalThis, {
 Object.assign(globalThis, {
   CoreProductRuntimeEventBatcher,
 });`, context, { filename: runtimeEventBatcherPath });
+
+  const realtimeInputBootstrapPath = 'src/audio/product/host/CoreProductRealtimeInputBootstrap.ts';
+  const realtimeInputBootstrapSource = stripImportsAndExports(readProjectFile(realtimeInputBootstrapPath));
+  const realtimeInputBootstrapJs = transpileForVm(realtimeInputBootstrapSource, resolve(root, realtimeInputBootstrapPath));
+  vm.runInNewContext(`${realtimeInputBootstrapJs}
+Object.assign(globalThis, {
+  CoreProductRealtimeInputBootstrap,
+});`, context, { filename: realtimeInputBootstrapPath });
+
+  const realtimeTimestampMapperPath = 'src/audio/product/host/CoreProductRealtimeTimestampMapper.ts';
+  const realtimeTimestampMapperSource = stripImportsAndExports(readProjectFile(realtimeTimestampMapperPath));
+  const realtimeTimestampMapperJs = transpileForVm(realtimeTimestampMapperSource, resolve(root, realtimeTimestampMapperPath));
+  vm.runInNewContext(`${realtimeTimestampMapperJs}
+Object.assign(globalThis, {
+  CoreProductRealtimeTimestampMapper,
+});`, context, { filename: realtimeTimestampMapperPath });
+
+  const productFrameSchedulerPath = 'src/audio/product/scheduling/ProductFrameScheduler.ts';
+  const productFrameSchedulerSource = stripImportsAndExports(readProjectFile(productFrameSchedulerPath));
+  const productFrameSchedulerJs = transpileForVm(productFrameSchedulerSource, resolve(root, productFrameSchedulerPath));
+  vm.runInNewContext(`${productFrameSchedulerJs}
+Object.assign(globalThis, {
+  ProductFrameScheduler,
+});`, context, { filename: productFrameSchedulerPath });
+
+  const telemetryCallbackSchedulerPath = 'src/audio/product/host/CoreProductTelemetryCallbackScheduler.ts';
+  const telemetryCallbackSchedulerSource = stripImportsAndExports(readProjectFile(telemetryCallbackSchedulerPath));
+  const telemetryCallbackSchedulerJs = transpileForVm(telemetryCallbackSchedulerSource, resolve(root, telemetryCallbackSchedulerPath));
+  vm.runInNewContext(`${telemetryCallbackSchedulerJs}
+Object.assign(globalThis, {
+  CoreProductTelemetryCallbackScheduler,
+});`, context, { filename: telemetryCallbackSchedulerPath });
 
   const path = 'src/audio/coreProductEngineHost.ts';
   const source = stripImportsAndExports(readProjectFile(path)).replaceAll('import.meta.env', '__IMPORT_META_ENV__');

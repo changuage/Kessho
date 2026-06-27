@@ -52,6 +52,12 @@ const DETAIL_RPC_CHECKS = [
     },
     expectedGuardText: 'target_preset_id or target_type/target_name is required',
   },
+  {
+    name: 'kessho_get_preset_latest_manifest_v2',
+    params: {
+      target_preset_id: '00000000-0000-4000-8000-000000000000',
+    },
+  },
 ];
 
 const RUNTIME_RPC_CHECKS = [
@@ -88,6 +94,45 @@ const RUNTIME_RPC_CHECKS = [
   {
     name: 'kessho_get_preset_payloads_v2',
     params: { target_hashes: [] },
+  },
+  {
+    name: 'kessho_get_missing_preset_payloads_v2',
+    params: { target_hashes: [] },
+  },
+  {
+    name: 'kessho_lookup_preset_id_v2',
+    params: {
+      target_type: 'state',
+      target_name: '__audit_missing__',
+      target_scope: 'global',
+      target_resolved_hash: null,
+    },
+  },
+  {
+    name: 'kessho_get_preset_card_v2',
+    params: { target_preset_id: '00000000-0000-4000-8000-000000000000' },
+  },
+  {
+    name: 'kessho_exists_preset_logical_key_v2',
+    params: {
+      target_type: 'state',
+      target_name: '__audit_missing__',
+      target_scope: 'global',
+    },
+  },
+  {
+    name: 'kessho_rename_preset_v2',
+    params: {
+      target_preset_id: '00000000-0000-4000-8000-000000000000',
+      rename_payload: { name: '__audit_missing__' },
+    },
+  },
+  {
+    name: 'kessho_rename_legacy_preset',
+    params: {
+      target_preset_id: '00000000-0000-4000-8000-000000000000',
+      rename_payload: { name: '__audit_missing__' },
+    },
   },
   {
     name: 'kessho_find_preset_references_v2',

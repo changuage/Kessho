@@ -60,6 +60,7 @@ const hostResolvedStateCommitService = read('src/audio/product/host/CoreProductR
 const hostPatchClassifier = read('src/audio/product/host/CoreProductPatchClassifier.ts');
 const hostLeadPresetDataLoader = read('src/audio/product/host/CoreProductLeadPresetDataLoader.ts');
 const hostModulationRangeBridge = read('src/audio/product/host/CoreProductModulationRangeBridge.ts');
+const hostSampleHoldFeedbackPolicy = read('src/audio/product/host/CoreProductSampleHoldFeedbackPolicy.ts');
 const hostLiveTriggerCallbackBridge = read('src/audio/product/host/CoreProductLiveTriggerCallbackBridge.ts');
 const hostManualAuditionBridge = read('src/audio/product/host/CoreProductManualAuditionBridge.ts');
 const hostSnapshotCoordinator = read('src/audio/product/host/CoreProductSnapshotCoordinator.ts');
@@ -67,10 +68,12 @@ const hostSnapshotDebug = read('src/audio/product/host/CoreProductSnapshotDebug.
 const hostSnapshotFactory = read('src/audio/product/host/CoreProductHostSnapshotFactory.ts');
 const hostTelemetryAdapter = read('src/audio/product/host/CoreProductTelemetryAdapter.ts');
 const hostRuntimeHostPort = read('src/audio/product/host/CoreProductRuntimeHostPort.ts');
+const hostRealtimeInputBootstrap = read('src/audio/product/host/CoreProductRealtimeInputBootstrap.ts');
 const hostSequencerCacheBridge = read('src/audio/product/host/CoreProductSequencerCacheBridge.ts');
 const hostSequencerControlEventBridge = read('src/audio/product/host/CoreProductSequencerControlEventBridge.ts');
 const hostManualSynthDiceBridge = read('src/audio/product/host/CoreProductManualSynthDiceBridge.ts');
 const hostSequencerUiAdapter = read('src/audio/product/host/CoreProductSequencerUiAdapter.ts');
+const hostSequencerVisualBridge = read('src/audio/product/host/CoreProductSequencerVisualBridge.ts');
 const hostSequencerEvolveBridge = read('src/audio/product/host/CoreProductSequencerEvolveBridge.ts');
 const hostSequencerEvolveRuntimeBridge = read('src/audio/product/host/CoreProductSequencerEvolveRuntimeBridge.ts');
 const hostSequencerNativeEvolveFlags = read('src/audio/product/host/CoreProductSequencerNativeEvolveFlags.ts');
@@ -93,6 +96,18 @@ const runtime = read('src/audio/coreProductRuntime.ts');
 const referenceRuntime = read('src/audio/referenceAudioRuntime.ts');
 const productAudioRuntimeSelection = read('src/audio/product/ProductAudioRuntimeSelection.ts');
 const productEnginePort = read('src/audio/product/ProductEnginePort.ts');
+const productEnginePortSurface = [
+  'src/audio/product/ProductEnginePort.ts',
+  'src/audio/product/ports/ProductLifecyclePort.ts',
+  'src/audio/product/ports/ProductCommandPort.ts',
+  'src/audio/product/ports/ProductControlPort.ts',
+  'src/audio/product/ports/ProductAssetPort.ts',
+  'src/audio/product/ports/ProductTelemetryPort.ts',
+  'src/audio/product/ports/ProductSequencerPort.ts',
+  'src/audio/product/ports/ProductModulationPort.ts',
+  'src/audio/product/ports/ProductDiagnosticsPort.ts',
+  'src/audio/product/ports/ProductEnginePorts.ts',
+].map(read).join('\n');
 const productRuntimeCapabilityReport = read('src/audio/product/ProductRuntimeCapabilityReport.ts');
 const webProductEngine = read('src/audio/product/WebProductEngine.ts');
 const productControlCommitResolvedState = read('src/product-control/commitResolvedState.ts');
@@ -221,7 +236,7 @@ const productApi = read('cpp/KesshoCore/src/product/KesshoProductApi.cpp');
 const productTelemetryHeader = read('cpp/KesshoCore/include/KesshoCore/KesshoProductTelemetry.h');
 const productTypesHeader = read('cpp/KesshoCore/include/KesshoCore/KesshoProductTypes.h');
 const productSequencerTests = read('cpp/KesshoCore/tests/ProductSequencerTests.cpp');
-const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostSequencerSubLaneConfig}\n${hostSequencerEvolveConfig}\n${hostSequencerHome}\n${hostSequencerRangePayload}\n${hostSynthPitch}\n${hostSequencerUiState}\n${hostRuntimeGuards}\n${hostMidi}\n${hostAssetRegistrar}\n${hostArrangementBridge}\n${hostDiagnostics}\n${hostDisplayCallbackRegistry}\n${hostGraphTapBridge}\n${hostHarmonyStateBridge}\n${hostProxy}\n${hostJourneyMorphClock}\n${hostPatchClassifier}\n${hostLeadPresetDataLoader}\n${hostModulationRangeBridge}\n${hostLiveTriggerCallbackBridge}\n${hostManualAuditionBridge}\n${hostSnapshotCoordinator}\n${hostSnapshotDebug}\n${hostSnapshotFactory}\n${hostTelemetryAdapter}\n${hostRuntimeHostPort}\n${hostSequencerCacheBridge}\n${hostSequencerControlEventBridge}\n${hostManualSynthDiceBridge}\n${hostSequencerUiAdapter}\n${hostSequencerEvolveBridge}\n${hostSequencerEvolveRuntimeBridge}\n${hostSequencerNativeEvolveFlags}\n${hostSequencerEvolvePayloadBridge}\n${hostSequencerHomeCaptureBridge}\n${hostSequencerHomeCaptureEventBridge}\n${hostSequencerHomeRestoreBridge}\n${hostSequencerLaneParamBridge}\n${hostSequencerNoteRangeEvolveBridge}\n${hostSequencerPitchSettingEventBridge}\n${hostSequencerStepEventBridge}\n${hostSequencerStepOverrideEventBridge}\n${hostSequencerStepOverrideBridge}\n${hostSequencerStepPostingBridge}\n${hostSequencerSubLaneEnabledEventBridge}\n${hostSequencerEvolveConfigEventBridge}`;
+const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostSequencerSubLaneConfig}\n${hostSequencerEvolveConfig}\n${hostSequencerHome}\n${hostSequencerRangePayload}\n${hostSynthPitch}\n${hostSequencerUiState}\n${hostRuntimeGuards}\n${hostMidi}\n${hostAssetRegistrar}\n${hostArrangementBridge}\n${hostDiagnostics}\n${hostDisplayCallbackRegistry}\n${hostGraphTapBridge}\n${hostHarmonyStateBridge}\n${hostProxy}\n${hostJourneyMorphClock}\n${hostPatchClassifier}\n${hostLeadPresetDataLoader}\n${hostModulationRangeBridge}\n${hostSampleHoldFeedbackPolicy}\n${hostLiveTriggerCallbackBridge}\n${hostManualAuditionBridge}\n${hostSnapshotCoordinator}\n${hostSnapshotDebug}\n${hostSnapshotFactory}\n${hostTelemetryAdapter}\n${hostRuntimeHostPort}\n${hostRealtimeInputBootstrap}\n${hostSequencerCacheBridge}\n${hostSequencerControlEventBridge}\n${hostManualSynthDiceBridge}\n${hostSequencerUiAdapter}\n${hostSequencerVisualBridge}\n${hostSequencerEvolveBridge}\n${hostSequencerEvolveRuntimeBridge}\n${hostSequencerNativeEvolveFlags}\n${hostSequencerEvolvePayloadBridge}\n${hostSequencerHomeCaptureBridge}\n${hostSequencerHomeCaptureEventBridge}\n${hostSequencerHomeRestoreBridge}\n${hostSequencerLaneParamBridge}\n${hostSequencerNoteRangeEvolveBridge}\n${hostSequencerPitchSettingEventBridge}\n${hostSequencerStepEventBridge}\n${hostSequencerStepOverrideEventBridge}\n${hostSequencerStepOverrideBridge}\n${hostSequencerStepPostingBridge}\n${hostSequencerSubLaneEnabledEventBridge}\n${hostSequencerEvolveConfigEventBridge}`;
 
 assert(
   !existsSync(resolve(root, 'src/ui/useSelectedAudioEngineSurface.ts')),
@@ -235,6 +250,7 @@ const snapshotSurface = `${snapshotTypes}\n${snapshot}\n${snapshotPadVoiceRoutin
 
 const lineCount = (source) => source.split('\n').length;
 assert(lineCount(host) <= 1000, `coreProductEngineHost.ts exceeds cleanup size cap (${lineCount(host)} lines)`);
+assert(lineCount(hostRealtimeInputBootstrap) <= 80, `CoreProductRealtimeInputBootstrap.ts exceeds cleanup size cap (${lineCount(hostRealtimeInputBootstrap)} lines)`);
 assert(lineCount(hostArrangementBridge) <= 80, `CoreProductArrangementBridge.ts exceeds cleanup size cap (${lineCount(hostArrangementBridge)} lines)`);
 assert(lineCount(hostAssetRegistrar) <= 220, `CoreProductAssetRegistrar.ts exceeds cleanup size cap (${lineCount(hostAssetRegistrar)} lines)`);
 assert(lineCount(hostDisplayCallbackRegistry) <= 60, `CoreProductDisplayCallbackRegistry.ts exceeds cleanup size cap (${lineCount(hostDisplayCallbackRegistry)} lines)`);
@@ -254,6 +270,7 @@ assert(lineCount(hostSequencerHome) <= 220, `CoreProductHostSequencerHome.ts exc
 assert(lineCount(hostSequencerRangePayload) <= 100, `CoreProductHostSequencerRangePayload.ts exceeds cleanup size cap (${lineCount(hostSequencerRangePayload)} lines)`);
 assert(lineCount(hostSequencerUiState) <= 220, `CoreProductHostSequencerUiState.ts exceeds cleanup size cap (${lineCount(hostSequencerUiState)} lines)`);
 assert(lineCount(hostSequencerVisuals) <= 180, `CoreProductHostSequencerVisuals.ts exceeds cleanup size cap (${lineCount(hostSequencerVisuals)} lines)`);
+assert(lineCount(hostSequencerVisualBridge) <= 140, `CoreProductSequencerVisualBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerVisualBridge)} lines)`);
 assert(lineCount(hostRuntimeGuards) <= 180, `CoreProductHostRuntimeGuards.ts exceeds cleanup size cap (${lineCount(hostRuntimeGuards)} lines)`);
 assert(lineCount(hostDiagnostics) <= 120, `CoreProductHostDiagnostics.ts exceeds cleanup size cap (${lineCount(hostDiagnostics)} lines)`);
 assert(lineCount(hostPatchClassifier) <= 80, `CoreProductPatchClassifier.ts exceeds cleanup size cap (${lineCount(hostPatchClassifier)} lines)`);
@@ -284,6 +301,7 @@ assert(
   'ProductControl commits must hydrate Lead preset data before resolved Product patches are committed',
 );
 assert(lineCount(hostModulationRangeBridge) <= 220, `CoreProductModulationRangeBridge.ts exceeds cleanup size cap (${lineCount(hostModulationRangeBridge)} lines)`);
+assert(lineCount(hostSampleHoldFeedbackPolicy) <= 80, `CoreProductSampleHoldFeedbackPolicy.ts exceeds cleanup size cap (${lineCount(hostSampleHoldFeedbackPolicy)} lines)`);
 assert(lineCount(hostLiveTriggerCallbackBridge) <= 80, `CoreProductLiveTriggerCallbackBridge.ts exceeds cleanup size cap (${lineCount(hostLiveTriggerCallbackBridge)} lines)`);
 assert(lineCount(hostManualAuditionBridge) <= 180, `CoreProductManualAuditionBridge.ts exceeds cleanup size cap (${lineCount(hostManualAuditionBridge)} lines)`);
 assert(lineCount(hostSnapshotCoordinator) <= 120, `CoreProductSnapshotCoordinator.ts exceeds cleanup size cap (${lineCount(hostSnapshotCoordinator)} lines)`);
@@ -315,9 +333,10 @@ assert(lineCount(hostInvoker) <= 60, `CoreProductHostInvoker.ts exceeds cleanup 
 assert(lineCount(runtimeAdapter) <= 650, `CoreProductRuntimeAdapter.ts exceeds cleanup size cap (${lineCount(runtimeAdapter)} lines)`);
 
 for (const [surfaceName, surface, tokens] of [
-  ['ProductEnginePort', productEnginePort, [
+  ['ProductEnginePort', productEnginePortSurface, [
     'getCapabilityReport(): ProductRuntimeCapabilityReport',
-    "import type { ProductRuntimeCapabilityReport } from './ProductRuntimeCapabilityReport'",
+    "import type { ProductRuntimeCapabilityReport } from '../ProductRuntimeCapabilityReport'",
+    "export type { ProductEngineLifecyclePort } from './ports/ProductLifecyclePort'",
     'unregisterAsset(assetId: number): void',
     'ProductMidiMessage',
     'ProductManualSynthNote',
@@ -387,6 +406,7 @@ for (const [surfaceName, surface, tokens] of [
     "synthEuclidEvolve: 'setSynthEuclidEvolveTriggerCallback'",
     "setCoreProductRuntimeCallback('stateChange', callback)",
     "callCoreProductHost<void>('setProductTelemetryCallback', callback ?",
+    "callCoreProductHost<void>('setPerfUpdateCallback', callback)",
     'publishDiagnostics();',
     "setCoreProductRuntimeCallback('drumTrigger', callback)",
     "setCoreProductRuntimeCallback('runtimeWalkPositions', callback)",
@@ -466,7 +486,7 @@ for (const [surfaceName, surface, tokens] of [
 }
 
 for (const rawWebAudioType of ['AudioNode', 'GainNode', 'AnalyserNode', 'MediaStream', 'AudioContext', 'AudioWorkletNode']) {
-  assert(!productEnginePort.includes(rawWebAudioType), `ProductEnginePort must not expose raw Web Audio type ${rawWebAudioType}`);
+  assert(!productEnginePortSurface.includes(rawWebAudioType), `ProductEnginePort must not expose raw Web Audio type ${rawWebAudioType}`);
 }
 for (const rawCompatibilityShape of [
   ': unknown',
@@ -475,7 +495,7 @@ for (const rawCompatibilityShape of [
   '{ min: number; max: number }',
 ]) {
   assert(
-    !productEnginePort.includes(rawCompatibilityShape),
+    !productEnginePortSurface.includes(rawCompatibilityShape),
     `ProductEnginePort must use named product-owned types instead of inline ${rawCompatibilityShape}`,
   );
 }
@@ -1114,8 +1134,9 @@ for (const token of [
   'setDualRanges(ranges:',
   'setRuntimeWalkRanges(ranges:',
   'pushMidiMessage(message:',
-  'midiTimestampOriginSeconds',
-  'timestampOriginSeconds: this.midiTimestampOriginSeconds ?? undefined',
+  'CoreProductRealtimeTimestampMapper',
+  'this.realtimeTimestampMapper.midiContext(message, this.runtime.audioContext)',
+  'this.realtimeTimestampMapper.liveNoteContext(event, this.runtime.audioContext)',
   "this.runtime.audioContext?.state === 'running'",
   'getState(): ProductEngineState',
   'getSonicParityDebugState(): Record<string, unknown>',
@@ -1191,8 +1212,8 @@ for (const token of [
   'resolveCoreProductRangeTargets(key)',
   'setDrumTriggerCallback(callback:',
   'setTelemetryCallback((telemetry) => this.handleTelemetry(telemetry));',
-  'publishCoreProductSequencerVisuals({ telemetry',
-  'this.publishSequencerVisuals(hostTelemetry)',
+  'publishCoreProductSequencerVisuals({',
+  'this.sequencerVisuals.publish(hostTelemetry)',
   'reconcileSequencerUiState(telemetry:',
   'reconcileCoreProductSequencerUiState({',
   'setSynthLaneState:',
@@ -1241,7 +1262,10 @@ for (const retiredGetter of [
 }
 const midiPushBody = methodBody(host, 'pushMidiMessage(message:');
 assert(
-  /if \(this\.runtimeReady\) \{\s*if \(this\.runtime\.audioContext\?\.state === 'running'\) \{\s*post\(\);\s*return;\s*\}\s*void this\.runtime\.resume\(\)\.then\(post\);\s*return;\s*\}/.test(midiPushBody),
+  midiPushBody.includes("this.realtimeInputBootstrap.postWhenReady(event, 'midi')") &&
+    hostRealtimeInputBootstrap.includes("this.options.runtimeReady() && runtime.audioContext?.state === 'running'") &&
+    hostRealtimeInputBootstrap.includes('this.options.post(event);') &&
+    hostRealtimeInputBootstrap.includes('return runtime.resume();'),
   'Product live MIDI path must post directly when AudioContext is already running',
 );
 for (const token of [
@@ -1409,6 +1433,12 @@ for (const token of [
 ]) {
   assert(hostSequencerVisuals.includes(token), `Product sequencer visuals bridge is missing ${token}`);
 }
+assert(
+  hostSequencerVisualBridge.includes('private hasStepVisualCallback(): boolean') &&
+    hostSequencerVisualBridge.includes('if (this.hasStepVisualCallback())') &&
+    hostSequencerVisuals.includes('if (!publishSynth && !publishDrum) return;'),
+  'Product sequencer visual publishing must coalesce idle callback paths before computing step visuals',
+);
 assert(
   !hostSequencerVisuals.includes('euclideanPatternMask(') &&
     !hostSequencerVisuals.includes('hitCountThroughStep(') &&
@@ -1635,7 +1665,12 @@ assert(
     app.includes('const dualModeSupported = !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);') &&
     productRuntimeLifecycleSurface.includes('useProductRuntimeTelemetry({') &&
     productRuntimeTelemetry.includes('import { isCoreProductRangeKeySupported }') &&
-    productRuntimeTelemetry.includes('return isCoreProductRangeKeySupported(key);') &&
+    productRuntimeTelemetry.includes("const productRuntimeActive = productRuntimeMode === 'core-product';") &&
+    productRuntimeTelemetry.includes('if (!productRuntimeActive) return EMPTY_PRODUCT_DYNAMICS_VISUAL_TELEMETRY;') &&
+    productRuntimeTelemetry.includes('if (!productRuntimeActive) return;') &&
+    productRuntimeTelemetry.includes("return productRuntimeMode !== 'core-product' || isCoreProductRangeKeySupported(key);") &&
+    productRuntimeTelemetry.includes("if (productRuntimeMode !== 'core-product') {") &&
+    productRuntimeTelemetry.includes('productEngine.setVisualTelemetryActive(false);') &&
     productRuntimeTelemetry.includes("const active = uiMode === 'advanced' && documentVisible;") &&
     productRuntimeTelemetry.includes('productEngine.setVisualTelemetryActive(active);') &&
     selectedRuntimeTelemetry.includes('useSelectedAudioEngineTelemetrySurface(audioEngineRuntimeMode)') &&
@@ -2368,6 +2403,7 @@ for (const token of [
   'get outputNode(): AudioNode | null',
   'context.createGain()',
   'setTelemetryCallback(callback:',
+  'setPerfMonitorEnabled(enabled:',
   'setVisualTelemetryActive(active:',
   'dispose(): void',
   'window.clearInterval(this.telemetryTimer)',
@@ -3157,6 +3193,9 @@ const hostImportAllowlist = new Set([
   './product/host/CoreProductModulationRangeBridge',
   './product/host/CoreProductManualAuditionBridge',
   './product/host/CoreProductRuntimeEventBatcher',
+  './product/host/CoreProductRealtimeInputBootstrap',
+  './product/host/CoreProductRealtimeTimestampMapper',
+  './product/host/CoreProductTelemetryCallbackScheduler',
   './product/host/CoreProductHostSnapshotFactory',
   './product/host/CoreProductSnapshotCoordinator',
   './product/host/CoreProductTelemetryAdapter',
@@ -3180,6 +3219,7 @@ const hostImportAllowlist = new Set([
   './product/host/CoreProductSequencerStepPostingBridge',
   './product/host/CoreProductSequencerSubLaneEnabledEventBridge',
   './product/host/CoreProductSequencerUiAdapter',
+  './product/host/CoreProductSequencerVisualBridge',
   './CoreProductHostSequencerChain',
   './CoreProductHostSynthNoteRangeEvolve',
   './CoreProductHostSynthPitch',

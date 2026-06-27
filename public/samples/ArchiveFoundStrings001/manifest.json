@@ -1,0 +1,1880 @@
+{
+  "schema": "kessho-sample-library-v1",
+  "version": 1,
+  "library": {
+    "key": "archive-found-strings-001",
+    "name": "Archive Found Strings 001",
+    "provider": "Pianobook",
+    "sourceInstrument": "Decent Sampler",
+    "sourceLibraryDirectoryName": "Archive Found Strings 001 DS",
+    "sourcePresetFiles": [
+      "Archive Found Strings 001.dspreset"
+    ]
+  },
+  "assetBasePath": "samples",
+  "sampleRoot": "ArchiveFoundStrings001",
+  "assetIdBase": 8400,
+  "encoding": {
+    "format": "ogg/vorbis",
+    "codec": "libvorbis",
+    "sampleRate": 24000,
+    "channelCount": 1,
+    "quality": 2,
+    "decoder": "BaseAudioContext.decodeAudioData"
+  },
+  "categories": {
+    "strings": "Looped found-string profile samples from the Archive Found Strings 001 Decent Sampler instrument."
+  },
+  "counts": {
+    "total": 25,
+    "byCategory": {
+      "strings": 25
+    },
+    "byRole": {
+      "profile": 25
+    },
+    "byArticulation": {
+      "found-string-loop": 25
+    },
+    "byDynamic": {},
+    "byRootMidi": {
+      "37": 1,
+      "39": 1,
+      "42": 1,
+      "44": 1,
+      "46": 1,
+      "49": 1,
+      "51": 1,
+      "54": 1,
+      "56": 1,
+      "58": 1,
+      "61": 1,
+      "63": 1,
+      "66": 1,
+      "68": 1,
+      "70": 1,
+      "73": 1,
+      "75": 1,
+      "78": 1,
+      "80": 1,
+      "82": 1,
+      "85": 1,
+      "87": 1,
+      "90": 1,
+      "92": 1,
+      "94": 1
+    },
+    "byPreset": {
+      "Archive Found Strings 001.dspreset": 25
+    }
+  },
+  "byteSummary": {
+    "sourceBytes": 102729900,
+    "compressedBytes": 1440011,
+    "decodedBytes": 34188624,
+    "compressionRatio": 0.014,
+    "longestDurationSeconds": 14.695583
+  },
+  "samples": [
+    {
+      "assetId": 8400,
+      "key": "archive-found-strings-001.profile.001",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_001.ogg",
+      "fileName": "archive_found_strings_001_profile_001.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_1.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_1.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 37,
+      "noteName": "C#2",
+      "roundRobin": null,
+      "profileIndex": 1,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 1, mapped root C#2.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_1.wav",
+          "rootNote": 37,
+          "noteName": "C#2",
+          "loNote": 0,
+          "hiNote": 37,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 764904,
+          "loopEnabled": true,
+          "loopStartFrame": 24057,
+          "loopEndFrame": 627096,
+          "loopCrossfadeFrames": 9700,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 696000,
+        "durationSeconds": 14.5,
+        "bytes": 4182656
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 348000,
+        "durationSeconds": 14.5,
+        "compressedBytes": 53157,
+        "decodedBytes": 1392000
+      }
+    },
+    {
+      "assetId": 8401,
+      "key": "archive-found-strings-001.profile.003",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_003.ogg",
+      "fileName": "archive_found_strings_001_profile_003.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_3.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_3.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 39,
+      "noteName": "D#2",
+      "roundRobin": null,
+      "profileIndex": 3,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 3, mapped root D#2.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_3.wav",
+          "rootNote": 39,
+          "noteName": "D#2",
+          "loNote": 38,
+          "hiNote": 39,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 771229,
+          "loopEnabled": true,
+          "loopStartFrame": 32296,
+          "loopEndFrame": 603650,
+          "loopCrossfadeFrames": 25800,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 687875,
+        "durationSeconds": 14.330729,
+        "bytes": 4133848
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 343938,
+        "durationSeconds": 14.33075,
+        "compressedBytes": 52707,
+        "decodedBytes": 1375752
+      }
+    },
+    {
+      "assetId": 8402,
+      "key": "archive-found-strings-001.profile.006",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_006.ogg",
+      "fileName": "archive_found_strings_001_profile_006.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_6.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_6.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 42,
+      "noteName": "F#2",
+      "roundRobin": null,
+      "profileIndex": 6,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 6, mapped root F#2.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_6.wav",
+          "rootNote": 42,
+          "noteName": "F#2",
+          "loNote": 40,
+          "hiNote": 42,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 803830,
+          "loopEnabled": true,
+          "loopStartFrame": 66851,
+          "loopEndFrame": 578291,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 702000,
+        "durationSeconds": 14.625,
+        "bytes": 4218708
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 351000,
+        "durationSeconds": 14.625,
+        "compressedBytes": 53607,
+        "decodedBytes": 1404000
+      }
+    },
+    {
+      "assetId": 8403,
+      "key": "archive-found-strings-001.profile.008",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_008.ogg",
+      "fileName": "archive_found_strings_001_profile_008.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_8.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_8.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 44,
+      "noteName": "G#2",
+      "roundRobin": null,
+      "profileIndex": 8,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 8, mapped root G#2.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_8.wav",
+          "rootNote": 44,
+          "noteName": "G#2",
+          "loNote": 43,
+          "hiNote": 44,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 830811,
+          "loopEnabled": true,
+          "loopStartFrame": 53532,
+          "loopEndFrame": 517739,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 674275,
+        "durationSeconds": 14.047396,
+        "bytes": 4052140
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 337138,
+        "durationSeconds": 14.047417,
+        "compressedBytes": 52586,
+        "decodedBytes": 1348552
+      }
+    },
+    {
+      "assetId": 8404,
+      "key": "archive-found-strings-001.profile.010",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_010.ogg",
+      "fileName": "archive_found_strings_001_profile_010.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_10.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_10.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 46,
+      "noteName": "A#2",
+      "roundRobin": null,
+      "profileIndex": 10,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 10, mapped root A#2.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_10.wav",
+          "rootNote": 46,
+          "noteName": "A#2",
+          "loNote": 45,
+          "hiNote": 46,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 264240,
+          "endFrame": 692218,
+          "loopEnabled": true,
+          "loopStartFrame": 303891,
+          "loopEndFrame": 597532,
+          "loopCrossfadeFrames": 20100,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 644875,
+        "durationSeconds": 13.434896,
+        "bytes": 3875506
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 322438,
+        "durationSeconds": 13.434917,
+        "compressedBytes": 53409,
+        "decodedBytes": 1289752
+      }
+    },
+    {
+      "assetId": 8405,
+      "key": "archive-found-strings-001.profile.013",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_013.ogg",
+      "fileName": "archive_found_strings_001_profile_013.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_13.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_13.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 49,
+      "noteName": "C#3",
+      "roundRobin": null,
+      "profileIndex": 13,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 13, mapped root C#3.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_13.wav",
+          "rootNote": 49,
+          "noteName": "C#3",
+          "loNote": 47,
+          "hiNote": 49,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 232056,
+          "endFrame": 764052,
+          "loopEnabled": true,
+          "loopStartFrame": 273076,
+          "loopEndFrame": 609348,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 686700,
+        "durationSeconds": 14.30625,
+        "bytes": 4126786
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 343350,
+        "durationSeconds": 14.30625,
+        "compressedBytes": 56618,
+        "decodedBytes": 1373400
+      }
+    },
+    {
+      "assetId": 8406,
+      "key": "archive-found-strings-001.profile.015",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_015.ogg",
+      "fileName": "archive_found_strings_001_profile_015.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_15.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_15.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 51,
+      "noteName": "D#3",
+      "roundRobin": null,
+      "profileIndex": 15,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 15, mapped root D#3.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_15.wav",
+          "rootNote": 51,
+          "noteName": "D#3",
+          "loNote": 50,
+          "hiNote": 51,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 787127,
+          "loopEnabled": true,
+          "loopStartFrame": 42112,
+          "loopEndFrame": 557198,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 682300,
+        "durationSeconds": 14.214583,
+        "bytes": 4100354
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 341150,
+        "durationSeconds": 14.214583,
+        "compressedBytes": 57555,
+        "decodedBytes": 1364600
+      }
+    },
+    {
+      "assetId": 8407,
+      "key": "archive-found-strings-001.profile.018",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_018.ogg",
+      "fileName": "archive_found_strings_001_profile_018.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_18.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_18.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 54,
+      "noteName": "F#3",
+      "roundRobin": null,
+      "profileIndex": 18,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 18, mapped root F#3.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_18.wav",
+          "rootNote": 54,
+          "noteName": "F#3",
+          "loNote": 52,
+          "hiNote": 54,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 742072,
+          "loopEnabled": true,
+          "loopStartFrame": 46904,
+          "loopEndFrame": 311928,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 670000,
+        "durationSeconds": 13.958333,
+        "bytes": 4026456
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 335000,
+        "durationSeconds": 13.958333,
+        "compressedBytes": 57469,
+        "decodedBytes": 1340000
+      }
+    },
+    {
+      "assetId": 8408,
+      "key": "archive-found-strings-001.profile.021",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_021.ogg",
+      "fileName": "archive_found_strings_001_profile_021.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_21.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_21.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 56,
+      "noteName": "G#3",
+      "roundRobin": null,
+      "profileIndex": 21,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 21, mapped root G#3.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_21.wav",
+          "rootNote": 56,
+          "noteName": "G#3",
+          "loNote": 55,
+          "hiNote": 56,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 770787,
+          "loopEnabled": true,
+          "loopStartFrame": 45260,
+          "loopEndFrame": 603140,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 692725,
+        "durationSeconds": 14.431771,
+        "bytes": 4162984
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 346363,
+        "durationSeconds": 14.431792,
+        "compressedBytes": 59597,
+        "decodedBytes": 1385452
+      }
+    },
+    {
+      "assetId": 8409,
+      "key": "archive-found-strings-001.profile.023",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_023.ogg",
+      "fileName": "archive_found_strings_001_profile_023.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_23.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_23.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 58,
+      "noteName": "A#3",
+      "roundRobin": null,
+      "profileIndex": 23,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 23, mapped root A#3.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_23.wav",
+          "rootNote": 58,
+          "noteName": "A#3",
+          "loNote": 57,
+          "hiNote": 58,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 208714,
+          "endFrame": 729640,
+          "loopEnabled": true,
+          "loopStartFrame": 248358,
+          "loopEndFrame": 421816,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 683000,
+        "durationSeconds": 14.229167,
+        "bytes": 4104558
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 341500,
+        "durationSeconds": 14.229167,
+        "compressedBytes": 59291,
+        "decodedBytes": 1366000
+      }
+    },
+    {
+      "assetId": 8410,
+      "key": "archive-found-strings-001.profile.026",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_026.ogg",
+      "fileName": "archive_found_strings_001_profile_026.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_26.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_26.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 61,
+      "noteName": "C#4",
+      "roundRobin": null,
+      "profileIndex": 26,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 26, mapped root C#4.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_26.wav",
+          "rootNote": 61,
+          "noteName": "C#4",
+          "loNote": 59,
+          "hiNote": 61,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 773166,
+          "loopEnabled": true,
+          "loopStartFrame": 62028,
+          "loopEndFrame": 253999,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 702425,
+        "durationSeconds": 14.633854,
+        "bytes": 4221266
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 351213,
+        "durationSeconds": 14.633875,
+        "compressedBytes": 59911,
+        "decodedBytes": 1404852
+      }
+    },
+    {
+      "assetId": 8411,
+      "key": "archive-found-strings-001.profile.028",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_028.ogg",
+      "fileName": "archive_found_strings_001_profile_028.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_28.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_28.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 63,
+      "noteName": "D#4",
+      "roundRobin": null,
+      "profileIndex": 28,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 28, mapped root D#4.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_28.wav",
+          "rootNote": 63,
+          "noteName": "D#4",
+          "loNote": 62,
+          "hiNote": 63,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 780842,
+          "loopEnabled": true,
+          "loopStartFrame": 43278,
+          "loopEndFrame": 585026,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 699650,
+        "durationSeconds": 14.576042,
+        "bytes": 4204596
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 349825,
+        "durationSeconds": 14.576042,
+        "compressedBytes": 58415,
+        "decodedBytes": 1399300
+      }
+    },
+    {
+      "assetId": 8412,
+      "key": "archive-found-strings-001.profile.031",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_031.ogg",
+      "fileName": "archive_found_strings_001_profile_031.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_31.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_31.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 66,
+      "noteName": "F#4",
+      "roundRobin": null,
+      "profileIndex": 31,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 31, mapped root F#4.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_31.wav",
+          "rootNote": 66,
+          "noteName": "F#4",
+          "loNote": 64,
+          "hiNote": 66,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 762497,
+          "loopEnabled": true,
+          "loopStartFrame": 62699,
+          "loopEndFrame": 601609,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 692700,
+        "durationSeconds": 14.43125,
+        "bytes": 4162830
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 346350,
+        "durationSeconds": 14.43125,
+        "compressedBytes": 58665,
+        "decodedBytes": 1385400
+      }
+    },
+    {
+      "assetId": 8413,
+      "key": "archive-found-strings-001.profile.034",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_034.ogg",
+      "fileName": "archive_found_strings_001_profile_034.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_34.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_34.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 68,
+      "noteName": "G#4",
+      "roundRobin": null,
+      "profileIndex": 34,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 34, mapped root G#4.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_34.wav",
+          "rootNote": 68,
+          "noteName": "G#4",
+          "loNote": 67,
+          "hiNote": 68,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 794428,
+          "loopEnabled": true,
+          "loopStartFrame": 46471,
+          "loopEndFrame": 231235,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 689675,
+        "durationSeconds": 14.368229,
+        "bytes": 4144662
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 344838,
+        "durationSeconds": 14.36825,
+        "compressedBytes": 59863,
+        "decodedBytes": 1379352
+      }
+    },
+    {
+      "assetId": 8414,
+      "key": "archive-found-strings-001.profile.036",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_036.ogg",
+      "fileName": "archive_found_strings_001_profile_036.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_36.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_36.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 70,
+      "noteName": "A#4",
+      "roundRobin": null,
+      "profileIndex": 36,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 36, mapped root A#4.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_36.wav",
+          "rootNote": 70,
+          "noteName": "A#4",
+          "loNote": 69,
+          "hiNote": 70,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 749066,
+          "loopEnabled": true,
+          "loopStartFrame": 61776,
+          "loopEndFrame": 248918,
+          "loopCrossfadeFrames": 27900,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 695606,
+        "durationSeconds": 14.491792,
+        "bytes": 4180294
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 347803,
+        "durationSeconds": 14.491792,
+        "compressedBytes": 62901,
+        "decodedBytes": 1391212
+      }
+    },
+    {
+      "assetId": 8415,
+      "key": "archive-found-strings-001.profile.039",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_039.ogg",
+      "fileName": "archive_found_strings_001_profile_039.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_39.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_39.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 73,
+      "noteName": "C#5",
+      "roundRobin": null,
+      "profileIndex": 39,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 39, mapped root C#5.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_39.wav",
+          "rootNote": 73,
+          "noteName": "C#5",
+          "loNote": 71,
+          "hiNote": 73,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 718948,
+          "loopEnabled": true,
+          "loopStartFrame": 65094,
+          "loopEndFrame": 308970,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 668700,
+        "durationSeconds": 13.93125,
+        "bytes": 4018644
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 334350,
+        "durationSeconds": 13.93125,
+        "compressedBytes": 58533,
+        "decodedBytes": 1337400
+      }
+    },
+    {
+      "assetId": 8416,
+      "key": "archive-found-strings-001.profile.041",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_041.ogg",
+      "fileName": "archive_found_strings_001_profile_041.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_41.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_41.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 75,
+      "noteName": "D#5",
+      "roundRobin": null,
+      "profileIndex": 41,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 41, mapped root D#5.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_41.wav",
+          "rootNote": 75,
+          "noteName": "D#5",
+          "loNote": 74,
+          "hiNote": 75,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 254760,
+          "endFrame": 732726,
+          "loopEnabled": true,
+          "loopStartFrame": 289500,
+          "loopEndFrame": 431646,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 678300,
+        "durationSeconds": 14.13125,
+        "bytes": 4076320
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 339150,
+        "durationSeconds": 14.13125,
+        "compressedBytes": 57993,
+        "decodedBytes": 1356600
+      }
+    },
+    {
+      "assetId": 8417,
+      "key": "archive-found-strings-001.profile.044",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_044.ogg",
+      "fileName": "archive_found_strings_001_profile_044.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_44.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_44.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 78,
+      "noteName": "F#5",
+      "roundRobin": null,
+      "profileIndex": 44,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 44, mapped root F#5.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_44.wav",
+          "rootNote": 78,
+          "noteName": "F#5",
+          "loNote": 76,
+          "hiNote": 78,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 299796,
+          "endFrame": 787259,
+          "loopEnabled": true,
+          "loopStartFrame": 338324,
+          "loopEndFrame": 601843,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 705387,
+        "durationSeconds": 14.695562,
+        "bytes": 4239060
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 352694,
+        "durationSeconds": 14.695583,
+        "compressedBytes": 55908,
+        "decodedBytes": 1410776
+      }
+    },
+    {
+      "assetId": 8418,
+      "key": "archive-found-strings-001.profile.046",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_046.ogg",
+      "fileName": "archive_found_strings_001_profile_046.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_46.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_46.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 80,
+      "noteName": "G#5",
+      "roundRobin": null,
+      "profileIndex": 46,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 46, mapped root G#5.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_46.wav",
+          "rootNote": 80,
+          "noteName": "G#5",
+          "loNote": 79,
+          "hiNote": 80,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 41545,
+          "endFrame": 760410,
+          "loopEnabled": true,
+          "loopStartFrame": 77155,
+          "loopEndFrame": 361578,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 695125,
+        "durationSeconds": 14.481771,
+        "bytes": 4177404
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 347563,
+        "durationSeconds": 14.481792,
+        "compressedBytes": 60734,
+        "decodedBytes": 1390252
+      }
+    },
+    {
+      "assetId": 8419,
+      "key": "archive-found-strings-001.profile.048",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_048.ogg",
+      "fileName": "archive_found_strings_001_profile_048.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_48.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_48.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 82,
+      "noteName": "A#5",
+      "roundRobin": null,
+      "profileIndex": 48,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 48, mapped root A#5.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_48.wav",
+          "rootNote": 82,
+          "noteName": "A#5",
+          "loNote": 81,
+          "hiNote": 82,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 738787,
+          "loopEnabled": true,
+          "loopStartFrame": 70804,
+          "loopEndFrame": 297975,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 669125,
+        "durationSeconds": 13.940104,
+        "bytes": 4021198
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 334563,
+        "durationSeconds": 13.940125,
+        "compressedBytes": 58678,
+        "decodedBytes": 1338252
+      }
+    },
+    {
+      "assetId": 8420,
+      "key": "archive-found-strings-001.profile.051",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_051.ogg",
+      "fileName": "archive_found_strings_001_profile_051.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_51.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_51.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 85,
+      "noteName": "C#6",
+      "roundRobin": null,
+      "profileIndex": 51,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 51, mapped root C#6.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_51.wav",
+          "rootNote": 85,
+          "noteName": "C#6",
+          "loNote": 83,
+          "hiNote": 85,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 718563,
+          "loopEnabled": true,
+          "loopStartFrame": 53664,
+          "loopEndFrame": 226643,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 654837,
+        "durationSeconds": 13.642437,
+        "bytes": 3935358
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 327419,
+        "durationSeconds": 13.642458,
+        "compressedBytes": 56359,
+        "decodedBytes": 1309676
+      }
+    },
+    {
+      "assetId": 8421,
+      "key": "archive-found-strings-001.profile.053",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_053.ogg",
+      "fileName": "archive_found_strings_001_profile_053.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_53.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_53.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 87,
+      "noteName": "D#6",
+      "roundRobin": null,
+      "profileIndex": 53,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 53, mapped root D#6.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_53.wav",
+          "rootNote": 87,
+          "noteName": "D#6",
+          "loNote": 86,
+          "hiNote": 87,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 316395,
+          "endFrame": 789000,
+          "loopEnabled": true,
+          "loopStartFrame": 367350,
+          "loopEndFrame": 589920,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 694200,
+        "durationSeconds": 14.4625,
+        "bytes": 4171842
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 347100,
+        "durationSeconds": 14.4625,
+        "compressedBytes": 58262,
+        "decodedBytes": 1388400
+      }
+    },
+    {
+      "assetId": 8422,
+      "key": "archive-found-strings-001.profile.056",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_056.ogg",
+      "fileName": "archive_found_strings_001_profile_056.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_56.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_56.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 90,
+      "noteName": "F#6",
+      "roundRobin": null,
+      "profileIndex": 56,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 56, mapped root F#6.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_56.wav",
+          "rootNote": 90,
+          "noteName": "F#6",
+          "loNote": 88,
+          "hiNote": 90,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 728055,
+          "loopEnabled": true,
+          "loopStartFrame": 56800,
+          "loopEndFrame": 178231,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 665575,
+        "durationSeconds": 13.866146,
+        "bytes": 3999870
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 332788,
+        "durationSeconds": 13.866167,
+        "compressedBytes": 58073,
+        "decodedBytes": 1331152
+      }
+    },
+    {
+      "assetId": 8423,
+      "key": "archive-found-strings-001.profile.058",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_058.ogg",
+      "fileName": "archive_found_strings_001_profile_058.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_58.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_58.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 92,
+      "noteName": "G#6",
+      "roundRobin": null,
+      "profileIndex": 58,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 58, mapped root G#6.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_58.wav",
+          "rootNote": 92,
+          "noteName": "G#6",
+          "loNote": 91,
+          "hiNote": 92,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 728066,
+          "loopEnabled": true,
+          "loopStartFrame": 109345,
+          "loopEndFrame": 234287,
+          "loopCrossfadeFrames": 30000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 673969,
+        "durationSeconds": 14.041021,
+        "bytes": 4050302
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 336985,
+        "durationSeconds": 14.041042,
+        "compressedBytes": 60637,
+        "decodedBytes": 1347940
+      }
+    },
+    {
+      "assetId": 8424,
+      "key": "archive-found-strings-001.profile.060",
+      "path": "ArchiveFoundStrings001/archive_found_strings_001_profile_060.ogg",
+      "fileName": "archive_found_strings_001_profile_060.ogg",
+      "sourceFileName": "Moods Romantic FRONT RRI PROFILE_60.wav",
+      "sourceRelativePath": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_60.wav",
+      "category": "strings",
+      "role": "profile",
+      "source": "archive-found-strings-001",
+      "articulation": "found-string-loop",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": [
+        1,
+        127
+      ],
+      "modulationLayer": null,
+      "sourceNoteLabel": null,
+      "rootMidi": 94,
+      "noteName": "A#6",
+      "roundRobin": null,
+      "profileIndex": 60,
+      "loop": true,
+      "tags": [
+        "strings",
+        "found-strings",
+        "profile",
+        "loop"
+      ],
+      "description": "Archive Found Strings 001 profile 60, mapped root A#6.",
+      "decentSamplerMappings": [
+        {
+          "preset": "Archive Found Strings 001.dspreset",
+          "groupName": "BNs",
+          "path": "Archive Found Strings 001 Samples/Moods Romantic FRONT RRI PROFILE_60.wav",
+          "rootNote": 94,
+          "noteName": "A#6",
+          "loNote": 93,
+          "hiNote": 94,
+          "loVel": 1,
+          "hiVel": 127,
+          "startFrame": 0,
+          "endFrame": 761072,
+          "loopEnabled": true,
+          "loopStartFrame": 54142,
+          "loopEndFrame": 201997,
+          "loopCrossfadeFrames": 35000,
+          "volume": "6dB",
+          "pan": null,
+          "tuning": null
+        }
+      ],
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 689275,
+        "durationSeconds": 14.359896,
+        "bytes": 4142258
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 344638,
+        "durationSeconds": 14.359917,
+        "compressedBytes": 59083,
+        "decodedBytes": 1378552
+      }
+    }
+  ]
+}

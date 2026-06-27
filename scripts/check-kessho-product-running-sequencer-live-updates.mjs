@@ -55,6 +55,7 @@ const files = {
   sequencerStepOverrideEvents: read('src/audio/product/ProductSequencerStepOverrideEvents.ts'),
   sequencerControls: read('src/ui/useSelectedAudioEngineSequencerControls.ts'),
   sequencerStepOverrideEventBridge: read('src/audio/product/host/CoreProductSequencerStepOverrideEventBridge.ts'),
+  sequencerVisualBridge: read('src/audio/product/host/CoreProductSequencerVisualBridge.ts'),
   drumMorph: read('src/audio/drumMorph.ts'),
   sequencerClock: read('src/audio/CoreProductHostSequencerClock.ts'),
   sequencerTests: read('cpp/KesshoCore/tests/ProductSequencerTests.cpp'),
@@ -196,13 +197,13 @@ check(
 }
 
 {
-  const callbackRegistrationBody = methodBody(files.host, 'publishCurrentSequencerVisualsOnCallbackRegistration');
+  const callbackRegistrationBody = methodBody(files.sequencerVisualBridge, 'publishStepCallbackRegistration');
   check(
     'running-step-callback-no-zero-reset-static',
-    files.host.includes('publishCurrentSequencerVisualsOnCallbackRegistration(callback, PRODUCT_VISIBLE_DRUM_LANE_COUNT)') &&
-      files.host.includes('publishCurrentSequencerVisualsOnCallbackRegistration(callback, PRODUCT_VISIBLE_SYNTH_LANE_COUNT)') &&
-      callbackRegistrationBody.includes('if (this.running)') &&
-      callbackRegistrationBody.includes('this.publishSequencerVisuals(this.latestTelemetry)') &&
+    files.host.includes('this.sequencerVisuals.publishStepCallbackRegistration(callback, this.running, this.latestTelemetry, PRODUCT_VISIBLE_DRUM_LANE_COUNT)') &&
+      files.host.includes('this.sequencerVisuals.publishStepCallbackRegistration(callback, this.running, this.latestTelemetry, PRODUCT_VISIBLE_SYNTH_LANE_COUNT)') &&
+      callbackRegistrationBody.includes('if (running)') &&
+      callbackRegistrationBody.includes('if (telemetry) this.publish(telemetry)') &&
       !files.host.includes('callback?.([0, 0, 0, 0], [0, 0, 0, 0]);') &&
       files.sequencerClock.includes('resolvedSequencerLaneEnabled') &&
       files.sequencerClock.includes("kind === 'synth' && laneNumber === 1"),

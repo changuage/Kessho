@@ -1,4 +1,8 @@
 import { coreProductRuntimeHostPort } from './host/CoreProductRuntimeHostPort';
+import {
+  ProductRuntimeLifecycleController,
+  type ProductLifecycleOperation,
+} from './lifecycle/ProductRuntimeLifecycleController';
 import type { DawOutputRoutingConfig } from '../dawOutputRouting';
 import type { ProductRuntimeCapabilityReport } from './ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from './ProductRuntimeDiagnostics';
@@ -24,6 +28,7 @@ import type {
   ProductLeadPairCallback,
   ProductManualSynthNote,
   ProductMidiMessage,
+  ProductPerfSnapshot,
   ProductRange,
   ProductRangeMap,
   ProductResolvedStateCommit,
@@ -55,47 +60,35 @@ import type {
 export class WebProductEngine implements ProductEnginePort {
   readonly mode = 'core-product' as const;
   private lifecycleState: ProductEngineLifecycleState = 'cold';
+  private readonly lifecycleController = new ProductRuntimeLifecycleController({
+    preloadRuntime: () => this.preloadRuntime(),
+    startRuntime: () => this.startRuntime(),
+    stopRuntime: () => this.stopRuntime(),
+    suspendRuntime: () => this.suspendRuntime(),
+    resumeRuntime: () => this.resumeRuntime(),
+    publishState: (state, operation, error) => this.publishLifecycleState(state, operation, error),
+  });
   private readonly diagnosticsPublisher = new ProductDiagnosticsPublisher(() => this.getDiagnostics());
 
-  async preload(): Promise<void> {
-    this.lifecycleState = this.lifecycleState === 'cold' ? 'ready' : this.lifecycleState;
+  preload(): Promise<void> {
+    return this.lifecycleController.preload();
   }
 
-  async start(options?: ProductEngineStartOptions): Promise<void> {
-    this.lifecycleState = 'loading';
-    try {
-      await coreProductRuntimeHostPort.start(options?.initialState);
-      this.lifecycleState = 'running';
-      this.publishDiagnostics();
-    } catch (error) {
-      this.lifecycleState = 'failed';
-      throw error;
-    }
+  start(options?: ProductEngineStartOptions): Promise<void> {
+    this.pendingStartOptions = options;
+    return this.lifecycleController.start();
   }
 
   stop(): Promise<void> {
-    coreProductRuntimeHostPort.stop();
-    this.lifecycleState = 'stopped';
-    this.publishDiagnostics();
-    return Promise.resolve();
+    return this.lifecycleController.stop();
   }
 
-  suspend(): void {
-    void coreProductRuntimeHostPort.suspend().then(() => {
-      this.lifecycleState = 'suspended';
-      this.publishDiagnostics();
-    });
+  suspend(): Promise<void> {
+    return this.lifecycleController.suspend();
   }
 
-  resume(): void {
-    this.lifecycleState = 'loading';
-    void coreProductRuntimeHostPort.resume().then(() => {
-      this.lifecycleState = 'running';
-      this.publishDiagnostics();
-    }).catch((error: unknown) => {
-      this.lifecycleState = 'failed';
-      throw error;
-    });
+  resume(): Promise<void> {
+    return this.lifecycleController.resume();
   }
 
   setOutputGain(target: number, durationSeconds: number = 0): void {
@@ -338,6 +331,10 @@ export class WebProductEngine implements ProductEnginePort {
     coreProductRuntimeHostPort.setPerfMonitorEnabled(enabled);
   }
 
+  setPerfUpdateCallback(callback: ((data: ProductPerfSnapshot) => void) | null): void {
+    coreProductRuntimeHostPort.setPerfUpdateCallback(callback);
+  }
+
   setVisualTelemetryActive(active: boolean): void {
     coreProductRuntimeHostPort.setVisualTelemetryActive(active);
   }
@@ -359,5 +356,38 @@ export class WebProductEngine implements ProductEnginePort {
 
   private publishDiagnostics(): void {
     this.diagnosticsPublisher.publish();
+  }
+
+  private pendingStartOptions: ProductEngineStartOptions | undefined;
+
+  private async preloadRuntime(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  private async startRuntime(): Promise<void> {
+    const options = this.pendingStartOptions;
+    this.pendingStartOptions = undefined;
+    await coreProductRuntimeHostPort.start(options?.initialState);
+  }
+
+  private async stopRuntime(): Promise<void> {
+    await coreProductRuntimeHostPort.stop();
+  }
+
+  private async suspendRuntime(): Promise<void> {
+    await coreProductRuntimeHostPort.suspend();
+  }
+
+  private async resumeRuntime(): Promise<void> {
+    await coreProductRuntimeHostPort.resume();
+  }
+
+  private publishLifecycleState(
+    state: ProductEngineLifecycleState,
+    _operation: ProductLifecycleOperation,
+    _error?: unknown,
+  ): void {
+    this.lifecycleState = state;
+    this.publishDiagnostics();
   }
 }

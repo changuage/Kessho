@@ -1,0 +1,6579 @@
+{
+  "schema": "kessho-sample-library-v1",
+  "version": 1,
+  "library": {
+    "key": "pneuma-eleni-teaser",
+    "name": "Pneuma - Eleni - Pianobook (Teaser)",
+    "provider": "Pianobook",
+    "sourceInstrument": "Kontakt 5 and up",
+    "sourceLibraryDirectoryName": "Pneuma - Eleni - Pianobook (Teaser)",
+    "sourceSampleDirectoryName": "Pneuma - Teaser Samples"
+  },
+  "assetBasePath": "samples",
+  "sampleRoot": "Pneuma",
+  "assetIdBase": 8000,
+  "encoding": {
+    "format": "ogg/vorbis",
+    "codec": "libvorbis",
+    "sampleRate": 24000,
+    "channelCount": 1,
+    "quality": 2,
+    "decoder": "BaseAudioContext.decodeAudioData"
+  },
+  "dynamicLayers": {
+    "pp": {
+      "rank": 1,
+      "velocityMin": 1,
+      "velocityMax": 31,
+      "label": "pianissimo"
+    },
+    "mp": {
+      "rank": 2,
+      "velocityMin": 32,
+      "velocityMax": 63,
+      "label": "mezzo-piano"
+    },
+    "mf": {
+      "rank": 3,
+      "velocityMin": 64,
+      "velocityMax": 95,
+      "label": "mezzo-forte"
+    },
+    "ff": {
+      "rank": 4,
+      "velocityMin": 96,
+      "velocityMax": 127,
+      "label": "fortissimo"
+    }
+  },
+  "categories": {
+    "vocal": "Playable Eleni vocal material: Uh sustains, articulation samples, and breath round-robins.",
+    "pad": "Pneuma pad texture material.",
+    "texture": "Support texture or convolution-style source material.",
+    "uncategorized": "Source files that did not match the known Pneuma filename patterns."
+  },
+  "counts": {
+    "total": 142,
+    "byCategory": {
+      "pad": 1,
+      "texture": 1,
+      "vocal": 140
+    },
+    "byRole": {
+      "articulation": 2,
+      "breath": 15,
+      "convolution": 1,
+      "sustain": 123,
+      "texture": 1
+    },
+    "byDynamic": {
+      "ff": 30,
+      "mf": 30,
+      "mp": 31,
+      "pp": 32,
+      "quiet": 1
+    },
+    "byRootMidi": {
+      "46": 2,
+      "47": 5,
+      "48": 4,
+      "49": 4,
+      "50": 4,
+      "51": 4,
+      "52": 4,
+      "53": 4,
+      "54": 4,
+      "55": 4,
+      "56": 4,
+      "57": 4,
+      "58": 4,
+      "59": 4,
+      "60": 12,
+      "61": 11,
+      "62": 4,
+      "63": 4,
+      "64": 4,
+      "65": 4,
+      "66": 4,
+      "67": 4,
+      "68": 4,
+      "69": 4,
+      "70": 4,
+      "71": 4,
+      "72": 4,
+      "73": 5,
+      "74": 4,
+      "75": 4,
+      "76": 4,
+      "77": 1
+    }
+  },
+  "byteSummary": {
+    "sourceBytes": 177622778,
+    "compressedBytes": 5096385,
+    "decodedBytes": 107128368,
+    "compressionRatio": 0.0287,
+    "longestDurationSeconds": 30.624417
+  },
+  "samples": [
+    {
+      "assetId": 8000,
+      "key": "pneuma.texture.quiet_pad_breath_convolution",
+      "path": "Pneuma/pneuma_quiet_pad_breath_convolution.ogg",
+      "fileName": "pneuma_quiet_pad_breath_convolution.ogg",
+      "sourceFileName": "Ah quiet pad breath convolution.wav",
+      "category": "texture",
+      "role": "convolution",
+      "source": "pneuma",
+      "articulation": "breath-pad",
+      "vowel": "ah",
+      "dynamic": "quiet",
+      "dynamicRank": 0,
+      "velocityRange": null,
+      "rootMidi": null,
+      "noteName": null,
+      "roundRobin": null,
+      "tags": [
+        "texture",
+        "pad",
+        "breath",
+        "convolution",
+        "quiet"
+      ],
+      "description": "Quiet Ah pad breath convolution texture.",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 24,
+        "frameCount": 1296000,
+        "durationSeconds": 27,
+        "bytes": 7787418
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 648000,
+        "durationSeconds": 27,
+        "compressedBytes": 42481,
+        "decodedBytes": 2592000
+      }
+    },
+    {
+      "assetId": 8001,
+      "key": "pneuma.breath.r01.060",
+      "path": "Pneuma/pneuma_breath_r01_060.ogg",
+      "fileName": "pneuma_breath_r01_060.ogg",
+      "sourceFileName": "E_br_R1_60.wav",
+      "category": "vocal",
+      "role": "breath",
+      "source": "eleni",
+      "articulation": "breath",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 60,
+      "noteName": "C4",
+      "roundRobin": 1,
+      "tags": [
+        "vocal",
+        "breath",
+        "round-robin"
+      ],
+      "description": "Eleni breath round-robin 1, root C4 (60).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 81657,
+        "durationSeconds": 1.701188,
+        "bytes": 245076
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 40829,
+        "durationSeconds": 1.701208,
+        "compressedBytes": 10861,
+        "decodedBytes": 163316
+      }
+    },
+    {
+      "assetId": 8002,
+      "key": "pneuma.breath.r01.061",
+      "path": "Pneuma/pneuma_breath_r01_061.ogg",
+      "fileName": "pneuma_breath_r01_061.ogg",
+      "sourceFileName": "E_br_R1_61.wav",
+      "category": "vocal",
+      "role": "breath",
+      "source": "eleni",
+      "articulation": "breath",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 61,
+      "noteName": "C#4",
+      "roundRobin": 1,
+      "tags": [
+        "vocal",
+        "breath",
+        "round-robin"
+      ],
+      "description": "Eleni breath round-robin 1, root C#4 (61).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 167011,
+        "durationSeconds": 3.479396,
+        "bytes": 501138
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 83506,
+        "durationSeconds": 3.479417,
+        "compressedBytes": 19512,
+        "decodedBytes": 334024
+      }
+    },
+    {
+      "assetId": 8003,
+      "key": "pneuma.breath.r02.060",
+      "path": "Pneuma/pneuma_breath_r02_060.ogg",
+      "fileName": "pneuma_breath_r02_060.ogg",
+      "sourceFileName": "E_br_R2_60.wav",
+      "category": "vocal",
+      "role": "breath",
+      "source": "eleni",
+      "articulation": "breath",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 60,
+      "noteName": "C4",
+      "roundRobin": 2,
+      "tags": [
+        "vocal",
+        "breath",
+        "round-robin"
+      ],
+      "description": "Eleni breath round-robin 2, root C4 (60).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 95887,
+        "durationSeconds": 1.997646,
+        "bytes": 287766
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 47944,
+        "durationSeconds": 1.997667,
+        "compressedBytes": 12427,
+        "decodedBytes": 191776
+      }
+    },
+    {
+      "assetId": 8004,
+      "key": "pneuma.breath.r02.061",
+      "path": "Pneuma/pneuma_breath_r02_061.ogg",
+      "fileName": "pneuma_breath_r02_061.ogg",
+      "sourceFileName": "E_br_R2_61.wav",
+      "category": "vocal",
+      "role": "breath",
+      "source": "eleni",
+      "articulation": "breath",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 61,
+      "noteName": "C#4",
+      "roundRobin": 2,
+      "tags": [
+        "vocal",
+        "breath",
+        "round-robin"
+      ],
+      "description": "Eleni breath round-robin 2, root C#4 (61).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 164559,
+        "durationSeconds": 3.428313,
+        "bytes": 493782
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 82280,
+        "durationSeconds": 3.428333,
+        "compressedBytes": 19291,
+        "decodedBytes": 329120
+      }
+    },
+    {
+      "assetId": 8005,
+      "key": "pneuma.breath.r03.060",
+      "path": "Pneuma/pneuma_breath_r03_060.ogg",
+      "fileName": "pneuma_breath_r03_060.ogg",
+      "sourceFileName": "E_br_R3_60.wav",
+      "category": "vocal",
+      "role": "breath",
+      "source": "eleni",
+      "articulation": "breath",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 60,
+      "noteName": "C4",
+      "roundRobin": 3,
+      "tags": [
+        "vocal",
+        "breath",
+        "round-robin"
+      ],
+      "description": "Eleni breath round-robin 3, root C4 (60).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 85864,
+        "durationSeconds": 1.788833,
+        "bytes": 257696
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 42932,
+        "durationSeconds": 1.788833,
+        "compressedBytes": 11375,
+        "decodedBytes": 171728
+      }
+    },
+    {
+      "assetId": 8006,
+      "key": "pneuma.breath.r03.061",
+      "path": "Pneuma/pneuma_breath_r03_061.ogg",
+      "fileName": "pneuma_breath_r03_061.ogg",
+      "sourceFileName": "E_br_R3_61.wav",
+      "category": "vocal",
+      "role": "breath",
+      "source": "eleni",
+      "articulation": "breath",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 61,
+      "noteName": "C#4",
+      "roundRobin": 3,
+      "tags": [
+        "vocal",
+        "breath",
+        "round-robin"
+      ],
+      "description": "Eleni breath round-robin 3, root C#4 (61).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 134187,
+        "durationSeconds": 2.795562,
+        "bytes": 402666
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 67094,
+        "durationSeconds": 2.795583,
+        "compressedBytes": 16020,
+        "decodedBytes": 268376
+      }
+    },
+    {
+      "assetId": 8007,
+      "key": "pneuma.breath.r04.060",
+      "path": "Pneuma/pneuma_breath_r04_060.ogg",
+      "fileName": "pneuma_breath_r04_060.ogg",
+      "sourceFileName": "E_br_R4_60.wav",
+      "category": "vocal",
+      "role": "breath",
+      "source": "eleni",
+      "articulation": "breath",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 60,
+      "noteName": "C4",
+      "roundRobin": 4,
+      "tags": [
+        "vocal",
+        "breath",
+        "round-robin"
+      ],
+      "description": "Eleni breath round-robin 4, root C4 (60).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 84773,
+        "durationSeconds": 1.766104,
+        "bytes": 254424
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 42387,
+        "durationSeconds": 1.766125,
+        "compressedBytes": 11455,
+        "decodedBytes": 169548
+      }
+    },
+    {
+      "assetId": 8008,
+      "key": "pneuma.breath.r04.061",
+      "path": "Pneuma/pneuma_breath_r04_061.ogg",
+      "fileName": "pneuma_breath_r04_061.ogg",
+      "sourceFileName": "E_br_R4_61.wav",
+      "category": "vocal",
+      "role": "breath",
+      "source": "eleni",
+      "articulation": "breath",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 61,
+      "noteName": "C#4",
+      "roundRobin": 4,
+      "tags": [
+        "vocal",
+        "breath",
+        "round-robin"
+      ],
+      "description": "Eleni breath round-robin 4, root C#4 (61).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 135982,
+        "durationSeconds": 2.832958,
+        "bytes": 408050
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 67991,
+        "durationSeconds": 2.832958,
+        "compressedBytes": 16305,
+        "decodedBytes": 271964
+      }
+    },
+    {
+      "assetId": 8009,
+      "key": "pneuma.breath.r05.060",
+      "path": "Pneuma/pneuma_breath_r05_060.ogg",
+      "fileName": "pneuma_breath_r05_060.ogg",
+      "sourceFileName": "E_br_R5_60.wav",
+      "category": "vocal",
+      "role": "breath",
+      "source": "eleni",
+      "articulation": "breath",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 60,
+      "noteName": "C4",
+      "roundRobin": 5,
+      "tags": [
+        "vocal",
+        "breath",
+        "round-robin"
+      ],
+      "description": "Eleni breath round-robin 5, root C4 (60).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 89687,
+        "durationSeconds": 1.868479,
+        "bytes": 269166
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 44844,
+        "durationSeconds": 1.8685,
+        "compressedBytes": 11830,
+        "decodedBytes": 179376
+      }
+    },
+    {
+      "assetId": 8010,
+      "key": "pneuma.breath.r05.061",
+      "path": "Pneuma/pneuma_breath_r05_061.ogg",
+      "fileName": "pneuma_breath_r05_061.ogg",
+      "sourceFileName": "E_br_R5_61.wav",
+      "category": "vocal",
+      "role": "breath",
+      "source": "eleni",
+      "articulation": "breath",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 61,
+      "noteName": "C#4",
+      "roundRobin": 5,
+      "tags": [
+        "vocal",
+        "breath",
+        "round-robin"
+      ],
+      "description": "Eleni breath round-robin 5, root C#4 (61).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 130335,
+        "durationSeconds": 2.715313,
+        "bytes": 391110
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 65168,
+        "durationSeconds": 2.715333,
+        "compressedBytes": 16331,
+        "decodedBytes": 260672
+      }
+    },
+    {
+      "assetId": 8011,
+      "key": "pneuma.breath.r06.060",
+      "path": "Pneuma/pneuma_breath_r06_060.ogg",
+      "fileName": "pneuma_breath_r06_060.ogg",
+      "sourceFileName": "E_br_R6_60.wav",
+      "category": "vocal",
+      "role": "breath",
+      "source": "eleni",
+      "articulation": "breath",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 60,
+      "noteName": "C4",
+      "roundRobin": 6,
+      "tags": [
+        "vocal",
+        "breath",
+        "round-robin"
+      ],
+      "description": "Eleni breath round-robin 6, root C4 (60).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 102209,
+        "durationSeconds": 2.129354,
+        "bytes": 306732
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 51105,
+        "durationSeconds": 2.129375,
+        "compressedBytes": 12978,
+        "decodedBytes": 204420
+      }
+    },
+    {
+      "assetId": 8012,
+      "key": "pneuma.breath.r06.061",
+      "path": "Pneuma/pneuma_breath_r06_061.ogg",
+      "fileName": "pneuma_breath_r06_061.ogg",
+      "sourceFileName": "E_br_R6_61.wav",
+      "category": "vocal",
+      "role": "breath",
+      "source": "eleni",
+      "articulation": "breath",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 61,
+      "noteName": "C#4",
+      "roundRobin": 6,
+      "tags": [
+        "vocal",
+        "breath",
+        "round-robin"
+      ],
+      "description": "Eleni breath round-robin 6, root C#4 (61).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 164599,
+        "durationSeconds": 3.429146,
+        "bytes": 493902
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 82300,
+        "durationSeconds": 3.429167,
+        "compressedBytes": 19253,
+        "decodedBytes": 329200
+      }
+    },
+    {
+      "assetId": 8013,
+      "key": "pneuma.breath.r07.060",
+      "path": "Pneuma/pneuma_breath_r07_060.ogg",
+      "fileName": "pneuma_breath_r07_060.ogg",
+      "sourceFileName": "E_br_R7_60.wav",
+      "category": "vocal",
+      "role": "breath",
+      "source": "eleni",
+      "articulation": "breath",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 60,
+      "noteName": "C4",
+      "roundRobin": 7,
+      "tags": [
+        "vocal",
+        "breath",
+        "round-robin"
+      ],
+      "description": "Eleni breath round-robin 7, root C4 (60).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 86044,
+        "durationSeconds": 1.792583,
+        "bytes": 258236
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 43022,
+        "durationSeconds": 1.792583,
+        "compressedBytes": 11377,
+        "decodedBytes": 172088
+      }
+    },
+    {
+      "assetId": 8014,
+      "key": "pneuma.breath.r07.061",
+      "path": "Pneuma/pneuma_breath_r07_061.ogg",
+      "fileName": "pneuma_breath_r07_061.ogg",
+      "sourceFileName": "E_br_R7_61.wav",
+      "category": "vocal",
+      "role": "breath",
+      "source": "eleni",
+      "articulation": "breath",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 61,
+      "noteName": "C#4",
+      "roundRobin": 7,
+      "tags": [
+        "vocal",
+        "breath",
+        "round-robin"
+      ],
+      "description": "Eleni breath round-robin 7, root C#4 (61).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 154518,
+        "durationSeconds": 3.219125,
+        "bytes": 463658
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 77259,
+        "durationSeconds": 3.219125,
+        "compressedBytes": 18522,
+        "decodedBytes": 309036
+      }
+    },
+    {
+      "assetId": 8015,
+      "key": "pneuma.breath.r08.060",
+      "path": "Pneuma/pneuma_breath_r08_060.ogg",
+      "fileName": "pneuma_breath_r08_060.ogg",
+      "sourceFileName": "E_br_R8_60.wav",
+      "category": "vocal",
+      "role": "breath",
+      "source": "eleni",
+      "articulation": "breath",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 60,
+      "noteName": "C4",
+      "roundRobin": 8,
+      "tags": [
+        "vocal",
+        "breath",
+        "round-robin"
+      ],
+      "description": "Eleni breath round-robin 8, root C4 (60).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 96536,
+        "durationSeconds": 2.011167,
+        "bytes": 289712
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 48268,
+        "durationSeconds": 2.011167,
+        "compressedBytes": 12396,
+        "decodedBytes": 193072
+      }
+    },
+    {
+      "assetId": 8016,
+      "key": "pneuma.uh.ar.047",
+      "path": "Pneuma/pneuma_uh_ar_047.ogg",
+      "fileName": "pneuma_uh_ar_047.ogg",
+      "sourceFileName": "E_Uh_ar_47.wav",
+      "category": "vocal",
+      "role": "articulation",
+      "source": "eleni",
+      "articulation": "uh-ar",
+      "vowel": "uh",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 47,
+      "noteName": "B2",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "articulation",
+        "uh",
+        "ar"
+      ],
+      "description": "Eleni vocal \"Uh\" articulation layer, root B2 (47).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 32,
+        "frameCount": 536771,
+        "durationSeconds": 11.182729,
+        "bytes": 4295564
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 268386,
+        "durationSeconds": 11.18275,
+        "compressedBytes": 57004,
+        "decodedBytes": 1073544
+      }
+    },
+    {
+      "assetId": 8017,
+      "key": "pneuma.uh.ar.073",
+      "path": "Pneuma/pneuma_uh_ar_073.ogg",
+      "fileName": "pneuma_uh_ar_073.ogg",
+      "sourceFileName": "E_Uh_ar_73.wav",
+      "category": "vocal",
+      "role": "articulation",
+      "source": "eleni",
+      "articulation": "uh-ar",
+      "vowel": "uh",
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": 73,
+      "noteName": "C#5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "articulation",
+        "uh",
+        "ar"
+      ],
+      "description": "Eleni vocal \"Uh\" articulation layer, root C#5 (73).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 32,
+        "frameCount": 540542,
+        "durationSeconds": 11.261292,
+        "bytes": 4325662
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 270271,
+        "durationSeconds": 11.261292,
+        "compressedBytes": 62526,
+        "decodedBytes": 1081084
+      }
+    },
+    {
+      "assetId": 8018,
+      "key": "pneuma.uh.ff.047",
+      "path": "Pneuma/pneuma_uh_ff_047.ogg",
+      "fileName": "pneuma_uh_ff_047.ogg",
+      "sourceFileName": "E_Uh_ff_47.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 47,
+      "noteName": "B2",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root B2 (47).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 389658,
+        "durationSeconds": 8.117875,
+        "bytes": 1171428
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194829,
+        "durationSeconds": 8.117875,
+        "compressedBytes": 39887,
+        "decodedBytes": 779316
+      }
+    },
+    {
+      "assetId": 8019,
+      "key": "pneuma.uh.ff.048",
+      "path": "Pneuma/pneuma_uh_ff_048.ogg",
+      "fileName": "pneuma_uh_ff_048.ogg",
+      "sourceFileName": "E_Uh_ff_48.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 48,
+      "noteName": "C3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root C3 (48).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388938,
+        "durationSeconds": 8.102875,
+        "bytes": 1169268
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194469,
+        "durationSeconds": 8.102875,
+        "compressedBytes": 39304,
+        "decodedBytes": 777876
+      }
+    },
+    {
+      "assetId": 8020,
+      "key": "pneuma.uh.ff.049",
+      "path": "Pneuma/pneuma_uh_ff_049.ogg",
+      "fileName": "pneuma_uh_ff_049.ogg",
+      "sourceFileName": "E_Uh_ff_49.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 49,
+      "noteName": "C#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root C#3 (49).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 391844,
+        "durationSeconds": 8.163417,
+        "bytes": 1177986
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195922,
+        "durationSeconds": 8.163417,
+        "compressedBytes": 39894,
+        "decodedBytes": 783688
+      }
+    },
+    {
+      "assetId": 8021,
+      "key": "pneuma.uh.ff.050",
+      "path": "Pneuma/pneuma_uh_ff_050.ogg",
+      "fileName": "pneuma_uh_ff_050.ogg",
+      "sourceFileName": "E_Uh_ff_50.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 50,
+      "noteName": "D3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root D3 (50).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 391361,
+        "durationSeconds": 8.153354,
+        "bytes": 1176538
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195681,
+        "durationSeconds": 8.153375,
+        "compressedBytes": 40635,
+        "decodedBytes": 782724
+      }
+    },
+    {
+      "assetId": 8022,
+      "key": "pneuma.uh.ff.051",
+      "path": "Pneuma/pneuma_uh_ff_051.ogg",
+      "fileName": "pneuma_uh_ff_051.ogg",
+      "sourceFileName": "E_Uh_ff_51.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 51,
+      "noteName": "D#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root D#3 (51).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388647,
+        "durationSeconds": 8.096813,
+        "bytes": 1168396
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194324,
+        "durationSeconds": 8.096833,
+        "compressedBytes": 41184,
+        "decodedBytes": 777296
+      }
+    },
+    {
+      "assetId": 8023,
+      "key": "pneuma.uh.ff.052",
+      "path": "Pneuma/pneuma_uh_ff_052.ogg",
+      "fileName": "pneuma_uh_ff_052.ogg",
+      "sourceFileName": "E_Uh_ff_52.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 52,
+      "noteName": "E3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root E3 (52).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 396154,
+        "durationSeconds": 8.253208,
+        "bytes": 1190916
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 198077,
+        "durationSeconds": 8.253208,
+        "compressedBytes": 39720,
+        "decodedBytes": 792308
+      }
+    },
+    {
+      "assetId": 8024,
+      "key": "pneuma.uh.ff.053",
+      "path": "Pneuma/pneuma_uh_ff_053.ogg",
+      "fileName": "pneuma_uh_ff_053.ogg",
+      "sourceFileName": "E_Uh_ff_53.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 53,
+      "noteName": "F3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root F3 (53).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388341,
+        "durationSeconds": 8.090438,
+        "bytes": 1167478
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194171,
+        "durationSeconds": 8.090458,
+        "compressedBytes": 41159,
+        "decodedBytes": 776684
+      }
+    },
+    {
+      "assetId": 8025,
+      "key": "pneuma.uh.ff.054",
+      "path": "Pneuma/pneuma_uh_ff_054.ogg",
+      "fileName": "pneuma_uh_ff_054.ogg",
+      "sourceFileName": "E_Uh_ff_54.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 54,
+      "noteName": "F#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root F#3 (54).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 389704,
+        "durationSeconds": 8.118833,
+        "bytes": 1171566
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194852,
+        "durationSeconds": 8.118833,
+        "compressedBytes": 41021,
+        "decodedBytes": 779408
+      }
+    },
+    {
+      "assetId": 8026,
+      "key": "pneuma.uh.ff.055",
+      "path": "Pneuma/pneuma_uh_ff_055.ogg",
+      "fileName": "pneuma_uh_ff_055.ogg",
+      "sourceFileName": "E_Uh_ff_55.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 55,
+      "noteName": "G3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root G3 (55).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 398365,
+        "durationSeconds": 8.299271,
+        "bytes": 1197550
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 199183,
+        "durationSeconds": 8.299292,
+        "compressedBytes": 41583,
+        "decodedBytes": 796732
+      }
+    },
+    {
+      "assetId": 8027,
+      "key": "pneuma.uh.ff.056",
+      "path": "Pneuma/pneuma_uh_ff_056.ogg",
+      "fileName": "pneuma_uh_ff_056.ogg",
+      "sourceFileName": "E_Uh_ff_56.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 56,
+      "noteName": "G#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root G#3 (56).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 399127,
+        "durationSeconds": 8.315146,
+        "bytes": 1199836
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 199564,
+        "durationSeconds": 8.315167,
+        "compressedBytes": 43013,
+        "decodedBytes": 798256
+      }
+    },
+    {
+      "assetId": 8028,
+      "key": "pneuma.uh.ff.057",
+      "path": "Pneuma/pneuma_uh_ff_057.ogg",
+      "fileName": "pneuma_uh_ff_057.ogg",
+      "sourceFileName": "E_Uh_ff_57.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 57,
+      "noteName": "A3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root A3 (57).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 393312,
+        "durationSeconds": 8.194,
+        "bytes": 1182390
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196656,
+        "durationSeconds": 8.194,
+        "compressedBytes": 39651,
+        "decodedBytes": 786624
+      }
+    },
+    {
+      "assetId": 8029,
+      "key": "pneuma.uh.ff.058",
+      "path": "Pneuma/pneuma_uh_ff_058.ogg",
+      "fileName": "pneuma_uh_ff_058.ogg",
+      "sourceFileName": "E_Uh_ff_58.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 58,
+      "noteName": "A#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root A#3 (58).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 401870,
+        "durationSeconds": 8.372292,
+        "bytes": 1208064
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 200935,
+        "durationSeconds": 8.372292,
+        "compressedBytes": 39099,
+        "decodedBytes": 803740
+      }
+    },
+    {
+      "assetId": 8030,
+      "key": "pneuma.uh.ff.059",
+      "path": "Pneuma/pneuma_uh_ff_059.ogg",
+      "fileName": "pneuma_uh_ff_059.ogg",
+      "sourceFileName": "E_Uh_ff_59.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 59,
+      "noteName": "B3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root B3 (59).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 399535,
+        "durationSeconds": 8.323646,
+        "bytes": 1201060
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 199768,
+        "durationSeconds": 8.323667,
+        "compressedBytes": 38848,
+        "decodedBytes": 799072
+      }
+    },
+    {
+      "assetId": 8031,
+      "key": "pneuma.uh.ff.060",
+      "path": "Pneuma/pneuma_uh_ff_060.ogg",
+      "fileName": "pneuma_uh_ff_060.ogg",
+      "sourceFileName": "E_Uh_ff_60.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 60,
+      "noteName": "C4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root C4 (60).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 392575,
+        "durationSeconds": 8.178646,
+        "bytes": 1180180
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196288,
+        "durationSeconds": 8.178667,
+        "compressedBytes": 37636,
+        "decodedBytes": 785152
+      }
+    },
+    {
+      "assetId": 8032,
+      "key": "pneuma.uh.ff.061",
+      "path": "Pneuma/pneuma_uh_ff_061.ogg",
+      "fileName": "pneuma_uh_ff_061.ogg",
+      "sourceFileName": "E_Uh_ff_61.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 61,
+      "noteName": "C#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root C#4 (61).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 397814,
+        "durationSeconds": 8.287792,
+        "bytes": 1195896
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 198907,
+        "durationSeconds": 8.287792,
+        "compressedBytes": 38689,
+        "decodedBytes": 795628
+      }
+    },
+    {
+      "assetId": 8033,
+      "key": "pneuma.uh.ff.062",
+      "path": "Pneuma/pneuma_uh_ff_062.ogg",
+      "fileName": "pneuma_uh_ff_062.ogg",
+      "sourceFileName": "E_Uh_ff_62.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 62,
+      "noteName": "D4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root D4 (62).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 399478,
+        "durationSeconds": 8.322458,
+        "bytes": 1200888
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 199739,
+        "durationSeconds": 8.322458,
+        "compressedBytes": 39664,
+        "decodedBytes": 798956
+      }
+    },
+    {
+      "assetId": 8034,
+      "key": "pneuma.uh.ff.063",
+      "path": "Pneuma/pneuma_uh_ff_063.ogg",
+      "fileName": "pneuma_uh_ff_063.ogg",
+      "sourceFileName": "E_Uh_ff_63.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 63,
+      "noteName": "D#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root D#4 (63).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 396778,
+        "durationSeconds": 8.266208,
+        "bytes": 1192788
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 198389,
+        "durationSeconds": 8.266208,
+        "compressedBytes": 38072,
+        "decodedBytes": 793556
+      }
+    },
+    {
+      "assetId": 8035,
+      "key": "pneuma.uh.ff.064",
+      "path": "Pneuma/pneuma_uh_ff_064.ogg",
+      "fileName": "pneuma_uh_ff_064.ogg",
+      "sourceFileName": "E_Uh_ff_64.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 64,
+      "noteName": "E4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root E4 (64).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 392656,
+        "durationSeconds": 8.180333,
+        "bytes": 1180422
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196328,
+        "durationSeconds": 8.180333,
+        "compressedBytes": 35749,
+        "decodedBytes": 785312
+      }
+    },
+    {
+      "assetId": 8036,
+      "key": "pneuma.uh.ff.065",
+      "path": "Pneuma/pneuma_uh_ff_065.ogg",
+      "fileName": "pneuma_uh_ff_065.ogg",
+      "sourceFileName": "E_Uh_ff_65.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 65,
+      "noteName": "F4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root F4 (65).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 392166,
+        "durationSeconds": 8.170125,
+        "bytes": 1178952
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196083,
+        "durationSeconds": 8.170125,
+        "compressedBytes": 33709,
+        "decodedBytes": 784332
+      }
+    },
+    {
+      "assetId": 8037,
+      "key": "pneuma.uh.ff.066",
+      "path": "Pneuma/pneuma_uh_ff_066.ogg",
+      "fileName": "pneuma_uh_ff_066.ogg",
+      "sourceFileName": "E_Uh_ff_66.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 66,
+      "noteName": "F#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root F#4 (66).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 390170,
+        "durationSeconds": 8.128542,
+        "bytes": 1172964
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195085,
+        "durationSeconds": 8.128542,
+        "compressedBytes": 33346,
+        "decodedBytes": 780340
+      }
+    },
+    {
+      "assetId": 8038,
+      "key": "pneuma.uh.ff.067",
+      "path": "Pneuma/pneuma_uh_ff_067.ogg",
+      "fileName": "pneuma_uh_ff_067.ogg",
+      "sourceFileName": "E_Uh_ff_67.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 67,
+      "noteName": "G4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root G4 (67).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 399109,
+        "durationSeconds": 8.314771,
+        "bytes": 1199782
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 199555,
+        "durationSeconds": 8.314792,
+        "compressedBytes": 34580,
+        "decodedBytes": 798220
+      }
+    },
+    {
+      "assetId": 8039,
+      "key": "pneuma.uh.ff.068",
+      "path": "Pneuma/pneuma_uh_ff_068.ogg",
+      "fileName": "pneuma_uh_ff_068.ogg",
+      "sourceFileName": "E_Uh_ff_68.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 68,
+      "noteName": "G#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root G#4 (68).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 391615,
+        "durationSeconds": 8.158646,
+        "bytes": 1177300
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195808,
+        "durationSeconds": 8.158667,
+        "compressedBytes": 34587,
+        "decodedBytes": 783232
+      }
+    },
+    {
+      "assetId": 8040,
+      "key": "pneuma.uh.ff.069",
+      "path": "Pneuma/pneuma_uh_ff_069.ogg",
+      "fileName": "pneuma_uh_ff_069.ogg",
+      "sourceFileName": "E_Uh_ff_69.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 69,
+      "noteName": "A4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root A4 (69).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 395838,
+        "durationSeconds": 8.246625,
+        "bytes": 1189968
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 197919,
+        "durationSeconds": 8.246625,
+        "compressedBytes": 34486,
+        "decodedBytes": 791676
+      }
+    },
+    {
+      "assetId": 8041,
+      "key": "pneuma.uh.ff.070",
+      "path": "Pneuma/pneuma_uh_ff_070.ogg",
+      "fileName": "pneuma_uh_ff_070.ogg",
+      "sourceFileName": "E_Uh_ff_70.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 70,
+      "noteName": "A#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root A#4 (70).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 392664,
+        "durationSeconds": 8.1805,
+        "bytes": 1180446
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196332,
+        "durationSeconds": 8.1805,
+        "compressedBytes": 34711,
+        "decodedBytes": 785328
+      }
+    },
+    {
+      "assetId": 8042,
+      "key": "pneuma.uh.ff.071",
+      "path": "Pneuma/pneuma_uh_ff_071.ogg",
+      "fileName": "pneuma_uh_ff_071.ogg",
+      "sourceFileName": "E_Uh_ff_71.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 71,
+      "noteName": "B4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root B4 (71).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 397219,
+        "durationSeconds": 8.275396,
+        "bytes": 1194112
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 198610,
+        "durationSeconds": 8.275417,
+        "compressedBytes": 34445,
+        "decodedBytes": 794440
+      }
+    },
+    {
+      "assetId": 8043,
+      "key": "pneuma.uh.ff.072",
+      "path": "Pneuma/pneuma_uh_ff_072.ogg",
+      "fileName": "pneuma_uh_ff_072.ogg",
+      "sourceFileName": "E_Uh_ff_72.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 72,
+      "noteName": "C5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root C5 (72).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 398367,
+        "durationSeconds": 8.299312,
+        "bytes": 1197556
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 199184,
+        "durationSeconds": 8.299333,
+        "compressedBytes": 34845,
+        "decodedBytes": 796736
+      }
+    },
+    {
+      "assetId": 8044,
+      "key": "pneuma.uh.ff.073",
+      "path": "Pneuma/pneuma_uh_ff_073.ogg",
+      "fileName": "pneuma_uh_ff_073.ogg",
+      "sourceFileName": "E_Uh_ff_73.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 73,
+      "noteName": "C#5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root C#5 (73).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 397003,
+        "durationSeconds": 8.270896,
+        "bytes": 1193464
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 198502,
+        "durationSeconds": 8.270917,
+        "compressedBytes": 33820,
+        "decodedBytes": 794008
+      }
+    },
+    {
+      "assetId": 8045,
+      "key": "pneuma.uh.ff.074",
+      "path": "Pneuma/pneuma_uh_ff_074.ogg",
+      "fileName": "pneuma_uh_ff_074.ogg",
+      "sourceFileName": "E_Uh_ff_74.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 74,
+      "noteName": "D5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root D5 (74).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 392437,
+        "durationSeconds": 8.175771,
+        "bytes": 1179766
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196219,
+        "durationSeconds": 8.175792,
+        "compressedBytes": 34618,
+        "decodedBytes": 784876
+      }
+    },
+    {
+      "assetId": 8046,
+      "key": "pneuma.uh.ff.075",
+      "path": "Pneuma/pneuma_uh_ff_075.ogg",
+      "fileName": "pneuma_uh_ff_075.ogg",
+      "sourceFileName": "E_Uh_ff_75.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 75,
+      "noteName": "D#5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root D#5 (75).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 395095,
+        "durationSeconds": 8.231146,
+        "bytes": 1187740
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 197548,
+        "durationSeconds": 8.231167,
+        "compressedBytes": 35905,
+        "decodedBytes": 790192
+      }
+    },
+    {
+      "assetId": 8047,
+      "key": "pneuma.uh.ff.076",
+      "path": "Pneuma/pneuma_uh_ff_076.ogg",
+      "fileName": "pneuma_uh_ff_076.ogg",
+      "sourceFileName": "E_Uh_ff_76.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "ff",
+      "dynamicRank": 4,
+      "velocityRange": [
+        96,
+        127
+      ],
+      "rootMidi": 76,
+      "noteName": "E5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "ff"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, ff layer, root E5 (76).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 397213,
+        "durationSeconds": 8.275271,
+        "bytes": 1194094
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 198607,
+        "durationSeconds": 8.275292,
+        "compressedBytes": 36150,
+        "decodedBytes": 794428
+      }
+    },
+    {
+      "assetId": 8048,
+      "key": "pneuma.uh.mf.047",
+      "path": "Pneuma/pneuma_uh_mf_047.ogg",
+      "fileName": "pneuma_uh_mf_047.ogg",
+      "sourceFileName": "E_Uh_mf_47.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 47,
+      "noteName": "B2",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root B2 (47).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 389561,
+        "durationSeconds": 8.115854,
+        "bytes": 1171138
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194781,
+        "durationSeconds": 8.115875,
+        "compressedBytes": 37821,
+        "decodedBytes": 779124
+      }
+    },
+    {
+      "assetId": 8049,
+      "key": "pneuma.uh.mf.048",
+      "path": "Pneuma/pneuma_uh_mf_048.ogg",
+      "fileName": "pneuma_uh_mf_048.ogg",
+      "sourceFileName": "E_Uh_mf_48.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 48,
+      "noteName": "C3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root C3 (48).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 385624,
+        "durationSeconds": 8.033833,
+        "bytes": 1159326
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 192812,
+        "durationSeconds": 8.033833,
+        "compressedBytes": 37187,
+        "decodedBytes": 771248
+      }
+    },
+    {
+      "assetId": 8050,
+      "key": "pneuma.uh.mf.049",
+      "path": "Pneuma/pneuma_uh_mf_049.ogg",
+      "fileName": "pneuma_uh_mf_049.ogg",
+      "sourceFileName": "E_Uh_mf_49.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 49,
+      "noteName": "C#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root C#3 (49).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 392235,
+        "durationSeconds": 8.171563,
+        "bytes": 1179160
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196118,
+        "durationSeconds": 8.171583,
+        "compressedBytes": 38237,
+        "decodedBytes": 784472
+      }
+    },
+    {
+      "assetId": 8051,
+      "key": "pneuma.uh.mf.050",
+      "path": "Pneuma/pneuma_uh_mf_050.ogg",
+      "fileName": "pneuma_uh_mf_050.ogg",
+      "sourceFileName": "E_Uh_mf_50.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 50,
+      "noteName": "D3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root D3 (50).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388620,
+        "durationSeconds": 8.09625,
+        "bytes": 1168314
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194310,
+        "durationSeconds": 8.09625,
+        "compressedBytes": 38546,
+        "decodedBytes": 777240
+      }
+    },
+    {
+      "assetId": 8052,
+      "key": "pneuma.uh.mf.051",
+      "path": "Pneuma/pneuma_uh_mf_051.ogg",
+      "fileName": "pneuma_uh_mf_051.ogg",
+      "sourceFileName": "E_Uh_mf_51.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 51,
+      "noteName": "D#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root D#3 (51).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 390379,
+        "durationSeconds": 8.132896,
+        "bytes": 1173592
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195190,
+        "durationSeconds": 8.132917,
+        "compressedBytes": 39670,
+        "decodedBytes": 780760
+      }
+    },
+    {
+      "assetId": 8053,
+      "key": "pneuma.uh.mf.052",
+      "path": "Pneuma/pneuma_uh_mf_052.ogg",
+      "fileName": "pneuma_uh_mf_052.ogg",
+      "sourceFileName": "E_Uh_mf_52.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 52,
+      "noteName": "E3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root E3 (52).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 390254,
+        "durationSeconds": 8.130292,
+        "bytes": 1173216
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195127,
+        "durationSeconds": 8.130292,
+        "compressedBytes": 39905,
+        "decodedBytes": 780508
+      }
+    },
+    {
+      "assetId": 8054,
+      "key": "pneuma.uh.mf.053",
+      "path": "Pneuma/pneuma_uh_mf_053.ogg",
+      "fileName": "pneuma_uh_mf_053.ogg",
+      "sourceFileName": "E_Uh_mf_53.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 53,
+      "noteName": "F3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root F3 (53).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388683,
+        "durationSeconds": 8.097563,
+        "bytes": 1168504
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194342,
+        "durationSeconds": 8.097583,
+        "compressedBytes": 38977,
+        "decodedBytes": 777368
+      }
+    },
+    {
+      "assetId": 8055,
+      "key": "pneuma.uh.mf.054",
+      "path": "Pneuma/pneuma_uh_mf_054.ogg",
+      "fileName": "pneuma_uh_mf_054.ogg",
+      "sourceFileName": "E_Uh_mf_54.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 54,
+      "noteName": "F#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root F#3 (54).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 392469,
+        "durationSeconds": 8.176438,
+        "bytes": 1179862
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196235,
+        "durationSeconds": 8.176458,
+        "compressedBytes": 40095,
+        "decodedBytes": 784940
+      }
+    },
+    {
+      "assetId": 8056,
+      "key": "pneuma.uh.mf.055",
+      "path": "Pneuma/pneuma_uh_mf_055.ogg",
+      "fileName": "pneuma_uh_mf_055.ogg",
+      "sourceFileName": "E_Uh_mf_55.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 55,
+      "noteName": "G3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root G3 (55).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388348,
+        "durationSeconds": 8.090583,
+        "bytes": 1167498
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194174,
+        "durationSeconds": 8.090583,
+        "compressedBytes": 39732,
+        "decodedBytes": 776696
+      }
+    },
+    {
+      "assetId": 8057,
+      "key": "pneuma.uh.mf.056",
+      "path": "Pneuma/pneuma_uh_mf_056.ogg",
+      "fileName": "pneuma_uh_mf_056.ogg",
+      "sourceFileName": "E_Uh_mf_56.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 56,
+      "noteName": "G#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root G#3 (56).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 393635,
+        "durationSeconds": 8.200729,
+        "bytes": 1183360
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196818,
+        "durationSeconds": 8.20075,
+        "compressedBytes": 40016,
+        "decodedBytes": 787272
+      }
+    },
+    {
+      "assetId": 8058,
+      "key": "pneuma.uh.mf.057",
+      "path": "Pneuma/pneuma_uh_mf_057.ogg",
+      "fileName": "pneuma_uh_mf_057.ogg",
+      "sourceFileName": "E_Uh_mf_57.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 57,
+      "noteName": "A3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root A3 (57).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 390862,
+        "durationSeconds": 8.142958,
+        "bytes": 1175040
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195431,
+        "durationSeconds": 8.142958,
+        "compressedBytes": 37564,
+        "decodedBytes": 781724
+      }
+    },
+    {
+      "assetId": 8059,
+      "key": "pneuma.uh.mf.058",
+      "path": "Pneuma/pneuma_uh_mf_058.ogg",
+      "fileName": "pneuma_uh_mf_058.ogg",
+      "sourceFileName": "E_Uh_mf_58.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 58,
+      "noteName": "A#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root A#3 (58).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 391845,
+        "durationSeconds": 8.163438,
+        "bytes": 1177990
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195923,
+        "durationSeconds": 8.163458,
+        "compressedBytes": 37381,
+        "decodedBytes": 783692
+      }
+    },
+    {
+      "assetId": 8060,
+      "key": "pneuma.uh.mf.059",
+      "path": "Pneuma/pneuma_uh_mf_059.ogg",
+      "fileName": "pneuma_uh_mf_059.ogg",
+      "sourceFileName": "E_Uh_mf_59.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 59,
+      "noteName": "B3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root B3 (59).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 387932,
+        "durationSeconds": 8.081917,
+        "bytes": 1166250
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193966,
+        "durationSeconds": 8.081917,
+        "compressedBytes": 38905,
+        "decodedBytes": 775864
+      }
+    },
+    {
+      "assetId": 8061,
+      "key": "pneuma.uh.mf.060",
+      "path": "Pneuma/pneuma_uh_mf_060.ogg",
+      "fileName": "pneuma_uh_mf_060.ogg",
+      "sourceFileName": "E_Uh_mf_60.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 60,
+      "noteName": "C4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root C4 (60).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 390440,
+        "durationSeconds": 8.134167,
+        "bytes": 1173774
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195220,
+        "durationSeconds": 8.134167,
+        "compressedBytes": 36740,
+        "decodedBytes": 780880
+      }
+    },
+    {
+      "assetId": 8062,
+      "key": "pneuma.uh.mf.061",
+      "path": "Pneuma/pneuma_uh_mf_061.ogg",
+      "fileName": "pneuma_uh_mf_061.ogg",
+      "sourceFileName": "E_Uh_mf_61.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 61,
+      "noteName": "C#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root C#4 (61).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 391310,
+        "durationSeconds": 8.152292,
+        "bytes": 1176384
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195655,
+        "durationSeconds": 8.152292,
+        "compressedBytes": 37271,
+        "decodedBytes": 782620
+      }
+    },
+    {
+      "assetId": 8063,
+      "key": "pneuma.uh.mf.062",
+      "path": "Pneuma/pneuma_uh_mf_062.ogg",
+      "fileName": "pneuma_uh_mf_062.ogg",
+      "sourceFileName": "E_Uh_mf_62.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 62,
+      "noteName": "D4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root D4 (62).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 387908,
+        "durationSeconds": 8.081417,
+        "bytes": 1166178
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193954,
+        "durationSeconds": 8.081417,
+        "compressedBytes": 36847,
+        "decodedBytes": 775816
+      }
+    },
+    {
+      "assetId": 8064,
+      "key": "pneuma.uh.mf.063",
+      "path": "Pneuma/pneuma_uh_mf_063.ogg",
+      "fileName": "pneuma_uh_mf_063.ogg",
+      "sourceFileName": "E_Uh_mf_63.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 63,
+      "noteName": "D#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root D#4 (63).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388828,
+        "durationSeconds": 8.100583,
+        "bytes": 1168938
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194414,
+        "durationSeconds": 8.100583,
+        "compressedBytes": 36894,
+        "decodedBytes": 777656
+      }
+    },
+    {
+      "assetId": 8065,
+      "key": "pneuma.uh.mf.064",
+      "path": "Pneuma/pneuma_uh_mf_064.ogg",
+      "fileName": "pneuma_uh_mf_064.ogg",
+      "sourceFileName": "E_Uh_mf_64.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 64,
+      "noteName": "E4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root E4 (64).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 391516,
+        "durationSeconds": 8.156583,
+        "bytes": 1177002
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195758,
+        "durationSeconds": 8.156583,
+        "compressedBytes": 35280,
+        "decodedBytes": 783032
+      }
+    },
+    {
+      "assetId": 8066,
+      "key": "pneuma.uh.mf.065",
+      "path": "Pneuma/pneuma_uh_mf_065.ogg",
+      "fileName": "pneuma_uh_mf_065.ogg",
+      "sourceFileName": "E_Uh_mf_65.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 65,
+      "noteName": "F4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root F4 (65).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 393525,
+        "durationSeconds": 8.198438,
+        "bytes": 1183030
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196763,
+        "durationSeconds": 8.198458,
+        "compressedBytes": 35961,
+        "decodedBytes": 787052
+      }
+    },
+    {
+      "assetId": 8067,
+      "key": "pneuma.uh.mf.066",
+      "path": "Pneuma/pneuma_uh_mf_066.ogg",
+      "fileName": "pneuma_uh_mf_066.ogg",
+      "sourceFileName": "E_Uh_mf_66.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 66,
+      "noteName": "F#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root F#4 (66).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 389441,
+        "durationSeconds": 8.113354,
+        "bytes": 1170778
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194721,
+        "durationSeconds": 8.113375,
+        "compressedBytes": 35212,
+        "decodedBytes": 778884
+      }
+    },
+    {
+      "assetId": 8068,
+      "key": "pneuma.uh.mf.067",
+      "path": "Pneuma/pneuma_uh_mf_067.ogg",
+      "fileName": "pneuma_uh_mf_067.ogg",
+      "sourceFileName": "E_Uh_mf_67.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 67,
+      "noteName": "G4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root G4 (67).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 389986,
+        "durationSeconds": 8.124708,
+        "bytes": 1172412
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194993,
+        "durationSeconds": 8.124708,
+        "compressedBytes": 36564,
+        "decodedBytes": 779972
+      }
+    },
+    {
+      "assetId": 8069,
+      "key": "pneuma.uh.mf.068",
+      "path": "Pneuma/pneuma_uh_mf_068.ogg",
+      "fileName": "pneuma_uh_mf_068.ogg",
+      "sourceFileName": "E_Uh_mf_68.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 68,
+      "noteName": "G#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root G#4 (68).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 393066,
+        "durationSeconds": 8.188875,
+        "bytes": 1181652
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196533,
+        "durationSeconds": 8.188875,
+        "compressedBytes": 35127,
+        "decodedBytes": 786132
+      }
+    },
+    {
+      "assetId": 8070,
+      "key": "pneuma.uh.mf.069",
+      "path": "Pneuma/pneuma_uh_mf_069.ogg",
+      "fileName": "pneuma_uh_mf_069.ogg",
+      "sourceFileName": "E_Uh_mf_69.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 69,
+      "noteName": "A4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root A4 (69).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 389452,
+        "durationSeconds": 8.113583,
+        "bytes": 1170810
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194726,
+        "durationSeconds": 8.113583,
+        "compressedBytes": 34617,
+        "decodedBytes": 778904
+      }
+    },
+    {
+      "assetId": 8071,
+      "key": "pneuma.uh.mf.070",
+      "path": "Pneuma/pneuma_uh_mf_070.ogg",
+      "fileName": "pneuma_uh_mf_070.ogg",
+      "sourceFileName": "E_Uh_mf_70.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 70,
+      "noteName": "A#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root A#4 (70).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 391638,
+        "durationSeconds": 8.159125,
+        "bytes": 1177368
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195819,
+        "durationSeconds": 8.159125,
+        "compressedBytes": 34654,
+        "decodedBytes": 783276
+      }
+    },
+    {
+      "assetId": 8072,
+      "key": "pneuma.uh.mf.071",
+      "path": "Pneuma/pneuma_uh_mf_071.ogg",
+      "fileName": "pneuma_uh_mf_071.ogg",
+      "sourceFileName": "E_Uh_mf_71.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 71,
+      "noteName": "B4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root B4 (71).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 393557,
+        "durationSeconds": 8.199104,
+        "bytes": 1183126
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196779,
+        "durationSeconds": 8.199125,
+        "compressedBytes": 33813,
+        "decodedBytes": 787116
+      }
+    },
+    {
+      "assetId": 8073,
+      "key": "pneuma.uh.mf.072",
+      "path": "Pneuma/pneuma_uh_mf_072.ogg",
+      "fileName": "pneuma_uh_mf_072.ogg",
+      "sourceFileName": "E_Uh_mf_72.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 72,
+      "noteName": "C5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root C5 (72).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388402,
+        "durationSeconds": 8.091708,
+        "bytes": 1167660
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194201,
+        "durationSeconds": 8.091708,
+        "compressedBytes": 35533,
+        "decodedBytes": 776804
+      }
+    },
+    {
+      "assetId": 8074,
+      "key": "pneuma.uh.mf.073",
+      "path": "Pneuma/pneuma_uh_mf_073.ogg",
+      "fileName": "pneuma_uh_mf_073.ogg",
+      "sourceFileName": "E_Uh_mf_73.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 73,
+      "noteName": "C#5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root C#5 (73).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 390688,
+        "durationSeconds": 8.139333,
+        "bytes": 1174518
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195344,
+        "durationSeconds": 8.139333,
+        "compressedBytes": 35687,
+        "decodedBytes": 781376
+      }
+    },
+    {
+      "assetId": 8075,
+      "key": "pneuma.uh.mf.074",
+      "path": "Pneuma/pneuma_uh_mf_074.ogg",
+      "fileName": "pneuma_uh_mf_074.ogg",
+      "sourceFileName": "E_Uh_mf_74.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 74,
+      "noteName": "D5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root D5 (74).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 387444,
+        "durationSeconds": 8.07175,
+        "bytes": 1164786
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193722,
+        "durationSeconds": 8.07175,
+        "compressedBytes": 35217,
+        "decodedBytes": 774888
+      }
+    },
+    {
+      "assetId": 8076,
+      "key": "pneuma.uh.mf.075",
+      "path": "Pneuma/pneuma_uh_mf_075.ogg",
+      "fileName": "pneuma_uh_mf_075.ogg",
+      "sourceFileName": "E_Uh_mf_75.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 75,
+      "noteName": "D#5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root D#5 (75).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388359,
+        "durationSeconds": 8.090813,
+        "bytes": 1167532
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194180,
+        "durationSeconds": 8.090833,
+        "compressedBytes": 33770,
+        "decodedBytes": 776720
+      }
+    },
+    {
+      "assetId": 8077,
+      "key": "pneuma.uh.mf.076",
+      "path": "Pneuma/pneuma_uh_mf_076.ogg",
+      "fileName": "pneuma_uh_mf_076.ogg",
+      "sourceFileName": "E_Uh_mf_76.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mf",
+      "dynamicRank": 3,
+      "velocityRange": [
+        64,
+        95
+      ],
+      "rootMidi": 76,
+      "noteName": "E5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mf"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mf layer, root E5 (76).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 393663,
+        "durationSeconds": 8.201313,
+        "bytes": 1183444
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196832,
+        "durationSeconds": 8.201333,
+        "compressedBytes": 30551,
+        "decodedBytes": 787328
+      }
+    },
+    {
+      "assetId": 8078,
+      "key": "pneuma.uh.mp.046",
+      "path": "Pneuma/pneuma_uh_mp_046.ogg",
+      "fileName": "pneuma_uh_mp_046.ogg",
+      "sourceFileName": "E_Uh_mp_46.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 46,
+      "noteName": "A#2",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root A#2 (46).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 385871,
+        "durationSeconds": 8.038979,
+        "bytes": 1160068
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 192936,
+        "durationSeconds": 8.039,
+        "compressedBytes": 40225,
+        "decodedBytes": 771744
+      }
+    },
+    {
+      "assetId": 8079,
+      "key": "pneuma.uh.mp.047",
+      "path": "Pneuma/pneuma_uh_mp_047.ogg",
+      "fileName": "pneuma_uh_mp_047.ogg",
+      "sourceFileName": "E_Uh_mp_47.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 47,
+      "noteName": "B2",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root B2 (47).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 389101,
+        "durationSeconds": 8.106271,
+        "bytes": 1169758
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194551,
+        "durationSeconds": 8.106292,
+        "compressedBytes": 40141,
+        "decodedBytes": 778204
+      }
+    },
+    {
+      "assetId": 8080,
+      "key": "pneuma.uh.mp.048",
+      "path": "Pneuma/pneuma_uh_mp_048.ogg",
+      "fileName": "pneuma_uh_mp_048.ogg",
+      "sourceFileName": "E_Uh_mp_48.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 48,
+      "noteName": "C3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root C3 (48).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 391814,
+        "durationSeconds": 8.162792,
+        "bytes": 1177896
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195907,
+        "durationSeconds": 8.162792,
+        "compressedBytes": 40039,
+        "decodedBytes": 783628
+      }
+    },
+    {
+      "assetId": 8081,
+      "key": "pneuma.uh.mp.049",
+      "path": "Pneuma/pneuma_uh_mp_049.ogg",
+      "fileName": "pneuma_uh_mp_049.ogg",
+      "sourceFileName": "E_Uh_mp_49.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 49,
+      "noteName": "C#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root C#3 (49).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388661,
+        "durationSeconds": 8.097104,
+        "bytes": 1168438
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194331,
+        "durationSeconds": 8.097125,
+        "compressedBytes": 40636,
+        "decodedBytes": 777324
+      }
+    },
+    {
+      "assetId": 8082,
+      "key": "pneuma.uh.mp.050",
+      "path": "Pneuma/pneuma_uh_mp_050.ogg",
+      "fileName": "pneuma_uh_mp_050.ogg",
+      "sourceFileName": "E_Uh_mp_50.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 50,
+      "noteName": "D3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root D3 (50).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 389070,
+        "durationSeconds": 8.105625,
+        "bytes": 1169664
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194535,
+        "durationSeconds": 8.105625,
+        "compressedBytes": 40291,
+        "decodedBytes": 778140
+      }
+    },
+    {
+      "assetId": 8083,
+      "key": "pneuma.uh.mp.051",
+      "path": "Pneuma/pneuma_uh_mp_051.ogg",
+      "fileName": "pneuma_uh_mp_051.ogg",
+      "sourceFileName": "E_Uh_mp_51.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 51,
+      "noteName": "D#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root D#3 (51).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 391405,
+        "durationSeconds": 8.154271,
+        "bytes": 1176670
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195703,
+        "durationSeconds": 8.154292,
+        "compressedBytes": 41666,
+        "decodedBytes": 782812
+      }
+    },
+    {
+      "assetId": 8084,
+      "key": "pneuma.uh.mp.052",
+      "path": "Pneuma/pneuma_uh_mp_052.ogg",
+      "fileName": "pneuma_uh_mp_052.ogg",
+      "sourceFileName": "E_Uh_mp_52.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 52,
+      "noteName": "E3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root E3 (52).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388090,
+        "durationSeconds": 8.085208,
+        "bytes": 1166724
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194045,
+        "durationSeconds": 8.085208,
+        "compressedBytes": 40000,
+        "decodedBytes": 776180
+      }
+    },
+    {
+      "assetId": 8085,
+      "key": "pneuma.uh.mp.053",
+      "path": "Pneuma/pneuma_uh_mp_053.ogg",
+      "fileName": "pneuma_uh_mp_053.ogg",
+      "sourceFileName": "E_Uh_mp_53.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 53,
+      "noteName": "F3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root F3 (53).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388450,
+        "durationSeconds": 8.092708,
+        "bytes": 1167804
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194225,
+        "durationSeconds": 8.092708,
+        "compressedBytes": 39738,
+        "decodedBytes": 776900
+      }
+    },
+    {
+      "assetId": 8086,
+      "key": "pneuma.uh.mp.054",
+      "path": "Pneuma/pneuma_uh_mp_054.ogg",
+      "fileName": "pneuma_uh_mp_054.ogg",
+      "sourceFileName": "E_Uh_mp_54.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 54,
+      "noteName": "F#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root F#3 (54).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388115,
+        "durationSeconds": 8.085729,
+        "bytes": 1166800
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194058,
+        "durationSeconds": 8.08575,
+        "compressedBytes": 40456,
+        "decodedBytes": 776232
+      }
+    },
+    {
+      "assetId": 8087,
+      "key": "pneuma.uh.mp.055",
+      "path": "Pneuma/pneuma_uh_mp_055.ogg",
+      "fileName": "pneuma_uh_mp_055.ogg",
+      "sourceFileName": "E_Uh_mp_55.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 55,
+      "noteName": "G3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root G3 (55).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 386710,
+        "durationSeconds": 8.056458,
+        "bytes": 1162584
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193355,
+        "durationSeconds": 8.056458,
+        "compressedBytes": 39973,
+        "decodedBytes": 773420
+      }
+    },
+    {
+      "assetId": 8088,
+      "key": "pneuma.uh.mp.056",
+      "path": "Pneuma/pneuma_uh_mp_056.ogg",
+      "fileName": "pneuma_uh_mp_056.ogg",
+      "sourceFileName": "E_Uh_mp_56.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 56,
+      "noteName": "G#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root G#3 (56).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 393591,
+        "durationSeconds": 8.199813,
+        "bytes": 1183228
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196796,
+        "durationSeconds": 8.199833,
+        "compressedBytes": 40613,
+        "decodedBytes": 787184
+      }
+    },
+    {
+      "assetId": 8089,
+      "key": "pneuma.uh.mp.057",
+      "path": "Pneuma/pneuma_uh_mp_057.ogg",
+      "fileName": "pneuma_uh_mp_057.ogg",
+      "sourceFileName": "E_Uh_mp_57.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 57,
+      "noteName": "A3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root A3 (57).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 391590,
+        "durationSeconds": 8.158125,
+        "bytes": 1177224
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195795,
+        "durationSeconds": 8.158125,
+        "compressedBytes": 41478,
+        "decodedBytes": 783180
+      }
+    },
+    {
+      "assetId": 8090,
+      "key": "pneuma.uh.mp.058",
+      "path": "Pneuma/pneuma_uh_mp_058.ogg",
+      "fileName": "pneuma_uh_mp_058.ogg",
+      "sourceFileName": "E_Uh_mp_58.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 58,
+      "noteName": "A#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root A#3 (58).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 387272,
+        "durationSeconds": 8.068167,
+        "bytes": 1164270
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193636,
+        "durationSeconds": 8.068167,
+        "compressedBytes": 39643,
+        "decodedBytes": 774544
+      }
+    },
+    {
+      "assetId": 8091,
+      "key": "pneuma.uh.mp.059",
+      "path": "Pneuma/pneuma_uh_mp_059.ogg",
+      "fileName": "pneuma_uh_mp_059.ogg",
+      "sourceFileName": "E_Uh_mp_59.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 59,
+      "noteName": "B3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root B3 (59).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 382492,
+        "durationSeconds": 7.968583,
+        "bytes": 1149930
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 191246,
+        "durationSeconds": 7.968583,
+        "compressedBytes": 38191,
+        "decodedBytes": 764984
+      }
+    },
+    {
+      "assetId": 8092,
+      "key": "pneuma.uh.mp.060",
+      "path": "Pneuma/pneuma_uh_mp_060.ogg",
+      "fileName": "pneuma_uh_mp_060.ogg",
+      "sourceFileName": "E_Uh_mp_60.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 60,
+      "noteName": "C4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root C4 (60).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 379582,
+        "durationSeconds": 7.907958,
+        "bytes": 1141200
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 189791,
+        "durationSeconds": 7.907958,
+        "compressedBytes": 36753,
+        "decodedBytes": 759164
+      }
+    },
+    {
+      "assetId": 8093,
+      "key": "pneuma.uh.mp.061",
+      "path": "Pneuma/pneuma_uh_mp_061.ogg",
+      "fileName": "pneuma_uh_mp_061.ogg",
+      "sourceFileName": "E_Uh_mp_61.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 61,
+      "noteName": "C#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root C#4 (61).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 382864,
+        "durationSeconds": 7.976333,
+        "bytes": 1151046
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 191432,
+        "durationSeconds": 7.976333,
+        "compressedBytes": 38400,
+        "decodedBytes": 765728
+      }
+    },
+    {
+      "assetId": 8094,
+      "key": "pneuma.uh.mp.062",
+      "path": "Pneuma/pneuma_uh_mp_062.ogg",
+      "fileName": "pneuma_uh_mp_062.ogg",
+      "sourceFileName": "E_Uh_mp_62.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 62,
+      "noteName": "D4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root D4 (62).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 383201,
+        "durationSeconds": 7.983354,
+        "bytes": 1152058
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 191601,
+        "durationSeconds": 7.983375,
+        "compressedBytes": 38470,
+        "decodedBytes": 766404
+      }
+    },
+    {
+      "assetId": 8095,
+      "key": "pneuma.uh.mp.063",
+      "path": "Pneuma/pneuma_uh_mp_063.ogg",
+      "fileName": "pneuma_uh_mp_063.ogg",
+      "sourceFileName": "E_Uh_mp_63.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 63,
+      "noteName": "D#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root D#4 (63).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 377497,
+        "durationSeconds": 7.864521,
+        "bytes": 1134946
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 188749,
+        "durationSeconds": 7.864542,
+        "compressedBytes": 37487,
+        "decodedBytes": 754996
+      }
+    },
+    {
+      "assetId": 8096,
+      "key": "pneuma.uh.mp.064",
+      "path": "Pneuma/pneuma_uh_mp_064.ogg",
+      "fileName": "pneuma_uh_mp_064.ogg",
+      "sourceFileName": "E_Uh_mp_64.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 64,
+      "noteName": "E4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root E4 (64).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 381113,
+        "durationSeconds": 7.939854,
+        "bytes": 1145794
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 190557,
+        "durationSeconds": 7.939875,
+        "compressedBytes": 37384,
+        "decodedBytes": 762228
+      }
+    },
+    {
+      "assetId": 8097,
+      "key": "pneuma.uh.mp.065",
+      "path": "Pneuma/pneuma_uh_mp_065.ogg",
+      "fileName": "pneuma_uh_mp_065.ogg",
+      "sourceFileName": "E_Uh_mp_65.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 65,
+      "noteName": "F4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root F4 (65).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 384242,
+        "durationSeconds": 8.005042,
+        "bytes": 1155180
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 192121,
+        "durationSeconds": 8.005042,
+        "compressedBytes": 37644,
+        "decodedBytes": 768484
+      }
+    },
+    {
+      "assetId": 8098,
+      "key": "pneuma.uh.mp.066",
+      "path": "Pneuma/pneuma_uh_mp_066.ogg",
+      "fileName": "pneuma_uh_mp_066.ogg",
+      "sourceFileName": "E_Uh_mp_66.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 66,
+      "noteName": "F#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root F#4 (66).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 384568,
+        "durationSeconds": 8.011833,
+        "bytes": 1156158
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 192284,
+        "durationSeconds": 8.011833,
+        "compressedBytes": 37500,
+        "decodedBytes": 769136
+      }
+    },
+    {
+      "assetId": 8099,
+      "key": "pneuma.uh.mp.067",
+      "path": "Pneuma/pneuma_uh_mp_067.ogg",
+      "fileName": "pneuma_uh_mp_067.ogg",
+      "sourceFileName": "E_Uh_mp_67.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 67,
+      "noteName": "G4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root G4 (67).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 377982,
+        "durationSeconds": 7.874625,
+        "bytes": 1136400
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 188991,
+        "durationSeconds": 7.874625,
+        "compressedBytes": 36336,
+        "decodedBytes": 755964
+      }
+    },
+    {
+      "assetId": 8100,
+      "key": "pneuma.uh.mp.068",
+      "path": "Pneuma/pneuma_uh_mp_068.ogg",
+      "fileName": "pneuma_uh_mp_068.ogg",
+      "sourceFileName": "E_Uh_mp_68.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 68,
+      "noteName": "G#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root G#4 (68).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 384512,
+        "durationSeconds": 8.010667,
+        "bytes": 1155990
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 192256,
+        "durationSeconds": 8.010667,
+        "compressedBytes": 38629,
+        "decodedBytes": 769024
+      }
+    },
+    {
+      "assetId": 8101,
+      "key": "pneuma.uh.mp.069",
+      "path": "Pneuma/pneuma_uh_mp_069.ogg",
+      "fileName": "pneuma_uh_mp_069.ogg",
+      "sourceFileName": "E_Uh_mp_69.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 69,
+      "noteName": "A4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root A4 (69).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 408000,
+        "durationSeconds": 8.5,
+        "bytes": 1226454
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 204000,
+        "durationSeconds": 8.5,
+        "compressedBytes": 38513,
+        "decodedBytes": 816000
+      }
+    },
+    {
+      "assetId": 8102,
+      "key": "pneuma.uh.mp.070",
+      "path": "Pneuma/pneuma_uh_mp_070.ogg",
+      "fileName": "pneuma_uh_mp_070.ogg",
+      "sourceFileName": "E_Uh_mp_70.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 70,
+      "noteName": "A#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root A#4 (70).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 390851,
+        "durationSeconds": 8.142729,
+        "bytes": 1173290
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195426,
+        "durationSeconds": 8.14275,
+        "compressedBytes": 35572,
+        "decodedBytes": 781704
+      }
+    },
+    {
+      "assetId": 8103,
+      "key": "pneuma.uh.mp.071",
+      "path": "Pneuma/pneuma_uh_mp_071.ogg",
+      "fileName": "pneuma_uh_mp_071.ogg",
+      "sourceFileName": "E_Uh_mp_71.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 71,
+      "noteName": "B4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root B4 (71).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 392554,
+        "durationSeconds": 8.178208,
+        "bytes": 1178398
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196277,
+        "durationSeconds": 8.178208,
+        "compressedBytes": 34696,
+        "decodedBytes": 785108
+      }
+    },
+    {
+      "assetId": 8104,
+      "key": "pneuma.uh.mp.072",
+      "path": "Pneuma/pneuma_uh_mp_072.ogg",
+      "fileName": "pneuma_uh_mp_072.ogg",
+      "sourceFileName": "E_Uh_mp_72.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 72,
+      "noteName": "C5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root C5 (72).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 391092,
+        "durationSeconds": 8.14775,
+        "bytes": 1174012
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195546,
+        "durationSeconds": 8.14775,
+        "compressedBytes": 36912,
+        "decodedBytes": 782184
+      }
+    },
+    {
+      "assetId": 8105,
+      "key": "pneuma.uh.mp.073",
+      "path": "Pneuma/pneuma_uh_mp_073.ogg",
+      "fileName": "pneuma_uh_mp_073.ogg",
+      "sourceFileName": "E_Uh_mp_73.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 73,
+      "noteName": "C#5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root C#5 (73).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 391606,
+        "durationSeconds": 8.158458,
+        "bytes": 1175554
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195803,
+        "durationSeconds": 8.158458,
+        "compressedBytes": 36845,
+        "decodedBytes": 783212
+      }
+    },
+    {
+      "assetId": 8106,
+      "key": "pneuma.uh.mp.074",
+      "path": "Pneuma/pneuma_uh_mp_074.ogg",
+      "fileName": "pneuma_uh_mp_074.ogg",
+      "sourceFileName": "E_Uh_mp_74.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 74,
+      "noteName": "D5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root D5 (74).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 389459,
+        "durationSeconds": 8.113729,
+        "bytes": 1169114
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194730,
+        "durationSeconds": 8.11375,
+        "compressedBytes": 34542,
+        "decodedBytes": 778920
+      }
+    },
+    {
+      "assetId": 8107,
+      "key": "pneuma.uh.mp.075",
+      "path": "Pneuma/pneuma_uh_mp_075.ogg",
+      "fileName": "pneuma_uh_mp_075.ogg",
+      "sourceFileName": "E_Uh_mp_75.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 75,
+      "noteName": "D#5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root D#5 (75).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 393498,
+        "durationSeconds": 8.197875,
+        "bytes": 1181230
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 196749,
+        "durationSeconds": 8.197875,
+        "compressedBytes": 33691,
+        "decodedBytes": 786996
+      }
+    },
+    {
+      "assetId": 8108,
+      "key": "pneuma.uh.mp.076",
+      "path": "Pneuma/pneuma_uh_mp_076.ogg",
+      "fileName": "pneuma_uh_mp_076.ogg",
+      "sourceFileName": "E_Uh_mp_76.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "mp",
+      "dynamicRank": 2,
+      "velocityRange": [
+        32,
+        63
+      ],
+      "rootMidi": 76,
+      "noteName": "E5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "mp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, mp layer, root E5 (76).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 390096,
+        "durationSeconds": 8.127,
+        "bytes": 1171024
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195048,
+        "durationSeconds": 8.127,
+        "compressedBytes": 33510,
+        "decodedBytes": 780192
+      }
+    },
+    {
+      "assetId": 8109,
+      "key": "pneuma.uh.pp.046",
+      "path": "Pneuma/pneuma_uh_pp_046.ogg",
+      "fileName": "pneuma_uh_pp_046.ogg",
+      "sourceFileName": "E_Uh_pp_46.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 46,
+      "noteName": "A#2",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root A#2 (46).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 385984,
+        "durationSeconds": 8.041333,
+        "bytes": 1160406
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 192992,
+        "durationSeconds": 8.041333,
+        "compressedBytes": 40689,
+        "decodedBytes": 771968
+      }
+    },
+    {
+      "assetId": 8110,
+      "key": "pneuma.uh.pp.047",
+      "path": "Pneuma/pneuma_uh_pp_047.ogg",
+      "fileName": "pneuma_uh_pp_047.ogg",
+      "sourceFileName": "E_Uh_pp_47.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 47,
+      "noteName": "B2",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root B2 (47).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388510,
+        "durationSeconds": 8.093958,
+        "bytes": 1167984
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194255,
+        "durationSeconds": 8.093958,
+        "compressedBytes": 40643,
+        "decodedBytes": 777020
+      }
+    },
+    {
+      "assetId": 8111,
+      "key": "pneuma.uh.pp.048",
+      "path": "Pneuma/pneuma_uh_pp_048.ogg",
+      "fileName": "pneuma_uh_pp_048.ogg",
+      "sourceFileName": "E_Uh_pp_48.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 48,
+      "noteName": "C3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root C3 (48).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 384173,
+        "durationSeconds": 8.003604,
+        "bytes": 1154974
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 192087,
+        "durationSeconds": 8.003625,
+        "compressedBytes": 40553,
+        "decodedBytes": 768348
+      }
+    },
+    {
+      "assetId": 8112,
+      "key": "pneuma.uh.pp.049",
+      "path": "Pneuma/pneuma_uh_pp_049.ogg",
+      "fileName": "pneuma_uh_pp_049.ogg",
+      "sourceFileName": "E_Uh_pp_49.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 49,
+      "noteName": "C#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root C#3 (49).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 391127,
+        "durationSeconds": 8.148479,
+        "bytes": 1175836
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195564,
+        "durationSeconds": 8.1485,
+        "compressedBytes": 40885,
+        "decodedBytes": 782256
+      }
+    },
+    {
+      "assetId": 8113,
+      "key": "pneuma.uh.pp.050",
+      "path": "Pneuma/pneuma_uh_pp_050.ogg",
+      "fileName": "pneuma_uh_pp_050.ogg",
+      "sourceFileName": "E_Uh_pp_50.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 50,
+      "noteName": "D3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root D3 (50).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 390145,
+        "durationSeconds": 8.128021,
+        "bytes": 1172890
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195073,
+        "durationSeconds": 8.128042,
+        "compressedBytes": 40720,
+        "decodedBytes": 780292
+      }
+    },
+    {
+      "assetId": 8114,
+      "key": "pneuma.uh.pp.051",
+      "path": "Pneuma/pneuma_uh_pp_051.ogg",
+      "fileName": "pneuma_uh_pp_051.ogg",
+      "sourceFileName": "E_Uh_pp_51.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 51,
+      "noteName": "D#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root D#3 (51).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 387996,
+        "durationSeconds": 8.08325,
+        "bytes": 1166442
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193998,
+        "durationSeconds": 8.08325,
+        "compressedBytes": 39717,
+        "decodedBytes": 775992
+      }
+    },
+    {
+      "assetId": 8115,
+      "key": "pneuma.uh.pp.052",
+      "path": "Pneuma/pneuma_uh_pp_052.ogg",
+      "fileName": "pneuma_uh_pp_052.ogg",
+      "sourceFileName": "E_Uh_pp_52.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 52,
+      "noteName": "E3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root E3 (52).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 385181,
+        "durationSeconds": 8.024604,
+        "bytes": 1157998
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 192591,
+        "durationSeconds": 8.024625,
+        "compressedBytes": 39732,
+        "decodedBytes": 770364
+      }
+    },
+    {
+      "assetId": 8116,
+      "key": "pneuma.uh.pp.053",
+      "path": "Pneuma/pneuma_uh_pp_053.ogg",
+      "fileName": "pneuma_uh_pp_053.ogg",
+      "sourceFileName": "E_Uh_pp_53.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 53,
+      "noteName": "F3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root F3 (53).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 381311,
+        "durationSeconds": 7.943979,
+        "bytes": 1146388
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 190656,
+        "durationSeconds": 7.944,
+        "compressedBytes": 40247,
+        "decodedBytes": 762624
+      }
+    },
+    {
+      "assetId": 8117,
+      "key": "pneuma.uh.pp.054",
+      "path": "Pneuma/pneuma_uh_pp_054.ogg",
+      "fileName": "pneuma_uh_pp_054.ogg",
+      "sourceFileName": "E_Uh_pp_54.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 54,
+      "noteName": "F#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root F#3 (54).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 390034,
+        "durationSeconds": 8.125708,
+        "bytes": 1172556
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195017,
+        "durationSeconds": 8.125708,
+        "compressedBytes": 40352,
+        "decodedBytes": 780068
+      }
+    },
+    {
+      "assetId": 8118,
+      "key": "pneuma.uh.pp.055",
+      "path": "Pneuma/pneuma_uh_pp_055.ogg",
+      "fileName": "pneuma_uh_pp_055.ogg",
+      "sourceFileName": "E_Uh_pp_55.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 55,
+      "noteName": "G3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root G3 (55).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388039,
+        "durationSeconds": 8.084146,
+        "bytes": 1166572
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194020,
+        "durationSeconds": 8.084167,
+        "compressedBytes": 41264,
+        "decodedBytes": 776080
+      }
+    },
+    {
+      "assetId": 8119,
+      "key": "pneuma.uh.pp.056",
+      "path": "Pneuma/pneuma_uh_pp_056.ogg",
+      "fileName": "pneuma_uh_pp_056.ogg",
+      "sourceFileName": "E_Uh_pp_56.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 56,
+      "noteName": "G#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root G#3 (56).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 381699,
+        "durationSeconds": 7.952063,
+        "bytes": 1147552
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 190850,
+        "durationSeconds": 7.952083,
+        "compressedBytes": 39309,
+        "decodedBytes": 763400
+      }
+    },
+    {
+      "assetId": 8120,
+      "key": "pneuma.uh.pp.057",
+      "path": "Pneuma/pneuma_uh_pp_057.ogg",
+      "fileName": "pneuma_uh_pp_057.ogg",
+      "sourceFileName": "E_Uh_pp_57.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 57,
+      "noteName": "A3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root A3 (57).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 389314,
+        "durationSeconds": 8.110708,
+        "bytes": 1170396
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194657,
+        "durationSeconds": 8.110708,
+        "compressedBytes": 39029,
+        "decodedBytes": 778628
+      }
+    },
+    {
+      "assetId": 8121,
+      "key": "pneuma.uh.pp.058",
+      "path": "Pneuma/pneuma_uh_pp_058.ogg",
+      "fileName": "pneuma_uh_pp_058.ogg",
+      "sourceFileName": "E_Uh_pp_58.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 58,
+      "noteName": "A#3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root A#3 (58).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 384471,
+        "durationSeconds": 8.009813,
+        "bytes": 1155868
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 192236,
+        "durationSeconds": 8.009833,
+        "compressedBytes": 37769,
+        "decodedBytes": 768944
+      }
+    },
+    {
+      "assetId": 8122,
+      "key": "pneuma.uh.pp.059",
+      "path": "Pneuma/pneuma_uh_pp_059.ogg",
+      "fileName": "pneuma_uh_pp_059.ogg",
+      "sourceFileName": "E_Uh_pp_59.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 59,
+      "noteName": "B3",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root B3 (59).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 385890,
+        "durationSeconds": 8.039375,
+        "bytes": 1160124
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 192945,
+        "durationSeconds": 8.039375,
+        "compressedBytes": 37577,
+        "decodedBytes": 771780
+      }
+    },
+    {
+      "assetId": 8123,
+      "key": "pneuma.uh.pp.060",
+      "path": "Pneuma/pneuma_uh_pp_060.ogg",
+      "fileName": "pneuma_uh_pp_060.ogg",
+      "sourceFileName": "E_Uh_pp_60.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 60,
+      "noteName": "C4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root C4 (60).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388211,
+        "durationSeconds": 8.087729,
+        "bytes": 1167088
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194106,
+        "durationSeconds": 8.08775,
+        "compressedBytes": 36745,
+        "decodedBytes": 776424
+      }
+    },
+    {
+      "assetId": 8124,
+      "key": "pneuma.uh.pp.061",
+      "path": "Pneuma/pneuma_uh_pp_061.ogg",
+      "fileName": "pneuma_uh_pp_061.ogg",
+      "sourceFileName": "E_Uh_pp_61.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 61,
+      "noteName": "C#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root C#4 (61).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 386388,
+        "durationSeconds": 8.04975,
+        "bytes": 1161618
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193194,
+        "durationSeconds": 8.04975,
+        "compressedBytes": 37548,
+        "decodedBytes": 772776
+      }
+    },
+    {
+      "assetId": 8125,
+      "key": "pneuma.uh.pp.062",
+      "path": "Pneuma/pneuma_uh_pp_062.ogg",
+      "fileName": "pneuma_uh_pp_062.ogg",
+      "sourceFileName": "E_Uh_pp_62.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 62,
+      "noteName": "D4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root D4 (62).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 386381,
+        "durationSeconds": 8.049604,
+        "bytes": 1161598
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193191,
+        "durationSeconds": 8.049625,
+        "compressedBytes": 36047,
+        "decodedBytes": 772764
+      }
+    },
+    {
+      "assetId": 8126,
+      "key": "pneuma.uh.pp.063",
+      "path": "Pneuma/pneuma_uh_pp_063.ogg",
+      "fileName": "pneuma_uh_pp_063.ogg",
+      "sourceFileName": "E_Uh_pp_63.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 63,
+      "noteName": "D#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root D#4 (63).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388107,
+        "durationSeconds": 8.085562,
+        "bytes": 1166776
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194054,
+        "durationSeconds": 8.085583,
+        "compressedBytes": 36296,
+        "decodedBytes": 776216
+      }
+    },
+    {
+      "assetId": 8127,
+      "key": "pneuma.uh.pp.064",
+      "path": "Pneuma/pneuma_uh_pp_064.ogg",
+      "fileName": "pneuma_uh_pp_064.ogg",
+      "sourceFileName": "E_Uh_pp_64.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 64,
+      "noteName": "E4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root E4 (64).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 391101,
+        "durationSeconds": 8.147937,
+        "bytes": 1175758
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 195551,
+        "durationSeconds": 8.147958,
+        "compressedBytes": 36146,
+        "decodedBytes": 782204
+      }
+    },
+    {
+      "assetId": 8128,
+      "key": "pneuma.uh.pp.065",
+      "path": "Pneuma/pneuma_uh_pp_065.ogg",
+      "fileName": "pneuma_uh_pp_065.ogg",
+      "sourceFileName": "E_Uh_pp_65.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 65,
+      "noteName": "F4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root F4 (65).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 386462,
+        "durationSeconds": 8.051292,
+        "bytes": 1161840
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193231,
+        "durationSeconds": 8.051292,
+        "compressedBytes": 37299,
+        "decodedBytes": 772924
+      }
+    },
+    {
+      "assetId": 8129,
+      "key": "pneuma.uh.pp.066",
+      "path": "Pneuma/pneuma_uh_pp_066.ogg",
+      "fileName": "pneuma_uh_pp_066.ogg",
+      "sourceFileName": "E_Uh_pp_66.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 66,
+      "noteName": "F#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root F#4 (66).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 387459,
+        "durationSeconds": 8.072062,
+        "bytes": 1164832
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193730,
+        "durationSeconds": 8.072083,
+        "compressedBytes": 37118,
+        "decodedBytes": 774920
+      }
+    },
+    {
+      "assetId": 8130,
+      "key": "pneuma.uh.pp.067",
+      "path": "Pneuma/pneuma_uh_pp_067.ogg",
+      "fileName": "pneuma_uh_pp_067.ogg",
+      "sourceFileName": "E_Uh_pp_67.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 67,
+      "noteName": "G4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root G4 (67).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 387394,
+        "durationSeconds": 8.070708,
+        "bytes": 1164636
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193697,
+        "durationSeconds": 8.070708,
+        "compressedBytes": 36736,
+        "decodedBytes": 774788
+      }
+    },
+    {
+      "assetId": 8131,
+      "key": "pneuma.uh.pp.068",
+      "path": "Pneuma/pneuma_uh_pp_068.ogg",
+      "fileName": "pneuma_uh_pp_068.ogg",
+      "sourceFileName": "E_Uh_pp_68.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 68,
+      "noteName": "G#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root G#4 (68).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388983,
+        "durationSeconds": 8.103813,
+        "bytes": 1169404
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194492,
+        "durationSeconds": 8.103833,
+        "compressedBytes": 38334,
+        "decodedBytes": 777968
+      }
+    },
+    {
+      "assetId": 8132,
+      "key": "pneuma.uh.pp.069",
+      "path": "Pneuma/pneuma_uh_pp_069.ogg",
+      "fileName": "pneuma_uh_pp_069.ogg",
+      "sourceFileName": "E_Uh_pp_69.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 69,
+      "noteName": "A4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root A4 (69).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 387089,
+        "durationSeconds": 8.064354,
+        "bytes": 1163722
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193545,
+        "durationSeconds": 8.064375,
+        "compressedBytes": 36456,
+        "decodedBytes": 774180
+      }
+    },
+    {
+      "assetId": 8133,
+      "key": "pneuma.uh.pp.070",
+      "path": "Pneuma/pneuma_uh_pp_070.ogg",
+      "fileName": "pneuma_uh_pp_070.ogg",
+      "sourceFileName": "E_Uh_pp_70.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 70,
+      "noteName": "A#4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root A#4 (70).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 387036,
+        "durationSeconds": 8.06325,
+        "bytes": 1163562
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193518,
+        "durationSeconds": 8.06325,
+        "compressedBytes": 36904,
+        "decodedBytes": 774072
+      }
+    },
+    {
+      "assetId": 8134,
+      "key": "pneuma.uh.pp.071",
+      "path": "Pneuma/pneuma_uh_pp_071.ogg",
+      "fileName": "pneuma_uh_pp_071.ogg",
+      "sourceFileName": "E_Uh_pp_71.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 71,
+      "noteName": "B4",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root B4 (71).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 387742,
+        "durationSeconds": 8.077958,
+        "bytes": 1165680
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193871,
+        "durationSeconds": 8.077958,
+        "compressedBytes": 32701,
+        "decodedBytes": 775484
+      }
+    },
+    {
+      "assetId": 8135,
+      "key": "pneuma.uh.pp.072",
+      "path": "Pneuma/pneuma_uh_pp_072.ogg",
+      "fileName": "pneuma_uh_pp_072.ogg",
+      "sourceFileName": "E_Uh_pp_72.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 72,
+      "noteName": "C5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root C5 (72).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 387869,
+        "durationSeconds": 8.080604,
+        "bytes": 1166062
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193935,
+        "durationSeconds": 8.080625,
+        "compressedBytes": 33268,
+        "decodedBytes": 775740
+      }
+    },
+    {
+      "assetId": 8136,
+      "key": "pneuma.uh.pp.073",
+      "path": "Pneuma/pneuma_uh_pp_073.ogg",
+      "fileName": "pneuma_uh_pp_073.ogg",
+      "sourceFileName": "E_Uh_pp_73.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 73,
+      "noteName": "C#5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root C#5 (73).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 387283,
+        "durationSeconds": 8.068396,
+        "bytes": 1164304
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 193642,
+        "durationSeconds": 8.068417,
+        "compressedBytes": 29562,
+        "decodedBytes": 774568
+      }
+    },
+    {
+      "assetId": 8137,
+      "key": "pneuma.uh.pp.074",
+      "path": "Pneuma/pneuma_uh_pp_074.ogg",
+      "fileName": "pneuma_uh_pp_074.ogg",
+      "sourceFileName": "E_Uh_pp_74.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 74,
+      "noteName": "D5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root D5 (74).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388202,
+        "durationSeconds": 8.087542,
+        "bytes": 1167060
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194101,
+        "durationSeconds": 8.087542,
+        "compressedBytes": 32469,
+        "decodedBytes": 776404
+      }
+    },
+    {
+      "assetId": 8138,
+      "key": "pneuma.uh.pp.075",
+      "path": "Pneuma/pneuma_uh_pp_075.ogg",
+      "fileName": "pneuma_uh_pp_075.ogg",
+      "sourceFileName": "E_Uh_pp_75.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 75,
+      "noteName": "D#5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root D#5 (75).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388893,
+        "durationSeconds": 8.101938,
+        "bytes": 1169134
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194447,
+        "durationSeconds": 8.101958,
+        "compressedBytes": 30989,
+        "decodedBytes": 777788
+      }
+    },
+    {
+      "assetId": 8139,
+      "key": "pneuma.uh.pp.076",
+      "path": "Pneuma/pneuma_uh_pp_076.ogg",
+      "fileName": "pneuma_uh_pp_076.ogg",
+      "sourceFileName": "E_Uh_pp_76.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 76,
+      "noteName": "E5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root E5 (76).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 388752,
+        "durationSeconds": 8.099,
+        "bytes": 1168710
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 194376,
+        "durationSeconds": 8.099,
+        "compressedBytes": 31490,
+        "decodedBytes": 777504
+      }
+    },
+    {
+      "assetId": 8140,
+      "key": "pneuma.uh.pp.077",
+      "path": "Pneuma/pneuma_uh_pp_077.ogg",
+      "fileName": "pneuma_uh_pp_077.ogg",
+      "sourceFileName": "E_Uh_pp_77.wav",
+      "category": "vocal",
+      "role": "sustain",
+      "source": "eleni",
+      "articulation": "uh",
+      "vowel": "uh",
+      "dynamic": "pp",
+      "dynamicRank": 1,
+      "velocityRange": [
+        1,
+        31
+      ],
+      "rootMidi": 77,
+      "noteName": "F5",
+      "roundRobin": null,
+      "tags": [
+        "vocal",
+        "sustain",
+        "uh",
+        "pp"
+      ],
+      "description": "Eleni vocal \"Uh\" sustain, pp layer, root F5 (77).",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "bitsPerSample": 24,
+        "frameCount": 370086,
+        "durationSeconds": 7.710125,
+        "bytes": 1112712
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 185043,
+        "durationSeconds": 7.710125,
+        "compressedBytes": 26536,
+        "decodedBytes": 740172
+      }
+    },
+    {
+      "assetId": 8141,
+      "key": "pneuma.pad.10",
+      "path": "Pneuma/pneuma_pad_10.ogg",
+      "fileName": "pneuma_pad_10.ogg",
+      "sourceFileName": "Pneuma Pads - _10.wav",
+      "category": "pad",
+      "role": "texture",
+      "source": "pneuma",
+      "articulation": "pad",
+      "vowel": null,
+      "dynamic": null,
+      "dynamicRank": null,
+      "velocityRange": null,
+      "rootMidi": null,
+      "noteName": null,
+      "roundRobin": null,
+      "tags": [
+        "pad",
+        "texture"
+      ],
+      "description": "Pneuma pad texture sample.",
+      "sourceInfo": {
+        "format": "wav/pcm",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "bitsPerSample": 32,
+        "frameCount": 1469971,
+        "durationSeconds": 30.624396,
+        "bytes": 11760196
+      },
+      "encodedInfo": {
+        "format": "ogg/vorbis",
+        "sampleRate": 24000,
+        "channelCount": 1,
+        "frameCount": 734986,
+        "durationSeconds": 30.624417,
+        "compressedBytes": 113553,
+        "decodedBytes": 2939944
+      }
+    }
+  ]
+}
