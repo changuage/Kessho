@@ -3,7 +3,10 @@ import type { SliderState } from '../state';
 import {
   captureRoutingMuteGroupSlot,
   createRoutingMuteGroupTransitionController,
+  incrementSlotRevision,
+  isRoutingMuteGroupSlotStored,
   normalizeRoutingMuteGroupsState,
+  normalizeRoutingMuteGroupSlot,
   ROUTING_MUTE_GROUP_SLOT_COUNT,
   setRoutingMuteGroupSlot,
   type RoutingMuteGroupsState,
@@ -22,9 +25,16 @@ export type RoutingMuteGroupsController = {
   selectedSlotIndex: number;
   selectSlot: (slotIndex: number) => void;
   pressSlot: (slotIndex: number) => void;
-  saveSlot: (slotIndex: number) => void;
-  saveSelectedSlot: () => void;
+  saveSlot: (slotIndex: number) => SaveSlotResult;
+  saveSelectedSlot: () => SaveSlotResult;
+  clearSlot: (slotIndex: number) => void;
   clearSelectedSlot: () => void;
+};
+
+export type SaveSlotResult = {
+  slotIndex: number;
+  wasStored: boolean;
+  revision: number;
 };
 
 function clampSlotIndex(slotIndex: number): number {
@@ -74,16 +84,24 @@ export function useRoutingMuteGroupsController({
     setSelectedSlotIndex(clampSlotIndex(slotIndex));
   }, []);
 
-  const saveSlot = useCallback((slotIndex: number) => {
+  const saveSlot = useCallback((slotIndex: number): SaveSlotResult => {
     const targetSlotIndex = clampSlotIndex(slotIndex);
-    const slot = captureRoutingMuteGroupSlot(stateRef.current);
+    const normalizedGroups = normalizeRoutingMuteGroupsState(muteGroupsRef.current);
+    const previousSlot = normalizedGroups.slots[targetSlotIndex];
+    const wasStored = isRoutingMuteGroupSlotStored(previousSlot);
+    const revision = incrementSlotRevision(previousSlot);
+    const slot = normalizeRoutingMuteGroupSlot(captureRoutingMuteGroupSlot(stateRef.current, {
+      effectiveMutedSourceIds: controller.getEffectiveMutedSourceIds(),
+      revision,
+    }));
     onRoutingMuteGroupsChangeRef.current(setRoutingMuteGroupSlot(
-      muteGroupsRef.current,
+      normalizedGroups,
       targetSlotIndex,
       slot,
     ));
     setSelectedSlotIndex(targetSlotIndex);
-  }, []);
+    return { slotIndex: targetSlotIndex, wasStored, revision };
+  }, [controller]);
 
   const pressSlot = useCallback((slotIndex: number) => {
     const targetSlotIndex = clampSlotIndex(slotIndex);
@@ -100,12 +118,12 @@ export function useRoutingMuteGroupsController({
     controller.recall(slot, targetSlotIndex);
   }, [controller]);
 
-  const saveSelectedSlot = useCallback(() => {
-    saveSlot(selectedSlotIndex);
+  const saveSelectedSlot = useCallback((): SaveSlotResult => {
+    return saveSlot(selectedSlotIndex);
   }, [saveSlot, selectedSlotIndex]);
 
-  const clearSelectedSlot = useCallback(() => {
-    const targetSlotIndex = clampSlotIndex(selectedSlotIndex);
+  const clearSlot = useCallback((slotIndex: number) => {
+    const targetSlotIndex = clampSlotIndex(slotIndex);
     onRoutingMuteGroupsChangeRef.current(setRoutingMuteGroupSlot(
       muteGroupsRef.current,
       targetSlotIndex,
@@ -114,7 +132,12 @@ export function useRoutingMuteGroupsController({
     if (activeSlotIndexRef.current === targetSlotIndex) {
       controller.release();
     }
-  }, [controller, selectedSlotIndex]);
+    setSelectedSlotIndex(targetSlotIndex);
+  }, [controller]);
+
+  const clearSelectedSlot = useCallback(() => {
+    clearSlot(selectedSlotIndex);
+  }, [clearSlot, selectedSlotIndex]);
 
   return {
     activeSlotIndex,
@@ -123,6 +146,7 @@ export function useRoutingMuteGroupsController({
     pressSlot,
     saveSlot,
     saveSelectedSlot,
+    clearSlot,
     clearSelectedSlot,
   };
 }

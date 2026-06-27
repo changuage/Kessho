@@ -1,0 +1,10 @@
+{
+  "artifact": "public/worklets/kessho_pad.wasm",
+  "artifactSha256": "23dc488b220e730e572c8d981a1194482499b43ea398943d920aa3d54feb880e",
+  "sources": {
+    "wasm/pad/build.sh": "1702060ec577d59a1ecbefd0448691e60f7e9ea40739970f498fdf070a54cd0f",
+    "wasm/pad/kessho_pad.cpp": "d3e1970b37dc0a2e763a92b232764e7affdece2cc74663109da792e4c68f7a7e",
+    "wasm/pad/kessho_pad.h": "031a800e9b3e742a82db2e60930688874cfd7f3f049e3d0a83653cc98e47df10",
+    "wasm/common/kessho_dsp.h": "96abae7855589b75ac07dfe708b24df0cbdef86e55a71e44752b4477d93f1a79"
+  }
+}

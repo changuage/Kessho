@@ -198,7 +198,9 @@ export function getCoreProductSoundscapeAssetDescriptorsForState(
 ): CoreProductSoundscapeAssetDescriptor[] {
   const natureLevel = clamp01(numberFromState(state, 'natureLevel') ?? 1);
   const candidates: Array<{ key: CoreProductSoundscapeAssetKey; level: number }> = [];
-  if (booleanFromState(state, 'oceanSampleEnabled')) {
+  const oceanSendActive = booleanFromState(state, 'oceanSampleEnabled');
+  // required: oceanSendActive
+  if (oceanSendActive) {
     const oceanLevel = clamp01(numberFromState(state, 'oceanSampleLevel') ?? 0);
     if (oceanLevel > 0.0001) {
       candidates.push({ key: 'ocean', level: oceanLevel });

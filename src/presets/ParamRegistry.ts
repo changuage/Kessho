@@ -822,8 +822,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthChordSequencer:         { level: 1, scope: 'synthEuclidean' },
   synthSequencerFaces:         { level: 1, scope: 'synthEuclidean' },
   synthSequencerChain:         { level: 1, scope: 'synthEuclidean' },
-  // Lane 1 (10)
+  // Lane 1 (11)
   synthEuclid1Enabled:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid1Solo:        { level: 1, scope: 'synthEuclidean' },
   synthEuclid1Preset:      { level: 1, scope: 'synthEuclidean' },
   synthEuclid1Steps:       { level: 1, scope: 'synthEuclidean' },
   synthEuclid1Hits:        { level: 1, scope: 'synthEuclidean' },
@@ -834,8 +835,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthEuclid1Probability: { level: 1, scope: 'synthEuclidean' },
   synthEuclid1Source:      { level: 1, scope: 'synthEuclidean' },
   synthEuclid1VoiceMask:   { level: 1, scope: 'synthEuclidean' },
-  // Lane 2 (10)
+  // Lane 2 (11)
   synthEuclid2Enabled:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid2Solo:        { level: 1, scope: 'synthEuclidean' },
   synthEuclid2Preset:      { level: 1, scope: 'synthEuclidean' },
   synthEuclid2Steps:       { level: 1, scope: 'synthEuclidean' },
   synthEuclid2Hits:        { level: 1, scope: 'synthEuclidean' },
@@ -846,8 +848,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthEuclid2Probability: { level: 1, scope: 'synthEuclidean' },
   synthEuclid2Source:      { level: 1, scope: 'synthEuclidean' },
   synthEuclid2VoiceMask:   { level: 1, scope: 'synthEuclidean' },
-  // Lane 3 (10)
+  // Lane 3 (11)
   synthEuclid3Enabled:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid3Solo:        { level: 1, scope: 'synthEuclidean' },
   synthEuclid3Preset:      { level: 1, scope: 'synthEuclidean' },
   synthEuclid3Steps:       { level: 1, scope: 'synthEuclidean' },
   synthEuclid3Hits:        { level: 1, scope: 'synthEuclidean' },
@@ -858,8 +861,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthEuclid3Probability: { level: 1, scope: 'synthEuclidean' },
   synthEuclid3Source:      { level: 1, scope: 'synthEuclidean' },
   synthEuclid3VoiceMask:   { level: 1, scope: 'synthEuclidean' },
-  // Lane 4 (10)
+  // Lane 4 (11)
   synthEuclid4Enabled:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid4Solo:        { level: 1, scope: 'synthEuclidean' },
   synthEuclid4Preset:      { level: 1, scope: 'synthEuclidean' },
   synthEuclid4Steps:       { level: 1, scope: 'synthEuclidean' },
   synthEuclid4Hits:        { level: 1, scope: 'synthEuclidean' },
@@ -1016,8 +1020,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumEuclidSwing:         { level: 1, scope: 'drumEuclidean' },
   drumEuclidDivision:      { level: 1, scope: 'drumEuclidean' },
   drumSequencerChain:      { level: 1, scope: 'drumEuclidean' },
-  // Lane 1 (16)
+  // Lane 1 (17)
   drumEuclid1Enabled:      { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1Solo:         { level: 1, scope: 'drumEuclidean' },
   drumEuclid1Preset:       { level: 1, scope: 'drumEuclidean' },
   drumEuclid1Steps:        { level: 1, scope: 'drumEuclidean' },
   drumEuclid1Hits:         { level: 1, scope: 'drumEuclidean' },
@@ -1033,8 +1038,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumEuclid1VelocityMin:  { level: 1, scope: 'drumEuclidean' },
   drumEuclid1VelocityMax:  { level: 1, scope: 'drumEuclidean' },
   drumEuclid1Level:        { level: 1, scope: 'drumEuclidean' },
-  // Lane 2 (16)
+  // Lane 2 (17)
   drumEuclid2Enabled:      { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2Solo:         { level: 1, scope: 'drumEuclidean' },
   drumEuclid2Preset:       { level: 1, scope: 'drumEuclidean' },
   drumEuclid2Steps:        { level: 1, scope: 'drumEuclidean' },
   drumEuclid2Hits:         { level: 1, scope: 'drumEuclidean' },
@@ -1050,8 +1056,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumEuclid2VelocityMin:  { level: 1, scope: 'drumEuclidean' },
   drumEuclid2VelocityMax:  { level: 1, scope: 'drumEuclidean' },
   drumEuclid2Level:        { level: 1, scope: 'drumEuclidean' },
-  // Lane 3 (16)
+  // Lane 3 (17)
   drumEuclid3Enabled:      { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3Solo:         { level: 1, scope: 'drumEuclidean' },
   drumEuclid3Preset:       { level: 1, scope: 'drumEuclidean' },
   drumEuclid3Steps:        { level: 1, scope: 'drumEuclidean' },
   drumEuclid3Hits:         { level: 1, scope: 'drumEuclidean' },
@@ -1067,8 +1074,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumEuclid3VelocityMin:  { level: 1, scope: 'drumEuclidean' },
   drumEuclid3VelocityMax:  { level: 1, scope: 'drumEuclidean' },
   drumEuclid3Level:        { level: 1, scope: 'drumEuclidean' },
-  // Lane 4 (16)
+  // Lane 4 (17)
   drumEuclid4Enabled:      { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4Solo:         { level: 1, scope: 'drumEuclidean' },
   drumEuclid4Preset:       { level: 1, scope: 'drumEuclidean' },
   drumEuclid4Steps:        { level: 1, scope: 'drumEuclidean' },
   drumEuclid4Hits:         { level: 1, scope: 'drumEuclidean' },
@@ -1084,8 +1092,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumEuclid4VelocityMin:  { level: 1, scope: 'drumEuclidean' },
   drumEuclid4VelocityMax:  { level: 1, scope: 'drumEuclidean' },
   drumEuclid4Level:        { level: 1, scope: 'drumEuclidean' },
-  // Lane 5 (16)
+  // Lane 5 (17)
   drumEuclid5Enabled:      { level: 1, scope: 'drumEuclidean' },
+  drumEuclid5Solo:         { level: 1, scope: 'drumEuclidean' },
   drumEuclid5Preset:       { level: 1, scope: 'drumEuclidean' },
   drumEuclid5Steps:        { level: 1, scope: 'drumEuclidean' },
   drumEuclid5Hits:         { level: 1, scope: 'drumEuclidean' },
@@ -1101,8 +1110,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumEuclid5VelocityMin:  { level: 1, scope: 'drumEuclidean' },
   drumEuclid5VelocityMax:  { level: 1, scope: 'drumEuclidean' },
   drumEuclid5Level:        { level: 1, scope: 'drumEuclidean' },
-  // Lane 6 (16)
+  // Lane 6 (17)
   drumEuclid6Enabled:      { level: 1, scope: 'drumEuclidean' },
+  drumEuclid6Solo:         { level: 1, scope: 'drumEuclidean' },
   drumEuclid6Preset:       { level: 1, scope: 'drumEuclidean' },
   drumEuclid6Steps:        { level: 1, scope: 'drumEuclidean' },
   drumEuclid6Hits:         { level: 1, scope: 'drumEuclidean' },
@@ -1434,7 +1444,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1201) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1201`);
+  if (count !== 1211) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1211`);
   }
 }

@@ -949,7 +949,6 @@ class CoreProductEngineHost {
       runtimeWalkDebug: this.modulationRangeBridge.getRuntimeWalkDebugState(),
     };
   }
-
   private collectSequencerStepToggles(events: CoreProductEvent[]): void {
     this.collectSequencerStepToggleEvents(events, 'synth', false);
     this.collectSequencerStepToggleEvents(events, 'drum', false);
@@ -989,11 +988,9 @@ class CoreProductEngineHost {
   private collectSequencerStepToggleEvents(events: CoreProductEvent[], sequencer: SequencerKind, forceClear: boolean): void {
     syncCoreProductSequencerStepState({ sequencer, cache: this.sequencerCacheState(), forceClear, synthSubLaneEnabled: this.synthSubLaneEnabled, drumSubLaneEnabled: this.drumSubLaneEnabled, post: (event) => events.push(event) });
   }
-
   private setDisplayCallback(name: string, callback: unknown): void {
     this.displayCallbacks.setCallback(name, callback);
   }
-
   private invokeDisplayCallback(name: string, ...args: unknown[]): void {
     this.displayCallbacks.invoke(name, ...args);
   }

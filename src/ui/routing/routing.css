@@ -140,8 +140,9 @@
 }
 
 .routing-root .routing-mute-slot {
+  position: relative;
   display: grid;
-  grid-template-columns: auto auto;
+  grid-template-columns: auto minmax(0, auto);
   align-items: center;
   justify-content: center;
   gap: 5px;
@@ -151,7 +152,14 @@
   color: var(--text-muted);
   font-size: 0.72rem;
   font-weight: 850;
-  transition: background 120ms ease, border-color 120ms ease, color 120ms ease, opacity 120ms ease;
+  overflow: hidden;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease,
+    transform 120ms ease;
 }
 
 .routing-root .routing-mute-slot.empty {
@@ -160,6 +168,18 @@
 
 .routing-root .routing-mute-slot.stored {
   color: var(--text-secondary);
+}
+
+.routing-root .routing-mute-slot.stored::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-primary) 68%, white);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-primary) 34%, transparent);
 }
 
 .routing-root .routing-mute-slot.selected {
@@ -173,6 +193,14 @@
   opacity: 1;
 }
 
+.routing-root .routing-mute-slot.just-saved {
+  animation: routingMuteSlotSavedGlow 900ms ease-out;
+}
+
+.routing-root .routing-mute-slot.overwritten {
+  animation: routingMuteSlotOverwriteGlow 1050ms ease-out;
+}
+
 .routing-root .routing-mute-slot-number,
 .routing-root .routing-mute-slot-count {
   min-width: 0;
@@ -180,11 +208,70 @@
 }
 
 .routing-root .routing-mute-slot-count {
+  max-width: 100%;
   padding: 2px 4px;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.18);
   color: inherit;
   font-size: 0.58rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.routing-root .routing-mute-groups-status {
+  min-height: 1em;
+  margin: -2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+@keyframes routingMuteSlotSavedGlow {
+  0% {
+    transform: scale(1);
+    border-color: color-mix(in srgb, var(--accent-primary) 68%, transparent);
+    box-shadow: 0 0 0 rgba(165, 196, 212, 0);
+  }
+  24% {
+    transform: scale(1.025);
+    border-color: color-mix(in srgb, var(--accent-primary) 86%, white);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent-primary) 18%, transparent),
+      0 0 22px color-mix(in srgb, var(--accent-primary) 34%, transparent);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgba(165, 196, 212, 0);
+  }
+}
+
+@keyframes routingMuteSlotOverwriteGlow {
+  0% {
+    transform: scale(1);
+    border-color: rgba(255, 255, 255, 0.72);
+    box-shadow: 0 0 0 rgba(255, 255, 255, 0);
+  }
+  20% {
+    transform: scale(1.032);
+    border-color: rgba(255, 255, 255, 0.96);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.18),
+      0 0 26px color-mix(in srgb, var(--accent-primary) 38%, transparent);
+  }
+  45% {
+    transform: scale(1.01);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent-primary) 16%, transparent),
+      0 0 16px color-mix(in srgb, var(--accent-primary) 24%, transparent);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgba(255, 255, 255, 0);
+  }
 }
 
 .routing-root .daw-output-card {

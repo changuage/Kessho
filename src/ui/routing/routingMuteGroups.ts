@@ -1,7 +1,9 @@
 import type { SliderState } from '../state';
+import { PARAM_REGISTRY } from '../../presets/ParamRegistry';
 import {
   getRoutingSourceDef,
   ROUTING_SOURCE_REGISTRY,
+  ROUTING_SOURCE_IDS,
   type RoutingRowId,
   type RoutingSourceDef,
 } from './routingSourceRegistry';
@@ -12,48 +14,12 @@ export const ROUTING_MUTE_GROUP_FADE_DOWN_MS = 96;
 export const ROUTING_MUTE_GROUP_FADE_UP_MS = 120;
 export const ROUTING_MUTE_GROUP_ENABLE_SETTLE_MS = 16;
 
-export const DEFAULT_ROUTING_MUTE_GROUP_SOURCE_IDS = [
-  'pad1',
-  'pad2',
-  'lead1',
-  'lead2',
-  'piano',
-  'drums',
-  'granular',
-  'waves',
-  'water',
-  'insects',
-  'nature',
-] as const satisfies readonly RoutingRowId[];
+export const ROUTING_MUTE_GROUP_SOURCE_IDS = ROUTING_SOURCE_IDS;
+export const DEFAULT_ROUTING_MUTE_GROUP_SOURCE_IDS = ROUTING_MUTE_GROUP_SOURCE_IDS;
+export type RoutingMuteGroupSourceId = RoutingRowId;
 
-export type RoutingMuteGroupSourceId = (typeof DEFAULT_ROUTING_MUTE_GROUP_SOURCE_IDS)[number];
-
-export const ROUTING_MUTE_GROUP_SEQUENCER_BOOLEAN_KEYS = [
-  'drumEuclid1Enabled',
-  'drumEuclid1Solo',
-  'drumEuclid2Enabled',
-  'drumEuclid2Solo',
-  'drumEuclid3Enabled',
-  'drumEuclid3Solo',
-  'drumEuclid4Enabled',
-  'drumEuclid4Solo',
-  'drumEuclid5Enabled',
-  'drumEuclid5Solo',
-  'drumEuclid6Enabled',
-  'drumEuclid6Solo',
-  'synthEuclid1Enabled',
-  'synthEuclid1Solo',
-  'synthEuclid2Enabled',
-  'synthEuclid2Solo',
-  'synthEuclid3Enabled',
-  'synthEuclid3Solo',
-  'synthEuclid4Enabled',
-  'synthEuclid4Solo',
-  'granularV1Enabled',
-  'granularV2Enabled',
-  'granularV3Enabled',
-  'granularV4Enabled',
-] as const satisfies readonly (keyof SliderState)[];
+const SEQUENCER_BOOLEAN_PREFIXES = ['drumEuclid', 'synthEuclid', 'granularV'] as const;
+const SEQUENCER_BOOLEAN_SUFFIXES = ['Enabled', 'Solo'] as const;
 
 export const ROUTING_MUTE_GROUP_EARTH_BOOLEAN_KEYS = [
   'oceanSampleEnabled',
@@ -70,15 +36,13 @@ function uniqueStateKeys(keys: readonly (keyof SliderState)[]): (keyof SliderSta
 }
 
 export const ROUTING_MUTE_GROUP_SOURCE_BOOLEAN_KEYS: readonly (keyof SliderState)[] = uniqueStateKeys(
-  DEFAULT_ROUTING_MUTE_GROUP_SOURCE_IDS.flatMap((sourceId) => getRoutingSourceDef(sourceId)?.enabledKeys ?? []),
+  ROUTING_MUTE_GROUP_SOURCE_IDS.flatMap((sourceId) => getRoutingSourceDef(sourceId)?.enabledKeys ?? []),
 );
 
-export type RoutingMuteGroupSequencerBooleanKey = (typeof ROUTING_MUTE_GROUP_SEQUENCER_BOOLEAN_KEYS)[number];
 export type RoutingMuteGroupEarthBooleanKey = (typeof ROUTING_MUTE_GROUP_EARTH_BOOLEAN_KEYS)[number];
 export type RoutingMuteGroupSourceBooleanKey = keyof SliderState;
 export const ROUTING_MUTE_GROUP_BOOLEAN_STATE_KEYS: readonly (keyof SliderState)[] = uniqueStateKeys([
   ...ROUTING_MUTE_GROUP_SOURCE_BOOLEAN_KEYS,
-  ...ROUTING_MUTE_GROUP_SEQUENCER_BOOLEAN_KEYS,
   ...ROUTING_MUTE_GROUP_EARTH_BOOLEAN_KEYS,
 ]);
 export type RoutingMuteGroupBooleanStateKey = keyof SliderState;
@@ -88,9 +52,12 @@ export type RoutingMuteGroupStatePatch = Partial<SliderState>;
 export interface RoutingMuteGroupSlot {
   mutedSourceIds: RoutingMuteGroupSourceId[];
   statePatch?: RoutingMuteGroupStatePatch;
+  savedAt?: string;
+  revision?: number;
 }
 
 export interface RoutingMuteGroupsState {
+  schemaVersion?: 2;
   slots: (RoutingMuteGroupSlot | null)[];
 }
 
@@ -122,6 +89,7 @@ export type RoutingMuteGroupTransitionController = {
   release: () => void;
   cancel: () => void;
   getActiveSlotIndex: () => number | null;
+  getEffectiveMutedSourceIds: () => readonly RoutingMuteGroupSourceId[];
 };
 
 const DEFAULT_SCHEDULER: RoutingMuteGroupScheduler = {
@@ -129,22 +97,51 @@ const DEFAULT_SCHEDULER: RoutingMuteGroupScheduler = {
   clearTimeout: (handle) => clearTimeout(handle),
 };
 
-const ELIGIBLE_SOURCE_ID_SET = new Set<RoutingRowId>(DEFAULT_ROUTING_MUTE_GROUP_SOURCE_IDS);
+const ELIGIBLE_SOURCE_ID_SET = new Set<RoutingRowId>(ROUTING_MUTE_GROUP_SOURCE_IDS);
 
 const SOURCE_ORDER = new Map<RoutingRowId, number>(
   ROUTING_SOURCE_REGISTRY.map((source, index) => [source.id, index]),
 );
 const ROUTING_MUTE_GROUP_BOOLEAN_STATE_KEY_SET = new Set<keyof SliderState>(ROUTING_MUTE_GROUP_BOOLEAN_STATE_KEYS);
 
-function isEligibleRoutingMuteGroupSourceId(value: unknown): value is RoutingMuteGroupSourceId {
+export function isEligibleRoutingMuteGroupSourceId(value: unknown): value is RoutingMuteGroupSourceId {
   return typeof value === 'string' && ELIGIBLE_SOURCE_ID_SET.has(value as RoutingRowId);
 }
 
 function isRoutingMuteGroupBooleanStateKey(value: string): value is RoutingMuteGroupBooleanStateKey {
-  return ROUTING_MUTE_GROUP_BOOLEAN_STATE_KEY_SET.has(value as keyof SliderState);
+  return ROUTING_MUTE_GROUP_BOOLEAN_STATE_KEY_SET.has(value as keyof SliderState) || isSequencerMuteBooleanKey(value);
 }
 
-function eligibleSourceDefs(sourceIds: readonly RoutingRowId[] = DEFAULT_ROUTING_MUTE_GROUP_SOURCE_IDS): RoutingSourceDef[] {
+function isKnownPresetStateKey(value: string): value is keyof SliderState {
+  return hasOwnValue(PARAM_REGISTRY, value);
+}
+
+function isSequencerMuteBooleanKey(value: string): value is keyof SliderState {
+  const matchesSequencerMuteName = (
+    SEQUENCER_BOOLEAN_PREFIXES.some((prefix) => value.startsWith(prefix))
+    && SEQUENCER_BOOLEAN_SUFFIXES.some((suffix) => value.endsWith(suffix))
+  );
+  return (
+    matchesSequencerMuteName
+    && (isKnownPresetStateKey(value) || /^(?:drumEuclid|synthEuclid)\d+Solo$/.test(value))
+  );
+}
+
+export function collectSequencerMuteBooleanKeys(state: SliderState): (keyof SliderState)[] {
+  return Object.keys(state)
+    .filter((key) => isSequencerMuteBooleanKey(key) && typeof state[key as keyof SliderState] === 'boolean')
+    .sort() as (keyof SliderState)[];
+}
+
+export function getRoutingMuteGroupBooleanStateKeys(state: SliderState): readonly (keyof SliderState)[] {
+  return uniqueStateKeys([
+    ...ROUTING_MUTE_GROUP_SOURCE_BOOLEAN_KEYS,
+    ...collectSequencerMuteBooleanKeys(state),
+    ...ROUTING_MUTE_GROUP_EARTH_BOOLEAN_KEYS,
+  ]);
+}
+
+function eligibleSourceDefs(sourceIds: readonly RoutingRowId[] = ROUTING_MUTE_GROUP_SOURCE_IDS): RoutingSourceDef[] {
   return sourceIds
     .filter((id): id is RoutingMuteGroupSourceId => isEligibleRoutingMuteGroupSourceId(id))
     .map((id) => getRoutingSourceDef(id))
@@ -204,7 +201,7 @@ function sceneHasEntries(scene: object): boolean {
 
 function captureRoutingMuteGroupScene(state: SliderState): RoutingMuteGroupSceneSnapshot {
   const patch: RoutingMuteGroupStatePatch = {};
-  for (const key of ROUTING_MUTE_GROUP_BOOLEAN_STATE_KEYS) {
+  for (const key of getRoutingMuteGroupBooleanStateKeys(state)) {
     assignStatePatchValue(patch, key, Boolean(state[key]));
   }
   return patch;
@@ -222,6 +219,7 @@ function mergeRoutingMuteGroupScenes(
 
 export function createEmptyRoutingMuteGroupsState(): RoutingMuteGroupsState {
   return {
+    schemaVersion: 2,
     slots: Array.from({ length: ROUTING_MUTE_GROUP_SLOT_COUNT }, () => null),
   };
 }
@@ -235,9 +233,15 @@ export function normalizeRoutingMuteGroupSlot(value: unknown): RoutingMuteGroupS
   const statePatch = normalizeRoutingMuteGroupStatePatchFromSlot(value);
   if (!Array.isArray(rawIds) && !statePatch) return null;
 
+  const raw = value as Partial<RoutingMuteGroupSlot>;
+  const savedAt = typeof raw.savedAt === 'string' && raw.savedAt.trim().length > 0 ? raw.savedAt : undefined;
+  const revision = Number.isInteger(raw.revision) && Number(raw.revision) >= 0 ? Number(raw.revision) : undefined;
+
   return {
     mutedSourceIds: deduped,
     ...(statePatch ? { statePatch } : {}),
+    ...(savedAt ? { savedAt } : {}),
+    ...(revision !== undefined ? { revision } : {}),
   };
 }
 
@@ -252,19 +256,34 @@ export function normalizeRoutingMuteGroupsState(value: unknown): RoutingMuteGrou
     normalizeRoutingMuteGroupSlot(rawSlots[index])
   ));
 
-  return { slots };
+  return { schemaVersion: 2, slots };
 }
+
+export type CaptureRoutingMuteGroupSlotOptions = {
+  sourceIds?: readonly RoutingRowId[];
+  effectiveMutedSourceIds?: readonly RoutingMuteGroupSourceId[];
+  savedAt?: string;
+  revision?: number;
+};
 
 export function captureRoutingMuteGroupSlot(
   state: SliderState,
-  sourceIds: readonly RoutingRowId[] = DEFAULT_ROUTING_MUTE_GROUP_SOURCE_IDS,
+  optionsOrSourceIds: CaptureRoutingMuteGroupSlotOptions | readonly RoutingRowId[] = {},
 ): RoutingMuteGroupSlot {
-  return {
+  const options: CaptureRoutingMuteGroupSlotOptions = Array.isArray(optionsOrSourceIds)
+    ? { sourceIds: optionsOrSourceIds as readonly RoutingRowId[] }
+    : optionsOrSourceIds as CaptureRoutingMuteGroupSlotOptions;
+  const sourceIds = options.sourceIds ?? ROUTING_MUTE_GROUP_SOURCE_IDS;
+  const effectiveMuted = new Set<RoutingMuteGroupSourceId>(options.effectiveMutedSourceIds ?? []);
+  const slot = normalizeRoutingMuteGroupSlot({
     mutedSourceIds: eligibleSourceDefs(sourceIds)
-      .filter((source) => !source.isAudible(state))
+      .filter((source) => effectiveMuted.has(source.id as RoutingMuteGroupSourceId) || !source.isAudible(state))
       .map((source) => source.id as RoutingMuteGroupSourceId),
     statePatch: captureRoutingMuteGroupScene(state),
-  };
+    savedAt: options.savedAt ?? new Date().toISOString(),
+    revision: options.revision ?? 1,
+  });
+  return slot ?? { mutedSourceIds: [], statePatch: captureRoutingMuteGroupScene(state) };
 }
 
 export function setRoutingMuteGroupSlot(
@@ -278,7 +297,13 @@ export function setRoutingMuteGroupSlot(
   const normalized = normalizeRoutingMuteGroupsState(state);
   const slots = [...normalized.slots];
   slots[slotIndex] = normalizeRoutingMuteGroupSlot(slot);
-  return { slots };
+  return { schemaVersion: 2, slots };
+}
+
+export function incrementSlotRevision(previous: RoutingMuteGroupSlot | null | undefined): number {
+  return Number.isInteger(previous?.revision) && Number(previous?.revision) >= 0
+    ? Number(previous?.revision) + 1
+    : 1;
 }
 
 export function isRoutingMuteGroupSlotStored(slot: RoutingMuteGroupSlot | null | undefined): slot is RoutingMuteGroupSlot {
@@ -288,8 +313,16 @@ export function isRoutingMuteGroupSlotStored(slot: RoutingMuteGroupSlot | null |
 export function routingMuteGroupSlotMuteCount(slot: RoutingMuteGroupSlot | null | undefined): number {
   if (!slot) return 0;
   let stateMuted = 0;
+  const mutedSourceIds = new Set<RoutingMuteGroupSourceId>(slot.mutedSourceIds);
+  const sourceKeysCoveredByMutedRows = new Set<keyof SliderState>();
+  for (const sourceId of mutedSourceIds) {
+    for (const key of getRoutingSourceDef(sourceId)?.enabledKeys ?? []) {
+      sourceKeysCoveredByMutedRows.add(key);
+    }
+  }
   for (const [key, value] of Object.entries(slot.statePatch ?? {})) {
     if (isRoutingMuteGroupBooleanStateKey(key)) {
+      if (sourceKeysCoveredByMutedRows.has(key as keyof SliderState)) continue;
       if (key.endsWith('Solo') ? value === true : value === false) stateMuted += 1;
     }
   }
@@ -384,6 +417,7 @@ export function createRoutingMuteGroupTransitionController({
   let activeSlotIndex: number | null = null;
   const pendingTimeouts = new Set<TimeoutHandle>();
   const groupControlledSources = new Set<RoutingRowId>();
+  const targetMutedSourceIds = new Set<RoutingMuteGroupSourceId>();
   let rememberedScene: RoutingMuteGroupSceneSnapshot | null = null;
 
   const sourceDefs = eligibleSourceDefs(eligibleSourceIds);
@@ -415,15 +449,17 @@ export function createRoutingMuteGroupTransitionController({
       }
     };
 
-    for (const key of ROUTING_MUTE_GROUP_BOOLEAN_STATE_KEYS) {
-      if (sourceSceneKeys.has(key)) continue;
-      const value = scene[key];
+    const entries = Object.entries(scene).filter(([key, value]) => (
+      typeof value === 'boolean'
+      && isRoutingMuteGroupBooleanStateKey(key)
+      && !sourceSceneKeys.has(key as keyof SliderState)
+    )) as [RoutingMuteGroupBooleanStateKey, boolean][];
+
+    for (const [key, value] of entries) {
       if (value === false) applyBooleanValue(key, value);
     }
 
-    for (const key of ROUTING_MUTE_GROUP_BOOLEAN_STATE_KEYS) {
-      if (sourceSceneKeys.has(key)) continue;
-      const value = scene[key];
+    for (const [key, value] of entries) {
       if (value === true) applyBooleanValue(key, value);
     }
   };
@@ -431,6 +467,7 @@ export function createRoutingMuteGroupTransitionController({
   const muteSource = (source: RoutingSourceDef, token: number) => {
     const liveState = getState();
     groupControlledSources.add(source.id);
+    targetMutedSourceIds.add(source.id as RoutingMuteGroupSourceId);
 
     scheduleLevelRamp(
       numericLevel(liveState, source.levelKey),
@@ -468,6 +505,7 @@ export function createRoutingMuteGroupTransitionController({
       if (wasGroupControlled) {
         onRuntimeLevelChange(source.levelKey, null);
         groupControlledSources.delete(source.id);
+        targetMutedSourceIds.delete(source.id as RoutingMuteGroupSourceId);
       }
       return;
     }
@@ -493,6 +531,7 @@ export function createRoutingMuteGroupTransitionController({
     schedule(token, enableSettleMs + fadeUpMs + 1, () => {
       onRuntimeLevelChange(source.levelKey, null);
       groupControlledSources.delete(source.id);
+      targetMutedSourceIds.delete(source.id as RoutingMuteGroupSourceId);
     });
   };
 
@@ -509,6 +548,10 @@ export function createRoutingMuteGroupTransitionController({
 
     const mutedSourceIds = slot?.mutedSourceIds ?? [];
     const mutedSourceIdSet = new Set<RoutingRowId>(mutedSourceIds);
+    targetMutedSourceIds.clear();
+    for (const sourceId of mutedSourceIds) {
+      targetMutedSourceIds.add(sourceId);
+    }
 
     for (const source of sourceDefs) {
       if (mutedSourceIdSet.has(source.id)) {
@@ -543,9 +586,13 @@ export function createRoutingMuteGroupTransitionController({
         }
       }
       groupControlledSources.clear();
+      targetMutedSourceIds.clear();
     },
     getActiveSlotIndex() {
       return activeSlotIndex;
+    },
+    getEffectiveMutedSourceIds() {
+      return [...targetMutedSourceIds];
     },
   };
 }

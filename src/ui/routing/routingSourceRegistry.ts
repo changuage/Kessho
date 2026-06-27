@@ -260,7 +260,7 @@ export const ROUTING_SOURCE_REGISTRY = [
   }),
 ] as const satisfies readonly RoutingSourceDef[];
 
-export const ROUTING_SOURCE_IDS = ROUTING_SOURCE_REGISTRY.map((row) => row.id);
+export const ROUTING_SOURCE_IDS: readonly RoutingRowId[] = ROUTING_SOURCE_REGISTRY.map((row) => row.id);
 
 export const ROUTING_SOURCE_BY_ID = new Map<RoutingRowId, RoutingSourceDef>(
   ROUTING_SOURCE_REGISTRY.map((row) => [row.id, row]),

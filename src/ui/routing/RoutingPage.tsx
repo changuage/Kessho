@@ -91,6 +91,7 @@ export default function RoutingPage({
               onPressSlot={muteGroupsController.pressSlot}
               onSaveSlot={muteGroupsController.saveSlot}
               onSaveSelectedSlot={muteGroupsController.saveSelectedSlot}
+              onClearSlot={muteGroupsController.clearSlot}
               onClearSelectedSlot={muteGroupsController.clearSelectedSlot}
             />
           </div>

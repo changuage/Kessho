@@ -32,9 +32,14 @@ export function useSavedPresetResolver<TSavedPreset extends DeferredSavedPreset>
     if (!preset.deferred) return preset;
 
     try {
-      const loadedPreset = preset.id && loadPresetById
+      let resolvedPreset = preset.id && loadPresetById
         ? await loadPresetById(preset.id)
-        : await loadPresetByName(preset.name);
+        : null;
+      if (!resolvedPreset) {
+        const loadedPreset = await loadPresetByName(preset.name);
+        resolvedPreset = loadedPreset;
+      }
+      const loadedPreset = resolvedPreset;
       if (!loadedPreset) {
         console.warn(`Failed to load preset "${preset.name}" from the preset store.`);
         return null;

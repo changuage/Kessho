@@ -1,10 +1,11 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   isRoutingMuteGroupSlotStored,
   ROUTING_MUTE_GROUP_SLOT_COUNT,
   routingMuteGroupSlotMuteCount,
   type RoutingMuteGroupsState,
 } from './routingMuteGroups';
+import type { SaveSlotResult } from './useRoutingMuteGroupsController';
 
 type RoutingMuteGroupsPanelProps = {
   muteGroups: RoutingMuteGroupsState;
@@ -12,12 +13,20 @@ type RoutingMuteGroupsPanelProps = {
   selectedSlotIndex: number;
   onSelectSlot: (slotIndex: number) => void;
   onPressSlot: (slotIndex: number) => void;
-  onSaveSlot: (slotIndex: number) => void;
-  onSaveSelectedSlot: () => void;
+  onSaveSlot: (slotIndex: number) => SaveSlotResult;
+  onSaveSelectedSlot: () => SaveSlotResult;
+  onClearSlot: (slotIndex: number) => void;
   onClearSelectedSlot: () => void;
 };
 
 const LONG_PRESS_MS = 540;
+const SAVE_FLASH_MS = 950;
+
+type SaveFlashState = {
+  slotIndex: number;
+  kind: 'saved' | 'overwritten';
+  nonce: number;
+};
 
 export default function RoutingMuteGroupsPanel({
   muteGroups,
@@ -27,10 +36,14 @@ export default function RoutingMuteGroupsPanel({
   onPressSlot,
   onSaveSlot,
   onSaveSelectedSlot,
+  onClearSlot,
   onClearSelectedSlot,
 }: RoutingMuteGroupsPanelProps) {
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFiredRef = useRef(false);
+  const saveFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [saveFlash, setSaveFlash] = useState<SaveFlashState | null>(null);
+  const [statusMessage, setStatusMessage] = useState('');
 
   const clearLongPressTimer = () => {
     if (longPressTimerRef.current) {
@@ -39,12 +52,58 @@ export default function RoutingMuteGroupsPanel({
     }
   };
 
+  const clearSaveFlashTimer = () => {
+    if (saveFlashTimerRef.current) {
+      clearTimeout(saveFlashTimerRef.current);
+      saveFlashTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => () => {
+    clearLongPressTimer();
+    clearSaveFlashTimer();
+  }, []);
+
+  const flashSavedSlot = (result: SaveSlotResult) => {
+    const nextFlash: SaveFlashState = {
+      slotIndex: result.slotIndex,
+      kind: result.wasStored ? 'overwritten' : 'saved',
+      nonce: Date.now(),
+    };
+    clearSaveFlashTimer();
+    setSaveFlash(nextFlash);
+    setStatusMessage(
+      result.wasStored
+        ? `Overwrote mute group ${result.slotIndex + 1}`
+        : `Saved mute group ${result.slotIndex + 1}`,
+    );
+    saveFlashTimerRef.current = setTimeout(() => {
+      setSaveFlash((current) => (
+        current?.slotIndex === nextFlash.slotIndex && current.nonce === nextFlash.nonce
+          ? null
+          : current
+      ));
+      saveFlashTimerRef.current = null;
+    }, SAVE_FLASH_MS);
+  };
+
+  const clearExactSlot = (slotIndex: number) => {
+    onClearSlot(slotIndex);
+    setStatusMessage(`Cleared mute group ${slotIndex + 1}`);
+  };
+
+  const clearSelectedSlot = () => {
+    onClearSelectedSlot();
+    setStatusMessage(`Cleared mute group ${selectedSlotIndex + 1}`);
+  };
+
   const handlePointerDown = (slotIndex: number) => {
     longPressFiredRef.current = false;
     clearLongPressTimer();
     longPressTimerRef.current = setTimeout(() => {
       longPressFiredRef.current = true;
-      onSaveSlot(slotIndex);
+      flashSavedSlot(onSaveSlot(slotIndex));
+      navigator.vibrate?.(35);
     }, LONG_PRESS_MS);
   };
 
@@ -58,14 +117,31 @@ export default function RoutingMuteGroupsPanel({
     const active = activeSlotIndex === index;
     const selected = selectedSlotIndex === index;
     const mutedCount = routingMuteGroupSlotMuteCount(slot);
+    const flashKind = saveFlash?.slotIndex === index ? saveFlash.kind : null;
+    const slotClassName = [
+      'routing-mute-slot',
+      stored ? 'stored' : 'empty',
+      active ? 'active' : '',
+      selected ? 'selected' : '',
+      flashKind === 'saved' ? 'just-saved' : '',
+      flashKind === 'overwritten' ? 'overwritten' : '',
+    ].filter(Boolean).join(' ');
     const label = `Mute group ${index + 1}`;
-    const status = stored ? `${mutedCount} muted controls` : 'Empty';
+    const status = flashKind === 'saved'
+      ? 'Saved!'
+      : flashKind === 'overwritten'
+        ? 'Overwritten!'
+        : active
+          ? 'Active'
+          : stored
+            ? mutedCount > 0 ? `${mutedCount} off` : 'Saved'
+            : 'Empty';
 
     return (
       <button
         key={index}
         type="button"
-        className={`routing-mute-slot${stored ? ' stored' : ' empty'}${active ? ' active' : ''}${selected ? ' selected' : ''}`}
+        className={slotClassName}
         aria-label={`${label}. ${status}. ${active ? 'Active' : selected ? 'Selected' : 'Inactive'}.`}
         aria-pressed={active}
         title={`${label} - ${status}. Long press to save current mute scene.`}
@@ -82,18 +158,24 @@ export default function RoutingMuteGroupsPanel({
         }}
         onFocus={() => onSelectSlot(index)}
         onKeyDown={(event) => {
-          if (event.key === 's' || event.key === 'S') {
+          if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
-            onSaveSlot(index);
+            if (event.shiftKey) {
+              flashSavedSlot(onSaveSlot(index));
+            } else {
+              onPressSlot(index);
+            }
+          } else if (event.key === 's' || event.key === 'S') {
+            event.preventDefault();
+            flashSavedSlot(onSaveSlot(index));
           } else if (event.key === 'Delete' || event.key === 'Backspace') {
             event.preventDefault();
-            onSelectSlot(index);
-            onClearSelectedSlot();
+            clearExactSlot(index);
           }
         }}
       >
         <span className="routing-mute-slot-number">{index + 1}</span>
-        <span className="routing-mute-slot-count">{stored ? mutedCount : '-'}</span>
+        <span className="routing-mute-slot-count">{status}</span>
       </button>
     );
   });
@@ -106,7 +188,7 @@ export default function RoutingMuteGroupsPanel({
           <button
             type="button"
             className="routing-mute-action"
-            onClick={onSaveSelectedSlot}
+            onClick={() => flashSavedSlot(onSaveSelectedSlot())}
             aria-label={`Save current mute scene into mute group ${selectedSlotIndex + 1}`}
             title={`Save current mute scene into slot ${selectedSlotIndex + 1}`}
           >
@@ -115,7 +197,7 @@ export default function RoutingMuteGroupsPanel({
           <button
             type="button"
             className="routing-mute-action"
-            onClick={onClearSelectedSlot}
+            onClick={clearSelectedSlot}
             aria-label={`Clear mute group ${selectedSlotIndex + 1}`}
             title={`Clear slot ${selectedSlotIndex + 1}`}
           >
@@ -129,6 +211,9 @@ export default function RoutingMuteGroupsPanel({
           {slots}
         </div>
       </div>
+      <p className="routing-mute-groups-status" aria-live="polite">
+        {statusMessage}
+      </p>
     </div>
   );
 }
