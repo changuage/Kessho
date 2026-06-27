@@ -1,5 +1,8 @@
 ﻿name: WASM CI
 
+env:
+  EMSDK_VERSION: 5.0.2
+
 on:
   pull_request:
     paths:
@@ -15,12 +18,39 @@ on:
 jobs:
   build-wasm:
     runs-on: ubuntu-latest
-    container:
-      image: emscripten/emsdk:5.0.2
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Cache Emscripten SDK
+        uses: actions/cache@v4
+        with:
+          path: emsdk
+          key: emsdk-${{ runner.os }}-${{ env.EMSDK_VERSION }}
+
+      - name: Install Emscripten SDK
+        shell: bash
+        run: |
+          if [ ! -d emsdk ]; then
+            git clone --depth 1 https://github.com/emscripten-core/emsdk.git emsdk
+          fi
+          ./emsdk/emsdk install "$EMSDK_VERSION"
+          ./emsdk/emsdk activate "$EMSDK_VERSION"
+
+      - name: Activate Emscripten SDK
+        shell: bash
+        run: |
+          source ./emsdk/emsdk_env.sh
+          echo "EMSDK=$EMSDK" >> "$GITHUB_ENV"
+          echo "EM_CONFIG=$EM_CONFIG" >> "$GITHUB_ENV"
+          echo "$EMSDK" >> "$GITHUB_PATH"
+          echo "$EMSDK/upstream/emscripten" >> "$GITHUB_PATH"
+          echo "$EMSDK/upstream/bin" >> "$GITHUB_PATH"
+          find "$EMSDK/node" -maxdepth 2 -type d -name bin -print -quit >> "$GITHUB_PATH"
+
+      - name: Verify Emscripten
+        run: emcc --version
 
       - name: Build drum WASM
         run: bash wasm/drum/build.sh
