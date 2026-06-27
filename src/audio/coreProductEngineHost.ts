@@ -5,7 +5,7 @@ import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
 import type { ProductLiveNoteEvent } from './product/liveNoteEvents';
 import type { DecodedCoreProductAsset } from './coreProductAssets';
 import type { CoreProductSnapshot } from './coreProductSnapshot';
-import { CORE_PRODUCT_SEQUENCER_IDS, type CoreProductEvent, type CoreProductStepValueField, createCoreProductJourneyEvent, createCoreProductJourneyStateEvent, createCoreProductSequencerDiceEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSequencerPitchSettingEvents, createCoreProductSequencerResetHomeEvent, createCoreProductStartEvent, createCoreProductStopEvent } from './coreProductEvents';
+import { CORE_PRODUCT_SEQUENCER_IDS, type CoreProductEvent, type CoreProductStepValueField, createCoreProductJourneyEvent, createCoreProductJourneyStateEvent, createCoreProductSequencerDiceEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSequencerPitchSettingEvents, createCoreProductSequencerResetHomeEvent } from './coreProductEvents';
 import { type CoreProductAnchorWalkerVisualLaneState, type CoreProductOrbitVisualLaneState, type CoreProductTelemetrySnapshot, type CoreProductVisualTelemetrySnapshot } from './coreProductTelemetry';
 import type { RuntimeFallbackClassification } from './CoreProductFallbackDiagnostics';
 import { shouldForwardCoreProductRngDiffs, type SnapshotReloadReason } from './CoreProductRuntimeAdapter';
@@ -69,6 +69,7 @@ import { CoreProductRealtimeInputBootstrap } from './product/host/CoreProductRea
 import { CoreProductRealtimeTimestampMapper } from './product/host/CoreProductRealtimeTimestampMapper';
 import { CoreProductRuntimeEventBatcher } from './product/host/CoreProductRuntimeEventBatcher';
 import { CoreProductTelemetryCallbackScheduler } from './product/host/CoreProductTelemetryCallbackScheduler';
+import { CoreProductHostLifecycleCoordinator } from './product/host/CoreProductHostLifecycleCoordinator';
 const PRODUCT_VISIBLE_SYNTH_LANE_COUNT = SYNTH_EUCLIDEAN_LANE_COUNT;
 const PRODUCT_VISIBLE_DRUM_LANE_COUNT = DRUM_EUCLIDEAN_LANE_COUNT;
 type SequencerLanePitchState = { steps?: number; direction?: LaneDirection; scaleQuantize?: boolean };
@@ -136,6 +137,29 @@ class CoreProductEngineHost {
   private readonly postSnapshotEvents = new CoreProductPostSnapshotEventQueue({ canFlush: () => this.runtimeReady && this.runtime.audioContext?.state === 'running', post: (events) => this.postRuntimeProductEvents(events) });
   private readonly sequencerEvolveBridge = new CoreProductSequencerEvolveRuntimeBridge({ adapterState: () => this.adapterState, latestSliderState: () => this.latestSliderState, latestProductSnapshot: () => this.latestProductSnapshot, runtimeReady: () => this.runtimeReady, captureLaneHome: (sequencer, laneIndex) => { if (sequencer === 'synth') this.captureSequencerHomeLane('synth', laneIndex); else this.captureSequencerHomeLane('drum', laneIndex); }, getEnabledSubLanes: (sequencer, laneIndex) => this.enabledSequencerSubLanes(sequencer, laneIndex), postWithHomeCapture: (event) => { this.captureSequencerHomeForEvent(event); this.postRuntimeProductEvent(event); }, publish: (name, ...payload) => this.invokeDisplayCallback(name, ...payload) });
   private readonly harmonyStateBridge = new CoreProductHarmonyStateBridge();
+  private readonly lifecycleCoordinator = new CoreProductHostLifecycleCoordinator({
+    runtime: this.runtime,
+    assetRegistrar: this.assetRegistrar,
+    arrangementBridge: this.arrangementBridge,
+    journeyMorphClock: this.journeyMorphClock,
+    modulationRangeBridge: this.modulationRangeBridge,
+    postSnapshotEvents: this.postSnapshotEvents,
+    realtimeTimestampMapper: this.realtimeTimestampMapper,
+    sequencerChain: this.sequencerChain,
+    sequencerVisuals: this.sequencerVisuals,
+    latestSliderState: () => this.latestSliderState,
+    setLatestSliderState: (state) => { this.latestSliderState = state; },
+    adapterState: () => this.adapterState,
+    setLatestProductSnapshotNull: () => { this.latestProductSnapshot = null; },
+    setRuntimeReady: (ready) => { this.runtimeReady = ready; },
+    setRunning: (running) => { this.running = running; },
+    resetSequencerEvolveState: () => this.resetSequencerEvolveState(),
+    resetSynthNoteRangeOverrides: () => { this.synthNoteRangeOverrides = [null, null, null, null]; },
+    updateRuntimeTelemetryPolling: () => this.updateRuntimeTelemetryPolling(),
+    loadLatestSnapshot: (reason, includeClockStartDelay) => this.loadLatestSnapshot(reason, includeClockStartDelay),
+    postRuntimeProductEvent: (event) => this.postRuntimeProductEvent(event),
+    publishStateChange: (isRunning) => this.stateChangeCallback?.(this.createEngineState(isRunning)),
+  });
   readonly engineMode = 'core-product';
   constructor() {
     this.runtime.setTelemetryCallback((telemetry) => this.handleTelemetry(telemetry));
@@ -361,69 +385,23 @@ class CoreProductEngineHost {
   }
 
   async start(sliderState?: Record<string, unknown>): Promise<void> {
-    if (sliderState) {
-      this.latestSliderState = { ...sliderState };
-    }
-    await this.runtime.ensureStarted();
-    this.runtimeReady = true;
-    await this.assetRegistrar.ensureDefaultAssetsForState(); this.resetSequencerEvolveState();
-    await this.loadLatestSnapshot('runtime-start');
-    await this.runtime.resume();
-    this.running = true; this.sequencerChain.start(this.latestSliderState, this.adapterState);
-    this.updateRuntimeTelemetryPolling();
-    this.postRuntimeProductEvent(createCoreProductStartEvent());
-    this.modulationRangeBridge.flushModulationRanges();
-    this.arrangementBridge.start(this.latestSliderState, this.adapterState);
-    this.stateChangeCallback?.(this.createEngineState(true));
+    await this.lifecycleCoordinator.start(sliderState);
   }
 
   async resume(): Promise<void> {
-    await this.runtime.resume(); this.resetSequencerEvolveState();
-    await this.loadLatestSnapshot('runtime-start', true);
-    this.running = true; this.sequencerChain.start(this.latestSliderState, this.adapterState);
-    this.updateRuntimeTelemetryPolling();
-    this.postRuntimeProductEvent(createCoreProductStartEvent());
-    this.arrangementBridge.start(this.latestSliderState, this.adapterState);
-    this.stateChangeCallback?.(this.createEngineState(true));
+    await this.lifecycleCoordinator.resume();
   }
 
   async suspend(): Promise<void> {
-    this.sequencerChain.stop(); this.arrangementBridge.stop();
-    this.postRuntimeProductEvent(createCoreProductStopEvent());
-    await this.runtime.suspend(); this.resetSequencerEvolveState();
-    this.running = false; this.synthNoteRangeOverrides = [null, null, null, null];
-    this.updateRuntimeTelemetryPolling();
-    this.resetSequencerVisuals();
-    this.stateChangeCallback?.(this.createEngineState(false));
+    await this.lifecycleCoordinator.suspend();
   }
 
   async stop(): Promise<void> {
-    this.sequencerChain.stop(); this.arrangementBridge.stop();
-    if (this.runtimeReady) {
-      this.postRuntimeProductEvent(createCoreProductStopEvent());
-    }
-    await this.runtime.suspend(); this.resetSequencerEvolveState();
-    this.running = false; this.synthNoteRangeOverrides = [null, null, null, null];
-    this.updateRuntimeTelemetryPolling();
-    this.resetSequencerVisuals();
-    this.stateChangeCallback?.(this.createEngineState(false));
+    await this.lifecycleCoordinator.stop(this.runtimeReady);
   }
 
   dispose(): void {
-    this.sequencerChain.stop(); this.arrangementBridge.stop();
-    if (this.runtimeReady) {
-      this.postRuntimeProductEvent(createCoreProductStopEvent());
-    }
-    this.postSnapshotEvents.clear();
-    this.runtime.dispose();
-    this.runtimeReady = false; this.resetSequencerEvolveState();
-    this.realtimeTimestampMapper.reset();
-    this.running = false; this.synthNoteRangeOverrides = [null, null, null, null];
-    this.updateRuntimeTelemetryPolling();
-    this.latestProductSnapshot = null;
-    this.assetRegistrar.clear();
-    this.resetSequencerVisuals();
-    this.stateChangeCallback?.(this.createEngineState(false));
+    this.lifecycleCoordinator.dispose(this.runtimeReady);
   }
 
   private isDocumentVisible(): boolean {
@@ -783,8 +761,6 @@ class CoreProductEngineHost {
   private tickSequencerEvolveClock(hostTelemetry: CoreProductTelemetrySnapshot): void {
     this.sequencerEvolveBridge.tick(hostTelemetry);
   }
-
-  private resetSequencerVisuals(): void { this.sequencerVisuals.reset(); }
 
   private captureSequencerHomeForEvent(event: CoreProductEvent): void { const sequencer = event.targetId === CORE_PRODUCT_SEQUENCER_IDS.synth ? 'synth' : event.targetId === CORE_PRODUCT_SEQUENCER_IDS.drum ? 'drum' : null; const laneIndex = typeof event.index === 'number' ? event.index : -1; if (sequencer) this.captureSequencerHomeLane(sequencer, laneIndex); }
 

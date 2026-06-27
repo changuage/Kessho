@@ -89,11 +89,6 @@ import type {
   ProductSynthAnchorWalkerVisualLaneState,
   ProductSynthOrbitVisualLaneState,
 } from '../../audio/product/ProductEngineTypes';
-import {
-  createCoreProductAnchorWalkerPerformanceEvent,
-  createCoreProductGeneratedSequencerCaptureEvent,
-} from '../../audio/coreProductEvents';
-import { productEngine } from '../../audio/product/ProductEngineProxy';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { SliderPrimitive } from '../sliderSystem';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
@@ -204,6 +199,10 @@ import {
   type SubLaneLike,
   type TriggerStamp,
 } from '../sequencer/sequencerTriggerStamp';
+import type {
+  ProductGeneratedSequencerCaptureRequest,
+  ProductRuntimeSynthPageEvents,
+} from '../useProductRuntimeSynthPageEvents';
 
 function currentWallSeconds(): number {
   return typeof performance !== 'undefined' ? performance.now() / 1000 : Date.now() / 1000;
@@ -1454,6 +1453,9 @@ export interface SynthPageProps {
   onAuditionNote?: (note: ManualSynthNoteOptions) => void | Promise<void>;
   /** Fire a one-shot manual audition note using a temporary, non-UI preset state */
   onAuditionPresetPreview?: (note: ManualSynthNoteOptions, externalState: SliderState) => void | Promise<void>;
+  sendProductAnchorWalkerPerformanceEvent?: ProductRuntimeSynthPageEvents['sendProductAnchorWalkerPerformanceEvent'];
+  setProductGeneratedSequencerCaptureEnabled?: ProductRuntimeSynthPageEvents['setProductGeneratedSequencerCaptureEnabled'];
+  getProductGeneratedSequencerCaptureTelemetry?: ProductRuntimeSynthPageEvents['getProductGeneratedSequencerCaptureTelemetry'];
   /** Current harmony snapshot for keyboard note coloring */
   harmonyState?: HarmonyState | null;
 }
@@ -1510,6 +1512,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onArpConfigsChange,
     onAuditionNote,
     onAuditionPresetPreview,
+    sendProductAnchorWalkerPerformanceEvent,
+    setProductGeneratedSequencerCaptureEnabled,
+    getProductGeneratedSequencerCaptureTelemetry,
     harmonyState,
   } = props;
   const onStateChange = props.onStateChange;
@@ -4571,17 +4576,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           .filter((index) => index >= 0)
       : [safeLaneIdx];
     for (const targetLane of targets) {
-      try {
-        productEngine.enqueueEvent(createCoreProductAnchorWalkerPerformanceEvent('synth', targetLane, event.action, {
-          delta: event.delta,
-          velocity: event.velocity,
-          midi: event.midi,
-        }));
-      } catch (error) {
-        console.warn('Failed to enqueue Anchor Walker performance event', error);
-      }
+      sendProductAnchorWalkerPerformanceEvent?.(targetLane, event);
     }
-  }, [sequencerFaceState.slots, walkerEnsemblePreset]);
+  }, [sendProductAnchorWalkerPerformanceEvent, sequencerFaceState.slots, walkerEnsemblePreset]);
   const updateAnchorWalkerSlot = useCallback((laneIdx: number, nextConfig: AnchorWalkerConfig): void => {
     const safeLaneIdx = Math.max(0, Math.min(LANE_CONFIGS.length - 1, Math.round(laneIdx)));
     const shouldBroadcastGesture =
@@ -4611,17 +4608,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   const lastGeneratedCaptureTelemetryEventIdRef = useRef(0);
   const setGeneratedSequencerCaptureEnabled = useCallback((
-    request: Parameters<typeof createCoreProductGeneratedSequencerCaptureEvent>[0],
+    request: ProductGeneratedSequencerCaptureRequest,
   ): void => {
     if (request.enabled) {
       lastGeneratedCaptureTelemetryEventIdRef.current = 0;
     }
-    try {
-      productEngine.enqueueEvent(createCoreProductGeneratedSequencerCaptureEvent(request));
-    } catch (error) {
-      console.warn('Failed to enqueue generated sequencer capture event', error);
-    }
-  }, []);
+    setProductGeneratedSequencerCaptureEnabled?.(request);
+  }, [setProductGeneratedSequencerCaptureEnabled]);
   const setGeneratedCaptureSequencerMode = useCallback((laneIndex: number, mode: 'euclid'): void => {
     setSequencerMode(laneIndex, mode);
   }, [setSequencerMode]);
@@ -4669,8 +4662,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   useVisibleInterval(() => {
     if (!generatedCaptureIsCapturing) return;
-    const telemetry = productEngine.getTelemetry();
-    const events = telemetry?.generatedSequencerCaptureEvents ?? [];
+    const telemetry = getProductGeneratedSequencerCaptureTelemetry?.();
+    const events = telemetry?.events ?? [];
     const freshEvents = events.filter((event) => (
       event.eventId > lastGeneratedCaptureTelemetryEventIdRef.current
     ));
@@ -4682,7 +4675,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         );
       }
     }
-    const overflowCount = telemetry?.generatedSequencerCaptureOverflowCount ?? 0;
+    const overflowCount = telemetry?.overflowCount ?? 0;
     if (freshEvents.length > 0 || overflowCount > 0) {
       ingestGeneratedCaptureEvents(freshEvents, overflowCount);
     }

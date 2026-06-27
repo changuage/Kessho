@@ -48,16 +48,21 @@ function manualTriggerCommitOptions(triggerCritical: boolean): {
 }
 
 export function useProductRuntimeManualTriggers({
+  productRuntimeMode,
   stateRef,
 }: ProductRuntimeManualTriggersOptions): ProductRuntimeManualTriggers {
+  const productRuntimeActive = productRuntimeMode === 'core-product';
+  const productRuntimeActiveRef = useRef(productRuntimeActive);
   const previousSynthAuditionSourceRef = useRef<ProductManualSynthSource | null>(null);
   const synthAuditionQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const synthAuditionRequestRef = useRef(0);
+  productRuntimeActiveRef.current = productRuntimeActive;
 
   const stopPreviousSynthAudition = useCallback((): void => {
     const previousSource = previousSynthAuditionSourceRef.current;
     if (!previousSource) return;
     previousSynthAuditionSourceRef.current = null;
+    if (!productRuntimeActiveRef.current) return;
     try {
       productEngine.enqueueEvent(createCoreProductManualNoteKillEvent(MANUAL_SYNTH_SOURCE_IDS[previousSource]));
     } catch {
@@ -69,10 +74,13 @@ export function useProductRuntimeManualTriggers({
     note: ProductManualSynthNote,
     run: () => Promise<unknown>,
   ): void => {
+    if (!productRuntimeActiveRef.current) return;
     const requestId = synthAuditionRequestRef.current + 1;
     synthAuditionRequestRef.current = requestId;
     const queued = synthAuditionQueueRef.current.catch(() => undefined).then(async () => {
+      if (!productRuntimeActiveRef.current) return;
       stopPreviousSynthAudition();
+      if (!productRuntimeActiveRef.current) return;
       previousSynthAuditionSourceRef.current = note.source;
       await run();
     });
@@ -85,6 +93,7 @@ export function useProductRuntimeManualTriggers({
   }, [stopPreviousSynthAudition]);
 
   const auditionSynthNote = useCallback((note: ProductManualSynthNote): void => {
+    if (!productRuntimeActive) return;
     const externalState = stateRef.current;
     const triggerCritical = shouldWaitForManualTriggerSnapshot();
     queueSynthAudition(note, () => (
@@ -102,9 +111,10 @@ export function useProductRuntimeManualTriggers({
         manualTriggerCommitOptions(triggerCritical),
       )
     ));
-  }, [queueSynthAudition, stateRef]);
+  }, [productRuntimeActive, queueSynthAudition, stateRef]);
 
   const triggerDrumVoice = useCallback((voice: ProductDrumVoice, options: ProductDrumVoiceTriggerOptions = {}): void => {
+    if (!productRuntimeActive) return;
     const velocity = options.velocity ?? DEFAULT_MANUAL_DRUM_VELOCITY;
     const externalState = options.statePatch
       ? { ...stateRef.current, ...options.statePatch } as SliderState
@@ -123,23 +133,25 @@ export function useProductRuntimeManualTriggers({
       (_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, velocity, resolvedSliders),
       manualTriggerCommitOptions(triggerCritical),
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const auditionSynthNoteWithState = useCallback((note: ProductManualSynthNote, externalState: SliderState): void => {
+    if (!productRuntimeActive) return;
     // Preset-pool preview needs the candidate state exactly; Product Control can reapply
     // synth morph endpoints and mask pad/lead preset parameters from the auditioned preset.
     queueSynthAudition(note, () => productEngine.auditionSynthNote(note, externalState));
-  }, [queueSynthAudition]);
+  }, [productRuntimeActive, queueSynthAudition]);
 
   const triggerDrumVoiceWithState = useCallback((
     voice: ProductDrumVoice,
     externalState: SliderState,
     velocity: number = DEFAULT_MANUAL_DRUM_VELOCITY,
   ): void => {
+    if (!productRuntimeActive) return;
     // Preset-pool preview needs the candidate state exactly; Product Control can reapply
     // endpoint overrides and mask envelope or tone changes from the auditioned preset.
     void productEngine.triggerDrumVoice(voice, velocity, externalState);
-  }, []);
+  }, [productRuntimeActive]);
 
   return {
     auditionSynthNote,

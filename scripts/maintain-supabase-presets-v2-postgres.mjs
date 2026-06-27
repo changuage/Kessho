@@ -69,12 +69,20 @@ try {
         const databaseUrl = env.DATABASE_URL ?? env.SUPABASE_DATABASE_URL ?? env.SUPABASE_DB_URL;
         if (!databaseUrl) throw new Error('Missing DATABASE_URL, SUPABASE_DATABASE_URL, or SUPABASE_DB_URL.');
 
-        const require = createRequire(import.meta.url);
+        function pgClientConfig(connectionString) {
+          const url = new URL(connectionString);
+          url.searchParams.delete('sslmode');
+          const normalizedConnectionString = url.toString();
+          const isLocal = /(?:localhost|127\\.0\\.0\\.1|\\[::1\\])/.test(normalizedConnectionString);
+          return {
+            connectionString: normalizedConnectionString,
+            ssl: isLocal ? false : { rejectUnauthorized: false },
+          };
+        }
+
+        const require = createRequire(path.join(process.cwd(), 'package.json'));
         const pg = require('pg');
-        const client = new pg.Client({
-          connectionString: databaseUrl,
-          ssl: { rejectUnauthorized: false },
-        });
+        const client = new pg.Client(pgClientConfig(databaseUrl));
 
         function key(...parts) {
           return parts.map((part) => part ?? '').join('\\u001f');

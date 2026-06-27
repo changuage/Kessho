@@ -32,10 +32,12 @@ import {
   applyRecordPatch,
   buildMissingChildFallbackData,
   canonicalizeRecord,
+  collectPresetPayloadHashesV2,
   computeRecordPatch,
   getPresetChildSpecs,
   getResolvedVersionSnapshot,
   hashCanonicalJson,
+  hashCanonicalJsonText,
   materializePresetVersion,
   normalizeResolvedVersionData,
   presetVersionStorageSignaturesEqual,
@@ -1350,7 +1352,8 @@ export class SupabasePresetStore implements IPresetStore {
     if (payload === undefined || payload === null) return null;
     if (Array.isArray(payload) && payload.length === 0) return null;
     if (isPlainObject(payload) && Object.keys(payload).length === 0) return null;
-    return hashCanonicalJson(canonicalizeRecord(payload as Record<string, unknown>));
+    const normalized = canonicalizeRecord(payload as Record<string, unknown>);
+    return hashCanonicalJsonText(JSON.stringify(normalized));
   }
 
   private async makeStorablePayloadV2(
@@ -1363,7 +1366,7 @@ export class SupabasePresetStore implements IPresetStore {
 
     const normalized = canonicalizeRecord(payload as Record<string, unknown>);
     return {
-      hash: await hashCanonicalJson(normalized),
+      hash: await hashCanonicalJsonText(JSON.stringify(normalized)),
       payloadKind: kind,
       payload: normalized,
     };
@@ -1426,7 +1429,7 @@ export class SupabasePresetStore implements IPresetStore {
   }
 
   private async fetchPayloadMapV2(hashes: string[]): Promise<Map<string, unknown>> {
-    const uniqueHashes = [...new Set(hashes.filter(hash => /^[0-9a-f]{64}$/.test(hash)))].slice(0, 100);
+    const uniqueHashes = collectPresetPayloadHashesV2(hashes);
     const payloadMap = new Map<string, unknown>();
     if (!uniqueHashes.length) return payloadMap;
 
@@ -1471,9 +1474,10 @@ export class SupabasePresetStore implements IPresetStore {
       }
       if (isPlainObject(row)) {
         const payload = canonicalizeRecord(row);
-        const hash = await hashCanonicalJson(payload);
+        const payloadJson = JSON.stringify(payload);
+        const hash = await hashCanonicalJsonText(payloadJson);
         payloadMap.set(hash, payload);
-        await writePresetPayloadCacheV2(hash, payload);
+        await writePresetPayloadCacheV2(hash, payload, { verifiedCanonicalJson: payloadJson });
       }
     }
 
@@ -1490,9 +1494,10 @@ export class SupabasePresetStore implements IPresetStore {
       }
       if (isPlainObject(row)) {
         const payload = canonicalizeRecord(row);
-        const hash = await hashCanonicalJson(payload);
+        const payloadJson = JSON.stringify(payload);
+        const hash = await hashCanonicalJsonText(payloadJson);
         payloadMap.set(hash, payload);
-        await writePresetPayloadCacheV2(hash, payload);
+        await writePresetPayloadCacheV2(hash, payload, { verifiedCanonicalJson: payloadJson });
       }
     }
     return payloadMap;

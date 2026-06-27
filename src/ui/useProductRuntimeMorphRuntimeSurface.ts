@@ -12,23 +12,29 @@ type ProductRuntimeMorphRuntimeSurface = {
 };
 
 export function useProductRuntimeMorphRuntimeSurface(
-  _productRuntimeMode: ProductRuntimeSelectionMode,
+  productRuntimeMode: ProductRuntimeSelectionMode,
 ): ProductRuntimeMorphRuntimeSurface {
+  const productRuntimeActive = productRuntimeMode === 'core-product';
+
   const setProductJourneyMorphClockCallback = useCallback((callback: ProductJourneyMorphClockCallback | null): void => {
+    if (!productRuntimeActive) return;
     productEngine.setJourneyMorphClockCallback(callback);
-  }, []);
+  }, [productRuntimeActive]);
 
   const startProductJourneyMorphClock = useCallback((): void => {
+    if (!productRuntimeActive) return;
     productEngine.startJourneyMorphClock();
-  }, []);
+  }, [productRuntimeActive]);
 
   const stopProductJourneyMorphClock = useCallback((): void => {
+    if (!productRuntimeActive) return;
     productEngine.stopJourneyMorphClock();
-  }, []);
+  }, [productRuntimeActive]);
 
   const resetProductCofDrift = useCallback((): void => {
+    if (!productRuntimeActive) return;
     productEngine.resetCofDrift();
-  }, []);
+  }, [productRuntimeActive]);
 
   return {
     resetProductCofDrift,

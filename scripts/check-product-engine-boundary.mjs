@@ -202,12 +202,14 @@ const warnings = [];
 const productNativeRuntimeHookFiles = new Set([
   'src/ui/useProductRuntimeGlobalSurface.ts',
   'src/ui/useProductRuntimeMacRecovery.ts',
+  'src/ui/useProductRuntimeManualTriggers.ts',
   'src/ui/useProductRuntimeModulationRanges.ts',
   'src/ui/useProductRuntimeMorphRuntimeSurface.ts',
   'src/ui/useProductRuntimeRecordingRuntime.ts',
   'src/ui/useProductRuntimeSequencerCallbacks.ts',
   'src/ui/useProductRuntimeSequencerControls.ts',
   'src/ui/useProductRuntimeStateRuntime.ts',
+  'src/ui/useProductRuntimeSynthPageEvents.ts',
   'src/ui/useProductRuntimeTelemetry.ts',
 ]);
 
@@ -230,11 +232,16 @@ function assertProductPageRuntimeBridgeBoundary(relative, source) {
     "import { useSelectedAudioEnginePageRuntimeBridges } from './useSelectedAudioEnginePageRuntimeBridges'",
     "import { useSelectedAudioEngineCallbackSurfaces } from './useSelectedAudioEngineCallbackSurfaces'",
     "import { useSelectedAudioEngineControlSurfaces } from './useSelectedAudioEngineControlSurfaces'",
+    "import { useProductRuntimeSynthPageEvents } from './useProductRuntimeSynthPageEvents'",
     'const selectedRuntimeCallbacks = useSelectedAudioEngineCallbackSurfaces(productRuntimeMode)',
     'const selectedRuntimeControls = useSelectedAudioEngineControlSurfaces(productRuntimeMode)',
+    'const productSynthPageEvents = useProductRuntimeSynthPageEvents(productRuntimeMode)',
     "const useProductRuntimePageSurfaces = productRuntimeMode === 'core-product'",
     'useProductRuntimePageSurfaces',
     'useSelectedAudioEnginePageRuntimeBridges(selectedOptions)',
+    'synthPageRuntimeProps: {',
+    '...selectedPageRuntimeBridges.synthPageRuntimeProps',
+    '...productSynthPageEvents',
   ]) {
     if (!source.includes(requiredSnippet)) {
       failures.push(`${relative}: product page runtime bridge must explicitly choose Product surfaces for core-product and selected surfaces for reference modes; missing ${requiredSnippet}`);
@@ -495,6 +502,22 @@ for (const rootDir of sourceRoots) {
           }
         }
       }
+      if (relative === 'src/ui/useProductRuntimeMacRecovery.ts') {
+        for (const requiredSnippet of [
+          "import { productEngine } from '../audio/product/ProductEngineProxy'",
+          'productRuntimeMode,',
+          'const productRuntimeActive = productRuntimeMode === \'core-product\';',
+          'if (!productRuntimeActive || !macShellAvailable || !playbackIsRunning || recoveryInFlightRef.current) return;',
+          'productEngine.getLifecycleState()',
+          'await productEngine.resume();',
+          'await productEngine.start({ initialState: stateRef.current as unknown as Readonly<Record<string, unknown>> });',
+          'enabled: productRuntimeActive && macShellAvailable && playbackIsRunning,',
+        ]) {
+          if (!source.includes(requiredSnippet)) {
+            failures.push(`${relative}: Product-native macOS recovery must not poll or recover Product Core outside core-product mode; missing ${requiredSnippet}`);
+          }
+        }
+      }
       if (relative === 'src/ui/useProductRuntimeTelemetry.ts') {
         for (const requiredSnippet of [
           "import { productEngine } from '../audio/product/ProductEngineProxy'",
@@ -514,7 +537,172 @@ for (const rootDir of sourceRoots) {
           }
         }
       }
+      if (relative === 'src/ui/useProductRuntimeModulationRanges.ts') {
+        for (const requiredSnippet of [
+          "import { productEngine } from '../audio/product/ProductEngineProxy'",
+          'const productRuntimeActive = productRuntimeMode === \'core-product\';',
+          'if (!productRuntimeActive) return;',
+          'productEngine.setRuntimeWalkPositionsCallback(callback)',
+          'productEngine.setDrumMorphRange(voice, range)',
+          'productEngine.setDrumParamSHRange(key, range)',
+          'productEngine.setDualRanges(ranges)',
+          'productEngine.setRuntimeWalkRanges(ranges)',
+        ]) {
+          if (!source.includes(requiredSnippet)) {
+            failures.push(`${relative}: Product-native modulation range setters must no-op outside core-product mode; missing ${requiredSnippet}`);
+          }
+        }
+      }
+      if (relative === 'src/ui/useProductRuntimeMorphRuntimeSurface.ts') {
+        for (const requiredSnippet of [
+          "import { productEngine } from '../audio/product/ProductEngineProxy'",
+          'const productRuntimeActive = productRuntimeMode === \'core-product\';',
+          'if (!productRuntimeActive) return;',
+          'productEngine.setJourneyMorphClockCallback(callback)',
+          'productEngine.startJourneyMorphClock()',
+          'productEngine.stopJourneyMorphClock()',
+          'productEngine.resetCofDrift()',
+        ]) {
+          if (!source.includes(requiredSnippet)) {
+            failures.push(`${relative}: Product-native morph runtime setters must no-op outside core-product mode; missing ${requiredSnippet}`);
+          }
+        }
+      }
+      if (relative === 'src/ui/useProductRuntimeSequencerCallbacks.ts') {
+        for (const requiredSnippet of [
+          "import { productEngine } from '../audio/product/ProductEngineProxy'",
+          'const productRuntimeActive = productRuntimeMode === \'core-product\';',
+          'if (!productRuntimeActive) return;',
+          'productEngine.setDrumStepPositionCallback(callback)',
+          'productEngine.setDrumEuclidEvolveTriggerCallback(callback)',
+          'productEngine.setDrumTriggerCallback(callback ? (voice, velocity) => {',
+          'productEngine.setSynthStepPositionCallback(callback)',
+          'productEngine.setSynthOrbitVisualStateCallback(callback)',
+          'productEngine.setSynthAnchorWalkerVisualStateCallback(callback)',
+          'productEngine.setSynthEuclidEvolveTriggerCallback(callback)',
+        ]) {
+          if (!source.includes(requiredSnippet)) {
+            failures.push(`${relative}: Product-native sequencer callbacks must no-op outside core-product mode; missing ${requiredSnippet}`);
+          }
+        }
+      }
+      if (relative === 'src/ui/useProductRuntimeSequencerControls.ts') {
+        for (const requiredSnippet of [
+          'const productRuntimeActive = productRuntimeMode === \'core-product\';',
+          'if (!productRuntimeActive) return;',
+          'createCoreProductSequencerEvolveConfigEvents',
+          'createCoreProductSequencerPresetHomeCaptureEvents',
+          'commitCoreProductSequencerEvents(',
+          '}, [productRuntimeActive, stateRef]);',
+        ]) {
+          if (!source.includes(requiredSnippet)) {
+            failures.push(`${relative}: Product-native sequencer controls must no-op before event construction outside core-product mode; missing ${requiredSnippet}`);
+          }
+        }
+      }
+      if (relative === 'src/ui/useProductRuntimeManualTriggers.ts') {
+        for (const requiredSnippet of [
+          "import { productEngine } from '../audio/product/ProductEngineProxy'",
+          'const productRuntimeActive = productRuntimeMode === \'core-product\';',
+          'const productRuntimeActiveRef = useRef(productRuntimeActive);',
+          'productRuntimeActiveRef.current = productRuntimeActive;',
+          'if (!productRuntimeActiveRef.current) return;',
+          'if (!productRuntimeActive) return;',
+          'shouldWaitForManualTriggerSnapshot()',
+          'commitProductControlActionThenTrigger(',
+          'productEngine.auditionSynthNote(note, externalState)',
+          'productEngine.triggerDrumVoice(voice, velocity, externalState)',
+        ]) {
+          if (!source.includes(requiredSnippet)) {
+            failures.push(`${relative}: Product-native manual triggers must no-op before lifecycle reads, Product Control commits, queued synth auditions, or direct triggers outside core-product mode; missing ${requiredSnippet}`);
+          }
+        }
+      }
+      if (relative === 'src/ui/useProductRuntimeSynthPageEvents.ts') {
+        for (const requiredSnippet of [
+          "import { productEngine } from '../audio/product/ProductEngineProxy'",
+          'createCoreProductAnchorWalkerPerformanceEvent',
+          'createCoreProductGeneratedSequencerCaptureEvent',
+          'const productRuntimeActive = productRuntimeMode === \'core-product\';',
+          'if (!productRuntimeActive) return;',
+          'productEngine.enqueueEvent(createCoreProductAnchorWalkerPerformanceEvent(',
+          'productEngine.enqueueEvent(createCoreProductGeneratedSequencerCaptureEvent(request))',
+          'if (!productRuntimeActive) return EMPTY_GENERATED_CAPTURE_TELEMETRY;',
+          'const telemetry = productEngine.getTelemetry();',
+        ]) {
+          if (!source.includes(requiredSnippet)) {
+            failures.push(`${relative}: Product synth page events must own Product Core event construction and generated capture telemetry reads behind core-product mode gates; missing ${requiredSnippet}`);
+          }
+        }
+      }
       continue;
+    }
+
+    if (relative === 'src/ui/synth/SynthPage.tsx') {
+      for (const forbiddenToken of [
+        "from '../../audio/product/ProductEngineProxy'",
+        'productEngine.',
+        'createCoreProductAnchorWalkerPerformanceEvent',
+        'createCoreProductGeneratedSequencerCaptureEvent',
+      ]) {
+        if (source.includes(forbiddenToken)) {
+          failures.push(`${relative}: SynthPage must receive Product runtime event/telemetry callbacks through page runtime props instead of touching Product Core directly (${forbiddenToken})`);
+        }
+      }
+      for (const requiredSnippet of [
+        "from '../useProductRuntimeSynthPageEvents'",
+        'sendProductAnchorWalkerPerformanceEvent?: ProductRuntimeSynthPageEvents',
+        'setProductGeneratedSequencerCaptureEnabled?: ProductRuntimeSynthPageEvents',
+        'getProductGeneratedSequencerCaptureTelemetry?: ProductRuntimeSynthPageEvents',
+        'sendProductAnchorWalkerPerformanceEvent?.(targetLane, event)',
+        'setProductGeneratedSequencerCaptureEnabled?.(request)',
+        'const telemetry = getProductGeneratedSequencerCaptureTelemetry?.();',
+        'const events = telemetry?.events ?? [];',
+        'const overflowCount = telemetry?.overflowCount ?? 0;',
+      ]) {
+        if (!source.includes(requiredSnippet)) {
+          failures.push(`${relative}: SynthPage must consume generated capture and Anchor Walker runtime callbacks through props; missing ${requiredSnippet}`);
+        }
+      }
+    }
+
+    if (relative === 'src/app/useProductDawOutputSync.ts') {
+      for (const requiredSnippet of [
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
+        'productRuntimeMode: ProductRuntimeSelectionMode;',
+        'const productRuntimeActive = productRuntimeMode === \'core-product\';',
+        'productRuntimeActive ? getActiveDawOutputSourceIds(state) as DawOutputSourceId[] : []',
+        'saveDawOutputRoutingConfig(config);',
+        'if (!productRuntimeActive) return;',
+        'productEngine.setDawOutputRouting(filterDawOutputRoutingConfigForSources(config, activeDawOutputSources))',
+        'saveDawOutputDeviceSelection(selection);',
+        'productEngine.setDawOutputDeviceId(selection.deviceId || null)',
+      ]) {
+        if (!source.includes(requiredSnippet)) {
+          failures.push(`${relative}: Product DAW output sync must persist user routing settings but no-op Product Engine routing/device mutations outside core-product mode; missing ${requiredSnippet}`);
+        }
+      }
+    }
+
+    if (relative === 'src/app/useProductDrumMorphOverrides.ts') {
+      for (const requiredSnippet of [
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
+        'createInitialProductControlState',
+        'reduceProductControlState',
+        'productRuntimeMode: ProductRuntimeSelectionMode',
+        'const productRuntimeActive = productRuntimeMode === \'core-product\';',
+        'const fallbackControlStateRef = useRef<ProductControlState | null>(null);',
+        'if (productRuntimeActive) {',
+        'fallbackControlStateRef.current = null;',
+        'if (!productRuntimeActive) {',
+        'return getFallbackControlState(sourceState).drumMorphOverrides;',
+        'const next = reduceProductControlState(previous, action);',
+        'dispatchProductControlActionForProductEngine(productEngine, sourceState, action)',
+      ]) {
+        if (!source.includes(requiredSnippet)) {
+          failures.push(`${relative}: Product drum morph override access must use local pure Product Control state outside core-product mode and Product Engine state only in core-product mode; missing ${requiredSnippet}`);
+        }
+      }
     }
 
     if (relative === 'src/ui/useProductRuntimePageRuntimeBridges.ts') {
@@ -525,6 +713,9 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/App.tsx') {
       if (source.includes('audioEngine.') || source.includes('productEngine.')) {
         failures.push(`${relative}: App must consume selected runtime hooks instead of directly calling audioEngine/productEngine`);
+      }
+      if (!source.includes('useProductDrumMorphOverrides(productRuntimeMode)')) {
+        failures.push(`${relative}: App must pass productRuntimeMode into useProductDrumMorphOverrides so drum morph Product Control access stays runtime-mode gated`);
       }
       const directSelectedRuntimeCalls = [...source.matchAll(appSelectedRuntimeCallPattern)]
         .map((match) => match[0].replace(/\s*\($/, ''))
@@ -830,17 +1021,23 @@ for (const rootDir of sourceRoots) {
       ) {
         failures.push(`${relative}: App must delegate selected-runtime sample-hold range sync to useProductRuntimeCoordination`);
       }
+      const dualSliderRuntimeStatePath = path.join(root, 'src/app/useDualSliderRuntimeState.ts');
+      const dualSliderRuntimeStateSource = fs.existsSync(dualSliderRuntimeStatePath)
+        ? fs.readFileSync(dualSliderRuntimeStatePath, 'utf8')
+        : '';
       if (
         !source.includes("from './ui/runtimeWalkPositionSync'") ||
+        !source.includes("from './app/useDualSliderRuntimeState'") ||
+        !dualSliderRuntimeStateSource.includes("from '../ui/runtimeWalkPositionSync'") ||
         source.includes('mergeRuntimeWalkPositions') ||
         source.includes('removeRuntimeWalkPositions') ||
         source.includes('replaceRuntimeWalkPositions') ||
         !source.includes('usePresetRestoreRuntimeSurface({') ||
         source.includes('replaceRuntimeWalkPositionSnapshot(newWalkPositions)') ||
         source.includes('replaceRuntimeWalkPositionSnapshot({})') ||
-        !source.includes('clearRuntimeWalkPositions([keyStr])') ||
-        !source.includes('seedRuntimeWalkPosition(keyStr)') ||
-        !source.includes('resetRuntimeWalkPositionsForKeys(') ||
+        !dualSliderRuntimeStateSource.includes('clearRuntimeWalkPositions([keyStr])') ||
+        !dualSliderRuntimeStateSource.includes('seedRuntimeWalkPosition(keyStr)') ||
+        !`${source}\n${dualSliderRuntimeStateSource}`.includes('resetRuntimeWalkPositionsForKeys(') ||
         !source.includes('resetRuntimeWalkPositionsForModes,') ||
         source.includes('removeRuntimeWalkPositions(morphWalkKeys)') ||
         source.includes('mergeRuntimeWalkPositions(newWalkPositions)')

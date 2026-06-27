@@ -20,7 +20,8 @@ import {
 import { LEGACY_CLOUD_CARD_SELECT } from './presetSelects';
 import {
   canonicalizeRecord,
-  hashCanonicalJson,
+  collectPresetPayloadHashesV2,
+  hashCanonicalJsonText,
   readPresetPayloadCacheV2,
   writePresetPayloadCacheV2,
   type PresetPayloadV2Row,
@@ -368,7 +369,7 @@ async function fetchMissingPresetPayloadsV2(
   client: SupabaseClient,
   hashes: string[],
 ): Promise<Map<string, unknown>> {
-  const uniqueHashes = [...new Set(hashes.filter(hash => /^[0-9a-f]{64}$/.test(hash)))].slice(0, 100);
+  const uniqueHashes = collectPresetPayloadHashesV2(hashes);
   const payloadMap = new Map<string, unknown>();
   const missingHashes: string[] = [];
 
@@ -740,9 +741,11 @@ export async function saveCloudPreset(preset: CloudPresetInsert): Promise<CloudP
     author: displayAuthor,
     description,
   });
+  const resolvedPayloadJson = JSON.stringify(resolvedPayload);
+  const metadataPayloadJson = JSON.stringify(metadataPayload);
   const [resolvedHash, metadataHash, existing] = await Promise.all([
-    hashCanonicalJson(resolvedPayload),
-    hashCanonicalJson(metadataPayload),
+    hashCanonicalJsonText(resolvedPayloadJson),
+    hashCanonicalJsonText(metadataPayloadJson),
     findExistingCloudPresetV2(client, name),
   ]);
 
@@ -802,8 +805,8 @@ export async function saveCloudPreset(preset: CloudPresetInsert): Promise<CloudP
   }
 
   await Promise.all([
-    writePresetPayloadCacheV2(resolvedHash, resolvedPayload),
-    writePresetPayloadCacheV2(metadataHash, metadataPayload),
+    writePresetPayloadCacheV2(resolvedHash, resolvedPayload, { verifiedCanonicalJson: resolvedPayloadJson }),
+    writePresetPayloadCacheV2(metadataHash, metadataPayload, { verifiedCanonicalJson: metadataPayloadJson }),
   ]);
 
   clearCloudPresetListCache();

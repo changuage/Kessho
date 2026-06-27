@@ -14,27 +14,34 @@ type ProductRuntimeModulationRanges = {
 };
 
 export function useProductRuntimeModulationRanges(
-  _productRuntimeMode: ProductRuntimeSelectionMode,
+  productRuntimeMode: ProductRuntimeSelectionMode,
 ): ProductRuntimeModulationRanges {
+  const productRuntimeActive = productRuntimeMode === 'core-product';
+
   const setProductRuntimeWalkPositionsCallback = useCallback((callback: ((positions: Record<string, number>) => void) | null): void => {
+    if (!productRuntimeActive) return;
     productEngine.setRuntimeWalkPositionsCallback(callback);
-  }, []);
+  }, [productRuntimeActive]);
 
   const setProductDrumMorphRange = useCallback((voice: ProductDrumVoice, range: ProductRuntimeRange | null): void => {
+    if (!productRuntimeActive) return;
     productEngine.setDrumMorphRange(voice, range);
-  }, []);
+  }, [productRuntimeActive]);
 
   const setProductDrumParamSHRange = useCallback((key: string, range: ProductRuntimeRange | null): void => {
+    if (!productRuntimeActive) return;
     productEngine.setDrumParamSHRange(key, range);
-  }, []);
+  }, [productRuntimeActive]);
 
   const setProductDualRanges = useCallback((ranges: Partial<Record<string, ProductRuntimeRange>>): void => {
+    if (!productRuntimeActive) return;
     productEngine.setDualRanges(ranges);
-  }, []);
+  }, [productRuntimeActive]);
 
   const setProductRuntimeWalkRanges = useCallback((ranges: Partial<Record<string, ProductRuntimeRange>>): void => {
+    if (!productRuntimeActive) return;
     productEngine.setRuntimeWalkRanges(ranges);
-  }, []);
+  }, [productRuntimeActive]);
 
   return {
     setProductRuntimeWalkPositionsCallback,

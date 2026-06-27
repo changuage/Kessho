@@ -215,37 +215,15 @@ Wide Supabase usage guard passed.
 ```
 
 ```text
-$ npm run audit:supabase-api-surface
+$ npm run audit:supabase-api-surface -- --require-detail-rpcs --require-runtime-rpcs --require-summary-views --fail-open-base-tables
 
-Supabase API surface audit
-- Summary view REST preset_summaries_v2: 200, 2.9 KB, select=*
-- Summary view REST legacy_preset_summaries: 200, 2.2 KB, select=*
-- Base REST presets_v2: blocked/empty, status=401, bytes=190 B, select=id,name,latest_version_no
-- Base REST preset_versions_v2: blocked/empty, status=401, bytes=206 B, select=id,preset_id,version_no,resolved_hash
-- Base REST preset_version_refs_v2: blocked/empty, status=401, bytes=214 B, select=version_id,target_preset_id
-- Base REST preset_payloads_v2: blocked/empty, status=401, bytes=206 B, select=hash,payload,payload_bytes
-- Base REST presets: blocked/empty, status=401, bytes=184 B, select=id,name,versions
-- Anonymous-auth summary view REST preset_summaries_v2: 200, 2.9 KB, select=*
-- Anonymous-auth summary view REST legacy_preset_summaries: 200, 2.2 KB, select=*
-- Anonymous-auth base REST tables: blocked/empty, status=403
-- Detail RPC kessho_get_preset_detail_v2: callable, argument guard reached
-- Detail RPC kessho_get_legacy_preset_detail: callable, argument guard reached
-- Detail RPC kessho_get_preset_latest_manifest_v2: missing/blocked, PGRST202 not found in schema cache
-- Runtime RPC kessho_lookup_preset_rows_v2: callable, no error
-- Runtime RPC kessho_get_preset_versions_v2: callable, no error
-- Runtime RPC kessho_get_preset_version_ref_keys_v2: callable, no error
-- Runtime RPC kessho_get_latest_ref_targets_v2: callable, no error
-- Runtime RPC kessho_get_preset_payloads_v2: callable, no error
-- Runtime RPC kessho_get_missing_preset_payloads_v2: missing/blocked, PGRST202 not found in schema cache
-- Runtime RPC kessho_lookup_preset_id_v2: missing/blocked, PGRST202 not found in schema cache
-- Runtime RPC kessho_get_preset_card_v2: missing/blocked, PGRST202 not found in schema cache
-- Runtime RPC kessho_exists_preset_logical_key_v2: missing/blocked, PGRST202 not found in schema cache
-- Runtime RPC kessho_rename_preset_v2: missing/blocked, PGRST202 not found in schema cache
-- Runtime RPC kessho_rename_legacy_preset: missing/blocked, PGRST202 not found in schema cache
-- Runtime RPC kessho_find_preset_references_v2: callable, no error
-- Runtime RPC kessho_get_preset_storage_stats_v2: callable, no error
-- Runtime RPC kessho_save_legacy_preset: callable, argument guard reached
-- SQL checks skipped: Missing SUPABASE_DB_URL.
+Supabase API surface audit passed.
+- Summary views: callable.
+- Detail RPCs: callable, including kessho_get_preset_latest_manifest_v2.
+- Runtime RPCs: callable, including missing-payload, narrow id/card/existence, and rename RPCs.
+- Base REST tables: blocked for unauthenticated and anonymous-auth callers with 401/403 responses.
+- Broad base-table SELECT grants: 0.
+- preset_payloads_v2 storage after canonical repair: 2.76 MB.
 ```
 
 ```text
@@ -278,18 +256,19 @@ Supabase egress budget passed.
 ```
 
 ```text
-$ npm run audit:preset-v2
+$ npm run audit:preset-v2 -- --fail-on-issues
 
-Supabase preset V2 audit
-Mode: limited hardened API
-Reason: preset_versions_v2 fetch failed: permission denied for table preset_versions_v2
-Visible summaries: 628 V2, 349 legacy
-Storage stats RPC: {"bytes":3124853,"count":628,"ref_count":700,"payload_count":1190,"version_count":1034}
-RPC issues:
-- kessho_lookup_preset_id_v2: missing from hosted schema cache
-- kessho_get_preset_card_v2: missing from hosted schema cache
-- kessho_exists_preset_logical_key_v2: missing from hosted schema cache
-Full table-level integrity, hash, duplicate, and orphan-byte checks require service-role or DB credentials.
+Supabase preset V2 audit passed.
+Mode: direct-postgres
+Rows: 1146 presets, 1615 versions, 1734 refs, 1864 payloads
+Dedupe: 3.83 MB logical -> 2.76 MB unique referenced (28% saved)
+Payload storage: 2.76 MB total, 0 B unreferenced
+Blocking integrity issues: 0
+Recycled latest rollup tombstones: 0
+Fixed ref policy issues: 0
+Duplicate active logical identities: 0
+Version storage warnings: 476 non-blocking historical warnings
+Payload-kind reuse allowed: 119
 ```
 
 ```text
@@ -301,39 +280,50 @@ SQL parse passed: 53 statements
 ```text
 $ npm run audit:supabase-optimization-db-proof
 
-Supabase optimization DB proof skipped: Missing DATABASE_URL, SUPABASE_DATABASE_URL, or SUPABASE_DB_URL.
-
-Coverage note: when a DB URL is available, this audit verifies the optimization migration functions exist, saves the same V2 preset payload twice, asserts a single payload row and stable immediate `last_seen_at`, asserts zero active legacy rows for the test save, verifies narrow id lookup/card/existence/rename RPC behavior, verifies bad hash/body and missing payload hash rejections, verifies purge dry-run is non-mutating, and verifies orphan cleanup deletes a test orphan payload. All mutation checks run inside one transaction and are rolled back.
+Supabase optimization DB proof passed.
+- Duplicate payload save produced 1 stable payload row.
+- Duplicate save left active legacy rows at 0.
+- Narrow id lookup, preset card, logical-key existence, and rename RPC behavior passed.
+- Bad hash/body pairs were rejected before storage.
+- Missing version/ref payload hashes were rejected.
+- Purge dry-run was non-mutating.
+- Rollback-only orphan cleanup deleted the seeded orphan payload.
+- Transaction rollback verified.
 ```
 
 ```text
 $ npm run audit:supabase-egress:runtime:detail:strict
 
-Blocked until migration is deployed to the live Supabase project:
-Error: load-first-preset: found Supabase HTTP 404 response:
-/rest/v1/rpc/kessho_get_preset_latest_manifest_v2
+Supabase egress budget passed.
+- fresh-load: calls=4 total=15.9 KB
+- load-first-preset: calls=3 total=98.1 KB
+- largest detail RPC: 84.0 KB /rest/v1/rpc/kessho_get_missing_preset_payloads_v2
 ```
 
 ```text
 $ npm run audit:supabase-egress:runtime:detail:repeat
 
-Blocked until migration is deployed to the live Supabase project:
-Error: load-first-preset: found Supabase HTTP 404 response:
-/rest/v1/rpc/kessho_get_preset_latest_manifest_v2
+Supabase repeated detail egress budget passed.
+- Average repeated load-first-preset bytes: 28.9 KB
+- Budget: 128 KB
 ```
 
 ```text
 $ npm run maintenance:preset-v2
 
-Blocked by missing service-role credentials:
-Preset V2 maintenance reads and mutates wide base tables; set SUPABASE_SERVICE_ROLE_KEY, SUPABASE_SERVICE_KEY, or SUPABASE_SECRET_KEY.
+Preset V2 maintenance dry-run passed.
+Fallback: no service key was present, so the wrapper used the direct Postgres maintenance runner.
+- Backfill resolved_hash candidates: 434 versions; payloads inserted 229, reused 205
+- Skipped resolved_hash backfill: 32 versions
+- Duplicate internal-derived collapse candidates: 3 archived, 4 refs rewired
+- Unreferenced internal-derived prune candidates: 16 archived
+- Unreferenced payload prune candidates: 0
 ```
 
 ```text
 $ npm run maintenance:preset-v2:postgres
 
-Blocked by missing database URL:
-Missing DATABASE_URL, SUPABASE_DATABASE_URL, or SUPABASE_DB_URL.
+Preset V2 Postgres maintenance dry-run passed.
 ```
 
 ```text
@@ -375,7 +365,7 @@ $ npm run test:preset-hash-golden
 
 Preset hash golden vectors passed in Node and browser.
 
-Coverage note: exact canonical strings and SHA-256 outputs remained unchanged after reusing one TextEncoder, replacing the per-call Array.from/map hex encoder with a lookup-loop encoder, reducing canonical object allocation, switching to key-based canonical object traversal, and verifying cache writes hash the already-built canonical JSON text.
+Coverage note: exact canonical strings and SHA-256 outputs remained unchanged after reusing one TextEncoder, replacing the per-call Array.from/map hex encoder with a lookup-loop encoder, reducing canonical object allocation, switching to key-based canonical object traversal, verifying cache writes plus V2 save payload construction hash already-built canonical JSON text, reusing verified canonical text when populating cache entries, throttling persistent cache touch writes and prune scans, and collecting missing payload hashes with a bounded no-filter loop.
 ```
 
 ```text
@@ -390,7 +380,7 @@ $ npm run audit:supabase-egress
 
 Supabase egress guard passed.
 
-Coverage note: the guard now requires existsV2 to call existsLogicalKeyV2 before the broad queryPresetRowsV2 fallback, requires latest-manifest materialization to pass the payload map directly instead of building synthetic payload rows, and pins the hash/cache helper CPU allocation guard including synchronous cache reads.
+Coverage note: the guard now requires existsV2 to call existsLogicalKeyV2 before the broad queryPresetRowsV2 fallback, requires latest-manifest materialization to pass the payload map directly instead of building synthetic payload rows, and pins the hash/cache helper CPU allocation guard including synchronous cache reads, canonical-text V2 save hashing, verified-canonical cache writes, throttled persistent cache touches and prune scans, no filter/shift persistent pruning, and bounded unique hash collection.
 ```
 
 ```text
@@ -420,14 +410,43 @@ Supabase security guard passed.
 ```text
 $ npm run audit:supabase-optimization-db-proof
 
-Supabase optimization DB proof skipped: Missing DATABASE_URL, SUPABASE_DATABASE_URL, or SUPABASE_DB_URL.
+Supabase optimization DB proof passed.
+- Duplicate payload rows: 1
+- Stale `last_seen_at` unchanged on immediate duplicate save: true
+- Active legacy rows created by V2 proof save: 0
+- Narrow id/card/existence/rename RPC checks: true
+- Bad hash rejection: true
+- Missing hash rejection: true
+- Purge dry-run non-mutating: true
+- Rollback-only orphan cleanup deleted seeded orphan: true
+- Transaction rolled back: true
 ```
 
 ```text
-$ npm run audit:supabase-api-surface
-$ npm run audit:preset-v2
+$ npm run audit:supabase-api-surface -- --require-detail-rpcs --require-runtime-rpcs --require-summary-views --fail-open-base-tables
+$ npm run audit:preset-v2 -- --fail-on-issues
 
-Hosted API proof still reports the new latest-manifest, missing-payload, narrow lookup/card/existence, and rename RPCs missing from the schema cache. Full table-level integrity/hash/duplicate/orphan checks still require service-role or DB credentials.
+Hosted API and direct Postgres proof passed.
+- New latest-manifest, missing-payload, narrow lookup/card/existence, and rename RPCs are present in the hosted schema cache.
+- Base REST tables are blocked for browser callers; broad base-table SELECT grants are 0.
+- Full V2 integrity/hash/duplicate/orphan audit passed with 0 blocking issues.
+- Payload storage after canonical repair is 2.76 MB with 0 B unreferenced.
+```
+
+```text
+$ live purge after dry-run
+
+Before: 10 candidate presets, 10 versions, 12 refs, 2 orphan payload rows / 8236 bytes.
+Executed bounded purge: deleted 12 refs, 10 presets, 10 versions, 9 payload rows / 27434 bytes.
+After: 0 candidates, 0 orphan payload rows, 0 orphan bytes.
+```
+
+```text
+$ npm run audit:supabase-egress:runtime:detail:strict
+$ npm run audit:supabase-egress:runtime:detail:repeat
+
+Strict detail passed: fresh-load 15.9 KB; load-first-preset 98.1 KB across 3 calls.
+Repeat detail passed: average load-first-preset bytes 28.9 KB under the 128 KB budget.
 ```
 
 ```text
@@ -440,18 +459,18 @@ passed with exit code 0
 
 | Metric | Before | After | Target |
 |---|---:|---:|---:|
-| Fresh cloud/preset UI Supabase bytes | 15.9 KB | 16.4 KB and under budget | lower than before and under configured budget |
-| Open first preset detail bytes | 288.0 KB | not verified on live DB; latest RPC 404 until migration deploy | lower than before for latest-only path |
-| Repeat-open same preset detail bytes | not measured | local fake-client regression proves repeat default load avoids the payload RPC after cache warmup; strict browser repeat audit is wired as `audit:supabase-egress:runtime:detail:repeat` and is pending migration deploy | near metadata-only when payload cache is warm |
+| Fresh cloud/preset UI Supabase bytes | 15.9 KB | 15.9 KB and under budget | lower than before and under configured budget |
+| Open first preset detail bytes | 288.0 KB | 98.1 KB live strict detail load | lower than before for latest-only path |
+| Repeat-open same preset detail bytes | not measured | 28.9 KB average live repeat detail load | near metadata-only when payload cache is warm |
 | Default cloud list row count pulled | 200 on preset_summaries_v2 runtime path | 50 on preset_summaries_v2 runtime path; cloud browser page size 24 | <= page size |
 | Search row count pulled | not measured | static guard enforces search page size 20; page cache stores exact next cursor and plays cursors include null-play rows | <= search page size |
-| Duplicate cloud save payload rows created | not measured | static/client contract writes V2 payload hashes; live DB proof pending migration/test credentials | 0 new payload rows for identical body/hash |
-| Duplicate cloud save payload bytes created | not measured | duplicate payload SQL uses stale-only last_seen_at update; live DB proof pending migration/test credentials | 0 new payload bytes for identical body/hash |
-| Bad payload hash/body rejection | not measured | optimization migration now verifies canonical JSON hashes server-side and contains fixed valid + invalid SQL self-tests, including negative rounding parity; execution proof pending DB access | bad hash/body pair rejected before storage |
-| Missing version/ref payload hashes | not measured | optimization migration rejects non-null version/ref payload hashes absent from `preset_payloads_v2`; execution proof pending DB access | no persisted version/ref points at a missing payload body |
+| Duplicate cloud save payload rows created | not measured | 1 stable payload row in rollback-only DB proof | 0 new payload rows for identical body/hash |
+| Duplicate cloud save payload bytes created | not measured | 0 duplicate payload bytes; stable existing hash row reused | 0 new payload bytes for identical body/hash |
+| Bad payload hash/body rejection | not measured | live DB proof rejects mismatched canonical JSON hash/body pairs | bad hash/body pair rejected before storage |
+| Missing version/ref payload hashes | not measured | live DB proof rejects version/ref hashes absent from `preset_payloads_v2` | no persisted version/ref points at a missing payload body |
 | Direct browser base-table payload pulls | 0 observed in runtime egress audit | 0 runtime/browser-maintenance base-table touchpoints in revoke audit; optimization RPC migration explicitly revokes broad execute from helper/private functions and grants only intended authenticated/service-role RPCs | 0 |
 | `select('*')` or bare `.select()` in Supabase paths | 2 static failures | 0 static failures | 0 |
-| Orphan payload bytes after cleanup | not measured | purge and maintenance SQL added; execution proof pending service/database credentials | lower or 0 in seeded test |
+| Orphan payload bytes after cleanup | not measured | 0 B after live bounded purge; cleanup deleted 9 payload rows / 27434 bytes | lower or 0 in seeded test |
 
 ### Scope Coordination Notes
 
@@ -476,24 +495,26 @@ passed with exit code 0
 - Repeat latest-manifest loads now have regression coverage proving cached payload bodies avoid a second payload RPC.
 - Latest-only V2 manifest loading in the default play/open path with full-detail fallback for explicit historical loads.
 - Latest-manifest materialization now passes the fetched payload map directly into the detail materializer, avoiding synthetic payload-row allocation and a second payload-map/cache pass on the default play/open path.
-- Preset hash/cache helpers now reuse a module-level `TextEncoder`, use a precomputed hex-byte lookup loop for SHA-256 digest encoding, build canonical objects without `Object.entries` tuple/filter allocation in the storage hash hot path, hash already-built canonical JSON text during cache writes, and read payload cache entries synchronously while scanning hashes.
+- Preset hash/cache helpers now reuse a module-level `TextEncoder`, use a precomputed hex-byte lookup loop for SHA-256 digest encoding, build canonical objects without `Object.entries` tuple/filter allocation in the storage hash hot path, hash already-built canonical JSON text during cache writes and V2 save payload construction, reuse verified canonical text when writing save/fallback payloads into cache, read payload cache entries synchronously while scanning hashes, throttle persistent `lastAccess` rewrites and localStorage prune scans, prune persistent cache entries without filter/shift churn, and collect unique payload hashes with a bounded loop that stops at the RPC cap.
 - Phase 7 narrow lookup RPCs were added for id lookup, preset card fetch, and logical-key existence checks. Public cloud save preflight now prefers `kessho_lookup_preset_id_v2` + `kessho_get_preset_card_v2` and keeps the broader row lookup only as a pre-migration compatibility fallback.
 - V2 existence checks now prefer `kessho_exists_preset_logical_key_v2`; regression and static guards assert the narrow logical-key RPC runs before any broad row lookup fallback.
 - V2 rename now uses `kessho_lookup_preset_id_v2` plus the narrow rename RPC and skips the previous broad target/conflict row preflight. The soft-delete/rename regression asserts no `kessho_lookup_preset_rows_v2` call is added by the happy-path rename.
 - Narrow rename RPCs replacing `update(...).select('*')`.
-- Rollback-only DB proof now verifies narrow id lookup, preset card, logical-key existence, and rename RPC behavior once DB credentials are available.
+- Live rollback-only DB proof verifies narrow id lookup, preset card, logical-key existence, and rename RPC behavior.
 - Duplicate payload conflict behavior changed to stale-only `last_seen_at` updates in the new migration.
+- Canonical payload hash repair was added to the migration and applied to the live database, reducing referenced payload storage from 3.83 MB logical to 2.76 MB unique bytes.
 - Retention-based V2 purge function with dry-run, advisory lock, bounded batches, and orphan payload cleanup.
+- Live bounded purge removed the stale candidates and left 0 orphan payload rows / 0 orphan bytes.
 - Client session debounce for play-count increments.
 - Static guard coverage for the play-count debounce contract.
 - Runtime egress audit coverage now treats `--reload-count` plus `--load-first-preset` as repeated first-preset detail loads and enforces the detail byte budget on that average.
 - Static egress guard coverage now pins the repeat-detail runtime audit script and its reload-plus-load behavior.
-- `audit:preset-v2` now supports hardened hosted projects by falling back to summary-view and narrow-RPC evidence when service-role credentials are absent; full table-level integrity checks still run when a service key is available.
+- `audit:preset-v2` now supports direct Postgres DB-url mode for full table-level integrity, canonical hash, duplicate identity, and orphan-byte checks on hardened hosted projects without a service key.
 - Static egress guard coverage now proves new V2 cloud presets use the latest-manifest read-by-id path and existing legacy presets remain readable through the narrow legacy detail fallback.
-- Rollback-only DB proof runner added for duplicate-save payload rows/bytes, stale-only conflict behavior, bad hash rejection, missing hash rejection, purge dry-run, and orphan cleanup once a DB URL is available.
+- Rollback-only DB proof runner now passes for duplicate-save payload rows/bytes, stale-only conflict behavior, bad hash rejection, missing hash rejection, purge dry-run, and orphan cleanup against the live hosted database.
 
 ### Guide Checklist Status
 
-Local code and static/runtime guards satisfy the guide items for V2 cloud saves, removal of the public legacy save path, compact browse/search/featured projections, pagination, latest-only default detail loads, payload-by-hash caching, no browser `select('*')`, runtime/browser base-table read readiness, soft-delete regression coverage, Node plus browser hash golden vectors, server-side hash verification SQL, stale-only duplicate payload conflicts, narrow id/card/existence and rename RPCs, bounded purge SQL, advisory locking, play-count debounce coverage, and a repeat-detail runtime audit path.
+Local code, migration SQL, static guards, runtime browser checks, API-surface checks, and DB-backed assertions satisfy the guide items for V2 cloud saves, removal of the public legacy save path, compact browse/search/featured projections, pagination, latest-only default detail loads, payload-by-hash caching, no browser `select('*')`, runtime/browser base-table read readiness, soft-delete regression coverage, Node plus browser hash golden vectors, server-side hash verification SQL, stale-only duplicate payload conflicts, narrow id/card/existence and rename RPCs, bounded purge SQL, advisory locking, play-count debounce coverage, strict detail egress, and repeat-detail egress.
 
-The remaining checklist proof requires applying `supabase/migrations/20260627123656_preset_egress_optimization.sql` to a local/staging/live Supabase database and rerunning DB-backed assertions. `npm run audit:supabase-optimization-db-proof` now covers duplicate payload row/byte counts, no new active legacy row, stale-only duplicate update behavior, narrow lookup/card/existence/rename RPC execution, purge dry-run/execution/orphan cleanup counts, bad hash rejection execution, and missing payload hash rejection execution inside a rolled-back transaction once `DATABASE_URL`, `SUPABASE_DATABASE_URL`, or `SUPABASE_DB_URL` is set. Remaining live-browser proof still requires strict single-detail and repeat-detail egress bytes after `kessho_get_preset_latest_manifest_v2` is present in the hosted schema cache. Hosted API proof also requires the new `kessho_get_missing_preset_payloads_v2`, `kessho_lookup_preset_id_v2`, `kessho_get_preset_card_v2`, `kessho_exists_preset_logical_key_v2`, and rename RPCs to be present, plus full table-level V2 integrity/hash/orphan audit with service-role or DB credentials.
+The optimization migration has been applied to the live Supabase database. `npm run audit:supabase-optimization-db-proof`, `npm run audit:supabase-api-surface -- --require-detail-rpcs --require-runtime-rpcs --require-summary-views --fail-open-base-tables`, `npm run audit:preset-v2 -- --fail-on-issues`, strict detail egress, repeat-detail egress, and maintenance dry runs all pass. Remaining maintenance output is non-blocking historical cleanup/backfill guidance: the full integrity audit reports 0 blocking issues, while maintenance dry-run still identifies optional resolved-hash backfills and materialization warnings on older rows.

@@ -12,14 +12,16 @@ type ProductRuntimeMacRecoveryOptions = {
 };
 
 export function useProductRuntimeMacRecovery({
+  productRuntimeMode,
   macShellAvailable,
   playbackIsRunning,
   stateRef,
 }: ProductRuntimeMacRecoveryOptions): void {
   const recoveryInFlightRef = useRef(false);
+  const productRuntimeActive = productRuntimeMode === 'core-product';
 
   useVisibleInterval(() => {
-    if (!macShellAvailable || !playbackIsRunning || recoveryInFlightRef.current) return;
+    if (!productRuntimeActive || !macShellAvailable || !playbackIsRunning || recoveryInFlightRef.current) return;
     if (productEngine.getLifecycleState() !== 'suspended') return;
 
     recoveryInFlightRef.current = true;
@@ -37,7 +39,7 @@ export function useProductRuntimeMacRecovery({
     };
     void recover();
   }, 2000, {
-    enabled: macShellAvailable && playbackIsRunning,
+    enabled: productRuntimeActive && macShellAvailable && playbackIsRunning,
     pauseWhenHidden: false,
   });
 }

@@ -4,6 +4,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import pg from 'pg';
+
+const { Client } = pg;
 
 const args = new Set(process.argv.slice(2));
 const outputJson = args.has('--json');
@@ -46,6 +49,7 @@ const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY
   || null;
 const supabaseKey = serviceRoleKey || env.VITE_SUPABASE_ANON_KEY;
 const usesPrivilegedKey = Boolean(serviceRoleKey);
+const databaseUrl = env.DATABASE_URL ?? env.SUPABASE_DATABASE_URL ?? env.SUPABASE_DB_URL;
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Add them to .env/.env.local or the process env.');
@@ -71,6 +75,55 @@ async function fetchAll(table, select, query = (builder) => builder, pageSize = 
 function isPermissionDenied(error) {
   const text = String(error?.message ?? error ?? '').toLowerCase();
   return text.includes('permission denied') || text.includes('42501');
+}
+
+function pgClientConfig(connectionString) {
+  const url = new URL(connectionString);
+  url.searchParams.delete('sslmode');
+  const normalizedConnectionString = url.toString();
+  const isLocal = /(?:localhost|127\.0\.0\.1|\[::1\])/.test(normalizedConnectionString);
+  return {
+    connectionString: normalizedConnectionString,
+    ssl: isLocal ? false : { rejectUnauthorized: false },
+  };
+}
+
+async function fetchRowsFromPostgres() {
+  const client = new Client(pgClientConfig(databaseUrl));
+  await client.connect();
+  try {
+    const presetsResult = await client.query(`
+        select id, owner_key, type, scope, name, latest_version_no, latest_version_id,
+               latest_resolved_hash, latest_metadata_hash, updated_at, archived, deleted_at, tags
+          from public.presets_v2
+         order by id asc
+      `);
+    const versionsResult = await client.query(`
+        select id, preset_id, version_no, parent_version_id, storage_mode, override_hash,
+               metadata_hash, patch_from_prev_hash, resolved_hash, is_checkpoint, created_at
+          from public.preset_versions_v2
+         order by preset_id asc, version_no asc, id asc
+      `);
+    const refsResult = await client.query(`
+        select version_id, ref_slot, target_preset_id, target_version_no, follow_latest,
+               override_hash, created_at
+          from public.preset_version_refs_v2
+         order by version_id asc, ref_slot asc
+      `);
+    const payloadsResult = await client.query(`
+        select hash, payload_kind, payload, payload_bytes, created_at, last_seen_at
+          from public.preset_payloads_v2
+         order by hash asc
+      `);
+    return {
+      presets: presetsResult.rows,
+      versions: versionsResult.rows,
+      refs: refsResult.rows,
+      payloads: payloadsResult.rows,
+    };
+  } finally {
+    await client.end();
+  }
 }
 
 async function runLimitedHardenedAudit(reason) {
@@ -223,7 +276,11 @@ function formatBytes(value) {
   return `${(value / 1024 / 1024).toFixed(2)} MB`;
 }
 
-if (!skipAuth && !usesPrivilegedKey) {
+function timestampKey(value) {
+  return value instanceof Date ? value.toISOString() : String(value ?? '');
+}
+
+if (!skipAuth && !usesPrivilegedKey && !databaseUrl) {
   const { error } = await supabase.auth.signInAnonymously();
   if (error) {
     throw new Error(`Anonymous Supabase auth failed: ${error.message}`);
@@ -234,29 +291,34 @@ let presets;
 let versions;
 let refs;
 let payloads;
+let auditMode = usesPrivilegedKey ? 'service-role-rest' : databaseUrl ? 'direct-postgres' : 'authenticated-rest';
 try {
-  [presets, versions, refs, payloads] = await Promise.all([
-    fetchAll(
-      'presets_v2',
-      'id,owner_key,type,scope,name,latest_version_no,latest_version_id,latest_resolved_hash,latest_metadata_hash,updated_at,archived,deleted_at,tags',
-      (builder) => builder.order('id', { ascending: true }),
-    ),
-    fetchAll(
-      'preset_versions_v2',
-      'id,preset_id,version_no,parent_version_id,storage_mode,override_hash,metadata_hash,patch_from_prev_hash,resolved_hash,is_checkpoint,created_at',
-      (builder) => builder.order('preset_id', { ascending: true }).order('version_no', { ascending: true }).order('id', { ascending: true }),
-    ),
-    fetchAll(
-      'preset_version_refs_v2',
-      'version_id,ref_slot,target_preset_id,target_version_no,follow_latest,override_hash,created_at',
-      (builder) => builder.order('version_id', { ascending: true }).order('ref_slot', { ascending: true }),
-    ),
-    fetchAll(
-      'preset_payloads_v2',
-      'hash,payload_kind,payload,payload_bytes,created_at,last_seen_at',
-      (builder) => builder.order('hash', { ascending: true }),
-    ),
-  ]);
+  if (!usesPrivilegedKey && databaseUrl) {
+    ({ presets, versions, refs, payloads } = await fetchRowsFromPostgres());
+  } else {
+    [presets, versions, refs, payloads] = await Promise.all([
+      fetchAll(
+        'presets_v2',
+        'id,owner_key,type,scope,name,latest_version_no,latest_version_id,latest_resolved_hash,latest_metadata_hash,updated_at,archived,deleted_at,tags',
+        (builder) => builder.order('id', { ascending: true }),
+      ),
+      fetchAll(
+        'preset_versions_v2',
+        'id,preset_id,version_no,parent_version_id,storage_mode,override_hash,metadata_hash,patch_from_prev_hash,resolved_hash,is_checkpoint,created_at',
+        (builder) => builder.order('preset_id', { ascending: true }).order('version_no', { ascending: true }).order('id', { ascending: true }),
+      ),
+      fetchAll(
+        'preset_version_refs_v2',
+        'version_id,ref_slot,target_preset_id,target_version_no,follow_latest,override_hash,created_at',
+        (builder) => builder.order('version_id', { ascending: true }).order('ref_slot', { ascending: true }),
+      ),
+      fetchAll(
+        'preset_payloads_v2',
+        'hash,payload_kind,payload,payload_bytes,created_at,last_seen_at',
+        (builder) => builder.order('hash', { ascending: true }),
+      ),
+    ]);
+  }
 } catch (error) {
   if (!usesPrivilegedKey && isPermissionDenied(error)) {
     await runLimitedHardenedAudit(error.message);
@@ -436,7 +498,7 @@ const activeUnreferencedInternalDerived = presets
     name: preset.name,
     updatedAt: preset.updated_at,
   }))
-  .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+  .sort((left, right) => timestampKey(left.updatedAt).localeCompare(timestampKey(right.updatedAt)))
   .slice(0, 20);
 
 const hashMismatches = [];
@@ -578,6 +640,7 @@ function duplicateGroupsFrom(map, includeMetadata) {
 }
 
 const report = {
+  mode: auditMode,
   counts: {
     presets: presets.length,
     versions: versions.length,
@@ -646,6 +709,7 @@ if (outputJson) {
   console.log(JSON.stringify(report, null, 2));
 } else {
   console.log('Supabase preset V2 audit');
+  console.log(`Mode: ${auditMode}`);
   console.log(`Rows: ${report.counts.presets} presets, ${report.counts.versions} versions, ${report.counts.refs} refs, ${report.counts.payloads} payloads`);
   console.log(`Dedupe: ${formatBytes(logicalReferencedBytes)} logical -> ${formatBytes(uniqueReferencedBytes)} unique referenced (${report.dedupe.estimatedSavingsPercent}% saved)`);
   console.log(`Payload storage: ${formatBytes(allPayloadBytes)} total, ${formatBytes(report.integrity.unreferencedPayloadBytes)} unreferenced`);

@@ -44,6 +44,47 @@ for (const token of [
   }
 }
 
+const appSource = read('src/App.tsx');
+const responsiveShell = read('src/app/useAppResponsiveShell.ts');
+for (const token of [
+  'useAppResponsiveShell()',
+  'mobileStyleOverrides: m',
+  '<AppDebugPanel',
+]) {
+  if (!appSource.includes(token)) {
+    failures.push(`src/App.tsx: App responsive/mobile shell must stay centralized through useAppResponsiveShell; missing ${token}`);
+  }
+}
+for (const [pattern, description] of [
+  [/window\.addEventListener\(['"]resize['"]/, 'direct resize listener'],
+  [/window\.innerWidth\s*<\s*768/, 'direct mobile width threshold'],
+  [/useIsMobileViewport/, 'direct mobile viewport hook import/use'],
+  [/className=["']app-debug-panel["']/, 'inline debug panel markup'],
+]) {
+  if (pattern.test(appSource)) {
+    failures.push(`src/App.tsx: App must not reintroduce ${description}; use src/app/useAppResponsiveShell.ts instead`);
+  }
+}
+for (const token of [
+  'useIsMobileViewport()',
+  'createMobileStyleOverrides',
+  'useState<Set<string>>',
+]) {
+  if (!responsiveShell.includes(token)) {
+    failures.push(`src/app/useAppResponsiveShell.ts: centralized mobile shell policy missing ${token}`);
+  }
+}
+const appDebugPanel = read('src/app/AppDebugPanel.tsx');
+for (const token of [
+  'className="app-debug-panel"',
+  'formatNativeProductStatus',
+  'Product Core',
+]) {
+  if (!appDebugPanel.includes(token)) {
+    failures.push(`src/app/AppDebugPanel.tsx: centralized debug panel missing ${token}`);
+  }
+}
+
 const nativeBridgePackage = read('native/KesshoNativeBridge/Sources/KesshoNativeBridge/KesshoNativeBridge.swift');
 for (const token of [
   'KesshoNativeBridgePolicy',

@@ -31,7 +31,7 @@ import {
   useProductRuntimeShell,
 } from './ui/useProductRuntimeSession';
 import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/config';
-import { formatChordDegrees, calculateDriftedRoot } from './audio/harmony';
+import { calculateDriftedRoot } from './audio/harmony';
 import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, INSECT_ENGINE_DEFAULTS, getWaterPresetDualRanges, getWaterPresetSliderModes } from './audio/waterPresets';
 import {
@@ -49,15 +49,12 @@ import { clampMorphPosition, isInMidMorph, isAtEndpoint0, isAtEndpoint1 } from '
 import {
   getRuntimeSliderFlashing,
   getRuntimeSliderPosition,
-  removeRuntimeTriggerPositions,
 } from './ui/runtimeSliderState';
 import { useProductCoreDebugSummary } from './ui/useProductCoreDebugSummary';
 import { useProductRuntimeParityProbe } from './ui/useProductRuntimeParityProbe';
 import {
-  clearRuntimeWalkPositions,
   resetRuntimeWalkPositionsForKeys,
   resetRuntimeWalkPositionsForModes,
-  seedRuntimeWalkPosition,
 } from './ui/runtimeWalkPositionSync';
 import { VISUALIZER_PRESET_SCOPE } from './ui/visualizer/visualizerPresetStore';
 import { getGranularPresetData, getGranularPresetSliderModes, isGranularDelayBStateKey } from './ui/granular/granularPresets';
@@ -69,12 +66,6 @@ import { MidiLearnProvider } from './ui/midiLearn/MidiLearnProvider';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import { useJourney } from './ui/journeyState';
 import { TEXT_SYMBOLS } from './designSystem/textSymbols';
-import type { SeqSimpleState } from './ui/drums/SeqSimple';
-import type { SeqScatterState } from './ui/drums/scatter/scatterTypes';
-import { normalizeSeqScatterState, seqSimpleStateFromScatterState } from './ui/drums/scatter/scatterDefaults';
-import { useScatterPhrasePlayer, type ScatterPreviewTriggerOptions, type ScatterStepVisualEvent } from './ui/drums/scatter/useScatterPhrasePlayer';
-import { useScatterSequencerRuntime } from './ui/drums/scatter/useScatterSequencerRuntime';
-import type { DrumVoiceType } from './audio/drumSynth';
 import {
   DRUM_VOICE_PARAM_ROUTES,
   getDrumVoiceMorphRoute,
@@ -103,7 +94,6 @@ import { createEmptyPresetPool, normalizePresetPoolMetadata } from './presets/pr
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
 
 import { OptionalVisualizerGate } from './ui/components/OptionalVisualizerGate';
-import { useIsMobileViewport } from './ui/hooks/useIsMobileViewport';
 import { useVisualFeatureToggle } from './ui/hooks/useVisualFeatureToggle';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig, SequencerViewMode } from './ui/sequencer/useEuclideanSequencer';
 import { serializeStepOverrides } from './ui/sequencer/stepOverrideSerialization';
@@ -116,12 +106,6 @@ import {
   normalizeDegradeReverbCrossfeed,
   normalizeDegradeReverbCrossfeedRanges,
   normalizeRoutingMuteGroupsState,
-  ROUTING_DEGRADE_ACTIVE_KEYS,
-  ROUTING_DELAY_A_INPUT_KEYS,
-  ROUTING_DELAY_B_INPUT_KEYS,
-  ROUTING_INSECTS_KEYS,
-  ROUTING_MUTE_GROUP_STORAGE_KEY,
-  ROUTING_NATURE_KEYS,
   type RoutingMuteGroupsState,
 } from './ui/routing';
 import type { SynthKeyboardUiState } from './ui/synth/SynthPage';
@@ -151,27 +135,57 @@ import {
   Select,
   SINGLE_ONLY_SLIDER_KEYS,
   Slider,
-  WALK_ONLY_DUAL_KEYS,
   normalizeDualSliderMode,
   normalizePadFilterCutoffPairs,
 } from './app/AppControls';
 import { createSignedSnowflakeWelcomeState } from './app/signedSnowflakeWelcomeState';
+import { AppDebugPanel } from './app/AppDebugPanel';
+import { BackgroundAudioStatusPill, MacAudioStatusPill } from './app/AppRuntimeStatusPills';
+import {
+  DRUM_PRESET_SLOT_CHANGE,
+  preserveRunningDrumSequencerSource,
+} from './app/drumSequencerSourcePolicy';
+import type { DualSliderState } from './app/nativeDualRanges';
+import { useDualSliderRuntimeState } from './app/useDualSliderRuntimeState';
+import {
+  clearSnowflakeGeneratorRoute,
+  clearSnowflakePrototypeRoute,
+  isSnowflakeGeneratorRoute,
+  isSnowflakePrototypeRoute,
+  isSonicParityRoute,
+} from './app/appRouteFlags';
+import {
+  DelayPage,
+  DrumPage,
+  EarthPage,
+  GlobalPage,
+  GranularPage,
+  JourneyModeView,
+  LAZY_PAGE_FALLBACK,
+  ReactiveVisualizerPage,
+  ReverbPage,
+  RoutingPage,
+  SynthPage,
+  TexturePage,
+} from './app/appLazyPages';
+import { loadRoutingMuteGroupsState, saveRoutingMuteGroupsState } from './app/routingMuteGroupStorage';
 import { useAppSplash } from './app/useAppSplash';
+import { useAppResponsiveShell } from './app/useAppResponsiveShell';
 import { useProductDrumMorphOverrides } from './app/useProductDrumMorphOverrides';
 import { useProductDawOutputSync } from './app/useProductDawOutputSync';
 import { useRoutingMuteGroupRuntimeLevelSync } from './app/useRoutingMuteGroupRuntimeLevelSync';
+import { useDrumScatterRuntimeState } from './app/useDrumScatterRuntimeState';
+import { useDrumMorphPresetInterpolationSync } from './app/useDrumMorphPresetInterpolationSync';
+import {
+  applyRoutingActivationForSliderValue,
+  captureRuntimeEnabledFlags,
+  normalizeRoutingRuntimeEnabledFlags,
+  restoreRuntimeEnabledFlags,
+} from './app/sliderRoutingState';
 import {
   ADVANCED_EDITOR_TABS,
-  ADVANCED_TAB_COLORS,
-  ADVANCED_TAB_SHORTCUTS,
-  FX_BUS_LABELS,
-  FX_ORIGIN_LABELS,
-  FX_OWNER_LABELS,
-  TOP_LEVEL_SHORTCUTS,
-  getAdvancedTabActiveStyle,
-  isEditableShortcutTarget,
-  type AdvancedTab,
 } from './app/appNavigation';
+import { useAdvancedEditorNavigation } from './app/useAdvancedEditorNavigation';
 import {
   applyLiveLeadMorphToChangedPresetSlots,
   applyLiveLeadMorphToPresetChange,
@@ -186,108 +200,21 @@ import {
   type PadMorphEndpointOverrides,
 } from './features/morph/morphEndpointMath';
 
-const JourneyModeView = React.lazy(() => import('./ui/JourneyModeView'));
-const GlobalPage = React.lazy(() => import('./ui/global/GlobalPage'));
-const SynthPage = React.lazy(() => import('./ui/synth/SynthPage'));
-const ReverbPage = React.lazy(() => import('./ui/reverb/ReverbPage'));
-const DrumPage = React.lazy(() => import('./ui/drums/DrumPage'));
-
-const DRUM_PRESET_SLOT_CHANGE: Record<string, { voice: DrumPresetVoice; endpoint: 0 | 1 }> =
-  Object.fromEntries(
-    DRUM_VOICE_PARAM_ROUTES.flatMap((route) => [
-      [route.presetAKey, { voice: route.voice, endpoint: 0 }] as const,
-      [route.presetBKey, { voice: route.voice, endpoint: 1 }] as const,
-    ]),
-  ) as Record<string, { voice: DrumPresetVoice; endpoint: 0 | 1 }>;
-
-const DRUM_EUCLID_LANE_ENABLED_KEYS = [
-  'drumEuclid1Enabled',
-  'drumEuclid2Enabled',
-  'drumEuclid3Enabled',
-  'drumEuclid4Enabled',
-  'drumEuclid5Enabled',
-  'drumEuclid6Enabled',
-] as const satisfies readonly (keyof SliderState)[];
-
-function isDrumSequencerActive(state: SliderState): boolean {
-  return Boolean(state.drumEuclidMasterEnabled)
-    && DRUM_EUCLID_LANE_ENABLED_KEYS.some((key) => Boolean(state[key]));
-}
-
-function preserveRunningDrumSequencerSource(
-  previous: SliderState,
-  next: SliderState,
-  options: { allowExplicitDrumDisable?: boolean } = {},
-): SliderState {
-  if (options.allowExplicitDrumDisable && previous.drumEnabled !== next.drumEnabled && next.drumEnabled === false) {
-    return next;
-  }
-  if (!isDrumSequencerActive(previous) && !isDrumSequencerActive(next)) {
-    return next;
-  }
-  if (next.drumEnabled === true) {
-    return next;
-  }
-  return { ...next, drumEnabled: true };
-}
-
-const GranularPage = React.lazy(() => import('./ui/granular/GranularPage'));
-const DelayPage = React.lazy(() => import('./ui/delay/DelayPage'));
-const TexturePage = React.lazy(() => import('./ui/texture/TexturePage'));
-const RoutingPage = React.lazy(() => import('./ui/routing/RoutingPage'));
-const EarthPage = React.lazy(() => import('./ui/earth/EarthPage'));
-const ReactiveVisualizerPage = React.lazy(() => import('./ui/visualizer/ReactiveVisualizerPage'));
-
-function loadRoutingMuteGroupsState(): RoutingMuteGroupsState {
-  if (typeof window === 'undefined') return normalizeRoutingMuteGroupsState(undefined);
-  try {
-    return normalizeRoutingMuteGroupsState(JSON.parse(window.localStorage.getItem(ROUTING_MUTE_GROUP_STORAGE_KEY) ?? 'null'));
-  } catch {
-    return normalizeRoutingMuteGroupsState(undefined);
-  }
-}
-
-function saveRoutingMuteGroupsState(state: RoutingMuteGroupsState): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(ROUTING_MUTE_GROUP_STORAGE_KEY, JSON.stringify(normalizeRoutingMuteGroupsState(state)));
-  } catch {
-    // Storage failure should not block routing control.
-  }
-}
-
-// Note names for display
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-
 const DEFAULT_AUTO_START_PRESET_NAME = 'String Waves';
 const CLOUD_ENABLED = isCloudPresetConfigEnabled();
-const isSonicParityMode = () => (
-  typeof window !== 'undefined' &&
-  new URLSearchParams(window.location.search).get('parity') === '1'
-);
-const LAZY_PAGE_FALLBACK = <div style={{ padding: '24px', color: '#9ca3af', textAlign: 'center' }}>Loading...</div>;
-
-// Dual slider state type - stores min/max for each parameter when in dual mode
-type DualSliderState = Partial<Record<keyof SliderState, DualSliderRange>>;
-
-function extractNativeDualRanges(ranges: DualSliderState): Record<string, { min: number; max: number }> {
-  const output: Record<string, { min: number; max: number }> = {};
-  for (const [key, range] of Object.entries(ranges)) {
-    if (!range) continue;
-    output[key] = { min: range.min, max: range.max };
-  }
-  return output;
-}
 
 // Main App
 
 const App: React.FC = () => {
   const { showSplash, splashOpacity, splashGradient, windowSize } = useAppSplash();
+  const sonicParityMode = isSonicParityRoute();
+  const snowflakePrototypeRoute = isSnowflakePrototypeRoute();
+  const snowflakeGeneratorRoute = isSnowflakeGeneratorRoute();
 
   const { macShellAvailable, cloudPresetAllowed, usesCapacitorLocalPresetLibrary, usesCloudBackedStatePresetLibrary, shouldInitializeCloudPresetStore } =
     usePlatformRuntimeCapabilities({
       cloudEnabled: CLOUD_ENABLED,
-      sonicParityMode: isSonicParityMode(),
+      sonicParityMode,
       localPresetStoreOverride: isLocalPresetStoreOverride(),
     });
 
@@ -306,7 +233,7 @@ const App: React.FC = () => {
     localPresetStoreOverride: isLocalPresetStoreOverride(),
     savedPresets,
     shouldInitializeCloudPresetStore,
-    sonicParityMode: isSonicParityMode(),
+    sonicParityMode,
     usesCapacitorLocalPresetLibrary,
     usesCloudBackedStatePresetLibrary,
   });
@@ -348,7 +275,7 @@ const App: React.FC = () => {
     setCapacitorAudioSessionDiagnosticActive,
     stateRef,
   });
-  useProductDawOutputSync({ state, dawOutputRouting, dawOutputDevice });
+  useProductDawOutputSync({ productRuntimeMode, state, dawOutputRouting, dawOutputDevice });
 
   useEffect(() => {
     saveRoutingMuteGroupsState(routingMuteGroups);
@@ -465,7 +392,7 @@ const App: React.FC = () => {
   const {
     getCurrentDrumMorphOverrideState: getProductDrumMorphOverrideState,
     dispatchDrumMorphProductControlAction,
-  } = useProductDrumMorphOverrides();
+  } = useProductDrumMorphOverrides(productRuntimeMode);
   const getCurrentDrumMorphOverrideState = useCallback(
     (sourceState: SliderState = stateRef.current) => getProductDrumMorphOverrideState(sourceState),
     [getProductDrumMorphOverrideState],
@@ -532,9 +459,6 @@ const App: React.FC = () => {
   useEffect(() => {
     morphTransitionPhrasesRef.current = morphTransitionPhrases;
   }, [morphTransitionPhrases]);
-
-  const isSnowflakePrototypeRoute = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('snowflakePrototype') === '1' : false;
-  const isSnowflakeGeneratorRoute = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('snowflakeGenerator') === '1' : false;
 
   // UI mode: 'snowflake', 'advanced', or 'journey'
   const [uiMode, setUiMode] = useState<'snowflake' | 'advanced' | 'journey'>(startInAdvancedEditor ? 'advanced' : 'snowflake');
@@ -611,133 +535,33 @@ const App: React.FC = () => {
     setActiveJourneyHasBackup,
   });
 
-  // Mobile detection
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-  const isMobileViewport = useIsMobileViewport();
+  const {
+    isMobile,
+    isMobileViewport,
+    mobileStyleOverrides: m,
+    expandedPanels,
+    togglePanel,
+  } = useAppResponsiveShell();
   const reactiveVisualizerToggle = useVisualFeatureToggle(
     'kessho.visualizers.reactive.enabled',
     !isMobileViewport,
   );
 
-  // ── Mobile-responsive style overrides ──
-  const m = useMemo(() => {
-    if (!isMobile) return null;
-    return {
-      container: {
-        padding: '4px',
-        maxWidth: '100%',
-        overflowX: 'hidden' as const,
-      } as React.CSSProperties,
-      controls: {
-        gap: '4px',
-        marginBottom: '10px',
-        paddingTop: '6px',
-      } as React.CSSProperties,
-      grid: {
-        gridTemplateColumns: '1fr',
-        gap: '8px',
-        marginBottom: '12px',
-      } as React.CSSProperties,
-      panel: {
-        padding: '10px',
-        borderRadius: '8px',
-        maxWidth: '100%',
-        overflow: 'hidden' as const,
-      } as React.CSSProperties,
-      panelTitle: {
-        fontSize: '0.9rem',
-        marginBottom: '8px',
-      } as React.CSSProperties,
-      sliderGroup: {
-        marginBottom: '8px',
-        maxWidth: '100%',
-        overflow: 'hidden' as const,
-      } as React.CSSProperties,
-      sliderLabel: {
-        fontSize: '0.75rem',
-        marginBottom: '3px',
-        gap: '4px',
-      } as React.CSSProperties,
-      select: {
-        fontSize: '0.78rem',
-        padding: '6px 8px',
-        minHeight: '36px',
-        maxWidth: '100%',
-      } as React.CSSProperties,
-      tabBar: {
-        justifyContent: 'flex-start',
-        gap: '4px',
-        padding: '5px max(6px, env(safe-area-inset-left))',
-        borderRadius: '8px',
-        marginBottom: '8px',
-        flexWrap: 'nowrap' as const,
-        overflowX: 'auto' as const,
-        overflowY: 'hidden' as const,
-        maxWidth: '100%',
-        width: '100%',
-        scrollSnapType: 'x proximity',
-        scrollbarWidth: 'none',
-        WebkitOverflowScrolling: 'touch' as const,
-      } as React.CSSProperties,
-      tab: {
-        flex: '0 0 58px',
-        minWidth: '58px',
-        minHeight: '44px',
-        padding: '6px 4px',
-        fontSize: '0.58rem',
-        gap: '2px',
-        scrollSnapAlign: 'start',
-        whiteSpace: 'nowrap' as const,
-      } as React.CSSProperties,
-      tabIcon: { fontSize: '0.9rem' } as React.CSSProperties,
-      iconButton: {
-        width: '36px',
-        height: '36px',
-        fontSize: '1.2rem',
-        padding: '4px',
-      } as React.CSSProperties,
-      debugPanel: {
-        padding: '10px',
-        fontSize: '0.75rem',
-        wordBreak: 'break-all' as const,
-        overflow: 'hidden' as const,
-      } as React.CSSProperties,
-    };
-  }, [isMobile]);
-
-  // Collapsible panel state for mobile (track which panels are expanded)
-  const [expandedPanels, setExpandedPanels] = useState<Set<string>>(new Set());
-  const togglePanel = useCallback((panelId: string) => {
-    setExpandedPanels((prev) => {
-      const next = new Set(prev);
-      if (next.has(panelId)) {
-        next.delete(panelId);
-      } else {
-        next.add(panelId);
-      }
-      return next;
-    });
-  }, []);
-
-  const [activeTab, setActiveTab] = useState<AdvancedTab>('global');
-  const activePageAccent = ADVANCED_TAB_COLORS[activeTab];
-  const activeTabStyle = useMemo(() => getAdvancedTabActiveStyle(activePageAccent), [activePageAccent]);
-  const activeTabRef = useRef(activeTab);
-  const activePageAccentStyle = useMemo(
-    () =>
-      ({
-        '--page-accent': activePageAccent,
-      }) as React.CSSProperties,
-    [activePageAccent],
-  );
-  useEffect(() => {
-    activeTabRef.current = activeTab;
-  }, [activeTab]);
+  const {
+    activeTab,
+    activeTabRef,
+    activeTabStyle,
+    activePageAccentStyle,
+    setActiveTab,
+    openAdvancedTab,
+    isEditableShortcutTarget,
+  } = useAdvancedEditorNavigation({
+    uiMode,
+    setUiMode,
+    snowflakeActivated,
+    setSnowflakeActivated,
+    preloadAdvancedEditorRuntime,
+  });
   useProductRuntimeCallbackRegistrations({
     activeTab,
     setProductDrumEvolveTriggerCallback,
@@ -761,49 +585,27 @@ const App: React.FC = () => {
     uiMode,
   });
 
-  const openAdvancedTab = useCallback(
-    (tab: AdvancedTab) => {
-      if (uiMode === 'snowflake' && !snowflakeActivated) {
-        setSnowflakeActivated(true);
-      }
-      preloadAdvancedEditorRuntime();
-      setActiveTab(tab);
-      setUiMode('advanced');
-    },
-    [preloadAdvancedEditorRuntime, uiMode, snowflakeActivated],
-  );
-
-  useEffect(() => {
-    const handleAppShortcut = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
-      if (isEditableShortcutTarget(event.target)) return;
-
-      const shortcutTarget = TOP_LEVEL_SHORTCUTS[event.key] ?? (!event.shiftKey ? TOP_LEVEL_SHORTCUTS[event.code] : undefined) ?? ADVANCED_TAB_SHORTCUTS[event.key];
-
-      if (!shortcutTarget) return;
-
-      event.preventDefault();
-      if (shortcutTarget === 'snowflake') {
-        setUiMode('snowflake');
-        return;
-      }
-      if (shortcutTarget === 'journey') {
-        setSnowflakeActivated(true);
-        setUiMode('journey');
-        return;
-      }
-
-      openAdvancedTab(shortcutTarget);
-    };
-
-    window.addEventListener('keydown', handleAppShortcut);
-    return () => window.removeEventListener('keydown', handleAppShortcut);
-  }, [openAdvancedTab]);
-
-  // Unified slider mode state: key → SliderMode ('single' | 'walk' | 'sampleHold')
-  // Absent key means 'single'. dualSliderRanges stores ranges for walk/sampleHold modes.
-  const [sliderModes, setSliderModes] = useState<Record<string, SliderMode>>({});
-  const [dualSliderRanges, setDualSliderRanges] = useState<DualSliderState>({});
+  const {
+    sliderModes,
+    setSliderModes,
+    dualSliderRanges,
+    setDualSliderRanges,
+    nativeDualRanges,
+    applyScopedDualRangesFromPreset,
+    handleCycleSliderMode,
+    handleDualRangeChange,
+  } = useDualSliderRuntimeState<SavedPreset>({
+    state,
+    stateRef,
+    setState,
+    isJourneyPlaying,
+    morphPosition,
+    morphPresetA,
+    morphPresetB,
+    setMorphPresetA,
+    setMorphPresetB,
+    dispatchDrumMorphProductControlAction,
+  });
   const { globalRuntimeProps, resetPlaybackTimer } = useProductRuntimeGlobalSurface({
     playbackIsRunning,
     stopProductPlayback,
@@ -811,50 +613,6 @@ const App: React.FC = () => {
     onResetCofDrift: resetCofDrift,
     recordingProps: globalRecordingProps,
   });
-
-  const applyScopedDualRangesFromPreset = useCallback(
-    (relevantKeys: string[], dualRanges?: Record<string, { min: number; max: number }>, presetSliderModes?: Record<string, SliderMode>) => {
-      const relevantKeySet = new Set(relevantKeys);
-      const nextWalkPositions: Record<string, number> = {};
-
-      setSliderModes((prev) => {
-        const next: Record<string, SliderMode> = { ...prev };
-        for (const key of relevantKeySet) {
-          delete next[key];
-        }
-        if (dualRanges) {
-          for (const [key] of Object.entries(dualRanges)) {
-            if (!relevantKeySet.has(key)) continue;
-            next[key] = normalizeDualSliderMode(key, presetSliderModes?.[key] ?? 'walk') ?? 'walk';
-          }
-        }
-        return next;
-      });
-
-      setDualSliderRanges((prev) => {
-        const next: Record<string, { min: number; max: number } | undefined> = {
-          ...prev,
-        };
-        for (const key of relevantKeySet) {
-          delete next[key];
-        }
-        if (dualRanges) {
-          for (const [key, range] of Object.entries(dualRanges)) {
-            if (!relevantKeySet.has(key)) continue;
-            next[key] = range;
-            const mode = normalizeDualSliderMode(key, presetSliderModes?.[key] ?? 'walk') ?? 'walk';
-            if (mode === 'walk') {
-              nextWalkPositions[key] = 0.5;
-            }
-          }
-        }
-        return next as DualSliderState;
-      });
-
-      resetRuntimeWalkPositionsForKeys(relevantKeySet, nextWalkPositions);
-    },
-    [],
-  );
   const [drumEditingVoice, setDrumEditingVoice] = useState<string | null>(null);
   const drumViewModeRef = useRef<SequencerViewMode>('detail');
   const drumStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
@@ -864,67 +622,18 @@ const App: React.FC = () => {
   const drumSwingsRef = useRef<number[] | undefined>(undefined);
   const drumLinkedRef = useRef<boolean[] | undefined>(undefined);
   const drumPitchSettingsRef = useRef<PitchSettings[] | undefined>(undefined);
-  const drumSeqSimpleStateRef = useRef<SeqSimpleState | undefined>(undefined);
-  const [drumSeqScatterState, setDrumSeqScatterState] = useState<SeqScatterState>(() =>
-    normalizeSeqScatterState(undefined, drumSeqSimpleStateRef.current)
-  );
-  const [drumScatterRuntimePulses, setDrumScatterRuntimePulses] = useState<Record<string, number>>({});
-
-  const handleDrumSeqScatterStateChange = useCallback((next: SeqScatterState) => {
-    drumSeqSimpleStateRef.current = seqSimpleStateFromScatterState(next);
-    setDrumSeqScatterState(next);
-  }, []);
-
-  const getDrumScatterBpm = useCallback(() => (
-    Number(stateRef.current.sequencerMasterBPM ?? stateRef.current.drumEuclidBaseBPM ?? 120)
-  ), []);
-
-  const triggerDrumScatterRuntimeStep = useCallback((voice: DrumVoiceType, options: ScatterPreviewTriggerOptions) => {
-    productRuntimeManualTriggers.triggerDrumVoice(voice, options);
-  }, [productRuntimeManualTriggers.triggerDrumVoice]);
-
-  const pulseDrumScatterRuntimeEngine = useCallback((voice: DrumVoiceType, kind: 'single' | 'burst') => {
-    if (activeTabRef.current !== 'drums') return;
-    setDrumScatterRuntimePulses((prev) => ({
-      ...prev,
-      [voice]: Date.now() + (kind === 'burst' ? 520 : 180),
-    }));
-  }, []);
-
-  const handleDrumScatterRuntimeStepVisual = useCallback((event: ScatterStepVisualEvent) => {
-    pulseDrumScatterRuntimeEngine(event.phrase.engine, 'burst');
-  }, [pulseDrumScatterRuntimeEngine]);
-
   const {
-    playPhrase: playDrumScatterRuntimePhrase,
-    clear: clearDrumScatterRuntimePlayback,
-  } = useScatterPhrasePlayer({
-    getBpm: getDrumScatterBpm,
-    sliderState: state,
-    trigger: triggerDrumScatterRuntimeStep,
-    onStepVisual: handleDrumScatterRuntimeStepVisual,
-  });
-
-  useEffect(() => {
-    if (!drumSeqScatterState.active || !playbackIsRunning) {
-      clearDrumScatterRuntimePlayback();
-    }
-  }, [clearDrumScatterRuntimePlayback, drumSeqScatterState.active, playbackIsRunning]);
-
-  useEffect(() => {
-    if (activeTab !== 'drums') {
-      setDrumScatterRuntimePulses((prev) => (Object.keys(prev).length > 0 ? {} : prev));
-    }
-  }, [activeTab]);
-
-  useScatterSequencerRuntime({
-    active: drumSeqScatterState.active,
-    isRunning: playbackIsRunning,
-    state: drumSeqScatterState,
-    setState: handleDrumSeqScatterStateChange,
-    getBpm: getDrumScatterBpm,
-    playPhrase: playDrumScatterRuntimePhrase,
-    onVisualPulse: pulseDrumScatterRuntimeEngine,
+    drumSeqSimpleStateRef,
+    drumSeqScatterState,
+    handleDrumSeqScatterStateChange,
+    drumScatterRuntimePulses,
+  } = useDrumScatterRuntimeState({
+    activeTab,
+    activeTabRef,
+    playbackIsRunning,
+    state,
+    stateRef,
+    triggerDrumVoice: productRuntimeManualTriggers.triggerDrumVoice,
   });
 
   // ── Lead/Synth Euclidean sequencer state ──
@@ -1047,317 +756,6 @@ const App: React.FC = () => {
     [state],
   );
 
-  const handleCycleSliderMode = useCallback(
-    (key: keyof SliderState) => {
-      // Block changes when journey mode is playing
-      if (isJourneyPlaying) return;
-
-      const keyStr = key as string;
-      if (SINGLE_ONLY_SLIDER_KEYS.has(keyStr)) {
-        setSliderModes((prev) => {
-          if (!(keyStr in prev)) return prev;
-          const next = { ...prev };
-          delete next[keyStr];
-          return next;
-        });
-        setDualSliderRanges((prev) => {
-          if (!(key in prev)) return prev;
-          const next = { ...prev };
-          delete next[key];
-          return next;
-        });
-        clearRuntimeWalkPositions([keyStr]);
-        removeRuntimeTriggerPositions([keyStr]);
-        return;
-      }
-      const isMorphActive = morphPresetA !== null || morphPresetB !== null;
-
-      const drumParamRoute = getDrumVoiceParamRoute(key);
-      const drumVoice = drumParamRoute?.voice ?? null;
-      const drumMorphKey = drumParamRoute?.morphKey ?? null;
-
-      // Cycle: single → walk → sampleHold → single (walk-only keys skip sampleHold)
-      const current = sliderModes[keyStr] ?? 'single';
-      const nextMode: SliderMode = current === 'single' ? 'walk' : current === 'walk' ? (WALK_ONLY_DUAL_KEYS.has(keyStr) ? 'single' : 'sampleHold') : 'single';
-
-      if (nextMode === 'single') {
-        // Collapsing to single preserves the authored value; runtime dots can be stale at mode boundaries.
-        const range = dualSliderRanges[key as keyof SliderState];
-        if (range) {
-          const currentValue = getSliderNumericValue(key, state[key]);
-          const fallbackValue = range.min + 0.5 * (range.max - range.min);
-          const nextNumericValue = Math.max(range.min, Math.min(range.max, currentValue ?? fallbackValue));
-          const quantizedValue = quantize(key, nextNumericValue);
-          const nextValue = getStateValueFromSliderNumber(key, quantizedValue);
-          setState((s) => ({ ...s, [key]: nextValue }));
-        }
-        // Clean up
-        setDualSliderRanges((r) => {
-          const newRanges = { ...r };
-          delete newRanges[key];
-          return newRanges;
-        });
-        clearRuntimeWalkPositions([keyStr]);
-        removeRuntimeTriggerPositions([keyStr]);
-        setSliderModes((prev) => {
-          const next = { ...prev };
-          delete next[keyStr];
-          return next;
-        });
-
-        // Update morph preset dualRanges at endpoints (Rule 2)
-        if (isMorphActive) {
-          if (isAtEndpoint0(morphPosition, true) && morphPresetA) {
-            setMorphPresetA((prev) => {
-              if (!prev) return null;
-              const newDualRanges = { ...prev.dualRanges };
-              const newSliderModes = { ...prev.sliderModes };
-              delete newDualRanges[keyStr];
-              delete newSliderModes[keyStr];
-              return {
-                ...prev,
-                dualRanges: Object.keys(newDualRanges).length > 0 ? newDualRanges : undefined,
-                sliderModes: Object.keys(newSliderModes).length > 0 ? newSliderModes : undefined,
-              };
-            });
-          } else if (isAtEndpoint1(morphPosition, true) && morphPresetB) {
-            setMorphPresetB((prev) => {
-              if (!prev) return null;
-              const newDualRanges = { ...prev.dualRanges };
-              const newSliderModes = { ...prev.sliderModes };
-              delete newDualRanges[keyStr];
-              delete newSliderModes[keyStr];
-              return {
-                ...prev,
-                dualRanges: Object.keys(newDualRanges).length > 0 ? newDualRanges : undefined,
-                sliderModes: Object.keys(newSliderModes).length > 0 ? newSliderModes : undefined,
-              };
-            });
-          }
-        }
-
-        // Update drum morph dual range override at endpoints
-        if (drumVoice && drumMorphKey) {
-          const drumMorphPosition = state[drumMorphKey] as number;
-          const currentVal = state[key] as number;
-          if (isAtEndpoint0(drumMorphPosition)) {
-            dispatchDrumMorphProductControlAction(stateRef.current, {
-              type: 'drum-morph/dual-range-set',
-              voice: drumVoice,
-              param: keyStr,
-              isDualMode: false,
-              value: currentVal,
-              endpoint: 0,
-            });
-          } else if (isAtEndpoint1(drumMorphPosition)) {
-            dispatchDrumMorphProductControlAction(stateRef.current, {
-              type: 'drum-morph/dual-range-set',
-              voice: drumVoice,
-              param: keyStr,
-              isDualMode: false,
-              value: currentVal,
-              endpoint: 1,
-            });
-          }
-        }
-      } else {
-        // Entering walk or sampleHold
-        setSliderModes((prev) => ({ ...prev, [keyStr]: nextMode }));
-
-        // If entering walk/sampleHold from single, create a range
-        if (current === 'single') {
-          const info = getParamInfo(key);
-          if (info) {
-            const currentVal = getSliderNumericValue(key, state[key]) ?? info.min;
-            const rangeSize = (info.max - info.min) * 0.2; // 20% of total range
-            const min = Math.max(info.min, currentVal - rangeSize / 2);
-            const max = Math.min(info.max, currentVal + rangeSize / 2);
-            setDualSliderRanges((r) => ({ ...r, [key]: { min, max } }));
-
-            // Initialize random walk for walk mode (not for sampleHold)
-            if (nextMode === 'walk') {
-              seedRuntimeWalkPosition(keyStr);
-              removeRuntimeTriggerPositions([keyStr]);
-            } else {
-              clearRuntimeWalkPositions([keyStr]);
-              removeRuntimeTriggerPositions([keyStr]);
-            }
-
-            // Update morph preset dualRanges at endpoints (Rule 2)
-            if (isMorphActive) {
-              if (isAtEndpoint0(morphPosition, true) && morphPresetA) {
-                setMorphPresetA((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        dualRanges: {
-                          ...prev.dualRanges,
-                          [keyStr]: { min, max },
-                        },
-                        sliderModes: {
-                          ...prev.sliderModes,
-                          [keyStr]: nextMode,
-                        },
-                      }
-                    : null,
-                );
-              } else if (isAtEndpoint1(morphPosition, true) && morphPresetB) {
-                setMorphPresetB((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        dualRanges: {
-                          ...prev.dualRanges,
-                          [keyStr]: { min, max },
-                        },
-                        sliderModes: {
-                          ...prev.sliderModes,
-                          [keyStr]: nextMode,
-                        },
-                      }
-                    : null,
-                );
-              }
-            }
-
-            // Update drum morph dual range override at endpoints
-            if (drumVoice && drumMorphKey) {
-              const drumMorphPosition = state[drumMorphKey] as number;
-              if (isAtEndpoint0(drumMorphPosition)) {
-                dispatchDrumMorphProductControlAction(stateRef.current, {
-                  type: 'drum-morph/dual-range-set',
-                  voice: drumVoice,
-                  param: keyStr,
-                  isDualMode: true,
-                  value: currentVal,
-                  range: { min, max },
-                  endpoint: 0,
-                });
-              } else if (isAtEndpoint1(drumMorphPosition)) {
-                dispatchDrumMorphProductControlAction(stateRef.current, {
-                  type: 'drum-morph/dual-range-set',
-                  voice: drumVoice,
-                  param: keyStr,
-                  isDualMode: true,
-                  value: currentVal,
-                  range: { min, max },
-                  endpoint: 1,
-                });
-              }
-            }
-          }
-        } else if (current === 'walk' && nextMode === 'sampleHold') {
-          // Switching from walk to sampleHold — stop live walk and clear stale trigger dots.
-          clearRuntimeWalkPositions([keyStr]);
-          removeRuntimeTriggerPositions([keyStr]);
-
-          // Update morph preset sliderModes at endpoints (range is unchanged)
-          if (isMorphActive) {
-            if (isAtEndpoint0(morphPosition, true) && morphPresetA) {
-              setMorphPresetA((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      sliderModes: { ...prev.sliderModes, [keyStr]: nextMode },
-                    }
-                  : null,
-              );
-            } else if (isAtEndpoint1(morphPosition, true) && morphPresetB) {
-              setMorphPresetB((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      sliderModes: { ...prev.sliderModes, [keyStr]: nextMode },
-                    }
-                  : null,
-              );
-            }
-          }
-        }
-      }
-    },
-    [
-      isJourneyPlaying,
-      dualSliderRanges,
-      sliderModes,
-      state,
-      morphPosition,
-      morphPresetA,
-      morphPresetB,
-      dispatchDrumMorphProductControlAction,
-    ],
-  );
-
-  // Update dual slider range
-  const handleDualRangeChange = useCallback(
-    (key: keyof SliderState, min: number, max: number) => {
-      // Block changes when journey mode is playing
-      if (isJourneyPlaying) return;
-
-      const keyStr = key as string;
-      if (SINGLE_ONLY_SLIDER_KEYS.has(keyStr)) return;
-      // Product runtime forwarding still gates unsupported keys in the audio sync effects.
-
-      setDualSliderRanges((prev) => ({ ...prev, [key]: { min, max } }));
-
-      // Update morph preset dualRanges at endpoints (Rule 2)
-      const isMorphActive = morphPresetA !== null || morphPresetB !== null;
-      if (isMorphActive) {
-        if (isAtEndpoint0(morphPosition, true) && morphPresetA) {
-          setMorphPresetA((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } },
-                }
-              : null,
-          );
-        } else if (isAtEndpoint1(morphPosition, true) && morphPresetB) {
-          setMorphPresetB((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } },
-                }
-              : null,
-          );
-        }
-      }
-
-      const drumParamRoute = getDrumVoiceParamRoute(key);
-      const drumVoice = drumParamRoute?.voice ?? null;
-      const drumMorphKey = drumParamRoute?.morphKey ?? null;
-
-      // Update drum morph dual range override at endpoints
-      if (drumVoice && drumMorphKey) {
-        const drumMorphPosition = state[drumMorphKey] as number;
-        const currentVal = state[key] as number;
-        if (isAtEndpoint0(drumMorphPosition)) {
-          dispatchDrumMorphProductControlAction(stateRef.current, {
-            type: 'drum-morph/dual-range-set',
-            voice: drumVoice,
-            param: keyStr,
-            isDualMode: true,
-            value: currentVal,
-            range: { min, max },
-            endpoint: 0,
-          });
-        } else if (isAtEndpoint1(drumMorphPosition)) {
-          dispatchDrumMorphProductControlAction(stateRef.current, {
-            type: 'drum-morph/dual-range-set',
-            voice: drumVoice,
-            param: keyStr,
-            isDualMode: true,
-            value: currentVal,
-            range: { min, max },
-            endpoint: 1,
-          });
-        }
-      }
-    },
-    [isJourneyPlaying, morphPosition, morphPresetA, morphPresetB, state, dispatchDrumMorphProductControlAction],
-  );
-
   const { cloudSharedPresetToSavedPreset, applyCloudSharedPreset } = useCloudSharedPresetRuntimeSurface({
     stateRef,
     setState,
@@ -1390,7 +788,7 @@ const App: React.FC = () => {
   const shouldMirrorRuntimeWalkPositions = productRuntimeMode === 'core-product'
     || uiMode === 'snowflake'
     || uiMode === 'advanced'
-    || isSnowflakePrototypeRoute;
+    || snowflakePrototypeRoute;
 
   const { drumEvolvedOverrides, synthEvolvedOverrides } = useProductRuntimeCoordination({
     activeTab,
@@ -1424,7 +822,7 @@ const App: React.FC = () => {
   });
 
   useProductRuntimeParityProbe({
-    enabled: isSonicParityMode(),
+    enabled: sonicParityMode,
     productRuntimeSupportsRangeKey,
     setActiveTab,
     setDualSliderRanges,
@@ -1490,8 +888,6 @@ const App: React.FC = () => {
     state.transportBarsPerPhrase,
     state.transportBeatsPerBar,
   ]);
-
-  const nativeDualRanges = useMemo(() => extractNativeDualRanges(dualSliderRanges), [dualSliderRanges]);
 
   // Web audio does not consume dual-slider ranges, so avoid re-sending params when
   // only the UI runtime range model changes.
@@ -1560,27 +956,7 @@ const App: React.FC = () => {
 
       let drumMorphProductControlChanged = false;
       setState((prev) => {
-        const preservedEnabledFlags = options?.preserveEnabledFlags
-          ? {
-              padEnabled: prev.padEnabled,
-              pad2Enabled: prev.pad2Enabled,
-              leadEnabled: prev.leadEnabled,
-              lead2Enabled: prev.lead2Enabled,
-              pianoEnabled: prev.pianoEnabled,
-              drumEnabled: prev.drumEnabled,
-              granularEnabled: prev.granularEnabled,
-              oceanSampleEnabled: prev.oceanSampleEnabled,
-              waterEnabled: prev.waterEnabled,
-              insectsEnabled: prev.insectsEnabled,
-              insects2Enabled: prev.insects2Enabled,
-              birdsEnabled: prev.birdsEnabled,
-              birds2Enabled: prev.birds2Enabled,
-              frogsEnabled: prev.frogsEnabled,
-              delayAEnabled: prev.delayAEnabled,
-              granularDelayEnabled: prev.granularDelayEnabled,
-              reverbEnabled: prev.reverbEnabled,
-            }
-          : null;
+        const preservedEnabledFlags = options?.preserveEnabledFlags ? captureRuntimeEnabledFlags(prev) : null;
         let newState = { ...prev, [key]: stateValue };
         let drumMorphOverrideState = getCurrentDrumMorphOverrideState(prev);
 
@@ -1614,462 +990,9 @@ const App: React.FC = () => {
           drumMorphOverrideState = nextDrumMorphOverrideState;
         }
 
-        const routeKey = key as keyof SliderState;
-        const positiveNumber = typeof stateValue === 'number' && stateValue > 0;
-
-        if (positiveNumber) {
-          switch (routeKey) {
-            case 'delayAMix':
-            case 'delayAReverbSend':
-            case 'delayAToBSend':
-            case 'delayADegradeSend':
-              newState.delayAEnabled = true;
-              if (routeKey === 'delayAToBSend') {
-                newState.granularDelayEnabled = true;
-              }
-              break;
-            case 'granularDelayActivity':
-            case 'granularDelayRepeats':
-            case 'granularDelayMix':
-            case 'granularDelayReverbSend':
-            case 'granularDelayFilter':
-            case 'granularDelayVibrato':
-            case 'delayBToASend':
-            case 'delayBDegradeSend':
-            case 'delayBWarpIntensity':
-            case 'delayBSpread':
-              newState.granularDelayEnabled = true;
-              break;
-            case 'granularLevel':
-            case 'granularReverbSend':
-            case 'granularDelayASend':
-            case 'granularDelayBSend':
-            case 'granularDegradeSend':
-              newState.granularEnabled = true;
-              if (routeKey === 'granularDelayBSend') {
-                newState.granularDelayEnabled = true;
-              }
-              // Mutual exclusion: zero the reverse direction
-              if (positiveNumber) newState.delayBGranularSend = 0;
-              break;
-            case 'delayAGranularSend':
-              newState.delayAEnabled = true;
-              newState.granularEnabled = true;
-              break;
-            case 'delayBGranularSend':
-              newState.granularDelayEnabled = true;
-              newState.granularEnabled = true;
-              // Mutual exclusion: zero the reverse direction
-              if (positiveNumber) newState.granularDelayBSend = 0;
-              break;
-            case 'degradeReverbSend':
-              newState.reverbEnabled = true;
-              if (positiveNumber) {
-                newState = normalizeDegradeReverbCrossfeed(newState, prev, {
-                  preserveActiveDirection: 'last-edited',
-                  lastEditedDirection: 'degrade-to-reverb',
-                });
-              }
-              break;
-            case 'reverbDegradeSend':
-              if (positiveNumber) {
-                newState = normalizeDegradeReverbCrossfeed(newState, prev, {
-                  preserveActiveDirection: 'last-edited',
-                  lastEditedDirection: 'reverb-to-degrade',
-                });
-              }
-              break;
-            case 'lead1Level':
-            case 'lead1ReverbSend':
-            case 'lead1DelayASend':
-            case 'lead1DelayBSend':
-            case 'degradeLead1Send':
-              newState.leadEnabled = true;
-              if (routeKey === 'lead1DelayBSend') {
-                newState.granularDelayEnabled = true;
-              }
-              break;
-            case 'granularLead1Send':
-              newState.leadEnabled = true;
-              newState.granularEnabled = true;
-              break;
-            case 'lead2Level':
-            case 'lead2ReverbSend':
-            case 'lead2DelayASend':
-            case 'lead2DelayBSend':
-            case 'degradeLead2Send':
-              newState.lead2Enabled = true;
-              if (routeKey === 'lead2DelayBSend') {
-                newState.granularDelayEnabled = true;
-              }
-              break;
-            case 'granularLead2Send':
-              newState.lead2Enabled = true;
-              newState.granularEnabled = true;
-              break;
-            case 'pianoLevel':
-            case 'pianoReverbSend':
-            case 'pianoDelayASend':
-            case 'pianoDelayBSend':
-            case 'degradePianoSend':
-              newState.pianoEnabled = true;
-              if (routeKey === 'pianoDelayBSend') {
-                newState.granularDelayEnabled = true;
-              }
-              break;
-            case 'granularPianoSend':
-              newState.pianoEnabled = true;
-              newState.granularEnabled = true;
-              break;
-            case 'drumLevel':
-            case 'drumReverbSend':
-            case 'drumDelayASend':
-            case 'drumDelayBSend':
-            case 'degradeDrumSend':
-              newState.drumEnabled = true;
-              if (routeKey === 'drumDelayBSend') {
-                newState.granularDelayEnabled = true;
-              }
-              break;
-            case 'granularDrumSend':
-              newState.drumEnabled = true;
-              newState.granularEnabled = true;
-              break;
-            case 'oceanSampleLevel':
-            case 'oceanReverbSend':
-            case 'oceanDelayASend':
-            case 'oceanDelayBSend':
-            case 'degradeWavesSend':
-            case 'oceanSliceDuration':
-            case 'oceanSliceDensity':
-              newState.oceanSampleEnabled = true;
-              if (routeKey === 'oceanDelayBSend') {
-                newState.granularDelayEnabled = true;
-              }
-              break;
-            case 'granularWavesSend':
-              newState.oceanSampleEnabled = true;
-              newState.granularEnabled = true;
-              break;
-            case 'natureLevel':
-            case 'natureReverbSend':
-            case 'natureDelayASend':
-            case 'natureDelayBSend':
-            case 'degradeNatureSend':
-              if (routeKey === 'natureDelayBSend') {
-                newState.granularDelayEnabled = true;
-              }
-              break;
-            case 'granularNatureSend':
-              newState.granularEnabled = true;
-              break;
-            case 'birdsLevel':
-            case 'birdsSliceDuration':
-            case 'birdsSliceDensity':
-              newState.birdsEnabled = true;
-              break;
-            case 'birds2Level':
-            case 'birds2SliceDuration':
-            case 'birds2SliceDensity':
-              newState.birds2Enabled = true;
-              break;
-            case 'frogsLevel':
-            case 'frogsSliceDuration':
-            case 'frogsSliceDensity':
-              newState.frogsEnabled = true;
-              break;
-            case 'synthLevel':
-              newState.padEnabled = true;
-              break;
-            case 'pad1ReverbSend':
-            case 'degradePad1Send':
-              newState.padEnabled = true;
-              break;
-            case 'pad2ReverbSend':
-            case 'degradePad2Send':
-              newState.pad2Enabled = true;
-              break;
-            case 'pad1DelayASend':
-            case 'pad1DelayBSend':
-              newState.padEnabled = true;
-              break;
-            case 'pad2Level':
-            case 'pad2DelayASend':
-            case 'pad2DelayBSend':
-              newState.pad2Enabled = true;
-              break;
-            case 'granularPad1Send':
-              newState.padEnabled = true;
-              newState.granularEnabled = true;
-              break;
-            case 'granularPad2Send':
-              newState.pad2Enabled = true;
-              newState.granularEnabled = true;
-              break;
-            case 'waterLevel':
-            case 'waterReverbSend':
-            case 'waterDelayASend':
-            case 'waterDelayBSend':
-            case 'degradeWaterSend':
-            case 'waterLayerHardDrops':
-            case 'waterLayerWaterDrops':
-            case 'waterLayerTurbulence':
-            case 'waterLayerBubbling':
-            case 'waterLayerSurf':
-            case 'waterLayerChannels':
-              newState.waterEnabled = true;
-              if (routeKey === 'waterDelayBSend') {
-                newState.granularDelayEnabled = true;
-              }
-              break;
-            case 'granularWaterSend':
-              newState.waterEnabled = true;
-              newState.granularEnabled = true;
-              break;
-            case 'insectsLevel':
-              newState.insectsEnabled = true;
-              break;
-            case 'insectsSharedLevel':
-              break;
-            case 'insects2Level':
-              newState.insects2Enabled = true;
-              break;
-            case 'insectsReverbSend':
-            case 'insDelayASend':
-            case 'insDelayBSend':
-            case 'degradeInsectsSend':
-              if (routeKey === 'insDelayBSend') {
-                newState.granularDelayEnabled = true;
-              }
-              break;
-            case 'granularInsectsSend':
-              newState.granularEnabled = true;
-              break;
-            default:
-              break;
-          }
-          if (ROUTING_DELAY_A_INPUT_KEYS.has(routeKey)) {
-            newState.delayAEnabled = true;
-          }
-          if (ROUTING_DELAY_B_INPUT_KEYS.has(routeKey)) {
-            newState.granularDelayEnabled = true;
-          }
-          if (ROUTING_NATURE_KEYS.has(routeKey) && !newState.birdsEnabled && !newState.birds2Enabled && !newState.frogsEnabled) {
-            newState.birdsEnabled = true;
-          }
-          if (ROUTING_INSECTS_KEYS.has(routeKey) && !newState.insectsEnabled && !newState.insects2Enabled) {
-            newState.insectsEnabled = true;
-          }
-          if (ROUTING_DEGRADE_ACTIVE_KEYS.has(routeKey)) {
-            newState.dynamicsEnabled = true;
-            newState.degradeEnabled = true;
-            if (!newState.driftEnabled && !newState.erosionEnabled) {
-              newState.driftEnabled = true;
-            }
-            if ((newState.driftMix ?? 0) <= 0 && (newState.erosionMix ?? 0) <= 0) {
-              if (newState.erosionEnabled && !newState.driftEnabled) {
-                newState.erosionMix = 1;
-              } else {
-                newState.driftMix = 1;
-              }
-            }
-            if ((newState.degradeLevel ?? 0) <= 0) {
-              newState.degradeLevel = 1;
-            }
-          }
-        }
-
+        newState = applyRoutingActivationForSliderValue(prev, newState as SliderState, key, stateValue);
         newState = preserveRunningDrumSequencerSource(prev, newState as SliderState);
-
-        const pad1WetActive =
-          (newState.synthLevel ?? 0) > 0 ||
-          (newState.pad1ReverbSend ?? 0) > 0 ||
-          (newState.pad1DelayASend ?? 0) > 0 ||
-          (newState.pad1DelayBSend ?? 0) > 0 ||
-          (newState.granularPad1Send ?? 0) > 0 ||
-          (newState.degradePad1Send ?? 0) > 0;
-        const pad2WetActive =
-          (newState.pad2Level ?? 0) > 0 ||
-          (newState.pad2ReverbSend ?? 0) > 0 ||
-          (newState.pad2DelayASend ?? 0) > 0 ||
-          (newState.pad2DelayBSend ?? 0) > 0 ||
-          (newState.granularPad2Send ?? 0) > 0 ||
-          (newState.degradePad2Send ?? 0) > 0;
-        const granularEngineActive =
-          (newState.granularLevel ?? 0) > 0 ||
-          (newState.granularReverbSend ?? 0) > 0 ||
-          (newState.granularDelayASend ?? 0) > 0 ||
-          (newState.granularDelayBSend ?? 0) > 0 ||
-          (newState.granularDegradeSend ?? 0) > 0 ||
-          (newState.delayAGranularSend ?? 0) > 0 ||
-          (newState.delayBGranularSend ?? 0) > 0 ||
-          (newState.granularPad1Send ?? 0) > 0 ||
-          (newState.granularPad2Send ?? 0) > 0 ||
-          (newState.granularLead1Send ?? 0) > 0 ||
-          (newState.granularLead2Send ?? 0) > 0 ||
-          (newState.granularPianoSend ?? 0) > 0 ||
-          (newState.granularDrumSend ?? 0) > 0 ||
-          (newState.granularWavesSend ?? 0) > 0 ||
-          (newState.granularNatureSend ?? 0) > 0 ||
-          (newState.granularWaterSend ?? 0) > 0 ||
-          (newState.granularInsectsSend ?? 0) > 0;
-        const delayAWetActive =
-          (newState.delayAMix ?? 0) > 0 ||
-          (newState.delayAReverbSend ?? 0) > 0 ||
-          (newState.delayAToBSend ?? 0) > 0 ||
-          (newState.delayAGranularSend ?? 0) > 0 ||
-          (newState.delayADegradeSend ?? 0) > 0 ||
-          (newState.delayBToASend ?? 0) > 0 ||
-          (newState.pad1DelayASend ?? 0) > 0 ||
-          (newState.pad2DelayASend ?? 0) > 0 ||
-          (newState.lead1DelayASend ?? 0) > 0 ||
-          (newState.lead2DelayASend ?? 0) > 0 ||
-          (newState.pianoDelayASend ?? 0) > 0 ||
-          (newState.drumDelayASend ?? 0) > 0 ||
-          (newState.oceanDelayASend ?? 0) > 0 ||
-          (newState.waterDelayASend ?? 0) > 0 ||
-          (newState.insDelayASend ?? 0) > 0 ||
-          (newState.natureDelayASend ?? 0) > 0 ||
-          (newState.granularDelayASend ?? 0) > 0;
-        const delayBWetActive =
-          (newState.granularDelayMix ?? 0) > 0 ||
-          (newState.granularDelayReverbSend ?? 0) > 0 ||
-          (newState.delayBToASend ?? 0) > 0 ||
-          (newState.delayBGranularSend ?? 0) > 0 ||
-          (newState.delayBDegradeSend ?? 0) > 0 ||
-          (newState.delayAToBSend ?? 0) > 0 ||
-          (newState.pad1DelayBSend ?? 0) > 0 ||
-          (newState.pad2DelayBSend ?? 0) > 0 ||
-          (newState.lead1DelayBSend ?? 0) > 0 ||
-          (newState.lead2DelayBSend ?? 0) > 0 ||
-          (newState.pianoDelayBSend ?? 0) > 0 ||
-          (newState.drumDelayBSend ?? 0) > 0 ||
-          (newState.oceanDelayBSend ?? 0) > 0 ||
-          (newState.waterDelayBSend ?? 0) > 0 ||
-          (newState.insDelayBSend ?? 0) > 0 ||
-          (newState.natureDelayBSend ?? 0) > 0 ||
-          (newState.granularDelayBSend ?? 0) > 0;
-        const lead1WetActive =
-          (newState.lead1Level ?? 0) > 0 ||
-          (newState.lead1ReverbSend ?? 0) > 0 ||
-          (newState.lead1DelayASend ?? 0) > 0 ||
-          (newState.lead1DelayBSend ?? 0) > 0 ||
-          (newState.granularLead1Send ?? 0) > 0 ||
-          (newState.degradeLead1Send ?? 0) > 0;
-        const lead2WetActive =
-          (newState.lead2Level ?? 0) > 0 ||
-          (newState.lead2ReverbSend ?? 0) > 0 ||
-          (newState.lead2DelayASend ?? 0) > 0 ||
-          (newState.lead2DelayBSend ?? 0) > 0 ||
-          (newState.granularLead2Send ?? 0) > 0 ||
-          (newState.degradeLead2Send ?? 0) > 0;
-        const pianoWetActive =
-          (newState.pianoLevel ?? 0) > 0 ||
-          (newState.pianoReverbSend ?? 0) > 0 ||
-          (newState.pianoDelayASend ?? 0) > 0 ||
-          (newState.pianoDelayBSend ?? 0) > 0 ||
-          (newState.granularPianoSend ?? 0) > 0 ||
-          (newState.degradePianoSend ?? 0) > 0;
-        const drumWetActive =
-          isDrumSequencerActive(newState as SliderState) ||
-          (newState.drumLevel ?? 0) > 0 ||
-          (newState.drumReverbSend ?? 0) > 0 ||
-          (newState.drumDelayASend ?? 0) > 0 ||
-          (newState.drumDelayBSend ?? 0) > 0 ||
-          (newState.granularDrumSend ?? 0) > 0 ||
-          (newState.degradeDrumSend ?? 0) > 0;
-        const oceanWetActive =
-          (newState.oceanSampleLevel ?? 0) > 0 ||
-          (newState.oceanReverbSend ?? 0) > 0 ||
-          (newState.oceanDelayASend ?? 0) > 0 ||
-          (newState.oceanDelayBSend ?? 0) > 0 ||
-          (newState.granularWavesSend ?? 0) > 0 ||
-          (newState.degradeWavesSend ?? 0) > 0;
-        const birdsWetActive =
-          (newState.birdsLevel ?? 0) > 0 ||
-          (newState.natureReverbSend ?? 0) > 0 ||
-          (newState.natureDelayASend ?? 0) > 0 ||
-          (newState.natureDelayBSend ?? 0) > 0 ||
-          (newState.granularNatureSend ?? 0) > 0 ||
-          (newState.degradeNatureSend ?? 0) > 0;
-        const birds2WetActive =
-          (newState.birds2Level ?? 0) > 0 ||
-          (newState.natureReverbSend ?? 0) > 0 ||
-          (newState.natureDelayASend ?? 0) > 0 ||
-          (newState.natureDelayBSend ?? 0) > 0 ||
-          (newState.granularNatureSend ?? 0) > 0 ||
-          (newState.degradeNatureSend ?? 0) > 0;
-        const frogsWetActive =
-          (newState.frogsLevel ?? 0) > 0 ||
-          (newState.natureReverbSend ?? 0) > 0 ||
-          (newState.natureDelayASend ?? 0) > 0 ||
-          (newState.natureDelayBSend ?? 0) > 0 ||
-          (newState.granularNatureSend ?? 0) > 0 ||
-          (newState.degradeNatureSend ?? 0) > 0;
-        const waterWetActive =
-          (newState.waterLevel ?? 0) > 0 ||
-          (newState.waterReverbSend ?? 0) > 0 ||
-          (newState.waterDelayASend ?? 0) > 0 ||
-          (newState.waterDelayBSend ?? 0) > 0 ||
-          (newState.waterLayerHardDrops ?? 0) > 0 ||
-          (newState.waterLayerWaterDrops ?? 0) > 0 ||
-          (newState.waterLayerTurbulence ?? 0) > 0 ||
-          (newState.waterLayerBubbling ?? 0) > 0 ||
-          (newState.waterLayerSurf ?? 0) > 0 ||
-          (newState.waterLayerChannels ?? 0) > 0 ||
-          (newState.granularWaterSend ?? 0) > 0 ||
-          (newState.degradeWaterSend ?? 0) > 0;
-        const insectsSharedWetActive =
-          (newState.insectsReverbSend ?? 0) > 0 || (newState.insDelayASend ?? 0) > 0 || (newState.insDelayBSend ?? 0) > 0 || (newState.granularInsectsSend ?? 0) > 0 || (newState.degradeInsectsSend ?? 0) > 0;
-
-        if (!granularEngineActive) {
-          newState.granularEnabled = false;
-        }
-        if (!delayAWetActive) {
-          newState.delayAEnabled = false;
-        }
-        if (!delayBWetActive) {
-          newState.granularDelayEnabled = false;
-        }
-        if (!lead1WetActive) {
-          newState.leadEnabled = false;
-        }
-        if (!lead2WetActive) {
-          newState.lead2Enabled = false;
-        }
-        if (!pianoWetActive) {
-          newState.pianoEnabled = false;
-        }
-        if (!drumWetActive) {
-          newState.drumEnabled = false;
-        }
-        if (!oceanWetActive) {
-          newState.oceanSampleEnabled = false;
-        }
-        if (!birdsWetActive) {
-          newState.birdsEnabled = false;
-        }
-        if (!birds2WetActive) {
-          newState.birds2Enabled = false;
-        }
-        if (!frogsWetActive) {
-          newState.frogsEnabled = false;
-        }
-        if (!pad1WetActive) {
-          newState.padEnabled = false;
-        }
-        if (!pad2WetActive) {
-          newState.pad2Enabled = false;
-        }
-        if (!waterWetActive) {
-          newState.waterEnabled = false;
-        }
-        if ((newState.insectsLevel ?? 0) <= 0 && !insectsSharedWetActive) {
-          newState.insectsEnabled = false;
-        }
-        if ((newState.insects2Level ?? 0) <= 0 && !insectsSharedWetActive) {
-          newState.insects2Enabled = false;
-        }
+        newState = normalizeRoutingRuntimeEnabledFlags(newState as SliderState);
 
         // When drum morph slider or preset selectors change, apply morphed values to sliders.
         const drumPresetRoute = getDrumVoicePresetRoute(key);
@@ -2157,10 +1080,7 @@ const App: React.FC = () => {
         }
 
         if (preservedEnabledFlags) {
-          newState = {
-            ...newState,
-            ...preservedEnabledFlags,
-          };
+          newState = restoreRuntimeEnabledFlags(newState as SliderState, preservedEnabledFlags);
           newState = preserveRunningDrumSequencerSource(prev, newState as SliderState);
         }
 
@@ -2634,7 +1554,7 @@ const App: React.FC = () => {
   );
 
   useEffect(() => {
-    if (!isSonicParityMode()) return;
+    if (!sonicParityMode) return;
     let cancelled = false;
     import('./audio/sonicParityHarness')
       .then(({ installSonicParityHarness }) => {
@@ -2648,7 +1568,7 @@ const App: React.FC = () => {
       cancelled = true;
       window.__kesshoSonicParity?.teardown();
     };
-  }, []);
+  }, [sonicParityMode]);
 
   const {
     advancedTransportButton,
@@ -2723,87 +1643,6 @@ const App: React.FC = () => {
     startProductPlayback: handleStart,
     stopProductPlayback: handleStop,
   });
-
-  const renderMacAudioStatusPill = useCallback(() => {
-    if (!macShellAvailable) return null;
-    const outputName = macAudioOutputStatus?.outputName ?? 'Mac Output';
-    const routeLabel = macAudioOutputStatus?.isAirPlay ? 'AirPlay' : macAudioOutputStatus?.transportType ? macAudioOutputStatus.transportType : 'macOS';
-    const sampleRate = macAudioOutputStatus?.sampleRate ? `${Math.round(macAudioOutputStatus.sampleRate / 100) / 10}k` : null;
-
-    return (
-      <div style={styles.macAudioStatus} aria-label="macOS audio output">
-        <span style={styles.macAudioStatusText}>
-          {routeLabel} · {outputName}
-          {sampleRate ? ` · ${sampleRate}` : ''}
-        </span>
-        <button
-          type="button"
-          style={{
-            ...styles.macAudioStatusButton,
-            ...(macAirPlayPerformanceActive ? styles.macAudioStatusButtonActive : {}),
-          }}
-          aria-pressed={macAirPlayPerformanceActive}
-          onClick={handleMacAirPlayPerformanceToggle}
-          title="Toggle AirPlay performance mode"
-        >
-          Stable
-        </button>
-        <button type="button" style={styles.macAudioStatusButton} onClick={openMacSoundSettings} title="Open macOS Sound settings">
-          Sound
-        </button>
-      </div>
-    );
-  }, [handleMacAirPlayPerformanceToggle, macAirPlayPerformanceActive, macAudioOutputStatus, macShellAvailable, openMacSoundSettings]);
-
-  const renderBackgroundAudioStatusPill = useCallback(() => {
-    if (productRuntimeMode !== 'core-product') return null;
-    const wakeLockAction = backgroundAudioStatus.wakeLockStatus === 'active'
-      ? releaseVisiblePageWakeLock
-      : requestVisiblePageWakeLock;
-    const wakeLockDisabled = backgroundAudioStatus.wakeLockStatus === 'unsupported' || backgroundAudioStatus.pageStatus !== 'foreground';
-    const wakeLockLabel = backgroundAudioStatus.wakeLockStatus === 'active' ? 'Release' : 'Wake';
-    const nativeProbeLabel = nativeProductRendererDiagnosticStatus.active
-      ? nativeProductRendererDiagnosticStatus.probePeak !== null
-        ? ` · Native ${nativeProductRendererDiagnosticStatus.probePeak.toFixed(3)}`
-        : nativeProductRendererDiagnosticStatus.bridgeAvailable
-          ? ' · Native ready'
-          : ' · Native waiting'
-      : '';
-
-    return (
-      <div style={styles.backgroundAudioStatus} aria-label="Browser background audio status" title={backgroundAudioStatus.limitation}>
-        <span style={styles.macAudioStatusText}>
-          {backgroundAudioStatus.pageStatus === 'foreground' ? 'Foreground' : 'Hidden'}
-          {' · '}
-          {backgroundAudioStatus.productLifecycleState}
-          {' · Media '}
-          {backgroundAudioStatus.mediaSessionStatus}
-          {' · Wake '}
-          {backgroundAudioStatus.wakeLockStatus}
-          {nativeProbeLabel}
-        </span>
-        <button
-          type="button"
-          style={{
-            ...styles.macAudioStatusButton,
-            ...(backgroundAudioStatus.wakeLockStatus === 'active' ? styles.macAudioStatusButtonActive : {}),
-            ...(wakeLockDisabled ? styles.statusButtonDisabled : {}),
-          }}
-          onClick={() => void wakeLockAction()}
-          disabled={wakeLockDisabled}
-          title="Visible-page Wake Lock. Browser/mobile lock-screen and app-background playback remain best-effort."
-        >
-          {wakeLockLabel}
-        </button>
-      </div>
-    );
-  }, [
-    backgroundAudioStatus,
-    nativeProductRendererDiagnosticStatus,
-    productRuntimeMode,
-    releaseVisiblePageWakeLock,
-    requestVisiblePageWakeLock,
-  ]);
 
   const productPageRuntimeSurface = useProductRuntimePageSurface({
     telemetry: {
@@ -3848,135 +2687,15 @@ const App: React.FC = () => {
   // These are temporary - cleared when reaching an endpoint
   const morphManualOverridesRef = useRef<Record<string, { value: number; morphPosition: number }>>({});
 
-  // Reapply drum morph interpolation when a drum preset changes while in mid-morph
-  // This mirrors the main morph system's behavior
-  // Only re-runs when actual drum preset names change (not on every state change)
-  const prevDrumPresetsRef = useRef<Record<string, string>>({});
-
-  const drumPresetFingerprint = `${state.drumSubPresetA}|${state.drumSubPresetB}|${state.drumKickPresetA}|${state.drumKickPresetB}|${state.drumClickPresetA}|${state.drumClickPresetB}|${state.drumBeepHiPresetA}|${state.drumBeepHiPresetB}|${state.drumBeepLoPresetA}|${state.drumBeepLoPresetB}|${state.drumNoisePresetA}|${state.drumNoisePresetB}|${state.drumMembranePresetA}|${state.drumMembranePresetB}`;
-
-  useEffect(() => {
-    // Check each drum voice for preset changes
-    const drumVoices: DrumPresetVoice[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'];
-    const presetKeys: Record<DrumPresetVoice, { a: keyof SliderState; b: keyof SliderState; morph: keyof SliderState }> = {
-      sub: { a: 'drumSubPresetA', b: 'drumSubPresetB', morph: 'drumSubMorph' },
-      kick: {
-        a: 'drumKickPresetA',
-        b: 'drumKickPresetB',
-        morph: 'drumKickMorph',
-      },
-      click: {
-        a: 'drumClickPresetA',
-        b: 'drumClickPresetB',
-        morph: 'drumClickMorph',
-      },
-      beepHi: {
-        a: 'drumBeepHiPresetA',
-        b: 'drumBeepHiPresetB',
-        morph: 'drumBeepHiMorph',
-      },
-      beepLo: {
-        a: 'drumBeepLoPresetA',
-        b: 'drumBeepLoPresetB',
-        morph: 'drumBeepLoMorph',
-      },
-      noise: {
-        a: 'drumNoisePresetA',
-        b: 'drumNoisePresetB',
-        morph: 'drumNoiseMorph',
-      },
-      membrane: {
-        a: 'drumMembranePresetA',
-        b: 'drumMembranePresetB',
-        morph: 'drumMembraneMorph',
-      },
-    };
-
-    let nextResolvedState: SliderState | null = null;
-    for (const voice of drumVoices) {
-      const keys = presetKeys[voice];
-      const currentState: SliderState = nextResolvedState ?? stateRef.current; // Read current state from ref
-      const presetA = currentState[keys.a] as string;
-      const presetB = currentState[keys.b] as string;
-      const morphValue = currentState[keys.morph] as number;
-
-      const prevA = prevDrumPresetsRef.current[keys.a];
-      const prevB = prevDrumPresetsRef.current[keys.b];
-
-      const presetAChanged = presetA !== prevA;
-      const presetBChanged = presetB !== prevB;
-
-      // Update refs
-      prevDrumPresetsRef.current[keys.a] = presetA;
-      prevDrumPresetsRef.current[keys.b] = presetB;
-
-      // Only reapply if a preset changed and we're in mid-morph
-      if (!presetAChanged && !presetBChanged) continue;
-
-      // Check if we're in mid-morph (not at endpoints) using shared utility
-      // Drum morph uses 0-1 scale
-      if (!isInMidMorph(morphValue)) continue;
-
-      // Reapply the morphed values using applyMorphToState
-      // This recalculates interpolation with the new preset
-      const drumMorphOverrideState = getCurrentDrumMorphOverrideState(currentState);
-      const morphedParams = applyMorphToState(currentState, voice, drumMorphOverrideState);
-      nextResolvedState = { ...currentState, ...morphedParams };
-
-      // Also reapply dual range interpolation if there are overrides
-      const currentValues: Record<string, number> = {};
-      const overrides = getProductDrumMorphDualRangeOverrides(drumMorphOverrideState, voice);
-      for (const param of Object.keys(overrides)) {
-        const stateVal = currentState[param as keyof SliderState];
-        if (typeof stateVal === 'number') {
-          currentValues[param] = stateVal;
-        }
-      }
-
-      const interpolatedRanges = interpolateProductDrumMorphDualRanges(
-        drumMorphOverrideState,
-        voice,
-        morphValue,
-        currentValues,
-      );
-
-      for (const [param, interpState] of Object.entries(interpolatedRanges)) {
-        const paramKey = param as keyof SliderState;
-
-        if (interpState.isDualMode && interpState.range) {
-          setSliderModes((prev) => ({
-            ...prev,
-            [paramKey as string]: prev[paramKey as string] ?? 'sampleHold',
-          }));
-          setDualSliderRanges((prev) => ({
-            ...prev,
-            [paramKey]: interpState.range!,
-          }));
-        } else {
-          setSliderModes((prev) => {
-            const next = { ...prev };
-            delete next[paramKey as string];
-            return next;
-          });
-          setDualSliderRanges((prev) => {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { [paramKey]: _, ...rest } = prev;
-            return rest as typeof prev;
-          });
-        }
-      }
-    }
-    if (nextResolvedState) {
-      const currentState = stateRef.current;
-      const liveResolvedState = preserveRunningDrumSequencerSource(currentState, nextResolvedState);
-      setState(liveResolvedState);
-      scheduleProductRuntimeParamUpdate(liveResolvedState, {
-        immediate: true,
-        reason: 'morph-control-change',
-        triggerCritical: true,
-      });
-    }
-  }, [drumPresetFingerprint, scheduleProductRuntimeParamUpdate, stateRef, getCurrentDrumMorphOverrideState]); // Only re-run when drum preset names actually change
+  useDrumMorphPresetInterpolationSync({
+    state,
+    stateRef,
+    setState,
+    setSliderModes,
+    setDualSliderRanges,
+    getCurrentDrumMorphOverrideState,
+    scheduleProductRuntimeParamUpdate,
+  });
 
   const { handleMorphPositionChange } = useMorphPositionRuntimeSurface({
     morphPresetA,
@@ -4237,31 +2956,18 @@ const App: React.FC = () => {
     </PresetPoolProvider>
   );
 
-  if (isSnowflakeGeneratorRoute) {
-    const clearGeneratorRoute = () => {
-      if (typeof window === 'undefined') return;
-      const params = new URLSearchParams(window.location.search);
-      params.delete('snowflakeGenerator');
-      const nextSearch = params.toString();
-      window.history.replaceState(null, '', `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`);
-    };
-
+  if (snowflakeGeneratorRoute) {
     return (
       <SnowflakeGeneratorPage
         onBack={() => {
-          clearGeneratorRoute();
+          clearSnowflakeGeneratorRoute();
           setUiMode('snowflake');
         }}
       />
     );
   }
 
-  if (isSnowflakePrototypeRoute) {
-    const clearPrototypeRoute = () => {
-      if (typeof window === 'undefined') return;
-      window.history.replaceState(null, '', `${window.location.pathname}${window.location.hash}`);
-    };
-
+  if (snowflakePrototypeRoute) {
     return (
       <SnowflakePrototypePage
         state={state}
@@ -4269,11 +2975,11 @@ const App: React.FC = () => {
         sliderModes={sliderModes}
         {...snowflakePrototypePlaybackProps}
         onBack={() => {
-          clearPrototypeRoute();
+          clearSnowflakePrototypeRoute();
           setUiMode('snowflake');
         }}
         onShowAdvanced={() => {
-          clearPrototypeRoute();
+          clearSnowflakePrototypeRoute();
           setUiMode('advanced');
         }}
       />
@@ -4306,8 +3012,20 @@ const App: React.FC = () => {
           />
         </React.Suspense>
         {renderJourneyOverridePrompt()}
-        {renderMacAudioStatusPill()}
-        {renderBackgroundAudioStatusPill()}
+        <MacAudioStatusPill
+          macShellAvailable={macShellAvailable}
+          macAudioOutputStatus={macAudioOutputStatus}
+          macAirPlayPerformanceActive={macAirPlayPerformanceActive}
+          onToggleAirPlayPerformance={handleMacAirPlayPerformanceToggle}
+          onOpenMacSoundSettings={openMacSoundSettings}
+        />
+        <BackgroundAudioStatusPill
+          productRuntimeMode={productRuntimeMode}
+          backgroundAudioStatus={backgroundAudioStatus}
+          nativeProductRendererDiagnosticStatus={nativeProductRendererDiagnosticStatus}
+          requestVisiblePageWakeLock={requestVisiblePageWakeLock}
+          releaseVisiblePageWakeLock={releaseVisiblePageWakeLock}
+        />
       </>,
     );
   }
@@ -4403,8 +3121,20 @@ const App: React.FC = () => {
             visibility: showSplash ? 'hidden' : 'visible',
           }}
         >
-          {renderMacAudioStatusPill()}
-          {renderBackgroundAudioStatusPill()}
+          <MacAudioStatusPill
+            macShellAvailable={macShellAvailable}
+            macAudioOutputStatus={macAudioOutputStatus}
+            macAirPlayPerformanceActive={macAirPlayPerformanceActive}
+            onToggleAirPlayPerformance={handleMacAirPlayPerformanceToggle}
+            onOpenMacSoundSettings={openMacSoundSettings}
+          />
+          <BackgroundAudioStatusPill
+            productRuntimeMode={productRuntimeMode}
+            backgroundAudioStatus={backgroundAudioStatus}
+            nativeProductRendererDiagnosticStatus={nativeProductRendererDiagnosticStatus}
+            requestVisiblePageWakeLock={requestVisiblePageWakeLock}
+            releaseVisiblePageWakeLock={releaseVisiblePageWakeLock}
+          />
           <ProductRuntimeSwitch
             currentMode={productRuntimeMode}
             modes={productRuntimeModes}
@@ -4468,8 +3198,20 @@ const App: React.FC = () => {
       >
         <CpuOverlay setPerfMonitorEnabled={setProductPerfMonitorEnabled} setPerfUpdateCallback={setProductPerfUpdateCallback} />
         {renderJourneyOverridePrompt()}
-        {renderMacAudioStatusPill()}
-        {renderBackgroundAudioStatusPill()}
+        <MacAudioStatusPill
+          macShellAvailable={macShellAvailable}
+          macAudioOutputStatus={macAudioOutputStatus}
+          macAirPlayPerformanceActive={macAirPlayPerformanceActive}
+          onToggleAirPlayPerformance={handleMacAirPlayPerformanceToggle}
+          onOpenMacSoundSettings={openMacSoundSettings}
+        />
+        <BackgroundAudioStatusPill
+          productRuntimeMode={productRuntimeMode}
+          backgroundAudioStatus={backgroundAudioStatus}
+          nativeProductRendererDiagnosticStatus={nativeProductRendererDiagnosticStatus}
+          requestVisiblePageWakeLock={requestVisiblePageWakeLock}
+          releaseVisiblePageWakeLock={releaseVisiblePageWakeLock}
+        />
         {/* Controls - centered */}
         <div className="app-controls" style={{ ...styles.controls, paddingTop: '12px', ...m?.controls }}>
           {!advancedTransportButton.isPlaying ? (
@@ -4874,300 +3616,19 @@ const App: React.FC = () => {
           </React.Suspense>
         </div>
 
-        {/* Debug Panel */}
-        <div className="app-debug-panel" style={{ ...styles.debugPanel, ...m?.debugPanel }}>
-          <h3 style={{ ...styles.panelTitle, color: '#a855f7' }}>Debug Info</h3>
-          <div style={styles.debugRow}>
-            <span style={styles.debugLabel}>UTC Bucket:</span>
-            <span style={styles.debugValue}>{engineState.currentBucket || '—'}</span>
-          </div>
-          <div style={styles.debugRow}>
-            <span style={styles.debugLabel}>Seed:</span>
-            <span style={styles.debugValue}>{engineState.currentSeed ? engineState.currentSeed.toString(16).toUpperCase() : '—'}</span>
-          </div>
-          <div style={styles.debugRow}>
-            <span style={styles.debugLabel}>Scale Family:</span>
-            <span style={styles.debugValue}>
-              {engineState.harmonyState?.scaleFamily.name
-                ? `${NOTE_NAMES[engineState.harmonyState.effectiveRoot] ?? NOTE_NAMES[state.cofDriftEnabled ? calculateDriftedRoot(state.rootNote, engineState.cofCurrentStep) : state.rootNote]} ${engineState.harmonyState.scaleFamily.name}`
-                : '—'}
-            </span>
-          </div>
-          {state.cofDriftEnabled && (
-            <div style={styles.debugRow}>
-              <span style={styles.debugLabel}>CoF Key:</span>
-              <span style={styles.debugValue}>
-                {NOTE_NAMES[engineState.harmonyState?.effectiveRoot ?? calculateDriftedRoot(state.rootNote, engineState.cofCurrentStep)]} (step: {engineState.cofCurrentStep > 0 ? '+' : ''}
-                {engineState.cofCurrentStep})
-              </span>
-            </div>
-          )}
-          <div style={styles.debugRow}>
-            <span style={styles.debugLabel}>Current Chord:</span>
-            <span style={styles.debugValue}>{engineState.harmonyState ? formatChordDegrees(engineState.harmonyState.currentChord.midiNotes) : '—'}</span>
-          </div>
-          <div style={styles.debugRow}>
-            <span style={styles.debugLabel}>Next Harmony Event:</span>
-            <span style={styles.debugValue}>
-              {engineState.isRunning && engineState.transportDebug && engineState.transportDebug.nextHarmonyEventIn !== null
-                ? `${engineState.transportDebug.nextHarmonyEventIn.toFixed(1)}s`
-                : '—'}
-            </span>
-          </div>
-          <div style={styles.debugRow}>
-            <span style={styles.debugLabel}>Next Phrase:</span>
-            <span style={styles.debugValue}>{engineState.isRunning && engineState.transportDebug ? `${engineState.transportDebug.nextPhraseBoundaryIn.toFixed(1)}s` : '—'}</span>
-          </div>
-          <div style={styles.debugRow}>
-            <span style={styles.debugLabel}>Next Progression:</span>
-            <span style={styles.debugValue}>
-              {engineState.isRunning && engineState.transportDebug && engineState.transportDebug.nextProgressionStepIn !== null
-                ? `${engineState.transportDebug.nextProgressionStepIn.toFixed(1)}s`
-                : '—'}
-            </span>
-          </div>
-          <div style={styles.debugRow}>
-            <span style={styles.debugLabel}>Phrase Length:</span>
-            <span style={styles.debugValue}>{engineState.transportDebug ? `${engineState.transportDebug.effectivePhraseSeconds.toFixed(2)}s` : '—'}</span>
-          </div>
-          <div style={styles.debugRow}>
-            <span style={styles.debugLabel}>Beat BPM:</span>
-            <span style={styles.debugValue}>{engineState.transportDebug ? `${engineState.transportDebug.effectiveBpm.toFixed(1)}` : '—'}</span>
-          </div>
-          {productRuntimeMode === 'core-product' && (
-            <>
-              <div
-                style={{
-                  borderTop: '1px solid #333',
-                  margin: '8px 0',
-                  paddingTop: '8px',
-                }}
-              >
-                <span
-                  style={{
-                    color: '#a855f7',
-                    fontSize: '0.7rem',
-                    fontWeight: 'bold',
-                  }}
-                >
-                  Product Core
-                </span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>Earth:</span>
-                <span style={styles.debugValue}>{productCoreDebugSummary?.earth ?? '—'}</span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>Walk:</span>
-                <span style={styles.debugValue}>{productCoreDebugSummary?.randomWalk ?? '—'}</span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>S&amp;H:</span>
-                <span style={styles.debugValue}>{productCoreDebugSummary?.sampleHold ?? '—'}</span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>BG:</span>
-                <span style={styles.debugValue}>{backgroundAudioStatus.pageStatus} · {backgroundAudioStatus.lifecycleEvent} · {backgroundAudioStatus.productLifecycleState}</span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>Wake:</span>
-                <span style={styles.debugValue}>{backgroundAudioStatus.wakeLockStatus}</span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>Media:</span>
-                <span style={styles.debugValue}>{backgroundAudioStatus.mediaSessionStatus}</span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>Native:</span>
-                <span style={styles.debugValue}>
-                  {nativeProductRendererDiagnosticStatus.active
-                    ? [
-                      nativeProductRendererDiagnosticStatus.bridgeAvailable ? 'bridge' : 'waiting',
-                      nativeProductRendererDiagnosticStatus.rendererRunning ? 'running' : 'idle',
-                      nativeProductRendererDiagnosticStatus.probePeak !== null
-                        ? `peak ${nativeProductRendererDiagnosticStatus.probePeak.toFixed(3)}`
-                        : null,
-                      nativeProductRendererDiagnosticStatus.probeRms !== null
-                        ? `rms ${nativeProductRendererDiagnosticStatus.probeRms.toFixed(3)}`
-                        : null,
-                      nativeProductRendererDiagnosticStatus.routeChangeCount > 0
-                        ? `route ${nativeProductRendererDiagnosticStatus.routeChangeCount}`
-                        : null,
-                      nativeProductRendererDiagnosticStatus.interruptionBeginCount + nativeProductRendererDiagnosticStatus.interruptionEndCount > 0
-                        ? `int ${nativeProductRendererDiagnosticStatus.interruptionBeginCount}/${nativeProductRendererDiagnosticStatus.interruptionEndCount}`
-                        : null,
-                      nativeProductRendererDiagnosticStatus.mediaServicesResetCount > 0
-                        ? `reset ${nativeProductRendererDiagnosticStatus.mediaServicesResetCount}`
-                        : null,
-                      nativeProductRendererDiagnosticStatus.remoteCommandCount > 0
-                        ? `cmd ${nativeProductRendererDiagnosticStatus.lastRemoteCommand ?? nativeProductRendererDiagnosticStatus.remoteCommandCount}`
-                        : null,
-                      nativeProductRendererDiagnosticStatus.lastAudioSessionEvent,
-                    ].filter(Boolean).join(' · ')
-                    : '—'}
-                </span>
-              </div>
-            </>
-          )}
-          <div
-            style={{
-              borderTop: '1px solid #333',
-              margin: '8px 0',
-              paddingTop: '8px',
-            }}
-          >
-            <span
-              style={{
-                color: '#a855f7',
-                fontSize: '0.7rem',
-                fontWeight: 'bold',
-              }}
-            >
-              FX Ownership
-            </span>
-          </div>
-          {(['delayA', 'delayB', 'granular', 'reverb'] as const).map((bus) => {
-            const ownerState = engineState.fxOwners[bus];
-            const ownerLabel = ownerState.owner ? FX_OWNER_LABELS[ownerState.owner] : '—';
-            const originLabel = ownerState.lastOrigin ? FX_ORIGIN_LABELS[ownerState.lastOrigin] : null;
-            return (
-              <div key={bus} style={styles.debugRow}>
-                <span style={styles.debugLabel}>{FX_BUS_LABELS[bus]}:</span>
-                <span style={styles.debugValue}>{ownerState.owner ? `${ownerLabel}${ownerState.active ? '' : ' (stale)'}${originLabel ? ` · ${originLabel}` : ''}` : '—'}</span>
-              </div>
-            );
-          })}
-
-          {/* Tension / Chord Complexity */}
-          {engineState.harmonyState && (
-            <>
-              <div
-                style={{
-                  borderTop: '1px solid #333',
-                  margin: '8px 0',
-                  paddingTop: '8px',
-                }}
-              >
-                <span
-                  style={{
-                    color: '#a855f7',
-                    fontSize: '0.7rem',
-                    fontWeight: 'bold',
-                  }}
-                >
-                  Tension &amp; Chord Complexity
-                </span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>Scale Tension:</span>
-                <span style={styles.debugValue}>{engineState.harmonyState.scaleTension.toFixed(2)}</span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>Chord Tension:</span>
-                <span style={styles.debugValue}>{engineState.harmonyState.chordTension.toFixed(2)}</span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>Chord Type:</span>
-                <span style={styles.debugValue}>
-                  {(() => {
-                    const ct = engineState.harmonyState!.chordTension;
-                    if (ct < 0.2) return 'Triads';
-                    if (ct < 0.4) return 'Triads + Sus';
-                    if (ct < 0.6) return '7th Chords';
-                    if (ct < 0.8) return '9ths / Extensions';
-                    return 'Clusters / Quartal';
-                  })()}
-                </span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>Chord Size:</span>
-                <span style={styles.debugValue}>{engineState.harmonyState.currentChord.midiNotes.length} notes</span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>Current Degree:</span>
-                <span style={styles.debugValue}>{['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'][engineState.harmonyState.currentDegree] ?? '—'}</span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>Tension Arc:</span>
-                <span style={styles.debugValue}>
-                  {engineState.harmonyState.tensionArc.type}
-                  {engineState.harmonyState.tensionArc.phrasesRemaining > 0 ? ` (${engineState.harmonyState.tensionArc.phrasesRemaining} left)` : ''}
-                </span>
-              </div>
-            </>
-          )}
-
-          {/* Journey Debug Info */}
-          {isJourneyPlaying && journey.config && (
-            <>
-              <div
-                style={{
-                  borderTop: '1px solid #333',
-                  margin: '8px 0',
-                  paddingTop: '8px',
-                }}
-              >
-                <span
-                  style={{
-                    color: '#a855f7',
-                    fontSize: '0.7rem',
-                    fontWeight: 'bold',
-                  }}
-                >
-                  Journey Mode
-                </span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>Phase:</span>
-                <span style={styles.debugValue}>{journey.state.phase}</span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>Current:</span>
-                <span style={styles.debugValue}>{journey.config.nodes.find((n) => n.id === journey.state.currentNodeId)?.presetName || '—'}</span>
-              </div>
-              {journey.state.phase === 'morphing' && (
-                <>
-                  <div style={styles.debugRow}>
-                    <span style={styles.debugLabel}>Morphing To:</span>
-                    <span style={styles.debugValue}>{journey.config.nodes.find((n) => n.id === journey.state.nextNodeId)?.presetName || '—'}</span>
-                  </div>
-                  <div style={styles.debugRow}>
-                    <span style={styles.debugLabel}>Morph Progress:</span>
-                    <span style={styles.debugValue}>{(journey.state.morphProgress * 100).toFixed(0)}%</span>
-                  </div>
-                  <div style={styles.debugRow}>
-                    <span style={styles.debugLabel}>Morph Time Left:</span>
-                    <span style={styles.debugValue}>{(journey.state.resolvedMorphDuration * (1 - journey.state.morphProgress) * (state.phraseLength ?? 16)).toFixed(1)}s</span>
-                  </div>
-                </>
-              )}
-              {journey.state.phase === 'playing' && (
-                <>
-                  <div style={styles.debugRow}>
-                    <span style={styles.debugLabel}>Phrases Left:</span>
-                    <span style={styles.debugValue}>{Math.ceil(journey.state.resolvedPhraseDuration * (1 - journey.state.phraseProgress))}</span>
-                  </div>
-                  <div style={styles.debugRow}>
-                    <span style={styles.debugLabel}>Phrase Time Left:</span>
-                    <span style={styles.debugValue}>{(journey.state.resolvedPhraseDuration * (1 - journey.state.phraseProgress) * (state.phraseLength ?? 16)).toFixed(1)}s</span>
-                  </div>
-                  <div style={styles.debugRow}>
-                    <span style={styles.debugLabel}>Next Preset:</span>
-                    <span style={styles.debugValue}>{journey.config.nodes.find((n) => n.id === journey.state.plannedNextNodeId)?.presetName || '—'}</span>
-                  </div>
-                </>
-              )}
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>Morph Direction:</span>
-                <span style={styles.debugValue}>{journeyMorphDirectionRef.current}</span>
-              </div>
-              <div style={styles.debugRow}>
-                <span style={styles.debugLabel}>Morph Pos:</span>
-                <span style={styles.debugValue}>{morphPosition}%</span>
-              </div>
-            </>
-          )}
-        </div>
+        <AppDebugPanel
+          state={state}
+          engineState={engineState}
+          productRuntimeMode={productRuntimeMode}
+          productCoreDebugSummary={productCoreDebugSummary}
+          backgroundAudioStatus={backgroundAudioStatus}
+          nativeProductRendererDiagnosticStatus={nativeProductRendererDiagnosticStatus}
+          isJourneyPlaying={isJourneyPlaying}
+          journey={journey}
+          journeyMorphDirection={journeyMorphDirectionRef.current}
+          morphPosition={morphPosition}
+          mobileDebugPanelStyle={m?.debugPanel}
+        />
 
         <AppFooterMark />
       </div>

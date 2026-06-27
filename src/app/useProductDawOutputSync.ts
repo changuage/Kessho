@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import {
   filterDawOutputRoutingConfigForSources,
@@ -14,19 +15,23 @@ import { getActiveDawOutputSourceIds } from '../ui/routing';
 import type { SliderState } from '../ui/state';
 
 interface ProductDawOutputSyncOptions {
+  productRuntimeMode: ProductRuntimeSelectionMode;
   state: SliderState;
   dawOutputRouting: DawOutputRoutingConfig;
   dawOutputDevice: DawOutputDeviceSelection;
 }
 
 export function useProductDawOutputSync({
+  productRuntimeMode,
   state,
   dawOutputRouting,
   dawOutputDevice,
 }: ProductDawOutputSyncOptions): void {
+  const productRuntimeActive = productRuntimeMode === 'core-product';
   const activeDawOutputSources = useMemo(
-    () => getActiveDawOutputSourceIds(state) as DawOutputSourceId[],
+    () => productRuntimeActive ? getActiveDawOutputSourceIds(state) as DawOutputSourceId[] : [],
     [
+      productRuntimeActive,
       state.padEnabled,
       state.pad2Enabled,
       state.leadEnabled,
@@ -57,14 +62,16 @@ export function useProductDawOutputSync({
   useEffect(() => {
     const config = sanitizeDawOutputRoutingConfig(dawOutputRouting);
     saveDawOutputRoutingConfig(config);
+    if (!productRuntimeActive) return;
     productEngine.setDawOutputRouting(filterDawOutputRoutingConfigForSources(config, activeDawOutputSources));
-  }, [activeDawOutputSources, dawOutputRouting]);
+  }, [activeDawOutputSources, dawOutputRouting, productRuntimeActive]);
 
   useEffect(() => {
     const selection = sanitizeDawOutputDeviceSelection(dawOutputDevice);
     saveDawOutputDeviceSelection(selection);
+    if (!productRuntimeActive) return;
     void productEngine.setDawOutputDeviceId(selection.deviceId || null).catch((error: unknown) => {
       console.warn('DAW output device selection failed:', error);
     });
-  }, [dawOutputDevice]);
+  }, [dawOutputDevice, productRuntimeActive]);
 }

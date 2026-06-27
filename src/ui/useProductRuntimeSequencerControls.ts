@@ -118,117 +118,133 @@ function commitCoreProductSequencerEvents(
 }
 
 export function useProductRuntimeSequencerControls({
+  productRuntimeMode,
   stateRef,
 }: ProductRuntimeSequencerControlsOptions): ProductRuntimeSequencerControls {
+  const productRuntimeActive = productRuntimeMode === 'core-product';
+
   const setProductDrumEuclidEvolveConfigs = useCallback((configs: readonly unknown[]): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('drumEuclidEvolveConfigs', configs),
       createCoreProductSequencerEvolveConfigEvents('drum', configs),
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const setProductSynthEuclidEvolveConfigs = useCallback((configs: readonly unknown[]): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('synthEuclidEvolveConfigs', configs),
       createCoreProductSequencerEvolveConfigEvents('synth', configs),
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const setProductDrumEuclidClockDivs = useCallback((divs: readonly unknown[]): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('drumEuclidClockDivs', divs),
       createCoreProductSequencerClockDivisionEvents('drum', divs),
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const setProductSynthEuclidClockDivs = useCallback((divs: readonly unknown[]): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('synthEuclidClockDivs', divs),
       createCoreProductSequencerClockDivisionEvents('synth', divs),
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const setProductDrumEuclidSwings = useCallback((swings: readonly unknown[]): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('drumEuclidSwings', swings),
       createCoreProductSequencerSwingEvents('drum', swings),
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const setProductSynthEuclidSwings = useCallback((swings: readonly unknown[]): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('synthEuclidSwings', swings),
       createCoreProductSequencerSwingEvents('synth', swings),
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const setProductDrumSubLaneEnabled = useCallback((states: Record<string, boolean>[]): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('drumSubLaneEnabled', states),
       createCoreProductSequencerSubLaneEnabledEvents('drum', states),
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const setProductSynthSubLaneEnabled = useCallback((states: Record<string, boolean>[]): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('synthSubLaneEnabled', states),
       createCoreProductSequencerSubLaneEnabledEvents('synth', states),
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const setProductDrumPitchSettings = useCallback((settings: readonly unknown[]): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('drumPitchSettings', settings),
       createCoreProductSequencerPitchSettingEvents('drum', settings),
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const setProductSynthPitchSettings = useCallback((settings: readonly unknown[]): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('synthPitchSettings', settings),
       createCoreProductSequencerPitchSettingEvents('synth', settings),
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const setProductSynthPitchBindingModes = useCallback((modes: readonly unknown[]): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('synthPitchBindingModes', modes),
       createCoreProductSequencerPitchBindingModeEvents(modes),
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const setProductDrumStepOverrides = useCallback((
     overrides: unknown,
     subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[],
   ): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('drumStepOverrides', overrides),
       createCoreProductDrumSequencerStepOverrideEvents(overrides, subLaneStates),
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const setProductSynthStepOverrides = useCallback((
     overrides: unknown,
     subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[],
   ): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('synthStepOverrides', overrides),
       createCoreProductSynthSequencerStepOverrideEvents(overrides, subLaneStates),
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const setProductSequencerPresetHomeSnapshots = useCallback((
     drumPitchSettings?: readonly unknown[],
@@ -236,6 +252,7 @@ export function useProductRuntimeSequencerControls({
     synthPitchStates?: readonly (ProductRuntimeSequencerPitchState | undefined)[],
     options?: ProductRuntimeSequencerPresetHomeSnapshotOptions,
   ): void => {
+    if (!productRuntimeActive) return;
     void drumPitchSettings;
     const events = [
       ...(options?.synthStepOverrides
@@ -251,21 +268,23 @@ export function useProductRuntimeSequencerControls({
       sequencerPatch('sequencerPresetHomeSnapshots', { drumPitchStates, synthPitchStates }),
       events,
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const resetProductSynthEuclidLaneHome = useCallback((laneIndex: number): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('synthEuclidLaneHomeAction', { type: 'reset', laneIndex }),
       [createCoreProductSequencerResetHomeEvent('synth', laneIndex)],
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const captureProductSynthEuclidLaneHome = useCallback((
     laneIndex: number,
     pitchState?: ProductRuntimeSequencerPitchState,
     options?: ProductRuntimeSequencerLaneHomeCaptureOptions,
   ): void => {
+    if (!productRuntimeActive) return;
     const events = [
       ...(options?.stepOverrides
         ? createCoreProductSynthSequencerStepOverrideEvents(options.stepOverrides, options.subLaneStates)
@@ -277,23 +296,25 @@ export function useProductRuntimeSequencerControls({
       sequencerPatch('synthEuclidLaneHomeAction', { type: 'capture', laneIndex, pitchState }),
       events,
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const diceProductSynthEuclidLane = useCallback((laneIndex: number, intensity?: number): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('synthEuclidLaneHomeAction', { type: 'dice', laneIndex, intensity }),
       [createCoreProductSequencerDiceEvent('synth', laneIndex, intensity)],
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const resetProductDrumEuclidLaneHome = useCallback((laneIndex: number): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('drumEuclidLaneHomeAction', { type: 'reset', laneIndex }),
       [createCoreProductSequencerResetHomeEvent('drum', laneIndex)],
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const captureProductDrumEuclidLaneHome = useCallback((
     laneIndex: number,
@@ -301,6 +322,7 @@ export function useProductRuntimeSequencerControls({
     pitchState?: ProductRuntimeSequencerPitchState,
     options?: ProductRuntimeSequencerLaneHomeCaptureOptions,
   ): void => {
+    if (!productRuntimeActive) return;
     const events = [
       ...(options?.stepOverrides
         ? createCoreProductDrumSequencerStepOverrideEvents(options.stepOverrides, options.subLaneStates)
@@ -312,15 +334,16 @@ export function useProductRuntimeSequencerControls({
       sequencerPatch('drumEuclidLaneHomeAction', { type: 'capture', laneIndex, pitchSettings, pitchState }),
       events,
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   const diceProductDrumEuclidLane = useCallback((laneIndex: number, intensity?: number): void => {
+    if (!productRuntimeActive) return;
     commitCoreProductSequencerEvents(
       stateRef,
       sequencerPatch('drumEuclidLaneHomeAction', { type: 'dice', laneIndex, intensity }),
       [createCoreProductSequencerDiceEvent('drum', laneIndex, intensity)],
     );
-  }, [stateRef]);
+  }, [productRuntimeActive, stateRef]);
 
   return {
     setProductDrumEuclidEvolveConfigs,

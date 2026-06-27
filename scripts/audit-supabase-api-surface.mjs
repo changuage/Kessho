@@ -217,6 +217,17 @@ function getEnv() {
   };
 }
 
+function pgClientConfig(connectionString) {
+  const url = new URL(connectionString);
+  url.searchParams.delete('sslmode');
+  const normalizedConnectionString = url.toString();
+  const isLocal = /(?:localhost|127\.0\.0\.1|\[::1\])/.test(normalizedConnectionString);
+  return {
+    connectionString: normalizedConnectionString,
+    ssl: isLocal ? false : { rejectUnauthorized: false },
+  };
+}
+
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes)) return String(bytes);
   if (bytes < 1024) return `${bytes} B`;
@@ -515,7 +526,7 @@ async function runSqlChecks(env) {
     };
   }
 
-  const client = new Client({ connectionString: env.SUPABASE_DB_URL });
+  const client = new Client(pgClientConfig(env.SUPABASE_DB_URL));
   await client.connect();
   try {
     const quotedTables = PUBLIC_TABLES.map((table) => `'${table}'`).join(',');

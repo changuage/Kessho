@@ -68,6 +68,7 @@ const hostSnapshotDebug = read('src/audio/product/host/CoreProductSnapshotDebug.
 const hostSnapshotFactory = read('src/audio/product/host/CoreProductHostSnapshotFactory.ts');
 const hostTelemetryAdapter = read('src/audio/product/host/CoreProductTelemetryAdapter.ts');
 const hostRuntimeHostPort = read('src/audio/product/host/CoreProductRuntimeHostPort.ts');
+const hostLifecycleCoordinator = read('src/audio/product/host/CoreProductHostLifecycleCoordinator.ts');
 const hostRealtimeInputBootstrap = read('src/audio/product/host/CoreProductRealtimeInputBootstrap.ts');
 const hostSequencerCacheBridge = read('src/audio/product/host/CoreProductSequencerCacheBridge.ts');
 const hostSequencerControlEventBridge = read('src/audio/product/host/CoreProductSequencerControlEventBridge.ts');
@@ -236,7 +237,7 @@ const productApi = read('cpp/KesshoCore/src/product/KesshoProductApi.cpp');
 const productTelemetryHeader = read('cpp/KesshoCore/include/KesshoCore/KesshoProductTelemetry.h');
 const productTypesHeader = read('cpp/KesshoCore/include/KesshoCore/KesshoProductTypes.h');
 const productSequencerTests = read('cpp/KesshoCore/tests/ProductSequencerTests.cpp');
-const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostSequencerSubLaneConfig}\n${hostSequencerEvolveConfig}\n${hostSequencerHome}\n${hostSequencerRangePayload}\n${hostSynthPitch}\n${hostSequencerUiState}\n${hostRuntimeGuards}\n${hostMidi}\n${hostAssetRegistrar}\n${hostArrangementBridge}\n${hostDiagnostics}\n${hostDisplayCallbackRegistry}\n${hostGraphTapBridge}\n${hostHarmonyStateBridge}\n${hostProxy}\n${hostJourneyMorphClock}\n${hostPatchClassifier}\n${hostLeadPresetDataLoader}\n${hostModulationRangeBridge}\n${hostSampleHoldFeedbackPolicy}\n${hostLiveTriggerCallbackBridge}\n${hostManualAuditionBridge}\n${hostSnapshotCoordinator}\n${hostSnapshotDebug}\n${hostSnapshotFactory}\n${hostTelemetryAdapter}\n${hostRuntimeHostPort}\n${hostRealtimeInputBootstrap}\n${hostSequencerCacheBridge}\n${hostSequencerControlEventBridge}\n${hostManualSynthDiceBridge}\n${hostSequencerUiAdapter}\n${hostSequencerVisualBridge}\n${hostSequencerEvolveBridge}\n${hostSequencerEvolveRuntimeBridge}\n${hostSequencerNativeEvolveFlags}\n${hostSequencerEvolvePayloadBridge}\n${hostSequencerHomeCaptureBridge}\n${hostSequencerHomeCaptureEventBridge}\n${hostSequencerHomeRestoreBridge}\n${hostSequencerLaneParamBridge}\n${hostSequencerNoteRangeEvolveBridge}\n${hostSequencerPitchSettingEventBridge}\n${hostSequencerStepEventBridge}\n${hostSequencerStepOverrideEventBridge}\n${hostSequencerStepOverrideBridge}\n${hostSequencerStepPostingBridge}\n${hostSequencerSubLaneEnabledEventBridge}\n${hostSequencerEvolveConfigEventBridge}`;
+const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostSequencerSubLaneConfig}\n${hostSequencerEvolveConfig}\n${hostSequencerHome}\n${hostSequencerRangePayload}\n${hostSynthPitch}\n${hostSequencerUiState}\n${hostRuntimeGuards}\n${hostMidi}\n${hostAssetRegistrar}\n${hostArrangementBridge}\n${hostDiagnostics}\n${hostDisplayCallbackRegistry}\n${hostGraphTapBridge}\n${hostHarmonyStateBridge}\n${hostProxy}\n${hostJourneyMorphClock}\n${hostPatchClassifier}\n${hostLeadPresetDataLoader}\n${hostModulationRangeBridge}\n${hostSampleHoldFeedbackPolicy}\n${hostLiveTriggerCallbackBridge}\n${hostManualAuditionBridge}\n${hostSnapshotCoordinator}\n${hostSnapshotDebug}\n${hostSnapshotFactory}\n${hostTelemetryAdapter}\n${hostRuntimeHostPort}\n${hostLifecycleCoordinator}\n${hostRealtimeInputBootstrap}\n${hostSequencerCacheBridge}\n${hostSequencerControlEventBridge}\n${hostManualSynthDiceBridge}\n${hostSequencerUiAdapter}\n${hostSequencerVisualBridge}\n${hostSequencerEvolveBridge}\n${hostSequencerEvolveRuntimeBridge}\n${hostSequencerNativeEvolveFlags}\n${hostSequencerEvolvePayloadBridge}\n${hostSequencerHomeCaptureBridge}\n${hostSequencerHomeCaptureEventBridge}\n${hostSequencerHomeRestoreBridge}\n${hostSequencerLaneParamBridge}\n${hostSequencerNoteRangeEvolveBridge}\n${hostSequencerPitchSettingEventBridge}\n${hostSequencerStepEventBridge}\n${hostSequencerStepOverrideEventBridge}\n${hostSequencerStepOverrideBridge}\n${hostSequencerStepPostingBridge}\n${hostSequencerSubLaneEnabledEventBridge}\n${hostSequencerEvolveConfigEventBridge}`;
 
 assert(
   !existsSync(resolve(root, 'src/ui/useSelectedAudioEngineSurface.ts')),
@@ -258,6 +259,7 @@ assert(lineCount(hostGraphTapBridge) <= 80, `CoreProductGraphTapBridge.ts exceed
 assert(lineCount(hostHarmonyStateBridge) <= 80, `CoreProductHarmonyStateBridge.ts exceeds cleanup size cap (${lineCount(hostHarmonyStateBridge)} lines)`);
 assert(lineCount(hostProxy) <= 80, `CoreProductHostProxy.ts exceeds cleanup size cap (${lineCount(hostProxy)} lines)`);
 assert(lineCount(hostJourneyMorphClock) <= 90, `CoreProductJourneyMorphClock.ts exceeds cleanup size cap (${lineCount(hostJourneyMorphClock)} lines)`);
+assert(lineCount(hostLifecycleCoordinator) <= 140, `CoreProductHostLifecycleCoordinator.ts exceeds cleanup size cap (${lineCount(hostLifecycleCoordinator)} lines)`);
 assert(lineCount(hostResolvedStateCommitService) <= 80, `CoreProductResolvedStateCommitService.ts exceeds cleanup size cap (${lineCount(hostResolvedStateCommitService)} lines)`);
 assert(lineCount(hostSynthPitch) <= 80, `CoreProductHostSynthPitch.ts exceeds cleanup size cap (${lineCount(hostSynthPitch)} lines)`);
 assert(lineCount(hostSequencerAdapter) <= 320, `CoreProductHostSequencerAdapter.ts exceeds cleanup size cap (${lineCount(hostSequencerAdapter)} lines)`);
@@ -1118,7 +1120,7 @@ for (const token of [
   'this.assetRegistrar.registerAsset(asset)',
   'unregisterAsset(assetId: number): void',
   'this.assetRegistrar.unregisterAsset(assetId)',
-  'this.assetRegistrar.clear()',
+  'this.options.assetRegistrar.clear()',
   'this.assetRegistrar.hasMissingDefaultAssetsForState()',
   'this.assetRegistrar.ensureDefaultAssetsForState()',
   'context.assetRegistrar.ensurePianoAssetForNote(note.midi, note.velocity)',
@@ -1350,7 +1352,11 @@ for (const token of [
   assert(`${hostSynthNoteRangeEvolve}\n${hostSequencerHome}\n${hostSequencerHomeCaptureBridge}\n${hostSequencerHomeRestoreBridge}\n${hostSequencerNoteRangeEvolveBridge}\n${host}`.includes(token), `Product synth note-range evolve wiring is missing ${token}`);
 }
 assert(!hostSynthNoteRangeEvolve.includes('./drumSeqTypes'), 'Product synth note-range evolve helper must not import Web drum sequencer types');
-assert((host.match(/this\.running = false; this\.synthNoteRangeOverrides = \[null, null, null, null\];/g) ?? []).length >= 3, 'Product stop/suspend/dispose must clear synth note-range evolve overrides like Web');
+assert(
+  host.includes('resetSynthNoteRangeOverrides: () => { this.synthNoteRangeOverrides = [null, null, null, null]; }') &&
+    hostLifecycleCoordinator.includes('this.options.resetSynthNoteRangeOverrides();'),
+  'Product stop/suspend/dispose must clear synth note-range evolve overrides like Web',
+);
 assert(coreEngineHost.includes('this.synthNoteRangeOverrides = [null, null, null, null];'), 'Core-Web stop must clear synth note-range evolve overrides');
 
 for (const token of [
@@ -3183,6 +3189,7 @@ const hostImportAllowlist = new Set([
   './product/host/CoreProductEarthTextureDebug',
   './product/host/CoreProductGraphTapBridge',
   './product/host/CoreProductHarmonyStateBridge',
+  './product/host/CoreProductHostLifecycleCoordinator',
   './product/host/CoreProductHostProxy',
   './product/host/CoreProductJourneyMorphClock',
   './product/host/CoreProductResolvedStateCommitService',

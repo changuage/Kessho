@@ -1506,6 +1506,14 @@ Object.assign(globalThis, {
   CoreProductTelemetryCallbackScheduler,
 });`, context, { filename: telemetryCallbackSchedulerPath });
 
+  const lifecycleCoordinatorPath = 'src/audio/product/host/CoreProductHostLifecycleCoordinator.ts';
+  const lifecycleCoordinatorSource = stripImportsAndExports(readProjectFile(lifecycleCoordinatorPath));
+  const lifecycleCoordinatorJs = transpileForVm(lifecycleCoordinatorSource, resolve(root, lifecycleCoordinatorPath));
+  vm.runInNewContext(`${lifecycleCoordinatorJs}
+Object.assign(globalThis, {
+  CoreProductHostLifecycleCoordinator,
+});`, context, { filename: lifecycleCoordinatorPath });
+
   const path = 'src/audio/coreProductEngineHost.ts';
   const source = stripImportsAndExports(readProjectFile(path)).replaceAll('import.meta.env', '__IMPORT_META_ENV__');
   const js = transpileForVm(source, resolve(root, path));

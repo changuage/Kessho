@@ -120,6 +120,7 @@ const routingRegistry = read('src/ui/routing/routingSourceRegistry.ts');
 const routeConflictPolicy = read('src/ui/routing/routeConflictPolicy.ts');
 const presetUtils = read('src/ui/presetUtils.ts');
 const appSource = read('src/App.tsx');
+const appSliderRoutingState = read('src/app/sliderRoutingState.ts');
 const productManualTriggers = read('src/ui/useProductRuntimeManualTriggers.ts');
 const pageAliases = read('src/ui/pages/pageAliases.ts');
 const dirtyDiffClassification = read('scripts/check-kessho-product-dirty-diff-classification.mjs');
@@ -194,7 +195,7 @@ assert(
 );
 assert(
   routeConflictPolicy.includes('export function normalizeDegradeReverbCrossfeed') &&
-    appSource.includes('normalizeDegradeReverbCrossfeed(newState, prev') &&
+    appSliderRoutingState.includes('normalizeDegradeReverbCrossfeed(newState, previousState') &&
     appSource.includes('normalizeDegradeReverbCrossfeed(result)') &&
     presetUtils.includes('normalizeDegradeReverbCrossfeed(newState)') &&
     presetV2Migration.includes('normalizeGraphRepairData'),

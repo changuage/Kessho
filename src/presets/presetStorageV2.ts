@@ -117,8 +117,11 @@ export const PRESET_PAYLOAD_CACHE_KEY_PREFIX = 'kessho:presetPayload:v2:';
 const PRESET_PAYLOAD_CACHE_MAX_BYTES = 5 * 1024 * 1024;
 const PRESET_PAYLOAD_CACHE_MAX_ENTRIES = 256;
 const PRESET_PAYLOAD_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const PRESET_PAYLOAD_CACHE_TOUCH_THROTTLE_MS = 5 * 60_000;
+const PRESET_PAYLOAD_CACHE_PRUNE_THROTTLE_MS = 60_000;
 const PRESET_TEXT_ENCODER = new TextEncoder();
 const HEX_BYTE_LOOKUP = Array.from({ length: 256 }, (_, byte) => byte.toString(16).padStart(2, '0'));
+const PRESET_PAYLOAD_HASH_PATTERN = /^[0-9a-f]{64}$/;
 
 type CachedPresetPayloadMemoryEntry = {
   payload: unknown;
@@ -132,7 +135,12 @@ type CachedPresetPayloadStorageEntry = CachedPresetPayloadMemoryEntry & {
   createdAt: number;
 };
 
+interface PresetPayloadCacheWriteOptions {
+  verifiedCanonicalJson?: string;
+}
+
 const presetPayloadMemoryCache = new Map<string, CachedPresetPayloadMemoryEntry>();
+let presetPayloadPersistentCacheLastPrunedAt = 0;
 
 function roundNumber(value: number): number {
   if (!Number.isFinite(value)) return value;
@@ -177,7 +185,7 @@ export function stableStringifyCanonical(value: unknown): string {
   return JSON.stringify(canonicalizeJson(value));
 }
 
-async function hashCanonicalJsonText(canonicalJson: string): Promise<string> {
+export async function hashCanonicalJsonText(canonicalJson: string): Promise<string> {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) {
     throw new Error('Web Crypto is unavailable; cannot hash preset payloads.');
@@ -199,7 +207,17 @@ export async function hashCanonicalJson(value: unknown): Promise<string> {
 }
 
 function isPresetPayloadCacheHash(hash: string): boolean {
-  return /^[0-9a-f]{64}$/.test(hash);
+  return PRESET_PAYLOAD_HASH_PATTERN.test(hash);
+}
+
+export function collectPresetPayloadHashesV2(hashes: readonly unknown[], maxHashes = 100): string[] {
+  const unique = new Set<string>();
+  for (const hash of hashes) {
+    if (typeof hash !== 'string' || !PRESET_PAYLOAD_HASH_PATTERN.test(hash)) continue;
+    unique.add(hash);
+    if (unique.size >= maxHashes) break;
+  }
+  return [...unique];
 }
 
 function canUsePresetPayloadPersistentCache(): boolean {
@@ -236,11 +254,13 @@ function prunePresetPayloadMemoryCache(now = Date.now()): void {
   }
 }
 
-function prunePresetPayloadPersistentCache(now = Date.now()): void {
+function prunePresetPayloadPersistentCache(now = Date.now(), force = false): void {
   if (!canUsePresetPayloadPersistentCache()) return;
+  if (!force && presetPayloadPersistentCacheLastPrunedAt + PRESET_PAYLOAD_CACHE_PRUNE_THROTTLE_MS > now) return;
 
   try {
-    const entries: Array<{ key: string; bytes: number; lastAccess: number; expired: boolean }> = [];
+    presetPayloadPersistentCacheLastPrunedAt = now;
+    const activeEntries: Array<{ key: string; bytes: number; lastAccess: number }> = [];
     let totalBytes = 0;
     for (let index = localStorage.length - 1; index >= 0; index -= 1) {
       const key = localStorage.key(index);
@@ -254,30 +274,24 @@ function prunePresetPayloadPersistentCache(now = Date.now()): void {
         const parsed = JSON.parse(raw) as Partial<CachedPresetPayloadStorageEntry> | null;
         const bytes = typeof parsed?.bytes === 'number' ? parsed.bytes : getPayloadCacheBytes(raw);
         const lastAccess = typeof parsed?.lastAccess === 'number' ? parsed.lastAccess : 0;
-        const expired = lastAccess + PRESET_PAYLOAD_CACHE_MAX_AGE_MS <= now;
-        entries.push({ key, bytes, lastAccess, expired });
+        if (lastAccess + PRESET_PAYLOAD_CACHE_MAX_AGE_MS <= now) {
+          localStorage.removeItem(key);
+          continue;
+        }
+        activeEntries.push({ key, bytes, lastAccess });
         totalBytes += bytes;
       } catch {
         localStorage.removeItem(key);
       }
     }
 
-    for (const entry of entries.filter(candidate => candidate.expired)) {
+    activeEntries.sort((left, right) => left.lastAccess - right.lastAccess);
+    let activeCount = activeEntries.length;
+    for (const entry of activeEntries) {
+      if (activeCount <= PRESET_PAYLOAD_CACHE_MAX_ENTRIES && totalBytes <= PRESET_PAYLOAD_CACHE_MAX_BYTES) break;
       localStorage.removeItem(entry.key);
       totalBytes -= entry.bytes;
-    }
-
-    const activeEntries = entries
-      .filter(candidate => !candidate.expired)
-      .sort((left, right) => left.lastAccess - right.lastAccess);
-    while (
-      activeEntries.length > PRESET_PAYLOAD_CACHE_MAX_ENTRIES
-      || totalBytes > PRESET_PAYLOAD_CACHE_MAX_BYTES
-    ) {
-      const entry = activeEntries.shift();
-      if (!entry) break;
-      localStorage.removeItem(entry.key);
-      totalBytes -= entry.bytes;
+      activeCount -= 1;
     }
   } catch {
     // Persistent payload caching is best-effort.
@@ -322,12 +336,16 @@ export function readPresetPayloadCacheV2(hash: string): unknown | undefined {
       bytes: parsed.bytes,
       payload: parsed.payload,
     };
-    localStorage.setItem(storageKey, JSON.stringify(entry));
     presetPayloadMemoryCache.set(hash, {
       payload: entry.payload,
       bytes: entry.bytes,
       lastAccess: now,
     });
+    if (parsed.lastAccess + PRESET_PAYLOAD_CACHE_TOUCH_THROTTLE_MS > now) {
+      prunePresetPayloadMemoryCache(now);
+      return entry.payload;
+    }
+    localStorage.setItem(storageKey, JSON.stringify(entry));
     prunePresetPayloadMemoryCache(now);
     return entry.payload;
   } catch {
@@ -340,11 +358,17 @@ export function readPresetPayloadCacheV2(hash: string): unknown | undefined {
   }
 }
 
-export async function writePresetPayloadCacheV2(hash: string, payload: unknown): Promise<void> {
+export async function writePresetPayloadCacheV2(
+  hash: string,
+  payload: unknown,
+  options?: PresetPayloadCacheWriteOptions,
+): Promise<void> {
   if (!isPresetPayloadCacheHash(hash) || payload === undefined) return;
-  const payloadJson = stableStringifyCanonical(payload);
-  const computedHash = await hashCanonicalJsonText(payloadJson);
-  if (computedHash !== hash) return;
+  const payloadJson = options?.verifiedCanonicalJson ?? stableStringifyCanonical(payload);
+  if (options?.verifiedCanonicalJson === undefined) {
+    const computedHash = await hashCanonicalJsonText(payloadJson);
+    if (computedHash !== hash) return;
+  }
 
   const now = Date.now();
   const bytes = getPayloadCacheBytes(payloadJson);

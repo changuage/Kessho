@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import { useSelectedAudioEnginePageRuntimeBridges } from './useSelectedAudioEnginePageRuntimeBridges';
 import { useSelectedAudioEngineCallbackSurfaces } from './useSelectedAudioEngineCallbackSurfaces';
 import { useSelectedAudioEngineControlSurfaces } from './useSelectedAudioEngineControlSurfaces';
 import { useSelectedAudioEngineManualTriggers } from './useSelectedAudioEngineManualTriggers';
+import { useProductRuntimeSynthPageEvents } from './useProductRuntimeSynthPageEvents';
 import type { ProductRuntimePageControlProps } from './useProductRuntimePageControlProps';
 import type { ProductRuntimePageSequencerProps } from './useProductRuntimePageSequencerProps';
 import type { ProductRuntimePageTelemetryProps } from './useProductRuntimePageTelemetryProps';
@@ -64,6 +66,7 @@ export function useProductRuntimePageRuntimeBridges({
     audioEngineRuntimeMode: productRuntimeMode,
     stateRef,
   });
+  const productSynthPageEvents = useProductRuntimeSynthPageEvents(productRuntimeMode);
   const useProductRuntimePageSurfaces = productRuntimeMode === 'core-product';
   const pageManualTriggers = productRuntimeMode === 'core-product'
     ? productRuntimeManualTriggers
@@ -164,5 +167,13 @@ export function useProductRuntimePageRuntimeBridges({
       : selectedRuntimeCallbacks.setSelectedSynthStepPositionCallback,
   };
 
-  return useSelectedAudioEnginePageRuntimeBridges(selectedOptions);
+  const selectedPageRuntimeBridges = useSelectedAudioEnginePageRuntimeBridges(selectedOptions);
+
+  return useMemo(() => ({
+    ...selectedPageRuntimeBridges,
+    synthPageRuntimeProps: {
+      ...selectedPageRuntimeBridges.synthPageRuntimeProps,
+      ...productSynthPageEvents,
+    },
+  }), [productSynthPageEvents, selectedPageRuntimeBridges]);
 }

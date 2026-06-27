@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { build } from 'esbuild';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -9,6 +11,53 @@ const args = new Set(process.argv.slice(2));
 const write = args.has('--write');
 const outputJson = args.has('--json');
 const backup = args.has('--backup');
+
+function readEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return {};
+  return Object.fromEntries(
+    fs.readFileSync(filePath, 'utf8')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#') && line.includes('='))
+      .map((line) => {
+        const index = line.indexOf('=');
+        const key = line.slice(0, index);
+        let value = line.slice(index + 1).trim();
+        if (
+          (value.startsWith('"') && value.endsWith('"'))
+          || (value.startsWith("'") && value.endsWith("'"))
+        ) {
+          value = value.slice(1, -1);
+        }
+        return [key, value];
+      }),
+  );
+}
+
+const env = {
+  ...readEnvFile(path.join(process.cwd(), '.env')),
+  ...readEnvFile(path.join(process.cwd(), '.env.local')),
+  ...process.env,
+};
+
+const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY
+  ?? env.SUPABASE_SERVICE_KEY
+  ?? env.SUPABASE_SECRET_KEY;
+const databaseUrl = env.DATABASE_URL ?? env.SUPABASE_DATABASE_URL ?? env.SUPABASE_DB_URL;
+
+if (!serviceKey && databaseUrl) {
+  console.log('Supabase preset V2 maintenance using Postgres DB URL because no service-role key is configured.');
+  const result = spawnSync(
+    process.execPath,
+    ['scripts/maintain-supabase-presets-v2-postgres.mjs', ...process.argv.slice(2)],
+    {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: 'inherit',
+    },
+  );
+  process.exit(result.status ?? 1);
+}
 
 const tempDir = await mkdtemp(path.join(tmpdir(), 'preset-v2-maintenance-'));
 const outfile = path.join(tempDir, 'preset-v2-maintenance.mjs');

@@ -40,6 +40,17 @@ const env = {
 
 const databaseUrl = env.DATABASE_URL ?? env.SUPABASE_DATABASE_URL ?? env.SUPABASE_DB_URL;
 
+function pgClientConfig(connectionString) {
+  const url = new URL(connectionString);
+  url.searchParams.delete('sslmode');
+  const normalizedConnectionString = url.toString();
+  const isLocal = /(?:localhost|127\.0\.0\.1|\[::1\])/.test(normalizedConnectionString);
+  return {
+    connectionString: normalizedConnectionString,
+    ssl: isLocal ? false : { rejectUnauthorized: false },
+  };
+}
+
 function printReport(report) {
   if (outputJson) console.log(JSON.stringify(report, null, 2));
   else if (report.status === 'skipped') {
@@ -71,10 +82,7 @@ if (!databaseUrl) {
   process.exit(0);
 }
 
-const client = new Client({
-  connectionString: databaseUrl,
-  ssl: /(?:localhost|127\.0\.0\.1|\[::1\])/.test(databaseUrl) ? false : { rejectUnauthorized: false },
-});
+const client = new Client(pgClientConfig(databaseUrl));
 
 function asJson(value) {
   return JSON.stringify(value);
@@ -82,7 +90,7 @@ function asJson(value) {
 
 async function dbHash(payload) {
   const result = await client.query(
-    "select encode(digest(public.kessho_canonical_jsonb_text($1::jsonb), 'sha256'), 'hex') as hash",
+    "select encode(extensions.digest(public.kessho_canonical_jsonb_text($1::jsonb), 'sha256'), 'hex') as hash",
     [asJson(payload)],
   );
   return result.rows[0]?.hash;
@@ -129,7 +137,7 @@ async function savePreset({ name, versionNo, parentVersionId, resolvedHash, meta
     type: 'state',
     scope: null,
     name,
-    author: 'Optimization Proof',
+    author: 'cloud',
     library: 'cloud',
     creator: 'Optimization Proof',
     description: 'Rollback-only Supabase optimization proof preset',
@@ -195,7 +203,10 @@ try {
     throw new Error(`Optimization migration functions are missing: ${missingFunctions.join(', ')}`);
   }
 
-  const proofUserId = '00000000-0000-4000-8000-000000000001';
+  const proofUserId = await queryScalar('select id::text from auth.users order by created_at desc nulls last limit 1');
+  if (!proofUserId) {
+    throw new Error('Optimization DB proof requires at least one auth.users row for preset_versions_v2.created_by.');
+  }
   await client.query(
     "select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true)",
     [proofUserId],
@@ -317,7 +328,7 @@ try {
           type: 'state',
           scope: null,
           name: `${testName}-missing-hash`,
-          author: 'Optimization Proof',
+          author: 'cloud',
           library: 'cloud',
           creator: 'Optimization Proof',
           description: 'Rollback-only missing hash proof',

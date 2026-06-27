@@ -6,7 +6,7 @@
 
 BEGIN;
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
 CREATE OR REPLACE FUNCTION public.kessho_assert_payload_hash_kind_consistency()
 RETURNS trigger
@@ -100,7 +100,7 @@ BEGIN
     RAISE EXCEPTION 'Invalid preset payload hash';
   END IF;
 
-  computed_hash := encode(digest(public.kessho_canonical_jsonb_text(normalized_body), 'sha256'), 'hex');
+  computed_hash := encode(extensions.digest(public.kessho_canonical_jsonb_text(normalized_body), 'sha256'), 'hex');
   IF computed_hash <> supplied_hash THEN
     RAISE EXCEPTION 'Preset payload hash mismatch: expected %, computed %', supplied_hash, computed_hash;
   END IF;
@@ -116,12 +116,12 @@ DECLARE
   invalid_hash TEXT;
   missing_hashes TEXT[];
 BEGIN
-  SELECT hash
+  SELECT candidate_hash
     INTO invalid_hash
-    FROM unnest(COALESCE(target_hashes, ARRAY[]::TEXT[])) AS hash
-   WHERE hash IS NOT NULL
-     AND hash <> ''
-     AND hash !~ '^[0-9a-f]{64}$'
+    FROM unnest(COALESCE(target_hashes, ARRAY[]::TEXT[])) AS candidate(candidate_hash)
+   WHERE candidate_hash IS NOT NULL
+     AND candidate_hash <> ''
+     AND candidate_hash !~ '^[0-9a-f]{64}$'
    LIMIT 1;
 
   IF invalid_hash IS NOT NULL THEN
@@ -129,16 +129,16 @@ BEGIN
   END IF;
 
   SELECT ARRAY(
-    SELECT DISTINCT hash
-      FROM unnest(COALESCE(target_hashes, ARRAY[]::TEXT[])) AS hash
-     WHERE hash IS NOT NULL
-       AND hash <> ''
+    SELECT DISTINCT candidate_hash
+      FROM unnest(COALESCE(target_hashes, ARRAY[]::TEXT[])) AS candidate(candidate_hash)
+     WHERE candidate_hash IS NOT NULL
+       AND candidate_hash <> ''
        AND NOT EXISTS (
          SELECT 1
            FROM public.preset_payloads_v2 payload
-          WHERE payload.hash = hash
+          WHERE payload.hash = candidate_hash
        )
-     ORDER BY hash
+     ORDER BY candidate_hash
   )
     INTO missing_hashes;
 
@@ -219,6 +219,88 @@ BEGIN
         RAISE;
       END IF;
   END;
+END;
+$$;
+
+DO $$
+DECLARE
+  repair_count INTEGER := 0;
+  deleted_count INTEGER := 0;
+BEGIN
+  DROP TABLE IF EXISTS preset_payload_hash_repairs;
+
+  CREATE TEMP TABLE preset_payload_hash_repairs ON COMMIT DROP AS
+  SELECT
+    payload.hash AS old_hash,
+    encode(extensions.digest(public.kessho_canonical_jsonb_text(payload.payload), 'sha256'), 'hex') AS new_hash,
+    payload.payload_kind,
+    payload.payload,
+    payload.created_at,
+    payload.last_seen_at
+  FROM public.preset_payloads_v2 payload
+  WHERE payload.hash <> encode(extensions.digest(public.kessho_canonical_jsonb_text(payload.payload), 'sha256'), 'hex');
+
+  SELECT count(*) INTO repair_count FROM preset_payload_hash_repairs;
+
+  IF repair_count > 0 THEN
+    IF EXISTS (
+      SELECT 1
+      FROM preset_payload_hash_repairs repair
+      JOIN public.preset_payloads_v2 existing ON existing.hash = repair.new_hash
+      WHERE existing.payload <> repair.payload
+    ) THEN
+      RAISE EXCEPTION 'Cannot repair preset payload hashes because a canonical hash already points at different payload bytes';
+    END IF;
+
+    INSERT INTO public.preset_payloads_v2(hash, payload_kind, payload, created_at, last_seen_at)
+    SELECT repair.new_hash, repair.payload_kind, repair.payload, repair.created_at, repair.last_seen_at
+    FROM preset_payload_hash_repairs repair
+    ON CONFLICT (hash) DO NOTHING;
+
+    UPDATE public.preset_versions_v2 version
+       SET override_hash = COALESCE((SELECT repair.new_hash FROM preset_payload_hash_repairs repair WHERE repair.old_hash = version.override_hash), version.override_hash),
+           metadata_hash = COALESCE((SELECT repair.new_hash FROM preset_payload_hash_repairs repair WHERE repair.old_hash = version.metadata_hash), version.metadata_hash),
+           patch_from_prev_hash = COALESCE((SELECT repair.new_hash FROM preset_payload_hash_repairs repair WHERE repair.old_hash = version.patch_from_prev_hash), version.patch_from_prev_hash),
+           resolved_hash = COALESCE((SELECT repair.new_hash FROM preset_payload_hash_repairs repair WHERE repair.old_hash = version.resolved_hash), version.resolved_hash)
+     WHERE version.override_hash IN (SELECT old_hash FROM preset_payload_hash_repairs)
+        OR version.metadata_hash IN (SELECT old_hash FROM preset_payload_hash_repairs)
+        OR version.patch_from_prev_hash IN (SELECT old_hash FROM preset_payload_hash_repairs)
+        OR version.resolved_hash IN (SELECT old_hash FROM preset_payload_hash_repairs);
+
+    UPDATE public.preset_version_refs_v2 ref
+       SET override_hash = repair.new_hash
+      FROM preset_payload_hash_repairs repair
+     WHERE ref.override_hash = repair.old_hash;
+
+    UPDATE public.presets_v2 preset
+       SET latest_resolved_hash = COALESCE((SELECT repair.new_hash FROM preset_payload_hash_repairs repair WHERE repair.old_hash = preset.latest_resolved_hash), preset.latest_resolved_hash),
+           latest_metadata_hash = COALESCE((SELECT repair.new_hash FROM preset_payload_hash_repairs repair WHERE repair.old_hash = preset.latest_metadata_hash), preset.latest_metadata_hash)
+     WHERE preset.latest_resolved_hash IN (SELECT old_hash FROM preset_payload_hash_repairs)
+        OR preset.latest_metadata_hash IN (SELECT old_hash FROM preset_payload_hash_repairs);
+
+    DELETE FROM public.preset_payloads_v2 payload
+    USING preset_payload_hash_repairs repair
+    WHERE payload.hash = repair.old_hash
+      AND NOT EXISTS (
+        SELECT 1 FROM public.preset_versions_v2 version
+        WHERE version.override_hash = repair.old_hash
+           OR version.metadata_hash = repair.old_hash
+           OR version.patch_from_prev_hash = repair.old_hash
+           OR version.resolved_hash = repair.old_hash
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM public.preset_version_refs_v2 ref
+        WHERE ref.override_hash = repair.old_hash
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM public.presets_v2 preset
+        WHERE preset.latest_resolved_hash = repair.old_hash
+           OR preset.latest_metadata_hash = repair.old_hash
+      );
+
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Repaired % preset payload hashes and deleted % old payload rows', repair_count, deleted_count;
+  END IF;
 END;
 $$;
 
@@ -1035,10 +1117,17 @@ BEGIN
     );
   END IF;
 
+  DROP TABLE IF EXISTS purge_candidate_presets;
+
   CREATE TEMP TABLE purge_candidate_presets ON COMMIT DROP AS
   SELECT p.id
     FROM public.presets_v2 p
    WHERE p.deleted_at IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1
+         FROM public.preset_version_refs_v2 active_ref
+        WHERE active_ref.target_preset_id = p.id
+     )
      AND (
        (
          p.visibility = 'private'

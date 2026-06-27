@@ -17,37 +17,46 @@ type ProductRuntimeSequencerCallbacks = {
 };
 
 export function useProductRuntimeSequencerCallbacks(
-  _productRuntimeMode: ProductRuntimeSelectionMode,
+  productRuntimeMode: ProductRuntimeSelectionMode,
 ): ProductRuntimeSequencerCallbacks {
+  const productRuntimeActive = productRuntimeMode === 'core-product';
+
   const setProductDrumStepPositionCallback = useCallback((callback: ((steps: number[], hitCounts: number[]) => void) | null): void => {
+    if (!productRuntimeActive) return;
     productEngine.setDrumStepPositionCallback(callback);
-  }, []);
+  }, [productRuntimeActive]);
 
   const setProductDrumEvolveTriggerCallback = useCallback((callback: ((laneIndex: number) => void) | null): void => {
+    if (!productRuntimeActive) return;
     productEngine.setDrumEuclidEvolveTriggerCallback(callback);
-  }, []);
+  }, [productRuntimeActive]);
 
   const setProductDrumTriggerCallback = useCallback((callback: ((voice: string, velocity: number) => void) | null): void => {
+    if (!productRuntimeActive) return;
     productEngine.setDrumTriggerCallback(callback ? (voice, velocity) => {
       callback(String(voice), velocity);
     } : null);
-  }, []);
+  }, [productRuntimeActive]);
 
   const setProductSynthStepPositionCallback = useCallback((callback: ((steps: number[], hitCounts: number[]) => void) | null): void => {
+    if (!productRuntimeActive) return;
     productEngine.setSynthStepPositionCallback(callback);
-  }, []);
+  }, [productRuntimeActive]);
 
   const setProductSynthOrbitVisualStateCallback = useCallback((callback: ProductSynthOrbitVisualStateCallback | null): void => {
+    if (!productRuntimeActive) return;
     productEngine.setSynthOrbitVisualStateCallback(callback);
-  }, []);
+  }, [productRuntimeActive]);
 
   const setProductSynthAnchorWalkerVisualStateCallback = useCallback((callback: ProductSynthAnchorWalkerVisualStateCallback | null): void => {
+    if (!productRuntimeActive) return;
     productEngine.setSynthAnchorWalkerVisualStateCallback(callback);
-  }, []);
+  }, [productRuntimeActive]);
 
   const setProductSynthEvolveTriggerCallback = useCallback((callback: ((laneIndex: number) => void) | null): void => {
+    if (!productRuntimeActive) return;
     productEngine.setSynthEuclidEvolveTriggerCallback(callback);
-  }, []);
+  }, [productRuntimeActive]);
 
   return {
     setProductDrumStepPositionCallback,
