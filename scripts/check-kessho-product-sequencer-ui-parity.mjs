@@ -180,7 +180,15 @@ function killProcessTree(child, signal = 'SIGTERM') {
   }
 }
 
-async function startSharedVite(port) {
+function viteReadyFromOutput(output, url) {
+  return output.includes(url) && /\bLocal:\s+/.test(output);
+}
+
+function portBusyFromOutput(output, port) {
+  return output.includes(`Port ${port} is already in use`) || output.includes(`EADDRINUSE`);
+}
+
+async function startSharedViteOnPort(port) {
   const url = `http://127.0.0.1:${port}/`;
   const child = spawn(process.execPath, ['node_modules/.bin/vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
     cwd: root,
@@ -191,8 +199,15 @@ async function startSharedVite(port) {
   let output = '';
   let exited = false;
   let exitError = null;
+  let resolveReadyOutput = null;
+  const readyOutputPromise = new Promise((resolve) => {
+    resolveReadyOutput = resolve;
+  });
   const append = (chunk) => {
     output = `${output}${chunk.toString()}`.slice(-20000);
+    if (viteReadyFromOutput(output, url)) {
+      resolveReadyOutput?.('ready-output');
+    }
   };
   child.stdout.on('data', append);
   child.stderr.on('data', append);
@@ -205,12 +220,21 @@ async function startSharedVite(port) {
   });
   try {
     const ready = await Promise.race([
-      waitForHttp(url, 45000, () => output).then(() => 'ready'),
+      readyOutputPromise,
       exitPromise,
+      delay(45000).then(() => 'timeout'),
     ]);
     if (ready === 'exit') throw exitError;
+    if (ready === 'timeout') {
+      throw new Error(`Timed out waiting for Vite to start ${url}:\n${output}`);
+    }
+    await waitForHttp(url, 15000, () => output);
   } catch (error) {
     killProcessTree(child);
+    if (error && typeof error === 'object') {
+      error.viteOutput = output;
+      error.vitePort = port;
+    }
     throw error;
   }
   return {
@@ -222,6 +246,24 @@ async function startSharedVite(port) {
       await delay(250);
     },
   };
+}
+
+async function startSharedVite(port) {
+  const errors = [];
+  for (let offset = 0; offset < 8; offset += 1) {
+    const candidatePort = port + offset;
+    try {
+      return await startSharedViteOnPort(candidatePort);
+    } catch (error) {
+      const output = typeof error?.viteOutput === 'string' ? error.viteOutput : '';
+      if (portBusyFromOutput(output, candidatePort)) {
+        errors.push(`:${candidatePort} busy`);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error(`Could not start Vite for sequencer UI parity; tried ${errors.join(', ') || `:${port}`}.`);
 }
 
 async function loadPlaywright() {

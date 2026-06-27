@@ -47,6 +47,146 @@
   padding: 10px;
 }
 
+.routing-root .routing-mute-groups {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.routing-root .routing-mute-groups-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.routing-root .routing-mute-groups-title {
+  color: var(--accent-primary);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.routing-root .routing-mute-groups-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.routing-root .routing-mute-action,
+.routing-root .routing-mute-slot {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.routing-root .routing-mute-action {
+  min-height: 26px;
+  padding: 4px 8px;
+  color: var(--text-secondary);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.routing-root .routing-mute-action:hover,
+.routing-root .routing-mute-slot:hover {
+  border-color: rgba(165, 196, 212, 0.22);
+  background: rgba(255, 255, 255, 0.052);
+}
+
+.routing-root .routing-mute-action:focus-visible,
+.routing-root .routing-mute-slot:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent-primary) 65%, transparent);
+  outline-offset: 2px;
+}
+
+.routing-root .routing-mute-slots {
+  display: grid;
+  grid-template-columns: 132px repeat(8, minmax(92px, 1fr));
+  gap: 6px;
+  min-width: 940px;
+}
+
+.routing-root .routing-mute-slots-scroll {
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.routing-root .routing-mute-rowlabel,
+.routing-root .routing-mute-slot {
+  min-height: 42px;
+  border-radius: var(--radius-sm);
+}
+
+.routing-root .routing-mute-rowlabel {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.015);
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+
+.routing-root .routing-mute-slot {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.012);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease, opacity 120ms ease;
+}
+
+.routing-root .routing-mute-slot.empty {
+  opacity: 0.5;
+}
+
+.routing-root .routing-mute-slot.stored {
+  color: var(--text-secondary);
+}
+
+.routing-root .routing-mute-slot.selected {
+  border-color: rgba(165, 196, 212, 0.28);
+}
+
+.routing-root .routing-mute-slot.active {
+  border-color: color-mix(in srgb, var(--accent-primary) 52%, transparent);
+  background: color-mix(in srgb, var(--accent-primary) 16%, transparent);
+  color: var(--accent-primary);
+  opacity: 1;
+}
+
+.routing-root .routing-mute-slot-number,
+.routing-root .routing-mute-slot-count {
+  min-width: 0;
+  line-height: 1;
+}
+
+.routing-root .routing-mute-slot-count {
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.18);
+  color: inherit;
+  font-size: 0.58rem;
+}
+
 .routing-root .daw-output-card {
   --row-accent: var(--accent-primary);
 }
@@ -1127,6 +1267,30 @@
 }
 
 @media (max-width: 860px) {
+  .routing-root .routing-mute-groups-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .routing-root .routing-mute-groups-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .routing-root .routing-mute-action {
+    width: 100%;
+  }
+
+  .routing-root .routing-mute-slots {
+    grid-template-columns: repeat(4, minmax(76px, 1fr));
+    min-width: 0;
+  }
+
+  .routing-root .routing-mute-rowlabel {
+    grid-column: 1 / -1;
+    min-height: 32px;
+  }
+
   .routing-root .daw-output-header {
     align-items: stretch;
   }

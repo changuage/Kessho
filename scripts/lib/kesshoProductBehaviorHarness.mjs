@@ -308,6 +308,10 @@ export function loadCoreProductHostHarness(options = {}) {
     return next;
   };
   const drumVoiceIndex = (voice) => Number.isInteger(voice) ? voice : ({ snare: 2, clap: 2, hat: 5, hihat: 5, perc: 6, tom: 6 }[String(voice).toLowerCase()] ?? 0);
+  const drumVoiceBaseMidiFromIndex = (voiceIndex) => {
+    const values = [35, 36, 37, 51, 50, 42, 38];
+    return values[Math.max(0, Math.min(values.length - 1, Math.round(voiceIndex)))] ?? 36;
+  };
 
   class CoreProductRuntime {
     constructor() {
@@ -564,6 +568,7 @@ export function loadCoreProductHostHarness(options = {}) {
     },
     runtimeWalkConfigFromState,
     drumVoiceIndex,
+    drumVoiceBaseMidiFromIndex,
     manualAuditionState,
     midiFromFrequency: (frequency) => 69 + 12 * Math.log2(frequency / 440),
     requireFiniteRange,

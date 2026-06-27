@@ -245,6 +245,18 @@ function testMigratePresetPreservesSynthPitchBindingModes(): void {
 
 function testBuildPresetVersionMetadataIncludesAllSupportedFields(): void {
   const metadata = buildPresetVersionMetadata({
+    routingMuteGroups: {
+      slots: [
+        { mutedSourceIds: ['pad1', 'drums'] },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+      ],
+    },
     dualRanges: {
       filterCutoffMin: { min: 0.1, max: 0.9 },
       ignoredSingle: { min: 0.2, max: 0.8 },
@@ -293,6 +305,18 @@ function testBuildPresetVersionMetadataIncludesAllSupportedFields(): void {
   });
 
   assert.deepStrictEqual(metadata, {
+    routingMuteGroups: {
+      slots: [
+        { mutedSourceIds: ['pad1', 'drums'] },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+      ],
+    },
     dualRanges: {
       filterCutoffMin: { min: 0.1, max: 0.9 },
     },

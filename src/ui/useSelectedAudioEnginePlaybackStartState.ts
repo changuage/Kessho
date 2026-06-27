@@ -25,6 +25,7 @@ type SelectedAudioEnginePlaybackStartStateOptions = {
     presetSliderModes?: Record<string, SliderMode>,
   ) => void;
   restoreEvolveConfigs: (preset: PlaybackStartPreset) => void;
+  onRoutingMuteGroupsLoad?: (state: SavedPreset['routingMuteGroups']) => void;
 };
 
 export function useSelectedAudioEnginePlaybackStartState({
@@ -40,6 +41,7 @@ export function useSelectedAudioEnginePlaybackStartState({
   setMorphPresetA,
   applyDualRangesFromPreset,
   restoreEvolveConfigs,
+  onRoutingMuteGroupsLoad,
 }: SelectedAudioEnginePlaybackStartStateOptions): (requestedState?: SliderState) => Promise<SliderState> {
   return useCallback(async (requestedState?: SliderState): Promise<SliderState> => {
     if (!snowflakeActivated) setSnowflakeActivated(true);
@@ -60,6 +62,7 @@ export function useSelectedAudioEnginePlaybackStartState({
         setStatePresetName(defaultPreset.name);
         setMorphPresetA(result.preset);
         stateToStart = result.state;
+        onRoutingMuteGroupsLoad?.(result.preset.routingMuteGroups);
         applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
         restoreEvolveConfigs(result.preset);
       }
@@ -79,5 +82,6 @@ export function useSelectedAudioEnginePlaybackStartState({
     setStatePresetName,
     snowflakeActivated,
     stateRef,
+    onRoutingMuteGroupsLoad,
   ]);
 }

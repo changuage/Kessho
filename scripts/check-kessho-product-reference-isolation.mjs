@@ -187,6 +187,7 @@ const classifiedRuntimeAllowlist = new Map([
   ['./coreProductSnapshotPadVoiceRouting', 'Product snapshot pad voice routing and seed encoding helper'],
   ['./coreProductEvents', 'product module'],
   ['./dawOutputRouting', 'Product runtime DAW output routing config'],
+  ['./drumVoiceMidi', 'Product drum lane fallback MIDI helper'],
   ['./coreProductGraphTaps', 'product graph tap ID map'],
   ['./coreProductGeneratedSequencerCaptureTypes', 'Product generated sequencer capture telemetry types'],
   ['./CoreProductFallbackDiagnostics', 'product runtime fallback diagnostics'],

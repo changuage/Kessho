@@ -138,11 +138,14 @@ import {
   getRoutingSourceToggleKeys,
   normalizeDegradeReverbCrossfeed,
   normalizeDegradeReverbCrossfeedRanges,
+  normalizeRoutingMuteGroupsState,
   ROUTING_DEGRADE_ACTIVE_KEYS,
   ROUTING_DELAY_A_INPUT_KEYS,
   ROUTING_DELAY_B_INPUT_KEYS,
   ROUTING_INSECTS_KEYS,
+  ROUTING_MUTE_GROUP_STORAGE_KEY,
   ROUTING_NATURE_KEYS,
+  type RoutingMuteGroupsState,
 } from './ui/routing';
 import type { SynthKeyboardUiState } from './ui/synth/SynthPage';
 import SnowflakeGeneratorPage from './ui/snowflakeGenerator/SnowflakeGeneratorPage';
@@ -402,6 +405,24 @@ const TexturePage = React.lazy(() => import('./ui/texture/TexturePage'));
 const RoutingPage = React.lazy(() => import('./ui/routing/RoutingPage'));
 const EarthPage = React.lazy(() => import('./ui/earth/EarthPage'));
 const ReactiveVisualizerPage = React.lazy(() => import('./ui/visualizer/ReactiveVisualizerPage'));
+
+function loadRoutingMuteGroupsState(): RoutingMuteGroupsState {
+  if (typeof window === 'undefined') return normalizeRoutingMuteGroupsState(undefined);
+  try {
+    return normalizeRoutingMuteGroupsState(JSON.parse(window.localStorage.getItem(ROUTING_MUTE_GROUP_STORAGE_KEY) ?? 'null'));
+  } catch {
+    return normalizeRoutingMuteGroupsState(undefined);
+  }
+}
+
+function saveRoutingMuteGroupsState(state: RoutingMuteGroupsState): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(ROUTING_MUTE_GROUP_STORAGE_KEY, JSON.stringify(normalizeRoutingMuteGroupsState(state)));
+  } catch {
+    // Storage failure should not block routing control.
+  }
+}
 
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -1417,10 +1438,12 @@ const App: React.FC = () => {
 
   // Load initial state from URL or defaults
   const [state, setState] = useState<SliderState>(() => resolveProductRuntimeInitialState({ normalizeState: normalizePresetForWeb }));
+  const [routingMuteGroups, setRoutingMuteGroups] = useState<RoutingMuteGroupsState>(() => loadRoutingMuteGroupsState());
   const [dawOutputRouting, setDawOutputRouting] = useState<DawOutputRoutingConfig>(() => loadDawOutputRoutingConfig());
   const [dawOutputDevice, setDawOutputDevice] = useState<DawOutputDeviceSelection>(() => loadDawOutputDeviceSelection());
   const stateRef = useRef(state);
   stateRef.current = state;
+  const routingMuteGroupRuntimeLevelsRef = useRef<Partial<Record<keyof SliderState, number>>>({});
   const pendingImmediateLeadPresetSyncRef = useRef(false);
   const padMorphEndpointOverridesRef = useRef<PadMorphEndpointOverrides>(createPadMorphEndpointOverrides());
   const { productRuntimeMode } = useProductRuntimeSession();
@@ -1494,6 +1517,11 @@ const App: React.FC = () => {
       console.warn('DAW output device selection failed:', error);
     });
   }, [dawOutputDevice]);
+
+  useEffect(() => {
+    saveRoutingMuteGroupsState(routingMuteGroups);
+  }, [routingMuteGroups]);
+
   const {
     setProductDrumStepPositionCallback,
     setProductDrumEvolveTriggerCallback,
@@ -1593,6 +1621,27 @@ const App: React.FC = () => {
     resetProductCofDrift: resetCofDrift,
     updateSelectedReferenceParams: updateProductReferenceParams,
   });
+
+  const applyRoutingMuteGroupRuntimeLevels = useCallback((sourceState: SliderState): SliderState => {
+    const runtimeLevels = routingMuteGroupRuntimeLevelsRef.current;
+    return Object.keys(runtimeLevels).length > 0
+      ? ({ ...sourceState, ...runtimeLevels } as SliderState)
+      : sourceState;
+  }, []);
+
+  const handleRoutingMuteGroupRuntimeLevelChange = useCallback((key: keyof SliderState, value: number | null) => {
+    const nextRuntimeLevels = { ...routingMuteGroupRuntimeLevelsRef.current };
+    if (value === null) {
+      delete nextRuntimeLevels[key];
+    } else if (Number.isFinite(value)) {
+      nextRuntimeLevels[key] = value;
+    }
+    routingMuteGroupRuntimeLevelsRef.current = nextRuntimeLevels;
+    scheduleProductRuntimeParamUpdate(applyRoutingMuteGroupRuntimeLevels(stateRef.current), {
+      immediate: true,
+      reason: 'ui-control-change',
+    });
+  }, [applyRoutingMuteGroupRuntimeLevels, scheduleProductRuntimeParamUpdate]);
 
   const getCurrentDrumMorphOverrideState = useCallback(
     (sourceState: SliderState = stateRef.current): ProductDrumMorphOverrideState =>
@@ -2119,6 +2168,7 @@ const App: React.FC = () => {
   const getStatePresetSaveMetadata = useCallback(
     () =>
       buildPresetVersionMetadata({
+        routingMuteGroups,
         dualRanges: dualSliderRanges as Record<string, { min: number; max: number }>,
         sliderModes,
         drumEvolveConfigs: drumEvolveConfigsRef.current,
@@ -2148,8 +2198,12 @@ const App: React.FC = () => {
             }
           : undefined,
       }),
-    [activePresetPool, dualSliderRanges, sliderModes, visualizerPresetName],
+    [activePresetPool, dualSliderRanges, routingMuteGroups, sliderModes, visualizerPresetName],
   );
+
+  const restoreRoutingMuteGroupsFromPreset = useCallback((value: SavedPreset['routingMuteGroups']) => {
+    setRoutingMuteGroups(normalizeRoutingMuteGroupsState(value));
+  }, []);
 
   // Drum morph keys - these use per-trigger randomization, not random walk
   const drumMorphKeys = useMemo(
@@ -2496,6 +2550,7 @@ const App: React.FC = () => {
     normalizeState: normalizePresetForWeb,
     applyDualRangesFromPreset,
     restoreEvolveConfigs,
+    onRoutingMuteGroupsLoad: restoreRoutingMuteGroupsFromPreset,
   });
 
   const { resolveSavedPresetForLoad, resolveSavedPresetByName } = usePresetLibraryRuntimeSurface<SavedPreset>({
@@ -2626,16 +2681,17 @@ const App: React.FC = () => {
   // Web audio does not consume dual-slider ranges, so avoid re-sending params when
   // only the UI runtime range model changes.
   useEffect(() => {
+    const runtimeState = applyRoutingMuteGroupRuntimeLevels(state);
     if (pendingImmediateLeadPresetSyncRef.current) {
       pendingImmediateLeadPresetSyncRef.current = false;
-      scheduleProductRuntimeParamUpdate(state, {
+      scheduleProductRuntimeParamUpdate(runtimeState, {
         immediate: true,
         reason: 'ui-control-change',
       });
       return;
     }
-    syncScheduledProductRuntimeState(state);
-  }, [scheduleProductRuntimeParamUpdate, state, syncScheduledProductRuntimeState]);
+    syncScheduledProductRuntimeState(runtimeState);
+  }, [applyRoutingMuteGroupRuntimeLevels, scheduleProductRuntimeParamUpdate, state, syncScheduledProductRuntimeState]);
 
   type SliderChangeOptions = {
     preserveEnabledFlags?: boolean;
@@ -3475,6 +3531,22 @@ const App: React.FC = () => {
     [handleSliderChangeWithOptions],
   );
 
+  const handleRoutingBooleanParamChange = useCallback(
+    (key: keyof SliderState, value: boolean) => {
+      hasUserInteractedRef.current = true;
+      setState((prev) => {
+        if (prev[key] === value) return prev;
+        const nextState = {
+          ...prev,
+          [key]: value,
+        } as SliderState;
+        applyMorphEndpointStatePatch(prev, nextState);
+        return nextState;
+      });
+    },
+    [applyMorphEndpointStatePatch],
+  );
+
   // Helper to create slider props with dual mode support
   const sliderProps = useCallback(
     (
@@ -3786,6 +3858,7 @@ const App: React.FC = () => {
     setMorphPresetA,
     applyDualRangesFromPreset,
     restoreEvolveConfigs,
+    onRoutingMuteGroupsLoad: restoreRoutingMuteGroupsFromPreset,
     startProductPlayback,
     startArmedRecordingAfterPlaybackStart,
     dualRanges: nativeDualRanges,
@@ -5194,6 +5267,7 @@ const App: React.FC = () => {
     applyDualRangesFromPreset,
     restoreEvolveConfigs,
     onPresetPoolLoad: handlePresetPoolLoad,
+    onRoutingMuteGroupsLoad: restoreRoutingMuteGroupsFromPreset,
   });
 
   // ========================================================================
@@ -5954,8 +6028,12 @@ const App: React.FC = () => {
               <RoutingPage
                 state={state}
                 isMobile={isMobile}
+                routingMuteGroups={routingMuteGroups}
+                onRoutingMuteGroupsChange={setRoutingMuteGroups}
                 onParamChange={handleRoutingParamChange}
                 onColumnParamChange={handleRoutingColumnChange}
+                onRuntimeLevelChange={handleRoutingMuteGroupRuntimeLevelChange}
+                onBooleanParamChange={handleRoutingBooleanParamChange}
                 onToggleSource={handleRoutingSourceToggle}
                 onMidiMessage={pushProductMidiMessage}
                 dawOutputRouting={dawOutputRouting}

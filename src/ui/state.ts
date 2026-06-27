@@ -46,6 +46,10 @@ import {
   type SynthChordSequencerConfig,
 } from '../audio/synthChordSequencer';
 import type { SerializedTriggerClip } from './sequencer/triggerClip';
+import {
+  normalizeRoutingMuteGroupsState,
+  type RoutingMuteGroupsState,
+} from './routing/routingMuteGroups';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
 export type GranularQuality = 'eco' | 'balanced' | 'hq';
@@ -282,6 +286,7 @@ export interface SavedPreset {
   variantRank?: number;
   versionCount?: number;
   currentVersion?: number;
+  routingMuteGroups?: RoutingMuteGroupsState;
   dualRanges?: Record<string, { min: number; max: number }>;  // Range values for walk/sampleHold sliders
   sliderModes?: Record<string, SliderMode>;  // Mode per parameter key
   drumEvolveConfigs?: SerializedEvolveConfig[];
@@ -947,6 +952,7 @@ export interface SliderState {
   synthSequencerChain: SequencerChainState;
   // Lane 1
   synthEuclid1Enabled: boolean;
+  synthEuclid1Solo: boolean;
   synthEuclid1Preset: string;
   synthEuclid1Steps: number;
   synthEuclid1Hits: number;
@@ -959,6 +965,7 @@ export interface SliderState {
   synthEuclid1VoiceMask: number;  // 1..255 rotating shared pad voice slot mask for pad sources
   // Lane 2
   synthEuclid2Enabled: boolean;
+  synthEuclid2Solo: boolean;
   synthEuclid2Preset: string;
   synthEuclid2Steps: number;
   synthEuclid2Hits: number;
@@ -971,6 +978,7 @@ export interface SliderState {
   synthEuclid2VoiceMask: number;
   // Lane 3
   synthEuclid3Enabled: boolean;
+  synthEuclid3Solo: boolean;
   synthEuclid3Preset: string;
   synthEuclid3Steps: number;
   synthEuclid3Hits: number;
@@ -983,6 +991,7 @@ export interface SliderState {
   synthEuclid3VoiceMask: number;
   // Lane 4
   synthEuclid4Enabled: boolean;
+  synthEuclid4Solo: boolean;
   synthEuclid4Preset: string;
   synthEuclid4Steps: number;
   synthEuclid4Hits: number;
@@ -1233,6 +1242,7 @@ export interface SliderState {
   
   // Drum Euclidean Lane 1
   drumEuclid1Enabled: boolean;
+  drumEuclid1Solo: boolean;
   drumEuclid1Preset: string;
   drumEuclid1Steps: number;
   drumEuclid1Hits: number;
@@ -1251,6 +1261,7 @@ export interface SliderState {
   
   // Drum Euclidean Lane 2
   drumEuclid2Enabled: boolean;
+  drumEuclid2Solo: boolean;
   drumEuclid2Preset: string;
   drumEuclid2Steps: number;
   drumEuclid2Hits: number;
@@ -1269,6 +1280,7 @@ export interface SliderState {
   
   // Drum Euclidean Lane 3
   drumEuclid3Enabled: boolean;
+  drumEuclid3Solo: boolean;
   drumEuclid3Preset: string;
   drumEuclid3Steps: number;
   drumEuclid3Hits: number;
@@ -1287,6 +1299,7 @@ export interface SliderState {
   
   // Drum Euclidean Lane 4
   drumEuclid4Enabled: boolean;
+  drumEuclid4Solo: boolean;
   drumEuclid4Preset: string;
   drumEuclid4Steps: number;
   drumEuclid4Hits: number;
@@ -1305,6 +1318,7 @@ export interface SliderState {
 
   // Drum Euclidean Lane 5
   drumEuclid5Enabled: boolean;
+  drumEuclid5Solo: boolean;
   drumEuclid5Preset: string;
   drumEuclid5Steps: number;
   drumEuclid5Hits: number;
@@ -1323,6 +1337,7 @@ export interface SliderState {
 
   // Drum Euclidean Lane 6
   drumEuclid6Enabled: boolean;
+  drumEuclid6Solo: boolean;
   drumEuclid6Preset: string;
   drumEuclid6Steps: number;
   drumEuclid6Hits: number;
@@ -2247,6 +2262,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthSequencerFaces',
   'synthSequencerChain',
   'synthEuclid1Enabled',
+  'synthEuclid1Solo',
   'synthEuclid1Preset',
   'synthEuclid1Steps',
   'synthEuclid1Hits',
@@ -2258,6 +2274,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthEuclid1Source',
   'synthEuclid1VoiceMask',
   'synthEuclid2Enabled',
+  'synthEuclid2Solo',
   'synthEuclid2Preset',
   'synthEuclid2Steps',
   'synthEuclid2Hits',
@@ -2269,6 +2286,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthEuclid2Source',
   'synthEuclid2VoiceMask',
   'synthEuclid3Enabled',
+  'synthEuclid3Solo',
   'synthEuclid3Preset',
   'synthEuclid3Steps',
   'synthEuclid3Hits',
@@ -2280,6 +2298,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthEuclid3Source',
   'synthEuclid3VoiceMask',
   'synthEuclid4Enabled',
+  'synthEuclid4Solo',
   'synthEuclid4Preset',
   'synthEuclid4Steps',
   'synthEuclid4Hits',
@@ -2488,6 +2507,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumEuclidSwing',
   'drumEuclidDivision',
   'drumEuclid1Enabled',
+  'drumEuclid1Solo',
   'drumEuclid1Preset',
   'drumEuclid1Steps',
   'drumEuclid1Hits',
@@ -2504,6 +2524,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumEuclid1VelocityMax',
   'drumEuclid1Level',
   'drumEuclid2Enabled',
+  'drumEuclid2Solo',
   'drumEuclid2Preset',
   'drumEuclid2Steps',
   'drumEuclid2Hits',
@@ -2520,6 +2541,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumEuclid2VelocityMax',
   'drumEuclid2Level',
   'drumEuclid3Enabled',
+  'drumEuclid3Solo',
   'drumEuclid3Preset',
   'drumEuclid3Steps',
   'drumEuclid3Hits',
@@ -2536,6 +2558,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumEuclid3VelocityMax',
   'drumEuclid3Level',
   'drumEuclid4Enabled',
+  'drumEuclid4Solo',
   'drumEuclid4Preset',
   'drumEuclid4Steps',
   'drumEuclid4Hits',
@@ -2552,6 +2575,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumEuclid4VelocityMax',
   'drumEuclid4Level',
   'drumEuclid5Enabled',
+  'drumEuclid5Solo',
   'drumEuclid5Preset',
   'drumEuclid5Steps',
   'drumEuclid5Hits',
@@ -2568,6 +2592,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumEuclid5VelocityMax',
   'drumEuclid5Level',
   'drumEuclid6Enabled',
+  'drumEuclid6Solo',
   'drumEuclid6Preset',
   'drumEuclid6Steps',
   'drumEuclid6Hits',
@@ -3313,6 +3338,7 @@ export const DEFAULT_STATE: SliderState = {
   synthSequencerChain: createDefaultSequencerChainState(),
   // Lane 1 - main pulse (lancaran) - mid register
   synthEuclid1Enabled: true,
+  synthEuclid1Solo: false,
   synthEuclid1Preset: 'lancaran',
   synthEuclid1Steps: 16,
   synthEuclid1Hits: 4,
@@ -3325,6 +3351,7 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclid1VoiceMask: 128,
   // Lane 2 - interlocking (kotekan) - higher register
   synthEuclid2Enabled: false,
+  synthEuclid2Solo: false,
   synthEuclid2Preset: 'kotekan',
   synthEuclid2Steps: 8,
   synthEuclid2Hits: 3,
@@ -3337,6 +3364,7 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclid2VoiceMask: 128,
   // Lane 3 - sparse accent - bass register
   synthEuclid3Enabled: false,
+  synthEuclid3Solo: false,
   synthEuclid3Preset: 'ketawang',
   synthEuclid3Steps: 16,
   synthEuclid3Hits: 2,
@@ -3349,6 +3377,7 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclid3VoiceMask: 128,
   // Lane 4 - fill/texture - sparkle register
   synthEuclid4Enabled: false,
+  synthEuclid4Solo: false,
   synthEuclid4Preset: 'srepegan',
   synthEuclid4Steps: 16,
   synthEuclid4Hits: 6,
@@ -3589,6 +3618,7 @@ export const DEFAULT_STATE: SliderState = {
   
   // Lane 1 - Kick (primary rhythm)
   drumEuclid1Enabled: false,
+  drumEuclid1Solo: false,
   drumEuclid1Preset: 'custom',
   drumEuclid1Steps: 8,
   drumEuclid1Hits: 5,
@@ -3607,6 +3637,7 @@ export const DEFAULT_STATE: SliderState = {
   
   // Lane 2 - BeepHi pattern
   drumEuclid2Enabled: false,
+  drumEuclid2Solo: false,
   drumEuclid2Preset: 'custom',
   drumEuclid2Steps: 16,
   drumEuclid2Hits: 3,
@@ -3625,6 +3656,7 @@ export const DEFAULT_STATE: SliderState = {
   
   // Lane 3 - Click (sparse accents)
   drumEuclid3Enabled: false,
+  drumEuclid3Solo: false,
   drumEuclid3Preset: 'custom',
   drumEuclid3Steps: 12,
   drumEuclid3Hits: 5,
@@ -3643,6 +3675,7 @@ export const DEFAULT_STATE: SliderState = {
   
   // Lane 4 - Noise
   drumEuclid4Enabled: false,
+  drumEuclid4Solo: false,
   drumEuclid4Preset: 'custom',
   drumEuclid4Steps: 8,
   drumEuclid4Hits: 3,
@@ -3661,6 +3694,7 @@ export const DEFAULT_STATE: SliderState = {
 
   // Lane 5 - BeepLo
   drumEuclid5Enabled: false,
+  drumEuclid5Solo: false,
   drumEuclid5Preset: 'custom',
   drumEuclid5Steps: 16,
   drumEuclid5Hits: 4,
@@ -3679,6 +3713,7 @@ export const DEFAULT_STATE: SliderState = {
 
   // Lane 6 - Membrane
   drumEuclid6Enabled: false,
+  drumEuclid6Solo: false,
   drumEuclid6Preset: 'custom',
   drumEuclid6Steps: 12,
   drumEuclid6Hits: 4,
@@ -6146,6 +6181,7 @@ export function migratePreset(preset: any): SavedPreset {
     timestamp: preset.timestamp || new Date().toISOString(),
     state: state as SliderState,
     tags: Array.isArray(preset.tags) ? preset.tags : undefined,
+    routingMuteGroups: normalizeRoutingMuteGroupsState(preset.routingMuteGroups),
     dualRanges: Object.keys(dualRanges).length > 0 ? dualRanges : undefined,
     sliderModes: Object.keys(sliderModes).length > 0 ? sliderModes : undefined,
     drumEvolveConfigs,

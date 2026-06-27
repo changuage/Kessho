@@ -761,8 +761,16 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     normalizeSequencerSwings(initialSwings, laneCount)
   );
 
-  // ── Solo tracking (set of soloed lane indices; empty = no solo) ──
-  const [soloSet, setSoloSet] = useState<Set<number>>(new Set());
+  // ── Solo tracking ──
+  const soloSet = useMemo(() => {
+    const next = new Set<number>();
+    for (let index = 0; index < laneCount; index += 1) {
+      if (Boolean(state[makeKey(prefix, index + 1, 'Solo')])) {
+        next.add(index);
+      }
+    }
+    return next;
+  }, [laneCount, prefix, state]);
 
   // ── Preset reset: when resetKey changes, re-initialize internal state from initial* props ──
   const prevResetKey = useRef(resetKey);
@@ -1703,27 +1711,21 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
 
   const toggleSolo = useCallback(
     (laneIdx: number) => {
-      setSoloSet(prev => {
-        const next = new Set(prev);
-        if (next.has(laneIdx)) {
-          next.delete(laneIdx);
-        } else {
-          next.add(laneIdx);
-        }
-        // If no lanes are soloed, re-enable all; otherwise enable only soloed lanes
-        if (next.size === 0) {
-          for (let i = 0; i < laneCount; i++) {
-            onSelectChange(makeKey(prefix, i + 1, 'Enabled'), true);
-          }
-        } else {
-          for (let i = 0; i < laneCount; i++) {
-            onSelectChange(makeKey(prefix, i + 1, 'Enabled'), next.has(i));
-          }
-        }
-        return next;
-      });
+      const next = new Set(soloSet);
+      if (next.has(laneIdx)) {
+        next.delete(laneIdx);
+      } else {
+        next.add(laneIdx);
+      }
+
+      // If no lanes are soloed, re-enable all; otherwise enable only soloed lanes.
+      for (let i = 0; i < laneCount; i++) {
+        const soloed = next.has(i);
+        onSelectChange(makeKey(prefix, i + 1, 'Solo'), soloed);
+        onSelectChange(makeKey(prefix, i + 1, 'Enabled'), next.size === 0 ? true : soloed);
+      }
     },
-    [prefix, laneCount, onSelectChange]
+    [prefix, laneCount, onSelectChange, soloSet]
   );
 
   // ── Preset names ──

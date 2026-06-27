@@ -21,6 +21,7 @@ import {
 
 const PREFIX = 'preset:';
 const METADATA_FIELDS = [
+  'routingMuteGroups',
   'dualRanges',
   'sliderModes',
   'drumEvolveConfigs',

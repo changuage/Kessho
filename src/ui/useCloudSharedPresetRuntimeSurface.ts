@@ -19,6 +19,7 @@ type UseCloudSharedPresetRuntimeSurfaceOptions = {
     presetSliderModes?: Record<string, SliderMode>,
   ) => void;
   restoreEvolveConfigs: (preset: SavedPreset) => void;
+  onRoutingMuteGroupsLoad?: (state: SavedPreset['routingMuteGroups']) => void;
 };
 
 type CloudSharedPresetRuntimeSurface = {
@@ -34,6 +35,7 @@ export function useCloudSharedPresetRuntimeSurface({
   normalizeState,
   applyDualRangesFromPreset,
   restoreEvolveConfigs,
+  onRoutingMuteGroupsLoad,
 }: UseCloudSharedPresetRuntimeSurfaceOptions): CloudSharedPresetRuntimeSurface {
   const cloudSharedPresetToSavedPreset = useCallback((preset: CloudSharedPresetPayload): SavedPreset => {
     const rawData = preset.data;
@@ -44,6 +46,7 @@ export function useCloudSharedPresetRuntimeSurface({
       name: preset.name,
       timestamp: new Date().toISOString(),
       state: presetState,
+      routingMuteGroups: wrappedData?.routingMuteGroups,
       dualRanges: wrappedData?.dualRanges,
       sliderModes: wrappedData?.sliderModes,
       drumEvolveConfigs: wrappedData?.drumEvolveConfigs,
@@ -73,6 +76,7 @@ export function useCloudSharedPresetRuntimeSurface({
       });
       syncCoreProductAppliedPreset(result.state);
       setState(result.state);
+      onRoutingMuteGroupsLoad?.(result.preset.routingMuteGroups);
       applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
       restoreEvolveConfigs(result.preset);
       console.log(`Loaded cloud preset: ${metadata.name} by ${metadata.author}`);
@@ -85,6 +89,7 @@ export function useCloudSharedPresetRuntimeSurface({
       setState,
       stateRef,
       syncCoreProductAppliedPreset,
+      onRoutingMuteGroupsLoad,
     ],
   );
 

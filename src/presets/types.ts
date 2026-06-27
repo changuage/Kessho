@@ -8,6 +8,7 @@ import type {
   SerializedSubLaneState,
   SliderMode,
 } from '../ui/state';
+import type { RoutingMuteGroupsState } from '../ui/routing/routingMuteGroups';
 import type { ClockDivision } from '../audio/drumSeqTypes';
 import type { PitchBindingMode } from '../audio/drumSeqTypes';
 import type { ProductArpConfig } from '../audio/productArpeggiator';
@@ -63,6 +64,7 @@ export interface PresetPoolMetadata {
 }
 
 export interface PresetVersionMetadata {
+  routingMuteGroups?: RoutingMuteGroupsState;
   dualRanges?: Record<string, { min: number; max: number }>;
   sliderModes?: Record<string, SliderMode>;
   drumEvolveConfigs?: SerializedEvolveConfig[];

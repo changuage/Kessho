@@ -49,6 +49,7 @@ type UseSavedPresetLoadRuntimeSurfaceOptions<TPreset extends SavedPreset> = {
   ) => void;
   restoreEvolveConfigs: (preset: TPreset) => void;
   onPresetPoolLoad?: (preset: TPreset) => void;
+  onRoutingMuteGroupsLoad?: (state: SavedPreset['routingMuteGroups']) => void;
 };
 
 type SavedPresetLoadRuntimeSurface<TPreset extends SavedPreset> = {
@@ -82,6 +83,7 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
   applyDualRangesFromPreset,
   restoreEvolveConfigs,
   onPresetPoolLoad,
+  onRoutingMuteGroupsLoad,
 }: UseSavedPresetLoadRuntimeSurfaceOptions<TPreset>): SavedPresetLoadRuntimeSurface<TPreset> {
   const captureCurrentMorphBasis = useCallback((): void => {
     morphCapturedStateRef.current = { ...state };
@@ -155,6 +157,7 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
         };
         setState(result.state);
         setStatePresetName(resolvedPreset.name);
+        onRoutingMuteGroupsLoad?.(result.preset.routingMuteGroups);
         applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
         restoreEvolveConfigs(result.preset as TPreset);
         onPresetPoolLoad?.(result.preset as TPreset);
@@ -184,6 +187,7 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
       skipNextPresetLoadEngineSync,
       snowflakeActivated,
       state,
+      onRoutingMuteGroupsLoad,
       warnAboutPresetCompatibility,
     ],
   );

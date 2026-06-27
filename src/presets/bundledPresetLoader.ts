@@ -6,6 +6,7 @@ import {
   type SliderMode,
   type SliderState,
 } from '../ui/state';
+import type { RoutingMuteGroupsState } from '../ui/routing/routingMuteGroups';
 import type {
   EvolveConfig,
   PitchSettings,
@@ -39,6 +40,7 @@ export interface BundledSavedPreset {
   variantRank?: number;
   versionCount?: number;
   currentVersion?: number;
+  routingMuteGroups?: RoutingMuteGroupsState;
   dualRanges?: Record<string, { min: number; max: number }>;
   sliderModes?: Record<string, SliderMode>;
   drumEvolveConfigs?: EvolveConfig[];
@@ -70,6 +72,7 @@ function bundledPresetFromFileData(
     timestamp: typeof data.timestamp === 'string' ? data.timestamp : new Date().toISOString(),
     state: (data.state && typeof data.state === 'object' ? data.state : data) as SliderState,
     tags: Array.isArray(data.tags) ? data.tags : undefined,
+    routingMuteGroups: data.routingMuteGroups,
     dualRanges: data.dualRanges,
     sliderModes: data.sliderModes,
     drumEvolveConfigs: data.drumEvolveConfigs,

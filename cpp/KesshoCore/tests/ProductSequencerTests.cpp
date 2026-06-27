@@ -4220,16 +4220,16 @@ int main() {
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum voice-mask snapshot load failed");
   event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
   require(event_count == 16, "multi-target drum lane should pick one voice per hit instead of layering voices");
-  const float expected_kick_midi = kessho::product::internal::midiNoteForDrumVoice(DRUM_VOICE_KICK);
-  const float expected_click_midi = kessho::product::internal::midiNoteForDrumVoice(DRUM_VOICE_CLICK);
+  const float masked_kick_midi = kessho::product::internal::midiNoteForDrumVoice(DRUM_VOICE_KICK);
+  const float masked_click_midi = kessho::product::internal::midiNoteForDrumVoice(DRUM_VOICE_CLICK);
   bool saw_kick_voice = false;
   bool saw_click_voice = false;
   for (int32_t i = 0; i < event_count; ++i) {
-    saw_kick_voice = saw_kick_voice || std::fabs(events[i].midi_note - expected_kick_midi) < 0.001f;
-    saw_click_voice = saw_click_voice || std::fabs(events[i].midi_note - expected_click_midi) < 0.001f;
+    saw_kick_voice = saw_kick_voice || std::fabs(events[i].midi_note - masked_kick_midi) < 0.001f;
+    saw_click_voice = saw_click_voice || std::fabs(events[i].midi_note - masked_click_midi) < 0.001f;
     require(
-        std::fabs(events[i].midi_note - expected_kick_midi) < 0.001f ||
-            std::fabs(events[i].midi_note - expected_click_midi) < 0.001f,
+        std::fabs(events[i].midi_note - masked_kick_midi) < 0.001f ||
+            std::fabs(events[i].midi_note - masked_click_midi) < 0.001f,
         "multi-target drum lane selected a voice outside its encoded voice mask");
   }
   require(saw_kick_voice && saw_click_voice, "multi-target drum lane should rotate through encoded target voices");
@@ -4246,16 +4246,16 @@ int main() {
   require(kessho_product_enqueue_event(engine, &voice_mask_seed_event) == KESSHO_PRODUCT_OK, "drum voice-mask seed event enqueue failed");
   event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
   require(event_count == 16, "live voice-mask seed event should preserve one drum voice per hit");
-  const float expected_sub_midi = kessho::product::internal::midiNoteForDrumVoice(DRUM_VOICE_SUB);
-  const float expected_noise_midi = kessho::product::internal::midiNoteForDrumVoice(DRUM_VOICE_NOISE);
+  const float masked_sub_midi = kessho::product::internal::midiNoteForDrumVoice(DRUM_VOICE_SUB);
+  const float masked_noise_midi = kessho::product::internal::midiNoteForDrumVoice(DRUM_VOICE_NOISE);
   bool saw_sub_voice = false;
   bool saw_noise_voice = false;
   for (int32_t i = 0; i < event_count; ++i) {
-    saw_sub_voice = saw_sub_voice || std::fabs(events[i].midi_note - expected_sub_midi) < 0.001f;
-    saw_noise_voice = saw_noise_voice || std::fabs(events[i].midi_note - expected_noise_midi) < 0.001f;
+    saw_sub_voice = saw_sub_voice || std::fabs(events[i].midi_note - masked_sub_midi) < 0.001f;
+    saw_noise_voice = saw_noise_voice || std::fabs(events[i].midi_note - masked_noise_midi) < 0.001f;
     require(
-        std::fabs(events[i].midi_note - expected_sub_midi) < 0.001f ||
-            std::fabs(events[i].midi_note - expected_noise_midi) < 0.001f,
+        std::fabs(events[i].midi_note - masked_sub_midi) < 0.001f ||
+            std::fabs(events[i].midi_note - masked_noise_midi) < 0.001f,
         "live voice-mask seed event selected a voice outside its encoded mask");
   }
   require(saw_sub_voice && saw_noise_voice, "live voice-mask seed event should update the selected target set");

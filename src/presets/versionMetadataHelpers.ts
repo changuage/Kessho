@@ -28,6 +28,11 @@ export function buildPresetVersionMetadata(
       )
     : undefined;
 
+  if (source.routingMuteGroups) {
+    metadata.routingMuteGroups = cloneJson(source.routingMuteGroups);
+    hasMetadata = true;
+  }
+
   if (source.dualRanges) {
     const nextDualRanges = filteredSliderModes
       ? Object.fromEntries(

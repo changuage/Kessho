@@ -6,13 +6,20 @@ import MidiPage from '../midi/MidiPage';
 import type { KesshoMidiMessage } from '../../native/capacitorMidiRouting';
 import type { DawOutputDeviceSelection, DawOutputRoutingConfig } from '../../audio/dawOutputRouting';
 import DawOutputPanel from './DawOutputPanel';
+import RoutingMuteGroupsPanel from './RoutingMuteGroupsPanel';
+import { useRoutingMuteGroupsController } from './useRoutingMuteGroupsController';
+import type { RoutingMuteGroupsState } from './routingMuteGroups';
 import './routing.css';
 
 export interface RoutingPageProps {
   state: SliderState;
   isMobile: boolean;
+  routingMuteGroups: RoutingMuteGroupsState;
+  onRoutingMuteGroupsChange: (state: RoutingMuteGroupsState) => void;
   onParamChange: (key: keyof SliderState, value: number) => void;
   onColumnParamChange: (key: keyof SliderState, value: number) => void;
+  onRuntimeLevelChange: (key: keyof SliderState, value: number | null) => void;
+  onBooleanParamChange: (key: keyof SliderState, value: boolean) => void;
   onToggleSource: (sourceId: string, enabled: boolean) => void;
   onMidiMessage: (message: KesshoMidiMessage) => void;
   dawOutputRouting: DawOutputRoutingConfig;
@@ -32,8 +39,12 @@ export interface RoutingPageProps {
 export default function RoutingPage({
   state,
   isMobile,
+  routingMuteGroups,
+  onRoutingMuteGroupsChange,
   onParamChange,
   onColumnParamChange,
+  onRuntimeLevelChange,
+  onBooleanParamChange,
   onToggleSource,
   onMidiMessage,
   dawOutputRouting,
@@ -43,6 +54,14 @@ export default function RoutingPage({
   sliderProps,
 }: RoutingPageProps) {
   void onMidiMessage;
+  const muteGroupsController = useRoutingMuteGroupsController({
+    state,
+    routingMuteGroups,
+    onRoutingMuteGroupsChange,
+    onRuntimeLevelChange,
+    onBooleanParamChange,
+  });
+
   return (
     <div className={`routing-root${isMobile ? ' mobile' : ''}`}>
       <div className="routing-container">
@@ -63,6 +82,16 @@ export default function RoutingPage({
               onToggleSource={onToggleSource}
               sliderProps={sliderProps}
               helpPage="routing"
+            />
+            <RoutingMuteGroupsPanel
+              muteGroups={routingMuteGroups}
+              activeSlotIndex={muteGroupsController.activeSlotIndex}
+              selectedSlotIndex={muteGroupsController.selectedSlotIndex}
+              onSelectSlot={muteGroupsController.selectSlot}
+              onPressSlot={muteGroupsController.pressSlot}
+              onSaveSlot={muteGroupsController.saveSlot}
+              onSaveSelectedSlot={muteGroupsController.saveSelectedSlot}
+              onClearSelectedSlot={muteGroupsController.clearSelectedSlot}
             />
           </div>
         </section>

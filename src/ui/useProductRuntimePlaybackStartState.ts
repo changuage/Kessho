@@ -26,6 +26,7 @@ export type ProductRuntimePlaybackStartStateOptions = {
     presetSliderModes?: Record<string, SliderMode>,
   ) => void;
   restoreEvolveConfigs: (preset: PlaybackStartPreset) => void;
+  onRoutingMuteGroupsLoad?: (state: SavedPreset['routingMuteGroups']) => void;
 };
 
 export function useProductRuntimePlaybackStartState(options: ProductRuntimePlaybackStartStateOptions) {
