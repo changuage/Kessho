@@ -1,0 +1,33 @@
+{
+  "files": {
+    "src/App.tsx": {
+      "noGrowthCeiling": 3456,
+      "targetCeiling": 2500,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/audio/coreProductEngineHost.ts": {
+      "noGrowthCeiling": 886,
+      "targetCeiling": 650,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/presets/SupabasePresetStore.ts": {
+      "noGrowthCeiling": 2257,
+      "targetCeiling": 1200,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/cloud/supabase.ts": {
+      "noGrowthCeiling": 802,
+      "targetCeiling": 500,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/presets/presetStorageV2.ts": {
+      "noGrowthCeiling": 981,
+      "targetCeiling": 600,
+      "mode": "fail-on-growth-warn-above-target"
+    }
+  },
+  "generatedAllowlist": [
+    "src/audio/generated/",
+    "cpp/KesshoCore/src/product/generated/"
+  ]
+}

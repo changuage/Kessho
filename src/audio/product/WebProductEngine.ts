@@ -9,6 +9,7 @@ import type { ProductRuntimeDiagnostics } from './ProductRuntimeDiagnostics';
 import type { ProductEnginePort } from './ProductEnginePort';
 import type { ProductLiveNoteEvent } from './liveNoteEvents';
 import { ProductDiagnosticsPublisher } from './ProductDiagnosticsPublisher';
+import { ProductRuntimeScheduler } from './scheduling/ProductRuntimeScheduler';
 import type {
   ProductAssetHandle,
   ProductAssetRegistration,
@@ -60,6 +61,7 @@ import type {
 export class WebProductEngine implements ProductEnginePort {
   readonly mode = 'core-product' as const;
   private lifecycleState: ProductEngineLifecycleState = 'cold';
+  private readonly runtimeScheduler = new ProductRuntimeScheduler();
   private readonly lifecycleController = new ProductRuntimeLifecycleController({
     preloadRuntime: () => this.preloadRuntime(),
     startRuntime: () => this.startRuntime(),
@@ -68,7 +70,7 @@ export class WebProductEngine implements ProductEnginePort {
     resumeRuntime: () => this.resumeRuntime(),
     publishState: (state, operation, error) => this.publishLifecycleState(state, operation, error),
   });
-  private readonly diagnosticsPublisher = new ProductDiagnosticsPublisher(() => this.getDiagnostics());
+  private readonly diagnosticsPublisher = new ProductDiagnosticsPublisher(() => this.getDiagnostics(), this.runtimeScheduler);
 
   preload(): Promise<void> {
     return this.lifecycleController.preload();
@@ -188,7 +190,10 @@ export class WebProductEngine implements ProductEnginePort {
   }
 
   getDiagnostics(): ProductRuntimeDiagnostics {
-    return coreProductRuntimeHostPort.readDiagnostics();
+    return {
+      ...coreProductRuntimeHostPort.readDiagnostics(),
+      lastRejectedLifecycleTransitionReason: this.lifecycleController.lastRejectedTransitionReason,
+    };
   }
 
   getCapabilityReport(): ProductRuntimeCapabilityReport {

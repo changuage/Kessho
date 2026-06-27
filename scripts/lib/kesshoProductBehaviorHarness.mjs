@@ -1498,6 +1498,14 @@ Object.assign(globalThis, {
   ProductFrameScheduler,
 });`, context, { filename: productFrameSchedulerPath });
 
+  const productRuntimeSchedulerPath = 'src/audio/product/scheduling/ProductRuntimeScheduler.ts';
+  const productRuntimeSchedulerSource = stripImportsAndExports(readProjectFile(productRuntimeSchedulerPath));
+  const productRuntimeSchedulerJs = transpileForVm(productRuntimeSchedulerSource, resolve(root, productRuntimeSchedulerPath));
+  vm.runInNewContext(`${productRuntimeSchedulerJs}
+Object.assign(globalThis, {
+  ProductRuntimeScheduler,
+});`, context, { filename: productRuntimeSchedulerPath });
+
   const telemetryCallbackSchedulerPath = 'src/audio/product/host/CoreProductTelemetryCallbackScheduler.ts';
   const telemetryCallbackSchedulerSource = stripImportsAndExports(readProjectFile(telemetryCallbackSchedulerPath));
   const telemetryCallbackSchedulerJs = transpileForVm(telemetryCallbackSchedulerSource, resolve(root, telemetryCallbackSchedulerPath));

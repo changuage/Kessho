@@ -40,6 +40,45 @@ const profiles = Object.freeze({
     },
     parseSample: parseArchiveFoundStringsSample,
   },
+  'array-mbira': {
+    key: 'array-mbira',
+    name: "Array M'Bira",
+    provider: 'Pianobook',
+    sourceInstrument: 'Decent Sampler',
+    sampleRoot: 'ArrayMBira',
+    envSource: 'ARRAY_MBIRA_SOURCE',
+    assetIdBase: 8600,
+    categories: {
+      mbira: 'Array M\'Bira single plucks and velocity strums from direct and microphone sample sets.',
+    },
+    parseSample: parseArrayMbiraSample,
+  },
+  'the-spellsinger': {
+    key: 'the-spellsinger',
+    name: 'The Spellsinger',
+    provider: 'Pianobook',
+    sourceInstrument: 'Decent Sampler',
+    sampleRoot: 'TheSpellsinger',
+    envSource: 'THE_SPELLSINGER_SOURCE',
+    assetIdBase: 9000,
+    categories: {
+      voice: 'Spellsinger vocal drones, sustains, and one-shot phrases.',
+    },
+    parseSample: parseSpellsingerSample,
+  },
+  'wild-percussion': {
+    key: 'wild-percussion',
+    name: 'Wild Percussion',
+    provider: 'Pianobook',
+    sourceInstrument: 'Decent Sampler',
+    sampleRoot: 'WildPercussion',
+    envSource: 'WILD_PERCUSSION_SOURCE',
+    assetIdBase: 9100,
+    categories: {
+      percussion: 'Wild percussion one-shot hits with velocity layers and round-robin positions.',
+    },
+    parseSample: parseWildPercussionSample,
+  },
 });
 
 function parseArgs(argv) {
@@ -173,9 +212,17 @@ function midiNoteName(midi) {
   return `${names[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
 }
 
+function pianobookSourceNoteLabelToMidi(noteLabel) {
+  const match = /^([A-G])(#?)(-?\d+)$/.exec(String(noteLabel || ''));
+  if (!match) return null;
+  const [, note, sharp, octaveText] = match;
+  const semitone = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[note] + (sharp ? 1 : 0);
+  return 12 * (Number(octaveText) + 2) + semitone;
+}
+
 function parseAttributes(text) {
   const attrs = {};
-  for (const match of text.matchAll(/([A-Za-z_][\w:-]*)="([^"]*)"/g)) {
+  for (const match of text.matchAll(/([A-Za-z_][\w:-]*)\s*=\s*"([^"]*)"/g)) {
     const [, key, value] = match;
     attrs[key] = value;
   }
@@ -212,6 +259,8 @@ function parseDecentSamplerMappings(sourceDir) {
         const mapping = {
           preset: presetName,
           groupName,
+          groupTags: groupAttrs.tags ?? null,
+          groupSeqLength: numberAttr(groupAttrs, 'seqLength'),
           path: decentPath,
           rootNote: numberAttr(attrs, 'rootNote'),
           noteName: midiNoteName(numberAttr(attrs, 'rootNote')),
@@ -228,6 +277,8 @@ function parseDecentSamplerMappings(sourceDir) {
           volume: attrs.volume ?? null,
           pan: numberAttr(attrs, 'pan'),
           tuning: numberAttr(attrs, 'tuning'),
+          sampleTags: attrs.tags ?? null,
+          seqPosition: numberAttr(attrs, 'seqPosition'),
         };
         const key = basename(decentPath);
         const list = mappingsByFile.get(key) || [];
@@ -242,6 +293,14 @@ function parseDecentSamplerMappings(sourceDir) {
 
 function firstMappingWithRoot(mappings) {
   return mappings.find((mapping) => Number.isInteger(mapping.rootNote)) || mappings[0] || null;
+}
+
+function velocityRangeFromMapping(mapping) {
+  return mapping?.loVel != null && mapping?.hiVel != null ? [mapping.loVel, mapping.hiVel] : null;
+}
+
+function sourceSlugFileName(prefix, base) {
+  return `${prefix}_${slugify(base)}.ogg`;
 }
 
 function parseSoftStringSpursSample({ sourceFileName, mappings }) {
@@ -402,6 +461,249 @@ function parseArchiveFoundStringsSample({ sourceFileName, mappings }) {
   };
 }
 
+function parseArrayMbiraSample({ sourceFileName, mappings }) {
+  const base = basename(sourceFileName, extname(sourceFileName));
+  const mapping = firstMappingWithRoot(mappings);
+  const rootMidi = mapping?.rootNote ?? null;
+  const noteName = midiNoteName(rootMidi);
+  const noiseReduced = /^NR\b/i.test(base) || /\bNR$/i.test(base) || /\.1$/i.test(base);
+
+  const single = /^(?:NR\s+)?MBIRA single ([fp])-([^-]+)-([LR]) ([A-G]#?\d)(?:\.1)?$/i.exec(base);
+  if (single) {
+    const dynamicCode = single[1].toLowerCase();
+    const microphone = single[2].toLowerCase() === 'direct' ? 'direct' : 'mics';
+    const side = single[3].toUpperCase() === 'L' ? 'left' : 'right';
+    const sourceNoteLabel = single[4];
+    const sampleRootMidi = rootMidi ?? pianobookSourceNoteLabelToMidi(sourceNoteLabel);
+    const sampleNoteName = midiNoteName(sampleRootMidi);
+    const dynamic = dynamicCode === 'f' ? 'forte' : 'piano';
+    return {
+      key: `array-mbira.single.${slugify(base)}`,
+      fileName: sourceSlugFileName('array_mbira', base),
+      category: 'mbira',
+      role: 'single',
+      source: 'array-mbira',
+      articulation: `${microphone}-single`,
+      dynamic,
+      dynamicRank: dynamicCode === 'f' ? 2 : 1,
+      velocityRange: velocityRangeFromMapping(mapping),
+      modulationLayer: null,
+      sourceNoteLabel,
+      rootMidi: sampleRootMidi,
+      noteName: sampleNoteName,
+      roundRobin: null,
+      profileIndex: null,
+      loop: mapping?.loopEnabled === true,
+      microphone,
+      side,
+      noiseReduced,
+      variant: noiseReduced ? 'noise-reduced' : 'raw',
+      seqPosition: mapping?.seqPosition ?? null,
+      tags: ['mbira', 'single', microphone, side, dynamic, noiseReduced ? 'noise-reduced' : 'raw'],
+      description: `Array M'Bira ${microphone} single ${side} ${dynamic}, source note ${sourceNoteLabel}, mapped root ${sampleNoteName ?? 'unknown'}.`,
+    };
+  }
+
+  const strum = /^MBira Strum (Mics|Direct|DIrect) ([LR]) (\d+) ([A-G]#?\d)(?: NR)?$/i.exec(base);
+  if (strum) {
+    const microphone = strum[1].toLowerCase() === 'mics' ? 'mics' : 'direct';
+    const side = strum[2].toUpperCase() === 'L' ? 'left' : 'right';
+    const strumLayer = Number(strum[3]);
+    const sourceNoteLabel = strum[4];
+    const sampleRootMidi = rootMidi ?? pianobookSourceNoteLabelToMidi(sourceNoteLabel);
+    const sampleNoteName = midiNoteName(sampleRootMidi);
+    return {
+      key: `array-mbira.strum.${slugify(base)}`,
+      fileName: sourceSlugFileName('array_mbira', base),
+      category: 'mbira',
+      role: 'strum',
+      source: 'array-mbira',
+      articulation: `${microphone}-strum`,
+      dynamic: `strum-${strumLayer}`,
+      dynamicRank: strumLayer,
+      velocityRange: velocityRangeFromMapping(mapping),
+      modulationLayer: strumLayer,
+      sourceNoteLabel,
+      rootMidi: sampleRootMidi,
+      noteName: sampleNoteName,
+      roundRobin: mapping?.seqPosition ?? null,
+      profileIndex: null,
+      loop: mapping?.loopEnabled === true,
+      microphone,
+      side,
+      noiseReduced,
+      variant: noiseReduced ? 'noise-reduced' : 'raw',
+      seqPosition: mapping?.seqPosition ?? null,
+      tags: ['mbira', 'strum', microphone, side, `strum-${strumLayer}`, noiseReduced ? 'noise-reduced' : 'raw'],
+      description: `Array M'Bira ${microphone} strum ${side} layer ${strumLayer}, source note ${sourceNoteLabel}, mapped root ${sampleNoteName ?? 'unknown'}.`,
+    };
+  }
+
+  const slug = slugify(base);
+  return {
+    key: `array-mbira.uncategorized.${slug}`,
+    fileName: `${slug}.ogg`,
+    category: 'uncategorized',
+    role: 'unknown',
+    source: 'array-mbira',
+    articulation: null,
+    dynamic: null,
+    dynamicRank: null,
+    velocityRange: velocityRangeFromMapping(mapping),
+    modulationLayer: null,
+    sourceNoteLabel: null,
+    rootMidi,
+    noteName,
+    roundRobin: null,
+    profileIndex: null,
+    loop: mapping?.loopEnabled === true,
+    microphone: null,
+    side: null,
+    noiseReduced,
+    variant: noiseReduced ? 'noise-reduced' : 'raw',
+    seqPosition: mapping?.seqPosition ?? null,
+    tags: ['uncategorized'],
+    description: base,
+  };
+}
+
+function parseSpellsingerSample({ sourceFileName, mappings }) {
+  const base = basename(sourceFileName, extname(sourceFileName));
+  const mapping = firstMappingWithRoot(mappings);
+  const rootMidi = mapping?.rootNote ?? null;
+  const noteName = midiNoteName(rootMidi);
+  const match = /^(Drone|Sustain|OneShot)(?:_(Wicked))?_Note0?(\d+)$/i.exec(base);
+  if (match) {
+    const roleToken = match[1].toLowerCase();
+    const role = roleToken === 'oneshot' ? 'one-shot' : roleToken;
+    const wicked = Boolean(match[2]);
+    const noteIndex = Number(match[3]);
+    return {
+      key: `the-spellsinger.${role}.${wicked ? 'wicked' : 'normal'}.${pad(noteIndex, 2)}`,
+      fileName: sourceSlugFileName('the_spellsinger', base),
+      category: 'voice',
+      role,
+      source: 'the-spellsinger',
+      articulation: wicked ? `${role}-wicked` : role,
+      dynamic: wicked ? 'wicked' : 'normal',
+      dynamicRank: wicked ? 2 : 1,
+      velocityRange: velocityRangeFromMapping(mapping),
+      modulationLayer: null,
+      sourceNoteLabel: `Note${pad(noteIndex, 2)}`,
+      rootMidi,
+      noteName,
+      roundRobin: null,
+      profileIndex: null,
+      loop: mapping?.loopEnabled === true,
+      microphone: null,
+      side: null,
+      noiseReduced: false,
+      variant: wicked ? 'wicked' : 'normal',
+      noteIndex,
+      seqPosition: mapping?.seqPosition ?? null,
+      tags: ['voice', role, wicked ? 'wicked' : 'normal'],
+      description: `The Spellsinger ${wicked ? 'wicked ' : ''}${role}, note index ${noteIndex}, mapped root ${noteName ?? 'unknown'}.`,
+    };
+  }
+
+  const slug = slugify(base);
+  return {
+    key: `the-spellsinger.uncategorized.${slug}`,
+    fileName: `${slug}.ogg`,
+    category: 'uncategorized',
+    role: 'unknown',
+    source: 'the-spellsinger',
+    articulation: null,
+    dynamic: null,
+    dynamicRank: null,
+    velocityRange: velocityRangeFromMapping(mapping),
+    modulationLayer: null,
+    sourceNoteLabel: null,
+    rootMidi,
+    noteName,
+    roundRobin: null,
+    profileIndex: null,
+    loop: mapping?.loopEnabled === true,
+    microphone: null,
+    side: null,
+    noiseReduced: false,
+    variant: null,
+    noteIndex: null,
+    seqPosition: mapping?.seqPosition ?? null,
+    tags: ['uncategorized'],
+    description: base,
+  };
+}
+
+function parseWildPercussionSample({ sourceFileName, mappings }) {
+  const base = basename(sourceFileName, extname(sourceFileName));
+  const mapping = firstMappingWithRoot(mappings);
+  const rootMidi = mapping?.rootNote ?? null;
+  const noteName = midiNoteName(rootMidi);
+  const match = /^([A-Za-z]+)_(\d+)_(\d+)_(\d+)$/.exec(base);
+  if (match) {
+    const familyRaw = match[1];
+    const family = familyRaw.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+    const sourceMidi = Number(match[2]);
+    const velocityLayer = Number(match[3]);
+    const roundRobin = Number(match[4]);
+    return {
+      key: `wild-percussion.${family}.${pad(sourceMidi, 3)}.${velocityLayer}.${roundRobin}`,
+      fileName: sourceSlugFileName('wild_percussion', base),
+      category: 'percussion',
+      role: family,
+      source: 'wild-percussion',
+      articulation: family,
+      dynamic: `velocity-${velocityLayer}`,
+      dynamicRank: velocityLayer,
+      velocityRange: velocityRangeFromMapping(mapping),
+      modulationLayer: velocityLayer,
+      sourceNoteLabel: midiNoteName(sourceMidi),
+      rootMidi,
+      noteName,
+      roundRobin,
+      profileIndex: null,
+      loop: mapping?.loopEnabled === true,
+      microphone: null,
+      side: null,
+      noiseReduced: false,
+      variant: mapping?.groupTags ?? family,
+      percussionFamily: family,
+      seqPosition: mapping?.seqPosition ?? roundRobin,
+      tags: ['percussion', family, `velocity-${velocityLayer}`, `round-robin-${roundRobin}`],
+      description: `Wild Percussion ${family} hit, velocity layer ${velocityLayer}, round-robin ${roundRobin}, mapped root ${noteName ?? 'unknown'}.`,
+    };
+  }
+
+  const slug = slugify(base);
+  return {
+    key: `wild-percussion.uncategorized.${slug}`,
+    fileName: `${slug}.ogg`,
+    category: 'uncategorized',
+    role: 'unknown',
+    source: 'wild-percussion',
+    articulation: null,
+    dynamic: null,
+    dynamicRank: null,
+    velocityRange: velocityRangeFromMapping(mapping),
+    modulationLayer: null,
+    sourceNoteLabel: null,
+    rootMidi,
+    noteName,
+    roundRobin: null,
+    profileIndex: null,
+    loop: mapping?.loopEnabled === true,
+    microphone: null,
+    side: null,
+    noiseReduced: false,
+    variant: null,
+    percussionFamily: null,
+    seqPosition: mapping?.seqPosition ?? null,
+    tags: ['uncategorized'],
+    description: base,
+  };
+}
+
 function parseWavInfo(path) {
   const bytes = readFileSync(path);
   if (bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WAVE') {
@@ -545,6 +847,23 @@ function safeMappingForManifest(mapping) {
   return Object.fromEntries(Object.entries(mapping).filter(([, value]) => value !== undefined));
 }
 
+function uniqueValue(preferred, used, fallbackSuffix) {
+  if (!used.has(preferred)) {
+    used.add(preferred);
+    return preferred;
+  }
+  const ext = extname(preferred);
+  const stem = ext ? preferred.slice(0, -ext.length) : preferred;
+  let next = ext ? `${stem}_${fallbackSuffix}${ext}` : `${preferred}_${fallbackSuffix}`;
+  let index = 2;
+  while (used.has(next)) {
+    next = ext ? `${stem}_${fallbackSuffix}_${index}${ext}` : `${preferred}_${fallbackSuffix}_${index}`;
+    index += 1;
+  }
+  used.add(next);
+  return next;
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (!existsSync(options.source)) {
@@ -567,18 +886,27 @@ function main() {
   const byRootMidi = new Map();
   const byArticulation = new Map();
   const byPreset = new Map();
+  const byMicrophone = new Map();
+  const bySide = new Map();
+  const byVariant = new Map();
+  const byPercussionFamily = new Map();
   const samples = [];
+  const usedOutputFileNames = new Set();
+  const usedKeys = new Set();
   let sourceBytes = 0;
   let compressedBytes = 0;
   let decodedBytes = 0;
   let longestDurationSeconds = 0;
 
   wavFiles.forEach((sourcePath, index) => {
+    const assetId = options.assetIdBase + index;
     const sourceFileName = basename(sourcePath);
     const sourceRelativePath = normalizeDecentPath(relative(options.source, sourcePath));
     const mappings = mappingsByFile.get(sourceFileName) || [];
     const parsed = options.profile.parseSample({ sourceFileName, sourceRelativePath, mappings });
-    const outputPath = join(options.output, parsed.fileName);
+    const uniqueFileName = uniqueValue(parsed.fileName, usedOutputFileNames, assetId);
+    const uniqueKey = uniqueValue(parsed.key, usedKeys, assetId);
+    const outputPath = join(options.output, uniqueFileName);
     const wav = parseWavInfo(sourcePath);
     convertSample({
       ffmpeg: options.ffmpeg,
@@ -599,13 +927,17 @@ function main() {
     addCount(byDynamic, parsed.dynamic);
     addCount(byRootMidi, parsed.rootMidi);
     addCount(byArticulation, parsed.articulation);
+    addCount(byMicrophone, parsed.microphone);
+    addCount(bySide, parsed.side);
+    addCount(byVariant, parsed.variant);
+    addCount(byPercussionFamily, parsed.percussionFamily);
     for (const mapping of mappings) addCount(byPreset, mapping.preset);
 
     samples.push({
-      assetId: options.assetIdBase + index,
-      key: parsed.key,
-      path: `${options.profile.sampleRoot}/${parsed.fileName}`,
-      fileName: parsed.fileName,
+      assetId,
+      key: uniqueKey,
+      path: `${options.profile.sampleRoot}/${uniqueFileName}`,
+      fileName: uniqueFileName,
       sourceFileName,
       sourceRelativePath,
       category: parsed.category,
@@ -622,6 +954,13 @@ function main() {
       roundRobin: parsed.roundRobin,
       profileIndex: parsed.profileIndex,
       loop: parsed.loop,
+      microphone: parsed.microphone ?? null,
+      side: parsed.side ?? null,
+      noiseReduced: parsed.noiseReduced ?? null,
+      variant: parsed.variant ?? null,
+      noteIndex: parsed.noteIndex ?? null,
+      percussionFamily: parsed.percussionFamily ?? null,
+      seqPosition: parsed.seqPosition ?? null,
       tags: parsed.tags,
       description: parsed.description,
       decentSamplerMappings: mappings.map(safeMappingForManifest),
@@ -677,6 +1016,10 @@ function main() {
       byDynamic: sortedCountObject(byDynamic),
       byRootMidi: sortedCountObject(byRootMidi),
       byPreset: sortedCountObject(byPreset),
+      byMicrophone: sortedCountObject(byMicrophone),
+      bySide: sortedCountObject(bySide),
+      byVariant: sortedCountObject(byVariant),
+      byPercussionFamily: sortedCountObject(byPercussionFamily),
     },
     byteSummary: {
       sourceBytes,

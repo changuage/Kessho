@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import './scheduling/ProductRuntimeScheduler.test';
 import { ProductDiagnosticsPublisher } from './ProductDiagnosticsPublisher';
 import { EMPTY_PRODUCT_RUNTIME_DIAGNOSTICS, type ProductRuntimeDiagnostics } from './ProductRuntimeDiagnostics';
 import { ProductFrameScheduler } from './scheduling/ProductFrameScheduler';
+import { ProductRuntimeScheduler } from './scheduling/ProductRuntimeScheduler';
 
 function diagnosticsWithRevision(revision: number): ProductRuntimeDiagnostics {
   return {
@@ -12,7 +14,7 @@ function diagnosticsWithRevision(revision: number): ProductRuntimeDiagnostics {
 
 {
   const frameCallbacks: Array<(time: number) => void> = [];
-  const scheduler = new ProductFrameScheduler({
+  const scheduler = new ProductRuntimeScheduler({
     requestAnimationFrame: (callback) => {
       frameCallbacks.push(callback);
       return frameCallbacks.length;
@@ -39,7 +41,7 @@ function diagnosticsWithRevision(revision: number): ProductRuntimeDiagnostics {
 
 {
   const frameCallbacks: Array<(time: number) => void> = [];
-  const scheduler = new ProductFrameScheduler({
+  const scheduler = new ProductRuntimeScheduler({
     requestAnimationFrame: (callback) => {
       frameCallbacks.push(callback);
       return frameCallbacks.length;

@@ -7,6 +7,7 @@ import type {
 } from '../coreProductTelemetry';
 import type { HarmonyState } from '../harmony';
 import type { TransportDebugSnapshot } from '../transport';
+import type { ProductRuntimeLifecycleState } from './lifecycle/ProductRuntimeLifecycleState';
 
 export type ProductStateRecord = Readonly<Record<string, unknown>>;
 
@@ -275,11 +276,4 @@ export type ProductEngineStartOptions = {
   sampleRateHint?: number;
 };
 
-export type ProductEngineLifecycleState =
-  | 'cold'
-  | 'loading'
-  | 'ready'
-  | 'running'
-  | 'suspended'
-  | 'stopped'
-  | 'failed';
+export type ProductEngineLifecycleState = ProductRuntimeLifecycleState;

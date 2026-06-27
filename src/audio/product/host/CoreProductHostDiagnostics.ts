@@ -32,6 +32,7 @@ export class CoreProductHostDiagnostics {
       pendingCommitCount: this.pendingCommitCount, lastCommitReason: this.lastCommitReason,
       lastCommitMode: this.lastCommitMode, triggerBeforeCommitCount: this.triggerBeforeCommitCount,
       commitThenTriggerCount: this.commitThenTriggerCount, staleTriggerBlockedCount: this.staleTriggerBlockedCount,
+      lastRejectedLifecycleTransitionReason: null,
     };
   }
 

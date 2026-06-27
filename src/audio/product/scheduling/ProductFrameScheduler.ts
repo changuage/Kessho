@@ -13,12 +13,14 @@ export interface ProductFrameSchedulerOptions {
 
 export class ProductFrameScheduler {
   private queued = false;
+  private disposed = false;
   private readonly callbacks = new Map<ProductFrameChannel, Set<() => void>>();
   private readonly dirty = new Set<ProductFrameChannel>();
 
   constructor(private readonly options: ProductFrameSchedulerOptions = {}) {}
 
   subscribe(channel: ProductFrameChannel, callback: () => void): () => void {
+    if (this.disposed) return () => undefined;
     let callbacks = this.callbacks.get(channel);
     if (!callbacks) {
       callbacks = new Set();
@@ -29,6 +31,7 @@ export class ProductFrameScheduler {
   }
 
   markDirty(channel: ProductFrameChannel): void {
+    if (this.disposed) return;
     this.dirty.add(channel);
     this.schedule();
   }
@@ -37,7 +40,15 @@ export class ProductFrameScheduler {
     this.flush();
   }
 
+  dispose(): void {
+    this.disposed = true;
+    this.queued = false;
+    this.callbacks.clear();
+    this.dirty.clear();
+  }
+
   private schedule(): void {
+    if (this.disposed) return;
     if (this.queued) return;
     this.queued = true;
 
@@ -57,6 +68,7 @@ export class ProductFrameScheduler {
   }
 
   private flush(): void {
+    if (this.disposed) return;
     if (!this.queued && this.dirty.size === 0) return;
     this.queued = false;
     const dirtyChannels = Array.from(this.dirty);

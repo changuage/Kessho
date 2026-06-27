@@ -21,6 +21,7 @@ export type ProductRuntimeDiagnostics = {
   triggerBeforeCommitCount: number;
   commitThenTriggerCount: number;
   staleTriggerBlockedCount: number;
+  lastRejectedLifecycleTransitionReason: string | null;
 };
 
 export const EMPTY_PRODUCT_RUNTIME_DIAGNOSTICS: ProductRuntimeDiagnostics = {
@@ -44,4 +45,5 @@ export const EMPTY_PRODUCT_RUNTIME_DIAGNOSTICS: ProductRuntimeDiagnostics = {
   triggerBeforeCommitCount: 0,
   commitThenTriggerCount: 0,
   staleTriggerBlockedCount: 0,
+  lastRejectedLifecycleTransitionReason: null,
 };

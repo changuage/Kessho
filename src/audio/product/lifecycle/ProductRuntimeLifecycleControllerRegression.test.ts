@@ -27,6 +27,7 @@ function createDelegate(overrides: Partial<ProductLifecycleDelegate> = {}) {
     stopRuntime: async () => { calls.push('stop'); },
     suspendRuntime: async () => { calls.push('suspend'); },
     resumeRuntime: async () => { calls.push('resume'); },
+    disposeRuntime: async () => { calls.push('dispose'); },
     publishState: (state) => { states.push(state); },
     ...overrides,
   };
@@ -34,56 +35,105 @@ function createDelegate(overrides: Partial<ProductLifecycleDelegate> = {}) {
 }
 
 {
-  const startGate = createDeferred();
-  const suspendGate = createDeferred();
-  const { calls, delegate, states } = createDelegate({
-    startRuntime: async () => { calls.push('start'); await startGate.promise; },
-    suspendRuntime: async () => { calls.push('suspend'); await suspendGate.promise; },
-  });
-  const controller = new ProductRuntimeLifecycleController(delegate);
-  const start = controller.start();
-  const suspend = controller.suspend();
-  await Promise.resolve();
-
-  assert.deepEqual(calls, ['start'], 'suspend must wait behind in-flight start');
-  startGate.resolve();
-  await start;
-  assert.equal(controller.currentStatus, 'loading', 'older operation must not publish a stale running state');
-  await Promise.resolve();
-  assert.deepEqual(calls, ['start', 'suspend'], 'suspend should run after start resolves');
-  suspendGate.resolve();
-  await suspend;
-  assert.equal(controller.currentStatus, 'suspended');
-  assert.deepEqual(states, ['loading', 'loading', 'suspended']);
-}
-
-{
-  const failure = new Error('resume failed');
-  const { delegate, states } = createDelegate({
-    resumeRuntime: async () => { throw failure; },
-  });
+  const { calls, delegate, states } = createDelegate();
   const controller = new ProductRuntimeLifecycleController(delegate);
 
-  await assert.rejects(() => controller.resume(), failure);
-  await controller.stop();
+  await controller.start();
 
-  assert.equal(controller.currentStatus, 'stopped', 'controller should keep accepting operations after a rejected lifecycle call');
-  assert.deepEqual(states, ['loading', 'failed', 'loading', 'stopped']);
+  assert.equal(controller.currentStatus, 'running');
+  assert.deepEqual(calls, ['start']);
+  assert.deepEqual(states, ['starting', 'running']);
 }
 
 {
   const { calls, delegate, states } = createDelegate();
   const controller = new ProductRuntimeLifecycleController(delegate);
 
-  await controller.preload();
-  await controller.preload();
   await controller.start();
-  await controller.resume();
-  await controller.suspend();
-  await controller.suspend();
+  await controller.start();
 
-  assert.deepEqual(calls, ['preload', 'start', 'suspend'], 'redundant preload/resume/suspend calls should not duplicate runtime work');
-  assert.deepEqual(states, ['loading', 'ready', 'loading', 'running', 'loading', 'suspended']);
+  assert.equal(controller.currentStatus, 'running');
+  assert.equal(controller.lastRejectedTransitionReason, 'duplicate-start');
+  assert.deepEqual(calls, ['start'], 'running -> start must no-op');
+  assert.deepEqual(states, ['starting', 'running', 'running']);
+}
+
+{
+  const { calls, delegate, states } = createDelegate();
+  const controller = new ProductRuntimeLifecycleController(delegate);
+
+  await controller.start();
+  await controller.suspend();
+  await controller.resume();
+
+  assert.equal(controller.currentStatus, 'running');
+  assert.deepEqual(calls, ['start', 'suspend', 'resume']);
+  assert.deepEqual(states, ['starting', 'running', 'suspending', 'suspended', 'starting', 'running']);
+}
+
+{
+  const { calls, delegate, states } = createDelegate();
+  const controller = new ProductRuntimeLifecycleController(delegate);
+
+  await controller.start();
+  await controller.suspend();
+  await controller.preload();
+
+  assert.equal(controller.currentStatus, 'suspended');
+  assert.equal(controller.lastRejectedTransitionReason, 'illegal-preload-while-suspended');
+  assert.deepEqual(calls, ['start', 'suspend']);
+  assert.deepEqual(states, ['starting', 'running', 'suspending', 'suspended', 'suspended']);
+}
+
+{
+  const failure = new Error('start failed');
+  const { delegate, states } = createDelegate({
+    startRuntime: async () => { throw failure; },
+  });
+  const controller = new ProductRuntimeLifecycleController(delegate);
+
+  await assert.rejects(() => controller.start(), failure);
+  await controller.resume();
+
+  assert.equal(controller.currentStatus, 'failed');
+  assert.equal(controller.lastRejectedTransitionReason, 'illegal-resume-while-failed');
+  assert.deepEqual(states, ['starting', 'failed', 'failed']);
+}
+
+{
+  const gate = createDeferred();
+  const { calls, delegate, states } = createDelegate({
+    startRuntime: async () => { calls.push('start'); await gate.promise; },
+    stopRuntime: async () => { calls.push('stop'); },
+  });
+  const controller = new ProductRuntimeLifecycleController(delegate);
+  const start = controller.start();
+
+  await Promise.resolve();
+  const stop = controller.stop();
+  assert.deepEqual(calls, ['start'], 'stop must serialize behind in-flight start');
+  assert.equal(controller.currentStatus, 'starting');
+  gate.resolve();
+  await start;
+  await stop;
+
+  assert.equal(controller.currentStatus, 'stopped');
+  assert.deepEqual(calls, ['start', 'stop']);
+  assert.deepEqual(states, ['starting', 'stopping', 'stopped']);
+}
+
+{
+  const { calls, delegate, states } = createDelegate();
+  const controller = new ProductRuntimeLifecycleController(delegate);
+
+  await controller.start();
+  await controller.dispose();
+  await controller.start();
+
+  assert.equal(controller.currentStatus, 'disposed');
+  assert.equal(controller.lastRejectedTransitionReason, 'illegal-start-while-disposed');
+  assert.deepEqual(calls, ['start', 'dispose']);
+  assert.deepEqual(states, ['starting', 'running', 'disposed', 'disposed']);
 }
 
 console.log('Product runtime lifecycle controller regression passed');

@@ -22,7 +22,7 @@ import {
   canonicalizeRecord,
   collectPresetPayloadHashesV2,
   hashCanonicalJsonText,
-  readPresetPayloadCacheV2,
+  readVerifiedPresetPayloadCacheV2,
   writePresetPayloadCacheV2,
   type PresetPayloadV2Row,
 } from '../presets/presetStorageV2';
@@ -77,6 +77,7 @@ export const CLOUD_PRESET_PAGE_SIZE = 24;
 export const CLOUD_SEARCH_PAGE_SIZE = 20;
 export const CLOUD_FEATURED_PAGE_SIZE = 10;
 const CLOUD_PRESET_MAX_PAGE_SIZE = 50;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // Supabase client singleton
 let supabase: SupabaseClient | null = null;
@@ -96,6 +97,16 @@ type LegacyCloudPresetCursor = {
   created_at?: string;
   plays?: number | null;
 };
+
+export interface CloudCreatedCursor {
+  readonly id: string;
+  readonly created_at: string;
+}
+
+export interface CloudPlaysCursor {
+  readonly id: string;
+  readonly plays: number | null;
+}
 
 type PresetLatestManifestV2 = {
   preset?: {
@@ -249,28 +260,51 @@ function clampCloudPresetLimit(limit: number | undefined, fallback: number): num
   return Math.max(1, Math.min(Math.floor(limit ?? fallback), CLOUD_PRESET_MAX_PAGE_SIZE));
 }
 
-function encodeCloudPresetCursor(cursor: LegacyCloudPresetCursor): string {
-  return encodeURIComponent(JSON.stringify(cursor));
+function encodeCloudCursorJson(json: string): string {
+  if (typeof globalThis.btoa === 'function') return globalThis.btoa(json);
+  return encodeURIComponent(json);
 }
 
-function decodeCloudPresetCursor(cursor: string | null | undefined): LegacyCloudPresetCursor | null {
-  if (!cursor) return null;
-  try {
-    const parsed = JSON.parse(decodeURIComponent(cursor)) as Partial<LegacyCloudPresetCursor> | null;
-    if (!parsed || typeof parsed.id !== 'string') return null;
-    return {
-      id: parsed.id,
-      created_at: typeof parsed.created_at === 'string' ? parsed.created_at : undefined,
-      plays: typeof parsed.plays === 'number' || parsed.plays === null ? parsed.plays : undefined,
-    };
-  } catch {
-    return null;
+function decodeCloudCursorJson(cursor: string): unknown | null {
+  const decoders = [
+    () => (typeof globalThis.atob === 'function' ? globalThis.atob(cursor) : ''),
+    () => decodeURIComponent(cursor),
+  ];
+  for (const decode of decoders) {
+    try {
+      return JSON.parse(decode()) as unknown;
+    } catch {
+      // Try the next supported cursor encoding for legacy session-cache compatibility.
+    }
   }
+  return null;
 }
 
-function getCloudPresetPlaysCursorFilter(cursor: LegacyCloudPresetCursor): string | null {
+function encodeCloudPresetCursor(cursor: LegacyCloudPresetCursor): string {
+  return encodeCloudCursorJson(JSON.stringify(cursor));
+}
+
+export function parseCloudCreatedCursor(cursor: string | null | undefined): CloudCreatedCursor | null {
+  if (!cursor) return null;
+  const parsed = decodeCloudCursorJson(cursor) as Partial<CloudCreatedCursor> | null;
+  if (!parsed || typeof parsed.id !== 'string' || !UUID_RE.test(parsed.id)) return null;
+  if (typeof parsed.created_at !== 'string') return null;
+  const ms = Date.parse(parsed.created_at);
+  if (!Number.isFinite(ms)) return null;
+  return { id: parsed.id, created_at: new Date(ms).toISOString() };
+}
+
+export function parseCloudPlaysCursor(cursor: string | null | undefined): CloudPlaysCursor | null {
+  if (!cursor) return null;
+  const parsed = decodeCloudCursorJson(cursor) as Partial<CloudPlaysCursor> | null;
+  if (!parsed || typeof parsed.id !== 'string' || !UUID_RE.test(parsed.id)) return null;
+  if (parsed.plays === null) return { id: parsed.id, plays: null };
+  if (typeof parsed.plays !== 'number' || !Number.isFinite(parsed.plays)) return null;
+  return { id: parsed.id, plays: Math.max(0, Math.floor(parsed.plays)) };
+}
+
+function getCloudPresetPlaysCursorFilter(cursor: CloudPlaysCursor): string | null {
   if (cursor.plays === null) return `and(plays.is.null,id.lt.${cursor.id})`;
-  if (typeof cursor.plays !== 'number') return null;
   return `plays.lt.${cursor.plays},plays.is.null,and(plays.eq.${cursor.plays},id.lt.${cursor.id})`;
 }
 
@@ -300,17 +334,27 @@ function canUsePlayIncrementSessionCache(): boolean {
   return typeof sessionStorage !== 'undefined';
 }
 
-function shouldIncrementPresetPlayThisSession(presetId: string, now = Date.now()): boolean {
-  if (!canUsePlayIncrementSessionCache()) return true;
-  const storageKey = `${PLAY_INCREMENT_SESSION_PREFIX}${presetId}`;
+function getPlayIncrementSessionKey(presetId: string): string {
+  return `${PLAY_INCREMENT_SESSION_PREFIX}${presetId}`;
+}
+
+function hasFreshPlayIncrementMarker(key: string, now = Date.now()): boolean {
+  if (!canUsePlayIncrementSessionCache()) return false;
   try {
-    const raw = sessionStorage.getItem(storageKey);
+    const raw = sessionStorage.getItem(key);
     const previous = raw ? Number(raw) : 0;
-    if (Number.isFinite(previous) && previous + PLAY_INCREMENT_TTL_MS > now) return false;
-    sessionStorage.setItem(storageKey, String(now));
-    return true;
+    return Number.isFinite(previous) && previous + PLAY_INCREMENT_TTL_MS > now;
   } catch {
-    return true;
+    return false;
+  }
+}
+
+function writePlayIncrementMarker(key: string, now = Date.now()): void {
+  if (!canUsePlayIncrementSessionCache()) return;
+  try {
+    sessionStorage.setItem(key, String(now));
+  } catch {
+    // Storage failures should not suppress a successfully recorded play.
   }
 }
 
@@ -374,7 +418,7 @@ async function fetchMissingPresetPayloadsV2(
   const missingHashes: string[] = [];
 
   for (const hash of uniqueHashes) {
-    const cached = readPresetPayloadCacheV2(hash);
+    const cached = await readVerifiedPresetPayloadCacheV2(hash);
     if (cached !== undefined) {
       payloadMap.set(hash, cached);
     } else {
@@ -528,7 +572,7 @@ export async function fetchCloudPresetPage(options?: CloudPresetPageOptions): Pr
   const client = getSupabase();
   if (!client) return { items: [], nextCursor: null };
   const limit = clampCloudPresetLimit(pageOptions.limit, CLOUD_PRESET_PAGE_SIZE);
-  const cursor = decodeCloudPresetCursor(pageOptions.cursor);
+  const cursor = parseCloudCreatedCursor(pageOptions.cursor);
   const cacheKey = `browse:created_at:${limit}:${pageOptions.cursor ?? 'first'}`;
   const cached = readCloudPresetListCache(cacheKey);
   if (cached) return cached;
@@ -571,7 +615,7 @@ export async function fetchFeaturedPresetPage(options?: CloudPresetPageOptions):
   const client = getSupabase();
   if (!client) return { items: [], nextCursor: null };
   const limit = clampCloudPresetLimit(pageOptions.limit, CLOUD_FEATURED_PAGE_SIZE);
-  const cursor = decodeCloudPresetCursor(pageOptions.cursor);
+  const cursor = parseCloudPlaysCursor(pageOptions.cursor);
   const cacheKey = `featured:plays:${limit}:${pageOptions.cursor ?? 'first'}`;
   const cached = readCloudPresetListCache(cacheKey);
   if (cached) return cached;
@@ -615,7 +659,7 @@ export async function searchCloudPresetPage(query: string, options?: CloudPreset
   const searchTerm = sanitizePostgrestSearchTerm(query);
   if (!searchTerm) return fetchCloudPresetPage({ limit: pageOptions.limit ?? CLOUD_PRESET_PAGE_SIZE, cursor: pageOptions.cursor });
   const limit = clampCloudPresetLimit(pageOptions.limit, CLOUD_SEARCH_PAGE_SIZE);
-  const cursor = decodeCloudPresetCursor(pageOptions.cursor);
+  const cursor = parseCloudPlaysCursor(pageOptions.cursor);
   const cacheKey = `search:${searchTerm}:plays:${limit}:${pageOptions.cursor ?? 'first'}`;
   const cached = readCloudPresetListCache(cacheKey);
   if (cached) return cached;
@@ -652,6 +696,7 @@ export async function searchCloudPresets(query: string): Promise<CloudPresetSumm
 async function findExistingCloudPresetV2(
   client: SupabaseClient,
   name: string,
+  ownerUserId: string,
 ): Promise<{ id: string; latest_version_no: number } | null> {
   const { data: presetId, error: idError } = await client.rpc('kessho_lookup_preset_id_v2', {
     target_type: 'state',
@@ -662,7 +707,7 @@ async function findExistingCloudPresetV2(
 
   if (idError) {
     // ALLOW_CONSTRAINED_RUNTIME_LOOKUP: temporary compatibility fallback for hosted databases before the narrow id/card RPC migration is applied.
-    if (isMissingRpcError(idError, 'kessho_lookup_preset_id_v2')) return findExistingCloudPresetV2ViaRows(client, name);
+    if (isMissingRpcError(idError, 'kessho_lookup_preset_id_v2')) return findExistingCloudPresetV2ViaRows(client, name, ownerUserId);
     throw new Error(`V2 cloud preset id lookup failed: ${idError.message}`);
   }
 
@@ -674,12 +719,13 @@ async function findExistingCloudPresetV2(
 
   if (cardError) {
     // ALLOW_CONSTRAINED_RUNTIME_LOOKUP: temporary compatibility fallback for hosted databases before the narrow card RPC migration is applied.
-    if (isMissingRpcError(cardError, 'kessho_get_preset_card_v2')) return findExistingCloudPresetV2ViaRows(client, name);
+    if (isMissingRpcError(cardError, 'kessho_get_preset_card_v2')) return findExistingCloudPresetV2ViaRows(client, name, ownerUserId);
     throw new Error(`V2 cloud preset card lookup failed: ${cardError.message}`);
   }
 
-  const row = card as { id?: unknown; latest_version_no?: unknown } | null;
+  const row = card as { id?: unknown; latest_version_no?: unknown; owner_key?: unknown; owner_user_id?: unknown } | null;
   if (!row || typeof row.id !== 'string') return null;
+  if (row.owner_user_id !== ownerUserId && row.owner_key !== `public:${ownerUserId}`) return null;
   return {
     id: row.id,
     latest_version_no: typeof row.latest_version_no === 'number' ? row.latest_version_no : 0,
@@ -689,6 +735,7 @@ async function findExistingCloudPresetV2(
 async function findExistingCloudPresetV2ViaRows(
   client: SupabaseClient,
   name: string,
+  ownerUserId: string,
 ): Promise<{ id: string; latest_version_no: number } | null> {
   // ALLOW_CONSTRAINED_RUNTIME_LOOKUP: pre-migration fallback only; save preflight normally uses kessho_lookup_preset_id_v2 + kessho_get_preset_card_v2.
   const { data, error } = await client.rpc('kessho_lookup_preset_rows_v2', {
@@ -715,6 +762,8 @@ async function findExistingCloudPresetV2ViaRows(
 
   const row = Array.isArray(data) ? data[0] as { id?: unknown; latest_version_no?: unknown } | undefined : undefined;
   if (!row || typeof row.id !== 'string') return null;
+  const ownerRow = row as { owner_user_id?: unknown };
+  if (ownerRow.owner_user_id !== ownerUserId) return null;
   return {
     id: row.id,
     latest_version_no: typeof row.latest_version_no === 'number' ? row.latest_version_no : 0,
@@ -724,11 +773,10 @@ async function findExistingCloudPresetV2ViaRows(
 /**
  * Save a new preset to the cloud
  */
-export async function saveCloudPreset(preset: CloudPresetInsert): Promise<CloudPreset | null> {
-  const client = getSupabase();
+export async function saveCloudPreset(preset: CloudPresetInsert, client = getSupabase()): Promise<CloudPreset | null> {
   if (!client) return null;
   const session = await ensureCloudAnonymousSession(client);
-  if (!session) throw new Error('Anonymous cloud session required');
+  if (!session || !UUID_RE.test(session.id)) throw new Error('Anonymous cloud session required');
 
   const now = new Date().toISOString();
   const name = preset.name.trim();
@@ -746,8 +794,9 @@ export async function saveCloudPreset(preset: CloudPresetInsert): Promise<CloudP
   const [resolvedHash, metadataHash, existing] = await Promise.all([
     hashCanonicalJsonText(resolvedPayloadJson),
     hashCanonicalJsonText(metadataPayloadJson),
-    findExistingCloudPresetV2(client, name),
+    findExistingCloudPresetV2(client, name, session.id),
   ]);
+  const ownerKey = `public:${session.id}`;
 
   const identity_payload = {
     id: existing?.id ?? null,
@@ -760,7 +809,7 @@ export async function saveCloudPreset(preset: CloudPresetInsert): Promise<CloudP
     description,
     tags: [],
     visibility: 'public',
-    owner_key: 'public',
+    owner_key: ownerKey,
     owner_user_id: session.id,
     family_name: name,
     variant_name: name,
@@ -825,16 +874,20 @@ export async function saveCloudPreset(preset: CloudPresetInsert): Promise<CloudP
 /**
  * Increment play count when a preset is loaded
  */
-export async function incrementPresetPlays(presetId: string): Promise<void> {
-  const client = getSupabase();
-  if (!client) return;
-  if (!shouldIncrementPresetPlayThisSession(presetId)) return;
+export async function incrementPresetPlays(presetId: string, client = getSupabase()): Promise<boolean> {
+  if (!client || !UUID_RE.test(presetId)) return false;
+  const storageKey = getPlayIncrementSessionKey(presetId);
+  if (hasFreshPlayIncrementMarker(storageKey)) return false;
 
   try {
     await ensureCloudAnonymousSession(client);
-    await client.rpc('increment_plays', { preset_id: presetId });
+    const { error } = await client.rpc('increment_plays', { preset_id: presetId });
+    if (error) throw error;
+    writePlayIncrementMarker(storageKey, Date.now());
+    return true;
   } catch (error) {
     console.warn('Could not increment preset plays:', error);
+    return false;
   }
 }
 

@@ -34,11 +34,16 @@ if (!audioSession.includes('MPRemoteCommandCenter.shared()')) {
 if (!audioSession.includes('iosAudioSessionTelemetry')) {
   failures.push('audio session plugin missing iOS telemetry payload');
 }
-if (!midiRouting.includes('kMIDITransportType_Bluetooth')) {
-  failures.push('MIDI plugin missing Bluetooth transport metadata');
-}
-if (!midiRouting.includes('kMIDITransportType_USB')) {
-  failures.push('MIDI plugin missing USB transport metadata');
+for (const token of [
+  'endpointTransportName(for:',
+  'kMIDIPropertyDisplayName',
+  'kMIDIPropertyManufacturer',
+  'hints.contains("bluetooth")',
+  'hints.contains("usb")',
+]) {
+  if (!midiRouting.includes(token)) {
+    failures.push(`MIDI plugin missing transport metadata token ${token}`);
+  }
 }
 if (!capabilityApi.includes('report.supports_native_bridge = 0;')) {
   failures.push('native bridge capability was unexpectedly enabled');

@@ -41,7 +41,7 @@ import {
   materializePresetVersion,
   normalizeResolvedVersionData,
   presetVersionStorageSignaturesEqual,
-  readPresetPayloadCacheV2,
+  readVerifiedPresetPayloadCacheV2,
   type PresetPayloadKind,
   type PresetPayloadV2Row,
   type PresetV2Row,
@@ -71,7 +71,8 @@ const PRESET_LIST_MEMORY_CACHE_TTL_MS = 10 * 60_000;
 const PRESET_LIST_SESSION_CACHE_TTL_MS = 45 * 60_000;
 const PRESET_LIST_SESSION_CACHE_PREFIX = 'kessho:supabasePresetList:v1:';
 const PRESET_LIST_ERROR_CIRCUIT_MS = 120_000;
-const PRESET_MANAGEMENT_PAGE_SIZE = 50;
+const PRESET_LIBRARY_INITIAL_PAGE_SIZE = 24;
+export const PRESET_LIBRARY_MANAGEMENT_PAGE_SIZE = 50;
 
 interface V2LookupOptions {
   includeDeleted?: boolean;
@@ -838,7 +839,7 @@ export class SupabasePresetStore implements IPresetStore {
         }
       }
 
-      return query.order('updated_at', { ascending: false }).limit(PRESET_MANAGEMENT_PAGE_SIZE);
+      return query.order('updated_at', { ascending: false }).limit(PRESET_LIBRARY_INITIAL_PAGE_SIZE);
     };
 
     const { data, error } = await buildQuery();
@@ -1435,7 +1436,7 @@ export class SupabasePresetStore implements IPresetStore {
 
     const missingHashes: string[] = [];
     for (const hash of uniqueHashes) {
-      const cached = readPresetPayloadCacheV2(hash);
+      const cached = await readVerifiedPresetPayloadCacheV2(hash);
       if (cached !== undefined) {
         payloadMap.set(hash, cached);
       } else {
@@ -1910,7 +1911,7 @@ export class SupabasePresetStore implements IPresetStore {
       }
       query = query.is('deleted_at', null);
 
-      return query.order('updated_at', { ascending: false }).limit(PRESET_MANAGEMENT_PAGE_SIZE);
+      return query.order('updated_at', { ascending: false }).limit(PRESET_LIBRARY_INITIAL_PAGE_SIZE);
     };
 
     const { data, error } = await buildQuery();

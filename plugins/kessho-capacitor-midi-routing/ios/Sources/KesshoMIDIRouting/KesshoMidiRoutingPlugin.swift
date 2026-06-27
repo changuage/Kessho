@@ -526,21 +526,27 @@ private final class KesshoMIDIRouter {
     }
 
     private static func endpointTransportName(for endpoint: MIDIObjectRef) -> String {
-        var transport = Int32(0)
-        let status = MIDIObjectGetIntegerProperty(endpoint, kMIDIPropertyTransportType, &transport)
-        guard status == noErr else { return "unknown" }
-        switch transport {
-        case kMIDITransportType_USB:
-            return "usb"
-        case kMIDITransportType_Bluetooth:
+        let hints = [
+            endpointStringProperty(endpoint, property: kMIDIPropertyDisplayName),
+            endpointStringProperty(endpoint, property: kMIDIPropertyName),
+            endpointStringProperty(endpoint, property: kMIDIPropertyManufacturer)
+        ]
+            .compactMap { $0?.lowercased() }
+            .joined(separator: " ")
+
+        if hints.contains("bluetooth") || hints.contains("ble") {
             return "bluetooth"
-        case kMIDITransportType_Network:
-            return "network"
-        case kMIDITransportType_Virtual:
-            return "virtual"
-        default:
-            return "other"
         }
+        if hints.contains("usb") {
+            return "usb"
+        }
+        if hints.contains("network") || hints.contains("rtp") {
+            return "network"
+        }
+        if hints.contains("virtual") || hints.contains("session") {
+            return "virtual"
+        }
+        return "unknown"
     }
 
     private static func endpointStringProperty(_ endpoint: MIDIObjectRef, property: CFString) -> String? {

@@ -41,6 +41,12 @@ npm-debug.log*
 
 # Generated audit/check output
 docs/reports/
+!docs/reports/
+docs/reports/*
+!docs/reports/native-device-proof-template.md
+!docs/reports/native-device-proof-latest.md
+!docs/reports/kessho-ios-simulator-foreground-smoke-latest.json
+!docs/reports/kessho-ios-simulator-background-smoke-latest.json
 docs/ui-audit/
 
 # Environment
@@ -78,6 +84,12 @@ public/samples/*
 !public/samples/SoftStringSpurs/**
 !public/samples/ArchiveFoundStrings001/
 !public/samples/ArchiveFoundStrings001/**
+!public/samples/ArrayMBira/
+!public/samples/ArrayMBira/**
+!public/samples/TheSpellsinger/
+!public/samples/TheSpellsinger/**
+!public/samples/WildPercussion/
+!public/samples/WildPercussion/**
 
 # Digitone sysex tools (local development only)
 Digitone/

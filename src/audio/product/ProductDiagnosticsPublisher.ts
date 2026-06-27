@@ -1,5 +1,5 @@
 import type { ProductRuntimeDiagnostics } from './ProductRuntimeDiagnostics';
-import { ProductFrameScheduler } from './scheduling/ProductFrameScheduler';
+import { ProductRuntimeScheduler } from './scheduling/ProductRuntimeScheduler';
 
 type ProductDiagnosticsCallback = ((diagnostics: ProductRuntimeDiagnostics) => void) | null;
 
@@ -11,9 +11,8 @@ export class ProductDiagnosticsPublisher {
 
   constructor(
     private readonly readDiagnostics: () => ProductRuntimeDiagnostics,
-    private readonly scheduler = new ProductFrameScheduler(),
+    private readonly scheduler = new ProductRuntimeScheduler(),
   ) {
-    this.scheduler.subscribe('diagnostics', () => this.flushScheduledPublish());
   }
 
   setCallback(callback: ProductDiagnosticsCallback): void {
@@ -26,7 +25,7 @@ export class ProductDiagnosticsPublisher {
     if (!this.callback || this.queued) return;
     this.queued = true;
     this.queuedEpoch = this.publishEpoch;
-    this.scheduler.markDirty('diagnostics');
+    this.scheduler.schedule('diagnostics-visible', () => this.flushScheduledPublish());
   }
 
   publish(): void {
