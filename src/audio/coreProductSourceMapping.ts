@@ -3,7 +3,8 @@ export type CanonicalSynthEuclidSource =
   | 'lead2'
   | 'pad1'
   | 'pad2'
-  | 'piano'
+  | 'sample1'
+  | 'sample2'
   | 'synth1'
   | 'synth2'
   | 'synth3'
@@ -18,7 +19,8 @@ export function normalizeSynthEuclidSource(value: unknown): CanonicalSynthEuclid
 
   if (source === 'lead' || source === 'lead1') return 'lead1';
   if (source === 'lead2') return 'lead2';
-  if (source === 'piano') return 'piano';
+  if (source === 'piano' || source === 'sample1') return 'sample1';
+  if (source === 'sample2') return 'sample2';
   if (source === 'pad' || source === 'pad1') return 'pad1';
   if (source === 'pad2') return 'pad2';
   if (/^synth[1-8]$/.test(source)) return source as CanonicalSynthEuclidSource;

@@ -7,6 +7,7 @@ import type {
 } from '../coreProductTelemetry';
 import type { HarmonyState } from '../harmony';
 import type { TransportDebugSnapshot } from '../transport';
+import type { ProductRuntimeLifecycleState } from './lifecycle/ProductRuntimeLifecycleState';
 
 export type ProductStateRecord = Readonly<Record<string, unknown>>;
 
@@ -94,7 +95,7 @@ export type ProductMidiMessage = {
   readonly endpointName?: string;
 };
 
-export type ProductManualSynthSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'piano';
+export type ProductManualSynthSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'sample1' | 'sample2' | 'piano';
 
 export type ProductManualSynthNote = {
   readonly source: ProductManualSynthSource;
@@ -223,8 +224,8 @@ export type ProductAssetHandle = {
 };
 
 export type ProductFxOwnershipBus = 'delayA' | 'delayB' | 'granular' | 'reverb';
-export type ProductFxOwnershipSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'piano' | 'drum';
-export type ProductFxOwnershipOrigin = 'padChord' | 'padEuclid' | 'leadNote' | 'pianoNote' | 'drumHit';
+export type ProductFxOwnershipSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'sample1' | 'sample2' | 'piano' | 'drum';
+export type ProductFxOwnershipOrigin = 'padChord' | 'padEuclid' | 'leadNote' | 'sampleNote' | 'pianoNote' | 'drumHit';
 
 export type ProductFxOwnershipDebugState = Record<
   ProductFxOwnershipBus,
@@ -275,11 +276,4 @@ export type ProductEngineStartOptions = {
   sampleRateHint?: number;
 };
 
-export type ProductEngineLifecycleState =
-  | 'cold'
-  | 'loading'
-  | 'ready'
-  | 'running'
-  | 'suspended'
-  | 'stopped'
-  | 'failed';
+export type ProductEngineLifecycleState = ProductRuntimeLifecycleState;

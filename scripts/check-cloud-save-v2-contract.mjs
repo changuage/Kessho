@@ -15,6 +15,10 @@ const required = [
   'refs_payload',
   'hashCanonicalJson',
   'canonicalizeRecord',
+  'const ownerKey = `public:${session.id}`',
+  'owner_key: ownerKey',
+  'owner_user_id: session.id',
+  'if (!session || !UUID_RE.test(session.id)) throw new Error',
 ];
 const forbidden = [
   "client.rpc('kessho_save_legacy_preset'",

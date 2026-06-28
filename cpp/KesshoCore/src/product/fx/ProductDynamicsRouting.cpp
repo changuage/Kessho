@@ -21,7 +21,8 @@ uint32_t KesshoProductEngine::dynamicsBusForSource(uint32_t source_id) const {
       return routing.dynamics_routes[kDynamicsRouteLead1];
     case KESSHO_PRODUCT_SOURCE_LEAD2:
       return routing.dynamics_routes[kDynamicsRouteLead2];
-    case KESSHO_PRODUCT_SOURCE_PIANO:
+    case KESSHO_PRODUCT_SOURCE_SAMPLE1:
+    case KESSHO_PRODUCT_SOURCE_SAMPLE2:
       return routing.dynamics_routes[kDynamicsRoutePiano];
     case KESSHO_PRODUCT_SOURCE_DRUM:
       return routing.dynamics_routes[kDynamicsRouteDrum];

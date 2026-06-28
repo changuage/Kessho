@@ -30,6 +30,8 @@ const MANUAL_SYNTH_SOURCE_IDS: Record<ProductManualSynthSource, number> = {
   pad2: CORE_PRODUCT_SOURCE_IDS.pad2,
   lead1: CORE_PRODUCT_SOURCE_IDS.lead1,
   lead2: CORE_PRODUCT_SOURCE_IDS.lead2,
+  sample1: CORE_PRODUCT_SOURCE_IDS.sample1,
+  sample2: CORE_PRODUCT_SOURCE_IDS.sample2,
   piano: CORE_PRODUCT_SOURCE_IDS.piano,
 };
 

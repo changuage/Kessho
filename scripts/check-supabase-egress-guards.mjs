@@ -182,6 +182,8 @@ function assertTextIncludes(filePath, text, token, message = `missing required e
     'PRESET_TEXT_ENCODER.encode(canonicalJson)',
     'return hashCanonicalJsonText(stableStringifyCanonical(value))',
     'export function readPresetPayloadCacheV2(hash: string): unknown | undefined',
+    'export async function readVerifiedPresetPayloadCacheV2(hash: string): Promise<unknown | undefined>',
+    'const presetPayloadSessionVerifiedHashes = new Set<string>()',
     'interface PresetPayloadCacheWriteOptions',
     'options?: PresetPayloadCacheWriteOptions',
     'const payloadJson = options?.verifiedCanonicalJson ?? stableStringifyCanonical(payload)',
@@ -232,22 +234,24 @@ function assertTextIncludes(filePath, text, token, message = `missing required e
     }
   }
 
-  const cacheReadBody = functionBody(text, 'readPresetPayloadCacheV2');
+  const cacheReadBody = functionBody(text, 'readVerifiedPresetPayloadCacheV2');
   if (!cacheReadBody) {
-    fail(filePath, findLine(text, 'readPresetPayloadCacheV2'), 'readPresetPayloadCacheV2 body not found for cache read CPU guard');
+    fail(filePath, findLine(text, 'readVerifiedPresetPayloadCacheV2'), 'readVerifiedPresetPayloadCacheV2 body not found for verified cache read guard');
   } else {
     for (const token of [
+      'const computedHash = await hashCanonicalJsonText(canonicalJson)',
+      'if (computedHash !== hash)',
       'parsed.lastAccess + PRESET_PAYLOAD_CACHE_TOUCH_THROTTLE_MS > now',
       'return entry.payload',
     ]) {
       if (!cacheReadBody.includes(token)) {
-        fail(filePath, findLine(text, 'readPresetPayloadCacheV2'), `readPresetPayloadCacheV2 missing throttled touch token: ${token}`);
+        fail(filePath, findLine(text, 'readVerifiedPresetPayloadCacheV2'), `readVerifiedPresetPayloadCacheV2 missing verified-cache token: ${token}`);
       }
     }
     const throttleIndex = cacheReadBody.indexOf('parsed.lastAccess + PRESET_PAYLOAD_CACHE_TOUCH_THROTTLE_MS > now');
     const writeIndex = cacheReadBody.indexOf('localStorage.setItem(storageKey, JSON.stringify(entry))');
     if (!(throttleIndex >= 0 && writeIndex >= 0 && throttleIndex < writeIndex)) {
-      fail(filePath, findLine(text, 'readPresetPayloadCacheV2'), 'readPresetPayloadCacheV2 must skip localStorage touch writes before rewriting persistent cache metadata');
+      fail(filePath, findLine(text, 'readVerifiedPresetPayloadCacheV2'), 'readVerifiedPresetPayloadCacheV2 must skip localStorage touch writes before rewriting persistent cache metadata');
     }
   }
 
@@ -314,7 +318,7 @@ function assertTextIncludes(filePath, text, token, message = `missing required e
     "const functionName = 'kessho_get_preset_latest_manifest_v2'",
     "client.rpc('kessho_lookup_preset_id_v2'",
     "client.rpc('kessho_get_preset_card_v2'",
-    'findExistingCloudPresetV2ViaRows(client, name)',
+    'findExistingCloudPresetV2ViaRows(client, name, ownerUserId)',
     'collectPresetPayloadHashesV2(hashes)',
     'const resolvedPayloadJson = JSON.stringify(resolvedPayload)',
     'const metadataPayloadJson = JSON.stringify(metadataPayload)',
@@ -322,6 +326,9 @@ function assertTextIncludes(filePath, text, token, message = `missing required e
     'hashCanonicalJsonText(metadataPayloadJson)',
     'writePresetPayloadCacheV2(resolvedHash, resolvedPayload, { verifiedCanonicalJson: resolvedPayloadJson })',
     'writePresetPayloadCacheV2(metadataHash, metadataPayload, { verifiedCanonicalJson: metadataPayloadJson })',
+    'const ownerKey = `public:${session.id}`',
+    'owner_key: ownerKey',
+    'owner_user_id: session.id',
     'legacySummaryToCloudPresetSummary',
     ".from('legacy_preset_summaries')",
     "client.rpc('kessho_save_preset_v2'",
@@ -358,7 +365,7 @@ function assertTextIncludes(filePath, text, token, message = `missing required e
     for (const token of [
       "const functionName = 'kessho_get_preset_latest_manifest_v2'",
       'fetchMissingPresetPayloadsV2(client, requiredHashes)',
-      'readPresetPayloadCacheV2(hash)',
+      'readVerifiedPresetPayloadCacheV2(hash)',
       'writePresetPayloadCacheV2(row.hash, row.payload)',
     ]) {
       if (!fetchLatestV2Body.includes(token) && !text.includes(token)) {
@@ -367,9 +374,6 @@ function assertTextIncludes(filePath, text, token, message = `missing required e
     }
     if (fetchLatestV2Body.includes('kessho_get_preset_detail_v2')) {
       fail(filePath, findLine(text, 'kessho_get_preset_detail_v2'), 'latest V2 share/open path must not call the full-history detail RPC');
-    }
-    if (fetchLatestV2Body.includes('await readPresetPayloadCacheV2')) {
-      fail(filePath, findLine(text, 'fetchPresetByIdLatestV2Rpc'), 'latest V2 share/open path must read payload cache synchronously');
     }
   }
 
@@ -495,8 +499,8 @@ function assertTextIncludes(filePath, text, token, message = `missing required e
   const fetchPayloadMapBody = functionBody(text, 'fetchPayloadMapV2');
   if (!fetchPayloadMapBody) {
     fail(filePath, findLine(text, 'fetchPayloadMapV2'), 'fetchPayloadMapV2 body not found for payload-cache CPU guard');
-  } else if (fetchPayloadMapBody.includes('await readPresetPayloadCacheV2')) {
-    fail(filePath, findLine(text, 'fetchPayloadMapV2'), 'fetchPayloadMapV2 must read payload cache synchronously before issuing missing-hash RPCs');
+  } else if (!fetchPayloadMapBody.includes('await readVerifiedPresetPayloadCacheV2(hash)')) {
+    fail(filePath, findLine(text, 'fetchPayloadMapV2'), 'fetchPayloadMapV2 must verify persistent payload cache entries before issuing missing-hash RPCs');
   } else if (!fetchPayloadMapBody.includes('collectPresetPayloadHashesV2(hashes)')) {
     fail(filePath, findLine(text, 'fetchPayloadMapV2'), 'fetchPayloadMapV2 must use bounded hash collection before cache/RPC lookup');
   } else if (fetchPayloadMapBody.includes('hashes.filter') || fetchPayloadMapBody.includes('new Set(hashes')) {

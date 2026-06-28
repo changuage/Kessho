@@ -26,7 +26,7 @@ const DRUM_LANE_ENABLED_KEYS = [
 ] as const satisfies readonly (keyof SliderState)[];
 
 type SelectStateChange = <K extends keyof SliderState>(key: K, value: SliderState[K]) => void;
-type SequencerSynthSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'piano';
+type SequencerSynthSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'sample1' | 'sample2' | 'piano';
 
 type UseLazySequencerTransportOptions = {
   activeTab: string;
@@ -46,7 +46,8 @@ type LazySequencerTransportControls = {
 function lazyManualSourceForLaneSource(source: unknown, pad2VoiceAssign: unknown): SequencerSynthSource {
   const sourceName = normalizeSynthEuclidSource(source);
   if (sourceName === 'lead2') return 'lead2';
-  if (sourceName === 'piano') return 'piano';
+  if (sourceName === 'sample1') return 'sample1';
+  if (sourceName === 'sample2') return 'sample2';
   if (sourceName === 'pad1') return 'pad1';
   if (sourceName === 'pad2') return 'pad2';
   if (sourceName.startsWith('synth')) {
@@ -100,8 +101,10 @@ export function useLazySequencerTransport({
           setPatchedSelect('leadEnabled', true);
         } else if (source === 'lead2' && !currentState.lead2Enabled) {
           setPatchedSelect('lead2Enabled', true);
-        } else if (source === 'piano' && !currentState.pianoEnabled) {
-          setPatchedSelect('pianoEnabled', true);
+        } else if ((source === 'sample1' || source === 'piano') && !currentState.sample1Enabled) {
+          setPatchedSelect('sample1Enabled', true);
+        } else if (source === 'sample2' && !currentState.sample2Enabled) {
+          setPatchedSelect('sample2Enabled', true);
         }
       };
       if (next) {

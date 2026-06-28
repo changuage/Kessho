@@ -54,7 +54,7 @@ const SCENE_SIGNAL_RUNTIME_POLL_MS = 250;
 type SceneSignalKind =
   | 'pad'
   | 'lead'
-  | 'piano'
+  | 'sample'
   | 'drum'
   | 'earth'
   | 'grain'
@@ -110,7 +110,8 @@ const SCENE_SIGNAL_POSITIONS: Record<string, { x: number; y: number }> = {
   pad2: { x: 92, y: 120 },
   lead1: { x: 92, y: 188 },
   lead2: { x: 92, y: 256 },
-  piano: { x: 92, y: 324 },
+  sample1: { x: 92, y: 318 },
+  sample2: { x: 92, y: 366 },
   drums: { x: 248, y: 72 },
   waves: { x: 248, y: 140 },
   water: { x: 248, y: 208 },
@@ -142,7 +143,8 @@ const SCENE_SIGNAL_RGB = {
   pad2: hexToRgbTriplet(SOURCE_COLORS.pad2),
   lead1: hexToRgbTriplet(SOURCE_COLORS.lead1),
   lead2: hexToRgbTriplet(SOURCE_COLORS.lead2),
-  piano: hexToRgbTriplet(SOURCE_COLORS.piano),
+  sample1: hexToRgbTriplet(SOURCE_COLORS.sample1),
+  sample2: hexToRgbTriplet(SOURCE_COLORS.sample2),
   drums: hexToRgbTriplet(SOURCE_COLORS.drums),
   waves: hexToRgbTriplet(SOURCE_COLORS.waves),
   water: hexToRgbTriplet(SOURCE_COLORS.water),
@@ -162,7 +164,7 @@ const SCENE_SIGNAL_RGB = {
 const SCENE_SIGNAL_SYMBOLS: Record<SceneSignalKind, string> = {
   pad: APP_TAB_SYMBOLS.synth,
   lead: APP_TAB_SYMBOLS.synth,
-  piano: APP_TAB_SYMBOLS.synth,
+  sample: APP_TAB_SYMBOLS.synth,
   drum: APP_TAB_SYMBOLS.drums,
   earth: APP_TAB_SYMBOLS.earth,
   grain: APP_TAB_SYMBOLS.granular,
@@ -196,11 +198,16 @@ const SCENE_SIGNAL_RUNTIME_KEYS = [
   'lead2DelayBSend',
   'granularLead2Send',
   'lead2ReverbSend',
-  'pianoLevel',
-  'pianoDelayASend',
-  'pianoDelayBSend',
-  'granularPianoSend',
-  'pianoReverbSend',
+  'sample1Level',
+  'sample1DelayASend',
+  'sample1DelayBSend',
+  'granularSample1Send',
+  'sample1ReverbSend',
+  'sample2Level',
+  'sample2DelayASend',
+  'sample2DelayBSend',
+  'granularSample2Send',
+  'sample2ReverbSend',
   'drumLevel',
   'drumDelayASend',
   'drumDelayBSend',
@@ -592,11 +599,17 @@ function buildSceneSignalModel(state: SliderState): SceneSignalModel {
       granular: clamp01(state.granularLead2Send),
       reverb: clamp01(state.lead2ReverbSend),
     }),
-    createSceneSource('piano', 'Piano', 'piano', state.pianoEnabled, state.pianoLevel, SCENE_SIGNAL_RGB.piano, {
-      delayA: clamp01(state.pianoDelayASend),
-      delayB: clamp01(state.pianoDelayBSend),
-      granular: clamp01(state.granularPianoSend),
-      reverb: clamp01(state.pianoReverbSend),
+    createSceneSource('sample1', 'Sample 1', 'sample', state.sample1Enabled, state.sample1Level, SCENE_SIGNAL_RGB.sample1, {
+      delayA: clamp01(state.sample1DelayASend),
+      delayB: clamp01(state.sample1DelayBSend),
+      granular: clamp01(state.granularSample1Send),
+      reverb: clamp01(state.sample1ReverbSend),
+    }),
+    createSceneSource('sample2', 'Sample 2', 'sample', state.sample2Enabled, state.sample2Level, SCENE_SIGNAL_RGB.sample2, {
+      delayA: clamp01(state.sample2DelayASend),
+      delayB: clamp01(state.sample2DelayBSend),
+      granular: clamp01(state.granularSample2Send),
+      reverb: clamp01(state.sample2ReverbSend),
     }),
     createSceneSource('drums', 'Drums', 'drum', state.drumEnabled || state.drumEuclidMasterEnabled, state.drumLevel, SCENE_SIGNAL_RGB.drums, {
       delayA: clamp01(state.drumDelayASend),

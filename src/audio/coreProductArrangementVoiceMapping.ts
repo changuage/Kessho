@@ -15,7 +15,7 @@ const ARRANGEMENT_RESTART_KEYS = [
   'synthEuclid4Enabled', 'synthEuclid4Source', 'synthEuclid4VoiceMask',
   'padEnabled', 'pad2Enabled', 'synthVoiceMask', 'pad2VoiceAssign', 'synthOctave',
   'waveSpread', 'leadRandomEnabled', 'leadRandomSource', 'leadRandomClockSource',
-  'leadRandomSyncPolicy', 'leadEnabled', 'lead2Enabled', 'pianoEnabled',
+  'leadRandomSyncPolicy', 'leadEnabled', 'lead2Enabled', 'sample1Enabled', 'sample2Enabled',
 ] as const;
 
 const ARRANGEMENT_RESTART_STATE_KEY = '__arrangementRestartState';

@@ -1,7 +1,7 @@
 import { KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS, KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS, KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS, KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ, KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING, KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS, KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH, KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN, KESSHO_PRODUCT_DRUM_VOICE_COUNT } from './generated/kesshoProductSchema';
 import { DEFAULT_REVERB_PRE_COMP, DEFAULT_STATE, type SliderState } from '../ui/state';
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
-import { CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID, getCoreProductSoundscapeAssetDescriptorsForState, getPrimaryCoreProductSoundscapeAssetIdForState } from './coreProductAssets';
+import { getCoreProductSoundscapeAssetDescriptorsForState, getPrimaryCoreProductSoundscapeAssetIdForState } from './coreProductAssets';
 import { DEFAULT_MASTER_VOLUME, ENGINE_TRIMS, MASTER_OUTPUT_TRIM } from './outputTrims';
 import { delayAFilterTypeId, delayBPatternId, delayBTapeSpacingId, delayBWarpId, dynamicsDriftModeId, dynamicsDriftQualityId, dynamicsErosionQualityId, dynamicsEndCompModeId, dynamicsSaturationModeId, dynamicsSaturationQualityId, granularAnchorPatternId, granularCloudStyleId, granularLegacyPitchModeId, granularPitchModeId, granularQualityId, granularShapeId, granularVoiceModeId, reverbModCharacterId, reverbQualityId, reverbSaturationModeId, reverbTypeId, sidechainKeyId } from './CoreProductModeIds';
 import { assignLeadAlgorithmOverrideFields, assignLeadEnvelopeOverrideFields, assignLeadPresetIds, emptyLeadOverrideIndices, emptyLeadOverrideValues, exactLeadPatchFromState, leadAlgorithmPresetAEnabledFromState, leadEnvelopeGateSecondsFromState, leadEnvelopeOverrideFromState } from './CoreProductLeadPatch';
@@ -30,6 +30,9 @@ import {
   synthSourceIdFromState,
   synthSourcePadVoiceMaskFromState,
 } from './coreProductSnapshotPadVoiceRouting';
+import { createLegacyPianoSample1State, readSampleSlotState } from './sampleLibraries/sampleSlotState';
+import { sampleSlotSnapshotFields } from './sampleLibraries/sampleSlotProductSnapshot';
+import type { SampleSlotId, SampleSlotState } from './sampleLibraries/SampleLibraryTypes';
 import type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductLaneSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 export type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductHarmonySnapshot, ProductLaneSnapshot, ProductSoundscapeSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 
@@ -43,8 +46,9 @@ const SOURCE_ORDER = [
   CORE_PRODUCT_SOURCE_IDS.lead1,
   CORE_PRODUCT_SOURCE_IDS.lead2,
   CORE_PRODUCT_SOURCE_IDS.drum,
-  CORE_PRODUCT_SOURCE_IDS.piano,
+  CORE_PRODUCT_SOURCE_IDS.sample1,
   CORE_PRODUCT_SOURCE_IDS.soundscape,
+  CORE_PRODUCT_SOURCE_IDS.sample2,
 ] as const;
 
 function drumDelaySendProfile(state: Record<string, unknown> | undefined): number {
@@ -297,6 +301,16 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     sustain: KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN,
     holdSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS,
     releaseSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS,
+    sampleLibraryId: 1,
+    sampleRoleId: 0,
+    sampleArticulationId: 0,
+    sampleSelectionMode: 0,
+    sampleDynamicMode: 2,
+    sampleFixedDynamicId: 13,
+    sampleLoopEnabled: true,
+    sampleMaxVoices: 16,
+    sampleVariantMode: 0,
+    sampleReserved0: 0,
     padOverrideCount: 0,
     padOverrideIndices: emptyPadOverrideIndices(),
     padOverrideValues: emptyPadOverrideValues(),
@@ -311,6 +325,67 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     drumVoiceMorphs: Array.from({ length: KESSHO_PRODUCT_DRUM_VOICE_COUNT }, () => 0),
   };
 }
+
+function sampleSlotStateForSource(
+  slotId: SampleSlotId,
+  state: Record<string, unknown> | undefined,
+): SampleSlotState {
+  const sourceState = slotId === 'sample1' ? createLegacyPianoSample1State(state) : state;
+  return readSampleSlotState(sourceState, slotId);
+}
+
+function assignSampleSlotSource(
+  source: ProductSourceSnapshot,
+  slotId: SampleSlotId,
+  state: Record<string, unknown> | undefined,
+): void {
+  const slot = sampleSlotStateForSource(slotId, state);
+  Object.assign(source, sampleSlotSnapshotFields(slot));
+  const isSample1 = slotId === 'sample1';
+  const sampleKey = (suffix: string) => `${slotId}${suffix}`;
+  const numberFromSampleState = (suffix: string, fallback: number, legacyKey?: string): number => {
+    const explicit = numberFromState(state, sampleKey(suffix), Number.NaN);
+    if (Number.isFinite(explicit)) return explicit;
+    return legacyKey ? numberFromState(state, legacyKey, fallback) : fallback;
+  };
+  source.enabled = slot.enabled;
+  source.assetId = 0;
+  source.level = slot.level * (slot.libraryKey === 'piano' ? ENGINE_TRIMS.piano : 1);
+  source.distance = isSample1
+    ? numberFromSampleState('Distance', source.distance, 'pianoDistance')
+    : numberFromSampleState('Distance', source.distance);
+  source.attackSeconds = slot.attackMs / 1000;
+  source.decaySeconds = slot.decayMs / 1000;
+  source.sustain = slot.sustain;
+  source.holdSeconds = slot.holdMs / 1000;
+  source.releaseSeconds = slot.releaseMs / 1000;
+  source.reverbSend = isSample1
+    ? numberFromSampleState('ReverbSend', source.reverbSend, 'pianoReverbSend')
+    : numberFromSampleState('ReverbSend', source.reverbSend);
+  source.delayASend = isSample1
+    ? numberFromSampleState('DelayASend', source.delayASend, 'pianoDelayASend')
+    : numberFromSampleState('DelayASend', source.delayASend);
+  source.delayBSend = isSample1
+    ? numberFromSampleState('DelayBSend', source.delayBSend, 'pianoDelayBSend')
+    : numberFromSampleState('DelayBSend', source.delayBSend);
+  source.granularSend = isSample1
+    ? numberFromState(state, 'granularSample1Send', numberFromState(state, 'granularPianoSend', source.granularSend))
+    : numberFromState(state, 'granularSample2Send', source.granularSend);
+  source.degradeSend = isSample1
+    ? numberFromState(state, 'degradeSample1Send', numberFromState(state, 'degradePianoSend', source.degradeSend))
+    : numberFromState(state, 'degradeSample2Send', source.degradeSend);
+  source.diffuseSend = isSample1
+    ? numberFromSampleState('DiffuseSend', source.diffuseSend, 'pianoDiffuseSend')
+    : numberFromSampleState('DiffuseSend', source.diffuseSend);
+  source.postLpfHz = isSample1
+    ? numberFromSampleState('PostLPF', source.postLpfHz, 'pianoPostLPF')
+    : numberFromSampleState('PostLPF', source.postLpfHz);
+  source.stereoWidth = isSample1
+    ? numberFromSampleState('StereoWidth', source.stereoWidth, 'pianoStereoWidth')
+    : numberFromSampleState('StereoWidth', source.stereoWidth);
+  source.presetId = sourcePresetId('sample', 'default', 'default');
+}
+
 function assignSourcePresetEndpoints(source: ProductSourceSnapshot, sourceFamily: 'pad' | 'lead', morph: number, keyA: unknown, keyB: unknown, fallbackKey: string): void {
   const presetA = sourcePresetId(sourceFamily, keyA, fallbackKey), presetB = sourcePresetId(sourceFamily, keyB, fallbackKey);
   source.sourcePresetAId = presetA; source.sourcePresetBId = presetB; source.morph = clamp(morph, 0, 1);
@@ -423,25 +498,8 @@ function sourceFromState(
       source.drumVoiceMorphs = drumVoiceMorphsFromState(state);
       Object.assign(source, exactDrumPatchFromState(state));
       break;
-    case CORE_PRODUCT_SOURCE_IDS.piano:
-      source.enabled = booleanFromState(state, 'pianoEnabled', false);
-      source.assetId = CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID;
-      source.level = distanceAdjustedNumberFromState(state, 'pianoLevel', 'piano', source.level) * ENGINE_TRIMS.piano;
-      source.distance = numberFromState(state, 'pianoDistance', source.distance);
-      source.attackSeconds = numberFromState(state, 'pianoAttack', source.attackSeconds);
-      source.decaySeconds = numberFromState(state, 'pianoDecay', source.decaySeconds);
-      source.sustain = numberFromState(state, 'pianoSustain', source.sustain);
-      source.holdSeconds = numberFromState(state, 'pianoHold', 0.2);
-      source.releaseSeconds = numberFromState(state, 'pianoRelease', source.releaseSeconds);
-      source.reverbSend = distanceAdjustedNumberFromState(state, 'pianoReverbSend', 'piano', source.reverbSend);
-      source.delayASend = numberFromState(state, 'pianoDelayASend', source.delayASend);
-      source.delayBSend = numberFromState(state, 'pianoDelayBSend', source.delayBSend);
-      source.granularSend = numberFromState(state, 'granularPianoSend', source.granularSend);
-      source.degradeSend = numberFromState(state, 'degradePianoSend', source.degradeSend);
-      source.diffuseSend = distanceAdjustedNumberFromState(state, 'pianoDiffuseSend', 'piano', source.diffuseSend);
-      source.postLpfHz = numberFromState(state, 'pianoPostLPF', source.postLpfHz);
-      source.stereoWidth = numberFromState(state, 'pianoStereoWidth', source.stereoWidth);
-      source.presetId = sourcePresetId('piano', 'default', 'default');
+    case CORE_PRODUCT_SOURCE_IDS.sample1:
+      assignSampleSlotSource(source, 'sample1', state);
       break;
     case CORE_PRODUCT_SOURCE_IDS.soundscape:
       {
@@ -457,6 +515,9 @@ function sourceFromState(
         source.degradeSend = source.enabled ? payload.routePeaks[4] ?? 0 : source.degradeSend;
         source.presetId = soundscapePresetIdFromState(state);
       }
+      break;
+    case CORE_PRODUCT_SOURCE_IDS.sample2:
+      assignSampleSlotSource(source, 'sample2', state);
       break;
     default:
       break;

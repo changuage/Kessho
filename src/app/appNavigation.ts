@@ -84,6 +84,8 @@ export const FX_OWNER_LABELS = {
   pad2: 'Pad 2',
   lead1: 'Lead 1',
   lead2: 'Lead 2',
+  sample1: 'Sample 1',
+  sample2: 'Sample 2',
   piano: 'Piano',
   drum: 'Drums',
 } as const;
@@ -92,6 +94,7 @@ export const FX_ORIGIN_LABELS = {
   padChord: 'Chord',
   padEuclid: 'Euclid',
   leadNote: 'Lead Note',
+  sampleNote: 'Sample Note',
   pianoNote: 'Piano Note',
   drumHit: 'Drum Hit',
 } as const;

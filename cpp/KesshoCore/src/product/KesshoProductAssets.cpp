@@ -1,4 +1,5 @@
 #include "KesshoProductEngineInternal.h"
+#include "generated/SampleLibraryRegistry.generated.h"
 
 namespace {
 
@@ -21,6 +22,86 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
   const int note_key = std::max(0, static_cast<int>(std::lround(midi_note)));
   const int velocity_key = std::max(0, std::min(127, static_cast<int>(std::lround(clampFloat(velocity, 0.0f, 1.0f) * 127.0f))));
   return ((note_key * 31 + velocity_key) % 2) != 0;
+}
+
+uint32_t hashU32(uint32_t value) {
+  value ^= value >> 16u;
+  value *= 0x7feb352du;
+  value ^= value >> 15u;
+  value *= 0x846ca68bu;
+  value ^= value >> 16u;
+  return value;
+}
+
+uint32_t clampedVelocityByte(float velocity) {
+  return static_cast<uint32_t>(std::lround(clampFloat(velocity, 0.0f, 1.0f) * 127.0f));
+}
+
+bool sampleDynamicMatches(
+    const kessho::product::generated::GeneratedSampleDescriptor& descriptor,
+    const kessho::product::internal::SourceState& source,
+    float midi_note,
+    float velocity) {
+  using namespace kessho::product::generated;
+  if (source.sample_dynamic_mode == KESSHO_PRODUCT_SAMPLE_DYNAMIC_LEGACY_PIANO_PARITY) {
+    const uint8_t wanted_dynamic = chooseShortPianoSampleVariant(midi_note, velocity)
+        ? kSampleDynamicIdShort
+        : kSampleDynamicIdRegular;
+    return descriptor.dynamicId == wanted_dynamic;
+  }
+  if (source.sample_dynamic_mode == KESSHO_PRODUCT_SAMPLE_DYNAMIC_FIXED) {
+    return source.sample_fixed_dynamic_id == 0u || descriptor.dynamicId == source.sample_fixed_dynamic_id;
+  }
+  const uint32_t velocity_byte = clampedVelocityByte(velocity);
+  return velocity_byte >= descriptor.velocityMin && velocity_byte <= descriptor.velocityMax;
+}
+
+float sampleDescriptorScore(
+    const kessho::product::generated::GeneratedSampleDescriptor& descriptor,
+    const kessho::product::internal::SourceState& source,
+    float midi_note,
+    float velocity,
+    bool mapped_only,
+    bool relax_dynamic) {
+  using namespace kessho::product::internal;
+  if (descriptor.libraryId != source.sample_library_id) {
+    return -1.0f;
+  }
+  if (source.sample_role_id != kSampleRoleAny && descriptor.roleId != source.sample_role_id) {
+    return -1.0f;
+  }
+  if (source.sample_articulation_id != kSampleArticulationAny &&
+      descriptor.articulationId != source.sample_articulation_id) {
+    return -1.0f;
+  }
+  if (!relax_dynamic && !sampleDynamicMatches(descriptor, source, midi_note, velocity)) {
+    return -1.0f;
+  }
+  const int target_midi = std::max(0, std::min(127, static_cast<int>(std::lround(midi_note))));
+  if (source.sample_selection_mode == KESSHO_PRODUCT_SAMPLE_SELECTION_EXACT) {
+    return descriptor.rootMidi == static_cast<uint8_t>(target_midi) ? 0.0f : -1.0f;
+  }
+  const bool mapped =
+      target_midi >= static_cast<int>(descriptor.loMidi) &&
+      target_midi <= static_cast<int>(descriptor.hiMidi);
+  if (mapped_only && !mapped) {
+    return -1.0f;
+  }
+  return std::abs(static_cast<float>(descriptor.rootMidi) - static_cast<float>(target_midi));
+}
+
+uint32_t sampleVariantTieIndex(const kessho::product::internal::SourceState& source, uint32_t key, uint32_t tie_count) {
+  if (tie_count <= 1u || source.sample_variant_mode == KESSHO_PRODUCT_SAMPLE_VARIANT_STABLE) {
+    return 0u;
+  }
+  if (source.sample_variant_mode == KESSHO_PRODUCT_SAMPLE_VARIANT_ROUND_ROBIN) {
+    return key % tie_count;
+  }
+  return hashU32(key ^ (source.source_id * 0x9e3779b9u) ^ (source.sample_library_id * 0x85ebca6bu)) % tie_count;
+}
+
+bool nearlyEqual(float left, float right) {
+  return std::abs(left - right) <= 1.0e-5f;
 }
 
 } // namespace
@@ -210,7 +291,109 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
     return 0u;
   }
   const uint32_t requested = static_cast<uint32_t>(std::max(1.0, kLoopCrossfadeSeconds * sample_rate));
+  if (asset.loop_end_frame > asset.loop_start_frame + 8u) {
+    const uint32_t loop_length = asset.loop_end_frame - asset.loop_start_frame;
+    if (asset.loop_crossfade_frames > 0u) {
+      return std::min<uint32_t>(asset.loop_crossfade_frames, std::max<uint32_t>(1u, loop_length / 2u));
+    }
+    return std::min<uint32_t>(requested, std::max<uint32_t>(1u, loop_length / 2u));
+  }
   return std::min<uint32_t>(requested, std::max<uint32_t>(1u, asset.frame_count / 2u));
+}
+
+  uint32_t KesshoProductEngine::findSampleAssetSlot(
+      const SourceState& source,
+      float midi_note,
+      float velocity,
+      uint32_t variant_counter,
+      float& out_root_midi,
+      uint32_t& out_asset_id) const {
+  using namespace kessho::product::generated;
+  out_root_midi = clampFloat(midi_note, 0.0f, 127.0f);
+  out_asset_id = 0u;
+
+  const auto scan = [&](bool mapped_only, bool relax_dynamic) -> uint32_t {
+    float best_registered_score = 1000000.0f;
+    uint32_t registered_ties = 0u;
+    float best_missing_score = 1000000.0f;
+    uint32_t best_missing_asset_id = 0u;
+    float best_missing_root_midi = out_root_midi;
+
+    for (const auto& descriptor : kGeneratedSampleDescriptors) {
+      const float score = sampleDescriptorScore(descriptor, source, midi_note, velocity, mapped_only, relax_dynamic);
+      if (score < 0.0f) {
+        continue;
+      }
+      const uint32_t asset_slot = findAssetSlot(descriptor.assetId);
+      const bool registered =
+          asset_slot != kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS &&
+          (assets[asset_slot].flags & (KESSHO_PRODUCT_ASSET_SAMPLE | KESSHO_PRODUCT_ASSET_PIANO)) != 0u;
+      if (registered) {
+        if (score < best_registered_score - 1.0e-5f) {
+          best_registered_score = score;
+          registered_ties = 1u;
+        } else if (nearlyEqual(score, best_registered_score)) {
+          ++registered_ties;
+        }
+      } else if (score < best_missing_score - 1.0e-5f) {
+        best_missing_score = score;
+        best_missing_asset_id = descriptor.assetId;
+        best_missing_root_midi = static_cast<float>(descriptor.rootMidi);
+      }
+    }
+
+    if (registered_ties == 0u) {
+      out_asset_id = best_missing_asset_id;
+      out_root_midi = best_missing_root_midi;
+      return kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS;
+    }
+
+    const uint32_t target_tie = sampleVariantTieIndex(
+        source,
+        variant_counter ^ (static_cast<uint32_t>(std::lround(clampFloat(midi_note, 0.0f, 127.0f))) << 8u) ^
+            clampedVelocityByte(velocity),
+        registered_ties);
+    uint32_t seen_tie = 0u;
+    for (const auto& descriptor : kGeneratedSampleDescriptors) {
+      const float score = sampleDescriptorScore(descriptor, source, midi_note, velocity, mapped_only, relax_dynamic);
+      if (score < 0.0f || !nearlyEqual(score, best_registered_score)) {
+        continue;
+      }
+      const uint32_t asset_slot = findAssetSlot(descriptor.assetId);
+      if (asset_slot == kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS ||
+          (assets[asset_slot].flags & (KESSHO_PRODUCT_ASSET_SAMPLE | KESSHO_PRODUCT_ASSET_PIANO)) == 0u) {
+        continue;
+      }
+      if (seen_tie++ == target_tie) {
+        out_asset_id = descriptor.assetId;
+        out_root_midi = static_cast<float>(descriptor.rootMidi);
+        return asset_slot;
+      }
+    }
+    return kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS;
+  };
+
+  const bool mapped_mode = source.sample_selection_mode == KESSHO_PRODUCT_SAMPLE_SELECTION_MAPPED;
+  uint32_t slot = scan(mapped_mode, false);
+  if (slot != kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS) {
+    return slot;
+  }
+  if (out_asset_id != 0u &&
+      source.sample_library_id == kSampleLibraryPiano &&
+      source.sample_dynamic_mode == KESSHO_PRODUCT_SAMPLE_DYNAMIC_LEGACY_PIANO_PARITY) {
+    const uint32_t desired_missing_asset_id = out_asset_id;
+    const float desired_missing_root_midi = out_root_midi;
+    slot = scan(mapped_mode, true);
+    if (slot != kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS) {
+      return slot;
+    }
+    out_asset_id = desired_missing_asset_id;
+    out_root_midi = desired_missing_root_midi;
+  }
+  if (out_asset_id != 0u || !mapped_mode) {
+    return slot;
+  }
+  return scan(false, false);
 }
 
   float KesshoProductEngine::sampleVoiceEnvelope(const Voice& voice) const {
@@ -295,6 +478,30 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
   if (asset.frame_count == 0u || !std::isfinite(frame_position)) {
     return 0.0f;
   }
+  const bool loop_region =
+      looping &&
+      asset.loop_end_frame > asset.loop_start_frame + 1u &&
+      asset.loop_end_frame <= asset.frame_count;
+  const auto wrap_loop_frame = [&](int64_t frame) -> uint32_t {
+    if (loop_region) {
+      const int64_t start = static_cast<int64_t>(asset.loop_start_frame);
+      const int64_t end = static_cast<int64_t>(asset.loop_end_frame);
+      const int64_t length = std::max<int64_t>(1, end - start);
+      if (frame >= end) {
+        frame = start + ((frame - start) % length);
+      }
+      if (frame < 0) {
+        frame = 0;
+      }
+      return static_cast<uint32_t>(std::min<int64_t>(frame, static_cast<int64_t>(asset.frame_count - 1u)));
+    }
+    const int64_t count = static_cast<int64_t>(asset.frame_count);
+    frame %= count;
+    if (frame < 0) {
+      frame += count;
+    }
+    return static_cast<uint32_t>(frame);
+  };
   if (frame_position < 0.0) {
     frame_position = 0.0;
   }
@@ -304,11 +511,11 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
     if (!looping) {
       return 0.0f;
     }
-    frame0 %= asset.frame_count;
+    frame0 = wrap_loop_frame(static_cast<int64_t>(frame0));
   }
   uint32_t frame1 = frame0 + 1u;
-  if (frame1 >= asset.frame_count) {
-    frame1 = looping ? 0u : frame0;
+  if ((loop_region && frame1 >= asset.loop_end_frame) || frame1 >= asset.frame_count) {
+    frame1 = looping ? wrap_loop_frame(static_cast<int64_t>(frame1)) : frame0;
   }
   const float frac = clampFloat(static_cast<float>(frame_position - base_position), 0.0f, 1.0f);
   if (frac <= 1.0e-7f) {
@@ -322,12 +529,7 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
 
   const auto sample_at = [&](int64_t frame) -> float {
     if (looping) {
-      const int64_t count = static_cast<int64_t>(asset.frame_count);
-      frame %= count;
-      if (frame < 0) {
-        frame += count;
-      }
-      return assetSample(asset, channel, static_cast<uint32_t>(frame));
+      return assetSample(asset, channel, wrap_loop_frame(frame));
     }
     if (frame < 0 || frame >= static_cast<int64_t>(asset.frame_count)) {
       return 0.0f;
@@ -375,25 +577,36 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
       return;
     }
     uint32_t frame = static_cast<uint32_t>(voice.sample_position);
-    if (frame >= asset.frame_count) {
+    const bool loop_region =
+        voice.looping &&
+        asset.loop_end_frame > asset.loop_start_frame + 1u &&
+        asset.loop_end_frame <= asset.frame_count;
+    const uint32_t loop_end_frame = loop_region ? asset.loop_end_frame : asset.frame_count;
+    if (frame >= loop_end_frame) {
       if (!voice.looping) {
         voice.active = false;
         markActiveVoiceListDirty();
         return;
       }
-      while (frame >= asset.frame_count) {
-        voice.sample_position -= static_cast<double>(asset.frame_count);
+      const double loop_start = loop_region ? static_cast<double>(asset.loop_start_frame) : 0.0;
+      const double loop_length = static_cast<double>(std::max<uint32_t>(
+          1u,
+          loop_region ? (asset.loop_end_frame - asset.loop_start_frame) : asset.frame_count));
+      while (voice.sample_position >= static_cast<double>(loop_end_frame)) {
+        voice.sample_position = loop_start + std::fmod(std::max(0.0, voice.sample_position - loop_start), loop_length);
         frame = static_cast<uint32_t>(voice.sample_position);
       }
     }
     sample_l = assetSampleInterpolated(asset, 0u, voice.sample_position, voice.looping);
     sample_r = asset.channel_count > 1u ? assetSampleInterpolated(asset, 1u, voice.sample_position, voice.looping) : sample_l;
     const uint32_t crossfade_frames = voice.loop_crossfade_frames;
-    if (voice.looping && crossfade_frames > 1u && asset.frame_count > crossfade_frames) {
-      const uint32_t crossfade_start = asset.frame_count - crossfade_frames;
+    if (voice.looping && crossfade_frames > 1u && loop_end_frame > crossfade_frames) {
+      const uint32_t loop_start_frame = loop_region ? asset.loop_start_frame : 0u;
+      const uint32_t crossfade_start = loop_end_frame - crossfade_frames;
       if (frame >= crossfade_start) {
-        const uint32_t wrapped_frame = frame - crossfade_start;
-        const float mix = static_cast<float>(wrapped_frame + 1u) / static_cast<float>(crossfade_frames);
+        const uint32_t crossfade_offset = frame - crossfade_start;
+        const uint32_t wrapped_frame = loop_start_frame + crossfade_offset;
+        const float mix = static_cast<float>(crossfade_offset + 1u) / static_cast<float>(crossfade_frames);
         const float next_l = assetSample(asset, 0u, wrapped_frame);
         const float next_r = asset.channel_count > 1u ? assetSample(asset, 1u, wrapped_frame) : next_l;
         sample_l = sample_l * (1.0f - mix) + next_l * mix;

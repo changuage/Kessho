@@ -60,7 +60,8 @@
         return {graph_lead2_dry_l, graph_lead2_dry_r, graph_lead2_reverb_send_l, graph_lead2_reverb_send_r,
             graph_lead2_delay_a_send_l, graph_lead2_delay_a_send_r, graph_lead2_delay_b_send_l, graph_lead2_delay_b_send_r,
             graph_lead2_granular_send_l, graph_lead2_granular_send_r, graph_lead2_diffuse_send_l, graph_lead2_diffuse_send_r};
-      case KESSHO_PRODUCT_SOURCE_PIANO:
+      case KESSHO_PRODUCT_SOURCE_SAMPLE1:
+      case KESSHO_PRODUCT_SOURCE_SAMPLE2:
         return {graph_piano_dry_l, graph_piano_dry_r, graph_piano_reverb_send_l, graph_piano_reverb_send_r,
             graph_piano_delay_a_send_l, graph_piano_delay_a_send_r, graph_piano_delay_b_send_l, graph_piano_delay_b_send_r,
             graph_piano_granular_send_l, graph_piano_granular_send_r, graph_piano_diffuse_send_l, graph_piano_diffuse_send_r};

@@ -5,6 +5,7 @@ export const CORE_PRODUCT_ASSET_FLAGS = Object.freeze({
   loop: coreProductAssetManifest.flags.loop,
   piano: coreProductAssetManifest.flags.piano,
   soundscape: coreProductAssetManifest.flags.soundscape,
+  sample: coreProductAssetManifest.flags.sample,
 } as const);
 
 type CoreProductSoundscapeAssetManifestKey = 'ocean' | 'water' | 'birds' | 'birds2' | 'frogs' | 'insects';
@@ -55,10 +56,16 @@ export type CoreProductSoundscapeAssetDescriptor = {
 };
 
 export type DecodedCoreProductAsset = {
-  assetId: number;
-  sampleRate: number;
-  channels: Float32Array[];
-  flags: number;
+  readonly assetId: number;
+  readonly sampleRate: number;
+  readonly channels: readonly Float32Array[];
+  readonly flags: number;
+  readonly sampleLibraryKey?: string;
+  readonly sampleId?: string;
+  readonly rootMidi?: number;
+  readonly decodedLoopStartFrame?: number;
+  readonly decodedLoopEndFrame?: number;
+  readonly loopCrossfadeFrames?: number;
 };
 
 export function getDecodedCoreProductAssetByteLength(asset: DecodedCoreProductAsset): number {

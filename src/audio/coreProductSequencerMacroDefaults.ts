@@ -18,7 +18,8 @@ export function coreProductSynthLaneMacroDefaultsFromState(
     [CORE_PRODUCT_SOURCE_IDS.pad2]: ['pad2Morph', 'pad2Distance'],
     [CORE_PRODUCT_SOURCE_IDS.lead1]: ['lead1Morph', 'lead1Distance'],
     [CORE_PRODUCT_SOURCE_IDS.lead2]: ['lead2Morph', 'lead2Distance'],
-    [CORE_PRODUCT_SOURCE_IDS.piano]: [null, 'pianoDistance'],
+    [CORE_PRODUCT_SOURCE_IDS.sample1]: [null, 'sample1Distance'],
+    [CORE_PRODUCT_SOURCE_IDS.sample2]: [null, 'sample2Distance'],
   };
   const [morphKey, distanceKey] = keyBySource[sourceId] ?? [null, null];
   return {

@@ -479,7 +479,7 @@ void KesshoProductEngine::sortControlEvents() {
   if (
       (source_id == KESSHO_PRODUCT_SOURCE_LEAD1 ||
        source_id == KESSHO_PRODUCT_SOURCE_LEAD2 ||
-       source_id == KESSHO_PRODUCT_SOURCE_PIANO) &&
+       isSampleProductSource(source_id)) &&
       source_id >= 1u &&
       source_id <= kSourceCount) {
     return clampFloat(sources[source_id - 1u].hold_seconds, 0.001f, 20.0f);
@@ -743,6 +743,8 @@ void KesshoProductEngine::sortControlEvents() {
       return KESSHO_PRODUCT_SOURCE_PIANO;
     case 5u:
       return KESSHO_PRODUCT_SOURCE_SOUNDSCAPE;
+    case 6u:
+      return KESSHO_PRODUCT_SOURCE_SAMPLE2;
     default:
       return KESSHO_PRODUCT_SOURCE_LEAD1;
   }
@@ -789,7 +791,7 @@ void KesshoProductEngine::sortControlEvents() {
     uint32_t sample_voice_index = kProductInvalidVoiceIndex;
     if (source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2) {
       lead_voice_index = trigger_voice_index;
-    } else if (source_id == KESSHO_PRODUCT_SOURCE_PIANO || source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
+    } else if (isSampleProductSource(source_id) || source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
       sample_voice_index = trigger_voice_index;
     }
     if (source_id >= 1u && source_id <= kSourceCount && sources[source_id - 1u].enabled) {

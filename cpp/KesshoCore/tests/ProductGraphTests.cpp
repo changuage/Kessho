@@ -33,14 +33,14 @@ float peak(const std::vector<float>& values) {
 }
 
 void applySourcePreset(KesshoProductSnapshotV2& snapshot, uint32_t source_id, uint32_t preset_id) {
-  require(source_id >= 1u && source_id <= 7u, "test preset source id out of range");
+  require(source_id >= 1u && source_id <= kessho::product::internal::kSourceCount, "test preset source id out of range");
   const auto* preset = findSourcePreset(preset_id);
   require(sourcePresetMatchesSource(source_id, preset), "test preset id does not match source");
   kessho::product::tests::applyGeneratedSourcePreset(snapshot, source_id, preset_id);
 }
 
 void applySourceDefaults(KesshoProductSnapshotV2& snapshot) {
-  for (uint32_t i = 0; i < 7; ++i) {
+  for (uint32_t i = 0; i < kessho::product::internal::kSourceCount; ++i) {
     const uint32_t source_id = i + 1u;
     KesshoProductSourceSnapshot& source = snapshot.sources[i];
     source.source_id = source_id;
@@ -82,7 +82,7 @@ KesshoProductSnapshotV2 makeSnapshot() {
   snapshot.master.gain = 1.0f;
   snapshot.rng.seed = 77;
   snapshot.rng.state = 77;
-  for (uint32_t i = 0; i < 7; ++i) {
+  for (uint32_t i = 0; i < kessho::product::internal::kSourceCount; ++i) {
     snapshot.sources[i].enabled = 1;
     snapshot.sources[i].source_id = i + 1;
     snapshot.sources[i].level = 0.8f;
@@ -176,6 +176,15 @@ void requireGranularPrimedOnSourceStart() {
   piano.release_seconds = 0.1f;
   piano.post_lpf_hz = 20000.0f;
   piano.stereo_width = 1.0f;
+  piano.sample_library_id = kessho::product::internal::kSampleLibraryPiano;
+  piano.sample_role_id = kessho::product::internal::kSampleRoleAny;
+  piano.sample_articulation_id = kessho::product::internal::kSampleArticulationAny;
+  piano.sample_selection_mode = KESSHO_PRODUCT_SAMPLE_SELECTION_NEAREST;
+  piano.sample_dynamic_mode = KESSHO_PRODUCT_SAMPLE_DYNAMIC_LEGACY_PIANO_PARITY;
+  piano.sample_fixed_dynamic_id = kessho::product::internal::kSampleDynamicRegular;
+  piano.sample_loop_enabled = false;
+  piano.sample_max_voices = kessho::product::internal::kSampleDefaultMaxVoices;
+  piano.sample_variant_mode = KESSHO_PRODUCT_SAMPLE_VARIANT_STABLE;
   direct.fx.granular_enabled = true;
   direct.fx.granular_mix = 0.75f;
   direct.granular_mix_gain = 0.0f;
@@ -185,12 +194,12 @@ void requireGranularPrimedOnSourceStart() {
   float piano_samples[256];
   std::fill(piano_samples, piano_samples + 256, 1.0f);
   direct.assets[0].active = true;
-  direct.assets[0].asset_id = 9000u;
+  direct.assets[0].asset_id = kessho::product::internal::kPianoShortAssetIdBase + (60u - kessho::product::internal::kPianoBaseMidi + 1u);
   direct.assets[0].channels[0] = piano_samples;
   direct.assets[0].channel_count = 1u;
   direct.assets[0].frame_count = 256u;
   direct.assets[0].sample_rate = 48000.0;
-  direct.assets[0].flags = KESSHO_PRODUCT_ASSET_PIANO;
+  direct.assets[0].flags = KESSHO_PRODUCT_ASSET_SAMPLE | KESSHO_PRODUCT_ASSET_PIANO;
 
   require(
       direct.triggerVoice(KESSHO_PRODUCT_SOURCE_PIANO, 60.0f, 1.0f, 0.2f) != kProductInvalidVoiceIndex,

@@ -140,6 +140,7 @@ interface PresetPayloadCacheWriteOptions {
 }
 
 const presetPayloadMemoryCache = new Map<string, CachedPresetPayloadMemoryEntry>();
+const presetPayloadSessionVerifiedHashes = new Set<string>();
 let presetPayloadPersistentCacheLastPrunedAt = 0;
 
 function roundNumber(value: number): number {
@@ -302,16 +303,28 @@ export function readPresetPayloadCacheV2(hash: string): unknown | undefined {
   if (!isPresetPayloadCacheHash(hash)) return undefined;
   const now = Date.now();
   const memory = presetPayloadMemoryCache.get(hash);
-  if (memory && memory.lastAccess + PRESET_PAYLOAD_CACHE_MAX_AGE_MS > now) {
+  if (
+    memory
+    && presetPayloadSessionVerifiedHashes.has(hash)
+    && memory.lastAccess + PRESET_PAYLOAD_CACHE_MAX_AGE_MS > now
+  ) {
     memory.lastAccess = now;
     return memory.payload;
   }
   if (memory) presetPayloadMemoryCache.delete(hash);
 
+  return undefined;
+}
+
+export async function readVerifiedPresetPayloadCacheV2(hash: string): Promise<unknown | undefined> {
+  const memory = readPresetPayloadCacheV2(hash);
+  if (memory !== undefined) return memory;
+  if (!isPresetPayloadCacheHash(hash)) return undefined;
   if (!canUsePresetPayloadPersistentCache()) return undefined;
 
+  const now = Date.now();
+  const storageKey = getPresetPayloadCacheStorageKey(hash);
   try {
-    const storageKey = getPresetPayloadCacheStorageKey(hash);
     const raw = localStorage.getItem(storageKey);
     if (!raw) return undefined;
     const parsed = JSON.parse(raw) as Partial<CachedPresetPayloadStorageEntry> | null;
@@ -328,6 +341,15 @@ export function readPresetPayloadCacheV2(hash: string): unknown | undefined {
       return undefined;
     }
 
+    const canonicalJson = stableStringifyCanonical(parsed.payload);
+    const computedHash = await hashCanonicalJsonText(canonicalJson);
+    if (computedHash !== hash) {
+      localStorage.removeItem(storageKey);
+      presetPayloadMemoryCache.delete(hash);
+      presetPayloadSessionVerifiedHashes.delete(hash);
+      return undefined;
+    }
+
     const entry: CachedPresetPayloadStorageEntry = {
       version: 1,
       hash,
@@ -336,6 +358,7 @@ export function readPresetPayloadCacheV2(hash: string): unknown | undefined {
       bytes: parsed.bytes,
       payload: parsed.payload,
     };
+    presetPayloadSessionVerifiedHashes.add(hash);
     presetPayloadMemoryCache.set(hash, {
       payload: entry.payload,
       bytes: entry.bytes,
@@ -350,10 +373,12 @@ export function readPresetPayloadCacheV2(hash: string): unknown | undefined {
     return entry.payload;
   } catch {
     try {
-      localStorage.removeItem(getPresetPayloadCacheStorageKey(hash));
+      localStorage.removeItem(storageKey);
     } catch {
       // Ignore storage cleanup failures.
     }
+    presetPayloadMemoryCache.delete(hash);
+    presetPayloadSessionVerifiedHashes.delete(hash);
     return undefined;
   }
 }
@@ -373,6 +398,7 @@ export async function writePresetPayloadCacheV2(
   const now = Date.now();
   const bytes = getPayloadCacheBytes(payloadJson);
   const memoryEntry = { payload, bytes, lastAccess: now };
+  presetPayloadSessionVerifiedHashes.add(hash);
   presetPayloadMemoryCache.set(hash, memoryEntry);
   prunePresetPayloadMemoryCache(now);
 

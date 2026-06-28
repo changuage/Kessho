@@ -29,7 +29,7 @@ typedef struct KesshoProductCapabilityReport {
 #define KESSHO_PRODUCT_EARTH_TEXTURE_TELEMETRY_CAPACITY 4u
 #define KESSHO_PRODUCT_MODULATION_DEBUG_TELEMETRY_CAPACITY 96u
 #define KESSHO_PRODUCT_GRANULAR_VISUAL_EVENT_CAPACITY 32u
-#define KESSHO_PRODUCT_DEBUG_SOURCE_STATE_CAPACITY 7u
+#define KESSHO_PRODUCT_DEBUG_SOURCE_STATE_CAPACITY 8u
 #define KESSHO_PRODUCT_DEBUG_VOICE_SPAWN_CAPACITY 16u
 #define KESSHO_PRODUCT_SEQUENCER_UI_MUTATION_HAS_OVERRIDES 1u
 #define KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_SNAPSHOT 1u
@@ -195,7 +195,7 @@ typedef struct KesshoProductTelemetry {
   float runtime_walk_values[KESSHO_PRODUCT_RUNTIME_WALK_TELEMETRY_CAPACITY];
   uint32_t rng_seed;
   uint32_t rng_state;
-  uint32_t source_preset_ids[7];
+  uint32_t source_preset_ids[8];
   float master_input_peak;
   float master_output_peak;
   float master_output_rms;

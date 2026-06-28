@@ -1,9 +1,9 @@
 const EVENT_BYTES = 40;
 const GENERATED_CAPTURE_EVENT_BYTES = 64;
 const GENERATED_CAPTURE_EVENT_CAPACITY = 256;
-const TELEMETRY_BYTES = 15008;
+const TELEMETRY_BYTES = 15048;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
-const EXPECTED_PRODUCT_SCHEMA_HASH = 0x32f36316;
+const EXPECTED_PRODUCT_SCHEMA_HASH = 0x5bbcc317;
 const SEQUENCER_UI_STATE_LANES = 16;
 const SEQUENCER_UI_STATE_STEPS = 64;
 const SEQUENCER_UI_LANE_BYTES = 3296;
@@ -53,9 +53,9 @@ const STEM_PEAK_COUNT = 9;
 const EARTH_TEXTURE_CAPACITY = 4;
 const MODULATION_DEBUG_CAPACITY = 96;
 const TELEMETRY_EARTH_OFFSET = 1292;
-const TELEMETRY_MODULATION_DEBUG_COUNT_OFFSET = 1580;
+const TELEMETRY_MODULATION_DEBUG_COUNT_OFFSET = 1584;
 const TELEMETRY_MODULATION_DEBUG_OFFSET = 1584;
-const TELEMETRY_MODULATION_DEBUG_LAST_TRIGGER_FRAME_OFFSET = 6960;
+const TELEMETRY_MODULATION_DEBUG_LAST_TRIGGER_FRAME_OFFSET = 6968;
 const STEM_PEAK_PROBE_INTERVAL_BLOCKS = 64;
 const GRAPH_TAP_IDLE_DISABLE_SECONDS = 0.05;
 const GRANULAR_WAVEFORM_BINS = 512;
@@ -63,30 +63,30 @@ const GRANULAR_WAVEFORM_BYTES = GRANULAR_WAVEFORM_BINS * Float32Array.BYTES_PER_
 const GRANULAR_WAVEFORM_SKIP = 15;
 const GRANULAR_VISUAL_EVENT_CAPACITY = 32;
 const GRANULAR_VISUAL_EVENT_BYTES = 32;
-const TELEMETRY_GRANULAR_VISUAL_EVENT_COUNT_OFFSET = 7728;
-const TELEMETRY_GRANULAR_VISUAL_EVENTS_OFFSET = 7732;
-const TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET = 8756;
-const TELEMETRY_DEBUG_SOURCE_OFFSET = 8760;
+const TELEMETRY_GRANULAR_VISUAL_EVENT_COUNT_OFFSET = 7736;
+const TELEMETRY_GRANULAR_VISUAL_EVENTS_OFFSET = 7740;
+const TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET = 8764;
+const TELEMETRY_DEBUG_SOURCE_OFFSET = 8768;
 const TELEMETRY_DEBUG_SOURCE_BYTES = 32;
-const TELEMETRY_DEBUG_SOURCE_CAPACITY = 7;
-const TELEMETRY_DEBUG_VOICE_COUNT_OFFSET = 8984;
-const TELEMETRY_DEBUG_VOICE_OFFSET = 8992;
+const TELEMETRY_DEBUG_SOURCE_CAPACITY = 8;
+const TELEMETRY_DEBUG_VOICE_COUNT_OFFSET = 9024;
+const TELEMETRY_DEBUG_VOICE_OFFSET = 9032;
 const TELEMETRY_DEBUG_VOICE_BYTES = 48;
 const TELEMETRY_DEBUG_VOICE_CAPACITY = 16;
-const TELEMETRY_SYNTH_ORBIT_NOTE_COUNTS_OFFSET = 9760;
-const TELEMETRY_SYNTH_ORBIT_BASE_ANGLES_OFFSET = 9824;
-const TELEMETRY_SYNTH_ORBIT_NOTE_ANGLES_OFFSET = 9888;
-const TELEMETRY_SYNTH_ORBIT_NOTE_FLASHES_OFFSET = 11936;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_FLAGS_OFFSET = 13984;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_DEGREES_OFFSET = 14048;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_LAST_GESTURE_DELTAS_OFFSET = 14112;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_BOUNDARY_EVENTS_OFFSET = 14176;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_COUNTS_OFFSET = 14240;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_ANCHOR_MIDIS_OFFSET = 14304;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_MIDIS_OFFSET = 14368;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_PREVIOUS_CURSOR_MIDIS_OFFSET = 14432;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_MIDIS_OFFSET = 14496;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_VELOCITIES_OFFSET = 14752;
+const TELEMETRY_SYNTH_ORBIT_NOTE_COUNTS_OFFSET = 9800;
+const TELEMETRY_SYNTH_ORBIT_BASE_ANGLES_OFFSET = 9864;
+const TELEMETRY_SYNTH_ORBIT_NOTE_ANGLES_OFFSET = 9928;
+const TELEMETRY_SYNTH_ORBIT_NOTE_FLASHES_OFFSET = 11976;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_FLAGS_OFFSET = 14024;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_DEGREES_OFFSET = 14088;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_LAST_GESTURE_DELTAS_OFFSET = 14152;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_BOUNDARY_EVENTS_OFFSET = 14216;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_COUNTS_OFFSET = 14280;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_ANCHOR_MIDIS_OFFSET = 14344;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_MIDIS_OFFSET = 14408;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_PREVIOUS_CURSOR_MIDIS_OFFSET = 14472;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_MIDIS_OFFSET = 14536;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_VELOCITIES_OFFSET = 14792;
 const ORBIT_VISUAL_LANES = 16;
 const ORBIT_VISUAL_NOTES = 32;
 const ANCHOR_WALKER_VISUAL_LANES = 16;
@@ -1325,7 +1325,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       }
     }
     const sourcePresetIds = [];
-    for (let index = 0; index < 7; index += 1) {
+    for (let index = 0; index < 8; index += 1) {
       sourcePresetIds.push(this.view.getUint32(ptr + 936 + index * 4, true));
     }
     const synthSequencerHitCounts = [];
@@ -1333,12 +1333,12 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const synthSequencerCurrentSteps = [];
     const drumSequencerCurrentSteps = [];
     for (let index = 0; index < 16; index += 1) {
-      synthSequencerHitCounts.push(this.view.getUint32(ptr + 1036 + index * 4, true));
-      drumSequencerHitCounts.push(this.view.getUint32(ptr + 1100 + index * 4, true));
-      synthSequencerCurrentSteps.push(this.view.getUint32(ptr + 1164 + index * 4, true));
-      drumSequencerCurrentSteps.push(this.view.getUint32(ptr + 1228 + index * 4, true));
+      synthSequencerHitCounts.push(this.view.getUint32(ptr + 1040 + index * 4, true));
+      drumSequencerHitCounts.push(this.view.getUint32(ptr + 1104 + index * 4, true));
+      synthSequencerCurrentSteps.push(this.view.getUint32(ptr + 1168 + index * 4, true));
+      drumSequencerCurrentSteps.push(this.view.getUint32(ptr + 1232 + index * 4, true));
     }
-    const sequencerUiStateRevision = this.view.getUint32(ptr + 984, true);
+    const sequencerUiStateRevision = this.view.getUint32(ptr + 988, true);
     const sequencerUiState =
       sequencerUiStateRevision !== 0 && sequencerUiStateRevision !== this.lastSequencerUiStateRevision
         ? this.readSequencerUiState(sequencerUiStateRevision)
@@ -1397,27 +1397,27 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       rngSeed: this.view.getUint32(ptr + 928, true),
       rngState: this.view.getUint32(ptr + 932, true),
       sourcePresetIds,
-      masterInputPeak: this.view.getFloat32(ptr + 964, true),
-      masterOutputPeak: this.view.getFloat32(ptr + 968, true),
-      masterOutputRms: this.view.getFloat32(ptr + 972, true),
-      masterLimiterGainReductionDb: this.view.getFloat32(ptr + 976, true),
-      dynamicsSaturationDrive: this.view.getFloat32(ptr + 980, true),
+      masterInputPeak: this.view.getFloat32(ptr + 968, true),
+      masterOutputPeak: this.view.getFloat32(ptr + 972, true),
+      masterOutputRms: this.view.getFloat32(ptr + 976, true),
+      masterLimiterGainReductionDb: this.view.getFloat32(ptr + 980, true),
+      dynamicsSaturationDrive: this.view.getFloat32(ptr + 984, true),
       sequencerUiStateRevision,
-      masterTruePeak: this.view.getFloat32(ptr + 988, true),
-      masterTruePeakDbtp: this.view.getFloat32(ptr + 992, true),
-      masterIntegratedLufs: this.view.getFloat32(ptr + 996, true),
-      granularWriteHeadPosition: this.view.getFloat32(ptr + 1000, true),
+      masterTruePeak: this.view.getFloat32(ptr + 992, true),
+      masterTruePeakDbtp: this.view.getFloat32(ptr + 996, true),
+      masterIntegratedLufs: this.view.getFloat32(ptr + 1000, true),
+      granularWriteHeadPosition: this.view.getFloat32(ptr + 1004, true),
       granularVoicePositions: [
-        this.view.getFloat32(ptr + 1004, true),
         this.view.getFloat32(ptr + 1008, true),
         this.view.getFloat32(ptr + 1012, true),
         this.view.getFloat32(ptr + 1016, true),
+        this.view.getFloat32(ptr + 1020, true),
       ],
       granularVisualEvents: this.readGranularVisualEvents(ptr),
-      pad1FilterFreq: this.view.getFloat32(ptr + 1020, true),
-      pad1Lfo1Value: this.view.getFloat32(ptr + 1024, true),
-      pad2FilterFreq: this.view.getFloat32(ptr + 1028, true),
-      pad2Lfo1Value: this.view.getFloat32(ptr + 1032, true),
+      pad1FilterFreq: this.view.getFloat32(ptr + 1024, true),
+      pad1Lfo1Value: this.view.getFloat32(ptr + 1028, true),
+      pad2FilterFreq: this.view.getFloat32(ptr + 1032, true),
+      pad2Lfo1Value: this.view.getFloat32(ptr + 1036, true),
       synthSequencerHitCounts,
       drumSequencerHitCounts,
       synthSequencerCurrentSteps,
@@ -1764,10 +1764,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const synthSequencerCurrentSteps = [];
     const drumSequencerCurrentSteps = [];
     for (let index = 0; index < 16; index += 1) {
-      synthSequencerHitCounts.push(this.view.getUint32(ptr + 1036 + index * 4, true));
-      drumSequencerHitCounts.push(this.view.getUint32(ptr + 1100 + index * 4, true));
-      synthSequencerCurrentSteps.push(this.view.getUint32(ptr + 1164 + index * 4, true));
-      drumSequencerCurrentSteps.push(this.view.getUint32(ptr + 1228 + index * 4, true));
+      synthSequencerHitCounts.push(this.view.getUint32(ptr + 1040 + index * 4, true));
+      drumSequencerHitCounts.push(this.view.getUint32(ptr + 1104 + index * 4, true));
+      synthSequencerCurrentSteps.push(this.view.getUint32(ptr + 1168 + index * 4, true));
+      drumSequencerCurrentSteps.push(this.view.getUint32(ptr + 1232 + index * 4, true));
     }
     const telemetry = {
       schemaHash: this.view.getUint32(ptr, true),
@@ -1776,23 +1776,23 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       activeGrains: this.view.getUint32(ptr + 68, true),
       runtimeWalkCount,
       runtimeWalkValues,
-      masterInputPeak: this.view.getFloat32(ptr + 964, true),
-      masterOutputPeak: this.view.getFloat32(ptr + 968, true),
-      masterOutputRms: this.view.getFloat32(ptr + 972, true),
-      dynamicsSaturationDrive: this.view.getFloat32(ptr + 980, true),
-      masterTruePeak: this.view.getFloat32(ptr + 988, true),
-      granularWriteHeadPosition: this.view.getFloat32(ptr + 1000, true),
+      masterInputPeak: this.view.getFloat32(ptr + 968, true),
+      masterOutputPeak: this.view.getFloat32(ptr + 972, true),
+      masterOutputRms: this.view.getFloat32(ptr + 976, true),
+      dynamicsSaturationDrive: this.view.getFloat32(ptr + 984, true),
+      masterTruePeak: this.view.getFloat32(ptr + 992, true),
+      granularWriteHeadPosition: this.view.getFloat32(ptr + 1004, true),
       granularVoicePositions: [
-        this.view.getFloat32(ptr + 1004, true),
         this.view.getFloat32(ptr + 1008, true),
         this.view.getFloat32(ptr + 1012, true),
         this.view.getFloat32(ptr + 1016, true),
+        this.view.getFloat32(ptr + 1020, true),
       ],
       granularVisualEvents: this.readGranularVisualEvents(ptr),
-      pad1FilterFreq: this.view.getFloat32(ptr + 1020, true),
-      pad1Lfo1Value: this.view.getFloat32(ptr + 1024, true),
-      pad2FilterFreq: this.view.getFloat32(ptr + 1028, true),
-      pad2Lfo1Value: this.view.getFloat32(ptr + 1032, true),
+      pad1FilterFreq: this.view.getFloat32(ptr + 1024, true),
+      pad1Lfo1Value: this.view.getFloat32(ptr + 1028, true),
+      pad2FilterFreq: this.view.getFloat32(ptr + 1032, true),
+      pad2Lfo1Value: this.view.getFloat32(ptr + 1036, true),
       synthSequencerHitCounts,
       drumSequencerHitCounts,
       synthSequencerCurrentSteps,

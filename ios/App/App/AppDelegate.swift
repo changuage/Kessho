@@ -1,5 +1,7 @@
 import UIKit
 import Capacitor
+import Darwin
+import KesshoCapacitorAudioSession
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -7,8 +9,30 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        if let smokeMode = Self.iosSimulatorSmokeMode() {
+            DispatchQueue.main.async {
+                let passed = KesshoIOSSimulatorSmokeRunner.run(mode: smokeMode)
+                fflush(stdout)
+                fflush(stderr)
+                exit(passed ? 0 : 1)
+            }
+        }
         return true
+    }
+
+    private static func iosSimulatorSmokeMode() -> String? {
+        for argument in CommandLine.arguments {
+            if argument == "--kessho-ios-simulator-smoke" {
+                return "foreground"
+            }
+            if argument == "--kessho-ios-background-audio-smoke" {
+                return "background"
+            }
+            if argument.hasPrefix("--kessho-ios-simulator-smoke=") {
+                return String(argument.dropFirst("--kessho-ios-simulator-smoke=".count))
+            }
+        }
+        return nil
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

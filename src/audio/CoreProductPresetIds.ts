@@ -48,8 +48,9 @@ export function defaultPresetId(sourceId: number): number {
       return sourcePresetId('lead', 'soft_rhodes', 'soft_rhodes');
     case CORE_PRODUCT_SOURCE_IDS.drum:
       return sourcePresetId('drum', 'default', 'default');
-    case CORE_PRODUCT_SOURCE_IDS.piano:
-      return sourcePresetId('piano', 'default', 'default');
+    case CORE_PRODUCT_SOURCE_IDS.sample1:
+    case CORE_PRODUCT_SOURCE_IDS.sample2:
+      return sourcePresetId('sample', 'default', 'default');
     case CORE_PRODUCT_SOURCE_IDS.soundscape:
       return sourcePresetId('soundscape', 'ocean_sample', 'ocean_sample');
     default:

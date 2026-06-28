@@ -2,22 +2,30 @@ import {
   CORE_PRODUCT_ASSET_FLAGS,
   decodeCoreProductAsset,
   getDecodedCoreProductAssetByteLength,
-  getCoreProductPianoPreloadAssetDescriptors,
   getCoreProductPianoAssetIdForMidiVariant,
   getCoreProductPianoAssetUrlForMidiVariant,
   getCoreProductSoundscapeAssetDescriptorsForState,
   type DecodedCoreProductAsset,
 } from '../../coreProductAssets';
 import type { CoreProductRuntime } from '../../coreProductRuntime';
-import { choosePianoSampleVariant, type PianoSampleVariant } from '../../pianoSamples';
+import { getNearestPianoSample, type PianoSampleVariant } from '../../pianoSamples';
+import type { SampleAssetDescriptor } from '../../sampleLibraries/sampleAssetDescriptors';
+import { SampleDecodedAssetCache, defaultSampleDecodedAssetCacheBytes } from '../../sampleLibraries/SampleDecodedAssetCache';
+import type { SampleSlotId } from '../../sampleLibraries/SampleLibraryTypes';
+import {
+  predictedSampleAssetsForState,
+  sampleDescriptorForAssetId,
+  sampleDescriptorForSlotNote,
+  samplePredictionState,
+} from './CoreProductSampleAssetResolver';
 
 type SliderStateReader = () => Record<string, unknown> | null;
 
 export class CoreProductAssetRegistrar {
   private readonly registeredAssetIds = new Set<number>();
-  private readonly pianoAssetPromises = new Map<number, Promise<void>>();
   private readonly defaultSoundscapeAssetPromises = new Map<number, Promise<void>>();
   private readonly registeredAssetDecodedBytes = new Map<number, number>();
+  private readonly sampleAssetCache = new SampleDecodedAssetCache(defaultSampleDecodedAssetCacheBytes());
 
   constructor(
     private readonly runtime: CoreProductRuntime,
@@ -27,8 +35,8 @@ export class CoreProductAssetRegistrar {
   clear(): void {
     this.registeredAssetIds.clear();
     this.registeredAssetDecodedBytes.clear();
-    this.pianoAssetPromises.clear();
     this.defaultSoundscapeAssetPromises.clear();
+    this.sampleAssetCache.clear();
   }
 
   registerAsset(asset: DecodedCoreProductAsset): void {
@@ -42,7 +50,6 @@ export class CoreProductAssetRegistrar {
     this.runtime.unregisterAsset(assetId);
     this.registeredAssetIds.delete(assetId);
     this.registeredAssetDecodedBytes.delete(assetId);
-    this.pianoAssetPromises.delete(assetId);
     this.defaultSoundscapeAssetPromises.delete(assetId);
   }
 
@@ -55,14 +62,12 @@ export class CoreProductAssetRegistrar {
   }
 
   hasMissingDefaultAssetsForState(): boolean {
-    return this.hasMissingDefaultPianoAsset() || this.hasMissingDefaultSoundscapeAsset();
+    return this.hasMissingPredictedSampleAssets() || this.hasMissingDefaultSoundscapeAsset();
   }
 
   async ensureDefaultAssetsForState(): Promise<void> {
     const pending: Promise<void>[] = [];
-    if (this.shouldUsePianoAsset()) {
-      pending.push(this.ensureDefaultPianoAsset());
-    }
+    pending.push(this.ensureSampleAssetsForState());
     if (this.shouldUseSoundscapeAsset()) {
       pending.push(this.ensureDefaultSoundscapeAsset());
     }
@@ -72,34 +77,29 @@ export class CoreProductAssetRegistrar {
   }
 
   async ensurePianoAssetForMidi(midiNote: number, variant: PianoSampleVariant = 'regular'): Promise<void> {
-    await this.ensurePianoAsset(
-      getCoreProductPianoAssetIdForMidiVariant(midiNote, variant),
-      getCoreProductPianoAssetUrlForMidiVariant(midiNote, variant),
-    );
+    const assetId = getCoreProductPianoAssetIdForMidiVariant(midiNote, variant);
+    await this.ensureSampleAsset(sampleDescriptorForAssetId(assetId) ?? {
+      assetId,
+      url: getCoreProductPianoAssetUrlForMidiVariant(midiNote, variant),
+      assetPath: '',
+      libraryKey: 'piano',
+      sampleId: `piano:${variant}:${getNearestPianoSample(midiNote).sampleMidi}`,
+      rootMidi: getNearestPianoSample(midiNote).sampleMidi,
+      encodedSampleRate: 44100,
+    });
   }
 
   async ensurePianoAssetForNote(midiNote: number, velocity: number): Promise<void> {
-    await this.ensurePianoAssetForMidi(midiNote, choosePianoSampleVariant(midiNote, velocity));
+    await this.ensureSampleSlotAssetForNote('sample1', midiNote, velocity);
   }
 
-  private shouldUsePianoAsset(): boolean {
-    const sliderState = this.readSliderState();
-    if (!sliderState) return false;
-    if (sliderState.pianoEnabled === true) return true;
-    for (let index = 1; index <= 4; index += 1) {
-      if (
-        sliderState[`synthEuclid${index}Enabled`] === true &&
-        sliderState[`synthEuclid${index}Source`] === 'piano'
-      ) {
-        return true;
-      }
-    }
-    return false;
+  async ensureSampleSlotAssetForNote(slotId: SampleSlotId, midiNote: number, velocity: number): Promise<void> {
+    const descriptor = sampleDescriptorForSlotNote(samplePredictionState(this.readSliderState()), slotId, midiNote, velocity);
+    if (descriptor) await this.ensureSampleAsset(descriptor);
   }
 
-  private hasMissingDefaultPianoAsset(): boolean {
-    if (!this.shouldUsePianoAsset()) return false;
-    return getCoreProductPianoPreloadAssetDescriptors(this.readSliderState())
+  private hasMissingPredictedSampleAssets(): boolean {
+    return predictedSampleAssetsForState(samplePredictionState(this.readSliderState()))
       .some((descriptor) => !this.registeredAssetIds.has(descriptor.assetId));
   }
 
@@ -121,38 +121,35 @@ export class CoreProductAssetRegistrar {
       .some((descriptor) => !this.registeredAssetIds.has(descriptor.assetId));
   }
 
-  private async ensureDefaultPianoAsset(): Promise<void> {
-    await this.ensurePianoAssetsForState();
-  }
-
-  private async ensurePianoAssetsForState(): Promise<void> {
-    const descriptors = getCoreProductPianoPreloadAssetDescriptors(this.readSliderState());
+  private async ensureSampleAssetsForState(): Promise<void> {
+    const descriptors = predictedSampleAssetsForState(samplePredictionState(this.readSliderState()));
+    this.sampleAssetCache.setRequiredAssetIds(descriptors.map((descriptor) => descriptor.assetId));
     await Promise.all(
-      descriptors.map((descriptor) => this.ensurePianoAsset(descriptor.assetId, descriptor.url)),
+      descriptors.map((descriptor) => this.ensureSampleAsset(descriptor)),
     );
   }
 
-  private async ensurePianoAsset(assetId: number, url: string): Promise<void> {
-    if (this.registeredAssetIds.has(assetId)) return;
-    const pending = this.pianoAssetPromises.get(assetId);
-    if (pending) {
-      await pending;
-      return;
-    }
+  private sampleFlagsForDescriptor(descriptor: SampleAssetDescriptor): number {
+    return CORE_PRODUCT_ASSET_FLAGS.sample |
+      (descriptor.libraryKey === 'piano' ? CORE_PRODUCT_ASSET_FLAGS.piano : 0) |
+      (descriptor.loop ? CORE_PRODUCT_ASSET_FLAGS.loop : 0);
+  }
+
+  private async ensureSampleAsset(descriptor: SampleAssetDescriptor): Promise<void> {
+    if (this.registeredAssetIds.has(descriptor.assetId)) return;
     const context = this.runtime.audioContext;
     if (!context) return;
-    const promise = decodeCoreProductAsset(
-      context,
-      assetId,
-      url,
-      CORE_PRODUCT_ASSET_FLAGS.piano,
-    ).then((asset) => {
+    const asset = await this.sampleAssetCache.getOrLoad(descriptor, (candidate) => (
+      decodeCoreProductAsset(
+        context,
+        candidate.assetId,
+        candidate.url,
+        this.sampleFlagsForDescriptor(candidate),
+      )
+    ));
+    if (!this.registeredAssetIds.has(asset.assetId)) {
       this.registerAsset(asset);
-    }).finally(() => {
-      this.pianoAssetPromises.delete(assetId);
-    });
-    this.pianoAssetPromises.set(assetId, promise);
-    await promise;
+    }
   }
 
   private async ensureDefaultSoundscapeAsset(): Promise<void> {

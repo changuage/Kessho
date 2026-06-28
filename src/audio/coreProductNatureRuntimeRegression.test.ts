@@ -128,6 +128,8 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
       { targetId: 0, paramId: drumRuntimeParamId('drumLevel') },
     ]],
     ['pianoLevel', [{ targetId: CORE_PRODUCT_SOURCE_IDS.piano, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['sample1Level', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['sample2Level', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['oceanSampleLevel', [{ targetId: assetTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.ocean.assetId), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['waterLevel', [{ targetId: CORE_PRODUCT_SOURCE_IDS.soundscape, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['insectsSharedLevel', [{ targetId: CORE_PRODUCT_SOURCE_IDS.soundscape, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],

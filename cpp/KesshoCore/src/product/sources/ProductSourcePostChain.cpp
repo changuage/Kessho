@@ -30,7 +30,8 @@
     case KESSHO_PRODUCT_SOURCE_LEAD2:
       cutoff = distanceMultiply(cutoff, source.distance, 0.84f, 0.32f);
       break;
-    case KESSHO_PRODUCT_SOURCE_PIANO:
+    case KESSHO_PRODUCT_SOURCE_SAMPLE1:
+    case KESSHO_PRODUCT_SOURCE_SAMPLE2:
       cutoff = distanceMultiply(cutoff, source.distance, 0.82f, 0.30f);
       break;
     default:
@@ -64,7 +65,8 @@
     case KESSHO_PRODUCT_SOURCE_LEAD2:
       width = distanceAdd(width, source.distance, -0.10f, -0.50f);
       break;
-    case KESSHO_PRODUCT_SOURCE_PIANO:
+    case KESSHO_PRODUCT_SOURCE_SAMPLE1:
+    case KESSHO_PRODUCT_SOURCE_SAMPLE2:
       width = distanceAdd(width, source.distance, -0.06f, -0.28f);
       break;
     default:
@@ -234,7 +236,7 @@
   const float width = resolveSourceStereoWidth(source_id);
   float filtered_left = processVoicePostLpfSample(voice, voice.post_left, left);
   float filtered_right = processVoicePostLpfSample(voice, voice.post_right, right);
-  if (source_id == KESSHO_PRODUCT_SOURCE_PIANO) {
+  if (voice.sample_slot_voice) {
     filtered_left = processVoicePostLpfSample(voice, voice.post_stage2_left, filtered_left);
     filtered_right = processVoicePostLpfSample(voice, voice.post_stage2_right, filtered_right);
   }

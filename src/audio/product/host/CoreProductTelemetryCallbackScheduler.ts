@@ -1,16 +1,13 @@
 import type { CoreProductTelemetrySnapshot } from '../../coreProductTelemetry';
-import { ProductFrameScheduler } from '../scheduling/ProductFrameScheduler';
+import { ProductRuntimeScheduler } from '../scheduling/ProductRuntimeScheduler';
 
 type ProductTelemetryCallback = ((telemetry: CoreProductTelemetrySnapshot) => void) | null;
 
 export class CoreProductTelemetryCallbackScheduler {
   private callback: ProductTelemetryCallback = null;
   private pendingTelemetry: CoreProductTelemetrySnapshot | null = null;
-  private readonly scheduler = new ProductFrameScheduler();
 
-  constructor() {
-    this.scheduler.subscribe('telemetry', () => this.flush());
-  }
+  constructor(private readonly scheduler = new ProductRuntimeScheduler()) {}
 
   setCallback(callback: ProductTelemetryCallback, latestTelemetry: CoreProductTelemetrySnapshot | null): void {
     this.callback = callback;
@@ -28,7 +25,7 @@ export class CoreProductTelemetryCallbackScheduler {
   schedule(telemetry: CoreProductTelemetrySnapshot): void {
     if (!this.callback) return;
     this.pendingTelemetry = telemetry;
-    this.scheduler.markDirty('telemetry');
+    this.scheduler.schedule('telemetry-visible', () => this.flush());
   }
 
   private flush(): void {

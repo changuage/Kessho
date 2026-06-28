@@ -199,6 +199,18 @@ function pianoEnvelope(state: SliderState): SimpleSequencerVizEnvelope {
   };
 }
 
+function sampleEnvelope(state: SliderState, source: 'sample1' | 'sample2'): SimpleSequencerVizEnvelope {
+  const record = state as unknown as Record<string, unknown>;
+  const prefix = source;
+  return {
+    attack: boundedNumber(record[`${prefix}AttackMs`], source === 'sample1' ? 5 : 25, 0, 5000) / 1000,
+    decay: 0.02,
+    sustain: 1,
+    gateSeconds: 0.35,
+    release: boundedNumber(record[`${prefix}ReleaseMs`], source === 'sample1' ? 120 : 350, 0, 10000) / 1000,
+  };
+}
+
 export function envelopeForSource(
   state: SliderState,
   source: SimpleSequencerVizSource,
@@ -207,11 +219,13 @@ export function envelopeForSource(
 ): SimpleSequencerVizEnvelope {
   if (source === 'pad1' || source === 'pad2') return padEnvelope(state, source, voiceDelaySeconds, triggerIntervalSeconds);
   if (source === 'lead1' || source === 'lead2') return leadEnvelope(state, source);
+  if (source === 'sample1' || source === 'sample2') return sampleEnvelope(state, source);
   return pianoEnvelope(state);
 }
 
 function chordGeneratorSource(state: SliderState): string {
-  return String((state as unknown as Record<string, unknown>).synthChordGeneratorSource ?? 'piano').trim().toLowerCase();
+  const source = String((state as unknown as Record<string, unknown>).synthChordGeneratorSource ?? 'sample1').trim().toLowerCase();
+  return source === 'piano' ? 'sample1' : source;
 }
 
 function vizSourceFromSourceId(sourceId: number): SimpleSequencerVizSource | null {
@@ -219,7 +233,8 @@ function vizSourceFromSourceId(sourceId: number): SimpleSequencerVizSource | nul
   if (sourceId === CORE_PRODUCT_SOURCE_IDS.pad2) return 'pad2';
   if (sourceId === CORE_PRODUCT_SOURCE_IDS.lead1) return 'lead1';
   if (sourceId === CORE_PRODUCT_SOURCE_IDS.lead2) return 'lead2';
-  if (sourceId === CORE_PRODUCT_SOURCE_IDS.piano) return 'piano';
+  if (sourceId === CORE_PRODUCT_SOURCE_IDS.sample1) return 'sample1';
+  if (sourceId === CORE_PRODUCT_SOURCE_IDS.sample2) return 'sample2';
   return null;
 }
 
@@ -323,9 +338,11 @@ export function createPadChordPhrasePreview(state: SliderState, phraseIndex = 0)
   };
 }
 
-function randomTimingSource(state: SliderState): 'lead1' | 'lead2' | 'piano' {
+function randomTimingSource(state: SliderState): 'lead1' | 'lead2' | 'sample1' {
   const source = (state as unknown as Record<string, unknown>).leadRandomSource;
-  return source === 'lead2' || source === 'piano' ? source : 'lead1';
+  if (source === 'lead2') return 'lead2';
+  if (source === 'sample1' || source === 'piano') return 'sample1';
+  return 'lead1';
 }
 
 function isRandomTimingEnabled(state: SliderState): boolean {
@@ -333,7 +350,7 @@ function isRandomTimingEnabled(state: SliderState): boolean {
   if (!booleanValue(record.leadRandomEnabled, false)) return false;
   const source = randomTimingSource(state);
   if (source === 'lead2') return booleanValue(record.lead2Enabled, false);
-  if (source === 'piano') return booleanValue(record.pianoEnabled, false);
+  if (source === 'sample1') return booleanValue(record.sample1Enabled, false);
   return booleanValue(record.leadEnabled, false);
 }
 

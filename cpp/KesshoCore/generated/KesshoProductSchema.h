@@ -6,8 +6,8 @@
 #ifdef __cplusplus
 namespace kessho::product::generated {
 
-inline constexpr uint32_t KESSHO_PRODUCT_GROUP_COUNT = 24u;
-inline constexpr uint32_t KESSHO_PRODUCT_SOURCE_COUNT = 7u;
+inline constexpr uint32_t KESSHO_PRODUCT_GROUP_COUNT = 25u;
+inline constexpr uint32_t KESSHO_PRODUCT_SOURCE_COUNT = 8u;
 inline constexpr uint32_t KESSHO_PRODUCT_SOURCE_PRESET_COUNT = 42u;
 inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_PAD_SOURCE_PRESET_COUNT = 24u;
 inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_LEAD_SOURCE_PRESET_COUNT = 2u;
@@ -53,8 +53,9 @@ inline constexpr const char* KESSHO_PRODUCT_GROUPS[] = {
   "sources.lead1",
   "sources.lead2",
   "sources.drum",
-  "sources.piano",
+  "sources.sample1",
   "sources.soundscape",
+  "sources.sample2",
   "sequencers.synthEuclid",
   "sequencers.drumEuclid",
   "journey",
@@ -78,8 +79,9 @@ enum KesshoProductGeneratedSourceId : uint32_t {
   KESSHO_PRODUCT_SOURCE_LEAD1 = 3u,
   KESSHO_PRODUCT_SOURCE_LEAD2 = 4u,
   KESSHO_PRODUCT_SOURCE_DRUM = 5u,
-  KESSHO_PRODUCT_SOURCE_PIANO = 6u,
-  KESSHO_PRODUCT_SOURCE_SOUNDSCAPE = 7u
+  KESSHO_PRODUCT_SOURCE_SAMPLE1 = 6u,
+  KESSHO_PRODUCT_SOURCE_SOUNDSCAPE = 7u,
+  KESSHO_PRODUCT_SOURCE_SAMPLE2 = 8u
 };
 
 enum KesshoProductGeneratedSourcePresetId : uint32_t {
@@ -486,7 +488,7 @@ inline constexpr KesshoProductGeneratedSourcePreset KESSHO_PRODUCT_SOURCE_PRESET
   {"LeadSoftRhodes", "lead", "soft_rhodes", 2001u, -0.1f, 0.0f, 0.95f},
   {"LeadGamelan", "lead", "gamelan", 2002u, 0.28f, 0.12f, 1.16f},
   {"DrumDefault", "drum", "default", 3001u, 0.0f, 0.0f, 1.0f},
-  {"PianoDefault", "piano", "default", 4001u, 0.0f, 0.0f, 1.0f},
+  {"PianoDefault", "sample", "default", 4001u, 0.0f, 0.0f, 1.0f},
   {"SoundscapeOceanSample", "soundscape", "ocean_sample", 5001u, 0.0f, 0.12f, 0.95f},
   {"SoundscapeWater0", "soundscape", "water_0", 5010u, -0.04f, 0.08f, 0.92f},
   {"SoundscapeWater1", "soundscape", "water_1", 5011u, -0.02f, 0.1f, 0.94f},

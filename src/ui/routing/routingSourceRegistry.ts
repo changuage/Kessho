@@ -13,7 +13,8 @@ export type RoutingRowId =
   | 'pad2'
   | 'lead1'
   | 'lead2'
-  | 'piano'
+  | 'sample1'
+  | 'sample2'
   | 'drums'
   | 'granular'
   | 'waves'
@@ -129,14 +130,25 @@ export const ROUTING_SOURCE_REGISTRY = [
     snowflakeArmEligible: true,
   }),
   source({
-    id: 'piano',
-    label: 'Piano',
+    id: 'sample1',
+    label: 'Sample 1',
     accent: '#E8DCC4',
-    levelKey: 'pianoLevel',
-    enabledKeys: ['pianoEnabled'],
+    levelKey: 'sample1Level',
+    enabledKeys: ['sample1Enabled'],
     toggleMode: 'simple-toggle',
-    sends: { delayA: 'pianoDelayASend', delayB: 'pianoDelayBSend', granular: 'granularPianoSend', degrade: 'degradePianoSend', reverb: 'pianoReverbSend' },
-    dynamicsBusKey: 'dynamicsPianoBus',
+    sends: { delayA: 'sample1DelayASend', delayB: 'sample1DelayBSend', granular: 'granularSample1Send', degrade: 'degradeSample1Send', reverb: 'sample1ReverbSend' },
+    dynamicsBusKey: 'dynamicsSample1Bus',
+    snowflakeArmEligible: true,
+  }),
+  source({
+    id: 'sample2',
+    label: 'Sample 2',
+    accent: '#8EB6D8',
+    levelKey: 'sample2Level',
+    enabledKeys: ['sample2Enabled'],
+    toggleMode: 'simple-toggle',
+    sends: { delayA: 'sample2DelayASend', delayB: 'sample2DelayBSend', granular: 'granularSample2Send', degrade: 'degradeSample2Send', reverb: 'sample2ReverbSend' },
+    dynamicsBusKey: 'dynamicsSample2Bus',
     snowflakeArmEligible: true,
   }),
   source({

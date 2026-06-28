@@ -58,7 +58,7 @@ export type DynamicsVisualTelemetrySnapshot = {
   sidechainEvents: DynamicsSidechainVisualEvent[];
 };
 
-export type ManualSynthSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'piano';
+export type ManualSynthSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'sample1' | 'sample2' | 'piano';
 
 export type ManualSynthNoteOptions = {
   source: ManualSynthSource;
@@ -69,8 +69,8 @@ export type ManualSynthNoteOptions = {
 };
 
 export type FxOwnershipBus = 'delayA' | 'delayB' | 'granular' | 'reverb';
-export type FxOwnershipSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'piano' | 'drum';
-export type FxOwnershipOrigin = 'padChord' | 'padEuclid' | 'leadNote' | 'pianoNote' | 'drumHit';
+export type FxOwnershipSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'sample1' | 'sample2' | 'piano' | 'drum';
+export type FxOwnershipOrigin = 'padChord' | 'padEuclid' | 'leadNote' | 'sampleNote' | 'pianoNote' | 'drumHit';
 
 export type FxOwnershipDebugState = Record<
   FxOwnershipBus,

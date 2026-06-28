@@ -5,7 +5,8 @@
   "flags": {
     "loop": 1,
     "piano": 2,
-    "soundscape": 4
+    "soundscape": 4,
+    "sample": 8
   },
   "piano": {
     "baseAssetId": 7200,

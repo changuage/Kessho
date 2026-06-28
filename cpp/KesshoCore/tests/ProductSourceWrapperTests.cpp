@@ -257,7 +257,7 @@ KesshoProductSnapshotV2 makeSnapshot() {
   snapshot.master.gain = 1.0f;
   snapshot.rng.seed = 91;
   snapshot.rng.state = 91;
-  for (uint32_t i = 0; i < 7; ++i) {
+  for (uint32_t i = 0; i < kessho::product::internal::kSourceCount; ++i) {
     snapshot.sources[i].enabled = 1;
     snapshot.sources[i].source_id = i + 1;
     snapshot.sources[i].level = 0.9f;
@@ -301,7 +301,7 @@ void requireGeneratedSourcePresetFamilyCoverage() {
   uint32_t pad_count = 0;
   uint32_t lead_count = 0;
   uint32_t drum_count = 0;
-  uint32_t piano_count = 0;
+  uint32_t sample_count = 0;
   uint32_t soundscape_count = 0;
   uint32_t water_soundscape_count = 0;
 
@@ -331,9 +331,9 @@ void requireGeneratedSourcePresetFamilyCoverage() {
       continue;
     }
 
-    if (generatedSourceMatches(preset, "piano")) {
-      ++piano_count;
-      require(preset.id == KESSHO_PRODUCT_SOURCE_PRESET_PIANO_DEFAULT, "generated piano preset id mismatch");
+    if (generatedSourceMatches(preset, "sample")) {
+      ++sample_count;
+      require(preset.id == KESSHO_PRODUCT_SOURCE_PRESET_PIANO_DEFAULT, "generated sample preset id mismatch");
       continue;
     }
 
@@ -354,7 +354,7 @@ void requireGeneratedSourcePresetFamilyCoverage() {
   require(pad_count == 24u, "generated pad preset family count mismatch");
   require(lead_count == 2u, "generated lead preset family count mismatch");
   require(drum_count == 1u, "generated drum preset family count mismatch");
-  require(piano_count == 1u, "generated piano preset family count mismatch");
+  require(sample_count == 1u, "generated sample preset family count mismatch");
   require(soundscape_count == 14u, "generated soundscape preset family count mismatch");
   require(water_soundscape_count == 8u, "generated water soundscape preset count mismatch");
   require(KESSHO_PRODUCT_GENERATED_PAD_SOURCE_PRESET_COUNT == pad_count, "generated pad source patch table count mismatch");
@@ -1873,11 +1873,11 @@ void requireGeneratedAssetPresetTelemetryCoverage() {
   for (const uint32_t preset_id : asset_source_presets) {
     const auto* preset = generatedPreset(preset_id);
     require(preset != nullptr, "generated asset-backed source preset missing");
-    const uint32_t source_id = generatedSourceMatches(*preset, "piano")
+    const uint32_t source_id = generatedSourceMatches(*preset, "sample")
         ? KESSHO_PRODUCT_SOURCE_PIANO
         : KESSHO_PRODUCT_SOURCE_SOUNDSCAPE;
     require(
-        source_id == KESSHO_PRODUCT_SOURCE_PIANO || generatedSourceMatches(*preset, "soundscape"),
+        generatedSourceMatches(*preset, "sample") || generatedSourceMatches(*preset, "soundscape"),
         "asset-backed generated preset has wrong source family");
 
     KesshoProductSnapshotV2 snapshot = makeSnapshot();

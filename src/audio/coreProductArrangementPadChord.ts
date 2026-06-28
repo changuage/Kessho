@@ -68,7 +68,8 @@ const CHORD_DISTANCE_SOURCE_IDS = new Set<number>([
   CORE_PRODUCT_SOURCE_IDS.pad2,
   CORE_PRODUCT_SOURCE_IDS.lead1,
   CORE_PRODUCT_SOURCE_IDS.lead2,
-  CORE_PRODUCT_SOURCE_IDS.piano,
+  CORE_PRODUCT_SOURCE_IDS.sample1,
+  CORE_PRODUCT_SOURCE_IDS.sample2,
 ]);
 
 function orderedChordVoices(
@@ -146,7 +147,7 @@ export function createCoreProductChordGeneratorSchedule(args: {
     runtimeNotes,
     scheduledNotes,
   };
-  const source = String(state.synthChordGeneratorSource ?? 'piano').trim().toLowerCase();
+  const source = String(state.synthChordGeneratorSource ?? 'sample1').trim().toLowerCase();
   const voiceCount = boundedInteger(state, 'synthChordGeneratorVoiceCount', 6, 1, PAD_VOICE_COUNT);
   const chordMidi = harmonyState.currentChord.midiNotes.length > 0
     ? harmonyState.currentChord.midiNotes
@@ -270,7 +271,7 @@ export function createCoreProductChordSequencerSchedule(args: {
   const chordDistance = synthChordSubLaneValue(config, 'distance', chordTriggerOrdinal);
   const chordNudgeSeconds = clamp(synthChordSubLaneValue(config, 'nudge', chordTriggerOrdinal) ?? 0, -1, 1) * triggerIntervalSeconds * 0.45;
 
-  const source = String(state.synthChordSequencerSource ?? 'piano').trim().toLowerCase();
+  const source = String(state.synthChordSequencerSource ?? 'sample1').trim().toLowerCase();
   const voiceCount = boundedInteger(state, 'synthChordSequencerVoiceCount', 6, 1, PAD_VOICE_COUNT);
   const fallbackChordMidi = harmonyState.currentChord.midiNotes.length > 0
     ? harmonyState.currentChord.midiNotes

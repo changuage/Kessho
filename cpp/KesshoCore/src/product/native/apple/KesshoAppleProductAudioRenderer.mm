@@ -121,7 +121,7 @@ bool buildOwnedDecodedAsset(
 
 void applyDiagnosticSourcePreset(KesshoProductSnapshotV2& snapshot, uint32_t source_id, uint32_t preset_id) {
   using namespace kessho::product::internal;
-  if (source_id < 1u || source_id > 7u) {
+  if (source_id < 1u || source_id > kSourceCount) {
     return;
   }
   KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
@@ -160,7 +160,7 @@ KesshoProductSnapshotV2 makeDiagnosticOutputSnapshot() {
   snapshot.master.gain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_MASTER_GAIN;
   snapshot.rng.seed = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
   snapshot.rng.state = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
-  for (uint32_t index = 0; index < 7u; ++index) {
+  for (uint32_t index = 0; index < kessho::product::internal::kSourceCount; ++index) {
     const uint32_t source_id = index + 1u;
     KesshoProductSourceSnapshot& source = snapshot.sources[index];
     source.source_id = source_id;

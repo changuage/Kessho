@@ -3,6 +3,8 @@ export type ProductLiveNoteInstrument =
   | 'pad2'
   | 'lead1'
   | 'lead2'
+  | 'sample1'
+  | 'sample2'
   | 'piano'
   | 'drum';
 

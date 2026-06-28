@@ -1,0 +1,63 @@
+{
+  "files": {
+    "src/App.tsx": {
+      "noGrowthCeiling": 3456,
+      "targetCeiling": 2500,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/audio/coreProductEngineHost.ts": {
+      "noGrowthCeiling": 886,
+      "targetCeiling": 650,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/presets/SupabasePresetStore.ts": {
+      "noGrowthCeiling": 2257,
+      "targetCeiling": 1200,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/cloud/supabase.ts": {
+      "noGrowthCeiling": 802,
+      "targetCeiling": 500,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/presets/presetStorageV2.ts": {
+      "noGrowthCeiling": 981,
+      "targetCeiling": 600,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/audio/sampleLibraries/sampleResolver.ts": {
+      "noGrowthCeiling": 350,
+      "targetCeiling": 250,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/audio/sampleLibraries/sampleAssetPredictor.ts": {
+      "noGrowthCeiling": 450,
+      "targetCeiling": 300,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/audio/sampleLibraries/SampleDecodedAssetCache.ts": {
+      "noGrowthCeiling": 450,
+      "targetCeiling": 300,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/audio/product/host/CoreProductSampleAssetResolver.ts": {
+      "noGrowthCeiling": 220,
+      "targetCeiling": 160,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/audio/product/host/CoreProductAssetRegistrar.ts": {
+      "noGrowthCeiling": 260,
+      "targetCeiling": 200,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "cpp/KesshoCore/tests/ProductSamplerCpuBudgetTests.cpp": {
+      "noGrowthCeiling": 420,
+      "targetCeiling": 360,
+      "mode": "fail-on-growth-warn-above-target"
+    }
+  },
+  "generatedAllowlist": [
+    "src/audio/generated/",
+    "cpp/KesshoCore/src/product/generated/"
+  ]
+}

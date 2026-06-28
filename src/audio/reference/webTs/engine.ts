@@ -2093,7 +2093,7 @@ export class AudioEngine {
   private isLeadRandomSourceEnabled(state: SliderState): boolean {
     const randomSource = this.getLeadRandomSource(state);
     if (randomSource === 'lead2') return !!state.lead2Enabled;
-    if (randomSource === 'piano') return !!state.pianoEnabled;
+    if (randomSource === 'sample1') return !!state.sample1Enabled || !!state.pianoEnabled;
     return !!state.leadEnabled;
   }
 
@@ -11535,7 +11535,7 @@ export class AudioEngine {
         if (idx > -1) this.leadNoteTimeouts.splice(idx, 1);
         if (randomSource === 'lead2') {
           this.playLeadNote(frequency, velocity, 'lead2');
-        } else if (randomSource === 'piano') {
+        } else if (randomSource === 'sample1') {
           this.playPianoNote(frequency, velocity);
         } else {
           this.playLeadNote(frequency, velocity, 'lead1');
@@ -12556,7 +12556,8 @@ export class AudioEngine {
       lead2DelayASend: { node: this.lead2DelayASend },
       lead2DelayBSend: { node: this.lead2DelayBSend },
       lead2GranularSend: { node: this.granularLead2Send },
-      piano: { node: this.pianoSpatialChain?.output ?? this.pianoLevelGain },
+      sample1: { node: this.pianoSpatialChain?.output ?? this.pianoLevelGain },
+      sample2: { node: this.pianoSpatialChain?.output ?? this.pianoLevelGain },
       pianoDry: { node: this.pianoSpatialChain?.output ?? this.pianoLevelGain },
       pianoReverbSend: { node: this.pianoReverbSend },
       pianoDelayASend: { node: this.pianoDelayASend },

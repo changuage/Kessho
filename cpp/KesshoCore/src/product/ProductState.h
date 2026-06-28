@@ -500,6 +500,13 @@ struct KesshoProductEngine : ProductGraphState {
   void triggerSequencerEvent(const KesshoSequencerEvent& event);
   uint32_t sampleFadeFrames(double seconds, uint32_t limit_frames) const;
   uint32_t loopCrossfadeFrames(const AssetSlot& asset) const;
+  uint32_t findSampleAssetSlot(
+      const SourceState& source,
+      float midi_note,
+      float velocity,
+      uint32_t variant_counter,
+      float& out_root_midi,
+      uint32_t& out_asset_id) const;
   double soundscapeRandomStartFrame(const AssetSlot& asset, uint32_t sample_seed) const;
   SoundscapeLayerPolicy soundscapeLayerPolicy(uint32_t asset_id) const;
   float soundscapeLayerLevel(const AssetSlot& asset, uint32_t sample_seed) const;
