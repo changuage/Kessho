@@ -867,6 +867,29 @@ assert(
     !app.includes('startPlaybackWithState: (patchedState)'),
   'App must delegate lazy sequencer keyboard fallback and start action directly to useLazySequencerTransport',
 );
+assert(
+  app.includes('const enableLeadRandomTimingSource = useCallback') &&
+    app.includes("newState.leadRandomSource = value === 'piano' ? 'sample1' : newState.leadRandomSource") &&
+    app.includes('if (newState.leadRandomEnabled) enableLeadRandomTimingSource(newState);') &&
+    app.includes("key === 'leadRandomEnabled' && value === true") &&
+    app.includes('state.sample1Enabled') &&
+    app.indexOf("if (key === 'leadRandomSource')") < app.indexOf('if (shouldDisableLeadRandomTiming(newState))'),
+  'App must enable the selected Random Timing source before the lead-random safety guard can disable playback',
+);
+assert(
+  synthPage.includes('const enableManualSynthSourceForPlayback = useCallback') &&
+    synthPage.includes('const enableSourceValueForPlayback = useCallback') &&
+    synthPage.includes("sourceValue === 'both'") &&
+    synthPage.includes('onClick={toggleChordGeneratorEnabled}') &&
+    synthPage.includes('onChange={(e) => setChordGeneratorSource(e.target.value)}') &&
+    synthPage.includes('return enableSourceValueForPlayback(sourceValue);') &&
+    synthPage.includes('const startPatch = enableSourceValueForPlayback(value);') &&
+    synthPage.includes('state.synthEuclideanMasterEnabled && state[laneEnabledKey] === true') &&
+    synthPage.includes("enableSourceValueForPlayback(String(state[getSourceKey(laneIndex)] ?? 'lead1'), startPatch)") &&
+    synthPage.includes("enableSourceValueForPlayback(String(state[getSourceKey(safeLaneIdx)] ?? 'lead1'), startPatch)") &&
+    !synthPage.includes("onClick={() => onSelectChange('synthChordGeneratorEnabled'"),
+  'Synth sequencers must enable selected sample/lead/pad sources before scheduled playback',
+);
 assert(synthPage.includes('event.defaultPrevented'), 'Synth page hotkeys must ignore already-handled keyboard events');
 assert(drumPage.includes('e.defaultPrevented'), 'Drum page hotkeys must ignore already-handled keyboard events');
 assert(synthPage.includes('data-sequencer-transport="synth"'), 'Synth transport button must identify its sequencer tab for keyboard fallback');
@@ -2442,7 +2465,8 @@ assert(
 );
 assert(
   /const SYNTH_LANE_ENABLED_KEYS = \[[\s\S]*'synthEuclid1Enabled'[\s\S]*'synthEuclid4Enabled'[\s\S]*\] as const/.test(synthPage) &&
-    /const toggleSynthSequencerTransport = useCallback[\s\S]*const startPatch: Partial<SliderState> = next \? \{ synthEuclideanMasterEnabled: true \} : \{\};[\s\S]*const requestedLaneEnabledKey = next && !hasEnabledLane \? activeLaneEnabledKey : null;[\s\S]*const enableSequencerSource = \(source: ManualSynthSource\) => \{[\s\S]*source === 'pad1'[\s\S]*startPatch\.padEnabled = true;[\s\S]*source === 'lead1'[\s\S]*startPatch\.leadEnabled = true;[\s\S]*SYNTH_LANE_ENABLED_KEYS\.forEach\(\(key, laneIndex\) => \{[\s\S]*key !== requestedLaneEnabledKey[\s\S]*getManualSourceForLaneSource\([\s\S]*startPatch\[requestedLaneEnabledKey\] = true;[\s\S]*onRequestPlaybackStart\?\.\(startPatch\);/.test(synthPage),
+    /const enableManualSynthSourceForPlayback = useCallback[\s\S]*resolvedSource === 'pad1'[\s\S]*startPatch\.padEnabled = true;[\s\S]*resolvedSource === 'lead1'[\s\S]*startPatch\.leadEnabled = true;[\s\S]*resolvedSource === 'sample1'[\s\S]*startPatch\.sample1Enabled = true;/.test(synthPage) &&
+    /const toggleSynthSequencerTransport = useCallback[\s\S]*const startPatch: Partial<SliderState> = next \? \{ synthEuclideanMasterEnabled: true \} : \{\};[\s\S]*const requestedLaneEnabledKey = next && !hasEnabledLane \? activeLaneEnabledKey : null;[\s\S]*SYNTH_LANE_ENABLED_KEYS\.forEach\(\(key, laneIndex\) => \{[\s\S]*key !== requestedLaneEnabledKey[\s\S]*enableSourceValueForPlayback\(String\(state\[getSourceKey\(laneIndex\)\] \?\? 'lead1'\), startPatch\);[\s\S]*startPatch\[requestedLaneEnabledKey\] = true;[\s\S]*onRequestPlaybackStart\?\.\(startPatch\);/.test(synthPage),
   'Synth keyboard/button transport must enable only selected sequencer source engines, an audible lane, and start Product with the requested state patch',
 );
 for (const token of [

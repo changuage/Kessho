@@ -1321,6 +1321,17 @@ const App: React.FC = () => {
     return !nextState.leadEnabled;
   }, []);
 
+  const enableLeadRandomTimingSource = useCallback((nextState: SliderState): void => {
+    const randomSource = nextState.leadRandomSource ?? 'lead1';
+    if (randomSource === 'lead2') {
+      nextState.lead2Enabled = true;
+    } else if (randomSource === 'sample1') {
+      nextState.sample1Enabled = true;
+    } else {
+      nextState.leadEnabled = true;
+    }
+  }, []);
+
   // Handle select change
   const handleSelectChange = useCallback(
     <K extends keyof SliderState>(key: K, value: SliderState[K]) => {
@@ -1436,6 +1447,13 @@ const App: React.FC = () => {
           }
         }
 
+        if (key === 'leadRandomSource') {
+          newState.leadRandomSource = value === 'piano' ? 'sample1' : newState.leadRandomSource;
+          if (newState.leadRandomEnabled) enableLeadRandomTimingSource(newState);
+        } else if (key === 'leadRandomEnabled' && value === true) {
+          enableLeadRandomTimingSource(newState);
+        }
+
         if (shouldDisableLeadRandomTiming(newState)) {
           newState.leadRandomEnabled = false;
         }
@@ -1506,7 +1524,7 @@ const App: React.FC = () => {
         }
       }
     },
-    [shouldDisableLeadRandomTiming, applyMorphEndpointStatePatch],
+    [shouldDisableLeadRandomTiming, enableLeadRandomTimingSource, applyMorphEndpointStatePatch],
   );
 
   useEffect(() => {
@@ -1515,7 +1533,7 @@ const App: React.FC = () => {
       if (!shouldDisableLeadRandomTiming(prev)) return prev;
       return { ...prev, leadRandomEnabled: false };
     });
-  }, [shouldDisableLeadRandomTiming, state.leadEnabled, state.lead2Enabled, state.pianoEnabled, state.leadRandomEnabled, state.leadRandomSource]);
+  }, [shouldDisableLeadRandomTiming, state.leadEnabled, state.lead2Enabled, state.sample1Enabled, state.pianoEnabled, state.leadRandomEnabled, state.leadRandomSource]);
 
   const handleStateChange = useCallback<React.Dispatch<React.SetStateAction<SliderState>>>(
     (nextStateOrUpdater) => {

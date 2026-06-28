@@ -4844,6 +4844,56 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onParamChange('pad2VoiceAssign', nextPad2Assign);
   }, [onParamChange, state.pad2VoiceAssign, state.synthVoiceMask]);
 
+  const enableManualSynthSourceForPlayback = useCallback((
+    source: ManualSynthSource,
+    startPatch: Partial<SliderState> = {},
+  ): Partial<SliderState> => {
+    const resolvedSource = source === 'piano' ? 'sample1' : source;
+    if (resolvedSource === 'pad1' && !state.padEnabled) {
+      onSelectChange('padEnabled' as keyof SliderState, true);
+      startPatch.padEnabled = true;
+    } else if (resolvedSource === 'pad2' && !state.pad2Enabled) {
+      onSelectChange('pad2Enabled' as keyof SliderState, true);
+      startPatch.pad2Enabled = true;
+    } else if (resolvedSource === 'lead1' && !state.leadEnabled) {
+      onSelectChange('leadEnabled' as keyof SliderState, true);
+      startPatch.leadEnabled = true;
+    } else if (resolvedSource === 'lead2' && !state.lead2Enabled) {
+      onSelectChange('lead2Enabled' as keyof SliderState, true);
+      startPatch.lead2Enabled = true;
+    } else if (resolvedSource === 'sample1' && !state.sample1Enabled) {
+      onSelectChange('sample1Enabled' as keyof SliderState, true);
+      startPatch.sample1Enabled = true;
+    } else if (resolvedSource === 'sample2' && !state.sample2Enabled) {
+      onSelectChange('sample2Enabled' as keyof SliderState, true);
+      startPatch.sample2Enabled = true;
+    }
+    return startPatch;
+  }, [
+    onSelectChange,
+    state.leadEnabled,
+    state.lead2Enabled,
+    state.padEnabled,
+    state.pad2Enabled,
+    state.sample1Enabled,
+    state.sample2Enabled,
+  ]);
+
+  const enableSourceValueForPlayback = useCallback((
+    sourceValue: string,
+    startPatch: Partial<SliderState> = {},
+  ): Partial<SliderState> => {
+    if (sourceValue === 'both') {
+      enableManualSynthSourceForPlayback('pad1', startPatch);
+      enableManualSynthSourceForPlayback('pad2', startPatch);
+      return startPatch;
+    }
+    return enableManualSynthSourceForPlayback(
+      getManualSourceForLaneSource(sourceValue, state.pad2VoiceAssign),
+      startPatch,
+    );
+  }, [enableManualSynthSourceForPlayback, state.pad2VoiceAssign]);
+
   const defaultLaneVoiceMask = useCallback((laneIdx: number): number => {
     let usedMask = 0;
     for (let index = 0; index < SYNTH_LANE_SOURCE_KEYS.length; index += 1) {
@@ -4874,7 +4924,30 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onSelectChange(sourceKey, value as SliderState[keyof SliderState]);
     if (nextSource === 'pad1' || nextSource === 'pad2') onParamChange(voiceMaskKey, mask);
     assignLaneVoiceMaskToSource(value, mask);
-  }, [assignLaneVoiceMaskToSource, defaultLaneVoiceMask, getSourceKey, getVoiceMaskKey, onParamChange, onSelectChange, state]);
+    const laneEnabledKey = SYNTH_LANE_ENABLED_KEYS[laneIdx] ?? SYNTH_LANE_ENABLED_KEYS[0];
+    if (state.synthEuclideanMasterEnabled && state[laneEnabledKey] === true) {
+      const startPatch = enableSourceValueForPlayback(value);
+      if (!isRunning) {
+        const playbackPatch: Partial<SliderState> = {
+          ...startPatch,
+          synthEuclideanMasterEnabled: true,
+        };
+        playbackPatch[laneEnabledKey] = true;
+        onRequestPlaybackStart?.(playbackPatch);
+      }
+    }
+  }, [
+    assignLaneVoiceMaskToSource,
+    defaultLaneVoiceMask,
+    enableSourceValueForPlayback,
+    getSourceKey,
+    getVoiceMaskKey,
+    isRunning,
+    onParamChange,
+    onRequestPlaybackStart,
+    onSelectChange,
+    state,
+  ]);
 
   const toggleLaneVoiceMask = useCallback((laneIdx: number, voice: number): void => {
     const source = normalizeSynthEuclidSource(state[getSourceKey(laneIdx)] ?? 'lead1');
@@ -5447,34 +5520,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const activeLaneEnabledKey = SYNTH_LANE_ENABLED_KEYS[seq.activeTab] ?? SYNTH_LANE_ENABLED_KEYS[0];
     const hasEnabledLane = SYNTH_LANE_ENABLED_KEYS.some((key) => Boolean(state[key]));
     const requestedLaneEnabledKey = next && !hasEnabledLane ? activeLaneEnabledKey : null;
-    const enableSequencerSource = (source: ManualSynthSource) => {
-      if (source === 'pad1' && !state.padEnabled) {
-        onSelectChange('padEnabled' as keyof SliderState, true);
-        startPatch.padEnabled = true;
-      } else if (source === 'pad2' && !state.pad2Enabled) {
-        onSelectChange('pad2Enabled' as keyof SliderState, true);
-        startPatch.pad2Enabled = true;
-      } else if (source === 'lead1' && !state.leadEnabled) {
-        onSelectChange('leadEnabled' as keyof SliderState, true);
-        startPatch.leadEnabled = true;
-      } else if (source === 'lead2' && !state.lead2Enabled) {
-        onSelectChange('lead2Enabled' as keyof SliderState, true);
-        startPatch.lead2Enabled = true;
-      } else if (source === 'sample1' && !state.sample1Enabled) {
-        onSelectChange('sample1Enabled' as keyof SliderState, true);
-        startPatch.sample1Enabled = true;
-      } else if (source === 'sample2' && !state.sample2Enabled) {
-        onSelectChange('sample2Enabled' as keyof SliderState, true);
-        startPatch.sample2Enabled = true;
-      }
-    };
     if (next) {
       SYNTH_LANE_ENABLED_KEYS.forEach((key, laneIndex) => {
         if (!Boolean(state[key]) && key !== requestedLaneEnabledKey) return;
-        enableSequencerSource(getManualSourceForLaneSource(
-          String(state[getSourceKey(laneIndex)] ?? 'lead1'),
-          state.pad2VoiceAssign,
-        ));
+        enableSourceValueForPlayback(String(state[getSourceKey(laneIndex)] ?? 'lead1'), startPatch);
       });
     }
     if (requestedLaneEnabledKey != null) {
@@ -5487,16 +5536,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     }
   }, [
     isRunning,
+    enableSourceValueForPlayback,
     onRequestPlaybackStart,
     onSelectChange,
     seq.activeTab,
-    state.leadEnabled,
-    state.lead2Enabled,
-    state.padEnabled,
-    state.pad2Enabled,
-    state.pad2VoiceAssign,
-    state.sample1Enabled,
-    state.sample2Enabled,
     state.synthEuclid1Enabled,
     state.synthEuclid1Source,
     state.synthEuclid2Enabled,
@@ -5509,45 +5552,45 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   ]);
 
   const enableChordSequencerSource = useCallback((sourceValue = chordSequencerSourceValue): Partial<SliderState> => {
-    const startPatch: Partial<SliderState> = {};
-    const enableSource = (source: ManualSynthSource) => {
-      if (source === 'pad1' && !state.padEnabled) {
-        onSelectChange('padEnabled' as keyof SliderState, true);
-        startPatch.padEnabled = true;
-      } else if (source === 'pad2' && !state.pad2Enabled) {
-        onSelectChange('pad2Enabled' as keyof SliderState, true);
-        startPatch.pad2Enabled = true;
-      } else if (source === 'lead1' && !state.leadEnabled) {
-        onSelectChange('leadEnabled' as keyof SliderState, true);
-        startPatch.leadEnabled = true;
-      } else if (source === 'lead2' && !state.lead2Enabled) {
-        onSelectChange('lead2Enabled' as keyof SliderState, true);
-        startPatch.lead2Enabled = true;
-      } else if (source === 'sample1' && !state.sample1Enabled) {
-        onSelectChange('sample1Enabled' as keyof SliderState, true);
-        startPatch.sample1Enabled = true;
-      } else if (source === 'sample2' && !state.sample2Enabled) {
-        onSelectChange('sample2Enabled' as keyof SliderState, true);
-        startPatch.sample2Enabled = true;
-      }
-    };
-    if (sourceValue === 'both') {
-      enableSource('pad1');
-      enableSource('pad2');
-    } else {
-      enableSource(getManualSourceForLaneSource(sourceValue, state.pad2VoiceAssign));
+    return enableSourceValueForPlayback(sourceValue);
+  }, [chordSequencerSourceValue, enableSourceValueForPlayback]);
+
+  const toggleChordGeneratorEnabled = useCallback(() => {
+    const next = !(state.synthChordGeneratorEnabled === true);
+    const startPatch = next ? enableSourceValueForPlayback(chordGeneratorSourceValue) : {};
+    onSelectChange('synthChordGeneratorEnabled' as keyof SliderState, next);
+    if (next && !isRunning) {
+      onRequestPlaybackStart?.({
+        ...startPatch,
+        synthChordGeneratorEnabled: true,
+      });
     }
-    return startPatch;
   }, [
-    chordSequencerSourceValue,
+    chordGeneratorSourceValue,
+    enableSourceValueForPlayback,
+    isRunning,
+    onRequestPlaybackStart,
     onSelectChange,
-    state.leadEnabled,
-    state.lead2Enabled,
-    state.padEnabled,
-    state.pad2Enabled,
-    state.pad2VoiceAssign,
-    state.sample1Enabled,
-    state.sample2Enabled,
+    state.synthChordGeneratorEnabled,
+  ]);
+
+  const setChordGeneratorSource = useCallback((sourceValue: string) => {
+    onSelectChange('synthChordGeneratorSource' as keyof SliderState, sourceValue as SliderState[keyof SliderState]);
+    if (state.synthChordGeneratorEnabled !== true) return;
+    const startPatch = enableSourceValueForPlayback(sourceValue);
+    if (!isRunning) {
+      onRequestPlaybackStart?.({
+        ...startPatch,
+        synthChordGeneratorEnabled: true,
+        synthChordGeneratorSource: sourceValue as SliderState['synthChordGeneratorSource'],
+      });
+    }
+  }, [
+    enableSourceValueForPlayback,
+    isRunning,
+    onRequestPlaybackStart,
+    onSelectChange,
+    state.synthChordGeneratorEnabled,
   ]);
 
   const toggleChordSequencerEnabled = useCallback(() => {
@@ -5592,33 +5635,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const safeLaneIdx = Math.max(0, Math.min(LANE_CONFIGS.length - 1, Math.round(laneIdx)));
     const startPatch: Partial<SliderState> = { synthEuclideanMasterEnabled: true };
     const activeLaneEnabledKey = SYNTH_LANE_ENABLED_KEYS[safeLaneIdx] ?? SYNTH_LANE_ENABLED_KEYS[0];
-    const source = getManualSourceForLaneSource(
-      String(state[getSourceKey(safeLaneIdx)] ?? 'lead1'),
-      state.pad2VoiceAssign,
-    );
-    const enableSequencerSource = (nextSource: ManualSynthSource) => {
-      if (nextSource === 'pad1' && !state.padEnabled) {
-        onSelectChange('padEnabled' as keyof SliderState, true);
-        startPatch.padEnabled = true;
-      } else if (nextSource === 'pad2' && !state.pad2Enabled) {
-        onSelectChange('pad2Enabled' as keyof SliderState, true);
-        startPatch.pad2Enabled = true;
-      } else if (nextSource === 'lead1' && !state.leadEnabled) {
-        onSelectChange('leadEnabled' as keyof SliderState, true);
-        startPatch.leadEnabled = true;
-      } else if (nextSource === 'lead2' && !state.lead2Enabled) {
-        onSelectChange('lead2Enabled' as keyof SliderState, true);
-        startPatch.lead2Enabled = true;
-      } else if (nextSource === 'sample1' && !state.sample1Enabled) {
-        onSelectChange('sample1Enabled' as keyof SliderState, true);
-        startPatch.sample1Enabled = true;
-      } else if (nextSource === 'sample2' && !state.sample2Enabled) {
-        onSelectChange('sample2Enabled' as keyof SliderState, true);
-        startPatch.sample2Enabled = true;
-      }
-    };
 
-    enableSequencerSource(source);
+    enableSourceValueForPlayback(String(state[getSourceKey(safeLaneIdx)] ?? 'lead1'), startPatch);
     if (!Boolean(state[activeLaneEnabledKey])) {
       onSelectChange(activeLaneEnabledKey, true);
       startPatch[activeLaneEnabledKey] = true;
@@ -5628,16 +5646,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     }
     onRequestPlaybackStart?.(startPatch);
   }, [
+    enableSourceValueForPlayback,
     getSourceKey,
     onRequestPlaybackStart,
     onSelectChange,
-    state.leadEnabled,
-    state.lead2Enabled,
-    state.padEnabled,
-    state.pad2Enabled,
-    state.pad2VoiceAssign,
-    state.sample1Enabled,
-    state.sample2Enabled,
     state.synthEuclid1Enabled,
     state.synthEuclid1Source,
     state.synthEuclid2Enabled,
@@ -8675,7 +8687,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   <span>Chord Generator</span>
                   <button
                     className={`synth-simple-enable${state.synthChordGeneratorEnabled === true ? ' on' : ''}`}
-                    onClick={() => onSelectChange('synthChordGeneratorEnabled' as keyof SliderState, !(state.synthChordGeneratorEnabled === true))}
+                    onClick={toggleChordGeneratorEnabled}
                   >
                     {state.synthChordGeneratorEnabled === true ? 'ON' : 'OFF'}
                   </button>
@@ -8687,7 +8699,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         className="synth-source-select"
                         aria-label="Chord generator source"
                         value={state.synthChordGeneratorSource === 'piano' ? 'sample1' : (state.synthChordGeneratorSource ?? 'sample1')}
-                        onChange={(e) => onSelectChange('synthChordGeneratorSource' as keyof SliderState, e.target.value as SliderState[keyof SliderState])}
+                        onChange={(e) => setChordGeneratorSource(e.target.value)}
                         style={{
                           borderColor: `${chordGeneratorSourceInfo.color}60`,
                           color: chordGeneratorSourceInfo.color,
