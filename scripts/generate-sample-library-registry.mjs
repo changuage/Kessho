@@ -390,7 +390,18 @@ function generatedHeader() {
 }
 
 function renderTs(registry) {
+  const tables = buildCppTables(registry);
+  const tsMap = (name, map) => {
+    const rows = [...map.entries()]
+      .map(([key, value]) => `  ${JSON.stringify(key)}: ${value},`)
+      .join('\n');
+    return `export const ${name} = Object.freeze({\n${rows}\n} as const);\n`;
+  };
   return `${generatedHeader()}import type { NormalizedSampleLibraryManifest } from '../SampleLibraryTypes';\n\n` +
+    `${tsMap('SAMPLE_LIBRARY_IDS_BY_KEY', tables.libraryIds)}\n` +
+    `${tsMap('SAMPLE_ROLE_IDS_BY_KEY', tables.roles)}\n` +
+    `${tsMap('SAMPLE_ARTICULATION_IDS_BY_KEY', tables.articulations)}\n` +
+    `${tsMap('SAMPLE_DYNAMIC_IDS_BY_KEY', tables.dynamics)}\n` +
     `export const SAMPLE_LIBRARY_REGISTRY_GENERATED = ${JSON.stringify(registry, null, 2)} as const satisfies readonly NormalizedSampleLibraryManifest[];\n`;
 }
 
@@ -431,8 +442,11 @@ function buildCppTables(registry) {
         rootMidi: sample.rootMidi,
         loMidi: sample.loMidi,
         hiMidi: sample.hiMidi,
+        velocityMin: sample.velocityMin,
+        velocityMax: sample.velocityMax,
         encodedLoopStartFrame: loop?.encodedStartFrame ?? 0,
         encodedLoopEndFrame: loop?.encodedEndFrame ?? 0,
+        encodedLoopCrossfadeFrames: loop?.crossfadeFrames ?? 0,
         encodedSampleRate: loop?.encodedSampleRate ?? library.encodedSampleRate,
         hasLoop: Boolean(loop),
       });
@@ -453,6 +467,15 @@ function renderCppHeader(registry) {
   const libraryConstants = [...tables.libraryIds.entries()]
     .map(([key, value]) => `constexpr uint8_t kSampleLibraryId${cIdentifier(key)} = ${value}u;`)
     .join('\n');
+  const roleConstants = [...tables.roles.entries()]
+    .map(([key, value]) => `constexpr uint8_t kSampleRoleId${cIdentifier(key || 'Any')} = ${value}u;`)
+    .join('\n');
+  const articulationConstants = [...tables.articulations.entries()]
+    .map(([key, value]) => `constexpr uint8_t kSampleArticulationId${cIdentifier(key || 'Any')} = ${value}u;`)
+    .join('\n');
+  const dynamicConstants = [...tables.dynamics.entries()]
+    .map(([key, value]) => `constexpr uint8_t kSampleDynamicId${cIdentifier(key)} = ${value}u;`)
+    .join('\n');
   return `${generatedHeader()}#pragma once\n\n#include <cstdint>\n\nnamespace kessho::product::generated {\n\n` +
     `struct GeneratedSampleDescriptor {\n` +
     `  uint32_t assetId;\n` +
@@ -463,8 +486,11 @@ function renderCppHeader(registry) {
     `  uint8_t rootMidi;\n` +
     `  uint8_t loMidi;\n` +
     `  uint8_t hiMidi;\n` +
+    `  uint8_t velocityMin;\n` +
+    `  uint8_t velocityMax;\n` +
     `  uint32_t encodedLoopStartFrame;\n` +
     `  uint32_t encodedLoopEndFrame;\n` +
+    `  uint32_t encodedLoopCrossfadeFrames;\n` +
     `  uint32_t encodedSampleRate;\n` +
     `  bool hasLoop;\n` +
     `};\n\n` +
@@ -476,6 +502,9 @@ function renderCppHeader(registry) {
     `  uint8_t defaultDynamicId;\n` +
     `};\n\n` +
     `${libraryConstants}\n\n` +
+    `${roleConstants}\n\n` +
+    `${articulationConstants}\n\n` +
+    `${dynamicConstants}\n\n` +
     `constexpr uint32_t kGeneratedSampleDescriptorCount = ${tables.descriptors.length}u;\n` +
     `constexpr uint32_t kGeneratedSampleLibraryCount = ${tables.libraries.length}u;\n\n` +
     `extern const GeneratedSampleDescriptor kGeneratedSampleDescriptors[kGeneratedSampleDescriptorCount];\n` +
@@ -488,7 +517,9 @@ function renderCppSource(registry) {
   const descriptors = tables.descriptors.map((descriptor) => (
     `  {${descriptor.assetId}u, ${descriptor.libraryId}u, ${descriptor.roleId}u, ${descriptor.articulationId}u, ` +
     `${descriptor.dynamicId}u, ${descriptor.rootMidi}u, ${descriptor.loMidi}u, ${descriptor.hiMidi}u, ` +
-    `${descriptor.encodedLoopStartFrame}u, ${descriptor.encodedLoopEndFrame}u, ${descriptor.encodedSampleRate}u, ` +
+    `${descriptor.velocityMin}u, ${descriptor.velocityMax}u, ` +
+    `${descriptor.encodedLoopStartFrame}u, ${descriptor.encodedLoopEndFrame}u, ${descriptor.encodedLoopCrossfadeFrames}u, ` +
+    `${descriptor.encodedSampleRate}u, ` +
     `${descriptor.hasLoop ? 'true' : 'false'}},`
   )).join('\n');
   const libraries = tables.libraries.map((library) => (

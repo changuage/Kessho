@@ -16,8 +16,8 @@ type LegacyExactBridgeSource = ProductSourceSnapshot & {
   exactDrumParams?: unknown;
 };
 
-const SNAPSHOT_BYTES = 145976;
-const SOURCE_BYTES = 5148;
+const SNAPSHOT_BYTES = 151444;
+const SOURCE_BYTES = 5188;
 const LANE_BYTES = 96;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES + 16 * KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES;
 
@@ -96,7 +96,7 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   i32(snapshot.harmony.nextStepIndex);
   u32(0);
 
-  for (let index = 0; index < 7; index += 1) {
+  for (let index = 0; index < 8; index += 1) {
     const source = snapshot.sources[index] ?? sourceDefaults(SOURCE_ORDER[index] ?? CORE_PRODUCT_SOURCE_IDS.pad1);
     const isPadSource = source.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 || source.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2;
     const isLeadSource = source.sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 || source.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2;
@@ -152,6 +152,16 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
     f32(source.sustain);
     f32(source.holdSeconds);
     f32(source.releaseSeconds);
+    u32(source.sampleLibraryId);
+    u32(source.sampleRoleId);
+    u32(source.sampleArticulationId);
+    u32(source.sampleSelectionMode);
+    u32(source.sampleDynamicMode);
+    u32(source.sampleFixedDynamicId);
+    u32(bool(source.sampleLoopEnabled));
+    u32(source.sampleMaxVoices);
+    u32(source.sampleVariantMode);
+    u32(source.sampleReserved0);
   }
 
   const writeSequencer = (lanes: ProductLaneSnapshot[]) => {

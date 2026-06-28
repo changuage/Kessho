@@ -17,6 +17,7 @@ export const kesshoCoreSourceFiles = Object.freeze([
   'cpp/KesshoCore/src/product/KesshoProductEvents.cpp',
   'cpp/KesshoCore/src/product/KesshoProductTelemetry.cpp',
   'cpp/KesshoCore/src/product/KesshoProductAssets.cpp',
+  'cpp/KesshoCore/src/product/generated/SampleLibraryRegistry.generated.cpp',
   'cpp/KesshoCore/src/product/sources/ProductSources.cpp',
   'cpp/KesshoCore/src/product/sources/SourceTargets.cpp',
   'cpp/KesshoCore/src/product/sources/SourcePresetEvents.cpp',

@@ -1,6 +1,6 @@
 {
   "name": "kessho-product",
-  "version": 11,
+  "version": 12,
   "groups": [
     "transport",
     "harmony",
@@ -9,8 +9,9 @@
     "sources.lead1",
     "sources.lead2",
     "sources.drum",
-    "sources.piano",
+    "sources.sample1",
     "sources.soundscape",
+    "sources.sample2",
     "sequencers.synthEuclid",
     "sequencers.drumEuclid",
     "journey",
@@ -49,12 +50,16 @@
       "id": 5
     },
     {
-      "name": "Piano",
+      "name": "Sample1",
       "id": 6
     },
     {
       "name": "Soundscape",
       "id": 7
+    },
+    {
+      "name": "Sample2",
+      "id": 8
     }
   ],
   "outputTrims": {
@@ -1554,7 +1559,7 @@
     },
     {
       "name": "PianoDefault",
-      "source": "piano",
+      "source": "sample",
       "key": "default",
       "id": 4001,
       "macroMorph": 0,

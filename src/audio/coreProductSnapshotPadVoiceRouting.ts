@@ -14,7 +14,8 @@ export function synthSourceIdFromState(state: Record<string, unknown> | undefine
   const source = normalizeSynthEuclidSource(state?.[key]);
   if (source === 'lead1') return CORE_PRODUCT_SOURCE_IDS.lead1;
   if (source === 'lead2') return CORE_PRODUCT_SOURCE_IDS.lead2;
-  if (source === 'piano') return CORE_PRODUCT_SOURCE_IDS.piano;
+  if (source === 'sample1') return CORE_PRODUCT_SOURCE_IDS.sample1;
+  if (source === 'sample2') return CORE_PRODUCT_SOURCE_IDS.sample2;
   if (source === 'pad1') return CORE_PRODUCT_SOURCE_IDS.pad1;
   if (source === 'pad2') return CORE_PRODUCT_SOURCE_IDS.pad2;
   if (source.startsWith('synth')) {
@@ -54,7 +55,7 @@ export function synthEuclidUsesSourceId(state: Record<string, unknown> | undefin
 
 export function synthChordSequencerUsesSourceId(state: Record<string, unknown> | undefined, sourceId: number): boolean {
   if (!booleanFromState(state, 'synthChordSequencerEnabled', false)) return false;
-  const source = String(state?.synthChordSequencerSource ?? 'piano').trim().toLowerCase();
+  const source = String(state?.synthChordSequencerSource ?? 'sample1').trim().toLowerCase();
   switch (sourceId) {
     case CORE_PRODUCT_SOURCE_IDS.pad1:
       return source === 'pad1' || source === 'pad' || source === 'both';
@@ -64,8 +65,10 @@ export function synthChordSequencerUsesSourceId(state: Record<string, unknown> |
       return source === 'lead1' || source === 'lead';
     case CORE_PRODUCT_SOURCE_IDS.lead2:
       return source === 'lead2';
-    case CORE_PRODUCT_SOURCE_IDS.piano:
-      return source === 'piano';
+    case CORE_PRODUCT_SOURCE_IDS.sample1:
+      return source === 'piano' || source === 'sample1';
+    case CORE_PRODUCT_SOURCE_IDS.sample2:
+      return source === 'sample2';
     default:
       return false;
   }

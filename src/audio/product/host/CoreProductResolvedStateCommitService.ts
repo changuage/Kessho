@@ -4,21 +4,11 @@ import { snapshotReloadReasonForProductPatch } from './CoreProductPatchClassifie
 import type { CoreProductHostDiagnostics } from './CoreProductHostDiagnostics';
 
 type CoreProductResolvedStatePatchReceipt = Omit<ProductResolvedStateCommitReceipt, 'revision'>;
-type CoreProductResolvedStatePatchOptions = {
-  forceFullSnapshot?: boolean;
-  revision: number;
-  commitReason: string;
-  triggerCritical: boolean;
-  applyMode?: ProductResolvedStateApplyMode;
-};
+type CoreProductResolvedStatePatchOptions = { forceFullSnapshot?: boolean; revision: number; commitReason: string; triggerCritical: boolean; applyMode?: ProductResolvedStateApplyMode };
 
 type CoreProductResolvedStateCommitServiceOptions = {
   diagnostics: CoreProductHostDiagnostics;
-  applyProductStatePatch: (
-    patch: Record<string, unknown>,
-    reason: SnapshotReloadReason,
-    options?: CoreProductResolvedStatePatchOptions,
-  ) => Promise<CoreProductResolvedStatePatchReceipt>;
+  applyProductStatePatch: (patch: Record<string, unknown>, reason: SnapshotReloadReason, options?: CoreProductResolvedStatePatchOptions) => Promise<CoreProductResolvedStatePatchReceipt>;
   postProductEvent: (event: ProductEvent) => void;
 };
 
@@ -35,8 +25,9 @@ export class CoreProductResolvedStateCommitService {
       const patchKeyCount = Object.keys(commit.patch).length;
       const eventCount = commit.events?.length ?? 0;
       let patchReceipt: CoreProductResolvedStatePatchReceipt | null = null;
-      if (patchKeyCount > 0) {
-        patchReceipt = await this.options.applyProductStatePatch(
+      const applyPatch = async (): Promise<CoreProductResolvedStatePatchReceipt | null> => {
+        if (patchKeyCount === 0) return null;
+        return this.options.applyProductStatePatch(
           commit.patch,
           snapshotReloadReasonForProductPatch(commit.reason),
           {
@@ -47,12 +38,18 @@ export class CoreProductResolvedStateCommitService {
             ...(commit.applyMode ? { applyMode: commit.applyMode } : {}),
           },
         );
-      }
-      if (eventCount > 0) {
+      };
+      if (commit.applyMode === 'event' && eventCount > 0) {
         for (const event of commit.events ?? []) this.options.postProductEvent(event);
+        patchReceipt = await applyPatch();
+      } else {
+        patchReceipt = await applyPatch();
+        if (eventCount > 0) {
+          for (const event of commit.events ?? []) this.options.postProductEvent(event);
+        }
       }
       const applied = patchReceipt
-        ? patchReceipt.applied || (
+        ? patchReceipt.applied || commit.applyMode === 'event' || (
           commit.triggerCritical && isSequencerTransportStartPatch(commit.patch)
         )
         : true;

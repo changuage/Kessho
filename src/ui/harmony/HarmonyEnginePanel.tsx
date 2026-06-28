@@ -147,7 +147,7 @@ const AUDITION_SOURCE_OPTIONS: readonly { value: ProductManualSynthSource; label
   { value: 'pad2', label: 'Pad 2' },
   { value: 'lead1', label: 'Lead 1' },
   { value: 'lead2', label: 'Lead 2' },
-  { value: 'piano', label: 'Piano' },
+  { value: 'sample1', label: 'Sample 1' },
 ] as const;
 
 export interface HarmonyEnginePanelProps {
@@ -307,12 +307,12 @@ function modeForIntentUpdate(mode: ManualHarmonyControlMode, manualLocked: boole
 
 function auditionNoteLimit(source: ProductManualSynthSource): number {
   if (source === 'lead1' || source === 'lead2') return 1;
-  return source === 'piano' ? 8 : 6;
+  return source === 'sample1' || source === 'sample2' || source === 'piano' ? 8 : 6;
 }
 
 function auditionDurationMs(source: ProductManualSynthSource): number {
   if (source === 'lead1' || source === 'lead2') return 720;
-  return source === 'piano' ? 1300 : 1600;
+  return source === 'sample1' || source === 'sample2' || source === 'piano' ? 1300 : 1600;
 }
 
 function frameChordTitle(frame: ResolvedHarmonyFrame): string {

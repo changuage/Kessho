@@ -24,7 +24,16 @@ import type {
 
 export { anchorWalkerDefaults, orbitSequencerDefaults } from './coreProductSequencerFaceDefaults';
 
-export const SOURCE_ORDER = [CORE_PRODUCT_SOURCE_IDS.pad1, CORE_PRODUCT_SOURCE_IDS.pad2, CORE_PRODUCT_SOURCE_IDS.lead1, CORE_PRODUCT_SOURCE_IDS.lead2, CORE_PRODUCT_SOURCE_IDS.drum, CORE_PRODUCT_SOURCE_IDS.piano, CORE_PRODUCT_SOURCE_IDS.soundscape] as const;
+export const SOURCE_ORDER = [
+  CORE_PRODUCT_SOURCE_IDS.pad1,
+  CORE_PRODUCT_SOURCE_IDS.pad2,
+  CORE_PRODUCT_SOURCE_IDS.lead1,
+  CORE_PRODUCT_SOURCE_IDS.lead2,
+  CORE_PRODUCT_SOURCE_IDS.drum,
+  CORE_PRODUCT_SOURCE_IDS.sample1,
+  CORE_PRODUCT_SOURCE_IDS.soundscape,
+  CORE_PRODUCT_SOURCE_IDS.sample2,
+] as const;
 
 export function sourceDefaults(sourceId: number): ProductSourceSnapshot {
   return {
@@ -43,6 +52,16 @@ export function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     sustain: KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN,
     holdSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS,
     releaseSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS,
+    sampleLibraryId: 1,
+    sampleRoleId: 0,
+    sampleArticulationId: 0,
+    sampleSelectionMode: 0,
+    sampleDynamicMode: 2,
+    sampleFixedDynamicId: 13,
+    sampleLoopEnabled: true,
+    sampleMaxVoices: 16,
+    sampleVariantMode: 0,
+    sampleReserved0: 0,
     padOverrideCount: 0, padOverrideIndices: emptyPadOverrideIndices(), padOverrideValues: emptyPadOverrideValues(),
     leadOverrideCount: 0, leadOverrideIndices: emptyLeadOverrideIndices(), leadOverrideValues: emptyLeadOverrideValues(),
     drumOverrideCount: 0, drumOverrideIndices: emptyDrumOverrideIndices(), drumOverrideValues: emptyDrumOverrideValues(),

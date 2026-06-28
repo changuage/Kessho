@@ -34,7 +34,7 @@ export interface ResolveCoreProductChordVoicesArgs {
 
 export function resolveCoreProductChordVoices(args: ResolveCoreProductChordVoicesArgs): CoreProductChordVoice[] {
   const { state, triggerIntervalSeconds, rng } = args;
-  const source = String(args.source ?? 'piano').trim().toLowerCase();
+  const source = String(args.source ?? 'sample1').trim().toLowerCase();
   const voiceCount = clamp(Math.round(args.voiceCount), 1, PAD_VOICE_COUNT);
   const velocity = clamp(args.velocity ?? 1, 0.001, 1);
   const chordMidi = args.chordMidi.length > 0 ? args.chordMidi : [48 + boundedInteger(state, 'rootNote', 4, 0, 11)];
@@ -46,8 +46,10 @@ export function resolveCoreProductChordVoices(args: ResolveCoreProductChordVoice
     ? CORE_PRODUCT_SOURCE_IDS.lead1
     : source === 'lead2'
       ? CORE_PRODUCT_SOURCE_IDS.lead2
-      : source === 'piano'
-        ? CORE_PRODUCT_SOURCE_IDS.piano
+      : source === 'piano' || source === 'sample1'
+        ? CORE_PRODUCT_SOURCE_IDS.sample1
+        : source === 'sample2'
+          ? CORE_PRODUCT_SOURCE_IDS.sample2
         : 0;
 
   if (nonPadSourceId !== 0) {

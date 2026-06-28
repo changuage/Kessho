@@ -18,6 +18,9 @@ export type SampleSelectionMode = typeof SAMPLE_SELECTION_MODES[number];
 export const SAMPLE_DYNAMIC_MODES = ['velocity', 'fixed', 'legacy-piano-parity'] as const;
 export type SampleDynamicMode = typeof SAMPLE_DYNAMIC_MODES[number];
 
+export const SAMPLE_VARIANT_MODES = ['stable', 'seeded', 'round-robin'] as const;
+export type SampleVariantMode = typeof SAMPLE_VARIANT_MODES[number];
+
 export const SAMPLE_DYNAMIC_KEYS = [
   'regular',
   'short',
@@ -52,8 +55,12 @@ export interface SampleSlotState {
   selectionMode: SampleSelectionMode;
   dynamicMode: SampleDynamicMode;
   fixedDynamic: SampleDynamicKey;
+  variantMode: SampleVariantMode;
   level: number;
   attackMs: number;
+  decayMs: number;
+  sustain: number;
+  holdMs: number;
   releaseMs: number;
   loopEnabled: boolean;
   maxVoices: number;

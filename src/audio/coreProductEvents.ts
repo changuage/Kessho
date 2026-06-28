@@ -57,8 +57,10 @@ export const CORE_PRODUCT_SOURCE_IDS = Object.freeze({
   lead1: GENERATED_PRODUCT_SOURCE_IDS.Lead1,
   lead2: GENERATED_PRODUCT_SOURCE_IDS.Lead2,
   drum: GENERATED_PRODUCT_SOURCE_IDS.Drum,
-  piano: GENERATED_PRODUCT_SOURCE_IDS.Piano,
+  sample1: GENERATED_PRODUCT_SOURCE_IDS.Sample1,
+  piano: GENERATED_PRODUCT_SOURCE_IDS.Sample1,
   soundscape: GENERATED_PRODUCT_SOURCE_IDS.Soundscape,
+  sample2: GENERATED_PRODUCT_SOURCE_IDS.Sample2,
 } as const);
 
 export const CORE_PRODUCT_CONTROL_ONLY_MODULATION_TARGET_ID = 0x7ffffff0;
@@ -186,6 +188,7 @@ const CORE_PRODUCT_DRUM_MASTER_LEVEL_PARAM_INDEX = generatedProductParamIndex(KE
 const CORE_PRODUCT_DRUM_REVERB_SEND_PARAM_INDEX = generatedProductParamIndex(KESSHO_PRODUCT_DRUM_PARAM_SPECS, 'drumReverbSend');
 
 const VALID_SOURCE_IDS = new Set<number>(Object.values(CORE_PRODUCT_SOURCE_IDS));
+const CORE_PRODUCT_MAX_SOURCE_ID = Math.max(...VALID_SOURCE_IDS);
 const VALID_SEQUENCER_IDS = new Set<number>(Object.values(CORE_PRODUCT_SEQUENCER_IDS));
 const CORE_PRODUCT_PAD_RUNTIME_PARAM_IDS = Array.from(
   { length: KESSHO_PRODUCT_PAD_PARAM_COUNT * 2 },
@@ -276,7 +279,7 @@ function requirePositiveFinite(value: unknown, label: string): number {
 }
 
 function requireSourceId(sourceId: unknown, label = 'sourceId'): number {
-  const value = requireIntegerInRange(sourceId, label, 1, CORE_PRODUCT_SOURCE_IDS.soundscape);
+  const value = requireIntegerInRange(sourceId, label, 1, CORE_PRODUCT_MAX_SOURCE_ID);
   if (!VALID_SOURCE_IDS.has(value)) {
     throw productBridgeError(`${label} is not a known product source: ${String(sourceId)}`);
   }
@@ -907,6 +910,8 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
     productParamTarget(coreProductDrumRuntimeParamId(CORE_PRODUCT_DRUM_MASTER_LEVEL_PARAM_INDEX), key),
   ],
   pianoLevel: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
+  sample1Level: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
+  sample2Level: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
   natureLevel: (key) => [
     soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds.assetId, key, soundscapeNatureMasterAssetLevelMap('birdsLevel')),
     soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds2.assetId, key, soundscapeNatureMasterAssetLevelMap('birds2Level')),
@@ -928,6 +933,8 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   lead1Distance: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceDistance, key)],
   lead2Distance: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceDistance, key)],
   pianoDistance: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceDistance, key)],
+  sample1Distance: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceDistance, key)],
+  sample2Distance: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceDistance, key)],
   padExpression: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceExpression, key)],
   pad2Expression: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceExpression, key)],
   lead1Expression: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceExpression, key)],
@@ -949,18 +956,32 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   lead1PostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
   lead2PostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
   pianoPostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
+  sample1PostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
+  sample2PostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
   padStereoWidth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, key)],
   pad2StereoWidth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, key)],
   lead1StereoWidth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, key)],
   lead2StereoWidth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, key)],
   pianoStereoWidth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, key)],
+  sample1StereoWidth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, key)],
+  sample2StereoWidth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, key)],
   lead1PostLPFKeyTracking: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking, key)],
   lead2PostLPFKeyTracking: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking, key)],
   pianoAttack: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds, key)],
+  sample1AttackMs: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds, key, (value) => value / 1000)],
+  sample2AttackMs: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds, key, (value) => value / 1000)],
   pianoDecay: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds, key)],
+  sample1DecayMs: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds, key, (value) => value / 1000)],
+  sample2DecayMs: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds, key, (value) => value / 1000)],
   pianoSustain: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceSustain, key)],
+  sample1Sustain: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceSustain, key)],
+  sample2Sustain: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceSustain, key)],
   pianoHold: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds, key)],
+  sample1HoldMs: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds, key, (value) => value / 1000)],
+  sample2HoldMs: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds, key, (value) => value / 1000)],
   pianoRelease: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds, key)],
+  sample1ReleaseMs: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds, key, (value) => value / 1000)],
+  sample2ReleaseMs: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds, key, (value) => value / 1000)],
   pad1ReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
   pad2ReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
   lead1ReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
@@ -970,6 +991,8 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
     productParamTarget(coreProductDrumRuntimeParamId(CORE_PRODUCT_DRUM_REVERB_SEND_PARAM_INDEX), key),
   ],
   pianoReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
+  sample1ReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
+  sample2ReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
   natureReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
   oceanReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
   waterReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
@@ -980,6 +1003,8 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   lead2DelayASend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)],
   drumDelayASend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.drum, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)],
   pianoDelayASend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)],
+  sample1DelayASend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)],
+  sample2DelayASend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)],
   natureDelayASend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)],
   oceanDelayASend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)],
   waterDelayASend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)],
@@ -990,6 +1015,8 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   lead2DelayBSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, key)],
   drumDelayBSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.drum, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, key)],
   pianoDelayBSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, key)],
+  sample1DelayBSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, key)],
+  sample2DelayBSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, key)],
   natureDelayBSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, key)],
   oceanDelayBSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, key)],
   waterDelayBSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, key)],
@@ -1000,6 +1027,8 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   granularLead2Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, key)],
   granularDrumSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.drum, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, key)],
   granularPianoSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, key)],
+  granularSample1Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, key)],
+  granularSample2Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, key)],
   granularNatureSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, key)],
   granularWavesSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, key)],
   granularWaterSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, key)],
@@ -1010,6 +1039,8 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   degradeLead2Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceDegradeSend, key)],
   degradeDrumSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.drum, KESSHO_PRODUCT_PARAM_IDS.SourceDegradeSend, key)],
   degradePianoSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceDegradeSend, key)],
+  degradeSample1Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceDegradeSend, key)],
+  degradeSample2Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceDegradeSend, key)],
   degradeNatureSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceDegradeSend, key)],
   degradeWavesSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceDegradeSend, key)],
   degradeWaterSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceDegradeSend, key)],
@@ -1019,6 +1050,8 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   lead1DiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)],
   lead2DiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)],
   pianoDiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)],
+  sample1DiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)],
+  sample2DiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)],
   masterVolume: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterGain, key)],
   masterLimiterCeilingDb: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterLimiterCeilingDb, key)],
   granularLevel: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularMix, key, granularLevelMap(key))],

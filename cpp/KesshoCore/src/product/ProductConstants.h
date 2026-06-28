@@ -42,8 +42,8 @@ constexpr uint32_t kProductMidiPitchBendCenter = 8192u;
 constexpr uint32_t kProductMidiPitchBendMax = 16383u;
 constexpr float kProductMidiPitchBendRangeSemitones = 2.0f;
 constexpr uint32_t kMaxProductMidiNoteSlots = 96u;
-constexpr uint32_t kSourceCount = 7;
-constexpr uint32_t kStemCount = 9;
+constexpr uint32_t kSourceCount = 8;
+constexpr uint32_t kStemCount = 10;
 constexpr uint32_t kMaxLaneCount = 16;
 constexpr uint32_t kMaxScaleNotes = 8;
 constexpr uint32_t kProductControlOnlyModulationTarget = 0x7ffffff0u;
@@ -106,7 +106,14 @@ constexpr double kSampleReleaseSeconds = 0.02;
 constexpr float kSourceToggleFadeSeconds = 0.05f;
 constexpr float kSoundscapeSourceToggleFadeSeconds = 5.0f;
 constexpr float kPianoEnvelopePostReleaseTailSeconds = 0.25f;
+constexpr float kSampleEnvelopePostReleaseTailSeconds = kPianoEnvelopePostReleaseTailSeconds;
 constexpr float kPianoSampleParityTrim = 0.66f;
+constexpr uint32_t kSampleRoleAny = 0u;
+constexpr uint32_t kSampleArticulationAny = 0u;
+constexpr uint32_t kSampleLibraryPiano = 1u;
+constexpr uint32_t kSampleDynamicRegular = 13u;
+constexpr uint32_t kSampleDynamicShort = 14u;
+constexpr uint32_t kSampleDefaultMaxVoices = 16u;
 constexpr double kLoopCrossfadeSeconds = 0.012;
 constexpr uint32_t kSoundscapeRandomStartMinimumFrames = 64;
 constexpr float kDiffuseHighpassHz = 180.0f;
@@ -185,6 +192,10 @@ static_assert(
     kSoundscapeProductModuleParamCount == KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT,
     "Soundscape module snapshot ABI count must match Product Core module params");
 constexpr uint32_t kDynamicsDriftParamCount = 82;
+
+inline bool isSampleProductSource(uint32_t source_id) {
+  return source_id == KESSHO_PRODUCT_SOURCE_SAMPLE1 || source_id == KESSHO_PRODUCT_SOURCE_SAMPLE2;
+}
 
 } // namespace kessho::product::internal
 

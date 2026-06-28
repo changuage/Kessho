@@ -8,7 +8,7 @@ namespace kessho::product::tests {
 
 inline void applyGeneratedSourcePreset(KesshoProductSnapshotV2& snapshot, uint32_t source_id, uint32_t preset_id) {
   using namespace kessho::product::internal;
-  if (source_id < 1u || source_id > 7u) {
+  if (source_id < 1u || source_id > kSourceCount) {
     return;
   }
   KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
@@ -43,14 +43,32 @@ inline void applyGeneratedSourcePreset(KesshoProductSnapshotV2& snapshot, uint32
 
 inline void applyGeneratedSourceDefaults(KesshoProductSnapshotV2& snapshot) {
   using namespace kessho::product::internal;
-  for (uint32_t index = 0; index < 7u; ++index) {
+  for (uint32_t index = 0; index < kSourceCount; ++index) {
     const uint32_t source_id = index + 1u;
     KesshoProductSourceSnapshot& source = snapshot.sources[index];
+    if (source.source_id == 0u) {
+      source.source_id = source_id;
+      source.enabled = 1u;
+      source.level = 0.9f;
+      source.dry_gain = 1.0f;
+      source.expression = 0.8f;
+      source.post_lpf_hz = 18000.0f;
+      source.stereo_width = 1.0f;
+    }
     source.attack_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS;
     source.decay_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS;
     source.sustain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN;
     source.hold_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS;
     source.release_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS;
+    source.sample_library_id = kSampleLibraryPiano;
+    source.sample_role_id = kSampleRoleAny;
+    source.sample_articulation_id = kSampleArticulationAny;
+    source.sample_selection_mode = KESSHO_PRODUCT_SAMPLE_SELECTION_NEAREST;
+    source.sample_dynamic_mode = KESSHO_PRODUCT_SAMPLE_DYNAMIC_LEGACY_PIANO_PARITY;
+    source.sample_fixed_dynamic_id = kSampleDynamicRegular;
+    source.sample_loop_enabled = 1u;
+    source.sample_max_voices = kSampleDefaultMaxVoices;
+    source.sample_variant_mode = KESSHO_PRODUCT_SAMPLE_VARIANT_STABLE;
     const uint32_t preset_id = snapshot.sources[index].preset_id == 0u
         ? defaultSourcePresetId(source_id)
         : snapshot.sources[index].preset_id;

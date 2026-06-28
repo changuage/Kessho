@@ -90,6 +90,16 @@ typedef struct KesshoProductSourceSnapshot {
   float sustain;
   float hold_seconds;
   float release_seconds;
+  uint32_t sample_library_id;
+  uint32_t sample_role_id;
+  uint32_t sample_articulation_id;
+  uint32_t sample_selection_mode;
+  uint32_t sample_dynamic_mode;
+  uint32_t sample_fixed_dynamic_id;
+  uint32_t sample_loop_enabled;
+  uint32_t sample_max_voices;
+  uint32_t sample_variant_mode;
+  uint32_t sample_reserved0;
 } KesshoProductSourceSnapshot;
 
 typedef struct KesshoProductSequencerLaneSnapshot {
@@ -584,7 +594,7 @@ typedef struct KesshoProductSnapshotV2 {
   uint32_t schema_hash;
   KesshoProductTransportSnapshot transport;
   KesshoProductHarmonySnapshot harmony;
-  KesshoProductSourceSnapshot sources[7];
+  KesshoProductSourceSnapshot sources[8];
   KesshoProductSequencerSnapshot synth_euclid;
   KesshoProductSequencerSnapshot drum_euclid;
   KesshoProductJourneySnapshot journey;

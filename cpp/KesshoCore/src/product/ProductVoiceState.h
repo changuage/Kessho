@@ -49,6 +49,16 @@ struct SourceState {
   float sustain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN;
   float hold_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS;
   float release_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS;
+  uint32_t sample_library_id = kSampleLibraryPiano;
+  uint32_t sample_role_id = kSampleRoleAny;
+  uint32_t sample_articulation_id = kSampleArticulationAny;
+  uint32_t sample_selection_mode = KESSHO_PRODUCT_SAMPLE_SELECTION_NEAREST;
+  uint32_t sample_dynamic_mode = KESSHO_PRODUCT_SAMPLE_DYNAMIC_LEGACY_PIANO_PARITY;
+  uint32_t sample_fixed_dynamic_id = kSampleDynamicRegular;
+  bool sample_loop_enabled = true;
+  uint32_t sample_max_voices = kSampleDefaultMaxVoices;
+  uint32_t sample_variant_mode = KESSHO_PRODUCT_SAMPLE_VARIANT_STABLE;
+  uint32_t sample_variant_counter = 0u;
   bool structured_override_morph_anchor_enabled = false;
   float structured_override_morph_anchor = 0.0f;
   uint32_t pad_override_count = 0u; uint32_t pad_override_indices[kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT]{}; float pad_override_values[kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT]{};
@@ -78,6 +88,9 @@ struct AssetSlot {
   uint32_t frame_count = 0;
   double sample_rate = 0.0;
   uint32_t flags = 0;
+  uint32_t loop_start_frame = 0;
+  uint32_t loop_end_frame = 0;
+  uint32_t loop_crossfade_frames = 0;
 };
 
 struct SoundscapeLayerPolicy {
@@ -101,6 +114,7 @@ struct Voice {
   uint64_t soundscape_texture_start_frame = 0u;
   float soundscape_texture_start_offset_seconds = 0.0f;
   float soundscape_asset_level = 1.0f;
+  bool sample_slot_voice = false;
   bool piano_sample_voice = false;
   bool drum_voice = false;
   bool looping = false;

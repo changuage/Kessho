@@ -649,6 +649,25 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     sources[i].release_seconds = source.release_seconds > 0.0f && std::isfinite(source.release_seconds)
         ? clampFloat(source.release_seconds, 0.01f, lead_source ? 30.0f : 8.0f)
         : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS;
+    sources[i].sample_library_id = source.sample_library_id == 0u ? kSampleLibraryPiano : source.sample_library_id;
+    sources[i].sample_role_id = source.sample_role_id;
+    sources[i].sample_articulation_id = source.sample_articulation_id;
+    sources[i].sample_selection_mode =
+        source.sample_selection_mode <= KESSHO_PRODUCT_SAMPLE_SELECTION_EXACT
+            ? source.sample_selection_mode
+            : KESSHO_PRODUCT_SAMPLE_SELECTION_NEAREST;
+    sources[i].sample_dynamic_mode =
+        source.sample_dynamic_mode <= KESSHO_PRODUCT_SAMPLE_DYNAMIC_LEGACY_PIANO_PARITY
+            ? source.sample_dynamic_mode
+            : KESSHO_PRODUCT_SAMPLE_DYNAMIC_VELOCITY;
+    sources[i].sample_fixed_dynamic_id =
+        source.sample_fixed_dynamic_id == 0u ? kSampleDynamicRegular : source.sample_fixed_dynamic_id;
+    sources[i].sample_loop_enabled = source.sample_loop_enabled != 0u;
+    sources[i].sample_max_voices = clampU32(source.sample_max_voices, 1u, 64u);
+    sources[i].sample_variant_mode =
+        source.sample_variant_mode <= KESSHO_PRODUCT_SAMPLE_VARIANT_ROUND_ROBIN
+            ? source.sample_variant_mode
+            : KESSHO_PRODUCT_SAMPLE_VARIANT_STABLE;
     const bool pad_source =
         source.source_id == KESSHO_PRODUCT_SOURCE_PAD1 ||
         source.source_id == KESSHO_PRODUCT_SOURCE_PAD2;

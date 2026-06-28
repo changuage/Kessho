@@ -11,6 +11,8 @@ export interface SampleResolveInput {
   slot: SampleSlotState;
   targetMidi: number;
   velocity: number;
+  seed?: number;
+  roundRobinIndex?: number;
 }
 
 export type SampleResolveMissReason =
@@ -60,26 +62,63 @@ function compareNearest(left: NormalizedSampleDescriptor, right: NormalizedSampl
     left.sampleId.localeCompare(right.sampleId);
 }
 
-function nearestSample(
-  samples: readonly NormalizedSampleDescriptor[],
+function hashU32(value: number): number {
+  let result = value >>> 0;
+  result ^= result >>> 16;
+  result = Math.imul(result, 0x7feb352d) >>> 0;
+  result ^= result >>> 15;
+  result = Math.imul(result, 0x846ca68b) >>> 0;
+  result ^= result >>> 16;
+  return result >>> 0;
+}
+
+function chooseVariantCandidate(
+  candidates: readonly NormalizedSampleDescriptor[],
+  slot: SampleSlotState,
   targetMidi: number,
+  velocity: number,
+  seed: number | undefined,
+  roundRobinIndex: number | undefined,
 ): NormalizedSampleDescriptor | null {
-  return [...samples].sort((left, right) => compareNearest(left, right, targetMidi))[0] ?? null;
+  if (candidates.length === 0) return null;
+  const sorted = [...candidates].sort((left, right) => compareNearest(left, right, targetMidi));
+  const best = sorted[0];
+  if (!best) return null;
+  const bestDistance = Math.abs(best.rootMidi - targetMidi);
+  const tied = sorted.filter((sample) => Math.abs(sample.rootMidi - targetMidi) === bestDistance);
+  if (tied.length <= 1 || slot.variantMode === 'stable') return tied[0] ?? best;
+  const index = slot.variantMode === 'round-robin'
+    ? Math.abs(Math.round(roundRobinIndex ?? 0)) % tied.length
+    : hashU32((Math.round(seed ?? 1) >>> 0) ^ (targetMidi << 8) ^ velocity) % tied.length;
+  return tied[index] ?? tied[0] ?? best;
 }
 
 function selectByNote(
   samples: readonly NormalizedSampleDescriptor[],
   mode: SampleSlotState['selectionMode'],
   targetMidi: number,
+  slot: SampleSlotState,
+  velocity: number,
+  seed: number | undefined,
+  roundRobinIndex: number | undefined,
 ): NormalizedSampleDescriptor | null {
   if (mode === 'exact') {
-    return samples.find((sample) => sample.rootMidi === targetMidi) ?? null;
+    return chooseVariantCandidate(
+      samples.filter((sample) => sample.rootMidi === targetMidi),
+      slot,
+      targetMidi,
+      velocity,
+      seed,
+      roundRobinIndex,
+    );
   }
   if (mode === 'mapped') {
     const mapped = samples.filter((sample) => sample.loMidi <= targetMidi && targetMidi <= sample.hiMidi);
-    if (mapped.length > 0) return nearestSample(mapped, targetMidi);
+    if (mapped.length > 0) {
+      return chooseVariantCandidate(mapped, slot, targetMidi, velocity, seed, roundRobinIndex);
+    }
   }
-  return nearestSample(samples, targetMidi);
+  return chooseVariantCandidate(samples, slot, targetMidi, velocity, seed, roundRobinIndex);
 }
 
 function filterByDynamic(
@@ -122,7 +161,15 @@ export function resolveSample(
   const dynamicSamples = filterByDynamic(articulationSamples, input.slot, targetMidi, velocity);
   if (dynamicSamples.length === 0) return { kind: 'miss', reason: 'no-dynamic-match' };
 
-  const sample = selectByNote(dynamicSamples, input.slot.selectionMode, targetMidi);
+  const sample = selectByNote(
+    dynamicSamples,
+    input.slot.selectionMode,
+    targetMidi,
+    input.slot,
+    velocity,
+    input.seed,
+    input.roundRobinIndex,
+  );
   if (!sample) return { kind: 'miss', reason: 'no-note-match' };
 
   const playbackRate = 2 ** ((targetMidi - sample.rootMidi) / 12);

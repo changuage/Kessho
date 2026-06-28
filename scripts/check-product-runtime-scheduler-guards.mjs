@@ -19,8 +19,26 @@ if (!fs.existsSync(runtimeScheduler)) {
   failures.push(`${runtimeScheduler} missing`);
 } else {
   const text = fs.readFileSync(runtimeScheduler, 'utf8');
-  for (const token of ['sample-cache-diagnostics', 'diagnostics-hidden', 'telemetry-hidden', 'perf-overlay']) {
+  for (const token of [
+    'sample-cache-diagnostics',
+    'sample-asset-miss-diagnostics',
+    'sample-decode-progress',
+    'sample-voice-telemetry',
+    'diagnostics-hidden',
+    'telemetry-hidden',
+    'perf-overlay',
+    '5000',
+    '2000',
+    'sample-decode-progress',
+    'isDebugEnabled',
+  ]) {
     if (!text.includes(token)) failures.push(`${runtimeScheduler}: missing channel ${token}`);
+  }
+  if (!text.includes("channel === 'sample-voice-telemetry' && this.isDocumentHidden()")) {
+    failures.push(`${runtimeScheduler}: sample voice telemetry must be disabled while hidden`);
+  }
+  if (!text.includes("channel === 'sample-asset-miss-diagnostics'")) {
+    failures.push(`${runtimeScheduler}: sampler asset miss diagnostics must use a first-miss/throttled path`);
   }
 }
 

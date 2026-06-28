@@ -50,6 +50,18 @@ import {
   normalizeRoutingMuteGroupsState,
   type RoutingMuteGroupsState,
 } from './routing/routingMuteGroups';
+import {
+  SAMPLE_DYNAMIC_KEYS,
+  SAMPLE_DYNAMIC_MODES,
+  SAMPLE_LIBRARY_KEYS,
+  SAMPLE_SELECTION_MODES,
+  SAMPLE_VARIANT_MODES,
+  type SampleDynamicKey,
+  type SampleDynamicMode,
+  type SampleLibraryKey,
+  type SampleSelectionMode,
+  type SampleVariantMode,
+} from '../audio/sampleLibraries/SampleLibraryTypes';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
 export type GranularQuality = 'eco' | 'balanced' | 'hq';
@@ -196,9 +208,9 @@ export type SequencerJoinPolicy = 'grid' | 'bar';
 export type RandomWalkMode = 'localBrownian' | 'globalWalk';
 export type ProgressionClockSource = 'harmony' | 'localPhrase' | 'globalPhrase';
 export type TransportPrimaryClock = 'seconds' | 'bpm' | 'decoupled';
-export type LeadRandomSource = 'lead1' | 'lead2' | 'piano';
-export type SynthEuclidSource = 'lead' | 'lead1' | 'lead2' | 'pad' | 'pad1' | 'pad2' | 'piano' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6' | 'synth7' | 'synth8';
-export type SynthChordSequencerSource = 'pad1' | 'pad2' | 'both' | 'lead1' | 'lead2' | 'piano';
+export type LeadRandomSource = 'lead1' | 'lead2' | 'sample1';
+export type SynthEuclidSource = 'lead' | 'lead1' | 'lead2' | 'pad' | 'pad1' | 'pad2' | 'sample1' | 'sample2' | 'piano' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6' | 'synth7' | 'synth8';
+export type SynthChordSequencerSource = 'pad1' | 'pad2' | 'both' | 'lead1' | 'lead2' | 'sample1' | 'sample2' | 'piano';
 
 /**
  * Serialized evolve config for preset save/load.
@@ -325,6 +337,12 @@ export interface SliderState {
   lead1DelayBSend: number;    // 0..1 - Lead 1 send into shared Delay B
   lead2DelayASend: number;    // 0..1 - Lead 2 trim into shared Delay A
   lead2DelayBSend: number;    // 0..1 - Lead 2 send into shared Delay B
+  sample1Level: number;       // 0..2 - Sample 1 dry level
+  sample1DelayASend: number;  // 0..1 - Sample 1 send into shared Delay A
+  sample1DelayBSend: number;  // 0..1 - Sample 1 send into shared Delay B
+  sample2Level: number;       // 0..2 - Sample 2 dry level
+  sample2DelayASend: number;  // 0..1 - Sample 2 send into shared Delay A
+  sample2DelayBSend: number;  // 0..1 - Sample 2 send into shared Delay B
   pianoLevel: number;         // 0..1 step 0.01 - piano dry level
   pianoDelayASend: number;    // 0..1 - Piano send into shared Delay A
   pianoDelayBSend: number;    // 0..1 - Piano send into shared Delay B
@@ -371,6 +389,8 @@ export interface SliderState {
   degradePad2Send: number;  // 0..1 Pad 2 send into Degrade
   degradeLead1Send: number; // 0..1 Lead 1 send into Degrade
   degradeLead2Send: number; // 0..1 Lead 2 send into Degrade
+  degradeSample1Send: number; // 0..1 Sample 1 send into Degrade
+  degradeSample2Send: number; // 0..1 Sample 2 send into Degrade
   degradePianoSend: number; // 0..1 Piano send into Degrade
   degradeDrumSend: number;  // 0..1 Drums send into Degrade
   degradeWavesSend: number; // 0..1 Waves send into Degrade
@@ -404,6 +424,8 @@ export interface SliderState {
   sidechainPad2Target: number;
   sidechainLead1Target: number;
   sidechainLead2Target: number;
+  sidechainSample1Target: number;
+  sidechainSample2Target: number;
   sidechainPianoTarget: number;
   sidechainGranularTarget: number;
   sidechainDelayATarget: number;
@@ -413,6 +435,8 @@ export interface SliderState {
   dynamicsPad2Bus: DynamicsBusRouteDestination;
   dynamicsLead1Bus: DynamicsBusRouteDestination;
   dynamicsLead2Bus: DynamicsBusRouteDestination;
+  dynamicsSample1Bus: DynamicsBusRouteDestination;
+  dynamicsSample2Bus: DynamicsBusRouteDestination;
   dynamicsPianoBus: DynamicsBusRouteDestination;
   dynamicsDrumBus: DynamicsBusRouteDestination;
   dynamicsGranularBus: DynamicsBusRouteDestination;
@@ -938,6 +962,48 @@ export interface SliderState {
   pianoPostLPF: number;       // 20..20000 Hz post-voice LPF
   pianoStereoWidth: number;
   pianoDiffuseSend: number;
+
+  // Product sampler slots
+  sample1Enabled: boolean;
+  sample1LibraryKey: SampleLibraryKey;
+  sample1Role: string;
+  sample1Articulation: string;
+  sample1SelectionMode: SampleSelectionMode;
+  sample1DynamicMode: SampleDynamicMode;
+  sample1FixedDynamic: SampleDynamicKey;
+  sample1VariantMode: SampleVariantMode;
+  sample1AttackMs: number;
+  sample1DecayMs: number;
+  sample1Sustain: number;
+  sample1HoldMs: number;
+  sample1ReleaseMs: number;
+  sample1LoopEnabled: boolean;
+  sample1MaxVoices: number;
+  sample1Distance: number;
+  sample1PostLPF: number;
+  sample1StereoWidth: number;
+  sample1DiffuseSend: number;
+  sample1ReverbSend: number;
+  sample2Enabled: boolean;
+  sample2LibraryKey: SampleLibraryKey;
+  sample2Role: string;
+  sample2Articulation: string;
+  sample2SelectionMode: SampleSelectionMode;
+  sample2DynamicMode: SampleDynamicMode;
+  sample2FixedDynamic: SampleDynamicKey;
+  sample2VariantMode: SampleVariantMode;
+  sample2AttackMs: number;
+  sample2DecayMs: number;
+  sample2Sustain: number;
+  sample2HoldMs: number;
+  sample2ReleaseMs: number;
+  sample2LoopEnabled: boolean;
+  sample2MaxVoices: number;
+  sample2Distance: number;
+  sample2PostLPF: number;
+  sample2StereoWidth: number;
+  sample2DiffuseSend: number;
+  sample2ReverbSend: number;
 
   leadVibratoDepth: number;     // 0..1 - vibrato depth (range in dualSliderRanges)
   leadVibratoRate: number;      // 0..1 - vibrato rate (range in dualSliderRanges)
@@ -1499,6 +1565,8 @@ export interface SliderState {
   granularPad2Send: number;           // 0..1 pad 2 send to granular
   granularLead1Send: number;          // 0..1 lead 1 send to granular
   granularLead2Send: number;          // 0..1 lead 2 send to granular
+  granularSample1Send: number;        // 0..1 sample 1 send to granular
+  granularSample2Send: number;        // 0..1 sample 2 send to granular
   granularPianoSend: number;          // 0..1 piano send to granular
   granularDrumSend: number;           // 0..1 drum engines send to granular
   granularWavesSend: number;          // 0..1 waves send to granular
@@ -1719,6 +1787,12 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'lead1DelayBSend',
   'lead2DelayASend',
   'lead2DelayBSend',
+  'sample1Level',
+  'sample1DelayASend',
+  'sample1DelayBSend',
+  'sample2Level',
+  'sample2DelayASend',
+  'sample2DelayBSend',
   'pianoLevel',
   'pianoDelayASend',
   'pianoDelayBSend',
@@ -1761,6 +1835,8 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'degradePad2Send',
   'degradeLead1Send',
   'degradeLead2Send',
+  'degradeSample1Send',
+  'degradeSample2Send',
   'degradePianoSend',
   'degradeDrumSend',
   'degradeWavesSend',
@@ -1799,6 +1875,8 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'sidechainPad2Target',
   'sidechainLead1Target',
   'sidechainLead2Target',
+  'sidechainSample1Target',
+  'sidechainSample2Target',
   'sidechainPianoTarget',
   'sidechainGranularTarget',
   'sidechainDelayATarget',
@@ -1808,6 +1886,8 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'dynamicsPad2Bus',
   'dynamicsLead1Bus',
   'dynamicsLead2Bus',
+  'dynamicsSample1Bus',
+  'dynamicsSample2Bus',
   'dynamicsPianoBus',
   'dynamicsDrumBus',
   'dynamicsGranularBus',
@@ -2238,6 +2318,46 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'lead2PostLPFKeyTracking',
   'lead2StereoWidth',
   'lead2DiffuseSend',
+  'sample1Enabled',
+  'sample1LibraryKey',
+  'sample1Role',
+  'sample1Articulation',
+  'sample1SelectionMode',
+  'sample1DynamicMode',
+  'sample1FixedDynamic',
+  'sample1VariantMode',
+  'sample1AttackMs',
+  'sample1DecayMs',
+  'sample1Sustain',
+  'sample1HoldMs',
+  'sample1ReleaseMs',
+  'sample1LoopEnabled',
+  'sample1MaxVoices',
+  'sample1Distance',
+  'sample1PostLPF',
+  'sample1StereoWidth',
+  'sample1DiffuseSend',
+  'sample1ReverbSend',
+  'sample2Enabled',
+  'sample2LibraryKey',
+  'sample2Role',
+  'sample2Articulation',
+  'sample2SelectionMode',
+  'sample2DynamicMode',
+  'sample2FixedDynamic',
+  'sample2VariantMode',
+  'sample2AttackMs',
+  'sample2DecayMs',
+  'sample2Sustain',
+  'sample2HoldMs',
+  'sample2ReleaseMs',
+  'sample2LoopEnabled',
+  'sample2MaxVoices',
+  'sample2Distance',
+  'sample2PostLPF',
+  'sample2StereoWidth',
+  'sample2DiffuseSend',
+  'sample2ReverbSend',
   'pianoEnabled',
   'pianoAttack',
   'pianoDecay',
@@ -2665,7 +2785,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'granularReverbLPF',
   'granularOutputLPF',
   'granularDelayASend', 'granularDelayBSend', 'granularDegradeSend',
-  'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send', 'granularPianoSend', 'granularDrumSend', 'granularWavesSend', 'granularNatureSend', 'granularWaterSend', 'granularInsectsSend',
+  'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send', 'granularSample1Send', 'granularSample2Send', 'granularPianoSend', 'granularDrumSend', 'granularWavesSend', 'granularNatureSend', 'granularWaterSend', 'granularInsectsSend',
   'granularV1Enabled', 'granularV1Mode', 'granularV1Slice', 'granularV1Speed', 'granularV1Reverse',
   'granularV1ScanRate',
   'granularV1Pitch', 'granularV1Attack', 'granularV1Decay', 'granularV1Blur', 'granularV1GrainOct',
@@ -2750,6 +2870,12 @@ export const DEFAULT_STATE: SliderState = {
   lead1DelayBSend: 0,
   lead2DelayASend: 1,
   lead2DelayBSend: 0,
+  sample1Level: 0.75,
+  sample1DelayASend: 0,
+  sample1DelayBSend: 0,
+  sample2Level: 0.75,
+  sample2DelayASend: 0,
+  sample2DelayBSend: 0,
   pianoLevel: 0.75,
   pianoDelayASend: 0,
   pianoDelayBSend: 0,
@@ -2796,6 +2922,8 @@ export const DEFAULT_STATE: SliderState = {
   degradePad2Send: 0,
   degradeLead1Send: 0,
   degradeLead2Send: 0,
+  degradeSample1Send: 0,
+  degradeSample2Send: 0,
   degradePianoSend: 0,
   degradeDrumSend: 0,
   degradeWavesSend: 0,
@@ -2829,6 +2957,8 @@ export const DEFAULT_STATE: SliderState = {
   sidechainPad2Target: 0,
   sidechainLead1Target: 0,
   sidechainLead2Target: 0,
+  sidechainSample1Target: 0,
+  sidechainSample2Target: 0,
   sidechainPianoTarget: 0,
   sidechainGranularTarget: 0,
   sidechainDelayATarget: 0,
@@ -2838,6 +2968,8 @@ export const DEFAULT_STATE: SliderState = {
   dynamicsPad2Bus: 0,
   dynamicsLead1Bus: 0,
   dynamicsLead2Bus: 0,
+  dynamicsSample1Bus: 0,
+  dynamicsSample2Bus: 0,
   dynamicsPianoBus: 0,
   dynamicsDrumBus: 0,
   dynamicsGranularBus: 0,
@@ -3325,6 +3457,46 @@ export const DEFAULT_STATE: SliderState = {
   pianoPostLPF: 16000,
   pianoStereoWidth: 0.85,
   pianoDiffuseSend: 0,
+  sample1Enabled: false,
+  sample1LibraryKey: 'piano' as const,
+  sample1Role: '',
+  sample1Articulation: '',
+  sample1SelectionMode: 'nearest' as const,
+  sample1DynamicMode: 'legacy-piano-parity' as const,
+  sample1FixedDynamic: 'regular' as const,
+  sample1VariantMode: 'stable' as const,
+  sample1AttackMs: 5,
+  sample1DecayMs: 650,
+  sample1Sustain: 0.72,
+  sample1HoldMs: 200,
+  sample1ReleaseMs: 120,
+  sample1LoopEnabled: false,
+  sample1MaxVoices: 16,
+  sample1Distance: 0,
+  sample1PostLPF: 16000,
+  sample1StereoWidth: 0.85,
+  sample1DiffuseSend: 0,
+  sample1ReverbSend: 0.35,
+  sample2Enabled: false,
+  sample2LibraryKey: 'soft-string-spurs' as const,
+  sample2Role: '',
+  sample2Articulation: '',
+  sample2SelectionMode: 'mapped' as const,
+  sample2DynamicMode: 'velocity' as const,
+  sample2FixedDynamic: 'level-2' as const,
+  sample2VariantMode: 'stable' as const,
+  sample2AttackMs: 25,
+  sample2DecayMs: 650,
+  sample2Sustain: 0.72,
+  sample2HoldMs: 200,
+  sample2ReleaseMs: 350,
+  sample2LoopEnabled: true,
+  sample2MaxVoices: 12,
+  sample2Distance: 0,
+  sample2PostLPF: 18000,
+  sample2StereoWidth: 1,
+  sample2DiffuseSend: 0,
+  sample2ReverbSend: 0.25,
   leadVibratoDepth: 0,
   leadVibratoRate: 0,
   leadGlide: 0,
@@ -3391,12 +3563,12 @@ export const DEFAULT_STATE: SliderState = {
   
   // Simple chord generator routing
   synthChordGeneratorEnabled: false,
-  synthChordGeneratorSource: 'piano' as const,
+  synthChordGeneratorSource: 'sample1' as const,
   synthChordGeneratorVoiceCount: 6,
 
   // Detailed Seq 5 chord/arp sequencer routing
   synthChordSequencerEnabled: false,
-  synthChordSequencerSource: 'piano' as const,
+  synthChordSequencerSource: 'sample1' as const,
   synthChordSequencerVoiceCount: 6,
   synthChordSequencerClockDivision: '1/4' as const,
   synthChordSequencer: defaultSynthChordSequencerConfig(),
@@ -3868,6 +4040,8 @@ export const DEFAULT_STATE: SliderState = {
   granularPad2Send: 0.0,
   granularLead1Send: 0.0,
   granularLead2Send: 0.0,
+  granularSample1Send: 0.0,
+  granularSample2Send: 0.0,
   granularPianoSend: 0.0,
   granularDrumSend: 0.0,
   granularWavesSend: 0.0,
@@ -4259,6 +4433,8 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   degradePad2Send: { min: 0, max: 1, step: 0.01 },
   degradeLead1Send: { min: 0, max: 1, step: 0.01 },
   degradeLead2Send: { min: 0, max: 1, step: 0.01 },
+  degradeSample1Send: { min: 0, max: 1, step: 0.01 },
+  degradeSample2Send: { min: 0, max: 1, step: 0.01 },
   degradePianoSend: { min: 0, max: 1, step: 0.01 },
   degradeDrumSend: { min: 0, max: 1, step: 0.01 },
   degradeWavesSend: { min: 0, max: 1, step: 0.01 },
@@ -4291,6 +4467,8 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   sidechainPad2Target: { min: 0, max: 1, step: 0.01 },
   sidechainLead1Target: { min: 0, max: 1, step: 0.01 },
   sidechainLead2Target: { min: 0, max: 1, step: 0.01 },
+  sidechainSample1Target: { min: 0, max: 1, step: 0.01 },
+  sidechainSample2Target: { min: 0, max: 1, step: 0.01 },
   sidechainPianoTarget: { min: 0, max: 1, step: 0.01 },
   sidechainGranularTarget: { min: 0, max: 1, step: 0.01 },
   sidechainDelayATarget: { min: 0, max: 1, step: 0.01 },
@@ -4300,6 +4478,8 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   dynamicsPad2Bus: { min: 0, max: 3, step: 1 },
   dynamicsLead1Bus: { min: 0, max: 3, step: 1 },
   dynamicsLead2Bus: { min: 0, max: 3, step: 1 },
+  dynamicsSample1Bus: { min: 0, max: 3, step: 1 },
+  dynamicsSample2Bus: { min: 0, max: 3, step: 1 },
   dynamicsPianoBus: { min: 0, max: 3, step: 1 },
   dynamicsDrumBus: { min: 0, max: 3, step: 1 },
   dynamicsGranularBus: { min: 0, max: 3, step: 1 },
@@ -4676,6 +4856,34 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   lead2PostLPFKeyTracking: { min: 0, max: 1, step: 0.01 },
   lead2StereoWidth: { min: 0, max: 1, step: 0.01 },
   lead2DiffuseSend: { min: 0, max: 1, step: 0.01 },
+  sample1Level: { min: 0, max: 2, step: 0.01 },
+  sample1AttackMs: { min: 0, max: 5000, step: 1 },
+  sample1DecayMs: { min: 10, max: 4000, step: 1 },
+  sample1Sustain: { min: 0, max: 1, step: 0.01 },
+  sample1HoldMs: { min: 0, max: 4000, step: 1 },
+  sample1ReleaseMs: { min: 0, max: 10000, step: 1 },
+  sample1MaxVoices: { min: 1, max: 64, step: 1 },
+  sample1Distance: { min: 0, max: 1, step: 0.01 },
+  sample1PostLPF: { min: 20, max: 20000, step: 10 },
+  sample1StereoWidth: { min: 0, max: 1, step: 0.01 },
+  sample1DiffuseSend: { min: 0, max: 1, step: 0.01 },
+  sample1ReverbSend: { min: 0, max: 1, step: 0.01 },
+  sample1DelayASend: { min: 0, max: 1, step: 0.01 },
+  sample1DelayBSend: { min: 0, max: 1, step: 0.01 },
+  sample2Level: { min: 0, max: 2, step: 0.01 },
+  sample2AttackMs: { min: 0, max: 5000, step: 1 },
+  sample2DecayMs: { min: 10, max: 4000, step: 1 },
+  sample2Sustain: { min: 0, max: 1, step: 0.01 },
+  sample2HoldMs: { min: 0, max: 4000, step: 1 },
+  sample2ReleaseMs: { min: 0, max: 10000, step: 1 },
+  sample2MaxVoices: { min: 1, max: 64, step: 1 },
+  sample2Distance: { min: 0, max: 1, step: 0.01 },
+  sample2PostLPF: { min: 20, max: 20000, step: 10 },
+  sample2StereoWidth: { min: 0, max: 1, step: 0.01 },
+  sample2DiffuseSend: { min: 0, max: 1, step: 0.01 },
+  sample2ReverbSend: { min: 0, max: 1, step: 0.01 },
+  sample2DelayASend: { min: 0, max: 1, step: 0.01 },
+  sample2DelayBSend: { min: 0, max: 1, step: 0.01 },
   pianoLevel: { min: 0, max: 1, step: 0.01 },
   pianoAttack: { min: 0.001, max: 2, step: 0.001 },
   pianoDecay: { min: 0.01, max: 4, step: 0.01 },
@@ -4911,6 +5119,8 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   granularPad2Send: { min: 0, max: 1, step: 0.01 },
   granularLead1Send: { min: 0, max: 1, step: 0.01 },
   granularLead2Send: { min: 0, max: 1, step: 0.01 },
+  granularSample1Send: { min: 0, max: 1, step: 0.01 },
+  granularSample2Send: { min: 0, max: 1, step: 0.01 },
   granularPianoSend: { min: 0, max: 1, step: 0.01 },
   granularDrumSend: { min: 0, max: 1, step: 0.01 },
   granularWavesSend: { min: 0, max: 1, step: 0.01 },
@@ -5431,17 +5641,17 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.harmonySyncPolicy = value;
         } else if (key === 'leadRandomSyncPolicy' && (value === 'free' || value === 'nextPhrase' || value === 'restartNow')) {
           state.leadRandomSyncPolicy = value;
-        } else if (key === 'leadRandomSource' && (value === 'lead1' || value === 'lead2' || value === 'piano')) {
-          state.leadRandomSource = value;
+        } else if (key === 'leadRandomSource' && (value === 'lead1' || value === 'lead2' || value === 'sample1' || value === 'piano')) {
+          state.leadRandomSource = value === 'piano' ? 'sample1' : value;
         } else if (key === 'synthEuclidJoinPolicy' && (value === 'grid' || value === 'bar')) {
           state.synthEuclidJoinPolicy = value;
         } else if (key === 'drumEuclidJoinPolicy' && (value === 'grid' || value === 'bar')) {
           state.drumEuclidJoinPolicy = value;
         } else if (
           /^synthEuclid[1-4]Source$/.test(key) &&
-          (value === 'lead' || value === 'lead1' || value === 'lead2' || value === 'piano' || value === 'synth1' || value === 'synth2' || value === 'synth3' || value === 'synth4' || value === 'synth5' || value === 'synth6')
+          (value === 'lead' || value === 'lead1' || value === 'lead2' || value === 'piano' || value === 'sample1' || value === 'sample2' || value === 'synth1' || value === 'synth2' || value === 'synth3' || value === 'synth4' || value === 'synth5' || value === 'synth6' || value === 'synth7' || value === 'synth8')
         ) {
-          (state as Record<string, unknown>)[key] = value;
+          (state as Record<string, unknown>)[key] = value === 'piano' ? 'sample1' : value === 'lead' ? 'lead1' : value;
         } else if (
           key === 'chordProgressionClockSource' &&
           (value === 'harmony' || value === 'localPhrase' || value === 'globalPhrase')
@@ -5644,6 +5854,26 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.leadRandomEnabled = value === 'true';
         } else if (key === 'pianoEnabled') {
           state.pianoEnabled = value === 'true';
+        } else if (key === 'sample1Enabled') {
+          state.sample1Enabled = value === 'true';
+        } else if (key === 'sample2Enabled') {
+          state.sample2Enabled = value === 'true';
+        } else if (key === 'sample1LoopEnabled') {
+          state.sample1LoopEnabled = value === 'true';
+        } else if (key === 'sample2LoopEnabled') {
+          state.sample2LoopEnabled = value === 'true';
+        } else if ((key === 'sample1LibraryKey' || key === 'sample2LibraryKey') && SAMPLE_LIBRARY_KEYS.includes(value as SampleLibraryKey)) {
+          (state as Record<string, unknown>)[key] = value;
+        } else if ((key === 'sample1SelectionMode' || key === 'sample2SelectionMode') && SAMPLE_SELECTION_MODES.includes(value as SampleSelectionMode)) {
+          (state as Record<string, unknown>)[key] = value;
+        } else if ((key === 'sample1DynamicMode' || key === 'sample2DynamicMode') && SAMPLE_DYNAMIC_MODES.includes(value as SampleDynamicMode)) {
+          (state as Record<string, unknown>)[key] = value;
+        } else if ((key === 'sample1FixedDynamic' || key === 'sample2FixedDynamic') && SAMPLE_DYNAMIC_KEYS.includes(value as SampleDynamicKey)) {
+          (state as Record<string, unknown>)[key] = value;
+        } else if ((key === 'sample1VariantMode' || key === 'sample2VariantMode') && SAMPLE_VARIANT_MODES.includes(value as SampleVariantMode)) {
+          (state as Record<string, unknown>)[key] = value;
+        } else if (key === 'sample1Role' || key === 'sample2Role' || key === 'sample1Articulation' || key === 'sample2Articulation') {
+          (state as Record<string, unknown>)[key] = value.slice(0, 80);
         } else if (
           key === 'granularV1TempoSync' ||
           key === 'granularV2TempoSync' ||
@@ -5696,9 +5926,9 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.synthEuclid4Preset = value;
         } else if (
           (key === 'synthChordGeneratorSource' || key === 'synthChordSequencerSource') &&
-          ['pad1', 'pad2', 'both', 'lead1', 'lead2', 'piano'].includes(value)
+          ['pad1', 'pad2', 'both', 'lead1', 'lead2', 'piano', 'sample1', 'sample2'].includes(value)
         ) {
-          (state as Record<string, unknown>)[key] = value;
+          (state as Record<string, unknown>)[key] = value === 'piano' ? 'sample1' : value;
         } else if (key === 'oceanSampleEnabled') {
           state.oceanSampleEnabled = value === 'true';
         } else if (key === 'birdsEnabled') {
@@ -5830,14 +6060,18 @@ function migrateChordGeneratorAndSeq5(record: Record<string, unknown>): void {
   const oldConfigLooksDefault = isDefaultSynthChordSequencerConfig(record.synthChordSequencer);
   if (oldEnabled && oldConfigLooksDefault) {
     record.synthChordGeneratorEnabled = true;
-    record.synthChordGeneratorSource = typeof oldSource === 'string' ? oldSource : 'piano';
+    record.synthChordGeneratorSource = oldSource === 'piano'
+      ? 'sample1'
+      : typeof oldSource === 'string'
+        ? oldSource
+        : 'sample1';
     record.synthChordGeneratorVoiceCount = typeof oldVoiceCount === 'number' ? oldVoiceCount : 6;
     record.synthChordSequencerEnabled = false;
     return;
   }
 
   record.synthChordGeneratorEnabled = false;
-  record.synthChordGeneratorSource = 'piano';
+  record.synthChordGeneratorSource = 'sample1';
   record.synthChordGeneratorVoiceCount = 6;
 }
 

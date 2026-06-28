@@ -16,27 +16,27 @@
 
   const float piano_distance = clampFloat(distance, 0.0f, 1.0f);
   const float attack_base_unmodulated = resolveModulatedValue(
-      KESSHO_PRODUCT_SOURCE_PIANO,
+      source.source_id,
       KESSHO_PRODUCT_PARAM_SOURCE_ATTACK_SECONDS_ID,
       source.attack_seconds,
       resolved_seed);
   const float decay_base_unmodulated = resolveModulatedValue(
-      KESSHO_PRODUCT_SOURCE_PIANO,
+      source.source_id,
       KESSHO_PRODUCT_PARAM_SOURCE_DECAY_SECONDS_ID,
       source.decay_seconds,
       resolved_seed);
   const float sustain_base_unmodulated = resolveModulatedValue(
-      KESSHO_PRODUCT_SOURCE_PIANO,
+      source.source_id,
       KESSHO_PRODUCT_PARAM_SOURCE_SUSTAIN_ID,
       source.sustain,
       resolved_seed);
   const float release_base_unmodulated = resolveModulatedValue(
-      KESSHO_PRODUCT_SOURCE_PIANO,
+      source.source_id,
       KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID,
       source.release_seconds,
       resolved_seed);
   const float hold_base_unmodulated = resolveModulatedValue(
-      KESSHO_PRODUCT_SOURCE_PIANO,
+      source.source_id,
       KESSHO_PRODUCT_PARAM_SOURCE_HOLD_SECONDS_ID,
       source.hold_seconds,
       resolved_seed);
@@ -58,6 +58,7 @@
       0.01f,
       8.0f);
 
+  voice.sample_slot_voice = true;
   voice.piano_sample_voice = true;
   voice.pan = 0.0f;
   voice.envelope_attack_frames = seconds_to_frames(attack_seconds);

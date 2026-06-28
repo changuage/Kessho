@@ -2,62 +2,78 @@
 
 ## Scope
 - Branch: product-core-sample-slots
-- Commit: 5f3e850e
-- Date: 2026-06-27T23:03:21Z
-- Phases attempted: Phase 0, Phase 1, Phase 2
+- Commit: ff480eb79a1f75a59cd2b0e15154d7b15d783b04
+- Date: 2026-06-28T07:35:10Z
+- Phases attempted: Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, Phase 7
 
 ## Gate status
 | Gate | Status | Evidence |
 |---|---:|---|
-| Pre-sampler hardening gate before Phase 3 | READY | `PRE_SAMPLER_HARDENING_RESULTS.md` records the final pre-render gate as ready after macOS and iOS simulator native proof. Phase 3 was not started in this pre-sampler pass. |
-| Product Core sampler rendering | NOT STARTED | No Product Core sample1 renderer, schema source ID, routing entry, or UI panel was added. |
-| Post-sampler hardening handoff | NOT READY | Phase 3+ remains unimplemented, so post-sampler hardening is still future work. |
+| Pre-sampler hardening gate before Phase 3 | READY | `PRE_SAMPLER_HARDENING_RESULTS.md` exists and records the pre-render gate as ready. |
+| Product Core sampler rendering | COMPLETE | Product Core source IDs/schema include `sample1` and `sample2`; C++ resolver/render path uses generated sample metadata; host only predicts/fetches/decodes/registers assets. |
+| Post-sampler hardening handoff | READY | Phase 7 cleanup/guardrails are implemented and the post-sampler hardening plan is now in progress. |
 
 ## Command output
 
-- `git checkout -b product-core-sample-slots`: created safety branch.
-- Sample manifest inventory:
-  - `ArchiveFoundStrings001`: `archive-found-strings-001`, 25 raw samples, assets `8400-8424`, 0 missing roots.
-  - `ArrayMBira`: `array-mbira`, 336 raw samples, assets `8600-8935`, 0 missing roots.
-  - `Pneuma`: `pneuma-eleni-teaser`, 142 raw samples, assets `8000-8141`, 2 missing roots.
-  - `SoftStringSpurs`: `soft-string-spurs`, 99 raw samples, assets `8200-8298`, 0 missing roots.
-  - `TheSpellsinger`: `the-spellsinger`, 47 raw samples, assets `9000-9046`, 1 missing root.
-  - `WildPercussion`: `wild-percussion`, 23 raw samples, assets `9100-9122`, 0 missing roots.
-- `node scripts/generate-sample-library-registry.mjs`: passed, generated 7 libraries and 797 rooted playable samples.
-- `node scripts/generate-sample-library-registry.mjs --check`: passed, generated TS/C++ outputs are current.
-- `node scripts/check-sample-asset-ids.mjs`: passed, 7 libraries and 797 samples have unique in-range asset IDs.
-- `node scripts/run-sample-library-tests.mjs`: passed all focused registry, resolver, predictor, and decoded-cache tests.
-- `npm run type-check`: passed after the pre-sampler hardening work.
-- `npm run core:product:asset-manifest`: passed.
-- `npm run core:product:assets`: passed.
+- `node scripts/generate-sample-library-registry.mjs --check`: pass, generated 7 libraries and 797 playable samples.
+- `node scripts/check-sample-asset-ids.mjs`: pass, all generated sample asset IDs are unique and in range.
+- `node scripts/run-sample-library-tests.mjs`: pass, registry/resolver/predictor/cache tests passed.
+- `npm run type-check`: pass.
+- `npm run core:product:asset-manifest`: pass.
+- `npm run core:product:assets`: pass.
+- `npm run core:product:graph`: pass.
+- `npm run core:product:sources`: pass.
+- `npm run audit:routing-registry`: pass.
+- `npm run audit:product-triggers`: pass.
+- `npm run migration:product-boundary`: pass.
+- `npm run core:product:runtime-fallbacks`: pass.
+- `npm run core:product:web-host`: pass.
+- `npm run core:product:realtime-safety`: pass.
+- `npm run core:product:cpu`: pass.
+- `npm run core:product:cpu-scenarios`: pass.
+- `npm run core:product:fx-depth`: pass.
+- `npm run core:product:wasm`: pass.
+- `npm run architecture:product-core-truth`: pass.
+- `npm run architecture:adapter-burndown`: pass.
+- `npm run architecture:mobile-debug-policy`: pass.
+- `npm run architecture:budget:strict`: pass with existing large-file warnings.
+- `npm run architecture:runtime-scheduler`: pass.
+- `npm run architecture:strict`: pass before post-sampler hardening additions.
+- `npm run test:preset-dedup`: pass.
+- `npm run test:preset-soft-delete`: pass.
+- `npm run test:preset-hash-golden`: pass.
+- `npm run audit:preset-v2 -- --fail-on-issues`: pass with existing non-blocking warnings.
+- `npm run audit:supabase-egress`: pass.
+- `npm run audit:cloud-pagination`: pass.
+- `npm run audit:cloud-save-v2`: pass.
+- `npm run audit:supabase-api-surface -- --require-detail-rpcs --require-runtime-rpcs --require-summary-views --fail-open-base-tables`: pass.
+- `npm run audit:supabase-security`: pass.
+- `npm run audit:supabase-revoke-readiness`: pass.
+- `npm run audit:supabase-egress:runtime`: pass.
+- `npm run audit:supabase-egress:runtime:detail:strict`: pass.
+- `npm run audit:supabase-egress:runtime:detail:repeat`: pass.
+- `npm run maintenance:preset-v2:postgres`: pass dry run with existing maintenance warnings.
 
 ## CPU notes
 
-- No Product Core sample renderer, source ID, routing entry, or UI panel was added.
-- Generated C++ sampler metadata is numeric plain data only: no heap allocation and no strings in future render-path tables.
-- The host predictor caps prediction to 32 assets per slot by default and never preloads full libraries.
-- `SampleDecodedAssetCache` is shared by `assetId`, deduplicates in-flight decodes, and uses byte-bound LRU eviction with 128 MiB desktop / 32 MiB mobile defaults.
-- Loop frame scaling is performed in host metadata helpers once, converting encoded loop frames to decoded frame units before future registration.
+- Latest general Product Core CPU report: disabled FX 4.87765% avg / p99 0.1426 ms / missed 0; active FX 7.9032% avg / p99 0.2544 ms / missed 0.
+- Latest sampler CPU report: pass across 10 sampler scenarios; worst case was `loop-boundary-wrap-stress` at 5.3734% avg / p99 0.15349 ms / missed 0.
+- Product Core telemetry ABI was updated to 8 source slots so `sample2` does not overflow telemetry/debug source arrays.
+- The shared decoded sample cache is byte-bounded and dedupes by `assetId`; desktop cap is 128 MiB and mobile cap is 32 MiB.
 
 ## Supabase/preset safety notes
 
-- No sampler files were wired into Supabase storage, query, or migration paths.
-- Final dirty-tree check shows non-sampler Supabase/preset changes present in the worktree:
-  - `src/cloud/supabase.ts`
-  - `src/presets/SupabasePresetStore.ts`
-  - `src/presets/presetStorageV2.ts`
-  - `supabase/migrations/20260627221646_public_preset_owner_identity.sql`
-- These files were left untouched by the sampler implementation. The final pre-sampler `npm run type-check` command now passes.
+- Sampler fields were added to preset parameter accounting.
+- No Supabase storage/query/migration file redesign was made for sampler implementation.
+- Supabase/preset validation gates listed above passed after sampler fields were added.
 
 ## Native/device notes
 
-- Native/device proof was completed in `PRE_SAMPLER_HARDENING_RESULTS.md`.
-- `npm run core:product:ios-simulator-smoke`, `npm run core:product:ios-background-audio-smoke`, and `npm run native:device-proof` pass.
-- `PRE_SAMPLER_HARDENING_RESULTS.md` records the final pre-render gate as ready.
+- Pre-sampler native proof exists in `PRE_SAMPLER_HARDENING_RESULTS.md`.
+- Post-sampler native sampler proof is owned by `POST_SAMPLER_HARDENING_RESULTS.md`; physical iOS device proof remains documented as not run locally.
 
 ## Known issues
 
-- The normalized playable registry excludes raw samples without a root MIDI: 2 from Pneuma and 1 from The Spellsinger. They remain in raw manifests but are not selectable by note/nearest-note resolution yet.
-- Array M'Bira filename note labels are parsed into playable roots, including the 84 noise-reduced strum samples without DecentSampler mappings. The remaining M'Bira risk is DecentSampler zone fidelity: note ranges, velocity ranges, and mic/side layering can be incomplete when a sample is not referenced by `.dspreset` metadata.
-- Round-robin / seeded variant selection is not implemented in Phase 0-2. The implementation plan was amended so the gated Phase 3 Product Core resolver chooses one deterministic variant from matching sample buckets without audio-thread allocation.
-- Physical iOS device screen-lock/audio-route proof was not run; the pre-sampler native proof uses macOS runtime smoke plus iOS simulator foreground/background native Product Core smoke.
+- The normalized playable registry skips raw samples without root MIDI: 2 from Pneuma and 1 from The Spellsinger.
+- Piano compatibility aliases remain for old presets and virtual Piano library metadata; visible source UI now uses Sample 1 / Sample 2 where post-sampler cleanup guards cover it.
+- Physical iOS device screen-lock/audio-route proof has not been run in this local pass; simulator/native smoke and sampler-specific guards cover the available environment.

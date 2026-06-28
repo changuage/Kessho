@@ -13,9 +13,24 @@ export interface SampleDecodedAssetCacheDiagnostics {
   missCount: number;
   decodeCount: number;
   evictCount: number;
+  deferredEvictCount: number;
   bytesUsed: number;
   inFlightCount: number;
   entryCount: number;
+}
+
+export interface SampleAssetRetentionPolicy {
+  readonly requiredAssetIds: ReadonlySet<number>;
+  readonly activeVoiceAssetIds: ReadonlySet<number>;
+  readonly targetBytes: number;
+  readonly reason: 'normal' | 'memory-warning' | 'background' | 'library-switch';
+}
+
+export interface SampleAssetCachePruneResult {
+  readonly evictedAssetIds: readonly number[];
+  readonly deferredAssetIds: readonly number[];
+  readonly bytesBefore: number;
+  readonly bytesAfter: number;
 }
 
 export type SampleDecodedAssetLoader = (
@@ -36,6 +51,7 @@ export class SampleDecodedAssetCache {
   private missCount = 0;
   private decodeCount = 0;
   private evictCount = 0;
+  private deferredEvictCount = 0;
 
   constructor(private maxBytes = DESKTOP_SAMPLE_CACHE_BYTES) {}
 
@@ -52,6 +68,38 @@ export class SampleDecodedAssetCache {
       }
     }
     this.evictUntilWithinBudget();
+  }
+
+  prune(policy: SampleAssetRetentionPolicy): SampleAssetCachePruneResult {
+    const targetBytes = Math.max(0, Math.round(policy.targetBytes));
+    const bytesBefore = this.bytesUsed;
+    const evictedAssetIds: number[] = [];
+    const deferredAssetIds: number[] = [];
+
+    for (const [assetId, entry] of Array.from(this.entries.entries())) {
+      if (this.bytesUsed <= targetBytes) break;
+      if (policy.requiredAssetIds.has(assetId)) continue;
+      if (policy.activeVoiceAssetIds.has(assetId)) {
+        deferredAssetIds.push(assetId);
+        continue;
+      }
+      this.entries.delete(assetId);
+      this.bytesUsed -= entry.bytes;
+      this.evictCount += 1;
+      evictedAssetIds.push(assetId);
+    }
+
+    this.deferredEvictCount += deferredAssetIds.length;
+    if (policy.reason === 'memory-warning' || policy.reason === 'background') {
+      this.maxBytes = Math.min(this.maxBytes, targetBytes);
+    }
+
+    return {
+      evictedAssetIds,
+      deferredAssetIds,
+      bytesBefore,
+      bytesAfter: this.bytesUsed,
+    };
   }
 
   has(assetId: number): boolean {
@@ -111,6 +159,7 @@ export class SampleDecodedAssetCache {
       missCount: this.missCount,
       decodeCount: this.decodeCount,
       evictCount: this.evictCount,
+      deferredEvictCount: this.deferredEvictCount,
       bytesUsed: this.bytesUsed,
       inFlightCount: this.inFlight.size,
       entryCount: this.entries.size,

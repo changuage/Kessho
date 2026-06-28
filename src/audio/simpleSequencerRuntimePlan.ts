@@ -1,5 +1,5 @@
 export type SimpleSequencerVizKind = 'padChord' | 'randomTiming';
-export type SimpleSequencerVizSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'piano';
+export type SimpleSequencerVizSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'sample1' | 'sample2' | 'piano';
 
 export interface SimpleSequencerVizEnvelope {
   attack: number;

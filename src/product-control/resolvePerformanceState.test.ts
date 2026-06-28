@@ -224,6 +224,7 @@ function expectSoundActionChangesResolvedOutput(
     },
     assetRegistrar: {
       ensurePianoAssetForNote: async () => {},
+      ensureSampleSlotAssetForNote: async () => {},
     },
     latestSliderState: () => latestState,
     setLatestSliderState: (state) => {
@@ -280,6 +281,7 @@ function expectSoundActionChangesResolvedOutput(
       },
       assetRegistrar: {
         ensurePianoAssetForNote: async () => {},
+        ensureSampleSlotAssetForNote: async () => {},
       },
       latestSliderState: () => latestState,
       setLatestSliderState: (state) => {

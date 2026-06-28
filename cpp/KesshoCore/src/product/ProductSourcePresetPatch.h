@@ -23,7 +23,8 @@ inline uint32_t defaultSourcePresetId(uint32_t source_id) {
       return kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
     case KESSHO_PRODUCT_SOURCE_DRUM:
       return kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT;
-    case KESSHO_PRODUCT_SOURCE_PIANO:
+    case KESSHO_PRODUCT_SOURCE_SAMPLE1:
+    case KESSHO_PRODUCT_SOURCE_SAMPLE2:
       return kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PIANO_DEFAULT;
     case KESSHO_PRODUCT_SOURCE_SOUNDSCAPE:
       return kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_OCEAN_SAMPLE;
@@ -56,8 +57,9 @@ inline bool sourcePresetMatchesSource(
       return std::strcmp(preset->source, "lead") == 0;
     case KESSHO_PRODUCT_SOURCE_DRUM:
       return std::strcmp(preset->source, "drum") == 0;
-    case KESSHO_PRODUCT_SOURCE_PIANO:
-      return std::strcmp(preset->source, "piano") == 0;
+    case KESSHO_PRODUCT_SOURCE_SAMPLE1:
+    case KESSHO_PRODUCT_SOURCE_SAMPLE2:
+      return std::strcmp(preset->source, "sample") == 0;
     case KESSHO_PRODUCT_SOURCE_SOUNDSCAPE:
       return std::strcmp(preset->source, "soundscape") == 0;
     default:

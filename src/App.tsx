@@ -1317,7 +1317,7 @@ const App: React.FC = () => {
     if (!nextState.leadRandomEnabled) return false;
     const randomSource = nextState.leadRandomSource ?? 'lead1';
     if (randomSource === 'lead2') return !nextState.lead2Enabled;
-    if (randomSource === 'piano') return !nextState.pianoEnabled;
+    if (randomSource === 'sample1') return !nextState.sample1Enabled;
     return !nextState.leadEnabled;
   }, []);
 

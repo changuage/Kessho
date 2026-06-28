@@ -29,6 +29,16 @@ export type ProductSourceSnapshot = {
   sustain: number;
   holdSeconds: number;
   releaseSeconds: number;
+  sampleLibraryId: number;
+  sampleRoleId: number;
+  sampleArticulationId: number;
+  sampleSelectionMode: number;
+  sampleDynamicMode: number;
+  sampleFixedDynamicId: number;
+  sampleLoopEnabled: boolean;
+  sampleMaxVoices: number;
+  sampleVariantMode: number;
+  sampleReserved0: number;
   padOverrideCount: number;
   padOverrideIndices: number[];
   padOverrideValues: number[];

@@ -110,14 +110,16 @@ export function pickChordWeightedNote(
   return passingTones[Math.floor(rng() * passingTones.length)] ?? availableNotes[0] ?? 60;
 }
 
-export function leadRandomSource(state: Record<string, unknown>): 'lead1' | 'lead2' | 'piano' {
+export function leadRandomSource(state: Record<string, unknown>): 'lead1' | 'lead2' | 'sample1' {
   const source = state.leadRandomSource;
-  return source === 'lead2' || source === 'piano' ? source : 'lead1';
+  if (source === 'lead2') return 'lead2';
+  if (source === 'sample1' || source === 'piano') return 'sample1';
+  return 'lead1';
 }
 
-export function leadRandomSourceId(source: 'lead1' | 'lead2' | 'piano'): number {
+export function leadRandomSourceId(source: 'lead1' | 'lead2' | 'sample1'): number {
   if (source === 'lead2') return CORE_PRODUCT_SOURCE_IDS.lead2;
-  if (source === 'piano') return CORE_PRODUCT_SOURCE_IDS.piano;
+  if (source === 'sample1') return CORE_PRODUCT_SOURCE_IDS.sample1;
   return CORE_PRODUCT_SOURCE_IDS.lead1;
 }
 
@@ -125,7 +127,8 @@ export function runtimeSourceFromSourceId(sourceId: number): SimpleSequencerVizS
   if (sourceId === CORE_PRODUCT_SOURCE_IDS.pad2) return 'pad2';
   if (sourceId === CORE_PRODUCT_SOURCE_IDS.lead1) return 'lead1';
   if (sourceId === CORE_PRODUCT_SOURCE_IDS.lead2) return 'lead2';
-  if (sourceId === CORE_PRODUCT_SOURCE_IDS.piano) return 'piano';
+  if (sourceId === CORE_PRODUCT_SOURCE_IDS.sample1) return 'sample1';
+  if (sourceId === CORE_PRODUCT_SOURCE_IDS.sample2) return 'sample2';
   return 'pad1';
 }
 
@@ -172,18 +175,21 @@ export function publishManualNoteTriggerForEvent(
     case CORE_PRODUCT_SOURCE_IDS.lead2:
       publishTrigger('leadDistance', { lead1: -1, lead2: sourceDistanceValue(state, 'lead2Distance') });
       break;
-    case CORE_PRODUCT_SOURCE_IDS.piano:
-      publishTrigger('pianoDistance', sourceDistanceValue(state, 'pianoDistance'));
+    case CORE_PRODUCT_SOURCE_IDS.sample1:
+      publishTrigger('sample1Distance', sourceDistanceValue(state, 'sample1Distance'));
+      break;
+    case CORE_PRODUCT_SOURCE_IDS.sample2:
+      publishTrigger('sample2Distance', sourceDistanceValue(state, 'sample2Distance'));
       break;
     default:
       break;
   }
 }
 
-export function leadRandomSourceEnabled(state: Record<string, unknown>, source: 'lead1' | 'lead2' | 'piano'): boolean {
+export function leadRandomSourceEnabled(state: Record<string, unknown>, source: 'lead1' | 'lead2' | 'sample1'): boolean {
   if (!booleanFromState(state, 'leadRandomEnabled', false)) return false;
   if (source === 'lead2') return booleanFromState(state, 'lead2Enabled', false);
-  if (source === 'piano') return booleanFromState(state, 'pianoEnabled', false);
+  if (source === 'sample1') return booleanFromState(state, 'sample1Enabled', false);
   return booleanFromState(state, 'leadEnabled', false);
 }
 
@@ -197,8 +203,10 @@ export function manualNoteSourceEnabled(state: Record<string, unknown>, sourceId
       return booleanFromState(state, 'leadEnabled', false);
     case CORE_PRODUCT_SOURCE_IDS.lead2:
       return booleanFromState(state, 'lead2Enabled', false);
-    case CORE_PRODUCT_SOURCE_IDS.piano:
-      return booleanFromState(state, 'pianoEnabled', false);
+    case CORE_PRODUCT_SOURCE_IDS.sample1:
+      return booleanFromState(state, 'sample1Enabled', false);
+    case CORE_PRODUCT_SOURCE_IDS.sample2:
+      return booleanFromState(state, 'sample2Enabled', false);
     case CORE_PRODUCT_SOURCE_IDS.drum:
       return booleanFromState(state, 'drumEnabled', false);
     default:
@@ -212,12 +220,13 @@ export function padChordHasEnabledTarget(state: Record<string, unknown>): boolea
   if (!generatorEnabled && !sequencerEnabled) return false;
   const source = String(
     generatorEnabled
-      ? state.synthChordGeneratorSource ?? state.synthChordSequencerSource ?? 'piano'
-      : state.synthChordSequencerSource ?? 'piano',
+      ? state.synthChordGeneratorSource ?? state.synthChordSequencerSource ?? 'sample1'
+      : state.synthChordSequencerSource ?? 'sample1',
   ).trim().toLowerCase();
   if (source === 'lead1' || source === 'lead') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.lead1);
   if (source === 'lead2') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.lead2);
-  if (source === 'piano') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.piano);
+  if (source === 'piano' || source === 'sample1') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.sample1);
+  if (source === 'sample2') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.sample2);
   if (source === 'pad1' || source === 'pad') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad1);
   if (source === 'pad2') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad2);
   return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad1) ||

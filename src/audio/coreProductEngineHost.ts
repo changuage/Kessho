@@ -332,6 +332,13 @@ class CoreProductEngineHost {
       });
       return { applied: false, mode: 'deferred' };
     }
+    if (options?.applyMode === 'event') {
+      this.latestProductSnapshot = this.createLatestSnapshot();
+      this.sequencerChain.update(this.latestSliderState, this.adapterState, this.sequencerChain.active(this.latestSliderState, this.adapterState));
+      if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.modulationRangeBridge.flushRuntimeWalkRanges();
+      if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState); this.publishStateIfHarmonyChanged();
+      return { applied: true, mode: 'event' };
+    }
     const receipt = await this.applyLatestSnapshotUpdate(fallbackReloadReason, forceSequencerClockRejoin, options);
     if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.modulationRangeBridge.flushRuntimeWalkRanges();
     if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState); this.publishStateIfHarmonyChanged();

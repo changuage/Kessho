@@ -25,7 +25,7 @@ interface LeadAdsrVizProps {
   envelopeTimelineSeconds?: number;
   onChange?: (param: string, value: number) => void;
   disabled?: boolean;
-  paramPrefix?: 'lead1' | 'lead2' | 'piano';
+  paramPrefix?: 'lead1' | 'lead2' | 'piano' | 'sample1' | 'sample2';
 }
 
 type DragTarget = 'attack' | 'decay' | 'sustain' | 'hold' | 'release' | null;
@@ -303,25 +303,34 @@ const LeadAdsrViz: React.FC<LeadAdsrVizProps> = (props) => {
     const { attack: a, decay: d, hold } = props;
     const tAtX = xToTime(cx);
     const paramPrefix = props.paramPrefix ?? 'lead1';
-    const limits = paramPrefix === 'piano' ? PIANO_ENVELOPE_LIMITS : PAD_ENVELOPE_LIMITS;
+    const samplePrefix = paramPrefix === 'sample1' || paramPrefix === 'sample2';
+    const limits = paramPrefix === 'piano' || samplePrefix ? PIANO_ENVELOPE_LIMITS : PAD_ENVELOPE_LIMITS;
+    const emitEnvelopeChange = (suffix: 'Attack' | 'Decay' | 'Sustain' | 'Hold' | 'Release', value: number) => {
+      if (samplePrefix) {
+        const key = suffix === 'Sustain' ? `${paramPrefix}${suffix}` : `${paramPrefix}${suffix}Ms`;
+        props.onChange?.(key, suffix === 'Sustain' ? value : Math.round(value * 1000));
+        return;
+      }
+      props.onChange?.(`${paramPrefix}${suffix}`, value);
+    };
 
     if (target === 'attack') {
       const newAttack = Math.max(limits.attack.min, Math.min(limits.attack.max, tAtX));
-      props.onChange(`${paramPrefix}Attack`, quantizeEnvelopeTime(newAttack));
+      emitEnvelopeChange('Attack', quantizeEnvelopeTime(newAttack));
     } else if (target === 'decay') {
       const newDecay = Math.max(limits.decay.min, Math.min(limits.decay.max, tAtX - a));
-      props.onChange(`${paramPrefix}Decay`, quantizeEnvelopeTime(newDecay));
+      emitEnvelopeChange('Decay', quantizeEnvelopeTime(newDecay));
     } else if (target === 'sustain') {
       const relY = (cy - envY - 4) / (envH - 8);
       const newSustain = Math.max(0, Math.min(1, 1 - relY));
-      props.onChange(`${paramPrefix}Sustain`, parseFloat(newSustain.toFixed(2)));
+      emitEnvelopeChange('Sustain', parseFloat(newSustain.toFixed(2)));
     } else if (target === 'hold') {
       const newHold = Math.max(limits.hold.min, Math.min(limits.hold.max, tAtX - a - d));
-      props.onChange(`${paramPrefix}Hold`, quantizeEnvelopeTime(newHold));
+      emitEnvelopeChange('Hold', quantizeEnvelopeTime(newHold));
     } else if (target === 'release') {
       const releaseStart = a + d + hold;
       const newRelease = Math.max(limits.release.min, Math.min(limits.release.max, tAtX - releaseStart));
-      props.onChange(`${paramPrefix}Release`, quantizeEnvelopeTime(newRelease));
+      emitEnvelopeChange('Release', quantizeEnvelopeTime(newRelease));
     }
   }, [props]);
 

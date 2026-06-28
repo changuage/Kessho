@@ -210,7 +210,7 @@ struct SoundscapeRenderBlockCache {
       }
       const float pan_l = voice.pan <= 0.0f ? 1.0f : 1.0f - voice.pan * 0.5f;
       const float pan_r = voice.pan >= 0.0f ? 1.0f : 1.0f + voice.pan * 0.5f;
-      const bool piano_voice = voice.source_id == KESSHO_PRODUCT_SOURCE_PIANO;
+      const bool piano_voice = voice.sample_slot_voice && source.sample_library_id == kSampleLibraryPiano;
       const bool soundscape_sample =
           voice.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE &&
           voice.sample_voice &&
@@ -370,7 +370,7 @@ struct SoundscapeRenderBlockCache {
     const float limiter_input_r = pre_limiter_r * kMasterLimiterWebAudioMakeupGain;
     const float limiter_input_peak = input_peak * kMasterLimiterWebAudioMakeupGain;
     if (publish_master_telemetry) {
-      master_input_peak = std::max(master_input_peak, input_peak);
+      master_input_peak = std::max(master_input_peak, limiter_input_peak);
     }
     if (publish_master_telemetry && limiter_input_peak > ceiling && ceiling > 0.0f) {
       limiter_gain_reduction_db = std::max(

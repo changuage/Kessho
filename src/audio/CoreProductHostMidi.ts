@@ -22,6 +22,8 @@ function liveNoteSourceId(instrument: ProductLiveNoteInstrument): number {
     case 'lead1': return CORE_PRODUCT_SOURCE_IDS.lead1;
     case 'lead2': return CORE_PRODUCT_SOURCE_IDS.lead2;
     case 'drum': return CORE_PRODUCT_SOURCE_IDS.drum;
+    case 'sample2': return CORE_PRODUCT_SOURCE_IDS.sample2;
+    case 'sample1':
     case 'piano':
     default: return CORE_PRODUCT_SOURCE_IDS.piano;
   }

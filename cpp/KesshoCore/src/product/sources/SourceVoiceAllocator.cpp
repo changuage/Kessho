@@ -282,20 +282,53 @@ uint32_t KesshoProductEngine::triggerVoice(
   voice.phase = hashUnit(rng_state ^ source_id ^ voice_index) * kTwoPi;
   voice.pan = ((hashUnit(rng_state + voice_index * 17u) * 2.0f) - 1.0f) * (0.25f + distance * 0.75f);
   voice.drum_voice = source_id == KESSHO_PRODUCT_SOURCE_DRUM;
-  if (source_id == KESSHO_PRODUCT_SOURCE_PIANO || source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
+  const bool sample_source = isSampleProductSource(source_id);
+  if (sample_source || source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
     const float requested_midi = clampFloat(midi_note, 0.0f, 127.0f);
     float asset_root_midi = requested_midi;
-    const uint32_t slot = source_id == KESSHO_PRODUCT_SOURCE_PIANO
-        ? findPianoAssetSlot(requested_midi, velocity, asset_root_midi)
-        : findAssetSlot(asset_id_override != 0u ? asset_id_override : source.asset_id);
+    uint32_t missing_asset_id = asset_id_override != 0u ? asset_id_override : source.asset_id;
+    uint32_t slot = kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS;
+    if (sample_source) {
+      uint32_t active_sample_voice_count = 0u;
+      for (const Voice& active_voice : voices) {
+        if (active_voice.active && active_voice.source_id == source_id && active_voice.sample_slot_voice) {
+          ++active_sample_voice_count;
+        }
+      }
+      if (active_sample_voice_count >= source.sample_max_voices) {
+        voice.active = false;
+        markActiveVoiceListDirty();
+        return kProductInvalidVoiceIndex;
+      }
+      float explicit_piano_root_midi = 0.0f;
+      const bool explicit_generated_piano_asset = missing_asset_id != 0u &&
+          pianoAssetRootMidi(missing_asset_id, explicit_piano_root_midi, nullptr);
+      if (missing_asset_id != 0u && !explicit_generated_piano_asset) {
+        const uint32_t explicit_slot = findAssetSlot(missing_asset_id);
+        if (explicit_slot != kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS &&
+            (assets[explicit_slot].flags & (KESSHO_PRODUCT_ASSET_SAMPLE | KESSHO_PRODUCT_ASSET_PIANO)) != 0u) {
+          slot = explicit_slot;
+          asset_root_midi = requested_midi;
+        }
+      }
+      if (slot == kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS) {
+        const uint32_t variant_key = source.sample_variant_mode == KESSHO_PRODUCT_SAMPLE_VARIANT_ROUND_ROBIN
+            ? source.sample_variant_counter++
+            : resolved_seed;
+        slot = findSampleAssetSlot(source, requested_midi, velocity, variant_key, asset_root_midi, missing_asset_id);
+      }
+    } else {
+      slot = findAssetSlot(missing_asset_id);
+    }
     if (slot == kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS) {
       voice.active = false;
       markActiveVoiceListDirty();
-      reportMissingSourceAsset(source, asset_id_override != 0u ? asset_id_override : source.asset_id);
+      reportMissingSourceAsset(source, missing_asset_id);
       return kProductInvalidVoiceIndex;
     }
     source.last_missing_asset_id = 0u;
     voice.sample_voice = true;
+    voice.sample_slot_voice = sample_source;
     voice.asset_slot = slot;
     if (source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
       const uint32_t soundscape_asset_id = assets[slot].asset_id;
@@ -305,15 +338,15 @@ uint32_t KesshoProductEngine::triggerVoice(
     }
     voice.sample_position = 0.0;
     const double base_step = assets[slot].sample_rate / sample_rate;
-    const double pitch_step = source_id == KESSHO_PRODUCT_SOURCE_PIANO
+    const double pitch_step = sample_source
         ? static_cast<double>(voice.frequency) / static_cast<double>(midiToFrequency(asset_root_midi))
         : 1.0;
     voice.sample_step = base_step * pitch_step;
-    voice.looping = (assets[slot].flags & KESSHO_PRODUCT_ASSET_LOOP) != 0u;
+    voice.looping = (assets[slot].flags & KESSHO_PRODUCT_ASSET_LOOP) != 0u && (!sample_source || source.sample_loop_enabled);
     voice.loop_crossfade_frames = voice.looping ? loopCrossfadeFrames(assets[slot]) : 0u;
     voice.remaining_frames = assets[slot].frame_count;
     voice.total_frames = std::max(1u, voice.remaining_frames);
-    if (source_id == KESSHO_PRODUCT_SOURCE_PIANO) {
+    if (sample_source) {
       configurePianoSampleVoiceEnvelope(voice, source, velocity, distance, resolved_seed, slot);
     }
     if (source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE && voice.looping) {

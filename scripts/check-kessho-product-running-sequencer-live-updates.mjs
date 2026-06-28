@@ -48,11 +48,13 @@ const files = {
   productControlState: read('src/product-control/ProductControlState.ts'),
   controlReducer: read('src/product-control/controlReducer.ts'),
   drumMorphOverrideState: read('src/product-control/drumMorphOverrideState.ts'),
+  productDrumMorphOverrides: read('src/app/useProductDrumMorphOverrides.ts'),
   sequencerHomeCaptureEvents: read('src/audio/product/ProductSequencerHomeCaptureEvents.ts'),
   sequencerHomeCaptureEventBridge: read('src/audio/product/host/CoreProductSequencerHomeCaptureEventBridge.ts'),
   sequencerEvolveConfigEvents: read('src/audio/product/ProductSequencerEvolveConfigEvents.ts'),
   sequencerEvolveConfigEventBridge: read('src/audio/product/host/CoreProductSequencerEvolveConfigEventBridge.ts'),
   sequencerStepOverrideEvents: read('src/audio/product/ProductSequencerStepOverrideEvents.ts'),
+  productRuntimeSequencerControls: read('src/ui/useProductRuntimeSequencerControls.ts'),
   sequencerControls: read('src/ui/useSelectedAudioEngineSequencerControls.ts'),
   sequencerStepOverrideEventBridge: read('src/audio/product/host/CoreProductSequencerStepOverrideEventBridge.ts'),
   sequencerVisualBridge: read('src/audio/product/host/CoreProductSequencerVisualBridge.ts'),
@@ -103,9 +105,17 @@ check(
 check(
   'sequencer-transport-start-commit-accepted',
   files.hostCommitService.includes('isSequencerTransportStartPatch') &&
-    files.hostCommitService.includes('patchReceipt.applied || (') &&
+    files.hostCommitService.includes("patchReceipt.applied || commit.applyMode === 'event' || (") &&
     files.host.includes('applyProductStatePatch: (patch, reason, options) => this.applyProductStatePatch(patch, reason, options)'),
   'trigger-critical sequencer transport start commits must advance Product revision even while runtime start work is deferred',
+);
+check(
+  'sequencer-controls-event-apply-mode',
+  files.productRuntimeSequencerControls.includes("applyMode: 'event'") &&
+    files.sequencerControls.includes("applyMode: 'event'") &&
+    files.host.includes("options?.applyMode === 'event'") &&
+    files.hostCommitService.includes("commit.applyMode === 'event'"),
+  'sequencer controls must commit explicit Product events without forcing snapshot receipt waits',
 );
 
 {
@@ -129,6 +139,34 @@ check(
       harness.runtime.events.some((event) => eventType(event) === 'start') &&
       harness.runtime.snapshots.length > 0,
     'sequencer transport start commit must be revisioned before the runtime start event plays',
+  );
+}
+
+{
+  const harness = loadCoreProductHostHarness();
+  harness.host.runtimeReady = true;
+  const event = harness.context.createCoreProductSequencerLaneParamEvent(
+    'synth',
+    0,
+    harness.context.KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing,
+    0.25,
+  );
+  const receipt = await harness.host.commitResolvedState({
+    revision: 2,
+    reason: 'sequencer-control-change',
+    triggerCritical: true,
+    applyMode: 'event',
+    patch: { synthEuclid1Swing: 0.25 },
+    events: [event],
+  });
+  check(
+    'sequencer-control-event-mode-skips-snapshot',
+    receipt.applied === true &&
+      receipt.mode === 'event' &&
+      harness.host.getCommittedStateRevision() === 2 &&
+      harness.runtime.events.includes(event) &&
+      harness.runtime.snapshots.length === 0,
+    'sequencer control event commits must post explicit runtime events without waiting for a full snapshot',
   );
 }
 
@@ -405,7 +443,8 @@ check(
 );
 check(
   'drum-morph-product-control-commit',
-  files.app.includes('dispatchProductControlActionForProductEngine(productRuntimePort, sourceState, action).drumMorphOverrides') &&
+  files.productDrumMorphOverrides.includes('dispatchProductControlActionForProductEngine(productEngine, sourceState, action).drumMorphOverrides') &&
+    files.app.includes('dispatchDrumMorphProductControlAction(prev, {') &&
     files.app.includes("type: 'drum-morph/override-set'") &&
     files.app.includes('drumMorphProductControlChanged') &&
     files.app.includes('scheduleProductRuntimeParamUpdate(newState as SliderState') &&

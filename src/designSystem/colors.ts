@@ -38,6 +38,8 @@ export const SOURCE_COLORS = {
   pad2: '#B96A72',
   lead1: JOURNEY_COLORS.gold,
   lead2: '#BFA45A',
+  sample1: JOURNEY_COLORS.cream,
+  sample2: '#8EB6D8',
   piano: JOURNEY_COLORS.cream,
   drums: TAB_HERO_COLORS.drums,
   earth: TAB_HERO_COLORS.earth,

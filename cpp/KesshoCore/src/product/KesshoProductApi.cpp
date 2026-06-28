@@ -1,4 +1,27 @@
 #include "KesshoProductEngineInternal.h"
+#include "generated/SampleLibraryRegistry.generated.h"
+
+namespace {
+
+const kessho::product::generated::GeneratedSampleDescriptor* findGeneratedSampleDescriptor(uint32_t asset_id) {
+  for (const auto& descriptor : kessho::product::generated::kGeneratedSampleDescriptors) {
+    if (descriptor.assetId == asset_id) {
+      return &descriptor;
+    }
+  }
+  return nullptr;
+}
+
+uint32_t scaledLoopFrame(uint32_t encoded_frame, double asset_sample_rate, uint32_t encoded_sample_rate) {
+  if (encoded_sample_rate == 0u || asset_sample_rate <= 0.0) {
+    return encoded_frame;
+  }
+  return static_cast<uint32_t>(std::max(
+      0.0,
+      std::round(static_cast<double>(encoded_frame) * asset_sample_rate / static_cast<double>(encoded_sample_rate))));
+}
+
+} // namespace
 
 extern "C" {
 
@@ -397,6 +420,27 @@ int32_t kessho_product_register_asset_buffer(
   asset.frame_count = frame_count;
   asset.sample_rate = asset_sample_rate;
   asset.flags = flags;
+  asset.loop_start_frame = 0u;
+  asset.loop_end_frame = 0u;
+  asset.loop_crossfade_frames = 0u;
+  if (const auto* descriptor = findGeneratedSampleDescriptor(asset_id)) {
+    if (descriptor->hasLoop) {
+      const uint32_t loop_start = std::min(
+          frame_count,
+          scaledLoopFrame(descriptor->encodedLoopStartFrame, asset_sample_rate, descriptor->encodedSampleRate));
+      const uint32_t loop_end = std::min(
+          frame_count,
+          scaledLoopFrame(descriptor->encodedLoopEndFrame, asset_sample_rate, descriptor->encodedSampleRate));
+      if (loop_end > loop_start + 8u) {
+        asset.loop_start_frame = loop_start;
+        asset.loop_end_frame = loop_end;
+        asset.loop_crossfade_frames = std::min<uint32_t>(
+            scaledLoopFrame(descriptor->encodedLoopCrossfadeFrames, asset_sample_rate, descriptor->encodedSampleRate),
+            std::max<uint32_t>(1u, (loop_end - loop_start) / 2u));
+        asset.flags |= KESSHO_PRODUCT_ASSET_LOOP;
+      }
+    }
+  }
   asset.channels[0] = channels[0];
   asset.channels[1] = channel_count > 1u ? channels[1] : channels[0];
   engine->updateTelemetry(0);

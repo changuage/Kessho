@@ -5,6 +5,7 @@ export const CORE_PRODUCT_ASSET_FLAGS = Object.freeze({
   loop: coreProductAssetManifest.flags.loop,
   piano: coreProductAssetManifest.flags.piano,
   soundscape: coreProductAssetManifest.flags.soundscape,
+  sample: coreProductAssetManifest.flags.sample,
 } as const);
 
 type CoreProductSoundscapeAssetManifestKey = 'ocean' | 'water' | 'birds' | 'birds2' | 'frogs' | 'insects';

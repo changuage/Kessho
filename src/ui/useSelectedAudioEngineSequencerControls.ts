@@ -100,6 +100,7 @@ function commitCoreProductSequencerEvents(
       reason: 'sequencer-control-change',
       triggerCritical: true,
       productEvents: events,
+      applyMode: 'event',
     },
   ).catch((error) => {
     console.warn('Product sequencer control commit failed:', error);

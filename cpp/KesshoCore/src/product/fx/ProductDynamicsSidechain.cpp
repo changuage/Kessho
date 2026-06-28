@@ -49,7 +49,8 @@ uint32_t KesshoProductEngine::sidechainTargetForSource(uint32_t source_id) const
       return kSidechainLead1;
     case KESSHO_PRODUCT_SOURCE_LEAD2:
       return kSidechainLead2;
-    case KESSHO_PRODUCT_SOURCE_PIANO:
+    case KESSHO_PRODUCT_SOURCE_SAMPLE1:
+    case KESSHO_PRODUCT_SOURCE_SAMPLE2:
       return kSidechainPiano;
     default:
       return kSidechainTargetCount;

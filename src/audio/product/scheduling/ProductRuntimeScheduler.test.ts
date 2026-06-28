@@ -102,3 +102,81 @@ import type { CoreProductTelemetrySnapshot } from '../../coreProductTelemetry';
   assert.equal(diagnosticsPublishes, 2, 'diagnostics publishes initial plus scheduled snapshot');
   assert.equal(telemetryPublishes, 1);
 }
+
+{
+  const timers: Array<{ callback: () => void; delayMs: number }> = [];
+  const scheduler = new ProductRuntimeScheduler({
+    setTimeout: (callback, delayMs) => {
+      timers.push({ callback, delayMs });
+      return timers.length as unknown as ReturnType<typeof setTimeout>;
+    },
+  });
+  let publishes = 0;
+  scheduler.schedule('sample-cache-diagnostics', () => { publishes += 1; });
+  scheduler.schedule('sample-cache-diagnostics', () => { publishes += 1; });
+
+  assert.equal(timers.length, 1, 'sample cache diagnostic bursts should coalesce into one timer');
+  assert.equal(timers[0]?.delayMs, 500, 'sample cache diagnostics should publish at a low visible rate');
+  timers[0]?.callback();
+  assert.equal(publishes, 2, 'coalesced sample cache publish should run queued subscribers once');
+}
+
+{
+  const timers: Array<{ callback: () => void; delayMs: number }> = [];
+  const scheduler = new ProductRuntimeScheduler({
+    isDocumentHidden: () => true,
+    setTimeout: (callback, delayMs) => {
+      timers.push({ callback, delayMs });
+      return timers.length as unknown as ReturnType<typeof setTimeout>;
+    },
+  });
+  let cachePublishes = 0;
+  let decodePublishes = 0;
+  scheduler.schedule('sample-cache-diagnostics', () => { cachePublishes += 1; });
+  scheduler.schedule('sample-decode-progress', () => { decodePublishes += 1; });
+
+  assert.equal(timers[0]?.delayMs, 5000, 'hidden sample cache diagnostics should use the background interval');
+  timers[0]?.callback();
+  assert.equal(cachePublishes, 1);
+  assert.equal(decodePublishes, 0, 'hidden decode progress should be suspended unless debug is enabled');
+}
+
+{
+  const timers: Array<{ callback: () => void; delayMs: number }> = [];
+  let now = 1000;
+  const scheduler = new ProductRuntimeScheduler({
+    now: () => now,
+    setTimeout: (callback, delayMs) => {
+      timers.push({ callback, delayMs });
+      return timers.length as unknown as ReturnType<typeof setTimeout>;
+    },
+  });
+  let publishes = 0;
+  scheduler.schedule('sample-asset-miss-diagnostics', () => { publishes += 1; });
+  scheduler.schedule('sample-asset-miss-diagnostics', () => { publishes += 1; });
+
+  assert.equal(publishes, 1, 'first sample asset miss should publish immediately');
+  assert.equal(timers[0]?.delayMs, 250, 'subsequent visible asset misses should be throttled');
+  now += 250;
+  timers[0]?.callback();
+  assert.equal(publishes, 2);
+}
+
+{
+  const frameCallbacks: Array<(time: number) => void> = [];
+  const scheduler = new ProductRuntimeScheduler({
+    requestAnimationFrame: (callback) => {
+      frameCallbacks.push(callback);
+      return frameCallbacks.length;
+    },
+  });
+  let publishes = 0;
+  scheduler.schedule('sample-voice-telemetry', () => { publishes += 1; });
+
+  assert.equal(frameCallbacks.length, 1, 'sample voice telemetry should publish on the visible animation frame');
+  frameCallbacks[0]?.(16);
+  assert.equal(publishes, 1);
+  scheduler.dispose();
+  scheduler.schedule('sample-voice-telemetry', () => { publishes += 1; });
+  assert.equal(publishes, 1, 'dispose should clear pending sampler callbacks');
+}

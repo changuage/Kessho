@@ -155,7 +155,9 @@ export function manualAuditionState(
     case 'pad2': next.pad2Enabled = true; break;
     case 'lead1': next.leadEnabled = true; break;
     case 'lead2': next.lead2Enabled = true; break;
-    case 'piano': next.pianoEnabled = true; break;
+    case 'sample1':
+    case 'piano': next.sample1Enabled = true; break;
+    case 'sample2': next.sample2Enabled = true; break;
     default:
       sourceId(source);
   }

@@ -9,7 +9,8 @@ const EXPECTED_ROUTING_ROW_IDS = [
   'pad2',
   'lead1',
   'lead2',
-  'piano',
+  'sample1',
+  'sample2',
   'drums',
   'granular',
   'waves',
@@ -55,6 +56,7 @@ const routingMatrix = read('src/ui/global/RoutingMatrix.tsx');
 const engineGroups = read('src/ui/snowflakeV2/engineGroups.ts');
 const snowflakeUi = read('src/ui/SnowflakeUI.tsx');
 const app = read('src/App.tsx');
+const dawOutputSync = read('src/app/useProductDawOutputSync.ts');
 const dawOutputRouting = read('src/audio/dawOutputRouting.ts');
 const dawOutputPanel = read('src/ui/routing/DawOutputPanel.tsx');
 const helpCatalog = read('src/ui/sliderHelpCatalog.ts');
@@ -81,12 +83,12 @@ assert(
   'RoutingMatrix must use the central routing registry for labels, Texture bus keys, and enablement.',
 );
 assert(
-  app.includes('getActiveDawOutputSourceIds(state)') &&
+  dawOutputSync.includes('getActiveDawOutputSourceIds(state)') &&
     app.includes('getRoutingSourceDef(sourceId)') &&
     app.includes('getRoutingSourceToggleKeys(sourceId)') &&
     !app.includes('ROUTING_SOURCE_SIMPLE_TOGGLES') &&
     !app.includes('ROUTING_SOURCE_DISABLE_ONLY_FAMILIES'),
-  'App routing toggles and active DAW sources must use the routing registry.',
+  'App routing toggles and DAW output sync must use the routing registry.',
 );
 assert(
   dawOutputPanel.includes('dawOutputSourceIsActive') &&

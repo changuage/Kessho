@@ -147,10 +147,8 @@ import { chordIntervalSecondsFromState } from '../../audio/chordPhraseTiming';
 import {
   applyLeadDistanceEnvelope,
   applyPadDistanceToState,
-  applyPianoDistanceEnvelope,
   getLeadDistancePreview,
   getPadDistancePreview,
-  getPianoDistancePreview,
 } from '../../audio/distanceMacro';
 import FilterLfoViz from './FilterLfoViz';
 import WaveFoldViz from './WaveFoldViz';
@@ -193,6 +191,14 @@ import {
   type SynthChordSequencerStrumDirection,
 } from '../../audio/synthChordSequencer';
 import { normalizeSynthEuclidSource } from '../../audio/coreProductSourceMapping';
+import {
+  SAMPLE_DYNAMIC_KEYS,
+  SAMPLE_DYNAMIC_MODES,
+  SAMPLE_SELECTION_MODES,
+  SAMPLE_VARIANT_MODES,
+  type SampleSlotId,
+} from '../../audio/sampleLibraries/SampleLibraryTypes';
+import { SAMPLE_LIBRARY_REGISTRY_GENERATED } from '../../audio/sampleLibraries/generated/sampleLibraryRegistry.generated';
 import {
   copyTriggerStamp,
   pasteTriggerStamp,
@@ -577,11 +583,13 @@ const SYNTH_SOURCES = [
   { value: 'pad2', label: 'Pad 2', color: SOURCE_COLORS.pad2 },
   { value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1 },
   { value: 'lead2', label: 'Lead 2', color: SOURCE_COLORS.lead2 },
-  { value: 'piano', label: 'Piano', color: SOURCE_COLORS.piano },
+  { value: 'sample1', label: 'Sample 1', color: SOURCE_COLORS.sample1 },
+  { value: 'sample2', label: 'Sample 2', color: SOURCE_COLORS.sample2 },
 ];
 
 const CHORD_SEQUENCER_SOURCES = [
-  { value: 'piano', label: 'Piano', color: SOURCE_COLORS.piano },
+  { value: 'sample1', label: 'Sample 1', color: SOURCE_COLORS.sample1 },
+  { value: 'sample2', label: 'Sample 2', color: SOURCE_COLORS.sample2 },
   { value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1 },
   { value: 'lead2', label: 'Lead 2', color: SOURCE_COLORS.lead2 },
   { value: 'pad1', label: 'Pad 1', color: SOURCE_COLORS.pad1 },
@@ -684,7 +692,7 @@ const PAD_VOICE_DEFAULT_MASK = 1 << 7;
 const RANDOM_TIMING_SOURCES = [
   { value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1 },
   { value: 'lead2', label: 'Lead 2', color: SOURCE_COLORS.lead2 },
-  { value: 'piano', label: 'Piano', color: SOURCE_COLORS.piano },
+  { value: 'sample1', label: 'Sample 1', color: SOURCE_COLORS.sample1 },
 ];
 
 const MANUAL_KEYBOARD_SOURCES: Array<{ value: ManualSynthSource; label: string; color: string }> = [
@@ -692,8 +700,108 @@ const MANUAL_KEYBOARD_SOURCES: Array<{ value: ManualSynthSource; label: string; 
   { value: 'pad2', label: 'Pad 2', color: SOURCE_COLORS.pad2 },
   { value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1 },
   { value: 'lead2', label: 'Lead 2', color: SOURCE_COLORS.lead2 },
-  { value: 'piano', label: 'Piano', color: SOURCE_COLORS.piano },
+  { value: 'sample1', label: 'Sample 1', color: SOURCE_COLORS.sample1 },
+  { value: 'sample2', label: 'Sample 2', color: SOURCE_COLORS.sample2 },
 ];
+
+type SampleSlotUiConfig = {
+  label: string;
+  color: string;
+  enabledKey: keyof SliderState;
+  libraryKey: keyof SliderState;
+  roleKey: keyof SliderState;
+  articulationKey: keyof SliderState;
+  selectionModeKey: keyof SliderState;
+  dynamicModeKey: keyof SliderState;
+  fixedDynamicKey: keyof SliderState;
+  variantModeKey: keyof SliderState;
+  loopEnabledKey: keyof SliderState;
+  maxVoicesKey: keyof SliderState;
+  levelKey: keyof SliderState;
+  attackMsKey: keyof SliderState;
+  decayMsKey: keyof SliderState;
+  sustainKey: keyof SliderState;
+  holdMsKey: keyof SliderState;
+  releaseMsKey: keyof SliderState;
+  distanceKey: keyof SliderState;
+  postLpfKey: keyof SliderState;
+  stereoWidthKey: keyof SliderState;
+  diffuseSendKey: keyof SliderState;
+  reverbSendKey: keyof SliderState;
+  delayASendKey: keyof SliderState;
+  delayBSendKey: keyof SliderState;
+  granularSendKey: keyof SliderState;
+  degradeSendKey: keyof SliderState;
+};
+
+const SAMPLE_SLOT_UI: Record<SampleSlotId, SampleSlotUiConfig> = {
+  sample1: {
+    label: 'Sample 1',
+    color: SOURCE_COLORS.sample1,
+    enabledKey: 'sample1Enabled',
+    libraryKey: 'sample1LibraryKey',
+    roleKey: 'sample1Role',
+    articulationKey: 'sample1Articulation',
+    selectionModeKey: 'sample1SelectionMode',
+    dynamicModeKey: 'sample1DynamicMode',
+    fixedDynamicKey: 'sample1FixedDynamic',
+    variantModeKey: 'sample1VariantMode',
+    loopEnabledKey: 'sample1LoopEnabled',
+    maxVoicesKey: 'sample1MaxVoices',
+    levelKey: 'sample1Level',
+    attackMsKey: 'sample1AttackMs',
+    decayMsKey: 'sample1DecayMs',
+    sustainKey: 'sample1Sustain',
+    holdMsKey: 'sample1HoldMs',
+    releaseMsKey: 'sample1ReleaseMs',
+    distanceKey: 'sample1Distance',
+    postLpfKey: 'sample1PostLPF',
+    stereoWidthKey: 'sample1StereoWidth',
+    diffuseSendKey: 'sample1DiffuseSend',
+    reverbSendKey: 'sample1ReverbSend',
+    delayASendKey: 'sample1DelayASend',
+    delayBSendKey: 'sample1DelayBSend',
+    granularSendKey: 'granularSample1Send',
+    degradeSendKey: 'degradeSample1Send',
+  },
+  sample2: {
+    label: 'Sample 2',
+    color: SOURCE_COLORS.sample2,
+    enabledKey: 'sample2Enabled',
+    libraryKey: 'sample2LibraryKey',
+    roleKey: 'sample2Role',
+    articulationKey: 'sample2Articulation',
+    selectionModeKey: 'sample2SelectionMode',
+    dynamicModeKey: 'sample2DynamicMode',
+    fixedDynamicKey: 'sample2FixedDynamic',
+    variantModeKey: 'sample2VariantMode',
+    loopEnabledKey: 'sample2LoopEnabled',
+    maxVoicesKey: 'sample2MaxVoices',
+    levelKey: 'sample2Level',
+    attackMsKey: 'sample2AttackMs',
+    decayMsKey: 'sample2DecayMs',
+    sustainKey: 'sample2Sustain',
+    holdMsKey: 'sample2HoldMs',
+    releaseMsKey: 'sample2ReleaseMs',
+    distanceKey: 'sample2Distance',
+    postLpfKey: 'sample2PostLPF',
+    stereoWidthKey: 'sample2StereoWidth',
+    diffuseSendKey: 'sample2DiffuseSend',
+    reverbSendKey: 'sample2ReverbSend',
+    delayASendKey: 'sample2DelayASend',
+    delayBSendKey: 'sample2DelayBSend',
+    granularSendKey: 'granularSample2Send',
+    degradeSendKey: 'degradeSample2Send',
+  },
+};
+
+function sampleOptionLabel(value: string): string {
+  if (value === '') return 'Default';
+  return value
+    .split('-')
+    .map((part) => part.length > 0 ? part.charAt(0).toUpperCase() + part.slice(1) : part)
+    .join(' ');
+}
 
 const MANUAL_KEYBOARD_LAYOUT = [
   { code: 'KeyA', shortcut: 'A', semitone: 0, accidental: false },
@@ -1137,7 +1245,8 @@ function generatedCapturePitchReferenceForSlot(
 function getManualSourceForLaneSource(source: string, pad2VoiceAssign: number | undefined): ManualSynthSource {
   const normalized = normalizeSynthEuclidSource(source);
   if (normalized === 'lead2') return 'lead2';
-  if (normalized === 'piano') return 'piano';
+  if (normalized === 'sample1') return 'sample1';
+  if (normalized === 'sample2') return 'sample2';
   if (normalized === 'pad1') return 'pad1';
   if (normalized === 'pad2') return 'pad2';
   if (normalized.startsWith('synth')) {
@@ -1328,7 +1437,7 @@ const PAD2_TO_PAD1_KEY = Object.fromEntries(
   Object.entries(PAD1_TO_PAD2_KEY).map(([pad1Key, pad2Key]) => [pad2Key, pad1Key]),
 ) as Record<string, string>;
 
-const SYNTH_SOURCE_CARD_IDS = ['pad1', 'pad2', 'lead1', 'lead2', 'piano'] as const;
+const SYNTH_SOURCE_CARD_IDS = ['pad1', 'pad2', 'lead1', 'lead2', 'sample1', 'sample2'] as const;
 type SynthSourceCardId = typeof SYNTH_SOURCE_CARD_IDS[number];
 type SynthSourceCardExpansion = Partial<Record<SynthSourceCardId, boolean>>;
 
@@ -1663,6 +1772,29 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   const Slider = SliderComponent as React.ComponentType<any>;
   const Select = SelectComponent as React.ComponentType<any>;
+  const sampleLibraryOptions = useMemo(() => SAMPLE_LIBRARY_REGISTRY_GENERATED.map((library) => ({
+    value: library.libraryKey,
+    label: library.displayName,
+  })), []);
+  const sampleLibraryByKey = useMemo(() => new Map(
+    SAMPLE_LIBRARY_REGISTRY_GENERATED.map((library) => [library.libraryKey, library]),
+  ), []);
+  const sampleSelectionModeOptions = useMemo(() => SAMPLE_SELECTION_MODES.map((mode) => ({
+    value: mode,
+    label: sampleOptionLabel(mode),
+  })), []);
+  const sampleDynamicModeOptions = useMemo(() => SAMPLE_DYNAMIC_MODES.map((mode) => ({
+    value: mode,
+    label: sampleOptionLabel(mode),
+  })), []);
+  const sampleDynamicOptions = useMemo(() => SAMPLE_DYNAMIC_KEYS.map((dynamic) => ({
+    value: dynamic,
+    label: sampleOptionLabel(dynamic),
+  })), []);
+  const sampleVariantOptions = useMemo(() => SAMPLE_VARIANT_MODES.map((mode) => ({
+    value: mode,
+    label: sampleOptionLabel(mode),
+  })), []);
   const { announceHelp } = useSliderHelp();
   const bindHelp = useCallback((helpKey: string, options: { label?: string } = {}) => ({
     onMouseEnter: () => announceHelp(helpKey, options),
@@ -1675,13 +1807,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     pad2: Boolean(state.pad2Enabled),
     lead1: Boolean(state.leadEnabled),
     lead2: Boolean(state.lead2Enabled),
-    piano: Boolean(state.pianoEnabled),
+    sample1: Boolean(state.sample1Enabled),
+    sample2: Boolean(state.sample2Enabled),
   }), [
     state.lead2Enabled,
     state.leadEnabled,
     state.pad2Enabled,
     state.padEnabled,
-    state.pianoEnabled,
+    state.sample1Enabled,
+    state.sample2Enabled,
   ]);
   const previousDefaultExpandedCards = useRef(defaultExpandedCards);
 
@@ -1880,7 +2014,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const livePad2Distance = useRuntimeValue('pad2Distance', state.pad2Distance ?? 0) ?? (state.pad2Distance ?? 0);
   const liveLead1Distance = useRuntimeValue('lead1Distance', state.lead1Distance ?? 0) ?? (state.lead1Distance ?? 0);
   const liveLead2Distance = useRuntimeValue('lead2Distance', state.lead2Distance ?? 0) ?? (state.lead2Distance ?? 0);
-  const livePianoDistance = useRuntimeValue('pianoDistance', state.pianoDistance ?? 0) ?? (state.pianoDistance ?? 0);
   const pad1FilterMinRuntime = sliderProps('filterCutoffMin') as RuntimeSliderProps;
   const pad1FilterMaxRuntime = sliderProps('filterCutoffMax') as RuntimeSliderProps;
   const pad1PostLpfRuntime = sliderProps('padPostLPF') as RuntimeSliderProps;
@@ -1995,21 +2128,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const pad2DistancePreview = useMemo(() => getPadDistancePreview(state, 'pad2', livePad2Distance), [livePad2Distance, state]);
   const lead1DistancePreview = useMemo(() => getLeadDistancePreview(state, 'lead1', liveLead1Distance), [liveLead1Distance, state]);
   const lead2DistancePreview = useMemo(() => getLeadDistancePreview(state, 'lead2', liveLead2Distance), [liveLead2Distance, state]);
-  const pianoDistancePreview = useMemo(() => getPianoDistancePreview(state, livePianoDistance), [livePianoDistance, state]);
-  const pianoDistanceEnv = useMemo(() => applyPianoDistanceEnvelope({
-    attack: state.pianoAttack,
-    decay: state.pianoDecay,
-    sustain: state.pianoSustain,
-    hold: state.pianoHold,
-    release: state.pianoRelease,
-  }, livePianoDistance), [
-    state.pianoAttack,
-    state.pianoDecay,
-    state.pianoHold,
-    state.pianoRelease,
-    state.pianoSustain,
-    livePianoDistance,
-  ]);
   const liveSynthNoteMins = [liveSynthNoteMin1, liveSynthNoteMin2, liveSynthNoteMin3, liveSynthNoteMin4];
   const liveSynthNoteMaxs = [liveSynthNoteMax1, liveSynthNoteMax2, liveSynthNoteMax3, liveSynthNoteMax4];
 
@@ -2090,19 +2208,19 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, [updateChordSequencerSubLane]);
 
   const chordSequencerEnabled = state.synthChordSequencerEnabled === true;
-  const chordSequencerSourceValue = String(state.synthChordSequencerSource ?? 'piano');
+  const chordSequencerSourceValue = String(state.synthChordSequencerSource === 'piano' ? 'sample1' : (state.synthChordSequencerSource ?? 'sample1'));
   const chordSequencerSourceInfo =
     CHORD_SEQUENCER_SOURCES.find((source) => source.value === chordSequencerSourceValue) ?? {
-      value: 'piano',
-      label: 'Piano',
-      color: SOURCE_COLORS.piano,
+      value: 'sample1',
+      label: 'Sample 1',
+      color: SOURCE_COLORS.sample1,
     };
-  const chordGeneratorSourceValue = String(state.synthChordGeneratorSource ?? 'piano');
+  const chordGeneratorSourceValue = String(state.synthChordGeneratorSource === 'piano' ? 'sample1' : (state.synthChordGeneratorSource ?? 'sample1'));
   const chordGeneratorSourceInfo =
     CHORD_SEQUENCER_SOURCES.find((source) => source.value === chordGeneratorSourceValue) ?? {
-      value: 'piano',
-      label: 'Piano',
-      color: SOURCE_COLORS.piano,
+      value: 'sample1',
+      label: 'Sample 1',
+      color: SOURCE_COLORS.sample1,
     };
   const chordSequencerActiveStepCount = chordSequencerConfig.steps
     .slice(0, chordSequencerConfig.stepCount)
@@ -4772,7 +4890,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const getDefaultKeyboardSource = useCallback((): ManualSynthSource => {
     if (editingSection === 'pad2') return 'pad2';
     if (editingSection === 'lead2') return 'lead2';
-    if (editingSection === 'piano') return 'piano';
+    if (editingSection === 'sample1') return 'sample1';
+    if (editingSection === 'sample2') return 'sample2';
     if (editingSection === 'lead1') return 'lead1';
     return getManualSourceForLaneSource(String(state[getSourceKey(seq.activeTab)] ?? 'lead1'), state.pad2VoiceAssign);
   }, [editingSection, getSourceKey, seq.activeTab, state]);
@@ -5341,9 +5460,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       } else if (source === 'lead2' && !state.lead2Enabled) {
         onSelectChange('lead2Enabled' as keyof SliderState, true);
         startPatch.lead2Enabled = true;
-      } else if (source === 'piano' && !state.pianoEnabled) {
-        onSelectChange('pianoEnabled' as keyof SliderState, true);
-        startPatch.pianoEnabled = true;
+      } else if (source === 'sample1' && !state.sample1Enabled) {
+        onSelectChange('sample1Enabled' as keyof SliderState, true);
+        startPatch.sample1Enabled = true;
+      } else if (source === 'sample2' && !state.sample2Enabled) {
+        onSelectChange('sample2Enabled' as keyof SliderState, true);
+        startPatch.sample2Enabled = true;
       }
     };
     if (next) {
@@ -5373,7 +5495,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     state.padEnabled,
     state.pad2Enabled,
     state.pad2VoiceAssign,
-    state.pianoEnabled,
+    state.sample1Enabled,
+    state.sample2Enabled,
     state.synthEuclid1Enabled,
     state.synthEuclid1Source,
     state.synthEuclid2Enabled,
@@ -5400,9 +5523,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       } else if (source === 'lead2' && !state.lead2Enabled) {
         onSelectChange('lead2Enabled' as keyof SliderState, true);
         startPatch.lead2Enabled = true;
-      } else if (source === 'piano' && !state.pianoEnabled) {
-        onSelectChange('pianoEnabled' as keyof SliderState, true);
-        startPatch.pianoEnabled = true;
+      } else if (source === 'sample1' && !state.sample1Enabled) {
+        onSelectChange('sample1Enabled' as keyof SliderState, true);
+        startPatch.sample1Enabled = true;
+      } else if (source === 'sample2' && !state.sample2Enabled) {
+        onSelectChange('sample2Enabled' as keyof SliderState, true);
+        startPatch.sample2Enabled = true;
       }
     };
     if (sourceValue === 'both') {
@@ -5420,7 +5546,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     state.padEnabled,
     state.pad2Enabled,
     state.pad2VoiceAssign,
-    state.pianoEnabled,
+    state.sample1Enabled,
+    state.sample2Enabled,
   ]);
 
   const toggleChordSequencerEnabled = useCallback(() => {
@@ -5482,9 +5609,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       } else if (nextSource === 'lead2' && !state.lead2Enabled) {
         onSelectChange('lead2Enabled' as keyof SliderState, true);
         startPatch.lead2Enabled = true;
-      } else if (nextSource === 'piano' && !state.pianoEnabled) {
-        onSelectChange('pianoEnabled' as keyof SliderState, true);
-        startPatch.pianoEnabled = true;
+      } else if (nextSource === 'sample1' && !state.sample1Enabled) {
+        onSelectChange('sample1Enabled' as keyof SliderState, true);
+        startPatch.sample1Enabled = true;
+      } else if (nextSource === 'sample2' && !state.sample2Enabled) {
+        onSelectChange('sample2Enabled' as keyof SliderState, true);
+        startPatch.sample2Enabled = true;
       }
     };
 
@@ -5506,7 +5636,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     state.padEnabled,
     state.pad2Enabled,
     state.pad2VoiceAssign,
-    state.pianoEnabled,
+    state.sample1Enabled,
+    state.sample2Enabled,
     state.synthEuclid1Enabled,
     state.synthEuclid1Source,
     state.synthEuclid2Enabled,
@@ -6439,12 +6570,212 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     );
   };
 
+  const renderSampleSlotCard = (slotId: SampleSlotId) => {
+    const config = SAMPLE_SLOT_UI[slotId];
+    const expanded = isSynthSourceCardExpanded(slotId);
+    const enabled = state[config.enabledKey] === true;
+    const libraryKey = typeof state[config.libraryKey] === 'string'
+      ? String(state[config.libraryKey])
+      : slotId === 'sample2'
+        ? 'soft-string-spurs'
+        : 'piano';
+    const library = sampleLibraryByKey.get(libraryKey as never) ?? sampleLibraryByKey.get('piano');
+    const resolvedLibraryKey = library?.libraryKey ?? 'piano';
+    const librarySamples = library?.samples ?? [];
+    const currentRole = typeof state[config.roleKey] === 'string' ? String(state[config.roleKey]) : '';
+    const currentArticulation = typeof state[config.articulationKey] === 'string' ? String(state[config.articulationKey]) : '';
+    const roleOptions = [
+      { value: '', label: 'Default' },
+      ...Array.from(new Set(librarySamples.map((sample) => sample.role).filter(Boolean)))
+        .sort()
+        .map((role) => ({ value: role, label: sampleOptionLabel(role) })),
+    ];
+    if (currentRole && !roleOptions.some((option) => option.value === currentRole)) {
+      roleOptions.push({ value: currentRole, label: sampleOptionLabel(currentRole) });
+    }
+    const articulationOptions = [
+      { value: '', label: 'Default' },
+      ...Array.from(new Set(librarySamples.map((sample) => sample.articulation).filter(Boolean)))
+        .sort()
+        .map((articulation) => ({ value: articulation, label: sampleOptionLabel(articulation) })),
+    ];
+    if (currentArticulation && !articulationOptions.some((option) => option.value === currentArticulation)) {
+      articulationOptions.push({ value: currentArticulation, label: sampleOptionLabel(currentArticulation) });
+    }
+    const stringValue = (key: keyof SliderState, fallback: string) => (
+      typeof state[key] === 'string' ? String(state[key]) : fallback
+    );
+    const numberValue = (key: keyof SliderState, fallback: number) => {
+      const value = state[key];
+      return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+    };
+    const loopEnabled = state[config.loopEnabledKey] !== false;
+    const attackMs = numberValue(config.attackMsKey, slotId === 'sample1' ? 5 : 25);
+    const decayMs = numberValue(config.decayMsKey, 650);
+    const sustain = numberValue(config.sustainKey, 0.72);
+    const holdMs = numberValue(config.holdMsKey, 200);
+    const releaseMs = numberValue(config.releaseMsKey, slotId === 'sample1' ? 120 : 350);
+    const envelopeTimelineSeconds = Math.max(
+      0.5,
+      (attackMs + decayMs + holdMs + releaseMs) / 1000 + 0.25,
+    );
+
+    return (
+      <div key={slotId} className={`synth-card${editingSection === slotId ? ' editing' : ''}${expanded ? '' : ' collapsed'}`} style={{ '--sc': config.color } as React.CSSProperties}>
+        <div
+          className="synth-card-header clickable"
+          role="button"
+          tabIndex={0}
+          aria-expanded={expanded}
+          onClick={() => toggleSynthSourceCard(slotId)}
+          onKeyDown={(event) => handleSynthSourceHeaderKeyDown(event, slotId)}
+        >
+          <span className="sc-name">{config.label}</span>
+          <button
+            type="button"
+            className={`sc-enable-btn${enabled ? ' on' : ''}`}
+            aria-pressed={enabled}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelectChange(config.enabledKey, !enabled as SliderState[keyof SliderState]);
+            }}
+          >
+            {enabled ? 'ON' : 'OFF'}
+          </button>
+          <button
+            type="button"
+            className={`sc-edit-btn${editingSection === slotId ? ' active' : ''}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleEdit(slotId);
+            }}
+            title={editingSection === slotId ? 'Close advanced' : 'Advanced parameters'}
+          >
+            {'\u270E'}
+          </button>
+        </div>
+
+        {expanded && (
+          <>
+            <div className="synth-card-simple">
+              <div className="sc-compact-grid-2">
+                <Select
+                  label="Library"
+                  value={resolvedLibraryKey}
+                  options={sampleLibraryOptions}
+                  onChange={(value: string) => onSelectChange(config.libraryKey, value as SliderState[keyof SliderState])}
+                />
+                <Select
+                  label="Selection"
+                  value={stringValue(config.selectionModeKey, 'nearest')}
+                  options={sampleSelectionModeOptions}
+                  onChange={(value: string) => onSelectChange(config.selectionModeKey, value as SliderState[keyof SliderState])}
+                />
+              </div>
+              <div className="sc-compact-grid-2" style={{ marginTop: '6px' }}>
+                <Select
+                  label="Role"
+                  value={currentRole}
+                  options={roleOptions}
+                  onChange={(value: string) => onSelectChange(config.roleKey, value as SliderState[keyof SliderState])}
+                />
+                <Select
+                  label="Articulation"
+                  value={currentArticulation}
+                  options={articulationOptions}
+                  onChange={(value: string) => onSelectChange(config.articulationKey, value as SliderState[keyof SliderState])}
+                />
+              </div>
+              <div className="sc-compact-grid-2" style={{ marginTop: '6px' }}>
+                <Select
+                  label="Dynamics"
+                  value={stringValue(config.dynamicModeKey, slotId === 'sample1' ? 'legacy-piano-parity' : 'velocity')}
+                  options={sampleDynamicModeOptions}
+                  onChange={(value: string) => onSelectChange(config.dynamicModeKey, value as SliderState[keyof SliderState])}
+                />
+                <Select
+                  label="Fixed"
+                  value={stringValue(config.fixedDynamicKey, slotId === 'sample1' ? 'regular' : 'level-2')}
+                  options={sampleDynamicOptions}
+                  onChange={(value: string) => onSelectChange(config.fixedDynamicKey, value as SliderState[keyof SliderState])}
+                />
+              </div>
+              <div className="sc-compact-grid-2" style={{ marginTop: '6px' }}>
+                <Select
+                  label="Variant"
+                  value={stringValue(config.variantModeKey, 'stable')}
+                  options={sampleVariantOptions}
+                  onChange={(value: string) => onSelectChange(config.variantModeKey, value as SliderState[keyof SliderState])}
+                />
+                <button
+                  type="button"
+                  className={`sc-toggle-btn${loopEnabled ? ' on' : ''}`}
+                  aria-pressed={loopEnabled}
+                  onClick={() => onSelectChange(config.loopEnabledKey, !loopEnabled as SliderState[keyof SliderState])}
+                >
+                  Loop
+                </button>
+              </div>
+              <div className="sc-compact-grid-2" style={{ marginTop: '8px' }}>
+                <Slider label="Level" value={numberValue(config.levelKey, 0.75)} paramKey={config.levelKey} onChange={onParamChange} {...sliderProps(config.levelKey)} />
+                <Slider label="Voices" value={numberValue(config.maxVoicesKey, slotId === 'sample1' ? 16 : 12)} paramKey={config.maxVoicesKey} onChange={onParamChange} {...sliderProps(config.maxVoicesKey)} />
+              </div>
+              <div style={{ marginTop: '10px' }}>
+                <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '4px' }}>
+                  Envelope — A:{formatEnvelopeSeconds(attackMs / 1000)} D:{formatEnvelopeSeconds(decayMs / 1000)} S:{formatEnvelopeSustain(sustain)} H:{formatEnvelopeSeconds(holdMs / 1000)} R:{formatEnvelopeSeconds(releaseMs / 1000)}
+                </div>
+                <LeadAdsrViz
+                  attack={attackMs / 1000}
+                  decay={decayMs / 1000}
+                  sustain={sustain}
+                  hold={holdMs / 1000}
+                  release={releaseMs / 1000}
+                  accentColor={config.color}
+                  accentRgba={config.color}
+                  envelopeTimelineSeconds={envelopeTimelineSeconds}
+                  onChange={(param, value) => onParamChange(param as keyof SliderState, value)}
+                  paramPrefix={slotId}
+                />
+              </div>
+              <div className="sc-compact-grid-2" style={{ marginTop: '8px' }}>
+                <Slider label="Attack" value={attackMs} paramKey={config.attackMsKey} unit=" ms" onChange={onParamChange} {...sliderProps(config.attackMsKey)} />
+                <Slider label="Decay" value={decayMs} paramKey={config.decayMsKey} unit=" ms" onChange={onParamChange} {...sliderProps(config.decayMsKey)} />
+                <Slider label="Sustain" value={sustain} paramKey={config.sustainKey} onChange={onParamChange} {...sliderProps(config.sustainKey)} />
+                <Slider label="Hold" value={holdMs} paramKey={config.holdMsKey} unit=" ms" onChange={onParamChange} {...sliderProps(config.holdMsKey)} />
+                <Slider label="Release" value={releaseMs} paramKey={config.releaseMsKey} unit=" ms" onChange={onParamChange} {...sliderProps(config.releaseMsKey)} />
+              </div>
+            </div>
+
+            {editingSection === slotId && (
+              <div className="synth-card-advanced">
+                <div className="sc-advanced-section">
+                  <div className="sc-section-label">Distance</div>
+                  <Slider label="Distance" value={numberValue(config.distanceKey, 0)} paramKey={config.distanceKey} onChange={onParamChange} {...sliderProps(config.distanceKey)} />
+                  <Slider label="Post LPF" value={numberValue(config.postLpfKey, slotId === 'sample1' ? 16000 : 18000)} paramKey={config.postLpfKey} unit=" Hz" logarithmic onChange={onParamChange} {...sliderProps(config.postLpfKey)} />
+                  <Slider label="Stereo Width" value={numberValue(config.stereoWidthKey, slotId === 'sample1' ? 0.85 : 1)} paramKey={config.stereoWidthKey} onChange={onParamChange} {...sliderProps(config.stereoWidthKey)} />
+                  <Slider label="Diffuse Send" value={numberValue(config.diffuseSendKey, 0)} paramKey={config.diffuseSendKey} onChange={onParamChange} {...sliderProps(config.diffuseSendKey)} />
+                </div>
+                <div className="sc-advanced-section">
+                  <div className="sc-section-label">Routing</div>
+                  <Slider label="Reverb Send" value={numberValue(config.reverbSendKey, slotId === 'sample1' ? 0.35 : 0.25)} paramKey={config.reverbSendKey} onChange={onParamChange} {...sliderProps(config.reverbSendKey)} />
+                  <Slider label="Delay A Send" value={numberValue(config.delayASendKey, 0)} paramKey={config.delayASendKey} onChange={onParamChange} {...sliderProps(config.delayASendKey)} />
+                  <Slider label="Delay B Send" value={numberValue(config.delayBSendKey, 0)} paramKey={config.delayBSendKey} onChange={onParamChange} {...sliderProps(config.delayBSendKey)} />
+                  <Slider label="Granular Send" value={numberValue(config.granularSendKey, 0)} paramKey={config.granularSendKey} onChange={onParamChange} {...sliderProps(config.granularSendKey)} />
+                  <Slider label="Degrade Send" value={numberValue(config.degradeSendKey, 0)} paramKey={config.degradeSendKey} onChange={onParamChange} {...sliderProps(config.degradeSendKey)} />
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
+
   // ═══════════════ Render ═══════════════
   const pad1CardExpanded = isSynthSourceCardExpanded('pad1');
   const pad2CardExpanded = isSynthSourceCardExpanded('pad2');
   const lead1CardExpanded = isSynthSourceCardExpanded('lead1');
   const lead2CardExpanded = isSynthSourceCardExpanded('lead2');
-  const pianoCardExpanded = isSynthSourceCardExpanded('piano');
 
   return (
     <div className="synth-root">
@@ -8111,99 +8442,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             )}
           </div>
 
-          <div className={`synth-card${editingSection === 'piano' ? ' editing' : ''}${pianoCardExpanded ? '' : ' collapsed'}`} style={{ '--sc': SOURCE_COLORS.piano } as React.CSSProperties}>
-            <div
-              className="synth-card-header clickable"
-              role="button"
-              tabIndex={0}
-              aria-expanded={pianoCardExpanded}
-              onClick={() => toggleSynthSourceCard('piano')}
-              onKeyDown={(event) => handleSynthSourceHeaderKeyDown(event, 'piano')}
-            >
-              <span className="sc-name">Piano</span>
-              <button
-                type="button"
-                className={`sc-enable-btn${state.pianoEnabled ? ' on' : ''}`}
-                aria-pressed={state.pianoEnabled}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSelectChange('pianoEnabled' as keyof SliderState, !state.pianoEnabled);
-                }}
-              >
-                {state.pianoEnabled ? 'ON' : 'OFF'}
-              </button>
-              <button
-                type="button"
-                className={`sc-edit-btn${editingSection === 'piano' ? ' active' : ''}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  toggleEdit('piano');
-                }}
-                title={editingSection === 'piano' ? 'Close advanced' : 'Advanced parameters'}
-              >
-                {'\u270E'}
-              </button>
-            </div>
-
-            {pianoCardExpanded && (
-              <>
-            <div className="synth-card-simple">
-              <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '6px' }}>
-                Sampled piano with randomized regular and short note variants.
-              </div>
-              <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '4px' }}>
-                Envelope — A:{state.pianoAttack.toFixed(3)}s D:{state.pianoDecay.toFixed(2)}s S:{(state.pianoSustain * 100).toFixed(0)}% R:{state.pianoRelease.toFixed(2)}s
-              </div>
-              {livePianoDistance > 0.001 && (
-                <div style={{ fontSize: '0.68rem', color: '#888', marginBottom: '4px' }}>
-                  Distance target — A:{pianoDistanceEnv.attack.toFixed(3)}s D:{pianoDistanceEnv.decay.toFixed(2)}s S:{(pianoDistanceEnv.sustain * 100).toFixed(0)}% H:{(pianoDistanceEnv.hold ?? state.pianoHold).toFixed(2)}s R:{pianoDistanceEnv.release.toFixed(2)}s
-                </div>
-              )}
-              <LeadAdsrViz
-                attack={state.pianoAttack}
-                decay={state.pianoDecay}
-                sustain={state.pianoSustain}
-                hold={state.pianoHold}
-                release={state.pianoRelease}
-                accentColor="#e7c87f"
-                accentRgba="rgba(231,200,127,"
-                envelopeTimelineSeconds={padEnvelopeTimelineSeconds}
-                onChange={(param, value) => onParamChange(param as keyof SliderState, value)}
-                paramPrefix="piano"
-              />
-              <div className="sc-compact-grid-2" style={{ marginTop: '8px' }}>
-                <Slider label="Attack" value={state.pianoAttack} paramKey="pianoAttack" unit="s" logarithmic ghostValue={getPreviewValue(pianoDistancePreview, 'pianoAttack')} onChange={onParamChange} {...sliderProps('pianoAttack')} />
-                <Slider label="Decay" value={state.pianoDecay} paramKey="pianoDecay" unit="s" logarithmic ghostValue={getPreviewValue(pianoDistancePreview, 'pianoDecay')} onChange={onParamChange} {...sliderProps('pianoDecay')} />
-                <Slider label="Sustain" value={state.pianoSustain} paramKey="pianoSustain" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoSustain')} onChange={onParamChange} {...sliderProps('pianoSustain')} />
-                <Slider label="Hold" value={state.pianoHold} paramKey="pianoHold" unit="s" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoHold')} onChange={onParamChange} {...sliderProps('pianoHold')} />
-              </div>
-              <div style={{ marginTop: '8px' }}>
-                <Slider label="Release" value={state.pianoRelease} paramKey="pianoRelease" unit="s" logarithmic ghostValue={getPreviewValue(pianoDistancePreview, 'pianoRelease')} onChange={onParamChange} {...sliderProps('pianoRelease')} />
-              </div>
-            </div>
-
-            {editingSection === 'piano' && (
-              <div className="synth-card-advanced">
-                <Slider label="Piano Level" value={state.pianoLevel} paramKey="pianoLevel" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoLevel')} onChange={onParamChange} {...sliderProps('pianoLevel')} />
-                <div className="sc-advanced-section">
-                  <div className="sc-section-label">Distance</div>
-                  <Slider label="Distance" value={state.pianoDistance} paramKey="pianoDistance" ghostValue={getDistanceGhostValue('pianoDistance', livePianoDistance)} onChange={onParamChange} {...sliderProps('pianoDistance')} />
-                  <Slider label="Post LPF" value={state.pianoPostLPF} paramKey="pianoPostLPF" unit=" Hz" logarithmic ghostValue={getPreviewValue(pianoDistancePreview, 'pianoPostLPF')} onChange={onParamChange} {...sliderProps('pianoPostLPF')} />
-                  <Slider label="Stereo Width" value={state.pianoStereoWidth} paramKey="pianoStereoWidth" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoStereoWidth')} onChange={onParamChange} {...sliderProps('pianoStereoWidth')} />
-                  <Slider label="Diffuse Send" value={state.pianoDiffuseSend} paramKey="pianoDiffuseSend" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoDiffuseSend')} onChange={onParamChange} {...sliderProps('pianoDiffuseSend')} />
-                </div>
-                <div className="sc-advanced-section">
-                  <div className="sc-section-label">Routing</div>
-                  <Slider label="Reverb Send" value={state.pianoReverbSend} paramKey="pianoReverbSend" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoReverbSend')} onChange={onParamChange} {...sliderProps('pianoReverbSend')} />
-                  <Slider label="Delay A Send" value={state.pianoDelayASend} paramKey="pianoDelayASend" onChange={onParamChange} {...sliderProps('pianoDelayASend')} />
-                  <Slider label="Delay B Send" value={state.pianoDelayBSend} paramKey="pianoDelayBSend" onChange={onParamChange} {...sliderProps('pianoDelayBSend')} />
-                  <Slider label="Granular Send" value={state.granularPianoSend} paramKey="granularPianoSend" onChange={onParamChange} {...sliderProps('granularPianoSend')} />
-                </div>
-              </div>
-            )}
-              </>
-            )}
-          </div>
+          {renderSampleSlotCard('sample1')}
+          {renderSampleSlotCard('sample2')}
         </div>
 
         {/* ════════ RIGHT: Sequencer Panel ════════ */}
@@ -8446,7 +8686,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       <select
                         className="synth-source-select"
                         aria-label="Chord generator source"
-                        value={state.synthChordGeneratorSource ?? 'piano'}
+                        value={state.synthChordGeneratorSource === 'piano' ? 'sample1' : (state.synthChordGeneratorSource ?? 'sample1')}
                         onChange={(e) => onSelectChange('synthChordGeneratorSource' as keyof SliderState, e.target.value as SliderState[keyof SliderState])}
                         style={{
                           borderColor: `${chordGeneratorSourceInfo.color}60`,

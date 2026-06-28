@@ -50,6 +50,34 @@ assert.equal(evictingCache.has(2), false, 'LRU cache should evict oldest non-req
 assert.equal(evictingCache.has(3), true, 'newly loaded asset should remain cached');
 assert.equal(evictingCache.diagnostics().evictCount, 1);
 
+const retentionCache = new SampleDecodedAssetCache(128);
+await retentionCache.getOrLoad(descriptor(10), async () => decodedAsset(10, 8));
+await retentionCache.getOrLoad(descriptor(11), async () => decodedAsset(11, 8));
+await retentionCache.getOrLoad(descriptor(12), async () => decodedAsset(12, 8));
+const retentionResult = retentionCache.prune({
+  requiredAssetIds: new Set([12]),
+  activeVoiceAssetIds: new Set([10]),
+  targetBytes: 32,
+  reason: 'memory-warning',
+});
+assert.deepEqual(retentionResult.evictedAssetIds, [11], 'memory warning should evict idle unrequired assets first');
+assert.deepEqual(retentionResult.deferredAssetIds, [10], 'active voice asset unregister should be deferred');
+assert.equal(retentionCache.has(10), true, 'active voice asset should remain cached');
+assert.equal(retentionCache.has(12), true, 'required asset should remain cached');
+assert.equal(retentionCache.diagnostics().deferredEvictCount, 1);
+
+const backgroundCache = new SampleDecodedAssetCache(128);
+await backgroundCache.getOrLoad(descriptor(20), async () => decodedAsset(20, 16));
+backgroundCache.prune({
+  requiredAssetIds: new Set(),
+  activeVoiceAssetIds: new Set(),
+  targetBytes: 0,
+  reason: 'background',
+});
+assert.equal(backgroundCache.has(20), false, 'background prune should clear idle assets when target is zero');
+await backgroundCache.getOrLoad(descriptor(21), async () => decodedAsset(21, 8));
+assert.equal(backgroundCache.has(21), true, 'cache should still load assets after a pressure prune');
+
 const loop = toDecodedLoopFrames({
   encodedStartFrame: 2400,
   encodedEndFrame: 4800,
