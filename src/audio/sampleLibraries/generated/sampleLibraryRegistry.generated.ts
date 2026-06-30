@@ -11399,8 +11399,8 @@ export const SAMPLE_LIBRARY_REGISTRY_GENERATED = [
     "assetBasePath": "samples",
     "sourceSampleRate": 96000,
     "encodedSampleRate": 24000,
-    "defaultRole": "drone",
-    "defaultArticulation": "drone",
+    "defaultRole": "sustain",
+    "defaultArticulation": "sustain",
     "defaultDynamic": "normal",
     "defaultMidi": 61,
     "recommendedPreloadMidi": [

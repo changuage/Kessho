@@ -142,6 +142,18 @@ struct ProductGraphState {
   float graph_piano_granular_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float graph_piano_diffuse_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float graph_piano_diffuse_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sample2_dry_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sample2_dry_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sample2_reverb_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sample2_reverb_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sample2_delay_a_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sample2_delay_a_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sample2_delay_b_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sample2_delay_b_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sample2_granular_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sample2_granular_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sample2_diffuse_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sample2_diffuse_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float sidechain_gains[kSidechainTargetCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   SidechainEnvelope sidechain_envelopes[kSidechainTargetCount]{};
 };

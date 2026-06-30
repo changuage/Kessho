@@ -57,6 +57,12 @@ const PIANO_ENVELOPE_LIMITS = {
   hold: { min: 0, max: 4 },
   release: { min: 0.01, max: 8 },
 } as const;
+const SAMPLE_ENVELOPE_LIMITS = {
+  attack: { min: 0.001, max: 16 },
+  decay: { min: 0.01, max: 8 },
+  hold: { min: 0, max: 20 },
+  release: { min: 0.01, max: 30 },
+} as const;
 
 function getEnvelopeGeometry(
   width: number,
@@ -304,7 +310,11 @@ const LeadAdsrViz: React.FC<LeadAdsrVizProps> = (props) => {
     const tAtX = xToTime(cx);
     const paramPrefix = props.paramPrefix ?? 'lead1';
     const samplePrefix = paramPrefix === 'sample1' || paramPrefix === 'sample2';
-    const limits = paramPrefix === 'piano' || samplePrefix ? PIANO_ENVELOPE_LIMITS : PAD_ENVELOPE_LIMITS;
+    const limits = samplePrefix
+      ? SAMPLE_ENVELOPE_LIMITS
+      : paramPrefix === 'piano'
+        ? PIANO_ENVELOPE_LIMITS
+        : PAD_ENVELOPE_LIMITS;
     const emitEnvelopeChange = (suffix: 'Attack' | 'Decay' | 'Sustain' | 'Hold' | 'Release', value: number) => {
       if (samplePrefix) {
         const key = suffix === 'Sustain' ? `${paramPrefix}${suffix}` : `${paramPrefix}${suffix}Ms`;

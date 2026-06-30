@@ -36,6 +36,7 @@ const files = {
   diagnosticsType: read('src/audio/product/ProductRuntimeDiagnostics.ts'),
   hostDiagnostics: read('src/audio/product/host/CoreProductHostDiagnostics.ts'),
   hostCommitService: read('src/audio/product/host/CoreProductResolvedStateCommitService.ts'),
+  generatedCaptureTelemetryHistory: read('src/audio/product/host/CoreProductGeneratedSequencerCaptureTelemetryHistory.ts'),
   host: read('src/audio/coreProductEngineHost.ts'),
   manualTriggers: read('src/ui/useSelectedAudioEngineManualTriggers.ts'),
   liveTriggerCallbacks: read('src/ui/useSelectedAudioEngineLiveTriggerCallbacks.ts'),
@@ -302,6 +303,14 @@ check(
   'sequencer source/target keys must route through immediate trigger-critical ProductControl commits so running lanes update selected engines',
 );
 check(
+  'audio-sync-sequencer-face-resolved',
+  files.audioSync.includes('/^synthSequencerFaces$/') &&
+    count(files.audioSync, 'requiresSequencerFaceResolvedCommit(patch)') >= 3 &&
+    methodBody(files.audioSync, 'resolvedCommitTriggerCritical').includes('requiresSequencerFaceResolvedCommit(patch)') &&
+    methodBody(files.audioSync, 'shouldFlushImmediatelyForResolvedCommit').includes('requiresSequencerFaceResolvedCommit(patch)'),
+  'sequencer face config keys must route through immediate dirty-diff ProductControl commits so orbit and walker sliders update running lanes',
+);
+check(
   'audio-sync-source-core-resolved-full-snapshot-boundary',
   files.audioSync.includes('SOURCE_PRESET_ENDPOINT_RESOLVED_COMMIT_KEYS') &&
     files.audioSync.includes('SOURCE_PRESET_DATA_RESOLVED_COMMIT_KEY_PATTERNS') &&
@@ -386,6 +395,25 @@ check(
     !files.productTypes.includes("kind: 'capture-synth-lane-home'") &&
     !files.productTypes.includes("kind: 'capture-drum-lane-home'"),
   'sequencer home capture must use generated ProductEvent markers instead of the sequencer UI patch bridge',
+);
+check(
+  'generated-sequencer-capture-stopped-transport-arms-before-product-event',
+  files.synthPage.includes('const generatedSequencerCaptureControls = activeLaneUsesGeneratedRecorder ? (') &&
+    count(files.synthPage, 'captureSlot={generatedSequencerCaptureControls}') >= 2 &&
+    files.synthPage.includes('synthSequencerFaces: sequencerFaceState') &&
+    files.synthPage.includes("phase: 'waitingForStart'") &&
+    files.synthPage.includes("phase: 'recordingUntilBoundary'") &&
+    files.synthPage.includes("generatedCaptureStartArm?.phase === 'recordingUntilBoundary'") &&
+    files.host.includes('generatedSequencerCaptureTelemetryHistory.withHistory(this.withHostDiagnostics(telemetry))') &&
+    files.host.includes('generatedSequencerCaptureTelemetryHistory.clearForEvent(event, this.latestTelemetry)') &&
+    files.generatedCaptureTelemetryHistory.includes('GENERATED_SEQUENCER_CAPTURE_EVENT_HISTORY_LIMIT') &&
+    files.generatedCaptureTelemetryHistory.includes('KESSHO_PRODUCT_EVENT_IDS.GeneratedSequencerCapture') &&
+    files.generatedCaptureTelemetryHistory.includes('generatedSequencerCaptureEvents: this.events') &&
+    files.synthPage.includes('if (!isRunning) {\n      setGeneratedCaptureStartArm({\n        ...arm,\n        phase: \'waitingForStart\',\n        waitingForBoundary: true,\n        previousStep: null,') &&
+    files.synthPage.includes('if (currentStep === 0 || crossedStart) {\n        startGeneratedCapture({') &&
+    files.synthPage.includes('generatedCaptureCountIn.stop();\n      stopGeneratedCapture();') &&
+    !files.synthPage.includes('setGeneratedCaptureStartArm(null);\n      startSynthPlaybackForLaneRecording(arm.targetLaneIndex);'),
+  'generated orbit/walker capture must wait for a loop boundary to start, commit at the next loop boundary, and keep telemetry through the host',
 );
 check(
   'sequencer-controls-no-direct-productevent-enqueue',

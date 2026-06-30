@@ -72,6 +72,13 @@ export function getDecodedCoreProductAssetByteLength(asset: DecodedCoreProductAs
   return asset.channels.reduce((total, channel) => total + channel.byteLength, 0);
 }
 
+export function cloneDecodedCoreProductAssetForTransfer(asset: DecodedCoreProductAsset): DecodedCoreProductAsset {
+  return {
+    ...asset,
+    channels: asset.channels.map((channel) => new Float32Array(channel)),
+  };
+}
+
 export function resolveCoreProductAssetUrl(path: string): string {
   const base = new URL(import.meta.env.BASE_URL, window.location.origin);
   return new URL(`${CORE_PRODUCT_ASSET_BASE_PATH}/${path}`, base).toString();

@@ -592,15 +592,16 @@ function synthLaneFromState(
   lane.sequencerMode = SEQUENCER_MODE_IDS[faceSlot.mode] ?? 0;
   lane.anchorWalker = productAnchorWalkerFromConfig(faceSlot.anchorWalker, laneNumber - 1, sourceId);
   lane.orbit = productOrbitFromConfig(faceSlot.orbit, laneNumber - 1, sourceId);
+  const laneEnabledGate = lane.enabled;
   if (faceSlot.mode === 'anchorWalker') {
-    lane.enabled = faceSlot.anchorWalker.enabled;
+    lane.enabled = laneEnabledGate && faceSlot.anchorWalker.enabled;
     lane.targetSourceId = lane.anchorWalker.targetSourceId;
     lane.swing = normalizeSequencerSwing(faceSlot.anchorWalker.swing);
     lane.velocity = numberFromState(state, `${prefix}Level`, lane.velocity);
     lane.holdSeconds = coreProductSynthSequencerHoldSecondsFromState(state, lane.targetSourceId, lane.holdSeconds);
     lane.seed = Math.max(1, Math.round(faceSlot.anchorWalker.seed));
   } else if (faceSlot.mode === 'orbit') {
-    lane.enabled = faceSlot.orbit.enabled;
+    lane.enabled = laneEnabledGate && faceSlot.orbit.enabled;
     lane.targetSourceId = lane.orbit.targetSourceId;
     lane.velocity = numberFromState(state, `${prefix}Level`, lane.velocity);
     lane.holdSeconds = coreProductSynthSequencerHoldSecondsFromState(state, lane.targetSourceId, lane.holdSeconds);

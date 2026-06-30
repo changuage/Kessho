@@ -41,6 +41,7 @@ const TRANSPORT_CONTROL_KEY_PATTERNS: readonly RegExp[] = [
 const SEQUENCER_CONTROL_KEY_PATTERNS: readonly RegExp[] = [
   /^synthEuclidean/,
   /^synthEuclid[1-4]/,
+  /^synthSequencerFaces$/,
   /^drumEuclid/,
   /^chordProgression/,
 ];
@@ -134,6 +135,10 @@ function requiresSequencerTargetResolvedCommit(patch: Partial<SliderState>): boo
   return Object.keys(patch).some(isSequencerTargetPatchKey);
 }
 
+function requiresSequencerFaceResolvedCommit(patch: Partial<SliderState>): boolean {
+  return Object.keys(patch).some((key) => key === 'synthSequencerFaces');
+}
+
 function requiresSourceCoreResolvedCommit(patch: Partial<SliderState>): boolean {
   return Object.keys(patch).some(isSourceCoreResolvedCommitPatchKey);
 }
@@ -173,6 +178,7 @@ function requiresResolvedCommit(
     || requiresSequencerTransportResolvedCommit(patch)
     || requiresSequencerLaneEnabledResolvedCommit(patch)
     || requiresSequencerTargetResolvedCommit(patch)
+    || requiresSequencerFaceResolvedCommit(patch)
     || requiresSourceCoreResolvedCommit(patch)
     || requiresSourceCoreFullSnapshot(patch, reason, options)
     || reason === 'preset-load';
@@ -189,6 +195,7 @@ function resolvedCommitTriggerCritical(
     requiresSequencerTransportResolvedCommit(patch) ||
     requiresSequencerLaneEnabledResolvedCommit(patch) ||
     requiresSequencerTargetResolvedCommit(patch) ||
+    requiresSequencerFaceResolvedCommit(patch) ||
     requiresSourceCoreResolvedCommit(patch) ||
     reason === 'preset-load'
   );
@@ -210,6 +217,7 @@ function shouldFlushImmediatelyForResolvedCommit(
   if (requiresSequencerTransportResolvedCommit(patch)) return true;
   if (requiresSequencerLaneEnabledResolvedCommit(patch)) return true;
   if (requiresSequencerTargetResolvedCommit(patch)) return true;
+  if (requiresSequencerFaceResolvedCommit(patch)) return true;
   if (requiresSourceCoreResolvedCommit(patch)) return true;
   if (requiresSourceCoreFullSnapshot(patch, reason, options)) return true;
   return reason === 'preset-load';

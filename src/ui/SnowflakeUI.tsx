@@ -17,7 +17,7 @@ import { isMobileDevice } from '../platform';
 import { JourneyPresetGlyph } from './JourneyPresetGlyph';
 import { useSnowflakeV2, FX_COLORS, ENGINE_GROUPS, type EngineGroupDef, type StarDirection } from './snowflakeV2';
 import { generateSnowflake } from '../snowflake/SnowflakeGenerator';
-import type { SnowflakeParams, SnowflakeRingStyle } from '../snowflake/types';
+import type { SnowflakeLineCap, SnowflakeLineJoin, SnowflakeParams, SnowflakeRingStyle } from '../snowflake/types';
 import { getRuntimeSliderPosition, useRuntimeSliderVersion } from './runtimeSliderState';
 import { getRuntimeValue, useRuntimeValueVersion } from './runtimeValueState';
 
@@ -117,6 +117,18 @@ const SNOWFLAKE_RUNTIME_KEYS: readonly (keyof SliderState)[] = Array.from(new Se
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
+}
+
+function resolveSnowflakeLineCap(style: SnowflakeParams['style']): SnowflakeLineCap {
+  if (style.sharpness > 0.72) return 'butt';
+  if (style.sharpness < 0.28) return 'round';
+  return style.lineCap;
+}
+
+function resolveSnowflakeLineJoin(style: SnowflakeParams['style']): SnowflakeLineJoin {
+  if (style.sharpness > 0.72) return 'miter';
+  if (style.sharpness < 0.28) return 'round';
+  return style.lineJoin;
 }
 
 function getSnowflakeRuntimeNumber(
@@ -1487,12 +1499,16 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
 
             {/* Render each arm's generated snowflake paths, rotated into position */}
             {v2.arms.map((arm) => {
-              const { generated, normalizedLevel, engine, slot, isMirror } = arm;
+              const { generated, normalizedLevel, engine, slot, isMirror, params } = arm;
               const rotation = slot * 60; // 60° per slot
               const armScale = maxArmLength / 220;
-              const opacity = forceFullArmOpacity && !isMirror
+              const isZeroLevel = normalizedLevel < 0.01;
+              const opacity = forceFullArmOpacity && !isMirror && !isZeroLevel
                 ? 1
-                : (isMirror ? 0.2 : (normalizedLevel < 0.01 ? 0.2 : 1));
+                : (isMirror || isZeroLevel ? 0.2 : 1);
+              const lineCap = resolveSnowflakeLineCap(params.style);
+              const lineJoin = resolveSnowflakeLineJoin(params.style);
+              const frostOpacity = clamp01(params.style.glow);
               const localShapePaths = generated.shapePaths.filter((shape) => (
                 !shape.id.startsWith('ring-')
                 && !shape.id.startsWith('center-')
@@ -1506,6 +1522,19 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
                   transform={`translate(${centerX}, ${centerY}) rotate(${rotation}) scale(${armScale}) translate(${-generated.size / 2}, ${-generated.size / 2})`}
                   opacity={opacity * v2MasterBrightness}
                 >
+                  {/* Frost layer from generator glow, used by per-engine reverb-send aura. */}
+                  {frostOpacity > 0.01 && generated.pathLayers.map((layer) => (
+                    <path
+                      key={`frost-${layer.id}`}
+                      d={layer.d}
+                      fill="none"
+                      stroke="rgba(210, 230, 255, 0.72)"
+                      strokeWidth={(layer.strokeWidth + frostOpacity * 4.8) * SNOWFLAKE_V2_STROKE_SCALE}
+                      strokeOpacity={layer.strokeOpacity * (0.035 + frostOpacity * 0.18)}
+                      strokeLinecap={lineCap}
+                      strokeLinejoin={lineJoin}
+                    />
+                  ))}
                   {/* Path layers (arm segments by depth) */}
                   {generated.pathLayers.map((layer) => (
                     <path
@@ -1514,9 +1543,9 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
                       fill="none"
                       stroke="rgba(210, 230, 255, 0.95)"
                       strokeWidth={layer.strokeWidth * SNOWFLAKE_V2_STROKE_SCALE}
-                      strokeOpacity={forceFullArmOpacity && !isMirror ? Math.max(layer.strokeOpacity, 0.92) : layer.strokeOpacity}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
+                      strokeOpacity={forceFullArmOpacity && !isMirror && !isZeroLevel ? Math.max(layer.strokeOpacity, 0.92) : layer.strokeOpacity}
+                      strokeLinecap={lineCap}
+                      strokeLinejoin={lineJoin}
                     />
                   ))}
                   {/* Shape paths (rings, center, nodes) */}
@@ -1527,7 +1556,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
                       fill={shape.fill === '#ffffff' || shape.fill === 'white' ? 'none' : shape.fill}
                       stroke={shape.stroke === '#009ee3' ? 'rgba(210, 230, 255, 0.8)' : shape.stroke}
                       strokeWidth={shape.strokeWidth * SNOWFLAKE_V2_STROKE_SCALE}
-                      opacity={forceFullArmOpacity && !isMirror ? Math.max(shape.opacity, 0.86) : shape.opacity}
+                      opacity={forceFullArmOpacity && !isMirror && !isZeroLevel ? Math.max(shape.opacity, 0.86) : shape.opacity}
                       fillRule={shape.fillRule}
                     />
                   ))}
@@ -1793,6 +1822,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
               const hx = centerX + Math.cos(angle) * handleDist;
               const hy = centerY + Math.sin(angle) * handleDist;
               const isActive = v2.draggingArm === slot;
+              const isZeroLevel = normalizedLevel < 0.01;
               const handleR = (isActive ? 16 : 12) * scaleFactor;
               const dualLevelRange = getSnowflakeDualLevelRange(engine, sliderModes, dualSliderRanges);
               const rangePoint = (levelNorm: number) => {
@@ -1841,8 +1871,8 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
                     cx={hx}
                     cy={hy}
                     r={handleR}
-                    fill={engine.color}
-                    stroke="white"
+                    fill={isZeroLevel ? 'rgba(125,132,142,0.72)' : engine.color}
+                    stroke={isZeroLevel && !isActive ? 'rgba(210,220,230,0.62)' : 'white'}
                     strokeWidth={2}
                     style={{
                       cursor: 'grab',

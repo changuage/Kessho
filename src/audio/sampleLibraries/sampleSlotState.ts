@@ -32,6 +32,18 @@ const DEFAULT_SAMPLE_SLOT_STATE: SampleSlotState = Object.freeze({
   maxVoices: 16,
 });
 
+const DEFAULT_SAMPLE2_SLOT_STATE: SampleSlotState = Object.freeze({
+  ...DEFAULT_SAMPLE_SLOT_STATE,
+  libraryKey: 'soft-string-spurs',
+  selectionMode: 'mapped',
+  dynamicMode: 'velocity',
+  fixedDynamic: 'level-2',
+  level: 0.75,
+  attackMs: 25,
+  releaseMs: 350,
+  maxVoices: 12,
+});
+
 function fieldKey(slotId: SampleSlotId, suffix: string): string {
   return `${slotId}${suffix}`;
 }
@@ -64,10 +76,20 @@ export function getDefaultSampleSlotState(overrides: Partial<SampleSlotState> = 
   };
 }
 
+export function getDefaultSampleSlotStateForSlot(
+  slotId: SampleSlotId,
+  overrides: Partial<SampleSlotState> = {},
+): SampleSlotState {
+  return {
+    ...(slotId === 'sample2' ? DEFAULT_SAMPLE2_SLOT_STATE : DEFAULT_SAMPLE_SLOT_STATE),
+    ...overrides,
+  };
+}
+
 export function readSampleSlotState(
   state: Record<string, unknown> | null | undefined,
   slotId: SampleSlotId,
-  fallback: SampleSlotState = DEFAULT_SAMPLE_SLOT_STATE,
+  fallback: SampleSlotState = getDefaultSampleSlotStateForSlot(slotId),
 ): SampleSlotState {
   const record = state ?? {};
   return {
@@ -80,11 +102,11 @@ export function readSampleSlotState(
     fixedDynamic: enumValue(record[fieldKey(slotId, 'FixedDynamic')], SAMPLE_DYNAMIC_KEYS, fallback.fixedDynamic) as SampleDynamicKey,
     variantMode: enumValue(record[fieldKey(slotId, 'VariantMode')], SAMPLE_VARIANT_MODES, fallback.variantMode) as SampleVariantMode,
     level: clampNumber(record[fieldKey(slotId, 'Level')], fallback.level, 0, 2),
-    attackMs: clampNumber(record[fieldKey(slotId, 'AttackMs')], fallback.attackMs, 0, 5000),
-    decayMs: clampNumber(record[fieldKey(slotId, 'DecayMs')], fallback.decayMs, 10, 4000),
+    attackMs: clampNumber(record[fieldKey(slotId, 'AttackMs')], fallback.attackMs, 1, 16000),
+    decayMs: clampNumber(record[fieldKey(slotId, 'DecayMs')], fallback.decayMs, 10, 8000),
     sustain: clampNumber(record[fieldKey(slotId, 'Sustain')], fallback.sustain, 0, 1),
-    holdMs: clampNumber(record[fieldKey(slotId, 'HoldMs')], fallback.holdMs, 0, 4000),
-    releaseMs: clampNumber(record[fieldKey(slotId, 'ReleaseMs')], fallback.releaseMs, 0, 10000),
+    holdMs: clampNumber(record[fieldKey(slotId, 'HoldMs')], fallback.holdMs, 0, 20000),
+    releaseMs: clampNumber(record[fieldKey(slotId, 'ReleaseMs')], fallback.releaseMs, 10, 30000),
     loopEnabled: record[fieldKey(slotId, 'LoopEnabled')] !== false,
     maxVoices: clampInteger(record[fieldKey(slotId, 'MaxVoices')], fallback.maxVoices, 1, 64),
   };

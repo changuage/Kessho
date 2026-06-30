@@ -127,7 +127,7 @@ function filterByDynamic(
   targetMidi: number,
   velocity: number,
 ): readonly NormalizedSampleDescriptor[] {
-  if (slot.dynamicMode === 'legacy-piano-parity') {
+  if (slot.dynamicMode === 'legacy-piano-parity' && slot.libraryKey === 'piano') {
     const variant = choosePianoSampleVariant(targetMidi, velocity / 127);
     return samples.filter((sample) => sample.dynamic === variant);
   }

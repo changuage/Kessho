@@ -8,6 +8,7 @@
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoProductSchema.h"
 #include "../src/product/KesshoProductEngineInternal.h"
+#include "../src/product/generated/SampleLibraryRegistry.generated.h"
 #include "ProductSnapshotTestHelpers.h"
 
 namespace {
@@ -581,6 +582,60 @@ int main() {
   require(piano_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_PIANO_DELAY_A_SEND] > 0.00001f, "piano Delay A send graph tap stayed silent");
   require(piano_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_PIANO_DELAY_B_SEND] > 0.00001f, "piano Delay B send graph tap stayed silent");
   require(piano_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_PIANO_GRANULAR_SEND] > 0.00001f, "piano granular send graph tap stayed silent");
+
+  kessho_product_reset(engine);
+  enableGraphTaps(engine, "sample2 graph taps enable failed");
+  snapshot = makeSnapshot();
+  KesshoProductSourceSnapshot& sample2_source = snapshot.sources[KESSHO_PRODUCT_SOURCE_SAMPLE2 - 1u];
+  sample2_source.enabled = 1;
+  sample2_source.level = 0.7f;
+  sample2_source.reverb_send = 0.25f;
+  sample2_source.delay_a_send = 0.2f;
+  sample2_source.delay_b_send = 0.18f;
+  sample2_source.granular_send = 0.22f;
+  sample2_source.sample_library_id = kessho::product::generated::kSampleLibraryIdSoftStringSpurs;
+  sample2_source.sample_role_id = kessho::product::generated::kSampleRoleIdHarmonic;
+  sample2_source.sample_articulation_id = kessho::product::generated::kSampleArticulationIdHarmonic;
+  sample2_source.sample_selection_mode = KESSHO_PRODUCT_SAMPLE_SELECTION_MAPPED;
+  sample2_source.sample_dynamic_mode = KESSHO_PRODUCT_SAMPLE_DYNAMIC_FIXED;
+  sample2_source.sample_fixed_dynamic_id = kessho::product::generated::kSampleDynamicIdSingle;
+  sample2_source.sample_loop_enabled = 1;
+  sample2_source.sample_max_voices = 12u;
+  std::vector<float> sample2_graph_sample(4096);
+  for (uint32_t i = 0; i < sample2_graph_sample.size(); ++i) {
+    sample2_graph_sample[i] = std::sin(static_cast<float>(i) * 0.05f) * 0.35f;
+  }
+  const float* sample2_graph_channels[1] = {sample2_graph_sample.data()};
+  require(
+      kessho_product_register_asset_buffer(engine, 8201u, sample2_graph_channels, 1u, static_cast<uint32_t>(sample2_graph_sample.size()), 24000.0, KESSHO_PRODUCT_ASSET_SAMPLE | KESSHO_PRODUCT_ASSET_LOOP) ==
+          KESSHO_PRODUCT_OK,
+      "sample2 graph asset registration failed");
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "sample2 graph tap snapshot load failed");
+  KesshoProductEvent sample2_tap_note{};
+  sample2_tap_note.event_kind = KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON;
+  sample2_tap_note.target_id = KESSHO_PRODUCT_SOURCE_SAMPLE2;
+  sample2_tap_note.value = 60.0f;
+  sample2_tap_note.value2 = 0.9f;
+  sample2_tap_note.value3 = 0.2f;
+  require(kessho_product_enqueue_event(engine, &sample2_tap_note) == KESSHO_PRODUCT_OK, "graph tap sample2 note enqueue failed");
+  float sample2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_COUNT]{};
+  for (uint32_t block = 0; block < 32u; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(engine, left.data(), right.data(), static_cast<uint32_t>(left.size()));
+    for (uint32_t tap = KESSHO_PRODUCT_GRAPH_TAP_REVERB_INPUT; tap < KESSHO_PRODUCT_GRAPH_TAP_COUNT; ++tap) {
+      require(
+          kessho_product_get_graph_tap(engine, tap, stem_l.data(), stem_r.data(), 128) == KESSHO_PRODUCT_OK,
+          "sample2 graph tap read failed");
+      sample2_graph_tap_peaks[tap] = std::max(sample2_graph_tap_peaks[tap], std::max(peak(stem_l), peak(stem_r)));
+    }
+  }
+  require(sample2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SAMPLE2_DRY] > 0.00001f, "sample2 dry graph tap stayed silent");
+  require(sample2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SAMPLE2_REVERB_SEND] > 0.00001f, "sample2 reverb send graph tap stayed silent");
+  require(sample2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SAMPLE2_DELAY_A_SEND] > 0.00001f, "sample2 Delay A send graph tap stayed silent");
+  require(sample2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SAMPLE2_DELAY_B_SEND] > 0.00001f, "sample2 Delay B send graph tap stayed silent");
+  require(sample2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SAMPLE2_GRANULAR_SEND] > 0.00001f, "sample2 granular send graph tap stayed silent");
+  require(sample2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_PIANO_DRY] < 0.000001f, "sample2 leaked into the piano/sample1 dry graph tap");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();

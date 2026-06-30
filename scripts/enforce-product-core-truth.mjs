@@ -26,7 +26,9 @@ const productProxy = read('src/audio/product/ProductEngineProxy.ts');
 const productRuntimePolicy = read('src/audio/product/runtime/ProductRuntimePolicy.ts');
 const productionEngineFactory = read('src/audio/product/runtime/createProductionProductEngine.ts');
 const referenceRuntime = read('src/audio/referenceAudioRuntime.ts');
+const referenceWebTs = read('src/audio/reference/webTs/engine.ts');
 const selectedRuntime = read('src/audio/product/SelectedProductRuntime.ts');
+const legacyCoreHost = read('src/audio/coreEngineHost.ts');
 
 if (!productProxy.includes("return 'core-product';")) {
   failures.push('ProductEngineProxy must report core-product as the production runtime mode');
@@ -54,6 +56,21 @@ if (!productionEngineFactory.includes('throw new ProductCoreUnavailableError('))
 }
 if (!selectedRuntime.includes("if (runtimeMode === 'core-product')")) {
   failures.push('SelectedProductRuntime must refuse pre-init reference dispatch for core-product mode');
+}
+if (legacyCoreHost.includes("source === 'piano' || source === 'sample1'")) {
+  failures.push('legacy Core host must not translate Sample 1 into the Piano sample fallback');
+}
+if (!referenceWebTs.includes("if (randomSource === 'sample1' || randomSource === 'sample2') return false;")) {
+  failures.push('web-ts reference runtime must not enable Sample 1/2 playback fallback');
+}
+if (/randomSource === 'sample1'[\s\S]{0,180}this\.playPianoNote\(frequency, velocity\);/.test(referenceWebTs)) {
+  failures.push('web-ts reference runtime must not play Sample 1 through Piano fallback');
+}
+if (
+  referenceWebTs.includes('sample1: { node: this.pianoSpatialChain') ||
+  referenceWebTs.includes('sample2: { node: this.pianoSpatialChain')
+) {
+  failures.push('web-ts reference runtime must not expose Sample 1/2 as Piano recordable buses');
 }
 
 const allowedReferenceImports = new Set([

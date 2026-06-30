@@ -4,10 +4,16 @@ import { buildCoreProductSnapshotDiff } from './CoreProductRuntimeAdapter';
 import { CORE_PRODUCT_SOURCE_IDS, resolveCoreProductRangeTargets } from './coreProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 import {
+  SAMPLE_DYNAMIC_IDS_BY_KEY,
+  SAMPLE_LIBRARY_IDS_BY_KEY,
+} from './sampleLibraries/generated/sampleLibraryRegistry.generated';
+import {
   normalizeSequencerChainState,
   resolveSequencerChainPosition,
 } from './sequencerChain';
 import { createDefaultSynthSequencerFaceState } from '../ui/sequencer/sequencerModeTypes';
+import { applySampleLibrarySelectionDefaultsToFlatState } from './sampleLibraries/sampleLibrarySelectionDefaults';
+import type { SampleLibraryKey, SampleSlotId } from './sampleLibraries/SampleLibraryTypes';
 import {
   ORBIT_EVEN_REVERSE_THRESHOLD,
   TAU,
@@ -119,6 +125,8 @@ const synthSourceAliasCases = [
   ['pad', CORE_PRODUCT_SOURCE_IDS.pad1],
   ['pad1', CORE_PRODUCT_SOURCE_IDS.pad1],
   ['pad2', CORE_PRODUCT_SOURCE_IDS.pad2],
+  ['sample1', CORE_PRODUCT_SOURCE_IDS.sample1],
+  ['sample2', CORE_PRODUCT_SOURCE_IDS.sample2],
   ['synth1', CORE_PRODUCT_SOURCE_IDS.pad1],
 ] as const;
 
@@ -135,11 +143,100 @@ for (const [sourceValue, expectedSourceId] of synthSourceAliasCases) {
   );
 }
 
+{
+  const sample2HydratedFallbackSnapshot = createCoreProductSnapshot({
+    sample2Enabled: true,
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1Source: 'sample2',
+  });
+  const sample2Source = sample2HydratedFallbackSnapshot.sources.find((source) => source.sourceId === CORE_PRODUCT_SOURCE_IDS.sample2);
+  assert(sample2Source, 'Sample 2 source should exist when enabled without explicit sample2LibraryKey');
+  assert.equal(
+    sample2Source.sampleLibraryId,
+    SAMPLE_LIBRARY_IDS_BY_KEY['soft-string-spurs'],
+    'Sample 2 missing library state should hydrate to the same Soft String Spurs library shown by the UI',
+  );
+  assert.equal(sample2Source.sampleSelectionMode, 1, 'Sample 2 missing setup should hydrate mapped sample selection');
+  assert.equal(sample2Source.sampleDynamicMode, 0, 'Sample 2 missing setup should hydrate velocity dynamic mode');
+  assert.equal(
+    sample2Source.sampleFixedDynamicId,
+    SAMPLE_DYNAMIC_IDS_BY_KEY['level-2'],
+    'Sample 2 missing setup should preserve the delivered Soft String Spurs fixed-dynamic fallback',
+  );
+  assert.equal(sample2Source.enabled, true, 'Sample 2 missing setup should still honor the enabled flag');
+  assert.equal(sample2HydratedFallbackSnapshot.synthLanes[0]?.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2);
+}
+
+for (const slotId of ['sample1', 'sample2'] as const satisfies readonly SampleSlotId[]) {
+  const stateForLibrary = (libraryKey: SampleLibraryKey) => applySampleLibrarySelectionDefaultsToFlatState(
+    {},
+    slotId,
+    libraryKey,
+  );
+  const baseState = stateForLibrary('piano');
+  const baseSnapshot = createCoreProductSnapshot(baseState);
+  const nextLibrarySnapshot = createCoreProductSnapshot(stateForLibrary('soft-string-spurs'));
+  const libraryDiff = buildCoreProductSnapshotDiff(baseSnapshot, nextLibrarySnapshot);
+  const expectedSourceId = slotId === 'sample1' ? CORE_PRODUCT_SOURCE_IDS.sample1 : CORE_PRODUCT_SOURCE_IDS.sample2;
+  const expectedSampleSource = nextLibrarySnapshot.sources.find((source) => source.sourceId === expectedSourceId);
+  assert(expectedSampleSource, `${slotId} source snapshot should exist after library change`);
+  assert.equal(libraryDiff.applied, true, `${slotId} library changes should stay on the live dirty-diff path`);
+  assert.equal(
+    libraryDiff.applied && libraryDiff.events.some((event) => (
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SourceSampleLibraryId &&
+      event.targetId === expectedSourceId &&
+      event.value === expectedSampleSource.sampleLibraryId
+    )),
+    true,
+    `${slotId} library changes should emit a live sample library event`,
+  );
+
+  const levelDiff = buildCoreProductSnapshotDiff(baseSnapshot, createCoreProductSnapshot({
+    ...baseState,
+    [`${slotId}Level`]: 0.42,
+  }));
+  assert.equal(levelDiff.applied, true, `${slotId} level changes should stay on the live dirty-diff path`);
+  assert(
+    levelDiff.applied && levelDiff.events.some((event) => (
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SourceLevel &&
+      event.targetId === expectedSourceId
+    )),
+    `${slotId} level changes should emit a source level event`,
+  );
+
+  const envelopeDiff = buildCoreProductSnapshotDiff(baseSnapshot, createCoreProductSnapshot({
+    ...baseState,
+    [`${slotId}AttackMs`]: 12000,
+    [`${slotId}DecayMs`]: 6000,
+    [`${slotId}HoldMs`]: 19000,
+    [`${slotId}ReleaseMs`]: 24000,
+  }));
+  assert.equal(envelopeDiff.applied, true, `${slotId} ADSR changes should stay on the live dirty-diff path`);
+  for (const [paramId, expectedValue] of [
+    [KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds, 12],
+    [KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds, 6],
+    [KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds, 19],
+    [KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds, 24],
+  ] as const) {
+    assert(
+      envelopeDiff.applied && envelopeDiff.events.some((event) => (
+        event.paramId === paramId &&
+        event.targetId === expectedSourceId &&
+        Math.abs((event.value ?? -1) - expectedValue) < 0.0001
+      )),
+      `${slotId} ADSR change should emit Product source param ${paramId}`,
+    );
+  }
+}
+
 for (const mode of ['anchorWalker', 'orbit'] as const) {
   for (const [sourceValue, expectedSourceId] of [
     ['pad1', CORE_PRODUCT_SOURCE_IDS.pad1],
     ['pad2', CORE_PRODUCT_SOURCE_IDS.pad2],
     ['lead1', CORE_PRODUCT_SOURCE_IDS.lead1],
+    ['sample1', CORE_PRODUCT_SOURCE_IDS.sample1],
+    ['sample2', CORE_PRODUCT_SOURCE_IDS.sample2],
   ] as const) {
     const faces = createDefaultSynthSequencerFaceState();
     faces.slots[0] = {
@@ -171,6 +268,80 @@ for (const mode of ['anchorWalker', 'orbit'] as const) {
       );
     }
   }
+}
+
+{
+  for (const mode of ['anchorWalker', 'orbit'] as const) {
+    const faces = createDefaultSynthSequencerFaceState();
+    faces.slots[0] = {
+      ...faces.slots[0]!,
+      mode,
+    };
+    const snapshot = createCoreProductSnapshot({
+      synthEuclideanMasterEnabled: true,
+      synthEuclid1Enabled: false,
+      synthSequencerFaces: faces,
+    });
+    assert.equal(
+      snapshot.synthLanes[0]?.enabled,
+      false,
+      `${mode} should respect the parent synth lane mute gate`,
+    );
+  }
+}
+
+{
+  const faces = createDefaultSynthSequencerFaceState();
+  const firstSlot = faces.slots[0]!;
+  faces.slots[0] = {
+    ...firstSlot,
+    mode: 'orbit',
+    orbit: {
+      ...firstSlot.orbit,
+      targetSourceId: CORE_PRODUCT_SOURCE_IDS.sample2,
+      notes: [
+        createDefaultOrbitNote(0, {
+          targetSourceId: CORE_PRODUCT_SOURCE_IDS.sample2,
+        }),
+      ],
+    },
+  };
+  const snapshot = createCoreProductSnapshot({
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1Source: 'sample2',
+    synthSequencerFaces: faces,
+  });
+  assert.equal(snapshot.synthLanes[0]?.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2, 'Orbit lane should preserve Sample 2 as target source');
+  assert.equal(snapshot.synthLanes[0]?.orbit.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2, 'Orbit config should preserve Sample 2 as target source');
+  assert.equal(snapshot.synthLanes[0]?.orbit.notes[0]?.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2, 'Orbit note override should preserve Sample 2 as target source');
+}
+
+{
+  const faces = createDefaultSynthSequencerFaceState();
+  const firstSlot = faces.slots[0]!;
+  faces.slots[0] = {
+    ...firstSlot,
+    mode: 'anchorWalker',
+    anchorWalker: {
+      ...firstSlot.anchorWalker,
+      targetSourceId: CORE_PRODUCT_SOURCE_IDS.sample2,
+      layers: firstSlot.anchorWalker.layers.map((layer, index) => (
+        index === 0
+          ? { ...layer, targetSourceId: CORE_PRODUCT_SOURCE_IDS.sample2 }
+          : layer
+      )),
+    },
+  };
+  const snapshot = createCoreProductSnapshot({
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1Source: 'sample2',
+    synthSequencerFaces: faces,
+  });
+  assert.equal(snapshot.synthLanes[0]?.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2, 'Walker lane should preserve Sample 2 as target source');
+  assert.equal(snapshot.synthLanes[0]?.anchorWalker.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2, 'Walker config should preserve Sample 2 as target source');
+  assert.equal(snapshot.synthLanes[0]?.anchorWalker.layers[0]?.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2, 'Walker layer override should preserve Sample 2 as target source');
 }
 
 {

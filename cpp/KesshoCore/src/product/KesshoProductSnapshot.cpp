@@ -634,11 +634,12 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     const bool lead_source =
         source.source_id == KESSHO_PRODUCT_SOURCE_LEAD1 ||
         source.source_id == KESSHO_PRODUCT_SOURCE_LEAD2;
+    const bool extended_envelope_source = lead_source || isSampleProductSource(source.source_id);
     sources[i].attack_seconds = source.attack_seconds > 0.0f && std::isfinite(source.attack_seconds)
-        ? clampFloat(source.attack_seconds, 0.001f, lead_source ? 16.0f : 2.0f)
+        ? clampFloat(source.attack_seconds, 0.001f, extended_envelope_source ? 16.0f : 2.0f)
         : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS;
     sources[i].decay_seconds = source.decay_seconds > 0.0f && std::isfinite(source.decay_seconds)
-        ? clampFloat(source.decay_seconds, 0.01f, lead_source ? 8.0f : 4.0f)
+        ? clampFloat(source.decay_seconds, 0.01f, extended_envelope_source ? 8.0f : 4.0f)
         : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS;
     sources[i].sustain = std::isfinite(source.sustain)
         ? clampFloat(source.sustain, 0.0f, 1.0f)
@@ -647,7 +648,7 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
         ? clampFloat(source.hold_seconds, 0.0f, lead_source ? 44.0f : 20.0f)
         : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS;
     sources[i].release_seconds = source.release_seconds > 0.0f && std::isfinite(source.release_seconds)
-        ? clampFloat(source.release_seconds, 0.01f, lead_source ? 30.0f : 8.0f)
+        ? clampFloat(source.release_seconds, 0.01f, extended_envelope_source ? 30.0f : 8.0f)
         : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS;
     sources[i].sample_library_id = source.sample_library_id == 0u ? kSampleLibraryPiano : source.sample_library_id;
     sources[i].sample_role_id = source.sample_role_id;

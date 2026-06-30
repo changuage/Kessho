@@ -4,7 +4,7 @@ import {
   createCoreProductChordGeneratorSchedule,
   createCoreProductChordSequencerSchedule,
 } from './coreProductArrangementPadChord';
-import { createPadChordPhrasePreview } from './simpleSequencerPhrasePreview';
+import { createPadChordPhrasePreview, createRandomTimingPhrasePreview } from './simpleSequencerPhrasePreview';
 import { arrangementRestartKey } from './coreProductArrangementVoiceMapping';
 import { CoreProductArrangementScheduler } from './coreProductArrangementScheduler';
 import { createHarmonyState } from './harmony';
@@ -29,6 +29,7 @@ import {
   resolveHarmonyIntentToNotePool,
   resolveProductHarmonyState,
 } from './CoreProductHarmonyControl';
+import { sampleDescriptorForSlotNote, samplePredictionState } from './product/host/CoreProductSampleAssetResolver';
 
 function assertNoWebExactPatchFields(source: unknown, label: string): void {
   assert(source && typeof source === 'object', `${label} source should exist`);
@@ -301,6 +302,297 @@ assert.equal(
   2,
   'Product scheduler should regenerate pad chord immediately when voicing spread changes',
 );
+
+const postedSampleChordEvents: Array<{ eventKind: number; targetId?: number; value?: number; value2?: number }> = [];
+const ensuredSampleChordAssets: Array<{ slotId: string; midi: number; velocity: number }> = [];
+const sampleChordOrder: string[] = [];
+(globalThis as { window?: unknown }).window = {
+  setTimeout: () => 1,
+  clearTimeout: () => undefined,
+};
+try {
+  const scheduler = new CoreProductArrangementScheduler(
+    (event) => {
+      postedSampleChordEvents.push({
+        eventKind: event.eventKind,
+        targetId: event.targetId,
+        value: event.value,
+        value2: event.value2,
+      });
+      if (event.eventKind === KESSHO_PRODUCT_EVENT_IDS.ManualNoteOn) {
+        sampleChordOrder.push(`post:${event.targetId}:${Math.round(event.value ?? -1)}`);
+      }
+    },
+    () => null,
+    undefined,
+    async (slotId, midi, velocity) => {
+      ensuredSampleChordAssets.push({ slotId, midi, velocity });
+      sampleChordOrder.push(`ensure:${slotId}:${Math.round(midi)}`);
+    },
+  );
+  scheduler.start({
+    ...DEFAULT_STATE,
+    rootNote: 0,
+    scaleMode: 'manual',
+    manualScale: 'Major (Ionian)',
+    tension: 0.3,
+    chordRate: 32,
+    voicingSpread: 0.5,
+    detune: 0,
+    seedWindow: 'hour',
+    synthChordGeneratorEnabled: true,
+    synthChordGeneratorSource: 'sample1',
+    synthChordGeneratorVoiceCount: 2,
+    sample1Enabled: true,
+    sample1LibraryKey: 'piano',
+    sample1DynamicMode: 'legacy-piano-parity',
+    waveSpread: 0,
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  scheduler.stop();
+} finally {
+  (globalThis as { window?: unknown }).window = originalWindow;
+}
+const postedSampleManualNotes = postedSampleChordEvents.filter((event) => (
+  event.eventKind === KESSHO_PRODUCT_EVENT_IDS.ManualNoteOn &&
+  event.targetId === KESSHO_PRODUCT_SOURCE_IDS.Sample1
+));
+assert.equal(postedSampleManualNotes.length, 2, 'Product scheduler should post Sample 1 Chord Generator notes');
+assert.equal(ensuredSampleChordAssets.length, 2, 'Product scheduler should load Sample 1 assets before generated note playback');
+assert(ensuredSampleChordAssets.every((entry) => entry.slotId === 'sample1'), 'generated Sample 1 notes should load through the sample1 slot');
+assert.deepEqual(
+  ensuredSampleChordAssets.map((entry) => Math.round(entry.midi)),
+  postedSampleManualNotes.map((event) => Math.round(event.value ?? -1)),
+  'loaded sample asset MIDI should match scheduled Product note MIDI',
+);
+for (const note of postedSampleManualNotes) {
+  const midi = Math.round(note.value ?? -1);
+  assert(
+    sampleChordOrder.indexOf(`ensure:sample1:${midi}`) >= 0 &&
+      sampleChordOrder.indexOf(`ensure:sample1:${midi}`) < sampleChordOrder.indexOf(`post:${KESSHO_PRODUCT_SOURCE_IDS.Sample1}:${midi}`),
+    `Sample 1 asset for MIDI ${midi} should load before the note event is posted`,
+  );
+}
+
+const sample1NonPianoState = samplePredictionState({
+  ...DEFAULT_STATE,
+  sample1Enabled: true,
+  sample1LibraryKey: 'soft-string-spurs',
+  sample1Role: 'harmonic',
+  sample1Articulation: 'harmonic',
+  sample1SelectionMode: 'mapped',
+  sample1DynamicMode: 'legacy-piano-parity',
+  sample1FixedDynamic: 'single',
+  sample1LoopEnabled: true,
+});
+const sample1NonPianoDescriptor = sampleDescriptorForSlotNote(sample1NonPianoState, 'sample1', 60, 0.75);
+assert.equal(sample1NonPianoDescriptor?.libraryKey, 'soft-string-spurs', 'Sample 1 non-piano library should resolve even with stale legacy piano dynamic mode');
+
+const sample1VelocityLayerState = samplePredictionState({
+  ...DEFAULT_STATE,
+  sample1Enabled: true,
+  sample1LibraryKey: 'soft-string-spurs',
+  sample1Role: 'sustain',
+  sample1Articulation: 'core',
+  sample1SelectionMode: 'mapped',
+  sample1DynamicMode: 'velocity',
+  sample1FixedDynamic: 'level-1',
+  sample1LoopEnabled: true,
+});
+const sample1VelocityDescriptor = sampleDescriptorForSlotNote(sample1VelocityLayerState, 'sample1', 60, 0.75);
+assert(
+  sample1VelocityDescriptor?.sampleId.includes('level-3'),
+  'Product sample asset resolver should convert normalized note velocity before choosing velocity-layered Sample 1 assets',
+);
+
+const sample2NonPianoState = samplePredictionState({
+  ...DEFAULT_STATE,
+  sample2Enabled: true,
+  sample2LibraryKey: 'archive-found-strings-001',
+  sample2Role: 'profile',
+  sample2Articulation: 'found-string-loop',
+  sample2SelectionMode: 'mapped',
+  sample2DynamicMode: 'velocity',
+  sample2FixedDynamic: 'single',
+  sample2LoopEnabled: true,
+});
+const sample2NonPianoDescriptor = sampleDescriptorForSlotNote(sample2NonPianoState, 'sample2', 61, 0.75);
+assert.equal(sample2NonPianoDescriptor?.libraryKey, 'archive-found-strings-001', 'Sample 2 non-piano library should resolve from the delivered sample registry');
+
+const postedSample2ChordEvents: Array<{ eventKind: number; targetId?: number; value?: number }> = [];
+const ensuredSample2ChordAssets: Array<{ slotId: string; midi: number; velocity: number }> = [];
+(globalThis as { window?: unknown }).window = {
+  setTimeout: () => 1,
+  clearTimeout: () => undefined,
+};
+try {
+  const scheduler = new CoreProductArrangementScheduler(
+    (event) => postedSample2ChordEvents.push({ eventKind: event.eventKind, targetId: event.targetId, value: event.value }),
+    () => null,
+    undefined,
+    async (slotId, midi, velocity) => {
+      ensuredSample2ChordAssets.push({ slotId, midi, velocity });
+    },
+  );
+  scheduler.start({
+    ...DEFAULT_STATE,
+    rootNote: 0,
+    scaleMode: 'manual',
+    manualScale: 'Major (Ionian)',
+    tension: 0.3,
+    chordRate: 32,
+    voicingSpread: 0.5,
+    detune: 0,
+    seedWindow: 'hour',
+    synthChordGeneratorEnabled: true,
+    synthChordGeneratorSource: 'sample2',
+    synthChordGeneratorVoiceCount: 2,
+    sample2Enabled: true,
+    sample2LibraryKey: 'archive-found-strings-001',
+    sample2Role: 'profile',
+    sample2Articulation: 'found-string-loop',
+    sample2SelectionMode: 'mapped',
+    sample2DynamicMode: 'velocity',
+    sample2FixedDynamic: 'single',
+    waveSpread: 0,
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  scheduler.stop();
+} finally {
+  (globalThis as { window?: unknown }).window = originalWindow;
+}
+const postedSample2ManualNotes = postedSample2ChordEvents.filter((event) => (
+  event.eventKind === KESSHO_PRODUCT_EVENT_IDS.ManualNoteOn &&
+  event.targetId === KESSHO_PRODUCT_SOURCE_IDS.Sample2
+));
+assert.equal(postedSample2ManualNotes.length, 2, 'Product scheduler should post Sample 2 Chord Generator notes');
+assert.equal(ensuredSample2ChordAssets.length, 2, 'Product scheduler should load Sample 2 assets before generated note playback');
+assert(ensuredSample2ChordAssets.every((entry) => entry.slotId === 'sample2'), 'generated Sample 2 notes should load through the sample2 slot');
+
+const postedSample2ChordUpdateEvents: Array<{ eventKind: number; targetId?: number; value?: number }> = [];
+const ensuredSample2ChordUpdateAssets: Array<{ slotId: string; midi: number; velocity: number }> = [];
+(globalThis as { window?: unknown }).window = {
+  setTimeout: () => 1,
+  clearTimeout: () => undefined,
+};
+try {
+  const scheduler = new CoreProductArrangementScheduler(
+    (event) => postedSample2ChordUpdateEvents.push({ eventKind: event.eventKind, targetId: event.targetId, value: event.value }),
+    () => null,
+    undefined,
+    async (slotId, midi, velocity) => {
+      ensuredSample2ChordUpdateAssets.push({ slotId, midi, velocity });
+    },
+  );
+  const baseState = {
+    ...DEFAULT_STATE,
+    rootNote: 0,
+    scaleMode: 'manual' as const,
+    manualScale: 'Major (Ionian)',
+    tension: 0.3,
+    chordRate: 32,
+    voicingSpread: 0.5,
+    detune: 0,
+    seedWindow: 'hour' as const,
+    synthChordGeneratorEnabled: false,
+    synthChordGeneratorSource: 'sample1' as const,
+    synthChordGeneratorVoiceCount: 2,
+    sample1Enabled: true,
+    sample2Enabled: false,
+    waveSpread: 0,
+  };
+  scheduler.start(baseState);
+  scheduler.update({
+    ...baseState,
+    synthChordGeneratorEnabled: true,
+    synthChordGeneratorSource: 'sample2' as const,
+    sample2Enabled: true,
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  scheduler.stop();
+} finally {
+  (globalThis as { window?: unknown }).window = originalWindow;
+}
+assert.equal(
+  postedSample2ChordUpdateEvents.filter((event) => event.eventKind === KESSHO_PRODUCT_EVENT_IDS.ManualNoteOn && event.targetId === KESSHO_PRODUCT_SOURCE_IDS.Sample2).length,
+  2,
+  'Product scheduler should start Sample 2 Chord Generator notes when enabled during playback',
+);
+assert.equal(ensuredSample2ChordUpdateAssets.length, 2, 'running Chord Generator enable should load Sample 2 assets before playback');
+assert(ensuredSample2ChordUpdateAssets.every((entry) => entry.slotId === 'sample2'), 'running Chord Generator enable should load through the sample2 slot');
+
+const postedSample2RandomEvents: Array<{ eventKind: number; targetId?: number; value?: number }> = [];
+const ensuredSample2RandomAssets: Array<{ slotId: string; midi: number; velocity: number }> = [];
+const queuedSample2RandomTimers: Array<() => void> = [];
+(globalThis as { window?: unknown }).window = {
+  setTimeout: (callback: () => void) => {
+    queuedSample2RandomTimers.push(callback);
+    return queuedSample2RandomTimers.length;
+  },
+  clearTimeout: () => undefined,
+};
+try {
+  const scheduler = new CoreProductArrangementScheduler(
+    (event) => postedSample2RandomEvents.push({ eventKind: event.eventKind, targetId: event.targetId, value: event.value }),
+    () => null,
+    undefined,
+    async (slotId, midi, velocity) => {
+      ensuredSample2RandomAssets.push({ slotId, midi, velocity });
+    },
+  );
+  const baseState = {
+    ...DEFAULT_STATE,
+    rootNote: 0,
+    scaleMode: 'manual' as const,
+    manualScale: 'Major (Ionian)',
+    tension: 0.3,
+    chordRate: 32,
+    voicingSpread: 0.5,
+    detune: 0,
+    seedWindow: 'hour' as const,
+    leadRandomEnabled: false,
+    leadRandomSource: 'lead1' as const,
+    lead1Density: 0.5,
+    lead1Octave: 0,
+    lead1OctaveRange: 2,
+    sample2Enabled: false,
+  };
+  scheduler.start(baseState);
+  scheduler.update({
+    ...baseState,
+    leadRandomEnabled: true,
+    leadRandomSource: 'sample2' as const,
+    sample2Enabled: true,
+    sample2LibraryKey: 'archive-found-strings-001',
+    sample2Role: 'profile',
+    sample2Articulation: 'found-string-loop',
+    sample2SelectionMode: 'mapped',
+    sample2DynamicMode: 'velocity',
+    sample2FixedDynamic: 'single',
+  });
+  const sample2RandomNoteCount = () => postedSample2RandomEvents.filter((event) => (
+    event.eventKind === KESSHO_PRODUCT_EVENT_IDS.ManualNoteOn &&
+    event.targetId === KESSHO_PRODUCT_SOURCE_IDS.Sample2
+  )).length;
+  for (let guard = 0; guard < 80 && sample2RandomNoteCount() === 0 && queuedSample2RandomTimers.length > 0; guard += 1) {
+    queuedSample2RandomTimers.shift()?.();
+    await Promise.resolve();
+    await Promise.resolve();
+  }
+  scheduler.stop();
+} finally {
+  (globalThis as { window?: unknown }).window = originalWindow;
+}
+const postedSample2RandomNotes = postedSample2RandomEvents.filter((event) => (
+  event.eventKind === KESSHO_PRODUCT_EVENT_IDS.ManualNoteOn &&
+  event.targetId === KESSHO_PRODUCT_SOURCE_IDS.Sample2
+));
+assert(postedSample2RandomNotes.length > 0, 'Product scheduler should start Sample 2 Random Timing notes when enabled during playback');
+assert.equal(ensuredSample2RandomAssets.length, postedSample2RandomNotes.length, 'Random Timing Sample 2 notes should wait for Sample 2 assets');
+assert(ensuredSample2RandomAssets.every((entry) => entry.slotId === 'sample2'), 'Random Timing should load through the sample2 slot');
 
 const postedMaskedPadEvents: Array<{ eventKind: number; targetId?: number; value?: number }> = [];
 (globalThis as { window?: unknown }).window = {
@@ -1089,6 +1381,84 @@ assert.equal(auditionState.resolvedHarmonyFrame.activeSource, 'baseline', 'audit
     restartKey,
     'CoF drift config edits should update at the next phrase without resetting the active step',
   );
+}
+
+{
+  const simpleSequencerState = {
+    ...DEFAULT_STATE,
+    rootNote: 0,
+    scaleMode: 'manual' as const,
+    manualScale: 'Major (Ionian)',
+    chordRate: 4,
+    phraseLength: 16,
+    sequencerMasterBPM: 120,
+    padEnabled: true,
+    pad2Enabled: true,
+    leadEnabled: true,
+    lead2Enabled: true,
+    sample1Enabled: true,
+    sample2Enabled: true,
+    pianoEnabled: false,
+    synthChordGeneratorVoiceCount: 2,
+    lead1Density: 0.5,
+    lead1Octave: 0,
+    lead1OctaveRange: 2,
+  };
+  const chordOnlyPreview = createPadChordPhrasePreview({
+    ...simpleSequencerState,
+    synthChordGeneratorEnabled: true,
+    synthChordGeneratorSource: 'pad2' as const,
+    leadRandomEnabled: false,
+    leadRandomSource: 'sample1' as const,
+  });
+  assert.equal(chordOnlyPreview.enabled, true, 'Chord Generator should keep its own enabled state');
+  assert(chordOnlyPreview.notes.length > 0, 'Chord Generator should preview notes when Random Timing is off');
+  assert(chordOnlyPreview.notes.every((note) => note.source === 'pad2'), 'Chord Generator source should not follow Random Timing source');
+
+  const randomOnlyPreview = createRandomTimingPhrasePreview({
+    ...simpleSequencerState,
+    synthChordGeneratorEnabled: false,
+    synthChordGeneratorSource: 'pad1' as const,
+    leadRandomEnabled: true,
+    leadRandomSource: 'sample2' as const,
+  });
+  assert.equal(randomOnlyPreview.enabled, true, 'Random Timing should keep its own enabled state');
+  assert(randomOnlyPreview.notes.length > 0, 'Random Timing should preview notes when Chord Generator is off');
+  assert(randomOnlyPreview.notes.every((note) => note.source === 'sample2'), 'Random Timing source should not follow Chord Generator source');
+
+  const independentChordPreview = createPadChordPhrasePreview({
+    ...simpleSequencerState,
+    synthChordGeneratorEnabled: true,
+    synthChordGeneratorSource: 'pad1' as const,
+    leadRandomEnabled: true,
+    leadRandomSource: 'lead2' as const,
+  });
+  const independentRandomPreview = createRandomTimingPhrasePreview({
+    ...simpleSequencerState,
+    synthChordGeneratorEnabled: true,
+    synthChordGeneratorSource: 'pad1' as const,
+    leadRandomEnabled: true,
+    leadRandomSource: 'lead2' as const,
+  });
+  assert(independentChordPreview.notes.every((note) => note.source === 'pad1'), 'Chord Generator should use its selected source when both simple sequencers are enabled');
+  assert(independentRandomPreview.notes.every((note) => note.source === 'lead2'), 'Random Timing should use its selected source when both simple sequencers are enabled');
+
+  const randomDisabledPreview = createRandomTimingPhrasePreview({
+    ...simpleSequencerState,
+    synthChordGeneratorEnabled: true,
+    synthChordGeneratorSource: 'sample1' as const,
+    leadRandomEnabled: false,
+    leadRandomSource: 'sample2' as const,
+  });
+  assert.equal(randomDisabledPreview.enabled, false, 'Chord Generator enable should not turn on Random Timing');
+  const chordDisabledPreview = createPadChordPhrasePreview({
+    ...simpleSequencerState,
+    synthChordGeneratorEnabled: false,
+    synthChordGeneratorSource: 'sample1' as const,
+    leadRandomEnabled: true,
+    leadRandomSource: 'sample2' as const,
+  });
+  assert.equal(chordDisabledPreview.enabled, false, 'Random Timing enable should not turn on Chord Generator');
 }
 
 console.log('Kessho Product harmony parity regression passed');

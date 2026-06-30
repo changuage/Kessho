@@ -243,6 +243,12 @@ int32_t kessho_product_get_graph_tap(KesshoProductEngine* engine, uint32_t tap_i
     KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PIANO_DELAY_B_SEND, graph_piano_delay_b_send_l, graph_piano_delay_b_send_r);
     KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PIANO_GRANULAR_SEND, graph_piano_granular_send_l, graph_piano_granular_send_r);
     KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PIANO_DIFFUSE_SEND, graph_piano_diffuse_send_l, graph_piano_diffuse_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SAMPLE2_DRY, graph_sample2_dry_l, graph_sample2_dry_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SAMPLE2_REVERB_SEND, graph_sample2_reverb_send_l, graph_sample2_reverb_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SAMPLE2_DELAY_A_SEND, graph_sample2_delay_a_send_l, graph_sample2_delay_a_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SAMPLE2_DELAY_B_SEND, graph_sample2_delay_b_send_l, graph_sample2_delay_b_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SAMPLE2_GRANULAR_SEND, graph_sample2_granular_send_l, graph_sample2_granular_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SAMPLE2_DIFFUSE_SEND, graph_sample2_diffuse_send_l, graph_sample2_diffuse_send_r);
     KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_OCEAN_DRY, graph_soundscape_layer_dry_l[kessho::product::internal::kSoundscapeLayerOcean], graph_soundscape_layer_dry_r[kessho::product::internal::kSoundscapeLayerOcean]);
     KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_WATER_DRY, graph_soundscape_layer_dry_l[kessho::product::internal::kSoundscapeLayerWater], graph_soundscape_layer_dry_r[kessho::product::internal::kSoundscapeLayerWater]);
     KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_INSECTS_DRY, graph_soundscape_layer_dry_l[kessho::product::internal::kSoundscapeLayerInsects], graph_soundscape_layer_dry_r[kessho::product::internal::kSoundscapeLayerInsects]);

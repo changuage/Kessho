@@ -18,7 +18,7 @@ import type {
   SimpleSequencerVizNote,
   SimpleSequencerVizSource,
 } from './simpleSequencerRuntimePlan';
-import type { SliderState } from '../ui/state';
+import type { LeadRandomSource, SliderState } from '../ui/state';
 
 export type {
   SimpleSequencerPhrasePreview,
@@ -338,10 +338,13 @@ export function createPadChordPhrasePreview(state: SliderState, phraseIndex = 0)
   };
 }
 
-function randomTimingSource(state: SliderState): 'lead1' | 'lead2' | 'sample1' {
+function randomTimingSource(state: SliderState): LeadRandomSource {
   const source = (state as unknown as Record<string, unknown>).leadRandomSource;
+  if (source === 'pad1') return 'pad1';
+  if (source === 'pad2') return 'pad2';
   if (source === 'lead2') return 'lead2';
   if (source === 'sample1' || source === 'piano') return 'sample1';
+  if (source === 'sample2') return 'sample2';
   return 'lead1';
 }
 
@@ -349,8 +352,11 @@ function isRandomTimingEnabled(state: SliderState): boolean {
   const record = state as unknown as Record<string, unknown>;
   if (!booleanValue(record.leadRandomEnabled, false)) return false;
   const source = randomTimingSource(state);
+  if (source === 'pad1') return booleanValue(record.padEnabled, false);
+  if (source === 'pad2') return booleanValue(record.pad2Enabled, false);
   if (source === 'lead2') return booleanValue(record.lead2Enabled, false);
-  if (source === 'sample1') return booleanValue(record.sample1Enabled, false);
+  if (source === 'sample1') return booleanValue(record.sample1Enabled, false) || booleanValue(record.pianoEnabled, false);
+  if (source === 'sample2') return booleanValue(record.sample2Enabled, false);
   return booleanValue(record.leadEnabled, false);
 }
 

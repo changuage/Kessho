@@ -141,6 +141,8 @@ import {
 import { createSignedSnowflakeWelcomeState } from './app/signedSnowflakeWelcomeState';
 import { AppDebugPanel } from './app/AppDebugPanel';
 import { BackgroundAudioStatusPill, MacAudioStatusPill } from './app/AppRuntimeStatusPills';
+import { applySampleLibrarySelectionDefaultsToFlatState } from './audio/sampleLibraries/sampleLibrarySelectionDefaults';
+import type { SampleLibraryKey } from './audio/sampleLibraries/SampleLibraryTypes';
 import {
   DRUM_PRESET_SLOT_CHANGE,
   preserveRunningDrumSequencerSource,
@@ -1316,17 +1318,26 @@ const App: React.FC = () => {
   const shouldDisableLeadRandomTiming = useCallback((nextState: SliderState): boolean => {
     if (!nextState.leadRandomEnabled) return false;
     const randomSource = nextState.leadRandomSource ?? 'lead1';
+    if (randomSource === 'pad1') return !nextState.padEnabled;
+    if (randomSource === 'pad2') return !nextState.pad2Enabled;
     if (randomSource === 'lead2') return !nextState.lead2Enabled;
-    if (randomSource === 'sample1') return !nextState.sample1Enabled;
+    if (randomSource === 'sample1') return !nextState.sample1Enabled && !nextState.pianoEnabled;
+    if (randomSource === 'sample2') return !nextState.sample2Enabled;
     return !nextState.leadEnabled;
   }, []);
 
   const enableLeadRandomTimingSource = useCallback((nextState: SliderState): void => {
     const randomSource = nextState.leadRandomSource ?? 'lead1';
-    if (randomSource === 'lead2') {
+    if (randomSource === 'pad1') {
+      nextState.padEnabled = true;
+    } else if (randomSource === 'pad2') {
+      nextState.pad2Enabled = true;
+    } else if (randomSource === 'lead2') {
       nextState.lead2Enabled = true;
     } else if (randomSource === 'sample1') {
       nextState.sample1Enabled = true;
+    } else if (randomSource === 'sample2') {
+      nextState.sample2Enabled = true;
     } else {
       nextState.leadEnabled = true;
     }
@@ -1447,6 +1458,10 @@ const App: React.FC = () => {
           }
         }
 
+        if ((key === 'sample1LibraryKey' || key === 'sample2LibraryKey') && typeof value === 'string') {
+          applySampleLibrarySelectionDefaultsToFlatState(newState as unknown as Record<string, unknown>, key === 'sample2LibraryKey' ? 'sample2' : 'sample1', value as SampleLibraryKey);
+        }
+
         if (key === 'leadRandomSource') {
           newState.leadRandomSource = value === 'piano' ? 'sample1' : newState.leadRandomSource;
           if (newState.leadRandomEnabled) enableLeadRandomTimingSource(newState);
@@ -1533,7 +1548,18 @@ const App: React.FC = () => {
       if (!shouldDisableLeadRandomTiming(prev)) return prev;
       return { ...prev, leadRandomEnabled: false };
     });
-  }, [shouldDisableLeadRandomTiming, state.leadEnabled, state.lead2Enabled, state.sample1Enabled, state.pianoEnabled, state.leadRandomEnabled, state.leadRandomSource]);
+  }, [
+    shouldDisableLeadRandomTiming,
+    state.padEnabled,
+    state.pad2Enabled,
+    state.leadEnabled,
+    state.lead2Enabled,
+    state.sample1Enabled,
+    state.sample2Enabled,
+    state.pianoEnabled,
+    state.leadRandomEnabled,
+    state.leadRandomSource,
+  ]);
 
   const handleStateChange = useCallback<React.Dispatch<React.SetStateAction<SliderState>>>(
     (nextStateOrUpdater) => {
@@ -2814,6 +2840,7 @@ const App: React.FC = () => {
     confirmOverrideArmedJourneyForStatePreset,
     checkPresetCompatibility,
     presetEngineUpdateOptions: presetProductRuntimeUpdateOptions,
+    syncCoreProductAppliedPreset,
     skipNextPresetLoadEngineSync,
     normalizeState: normalizePresetForWeb,
     applyDualRangesFromPreset,

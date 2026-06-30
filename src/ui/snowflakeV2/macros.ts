@@ -1,11 +1,13 @@
 /**
  * Snowflake V2 — Macro Computation
  *
- * 4 macros per arm, each in range -1 to +1:
+ * 6 macros per arm:
  *   Ornament: reverbLevel × direction(diffusion vs decay)
  *   Fractal:  granularLevel × direction(granularV1Mode)
  *   Density:  max(delayASend, delayBSend) × direction(which delay wins)
  *   Structure: engine level mapped through a near-log curve from -1 to +1
+ *   Aura: per-engine reverb send, 0 to +1
+ *   Erosion: per-engine degrade send, 0 to +1
  *
  * All macros except Structure are 0 when their driving value is 0.
  * Structure is -1 when engine level is 0.
@@ -26,6 +28,10 @@ export interface ArmMacros {
   density: number;
   /** -1 (engine off) to +1 (engine at max). */
   structure: number;
+  /** 0 (dry) to +1 (full per-engine reverb send). */
+  aura: number;
+  /** 0 (clean) to +1 (full per-engine degrade send). */
+  erosion: number;
 }
 
 function clamp01(value: number): number {
@@ -38,7 +44,7 @@ function nearLogLevel(value: number): number {
 }
 
 /**
- * Compute the 4 macros for a single arm from audio state.
+ * Compute the 6 macros for a single arm from audio state.
  * All values are per-engine from the routing matrix.
  */
 export function computeArmMacros(
@@ -77,6 +83,14 @@ export function computeArmMacros(
     density = maxDelay * direction;
   }
 
+  // --- Aura: engine's reverb send → frost/bloom styling ---
+  const reverbSendKey = engine.sends.reverb;
+  const aura = reverbSendKey ? clamp01(state[reverbSendKey] as number) : 0;
+
+  // --- Erosion: engine's degrade send → noisy/corroded styling ---
+  const degradeSendKey = engine.sends.degrade;
+  const erosion = degradeSendKey ? clamp01(state[degradeSendKey] as number) : 0;
+
   // --- Structure: engine level → near-log -1 to +1 ---
   const levelValue = state[engine.levelKey] as number;
   const range = engine.levelMax - engine.levelMin;
@@ -86,5 +100,5 @@ export function computeArmMacros(
   // Map 0→-1, 1→+1, with lower levels gaining structure sooner.
   const structure = nearLogLevel(normalizedLevel) * 2 - 1;
 
-  return { ornament, fractal, density, structure };
+  return { ornament, fractal, density, structure, aura, erosion };
 }

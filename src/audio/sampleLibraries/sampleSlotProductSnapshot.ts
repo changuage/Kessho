@@ -43,12 +43,15 @@ function generatedIdForKey(map: Readonly<Record<string, number>>, key: string, f
 
 export function sampleSlotSnapshotFields(slot: SampleSlotState): SampleSlotSnapshotFields {
   const defaultDynamicId = SAMPLE_DYNAMIC_IDS_BY_KEY.regular;
+  const dynamicMode = slot.libraryKey === 'piano' || slot.dynamicMode !== 'legacy-piano-parity'
+    ? slot.dynamicMode
+    : 'velocity';
   return {
     sampleLibraryId: generatedIdForKey(SAMPLE_LIBRARY_IDS_BY_KEY, slot.libraryKey, SAMPLE_LIBRARY_IDS_BY_KEY.piano),
     sampleRoleId: slot.role ? generatedIdForKey(SAMPLE_ROLE_IDS_BY_KEY, slot.role, 0) : 0,
     sampleArticulationId: slot.articulation ? generatedIdForKey(SAMPLE_ARTICULATION_IDS_BY_KEY, slot.articulation, 0) : 0,
     sampleSelectionMode: SAMPLE_SELECTION_MODE_IDS[slot.selectionMode],
-    sampleDynamicMode: SAMPLE_DYNAMIC_MODE_IDS[slot.dynamicMode],
+    sampleDynamicMode: SAMPLE_DYNAMIC_MODE_IDS[dynamicMode],
     sampleFixedDynamicId: generatedIdForKey(SAMPLE_DYNAMIC_IDS_BY_KEY, slot.fixedDynamic, defaultDynamicId),
     sampleLoopEnabled: slot.loopEnabled,
     sampleMaxVoices: Math.max(1, Math.min(64, Math.round(slot.maxVoices))),

@@ -196,9 +196,13 @@ import {
   SAMPLE_DYNAMIC_MODES,
   SAMPLE_SELECTION_MODES,
   SAMPLE_VARIANT_MODES,
+  isSampleLibraryKey,
+  type SampleLibraryKey,
   type SampleSlotId,
 } from '../../audio/sampleLibraries/SampleLibraryTypes';
 import { SAMPLE_LIBRARY_REGISTRY_GENERATED } from '../../audio/sampleLibraries/generated/sampleLibraryRegistry.generated';
+import { applySampleLibrarySelectionDefaultsToFlatState } from '../../audio/sampleLibraries/sampleLibrarySelectionDefaults';
+import { readSampleSlotState } from '../../audio/sampleLibraries/sampleSlotState';
 import {
   copyTriggerStamp,
   pasteTriggerStamp,
@@ -415,6 +419,7 @@ type GeneratedCaptureStartArm = {
   sourceLaneIndex: number;
   targetLaneIndex: number;
   sourceMode: 'anchorWalker' | 'orbit';
+  phase: 'waitingForStart' | 'recordingUntilBoundary';
   waitingForBoundary: boolean;
   previousStep: number | null;
 };
@@ -587,6 +592,17 @@ const SYNTH_SOURCES = [
   { value: 'sample2', label: 'Sample 2', color: SOURCE_COLORS.sample2 },
 ];
 
+const SIMPLE_SEQUENCER_SOURCES = [
+  { value: 'pad1', label: 'Pad 1', color: SOURCE_COLORS.pad1 },
+  { value: 'pad2', label: 'Pad 2', color: SOURCE_COLORS.pad2 },
+  { value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1 },
+  { value: 'lead2', label: 'Lead 2', color: SOURCE_COLORS.lead2 },
+  { value: 'sample1', label: 'Sample 1', color: SOURCE_COLORS.sample1 },
+  { value: 'sample2', label: 'Sample 2', color: SOURCE_COLORS.sample2 },
+] as const;
+
+const CHORD_GENERATOR_SOURCES = SIMPLE_SEQUENCER_SOURCES;
+
 const CHORD_SEQUENCER_SOURCES = [
   { value: 'sample1', label: 'Sample 1', color: SOURCE_COLORS.sample1 },
   { value: 'sample2', label: 'Sample 2', color: SOURCE_COLORS.sample2 },
@@ -689,11 +705,7 @@ const PAD_VOICE_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 const PAD_VOICE_MASK_ALL = 0xff;
 const PAD_VOICE_DEFAULT_MASK = 1 << 7;
 
-const RANDOM_TIMING_SOURCES = [
-  { value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1 },
-  { value: 'lead2', label: 'Lead 2', color: SOURCE_COLORS.lead2 },
-  { value: 'sample1', label: 'Sample 1', color: SOURCE_COLORS.sample1 },
-];
+const RANDOM_TIMING_SOURCES = SIMPLE_SEQUENCER_SOURCES;
 
 const MANUAL_KEYBOARD_SOURCES: Array<{ value: ManualSynthSource; label: string; color: string }> = [
   { value: 'pad1', label: 'Pad 1', color: SOURCE_COLORS.pad1 },
@@ -1795,6 +1807,19 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     value: mode,
     label: sampleOptionLabel(mode),
   })), []);
+  const handleSampleLibraryChange = useCallback((slotId: SampleSlotId, value: string) => {
+    if (!isSampleLibraryKey(value)) return;
+    const config = SAMPLE_SLOT_UI[slotId];
+    if (onStateChange) {
+      onStateChange((current) => applySampleLibrarySelectionDefaultsToFlatState(
+        { ...current },
+        slotId,
+        value,
+      ) as unknown as SliderState);
+      return;
+    }
+    onSelectChange(config.libraryKey, value as SampleLibraryKey as SliderState[keyof SliderState]);
+  }, [onSelectChange, onStateChange]);
   const { announceHelp } = useSliderHelp();
   const bindHelp = useCallback((helpKey: string, options: { label?: string } = {}) => ({
     onMouseEnter: () => announceHelp(helpKey, options),
@@ -2217,10 +2242,18 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     };
   const chordGeneratorSourceValue = String(state.synthChordGeneratorSource === 'piano' ? 'sample1' : (state.synthChordGeneratorSource ?? 'sample1'));
   const chordGeneratorSourceInfo =
-    CHORD_SEQUENCER_SOURCES.find((source) => source.value === chordGeneratorSourceValue) ?? {
+    CHORD_GENERATOR_SOURCES.find((source) => source.value === chordGeneratorSourceValue) ?? {
       value: 'sample1',
       label: 'Sample 1',
       color: SOURCE_COLORS.sample1,
+    };
+  const rawRandomTimingSourceValue = String(state.leadRandomSource ?? 'lead1');
+  const randomTimingSourceValue = rawRandomTimingSourceValue === 'piano' ? 'sample1' : rawRandomTimingSourceValue;
+  const randomTimingSourceInfo =
+    RANDOM_TIMING_SOURCES.find((source) => source.value === randomTimingSourceValue) ?? {
+      value: 'lead1',
+      label: 'Lead 1',
+      color: SOURCE_COLORS.lead1,
     };
   const chordSequencerActiveStepCount = chordSequencerConfig.steps
     .slice(0, chordSequencerConfig.stepCount)
@@ -2312,8 +2345,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       setChordSequencerAbsoluteStep(0);
       return;
     }
-    if (!chordSequencerWasRunningRef.current || chordSequencerClockAnchorRef.current == null) {
+    const startingTransport = !chordSequencerWasRunningRef.current || chordSequencerClockAnchorRef.current == null;
+    if (startingTransport) {
       chordSequencerClockAnchorRef.current = currentWallSeconds();
+      setChordSequencerPlayhead(0);
+      setChordSequencerAbsoluteStep(0);
     }
     chordSequencerWasRunningRef.current = true;
     if (!chordSequencerEnabled) return;
@@ -4767,6 +4803,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   useEffect(() => {
     if (!generatedCaptureIsCapturing) return;
+    if (generatedCaptureStartArm?.phase === 'recordingUntilBoundary') return;
 
     let rafId = window.requestAnimationFrame(function markCaptureStep() {
       markGeneratedCaptureStepFromPlayhead();
@@ -4776,7 +4813,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     return () => {
       window.cancelAnimationFrame(rafId);
     };
-  }, [generatedCaptureIsCapturing, markGeneratedCaptureStepFromPlayhead]);
+  }, [generatedCaptureIsCapturing, generatedCaptureStartArm?.phase, markGeneratedCaptureStepFromPlayhead]);
 
   useVisibleInterval(() => {
     if (!generatedCaptureIsCapturing) return;
@@ -5593,6 +5630,44 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     state.synthChordGeneratorEnabled,
   ]);
 
+  const toggleRandomTimingEnabled = useCallback(() => {
+    const next = !(state.leadRandomEnabled === true);
+    const startPatch = next ? enableSourceValueForPlayback(randomTimingSourceValue) : {};
+    onSelectChange('leadRandomEnabled' as keyof SliderState, next);
+    if (next && !isRunning) {
+      onRequestPlaybackStart?.({
+        ...startPatch,
+        leadRandomEnabled: true,
+      });
+    }
+  }, [
+    enableSourceValueForPlayback,
+    isRunning,
+    onRequestPlaybackStart,
+    onSelectChange,
+    randomTimingSourceValue,
+    state.leadRandomEnabled,
+  ]);
+
+  const setRandomTimingSource = useCallback((sourceValue: string) => {
+    onSelectChange('leadRandomSource' as keyof SliderState, sourceValue as SliderState[keyof SliderState]);
+    if (state.leadRandomEnabled !== true) return;
+    const startPatch = enableSourceValueForPlayback(sourceValue);
+    if (!isRunning) {
+      onRequestPlaybackStart?.({
+        ...startPatch,
+        leadRandomEnabled: true,
+        leadRandomSource: sourceValue as SliderState['leadRandomSource'],
+      });
+    }
+  }, [
+    enableSourceValueForPlayback,
+    isRunning,
+    onRequestPlaybackStart,
+    onSelectChange,
+    state.leadRandomEnabled,
+  ]);
+
   const toggleChordSequencerEnabled = useCallback(() => {
     const next = !chordSequencerEnabled;
     const startPatch = next ? enableChordSequencerSource(chordSequencerSourceValue) : {};
@@ -5633,7 +5708,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   const startSynthPlaybackForLaneRecording = useCallback((laneIdx: number) => {
     const safeLaneIdx = Math.max(0, Math.min(LANE_CONFIGS.length - 1, Math.round(laneIdx)));
-    const startPatch: Partial<SliderState> = { synthEuclideanMasterEnabled: true };
+    const startPatch: Partial<SliderState> = {
+      synthEuclideanMasterEnabled: true,
+      synthSequencerFaces: sequencerFaceState,
+    };
     const activeLaneEnabledKey = SYNTH_LANE_ENABLED_KEYS[safeLaneIdx] ?? SYNTH_LANE_ENABLED_KEYS[0];
 
     enableSourceValueForPlayback(String(state[getSourceKey(safeLaneIdx)] ?? 'lead1'), startPatch);
@@ -5659,6 +5737,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     state.synthEuclid4Enabled,
     state.synthEuclid4Source,
     state.synthEuclideanMasterEnabled,
+    sequencerFaceState,
   ]);
 
   const startSynthPlaybackForOverdub = useCallback(() => {
@@ -5677,14 +5756,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const arm = generatedCaptureStartArmRef.current;
     if (!arm) return;
 
-    startGeneratedCapture({
-      sourceLaneIndex: arm.sourceLaneIndex,
-      targetLaneIndex: arm.targetLaneIndex,
-      sourceMode: arm.sourceMode,
-    });
-
     if (!isRunning) {
-      setGeneratedCaptureStartArm(null);
+      setGeneratedCaptureStartArm({
+        ...arm,
+        phase: 'waitingForStart',
+        waitingForBoundary: true,
+        previousStep: null,
+      });
       startSynthPlaybackForLaneRecording(arm.targetLaneIndex);
       return;
     }
@@ -5693,6 +5771,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const currentStep = normalizedRecorderStep(seq.playheads[arm.targetLaneIndex], stepCount);
     setGeneratedCaptureStartArm({
       ...arm,
+      phase: 'waitingForStart',
       waitingForBoundary: true,
       previousStep: currentStep,
     });
@@ -5700,7 +5779,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     getTriggerStepCountForLane,
     isRunning,
     seq.playheads,
-    startGeneratedCapture,
     startSynthPlaybackForLaneRecording,
   ]);
 
@@ -5723,10 +5801,37 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       previousStep !== 0 &&
       (currentStep === 0 || currentStep < previousStep);
 
-    if (crossedStart) {
-      setGeneratedCaptureStartArm(null);
+    if (arm.phase === 'waitingForStart') {
+      if (currentStep === 0 || crossedStart) {
+        startGeneratedCapture({
+          sourceLaneIndex: arm.sourceLaneIndex,
+          targetLaneIndex: arm.targetLaneIndex,
+          sourceMode: arm.sourceMode,
+        });
+        setGeneratedCaptureStartArm((current) => (
+          current === arm
+            ? { ...current, phase: 'recordingUntilBoundary', previousStep: currentStep }
+            : current
+        ));
+        return;
+      }
+      if (previousStep !== currentStep) {
+        setGeneratedCaptureStartArm((current) => (
+          current === arm
+            ? { ...current, previousStep: currentStep }
+            : current
+        ));
+      }
       return;
     }
+
+    if (crossedStart) {
+      setGeneratedCaptureStartArm(null);
+      generatedCaptureCountIn.stop();
+      stopGeneratedCapture();
+      return;
+    }
+
     if (previousStep !== currentStep) {
       setGeneratedCaptureStartArm((current) => (
         current === arm
@@ -5735,10 +5840,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       ));
     }
   }, [
+    generatedCaptureCountIn.stop,
     generatedCaptureStartArm,
     getTriggerStepCountForLane,
     isRunning,
     seq.playheads,
+    startGeneratedCapture,
+    stopGeneratedCapture,
   ]);
 
   const synthLiveOverdub = useLiveOverdubRecorder({
@@ -6002,7 +6110,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     ? `Count ${generatedCaptureCountIn.countInRemaining}`
     : (
         activeLaneUsesGeneratedRecorder &&
-        generatedCaptureStartArmForActiveLane?.waitingForBoundary
+        generatedCaptureStartArmForActiveLane?.phase === 'waitingForStart'
       )
       ? 'Sync start'
       : generatedCaptureSessionForActiveLane?.status === 'committing'
@@ -6050,6 +6158,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       sourceLaneIndex: seq.activeTab,
       targetLaneIndex: seq.activeTab,
       sourceMode,
+      phase: 'waitingForStart',
       waitingForBoundary: false,
       previousStep: null,
     });
@@ -6065,6 +6174,28 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     stopGeneratedCapture,
     toggleSynthLiveOverdub,
   ]);
+
+  const generatedSequencerCaptureControls = activeLaneUsesGeneratedRecorder ? (
+    <div className={`live-overdub-controls generated-face-capture${synthRecorderActive ? ' active' : ''}`}>
+      <button
+        type="button"
+        className={`live-overdub-btn record${synthRecorderActive ? ' active' : ''}`}
+        onClick={toggleSynthRecorder}
+        aria-pressed={synthRecorderActive}
+      >
+        REC
+      </button>
+      <button
+        type="button"
+        className={`live-overdub-btn${synthRecorderMetronomeEnabled ? ' active' : ''}`}
+        onClick={toggleSynthRecorderMetronome}
+        aria-pressed={synthRecorderMetronomeEnabled}
+      >
+        Metro
+      </button>
+      <span className="live-overdub-status">{synthRecorderStatus}</span>
+    </div>
+  ) : null;
 
   const enterKeyboardSequenceMode = useCallback(() => {
     setKeyboardInputMode('sequence');
@@ -6585,17 +6716,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const renderSampleSlotCard = (slotId: SampleSlotId) => {
     const config = SAMPLE_SLOT_UI[slotId];
     const expanded = isSynthSourceCardExpanded(slotId);
-    const enabled = state[config.enabledKey] === true;
-    const libraryKey = typeof state[config.libraryKey] === 'string'
-      ? String(state[config.libraryKey])
-      : slotId === 'sample2'
-        ? 'soft-string-spurs'
-        : 'piano';
-    const library = sampleLibraryByKey.get(libraryKey as never) ?? sampleLibraryByKey.get('piano');
+    const slot = readSampleSlotState(state as unknown as Record<string, unknown>, slotId);
+    const enabled = slot.enabled;
+    const library = sampleLibraryByKey.get(slot.libraryKey as never) ?? sampleLibraryByKey.get('piano');
     const resolvedLibraryKey = library?.libraryKey ?? 'piano';
     const librarySamples = library?.samples ?? [];
-    const currentRole = typeof state[config.roleKey] === 'string' ? String(state[config.roleKey]) : '';
-    const currentArticulation = typeof state[config.articulationKey] === 'string' ? String(state[config.articulationKey]) : '';
+    const currentRole = slot.role;
+    const currentArticulation = slot.articulation;
     const roleOptions = [
       { value: '', label: 'Default' },
       ...Array.from(new Set(librarySamples.map((sample) => sample.role).filter(Boolean)))
@@ -6621,16 +6748,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       const value = state[key];
       return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
     };
-    const loopEnabled = state[config.loopEnabledKey] !== false;
-    const attackMs = numberValue(config.attackMsKey, slotId === 'sample1' ? 5 : 25);
-    const decayMs = numberValue(config.decayMsKey, 650);
-    const sustain = numberValue(config.sustainKey, 0.72);
-    const holdMs = numberValue(config.holdMsKey, 200);
-    const releaseMs = numberValue(config.releaseMsKey, slotId === 'sample1' ? 120 : 350);
-    const envelopeTimelineSeconds = Math.max(
-      0.5,
-      (attackMs + decayMs + holdMs + releaseMs) / 1000 + 0.25,
-    );
+    const loopEnabled = slot.loopEnabled;
+    const attackMs = numberValue(config.attackMsKey, slot.attackMs);
+    const decayMs = numberValue(config.decayMsKey, slot.decayMs);
+    const sustain = numberValue(config.sustainKey, slot.sustain);
+    const holdMs = numberValue(config.holdMsKey, slot.holdMs);
+    const releaseMs = numberValue(config.releaseMsKey, slot.releaseMs);
+    const envelopeTimelineSeconds = padEnvelopeTimelineSeconds;
 
     return (
       <div key={slotId} className={`synth-card${editingSection === slotId ? ' editing' : ''}${expanded ? '' : ' collapsed'}`} style={{ '--sc': config.color } as React.CSSProperties}>
@@ -6675,11 +6799,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   label="Library"
                   value={resolvedLibraryKey}
                   options={sampleLibraryOptions}
-                  onChange={(value: string) => onSelectChange(config.libraryKey, value as SliderState[keyof SliderState])}
+                  onChange={(value: string) => handleSampleLibraryChange(slotId, value)}
                 />
                 <Select
                   label="Selection"
-                  value={stringValue(config.selectionModeKey, 'nearest')}
+                  value={stringValue(config.selectionModeKey, slot.selectionMode)}
                   options={sampleSelectionModeOptions}
                   onChange={(value: string) => onSelectChange(config.selectionModeKey, value as SliderState[keyof SliderState])}
                 />
@@ -6701,13 +6825,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               <div className="sc-compact-grid-2" style={{ marginTop: '6px' }}>
                 <Select
                   label="Dynamics"
-                  value={stringValue(config.dynamicModeKey, slotId === 'sample1' ? 'legacy-piano-parity' : 'velocity')}
+                  value={stringValue(config.dynamicModeKey, slot.dynamicMode)}
                   options={sampleDynamicModeOptions}
                   onChange={(value: string) => onSelectChange(config.dynamicModeKey, value as SliderState[keyof SliderState])}
                 />
                 <Select
                   label="Fixed"
-                  value={stringValue(config.fixedDynamicKey, slotId === 'sample1' ? 'regular' : 'level-2')}
+                  value={stringValue(config.fixedDynamicKey, slot.fixedDynamic)}
                   options={sampleDynamicOptions}
                   onChange={(value: string) => onSelectChange(config.fixedDynamicKey, value as SliderState[keyof SliderState])}
                 />
@@ -6715,7 +6839,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               <div className="sc-compact-grid-2" style={{ marginTop: '6px' }}>
                 <Select
                   label="Variant"
-                  value={stringValue(config.variantModeKey, 'stable')}
+                  value={stringValue(config.variantModeKey, slot.variantMode)}
                   options={sampleVariantOptions}
                   onChange={(value: string) => onSelectChange(config.variantModeKey, value as SliderState[keyof SliderState])}
                 />
@@ -6729,8 +6853,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 </button>
               </div>
               <div className="sc-compact-grid-2" style={{ marginTop: '8px' }}>
-                <Slider label="Level" value={numberValue(config.levelKey, 0.75)} paramKey={config.levelKey} onChange={onParamChange} {...sliderProps(config.levelKey)} />
-                <Slider label="Voices" value={numberValue(config.maxVoicesKey, slotId === 'sample1' ? 16 : 12)} paramKey={config.maxVoicesKey} onChange={onParamChange} {...sliderProps(config.maxVoicesKey)} />
+                <Slider label="Level" value={numberValue(config.levelKey, slot.level)} paramKey={config.levelKey} onChange={onParamChange} {...sliderProps(config.levelKey)} />
+                <Slider label="Voices" value={numberValue(config.maxVoicesKey, slot.maxVoices)} paramKey={config.maxVoicesKey} onChange={onParamChange} {...sliderProps(config.maxVoicesKey)} />
               </div>
               <div style={{ marginTop: '10px' }}>
                 <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '4px' }}>
@@ -6750,11 +6874,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 />
               </div>
               <div className="sc-compact-grid-2" style={{ marginTop: '8px' }}>
-                <Slider label="Attack" value={attackMs} paramKey={config.attackMsKey} unit=" ms" onChange={onParamChange} {...sliderProps(config.attackMsKey)} />
-                <Slider label="Decay" value={decayMs} paramKey={config.decayMsKey} unit=" ms" onChange={onParamChange} {...sliderProps(config.decayMsKey)} />
+                <Slider label="Attack" value={attackMs} paramKey={config.attackMsKey} unit=" ms" logarithmic onChange={onParamChange} {...sliderProps(config.attackMsKey)} />
+                <Slider label="Decay" value={decayMs} paramKey={config.decayMsKey} unit=" ms" logarithmic onChange={onParamChange} {...sliderProps(config.decayMsKey)} />
                 <Slider label="Sustain" value={sustain} paramKey={config.sustainKey} onChange={onParamChange} {...sliderProps(config.sustainKey)} />
                 <Slider label="Hold" value={holdMs} paramKey={config.holdMsKey} unit=" ms" onChange={onParamChange} {...sliderProps(config.holdMsKey)} />
-                <Slider label="Release" value={releaseMs} paramKey={config.releaseMsKey} unit=" ms" onChange={onParamChange} {...sliderProps(config.releaseMsKey)} />
+                <Slider label="Release" value={releaseMs} paramKey={config.releaseMsKey} unit=" ms" logarithmic onChange={onParamChange} {...sliderProps(config.releaseMsKey)} />
               </div>
             </div>
 
@@ -8705,7 +8829,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           color: chordGeneratorSourceInfo.color,
                         }}
                       >
-                        {CHORD_SEQUENCER_SOURCES.map((source) => (
+                        {CHORD_GENERATOR_SOURCES.map((source) => (
                           <option key={source.value} value={source.value}>{source.label}</option>
                         ))}
                       </select>
@@ -8765,7 +8889,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   <span>Random Timing</span>
                   <button
                     className={`synth-simple-enable${state.leadRandomEnabled ? ' on' : ''}`}
-                    onClick={() => onSelectChange('leadRandomEnabled' as keyof SliderState, !state.leadRandomEnabled)}
+                    onClick={toggleRandomTimingEnabled}
                   >
                     {state.leadRandomEnabled ? 'ON' : 'OFF'}
                   </button>
@@ -8776,11 +8900,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       Source
                       <select
                         className="synth-source-select"
-                        value={state.leadRandomSource}
-                        onChange={(e) => onSelectChange('leadRandomSource' as keyof SliderState, e.target.value)}
+                        value={randomTimingSourceValue}
+                        onChange={(e) => setRandomTimingSource(e.target.value)}
                         style={{
-                          borderColor: `${RANDOM_TIMING_SOURCES.find((source) => source.value === state.leadRandomSource)?.color ?? '#888'}60`,
-                          color: RANDOM_TIMING_SOURCES.find((source) => source.value === state.leadRandomSource)?.color ?? '#888',
+                          borderColor: `${randomTimingSourceInfo.color}60`,
+                          color: randomTimingSourceInfo.color,
                         }}
                       >
                         {RANDOM_TIMING_SOURCES.map((source) => (
@@ -9561,6 +9685,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     color={activeSeq.color}
                     harmonyState={harmonyState}
                     runtimeState={activeAnchorWalkerRuntimeState}
+                    captureSlot={generatedSequencerCaptureControls}
                     onChange={(nextConfig) => updateAnchorWalkerSlot(seq.activeTab, nextConfig)}
                     onPerformanceEvent={(event) => sendAnchorWalkerPerformanceEvent(seq.activeTab, event)}
                   />
@@ -9576,6 +9701,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     stepCount={activeSeq.trigger.steps}
                     tempoMultiplier={Number.isFinite(state.synthEuclideanTempo) ? state.synthEuclideanTempo : 1}
                     runtimeVisualState={orbitVisualStates[seq.activeTab] ?? null}
+                    captureSlot={generatedSequencerCaptureControls}
                     onChange={(nextConfig) => updateSequencerSlot(seq.activeTab, (slot) => ({
                       ...slot,
                       orbit: nextConfig,

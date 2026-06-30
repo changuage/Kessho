@@ -13,6 +13,10 @@ const sampleLibraryInputs = [
   { key: 'wild-percussion', manifestPath: 'public/samples/WildPercussion/manifest.json' },
 ];
 
+const defaultSampleOverrides = new Map([
+  ['the-spellsinger', { role: 'sustain', articulation: 'sustain', dynamic: 'normal' }],
+]);
+
 const outputPaths = {
   ts: 'src/audio/sampleLibraries/generated/sampleLibraryRegistry.generated.ts',
   cppHeader: 'cpp/KesshoCore/src/product/generated/SampleLibraryRegistry.generated.h',
@@ -200,6 +204,16 @@ function chooseRecommendedPreloadMidi(samples, defaultMidi) {
   ].slice(0, 8);
 }
 
+function defaultSampleForLibrary(libraryKey, sortedSamples) {
+  const override = defaultSampleOverrides.get(libraryKey);
+  if (!override) return sortedSamples[0] ?? null;
+  return sortedSamples.find((sample) => (
+    sample.role === override.role &&
+    sample.articulation === override.articulation &&
+    sample.dynamic === override.dynamic
+  )) ?? sortedSamples[0] ?? null;
+}
+
 function normalizeImportedManifest(rawManifest) {
   if (rawManifest.schema !== 'kessho-sample-library-v1') {
     throw new Error(`Unsupported sample manifest schema: ${String(rawManifest.schema)}`);
@@ -261,7 +275,7 @@ function normalizeImportedManifest(rawManifest) {
     .filter((sample) => sample.assetPath.length > 0)
     .sort(compareSamples);
   const defaultMidi = chooseDefaultMidi(sortedSamples);
-  const firstSample = sortedSamples[0] ?? null;
+  const defaultSample = defaultSampleForLibrary(libraryKey, sortedSamples);
   return {
     manifest: {
       schema: 'kessho-normalized-sample-library-v1',
@@ -270,9 +284,9 @@ function normalizeImportedManifest(rawManifest) {
       assetBasePath: cleanString(rawManifest.assetBasePath, 'samples'),
       sourceSampleRate: firstSourceSampleRate || 44100,
       encodedSampleRate: firstEncodedSampleRate || integer(rawManifest.encoding?.sampleRate) || 24000,
-      defaultRole: firstSample?.role ?? 'single',
-      defaultArticulation: firstSample?.articulation ?? '',
-      defaultDynamic: firstSample?.dynamic ?? 'single',
+      defaultRole: defaultSample?.role ?? 'single',
+      defaultArticulation: defaultSample?.articulation ?? '',
+      defaultDynamic: defaultSample?.dynamic ?? 'single',
       defaultMidi,
       recommendedPreloadMidi: chooseRecommendedPreloadMidi(sortedSamples, defaultMidi),
       samples: sortedSamples,

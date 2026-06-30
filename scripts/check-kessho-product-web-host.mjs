@@ -67,6 +67,7 @@ const hostSnapshotCoordinator = read('src/audio/product/host/CoreProductSnapshot
 const hostSnapshotDebug = read('src/audio/product/host/CoreProductSnapshotDebug.ts');
 const hostSnapshotFactory = read('src/audio/product/host/CoreProductHostSnapshotFactory.ts');
 const hostTelemetryAdapter = read('src/audio/product/host/CoreProductTelemetryAdapter.ts');
+const hostGeneratedCaptureTelemetryHistory = read('src/audio/product/host/CoreProductGeneratedSequencerCaptureTelemetryHistory.ts');
 const hostRuntimeHostPort = read('src/audio/product/host/CoreProductRuntimeHostPort.ts');
 const hostLifecycleCoordinator = read('src/audio/product/host/CoreProductHostLifecycleCoordinator.ts');
 const hostRealtimeInputBootstrap = read('src/audio/product/host/CoreProductRealtimeInputBootstrap.ts');
@@ -94,6 +95,8 @@ const hostSequencerEvolveConfigEventBridge = read('src/audio/product/host/CorePr
 const hostInvoker = read('src/audio/product/host/CoreProductHostInvoker.ts');
 const runtimeAdapter = read('src/audio/CoreProductRuntimeAdapter.ts');
 const runtime = read('src/audio/coreProductRuntime.ts');
+const dawOutputRouting = read('src/audio/dawOutputRouting.ts');
+const coreProductGraphTaps = read('src/audio/coreProductGraphTaps.ts');
 const referenceRuntime = read('src/audio/referenceAudioRuntime.ts');
 const productAudioRuntimeSelection = read('src/audio/product/ProductAudioRuntimeSelection.ts');
 const productEnginePort = read('src/audio/product/ProductEnginePort.ts');
@@ -176,6 +179,7 @@ const generatedParams = read('src/audio/generated/kesshoProductParams.ts');
 const sequencerHold = read('src/audio/coreProductSequencerHold.ts');
 const arrangementPadChord = read('src/audio/coreProductArrangementPadChord.ts');
 const arrangementScheduler = read('src/audio/coreProductArrangementScheduler.ts');
+const arrangementSchedulerUtils = read('src/audio/coreProductArrangementSchedulerUtils.ts');
 const arrangementSchedulerSurface = `${arrangementScheduler}\n${arrangementPadChord}`;
 const snapshotEncoder = read('src/audio/coreProductSnapshotEncoder.ts');
 const snapshotDefaults = read('src/audio/coreProductSnapshotDefaults.ts');
@@ -198,6 +202,7 @@ const drumPitchSequencer = read('src/ui/sequencer/drumPitchSequencer.ts');
 const seqEvolveCore = read('src/audio/seqEvolveCore.ts');
 const drumSeqEvolve = read('src/audio/drumSeqEvolve.ts');
 const synthSeqEvolve = read('src/audio/synthSeqEvolve.ts');
+const simpleSequencerPhrasePreview = read('src/audio/simpleSequencerPhrasePreview.ts');
 const synthPage = read('src/ui/synth/SynthPage.tsx');
 const drumPage = read('src/ui/drums/DrumPage.tsx');
 const seqSparkline = read('src/ui/drums/SeqSparkline.tsx');
@@ -211,6 +216,8 @@ const euclideanPatternBank = read('src/presets/euclideanPatternBank.ts');
 const presetSharedMode = read('src/presets/sharedMode.ts');
 const sequencerUiParity = read('scripts/check-kessho-product-sequencer-ui-parity.mjs');
 const sequencerEvolveRegression = read('src/audio/coreProductSequencerEvolveRegression.test.ts');
+const harmonyParityRegression = read('src/audio/coreProductHarmonyParityRegression.test.ts');
+const sampleDecodedAssetCacheTest = read('src/audio/sampleLibraries/SampleDecodedAssetCache.test.ts');
 const graphSmokeCases = read('scripts/lib/kesshoProductWebGraphSmokeCases.mjs');
 const graphCaptureSmoke = read('scripts/check-kessho-product-web-graph-capture-smoke.mjs');
 const sonicParity = read('scripts/check-web-core-sonic-parity.mjs');
@@ -237,7 +244,7 @@ const productApi = read('cpp/KesshoCore/src/product/KesshoProductApi.cpp');
 const productTelemetryHeader = read('cpp/KesshoCore/include/KesshoCore/KesshoProductTelemetry.h');
 const productTypesHeader = read('cpp/KesshoCore/include/KesshoCore/KesshoProductTypes.h');
 const productSequencerTests = read('cpp/KesshoCore/tests/ProductSequencerTests.cpp');
-const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostSequencerSubLaneConfig}\n${hostSequencerEvolveConfig}\n${hostSequencerHome}\n${hostSequencerRangePayload}\n${hostSynthPitch}\n${hostSequencerUiState}\n${hostRuntimeGuards}\n${hostMidi}\n${hostAssetRegistrar}\n${hostArrangementBridge}\n${hostDiagnostics}\n${hostDisplayCallbackRegistry}\n${hostGraphTapBridge}\n${hostHarmonyStateBridge}\n${hostProxy}\n${hostJourneyMorphClock}\n${hostPatchClassifier}\n${hostLeadPresetDataLoader}\n${hostModulationRangeBridge}\n${hostSampleHoldFeedbackPolicy}\n${hostLiveTriggerCallbackBridge}\n${hostManualAuditionBridge}\n${hostSnapshotCoordinator}\n${hostSnapshotDebug}\n${hostSnapshotFactory}\n${hostTelemetryAdapter}\n${hostRuntimeHostPort}\n${hostLifecycleCoordinator}\n${hostRealtimeInputBootstrap}\n${hostSequencerCacheBridge}\n${hostSequencerControlEventBridge}\n${hostManualSynthDiceBridge}\n${hostSequencerUiAdapter}\n${hostSequencerVisualBridge}\n${hostSequencerEvolveBridge}\n${hostSequencerEvolveRuntimeBridge}\n${hostSequencerNativeEvolveFlags}\n${hostSequencerEvolvePayloadBridge}\n${hostSequencerHomeCaptureBridge}\n${hostSequencerHomeCaptureEventBridge}\n${hostSequencerHomeRestoreBridge}\n${hostSequencerLaneParamBridge}\n${hostSequencerNoteRangeEvolveBridge}\n${hostSequencerPitchSettingEventBridge}\n${hostSequencerStepEventBridge}\n${hostSequencerStepOverrideEventBridge}\n${hostSequencerStepOverrideBridge}\n${hostSequencerStepPostingBridge}\n${hostSequencerSubLaneEnabledEventBridge}\n${hostSequencerEvolveConfigEventBridge}`;
+const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostSequencerSubLaneConfig}\n${hostSequencerEvolveConfig}\n${hostSequencerHome}\n${hostSequencerRangePayload}\n${hostSynthPitch}\n${hostSequencerUiState}\n${hostRuntimeGuards}\n${hostMidi}\n${hostAssetRegistrar}\n${hostArrangementBridge}\n${hostDiagnostics}\n${hostDisplayCallbackRegistry}\n${hostGraphTapBridge}\n${hostHarmonyStateBridge}\n${hostProxy}\n${hostJourneyMorphClock}\n${hostPatchClassifier}\n${hostLeadPresetDataLoader}\n${hostModulationRangeBridge}\n${hostSampleHoldFeedbackPolicy}\n${hostLiveTriggerCallbackBridge}\n${hostManualAuditionBridge}\n${hostSnapshotCoordinator}\n${hostSnapshotDebug}\n${hostSnapshotFactory}\n${hostTelemetryAdapter}\n${hostGeneratedCaptureTelemetryHistory}\n${hostRuntimeHostPort}\n${hostLifecycleCoordinator}\n${hostRealtimeInputBootstrap}\n${hostSequencerCacheBridge}\n${hostSequencerControlEventBridge}\n${hostManualSynthDiceBridge}\n${hostSequencerUiAdapter}\n${hostSequencerVisualBridge}\n${hostSequencerEvolveBridge}\n${hostSequencerEvolveRuntimeBridge}\n${hostSequencerNativeEvolveFlags}\n${hostSequencerEvolvePayloadBridge}\n${hostSequencerHomeCaptureBridge}\n${hostSequencerHomeCaptureEventBridge}\n${hostSequencerHomeRestoreBridge}\n${hostSequencerLaneParamBridge}\n${hostSequencerNoteRangeEvolveBridge}\n${hostSequencerPitchSettingEventBridge}\n${hostSequencerStepEventBridge}\n${hostSequencerStepOverrideEventBridge}\n${hostSequencerStepOverrideBridge}\n${hostSequencerStepPostingBridge}\n${hostSequencerSubLaneEnabledEventBridge}\n${hostSequencerEvolveConfigEventBridge}`;
 
 assert(
   !existsSync(resolve(root, 'src/ui/useSelectedAudioEngineSurface.ts')),
@@ -310,6 +317,7 @@ assert(lineCount(hostSnapshotCoordinator) <= 120, `CoreProductSnapshotCoordinato
 assert(lineCount(hostSnapshotDebug) <= 100, `CoreProductSnapshotDebug.ts exceeds cleanup size cap (${lineCount(hostSnapshotDebug)} lines)`);
 assert(lineCount(hostSnapshotFactory) <= 80, `CoreProductHostSnapshotFactory.ts exceeds cleanup size cap (${lineCount(hostSnapshotFactory)} lines)`);
 assert(lineCount(hostTelemetryAdapter) <= 120, `CoreProductTelemetryAdapter.ts exceeds cleanup size cap (${lineCount(hostTelemetryAdapter)} lines)`);
+assert(lineCount(hostGeneratedCaptureTelemetryHistory) <= 80, `CoreProductGeneratedSequencerCaptureTelemetryHistory.ts exceeds cleanup size cap (${lineCount(hostGeneratedCaptureTelemetryHistory)} lines)`);
 assert(lineCount(hostRuntimeHostPort) <= 260, `CoreProductRuntimeHostPort.ts exceeds cleanup size cap (${lineCount(hostRuntimeHostPort)} lines)`);
 assert(lineCount(hostSequencerCacheBridge) <= 100, `CoreProductSequencerCacheBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerCacheBridge)} lines)`);
 assert(lineCount(hostSequencerControlEventBridge) <= 50, `CoreProductSequencerControlEventBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerControlEventBridge)} lines)`);
@@ -872,16 +880,29 @@ assert(
     app.includes("newState.leadRandomSource = value === 'piano' ? 'sample1' : newState.leadRandomSource") &&
     app.includes('if (newState.leadRandomEnabled) enableLeadRandomTimingSource(newState);') &&
     app.includes("key === 'leadRandomEnabled' && value === true") &&
+    app.includes('state.padEnabled') &&
+    app.includes('state.pad2Enabled') &&
+    app.includes('state.lead2Enabled') &&
     app.includes('state.sample1Enabled') &&
+    app.includes('state.sample2Enabled') &&
     app.indexOf("if (key === 'leadRandomSource')") < app.indexOf('if (shouldDisableLeadRandomTiming(newState))'),
   'App must enable the selected Random Timing source before the lead-random safety guard can disable playback',
 );
 assert(
   synthPage.includes('const enableManualSynthSourceForPlayback = useCallback') &&
     synthPage.includes('const enableSourceValueForPlayback = useCallback') &&
+    synthPage.includes('const SIMPLE_SEQUENCER_SOURCES = [') &&
+    synthPage.indexOf("value: 'pad1', label: 'Pad 1'") < synthPage.indexOf("value: 'pad2', label: 'Pad 2'") &&
+    synthPage.indexOf("value: 'pad2', label: 'Pad 2'") < synthPage.indexOf("value: 'lead1', label: 'Lead 1'") &&
+    synthPage.indexOf("value: 'lead1', label: 'Lead 1'") < synthPage.indexOf("value: 'lead2', label: 'Lead 2'") &&
+    synthPage.indexOf("value: 'lead2', label: 'Lead 2'") < synthPage.indexOf("value: 'sample1', label: 'Sample 1'") &&
+    synthPage.indexOf("value: 'sample1', label: 'Sample 1'") < synthPage.indexOf("value: 'sample2', label: 'Sample 2'") &&
+    synthPage.includes('const CHORD_GENERATOR_SOURCES = SIMPLE_SEQUENCER_SOURCES;') &&
+    synthPage.includes('const RANDOM_TIMING_SOURCES = SIMPLE_SEQUENCER_SOURCES;') &&
     synthPage.includes("sourceValue === 'both'") &&
     synthPage.includes('onClick={toggleChordGeneratorEnabled}') &&
     synthPage.includes('onChange={(e) => setChordGeneratorSource(e.target.value)}') &&
+    synthPage.includes('{CHORD_GENERATOR_SOURCES.map((source) => (') &&
     synthPage.includes('return enableSourceValueForPlayback(sourceValue);') &&
     synthPage.includes('const startPatch = enableSourceValueForPlayback(value);') &&
     synthPage.includes('state.synthEuclideanMasterEnabled && state[laneEnabledKey] === true') &&
@@ -889,6 +910,12 @@ assert(
     synthPage.includes("enableSourceValueForPlayback(String(state[getSourceKey(safeLaneIdx)] ?? 'lead1'), startPatch)") &&
     !synthPage.includes("onClick={() => onSelectChange('synthChordGeneratorEnabled'"),
   'Synth sequencers must enable selected sample/lead/pad sources before scheduled playback',
+);
+assert(
+  coreProductGraphTaps.includes('sample1Dry: 52') &&
+    coreProductGraphTaps.includes('sample2Dry: 110') &&
+    dawOutputRouting.includes("{ sourceId: 'sample2', label: STEM_RECORD_TRACK_LABELS.sample2, tapId: CORE_PRODUCT_GRAPH_TAP_IDS.sample2Dry }"),
+  'Web/Product graph smoke must keep Sample 2 dry routing exposed through its own Product Core graph tap',
 );
 assert(synthPage.includes('event.defaultPrevented'), 'Synth page hotkeys must ignore already-handled keyboard events');
 assert(drumPage.includes('e.defaultPrevented'), 'Drum page hotkeys must ignore already-handled keyboard events');
@@ -2085,6 +2112,26 @@ for (const token of [
 ]) {
   assert(arrangementSchedulerSurface.includes(token), `Product arrangement scheduler must preserve web timing/music intent: missing ${token}`);
 }
+assert(
+  arrangementScheduler.includes('private readonly ensureScheduledSampleAsset?: EnsureScheduledSampleAsset') &&
+    arrangementScheduler.includes('ensureScheduledSampleAssetForEvent(event, this.ensureScheduledSampleAsset)') &&
+    arrangementSchedulerUtils.includes('export type EnsureScheduledSampleAsset') &&
+    arrangementSchedulerUtils.includes('export function ensureScheduledSampleAssetForEvent') &&
+    arrangementSchedulerUtils.includes("if (sourceId === CORE_PRODUCT_SOURCE_IDS.sample1) return 'sample1';") &&
+    hostArrangementBridge.includes('ensureScheduledSampleAsset?: CoreProductArrangementSampleAssetLoader') &&
+    hostArrangementBridge.includes('new CoreProductArrangementScheduler(postEvent, audioContext, publishTrigger, ensureScheduledSampleAsset)') &&
+    host.includes('this.assetRegistrar.ensureSampleSlotAssetForNote(slotId, midi, velocity)') &&
+    harmonyParityRegression.includes('Product scheduler should load Sample 1 assets before generated note playback'),
+  'Product generated sample notes must ensure their sample assets before posting playback events',
+);
+assert(
+  arrangementSchedulerUtils.includes('export function leadRandomSourceEnabled(state: Record<string, unknown>, source: LeadRandomSource): boolean') &&
+    arrangementSchedulerUtils.includes('return manualNoteSourceEnabled(state, leadRandomSourceId(source));') &&
+    arrangementSchedulerUtils.includes("case CORE_PRODUCT_SOURCE_IDS.sample1:\n      return booleanFromState(state, 'sample1Enabled', false) || booleanFromState(state, 'pianoEnabled', false);") &&
+    simpleSequencerPhrasePreview.includes("source === 'sample1') return booleanValue(record.sample1Enabled, false) || booleanValue(record.pianoEnabled, false);") &&
+    app.includes("randomSource === 'sample1') return !nextState.sample1Enabled && !nextState.pianoEnabled;"),
+  'Sample 1 Product scheduling must preserve legacy pianoEnabled compatibility',
+);
 
 assert(
   !snapshot.includes('appendCoreProductArrangementLanes') && !snapshot.includes('arrangementStepValues'),
@@ -2440,6 +2487,14 @@ for (const token of [
 ]) {
   assert(runtime.includes(token), `core-product runtime is missing ${token}`);
 }
+assert(
+  assets.includes('export function cloneDecodedCoreProductAssetForTransfer') &&
+    runtime.includes('const transferAsset = cloneDecodedCoreProductAssetForTransfer(asset);') &&
+    runtime.includes('channels: transferAsset.channels') &&
+    runtime.includes('transferAsset.channels.map((channel) => channel.buffer)') &&
+    sampleDecodedAssetCacheTest.includes('cached sample buffers must remain usable after runtime transfer'),
+  'core-product runtime must clone decoded sample channels before transferring them to the worklet',
+);
 
 for (const token of [
   'Math.abs(prev.pad1FilterFreq - next.pad1FilterFreq) < 0.01',
@@ -2465,9 +2520,9 @@ assert(
 );
 assert(
   /const SYNTH_LANE_ENABLED_KEYS = \[[\s\S]*'synthEuclid1Enabled'[\s\S]*'synthEuclid4Enabled'[\s\S]*\] as const/.test(synthPage) &&
-    /const enableManualSynthSourceForPlayback = useCallback[\s\S]*resolvedSource === 'pad1'[\s\S]*startPatch\.padEnabled = true;[\s\S]*resolvedSource === 'lead1'[\s\S]*startPatch\.leadEnabled = true;[\s\S]*resolvedSource === 'sample1'[\s\S]*startPatch\.sample1Enabled = true;/.test(synthPage) &&
-    /const toggleSynthSequencerTransport = useCallback[\s\S]*const startPatch: Partial<SliderState> = next \? \{ synthEuclideanMasterEnabled: true \} : \{\};[\s\S]*const requestedLaneEnabledKey = next && !hasEnabledLane \? activeLaneEnabledKey : null;[\s\S]*SYNTH_LANE_ENABLED_KEYS\.forEach\(\(key, laneIndex\) => \{[\s\S]*key !== requestedLaneEnabledKey[\s\S]*enableSourceValueForPlayback\(String\(state\[getSourceKey\(laneIndex\)\] \?\? 'lead1'\), startPatch\);[\s\S]*startPatch\[requestedLaneEnabledKey\] = true;[\s\S]*onRequestPlaybackStart\?\.\(startPatch\);/.test(synthPage),
-  'Synth keyboard/button transport must enable only selected sequencer source engines, an audible lane, and start Product with the requested state patch',
+    /const enableManualSynthSourceForPlayback = useCallback[\s\S]*resolvedSource === 'pad1'[\s\S]*startPatch\.padEnabled = true;[\s\S]*resolvedSource === 'lead1'[\s\S]*startPatch\.leadEnabled = true;[\s\S]*resolvedSource === 'sample1'[\s\S]*startPatch\.sample1Enabled = true;[\s\S]*resolvedSource === 'sample2'[\s\S]*startPatch\.sample2Enabled = true;/.test(synthPage) &&
+    /const toggleSynthSequencerTransport = useCallback[\s\S]*const activeLaneEnabledKey = SYNTH_LANE_ENABLED_KEYS\[seq\.activeTab\][\s\S]*const requestedLaneEnabledKey = next && !hasEnabledLane \? activeLaneEnabledKey : null;[\s\S]*if \(!Boolean\(state\[key\]\) && key !== requestedLaneEnabledKey\) return;[\s\S]*enableSourceValueForPlayback\(String\(state\[getSourceKey\(laneIndex\)\] \?\? 'lead1'\), startPatch\);[\s\S]*startPatch\[requestedLaneEnabledKey\] = true;[\s\S]*onRequestPlaybackStart\?\.\(startPatch\);/.test(synthPage),
+  'Synth keyboard/button transport must enable the selected synth lane, its source engine, and start Product with the requested state patch',
 );
 for (const token of [
   'onRequestPlaybackStart?: (statePatch?: Partial<SliderState>) => void;',
@@ -3233,6 +3288,7 @@ const hostImportAllowlist = new Set([
   './product/host/CoreProductRealtimeInputBootstrap',
   './product/host/CoreProductRealtimeTimestampMapper',
   './product/host/CoreProductTelemetryCallbackScheduler',
+  './product/host/CoreProductGeneratedSequencerCaptureTelemetryHistory',
   './product/host/CoreProductHostSnapshotFactory',
   './product/host/CoreProductSnapshotCoordinator',
   './product/host/CoreProductTelemetryAdapter',

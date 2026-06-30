@@ -37,6 +37,15 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SourceLeadVibratoDepth: 121,
   SourceLeadVibratoRate: 122,
   SourceLeadGlide: 123,
+  SourceSampleLibraryId: 125,
+  SourceSampleRoleId: 126,
+  SourceSampleArticulationId: 127,
+  SourceSampleSelectionMode: 128,
+  SourceSampleDynamicMode: 129,
+  SourceSampleFixedDynamicId: 130,
+  SourceSampleLoopEnabled: 131,
+  SourceSampleMaxVoices: 132,
+  SourceSampleVariantMode: 133,
   SequencerLaneEnabled: 200,
   SequencerLaneTargetSource: 201,
   SequencerLaneStepCount: 202,
@@ -864,6 +873,70 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 123,
     "min": 0,
     "max": 1
+  },
+  {
+    "name": "SourceSampleLibraryId",
+    "path": "sources.*.sampleLibraryId",
+    "type": "uint",
+    "id": 125,
+    "min": 1
+  },
+  {
+    "name": "SourceSampleRoleId",
+    "path": "sources.*.sampleRoleId",
+    "type": "uint",
+    "id": 126
+  },
+  {
+    "name": "SourceSampleArticulationId",
+    "path": "sources.*.sampleArticulationId",
+    "type": "uint",
+    "id": 127
+  },
+  {
+    "name": "SourceSampleSelectionMode",
+    "path": "sources.*.sampleSelectionMode",
+    "type": "uint",
+    "id": 128,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "SourceSampleDynamicMode",
+    "path": "sources.*.sampleDynamicMode",
+    "type": "uint",
+    "id": 129,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "SourceSampleFixedDynamicId",
+    "path": "sources.*.sampleFixedDynamicId",
+    "type": "uint",
+    "id": 130,
+    "min": 1
+  },
+  {
+    "name": "SourceSampleLoopEnabled",
+    "path": "sources.*.sampleLoopEnabled",
+    "type": "bool",
+    "id": 131
+  },
+  {
+    "name": "SourceSampleMaxVoices",
+    "path": "sources.*.sampleMaxVoices",
+    "type": "uint",
+    "id": 132,
+    "min": 1,
+    "max": 64
+  },
+  {
+    "name": "SourceSampleVariantMode",
+    "path": "sources.*.sampleVariantMode",
+    "type": "uint",
+    "id": 133,
+    "min": 0,
+    "max": 2
   },
   {
     "name": "SequencerLaneEnabled",

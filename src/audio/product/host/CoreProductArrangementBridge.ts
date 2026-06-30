@@ -1,10 +1,12 @@
 import { CoreProductArrangementScheduler } from '../../coreProductArrangementScheduler';
 import type { CoreProductEvent } from '../../coreProductEvents';
+import type { SampleSlotId } from '../../sampleLibraries/SampleLibraryTypes';
 import type { TransportDebugSnapshot } from '../../transport';
 
 type CoreProductArrangementAudioContextProvider = () => AudioContext | null;
 type CoreProductArrangementPostEvent = (event: CoreProductEvent) => void;
 type CoreProductArrangementPublishTrigger = (name: string, ...payload: unknown[]) => void;
+type CoreProductArrangementSampleAssetLoader = (slotId: SampleSlotId, midi: number, velocity: number) => Promise<void>;
 
 export class CoreProductArrangementBridge {
   private readonly scheduler: CoreProductArrangementScheduler;
@@ -14,8 +16,9 @@ export class CoreProductArrangementBridge {
     postEvent: CoreProductArrangementPostEvent,
     audioContext: CoreProductArrangementAudioContextProvider,
     publishTrigger?: CoreProductArrangementPublishTrigger,
+    ensureScheduledSampleAsset?: CoreProductArrangementSampleAssetLoader,
   ) {
-    this.scheduler = new CoreProductArrangementScheduler(postEvent, audioContext, publishTrigger);
+    this.scheduler = new CoreProductArrangementScheduler(postEvent, audioContext, publishTrigger, ensureScheduledSampleAsset);
   }
 
   createState(

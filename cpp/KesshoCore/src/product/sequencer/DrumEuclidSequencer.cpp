@@ -416,9 +416,16 @@ void armAnchorWalkerGesture(
       lane.orbit.base_angle = lane.orbit.authored_base_angle;
       lane.orbit.prev_base_angle = lane.orbit.base_angle;
       break;
-    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_COUNT_ID:
-      lane.orbit.note_count = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, kMaxOrbitSequencerNotes);
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_COUNT_ID: {
+      const uint32_t next_note_count = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, kMaxOrbitSequencerNotes);
+      if (lane.orbit.note_count != next_note_count) {
+        lane.orbit.note_count = next_note_count;
+        resetSequencerLaneRuntime(lane);
+      } else {
+        lane.orbit.note_count = next_note_count;
+      }
       break;
+    }
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_ENABLED_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_RADIUS_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_PHASE_ID:

@@ -594,6 +594,18 @@ struct SoundscapeRenderBlockCache {
   clearFrameBuffer(graph_piano_granular_send_r, frames);
   clearFrameBuffer(graph_piano_diffuse_send_l, frames);
   clearFrameBuffer(graph_piano_diffuse_send_r, frames);
+  clearFrameBuffer(graph_sample2_dry_l, frames);
+  clearFrameBuffer(graph_sample2_dry_r, frames);
+  clearFrameBuffer(graph_sample2_reverb_send_l, frames);
+  clearFrameBuffer(graph_sample2_reverb_send_r, frames);
+  clearFrameBuffer(graph_sample2_delay_a_send_l, frames);
+  clearFrameBuffer(graph_sample2_delay_a_send_r, frames);
+  clearFrameBuffer(graph_sample2_delay_b_send_l, frames);
+  clearFrameBuffer(graph_sample2_delay_b_send_r, frames);
+  clearFrameBuffer(graph_sample2_granular_send_l, frames);
+  clearFrameBuffer(graph_sample2_granular_send_r, frames);
+  clearFrameBuffer(graph_sample2_diffuse_send_l, frames);
+  clearFrameBuffer(graph_sample2_diffuse_send_r, frames);
 }
 
   void KesshoProductEngine::clearOutput(float* out_l, float* out_r, uint32_t frames) {

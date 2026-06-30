@@ -101,6 +101,8 @@ export interface AnchorWalkerLayerPreset {
 }
 
 const WALKER_LAYER_COUNT = 4;
+const PRODUCT_SEQUENCER_MIN_SOURCE_ID = 1;
+const PRODUCT_SEQUENCER_MAX_SOURCE_ID = 8;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -108,6 +110,10 @@ function clamp(value: number, min: number, max: number): number {
 
 function finiteNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function normalizeProductSourceId(value: unknown, fallback: number): number {
+  return Math.round(clamp(finiteNumber(value, fallback), PRODUCT_SEQUENCER_MIN_SOURCE_ID, PRODUCT_SEQUENCER_MAX_SOURCE_ID));
 }
 
 function enumValue<T extends string>(value: unknown, values: readonly T[], fallback: T): T {
@@ -290,7 +296,7 @@ function normalizeLayer(value: unknown, index: number, fallback: AnchorWalkerLay
     motion: enumValue(record.motion, ['linked', 'inverted'] as const, fallback.motion),
     targetSourceId: record.targetSourceId === 'follow'
       ? 'follow'
-      : Math.max(1, Math.min(7, Math.round(finiteNumber(record.targetSourceId, fallback.targetSourceId === 'follow' ? 3 : fallback.targetSourceId)))),
+      : normalizeProductSourceId(record.targetSourceId, fallback.targetSourceId === 'follow' ? 3 : fallback.targetSourceId),
   });
 }
 
@@ -306,7 +312,7 @@ export function normalizeAnchorWalkerConfig(value: unknown, slotIndex = 0): Anch
     enabled: typeof record.enabled === 'boolean' ? record.enabled : fallback.enabled,
     mode: enumValue(record.mode, ['hybrid', 'compactPad'] as const, fallback.mode),
     playMode,
-    targetSourceId: Math.max(1, Math.min(7, Math.round(finiteNumber(record.targetSourceId, fallback.targetSourceId)))),
+    targetSourceId: normalizeProductSourceId(record.targetSourceId, fallback.targetSourceId),
     anchorSource: enumValue(record.anchorSource, ['harmonyRoot', 'manualLatch'] as const, fallback.anchorSource),
     manualAnchorMidi: clamp(finiteNumber(record.manualAnchorMidi, fallback.manualAnchorMidi), 0, 127),
     snapSource: enumValue(record.snapSource, ['harmonyEngine', 'customPitchClasses'] as const, fallback.snapSource),

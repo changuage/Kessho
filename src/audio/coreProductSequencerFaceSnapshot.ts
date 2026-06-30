@@ -3,6 +3,7 @@ import type { AnchorWalkerConfig, AnchorWalkerLayerConfig, SnapSource, WalkerBou
 import type { OrbitNoteConfig, OrbitSequencerConfig } from '../ui/sequencer/orbitSequencerTypes';
 import type { ProductAnchorWalkerLayerSnapshot, ProductAnchorWalkerSnapshot, ProductOrbitNoteSnapshot, ProductOrbitSequencerSnapshot } from './coreProductSnapshotTypes';
 import { clamp } from './coreProductSnapshotState';
+import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 
 export const SEQUENCER_MODE_IDS: Record<SequencerMode, number> = {
   euclid: 0,
@@ -24,6 +25,9 @@ const ANCHOR_SOURCE_IDS = {
   harmonyRoot: 0,
   manualLatch: 3,
 } as const;
+
+const PRODUCT_SEQUENCER_MIN_SOURCE_ID = CORE_PRODUCT_SOURCE_IDS.pad1;
+const PRODUCT_SEQUENCER_MAX_SOURCE_ID = CORE_PRODUCT_SOURCE_IDS.sample2;
 
 const SNAP_SOURCE_IDS: Record<SnapSource, number> = {
   harmonyEngine: 0,
@@ -92,6 +96,10 @@ const ORBIT_CONSTELLATION_MODE_IDS = {
   euclidean: 5,
 } as const;
 
+function productSourceId(value: number): number {
+  return Math.round(clamp(value, PRODUCT_SEQUENCER_MIN_SOURCE_ID, PRODUCT_SEQUENCER_MAX_SOURCE_ID));
+}
+
 function pitchClassMaskFromClasses(classes: readonly number[]): number {
   let mask = 0;
   for (const pitchClass of classes) {
@@ -120,7 +128,7 @@ function productAnchorWalkerLayer(layer: AnchorWalkerLayerConfig): ProductAnchor
     gateRatio: clamp(layer.gateRatio, 0.05, 1),
     velocityScale: clamp(layer.velocityScale, 0, 2),
     velocityOffset: clamp(layer.velocityOffset, -1, 1),
-    targetSourceId: layer.targetSourceId === 'follow' ? 0 : Math.round(clamp(layer.targetSourceId, 1, 7)),
+    targetSourceId: layer.targetSourceId === 'follow' ? 0 : productSourceId(layer.targetSourceId),
   };
 }
 
@@ -151,7 +159,7 @@ export function productAnchorWalkerFromConfig(
     enabled: config.enabled,
     mode: ANCHOR_WALKER_MODE_IDS[config.mode] ?? 0,
     playMode: WALKER_PLAY_MODE_IDS[config.playMode] ?? 0,
-    targetSourceId: Math.round(clamp(targetSourceId, 1, 7)),
+    targetSourceId: productSourceId(targetSourceId),
     anchorSource: ANCHOR_SOURCE_IDS[config.anchorSource] ?? 0,
     manualAnchorMidi: clamp(config.manualAnchorMidi, 0, 127),
     snapSource: SNAP_SOURCE_IDS[snapSource] ?? 0,
@@ -204,7 +212,7 @@ function productOrbitNoteFromConfig(note: OrbitNoteConfig, index: number): Produ
     gateMinBeats: gateMin,
     gateMaxBeats: clamp(note.gateMaxBeats, gateMin, 8),
     probability: clamp(note.probability, 0, 1),
-    targetSourceId: note.targetSourceId === 'follow' ? 0 : Math.round(clamp(note.targetSourceId, 1, 7)),
+    targetSourceId: note.targetSourceId === 'follow' ? 0 : productSourceId(note.targetSourceId),
     seed: Math.max(1, Math.round(note.seed || (2001 + index))),
   };
 }
@@ -217,7 +225,7 @@ export function productOrbitFromConfig(
   const pitchMin = clamp(config.pitchRangeMin, 0, 127);
   return {
     enabled: config.enabled,
-    targetSourceId: Math.round(clamp(targetSourceId, 1, 7)),
+    targetSourceId: productSourceId(targetSourceId),
     triggerLineCount: Math.round(clamp(config.triggerLineCount, 1, 8)),
     clockMode: config.clockMode === 'freeBpmPercent' ? 1 : 0,
     bpmPercent: clamp(config.bpmPercent, 1, 800),

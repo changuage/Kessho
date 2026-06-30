@@ -43,7 +43,8 @@ bool sampleDynamicMatches(
     float midi_note,
     float velocity) {
   using namespace kessho::product::generated;
-  if (source.sample_dynamic_mode == KESSHO_PRODUCT_SAMPLE_DYNAMIC_LEGACY_PIANO_PARITY) {
+  if (source.sample_dynamic_mode == KESSHO_PRODUCT_SAMPLE_DYNAMIC_LEGACY_PIANO_PARITY &&
+      source.sample_library_id == kSampleLibraryPiano) {
     const uint8_t wanted_dynamic = chooseShortPianoSampleVariant(midi_note, velocity)
         ? kSampleDynamicIdShort
         : kSampleDynamicIdRegular;

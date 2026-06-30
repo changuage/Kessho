@@ -54,6 +54,15 @@ function makeSource(sourceId = 1) {
     sustain: 0.72,
     holdSeconds: 0.5,
     releaseSeconds: 1.4,
+    sampleLibraryId: 1,
+    sampleRoleId: 0,
+    sampleArticulationId: 0,
+    sampleSelectionMode: 0,
+    sampleDynamicMode: 2,
+    sampleFixedDynamicId: 13,
+    sampleLoopEnabled: true,
+    sampleMaxVoices: 16,
+    sampleVariantMode: 0,
     padOverrideCount: 0,
     padOverrideIndices: [],
     padOverrideValues: [],
@@ -400,6 +409,20 @@ await runCheckWithReport({
     ]) {
       assert(sourceDiffBody.includes(token), `high-frequency source control must be dirty diff event: ${token}`);
     }
+    const sampleSourceDiffBody = methodBody(runtimeAdapter, 'appendSampleSourceParamDiffs');
+    for (const token of [
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleLibraryId',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleRoleId',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleArticulationId',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleSelectionMode',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleDynamicMode',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleFixedDynamicId',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleLoopEnabled',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleMaxVoices',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleVariantMode',
+    ]) {
+      assert(sampleSourceDiffBody.includes(token), `sample source control must be dirty diff event: ${token}`);
+    }
     const sourceOverrideDiffBody = methodBody(runtimeAdapter, 'appendSourceOverrideDiffs');
     for (const token of [
       'padOverrideChanged(previous, next)',
@@ -570,7 +593,7 @@ await runCheckWithReport({
       summary: 'Static dirty-diff classification, telemetry, and render-path guards passed.',
       details: {
         reloadReasonsAudited: 14,
-        diffableSourceControlsAudited: 18,
+        diffableSourceControlsAudited: 27,
       },
     });
 
@@ -590,6 +613,43 @@ await runCheckWithReport({
           Math.abs(event.value - 0.77) < 1.0e-6),
       'source level dirty diff did not emit SourceLevel event',
     );
+
+    const sampleSourceBase = clone(base);
+    sampleSourceBase.sources[1] = makeSource(8);
+    const sampleSourceNext = clone(sampleSourceBase);
+    Object.assign(sampleSourceNext.sources[1], {
+      sampleLibraryId: 3,
+      sampleRoleId: 16,
+      sampleArticulationId: 2,
+      sampleSelectionMode: 1,
+      sampleDynamicMode: 1,
+      sampleFixedDynamicId: 6,
+      sampleLoopEnabled: false,
+      sampleMaxVoices: 12,
+      sampleVariantMode: 2,
+    });
+    const sampleSourceDiff = adapterHarness.buildCoreProductSnapshotDiff(sampleSourceBase, sampleSourceNext);
+    assert(sampleSourceDiff.applied === true, 'Sample 2 library/source metadata changes must be dirty-diffable');
+    for (const [paramId, value] of [
+      ['SourceSampleLibraryId', 3],
+      ['SourceSampleRoleId', 16],
+      ['SourceSampleArticulationId', 2],
+      ['SourceSampleSelectionMode', 1],
+      ['SourceSampleDynamicMode', 1],
+      ['SourceSampleFixedDynamicId', 6],
+      ['SourceSampleLoopEnabled', 0],
+      ['SourceSampleMaxVoices', 12],
+      ['SourceSampleVariantMode', 2],
+    ]) {
+      assert(
+        sampleSourceDiff.events.some((event) =>
+          event.type === 'param' &&
+            event.paramId === paramId &&
+            event.targetId === 8 &&
+            event.value === value),
+        `Sample 2 dirty diff did not emit ${paramId}`,
+      );
+    }
 
     const evolutionNext = clone(base);
     evolutionNext.evolution.amount = 0.64;

@@ -41,6 +41,7 @@ type UseSavedPresetLoadRuntimeSurfaceOptions<TPreset extends SavedPreset> = {
   confirmOverrideArmedJourneyForStatePreset: (presetName: string) => Promise<boolean>;
   checkPresetCompatibility: (preset: TPreset) => string[];
   presetEngineUpdateOptions: PresetEngineUpdateOptions;
+  syncCoreProductAppliedPreset: (nextState: SliderState) => void;
   skipNextPresetLoadEngineSync: () => void;
   normalizeState: (state: SliderState) => SliderState;
   applyDualRangesFromPreset: (
@@ -78,6 +79,7 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
   confirmOverrideArmedJourneyForStatePreset,
   checkPresetCompatibility,
   presetEngineUpdateOptions,
+  syncCoreProductAppliedPreset,
   skipNextPresetLoadEngineSync,
   normalizeState,
   applyDualRangesFromPreset,
@@ -149,6 +151,7 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
           updateEngine: false,
           resetCofDrift: false,
         });
+        syncCoreProductAppliedPreset(result.state);
         skipNextPresetLoadEngineSync();
         setMorphPresetA(result.preset as TPreset);
         lastAppliedPresetLoadRef.current = {
@@ -184,6 +187,7 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
       setSnowflakeActivated,
       setState,
       setStatePresetName,
+      syncCoreProductAppliedPreset,
       skipNextPresetLoadEngineSync,
       snowflakeActivated,
       state,

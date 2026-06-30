@@ -208,7 +208,7 @@ export type SequencerJoinPolicy = 'grid' | 'bar';
 export type RandomWalkMode = 'localBrownian' | 'globalWalk';
 export type ProgressionClockSource = 'harmony' | 'localPhrase' | 'globalPhrase';
 export type TransportPrimaryClock = 'seconds' | 'bpm' | 'decoupled';
-export type LeadRandomSource = 'lead1' | 'lead2' | 'sample1';
+export type LeadRandomSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'sample1' | 'sample2';
 export type SynthEuclidSource = 'lead' | 'lead1' | 'lead2' | 'pad' | 'pad1' | 'pad2' | 'sample1' | 'sample2' | 'piano' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6' | 'synth7' | 'synth8';
 export type SynthChordSequencerSource = 'pad1' | 'pad2' | 'both' | 'lead1' | 'lead2' | 'sample1' | 'sample2' | 'piano';
 
@@ -4857,11 +4857,11 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   lead2StereoWidth: { min: 0, max: 1, step: 0.01 },
   lead2DiffuseSend: { min: 0, max: 1, step: 0.01 },
   sample1Level: { min: 0, max: 2, step: 0.01 },
-  sample1AttackMs: { min: 0, max: 5000, step: 1 },
-  sample1DecayMs: { min: 10, max: 4000, step: 1 },
+  sample1AttackMs: { min: 1, max: 16000, step: 1 },
+  sample1DecayMs: { min: 10, max: 8000, step: 1 },
   sample1Sustain: { min: 0, max: 1, step: 0.01 },
-  sample1HoldMs: { min: 0, max: 4000, step: 1 },
-  sample1ReleaseMs: { min: 0, max: 10000, step: 1 },
+  sample1HoldMs: { min: 0, max: 20000, step: 1 },
+  sample1ReleaseMs: { min: 10, max: 30000, step: 1 },
   sample1MaxVoices: { min: 1, max: 64, step: 1 },
   sample1Distance: { min: 0, max: 1, step: 0.01 },
   sample1PostLPF: { min: 20, max: 20000, step: 10 },
@@ -4871,11 +4871,11 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   sample1DelayASend: { min: 0, max: 1, step: 0.01 },
   sample1DelayBSend: { min: 0, max: 1, step: 0.01 },
   sample2Level: { min: 0, max: 2, step: 0.01 },
-  sample2AttackMs: { min: 0, max: 5000, step: 1 },
-  sample2DecayMs: { min: 10, max: 4000, step: 1 },
+  sample2AttackMs: { min: 1, max: 16000, step: 1 },
+  sample2DecayMs: { min: 10, max: 8000, step: 1 },
   sample2Sustain: { min: 0, max: 1, step: 0.01 },
-  sample2HoldMs: { min: 0, max: 4000, step: 1 },
-  sample2ReleaseMs: { min: 0, max: 10000, step: 1 },
+  sample2HoldMs: { min: 0, max: 20000, step: 1 },
+  sample2ReleaseMs: { min: 10, max: 30000, step: 1 },
   sample2MaxVoices: { min: 1, max: 64, step: 1 },
   sample2Distance: { min: 0, max: 1, step: 0.01 },
   sample2PostLPF: { min: 20, max: 20000, step: 10 },
@@ -5641,7 +5641,7 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.harmonySyncPolicy = value;
         } else if (key === 'leadRandomSyncPolicy' && (value === 'free' || value === 'nextPhrase' || value === 'restartNow')) {
           state.leadRandomSyncPolicy = value;
-        } else if (key === 'leadRandomSource' && (value === 'lead1' || value === 'lead2' || value === 'sample1' || value === 'piano')) {
+        } else if (key === 'leadRandomSource' && (value === 'pad1' || value === 'pad2' || value === 'lead1' || value === 'lead2' || value === 'sample1' || value === 'sample2' || value === 'piano')) {
           state.leadRandomSource = value === 'piano' ? 'sample1' : value;
         } else if (key === 'synthEuclidJoinPolicy' && (value === 'grid' || value === 'bar')) {
           state.synthEuclidJoinPolicy = value;

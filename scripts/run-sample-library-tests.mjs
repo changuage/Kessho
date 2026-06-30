@@ -8,6 +8,7 @@ const tests = [
   'src/audio/sampleLibraries/sampleLibraryRegistry.test.ts',
   'src/audio/sampleLibraries/sampleResolver.test.ts',
   'src/audio/sampleLibraries/sampleAssetPredictor.test.ts',
+  'src/audio/sampleLibraries/sampleLibraryPlaybackMatrix.test.ts',
   'src/audio/sampleLibraries/SampleDecodedAssetCache.test.ts',
 ];
 

@@ -11,6 +11,7 @@ const host = readProjectFile('src/audio/coreProductEngineHost.ts');
 const runtimeAdapter = readProjectFile('src/audio/CoreProductRuntimeAdapter.ts');
 const snapshotCoordinator = readProjectFile('src/audio/product/host/CoreProductSnapshotCoordinator.ts');
 const snapshotFactory = readProjectFile('src/audio/product/host/CoreProductHostSnapshotFactory.ts');
+const lifecycleCoordinator = readProjectFile('src/audio/product/host/CoreProductHostLifecycleCoordinator.ts');
 const sequencerUiAdapter = readProjectFile('src/audio/product/host/CoreProductSequencerUiAdapter.ts');
 const sequencerHomeCaptureEventBridge = readProjectFile('src/audio/product/host/CoreProductSequencerHomeCaptureEventBridge.ts');
 const sequencerLaneParamBridge = readProjectFile('src/audio/product/host/CoreProductSequencerLaneParamBridge.ts');
@@ -24,6 +25,10 @@ const sequencerTests = readProjectFile('cpp/KesshoCore/tests/ProductSequencerTes
 
 function hostMethodBody(name) {
   return methodBody(hostRuntimeSurface, name);
+}
+
+function lifecycleCoordinatorMethodBody(name) {
+  return methodBody(lifecycleCoordinator, name);
 }
 
 async function settleAsyncHostWork(count = 4) {
@@ -335,8 +340,25 @@ await runCheckWithReport({
     );
     for (const methodName of ['start', 'resume', 'suspend', 'stop', 'dispose']) {
       assert(
-        hostMethodBody(methodName).includes('this.resetSequencerEvolveState();'),
+        hostMethodBody(methodName).includes(`this.lifecycleCoordinator.${methodName}(`),
+        `${methodName}() must delegate Product transport lifecycle to the lifecycle coordinator`,
+      );
+    }
+    for (const methodName of ['start', 'resume']) {
+      assert(
+        lifecycleCoordinatorMethodBody(methodName).includes('this.options.resetSequencerEvolveState();'),
         `${methodName}() must reset Product sequencer evolve clock state at transport lifecycle boundaries`,
+      );
+    }
+    const finishStoppedRuntimeBody = lifecycleCoordinatorMethodBody('finishStoppedRuntime');
+    assert(
+      finishStoppedRuntimeBody.includes('this.options.resetSequencerEvolveState();'),
+      'finishStoppedRuntime() must reset Product sequencer evolve clock state',
+    );
+    for (const methodName of ['suspend', 'stop', 'dispose']) {
+      assert(
+        lifecycleCoordinatorMethodBody(methodName).includes('this.finishStoppedRuntime();'),
+        `${methodName}() must reset Product sequencer evolve clock state through finishStoppedRuntime()`,
       );
     }
 
@@ -542,7 +564,7 @@ await runCheckWithReport({
     for (const token of [
       'this.reconcileSequencerUiState(hostTelemetry)',
       'this.modulationRangeBridge.updateRuntimeWalkPositions(hostTelemetry,',
-      'this.updateSequencerMorphFeedback(hostTelemetry)',
+      'this.sequencerVisuals.updateMorphFeedback(hostTelemetry)',
     ]) {
       assert(telemetryBody.includes(token), `handleTelemetry() must reconcile Core-owned state from telemetry: ${token}`);
     }
@@ -614,6 +636,15 @@ await runCheckWithReport({
       'sustain',
       'holdSeconds',
       'releaseSeconds',
+      'sampleLibraryId',
+      'sampleRoleId',
+      'sampleArticulationId',
+      'sampleSelectionMode',
+      'sampleDynamicMode',
+      'sampleFixedDynamicId',
+      'sampleLoopEnabled',
+      'sampleMaxVoices',
+      'sampleVariantMode',
     ]) {
       assert(!canDiffBody.includes(`previousSource.${field}`), `source ${field} must not force a full snapshot reload`);
       assert(!canDiffBody.includes(`nextSource.${field}`), `source ${field} must not force a full snapshot reload`);
@@ -638,6 +669,21 @@ await runCheckWithReport({
       'KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds',
     ]) {
       assert(sourceDiffBody.includes(token), `unrelated UI source update must be a live diff event: ${token}`);
+    }
+    const sampleSourceDiffBody = hostMethodBody('appendSampleSourceParamDiffs');
+    for (const token of [
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleLibraryId',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleRoleId',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleArticulationId',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleSelectionMode',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleDynamicMode',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleFixedDynamicId',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleLoopEnabled',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleMaxVoices',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSampleVariantMode',
+      'CORE_PRODUCT_SOURCE_IDS.sample2',
+    ]) {
+      assert(sampleSourceDiffBody.includes(token), `sample source update must be a live diff event: ${token}`);
     }
 
     const evolutionDiffBody = hostMethodBody('appendEvolutionDiffs');
@@ -1190,7 +1236,7 @@ await runCheckWithReport({
     harness.host.runtimeReady = runtimeReadyBeforePitchBindingEvent;
     harness.host.synthNoteRangeOverrides = [{ min: 40, max: 52 }, null, null, null];
     harness.host.running = true;
-    harness.host.stop();
+    await harness.host.stop();
     assert(
       harness.host.synthNoteRangeOverrides.every((entry) => entry === null),
       'Product host stop must clear synth note-range evolve overrides so restart uses current slider state',

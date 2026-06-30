@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { SampleDecodedAssetCache } from './SampleDecodedAssetCache';
 import type { SampleAssetDescriptor } from './sampleAssetDescriptors';
 import { toDecodedLoopFrames } from './sampleAssetDescriptors';
-import type { DecodedCoreProductAsset } from '../coreProductAssets';
+import { cloneDecodedCoreProductAssetForTransfer, type DecodedCoreProductAsset } from '../coreProductAssets';
 
 function descriptor(assetId: number): SampleAssetDescriptor {
   return {
@@ -77,6 +77,25 @@ backgroundCache.prune({
 assert.equal(backgroundCache.has(20), false, 'background prune should clear idle assets when target is zero');
 await backgroundCache.getOrLoad(descriptor(21), async () => decodedAsset(21, 8));
 assert.equal(backgroundCache.has(21), true, 'cache should still load assets after a pressure prune');
+
+const transferCache = new SampleDecodedAssetCache(1024);
+const cachedTransferAsset = await transferCache.getOrLoad(descriptor(30), async () => ({
+  assetId: 30,
+  sampleRate: 24000,
+  channels: [new Float32Array([1, 2, 3, 4])],
+  flags: 0,
+}));
+const clonedTransferAsset = cloneDecodedCoreProductAssetForTransfer(cachedTransferAsset);
+assert.notStrictEqual(clonedTransferAsset.channels[0], cachedTransferAsset.channels[0], 'transfer clone should not reuse cached channel arrays');
+clonedTransferAsset.channels[0]![0] = 99;
+assert.equal(cachedTransferAsset.channels[0]![0], 1, 'mutating transfer clone should not mutate cached sample data');
+structuredClone(
+  { channels: clonedTransferAsset.channels },
+  { transfer: clonedTransferAsset.channels.map((channel) => channel.buffer) },
+);
+assert.equal(clonedTransferAsset.channels[0]!.byteLength, 0, 'structured clone transfer should detach only the transferred clone');
+assert.equal(cachedTransferAsset.channels[0]!.byteLength, 16, 'cached sample buffers must remain usable after runtime transfer');
+assert.deepEqual([...cachedTransferAsset.channels[0]!], [1, 2, 3, 4], 'cached sample contents must survive runtime transfer');
 
 const loop = toDecodedLoopFrames({
   encodedStartFrame: 2400,

@@ -1,5 +1,5 @@
 import type { CoreProductEvent } from './coreProductEvents';
-import type { DecodedCoreProductAsset } from './coreProductAssets';
+import { cloneDecodedCoreProductAssetForTransfer, type DecodedCoreProductAsset } from './coreProductAssets';
 import type {
   ProductRuntimeSnapshotMetadata,
   ProductSnapshotAppliedReceipt,
@@ -15,7 +15,7 @@ import { CORE_PRODUCT_RUNTIME_ASSET_VERSION } from './generated/coreProductRunti
 import { isIOSLikeDevice, isMobileDevice } from '../platform';
 import { logProductStateDebug } from '../debug/productStateDebug';
 
-const CORE_PRODUCT_GRAPH_TAP_COUNT = 110;
+const CORE_PRODUCT_GRAPH_TAP_COUNT = 116;
 const CORE_PRODUCT_TELEMETRY_DESKTOP_INTERVAL_MS = 250;
 const CORE_PRODUCT_TELEMETRY_MOBILE_INTERVAL_MS = 500;
 const CORE_PRODUCT_VISUAL_TELEMETRY_DESKTOP_INTERVAL_MS = 33;
@@ -463,13 +463,14 @@ export class CoreProductRuntime {
   }
 
   registerAsset(asset: DecodedCoreProductAsset): void {
+    const transferAsset = cloneDecodedCoreProductAssetForTransfer(asset);
     this.requireNode('registerAsset').port.postMessage({
       type: 'register-asset',
-      assetId: asset.assetId,
-      sampleRate: asset.sampleRate,
-      flags: asset.flags,
-      channels: asset.channels,
-    }, asset.channels.map((channel) => channel.buffer));
+      assetId: transferAsset.assetId,
+      sampleRate: transferAsset.sampleRate,
+      flags: transferAsset.flags,
+      channels: transferAsset.channels,
+    }, transferAsset.channels.map((channel) => channel.buffer));
   }
 
   unregisterAsset(assetId: number): void {

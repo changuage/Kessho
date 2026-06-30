@@ -80,6 +80,8 @@ export interface OrbitRuntimeVisualState {
 }
 
 export const MAX_ORBIT_NOTES = 32;
+const PRODUCT_SEQUENCER_MIN_SOURCE_ID = 1;
+const PRODUCT_SEQUENCER_MAX_SOURCE_ID = 8;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -87,6 +89,10 @@ function clamp(value: number, min: number, max: number): number {
 
 function finiteNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function normalizeProductSourceId(value: unknown, fallback: number): number {
+  return Math.round(clamp(finiteNumber(value, fallback), PRODUCT_SEQUENCER_MIN_SOURCE_ID, PRODUCT_SEQUENCER_MAX_SOURCE_ID));
 }
 
 function enumValue<T extends string>(value: unknown, values: readonly T[], fallback: T): T {
@@ -196,7 +202,7 @@ function normalizeOrbitNote(value: unknown, index: number, fallback: OrbitNoteCo
     gateMaxBeats,
     targetSourceId: record.targetSourceId === 'follow'
       ? 'follow'
-      : Math.max(1, Math.min(7, Math.round(finiteNumber(record.targetSourceId, fallback.targetSourceId === 'follow' ? 3 : fallback.targetSourceId)))),
+      : normalizeProductSourceId(record.targetSourceId, fallback.targetSourceId === 'follow' ? 3 : fallback.targetSourceId),
   });
 }
 
@@ -223,7 +229,7 @@ export function normalizeOrbitSequencerConfig(value: unknown, slotIndex = 0): Or
   return {
     ...fallback,
     enabled: typeof record.enabled === 'boolean' ? record.enabled : fallback.enabled,
-    targetSourceId: Math.max(1, Math.min(7, Math.round(finiteNumber(record.targetSourceId, fallback.targetSourceId)))),
+    targetSourceId: normalizeProductSourceId(record.targetSourceId, fallback.targetSourceId),
     triggerLineCount: Math.max(1, Math.min(MAX_ORBIT_TRIGGER_LINES, Math.round(finiteNumber(record.triggerLineCount, fallback.triggerLineCount)))) as OrbitTriggerLineCount,
     clockMode: enumValue(record.clockMode, ['transport', 'freeBpmPercent'] as const, fallback.clockMode),
     bpmPercent: clamp(finiteNumber(record.bpmPercent, fallback.bpmPercent), 1, 800),

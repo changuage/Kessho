@@ -275,8 +275,10 @@ export function loadCoreProductHostHarness(options = {}) {
     lead1: 3,
     lead2: 4,
     drum: 5,
+    sample1: 6,
     piano: 6,
     soundscape: 7,
+    sample2: 8,
   };
   const sourceId = (source) => {
     const id = harnessSourceIds[source];
@@ -1514,6 +1516,17 @@ Object.assign(globalThis, {
   CoreProductTelemetryCallbackScheduler,
 });`, context, { filename: telemetryCallbackSchedulerPath });
 
+  const generatedCaptureTelemetryHistoryPath = 'src/audio/product/host/CoreProductGeneratedSequencerCaptureTelemetryHistory.ts';
+  const generatedCaptureTelemetryHistorySource = stripImportsAndExports(readProjectFile(generatedCaptureTelemetryHistoryPath));
+  const generatedCaptureTelemetryHistoryJs = transpileForVm(
+    generatedCaptureTelemetryHistorySource,
+    resolve(root, generatedCaptureTelemetryHistoryPath),
+  );
+  vm.runInNewContext(`${generatedCaptureTelemetryHistoryJs}
+Object.assign(globalThis, {
+  CoreProductGeneratedSequencerCaptureTelemetryHistory,
+});`, context, { filename: generatedCaptureTelemetryHistoryPath });
+
   const lifecycleCoordinatorPath = 'src/audio/product/host/CoreProductHostLifecycleCoordinator.ts';
   const lifecycleCoordinatorSource = stripImportsAndExports(readProjectFile(lifecycleCoordinatorPath));
   const lifecycleCoordinatorJs = transpileForVm(lifecycleCoordinatorSource, resolve(root, lifecycleCoordinatorPath));
@@ -1560,8 +1573,10 @@ globalThis.__generatedProductParams = KESSHO_PRODUCT_PARAMS;`, generatedParamsCo
       lead1: 3,
       lead2: 4,
       drum: 5,
+      sample1: 6,
       piano: 6,
       soundscape: 7,
+      sample2: 8,
     },
 	    KESSHO_PRODUCT_DRUM_PARAM_COUNT: 126,
 	    KESSHO_PRODUCT_DRUM_VOICE_COUNT: 7,

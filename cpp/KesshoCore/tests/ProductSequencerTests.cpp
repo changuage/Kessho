@@ -9,6 +9,7 @@
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoProductParamIds.h"
 #include "../src/product/KesshoProductEngineInternal.h"
+#include "../src/product/generated/SampleLibraryRegistry.generated.h"
 #include "ProductSnapshotTestHelpers.h"
 
 namespace {
@@ -117,8 +118,27 @@ void applySourceDefaults(KesshoProductSnapshotV2& snapshot) {
     source.sustain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN;
     source.hold_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS;
     source.release_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS;
+    source.sample_library_id = kSampleLibraryPiano;
+    source.sample_role_id = kSampleRoleAny;
+    source.sample_articulation_id = kSampleArticulationAny;
+    source.sample_selection_mode = KESSHO_PRODUCT_SAMPLE_SELECTION_NEAREST;
+    source.sample_dynamic_mode = KESSHO_PRODUCT_SAMPLE_DYNAMIC_LEGACY_PIANO_PARITY;
+    source.sample_fixed_dynamic_id = kSampleDynamicRegular;
+    source.sample_loop_enabled = 1u;
+    source.sample_max_voices = kSampleDefaultMaxVoices;
+    source.sample_variant_mode = KESSHO_PRODUCT_SAMPLE_VARIANT_STABLE;
     kessho::product::tests::applyGeneratedSourcePreset(snapshot, source_id, defaultSourcePresetId(source_id));
   }
+}
+
+void enableSourceForSequencerTest(KesshoProductSnapshotV2& snapshot, uint32_t source_id) {
+  KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
+  source.enabled = 1u;
+  source.level = 0.8f;
+  source.expression = 0.8f;
+  source.dry_gain = 1.0f;
+  source.post_lpf_hz = 18000.0f;
+  source.stereo_width = 1.0f;
 }
 
 void appendDrumOverride(KesshoProductSourceSnapshot& source, uint32_t param_index, float value) {
@@ -208,6 +228,16 @@ KesshoProductSnapshotV2 makeSnapshot() {
     snapshot.sources[i].stereo_width = 1.0f;
   }
   applySourceDefaults(snapshot);
+  {
+    KesshoProductSourceSnapshot& sample2 = snapshot.sources[KESSHO_PRODUCT_SOURCE_SAMPLE2 - 1u];
+    sample2.source_id = KESSHO_PRODUCT_SOURCE_SAMPLE2;
+    sample2.enabled = 0u;
+    sample2.preset_id = defaultSourcePresetId(KESSHO_PRODUCT_SOURCE_SAMPLE2);
+    kessho::product::tests::applyGeneratedSourcePreset(
+        snapshot,
+        KESSHO_PRODUCT_SOURCE_SAMPLE2,
+        sample2.preset_id);
+  }
 
   snapshot.synth_euclid.lane_count = 1;
   snapshot.synth_euclid.lanes[0].enabled = 1;
@@ -719,6 +749,89 @@ void requireProductSequencerDisabledTargetSourceTests() {
     require(event_count == 0, "Orbit must not emit events for disabled Lead source");
     kessho_product_destroy(engine);
   }
+}
+
+void requireProductSequencerSample2SourceTests() {
+  constexpr double sample_rate = 48000.0;
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Sample2 Euclid engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSnapshot();
+    kessho::product::tests::applyGeneratedSourceDefaults(snapshot);
+    enableSourceForSequencerTest(snapshot, KESSHO_PRODUCT_SOURCE_SAMPLE2);
+    snapshot.drum_euclid.lane_count = 0u;
+    snapshot.synth_euclid.lanes[0].target_source_id = KESSHO_PRODUCT_SOURCE_SAMPLE2;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Sample2 Euclid snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 96000u);
+    require(event_count > 0, "Sample2 Euclid should emit a Product Core event");
+    require(events[0].source_id == KESSHO_PRODUCT_SOURCE_SAMPLE2, "Sample2 Euclid source mismatch");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Sample2 Anchor Walker engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeAnchorWalkerSnapshot();
+    kessho::product::tests::applyGeneratedSourceDefaults(snapshot);
+    enableSourceForSequencerTest(snapshot, KESSHO_PRODUCT_SOURCE_SAMPLE2);
+    snapshot.synth_euclid.lanes[0].target_source_id = KESSHO_PRODUCT_SOURCE_SAMPLE2;
+    snapshot.synth_euclid.mode_states[0].anchor_walker.target_source_id = KESSHO_PRODUCT_SOURCE_SAMPLE2;
+    snapshot.synth_euclid.mode_states[0].anchor_walker.layers[0].target_source_id = KESSHO_PRODUCT_SOURCE_SAMPLE2;
+    snapshot.synth_euclid.mode_states[0].anchor_walker.layers[1].target_source_id = KESSHO_PRODUCT_SOURCE_SAMPLE2;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Sample2 Anchor Walker snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 1024u);
+    require(event_count >= 2, "Sample2 Anchor Walker should emit layered Product Core events");
+    require(events[0].source_id == KESSHO_PRODUCT_SOURCE_SAMPLE2, "Sample2 Anchor Walker root source mismatch");
+    require(events[1].source_id == KESSHO_PRODUCT_SOURCE_SAMPLE2, "Sample2 Anchor Walker delayed layer source mismatch");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Sample2 Orbit engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeOrbitSnapshot();
+    kessho::product::tests::applyGeneratedSourceDefaults(snapshot);
+    enableSourceForSequencerTest(snapshot, KESSHO_PRODUCT_SOURCE_SAMPLE2);
+    snapshot.synth_euclid.lanes[0].target_source_id = KESSHO_PRODUCT_SOURCE_SAMPLE2;
+    snapshot.synth_euclid.mode_states[0].orbit.target_source_id = KESSHO_PRODUCT_SOURCE_SAMPLE2;
+    snapshot.synth_euclid.mode_states[0].orbit.notes[0].target_source_id = KESSHO_PRODUCT_SOURCE_SAMPLE2;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Sample2 Orbit snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 2048u);
+    require(event_count > 0, "Sample2 Orbit should emit a Product Core crossing event");
+    require(events[0].source_id == KESSHO_PRODUCT_SOURCE_SAMPLE2, "Sample2 Orbit source mismatch");
+    kessho_product_destroy(engine);
+  }
+}
+
+void requireOrbitNoteCountEventClearsRuntimeTests() {
+  constexpr double sample_rate = 48000.0;
+  KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+  require(engine != nullptr, "Orbit note-count runtime-clear engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeOrbitSnapshot();
+  snapshot.synth_euclid.mode_states[0].orbit.note_count = 4u;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Orbit note-count runtime-clear snapshot load failed");
+  LaneState& lane = engine->synth_lanes[0];
+  lane.pending_ratchet_count = 2u;
+  lane.sequencer_runtime_initialized = true;
+  lane.orbit.runtime_initialized = true;
+
+  KesshoProductEvent note_count_event{};
+  note_count_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+  note_count_event.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  note_count_event.index = 0u;
+  note_count_event.param_id = KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_COUNT_ID;
+  note_count_event.value = 1.0f;
+  engine->applySequencerLaneParamEvent(note_count_event);
+
+  require(lane.orbit.note_count == 1u, "Orbit note-count event should update Product Core runtime count");
+  require(lane.pending_ratchet_count == 0u, "Orbit note-count event should clear stale pending sequencer events");
+  require(!lane.sequencer_runtime_initialized, "Orbit note-count event should reset lane runtime scheduling");
+  require(!lane.orbit.runtime_initialized, "Orbit note-count event should reset Orbit runtime scheduling");
+  kessho_product_destroy(engine);
 }
 
 void requireProductSequencerModeEventTests() {
@@ -2154,6 +2267,89 @@ void renderSilentBlocks(KesshoProductEngine* engine, uint32_t block_count) {
   }
 }
 
+std::vector<std::vector<float>> g_sample_asset_test_storage;
+
+void registerSampleAssetForSequencerTest(
+    KesshoProductEngine* engine,
+    uint32_t asset_id,
+    uint32_t frames,
+    uint32_t flags,
+    float phase_offset) {
+  g_sample_asset_test_storage.emplace_back(frames);
+  std::vector<float>& data = g_sample_asset_test_storage.back();
+  for (uint32_t index = 0; index < frames; ++index) {
+    data[index] = 0.45f * std::sin(static_cast<float>(index) * 0.047f + phase_offset);
+  }
+  const float* channels[1] = {data.data()};
+  require(
+      kessho_product_register_asset_buffer(engine, asset_id, channels, 1u, frames, 48000.0, flags) ==
+          KESSHO_PRODUCT_OK,
+      "sample asset registration for sequencer test failed");
+}
+
+void enqueueSourceParam(
+    KesshoProductEngine* engine,
+    uint32_t source_id,
+    uint32_t param_id,
+    float value,
+    const char* message) {
+  KesshoProductEvent event{};
+  event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  event.target_id = source_id;
+  event.param_id = param_id;
+  event.value = value;
+  require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, message);
+}
+
+void triggerManualSourceNote(
+    KesshoProductEngine* engine,
+    uint32_t source_id,
+    float midi_note,
+    float velocity,
+    float hold_seconds,
+    const char* message) {
+  KesshoProductEvent note{};
+  note.event_kind = KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON;
+  note.target_id = source_id;
+  note.value = midi_note;
+  note.value2 = velocity;
+  note.value3 = hold_seconds;
+  require(kessho_product_enqueue_event(engine, &note) == KESSHO_PRODUCT_OK, message);
+}
+
+uint32_t activeSampleAssetIdForSource(const KesshoProductEngine* engine, uint32_t source_id) {
+  for (const Voice& voice : engine->voices) {
+    if (!voice.active || voice.source_id != source_id || !voice.sample_slot_voice ||
+        voice.asset_slot >= kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS) {
+      continue;
+    }
+    const AssetSlot& asset = engine->assets[voice.asset_slot];
+    if (asset.active) {
+      return asset.asset_id;
+    }
+  }
+  return 0u;
+}
+
+uint32_t generatedSampleAssetId(
+    uint32_t library_id,
+    uint32_t role_id,
+    uint32_t articulation_id,
+    uint32_t dynamic_id,
+    uint32_t root_midi) {
+  for (const auto& descriptor : kessho::product::generated::kGeneratedSampleDescriptors) {
+    if (descriptor.libraryId == library_id &&
+        descriptor.roleId == role_id &&
+        descriptor.articulationId == articulation_id &&
+        descriptor.dynamicId == dynamic_id &&
+        descriptor.rootMidi == root_midi) {
+      return descriptor.assetId;
+    }
+  }
+  require(false, "generated sample descriptor for test was not found");
+  return 0u;
+}
+
 KesshoProductDebugVoiceSpawn latestDebugVoiceSpawnForSource(
     const KesshoProductTelemetry& telemetry,
     uint32_t source_id,
@@ -3105,6 +3301,167 @@ void requireControlEventEnqueueOrdering() {
   require(direct.control_events[1].event.value == 120.0f, "same-offset control event FIFO order should be stable");
 }
 
+void requireSample2LiveLibrarySwitchUsesNewAsset() {
+  constexpr double sample_rate = 48000.0;
+  constexpr uint32_t piano60_asset_id = kPianoAssetIdBase + (60u - kPianoBaseMidi) + 1u;
+  const uint32_t soft_string_asset_id = generatedSampleAssetId(
+      kessho::product::generated::kSampleLibraryIdSoftStringSpurs,
+      kessho::product::generated::kSampleRoleIdSustain,
+      kessho::product::generated::kSampleArticulationIdCore,
+      kessho::product::generated::kSampleDynamicIdLevel4,
+      66u);
+
+  KesshoProductEngine* engine = kessho_product_create(sample_rate, 128u, 0);
+  require(engine != nullptr, "Sample2 live library switch engine allocation failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  kessho::product::tests::applyGeneratedSourceDefaults(snapshot);
+  snapshot.synth_euclid.lane_count = 0u;
+  snapshot.drum_euclid.lane_count = 0u;
+  enableSourceForSequencerTest(snapshot, KESSHO_PRODUCT_SOURCE_SAMPLE2);
+  KesshoProductSourceSnapshot& sample2 = snapshot.sources[KESSHO_PRODUCT_SOURCE_SAMPLE2 - 1u];
+  sample2.sample_library_id = kSampleLibraryPiano;
+  sample2.sample_role_id = kSampleRoleAny;
+  sample2.sample_articulation_id = kSampleArticulationAny;
+  sample2.sample_selection_mode = KESSHO_PRODUCT_SAMPLE_SELECTION_NEAREST;
+  sample2.sample_dynamic_mode = KESSHO_PRODUCT_SAMPLE_DYNAMIC_FIXED;
+  sample2.sample_fixed_dynamic_id = kSampleDynamicRegular;
+  sample2.sample_loop_enabled = 1u;
+  sample2.sample_max_voices = 16u;
+  sample2.sample_variant_mode = KESSHO_PRODUCT_SAMPLE_VARIANT_STABLE;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "Sample2 live library switch snapshot load failed");
+
+  registerSampleAssetForSequencerTest(
+      engine,
+      piano60_asset_id,
+      2048u,
+      KESSHO_PRODUCT_ASSET_SAMPLE | KESSHO_PRODUCT_ASSET_PIANO,
+      0.0f);
+  registerSampleAssetForSequencerTest(
+      engine,
+      soft_string_asset_id,
+      4096u,
+      KESSHO_PRODUCT_ASSET_SAMPLE,
+      0.9f);
+
+  triggerManualSourceNote(
+      engine,
+      KESSHO_PRODUCT_SOURCE_SAMPLE2,
+      60.0f,
+      1.0f,
+      0.1f,
+      "Sample2 piano note enqueue failed");
+  renderSilentBlocks(engine, 1u);
+  require(
+      activeSampleAssetIdForSource(engine, KESSHO_PRODUCT_SOURCE_SAMPLE2) == piano60_asset_id,
+      "Sample2 should initially play the Piano asset");
+
+  enqueueSourceParam(
+      engine,
+      KESSHO_PRODUCT_SOURCE_SAMPLE2,
+      KESSHO_PRODUCT_PARAM_SOURCE_SAMPLE_LIBRARY_ID_ID,
+      static_cast<float>(kessho::product::generated::kSampleLibraryIdSoftStringSpurs),
+      "Sample2 live library param enqueue failed");
+  enqueueSourceParam(
+      engine,
+      KESSHO_PRODUCT_SOURCE_SAMPLE2,
+      KESSHO_PRODUCT_PARAM_SOURCE_SAMPLE_ROLE_ID_ID,
+      static_cast<float>(kessho::product::generated::kSampleRoleIdSustain),
+      "Sample2 live role param enqueue failed");
+  enqueueSourceParam(
+      engine,
+      KESSHO_PRODUCT_SOURCE_SAMPLE2,
+      KESSHO_PRODUCT_PARAM_SOURCE_SAMPLE_ARTICULATION_ID_ID,
+      static_cast<float>(kessho::product::generated::kSampleArticulationIdCore),
+      "Sample2 live articulation param enqueue failed");
+  enqueueSourceParam(
+      engine,
+      KESSHO_PRODUCT_SOURCE_SAMPLE2,
+      KESSHO_PRODUCT_PARAM_SOURCE_SAMPLE_SELECTION_MODE_ID,
+      static_cast<float>(KESSHO_PRODUCT_SAMPLE_SELECTION_MAPPED),
+      "Sample2 live selection param enqueue failed");
+  enqueueSourceParam(
+      engine,
+      KESSHO_PRODUCT_SOURCE_SAMPLE2,
+      KESSHO_PRODUCT_PARAM_SOURCE_SAMPLE_DYNAMIC_MODE_ID,
+      static_cast<float>(KESSHO_PRODUCT_SAMPLE_DYNAMIC_FIXED),
+      "Sample2 live dynamic-mode param enqueue failed");
+  enqueueSourceParam(
+      engine,
+      KESSHO_PRODUCT_SOURCE_SAMPLE2,
+      KESSHO_PRODUCT_PARAM_SOURCE_SAMPLE_FIXED_DYNAMIC_ID_ID,
+      static_cast<float>(kessho::product::generated::kSampleDynamicIdLevel4),
+      "Sample2 live fixed dynamic param enqueue failed");
+  renderSilentBlocks(engine, 10u);
+
+  const SourceState& live_sample2 = engine->sources[KESSHO_PRODUCT_SOURCE_SAMPLE2 - 1u];
+  require(
+      live_sample2.sample_library_id == kessho::product::generated::kSampleLibraryIdSoftStringSpurs,
+      "Sample2 live library param should update product core source state");
+  require(
+      live_sample2.sample_role_id == kessho::product::generated::kSampleRoleIdSustain,
+      "Sample2 live role param should update product core source state");
+  require(
+      live_sample2.sample_articulation_id == kessho::product::generated::kSampleArticulationIdCore,
+      "Sample2 live articulation param should update product core source state");
+  require(
+      activeSampleAssetIdForSource(engine, KESSHO_PRODUCT_SOURCE_SAMPLE2) == 0u,
+      "Sample2 old Piano voice should be released after library switch");
+
+  triggerManualSourceNote(
+      engine,
+      KESSHO_PRODUCT_SOURCE_SAMPLE2,
+      66.0f,
+      1.0f,
+      0.12f,
+      "Sample2 soft string note enqueue failed");
+  renderSilentBlocks(engine, 1u);
+  require(
+      activeSampleAssetIdForSource(engine, KESSHO_PRODUCT_SOURCE_SAMPLE2) == soft_string_asset_id,
+      "Sample2 should play the new sample library asset immediately after live switch");
+  kessho_product_destroy(engine);
+}
+
+void requireSampleSourceEnvelopeLongRanges() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "sample envelope range engine allocation failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  for (uint32_t source_id : {KESSHO_PRODUCT_SOURCE_SAMPLE1, KESSHO_PRODUCT_SOURCE_SAMPLE2}) {
+    KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
+    source.attack_seconds = 12.0f;
+    source.decay_seconds = 6.0f;
+    source.hold_seconds = 19.0f;
+    source.release_seconds = 24.0f;
+  }
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "sample envelope long-range snapshot load failed");
+  for (uint32_t source_id : {KESSHO_PRODUCT_SOURCE_SAMPLE1, KESSHO_PRODUCT_SOURCE_SAMPLE2}) {
+    const SourceState& source = engine->sources[source_id - 1u];
+    require(std::fabs(source.attack_seconds - 12.0f) < 0.001f, "sample attack snapshot should keep long range");
+    require(std::fabs(source.decay_seconds - 6.0f) < 0.001f, "sample decay snapshot should keep long range");
+    require(std::fabs(source.hold_seconds - 19.0f) < 0.001f, "sample hold snapshot should keep long range");
+    require(std::fabs(source.release_seconds - 24.0f) < 0.001f, "sample release snapshot should keep long range");
+  }
+
+  KesshoProductEvent attack_event{};
+  attack_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  attack_event.target_id = KESSHO_PRODUCT_SOURCE_SAMPLE2;
+  attack_event.param_id = KESSHO_PRODUCT_PARAM_SOURCE_ATTACK_SECONDS_ID;
+  attack_event.value = 14.0f;
+  require(kessho_product_enqueue_event(engine, &attack_event) == KESSHO_PRODUCT_OK, "sample2 attack param enqueue failed");
+  KesshoProductEvent release_event = attack_event;
+  release_event.param_id = KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID;
+  release_event.value = 26.0f;
+  require(kessho_product_enqueue_event(engine, &release_event) == KESSHO_PRODUCT_OK, "sample2 release param enqueue failed");
+  renderSilentBlocks(engine, 1u);
+  const SourceState& sample2 = engine->sources[KESSHO_PRODUCT_SOURCE_SAMPLE2 - 1u];
+  require(std::fabs(sample2.attack_seconds - 14.0f) < 0.001f, "sample2 live attack param should keep long range");
+  require(std::fabs(sample2.release_seconds - 26.0f) < 0.001f, "sample2 live release param should keep long range");
+  kessho_product_destroy(engine);
+}
+
 } // namespace
 
 int main() {
@@ -3116,9 +3473,13 @@ int main() {
   requireAnchorWalkerTriggerAndBoundaryTests();
   requireAnchorWalkerStuckNoteEdgeTests();
   requireProductSequencerDisabledTargetSourceTests();
+  requireProductSequencerSample2SourceTests();
+  requireOrbitNoteCountEventClearsRuntimeTests();
   requireProductSequencerModeRuntimePreservationTests();
   requireDirectSequencerCoverage();
   requireControlEventEnqueueOrdering();
+  requireSample2LiveLibrarySwitchUsesNewAsset();
+  requireSampleSourceEnvelopeLongRanges();
   requireRuntimeWalkMovementAcrossAudioAndFxTargets();
   requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets();
   requireDrumExactRuntimeRangesApplyToSourceAndModule();

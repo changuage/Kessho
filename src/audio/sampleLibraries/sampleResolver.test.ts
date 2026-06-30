@@ -11,6 +11,7 @@ import type {
 import { getSampleLibraryRegistry } from './sampleLibraryRegistry';
 import { resolveSample } from './sampleResolver';
 import { getDefaultSampleSlotState } from './sampleSlotState';
+import { SAMPLE_DYNAMIC_MODE_IDS, sampleSlotSnapshotFields } from './sampleSlotProductSnapshot';
 
 function sample(
   sampleId: string,
@@ -122,6 +123,19 @@ const fixedResult = resolveSample({
   velocity: 0,
 }, [velocityLibrary]);
 assert.equal(fixedResult.kind === 'hit' ? fixedResult.sampleId : '', 'ff');
+
+const staleLegacyNonPianoResult = resolveSample({
+  slot: slot({ dynamicMode: 'legacy-piano-parity', selectionMode: 'exact' }),
+  targetMidi: 60,
+  velocity: 64,
+}, [testLibrary([sample('non-piano-single', 8412, 60, 60, 60, 'single', 0, 127)])]);
+assert.equal(staleLegacyNonPianoResult.kind, 'hit');
+assert.equal(staleLegacyNonPianoResult.kind === 'hit' ? staleLegacyNonPianoResult.sampleId : '', 'non-piano-single');
+assert.equal(
+  sampleSlotSnapshotFields(slot({ dynamicMode: 'legacy-piano-parity' })).sampleDynamicMode,
+  SAMPLE_DYNAMIC_MODE_IDS.velocity,
+  'non-piano Product snapshots should normalize stale legacy piano dynamic mode to velocity',
+);
 
 const pitchLibrary = testLibrary([sample('root-60', 8406, 60, 60, 60)]);
 const pitchResult = resolveSample({

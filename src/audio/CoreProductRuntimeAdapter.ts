@@ -373,7 +373,26 @@ class CoreProductRuntimeAdapter {
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceSustain, previous.sustain, next.sustain, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds, previous.holdSeconds, next.holdSeconds, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds, previous.releaseSeconds, next.releaseSeconds, targetId);
+      this.appendSampleSourceParamDiffs(events, previous, next, targetId);
     }
+  }
+
+  private appendSampleSourceParamDiffs(
+    events: CoreProductEvent[],
+    previous: ProductSourceSnapshot,
+    next: ProductSourceSnapshot,
+    targetId: number,
+  ): void {
+    if (targetId !== CORE_PRODUCT_SOURCE_IDS.sample1 && targetId !== CORE_PRODUCT_SOURCE_IDS.sample2) return;
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceSampleLibraryId, previous.sampleLibraryId, next.sampleLibraryId, targetId);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceSampleRoleId, previous.sampleRoleId, next.sampleRoleId, targetId);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceSampleArticulationId, previous.sampleArticulationId, next.sampleArticulationId, targetId);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceSampleSelectionMode, previous.sampleSelectionMode, next.sampleSelectionMode, targetId);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceSampleDynamicMode, previous.sampleDynamicMode, next.sampleDynamicMode, targetId);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceSampleFixedDynamicId, previous.sampleFixedDynamicId, next.sampleFixedDynamicId, targetId);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceSampleLoopEnabled, previous.sampleLoopEnabled, next.sampleLoopEnabled, targetId);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceSampleMaxVoices, previous.sampleMaxVoices, next.sampleMaxVoices, targetId);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceSampleVariantMode, previous.sampleVariantMode, next.sampleVariantMode, targetId);
   }
 
   private appendSourceOverrideDiffs(events: CoreProductEvent[], previousSources: ProductSourceSnapshot[], nextSources: ProductSourceSnapshot[]): void {

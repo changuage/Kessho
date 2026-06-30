@@ -143,12 +143,26 @@ function getAssignmentsFingerprint(assignments: (ArmAssignment | null)[]): strin
   }).join('|');
 }
 
+function refreshAssignmentLevels(
+  assignments: (ArmAssignment | null)[],
+  state: SliderState,
+): (ArmAssignment | null)[] {
+  return assignments.map((assignment) => {
+    if (!assignment) return null;
+    return {
+      ...assignment,
+      normalizedLevel: getNormalizedLevel(assignment.engine, state),
+    };
+  });
+}
+
 /**
  * Build a fine-grained fingerprint for a single engine's macro inputs.
  */
 function getEngineFingerprint(engine: EngineGroupDef, state: SliderState): string {
   const lv = ((state[engine.levelKey] as number) * 100) | 0;
   const rv = ((state.reverbLevel as number) * 100) | 0;
+  const rs = engine.sends.reverb ? ((state[engine.sends.reverb] as number) * 100) | 0 : 0;
   const gr = engine.sends.granular ? ((state[engine.sends.granular] as number) * 100) | 0 : 0;
   const da = engine.sends.delayA ? ((state[engine.sends.delayA] as number) * 100) | 0 : 0;
   const db = engine.sends.delayB ? ((state[engine.sends.delayB] as number) * 100) | 0 : 0;
@@ -156,7 +170,7 @@ function getEngineFingerprint(engine: EngineGroupDef, state: SliderState): strin
   const rd = ((state.reverbDecay as number) * 20) | 0;
   const rdf = ((state.reverbDiffusion as number) * 20) | 0;
   const gm = state.granularV1Mode === 'granular' ? 1 : 0;
-  return `${lv}.${rv}.${gr}.${da}.${db}.${dg}.${rd}.${rdf}.${gm}`;
+  return `${lv}.${rv}.${rs}.${gr}.${da}.${db}.${dg}.${rd}.${rdf}.${gm}`;
 }
 
 export function useSnowflakeV2(
@@ -179,15 +193,32 @@ export function useSnowflakeV2(
     generated: GeneratedSnowflake;
   }>());
   const rememberedLevelRangesRef = useRef<Record<string, DualRange>>({});
+  const dragStateRef = useRef<{
+    slot: number;
+    engine: EngineGroupDef | null;
+    levelRangeMacro: LevelRangeMacro | null;
+    frozenAssignments: (ArmAssignment | null)[];
+    startX: number;
+    startY: number;
+    startNormalizedLevel: number;
+    confirmed: boolean;
+  } | null>(null);
 
   // --- Dynamic arm assignment: rank once per active-set change, then keep slots stable while levels move ---
   const activeEngineSignature = getActiveEngineSignature(state);
-  if (persistedAssignmentSignature !== activeEngineSignature) {
+  const frozenAssignmentSnapshot = dragStateRef.current?.frozenAssignments ?? null;
+  const isLevelDragInProgress = frozenAssignmentSnapshot !== null;
+  if (!isLevelDragInProgress && persistedAssignmentSignature !== activeEngineSignature) {
     persistedAssignmentSignature = activeEngineSignature;
     persistedAssignmentOrder = getRankedActiveEngineIds(state).slice(0, 6);
   }
   const assignedEngineOrder = persistedAssignmentOrder;
-  const assignments = useMemo(() => computeArmAssignments(state, assignedEngineOrder), [state, assignedEngineOrder]);
+  const assignments = useMemo(() => {
+    if (frozenAssignmentSnapshot) {
+      return refreshAssignmentLevels(frozenAssignmentSnapshot, state);
+    }
+    return computeArmAssignments(state, assignedEngineOrder);
+  }, [state, assignedEngineOrder, frozenAssignmentSnapshot]);
 
   // Build a combined fingerprint that includes assignment layout + per-engine state
   const combinedFp = useMemo(() => {
@@ -228,15 +259,6 @@ export function useSnowflakeV2(
 
   // --- Level drag + Star open/auto-close timer ---
   const closeTimersRef = useRef<Array<ReturnType<typeof setTimeout> | null>>(Array.from({ length: 6 }, () => null));
-  const dragStateRef = useRef<{
-    slot: number;
-    engine: EngineGroupDef | null;
-    levelRangeMacro: LevelRangeMacro | null;
-    startX: number;
-    startY: number;
-    startNormalizedLevel: number;
-    confirmed: boolean;
-  } | null>(null);
   const starDragRef = useRef<{
     slot: number;
     direction: StarDirection;
@@ -320,6 +342,7 @@ export function useSnowflakeV2(
       slot,
       engine,
       levelRangeMacro: getLevelRangeMacro(engine),
+      frozenAssignments: assignments.map((assignment) => assignment ? { ...assignment } : null),
       startX: x,
       startY: y,
       startNormalizedLevel: engine ? getNormalizedLevel(engine, state) : 0,
@@ -327,7 +350,7 @@ export function useSnowflakeV2(
     };
 
     openStarForSlot(slot);
-  }, [openStarForSlot, getEngineForSlot, getLevelRangeMacro, state]);
+  }, [assignments, openStarForSlot, getEngineForSlot, getLevelRangeMacro, state]);
 
   const onLevelDrag = useCallback((
     clientX: number, clientY: number,

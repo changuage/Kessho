@@ -2,7 +2,8 @@
  * Snowflake V2 — Barrel Export
  *
  * Macro-driven snowflake using the SVG generator.
- * 4 macros (Ornament, Fractal, Density, Structure) drive all visual variation.
+ * Six macros drive visual variation: Ornament, Fractal, Density, Structure,
+ * Aura, and Erosion.
  */
 
 export { ENGINE_GROUPS, computeArmAssignments, getSendValue, FX_COLORS } from './engineGroups';
