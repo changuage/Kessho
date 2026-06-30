@@ -1698,10 +1698,11 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
               const hx = centerX + Math.cos(angle) * handleDist;
               const hy = centerY + Math.sin(angle) * handleDist;
 
-              // Larger ring for mobile friendliness
-              const ringR = 34 * scaleFactor;
-              const nodeR = 8 * scaleFactor; // large tap target
-              const hitR = 16 * scaleFactor; // invisible hit area even larger
+              // Larger ring for mobile friendliness — enforce minimum sizes
+              const mobileBoost = isMobile ? 1.45 : 1;
+              const ringR = Math.max(28, 34 * scaleFactor * mobileBoost);
+              const nodeR = Math.max(8, 8 * scaleFactor * mobileBoost); // visible node
+              const hitR = Math.max(18, 16 * scaleFactor * mobileBoost); // invisible hit area
 
               const starPointAngles: Array<{ key: StarDirection; label: string; angle: number; color: string; value: number }> = [
                 { key: 'reverb', label: 'Rev', angle: -Math.PI / 2, color: FX_COLORS.reverb, value: getSendValue(snowflakeState, engine.sends.reverb) },
@@ -1747,8 +1748,8 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
                     const arcY2 = hy + Math.sin(arcEndAngle) * ringR;
                     const arcPath = `M ${arcX1} ${arcY1} A ${ringR} ${ringR} 0 0 1 ${arcX2} ${arcY2}`;
 
-                    // Label outside the ring
-                    const labelDist = ringR + 14 * scaleFactor;
+                    // Label outside the ring — pushed well clear of touch area
+                    const labelDist = ringR + (isMobile ? 24 : 20) * scaleFactor;
                     const labelX = hx + point.dx * labelDist;
                     const labelY = hy + point.dy * labelDist;
 
@@ -1791,19 +1792,59 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
                             transition: 'r 0.12s ease-out',
                           }}
                         />
-                        {/* FX label */}
-                        <text
-                          x={labelX} y={labelY}
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          fill={isActive ? 'white' : point.color}
-                          fontSize={8.5 * scaleFactor}
-                          fontWeight="600"
-                          opacity={isActive ? 1 : 0.6}
-                          style={{ pointerEvents: 'none' }}
-                        >
-                          {isActive ? `${Math.round(point.value * 100)}%` : point.label}
-                        </text>
+                        {/* FX label — shows percentage when active or when value > 0 */}
+                        {isActive && isMobile ? (
+                          /* Mobile: floating pill further out from the node */
+                          <g style={{ pointerEvents: 'none' }}>
+                            {(() => {
+                              const pillDist = ringR + 42 * scaleFactor;
+                              const pillX = hx + point.dx * pillDist;
+                              const pillY = hy + point.dy * pillDist;
+                              return (
+                                <>
+                                  <rect
+                                    x={pillX - 22 * scaleFactor}
+                                    y={pillY - 11 * scaleFactor}
+                                    width={44 * scaleFactor}
+                                    height={22 * scaleFactor}
+                                    rx={11 * scaleFactor}
+                                    fill="rgba(0,0,0,0.88)"
+                                    stroke={point.color}
+                                    strokeWidth={1.5}
+                                  />
+                                  <text
+                                    x={pillX}
+                                    y={pillY}
+                                    textAnchor="middle"
+                                    dominantBaseline="central"
+                                    fill="white"
+                                    fontSize={10 * scaleFactor}
+                                    fontWeight="700"
+                                  >
+                                    {`${Math.round(point.value * 100)}%`}
+                                  </text>
+                                </>
+                              );
+                            })()}
+                          </g>
+                        ) : (
+                          <text
+                            x={labelX} y={labelY}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fill={isActive ? 'white' : point.color}
+                            fontSize={(isActive ? 9 : 8.5) * scaleFactor}
+                            fontWeight="600"
+                            opacity={isActive ? 1 : 0.6}
+                            style={{ pointerEvents: 'none' }}
+                          >
+                            {isActive
+                              ? `${Math.round(point.value * 100)}%`
+                              : point.value > 0.005
+                                ? `${point.label} ${Math.round(point.value * 100)}%`
+                                : point.label}
+                          </text>
+                        )}
                       </g>
                     );
                   })}
@@ -1837,10 +1878,17 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
               const rangeMaxPoint = dualLevelRange ? rangePoint(dualLevelRange.maxNorm) : null;
               const rangeMidPoint = dualLevelRange ? rangePoint(dualLevelRange.midNorm) : null;
 
-              // Label position: slightly beyond the handle along the arm axis
-              const labelDist = handleDist + handleR + 26 * scaleFactor;
+              // Label position: well beyond the handle along the arm axis
+              const labelDist = handleDist + handleR + 42 * scaleFactor;
               const lx = centerX + Math.cos(angle) * labelDist;
               const ly = centerY + Math.sin(angle) * labelDist;
+
+              // On mobile, when dragging, show the % pill offset perpendicular
+              // to the arm axis so it isn't hidden under the finger.
+              const perpAngle = angle + Math.PI / 2;
+              const mobilePillOffsetPx = 56 * scaleFactor;
+              const mobilePillX = hx + Math.cos(perpAngle) * mobilePillOffsetPx;
+              const mobilePillY = hy + Math.sin(perpAngle) * mobilePillOffsetPx;
 
               return (
                 <g key={`handle-group-${slot}`}>
@@ -1901,23 +1949,50 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
                       resetHideTimer();
                     }}
                   />
-                  {/* Engine name label */}
-                  <text
-                    x={lx}
-                    y={ly}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    fill="white"
-                    stroke="rgba(12,14,18,0.86)"
-                    strokeWidth={2.4 * scaleFactor}
-                    paintOrder="stroke"
-                    fontSize={9 * scaleFactor}
-                    fontWeight="500"
-                    opacity={0.8}
-                    style={{ pointerEvents: 'none' }}
-                  >
-                    {engine.label}
-                  </text>
+                  {/* Engine name label — shows percentage while dragging */}
+                  {isActive && isMobile ? (
+                    /* Mobile: floating pill offset perpendicular to arm axis */
+                    <g style={{ pointerEvents: 'none' }}>
+                      <rect
+                        x={mobilePillX - 24 * scaleFactor}
+                        y={mobilePillY - 12 * scaleFactor}
+                        width={48 * scaleFactor}
+                        height={24 * scaleFactor}
+                        rx={12 * scaleFactor}
+                        fill="rgba(0,0,0,0.88)"
+                        stroke={engine.color}
+                        strokeWidth={1.5}
+                      />
+                      <text
+                        x={mobilePillX}
+                        y={mobilePillY}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fill="white"
+                        fontSize={11 * scaleFactor}
+                        fontWeight="700"
+                      >
+                        {`${Math.round(normalizedLevel * 100)}%`}
+                      </text>
+                    </g>
+                  ) : (
+                    <text
+                      x={lx}
+                      y={ly}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fill="white"
+                      stroke="rgba(12,14,18,0.86)"
+                      strokeWidth={2.4 * scaleFactor}
+                      paintOrder="stroke"
+                      fontSize={isActive ? 10 * scaleFactor : 9 * scaleFactor}
+                      fontWeight={isActive ? '700' : '500'}
+                      opacity={isActive ? 1 : 0.8}
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      {isActive ? `${Math.round(normalizedLevel * 100)}%` : engine.label}
+                    </text>
+                  )}
                 </g>
               );
             })}
