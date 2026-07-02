@@ -22,7 +22,7 @@ const DEFAULT_ENVELOPE_RMS_RATIO_TOLERANCE = 0.4;
 const DEFAULT_ENVELOPE_PEAK_RATIO_TOLERANCE = 0.35;
 const EXIT_SONIC_FAILURE = 1;
 const EXIT_SETUP_FAILURE = 2;
-const MANUAL_NOTE_SOURCES = new Set(['pad1', 'pad2', 'lead1', 'lead2', 'piano']);
+const MANUAL_NOTE_SOURCES = new Set(['pad1', 'pad2', 'lead1', 'lead2', 'sample1', 'sample2', 'piano']);
 const MANUAL_DRUM_VOICES = new Set(['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane']);
 const CORE_ENGINE_NAMES = new Set(['core-product', 'core-smoke']);
 
@@ -66,6 +66,7 @@ function parseArgs(argv) {
     envelopeRmsRatioTolerance: DEFAULT_ENVELOPE_RMS_RATIO_TOLERANCE,
     envelopePeakRatioTolerance: DEFAULT_ENVELOPE_PEAK_RATIO_TOLERANCE,
     coreEngine: 'core-product',
+    coreOnly: false,
     printDebug: false,
     mobileDevice: false,
     routeSmoke: false,
@@ -101,6 +102,7 @@ function parseArgs(argv) {
     else if (arg.startsWith('--envelope-rms-ratio-tolerance=')) args.envelopeRmsRatioTolerance = Number(arg.slice('--envelope-rms-ratio-tolerance='.length));
     else if (arg.startsWith('--envelope-peak-ratio-tolerance=')) args.envelopePeakRatioTolerance = Number(arg.slice('--envelope-peak-ratio-tolerance='.length));
     else if (arg.startsWith('--core-engine=')) args.coreEngine = arg.slice('--core-engine='.length).trim();
+    else if (arg === '--core-only') args.coreOnly = true;
     else if (arg === '--print-debug') args.printDebug = true;
     else if (arg === '--mobile-device') args.mobileDevice = true;
     else if (arg === '--route-smoke') args.routeSmoke = true;
@@ -181,7 +183,7 @@ function normalizeManualNote(raw, originalValue) {
 
   const source = typeof raw.source === 'string' ? raw.source : 'pad1';
   if (!MANUAL_NOTE_SOURCES.has(source)) {
-    throw new Error(`--manual-note source must be pad1, pad2, lead1, lead2, or piano: ${originalValue}`);
+    throw new Error(`--manual-note source must be pad1, pad2, lead1, lead2, sample1, sample2, or piano: ${originalValue}`);
   }
 
   const note = {
@@ -260,6 +262,7 @@ Options:
   --envelope-rms-ratio-tolerance=0.4    Maximum relative RMS delta per active envelope window
   --envelope-peak-ratio-tolerance=0.35  Maximum relative peak delta per active envelope window
   --core-engine=core-product      Core runtime to compare against Web: core-product or core-smoke
+  --core-only                Capture only the selected core runtime and require non-silent output
   --mobile-device              Emulate a mobile browser user agent for platform-dependent graph choices
   --route-smoke                Only require Web and core to produce valid non-silent output on the selected route
   --rms-tolerance=0.04         Maximum normalized RMS difference
@@ -1254,6 +1257,30 @@ async function main() {
 
   try {
     const coreLabel = args.coreEngine;
+    if (args.coreOnly) {
+      const core = await captureEngine(browser, vite.url, coreLabel, args);
+      validateCapture(coreLabel, core.capture);
+      const coreStats = core.capture.stats ?? statsForSamples(core.capture.left ?? [], core.capture.right ?? []);
+      console.log('Browser Product Core graph capture');
+      console.log(`  URL: ${vite.url}`);
+      console.log(`  Core engine: ${coreLabel}`);
+      console.log(`  Track: ${args.trackId}`);
+      console.log(`  Frames: ${core.capture.frames} @ ${core.capture.sampleRate} Hz (${formatNumber(core.capture.durationMs / 1000, 3)}s)`);
+      console.log(`  Core RMS/peak: ${formatNumber(coreStats.rms)} / ${formatNumber(coreStats.peak)}`);
+      console.log(`  Min core RMS: ${formatNumber(args.minSignalRms)} (${coreStats.rms >= args.minSignalRms ? 'met' : 'not met'})`);
+      if (args.printDebug && core.capture.debug !== undefined) {
+        console.log(`  Core debug: ${JSON.stringify(core.capture.debug)}`);
+      }
+      if (core.logs.length > 0) {
+        console.log(`  ${coreLabel} browser logs:`);
+        for (const entry of core.logs) console.log(`    ${entry}`);
+      }
+      if (coreStats.rms < args.minSignalRms) {
+        throw new SonicParityRunError('sonic/core-output', `${coreLabel} RMS ${formatNumber(coreStats.rms)} is below min-signal ${formatNumber(args.minSignalRms)} on ${args.trackId}.`);
+      }
+      console.log('  Result: PASS');
+      return;
+    }
     const web = await captureEngine(browser, vite.url, 'web', args);
     const core = await captureEngine(browser, vite.url, coreLabel, args);
     validateCapture('web', web.capture);

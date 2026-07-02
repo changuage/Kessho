@@ -52,7 +52,7 @@ export function createPianoVirtualSampleLibrary(): NormalizedSampleLibraryManife
   return {
     schema: 'kessho-normalized-sample-library-v1',
     libraryKey: 'piano',
-    displayName: 'Piano',
+    displayName: 'Legacy Keys',
     assetBasePath: 'samples',
     sourceSampleRate: PIANO_SAMPLE_RATE,
     encodedSampleRate: PIANO_SAMPLE_RATE,

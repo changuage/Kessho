@@ -4,9 +4,9 @@ import type { DynamicsVisualTelemetrySnapshot, EarthTextureDebugState } from '..
 import { useDrumPageRuntimeBridge } from './useDrumPageRuntimeBridge';
 import { useDrumPageSequencerBridge } from './useDrumPageSequencerBridge';
 import { useSynthPageSequencerBridge } from './useSynthPageSequencerBridge';
+import type { ManualSynthNoteOptions } from '../audio/engineSharedTypes';
 import type {
   ProductDrumVoice,
-  ProductManualSynthNote,
   ProductSynthAnchorWalkerVisualStateCallback,
   ProductSynthOrbitVisualStateCallback,
 } from '../audio/product/ProductEngineTypes';
@@ -21,7 +21,7 @@ export type SelectedAudioEnginePageRuntimeBridgeOptions =
       dynamicsAnalyser?: ((key: unknown) => AnalyserNode | null) | undefined;
     };
     productRuntimeManualTriggers: {
-      auditionSynthNote: (note: ProductManualSynthNote) => void;
+      auditionSynthNote: (note: ManualSynthNoteOptions) => void;
       triggerDrumVoice: (voice: ProductDrumVoice) => void;
     };
     getEarthTextureDebugState: () => EarthTextureDebugState;

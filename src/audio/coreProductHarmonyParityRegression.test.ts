@@ -422,17 +422,24 @@ assert.equal(sample2NonPianoDescriptor?.libraryKey, 'archive-found-strings-001',
 
 const postedSample2ChordEvents: Array<{ eventKind: number; targetId?: number; value?: number }> = [];
 const ensuredSample2ChordAssets: Array<{ slotId: string; midi: number; velocity: number }> = [];
+const sample2ChordOrder: string[] = [];
 (globalThis as { window?: unknown }).window = {
   setTimeout: () => 1,
   clearTimeout: () => undefined,
 };
 try {
   const scheduler = new CoreProductArrangementScheduler(
-    (event) => postedSample2ChordEvents.push({ eventKind: event.eventKind, targetId: event.targetId, value: event.value }),
+    (event) => {
+      postedSample2ChordEvents.push({ eventKind: event.eventKind, targetId: event.targetId, value: event.value });
+      if (event.eventKind === KESSHO_PRODUCT_EVENT_IDS.ManualNoteOn) {
+        sample2ChordOrder.push(`post:${event.targetId}:${Math.round(event.value ?? -1)}`);
+      }
+    },
     () => null,
     undefined,
     async (slotId, midi, velocity) => {
       ensuredSample2ChordAssets.push({ slotId, midi, velocity });
+      sample2ChordOrder.push(`ensure:${slotId}:${Math.round(midi)}`);
     },
   );
   scheduler.start({
@@ -470,6 +477,14 @@ const postedSample2ManualNotes = postedSample2ChordEvents.filter((event) => (
 assert.equal(postedSample2ManualNotes.length, 2, 'Product scheduler should post Sample 2 Chord Generator notes');
 assert.equal(ensuredSample2ChordAssets.length, 2, 'Product scheduler should load Sample 2 assets before generated note playback');
 assert(ensuredSample2ChordAssets.every((entry) => entry.slotId === 'sample2'), 'generated Sample 2 notes should load through the sample2 slot');
+for (const note of postedSample2ManualNotes) {
+  const midi = Math.round(note.value ?? -1);
+  assert(
+    sample2ChordOrder.indexOf(`ensure:sample2:${midi}`) >= 0 &&
+      sample2ChordOrder.indexOf(`ensure:sample2:${midi}`) < sample2ChordOrder.indexOf(`post:${KESSHO_PRODUCT_SOURCE_IDS.Sample2}:${midi}`),
+    `Sample 2 asset for MIDI ${midi} should load before the Chord Generator note event is posted`,
+  );
+}
 
 const postedSample2ChordUpdateEvents: Array<{ eventKind: number; targetId?: number; value?: number }> = [];
 const ensuredSample2ChordUpdateAssets: Array<{ slotId: string; midi: number; velocity: number }> = [];
@@ -500,7 +515,7 @@ try {
     synthChordGeneratorSource: 'sample1' as const,
     synthChordGeneratorVoiceCount: 2,
     sample1Enabled: true,
-    sample2Enabled: false,
+    sample2Enabled: true,
     waveSpread: 0,
   };
   scheduler.start(baseState);
@@ -508,7 +523,6 @@ try {
     ...baseState,
     synthChordGeneratorEnabled: true,
     synthChordGeneratorSource: 'sample2' as const,
-    sample2Enabled: true,
   });
   await Promise.resolve();
   await Promise.resolve();
@@ -526,6 +540,7 @@ assert(ensuredSample2ChordUpdateAssets.every((entry) => entry.slotId === 'sample
 
 const postedSample2RandomEvents: Array<{ eventKind: number; targetId?: number; value?: number }> = [];
 const ensuredSample2RandomAssets: Array<{ slotId: string; midi: number; velocity: number }> = [];
+const sample2RandomOrder: Array<'ensure' | 'post'> = [];
 const queuedSample2RandomTimers: Array<() => void> = [];
 (globalThis as { window?: unknown }).window = {
   setTimeout: (callback: () => void) => {
@@ -536,11 +551,17 @@ const queuedSample2RandomTimers: Array<() => void> = [];
 };
 try {
   const scheduler = new CoreProductArrangementScheduler(
-    (event) => postedSample2RandomEvents.push({ eventKind: event.eventKind, targetId: event.targetId, value: event.value }),
+    (event) => {
+      postedSample2RandomEvents.push({ eventKind: event.eventKind, targetId: event.targetId, value: event.value });
+      if (event.eventKind === KESSHO_PRODUCT_EVENT_IDS.ManualNoteOn && event.targetId === KESSHO_PRODUCT_SOURCE_IDS.Sample2) {
+        sample2RandomOrder.push('post');
+      }
+    },
     () => null,
     undefined,
     async (slotId, midi, velocity) => {
       ensuredSample2RandomAssets.push({ slotId, midi, velocity });
+      if (slotId === 'sample2') sample2RandomOrder.push('ensure');
     },
   );
   const baseState = {
@@ -558,14 +579,13 @@ try {
     lead1Density: 0.5,
     lead1Octave: 0,
     lead1OctaveRange: 2,
-    sample2Enabled: false,
+    sample2Enabled: true,
   };
   scheduler.start(baseState);
   scheduler.update({
     ...baseState,
     leadRandomEnabled: true,
     leadRandomSource: 'sample2' as const,
-    sample2Enabled: true,
     sample2LibraryKey: 'archive-found-strings-001',
     sample2Role: 'profile',
     sample2Articulation: 'found-string-loop',
@@ -593,6 +613,15 @@ const postedSample2RandomNotes = postedSample2RandomEvents.filter((event) => (
 assert(postedSample2RandomNotes.length > 0, 'Product scheduler should start Sample 2 Random Timing notes when enabled during playback');
 assert.equal(ensuredSample2RandomAssets.length, postedSample2RandomNotes.length, 'Random Timing Sample 2 notes should wait for Sample 2 assets');
 assert(ensuredSample2RandomAssets.every((entry) => entry.slotId === 'sample2'), 'Random Timing should load through the sample2 slot');
+let randomEnsuresSeen = 0;
+let randomPostsSeen = 0;
+for (const entry of sample2RandomOrder) {
+  if (entry === 'ensure') randomEnsuresSeen += 1;
+  if (entry === 'post') {
+    randomPostsSeen += 1;
+    assert(randomEnsuresSeen >= randomPostsSeen, 'Random Timing Sample 2 asset should load before each posted manual note');
+  }
+}
 
 const postedMaskedPadEvents: Array<{ eventKind: number; targetId?: number; value?: number }> = [];
 (globalThis as { window?: unknown }).window = {
@@ -1223,7 +1252,7 @@ assert.equal(auditionState.resolvedHarmonyFrame.activeSource, 'baseline', 'audit
   const harmonyState = createHarmonyState('chord-generator-seq5-regression', 0.3, 16, 0.5, 0, 'manual', 'Major (Ionian)', 0);
   const baseState = {
     ...DEFAULT_STATE,
-    pianoEnabled: true,
+    sample1Enabled: true,
     padEnabled: false,
     pad2Enabled: false,
     leadEnabled: false,
@@ -1234,9 +1263,9 @@ assert.equal(auditionState.resolvedHarmonyFrame.activeSource, 'baseline', 'audit
     chordRate: 4,
     phraseLength: 16,
     sequencerMasterBPM: 120,
-    synthChordGeneratorSource: 'piano' as const,
+    synthChordGeneratorSource: 'sample1' as const,
     synthChordGeneratorVoiceCount: 2,
-    synthChordSequencerSource: 'piano' as const,
+    synthChordSequencerSource: 'sample1' as const,
     synthChordSequencerVoiceCount: 1,
     synthChordSequencerClockDivision: '1/8' as const,
   };
@@ -1425,6 +1454,16 @@ assert.equal(auditionState.resolvedHarmonyFrame.activeSource, 'baseline', 'audit
   assert.equal(randomOnlyPreview.enabled, true, 'Random Timing should keep its own enabled state');
   assert(randomOnlyPreview.notes.length > 0, 'Random Timing should preview notes when Chord Generator is off');
   assert(randomOnlyPreview.notes.every((note) => note.source === 'sample2'), 'Random Timing source should not follow Chord Generator source');
+
+  const disabledSample2Preview = createRandomTimingPhrasePreview({
+    ...simpleSequencerState,
+    synthChordGeneratorEnabled: false,
+    leadRandomEnabled: true,
+    leadRandomSource: 'sample2' as const,
+    sample2Enabled: false,
+  });
+  assert.equal(disabledSample2Preview.enabled, false, 'Random Timing should stay disabled when selected Sample 2 is explicitly disabled');
+  assert.equal(disabledSample2Preview.notes.length, 0, 'Disabled Sample 2 preview should not synthesize notes');
 
   const independentChordPreview = createPadChordPhrasePreview({
     ...simpleSequencerState,

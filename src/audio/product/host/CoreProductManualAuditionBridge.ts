@@ -9,7 +9,7 @@ import type { CoreProductAssetRegistrar } from './CoreProductAssetRegistrar';
 
 export type CoreProductManualAuditionContext = {
   runtime: Pick<CoreProductRuntime, 'audioContext' | 'ensureStarted' | 'postEvent' | 'resume'>;
-  assetRegistrar: Pick<CoreProductAssetRegistrar, 'ensurePianoAssetForNote' | 'ensureSampleSlotAssetForNote'>;
+  assetRegistrar: Pick<CoreProductAssetRegistrar, 'ensureSampleSlotAssetForNote'>;
   latestSliderState: () => Record<string, unknown> | null;
   setLatestSliderState: (state: Record<string, unknown>) => void;
   latestProductSnapshot: () => CoreProductSnapshot | null;
@@ -39,7 +39,7 @@ function shouldApplyExternalState(context: CoreProductManualAuditionContext, ext
 
 function sampleSlotForManualSource(source: RequiredManualSynthNote['source']): SampleSlotId | null {
   if (source === 'sample2') return 'sample2';
-  if (source === 'sample1' || source === 'piano') return 'sample1';
+  if (source === 'sample1') return 'sample1';
   return null;
 }
 
@@ -140,7 +140,7 @@ export async function auditionCoreProductSynthNote(context: CoreProductManualAud
   context.setRuntimeReady(true);
   await context.runtime.resume();
   if (applyExternalState || !productSourceEnabled(context, targetSourceId)) {
-    await context.applyLatestSnapshotUpdate(sampleSlotId != null ? 'manual-piano-asset' : 'runtime-bootstrap');
+    await context.applyLatestSnapshotUpdate(sampleSlotId != null ? 'manual-sample-asset' : 'runtime-bootstrap');
   }
   if (sampleSlotId != null) await context.assetRegistrar.ensureSampleSlotAssetForNote(sampleSlotId, manualNote.midi, manualNote.velocity);
   postManualSynthNote(context, manualNote);
@@ -164,7 +164,7 @@ export async function auditionCoreProductSynthNotes(context: CoreProductManualAu
   context.setRuntimeReady(true);
   await context.runtime.resume();
   if (applyExternalState || !productSourcesEnabled(context, targetSourceIds)) {
-    await context.applyLatestSnapshotUpdate(manualNotes.some((note) => sampleSlotForManualSource(note.source) != null) ? 'manual-piano-asset' : 'runtime-bootstrap');
+    await context.applyLatestSnapshotUpdate(manualNotes.some((note) => sampleSlotForManualSource(note.source) != null) ? 'manual-sample-asset' : 'runtime-bootstrap');
   }
   await ensureSampleAssetsForManualNotes(context, manualNotes);
   for (const note of manualNotes) postManualSynthNote(context, note);

@@ -61,6 +61,14 @@ float renderPadModulePeakBlocks(KesshoProductEngine* engine, uint32_t blocks) {
   return peak;
 }
 
+void registerSampleAssetForSequencerTest(
+    KesshoProductEngine* engine,
+    uint32_t asset_id,
+    uint32_t frames,
+    uint32_t flags,
+    float phase_offset);
+uint32_t activeSampleAssetIdForSource(const KesshoProductEngine* engine, uint32_t source_id);
+
 void hardStopPadModuleVoices(KesshoProductEngine* engine) {
   require(engine != nullptr, "pad voice stop engine missing");
   require(engine->pad_module != nullptr, "pad voice stop module missing");
@@ -805,6 +813,82 @@ void requireProductSequencerSample2SourceTests() {
     require(events[0].source_id == KESSHO_PRODUCT_SOURCE_SAMPLE2, "Sample2 Orbit source mismatch");
     kessho_product_destroy(engine);
   }
+}
+
+void requireSequencedSample2RendersThroughSample2GraphTap() {
+  constexpr double sample_rate = 48000.0;
+  constexpr uint32_t piano60_asset_id = kPianoAssetIdBase + (60u - kPianoBaseMidi) + 1u;
+
+  KesshoProductEngine* engine = kessho_product_create(sample_rate, 128u, 0);
+  require(engine != nullptr, "sequenced Sample2 render engine create failed");
+  require(kessho_product_set_graph_taps_enabled(engine, 1u) == KESSHO_PRODUCT_OK, "sequenced Sample2 graph tap enable failed");
+
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  kessho::product::tests::applyGeneratedSourceDefaults(snapshot);
+  snapshot.drum_euclid.lane_count = 0u;
+  enableSourceForSequencerTest(snapshot, KESSHO_PRODUCT_SOURCE_SAMPLE2);
+  KesshoProductSourceSnapshot& sample2 = snapshot.sources[KESSHO_PRODUCT_SOURCE_SAMPLE2 - 1u];
+  sample2.sample_library_id = kSampleLibraryPiano;
+  sample2.sample_role_id = kSampleRoleAny;
+  sample2.sample_articulation_id = kSampleArticulationAny;
+  sample2.sample_selection_mode = KESSHO_PRODUCT_SAMPLE_SELECTION_NEAREST;
+  sample2.sample_dynamic_mode = KESSHO_PRODUCT_SAMPLE_DYNAMIC_FIXED;
+  sample2.sample_fixed_dynamic_id = kSampleDynamicRegular;
+  sample2.sample_loop_enabled = 0u;
+  sample2.sample_max_voices = 16u;
+  sample2.sample_variant_mode = KESSHO_PRODUCT_SAMPLE_VARIANT_STABLE;
+  snapshot.synth_euclid.lane_count = 1u;
+  snapshot.synth_euclid.lanes[0].enabled = 1u;
+  snapshot.synth_euclid.lanes[0].target_source_id = KESSHO_PRODUCT_SOURCE_SAMPLE2;
+  snapshot.synth_euclid.lanes[0].step_count = 4u;
+  snapshot.synth_euclid.lanes[0].fill_count = 4u;
+  snapshot.synth_euclid.lanes[0].clock_division = 4u;
+  snapshot.synth_euclid.lanes[0].midi_note = 60.0f;
+  snapshot.synth_euclid.lanes[0].velocity = 1.0f;
+  snapshot.synth_euclid.lanes[0].hold_seconds = 0.1f;
+  snapshot.synth_euclid.lanes[0].probability = 1.0f;
+  snapshot.synth_euclid.lanes[0].ratchet = 1u;
+
+  registerSampleAssetForSequencerTest(
+      engine,
+      piano60_asset_id,
+      4096u,
+      KESSHO_PRODUCT_ASSET_SAMPLE | KESSHO_PRODUCT_ASSET_PIANO,
+      0.0f);
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "sequenced Sample2 render snapshot load failed");
+
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  std::vector<float> sample2_l(128);
+  std::vector<float> sample2_r(128);
+  std::vector<float> piano_l(128);
+  std::vector<float> piano_r(128);
+  float sample2_peak = 0.0f;
+  float piano_peak = 0.0f;
+  bool observed_sample2_asset = false;
+  for (uint32_t block = 0u; block < 256u; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(engine, left.data(), right.data(), 128u);
+    observed_sample2_asset = observed_sample2_asset ||
+        activeSampleAssetIdForSource(engine, KESSHO_PRODUCT_SOURCE_SAMPLE2) == piano60_asset_id;
+    require(
+        kessho_product_get_graph_tap(engine, KESSHO_PRODUCT_GRAPH_TAP_SAMPLE2_DRY, sample2_l.data(), sample2_r.data(), 128u) ==
+            KESSHO_PRODUCT_OK,
+        "sequenced Sample2 dry graph tap read failed");
+    require(
+        kessho_product_get_graph_tap(engine, KESSHO_PRODUCT_GRAPH_TAP_PIANO_DRY, piano_l.data(), piano_r.data(), 128u) ==
+            KESSHO_PRODUCT_OK,
+        "sequenced Sample2 piano graph tap read failed");
+    sample2_peak = std::max(sample2_peak, std::max(maxAbs(sample2_l), maxAbs(sample2_r)));
+    piano_peak = std::max(piano_peak, std::max(maxAbs(piano_l), maxAbs(piano_r)));
+  }
+  require(sample2_peak > 0.00001f, "sequenced Sample2 dry graph tap stayed silent");
+  require(piano_peak < 0.000001f, "sequenced Sample2 leaked into the Sample1/Piano dry graph tap");
+  require(observed_sample2_asset, "sequenced Sample2 should render the registered sample asset");
+  kessho_product_destroy(engine);
 }
 
 void requireOrbitNoteCountEventClearsRuntimeTests() {
@@ -3474,6 +3558,7 @@ int main() {
   requireAnchorWalkerStuckNoteEdgeTests();
   requireProductSequencerDisabledTargetSourceTests();
   requireProductSequencerSample2SourceTests();
+  requireSequencedSample2RendersThroughSample2GraphTap();
   requireOrbitNoteCountEventClearsRuntimeTests();
   requireProductSequencerModeRuntimePreservationTests();
   requireDirectSequencerCoverage();

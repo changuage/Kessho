@@ -209,8 +209,8 @@ export type RandomWalkMode = 'localBrownian' | 'globalWalk';
 export type ProgressionClockSource = 'harmony' | 'localPhrase' | 'globalPhrase';
 export type TransportPrimaryClock = 'seconds' | 'bpm' | 'decoupled';
 export type LeadRandomSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'sample1' | 'sample2';
-export type SynthEuclidSource = 'lead' | 'lead1' | 'lead2' | 'pad' | 'pad1' | 'pad2' | 'sample1' | 'sample2' | 'piano' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6' | 'synth7' | 'synth8';
-export type SynthChordSequencerSource = 'pad1' | 'pad2' | 'both' | 'lead1' | 'lead2' | 'sample1' | 'sample2' | 'piano';
+export type SynthEuclidSource = 'lead' | 'lead1' | 'lead2' | 'pad' | 'pad1' | 'pad2' | 'sample1' | 'sample2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6' | 'synth7' | 'synth8';
+export type SynthChordSequencerSource = 'pad1' | 'pad2' | 'both' | 'lead1' | 'lead2' | 'sample1' | 'sample2';
 
 /**
  * Serialized evolve config for preset save/load.
@@ -3589,8 +3589,8 @@ export const DEFAULT_STATE: SliderState = {
   drumSubDrive: 0,            // No saturation
   drumSubSub: 0,              // No sub-octave
   drumSubAttack: 0,           // Instant attack
-  drumSubVariation: 0,        // No per-hit variation
-  drumSubDistance: 0.5,       // Neutral strike position (bipolar: 0=center, 0.5=neutral, 1=edge)
+  drumSubVariation: 0.04,
+  drumSubDistance: 0.08,
 
   // Voice 2: Kick (sine with pitch sweep)
   drumKickFreq: 55,
@@ -3604,8 +3604,8 @@ export const DEFAULT_STATE: SliderState = {
   drumKickTail: 0,          // No tail
   drumKickTone: 0,          // Pure sine
   drumKickAttack: 0,        // Instant attack
-  drumKickVariation: 0,     // No per-hit variation
-  drumKickDistance: 0.5,    // Neutral strike position
+  drumKickVariation: 0.04,
+  drumKickDistance: 0.08,
 
   // Voice 3: Click (the signature Ikeda "data" sound)
   drumClickDecay: 5,
@@ -3621,8 +3621,8 @@ export const DEFAULT_STATE: SliderState = {
   drumClickStereoWidth: 0,  // Mono
   drumClickExciterColor: 0, // Pure impulse
   drumClickAttack: 0,       // Instant attack
-  drumClickVariation: 0,    // No per-hit variation
-  drumClickDistance: 0.5,   // Neutral strike position
+  drumClickVariation: 0.04,
+  drumClickDistance: 0.08,
 
   // Voice 4: Beep Hi (high pitched notification ping)
   drumBeepHiFreq: 4000,
@@ -3643,8 +3643,8 @@ export const DEFAULT_STATE: SliderState = {
   drumBeepHiModPhase: 0,    // Sine start phase
   drumBeepHiModEnvEnd: 0.2, // Default sustain level
   drumBeepHiNoiseDecay: 0,  // No separate noise decay
-  drumBeepHiVariation: 0,   // No per-hit variation
-  drumBeepHiDistance: 0.5,  // Neutral strike position
+  drumBeepHiVariation: 0.04,
+  drumBeepHiDistance: 0.08,
 
   // Voice 5: Beep Lo (lower blip, Morse-code feel)
   drumBeepLoFreq: 400,
@@ -3664,8 +3664,8 @@ export const DEFAULT_STATE: SliderState = {
   drumBeepLoModalCut: 0,     // No partial cut
   drumBeepLoOscGain: 1,      // Unity gain for oscillator/pluck engine
   drumBeepLoModalGain: 1,    // Unity gain for modal resonator engine
-  drumBeepLoVariation: 0,    // No per-hit variation
-  drumBeepLoDistance: 0.5,   // Neutral strike position
+  drumBeepLoVariation: 0.04,
+  drumBeepLoDistance: 0.08,
 
   // Voice 6: Noise (hi-hat/texture)
   drumNoiseFilterFreq: 8000,
@@ -3685,13 +3685,13 @@ export const DEFAULT_STATE: SliderState = {
   drumNoiseParticleRandomRate: 0.5, // Mid-rate
   drumNoiseRatchetCount: 0,  // No ratcheting (0=off)
   drumNoiseRatchetTime: 30,  // 30ms default ratchet time
-  drumNoiseVariation: 0,     // No per-hit variation
-  drumNoiseDistance: 0.5,    // Neutral strike position
+  drumNoiseVariation: 0.12,
+  drumNoiseDistance: 0.16,
   // Voice 7: Membrane
   drumMembraneExciter: 'impulse' as const,
   drumMembraneExcPos: 0.35,
-  drumMembraneExcBright: 0.5,
-  drumMembraneExcDur: 3,
+  drumMembraneExcBright: 0.6,
+  drumMembraneExcDur: 2,
   drumMembraneSize: 200,
   drumMembraneStiffness: 0.6,
   drumMembraneDamping: 0.4,
@@ -3700,12 +3700,12 @@ export const DEFAULT_STATE: SliderState = {
   drumMembraneWireMix: 0.6,
   drumMembraneWireDensity: 0.5,
   drumMembraneWireTone: 0.5,
-  drumMembraneWireDecay: 0.5,
+  drumMembraneWireDecay: 0.4,
   drumMembraneBody: 0.5,
-  drumMembraneRing: 0.2,
+  drumMembraneRing: 0.15,
   drumMembraneOvertones: 4,
   drumMembranePitchEnv: 3,
-  drumMembranePitchDecay: 40,
+  drumMembranePitchDecay: 30,
   drumMembraneAttack: 0,
   drumMembraneDecay: 200,
   drumMembraneLevel: 0.65,

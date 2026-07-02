@@ -19,7 +19,7 @@ export function normalizeSynthEuclidSource(value: unknown): CanonicalSynthEuclid
 
   if (source === 'lead' || source === 'lead1') return 'lead1';
   if (source === 'lead2') return 'lead2';
-  if (source === 'piano' || source === 'sample1') return 'sample1';
+  if (source === 'sample1') return 'sample1';
   if (source === 'sample2') return 'sample2';
   if (source === 'pad' || source === 'pad1') return 'pad1';
   if (source === 'pad2') return 'pad2';

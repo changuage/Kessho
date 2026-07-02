@@ -9,12 +9,12 @@ import {
 } from '../reference/ReferenceSelectedRuntime';
 import type { DawOutputRoutingConfig } from '../dawOutputRouting';
 import type { CoreProductGranularVisualEvent } from '../coreProductTelemetry';
+import type { ManualSynthNoteOptions } from '../engineSharedTypes';
 import type { ProductLiveNoteEvent } from './liveNoteEvents';
 import type {
   ProductDrumVoice,
   ProductDynamicsVisualTelemetry,
   ProductExternalState,
-  ProductManualSynthNote,
   ProductMidiMessage,
   ProductRange,
   ProductRangeMap,
@@ -33,7 +33,7 @@ export type SelectedProductRuntime = SelectedRuntimeTarget & {
   resetCofDrift(): void;
   pushMidiMessage(message: ProductMidiMessage): void;
   enqueueLiveNoteEvent(event: ProductLiveNoteEvent): void | Promise<void>;
-  auditionSynthNote(note: ProductManualSynthNote, externalState?: ProductExternalState): Promise<void>;
+  auditionSynthNote(note: ManualSynthNoteOptions, externalState?: ProductExternalState): Promise<void>;
   triggerDrumVoice(voice: ProductDrumVoice, velocity?: number, externalState?: ProductExternalState): Promise<void>;
   getDynamicsVisualTelemetry(): ProductDynamicsVisualTelemetry;
   getCurrentPadFilterFreq(pad: 'pad1' | 'pad2'): number;
@@ -64,6 +64,8 @@ export type SelectedProductRuntime = SelectedRuntimeTarget & {
   setPadDistanceTriggerCallback(callback: unknown): void;
   setPad2DistanceTriggerCallback(callback: unknown): void;
   setPianoDistanceTriggerCallback(callback: unknown): void;
+  setSample1DistanceTriggerCallback?(callback: unknown): void;
+  setSample2DistanceTriggerCallback?(callback: unknown): void;
   setLeadDelayCallback(callback: unknown): void;
   setDrumMorphTriggerCallback(callback: unknown): void;
   setDrumParamSHTriggerCallback(callback: unknown): void;

@@ -46,7 +46,7 @@ export function resolveCoreProductChordVoices(args: ResolveCoreProductChordVoice
     ? CORE_PRODUCT_SOURCE_IDS.lead1
     : source === 'lead2'
       ? CORE_PRODUCT_SOURCE_IDS.lead2
-      : source === 'piano' || source === 'sample1'
+      : source === 'sample1'
         ? CORE_PRODUCT_SOURCE_IDS.sample1
         : source === 'sample2'
           ? CORE_PRODUCT_SOURCE_IDS.sample2

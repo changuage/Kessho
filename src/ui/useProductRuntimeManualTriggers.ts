@@ -2,6 +2,7 @@ import { useCallback, useRef, type MutableRefObject } from 'react';
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { ProductDrumVoice, ProductManualSynthNote, ProductManualSynthSource } from '../audio/product/ProductEngineTypes';
+import type { ManualSynthNoteOptions } from '../audio/engineSharedTypes';
 import { CORE_PRODUCT_SOURCE_IDS, createCoreProductManualNoteKillEvent } from '../audio/coreProductEvents';
 import { commitProductControlActionThenTrigger } from '../product-control';
 import type { SliderState } from './state';
@@ -18,8 +19,8 @@ export type ProductDrumVoiceTriggerOptions = {
 };
 
 type ProductRuntimeManualTriggers = {
-  auditionSynthNote: (note: ProductManualSynthNote) => void;
-  auditionSynthNoteWithState: (note: ProductManualSynthNote, externalState: SliderState) => void;
+  auditionSynthNote: (note: ManualSynthNoteOptions) => void;
+  auditionSynthNoteWithState: (note: ManualSynthNoteOptions, externalState: SliderState) => void;
   triggerDrumVoice: (voice: ProductDrumVoice, options?: ProductDrumVoiceTriggerOptions) => void;
   triggerDrumVoiceWithState: (voice: ProductDrumVoice, externalState: SliderState, velocity?: number) => void;
 };
@@ -32,7 +33,6 @@ const MANUAL_SYNTH_SOURCE_IDS: Record<ProductManualSynthSource, number> = {
   lead2: CORE_PRODUCT_SOURCE_IDS.lead2,
   sample1: CORE_PRODUCT_SOURCE_IDS.sample1,
   sample2: CORE_PRODUCT_SOURCE_IDS.sample2,
-  piano: CORE_PRODUCT_SOURCE_IDS.piano,
 };
 
 function shouldWaitForManualTriggerSnapshot(): boolean {
@@ -47,6 +47,13 @@ function manualTriggerCommitOptions(triggerCritical: boolean): {
     triggerCritical,
     forceFullSnapshot: triggerCritical,
   };
+}
+
+function requireProductManualSynthNote(note: ManualSynthNoteOptions): ProductManualSynthNote {
+  if (!Object.prototype.hasOwnProperty.call(MANUAL_SYNTH_SOURCE_IDS, note.source)) {
+    throw new Error(`Product Core manual synth source is not supported: ${String(note.source)}`);
+  }
+  return note as ProductManualSynthNote;
 }
 
 export function useProductRuntimeManualTriggers({
@@ -94,22 +101,23 @@ export function useProductRuntimeManualTriggers({
     });
   }, [stopPreviousSynthAudition]);
 
-  const auditionSynthNote = useCallback((note: ProductManualSynthNote): void => {
+  const auditionSynthNote = useCallback((note: ManualSynthNoteOptions): void => {
     if (!productRuntimeActive) return;
+    const productNote = requireProductManualSynthNote(note);
     const externalState = stateRef.current;
     const triggerCritical = shouldWaitForManualTriggerSnapshot();
-    queueSynthAudition(note, () => (
+    queueSynthAudition(productNote, () => (
       commitProductControlActionThenTrigger(
         productEngine,
         externalState,
         {
           type: 'manual-trigger/request',
-          source: note.source,
+          source: productNote.source,
           kind: 'synth-note',
-          note,
-          velocity: note.velocity,
+          note: productNote,
+          velocity: productNote.velocity,
         },
-        (_revision, resolvedSliders) => productEngine.auditionSynthNote(note, resolvedSliders),
+        (_revision, resolvedSliders) => productEngine.auditionSynthNote(productNote, resolvedSliders),
         manualTriggerCommitOptions(triggerCritical),
       )
     ));
@@ -137,11 +145,12 @@ export function useProductRuntimeManualTriggers({
     );
   }, [productRuntimeActive, stateRef]);
 
-  const auditionSynthNoteWithState = useCallback((note: ProductManualSynthNote, externalState: SliderState): void => {
+  const auditionSynthNoteWithState = useCallback((note: ManualSynthNoteOptions, externalState: SliderState): void => {
     if (!productRuntimeActive) return;
+    const productNote = requireProductManualSynthNote(note);
     // Preset-pool preview needs the candidate state exactly; Product Control can reapply
     // synth morph endpoints and mask pad/lead preset parameters from the auditioned preset.
-    queueSynthAudition(note, () => productEngine.auditionSynthNote(note, externalState));
+    queueSynthAudition(productNote, () => productEngine.auditionSynthNote(productNote, externalState));
   }, [productRuntimeActive, queueSynthAudition]);
 
   const triggerDrumVoiceWithState = useCallback((

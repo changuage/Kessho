@@ -23,8 +23,8 @@ for (const file of [
 }
 
 const sourceMapping = read('src/audio/coreProductSourceMapping.ts');
-if (!sourceMapping.includes("source === 'piano' || source === 'sample1'") || !sourceMapping.includes("return 'sample1'")) {
-  failures.push('src/audio/coreProductSourceMapping.ts: legacy piano source must migrate to sample1');
+if (sourceMapping.includes("'piano'") || sourceMapping.includes('"piano"')) {
+  failures.push('src/audio/coreProductSourceMapping.ts: Product Core runtime source mapping must not accept piano');
 }
 
 const sampleSlotState = read('src/audio/sampleLibraries/sampleSlotState.ts');
@@ -32,9 +32,29 @@ if (!sampleSlotState.includes('createLegacyPianoSample1State') || !sampleSlotSta
   failures.push('src/audio/sampleLibraries/sampleSlotState.ts: old Piano preset compatibility must map into sample1 fields');
 }
 
+const productRuntimeFiles = [
+  'src/audio/coreProductArrangementSchedulerUtils.ts',
+  'src/audio/coreProductChordVoices.ts',
+  'src/audio/coreProductEvents.ts',
+  'src/audio/coreProductSampleSequencerTargets.ts',
+  'src/audio/coreProductSequencerFaceSnapshot.ts',
+  'src/audio/coreProductSnapshot.ts',
+  'src/audio/coreProductSnapshotPadVoiceRouting.ts',
+  'src/audio/coreProductSourceMapping.ts',
+  'src/audio/coreProductSourcePlayability.ts',
+  'src/audio/product/host/CoreProductManualAuditionBridge.ts',
+  'src/audio/product/host/CoreProductSampleAssetResolver.ts',
+];
+for (const file of productRuntimeFiles) {
+  const text = read(file);
+  if (text.includes("source === 'piano'") || text.includes('CORE_PRODUCT_SOURCE_IDS.piano') || text.includes('pianoEnabled')) {
+    failures.push(`${file}: Product Core runtime must not retain piano source aliases or enable fallbacks`);
+  }
+}
+
 const pianoManifest = read('src/audio/sampleLibraries/pianoVirtualSampleLibrary.ts');
-if (!pianoManifest.includes("displayName: 'Piano'") || !pianoManifest.includes('getCoreProductPianoAssetIdForMidiVariant')) {
-  failures.push('src/audio/sampleLibraries/pianoVirtualSampleLibrary.ts: virtual Piano library must preserve compatibility asset IDs');
+if (!pianoManifest.includes("displayName: 'Legacy Keys'") || !pianoManifest.includes('getCoreProductPianoAssetIdForMidiVariant')) {
+  failures.push('src/audio/sampleLibraries/pianoVirtualSampleLibrary.ts: legacy key sample library must preserve compatibility asset IDs');
 }
 
 const canonicalFiles = [

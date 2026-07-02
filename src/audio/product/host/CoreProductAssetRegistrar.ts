@@ -2,19 +2,15 @@ import {
   CORE_PRODUCT_ASSET_FLAGS,
   decodeCoreProductAsset,
   getDecodedCoreProductAssetByteLength,
-  getCoreProductPianoAssetIdForMidiVariant,
-  getCoreProductPianoAssetUrlForMidiVariant,
   getCoreProductSoundscapeAssetDescriptorsForState,
   type DecodedCoreProductAsset,
 } from '../../coreProductAssets';
 import type { CoreProductRuntime } from '../../coreProductRuntime';
-import { getNearestPianoSample, type PianoSampleVariant } from '../../pianoSamples';
 import type { SampleAssetDescriptor } from '../../sampleLibraries/sampleAssetDescriptors';
 import { SampleDecodedAssetCache, defaultSampleDecodedAssetCacheBytes } from '../../sampleLibraries/SampleDecodedAssetCache';
 import type { SampleSlotId } from '../../sampleLibraries/SampleLibraryTypes';
 import {
   predictedSampleAssetsForState,
-  sampleDescriptorForAssetId,
   sampleDescriptorForSlotNote,
   samplePredictionState,
 } from './CoreProductSampleAssetResolver';
@@ -74,23 +70,6 @@ export class CoreProductAssetRegistrar {
     if (pending.length > 0) {
       await Promise.all(pending);
     }
-  }
-
-  async ensurePianoAssetForMidi(midiNote: number, variant: PianoSampleVariant = 'regular'): Promise<void> {
-    const assetId = getCoreProductPianoAssetIdForMidiVariant(midiNote, variant);
-    await this.ensureSampleAsset(sampleDescriptorForAssetId(assetId) ?? {
-      assetId,
-      url: getCoreProductPianoAssetUrlForMidiVariant(midiNote, variant),
-      assetPath: '',
-      libraryKey: 'piano',
-      sampleId: `piano:${variant}:${getNearestPianoSample(midiNote).sampleMidi}`,
-      rootMidi: getNearestPianoSample(midiNote).sampleMidi,
-      encodedSampleRate: 44100,
-    });
-  }
-
-  async ensurePianoAssetForNote(midiNote: number, velocity: number): Promise<void> {
-    await this.ensureSampleSlotAssetForNote('sample1', midiNote, velocity);
   }
 
   async ensureSampleSlotAssetForNote(slotId: SampleSlotId, midiNote: number, velocity: number): Promise<void> {

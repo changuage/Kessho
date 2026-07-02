@@ -2,8 +2,12 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
+import { CORE_PRODUCT_SOURCE_IDS } from '../coreProductEvents';
 import { getCoreProductPianoAssetIdForMidiVariant } from '../coreProductAssets';
 import { predictedSampleAssetsForState, sampleDescriptorForSlotNote, samplePredictionState } from '../product/host/CoreProductSampleAssetResolver';
+import { createWalkerLayer } from '../../ui/sequencer/anchorWalkerTypes';
+import { createDefaultOrbitNote } from '../../ui/sequencer/orbitSequencerTypes';
+import { createDefaultSynthSequencerFaceState } from '../../ui/sequencer/sequencerModeTypes';
 import { getSampleLibraryRegistry } from './sampleLibraryRegistry';
 import { resolveSample } from './sampleResolver';
 import {
@@ -41,6 +45,44 @@ assert(
   'Sample 2 Piano Random Timing should preload short piano assets for legacy parity',
 );
 
+const sequencedSample2PianoState = samplePredictionState(writeSampleSlotStateToFlatState(
+  'sample2',
+  {
+    ...sampleSlotDefaultsForLibrary('sample2', 'piano'),
+    enabled: true,
+  },
+  {
+    synthChordGeneratorEnabled: true,
+    synthChordGeneratorSource: 'sample2',
+    synthChordGeneratorVoiceCount: 2,
+  },
+));
+assert.equal(sequencedSample2PianoState.sample2Enabled, true, 'Sample 2 prediction state should honor explicit sample2Enabled');
+const sequencedSample2PianoPredicted = predictedSampleAssetsForState(sequencedSample2PianoState);
+assert(
+  sequencedSample2PianoPredicted.some((descriptor) => descriptor.assetId === getCoreProductPianoAssetIdForMidiVariant(60, 'regular')),
+  'Sequenced Sample 2 Piano should preload regular piano assets when Sample 2 is explicitly enabled',
+);
+
+const disabledSequencedSample2PianoState = samplePredictionState(writeSampleSlotStateToFlatState(
+  'sample2',
+  {
+    ...sampleSlotDefaultsForLibrary('sample2', 'piano'),
+    enabled: false,
+  },
+  {
+    synthChordGeneratorEnabled: true,
+    synthChordGeneratorSource: 'sample2',
+    synthChordGeneratorVoiceCount: 2,
+  },
+));
+assert.equal(disabledSequencedSample2PianoState.sample2Enabled, false, 'Sample prediction must not force-enable Sample 2');
+assert.equal(
+  predictedSampleAssetsForState(disabledSequencedSample2PianoState).length,
+  0,
+  'Disabled Sample 2 should not preload sequencer assets',
+);
+
 const sample2HydratedDefaultState = samplePredictionState({
   sample2Enabled: true,
   leadRandomEnabled: true,
@@ -59,6 +101,251 @@ assert(
   sample2HydratedDefaultPredicted.some((descriptor) => descriptor.libraryKey === 'soft-string-spurs'),
   'Sample 2 missing library state should preload Soft String Spurs assets for Random Timing',
 );
+
+{
+  const faces = createDefaultSynthSequencerFaceState();
+  const firstSlot = faces.slots[0]!;
+  faces.slots[0] = {
+    ...firstSlot,
+    mode: 'orbit',
+    orbit: {
+      ...firstSlot.orbit,
+      enabled: true,
+      targetSourceId: CORE_PRODUCT_SOURCE_IDS.lead1,
+      notes: [
+        createDefaultOrbitNote(0, {
+          targetSourceId: CORE_PRODUCT_SOURCE_IDS.sample2,
+          pitchMode: 'fixedMidi',
+          midiNote: 98,
+          pitchRangeMin: 48,
+          pitchRangeMax: 100,
+        }),
+      ],
+    },
+  };
+  const state = applySampleLibrarySelectionDefaultsToFlatState({
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1Source: 'lead1',
+    synthSequencerFaces: faces,
+  }, 'sample2', 'the-spellsinger');
+  state.sample2Enabled = true;
+  const predictionState = samplePredictionState(state);
+  const neededDescriptor = sampleDescriptorForSlotNote(predictionState, 'sample2', 98, 0.82);
+  assert(neededDescriptor, 'Sample 2 native Orbit note should resolve an exact Spellsinger asset');
+  const predicted = predictedSampleAssetsForState(predictionState);
+  assert(
+    predicted.some((descriptor) => descriptor.assetId === neededDescriptor.assetId),
+    'Sample 2 native Orbit target should preload the exact asset required for Product Core playback',
+  );
+}
+
+{
+  const faces = createDefaultSynthSequencerFaceState();
+  const firstSlot = faces.slots[0]!;
+  faces.slots[0] = {
+    ...firstSlot,
+    mode: 'anchorWalker',
+    anchorWalker: {
+      ...firstSlot.anchorWalker,
+      enabled: true,
+      targetSourceId: CORE_PRODUCT_SOURCE_IDS.lead1,
+      outputRangeMin: 90,
+      outputRangeMax: 100,
+      layers: [
+        createWalkerLayer(0, {
+          enabled: true,
+          targetSourceId: CORE_PRODUCT_SOURCE_IDS.sample2,
+          tuning: 'rawTranspose',
+        }),
+        createWalkerLayer(1, { enabled: false }),
+        createWalkerLayer(2, { enabled: false }),
+        createWalkerLayer(3, { enabled: false }),
+      ],
+    },
+  };
+  const state = applySampleLibrarySelectionDefaultsToFlatState({
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1Source: 'lead1',
+    synthSequencerFaces: faces,
+  }, 'sample2', 'the-spellsinger');
+  state.sample2Enabled = true;
+  const predictionState = samplePredictionState(state);
+  const neededDescriptor = sampleDescriptorForSlotNote(predictionState, 'sample2', 100, 0.82);
+  assert(neededDescriptor, 'Sample 2 native Anchor Walker range should resolve a Spellsinger asset');
+  const predicted = predictedSampleAssetsForState(predictionState);
+  assert(
+    predicted.some((descriptor) => descriptor.assetId === neededDescriptor.assetId),
+    'Sample 2 native Anchor Walker layer should preload assets for its routed output range',
+  );
+}
+
+{
+  const faces = createDefaultSynthSequencerFaceState();
+  const firstSlot = faces.slots[0]!;
+  faces.slots[0] = {
+    ...firstSlot,
+    mode: 'orbit',
+    orbit: {
+      ...firstSlot.orbit,
+      enabled: true,
+      targetSourceId: 'sample2',
+      notes: [
+        {
+          ...createDefaultOrbitNote(0, {
+            pitchMode: 'fixedMidi',
+            midiNote: 98,
+            pitchRangeMin: 48,
+            pitchRangeMax: 100,
+          }),
+          targetSourceId: 'sample2',
+        },
+      ],
+    },
+  } as unknown as typeof faces.slots[number];
+  const state = applySampleLibrarySelectionDefaultsToFlatState({
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1Source: 'lead1',
+    synthSequencerFaces: faces,
+  }, 'sample2', 'the-spellsinger');
+  state.sample2Enabled = true;
+  const predictionState = samplePredictionState(state);
+  assert.equal(predictionState.sample2Enabled, true, 'Sample 2 string Orbit prediction should honor explicit sample2Enabled');
+  const neededDescriptor = sampleDescriptorForSlotNote(predictionState, 'sample2', 98, 0.82);
+  assert(neededDescriptor, 'Sample 2 string Orbit target should resolve an exact Spellsinger asset');
+  const predicted = predictedSampleAssetsForState(predictionState);
+  assert(
+    predicted.some((descriptor) => descriptor.assetId === neededDescriptor.assetId),
+    'Sample 2 string Orbit target should preload the exact asset required for live Product Core playback',
+  );
+}
+
+{
+  const faces = createDefaultSynthSequencerFaceState();
+  const firstSlot = faces.slots[0]!;
+  faces.slots[0] = {
+    ...firstSlot,
+    mode: 'anchorWalker',
+    anchorWalker: {
+      ...firstSlot.anchorWalker,
+      enabled: true,
+      targetSourceId: 'lead1',
+      outputRangeMin: 90,
+      outputRangeMax: 100,
+      layers: [
+        {
+          ...createWalkerLayer(0, {
+            enabled: true,
+            tuning: 'rawTranspose',
+          }),
+          targetSourceId: 'sample2',
+        },
+        createWalkerLayer(1, { enabled: false }),
+        createWalkerLayer(2, { enabled: false }),
+        createWalkerLayer(3, { enabled: false }),
+      ],
+    },
+  } as unknown as typeof faces.slots[number];
+  const state = applySampleLibrarySelectionDefaultsToFlatState({
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1Source: 'lead1',
+    synthSequencerFaces: faces,
+  }, 'sample2', 'the-spellsinger');
+  state.sample2Enabled = true;
+  const predictionState = samplePredictionState(state);
+  assert.equal(predictionState.sample2Enabled, true, 'Sample 2 string Walker prediction should honor explicit sample2Enabled');
+  const neededDescriptor = sampleDescriptorForSlotNote(predictionState, 'sample2', 100, 0.82);
+  assert(neededDescriptor, 'Sample 2 string Walker target should resolve a Spellsinger asset');
+  const predicted = predictedSampleAssetsForState(predictionState);
+  assert(
+    predicted.some((descriptor) => descriptor.assetId === neededDescriptor.assetId),
+    'Sample 2 string Walker layer should preload assets for live Product Core playback',
+  );
+}
+
+{
+  const faces = createDefaultSynthSequencerFaceState();
+  const firstSlot = faces.slots[0]!;
+  faces.slots[0] = {
+    ...firstSlot,
+    mode: 'orbit',
+    orbit: {
+      ...firstSlot.orbit,
+      enabled: true,
+      targetSourceId: CORE_PRODUCT_SOURCE_IDS.lead1,
+      pitchRangeMin: 98,
+      pitchRangeMax: 98,
+      notes: [
+        createDefaultOrbitNote(0, {
+          targetSourceId: 'follow',
+          pitchMode: 'fixedMidi',
+          midiNote: 98,
+          pitchRangeMin: 98,
+          pitchRangeMax: 98,
+        }),
+      ],
+    },
+  };
+  const state = applySampleLibrarySelectionDefaultsToFlatState({
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1Source: 'sample2',
+    synthSequencerFaces: faces,
+  }, 'sample2', 'the-spellsinger');
+  state.sample2Enabled = true;
+  const predictionState = samplePredictionState(state);
+  const neededDescriptor = sampleDescriptorForSlotNote(predictionState, 'sample2', 98, 0.82);
+  assert(neededDescriptor, 'Sample 2 lane-follow Orbit note should resolve an exact Spellsinger asset');
+  const predicted = predictedSampleAssetsForState(predictionState);
+  assert(
+    predicted.some((descriptor) => descriptor.assetId === neededDescriptor.assetId),
+    'Sample 2 lane-follow Orbit should preload the exact asset required by the Product Core snapshot target',
+  );
+}
+
+{
+  const faces = createDefaultSynthSequencerFaceState();
+  const firstSlot = faces.slots[0]!;
+  faces.slots[0] = {
+    ...firstSlot,
+    mode: 'anchorWalker',
+    anchorWalker: {
+      ...firstSlot.anchorWalker,
+      enabled: true,
+      targetSourceId: CORE_PRODUCT_SOURCE_IDS.lead1,
+      outputRangeMin: 98,
+      outputRangeMax: 98,
+      layers: [
+        createWalkerLayer(0, {
+          enabled: true,
+          targetSourceId: 'follow',
+          tuning: 'rawTranspose',
+        }),
+        createWalkerLayer(1, { enabled: false }),
+        createWalkerLayer(2, { enabled: false }),
+        createWalkerLayer(3, { enabled: false }),
+      ],
+    },
+  };
+  const state = applySampleLibrarySelectionDefaultsToFlatState({
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1Source: 'sample2',
+    synthSequencerFaces: faces,
+  }, 'sample2', 'the-spellsinger');
+  state.sample2Enabled = true;
+  const predictionState = samplePredictionState(state);
+  const neededDescriptor = sampleDescriptorForSlotNote(predictionState, 'sample2', 98, 0.82);
+  assert(neededDescriptor, 'Sample 2 lane-follow Anchor Walker output should resolve a Spellsinger asset');
+  const predicted = predictedSampleAssetsForState(predictionState);
+  assert(
+    predicted.some((descriptor) => descriptor.assetId === neededDescriptor.assetId),
+    'Sample 2 lane-follow Anchor Walker should preload assets for the Product Core snapshot target',
+  );
+}
 
 function assetPathExists(libraryAssetBasePath: string, assetPath: string): boolean {
   return existsSync(path.join(process.cwd(), 'public', libraryAssetBasePath, assetPath));

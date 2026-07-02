@@ -8,7 +8,7 @@ export interface SampleAssetIdRange {
 }
 
 export const SAMPLE_ASSET_ID_RANGES = [
-  { libraryKey: 'piano', label: 'Product Core Piano compatibility', minAssetId: 7201, maxAssetId: 7328 },
+  { libraryKey: 'piano', label: 'Product Core legacy key compatibility', minAssetId: 7201, maxAssetId: 7328 },
   { libraryKey: 'pneuma-eleni-teaser', label: 'Pneuma - Eleni teaser', minAssetId: 8000, maxAssetId: 8199 },
   { libraryKey: 'soft-string-spurs', label: 'Soft String Spurs', minAssetId: 8200, maxAssetId: 8399 },
   { libraryKey: 'archive-found-strings-001', label: 'Archive Found Strings 001', minAssetId: 8400, maxAssetId: 8599 },

@@ -3,6 +3,7 @@ import type { GeneratedSequencerCaptureEvent } from '../../audio/coreProductGene
 export type CaptureCommitStatus =
   | 'idle'
   | 'recording'
+  | 'finishing'
   | 'committing'
   | 'committed'
   | 'empty'
@@ -49,6 +50,8 @@ export interface CaptureSession {
   startedAtMs: number;
   status: CaptureCommitStatus;
   scratch: CaptureScratch;
+  completedScratch: CaptureScratch | null;
+  commitCycleIndex: number | null;
   overflowCount: number;
 }
 

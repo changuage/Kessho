@@ -1,16 +1,16 @@
 import { useMemo } from 'react';
 import type { MutableRefObject } from 'react';
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { ManualSynthNoteOptions } from '../audio/engineSharedTypes';
 import type {
   ProductDrumVoice,
-  ProductManualSynthNote,
   ProductSynthAnchorWalkerVisualStateCallback,
   ProductSynthOrbitVisualStateCallback,
 } from '../audio/product/ProductEngineTypes';
 import type { SliderState } from './state';
 
 export type ProductRuntimeManualTriggers = {
-  auditionSynthNote: (note: ProductManualSynthNote) => void;
+  auditionSynthNote: (note: ManualSynthNoteOptions) => void;
   triggerDrumVoice: (voice: ProductDrumVoice) => void;
 };
 

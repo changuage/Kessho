@@ -44,11 +44,6 @@ export const CORE_PRODUCT_DEFAULT_SOUNDSCAPE_ASSET_ID = CORE_PRODUCT_SOUNDSCAPE_
 
 export type CoreProductSoundscapeAssetKey = CoreProductSoundscapeAssetManifestKey;
 
-export type CoreProductPianoAssetDescriptor = {
-  assetId: number;
-  url: string;
-};
-
 export type CoreProductSoundscapeAssetDescriptor = {
   assetId: number;
   url: string;
@@ -92,15 +87,6 @@ function getManifestPianoSamplePath(variant: 'regular' | 'short', index: number)
   return pattern.replace('{index}', safeIndex);
 }
 
-export function getDefaultCoreProductPianoAssetUrl(): string {
-  const { index } = getNearestPianoSample(CORE_PRODUCT_DEFAULT_PIANO_MIDI);
-  return resolveCoreProductAssetUrl(getManifestPianoSamplePath('regular', index));
-}
-
-export function getCoreProductPianoAssetIdForMidi(midiNote: number): number {
-  return getCoreProductPianoAssetIdForMidiVariant(midiNote, 'regular');
-}
-
 export function getCoreProductPianoAssetIdForMidiVariant(
   midiNote: number,
   variant: PianoSampleVariant,
@@ -110,10 +96,6 @@ export function getCoreProductPianoAssetIdForMidiVariant(
     ? CORE_PRODUCT_PIANO_SHORT_ASSET_ID_BASE
     : CORE_PRODUCT_PIANO_ASSET_ID_BASE;
   return base + index;
-}
-
-export function getCoreProductPianoAssetUrlForMidi(midiNote: number): string {
-  return getCoreProductPianoAssetUrlForMidiVariant(midiNote, 'regular');
 }
 
 export function getCoreProductPianoAssetUrlForMidiVariant(
@@ -136,47 +118,6 @@ function booleanFromState(state: Record<string, unknown> | undefined | null, key
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.min(1, Math.max(0, value));
-}
-
-function addPianoMidiDescriptor(
-  descriptors: Map<number, CoreProductPianoAssetDescriptor>,
-  midiNote: number,
-): void {
-  const assetId = getCoreProductPianoAssetIdForMidi(midiNote);
-  descriptors.set(assetId, {
-    assetId,
-    url: getCoreProductPianoAssetUrlForMidi(midiNote),
-  });
-}
-
-export function getCoreProductPianoPreloadAssetDescriptors(
-  state?: Record<string, unknown> | null,
-): CoreProductPianoAssetDescriptor[] {
-  const descriptors = new Map<number, CoreProductPianoAssetDescriptor>();
-  addPianoMidiDescriptor(descriptors, CORE_PRODUCT_DEFAULT_PIANO_MIDI);
-
-  if (state?.pianoEnabled === true) {
-    for (const midiNote of CORE_PRODUCT_PIANO_PRELOAD_MIDI_NOTES) {
-      addPianoMidiDescriptor(descriptors, midiNote);
-    }
-  }
-
-  for (let lane = 1; lane <= 4; lane += 1) {
-    if (state?.[`synthEuclid${lane}Enabled`] !== true || state?.[`synthEuclid${lane}Source`] !== 'piano') {
-      continue;
-    }
-    const min = numberFromState(state, `synthEuclid${lane}NoteMin`);
-    const max = numberFromState(state, `synthEuclid${lane}NoteMax`);
-    if (min !== null) addPianoMidiDescriptor(descriptors, min);
-    if (max !== null) addPianoMidiDescriptor(descriptors, max);
-    if (min !== null && max !== null) {
-      addPianoMidiDescriptor(descriptors, (min + max) * 0.5);
-    } else {
-      addPianoMidiDescriptor(descriptors, CORE_PRODUCT_DEFAULT_PIANO_MIDI);
-    }
-  }
-
-  return [...descriptors.values()];
 }
 
 export function getDefaultCoreProductSoundscapeAssetKey(

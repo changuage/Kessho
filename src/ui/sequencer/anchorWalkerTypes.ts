@@ -1,3 +1,5 @@
+import { normalizeSequencerProductSourceId } from './productSourceIds';
+
 export type AnchorWalkerMode = 'hybrid' | 'compactPad';
 export type AnchorSource = 'harmonyRoot' | 'manualLatch';
 export type SnapSource = 'harmonyEngine' | 'manualVoicing' | 'chordStep' | 'customPitchClasses' | 'liveBlueKeys';
@@ -101,8 +103,6 @@ export interface AnchorWalkerLayerPreset {
 }
 
 const WALKER_LAYER_COUNT = 4;
-const PRODUCT_SEQUENCER_MIN_SOURCE_ID = 1;
-const PRODUCT_SEQUENCER_MAX_SOURCE_ID = 8;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -113,7 +113,7 @@ function finiteNumber(value: unknown, fallback: number): number {
 }
 
 function normalizeProductSourceId(value: unknown, fallback: number): number {
-  return Math.round(clamp(finiteNumber(value, fallback), PRODUCT_SEQUENCER_MIN_SOURCE_ID, PRODUCT_SEQUENCER_MAX_SOURCE_ID));
+  return normalizeSequencerProductSourceId(value, fallback);
 }
 
 function enumValue<T extends string>(value: unknown, values: readonly T[], fallback: T): T {

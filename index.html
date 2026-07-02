@@ -38,6 +38,30 @@
         50% { opacity: 0.5; }
       }
 
+      @media (hover: none) and (pointer: coarse) {
+        html,
+        body,
+        #root,
+        #root * {
+          user-select: none;
+          -webkit-user-select: none;
+          -webkit-touch-callout: none;
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        #root input,
+        #root textarea,
+        #root select,
+        #root option,
+        #root [contenteditable="true"],
+        #root .copyable-text,
+        #root [data-user-select="text"] {
+          user-select: text;
+          -webkit-user-select: text;
+          -webkit-touch-callout: default;
+        }
+      }
+
       /* ══ GLOBAL MOBILE OVERRIDES (≤600px) ══ */
       @media (max-width: 600px) {
         #root {

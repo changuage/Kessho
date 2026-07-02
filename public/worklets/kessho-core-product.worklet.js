@@ -44,10 +44,11 @@ const PRODUCT_EVENT_IDS = Object.freeze({
   GeneratedSequencerCapture: 47,
 });
 const PRODUCT_EVENT_ID_SET = new Set(Object.values(PRODUCT_EVENT_IDS));
-const PRODUCT_SOURCE_IDS = new Set([1, 2, 3, 4, 5, 6, 7]);
+const PRODUCT_SOURCE_IDS = new Set([1, 2, 3, 4, 5, 6, 7, 8]);
+const PRODUCT_MAX_SOURCE_ID = Math.max(...PRODUCT_SOURCE_IDS);
 const PRODUCT_SEQUENCER_IDS = new Set([1, 2]);
 const PRODUCT_DRUM_VOICE_COUNT = 7;
-const PRODUCT_GRAPH_TAP_COUNT = 110;
+const PRODUCT_GRAPH_TAP_COUNT = 116;
 const DAW_OUTPUT_MAX_CHANNELS = 32;
 const STEM_PEAK_COUNT = 9;
 const EARTH_TEXTURE_CAPACITY = 4;
@@ -777,25 +778,25 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         normalized.value = this.requireFloat(event, 'value');
         return normalized;
       case PRODUCT_EVENT_IDS.SetSourceEnabled:
-        normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, 7), 'targetId');
+        normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, PRODUCT_MAX_SOURCE_ID), 'targetId');
         normalized.value = this.requireFloat(event, 'value', 0, 1);
         return normalized;
       case PRODUCT_EVENT_IDS.SetSourcePreset:
-        normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, 7), 'targetId');
+        normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, PRODUCT_MAX_SOURCE_ID), 'targetId');
         normalized.index = this.optionalUint(event, 'index', 0, 0xffffffff);
         normalized.value = this.requireFloat(event, 'value', Number.MIN_VALUE);
         normalized.value2 = this.optionalFloat(event, 'value2', 0, 0, 1);
         normalized.flags = this.optionalUint(event, 'flags', 0, 0xffffffff);
         return normalized;
       case PRODUCT_EVENT_IDS.SetSourceOverride:
-        normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, 7), 'targetId');
+        normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, PRODUCT_MAX_SOURCE_ID), 'targetId');
         normalized.index = this.optionalUint(event, 'index', 0, 0xffffffff);
         normalized.paramId = this.optionalUint(event, 'paramId', 0, 0xffffffff);
         normalized.value = this.optionalFloat(event, 'value', 0);
         normalized.flags = this.requireUint(event, 'flags', 1, 0xffffffff);
         return normalized;
       case PRODUCT_EVENT_IDS.ManualNoteOn:
-        normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, 7), 'targetId');
+        normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, PRODUCT_MAX_SOURCE_ID), 'targetId');
         normalized.value = this.requireFloat(event, 'value', 0, 127);
         normalized.value2 = this.requireFloat(event, 'value2', Number.MIN_VALUE, 1);
         normalized.value3 = this.requireFloat(event, 'value3', Number.MIN_VALUE);
@@ -803,14 +804,14 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         normalized.flags = this.optionalUint(event, 'flags', 0, 0, 0xffffffff);
         return normalized;
       case PRODUCT_EVENT_IDS.ManualNoteOff:
-        normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, 7), 'targetId');
+        normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, PRODUCT_MAX_SOURCE_ID), 'targetId');
         return normalized;
       case PRODUCT_EVENT_IDS.TriggerDrumVoice:
         normalized.targetId = this.requireUint(event, 'targetId', 0, PRODUCT_DRUM_VOICE_COUNT - 1);
         normalized.value = this.requireFloat(event, 'value', Number.MIN_VALUE, 1);
         return normalized;
       case PRODUCT_EVENT_IDS.MidiEvent:
-        normalized.targetId = this.optionalUint(event, 'targetId', 0, 0, 7);
+        normalized.targetId = this.optionalUint(event, 'targetId', 0, 0, PRODUCT_MAX_SOURCE_ID);
         if (normalized.targetId !== 0) this.requireSourceId(normalized.targetId, 'targetId');
         normalized.index = this.requireUint(event, 'index', 0, 15);
         normalized.value = this.requireFloat(event, 'value', 0, 255);

@@ -70,7 +70,7 @@ declare global {
         statePatch?: Partial<SliderState>;
       }): Promise<void>;
       triggerSampleHoldNote(options?: {
-        source?: 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'piano';
+        source?: 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'sample1' | 'sample2';
         midi?: number;
         velocity?: number;
         durationMs?: number;

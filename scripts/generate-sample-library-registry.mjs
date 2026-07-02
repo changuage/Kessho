@@ -336,7 +336,7 @@ function createPianoVirtualManifest() {
   return {
     schema: 'kessho-normalized-sample-library-v1',
     libraryKey: 'piano',
-    displayName: 'Piano',
+    displayName: 'Legacy Keys',
     assetBasePath: coreManifest.assetBasePath,
     sourceSampleRate: 44100,
     encodedSampleRate: 44100,

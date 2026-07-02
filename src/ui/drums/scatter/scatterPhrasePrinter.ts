@@ -2,7 +2,7 @@ import type { ClockDivision } from '../../../audio/drumSeqTypes';
 import type { DrumVoiceType } from '../../../audio/drumSynth';
 import type { StepOverrides, SubLaneKind, SubLaneState } from '../../sequencer/useEuclideanSequencer';
 import type { GeneratedDrumPhrase } from './scatterTypes';
-import { resolveTriggerClip } from '../../sequencer/triggerClip';
+import { createBitmapTriggerClip, resolveTriggerClip } from '../../sequencer/triggerClip';
 
 export type PhrasePrintMode = 'replace';
 
@@ -116,8 +116,17 @@ export function printGeneratedPhraseToLane(args: {
   }
   while (stepOverrides.triggerClips.length < laneCount) stepOverrides.triggerClips.push(null);
 
-  stepOverrides.triggerClips[laneIndex] = null;
-  stepOverrides.triggerToggles[laneIndex] = new Map();
+  const triggerPattern = resolveTriggerClip(phrase.triggerClip);
+  stepOverrides.triggerClips[laneIndex] = createBitmapTriggerClip({
+    steps: phrase.triggerClip.steps,
+    bits: triggerPattern,
+    origin: 'manual',
+    generator: { kind: 'manual' },
+    label: phrase.label || 'Step',
+  });
+  stepOverrides.triggerToggles[laneIndex] = new Map(
+    triggerPattern.map((enabled, stepIndex) => [stepIndex, enabled] as const),
+  );
   stepOverrides.probability[laneIndex] = phrase.probability.slice();
   stepOverrides.ratchet[laneIndex] = triggerIndexes.map((stepIndex) => phrase.ratchet[stepIndex] ?? 1);
   stepOverrides.trigCondition[laneIndex] = phrase.trigCondition.map((condition) => [condition[0], condition[1]]);

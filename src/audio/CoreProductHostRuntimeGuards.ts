@@ -105,11 +105,22 @@ export function drumVoiceIndex(voice: unknown): number {
 }
 
 export function sourceId(source: ManualSynthNoteOptions['source']): number {
-  const id = CORE_PRODUCT_SOURCE_IDS[source];
-  if (id === undefined) {
-    throw new Error(`Unknown Core Product synth source: ${String(source)}`);
+  switch (source) {
+    case 'pad1':
+      return CORE_PRODUCT_SOURCE_IDS.pad1;
+    case 'pad2':
+      return CORE_PRODUCT_SOURCE_IDS.pad2;
+    case 'lead1':
+      return CORE_PRODUCT_SOURCE_IDS.lead1;
+    case 'lead2':
+      return CORE_PRODUCT_SOURCE_IDS.lead2;
+    case 'sample1':
+      return CORE_PRODUCT_SOURCE_IDS.sample1;
+    case 'sample2':
+      return CORE_PRODUCT_SOURCE_IDS.sample2;
+    default:
+      throw new Error(`Unknown Core Product synth source: ${String(source)}`);
   }
-  return id;
 }
 
 export function midiFromFrequency(frequency: number): number {
@@ -155,8 +166,7 @@ export function manualAuditionState(
     case 'pad2': next.pad2Enabled = true; break;
     case 'lead1': next.leadEnabled = true; break;
     case 'lead2': next.lead2Enabled = true; break;
-    case 'sample1':
-    case 'piano': next.sample1Enabled = true; break;
+    case 'sample1': next.sample1Enabled = true; break;
     case 'sample2': next.sample2Enabled = true; break;
     default:
       sourceId(source);

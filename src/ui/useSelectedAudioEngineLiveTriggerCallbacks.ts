@@ -23,6 +23,8 @@ type SelectedAudioEngineLiveTriggerCallbacksOptions = {
   setSelectedPadDistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
   setSelectedPadMorphTriggerCallback: (callback: ((morphPosition: number) => void) | null) => void;
   setSelectedPianoDistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
+  setSelectedSample1DistanceTriggerCallback?: (callback: ((distance: number) => void) | null) => void;
+  setSelectedSample2DistanceTriggerCallback?: (callback: ((distance: number) => void) | null) => void;
   stateRef: MutableRefObject<SliderState>;
   uiMode: UiMode;
 };
@@ -40,6 +42,8 @@ export function useSelectedAudioEngineLiveTriggerCallbacks({
   setSelectedPadDistanceTriggerCallback,
   setSelectedPadMorphTriggerCallback,
   setSelectedPianoDistanceTriggerCallback,
+  setSelectedSample1DistanceTriggerCallback,
+  setSelectedSample2DistanceTriggerCallback,
   ...options
 }: SelectedAudioEngineLiveTriggerCallbacksOptions): void {
   useLiveTriggerUiCallbacks({
@@ -56,5 +60,7 @@ export function useSelectedAudioEngineLiveTriggerCallbacks({
     setPadDistanceTriggerCallback: setSelectedPadDistanceTriggerCallback,
     setPadMorphTriggerCallback: setSelectedPadMorphTriggerCallback,
     setPianoDistanceTriggerCallback: setSelectedPianoDistanceTriggerCallback,
+    setSample1DistanceTriggerCallback: setSelectedSample1DistanceTriggerCallback,
+    setSample2DistanceTriggerCallback: setSelectedSample2DistanceTriggerCallback,
   });
 }

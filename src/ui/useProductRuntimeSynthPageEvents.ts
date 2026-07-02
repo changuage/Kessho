@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, type MutableRefObject } from 'react';
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import {
   createCoreProductAnchorWalkerPerformanceEvent,
@@ -8,6 +8,13 @@ import {
 import type { GeneratedSequencerCaptureEvent } from '../audio/coreProductGeneratedSequencerCaptureTypes';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { AnchorWalkerPerformanceEvent } from './sequencer/anchorWalkerTypes';
+import type { GeneratedCaptureStepCommit } from './sequencer/commitGeneratedCaptureToEuclid';
+import {
+  buildProductGeneratedCaptureStepCommitEvents,
+  generatedCaptureStepPatchForState,
+} from './sequencer/generatedCaptureProductCommit';
+import { commitProductControlActionForProduct } from '../product-control';
+import type { SliderState } from './state';
 
 export type ProductGeneratedSequencerCaptureRequest = {
   enabled: boolean;
@@ -29,6 +36,9 @@ export type ProductRuntimeSynthPageEvents = {
   setProductGeneratedSequencerCaptureEnabled: (
     request: ProductGeneratedSequencerCaptureRequest,
   ) => void;
+  commitProductGeneratedSequencerCaptureToStep: (
+    commit: GeneratedCaptureStepCommit,
+  ) => void;
   getProductGeneratedSequencerCaptureTelemetry: () => ProductGeneratedSequencerCaptureTelemetry;
 };
 
@@ -39,6 +49,7 @@ const EMPTY_GENERATED_CAPTURE_TELEMETRY: ProductGeneratedSequencerCaptureTelemet
 
 export function useProductRuntimeSynthPageEvents(
   productRuntimeMode: ProductRuntimeSelectionMode,
+  stateRef: MutableRefObject<SliderState>,
 ): ProductRuntimeSynthPageEvents {
   const productRuntimeActive = productRuntimeMode === 'core-product';
 
@@ -78,11 +89,40 @@ export function useProductRuntimeSynthPageEvents(
     };
   }, [productRuntimeActive]);
 
+  const commitProductGeneratedSequencerCaptureToStep = useCallback((commit: GeneratedCaptureStepCommit): void => {
+    if (!productRuntimeActive) return;
+    try {
+      const patch = generatedCaptureStepPatchForState(stateRef.current, commit);
+      const events = buildProductGeneratedCaptureStepCommitEvents(commit);
+      void commitProductControlActionForProduct(
+        productEngine,
+        stateRef.current,
+        {
+          type: 'sequencer/edit',
+          patch,
+          triggerCritical: true,
+        },
+        {
+          reason: 'sequencer-control-change',
+          triggerCritical: true,
+          productEvents: events,
+          applyMode: 'event',
+        },
+      ).catch((error) => {
+        console.warn('Product generated capture Step handoff failed', error);
+      });
+    } catch (error) {
+      console.warn('Failed to commit generated capture Step handoff', error);
+    }
+  }, [productRuntimeActive, stateRef]);
+
   return useMemo(() => ({
+    commitProductGeneratedSequencerCaptureToStep,
     getProductGeneratedSequencerCaptureTelemetry,
     sendProductAnchorWalkerPerformanceEvent,
     setProductGeneratedSequencerCaptureEnabled,
   }), [
+    commitProductGeneratedSequencerCaptureToStep,
     getProductGeneratedSequencerCaptureTelemetry,
     sendProductAnchorWalkerPerformanceEvent,
     setProductGeneratedSequencerCaptureEnabled,

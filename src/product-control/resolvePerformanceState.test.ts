@@ -223,7 +223,6 @@ function expectSoundActionChangesResolvedOutput(
       resume: async () => { callOrder.push('resume'); },
     },
     assetRegistrar: {
-      ensurePianoAssetForNote: async () => {},
       ensureSampleSlotAssetForNote: async () => {},
     },
     latestSliderState: () => latestState,
@@ -280,7 +279,6 @@ function expectSoundActionChangesResolvedOutput(
         resume: async () => { callOrder.push('resume'); },
       },
       assetRegistrar: {
-        ensurePianoAssetForNote: async () => {},
         ensureSampleSlotAssetForNote: async () => {},
       },
       latestSliderState: () => latestState,

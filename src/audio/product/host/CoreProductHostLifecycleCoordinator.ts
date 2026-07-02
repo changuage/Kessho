@@ -29,7 +29,7 @@ type CoreProductHostLifecycleCoordinatorOptions = {
   readonly resetSequencerEvolveState: () => void;
   readonly resetSynthNoteRangeOverrides: () => void;
   readonly updateRuntimeTelemetryPolling: () => void;
-  readonly loadLatestSnapshot: (reason?: SnapshotReloadReason, includeClockStartDelay?: boolean) => Promise<void>;
+  readonly loadLatestSnapshot: (reason?: SnapshotReloadReason, includeClockStartDelay?: boolean, awaitAudioThreadAck?: boolean) => Promise<void>;
   readonly postRuntimeProductEvent: (event: CoreProductEvent) => void;
   readonly publishStateChange: (isRunning: boolean) => void;
 };
@@ -45,8 +45,8 @@ export class CoreProductHostLifecycleCoordinator {
     this.options.setRuntimeReady(true);
     await this.options.assetRegistrar.ensureDefaultAssetsForState();
     this.options.resetSequencerEvolveState();
-    await this.options.loadLatestSnapshot('runtime-start');
     await this.options.runtime.resume();
+    await this.options.loadLatestSnapshot('runtime-start', true, true);
     this.startRunningSurfaces();
     this.options.modulationRangeBridge.flushModulationRanges();
     this.options.arrangementBridge.start(this.options.latestSliderState(), this.options.adapterState());
@@ -56,7 +56,7 @@ export class CoreProductHostLifecycleCoordinator {
   async resume(): Promise<void> {
     await this.options.runtime.resume();
     this.options.resetSequencerEvolveState();
-    await this.options.loadLatestSnapshot('runtime-start', true);
+    await this.options.loadLatestSnapshot('runtime-start', true, true);
     this.startRunningSurfaces();
     this.options.arrangementBridge.start(this.options.latestSliderState(), this.options.adapterState());
     this.options.publishStateChange(true);

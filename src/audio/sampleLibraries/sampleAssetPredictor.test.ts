@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 
 import { getCoreProductPianoAssetIdForMidiVariant } from '../coreProductAssets';
-import { predictLegacyPianoSampleAssets, predictSampleAssets } from './sampleAssetPredictor';
+import { predictSampleAssets } from './sampleAssetPredictor';
 import { getSampleLibrary } from './sampleLibraryRegistry';
+import { resolveSample } from './sampleResolver';
 import { getDefaultSampleSlotState, writeSampleSlotStateToFlatState } from './sampleSlotState';
 
 const state = writeSampleSlotStateToFlatState('sample1', getDefaultSampleSlotState({
@@ -54,6 +55,47 @@ const sample1StringPredicted = predictSampleAssets({
 });
 assert.ok(sample1StringPredicted.some((descriptor) => descriptor.libraryKey === 'soft-string-spurs'), 'Sample 1 should predict non-piano sample assets even with stale legacy dynamic mode');
 
+const sample2SoftVelocitySlot = getDefaultSampleSlotState({
+  enabled: true,
+  libraryKey: 'soft-string-spurs',
+  role: softStringSpurs?.defaultRole ?? 'sustain',
+  articulation: softStringSpurs?.defaultArticulation ?? 'core',
+  selectionMode: 'mapped',
+  dynamicMode: 'velocity',
+  fixedDynamic: softStringSpurs?.defaultDynamic ?? 'level-2',
+  loopEnabled: true,
+});
+const sample2SoftVelocityState = writeSampleSlotStateToFlatState('sample2', sample2SoftVelocitySlot);
+const sample2SoftLowDynamic = resolveSample({
+  slot: sample2SoftVelocitySlot,
+  targetMidi: 60,
+  velocity: 40,
+}, softStringSpurs ? [softStringSpurs] : undefined);
+const sample2SoftHighDynamic = resolveSample({
+  slot: sample2SoftVelocitySlot,
+  targetMidi: 60,
+  velocity: 112,
+}, softStringSpurs ? [softStringSpurs] : undefined);
+assert.equal(sample2SoftLowDynamic.kind, 'hit', 'Sample 2 Soft String low velocity should resolve');
+assert.equal(sample2SoftHighDynamic.kind, 'hit', 'Sample 2 Soft String high velocity should resolve');
+const sample2SoftVelocityPredicted = predictSampleAssets({
+  state: sample2SoftVelocityState,
+  recentMidiBySlot: new Map(),
+  sequencerLaneRanges: [{ source: 'sample2', minMidi: 60, maxMidi: 60 }],
+  manualPriorityMidi: [],
+  maxAssetsPerSlot: 16,
+});
+assert.ok(
+  sample2SoftLowDynamic.kind === 'hit' &&
+    sample2SoftVelocityPredicted.some((descriptor) => descriptor.assetId === sample2SoftLowDynamic.assetId),
+  'Sample 2 native prediction should preload the low-velocity dynamic band for the active sequencer note',
+);
+assert.ok(
+  sample2SoftHighDynamic.kind === 'hit' &&
+    sample2SoftVelocityPredicted.some((descriptor) => descriptor.assetId === sample2SoftHighDynamic.assetId),
+  'Sample 2 native prediction should preload the high-velocity dynamic band for the active sequencer note',
+);
+
 const archiveFoundStrings = getSampleLibrary('archive-found-strings-001');
 assert.ok(archiveFoundStrings, 'Archive Found Strings sample library should be delivered in the app registry');
 const sample2ArchiveState = writeSampleSlotStateToFlatState('sample2', getDefaultSampleSlotState({
@@ -74,13 +116,3 @@ const sample2ArchivePredicted = predictSampleAssets({
   maxAssetsPerSlot: 8,
 });
 assert.ok(sample2ArchivePredicted.some((descriptor) => descriptor.libraryKey === 'archive-found-strings-001'), 'Sample 2 should predict delivered non-piano sample assets');
-
-const legacyPianoPredicted = predictLegacyPianoSampleAssets({
-  pianoEnabled: true,
-  synthEuclid1Enabled: true,
-  synthEuclid1Source: 'piano',
-  synthEuclid1NoteMin: 48,
-  synthEuclid1NoteMax: 72,
-});
-assert.ok(legacyPianoPredicted.length > 0, 'legacy Piano compatibility predictor should produce descriptors');
-assert.ok(legacyPianoPredicted.length <= 32, 'legacy Piano compatibility predictor must not preload full Piano library');

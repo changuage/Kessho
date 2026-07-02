@@ -3,6 +3,7 @@ import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { selectedProductRuntime } from '../audio/product/SelectedProductRuntime';
 import type { ProductDrumVoice, ProductManualSynthNote, ProductManualSynthSource } from '../audio/product/ProductEngineTypes';
+import type { ManualSynthNoteOptions } from '../audio/engineSharedTypes';
 import { CORE_PRODUCT_SOURCE_IDS, createCoreProductManualNoteKillEvent } from '../audio/coreProductEvents';
 import { commitProductControlActionThenTrigger } from '../product-control';
 import type { SliderState } from './state';
@@ -13,7 +14,7 @@ type UseSelectedAudioEngineManualTriggersOptions = {
 };
 
 type SelectedAudioEngineManualTriggers = {
-  auditionSynthNote: (note: ProductManualSynthNote) => void;
+  auditionSynthNote: (note: ManualSynthNoteOptions) => void;
   triggerDrumVoice: (voice: ProductDrumVoice) => void;
 };
 
@@ -24,7 +25,6 @@ const MANUAL_SYNTH_SOURCE_IDS: Record<ProductManualSynthSource, number> = {
   lead2: CORE_PRODUCT_SOURCE_IDS.lead2,
   sample1: CORE_PRODUCT_SOURCE_IDS.sample1,
   sample2: CORE_PRODUCT_SOURCE_IDS.sample2,
-  piano: CORE_PRODUCT_SOURCE_IDS.piano,
 };
 
 function shouldWaitForManualTriggerSnapshot(): boolean {
@@ -39,6 +39,13 @@ function manualTriggerCommitOptions(triggerCritical: boolean): {
     triggerCritical,
     forceFullSnapshot: triggerCritical,
   };
+}
+
+function requireProductManualSynthNote(note: ManualSynthNoteOptions): ProductManualSynthNote {
+  if (!Object.prototype.hasOwnProperty.call(MANUAL_SYNTH_SOURCE_IDS, note.source)) {
+    throw new Error(`Product Core manual synth source is not supported: ${String(note.source)}`);
+  }
+  return note as ProductManualSynthNote;
 }
 
 export function useSelectedAudioEngineManualTriggers({
@@ -82,22 +89,23 @@ export function useSelectedAudioEngineManualTriggers({
     });
   }, [stopPreviousCoreProductSynthAudition]);
 
-  const auditionSynthNote = useCallback((note: ProductManualSynthNote): void => {
+  const auditionSynthNote = useCallback((note: ManualSynthNoteOptions): void => {
     const externalState = stateRef.current;
     if (audioEngineRuntimeMode === 'core-product') {
+      const productNote = requireProductManualSynthNote(note);
       const triggerCritical = shouldWaitForManualTriggerSnapshot();
-      queueCoreProductSynthAudition(note, () => (
+      queueCoreProductSynthAudition(productNote, () => (
         commitProductControlActionThenTrigger(
           productEngine,
           externalState,
           {
             type: 'manual-trigger/request',
-            source: note.source,
+            source: productNote.source,
             kind: 'synth-note',
-            note,
-            velocity: note.velocity,
+            note: productNote,
+            velocity: productNote.velocity,
           },
-          (_revision, resolvedSliders) => productEngine.auditionSynthNote(note, resolvedSliders),
+          (_revision, resolvedSliders) => productEngine.auditionSynthNote(productNote, resolvedSliders),
           manualTriggerCommitOptions(triggerCritical),
         )
       ));

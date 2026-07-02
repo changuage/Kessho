@@ -63,8 +63,10 @@ export function coreProductSynthSequencerHoldSecondsFromState(
       return leadEnvelopeGateSecondsFromState(state, 0);
     case CORE_PRODUCT_SOURCE_IDS.lead2:
       return leadEnvelopeGateSecondsFromState(state, 1);
-    case CORE_PRODUCT_SOURCE_IDS.piano:
-      return numberFromState(state, 'pianoHold', 0.2);
+    case CORE_PRODUCT_SOURCE_IDS.sample1:
+      return numberFromState(state, 'sample1HoldMs', 200) / 1000;
+    case CORE_PRODUCT_SOURCE_IDS.sample2:
+      return numberFromState(state, 'sample2HoldMs', 200) / 1000;
     default:
       return fallback;
   }

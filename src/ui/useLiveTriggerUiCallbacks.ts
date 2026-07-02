@@ -43,6 +43,8 @@ export type LiveTriggerUiCallbacksOptions = {
   setPadDistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
   setPadMorphTriggerCallback: (callback: ((morphPosition: number) => void) | null) => void;
   setPianoDistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
+  setSample1DistanceTriggerCallback?: (callback: ((distance: number) => void) | null) => void;
+  setSample2DistanceTriggerCallback?: (callback: ((distance: number) => void) | null) => void;
   stateRef: MutableRefObject<SliderState>;
   uiMode: LiveTriggerUiMode;
 };
@@ -61,6 +63,8 @@ export function useLiveTriggerUiCallbacks({
   setPadDistanceTriggerCallback,
   setPadMorphTriggerCallback,
   setPianoDistanceTriggerCallback,
+  setSample1DistanceTriggerCallback,
+  setSample2DistanceTriggerCallback,
   stateRef,
   uiMode,
 }: LiveTriggerUiCallbacksOptions): void {
@@ -175,13 +179,15 @@ export function useLiveTriggerUiCallbacks({
   }, [activeTab, setPad2MorphTriggerCallback, uiMode]);
 
   useEffect(() => {
-    const distanceKeys = ['lead1Distance', 'lead2Distance', 'padDistance', 'pad2Distance', 'pianoDistance'] as const;
+    const distanceKeys = ['lead1Distance', 'lead2Distance', 'padDistance', 'pad2Distance', 'pianoDistance', 'sample1Distance', 'sample2Distance'] as const;
     const lastDistanceUpdate = {
       lead1Distance: 0,
       lead2Distance: 0,
       padDistance: 0,
       pad2Distance: 0,
       pianoDistance: 0,
+      sample1Distance: 0,
+      sample2Distance: 0,
     } as Record<typeof distanceKeys[number], number>;
     const commitDistance = (key: typeof distanceKeys[number], value: number) => {
       const currentUiMode = uiModeRef.current;
@@ -191,7 +197,7 @@ export function useLiveTriggerUiCallbacks({
       if (now - lastDistanceUpdate[key] < 66) return;
       lastDistanceUpdate[key] = now;
       if (currentActiveTab === 'visualizer') {
-        emitVisualizerPulse(key.startsWith('lead') || key === 'pianoDistance' ? 'lead' : 'pad', value * 0.36 + 0.08, now);
+        emitVisualizerPulse(key.startsWith('lead') || key.startsWith('sample') || key === 'pianoDistance' ? 'lead' : 'pad', value * 0.36 + 0.08, now);
         emitVisualizerPulse('synth', 0.06, now);
         return;
       }
@@ -212,11 +218,19 @@ export function useLiveTriggerUiCallbacks({
     setPianoDistanceTriggerCallback((distance) => {
       commitDistance('pianoDistance', distance);
     });
+    setSample1DistanceTriggerCallback?.((distance) => {
+      commitDistance('sample1Distance', distance);
+    });
+    setSample2DistanceTriggerCallback?.((distance) => {
+      commitDistance('sample2Distance', distance);
+    });
     return () => {
       setLeadDistanceCallback(null);
       setPadDistanceTriggerCallback(null);
       setPad2DistanceTriggerCallback(null);
       setPianoDistanceTriggerCallback(null);
+      setSample1DistanceTriggerCallback?.(null);
+      setSample2DistanceTriggerCallback?.(null);
       removeRuntimeTriggerPositions(distanceKeys);
       removeRuntimeValues(distanceKeys);
     };
@@ -225,6 +239,8 @@ export function useLiveTriggerUiCallbacks({
     setPad2DistanceTriggerCallback,
     setPadDistanceTriggerCallback,
     setPianoDistanceTriggerCallback,
+    setSample1DistanceTriggerCallback,
+    setSample2DistanceTriggerCallback,
   ]);
 
   useEffect(() => {

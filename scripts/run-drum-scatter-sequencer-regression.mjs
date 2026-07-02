@@ -14,23 +14,33 @@ const entryPoints = [
 const tempDir = await mkdtemp(path.join(tmpdir(), 'drum-scatter-sequencer-regression-'));
 
 try {
-  const [appSource, drumPageSource, scatterPageSource] = await Promise.all([
+  const [appSource, drumScatterRuntimeSource, drumPageSource, scatterPageSource] = await Promise.all([
     readFile('src/App.tsx', 'utf8'),
+    readFile('src/app/useDrumScatterRuntimeState.ts', 'utf8'),
     readFile('src/ui/drums/DrumPage.tsx', 'utf8'),
     readFile('src/ui/drums/scatter/ScatterPage.tsx', 'utf8'),
   ]);
   const appScatterRuntimeIndex = appSource.indexOf('useScatterSequencerRuntime({');
+  const appScatterRuntimeFacadeIndex = appSource.indexOf('useDrumScatterRuntimeState({');
   const appScatterPhrasePlayerIndex = appSource.indexOf('useScatterPhrasePlayer({');
   const appDrumPageRenderIndex = appSource.indexOf("{activeTab === 'drums'");
-  if (appScatterRuntimeIndex < 0) {
+  const appScatterRuntimeMountIndex = appScatterRuntimeIndex >= 0 ? appScatterRuntimeIndex : appScatterRuntimeFacadeIndex;
+  const appScatterPhrasePlayerMountIndex = appScatterPhrasePlayerIndex >= 0 ? appScatterPhrasePlayerIndex : appScatterRuntimeFacadeIndex;
+  if (appScatterRuntimeMountIndex < 0) {
     throw new Error('Scatter runtime scheduler must be mounted above DrumPage so it survives main tab changes.');
   }
-  if (appScatterPhrasePlayerIndex < 0) {
+  if (appScatterPhrasePlayerMountIndex < 0) {
     throw new Error('App must own the headless scatter phrase player for background Scatter playback.');
+  }
+  if (!drumScatterRuntimeSource.includes('useScatterSequencerRuntime({')) {
+    throw new Error('useDrumScatterRuntimeState must own the headless Scatter scheduler.');
+  }
+  if (!drumScatterRuntimeSource.includes('useScatterPhrasePlayer({')) {
+    throw new Error('useDrumScatterRuntimeState must own the headless Scatter phrase player.');
   }
   if (
     appDrumPageRenderIndex >= 0 &&
-    (appScatterRuntimeIndex > appDrumPageRenderIndex || appScatterPhrasePlayerIndex > appDrumPageRenderIndex)
+    (appScatterRuntimeMountIndex > appDrumPageRenderIndex || appScatterPhrasePlayerMountIndex > appDrumPageRenderIndex)
   ) {
     throw new Error('App-owned Scatter playback hooks must run before the conditional DrumPage render branch.');
   }

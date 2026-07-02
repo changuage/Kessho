@@ -188,6 +188,48 @@ function sequencedSynthPatch(source, sourcePatch = {}) {
   };
 }
 
+function sample2PianoPatch() {
+  return {
+    sample2Enabled: true,
+    sample2LibraryKey: 'piano',
+    sample2Role: '',
+    sample2Articulation: '',
+    sample2SelectionMode: 'nearest',
+    sample2DynamicMode: 'legacy-piano-parity',
+    sample2FixedDynamic: 'regular',
+    sample2VariantMode: 'stable',
+    sample2LoopEnabled: false,
+    sample2Level: 0.85,
+    sample2ReverbSend: 0,
+    sample2DelayASend: 0,
+    sample2DelayBSend: 0,
+    granularSample2Send: 0,
+    sample2DiffuseSend: 0,
+    sample2MaxVoices: 16,
+  };
+}
+
+function sample2SoftStringPatch() {
+  return {
+    sample2Enabled: true,
+    sample2LibraryKey: 'soft-string-spurs',
+    sample2Role: 'sustain',
+    sample2Articulation: 'core',
+    sample2SelectionMode: 'mapped',
+    sample2DynamicMode: 'velocity',
+    sample2FixedDynamic: 'level-2',
+    sample2VariantMode: 'stable',
+    sample2LoopEnabled: true,
+    sample2Level: 1.6,
+    sample2ReverbSend: 0,
+    sample2DelayASend: 0,
+    sample2DelayBSend: 0,
+    granularSample2Send: 0,
+    sample2DiffuseSend: 0,
+    sample2MaxVoices: 16,
+  };
+}
+
 function createCases() {
   return [
     {
@@ -247,6 +289,22 @@ function createCases() {
         padPresetA: 'glass_shimmer',
         padPresetB: 'glass_shimmer',
       },
+    },
+    {
+      id: 'sample2-running-library-hot-swap-euclid',
+      label: 'Sample 2 running library hot-swap on native Euclid',
+      baselineMode: 'fresh-target',
+      trackId: 'sample2Dry',
+      sourceId: 8,
+      expectedReloadReason: 'asset-reference-change',
+      initialState: sequencedSynthPatch('sample2', {
+        ...sample2PianoPatch(),
+        synthEuclid1Level: 1,
+        synthEuclid1NoteMin: 98,
+        synthEuclid1NoteMax: 98,
+      }),
+      targetPatch: sample2SoftStringPatch(),
+      targetStatePatch: sample2SoftStringPatch(),
     },
   ];
 }
@@ -465,10 +523,10 @@ async function runCase(browser, baseUrl, caseDef, pageErrors) {
     hotSource.sourceStateHash === baselineSource.sourceStateHash,
     `${caseDef.id}: hot source hash ${hotSource.sourceStateHash} did not match target baseline ${baselineSource.sourceStateHash}`,
   );
-  assert(fullSnapshotReloadCount(hotCapture) >= 2, `${caseDef.id}: hot capture did not report a source hot-swap full snapshot`);
+  assert(fullSnapshotReloadCount(hotCapture) >= (caseDef.minFullSnapshotReloadCount ?? 2), `${caseDef.id}: hot capture did not report a source hot-swap full snapshot`);
   assert(
-    snapshotReloadReasons(hotCapture).includes('source-structure-change'),
-    `${caseDef.id}: hot capture did not report source-structure-change reload (${snapshotReloadReasons(hotCapture).join(', ')})`,
+    snapshotReloadReasons(hotCapture).includes(caseDef.expectedReloadReason ?? 'source-structure-change'),
+    `${caseDef.id}: hot capture did not report ${caseDef.expectedReloadReason ?? 'source-structure-change'} reload (${snapshotReloadReasons(hotCapture).join(', ')})`,
   );
   const post = compareWindows(hotCapture, baselineCapture, POST_START_MS, POST_END_MS);
   assert(post.hotRms > MIN_POST_RMS, `${caseDef.id}: post-swap hot audio stayed silent (${post.hotRms})`);

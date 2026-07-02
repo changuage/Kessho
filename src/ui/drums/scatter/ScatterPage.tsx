@@ -686,6 +686,7 @@ const ScatterPage: React.FC<ScatterPageProps> = ({
       : state.selectedEngine;
     onStateChange({
       ...state,
+      active: false,
       selectedEngine: nextSelectedEngine,
       engines: nextEngines,
     });

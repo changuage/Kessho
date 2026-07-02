@@ -23,6 +23,8 @@ type SelectedAudioEngineRuntimeCallbackRegistrationsOptions = {
   setSelectedPadDistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
   setSelectedPadMorphTriggerCallback: (callback: ((morphPosition: number) => void) | null) => void;
   setSelectedPianoDistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
+  setSelectedSample1DistanceTriggerCallback?: (callback: ((distance: number) => void) | null) => void;
+  setSelectedSample2DistanceTriggerCallback?: (callback: ((distance: number) => void) | null) => void;
   setSelectedSynthEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
   setSelectedSynthStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
   stateRef: MutableRefObject<SliderState>;
@@ -46,6 +48,8 @@ export function useSelectedAudioEngineRuntimeCallbackRegistrations({
   setSelectedPadDistanceTriggerCallback,
   setSelectedPadMorphTriggerCallback,
   setSelectedPianoDistanceTriggerCallback,
+  setSelectedSample1DistanceTriggerCallback,
+  setSelectedSample2DistanceTriggerCallback,
   setSelectedSynthEvolveTriggerCallback,
   setSelectedSynthStepPositionCallback,
   stateRef,
@@ -75,6 +79,8 @@ export function useSelectedAudioEngineRuntimeCallbackRegistrations({
     setSelectedPadDistanceTriggerCallback,
     setSelectedPadMorphTriggerCallback,
     setSelectedPianoDistanceTriggerCallback,
+    setSelectedSample1DistanceTriggerCallback,
+    setSelectedSample2DistanceTriggerCallback,
     stateRef,
     uiMode,
   });

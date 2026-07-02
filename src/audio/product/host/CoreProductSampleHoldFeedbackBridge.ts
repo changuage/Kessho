@@ -132,8 +132,12 @@ function publishSampleHoldSourceFeedback(
   if (targetId === CORE_PRODUCT_SOURCE_IDS.pad2) return publishPadFeedback('pad2', paramId, position, context);
   if (targetId === CORE_PRODUCT_SOURCE_IDS.lead1) return markLeadFeedback('lead1', paramId, position, context);
   if (targetId === CORE_PRODUCT_SOURCE_IDS.lead2) return markLeadFeedback('lead2', paramId, position, context);
-  if (targetId === CORE_PRODUCT_SOURCE_IDS.piano && paramId === KESSHO_PRODUCT_PARAM_IDS.SourceDistance) {
-    context.publish('pianoDistance', position);
+  if (targetId === CORE_PRODUCT_SOURCE_IDS.sample1 && paramId === KESSHO_PRODUCT_PARAM_IDS.SourceDistance) {
+    context.publish('sample1Distance', position);
+    return { source: 1, drum: 0 };
+  }
+  if (targetId === CORE_PRODUCT_SOURCE_IDS.sample2 && paramId === KESSHO_PRODUCT_PARAM_IDS.SourceDistance) {
+    context.publish('sample2Distance', position);
     return { source: 1, drum: 0 };
   }
   if (targetId >= CORE_PRODUCT_DRUM_RANGE_TARGET_BASE) {

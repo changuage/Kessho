@@ -25,6 +25,8 @@ export type ProductEngineModulationPort = {
   setPadDistanceTriggerCallback(callback: ProductScalarCallback | null): void;
   setPad2DistanceTriggerCallback(callback: ProductScalarCallback | null): void;
   setPianoDistanceTriggerCallback(callback: ProductScalarCallback | null): void;
+  setSample1DistanceTriggerCallback(callback: ProductScalarCallback | null): void;
+  setSample2DistanceTriggerCallback(callback: ProductScalarCallback | null): void;
   setLeadDelayCallback(callback: ProductLeadDelayCallback | null): void;
   setDrumMorphTriggerCallback(callback: ProductDrumMorphCallback | null): void;
   setDrumParamSHTriggerCallback(callback: ProductDrumParamSampleHoldCallback | null): void;

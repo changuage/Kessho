@@ -90,6 +90,19 @@ const SOURCE_PRESET_ENDPOINT_RESOLVED_COMMIT_KEYS = new Set<string>([
   'drumMembranePresetB',
 ]);
 
+const SAMPLE_SLOT_RESOLVED_COMMIT_SUFFIXES = [
+  'Enabled',
+  'LibraryKey',
+  'Role',
+  'Articulation',
+  'SelectionMode',
+  'DynamicMode',
+  'FixedDynamic',
+  'VariantMode',
+  'LoopEnabled',
+  'MaxVoices',
+] as const;
+
 function isFxControlPatchKey(key: string): boolean {
   return FX_CONTROL_KEY_PATTERNS.some((pattern) => pattern.test(key));
 }
@@ -123,6 +136,11 @@ function isSourceCoreResolvedCommitPatchKey(key: string): boolean {
     SOURCE_PRESET_DATA_RESOLVED_COMMIT_KEY_PATTERNS.some((pattern) => pattern.test(key));
 }
 
+function isSampleSlotResolvedCommitPatchKey(key: string): boolean {
+  return (key.startsWith('sample1') || key.startsWith('sample2')) &&
+    SAMPLE_SLOT_RESOLVED_COMMIT_SUFFIXES.some((suffix) => key.endsWith(suffix));
+}
+
 function requiresSequencerTransportResolvedCommit(patch: Partial<SliderState>): boolean {
   return Object.keys(patch).some(isSequencerTransportTriggerPatchKey);
 }
@@ -143,6 +161,10 @@ function requiresSourceCoreResolvedCommit(patch: Partial<SliderState>): boolean 
   return Object.keys(patch).some(isSourceCoreResolvedCommitPatchKey);
 }
 
+function requiresSampleSlotResolvedCommit(patch: Partial<SliderState>): boolean {
+  return Object.keys(patch).some(isSampleSlotResolvedCommitPatchKey);
+}
+
 function requiresSourceCoreFullSnapshot(
   patch: Partial<SliderState>,
   reason: ProductSnapshotPatchReason,
@@ -160,6 +182,7 @@ function inferProductPatchReason(
 ): ProductSnapshotPatchReason {
   if (explicitReason) return explicitReason;
   const keys = Object.keys(patch);
+  if (keys.length > 0 && keys.some(isSampleSlotResolvedCommitPatchKey)) return 'asset-reference-change';
   if (keys.length > 0 && keys.some(isSourceCoreResolvedCommitPatchKey)) return 'asset-reference-change';
   if (keys.length > 0 && keys.some(isMorphControlPatchKey)) return 'morph-control-change';
   if (keys.length > 0 && keys.some(isTransportControlPatchKey)) return 'transport-change';
@@ -179,6 +202,7 @@ function requiresResolvedCommit(
     || requiresSequencerLaneEnabledResolvedCommit(patch)
     || requiresSequencerTargetResolvedCommit(patch)
     || requiresSequencerFaceResolvedCommit(patch)
+    || requiresSampleSlotResolvedCommit(patch)
     || requiresSourceCoreResolvedCommit(patch)
     || requiresSourceCoreFullSnapshot(patch, reason, options)
     || reason === 'preset-load';
@@ -196,6 +220,7 @@ function resolvedCommitTriggerCritical(
     requiresSequencerLaneEnabledResolvedCommit(patch) ||
     requiresSequencerTargetResolvedCommit(patch) ||
     requiresSequencerFaceResolvedCommit(patch) ||
+    requiresSampleSlotResolvedCommit(patch) ||
     requiresSourceCoreResolvedCommit(patch) ||
     reason === 'preset-load'
   );
@@ -218,6 +243,7 @@ function shouldFlushImmediatelyForResolvedCommit(
   if (requiresSequencerLaneEnabledResolvedCommit(patch)) return true;
   if (requiresSequencerTargetResolvedCommit(patch)) return true;
   if (requiresSequencerFaceResolvedCommit(patch)) return true;
+  if (requiresSampleSlotResolvedCommit(patch)) return true;
   if (requiresSourceCoreResolvedCommit(patch)) return true;
   if (requiresSourceCoreFullSnapshot(patch, reason, options)) return true;
   return reason === 'preset-load';

@@ -1,6 +1,5 @@
 import {
   applyLeadDistanceEnvelope,
-  applyPianoDistanceEnvelope,
   getVoiceDistanceValue,
 } from './distanceMacro';
 import { createHarmonyState, getEffectiveTension, updateHarmonyState, type HarmonyParams, type HarmonyState } from './harmony';
@@ -8,6 +7,7 @@ import { chordIntervalSecondsFromState, resolveChordsPerPhrase } from './chordPh
 import { PAD_VOICE_COUNT } from './coreProductArrangementVoiceMapping';
 import { resolveCoreProductChordVoices } from './coreProductChordVoices';
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
+import { sampleSlotEnabledForPlayback } from './coreProductSourcePlayability';
 import { createRng, getUtcBucket } from './rng';
 import { getScaleNotesInRange } from './scales';
 import { getPhraseDurationForClockSource } from './transport';
@@ -181,24 +181,6 @@ function leadEnvelope(state: SliderState, source: 'lead1' | 'lead2'): SimpleSequ
   };
 }
 
-function pianoEnvelope(state: SliderState): SimpleSequencerVizEnvelope {
-  const record = state as unknown as Record<string, unknown>;
-  const attack = boundedNumber(record.pianoAttack, 0.005, 0.001, 2);
-  const decay = boundedNumber(record.pianoDecay, 0.65, 0.01, 4);
-  const sustain = boundedNumber(record.pianoSustain, 0.35, 0, 1);
-  const hold = boundedNumber(record.pianoHold, 0.2, 0, 4);
-  const release = boundedNumber(record.pianoRelease, 1.2, 0.01, 8);
-  const distance = getVoiceDistanceValue(state, 'piano');
-  const shaped = applyPianoDistanceEnvelope({ attack, decay, sustain, hold, release }, distance);
-  return {
-    attack: shaped.attack,
-    decay: shaped.decay,
-    sustain: shaped.sustain,
-    gateSeconds: shaped.hold ?? hold,
-    release: shaped.release,
-  };
-}
-
 function sampleEnvelope(state: SliderState, source: 'sample1' | 'sample2'): SimpleSequencerVizEnvelope {
   const record = state as unknown as Record<string, unknown>;
   const prefix = source;
@@ -219,13 +201,11 @@ export function envelopeForSource(
 ): SimpleSequencerVizEnvelope {
   if (source === 'pad1' || source === 'pad2') return padEnvelope(state, source, voiceDelaySeconds, triggerIntervalSeconds);
   if (source === 'lead1' || source === 'lead2') return leadEnvelope(state, source);
-  if (source === 'sample1' || source === 'sample2') return sampleEnvelope(state, source);
-  return pianoEnvelope(state);
+  return sampleEnvelope(state, source);
 }
 
 function chordGeneratorSource(state: SliderState): string {
-  const source = String((state as unknown as Record<string, unknown>).synthChordGeneratorSource ?? 'sample1').trim().toLowerCase();
-  return source === 'piano' ? 'sample1' : source;
+  return String((state as unknown as Record<string, unknown>).synthChordGeneratorSource ?? 'sample1').trim().toLowerCase();
 }
 
 function vizSourceFromSourceId(sourceId: number): SimpleSequencerVizSource | null {
@@ -343,7 +323,7 @@ function randomTimingSource(state: SliderState): LeadRandomSource {
   if (source === 'pad1') return 'pad1';
   if (source === 'pad2') return 'pad2';
   if (source === 'lead2') return 'lead2';
-  if (source === 'sample1' || source === 'piano') return 'sample1';
+  if (source === 'sample1') return 'sample1';
   if (source === 'sample2') return 'sample2';
   return 'lead1';
 }
@@ -355,8 +335,8 @@ function isRandomTimingEnabled(state: SliderState): boolean {
   if (source === 'pad1') return booleanValue(record.padEnabled, false);
   if (source === 'pad2') return booleanValue(record.pad2Enabled, false);
   if (source === 'lead2') return booleanValue(record.lead2Enabled, false);
-  if (source === 'sample1') return booleanValue(record.sample1Enabled, false) || booleanValue(record.pianoEnabled, false);
-  if (source === 'sample2') return booleanValue(record.sample2Enabled, false);
+  if (source === 'sample1') return sampleSlotEnabledForPlayback(record, 'sample1');
+  if (source === 'sample2') return sampleSlotEnabledForPlayback(record, 'sample2');
   return booleanValue(record.leadEnabled, false);
 }
 

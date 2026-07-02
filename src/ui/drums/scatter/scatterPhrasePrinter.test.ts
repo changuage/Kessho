@@ -157,7 +157,13 @@ function hasAdjacentHits(pattern: readonly boolean[]): boolean {
   });
   const activePattern = resolveTriggerClip(phrase.triggerClip);
 
-  assert.equal(result.stepOverrides.triggerClips?.[0] ?? null, null, 'replace should leave rhythm to Euclidean steps/hits/rotation instead of a trigger clip override');
+  assert.equal(result.stepOverrides.triggerClips?.[0]?.origin, 'manual', 'replace should print scatter as a manual step pattern');
+  assert.deepEqual(resolveTriggerClip(result.stepOverrides.triggerClips![0]!), activePattern, 'replace should preserve the exact scatter trigger pattern in the step sequencer');
+  assert.deepEqual(
+    Array.from(result.stepOverrides.triggerToggles[0] ?? []),
+    activePattern.map((enabled, step) => [step, enabled] as [number, boolean]),
+    'replace should write every trigger step as runtime toggles',
+  );
   assert.deepEqual(result.stepOverrides.probability[0], phrase.probability, 'replace should write probability');
   assert.deepEqual(result.stepOverrides.ratchet[0], activeValues(phrase.ratchet, activePattern), 'replace should write ratchet per active hit');
   assert.deepEqual(result.stepOverrides.trigCondition[0], phrase.trigCondition, 'replace should write trig conditions');
@@ -188,7 +194,12 @@ function hasAdjacentHits(pattern: readonly boolean[]): boolean {
     currentSubLaneStates: makeSubLaneStates(6),
   });
 
-  assert.equal(result.stepOverrides.triggerClips?.[5] ?? null, null, 'lane 6 should use Euclidean steps/hits/rotation instead of a trigger clip override');
+  assert.equal(result.stepOverrides.triggerClips?.[5]?.origin, 'manual', 'lane 6 should print scatter as a manual step pattern');
+  assert.deepEqual(
+    Array.from(result.stepOverrides.triggerToggles[5] ?? []),
+    resolveTriggerClip(phrase.triggerClip).map((enabled, step) => [step, enabled] as [number, boolean]),
+    'lane 6 should receive the exact phrase trigger pattern as runtime toggles',
+  );
   assert.deepEqual(result.stepOverrides.morph[5], [phrase.morph[0], phrase.morph[2], phrase.morph[5], phrase.morph[7]], 'lane 6 should receive phrase morph values per active hit');
 }
 

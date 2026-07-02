@@ -1,10 +1,31 @@
 import assert from 'node:assert/strict';
+import {
+  CORE_PRODUCT_STEP_VALUE_FIELDS,
+  CORE_PRODUCT_STEP_TOGGLE_FLAGS,
+  createCoreProductGeneratedSequencerCaptureEvent,
+} from '../../audio/coreProductEvents';
+import type { ProductEvent } from '../../audio/product/ProductEngineTypes';
+import type { CoreProductTelemetrySnapshot } from '../../audio/coreProductTelemetry';
 import type { PitchBindingMode } from '../../audio/drumSeqTypes';
+import { KESSHO_PRODUCT_EVENT_IDS } from '../../audio/generated/kesshoProductEvents';
+import { KESSHO_PRODUCT_PARAM_IDS } from '../../audio/generated/kesshoProductParams';
+import { CoreProductGeneratedSequencerCaptureTelemetryHistory } from '../../audio/product/host/CoreProductGeneratedSequencerCaptureTelemetryHistory';
+import type { SliderState } from '../state';
 
 import {
   commitGeneratedCaptureToEuclid,
   type CommitGeneratedCaptureArgs,
+  type GeneratedCaptureStepCommit,
 } from './commitGeneratedCaptureToEuclid';
+import {
+  buildProductGeneratedCaptureStepCommitEvents,
+  generatedCaptureStepPatchForState,
+} from './generatedCaptureProductCommit';
+import {
+  chooseGeneratedCaptureStopAction,
+  generatedCaptureStepPastHalf,
+} from './generatedSequencerCapturePhrase';
+import { createDefaultSynthSequencerFaceState } from './sequencerModeTypes';
 import {
   capturedMidisToSemitonePitchValues,
   chooseCaptureRootMidi,
@@ -72,6 +93,28 @@ function applyStateAction<T>(previous: T, action: T | ((prev: T) => T)): T {
   return typeof action === 'function'
     ? (action as (prev: T) => T)(previous)
     : action;
+}
+
+function triggerToggleEntries(
+  stepOverrides: StepOverrides,
+  laneIndex: number,
+): Array<[number, boolean]> {
+  return Array.from(stepOverrides.triggerToggles[laneIndex] ?? []);
+}
+
+function requireStepCommit(value: GeneratedCaptureStepCommit | null): GeneratedCaptureStepCommit {
+  if (value === null) assert.fail('expected generated capture Step commit payload');
+  return value;
+}
+
+function productGeneratedCapturePitchEventValues(events: readonly ProductEvent[]): number[] {
+  const stepValueFieldMask = 0xff00;
+  return events
+    .filter((event) => (
+      typeof event.flags === 'number' &&
+      (event.flags & stepValueFieldMask) === CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote
+    ))
+    .map((event) => Number(event.value));
 }
 
 function testCaptureScratch(): void {
@@ -146,6 +189,90 @@ function testCaptureScratchKeepsLatestCycleOnly(): void {
   assert.equal(scratch.cells[3]?.midiNote, 67);
   assert.equal(scratch.cells[1]?.hasNote, false);
   assert.equal(scratch.cells[5]?.hasNote, false);
+}
+
+function testGeneratedCaptureStopPolicy(): void {
+  assert.equal(generatedCaptureStepPastHalf(7, 16), false);
+  assert.equal(generatedCaptureStepPastHalf(8, 16), true);
+  assert.deepEqual(
+    chooseGeneratedCaptureStopAction({
+      currentStepIndex: 3,
+      stepCount: 16,
+      completedCycleIndex: 4,
+    }),
+    { kind: 'commitCycle', cycleIndex: 4 },
+    'stopping before halfway should print the previous completed phrase',
+  );
+  assert.deepEqual(
+    chooseGeneratedCaptureStopAction({
+      currentStepIndex: 8,
+      stepCount: 16,
+      completedCycleIndex: 4,
+    }),
+    { kind: 'finishCurrentPhrase' },
+    'stopping at or after halfway should finish and save the current phrase',
+  );
+  assert.deepEqual(
+    chooseGeneratedCaptureStopAction({
+      currentStepIndex: 3,
+      stepCount: 16,
+      completedCycleIndex: null,
+    }),
+    { kind: 'finishCurrentPhrase' },
+    'the first phrase should finish even if stop happens before halfway',
+  );
+}
+
+function testGeneratedCaptureHistorySurvivesDisable(): void {
+  const history = new CoreProductGeneratedSequencerCaptureTelemetryHistory();
+  const telemetry = {
+    generatedSequencerCaptureEvents: [{
+      eventId: 1,
+      absoluteSample: 128,
+      sourceLaneIndex: 0,
+      sourceMode: 'orbit',
+      targetSourceId: 1,
+      midiNote: 60,
+      velocity: 0.75,
+      gateSeconds: 0.2,
+      sourceStepIndex: 1,
+      sourceLayerIndex: null,
+      sourceNoteIndex: null,
+      targetStepIndex: 1,
+      targetStepFloat: 1.15,
+      nudge: 0.15,
+    }],
+    generatedSequencerCaptureOverflowCount: 2,
+  } as CoreProductTelemetrySnapshot;
+
+  const captured = history.withHistory(telemetry);
+  const afterDisable = history.clearForEvent(
+    createCoreProductGeneratedSequencerCaptureEvent({
+      enabled: false,
+      sourceLaneIndex: 0,
+      targetLaneIndex: 0,
+      sourceMode: 'orbit',
+    }),
+    captured,
+  );
+  assert.equal(
+    afterDisable?.generatedSequencerCaptureEvents?.length,
+    1,
+    'disabling Product capture must not erase events before the UI commit flush reads them',
+  );
+  assert.equal(afterDisable?.generatedSequencerCaptureOverflowCount, 2);
+
+  const afterEnable = history.clearForEvent(
+    createCoreProductGeneratedSequencerCaptureEvent({
+      enabled: true,
+      sourceLaneIndex: 0,
+      targetLaneIndex: 0,
+      sourceMode: 'orbit',
+    }),
+    captured,
+  );
+  assert.equal(afterEnable?.generatedSequencerCaptureEvents?.length, 0);
+  assert.equal(afterEnable?.generatedSequencerCaptureOverflowCount, 0);
 }
 
 function testCapturedPitchConversion(): void {
@@ -254,7 +381,12 @@ function testCommitGeneratedCaptureToEuclid(): void {
   assert.equal(triggerClip?.origin, 'recorded');
   assert.equal(triggerClip?.label, 'Orbit capture');
   assert.deepEqual(resolveTriggerClip(triggerClip!), [true, false, true, false]);
-  assert.equal(stepOverrides.triggerToggles[targetLaneIndex]?.size, 0);
+  assert.deepEqual(triggerToggleEntries(stepOverrides, targetLaneIndex), [
+    [0, true],
+    [1, false],
+    [2, true],
+    [3, false],
+  ]);
   assert.deepEqual(stepOverrides.pitch[targetLaneIndex], [0, 7]);
   assert.deepEqual(stepOverrides.expression[targetLaneIndex], [0.5, 0.8]);
   assert.deepEqual(stepOverrides.nudge[targetLaneIndex], [0, 0]);
@@ -305,6 +437,7 @@ function testCommitGeneratedCaptureWritesNudge(): void {
     root: 48,
     scale: 'Major',
   }));
+  const stepCommitRef: { current: GeneratedCaptureStepCommit | null } = { current: null };
 
   const seq: CommitGeneratedCaptureArgs['seq'] = {
     setParam: () => {},
@@ -328,6 +461,9 @@ function testCommitGeneratedCaptureWritesNudge(): void {
     setSequencerMode: () => {},
     setPitchBindingMode: () => {},
     sourceMode: 'anchorWalker',
+    onStepCommit: (commit) => {
+      stepCommitRef.current = commit;
+    },
   });
 
   assert.deepEqual(stepOverrides.nudge[targetLaneIndex], [0, -0.25]);
@@ -340,6 +476,54 @@ function testCommitGeneratedCaptureWritesNudge(): void {
     root: 60,
     scale: 'Chromatic',
   });
+
+  const stepCommit = requireStepCommit(stepCommitRef.current);
+  assert.equal(stepCommit.sourceMode, 'anchorWalker');
+  assert.equal(stepCommit.targetLaneIndex, targetLaneIndex);
+  assert.deepEqual(stepCommit.pitchMidiValues, [60, 64]);
+
+  const productEvents = buildProductGeneratedCaptureStepCommitEvents(stepCommit);
+  assert.equal(
+    productEvents.every((event) => event.index === targetLaneIndex),
+    true,
+    'generated capture handoff must only clear/write the captured lane',
+  );
+  const lastEvent = productEvents[productEvents.length - 1];
+  assert.equal(lastEvent?.eventKind, KESSHO_PRODUCT_EVENT_IDS.SetSequencerLane);
+  assert.equal(lastEvent?.paramId, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMode);
+  assert.equal(lastEvent?.value, 0, 'Product handoff should switch audible mode to Step after writing the lane');
+
+  const triggerEvents = productEvents.filter((event) => (
+    event.eventKind === KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep &&
+    event.flags === CORE_PRODUCT_STEP_TOGGLE_FLAGS.active
+  ));
+  assert.deepEqual(
+    triggerEvents.map((event) => [event.paramId, event.value === 1]),
+    [
+      [0, true],
+      [1, false],
+      [2, true],
+      [3, false],
+    ],
+  );
+  assert.deepEqual(
+    productGeneratedCapturePitchEventValues(productEvents),
+    [60, 64],
+    'Product Step handoff must write captured MIDI notes, not UI semitone offsets',
+  );
+  const faces = createDefaultSynthSequencerFaceState();
+  faces.slots[targetLaneIndex] = {
+    ...faces.slots[targetLaneIndex]!,
+    mode: 'anchorWalker',
+  };
+  const patch = generatedCaptureStepPatchForState({
+    synthSequencerFaces: faces,
+  } as SliderState, stepCommit);
+  assert.equal(
+    (patch.synthSequencerFaces as typeof faces).slots[targetLaneIndex]?.mode,
+    'euclid',
+    'Product control patch must persist the Step mode handoff',
+  );
 }
 
 function testCommitUsesLatestCaptureCycle(): void {
@@ -416,7 +600,16 @@ function testCommitUsesLatestCaptureCycle(): void {
     resolveTriggerClip(triggerClip!),
     [false, false, true, false, false, false, true, false],
   );
-  assert.equal(stepOverrides.triggerToggles[targetLaneIndex]?.size, 0);
+  assert.deepEqual(triggerToggleEntries(stepOverrides, targetLaneIndex), [
+    [0, false],
+    [1, false],
+    [2, true],
+    [3, false],
+    [4, false],
+    [5, false],
+    [6, true],
+    [7, false],
+  ]);
   assert.deepEqual(stepOverrides.pitch[targetLaneIndex], [0, 4]);
   assert.deepEqual(stepOverrides.expression[targetLaneIndex], [0.8, 1]);
   assert.equal(subLaneStates[targetLaneIndex]?.pitch.steps, 2);
@@ -493,7 +686,10 @@ function testSameStepCapturePacksPitchAndDistributesTriggers(): void {
     3,
     'colliding capture events should be redistributed as three trigger hits',
   );
-  assert.equal(stepOverrides.triggerToggles[targetLaneIndex]?.size, 0);
+  assert.equal(
+    triggerToggleEntries(stepOverrides, targetLaneIndex).filter(([, enabled]) => enabled).length,
+    3,
+  );
   assert.deepEqual(stepOverrides.pitch[targetLaneIndex], [0, 4, 7]);
   assert.deepEqual(stepOverrides.expression[targetLaneIndex], [0.4, 0.6, 0.8]);
   assert.equal(subLaneStates[targetLaneIndex]?.pitch.steps, 3);
@@ -561,6 +757,8 @@ function testEmptyCaptureDoesNotOverwriteEuclidLane(): void {
 
 testCaptureScratch();
 testCaptureScratchKeepsLatestCycleOnly();
+testGeneratedCaptureStopPolicy();
+testGeneratedCaptureHistorySurvivesDisable();
 testCapturedPitchConversion();
 testCommitGeneratedCaptureToEuclid();
 testCommitGeneratedCaptureWritesNudge();

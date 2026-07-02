@@ -276,7 +276,6 @@ export function loadCoreProductHostHarness(options = {}) {
     lead2: 4,
     drum: 5,
     sample1: 6,
-    piano: 6,
     soundscape: 7,
     sample2: 8,
   };
@@ -305,7 +304,8 @@ export function loadCoreProductHostHarness(options = {}) {
     else if (source === 'pad2') next.pad2Enabled = true;
     else if (source === 'lead1') next.leadEnabled = true;
     else if (source === 'lead2') next.lead2Enabled = true;
-    else if (source === 'piano') next.pianoEnabled = true;
+    else if (source === 'sample1') next.sample1Enabled = true;
+    else if (source === 'sample2') next.sample2Enabled = true;
     else sourceId(source);
     return next;
   };
@@ -390,8 +390,7 @@ export function loadCoreProductHostHarness(options = {}) {
     }
 
     async ensureDefaultAssetsForState() {}
-    async ensurePianoAssetForMidi() {}
-    async ensurePianoAssetForNote() {}
+    async ensureSampleSlotAssetForNote() {}
     clear() {
       this.assets = [];
     }
@@ -427,6 +426,40 @@ export function loadCoreProductHostHarness(options = {}) {
     }
   }
 
+  const sampleSlotTriggerCriticalSuffixes = [
+    'Enabled',
+    'LibraryKey',
+    'Role',
+    'Articulation',
+    'SelectionMode',
+    'DynamicMode',
+    'FixedDynamic',
+    'VariantMode',
+    'LoopEnabled',
+    'MaxVoices',
+  ];
+  const simpleSequencerSourceKeys = [
+    'synthChordGeneratorSource',
+    'synthChordSequencerSource',
+    'leadRandomSource',
+  ];
+  const stateValueChanged = (previous, next, key) => previous?.[key] !== next?.[key];
+  const productSamplePlaybackTriggerCriticalChange = (previous, next) => {
+    if (!previous || !next) return false;
+    for (const slotId of ['sample1', 'sample2']) {
+      for (const suffix of sampleSlotTriggerCriticalSuffixes) {
+        if (stateValueChanged(previous, next, `${slotId}${suffix}`)) return true;
+      }
+    }
+    for (const key of simpleSequencerSourceKeys) {
+      if (stateValueChanged(previous, next, key)) return true;
+    }
+    for (let lane = 1; lane <= 4; lane += 1) {
+      if (stateValueChanged(previous, next, `synthEuclid${lane}Source`)) return true;
+    }
+    return previous?.synthSequencerFaces !== next?.synthSequencerFaces;
+  };
+
   const context = {
     console: consoleCapture.console,
     performance: { now: () => ++nowMs },
@@ -454,6 +487,7 @@ export function loadCoreProductHostHarness(options = {}) {
     logCoreProductDebugTelemetry: () => {},
     productStateDebugEnabled: () => false,
     buildCoreProductSnapshotDiff: () => ({ applied: true, events: [] }),
+    productSamplePlaybackTriggerCriticalChange,
     shouldForwardCoreProductRngDiffs: () => false,
     CoreProductArrangementScheduler: class {
       start() {}
@@ -1526,6 +1560,14 @@ Object.assign(globalThis, {
 Object.assign(globalThis, {
   CoreProductGeneratedSequencerCaptureTelemetryHistory,
 });`, context, { filename: generatedCaptureTelemetryHistoryPath });
+
+  const snapshotAckMetadataPath = 'src/audio/product/host/CoreProductSnapshotAckMetadata.ts';
+  const snapshotAckMetadataSource = stripImportsAndExports(readProjectFile(snapshotAckMetadataPath));
+  const snapshotAckMetadataJs = transpileForVm(snapshotAckMetadataSource, resolve(root, snapshotAckMetadataPath));
+  vm.runInNewContext(`${snapshotAckMetadataJs}
+Object.assign(globalThis, {
+  CoreProductSnapshotAckMetadataFactory,
+});`, context, { filename: snapshotAckMetadataPath });
 
   const lifecycleCoordinatorPath = 'src/audio/product/host/CoreProductHostLifecycleCoordinator.ts';
   const lifecycleCoordinatorSource = stripImportsAndExports(readProjectFile(lifecycleCoordinatorPath));

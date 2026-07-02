@@ -16,7 +16,7 @@ import { appendSequencerModeConfigDiffs } from './CoreProductRuntimeAdapterSeque
 export const MAX_SNAPSHOT_DIFF_EVENTS = 1024;
 
 export type SnapshotReloadReason =
-  | 'none' | 'initial-snapshot' | 'runtime-start' | 'runtime-bootstrap' | 'manual-piano-asset' | 'explicit-reset-request' | 'asset-reference-change' | 'asset-reference-level-change' | 'soundscape-param-change' | 'harmony-mode-change' | 'source-structure-change' | 'pad-override-change' | 'lead-override-change' | 'drum-override-change' | 'sequencer-structure-change' | 'dirty-diff-event-budget' | 'product-patch';
+  | 'none' | 'initial-snapshot' | 'runtime-start' | 'runtime-bootstrap' | 'manual-sample-asset' | 'explicit-reset-request' | 'asset-reference-change' | 'asset-reference-level-change' | 'soundscape-param-change' | 'harmony-mode-change' | 'source-structure-change' | 'pad-override-change' | 'lead-override-change' | 'drum-override-change' | 'sequencer-structure-change' | 'dirty-diff-event-budget' | 'product-patch';
 
 type SequencerKind = 'synth' | 'drum';
 type ProductSourceSnapshot = CoreProductSnapshot['sources'][number];

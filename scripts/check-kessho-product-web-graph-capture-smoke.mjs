@@ -106,6 +106,7 @@ function runCaseAttempt(caseDef, args, attempt, captureUrl) {
     `--state-patch=${JSON.stringify(caseDef.statePatch ?? statePatch)}`,
     `--max-lag-ms=${caseDef.maxLagMs ?? 90}`,
     `--min-lag-correlation=${caseDef.minLagCorrelation}`,
+    `--min-signal-rms=${caseDef.minSignalRms ?? 0.0001}`,
     `--rms-tolerance=${caseDef.rmsTolerance}`,
     `--peak-tolerance=${caseDef.peakTolerance}`,
   ];
@@ -124,6 +125,7 @@ function runCaseAttempt(caseDef, args, attempt, captureUrl) {
   }
   if (captureUrl) command.push(`--url=${captureUrl}`);
   else command.push(`--port=${args.port}`);
+	  if (caseDef.coreOnly) command.push('--core-only');
 	  if (caseDef.mobileDevice) command.push('--mobile-device');
 	  if (caseDef.routeSmokeOnly) command.push('--route-smoke');
 	  if (caseDef.envelopeGate) command.push('--envelope-gate');

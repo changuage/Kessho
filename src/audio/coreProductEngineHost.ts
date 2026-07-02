@@ -36,6 +36,7 @@ import { CoreProductModulationRangeBridge } from './product/host/CoreProductModu
 import { CoreProductResolvedStateCommitService } from './product/host/CoreProductResolvedStateCommitService';
 import { CoreProductStatePatchQueue, type CoreProductPatchApplyReceipt as ProductPatchApplyReceipt, type CoreProductStateApplyOptions } from './product/host/CoreProductStatePatchQueue';
 import { snapshotReloadReasonForProductPatch } from './product/host/CoreProductPatchClassifier';
+import { CoreProductSnapshotAckMetadataFactory } from './product/host/CoreProductSnapshotAckMetadata';
 import { applyCoreProductSnapshotUpdate, loadCoreProductSnapshot } from './product/host/CoreProductSnapshotCoordinator';
 import { createCoreProductHostSnapshot } from './product/host/CoreProductHostSnapshotFactory';
 import { createCoreProductPerfSnapshot, enrichCoreProductHostTelemetry, mergeCoreProductVisualTelemetry } from './product/host/CoreProductTelemetryAdapter';
@@ -71,13 +72,14 @@ import { CoreProductRuntimeEventBatcher } from './product/host/CoreProductRuntim
 import { CoreProductTelemetryCallbackScheduler } from './product/host/CoreProductTelemetryCallbackScheduler';
 import { CoreProductHostLifecycleCoordinator } from './product/host/CoreProductHostLifecycleCoordinator';
 import { CoreProductGeneratedSequencerCaptureTelemetryHistory } from './product/host/CoreProductGeneratedSequencerCaptureTelemetryHistory';
-const PRODUCT_VISIBLE_SYNTH_LANE_COUNT = SYNTH_EUCLIDEAN_LANE_COUNT;
-const PRODUCT_VISIBLE_DRUM_LANE_COUNT = DRUM_EUCLIDEAN_LANE_COUNT;
+import { productSamplePlaybackTriggerCriticalChange } from './product/host/CoreProductSamplePlaybackChange';
+const PRODUCT_VISIBLE_SYNTH_LANE_COUNT = SYNTH_EUCLIDEAN_LANE_COUNT, PRODUCT_VISIBLE_DRUM_LANE_COUNT = DRUM_EUCLIDEAN_LANE_COUNT;
 type SequencerLanePitchState = { steps?: number; direction?: LaneDirection; scaleQuantize?: boolean };
 class CoreProductEngineHost {
   private readonly runtime = new CoreProductRuntime();
   private readonly graphTapBridge = new CoreProductGraphTapBridge(this.runtime);
   private readonly sequencerChain = new CoreProductHostSequencerChain({ post: (event) => this.postRuntimeProductEvent(event), nowMs: () => this.nowMs() });
+  private readonly snapshotAckMetadata = new CoreProductSnapshotAckMetadataFactory();
   private latestSliderState: Record<string, unknown> | null = null;
   private readonly assetRegistrar = new CoreProductAssetRegistrar(this.runtime, () => this.latestSliderState);
   private readonly arrangementBridge = new CoreProductArrangementBridge(
@@ -163,15 +165,12 @@ class CoreProductEngineHost {
     resetSequencerEvolveState: () => this.resetSequencerEvolveState(),
     resetSynthNoteRangeOverrides: () => { this.synthNoteRangeOverrides = [null, null, null, null]; },
     updateRuntimeTelemetryPolling: () => this.updateRuntimeTelemetryPolling(),
-    loadLatestSnapshot: (reason, includeClockStartDelay) => this.loadLatestSnapshot(reason, includeClockStartDelay),
+    loadLatestSnapshot: (reason, includeClockStartDelay, awaitAudioThreadAck) => this.loadLatestSnapshot(reason, includeClockStartDelay, awaitAudioThreadAck),
     postRuntimeProductEvent: (event) => this.postRuntimeProductEvent(event),
     publishStateChange: (isRunning) => this.stateChangeCallback?.(this.createEngineState(isRunning)),
   });
   readonly engineMode = 'core-product';
-  constructor() {
-    this.runtime.setTelemetryCallback((telemetry) => this.handleTelemetry(telemetry));
-    this.runtime.setVisualTelemetryCallback((telemetry) => this.handleVisualTelemetry(telemetry));
-  }
+  constructor() { this.runtime.setTelemetryCallback((telemetry) => this.handleTelemetry(telemetry)); this.runtime.setVisualTelemetryCallback((telemetry) => this.handleVisualTelemetry(telemetry)); }
   getAudioContext(): AudioContext | null { return this.runtime.audioContext; }
   setOutputGain(target: number, durationSeconds = 0): void { this.runtime.setOutputGain(target, durationSeconds); }
   setDawOutputRouting(config: Parameters<CoreProductRuntime['setDawOutputRouting']>[0]): void { this.runtime.setDawOutputRouting(config); }
@@ -332,24 +331,35 @@ class CoreProductEngineHost {
         });
       return { applied: false, mode: 'deferred' };
     }
-    if (this.runtimeReady && this.assetRegistrar.hasMissingDefaultAssetsForState()) {
-      void this.assetRegistrar.ensureDefaultAssetsForState().then(() => {
-        void this.applyLatestSnapshotUpdate('asset-reference-change', forceSequencerClockRejoin, options);
-        if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.modulationRangeBridge.flushRuntimeWalkRanges();
-        if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState); this.publishStateIfHarmonyChanged();
+    const samplePlaybackCritical = this.running &&
+      productSamplePlaybackTriggerCriticalChange(previousSliderState, this.latestSliderState);
+    const shouldRefreshAssetsAndAck =
+      this.runtimeReady &&
+      (this.assetRegistrar.hasMissingDefaultAssetsForState() || samplePlaybackCritical);
+    if (shouldRefreshAssetsAndAck) {
+      await this.assetRegistrar.ensureDefaultAssetsForState();
+      const receipt = await this.applyLatestSnapshotUpdate('asset-reference-change', forceSequencerClockRejoin, {
+        ...options,
+        triggerCritical: true,
+        forceFullSnapshot: true,
       });
-      return { applied: false, mode: 'deferred' };
+      if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.modulationRangeBridge.flushRuntimeWalkRanges();
+      if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState);
+      this.publishStateIfHarmonyChanged();
+      return receipt;
     }
     if (options?.applyMode === 'event') {
       this.latestProductSnapshot = this.createLatestSnapshot();
       this.sequencerChain.update(this.latestSliderState, this.adapterState, this.sequencerChain.active(this.latestSliderState, this.adapterState));
       if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.modulationRangeBridge.flushRuntimeWalkRanges();
-      if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState); this.publishStateIfHarmonyChanged();
+      if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState);
+      this.publishStateIfHarmonyChanged();
       return { applied: true, mode: 'event' };
     }
     const receipt = await this.applyLatestSnapshotUpdate(fallbackReloadReason, forceSequencerClockRejoin, options);
     if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.modulationRangeBridge.flushRuntimeWalkRanges();
-    if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState); this.publishStateIfHarmonyChanged();
+    if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState);
+    this.publishStateIfHarmonyChanged();
     return receipt;
   }
 
@@ -538,6 +548,8 @@ class CoreProductEngineHost {
   setPadDistanceTriggerCallback(callback: ((distance: number) => void) | null): void { this.setDisplayCallback('padDistance', callback); }
   setPad2DistanceTriggerCallback(callback: ((distance: number) => void) | null): void { this.setDisplayCallback('pad2Distance', callback); }
   setPianoDistanceTriggerCallback(callback: ((distance: number) => void) | null): void { this.setDisplayCallback('pianoDistance', callback); }
+  setSample1DistanceTriggerCallback(callback: ((distance: number) => void) | null): void { this.setDisplayCallback('sample1Distance', callback); }
+  setSample2DistanceTriggerCallback(callback: ((distance: number) => void) | null): void { this.setDisplayCallback('sample2Distance', callback); }
   setLeadDelayCallback(callback: ((delay: { lead1: string; lead2: string }) => void) | null): void { this.setDisplayCallback('leadDelay', callback); }
   setDrumTriggerCallback(callback: ((voice: unknown, velocity: number) => void) | null): void { this.setDisplayCallback('drumTrigger', callback); }
   setDrumMorphTriggerCallback(callback: ((voice: unknown, morphPosition: number) => void) | null): void { this.setDisplayCallback('drumMorph', callback); }
@@ -636,12 +648,15 @@ class CoreProductEngineHost {
     };
   }
 
-  private async loadLatestSnapshot(reason: SnapshotReloadReason = 'product-patch', includeClockStartDelay = reason === 'runtime-start'): Promise<void> {
+  private async loadLatestSnapshot(reason: SnapshotReloadReason = 'product-patch', includeClockStartDelay = reason === 'runtime-start', awaitAudioThreadAck = false): Promise<void> {
     if (!this.runtimeReady) return;
+    const metadata = awaitAudioThreadAck ? this.snapshotAckMetadata.create(reason, true) : undefined;
     const result = await loadCoreProductSnapshot({
       runtime: this.runtime,
       snapshot: this.createLatestSnapshot(includeClockStartDelay),
       reason,
+      metadata,
+      awaitAudioThreadAck,
       nowMs: () => this.nowMs(),
       afterLoad: () => this.afterProductSnapshotLoad(),
     });
@@ -657,13 +672,10 @@ class CoreProductEngineHost {
   ): Promise<ProductPatchApplyReceipt> {
     if (!this.runtimeReady) return Promise.resolve({ applied: false, mode: 'deferred' });
     const applyOptions = options ?? {};
+    const awaitAudioThreadAck = applyOptions.triggerCritical === true;
     const metadata = typeof applyOptions.revision === 'number'
-      ? {
-        revision: applyOptions.revision,
-        reason: applyOptions.commitReason ?? reason,
-        triggerCritical: applyOptions.triggerCritical === true,
-      }
-      : undefined;
+      ? this.snapshotAckMetadata.create(applyOptions.commitReason ?? reason, awaitAudioThreadAck, applyOptions.revision)
+      : awaitAudioThreadAck ? this.snapshotAckMetadata.create(reason, true) : undefined;
     return applyCoreProductSnapshotUpdate({
       runtime: this.runtime,
       previousSnapshot: this.latestProductSnapshot,
@@ -674,7 +686,7 @@ class CoreProductEngineHost {
       forceSequencerClockRejoin,
       forwardRngDiffs: shouldForwardCoreProductRngDiffs(this.latestSliderState, this.latestTelemetry),
       metadata,
-      awaitAudioThreadAck: applyOptions.triggerCritical === true,
+      awaitAudioThreadAck,
       nowMs: () => this.nowMs(),
       afterFullSnapshotLoad: () => this.afterProductSnapshotLoad(),
     }).then((result): ProductPatchApplyReceipt => {

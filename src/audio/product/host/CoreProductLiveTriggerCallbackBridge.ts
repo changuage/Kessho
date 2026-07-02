@@ -8,7 +8,8 @@ type CoreProductLiveTriggerCallbackName =
   | 'leadDistance'
   | 'padDistance'
   | 'pad2Distance'
-  | 'pianoDistance'
+  | 'sample1Distance'
+  | 'sample2Distance'
   | 'leadDelay'
   | 'drumMorph'
   | 'drumParamSH'
@@ -22,7 +23,8 @@ const CORE_PRODUCT_LIVE_TRIGGER_CALLBACK_METHODS: Record<CoreProductLiveTriggerC
   leadDistance: 'setLeadDistanceCallback',
   padDistance: 'setPadDistanceTriggerCallback',
   pad2Distance: 'setPad2DistanceTriggerCallback',
-  pianoDistance: 'setPianoDistanceTriggerCallback',
+  sample1Distance: 'setSample1DistanceTriggerCallback',
+  sample2Distance: 'setSample2DistanceTriggerCallback',
   leadDelay: 'setLeadDelayCallback',
   drumMorph: 'setDrumMorphTriggerCallback',
   drumParamSH: 'setDrumParamSHTriggerCallback',

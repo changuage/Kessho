@@ -276,7 +276,7 @@ await runCheckWithReport({
       "'initial-snapshot'",
       "'runtime-start'",
       "'runtime-bootstrap'",
-      "'manual-piano-asset'",
+      "'manual-sample-asset'",
       "'explicit-reset-request'",
       "'asset-reference-change'",
       "'asset-reference-level-change'",

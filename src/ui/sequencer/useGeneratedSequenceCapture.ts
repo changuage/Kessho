@@ -15,8 +15,12 @@ import {
 } from './generatedSequencerCaptureScratch';
 import {
   commitGeneratedCaptureToEuclid,
+  type GeneratedCaptureStepCommit,
 } from './commitGeneratedCaptureToEuclid';
 import type { CapturedPitchReference } from './generatedSequencerCapturePitch';
+import {
+  chooseGeneratedCaptureStopAction,
+} from './generatedSequencerCapturePhrase';
 
 const GENERATED_CAPTURE_COMMIT_FLUSH_MS = 320;
 
@@ -45,6 +49,7 @@ export interface UseGeneratedSequenceCaptureArgs {
     targetLaneIndex: number;
     sourceMode: 'anchorWalker' | 'orbit';
   }) => void;
+  onStepCommit?: (commit: GeneratedCaptureStepCommit) => void;
 }
 
 export interface GeneratedSequenceCaptureApi {
@@ -85,6 +90,28 @@ function currentStepFromPlayhead(playhead: number, stepCount: number): number {
   return positiveModulo(Math.floor(normalized), safeSteps);
 }
 
+function captureScratchForCycle(
+  session: CaptureSession,
+  cycleIndex: number | null,
+): CaptureScratch {
+  if (cycleIndex !== null) {
+    if (session.scratch.cycleIndex === cycleIndex) return session.scratch;
+    if (session.completedScratch?.cycleIndex === cycleIndex) return session.completedScratch;
+  }
+  return session.completedScratch ?? session.scratch;
+}
+
+function currentCaptureStepIndex(session: CaptureSession, playhead: number): number {
+  return session.scratch.lastStepIndex
+    ?? currentStepFromPlayhead(playhead, session.targetStepCount);
+}
+
+function completedPhraseCycleIndex(session: CaptureSession): number | null {
+  return session.completedScratch?.lastStepIndex === null
+    ? null
+    : session.completedScratch?.cycleIndex ?? null;
+}
+
 export function useGeneratedSequenceCapture({
   isRunning,
   activeLaneIndex,
@@ -94,6 +121,7 @@ export function useGeneratedSequenceCapture({
   setPitchBindingMode,
   capturePitchReference,
   setProductCaptureEnabled,
+  onStepCommit,
 }: UseGeneratedSequenceCaptureArgs): GeneratedSequenceCaptureApi {
   const [session, setSession] = useState<CaptureSession | null>(null);
   const sessionRef = useRef<CaptureSession | null>(null);
@@ -154,6 +182,8 @@ export function useGeneratedSequenceCapture({
       startedAtMs: performance.now(),
       status: 'recording',
       scratch: createCaptureScratch(stepCount),
+      completedScratch: null,
+      commitCycleIndex: null,
       overflowCount: 0,
     };
 
@@ -192,21 +222,21 @@ export function useGeneratedSequenceCapture({
     setSession(null);
   }, [setProductCaptureEnabled]);
 
-  const stopAndCommit = useCallback(() => {
-    const current = sessionRef.current;
-    if (!current) return;
-    if (current.status === 'committing') return;
+  const beginCommit = useCallback((
+    current: CaptureSession,
+    commitCycleIndex: number | null,
+  ) => {
+    publishSession({
+      ...current,
+      status: 'committing',
+      commitCycleIndex,
+    });
 
     setProductCaptureEnabled({
       enabled: false,
       sourceLaneIndex: current.sourceLaneIndex,
       targetLaneIndex: current.targetLaneIndex,
       sourceMode: current.sourceMode,
-    });
-
-    publishSession({
-      ...current,
-      status: 'committing',
     });
 
     if (commitFlushTimerRef.current !== null) {
@@ -217,16 +247,18 @@ export function useGeneratedSequenceCapture({
       const latest = sessionRef.current;
       if (!latest?.active) return;
 
-      const capturedCount = captureStepCount(latest.scratch);
+      const scratch = captureScratchForCycle(latest, latest.commitCycleIndex);
+      const capturedCount = captureStepCount(scratch);
       if (capturedCount > 0) {
         commitGeneratedCaptureToEuclid({
-          scratch: latest.scratch,
+          scratch,
           targetLaneIndex: latest.targetLaneIndex,
           seq,
           setSequencerMode,
           setPitchBindingMode,
           capturePitchReference: capturePitchReferenceRef.current,
           sourceMode: latest.sourceMode,
+          onStepCommit,
         });
       }
 
@@ -234,6 +266,7 @@ export function useGeneratedSequenceCapture({
         ...latest,
         active: false,
         status: capturedCount > 0 ? 'committed' : 'empty',
+        commitCycleIndex: null,
       };
       setSession(sessionRef.current);
 
@@ -251,6 +284,34 @@ export function useGeneratedSequenceCapture({
     setPitchBindingMode,
     setProductCaptureEnabled,
     setSequencerMode,
+    onStepCommit,
+  ]);
+
+  const stopAndCommit = useCallback(() => {
+    const current = sessionRef.current;
+    if (!current) return;
+    if (current.status === 'committing' || current.status === 'finishing') return;
+
+    const playhead = seq.playheads[current.targetLaneIndex] ?? 0;
+    const stopAction = chooseGeneratedCaptureStopAction({
+      currentStepIndex: currentCaptureStepIndex(current, playhead),
+      stepCount: current.targetStepCount,
+      completedCycleIndex: completedPhraseCycleIndex(current),
+    });
+
+    if (stopAction.kind === 'finishCurrentPhrase') {
+      publishSession({
+        ...current,
+        status: 'finishing',
+      });
+      return;
+    }
+
+    beginCommit(current, stopAction.cycleIndex);
+  }, [
+    beginCommit,
+    publishSession,
+    seq.playheads,
   ]);
 
   const captureManualNote = useCallback((note: {
@@ -272,6 +333,9 @@ export function useGeneratedSequenceCapture({
       cycleIndex += 1;
     }
 
+    const completedScratch = cycleIndex > current.scratch.cycleIndex
+      ? current.scratch
+      : current.completedScratch;
     const scratch = writeCaptureEventToStep(
       current.scratch,
       stepIndex,
@@ -284,12 +348,18 @@ export function useGeneratedSequenceCapture({
         targetStepFloat: rawStep,
       },
     );
-    publishSession({
+    const next = {
       ...current,
+      completedScratch,
       scratch,
-    });
+    };
+    if (current.status === 'finishing' && completedScratch?.cycleIndex === current.scratch.cycleIndex) {
+      beginCommit(next, completedScratch.cycleIndex);
+      return true;
+    }
+    publishSession(next);
     return true;
-  }, [publishSession, seq.playheads]);
+  }, [beginCommit, publishSession, seq.playheads]);
 
   const markCurrentStepFromPlayhead = useCallback(() => {
     const current = sessionRef.current;
@@ -307,12 +377,21 @@ export function useGeneratedSequenceCapture({
       return;
     }
 
+    const completedScratch = cycleIndex > current.scratch.cycleIndex
+      ? current.scratch
+      : current.completedScratch;
     const scratch = markCaptureStepVisited(current.scratch, stepIndex, cycleIndex);
-    publishSession({
+    const next = {
       ...current,
+      completedScratch,
       scratch,
-    });
-  }, [isRunning, publishSession, seq.playheads]);
+    };
+    if (current.status === 'finishing' && completedScratch?.cycleIndex === current.scratch.cycleIndex) {
+      beginCommit(next, completedScratch.cycleIndex);
+      return;
+    }
+    publishSession(next);
+  }, [beginCommit, isRunning, publishSession, seq.playheads]);
 
   const ingestProductEvents = useCallback((
     events: readonly GeneratedSequencerCaptureEvent[],
@@ -322,6 +401,7 @@ export function useGeneratedSequenceCapture({
     if (!current?.active) return;
 
     let scratch: CaptureScratch = current.scratch;
+    let completedScratch = current.completedScratch;
     const fallbackStepIndex = currentStepFromPlayhead(
       seq.playheads[current.targetLaneIndex] ?? 0,
       current.targetStepCount,
@@ -338,6 +418,49 @@ export function useGeneratedSequenceCapture({
       const eventCycleIndex = typeof relativeTargetStep === 'number'
         ? Math.max(0, Math.floor(relativeTargetStep / current.targetStepCount))
         : scratch.cycleIndex;
+      if (eventCycleIndex < scratch.cycleIndex) {
+        if (!completedScratch || completedScratch.cycleIndex !== eventCycleIndex) continue;
+        const completedCell = completedScratch.cells[eventStepIndex];
+        if (completedCell && completedCell.visitedCycle > eventCycleIndex) continue;
+        if (startedAtSample === null) startedAtSample = event.absoluteSample;
+        completedScratch = writeCaptureEventToStep(
+          completedScratch,
+          eventStepIndex,
+          eventCycleIndex,
+          {
+            eventId: event.eventId,
+            midiNote: event.midiNote,
+            velocity: event.velocity,
+            gateSeconds: event.gateSeconds,
+            targetStepFloat: typeof event.targetStepFloat === 'number' && Number.isFinite(event.targetStepFloat)
+              ? event.targetStepFloat
+              : relativeTargetStep,
+            nudge: event.nudge,
+          },
+        );
+        continue;
+      }
+
+      if (eventCycleIndex > scratch.cycleIndex) {
+        const completedByEvent = eventCycleIndex === scratch.cycleIndex + 1 && scratch.lastStepIndex !== null
+          ? scratch
+          : completedScratch;
+        if (
+          current.status === 'finishing' &&
+          completedByEvent?.cycleIndex === scratch.cycleIndex
+        ) {
+          beginCommit({
+            ...current,
+            startedAtSample,
+            completedScratch: completedByEvent,
+            scratch,
+            overflowCount,
+          }, completedByEvent.cycleIndex);
+          return;
+        }
+        completedScratch = completedByEvent;
+      }
+
       const currentCell = scratch.cells[eventStepIndex];
       if (
         typeof relativeTargetStep === 'number' &&
@@ -367,14 +490,15 @@ export function useGeneratedSequenceCapture({
     publishSession({
       ...current,
       startedAtSample,
+      completedScratch,
       scratch,
       overflowCount,
       status: overflowCount > current.overflowCount ? 'overflow' : current.status,
     });
-  }, [publishSession, seq.playheads]);
+  }, [beginCommit, publishSession, seq.playheads]);
 
   const capturedCount = useMemo(() => (
-    session ? captureStepCount(session.scratch) : 0
+    session ? captureStepCount(captureScratchForCycle(session, session.commitCycleIndex)) : 0
   ), [session]);
 
   return {

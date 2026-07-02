@@ -5,7 +5,6 @@ export type ProductLiveNoteInstrument =
   | 'lead2'
   | 'sample1'
   | 'sample2'
-  | 'piano'
   | 'drum';
 
 export type ProductLiveNoteEvent = {

@@ -9,6 +9,7 @@ import type { CaptureEvent } from './generatedSequencerCaptureTypes';
 import {
   capturedMidisToSemitonePitchValues,
   type CapturedPitchReference,
+  type CapturedPitchCommit,
 } from './generatedSequencerCapturePitch';
 import { seqEuclidean } from '../../audio/euclideanPatterns';
 import {
@@ -40,6 +41,23 @@ export interface CommitGeneratedCaptureArgs {
   setPitchBindingMode?: (laneIndex: number, mode: PitchBindingMode) => void;
   capturePitchReference?: CapturedPitchReference | null;
   sourceMode?: 'anchorWalker' | 'orbit';
+  onStepCommit?: (commit: GeneratedCaptureStepCommit) => void;
+}
+
+export interface GeneratedCaptureStepCommit {
+  targetLaneIndex: number;
+  sourceMode?: 'anchorWalker' | 'orbit';
+  stepCount: number;
+  hits: number;
+  triggerPattern: boolean[];
+  triggerToggles: Map<number, boolean>;
+  pitchMidiValues: number[];
+  pitchValues: number[];
+  expressionValues: number[];
+  nudgeValues: number[];
+  hasNudge: boolean;
+  pitchSettings: CapturedPitchCommit['pitchSettings'];
+  pitchBindingMode: PitchBindingMode;
 }
 
 function cloneStepOverrides(prev: StepOverrides): StepOverrides {
@@ -123,6 +141,14 @@ function capturedTriggerPattern(
   return seqEuclidean(scratch.stepCount, Math.min(scratch.stepCount, events.length), 0);
 }
 
+function triggerPatternMap(pattern: readonly boolean[]): Map<number, boolean> {
+  const toggles = new Map<number, boolean>();
+  pattern.forEach((enabled, step) => {
+    toggles.set(step, Boolean(enabled));
+  });
+  return toggles;
+}
+
 function captureSourceLabel(sourceMode: 'anchorWalker' | 'orbit' | undefined): string {
   if (sourceMode === 'orbit') return 'Orbit capture';
   if (sourceMode === 'anchorWalker') return 'Walker capture';
@@ -192,6 +218,7 @@ export function commitGeneratedCaptureToEuclid({
   setPitchBindingMode,
   capturePitchReference,
   sourceMode,
+  onStepCommit,
 }: CommitGeneratedCaptureArgs): void {
   const stepCount = scratch.stepCount;
   if (captureStepCount(scratch) === 0) return;
@@ -208,6 +235,7 @@ export function commitGeneratedCaptureToEuclid({
   const capturedMidis = capturedEvents.map((event) => event.midiNote);
   const capturedVelocities = capturedEvents.map((event) => event.velocity);
   const triggerPattern = capturedTriggerPattern(scratch, capturedEvents);
+  const triggerToggles = triggerPatternMap(triggerPattern);
   const nudgeValues = capturedNudgeValues(capturedEvents, triggerPattern, preserveTriggerSteps);
   const hasNudge = nudgeValues.some((value) => Math.abs(value) > NUDGE_EPSILON);
   const pitchCommit = capturedMidisToSemitonePitchValues(capturedMidis, capturePitchReference);
@@ -259,8 +287,9 @@ export function commitGeneratedCaptureToEuclid({
       next.triggerClips = Array.from({ length: Math.max(next.triggerToggles.length, targetLaneIndex + 1) }, () => null);
     }
     while (next.triggerClips.length <= targetLaneIndex) next.triggerClips.push(null);
+    while (next.triggerToggles.length <= targetLaneIndex) next.triggerToggles.push(new Map());
     next.triggerClips[targetLaneIndex] = triggerClip;
-    next.triggerToggles[targetLaneIndex] = new Map();
+    next.triggerToggles[targetLaneIndex] = new Map(triggerToggles);
     next.pitch[targetLaneIndex] = pitchCommit.pitchValues;
     next.expression[targetLaneIndex] = capturedVelocities;
     next.nudge[targetLaneIndex] = nudgeValues;
@@ -274,6 +303,22 @@ export function commitGeneratedCaptureToEuclid({
     next.nudgeDirection[targetLaneIndex] = 'forward';
 
     return next;
+  });
+
+  onStepCommit?.({
+    targetLaneIndex,
+    sourceMode,
+    stepCount,
+    hits,
+    triggerPattern: [...triggerPattern],
+    triggerToggles: new Map(triggerToggles),
+    pitchMidiValues: capturedMidis,
+    pitchValues: pitchCommit.pitchValues,
+    expressionValues: capturedVelocities,
+    nudgeValues,
+    hasNudge,
+    pitchSettings: pitchCommit.pitchSettings,
+    pitchBindingMode: 'polyrhythmic',
   });
 
   seq.setOpenLane('pitch');

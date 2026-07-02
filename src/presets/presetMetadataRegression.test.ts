@@ -74,7 +74,7 @@ import { coerceJourneyPresetEntry } from './useJourneyPresets';
 import { getPadPreset, morphPadPresets } from '../audio/padPresets';
 import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES, morphPresets } from '../audio/lead4opfm';
 import { getPreset as getDrumPreset } from '../audio/drumPresets';
-import { interpolatePresets as morphDrumPresets } from '../audio/drumMorph';
+import { getAllMorphedDrumParams, interpolatePresets as morphDrumPresets } from '../audio/drumMorph';
 
 const SYNTH_BINDING_MODES = ['sequence', 'linked', 'polyrhythmic', 'polyrhythmic'] as const;
 
@@ -136,6 +136,20 @@ function testSoundEnginePresetMorphClampsEndpointB(): void {
     morphDrumPresets(kickA, kickB, 100),
     morphDrumPresets(kickA, kickB, 1),
     'drum preset morph should clamp normalized endpoint B instead of extrapolating',
+  );
+}
+
+function testDefaultDrumSliderCacheMatchesSelectedPresetA(): void {
+  const defaultState = DEFAULT_STATE as unknown as Record<string, unknown>;
+  const resolvedDrumParams = getAllMorphedDrumParams(DEFAULT_STATE) as Record<string, unknown>;
+  const mismatches = Object.entries(resolvedDrumParams)
+    .filter(([key, value]) => !Object.is(defaultState[key], value))
+    .map(([key, value]) => ({ key, defaultValue: defaultState[key], presetValue: value }));
+
+  assert.deepStrictEqual(
+    mismatches,
+    [],
+    'DEFAULT_STATE drum slider cache should match the selected default drum preset endpoints',
   );
 }
 
@@ -1218,6 +1232,7 @@ function testJourneyPresetPreviewMetadataFeedsSummary(): void {
 async function run(): Promise<void> {
   testStateUrlRoundTripRestoresBooleanSequencerState();
   testSoundEnginePresetMorphClampsEndpointB();
+  testDefaultDrumSliderCacheMatchesSelectedPresetA();
   testGenericDrumEuclideanPatternKeepsTimingParamTypes();
   testSynthLanePatternRoundTripKeepsNoteRangeBounds();
   testEngineStepOverridesTrimHiddenSubLaneValues();

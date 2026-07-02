@@ -2128,10 +2128,10 @@ export class AudioEngine {
   private euclidUsesPianoSource(state: SliderState): boolean {
     return !!(
       state.synthEuclideanMasterEnabled && (
-        (state.synthEuclid1Enabled && state.synthEuclid1Source === 'piano') ||
-        (state.synthEuclid2Enabled && state.synthEuclid2Source === 'piano') ||
-        (state.synthEuclid3Enabled && state.synthEuclid3Source === 'piano') ||
-        (state.synthEuclid4Enabled && state.synthEuclid4Source === 'piano')
+        (state.synthEuclid1Enabled && String(state.synthEuclid1Source) === 'piano') ||
+        (state.synthEuclid2Enabled && String(state.synthEuclid2Source) === 'piano') ||
+        (state.synthEuclid3Enabled && String(state.synthEuclid3Source) === 'piano') ||
+        (state.synthEuclid4Enabled && String(state.synthEuclid4Source) === 'piano')
       )
     );
   }

@@ -2,6 +2,7 @@ import { CORE_PRODUCT_SOURCE_IDS, type CoreProductEvent } from './coreProductEve
 import { chordIntervalSecondsFromState } from './chordPhraseTiming';
 import { createHarmonyState, type HarmonyParams, type HarmonyState } from './harmony';
 import { harmonySeedMaterialFromState } from './harmonySeedMaterial';
+import { productSourceEnabledForPlayback } from './coreProductSourcePlayability';
 import {
   getAnchorWallForClockSource,
   getCurrentClockIndexWall,
@@ -116,7 +117,7 @@ export function leadRandomSource(state: Record<string, unknown>): LeadRandomSour
   if (source === 'pad1') return 'pad1';
   if (source === 'pad2') return 'pad2';
   if (source === 'lead2') return 'lead2';
-  if (source === 'sample1' || source === 'piano') return 'sample1';
+  if (source === 'sample1') return 'sample1';
   if (source === 'sample2') return 'sample2';
   return 'lead1';
 }
@@ -136,7 +137,7 @@ export function simpleSequencerSourceId(source: unknown, fallback: number = CORE
   if (sourceValue === 'pad2') return CORE_PRODUCT_SOURCE_IDS.pad2;
   if (sourceValue === 'lead1' || sourceValue === 'lead') return CORE_PRODUCT_SOURCE_IDS.lead1;
   if (sourceValue === 'lead2') return CORE_PRODUCT_SOURCE_IDS.lead2;
-  if (sourceValue === 'sample1' || sourceValue === 'piano') return CORE_PRODUCT_SOURCE_IDS.sample1;
+  if (sourceValue === 'sample1') return CORE_PRODUCT_SOURCE_IDS.sample1;
   if (sourceValue === 'sample2') return CORE_PRODUCT_SOURCE_IDS.sample2;
   return fallback;
 }
@@ -223,24 +224,7 @@ export function leadRandomSourceEnabled(state: Record<string, unknown>, source: 
 }
 
 export function manualNoteSourceEnabled(state: Record<string, unknown>, sourceId: number): boolean {
-  switch (sourceId) {
-    case CORE_PRODUCT_SOURCE_IDS.pad1:
-      return booleanFromState(state, 'padEnabled', false);
-    case CORE_PRODUCT_SOURCE_IDS.pad2:
-      return booleanFromState(state, 'pad2Enabled', false);
-    case CORE_PRODUCT_SOURCE_IDS.lead1:
-      return booleanFromState(state, 'leadEnabled', false);
-    case CORE_PRODUCT_SOURCE_IDS.lead2:
-      return booleanFromState(state, 'lead2Enabled', false);
-    case CORE_PRODUCT_SOURCE_IDS.sample1:
-      return booleanFromState(state, 'sample1Enabled', false) || booleanFromState(state, 'pianoEnabled', false);
-    case CORE_PRODUCT_SOURCE_IDS.sample2:
-      return booleanFromState(state, 'sample2Enabled', false);
-    case CORE_PRODUCT_SOURCE_IDS.drum:
-      return booleanFromState(state, 'drumEnabled', false);
-    default:
-      return true;
-  }
+  return productSourceEnabledForPlayback(state, sourceId);
 }
 
 export function manualNoteEventSourceEnabled(state: Record<string, unknown>, event: CoreProductEvent): boolean {

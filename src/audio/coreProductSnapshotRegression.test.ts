@@ -31,6 +31,7 @@ import {
 } from '../ui/sequencer/orbitSequencerMath';
 import { generateOrbitConstellation } from '../ui/sequencer/orbitConstellation';
 import { createDefaultOrbitNote, normalizeOrbitSequencerConfig } from '../ui/sequencer/orbitSequencerTypes';
+import { createWalkerLayer } from '../ui/sequencer/anchorWalkerTypes';
 
 const disabledDelaySnapshot = createCoreProductSnapshot({
   padEnabled: true,
@@ -121,7 +122,6 @@ const synthSourceAliasCases = [
   ['lead', CORE_PRODUCT_SOURCE_IDS.lead1],
   ['lead1', CORE_PRODUCT_SOURCE_IDS.lead1],
   ['lead2', CORE_PRODUCT_SOURCE_IDS.lead2],
-  ['piano', CORE_PRODUCT_SOURCE_IDS.piano],
   ['pad', CORE_PRODUCT_SOURCE_IDS.pad1],
   ['pad1', CORE_PRODUCT_SOURCE_IDS.pad1],
   ['pad2', CORE_PRODUCT_SOURCE_IDS.pad2],
@@ -140,6 +140,19 @@ for (const [sourceValue, expectedSourceId] of synthSourceAliasCases) {
     snapshot.synthLanes[0]?.targetSourceId,
     expectedSourceId,
     `Product synth sequencer source ${sourceValue} should map to the intended source ID`,
+  );
+}
+
+{
+  const snapshot = createCoreProductSnapshot({
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1Source: 'piano',
+  });
+  assert.equal(
+    snapshot.synthLanes[0]?.targetSourceId,
+    CORE_PRODUCT_SOURCE_IDS.lead1,
+    'Legacy piano is not a Product Core sequencer source and should not alias to Sample 1 at runtime',
   );
 }
 
@@ -166,6 +179,27 @@ for (const [sourceValue, expectedSourceId] of synthSourceAliasCases) {
   );
   assert.equal(sample2Source.enabled, true, 'Sample 2 missing setup should still honor the enabled flag');
   assert.equal(sample2HydratedFallbackSnapshot.synthLanes[0]?.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2);
+}
+
+{
+  const sample2SequencedFallbackSnapshot = createCoreProductSnapshot({
+    sample2Enabled: false,
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1Source: 'sample2',
+  });
+  const sample2Source = sample2SequencedFallbackSnapshot.sources.find((source) => source.sourceId === CORE_PRODUCT_SOURCE_IDS.sample2);
+  assert(sample2Source, 'Sample 2 source should exist when targeted by a Product Core sequencer');
+  assert.equal(
+    sample2Source.enabled,
+    false,
+    'Sample 2 should remain disabled when its explicit enabled flag is false, even when a synth lane targets it',
+  );
+  assert.equal(
+    sample2Source.sampleLibraryId,
+    SAMPLE_LIBRARY_IDS_BY_KEY['soft-string-spurs'],
+    'Sequenced Sample 2 fallback should serialize the delivered Sample 2 library setup',
+  );
 }
 
 for (const slotId of ['sample1', 'sample2'] as const satisfies readonly SampleSlotId[]) {
@@ -342,6 +376,74 @@ for (const mode of ['anchorWalker', 'orbit'] as const) {
   assert.equal(snapshot.synthLanes[0]?.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2, 'Walker lane should preserve Sample 2 as target source');
   assert.equal(snapshot.synthLanes[0]?.anchorWalker.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2, 'Walker config should preserve Sample 2 as target source');
   assert.equal(snapshot.synthLanes[0]?.anchorWalker.layers[0]?.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2, 'Walker layer override should preserve Sample 2 as target source');
+}
+
+{
+  const faces = createDefaultSynthSequencerFaceState();
+  const firstSlot = faces.slots[0]!;
+  faces.slots[0] = {
+    ...firstSlot,
+    mode: 'orbit',
+    orbit: {
+      ...firstSlot.orbit,
+      targetSourceId: 'sample2',
+      notes: [
+        {
+          ...createDefaultOrbitNote(0, {
+            pitchMode: 'fixedMidi',
+            midiNote: 98,
+          }),
+          targetSourceId: 'sample2',
+        },
+      ],
+    },
+  } as unknown as typeof faces.slots[number];
+  const snapshot = createCoreProductSnapshot({
+    sample2Enabled: false,
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1Source: 'sample2',
+    synthSequencerFaces: faces,
+  });
+  const sample2Source = snapshot.sources.find((source) => source.sourceId === CORE_PRODUCT_SOURCE_IDS.sample2);
+  assert.equal(snapshot.synthLanes[0]?.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2, 'Orbit string target should keep Sample 2 on the live lane');
+  assert.equal(snapshot.synthLanes[0]?.orbit.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2, 'Orbit string target should serialize as source 8');
+  assert.equal(snapshot.synthLanes[0]?.orbit.notes[0]?.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2, 'Orbit note string override should serialize as source 8');
+  assert.equal(sample2Source?.enabled, false, 'Orbit string Sample 2 target should not enable the Sample 2 source');
+}
+
+{
+  const faces = createDefaultSynthSequencerFaceState();
+  const firstSlot = faces.slots[0]!;
+  faces.slots[0] = {
+    ...firstSlot,
+    mode: 'anchorWalker',
+    anchorWalker: {
+      ...firstSlot.anchorWalker,
+      targetSourceId: 'sample2',
+      layers: [
+        {
+          ...createWalkerLayer(0, { enabled: true }),
+          targetSourceId: 'sample2',
+        },
+        createWalkerLayer(1, { enabled: false }),
+        createWalkerLayer(2, { enabled: false }),
+        createWalkerLayer(3, { enabled: false }),
+      ],
+    },
+  } as unknown as typeof faces.slots[number];
+  const snapshot = createCoreProductSnapshot({
+    sample2Enabled: false,
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1Source: 'sample2',
+    synthSequencerFaces: faces,
+  });
+  const sample2Source = snapshot.sources.find((source) => source.sourceId === CORE_PRODUCT_SOURCE_IDS.sample2);
+  assert.equal(snapshot.synthLanes[0]?.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2, 'Walker string target should keep Sample 2 on the live lane');
+  assert.equal(snapshot.synthLanes[0]?.anchorWalker.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2, 'Walker string target should serialize as source 8');
+  assert.equal(snapshot.synthLanes[0]?.anchorWalker.layers[0]?.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2, 'Walker layer string override should serialize as source 8');
+  assert.equal(sample2Source?.enabled, false, 'Walker string Sample 2 target should not enable the Sample 2 source');
 }
 
 {

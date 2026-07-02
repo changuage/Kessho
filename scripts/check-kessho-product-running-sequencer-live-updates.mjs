@@ -37,6 +37,10 @@ const files = {
   hostDiagnostics: read('src/audio/product/host/CoreProductHostDiagnostics.ts'),
   hostCommitService: read('src/audio/product/host/CoreProductResolvedStateCommitService.ts'),
   generatedCaptureTelemetryHistory: read('src/audio/product/host/CoreProductGeneratedSequencerCaptureTelemetryHistory.ts'),
+  generatedCaptureCommit: read('src/ui/sequencer/commitGeneratedCaptureToEuclid.ts'),
+  generatedCaptureProductCommit: read('src/ui/sequencer/generatedCaptureProductCommit.ts'),
+  generatedCaptureHook: read('src/ui/sequencer/useGeneratedSequenceCapture.ts'),
+  generatedCapturePhrase: read('src/ui/sequencer/generatedSequencerCapturePhrase.ts'),
   host: read('src/audio/coreProductEngineHost.ts'),
   manualTriggers: read('src/ui/useSelectedAudioEngineManualTriggers.ts'),
   liveTriggerCallbacks: read('src/ui/useSelectedAudioEngineLiveTriggerCallbacks.ts'),
@@ -55,6 +59,7 @@ const files = {
   sequencerEvolveConfigEvents: read('src/audio/product/ProductSequencerEvolveConfigEvents.ts'),
   sequencerEvolveConfigEventBridge: read('src/audio/product/host/CoreProductSequencerEvolveConfigEventBridge.ts'),
   sequencerStepOverrideEvents: read('src/audio/product/ProductSequencerStepOverrideEvents.ts'),
+  productSynthPageEvents: read('src/ui/useProductRuntimeSynthPageEvents.ts'),
   productRuntimeSequencerControls: read('src/ui/useProductRuntimeSequencerControls.ts'),
   sequencerControls: read('src/ui/useSelectedAudioEngineSequencerControls.ts'),
   sequencerStepOverrideEventBridge: read('src/audio/product/host/CoreProductSequencerStepOverrideEventBridge.ts'),
@@ -311,6 +316,21 @@ check(
   'sequencer face config keys must route through immediate dirty-diff ProductControl commits so orbit and walker sliders update running lanes',
 );
 check(
+  'audio-sync-sample-slot-resolved',
+  files.audioSync.includes('SAMPLE_SLOT_RESOLVED_COMMIT_SUFFIXES') &&
+    files.audioSync.includes("'LibraryKey'") &&
+    files.audioSync.includes("'SelectionMode'") &&
+    files.audioSync.includes("'DynamicMode'") &&
+    files.audioSync.includes("'LoopEnabled'") &&
+    files.audioSync.includes("'MaxVoices'") &&
+    files.audioSync.includes("key.startsWith('sample1') || key.startsWith('sample2')") &&
+    files.audioSync.includes("return 'asset-reference-change'") &&
+    count(files.audioSync, 'requiresSampleSlotResolvedCommit(patch)') >= 3 &&
+    methodBody(files.audioSync, 'resolvedCommitTriggerCritical').includes('requiresSampleSlotResolvedCommit(patch)') &&
+    methodBody(files.audioSync, 'shouldFlushImmediatelyForResolvedCommit').includes('requiresSampleSlotResolvedCommit(patch)'),
+  'Sample 1/2 slot identity changes must route through immediate trigger-critical ProductControl commits so running sequencers switch loaded samples before the next trigger',
+);
+check(
   'audio-sync-source-core-resolved-full-snapshot-boundary',
   files.audioSync.includes('SOURCE_PRESET_ENDPOINT_RESOLVED_COMMIT_KEYS') &&
     files.audioSync.includes('SOURCE_PRESET_DATA_RESOLVED_COMMIT_KEY_PATTERNS') &&
@@ -334,11 +354,15 @@ check(
   'manual-trigger-core-resolved-state',
   files.manualTriggers.includes('commitProductControlActionThenTrigger(') &&
     files.manualTriggers.includes("type: 'manual-trigger/request'") &&
-    files.manualTriggers.includes('(_revision, resolvedSliders) => productEngine.auditionSynthNote(note, resolvedSliders),') &&
-    files.manualTriggers.includes('(_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, 0.8, resolvedSliders),') &&
+    files.manualTriggers.includes('const productNote = requireProductManualSynthNote(note);') &&
+    files.manualTriggers.includes('(_revision, resolvedSliders) => productEngine.auditionSynthNote(productNote, resolvedSliders),') &&
+    (
+      files.manualTriggers.includes('(_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, velocity, resolvedSliders),') ||
+      files.manualTriggers.includes('(_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, 0.8, resolvedSliders),')
+    ) &&
     !files.manualTriggers.includes('createInitialProductControlState(') &&
     !files.manualTriggers.includes('productEngine.auditionSynthNote(note, externalState)') &&
-    !files.manualTriggers.includes('productEngine.triggerDrumVoice(voice, 0.8, externalState)'),
+    !files.manualTriggers.includes('productEngine.triggerDrumVoice(voice, velocity, externalState)'),
   'core-product manual triggers must commit current ProductControl state and pass resolved sliders to Product triggers',
 );
 
@@ -402,18 +426,37 @@ check(
     count(files.synthPage, 'captureSlot={generatedSequencerCaptureControls}') >= 2 &&
     files.synthPage.includes('synthSequencerFaces: sequencerFaceState') &&
     files.synthPage.includes("phase: 'waitingForStart'") &&
-    files.synthPage.includes("phase: 'recordingUntilBoundary'") &&
-    files.synthPage.includes("generatedCaptureStartArm?.phase === 'recordingUntilBoundary'") &&
+    !files.synthPage.includes('recordingUntilBoundary') &&
     files.host.includes('generatedSequencerCaptureTelemetryHistory.withHistory(this.withHostDiagnostics(telemetry))') &&
     files.host.includes('generatedSequencerCaptureTelemetryHistory.clearForEvent(event, this.latestTelemetry)') &&
     files.generatedCaptureTelemetryHistory.includes('GENERATED_SEQUENCER_CAPTURE_EVENT_HISTORY_LIMIT') &&
     files.generatedCaptureTelemetryHistory.includes('KESSHO_PRODUCT_EVENT_IDS.GeneratedSequencerCapture') &&
+    files.generatedCaptureTelemetryHistory.includes('(event.value ?? 0) < 0.5') &&
     files.generatedCaptureTelemetryHistory.includes('generatedSequencerCaptureEvents: this.events') &&
+    files.generatedCaptureCommit.includes('next.triggerToggles[targetLaneIndex] = new Map(triggerToggles)') &&
+    files.generatedCaptureCommit.includes('onStepCommit?.({') &&
+    !files.generatedCaptureCommit.includes('next.triggerToggles[targetLaneIndex] = new Map();') &&
+    files.generatedCaptureProductCommit.includes('buildProductGeneratedCaptureStepCommitEvents') &&
+    files.generatedCaptureProductCommit.includes('createCoreProductSynthSequencerLaneStepOverrideEvents') &&
+    files.generatedCaptureProductCommit.includes('SequencerLaneMode, 0') &&
+    files.sequencerStepOverrideEvents.includes('createCoreProductSynthSequencerLaneStepOverrideEvents') &&
+    files.productSynthPageEvents.includes('commitProductGeneratedSequencerCaptureToStep') &&
+    files.productSynthPageEvents.includes('buildProductGeneratedCaptureStepCommitEvents(commit)') &&
+    files.generatedCaptureHook.includes('completedScratch') &&
+    files.generatedCaptureHook.includes('commitCycleIndex') &&
+    files.generatedCaptureHook.includes("status: 'finishing'") &&
+    files.generatedCaptureHook.includes('chooseGeneratedCaptureStopAction') &&
+    files.generatedCaptureHook.includes('eventCycleIndex < scratch.cycleIndex') &&
+    files.generatedCaptureHook.includes('eventCycleIndex > scratch.cycleIndex') &&
+    files.generatedCapturePhrase.includes('completedCycleIndex') &&
     files.synthPage.includes('if (!isRunning) {\n      setGeneratedCaptureStartArm({\n        ...arm,\n        phase: \'waitingForStart\',\n        waitingForBoundary: true,\n        previousStep: null,') &&
-    files.synthPage.includes('if (currentStep === 0 || crossedStart) {\n        startGeneratedCapture({') &&
-    files.synthPage.includes('generatedCaptureCountIn.stop();\n      stopGeneratedCapture();') &&
+    files.synthPage.includes('if (currentStep === 0 || crossedStart) {\n      startGeneratedCapture({') &&
+    files.synthPage.includes('setGeneratedCaptureStartArm(null);\n      generatedCaptureCountIn.stop();\n      return;') &&
+    files.synthPage.includes('generatedCaptureCountIn.stop();\n      if (generatedCaptureSession.sourceLaneIndex === seq.activeTab) {\n        stopGeneratedCapture();') &&
+    files.synthPage.includes("['euclid', 'Step']") &&
+    files.synthPage.includes("'Saved to Step'") &&
     !files.synthPage.includes('setGeneratedCaptureStartArm(null);\n      startSynthPlaybackForLaneRecording(arm.targetLaneIndex);'),
-  'generated orbit/walker capture must wait for a loop boundary to start, commit at the next loop boundary, and keep telemetry through the host',
+  'generated orbit/walker capture must wait for a loop boundary to start, use rolling phrase stop policy, and keep telemetry through the host disable flush',
 );
 check(
   'sequencer-controls-no-direct-productevent-enqueue',

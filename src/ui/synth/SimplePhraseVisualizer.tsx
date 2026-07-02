@@ -52,7 +52,8 @@ function sourceColor(source: string): string {
   if (source === 'pad2') return SOURCE_COLORS.pad2;
   if (source === 'lead1') return SOURCE_COLORS.lead1;
   if (source === 'lead2') return SOURCE_COLORS.lead2;
-  if (source === 'piano') return SOURCE_COLORS.piano;
+  if (source === 'sample1') return SOURCE_COLORS.sample1;
+  if (source === 'sample2') return SOURCE_COLORS.sample2;
   return SOURCE_COLORS.pad1;
 }
 

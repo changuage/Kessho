@@ -30,7 +30,7 @@ import {
   synthSourceIdFromState,
   synthSourcePadVoiceMaskFromState,
 } from './coreProductSnapshotPadVoiceRouting';
-import { createLegacyPianoSample1State, readSampleSlotState } from './sampleLibraries/sampleSlotState';
+import { readSampleSlotState } from './sampleLibraries/sampleSlotState';
 import { sampleSlotSnapshotFields } from './sampleLibraries/sampleSlotProductSnapshot';
 import type { SampleSlotId, SampleSlotState } from './sampleLibraries/SampleLibraryTypes';
 import type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductLaneSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
@@ -330,8 +330,7 @@ function sampleSlotStateForSource(
   slotId: SampleSlotId,
   state: Record<string, unknown> | undefined,
 ): SampleSlotState {
-  const sourceState = slotId === 'sample1' ? createLegacyPianoSample1State(state) : state;
-  return readSampleSlotState(sourceState, slotId);
+  return readSampleSlotState(state, slotId);
 }
 
 function assignSampleSlotSource(
@@ -341,48 +340,29 @@ function assignSampleSlotSource(
 ): void {
   const slot = sampleSlotStateForSource(slotId, state);
   Object.assign(source, sampleSlotSnapshotFields(slot));
-  const isSample1 = slotId === 'sample1';
   const sampleKey = (suffix: string) => `${slotId}${suffix}`;
-  const numberFromSampleState = (suffix: string, fallback: number, legacyKey?: string): number => {
+  const numberFromSampleState = (suffix: string, fallback: number): number => {
     const explicit = numberFromState(state, sampleKey(suffix), Number.NaN);
     if (Number.isFinite(explicit)) return explicit;
-    return legacyKey ? numberFromState(state, legacyKey, fallback) : fallback;
+    return fallback;
   };
   source.enabled = slot.enabled;
   source.assetId = 0;
   source.level = slot.level * (slot.libraryKey === 'piano' ? ENGINE_TRIMS.piano : 1);
-  source.distance = isSample1
-    ? numberFromSampleState('Distance', source.distance, 'pianoDistance')
-    : numberFromSampleState('Distance', source.distance);
+  source.distance = numberFromSampleState('Distance', source.distance);
   source.attackSeconds = slot.attackMs / 1000;
   source.decaySeconds = slot.decayMs / 1000;
   source.sustain = slot.sustain;
   source.holdSeconds = slot.holdMs / 1000;
   source.releaseSeconds = slot.releaseMs / 1000;
-  source.reverbSend = isSample1
-    ? numberFromSampleState('ReverbSend', source.reverbSend, 'pianoReverbSend')
-    : numberFromSampleState('ReverbSend', source.reverbSend);
-  source.delayASend = isSample1
-    ? numberFromSampleState('DelayASend', source.delayASend, 'pianoDelayASend')
-    : numberFromSampleState('DelayASend', source.delayASend);
-  source.delayBSend = isSample1
-    ? numberFromSampleState('DelayBSend', source.delayBSend, 'pianoDelayBSend')
-    : numberFromSampleState('DelayBSend', source.delayBSend);
-  source.granularSend = isSample1
-    ? numberFromState(state, 'granularSample1Send', numberFromState(state, 'granularPianoSend', source.granularSend))
-    : numberFromState(state, 'granularSample2Send', source.granularSend);
-  source.degradeSend = isSample1
-    ? numberFromState(state, 'degradeSample1Send', numberFromState(state, 'degradePianoSend', source.degradeSend))
-    : numberFromState(state, 'degradeSample2Send', source.degradeSend);
-  source.diffuseSend = isSample1
-    ? numberFromSampleState('DiffuseSend', source.diffuseSend, 'pianoDiffuseSend')
-    : numberFromSampleState('DiffuseSend', source.diffuseSend);
-  source.postLpfHz = isSample1
-    ? numberFromSampleState('PostLPF', source.postLpfHz, 'pianoPostLPF')
-    : numberFromSampleState('PostLPF', source.postLpfHz);
-  source.stereoWidth = isSample1
-    ? numberFromSampleState('StereoWidth', source.stereoWidth, 'pianoStereoWidth')
-    : numberFromSampleState('StereoWidth', source.stereoWidth);
+  source.reverbSend = numberFromSampleState('ReverbSend', source.reverbSend);
+  source.delayASend = numberFromSampleState('DelayASend', source.delayASend);
+  source.delayBSend = numberFromSampleState('DelayBSend', source.delayBSend);
+  source.granularSend = numberFromState(state, `granular${slotId === 'sample1' ? 'Sample1' : 'Sample2'}Send`, source.granularSend);
+  source.degradeSend = numberFromState(state, `degrade${slotId === 'sample1' ? 'Sample1' : 'Sample2'}Send`, source.degradeSend);
+  source.diffuseSend = numberFromSampleState('DiffuseSend', source.diffuseSend);
+  source.postLpfHz = numberFromSampleState('PostLPF', source.postLpfHz);
+  source.stereoWidth = numberFromSampleState('StereoWidth', source.stereoWidth);
   source.presetId = sourcePresetId('sample', 'default', 'default');
 }
 
@@ -780,6 +760,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   const drumLanes = drumLanesFromState(sliderState, defaultEnabled, transport);
   const soundscapePayload = soundscapeSnapshotPayloadFromState(sliderState);
   const sources = SOURCE_ORDER.map((sourceId) => sourceFromState(sourceId, sliderState, soundscapePayload));
+
   const delayBSendActive = sources.some((source) => source.delayBSend > 0.0001);
   const soundscapeSource = sources.find((source) => source.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape);
   const soundscapeAssets = soundscapeSource?.enabled
@@ -825,7 +806,8 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
     numberFromState(sliderState, 'degradePad2Send', 0) > 0.0001 ||
     numberFromState(sliderState, 'degradeLead1Send', 0) > 0.0001 ||
     numberFromState(sliderState, 'degradeLead2Send', 0) > 0.0001 ||
-    numberFromState(sliderState, 'degradePianoSend', 0) > 0.0001 ||
+    numberFromState(sliderState, 'degradeSample1Send', 0) > 0.0001 ||
+    numberFromState(sliderState, 'degradeSample2Send', 0) > 0.0001 ||
     numberFromState(sliderState, 'degradeDrumSend', 0) > 0.0001 ||
     numberFromState(sliderState, 'degradeWavesSend', 0) > 0.0001 ||
     numberFromState(sliderState, 'degradeWaterSend', 0) > 0.0001 ||

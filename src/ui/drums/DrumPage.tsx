@@ -34,6 +34,7 @@ import {
   evolvedDrumPitchOffsetToUiValue,
 } from '../sequencer/drumPitchSequencer';
 import { normalizeSequencerPitchSettings } from '../../audio/sequencerPitchSettings';
+import { normalizeSequencerSwing } from '../../audio/sequencerSwing';
 import DrumPanel from './DrumPanel';
 import DragNumber from './DragNumber';
 import SeqOverview from './SeqOverview';
@@ -477,10 +478,22 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
           }
         : settings
     ));
+    const nextClockDivs = printed.clockDiv
+      ? seq.clockDivs.map((clockDiv, index) => (index === safeLaneIndex ? printed.clockDiv! : clockDiv))
+      : seq.clockDivs;
+    const nextSwings = typeof printed.swing === 'number'
+      ? seq.swings.map((swing, index) => (index === safeLaneIndex ? normalizeSequencerSwing(printed.swing, swing) : swing))
+      : seq.swings;
     seq.setStepOverrides(printed.stepOverrides);
     seq.setSubLaneStates(printed.subLaneStates);
     seq.setPitchSettings(nextPitchSettings);
+    if (printed.clockDiv) seq.setClockDiv(safeLaneIndex, printed.clockDiv);
+    if (typeof printed.swing === 'number') seq.setSwing(safeLaneIndex, printed.swing);
     onRawStepOverridesChange?.(printed.stepOverrides);
+    onSubLaneStatesChange?.(printed.subLaneStates);
+    onPitchSettingsChange?.(nextPitchSettings);
+    if (printed.clockDiv) onClockDivsChange?.(nextClockDivs);
+    if (typeof printed.swing === 'number') onSwingsChange?.(nextSwings);
     onStepOverridesChange?.(
       drumStepOverridesForEngineState(
         printed.stepOverrides,
@@ -490,17 +503,19 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       ),
       printed.subLaneStates,
     );
-    if (printed.clockDiv) seq.setClockDiv(safeLaneIndex, printed.clockDiv);
-    if (typeof printed.swing === 'number') seq.setSwing(safeLaneIndex, printed.swing);
     seq.setActiveTab(safeLaneIndex);
     if (!isRunning) onRequestPlaybackStart?.(startPatch);
   }, [
     isRunning,
+    onClockDivsChange,
     onParamChange,
+    onPitchSettingsChange,
     onRawStepOverridesChange,
     onRequestPlaybackStart,
     onSelectChange,
     onStepOverridesChange,
+    onSubLaneStatesChange,
+    onSwingsChange,
     seq,
     state,
   ]);

@@ -13,6 +13,8 @@ type ProductRuntimeLiveTriggerSurface = {
   setProductPadDistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
   setProductPad2DistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
   setProductPianoDistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
+  setProductSample1DistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
+  setProductSample2DistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
   setProductLeadDelayCallback: (callback: ((delay: Record<string, number | string>) => void) | null) => void;
   setProductDrumMorphTriggerCallback: (callback: ((voice: unknown, morphPosition: number) => void) | null) => void;
   setProductDrumParamSHTriggerCallback: (callback: ((voice: unknown, key: string, position: number) => void) | null) => void;
@@ -33,6 +35,8 @@ export function useProductRuntimeLiveTriggerSurface(
     setProductPadDistanceTriggerCallback: liveTriggerSurface.setSelectedPadDistanceTriggerCallback,
     setProductPad2DistanceTriggerCallback: liveTriggerSurface.setSelectedPad2DistanceTriggerCallback,
     setProductPianoDistanceTriggerCallback: liveTriggerSurface.setSelectedPianoDistanceTriggerCallback,
+    setProductSample1DistanceTriggerCallback: liveTriggerSurface.setSelectedSample1DistanceTriggerCallback,
+    setProductSample2DistanceTriggerCallback: liveTriggerSurface.setSelectedSample2DistanceTriggerCallback,
     setProductLeadDelayCallback: liveTriggerSurface.setSelectedLeadDelayCallback,
     setProductDrumMorphTriggerCallback: liveTriggerSurface.setSelectedDrumMorphTriggerCallback,
     setProductDrumParamSHTriggerCallback: liveTriggerSurface.setSelectedDrumParamSHTriggerCallback,

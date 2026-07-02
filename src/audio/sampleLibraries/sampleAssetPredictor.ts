@@ -1,4 +1,5 @@
 import type {
+  NormalizedSampleDescriptor,
   NormalizedSampleLibraryManifest,
   SampleSlotId,
   SampleSlotState,
@@ -7,7 +8,7 @@ import { SAMPLE_SLOT_IDS } from './SampleLibraryTypes';
 import { toSampleAssetDescriptor, type SampleAssetDescriptor } from './sampleAssetDescriptors';
 import { getSampleLibraryRegistry } from './sampleLibraryRegistry';
 import { resolveSample } from './sampleResolver';
-import { createLegacyPianoSample1State, readSampleSlotState } from './sampleSlotState';
+import { readSampleSlotState } from './sampleSlotState';
 
 export interface SampleAssetPredictionInput {
   state: Record<string, unknown>;
@@ -42,13 +43,48 @@ function nearestRoots(library: NormalizedSampleLibraryManifest, midi: number, co
     .slice(0, count);
 }
 
+function scopedSamples(
+  library: NormalizedSampleLibraryManifest,
+  slot: SampleSlotState,
+): readonly NormalizedSampleDescriptor[] {
+  return library.samples.filter((sample) => (
+    (slot.role.length === 0 || sample.role === slot.role) &&
+    (slot.articulation.length === 0 || sample.articulation === slot.articulation)
+  ));
+}
+
+function laneMappedRoots(
+  library: NormalizedSampleLibraryManifest,
+  slot: SampleSlotState,
+  minMidi: number,
+  maxMidi: number,
+): number[] {
+  const low = Math.min(minMidi, maxMidi);
+  const high = Math.max(minMidi, maxMidi);
+  const midpoint = (low + high) * 0.5;
+  const roots = new Set<number>();
+  for (const sample of scopedSamples(library, slot)) {
+    if (slot.selectionMode === 'mapped') {
+      if (sample.loMidi <= high && low <= sample.hiMidi) roots.add(sample.rootMidi);
+    } else if (sample.rootMidi >= low && sample.rootMidi <= high) {
+      roots.add(sample.rootMidi);
+    }
+  }
+  return [...roots].sort((left, right) => Math.abs(left - midpoint) - Math.abs(right - midpoint) || left - right);
+}
+
 function collectCandidateMidi(
   input: SampleAssetPredictionInput,
   slotId: SampleSlotId,
+  slot: SampleSlotState,
   library: NormalizedSampleLibraryManifest,
 ): number[] {
   const candidates: number[] = [];
   addMidi(candidates, clampMidi(library.defaultMidi));
+
+  for (const midi of library.recommendedPreloadMidi) {
+    addMidi(candidates, clampMidi(midi));
+  }
 
   for (const key of [`${slotId}CurrentMidi`, `${slotId}ManualMidi`]) {
     addMidi(candidates, clampMidi(numberFromState(input.state, key) ?? Number.NaN));
@@ -70,6 +106,9 @@ function collectCandidateMidi(
     addMidi(candidates, maxMidi);
     if (minMidi !== null && maxMidi !== null) {
       addMidi(candidates, clampMidi((minMidi + maxMidi) * 0.5));
+      for (const midi of laneMappedRoots(library, slot, minMidi, maxMidi)) {
+        addMidi(candidates, clampMidi(midi));
+      }
     }
   }
 
@@ -80,6 +119,25 @@ function collectCandidateMidi(
   }
 
   return candidates;
+}
+
+function representativeVelocity(min: number, max: number): number {
+  return Math.max(0, Math.min(127, Math.round((min + max) * 0.5)));
+}
+
+function velocityCandidatesForSlot(
+  library: NormalizedSampleLibraryManifest,
+  slot: SampleSlotState,
+): number[] {
+  if (slot.libraryKey === 'piano' && slot.dynamicMode === 'legacy-piano-parity') return [100];
+  if (slot.dynamicMode === 'fixed') return [100];
+
+  const velocities = new Set<number>();
+  for (const sample of scopedSamples(library, slot)) {
+    velocities.add(representativeVelocity(sample.velocityMin, sample.velocityMax));
+  }
+  if (velocities.size === 0) velocities.add(100);
+  return [...velocities].sort((left, right) => left - right);
 }
 
 function addPredictedDescriptor(
@@ -104,9 +162,10 @@ function predictSlotAssets(
   const library = registry.find((candidate) => candidate.libraryKey === slot.libraryKey);
   if (!library) return [];
 
-  const maxAssets = Math.max(1, Math.min(64, Math.round(input.maxAssetsPerSlot ?? 32)));
+  const maxAssets = Math.max(1, Math.min(128, Math.round(input.maxAssetsPerSlot ?? 96)));
   const descriptors = new Map<number, SampleAssetDescriptor>();
-  const candidates = collectCandidateMidi(input, slotId, library);
+  const candidates = collectCandidateMidi(input, slotId, slot, library);
+  const velocities = velocityCandidatesForSlot(library, slot);
 
   for (const midi of candidates) {
     if (slot.libraryKey === 'piano' && slot.dynamicMode === 'legacy-piano-parity') {
@@ -123,7 +182,10 @@ function predictSlotAssets(
         fixedDynamic: 'short',
       }, midi, 100);
     } else {
-      addPredictedDescriptor(descriptors, library, slot, midi, 100);
+      for (const velocity of velocities) {
+        addPredictedDescriptor(descriptors, library, slot, midi, velocity);
+        if (descriptors.size >= maxAssets) break;
+      }
     }
     if (descriptors.size >= maxAssets) break;
   }
@@ -143,28 +205,4 @@ export function predictSampleAssets(
     }
   }
   return [...descriptors.values()];
-}
-
-export function predictLegacyPianoSampleAssets(
-  state: Record<string, unknown> | null | undefined,
-  registry: readonly NormalizedSampleLibraryManifest[] = getSampleLibraryRegistry(),
-): SampleAssetDescriptor[] {
-  const record = state ?? {};
-  const sequencerLaneRanges = [];
-  for (let lane = 1; lane <= 4; lane += 1) {
-    if (record[`synthEuclid${lane}Enabled`] !== true || record[`synthEuclid${lane}Source`] !== 'piano') {
-      continue;
-    }
-    const minMidi = numberFromState(record, `synthEuclid${lane}NoteMin`);
-    const maxMidi = numberFromState(record, `synthEuclid${lane}NoteMax`);
-    if (minMidi !== null && maxMidi !== null) {
-      sequencerLaneRanges.push({ source: 'sample1', minMidi, maxMidi });
-    }
-  }
-  return predictSampleAssets({
-    state: createLegacyPianoSample1State(record),
-    recentMidiBySlot: new Map(),
-    sequencerLaneRanges,
-    manualPriorityMidi: [],
-  }, registry);
 }

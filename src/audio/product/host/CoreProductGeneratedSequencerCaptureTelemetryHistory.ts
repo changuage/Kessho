@@ -15,7 +15,10 @@ export class CoreProductGeneratedSequencerCaptureTelemetryHistory {
     event: CoreProductEvent,
     latestTelemetry: CoreProductTelemetrySnapshot | null,
   ): CoreProductTelemetrySnapshot | null {
-    if (event.eventKind !== KESSHO_PRODUCT_EVENT_IDS.GeneratedSequencerCapture) {
+    if (
+      event.eventKind !== KESSHO_PRODUCT_EVENT_IDS.GeneratedSequencerCapture ||
+      (event.value ?? 0) < 0.5
+    ) {
       return latestTelemetry;
     }
     this.events = [];

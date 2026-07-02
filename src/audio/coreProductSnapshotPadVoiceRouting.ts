@@ -66,7 +66,7 @@ export function synthChordSequencerUsesSourceId(state: Record<string, unknown> |
     case CORE_PRODUCT_SOURCE_IDS.lead2:
       return source === 'lead2';
     case CORE_PRODUCT_SOURCE_IDS.sample1:
-      return source === 'piano' || source === 'sample1';
+      return source === 'sample1';
     case CORE_PRODUCT_SOURCE_IDS.sample2:
       return source === 'sample2';
     default:

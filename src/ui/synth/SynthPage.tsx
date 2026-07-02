@@ -419,7 +419,7 @@ type GeneratedCaptureStartArm = {
   sourceLaneIndex: number;
   targetLaneIndex: number;
   sourceMode: 'anchorWalker' | 'orbit';
-  phase: 'waitingForStart' | 'recordingUntilBoundary';
+  phase: 'waitingForStart';
   waitingForBoundary: boolean;
   previousStep: number | null;
 };
@@ -1576,6 +1576,7 @@ export interface SynthPageProps {
   onAuditionPresetPreview?: (note: ManualSynthNoteOptions, externalState: SliderState) => void | Promise<void>;
   sendProductAnchorWalkerPerformanceEvent?: ProductRuntimeSynthPageEvents['sendProductAnchorWalkerPerformanceEvent'];
   setProductGeneratedSequencerCaptureEnabled?: ProductRuntimeSynthPageEvents['setProductGeneratedSequencerCaptureEnabled'];
+  commitProductGeneratedSequencerCaptureToStep?: ProductRuntimeSynthPageEvents['commitProductGeneratedSequencerCaptureToStep'];
   getProductGeneratedSequencerCaptureTelemetry?: ProductRuntimeSynthPageEvents['getProductGeneratedSequencerCaptureTelemetry'];
   /** Current harmony snapshot for keyboard note coloring */
   harmonyState?: HarmonyState | null;
@@ -1635,6 +1636,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onAuditionPresetPreview,
     sendProductAnchorWalkerPerformanceEvent,
     setProductGeneratedSequencerCaptureEnabled,
+    commitProductGeneratedSequencerCaptureToStep,
     getProductGeneratedSequencerCaptureTelemetry,
     harmonyState,
   } = props;
@@ -2233,22 +2235,21 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, [updateChordSequencerSubLane]);
 
   const chordSequencerEnabled = state.synthChordSequencerEnabled === true;
-  const chordSequencerSourceValue = String(state.synthChordSequencerSource === 'piano' ? 'sample1' : (state.synthChordSequencerSource ?? 'sample1'));
+  const chordSequencerSourceValue = String(state.synthChordSequencerSource ?? 'sample1');
   const chordSequencerSourceInfo =
     CHORD_SEQUENCER_SOURCES.find((source) => source.value === chordSequencerSourceValue) ?? {
       value: 'sample1',
       label: 'Sample 1',
       color: SOURCE_COLORS.sample1,
     };
-  const chordGeneratorSourceValue = String(state.synthChordGeneratorSource === 'piano' ? 'sample1' : (state.synthChordGeneratorSource ?? 'sample1'));
+  const chordGeneratorSourceValue = String(state.synthChordGeneratorSource ?? 'sample1');
   const chordGeneratorSourceInfo =
     CHORD_GENERATOR_SOURCES.find((source) => source.value === chordGeneratorSourceValue) ?? {
       value: 'sample1',
       label: 'Sample 1',
       color: SOURCE_COLORS.sample1,
     };
-  const rawRandomTimingSourceValue = String(state.leadRandomSource ?? 'lead1');
-  const randomTimingSourceValue = rawRandomTimingSourceValue === 'piano' ? 'sample1' : rawRandomTimingSourceValue;
+  const randomTimingSourceValue = String(state.leadRandomSource ?? 'lead1');
   const randomTimingSourceInfo =
     RANDOM_TIMING_SOURCES.find((source) => source.value === randomTimingSourceValue) ?? {
       value: 'lead1',
@@ -4788,6 +4789,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     setPitchBindingMode: setGeneratedCapturePitchBindingMode,
     capturePitchReference: generatedCapturePitchReference,
     setProductCaptureEnabled: setGeneratedSequencerCaptureEnabled,
+    onStepCommit: commitProductGeneratedSequencerCaptureToStep,
   });
   const {
     session: generatedCaptureSession,
@@ -4803,7 +4805,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   useEffect(() => {
     if (!generatedCaptureIsCapturing) return;
-    if (generatedCaptureStartArm?.phase === 'recordingUntilBoundary') return;
 
     let rafId = window.requestAnimationFrame(function markCaptureStep() {
       markGeneratedCaptureStepFromPlayhead();
@@ -4813,7 +4814,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     return () => {
       window.cancelAnimationFrame(rafId);
     };
-  }, [generatedCaptureIsCapturing, generatedCaptureStartArm?.phase, markGeneratedCaptureStepFromPlayhead]);
+  }, [generatedCaptureIsCapturing, markGeneratedCaptureStepFromPlayhead]);
 
   useVisibleInterval(() => {
     if (!generatedCaptureIsCapturing) return;
@@ -4885,23 +4886,22 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     source: ManualSynthSource,
     startPatch: Partial<SliderState> = {},
   ): Partial<SliderState> => {
-    const resolvedSource = source === 'piano' ? 'sample1' : source;
-    if (resolvedSource === 'pad1' && !state.padEnabled) {
+    if (source === 'pad1' && !state.padEnabled) {
       onSelectChange('padEnabled' as keyof SliderState, true);
       startPatch.padEnabled = true;
-    } else if (resolvedSource === 'pad2' && !state.pad2Enabled) {
+    } else if (source === 'pad2' && !state.pad2Enabled) {
       onSelectChange('pad2Enabled' as keyof SliderState, true);
       startPatch.pad2Enabled = true;
-    } else if (resolvedSource === 'lead1' && !state.leadEnabled) {
+    } else if (source === 'lead1' && !state.leadEnabled) {
       onSelectChange('leadEnabled' as keyof SliderState, true);
       startPatch.leadEnabled = true;
-    } else if (resolvedSource === 'lead2' && !state.lead2Enabled) {
+    } else if (source === 'lead2' && !state.lead2Enabled) {
       onSelectChange('lead2Enabled' as keyof SliderState, true);
       startPatch.lead2Enabled = true;
-    } else if (resolvedSource === 'sample1' && !state.sample1Enabled) {
+    } else if (source === 'sample1' && !state.sample1Enabled) {
       onSelectChange('sample1Enabled' as keyof SliderState, true);
       startPatch.sample1Enabled = true;
-    } else if (resolvedSource === 'sample2' && !state.sample2Enabled) {
+    } else if (source === 'sample2' && !state.sample2Enabled) {
       onSelectChange('sample2Enabled' as keyof SliderState, true);
       startPatch.sample2Enabled = true;
     }
@@ -5801,34 +5801,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       previousStep !== 0 &&
       (currentStep === 0 || currentStep < previousStep);
 
-    if (arm.phase === 'waitingForStart') {
-      if (currentStep === 0 || crossedStart) {
-        startGeneratedCapture({
-          sourceLaneIndex: arm.sourceLaneIndex,
-          targetLaneIndex: arm.targetLaneIndex,
-          sourceMode: arm.sourceMode,
-        });
-        setGeneratedCaptureStartArm((current) => (
-          current === arm
-            ? { ...current, phase: 'recordingUntilBoundary', previousStep: currentStep }
-            : current
-        ));
-        return;
-      }
-      if (previousStep !== currentStep) {
-        setGeneratedCaptureStartArm((current) => (
-          current === arm
-            ? { ...current, previousStep: currentStep }
-            : current
-        ));
-      }
-      return;
-    }
-
-    if (crossedStart) {
+    if (currentStep === 0 || crossedStart) {
+      startGeneratedCapture({
+        sourceLaneIndex: arm.sourceLaneIndex,
+        targetLaneIndex: arm.targetLaneIndex,
+        sourceMode: arm.sourceMode,
+      });
       setGeneratedCaptureStartArm(null);
       generatedCaptureCountIn.stop();
-      stopGeneratedCapture();
       return;
     }
 
@@ -5846,7 +5826,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     isRunning,
     seq.playheads,
     startGeneratedCapture,
-    stopGeneratedCapture,
   ]);
 
   const synthLiveOverdub = useLiveOverdubRecorder({
@@ -6115,8 +6094,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       ? 'Sync start'
       : generatedCaptureSessionForActiveLane?.status === 'committing'
         ? `Saving ${generatedCaptureCount} notes`
+        : generatedCaptureSessionForActiveLane?.status === 'finishing'
+          ? `Finishing ${generatedCaptureCount} notes`
         : generatedCaptureSessionForActiveLane?.status === 'committed'
-          ? 'Saved to Euclid'
+          ? 'Saved to Step'
           : generatedCaptureSessionForActiveLane?.status === 'empty'
             ? 'No notes captured'
             : generatedRecorderActive
@@ -8822,7 +8803,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       <select
                         className="synth-source-select"
                         aria-label="Chord generator source"
-                        value={state.synthChordGeneratorSource === 'piano' ? 'sample1' : (state.synthChordGeneratorSource ?? 'sample1')}
+                        value={state.synthChordGeneratorSource ?? 'sample1'}
                         onChange={(e) => setChordGeneratorSource(e.target.value)}
                         style={{
                           borderColor: `${chordGeneratorSourceInfo.color}60`,
@@ -9018,7 +8999,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       Type
                       <span className="seq-mode-segmented" role="group" aria-label={`Seq ${seq.activeTab + 1} type`}>
                         {([
-                          ['euclid', 'Euclid'],
+                          ['euclid', 'Step'],
                           ['anchorWalker', 'Walker'],
                           ['orbit', 'Orbit'],
                         ] as const).map(([mode, label]) => (

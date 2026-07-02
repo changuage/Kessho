@@ -127,7 +127,6 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
       { targetId: CORE_PRODUCT_SOURCE_IDS.drum, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel },
       { targetId: 0, paramId: drumRuntimeParamId('drumLevel') },
     ]],
-    ['pianoLevel', [{ targetId: CORE_PRODUCT_SOURCE_IDS.piano, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['sample1Level', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['sample2Level', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['oceanSampleLevel', [{ targetId: assetTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.ocean.assetId), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
@@ -170,11 +169,16 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
       { targetId: CORE_PRODUCT_SOURCE_IDS.lead2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLeadGlide },
     ]],
     ['lead1PostLPFKeyTracking', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking }]],
-    ['pianoAttack', [{ targetId: CORE_PRODUCT_SOURCE_IDS.piano, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds }]],
-    ['pianoDecay', [{ targetId: CORE_PRODUCT_SOURCE_IDS.piano, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds }]],
-    ['pianoSustain', [{ targetId: CORE_PRODUCT_SOURCE_IDS.piano, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceSustain }]],
-    ['pianoHold', [{ targetId: CORE_PRODUCT_SOURCE_IDS.piano, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds }]],
-    ['pianoRelease', [{ targetId: CORE_PRODUCT_SOURCE_IDS.piano, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds }]],
+    ['sample1AttackMs', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds }]],
+    ['sample1DecayMs', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds }]],
+    ['sample1Sustain', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceSustain }]],
+    ['sample1HoldMs', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds }]],
+    ['sample1ReleaseMs', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds }]],
+    ['sample2AttackMs', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds }]],
+    ['sample2DecayMs', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds }]],
+    ['sample2Sustain', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceSustain }]],
+    ['sample2HoldMs', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds }]],
+    ['sample2ReleaseMs', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds }]],
     ['waterMorph', [{ targetId: CORE_PRODUCT_SOURCE_IDS.soundscape, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceMorph }]],
     ['natureReverbSend', [{ targetId: CORE_PRODUCT_SOURCE_IDS.soundscape, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend }]],
     ['natureDelayASend', [{ targetId: CORE_PRODUCT_SOURCE_IDS.soundscape, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend }]],
@@ -187,6 +191,9 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
     ['drumKickDecay', [{ targetId: CORE_PRODUCT_DRUM_RANGE_TARGET_BASE + 1, paramId: drumRuntimeParamId('drumKickDecay') }]],
   ];
   for (const [key, expected] of sourceParamCases) assertResolvedTargets(key, expected);
+  for (const key of ['pianoLevel', 'pianoAttack', 'pianoDecay', 'pianoSustain', 'pianoHold', 'pianoRelease']) {
+    assert.equal(resolveCoreProductRangeTargets(key).length, 0, `${key} must not resolve as a Product Core runtime source`);
+  }
 }
 
 {

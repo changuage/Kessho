@@ -307,12 +307,12 @@ function modeForIntentUpdate(mode: ManualHarmonyControlMode, manualLocked: boole
 
 function auditionNoteLimit(source: ProductManualSynthSource): number {
   if (source === 'lead1' || source === 'lead2') return 1;
-  return source === 'sample1' || source === 'sample2' || source === 'piano' ? 8 : 6;
+  return source === 'sample1' || source === 'sample2' ? 8 : 6;
 }
 
 function auditionDurationMs(source: ProductManualSynthSource): number {
   if (source === 'lead1' || source === 'lead2') return 720;
-  return source === 'sample1' || source === 'sample2' || source === 'piano' ? 1300 : 1600;
+  return source === 'sample1' || source === 'sample2' ? 1300 : 1600;
 }
 
 function frameChordTitle(frame: ResolvedHarmonyFrame): string {

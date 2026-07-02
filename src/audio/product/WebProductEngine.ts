@@ -284,8 +284,16 @@ export class WebProductEngine implements ProductEnginePort {
     this.setLiveTriggerCallback('pad2Distance', callback);
   }
 
-  setPianoDistanceTriggerCallback(callback: ProductScalarCallback | null): void {
-    this.setLiveTriggerCallback('pianoDistance', callback);
+  setPianoDistanceTriggerCallback(_callback: ProductScalarCallback | null): void {
+    // Piano is a sample library key in Product Core, not a live-trigger source.
+  }
+
+  setSample1DistanceTriggerCallback(callback: ProductScalarCallback | null): void {
+    this.setLiveTriggerCallback('sample1Distance', callback);
+  }
+
+  setSample2DistanceTriggerCallback(callback: ProductScalarCallback | null): void {
+    this.setLiveTriggerCallback('sample2Distance', callback);
   }
 
   setLeadDelayCallback(callback: ProductLeadDelayCallback | null): void {

@@ -299,6 +299,8 @@ const App: React.FC = () => {
     setProductPadDistanceTriggerCallback,
     setProductPad2DistanceTriggerCallback,
     setProductPianoDistanceTriggerCallback,
+    setProductSample1DistanceTriggerCallback,
+    setProductSample2DistanceTriggerCallback,
     setProductLeadDelayCallback,
     setProductDrumMorphTriggerCallback,
     setProductDrumParamSHTriggerCallback,
@@ -581,6 +583,8 @@ const App: React.FC = () => {
     setProductPadDistanceTriggerCallback,
     setProductPadMorphTriggerCallback,
     setProductPianoDistanceTriggerCallback,
+    setProductSample1DistanceTriggerCallback,
+    setProductSample2DistanceTriggerCallback,
     setProductSynthEvolveTriggerCallback,
     setProductSynthStepPositionCallback,
     stateRef,
@@ -1321,7 +1325,7 @@ const App: React.FC = () => {
     if (randomSource === 'pad1') return !nextState.padEnabled;
     if (randomSource === 'pad2') return !nextState.pad2Enabled;
     if (randomSource === 'lead2') return !nextState.lead2Enabled;
-    if (randomSource === 'sample1') return !nextState.sample1Enabled && !nextState.pianoEnabled;
+    if (randomSource === 'sample1') return !nextState.sample1Enabled;
     if (randomSource === 'sample2') return !nextState.sample2Enabled;
     return !nextState.leadEnabled;
   }, []);
@@ -1556,7 +1560,6 @@ const App: React.FC = () => {
     state.lead2Enabled,
     state.sample1Enabled,
     state.sample2Enabled,
-    state.pianoEnabled,
     state.leadRandomEnabled,
     state.leadRandomSource,
   ]);

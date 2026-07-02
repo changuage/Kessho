@@ -34,6 +34,24 @@ export function createCoreProductSynthSequencerStepOverrideEvents(
   return createCoreProductSequencerStepOverrideEvents('synth', toggles, values, configs);
 }
 
+export function createCoreProductSynthSequencerLaneStepOverrideEvents(
+  laneIndex: number,
+  overrides: unknown,
+  subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[],
+): CoreProductEvent[] {
+  const safeLaneIndex = Math.max(0, Math.min(15, Math.round(laneIndex)));
+  const toggles = normalizeSequencerStepToggleOverrides(overrides, emptyLaneState());
+  const values = normalizeSequencerStepValueOverrides(overrides, emptyLaneState(), true);
+  const configs = normalizeSequencerStepValueConfigs(overrides, emptyLaneState(), true, subLaneStates);
+  return createCoreProductSequencerLaneStepOverrideEvents(
+    'synth',
+    safeLaneIndex,
+    toggles[safeLaneIndex] ?? [],
+    values[safeLaneIndex] ?? [],
+    configs[safeLaneIndex] ?? [],
+  );
+}
+
 export function createCoreProductDrumSequencerStepOverrideEvents(
   overrides: unknown,
   subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[],
@@ -87,6 +105,35 @@ function createCoreProductSequencerStepOverrideEvents(
     events.push(createCoreProductSequencerStepOverrideCommitEvent(sequencer, 0, stateFlags));
   }
 
+  return events;
+}
+
+function createCoreProductSequencerLaneStepOverrideEvents(
+  sequencer: SequencerKind,
+  laneIndex: number,
+  toggles: readonly SequencerStepToggleOverride[],
+  values: readonly SequencerStepValueOverride[],
+  configs: readonly SequencerStepValueConfig[],
+  stateFlags = 0,
+): CoreProductEvent[] {
+  const events: CoreProductEvent[] = [withExtraFlags(createCoreProductSequencerClearStepsEvent(sequencer, laneIndex), stateFlags)];
+  for (const config of configs) {
+    events.push(createCoreProductSequencerSubLaneConfigEvent(sequencer, laneIndex, config.field, config.steps, config.direction, true, stateFlags));
+  }
+  for (const toggle of toggles) {
+    events.push(withExtraFlags(createCoreProductSequencerStepEvent(sequencer, laneIndex, toggle.step, toggle.value), stateFlags));
+  }
+  for (const value of values) {
+    events.push(createCoreProductSequencerStepValueEvent(
+      sequencer,
+      laneIndex,
+      value.step,
+      value.field,
+      value.value,
+      value.value2 ?? 0,
+      valueFlags(value, stateFlags),
+    ));
+  }
   return events;
 }
 

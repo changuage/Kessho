@@ -24,6 +24,8 @@ export type ProductRuntimeLiveTriggerCallbacksOptions = {
   setProductPadDistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
   setProductPadMorphTriggerCallback: (callback: ((morphPosition: number) => void) | null) => void;
   setProductPianoDistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
+  setProductSample1DistanceTriggerCallback?: (callback: ((distance: number) => void) | null) => void;
+  setProductSample2DistanceTriggerCallback?: (callback: ((distance: number) => void) | null) => void;
   stateRef: MutableRefObject<SliderState>;
   uiMode: ProductRuntimeLiveTriggerUiMode;
 };
@@ -41,6 +43,8 @@ export function useProductRuntimeLiveTriggerCallbacks({
   setProductPadDistanceTriggerCallback,
   setProductPadMorphTriggerCallback,
   setProductPianoDistanceTriggerCallback,
+  setProductSample1DistanceTriggerCallback,
+  setProductSample2DistanceTriggerCallback,
   ...options
 }: ProductRuntimeLiveTriggerCallbacksOptions): void {
   useLiveTriggerUiCallbacks({
@@ -57,5 +61,7 @@ export function useProductRuntimeLiveTriggerCallbacks({
     setPadDistanceTriggerCallback: setProductPadDistanceTriggerCallback,
     setPadMorphTriggerCallback: setProductPadMorphTriggerCallback,
     setPianoDistanceTriggerCallback: setProductPianoDistanceTriggerCallback,
+    setSample1DistanceTriggerCallback: setProductSample1DistanceTriggerCallback,
+    setSample2DistanceTriggerCallback: setProductSample2DistanceTriggerCallback,
   });
 }

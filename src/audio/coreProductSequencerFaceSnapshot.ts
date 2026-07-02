@@ -96,8 +96,25 @@ const ORBIT_CONSTELLATION_MODE_IDS = {
   euclidean: 5,
 } as const;
 
-function productSourceId(value: number): number {
-  return Math.round(clamp(value, PRODUCT_SEQUENCER_MIN_SOURCE_ID, PRODUCT_SEQUENCER_MAX_SOURCE_ID));
+function productSourceIdFromAlias(value: unknown): number | null {
+  if (typeof value !== 'string') return null;
+  const source = value.trim().toLowerCase();
+  if (source === 'pad' || source === 'pad1') return CORE_PRODUCT_SOURCE_IDS.pad1;
+  if (source === 'pad2') return CORE_PRODUCT_SOURCE_IDS.pad2;
+  if (source === 'lead' || source === 'lead1') return CORE_PRODUCT_SOURCE_IDS.lead1;
+  if (source === 'lead2') return CORE_PRODUCT_SOURCE_IDS.lead2;
+  if (source === 'sample1') return CORE_PRODUCT_SOURCE_IDS.sample1;
+  if (source === 'sample2') return CORE_PRODUCT_SOURCE_IDS.sample2;
+  return null;
+}
+
+function productSourceId(value: unknown): number {
+  const aliasSourceId = productSourceIdFromAlias(value);
+  if (aliasSourceId != null) return aliasSourceId;
+  const numericValue = typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : CORE_PRODUCT_SOURCE_IDS.lead1;
+  return Math.round(clamp(numericValue, PRODUCT_SEQUENCER_MIN_SOURCE_ID, PRODUCT_SEQUENCER_MAX_SOURCE_ID));
 }
 
 function pitchClassMaskFromClasses(classes: readonly number[]): number {

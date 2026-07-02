@@ -3,7 +3,7 @@ import { createMidiID, type KesshoMidiMessage } from './midiTypes';
 
 export function midiMessageToProductLiveNoteEvent(
   message: KesshoMidiMessage,
-  instrument: ProductLiveNoteInstrument = 'piano',
+  instrument: ProductLiveNoteInstrument = 'sample1',
 ): ProductLiveNoteEvent | null {
   if (message.kind !== 'noteOn' && message.kind !== 'noteOff') return null;
   const note = message.data1;

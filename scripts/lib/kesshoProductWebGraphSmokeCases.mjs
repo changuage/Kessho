@@ -519,14 +519,18 @@ const createSequencedSynthEuclidStatePatch = (source, sourcePatch = {}) => ({
   synthEuclid4Enabled: false,
 });
 
-const sequencedPad1EuclidStatePatch = createSequencedSynthEuclidStatePatch('synth1');
-const sequencedPad2EuclidStatePatch = createSequencedSynthEuclidStatePatch('synth2', {
+const sequencedPad1EuclidStatePatch = createSequencedSynthEuclidStatePatch('pad1', {
+  padEnabled: true,
+});
+const sequencedPad2EuclidStatePatch = createSequencedSynthEuclidStatePatch('pad2', {
   pad2Enabled: true,
   pad2VoiceAssign: 1 << 1,
   pad2Level: 0.65,
 });
 
-const sequencedLead1EuclidStatePatch = createSequencedSynthEuclidStatePatch('lead');
+const sequencedLead1EuclidStatePatch = createSequencedSynthEuclidStatePatch('lead1', {
+  leadEnabled: true,
+});
 
 const lead2SourceSendStatePatch = {
   ...statePatch,
@@ -536,7 +540,9 @@ const lead2SourceSendStatePatch = {
   lead2Level: 0.5,
 };
 
-const sequencedLead2EuclidStatePatch = createSequencedSynthEuclidStatePatch('lead2');
+const sequencedLead2EuclidStatePatch = createSequencedSynthEuclidStatePatch('lead2', {
+  lead2Enabled: true,
+});
 
 const pianoSourceSendStatePatch = {
   ...statePatch,
@@ -546,6 +552,292 @@ const pianoSourceSendStatePatch = {
 };
 
 const sequencedPianoEuclidStatePatch = createSequencedSynthEuclidStatePatch('piano');
+const sequencedSample1EuclidStatePatch = createSequencedSynthEuclidStatePatch('sample1', {
+  sample1Enabled: true,
+  sample1LibraryKey: 'piano',
+  sample1SelectionMode: 'nearest',
+  sample1DynamicMode: 'legacy-piano-parity',
+  sample1FixedDynamic: 'regular',
+  sample1Level: 0.65,
+});
+const sequencedSample2EuclidStatePatch = createSequencedSynthEuclidStatePatch('sample2', {
+  sample2Enabled: true,
+  sample2LibraryKey: 'soft-string-spurs',
+  sample2SelectionMode: 'mapped',
+  sample2DynamicMode: 'velocity',
+  sample2FixedDynamic: 'level-2',
+  sample2Level: 2,
+  synthEuclid1Level: 1,
+  synthEuclid1NoteMin: 98,
+  synthEuclid1NoteMax: 98,
+});
+const sequencedSample2EuclidLowVelocityStatePatch = createSequencedSynthEuclidStatePatch('sample2', {
+  sample2Enabled: true,
+  sample2LibraryKey: 'soft-string-spurs',
+  sample2SelectionMode: 'mapped',
+  sample2DynamicMode: 'velocity',
+  sample2FixedDynamic: 'level-2',
+  sample2Level: 2,
+  synthEuclid1Level: 0.32,
+  synthEuclid1NoteMin: 60,
+  synthEuclid1NoteMax: 60,
+});
+const sample2SoftStringPatch = {
+  sample2Enabled: true,
+  sample2LibraryKey: 'soft-string-spurs',
+  sample2SelectionMode: 'mapped',
+  sample2DynamicMode: 'velocity',
+  sample2FixedDynamic: 'level-2',
+  sample2Level: 2,
+};
+const sample2PianoPatch = {
+  sample2Enabled: true,
+  sample2LibraryKey: 'piano',
+  sample2SelectionMode: 'nearest',
+  sample2DynamicMode: 'legacy-piano-parity',
+  sample2FixedDynamic: 'regular',
+  sample2Level: 0.8,
+};
+const sequencedSample2PianoEuclidStatePatch = createSequencedSynthEuclidStatePatch('sample2', {
+  ...sample2PianoPatch,
+  synthEuclid1Level: 1,
+  synthEuclid1NoteMin: 64,
+  synthEuclid1NoteMax: 64,
+});
+const sample2OrbitFaces = {
+  version: 1,
+  slots: [
+    {
+      mode: 'orbit',
+      orbit: {
+        enabled: true,
+        targetSourceId: 8,
+        triggerLineCount: 8,
+        bpmPercent: 800,
+        pitchRangeMin: 98,
+        pitchRangeMax: 98,
+        quantizeToHarmony: false,
+        notes: [
+          {
+            id: 'sample2-orbit-note-1',
+            enabled: true,
+            phase: 6.2,
+            radiusNorm: 0.5,
+            speedMode: 'syncDivisor',
+            speedValue: 1,
+            direction: 'cw',
+            pitchMode: 'fixedMidi',
+            midiNote: 98,
+            pitchRangeMin: 98,
+            pitchRangeMax: 98,
+            velocity: 1,
+            gateBeats: 0.5,
+            probability: 1,
+            targetSourceId: 8,
+          },
+        ],
+      },
+    },
+  ],
+};
+const sample2OrbitFollowFaces = {
+  version: 1,
+  slots: [
+    {
+      mode: 'orbit',
+      orbit: {
+        enabled: true,
+        targetSourceId: 3,
+        triggerLineCount: 8,
+        bpmPercent: 800,
+        pitchRangeMin: 98,
+        pitchRangeMax: 98,
+        quantizeToHarmony: false,
+        notes: [
+          {
+            id: 'sample2-orbit-follow-note-1',
+            enabled: true,
+            phase: 6.2,
+            radiusNorm: 0.5,
+            speedMode: 'syncDivisor',
+            speedValue: 1,
+            direction: 'cw',
+            pitchMode: 'fixedMidi',
+            midiNote: 98,
+            pitchRangeMin: 98,
+            pitchRangeMax: 98,
+            velocity: 1,
+            gateBeats: 0.5,
+            probability: 1,
+            targetSourceId: 'follow',
+          },
+        ],
+      },
+    },
+  ],
+};
+const sample2WalkerLayer = {
+  id: 'sample2-walker-layer-1',
+  enabled: true,
+  label: 'root',
+  transposeSemitones: 0,
+  diatonicOffset: 0,
+  tuning: 'rawTranspose',
+  motion: 'linked',
+  delayMs: 0,
+  gateRatio: 0.75,
+  velocityScale: 1,
+  velocityOffset: 0,
+  targetSourceId: 8,
+};
+const sample2WalkerFaces = {
+  version: 1,
+  slots: [
+    {
+      mode: 'anchorWalker',
+      anchorWalker: {
+        enabled: true,
+        playMode: 'gridPattern',
+        targetSourceId: 8,
+        anchorSource: 'manualLatch',
+        manualAnchorMidi: 98,
+        snapSource: 'customPitchClasses',
+        customPitchClasses: [2],
+        layerPreset: 'solo',
+        layerTuning: 'rawTranspose',
+        outputRangeMin: 98,
+        outputRangeMax: 98,
+        layers: [
+          sample2WalkerLayer,
+          { ...sample2WalkerLayer, id: 'sample2-walker-layer-2', enabled: false, label: 'off-2' },
+          { ...sample2WalkerLayer, id: 'sample2-walker-layer-3', enabled: false, label: 'off-3' },
+          { ...sample2WalkerLayer, id: 'sample2-walker-layer-4', enabled: false, label: 'off-4' },
+        ],
+      },
+    },
+  ],
+};
+const sample2WalkerFollowLayer = {
+  ...sample2WalkerLayer,
+  id: 'sample2-walker-follow-layer-1',
+  targetSourceId: 'follow',
+};
+const sample2WalkerFollowFaces = {
+  version: 1,
+  slots: [
+    {
+      mode: 'anchorWalker',
+      anchorWalker: {
+        enabled: true,
+        playMode: 'gridPattern',
+        targetSourceId: 3,
+        anchorSource: 'manualLatch',
+        manualAnchorMidi: 98,
+        snapSource: 'customPitchClasses',
+        customPitchClasses: [2],
+        layerPreset: 'solo',
+        layerTuning: 'rawTranspose',
+        outputRangeMin: 98,
+        outputRangeMax: 98,
+        layers: [
+          sample2WalkerFollowLayer,
+          { ...sample2WalkerFollowLayer, id: 'sample2-walker-follow-layer-2', enabled: false, label: 'off-2' },
+          { ...sample2WalkerFollowLayer, id: 'sample2-walker-follow-layer-3', enabled: false, label: 'off-3' },
+          { ...sample2WalkerFollowLayer, id: 'sample2-walker-follow-layer-4', enabled: false, label: 'off-4' },
+        ],
+      },
+    },
+  ],
+};
+const sequencedSample2OrbitStatePatch = createSequencedSynthEuclidStatePatch('sample2', {
+  ...sample2SoftStringPatch,
+  synthEuclid1Level: 1,
+  synthEuclid1NoteMin: 98,
+  synthEuclid1NoteMax: 98,
+  synthSequencerFaces: sample2OrbitFaces,
+});
+sequencedSample2OrbitStatePatch.synthEuclideanMasterEnabled = true;
+const sequencedSample2WalkerStatePatch = createSequencedSynthEuclidStatePatch('sample2', {
+  ...sample2SoftStringPatch,
+  synthEuclid1Level: 1,
+  synthEuclid1NoteMin: 98,
+  synthEuclid1NoteMax: 98,
+  synthSequencerFaces: sample2WalkerFaces,
+});
+const sequencedSample2OrbitFollowStatePatch = createSequencedSynthEuclidStatePatch('sample2', {
+  ...sample2SoftStringPatch,
+  synthEuclid1Level: 1,
+  synthEuclid1NoteMin: 98,
+  synthEuclid1NoteMax: 98,
+  synthSequencerFaces: sample2OrbitFollowFaces,
+});
+sequencedSample2OrbitFollowStatePatch.synthEuclideanMasterEnabled = true;
+const sequencedSample2WalkerFollowStatePatch = createSequencedSynthEuclidStatePatch('sample2', {
+  ...sample2SoftStringPatch,
+  synthEuclid1Level: 1,
+  synthEuclid1NoteMin: 98,
+  synthEuclid1NoteMax: 98,
+  synthSequencerFaces: sample2WalkerFollowFaces,
+});
+const sample2ChordGeneratorStatePatch = {
+  ...statePatch,
+  ...sample2PianoPatch,
+  padEnabled: false,
+  synthChordGeneratorEnabled: false,
+  synthChordGeneratorSource: 'sample2',
+  synthChordGeneratorVoiceCount: 2,
+  synthChordSequencerEnabled: false,
+  leadRandomEnabled: false,
+  synthEuclideanMasterEnabled: true,
+  synthEuclid1Enabled: false,
+  rootNote: 0,
+  scaleMode: 'manual',
+  manualScale: 'Major (Ionian)',
+  chordRate: 32,
+  voicingSpread: 0.5,
+  waveSpread: 0,
+};
+const sample2RandomTimingStatePatch = {
+  ...statePatch,
+  ...sample2SoftStringPatch,
+  padEnabled: false,
+  synthChordGeneratorEnabled: false,
+  synthChordSequencerEnabled: false,
+  leadRandomEnabled: false,
+  leadRandomSource: 'sample2',
+  lead1Density: 1,
+  lead1Octave: 2,
+  lead1OctaveRange: 1,
+  leadRandomClockDivision: 16,
+  leadRandomClockSource: 'localPhrase',
+  leadRandomSyncPolicy: 'immediate',
+  phraseLength: 0.5,
+  synthEuclideanMasterEnabled: true,
+  synthEuclid1Enabled: false,
+  rootNote: 0,
+  scaleMode: 'manual',
+  manualScale: 'Major (Ionian)',
+};
+const sample2ChordSequencerStatePatch = {
+  ...statePatch,
+  ...sample2PianoPatch,
+  padEnabled: false,
+  synthChordGeneratorEnabled: false,
+  synthChordSequencerEnabled: false,
+  synthChordSequencerSource: 'sample2',
+  synthChordSequencerVoiceCount: 1,
+  synthChordSequencerClockDivision: '1/8',
+  leadRandomEnabled: false,
+  synthEuclideanMasterEnabled: true,
+  synthEuclid1Enabled: false,
+  sequencerMasterBPM: 120,
+  synthEuclidBaseBPM: 120,
+  rootNote: 0,
+  scaleMode: 'manual',
+  manualScale: 'Major (Ionian)',
+  chordRate: 4,
+  phraseLength: 16,
+};
 
 const createSequencedDrumEuclidStatePatch = (target) => ({
   ...drumSourceSendStatePatch,
@@ -821,6 +1113,28 @@ const sequencedSynthEuclidRoutingCase = (id, track, statePatch) => ({
   ],
   manualNotes: false,
   routeSmokeOnly: true,
+  coreOnly: true,
+});
+const sequencedCoreSynthEuclidRoutingCase = (id, track, statePatch, minSignalRms = undefined) => ({
+  ...sequencedSynthEuclidRoutingCase(id, track, statePatch),
+  coreOnly: true,
+  ...(minSignalRms === undefined ? {} : { minSignalRms }),
+});
+
+const sample2MasterOutputCase = (id, statePatch, stateEvents, durationMs = 1500, minSignalRms = 0.0001) => ({
+  id,
+  track: 'masterPostLimiter',
+  durationMs,
+  settleMs: 50,
+  rmsTolerance: 5,
+  peakTolerance: 1,
+  minLagCorrelation: 0,
+  minSignalRms,
+  statePatch,
+  stateEvents,
+  manualNotes: false,
+  routeSmokeOnly: true,
+  coreOnly: true,
 });
 
 const sequencedDrumEuclidRoutingCase = (id, statePatch) => ({
@@ -1635,6 +1949,152 @@ const rawCases = [
     'sequenced-synth-euclid-piano-dry-routing',
     'pianoDry',
     sequencedPianoEuclidStatePatch,
+  ),
+  sequencedCoreSynthEuclidRoutingCase(
+    'sequenced-synth-euclid-sample1-dry-routing',
+    'sample1Dry',
+    sequencedSample1EuclidStatePatch,
+  ),
+  sequencedCoreSynthEuclidRoutingCase(
+    'sequenced-synth-euclid-sample2-dry-routing',
+    'sample2Dry',
+    sequencedSample2EuclidStatePatch,
+    0.00002,
+  ),
+  sequencedCoreSynthEuclidRoutingCase(
+    'sequenced-synth-euclid-sample2-piano-dry-routing',
+    'sample2Dry',
+    sequencedSample2PianoEuclidStatePatch,
+    0.0001,
+  ),
+  sequencedCoreSynthEuclidRoutingCase(
+    'sequenced-synth-euclid-sample2-low-velocity-dry-routing',
+    'sample2Dry',
+    sequencedSample2EuclidLowVelocityStatePatch,
+    0.000005,
+  ),
+  sequencedCoreSynthEuclidRoutingCase(
+    'sequenced-synth-orbit-sample2-dry-routing',
+    'sample2Dry',
+    sequencedSample2OrbitStatePatch,
+    0.000005,
+  ),
+  sequencedCoreSynthEuclidRoutingCase(
+    'sequenced-synth-orbit-sample2-follow-source-dry-routing',
+    'sample2Dry',
+    sequencedSample2OrbitFollowStatePatch,
+    0.000005,
+  ),
+  sequencedCoreSynthEuclidRoutingCase(
+    'sequenced-synth-walker-sample2-dry-routing',
+    'sample2Dry',
+    sequencedSample2WalkerStatePatch,
+    0.00002,
+  ),
+  sequencedCoreSynthEuclidRoutingCase(
+    'sequenced-synth-walker-sample2-follow-source-dry-routing',
+    'sample2Dry',
+    sequencedSample2WalkerFollowStatePatch,
+    0.00002,
+  ),
+  sample2MasterOutputCase(
+    'sequenced-synth-euclid-sample1-master-output',
+    sequencedSample1EuclidStatePatch,
+    [{ delayMs: 100, patch: { synthEuclideanMasterEnabled: true } }],
+  ),
+  sample2MasterOutputCase(
+    'sequenced-synth-euclid-sample2-master-output',
+    sequencedSample2EuclidStatePatch,
+    [{ delayMs: 100, patch: { synthEuclideanMasterEnabled: true } }],
+    1500,
+    0.00002,
+  ),
+  sample2MasterOutputCase(
+    'sequenced-synth-euclid-sample2-piano-master-output',
+    sequencedSample2PianoEuclidStatePatch,
+    [{ delayMs: 100, patch: { synthEuclideanMasterEnabled: true } }],
+  ),
+  sample2MasterOutputCase(
+    'sequenced-synth-orbit-sample2-master-output',
+    sequencedSample2OrbitStatePatch,
+    [{ delayMs: 100, patch: { synthEuclideanMasterEnabled: true } }],
+    1500,
+    0.00002,
+  ),
+  sample2MasterOutputCase(
+    'sequenced-synth-walker-sample2-master-output',
+    sequencedSample2WalkerStatePatch,
+    [{ delayMs: 100, patch: { synthEuclideanMasterEnabled: true } }],
+    1500,
+    0.00002,
+  ),
+  {
+    id: 'simple-chord-generator-sample2-dry-routing',
+    track: 'sample2Dry',
+    durationMs: 1500,
+    settleMs: 50,
+    rmsTolerance: 5,
+    peakTolerance: 1,
+    minLagCorrelation: 0,
+    minSignalRms: 0.0001,
+    statePatch: sample2ChordGeneratorStatePatch,
+    stateEvents: [
+      { delayMs: 100, patch: { synthChordGeneratorEnabled: true, synthChordGeneratorSource: 'sample2' } },
+    ],
+    manualNotes: false,
+    routeSmokeOnly: true,
+    coreOnly: true,
+  },
+  sample2MasterOutputCase(
+    'simple-chord-generator-sample2-master-output',
+    sample2ChordGeneratorStatePatch,
+    [{ delayMs: 100, patch: { synthChordGeneratorEnabled: true, synthChordGeneratorSource: 'sample2' } }],
+  ),
+  {
+    id: 'simple-random-timing-sample2-dry-routing',
+    track: 'sample2Dry',
+    durationMs: 2000,
+    settleMs: 50,
+    rmsTolerance: 5,
+    peakTolerance: 1,
+    minLagCorrelation: 0,
+    minSignalRms: 0.00002,
+    statePatch: sample2RandomTimingStatePatch,
+    stateEvents: [
+      { delayMs: 100, patch: { leadRandomEnabled: true, leadRandomSource: 'sample2' } },
+    ],
+    manualNotes: false,
+    routeSmokeOnly: true,
+    coreOnly: true,
+  },
+  sample2MasterOutputCase(
+    'simple-random-timing-sample2-master-output',
+    sample2RandomTimingStatePatch,
+    [{ delayMs: 100, patch: { leadRandomEnabled: true, leadRandomSource: 'sample2' } }],
+    2000,
+    0.00002,
+  ),
+  {
+    id: 'simple-chord-sequencer-sample2-dry-routing',
+    track: 'sample2Dry',
+    durationMs: 1500,
+    settleMs: 50,
+    rmsTolerance: 5,
+    peakTolerance: 1,
+    minLagCorrelation: 0,
+    minSignalRms: 0.0001,
+    statePatch: sample2ChordSequencerStatePatch,
+    stateEvents: [
+      { delayMs: 100, patch: { synthChordSequencerEnabled: true, synthChordSequencerSource: 'sample2' } },
+    ],
+    manualNotes: false,
+    routeSmokeOnly: true,
+    coreOnly: true,
+  },
+  sample2MasterOutputCase(
+    'simple-chord-sequencer-sample2-master-output',
+    sample2ChordSequencerStatePatch,
+    [{ delayMs: 100, patch: { synthChordSequencerEnabled: true, synthChordSequencerSource: 'sample2' } }],
   ),
   {
     id: 'manual-piano-short-dry',

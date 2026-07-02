@@ -15,6 +15,8 @@ type SelectedAudioEngineLiveTriggerSurface = {
   setSelectedPadDistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
   setSelectedPad2DistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
   setSelectedPianoDistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
+  setSelectedSample1DistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
+  setSelectedSample2DistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
   setSelectedLeadDelayCallback: (callback: ((delay: Record<string, number | string>) => void) | null) => void;
   setSelectedDrumMorphTriggerCallback: (callback: ((voice: unknown, morphPosition: number) => void) | null) => void;
   setSelectedDrumParamSHTriggerCallback: (callback: ((voice: unknown, key: string, position: number) => void) | null) => void;
@@ -88,6 +90,22 @@ export function useSelectedAudioEngineLiveTriggerSurface(
     selectedProductRuntime.setPianoDistanceTriggerCallback(callback ?? (() => {}));
   }, [audioEngineRuntimeMode]);
 
+  const setSelectedSample1DistanceTriggerCallback = useCallback((callback: ((distance: number) => void) | null): void => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      productEngine.setSample1DistanceTriggerCallback(callback);
+      return;
+    }
+    selectedProductRuntime.setSample1DistanceTriggerCallback?.(callback ?? (() => {}));
+  }, [audioEngineRuntimeMode]);
+
+  const setSelectedSample2DistanceTriggerCallback = useCallback((callback: ((distance: number) => void) | null): void => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      productEngine.setSample2DistanceTriggerCallback(callback);
+      return;
+    }
+    selectedProductRuntime.setSample2DistanceTriggerCallback?.(callback ?? (() => {}));
+  }, [audioEngineRuntimeMode]);
+
   const setSelectedLeadDelayCallback = useCallback((callback: ((delay: Record<string, number | string>) => void) | null): void => {
     if (audioEngineRuntimeMode === 'core-product') {
       productEngine.setLeadDelayCallback(callback);
@@ -129,6 +147,8 @@ export function useSelectedAudioEngineLiveTriggerSurface(
     setSelectedPadDistanceTriggerCallback,
     setSelectedPad2DistanceTriggerCallback,
     setSelectedPianoDistanceTriggerCallback,
+    setSelectedSample1DistanceTriggerCallback,
+    setSelectedSample2DistanceTriggerCallback,
     setSelectedLeadDelayCallback,
     setSelectedDrumMorphTriggerCallback,
     setSelectedDrumParamSHTriggerCallback,

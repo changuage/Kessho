@@ -66,7 +66,7 @@ export function useProductRuntimePageRuntimeBridges({
     audioEngineRuntimeMode: productRuntimeMode,
     stateRef,
   });
-  const productSynthPageEvents = useProductRuntimeSynthPageEvents(productRuntimeMode);
+  const productSynthPageEvents = useProductRuntimeSynthPageEvents(productRuntimeMode, stateRef);
   const useProductRuntimePageSurfaces = productRuntimeMode === 'core-product';
   const pageManualTriggers = productRuntimeMode === 'core-product'
     ? productRuntimeManualTriggers
