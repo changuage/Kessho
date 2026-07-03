@@ -23,7 +23,6 @@ export function useProductRuntimeLifecycleSurface(options: ProductRuntimeLifecyc
   const recordingRuntime = useProductRuntimeRecordingRuntime(options.productRuntimeMode);
   const runtimeTelemetry = useProductRuntimeTelemetry({
     productRuntimeMode: options.productRuntimeMode,
-    uiMode: options.uiMode,
   });
 
   useProductRuntimeStateRuntime({

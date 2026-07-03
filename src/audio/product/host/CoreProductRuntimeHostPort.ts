@@ -4,7 +4,7 @@ import type { DawOutputRoutingConfig } from '../../dawOutputRouting';
 import type { ProductRuntimeCapabilityReport } from '../ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from '../ProductRuntimeDiagnostics';
 import type { ProductLiveNoteEvent } from '../liveNoteEvents';
-import type { ProductAssetHandle, ProductAssetRegistration, ProductDrumTriggerCallback, ProductDrumVoice, ProductDynamicsVisualTelemetry, ProductEngineStartOptions, ProductEngineState, ProductEvent, ProductEvolveOverridesCallback, ProductExternalState, ProductManualSynthNote, ProductMidiMessage, ProductPerfSnapshot, ProductRange, ProductRangeMap, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductRuntimeWalkPositionsCallback, ProductSequencerEvolveTriggerCallback, ProductSequencerStepPositionCallback, ProductSnapshotPatch, ProductSnapshotPatchReason, ProductSynthAnchorWalkerVisualStateCallback, ProductSynthNoteRangeEvolvedCallback, ProductSynthOrbitVisualStateCallback, ProductTelemetrySnapshot } from '../ProductEngineTypes';
+import type { ProductAssetHandle, ProductAssetRegistration, ProductDrumTriggerCallback, ProductDrumVoice, ProductDynamicsVisualTelemetry, ProductEngineStartOptions, ProductEngineState, ProductEvent, ProductEvolveOverridesCallback, ProductExternalState, ProductManualSynthNote, ProductMidiMessage, ProductPerfSnapshot, ProductRange, ProductRangeMap, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductRuntimeWalkPositionsCallback, ProductSequencerEvolveTriggerCallback, ProductSequencerStepPositionCallback, ProductSimpleSequencerVisualPlanActive, ProductSnapshotPatch, ProductSnapshotPatchReason, ProductSynthAnchorWalkerVisualStateCallback, ProductSynthNoteRangeEvolvedCallback, ProductSynthOrbitVisualStateCallback, ProductTelemetrySnapshot } from '../ProductEngineTypes';
 
 // TODO(product-core-burn-down): replace this bound WebProductEngine host port with product-owned
 // generated runtime APIs once the web adapter no longer binds Product host method names itself.
@@ -247,5 +247,9 @@ export const coreProductRuntimeHostPort = {
 
   setVisualTelemetryActive(active: boolean): void {
     callCoreProductHost<void>('setVisualTelemetryActive', active);
+  },
+
+  setSimpleSequencerVisualPlanActive(active: ProductSimpleSequencerVisualPlanActive): void {
+    callCoreProductHost<void>('setSimpleSequencerVisualPlanActive', active);
   },
 };

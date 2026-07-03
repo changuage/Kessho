@@ -17,6 +17,7 @@ import {
   type CommitGeneratedCaptureArgs,
   type GeneratedCaptureStepCommit,
 } from './commitGeneratedCaptureToEuclid';
+import { firstEventRelativeTargetStep } from './useGeneratedSequenceCapture';
 import {
   buildProductGeneratedCaptureStepCommitEvents,
   generatedCaptureStepPatchForState,
@@ -27,15 +28,18 @@ import {
 } from './generatedSequencerCapturePhrase';
 import { createDefaultSynthSequencerFaceState } from './sequencerModeTypes';
 import {
+  capturedMidisToNotePitchValues,
   capturedMidisToSemitonePitchValues,
   chooseCaptureRootMidi,
 } from './generatedSequencerCapturePitch';
 import {
+  captureScratchForDisplay,
   captureStepCount,
   createCaptureScratch,
   markCaptureStepVisited,
   writeCaptureEventToStep,
 } from './generatedSequencerCaptureScratch';
+import type { CaptureSession } from './generatedSequencerCaptureTypes';
 import { resolveTriggerClip } from './triggerClip';
 import type {
   LaneKind,
@@ -191,6 +195,65 @@ function testCaptureScratchKeepsLatestCycleOnly(): void {
   assert.equal(scratch.cells[5]?.hasNote, false);
 }
 
+function makeCaptureSession(
+  scratch: ReturnType<typeof createCaptureScratch>,
+  completedScratch: ReturnType<typeof createCaptureScratch> | null,
+  commitCycleIndex: number | null,
+): CaptureSession {
+  return {
+    active: true,
+    sourceLaneIndex: 0,
+    targetLaneIndex: 0,
+    sourceMode: 'orbit',
+    startMode: 'sequencerBoundary',
+    originStepFloat: null,
+    originPlayheadStep: null,
+    targetStepCount: scratch.stepCount,
+    startedAtSample: null,
+    startedAtMs: 0,
+    status: commitCycleIndex === null ? 'recording' : 'committing',
+    scratch,
+    completedScratch,
+    commitCycleIndex,
+    overflowCount: 0,
+  };
+}
+
+function testCaptureDisplayScratchTracksPrintablePhrase(): void {
+  let completed = createCaptureScratch(4);
+  completed = writeCaptureEventToStep(completed, 1, 0, {
+    eventId: 110,
+    midiNote: 60,
+    velocity: 0.7,
+    gateSeconds: 0.1,
+  });
+  let scratch = markCaptureStepVisited(completed, 0, 1);
+
+  assert.equal(
+    captureScratchForDisplay(makeCaptureSession(scratch, completed, null)),
+    completed,
+    'preview should keep showing the last printable phrase until the new cycle captures notes',
+  );
+
+  scratch = writeCaptureEventToStep(scratch, 2, 1, {
+    eventId: 111,
+    midiNote: 64,
+    velocity: 0.8,
+    gateSeconds: 0.1,
+  });
+
+  assert.equal(
+    captureScratchForDisplay(makeCaptureSession(scratch, completed, null)),
+    scratch,
+    'preview should switch to the rolling phrase once the new cycle has notes',
+  );
+  assert.equal(
+    captureScratchForDisplay(makeCaptureSession(scratch, completed, 0)),
+    completed,
+    'saving should preview the exact completed phrase selected for commit',
+  );
+}
+
 function testGeneratedCaptureStopPolicy(): void {
   assert.equal(generatedCaptureStepPastHalf(7, 16), false);
   assert.equal(generatedCaptureStepPastHalf(8, 16), true);
@@ -220,6 +283,24 @@ function testGeneratedCaptureStopPolicy(): void {
     }),
     { kind: 'finishCurrentPhrase' },
     'the first phrase should finish even if stop happens before halfway',
+  );
+}
+
+function testFirstEventOrbitTimingUnwrapsPhraseBoundary(): void {
+  const origin = 30;
+  const stepCount = 32;
+  const wrappedSteps = [30, 31, 1, 5, 5];
+  let previous: number | null = null;
+  const relativeSteps = wrappedSteps.map((step) => {
+    const relative = firstEventRelativeTargetStep(step, origin, stepCount, previous);
+    previous = relative;
+    return relative;
+  });
+
+  assert.deepEqual(
+    relativeSteps,
+    [0, 1, 3, 7, 7],
+    'Orbit first-trigger capture should unwrap wrapped target steps instead of clamping them to slot 1',
   );
 }
 
@@ -303,6 +384,14 @@ function testCapturedPitchConversion(): void {
     mode: 'semitones',
     root: 60,
     scale: 'Minor',
+  });
+
+  const exactCaptured = capturedMidisToNotePitchValues([60, 63, 67]);
+  assert.deepEqual(exactCaptured.pitchValues, [60, 63, 67]);
+  assert.deepEqual(exactCaptured.pitchSettings, {
+    mode: 'notes',
+    root: 60,
+    scale: 'Chromatic',
   });
 }
 
@@ -460,6 +549,11 @@ function testCommitGeneratedCaptureWritesNudge(): void {
     seq,
     setSequencerMode: () => {},
     setPitchBindingMode: () => {},
+    capturePitchReference: {
+      root: 60,
+      scale: 'Harmony',
+      scaleIntervals: [0, 2, 4, 5, 7, 9, 11],
+    },
     sourceMode: 'anchorWalker',
     onStepCommit: (commit) => {
       stepCommitRef.current = commit;
@@ -474,13 +568,14 @@ function testCommitGeneratedCaptureWritesNudge(): void {
   assert.deepEqual(pitchSettings[targetLaneIndex], {
     mode: 'semitones',
     root: 60,
-    scale: 'Chromatic',
+    scale: 'Harmony',
   });
 
   const stepCommit = requireStepCommit(stepCommitRef.current);
   assert.equal(stepCommit.sourceMode, 'anchorWalker');
   assert.equal(stepCommit.targetLaneIndex, targetLaneIndex);
   assert.deepEqual(stepCommit.pitchMidiValues, [60, 64]);
+  assert.deepEqual(stepCommit.pitchValues, [0, 2]);
 
   const productEvents = buildProductGeneratedCaptureStepCommitEvents(stepCommit);
   assert.equal(
@@ -509,7 +604,7 @@ function testCommitGeneratedCaptureWritesNudge(): void {
   assert.deepEqual(
     productGeneratedCapturePitchEventValues(productEvents),
     [60, 64],
-    'Product Step handoff must write captured MIDI notes, not UI semitone offsets',
+    'Product Step handoff must write captured MIDI notes to the audio thread',
   );
   const faces = createDefaultSynthSequencerFaceState();
   faces.slots[targetLaneIndex] = {
@@ -518,12 +613,145 @@ function testCommitGeneratedCaptureWritesNudge(): void {
   };
   const patch = generatedCaptureStepPatchForState({
     synthSequencerFaces: faces,
-  } as SliderState, stepCommit);
+    synthPitchSettings: [
+      { mode: 'semitones', root: 48, scale: 'Major' },
+      { mode: 'semitones', root: 55, scale: 'Harmony' },
+      { mode: 'notes', root: 60, scale: 'Chromatic' },
+    ],
+    synthStepOverrides: {
+      triggerToggles: [
+        [],
+        [{ step: 0, value: true }, { step: 1, value: true }],
+        [{ step: 3, value: true }],
+      ],
+      probability: [null, [0.25], [0.5]],
+      ratchet: [null, [4], [2]],
+      trigCondition: [null, [[2, 3]], [[1, 2]]],
+      expression: [null, [0.1], [0.2]],
+      pitch: [null, [99, 98, 97], [70]],
+      morph: [null, [0.3], [0.4]],
+      distance: [null, [0.5], [0.6]],
+      nudge: [null, [0.75], [0.8]],
+      expressionDirection: [null, 'reverse', 'forward'],
+      pitchDirection: [null, 'reverse', 'forward'],
+      morphDirection: [null, 'reverse', 'forward'],
+      distanceDirection: [null, 'reverse', 'forward'],
+      nudgeDirection: [null, 'reverse', 'forward'],
+    },
+  } as unknown as SliderState, stepCommit);
   assert.equal(
     (patch.synthSequencerFaces as typeof faces).slots[targetLaneIndex]?.mode,
     'euclid',
     'Product control patch must persist the Step mode handoff',
   );
+  const stepOverridePatch = patch.synthStepOverrides as {
+    triggerToggles: unknown[];
+    pitch: unknown[];
+    expression: unknown[];
+    nudge: unknown[];
+    ratchet: unknown[];
+    morph: unknown[];
+    distance: unknown[];
+  };
+  assert.deepEqual(
+    stepOverridePatch.triggerToggles[targetLaneIndex],
+    [
+      { step: 0, value: true },
+      { step: 1, value: false },
+      { step: 2, value: true },
+      { step: 3, value: false },
+    ],
+    'Product control patch must replace stale target-lane trigger toggles',
+  );
+  assert.deepEqual(stepOverridePatch.pitch[targetLaneIndex], [0, 2]);
+  assert.deepEqual(stepOverridePatch.expression[targetLaneIndex], [0.5, 0.8]);
+  assert.deepEqual(stepOverridePatch.nudge[targetLaneIndex], [0, -0.25]);
+  assert.deepEqual(stepOverridePatch.ratchet[targetLaneIndex], null);
+  assert.deepEqual(stepOverridePatch.morph[targetLaneIndex], null);
+  assert.deepEqual(stepOverridePatch.distance[targetLaneIndex], null);
+  assert.deepEqual(stepOverridePatch.pitch[2], [70], 'other lanes should be preserved');
+  const pitchSettingsPatch = patch.synthPitchSettings as unknown[];
+  assert.deepEqual(
+    pitchSettingsPatch[targetLaneIndex],
+    { mode: 'semitones', root: 60, scale: 'Harmony' },
+    'Product control patch must freeze generated capture pitch settings as Harmony-relative Step offsets',
+  );
+  assert.deepEqual(
+    pitchSettingsPatch[2],
+    { mode: 'notes', root: 60, scale: 'Chromatic' },
+    'other lane pitch settings should be preserved',
+  );
+}
+
+function testCommitExpandsGridForSubstepCaptureCollisions(): void {
+  const targetLaneIndex = 0;
+  let scratch = createCaptureScratch(4);
+  scratch = writeCaptureEventToStep(scratch, 0, 0, {
+    eventId: 50,
+    midiNote: 60,
+    velocity: 0.5,
+    gateSeconds: 0.1,
+    targetStepFloat: 0,
+  });
+  scratch = writeCaptureEventToStep(scratch, 0, 0, {
+    eventId: 51,
+    midiNote: 64,
+    velocity: 0.6,
+    gateSeconds: 0.1,
+    targetStepFloat: 0.25,
+  });
+  scratch = writeCaptureEventToStep(scratch, 2, 0, {
+    eventId: 52,
+    midiNote: 67,
+    velocity: 0.8,
+    gateSeconds: 0.1,
+    targetStepFloat: 2,
+  });
+
+  const params: Array<[number, string, number]> = [];
+  let stepOverrides = makeStepOverrides();
+  let subLaneStates = makeSubLaneStates();
+  let stepCommit: GeneratedCaptureStepCommit | null = null;
+
+  const seq: CommitGeneratedCaptureArgs['seq'] = {
+    setParam: (laneIndex, suffix, value) => params.push([laneIndex, suffix, value]),
+    setParamSelect: () => {},
+    setStepOverrides: (action) => {
+      stepOverrides = applyStateAction(stepOverrides, action);
+    },
+    setSubLaneStates: (action) => {
+      subLaneStates = applyStateAction(subLaneStates, action);
+    },
+    setPitchSettings: () => {},
+    setOpenLane: () => {},
+  };
+
+  commitGeneratedCaptureToEuclid({
+    scratch,
+    targetLaneIndex,
+    seq,
+    setSequencerMode: () => {},
+    onStepCommit: (commit) => {
+      stepCommit = commit;
+    },
+  });
+
+  assert.deepEqual(params, [
+    [targetLaneIndex, 'Steps', 8],
+    [targetLaneIndex, 'Hits', 3],
+    [targetLaneIndex, 'Rotation', 0],
+  ]);
+  assert.deepEqual(
+    resolveTriggerClip(stepOverrides.triggerClips![targetLaneIndex]!),
+    [true, true, false, false, true, false, false, false],
+  );
+  assert.deepEqual(stepOverrides.pitch[targetLaneIndex], [0, 4, 7]);
+  assert.deepEqual(stepOverrides.expression[targetLaneIndex], [0.5, 0.6, 0.8]);
+  assert.deepEqual(stepOverrides.nudge[targetLaneIndex], [0, -0.5, 0]);
+  assert.equal(subLaneStates[targetLaneIndex]?.pitch.steps, 3);
+  assert.equal(subLaneStates[targetLaneIndex]?.nudge.steps, 3);
+  assert.equal(subLaneStates[targetLaneIndex]?.nudge.enabled, true);
+  assert.equal(requireStepCommit(stepCommit).stepCount, 8);
 }
 
 function testCommitUsesLatestCaptureCycle(): void {
@@ -757,11 +985,14 @@ function testEmptyCaptureDoesNotOverwriteEuclidLane(): void {
 
 testCaptureScratch();
 testCaptureScratchKeepsLatestCycleOnly();
+testCaptureDisplayScratchTracksPrintablePhrase();
 testGeneratedCaptureStopPolicy();
+testFirstEventOrbitTimingUnwrapsPhraseBoundary();
 testGeneratedCaptureHistorySurvivesDisable();
 testCapturedPitchConversion();
 testCommitGeneratedCaptureToEuclid();
 testCommitGeneratedCaptureWritesNudge();
+testCommitExpandsGridForSubstepCaptureCollisions();
 testCommitUsesLatestCaptureCycle();
 testSameStepCapturePacksPitchAndDistributesTriggers();
 testEmptyCaptureDoesNotOverwriteEuclidLane();

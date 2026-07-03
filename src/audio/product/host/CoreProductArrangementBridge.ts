@@ -1,5 +1,6 @@
 import { CoreProductArrangementScheduler } from '../../coreProductArrangementScheduler';
 import type { CoreProductEvent } from '../../coreProductEvents';
+import type { ProductSimpleSequencerVisualPlanActive } from '../ProductEngineTypes';
 import type { SampleSlotId } from '../../sampleLibraries/SampleLibraryTypes';
 import type { TransportDebugSnapshot } from '../../transport';
 
@@ -44,6 +45,10 @@ export class CoreProductArrangementBridge {
 
   setRuntimeWalkStatePatch(patch: Record<string, number>): void {
     this.runtimeWalkStatePatch = { ...patch };
+  }
+
+  setRuntimePlanCaptureEnabled(active: ProductSimpleSequencerVisualPlanActive): void {
+    this.scheduler.setRuntimePlanCaptureEnabled(active);
   }
 
   start(latestSliderState: Record<string, unknown> | null, adapterState: Record<string, unknown>): void {

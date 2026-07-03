@@ -1935,19 +1935,45 @@ const CORE_PRODUCT_SEQUENCER_PITCH_EXACT_SCALE_IDS: Record<string, number> = Obj
   Arabic: 19,
 });
 
+export function createCoreProductSequencerLanePitchSettingEvents(
+  sequencer: keyof typeof CORE_PRODUCT_SEQUENCER_IDS,
+  laneIndex: number,
+  settings: unknown,
+): CoreProductEvent[] {
+  const pitchSettings = normalizeSequencerPitchSettings(settings);
+  const scaleEvent = createCoreProductSequencerLaneParamEvent(
+    sequencer,
+    laneIndex,
+    KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchScale,
+    CORE_PRODUCT_SEQUENCER_PITCH_SCALE_IDS[pitchSettings.scale] ?? 1,
+  );
+  return [
+    createCoreProductSequencerLaneParamEvent(
+      sequencer,
+      laneIndex,
+      KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchMode,
+      CORE_PRODUCT_SEQUENCER_PITCH_MODE_IDS[pitchSettings.mode],
+    ),
+    createCoreProductSequencerLaneParamEvent(
+      sequencer,
+      laneIndex,
+      KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchRoot,
+      pitchSettings.root,
+    ),
+    {
+      ...scaleEvent,
+      value2: CORE_PRODUCT_SEQUENCER_PITCH_EXACT_SCALE_IDS[pitchSettings.scale] ?? 2,
+    },
+  ];
+}
+
 export function createCoreProductSequencerPitchSettingEvents(
   sequencer: keyof typeof CORE_PRODUCT_SEQUENCER_IDS,
   settings: readonly unknown[],
 ): CoreProductEvent[] {
-  return Array.from({ length: Math.min(settings.length, 16) }, (_, laneIndex) => {
-    const pitchSettings = normalizeSequencerPitchSettings(settings[laneIndex]);
-    const scaleEvent = createCoreProductSequencerLaneParamEvent(sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchScale, CORE_PRODUCT_SEQUENCER_PITCH_SCALE_IDS[pitchSettings.scale] ?? 1);
-    return [
-      createCoreProductSequencerLaneParamEvent(sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchMode, CORE_PRODUCT_SEQUENCER_PITCH_MODE_IDS[pitchSettings.mode]),
-      createCoreProductSequencerLaneParamEvent(sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchRoot, pitchSettings.root),
-      { ...scaleEvent, value2: CORE_PRODUCT_SEQUENCER_PITCH_EXACT_SCALE_IDS[pitchSettings.scale] ?? 2 },
-    ];
-  }).flat();
+  return Array.from({ length: Math.min(settings.length, 16) }, (_, laneIndex) =>
+    createCoreProductSequencerLanePitchSettingEvents(sequencer, laneIndex, settings[laneIndex])
+  ).flat();
 }
 
 export function createCoreProductSequencerStepValueEvent(

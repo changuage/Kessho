@@ -64,3 +64,27 @@ export function capturedMidisToSemitonePitchValues(
     },
   };
 }
+
+export function capturedMidisToNotePitchValues(
+  midisByStep: readonly (number | null)[],
+): CapturedPitchCommit {
+  const capturedMidis = midisByStep.filter((value): value is number => (
+    typeof value === 'number' && Number.isFinite(value)
+  ));
+  const rootMidi = chooseCaptureRootMidi(capturedMidis);
+  const pitchValues = midisByStep.map((midi) => (
+    typeof midi === 'number' && Number.isFinite(midi)
+      ? clamp(Math.round(midi), 0, 127)
+      : rootMidi
+  ));
+
+  return {
+    rootMidi,
+    pitchValues,
+    pitchSettings: {
+      mode: 'notes',
+      root: rootMidi,
+      scale: 'Chromatic',
+    },
+  };
+}

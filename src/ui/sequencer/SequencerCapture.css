@@ -6,9 +6,16 @@
 }
 
 .seq-capture-preview-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: 5px;
   border-radius: 5px;
   background: rgba(232, 220, 196, 0.06);
+  color: rgba(240, 249, 255, 0.94);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .seq-capture-preview-cell--note {

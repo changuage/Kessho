@@ -1,6 +1,7 @@
 import type {
   CaptureCell,
   CaptureEvent,
+  CaptureSession,
   CaptureScratch,
 } from './generatedSequencerCaptureTypes';
 
@@ -133,4 +134,21 @@ export function captureStepCount(scratch: CaptureScratch): number {
 
 export function captureEventsInOrder(scratch: CaptureScratch): CaptureEvent[] {
   return [...scratch.events].sort((left, right) => left.eventOrder - right.eventOrder);
+}
+
+export function captureScratchForCycle(
+  session: CaptureSession,
+  cycleIndex: number | null,
+): CaptureScratch {
+  if (cycleIndex !== null) {
+    if (session.scratch.cycleIndex === cycleIndex) return session.scratch;
+    if (session.completedScratch?.cycleIndex === cycleIndex) return session.completedScratch;
+  }
+  return session.scratch.events.length > 0 || !session.completedScratch
+    ? session.scratch
+    : session.completedScratch;
+}
+
+export function captureScratchForDisplay(session: CaptureSession): CaptureScratch {
+  return captureScratchForCycle(session, session.commitCycleIndex);
 }

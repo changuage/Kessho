@@ -250,6 +250,11 @@ export type ProductEngineState = {
   transportDebug: TransportDebugSnapshot | null;
 };
 
+export type ProductSimpleSequencerVisualPlanActive = Readonly<{
+  padChord: boolean;
+  randomTiming: boolean;
+}>;
+
 export type ProductTelemetrySnapshot = CoreProductTelemetrySnapshot;
 
 export type ProductPerfMetric = {

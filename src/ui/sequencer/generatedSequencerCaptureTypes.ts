@@ -2,12 +2,15 @@ import type { GeneratedSequencerCaptureEvent } from '../../audio/coreProductGene
 
 export type CaptureCommitStatus =
   | 'idle'
+  | 'waitingFirstTrigger'
   | 'recording'
   | 'finishing'
   | 'committing'
   | 'committed'
   | 'empty'
   | 'overflow';
+
+export type CaptureStartMode = 'sequencerBoundary' | 'firstEvent';
 
 export interface CaptureCell {
   visitedCycle: number;
@@ -45,6 +48,9 @@ export interface CaptureSession {
   sourceLaneIndex: number;
   targetLaneIndex: number;
   sourceMode: 'anchorWalker' | 'orbit';
+  startMode: CaptureStartMode;
+  originStepFloat: number | null;
+  originPlayheadStep: number | null;
   targetStepCount: number;
   startedAtSample: number | null;
   startedAtMs: number;

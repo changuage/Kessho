@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { DEFAULT_STATE, type SliderState } from '../state';
 import type { DynamicsAnalyserKey, DynamicsVisualTelemetrySnapshot } from '../../audio/engineSharedTypes';
 import type { SliderPageId } from '../sliderHelpCatalog';
@@ -239,6 +239,7 @@ export interface DynamicsPageProps {
   SliderComponent: React.ComponentType<Record<string, unknown>>;
   getDynamicsAnalyser?: (key: DynamicsAnalyserKey) => AnalyserNode | null;
   getDynamicsTelemetry?: () => DynamicsVisualTelemetrySnapshot;
+  onVisualTelemetryActiveChange?: (active: boolean) => void;
 }
 
 const DynamicsPage: React.FC<DynamicsPageProps> = ({
@@ -251,6 +252,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
   SliderComponent,
   getDynamicsAnalyser,
   getDynamicsTelemetry,
+  onVisualTelemetryActiveChange,
 }) => {
   const Slider = SliderComponent as React.ComponentType<any>;
   const { announceHelp, announceSlider } = useSliderHelp();
@@ -291,6 +293,21 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
     state.sidechainEnabled,
   ].filter(Boolean).length;
   const dynamicsBusActive = state.dynamicsBusEnabled || activeBusModules > 0;
+  const visualTelemetryConsumerVisible = dynamicsVisualizersToggle.enabled && Boolean(
+    state.driftEnabled ||
+    state.erosionEnabled ||
+    state.sidechainEnabled ||
+    state.dynamicsSaturationEnabled ||
+    state.endCompEnabled
+  );
+
+  useEffect(() => {
+    onVisualTelemetryActiveChange?.(visualTelemetryConsumerVisible);
+    return () => {
+      onVisualTelemetryActiveChange?.(false);
+    };
+  }, [onVisualTelemetryActiveChange, visualTelemetryConsumerVisible]);
+
   const activeDrift = DRIFT_MODE_OPTIONS.find((mode) => mode.value === state.driftMode)?.label ?? 'Clean';
   const eq1PresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_EQ1_PRESET_KEYS), []);
   const eq2PresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_EQ2_PRESET_KEYS), []);

@@ -54,6 +54,15 @@ export type CoreProductPadChordSchedule = {
   scheduledNotes: CoreProductArrangementScheduledNote[];
 };
 
+type CoreProductPadChordScheduleArgs = {
+  state: Record<string, unknown>;
+  harmonyState: HarmonyState;
+  rng: () => number;
+  anchors: TransportAnchors | null;
+  nowWallSec: number;
+  includeRuntimeNotes?: boolean;
+};
+
 type ChordVoice = CoreProductChordVoice;
 
 const CHORD_MORPH_SOURCE_IDS = new Set<number>([
@@ -114,24 +123,13 @@ function orderedChordVoices(
   return up.concat([...up].reverse().slice(1, -1));
 }
 
-export function createCoreProductPadChordSchedule(args: {
-  state: Record<string, unknown>;
-  harmonyState: HarmonyState;
-  rng: () => number;
-  anchors: TransportAnchors | null;
-  nowWallSec: number;
-}): CoreProductPadChordSchedule {
+export function createCoreProductPadChordSchedule(args: CoreProductPadChordScheduleArgs): CoreProductPadChordSchedule {
   return createCoreProductChordSequencerSchedule(args);
 }
 
-export function createCoreProductChordGeneratorSchedule(args: {
-  state: Record<string, unknown>;
-  harmonyState: HarmonyState;
-  rng: () => number;
-  anchors: TransportAnchors | null;
-  nowWallSec: number;
-}): CoreProductPadChordSchedule {
+export function createCoreProductChordGeneratorSchedule(args: CoreProductPadChordScheduleArgs): CoreProductPadChordSchedule {
   const { state, harmonyState, rng, anchors, nowWallSec } = args;
+  const includeRuntimeNotes = args.includeRuntimeNotes !== false;
   const sliderState = sliderStateFromRecord(state);
   const phraseSeconds = harmonyPhraseSeconds(sliderState);
   const triggerIntervalSeconds = padChordTriggerIntervalSeconds(sliderState);
@@ -173,7 +171,7 @@ export function createCoreProductChordGeneratorSchedule(args: {
     velocity = 1,
     holdSeconds?: number,
   ) => {
-    if (!timing) return;
+    if (!includeRuntimeNotes || !timing) return;
     const vizSource = runtimeSourceFromSourceId(sourceId);
     const triggerWallSec = nowWallSec + delaySeconds;
     const envelope = envelopeForSource(sliderState, vizSource, delaySeconds, triggerIntervalSeconds);
@@ -229,14 +227,9 @@ export function createCoreProductChordGeneratorSchedule(args: {
   return schedule;
 }
 
-export function createCoreProductChordSequencerSchedule(args: {
-  state: Record<string, unknown>;
-  harmonyState: HarmonyState;
-  rng: () => number;
-  anchors: TransportAnchors | null;
-  nowWallSec: number;
-}): CoreProductPadChordSchedule {
+export function createCoreProductChordSequencerSchedule(args: CoreProductPadChordScheduleArgs): CoreProductPadChordSchedule {
   const { state, harmonyState, rng, anchors, nowWallSec } = args;
+  const includeRuntimeNotes = args.includeRuntimeNotes !== false;
   const sliderState = sliderStateFromRecord(state);
   const config = sanitizeSynthChordSequencerConfig(state.synthChordSequencer);
   const triggerIntervalSeconds = coreProductChordSequencerStepSeconds(state);
@@ -303,7 +296,7 @@ export function createCoreProductChordSequencerSchedule(args: {
     envelopeIntervalSeconds = triggerIntervalSeconds,
     holdSeconds?: number,
   ) => {
-    if (!timing) return;
+    if (!includeRuntimeNotes || !timing) return;
     const vizSource = runtimeSourceFromSourceId(sourceId);
     const triggerWallSec = nowWallSec + delaySeconds;
     const envelope = envelopeForSource(sliderState, vizSource, delaySeconds, envelopeIntervalSeconds);

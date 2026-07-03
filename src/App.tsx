@@ -477,6 +477,8 @@ const App: React.FC = () => {
     getProductGranularVisualEvents,
     getProductDynamicsVisualTelemetry,
     setProductGranularUiActive,
+    setProductSimpleSequencerVisualPlanActive,
+    setProductVisualTelemetryActive,
     pushProductMidiMessage,
     getProductPadFilterFreq,
     getProductPadLfoValue,
@@ -566,6 +568,20 @@ const App: React.FC = () => {
     setSnowflakeActivated,
     preloadAdvancedEditorRuntime,
   });
+  const [textureVisualTelemetryActive, setTextureVisualTelemetryActive] = useState(false);
+  const productVisualTelemetryActive = uiMode === 'advanced' && (
+    (activeTab === 'visualizer' && reactiveVisualizerToggle.enabled) ||
+    (activeTab === 'texture' && textureVisualTelemetryActive)
+  );
+  useEffect(() => {
+    setProductVisualTelemetryActive(productVisualTelemetryActive);
+  }, [productVisualTelemetryActive, setProductVisualTelemetryActive]);
+  useEffect(() => (
+    () => {
+      setProductVisualTelemetryActive(false);
+    }
+  ), [setProductVisualTelemetryActive]);
+
   useProductRuntimeCallbackRegistrations({
     activeTab,
     setProductDrumEvolveTriggerCallback,
@@ -3477,6 +3493,7 @@ const App: React.FC = () => {
                 CollapsiblePanelComponent={CollapsiblePanel as unknown as React.ComponentType<Record<string, unknown>>}
                 isRunning={playbackIsRunning}
                 transportDebug={engineState.transportDebug}
+                onSimpleVisualizerRuntimePlanVisibilityChange={setProductSimpleSequencerVisualPlanActive}
                 initialViewMode={synthViewModeRef.current}
                 onViewModeChange={(mode) => {
                   synthViewModeRef.current = mode;
@@ -3624,6 +3641,7 @@ const App: React.FC = () => {
                 onStateChange={handleStateChange}
                 sliderProps={sliderProps}
                 SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
+                onVisualTelemetryActiveChange={setTextureVisualTelemetryActive}
                 {...productPageRuntimeSurface.dynamicsPageRuntimeProps}
               />
             )}

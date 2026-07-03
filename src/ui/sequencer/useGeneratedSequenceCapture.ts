@@ -3,10 +3,13 @@ import type { GeneratedSequencerCaptureEvent } from '../../audio/coreProductGene
 import type { PitchBindingMode } from '../../audio/drumSeqTypes';
 import type { UseEuclideanSequencerResult } from './useEuclideanSequencer';
 import type {
+  CaptureStartMode,
   CaptureSession,
   CaptureScratch,
 } from './generatedSequencerCaptureTypes';
 import {
+  captureScratchForCycle,
+  captureScratchForDisplay,
   captureStepCount,
   createCaptureScratch,
   markCaptureStepVisited,
@@ -60,6 +63,7 @@ export interface GeneratedSequenceCaptureApi {
     sourceLaneIndex?: number;
     targetLaneIndex?: number;
     sourceMode?: 'anchorWalker' | 'orbit';
+    startMode?: CaptureStartMode;
   }) => void;
   stopAndCommit: () => void;
   cancelCapture: () => void;
@@ -90,20 +94,42 @@ function currentStepFromPlayhead(playhead: number, stepCount: number): number {
   return positiveModulo(Math.floor(normalized), safeSteps);
 }
 
-function captureScratchForCycle(
-  session: CaptureSession,
-  cycleIndex: number | null,
-): CaptureScratch {
-  if (cycleIndex !== null) {
-    if (session.scratch.cycleIndex === cycleIndex) return session.scratch;
-    if (session.completedScratch?.cycleIndex === cycleIndex) return session.completedScratch;
+function currentStepFromSessionPlayhead(session: CaptureSession, playhead: number): number | null {
+  if (session.startMode === 'firstEvent') {
+    if (session.originPlayheadStep === null) return null;
+    return currentStepFromPlayhead(
+      positiveModulo(playhead - session.originPlayheadStep, session.targetStepCount),
+      session.targetStepCount,
+    );
   }
-  return session.completedScratch ?? session.scratch;
+  return currentStepFromPlayhead(playhead, session.targetStepCount);
 }
 
 function currentCaptureStepIndex(session: CaptureSession, playhead: number): number {
   return session.scratch.lastStepIndex
-    ?? currentStepFromPlayhead(playhead, session.targetStepCount);
+    ?? currentStepFromSessionPlayhead(session, playhead)
+    ?? 0;
+}
+
+export function firstEventRelativeTargetStep(
+  absoluteTargetStep: number,
+  originStepFloat: number,
+  stepCount: number,
+  previousRelativeStep: number | null,
+): number {
+  const safeStepCount = Math.max(1, stepCount);
+  if (!Number.isFinite(absoluteTargetStep)) return previousRelativeStep ?? 0;
+  const origin = Number.isFinite(originStepFloat) ? originStepFloat : absoluteTargetStep;
+  let relative = absoluteTargetStep - origin;
+  if (relative < 0) {
+    relative += Math.ceil(Math.abs(relative) / safeStepCount) * safeStepCount;
+  }
+  if (previousRelativeStep !== null && Number.isFinite(previousRelativeStep)) {
+    while (relative + 1e-6 < previousRelativeStep) {
+      relative += safeStepCount;
+    }
+  }
+  return Math.max(0, relative);
 }
 
 function completedPhraseCycleIndex(session: CaptureSession): number | null {
@@ -154,6 +180,7 @@ export function useGeneratedSequenceCapture({
     sourceLaneIndex?: number;
     targetLaneIndex?: number;
     sourceMode?: 'anchorWalker' | 'orbit';
+    startMode?: CaptureStartMode;
   }) => {
     const requested = typeof request === 'number'
       ? { targetLaneIndex: request }
@@ -161,6 +188,7 @@ export function useGeneratedSequenceCapture({
     const sourceLaneIndex = requested?.sourceLaneIndex ?? activeLaneIndex;
     const targetLaneIndex = requested?.targetLaneIndex ?? activeLaneIndex;
     const sourceMode = requested?.sourceMode ?? sourceModeForLaneMode(activeLaneMode);
+    const startMode = requested?.startMode ?? 'sequencerBoundary';
     if (!sourceMode) return;
     if (commitFlushTimerRef.current !== null) {
       window.clearTimeout(commitFlushTimerRef.current);
@@ -177,10 +205,13 @@ export function useGeneratedSequenceCapture({
       sourceLaneIndex,
       targetLaneIndex,
       sourceMode,
+      startMode,
+      originStepFloat: null,
+      originPlayheadStep: null,
       targetStepCount: stepCount,
       startedAtSample: null,
       startedAtMs: performance.now(),
-      status: 'recording',
+      status: startMode === 'firstEvent' ? 'waitingFirstTrigger' : 'recording',
       scratch: createCaptureScratch(stepCount),
       completedScratch: null,
       commitCycleIndex: null,
@@ -291,6 +322,10 @@ export function useGeneratedSequenceCapture({
     const current = sessionRef.current;
     if (!current) return;
     if (current.status === 'committing' || current.status === 'finishing') return;
+    if (current.status === 'waitingFirstTrigger') {
+      beginCommit(current, null);
+      return;
+    }
 
     const playhead = seq.playheads[current.targetLaneIndex] ?? 0;
     const stopAction = chooseGeneratedCaptureStopAction({
@@ -300,6 +335,13 @@ export function useGeneratedSequenceCapture({
     });
 
     if (stopAction.kind === 'finishCurrentPhrase') {
+      if (!isRunning) {
+        const scratch = current.scratch.events.length > 0
+          ? current.scratch
+          : current.completedScratch;
+        beginCommit(current, scratch && captureStepCount(scratch) > 0 ? scratch.cycleIndex : null);
+        return;
+      }
       publishSession({
         ...current,
         status: 'finishing',
@@ -310,6 +352,7 @@ export function useGeneratedSequenceCapture({
     beginCommit(current, stopAction.cycleIndex);
   }, [
     beginCommit,
+    isRunning,
     publishSession,
     seq.playheads,
   ]);
@@ -323,13 +366,33 @@ export function useGeneratedSequenceCapture({
     const current = sessionRef.current;
     if (!current?.active || current.status === 'committing') return false;
 
-    const rawStep = typeof note.targetStepIndex === 'number' && Number.isFinite(note.targetStepIndex)
+    const explicitTargetStep = typeof note.targetStepIndex === 'number' && Number.isFinite(note.targetStepIndex)
       ? note.targetStepIndex
-      : currentStepFromPlayhead(seq.playheads[current.targetLaneIndex] ?? 0, current.targetStepCount);
-    const stepIndex = positiveModulo(Math.round(rawStep), current.targetStepCount);
+      : null;
+    const rawStep = explicitTargetStep !== null
+      ? explicitTargetStep
+      : currentStepFromSessionPlayhead(current, seq.playheads[current.targetLaneIndex] ?? 0)
+        ?? currentStepFromPlayhead(seq.playheads[current.targetLaneIndex] ?? 0, current.targetStepCount);
+    const originStepFloat = current.startMode === 'firstEvent' && current.originStepFloat === null
+      ? rawStep
+      : current.originStepFloat;
+    const originPlayheadStep = current.startMode === 'firstEvent' && current.originPlayheadStep === null
+      ? positiveModulo(rawStep, current.targetStepCount)
+      : current.originPlayheadStep;
+    const rawStepIsSessionRelative = current.startMode === 'firstEvent' &&
+      current.originStepFloat !== null &&
+      explicitTargetStep === null;
+    const relativeRawStep = current.startMode === 'firstEvent' && originStepFloat !== null
+      ? rawStepIsSessionRelative
+        ? rawStep
+        : Math.max(0, rawStep - originStepFloat)
+      : rawStep;
+    const stepIndex = positiveModulo(Math.round(relativeRawStep), current.targetStepCount);
     const previousStep = current.scratch.lastStepIndex;
-    let cycleIndex = current.scratch.cycleIndex;
-    if (previousStep !== null && stepIndex < previousStep) {
+    let cycleIndex = current.startMode === 'firstEvent'
+      ? Math.max(0, Math.floor(relativeRawStep / current.targetStepCount))
+      : current.scratch.cycleIndex;
+    if (current.startMode !== 'firstEvent' && previousStep !== null && stepIndex < previousStep) {
       cycleIndex += 1;
     }
 
@@ -345,11 +408,14 @@ export function useGeneratedSequenceCapture({
         midiNote: note.midiNote,
         velocity: note.velocity ?? 1,
         gateSeconds: note.gateSeconds ?? 0.18,
-        targetStepFloat: rawStep,
+        targetStepFloat: relativeRawStep,
       },
     );
     const next = {
       ...current,
+      status: current.status === 'waitingFirstTrigger' ? 'recording' as const : current.status,
+      originStepFloat,
+      originPlayheadStep,
       completedScratch,
       scratch,
     };
@@ -367,7 +433,8 @@ export function useGeneratedSequenceCapture({
     if (current.status === 'committing') return;
 
     const playhead = seq.playheads[current.targetLaneIndex] ?? 0;
-    const stepIndex = currentStepFromPlayhead(playhead, current.targetStepCount);
+    const stepIndex = currentStepFromSessionPlayhead(current, playhead);
+    if (stepIndex === null) return;
     const previousStep = current.scratch.lastStepIndex;
     let cycleIndex = current.scratch.cycleIndex;
     if (previousStep !== null && stepIndex < previousStep) {
@@ -393,6 +460,20 @@ export function useGeneratedSequenceCapture({
     publishSession(next);
   }, [beginCommit, isRunning, publishSession, seq.playheads]);
 
+  useEffect(() => {
+    if (isRunning) return;
+    const current = sessionRef.current;
+    if (!current?.active || current.status !== 'finishing') return;
+    const scratch = current.scratch.events.length > 0
+      ? current.scratch
+      : current.completedScratch;
+    if (!scratch || captureStepCount(scratch) === 0) {
+      beginCommit(current, null);
+      return;
+    }
+    beginCommit(current, scratch.cycleIndex);
+  }, [beginCommit, isRunning]);
+
   const ingestProductEvents = useCallback((
     events: readonly GeneratedSequencerCaptureEvent[],
     overflowCount = 0,
@@ -407,16 +488,51 @@ export function useGeneratedSequenceCapture({
       current.targetStepCount,
     );
     let startedAtSample = current.startedAtSample;
+    let originStepFloat = current.originStepFloat;
+    let originPlayheadStep = current.originPlayheadStep;
+    let status = current.status;
+    let previousFirstEventRelativeStep: number | null = null;
 
-    for (const event of events) {
+    const orderedEvents = current.startMode === 'firstEvent'
+      ? [...events].sort((left, right) => (
+          left.absoluteSample - right.absoluteSample ||
+          left.eventId - right.eventId
+        ))
+      : events;
+
+    for (const event of orderedEvents) {
       if (event.sourceLaneIndex !== current.sourceLaneIndex) continue;
       if (event.sourceMode !== current.sourceMode) continue;
-      const relativeTargetStep = event.targetStepIndex;
-      const eventStepIndex = typeof relativeTargetStep === 'number'
-        ? positiveModulo(relativeTargetStep, current.targetStepCount)
+      const targetStepFloat = typeof event.targetStepFloat === 'number' && Number.isFinite(event.targetStepFloat)
+        ? event.targetStepFloat
+        : null;
+      const relativeTargetStep = typeof event.targetStepIndex === 'number'
+        ? event.targetStepIndex
+        : null;
+      const absoluteTargetStep = targetStepFloat ?? relativeTargetStep;
+      if (current.startMode === 'firstEvent' && originStepFloat === null) {
+        originStepFloat = typeof absoluteTargetStep === 'number'
+          ? absoluteTargetStep
+          : fallbackStepIndex;
+        originPlayheadStep = positiveModulo(originStepFloat, current.targetStepCount);
+        status = 'recording';
+      }
+      const sessionTargetStep: number | null = current.startMode === 'firstEvent' && typeof absoluteTargetStep === 'number'
+        ? firstEventRelativeTargetStep(
+            absoluteTargetStep,
+            originStepFloat ?? absoluteTargetStep,
+            current.targetStepCount,
+            previousFirstEventRelativeStep,
+          )
+        : absoluteTargetStep;
+      if (current.startMode === 'firstEvent' && typeof sessionTargetStep === 'number') {
+        previousFirstEventRelativeStep = sessionTargetStep;
+      }
+      const eventStepIndex = typeof sessionTargetStep === 'number'
+        ? positiveModulo(Math.round(sessionTargetStep), current.targetStepCount)
         : fallbackStepIndex;
-      const eventCycleIndex = typeof relativeTargetStep === 'number'
-        ? Math.max(0, Math.floor(relativeTargetStep / current.targetStepCount))
+      const eventCycleIndex = typeof sessionTargetStep === 'number'
+        ? Math.max(0, Math.floor(sessionTargetStep / current.targetStepCount))
         : scratch.cycleIndex;
       if (eventCycleIndex < scratch.cycleIndex) {
         if (!completedScratch || completedScratch.cycleIndex !== eventCycleIndex) continue;
@@ -432,9 +548,7 @@ export function useGeneratedSequenceCapture({
             midiNote: event.midiNote,
             velocity: event.velocity,
             gateSeconds: event.gateSeconds,
-            targetStepFloat: typeof event.targetStepFloat === 'number' && Number.isFinite(event.targetStepFloat)
-              ? event.targetStepFloat
-              : relativeTargetStep,
+            targetStepFloat: typeof sessionTargetStep === 'number' ? sessionTargetStep : relativeTargetStep,
             nudge: event.nudge,
           },
         );
@@ -452,6 +566,9 @@ export function useGeneratedSequenceCapture({
           beginCommit({
             ...current,
             startedAtSample,
+            originStepFloat,
+            originPlayheadStep,
+            status,
             completedScratch: completedByEvent,
             scratch,
             overflowCount,
@@ -463,7 +580,7 @@ export function useGeneratedSequenceCapture({
 
       const currentCell = scratch.cells[eventStepIndex];
       if (
-        typeof relativeTargetStep === 'number' &&
+        typeof sessionTargetStep === 'number' &&
         currentCell &&
         currentCell.visitedCycle > eventCycleIndex
       ) {
@@ -479,9 +596,7 @@ export function useGeneratedSequenceCapture({
           midiNote: event.midiNote,
           velocity: event.velocity,
           gateSeconds: event.gateSeconds,
-          targetStepFloat: typeof event.targetStepFloat === 'number' && Number.isFinite(event.targetStepFloat)
-            ? event.targetStepFloat
-            : relativeTargetStep,
+          targetStepFloat: typeof sessionTargetStep === 'number' ? sessionTargetStep : relativeTargetStep,
           nudge: event.nudge,
         },
       );
@@ -490,15 +605,17 @@ export function useGeneratedSequenceCapture({
     publishSession({
       ...current,
       startedAtSample,
+      originStepFloat,
+      originPlayheadStep,
       completedScratch,
       scratch,
       overflowCount,
-      status: overflowCount > current.overflowCount ? 'overflow' : current.status,
+      status: overflowCount > current.overflowCount ? 'overflow' : status,
     });
   }, [beginCommit, publishSession, seq.playheads]);
 
   const capturedCount = useMemo(() => (
-    session ? captureStepCount(captureScratchForCycle(session, session.commitCycleIndex)) : 0
+    session ? captureStepCount(captureScratchForDisplay(session)) : 0
   ), [session]);
 
   return {

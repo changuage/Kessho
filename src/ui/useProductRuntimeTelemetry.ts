@@ -1,17 +1,13 @@
 import { useCallback, useEffect } from 'react';
 import { isCoreProductRangeKeySupported } from '../audio/coreProductEvents';
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
-import type { ProductDynamicsVisualTelemetry } from '../audio/product/ProductEngineTypes';
+import type { ProductDynamicsVisualTelemetry, ProductSimpleSequencerVisualPlanActive } from '../audio/product/ProductEngineTypes';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { CoreProductGranularVisualEvent } from '../audio/coreProductTelemetry';
 import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
-import { useDocumentVisibility } from './hooks/useDocumentVisibility';
-
-type ProductRuntimeTelemetryUiMode = 'snowflake' | 'advanced' | 'journey';
 
 type ProductRuntimeTelemetryOptions = {
   productRuntimeMode: ProductRuntimeSelectionMode;
-  uiMode: ProductRuntimeTelemetryUiMode;
 };
 
 type ProductRuntimeTelemetry = {
@@ -24,6 +20,7 @@ type ProductRuntimeTelemetry = {
   getProductPadLfoValue: (pad: 'pad1' | 'pad2') => number;
   pushProductMidiMessage: (message: KesshoMidiMessage) => void;
   setProductGranularUiActive: (active: boolean) => void;
+  setProductSimpleSequencerVisualPlanActive: (active: ProductSimpleSequencerVisualPlanActive) => void;
   setProductVisualTelemetryActive: (active: boolean) => void;
   productRuntimeSupportsRangeKey: (key: string) => boolean;
 };
@@ -38,9 +35,7 @@ const EMPTY_PRODUCT_DYNAMICS_VISUAL_TELEMETRY: ProductDynamicsVisualTelemetry = 
 
 export function useProductRuntimeTelemetry({
   productRuntimeMode,
-  uiMode,
 }: ProductRuntimeTelemetryOptions): ProductRuntimeTelemetry {
-  const documentVisible = useDocumentVisibility();
   const productRuntimeActive = productRuntimeMode === 'core-product';
 
   const getProductGranularActiveGrainCount = useCallback((): number => {
@@ -95,6 +90,11 @@ export function useProductRuntimeTelemetry({
     productEngine.setVisualTelemetryActive(active);
   }, [productRuntimeActive]);
 
+  const setProductSimpleSequencerVisualPlanActive = useCallback((active: ProductSimpleSequencerVisualPlanActive): void => {
+    if (!productRuntimeActive) return;
+    productEngine.setSimpleSequencerVisualPlanActive(active);
+  }, [productRuntimeActive]);
+
   const productRuntimeSupportsRangeKey = useCallback((key: string): boolean => {
     return productRuntimeMode !== 'core-product' || isCoreProductRangeKeySupported(key);
   }, [productRuntimeMode]);
@@ -102,14 +102,21 @@ export function useProductRuntimeTelemetry({
   useEffect(() => {
     if (productRuntimeMode !== 'core-product') {
       productEngine.setVisualTelemetryActive(false);
-      return;
     }
-    const active = uiMode === 'advanced' && documentVisible;
-    productEngine.setVisualTelemetryActive(active);
     return () => {
       productEngine.setVisualTelemetryActive(false);
     };
-  }, [documentVisible, productRuntimeMode, uiMode]);
+  }, [productRuntimeMode]);
+
+  useEffect(() => {
+    if (productRuntimeMode !== 'core-product') {
+      productEngine.setSimpleSequencerVisualPlanActive({ padChord: false, randomTiming: false });
+      return;
+    }
+    return () => {
+      productEngine.setSimpleSequencerVisualPlanActive({ padChord: false, randomTiming: false });
+    };
+  }, [productRuntimeMode]);
 
   return {
     getProductGranularActiveGrainCount,
@@ -121,6 +128,7 @@ export function useProductRuntimeTelemetry({
     getProductPadLfoValue,
     pushProductMidiMessage,
     setProductGranularUiActive,
+    setProductSimpleSequencerVisualPlanActive,
     setProductVisualTelemetryActive,
     productRuntimeSupportsRangeKey,
   };

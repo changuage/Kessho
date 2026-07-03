@@ -86,6 +86,7 @@ import {
 import { normalizeSequencerPitchSettings } from '../../audio/sequencerPitchSettings';
 import type { HarmonyState } from '../../audio/harmony';
 import type {
+  ProductSimpleSequencerVisualPlanActive,
   ProductSynthAnchorWalkerVisualLaneState,
   ProductSynthOrbitVisualLaneState,
 } from '../../audio/product/ProductEngineTypes';
@@ -1505,6 +1506,8 @@ export interface SynthPageProps {
   isRunning: boolean;
   /** Live transport timing used by simple phrase visualizers */
   transportDebug?: TransportDebugSnapshot | null;
+  /** Enables product runtime visual-only plan snapshots for mounted simple visualizers */
+  onSimpleVisualizerRuntimePlanVisibilityChange?: (active: ProductSimpleSequencerVisualPlanActive) => void;
   onRequestPlaybackStart?: (statePatch?: Partial<SliderState>) => void;
   /** Get morphed lead params for ADSR preview */
   getLeadMorphedParams: (lead: 1 | 2) => { attack: number; decay: number; sustain: number; release: number } | null;
@@ -1597,6 +1600,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     // CollapsiblePanelComponent — available via props if needed
     isRunning,
     transportDebug,
+    onSimpleVisualizerRuntimePlanVisibilityChange,
     onRequestPlaybackStart,
     getLeadMorphedParams,
     liveLeadMorphedParamsAvailable = true,
@@ -1943,46 +1947,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       setStepPositionCallback(null);
     };
   }, [setStepPositionCallback]);
-
-  useEffect(() => {
-    let rafId: number | null = null;
-    let pendingStates: Array<ProductSynthOrbitVisualLaneState | null> = [null, null, null, null];
-    setOrbitVisualStateCallback((nextStates: Array<ProductSynthOrbitVisualLaneState | null>) => {
-      if (document.visibilityState !== 'visible') return;
-      pendingStates = [0, 1, 2, 3].map((index) => nextStates[index] ?? null);
-      if (rafId !== null) return;
-      rafId = window.requestAnimationFrame(() => {
-        rafId = null;
-        setOrbitVisualStates(pendingStates);
-      });
-    });
-    return () => {
-      if (rafId !== null) {
-        window.cancelAnimationFrame(rafId);
-      }
-      setOrbitVisualStateCallback(null);
-    };
-  }, [setOrbitVisualStateCallback]);
-
-  useEffect(() => {
-    let rafId: number | null = null;
-    let pendingStates: Array<ProductSynthAnchorWalkerVisualLaneState | null> = [null, null, null, null];
-    setAnchorWalkerVisualStateCallback((nextStates: Array<ProductSynthAnchorWalkerVisualLaneState | null>) => {
-      if (document.visibilityState !== 'visible') return;
-      pendingStates = [0, 1, 2, 3].map((index) => nextStates[index] ?? null);
-      if (rafId !== null) return;
-      rafId = window.requestAnimationFrame(() => {
-        rafId = null;
-        setWalkerVisualStates(pendingStates);
-      });
-    });
-    return () => {
-      if (rafId !== null) {
-        window.cancelAnimationFrame(rafId);
-      }
-      setAnchorWalkerVisualStateCallback(null);
-    };
-  }, [setAnchorWalkerVisualStateCallback]);
 
   useEffect(() => {
     const flashTimers: Array<number | null> = [null, null, null, null];
@@ -4091,6 +4055,69 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     resetKey: presetVersion,
   });
 
+  const sequencerFaceState = useMemo(
+    () => normalizeSynthSequencerFaceState(state.synthSequencerFaces),
+    [state.synthSequencerFaces],
+  );
+  const activeSequencerSlot = sequencerFaceState.slots[seq.activeTab] ?? sequencerFaceState.slots[0];
+  const activeSequencerMode = activeSequencerSlot?.mode ?? 'euclid';
+  const orbitRuntimeVisualsVisible = seq.viewMode === 'detail' && activeSequencerMode === 'orbit';
+  const anchorWalkerRuntimeVisualsVisible = seq.viewMode === 'detail' && activeSequencerMode === 'anchorWalker';
+
+  useEffect(() => {
+    if (!orbitRuntimeVisualsVisible) {
+      setOrbitVisualStateCallback(null);
+      setOrbitVisualStates(prev => (prev.some(Boolean) ? [null, null, null, null] : prev));
+      return () => {
+        setOrbitVisualStateCallback(null);
+      };
+    }
+    let rafId: number | null = null;
+    let pendingStates: Array<ProductSynthOrbitVisualLaneState | null> = [null, null, null, null];
+    setOrbitVisualStateCallback((nextStates: Array<ProductSynthOrbitVisualLaneState | null>) => {
+      if (document.visibilityState !== 'visible') return;
+      pendingStates = [0, 1, 2, 3].map((index) => nextStates[index] ?? null);
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        setOrbitVisualStates(pendingStates);
+      });
+    });
+    return () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+      setOrbitVisualStateCallback(null);
+    };
+  }, [orbitRuntimeVisualsVisible, setOrbitVisualStateCallback]);
+
+  useEffect(() => {
+    if (!anchorWalkerRuntimeVisualsVisible) {
+      setAnchorWalkerVisualStateCallback(null);
+      setWalkerVisualStates(prev => (prev.some(Boolean) ? [null, null, null, null] : prev));
+      return () => {
+        setAnchorWalkerVisualStateCallback(null);
+      };
+    }
+    let rafId: number | null = null;
+    let pendingStates: Array<ProductSynthAnchorWalkerVisualLaneState | null> = [null, null, null, null];
+    setAnchorWalkerVisualStateCallback((nextStates: Array<ProductSynthAnchorWalkerVisualLaneState | null>) => {
+      if (document.visibilityState !== 'visible') return;
+      pendingStates = [0, 1, 2, 3].map((index) => nextStates[index] ?? null);
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        setWalkerVisualStates(pendingStates);
+      });
+    });
+    return () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+      setAnchorWalkerVisualStateCallback(null);
+    };
+  }, [anchorWalkerRuntimeVisualsVisible, setAnchorWalkerVisualStateCallback]);
+
   const synthChainRuntimeState = useMemo(
     () => createSequencerChainUiRuntimeState('synth', state as unknown as Record<string, unknown>, seq.clockDivs),
     [state, seq.clockDivs],
@@ -4317,6 +4344,22 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   useEffect(() => {
     onViewModeChange?.(seq.viewMode);
   }, [seq.viewMode, onViewModeChange]);
+
+  useEffect(() => () => {
+    onSimpleVisualizerRuntimePlanVisibilityChange?.({ padChord: false, randomTiming: false });
+  }, [onSimpleVisualizerRuntimePlanVisibilityChange]);
+
+  useEffect(() => {
+    onSimpleVisualizerRuntimePlanVisibilityChange?.({
+      padChord: seq.viewMode === 'simple' && simpleChordPhraseVizToggle.enabled,
+      randomTiming: seq.viewMode === 'simple' && simpleRandomTimingVizToggle.enabled,
+    });
+  }, [
+    onSimpleVisualizerRuntimePlanVisibilityChange,
+    seq.viewMode,
+    simpleChordPhraseVizToggle.enabled,
+    simpleRandomTimingVizToggle.enabled,
+  ]);
 
   // Sync evolve configs to audio engine
   const evolveConfigsRef = useRef(seq.evolveConfigs);
@@ -4654,15 +4697,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const activeSeq = seq.activeSeq;
   const triggerSourceIsEuclidean = (activeSeq.trigger.sourceOrigin ?? 'euclidean') === 'euclidean';
   const triggerSourceModeLabel = triggerSourceIsEuclidean ? 'Euclid' : 'Step';
-  const sequencerFaceState = useMemo(
-    () => normalizeSynthSequencerFaceState(state.synthSequencerFaces),
-    [state.synthSequencerFaces],
-  );
   const [walkerEnsemblePreset, setWalkerEnsemblePreset] = useState<WalkerEnsemblePreset>('off');
   const walkerEnsembleRestoreRef = useRef<SequencerSlotModeState[] | null>(null);
   const hasWalkerSlot = sequencerFaceState.slots.some((slot) => slot.mode === 'anchorWalker');
-  const activeSequencerSlot = sequencerFaceState.slots[seq.activeTab] ?? sequencerFaceState.slots[0];
-  const activeSequencerMode = activeSequencerSlot?.mode ?? 'euclid';
   const activeAnchorWalkerRuntimeState = useMemo(() => (
     activeSequencerMode === 'anchorWalker'
       ? anchorWalkerRuntimeFromVisualState(
@@ -6096,6 +6133,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         ? `Saving ${generatedCaptureCount} notes`
         : generatedCaptureSessionForActiveLane?.status === 'finishing'
           ? `Finishing ${generatedCaptureCount} notes`
+        : generatedCaptureSessionForActiveLane?.status === 'waitingFirstTrigger'
+          ? 'Waiting trigger'
         : generatedCaptureSessionForActiveLane?.status === 'committed'
           ? 'Saved to Step'
           : generatedCaptureSessionForActiveLane?.status === 'empty'
@@ -6135,6 +6174,18 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         ? 'orbit'
         : null;
     if (!sourceMode) return;
+    if (sourceMode === 'orbit') {
+      startGeneratedCapture({
+        sourceLaneIndex: seq.activeTab,
+        targetLaneIndex: seq.activeTab,
+        sourceMode,
+        startMode: 'firstEvent',
+      });
+      if (!isRunning) {
+        startSynthPlaybackForLaneRecording(seq.activeTab);
+      }
+      return;
+    }
     setGeneratedCaptureStartArm({
       sourceLaneIndex: seq.activeTab,
       targetLaneIndex: seq.activeTab,
@@ -6151,7 +6202,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     generatedCaptureCountIn,
     generatedCaptureSession,
     generatedCaptureStartArm,
+    isRunning,
     seq.activeTab,
+    startGeneratedCapture,
+    startSynthPlaybackForLaneRecording,
     stopGeneratedCapture,
     toggleSynthLiveOverdub,
   ]);

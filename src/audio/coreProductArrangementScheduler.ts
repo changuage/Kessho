@@ -42,6 +42,7 @@ import {
   createRuntimePlan,
   updateRuntimePlanNotes,
 } from './coreProductArrangementRuntimePlan';
+import type { ProductSimpleSequencerVisualPlanActive } from './product/ProductEngineTypes';
 
 type PostEvent = (event: CoreProductEvent) => void;
 type PublishTrigger = (name: string, ...payload: unknown[]) => void;
@@ -63,6 +64,10 @@ export class CoreProductArrangementScheduler {
   private previousPadChordPlan: SimpleSequencerPhrasePreview | null = null;
   private randomTimingPlan: SimpleSequencerPhrasePreview | null = null;
   private previousRandomTimingPlan: SimpleSequencerPhrasePreview | null = null;
+  private runtimePlanCaptureEnabled: ProductSimpleSequencerVisualPlanActive = {
+    padChord: false,
+    randomTiming: false,
+  };
   private restartKey = '';
   constructor(
     private readonly postEvent: PostEvent,
@@ -162,6 +167,21 @@ export class CoreProductArrangementScheduler {
     this.restartKey = '';
     this.phraseState = null;
   }
+  setRuntimePlanCaptureEnabled(active: ProductSimpleSequencerVisualPlanActive): void {
+    const next = {
+      padChord: active.padChord === true,
+      randomTiming: active.randomTiming === true,
+    };
+    if (!next.padChord && this.runtimePlanCaptureEnabled.padChord) {
+      this.padChordPlan = null;
+      this.previousPadChordPlan = null;
+    }
+    if (!next.randomTiming && this.runtimePlanCaptureEnabled.randomTiming) {
+      this.randomTimingPlan = null;
+      this.previousRandomTimingPlan = null;
+    }
+    this.runtimePlanCaptureEnabled = next;
+  }
   private clearNoteTimers(timers: Set<number>): void {
     for (const timer of timers) {
       window.clearTimeout(timer);
@@ -185,8 +205,8 @@ export class CoreProductArrangementScheduler {
         this.anchors,
         nowWallSec,
       ),
-      padChordPlan: cloneRuntimePlan(this.padChordPlan),
-      previousPadChordPlan: cloneRuntimePlan(this.previousPadChordPlan),
+      padChordPlan: cloneRuntimePlan(this.runtimePlanCaptureEnabled.padChord ? this.padChordPlan : null),
+      previousPadChordPlan: cloneRuntimePlan(this.runtimePlanCaptureEnabled.padChord ? this.previousPadChordPlan : null),
       randomTimingPhraseSeconds: randomPhraseSeconds,
       nextRandomTimingBoundaryIn: getTimeUntilNextBoundaryWall(
         randomClockSource,
@@ -194,8 +214,8 @@ export class CoreProductArrangementScheduler {
         this.anchors,
         nowWallSec,
       ),
-      randomTimingPlan: cloneRuntimePlan(this.randomTimingPlan),
-      previousRandomTimingPlan: cloneRuntimePlan(this.previousRandomTimingPlan),
+      randomTimingPlan: cloneRuntimePlan(this.runtimePlanCaptureEnabled.randomTiming ? this.randomTimingPlan : null),
+      previousRandomTimingPlan: cloneRuntimePlan(this.runtimePlanCaptureEnabled.randomTiming ? this.previousRandomTimingPlan : null),
     };
   }
 
@@ -412,7 +432,7 @@ export class CoreProductArrangementScheduler {
   }
 
   private triggerPadChord(
-    createSchedule: (args: { state: Record<string, unknown>; harmonyState: HarmonyState; rng: () => number; anchors: TransportAnchors | null; nowWallSec: number }) => CoreProductPadChordSchedule,
+    createSchedule: (args: { state: Record<string, unknown>; harmonyState: HarmonyState; rng: () => number; anchors: TransportAnchors | null; nowWallSec: number; includeRuntimeNotes?: boolean }) => CoreProductPadChordSchedule,
     appendRuntimePlan: boolean,
     liveState = false,
   ): void {
@@ -425,10 +445,13 @@ export class CoreProductArrangementScheduler {
       rng: this.rng,
       anchors: this.anchors,
       nowWallSec: Date.now() / 1000,
+      includeRuntimeNotes: appendRuntimePlan && this.runtimePlanCaptureEnabled.padChord,
     });
-    if (appendRuntimePlan && timing) this.ensurePadChordPlan(phraseSeconds, triggerIntervalSeconds, timing.phraseIndex, timing.phraseStartWallSec);
+    if (appendRuntimePlan && this.runtimePlanCaptureEnabled.padChord && timing) {
+      this.ensurePadChordPlan(phraseSeconds, triggerIntervalSeconds, timing.phraseIndex, timing.phraseStartWallSec);
+    }
     for (const note of scheduledNotes) this.scheduleNote(note.delaySeconds, note.event, 'pad');
-    if (appendRuntimePlan) this.appendPadChordPlanNotes(runtimeNotes);
+    if (appendRuntimePlan && this.runtimePlanCaptureEnabled.padChord) this.appendPadChordPlanNotes(runtimeNotes);
   }
 
   private startLeadMelody(deferToBoundary: boolean): void {
@@ -477,7 +500,10 @@ export class CoreProductArrangementScheduler {
     );
     const nowWallSec = Date.now() / 1000;
     const timing = phraseTimingForClockSource(phraseClock, phraseSeconds, this.anchors, nowWallSec);
-    this.ensureRandomTimingPlan(phraseSeconds, timing.phraseIndex, timing.phraseStartWallSec, baseLow, baseHigh);
+    const captureRuntimePlan = this.runtimePlanCaptureEnabled.randomTiming;
+    if (captureRuntimePlan) {
+      this.ensureRandomTimingPlan(phraseSeconds, timing.phraseIndex, timing.phraseStartWallSec, baseLow, baseHigh);
+    }
     const runtimeNotes: SimpleSequencerVizNote[] = [];
     for (let index = 0; index < notesThisPhrase; index += 1) {
       const timingSeconds = (this.rng() * phraseMs) / 1000;
@@ -488,18 +514,20 @@ export class CoreProductArrangementScheduler {
       const padVoiceIndex = source === 'pad1' || source === 'pad2'
         ? index % PAD_VOICE_COUNT
         : undefined;
-      const triggerWallSec = nowWallSec + timingSeconds;
-      runtimeNotes.push({
-        id: `random-runtime:${timing.phraseIndex}:${triggerWallSec.toFixed(4)}:${source}:${index}:${Math.round(midi)}`,
-        source,
-        midi,
-        label: midiNoteLabel(midi),
-        voiceIndex: index,
-        triggerSeconds: triggerWallSec - timing.phraseStartWallSec,
-        triggerWallSec,
-        velocity,
-        envelope: envelopeForSource(sliderState, source, 0, phraseSeconds),
-      });
+      if (captureRuntimePlan) {
+        const triggerWallSec = nowWallSec + timingSeconds;
+        runtimeNotes.push({
+          id: `random-runtime:${timing.phraseIndex}:${triggerWallSec.toFixed(4)}:${source}:${index}:${Math.round(midi)}`,
+          source,
+          midi,
+          label: midiNoteLabel(midi),
+          voiceIndex: index,
+          triggerSeconds: triggerWallSec - timing.phraseStartWallSec,
+          triggerWallSec,
+          velocity,
+          envelope: envelopeForSource(sliderState, source, 0, phraseSeconds),
+        });
+      }
       this.scheduleNote(timingSeconds, createCoreProductManualNoteEvent(
         sourceId,
         midi,
@@ -508,7 +536,7 @@ export class CoreProductArrangementScheduler {
         padVoiceIndex,
       ), 'lead');
     }
-    this.setRandomTimingPlanNotes(runtimeNotes, baseLow, baseHigh);
+    if (captureRuntimePlan) this.setRandomTimingPlanNotes(runtimeNotes, baseLow, baseHigh);
     const delaySeconds = getTimeUntilNextBoundaryWall(
       phraseClock,
       phraseSeconds,

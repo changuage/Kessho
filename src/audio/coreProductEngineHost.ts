@@ -61,7 +61,7 @@ import { applyCoreProductSequencerStepEventToCache } from './product/host/CorePr
 import { applyCoreProductSequencerSubLaneEnabledEvent } from './product/host/CoreProductSequencerSubLaneEnabledEventBridge';
 import { coreProductStepValueFieldEnabled, syncCoreProductSequencerStepState } from './product/host/CoreProductSequencerStepPostingBridge';
 import { DRUM_EUCLIDEAN_LANE_COUNT, SYNTH_EUCLIDEAN_LANE_COUNT } from './sequencerLaneCounts';
-import type { ProductEngineState, ProductPerfSnapshot, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductSnapshotPatchReason } from './product/ProductEngineTypes';
+import type { ProductEngineState, ProductPerfSnapshot, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductSimpleSequencerVisualPlanActive, ProductSnapshotPatchReason } from './product/ProductEngineTypes';
 import { createWebProductRuntimeCapabilityReport, type ProductRuntimeCapabilityReport } from './product/ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from './product/ProductRuntimeDiagnostics';
 import { CoreProductArrangementBridge } from './product/host/CoreProductArrangementBridge';
@@ -246,6 +246,9 @@ class CoreProductEngineHost {
 
   setVisualTelemetryActive(active: boolean): void {
     this.runtime.setVisualTelemetryActive(active);
+  }
+  setSimpleSequencerVisualPlanActive(active: ProductSimpleSequencerVisualPlanActive): void {
+    this.arrangementBridge.setRuntimePlanCaptureEnabled(active);
   }
   setProductTelemetryCallback(callback: ((telemetry: CoreProductTelemetrySnapshot) => void) | null): void {
     this.telemetryCallbackScheduler.setCallback(callback, this.latestTelemetry);

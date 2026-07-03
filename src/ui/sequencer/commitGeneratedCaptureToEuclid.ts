@@ -11,12 +11,12 @@ import {
   type CapturedPitchReference,
   type CapturedPitchCommit,
 } from './generatedSequencerCapturePitch';
-import { seqEuclidean } from '../../audio/euclideanPatterns';
 import {
   captureEventsInOrder,
   captureStepCount,
+  positiveModulo,
 } from './generatedSequencerCaptureScratch';
-import { createBitmapTriggerClip } from './triggerClip';
+import { createBitmapTriggerClip, type TriggerClip } from './triggerClip';
 import { NUDGE_EPSILON, computeNudgeFromContinuousStep } from './nudgeTiming';
 import { clampEuclideanSubLaneSteps } from './sequencerLimits';
 
@@ -50,6 +50,7 @@ export interface GeneratedCaptureStepCommit {
   stepCount: number;
   hits: number;
   triggerPattern: boolean[];
+  triggerClip: TriggerClip;
   triggerToggles: Map<number, boolean>;
   pitchMidiValues: number[];
   pitchValues: number[];
@@ -118,27 +119,14 @@ function ensureNudgeSubLane(
   };
 }
 
-function canPreserveCapturedTriggerSteps(events: readonly CaptureEvent[], stepCount: number): boolean {
-  const eventSteps = events.map((event) => event.targetStepIndex);
-  const uniqueSteps = new Set(eventSteps);
-  return events.length > 0 && events.length <= stepCount && uniqueSteps.size === events.length;
-}
-
-function capturedTriggerPattern(
-  scratch: CaptureScratch,
-  events: readonly CaptureEvent[],
-): boolean[] {
-  const eventSteps = events.map((event) => event.targetStepIndex);
-
-  if (canPreserveCapturedTriggerSteps(events, scratch.stepCount)) {
-    const pattern = new Array(scratch.stepCount).fill(false);
-    for (const step of eventSteps) {
-      if (step >= 0 && step < scratch.stepCount) pattern[step] = true;
+function capturedTriggerPattern(stepCount: number, events: readonly CaptureEvent[]): boolean[] {
+  const pattern = new Array(stepCount).fill(false);
+  for (const event of events) {
+    if (event.targetStepIndex >= 0 && event.targetStepIndex < stepCount) {
+      pattern[event.targetStepIndex] = true;
     }
-    return pattern;
   }
-
-  return seqEuclidean(scratch.stepCount, Math.min(scratch.stepCount, events.length), 0);
+  return pattern;
 }
 
 function triggerPatternMap(pattern: readonly boolean[]): Map<number, boolean> {
@@ -189,25 +177,133 @@ function adjacentTriggerSteps(
 function capturedNudgeValues(
   events: readonly CaptureEvent[],
   triggerPattern: readonly boolean[],
-  preserveTriggerSteps: boolean,
 ): number[] {
-  if (!preserveTriggerSteps) return new Array(events.length).fill(0);
   const stepCount = Math.max(1, triggerPattern.length);
   const triggerSteps = triggerStepPositions(triggerPattern);
   return events.map((event) => {
-    const currentCycleBase = event.cycleIndex * stepCount;
-    const currentStep = currentCycleBase + event.targetStepIndex;
+    const currentStep = event.targetStepIndex;
     const targetStepFloat = typeof event.targetStepFloat === 'number' && Number.isFinite(event.targetStepFloat)
       ? event.targetStepFloat
-      : currentStep + event.nudge;
+      : event.targetStepIndex + event.nudge;
     const { previous, next } = adjacentTriggerSteps(triggerSteps, event.targetStepIndex, stepCount);
     return computeNudgeFromContinuousStep(
       targetStepFloat,
-      currentCycleBase + previous,
+      previous,
       currentStep,
-      currentCycleBase + next,
+      next,
     );
   });
+}
+
+function captureEventCycleRelativeStep(event: CaptureEvent, baseStepCount: number): number {
+  const safeBaseStepCount = Math.max(1, baseStepCount);
+  if (typeof event.targetStepFloat === 'number' && Number.isFinite(event.targetStepFloat)) {
+    const cycleBase = event.cycleIndex * safeBaseStepCount;
+    const cycleRelative = event.targetStepFloat - cycleBase;
+    const rawRelative = cycleRelative >= -0.5 && cycleRelative < safeBaseStepCount + 0.5
+      ? cycleRelative
+      : event.targetStepFloat;
+    return positiveModulo(rawRelative, safeBaseStepCount);
+  }
+  return positiveModulo(event.targetStepIndex + event.nudge, safeBaseStepCount);
+}
+
+function outputStepCountCandidates(baseStepCount: number): number[] {
+  const safeBaseStepCount = Math.max(1, Math.min(64, Math.round(baseStepCount)));
+  const candidates: number[] = [];
+  for (let stepCount = safeBaseStepCount; stepCount <= 64; stepCount *= 2) {
+    candidates.push(stepCount);
+    if (stepCount === 64) break;
+  }
+  if (candidates[candidates.length - 1] !== 64) candidates.push(64);
+  return [...new Set(candidates.map((value) => Math.max(1, Math.min(64, Math.round(value)))))];
+}
+
+function preferredOutputStep(
+  relativeStep: number,
+  outputStepCount: number,
+  baseStepCount: number,
+): number {
+  const scaled = relativeStep * (outputStepCount / Math.max(1, baseStepCount));
+  return positiveModulo(Math.round(scaled), outputStepCount);
+}
+
+function findAvailableOutputStep(
+  preferredStep: number,
+  usedSteps: Set<number>,
+  outputStepCount: number,
+): number | null {
+  const safeStepCount = Math.max(1, outputStepCount);
+  const safePreferred = positiveModulo(preferredStep, safeStepCount);
+  if (!usedSteps.has(safePreferred)) return safePreferred;
+  for (let offset = 1; offset < safeStepCount; offset += 1) {
+    const forward = safePreferred + offset;
+    if (forward < safeStepCount && !usedSteps.has(forward)) return forward;
+    const backward = safePreferred - offset;
+    if (backward >= 0 && !usedSteps.has(backward)) return backward;
+  }
+  return null;
+}
+
+function quantizeCapturedEventsToStepGrid(
+  events: readonly CaptureEvent[],
+  baseStepCount: number,
+): { stepCount: number; events: CaptureEvent[] } {
+  const safeBaseStepCount = Math.max(1, Math.min(64, Math.round(baseStepCount)));
+  const orderedEvents = [...events].sort((left, right) => {
+    const leftStep = captureEventCycleRelativeStep(left, safeBaseStepCount);
+    const rightStep = captureEventCycleRelativeStep(right, safeBaseStepCount);
+    return leftStep - rightStep || left.eventOrder - right.eventOrder;
+  });
+
+  let outputStepCount = safeBaseStepCount;
+  let bestUniqueCount = -1;
+  const candidates = outputStepCountCandidates(safeBaseStepCount);
+  for (const candidate of candidates) {
+    const mappedSteps = orderedEvents.map((event) => preferredOutputStep(
+      captureEventCycleRelativeStep(event, safeBaseStepCount),
+      candidate,
+      safeBaseStepCount,
+    ));
+    const uniqueCount = new Set(mappedSteps).size;
+    if (uniqueCount === mappedSteps.length) {
+      outputStepCount = candidate;
+      break;
+    }
+    if (uniqueCount > bestUniqueCount) {
+      bestUniqueCount = uniqueCount;
+      outputStepCount = candidate;
+    }
+  }
+  if (outputStepCount < orderedEvents.length) {
+    outputStepCount = candidates.find((candidate) => candidate >= orderedEvents.length)
+      ?? candidates[candidates.length - 1]
+      ?? outputStepCount;
+  }
+
+  const usedSteps = new Set<number>();
+  const ratio = outputStepCount / safeBaseStepCount;
+  const quantizedEvents = orderedEvents.map((event) => {
+    const relativeStep = captureEventCycleRelativeStep(event, safeBaseStepCount);
+    const preferredStep = preferredOutputStep(relativeStep, outputStepCount, safeBaseStepCount);
+    const assignedStep = findAvailableOutputStep(preferredStep, usedSteps, outputStepCount);
+    const targetStepIndex = assignedStep ?? preferredStep;
+    usedSteps.add(targetStepIndex);
+    return {
+      ...event,
+      targetStepIndex,
+      targetStepFloat: relativeStep * ratio,
+    };
+  }).sort((left, right) => (
+    left.targetStepIndex - right.targetStepIndex ||
+    (left.targetStepFloat ?? left.targetStepIndex) - (right.targetStepFloat ?? right.targetStepIndex) ||
+    left.eventOrder - right.eventOrder
+  ));
+
+  return {
+    stepCount: outputStepCount,
+    events: quantizedEvents,
+  };
 }
 
 export function commitGeneratedCaptureToEuclid({
@@ -220,23 +316,19 @@ export function commitGeneratedCaptureToEuclid({
   sourceMode,
   onStepCommit,
 }: CommitGeneratedCaptureArgs): void {
-  const stepCount = scratch.stepCount;
   if (captureStepCount(scratch) === 0) return;
   const committedEventLimit = clampEuclideanSubLaneSteps(scratch.events.length);
   const rawCapturedEvents = captureEventsInOrder(scratch).slice(0, committedEventLimit);
-  const preserveTriggerSteps = canPreserveCapturedTriggerSteps(rawCapturedEvents, stepCount);
-  const capturedEvents = preserveTriggerSteps
-    ? [...rawCapturedEvents].sort((left, right) => (
-        left.targetStepIndex - right.targetStepIndex || left.eventOrder - right.eventOrder
-      ))
-    : rawCapturedEvents;
+  const quantizedCapture = quantizeCapturedEventsToStepGrid(rawCapturedEvents, scratch.stepCount);
+  const stepCount = quantizedCapture.stepCount;
+  const capturedEvents = quantizedCapture.events;
   const capturedCount = capturedEvents.length;
   const hits = Math.max(1, Math.min(stepCount, capturedCount));
   const capturedMidis = capturedEvents.map((event) => event.midiNote);
   const capturedVelocities = capturedEvents.map((event) => event.velocity);
-  const triggerPattern = capturedTriggerPattern(scratch, capturedEvents);
+  const triggerPattern = capturedTriggerPattern(stepCount, capturedEvents);
   const triggerToggles = triggerPatternMap(triggerPattern);
-  const nudgeValues = capturedNudgeValues(capturedEvents, triggerPattern, preserveTriggerSteps);
+  const nudgeValues = capturedNudgeValues(capturedEvents, triggerPattern);
   const hasNudge = nudgeValues.some((value) => Math.abs(value) > NUDGE_EPSILON);
   const pitchCommit = capturedMidisToSemitonePitchValues(capturedMidis, capturePitchReference);
   const triggerClip = createBitmapTriggerClip({
@@ -311,6 +403,7 @@ export function commitGeneratedCaptureToEuclid({
     stepCount,
     hits,
     triggerPattern: [...triggerPattern],
+    triggerClip,
     triggerToggles: new Map(triggerToggles),
     pitchMidiValues: capturedMidis,
     pitchValues: pitchCommit.pitchValues,
