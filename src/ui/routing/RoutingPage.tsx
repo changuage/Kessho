@@ -7,19 +7,16 @@ import type { KesshoMidiMessage } from '../../native/capacitorMidiRouting';
 import type { DawOutputDeviceSelection, DawOutputRoutingConfig } from '../../audio/dawOutputRouting';
 import DawOutputPanel from './DawOutputPanel';
 import RoutingMuteGroupsPanel from './RoutingMuteGroupsPanel';
-import { useRoutingMuteGroupsController } from './useRoutingMuteGroupsController';
-import type { RoutingMuteGroupRuntimeLevelPatch, RoutingMuteGroupsState } from './routingMuteGroups';
+import type { RoutingMuteGroupsController, RoutingMuteGroupsState } from './routingMuteGroups';
 import './routing.css';
 
 export interface RoutingPageProps {
   state: SliderState;
   isMobile: boolean;
   routingMuteGroups: RoutingMuteGroupsState;
-  onRoutingMuteGroupsChange: (state: RoutingMuteGroupsState) => void;
+  muteGroupsController: RoutingMuteGroupsController;
   onParamChange: (key: keyof SliderState, value: number) => void;
   onColumnParamChange: (key: keyof SliderState, value: number) => void;
-  onRuntimeLevelPatchChange: (patch: RoutingMuteGroupRuntimeLevelPatch) => void;
-  onBooleanParamChange: (key: keyof SliderState, value: boolean) => void;
   onToggleSource: (sourceId: string, enabled: boolean) => void;
   onMidiMessage: (message: KesshoMidiMessage) => void;
   dawOutputRouting: DawOutputRoutingConfig;
@@ -40,11 +37,9 @@ export default function RoutingPage({
   state,
   isMobile,
   routingMuteGroups,
-  onRoutingMuteGroupsChange,
+  muteGroupsController,
   onParamChange,
   onColumnParamChange,
-  onRuntimeLevelPatchChange,
-  onBooleanParamChange,
   onToggleSource,
   onMidiMessage,
   dawOutputRouting,
@@ -54,13 +49,6 @@ export default function RoutingPage({
   sliderProps,
 }: RoutingPageProps) {
   void onMidiMessage;
-  const muteGroupsController = useRoutingMuteGroupsController({
-    state,
-    routingMuteGroups,
-    onRoutingMuteGroupsChange,
-    onRuntimeLevelPatchChange,
-    onBooleanParamChange,
-  });
 
   return (
     <div className={`routing-root${isMobile ? ' mobile' : ''}`}>
@@ -93,6 +81,9 @@ export default function RoutingPage({
               onSaveSelectedSlot={muteGroupsController.saveSelectedSlot}
               onClearSlot={muteGroupsController.clearSlot}
               onClearSelectedSlot={muteGroupsController.clearSelectedSlot}
+              runtimeSnapshot={muteGroupsController.runtimeSnapshot}
+              onUpdateSlotPhraseRange={muteGroupsController.updateSlotPhraseRange}
+              onUpdateRandomSettings={muteGroupsController.updateRandomSettings}
             />
           </div>
         </section>

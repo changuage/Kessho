@@ -398,6 +398,69 @@
   height: auto;
 }
 
+.global-root .scene-mute-group-strip {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 6px;
+  background: rgba(8, 10, 16, 0.58);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+
+.global-root .scene-mute-group-bead {
+  width: 6px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--mute-current-color);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--mute-current-color) 36%, transparent);
+}
+
+.global-root .scene-mute-group-bead.next {
+  width: 5px;
+  height: 14px;
+  background: var(--mute-next-color);
+  opacity: 0.72;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--mute-next-color) 28%, transparent);
+}
+
+.global-root .scene-mute-group-arrow {
+  color: rgba(232, 220, 196, 0.4);
+  font-size: 0.6rem;
+  line-height: 1;
+}
+
+.global-root .scene-mute-group-number {
+  color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.64rem;
+  font-weight: 850;
+  min-width: 8px;
+  text-align: center;
+  line-height: 1;
+}
+
+.global-root .scene-mute-group-number.next {
+  color: rgba(232, 220, 196, 0.6);
+}
+
+.global-root .scene-mute-group-time {
+  min-width: 32px;
+  color: rgba(232, 220, 196, 0.56);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-align: center;
+  line-height: 1;
+}
+
 .global-root .scene-send-line {
   fill: none;
   stroke: rgba(var(--rgb), calc(0.15 + var(--send) * 0.6));
@@ -484,6 +547,25 @@
   stroke: color-mix(in srgb, rgb(var(--rgb)) 72%, white 28%);
   stroke-width: 2.2px;
   filter: drop-shadow(0 0 14px rgba(var(--rgb), 0.36));
+}
+
+.global-root .scene-signal-node.mute-current .scene-signal-node-shell {
+  stroke: var(--mute-current-color);
+  stroke-width: 2.35px;
+  filter:
+    drop-shadow(0 0 9px color-mix(in srgb, var(--mute-current-color) 38%, transparent))
+    drop-shadow(0 0 16px rgba(var(--rgb), 0.18));
+}
+
+.global-root .scene-signal-node.mute-current .scene-signal-node-core {
+  stroke: color-mix(in srgb, var(--mute-current-color) 44%, rgba(232, 220, 196, 0.12));
+}
+
+.global-root .scene-signal-node.mute-next:not(.mute-current) .scene-signal-node-shell {
+  stroke: var(--mute-next-color);
+  stroke-width: 1.65px;
+  stroke-dasharray: 4 4;
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--mute-next-color) 26%, transparent));
 }
 
 .global-root .scene-signal-node:focus-visible .scene-signal-node-shell {

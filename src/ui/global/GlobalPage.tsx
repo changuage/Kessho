@@ -16,6 +16,7 @@ import { getRuntimeSliderPosition } from '../runtimeSliderState';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
 import { HarmonyEnginePanel } from '../harmony/HarmonyEnginePanel';
 import { GlobalRuntimeComparisonPanel, type GlobalRuntimeComparisonPanelProps } from './GlobalRuntimeComparisonPanel';
+import type { RoutingMuteGroupRuntimeSnapshot, RoutingMuteGroupSourceId } from '../routing';
 import './global.css';
 
 // Note names for display
@@ -129,6 +130,29 @@ const SCENE_SIGNAL_POSITIONS: Record<string, { x: number; y: number }> = {
   masterSaturation: { x: 476, y: 458 },
   masterEnd: { x: 668, y: 458 },
 };
+
+const ROUTING_MUTE_SOURCE_TO_SCENE_NODE: Record<RoutingMuteGroupSourceId, string> = {
+  pad1: 'pad1',
+  pad2: 'pad2',
+  lead1: 'lead1',
+  lead2: 'lead2',
+  sample1: 'sample1',
+  sample2: 'sample2',
+  drums: 'drums',
+  granular: 'granular',
+  waves: 'waves',
+  water: 'water',
+  insects: 'insects',
+  nature: 'nature',
+  delayAOut: 'delayA',
+  delayBOut: 'delayB',
+  degrade: 'degrade',
+  reverb: 'reverb',
+};
+
+function muteSceneNodeIdsForSourceIds(sourceIds: readonly RoutingMuteGroupSourceId[]): Set<string> {
+  return new Set(sourceIds.map((sourceId) => ROUTING_MUTE_SOURCE_TO_SCENE_NODE[sourceId]).filter(Boolean));
+}
 
 function hexToRgbTriplet(hex: string): string {
   const raw = hex.trim().replace(/^#/, '');
@@ -277,6 +301,14 @@ function pitchClass(note: number | undefined): number {
 function formatSceneSeconds(value: number | null | undefined, prefix = ''): string | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   return `${prefix}${Math.max(0, value).toFixed(1)}s`;
+}
+
+function formatMuteGroupCountdown(seconds: number | null): string {
+  if (seconds === null || !Number.isFinite(seconds)) return '--:--';
+  const totalSeconds = Math.max(0, Math.ceil(seconds));
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainder = totalSeconds % 60;
+  return `${minutes}:${String(remainder).padStart(2, '0')}`;
 }
 
 function getSceneChordRootPc(harmonyState: SceneHarmonyState | null | undefined, fallbackRoot: number): number {
@@ -648,7 +680,7 @@ function buildSceneSignalModel(state: SliderState): SceneSignalModel {
   const sourceGranularFeed = maxSend(sources, 'granular');
   const sourceReverbFeed = maxSend(sources, 'reverb');
   const granularLevel = state.granularEnabled ? clamp01(state.granularLevel) : 0;
-  const delayAActive = hasSceneLevel(state.delayAMix) && (
+  const delayAActive = !!state.delayAEnabled && hasSceneLevel(state.delayAMix) && (
     hasSceneLevel(sourceDelayAFeed) ||
     hasSceneLevel(state.delayBToASend)
   );
@@ -810,6 +842,7 @@ export interface GlobalPageProps {
 
   // Engine state
   engineState: ProductEngineState;
+  routingMuteGroupSnapshot?: RoutingMuteGroupRuntimeSnapshot;
   runtimeComparison?: GlobalRuntimeComparisonPanelProps;
   onResetCofDrift: () => void;
 
@@ -880,6 +913,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   SelectComponent: Select,
   CircleOfFifthsComponent: CircleOfFifths,
   engineState,
+  routingMuteGroupSnapshot,
   runtimeComparison,
   onResetCofDrift,
   morphCoFViz,
@@ -999,6 +1033,22 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
     [dualSliderRanges, sceneRuntimeSignature, sliderModes, state],
   );
   const sceneSignal = React.useMemo(() => buildSceneSignalModel(sceneRuntimeState), [sceneRuntimeState]);
+  const currentMuteSceneNodeIds = React.useMemo(
+    () => muteSceneNodeIdsForSourceIds(routingMuteGroupSnapshot?.currentMutedSourceIds ?? []),
+    [routingMuteGroupSnapshot?.currentMutedSourceIds],
+  );
+  const nextMuteSceneNodeIds = React.useMemo(
+    () => muteSceneNodeIdsForSourceIds(routingMuteGroupSnapshot?.nextMutedSourceIds ?? []),
+    [routingMuteGroupSnapshot?.nextMutedSourceIds],
+  );
+  const showRoutingMuteSnapshot = !!routingMuteGroupSnapshot && (
+    routingMuteGroupSnapshot.randomEnabled
+    || routingMuteGroupSnapshot.activeSlotIndex !== null
+  );
+  const routingMuteSnapshotStyle = {
+    '--mute-current-color': routingMuteGroupSnapshot?.activeSlotColor ?? '#E8DCC4',
+    '--mute-next-color': routingMuteGroupSnapshot?.nextSlotColor ?? '#A5C4D4',
+  } as React.CSSProperties;
   const [hoveredSceneNodeId, setHoveredSceneNodeId] = React.useState<string | null>(null);
   const [pinnedSceneNodeId, setPinnedSceneNodeId] = React.useState<string | null>(null);
   const [scenePopoverPoint, setScenePopoverPoint] = React.useState<{ x: number; y: number; placement: 'top' | 'bottom' } | null>(null);
@@ -1265,7 +1315,11 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
             </div>
           </div>
 
-          <div className="scene-signal-graph" aria-label="Active sound engines and FX sends">
+          <div
+            className="scene-signal-graph"
+            style={routingMuteSnapshotStyle}
+            aria-label="Active sound engines and FX sends"
+          >
             <svg className="scene-signal-map" viewBox={`0 0 ${SCENE_SIGNAL_VIEWBOX_WIDTH} ${SCENE_SIGNAL_VIEWBOX_HEIGHT}`} role="img" aria-labelledby="global-scene-signal-title">
               <title id="global-scene-signal-title">Active sound engines and FX sends</title>
               <g className="scene-send-layer">
@@ -1282,10 +1336,12 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                 {sceneSignal.nodes.map((node) => {
                   const isSelected = activeSceneNodeId === node.id;
                   const isConnected = activeSceneConnectedNodeIds.has(node.id);
+                  const muteCurrent = currentMuteSceneNodeIds.has(node.id);
+                  const muteNext = nextMuteSceneNodeIds.has(node.id);
                   return (
                     <g
                       key={node.id}
-                      className={`scene-signal-node ${node.role}${isSelected ? ' selected' : ''}${activeSceneNodeId && !isConnected ? ' muted' : ''}`}
+                      className={`scene-signal-node ${node.role}${isSelected ? ' selected' : ''}${activeSceneNodeId && !isConnected ? ' muted' : ''}${muteCurrent ? ' mute-current' : ''}${muteNext ? ' mute-next' : ''}`}
                       transform={`translate(${node.x} ${node.y})`}
                       style={nodeStyle(node)}
                       tabIndex={0}
@@ -1337,6 +1393,45 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                 })}
               </g>
             </svg>
+
+            {showRoutingMuteSnapshot && (
+              <div
+                className="scene-mute-group-strip"
+                style={routingMuteSnapshotStyle}
+                aria-label={[
+                  routingMuteGroupSnapshot?.activeSlotIndex !== null && routingMuteGroupSnapshot?.activeSlotIndex !== undefined
+                    ? `Mute group ${routingMuteGroupSnapshot.activeSlotIndex + 1} active`
+                    : 'No mute group active',
+                  routingMuteGroupSnapshot?.nextSlotIndex !== null && routingMuteGroupSnapshot?.nextSlotIndex !== undefined
+                    ? `next ${routingMuteGroupSnapshot.nextSlotIndex + 1}`
+                    : null,
+                  routingMuteGroupSnapshot?.secondsToNextChange !== null
+                    ? `in ${formatMuteGroupCountdown(routingMuteGroupSnapshot?.secondsToNextChange ?? null)}`
+                    : null,
+                ].filter(Boolean).join(', ')}
+              >
+                <span className="scene-mute-group-bead current" aria-hidden="true" />
+                <span className="scene-mute-group-number">
+                  {routingMuteGroupSnapshot?.activeSlotIndex !== null && routingMuteGroupSnapshot?.activeSlotIndex !== undefined
+                    ? routingMuteGroupSnapshot.activeSlotIndex + 1
+                    : '-'}
+                </span>
+                {routingMuteGroupSnapshot?.randomEnabled && (
+                  <>
+                    <span className="scene-mute-group-arrow" aria-hidden="true">→</span>
+                    <span className="scene-mute-group-bead next" aria-hidden="true" />
+                    <span className="scene-mute-group-number next">
+                      {routingMuteGroupSnapshot?.nextSlotIndex !== null && routingMuteGroupSnapshot?.nextSlotIndex !== undefined
+                        ? routingMuteGroupSnapshot.nextSlotIndex + 1
+                        : '-'}
+                    </span>
+                    <span className="scene-mute-group-time">
+                      {formatMuteGroupCountdown(routingMuteGroupSnapshot?.secondsToNextChange ?? null)}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
 
             {activeSceneNode && scenePopoverPoint && (
               <div

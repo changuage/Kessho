@@ -15,6 +15,11 @@ import {
 import { isStatePresetDiffKeyActive, normalizeStatePresetDiffData } from './statePresetDiffs';
 import { buildPresetVersionMetadata, getPresetVersionSnapshot } from './versionMetadataHelpers';
 import { buildJourneyPresetPreview } from './journeyPresetPreview';
+import {
+  planRoutingMuteGroupMetadataStorage,
+  reconstructRoutingMuteGroupMetadata,
+  routingMuteGroupSceneRefSlot,
+} from './routingMuteGroupPresetStorage';
 import { normalizePresetSummary } from './presetUtils';
 import {
   collectPresetPoolTags,
@@ -31,7 +36,7 @@ import {
   applyEuclideanPatternToSynthLaneState,
   extractEuclideanPatternLaneDataFromSynthState,
 } from './euclideanPatternBank';
-import type { PresetEntry, PresetPoolMetadata } from './types';
+import type { PresetEntry, PresetPoolMetadata, PresetRecoveryWarning, PresetVersionMetadata } from './types';
 import { DEFAULT_STATE, decodeStateFromUrl, encodeStateToUrl, migratePreset, type SavedPreset } from '../ui/state';
 import { createEmptyStepOverrides, deserializeStepOverrides, serializeStepOverrides } from '../ui/sequencer/stepOverrideSerialization';
 import {
@@ -1229,6 +1234,118 @@ function testJourneyPresetPreviewMetadataFeedsSummary(): void {
   assert.deepStrictEqual(summary.journeyPreview, preview);
 }
 
+async function testRoutingMuteGroupMetadataSplitsReusableSceneHashes(): Promise<void> {
+  const metadata: PresetVersionMetadata = {
+    routingMuteGroups: {
+      slots: [
+        {
+          mutedSourceIds: ['delayBOut', 'pad1'],
+          statePatch: {
+            delayAEnabled: false,
+            waterEnabled: true,
+          },
+          phraseRange: { min: 1, max: 2 },
+        },
+        {
+          mutedSourceIds: ['delayBOut', 'pad1'],
+          statePatch: {
+            delayAEnabled: false,
+            waterEnabled: true,
+          },
+          phraseRange: { min: 4, max: 8 },
+        },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+      ],
+      random: {
+        enabled: true,
+        defaultMinPhrases: 2,
+        defaultMaxPhrases: 6,
+        transitionPhrases: 1.5,
+        avoidRepeat: true,
+      },
+    },
+  };
+
+  const plan = await planRoutingMuteGroupMetadataStorage(metadata);
+  assert.equal(plan.scenes.length, 2);
+  assert.equal(
+    plan.scenes[0]?.hash,
+    plan.scenes[1]?.hash,
+    'identical mute scenes should share a reusable scene hash even when phrase timing differs',
+  );
+  assert.deepStrictEqual(plan.scenes[0]?.scene, {
+    schemaVersion: 1,
+    mutedSourceIds: ['pad1', 'delayBOut'],
+    statePatch: {
+      delayAEnabled: false,
+      waterEnabled: true,
+    },
+  });
+  assert.equal(
+    plan.scenes[0]?.hash,
+    await hashCanonicalJson(plan.scenes[0]?.scene),
+    'scene refs should use the canonical payload hash',
+  );
+
+  const compactSlots = plan.metadata?.routingMuteGroups?.slots as Array<Record<string, unknown> | null>;
+  assert.deepStrictEqual(compactSlots[0], {
+    sceneHash: plan.scenes[0]?.hash,
+    phraseRange: { min: 1, max: 2 },
+  });
+  assert.deepStrictEqual(compactSlots[1], {
+    sceneHash: plan.scenes[1]?.hash,
+    phraseRange: { min: 4, max: 8 },
+  });
+
+  const scenePayloads = new Map(plan.scenes.map(scene => [scene.refSlot, scene.scene]));
+  const reconstructed = reconstructRoutingMuteGroupMetadata(
+    plan.metadata,
+    (refSlot) => ({
+      targetFound: scenePayloads.has(refSlot),
+      payload: scenePayloads.get(refSlot),
+    }),
+  );
+
+  assert.deepStrictEqual(reconstructed?.routingMuteGroups?.slots[0], {
+    mutedSourceIds: ['pad1', 'delayBOut'],
+    statePatch: {
+      delayAEnabled: false,
+      waterEnabled: true,
+    },
+    phraseRange: { min: 1, max: 2 },
+  });
+  assert.deepStrictEqual(reconstructed?.routingMuteGroups?.slots[1], {
+    mutedSourceIds: ['pad1', 'delayBOut'],
+    statePatch: {
+      delayAEnabled: false,
+      waterEnabled: true,
+    },
+    phraseRange: { min: 4, max: 8 },
+  });
+
+  const warnings: PresetRecoveryWarning[] = [];
+  const missing = reconstructRoutingMuteGroupMetadata(
+    plan.metadata,
+    (refSlot) => ({
+      targetFound: refSlot !== routingMuteGroupSceneRefSlot(0),
+      payload: refSlot === routingMuteGroupSceneRefSlot(0) ? undefined : scenePayloads.get(refSlot),
+    }),
+    { recoveryWarnings: warnings, version: 3 },
+  );
+  assert.equal(missing?.routingMuteGroups?.slots[0], null);
+  assert.deepStrictEqual(warnings, [{
+    slot: routingMuteGroupSceneRefSlot(0),
+    reason: 'missing_child_preset',
+    fallback: 'empty',
+    version: 3,
+  }]);
+}
+
 async function run(): Promise<void> {
   testStateUrlRoundTripRestoresBooleanSequencerState();
   testSoundEnginePresetMorphClampsEndpointB();
@@ -1253,6 +1370,7 @@ async function run(): Promise<void> {
   testJourneyPresetL4DeleteCleanupUsesNodeFallbackRefs();
   testJourneyOverwriteBackupKeepsFullGraphBase();
   testJourneyPresetPreviewMetadataFeedsSummary();
+  await testRoutingMuteGroupMetadataSplitsReusableSceneHashes();
   await testMetadataOnlyChangeKeepsResolvedHashShared();
   console.log('preset metadata regression checks passed');
 }

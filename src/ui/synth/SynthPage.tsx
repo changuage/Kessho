@@ -168,23 +168,30 @@ import {
   normalizeProductArpConfigs,
   productArpPulseValues,
   resolveProductArpMidiPattern,
+  resolveProductArpPatternDetails,
+  type ProductArpBoundaryMode,
   type ProductArpConfig,
-  type ProductArpDirection,
-  type ProductArpPulseCount,
+  type ProductArpContourMode,
+  type ProductArpFlow,
+  type ProductArpRate,
+  type ProductArpResolvedStep,
   type ProductArpSlotChoice,
-  type ProductArpSourceMode,
 } from '../../audio/productArpeggiator';
 import {
   SYNTH_CHORD_ARP_SPEEDS,
-  SYNTH_CHORD_SUB_LANE_NAMES,
+  SYNTH_CHORD_ARP_RANGES,
+  SYNTH_CHORD_SUB_LANE_NAMES_V2,
   sanitizeSynthChordSequencerConfig,
   synthChordArpPatternForShape,
   synthChordSequencerTriggerOrdinalForTick,
   type SynthChordSequencerArpPatternLength,
-  type SynthChordSequencerArpPatternStep,
+  type SynthChordSequencerArpRange,
   type SynthChordSequencerArpShape,
   type SynthChordSequencerArpSpeed,
   type SynthChordSequencerConfig,
+  type SynthChordSequencerMelodyStep,
+  type SynthChordSequencerMelodyStepMode,
+  type SynthChordSequencerMelodyTrack,
   type SynthChordSequencerPlaybackMode,
   type SynthChordSequencerSubLaneConfig,
   type SynthChordSequencerSubLaneDirection,
@@ -1082,7 +1089,12 @@ export interface SynthKeyboardUiState {
 }
 
 const SYNTH_KEYBOARD_EDIT_LANES: readonly SynthKeyboardEditLane[] = ['trigger', 'pitch', 'expression', 'morph', 'distance', 'nudge'] as const;
-const ARP_DIRECTION_OPTIONS: Array<{ value: ProductArpDirection; label: string }> = [
+const ARP_CONTOUR_MIN = -12;
+const ARP_CONTOUR_MAX = 12;
+const ARP_CONTOUR_SVG_RANGE = ARP_CONTOUR_MAX - ARP_CONTOUR_MIN;
+const ARP_VISIBLE_STEPS = 16;
+const ARP_FULL_STEP_MASK = (1 << ARP_VISIBLE_STEPS) - 1;
+const ARP_FLOW_OPTIONS: Array<{ value: ProductArpFlow; label: string }> = [
   { value: 'up', label: 'Up' },
   { value: 'down', label: 'Down' },
   { value: 'upDown', label: 'Up/Down' },
@@ -1090,12 +1102,23 @@ const ARP_DIRECTION_OPTIONS: Array<{ value: ProductArpDirection; label: string }
   { value: 'randomLiveTone', label: 'Random Live' },
   { value: 'diceHold', label: 'Dice Hold' },
 ];
-const ARP_SOURCE_OPTIONS: Array<{ value: ProductArpSourceMode; label: string }> = [
-  { value: 'followHarmony', label: 'Follow' },
-  { value: 'slotLane', label: 'Slot Lane' },
+const ARP_RATE_OPTIONS: Array<{ value: ProductArpRate; label: string }> = [
+  { value: 0.5, label: '1/2x' },
+  { value: 1, label: '1x' },
+  { value: 2, label: '2x' },
+  { value: 4, label: '4x' },
+];
+const ARP_BOUNDARY_OPTIONS: Array<{ value: ProductArpBoundaryMode; label: string }> = [
+  { value: 'fold', label: 'Fold' },
+  { value: 'wrap', label: 'Wrap' },
+  { value: 'clamp', label: 'Clamp' },
+];
+const ARP_CONTOUR_MODE_OPTIONS: Array<{ value: ProductArpContourMode; label: string }> = [
+  { value: 'pool', label: 'Pool' },
+  { value: 'semitone', label: 'Semitone' },
 ];
 const ARP_SLOT_CHOICES: Array<{ value: ProductArpSlotChoice; label: string }> = [
-  { value: -1, label: 'F' },
+  { value: -1, label: 'Follow' },
   { value: 0, label: 'S1' },
   { value: 1, label: 'S2' },
   { value: 2, label: 'S3' },
@@ -1104,6 +1127,14 @@ const ARP_SLOT_CHOICES: Array<{ value: ProductArpSlotChoice; label: string }> = 
   { value: 5, label: 'S6' },
   { value: 6, label: 'S7' },
   { value: 7, label: 'S8' },
+];
+const ARP_CONTOUR_GRID_VALUES = [12, 6, 0, -6, -12] as const;
+type ArpContourPreset = 'flat' | 'rise' | 'fall' | 'wave';
+const ARP_CONTOUR_PRESETS: Array<{ value: ArpContourPreset; label: string }> = [
+  { value: 'flat', label: 'Flat' },
+  { value: 'rise', label: 'Rise' },
+  { value: 'fall', label: 'Fall' },
+  { value: 'wave', label: 'Wave' },
 ];
 const ARP_ROMAN_DEGREES = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'] as const;
 const ARP_QUALITY_LABELS = {
@@ -1162,6 +1193,10 @@ function formatArpSlotChoiceLabel(slots: readonly HarmonyChordSlot[], choice: Pr
   return slot ? `S${choice + 1} ${formatArpIntentTitle(slot.intent)}` : `S${choice + 1}`;
 }
 
+function formatArpSlotChoiceCompactLabel(choice: ProductArpSlotChoice): string {
+  return choice < 0 ? 'F' : `S${choice + 1}`;
+}
+
 function formatArpSlotChoiceTitle(
   slots: readonly HarmonyChordSlot[],
   choice: ProductArpSlotChoice,
@@ -1179,11 +1214,437 @@ function formatArpSlotChoiceTitle(
   return `S${choice + 1} ${formatArpIntentTitle(slot.intent)}${notes.length ? ` · ${notes.join(' ')}` : ''}`;
 }
 
-function nextArpSlotChoice(choice: ProductArpSlotChoice, delta: 1 | -1): ProductArpSlotChoice {
-  const values = ARP_SLOT_CHOICES.map((item) => item.value);
-  const index = values.indexOf(choice);
-  const nextIndex = ((index >= 0 ? index : 0) + delta + values.length) % values.length;
-  return values[nextIndex] ?? -1;
+function clampArpContourValue(value: number): number {
+  return Math.max(ARP_CONTOUR_MIN, Math.min(ARP_CONTOUR_MAX, Math.round(value)));
+}
+
+function clampArpLengthValue(value: number): number {
+  return Math.max(1, Math.min(ARP_VISIBLE_STEPS, Math.round(value)));
+}
+
+function stepRangeMask(start: number, end: number): number {
+  const safeStart = Math.max(0, Math.min(ARP_VISIBLE_STEPS, Math.round(start)));
+  const safeEnd = Math.max(safeStart, Math.min(ARP_VISIBLE_STEPS, Math.round(end)));
+  let mask = 0;
+  for (let step = safeStart; step < safeEnd; step += 1) {
+    mask |= 1 << step;
+  }
+  return mask;
+}
+
+function armNewArpLengthSteps(pulseMask: number, oldLength: number, nextLength: number): number {
+  const normalizedMask = Math.max(0, Math.min(ARP_FULL_STEP_MASK, Math.round(pulseMask)));
+  if (nextLength <= oldLength) return normalizedMask;
+  return normalizedMask | stepRangeMask(oldLength, nextLength);
+}
+
+function arpContourPresetValues(preset: ArpContourPreset): number[] {
+  return Array.from({ length: ARP_VISIBLE_STEPS }, (_, step) => {
+    if (preset === 'rise') return clampArpContourValue((step % 8) - 3);
+    if (preset === 'fall') return clampArpContourValue(3 - (step % 8));
+    if (preset === 'wave') return [0, 2, 4, 2, 0, -2, -4, -2][step % 8] ?? 0;
+    return 0;
+  });
+}
+
+function mutateArpContourValues(contour: readonly number[]): number[] {
+  return Array.from({ length: ARP_VISIBLE_STEPS }, (_, step) => {
+    const current = contour[step] ?? 0;
+    const nudge = Math.floor(Math.random() * 5) - 2;
+    return clampArpContourValue(current + nudge);
+  });
+}
+
+function formatArpMove(value: number): string {
+  const rounded = Math.round(value);
+  return rounded > 0 ? `+${rounded}` : `${rounded}`;
+}
+
+function arpContourSvgY(value: number): number {
+  return ARP_CONTOUR_MAX - clampArpContourValue(value);
+}
+
+function arpContourTopPercent(value: number): number {
+  return (arpContourSvgY(value) / ARP_CONTOUR_SVG_RANGE) * 100;
+}
+
+function formatArpResolvedNote(midi: number | null | undefined): string {
+  return typeof midi === 'number' && Number.isFinite(midi) && midi >= 0 ? formatMidiNoteName(midi) : '--';
+}
+
+interface ArpContourEditorProps {
+  config: ProductArpConfig;
+  color: string;
+  harmony: ReturnType<typeof createProductArpHarmonyContext>;
+  resolvedSteps: ProductArpResolvedStep[];
+  selectedStep: number;
+  onSelectStep: (step: number) => void;
+  onToggleEnabled: () => void;
+  onUpdateConfig: (patch: Partial<ProductArpConfig>) => void;
+  onSetContour: (step: number, value: number) => void;
+  onTogglePulse: (step: number) => void;
+  onSetSlotChoice: (step: number, value: ProductArpSlotChoice) => void;
+  onToggleReset: (step: number) => void;
+  onApplyPreset: (preset: ArpContourPreset) => void;
+  onMutate: () => void;
+}
+
+const ArpContourEditor: React.FC<ArpContourEditorProps> = ({
+  config,
+  color,
+  harmony,
+  resolvedSteps,
+  selectedStep,
+  onSelectStep,
+  onToggleEnabled,
+  onUpdateConfig,
+  onSetContour,
+  onTogglePulse,
+  onSetSlotChoice,
+  onToggleReset,
+  onApplyPreset,
+  onMutate,
+}) => {
+  const length = clampArpLengthValue(config.length);
+  const selected = Math.max(0, Math.min(ARP_VISIBLE_STEPS - 1, Math.round(selectedStep)));
+  const selectedInRange = selected < length;
+  const selectedDetail = selectedInRange ? resolvedSteps[selected] : undefined;
+  const selectedMove = config.contour[selected] ?? 0;
+  const selectedSource = config.slotLane[selected] ?? -1;
+  const selectedPulseStored = (config.pulseMask & (1 << selected)) !== 0;
+  const selectedResetStored = (config.resetMask & (1 << selected)) !== 0;
+  const [dragState, setDragState] = useState<{
+    pointerId: number;
+    step: number;
+    startY: number;
+    startValue: number;
+    value: number;
+  } | null>(null);
+  const contourPoints = Array.from({ length: ARP_VISIBLE_STEPS }, (_, step) => {
+    const move = config.contour[step] ?? 0;
+    return `${step + 0.5},${arpContourSvgY(move)}`;
+  }).join(' ');
+
+  const beginDrag = useCallback((event: React.PointerEvent<HTMLButtonElement>, step: number) => {
+    if (event.button !== 0) return;
+    const value = config.contour[step] ?? 0;
+    onSelectStep(step);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragState({
+      pointerId: event.pointerId,
+      step,
+      startY: event.clientY,
+      startValue: value,
+      value,
+    });
+  }, [config.contour, onSelectStep]);
+
+  const updateDrag = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!dragState || event.pointerId !== dragState.pointerId) return;
+    event.preventDefault();
+    const delta = Math.round((dragState.startY - event.clientY) / 8);
+    const nextValue = clampArpContourValue(dragState.startValue + delta);
+    setDragState((current) => current ? { ...current, value: nextValue } : current);
+    onSetContour(dragState.step, nextValue);
+  }, [dragState, onSetContour]);
+
+  const endDrag = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!dragState || event.pointerId !== dragState.pointerId) return;
+    setDragState(null);
+  }, [dragState]);
+
+  return (
+    <div className="seq-arp-editor" style={{ '--seq-arp-color': color } as React.CSSProperties}>
+      <div className="seq-arp-toolbar">
+        <button
+          type="button"
+          className={`seq-lane-enable-btn${config.enabled ? ' on' : ''}`}
+          onClick={onToggleEnabled}
+        >
+          {config.enabled ? 'On' : 'Off'}
+        </button>
+        <label className="seq-arp-field">
+          <span>Flow</span>
+          <select
+            className="seq-arp-select"
+            value={config.flow}
+            onChange={(event) => {
+              onUpdateConfig({ flow: event.target.value as ProductArpFlow });
+              blurSelectAfterChange(event.currentTarget);
+            }}
+          >
+            {ARP_FLOW_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="seq-arp-field seq-arp-rate-field">
+          <span>Rate</span>
+          <select
+            className="seq-arp-select"
+            value={config.rate}
+            onChange={(event) => {
+              onUpdateConfig({ rate: Number.parseFloat(event.target.value) as ProductArpRate });
+              blurSelectAfterChange(event.currentTarget);
+            }}
+          >
+            {ARP_RATE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="seq-arp-field seq-arp-length-field">
+          <span>Len</span>
+          <input
+            className="seq-arp-length-input"
+            type="number"
+            min={1}
+            max={16}
+            value={length}
+            onChange={(event) => {
+              const nextLength = Number.parseInt(event.target.value, 10);
+              if (Number.isFinite(nextLength)) onUpdateConfig({ length: nextLength });
+            }}
+          />
+        </label>
+        <label className="seq-arp-field seq-arp-boundary-field">
+          <span>Boundary</span>
+          <select
+            className="seq-arp-select"
+            value={config.boundaryMode}
+            onChange={(event) => {
+              onUpdateConfig({ boundaryMode: event.target.value as ProductArpBoundaryMode });
+              blurSelectAfterChange(event.currentTarget);
+            }}
+          >
+            {ARP_BOUNDARY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <div className="seq-arp-segment" aria-label="ARP contour mode">
+          {ARP_CONTOUR_MODE_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={config.contourMode === option.value ? 'active' : ''}
+              onClick={() => onUpdateConfig({ contourMode: option.value })}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="seq-arp-action-row" aria-label="ARP contour presets">
+        {ARP_CONTOUR_PRESETS.map((preset) => (
+          <button
+            key={preset.value}
+            type="button"
+            className="seq-arp-action-button"
+            onClick={() => onApplyPreset(preset.value)}
+          >
+            {preset.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="seq-arp-action-button strong"
+          onClick={onMutate}
+        >
+          Mutate
+        </button>
+      </div>
+
+      <div className="seq-arp-contour">
+        <div className="seq-arp-contour-scale" aria-hidden="true">
+          {ARP_CONTOUR_GRID_VALUES.map((value) => (
+            <span key={value} style={{ top: `${arpContourTopPercent(value)}%` }}>{formatArpMove(value)}</span>
+          ))}
+        </div>
+        <div className="seq-arp-contour-plot">
+          <svg
+            className="seq-arp-contour-svg"
+            viewBox={`0 0 ${ARP_VISIBLE_STEPS} ${ARP_CONTOUR_SVG_RANGE}`}
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            {ARP_CONTOUR_GRID_VALUES.map((value) => (
+              <line
+                key={value}
+                x1={0}
+                x2={ARP_VISIBLE_STEPS}
+                y1={arpContourSvgY(value)}
+                y2={arpContourSvgY(value)}
+                className={value === 0 ? 'zero' : undefined}
+              />
+            ))}
+            <polyline points={contourPoints} />
+          </svg>
+          <div className="seq-arp-contour-columns" style={{ gridTemplateColumns: `repeat(${ARP_VISIBLE_STEPS}, minmax(0, 1fr))` }}>
+            {Array.from({ length: ARP_VISIBLE_STEPS }, (_, step) => (
+              <button
+                key={step}
+                type="button"
+                className={`seq-arp-contour-column${selected === step ? ' selected' : ''}${step >= length ? ' out' : ''}`}
+                onClick={() => onSelectStep(step)}
+                aria-label={`Select arp step ${step + 1}`}
+              >
+                <span>{step + 1}</span>
+              </button>
+            ))}
+          </div>
+          {Array.from({ length: ARP_VISIBLE_STEPS }, (_, step) => {
+            const move = config.contour[step] ?? 0;
+            const inRange = step < length;
+            const stored = (config.pulseMask & (1 << step)) !== 0;
+            const active = inRange && stored;
+            const reset = (config.resetMask & (1 << step)) !== 0;
+            const detail = inRange ? resolvedSteps[step] : undefined;
+            return (
+              <button
+                key={step}
+                type="button"
+                className={`seq-arp-contour-node${active ? '' : ' muted'}${selected === step ? ' selected' : ''}${reset ? ' reset' : ''}${inRange ? '' : ' out'}${stored && !inRange ? ' armed' : ''}`}
+                style={{
+                  left: `${((step + 0.5) / ARP_VISIBLE_STEPS) * 100}%`,
+                  top: `${arpContourTopPercent(move)}%`,
+                }}
+                onPointerDown={(event) => beginDrag(event, step)}
+                onPointerMove={updateDrag}
+                onPointerUp={endDrag}
+                onPointerCancel={endDrag}
+                onDoubleClick={() => onSetContour(step, 0)}
+                title={`Step ${step + 1} move ${formatArpMove(move)} ${inRange ? `out ${formatArpResolvedNote(detail?.outputMidi)}` : stored ? 'stored on' : 'stored off'}`}
+                aria-label={`ARP step ${step + 1} move ${formatArpMove(move)}`}
+              />
+            );
+          })}
+          {dragState && (
+            <div
+              className="seq-arp-drag-readout"
+              style={{
+                left: `${((dragState.step + 0.5) / ARP_VISIBLE_STEPS) * 100}%`,
+                top: `${arpContourTopPercent(dragState.value)}%`,
+              }}
+            >
+              {formatArpMove(dragState.value)}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="seq-arp-note-row" style={{ gridTemplateColumns: `repeat(${ARP_VISIBLE_STEPS}, minmax(0, 1fr))` }}>
+        {Array.from({ length: ARP_VISIBLE_STEPS }, (_, step) => {
+          const inRange = step < length;
+          const detail = inRange ? resolvedSteps[step] : undefined;
+          const active = inRange && (config.pulseMask & (1 << step)) !== 0;
+          return (
+            <button
+              key={step}
+              type="button"
+              className={`seq-arp-note-cell${active ? '' : ' muted'}${selected === step ? ' selected' : ''}${inRange ? '' : ' out'}`}
+              onClick={() => onSelectStep(step)}
+              title={`Base ${formatArpResolvedNote(detail?.baseMidi)} out ${formatArpResolvedNote(detail?.outputMidi)}`}
+            >
+              {formatArpResolvedNote(detail?.outputMidi)}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="seq-arp-source-row" style={{ gridTemplateColumns: `repeat(${ARP_VISIBLE_STEPS}, minmax(0, 1fr))` }}>
+        {Array.from({ length: ARP_VISIBLE_STEPS }, (_, step) => {
+          const source = config.slotLane[step] ?? -1;
+          const inRange = step < length;
+          return (
+            <button
+              key={step}
+              type="button"
+              className={`seq-arp-source-cell${source >= 0 ? ' locked' : ''}${selected === step ? ' selected' : ''}${inRange ? '' : ' out'}`}
+              onClick={() => onSelectStep(step)}
+              title={formatArpSlotChoiceTitle(harmony.chordSlots, source, harmony)}
+            >
+              {formatArpSlotChoiceCompactLabel(source)}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="seq-arp-gate-row" style={{ gridTemplateColumns: `repeat(${ARP_VISIBLE_STEPS}, minmax(0, 1fr))` }}>
+        {Array.from({ length: ARP_VISIBLE_STEPS }, (_, step) => {
+          const inRange = step < length;
+          const stored = (config.pulseMask & (1 << step)) !== 0;
+          const active = inRange && stored;
+          const reset = (config.resetMask & (1 << step)) !== 0;
+          return (
+            <button
+              key={step}
+              type="button"
+              className={`seq-arp-gate-cell${active ? ' on' : ''}${reset ? ' reset' : ''}${selected === step ? ' selected' : ''}${inRange ? '' : ' out'}${stored && !inRange ? ' armed' : ''}`}
+              onClick={() => onTogglePulse(step)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                onToggleReset(step);
+              }}
+              aria-label={`Toggle arp step ${step + 1}`}
+            >
+              <span>{inRange ? (stored ? 'On' : 'Off') : (stored ? 'Set' : 'Off')}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="seq-arp-inspector">
+        <span className="seq-arp-inspector-item">
+          <strong>Step</strong>
+          {String(selected + 1).padStart(2, '0')}
+        </span>
+        <span className="seq-arp-inspector-item">
+          <strong>Move</strong>
+          {formatArpMove(selectedMove)}
+        </span>
+        <span className="seq-arp-inspector-item">
+          <strong>Base</strong>
+          {formatArpResolvedNote(selectedDetail?.baseMidi)}
+        </span>
+        <span className="seq-arp-inspector-item">
+          <strong>Out</strong>
+          {formatArpResolvedNote(selectedDetail?.outputMidi)}
+        </span>
+        <span className="seq-arp-inspector-item">
+          <strong>Range</strong>
+          {selectedInRange ? 'Live' : 'Stored'}
+        </span>
+        <label className="seq-arp-inspector-source">
+          <span>Source</span>
+          <select
+            className="seq-arp-select"
+            value={selectedSource}
+            title={formatArpSlotChoiceTitle(harmony.chordSlots, selectedSource, harmony)}
+            onChange={(event) => {
+              onSetSlotChoice(selected, Number.parseInt(event.target.value, 10) as ProductArpSlotChoice);
+              blurSelectAfterChange(event.currentTarget);
+            }}
+          >
+            {ARP_SLOT_CHOICES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.value < 0 ? option.label : formatArpSlotChoiceLabel(harmony.chordSlots, option.value)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className={`seq-arp-inspector-toggle${selectedPulseStored ? ' on' : ''}`}
+          onClick={() => onTogglePulse(selected)}
+        >
+          {selectedInRange ? (selectedPulseStored ? 'Active' : 'Muted') : (selectedPulseStored ? 'Set' : 'Muted')}
+        </button>
+        <button
+          type="button"
+          className={`seq-arp-inspector-toggle${selectedResetStored ? ' on' : ''}`}
+          onClick={() => onToggleReset(selected)}
+        >
+          {selectedResetStored ? 'Reset' : 'Free'}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function getSynthKeyboardEditLane(openLane: string): SynthKeyboardEditLane {
@@ -2649,10 +3110,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     </div>
   );
 
-  const renderChordTriggerLane = () => (
-    <div className="seq-trigger-always seq-chord-trigger-lane">
+  const renderChordRhythmTrack = () => (
+    <div className="seq-trigger-always seq-chord-trigger-lane seq-chord-rhythm-track">
       <div className="seq-lane-header seq-chord-trigger-header">
-        <span className="seq-lane-title">TRIGGER / HOLD</span>
+        <span className="seq-lane-title">RHYTHM</span>
         <div className="seq-lane-controls seq-chord-trigger-controls">
           <DragNumber
             value={chordSequencerConfig.stepCount}
@@ -2710,196 +3171,235 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     </div>
   );
 
-  const formatChordArpPatternStep = (step: SynthChordSequencerArpPatternStep): string => {
-    if (!step.active) return '–';
-    const octave = step.octave > 0 ? '↑' : step.octave < 0 ? '↓' : '';
-    return `${Math.max(1, Math.min(8, Math.round(step.tone)))}${octave}`;
-  };
-
-  const updateChordArpPatternStep = (
-    stepIndex: number,
-    updater: (step: SynthChordSequencerArpPatternStep) => SynthChordSequencerArpPatternStep,
-    basePattern?: readonly SynthChordSequencerArpPatternStep[],
-  ) => {
-    updateChordSequencerConfig((current) => ({
-      ...current,
-      arp: {
-        ...current.arp,
-        shape: 'custom',
-        pattern: (basePattern ?? current.arp.pattern).map((step, index) => index === stepIndex ? updater(step) : step),
-      },
-    }));
-  };
-
-  const renderChordArpPatternEditor = () => {
+  /* ─── Digitone-style Global Arp Config Bar (Option B) ─── */
+  const renderChordArpBar = () => {
     if (chordSequencerConfig.playbackMode !== 'arp') return null;
-    const pattern = chordSequencerConfig.arp.shape === 'custom'
-      ? chordSequencerConfig.arp.pattern
-      : synthChordArpPatternForShape(chordSequencerConfig.arp.shape, chordSequencerConfig.arp.patternLength);
-    const setArpPatternLength = (value: number) => {
-      const patternLength = snapChordArpPatternLength(value);
-      updateChordSequencerConfig((current) => ({
-        ...current,
-        arp: {
-          ...current.arp,
-          patternLength,
-          pattern: current.arp.shape === 'custom'
-            ? current.arp.pattern
-            : synthChordArpPatternForShape(current.arp.shape, patternLength),
-        },
-      }));
-    };
-    const setArpShape = (shape: SynthChordSequencerArpShape) => {
-      updateChordSequencerConfig((current) => ({
-        ...current,
-        arp: {
-          ...current.arp,
-          shape,
-          pattern: shape === 'custom'
-            ? current.arp.pattern
-            : synthChordArpPatternForShape(shape, current.arp.patternLength),
-        },
-      }));
-    };
-    const cycleArpTone = (index: number) => {
-      updateChordArpPatternStep(index, (current) => current.active
-        ? { ...current, tone: current.tone >= 8 ? 1 : current.tone + 1 }
-        : { ...current, active: true }, pattern);
-    };
-    const lowerArpTone = (index: number) => {
-      updateChordArpPatternStep(index, (current) => ({
-        ...current,
-        active: true,
-        tone: current.tone <= 1 ? 8 : current.tone - 1,
-      }), pattern);
-    };
-    const cycleArpOctave = (index: number) => {
-      updateChordArpPatternStep(index, (current) => ({
-        ...current,
-        active: true,
-        octave: (current.octave >= 1 ? -1 : current.octave + 1) as SynthChordSequencerArpPatternStep['octave'],
-      }), pattern);
-    };
-    const disableArpStep = (index: number) => {
-      updateChordArpPatternStep(index, (current) => ({ ...current, active: false }), pattern);
-    };
     return (
-      <div className="seq-arp-editor seq-chord-arp-editor">
-        <div className="seq-arp-editor-header seq-chord-arp-header">
-          <span>ARPEGGIATOR MODEL</span>
-          <div className="seq-lane-controls seq-chord-arp-controls">
-            <label className="synth-source-label">
-              Rate
-              <select
-                className="synth-source-select"
-                value={chordSequencerConfig.arp.speed}
-                onChange={(event) => updateChordSequencerConfig((current) => ({
-                  ...current,
-                  arp: { ...current.arp, speed: event.target.value as SynthChordSequencerArpSpeed },
-                }))}
-              >
-                {SYNTH_CHORD_ARP_SPEEDS.map((speed) => (
-                  <option key={speed} value={speed}>{speed}</option>
-                ))}
-              </select>
-            </label>
-            <label className="synth-source-label">
-              Shape
-              <select
-                className="synth-source-select"
-                value={chordSequencerConfig.arp.shape}
-                onChange={(event) => setArpShape(event.target.value as SynthChordSequencerArpShape)}
-              >
-                {CHORD_ARP_SHAPES.map((shape) => (
-                  <option key={shape.value} value={shape.value}>{shape.label}</option>
-                ))}
-              </select>
-            </label>
+      <div className="seq-chord-arp-bar">
+        <div className="seq-chord-arp-bar-row">
+          <div className="seq-chord-arp-bar-param">
+            <span className="seq-chord-arp-bar-label">Mode</span>
+            <div className="seq-chord-arp-bar-shapes">
+              {CHORD_ARP_SHAPES.filter((s) => s.value !== 'custom').map((shape) => (
+                <button
+                  key={shape.value}
+                  type="button"
+                  className={`seq-chord-arp-shape-btn${chordSequencerConfig.arp.shape === shape.value ? ' active' : ''}`}
+                  onClick={() => updateChordSequencerConfig((current) => ({
+                    ...current,
+                    arp: {
+                      ...current.arp,
+                      shape: shape.value as SynthChordSequencerArpShape,
+                      pattern: shape.value === 'custom'
+                        ? current.arp.pattern
+                        : synthChordArpPatternForShape(shape.value as SynthChordSequencerArpShape, current.arp.patternLength),
+                    },
+                  }))}
+                  title={shape.label}
+                >
+                  {shape.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="seq-chord-arp-bar-param">
+            <span className="seq-chord-arp-bar-label">Speed</span>
+            <select
+              className="synth-source-select seq-chord-arp-bar-select"
+              value={chordSequencerConfig.arp.speed}
+              onChange={(event) => updateChordSequencerConfig((current) => ({
+                ...current,
+                arp: { ...current.arp, speed: event.target.value as SynthChordSequencerArpSpeed },
+              }))}
+            >
+              {SYNTH_CHORD_ARP_SPEEDS.map((speed) => (
+                <option key={speed} value={speed}>{speed}</option>
+              ))}
+            </select>
+          </div>
+          <div className="seq-chord-arp-bar-param">
+            <span className="seq-chord-arp-bar-label">Range</span>
+            <select
+              className="synth-source-select seq-chord-arp-bar-select"
+              value={chordSequencerConfig.arp.range}
+              onChange={(event) => updateChordSequencerConfig((current) => ({
+                ...current,
+                arp: { ...current.arp, range: Number(event.target.value) as SynthChordSequencerArpRange },
+              }))}
+            >
+              {SYNTH_CHORD_ARP_RANGES.map((r) => (
+                <option key={r} value={r}>{r} oct</option>
+              ))}
+            </select>
+          </div>
+          <div className="seq-chord-arp-bar-param">
+            <span className="seq-chord-arp-bar-label">Length</span>
             <DragNumber
               value={chordSequencerConfig.arp.patternLength}
               min={1}
               max={8}
-              label="Len"
+              label=""
               displayValue={chordSequencerConfig.arp.patternLength}
-              onChange={setArpPatternLength}
-            />
-            <label className="synth-source-label seq-chord-arp-gate">
-              Gate
-              <input
-                className="synth-chord-mini-range"
-                type="range"
-                min={0.05}
-                max={1}
-                step={0.01}
-                value={chordSequencerConfig.arp.gate}
-                onChange={(event) => updateChordSequencerConfig((current) => ({
+              onChange={(value: number) => {
+                const patternLength = snapChordArpPatternLength(value);
+                updateChordSequencerConfig((current) => ({
                   ...current,
-                  arp: { ...current.arp, gate: Number(event.target.value) },
-                }))}
-              />
-            </label>
+                  arp: {
+                    ...current.arp,
+                    patternLength,
+                    pattern: current.arp.shape === 'custom'
+                      ? current.arp.pattern
+                      : synthChordArpPatternForShape(current.arp.shape, patternLength),
+                  },
+                }));
+              }}
+            />
+          </div>
+          <div className="seq-chord-arp-bar-param seq-chord-arp-bar-gate">
+            <span className="seq-chord-arp-bar-label">Gate</span>
+            <input
+              className="synth-chord-mini-range"
+              type="range"
+              min={0.05}
+              max={1}
+              step={0.01}
+              value={chordSequencerConfig.arp.gate}
+              onChange={(event) => updateChordSequencerConfig((current) => ({
+                ...current,
+                arp: { ...current.arp, gate: Number(event.target.value) },
+              }))}
+            />
           </div>
         </div>
-        <div className="seq-chord-arp-grid" style={{ gridTemplateColumns: `repeat(${chordSequencerConfig.arp.patternLength}, 1fr)` }}>
-          {pattern.slice(0, chordSequencerConfig.arp.patternLength).map((step, index) => (
+      </div>
+    );
+  };
+
+  /* ─── Melody Track (Option B: independent chord slot lane) ─── */
+  const updateMelodyTrack = useCallback((
+    updater: (current: SynthChordSequencerMelodyTrack) => SynthChordSequencerMelodyTrack,
+  ) => {
+    updateChordSequencerConfig((current) => ({
+      ...current,
+      melodyTrack: updater(current.melodyTrack),
+    }));
+  }, [updateChordSequencerConfig]);
+
+  const updateMelodyStep = useCallback((
+    stepIndex: number,
+    patch: Partial<SynthChordSequencerMelodyStep>,
+  ) => {
+    updateMelodyTrack((current) => ({
+      ...current,
+      steps: current.steps.map((step, index) => index === stepIndex ? { ...step, ...patch } : step),
+    }));
+  }, [updateMelodyTrack]);
+
+  const cycleMelodySlot = useCallback((stepIndex: number) => {
+    const current = chordSequencerConfig.melodyTrack.steps[stepIndex];
+    if (!current) return;
+    const next = current.slotIndex >= 8 ? 1 : current.slotIndex + 1;
+    updateMelodyStep(stepIndex, { slotIndex: next });
+  }, [chordSequencerConfig.melodyTrack.steps, updateMelodyStep]);
+
+  const cycleMelodyDirection = useCallback(() => {
+    updateMelodyTrack((current) => {
+      const dirs: SynthChordSequencerSubLaneDirection[] = ['forward', 'reverse', 'pingpong'];
+      const idx = dirs.indexOf(current.direction);
+      return { ...current, direction: dirs[(idx + 1) % dirs.length]! };
+    });
+  }, [updateMelodyTrack]);
+
+  const melodyTrackDirectionLabel = useMemo(() => {
+    const d = chordSequencerConfig.melodyTrack.direction;
+    return d === 'forward' ? 'Fwd' : d === 'reverse' ? 'Rev' : 'Ping';
+  }, [chordSequencerConfig.melodyTrack.direction]);
+
+  const MELODY_SLOT_COLORS = useMemo(() => [
+    '#22d3ee', '#a78bfa', '#f472b6', '#fbbf24',
+    '#34d399', '#fb923c', '#60a5fa', '#e879f9',
+  ], []);
+
+  const renderChordMelodyTrack = () => {
+    const track = chordSequencerConfig.melodyTrack;
+    const visibleSteps = track.steps.slice(0, track.stepCount);
+    return (
+      <div className="seq-chord-melody-track">
+        <div className="seq-lane-header seq-chord-melody-header">
+          <span className="seq-lane-title">MELODY</span>
+          <div className="seq-lane-controls seq-chord-melody-controls">
+            <DragNumber
+              value={track.stepCount}
+              min={1}
+              max={8}
+              label="Steps"
+              shapeByDrag
+              onChange={(value: number) => updateMelodyTrack((current) => ({
+                ...current,
+                stepCount: Math.max(1, Math.min(8, Math.round(value))),
+              }))}
+            />
             <button
-              key={index}
               type="button"
-              className={`seq-chord-arp-step${step.active ? ' active' : ''}`}
-              style={{
-                '--sc': CHORD_SEQUENCER_LANE_COLOR,
-                '--level': `${step.active ? 12 + ((Math.max(1, Math.min(8, Math.round(step.tone))) - 1) / 7) * 88 : 0}%`,
-                touchAction: 'none',
-              } as React.CSSProperties}
-              onPointerDown={(event) => {
-                event.preventDefault();
-                const el = event.currentTarget;
-                el.setPointerCapture(event.pointerId);
-                const startY = event.clientY;
-                const startTone = clampChordSequencerInt(step.tone, 1, 8);
-                const shiftClick = event.shiftKey;
-                let dragged = false;
-                const onMove = (ev: PointerEvent) => {
-                  const deltaY = startY - ev.clientY;
-                  if (!dragged && Math.abs(deltaY) < 4) return;
-                  dragged = true;
-                  const tone = clampChordSequencerInt(startTone + Math.round(deltaY / 18), 1, 8);
-                  updateChordArpPatternStep(index, (current) => ({
-                    ...current,
-                    active: true,
-                    tone,
-                  }), pattern);
-                  setDragPopup({
-                    x: ev.clientX,
-                    y: ev.clientY,
-                    text: formatChordArpPatternStep({ active: true, tone, octave: step.octave }),
-                  });
-                };
-                const onUp = () => {
-                  el.removeEventListener('pointermove', onMove);
-                  el.removeEventListener('pointerup', onUp);
-                  setDragPopup(null);
-                  if (!dragged) {
-                    if (shiftClick) cycleArpOctave(index);
-                    else cycleArpTone(index);
-                  }
-                };
-                el.addEventListener('pointermove', onMove);
-                el.addEventListener('pointerup', onUp);
-              }}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                lowerArpTone(index);
-              }}
-              onDoubleClick={(event) => {
-                event.preventDefault();
-                disableArpStep(index);
-              }}
+              className="seq-chord-dir-btn"
+              onClick={cycleMelodyDirection}
+              title="Cycle direction"
             >
-              <span className="seq-chord-arp-fill" aria-hidden="true" />
-              <span className="seq-chord-arp-label">{formatChordArpPatternStep(step)}</span>
+              {melodyTrackDirectionLabel}
             </button>
-          ))}
+          </div>
+        </div>
+        <div
+          className="seq-chord-melody-grid"
+          style={{ gridTemplateColumns: `repeat(${track.stepCount}, 1fr)` }}
+        >
+          {visibleSteps.map((step, index) => {
+            const slotColor = MELODY_SLOT_COLORS[(step.slotIndex - 1) % MELODY_SLOT_COLORS.length] ?? '#22d3ee';
+            const modeLabel = step.mode === 'inherit'
+              ? ''
+              : step.mode === 'chord' ? 'C'
+              : step.mode === 'arp' ? 'A'
+              : 'S';
+            const shapeGlyph = step.mode === 'arp' || (step.mode === 'inherit' && chordSequencerConfig.playbackMode === 'arp')
+              ? (step.arpShapeOverride
+                  ? step.arpShapeOverride === 'up' ? '↗'
+                  : step.arpShapeOverride === 'down' ? '↘'
+                  : step.arpShapeOverride === 'upDown' ? '⟋⟍'
+                  : step.arpShapeOverride === 'skip' ? '⤮'
+                  : step.arpShapeOverride === 'octave' ? '⏚'
+                  : '~'
+                : '')
+              : '';
+            return (
+              <button
+                key={index}
+                type="button"
+                className="seq-chord-melody-cell"
+                style={{
+                  '--slot-color': slotColor,
+                  borderColor: `color-mix(in srgb, ${slotColor} 55%, rgba(255,255,255,0.12))`,
+                } as React.CSSProperties}
+                onClick={() => cycleMelodySlot(index)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  const modes: SynthChordSequencerMelodyStepMode[] = ['inherit', 'chord', 'arp', 'strum'];
+                  const currentIdx = modes.indexOf(step.mode);
+                  updateMelodyStep(index, { mode: modes[(currentIdx + 1) % modes.length]! });
+                }}
+                title={`Slot ${step.slotIndex} · ${step.mode}${shapeGlyph ? ` · ${shapeGlyph}` : ''}\nClick: cycle slot · Right-click: cycle mode`}
+              >
+                <span className="seq-chord-melody-slot-badge" style={{ background: slotColor }}>
+                  {step.slotIndex}
+                </span>
+                {modeLabel && (
+                  <span className="seq-chord-melody-mode-badge">{modeLabel}</span>
+                )}
+                {shapeGlyph && (
+                  <span className="seq-chord-melody-shape">{shapeGlyph}</span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
     );
@@ -4137,21 +4637,38 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   const [arpConfigs, setArpConfigs] = useState<ProductArpConfig[]>(() => normalizeProductArpConfigs(initialArpConfigs, 4));
   const [arpRuntimeTick, setArpRuntimeTick] = useState(0);
+  const [selectedArpSteps, setSelectedArpSteps] = useState<number[]>(() => [0, 0, 0, 0]);
   const arpHarmonyContext = useMemo(() => createProductArpHarmonyContext(
     state as unknown as Record<string, unknown>,
     harmonyState,
   ), [harmonyState, state]);
+  const activeArpConfig = arpConfigs[seq.activeTab] ?? defaultProductArpConfig();
+  const activeArpResolvedSteps = useMemo(() => resolveProductArpPatternDetails({
+    config: { ...activeArpConfig, enabled: true },
+    harmony: arpHarmonyContext,
+    laneIndex: seq.activeTab,
+    runtimeTick: arpRuntimeTick,
+  }) ?? [], [activeArpConfig, arpHarmonyContext, arpRuntimeTick, seq.activeTab]);
   const updateArpConfig = useCallback((laneIdx: number, patch: Partial<ProductArpConfig>) => {
-    setArpConfigs((current) => current.map((config, index) => (
-      index === laneIdx ? normalizeProductArpConfig({ ...config, ...patch }) : config
-    )));
-  }, []);
-  const setArpTone = useCallback((laneIdx: number, step: number, value: number) => {
     setArpConfigs((current) => current.map((config, index) => {
       if (index !== laneIdx) return config;
-      const tonePattern = [...config.tonePattern];
-      tonePattern[step] = Math.max(0, Math.min(7, Math.round(value)));
-      return normalizeProductArpConfig({ ...config, tonePattern });
+      const nextPatch: Partial<ProductArpConfig> = { ...patch };
+      if (typeof patch.length === 'number' && Number.isFinite(patch.length)) {
+        const oldLength = clampArpLengthValue(config.length);
+        const nextLength = clampArpLengthValue(patch.length);
+        const sourcePulseMask = typeof patch.pulseMask === 'number' ? patch.pulseMask : config.pulseMask;
+        nextPatch.length = nextLength;
+        nextPatch.pulseMask = armNewArpLengthSteps(sourcePulseMask, oldLength, nextLength);
+      }
+      return normalizeProductArpConfig({ ...config, ...nextPatch });
+    }));
+  }, []);
+  const setArpContour = useCallback((laneIdx: number, step: number, value: number) => {
+    setArpConfigs((current) => current.map((config, index) => {
+      if (index !== laneIdx) return config;
+      const contour = [...config.contour];
+      contour[step] = clampArpContourValue(value);
+      return normalizeProductArpConfig({ ...config, contour });
     }));
   }, []);
   const setArpSlotChoice = useCallback((laneIdx: number, step: number, value: ProductArpSlotChoice) => {
@@ -4169,6 +4686,34 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         : config
     )));
   }, []);
+  const toggleArpReset = useCallback((laneIdx: number, step: number) => {
+    setArpConfigs((current) => current.map((config, index) => (
+      index === laneIdx
+        ? normalizeProductArpConfig({ ...config, resetMask: config.resetMask ^ (1 << step) })
+        : config
+    )));
+  }, []);
+  const applyArpContourPreset = useCallback((laneIdx: number, preset: ArpContourPreset) => {
+    setArpConfigs((current) => current.map((config, index) => (
+      index === laneIdx
+        ? normalizeProductArpConfig({ ...config, contour: arpContourPresetValues(preset) })
+        : config
+    )));
+  }, []);
+  const mutateArpContour = useCallback((laneIdx: number) => {
+    setArpConfigs((current) => current.map((config, index) => (
+      index === laneIdx
+        ? normalizeProductArpConfig({ ...config, contour: mutateArpContourValues(config.contour) })
+        : config
+    )));
+  }, []);
+  const selectArpStep = useCallback((laneIdx: number, step: number) => {
+    setSelectedArpSteps((current) => {
+      const next = [...current];
+      next[laneIdx] = Math.max(0, Math.min(15, Math.round(step)));
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     setArpConfigs(normalizeProductArpConfigs(initialArpConfigs, 4));
@@ -4183,7 +4728,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, [arpConfigs, onArpConfigsChange]);
 
   useEffect(() => {
-    if (!isRunning || !arpConfigs.some((config) => config.enabled && config.direction === 'randomLiveTone')) return;
+    if (!isRunning || !arpConfigs.some((config) => config.enabled && config.flow === 'randomLiveTone')) return;
     const intervalId = window.setInterval(() => setArpRuntimeTick((tick) => tick + 1), 250);
     return () => window.clearInterval(intervalId);
   }, [arpConfigs, isRunning]);
@@ -4600,7 +5145,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       });
       const engineSubLaneStates = seq.subLaneStates.map((laneState, laneIdx) => (
         arpConfigs[laneIdx]?.enabled
-          ? { ...laneState, pitch: { ...laneState.pitch, enabled: true, steps: arpConfigs[laneIdx]?.pulseCount ?? 8, direction: 'forward' as const } }
+          ? { ...laneState, pitch: { ...laneState.pitch, enabled: true, steps: arpConfigs[laneIdx]?.length ?? 8, direction: 'forward' as const } }
           : laneState
       ));
       const pitchDirection = seq.stepOverrides.pitchDirection.map((direction, laneIdx) => (
@@ -9434,113 +9979,47 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 {/* ── Sub-lane sparklines: pitch, expression, morph, distance ── */}
                 <div className="seq-spark-container">
                   {(() => {
-                    const arpConfig = arpConfigs[seq.activeTab] ?? defaultProductArpConfig();
+                    const arpConfig = activeArpConfig;
                     const laneColor = '#7dd3fc';
                     const openLane = seq.openLane as SynthDetailOpenLane;
+                    const selectedArpStep = selectedArpSteps[seq.activeTab] ?? 0;
                     return (
                       <React.Fragment key="arp">
                         <SeqSparkline
                           label="Arp:"
-                          steps={arpConfig.pulseCount}
+                          steps={arpConfig.length}
                           values={productArpPulseValues(arpConfig)}
                           color={laneColor}
                           playhead={seq.playheads[seq.activeTab] ?? 0}
                           hitCount={seq.hitCounts[seq.activeTab] ?? 0}
                           playheadMode="hit"
                           direction="forward"
-                          bipolar={false}
+                          bipolar
+                          mode="signed"
                           enabled={arpConfig.enabled}
                           expanded={openLane === 'arp'}
                           onClick={() => seq.setOpenLane((openLane === 'arp' ? 'trigger' : 'arp') as never)}
                           onToggleEnabled={() => updateArpConfig(seq.activeTab, { enabled: !arpConfig.enabled })}
+                          selectedStep={selectedArpStep}
                         />
                         {openLane === 'arp' && (
                           <div className="seq-lane-editor-wrap">
-                            <div className="seq-arp-editor" style={{ '--seq-arp-color': laneColor } as React.CSSProperties}>
-                              <div className="seq-arp-toolbar">
-                                <button
-                                  type="button"
-                                  className={`seq-lane-enable-btn${arpConfig.enabled ? ' on' : ''}`}
-                                  onClick={() => updateArpConfig(seq.activeTab, { enabled: !arpConfig.enabled })}
-                                >
-                                  {arpConfig.enabled ? 'On' : 'Off'}
-                                </button>
-                                <div className="seq-arp-segment" aria-label="ARP source mode">
-                                  {ARP_SOURCE_OPTIONS.map((option) => (
-                                    <button
-                                      key={option.value}
-                                      type="button"
-                                      className={arpConfig.sourceMode === option.value ? 'active' : ''}
-                                      onClick={() => updateArpConfig(seq.activeTab, { sourceMode: option.value })}
-                                    >
-                                      {option.label}
-                                    </button>
-                                  ))}
-                                </div>
-                                <select
-                                  className="seq-arp-select"
-                                  value={arpConfig.direction}
-                                  onChange={(event) => updateArpConfig(seq.activeTab, { direction: event.target.value as ProductArpDirection })}
-                                >
-                                  {ARP_DIRECTION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                </select>
-                                <div className="seq-arp-pulse-count">
-                                  {([4, 8, 16] as ProductArpPulseCount[]).map((count) => (
-                                    <button
-                                      key={count}
-                                      type="button"
-                                      className={arpConfig.pulseCount === count ? 'active' : ''}
-                                      onClick={() => updateArpConfig(seq.activeTab, { pulseCount: count })}
-                                    >
-                                      {count}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                              <div className="seq-arp-grid">
-                                {Array.from({ length: arpConfig.pulseCount }, (_, step) => {
-                                  const pulseOn = (arpConfig.pulseMask & (1 << step)) !== 0;
-                                  return (
-                                    <div key={step} className={`seq-arp-step${pulseOn ? ' on' : ''}`}>
-                                      <button
-                                        type="button"
-                                        className="seq-arp-pulse"
-                                        onClick={() => toggleArpPulse(seq.activeTab, step)}
-                                        aria-label={`Toggle arp pulse ${step + 1}`}
-                                      >
-                                        {pulseOn ? '●' : '—'}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="seq-arp-tone"
-                                        onClick={() => setArpTone(seq.activeTab, step, (arpConfig.tonePattern[step] ?? 0) + 1)}
-                                        onContextMenu={(event) => {
-                                          event.preventDefault();
-                                          setArpTone(seq.activeTab, step, (arpConfig.tonePattern[step] ?? 0) - 1);
-                                        }}
-                                        title="Chord tone. Click to raise, right-click to lower."
-                                      >
-                                        {(arpConfig.tonePattern[step] ?? 0) + 1}
-                                      </button>
-                                      {arpConfig.sourceMode === 'slotLane' && (
-                                        <button
-                                          type="button"
-                                          className="seq-arp-slot"
-                                          title={formatArpSlotChoiceTitle(arpHarmonyContext.chordSlots, arpConfig.slotLane[step] ?? -1, arpHarmonyContext)}
-                                          onClick={() => setArpSlotChoice(seq.activeTab, step, nextArpSlotChoice(arpConfig.slotLane[step] ?? -1, 1))}
-                                          onContextMenu={(event) => {
-                                            event.preventDefault();
-                                            setArpSlotChoice(seq.activeTab, step, nextArpSlotChoice(arpConfig.slotLane[step] ?? -1, -1));
-                                          }}
-                                        >
-                                          {formatArpSlotChoiceLabel(arpHarmonyContext.chordSlots, arpConfig.slotLane[step] ?? -1)}
-                                        </button>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
+                            <ArpContourEditor
+                              config={arpConfig}
+                              color={laneColor}
+                              harmony={arpHarmonyContext}
+                              resolvedSteps={activeArpResolvedSteps}
+                              selectedStep={selectedArpStep}
+                              onSelectStep={(step) => selectArpStep(seq.activeTab, step)}
+                              onToggleEnabled={() => updateArpConfig(seq.activeTab, { enabled: !arpConfig.enabled })}
+                              onUpdateConfig={(patch) => updateArpConfig(seq.activeTab, patch)}
+                              onSetContour={(step, value) => setArpContour(seq.activeTab, step, value)}
+                              onTogglePulse={(step) => toggleArpPulse(seq.activeTab, step)}
+                              onSetSlotChoice={(step, value) => setArpSlotChoice(seq.activeTab, step, value)}
+                              onToggleReset={(step) => toggleArpReset(seq.activeTab, step)}
+                              onApplyPreset={(preset) => applyArpContourPreset(seq.activeTab, preset)}
+                              onMutate={() => mutateArpContour(seq.activeTab)}
+                            />
                           </div>
                         )}
                       </React.Fragment>
@@ -9786,10 +10265,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     </button>
                   ) : null}
                   {renderChordSequencerControls('detail')}
-                  {renderChordTriggerLane()}
-                  {renderChordArpPatternEditor()}
+                  {renderChordRhythmTrack()}
+                  {renderChordArpBar()}
+                  {renderChordMelodyTrack()}
                   <div className="seq-spark-container seq-chord-sublane-grid">
-                    {SYNTH_CHORD_SUB_LANE_NAMES.map(renderChordSubLaneEditor)}
+                    {SYNTH_CHORD_SUB_LANE_NAMES_V2.map(renderChordSubLaneEditor)}
                   </div>
                 </div>
               )}

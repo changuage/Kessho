@@ -9,19 +9,26 @@ import { productHarmonyScaleIdFromName } from './coreProductHarmonyScaleIds';
 import { createRng, getUtcBucket } from './rng';
 import { getScaleByName, selectScaleFamily } from './scales';
 
-export type ProductArpSourceMode = 'followHarmony' | 'slotLane';
-export type ProductArpDirection = 'up' | 'down' | 'upDown' | 'downUp' | 'randomLiveTone' | 'diceHold';
+export type ProductArpFlow = 'up' | 'down' | 'upDown' | 'downUp' | 'randomLiveTone' | 'diceHold';
 export type ProductArpSlotChoice = -1 | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
-export type ProductArpPulseCount = 4 | 8 | 16;
+export type ProductArpBoundaryMode = 'fold' | 'wrap' | 'clamp';
+export type ProductArpContourMode = 'pool' | 'semitone';
+export type ProductArpRate = 0.5 | 1 | 2 | 4;
+
+type LegacyProductArpSourceMode = 'followHarmony' | 'slotLane';
+type LegacyProductArpDirection = ProductArpFlow;
 
 export interface ProductArpConfig {
   enabled: boolean;
-  sourceMode: ProductArpSourceMode;
-  direction: ProductArpDirection;
-  pulseCount: ProductArpPulseCount;
+  flow: ProductArpFlow;
+  rate: ProductArpRate;
+  length: number;
   pulseMask: number;
-  tonePattern: number[];
+  contour: number[];
+  contourMode: ProductArpContourMode;
+  boundaryMode: ProductArpBoundaryMode;
   slotLane: ProductArpSlotChoice[];
+  resetMask: number;
 }
 
 export interface ProductArpHarmonyContext {
@@ -37,7 +44,27 @@ export interface ProductArpLiveHarmonyFrame {
   scaleFamily: { name: string };
 }
 
-const PRODUCT_ARP_DIRECTIONS: readonly ProductArpDirection[] = ['up', 'down', 'upDown', 'downUp', 'randomLiveTone', 'diceHold'];
+export interface ProductArpResolvedStep {
+  step: number;
+  enabled: boolean;
+  reset: boolean;
+  source: ProductArpSlotChoice;
+  move: number;
+  baseMidi: number | null;
+  outputMidi: number | null;
+  baseIndex: number | null;
+  outputIndex: number | null;
+  pool: number[];
+}
+
+const PRODUCT_ARP_FLOWS: readonly ProductArpFlow[] = ['up', 'down', 'upDown', 'downUp', 'randomLiveTone', 'diceHold'];
+const PRODUCT_ARP_BOUNDARY_MODES: readonly ProductArpBoundaryMode[] = ['fold', 'wrap', 'clamp'];
+const PRODUCT_ARP_CONTOUR_MODES: readonly ProductArpContourMode[] = ['pool', 'semitone'];
+const PRODUCT_ARP_RATES: readonly ProductArpRate[] = [0.5, 1, 2, 4];
+const PRODUCT_ARP_MAX_LENGTH = 16;
+const PRODUCT_ARP_CONTOUR_MIN = -12;
+const PRODUCT_ARP_CONTOUR_MAX = 12;
+const DEFAULT_CONTOUR = [0, 2, -1, 3, 0, 1, -2, 1, 0, 2, -3, 1, 0, -1, 2, 0];
 const DEFAULT_TONE_PATTERN = [0, 2, 1, 3, 0, 1, 3, 2, 0, 2, 4, 3, 1, 4, 2, 5];
 const DEFAULT_SLOT_LANE: ProductArpSlotChoice[] = Array.from({ length: 16 }, () => -1);
 const DEFAULT_PULSE_MASK = 0b01011111;
@@ -45,35 +72,56 @@ const DEFAULT_PULSE_MASK = 0b01011111;
 export function defaultProductArpConfig(): ProductArpConfig {
   return {
     enabled: false,
-    sourceMode: 'followHarmony',
-    direction: 'up',
-    pulseCount: 8,
+    flow: 'up',
+    rate: 1,
+    length: 8,
     pulseMask: DEFAULT_PULSE_MASK,
-    tonePattern: [...DEFAULT_TONE_PATTERN],
+    contour: [...DEFAULT_CONTOUR],
+    contourMode: 'pool',
+    boundaryMode: 'fold',
     slotLane: [...DEFAULT_SLOT_LANE],
+    resetMask: 0,
   };
 }
 
 export function normalizeProductArpConfig(value: unknown): ProductArpConfig {
   const fallback = defaultProductArpConfig();
   if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
-  const source = value as Partial<ProductArpConfig>;
-  const pulseCount = source.pulseCount === 4 || source.pulseCount === 8 || source.pulseCount === 16
-    ? source.pulseCount
-    : fallback.pulseCount;
+  const source = value as Partial<ProductArpConfig> & {
+    sourceMode?: LegacyProductArpSourceMode;
+    direction?: LegacyProductArpDirection;
+    pulseCount?: number;
+    tonePattern?: number[];
+  };
+  const flow = PRODUCT_ARP_FLOWS.includes(source.flow as ProductArpFlow)
+    ? source.flow as ProductArpFlow
+    : PRODUCT_ARP_FLOWS.includes(source.direction as LegacyProductArpDirection)
+      ? source.direction as LegacyProductArpDirection
+      : fallback.flow;
+  const length = clampArpLength(source.length ?? source.pulseCount ?? fallback.length);
+  const rate = normalizeArpRate(source.rate);
   const pulseMask = typeof source.pulseMask === 'number' && Number.isFinite(source.pulseMask)
-    ? Math.max(0, Math.min(0xffff, Math.round(source.pulseMask))) & ((1 << pulseCount) - 1)
+    ? normalizeStepMask(source.pulseMask)
     : fallback.pulseMask;
+  const resetMask = typeof source.resetMask === 'number' && Number.isFinite(source.resetMask)
+    ? normalizeStepMask(source.resetMask)
+    : fallback.resetMask;
+  const slotLane = normalizeSlotLane(source.slotLane);
   return {
     enabled: source.enabled === true,
-    sourceMode: source.sourceMode === 'slotLane' ? 'slotLane' : 'followHarmony',
-    direction: PRODUCT_ARP_DIRECTIONS.includes(source.direction as ProductArpDirection)
-      ? source.direction as ProductArpDirection
-      : fallback.direction,
-    pulseCount,
+    flow,
+    rate,
+    length,
     pulseMask,
-    tonePattern: normalizeTonePattern(source.tonePattern),
-    slotLane: normalizeSlotLane(source.slotLane),
+    contour: normalizeContour(source.contour, source.tonePattern, flow, length),
+    contourMode: PRODUCT_ARP_CONTOUR_MODES.includes(source.contourMode as ProductArpContourMode)
+      ? source.contourMode as ProductArpContourMode
+      : fallback.contourMode,
+    boundaryMode: PRODUCT_ARP_BOUNDARY_MODES.includes(source.boundaryMode as ProductArpBoundaryMode)
+      ? source.boundaryMode as ProductArpBoundaryMode
+      : fallback.boundaryMode,
+    slotLane: source.sourceMode === 'followHarmony' ? [...DEFAULT_SLOT_LANE] : slotLane,
+    resetMask,
   };
 }
 
@@ -118,42 +166,190 @@ export function resolveProductArpMidiPattern(options: {
   laneIndex: number;
   runtimeTick?: number;
 }): number[] | null {
+  const details = resolveProductArpPatternDetails(options);
+  return details ? details.map((step) => step.outputMidi ?? -1) : null;
+}
+
+export function resolveProductArpPatternDetails(options: {
+  config: ProductArpConfig;
+  harmony: ProductArpHarmonyContext;
+  laneIndex: number;
+  runtimeTick?: number;
+}): ProductArpResolvedStep[] | null {
   const config = normalizeProductArpConfig(options.config);
   if (!config.enabled) return null;
-  const values: number[] = [];
-  const pulseCount = config.pulseCount;
-  for (let pulse = 0; pulse < pulseCount; pulse += 1) {
+  const values: ProductArpResolvedStep[] = [];
+  let segmentStart = 0;
+  for (let pulse = 0; pulse < config.length; pulse += 1) {
+    const reset = (config.resetMask & (1 << pulse)) !== 0;
+    if (reset) segmentStart = pulse;
+    const move = config.contour[pulse] ?? 0;
+    const source = config.slotLane[pulse] ?? -1;
     if ((config.pulseMask & (1 << pulse)) === 0) {
-      values.push(-1);
+      values.push({
+        step: pulse,
+        enabled: false,
+        reset,
+        source,
+        move,
+        baseMidi: null,
+        outputMidi: null,
+        baseIndex: null,
+        outputIndex: null,
+        pool: [],
+      });
       continue;
     }
     const pool = resolveSourcePool(config, options.harmony, pulse);
     if (pool.length === 0) {
-      values.push(-1);
+      values.push({
+        step: pulse,
+        enabled: true,
+        reset,
+        source,
+        move,
+        baseMidi: null,
+        outputMidi: null,
+        baseIndex: null,
+        outputIndex: null,
+        pool: [],
+      });
       continue;
     }
-    const ordered = orderedPoolForDirection(pool, config.direction);
-    const toneIndex = resolveToneIndex(config, pulse, options.laneIndex, options.runtimeTick ?? 0, ordered.length);
-    values.push(ordered[toneIndex % ordered.length] ?? ordered[0] ?? -1);
+    const baseIndex = resolveTraversalIndex({
+      flow: config.flow,
+      localPulse: (pulse - segmentStart) * config.rate,
+      pulse,
+      laneIndex: options.laneIndex,
+      runtimeTick: options.runtimeTick ?? 0,
+      poolLength: pool.length,
+      pulseMask: config.pulseMask,
+      resetMask: config.resetMask,
+    });
+    const baseMidi = pool[baseIndex] ?? pool[0] ?? null;
+    if (baseMidi == null) {
+      values.push({
+        step: pulse,
+        enabled: true,
+        reset,
+        source,
+        move,
+        baseMidi: null,
+        outputMidi: null,
+        baseIndex: null,
+        outputIndex: null,
+        pool,
+      });
+      continue;
+    }
+    if (config.contourMode === 'semitone') {
+      values.push({
+        step: pulse,
+        enabled: true,
+        reset,
+        source,
+        move,
+        baseMidi,
+        outputMidi: clamp(Math.round(baseMidi + move), 0, 127),
+        baseIndex,
+        outputIndex: null,
+        pool,
+      });
+      continue;
+    }
+    const outputIndex = applyBoundaryIndex(baseIndex + move, pool.length, config.boundaryMode);
+    values.push({
+      step: pulse,
+      enabled: true,
+      reset,
+      source,
+      move,
+      baseMidi,
+      outputMidi: pool[outputIndex] ?? baseMidi,
+      baseIndex,
+      outputIndex,
+      pool,
+    });
   }
   return values;
 }
 
 export function productArpPulseValues(config: ProductArpConfig): number[] {
   const normalized = normalizeProductArpConfig(config);
-  return Array.from({ length: normalized.pulseCount }, (_, index) => {
-    if ((normalized.pulseMask & (1 << index)) === 0) return 0;
-    return ((normalized.tonePattern[index] ?? 0) + 1) / HARMONY_POOL_MAX_NOTES;
+  return Array.from({ length: PRODUCT_ARP_MAX_LENGTH }, (_, index) => {
+    if (index >= normalized.length || (normalized.pulseMask & (1 << index)) === 0) return 0;
+    return (normalized.contour[index] ?? 0) / PRODUCT_ARP_CONTOUR_MAX;
   });
 }
 
-function normalizeTonePattern(value: unknown): number[] {
+function clampArpLength(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? clamp(Math.round(value), 1, PRODUCT_ARP_MAX_LENGTH)
+    : 8;
+}
+
+function normalizeStepMask(value: number): number {
+  return Math.max(0, Math.min(0xffff, Math.round(value)));
+}
+
+function normalizeArpRate(value: unknown): ProductArpRate {
+  if (typeof value === 'string') {
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed === '1/2x' || trimmed === '1/2' || trimmed === 'half' || trimmed === '0.5x') return 0.5;
+    const parsed = Number.parseFloat(trimmed.replace(/x$/, ''));
+    if (Number.isFinite(parsed)) return closestArpRate(parsed);
+  }
+  return typeof value === 'number' && Number.isFinite(value) ? closestArpRate(value) : 1;
+}
+
+function closestArpRate(value: number): ProductArpRate {
+  let closest: ProductArpRate = 1;
+  let bestDistance = Math.abs(value - closest);
+  for (const rate of PRODUCT_ARP_RATES) {
+    const distance = Math.abs(value - rate);
+    if (distance < bestDistance) {
+      closest = rate;
+      bestDistance = distance;
+    }
+  }
+  return closest;
+}
+
+function normalizeContour(value: unknown, legacyTonePattern: unknown, flow: ProductArpFlow, length: number): number[] {
+  if (Array.isArray(value)) {
+    return Array.from({ length: PRODUCT_ARP_MAX_LENGTH }, (_, index) => normalizeContourValue(value[index], DEFAULT_CONTOUR[index] ?? 0));
+  }
+  if (Array.isArray(legacyTonePattern)) {
+    return legacyTonePatternToContour(legacyTonePattern, flow, length);
+  }
+  return Array.from({ length: PRODUCT_ARP_MAX_LENGTH }, (_, index) => DEFAULT_CONTOUR[index] ?? 0);
+}
+
+function normalizeContourValue(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? clamp(Math.round(value), PRODUCT_ARP_CONTOUR_MIN, PRODUCT_ARP_CONTOUR_MAX)
+    : fallback;
+}
+
+function legacyTonePatternToContour(value: unknown[], flow: ProductArpFlow, length: number): number[] {
   const source = Array.isArray(value) ? value : DEFAULT_TONE_PATTERN;
   return Array.from({ length: 16 }, (_, index) => {
     const raw = source[index];
-    return typeof raw === 'number' && Number.isFinite(raw)
-      ? Math.max(0, Math.min(HARMONY_POOL_MAX_NOTES - 1, Math.round(raw)))
+    const legacyTone = typeof raw === 'number' && Number.isFinite(raw)
+      ? clamp(Math.round(raw), 0, HARMONY_POOL_MAX_NOTES - 1)
       : DEFAULT_TONE_PATTERN[index] ?? 0;
+    if (flow === 'randomLiveTone' || flow === 'diceHold') return normalizeContourValue(legacyTone, 0);
+    const baseIndex = resolveTraversalIndex({
+      flow,
+      localPulse: index % Math.max(1, length),
+      pulse: index,
+      laneIndex: 0,
+      runtimeTick: 0,
+      poolLength: HARMONY_POOL_MAX_NOTES,
+      pulseMask: DEFAULT_PULSE_MASK,
+      resetMask: 0,
+    });
+    return normalizeContourValue(legacyTone - baseIndex, DEFAULT_CONTOUR[index] ?? 0);
   });
 }
 
@@ -217,7 +413,7 @@ function normalizePool(notes: readonly number[]): number[] {
 }
 
 function resolveSourcePool(config: ProductArpConfig, harmony: ProductArpHarmonyContext, pulse: number): number[] {
-  const slotChoice = config.sourceMode === 'slotLane' ? config.slotLane[pulse] ?? -1 : -1;
+  const slotChoice = config.slotLane[pulse] ?? -1;
   if (slotChoice >= 0) {
     const slot = harmony.chordSlots[slotChoice];
     if (slot) {
@@ -232,36 +428,47 @@ function resolveSourcePool(config: ProductArpConfig, harmony: ProductArpHarmonyC
   return normalizePool(harmony.notePoolMidi);
 }
 
-function orderedPoolForDirection(pool: readonly number[], direction: ProductArpDirection): number[] {
-  const up = normalizePool(pool);
-  const down = [...up].reverse();
-  if (direction === 'down' || direction === 'downUp') {
-    return direction === 'down' ? down : pingPongPool(down);
-  }
-  if (direction === 'upDown') return pingPongPool(up);
-  return up;
-}
-
-function pingPongPool(pool: readonly number[]): number[] {
-  if (pool.length <= 2) return [...pool];
-  return [...pool, ...pool.slice(1, -1).reverse()];
-}
-
-function resolveToneIndex(
-  config: ProductArpConfig,
-  pulse: number,
-  laneIndex: number,
+function resolveTraversalIndex(options: {
+  flow: ProductArpFlow;
+  localPulse: number;
+  pulse: number;
+  laneIndex: number;
   runtimeTick: number,
-  poolLength: number,
-): number {
+  poolLength: number;
+  pulseMask: number;
+  resetMask: number;
+}): number {
+  const { flow, localPulse, pulse, laneIndex, runtimeTick, poolLength, pulseMask, resetMask } = options;
   if (poolLength <= 1) return 0;
-  if (config.direction === 'randomLiveTone') {
+  if (flow === 'randomLiveTone') {
     return hashU32((runtimeTick + 1) * 0x45d9f3b + laneIndex * 0x119de1f3 + pulse * 0x27d4eb2d) % poolLength;
   }
-  if (config.direction === 'diceHold') {
-    return hashU32(config.pulseMask * 0x9e3779b1 + laneIndex * 0x85ebca6b + pulse * 0xc2b2ae35) % poolLength;
+  if (flow === 'diceHold') {
+    return hashU32(pulseMask * 0x9e3779b1 + resetMask * 0x632be59b + laneIndex * 0x85ebca6b + pulse * 0xc2b2ae35) % poolLength;
   }
-  return config.tonePattern[pulse] ?? 0;
+  const position = Math.max(0, Math.floor(localPulse));
+  if (flow === 'down') return poolLength - 1 - (position % poolLength);
+  if (flow === 'upDown') return pingPongIndex(position, poolLength);
+  if (flow === 'downUp') return poolLength - 1 - pingPongIndex(position, poolLength);
+  return position % poolLength;
+}
+
+function pingPongIndex(position: number, length: number): number {
+  if (length <= 1) return 0;
+  const period = (length - 1) * 2;
+  const folded = positiveModulo(position, period);
+  return folded <= length - 1 ? folded : period - folded;
+}
+
+function applyBoundaryIndex(index: number, length: number, boundaryMode: ProductArpBoundaryMode): number {
+  if (length <= 1) return 0;
+  if (boundaryMode === 'wrap') return positiveModulo(index, length);
+  if (boundaryMode === 'fold') return pingPongIndex(index, length);
+  return clamp(index, 0, length - 1);
+}
+
+function positiveModulo(value: number, divisor: number): number {
+  return ((value % divisor) + divisor) % divisor;
 }
 
 function hashU32(value: number): number {

@@ -1,22 +1,39 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import DragNumber from '../drums/DragNumber';
 import {
   isRoutingMuteGroupSlotStored,
+  normalizeRoutingMuteGroupRandomSettings,
+  normalizeRoutingMuteGroupPhraseRange,
+  routingMuteGroupSlotPhraseRange,
+  ROUTING_MUTE_GROUP_MAX_PHRASES,
+  ROUTING_MUTE_GROUP_MIN_PHRASES,
+  ROUTING_MUTE_GROUP_PHRASE_STEP,
   ROUTING_MUTE_GROUP_SLOT_COUNT,
-  routingMuteGroupSlotMuteCount,
+  routingMuteGroupSlotColor,
+  routingMuteGroupSlotActiveCount,
+  routingMuteGroupSlotSeqSummaries,
+  type RoutingMuteGroupPhraseRange,
+  type RoutingMuteGroupRandomSettings,
+  type RoutingMuteGroupRuntimeSnapshot,
   type RoutingMuteGroupsState,
+  type RoutingMuteGroupSlot,
+  type SaveSlotResult,
 } from './routingMuteGroups';
-import type { SaveSlotResult } from './useRoutingMuteGroupsController';
+import { ROUTING_SOURCE_REGISTRY } from './routingSourceRegistry';
 
 type RoutingMuteGroupsPanelProps = {
   muteGroups: RoutingMuteGroupsState;
   activeSlotIndex: number | null;
   selectedSlotIndex: number;
+  runtimeSnapshot: RoutingMuteGroupRuntimeSnapshot;
   onSelectSlot: (slotIndex: number) => void;
   onPressSlot: (slotIndex: number) => void;
   onSaveSlot: (slotIndex: number) => SaveSlotResult;
   onSaveSelectedSlot: () => SaveSlotResult;
   onClearSlot: (slotIndex: number) => void;
   onClearSelectedSlot: () => void;
+  onUpdateSlotPhraseRange: (slotIndex: number, range: RoutingMuteGroupPhraseRange) => void;
+  onUpdateRandomSettings: (patch: Partial<RoutingMuteGroupRandomSettings>) => void;
 };
 
 const LONG_PRESS_MS = 540;
@@ -32,12 +49,15 @@ export default function RoutingMuteGroupsPanel({
   muteGroups,
   activeSlotIndex,
   selectedSlotIndex,
+  runtimeSnapshot,
   onSelectSlot,
   onPressSlot,
   onSaveSlot,
   onSaveSelectedSlot,
   onClearSlot,
   onClearSelectedSlot,
+  onUpdateSlotPhraseRange,
+  onUpdateRandomSettings,
 }: RoutingMuteGroupsPanelProps) {
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFiredRef = useRef(false);
@@ -97,6 +117,8 @@ export default function RoutingMuteGroupsPanel({
     setStatusMessage(`Cleared mute group ${selectedSlotIndex + 1}`);
   };
 
+  const randomSettings = normalizeRoutingMuteGroupRandomSettings(muteGroups.random);
+
   const handlePointerDown = (slotIndex: number) => {
     longPressFiredRef.current = false;
     clearLongPressTimer();
@@ -111,12 +133,13 @@ export default function RoutingMuteGroupsPanel({
     clearLongPressTimer();
   };
 
-  const slots = Array.from({ length: ROUTING_MUTE_GROUP_SLOT_COUNT }, (_, index) => {
+  const slotButtons = Array.from({ length: ROUTING_MUTE_GROUP_SLOT_COUNT }, (_, index) => {
     const slot = muteGroups.slots[index] ?? null;
     const stored = isRoutingMuteGroupSlotStored(slot);
     const active = activeSlotIndex === index;
     const selected = selectedSlotIndex === index;
-    const mutedCount = routingMuteGroupSlotMuteCount(slot);
+    const slotColor = routingMuteGroupSlotColor(index, slot);
+    const activeCount = routingMuteGroupSlotActiveCount(slot);
     const flashKind = saveFlash?.slotIndex === index ? saveFlash.kind : null;
     const slotClassName = [
       'routing-mute-slot',
@@ -128,13 +151,13 @@ export default function RoutingMuteGroupsPanel({
     ].filter(Boolean).join(' ');
     const label = `Mute group ${index + 1}`;
     const status = flashKind === 'saved'
-      ? 'Saved!'
+      ? 'Saved'
       : flashKind === 'overwritten'
-        ? 'Overwritten!'
+        ? 'Overwritten'
         : active
           ? 'Active'
           : stored
-            ? mutedCount > 0 ? `${mutedCount} off` : 'Saved'
+            ? `${activeCount} on`
             : 'Empty';
 
     return (
@@ -142,9 +165,10 @@ export default function RoutingMuteGroupsPanel({
         key={index}
         type="button"
         className={slotClassName}
-        aria-label={`${label}. ${status}. ${active ? 'Active' : selected ? 'Selected' : 'Inactive'}.`}
+        style={{ '--mute-slot-color': slotColor } as CSSProperties}
+        aria-label={`${label}. ${status}. ${selected ? 'Selected' : 'Inactive'}.`}
         aria-pressed={active}
-        title={`${label} - ${status}. Long press to save current mute scene.`}
+        title={`${label}. Long press to save.`}
         onPointerDown={() => handlePointerDown(index)}
         onPointerUp={handlePointerEnd}
         onPointerLeave={handlePointerEnd}
@@ -180,40 +204,201 @@ export default function RoutingMuteGroupsPanel({
     );
   });
 
+  const savedSlotCards = Array.from({ length: ROUTING_MUTE_GROUP_SLOT_COUNT }, (_, index) => {
+    const slot = muteGroups.slots[index] ?? null;
+    if (!isRoutingMuteGroupSlotStored(slot)) return null;
+    const slotColor = routingMuteGroupSlotColor(index, slot);
+    const activeCount = routingMuteGroupSlotActiveCount(slot);
+    const range = routingMuteGroupSlotPhraseRange(slot, randomSettings);
+
+    const updateRange = (patch: Partial<RoutingMuteGroupPhraseRange>) => {
+      onUpdateSlotPhraseRange(index, normalizeRoutingMuteGroupPhraseRange({
+        ...range,
+        ...patch,
+      }, range));
+    };
+
+    return (
+      <div
+        key={index}
+        className={`routing-mute-card${activeSlotIndex === index ? ' active' : ''}`}
+        style={{ '--mute-slot-color': slotColor } as CSSProperties}
+      >
+        <div className="routing-mute-card-head">
+          <span className="routing-mute-card-num">{index + 1}</span>
+          <span className="routing-mute-card-count">{activeCount} on</span>
+        </div>
+        <SourceDotStrip slot={slot} />
+        {randomSettings.enabled && (
+          <div className="routing-mute-card-range">
+            <DragNumber
+              value={range.min}
+              min={ROUTING_MUTE_GROUP_MIN_PHRASES}
+              max={ROUTING_MUTE_GROUP_MAX_PHRASES}
+              step={ROUTING_MUTE_GROUP_PHRASE_STEP}
+              label="Min"
+              onChange={(v) => updateRange({ min: v })}
+            />
+            <DragNumber
+              value={range.max}
+              min={ROUTING_MUTE_GROUP_MIN_PHRASES}
+              max={ROUTING_MUTE_GROUP_MAX_PHRASES}
+              step={ROUTING_MUTE_GROUP_PHRASE_STEP}
+              label="Max"
+              onChange={(v) => updateRange({ max: v })}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }).filter(Boolean);
+
   return (
     <div className="routing-mute-groups" aria-label="Mute groups">
       <div className="routing-mute-groups-head">
         <div className="routing-mute-groups-title">Mute Groups</div>
-        <div className="routing-mute-groups-actions">
-          <button
-            type="button"
-            className="routing-mute-action"
-            onClick={() => flashSavedSlot(onSaveSelectedSlot())}
-            aria-label={`Save current mute scene into mute group ${selectedSlotIndex + 1}`}
-            title={`Save current mute scene into slot ${selectedSlotIndex + 1}`}
-          >
-            Save Current
-          </button>
-          <button
-            type="button"
-            className="routing-mute-action"
-            onClick={clearSelectedSlot}
-            aria-label={`Clear mute group ${selectedSlotIndex + 1}`}
-            title={`Clear slot ${selectedSlotIndex + 1}`}
-          >
-            Clear Slot
-          </button>
-        </div>
+        <button
+          type="button"
+          className={`routing-mute-random-toggle${randomSettings.enabled ? ' active' : ''}`}
+          onClick={() => onUpdateRandomSettings({ enabled: !randomSettings.enabled })}
+          aria-pressed={randomSettings.enabled}
+        >
+          Random
+        </button>
+        {randomSettings.enabled && (
+          <div className="routing-mute-random-controls">
+            <span
+              className="routing-mute-random-time"
+              aria-label="Time before next random mute group change"
+            >
+              {formatCountdown(runtimeSnapshot.secondsToNextChange)}
+            </span>
+            {runtimeSnapshot.nextSlotIndex !== null && (
+              <span className="routing-mute-random-next">
+                → {runtimeSnapshot.nextSlotIndex + 1}
+              </span>
+            )}
+            <DragNumber
+              value={randomSettings.defaultMinPhrases}
+              min={ROUTING_MUTE_GROUP_MIN_PHRASES}
+              max={ROUTING_MUTE_GROUP_MAX_PHRASES}
+              step={ROUTING_MUTE_GROUP_PHRASE_STEP}
+              label="Min"
+              onChange={(v) => onUpdateRandomSettings({ defaultMinPhrases: v })}
+            />
+            <DragNumber
+              value={randomSettings.defaultMaxPhrases}
+              min={ROUTING_MUTE_GROUP_MIN_PHRASES}
+              max={ROUTING_MUTE_GROUP_MAX_PHRASES}
+              step={ROUTING_MUTE_GROUP_PHRASE_STEP}
+              label="Max"
+              onChange={(v) => onUpdateRandomSettings({ defaultMaxPhrases: v })}
+            />
+            <DragNumber
+              value={randomSettings.transitionPhrases}
+              min={ROUTING_MUTE_GROUP_MIN_PHRASES}
+              max={ROUTING_MUTE_GROUP_MAX_PHRASES}
+              step={ROUTING_MUTE_GROUP_PHRASE_STEP}
+              label="Xfade"
+              onChange={(v) => onUpdateRandomSettings({ transitionPhrases: v })}
+            />
+          </div>
+        )}
       </div>
-      <div className="routing-mute-slots-scroll">
-        <div className="routing-mute-slots" role="group" aria-label="Mute group slots">
-          <div className="routing-mute-rowlabel">Slots</div>
-          {slots}
-        </div>
+
+      <div className="routing-mute-slots" role="group" aria-label="Mute group slots">
+        {slotButtons}
       </div>
+
+      {savedSlotCards.length > 0 && (
+        <div className="routing-mute-cards">
+          {savedSlotCards}
+        </div>
+      )}
+
+      <div className="routing-mute-groups-actions">
+        <button
+          type="button"
+          className="routing-mute-action"
+          onClick={() => flashSavedSlot(onSaveSelectedSlot())}
+          aria-label={`Save current mute scene into mute group ${selectedSlotIndex + 1}`}
+          title={`Save current mute scene into slot ${selectedSlotIndex + 1}`}
+        >
+          Save Scene
+        </button>
+        <button
+          type="button"
+          className="routing-mute-action"
+          onClick={clearSelectedSlot}
+          aria-label={`Clear mute group ${selectedSlotIndex + 1}`}
+          title={`Clear slot ${selectedSlotIndex + 1}`}
+        >
+          Clear
+        </button>
+      </div>
+
       <p className="routing-mute-groups-status" aria-live="polite">
         {statusMessage}
       </p>
     </div>
   );
+}
+
+const SOURCE_ABBREV: Record<string, string> = {
+  pad1: 'Pd1', pad2: 'Pd2', lead1: 'Ld1', lead2: 'Ld2',
+  sample1: 'Sm1', sample2: 'Sm2', drums: 'Drm', granular: 'Grn',
+  waves: 'Wav', water: 'Wtr', insects: 'Ins', nature: 'Nat',
+  delayAOut: 'DlA', delayBOut: 'DlB', degrade: 'Dgr', reverb: 'Rev',
+};
+
+function SourceDotStrip({ slot }: { slot: RoutingMuteGroupSlot }) {
+  const mutedSet = new Set(slot.mutedSourceIds);
+  const seqSummaries = routingMuteGroupSlotSeqSummaries(slot);
+  const activeEngines = ROUTING_SOURCE_REGISTRY.filter((s) => !mutedSet.has(s.id));
+
+  return (
+    <div className="routing-mute-source-dots" aria-label="Engine mute summary">
+      <div className="routing-mute-source-dots-row">
+        {ROUTING_SOURCE_REGISTRY.map((source) => {
+          const muted = mutedSet.has(source.id);
+          return (
+            <span
+              key={source.id}
+              className={`routing-mute-dot${muted ? ' muted' : ''}`}
+              style={{ '--dot-color': source.accent } as CSSProperties}
+              title={`${source.label}: ${muted ? 'muted' : 'on'}`}
+            />
+          );
+        })}
+      </div>
+      <div className="routing-mute-active-labels">
+        {activeEngines.map((source) => (
+          <span
+            key={source.id}
+            className="routing-mute-active-tag"
+            style={{ '--dot-color': source.accent } as CSSProperties}
+          >
+            {SOURCE_ABBREV[source.id] ?? source.id.slice(0, 3)}
+          </span>
+        ))}
+      </div>
+      {seqSummaries.length > 0 && (
+        <div className="routing-mute-seq-summary">
+          {seqSummaries.map((s) => (
+            <span key={s.prefix} className="routing-mute-seq-badge">
+              {s.label} {s.on}/{s.total}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatCountdown(seconds: number | null): string {
+  if (seconds === null || !Number.isFinite(seconds)) return '--:--';
+  const totalSeconds = Math.max(0, Math.ceil(seconds));
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainder = totalSeconds % 60;
+  return `${minutes}:${String(remainder).padStart(2, '0')}`;
 }

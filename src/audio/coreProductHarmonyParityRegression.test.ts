@@ -10,7 +10,13 @@ import { CoreProductArrangementScheduler } from './coreProductArrangementSchedul
 import { createHarmonyState } from './harmony';
 import { PRODUCT_HARMONY_SCALE_IDS } from './coreProductHarmonyScaleIds';
 import { createCoreProductSnapshot } from './coreProductSnapshot';
-import { createProductArpHarmonyContext } from './productArpeggiator';
+import {
+  createProductArpHarmonyContext,
+  normalizeProductArpConfig,
+  resolveProductArpMidiPattern,
+  resolveProductArpPatternDetails,
+  type ProductArpHarmonyContext,
+} from './productArpeggiator';
 import { createRng, getUtcBucket } from './rng';
 import { getScaleNotesInRange, SCALE_FAMILIES, selectScaleFamily } from './scales';
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
@@ -25,6 +31,7 @@ import {
   HARMONY_SEQUENCE_STEP_COUNT,
   HARMONY_SLOT_COUNT,
   commitBaselineMap,
+  defaultHarmonyChordSlot,
   generateHarmonySlotsAndSequence,
   resolveHarmonyIntentToNotePool,
   resolveProductHarmonyState,
@@ -189,6 +196,226 @@ assert.equal(productHostTelemetryCofHarmony.harmonyState?.cof.currentStep, 1, 'P
 const productArpTelemetryCofHarmony = createProductArpHarmonyContext({ rootNote: 0, scaleMode: 'manual', manualScale: 'Major (Ionian)', tension: 0.3 }, productHostTelemetryCofHarmony.harmonyState);
 assert.equal(pitchClass(productArpTelemetryCofHarmony.rootMidi), 7, 'Product arp harmony context should follow drifted telemetry root');
 assert.equal(productArpTelemetryCofHarmony.scaleId, 1, 'Product arp harmony context should follow live Product harmony scale');
+
+function productArpTestHarmony(
+  notePoolMidi: number[],
+  chordSlots: ProductArpHarmonyContext['chordSlots'] = [],
+): ProductArpHarmonyContext {
+  return {
+    rootMidi: 60,
+    scaleId: 1,
+    tension: 0.3,
+    notePoolMidi,
+    chordSlots,
+  };
+}
+
+function resolveEnabledArp(config: Record<string, unknown>, harmony: ProductArpHarmonyContext, runtimeTick = 0): number[] {
+  const result = resolveProductArpMidiPattern({
+    config: normalizeProductArpConfig({ enabled: true, ...config }),
+    harmony,
+    laneIndex: 0,
+    runtimeTick,
+  });
+  assert(result, 'enabled Product arp should resolve a MIDI pattern');
+  return result;
+}
+
+const legacyArp = normalizeProductArpConfig({
+  enabled: true,
+  direction: 'up',
+  pulseCount: 5,
+  pulseMask: 0xffff,
+  tonePattern: [0, 2, 1, 3, 4],
+});
+assert.equal(legacyArp.length, 5, 'legacy Product arp pulseCount should normalize to arbitrary 1-16 length');
+assert.equal(legacyArp.flow, 'up', 'legacy Product arp direction should normalize to flow');
+assert.equal(legacyArp.pulseMask, 0xffff, 'Product arp pulse mask should preserve all 16 stored steps');
+assert.deepEqual(legacyArp.contour.slice(0, 5), [0, 1, -1, 0, 0], 'legacy absolute tone pattern should migrate to traversal-relative contour');
+
+const rememberedLengthArp = normalizeProductArpConfig({
+  enabled: true,
+  flow: 'up',
+  length: 10,
+  pulseMask: (1 << 10) | (1 << 11),
+  contour: Array.from({ length: 16 }, () => 0),
+});
+const rememberedLength10Details = resolveProductArpPatternDetails({
+  config: rememberedLengthArp,
+  harmony: productArpTestHarmony([60, 62, 64]),
+  laneIndex: 0,
+});
+const rememberedLength12Details = resolveProductArpPatternDetails({
+  config: normalizeProductArpConfig({ ...rememberedLengthArp, length: 12 }),
+  harmony: productArpTestHarmony([60, 62, 64]),
+  laneIndex: 0,
+});
+assert.equal(rememberedLengthArp.pulseMask & (1 << 11), 1 << 11, 'Product arp should remember stored steps above the active length');
+assert.equal(rememberedLength10Details?.length, 10, 'Product arp should only resolve the active length');
+assert.equal(rememberedLength12Details?.[10]?.enabled, true, 'Product arp should restore remembered step 11 when length expands');
+assert.equal(rememberedLength12Details?.[11]?.enabled, true, 'Product arp should restore remembered step 12 when length expands');
+
+const contourHarmony = productArpTestHarmony([60, 62, 64, 67, 69]);
+assert.deepEqual(
+  resolveEnabledArp({
+    flow: 'up',
+    length: 5,
+    pulseMask: 0b11111,
+    contour: [0, 2, -1, 0, 3],
+    boundaryMode: 'fold',
+  }, contourHarmony),
+  [60, 67, 62, 67, 62],
+  'Product arp should resolve as traversal flow plus relative pool contour',
+);
+assert.deepEqual(
+  resolveEnabledArp({
+    flow: 'downUp',
+    length: 5,
+    pulseMask: 0b11111,
+    contour: [0, 0, 0, 0, 0],
+  }, productArpTestHarmony([60, 62, 64, 67])),
+  [67, 64, 62, 60, 62],
+  'Product arp down/up flow should generate underlying traversal before contour displacement',
+);
+assert.deepEqual(
+  resolveEnabledArp({
+    flow: 'up',
+    rate: 2,
+    length: 4,
+    pulseMask: 0b1111,
+    contour: [0, 0, 0, 0],
+  }, productArpTestHarmony([60, 62, 64, 67])),
+  [60, 64, 60, 64],
+  'Product arp rate 2x should advance traversal twice per live step',
+);
+assert.deepEqual(
+  resolveEnabledArp({
+    flow: 'up',
+    rate: 0.5,
+    length: 4,
+    pulseMask: 0b1111,
+    contour: [0, 0, 0, 0],
+  }, productArpTestHarmony([60, 62, 64, 67])),
+  [60, 60, 62, 62],
+  'Product arp rate 1/2x should hold traversal across paired live steps',
+);
+assert.deepEqual(
+  resolveEnabledArp({
+    flow: 'up',
+    length: 1,
+    pulseMask: 1,
+    contour: [4],
+    boundaryMode: 'fold',
+  }, productArpTestHarmony([60, 62, 64])),
+  [60],
+  'Product arp fold boundary should fold contour overflow through the pitch pool',
+);
+assert.deepEqual(
+  resolveEnabledArp({
+    flow: 'up',
+    length: 1,
+    pulseMask: 1,
+    contour: [4],
+    boundaryMode: 'wrap',
+  }, productArpTestHarmony([60, 62, 64])),
+  [62],
+  'Product arp wrap boundary should wrap contour overflow through the pitch pool',
+);
+assert.deepEqual(
+  resolveEnabledArp({
+    flow: 'up',
+    length: 1,
+    pulseMask: 1,
+    contour: [4],
+    boundaryMode: 'clamp',
+  }, productArpTestHarmony([60, 62, 64])),
+  [64],
+  'Product arp clamp boundary should pin contour overflow to the pool edge',
+);
+assert.deepEqual(
+  resolveEnabledArp({
+    flow: 'up',
+    length: 3,
+    pulseMask: 0b111,
+    contour: [1, -2, 12],
+    contourMode: 'semitone',
+  }, productArpTestHarmony([60, 64, 67])),
+  [61, 62, 79],
+  'Product arp semitone contour mode should offset base traversal chromatically',
+);
+
+const resetDetails = resolveProductArpPatternDetails({
+  config: normalizeProductArpConfig({
+    enabled: true,
+    flow: 'up',
+    length: 5,
+    pulseMask: 0b11111,
+    contour: [0, 0, 0, 0, 0],
+    resetMask: 1 << 3,
+  }),
+  harmony: productArpTestHarmony([60, 62, 64, 67]),
+  laneIndex: 0,
+});
+assert(resetDetails, 'enabled Product arp should resolve step details');
+assert.deepEqual(
+  resetDetails.map((step) => step.baseMidi),
+  [60, 62, 64, 60, 62],
+  'Product arp reset points should restart traversal from the reset step',
+);
+assert.equal(resetDetails[3]?.reset, true, 'Product arp resolved details should expose reset points for the editor');
+
+const arpLockedSlot = defaultHarmonyChordSlot(0);
+arpLockedSlot.intent = {
+  ...arpLockedSlot.intent,
+  preserveCapturedVoicing: true,
+  capturedMidiNotes: [72, 76, 79],
+};
+const sourceLockDetails = resolveProductArpPatternDetails({
+  config: normalizeProductArpConfig({
+    enabled: true,
+    flow: 'up',
+    length: 2,
+    pulseMask: 0b11,
+    contour: [0, 0],
+    slotLane: [-1, 0],
+  }),
+  harmony: productArpTestHarmony([60, 62, 64], [arpLockedSlot]),
+  laneIndex: 0,
+});
+assert(sourceLockDetails, 'enabled Product arp source-lock test should resolve step details');
+assert.deepEqual(
+  sourceLockDetails.map((step) => step.outputMidi),
+  [60, 76],
+  'Product arp per-step source lock should resolve that step from the selected harmony slot pool',
+);
+assert.equal(sourceLockDetails[1]?.source, 0, 'Product arp resolved details should expose the selected source lock');
+
+const randomArpConfig = normalizeProductArpConfig({
+  enabled: true,
+  flow: 'randomLiveTone',
+  length: 8,
+  pulseMask: 0xff,
+  contour: [0, 0, 0, 0, 0, 0, 0, 0],
+});
+const randomHarmony = productArpTestHarmony([60, 62, 64, 65, 67, 69, 71, 72]);
+const randomTickA = resolveProductArpMidiPattern({ config: randomArpConfig, harmony: randomHarmony, laneIndex: 2, runtimeTick: 3 });
+const randomTickARepeat = resolveProductArpMidiPattern({ config: randomArpConfig, harmony: randomHarmony, laneIndex: 2, runtimeTick: 3 });
+assert.deepEqual(randomTickA, randomTickARepeat, 'Product arp random live flow should be deterministic for the same runtime tick');
+assert(randomTickA?.every((midi) => randomHarmony.notePoolMidi.includes(midi)), 'Product arp random live flow should stay inside the resolved pitch pool');
+
+const diceArpConfig = normalizeProductArpConfig({
+  enabled: true,
+  flow: 'diceHold',
+  length: 8,
+  pulseMask: 0xff,
+  contour: [0, 0, 0, 0, 0, 0, 0, 0],
+});
+assert.deepEqual(
+  resolveProductArpMidiPattern({ config: diceArpConfig, harmony: randomHarmony, laneIndex: 2, runtimeTick: 0 }),
+  resolveProductArpMidiPattern({ config: diceArpConfig, harmony: randomHarmony, laneIndex: 2, runtimeTick: 999 }),
+  'Product arp dice hold flow should ignore runtime tick and hold its generated tone choices',
+);
+
 assert.equal(
   reactiveVisualizerRootPitchClass({
     rootNote: 0,

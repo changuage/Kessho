@@ -1982,17 +1982,6 @@
   border-radius: var(--radius-md);
   background: rgba(0, 0, 0, 0.12);
 }
-.synth-root .seq-arp-editor-header {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  color: var(--text-muted);
-  font-size: 0.66rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
 .synth-root .seq-chord-arp-header {
   justify-content: space-between;
 }
@@ -2001,24 +1990,6 @@
 }
 .synth-root .seq-chord-arp-gate {
   min-width: 92px;
-}
-.synth-root .seq-arp-grid {
-  display: grid;
-  gap: 4px;
-}
-.synth-root .seq-arp-step {
-  min-height: 32px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-muted);
-  font-size: 0.74rem;
-  font-weight: 800;
-}
-.synth-root .seq-arp-step.active {
-  border-color: color-mix(in srgb, var(--sc, var(--accent-cyan)) 70%, rgba(255, 255, 255, 0.12));
-  background: color-mix(in srgb, var(--sc, var(--accent-cyan)) 22%, rgba(255, 255, 255, 0.04));
-  color: var(--text-bright);
 }
 .synth-root .seq-chord-arp-grid {
   display: grid;
@@ -2054,6 +2025,168 @@
   position: relative;
   z-index: 1;
 }
+
+/* ─── Option B: Dual-Track Layout ─── */
+
+/* Rhythm Track */
+.synth-root .seq-chord-rhythm-track {
+  border: 1px solid color-mix(in srgb, var(--sc, var(--accent-cyan)) 22%, var(--border-subtle));
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.synth-root .seq-chord-rhythm-track .seq-lane-header {
+  border-bottom: 1px solid color-mix(in srgb, var(--sc, var(--accent-cyan)) 16%, transparent);
+}
+
+/* Global Arp Config Bar */
+.synth-root .seq-chord-arp-bar {
+  margin: 6px 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--sc, var(--accent-cyan)) 24%, var(--border-subtle));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--sc, var(--accent-cyan)) 4%, rgba(0, 0, 0, 0.15));
+}
+.synth-root .seq-chord-arp-bar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+.synth-root .seq-chord-arp-bar-param {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.synth-root .seq-chord-arp-bar-label {
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--k-text-muted);
+}
+.synth-root .seq-chord-arp-bar-shapes {
+  display: flex;
+  gap: 2px;
+}
+.synth-root .seq-chord-arp-shape-btn {
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--k-text-muted);
+  font-size: 0.6rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.synth-root .seq-chord-arp-shape-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--k-text-soft);
+}
+.synth-root .seq-chord-arp-shape-btn.active {
+  border-color: color-mix(in srgb, var(--sc, var(--accent-cyan)) 70%, rgba(255, 255, 255, 0.12));
+  background: color-mix(in srgb, var(--sc, var(--accent-cyan)) 22%, rgba(255, 255, 255, 0.04));
+  color: var(--k-text);
+}
+.synth-root .seq-chord-arp-bar-select {
+  min-width: 52px;
+  font-size: 0.68rem;
+}
+.synth-root .seq-chord-arp-bar-gate {
+  min-width: 72px;
+}
+.synth-root .seq-chord-arp-bar-gate .synth-chord-mini-range {
+  width: 100%;
+}
+
+/* Melody Track */
+.synth-root .seq-chord-melody-track {
+  margin: 6px 0;
+  border: 1px solid color-mix(in srgb, var(--sc, var(--accent-cyan)) 18%, var(--border-subtle));
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.synth-root .seq-chord-melody-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--sc, var(--accent-cyan)) 12%, transparent);
+  background: rgba(0, 0, 0, 0.08);
+}
+.synth-root .seq-chord-melody-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.synth-root .seq-chord-dir-btn {
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--k-text-soft);
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.synth-root .seq-chord-dir-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.synth-root .seq-chord-melody-grid {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.12);
+}
+.synth-root .seq-chord-melody-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 52px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--slot-color, var(--accent-cyan)) 40%, rgba(255, 255, 255, 0.08));
+  background: color-mix(in srgb, var(--slot-color, var(--accent-cyan)) 8%, rgba(0, 0, 0, 0.2));
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.synth-root .seq-chord-melody-cell:hover {
+  background: color-mix(in srgb, var(--slot-color, var(--accent-cyan)) 15%, rgba(0, 0, 0, 0.15));
+  border-color: color-mix(in srgb, var(--slot-color, var(--accent-cyan)) 60%, rgba(255, 255, 255, 0.12));
+}
+.synth-root .seq-chord-melody-slot-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 0.68rem;
+  font-weight: 900;
+  color: #001018;
+}
+.synth-root .seq-chord-melody-mode-badge {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-size: 0.52rem;
+  font-weight: 900;
+  color: var(--k-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.synth-root .seq-chord-melody-shape {
+  font-size: 0.62rem;
+  color: var(--k-text-soft);
+  line-height: 1;
+}
+
+/* ─── End Option B ─── */
+
 .synth-root .seq-ov-row--chord {
   border-color: color-mix(in srgb, var(--sc) 24%, transparent);
 }
@@ -3749,19 +3882,40 @@
 .synth-root .seq-arp-editor {
   border: 1px solid color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 28%, rgba(255, 255, 255, 0.1));
   border-radius: 8px;
-  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
   background: rgba(0, 0, 0, 0.18);
 }
 
 .synth-root .seq-arp-toolbar {
   display: grid;
-  grid-template-columns: auto auto minmax(110px, 1fr) auto;
+  grid-template-columns: auto minmax(118px, 1fr) 74px 68px minmax(108px, 0.9fr) auto;
   align-items: center;
   gap: 6px;
-  margin-bottom: 7px;
+  min-width: 0;
 }
 
-.synth-root .seq-arp-select {
+.synth-root .seq-arp-field,
+.synth-root .seq-arp-inspector-source {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: rgba(219, 234, 254, 0.62);
+  font-size: 0.58rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.synth-root .seq-arp-length-field {
+  grid-template-columns: auto 46px;
+}
+
+.synth-root .seq-arp-select,
+.synth-root .seq-arp-length-input {
   min-width: 0;
   min-height: 26px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -3773,9 +3927,13 @@
   font-size: 0.68rem;
 }
 
-.synth-root .seq-arp-segment,
-.synth-root .seq-arp-pulse-count {
+.synth-root .seq-arp-length-input {
+  text-align: center;
+}
+
+.synth-root .seq-arp-segment {
   display: inline-grid;
+  grid-template-columns: repeat(2, minmax(58px, 1fr));
   gap: 2px;
   padding: 2px;
   border: 1px solid rgba(255, 255, 255, 0.09);
@@ -3783,98 +3941,326 @@
   background: rgba(255, 255, 255, 0.035);
 }
 
-.synth-root .seq-arp-segment {
-  grid-template-columns: repeat(2, minmax(48px, 1fr));
-}
-
-.synth-root .seq-arp-pulse-count {
-  grid-template-columns: repeat(3, 28px);
-}
-
-.synth-root .seq-arp-segment button,
-.synth-root .seq-arp-pulse-count button,
-.synth-root .seq-arp-pulse,
-.synth-root .seq-arp-tone,
-.synth-root .seq-arp-slot {
+.synth-root .seq-arp-segment button {
   min-width: 0;
+  min-height: 22px;
+  padding: 0 6px;
   border: 0;
   border-radius: 5px;
   background: transparent;
   color: rgba(219, 234, 254, 0.78);
   font: inherit;
+  font-size: 0.62rem;
+  font-weight: 800;
   cursor: pointer;
 }
 
-.synth-root .seq-arp-segment button,
-.synth-root .seq-arp-pulse-count button {
-  min-height: 22px;
-  padding: 0 6px;
-  font-size: 0.62rem;
-  font-weight: 800;
-}
-
-.synth-root .seq-arp-segment button.active,
-.synth-root .seq-arp-pulse-count button.active {
+.synth-root .seq-arp-segment button.active {
   background: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 22%, rgba(255, 255, 255, 0.08));
   color: rgba(255, 255, 255, 0.92);
 }
 
-.synth-root .seq-arp-grid {
-  display: grid;
-  grid-template-columns: repeat(16, minmax(0, 1fr));
-  gap: 3px;
+.synth-root .seq-arp-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
 }
 
-.synth-root .seq-arp-step {
+.synth-root .seq-arp-action-button {
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(219, 234, 254, 0.76);
+  font: inherit;
+  font-size: 0.58rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.synth-root .seq-arp-action-button.strong {
+  border-color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 26%, rgba(255, 255, 255, 0.1));
+  background: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 12%, rgba(255, 255, 255, 0.035));
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.synth-root .seq-arp-contour {
   display: grid;
-  grid-template-rows: 19px 19px;
-  gap: 2px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 6px;
   min-width: 0;
-  padding: 3px;
+}
+
+.synth-root .seq-arp-contour-scale {
+  position: relative;
+  height: 154px;
+  color: rgba(219, 234, 254, 0.44);
+  font-size: 0.55rem;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.synth-root .seq-arp-contour-scale span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+}
+
+.synth-root .seq-arp-contour-plot {
+  position: relative;
+  height: 154px;
+  min-width: 0;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.035);
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    rgba(255, 255, 255, 0.025);
+  background-size: 25% 100%;
+  overflow: hidden;
+  touch-action: none;
 }
 
-.synth-root .seq-arp-step.on {
-  border-color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 28%, rgba(255, 255, 255, 0.08));
-  background: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 9%, rgba(255, 255, 255, 0.035));
-}
-
-.synth-root .seq-arp-pulse,
-.synth-root .seq-arp-tone,
-.synth-root .seq-arp-slot {
+.synth-root .seq-arp-contour-svg {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  min-height: 19px;
+  height: 100%;
+}
+
+.synth-root .seq-arp-contour-svg line {
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 0.11;
+  vector-effect: non-scaling-stroke;
+}
+
+.synth-root .seq-arp-contour-svg line.zero {
+  stroke: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 34%, rgba(255, 255, 255, 0.12));
+  stroke-dasharray: 3 3;
+}
+
+.synth-root .seq-arp-contour-svg polyline {
+  fill: none;
+  stroke: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 72%, #ffffff);
+  stroke-width: 0.16;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.synth-root .seq-arp-contour-columns {
+  position: absolute;
+  inset: 0;
+  display: grid;
+}
+
+.synth-root .seq-arp-contour-column {
+  min-width: 0;
+  border: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.045);
+  background: transparent;
+  color: rgba(219, 234, 254, 0.28);
+  font: inherit;
+  font-size: 0.53rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.synth-root .seq-arp-contour-column:first-child {
+  border-left: 0;
+}
+
+.synth-root .seq-arp-contour-column span {
+  position: absolute;
+  bottom: 4px;
+  transform: translateX(-50%);
+}
+
+.synth-root .seq-arp-contour-column:hover,
+.synth-root .seq-arp-contour-column.selected {
+  background: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 10%, transparent);
+}
+
+.synth-root .seq-arp-contour-column.out {
+  color: rgba(219, 234, 254, 0.16);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.synth-root .seq-arp-contour-node {
+  position: absolute;
+  z-index: 4;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 2px solid rgba(9, 16, 22, 0.92);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 78%, #ffffff);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 60%, rgba(255, 255, 255, 0.2));
+  cursor: ns-resize;
+  transform: translate(-50%, -50%);
+  touch-action: none;
+}
+
+.synth-root .seq-arp-contour-node.muted {
+  opacity: 0.28;
+  filter: grayscale(0.35);
+}
+
+.synth-root .seq-arp-contour-node.out {
+  opacity: 0.18;
+}
+
+.synth-root .seq-arp-contour-node.armed {
+  opacity: 0.42;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 38%, rgba(255, 255, 255, 0.08));
+}
+
+.synth-root .seq-arp-contour-node.selected {
+  width: 18px;
+  height: 18px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.34),
+    0 0 12px color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 40%, transparent);
+}
+
+.synth-root .seq-arp-contour-node.reset {
+  border-radius: 4px;
+}
+
+.synth-root .seq-arp-drag-readout {
+  position: absolute;
+  z-index: 6;
+  min-width: 28px;
+  padding: 2px 5px;
+  border: 1px solid color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 52%, rgba(255, 255, 255, 0.1));
+  border-radius: 5px;
+  background: rgba(4, 9, 13, 0.92);
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 0.62rem;
+  font-weight: 850;
+  text-align: center;
+  transform: translate(-50%, calc(-100% - 8px));
+  pointer-events: none;
+}
+
+.synth-root .seq-arp-note-row,
+.synth-root .seq-arp-source-row,
+.synth-root .seq-arp-gate-row {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.synth-root .seq-arp-note-cell,
+.synth-root .seq-arp-source-cell,
+.synth-root .seq-arp-gate-cell,
+.synth-root .seq-arp-inspector-toggle {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(219, 234, 254, 0.72);
+  font: inherit;
+  font-size: 0.54rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.synth-root .seq-arp-note-cell {
+  min-height: 22px;
   padding: 0 2px;
   overflow: hidden;
-  font-size: 0.64rem;
-  font-weight: 800;
-  line-height: 19px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.synth-root .seq-arp-pulse {
-  background: rgba(255, 255, 255, 0.055);
-  color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 70%, #ffffff);
+.synth-root .seq-arp-note-cell.selected,
+.synth-root .seq-arp-source-cell.selected,
+.synth-root .seq-arp-gate-cell.selected {
+  border-color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 48%, rgba(255, 255, 255, 0.1));
 }
 
-.synth-root .seq-arp-step:not(.on) .seq-arp-pulse {
-  color: rgba(255, 255, 255, 0.36);
+.synth-root .seq-arp-note-cell.muted,
+.synth-root .seq-arp-source-cell.out,
+.synth-root .seq-arp-gate-cell.out {
+  color: rgba(219, 234, 254, 0.28);
 }
 
-.synth-root .seq-arp-tone {
-  color: rgba(255, 255, 255, 0.88);
+.synth-root .seq-arp-note-cell.out {
+  background: rgba(0, 0, 0, 0.12);
 }
 
-.synth-root .seq-arp-slot {
-  grid-column: 1 / -1;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(0, 0, 0, 0.18);
-  color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 68%, #ffffff);
-  font-size: 0.55rem;
-  letter-spacing: 0;
+.synth-root .seq-arp-source-cell {
+  min-height: 18px;
+  padding: 0 1px;
+}
+
+.synth-root .seq-arp-source-cell.locked {
+  border-color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 30%, rgba(255, 255, 255, 0.08));
+  background: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 10%, rgba(255, 255, 255, 0.03));
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.synth-root .seq-arp-gate-cell {
+  min-height: 18px;
+  padding: 0 1px;
+}
+
+.synth-root .seq-arp-gate-cell.on {
+  border-color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 34%, rgba(255, 255, 255, 0.08));
+  background: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 13%, rgba(255, 255, 255, 0.035));
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.synth-root .seq-arp-gate-cell.armed {
+  border-color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 24%, rgba(255, 255, 255, 0.06));
+  color: rgba(219, 234, 254, 0.48);
+}
+
+.synth-root .seq-arp-gate-cell.reset span::after {
+  content: " R";
+  color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 80%, #ffffff);
+}
+
+.synth-root .seq-arp-inspector {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(50px, auto)) minmax(118px, 1fr) auto auto;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.synth-root .seq-arp-inspector-item {
+  display: grid;
+  grid-template-rows: auto auto;
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 0.67rem;
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+.synth-root .seq-arp-inspector-item strong {
+  color: rgba(219, 234, 254, 0.45);
+  font-size: 0.5rem;
+  text-transform: uppercase;
+}
+
+.synth-root .seq-arp-inspector-toggle {
+  min-height: 26px;
+  padding: 0 8px;
+}
+
+.synth-root .seq-arp-inspector-toggle.on {
+  border-color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 42%, rgba(255, 255, 255, 0.1));
+  background: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 18%, rgba(255, 255, 255, 0.04));
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.synth-root .seq-arp-inspector-source .seq-arp-select {
+  width: 100%;
 }
 
 .synth-root .walker-ensemble-strip {
@@ -3924,24 +4310,38 @@
 
 @media (max-width: 900px) {
   .synth-root .seq-arp-toolbar {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) 74px 68px;
   }
 
   .synth-root .walker-ensemble-strip {
     grid-template-columns: 1fr;
   }
 
-  .synth-root .seq-arp-select {
+  .synth-root .seq-arp-boundary-field,
+  .synth-root .seq-arp-segment {
     grid-column: 1 / -1;
   }
 
-  .synth-root .seq-arp-grid {
-    grid-template-columns: repeat(8, minmax(0, 1fr));
+  .synth-root .seq-arp-inspector {
+    grid-template-columns: repeat(5, minmax(50px, 1fr));
+  }
+
+  .synth-root .seq-arp-inspector-source {
+    grid-column: span 2;
   }
 }
 
 @media (max-width: 520px) {
-  .synth-root .seq-arp-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .synth-root .seq-arp-toolbar,
+  .synth-root .seq-arp-inspector {
+    grid-template-columns: 1fr;
+  }
+
+  .synth-root .seq-arp-contour {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .synth-root .seq-arp-inspector-source {
+    grid-column: auto;
   }
 }

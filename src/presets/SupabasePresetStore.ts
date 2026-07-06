@@ -29,6 +29,13 @@ import {
   getPresetScopeReadCandidates,
 } from './presetScopeAliases';
 import {
+  isRoutingMuteGroupSceneRefSlotName,
+  planRoutingMuteGroupMetadataStorage,
+  reconstructRoutingMuteGroupMetadata,
+  ROUTING_MUTE_GROUP_SCENE_DERIVED_SCOPE,
+  ROUTING_MUTE_GROUP_SCENE_DERIVED_TYPE,
+} from './routingMuteGroupPresetStorage';
+import {
   applyRecordPatch,
   buildMissingChildFallbackData,
   canonicalizeRecord,
@@ -126,6 +133,28 @@ interface PresetV2LatestManifest {
 interface PresetStorageStats {
   bytes: number;
   count: number;
+}
+
+const PAYLOAD_KIND_INSERT_PRIORITY: Record<PresetPayloadKind, number> = {
+  resolved: 5,
+  metadata: 4,
+  patch: 3,
+  override: 2,
+  refs_override: 1,
+};
+
+function dedupeStorablePayloadsByHashV2(payloads: StorablePayloadV2[]): StorablePayloadV2[] {
+  const byHash = new Map<string, StorablePayloadV2>();
+  for (const payload of payloads) {
+    const existing = byHash.get(payload.hash);
+    if (
+      !existing
+      || PAYLOAD_KIND_INSERT_PRIORITY[payload.payloadKind] > PAYLOAD_KIND_INSERT_PRIORITY[existing.payloadKind]
+    ) {
+      byHash.set(payload.hash, payload);
+    }
+  }
+  return [...byHash.values()];
 }
 
 /** Row shape returned from the legacy Supabase `presets` table */
@@ -546,6 +575,11 @@ function getSupabaseErrorText(error: unknown): string {
     .map(String)
     .join(' ')
     .toLowerCase();
+}
+
+function getPayloadKindConflictHash(error: unknown): string | null {
+  const match = /payload hash ([0-9a-f]{64}) already exists with a different payload_kind/.exec(getSupabaseErrorText(error));
+  return match?.[1] ?? null;
 }
 
 function isTerminalSupabaseListError(error: unknown): boolean {
@@ -1391,42 +1425,105 @@ export class SupabasePresetStore implements IPresetStore {
     payloads: StorablePayloadV2[],
     refsToInsert: PendingVersionRefV2[],
   ): Promise<{ preset: PresetV2Row; version: PresetVersionV2Row }> {
-    const { data, error } = await this.client.rpc('kessho_save_preset_v2', {
-      identity_payload: identityPayload,
-      version_payload: versionPayload,
-      payloads_payload: payloads.map((payload) => ({
-        hash: payload.hash,
-        payload_kind: payload.payloadKind,
-        payload: payload.payload,
-      })),
-      refs_payload: refsToInsert.map((ref) => ({
-        ref_slot: ref.slot,
-        target_preset_id: ref.target.id,
-        override_hash: ref.overrideHash ?? null,
-        created_at: versionPayload.created_at,
-      })),
-    });
+    const uniquePayloads = dedupeStorablePayloadsByHashV2(payloads);
+    const existingHashes = await this.fetchExistingPayloadHashesForInsertV2(
+      uniquePayloads.map(payload => payload.hash),
+    );
+    for (const hash of existingHashes) this.knownPayloadHashesV2.add(hash);
 
-    if (error) {
-      if (this.markV2UnavailableIfMissing(error)) {
-        throw error;
+    let payloadsToInsert = uniquePayloads.filter(payload => !this.knownPayloadHashesV2.has(payload.hash));
+    const skippedConflictHashes = new Set<string>();
+
+    while (true) {
+      const { data, error } = await this.client.rpc('kessho_save_preset_v2', {
+        identity_payload: identityPayload,
+        version_payload: versionPayload,
+        payloads_payload: payloadsToInsert.map((payload) => ({
+          hash: payload.hash,
+          payload_kind: payload.payloadKind,
+          payload: payload.payload,
+        })),
+        refs_payload: refsToInsert.map((ref) => ({
+          ref_slot: ref.slot,
+          target_preset_id: ref.target.id,
+          override_hash: ref.overrideHash ?? null,
+          created_at: versionPayload.created_at,
+        })),
+      });
+
+      if (error) {
+        const conflictHash = getPayloadKindConflictHash(error);
+        if (
+          conflictHash
+          && !skippedConflictHashes.has(conflictHash)
+          && payloadsToInsert.some(payload => payload.hash === conflictHash)
+        ) {
+          skippedConflictHashes.add(conflictHash);
+          this.knownPayloadHashesV2.add(conflictHash);
+          payloadsToInsert = payloadsToInsert.filter(payload => payload.hash !== conflictHash);
+          continue;
+        }
+
+        if (this.markV2UnavailableIfMissing(error)) {
+          throw error;
+        }
+        throw new Error(`V2 atomic save failed: ${error.message}`);
       }
-      throw new Error(`V2 atomic save failed: ${error.message}`);
+
+      const result = data as { preset?: PresetV2Row; version?: PresetVersionV2Row } | null;
+      if (!result?.preset || !result.version) {
+        throw new Error('V2 atomic save failed: RPC returned no preset/version rows.');
+      }
+
+      for (const payload of uniquePayloads) {
+        this.knownPayloadHashesV2.add(payload.hash);
+      }
+
+      return {
+        preset: result.preset,
+        version: result.version,
+      };
+    }
+  }
+
+  private async fetchExistingPayloadHashesForInsertV2(hashes: string[]): Promise<Set<string>> {
+    const uniqueHashes = collectPresetPayloadHashesV2(hashes);
+    const missingKnownHashes = uniqueHashes.filter(hash => !this.knownPayloadHashesV2.has(hash));
+    const existingHashes = new Set(uniqueHashes.filter(hash => this.knownPayloadHashesV2.has(hash)));
+    if (!missingKnownHashes.length) return existingHashes;
+
+    const functionName = sharedMissingPayloadRpcAvailable === false
+      ? 'kessho_get_preset_payloads_v2'
+      : 'kessho_get_missing_preset_payloads_v2';
+    const { data, error } = await this.client.rpc(functionName, {
+      target_hashes: missingKnownHashes,
+    });
+    if (error) {
+      if (functionName === 'kessho_get_missing_preset_payloads_v2' && isMissingRpcError(error, functionName)) {
+        sharedMissingPayloadRpcAvailable = false;
+        return this.fetchExistingPayloadHashesForInsertV2(missingKnownHashes);
+      }
+      if (isMissingRpcError(error, functionName)) {
+        sharedRuntimeReadRpcAvailable = false;
+        return existingHashes;
+      }
+      if (this.markV2UnavailableIfMissing(error) || isPermissionDeniedError(error)) return existingHashes;
+      throw new Error(`V2 existing payload probe failed: ${error.message}`);
+    }
+    if (functionName === 'kessho_get_missing_preset_payloads_v2') {
+      sharedMissingPayloadRpcAvailable = true;
     }
 
-    const result = data as { preset?: PresetV2Row; version?: PresetVersionV2Row } | null;
-    if (!result?.preset || !result.version) {
-      throw new Error('V2 atomic save failed: RPC returned no preset/version rows.');
+    for (const row of (data ?? []) as unknown[]) {
+      if (isPlainObject(row) && typeof row.hash === 'string') {
+        existingHashes.add(row.hash);
+        if ('payload' in row) {
+          await writePresetPayloadCacheV2(row.hash, row.payload);
+        }
+      }
     }
 
-    for (const payload of payloads) {
-      this.knownPayloadHashesV2.add(payload.hash);
-    }
-
-    return {
-      preset: result.preset,
-      version: result.version,
-    };
+    return existingHashes;
   }
 
   private async fetchPayloadMapV2(hashes: string[]): Promise<Map<string, unknown>> {
@@ -1682,6 +1779,7 @@ export class SupabasePresetStore implements IPresetStore {
       const versionRefs = refsByVersionId.get(versionRow.id) ?? [];
       const refMap: Record<string, PresetRef> = {};
       for (const versionRef of versionRefs) {
+        if (isRoutingMuteGroupSceneRefSlotName(versionRef.ref_slot)) continue;
         const targetPreset = targetPresetMap.get(versionRef.target_preset_id);
         if (!targetPreset) continue;
         refMap[versionRef.ref_slot] = {
@@ -1706,11 +1804,30 @@ export class SupabasePresetStore implements IPresetStore {
 
       const metadataPayload = versionRow.metadata_hash ? payloadMap.get(versionRow.metadata_hash) : undefined;
       const metadata = isPlainObject(metadataPayload) ? metadataPayload as PresetVersionMetadata : undefined;
+      const reconstructedMetadata = reconstructRoutingMuteGroupMetadata(
+        metadata,
+        (refSlot) => {
+          const refRow = versionRefs.find(candidate => candidate.ref_slot === refSlot);
+          if (!refRow) return { targetFound: false, payload: undefined };
+          const targetPreset = targetPresetMap.get(refRow.target_preset_id);
+          if (!targetPreset) return { targetFound: false, payload: undefined };
+          return {
+            targetFound: true,
+            payload: targetPreset.latest_resolved_hash
+              ? payloadMap.get(targetPreset.latest_resolved_hash)
+              : undefined,
+          };
+        },
+        {
+          recoveryWarnings: versionRow.version_no === targetVersionNo ? recoveryWarnings : undefined,
+          version: versionRow.version_no,
+        },
+      );
       materializedVersions.push(
         materializePresetVersion(
           versionRow,
           resolvedData,
-          metadata,
+          reconstructedMetadata,
           Object.keys(refMap).length > 0 ? refMap : undefined,
         ),
       );
@@ -2085,6 +2202,8 @@ export class SupabasePresetStore implements IPresetStore {
       const rawResolvedData = snapshot?.data ?? getVersionData(normalized, version.v) ?? version.data;
       const resolvedData = normalizeResolvedVersionData(normalized.type, scope, rawResolvedData);
       const metadata = snapshot?.metadata ?? extractPresetVersionMetadata(version);
+      const muteGroupStoragePlan = await planRoutingMuteGroupMetadataStorage(metadata);
+      const metadataForStorage = muteGroupStoragePlan.metadata;
 
       const childSpecs = getPresetChildSpecs(normalized.type, scope);
       const childRefData: Record<string, Record<string, unknown>> = {};
@@ -2115,6 +2234,31 @@ export class SupabasePresetStore implements IPresetStore {
           : childData;
         refsToInsert.push({
           slot: childSpec.slot,
+          target,
+          overrideHash: null,
+        });
+      }
+
+      for (const scene of muteGroupStoragePlan.scenes) {
+        let target = await this.findMatchingPresetV2(
+          ROUTING_MUTE_GROUP_SCENE_DERIVED_TYPE,
+          ROUTING_MUTE_GROUP_SCENE_DERIVED_SCOPE,
+          scene.hash,
+          presetRow?.id,
+          { internalDerivedOnly: true },
+        );
+        if (!target) {
+          target = await this.ensureDerivedChildPresetV2(
+            ROUTING_MUTE_GROUP_SCENE_DERIVED_TYPE,
+            ROUTING_MUTE_GROUP_SCENE_DERIVED_SCOPE,
+            scene.hash,
+            scene.scene as unknown as Record<string, unknown>,
+          );
+        }
+        if (!target) continue;
+
+        refsToInsert.push({
+          slot: scene.refSlot,
           target,
           overrideHash: null,
         });
@@ -2154,7 +2298,7 @@ export class SupabasePresetStore implements IPresetStore {
 
       const [nextOverrideHash, nextMetadataHash, nextResolvedHash] = await Promise.all([
         this.hashStorablePayloadV2(overrideData),
-        metadata ? this.hashStorablePayloadV2(metadata) : Promise.resolve(null),
+        metadataForStorage ? this.hashStorablePayloadV2(metadataForStorage) : Promise.resolve(null),
         this.hashStorablePayloadV2(resolvedData),
       ]);
 
@@ -2180,7 +2324,7 @@ export class SupabasePresetStore implements IPresetStore {
 
       const [overridePayload, metadataPayload, patchPayload, resolvedPayload] = await Promise.all([
         this.makeStorablePayloadV2('override', overrideData),
-        metadata ? this.makeStorablePayloadV2('metadata', metadata) : Promise.resolve(null),
+        metadataForStorage ? this.makeStorablePayloadV2('metadata', metadataForStorage) : Promise.resolve(null),
         storageMode === 'patch' && patch ? this.makeStorablePayloadV2('patch', patch) : Promise.resolve(null),
         this.makeStorablePayloadV2('resolved', resolvedData),
       ]);

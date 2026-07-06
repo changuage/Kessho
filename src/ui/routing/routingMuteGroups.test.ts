@@ -6,12 +6,22 @@ import {
   collectSequencerMuteBooleanKeys,
   createEmptyRoutingMuteGroupsState,
   createRoutingMuteGroupTransitionController,
-  incrementSlotRevision,
+  normalizeRoutingMuteGroupRandomSettings,
+  normalizeRoutingMuteGroupSceneRefSlot,
   normalizeRoutingMuteGroupSlot,
   normalizeRoutingMuteGroupsState,
+  normalizeRoutingMuteGroupsStorageState,
+  ROUTING_MUTE_GROUP_SCENE_SCHEMA_VERSION,
+  ROUTING_MUTE_GROUP_SCHEMA_VERSION,
+  routingMuteGroupSlotColor,
+  routingMuteGroupSlotFromScenePayload,
+  routingMuteGroupSlotScenePayload,
   ROUTING_MUTE_GROUP_SOURCE_IDS,
   routingMuteGroupSlotMuteCount,
+  routingMuteGroupSlotPhraseRange,
+  setRoutingMuteGroupRandomSettings,
   setRoutingMuteGroupSlot,
+  setRoutingMuteGroupSlotPhraseRange,
   type RoutingMuteGroupRuntimeLevelPatch,
   type RoutingMuteGroupScheduler,
 } from './routingMuteGroups';
@@ -119,11 +129,67 @@ function testNormalizeFiltersIneligibleSources(): void {
     ],
   });
 
-  assert.equal(normalized.schemaVersion, 2);
+  assert.equal(normalized.schemaVersion, ROUTING_MUTE_GROUP_SCHEMA_VERSION);
   assert.equal(normalized.slots.length, 8);
   assert.deepStrictEqual(normalized.slots[0], { mutedSourceIds: ['pad1', 'drums', 'delayAOut', 'reverb'] });
   assert.deepStrictEqual(normalized.slots[1], { mutedSourceIds: ['water', 'nature', 'degrade'] });
   assert.equal(normalized.slots[2], null);
+}
+
+function testRandomSettingsAndSlotMetadataNormalization(): void {
+  const normalized = normalizeRoutingMuteGroupsState({
+    slots: [
+      {
+        mutedSourceIds: ['pad1'],
+        phraseRange: { min: 9, max: 2 },
+        color: '#a870e8',
+      },
+    ],
+    random: {
+      enabled: true,
+      defaultMinPhrases: 0.1,
+      defaultMaxPhrases: 125,
+      transitionPhrases: 1.33,
+      avoidRepeat: false,
+      eligibleSlotIndexes: [7, 7, -2, 99, 2],
+    },
+  });
+
+  assert.equal(normalized.schemaVersion, ROUTING_MUTE_GROUP_SCHEMA_VERSION);
+  assert.deepStrictEqual(normalized.slots[0], {
+    mutedSourceIds: ['pad1'],
+    phraseRange: { min: 2, max: 9 },
+  });
+  assert.deepStrictEqual(normalized.random, {
+    enabled: true,
+    defaultMinPhrases: 0.25,
+    defaultMaxPhrases: 100,
+    transitionPhrases: 1.25,
+    avoidRepeat: false,
+    eligibleSlotIndexes: [0, 2, 7],
+  });
+  assert.equal(routingMuteGroupSlotColor(0, normalized.slots[0]), '#E07A84');
+  assert.deepStrictEqual(
+    routingMuteGroupSlotPhraseRange(normalized.slots[0], normalized.random ?? normalizeRoutingMuteGroupRandomSettings(undefined)),
+    { min: 2, max: 9 },
+  );
+
+  const ranged = setRoutingMuteGroupSlotPhraseRange(normalized, 0, { min: 3, max: 1 });
+  assert.deepStrictEqual(ranged.slots[0]?.phraseRange, { min: 1, max: 3 });
+
+  const randomUpdated = setRoutingMuteGroupRandomSettings(ranged, {
+    defaultMinPhrases: 4,
+    defaultMaxPhrases: 2,
+    transitionPhrases: 0,
+  });
+  assert.deepStrictEqual(randomUpdated.random, {
+    enabled: true,
+    defaultMinPhrases: 2,
+    defaultMaxPhrases: 4,
+    transitionPhrases: 0.25,
+    avoidRepeat: false,
+    eligibleSlotIndexes: [0, 2, 7],
+  });
 }
 
 function testSourceEligibilityMatchesRoutingRegistry(): void {
@@ -141,8 +207,6 @@ function testSourceEligibilityMatchesRoutingRegistry(): void {
 
   assert.deepStrictEqual(normalized, {
     mutedSourceIds: ['delayAOut', 'delayBOut', 'degrade', 'reverb'],
-    savedAt: '2026-06-27T00:00:00.000Z',
-    revision: 4,
   });
 }
 
@@ -202,8 +266,8 @@ function testCaptureUsesRegistryAudibilityAndEligibility(): void {
   assert.ok(slot.mutedSourceIds.includes('delayBOut'));
   assert.ok(slot.mutedSourceIds.includes('degrade'));
   assert.ok(slot.mutedSourceIds.includes('reverb'));
-  assert.equal(slot.revision, 1);
-  assert.equal(typeof slot.savedAt, 'string');
+  assert.equal(Object.prototype.hasOwnProperty.call(slot, 'revision'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(slot, 'savedAt'), false);
 }
 
 function testCaptureIncludesPerformanceMuteSceneWithoutSends(): void {
@@ -266,7 +330,7 @@ function testClearSlot(): void {
   assert.equal(cleared.slots[3], null);
 }
 
-function testSlotMetadataAndStoredEmptyScenes(): void {
+function testSlotScenePayloadAndStoredEmptyScenes(): void {
   const storedEmpty = normalizeRoutingMuteGroupSlot({
     mutedSourceIds: [],
     statePatch: { drumEuclid1Enabled: true },
@@ -277,11 +341,58 @@ function testSlotMetadataAndStoredEmptyScenes(): void {
   assert.deepStrictEqual(storedEmpty, {
     mutedSourceIds: [],
     statePatch: { drumEuclid1Enabled: true },
-    savedAt: '2026-06-27T00:00:00.000Z',
-    revision: 0,
   });
   assert.equal(routingMuteGroupSlotMuteCount(storedEmpty), 0);
-  assert.equal(incrementSlotRevision(storedEmpty), 1);
+
+  const scene = routingMuteGroupSlotScenePayload({
+    mutedSourceIds: ['delayBOut', 'pad1'],
+    statePatch: { waterEnabled: false },
+    phraseRange: { min: 2, max: 4 },
+  });
+  assert.deepStrictEqual(scene, {
+    schemaVersion: ROUTING_MUTE_GROUP_SCENE_SCHEMA_VERSION,
+    mutedSourceIds: ['pad1', 'delayBOut'],
+    statePatch: { waterEnabled: false },
+  });
+  assert.deepStrictEqual(
+    routingMuteGroupSlotFromScenePayload(scene, { phraseRange: { min: 4, max: 2 } }),
+    {
+      mutedSourceIds: ['pad1', 'delayBOut'],
+      statePatch: { waterEnabled: false },
+      phraseRange: { min: 2, max: 4 },
+    },
+  );
+
+  assert.deepStrictEqual(
+    normalizeRoutingMuteGroupSceneRefSlot({ sceneHash: ' scene-a ', phraseRange: { min: 7, max: 3 } }),
+    { sceneHash: 'scene-a', phraseRange: { min: 3, max: 7 } },
+  );
+  assert.deepStrictEqual(
+    normalizeRoutingMuteGroupsStorageState({
+      slots: [{ sceneHash: 'scene-a' }],
+      random: { enabled: true, defaultMinPhrases: 1, defaultMaxPhrases: 3 },
+    }),
+    {
+      schemaVersion: ROUTING_MUTE_GROUP_SCHEMA_VERSION,
+      slots: [
+        { sceneHash: 'scene-a' },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+      ],
+      random: {
+        enabled: true,
+        defaultMinPhrases: 1,
+        defaultMaxPhrases: 3,
+        transitionPhrases: 1,
+        avoidRepeat: true,
+      },
+    },
+  );
 }
 
 function testTransitionOrderAndSendPreservation(): void {
@@ -347,6 +458,9 @@ function testFxReturnTransitionOrder(): void {
     delayAEnabled: true,
     delayAMix: 0.66,
     delayAToBSend: 0.4,
+    granularDelayEnabled: true,
+    granularDelayMix: 0.58,
+    delayBToASend: 0.25,
   }));
 
   harness.controller.recall({ mutedSourceIds: ['delayAOut'] }, 0);
@@ -374,6 +488,101 @@ function testFxReturnTransitionOrder(): void {
   ]);
   assert.equal(harness.getState().delayAMix, 0.66);
   assert.equal(harness.getState().delayAToBSend, 0.4);
+
+  harness.controller.recall({ mutedSourceIds: ['delayBOut'] }, 1);
+  assert.deepStrictEqual(harness.controller.getEffectiveMutedSourceIds(), ['delayBOut']);
+  harness.scheduler.advanceBy(10);
+
+  const delayBLevelIndex = harness.log.findIndex((entry) => entry.type === 'runtime-level' && entry.key === 'granularDelayMix' && entry.value === 0);
+  const delayBDisableIndex = harness.log.findIndex((entry) => entry.type === 'boolean' && entry.key === 'granularDelayEnabled' && entry.value === false);
+  assert.ok(delayBLevelIndex >= 0, 'Delay B fade-down should reach zero');
+  assert.ok(delayBDisableIndex > delayBLevelIndex, 'Delay B disable should happen after fade-down');
+  assert.equal(harness.getState().granularDelayMix, 0.58);
+  assert.equal(harness.getState().delayBToASend, 0.25);
+}
+
+function testFxReturnSavedBooleanStateRecall(): void {
+  const harness = makeHarness(makeState({
+    delayAEnabled: true,
+    delayAMix: 0.7,
+    granularDelayEnabled: true,
+    granularDelayMix: 0.8,
+  }));
+
+  const offSlot = normalizeRoutingMuteGroupSlot({
+    mutedSourceIds: [],
+    statePatch: {
+      delayAEnabled: false,
+      granularDelayEnabled: false,
+    },
+  });
+  assert.ok(offSlot);
+  harness.controller.recall(offSlot, 0);
+  assert.equal(harness.getState().delayAEnabled, false);
+  assert.equal(harness.getState().granularDelayEnabled, false);
+
+  const onSlot = normalizeRoutingMuteGroupSlot({
+    mutedSourceIds: [],
+    statePatch: {
+      delayAEnabled: true,
+      granularDelayEnabled: true,
+    },
+  });
+  assert.ok(onSlot);
+  harness.controller.recall(onSlot, 1);
+  assert.equal(harness.getState().delayAEnabled, true);
+  assert.equal(harness.getState().granularDelayEnabled, true);
+}
+
+function testImmediateSlotSwitchTurnsMutedEnginesOff(): void {
+  const harness = makeHarness(makeState({
+    delayAEnabled: false,
+    delayAMix: 0.7,
+    granularDelayEnabled: false,
+    granularDelayMix: 0.8,
+    padEnabled: false,
+    synthLevel: 0.64,
+    waterEnabled: false,
+    waterLevel: 0.52,
+  }));
+
+  const onSlot = normalizeRoutingMuteGroupSlot({
+    mutedSourceIds: [],
+    statePatch: {
+      delayAEnabled: true,
+      granularDelayEnabled: true,
+      padEnabled: true,
+      waterEnabled: true,
+    },
+  });
+  assert.ok(onSlot);
+  harness.controller.recall(onSlot, 0, { transitionMs: 0 });
+  assert.equal(harness.getState().delayAEnabled, true);
+  assert.equal(harness.getState().granularDelayEnabled, true);
+  assert.equal(harness.getState().padEnabled, true);
+  assert.equal(harness.getState().waterEnabled, true);
+
+  const offSlot = normalizeRoutingMuteGroupSlot({
+    mutedSourceIds: ['delayAOut', 'delayBOut', 'pad1', 'water'],
+    statePatch: {
+      delayAEnabled: false,
+      granularDelayEnabled: false,
+      padEnabled: false,
+      waterEnabled: false,
+    },
+  });
+  assert.ok(offSlot);
+  harness.controller.recall(offSlot, 1, { transitionMs: 0 });
+  harness.scheduler.advanceBy(0);
+
+  assert.equal(harness.getState().delayAEnabled, false);
+  assert.equal(harness.getState().granularDelayEnabled, false);
+  assert.equal(harness.getState().padEnabled, false);
+  assert.equal(harness.getState().waterEnabled, false);
+  assert.ok(harness.log.some((entry) => entry.type === 'runtime-level' && entry.key === 'delayAMix' && entry.value === 0));
+  assert.ok(harness.log.some((entry) => entry.type === 'runtime-level' && entry.key === 'granularDelayMix' && entry.value === 0));
+  assert.ok(harness.log.some((entry) => entry.type === 'runtime-level' && entry.key === 'synthLevel' && entry.value === 0));
+  assert.ok(harness.log.some((entry) => entry.type === 'runtime-level' && entry.key === 'waterLevel' && entry.value === 0));
 }
 
 function testCaptureUsesEffectiveMutedSourcesDuringFade(): void {
@@ -571,16 +780,19 @@ function testCancellationPreventsStaleDisables(): void {
 }
 
 testNormalizeFiltersIneligibleSources();
+testRandomSettingsAndSlotMetadataNormalization();
 testSourceEligibilityMatchesRoutingRegistry();
 testNormalizeFiltersSceneKeysAndDropsLevels();
 testCaptureUsesRegistryAudibilityAndEligibility();
 testCaptureIncludesPerformanceMuteSceneWithoutSends();
 testCollectSequencerMuteBooleanKeysFromStateShape();
 testClearSlot();
-testSlotMetadataAndStoredEmptyScenes();
+testSlotScenePayloadAndStoredEmptyScenes();
 testTransitionOrderAndSendPreservation();
 testRuntimeRampUpdatesAreBatchedByStep();
 testFxReturnTransitionOrder();
+testFxReturnSavedBooleanStateRecall();
+testImmediateSlotSwitchTurnsMutedEnginesOff();
 testCaptureUsesEffectiveMutedSourcesDuringFade();
 testMultiEnabledKeyRowsRestoreSnapshots();
 testPerformanceMuteSceneRecallAndRelease();

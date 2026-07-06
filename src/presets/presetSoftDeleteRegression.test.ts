@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { extractCascade, extractParams, getVersionData } from './codec';
 import { HybridPresetStore } from './HybridPresetStore';
 import type { IPresetStore } from './PresetStore';
+import { hashCanonicalJson } from './presetStorageV2';
 import { SupabasePresetStore } from './SupabasePresetStore';
 import type { PresetEntry, PresetLevel, PresetSummary } from './types';
 import { DEFAULT_STATE } from '../ui/state';
@@ -264,6 +265,7 @@ class FakeSupabaseClient {
   failNextAtomicRefInsert = false;
   compactDetailPayloads = false;
   authUserId: string | null = null;
+  hiddenPayloadKindConflictHashes = new Set<string>();
   private nextId = 1;
   private clock = Date.parse('2026-05-19T12:00:00.000Z');
 
@@ -560,6 +562,11 @@ class FakeSupabaseClient {
       const refs = (args.refs_payload as FakeRow[] | undefined) ?? [];
 
       for (const payload of payloads) {
+        const hash = String(payload.hash);
+        if (this.hiddenPayloadKindConflictHashes.has(hash)) {
+          this.hiddenPayloadKindConflictHashes.delete(hash);
+          throw new Error(`payload hash ${hash} already exists with a different payload_kind`);
+        }
         this.upsert('preset_payloads_v2', {
           hash: payload.hash,
           payload_kind: payload.payload_kind,
@@ -1493,6 +1500,90 @@ async function testLatestManifestPayloadCacheAvoidsRepeatPayloadRpc(): Promise<v
   assert.ok(client.presetLatestManifestRpcCalls >= 2, 'repeat default V2 load should still refresh the lightweight latest manifest');
 }
 
+async function testAtomicSaveDedupesIdenticalPayloadHashes(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '34343434-3434-4343-8343-343434343435';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const data = extractParams(DEFAULT_STATE, 1, 'pad1');
+  await store.save(makePresetEntry('engine', 'pad1', 'Deduped Payload Hashes', data));
+
+  const saveCall = client.rpcCalls.find(call => call.functionName === 'kessho_save_preset_v2');
+  assert.ok(saveCall, 'save should call the V2 atomic save RPC');
+  const payloads = (saveCall.args.payloads_payload as FakeRow[] | undefined) ?? [];
+  const version = saveCall.args.version_payload as FakeRow;
+  assert.equal(
+    version.override_hash,
+    version.resolved_hash,
+    'leaf presets can legitimately use the same content hash for override and resolved data',
+  );
+  assert.equal(
+    payloads.filter(payload => payload.hash === version.resolved_hash).length,
+    1,
+    'atomic save should send one insert row per content hash even when multiple version fields reference it',
+  );
+  assert.equal(new Set(payloads.map(payload => String(payload.hash))).size, payloads.length);
+}
+
+async function testAtomicSaveSkipsVisibleExistingPayloadHashes(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '34343434-3434-4343-8343-343434343436';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const data = extractParams(DEFAULT_STATE, 1, 'pad1');
+  const hash = await hashCanonicalJson(data);
+  client.tables.preset_payloads_v2.push({
+    hash,
+    payload_kind: 'override',
+    payload: data,
+    payload_bytes: JSON.stringify(data).length,
+    created_at: client.now(),
+    last_seen_at: client.now(),
+  });
+
+  await store.save(makePresetEntry('engine', 'pad1', 'Skipped Existing Payload Hash', data));
+
+  const saveCall = client.rpcCalls.find(call => call.functionName === 'kessho_save_preset_v2');
+  assert.ok(saveCall, 'save should call the V2 atomic save RPC');
+  const payloads = (saveCall.args.payloads_payload as FakeRow[] | undefined) ?? [];
+  const version = saveCall.args.version_payload as FakeRow;
+  assert.equal(version.resolved_hash, hash);
+  assert.equal(
+    payloads.some(payload => payload.hash === hash),
+    false,
+    'atomic save should not upload payload rows that already exist remotely',
+  );
+}
+
+async function testAtomicSaveRetriesPayloadKindConflictHashes(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '34343434-3434-4343-8343-343434343437';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const data = extractParams(DEFAULT_STATE, 1, 'pad1');
+  const hash = await hashCanonicalJson(data);
+  client.hiddenPayloadKindConflictHashes.add(hash);
+
+  await store.save(makePresetEntry('engine', 'pad1', 'Retried Payload Hash Conflict', data));
+
+  const saveCalls = client.rpcCalls.filter(call => call.functionName === 'kessho_save_preset_v2');
+  assert.equal(saveCalls.length, 2, 'payload-kind conflict should retry the atomic save once');
+  const firstPayloads = (saveCalls[0]?.args.payloads_payload as FakeRow[] | undefined) ?? [];
+  const secondPayloads = (saveCalls[1]?.args.payloads_payload as FakeRow[] | undefined) ?? [];
+  assert.equal(firstPayloads.some(payload => payload.hash === hash), true);
+  assert.equal(
+    secondPayloads.some(payload => payload.hash === hash),
+    false,
+    'retry should omit the already-existing conflicting payload hash',
+  );
+}
+
 async function testActiveDependencyBlocksSoftDeleteAcrossL1ToL4(): Promise<void> {
   const client = new FakeSupabaseClient();
   const store = new SupabasePresetStore(client as never);
@@ -2273,6 +2364,9 @@ async function testSupabaseRenamePreservesPresetId(): Promise<void> {
 await testSupabaseDeleteMovesPresetToRecycleBin();
 await testCompactDetailPayloadBundleLoadsByContentHash();
 await testLatestManifestPayloadCacheAvoidsRepeatPayloadRpc();
+await testAtomicSaveDedupesIdenticalPayloadHashes();
+await testAtomicSaveSkipsVisibleExistingPayloadHashes();
+await testAtomicSaveRetriesPayloadKindConflictHashes();
 await testActiveDependencyBlocksSoftDeleteAcrossL1ToL4();
 await testDeletingStatePrunesUnreferencedInternalDerivedGraph();
 await testSharedDerivedChildSurvivesUntilLastVisibleRootDeletes();

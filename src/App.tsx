@@ -40,6 +40,7 @@ import {
   type DawOutputDeviceSelection,
   type DawOutputRoutingConfig,
 } from './audio/dawOutputRouting';
+import { getEffectivePhraseDuration } from './audio/transport';
 import {
   applyMorphToState,
 } from './audio/drumMorph';
@@ -176,6 +177,7 @@ import { useAppResponsiveShell } from './app/useAppResponsiveShell';
 import { useProductDrumMorphOverrides } from './app/useProductDrumMorphOverrides';
 import { useProductDawOutputSync } from './app/useProductDawOutputSync';
 import { useRoutingMuteGroupRuntimeLevelSync } from './app/useRoutingMuteGroupRuntimeLevelSync';
+import { useRoutingMuteGroupSystem } from './app/useRoutingMuteGroupSystem';
 import { useDrumScatterRuntimeState } from './app/useDrumScatterRuntimeState';
 import { useDrumMorphPresetInterpolationSync } from './app/useDrumMorphPresetInterpolationSync';
 import {
@@ -3014,6 +3016,16 @@ const App: React.FC = () => {
     [applyMorphEndpointStatePatch],
   );
 
+  const routingMuteGroupsController = useRoutingMuteGroupSystem({
+    state,
+    routingMuteGroups,
+    onRoutingMuteGroupsChange: setRoutingMuteGroups,
+    onRuntimeLevelPatchChange: handleRoutingMuteGroupRuntimeLevelPatchChange,
+    onBooleanParamChange: handleRoutingBooleanParamChange,
+    isRunning: playbackIsRunning,
+    phraseSeconds: engineState.transportDebug?.effectivePhraseSeconds ?? getEffectivePhraseDuration(state),
+  });
+
   const renderWithPresetPoolProvider = (children: React.ReactNode) => (
     <PresetPoolProvider value={activePresetPool} onChange={setActivePresetPool}>
       {children}
@@ -3421,6 +3433,7 @@ const App: React.FC = () => {
                 SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
                 CircleOfFifthsComponent={CircleOfFifths as unknown as React.ComponentType<Record<string, unknown>>}
                 engineState={engineState}
+                routingMuteGroupSnapshot={routingMuteGroupsController.runtimeSnapshot}
                 {...globalRuntimeProps}
                 morphCoFViz={morphCoFViz}
                 morphPresetA={morphPresetA}
@@ -3652,11 +3665,9 @@ const App: React.FC = () => {
                 state={state}
                 isMobile={isMobile}
                 routingMuteGroups={routingMuteGroups}
-                onRoutingMuteGroupsChange={setRoutingMuteGroups}
+                muteGroupsController={routingMuteGroupsController}
                 onParamChange={handleRoutingParamChange}
                 onColumnParamChange={handleRoutingColumnChange}
-                onRuntimeLevelPatchChange={handleRoutingMuteGroupRuntimeLevelPatchChange}
-                onBooleanParamChange={handleRoutingBooleanParamChange}
                 onToggleSource={handleRoutingSourceToggle}
                 onMidiMessage={pushProductMidiMessage}
                 dawOutputRouting={dawOutputRouting}

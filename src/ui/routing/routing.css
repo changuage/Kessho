@@ -49,15 +49,17 @@
 
 .routing-root .routing-mute-groups {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   margin-top: 10px;
+  min-width: 0;
 }
 
 .routing-root .routing-mute-groups-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .routing-root .routing-mute-groups-title {
@@ -69,127 +71,165 @@
   white-space: nowrap;
 }
 
-.routing-root .routing-mute-groups-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.routing-root .routing-mute-action,
-.routing-root .routing-mute-slot {
+.routing-root .routing-mute-random-toggle {
+  min-height: 26px;
+  padding: 4px 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.03);
-  color: var(--text-primary);
-  font: inherit;
-  cursor: pointer;
-}
-
-.routing-root .routing-mute-action {
-  min-height: 26px;
-  padding: 4px 8px;
   color: var(--text-secondary);
-  font-size: 0.64rem;
-  font-weight: 800;
+  font: inherit;
+  font-size: 0.62rem;
+  font-weight: 850;
   letter-spacing: 0;
   text-transform: uppercase;
   white-space: nowrap;
+  cursor: pointer;
 }
 
-.routing-root .routing-mute-action:hover,
-.routing-root .routing-mute-slot:hover {
+.routing-root .routing-mute-random-toggle:hover {
   border-color: rgba(165, 196, 212, 0.22);
   background: rgba(255, 255, 255, 0.052);
 }
 
-.routing-root .routing-mute-action:focus-visible,
-.routing-root .routing-mute-slot:focus-visible {
+.routing-root .routing-mute-random-toggle.active {
+  border-color: color-mix(in srgb, var(--accent-primary) 42%, transparent);
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+  color: var(--accent-primary);
+}
+
+.routing-root .routing-mute-random-toggle:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent-primary) 65%, transparent);
   outline-offset: 2px;
 }
 
-.routing-root .routing-mute-slots {
-  display: grid;
-  grid-template-columns: 132px repeat(8, minmax(92px, 1fr));
-  gap: 6px;
-  min-width: 940px;
-}
-
-.routing-root .routing-mute-slots-scroll {
-  overflow-x: auto;
-  padding-bottom: 2px;
-  scrollbar-width: thin;
-}
-
-.routing-root .routing-mute-rowlabel,
-.routing-root .routing-mute-slot {
-  min-height: 42px;
-  border-radius: var(--radius-sm);
-}
-
-.routing-root .routing-mute-rowlabel {
+.routing-root .routing-mute-random-controls {
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  background: rgba(255, 255, 255, 0.015);
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-left: auto;
+}
+
+/* ── Drag number widget (reused from drum sequencer) ── */
+
+.routing-root .seq-drag-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  min-height: 30px;
+  padding: 4px 9px;
+  background: rgba(255, 255, 255, 0.03);
   color: var(--text-primary);
-  font-size: var(--font-sm);
-  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  font-size: 0.68rem;
+  font-weight: 800;
+  cursor: ns-resize;
+  user-select: none;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  font-variant-numeric: tabular-nums;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.routing-root .seq-drag-num:active,
+.routing-root .seq-drag-num.dragging {
+  border-color: color-mix(in srgb, var(--accent-primary) 62%, transparent);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+}
+
+.routing-root .seq-drag-num-label {
+  font-size: 0.58rem;
+  font-weight: 850;
+  color: var(--text-muted);
+  margin-right: 4px;
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+/* ── Slot buttons ── */
+
+.routing-root .routing-mute-slots {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 5px;
+  min-width: 0;
 }
 
 .routing-root .routing-mute-slot {
   position: relative;
-  display: grid;
-  grid-template-columns: auto minmax(0, auto);
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  min-width: 0;
-  padding: 6px 8px;
+  gap: 2px;
+  min-height: 42px;
+  padding: 6px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.012);
   color: var(--text-muted);
+  font: inherit;
   font-size: 0.72rem;
-  font-weight: 850;
+  font-weight: 900;
+  cursor: pointer;
   overflow: hidden;
   transition:
     background 120ms ease,
     border-color 120ms ease,
     box-shadow 120ms ease,
     color 120ms ease,
-    opacity 120ms ease,
-    transform 120ms ease;
+    opacity 120ms ease;
+}
+
+.routing-root .routing-mute-slot-number {
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.routing-root .routing-mute-slot-count {
+  font-size: 0.52rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: inherit;
+  opacity: 0.7;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.routing-root .routing-mute-slot:hover {
+  border-color: rgba(165, 196, 212, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.routing-root .routing-mute-slot:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent-primary) 65%, transparent);
+  outline-offset: 2px;
 }
 
 .routing-root .routing-mute-slot.empty {
-  opacity: 0.5;
+  opacity: 0.38;
 }
 
 .routing-root .routing-mute-slot.stored {
   color: var(--text-secondary);
-}
-
-.routing-root .routing-mute-slot.stored::after {
-  content: '';
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent-primary) 68%, white);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-primary) 34%, transparent);
+  opacity: 1;
+  border-color: color-mix(in srgb, var(--mute-slot-color, var(--accent-primary)) 28%, transparent);
 }
 
 .routing-root .routing-mute-slot.selected {
-  border-color: rgba(165, 196, 212, 0.28);
+  border-color: color-mix(in srgb, var(--mute-slot-color, var(--accent-primary)) 48%, transparent);
+  background: color-mix(in srgb, var(--mute-slot-color, var(--accent-primary)) 6%, transparent);
 }
 
 .routing-root .routing-mute-slot.active {
-  border-color: color-mix(in srgb, var(--accent-primary) 52%, transparent);
-  background: color-mix(in srgb, var(--accent-primary) 16%, transparent);
-  color: var(--accent-primary);
+  border-color: color-mix(in srgb, var(--mute-slot-color, var(--accent-primary)) 62%, transparent);
+  background: color-mix(in srgb, var(--mute-slot-color, var(--accent-primary)) 14%, transparent);
+  color: color-mix(in srgb, var(--mute-slot-color, var(--accent-primary)) 78%, white);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--mute-slot-color, var(--accent-primary)) 18%, transparent);
   opacity: 1;
 }
 
@@ -201,23 +241,172 @@
   animation: routingMuteSlotOverwriteGlow 1050ms ease-out;
 }
 
-.routing-root .routing-mute-slot-number,
-.routing-root .routing-mute-slot-count {
-  min-width: 0;
-  line-height: 1;
+/* ── Per-slot summary cards ── */
+
+.routing-root .routing-mute-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
 }
 
-.routing-root .routing-mute-slot-count {
-  max-width: 100%;
-  padding: 2px 4px;
+.routing-root .routing-mute-card {
+  display: grid;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--mute-slot-color, var(--accent-primary)) 24%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--mute-slot-color, var(--accent-primary)) 3%, transparent);
+  min-width: 0;
+}
+
+.routing-root .routing-mute-card.active {
+  border-color: color-mix(in srgb, var(--mute-slot-color, var(--accent-primary)) 52%, transparent);
+  background: color-mix(in srgb, var(--mute-slot-color, var(--accent-primary)) 8%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--mute-slot-color, var(--accent-primary)) 14%, transparent);
+}
+
+.routing-root .routing-mute-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.routing-root .routing-mute-card-num {
+  color: color-mix(in srgb, var(--mute-slot-color, var(--accent-primary)) 82%, white);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.routing-root .routing-mute-card-count {
+  color: var(--text-muted);
+  font-size: 0.56rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  margin-left: auto;
+}
+
+.routing-root .routing-mute-card-range {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ── Random timing ── */
+
+.routing-root .routing-mute-random-time {
+  display: inline-grid;
+  place-items: center;
+  min-width: 54px;
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.15);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.routing-root .routing-mute-random-next {
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+/* ── Source dot strip ── */
+
+.routing-root .routing-mute-source-dots {
+  display: grid;
+  gap: 4px;
+}
+
+.routing-root .routing-mute-source-dots-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+}
+
+.routing-root .routing-mute-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.18);
-  color: inherit;
-  font-size: 0.58rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  background: var(--dot-color);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--dot-color) 32%, transparent);
+}
+
+.routing-root .routing-mute-dot.muted {
+  background: transparent;
+  border: 1.5px solid color-mix(in srgb, var(--dot-color) 42%, transparent);
+  box-shadow: none;
+  opacity: 0.35;
+}
+
+.routing-root .routing-mute-active-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 4px;
+}
+
+.routing-root .routing-mute-active-tag {
+  color: var(--dot-color);
+  font-size: 0.52rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  opacity: 0.88;
+}
+
+.routing-root .routing-mute-seq-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.routing-root .routing-mute-seq-badge {
+  color: var(--text-muted);
+  font-size: 0.56rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+/* ── Actions ── */
+
+.routing-root .routing-mute-groups-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.routing-root .routing-mute-action {
+  min-height: 26px;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0;
   text-transform: uppercase;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.routing-root .routing-mute-action:hover {
+  border-color: rgba(165, 196, 212, 0.22);
+  background: rgba(255, 255, 255, 0.052);
+}
+
+.routing-root .routing-mute-action:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent-primary) 65%, transparent);
+  outline-offset: 2px;
 }
 
 .routing-root .routing-mute-groups-status {
@@ -228,6 +417,37 @@
   font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 640px) {
+  .routing-root .routing-mute-slots {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .routing-root .routing-mute-slot {
+    min-height: 42px;
+    padding-inline: 7px;
+  }
+
+  .routing-root .routing-mute-random-controls {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .routing-root .routing-mute-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .routing-root .routing-mute-groups-actions {
+    width: 100%;
+  }
+
+  .routing-root .routing-mute-action {
+    flex: 1;
+    text-align: center;
+  }
 }
 
 @keyframes routingMuteSlotSavedGlow {
@@ -764,7 +984,7 @@
 }
 
 .routing-root .routing-matrix-cell.level-col {
-  border-left: 2px solid color-mix(in srgb, var(--row-accent, #a5c4d4) 32%, transparent);
+  border-color: color-mix(in srgb, var(--row-accent, #a5c4d4) 22%, transparent);
 }
 
 .routing-root .routing-matrix-cell.source-off {

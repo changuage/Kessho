@@ -6,6 +6,7 @@ interface DragNumberProps {
   max: number;
   label: string;
   onChange: (value: number) => void;
+  step?: number;
   shapeByDrag?: boolean;
   disabled?: boolean;
   displayValue?: React.ReactNode;
@@ -19,6 +20,7 @@ const DragNumber: React.FC<DragNumberProps> = ({
   max,
   label,
   onChange,
+  step = 1,
   shapeByDrag = false,
   disabled = false,
   displayValue,
@@ -28,11 +30,22 @@ const DragNumber: React.FC<DragNumberProps> = ({
   const startY = useRef(0);
   const startValue = useRef(value);
 
+  const effectiveStep = Number.isFinite(step) && step > 0 ? step : 1;
   const range = max - min;
-  const basePxPerStep = Math.max(2, Math.min(40, 500 / Math.max(1, range)));
+  const stepCount = Math.max(1, range / effectiveStep);
+  const basePxPerStep = Math.max(2, Math.min(40, 500 / stepCount));
   const pxPerStep = basePxPerStep * SEQ_DRAG_NUM_SLOW_FACTOR;
 
   const clamp = (v: number) => Math.max(min, Math.min(max, v));
+  const quantize = (v: number) => {
+    const stepped = min + Math.round((v - min) / effectiveStep) * effectiveStep;
+    return Number(clamp(stepped).toFixed(6));
+  };
+  const format = (v: number) => (
+    effectiveStep < 1
+      ? v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
+      : String(v)
+  );
 
   const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -53,7 +66,7 @@ const DragNumber: React.FC<DragNumberProps> = ({
     } else {
       delta = totalY / pxPerStep;
     }
-    const next = clamp(Math.round(startValue.current + delta));
+    const next = quantize(startValue.current + delta * effectiveStep);
     setGhostValue(next);
     onChange(next);
   };
@@ -65,7 +78,7 @@ const DragNumber: React.FC<DragNumberProps> = ({
     (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
   };
 
-  const display = displayValue ?? ghostValue ?? value;
+  const display = displayValue ?? (ghostValue !== null ? format(ghostValue) : format(value));
 
   return (
     <label style={disabled ? { opacity: 0.4, pointerEvents: 'none' } : undefined}>

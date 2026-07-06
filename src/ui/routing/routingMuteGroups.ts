@@ -9,10 +9,30 @@ import {
 } from './routingSourceRegistry';
 
 export const ROUTING_MUTE_GROUP_STORAGE_KEY = 'kessho:routing-mute-groups:v1';
+export const ROUTING_MUTE_GROUP_SCHEMA_VERSION = 4;
+export const ROUTING_MUTE_GROUP_SCENE_SCHEMA_VERSION = 1;
 export const ROUTING_MUTE_GROUP_SLOT_COUNT = 8;
 export const ROUTING_MUTE_GROUP_FADE_DOWN_MS = 96;
 export const ROUTING_MUTE_GROUP_FADE_UP_MS = 120;
 export const ROUTING_MUTE_GROUP_ENABLE_SETTLE_MS = 16;
+export const ROUTING_MUTE_GROUP_MIN_PHRASES = 0.25;
+export const ROUTING_MUTE_GROUP_MAX_PHRASES = 100;
+export const ROUTING_MUTE_GROUP_DEFAULT_MIN_PHRASES = 2;
+export const ROUTING_MUTE_GROUP_DEFAULT_MAX_PHRASES = 6;
+export const ROUTING_MUTE_GROUP_DEFAULT_TRANSITION_PHRASES = 1;
+export const ROUTING_MUTE_GROUP_PHRASE_STEP = 0.25;
+export const ROUTING_MUTE_GROUP_RAMP_STEP_MS = 125;
+export const ROUTING_MUTE_GROUP_MAX_RAMP_STEPS = 96;
+export const ROUTING_MUTE_GROUP_SLOT_COLORS = [
+  '#E07A84',
+  '#D4A520',
+  '#8EB6D8',
+  '#A870E8',
+  '#6F9AB1',
+  '#7B9A6D',
+  '#E8B44A',
+  '#A5C4D4',
+] as const;
 
 export const ROUTING_MUTE_GROUP_SOURCE_IDS = ROUTING_SOURCE_IDS;
 export const DEFAULT_ROUTING_MUTE_GROUP_SOURCE_IDS = ROUTING_MUTE_GROUP_SOURCE_IDS;
@@ -49,17 +69,69 @@ export type RoutingMuteGroupBooleanStateKey = keyof SliderState;
 export type RoutingMuteGroupStatePatchKey = RoutingMuteGroupBooleanStateKey;
 export type RoutingMuteGroupStatePatch = Partial<Record<RoutingMuteGroupBooleanStateKey, boolean>>;
 export type RoutingMuteGroupRuntimeLevelPatch = Partial<Record<keyof SliderState, number | null>>;
+export type RoutingMuteGroupRuntimeLevelPatchOptions = {
+  immediate?: boolean;
+};
+
+export interface RoutingMuteGroupPhraseRange {
+  min: number;
+  max: number;
+}
+
+export interface RoutingMuteGroupRandomSettings {
+  enabled: boolean;
+  defaultMinPhrases: number;
+  defaultMaxPhrases: number;
+  transitionPhrases: number;
+  avoidRepeat: boolean;
+  eligibleSlotIndexes?: number[];
+}
+
+export type RoutingMuteGroupRuntimePhase = 'off' | 'holding' | 'transitioning' | 'paused' | 'empty';
+
+export interface RoutingMuteGroupRuntimeSnapshot {
+  randomEnabled: boolean;
+  phase: RoutingMuteGroupRuntimePhase;
+  activeSlotIndex: number | null;
+  activeSlotColor: string | null;
+  selectedSlotIndex: number;
+  nextSlotIndex: number | null;
+  nextSlotColor: string | null;
+  secondsToNextChange: number | null;
+  transitionProgress: number;
+  holdPhrases: number | null;
+  transitionPhrases: number;
+  currentMutedSourceIds: RoutingMuteGroupSourceId[];
+  nextMutedSourceIds: RoutingMuteGroupSourceId[];
+}
+
+export interface RoutingMuteGroupScenePayload {
+  schemaVersion?: typeof ROUTING_MUTE_GROUP_SCENE_SCHEMA_VERSION;
+  mutedSourceIds: RoutingMuteGroupSourceId[];
+  statePatch?: RoutingMuteGroupStatePatch;
+}
 
 export interface RoutingMuteGroupSlot {
   mutedSourceIds: RoutingMuteGroupSourceId[];
   statePatch?: RoutingMuteGroupStatePatch;
-  savedAt?: string;
-  revision?: number;
+  phraseRange?: RoutingMuteGroupPhraseRange;
+}
+
+export interface RoutingMuteGroupSceneRefSlot {
+  sceneHash: string;
+  phraseRange?: RoutingMuteGroupPhraseRange;
+}
+
+export interface RoutingMuteGroupsStorageState {
+  schemaVersion?: 4;
+  slots: (RoutingMuteGroupSceneRefSlot | null)[];
+  random?: RoutingMuteGroupRandomSettings;
 }
 
 export interface RoutingMuteGroupsState {
-  schemaVersion?: 2;
+  schemaVersion?: 2 | 3 | 4;
   slots: (RoutingMuteGroupSlot | null)[];
+  random?: RoutingMuteGroupRandomSettings;
 }
 
 type EnabledSnapshot = Partial<Record<keyof SliderState, boolean>>;
@@ -72,6 +144,11 @@ type RampStep = {
   value: number;
 };
 
+type ResolvedRoutingMuteGroupTransition = {
+  fadeDownMs: number;
+  fadeUpMs: number;
+};
+
 export type RoutingMuteGroupScheduler = {
   setTimeout: (callback: () => void, delayMs: number) => TimeoutHandle;
   clearTimeout: (handle: TimeoutHandle) => void;
@@ -79,7 +156,10 @@ export type RoutingMuteGroupScheduler = {
 
 export type RoutingMuteGroupTransitionControllerOptions = {
   getState: () => SliderState;
-  onRuntimeLevelPatchChange: (patch: RoutingMuteGroupRuntimeLevelPatch) => void;
+  onRuntimeLevelPatchChange: (
+    patch: RoutingMuteGroupRuntimeLevelPatch,
+    options?: RoutingMuteGroupRuntimeLevelPatchOptions,
+  ) => void;
   onBooleanParamChange: (key: keyof SliderState, value: boolean) => void;
   onActiveSlotChange?: (slotIndex: number | null) => void;
   eligibleSourceIds?: readonly RoutingRowId[];
@@ -90,11 +170,36 @@ export type RoutingMuteGroupTransitionControllerOptions = {
 };
 
 export type RoutingMuteGroupTransitionController = {
-  recall: (slot: RoutingMuteGroupSlot, slotIndex: number) => void;
-  release: () => void;
+  recall: (slot: RoutingMuteGroupSlot, slotIndex: number, options?: RoutingMuteGroupTransitionOptions) => void;
+  release: (options?: RoutingMuteGroupTransitionOptions) => void;
   cancel: () => void;
   getActiveSlotIndex: () => number | null;
   getEffectiveMutedSourceIds: () => readonly RoutingMuteGroupSourceId[];
+};
+
+export type RoutingMuteGroupTransitionOptions = {
+  transitionMs?: number;
+  fadeDownMs?: number;
+  fadeUpMs?: number;
+};
+
+export type SaveSlotResult = {
+  slotIndex: number;
+  wasStored: boolean;
+};
+
+export type RoutingMuteGroupsController = {
+  activeSlotIndex: number | null;
+  selectedSlotIndex: number;
+  runtimeSnapshot: RoutingMuteGroupRuntimeSnapshot;
+  selectSlot: (slotIndex: number) => void;
+  pressSlot: (slotIndex: number) => void;
+  saveSlot: (slotIndex: number) => SaveSlotResult;
+  saveSelectedSlot: () => SaveSlotResult;
+  clearSlot: (slotIndex: number) => void;
+  clearSelectedSlot: () => void;
+  updateSlotPhraseRange: (slotIndex: number, range: RoutingMuteGroupPhraseRange) => void;
+  updateRandomSettings: (patch: Partial<RoutingMuteGroupRandomSettings>) => void;
 };
 
 const DEFAULT_SCHEDULER: RoutingMuteGroupScheduler = {
@@ -222,10 +327,76 @@ function mergeRoutingMuteGroupScenes(
   };
 }
 
+function clampPhraseCount(value: number, fallback: number): number {
+  const source = Number.isFinite(value) ? value : fallback;
+  const quantized = Math.round(source / ROUTING_MUTE_GROUP_PHRASE_STEP) * ROUTING_MUTE_GROUP_PHRASE_STEP;
+  return Math.max(ROUTING_MUTE_GROUP_MIN_PHRASES, Math.min(ROUTING_MUTE_GROUP_MAX_PHRASES, quantized));
+}
+
+export function routingMuteGroupSlotColor(slotIndex: number, _slot?: RoutingMuteGroupSlot | null): string {
+  return ROUTING_MUTE_GROUP_SLOT_COLORS[
+    Math.max(0, Math.min(ROUTING_MUTE_GROUP_SLOT_COLORS.length - 1, slotIndex))
+  ] ?? ROUTING_MUTE_GROUP_SLOT_COLORS[0];
+}
+
+export function normalizeRoutingMuteGroupPhraseRange(
+  value: unknown,
+  fallback: RoutingMuteGroupPhraseRange = {
+    min: ROUTING_MUTE_GROUP_DEFAULT_MIN_PHRASES,
+    max: ROUTING_MUTE_GROUP_DEFAULT_MAX_PHRASES,
+  },
+): RoutingMuteGroupPhraseRange {
+  const raw = value && typeof value === 'object'
+    ? value as Partial<RoutingMuteGroupPhraseRange>
+    : {};
+  const min = clampPhraseCount(Number(raw.min), fallback.min);
+  const max = clampPhraseCount(Number(raw.max), fallback.max);
+  return min <= max ? { min, max } : { min: max, max: min };
+}
+
+function normalizeEligibleSlotIndexes(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const normalized = [...new Set(value
+    .filter((index): index is number => Number.isInteger(index))
+    .map((index) => Math.max(0, Math.min(ROUTING_MUTE_GROUP_SLOT_COUNT - 1, index))))];
+  normalized.sort((left, right) => left - right);
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+export function normalizeRoutingMuteGroupRandomSettings(value: unknown): RoutingMuteGroupRandomSettings {
+  const raw = value && typeof value === 'object'
+    ? value as Partial<RoutingMuteGroupRandomSettings>
+    : {};
+  const defaultRange = normalizeRoutingMuteGroupPhraseRange({
+    min: raw.defaultMinPhrases,
+    max: raw.defaultMaxPhrases,
+  });
+  const eligibleSlotIndexes = normalizeEligibleSlotIndexes(raw.eligibleSlotIndexes);
+  return {
+    enabled: raw.enabled === true,
+    defaultMinPhrases: defaultRange.min,
+    defaultMaxPhrases: defaultRange.max,
+    transitionPhrases: clampPhraseCount(Number(raw.transitionPhrases), ROUTING_MUTE_GROUP_DEFAULT_TRANSITION_PHRASES),
+    avoidRepeat: raw.avoidRepeat !== false,
+    ...(eligibleSlotIndexes ? { eligibleSlotIndexes } : {}),
+  };
+}
+
+export function routingMuteGroupSlotPhraseRange(
+  slot: RoutingMuteGroupSlot | null | undefined,
+  randomSettings: RoutingMuteGroupRandomSettings,
+): RoutingMuteGroupPhraseRange {
+  return normalizeRoutingMuteGroupPhraseRange(slot?.phraseRange, {
+    min: randomSettings.defaultMinPhrases,
+    max: randomSettings.defaultMaxPhrases,
+  });
+}
+
 export function createEmptyRoutingMuteGroupsState(): RoutingMuteGroupsState {
   return {
-    schemaVersion: 2,
+    schemaVersion: ROUTING_MUTE_GROUP_SCHEMA_VERSION,
     slots: Array.from({ length: ROUTING_MUTE_GROUP_SLOT_COUNT }, () => null),
+    random: normalizeRoutingMuteGroupRandomSettings(undefined),
   };
 }
 
@@ -239,15 +410,76 @@ export function normalizeRoutingMuteGroupSlot(value: unknown): RoutingMuteGroupS
   if (!Array.isArray(rawIds) && !statePatch) return null;
 
   const raw = value as Partial<RoutingMuteGroupSlot>;
-  const savedAt = typeof raw.savedAt === 'string' && raw.savedAt.trim().length > 0 ? raw.savedAt : undefined;
-  const revision = Number.isInteger(raw.revision) && Number(raw.revision) >= 0 ? Number(raw.revision) : undefined;
+  const phraseRange = raw.phraseRange ? normalizeRoutingMuteGroupPhraseRange(raw.phraseRange) : undefined;
 
   return {
     mutedSourceIds: deduped,
     ...(statePatch ? { statePatch } : {}),
-    ...(savedAt ? { savedAt } : {}),
-    ...(revision !== undefined ? { revision } : {}),
+    ...(phraseRange ? { phraseRange } : {}),
   };
+}
+
+export function normalizeRoutingMuteGroupScenePayload(value: unknown): RoutingMuteGroupScenePayload | null {
+  const slot = normalizeRoutingMuteGroupSlot(value);
+  if (!slot) return null;
+  return {
+    schemaVersion: ROUTING_MUTE_GROUP_SCENE_SCHEMA_VERSION,
+    mutedSourceIds: slot.mutedSourceIds,
+    ...(slot.statePatch ? { statePatch: slot.statePatch } : {}),
+  };
+}
+
+export function routingMuteGroupSlotScenePayload(
+  slot: RoutingMuteGroupSlot | null | undefined,
+): RoutingMuteGroupScenePayload | null {
+  return normalizeRoutingMuteGroupScenePayload(slot);
+}
+
+export function routingMuteGroupSlotFromScenePayload(
+  scene: RoutingMuteGroupScenePayload | null | undefined,
+  options: { phraseRange?: RoutingMuteGroupPhraseRange } = {},
+): RoutingMuteGroupSlot | null {
+  const normalizedScene = normalizeRoutingMuteGroupScenePayload(scene);
+  if (!normalizedScene) return null;
+  return normalizeRoutingMuteGroupSlot({
+    mutedSourceIds: normalizedScene.mutedSourceIds,
+    ...(normalizedScene.statePatch ? { statePatch: normalizedScene.statePatch } : {}),
+    ...(options.phraseRange ? { phraseRange: options.phraseRange } : {}),
+  });
+}
+
+export function normalizeRoutingMuteGroupSceneRefSlot(value: unknown): RoutingMuteGroupSceneRefSlot | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Partial<RoutingMuteGroupSceneRefSlot>;
+  const sceneHash = typeof raw.sceneHash === 'string' ? raw.sceneHash.trim() : '';
+  if (!sceneHash) return null;
+  const phraseRange = raw.phraseRange ? normalizeRoutingMuteGroupPhraseRange(raw.phraseRange) : undefined;
+  return {
+    sceneHash,
+    ...(phraseRange ? { phraseRange } : {}),
+  };
+}
+
+export function isRoutingMuteGroupSceneRefSlot(value: unknown): value is RoutingMuteGroupSceneRefSlot {
+  return normalizeRoutingMuteGroupSceneRefSlot(value) !== null;
+}
+
+export function normalizeRoutingMuteGroupsStorageState(value: unknown): RoutingMuteGroupsStorageState {
+  const rawSlots: unknown[] = Array.isArray(value)
+    ? value
+    : value && typeof value === 'object' && Array.isArray((value as Partial<RoutingMuteGroupsStorageState>).slots)
+      ? (value as Partial<RoutingMuteGroupsStorageState>).slots ?? []
+      : [];
+
+  const slots = Array.from({ length: ROUTING_MUTE_GROUP_SLOT_COUNT }, (_, index) => (
+    normalizeRoutingMuteGroupSceneRefSlot(rawSlots[index])
+  ));
+
+  const random = value && typeof value === 'object' && !Array.isArray(value)
+    ? normalizeRoutingMuteGroupRandomSettings((value as Partial<RoutingMuteGroupsStorageState>).random)
+    : normalizeRoutingMuteGroupRandomSettings(undefined);
+
+  return { schemaVersion: ROUTING_MUTE_GROUP_SCHEMA_VERSION, slots, random };
 }
 
 export function normalizeRoutingMuteGroupsState(value: unknown): RoutingMuteGroupsState {
@@ -261,14 +493,17 @@ export function normalizeRoutingMuteGroupsState(value: unknown): RoutingMuteGrou
     normalizeRoutingMuteGroupSlot(rawSlots[index])
   ));
 
-  return { schemaVersion: 2, slots };
+  const random = value && typeof value === 'object' && !Array.isArray(value)
+    ? normalizeRoutingMuteGroupRandomSettings((value as Partial<RoutingMuteGroupsState>).random)
+    : normalizeRoutingMuteGroupRandomSettings(undefined);
+
+  return { schemaVersion: ROUTING_MUTE_GROUP_SCHEMA_VERSION, slots, random };
 }
 
 export type CaptureRoutingMuteGroupSlotOptions = {
   sourceIds?: readonly RoutingRowId[];
   effectiveMutedSourceIds?: readonly RoutingMuteGroupSourceId[];
-  savedAt?: string;
-  revision?: number;
+  phraseRange?: RoutingMuteGroupPhraseRange;
 };
 
 export function captureRoutingMuteGroupSlot(
@@ -285,8 +520,7 @@ export function captureRoutingMuteGroupSlot(
       .filter((source) => effectiveMuted.has(source.id as RoutingMuteGroupSourceId) || !source.isAudible(state))
       .map((source) => source.id as RoutingMuteGroupSourceId),
     statePatch: captureRoutingMuteGroupScene(state),
-    savedAt: options.savedAt ?? new Date().toISOString(),
-    revision: options.revision ?? 1,
+    ...(options.phraseRange ? { phraseRange: options.phraseRange } : {}),
   });
   return slot ?? { mutedSourceIds: [], statePatch: captureRoutingMuteGroupScene(state) };
 }
@@ -302,13 +536,40 @@ export function setRoutingMuteGroupSlot(
   const normalized = normalizeRoutingMuteGroupsState(state);
   const slots = [...normalized.slots];
   slots[slotIndex] = normalizeRoutingMuteGroupSlot(slot);
-  return { schemaVersion: 2, slots };
+  return { ...normalized, slots };
 }
 
-export function incrementSlotRevision(previous: RoutingMuteGroupSlot | null | undefined): number {
-  return Number.isInteger(previous?.revision) && Number(previous?.revision) >= 0
-    ? Number(previous?.revision) + 1
-    : 1;
+export function setRoutingMuteGroupSlotPhraseRange(
+  state: RoutingMuteGroupsState,
+  slotIndex: number,
+  range: RoutingMuteGroupPhraseRange,
+): RoutingMuteGroupsState {
+  if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= ROUTING_MUTE_GROUP_SLOT_COUNT) {
+    return normalizeRoutingMuteGroupsState(state);
+  }
+  const normalized = normalizeRoutingMuteGroupsState(state);
+  const slot = normalized.slots[slotIndex];
+  if (!slot) return normalized;
+  const slots = [...normalized.slots];
+  slots[slotIndex] = normalizeRoutingMuteGroupSlot({
+    ...slot,
+    phraseRange: normalizeRoutingMuteGroupPhraseRange(range, routingMuteGroupSlotPhraseRange(slot, normalized.random ?? normalizeRoutingMuteGroupRandomSettings(undefined))),
+  });
+  return { ...normalized, slots };
+}
+
+export function setRoutingMuteGroupRandomSettings(
+  state: RoutingMuteGroupsState,
+  patch: Partial<RoutingMuteGroupRandomSettings>,
+): RoutingMuteGroupsState {
+  const normalized = normalizeRoutingMuteGroupsState(state);
+  return {
+    ...normalized,
+    random: normalizeRoutingMuteGroupRandomSettings({
+      ...(normalized.random ?? normalizeRoutingMuteGroupRandomSettings(undefined)),
+      ...patch,
+    }),
+  };
 }
 
 export function isRoutingMuteGroupSlotStored(slot: RoutingMuteGroupSlot | null | undefined): slot is RoutingMuteGroupSlot {
@@ -332,6 +593,67 @@ export function routingMuteGroupSlotMuteCount(slot: RoutingMuteGroupSlot | null 
     }
   }
   return slot.mutedSourceIds.length + stateMuted;
+}
+
+export function routingMuteGroupSlotTotalCount(slot: RoutingMuteGroupSlot | null | undefined): number {
+  if (!slot) return ROUTING_MUTE_GROUP_SOURCE_IDS.length;
+  const mutedSourceIds = new Set<RoutingMuteGroupSourceId>(slot.mutedSourceIds);
+  const sourceKeysCoveredByMutedRows = new Set<keyof SliderState>();
+  for (const sourceId of mutedSourceIds) {
+    for (const key of getRoutingSourceDef(sourceId)?.enabledKeys ?? []) {
+      sourceKeysCoveredByMutedRows.add(key);
+    }
+  }
+  let independentBooleanCount = 0;
+  for (const key of Object.keys(slot.statePatch ?? {})) {
+    if (isRoutingMuteGroupBooleanStateKey(key)) {
+      if (!sourceKeysCoveredByMutedRows.has(key as keyof SliderState)) {
+        independentBooleanCount += 1;
+      }
+    }
+  }
+  return ROUTING_MUTE_GROUP_SOURCE_IDS.length + independentBooleanCount;
+}
+
+export function routingMuteGroupSlotActiveCount(slot: RoutingMuteGroupSlot | null | undefined): number {
+  if (!slot) return 0;
+  return routingMuteGroupSlotTotalCount(slot) - routingMuteGroupSlotMuteCount(slot);
+}
+
+export interface RoutingMuteGroupSlotSeqSummary {
+  prefix: string;
+  label: string;
+  on: number;
+  total: number;
+}
+
+export function routingMuteGroupSlotSeqSummaries(slot: RoutingMuteGroupSlot | null | undefined): RoutingMuteGroupSlotSeqSummary[] {
+  if (!slot?.statePatch) return [];
+  const groups: Record<string, { on: number; total: number; label: string }> = {};
+  for (const [key, value] of Object.entries(slot.statePatch)) {
+    let prefix: string | null = null;
+    let label: string | null = null;
+    if (key.startsWith('drumEuclid') && key.endsWith('Enabled')) {
+      prefix = 'drumEuclid';
+      label = 'Dr';
+    } else if (key.startsWith('synthEuclid') && key.endsWith('Enabled')) {
+      prefix = 'synthEuclid';
+      label = 'Syn';
+    } else if (key.startsWith('granularV') && key.endsWith('Enabled')) {
+      prefix = 'granularV';
+      label = 'Gr';
+    }
+    if (!prefix || !label) continue;
+    const group = groups[prefix] ?? (groups[prefix] = { on: 0, total: 0, label });
+    group.total += 1;
+    if (value === true) group.on += 1;
+  }
+  return Object.entries(groups).map(([prefix, data]) => ({
+    prefix,
+    label: data.label,
+    on: data.on,
+    total: data.total,
+  }));
 }
 
 function restoreEnabledSnapshot(
@@ -398,13 +720,17 @@ function levelRampSteps(
     return [{ delayMs: 0, value: to }];
   }
 
-  const stepCount = Math.max(1, Math.min(6, Math.ceil(durationMs / 24)));
+  const stepCount = Math.max(1, Math.min(
+    ROUTING_MUTE_GROUP_MAX_RAMP_STEPS,
+    Math.ceil(durationMs / ROUTING_MUTE_GROUP_RAMP_STEP_MS),
+  ));
   const steps: RampStep[] = [];
   for (let step = 1; step <= stepCount; step++) {
     const progress = step / stepCount;
+    const easedProgress = progress * progress * (3 - 2 * progress);
     steps.push({
       delayMs: Math.round(durationMs * progress),
-      value: from + (to - from) * progress,
+      value: from + (to - from) * easedProgress,
     });
   }
   return steps;
@@ -433,6 +759,21 @@ export function createRoutingMuteGroupTransitionController({
   const sourceSceneKeys = sourceBooleanKeys(sourceDefs);
 
   const isCurrentGeneration = (token: number) => token === generation;
+  const resolveTransition = (options?: RoutingMuteGroupTransitionOptions): ResolvedRoutingMuteGroupTransition => {
+    const transitionMs = typeof options?.transitionMs === 'number' && Number.isFinite(options.transitionMs)
+      ? Math.max(0, options.transitionMs)
+      : undefined;
+    const resolvedFadeDownMs = typeof options?.fadeDownMs === 'number' && Number.isFinite(options.fadeDownMs)
+      ? Math.max(0, options.fadeDownMs)
+      : transitionMs ?? fadeDownMs;
+    const resolvedFadeUpMs = typeof options?.fadeUpMs === 'number' && Number.isFinite(options.fadeUpMs)
+      ? Math.max(0, options.fadeUpMs)
+      : transitionMs ?? fadeUpMs;
+    return {
+      fadeDownMs: resolvedFadeDownMs,
+      fadeUpMs: resolvedFadeUpMs,
+    };
+  };
 
   const clearPendingTimeouts = () => {
     for (const timeout of pendingTimeouts) {
@@ -451,9 +792,12 @@ export function createRoutingMuteGroupTransitionController({
     pendingTimeouts.add(handle);
   };
 
-  const applyRuntimeLevelPatch = (patch: RoutingMuteGroupRuntimeLevelPatch) => {
+  const applyRuntimeLevelPatch = (
+    patch: RoutingMuteGroupRuntimeLevelPatch,
+    options?: RoutingMuteGroupRuntimeLevelPatchOptions,
+  ) => {
     if (Object.keys(patch).length > 0) {
-      onRuntimeLevelPatchChange(patch);
+      onRuntimeLevelPatchChange(patch, options);
     }
   };
 
@@ -461,6 +805,7 @@ export function createRoutingMuteGroupTransitionController({
     token: number,
     delayMs: number,
     patch: RoutingMuteGroupRuntimeLevelPatch,
+    options?: RoutingMuteGroupRuntimeLevelPatchOptions,
   ) => {
     const normalizedDelayMs = Math.max(0, Math.round(delayMs));
     const existingPatch = scheduledRuntimeLevelPatches.get(normalizedDelayMs);
@@ -473,7 +818,7 @@ export function createRoutingMuteGroupTransitionController({
     scheduledRuntimeLevelPatches.set(normalizedDelayMs, scheduledPatch);
     schedule(token, normalizedDelayMs, () => {
       scheduledRuntimeLevelPatches.delete(normalizedDelayMs);
-      applyRuntimeLevelPatch(scheduledPatch);
+      applyRuntimeLevelPatch(scheduledPatch, options);
     });
   };
 
@@ -500,16 +845,20 @@ export function createRoutingMuteGroupTransitionController({
     }
   };
 
-  const muteSource = (source: RoutingSourceDef, token: number) => {
+  const muteSource = (
+    source: RoutingSourceDef,
+    token: number,
+    transition: ResolvedRoutingMuteGroupTransition,
+  ) => {
     const liveState = getState();
     groupControlledSources.add(source.id);
     targetMutedSourceIds.add(source.id as RoutingMuteGroupSourceId);
 
-    for (const step of levelRampSteps(numericLevel(liveState, source.levelKey), 0, fadeDownMs)) {
+    for (const step of levelRampSteps(numericLevel(liveState, source.levelKey), 0, transition.fadeDownMs)) {
       scheduleRuntimeLevelPatch(token, step.delayMs, runtimeLevelPatch(source.levelKey, step.value));
     }
 
-    schedule(token, fadeDownMs, () => {
+    schedule(token, transition.fadeDownMs, () => {
       for (const key of source.enabledKeys ?? []) {
         if (Boolean(getState()[key])) onBooleanParamChange(key, false);
       }
@@ -520,6 +869,7 @@ export function createRoutingMuteGroupTransitionController({
     source: RoutingSourceDef,
     scene: RoutingMuteGroupSceneSnapshot,
     token: number,
+    transition: ResolvedRoutingMuteGroupTransition,
   ) => {
     const liveState = getState();
     const enabledSnapshot = desiredSourceEnabledSnapshot(source, scene, liveState);
@@ -533,34 +883,39 @@ export function createRoutingMuteGroupTransitionController({
         restoreEnabledSnapshot(enabledSnapshot, onBooleanParamChange);
       }
       if (wasGroupControlled) {
-        applyRuntimeLevelPatch(runtimeLevelPatch(source.levelKey, null));
+        applyRuntimeLevelPatch(runtimeLevelPatch(source.levelKey, null), { immediate: true });
         groupControlledSources.delete(source.id);
         targetMutedSourceIds.delete(source.id as RoutingMuteGroupSourceId);
       }
       return;
     }
 
-    applyRuntimeLevelPatch(runtimeLevelPatch(source.levelKey, 0));
+    applyRuntimeLevelPatch(runtimeLevelPatch(source.levelKey, 0), { immediate: true });
     if (enabledChanged) {
       restoreEnabledSnapshot(enabledSnapshot, onBooleanParamChange);
     }
 
     const targetLevel = numericLevel(liveState, source.levelKey);
-    for (const step of levelRampSteps(0, targetLevel, fadeUpMs)) {
+    for (const step of levelRampSteps(0, targetLevel, transition.fadeUpMs)) {
       scheduleRuntimeLevelPatch(token, enableSettleMs + step.delayMs, runtimeLevelPatch(source.levelKey, step.value));
     }
 
-    schedule(token, enableSettleMs + fadeUpMs + 1, () => {
-      applyRuntimeLevelPatch(runtimeLevelPatch(source.levelKey, null));
+    schedule(token, enableSettleMs + transition.fadeUpMs + 1, () => {
+      applyRuntimeLevelPatch(runtimeLevelPatch(source.levelKey, null), { immediate: true });
       groupControlledSources.delete(source.id);
       targetMutedSourceIds.delete(source.id as RoutingMuteGroupSourceId);
     });
   };
 
-  const applyPattern = (slot: RoutingMuteGroupSlot | null, nextActiveSlotIndex: number | null) => {
+  const applyPattern = (
+    slot: RoutingMuteGroupSlot | null,
+    nextActiveSlotIndex: number | null,
+    options?: RoutingMuteGroupTransitionOptions,
+  ) => {
     clearPendingTimeouts();
     generation += 1;
     const token = generation;
+    const transition = resolveTransition(options);
     if (nextActiveSlotIndex !== null && rememberedScene === null) {
       rememberedScene = captureRoutingMuteGroupScene(getState());
     }
@@ -577,9 +932,9 @@ export function createRoutingMuteGroupTransitionController({
 
     for (const source of sourceDefs) {
       if (mutedSourceIdSet.has(source.id)) {
-        muteSource(source, token);
+        muteSource(source, token, transition);
       } else {
-        restoreSourceToScene(source, scene, token);
+        restoreSourceToScene(source, scene, token, transition);
       }
     }
 
@@ -591,13 +946,13 @@ export function createRoutingMuteGroupTransitionController({
   };
 
   return {
-    recall(slot, slotIndex) {
+    recall(slot, slotIndex, options) {
       const normalized = normalizeRoutingMuteGroupSlot(slot);
       if (!normalized) return;
-      applyPattern(normalized, slotIndex);
+      applyPattern(normalized, slotIndex, options);
     },
-    release() {
-      applyPattern(null, null);
+    release(options) {
+      applyPattern(null, null, options);
     },
     cancel() {
       clearPendingTimeouts();
@@ -608,7 +963,7 @@ export function createRoutingMuteGroupTransitionController({
           clearedRuntimeLevels[source.levelKey] = null;
         }
       }
-      applyRuntimeLevelPatch(clearedRuntimeLevels);
+      applyRuntimeLevelPatch(clearedRuntimeLevels, { immediate: true });
       groupControlledSources.clear();
       targetMutedSourceIds.clear();
     },

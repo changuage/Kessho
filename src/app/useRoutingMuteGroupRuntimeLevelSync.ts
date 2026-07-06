@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
-import type { RoutingMuteGroupRuntimeLevelPatch } from '../ui/routing';
+import type {
+  RoutingMuteGroupRuntimeLevelPatch,
+  RoutingMuteGroupRuntimeLevelPatchOptions,
+} from '../ui/routing';
 import type { SliderState } from '../ui/state';
 import type { ProductRuntimeParamUpdateOptions } from '../ui/useProductRuntimePresetSurface';
 
@@ -31,34 +34,51 @@ export function useRoutingMuteGroupRuntimeLevelSync({
       : sourceState;
   }, []);
 
-  const flushRuntimeLevelPatch = useCallback(() => {
+  const flushRuntimeLevelPatch = useCallback((options?: RoutingMuteGroupRuntimeLevelPatchOptions) => {
     syncHandleRef.current = null;
     scheduleProductRuntimeParamUpdate(applyRoutingMuteGroupRuntimeLevels(stateRef.current), {
-      immediate: true,
+      immediate: options?.immediate === true,
       reason: 'ui-control-change',
     });
   }, [applyRoutingMuteGroupRuntimeLevels, scheduleProductRuntimeParamUpdate, stateRef]);
 
-  const scheduleRuntimeLevelFlush = useCallback(() => {
+  const scheduleRuntimeLevelFlush = useCallback((options?: RoutingMuteGroupRuntimeLevelPatchOptions) => {
+    if (options?.immediate === true) {
+      const handle = syncHandleRef.current;
+      if (handle && typeof window !== 'undefined') {
+        if (handle.kind === 'frame') {
+          window.cancelAnimationFrame(handle.id);
+        } else {
+          window.clearTimeout(handle.id);
+        }
+      }
+      syncHandleRef.current = null;
+      flushRuntimeLevelPatch(options);
+      return;
+    }
+
     if (syncHandleRef.current) return;
     if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
       syncHandleRef.current = {
         kind: 'frame',
-        id: window.requestAnimationFrame(flushRuntimeLevelPatch),
+        id: window.requestAnimationFrame(() => flushRuntimeLevelPatch(options)),
       };
       return;
     }
     if (typeof window !== 'undefined') {
       syncHandleRef.current = {
         kind: 'timeout',
-        id: window.setTimeout(flushRuntimeLevelPatch, 0),
+        id: window.setTimeout(() => flushRuntimeLevelPatch(options), 0),
       };
     } else {
-      flushRuntimeLevelPatch();
+      flushRuntimeLevelPatch(options);
     }
   }, [flushRuntimeLevelPatch]);
 
-  const handleRoutingMuteGroupRuntimeLevelPatchChange = useCallback((patch: RoutingMuteGroupRuntimeLevelPatch) => {
+  const handleRoutingMuteGroupRuntimeLevelPatchChange = useCallback((
+    patch: RoutingMuteGroupRuntimeLevelPatch,
+    options?: RoutingMuteGroupRuntimeLevelPatchOptions,
+  ) => {
     const nextRuntimeLevels = { ...runtimeLevelsRef.current };
     let changed = false;
 
@@ -77,7 +97,7 @@ export function useRoutingMuteGroupRuntimeLevelSync({
 
     if (!changed) return;
     runtimeLevelsRef.current = nextRuntimeLevels;
-    scheduleRuntimeLevelFlush();
+    scheduleRuntimeLevelFlush(options);
   }, [scheduleRuntimeLevelFlush]);
 
   useEffect(() => () => {
