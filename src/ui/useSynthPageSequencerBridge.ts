@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, type MutableRefObject } from 'react';
 
 import type { ClockDivision, PitchBindingMode } from '../audio/drumSeqTypes';
-import type { ProductArpConfig } from '../audio/productArpeggiator';
+import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './sequencer/useEuclideanSequencer';
 import { sanitizeSequencerSubLaneStates } from './usePresetSequencerRestore';
 
@@ -27,7 +27,7 @@ type SynthPageSequencerBridgeOptions = {
   synthLinkedRef: MutableRefObject<boolean[] | undefined>;
   synthPitchBindingModesRef: MutableRefObject<PitchBindingMode[] | undefined>;
   synthPitchSettingsRef: MutableRefObject<PitchSettings[] | undefined>;
-  synthArpConfigsRef: MutableRefObject<ProductArpConfig[] | undefined>;
+  synthArpConfigsRef: MutableRefObject<ProductPlayConfig[] | undefined>;
   synthStepOverridesRef: MutableRefObject<StepOverrides | undefined>;
   synthSubLaneStatesRef: MutableRefObject<Record<SubLaneKind, SubLaneState>[] | undefined>;
   synthSwingsRef: MutableRefObject<number[] | undefined>;
@@ -35,7 +35,7 @@ type SynthPageSequencerBridgeOptions = {
 
 function subLaneEnabledFlags(
   states: Record<SubLaneKind, SubLaneState>[] | undefined,
-  arpConfigs: ProductArpConfig[] | undefined,
+  arpConfigs: ProductPlayConfig[] | undefined,
 ): Record<string, boolean>[] {
   return Array.from({ length: 4 }, (_, laneIndex) => {
     const state = states?.[laneIndex];
@@ -46,6 +46,7 @@ function subLaneEnabledFlags(
     out.ratchet = out.expression === true;
     if (arpConfigs?.[laneIndex]?.enabled) {
       out.arp = true;
+      out.play = true;
       out.pitch = true;
     }
     return out;
@@ -56,6 +57,7 @@ function synthEngineStepOverrides(overrides: StepOverrides): Partial<StepOverrid
   return {
     pitch: overrides.pitch,
     pitchDirection: overrides.pitchDirection,
+    playNotes: overrides.playNotes,
     triggerToggles: overrides.triggerToggles,
     expression: overrides.expression,
     expressionDirection: overrides.expressionDirection,
@@ -103,7 +105,7 @@ export function useSynthPageSequencerBridge({
     setSelectedSynthSubLaneEnabled(subLaneEnabledFlags(sanitized, synthArpConfigsRef.current));
   }, [setSelectedSynthSubLaneEnabled, synthArpConfigsRef, synthSubLaneStatesRef]);
 
-  const onArpConfigsChange = useCallback((configs: ProductArpConfig[]) => {
+  const onArpConfigsChange = useCallback((configs: ProductPlayConfig[]) => {
     synthArpConfigsRef.current = configs;
     setSelectedSynthSubLaneEnabled(subLaneEnabledFlags(synthSubLaneStatesRef.current, configs));
   }, [setSelectedSynthSubLaneEnabled, synthArpConfigsRef, synthSubLaneStatesRef]);

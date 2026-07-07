@@ -1,7 +1,7 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 
 import type { SliderState, SerializedStepOverrides } from './state';
-import { normalizeProductArpConfigs, type ProductArpConfig } from '../audio/productArpeggiator';
+import { normalizeProductPlayConfigs, type ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './sequencer/useEuclideanSequencer';
 import { normalizeSequencerEvolveConfigs } from './sequencer/useEuclideanSequencer';
 import { stepOverridesForEngineSubLaneState } from './sequencer/engineStepOverrides';
@@ -33,7 +33,7 @@ type SequencerRestorePreset = {
   synthLinked?: boolean[];
   drumSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
-  synthArpConfigs?: ProductArpConfig[];
+  synthArpConfigs?: ProductPlayConfig[];
   drumPitchSettings?: PitchSettings[];
   synthPitchSettings?: PitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
@@ -78,7 +78,7 @@ type PresetSequencerRestoreOptions = {
   synthLinkedRef: MutableRefObject<boolean[] | undefined>;
   synthPitchBindingModesRef: MutableRefObject<PitchBindingMode[] | undefined>;
   synthPitchSettingsRef: MutableRefObject<PitchSettings[] | undefined>;
-  synthArpConfigsRef: MutableRefObject<ProductArpConfig[] | undefined>;
+  synthArpConfigsRef: MutableRefObject<ProductPlayConfig[] | undefined>;
   synthStepOverridesRef: MutableRefObject<StepOverrides | undefined>;
   synthSubLaneStatesRef: MutableRefObject<Record<SubLaneKind, SubLaneState>[] | undefined>;
   synthSwingsRef: MutableRefObject<number[] | undefined>;
@@ -226,7 +226,7 @@ function restoreSequencerSubLaneStates(
 
 function mapSubLaneStatesToEnabledFlags(
   states: Record<SubLaneKind, SubLaneState>[] | undefined,
-  arpConfigs?: ProductArpConfig[],
+  arpConfigs?: ProductPlayConfig[],
   laneCount: number = SYNTH_EUCLIDEAN_LANE_COUNT,
 ): Record<string, boolean>[] {
   return Array.from({ length: laneCount }, (_, index) => ({
@@ -239,6 +239,7 @@ function mapSubLaneStatesToEnabledFlags(
     slice: states?.[index]?.slice.enabled === true,
     reverse: states?.[index]?.reverse.enabled === true,
     arp: arpConfigs?.[index]?.enabled === true,
+    play: arpConfigs?.[index]?.enabled === true,
   }));
 }
 
@@ -423,7 +424,7 @@ export function usePresetSequencerRestore({
       const synthPitchSettings = normalizeSequencerPitchSettingsArray(preset.synthPitchSettings ?? createDefaultSynthPitchSettings(), SYNTH_EUCLIDEAN_LANE_COUNT) as PitchSettings[];
       drumPitchSettingsRef.current = drumPitchSettings;
       synthPitchSettingsRef.current = synthPitchSettings;
-      const synthArpConfigs = normalizeProductArpConfigs(preset.synthArpConfigs, SYNTH_EUCLIDEAN_LANE_COUNT);
+      const synthArpConfigs = normalizeProductPlayConfigs(preset.synthArpConfigs, SYNTH_EUCLIDEAN_LANE_COUNT);
       synthArpConfigsRef.current = synthArpConfigs;
 
       setSelectedDrumSubLaneEnabled(mapSubLaneStatesToEnabledFlags(drumSubLaneStates, undefined, DRUM_EUCLIDEAN_LANE_COUNT));

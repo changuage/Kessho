@@ -255,7 +255,52 @@ type EvolvedDrumSubLane = EvolvedAudioSubLane | 'slice' | 'reverse';
 type EvolvedDrumSubLanePatch = Partial<Record<EvolvedDrumSubLane, { enabled: boolean; steps: number; direction: LaneDirection; scaleQuantize?: boolean }>>;
 type SynthEvolveOverridesPayload = Partial<SynthLaneOverrides> & { swing?: number; subLaneStates?: EvolvedSubLanePatch; pitchSettings?: (SequencerPitchSettings | null)[] };
 type DrumEvolveOverridesPayload = Partial<DrumStepOverrides> & { swing?: number; subLaneStates?: EvolvedDrumSubLanePatch; pitchSettings?: (SequencerPitchSettings | null)[] };
+type SynthPlayStepNote = { midi: number; offsetMs: number; velocity: number; voiceIndex: number };
+type SynthPlayNoteTable = SynthPlayStepNote[][];
 const EUCLIDEAN_STEP_MAX = 32;
+const SYNTH_PLAY_MAX_NOTES_PER_TRIGGER = 32;
+const SYNTH_PLAY_NOTE_OFFSET_MAX_MS = 16000;
+
+function normalizeSynthPlayNoteTable(value: unknown): SynthPlayNoteTable | null {
+  if (!Array.isArray(value)) return null;
+  const table: SynthPlayNoteTable = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const record = entry as Record<string, unknown>;
+    const rawStep = record.step;
+    const rawMidi = record.midi;
+    if (typeof rawStep !== 'number' || !Number.isFinite(rawStep)) continue;
+    if (typeof rawMidi !== 'number' || !Number.isFinite(rawMidi)) continue;
+    const step = Math.max(0, Math.min(63, Math.round(rawStep)));
+    const voiceIndex = typeof record.voiceIndex === 'number' && Number.isFinite(record.voiceIndex)
+      ? Math.max(0, Math.min(SYNTH_PLAY_MAX_NOTES_PER_TRIGGER - 1, Math.round(record.voiceIndex)))
+      : 0;
+    const note: SynthPlayStepNote = {
+      midi: Math.max(24, Math.min(108, rawMidi)),
+      offsetMs: typeof record.offsetMs === 'number' && Number.isFinite(record.offsetMs)
+        ? Math.max(0, Math.min(SYNTH_PLAY_NOTE_OFFSET_MAX_MS, record.offsetMs))
+        : 0,
+      velocity: typeof record.velocity === 'number' && Number.isFinite(record.velocity)
+        ? Math.max(0.05, Math.min(1, record.velocity))
+        : 1,
+      voiceIndex,
+    };
+    if (!table[step]) table[step] = [];
+    table[step]!.push(note);
+  }
+  for (const notes of table) {
+    notes?.sort((left, right) => left.voiceIndex - right.voiceIndex || left.midi - right.midi);
+  }
+  return table.some((notes) => (notes?.length ?? 0) > 0) ? table : null;
+}
+
+function normalizeSynthPlayNoteTables(
+  value: unknown,
+  fallback: (SynthPlayNoteTable | null)[],
+): (SynthPlayNoteTable | null)[] {
+  if (!Array.isArray(value)) return fallback;
+  return SYNTH_LANE_INDICES.map((laneIndex) => normalizeSynthPlayNoteTable(value[laneIndex])) as Quad<SynthPlayNoteTable | null>;
+}
 
 type StereoWidthProcessor = {
   input: GainNode;
@@ -1497,6 +1542,7 @@ export class AudioEngine {
     probability: (number[] | null)[];
     ratchet: (number[] | null)[];
     trigCondition: (TrigCondition[] | null)[];
+    playNotes: (SynthPlayNoteTable | null)[];
   } = {
     pitch: [null, null, null, null],
     pitchDirection: [null, null, null, null],
@@ -1515,6 +1561,7 @@ export class AudioEngine {
     probability: [null, null, null, null],
     ratchet: [null, null, null, null],
     trigCondition: [null, null, null, null],
+    playNotes: [null, null, null, null],
   };
 
   // Lead Euclidean trig condition counters per lane per step
@@ -5114,6 +5161,7 @@ export class AudioEngine {
     probability?: (number[] | null)[];
     ratchet?: (number[] | null)[];
     trigCondition?: (TrigCondition[] | null)[];
+    playNotes?: (unknown[] | null)[];
   }) {
     this.synthStepOverrides = {
       pitch: overrides.pitch,
@@ -5133,6 +5181,9 @@ export class AudioEngine {
       probability: overrides.probability ?? this.synthStepOverrides.probability,
       ratchet: overrides.ratchet ?? this.synthStepOverrides.ratchet,
       trigCondition: overrides.trigCondition ?? this.synthStepOverrides.trigCondition,
+      playNotes: overrides.playNotes === undefined
+        ? this.synthStepOverrides.playNotes
+        : normalizeSynthPlayNoteTables(overrides.playNotes, this.synthStepOverrides.playNotes),
     };
     // Continuous scheduler reads overrides each tick — no restart needed
   }
@@ -12119,9 +12170,10 @@ export class AudioEngine {
               if (trigCondPassed && rng() <= lane.probability * stepProb) {
                 // Note selection via pitch sub-lane
                 let midiNote: number | undefined;
+                let pitchIdx: number | null = null;
                 if (pitchOffsets && pitchSteps > 0) {
                   const pitchBindingMode = this.synthPitchBindingModes[laneIndex] ?? 'polyrhythmic';
-                  const pitchIdx = pitchBindingMode === 'sequence'
+                  pitchIdx = pitchBindingMode === 'sequence'
                     ? seqLaneIndex(
                         { enabled: true, steps: pitchSteps, direction: pitchDir, _ppForward: true },
                         stepInPattern
@@ -12129,10 +12181,13 @@ export class AudioEngine {
                     : seqLaneIndex(
                         { enabled: true, steps: pitchSteps, direction: pitchDir, _ppForward: true },
                         this.synthEuclidHitCounts[laneIndex] - 1
-                      );
+                  );
                   // pitchOffsets are pre-converted to absolute MIDI notes by SynthPage
                   // Use the MIDI note directly — no noteMin/Max clamp (user chose these notes explicitly)
-                  midiNote = Math.max(24, Math.min(108, pitchOffsets[pitchIdx] ?? 60));
+                  const pitchValue = pitchOffsets[pitchIdx];
+                  if (typeof pitchValue === 'number' && Number.isFinite(pitchValue) && pitchValue >= 0) {
+                    midiNote = Math.max(24, Math.min(108, pitchValue));
+                  }
                 } else if (scale) {
                   // Use evolved noteRange overrides if available, else fall back to lane params
                   const nrOv = this.synthNoteRangeOverrides[laneIndex];
@@ -12174,8 +12229,14 @@ export class AudioEngine {
                   }
                 }
 
-                if (midiNote !== undefined) {
-                  const frequency = midiToFreq(midiNote);
+                const playStepNotes = pitchIdx !== null ? ov.playNotes[laneIndex]?.[pitchIdx] : null;
+                const triggerNotes = playStepNotes && playStepNotes.length > 0
+                  ? playStepNotes
+                  : midiNote !== undefined
+                    ? [{ midi: midiNote, offsetMs: 0, velocity: 1, voiceIndex: 0 }]
+                    : [];
+
+                if (triggerNotes.length > 0) {
 
                   // Expression/velocity sub-lane: dynamics × lane level.
                   // This is note velocity (timbre + amplitude), NOT bus gain.
@@ -12241,50 +12302,60 @@ export class AudioEngine {
                   const ratchetWindow = ratchetStepDuration / ratchet;
 
                   for (let r = 0; r < ratchet; r++) {
-                    const rDelayMs = delayMs + r * ratchetWindow * 1000;
-                    const ratchetTimerId = window.setTimeout(() => {
-                      this.ratchetTimers.delete(ratchetTimerId);
-                      this.synthMorphOverride = capturedMorphOverride;
-                      this.synthRatchetFactor = ratchetFactor;
-                      if (noteSource === 'lead' || noteSource === 'lead1') {
-                        this.playLeadNote(frequency, velocity, 'lead1', capturedDistanceOverride);
-                      } else if (noteSource === 'lead2') {
-                        this.playLeadNote(frequency, velocity, 'lead2', capturedDistanceOverride);
+                    const ratchetDelayMs = delayMs + r * ratchetWindow * 1000;
+                    for (const note of triggerNotes) {
+                      const frequency = midiToFreq(note.midi);
+                      const noteVelocity = Math.max(0, Math.min(1, velocity * note.velocity));
+                      const rDelayMs = ratchetDelayMs + note.offsetMs;
+                      const ratchetTimerId = window.setTimeout(() => {
+                        this.ratchetTimers.delete(ratchetTimerId);
+                        this.synthMorphOverride = capturedMorphOverride;
+                        this.synthRatchetFactor = ratchetFactor;
+                        if (noteSource === 'lead' || noteSource === 'lead1') {
+                          this.playLeadNote(frequency, noteVelocity, 'lead1', capturedDistanceOverride);
+                        } else if (noteSource === 'lead2') {
+                          this.playLeadNote(frequency, noteVelocity, 'lead2', capturedDistanceOverride);
                         } else if (noteSource === 'piano') {
-                          this.playPianoNote(frequency, velocity, capturedDistanceOverride);
-                      } else if (noteSource.startsWith('synth')) {
-                        const voiceIndex = parseInt(noteSource.replace('synth', '')) - 1;
-                        // Determine if this voice belongs to Pad 2
-                        const isPad2 = this.sliderState?.pad2Enabled &&
-                          ((this.sliderState?.pad2VoiceAssign ?? 0) & (1 << voiceIndex)) !== 0;
-                        const padParamsOverride = this.sliderState
-                          ? (this.buildPadTriggerState(
-                              isPad2 ? 'pad2' : 'pad1',
-                              this.sliderState,
-                              capturedMorphOverride,
-                              capturedDistanceOverride
-                            ) ?? undefined)
-                          : undefined;
-                        const padTriggerState = padParamsOverride ?? this.sliderState;
-                        // Use correct pad's ADSR for ratchet note duration
-                        const rAttack = isPad2
-                          ? (padTriggerState?.pad2Attack ?? 0.1)
-                          : (padTriggerState?.synthAttack ?? 0.1);
-                        const rDecay = isPad2
-                          ? (padTriggerState?.pad2Decay ?? 0.3)
-                          : (padTriggerState?.synthDecay ?? 0.3);
-                        const rHold = isPad2
-                          ? (padTriggerState?.pad2Hold ?? 1)
-                          : (padTriggerState?.synthHold ?? 1);
-                        const synthAttack = rAttack * ratchetFactor;
-                        const synthDecay = rDecay * ratchetFactor;
-                        const noteDuration = synthAttack + synthDecay + Math.max(0, rHold) * ratchetFactor;
-                        this.triggerSynthVoice(voiceIndex, frequency, velocity, noteDuration, padParamsOverride);
-                      }
-                      this.synthMorphOverride = null;
-                      this.synthRatchetFactor = 1;
-                    }, rDelayMs);
-                    this.ratchetTimers.add(ratchetTimerId);
+                          this.playPianoNote(frequency, noteVelocity, capturedDistanceOverride);
+                        } else if (noteSource.startsWith('synth')) {
+                          const parsedVoiceIndex = Number.parseInt(noteSource.replace('synth', ''), 10) - 1;
+                          const baseVoiceIndex = Number.isFinite(parsedVoiceIndex) ? Math.max(0, parsedVoiceIndex) : 0;
+                          const voiceCount = Math.max(1, this.voices.length);
+                          const voiceIndex = triggerNotes.length > 1
+                            ? (baseVoiceIndex + note.voiceIndex) % voiceCount
+                            : baseVoiceIndex;
+                          // Determine if this voice belongs to Pad 2
+                          const isPad2 = this.sliderState?.pad2Enabled &&
+                            ((this.sliderState?.pad2VoiceAssign ?? 0) & (1 << voiceIndex)) !== 0;
+                          const padParamsOverride = this.sliderState
+                            ? (this.buildPadTriggerState(
+                                isPad2 ? 'pad2' : 'pad1',
+                                this.sliderState,
+                                capturedMorphOverride,
+                                capturedDistanceOverride
+                              ) ?? undefined)
+                            : undefined;
+                          const padTriggerState = padParamsOverride ?? this.sliderState;
+                          // Use correct pad's ADSR for ratchet note duration
+                          const rAttack = isPad2
+                            ? (padTriggerState?.pad2Attack ?? 0.1)
+                            : (padTriggerState?.synthAttack ?? 0.1);
+                          const rDecay = isPad2
+                            ? (padTriggerState?.pad2Decay ?? 0.3)
+                            : (padTriggerState?.synthDecay ?? 0.3);
+                          const rHold = isPad2
+                            ? (padTriggerState?.pad2Hold ?? 1)
+                            : (padTriggerState?.synthHold ?? 1);
+                          const synthAttack = rAttack * ratchetFactor;
+                          const synthDecay = rDecay * ratchetFactor;
+                          const noteDuration = synthAttack + synthDecay + Math.max(0, rHold) * ratchetFactor;
+                          this.triggerSynthVoice(voiceIndex, frequency, noteVelocity, noteDuration, padParamsOverride);
+                        }
+                        this.synthMorphOverride = null;
+                        this.synthRatchetFactor = 1;
+                      }, rDelayMs);
+                      this.ratchetTimers.add(ratchetTimerId);
+                    }
                   }
                 }
               }

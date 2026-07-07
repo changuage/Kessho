@@ -11,7 +11,7 @@ import type {
 import type { RoutingMuteGroupsState } from '../ui/routing/routingMuteGroups';
 import type { ClockDivision } from '../audio/drumSeqTypes';
 import type { PitchBindingMode } from '../audio/drumSeqTypes';
-import type { ProductArpConfig } from '../audio/productArpeggiator';
+import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { DiamondPosition } from '../audio/journeyTypes';
 
 export type PresetLevel = 'engine' | 'kit' | 'source' | 'state' | 'journey';
@@ -79,7 +79,7 @@ export interface PresetVersionMetadata {
   synthLinked?: boolean[];
   drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
-  synthArpConfigs?: ProductArpConfig[];
+  synthArpConfigs?: ProductPlayConfig[];
   drumPitchSettings?: SerializedPitchSettings[];
   synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];

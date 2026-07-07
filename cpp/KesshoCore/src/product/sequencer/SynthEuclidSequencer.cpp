@@ -1738,8 +1738,14 @@ bool generateOrbitLaneEvents(
           lane.midi_note_override_set_high,
           lane.midi_note_overrides,
           resolveHarmonyMidi(lane, lane_index, step_id, event_sample));
+      const uint32_t play_note_mask = !drum_lane && midi_step_id < 64u
+          ? lane.play_note_voice_masks[midi_step_id]
+          : 0u;
       const float trigger_midi_note = drum_lane ? drum_midi_note : sequenced_midi_note;
-      const float trigger_frequency = midiToFrequency(trigger_midi_note);
+      if (!drum_lane && play_note_mask == 0u && trigger_midi_note < 0.0f) {
+        lane.emitted_hit_count += 1u;
+        continue;
+      }
       const float trigger_velocity = evolvedLaneValue(
           lane,
           lane_index,
@@ -1892,16 +1898,19 @@ bool generateOrbitLaneEvents(
       if (!expression_field_active) {
         lane.last_emitted_expression_valid = false;
       }
-      for (uint32_t ratchet_index = 0; ratchet_index < ratchet; ++ratchet_index) {
+      auto enqueueSequencerNote = [&](float midi_note, float velocity_scale, float offset_ms, uint32_t voice_ordinal, uint32_t ratchet_index) {
         const uint64_t ratchet_sample = event_sample + static_cast<uint64_t>(std::llround(ratchet_spacing * ratchet_index));
+        const uint64_t offset_samples = offset_ms > 0.0f
+            ? static_cast<uint64_t>(std::llround(static_cast<double>(offset_ms) * sample_rate / 1000.0))
+            : 0u;
         KesshoSequencerEvent event{};
         event.source_id = static_cast<uint16_t>(lane.target_source_id);
         event.lane_id = static_cast<uint16_t>(lane_index);
         event.step_id = static_cast<uint16_t>(step_id);
         event.event_kind = static_cast<uint16_t>(KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON);
-        event.midi_note = trigger_midi_note;
-        event.frequency_hz = trigger_frequency;
-        event.velocity = trigger_velocity;
+        event.midi_note = midi_note;
+        event.frequency_hz = midiToFrequency(midi_note);
+        event.velocity = clampFloat(trigger_velocity * velocity_scale, 0.0f, 1.0f);
         event.hold_seconds = lane.hold_seconds;
         if (drum_lane) {
           event.send_delay_a = ratchet > 1u
@@ -1917,18 +1926,39 @@ bool generateOrbitLaneEvents(
         event.morph = trigger_morph;
         event.distance = trigger_distance;
         event.expression = trigger_expression;
+        const uint64_t pad_voice_phase = play_note_mask != 0u
+            ? lane.emitted_hit_count + static_cast<uint64_t>(voice_ordinal)
+            : lane.emitted_hit_count;
         const uint32_t pad_voice_index =
-            padVoiceIndexFromMask(lane.target_pad_voice_mask, lane.emitted_hit_count);
-        event.flags = sequencerPadVoiceEventFlags(pad_voice_index) | ratchet_index;
+            padVoiceIndexFromMask(lane.target_pad_voice_mask, pad_voice_phase);
+        event.flags =
+            sequencerPadVoiceEventFlags(pad_voice_index) |
+            ratchet_index |
+            (voice_ordinal << 8u);
         PendingRatchetEvent pending{};
         pending.parent_step_id = static_cast<uint64_t>(relative_step);
-        pending.absolute_sample = ratchet_sample;
+        pending.absolute_sample = ratchet_sample + offset_samples;
         pending.lane_index = lane_index;
         pending.step_index = step_id;
         pending.ratchet_index = ratchet_index;
         pending.ratchet_count = ratchet;
         pending.event = event;
         pushPendingRatchet(lane, pending);
+      };
+      for (uint32_t ratchet_index = 0; ratchet_index < ratchet; ++ratchet_index) {
+        if (play_note_mask != 0u) {
+          uint32_t voice_ordinal = 0u;
+          for (uint32_t voice = 0u; voice < kMaxProductPlayVoicesPerStep; ++voice) {
+            if ((play_note_mask & (1u << voice)) == 0u) {
+              continue;
+            }
+            const ProductPlayNoteOverride& note = lane.play_note_overrides[midi_step_id][voice];
+            enqueueSequencerNote(note.midi_note, note.velocity, note.offset_ms, voice_ordinal, ratchet_index);
+            ++voice_ordinal;
+          }
+        } else {
+          enqueueSequencerNote(trigger_midi_note, 1.0f, 0.0f, 0u, ratchet_index);
+        }
       }
       lane.emitted_hit_count += 1u;
     }

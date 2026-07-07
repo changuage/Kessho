@@ -13,9 +13,12 @@ import { sequencerClockDivisionToNumericValue } from './sequencerClockDivisions'
 export type SequencerKind = 'synth' | 'drum';
 
 export type SequencerStepToggleOverride = { step: number; value: boolean };
-export type SequencerStepValueOverride = { step: number; field: CoreProductStepValueField; value: number; value2?: number; range?: boolean };
+export type SequencerStepValueOverride = { step: number; field: CoreProductStepValueField; value: number; value2?: number; value3?: number; value4?: number; range?: boolean };
 export type SequencerStepValueConfig = SequencerStepValueConfigBase;
 export type SequencerSubLaneConfigState = SequencerSubLaneConfigStateBase;
+
+const PRODUCT_PLAY_MAX_NOTES_PER_TRIGGER = 32;
+const PRODUCT_PLAY_NOTE_OFFSET_MAX_MS = 16000;
 
 export function normalizedUnitValue(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value)
@@ -119,7 +122,7 @@ export function normalizeSequencerStepValueOverrides(
   fallback: SequencerStepValueOverride[][],
   includeMidiNote: boolean,
 ): SequencerStepValueOverride[][] {
-  return normalizeSequencerStepValueOverridesInternal(overrides, fallback, includeMidiNote, 0, 127);
+  return normalizeSequencerStepValueOverridesInternal(overrides, fallback, includeMidiNote, -1, 127);
 }
 
 export function normalizeDrumSequencerStepOffsetOverrides(
@@ -178,6 +181,7 @@ function normalizeSequencerStepValueOverridesInternal(
   addNumericField('morph', CORE_PRODUCT_STEP_VALUE_FIELDS.morph, 0, 1);
   addNumericField('distance', CORE_PRODUCT_STEP_VALUE_FIELDS.distance, 0, 1);
   addNumericField('nudge', CORE_PRODUCT_STEP_VALUE_FIELDS.nudge, -1, 1);
+  collectProductPlayNoteValues(source.playNotes, lanes);
   addRangeField(source.expressionRanges, CORE_PRODUCT_STEP_VALUE_FIELDS.expression, lanes);
   addRangeField(source.morphRanges, CORE_PRODUCT_STEP_VALUE_FIELDS.morph, lanes);
   addRangeField(source.distanceRanges, CORE_PRODUCT_STEP_VALUE_FIELDS.distance, lanes);
@@ -190,6 +194,47 @@ function normalizeSequencerStepValueOverridesInternal(
     }
   }
   return lanes.map((lane) => lane.sort((left, right) => left.step - right.step || left.field - right.field));
+}
+
+function collectProductPlayNoteValues(
+  value: unknown,
+  lanes: SequencerStepValueOverride[][],
+): void {
+  if (!Array.isArray(value)) return;
+  while (lanes.length < Math.min(16, value.length)) lanes.push([]);
+  for (let laneIndex = 0; laneIndex < Math.min(value.length, lanes.length); laneIndex += 1) {
+    const lane = value[laneIndex];
+    const laneOut = lanes[laneIndex];
+    if (!Array.isArray(lane) || !laneOut) continue;
+    for (const entry of lane) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+      const record = entry as Record<string, unknown>;
+      const rawStep = record.step;
+      const rawMidi = record.midi;
+      if (typeof rawStep !== 'number' || !Number.isFinite(rawStep)) continue;
+      if (typeof rawMidi !== 'number' || !Number.isFinite(rawMidi)) continue;
+      const step = Math.round(rawStep);
+      if (step < 0 || step > 63) continue;
+      const rawVoiceIndex = record.voiceIndex;
+      const voiceIndex = typeof rawVoiceIndex === 'number' && Number.isFinite(rawVoiceIndex)
+        ? Math.max(0, Math.min(PRODUCT_PLAY_MAX_NOTES_PER_TRIGGER - 1, Math.round(rawVoiceIndex)))
+        : 0;
+      const offsetMs = typeof record.offsetMs === 'number' && Number.isFinite(record.offsetMs)
+        ? Math.max(0, Math.min(PRODUCT_PLAY_NOTE_OFFSET_MAX_MS, record.offsetMs))
+        : 0;
+      const velocity = typeof record.velocity === 'number' && Number.isFinite(record.velocity)
+        ? Math.max(0.05, Math.min(1, record.velocity))
+        : 1;
+      laneOut.push({
+        step,
+        field: CORE_PRODUCT_STEP_VALUE_FIELDS.playNote,
+        value: Math.max(0, Math.min(127, rawMidi)),
+        value2: offsetMs,
+        value3: velocity,
+        value4: voiceIndex,
+      });
+    }
+  }
 }
 
 export function normalizeSequencerStepValueConfigs(

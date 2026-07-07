@@ -78,14 +78,25 @@ export function applyCoreProductSequencerStepEventToCache(options: ApplyStepEven
     return true;
   }
 
-  const current = (lane.values[laneIndex] ?? []).filter((value) => value.step !== index || value.field !== field);
+  const voiceIndex = Number(event.value4 ?? 0);
+  const current = (lane.values[laneIndex] ?? []).filter((value) => {
+    if (value.step !== index || value.field !== field) return true;
+    if (field !== CORE_PRODUCT_STEP_VALUE_FIELDS.playNote) return false;
+    return Number(value.value4 ?? 0) !== voiceIndex;
+  });
   current.push({
     step: index,
     field,
     value: Number(event.value ?? 0),
     value2: Number(event.value2 ?? 0),
+    value3: Number(event.value3 ?? 0),
+    value4: voiceIndex,
     range: (flags & CORE_PRODUCT_STEP_TOGGLE_FLAGS.rangeValue) !== 0,
   });
-  lane.values[laneIndex] = current.sort((left, right) => left.step - right.step || left.field - right.field);
+  lane.values[laneIndex] = current.sort((left, right) =>
+    left.step - right.step ||
+    left.field - right.field ||
+    Number(left.value4 ?? 0) - Number(right.value4 ?? 0)
+  );
   return true;
 }

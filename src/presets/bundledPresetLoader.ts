@@ -1,4 +1,4 @@
-import type { ProductArpConfig } from '../audio/productArpeggiator';
+import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { ClockDivision, PitchBindingMode } from '../audio/drumSeqTypes';
 import {
   migratePreset,
@@ -55,7 +55,7 @@ export interface BundledSavedPreset {
   synthLinked?: boolean[];
   drumSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
-  synthArpConfigs?: ProductArpConfig[];
+  synthArpConfigs?: ProductPlayConfig[];
   drumPitchSettings?: PitchSettings[];
   synthPitchSettings?: PitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
@@ -87,7 +87,7 @@ function bundledPresetFromFileData(
     synthLinked: data.synthLinked,
     drumSubLaneStates: data.drumSubLaneStates,
     synthSubLaneStates: data.synthSubLaneStates,
-    synthArpConfigs: data.synthArpConfigs as ProductArpConfig[] | undefined,
+    synthArpConfigs: data.synthArpConfigs as ProductPlayConfig[] | undefined,
     drumPitchSettings: data.drumPitchSettings,
     synthPitchSettings: data.synthPitchSettings,
     synthPitchBindingModes: data.synthPitchBindingModes,

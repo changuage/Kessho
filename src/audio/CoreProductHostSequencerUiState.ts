@@ -126,7 +126,7 @@ export function coreProductStepValueConfigsFromLane(
   const directions = lane.stepValueConfigDirections ?? [];
   const out: SequencerStepValueConfig[] = [];
   for (const field of Object.values(CORE_PRODUCT_STEP_VALUE_FIELDS) as CoreProductStepValueField[]) {
-    if (field === CORE_PRODUCT_STEP_VALUE_FIELDS.subLaneConfig) continue;
+    if (field === CORE_PRODUCT_STEP_VALUE_FIELDS.subLaneConfig || field === CORE_PRODUCT_STEP_VALUE_FIELDS.playNote) continue;
     if (field === CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote && !includeMidiNote) continue;
     const fieldId = stepFieldId(field);
     if ((enabledMask & (1 << fieldId)) === 0) continue;

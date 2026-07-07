@@ -170,6 +170,12 @@
   lane.distance_range_set_high = 0;
   lane.nudge_override_set_low = 0;
   lane.nudge_override_set_high = 0;
+  for (uint32_t step = 0u; step < 64u; ++step) {
+    lane.play_note_voice_masks[step] = 0u;
+    for (uint32_t voice = 0u; voice < kMaxProductPlayVoicesPerStep; ++voice) {
+      lane.play_note_overrides[step][voice] = {};
+    }
+  }
   for (StepValueSubLaneConfig& config : lane.step_value_configs) {
     config = {};
   }
@@ -268,6 +274,12 @@
     case KESSHO_PRODUCT_STEP_FIELD_NUDGE:
       clearStepMask(lane.nudge_override_set_low, lane.nudge_override_set_high, step);
       break;
+    case KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE:
+      lane.play_note_voice_masks[step] = 0u;
+      for (uint32_t voice = 0u; voice < kMaxProductPlayVoicesPerStep; ++voice) {
+        lane.play_note_overrides[step][voice] = {};
+      }
+      break;
     case KESSHO_PRODUCT_STEP_FIELD_TRIGGER:
     default:
       clearStepOverride(lane, step);
@@ -275,7 +287,7 @@
   }
 }
 
-  void KesshoProductEngine::setStepFieldOverride(LaneState& lane, uint32_t field, uint32_t step, float value, float value2, uint32_t flags) {
+void KesshoProductEngine::setStepFieldOverride(LaneState& lane, uint32_t field, uint32_t step, float value, float value2, float value3, float value4, uint32_t flags) {
   const bool is_range = (flags & KESSHO_PRODUCT_STEP_TOGGLE_RANGE_VALUE) != 0u;
   switch (field) {
     case KESSHO_PRODUCT_STEP_FIELD_PROBABILITY:
@@ -292,7 +304,7 @@
       setStepMask(lane.trig_condition_override_set_low, lane.trig_condition_override_set_high, step);
       break;
     case KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE:
-      lane.midi_note_overrides[step] = clampFloat(value, 0.0f, 127.0f);
+      lane.midi_note_overrides[step] = clampFloat(value, -1.0f, 127.0f);
       setStepMask(lane.midi_note_override_set_low, lane.midi_note_override_set_high, step);
       break;
     case KESSHO_PRODUCT_STEP_FIELD_EXPRESSION:
@@ -329,6 +341,18 @@
       lane.nudge_overrides[step] = clampFloat(value, -1.0f, 1.0f);
       setStepMask(lane.nudge_override_set_low, lane.nudge_override_set_high, step);
       break;
+    case KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE: {
+      const uint32_t voice = clampU32(
+          static_cast<uint32_t>(std::lround(value4)),
+          0u,
+          kMaxProductPlayVoicesPerStep - 1u);
+      ProductPlayNoteOverride& note = lane.play_note_overrides[step][voice];
+      note.midi_note = clampFloat(value, 0.0f, 127.0f);
+      note.offset_ms = clampFloat(value2, 0.0f, 16000.0f);
+      note.velocity = clampFloat(value3, 0.05f, 1.0f);
+      lane.play_note_voice_masks[step] |= 1u << voice;
+      break;
+    }
     case KESSHO_PRODUCT_STEP_FIELD_TRIGGER:
     default:
       setStepOverride(lane, step, value >= 0.5f);
@@ -365,9 +389,11 @@
     return;
   }
 
-  uint32_t allowed_steps = lane.step_count;
+  uint32_t allowed_steps = field == KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE ? 64u : lane.step_count;
   const uint32_t field_id = stepFieldId(field);
-  if (field != KESSHO_PRODUCT_STEP_FIELD_TRIGGER && validStepFieldId(field_id)) {
+  if (field != KESSHO_PRODUCT_STEP_FIELD_TRIGGER &&
+      field != KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE &&
+      validStepFieldId(field_id)) {
     const StepValueSubLaneConfig& config = lane.step_value_configs[field_id];
     if (config.enabled && config.steps > 0u) {
       allowed_steps = config.steps;
@@ -381,7 +407,7 @@
   if ((event.flags & KESSHO_PRODUCT_STEP_TOGGLE_CLEAR_FIELD) != 0u) {
     clearStepFieldOverride(lane, field, step);
   } else if ((event.flags & KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE) != 0u) {
-    setStepFieldOverride(lane, field, step, event.value, event.value2, event.flags);
+    setStepFieldOverride(lane, field, step, event.value, event.value2, event.value3, event.value4, event.flags);
   } else {
     clearStepFieldOverride(lane, field, step);
   }

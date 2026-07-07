@@ -362,9 +362,10 @@ void enqueueSequencerStep(
     uint32_t step,
     uint32_t field,
     float value,
-    float value2,
-    float value3,
-    uint32_t extra_flags);
+    float value2 = 0.0f,
+    float value3 = 0.0f,
+    uint32_t extra_flags = 0u,
+    float value4 = 0.0f);
 
 KesshoProductSnapshotV2 makeSingleRatchetSnapshot(
     uint32_t source_id,
@@ -1628,9 +1629,10 @@ void enqueueSequencerStep(
     uint32_t step,
     uint32_t field,
     float value,
-    float value2 = 0.0f,
-    float value3 = 0.0f,
-    uint32_t extra_flags = 0u) {
+    float value2,
+    float value3,
+    uint32_t extra_flags,
+    float value4) {
   KesshoProductEvent event{};
   event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP;
   event.target_id = target_id;
@@ -1639,6 +1641,7 @@ void enqueueSequencerStep(
   event.value = value;
   event.value2 = value2;
   event.value3 = value3;
+  event.value4 = value4;
   event.flags = KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE | field | extra_flags;
   require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "sequencer UI replay enqueue failed");
 }
@@ -4517,6 +4520,60 @@ int main() {
   require(event_count >= 2, "pitch binding fixture should emit two events");
   require(std::fabs(events[0].midi_note - 60.0f) < 0.001f, "hit-bound pitch should start at first sub-lane note");
   require(std::fabs(events[1].midi_note - 61.0f) < 0.001f, "hit-bound pitch should advance by emitted hit count");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.synth_euclid.lanes[0].step_count = 1;
+  snapshot.synth_euclid.lanes[0].fill_count = 1;
+  snapshot.synth_euclid.lanes[0].manual_step_mask_low = 1u;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "negative play pitch snapshot load failed");
+  enqueueSequencerStep(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      1.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD));
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, -1.0f);
+  event_count = kessho_product_debug_render_events(engine, events, 16, 512);
+  require(event_count == 0, "negative play pitch should rest instead of clamping to an audible note");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.synth_euclid.lanes[0].step_count = 1;
+  snapshot.synth_euclid.lanes[0].fill_count = 1;
+  snapshot.synth_euclid.lanes[0].clock_division = 4u;
+  snapshot.synth_euclid.lanes[0].manual_step_mask_low = 1u;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "play-note snapshot load failed");
+  enqueueSequencerStep(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      1.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD));
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 60.0f);
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u, KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, 60.0f, 0.0f, 0.8f, 0u, 0.0f);
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u, KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, 64.0f, 5.0f, 0.5f, 0u, 1.0f);
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u, KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, 67.0f, 450.0f, 0.4f, 0u, 8.0f);
+  event_count = kessho_product_debug_render_events(engine, events, 16, 22000);
+  require(event_count == 3, "play-note override should fan one pitch step into three note events");
+  require(events[0].sample_offset == 0u, "first play note should keep the trigger sample");
+  require(events[1].sample_offset == 240u, "second play note should apply a 5 ms strum offset at 48 kHz");
+  require(events[2].sample_offset == 21600u, "third play note should preserve a 450 ms continuous-arp offset at 48 kHz");
+  require(std::fabs(events[0].midi_note - 60.0f) < 0.001f, "first play note should use its stored MIDI note");
+  require(std::fabs(events[1].midi_note - 64.0f) < 0.001f, "second play note should use its stored MIDI note");
+  require(std::fabs(events[2].midi_note - 67.0f) < 0.001f, "third play note should use the stored high-index voice MIDI note");
+  require(events[1].velocity < events[0].velocity, "play-note velocity scale should affect emitted velocity");
+
   setup_pitch_binding_fixture();
   KesshoProductEvent pitch_binding_mode{};
   pitch_binding_mode.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;

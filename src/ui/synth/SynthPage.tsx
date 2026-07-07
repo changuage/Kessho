@@ -75,7 +75,12 @@ import {
 import type { ClockDivision, PitchBindingMode, SequencerState } from '../../audio/drumSeqTypes';
 import { sequencerClockDivisionToSeconds } from '../../audio/sequencerClockDivisions';
 import {
+  HARMONY_POOL_MAX_NOTES,
+  formatHarmonyIntentChordLabel,
+  recognizeHarmonyIntentFromMidiPool,
+  resolvePresetMorphContext,
   resolveHarmonyIntentToNotePool,
+  sanitizeHarmonyChordSlots,
   type HarmonyChordSlot,
   type HarmonyIntent,
 } from '../../audio/CoreProductHarmonyControl';
@@ -163,11 +168,7 @@ import { SimplePhraseVisualizer } from './SimplePhraseVisualizer';
 import { SEQUENCER_LANE_COLORS, SEQUENCER_SUB_LANE_COLORS, SOURCE_COLORS } from '../../designSystem/colors';
 import {
   createProductArpHarmonyContext,
-  defaultProductArpConfig,
   normalizeProductArpConfig,
-  normalizeProductArpConfigs,
-  productArpPulseValues,
-  resolveProductArpMidiPattern,
   resolveProductArpPatternDetails,
   type ProductArpBoundaryMode,
   type ProductArpConfig,
@@ -177,6 +178,21 @@ import {
   type ProductArpResolvedStep,
   type ProductArpSlotChoice,
 } from '../../audio/productArpeggiator';
+import {
+  defaultProductPlayConfig,
+  normalizeProductPlayConfig,
+  normalizeProductPlayConfigs,
+  productPlayLiveLength,
+  productPlayPulseValues,
+  resolveProductChordPlayPatternDetails,
+  resolveProductPlayEnginePattern,
+  type ProductChordFlow,
+  type ProductChordPlayConfig,
+  type ProductChordResolvedStep,
+  type ProductChordStyle,
+  type ProductPlayConfig,
+  type ProductPlayMode,
+} from '../../audio/productPlaySequencer';
 import {
   SYNTH_CHORD_ARP_SPEEDS,
   SYNTH_CHORD_ARP_RANGES,
@@ -1094,6 +1110,7 @@ const ARP_CONTOUR_MAX = 12;
 const ARP_CONTOUR_SVG_RANGE = ARP_CONTOUR_MAX - ARP_CONTOUR_MIN;
 const ARP_VISIBLE_STEPS = 16;
 const ARP_FULL_STEP_MASK = (1 << ARP_VISIBLE_STEPS) - 1;
+const ARP_UI_PLAYHEAD_INTERVAL_MS = 33;
 const ARP_FLOW_OPTIONS: Array<{ value: ProductArpFlow; label: string }> = [
   { value: 'up', label: 'Up' },
   { value: 'down', label: 'Down' },
@@ -1136,6 +1153,20 @@ const ARP_CONTOUR_PRESETS: Array<{ value: ArpContourPreset; label: string }> = [
   { value: 'fall', label: 'Fall' },
   { value: 'wave', label: 'Wave' },
 ];
+const PLAY_MODE_OPTIONS: Array<{ value: ProductPlayMode; label: string }> = [
+  { value: 'arp', label: 'ARP' },
+  { value: 'chord', label: 'Chord' },
+];
+const CHORD_STYLE_OPTIONS: Array<{ value: ProductChordStyle; label: string }> = [
+  { value: 'straight', label: 'Straight' },
+  { value: 'strum', label: 'Strum' },
+];
+const CHORD_FLOW_OPTIONS: Array<{ value: ProductChordFlow; label: string }> = [
+  { value: 'forward', label: 'Forward' },
+  { value: 'reverse', label: 'Reverse' },
+  { value: 'pingpong', label: 'Pingpong' },
+];
+type HarmonyBank = 'A' | 'B';
 const ARP_ROMAN_DEGREES = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'] as const;
 const ARP_QUALITY_LABELS = {
   auto: 'Auto',
@@ -1238,6 +1269,18 @@ function armNewArpLengthSteps(pulseMask: number, oldLength: number, nextLength: 
   return normalizedMask | stepRangeMask(oldLength, nextLength);
 }
 
+function armNewChordLengthSteps(
+  steps: readonly ProductChordPlayConfig['steps'][number][],
+  oldLength: number,
+  nextLength: number,
+): ProductChordPlayConfig['steps'] {
+  if (nextLength <= oldLength) return steps.map((step, index) => step ?? { active: false, slotId: index % 8 });
+  return Array.from({ length: ARP_VISIBLE_STEPS }, (_, index) => {
+    const step = steps[index] ?? { active: false, slotId: index % 8 };
+    return index >= oldLength && index < nextLength ? { ...step, active: true } : step;
+  });
+}
+
 function arpContourPresetValues(preset: ArpContourPreset): number[] {
   return Array.from({ length: ARP_VISIBLE_STEPS }, (_, step) => {
     if (preset === 'rise') return clampArpContourValue((step % 8) - 3);
@@ -1272,12 +1315,53 @@ function formatArpResolvedNote(midi: number | null | undefined): string {
   return typeof midi === 'number' && Number.isFinite(midi) && midi >= 0 ? formatMidiNoteName(midi) : '--';
 }
 
+function chordPitchViewport(details: readonly ProductChordResolvedStep[]): number[] {
+  const notes = details.flatMap((detail) => detail.notes);
+  if (notes.length === 0) return Array.from({ length: 13 }, (_, index) => 60 + index);
+  const low = Math.max(0, Math.min(...notes) - 6);
+  const high = Math.min(127, Math.max(...notes) + 6);
+  return Array.from({ length: high - low + 1 }, (_, index) => low + index);
+}
+
+function strumOrderIndex(detail: ProductChordResolvedStep, midi: number): number {
+  const index = detail.strumOrder.indexOf(midi);
+  return index >= 0 ? index + 1 : 0;
+}
+
+function normalizeChordMidiPool(notes: readonly number[]): number[] {
+  return Array.from(new Set(notes
+    .map((note) => Math.max(0, Math.min(127, Math.round(note))))
+    .filter((note) => Number.isFinite(note))))
+    .sort((left, right) => left - right);
+}
+
+function synthHarmonyMorphPercent(state: SliderState): number {
+  const record = state as unknown as Record<string, unknown>;
+  const explicit = record.harmonyMorphPercent;
+  if (typeof explicit === 'number' && Number.isFinite(explicit)) return Math.max(0, Math.min(100, explicit));
+  const journeyPhase = record.journeyMorphPhase;
+  if (typeof journeyPhase === 'number' && Number.isFinite(journeyPhase)) return Math.max(0, Math.min(100, journeyPhase * 100));
+  return 0;
+}
+
+function harmonyBankKeys(bank: HarmonyBank): { slots: keyof SliderState } {
+  return bank === 'B'
+    ? { slots: 'harmonyChordSlotsB' }
+    : { slots: 'harmonyChordSlotsA' };
+}
+
+function shouldMirrorHarmonyBaseBank(record: Record<string, unknown>, bank: HarmonyBank): boolean {
+  if (bank !== 'A') return false;
+  return record.harmonyChordSlotsA === undefined && record.harmonyChordSlotsB === undefined;
+}
+
 interface ArpContourEditorProps {
   config: ProductArpConfig;
   color: string;
   harmony: ReturnType<typeof createProductArpHarmonyContext>;
   resolvedSteps: ProductArpResolvedStep[];
   selectedStep: number;
+  playStep?: number | null;
   onSelectStep: (step: number) => void;
   onToggleEnabled: () => void;
   onUpdateConfig: (patch: Partial<ProductArpConfig>) => void;
@@ -1295,6 +1379,7 @@ const ArpContourEditor: React.FC<ArpContourEditorProps> = ({
   harmony,
   resolvedSteps,
   selectedStep,
+  playStep = null,
   onSelectStep,
   onToggleEnabled,
   onUpdateConfig,
@@ -1307,6 +1392,9 @@ const ArpContourEditor: React.FC<ArpContourEditorProps> = ({
 }) => {
   const length = clampArpLengthValue(config.length);
   const selected = Math.max(0, Math.min(ARP_VISIBLE_STEPS - 1, Math.round(selectedStep)));
+  const playbackStep = typeof playStep === 'number' && Number.isFinite(playStep)
+    ? ((Math.floor(playStep) % ARP_VISIBLE_STEPS) + ARP_VISIBLE_STEPS) % ARP_VISIBLE_STEPS
+    : null;
   const selectedInRange = selected < length;
   const selectedDetail = selectedInRange ? resolvedSteps[selected] : undefined;
   const selectedMove = config.contour[selected] ?? 0;
@@ -1480,7 +1568,7 @@ const ArpContourEditor: React.FC<ArpContourEditorProps> = ({
               <button
                 key={step}
                 type="button"
-                className={`seq-arp-contour-column${selected === step ? ' selected' : ''}${step >= length ? ' out' : ''}`}
+                className={`seq-arp-contour-column${selected === step ? ' selected' : ''}${playbackStep === step ? ' playing' : ''}${step >= length ? ' out' : ''}`}
                 onClick={() => onSelectStep(step)}
                 aria-label={`Select arp step ${step + 1}`}
               >
@@ -1499,7 +1587,7 @@ const ArpContourEditor: React.FC<ArpContourEditorProps> = ({
               <button
                 key={step}
                 type="button"
-                className={`seq-arp-contour-node${active ? '' : ' muted'}${selected === step ? ' selected' : ''}${reset ? ' reset' : ''}${inRange ? '' : ' out'}${stored && !inRange ? ' armed' : ''}`}
+                className={`seq-arp-contour-node${active ? '' : ' muted'}${selected === step ? ' selected' : ''}${playbackStep === step ? ' playing' : ''}${reset ? ' reset' : ''}${inRange ? '' : ' out'}${stored && !inRange ? ' armed' : ''}`}
                 style={{
                   left: `${((step + 0.5) / ARP_VISIBLE_STEPS) * 100}%`,
                   top: `${arpContourTopPercent(move)}%`,
@@ -1537,7 +1625,7 @@ const ArpContourEditor: React.FC<ArpContourEditorProps> = ({
             <button
               key={step}
               type="button"
-              className={`seq-arp-note-cell${active ? '' : ' muted'}${selected === step ? ' selected' : ''}${inRange ? '' : ' out'}`}
+              className={`seq-arp-note-cell${active ? '' : ' muted'}${selected === step ? ' selected' : ''}${playbackStep === step ? ' playing' : ''}${inRange ? '' : ' out'}`}
               onClick={() => onSelectStep(step)}
               title={`Base ${formatArpResolvedNote(detail?.baseMidi)} out ${formatArpResolvedNote(detail?.outputMidi)}`}
             >
@@ -1555,7 +1643,7 @@ const ArpContourEditor: React.FC<ArpContourEditorProps> = ({
             <button
               key={step}
               type="button"
-              className={`seq-arp-source-cell${source >= 0 ? ' locked' : ''}${selected === step ? ' selected' : ''}${inRange ? '' : ' out'}`}
+              className={`seq-arp-source-cell${source >= 0 ? ' locked' : ''}${selected === step ? ' selected' : ''}${playbackStep === step ? ' playing' : ''}${inRange ? '' : ' out'}`}
               onClick={() => onSelectStep(step)}
               title={formatArpSlotChoiceTitle(harmony.chordSlots, source, harmony)}
             >
@@ -1575,7 +1663,7 @@ const ArpContourEditor: React.FC<ArpContourEditorProps> = ({
             <button
               key={step}
               type="button"
-              className={`seq-arp-gate-cell${active ? ' on' : ''}${reset ? ' reset' : ''}${selected === step ? ' selected' : ''}${inRange ? '' : ' out'}${stored && !inRange ? ' armed' : ''}`}
+              className={`seq-arp-gate-cell${active ? ' on' : ''}${reset ? ' reset' : ''}${selected === step ? ' selected' : ''}${playbackStep === step ? ' playing' : ''}${inRange ? '' : ' out'}${stored && !inRange ? ' armed' : ''}`}
               onClick={() => onTogglePulse(step)}
               onContextMenu={(event) => {
                 event.preventDefault();
@@ -1646,6 +1734,383 @@ const ArpContourEditor: React.FC<ArpContourEditorProps> = ({
     </div>
   );
 }
+
+interface ChordPlayEditorProps {
+  config: ProductChordPlayConfig;
+  color: string;
+  harmony: ReturnType<typeof createProductArpHarmonyContext>;
+  resolvedSteps: ProductChordResolvedStep[];
+  selectedStep: number;
+  onSelectStep: (step: number) => void;
+  onUpdateConfig: (patch: Partial<ProductChordPlayConfig>) => void;
+  onCommitSlotMidiPool?: (slotId: number, midiNotes: readonly number[]) => void;
+}
+
+const ChordPlayEditor: React.FC<ChordPlayEditorProps> = ({
+  config,
+  color,
+  harmony,
+  resolvedSteps,
+  selectedStep,
+  onSelectStep,
+  onUpdateConfig,
+  onCommitSlotMidiPool,
+}) => {
+  const length = clampArpLengthValue(config.length);
+  const selected = Math.max(0, Math.min(ARP_VISIBLE_STEPS - 1, Math.round(selectedStep)));
+  const selectedDetail = resolvedSteps.find((step) => step.sourceStep === selected) ?? resolvedSteps[selected];
+  const pitches = chordPitchViewport(resolvedSteps);
+  const [selectedNote, setSelectedNote] = useState<{ slotId: number; midi: number } | null>(null);
+  const slotNotePools = useMemo(() => harmony.chordSlots.map((slot) => resolveHarmonyIntentToNotePool({
+    intent: slot.intent,
+    rootMidi: harmony.rootMidi,
+    scaleId: harmony.scaleId,
+    tension: harmony.tension,
+  })), [harmony.chordSlots, harmony.rootMidi, harmony.scaleId, harmony.tension]);
+  const selectedSlotId = config.steps[selected]?.slotId ?? 0;
+  const selectedSlot = harmony.chordSlots[selectedSlotId];
+  const selectedSlotLocked = selectedSlot?.locked === true;
+  const selectedSlotUses = config.steps.reduce((count, step, index) => (
+    index < length && step.active && step.slotId === selectedSlotId ? count + 1 : count
+  ), 0);
+  const canEditChordNotes = Boolean(onCommitSlotMidiPool);
+  const updateStep = useCallback((step: number, patch: Partial<ProductChordPlayConfig['steps'][number]>) => {
+    const steps = [...config.steps];
+    steps[step] = { active: true, slotId: step % 8, ...(steps[step] ?? {}), ...patch };
+    onUpdateConfig({ steps });
+  }, [config.steps, onUpdateConfig]);
+  const commitSlotNotes = useCallback((slotId: number, nextNotes: readonly number[]) => {
+    const slot = harmony.chordSlots[slotId];
+    if (!slot || slot.locked || !onCommitSlotMidiPool) return;
+    const normalized = normalizeChordMidiPool(nextNotes).slice(0, HARMONY_POOL_MAX_NOTES);
+    if (normalized.length === 0) return;
+    onCommitSlotMidiPool(slotId, normalized);
+  }, [harmony.chordSlots, onCommitSlotMidiPool]);
+  const togglePitchForStep = useCallback((step: number, midi: number, hasNote: boolean) => {
+    const chordStep = config.steps[step] ?? { active: true, slotId: step % 8 };
+    const slot = harmony.chordSlots[chordStep.slotId];
+    if (!slot || slot.locked || !onCommitSlotMidiPool) {
+      onSelectStep(step);
+      return;
+    }
+    const currentNotes = slotNotePools[chordStep.slotId] ?? [];
+    if (hasNote) {
+      setSelectedNote({ slotId: chordStep.slotId, midi });
+      return;
+    }
+    if (currentNotes.length >= HARMONY_POOL_MAX_NOTES) return;
+    commitSlotNotes(chordStep.slotId, [...currentNotes, midi]);
+    setSelectedNote({ slotId: chordStep.slotId, midi });
+    onSelectStep(step);
+  }, [commitSlotNotes, config.steps, harmony.chordSlots, onCommitSlotMidiPool, onSelectStep, slotNotePools]);
+  const deleteSelectedNote = useCallback(() => {
+    if (!selectedNote) return;
+    const slot = harmony.chordSlots[selectedNote.slotId];
+    if (!slot || slot.locked) return;
+    const currentNotes = slotNotePools[selectedNote.slotId] ?? [];
+    const nextNotes = currentNotes.filter((midi) => midi !== selectedNote.midi);
+    if (nextNotes.length === currentNotes.length || nextNotes.length === 0) return;
+    commitSlotNotes(selectedNote.slotId, nextNotes);
+    setSelectedNote(null);
+  }, [commitSlotNotes, harmony.chordSlots, selectedNote, slotNotePools]);
+  const moveSelectedNoteOctave = useCallback((octaves: number) => {
+    if (!selectedNote) return;
+    const slot = harmony.chordSlots[selectedNote.slotId];
+    if (!slot || slot.locked) return;
+    const currentNotes = slotNotePools[selectedNote.slotId] ?? [];
+    const nextMidi = selectedNote.midi + octaves * 12;
+    if (nextMidi < 0 || nextMidi > 127) return;
+    const nextNotes = currentNotes.map((midi) => midi === selectedNote.midi ? nextMidi : midi);
+    commitSlotNotes(selectedNote.slotId, nextNotes);
+    setSelectedNote({ slotId: selectedNote.slotId, midi: nextMidi });
+  }, [commitSlotNotes, harmony.chordSlots, selectedNote, slotNotePools]);
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Backspace' && event.key !== 'Delete') return;
+    event.preventDefault();
+    deleteSelectedNote();
+  }, [deleteSelectedNote]);
+
+  return (
+    <div
+      className="seq-play-chord-editor"
+      style={{ '--seq-arp-color': color } as React.CSSProperties}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+    >
+      <div className="seq-play-chord-toolbar">
+        <div className="seq-arp-segment" aria-label="Chord style">
+          {CHORD_STYLE_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={config.style === option.value ? 'active' : ''}
+              onClick={() => onUpdateConfig({ style: option.value })}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <label className="seq-arp-field seq-arp-length-field">
+          <span>Len</span>
+          <input
+            className="seq-arp-length-input"
+            type="number"
+            min={1}
+            max={16}
+            value={length}
+            onChange={(event) => {
+              const nextLength = Number.parseInt(event.target.value, 10);
+              if (Number.isFinite(nextLength)) onUpdateConfig({ length: nextLength });
+            }}
+          />
+        </label>
+        <label className="seq-arp-field">
+          <span>Flow</span>
+          <select
+            className="seq-arp-select"
+            value={config.flow}
+            onChange={(event) => {
+              onUpdateConfig({ flow: event.target.value as ProductChordFlow });
+              blurSelectAfterChange(event.currentTarget);
+            }}
+          >
+            {CHORD_FLOW_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="seq-arp-field seq-arp-length-field">
+          <span>Gate</span>
+          <input
+            className="seq-arp-length-input"
+            type="number"
+            min={5}
+            max={100}
+            value={Math.round(config.gate * 100)}
+            onChange={(event) => {
+              const nextGate = Number.parseInt(event.target.value, 10);
+              if (Number.isFinite(nextGate)) onUpdateConfig({ gate: Math.max(0.05, Math.min(1, nextGate / 100)) });
+            }}
+          />
+        </label>
+        <label className="seq-arp-field seq-arp-length-field">
+          <span>Voices</span>
+          <input
+            className="seq-arp-length-input"
+            type="number"
+            min={1}
+            max={8}
+            value={config.voiceCount}
+            onChange={(event) => {
+              const nextVoiceCount = Number.parseInt(event.target.value, 10);
+              if (Number.isFinite(nextVoiceCount)) onUpdateConfig({ voiceCount: nextVoiceCount });
+            }}
+          />
+        </label>
+      </div>
+
+      {config.style === 'strum' && (
+        <div className="seq-play-chord-toolbar compact">
+          <label className="seq-arp-field">
+            <span>Dir</span>
+            <select
+              className="seq-arp-select"
+              value={config.strum.direction}
+              onChange={(event) => {
+                onUpdateConfig({ strum: { ...config.strum, direction: event.target.value as ProductChordPlayConfig['strum']['direction'] } });
+                blurSelectAfterChange(event.currentTarget);
+              }}
+            >
+              {['up', 'down', 'upDown', 'downUp', 'random'].map((direction) => <option key={direction} value={direction}>{direction}</option>)}
+            </select>
+          </label>
+          <label className="seq-arp-field seq-arp-length-field">
+            <span>Spread</span>
+            <input
+              className="seq-arp-length-input"
+              type="number"
+              min={0}
+              max={400}
+              value={Math.round(config.strum.spreadMs)}
+              onChange={(event) => {
+                const spreadMs = Number.parseInt(event.target.value, 10);
+                if (Number.isFinite(spreadMs)) onUpdateConfig({ strum: { ...config.strum, spreadMs } });
+              }}
+            />
+          </label>
+          <label className="seq-arp-field seq-arp-length-field">
+            <span>Curve</span>
+            <input
+              className="seq-arp-length-input"
+              type="number"
+              min={-100}
+              max={100}
+              value={Math.round(config.strum.curve * 100)}
+              onChange={(event) => {
+                const curve = Number.parseInt(event.target.value, 10);
+                if (Number.isFinite(curve)) onUpdateConfig({ strum: { ...config.strum, curve: Math.max(-1, Math.min(1, curve / 100)) } });
+              }}
+            />
+          </label>
+          <label className="seq-arp-field seq-arp-length-field">
+            <span>Fall</span>
+            <input
+              className="seq-arp-length-input"
+              type="number"
+              min={0}
+              max={60}
+              value={Math.round(config.strum.velocityFalloff * 100)}
+              onChange={(event) => {
+                const velocityFalloff = Number.parseInt(event.target.value, 10);
+                if (Number.isFinite(velocityFalloff)) onUpdateConfig({ strum: { ...config.strum, velocityFalloff: Math.max(0, Math.min(0.6, velocityFalloff / 100)) } });
+              }}
+            />
+          </label>
+        </div>
+      )}
+
+      <div
+        className="seq-play-chord-grid"
+        style={{ gridTemplateColumns: `42px 66px minmax(76px, 0.45fr) repeat(${pitches.length}, minmax(10px, 1fr))` }}
+      >
+        <span className="seq-play-chord-head">Step</span>
+        <span className="seq-play-chord-head">Slot</span>
+        <span className="seq-play-chord-head">Chord</span>
+        {pitches.map((midi) => (
+          <span key={`h-${midi}`} className="seq-play-chord-pitch-label">{formatMidiNoteName(midi).replace(/\d+$/, '')}</span>
+        ))}
+        {Array.from({ length: ARP_VISIBLE_STEPS }, (_, step) => {
+          const inRange = step < length;
+          const chordStep = config.steps[step] ?? { active: false, slotId: step % 8 };
+          const detail = resolvedSteps.find((entry) => entry.sourceStep === step);
+          const slot = harmony.chordSlots[chordStep.slotId];
+          const fallbackNotes = (slotNotePools[chordStep.slotId] ?? []).slice(0, config.voiceCount);
+          const displayNotes = detail?.notes.length ? detail.notes : (chordStep.active ? fallbackNotes : []);
+          const displayLabel = detail?.label ?? (slot
+            ? formatHarmonyIntentChordLabel(slot.intent, { rootMidi: harmony.rootMidi, scaleId: harmony.scaleId })
+            : `S${chordStep.slotId + 1}`);
+          const locked = detail?.locked ?? slot?.locked === true;
+          const active = inRange && chordStep.active;
+          const sameSlot = chordStep.slotId === selectedSlotId;
+          return (
+            <React.Fragment key={step}>
+              <button
+                type="button"
+                className={`seq-play-chord-step${selected === step ? ' selected' : ''}${sameSlot ? ' same-slot' : ''}${inRange ? '' : ' out'}`}
+                onClick={() => onSelectStep(step)}
+              >
+                {String(step + 1).padStart(2, '0')}
+              </button>
+              <select
+                className={`seq-play-chord-slot${selected === step ? ' selected' : ''}${sameSlot ? ' same-slot' : ''}${inRange ? '' : ' out'}`}
+                value={chordStep.slotId}
+                onChange={(event) => {
+                  updateStep(step, { slotId: Number.parseInt(event.target.value, 10) });
+                  onSelectStep(step);
+                  blurSelectAfterChange(event.currentTarget);
+                }}
+              >
+                {Array.from({ length: 8 }, (_, slot) => <option key={slot} value={slot}>S{slot + 1}</option>)}
+              </select>
+              <button
+                type="button"
+                className={`seq-play-chord-label${active ? '' : ' muted'}${locked ? ' locked' : ''}${sameSlot ? ' same-slot' : ''}${inRange ? '' : ' out'}`}
+                onClick={() => {
+                  updateStep(step, { active: !chordStep.active });
+                  onSelectStep(step);
+                }}
+                title={locked ? 'Locked global harmony slot' : 'Toggle chord step'}
+              >
+                {displayLabel}
+              </button>
+              {pitches.map((midi) => {
+                const hasNote = chordStep.active && displayNotes.includes(midi);
+                const order = hasNote && config.style === 'strum' && detail ? strumOrderIndex(detail, midi) : 0;
+                const selectedDot = selectedNote?.slotId === chordStep.slotId && selectedNote.midi === midi;
+                return (
+                  <button
+                    key={`${step}-${midi}`}
+                    type="button"
+                    className={`seq-play-chord-dot${hasNote ? ' on' : ''}${selectedDot ? ' selected' : ''}${sameSlot ? ' same-slot' : ''}${locked ? ' locked' : ''}${canEditChordNotes && !locked ? ' editable' : ''}${inRange ? '' : ' out'}`}
+                    onClick={() => togglePitchForStep(step, midi, Boolean(hasNote))}
+                    onDoubleClick={() => {
+                      if (!hasNote || locked) return;
+                      setSelectedNote({ slotId: chordStep.slotId, midi });
+                      const currentNotes = slotNotePools[chordStep.slotId] ?? [];
+                      const nextNotes = currentNotes.filter((note) => note !== midi);
+                      if (nextNotes.length > 0) commitSlotNotes(chordStep.slotId, nextNotes);
+                    }}
+                    title={locked
+                      ? `${formatMidiNoteName(midi)} locked`
+                      : hasNote
+                        ? `${formatMidiNoteName(midi)}${order ? ` strum ${order}` : ''}`
+                        : `Add ${formatMidiNoteName(midi)}`}
+                    aria-label={`Step ${step + 1} ${formatMidiNoteName(midi)}`}
+                  >
+                    {order ? <span>{order}</span> : null}
+                  </button>
+                );
+              })}
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      <div className="seq-arp-inspector">
+        <span className="seq-arp-inspector-item">
+          <strong>Step</strong>
+          {String(selected + 1).padStart(2, '0')}
+        </span>
+        <span className="seq-arp-inspector-item">
+          <strong>Slot</strong>
+          S{selectedSlotId + 1}{selectedSlotLocked ? ' Locked' : ''}
+        </span>
+        <span className="seq-arp-inspector-item">
+          <strong>Chord</strong>
+          {selectedDetail?.label ?? (selectedSlot ? formatHarmonyIntentChordLabel(selectedSlot.intent, { rootMidi: harmony.rootMidi, scaleId: harmony.scaleId }) : '--')}
+        </span>
+        <span className="seq-arp-inspector-item">
+          <strong>Notes</strong>
+          {slotNotePools[selectedSlotId]?.length ?? 0}
+        </span>
+        <span className="seq-arp-inspector-item">
+          <strong>Used</strong>
+          {selectedSlotUses}x
+        </span>
+        <span className="seq-arp-inspector-item">
+          <strong>Range</strong>
+          {selected < length ? 'Live' : 'Stored'}
+        </span>
+        <span className="seq-arp-inspector-item">
+          <strong>Edit</strong>
+          {selectedNote ? formatMidiNoteName(selectedNote.midi) : selectedSlotLocked ? 'Locked' : canEditChordNotes ? 'Ready' : 'Preview'}
+        </span>
+        <button
+          type="button"
+          className="seq-arp-inspector-toggle"
+          onClick={() => moveSelectedNoteOctave(-1)}
+          disabled={!selectedNote || selectedSlotLocked}
+        >
+          -8va
+        </button>
+        <button
+          type="button"
+          className="seq-arp-inspector-toggle"
+          onClick={() => moveSelectedNoteOctave(1)}
+          disabled={!selectedNote || selectedSlotLocked}
+        >
+          +8va
+        </button>
+        <button
+          type="button"
+          className="seq-arp-inspector-toggle"
+          onClick={deleteSelectedNote}
+          disabled={!selectedNote || selectedSlotLocked}
+        >
+          Del
+        </button>
+      </div>
+    </div>
+  );
+};
 
 function getSynthKeyboardEditLane(openLane: string): SynthKeyboardEditLane {
   if (openLane === 'pitch' || openLane === 'expression' || openLane === 'morph' || openLane === 'distance' || openLane === 'nudge') return openLane;
@@ -2030,10 +2495,10 @@ export interface SynthPageProps {
   initialKeyboardUiState?: SynthKeyboardUiState;
   /** Called when synth keyboard popup state changes */
   onKeyboardUiStateChange?: (state: SynthKeyboardUiState) => void;
-  /** Initial per-lane ARP configs to restore across tab switches / preset loads */
-  initialArpConfigs?: ProductArpConfig[];
-  /** Called when ARP configs change, so parent can persist and bridge engine lane flags */
-  onArpConfigsChange?: (configs: ProductArpConfig[]) => void;
+  /** Initial per-lane Play configs to restore across tab switches / preset loads. Legacy ARP configs are migrated. */
+  initialArpConfigs?: ProductPlayConfig[];
+  /** Called when Play configs change, so parent can persist and bridge engine lane flags. */
+  onArpConfigsChange?: (configs: ProductPlayConfig[]) => void;
   /** Fire a one-shot manual audition note from the synth keyboard */
   onAuditionNote?: (note: ManualSynthNoteOptions) => void | Promise<void>;
   /** Fire a one-shot manual audition note using a temporary, non-UI preset state */
@@ -4635,78 +5100,149 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     [onSelectChange],
   );
 
-  const [arpConfigs, setArpConfigs] = useState<ProductArpConfig[]>(() => normalizeProductArpConfigs(initialArpConfigs, 4));
+  const [arpConfigs, setArpConfigs] = useState<ProductPlayConfig[]>(() => normalizeProductPlayConfigs(initialArpConfigs, 4));
   const [arpRuntimeTick, setArpRuntimeTick] = useState(0);
+  const [arpUiPlayheads, setArpUiPlayheads] = useState<number[]>(() => [0, 0, 0, 0]);
+  const arpUiPlayheadAnchorsRef = useRef<Array<{ hitCount: number; startedAtMs: number }>>(
+    Array.from({ length: LANE_CONFIGS.length }, () => ({ hitCount: -1, startedAtMs: 0 })),
+  );
   const [selectedArpSteps, setSelectedArpSteps] = useState<number[]>(() => [0, 0, 0, 0]);
   const arpHarmonyContext = useMemo(() => createProductArpHarmonyContext(
     state as unknown as Record<string, unknown>,
     harmonyState,
   ), [harmonyState, state]);
-  const activeArpConfig = arpConfigs[seq.activeTab] ?? defaultProductArpConfig();
+  const activePlayConfig = arpConfigs[seq.activeTab] ?? defaultProductPlayConfig();
+  const activeArpConfig = activePlayConfig.arp;
   const activeArpResolvedSteps = useMemo(() => resolveProductArpPatternDetails({
     config: { ...activeArpConfig, enabled: true },
     harmony: arpHarmonyContext,
     laneIndex: seq.activeTab,
     runtimeTick: arpRuntimeTick,
   }) ?? [], [activeArpConfig, arpHarmonyContext, arpRuntimeTick, seq.activeTab]);
+  const activeChordResolvedSteps = useMemo(() => resolveProductChordPlayPatternDetails({
+    config: activePlayConfig.chord,
+    harmony: arpHarmonyContext,
+  }), [activePlayConfig.chord, arpHarmonyContext]);
+  const updatePlayConfig = useCallback((laneIdx: number, patch: Partial<ProductPlayConfig>) => {
+    setArpConfigs((current) => current.map((config, index) => (
+      index === laneIdx ? normalizeProductPlayConfig({ ...config, ...patch }) : config
+    )));
+  }, []);
   const updateArpConfig = useCallback((laneIdx: number, patch: Partial<ProductArpConfig>) => {
     setArpConfigs((current) => current.map((config, index) => {
       if (index !== laneIdx) return config;
+      const arp = config.arp;
       const nextPatch: Partial<ProductArpConfig> = { ...patch };
       if (typeof patch.length === 'number' && Number.isFinite(patch.length)) {
-        const oldLength = clampArpLengthValue(config.length);
+        const oldLength = clampArpLengthValue(arp.length);
         const nextLength = clampArpLengthValue(patch.length);
-        const sourcePulseMask = typeof patch.pulseMask === 'number' ? patch.pulseMask : config.pulseMask;
+        const sourcePulseMask = typeof patch.pulseMask === 'number' ? patch.pulseMask : arp.pulseMask;
         nextPatch.length = nextLength;
         nextPatch.pulseMask = armNewArpLengthSteps(sourcePulseMask, oldLength, nextLength);
       }
-      return normalizeProductArpConfig({ ...config, ...nextPatch });
+      const nextArp = normalizeProductArpConfig({ ...arp, ...nextPatch });
+      return normalizeProductPlayConfig({
+        ...config,
+        enabled: typeof patch.enabled === 'boolean' ? patch.enabled : config.enabled,
+        arp: nextArp,
+      });
     }));
   }, []);
   const setArpContour = useCallback((laneIdx: number, step: number, value: number) => {
     setArpConfigs((current) => current.map((config, index) => {
       if (index !== laneIdx) return config;
-      const contour = [...config.contour];
+      const contour = [...config.arp.contour];
       contour[step] = clampArpContourValue(value);
-      return normalizeProductArpConfig({ ...config, contour });
+      return normalizeProductPlayConfig({ ...config, arp: { ...config.arp, contour } });
     }));
   }, []);
   const setArpSlotChoice = useCallback((laneIdx: number, step: number, value: ProductArpSlotChoice) => {
     setArpConfigs((current) => current.map((config, index) => {
       if (index !== laneIdx) return config;
-      const slotLane = [...config.slotLane];
+      const slotLane = [...config.arp.slotLane];
       slotLane[step] = value;
-      return normalizeProductArpConfig({ ...config, slotLane });
+      return normalizeProductPlayConfig({ ...config, arp: { ...config.arp, slotLane } });
     }));
   }, []);
   const toggleArpPulse = useCallback((laneIdx: number, step: number) => {
     setArpConfigs((current) => current.map((config, index) => (
       index === laneIdx
-        ? normalizeProductArpConfig({ ...config, pulseMask: config.pulseMask ^ (1 << step) })
+        ? normalizeProductPlayConfig({ ...config, arp: { ...config.arp, pulseMask: config.arp.pulseMask ^ (1 << step) } })
         : config
     )));
   }, []);
   const toggleArpReset = useCallback((laneIdx: number, step: number) => {
     setArpConfigs((current) => current.map((config, index) => (
       index === laneIdx
-        ? normalizeProductArpConfig({ ...config, resetMask: config.resetMask ^ (1 << step) })
+        ? normalizeProductPlayConfig({ ...config, arp: { ...config.arp, resetMask: config.arp.resetMask ^ (1 << step) } })
         : config
     )));
   }, []);
   const applyArpContourPreset = useCallback((laneIdx: number, preset: ArpContourPreset) => {
     setArpConfigs((current) => current.map((config, index) => (
       index === laneIdx
-        ? normalizeProductArpConfig({ ...config, contour: arpContourPresetValues(preset) })
+        ? normalizeProductPlayConfig({ ...config, arp: { ...config.arp, contour: arpContourPresetValues(preset) } })
         : config
     )));
   }, []);
   const mutateArpContour = useCallback((laneIdx: number) => {
     setArpConfigs((current) => current.map((config, index) => (
       index === laneIdx
-        ? normalizeProductArpConfig({ ...config, contour: mutateArpContourValues(config.contour) })
+        ? normalizeProductPlayConfig({ ...config, arp: { ...config.arp, contour: mutateArpContourValues(config.arp.contour) } })
         : config
     )));
   }, []);
+  const updateChordPlayConfig = useCallback((laneIdx: number, patch: Partial<ProductChordPlayConfig>) => {
+    setArpConfigs((current) => current.map((config, index) => {
+      if (index !== laneIdx) return config;
+      const nextPatch: Partial<ProductChordPlayConfig> = { ...patch };
+      if (typeof patch.length === 'number' && Number.isFinite(patch.length)) {
+        const oldLength = clampArpLengthValue(config.chord.length);
+        const nextLength = clampArpLengthValue(patch.length);
+        nextPatch.length = nextLength;
+        nextPatch.steps = armNewChordLengthSteps(patch.steps ?? config.chord.steps, oldLength, nextLength);
+      }
+      return normalizeProductPlayConfig({ ...config, chord: { ...config.chord, ...nextPatch } });
+    }));
+  }, []);
+  const commitChordPlaySlotMidiPool = useCallback((slotId: number, midiNotes: readonly number[]) => {
+    if (!onStateChange) return;
+    const nextMidiPool = normalizeChordMidiPool(midiNotes).slice(0, HARMONY_POOL_MAX_NOTES);
+    if (nextMidiPool.length === 0) return;
+    onStateChange((previous) => {
+      const record = previous as unknown as Record<string, unknown>;
+      const morphContext = resolvePresetMorphContext({
+        state: record,
+        morphPercent: synthHarmonyMorphPercent(previous),
+      });
+      if (!morphContext.manualControlAvailable) return previous;
+      const bank = morphContext.bank;
+      const slots = sanitizeHarmonyChordSlots(
+        bank === 'B'
+          ? record.harmonyChordSlotsB ?? record.harmonyChordSlots
+          : record.harmonyChordSlotsA ?? record.harmonyChordSlots,
+      );
+      const slot = slots[slotId];
+      if (!slot || slot.locked) return previous;
+      const recognizedIntent = recognizeHarmonyIntentFromMidiPool({
+        midiNotes: nextMidiPool,
+        previousIntent: { ...slot.intent, source: 'slot' },
+        rootMidi: arpHarmonyContext.rootMidi,
+        scaleId: arpHarmonyContext.scaleId,
+        tension: arpHarmonyContext.tension,
+      });
+      const nextSlots = slots.map((entry) => entry.id === slotId
+        ? { ...entry, intent: { ...recognizedIntent, source: 'slot' }, name: entry.name || `Slot ${slotId + 1}` }
+        : entry);
+      const keys = harmonyBankKeys(bank);
+      const patch: Record<string, unknown> = {
+        ...record,
+        [keys.slots]: nextSlots,
+      };
+      if (shouldMirrorHarmonyBaseBank(record, bank)) patch.harmonyChordSlots = nextSlots;
+      return patch as unknown as SliderState;
+    });
+  }, [arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId, arpHarmonyContext.tension, onStateChange]);
   const selectArpStep = useCallback((laneIdx: number, step: number) => {
     setSelectedArpSteps((current) => {
       const next = [...current];
@@ -4716,10 +5252,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, []);
 
   useEffect(() => {
-    setArpConfigs(normalizeProductArpConfigs(initialArpConfigs, 4));
+    setArpConfigs(normalizeProductPlayConfigs(initialArpConfigs, 4));
   }, [initialArpConfigs, presetVersion]);
 
-  const arpConfigsRef = useRef<ProductArpConfig[] | null>(null);
+  const arpConfigsRef = useRef<ProductPlayConfig[] | null>(null);
   useEffect(() => {
     if (arpConfigsRef.current !== arpConfigs) {
       arpConfigsRef.current = arpConfigs;
@@ -4728,10 +5264,87 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, [arpConfigs, onArpConfigsChange]);
 
   useEffect(() => {
-    if (!isRunning || !arpConfigs.some((config) => config.enabled && config.flow === 'randomLiveTone')) return;
+    if (!isRunning || !arpConfigs.some((config) => config.enabled && config.mode === 'arp' && config.arp.flow === 'randomLiveTone')) return;
     const intervalId = window.setInterval(() => setArpRuntimeTick((tick) => tick + 1), 250);
     return () => window.clearInterval(intervalId);
   }, [arpConfigs, isRunning]);
+
+  useEffect(() => {
+    const nowMs = currentWallSeconds() * 1000;
+    let anchorChanged = false;
+    seq.hitCounts.forEach((hitCount, laneIdx) => {
+      const anchor = arpUiPlayheadAnchorsRef.current[laneIdx] ?? { hitCount: -1, startedAtMs: 0 };
+      const nextHitCount = Math.max(0, Math.floor(hitCount ?? 0));
+      if (anchor.hitCount !== nextHitCount) {
+        arpUiPlayheadAnchorsRef.current[laneIdx] = {
+          hitCount: nextHitCount,
+          startedAtMs: nowMs,
+        };
+        anchorChanged = true;
+      }
+    });
+    if (!anchorChanged) return;
+    setArpUiPlayheads((current) => {
+      let changed = false;
+      const next = Array.from({ length: LANE_CONFIGS.length }, (_, laneIdx) => {
+        const value = current[laneIdx] ?? 0;
+        const config = arpConfigs[laneIdx];
+        if (!config?.enabled || config.mode !== 'arp') return value;
+        if (value !== 0) changed = true;
+        return 0;
+      });
+      return changed ? next : current;
+    });
+  }, [arpConfigs, seq.hitCounts]);
+
+  useEffect(() => {
+    if (!isRunning) {
+      setArpUiPlayheads((current) => current.some((value) => value !== 0) ? [0, 0, 0, 0] : current);
+      return;
+    }
+    if (!arpConfigs.some((config) => config.enabled && config.mode === 'arp')) return;
+
+    const beatSeconds = chordSequencerUiBeatSeconds(state);
+    const tick = () => {
+      const nowMs = currentWallSeconds() * 1000;
+      setArpUiPlayheads((current) => {
+        let changed = false;
+        const next = Array.from({ length: LANE_CONFIGS.length }, (_, laneIdx) => {
+          const currentStep = current[laneIdx] ?? 0;
+          const config = arpConfigs[laneIdx];
+          if (!config?.enabled || config.mode !== 'arp') {
+            if (currentStep !== 0) changed = true;
+            return 0;
+          }
+          const anchor = arpUiPlayheadAnchorsRef.current[laneIdx] ?? { hitCount: -1, startedAtMs: nowMs };
+          if (anchor.startedAtMs <= 0) {
+            arpUiPlayheadAnchorsRef.current[laneIdx] = { ...anchor, startedAtMs: nowMs };
+          }
+          const laneClockDivision = seq.sequencerModels[laneIdx]?.clockDiv ?? seq.clockDivs[laneIdx] ?? '1/8';
+          const triggerStepMs = Math.max(1, sequencerClockDivisionToSeconds(laneClockDivision, beatSeconds, '1/8') * 1000);
+          const arpStepMs = Math.max(1, triggerStepMs / Math.max(0.25, config.arp.rate));
+          const length = clampArpLengthValue(config.arp.length);
+          const elapsedMs = Math.max(0, nowMs - (arpUiPlayheadAnchorsRef.current[laneIdx]?.startedAtMs ?? nowMs));
+          const nextStep = Math.floor(elapsedMs / arpStepMs) % length;
+          if (nextStep !== currentStep) changed = true;
+          return nextStep;
+        });
+        return changed ? next : current;
+      });
+    };
+
+    tick();
+    const intervalId = window.setInterval(tick, ARP_UI_PLAYHEAD_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, [
+    arpConfigs,
+    isRunning,
+    seq.clockDivs,
+    seq.sequencerModels,
+    state.drumEuclidBaseBPM,
+    state.sequencerMasterBPM,
+    state.synthEuclidBaseBPM,
+  ]);
 
   const synthEuclideanPatternOptions = React.useMemo<UsePresetsOptions[]>(() => LANE_CONFIGS.map((_, laneIdx) => ({
     customExtract: (currentState) => {
@@ -4746,13 +5359,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         pitchSettings: seq.pitchSettings,
         pitchBindingModes,
       });
-      const arpConfig = arpConfigs[laneIdx];
+      const playConfig = arpConfigs[laneIdx];
       return {
         ...extractEuclideanPatternLaneDataFromSynthState(currentState, laneIdx),
         ...(stepOverrides ? { [EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY]: stepOverrides } : {}),
-        [EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY]: arpConfig?.enabled
-          ? { ...sequenceState, arpConfig }
-          : sequenceState,
+        [EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY]: { ...sequenceState, playConfig },
       };
     },
     customApply: (currentState, data) => applyEuclideanPatternToSynthLaneState(currentState, data, laneIdx),
@@ -4778,7 +5389,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     setEuclidPresetNameForLane(laneIdx, entry.name);
     const stepOverrides = data[EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY] as SerializedStepOverrides | undefined;
     const sequenceState = data[EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY] as SerializedSequenceLanePresetState | undefined;
-    const arpConfig = (sequenceState as SerializedSequenceLanePresetState & { arpConfig?: ProductArpConfig } | undefined)?.arpConfig;
+    const playConfig = (sequenceState as SerializedSequenceLanePresetState & { playConfig?: ProductPlayConfig; arpConfig?: ProductArpConfig } | undefined)?.playConfig
+      ?? (sequenceState as SerializedSequenceLanePresetState & { arpConfig?: ProductArpConfig } | undefined)?.arpConfig;
     seq.setStepOverrides((current) => applySequencePresetOverrides(current, stepOverrides ?? {}, laneIdx));
     seq.setSubLaneStates((current) => {
       const next = applySequencePresetSubLaneStates(current, sequenceState, laneIdx, stepOverrides);
@@ -4791,9 +5403,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     seq.setLinked((current) => applySequencePresetLinked(current, sequenceState, laneIdx));
     seq.setEvolveConfigs((current) => applySequencePresetEvolveConfigs(current, sequenceState, laneIdx, 'synth'));
     seq.setPitchSettings((current) => applySequencePresetPitchSettings(current, sequenceState, laneIdx));
-    if (arpConfig) {
+    if (playConfig) {
       setArpConfigs((current) => current.map((config, index) => (
-        index === laneIdx ? normalizeProductArpConfig(arpConfig) : config
+        index === laneIdx ? normalizeProductPlayConfig(playConfig) : config
       )));
     }
     setPitchBindingModes((current) => {
@@ -5079,15 +5691,24 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const stepOverridesRef = useRef<StepOverrides | null>(null);
   const pitchSettingsRef = useRef<PitchSettings[] | null>(null);
   const pitchSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | null>(null);
-  const engineArpConfigsRef = useRef<ProductArpConfig[] | null>(null);
+  const engineArpConfigsRef = useRef<ProductPlayConfig[] | null>(null);
   const engineArpRuntimeTickRef = useRef(arpRuntimeTick);
+  const enginePitchBindingModesRef = useRef<PitchBindingMode[] | null>(null);
+  const engineSequencerModelsRef = useRef<SequencerState[] | null>(null);
+  const engineClockDivsRef = useRef(seq.clockDivs);
+  const engineSequencerBeatSecondsRef = useRef(chordSequencerUiBeatSeconds(state));
   useEffect(() => {
+    const sequencerBeatSeconds = chordSequencerUiBeatSeconds(state);
     const overridesChanged = stepOverridesRef.current !== seq.stepOverrides;
     const settingsChanged = pitchSettingsRef.current !== seq.pitchSettings;
     const subLaneStatesChanged = pitchSubLaneStatesRef.current !== seq.subLaneStates;
     const arpConfigsChanged = engineArpConfigsRef.current !== arpConfigs;
     const arpRuntimeTickChanged = engineArpRuntimeTickRef.current !== arpRuntimeTick;
-    if (overridesChanged || settingsChanged || subLaneStatesChanged || arpConfigsChanged || arpRuntimeTickChanged) {
+    const pitchBindingModesChanged = enginePitchBindingModesRef.current !== pitchBindingModes;
+    const sequencerModelsChanged = engineSequencerModelsRef.current !== seq.sequencerModels;
+    const clockDivsChanged = engineClockDivsRef.current !== seq.clockDivs;
+    const sequencerBeatSecondsChanged = engineSequencerBeatSecondsRef.current !== sequencerBeatSeconds;
+    if (overridesChanged || settingsChanged || subLaneStatesChanged || arpConfigsChanged || arpRuntimeTickChanged || pitchBindingModesChanged || sequencerModelsChanged || clockDivsChanged || sequencerBeatSecondsChanged) {
       const now = Date.now();
       let resolvedPendingDiceSync = false;
       const blockedByPendingDice = pendingDiceSyncUntilRef.current.some((until, laneIndex) => {
@@ -5112,6 +5733,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         pitchSubLaneStatesRef.current = seq.subLaneStates;
         engineArpConfigsRef.current = arpConfigs;
         engineArpRuntimeTickRef.current = arpRuntimeTick;
+        enginePitchBindingModesRef.current = pitchBindingModes;
+        engineSequencerModelsRef.current = seq.sequencerModels;
+        engineClockDivsRef.current = seq.clockDivs;
+        engineSequencerBeatSecondsRef.current = sequencerBeatSeconds;
         return;
       }
       if (blockedByPendingDice) return;
@@ -5120,16 +5745,27 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       pitchSubLaneStatesRef.current = seq.subLaneStates;
       engineArpConfigsRef.current = arpConfigs;
       engineArpRuntimeTickRef.current = arpRuntimeTick;
-      // Convert pitch offsets to absolute MIDI notes before sending to engine
-      // (engine doesn't know pitch mode/root/scale — we convert here)
-      const convertedPitch = seq.stepOverrides.pitch.map((offsets, laneIdx) => {
-        const arpPattern = resolveProductArpMidiPattern({
-          config: arpConfigs[laneIdx] ?? defaultProductArpConfig(),
+      enginePitchBindingModesRef.current = pitchBindingModes;
+      engineSequencerModelsRef.current = seq.sequencerModels;
+      engineClockDivsRef.current = seq.clockDivs;
+      engineSequencerBeatSecondsRef.current = sequencerBeatSeconds;
+      const playEnginePatterns = arpConfigs.map((config, laneIdx) => {
+        const laneClockDivision = seq.sequencerModels[laneIdx]?.clockDiv ?? seq.clockDivs[laneIdx] ?? '1/8';
+        return resolveProductPlayEnginePattern({
+          config: config ?? defaultProductPlayConfig(),
           harmony: arpHarmonyContext,
           laneIndex: laneIdx,
           runtimeTick: arpRuntimeTick,
+          pitchBindingMode: pitchBindingModes[laneIdx] ?? 'polyrhythmic',
+          triggerPattern: seq.sequencerModels[laneIdx]?.trigger.pattern ?? null,
+          triggerStepMs: Math.max(1, sequencerClockDivisionToSeconds(laneClockDivision, sequencerBeatSeconds, '1/8') * 1000),
         });
-        if (arpPattern) return arpPattern;
+      });
+      // Convert pitch offsets to absolute MIDI notes before sending to engine
+      // (engine doesn't know pitch mode/root/scale — we convert here)
+      const convertedPitch = seq.stepOverrides.pitch.map((offsets, laneIdx) => {
+        const playPattern = playEnginePatterns[laneIdx]?.midiPattern;
+        if (playPattern) return playPattern;
         if (!offsets) return null;
         // When pitch sub-lane is disabled, return null so engine uses noteMin/noteMax range
         if (!seq.subLaneStates[laneIdx]?.pitch?.enabled) return null;
@@ -5143,9 +5779,18 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           resolvedPitch.root + scaleDegreeToSemitone(degree, resolvedPitch.scaleIntervals),
         ));
       });
+      const playNotes = playEnginePatterns.map((pattern) => (
+        pattern?.playNotes?.map((event) => ({
+          step: event.step,
+          midi: event.midi,
+          offsetMs: event.offsetMs,
+          velocity: event.velocity,
+          voiceIndex: event.voiceIndex,
+        })) ?? null
+      ));
       const engineSubLaneStates = seq.subLaneStates.map((laneState, laneIdx) => (
-        arpConfigs[laneIdx]?.enabled
-          ? { ...laneState, pitch: { ...laneState.pitch, enabled: true, steps: arpConfigs[laneIdx]?.length ?? 8, direction: 'forward' as const } }
+        playEnginePatterns[laneIdx]
+          ? { ...laneState, pitch: { ...laneState.pitch, enabled: true, steps: playEnginePatterns[laneIdx]!.steps, direction: 'forward' as const } }
           : laneState
       ));
       const pitchDirection = seq.stepOverrides.pitchDirection.map((direction, laneIdx) => (
@@ -5178,6 +5823,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         stepOverridesForEngineSubLaneState({
           ...seq.stepOverrides,
           pitch: convertedPitch,  // Send MIDI notes, not raw offsets
+          playNotes,
           pitchDirection,
           expressionRanges,
           morphRanges,
@@ -5186,7 +5832,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         engineSubLaneStates,
       );
     }
-  }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, arpConfigs, arpHarmonyContext, arpRuntimeTick, harmonyState, onStepOverridesChange, onRawStepOverridesChange]);
+  }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, seq.sequencerModels, seq.clockDivs, arpConfigs, arpHarmonyContext, arpRuntimeTick, harmonyState, pitchBindingModes, state.sequencerMasterBPM, state.synthEuclidBaseBPM, state.drumEuclidBaseBPM, onStepOverridesChange, onRawStepOverridesChange]);
 
   // Persist sub-lane states (enabled/steps/direction) across tab switches
   const subLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | null>(null);
@@ -9979,47 +10625,85 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 {/* ── Sub-lane sparklines: pitch, expression, morph, distance ── */}
                 <div className="seq-spark-container">
                   {(() => {
+                    const playConfig = activePlayConfig;
                     const arpConfig = activeArpConfig;
                     const laneColor = '#7dd3fc';
                     const openLane = seq.openLane as SynthDetailOpenLane;
                     const selectedArpStep = selectedArpSteps[seq.activeTab] ?? 0;
+                    const activeArpUiPlayhead = arpUiPlayheads[seq.activeTab] ?? 0;
+                    const playSparklineUsesArpClock = playConfig.enabled && playConfig.mode === 'arp';
                     return (
                       <React.Fragment key="arp">
                         <SeqSparkline
-                          label="Arp:"
-                          steps={arpConfig.length}
-                          values={productArpPulseValues(arpConfig)}
+                          label="Play:"
+                          steps={productPlayLiveLength(playConfig)}
+                          values={productPlayPulseValues(playConfig)}
                           color={laneColor}
-                          playhead={seq.playheads[seq.activeTab] ?? 0}
-                          hitCount={seq.hitCounts[seq.activeTab] ?? 0}
-                          playheadMode="hit"
+                          playhead={playSparklineUsesArpClock ? activeArpUiPlayhead : (seq.playheads[seq.activeTab] ?? 0)}
+                          hitCount={playSparklineUsesArpClock ? 0 : (seq.hitCounts[seq.activeTab] ?? 0)}
+                          playheadMode={playSparklineUsesArpClock ? 'step' : 'hit'}
                           direction="forward"
-                          bipolar
-                          mode="signed"
-                          enabled={arpConfig.enabled}
+                          bipolar={playConfig.mode === 'arp'}
+                          mode={playConfig.mode === 'arp' ? 'signed' : undefined}
+                          enabled={playConfig.enabled}
                           expanded={openLane === 'arp'}
                           onClick={() => seq.setOpenLane((openLane === 'arp' ? 'trigger' : 'arp') as never)}
-                          onToggleEnabled={() => updateArpConfig(seq.activeTab, { enabled: !arpConfig.enabled })}
+                          onToggleEnabled={() => updatePlayConfig(seq.activeTab, { enabled: !playConfig.enabled })}
                           selectedStep={selectedArpStep}
                         />
                         {openLane === 'arp' && (
                           <div className="seq-lane-editor-wrap">
-                            <ArpContourEditor
-                              config={arpConfig}
-                              color={laneColor}
-                              harmony={arpHarmonyContext}
-                              resolvedSteps={activeArpResolvedSteps}
-                              selectedStep={selectedArpStep}
-                              onSelectStep={(step) => selectArpStep(seq.activeTab, step)}
-                              onToggleEnabled={() => updateArpConfig(seq.activeTab, { enabled: !arpConfig.enabled })}
-                              onUpdateConfig={(patch) => updateArpConfig(seq.activeTab, patch)}
-                              onSetContour={(step, value) => setArpContour(seq.activeTab, step, value)}
-                              onTogglePulse={(step) => toggleArpPulse(seq.activeTab, step)}
-                              onSetSlotChoice={(step, value) => setArpSlotChoice(seq.activeTab, step, value)}
-                              onToggleReset={(step) => toggleArpReset(seq.activeTab, step)}
-                              onApplyPreset={(preset) => applyArpContourPreset(seq.activeTab, preset)}
-                              onMutate={() => mutateArpContour(seq.activeTab)}
-                            />
+                            <div className="seq-play-mode-header" style={{ '--seq-arp-color': laneColor } as React.CSSProperties}>
+                              <button
+                                type="button"
+                                className={`seq-lane-enable-btn${playConfig.enabled ? ' on' : ''}`}
+                                onClick={() => updatePlayConfig(seq.activeTab, { enabled: !playConfig.enabled })}
+                              >
+                                {playConfig.enabled ? 'On' : 'Off'}
+                              </button>
+                              <div className="seq-arp-segment seq-play-mode-segment" aria-label="Play mode">
+                                {PLAY_MODE_OPTIONS.map((option) => (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    className={playConfig.mode === option.value ? 'active' : ''}
+                                    onClick={() => updatePlayConfig(seq.activeTab, { mode: option.value })}
+                                  >
+                                    {option.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            {playConfig.mode === 'arp' ? (
+                              <ArpContourEditor
+                                config={{ ...arpConfig, enabled: playConfig.enabled }}
+                                color={laneColor}
+                                harmony={arpHarmonyContext}
+                                resolvedSteps={activeArpResolvedSteps}
+                                selectedStep={selectedArpStep}
+                                playStep={isRunning && playConfig.enabled ? activeArpUiPlayhead : null}
+                                onSelectStep={(step) => selectArpStep(seq.activeTab, step)}
+                                onToggleEnabled={() => updatePlayConfig(seq.activeTab, { enabled: !playConfig.enabled })}
+                                onUpdateConfig={(patch) => updateArpConfig(seq.activeTab, patch)}
+                                onSetContour={(step, value) => setArpContour(seq.activeTab, step, value)}
+                                onTogglePulse={(step) => toggleArpPulse(seq.activeTab, step)}
+                                onSetSlotChoice={(step, value) => setArpSlotChoice(seq.activeTab, step, value)}
+                                onToggleReset={(step) => toggleArpReset(seq.activeTab, step)}
+                                onApplyPreset={(preset) => applyArpContourPreset(seq.activeTab, preset)}
+                                onMutate={() => mutateArpContour(seq.activeTab)}
+                              />
+                            ) : (
+                              <ChordPlayEditor
+                                config={playConfig.chord}
+                                color={laneColor}
+                                harmony={arpHarmonyContext}
+                                resolvedSteps={activeChordResolvedSteps}
+                                selectedStep={selectedArpStep}
+                                onSelectStep={(step) => selectArpStep(seq.activeTab, step)}
+                                onUpdateConfig={(patch) => updateChordPlayConfig(seq.activeTab, patch)}
+                                onCommitSlotMidiPool={commitChordPlaySlotMidiPool}
+                              />
+                            )}
                           </div>
                         )}
                       </React.Fragment>

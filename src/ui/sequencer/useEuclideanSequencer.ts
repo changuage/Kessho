@@ -100,6 +100,13 @@ export interface SubLaneState {
 export interface StepOverrides {
   triggerClips?: (TriggerClip | null)[];
   triggerToggles: Map<number, boolean>[];
+  playNotes?: ({
+    step: number;
+    midi: number;
+    offsetMs?: number;
+    velocity?: number;
+    voiceIndex?: number;
+  }[] | null)[];
   probability: (number[] | null)[];
   ratchet: (number[] | null)[];
   trigCondition: (TrigCondition[] | null)[];
@@ -464,6 +471,7 @@ function createEmptyStepOverrides(laneCount: number): StepOverrides {
   return {
     triggerClips: Array.from({ length: laneCount }, () => null),
     triggerToggles: Array.from({ length: laneCount }, () => new Map<number, boolean>()),
+    playNotes: Array.from({ length: laneCount }, () => null),
     probability: Array.from({ length: laneCount }, () => null as number[] | null),
     ratchet: Array.from({ length: laneCount }, () => null as number[] | null),
     trigCondition: Array.from({ length: laneCount }, () => null as TrigCondition[] | null),
@@ -657,6 +665,7 @@ function normalizeStepOverrides(overrides: StepOverrides | undefined, laneCount:
     ...overrides,
     triggerClips: Array.from({ length: laneCount }, (_, index) => cloneTriggerClip(overrides.triggerClips?.[index] ?? null)),
     triggerToggles: overrides.triggerToggles?.map((map) => new Map(map)) ?? fallback.triggerToggles,
+    playNotes: overrides.playNotes ?? fallback.playNotes,
     probability: overrides.probability ?? fallback.probability,
     ratchet: overrides.ratchet ?? fallback.ratchet,
     trigCondition: overrides.trigCondition ?? fallback.trigCondition,

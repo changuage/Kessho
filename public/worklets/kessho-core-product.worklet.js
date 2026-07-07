@@ -99,7 +99,7 @@ const ANCHOR_WALKER_VISUAL_FLAG_ANCHOR_VALID = 1 << 3;
 const ANCHOR_WALKER_VISUAL_FLAG_WALKING = 1 << 4;
 const STEP_TOGGLE_CLEAR_LANE = 2;
 const STEP_FIELD_MASK = 15 << 8;
-const STEP_FIELD_SUBLANE_CONFIG = 8 << 8;
+const STEP_FIELD_SUBLANE_CONFIG = 9 << 8;
 
 class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   constructor(options = {}) {
@@ -829,6 +829,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
           normalized.value = this.requireFloat(event, 'value');
           normalized.value2 = this.optionalFloat(event, 'value2', 0);
           normalized.value3 = this.optionalFloat(event, 'value3', 0);
+          normalized.value4 = this.optionalFloat(event, 'value4', 0);
         }
         if ((normalized.flags & STEP_FIELD_MASK) === STEP_FIELD_SUBLANE_CONFIG) {
           normalized.value2 = this.requireFloat(event, 'value2', 1, 64);

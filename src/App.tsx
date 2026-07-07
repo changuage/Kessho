@@ -99,7 +99,7 @@ import { useVisualFeatureToggle } from './ui/hooks/useVisualFeatureToggle';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig, SequencerViewMode } from './ui/sequencer/useEuclideanSequencer';
 import { serializeStepOverrides } from './ui/sequencer/stepOverrideSerialization';
 import { type ClockDivision, type PitchBindingMode } from './audio/drumSeqTypes';
-import { sanitizeProductArpConfigs, type ProductArpConfig } from './audio/productArpeggiator';
+import { sanitizeProductPlayConfigs, type ProductPlayConfig } from './audio/productPlaySequencer';
 import { normalizeSequencerPitchSettingsArray } from './audio/sequencerPitchSettings';
 import {
   getRoutingSourceDef,
@@ -670,7 +670,7 @@ const App: React.FC = () => {
   const synthPitchSettingsRef = useRef<PitchSettings[] | undefined>(undefined);
   const synthPitchBindingModesRef = useRef<PitchBindingMode[] | undefined>(undefined);
   const synthKeyboardUiStateRef = useRef<SynthKeyboardUiState | undefined>(undefined);
-  const synthArpConfigsRef = useRef<ProductArpConfig[] | undefined>(undefined);
+  const synthArpConfigsRef = useRef<ProductPlayConfig[] | undefined>(undefined);
   const synthEvolveConfigsRef = useRef<EvolveConfig[] | undefined>(undefined);
 
   const [drumPresetVersion, setDrumPresetVersion] = useState(0);
@@ -732,7 +732,7 @@ const App: React.FC = () => {
         synthLinked: synthLinkedRef.current,
         drumSubLaneStates: sanitizeSequencerSubLaneStates(drumSubLaneStatesRef.current),
         synthSubLaneStates: sanitizeSequencerSubLaneStates(synthSubLaneStatesRef.current),
-        synthArpConfigs: sanitizeProductArpConfigs(synthArpConfigsRef.current),
+        synthArpConfigs: sanitizeProductPlayConfigs(synthArpConfigsRef.current),
         drumPitchSettings: normalizeSequencerPitchSettingsArray(drumPitchSettingsRef.current, 4) as PitchSettings[],
         synthPitchSettings: normalizeSequencerPitchSettingsArray(synthPitchSettingsRef.current, 4) as PitchSettings[],
         synthPitchBindingModes: synthPitchBindingModesRef.current,

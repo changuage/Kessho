@@ -9,7 +9,7 @@
  */
 
 import { SCALE_FAMILIES } from '../audio/scales';
-import type { ProductArpConfig } from '../audio/productArpeggiator';
+import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { ClockDivision, LaneDirection, PitchBindingMode, PitchMode, ScaleName, TrigCondition } from '../audio/drumSeqTypes';
 import {
   defaultManualHarmonyControlState,
@@ -313,7 +313,7 @@ export interface SavedPreset {
   synthLinked?: boolean[];
   drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
-  synthArpConfigs?: ProductArpConfig[];
+  synthArpConfigs?: ProductPlayConfig[];
   drumPitchSettings?: SerializedPitchSettings[];
   synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];

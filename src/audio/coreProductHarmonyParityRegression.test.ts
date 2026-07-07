@@ -17,6 +17,13 @@ import {
   resolveProductArpPatternDetails,
   type ProductArpHarmonyContext,
 } from './productArpeggiator';
+import {
+  normalizeProductPlayConfig,
+  resolveProductChordPlayEvents,
+  resolveProductChordPlayPatternDetails,
+  resolveProductPlayEnginePattern,
+  resolveProductPlayMidiPattern,
+} from './productPlaySequencer';
 import { createRng, getUtcBucket } from './rng';
 import { getScaleNotesInRange, SCALE_FAMILIES, selectScaleFamily } from './scales';
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
@@ -32,9 +39,14 @@ import {
   HARMONY_SLOT_COUNT,
   commitBaselineMap,
   defaultHarmonyChordSlot,
+  defaultHarmonyIntent,
+  formatHarmonyIntentChordLabel,
   generateHarmonySlotsAndSequence,
+  recognizeHarmonyIntentFromMidiPool,
   resolveHarmonyIntentToNotePool,
   resolveProductHarmonyState,
+  type HarmonyChordAlteration,
+  type HarmonyChordQuality,
 } from './CoreProductHarmonyControl';
 import { sampleDescriptorForSlotNote, samplePredictionState } from './product/host/CoreProductSampleAssetResolver';
 
@@ -197,6 +209,122 @@ const productArpTelemetryCofHarmony = createProductArpHarmonyContext({ rootNote:
 assert.equal(pitchClass(productArpTelemetryCofHarmony.rootMidi), 7, 'Product arp harmony context should follow drifted telemetry root');
 assert.equal(productArpTelemetryCofHarmony.scaleId, 1, 'Product arp harmony context should follow live Product harmony scale');
 
+function absoluteHarmonyIntent(options: {
+  quality: HarmonyChordQuality;
+  extensions?: string[];
+  alterations?: HarmonyChordAlteration[];
+}) {
+  return {
+    ...defaultHarmonyIntent('slot'),
+    rootMode: 'absolute' as const,
+    rootNote: 0,
+    quality: options.quality,
+    extensions: options.extensions ?? [],
+    alterations: options.alterations ?? [],
+  };
+}
+
+const harmonyVocabularyCases: Array<{
+  label: string;
+  quality: HarmonyChordQuality;
+  extensions?: string[];
+  alterations?: HarmonyChordAlteration[];
+  expected: number[];
+}> = [
+  { label: 'Cmaj7', quality: 'maj7', expected: [60, 64, 67, 71] },
+  { label: 'C9', quality: 'nine', expected: [60, 64, 67, 70, 74] },
+  { label: 'Cm9', quality: 'min7', extensions: ['9'], expected: [60, 63, 67, 70, 74] },
+  { label: 'Cmaj9', quality: 'maj7', extensions: ['9'], expected: [60, 64, 67, 71, 74] },
+  { label: 'C6', quality: 'six', expected: [60, 64, 67, 69] },
+  { label: 'C6/9', quality: 'sixNine', expected: [60, 64, 67, 69, 74] },
+  { label: 'C7b9', quality: 'dom7', alterations: ['b9'], expected: [60, 64, 67, 70, 73] },
+  { label: 'C7#9', quality: 'dom7', alterations: ['#9'], expected: [60, 64, 67, 70, 75] },
+  { label: 'C7#11', quality: 'dom7', alterations: ['#11'], expected: [60, 64, 67, 70, 78] },
+  { label: 'C13', quality: 'dom7', extensions: ['13'], expected: [60, 64, 67, 70, 74, 81] },
+  { label: 'C7b13', quality: 'dom7', alterations: ['b13'], expected: [60, 64, 67, 70, 80] },
+  { label: 'Cdim', quality: 'dim', expected: [60, 63, 66] },
+  { label: 'Csus', quality: 'sus', expected: [60, 65, 67] },
+  { label: 'Cquartal', quality: 'quartal', expected: [60, 65, 70, 75] },
+  { label: 'Ccluster', quality: 'cluster', expected: [60, 61, 62, 64] },
+];
+
+for (const testCase of harmonyVocabularyCases) {
+  assert.deepEqual(
+    resolveHarmonyIntentToNotePool({
+      intent: absoluteHarmonyIntent(testCase),
+      rootMidi: 60,
+      scaleId: 1,
+      tension: 0.3,
+    }),
+    testCase.expected,
+    `Harmony vocabulary should resolve ${testCase.label}`,
+  );
+}
+
+const harmonyRecognitionCases: Array<{ notes: number[]; label: string }> = [
+  { notes: [60, 64, 67, 71, 74], label: 'Cmaj9' },
+  { notes: [60, 64, 67, 70, 74], label: 'C9' },
+  { notes: [60, 63, 67, 70, 74], label: 'Cm9' },
+  { notes: [60, 64, 67, 69], label: 'C6' },
+  { notes: [60, 64, 67, 69, 74], label: 'C6/9' },
+  { notes: [60, 64, 67, 70, 73], label: 'C7b9' },
+  { notes: [60, 64, 67, 70, 75], label: 'C7#9' },
+  { notes: [60, 64, 67, 70, 78], label: 'C7#11' },
+  { notes: [60, 64, 67, 70, 81], label: 'C13' },
+  { notes: [60, 65, 67], label: 'Csus' },
+  { notes: [60, 65, 70, 75], label: 'Cquartal' },
+  { notes: [60, 61, 62, 64], label: 'Ccluster' },
+];
+const previousCmaj7Intent = absoluteHarmonyIntent({ quality: 'maj7' });
+for (const testCase of harmonyRecognitionCases) {
+  const recognized = recognizeHarmonyIntentFromMidiPool({
+    midiNotes: testCase.notes,
+    previousIntent: previousCmaj7Intent,
+    rootMidi: 60,
+    scaleId: 1,
+    tension: 0.3,
+  });
+  assert.equal(
+    formatHarmonyIntentChordLabel(recognized, { rootMidi: 60, scaleId: 1 }),
+    testCase.label,
+    `Harmony recognition should identify ${testCase.label}`,
+  );
+}
+assert.equal(
+  formatHarmonyIntentChordLabel(recognizeHarmonyIntentFromMidiPool({
+    midiNotes: [60, 64, 67, 69],
+    previousIntent: previousCmaj7Intent,
+    rootMidi: 60,
+    scaleId: 1,
+    tension: 0.3,
+  }), { rootMidi: 60, scaleId: 1 }),
+  'C6',
+  'Harmony recognition should prefer previous-root C6 over Am7/C',
+);
+const freeVoicingIntent = recognizeHarmonyIntentFromMidiPool({
+  midiNotes: [60, 61, 67, 71],
+  previousIntent: previousCmaj7Intent,
+  rootMidi: 60,
+  scaleId: 1,
+  tension: 0.3,
+});
+assert.equal(freeVoicingIntent.preserveCapturedVoicing, true, 'unsupported Harmony recognition should preserve exact free voicing');
+assert.deepEqual(freeVoicingIntent.capturedMidiNotes, [60, 61, 67, 71], 'free voicing fallback should keep exact edited MIDI notes');
+assert.notEqual(
+  formatHarmonyIntentChordLabel(freeVoicingIntent, { rootMidi: 60, scaleId: 1 }),
+  'FREE',
+  'captured Harmony voicing labels should not fall back to FREE',
+);
+assert.equal(
+  formatHarmonyIntentChordLabel({
+    ...freeVoicingIntent,
+    capturedMidiNotes: [64, 67, 71, 74],
+    preserveCapturedVoicing: true,
+  }, { rootMidi: 60, scaleId: 1 }),
+  'Em7',
+  'captured Harmony voicing labels should infer common chord names',
+);
+
 function productArpTestHarmony(
   notePoolMidi: number[],
   chordSlots: ProductArpHarmonyContext['chordSlots'] = [],
@@ -220,6 +348,64 @@ function resolveEnabledArp(config: Record<string, unknown>, harmony: ProductArpH
   assert(result, 'enabled Product arp should resolve a MIDI pattern');
   return result;
 }
+
+const migratedPlay = normalizeProductPlayConfig({
+  enabled: true,
+  direction: 'down',
+  pulseCount: 5,
+  pulseMask: 0xffff,
+  tonePattern: [0, 2, 1, 3, 4],
+});
+assert.equal(migratedPlay.enabled, true, 'Product Play migration should preserve legacy ARP enabled state');
+assert.equal(migratedPlay.mode, 'arp', 'Product Play migration should load legacy ARP as ARP mode');
+assert.equal(migratedPlay.arp.flow, 'down', 'Product Play migration should preserve legacy ARP flow');
+assert.equal(migratedPlay.arp.length, 5, 'Product Play migration should preserve legacy ARP length');
+
+const disabledDesignedPlay = normalizeProductPlayConfig({
+  enabled: false,
+  mode: 'chord',
+  chord: {
+    length: 12,
+    style: 'strum',
+    steps: Array.from({ length: 16 }, (_, index) => ({ active: index !== 2, slotId: (index + 1) % 8 })),
+  },
+});
+assert.equal(disabledDesignedPlay.enabled, false, 'Product Play should keep disabled state without dropping design');
+assert.equal(disabledDesignedPlay.mode, 'chord', 'Product Play should preserve disabled chord mode');
+assert.equal(disabledDesignedPlay.chord.length, 12, 'Product Play should preserve disabled chord length');
+assert.equal(disabledDesignedPlay.chord.steps[2]?.active, false, 'Product Play should preserve disabled chord step edits');
+
+const defaultChordLength8 = normalizeProductPlayConfig({
+  enabled: false,
+  mode: 'chord',
+  chord: { length: 8 },
+});
+assert.equal(defaultChordLength8.chord.steps.length, 16, 'Product Play chord mode should always preserve 16 stored steps');
+assert.equal(defaultChordLength8.chord.steps[0]?.active, false, 'Product Play chord mode should default step 1 off');
+assert.equal(defaultChordLength8.chord.steps[7]?.active, false, 'Product Play chord mode should default the final live step off');
+assert.equal(defaultChordLength8.chord.steps[8]?.active, false, 'Product Play chord mode should keep default out-of-range steps stored off');
+const defaultChordLength12 = normalizeProductPlayConfig({
+  enabled: false,
+  mode: 'chord',
+  chord: { length: 12 },
+});
+assert.equal(defaultChordLength12.chord.steps[10]?.active, false, 'Product Play chord mode should keep newly included default steps off');
+assert.equal(defaultChordLength12.chord.steps[11]?.active, false, 'Product Play chord mode should keep step 12 off by default');
+const rememberedChordLength10 = normalizeProductPlayConfig({
+  enabled: false,
+  mode: 'chord',
+  chord: {
+    length: 10,
+    steps: Array.from({ length: 16 }, (_, index) => ({ active: index === 10 || index === 11, slotId: index % 8 })),
+  },
+});
+const rememberedChordLength12 = normalizeProductPlayConfig({
+  ...rememberedChordLength10,
+  chord: { ...rememberedChordLength10.chord, length: 12 },
+});
+assert.equal(rememberedChordLength10.chord.steps[10]?.active, true, 'Product Play chord mode should store step 11 above a shorter active length');
+assert.equal(rememberedChordLength12.chord.steps[10]?.active, true, 'Product Play chord mode should restore stored step 11 when length expands');
+assert.equal(rememberedChordLength12.chord.steps[11]?.active, true, 'Product Play chord mode should restore stored step 12 when length expands');
 
 const legacyArp = normalizeProductArpConfig({
   enabled: true,
@@ -254,6 +440,178 @@ assert.equal(rememberedLengthArp.pulseMask & (1 << 11), 1 << 11, 'Product arp sh
 assert.equal(rememberedLength10Details?.length, 10, 'Product arp should only resolve the active length');
 assert.equal(rememberedLength12Details?.[10]?.enabled, true, 'Product arp should restore remembered step 11 when length expands');
 assert.equal(rememberedLength12Details?.[11]?.enabled, true, 'Product arp should restore remembered step 12 when length expands');
+
+const chordPlaySlot = defaultHarmonyChordSlot(0);
+chordPlaySlot.intent = absoluteHarmonyIntent({ quality: 'maj7', extensions: ['9'] });
+const chordPlayHarmony = productArpTestHarmony([60, 64, 67], [chordPlaySlot]);
+const emptyChordPlayConfig = normalizeProductPlayConfig({
+  enabled: true,
+  mode: 'chord',
+  chord: { length: 4 },
+});
+assert.deepEqual(
+  resolveProductPlayMidiPattern({ config: emptyChordPlayConfig, harmony: chordPlayHarmony, laneIndex: 0 }),
+  [-1],
+  'Product Play chord mode should resolve default empty chord steps as a silent engine step',
+);
+const chordPlayConfig = normalizeProductPlayConfig({
+  enabled: true,
+  mode: 'chord',
+  chord: {
+    style: 'straight',
+    length: 2,
+    steps: [
+      { active: true, slotId: 0 },
+      { active: false, slotId: 0 },
+    ],
+  },
+});
+const chordPlayDetails = resolveProductChordPlayPatternDetails({
+  config: chordPlayConfig.chord,
+  harmony: chordPlayHarmony,
+});
+assert.deepEqual(chordPlayDetails[0]?.notes, [60, 64, 67, 71, 74], 'Product Play chord mode should resolve S1 through global Harmony slot');
+assert.deepEqual(chordPlayDetails[1]?.notes, [], 'Product Play chord mode should suppress inactive chord steps');
+chordPlaySlot.intent = absoluteHarmonyIntent({ quality: 'nine' });
+assert.deepEqual(
+  resolveProductChordPlayPatternDetails({ config: chordPlayConfig.chord, harmony: chordPlayHarmony })[0]?.notes,
+  [60, 64, 67, 70, 74],
+  'Product Play chord mode should follow changed global slot intent',
+);
+assert.deepEqual(
+  resolveProductPlayMidiPattern({ config: chordPlayConfig, harmony: chordPlayHarmony, laneIndex: 0 }),
+  [60],
+  'Product Play short-term MIDI bridge should skip inactive chord rows in the engine sequence',
+);
+assert.deepEqual(
+  resolveProductChordPlayEvents({ config: chordPlayConfig.chord, harmony: chordPlayHarmony }).map((event) => event.step),
+  [0, 0, 0, 0, 0],
+  'Product Play chord note fan-out should attach to compact active engine steps',
+);
+const sparseChordPlayConfig = normalizeProductPlayConfig({
+  enabled: true,
+  mode: 'chord',
+  chord: {
+    style: 'straight',
+    length: 8,
+    steps: [
+      { active: false, slotId: 0 },
+      { active: false, slotId: 0 },
+      { active: false, slotId: 0 },
+      { active: true, slotId: 0 },
+    ],
+  },
+});
+const sparseChordEnginePattern = resolveProductPlayEnginePattern({
+  config: sparseChordPlayConfig,
+  harmony: chordPlayHarmony,
+  laneIndex: 0,
+});
+assert.deepEqual(
+  sparseChordEnginePattern?.midiPattern,
+  [60],
+  'Product Play chord engine pattern should skip off rows before the first active chord row',
+);
+assert.equal(sparseChordEnginePattern?.steps, 1, 'single active Product Play chord row should clock as a one-step engine pattern');
+const sequenceBoundChordEnginePattern = resolveProductPlayEnginePattern({
+  config: chordPlayConfig,
+  harmony: chordPlayHarmony,
+  laneIndex: 0,
+  pitchBindingMode: 'sequence',
+  triggerPattern: [true, false, false, true, false, false, false, true],
+});
+assert.deepEqual(
+  sequenceBoundChordEnginePattern?.midiPattern,
+  [60, -1, -1, 60, -1, -1, -1, 60],
+  'sequence-bound Product Play should expand compact chord steps onto ON trigger positions',
+);
+assert.deepEqual(
+  sequenceBoundChordEnginePattern?.playNotes?.map((event) => event.step),
+  [0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 7, 7, 7, 7, 7],
+  'sequence-bound Product Play chord fan-out should post voices at ON trigger positions',
+);
+const continuousArpPlayConfig = normalizeProductPlayConfig({
+  enabled: true,
+  mode: 'arp',
+  arp: {
+    enabled: true,
+    flow: 'up',
+    rate: 1,
+    length: 4,
+    pulseMask: 0b1111,
+    contour: Array.from({ length: 16 }, () => 0),
+  },
+});
+const continuousArpEnginePattern = resolveProductPlayEnginePattern({
+  config: continuousArpPlayConfig,
+  harmony: productArpTestHarmony([60, 64, 67, 71]),
+  laneIndex: 0,
+  triggerPattern: [true, false, false, false, true, false, false, false],
+  triggerStepMs: 125,
+});
+assert.deepEqual(
+  continuousArpEnginePattern?.midiPattern,
+  [60, 60],
+  'Product Play ARP should bind one engine step to each ON trigger in hit-bound mode',
+);
+assert.deepEqual(
+  continuousArpEnginePattern?.playNotes?.map((event) => ({
+    step: event.step,
+    sourceStep: event.sourceStep,
+    midi: event.midi,
+    offsetMs: event.offsetMs,
+  })),
+  [
+    { step: 0, sourceStep: 0, midi: 60, offsetMs: 0 },
+    { step: 0, sourceStep: 1, midi: 64, offsetMs: 125 },
+    { step: 0, sourceStep: 2, midi: 67, offsetMs: 250 },
+    { step: 0, sourceStep: 3, midi: 71, offsetMs: 375 },
+    { step: 1, sourceStep: 0, midi: 60, offsetMs: 0 },
+    { step: 1, sourceStep: 1, midi: 64, offsetMs: 125 },
+    { step: 1, sourceStep: 2, midi: 67, offsetMs: 250 },
+    { step: 1, sourceStep: 3, midi: 71, offsetMs: 375 },
+  ],
+  'Product Play ARP should schedule repeated notes continuously until the next main trigger',
+);
+const sequenceBoundArpEnginePattern = resolveProductPlayEnginePattern({
+  config: continuousArpPlayConfig,
+  harmony: productArpTestHarmony([60, 64, 67, 71]),
+  laneIndex: 0,
+  pitchBindingMode: 'sequence',
+  triggerPattern: [true, false, false, false, true, false, false, false],
+  triggerStepMs: 125,
+});
+assert.deepEqual(
+  sequenceBoundArpEnginePattern?.midiPattern,
+  [60, -1, -1, -1, 60, -1, -1, -1],
+  'sequence-bound Product Play ARP should keep trigger-step positions in the engine pattern',
+);
+assert.deepEqual(
+  sequenceBoundArpEnginePattern?.playNotes?.map((event) => event.step),
+  [0, 0, 0, 0, 4, 4, 4, 4],
+  'sequence-bound Product Play ARP should post continuous notes from the ON trigger positions',
+);
+const strumPlayEvents = resolveProductChordPlayEvents({
+  config: normalizeProductPlayConfig({
+    enabled: true,
+    mode: 'chord',
+    chord: {
+      style: 'strum',
+      length: 1,
+      strum: { direction: 'down', spreadMs: 120, curve: 0, velocityFalloff: 0.1 },
+      steps: [{ active: true, slotId: 0 }],
+    },
+  }).chord,
+  harmony: chordPlayHarmony,
+});
+assert.deepEqual(
+  strumPlayEvents.map((event) => event.midi),
+  [74, 70, 67, 64, 60],
+  'Product Play strum should order down strums high to low',
+);
+const lastStrumPlayEvent = strumPlayEvents[strumPlayEvents.length - 1];
+assert(strumPlayEvents[0]?.offsetMs === 0 && (lastStrumPlayEvent?.offsetMs ?? 0) > 0, 'Product Play strum should add delayed offsets after the first note');
+assert((strumPlayEvents[0]?.velocity ?? 0) > (lastStrumPlayEvent?.velocity ?? 1), 'Product Play strum should apply velocity falloff');
 
 const contourHarmony = productArpTestHarmony([60, 62, 64, 67, 69]);
 assert.deepEqual(

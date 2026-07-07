@@ -4,6 +4,7 @@ import {
   createCoreProductSequencerClearStepsEvent,
   createCoreProductSequencerStepEvent,
   createCoreProductSequencerStepOverrideCommitEvent,
+  createCoreProductSequencerExtendedStepValueEvent,
   createCoreProductSequencerStepValueEvent,
   createCoreProductSequencerSubLaneConfigEvent,
   type CoreProductEvent,
@@ -89,15 +90,7 @@ function createCoreProductSequencerStepOverrideEvents(
       events.push(withExtraFlags(createCoreProductSequencerStepEvent(sequencer, laneIndex, toggle.step, toggle.value), stateFlags));
     }
     for (const value of values[laneIndex] ?? []) {
-      events.push(createCoreProductSequencerStepValueEvent(
-        sequencer,
-        laneIndex,
-        value.step,
-        value.field,
-        value.value,
-        value.value2 ?? 0,
-        valueFlags(value, stateFlags),
-      ));
+      events.push(createStepValueEvent(sequencer, laneIndex, value, stateFlags));
     }
   }
 
@@ -124,17 +117,39 @@ function createCoreProductSequencerLaneStepOverrideEvents(
     events.push(withExtraFlags(createCoreProductSequencerStepEvent(sequencer, laneIndex, toggle.step, toggle.value), stateFlags));
   }
   for (const value of values) {
-    events.push(createCoreProductSequencerStepValueEvent(
+    events.push(createStepValueEvent(sequencer, laneIndex, value, stateFlags));
+  }
+  return events;
+}
+
+function createStepValueEvent(
+  sequencer: SequencerKind,
+  laneIndex: number,
+  value: SequencerStepValueOverride,
+  stateFlags: number,
+): CoreProductEvent {
+  if (value.value3 !== undefined || value.value4 !== undefined) {
+    return createCoreProductSequencerExtendedStepValueEvent(
       sequencer,
       laneIndex,
       value.step,
       value.field,
       value.value,
       value.value2 ?? 0,
+      value.value3 ?? 0,
+      value.value4 ?? 0,
       valueFlags(value, stateFlags),
-    ));
+    );
   }
-  return events;
+  return createCoreProductSequencerStepValueEvent(
+    sequencer,
+    laneIndex,
+    value.step,
+    value.field,
+    value.value,
+    value.value2 ?? 0,
+    valueFlags(value, stateFlags),
+  );
 }
 
 function valueFlags(value: SequencerStepValueOverride, stateFlags: number): number {

@@ -169,6 +169,7 @@ export const CORE_PRODUCT_STEP_VALUE_FIELDS = Object.freeze({
   distance: 7 << 8,
   nudge: 8 << 8,
   subLaneConfig: 9 << 8,
+  playNote: 10 << 8,
 } as const);
 
 export const CORE_PRODUCT_SUBLANE_DIRECTIONS = Object.freeze({
@@ -335,7 +336,7 @@ function requireParamId(paramId: unknown, label = 'paramId'): number {
 }
 
 function requireStepField(field: unknown): CoreProductStepValueField {
-  const value = requireIntegerInRange(field, 'field', 0, 8 << 8);
+  const value = requireIntegerInRange(field, 'field', 0, 10 << 8);
   if (!VALID_STEP_FIELDS.has(value)) {
     throw productBridgeError(`field is not a known sequencer step field: ${String(field)}`);
   }
@@ -1985,6 +1986,20 @@ export function createCoreProductSequencerStepValueEvent(
   value2 = 0,
   extraFlags = 0,
 ): CoreProductEvent {
+  return createCoreProductSequencerExtendedStepValueEvent(sequencer, laneIndex, stepIndex, field, value, value2, 0, 0, extraFlags);
+}
+
+export function createCoreProductSequencerExtendedStepValueEvent(
+  sequencer: keyof typeof CORE_PRODUCT_SEQUENCER_IDS,
+  laneIndex: number,
+  stepIndex: number,
+  field: CoreProductStepValueField,
+  value: number,
+  value2 = 0,
+  value3 = 0,
+  value4 = 0,
+  extraFlags = 0,
+): CoreProductEvent {
   const validatedField = requireStepField(field);
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep,
@@ -1993,6 +2008,8 @@ export function createCoreProductSequencerStepValueEvent(
     paramId: requireIntegerInRange(stepIndex, 'stepIndex', 0, 63),
     value: requireFiniteNumber(value, 'value'),
     value2: requireFiniteNumber(value2, 'value2'),
+    value3: requireFiniteNumber(value3, 'value3'),
+    value4: requireFiniteNumber(value4, 'value4'),
     flags: CORE_PRODUCT_STEP_TOGGLE_FLAGS.active | validatedField | extraFlags,
   };
 }

@@ -11,6 +11,13 @@
 namespace kessho::product::internal {
 
 constexpr uint32_t kMaxPendingRatchetsPerLane = 128u;
+constexpr uint32_t kMaxProductPlayVoicesPerStep = 32u;
+
+struct ProductPlayNoteOverride {
+  float midi_note = 60.0f;
+  float offset_ms = 0.0f;
+  float velocity = 1.0f;
+};
 
 struct PendingRatchetEvent {
   uint64_t parent_step_id = 0;
@@ -94,6 +101,8 @@ struct LaneState {
   float distance_range_maxes[64]{};
   uint32_t nudge_override_set_low = 0, nudge_override_set_high = 0;
   float nudge_overrides[64]{};
+  uint32_t play_note_voice_masks[64]{};
+  ProductPlayNoteOverride play_note_overrides[64][kMaxProductPlayVoicesPerStep]{};
   StepValueSubLaneConfig step_value_configs[9]{};
   LaneEvolveHomeState evolve_home{};
   uint64_t emitted_hit_count = 0;

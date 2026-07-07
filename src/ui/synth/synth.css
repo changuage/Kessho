@@ -4082,6 +4082,14 @@
   background: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 10%, transparent);
 }
 
+.synth-root .seq-arp-contour-column.playing {
+  background: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 18%, rgba(255, 255, 255, 0.03));
+}
+
+.synth-root .seq-arp-contour-column.playing span {
+  color: rgba(255, 255, 255, 0.78);
+}
+
 .synth-root .seq-arp-contour-column.out {
   color: rgba(219, 234, 254, 0.16);
   background: rgba(0, 0, 0, 0.12);
@@ -4122,6 +4130,14 @@
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.34),
     0 0 12px color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 40%, transparent);
+}
+
+.synth-root .seq-arp-contour-node.playing {
+  opacity: 1;
+  filter: none;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 80%, rgba(255, 255, 255, 0.25)),
+    0 0 14px color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 54%, transparent);
 }
 
 .synth-root .seq-arp-contour-node.reset {
@@ -4179,6 +4195,15 @@
 .synth-root .seq-arp-source-cell.selected,
 .synth-root .seq-arp-gate-cell.selected {
   border-color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 48%, rgba(255, 255, 255, 0.1));
+}
+
+.synth-root .seq-arp-note-cell.playing,
+.synth-root .seq-arp-source-cell.playing,
+.synth-root .seq-arp-gate-cell.playing {
+  border-color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 58%, rgba(255, 255, 255, 0.14));
+  background: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 18%, rgba(255, 255, 255, 0.04));
+  color: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 22%, transparent);
 }
 
 .synth-root .seq-arp-note-cell.muted,
@@ -4261,6 +4286,213 @@
 
 .synth-root .seq-arp-inspector-source .seq-arp-select {
   width: 100%;
+}
+
+.synth-root .seq-play-mode-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  min-width: 0;
+}
+
+.synth-root .seq-play-mode-segment {
+  grid-template-columns: repeat(2, minmax(64px, 1fr));
+}
+
+.synth-root .seq-play-chord-editor {
+  border: 1px solid color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 28%, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.18);
+  outline: none;
+}
+
+.synth-root .seq-play-chord-editor:focus-visible {
+  border-color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 55%, rgba(255, 255, 255, 0.16));
+}
+
+.synth-root .seq-play-chord-toolbar {
+  display: grid;
+  grid-template-columns: auto 68px minmax(118px, 1fr) 68px 76px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.synth-root .seq-play-chord-toolbar.compact {
+  grid-template-columns: minmax(118px, 1fr) 82px 82px 72px;
+}
+
+.synth-root .seq-play-chord-grid {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.synth-root .seq-play-chord-head,
+.synth-root .seq-play-chord-pitch-label {
+  min-height: 18px;
+  display: grid;
+  place-items: center;
+  color: rgba(219, 234, 254, 0.48);
+  font-size: 0.5rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.synth-root .seq-play-chord-pitch-label {
+  color: rgba(219, 234, 254, 0.36);
+  font-size: 0.46rem;
+}
+
+.synth-root .seq-play-chord-step,
+.synth-root .seq-play-chord-slot,
+.synth-root .seq-play-chord-label,
+.synth-root .seq-play-chord-dot {
+  min-width: 0;
+  min-height: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(219, 234, 254, 0.72);
+  font: inherit;
+  font-size: 0.54rem;
+  font-weight: 850;
+}
+
+.synth-root .seq-play-chord-step,
+.synth-root .seq-play-chord-label,
+.synth-root .seq-play-chord-dot {
+  cursor: pointer;
+}
+
+.synth-root .seq-play-chord-slot {
+  padding: 0 4px;
+}
+
+.synth-root .seq-play-chord-label {
+  padding: 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.synth-root .seq-play-chord-step.selected,
+.synth-root .seq-play-chord-slot.selected {
+  border-color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 46%, rgba(255, 255, 255, 0.12));
+}
+
+.synth-root .seq-play-chord-step.same-slot,
+.synth-root .seq-play-chord-slot.same-slot,
+.synth-root .seq-play-chord-label.same-slot {
+  background: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 10%, rgba(255, 255, 255, 0.035));
+}
+
+.synth-root .seq-play-chord-label.muted,
+.synth-root .seq-play-chord-step.out,
+.synth-root .seq-play-chord-slot.out,
+.synth-root .seq-play-chord-label.out,
+.synth-root .seq-play-chord-dot.out {
+  color: rgba(219, 234, 254, 0.3);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.synth-root .seq-play-chord-label.locked {
+  border-color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 30%, rgba(255, 255, 255, 0.08));
+}
+
+.synth-root .seq-play-chord-label.locked::after {
+  content: " L";
+  color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 78%, #ffffff);
+}
+
+.synth-root .seq-play-chord-dot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: rgba(4, 9, 13, 0.94);
+}
+
+.synth-root .seq-play-chord-dot.on {
+  border-color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 42%, rgba(255, 255, 255, 0.1));
+  background: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 70%, #ffffff);
+}
+
+.synth-root .seq-play-chord-dot.on.out {
+  opacity: 0.42;
+}
+
+.synth-root .seq-play-chord-dot.editable:not(.on):hover {
+  border-color: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 34%, rgba(255, 255, 255, 0.08));
+  background: color-mix(in srgb, var(--seq-arp-color, #7dd3fc) 12%, rgba(255, 255, 255, 0.035));
+}
+
+.synth-root .seq-play-chord-dot.selected {
+  box-shadow:
+    inset 0 0 0 1px rgba(4, 9, 13, 0.78),
+    0 0 0 1px rgba(255, 255, 255, 0.32);
+}
+
+.synth-root .seq-play-chord-dot.locked {
+  cursor: default;
+}
+
+.synth-root .seq-play-chord-dot span {
+  font-size: 0.5rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.synth-root .seq-play-chord-editor .seq-arp-inspector {
+  grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+}
+
+.synth-root .seq-play-chord-editor .seq-arp-inspector-toggle {
+  min-width: 0;
+  padding: 0 6px;
+}
+
+.synth-root .seq-arp-inspector-toggle:disabled {
+  opacity: 0.34;
+  cursor: default;
+}
+
+@media (max-width: 640px) {
+  .synth-root .seq-play-mode-header {
+    align-items: stretch;
+  }
+
+  .synth-root .seq-play-mode-segment {
+    flex: 1;
+  }
+
+  .synth-root .seq-play-chord-toolbar,
+  .synth-root .seq-play-chord-toolbar.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .synth-root .seq-play-chord-toolbar > .seq-arp-segment {
+    grid-column: 1 / -1;
+  }
+
+  .synth-root .seq-play-chord-toolbar .seq-arp-field,
+  .synth-root .seq-play-chord-toolbar.compact .seq-arp-field {
+    grid-template-columns: auto minmax(44px, 1fr);
+  }
+
+  .synth-root .seq-play-chord-toolbar .seq-arp-select,
+  .synth-root .seq-play-chord-toolbar .seq-arp-length-input {
+    width: 100%;
+  }
 }
 
 .synth-root .walker-ensemble-strip {

@@ -6,6 +6,7 @@
     "dev": "vite",
     "build": "npm run core:pad:wasm && npm run core:product:wasm && tsc && vite build",
     "test:preset-metadata": "node scripts/run-preset-metadata-regression.mjs",
+    "test:synth-play-controls-ui": "node scripts/check-synth-play-controls-ui.mjs",
     "test:generated-sequencer-capture": "node scripts/run-generated-sequencer-capture-regression.mjs",
     "test:drum-scatter-sequencer": "node scripts/run-drum-scatter-sequencer-regression.mjs",
     "test:drum-sequencer-transport-policy": "node scripts/run-drum-sequencer-transport-policy-regression.mjs",

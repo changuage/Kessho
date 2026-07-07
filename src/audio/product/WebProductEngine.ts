@@ -48,6 +48,9 @@ import type {
   ProductTelemetrySnapshot,
 } from './ProductEngineTypes';
 
+const PRODUCT_EVENT_BATCH_SIZE = 48;
+const PRODUCT_EVENT_BATCH_RETRY_MS = 40;
+
 /**
  * Temporary web adapter over the Product Core host.
  *
@@ -62,6 +65,8 @@ import type {
 export class WebProductEngine implements ProductEnginePort {
   readonly mode = 'core-product' as const;
   private lifecycleState: ProductEngineLifecycleState = 'cold';
+  private readonly pendingProductEvents: ProductEvent[] = [];
+  private productEventFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly runtimeScheduler = new ProductRuntimeScheduler();
   private readonly lifecycleController = new ProductRuntimeLifecycleController({
     preloadRuntime: () => this.preloadRuntime(),
@@ -128,14 +133,61 @@ export class WebProductEngine implements ProductEnginePort {
 
   enqueueEvent(event: ProductEvent): void {
     // Generated events are the preferred compatibility path; do not replace generated events with legacy parameter-update snapshots.
-    coreProductRuntimeHostPort.postEvent(event);
+    if (this.lifecycleState === 'running' && this.pendingProductEvents.length === 0) {
+      coreProductRuntimeHostPort.postEvent(event);
+      this.scheduleDiagnosticsPublish();
+      return;
+    }
+    this.pendingProductEvents.push(event);
+    this.flushPendingProductEvents();
     this.scheduleDiagnosticsPublish();
   }
 
   enqueueEvents(events: readonly ProductEvent[]): void {
     if (events.length === 0) return;
-    coreProductRuntimeHostPort.postEvents(events);
+    if (
+      events.length <= PRODUCT_EVENT_BATCH_SIZE &&
+      this.lifecycleState === 'running' &&
+      this.pendingProductEvents.length === 0
+    ) {
+      coreProductRuntimeHostPort.postEvents(events);
+      this.scheduleDiagnosticsPublish();
+      return;
+    }
+    this.pendingProductEvents.push(...events);
+    this.flushPendingProductEvents();
     this.scheduleDiagnosticsPublish();
+  }
+
+  private canFlushPendingProductEvents(): boolean {
+    return this.lifecycleState === 'running';
+  }
+
+  private schedulePendingProductEventFlush(): void {
+    if (this.productEventFlushTimer !== null) return;
+    this.productEventFlushTimer = setTimeout(() => {
+      this.productEventFlushTimer = null;
+      this.flushPendingProductEvents();
+    }, PRODUCT_EVENT_BATCH_RETRY_MS);
+  }
+
+  private flushPendingProductEvents(): void {
+    if (this.pendingProductEvents.length === 0) return;
+    if (!this.canFlushPendingProductEvents()) return;
+    const batch = this.pendingProductEvents.splice(0, PRODUCT_EVENT_BATCH_SIZE);
+    if (batch.length === 1) {
+      coreProductRuntimeHostPort.postEvent(batch[0]!);
+    } else {
+      coreProductRuntimeHostPort.postEvents(batch);
+    }
+    if (this.pendingProductEvents.length > 0) this.schedulePendingProductEventFlush();
+    this.scheduleDiagnosticsPublish();
+  }
+
+  private clearPendingProductEventFlushTimer(): void {
+    if (this.productEventFlushTimer === null) return;
+    clearTimeout(this.productEventFlushTimer);
+    this.productEventFlushTimer = null;
   }
 
   pushMidiMessage(message: ProductMidiMessage): void {
@@ -406,6 +458,12 @@ export class WebProductEngine implements ProductEnginePort {
     _error?: unknown,
   ): void {
     this.lifecycleState = state;
+    if (state === 'running') {
+      this.flushPendingProductEvents();
+    } else if (state === 'disposed') {
+      this.clearPendingProductEventFlushTimer();
+      this.pendingProductEvents.length = 0;
+    }
     this.publishDiagnostics();
   }
 }

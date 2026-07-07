@@ -1,6 +1,6 @@
 import { useMemo, type MutableRefObject } from 'react';
 import type { ClockDivision, DrumStepOverrides, PitchBindingMode } from '../audio/drumSeqTypes';
-import type { ProductArpConfig } from '../audio/productArpeggiator';
+import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { EvolveConfig, PitchSettings, StepOverrides, SubLaneKind, SubLaneState } from './sequencer/useEuclideanSequencer';
 
 type ProductRuntimePitchHomeState = { steps?: number; direction?: string; scaleQuantize?: boolean };
@@ -37,7 +37,7 @@ export type ProductRuntimePageSequencerProps = {
   synthLinkedRef: MutableRefObject<boolean[] | undefined>;
   synthPitchBindingModesRef: MutableRefObject<PitchBindingMode[] | undefined>;
   synthPitchSettingsRef: MutableRefObject<PitchSettings[] | undefined>;
-  synthArpConfigsRef: MutableRefObject<ProductArpConfig[] | undefined>;
+  synthArpConfigsRef: MutableRefObject<ProductPlayConfig[] | undefined>;
   synthStepOverridesRef: MutableRefObject<StepOverrides | undefined>;
   synthSubLaneStatesRef: MutableRefObject<Record<SubLaneKind, SubLaneState>[] | undefined>;
   synthSwingsRef: MutableRefObject<number[] | undefined>;

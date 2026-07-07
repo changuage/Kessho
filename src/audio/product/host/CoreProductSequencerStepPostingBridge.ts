@@ -1,4 +1,4 @@
-import { CORE_PRODUCT_STEP_TOGGLE_FLAGS, CORE_PRODUCT_STEP_VALUE_FIELDS, createCoreProductSequencerClearStepsEvent, createCoreProductSequencerStepEvent, createCoreProductSequencerStepValueEvent, createCoreProductSequencerSubLaneConfigEvent, type CoreProductEvent, type CoreProductStepValueField } from '../../coreProductEvents';
+import { CORE_PRODUCT_STEP_TOGGLE_FLAGS, CORE_PRODUCT_STEP_VALUE_FIELDS, createCoreProductSequencerClearStepsEvent, createCoreProductSequencerExtendedStepValueEvent, createCoreProductSequencerStepEvent, createCoreProductSequencerStepValueEvent, createCoreProductSequencerSubLaneConfigEvent, type CoreProductEvent, type CoreProductStepValueField } from '../../coreProductEvents';
 import type { SequencerKind, SequencerStepValueConfig, SequencerStepValueOverride } from '../../CoreProductHostSequencerAdapter';
 import { coreProductSynthMidiToUiPitch } from '../../CoreProductHostSynthPitch';
 import { coreProductSequencerLaneCacheCount, selectCoreProductSequencerCache, type CoreProductSequencerCacheState } from './CoreProductSequencerCacheBridge';
@@ -73,7 +73,7 @@ export function postCoreProductSequencerStepValueOverrides(options: {
     if (!isStepValueOverride(stepValue)) continue;
     if (!changed.has(stepValue.field)) continue;
     if (!coreProductStepValueFieldEnabled(options.synthSubLaneEnabled, options.drumSubLaneEnabled, options.sequencer, options.laneIndex, stepValue.field)) continue;
-    options.post(createCoreProductSequencerStepValueEvent(options.sequencer, options.laneIndex, stepValue.step, stepValue.field, stepValue.value, stepValue.value2 ?? 0, stepValue.range ? CORE_PRODUCT_STEP_TOGGLE_FLAGS.rangeValue : 0));
+    options.post(createStepValueEvent(options.sequencer, options.laneIndex, stepValue));
   }
 }
 
@@ -98,8 +98,34 @@ export function syncCoreProductSequencerStepState(options: {
     if (options.forceClear || laneToggles.length > 0 || activeStepValues.length > 0 || activeStepConfigs.length > 0) options.post(createCoreProductSequencerClearStepsEvent(options.sequencer, laneIndex));
     for (const config of activeStepConfigs) options.post(createCoreProductSequencerSubLaneConfigEvent(options.sequencer, laneIndex, config.field, config.steps, config.direction));
     for (const toggle of laneToggles) options.post(createCoreProductSequencerStepEvent(options.sequencer, laneIndex, toggle.step, toggle.value));
-    for (const stepValue of activeStepValues) options.post(createCoreProductSequencerStepValueEvent(options.sequencer, laneIndex, stepValue.step, stepValue.field, stepValue.value, stepValue.value2 ?? 0, stepValue.range ? CORE_PRODUCT_STEP_TOGGLE_FLAGS.rangeValue : 0));
+    for (const stepValue of activeStepValues) options.post(createStepValueEvent(options.sequencer, laneIndex, stepValue));
   }
+}
+
+function createStepValueEvent(sequencer: SequencerKind, laneIndex: number, stepValue: SequencerStepValueOverride): CoreProductEvent {
+  const flags = stepValue.range ? CORE_PRODUCT_STEP_TOGGLE_FLAGS.rangeValue : 0;
+  if (stepValue.value3 !== undefined || stepValue.value4 !== undefined) {
+    return createCoreProductSequencerExtendedStepValueEvent(
+      sequencer,
+      laneIndex,
+      stepValue.step,
+      stepValue.field,
+      stepValue.value,
+      stepValue.value2 ?? 0,
+      stepValue.value3 ?? 0,
+      stepValue.value4 ?? 0,
+      flags,
+    );
+  }
+  return createCoreProductSequencerStepValueEvent(
+    sequencer,
+    laneIndex,
+    stepValue.step,
+    stepValue.field,
+    stepValue.value,
+    stepValue.value2 ?? 0,
+    flags,
+  );
 }
 
 function isStepValueOverride(entry: SequencerStepValueOverride | null | undefined): entry is SequencerStepValueOverride { return typeof entry === 'object' && entry !== null && typeof entry.field === 'number'; }
