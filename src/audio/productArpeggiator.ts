@@ -218,7 +218,7 @@ export function resolveProductArpPatternDetails(options: {
     }
     const baseIndex = resolveTraversalIndex({
       flow: config.flow,
-      localPulse: (pulse - segmentStart) * config.rate,
+      localPulse: pulse - segmentStart,
       pulse,
       laneIndex: options.laneIndex,
       runtimeTick: options.runtimeTick ?? 0,

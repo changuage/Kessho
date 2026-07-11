@@ -231,6 +231,7 @@ struct KesshoProductEngine : ProductGraphState {
   void applyMidiEvent(const KesshoProductEvent& event);
   void clearStepOverride(LaneState& lane, uint32_t step);
   void clearPendingRatchets(LaneState& lane);
+  void clearPendingArpRatchets(LaneState& lane);
   void resetSequencerLaneRuntime(LaneState& lane, bool wait_for_join_boundary = true);
   bool stepMaskHas(uint32_t low, uint32_t high, uint32_t step) const;
   void setStepMask(uint32_t& low, uint32_t& high, uint32_t step);
@@ -271,6 +272,9 @@ struct KesshoProductEngine : ProductGraphState {
   void clearStepFieldOverride(LaneState& lane, uint32_t field, uint32_t step);
   void setStepFieldOverride(LaneState& lane, uint32_t field, uint32_t step, float value, float value2, float value3 = 0.0f, float value4 = 0.0f, uint32_t flags = 0u);
   void applySequencerStepEvent(const KesshoProductEvent& event);
+  void applySynthArpConfigEvent(const KesshoProductEvent& event);
+  void applySynthArpStepEvent(const KesshoProductEvent& event);
+  void applyCommitSynthArpPatternEvent(const KesshoProductEvent& event);
   bool isSequencerLaneParam(uint32_t param_id) const;
   void applySequencerLaneParamEvent(const KesshoProductEvent& event);
   void applyAnchorWalkerPerformanceEvent(const KesshoProductEvent& event);

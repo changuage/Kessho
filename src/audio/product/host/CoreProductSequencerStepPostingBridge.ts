@@ -22,27 +22,14 @@ export function coreProductStepValueFieldSubLaneKey(field: CoreProductStepValueF
   }
 }
 
-export function coreProductStepValueFieldEnabled(
-  synthSubLaneEnabled: Record<string, boolean>[],
-  drumSubLaneEnabled: Record<string, boolean>[],
-  sequencer: SequencerKind,
-  laneIndex: number,
-  field: CoreProductStepValueField,
-): boolean {
+export function coreProductStepValueFieldEnabled(synthSubLaneEnabled: Record<string, boolean>[], drumSubLaneEnabled: Record<string, boolean>[], sequencer: SequencerKind, laneIndex: number, field: CoreProductStepValueField): boolean {
   const key = coreProductStepValueFieldSubLaneKey(field);
   if (!key) return true;
   const lanes = sequencer === 'synth' ? synthSubLaneEnabled : drumSubLaneEnabled;
   return lanes[laneIndex]?.[key] === true;
 }
 
-export function createCoreProductEvolvedStepValuePayload(options: {
-  sequencer: SequencerKind;
-  laneIndex: number;
-  field: CoreProductStepValueField;
-  overrides: SequencerStepValueOverride[];
-  baseMidi: number;
-  synthPitchSettings?: unknown;
-}): { key: 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge'; values: number[] } | null {
+export function createCoreProductEvolvedStepValuePayload(options: { sequencer: SequencerKind; laneIndex: number; field: CoreProductStepValueField; overrides: SequencerStepValueOverride[]; baseMidi: number; synthPitchSettings?: unknown }): { key: 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge'; values: number[] } | null {
   if (options.field === CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet) return null;
   const key = coreProductStepValueFieldSubLaneKey(options.field);
   if (key !== 'pitch' && key !== 'expression' && key !== 'morph' && key !== 'distance' && key !== 'nudge') return null;
@@ -59,15 +46,7 @@ export function createCoreProductEvolvedStepValuePayload(options: {
   };
 }
 
-export function postCoreProductSequencerStepValueOverrides(options: {
-  sequencer: SequencerKind;
-  laneIndex: number;
-  overrides: SequencerStepValueOverride[];
-  fields: CoreProductStepValueField[];
-  synthSubLaneEnabled: Record<string, boolean>[];
-  drumSubLaneEnabled: Record<string, boolean>[];
-  post: (event: CoreProductEvent) => void;
-}): void {
+export function postCoreProductSequencerStepValueOverrides(options: { sequencer: SequencerKind; laneIndex: number; overrides: SequencerStepValueOverride[]; fields: CoreProductStepValueField[]; synthSubLaneEnabled: Record<string, boolean>[]; drumSubLaneEnabled: Record<string, boolean>[]; post: (event: CoreProductEvent) => void }): void {
   const changed = new Set(options.fields);
   for (const stepValue of options.overrides) {
     if (!isStepValueOverride(stepValue)) continue;
@@ -77,14 +56,7 @@ export function postCoreProductSequencerStepValueOverrides(options: {
   }
 }
 
-export function syncCoreProductSequencerStepState(options: {
-  sequencer: SequencerKind;
-  cache: CoreProductSequencerCacheState;
-  forceClear: boolean;
-  synthSubLaneEnabled: Record<string, boolean>[];
-  drumSubLaneEnabled: Record<string, boolean>[];
-  post: (event: CoreProductEvent) => void;
-}): void {
+export function syncCoreProductSequencerStepState(options: { sequencer: SequencerKind; cache: CoreProductSequencerCacheState; forceClear: boolean; synthSubLaneEnabled: Record<string, boolean>[]; drumSubLaneEnabled: Record<string, boolean>[]; post: (event: CoreProductEvent) => void }): void {
   const { toggles, values, configs } = selectCoreProductSequencerCache(options.cache, options.sequencer);
   const laneCount = coreProductSequencerLaneCacheCount(options.cache, options.sequencer);
   for (let laneIndex = 0; laneIndex < laneCount; laneIndex += 1) {
@@ -130,9 +102,4 @@ function createStepValueEvent(sequencer: SequencerKind, laneIndex: number, stepV
 
 function isStepValueOverride(entry: SequencerStepValueOverride | null | undefined): entry is SequencerStepValueOverride { return typeof entry === 'object' && entry !== null && typeof entry.field === 'number'; }
 
-function isStepValueConfig(entry: SequencerStepValueConfig | null | undefined): entry is SequencerStepValueConfig {
-  return typeof entry === 'object' &&
-    entry !== null &&
-    typeof entry.field === 'number' &&
-    coreProductStepValueFieldSubLaneKey(entry.field) !== null;
-}
+function isStepValueConfig(entry: SequencerStepValueConfig | null | undefined): entry is SequencerStepValueConfig { return typeof entry === 'object' && entry !== null && typeof entry.field === 'number' && coreProductStepValueFieldSubLaneKey(entry.field) !== null; }

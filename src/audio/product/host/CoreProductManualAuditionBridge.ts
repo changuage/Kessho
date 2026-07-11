@@ -39,7 +39,7 @@ function shouldApplyExternalState(context: CoreProductManualAuditionContext, ext
 
 function sampleSlotForManualSource(source: RequiredManualSynthNote['source']): SampleSlotId | null {
   if (source === 'sample2') return 'sample2';
-  if (source === 'sample1') return 'sample1';
+  if (source === 'sample1' || source === 'piano') return 'sample1';
   return null;
 }
 

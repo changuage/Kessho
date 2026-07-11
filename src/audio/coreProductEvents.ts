@@ -1843,6 +1843,50 @@ export function createCoreProductGeneratedSequencerCaptureEvent(request: {
   };
 }
 
+export function createCoreProductSynthArpConfigEvent(
+  laneIndex: number,
+  options: {
+    enabled: boolean;
+    length: number;
+    rate: number;
+  },
+): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSynthArpConfig,
+    targetId: requireSequencerId('synth'),
+    index: requireIntegerInRange(laneIndex, 'laneIndex', 0, 15),
+    value: options.enabled ? 1 : 0,
+    value2: requireIntegerInRange(options.length, 'length', 1, 16),
+    value3: requireNumberInRange(options.rate, 'rate', 0.25, 4),
+  };
+}
+
+export function createCoreProductSynthArpStepEvent(
+  laneIndex: number,
+  stepIndex: number,
+  options: {
+    midi: number;
+    active: boolean;
+  },
+): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSynthArpStep,
+    targetId: requireSequencerId('synth'),
+    index: requireIntegerInRange(laneIndex, 'laneIndex', 0, 15),
+    paramId: requireIntegerInRange(stepIndex, 'stepIndex', 0, 15),
+    value: requireNumberInRange(options.midi, 'midi', -1, 127),
+    value2: options.active ? 1 : 0,
+  };
+}
+
+export function createCoreProductSynthArpCommitEvent(laneIndex: number): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.CommitSynthArpPattern,
+    targetId: requireSequencerId('synth'),
+    index: requireIntegerInRange(laneIndex, 'laneIndex', 0, 15),
+  };
+}
+
 export function createCoreProductSequencerClockDivisionEvents(
   sequencer: keyof typeof CORE_PRODUCT_SEQUENCER_IDS,
   divs: readonly unknown[],

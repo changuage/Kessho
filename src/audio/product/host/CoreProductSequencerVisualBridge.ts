@@ -40,7 +40,7 @@ export class CoreProductSequencerVisualBridge {
         drumVisibleLaneCount: this.options.drumVisibleLaneCount,
         sampleRate: telemetry?.sampleRate ?? this.options.fallbackSampleRate(),
         hasCallback: (name) => this.options.hasCallback(name),
-        publish: (name, steps, hitCounts) => this.options.publish(name, steps, hitCounts),
+        publish: (name, steps, hitCounts, arpSteps) => this.options.publish(name, steps, hitCounts, arpSteps),
       });
     }
     publishCoreProductSynthOrbitVisualState({
@@ -58,7 +58,7 @@ export class CoreProductSequencerVisualBridge {
   }
 
   publishStepCallbackRegistration(
-    callback: ((steps: number[], hitCounts: number[]) => void) | null,
+    callback: ((steps: number[], hitCounts: number[], arpSteps?: number[]) => void) | null,
     running: boolean,
     telemetry: CoreProductTelemetrySnapshot | null,
     laneCount: number,
@@ -68,7 +68,7 @@ export class CoreProductSequencerVisualBridge {
       if (telemetry) this.publish(telemetry);
       return;
     }
-    callback(this.zeroLaneValues(laneCount), this.zeroLaneValues(laneCount));
+    callback(this.zeroLaneValues(laneCount), this.zeroLaneValues(laneCount), this.zeroLaneValues(laneCount));
   }
 
   currentSynthOrbitVisualState(telemetry: CoreProductTelemetrySnapshot | null): Array<CoreProductOrbitVisualLaneState | null> {

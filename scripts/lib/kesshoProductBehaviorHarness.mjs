@@ -276,6 +276,7 @@ export function loadCoreProductHostHarness(options = {}) {
     lead2: 4,
     drum: 5,
     sample1: 6,
+    piano: 6,
     soundscape: 7,
     sample2: 8,
   };
@@ -305,6 +306,10 @@ export function loadCoreProductHostHarness(options = {}) {
     else if (source === 'lead1') next.leadEnabled = true;
     else if (source === 'lead2') next.lead2Enabled = true;
     else if (source === 'sample1') next.sample1Enabled = true;
+    else if (source === 'piano') {
+      next.pianoEnabled = true;
+      next.sample1Enabled = true;
+    }
     else if (source === 'sample2') next.sample2Enabled = true;
     else sourceId(source);
     return next;
@@ -321,6 +326,7 @@ export function loadCoreProductHostHarness(options = {}) {
       this.outputNode = null;
       this.error = null;
       this.events = [];
+      this.eventBatches = [];
       this.snapshots = [];
       this.resetCount = 0;
       this.telemetryCallback = null;
@@ -348,6 +354,13 @@ export function loadCoreProductHostHarness(options = {}) {
 
     postEvent(runtimeEvent) {
       this.events.push(runtimeEvent);
+      this.eventBatches.push([runtimeEvent]);
+    }
+
+    postEvents(runtimeEvents) {
+      const batch = Array.isArray(runtimeEvents) ? [...runtimeEvents] : [];
+      this.events.push(...batch);
+      this.eventBatches.push(batch);
     }
 
     loadSnapshot(snapshot) {

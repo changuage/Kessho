@@ -266,6 +266,26 @@ const GranularVoiceParamSpec* findGranularExtVoiceParamSpec(uint32_t offset) {
               event.value2 >= 1.0f && event.value2 <= 2.0f
           ? KESSHO_PRODUCT_OK
           : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SYNTH_ARP_CONFIG:
+      return event.target_id == KESSHO_PRODUCT_SEQUENCER_SYNTH &&
+              event.index < kMaxLaneCount &&
+              event.value >= 0.0f && event.value <= 1.0f &&
+              event.value2 >= 1.0f && event.value2 <= static_cast<float>(kMaxProductArpSteps) &&
+              event.value3 >= 0.25f && event.value3 <= 4.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SYNTH_ARP_STEP:
+      return event.target_id == KESSHO_PRODUCT_SEQUENCER_SYNTH &&
+              event.index < kMaxLaneCount &&
+              event.param_id < kMaxProductArpSteps &&
+              event.value >= -1.0f && event.value <= 127.0f &&
+              event.value2 >= 0.0f && event.value2 <= 1.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_COMMIT_SYNTH_ARP_PATTERN:
+      return event.target_id == KESSHO_PRODUCT_SEQUENCER_SYNTH && event.index < kMaxLaneCount
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     case KESSHO_PRODUCT_EVENT_KIND_SET_PARAM:
       return event.param_id == 0u ? KESSHO_PRODUCT_ERROR_INVALID_PARAM : KESSHO_PRODUCT_OK;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_ENABLED:
@@ -524,6 +544,8 @@ void KesshoProductEngine::sortControlEvents() {
       transport.bpm = clampFloat(event.value, 1.0f, 400.0f);
       for (uint32_t i = 0; i < synth_lane_count; ++i) {
         clearPendingRatchets(synth_lanes[i]);
+        synth_lanes[i].arp.next_event_sample = 0u;
+        synth_lanes[i].arp.runtime_initialized = false;
       }
       for (uint32_t i = 0; i < drum_lane_count; ++i) {
         clearPendingRatchets(drum_lanes[i]);
@@ -531,6 +553,15 @@ void KesshoProductEngine::sortControlEvents() {
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP:
       applySequencerStepEvent(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SYNTH_ARP_CONFIG:
+      applySynthArpConfigEvent(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SYNTH_ARP_STEP:
+      applySynthArpStepEvent(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_COMMIT_SYNTH_ARP_PATTERN:
+      applyCommitSynthArpPatternEvent(event);
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE:
       applySequencerLaneParamEvent(event);

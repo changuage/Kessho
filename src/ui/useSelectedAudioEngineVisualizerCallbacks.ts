@@ -13,7 +13,7 @@ type SelectedAudioEngineVisualizerCallbacksOptions = {
   setSelectedDrumStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
   setSelectedDrumTriggerCallback: (callback: ((voice: string, velocity: number) => void) | null) => void;
   setSelectedSynthEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
-  setSelectedSynthStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
+  setSelectedSynthStepPositionCallback: (callback: ((steps: number[], hitCounts: number[], arpSteps?: number[]) => void) | null) => void;
   uiMode: UiMode;
 };
 

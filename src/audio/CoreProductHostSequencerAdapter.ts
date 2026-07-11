@@ -9,27 +9,21 @@ import {
   type SequencerSubLaneConfigState as SequencerSubLaneConfigStateBase,
 } from './CoreProductHostSequencerSubLaneConfig';
 import { sequencerClockDivisionToNumericValue } from './sequencerClockDivisions';
-
 export type SequencerKind = 'synth' | 'drum';
-
 export type SequencerStepToggleOverride = { step: number; value: boolean };
 export type SequencerStepValueOverride = { step: number; field: CoreProductStepValueField; value: number; value2?: number; value3?: number; value4?: number; range?: boolean };
 export type SequencerStepValueConfig = SequencerStepValueConfigBase;
 export type SequencerSubLaneConfigState = SequencerSubLaneConfigStateBase;
-
 const PRODUCT_PLAY_MAX_NOTES_PER_TRIGGER = 32;
 const PRODUCT_PLAY_NOTE_OFFSET_MAX_MS = 16000;
-
 export function normalizedUnitValue(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value)
     ? Math.max(0, Math.min(1, value))
     : fallback;
 }
-
 export function normalizeClockDivisionValue(value: unknown, fallback: number): number {
   return sequencerClockDivisionToNumericValue(value, fallback);
 }
-
 export function normalizeSubLaneEnabledStates(states: unknown): Record<string, boolean>[] {
   const lanes = Array.isArray(states) ? states : [];
   return Array.from({ length: Math.max(4, Math.min(16, lanes.length || 4)) }, (_, laneIndex) => {
@@ -44,7 +38,6 @@ export function normalizeSubLaneEnabledStates(states: unknown): Record<string, b
     return out;
   });
 }
-
 export function normalizeSequencerStepToggleOverrides(
   overrides: unknown,
   fallback: SequencerStepToggleOverride[][],
@@ -65,11 +58,9 @@ export function normalizeSequencerStepToggleOverrides(
     normalizeStepToggleLane(lanes[laneIndex]),
   );
 }
-
 function cloneStepToggleOverrides(overrides: SequencerStepToggleOverride[][]): SequencerStepToggleOverride[][] {
   return overrides.map((lane) => lane.map((toggle) => ({ ...toggle })));
 }
-
 function normalizeStepToggleLane(lane: unknown): SequencerStepToggleOverride[] {
   const toggles = new Map<number, boolean>();
   const add = (stepValue: unknown, enabledValue: unknown) => {
@@ -78,7 +69,6 @@ function normalizeStepToggleLane(lane: unknown): SequencerStepToggleOverride[] {
     if (step < 0 || step > 63) return;
     toggles.set(step, booleanToggleValue(enabledValue));
   };
-
   if (lane instanceof Map) {
     for (const [step, enabled] of lane.entries()) {
       add(step, enabled);
@@ -104,19 +94,16 @@ function normalizeStepToggleLane(lane: unknown): SequencerStepToggleOverride[] {
       add(parsedStep, enabled);
     }
   }
-
   return Array.from(toggles.entries())
     .sort(([left], [right]) => left - right)
     .map(([step, value]) => ({ step, value }));
 }
-
 function booleanToggleValue(value: unknown): boolean {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number' && Number.isFinite(value)) return value !== 0;
   if (typeof value === 'string') return value.toLowerCase() === 'true' || value === '1';
   return Boolean(value);
 }
-
 export function normalizeSequencerStepValueOverrides(
   overrides: unknown,
   fallback: SequencerStepValueOverride[][],
@@ -124,7 +111,6 @@ export function normalizeSequencerStepValueOverrides(
 ): SequencerStepValueOverride[][] {
   return normalizeSequencerStepValueOverridesInternal(overrides, fallback, includeMidiNote, -1, 127);
 }
-
 export function normalizeDrumSequencerStepOffsetOverrides(
   overrides: unknown,
   fallback: SequencerStepValueOverride[][],
@@ -137,7 +123,6 @@ export function normalizeDrumSequencerStepOffsetOverrides(
     24,
   );
 }
-
 function normalizeSequencerStepValueOverridesInternal(
   overrides: unknown,
   fallback: SequencerStepValueOverride[][],
@@ -171,7 +156,6 @@ function normalizeSequencerStepValueOverridesInternal(
       collectNumericStepValues(value[laneIndex], field, min, max, round, laneOut, laneIndex, field === CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote ? midiNoteMap : undefined);
     }
   };
-
   addNumericField('probability', CORE_PRODUCT_STEP_VALUE_FIELDS.probability, 0, 1);
   addNumericField('ratchet', CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet, 1, 8, true);
   if (includeMidiNote) {
@@ -185,7 +169,6 @@ function normalizeSequencerStepValueOverridesInternal(
   addRangeField(source.expressionRanges, CORE_PRODUCT_STEP_VALUE_FIELDS.expression, lanes);
   addRangeField(source.morphRanges, CORE_PRODUCT_STEP_VALUE_FIELDS.morph, lanes);
   addRangeField(source.distanceRanges, CORE_PRODUCT_STEP_VALUE_FIELDS.distance, lanes);
-
   if (Array.isArray(source.trigCondition)) {
     for (let laneIndex = 0; laneIndex < Math.min(source.trigCondition.length, lanes.length); laneIndex += 1) {
       const laneOut = lanes[laneIndex];
@@ -195,7 +178,6 @@ function normalizeSequencerStepValueOverridesInternal(
   }
   return lanes.map((lane) => lane.sort((left, right) => left.step - right.step || left.field - right.field));
 }
-
 function collectProductPlayNoteValues(
   value: unknown,
   lanes: SequencerStepValueOverride[][],
@@ -236,7 +218,6 @@ function collectProductPlayNoteValues(
     }
   }
 }
-
 export function normalizeSequencerStepValueConfigs(
   overrides: unknown,
   fallback: SequencerStepValueConfig[][],
@@ -249,7 +230,6 @@ export function normalizeSequencerStepValueConfigs(
   if (!source) {
     return fallback.map((lane) => lane.map((entry) => ({ ...entry })));
   }
-
   const laneCount = Math.max(4, Math.min(16, fallback.length));
   const lanes: SequencerStepValueConfig[][] = Array.from({ length: laneCount }, () => []);
   const addConfig = (
@@ -273,7 +253,6 @@ export function normalizeSequencerStepValueConfigs(
       });
     }
   };
-
   if (includeMidiNote) {
     addConfig('pitch', 'pitchDirection', CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote);
   }
@@ -283,10 +262,8 @@ export function normalizeSequencerStepValueConfigs(
   addConfig('distance', 'distanceDirection', CORE_PRODUCT_STEP_VALUE_FIELDS.distance);
   addConfig('nudge', 'nudgeDirection', CORE_PRODUCT_STEP_VALUE_FIELDS.nudge);
   addSubLaneStateConfigs(lanes, subLaneStates, includeMidiNote);
-
   return lanes;
 }
-
 function collectNumericStepValues(
   lane: unknown,
   field: CoreProductStepValueField,
@@ -306,7 +283,6 @@ function collectNumericStepValues(
     out.push({ step, field, value });
   }
 }
-
 function addRangeField(
   value: unknown,
   field: CoreProductStepValueField,
@@ -322,7 +298,6 @@ function addRangeField(
     if (Number.isFinite(min) && Number.isFinite(max)) lanes[laneIndex]?.push({ step: 0, field, value: Math.min(min, max), value2: Math.max(min, max), range: true });
   }
 }
-
 function collectTrigConditionStepValues(lane: unknown, out: SequencerStepValueOverride[]): void {
   if (!Array.isArray(lane)) return;
   for (let step = 0; step < Math.min(64, lane.length); step += 1) {

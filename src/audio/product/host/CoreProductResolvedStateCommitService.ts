@@ -9,7 +9,7 @@ type CoreProductResolvedStatePatchOptions = { forceFullSnapshot?: boolean; revis
 type CoreProductResolvedStateCommitServiceOptions = {
   diagnostics: CoreProductHostDiagnostics;
   applyProductStatePatch: (patch: Record<string, unknown>, reason: SnapshotReloadReason, options?: CoreProductResolvedStatePatchOptions) => Promise<CoreProductResolvedStatePatchReceipt>;
-  postProductEvent: (event: ProductEvent) => void;
+  postProductEvents: (events: readonly ProductEvent[]) => void;
 };
 
 function isSequencerTransportStartPatch(patch: Record<string, unknown>): boolean {
@@ -23,7 +23,8 @@ export class CoreProductResolvedStateCommitService {
     this.options.diagnostics.recordPendingCommit(commit.revision, commit.reason, commit.triggerCritical);
     try {
       const patchKeyCount = Object.keys(commit.patch).length;
-      const eventCount = commit.events?.length ?? 0;
+      const events = commit.events ?? [];
+      const eventCount = events.length;
       let patchReceipt: CoreProductResolvedStatePatchReceipt | null = null;
       const applyPatch = async (): Promise<CoreProductResolvedStatePatchReceipt | null> => {
         if (patchKeyCount === 0) return null;
@@ -40,12 +41,12 @@ export class CoreProductResolvedStateCommitService {
         );
       };
       if (commit.applyMode === 'event' && eventCount > 0) {
-        for (const event of commit.events ?? []) this.options.postProductEvent(event);
+        this.options.postProductEvents(events);
         patchReceipt = await applyPatch();
       } else {
         patchReceipt = await applyPatch();
         if (eventCount > 0) {
-          for (const event of commit.events ?? []) this.options.postProductEvent(event);
+          this.options.postProductEvents(events);
         }
       }
       const applied = patchReceipt

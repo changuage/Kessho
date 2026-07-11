@@ -47,7 +47,10 @@ export const KESSHO_PRODUCT_EVENT_IDS = Object.freeze({
   HarmonyRegenerateUnlocked: 44,
   HarmonyCommitBaselineMap: 45,
   AnchorWalkerPerformance: 46,
-  GeneratedSequencerCapture: 47
+  GeneratedSequencerCapture: 47,
+  SetSynthArpConfig: 48,
+  SetSynthArpStep: 49,
+  CommitSynthArpPattern: 50
 } as const);
 
 export const KESSHO_PRODUCT_EVENTS = Object.freeze([
@@ -238,6 +241,18 @@ export const KESSHO_PRODUCT_EVENTS = Object.freeze([
   {
     "name": "GeneratedSequencerCapture",
     "id": 47
+  },
+  {
+    "name": "SetSynthArpConfig",
+    "id": 48
+  },
+  {
+    "name": "SetSynthArpStep",
+    "id": 49
+  },
+  {
+    "name": "CommitSynthArpPattern",
+    "id": 50
   }
 ] as const);
 export type KesshoProductEventName = keyof typeof KESSHO_PRODUCT_EVENT_IDS;

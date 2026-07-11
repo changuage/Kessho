@@ -443,6 +443,7 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
     telemetry.drum_sequencer_hit_counts[i] = 0u;
     telemetry.synth_sequencer_current_steps[i] = 0u;
     telemetry.drum_sequencer_current_steps[i] = 0u;
+    telemetry.synth_arp_current_steps[i] = 0u;
     telemetry.synth_orbit_visual_note_counts[i] = 0u;
     telemetry.synth_orbit_visual_base_angles[i] = 0.0f;
     telemetry.synth_anchor_walker_visual_flags[i] = 0u;
@@ -514,6 +515,9 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
     telemetry.synth_sequencer_current_steps[i] = sequencerCurrentRelativeStep(lane, transport.sample_frame, samples_per_step);
     telemetry.synth_sequencer_hit_counts[i] = static_cast<uint32_t>(
         std::min<uint64_t>(lane.emitted_hit_count, 0xffffffffull));
+    telemetry.synth_arp_current_steps[i] = lane.arp.enabled
+        ? lane.arp.current_step % std::max(1u, lane.arp.length)
+        : 0u;
   }
   for (uint32_t i = 0; i < std::min<uint32_t>(drum_lane_count, KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES); ++i) {
     const LaneState& lane = drum_lanes[i];

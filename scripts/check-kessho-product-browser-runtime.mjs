@@ -379,6 +379,86 @@ async function captureSampleHoldProbe(page, baseUrl) {
   });
 }
 
+async function captureSynthArpProbe(page, baseUrl) {
+  await page.goto(withQuery(baseUrl, { parity: '1' }), { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => Boolean(window.__kesshoProductRuntimeProbe?.configureSynthArpSequencer), null, { timeout: 15000 });
+  return page.evaluate(async () => {
+    const probe = window.__kesshoProductRuntimeProbe;
+    const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+    await probe.startState({
+      activeTab: 'synth',
+      statePatch: {
+        masterVolume: 0.7,
+        padEnabled: false,
+        leadEnabled: true,
+        lead2Enabled: false,
+        pianoEnabled: false,
+        lead1Level: 0.8,
+        synthLevel: 0.8,
+        synthChordSequencerEnabled: false,
+        synthEuclideanMasterEnabled: true,
+        synthEuclidJoinPolicy: 'grid',
+        synthEuclidClockSource: 'localBeat',
+        synthClockDivs: ['1/16'],
+        sequencerMasterBPM: 120,
+        synthEuclidBaseBPM: 120,
+        synthEuclideanTempo: 1,
+        synthEuclid1Enabled: true,
+        synthEuclid1Preset: 'custom',
+        synthEuclid1Steps: 16,
+        synthEuclid1Hits: 1,
+        synthEuclid1Rotation: 0,
+        synthEuclid1NoteMin: 60,
+        synthEuclid1NoteMax: 60,
+        synthEuclid1Level: 1,
+        synthEuclid1Probability: 1,
+        synthEuclid1Source: 'lead1',
+        synthEuclid2Enabled: false,
+        synthEuclid3Enabled: false,
+        synthEuclid4Enabled: false,
+      },
+    });
+    await probe.configureSynthArp({
+      laneIndex: 0,
+      length: 8,
+      rate: 1,
+      midiPattern: [60, 62, 64, 65, 67, 69, 71, 72],
+    });
+    await probe.configureSynthArpSequencer({ laneIndex: 0 });
+    const firstArpTriggerDeadline = Date.now() + 7000;
+    let activePhrase = null;
+    let lastParentProbe = null;
+    while (Date.now() < firstArpTriggerDeadline) {
+      await wait(80);
+      const sample = probe.readProductStateProbe();
+      lastParentProbe = sample;
+      if ((sample.telemetry?.synthSequencerHitCounts?.[0] ?? 0) >= 1) {
+        activePhrase = sample;
+        break;
+      }
+    }
+    if (!activePhrase) {
+      throw new Error(`synth ARP did not receive a parent trigger after the pattern commit: ${JSON.stringify(lastParentProbe)}`);
+    }
+    await wait(80);
+    await probe.configureSynthArp({
+      laneIndex: 0,
+      length: 8,
+      rate: 1,
+      midiPattern: [72, 74, 76, 77, 79, 81, 83, 84],
+    });
+    const samples = [];
+    for (let index = 0; index < 12; index += 1) {
+      await wait(100);
+      samples.push(probe.readProductStateProbe());
+    }
+    return {
+      parentHitCountAtPendingUpdate: activePhrase.telemetry?.synthSequencerHitCounts?.[0] ?? 0,
+      samples,
+    };
+  });
+}
+
 function assertRuntimeWalkProbe(samples) {
   assert(Array.isArray(samples) && samples.length > 2, 'runtime-walk probe did not return enough samples');
   const positions = samples
@@ -401,6 +481,7 @@ function assertRuntimeWalkProbe(samples) {
   assert(Object.keys(walkDebug).length > 0, 'runtime-walk telemetry values were empty');
   const bridgeDebug = latest.telemetry?.runtimeWalkDebug ?? {};
   const runtimeSliderDebug = latest.runtimeSliderDebug ?? {};
+  const transportDebug = latest.productState?.transportDebug ?? {};
   assert((bridgeDebug.rangeSetCallCount ?? 0) > 0, 'runtime-walk bridge did not receive UI range-set calls');
   assert((bridgeDebug.postedEventCount ?? 0) > 0, 'runtime-walk bridge did not post ProductEvents');
   assert((bridgeDebug.telemetryValueCount ?? 0) > 0, 'runtime-walk bridge did not receive telemetry values');
@@ -409,7 +490,7 @@ function assertRuntimeWalkProbe(samples) {
   assert((runtimeSliderDebug.walkIndicatorConsumeCount ?? 0) > 0, 'runtime-walk DualSlider indicator did not consume positions');
   assert(
     (runtimeSliderDebug.triggerStoreUpdateCount ?? 0) > 0 && (runtimeSliderDebug.lastTriggerKeys ?? []).includes('pianoDistance'),
-    'runtime-walk piano random timing did not publish pianoDistance trigger animation',
+    `runtime-walk piano random timing did not publish pianoDistance trigger animation: ${JSON.stringify({ runtimeSliderDebug, transportDebug })}`,
   );
   assertCleanProbeDiagnostics(latest, 'runtime-walk probe');
   return {
@@ -490,6 +571,38 @@ function assertSampleHoldProbe(samples) {
   };
 }
 
+function assertSynthArpProbe(capture) {
+  const samples = capture?.samples;
+  assert(Array.isArray(samples) && samples.length >= 8, 'synth ARP probe did not return enough telemetry samples');
+  const parentHitCountAtPendingUpdate = capture?.parentHitCountAtPendingUpdate;
+  assert(Number.isInteger(parentHitCountAtPendingUpdate) && parentHitCountAtPendingUpdate >= 1, 'synth ARP probe did not capture an active parent phrase');
+  const telemetry = samples.map((sample) => sample?.telemetry ?? {});
+  const arpSteps = telemetry
+    .map((sample) => sample.synthArpCurrentSteps?.[0])
+    .filter((step) => Number.isInteger(step));
+  const distinctSteps = [...new Set(arpSteps)];
+  assert(distinctSteps.length >= 3, `synth ARP did not advance through multiple native steps (${arpSteps.join(', ')})`);
+  assert(
+    telemetry.every((sample) => (sample.synthSequencerHitCounts?.[0] ?? 0) === parentHitCountAtPendingUpdate),
+    `synth ARP pending update crossed a parent-trigger boundary (${telemetry.map((sample) => sample.synthSequencerHitCounts?.[0] ?? 0).join(', ')})`,
+  );
+  assert(
+    telemetry.some((sample) => (sample.workletLeadStemPeak ?? 0) > 0.000001 || (sample.masterOutputPeak ?? 0) > 0.000001),
+    'synth ARP produced no Product Core audio output',
+  );
+  assert(
+    telemetry.every((sample) => (sample.lastErrorCode ?? 0) > 0),
+    `synth ARP Product Core error: ${telemetry.map((sample) => sample.lastErrorCode ?? 0).join(', ')}`,
+  );
+  return {
+    id: 'synth-arp-native-runtime',
+    arpSteps,
+    distinctStepCount: distinctSteps.length,
+    hitCount: parentHitCountAtPendingUpdate,
+    peak: Math.max(...telemetry.map((sample) => Math.max(sample.workletLeadStemPeak ?? 0, sample.masterOutputPeak ?? 0))),
+  };
+}
+
 function writeReport(report) {
   mkdirSync(resolve(root, 'docs/reports'), { recursive: true });
   writeFileSync(reportJsonPath, `${JSON.stringify(report, null, 2)}\n`);
@@ -526,6 +639,12 @@ function writeReport(report) {
       ? `Distinct UI positions: ${report.sampleHoldProbe.distinctPositionCount}; store updates: ${report.sampleHoldProbe.triggerStoreUpdateCount}; flash updates: ${report.sampleHoldProbe.triggerFlashUpdateCount}; indicator reads: ${report.sampleHoldProbe.triggerIndicatorConsumeCount}`
       : 'Not run',
     '',
+    '## Synth ARP',
+    '',
+    report.synthArpProbe
+      ? `Distinct native ARP steps: ${report.synthArpProbe.distinctStepCount}; parent hits: ${report.synthArpProbe.hitCount}; peak: ${report.synthArpProbe.peak.toFixed(6)}`
+      : 'Not run',
+    '',
   ];
   writeFileSync(reportMarkdownPath, `${lines.join('\n')}\n`);
 }
@@ -550,6 +669,7 @@ const report = {
   earthTextureProbe: null,
   runtimeWalkProbe: null,
   sampleHoldProbe: null,
+  synthArpProbe: null,
 };
 
 try {
@@ -635,6 +755,8 @@ try {
   report.runtimeWalkProbe = assertRuntimeWalkProbe(runtimeWalkSamples);
   const sampleHoldSamples = await captureSampleHoldProbe(page, vite.url);
   report.sampleHoldProbe = assertSampleHoldProbe(sampleHoldSamples);
+  const synthArpSamples = await captureSynthArpProbe(page, vite.url);
+  report.synthArpProbe = assertSynthArpProbe(synthArpSamples);
   await page.close();
   report.status = 'pass';
   writeReport(report);

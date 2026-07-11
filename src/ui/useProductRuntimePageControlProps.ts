@@ -26,7 +26,7 @@ export type ProductRuntimePageControlProps = {
   setProductSynthEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
   setProductSynthAnchorWalkerVisualStateCallback: (callback: ProductSynthAnchorWalkerVisualStateCallback | null) => void;
   setProductSynthOrbitVisualStateCallback: (callback: ProductSynthOrbitVisualStateCallback | null) => void;
-  setProductSynthStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
+  setProductSynthStepPositionCallback: (callback: ((steps: number[], hitCounts: number[], arpSteps?: number[]) => void) | null) => void;
 };
 
 export function useProductRuntimePageControlProps({

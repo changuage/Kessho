@@ -3,7 +3,7 @@ const GENERATED_CAPTURE_EVENT_BYTES = 64;
 const GENERATED_CAPTURE_EVENT_CAPACITY = 256;
 const TELEMETRY_BYTES = 15048;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
-const EXPECTED_PRODUCT_SCHEMA_HASH = 0xa9590af6;
+const EXPECTED_PRODUCT_SCHEMA_HASH = 0xa4a992e6;
 const SEQUENCER_UI_STATE_LANES = 16;
 const SEQUENCER_UI_STATE_STEPS = 64;
 const SEQUENCER_UI_LANE_BYTES = 3296;
@@ -42,8 +42,12 @@ const PRODUCT_EVENT_IDS = Object.freeze({
   SetSourceOverride: 30,
   AnchorWalkerPerformance: 46,
   GeneratedSequencerCapture: 47,
+  SetSynthArpConfig: 48,
+  SetSynthArpStep: 49,
+  CommitSynthArpPattern: 50,
 });
 const PRODUCT_EVENT_ID_SET = new Set(Object.values(PRODUCT_EVENT_IDS));
+const PRODUCT_EVENT_MAX_ID = Math.max(...PRODUCT_EVENT_ID_SET);
 const PRODUCT_SOURCE_IDS = new Set([1, 2, 3, 4, 5, 6, 7, 8]);
 const PRODUCT_MAX_SOURCE_ID = Math.max(...PRODUCT_SOURCE_IDS);
 const PRODUCT_SEQUENCER_IDS = new Set([1, 2]);
@@ -53,10 +57,10 @@ const DAW_OUTPUT_MAX_CHANNELS = 32;
 const STEM_PEAK_COUNT = 9;
 const EARTH_TEXTURE_CAPACITY = 4;
 const MODULATION_DEBUG_CAPACITY = 96;
-const TELEMETRY_EARTH_OFFSET = 1292;
-const TELEMETRY_MODULATION_DEBUG_COUNT_OFFSET = 1584;
-const TELEMETRY_MODULATION_DEBUG_OFFSET = 1584;
-const TELEMETRY_MODULATION_DEBUG_LAST_TRIGGER_FRAME_OFFSET = 6968;
+const TELEMETRY_EARTH_OFFSET = 1360;
+const TELEMETRY_MODULATION_DEBUG_COUNT_OFFSET = 1648;
+const TELEMETRY_MODULATION_DEBUG_OFFSET = 1652;
+const TELEMETRY_MODULATION_DEBUG_LAST_TRIGGER_FRAME_OFFSET = 7032;
 const STEM_PEAK_PROBE_INTERVAL_BLOCKS = 64;
 const GRAPH_TAP_IDLE_DISABLE_SECONDS = 0.05;
 const GRANULAR_WAVEFORM_BINS = 512;
@@ -64,30 +68,30 @@ const GRANULAR_WAVEFORM_BYTES = GRANULAR_WAVEFORM_BINS * Float32Array.BYTES_PER_
 const GRANULAR_WAVEFORM_SKIP = 15;
 const GRANULAR_VISUAL_EVENT_CAPACITY = 32;
 const GRANULAR_VISUAL_EVENT_BYTES = 32;
-const TELEMETRY_GRANULAR_VISUAL_EVENT_COUNT_OFFSET = 7736;
-const TELEMETRY_GRANULAR_VISUAL_EVENTS_OFFSET = 7740;
-const TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET = 8764;
-const TELEMETRY_DEBUG_SOURCE_OFFSET = 8768;
+const TELEMETRY_GRANULAR_VISUAL_EVENT_COUNT_OFFSET = 7800;
+const TELEMETRY_GRANULAR_VISUAL_EVENTS_OFFSET = 7804;
+const TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET = 8828;
+const TELEMETRY_DEBUG_SOURCE_OFFSET = 8832;
 const TELEMETRY_DEBUG_SOURCE_BYTES = 32;
 const TELEMETRY_DEBUG_SOURCE_CAPACITY = 8;
-const TELEMETRY_DEBUG_VOICE_COUNT_OFFSET = 9024;
-const TELEMETRY_DEBUG_VOICE_OFFSET = 9032;
+const TELEMETRY_DEBUG_VOICE_COUNT_OFFSET = 9088;
+const TELEMETRY_DEBUG_VOICE_OFFSET = 9096;
 const TELEMETRY_DEBUG_VOICE_BYTES = 48;
 const TELEMETRY_DEBUG_VOICE_CAPACITY = 16;
-const TELEMETRY_SYNTH_ORBIT_NOTE_COUNTS_OFFSET = 9800;
-const TELEMETRY_SYNTH_ORBIT_BASE_ANGLES_OFFSET = 9864;
-const TELEMETRY_SYNTH_ORBIT_NOTE_ANGLES_OFFSET = 9928;
-const TELEMETRY_SYNTH_ORBIT_NOTE_FLASHES_OFFSET = 11976;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_FLAGS_OFFSET = 14024;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_DEGREES_OFFSET = 14088;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_LAST_GESTURE_DELTAS_OFFSET = 14152;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_BOUNDARY_EVENTS_OFFSET = 14216;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_COUNTS_OFFSET = 14280;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_ANCHOR_MIDIS_OFFSET = 14344;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_MIDIS_OFFSET = 14408;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_PREVIOUS_CURSOR_MIDIS_OFFSET = 14472;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_MIDIS_OFFSET = 14536;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_VELOCITIES_OFFSET = 14792;
+const TELEMETRY_SYNTH_ORBIT_NOTE_COUNTS_OFFSET = 9864;
+const TELEMETRY_SYNTH_ORBIT_BASE_ANGLES_OFFSET = 9928;
+const TELEMETRY_SYNTH_ORBIT_NOTE_ANGLES_OFFSET = 9992;
+const TELEMETRY_SYNTH_ORBIT_NOTE_FLASHES_OFFSET = 12040;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_FLAGS_OFFSET = 14088;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_DEGREES_OFFSET = 14152;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_LAST_GESTURE_DELTAS_OFFSET = 14216;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_BOUNDARY_EVENTS_OFFSET = 14280;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_COUNTS_OFFSET = 14344;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_ANCHOR_MIDIS_OFFSET = 14408;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_MIDIS_OFFSET = 14472;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_PREVIOUS_CURSOR_MIDIS_OFFSET = 14536;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_MIDIS_OFFSET = 14600;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_VELOCITIES_OFFSET = 14856;
 const ORBIT_VISUAL_LANES = 16;
 const ORBIT_VISUAL_NOTES = 32;
 const ANCHOR_WALKER_VISUAL_LANES = 16;
@@ -747,7 +751,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     if (!event || typeof event !== 'object') {
       throw new Error('Kessho Product Core event must be an object');
     }
-    const eventKind = this.requireUint(event, 'eventKind', 1, 47);
+    const eventKind = this.requireUint(event, 'eventKind', 1, PRODUCT_EVENT_MAX_ID);
     if (!PRODUCT_EVENT_ID_SET.has(eventKind)) {
       throw new Error(`Unknown Kessho Product Core event kind: ${eventKind}`);
     }
@@ -894,6 +898,24 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         normalized.paramId = this.requireUint(event, 'paramId', 0, SEQUENCER_UI_STATE_LANES - 1);
         normalized.value = this.requireFloat(event, 'value', 0, 1);
         normalized.value2 = this.requireFloat(event, 'value2', 1, 2);
+        return normalized;
+      case PRODUCT_EVENT_IDS.SetSynthArpConfig:
+        normalized.targetId = this.requireUint(event, 'targetId', 1, 1);
+        normalized.index = this.requireUint(event, 'index', 0, SEQUENCER_UI_STATE_LANES - 1);
+        normalized.value = this.requireFloat(event, 'value', 0, 1);
+        normalized.value2 = this.requireFloat(event, 'value2', 1, 16);
+        normalized.value3 = this.requireFloat(event, 'value3', 0.25, 4);
+        return normalized;
+      case PRODUCT_EVENT_IDS.SetSynthArpStep:
+        normalized.targetId = this.requireUint(event, 'targetId', 1, 1);
+        normalized.index = this.requireUint(event, 'index', 0, SEQUENCER_UI_STATE_LANES - 1);
+        normalized.paramId = this.requireUint(event, 'paramId', 0, 15);
+        normalized.value = this.requireFloat(event, 'value', -1, 127);
+        normalized.value2 = this.requireFloat(event, 'value2', 0, 1);
+        return normalized;
+      case PRODUCT_EVENT_IDS.CommitSynthArpPattern:
+        normalized.targetId = this.requireUint(event, 'targetId', 1, 1);
+        normalized.index = this.requireUint(event, 'index', 0, SEQUENCER_UI_STATE_LANES - 1);
         return normalized;
       default:
         throw new Error(`Unhandled Kessho Product Core event kind: ${eventKind}`);
@@ -1334,11 +1356,13 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const drumSequencerHitCounts = [];
     const synthSequencerCurrentSteps = [];
     const drumSequencerCurrentSteps = [];
+    const synthArpCurrentSteps = [];
     for (let index = 0; index < 16; index += 1) {
       synthSequencerHitCounts.push(this.view.getUint32(ptr + 1040 + index * 4, true));
       drumSequencerHitCounts.push(this.view.getUint32(ptr + 1104 + index * 4, true));
       synthSequencerCurrentSteps.push(this.view.getUint32(ptr + 1168 + index * 4, true));
       drumSequencerCurrentSteps.push(this.view.getUint32(ptr + 1232 + index * 4, true));
+      synthArpCurrentSteps.push(this.view.getUint32(ptr + 1296 + index * 4, true));
     }
     const sequencerUiStateRevision = this.view.getUint32(ptr + 988, true);
     const sequencerUiState =
@@ -1424,6 +1448,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       drumSequencerHitCounts,
       synthSequencerCurrentSteps,
       drumSequencerCurrentSteps,
+      synthArpCurrentSteps,
       synthOrbitVisualLanes,
       synthAnchorWalkerVisualLanes,
       generatedSequencerCaptureEvents: generatedSequencerCapture.events,
@@ -1554,7 +1579,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       const modeId = this.view.getUint32(uintBase + MODULATION_DEBUG_CAPACITY * 3 * 4 + index * 4, true);
       const entry = {
         controlId: this.view.getUint32(uintBase + index * 4, true),
-        targetId: this.view.getUint32(uintBase + MODULATION_DEBUG_CAPACITY * 4 + index * 4, true),
+        targetId: this.view.getUint32(uintBase + MODULATION_DEBUG_CAPACITY * 1 * 4 + index * 4, true),
         paramId: this.view.getUint32(uintBase + MODULATION_DEBUG_CAPACITY * 2 * 4 + index * 4, true),
         mode: modeId === 2 ? 'randomWalk' : modeId === 1 ? 'sampleHold' : modeId === 0 ? 'off' : `mode:${modeId}`,
         triggerBus: this.view.getUint32(uintBase + MODULATION_DEBUG_CAPACITY * 4 * 4 + index * 4, true),
@@ -1563,7 +1588,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         randomWalkGlobal: this.view.getUint32(uintBase + MODULATION_DEBUG_CAPACITY * 7 * 4 + index * 4, true) !== 0,
         lastTriggerSource: this.view.getUint32(uintBase + MODULATION_DEBUG_CAPACITY * 8 * 4 + index * 4, true),
         min: this.view.getFloat32(floatBase + index * 4, true),
-        max: this.view.getFloat32(floatBase + MODULATION_DEBUG_CAPACITY * 4 + index * 4, true),
+        max: this.view.getFloat32(floatBase + MODULATION_DEBUG_CAPACITY * 1 * 4 + index * 4, true),
         currentValue: this.view.getFloat32(floatBase + MODULATION_DEBUG_CAPACITY * 2 * 4 + index * 4, true),
         normalizedPosition: this.view.getFloat32(floatBase + MODULATION_DEBUG_CAPACITY * 3 * 4 + index * 4, true),
         speed: this.view.getFloat32(floatBase + MODULATION_DEBUG_CAPACITY * 4 * 4 + index * 4, true),
@@ -1765,11 +1790,13 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const drumSequencerHitCounts = [];
     const synthSequencerCurrentSteps = [];
     const drumSequencerCurrentSteps = [];
+    const synthArpCurrentSteps = [];
     for (let index = 0; index < 16; index += 1) {
       synthSequencerHitCounts.push(this.view.getUint32(ptr + 1040 + index * 4, true));
       drumSequencerHitCounts.push(this.view.getUint32(ptr + 1104 + index * 4, true));
       synthSequencerCurrentSteps.push(this.view.getUint32(ptr + 1168 + index * 4, true));
       drumSequencerCurrentSteps.push(this.view.getUint32(ptr + 1232 + index * 4, true));
+      synthArpCurrentSteps.push(this.view.getUint32(ptr + 1296 + index * 4, true));
     }
     const telemetry = {
       schemaHash: this.view.getUint32(ptr, true),
@@ -1799,6 +1826,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       drumSequencerHitCounts,
       synthSequencerCurrentSteps,
       drumSequencerCurrentSteps,
+      synthArpCurrentSteps,
       synthOrbitVisualLanes: this.readSynthOrbitVisualLanes(ptr),
       synthAnchorWalkerVisualLanes: this.readSynthAnchorWalkerVisualLanes(ptr),
       workletOutputPeak: this.lastOutputPeak,

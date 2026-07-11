@@ -26,7 +26,7 @@ type SelectedAudioEngineRuntimeCallbackRegistrationsOptions = {
   setSelectedSample1DistanceTriggerCallback?: (callback: ((distance: number) => void) | null) => void;
   setSelectedSample2DistanceTriggerCallback?: (callback: ((distance: number) => void) | null) => void;
   setSelectedSynthEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
-  setSelectedSynthStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
+  setSelectedSynthStepPositionCallback: (callback: ((steps: number[], hitCounts: number[], arpSteps?: number[]) => void) | null) => void;
   stateRef: MutableRefObject<SliderState>;
   uiMode: UiMode;
 };

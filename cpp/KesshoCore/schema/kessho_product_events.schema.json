@@ -46,6 +46,9 @@
     { "name": "HarmonyRegenerateUnlocked", "id": 44 },
     { "name": "HarmonyCommitBaselineMap", "id": 45 },
     { "name": "AnchorWalkerPerformance", "id": 46 },
-    { "name": "GeneratedSequencerCapture", "id": 47 }
+    { "name": "GeneratedSequencerCapture", "id": 47 },
+    { "name": "SetSynthArpConfig", "id": 48 },
+    { "name": "SetSynthArpStep", "id": 49 },
+    { "name": "CommitSynthArpPattern", "id": 50 }
   ]
 }

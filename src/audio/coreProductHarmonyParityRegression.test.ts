@@ -49,6 +49,7 @@ import {
   type HarmonyChordQuality,
 } from './CoreProductHarmonyControl';
 import { sampleDescriptorForSlotNote, samplePredictionState } from './product/host/CoreProductSampleAssetResolver';
+import { createCoreProductSynthSequencerStepOverrideEvents } from './product/ProductSequencerStepOverrideEvents';
 
 function assertNoWebExactPatchFields(source: unknown, label: string): void {
   assert(source && typeof source === 'object', `${label} source should exist`);
@@ -551,27 +552,41 @@ const continuousArpEnginePattern = resolveProductPlayEnginePattern({
 });
 assert.deepEqual(
   continuousArpEnginePattern?.midiPattern,
-  [60, 60],
-  'Product Play ARP should bind one engine step to each ON trigger in hit-bound mode',
+  [60, 64, 67, 71],
+  'Product Play ARP should pass the resolved arp pitch lane to Product Core in hit-bound mode',
 );
-assert.deepEqual(
-  continuousArpEnginePattern?.playNotes?.map((event) => ({
-    step: event.step,
-    sourceStep: event.sourceStep,
-    midi: event.midi,
-    offsetMs: event.offsetMs,
-  })),
-  [
-    { step: 0, sourceStep: 0, midi: 60, offsetMs: 0 },
-    { step: 0, sourceStep: 1, midi: 64, offsetMs: 125 },
-    { step: 0, sourceStep: 2, midi: 67, offsetMs: 250 },
-    { step: 0, sourceStep: 3, midi: 71, offsetMs: 375 },
-    { step: 1, sourceStep: 0, midi: 60, offsetMs: 0 },
-    { step: 1, sourceStep: 1, midi: 64, offsetMs: 125 },
-    { step: 1, sourceStep: 2, midi: 67, offsetMs: 250 },
-    { step: 1, sourceStep: 3, midi: 71, offsetMs: 375 },
+assert.equal(
+  continuousArpEnginePattern?.playNotes,
+  null,
+  'Product Play ARP should leave continuous timing to Product Core instead of host play-note fan-out',
+);
+const arpOverrideEvents = createCoreProductSynthSequencerStepOverrideEvents({
+  playArps: [
+    {
+      enabled: true,
+      mode: 'arp',
+      arp: {
+        enabled: true,
+        length: 4,
+        rate: 1,
+        pulseMask: 0b1111,
+      },
+      midiPattern: [60, 64, 67, 71],
+    },
+    { enabled: false, mode: 'arp', arp: { enabled: false, length: 4, rate: 1, pulseMask: 0 }, midiPattern: [] },
+    { enabled: true, mode: 'chord', arp: { enabled: true, length: 4, rate: 1, pulseMask: 0b1111 }, midiPattern: [60, 64, 67, 71] },
+    { enabled: false, mode: 'arp', arp: { enabled: false, length: 4, rate: 1, pulseMask: 0 }, midiPattern: [] },
   ],
-  'Product Play ARP should schedule repeated notes continuously until the next main trigger',
+});
+assert.equal(
+  arpOverrideEvents.filter((event) => event.eventKind === KESSHO_PRODUCT_EVENT_IDS.SetSynthArpConfig).length,
+  4,
+  'Product Play ARP should still send one native config event per visible lane',
+);
+assert.equal(
+  arpOverrideEvents.filter((event) => event.eventKind === KESSHO_PRODUCT_EVENT_IDS.SetSynthArpStep).length,
+  16,
+  'Product Play ARP should only send native step events for active ARP lanes',
 );
 const sequenceBoundArpEnginePattern = resolveProductPlayEnginePattern({
   config: continuousArpPlayConfig,
@@ -583,13 +598,13 @@ const sequenceBoundArpEnginePattern = resolveProductPlayEnginePattern({
 });
 assert.deepEqual(
   sequenceBoundArpEnginePattern?.midiPattern,
-  [60, -1, -1, -1, 60, -1, -1, -1],
-  'sequence-bound Product Play ARP should keep trigger-step positions in the engine pattern',
+  [60, 64, 67, 71],
+  'sequence-bound Product Play ARP should still pass the compact arp pitch lane to Product Core',
 );
-assert.deepEqual(
-  sequenceBoundArpEnginePattern?.playNotes?.map((event) => event.step),
-  [0, 0, 0, 0, 4, 4, 4, 4],
-  'sequence-bound Product Play ARP should post continuous notes from the ON trigger positions',
+assert.equal(
+  sequenceBoundArpEnginePattern?.playNotes,
+  null,
+  'sequence-bound Product Play ARP should not host-schedule continuous arp notes',
 );
 const strumPlayEvents = resolveProductChordPlayEvents({
   config: normalizeProductPlayConfig({
@@ -643,8 +658,8 @@ assert.deepEqual(
     pulseMask: 0b1111,
     contour: [0, 0, 0, 0],
   }, productArpTestHarmony([60, 62, 64, 67])),
-  [60, 64, 60, 64],
-  'Product arp rate 2x should advance traversal twice per live step',
+  [60, 62, 64, 67],
+  'Product arp rate 2x should not alter melodic traversal in the host pitch lane',
 );
 assert.deepEqual(
   resolveEnabledArp({
@@ -654,8 +669,8 @@ assert.deepEqual(
     pulseMask: 0b1111,
     contour: [0, 0, 0, 0],
   }, productArpTestHarmony([60, 62, 64, 67])),
-  [60, 60, 62, 62],
-  'Product arp rate 1/2x should hold traversal across paired live steps',
+  [60, 62, 64, 67],
+  'Product arp rate 1/2x should not alter melodic traversal in the host pitch lane',
 );
 assert.deepEqual(
   resolveEnabledArp({

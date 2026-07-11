@@ -3,9 +3,17 @@ import {
   CORE_PRODUCT_STEP_TOGGLE_FLAGS,
   CORE_PRODUCT_STEP_VALUE_FIELDS,
   CORE_PRODUCT_SUBLANE_DIRECTIONS,
+  CORE_PRODUCT_SOURCE_IDS,
+  createCoreProductParamEvent,
+  createCoreProductSynthArpCommitEvent,
+  createCoreProductSynthArpConfigEvent,
+  createCoreProductSynthArpStepEvent,
+  createCoreProductSequencerLaneParamEvent,
+  createCoreProductSequencerStepEvent,
   createCoreProductSequencerStepValueEvent,
   createCoreProductSequencerSubLaneConfigEvent,
 } from '../audio/coreProductEvents';
+import { KESSHO_PRODUCT_PARAM_IDS } from '../audio/generated/kesshoProductParams';
 import type { ProductEnginePort } from '../audio/product/ProductEnginePort';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { SliderMode, SliderState } from './state';
@@ -80,9 +88,17 @@ declare global {
         enabled?: boolean;
         values?: number[];
       }): Promise<void>;
+      configureSynthArp(options?: {
+        laneIndex?: number;
+        length?: number;
+        rate?: number;
+        midiPattern?: number[];
+      }): Promise<void>;
+      configureSynthArpSequencer(options?: { laneIndex?: number }): Promise<void>;
       readRuntimeWalkProbe(key: string): {
         position?: number;
         runtimeSliderDebug: ReturnType<typeof getRuntimeSliderDebugState>;
+        productState: ReturnType<ProductEnginePort['getProductState']>;
         telemetry: ReturnType<ProductEnginePort['getTelemetry']>;
         diagnostics: ReturnType<ProductEnginePort['getDiagnostics']>;
       };
@@ -209,11 +225,53 @@ export function useProductRuntimeParityProbe({
         ]);
         await waitForProbeUiCommit();
       },
+      async configureSynthArp(options = {}) {
+        const laneIndex = Math.max(0, Math.min(15, Math.round(options.laneIndex ?? 0)));
+        const length = Math.max(1, Math.min(16, Math.round(options.length ?? 8)));
+        const rate = Math.max(0.25, Math.min(4, typeof options.rate === 'number' && Number.isFinite(options.rate) ? options.rate : 1));
+        const midiPattern = Array.from({ length: 16 }, (_, step) => {
+          const midi = options.midiPattern?.[step];
+          return typeof midi === 'number' && Number.isFinite(midi)
+            ? Math.max(-1, Math.min(127, midi))
+            : -1;
+        });
+        runtime.enqueueEvents([
+          createCoreProductSynthArpConfigEvent(laneIndex, { enabled: true, length, rate }),
+          ...midiPattern.map((midi, step) => createCoreProductSynthArpStepEvent(laneIndex, step, {
+            midi,
+            active: step < length && midi >= 0,
+          })),
+          createCoreProductSynthArpCommitEvent(laneIndex),
+        ]);
+        await waitForTelemetryResponse();
+      },
+      async configureSynthArpSequencer(options = {}) {
+        const laneIndex = Math.max(0, Math.min(15, Math.round(options.laneIndex ?? 0)));
+        runtime.enqueueEvents([
+          createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.SourceEnabled, 1, CORE_PRODUCT_SOURCE_IDS.lead1),
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneEnabled, 0),
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneTargetSource, CORE_PRODUCT_SOURCE_IDS.lead1),
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneStepCount, 16),
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneFillCount, 0),
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision, 16),
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneProbability, 1),
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneRatchet, 1),
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMidiNote, 60),
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneVelocity, 1),
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneHoldSeconds, 0.1),
+          ...Array.from({ length: 16 }, (_, stepIndex) =>
+            createCoreProductSequencerStepEvent('synth', laneIndex, stepIndex, stepIndex === 0),
+          ),
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneEnabled, 1),
+        ]);
+        await waitForTelemetryResponse();
+      },
       readRuntimeWalkProbe(key) {
         runtime.requestTelemetryOnce();
         return {
           position: getRuntimeSliderPosition(key, 'walk'),
           runtimeSliderDebug: getRuntimeSliderDebugState(),
+          productState: runtime.getProductState(),
           telemetry: runtime.getTelemetry(),
           diagnostics: runtime.getDiagnostics(),
         };

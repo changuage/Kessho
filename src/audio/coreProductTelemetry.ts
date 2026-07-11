@@ -234,6 +234,7 @@ export type CoreProductTelemetrySnapshot = {
   drumSequencerHitCounts?: number[];
   synthSequencerCurrentSteps?: number[];
   drumSequencerCurrentSteps?: number[];
+  synthArpCurrentSteps?: number[];
   synthOrbitVisualLanes?: Array<CoreProductOrbitVisualLaneState | null>;
   synthAnchorWalkerVisualLanes?: Array<CoreProductAnchorWalkerVisualLaneState | null>;
   generatedSequencerCaptureEvents?: GeneratedSequencerCaptureEvent[];
@@ -290,6 +291,7 @@ export type CoreProductVisualTelemetrySnapshot = Pick<
   | 'drumSequencerHitCounts'
   | 'synthSequencerCurrentSteps'
   | 'drumSequencerCurrentSteps'
+  | 'synthArpCurrentSteps'
   | 'synthOrbitVisualLanes'
   | 'synthAnchorWalkerVisualLanes'
   | 'workletOutputPeak'

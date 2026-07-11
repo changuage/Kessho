@@ -1,6 +1,9 @@
 import {
   CORE_PRODUCT_STEP_TOGGLE_FLAGS,
   CORE_PRODUCT_STEP_VALUE_FIELDS,
+  createCoreProductSynthArpCommitEvent,
+  createCoreProductSynthArpConfigEvent,
+  createCoreProductSynthArpStepEvent,
   createCoreProductSequencerClearStepsEvent,
   createCoreProductSequencerStepEvent,
   createCoreProductSequencerStepOverrideCommitEvent,
@@ -25,6 +28,17 @@ function emptyLaneState<T>(): T[][] {
   return [[], [], [], []];
 }
 
+const PRODUCT_PLAY_MAX_STEPS = 16;
+
+type ProductArpEngineLane = {
+  enabled: boolean;
+  mode: 'arp' | 'chord';
+  length: number;
+  rate: number;
+  pulseMask: number;
+  midiPattern: number[];
+};
+
 export function createCoreProductSynthSequencerStepOverrideEvents(
   overrides: unknown,
   subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[],
@@ -32,7 +46,10 @@ export function createCoreProductSynthSequencerStepOverrideEvents(
   const toggles = normalizeSequencerStepToggleOverrides(overrides, emptyLaneState());
   const values = normalizeSequencerStepValueOverrides(overrides, emptyLaneState(), true);
   const configs = normalizeSequencerStepValueConfigs(overrides, emptyLaneState(), true, subLaneStates);
-  return createCoreProductSequencerStepOverrideEvents('synth', toggles, values, configs);
+  return [
+    ...createCoreProductSequencerStepOverrideEvents('synth', toggles, values, configs),
+    ...createCoreProductSynthArpEvents(overrides),
+  ];
 }
 
 export function createCoreProductSynthSequencerLaneStepOverrideEvents(
@@ -50,7 +67,7 @@ export function createCoreProductSynthSequencerLaneStepOverrideEvents(
     toggles[safeLaneIndex] ?? [],
     values[safeLaneIndex] ?? [],
     configs[safeLaneIndex] ?? [],
-  );
+  ).concat(createCoreProductSynthArpEvents(overrides, safeLaneIndex));
 }
 
 export function createCoreProductDrumSequencerStepOverrideEvents(
@@ -163,4 +180,85 @@ function valueFlags(value: SequencerStepValueOverride, stateFlags: number): numb
 
 function withExtraFlags(event: CoreProductEvent, extraFlags: number): CoreProductEvent {
   return extraFlags === 0 ? event : { ...event, flags: (event.flags ?? 0) | extraFlags };
+}
+
+function createCoreProductSynthArpEvents(overrides: unknown, onlyLaneIndex?: number): CoreProductEvent[] {
+  const lanes = extractProductArpEngineLanes(overrides);
+  if (!lanes) return [];
+  const events: CoreProductEvent[] = [];
+  const start = onlyLaneIndex ?? 0;
+  const end = onlyLaneIndex === undefined ? lanes.length : Math.min(lanes.length, onlyLaneIndex + 1);
+  for (let laneIndex = start; laneIndex < end; laneIndex += 1) {
+    const lane = lanes[laneIndex] ?? emptyProductArpEngineLane();
+    const arpEnabled = lane.enabled && lane.mode === 'arp';
+    events.push(createCoreProductSynthArpConfigEvent(laneIndex, {
+      enabled: arpEnabled,
+      length: lane.length,
+      rate: lane.rate,
+    }));
+    if (arpEnabled) {
+      for (let step = 0; step < PRODUCT_PLAY_MAX_STEPS; step += 1) {
+        const midi = finiteNumber(lane.midiPattern[step], -1);
+        const active = (lane.pulseMask & (1 << step)) !== 0 && midi >= 0;
+        events.push(createCoreProductSynthArpStepEvent(laneIndex, step, { midi, active }));
+      }
+    }
+    events.push(createCoreProductSynthArpCommitEvent(laneIndex));
+  }
+  return events;
+}
+
+function extractProductArpEngineLanes(overrides: unknown): ProductArpEngineLane[] | null {
+  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return null;
+  const source = overrides as Record<string, unknown>;
+  const rawLanes = source.playArps;
+  if (!Array.isArray(rawLanes)) return null;
+  const laneCount = Math.max(4, Math.min(16, rawLanes.length));
+  return Array.from({ length: laneCount }, (_, laneIndex) => normalizeProductArpEngineLane(rawLanes[laneIndex]));
+}
+
+function normalizeProductArpEngineLane(value: unknown): ProductArpEngineLane {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return emptyProductArpEngineLane();
+  const record = value as Record<string, unknown>;
+  const arpRecord = record.arp && typeof record.arp === 'object' && !Array.isArray(record.arp)
+    ? record.arp as Record<string, unknown>
+    : record;
+  const midiPatternSource = Array.isArray(record.midiPattern)
+    ? record.midiPattern
+    : Array.isArray(arpRecord.midiPattern)
+      ? arpRecord.midiPattern
+      : [];
+  return {
+    enabled: record.enabled === true || arpRecord.enabled === true,
+    mode: record.mode === 'chord' ? 'chord' : 'arp',
+    length: clampInteger(arpRecord.length, 1, PRODUCT_PLAY_MAX_STEPS, 1),
+    rate: clampNumber(arpRecord.rate, 0.25, 4, 1),
+    pulseMask: clampInteger(arpRecord.pulseMask, 0, 0xffff, 0),
+    midiPattern: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, (_, step) =>
+      clampNumber(midiPatternSource[step], -1, 127, -1)
+    ),
+  };
+}
+
+function emptyProductArpEngineLane(): ProductArpEngineLane {
+  return {
+    enabled: false,
+    mode: 'arp',
+    length: 1,
+    rate: 1,
+    pulseMask: 0,
+    midiPattern: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, () => -1),
+  };
+}
+
+function finiteNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  return Math.max(min, Math.min(max, finiteNumber(value, fallback)));
+}
+
+function clampInteger(value: unknown, min: number, max: number, fallback: number): number {
+  return Math.round(clampNumber(value, min, max, fallback));
 }

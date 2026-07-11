@@ -93,12 +93,13 @@ const SEQUENCER_UI_LANE_BASE_OFFSET = 36;
 const SEQUENCER_UI_LANE_SIZE = 3296;
 const LANE_EXPRESSION_OVERRIDE_SET_LOW_OFFSET = 76;
 const LANE_EXPRESSION_OVERRIDES_OFFSET = 1448;
-const TELEMETRY_BYTES = 15048;
-const TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET = 8764;
-const TELEMETRY_DEBUG_SOURCE_OFFSET = 8768;
+const TELEMETRY_BYTES = 15112;
+const TELEMETRY_SYNTH_ARP_CURRENT_STEPS_OFFSET = 1296;
+const TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET = 8828;
+const TELEMETRY_DEBUG_SOURCE_OFFSET = 8832;
 const TELEMETRY_DEBUG_SOURCE_BYTES = 32;
-const TELEMETRY_DEBUG_VOICE_COUNT_OFFSET = 9024;
-const TELEMETRY_DEBUG_VOICE_OFFSET = 9032;
+const TELEMETRY_DEBUG_VOICE_COUNT_OFFSET = 9088;
+const TELEMETRY_DEBUG_VOICE_OFFSET = 9096;
 const TELEMETRY_DEBUG_VOICE_BYTES = 48;
 
 const frames = 128;
@@ -212,6 +213,7 @@ for (let index = 0; index < 4; index += 1) {
 }
 assert(view.getUint32(telemetryPtr + 1040, true) >= 0, 'WASM product telemetry did not expose synth sequencer hit counts');
 assert(view.getUint32(telemetryPtr + 1104, true) >= 0, 'WASM product telemetry did not expose drum sequencer hit counts');
+assert(view.getUint32(telemetryPtr + TELEMETRY_SYNTH_ARP_CURRENT_STEPS_OFFSET, true) >= 0, 'WASM product telemetry did not expose synth arp current steps');
 view.setUint32(eventPtr, 0, true);
 view.setUint32(eventPtr + 4, 29, true);
 view.setUint32(eventPtr + 8, 1, true);
@@ -394,5 +396,15 @@ const missingTargetError = liveWorklet.messages.find(
   (message) => message.type === 'error' && message.message.includes('missing required field: targetId'),
 );
 assert(missingTargetError, 'Product worklet did not reject manual note events missing targetId');
+
+const workletErrorCountBeforeArpCommit = liveWorklet.messages.filter((message) => message.type === 'error').length;
+liveWorklet.processor.handleMessage({
+  type: 'event',
+  event: { eventKind: 50, targetId: 1, index: 0 },
+});
+assert(
+  liveWorklet.messages.filter((message) => message.type === 'error').length === workletErrorCountBeforeArpCommit,
+  'Product worklet did not accept the ARP pattern commit event',
+);
 
 console.log('Kessho Product WASM smoke passed');

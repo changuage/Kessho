@@ -2,9 +2,7 @@ import type { ManualSynthNoteOptions } from './engineSharedTypes';
 import { CORE_PRODUCT_SOURCE_IDS, type CoreProductRangeTarget, type CoreProductRangeValueContext } from './coreProductEvents';
 import { KESSHO_PRODUCT_DRUM_VOICE_COUNT, KESSHO_PRODUCT_DRUM_VOICES } from './generated/kesshoProductSchema';
 import type { ProductEngineState } from './product/ProductEngineTypes';
-
 export type RuntimeWalkConfig = { speed: number; mode: 'localBrownian' | 'globalWalk' };
-
 export function runtimeWalkConfigFromState(state: Record<string, unknown> | null): RuntimeWalkConfig {
   const speed = state?.randomWalkSpeed;
   const mode = state?.randomWalkMode;
@@ -13,11 +11,9 @@ export function runtimeWalkConfigFromState(state: Record<string, unknown> | null
     mode: mode === 'globalWalk' ? 'globalWalk' : 'localBrownian',
   };
 }
-
 export function runtimeWalkConfigChanged(left: RuntimeWalkConfig, right: RuntimeWalkConfig): boolean {
   return Math.abs(left.speed - right.speed) > 0.0005 || left.mode !== right.mode;
 }
-
 export function coreProductRangeValueContext(
   snapshotBpm: unknown,
   state: Record<string, unknown> | null,
@@ -25,7 +21,6 @@ export function coreProductRangeValueContext(
   const walk = runtimeWalkConfigFromState(state);
   return { bpm: typeof snapshotBpm === 'number' && Number.isFinite(snapshotBpm) ? snapshotBpm : 120, ...walk, randomWalkSpeed: walk.speed, randomWalkMode: walk.mode, state };
 }
-
 export function mappedCoreProductRange(
   target: CoreProductRangeTarget,
   range: { min: number; max: number },
@@ -36,14 +31,12 @@ export function mappedCoreProductRange(
   const mappedMax = mapValue(Math.max(range.min, range.max), context);
   return { min: Math.min(mappedMin, mappedMax), max: Math.max(mappedMin, mappedMax) };
 }
-
 export function normalizeCoreProductRuntimeWalkValue(
   value: number,
   range?: { min: number; max: number },
 ): number {
   return Math.max(0, Math.min(1, range && range.max > range.min ? (value - range.min) / (range.max - range.min) : value));
 }
-
 export function runtimeWalkPositionsFromTelemetry(
   values: Record<number, number> | undefined,
   controlNames: Map<number, string>,
@@ -59,7 +52,6 @@ export function runtimeWalkPositionsFromTelemetry(
   }
   return next;
 }
-
 export function createCoreProductEngineState(isRunning: boolean): ProductEngineState {
   return {
     isRunning,
@@ -79,7 +71,6 @@ export function createCoreProductEngineState(isRunning: boolean): ProductEngineS
     transportDebug: null,
   };
 }
-
 export function drumVoiceIndex(voice: unknown): number {
   if (typeof voice === 'number' && Number.isInteger(voice) && voice >= 0 && voice < KESSHO_PRODUCT_DRUM_VOICE_COUNT) {
     return voice;
@@ -103,7 +94,6 @@ export function drumVoiceIndex(voice: unknown): number {
   }
   return index;
 }
-
 export function sourceId(source: ManualSynthNoteOptions['source']): number {
   switch (source) {
     case 'pad1':
@@ -115,6 +105,7 @@ export function sourceId(source: ManualSynthNoteOptions['source']): number {
     case 'lead2':
       return CORE_PRODUCT_SOURCE_IDS.lead2;
     case 'sample1':
+    case 'piano':
       return CORE_PRODUCT_SOURCE_IDS.sample1;
     case 'sample2':
       return CORE_PRODUCT_SOURCE_IDS.sample2;
@@ -122,30 +113,25 @@ export function sourceId(source: ManualSynthNoteOptions['source']): number {
       throw new Error(`Unknown Core Product synth source: ${String(source)}`);
   }
 }
-
 export function midiFromFrequency(frequency: number): number {
   if (!Number.isFinite(frequency) || frequency <= 0) {
     throw new Error(`Core Product synth trigger frequency must be positive and finite: ${String(frequency)}`);
   }
   return Math.max(0, Math.min(127, 69 + 12 * Math.log2(frequency / 440)));
 }
-
 export type RequiredManualSynthNote = Required<Omit<ManualSynthNoteOptions, 'voiceIndex'>> & Pick<ManualSynthNoteOptions, 'voiceIndex'>;
-
 export function requireFiniteRange(value: unknown, label: string, min: number, max: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
     throw new Error(`Core Product ${label} must be a finite number in [${min}, ${max}]`);
   }
   return value;
 }
-
 export function requirePositive(value: unknown, label: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
     throw new Error(`Core Product ${label} must be a positive finite number`);
   }
   return value;
 }
-
 export function requireManualNote(note: ManualSynthNoteOptions): RequiredManualSynthNote {
   const source = note.source;
   sourceId(source);
@@ -155,7 +141,6 @@ export function requireManualNote(note: ManualSynthNoteOptions): RequiredManualS
   }
   return { source, midi: requireFiniteRange(note.midi, 'manual note midi', 0, 127), velocity: requireFiniteRange(note.velocity, 'manual note velocity', 0.000001, 1), durationMs: requirePositive(note.durationMs, 'manual note durationMs'), ...(voiceIndex !== undefined ? { voiceIndex } : {}) };
 }
-
 export function manualAuditionState(
   source: ManualSynthNoteOptions['source'],
   state?: Record<string, unknown>,
@@ -167,13 +152,16 @@ export function manualAuditionState(
     case 'lead1': next.leadEnabled = true; break;
     case 'lead2': next.lead2Enabled = true; break;
     case 'sample1': next.sample1Enabled = true; break;
+    case 'piano':
+      next.pianoEnabled = true;
+      next.sample1Enabled = true;
+      break;
     case 'sample2': next.sample2Enabled = true; break;
     default:
       sourceId(source);
   }
   return next;
 }
-
 export function gainToDb(gain: number): number {
   return 20 * Math.log10(Math.max(0.000001, Math.abs(gain)));
 }

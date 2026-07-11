@@ -16,6 +16,16 @@
   lane.pending_ratchet_count = 0u;
 }
 
+  void KesshoProductEngine::clearPendingArpRatchets(LaneState& lane) {
+  uint32_t write_index = 0u;
+  for (uint32_t read_index = 0u; read_index < lane.pending_ratchet_count; ++read_index) {
+    const PendingRatchetEvent& pending = lane.pending_ratchets[read_index];
+    if (pending.arp_step_index != UINT32_MAX) continue;
+    lane.pending_ratchets[write_index++] = pending;
+  }
+  lane.pending_ratchet_count = write_index;
+}
+
   void KesshoProductEngine::resetSequencerLaneRuntime(LaneState& lane, bool wait_for_join_boundary) {
   lane.emitted_hit_count = 0u;
   lane.last_emitted_morph_valid = false;
@@ -26,6 +36,10 @@
   lane.last_emitted_expression = 1.0f;
   lane.last_emitted_drum_voice = DRUM_NUM_VOICE_TYPES;
   lane.last_emitted_sample_frame = 0u;
+  lane.arp.cursor = 0u;
+  lane.arp.current_step = 0u;
+  lane.arp.next_event_sample = 0u;
+  lane.arp.runtime_initialized = false;
   lane.sequencer_runtime_sample_frame = 0u;
   lane.sequencer_start_sample_frame = 0u;
   lane.sequencer_runtime_initialized = false;
@@ -412,5 +426,74 @@ void KesshoProductEngine::setStepFieldOverride(LaneState& lane, uint32_t field, 
     clearStepFieldOverride(lane, field, step);
   }
   markSequencerUiStateChanged(event.target_id, event.index, KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_STEP);
+  telemetry.last_error_code = KESSHO_PRODUCT_OK;
+}
+
+void KesshoProductEngine::applySynthArpConfigEvent(const KesshoProductEvent& event) {
+  if (event.target_id != KESSHO_PRODUCT_SEQUENCER_SYNTH || event.index >= synth_lane_count) {
+    telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SEQUENCER_LANE;
+    return;
+  }
+  LaneState& lane = synth_lanes[event.index];
+  ProductArpPatternState& pending_arp = lane.pending_arp;
+  pending_arp.enabled = event.value >= 0.5f;
+  pending_arp.length = clampU32(
+      static_cast<uint32_t>(std::lround(event.value2)),
+      1u,
+      kMaxProductArpSteps);
+  pending_arp.rate = clampFloat(event.value3, 0.25f, 4.0f);
+  telemetry.last_error_code = KESSHO_PRODUCT_OK;
+}
+
+void KesshoProductEngine::applySynthArpStepEvent(const KesshoProductEvent& event) {
+  if (event.target_id != KESSHO_PRODUCT_SEQUENCER_SYNTH || event.index >= synth_lane_count) {
+    telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SEQUENCER_LANE;
+    return;
+  }
+  if (event.param_id >= kMaxProductArpSteps) {
+    telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    return;
+  }
+  LaneState& lane = synth_lanes[event.index];
+  ProductArpPatternState& pending_arp = lane.pending_arp;
+  const uint32_t bit = 1u << event.param_id;
+  pending_arp.midi_notes[event.param_id] = clampFloat(event.value, -1.0f, 127.0f);
+  if (event.value2 >= 0.5f && event.value >= 0.0f) {
+    pending_arp.active_mask |= bit;
+  } else {
+    pending_arp.active_mask &= ~bit;
+  }
+  telemetry.last_error_code = KESSHO_PRODUCT_OK;
+}
+
+void KesshoProductEngine::applyCommitSynthArpPatternEvent(const KesshoProductEvent& event) {
+  if (event.target_id != KESSHO_PRODUCT_SEQUENCER_SYNTH || event.index >= synth_lane_count) {
+    telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SEQUENCER_LANE;
+    return;
+  }
+  LaneState& lane = synth_lanes[event.index];
+  ProductArpRuntimeState& arp = lane.arp;
+  const ProductArpPatternState& pending_arp = lane.pending_arp;
+  const bool was_enabled = arp.enabled;
+  arp.enabled = pending_arp.enabled;
+  arp.length = pending_arp.length;
+  arp.rate = pending_arp.rate;
+  arp.active_mask = pending_arp.active_mask;
+  for (uint32_t step = 0u; step < kMaxProductArpSteps; ++step) {
+    arp.midi_notes[step] = pending_arp.midi_notes[step];
+  }
+  if (!arp.enabled) {
+    arp.cursor = 0u;
+    arp.current_step = 0u;
+    arp.next_event_sample = 0u;
+    arp.runtime_initialized = false;
+  } else if (!was_enabled) {
+    arp.cursor = 0u;
+    arp.current_step = 0u;
+    arp.next_event_sample = 0u;
+    arp.runtime_initialized = false;
+  } else if (arp.cursor >= arp.length) {
+    arp.cursor %= arp.length;
+  }
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
 }

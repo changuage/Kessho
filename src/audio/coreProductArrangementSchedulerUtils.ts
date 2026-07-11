@@ -117,7 +117,7 @@ export function leadRandomSource(state: Record<string, unknown>): LeadRandomSour
   if (source === 'pad1') return 'pad1';
   if (source === 'pad2') return 'pad2';
   if (source === 'lead2') return 'lead2';
-  if (source === 'sample1') return 'sample1';
+  if (source === 'sample1' || source === 'piano') return 'sample1';
   if (source === 'sample2') return 'sample2';
   return 'lead1';
 }
@@ -205,6 +205,12 @@ export function publishManualNoteTriggerForEvent(
       break;
     case CORE_PRODUCT_SOURCE_IDS.sample1:
       publishTrigger('sample1Distance', sourceDistanceValue(state, 'sample1Distance'));
+      if (state.leadRandomSource === 'piano' || (
+        booleanFromState(state, 'pianoEnabled', false) &&
+        sourceDistanceValue(state, 'pianoDistance') > 0
+      )) {
+        publishTrigger('pianoDistance', sourceDistanceValue(state, 'pianoDistance'));
+      }
       break;
     case CORE_PRODUCT_SOURCE_IDS.sample2:
       publishTrigger('sample2Distance', sourceDistanceValue(state, 'sample2Distance'));
@@ -220,6 +226,13 @@ type PublishManualNoteTrigger = (name: string, ...payload: unknown[]) => void;
 
 export function leadRandomSourceEnabled(state: Record<string, unknown>, source: LeadRandomSource): boolean {
   if (!booleanFromState(state, 'leadRandomEnabled', false)) return false;
+  if (source === 'sample1' && (
+    state.leadRandomSource === 'piano' ||
+    (booleanFromState(state, 'pianoEnabled', false) && sourceDistanceValue(state, 'pianoDistance') > 0)
+  )) {
+    return booleanFromState(state, 'pianoEnabled', false) ||
+      productSourceEnabledForPlayback(state, CORE_PRODUCT_SOURCE_IDS.sample1);
+  }
   return manualNoteSourceEnabled(state, leadRandomSourceId(source));
 }
 
@@ -228,6 +241,12 @@ export function manualNoteSourceEnabled(state: Record<string, unknown>, sourceId
 }
 
 export function manualNoteEventSourceEnabled(state: Record<string, unknown>, event: CoreProductEvent): boolean {
+  if (event.targetId === CORE_PRODUCT_SOURCE_IDS.sample1 && (
+    state.leadRandomSource === 'piano' ||
+    (booleanFromState(state, 'pianoEnabled', false) && sourceDistanceValue(state, 'pianoDistance') > 0)
+  )) {
+    return true;
+  }
   return typeof event.targetId === 'number' && manualNoteSourceEnabled(state, event.targetId);
 }
 

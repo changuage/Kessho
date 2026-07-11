@@ -169,6 +169,7 @@ import { SEQUENCER_LANE_COLORS, SEQUENCER_SUB_LANE_COLORS, SOURCE_COLORS } from 
 import {
   createProductArpHarmonyContext,
   normalizeProductArpConfig,
+  resolveProductArpMidiPattern,
   resolveProductArpPatternDetails,
   type ProductArpBoundaryMode,
   type ProductArpConfig,
@@ -1110,7 +1111,6 @@ const ARP_CONTOUR_MAX = 12;
 const ARP_CONTOUR_SVG_RANGE = ARP_CONTOUR_MAX - ARP_CONTOUR_MIN;
 const ARP_VISIBLE_STEPS = 16;
 const ARP_FULL_STEP_MASK = (1 << ARP_VISIBLE_STEPS) - 1;
-const ARP_UI_PLAYHEAD_INTERVAL_MS = 33;
 const ARP_FLOW_OPTIONS: Array<{ value: ProductArpFlow; label: string }> = [
   { value: 'up', label: 'Up' },
   { value: 'down', label: 'Down' },
@@ -2443,7 +2443,7 @@ export interface SynthPageProps {
   liveSourceTelemetryAvailable?: boolean;
   getPadFilterFreq: (pad: 'pad1' | 'pad2') => number;
   getPadLfoValue: (pad: 'pad1' | 'pad2') => number;
-  setStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
+  setStepPositionCallback: (callback: ((steps: number[], hitCounts: number[], arpSteps?: number[]) => void) | null) => void;
   setOrbitVisualStateCallback: (callback: ((lanes: Array<ProductSynthOrbitVisualLaneState | null>) => void) | null) => void;
   setAnchorWalkerVisualStateCallback: (callback: ((lanes: Array<ProductSynthAnchorWalkerVisualLaneState | null>) => void) | null) => void;
   setEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
@@ -2855,15 +2855,20 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     let rafId: number | null = null;
     let pendingSteps: number[] = [0, 0, 0, 0];
     let pendingHitCounts: number[] = [0, 0, 0, 0];
-    setStepPositionCallback((nextSteps: number[], nextHitCounts: number[]) => {
+    let pendingArpSteps: number[] = [0, 0, 0, 0];
+    setStepPositionCallback((nextSteps: number[], nextHitCounts: number[], nextArpSteps?: number[]) => {
       if (document.visibilityState !== 'visible') return;
       pendingSteps = [...nextSteps];
       pendingHitCounts = [...nextHitCounts];
+      if (Array.isArray(nextArpSteps)) {
+        pendingArpSteps = [...nextArpSteps];
+      }
       if (rafId !== null) return;
       rafId = window.requestAnimationFrame(() => {
         rafId = null;
         setPlayheads(pendingSteps);
         setHitCounts(pendingHitCounts);
+        setArpUiPlayheads(pendingArpSteps);
       });
     });
     return () => {
@@ -5103,14 +5108,33 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [arpConfigs, setArpConfigs] = useState<ProductPlayConfig[]>(() => normalizeProductPlayConfigs(initialArpConfigs, 4));
   const [arpRuntimeTick, setArpRuntimeTick] = useState(0);
   const [arpUiPlayheads, setArpUiPlayheads] = useState<number[]>(() => [0, 0, 0, 0]);
-  const arpUiPlayheadAnchorsRef = useRef<Array<{ hitCount: number; startedAtMs: number }>>(
-    Array.from({ length: LANE_CONFIGS.length }, () => ({ hitCount: -1, startedAtMs: 0 })),
-  );
   const [selectedArpSteps, setSelectedArpSteps] = useState<number[]>(() => [0, 0, 0, 0]);
+  const arpHarmonyState = state as unknown as Record<string, unknown>;
+  const arpHarmonyInputs = useMemo(() => ({
+    rootMidi: arpHarmonyState.rootMidi,
+    rootNote: arpHarmonyState.rootNote,
+    tension: arpHarmonyState.tension,
+    manualScale: arpHarmonyState.manualScale,
+    scaleMode: arpHarmonyState.scaleMode,
+    seedWindow: arpHarmonyState.seedWindow,
+    rngSeed: arpHarmonyState.rngSeed,
+    seed: arpHarmonyState.seed,
+    journeyMorphPhase: arpHarmonyState.journeyMorphPhase,
+  }), [
+    arpHarmonyState.rootMidi,
+    arpHarmonyState.rootNote,
+    arpHarmonyState.tension,
+    arpHarmonyState.manualScale,
+    arpHarmonyState.scaleMode,
+    arpHarmonyState.seedWindow,
+    arpHarmonyState.rngSeed,
+    arpHarmonyState.seed,
+    arpHarmonyState.journeyMorphPhase,
+  ]);
   const arpHarmonyContext = useMemo(() => createProductArpHarmonyContext(
-    state as unknown as Record<string, unknown>,
+    arpHarmonyInputs,
     harmonyState,
-  ), [harmonyState, state]);
+  ), [arpHarmonyInputs, harmonyState]);
   const activePlayConfig = arpConfigs[seq.activeTab] ?? defaultProductPlayConfig();
   const activeArpConfig = activePlayConfig.arp;
   const activeArpResolvedSteps = useMemo(() => resolveProductArpPatternDetails({
@@ -5268,83 +5292,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const intervalId = window.setInterval(() => setArpRuntimeTick((tick) => tick + 1), 250);
     return () => window.clearInterval(intervalId);
   }, [arpConfigs, isRunning]);
-
-  useEffect(() => {
-    const nowMs = currentWallSeconds() * 1000;
-    let anchorChanged = false;
-    seq.hitCounts.forEach((hitCount, laneIdx) => {
-      const anchor = arpUiPlayheadAnchorsRef.current[laneIdx] ?? { hitCount: -1, startedAtMs: 0 };
-      const nextHitCount = Math.max(0, Math.floor(hitCount ?? 0));
-      if (anchor.hitCount !== nextHitCount) {
-        arpUiPlayheadAnchorsRef.current[laneIdx] = {
-          hitCount: nextHitCount,
-          startedAtMs: nowMs,
-        };
-        anchorChanged = true;
-      }
-    });
-    if (!anchorChanged) return;
-    setArpUiPlayheads((current) => {
-      let changed = false;
-      const next = Array.from({ length: LANE_CONFIGS.length }, (_, laneIdx) => {
-        const value = current[laneIdx] ?? 0;
-        const config = arpConfigs[laneIdx];
-        if (!config?.enabled || config.mode !== 'arp') return value;
-        if (value !== 0) changed = true;
-        return 0;
-      });
-      return changed ? next : current;
-    });
-  }, [arpConfigs, seq.hitCounts]);
-
-  useEffect(() => {
-    if (!isRunning) {
-      setArpUiPlayheads((current) => current.some((value) => value !== 0) ? [0, 0, 0, 0] : current);
-      return;
-    }
-    if (!arpConfigs.some((config) => config.enabled && config.mode === 'arp')) return;
-
-    const beatSeconds = chordSequencerUiBeatSeconds(state);
-    const tick = () => {
-      const nowMs = currentWallSeconds() * 1000;
-      setArpUiPlayheads((current) => {
-        let changed = false;
-        const next = Array.from({ length: LANE_CONFIGS.length }, (_, laneIdx) => {
-          const currentStep = current[laneIdx] ?? 0;
-          const config = arpConfigs[laneIdx];
-          if (!config?.enabled || config.mode !== 'arp') {
-            if (currentStep !== 0) changed = true;
-            return 0;
-          }
-          const anchor = arpUiPlayheadAnchorsRef.current[laneIdx] ?? { hitCount: -1, startedAtMs: nowMs };
-          if (anchor.startedAtMs <= 0) {
-            arpUiPlayheadAnchorsRef.current[laneIdx] = { ...anchor, startedAtMs: nowMs };
-          }
-          const laneClockDivision = seq.sequencerModels[laneIdx]?.clockDiv ?? seq.clockDivs[laneIdx] ?? '1/8';
-          const triggerStepMs = Math.max(1, sequencerClockDivisionToSeconds(laneClockDivision, beatSeconds, '1/8') * 1000);
-          const arpStepMs = Math.max(1, triggerStepMs / Math.max(0.25, config.arp.rate));
-          const length = clampArpLengthValue(config.arp.length);
-          const elapsedMs = Math.max(0, nowMs - (arpUiPlayheadAnchorsRef.current[laneIdx]?.startedAtMs ?? nowMs));
-          const nextStep = Math.floor(elapsedMs / arpStepMs) % length;
-          if (nextStep !== currentStep) changed = true;
-          return nextStep;
-        });
-        return changed ? next : current;
-      });
-    };
-
-    tick();
-    const intervalId = window.setInterval(tick, ARP_UI_PLAYHEAD_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
-  }, [
-    arpConfigs,
-    isRunning,
-    seq.clockDivs,
-    seq.sequencerModels,
-    state.drumEuclidBaseBPM,
-    state.sequencerMasterBPM,
-    state.synthEuclidBaseBPM,
-  ]);
 
   const synthEuclideanPatternOptions = React.useMemo<UsePresetsOptions[]>(() => LANE_CONFIGS.map((_, laneIdx) => ({
     customExtract: (currentState) => {
@@ -5692,7 +5639,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const pitchSettingsRef = useRef<PitchSettings[] | null>(null);
   const pitchSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | null>(null);
   const engineArpConfigsRef = useRef<ProductPlayConfig[] | null>(null);
-  const engineArpRuntimeTickRef = useRef(arpRuntimeTick);
+  const engineArpPatternSignatureRef = useRef<string | null>(null);
   const enginePitchBindingModesRef = useRef<PitchBindingMode[] | null>(null);
   const engineSequencerModelsRef = useRef<SequencerState[] | null>(null);
   const engineClockDivsRef = useRef(seq.clockDivs);
@@ -5703,12 +5650,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const settingsChanged = pitchSettingsRef.current !== seq.pitchSettings;
     const subLaneStatesChanged = pitchSubLaneStatesRef.current !== seq.subLaneStates;
     const arpConfigsChanged = engineArpConfigsRef.current !== arpConfigs;
-    const arpRuntimeTickChanged = engineArpRuntimeTickRef.current !== arpRuntimeTick;
     const pitchBindingModesChanged = enginePitchBindingModesRef.current !== pitchBindingModes;
     const sequencerModelsChanged = engineSequencerModelsRef.current !== seq.sequencerModels;
     const clockDivsChanged = engineClockDivsRef.current !== seq.clockDivs;
     const sequencerBeatSecondsChanged = engineSequencerBeatSecondsRef.current !== sequencerBeatSeconds;
-    if (overridesChanged || settingsChanged || subLaneStatesChanged || arpConfigsChanged || arpRuntimeTickChanged || pitchBindingModesChanged || sequencerModelsChanged || clockDivsChanged || sequencerBeatSecondsChanged) {
+    if (overridesChanged || settingsChanged || subLaneStatesChanged || arpConfigsChanged || pitchBindingModesChanged || sequencerModelsChanged || clockDivsChanged || sequencerBeatSecondsChanged) {
       const now = Date.now();
       let resolvedPendingDiceSync = false;
       const blockedByPendingDice = pendingDiceSyncUntilRef.current.some((until, laneIndex) => {
@@ -5732,7 +5678,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         pitchSettingsRef.current = seq.pitchSettings;
         pitchSubLaneStatesRef.current = seq.subLaneStates;
         engineArpConfigsRef.current = arpConfigs;
-        engineArpRuntimeTickRef.current = arpRuntimeTick;
         enginePitchBindingModesRef.current = pitchBindingModes;
         engineSequencerModelsRef.current = seq.sequencerModels;
         engineClockDivsRef.current = seq.clockDivs;
@@ -5744,7 +5689,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       pitchSettingsRef.current = seq.pitchSettings;
       pitchSubLaneStatesRef.current = seq.subLaneStates;
       engineArpConfigsRef.current = arpConfigs;
-      engineArpRuntimeTickRef.current = arpRuntimeTick;
       enginePitchBindingModesRef.current = pitchBindingModes;
       engineSequencerModelsRef.current = seq.sequencerModels;
       engineClockDivsRef.current = seq.clockDivs;
@@ -5755,12 +5699,29 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           config: config ?? defaultProductPlayConfig(),
           harmony: arpHarmonyContext,
           laneIndex: laneIdx,
-          runtimeTick: arpRuntimeTick,
           pitchBindingMode: pitchBindingModes[laneIdx] ?? 'polyrhythmic',
           triggerPattern: seq.sequencerModels[laneIdx]?.trigger.pattern ?? null,
           triggerStepMs: Math.max(1, sequencerClockDivisionToSeconds(laneClockDivision, sequencerBeatSeconds, '1/8') * 1000),
         });
       });
+      const playArps = arpConfigs.map((config, laneIdx) => {
+        const playConfig = normalizeProductPlayConfig(config ?? defaultProductPlayConfig());
+        const midiPattern = playConfig.enabled && playConfig.mode === 'arp'
+          ? resolveProductArpMidiPattern({
+            config: { ...playConfig.arp, enabled: true },
+            harmony: arpHarmonyContext,
+            laneIndex: laneIdx,
+          }) ?? []
+          : [];
+        return {
+          enabled: playConfig.enabled,
+          mode: playConfig.mode,
+          arp: playConfig.arp,
+          midiPattern,
+        };
+      });
+      const arpPatternSignature = JSON.stringify(playArps);
+      const arpPatternChanged = engineArpPatternSignatureRef.current !== arpPatternSignature;
       // Convert pitch offsets to absolute MIDI notes before sending to engine
       // (engine doesn't know pitch mode/root/scale — we convert here)
       const convertedPitch = seq.stepOverrides.pitch.map((offsets, laneIdx) => {
@@ -5819,8 +5780,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           : null;
       });
       // Send MIDI-converted pitch to audio engine
-      onStepOverridesChange?.(
-        stepOverridesForEngineSubLaneState({
+      const engineOverrides: StepOverrides = {
           ...seq.stepOverrides,
           pitch: convertedPitch,  // Send MIDI notes, not raw offsets
           playNotes,
@@ -5828,11 +5788,18 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           expressionRanges,
           morphRanges,
           distanceRanges,
-        }, engineSubLaneStates),
+      };
+      if (arpPatternChanged) engineOverrides.playArps = playArps;
+      else delete engineOverrides.playArps;
+      onStepOverridesChange?.(
+        stepOverridesForEngineSubLaneState(engineOverrides, engineSubLaneStates),
         engineSubLaneStates,
       );
+      engineArpPatternSignatureRef.current = arpPatternSignature;
     }
-  }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, seq.sequencerModels, seq.clockDivs, arpConfigs, arpHarmonyContext, arpRuntimeTick, harmonyState, pitchBindingModes, state.sequencerMasterBPM, state.synthEuclidBaseBPM, state.drumEuclidBaseBPM, onStepOverridesChange, onRawStepOverridesChange]);
+  // The live-tone tick only refreshes the visual preview. Reposting ARP state here
+  // cancels native notes that are already scheduled inside the current hold window.
+  }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, seq.sequencerModels, seq.clockDivs, arpConfigs, arpHarmonyContext, harmonyState, pitchBindingModes, state.sequencerMasterBPM, state.synthEuclidBaseBPM, state.drumEuclidBaseBPM, onStepOverridesChange, onRawStepOverridesChange]);
 
   // Persist sub-lane states (enabled/steps/direction) across tab switches
   const subLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | null>(null);

@@ -172,7 +172,7 @@ export type ProductDynamicsVisualTelemetry = Readonly<{
   sidechainEvents: ProductDynamicsSidechainVisualEvent[];
 }>;
 
-export type ProductSequencerStepPositionCallback = (steps: number[], hitCounts: number[]) => void;
+export type ProductSequencerStepPositionCallback = (steps: number[], hitCounts: number[], arpSteps?: number[]) => void;
 
 export type ProductSynthOrbitVisualLaneState = {
   noteCount: number;

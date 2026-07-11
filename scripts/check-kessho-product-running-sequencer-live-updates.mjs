@@ -124,6 +124,14 @@ check(
   'sequencer controls must commit explicit Product events without forcing snapshot receipt waits',
 );
 
+check(
+  'sequencer-commit-batches-runtime-events',
+  files.hostCommitService.includes('postProductEvents: (events: readonly ProductEvent[]) => void') &&
+    files.hostCommitService.includes('this.options.postProductEvents(events)') &&
+    files.host.includes('postProductEvents: (events) => this.postProductEvents(events)'),
+  'sequencer commits must use the Product runtime batch path instead of flooding the worklet one event at a time',
+);
+
 {
   const harness = loadCoreProductHostHarness();
   const receipt = await harness.host.commitResolvedState({
@@ -173,6 +181,30 @@ check(
       harness.runtime.events.includes(event) &&
       harness.runtime.snapshots.length === 0,
     'sequencer control event commits must post explicit runtime events without waiting for a full snapshot',
+  );
+}
+
+{
+  const harness = loadCoreProductHostHarness();
+  harness.host.runtimeReady = true;
+  const events = Array.from({ length: 8 }, (_, laneIndex) => harness.context.createCoreProductSequencerLaneParamEvent(
+    'synth',
+    laneIndex,
+    harness.context.KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing,
+    laneIndex / 8,
+  ));
+  await harness.host.commitResolvedState({
+    revision: 3,
+    reason: 'sequencer-control-change',
+    triggerCritical: true,
+    applyMode: 'event',
+    patch: { synthEuclid1Swing: 0.375 },
+    events,
+  });
+  check(
+    'sequencer-control-event-mode-batches-runtime-post',
+    harness.runtime.eventBatches.some((batch) => batch.length === events.length),
+    'a multi-event sequencer commit must reach the runtime as one bounded batch',
   );
 }
 

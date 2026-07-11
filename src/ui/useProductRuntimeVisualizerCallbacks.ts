@@ -19,7 +19,7 @@ export type ProductRuntimeVisualizerCallbacksOptions = {
   setProductDrumStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
   setProductDrumTriggerCallback: (callback: ((voice: string, velocity: number) => void) | null) => void;
   setProductSynthEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
-  setProductSynthStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
+  setProductSynthStepPositionCallback: (callback: ((steps: number[], hitCounts: number[], arpSteps?: number[]) => void) | null) => void;
   uiMode: ProductRuntimeVisualizerUiMode;
 };
 

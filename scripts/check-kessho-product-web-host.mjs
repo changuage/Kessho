@@ -953,9 +953,11 @@ assert(
 assert(
   synthPage.includes('let resolvedPendingDiceSync = false;') &&
     synthPage.includes('if (resolvedPendingDiceSync) {') &&
-    synthPage.includes('engineArpRuntimeTickRef.current = arpRuntimeTick;') &&
+    !synthPage.includes('engineArpRuntimeTickRef') &&
+    !synthPage.includes('arpRuntimeTickChanged') &&
+    synthPage.includes('The live-tone tick only refreshes the visual preview.') &&
     synthPage.indexOf('if (resolvedPendingDiceSync) {') < synthPage.indexOf('onStepOverridesChange?.('),
-  'Product synth dice sync must not echo Product-confirmed dice state back into the runtime',
+  'Product synth runtime ticks must not echo ARP state back into the native scheduler',
 );
 assert(
   packageJson.scripts?.['core:product:sequencer-ui'] === 'node scripts/check-kessho-product-sequencer-ui-parity.mjs',

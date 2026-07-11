@@ -48,7 +48,7 @@ import type {
   ProductTelemetrySnapshot,
 } from './ProductEngineTypes';
 
-const PRODUCT_EVENT_BATCH_SIZE = 48;
+const PRODUCT_EVENT_BATCH_SIZE = 24;
 const PRODUCT_EVENT_BATCH_RETRY_MS = 40;
 
 /**
@@ -135,11 +135,10 @@ export class WebProductEngine implements ProductEnginePort {
     // Generated events are the preferred compatibility path; do not replace generated events with legacy parameter-update snapshots.
     if (this.lifecycleState === 'running' && this.pendingProductEvents.length === 0) {
       coreProductRuntimeHostPort.postEvent(event);
-      this.scheduleDiagnosticsPublish();
-      return;
+    } else {
+      this.pendingProductEvents.push(event);
+      this.flushPendingProductEvents();
     }
-    this.pendingProductEvents.push(event);
-    this.flushPendingProductEvents();
     this.scheduleDiagnosticsPublish();
   }
 
@@ -151,11 +150,10 @@ export class WebProductEngine implements ProductEnginePort {
       this.pendingProductEvents.length === 0
     ) {
       coreProductRuntimeHostPort.postEvents(events);
-      this.scheduleDiagnosticsPublish();
-      return;
+    } else {
+      this.pendingProductEvents.push(...events);
+      this.flushPendingProductEvents();
     }
-    this.pendingProductEvents.push(...events);
-    this.flushPendingProductEvents();
     this.scheduleDiagnosticsPublish();
   }
 
@@ -167,13 +165,12 @@ export class WebProductEngine implements ProductEnginePort {
     if (this.productEventFlushTimer !== null) return;
     this.productEventFlushTimer = setTimeout(() => {
       this.productEventFlushTimer = null;
-      this.flushPendingProductEvents();
+      if (this.flushPendingProductEvents()) this.scheduleDiagnosticsPublish();
     }, PRODUCT_EVENT_BATCH_RETRY_MS);
   }
 
-  private flushPendingProductEvents(): void {
-    if (this.pendingProductEvents.length === 0) return;
-    if (!this.canFlushPendingProductEvents()) return;
+  private flushPendingProductEvents(): boolean {
+    if (this.pendingProductEvents.length === 0 || !this.canFlushPendingProductEvents()) return false;
     const batch = this.pendingProductEvents.splice(0, PRODUCT_EVENT_BATCH_SIZE);
     if (batch.length === 1) {
       coreProductRuntimeHostPort.postEvent(batch[0]!);
@@ -181,7 +178,7 @@ export class WebProductEngine implements ProductEnginePort {
       coreProductRuntimeHostPort.postEvents(batch);
     }
     if (this.pendingProductEvents.length > 0) this.schedulePendingProductEventFlush();
-    this.scheduleDiagnosticsPublish();
+    return true;
   }
 
   private clearPendingProductEventFlushTimer(): void {
@@ -337,8 +334,8 @@ export class WebProductEngine implements ProductEnginePort {
     this.setLiveTriggerCallback('pad2Distance', callback);
   }
 
-  setPianoDistanceTriggerCallback(_callback: ProductScalarCallback | null): void {
-    // Piano is a sample library key in Product Core, not a live-trigger source.
+  setPianoDistanceTriggerCallback(callback: ProductScalarCallback | null): void {
+    this.setLiveTriggerCallback('pianoDistance', callback);
   }
 
   setSample1DistanceTriggerCallback(callback: ProductScalarCallback | null): void {
@@ -459,7 +456,7 @@ export class WebProductEngine implements ProductEnginePort {
   ): void {
     this.lifecycleState = state;
     if (state === 'running') {
-      this.flushPendingProductEvents();
+      if (this.flushPendingProductEvents()) this.scheduleDiagnosticsPublish();
     } else if (state === 'disposed') {
       this.clearPendingProductEventFlushTimer();
       this.pendingProductEvents.length = 0;

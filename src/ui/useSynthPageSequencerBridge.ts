@@ -57,6 +57,7 @@ function synthEngineStepOverrides(overrides: StepOverrides): Partial<StepOverrid
   return {
     pitch: overrides.pitch,
     pitchDirection: overrides.pitchDirection,
+    playArps: overrides.playArps,
     playNotes: overrides.playNotes,
     triggerToggles: overrides.triggerToggles,
     expression: overrides.expression,

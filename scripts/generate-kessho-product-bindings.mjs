@@ -29,17 +29,66 @@ function writeGenerated(path, content) {
   writeFileSync(path, content);
 }
 
-function updateProductWorkletSchemaHash(schemaHashLiteral) {
+const productWorkletEventNames = [
+  'SetParam',
+  'SetTransport',
+  'Start',
+  'Stop',
+  'ResetTransport',
+  'SetSequencerStep',
+  'SetSequencerLane',
+  'SetSourceEnabled',
+  'SetSourcePreset',
+  'SetJourneyState',
+  'ManualNoteOn',
+  'ManualNoteOff',
+  'MidiEvent',
+  'TriggerDrumVoice',
+  'StartJourneyMorphClock',
+  'StopJourneyMorphClock',
+  'SetHarmonyRoot',
+  'SetScale',
+  'SetSeed',
+  'ResetRng',
+  'SetModulationRange',
+  'ResetSequencerLaneHome',
+  'DiceSequencerLane',
+  'SetSourceOverride',
+  'AnchorWalkerPerformance',
+  'GeneratedSequencerCapture',
+  'SetSynthArpConfig',
+  'SetSynthArpStep',
+  'CommitSynthArpPattern',
+];
+
+function updateProductWorkletBindings(schemaHashLiteral, events) {
   const workletPath = resolve(root, 'public/worklets/kessho-core-product.worklet.js');
   const source = readFileSync(workletPath, 'utf8');
-  const pattern = /const EXPECTED_PRODUCT_SCHEMA_HASH = 0x[0-9a-f]+;/;
-  if (!pattern.test(source)) {
+  const schemaHashPattern = /const EXPECTED_PRODUCT_SCHEMA_HASH = 0x[0-9a-f]+;/;
+  if (!schemaHashPattern.test(source)) {
     throw new Error('Product worklet schema hash constant was not found');
   }
-  const next = source.replace(
-    pattern,
+  const eventIds = new Map(events.map((event) => [event.name, event.id]));
+  const workletEvents = productWorkletEventNames.map((name) => {
+    const id = eventIds.get(name);
+    if (!Number.isInteger(id)) {
+      throw new Error(`Product worklet event ${name} is missing from the event schema`);
+    }
+    return { name, id };
+  });
+  const eventIdsPattern = /const PRODUCT_EVENT_IDS = Object\.freeze\(\{[\s\S]*?\n\}\);/;
+  if (!eventIdsPattern.test(source)) {
+    throw new Error('Product worklet event id table was not found');
+  }
+  const generatedEventIds = `const PRODUCT_EVENT_IDS = Object.freeze({\n${workletEvents
+    .map((event) => `  ${event.name}: ${event.id},`)
+    .join('\n')}\n});`;
+  const next = source
+    .replace(
+      schemaHashPattern,
     `const EXPECTED_PRODUCT_SCHEMA_HASH = ${schemaHashLiteral};`,
-  );
+    )
+    .replace(eventIdsPattern, generatedEventIds);
   writeFileSync(workletPath, next);
 }
 
@@ -736,6 +785,6 @@ export const KESSHO_PRODUCT_EVENTS = Object.freeze(${JSON.stringify(events, null
 export type KesshoProductEventName = keyof typeof KESSHO_PRODUCT_EVENT_IDS;
 `);
 
-updateProductWorkletSchemaHash(schemaHashJsLiteral);
+updateProductWorkletBindings(schemaHashJsLiteral, events);
 
 console.log(`Generated Kessho product bindings (${hashHex}).`);

@@ -398,6 +398,98 @@ KesshoProductSnapshotV2 makeSingleRatchetSnapshot(
   return snapshot;
 }
 
+KesshoProductSnapshotV2 makeSingleSynthArpSnapshot(
+    uint32_t step_count = 4u,
+    uint32_t trigger_mask = 0x0fu,
+    float base_midi = 67.0f) {
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.transport.running = 1;
+  snapshot.drum_euclid.lane_count = 0u;
+  snapshot.synth_euclid.lane_count = 1u;
+  KesshoProductSequencerLaneSnapshot& lane = snapshot.synth_euclid.lanes[0];
+  lane.enabled = 1u;
+  lane.target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  lane.step_count = std::max(1u, step_count);
+  lane.fill_count = lane.step_count;
+  lane.rotation = 0;
+  lane.manual_step_mask_low = trigger_mask;
+  lane.manual_step_mask_high = 0u;
+  lane.clock_division = 16u;
+  lane.probability = 1.0f;
+  lane.ratchet = 1u;
+  lane.midi_note = base_midi;
+  lane.velocity = 1.0f;
+  lane.hold_seconds = 0.1f;
+  lane.expression = 0.8f;
+  lane.seed = 3001u;
+  lane.bar_reset = 1u;
+  return snapshot;
+}
+
+void enqueueSynthArpConfig(
+    KesshoProductEngine* engine,
+    bool enabled,
+    uint32_t length,
+    float rate) {
+  KesshoProductEvent event{};
+  event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SYNTH_ARP_CONFIG;
+  event.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  event.index = 0u;
+  event.value = enabled ? 1.0f : 0.0f;
+  event.value2 = static_cast<float>(length);
+  event.value3 = rate;
+  require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "synth arp config enqueue failed");
+}
+
+void enqueueSynthArpStep(
+    KesshoProductEngine* engine,
+    uint32_t step,
+    float midi_note,
+    bool active) {
+  KesshoProductEvent event{};
+  event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SYNTH_ARP_STEP;
+  event.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  event.index = 0u;
+  event.param_id = step;
+  event.value = midi_note;
+  event.value2 = active ? 1.0f : 0.0f;
+  require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "synth arp step enqueue failed");
+}
+
+void enqueueSynthArpCommit(KesshoProductEngine* engine) {
+  KesshoProductEvent event{};
+  event.event_kind = KESSHO_PRODUCT_EVENT_KIND_COMMIT_SYNTH_ARP_PATTERN;
+  event.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  event.index = 0u;
+  require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "synth arp commit enqueue failed");
+}
+
+void enqueueSynthArpPattern(
+    KesshoProductEngine* engine,
+    const std::vector<float>& midi_notes,
+    uint32_t active_mask,
+    uint32_t length,
+    float rate,
+    bool enabled = true) {
+  enqueueSynthArpConfig(engine, enabled, length, rate);
+  for (uint32_t step = 0u; step < 16u; ++step) {
+    const bool has_note = step < midi_notes.size();
+    const float midi_note = has_note ? midi_notes[step] : -1.0f;
+    enqueueSynthArpStep(engine, step, midi_note, has_note && ((active_mask & (1u << step)) != 0u));
+  }
+  enqueueSynthArpCommit(engine);
+}
+
+void expectRenderedMidiNotes(
+    const std::vector<RenderedSequencerEvent>& events,
+    const std::vector<float>& expected_notes,
+    const char* message) {
+  require(events.size() == expected_notes.size(), message);
+  for (uint32_t i = 0u; i < expected_notes.size(); ++i) {
+    require(std::fabs(events[i].event.midi_note - expected_notes[i]) < 0.001f, message);
+  }
+}
+
 void requireProductSequencerRatchetCrossBlockTest() {
   constexpr double sample_rate = 48000.0;
   constexpr uint32_t step_frames = 6000u;
@@ -423,6 +515,214 @@ void requireProductSequencerRatchetCrossBlockTest() {
         kessho_product_destroy(engine);
       }
     }
+  }
+}
+
+void requireProductSequencerSynthArpRuntimeTests() {
+  constexpr double sample_rate = 48000.0;
+  constexpr uint32_t block_size = 64u;
+  const std::vector<float> arp_notes = {60.0f, 62.0f, 64.0f, 65.0f};
+  const std::vector<float> arp_notes_8 = {60.0f, 62.0f, 64.0f, 65.0f, 67.0f, 69.0f, 71.0f, 72.0f};
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "synth arp 1x engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot();
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "synth arp 1x snapshot load failed");
+    enqueueSynthArpPattern(engine, arp_notes, 0x0fu, 4u, 1.0f);
+    const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 24000u);
+    expectAbsoluteOffsets(
+        events,
+        {0u, 1500u, 3000u, 4500u, 6000u, 7500u, 9000u, 10500u,
+         12000u, 13500u, 15000u, 16500u, 18000u, 19500u, 21000u, 22500u},
+        "synth arp 1x should fit one arp pass inside each dense trigger window");
+    expectRenderedMidiNotes(
+        events,
+        {60.0f, 62.0f, 64.0f, 65.0f, 60.0f, 62.0f, 64.0f, 65.0f,
+         60.0f, 62.0f, 64.0f, 65.0f, 60.0f, 62.0f, 64.0f, 65.0f},
+        "synth arp 1x should emit arp step pitches, not the trigger pitch");
+    const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+    require(telemetry.synth_sequencer_hit_counts[0] == 4u, "synth arp should count parent triggers once");
+    require(telemetry.synth_arp_current_steps[0] == 3u, "synth arp telemetry should expose the current arp step");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "synth arp sparse trigger engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot(16u, 0x0001u);
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "synth arp sparse trigger snapshot load failed");
+    enqueueSynthArpPattern(engine, arp_notes, 0x0fu, 4u, 1.0f);
+    const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 96000u);
+    expectAbsoluteOffsets(
+        events,
+        {0u, 6000u, 12000u, 18000u, 24000u, 30000u, 36000u, 42000u,
+         48000u, 54000u, 60000u, 66000u, 72000u, 78000u, 84000u, 90000u},
+        "synth arp sparse trigger should keep looping until the next parent trigger");
+    expectRenderedMidiNotes(
+        events,
+        {60.0f, 62.0f, 64.0f, 65.0f, 60.0f, 62.0f, 64.0f, 65.0f,
+         60.0f, 62.0f, 64.0f, 65.0f, 60.0f, 62.0f, 64.0f, 65.0f},
+        "synth arp sparse trigger should wrap the arp sequence across the hold window");
+    const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+    require(telemetry.synth_sequencer_hit_counts[0] == 1u, "synth arp sparse trigger should count only the parent trigger");
+    require(telemetry.synth_arp_current_steps[0] == 3u, "synth arp telemetry should follow the last drained arp note");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "synth arp screenshot trigger engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot(16u, 0x8889u);
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "synth arp screenshot trigger snapshot load failed");
+    enqueueSynthArpPattern(engine, arp_notes_8, 0x00ffu, 8u, 1.0f);
+    const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 18000u);
+    expectAbsoluteOffsets(
+        events,
+        {0u, 2250u, 4500u, 6750u, 9000u, 11250u, 13500u, 15750u},
+        "synth arp should play the full 8-step arp before the next screenshot-pattern trigger");
+    expectRenderedMidiNotes(
+        events,
+        arp_notes_8,
+        "synth arp screenshot-pattern trigger should advance through all 8 arp steps");
+    const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+    require(telemetry.synth_sequencer_hit_counts[0] == 1u, "synth arp screenshot-pattern test should count only the first trigger");
+    require(telemetry.synth_arp_current_steps[0] == 7u, "synth arp screenshot-pattern telemetry should reach the eighth arp step");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "synth arp pending-pattern engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot(16u, 0x0001u);
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "synth arp pending-pattern snapshot load failed");
+    enqueueSynthArpPattern(engine, arp_notes, 0x0fu, 4u, 1.0f);
+    const std::vector<RenderedSequencerEvent> first_block = renderEventsInBlocks(engine, block_size, block_size);
+    expectAbsoluteOffsets(first_block, {0u}, "synth arp pending-pattern setup should emit the first phrase note");
+    expectRenderedMidiNotes(first_block, {60.0f}, "synth arp pending-pattern setup should start with the active pattern");
+
+    enqueueSynthArpPattern(engine, {72.0f, 74.0f, 76.0f, 77.0f}, 0x0fu, 4u, 1.0f, false);
+    const std::vector<RenderedSequencerEvent> held_events = renderEventsInBlocks(engine, block_size, 24000u);
+    expectAbsoluteOffsets(
+        held_events,
+        {5936u, 11936u, 17936u, 23936u},
+        "synth arp pending disable should retain scheduled notes until the next parent trigger");
+    expectRenderedMidiNotes(
+        held_events,
+        {62.0f, 64.0f, 65.0f, 60.0f},
+        "synth arp pending disable should not replace the active phrase mid-hold");
+    const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+    require(telemetry.synth_sequencer_hit_counts[0] == 1u, "synth arp pending disable should not create a parent trigger");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "synth arp screenshot full-cycle engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot(16u, 0x8889u);
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "synth arp screenshot full-cycle snapshot load failed");
+    enqueueSynthArpPattern(engine, arp_notes_8, 0x00ffu, 8u, 1.0f);
+    const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 96000u);
+    require(events.size() == 40u, "synth arp screenshot-pattern cycle should emit 8 arp notes per parent trigger");
+    require(events[0].absolute_offset == 0u, "synth arp screenshot-pattern cycle should start on the first trigger");
+    require(events[7].absolute_offset == 15750u, "synth arp screenshot-pattern first hold window should complete before step four");
+    require(events[8].absolute_offset == 18000u, "synth arp screenshot-pattern cycle should retrigger at step four");
+    require(events[39].absolute_offset == 95250u, "synth arp screenshot-pattern cycle should finish the last short hold window");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "synth arp 2x engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot();
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "synth arp 2x snapshot load failed");
+    enqueueSynthArpPattern(engine, arp_notes, 0x0fu, 4u, 2.0f);
+    const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 12000u);
+    expectAbsoluteOffsets(
+        events,
+        {0u, 750u, 1500u, 2250u, 3000u, 3750u, 4500u, 5250u,
+         6000u, 6750u, 7500u, 8250u, 9000u, 9750u, 10500u, 11250u},
+        "synth arp 2x should fit two arp passes inside each trigger window");
+    expectRenderedMidiNotes(
+        events,
+        {60.0f, 62.0f, 64.0f, 65.0f, 60.0f, 62.0f, 64.0f, 65.0f,
+         60.0f, 62.0f, 64.0f, 65.0f, 60.0f, 62.0f, 64.0f, 65.0f},
+        "synth arp 2x should advance through all arp steps");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "synth arp half-rate engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot();
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "synth arp half-rate snapshot load failed");
+    enqueueSynthArpPattern(engine, arp_notes, 0x0fu, 4u, 0.5f);
+    const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 24000u);
+    expectAbsoluteOffsets(
+        events,
+        {0u, 3000u, 6000u, 9000u, 12000u, 15000u, 18000u, 21000u},
+        "synth arp half-rate should fit half an arp pass inside each trigger window");
+    expectRenderedMidiNotes(
+        events,
+        {60.0f, 62.0f, 64.0f, 65.0f, 60.0f, 62.0f, 64.0f, 65.0f},
+        "synth arp half-rate should preserve phase across dense triggers");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "synth arp rest engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot();
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "synth arp rest snapshot load failed");
+    enqueueSynthArpPattern(engine, arp_notes, 0x0bu, 4u, 1.0f);
+    const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 24000u);
+    expectAbsoluteOffsets(
+        events,
+        {0u, 1500u, 4500u, 6000u, 7500u, 10500u,
+         12000u, 13500u, 16500u, 18000u, 19500u, 22500u},
+        "synth arp rests should advance cursor without emitting notes");
+    expectRenderedMidiNotes(
+        events,
+        {60.0f, 62.0f, 65.0f, 60.0f, 62.0f, 65.0f,
+         60.0f, 62.0f, 65.0f, 60.0f, 62.0f, 65.0f},
+        "synth arp rests should preserve the later active step");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "synth arp length memory engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot();
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "synth arp length memory snapshot load failed");
+    enqueueSynthArpPattern(engine, arp_notes, 0x0fu, 2u, 1.0f);
+    enqueueSynthArpConfig(engine, true, 4u, 1.0f);
+    enqueueSynthArpCommit(engine);
+    const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 24000u);
+    expectAbsoluteOffsets(
+        events,
+        {0u, 1500u, 3000u, 4500u, 6000u, 7500u, 9000u, 10500u,
+         12000u, 13500u, 15000u, 16500u, 18000u, 19500u, 21000u, 22500u},
+        "synth arp restored length should expose remembered upper steps");
+    expectRenderedMidiNotes(
+        events,
+        {60.0f, 62.0f, 64.0f, 65.0f, 60.0f, 62.0f, 64.0f, 65.0f,
+         60.0f, 62.0f, 64.0f, 65.0f, 60.0f, 62.0f, 64.0f, 65.0f},
+        "synth arp config changes should not clear stored upper steps");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "synth arp disabled engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot(2u, 0x03u, 67.0f);
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "synth arp disabled snapshot load failed");
+    enqueueSynthArpPattern(engine, arp_notes, 0x0fu, 4u, 1.0f, false);
+    const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 12000u);
+    expectAbsoluteOffsets(events, {0u, 6000u}, "disabled synth arp should fall back to normal trigger playback");
+    expectRenderedMidiNotes(events, {67.0f, 67.0f}, "disabled synth arp should not leak stored arp notes");
+    const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+    require(telemetry.synth_arp_current_steps[0] == 0u, "disabled synth arp telemetry should report step zero");
+    kessho_product_destroy(engine);
   }
 }
 
@@ -3555,6 +3855,7 @@ int main() {
   requireProductSequencerRatchetCrossBlockTest();
   requireProductSequencerRatchetNearBlockEndTest();
   requireProductSequencerRatchetPendingClearTests();
+  requireProductSequencerSynthArpRuntimeTests();
   requireProductSequencerNudgeSchedulingTests();
   requireProductSequencerModeEventTests();
   requireAnchorWalkerTriggerAndBoundaryTests();

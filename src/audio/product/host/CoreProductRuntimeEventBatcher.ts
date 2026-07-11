@@ -1,7 +1,7 @@
 import type { CoreProductEvent } from '../../coreProductEvents';
 import type { CoreProductRuntime } from '../../coreProductRuntime';
 
-const RUNTIME_EVENT_BATCH_SIZE = 48;
+const RUNTIME_EVENT_BATCH_SIZE = 24;
 const RUNTIME_EVENT_BATCH_RETRY_MS = 40;
 
 export class CoreProductRuntimeEventBatcher {

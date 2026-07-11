@@ -107,6 +107,7 @@ export interface StepOverrides {
     velocity?: number;
     voiceIndex?: number;
   }[] | null)[];
+  playArps?: unknown[];
   probability: (number[] | null)[];
   ratchet: (number[] | null)[];
   trigCondition: (TrigCondition[] | null)[];

@@ -1339,23 +1339,27 @@ const App: React.FC = () => {
 
   const shouldDisableLeadRandomTiming = useCallback((nextState: SliderState): boolean => {
     if (!nextState.leadRandomEnabled) return false;
-    const randomSource = nextState.leadRandomSource ?? 'lead1';
+    const randomSource = String(nextState.leadRandomSource ?? 'lead1');
     if (randomSource === 'pad1') return !nextState.padEnabled;
     if (randomSource === 'pad2') return !nextState.pad2Enabled;
     if (randomSource === 'lead2') return !nextState.lead2Enabled;
+    if (randomSource === 'piano') return !nextState.pianoEnabled && !nextState.sample1Enabled;
     if (randomSource === 'sample1') return !nextState.sample1Enabled;
     if (randomSource === 'sample2') return !nextState.sample2Enabled;
     return !nextState.leadEnabled;
   }, []);
 
   const enableLeadRandomTimingSource = useCallback((nextState: SliderState): void => {
-    const randomSource = nextState.leadRandomSource ?? 'lead1';
+    const randomSource = String(nextState.leadRandomSource ?? 'lead1');
     if (randomSource === 'pad1') {
       nextState.padEnabled = true;
     } else if (randomSource === 'pad2') {
       nextState.pad2Enabled = true;
     } else if (randomSource === 'lead2') {
       nextState.lead2Enabled = true;
+    } else if (randomSource === 'piano') {
+      nextState.pianoEnabled = true;
+      nextState.sample1Enabled = true;
     } else if (randomSource === 'sample1') {
       nextState.sample1Enabled = true;
     } else if (randomSource === 'sample2') {
@@ -1576,6 +1580,7 @@ const App: React.FC = () => {
     state.pad2Enabled,
     state.leadEnabled,
     state.lead2Enabled,
+    state.pianoEnabled,
     state.sample1Enabled,
     state.sample2Enabled,
     state.leadRandomEnabled,

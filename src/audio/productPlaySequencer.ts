@@ -87,8 +87,6 @@ const PRODUCT_CHORD_STYLES: readonly ProductChordStyle[] = ['straight', 'strum']
 const PRODUCT_CHORD_FLOWS: readonly ProductChordFlow[] = ['forward', 'reverse', 'pingpong'];
 const PRODUCT_STRUM_DIRECTIONS: readonly SynthChordSequencerStrumDirection[] = ['up', 'down', 'upDown', 'downUp', 'random'];
 const PRODUCT_PLAY_MAX_STEPS = 16;
-const PRODUCT_PLAY_MAX_NOTES_PER_TRIGGER = 32;
-const PRODUCT_PLAY_NOTE_OFFSET_MAX_MS = 16000;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -369,143 +367,6 @@ export function resolveProductPlayNoteEvents(options: {
   });
 }
 
-type TriggerSlotInterval = {
-  ordinal: number;
-  triggerStep: number;
-  intervalSteps: number;
-};
-
-function resolveTriggerSlotIntervals(triggerPattern: readonly boolean[]): TriggerSlotInterval[] {
-  const patternLength = Math.max(0, Math.min(64, triggerPattern.length));
-  if (patternLength === 0) return [];
-  const activeSteps: number[] = [];
-  for (let step = 0; step < patternLength; step += 1) {
-    if (triggerPattern[step] === true) activeSteps.push(step);
-  }
-  if (activeSteps.length === 0) return [];
-  return activeSteps.map((triggerStep, ordinal) => {
-    const nextStep = activeSteps[(ordinal + 1) % activeSteps.length] ?? triggerStep;
-    const intervalSteps = nextStep > triggerStep
-      ? nextStep - triggerStep
-      : patternLength - triggerStep + nextStep;
-    return {
-      ordinal,
-      triggerStep,
-      intervalSteps: Math.max(1, intervalSteps),
-    };
-  });
-}
-
-function firstPlayableMidi(pattern: readonly number[]): number {
-  return pattern.find((midi) => Number.isFinite(midi) && midi >= 0) ?? -1;
-}
-
-function createContinuousArpEventsForTrigger(options: {
-  engineStep: number;
-  sourcePattern: readonly number[];
-  intervalSteps: number;
-  triggerStepMs: number;
-  rate: number;
-}): ProductPlayNoteEvent[] {
-  const sourceSteps = Math.max(1, options.sourcePattern.length);
-  const intervalMs = clamp(
-    options.intervalSteps * options.triggerStepMs,
-    1,
-    PRODUCT_PLAY_NOTE_OFFSET_MAX_MS,
-  );
-  const spacingMs = clamp(
-    options.triggerStepMs / Math.max(0.25, options.rate),
-    1,
-    PRODUCT_PLAY_NOTE_OFFSET_MAX_MS,
-  );
-  const noteSlots = clamp(
-    Math.ceil(Math.max(0.001, intervalMs - 0.001) / spacingMs),
-    1,
-    PRODUCT_PLAY_MAX_NOTES_PER_TRIGGER,
-  );
-  const events: ProductPlayNoteEvent[] = [];
-  for (let slot = 0; slot < noteSlots; slot += 1) {
-    const sourceStep = slot % sourceSteps;
-    const midi = options.sourcePattern[sourceStep] ?? -1;
-    if (!Number.isFinite(midi) || midi < 0) continue;
-    events.push({
-      step: options.engineStep,
-      sourceStep,
-      slotId: null,
-      midi,
-      offsetMs: clamp(slot * spacingMs, 0, PRODUCT_PLAY_NOTE_OFFSET_MAX_MS),
-      velocity: 1,
-      voiceIndex: events.length,
-    });
-  }
-  return events;
-}
-
-function resolveContinuousProductArpEnginePattern(options: {
-  config: ProductPlayConfig;
-  harmony: ProductArpHarmonyContext;
-  laneIndex: number;
-  runtimeTick?: number;
-  pitchBindingMode?: PitchBindingMode;
-  triggerPattern?: readonly boolean[] | null;
-  triggerStepMs?: number;
-}): ProductPlayEnginePattern | null {
-  if (options.config.mode !== 'arp') return null;
-  if (!Array.isArray(options.triggerPattern) || options.triggerPattern.length === 0) return null;
-  if (typeof options.triggerStepMs !== 'number' || !Number.isFinite(options.triggerStepMs) || options.triggerStepMs <= 0) return null;
-
-  const triggerSlots = resolveTriggerSlotIntervals(options.triggerPattern);
-  if (triggerSlots.length === 0) return null;
-  const sourcePattern = resolveProductArpMidiPattern({
-    config: { ...options.config.arp, enabled: true, rate: 1 },
-    harmony: options.harmony,
-    laneIndex: options.laneIndex,
-    runtimeTick: options.runtimeTick,
-  });
-  if (!sourcePattern || sourcePattern.length === 0) return null;
-
-  const fallbackMidi = firstPlayableMidi(sourcePattern);
-  const playNotes: ProductPlayNoteEvent[] = [];
-  if (options.pitchBindingMode === 'sequence') {
-    const steps = Math.max(1, Math.min(64, options.triggerPattern.length));
-    const midiPattern = Array.from({ length: steps }, () => -1);
-    for (const slot of triggerSlots) {
-      const events = createContinuousArpEventsForTrigger({
-        engineStep: slot.triggerStep,
-        sourcePattern,
-        intervalSteps: slot.intervalSteps,
-        triggerStepMs: options.triggerStepMs,
-        rate: options.config.arp.rate,
-      });
-      midiPattern[slot.triggerStep] = events[0]?.midi ?? fallbackMidi;
-      playNotes.push(...events);
-    }
-    return {
-      midiPattern,
-      playNotes: playNotes.length > 0 ? playNotes : null,
-      steps,
-    };
-  }
-
-  const midiPattern = Array.from({ length: triggerSlots.length }, () => fallbackMidi);
-  for (const slot of triggerSlots) {
-    const events = createContinuousArpEventsForTrigger({
-      engineStep: slot.ordinal,
-      sourcePattern,
-      intervalSteps: slot.intervalSteps,
-      triggerStepMs: options.triggerStepMs,
-      rate: options.config.arp.rate,
-    });
-    midiPattern[slot.ordinal] = events[0]?.midi ?? fallbackMidi;
-    playNotes.push(...events);
-  }
-  return {
-    midiPattern,
-    playNotes: playNotes.length > 0 ? playNotes : null,
-    steps: midiPattern.length,
-  };
-}
-
 export function resolveProductPlayPatternDetails(options: {
   config: ProductPlayConfig;
   harmony: ProductArpHarmonyContext;
@@ -559,11 +420,6 @@ export function resolveProductPlayEnginePattern(options: {
 }): ProductPlayEnginePattern | null {
   const config = normalizeProductPlayConfig(options.config);
   if (!config.enabled) return null;
-  const continuousArpPattern = resolveContinuousProductArpEnginePattern({
-    ...options,
-    config,
-  });
-  if (continuousArpPattern) return continuousArpPattern;
 
   const midiPattern = resolveProductPlayMidiPattern({ ...options, config });
   if (!midiPattern || midiPattern.length === 0) return null;
@@ -571,6 +427,13 @@ export function resolveProductPlayEnginePattern(options: {
     config,
     harmony: options.harmony,
   });
+  if (config.mode === 'arp') {
+    return {
+      midiPattern,
+      playNotes: null,
+      steps: midiPattern.length,
+    };
+  }
   const shouldUseTriggerStepBinding =
     options.pitchBindingMode === 'sequence' &&
     Array.isArray(options.triggerPattern) &&

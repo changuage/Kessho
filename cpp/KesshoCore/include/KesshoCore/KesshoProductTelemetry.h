@@ -215,6 +215,7 @@ typedef struct KesshoProductTelemetry {
   uint32_t drum_sequencer_hit_counts[KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES];
   uint32_t synth_sequencer_current_steps[KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES];
   uint32_t drum_sequencer_current_steps[KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES];
+  uint32_t synth_arp_current_steps[KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES];
   uint32_t earth_texture_asset_ids[KESSHO_PRODUCT_EARTH_TEXTURE_TELEMETRY_CAPACITY];
   uint32_t earth_texture_flags[KESSHO_PRODUCT_EARTH_TEXTURE_TELEMETRY_CAPACITY];
   uint32_t earth_texture_inactive_reasons[KESSHO_PRODUCT_EARTH_TEXTURE_TELEMETRY_CAPACITY];

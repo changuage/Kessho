@@ -23,7 +23,7 @@ type PublishSequencerVisualsInput = {
     derivedVisualFallbackCount: number;
   };
   hasCallback?: (name: 'synthStepPosition' | 'drumStepPosition') => boolean;
-  publish: (name: 'synthStepPosition' | 'drumStepPosition', steps: number[], hitCounts: number[]) => void;
+  publish: (name: 'synthStepPosition' | 'drumStepPosition', steps: number[], hitCounts: number[], arpSteps?: number[]) => void;
 };
 
 type PublishSynthVisualStateInput<Name extends string, Lane> = {
@@ -120,13 +120,13 @@ export function publishCoreProductSequencerVisuals(input: PublishSequencerVisual
   const publishDrum = input.hasCallback?.('drumStepPosition') ?? true;
   if (!publishSynth && !publishDrum) return;
   if (!input.telemetry?.transportRunning) {
-    if (publishSynth) input.publish('synthStepPosition', zeroLaneValues(input.synthVisibleLaneCount), zeroLaneValues(input.synthVisibleLaneCount));
+    if (publishSynth) input.publish('synthStepPosition', zeroLaneValues(input.synthVisibleLaneCount), zeroLaneValues(input.synthVisibleLaneCount), zeroLaneValues(input.synthVisibleLaneCount));
     if (publishDrum) input.publish('drumStepPosition', zeroLaneValues(input.drumVisibleLaneCount), zeroLaneValues(input.drumVisibleLaneCount));
     return;
   }
   if (publishSynth) {
     const synth = visualPositionsFor('synth', input);
-    input.publish('synthStepPosition', synth.steps, synth.hitCounts);
+    input.publish('synthStepPosition', synth.steps, synth.hitCounts, input.telemetry?.synthArpCurrentSteps);
   }
   if (publishDrum) {
     const drum = visualPositionsFor('drum', input);

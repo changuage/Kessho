@@ -44,7 +44,7 @@ export type SelectedAudioEnginePageRuntimeBridgeOptions =
     setSelectedSynthEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
     setSelectedSynthAnchorWalkerVisualStateCallback: (callback: ProductSynthAnchorWalkerVisualStateCallback | null) => void;
     setSelectedSynthOrbitVisualStateCallback: (callback: ProductSynthOrbitVisualStateCallback | null) => void;
-    setSelectedSynthStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
+    setSelectedSynthStepPositionCallback: (callback: ((steps: number[], hitCounts: number[], arpSteps?: number[]) => void) | null) => void;
     textureDebugAvailable: boolean;
   };
 

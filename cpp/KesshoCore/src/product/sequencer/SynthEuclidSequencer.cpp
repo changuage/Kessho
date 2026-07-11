@@ -213,10 +213,86 @@ uint64_t nudgedSequencerEventSample(
   return roundedSampleFrame(nudged_sample);
 }
 
+void advanceProductArpCursor(kessho::product::internal::ProductArpRuntimeState& arp, uint64_t count = 1u) {
+  const uint32_t length = std::max(1u, std::min<uint32_t>(arp.length, kessho::product::internal::kMaxProductArpSteps));
+  arp.cursor = static_cast<uint32_t>((static_cast<uint64_t>(arp.cursor % length) + count) % length);
+}
+
+uint32_t productArpSlotsPerWindow(
+    const kessho::product::internal::ProductArpRuntimeState& arp,
+    uint64_t window_samples,
+    double samples_per_step) {
+  const uint32_t length = std::max(
+      1u,
+      std::min<uint32_t>(arp.length, kessho::product::internal::kMaxProductArpSteps));
+  const float rate = kessho::product::internal::clampFloat(arp.rate, 0.25f, 4.0f);
+  const double minimum_slots = static_cast<double>(length) * static_cast<double>(rate);
+  uint32_t desired_slots = !std::isfinite(minimum_slots) || minimum_slots <= 1.0
+      ? 1u
+      : static_cast<uint32_t>(std::llround(minimum_slots));
+  const double clock_spacing = samples_per_step / static_cast<double>(rate);
+  if (std::isfinite(clock_spacing) && clock_spacing > 1.0 && window_samples > 0u) {
+    const double continuous_slots = std::ceil(
+        static_cast<double>(window_samples) / clock_spacing - 1.0e-9);
+    if (std::isfinite(continuous_slots) && continuous_slots > 0.0) {
+      desired_slots = std::max(
+          desired_slots,
+          static_cast<uint32_t>(std::llround(continuous_slots)));
+    }
+  }
+  const uint32_t sample_limited = window_samples > 0u
+      ? static_cast<uint32_t>(std::min<uint64_t>(
+          static_cast<uint64_t>(kessho::product::internal::kMaxPendingRatchetsPerLane),
+          window_samples))
+      : 1u;
+  return std::max(1u, std::min<uint32_t>(desired_slots, sample_limited));
+}
+
+uint64_t productArpSlotSample(
+    uint64_t window_start,
+    uint64_t window_samples,
+    uint32_t window_slots,
+    uint32_t slot_index) {
+  const uint32_t slots = std::max(1u, window_slots);
+  const double offset = static_cast<double>(window_samples) *
+      (static_cast<double>(slot_index) / static_cast<double>(slots));
+  return window_start + static_cast<uint64_t>(std::llround(std::max(0.0, offset)));
+}
+
+uint64_t productArpWindowEndSample(
+    const KesshoProductEngine& engine,
+    const kessho::product::internal::LaneState& lane,
+    int64_t relative_step,
+    uint64_t event_sample,
+    double samples_per_step,
+    double swing_samples,
+    uint32_t nudge_active_count) {
+  const int64_t next_relative_step = adjacentActiveRelativeStep(engine, lane, relative_step, 1);
+  if (next_relative_step > relative_step) {
+    const uint64_t next_sample = nudgedSequencerEventSample(
+        engine,
+        lane,
+        relativeStepId(lane, next_relative_step),
+        next_relative_step,
+        samples_per_step,
+        swing_samples,
+        nudge_active_count);
+    if (next_sample > event_sample) {
+      return next_sample;
+    }
+  }
+  const uint64_t fallback = static_cast<uint64_t>(std::max<int64_t>(1, std::llround(samples_per_step)));
+  return event_sample + fallback;
+}
+
 void recordDrainedRatchet(
     kessho::product::internal::LaneState& lane,
     const kessho::product::internal::PendingRatchetEvent& pending) {
   const KesshoSequencerEvent& event = pending.event;
+  if (pending.arp_step_index != UINT32_MAX) {
+    lane.arp.current_step = pending.arp_step_index %
+        kessho::product::internal::kMaxProductArpSteps;
+  }
   if (event.morph >= 0.0f) {
     lane.last_emitted_morph_valid = true;
     lane.last_emitted_morph = event.morph;
@@ -1742,7 +1818,8 @@ bool generateOrbitLaneEvents(
           ? lane.play_note_voice_masks[midi_step_id]
           : 0u;
       const float trigger_midi_note = drum_lane ? drum_midi_note : sequenced_midi_note;
-      if (!drum_lane && play_note_mask == 0u && trigger_midi_note < 0.0f) {
+      const bool synth_arp_enabled = !drum_lane && lane.arp.enabled;
+      if (!drum_lane && !synth_arp_enabled && play_note_mask == 0u && trigger_midi_note < 0.0f) {
         lane.emitted_hit_count += 1u;
         continue;
       }
@@ -1898,8 +1975,15 @@ bool generateOrbitLaneEvents(
       if (!expression_field_active) {
         lane.last_emitted_expression_valid = false;
       }
-      auto enqueueSequencerNote = [&](float midi_note, float velocity_scale, float offset_ms, uint32_t voice_ordinal, uint32_t ratchet_index) {
-        const uint64_t ratchet_sample = event_sample + static_cast<uint64_t>(std::llround(ratchet_spacing * ratchet_index));
+      auto enqueueSequencerNoteAtSample = [&](
+          float midi_note,
+          float velocity_scale,
+          float offset_ms,
+          uint32_t voice_ordinal,
+          uint32_t ratchet_index,
+          uint32_t ratchet_count,
+          uint64_t note_sample,
+          uint32_t arp_step_index = UINT32_MAX) {
         const uint64_t offset_samples = offset_ms > 0.0f
             ? static_cast<uint64_t>(std::llround(static_cast<double>(offset_ms) * sample_rate / 1000.0))
             : 0u;
@@ -1913,22 +1997,20 @@ bool generateOrbitLaneEvents(
         event.velocity = clampFloat(trigger_velocity * velocity_scale, 0.0f, 1.0f);
         event.hold_seconds = lane.hold_seconds;
         if (drum_lane) {
-          event.send_delay_a = ratchet > 1u
+          event.send_delay_a = ratchet_count > 1u
               ? static_cast<float>((ratchet_spacing / sample_rate) * 0.8)
               : 1.0e10f;
-          event.send_delay_b = ratchet > 1u
+          event.send_delay_b = ratchet_count > 1u
               ? static_cast<float>((ratchet_spacing / sample_rate) * 0.15)
               : 1.0e10f;
           event.send_granular = clampFloat(sequenced_midi_note - lane.midi_note, -24.0f, 24.0f);
         } else {
-          event.send_delay_a = ratchet > 1u ? 1.0f / static_cast<float>(ratchet) : 1.0f;
+          event.send_delay_a = ratchet_count > 1u ? 1.0f / static_cast<float>(ratchet_count) : 1.0f;
         }
         event.morph = trigger_morph;
         event.distance = trigger_distance;
         event.expression = trigger_expression;
-        const uint64_t pad_voice_phase = play_note_mask != 0u
-            ? lane.emitted_hit_count + static_cast<uint64_t>(voice_ordinal)
-            : lane.emitted_hit_count;
+        const uint64_t pad_voice_phase = lane.emitted_hit_count + static_cast<uint64_t>(voice_ordinal);
         const uint32_t pad_voice_index =
             padVoiceIndexFromMask(lane.target_pad_voice_mask, pad_voice_phase);
         event.flags =
@@ -1937,27 +2019,88 @@ bool generateOrbitLaneEvents(
             (voice_ordinal << 8u);
         PendingRatchetEvent pending{};
         pending.parent_step_id = static_cast<uint64_t>(relative_step);
-        pending.absolute_sample = ratchet_sample + offset_samples;
+        pending.absolute_sample = note_sample + offset_samples;
         pending.lane_index = lane_index;
         pending.step_index = step_id;
+        pending.arp_step_index = arp_step_index;
         pending.ratchet_index = ratchet_index;
-        pending.ratchet_count = ratchet;
+        pending.ratchet_count = ratchet_count;
         pending.event = event;
         pushPendingRatchet(lane, pending);
       };
-      for (uint32_t ratchet_index = 0; ratchet_index < ratchet; ++ratchet_index) {
-        if (play_note_mask != 0u) {
-          uint32_t voice_ordinal = 0u;
-          for (uint32_t voice = 0u; voice < kMaxProductPlayVoicesPerStep; ++voice) {
-            if ((play_note_mask & (1u << voice)) == 0u) {
-              continue;
-            }
-            const ProductPlayNoteOverride& note = lane.play_note_overrides[midi_step_id][voice];
-            enqueueSequencerNote(note.midi_note, note.velocity, note.offset_ms, voice_ordinal, ratchet_index);
-            ++voice_ordinal;
+      auto enqueueSequencerNote = [&](float midi_note, float velocity_scale, float offset_ms, uint32_t voice_ordinal, uint32_t ratchet_index) {
+        const uint64_t ratchet_sample = event_sample + static_cast<uint64_t>(std::llround(ratchet_spacing * ratchet_index));
+        enqueueSequencerNoteAtSample(midi_note, velocity_scale, offset_ms, voice_ordinal, ratchet_index, ratchet, ratchet_sample);
+      };
+      if (synth_arp_enabled) {
+        ProductArpRuntimeState& arp = lane.arp;
+        // A parent trigger replaces only the phrase it owns. UI edits stage the
+        // next phrase and must not erase notes already scheduled for this one.
+        clearPendingArpRatchets(lane);
+        const uint32_t arp_length = std::max(1u, std::min<uint32_t>(arp.length, kMaxProductArpSteps));
+        const uint64_t window_end = productArpWindowEndSample(
+            *this,
+            lane,
+            relative_step,
+            event_sample,
+            samples_per_step,
+            swing_samples,
+            nudge_active_count);
+        const uint64_t fallback_window_samples = static_cast<uint64_t>(std::max<int64_t>(
+            1,
+            std::llround(samples_per_step)));
+        const uint64_t window_samples = window_end > event_sample
+            ? window_end - event_sample
+            : fallback_window_samples;
+        const uint32_t window_slots = productArpSlotsPerWindow(arp, window_samples, samples_per_step);
+        if (!arp.runtime_initialized) {
+          arp.cursor = arp.cursor % arp_length;
+          arp.current_step = arp.cursor;
+          arp.next_event_sample = event_sample;
+          arp.runtime_initialized = true;
+        } else if (arp.next_event_sample != event_sample) {
+          arp.next_event_sample = event_sample;
+        }
+        uint32_t emitted_arp_slots = 0u;
+        while (emitted_arp_slots < window_slots && emitted_arp_slots < kMaxPendingRatchetsPerLane) {
+          const uint32_t arp_step = arp.cursor % arp_length;
+          const bool arp_step_active = (arp.active_mask & (1u << arp_step)) != 0u;
+          const float arp_midi_note = arp.midi_notes[arp_step];
+          const uint64_t arp_sample = productArpSlotSample(
+              event_sample,
+              window_samples,
+              window_slots,
+              emitted_arp_slots);
+          if (arp_step_active && arp_midi_note >= 0.0f) {
+            enqueueSequencerNoteAtSample(
+                arp_midi_note,
+                1.0f,
+                0.0f,
+                emitted_arp_slots,
+                0u,
+                1u,
+                arp_sample,
+                arp_step);
           }
-        } else {
-          enqueueSequencerNote(trigger_midi_note, 1.0f, 0.0f, 0u, ratchet_index);
+          advanceProductArpCursor(arp);
+          ++emitted_arp_slots;
+        }
+        arp.next_event_sample = window_end;
+      } else {
+        for (uint32_t ratchet_index = 0; ratchet_index < ratchet; ++ratchet_index) {
+          if (play_note_mask != 0u) {
+            uint32_t voice_ordinal = 0u;
+            for (uint32_t voice = 0u; voice < kMaxProductPlayVoicesPerStep; ++voice) {
+              if ((play_note_mask & (1u << voice)) == 0u) {
+                continue;
+              }
+              const ProductPlayNoteOverride& note = lane.play_note_overrides[midi_step_id][voice];
+              enqueueSequencerNote(note.midi_note, note.velocity, note.offset_ms, voice_ordinal, ratchet_index);
+              ++voice_ordinal;
+            }
+          } else {
+            enqueueSequencerNote(trigger_midi_note, 1.0f, 0.0f, 0u, ratchet_index);
+          }
         }
       }
       lane.emitted_hit_count += 1u;
