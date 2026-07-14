@@ -49,7 +49,7 @@ const scenario = [
 
 const report = {
   generatedAt: new Date().toISOString(),
-  status: failures.length === 0 ? 'pass' : 'fail',
+  status: failures.length === 0 ? 'prep-only' : 'fail',
   releaseReady: false,
   physicalDeviceEvidenceClaimed: false,
   scenario,
@@ -71,4 +71,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Kessho iOS MIDI live-play E2E scaffold passed (physical evidence pending)');
+console.log('Kessho iOS MIDI live-play E2E prep is present; production native playback and physical evidence are pending');

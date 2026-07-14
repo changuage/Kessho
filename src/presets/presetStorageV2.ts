@@ -13,6 +13,14 @@ import { canonicalizePresetScope } from './presetScopeAliases';
 import type { PresetEntry, PresetLevel, PresetRef, PresetVersion, PresetVersionMetadata } from './types';
 import { DEFAULT_STATE, type SliderState } from '../ui/state';
 import {
+  canonicalizeContentJson,
+  canonicalizeContentRecord,
+  contentUtf8ByteLength,
+  hashCanonicalContent,
+  hashCanonicalContentText,
+  stableStringifyContent,
+} from './contentCanonicalization';
+import {
   DYNAMICS_DRIFT_PRESET_KEYS,
   DYNAMICS_EQ1_PRESET_KEYS,
   DYNAMICS_EQ2_PRESET_KEYS,
@@ -21,8 +29,9 @@ import {
   DYNAMICS_SATURATION_PRESET_KEYS,
   DYNAMICS_SIDECHAIN_PRESET_KEYS,
 } from '../ui/dynamics/dynamicsPresets';
+import { stripSequencerStateFromSoundContent } from './sequencerContent';
 
-export type PresetPayloadKind = 'override' | 'metadata' | 'resolved' | 'patch' | 'refs_override';
+export type PresetPayloadKind = 'override' | 'metadata' | 'resolved' | 'patch' | 'refs_override' | 'content';
 
 export interface PresetV2Row {
   id: string;
@@ -80,6 +89,14 @@ export interface PresetVersionRefV2Row {
   created_at: string;
 }
 
+export interface PresetVersionContentRefV2Row {
+  version_id: string;
+  ref_slot: string;
+  content_hash: string;
+  content_type: string;
+  created_at: string;
+}
+
 export interface PresetPayloadV2Row {
   hash: string;
   payload_kind: PresetPayloadKind;
@@ -109,7 +126,6 @@ export interface PresetChildSpec {
   strip?: (state: SliderState) => Record<string, unknown>;
 }
 
-const FLOAT_PRECISION = 1_000_000;
 // Existing V2 payload rows use SHA-256 over canonical JSON bytes only.
 // Bump this marker and migration self-tests before changing the hash input.
 export const PRESET_HASH_ALGORITHM = 'kessho-preset-json-sha256-v1';
@@ -119,8 +135,6 @@ const PRESET_PAYLOAD_CACHE_MAX_ENTRIES = 256;
 const PRESET_PAYLOAD_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const PRESET_PAYLOAD_CACHE_TOUCH_THROTTLE_MS = 5 * 60_000;
 const PRESET_PAYLOAD_CACHE_PRUNE_THROTTLE_MS = 60_000;
-const PRESET_TEXT_ENCODER = new TextEncoder();
-const HEX_BYTE_LOOKUP = Array.from({ length: 256 }, (_, byte) => byte.toString(16).padStart(2, '0'));
 const PRESET_PAYLOAD_HASH_PATTERN = /^[0-9a-f]{64}$/;
 
 type CachedPresetPayloadMemoryEntry = {
@@ -142,69 +156,30 @@ interface PresetPayloadCacheWriteOptions {
 const presetPayloadMemoryCache = new Map<string, CachedPresetPayloadMemoryEntry>();
 const presetPayloadSessionVerifiedHashes = new Set<string>();
 let presetPayloadPersistentCacheLastPrunedAt = 0;
-
-function roundNumber(value: number): number {
-  if (!Number.isFinite(value)) return value;
-  const rounded = Math.round(value * FLOAT_PRECISION) / FLOAT_PRECISION;
-  return Object.is(rounded, -0) ? 0 : rounded;
-}
+const presetPayloadCacheDiagnostics = { hits: 0, misses: 0, writes: 0, evictions: 0 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function compareCanonicalKeys(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
-
 export function canonicalizeJson(value: unknown): unknown {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  if (typeof value === 'number') return roundNumber(value);
-  if (typeof value === 'string' || typeof value === 'boolean') return value;
-  if (Array.isArray(value)) {
-    return value.map(item => canonicalizeJson(item));
-  }
-  if (isPlainObject(value)) {
-    const keys = Object.keys(value).sort(compareCanonicalKeys);
-    const normalized: Record<string, unknown> = {};
-    for (const key of keys) {
-      const entryValue = value[key];
-      if (entryValue === undefined) continue;
-      normalized[key] = canonicalizeJson(entryValue);
-    }
-    return normalized;
-  }
-  return value;
+  return canonicalizeContentJson(value);
 }
 
 export function canonicalizeRecord(record: Record<string, unknown>): Record<string, unknown> {
-  return canonicalizeJson(record) as Record<string, unknown>;
+  return canonicalizeContentRecord(record);
 }
 
 export function stableStringifyCanonical(value: unknown): string {
-  return JSON.stringify(canonicalizeJson(value));
+  return stableStringifyContent(value);
 }
 
 export async function hashCanonicalJsonText(canonicalJson: string): Promise<string> {
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) {
-    throw new Error('Web Crypto is unavailable; cannot hash preset payloads.');
-  }
-
-  const bytes = PRESET_TEXT_ENCODER.encode(canonicalJson);
-  const digest = await subtle.digest('SHA-256', bytes);
-  const digestBytes = new Uint8Array(digest);
-  let hex = '';
-  for (let index = 0; index < digestBytes.length; index += 1) {
-    const byte = digestBytes[index];
-    if (byte !== undefined) hex += HEX_BYTE_LOOKUP[byte] ?? '';
-  }
-  return hex;
+  return hashCanonicalContentText(canonicalJson);
 }
 
 export async function hashCanonicalJson(value: unknown): Promise<string> {
-  return hashCanonicalJsonText(stableStringifyCanonical(value));
+  return hashCanonicalContent(value);
 }
 
 function isPresetPayloadCacheHash(hash: string): boolean {
@@ -230,7 +205,7 @@ function getPresetPayloadCacheStorageKey(hash: string): string {
 }
 
 function getPayloadCacheBytes(payloadJson: string): number {
-  return PRESET_TEXT_ENCODER.encode(payloadJson).byteLength;
+  return contentUtf8ByteLength(payloadJson);
 }
 
 function prunePresetPayloadMemoryCache(now = Date.now()): void {
@@ -318,15 +293,23 @@ export function readPresetPayloadCacheV2(hash: string): unknown | undefined {
 
 export async function readVerifiedPresetPayloadCacheV2(hash: string): Promise<unknown | undefined> {
   const memory = readPresetPayloadCacheV2(hash);
-  if (memory !== undefined) return memory;
-  if (!isPresetPayloadCacheHash(hash)) return undefined;
-  if (!canUsePresetPayloadPersistentCache()) return undefined;
+  if (memory !== undefined) {
+    presetPayloadCacheDiagnostics.hits += 1;
+    return memory;
+  }
+  if (!isPresetPayloadCacheHash(hash) || !canUsePresetPayloadPersistentCache()) {
+    presetPayloadCacheDiagnostics.misses += 1;
+    return undefined;
+  }
 
   const now = Date.now();
   const storageKey = getPresetPayloadCacheStorageKey(hash);
   try {
     const raw = localStorage.getItem(storageKey);
-    if (!raw) return undefined;
+    if (!raw) {
+      presetPayloadCacheDiagnostics.misses += 1;
+      return undefined;
+    }
     const parsed = JSON.parse(raw) as Partial<CachedPresetPayloadStorageEntry> | null;
     if (
       !parsed
@@ -338,6 +321,7 @@ export async function readVerifiedPresetPayloadCacheV2(hash: string): Promise<un
       || parsed.lastAccess + PRESET_PAYLOAD_CACHE_MAX_AGE_MS <= now
     ) {
       localStorage.removeItem(storageKey);
+      presetPayloadCacheDiagnostics.misses += 1;
       return undefined;
     }
 
@@ -347,6 +331,7 @@ export async function readVerifiedPresetPayloadCacheV2(hash: string): Promise<un
       localStorage.removeItem(storageKey);
       presetPayloadMemoryCache.delete(hash);
       presetPayloadSessionVerifiedHashes.delete(hash);
+      presetPayloadCacheDiagnostics.misses += 1;
       return undefined;
     }
 
@@ -366,10 +351,12 @@ export async function readVerifiedPresetPayloadCacheV2(hash: string): Promise<un
     });
     if (parsed.lastAccess + PRESET_PAYLOAD_CACHE_TOUCH_THROTTLE_MS > now) {
       prunePresetPayloadMemoryCache(now);
+      presetPayloadCacheDiagnostics.hits += 1;
       return entry.payload;
     }
     localStorage.setItem(storageKey, JSON.stringify(entry));
     prunePresetPayloadMemoryCache(now);
+    presetPayloadCacheDiagnostics.hits += 1;
     return entry.payload;
   } catch {
     try {
@@ -379,6 +366,7 @@ export async function readVerifiedPresetPayloadCacheV2(hash: string): Promise<un
     }
     presetPayloadMemoryCache.delete(hash);
     presetPayloadSessionVerifiedHashes.delete(hash);
+    presetPayloadCacheDiagnostics.misses += 1;
     return undefined;
   }
 }
@@ -399,6 +387,7 @@ export async function writePresetPayloadCacheV2(
   const bytes = getPayloadCacheBytes(payloadJson);
   const memoryEntry = { payload, bytes, lastAccess: now };
   presetPayloadSessionVerifiedHashes.add(hash);
+  presetPayloadCacheDiagnostics.writes += 1;
   presetPayloadMemoryCache.set(hash, memoryEntry);
   prunePresetPayloadMemoryCache(now);
 
@@ -418,6 +407,38 @@ export async function writePresetPayloadCacheV2(
   } catch {
     // Persistent payload caching is best-effort.
   }
+}
+
+export function evictPresetPayloadCacheV2(hash?: string): void {
+  const hashes = hash ? [hash] : [...presetPayloadMemoryCache.keys()];
+  for (const candidate of hashes) {
+    if (presetPayloadMemoryCache.has(candidate) || presetPayloadSessionVerifiedHashes.has(candidate)) {
+      presetPayloadCacheDiagnostics.evictions += 1;
+    }
+    presetPayloadMemoryCache.delete(candidate);
+    presetPayloadSessionVerifiedHashes.delete(candidate);
+    if (canUsePresetPayloadPersistentCache()) {
+      try {
+        localStorage.removeItem(getPresetPayloadCacheStorageKey(candidate));
+      } catch {
+        // Cache eviction remains best-effort when storage is unavailable.
+      }
+    }
+  }
+}
+
+export function getPresetPayloadCacheDiagnosticsV2(): {
+  hits: number;
+  misses: number;
+  writes: number;
+  evictions: number;
+  hitRate: number;
+} {
+  const reads = presetPayloadCacheDiagnostics.hits + presetPayloadCacheDiagnostics.misses;
+  return {
+    ...presetPayloadCacheDiagnostics,
+    hitRate: reads > 0 ? presetPayloadCacheDiagnostics.hits / reads : 0,
+  };
 }
 
 export function presetVersionStorageSignaturesEqual(
@@ -593,8 +614,18 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
   const normalizedScope = canonicalizePresetScope(scope);
   if (type === 'state') {
     return [
-      { slot: 'synth', type: 'source', scope: 'synth', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'synth')) },
-      { slot: 'drums', type: 'source', scope: 'drums', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'drums')) },
+      {
+        slot: 'synth',
+        type: 'source',
+        scope: 'synth',
+        extract: (state) => canonicalizeRecord(stripSequencerStateFromSoundContent(extractCascade(state, 3, 'synth'))),
+      },
+      {
+        slot: 'drums',
+        type: 'source',
+        scope: 'drums',
+        extract: (state) => canonicalizeRecord(stripSequencerStateFromSoundContent(extractCascade(state, 3, 'drums'))),
+      },
       { slot: 'granular', type: 'source', scope: 'granular', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'granular')) },
       { slot: 'delay', type: 'source', scope: 'delay', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'delay')) },
       { slot: 'reverb', type: 'source', scope: 'reverb', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'reverb')) },

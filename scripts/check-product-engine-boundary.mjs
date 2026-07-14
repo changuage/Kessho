@@ -235,7 +235,7 @@ function assertProductPageRuntimeBridgeBoundary(relative, source) {
     "import { useProductRuntimeSynthPageEvents } from './useProductRuntimeSynthPageEvents'",
     'const selectedRuntimeCallbacks = useSelectedAudioEngineCallbackSurfaces(productRuntimeMode)',
     'const selectedRuntimeControls = useSelectedAudioEngineControlSurfaces(productRuntimeMode)',
-    'const productSynthPageEvents = useProductRuntimeSynthPageEvents(productRuntimeMode)',
+    'const productSynthPageEvents = useProductRuntimeSynthPageEvents(productRuntimeMode, stateRef)',
     "const useProductRuntimePageSurfaces = productRuntimeMode === 'core-product'",
     'useProductRuntimePageSurfaces',
     'useSelectedAudioEnginePageRuntimeBridges(selectedOptions)',
@@ -530,7 +530,7 @@ for (const rootDir of sourceRoots) {
           "return productRuntimeMode !== 'core-product' || isCoreProductRangeKeySupported(key);",
           "if (productRuntimeMode !== 'core-product') {",
           'productEngine.setVisualTelemetryActive(false);',
-          '}, [documentVisible, productRuntimeMode, uiMode]);',
+          '}, [productRuntimeMode]);',
         ]) {
           if (!source.includes(requiredSnippet)) {
             failures.push(`${relative}: Product-native telemetry must avoid Product Core reads/writes outside core-product mode; missing ${requiredSnippet}`);
@@ -610,7 +610,7 @@ for (const rootDir of sourceRoots) {
           'if (!productRuntimeActive) return;',
           'shouldWaitForManualTriggerSnapshot()',
           'commitProductControlActionThenTrigger(',
-          'productEngine.auditionSynthNote(note, externalState)',
+          'productEngine.auditionSynthNote(productNote, resolvedSliders)',
           'productEngine.triggerDrumVoice(voice, velocity, externalState)',
         ]) {
           if (!source.includes(requiredSnippet)) {
@@ -2155,16 +2155,22 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useSelectedAudioEngineManualTriggers.ts') {
       for (const requiredSnippet of [
         'stateRef.current',
-        'commitProductControlActionThenTrigger(',
-        "type: 'manual-trigger/request'",
-        '(_revision, resolvedSliders) => productEngine.auditionSynthNote(note, resolvedSliders),',
-        'selectedProductRuntime.auditionSynthNote(note, externalState)',
-        '(_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, 0.8, resolvedSliders),',
-        'selectedProductRuntime.triggerDrumVoice(voice, 0.8, externalState)',
+        "import type { RuntimeManualTriggerSurface } from './useProductRuntimeManualTriggers'",
+        'selectedProductRuntime.auditionSynthNote(note, stateRef.current)',
+        'selectedProductRuntime.enqueueLiveNoteEvent(event)',
+        'selectedProductRuntime.triggerDrumVoice(voice, 0.8, stateRef.current)',
       ]) {
         if (!source.includes(requiredSnippet)) {
-          failures.push(`${relative}: manual trigger bridge must use latest stateRef and own Product/reference synth/drum trigger dispatch`);
+          failures.push(`${relative}: selected manual trigger adapter must use the canonical contract and dispatch only to the reference runtime`);
         }
+      }
+      if (
+        source.includes('commitProductControlActionThenTrigger(') ||
+        source.includes('productEngine') ||
+        source.includes('productRuntimeManualTriggers') ||
+        source.includes('audioEngineRuntimeMode')
+      ) {
+        failures.push(`${relative}: selected manual trigger adapter must not contain unreachable Product Core dispatch branches`);
       }
     }
 
@@ -2180,7 +2186,7 @@ for (const rootDir of sourceRoots) {
         "type: 'manual-trigger/request'",
         "kind: 'synth-note'",
         "kind: 'drum-voice'",
-        '(_revision, resolvedSliders) => productEngine.auditionSynthNote(note, resolvedSliders)',
+        '(_revision, resolvedSliders) => productEngine.auditionSynthNote(productNote, resolvedSliders)',
         '(_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, velocity, resolvedSliders)',
       ]) {
         if (!source.includes(requiredSnippet)) {
@@ -2533,10 +2539,10 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimePageControlProps.ts') {
       for (const requiredSnippet of [
         "import { useMemo } from 'react'",
-        'export type ProductRuntimeManualTriggers = {',
+        "import type { RuntimeManualTriggerSurface } from './useProductRuntimeManualTriggers'",
         'export type ProductRuntimePageControlProps = {',
         'preloadProductRuntime: () => Promise<unknown>',
-        'productRuntimeManualTriggers: ProductRuntimeManualTriggers',
+        'productRuntimeManualTriggers: RuntimeManualTriggerSurface',
         'setProductDrumStepPositionCallback',
         'setProductSynthEvolveTriggerCallback',
         'onRequestPlaybackStart: (statePatch?: Partial<SliderState>) => void',
@@ -3502,16 +3508,16 @@ for (const rootDir of sourceRoots) {
         'requestSequencerPlaybackStart',
         'toggleLazySequencerTransport',
         'startPlayback: (state?: SliderState) => void | Promise<void>;',
-        'synthEuclideanMasterEnabled',
-        'drumEuclidMasterEnabled',
-        'SYNTH_LANE_ENABLED_KEYS',
-        'DRUM_LANE_ENABLED_KEYS',
+        'planSynthSequencerTransportToggle',
+        'planDrumSequencerTransportToggle',
+        'applySequencerTransportPlan(',
+        'useKeyboardScope({',
         "event.code !== 'Space'",
         'isEditableShortcutTarget(event.target)',
-        'void startPlayback(patchedState)',
+        '!playbackIsRunning ? requestSequencerPlaybackStart : undefined',
       ]) {
         if (!source.includes(token)) {
-          failures.push(`${relative}: lazy sequencer transport hook must own sequencer auto-start/toggle shortcut behavior; missing ${token}`);
+          failures.push(`${relative}: lazy sequencer transport hook must apply the shared transport plan through the scoped keyboard dispatcher; missing ${token}`);
         }
       }
     }

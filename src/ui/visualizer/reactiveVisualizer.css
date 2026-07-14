@@ -825,6 +825,13 @@
   list-style: none;
 }
 
+.visualizer-layer-help {
+  margin: 0;
+  color: rgba(247, 250, 252, 0.46);
+  font-size: 0.56rem;
+  line-height: 1.35;
+}
+
 .visualizer-layer-chip {
   display: flex;
   align-items: center;

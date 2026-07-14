@@ -15,16 +15,18 @@ function assertIncludes(source, token, label, failures) {
 const failures = [];
 const swiftPath = 'plugins/kessho-capacitor-midi-routing/ios/Sources/KesshoMIDIRouting/KesshoMidiRoutingPlugin.swift';
 const tsPath = 'src/native/capacitorMidiRouting.ts';
+const midiTypesPath = 'src/native/midi/midiTypes.ts';
 const adapterPath = 'src/native/midi/nativeMidiAdapter.ios.ts';
 const swift = read(swiftPath);
 const ts = read(tsPath);
+const midiTypes = read(midiTypesPath);
 const adapter = read(adapterPath);
 
 for (const token of [
   'import CoreMIDI',
-  'kMIDIPropertyTransportType',
-  'kMIDITransportType_USB',
-  'kMIDITransportType_Bluetooth',
+  'endpointTransportName(for:',
+  'hints.contains("usb")',
+  'hints.contains("bluetooth")',
   'persistentIdentity',
   'fallbackEndpointID',
   'hotplugEventCount',
@@ -42,12 +44,12 @@ for (const token of [
   'displayName?: string',
   "transport?: 'usb' | 'bluetooth'",
   'timestampHostTime?: number',
-  'addCapacitorMidiActivityListener',
   'hotplugEventCount?: number',
   'droppedActivityEventCount?: number',
 ]) {
-  assertIncludes(ts, token, tsPath, failures);
+  assertIncludes(midiTypes, token, midiTypesPath, failures);
 }
+assertIncludes(ts, 'addCapacitorMidiActivityListener', tsPath, failures);
 
 for (const token of [
   'export interface NativeMidiAdapter',
@@ -65,11 +67,12 @@ const report = {
   status: failures.length === 0 ? 'pass' : 'fail',
   evidenceMode: 'static',
   physicalDeviceEvidenceClaimed: false,
-  checkedFiles: [swiftPath, tsPath, adapterPath],
+  checkedFiles: [swiftPath, tsPath, midiTypesPath, adapterPath],
   capabilities: {
     coreMidiDiscovery: swift.includes('MIDIGetNumberOfSources()'),
-    usbMidiMetadata: swift.includes('kMIDITransportType_USB'),
-    bluetoothMidiMetadata: swift.includes('kMIDITransportType_Bluetooth'),
+    transportEvidence: 'endpoint-name-manufacturer-heuristic',
+    usbTransportClassification: swift.includes('hints.contains("usb")'),
+    bluetoothTransportClassification: swift.includes('hints.contains("bluetooth")'),
     hotplugRefresh: swift.includes('notifyProc'),
     runtimeReconnectBookkeeping: swift.includes('desiredConnectionsByID'),
     hostTimeTimestamps: swift.includes('timestampHostTime'),

@@ -175,6 +175,8 @@
   transport.reset();
   snapshot_loaded_once = false;
   control_event_count = 0;
+  pending_phrase_timing_event_count = 0u;
+  pending_phrase_timing_apply_frame = 0u;
   sequencer_events.clear();
   for (LaneState& lane : synth_lanes) {
     resetSequencerLaneRuntime(lane);

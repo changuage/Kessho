@@ -1,6 +1,6 @@
 import React from 'react';
 import type { SliderState } from '../state';
-import { DRUM_VOICES, DRUM_VOICE_ORDER } from '../../audio/drumVoiceConfig';
+import { DRUM_VOICES, DRUM_VOICE_ORDER, DRUM_VOICE_SCOPES } from '../../audio/drumVoiceConfig';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import VoiceCard from './VoiceCard';
 
@@ -24,16 +24,6 @@ interface DrumPanelProps {
   preloadAudioEngine?: () => Promise<unknown>;
   liveCaptureEnabled?: boolean;
 }
-
-const VOICE_PANEL_IDS: Record<DrumVoiceType, string> = {
-  sub: 'drumSub',
-  kick: 'drumKick',
-  click: 'drumClick',
-  beepHi: 'drumBeepHi',
-  beepLo: 'drumBeepLo',
-  noise: 'drumNoise',
-  membrane: 'drumMembrane',
-};
 
 const DrumPanel: React.FC<DrumPanelProps> = ({
   state,
@@ -62,10 +52,10 @@ const DrumPanel: React.FC<DrumPanelProps> = ({
           key={voice}
           voice={voice}
           config={DRUM_VOICES[voice]}
-          panelId={VOICE_PANEL_IDS[voice]}
+          panelId={DRUM_VOICE_SCOPES[voice]}
           state={state}
           isMobile={isMobile}
-          isExpanded={expandedPanels.has(VOICE_PANEL_IDS[voice])}
+          isExpanded={expandedPanels.has(DRUM_VOICE_SCOPES[voice])}
           togglePanel={togglePanel}
           onParamChange={onParamChange}
           sliderProps={sliderProps}

@@ -8,6 +8,14 @@ interface UseAnimationVisibilityOptions {
   defaultVisible?: boolean;
 }
 
+export function resolveCanAnimate(
+  enabled: boolean,
+  isDocumentVisible: boolean,
+  isElementVisible: boolean,
+): boolean {
+  return !enabled || (isDocumentVisible && isElementVisible);
+}
+
 export function getCappedCanvasDpr(
   mobileMax = 1.25,
   desktopMax = 1.5,
@@ -83,7 +91,7 @@ export function useAnimationVisibility<T extends Element>(
   }, [enabled, rootMargin, targetRef, threshold]);
 
   return {
-    canAnimate: !enabled || (isDocumentVisible && isElementVisible),
+    canAnimate: resolveCanAnimate(enabled, isDocumentVisible, isElementVisible),
     isDocumentVisible,
     isElementVisible,
   };

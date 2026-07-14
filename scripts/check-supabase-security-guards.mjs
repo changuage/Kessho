@@ -29,7 +29,7 @@ const FORBIDDEN_PATTERNS = [
   },
   {
     name: 'direct V2 table write grant to public API roles',
-    pattern: /GRANT\s+(?:INSERT|UPDATE|DELETE|ALL)(?:\s*,\s*(?:INSERT|UPDATE|DELETE))*\s+ON(?:\s+TABLE)?\s+public\.(?:presets_v2|preset_versions_v2|preset_version_refs_v2|preset_payloads_v2)\s+TO\s+(?:anon|authenticated)\b/gi,
+    pattern: /GRANT\s+(?:INSERT|UPDATE|DELETE|ALL)(?:\s*,\s*(?:INSERT|UPDATE|DELETE))*\s+ON(?:\s+TABLE)?\s+public\.(?:presets_v2|preset_versions_v2|preset_version_refs_v2|preset_version_content_refs_v2|preset_payloads_v2)\s+TO\s+(?:anon|authenticated)\b/gi,
   },
 ];
 

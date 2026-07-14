@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { createCoreProductSnapshot } from './coreProductSnapshot';
 import { buildCoreProductSnapshotDiff } from './CoreProductRuntimeAdapter';
-import { CORE_PRODUCT_SOURCE_IDS, resolveCoreProductRangeTargets } from './coreProductEvents';
+import {
+  CORE_PRODUCT_SOURCE_IDS,
+  CORE_PRODUCT_TIMING_FLAGS,
+  CORE_PRODUCT_TRANSPORT_FLAGS,
+  createCoreProductSequencerLaneParamEvent,
+  resolveCoreProductRangeTargets,
+} from './coreProductEvents';
+import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 import {
   SAMPLE_DYNAMIC_IDS_BY_KEY,
@@ -32,6 +39,29 @@ import {
 import { generateOrbitConstellation } from '../ui/sequencer/orbitConstellation';
 import { createDefaultOrbitNote, normalizeOrbitSequencerConfig } from '../ui/sequencer/orbitSequencerTypes';
 import { createWalkerLayer } from '../ui/sequencer/anchorWalkerTypes';
+import {
+  isReleaseCommittedTransportTimingKey,
+  isTransportClockStateKey,
+} from '../ui/transportTimingPolicy';
+
+assert.equal(isReleaseCommittedTransportTimingKey('phraseLength'), true);
+assert.equal(isReleaseCommittedTransportTimingKey('sequencerMasterBPM'), true);
+assert.equal(isReleaseCommittedTransportTimingKey('transportBarsPerPhrase'), true);
+assert.equal(isReleaseCommittedTransportTimingKey('transportBeatsPerBar'), true);
+assert.equal(isReleaseCommittedTransportTimingKey('synthLevel'), false);
+assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
+
+for (const paramId of [
+  KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision,
+  KESSHO_PRODUCT_PARAM_IDS.SequencerLaneTempoMultiplier,
+  KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing,
+]) {
+  assert.equal(
+    createCoreProductSequencerLaneParamEvent('synth', 0, paramId, 1).flags,
+    CORE_PRODUCT_TIMING_FLAGS.applyNextPhrase,
+    'sequencer timing event constructors should default to next-phrase application',
+  );
+}
 
 const disabledDelaySnapshot = createCoreProductSnapshot({
   padEnabled: true,
@@ -53,6 +83,76 @@ const disabledDelaySnapshot = createCoreProductSnapshot({
   granularDelayASend: 1,
   granularDelayBSend: 1,
 });
+
+{
+  const active16 = createCoreProductSnapshot({
+    transportPrimaryClock: 'seconds',
+    phraseLength: 16,
+    transportBarsPerPhrase: 4,
+    transportBeatsPerBar: 4,
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+  });
+  active16.transport.running = true;
+  const requested32 = createCoreProductSnapshot({
+    transportPrimaryClock: 'seconds',
+    phraseLength: 32,
+    transportBarsPerPhrase: 4,
+    transportBeatsPerBar: 4,
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+  });
+  requested32.transport.running = true;
+  const transitionDiff = buildCoreProductSnapshotDiff(active16, requested32, { forceSequencerClockRejoin: false });
+  assert.equal(transitionDiff.applied, true, 'running phrase changes should remain dirty-diffable');
+  if (transitionDiff.applied) {
+    const transition = transitionDiff.events.find((event) => event.eventKind === KESSHO_PRODUCT_EVENT_IDS.SetTransport);
+    assert(transition, 'running phrase changes should emit one pending transport transition');
+    assert.equal(transition.value, 30);
+    assert.equal(transition.value2, 4);
+    assert.equal(transition.value3, 4);
+    assert.equal(transition.value4, 32);
+    assert.equal(transition.flags, CORE_PRODUCT_TRANSPORT_FLAGS.applyNextPhrase);
+    assert.equal(
+      transitionDiff.events.some((event) => event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneInitialStartDelaySeconds),
+      false,
+      'running phrase changes must not reset enabled lanes while waiting for the phrase boundary',
+    );
+    assert.equal(
+      transitionDiff.events.some((event) => ([
+        KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeLeftMs,
+        KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeRightMs,
+        KESSHO_PRODUCT_PARAM_IDS.FxDelayBBaseTimeMs,
+      ] as number[]).includes(event.paramId ?? -1)),
+      false,
+      'tempo-synced delays must retime inside the atomic core transition rather than early host events',
+    );
+  }
+}
+
+{
+  const activeClock = createCoreProductSnapshot({
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1ClockDivision: 16,
+  });
+  activeClock.transport.running = true;
+  const requestedClock = createCoreProductSnapshot({
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1ClockDivision: 8,
+  });
+  requestedClock.transport.running = true;
+  const clockDiff = buildCoreProductSnapshotDiff(activeClock, requestedClock, { forceSequencerClockRejoin: false });
+  assert.equal(clockDiff.applied, true);
+  if (clockDiff.applied) {
+    const event = clockDiff.events.find((candidate) =>
+      candidate.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision
+    );
+    assert(event, 'running sequencer clock changes should emit a lane timing event');
+    assert.equal(event.flags, CORE_PRODUCT_TIMING_FLAGS.applyNextPhrase);
+  }
+}
 
 const pad1Source = disabledDelaySnapshot.sources.find((source) => source.delayASend > 0.9 && source.delayBSend > 0.9);
 assert(pad1Source, 'regression fixture should keep active source delay sends');

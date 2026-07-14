@@ -15,6 +15,7 @@ import { useSliderHelp } from '../ui/SliderHelpOverlay';
 import { MidiLearnSliderAdornment } from '../ui/midiLearn/MidiLearnSliderAdornment';
 import { useMidiLearn } from '../ui/midiLearn/useMidiLearn';
 import type { SliderPageId } from '../ui/pages/pageAliases';
+import { isReleaseCommittedTransportTimingKey } from '../ui/transportTimingPolicy';
 
 function linearToLog(value: number, min: number, max: number): number {
   const minLog = Math.log(min);
@@ -48,6 +49,8 @@ export interface SliderProps {
   logarithmic?: boolean;
   helpPage?: SliderPageId;
   disabled?: boolean;
+  /** Keep pointer-drag changes local until the pointer is released. */
+  commitOnRelease?: boolean;
   onChange: (key: keyof SliderState, value: number) => void;
   mode?: SliderMode;
   dualRange?: DualSliderRange;
@@ -149,6 +152,7 @@ export const Slider: React.FC<SliderProps> = ({
   logarithmic,
   helpPage,
   disabled = false,
+  commitOnRelease,
   onChange,
   mode = 'single',
   dualRange,
@@ -169,6 +173,7 @@ export const Slider: React.FC<SliderProps> = ({
     max: max ?? baseInfo.max,
     step: step ?? baseInfo.step,
   };
+  const releaseCommitted = commitOnRelease ?? isReleaseCommittedTransportTimingKey(paramKey);
 
   const quantizeWithInfo = (_key: keyof SliderState, nextValue: number): number => {
     const clamped = Math.max(info.min, Math.min(info.max, nextValue));
@@ -177,7 +182,7 @@ export const Slider: React.FC<SliderProps> = ({
     return info.min + steps * stepSize;
   };
 
-  if (onCycleMode && onDualRangeChange && !SINGLE_ONLY_SLIDER_KEYS.has(String(paramKey))) {
+  if (!releaseCommitted && onCycleMode && onDualRangeChange && !SINGLE_ONLY_SLIDER_KEYS.has(String(paramKey))) {
     return (
       <DualSlider<keyof SliderState>
         label={label}
@@ -226,7 +231,6 @@ export const Slider: React.FC<SliderProps> = ({
   const displayValue = formatDisplayValue(value);
   const valuePercent = valueToPercent(value);
   const ghostPercent = ghostValue == null || !Number.isFinite(ghostValue) ? null : valueToPercent(ghostValue);
-
   return (
     <SliderPrimitive
       className="app-slider-group"
@@ -238,14 +242,15 @@ export const Slider: React.FC<SliderProps> = ({
       hero="#a5c4d4"
       variant="full"
       density="compact"
-      displayValue={`${displayValue}${unit || ''}`}
-      formatValue={(percent) => formatDisplayValue(percentToValue(percent))}
+      displayValue={releaseCommitted ? undefined : `${displayValue}${unit || ''}`}
+      formatValue={(percent) => `${formatDisplayValue(percentToValue(percent))}${unit || ''}`}
       ghostValue={ghostPercent ?? undefined}
       disabled={disabled}
       onAnnounce={announceHelp}
       onValueGestureStart={() => {
         midiLearn.notifySliderDrag(paramKey, label);
       }}
+      commitValueOnRelease={releaseCommitted}
       headAdornment={<MidiLearnSliderAdornment paramKey={paramKey} label={label} />}
       onValueChange={(nextPercent) => {
         if (disabled) return;

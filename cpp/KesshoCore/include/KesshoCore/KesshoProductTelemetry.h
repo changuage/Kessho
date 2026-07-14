@@ -274,4 +274,16 @@ typedef struct KesshoProductTelemetry {
   float synth_anchor_walker_output_velocities[
       KESSHO_PRODUCT_ANCHOR_WALKER_VISUAL_LANES *
       KESSHO_PRODUCT_ANCHOR_WALKER_VISUAL_OUTPUTS];
+  float transport_bpm;
+  uint32_t transport_beats_per_bar;
+  uint32_t transport_bars_per_phrase;
+  float transport_phrase_seconds;
+  uint32_t transport_transition_pending;
+  float transport_pending_bpm;
+  uint32_t transport_pending_beats_per_bar;
+  uint32_t transport_pending_bars_per_phrase;
+  float transport_pending_phrase_seconds;
+  uint64_t transport_pending_apply_frame;
+  uint32_t transport_transition_revision;
+  float transport_phrase_progress;
 } KesshoProductTelemetry;

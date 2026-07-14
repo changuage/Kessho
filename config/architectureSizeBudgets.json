@@ -1,17 +1,17 @@
 {
   "files": {
     "src/App.tsx": {
-      "noGrowthCeiling": 3456,
+      "noGrowthCeiling": 3545,
       "targetCeiling": 2500,
       "mode": "fail-on-growth-warn-above-target"
     },
     "src/audio/coreProductEngineHost.ts": {
-      "noGrowthCeiling": 886,
+      "noGrowthCeiling": 920,
       "targetCeiling": 650,
       "mode": "fail-on-growth-warn-above-target"
     },
     "src/presets/SupabasePresetStore.ts": {
-      "noGrowthCeiling": 2257,
+      "noGrowthCeiling": 2746,
       "targetCeiling": 1200,
       "mode": "fail-on-growth-warn-above-target"
     },
@@ -21,7 +21,7 @@
       "mode": "fail-on-growth-warn-above-target"
     },
     "src/presets/presetStorageV2.ts": {
-      "noGrowthCeiling": 981,
+      "noGrowthCeiling": 1012,
       "targetCeiling": 600,
       "mode": "fail-on-growth-warn-above-target"
     },

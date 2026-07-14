@@ -5037,9 +5037,9 @@ export class AudioEngine {
     }
   }
 
-  setSynthStepPositionCallback(callback: (steps: number[], hitCounts: number[]) => void) {
+  setSynthStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null) {
     this.onSynthStepPositionChange = callback;
-    callback([...this.synthEuclidVisualStep], [...this.synthEuclidVisualHitCounts]);
+    callback?.([...this.synthEuclidVisualStep], [...this.synthEuclidVisualHitCounts]);
   }
 
   setJourneyMorphClockCallback(callback: ((now: number) => void) | null) {

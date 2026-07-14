@@ -42,7 +42,8 @@ const files = {
   generatedCaptureHook: read('src/ui/sequencer/useGeneratedSequenceCapture.ts'),
   generatedCapturePhrase: read('src/ui/sequencer/generatedSequencerCapturePhrase.ts'),
   host: read('src/audio/coreProductEngineHost.ts'),
-  manualTriggers: read('src/ui/useSelectedAudioEngineManualTriggers.ts'),
+  manualTriggers: read('src/ui/useProductRuntimeManualTriggers.ts'),
+  selectedManualTriggers: read('src/ui/useSelectedAudioEngineManualTriggers.ts'),
   liveTriggerCallbacks: read('src/ui/useSelectedAudioEngineLiveTriggerCallbacks.ts'),
   liveTriggerUiCallbacks: read('src/ui/useLiveTriggerUiCallbacks.ts'),
   synthPage: read('src/ui/synth/SynthPage.tsx'),
@@ -238,8 +239,8 @@ check(
       rejoin(
         { ...runningSynthBase, sequencerMasterBPM: 120 },
         { ...runningSynthBase, sequencerMasterBPM: 121 },
-      ) === true,
-    'preset morph/full resolved patches must not rejoin an already-default synth lane, while real lane enables and timing edits still rejoin',
+      ) === false,
+    'preset morph/full resolved patches and phrase-timing edits must stay staged, while real lane enables still rejoin',
   );
 }
 
@@ -392,10 +393,20 @@ check(
       files.manualTriggers.includes('(_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, velocity, resolvedSliders),') ||
       files.manualTriggers.includes('(_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, 0.8, resolvedSliders),')
     ) &&
-    !files.manualTriggers.includes('createInitialProductControlState(') &&
-    !files.manualTriggers.includes('productEngine.auditionSynthNote(note, externalState)') &&
-    !files.manualTriggers.includes('productEngine.triggerDrumVoice(voice, velocity, externalState)'),
+    !files.manualTriggers.includes('createInitialProductControlState('),
   'core-product manual triggers must commit current ProductControl state and pass resolved sliders to Product triggers',
+);
+
+check(
+  'selected-manual-trigger-reference-only',
+  files.selectedManualTriggers.includes('selectedProductRuntime.auditionSynthNote(note, stateRef.current)') &&
+    files.selectedManualTriggers.includes('selectedProductRuntime.enqueueLiveNoteEvent(event)') &&
+    files.selectedManualTriggers.includes('selectedProductRuntime.triggerDrumVoice(voice, 0.8, stateRef.current)') &&
+    !files.selectedManualTriggers.includes('productRuntimeManualTriggers') &&
+    !files.selectedManualTriggers.includes('audioEngineRuntimeMode') &&
+    !files.selectedManualTriggers.includes('commitProductControlActionThenTrigger(') &&
+    !files.selectedManualTriggers.includes('productEngine'),
+  'selected manual trigger adapter must remain a reference-runtime-only implementation',
 );
 
 check(

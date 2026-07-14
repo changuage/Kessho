@@ -1,23 +1,17 @@
 import { useMemo } from 'react';
 import type { MutableRefObject } from 'react';
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
-import type { ManualSynthNoteOptions } from '../audio/engineSharedTypes';
 import type {
-  ProductDrumVoice,
   ProductSynthAnchorWalkerVisualStateCallback,
   ProductSynthOrbitVisualStateCallback,
 } from '../audio/product/ProductEngineTypes';
 import type { SliderState } from './state';
-
-export type ProductRuntimeManualTriggers = {
-  auditionSynthNote: (note: ManualSynthNoteOptions) => void;
-  triggerDrumVoice: (voice: ProductDrumVoice) => void;
-};
+import type { RuntimeManualTriggerSurface } from './useProductRuntimeManualTriggers';
 
 export type ProductRuntimePageControlProps = {
   onRequestPlaybackStart: (statePatch?: Partial<SliderState>) => void;
   preloadProductRuntime: () => Promise<unknown>;
-  productRuntimeManualTriggers: ProductRuntimeManualTriggers;
+  productRuntimeManualTriggers: RuntimeManualTriggerSurface;
   productRuntimeMode: ProductRuntimeSelectionMode;
   stateRef: MutableRefObject<SliderState>;
   setProductDrumEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;

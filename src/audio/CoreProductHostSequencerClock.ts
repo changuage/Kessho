@@ -31,11 +31,6 @@ function shouldRejoinSequencerKind(
   const masterKey = kind === 'synth' ? 'synthEuclideanMasterEnabled' : 'drumEuclidMasterEnabled';
   if (!booleanFromState(next, masterKey, false)) return false;
   const timingKeys = [
-    'transportPrimaryClock',
-    'phraseLength',
-    'sequencerMasterBPM',
-    'transportBarsPerPhrase',
-    'transportBeatsPerBar',
     `${prefix}ClockSource`,
     `${prefix}JoinPolicy`,
   ];

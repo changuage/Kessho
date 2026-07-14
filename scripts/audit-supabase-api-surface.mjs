@@ -12,6 +12,7 @@ const PUBLIC_TABLES = [
   'presets_v2',
   'preset_versions_v2',
   'preset_version_refs_v2',
+  'preset_version_content_refs_v2',
   'preset_payloads_v2',
   'preset_summaries_v2',
   'legacy_preset_summaries',
@@ -26,6 +27,7 @@ const BASE_TABLE_REST_CHECKS = [
   ['presets_v2', 'id,name,latest_version_no'],
   ['preset_versions_v2', 'id,preset_id,version_no,resolved_hash'],
   ['preset_version_refs_v2', 'version_id,target_preset_id'],
+  ['preset_version_content_refs_v2', 'version_id,content_hash,content_type'],
   ['preset_payloads_v2', 'hash,payload,payload_bytes'],
   ['presets', 'id,name,versions'],
 ];
@@ -558,6 +560,7 @@ async function runSqlChecks(env) {
           'presets_v2',
           'preset_versions_v2',
           'preset_version_refs_v2',
+          'preset_version_content_refs_v2',
           'preset_payloads_v2'
         )
       order by tablename, policyname

@@ -401,6 +401,25 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
   telemetry.beat_position = transport.beatPosition(sample_rate);
   telemetry.bar_index = transport.barIndex(sample_rate);
   telemetry.phrase_index = transport.phraseIndex(sample_rate);
+  telemetry.transport_bpm = transport.bpm;
+  telemetry.transport_beats_per_bar = transport.beats_per_bar;
+  telemetry.transport_bars_per_phrase = transport.bars_per_phrase;
+  telemetry.transport_phrase_seconds = static_cast<float>(
+      transport.samplesPerPhrase(sample_rate) / std::max(1.0, sample_rate));
+  telemetry.transport_transition_pending = transport.transition_pending ? 1u : 0u;
+  telemetry.transport_pending_bpm = transport.pending_bpm;
+  telemetry.transport_pending_beats_per_bar = transport.pending_beats_per_bar;
+  telemetry.transport_pending_bars_per_phrase = transport.pending_bars_per_phrase;
+  telemetry.transport_pending_phrase_seconds = transport.pending_phrase_seconds;
+  telemetry.transport_pending_apply_frame = transport.pending_apply_frame;
+  telemetry.transport_transition_revision = transport.transition_revision;
+  const uint64_t phrase_elapsed_frames = transport.sample_frame >= transport.phrase_origin_frame
+      ? transport.sample_frame - transport.phrase_origin_frame
+      : 0u;
+  const double phrase_period_frames = transport.samplesPerPhrase(sample_rate);
+  telemetry.transport_phrase_progress = phrase_period_frames > 0.0
+      ? static_cast<float>(std::fmod(static_cast<double>(phrase_elapsed_frames), phrase_period_frames) / phrase_period_frames)
+      : 0.0f;
   telemetry.active_sources = active_source_count;
   telemetry.active_voices = active_voice_count;
   telemetry.active_assets = active_asset_count;

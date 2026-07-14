@@ -113,6 +113,7 @@ export function pickChordWeightedNote(
 }
 
 export function leadRandomSource(state: Record<string, unknown>): LeadRandomSource {
+  // ALLOW_PIANO_ALIAS_MIGRATION: legacy preset reads normalize Piano to Sample 1.
   const source = state.leadRandomSource;
   if (source === 'pad1') return 'pad1';
   if (source === 'pad2') return 'pad2';

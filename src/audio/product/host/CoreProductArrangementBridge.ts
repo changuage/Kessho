@@ -3,6 +3,7 @@ import type { CoreProductEvent } from '../../coreProductEvents';
 import type { ProductSimpleSequencerVisualPlanActive } from '../ProductEngineTypes';
 import type { SampleSlotId } from '../../sampleLibraries/SampleLibraryTypes';
 import type { TransportDebugSnapshot } from '../../transport';
+import type { CoreProductTelemetrySnapshot } from '../../coreProductTelemetry';
 
 type CoreProductArrangementAudioContextProvider = () => AudioContext | null;
 type CoreProductArrangementPostEvent = (event: CoreProductEvent) => void;
@@ -61,6 +62,10 @@ export class CoreProductArrangementBridge {
 
   stop(): void {
     this.scheduler.stop();
+  }
+
+  syncTransportTelemetry(telemetry: CoreProductTelemetrySnapshot): void {
+    this.scheduler.syncTransportTelemetry(telemetry);
   }
 
   getTransportDebugState(nowWallSec?: number): Partial<TransportDebugSnapshot> | null {

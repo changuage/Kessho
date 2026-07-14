@@ -3,7 +3,6 @@ import RoutingMatrix from '../global/RoutingMatrix';
 import type { DualSliderRange } from '../DualSlider';
 import type { SliderMode, SliderState } from '../state';
 import MidiPage from '../midi/MidiPage';
-import type { KesshoMidiMessage } from '../../native/capacitorMidiRouting';
 import type { DawOutputDeviceSelection, DawOutputRoutingConfig } from '../../audio/dawOutputRouting';
 import DawOutputPanel from './DawOutputPanel';
 import RoutingMuteGroupsPanel from './RoutingMuteGroupsPanel';
@@ -18,7 +17,6 @@ export interface RoutingPageProps {
   onParamChange: (key: keyof SliderState, value: number) => void;
   onColumnParamChange: (key: keyof SliderState, value: number) => void;
   onToggleSource: (sourceId: string, enabled: boolean) => void;
-  onMidiMessage: (message: KesshoMidiMessage) => void;
   dawOutputRouting: DawOutputRoutingConfig;
   dawOutputDeviceSelection: DawOutputDeviceSelection;
   onDawOutputRoutingChange: (config: DawOutputRoutingConfig) => void;
@@ -41,15 +39,12 @@ export default function RoutingPage({
   onParamChange,
   onColumnParamChange,
   onToggleSource,
-  onMidiMessage,
   dawOutputRouting,
   dawOutputDeviceSelection,
   onDawOutputRoutingChange,
   onDawOutputDeviceSelectionChange,
   sliderProps,
 }: RoutingPageProps) {
-  void onMidiMessage;
-
   return (
     <div className={`routing-root${isMobile ? ' mobile' : ''}`}>
       <div className="routing-container">

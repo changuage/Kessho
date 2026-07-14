@@ -66,6 +66,8 @@ export interface SliderPrimitiveProps {
   style?: React.CSSProperties;
   title?: string;
   onValueChange?: (value: number) => void;
+  /** Preview pointer drags locally and notify onValueChange only on pointer release. */
+  commitValueOnRelease?: boolean;
   onRangeChange?: (range: SliderPrimitiveRange) => void;
   onModeCycle?: () => void;
   onAnnounce?: () => void;
@@ -94,6 +96,7 @@ export function SliderPrimitive({
   style,
   title,
   onValueChange,
+  commitValueOnRelease = false,
   onRangeChange,
   onModeCycle,
   onAnnounce,
@@ -109,6 +112,7 @@ export function SliderPrimitive({
   const fillRef = React.useRef<HTMLSpanElement>(null);
   const edgeMinRef = React.useRef<HTMLSpanElement>(null);
   const edgeMaxRef = React.useRef<HTMLSpanElement>(null);
+  const valueTextRef = React.useRef<HTMLSpanElement>(null);
   const dragValueRef = React.useRef<number | null>(null);
   const dragRangeRef = React.useRef<SliderPrimitiveRange | null>(null);
   const dragIndicatorRef = React.useRef<number | null>(null);
@@ -253,11 +257,14 @@ export function SliderPrimitive({
             fillRef.current.style.width = `${nextValue}%`;
             fillRef.current.style.opacity = String(0.15 + (nextValue / 100) * 0.85);
           }
+          if (commitValueOnRelease && valueTextRef.current) {
+            valueTextRef.current.textContent = formatValue(nextValue, unit);
+          }
         } else {
           setLiveValue(nextValue);
         }
 
-        emitValueChange(nextValue);
+        if (!commitValueOnRelease) emitValueChange(nextValue);
       };
 
       setLiveValue(lastValue);
@@ -272,7 +279,8 @@ export function SliderPrimitive({
 
       const onEnd = (endEvent: PointerEvent) => {
         if (endEvent.pointerId !== pointerId) return;
-        setLiveValue(lastValue);
+        const cancelled = endEvent.type === 'pointercancel';
+        setLiveValue(cancelled ? value : lastValue);
         dragValueRef.current = null;
         dragIndicatorRef.current = null;
         dragThumbPxRef.current = null;
@@ -280,7 +288,10 @@ export function SliderPrimitive({
           thumbRef.current.style.transform = '';
           thumbRef.current.style.left = '';
         }
-        emitValueChange(lastValue);
+        if (cancelled && valueTextRef.current) {
+          valueTextRef.current.textContent = displayValue ?? formatValue(value, unit);
+        }
+        if (!cancelled) emitValueChange(lastValue);
         lastEmittedValueRef.current = null;
         setDragging(false);
         cleanupCommittedDrag(onMove, onEnd);
@@ -479,7 +490,7 @@ export function SliderPrimitive({
 
     const onPendingEnd = (endEvent: PointerEvent) => {
       if (endEvent.pointerId !== event.pointerId) return;
-      const shouldTap = !longPressConsumed && !cancelledForScroll;
+      const shouldTap = endEvent.type === 'pointerup' && !longPressConsumed && !cancelledForScroll;
       cleanupPendingTouch();
       if (shouldTap) {
         commitTapValue(startX, rect);
@@ -580,7 +591,7 @@ export function SliderPrimitive({
           hero && <span className="sl-slider-hero-dot" aria-hidden="true" />
         )}
         <span className="sl-slider-label">{label}</span>
-        <span className="sl-slider-value app-slider-value">{valueText}</span>
+        <span ref={valueTextRef} className="sl-slider-value app-slider-value">{valueText}</span>
         {headAdornment}
       </div>
 

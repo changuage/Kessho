@@ -165,6 +165,7 @@ export function resolveProductArpMidiPattern(options: {
   harmony: ProductArpHarmonyContext;
   laneIndex: number;
   runtimeTick?: number;
+  anchorMidi?: number | null;
 }): number[] | null {
   const details = resolveProductArpPatternDetails(options);
   return details ? details.map((step) => step.outputMidi ?? -1) : null;
@@ -175,6 +176,7 @@ export function resolveProductArpPatternDetails(options: {
   harmony: ProductArpHarmonyContext;
   laneIndex: number;
   runtimeTick?: number;
+  anchorMidi?: number | null;
 }): ProductArpResolvedStep[] | null {
   const config = normalizeProductArpConfig(options.config);
   if (!config.enabled) return null;
@@ -216,16 +218,20 @@ export function resolveProductArpPatternDetails(options: {
       });
       continue;
     }
-    const baseIndex = resolveTraversalIndex({
-      flow: config.flow,
-      localPulse: pulse - segmentStart,
-      pulse,
-      laneIndex: options.laneIndex,
-      runtimeTick: options.runtimeTick ?? 0,
-      poolLength: pool.length,
-      pulseMask: config.pulseMask,
-      resetMask: config.resetMask,
-    });
+    const anchorIndex = nearestPoolIndex(pool, options.anchorMidi);
+    const baseIndex = config.contourMode === 'semitone'
+      ? anchorIndex ?? 0
+      : resolveTraversalIndex({
+          flow: config.flow,
+          localPulse: pulse - segmentStart,
+          pulse,
+          laneIndex: options.laneIndex,
+          runtimeTick: options.runtimeTick ?? 0,
+          poolLength: pool.length,
+          pulseMask: config.pulseMask,
+          resetMask: config.resetMask,
+          anchorIndex,
+        });
     const baseMidi = pool[baseIndex] ?? pool[0] ?? null;
     if (baseMidi == null) {
       values.push({
@@ -412,6 +418,20 @@ function normalizePool(notes: readonly number[]): number[] {
   return pool.sort((left, right) => left - right);
 }
 
+function nearestPoolIndex(pool: readonly number[], anchorMidi: number | null | undefined): number | null {
+  if (!Number.isFinite(anchorMidi) || pool.length === 0) return null;
+  let closestIndex = 0;
+  let closestDistance = Math.abs((pool[0] ?? 0) - anchorMidi!);
+  for (let index = 1; index < pool.length; index += 1) {
+    const distance = Math.abs((pool[index] ?? 0) - anchorMidi!);
+    if (distance < closestDistance) {
+      closestIndex = index;
+      closestDistance = distance;
+    }
+  }
+  return closestIndex;
+}
+
 function resolveSourcePool(config: ProductArpConfig, harmony: ProductArpHarmonyContext, pulse: number): number[] {
   const slotChoice = config.slotLane[pulse] ?? -1;
   if (slotChoice >= 0) {
@@ -437,8 +457,9 @@ function resolveTraversalIndex(options: {
   poolLength: number;
   pulseMask: number;
   resetMask: number;
+  anchorIndex?: number | null;
 }): number {
-  const { flow, localPulse, pulse, laneIndex, runtimeTick, poolLength, pulseMask, resetMask } = options;
+  const { flow, localPulse, pulse, laneIndex, runtimeTick, poolLength, pulseMask, resetMask, anchorIndex } = options;
   if (poolLength <= 1) return 0;
   if (flow === 'randomLiveTone') {
     return hashU32((runtimeTick + 1) * 0x45d9f3b + laneIndex * 0x119de1f3 + pulse * 0x27d4eb2d) % poolLength;
@@ -447,10 +468,22 @@ function resolveTraversalIndex(options: {
     return hashU32(pulseMask * 0x9e3779b1 + resetMask * 0x632be59b + laneIndex * 0x85ebca6b + pulse * 0xc2b2ae35) % poolLength;
   }
   const position = Math.max(0, Math.floor(localPulse));
+  if (anchorIndex != null) {
+    if (flow === 'down') return positiveModulo(anchorIndex - position, poolLength);
+    if (flow === 'upDown') return positiveModulo(anchorIndex + signedPingPongOffset(position), poolLength);
+    if (flow === 'downUp') return positiveModulo(anchorIndex - signedPingPongOffset(position), poolLength);
+    return positiveModulo(anchorIndex + position, poolLength);
+  }
   if (flow === 'down') return poolLength - 1 - (position % poolLength);
   if (flow === 'upDown') return pingPongIndex(position, poolLength);
   if (flow === 'downUp') return poolLength - 1 - pingPongIndex(position, poolLength);
   return position % poolLength;
+}
+
+function signedPingPongOffset(position: number): number {
+  if (position <= 0) return 0;
+  const magnitude = Math.ceil(position / 2);
+  return position % 2 === 1 ? magnitude : -magnitude;
 }
 
 function pingPongIndex(position: number, length: number): number {

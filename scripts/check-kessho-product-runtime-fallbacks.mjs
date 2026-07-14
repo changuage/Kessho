@@ -38,7 +38,6 @@ const uiCallsiteFiles = [
   'src/ui/drums/DrumPage.tsx',
   'src/ui/synth/SynthPage.tsx',
   'src/ui/granular/GranularPage.tsx',
-  'src/ui/routing/MidiRoutingPanel.tsx',
   'src/audio/sonicParityHarness.ts',
   'src/ui/presetUtils.ts',
 ];
@@ -293,8 +292,9 @@ await runCheckWithReport({
         productRuntimeTelemetry.includes("return productRuntimeMode !== 'core-product' || isCoreProductRangeKeySupported(key);") &&
         productRuntimeTelemetry.includes("if (productRuntimeMode !== 'core-product') {") &&
         productRuntimeTelemetry.includes('productEngine.setVisualTelemetryActive(false);') &&
-        productRuntimeTelemetry.includes("const active = uiMode === 'advanced' && documentVisible;") &&
-        productRuntimeTelemetry.includes('productEngine.setVisualTelemetryActive(active);') &&
+        app.includes("const productVisualTelemetryActive = uiMode === 'advanced' && (") &&
+        app.includes('setProductVisualTelemetryActive(productVisualTelemetryActive);') &&
+        app.includes('setProductVisualTelemetryActive(false);') &&
         !productRuntimeTelemetry.includes('useSelectedAudioEngine') &&
         !productRuntimeTelemetry.includes('useSelectedAudioEngineTelemetrySurface') &&
         selectedRuntimeTelemetry.includes('useSelectedAudioEngineRuntimeCapabilities({') &&

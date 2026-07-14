@@ -93,7 +93,7 @@ const SEQUENCER_UI_LANE_BASE_OFFSET = 36;
 const SEQUENCER_UI_LANE_SIZE = 3296;
 const LANE_EXPRESSION_OVERRIDE_SET_LOW_OFFSET = 76;
 const LANE_EXPRESSION_OVERRIDES_OFFSET = 1448;
-const TELEMETRY_BYTES = 15112;
+const TELEMETRY_BYTES = 15168;
 const TELEMETRY_SYNTH_ARP_CURRENT_STEPS_OFFSET = 1296;
 const TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET = 8828;
 const TELEMETRY_DEBUG_SOURCE_OFFSET = 8832;
@@ -101,6 +101,11 @@ const TELEMETRY_DEBUG_SOURCE_BYTES = 32;
 const TELEMETRY_DEBUG_VOICE_COUNT_OFFSET = 9088;
 const TELEMETRY_DEBUG_VOICE_OFFSET = 9096;
 const TELEMETRY_DEBUG_VOICE_BYTES = 48;
+const TELEMETRY_TRANSPORT_BPM_OFFSET = 15112;
+const TELEMETRY_TRANSPORT_PHRASE_SECONDS_OFFSET = 15124;
+const TELEMETRY_TRANSPORT_PENDING_OFFSET = 15128;
+const TELEMETRY_TRANSPORT_PENDING_APPLY_FRAME_OFFSET = 15152;
+const TELEMETRY_TRANSPORT_REVISION_OFFSET = 15160;
 
 const frames = 128;
 const leftPtr = malloc(frames * Float32Array.BYTES_PER_ELEMENT);
@@ -259,6 +264,30 @@ assert(
   manualCommitExpressionValues.some((value) => Number.isFinite(value) && value > 0 && value < 1),
   'WASM product manual-commit synth dice did not expose a mutated expression value',
 );
+
+reset(engine);
+enqueueRawEvent(
+  { eventKind: 2, value: 60, value2: 1, value3: 1, value4: 0.01 },
+  'WASM product initial transport enqueue failed',
+);
+enqueueRawEvent({ eventKind: 3 }, 'WASM product transport start enqueue failed');
+render(engine, leftPtr, rightPtr, frames);
+enqueueRawEvent(
+  { eventKind: 2, value: 30, value2: 1, value3: 1, value4: 0.02, flags: 1 },
+  'WASM product pending transport enqueue failed',
+);
+render(engine, leftPtr, rightPtr, frames);
+assert(copyTelemetry(engine, telemetryPtr) === 1, 'WASM product pending transport telemetry copy failed');
+assert(view.getUint32(telemetryPtr + TELEMETRY_TRANSPORT_PENDING_OFFSET, true) === 1, 'WASM product telemetry did not report a pending transport transition');
+assert(view.getFloat32(telemetryPtr + TELEMETRY_TRANSPORT_BPM_OFFSET, true) === 60, 'WASM product changed BPM before the phrase boundary');
+assert(Number(view.getBigUint64(telemetryPtr + TELEMETRY_TRANSPORT_PENDING_APPLY_FRAME_OFFSET, true)) === 480, 'WASM product pending transition targeted the wrong phrase boundary');
+render(engine, leftPtr, rightPtr, frames);
+render(engine, leftPtr, rightPtr, frames);
+assert(copyTelemetry(engine, telemetryPtr) === 1, 'WASM product applied transport telemetry copy failed');
+assert(view.getUint32(telemetryPtr + TELEMETRY_TRANSPORT_PENDING_OFFSET, true) === 0, 'WASM product pending transition did not clear at the phrase boundary');
+assert(view.getUint32(telemetryPtr + TELEMETRY_TRANSPORT_REVISION_OFFSET, true) === 1, 'WASM product transition revision did not advance');
+assert(view.getFloat32(telemetryPtr + TELEMETRY_TRANSPORT_BPM_OFFSET, true) === 30, 'WASM product did not apply BPM at the phrase boundary');
+assert(Math.abs(view.getFloat32(telemetryPtr + TELEMETRY_TRANSPORT_PHRASE_SECONDS_OFFSET, true) - 0.02) < 0.0001, 'WASM product did not apply phrase duration at the phrase boundary');
 
 destroy(engine);
 free(leftPtr);

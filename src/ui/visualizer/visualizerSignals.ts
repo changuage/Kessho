@@ -66,6 +66,24 @@ const sequencers: Record<VisualizerSequencerKind, SequencerState> = {
   drum: { steps: [0, 0, 0, 0, 0, 0], hitCounts: [0, 0, 0, 0, 0, 0], updatedAt: 0 },
 };
 
+const signalListeners = new Set<() => void>();
+let visualizerSignalDemand = false;
+
+export function setVisualizerSignalDemand(demand: boolean): void {
+  visualizerSignalDemand = demand;
+}
+
+function notifySignalListeners(): void {
+  for (const listener of signalListeners) listener();
+}
+
+export function subscribeVisualizerSignals(listener: () => void): () => void {
+  signalListeners.add(listener);
+  return () => {
+    signalListeners.delete(listener);
+  };
+}
+
 function nowMs(): number {
   return typeof performance !== 'undefined' ? performance.now() : Date.now();
 }
@@ -87,6 +105,7 @@ export function emitVisualizerPulse(
   amount = 1,
   at = nowMs(),
 ): void {
+  if (!visualizerSignalDemand) return;
   const current = decayedPulse(key, at);
   pulses[key] = {
     value: clamp01(current + Math.max(0, amount)),
@@ -98,7 +117,10 @@ export function emitVisualizerPulse(
       value: clamp01(globalCurrent + Math.max(0, amount) * 0.32),
       updatedAt: at,
     };
+    publishVisualizerTransient('global', Math.max(0, amount) * 0.32, at);
   }
+  publishVisualizerTransient(key, amount, at);
+  notifySignalListeners();
 }
 
 export function emitVisualizerPulses(
@@ -115,6 +137,7 @@ export function setVisualizerSequencerState(
   steps: readonly number[],
   hitCounts: readonly number[],
 ): void {
+  if (!visualizerSignalDemand) return;
   const prev = sequencers[kind];
   let moved = false;
   for (let index = 0; index < Math.max(prev.steps.length, steps.length); index += 1) {
@@ -129,6 +152,13 @@ export function setVisualizerSequencerState(
     hitCounts: Array.from(hitCounts, (count) => Math.max(0, Math.floor(count))),
     updatedAt: nowMs(),
   };
+  publishVisualizerTelemetrySignal(
+    kind === 'synth' ? 'synth' : 'drums',
+    'density',
+    hitDensity(sequencers[kind]),
+  );
+
+  notifySignalListeners();
 
   if (moved) {
     emitVisualizerPulse(kind === 'drum' ? 'drums' : 'synth', 0.26);
@@ -139,8 +169,15 @@ export function setVisualizerSequencerState(
 function stepPhase(state: SequencerState): number {
   const steps = state.steps;
   if (steps.length === 0) return 0;
-  const total = steps.reduce((sum, step) => sum + step, 0);
-  return clamp01((total % 64) / 64);
+  let x = 0;
+  let y = 0;
+  for (const step of steps) {
+    const angle = ((step % 16) / 16) * Math.PI * 2;
+    x += Math.cos(angle);
+    y += Math.sin(angle);
+  }
+  const angle = Math.atan2(y, x);
+  return ((angle / (Math.PI * 2)) + 1) % 1;
 }
 
 function hitDensity(state: SequencerState): number {
@@ -163,9 +200,32 @@ export function getVisualizerPulseSnapshot(at = nowMs()): VisualizerPulseSnapsho
     reverb: decayedPulse('reverb', at),
     dynamics: decayedPulse('dynamics', at),
     sequencer: decayedPulse('sequencer', at),
-    synthStepPhase: stepPhase(sequencers.synth),
-    drumStepPhase: stepPhase(sequencers.drum),
+    synthStepPhase: getVisualizerTransportPhase('synth', at),
+    drumStepPhase: getVisualizerTransportPhase('drum', at),
     synthHitDensity: hitDensity(sequencers.synth),
     drumHitDensity: hitDensity(sequencers.drum),
   };
 }
+
+export function publishVisualizerTransportPhase(
+  kind: VisualizerSequencerKind,
+  phase: number,
+  at = nowMs(),
+): void {
+  if (!visualizerSignalDemand) return;
+  publishVisualizerTelemetrySignal(kind === 'synth' ? 'synth' : 'drums', 'phase', phase, at);
+  notifySignalListeners();
+}
+
+export function getVisualizerTransportPhase(
+  kind: VisualizerSequencerKind,
+  at = nowMs(),
+): number {
+  return readVisualizerTelemetrySignal(kind === 'synth' ? 'synth' : 'drums', 'phase', at)
+    ?? stepPhase(sequencers[kind]);
+}
+import {
+  publishVisualizerTelemetrySignal,
+  publishVisualizerTransient,
+  readVisualizerTelemetrySignal,
+} from './visualizerTelemetry';

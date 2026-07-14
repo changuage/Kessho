@@ -93,6 +93,8 @@ bool orbitAuthoredTimingMatches(
 } // namespace
 
 int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapshot) {
+  pending_phrase_timing_event_count = 0u;
+  pending_phrase_timing_apply_frame = 0u;
   if (snapshot.version != KESSHO_PRODUCT_SNAPSHOT_VERSION) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_UNSUPPORTED_SNAPSHOT_VERSION;
     return KESSHO_PRODUCT_ERROR_UNSUPPORTED_SNAPSHOT_VERSION;
@@ -211,6 +213,16 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   transport.bpm = clampFloat(snapshot.transport.bpm, 1.0f, 400.0f);
   transport.beats_per_bar = clampU32(snapshot.transport.beats_per_bar, 1u, 32u);
   transport.bars_per_phrase = clampU32(snapshot.transport.bars_per_phrase, 1u, 256u);
+  float encoded_phrase_seconds = 0.0f;
+  std::memcpy(&encoded_phrase_seconds, &snapshot.transport.reserved0, sizeof(encoded_phrase_seconds));
+  transport.phrase_seconds = std::isfinite(encoded_phrase_seconds) && encoded_phrase_seconds > 0.0f
+      ? clampFloat(encoded_phrase_seconds, 0.001f, 4096.0f)
+      : static_cast<float>(
+          (60.0 / static_cast<double>(transport.bpm)) *
+          static_cast<double>(transport.beats_per_bar) *
+          static_cast<double>(transport.bars_per_phrase));
+  transport.transition_pending = false;
+  transport.pending_apply_frame = 0u;
   transport.swing = clampFloat(snapshot.transport.swing, 0.0f, 1.0f);
   harmony.root_midi = clampFloat(snapshot.harmony.root_midi, 0.0f, 127.0f);
   harmony.scale_id = snapshot.harmony.scale_id == 0u ? 1u : snapshot.harmony.scale_id;

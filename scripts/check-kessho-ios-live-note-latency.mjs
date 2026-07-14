@@ -17,6 +17,10 @@ const queuePath = 'plugins/kessho-capacitor-audio-session/ios/Sources/KesshoAudi
 const rendererPath = 'plugins/kessho-capacitor-audio-session/ios/Sources/KesshoAudioSession/IOSProductAudioRenderer.swift';
 const queue = read(queuePath);
 const renderer = read(rendererPath);
+const pluginPath = 'plugins/kessho-capacitor-audio-session/ios/Sources/KesshoAudioSession/KesshoAudioSessionPlugin.swift';
+const midiPath = 'plugins/kessho-capacitor-midi-routing/ios/Sources/KesshoMIDIRouting/KesshoMidiRoutingPlugin.swift';
+const plugin = read(pluginPath);
+const midi = read(midiPath);
 
 for (const token of [
   'IOSRealtimeEventQueueEvent',
@@ -42,7 +46,7 @@ for (const token of [
 const report = {
   platform: 'ios',
   generatedAt: new Date().toISOString(),
-  status: failures.length === 0 ? 'pass' : 'fail',
+  status: failures.length === 0 ? 'prep-only' : 'fail',
   device: 'unknown',
   sampleRate: 0,
   bufferSizeFrames: 0,
@@ -55,7 +59,18 @@ const report = {
   underrunCount: 0,
   evidenceMode: 'static',
   physicalDeviceEvidenceClaimed: false,
-  checkedFiles: [queuePath, rendererPath],
+  productionNativePlaybackWired:
+    !plugin.includes('React/WebAudio engine owns sound generation') &&
+    renderer.includes('engine?.renderer.enqueueEvent'),
+  nativeMidiDirectToProductCore:
+    plugin.includes('IOSRealtimeEventQueue') &&
+    midi.includes('IOSRealtimeEventQueue'),
+  blockers: [
+    'Production playback remains WebAudio-owned.',
+    'The timestamped iOS queue is not connected to the CoreMIDI input or Product Core renderer.',
+    'No physical-device event-to-render measurements have been recorded.',
+  ],
+  checkedFiles: [queuePath, rendererPath, pluginPath, midiPath],
   failures,
 };
 
@@ -67,4 +82,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Kessho iOS live-note latency check passed (static)');
+console.log('Kessho iOS live-note latency prep is present; production wiring and device measurements are pending');

@@ -345,6 +345,123 @@ void expectAbsoluteOffsets(
   }
 }
 
+void testPendingTransportTransition() {
+  constexpr double transition_sample_rate = 1000.0;
+  KesshoProductEngine* transition_engine = kessho_product_create(transition_sample_rate, 256u, 0u);
+  require(transition_engine != nullptr, "pending transport transition engine create failed");
+  KesshoProductSnapshotV2 transition_snapshot = makeSnapshot();
+  transition_snapshot.transport.bpm = 60.0f;
+  transition_snapshot.transport.beats_per_bar = 1u;
+  transition_snapshot.transport.bars_per_phrase = 1u;
+  transition_snapshot.fx.delay_a_time_left_ms = 100.0f;
+  transition_snapshot.fx.delay_a_time_right_ms = 150.0f;
+  transition_snapshot.fx.delay_b_base_time_ms = 200.0f;
+  for (KesshoProductSequencerSnapshot* sequencer : {
+      &transition_snapshot.synth_euclid,
+      &transition_snapshot.drum_euclid}) {
+    KesshoProductSequencerLaneSnapshot& lane = sequencer->lanes[0];
+    lane.step_count = 1u;
+    lane.fill_count = 1u;
+    lane.manual_step_mask_low = 1u;
+    lane.manual_step_mask_high = 0u;
+    lane.clock_division = 16u;
+    lane.initial_start_delay_seconds = 0.0f;
+  }
+  require(
+      kessho_product_load_snapshot_v2(
+          transition_engine,
+          &transition_snapshot,
+          sizeof(transition_snapshot)) == KESSHO_PRODUCT_OK,
+      "pending transport transition snapshot should load");
+
+  std::vector<uint32_t> absolute_offsets;
+  const auto append_events = [&](uint32_t origin, const std::vector<RenderedSequencerEvent>& rendered) {
+    for (const RenderedSequencerEvent& entry : rendered) {
+      absolute_offsets.push_back(origin + entry.absolute_offset);
+    }
+  };
+  append_events(0u, renderEventsInBlocks(transition_engine, 125u, 125u));
+
+  transition_engine->voices[0].active = true;
+  transition_engine->voices[0].remaining_frames = 777u;
+  KesshoProductEvent transition{};
+  transition.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_TRANSPORT;
+  transition.value = 30.0f;
+  transition.value2 = 1.0f;
+  transition.value3 = 1.0f;
+  transition.value4 = 2.0f;
+  transition.flags = KESSHO_PRODUCT_TRANSPORT_APPLY_NEXT_PHRASE;
+  require(
+      kessho_product_enqueue_event(transition_engine, &transition) == KESSHO_PRODUCT_OK,
+      "pending transport transition enqueue failed");
+  append_events(125u, renderEventsInBlocks(transition_engine, 125u, 375u));
+  require(transition_engine->transport.transition_pending, "transport change should remain pending before phrase boundary");
+  require(transition_engine->transport.pending_apply_frame == 1000u, "transport change should target the current phrase boundary");
+  require(std::fabs(transition_engine->transport.bpm - 60.0f) < 0.001f, "active BPM must remain unchanged while transition is pending");
+  require(std::fabs(transition_engine->fx.delay_a_time_left_ms - 100.0f) < 0.001f, "tempo-synced FX must remain on the active clock while transition is pending");
+  require(std::fabs(transition_engine->fx.delay_b_base_time_ms - 200.0f) < 0.001f, "tempo-synced tape delay must remain on the active clock while transition is pending");
+
+  transition_engine->transport.stageNextPhraseTransition(60.0f, 1u, 1u, 1.0f, transition_sample_rate);
+  require(!transition_engine->transport.transition_pending, "returning controls to the active timing should cancel the pending transition");
+  transition_engine->transport.stageNextPhraseTransition(30.0f, 1u, 1u, 2.0f, transition_sample_rate);
+  require(transition_engine->transport.pending_apply_frame == 1000u, "restaging after cancellation should retain the next phrase boundary");
+
+  transition.value = 40.0f;
+  transition.value4 = 1.5f;
+  require(
+      kessho_product_enqueue_event(transition_engine, &transition) == KESSHO_PRODUCT_OK,
+      "coalesced transport transition enqueue failed");
+  append_events(500u, renderEventsInBlocks(transition_engine, 125u, 750u));
+
+  const std::vector<uint32_t> expected_offsets = {
+    0u, 0u,
+    250u, 250u,
+    500u, 500u,
+    750u, 750u,
+    1000u, 1000u,
+  };
+  require(absolute_offsets == expected_offsets, "transport transition must keep old-clock events playing through the boundary and restart both lanes exactly at the boundary");
+  require(!transition_engine->transport.transition_pending, "transport transition should clear after boundary application");
+  require(transition_engine->transport.transition_revision == 1u, "coalesced transport edits should apply as one transition");
+  require(std::fabs(transition_engine->transport.bpm - 40.0f) < 0.001f, "latest coalesced BPM should become active");
+  require(std::fabs(transition_engine->transport.phrase_seconds - 1.5f) < 0.001f, "latest coalesced phrase duration should become active");
+  require(transition_engine->transport.phraseIndex(transition_sample_rate) == 1u, "phrase index must advance monotonically across a transport transition");
+  require(transition_engine->transport.barIndex(transition_sample_rate) == 1u, "bar index must advance monotonically across a transport transition");
+  require(!transition_engine->trigConditionPass(KESSHO_PRODUCT_TRIG_EVERY_2_BARS, 1000u), "trig conditions must use the rebased transport epoch");
+  require(std::fabs(transition_engine->fx.delay_a_time_left_ms - 150.0f) < 0.001f, "delay A should retime atomically with the applied BPM");
+  require(std::fabs(transition_engine->fx.delay_a_time_right_ms - 225.0f) < 0.001f, "stereo delay A should retime atomically with the applied BPM");
+  require(std::fabs(transition_engine->fx.delay_b_base_time_ms - 300.0f) < 0.001f, "delay B should retime atomically with the applied BPM");
+  require(transition_engine->voices[0].active, "transport transition must preserve active voices");
+  require(transition_engine->voices[0].remaining_frames == 777u, "transport transition must preserve active voice tails");
+  const KesshoProductTelemetry transition_telemetry = kessho_product_get_telemetry(transition_engine);
+  require(transition_telemetry.transport_transition_pending == 0u, "telemetry should report the applied transition");
+  require(transition_telemetry.transport_transition_revision == 1u, "telemetry should report the applied transition revision");
+  require(std::fabs(transition_telemetry.transport_bpm - 40.0f) < 0.001f, "telemetry should report active BPM rather than requested snapshot BPM");
+
+  KesshoProductEvent lane_timing{};
+  lane_timing.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+  lane_timing.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  lane_timing.index = 0u;
+  lane_timing.param_id = KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_CLOCK_DIVISION_ID;
+  lane_timing.value = 8.0f;
+  lane_timing.flags = KESSHO_PRODUCT_TIMING_APPLY_NEXT_PHRASE;
+  require(kessho_product_enqueue_event(transition_engine, &lane_timing) == KESSHO_PRODUCT_OK, "pending lane timing enqueue failed");
+  renderEventsInBlocks(transition_engine, 125u, 250u);
+  require(transition_engine->pending_phrase_timing_event_count == 1u, "lane timing should remain pending before the phrase boundary");
+  require(transition_engine->pending_phrase_timing_apply_frame == 2500u, "lane timing should target the next active phrase boundary");
+  require(transition_engine->synth_lanes[0].clock_division == 16u, "lane clock division must remain active while its replacement is pending");
+
+  lane_timing.value = 4.0f;
+  require(kessho_product_enqueue_event(transition_engine, &lane_timing) == KESSHO_PRODUCT_OK, "coalesced lane timing enqueue failed");
+  renderEventsInBlocks(transition_engine, 125u, 1000u);
+  require(transition_engine->pending_phrase_timing_event_count == 1u, "repeated lane timing edits should coalesce by lane and parameter");
+  require(transition_engine->synth_lanes[0].clock_division == 16u, "coalesced lane timing must not apply early");
+  renderEventsInBlocks(transition_engine, 125u, 125u);
+  require(transition_engine->pending_phrase_timing_event_count == 0u, "lane timing should clear at the phrase boundary");
+  require(transition_engine->synth_lanes[0].clock_division == 4u, "latest coalesced lane timing should apply at the phrase boundary");
+  kessho_product_destroy(transition_engine);
+}
+
 std::vector<uint32_t> expectedRatchetOffsets(uint32_t ratchet, uint32_t parent_offset = 0u) {
   std::vector<uint32_t> offsets;
   const double samples_per_step = 6000.0;
@@ -3852,6 +3969,7 @@ void requireSampleSourceEnvelopeLongRanges() {
 } // namespace
 
 int main() {
+  testPendingTransportTransition();
   requireProductSequencerRatchetCrossBlockTest();
   requireProductSequencerRatchetNearBlockEndTest();
   requireProductSequencerRatchetPendingClearTests();

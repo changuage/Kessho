@@ -1,5 +1,9 @@
 # Preset Storage V2 Supabase Rollout
 
+## Direct Content Refs
+
+The 2026-07-12 content-hash rollout adds `preset_version_content_refs_v2` and a five-argument `kessho_save_preset_v2` overload. Direct refs are parent-authorized, browser table access is revoked, and every save supplies canonical content bytes to prevent hash-existence probing. New L4 versions are graph-authoritative with `resolved_hash = null`; legacy versions retain their existing readers. See [PRESET_CONTENT_HASH_IMPLEMENTATION_REPORT.md](./PRESET_CONTENT_HASH_IMPLEMENTATION_REPORT.md).
+
 This runbook follows the V2 fix plan in `/Users/panguroo/Downloads/kessho_preset_storage_v2_fix_plan.md`.
 
 ## Current local export

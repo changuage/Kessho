@@ -16,6 +16,7 @@ import {
   isEditableShortcutTarget,
   type AdvancedTab,
 } from './appNavigation';
+import { useKeyboardScope } from '../ui/keyboard/useKeyboardScope';
 
 type AppUiMode = 'snowflake' | 'advanced' | 'journey';
 
@@ -62,8 +63,9 @@ export function useAdvancedEditorNavigation({
     [preloadAdvancedEditorRuntime, setSnowflakeActivated, setUiMode, uiMode, snowflakeActivated],
   );
 
-  useEffect(() => {
-    const handleAppShortcut = (event: KeyboardEvent) => {
+  useKeyboardScope({
+    priority: 100,
+    onKeyDown: (event) => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
       if (isEditableShortcutTarget(event.target)) return;
 
@@ -83,11 +85,8 @@ export function useAdvancedEditorNavigation({
       }
 
       openAdvancedTab(shortcutTarget);
-    };
-
-    window.addEventListener('keydown', handleAppShortcut);
-    return () => window.removeEventListener('keydown', handleAppShortcut);
-  }, [openAdvancedTab, setSnowflakeActivated, setUiMode]);
+    },
+  });
 
   return {
     activeTab,

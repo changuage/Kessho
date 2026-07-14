@@ -1090,7 +1090,10 @@ bool generateAnchorWalkerLaneEvents(
         ? block_start
         : (wait_for_join_boundary
             ? sequencerLaneStartSampleFrame(engine.transport, lane, engine.sample_rate, block_start, samples_per_period)
-            : sequencerAlignForwardSampleFrame(block_start, samples_per_period));
+            : sequencerAlignForwardFromOrigin(
+                block_start,
+                engine.transport.beat_origin_frame,
+                samples_per_period));
     lane.sequencer_start_sample_frame = start_sample;
     lane.sequencer_runtime_initialized = true;
     lane.sequencer_join_pending = false;
@@ -1708,7 +1711,10 @@ bool generateOrbitLaneEvents(
               sample_rate,
               block_start,
               samples_per_step)
-          : sequencerAlignForwardSampleFrame(block_start, samples_per_step);
+          : sequencerAlignForwardFromOrigin(
+              block_start,
+              transport.beat_origin_frame,
+              samples_per_step);
       lane.sequencer_runtime_initialized = true;
       lane.sequencer_join_pending = false;
     }

@@ -257,7 +257,12 @@ const GranularVoiceParamSpec* findGranularExtVoiceParamSpec(uint32_t offset) {
     case KESSHO_PRODUCT_EVENT_HARMONY_COMMIT_BASELINE_MAP_ID:
       return KESSHO_PRODUCT_OK;
     case KESSHO_PRODUCT_EVENT_KIND_SET_TRANSPORT:
-      return event.value > 0.0f ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      return event.value > 0.0f &&
+              (event.value2 == 0.0f || (event.value2 >= 1.0f && event.value2 <= 32.0f)) &&
+              (event.value3 == 0.0f || (event.value3 >= 1.0f && event.value3 <= 256.0f)) &&
+              event.value4 >= 0.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     case KESSHO_PRODUCT_EVENT_KIND_GENERATED_SEQUENCER_CAPTURE:
       return valid_sequencer(event.target_id) &&
               event.index < kMaxLaneCount &&
@@ -507,7 +512,85 @@ void KesshoProductEngine::sortControlEvents() {
   return clampFloat(requested_seconds, 0.001f, 20.0f);
 }
 
+bool KesshoProductEngine::isNextPhraseTimingEvent(const KesshoProductEvent& event) const {
+  if (event.event_kind != KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE) return false;
+  return event.param_id == KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_CLOCK_DIVISION_ID ||
+      event.param_id == KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TEMPO_MULTIPLIER_ID ||
+      event.param_id == KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_SWING_ID;
+}
+
+void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& event) {
+  for (uint32_t i = 0u; i < pending_phrase_timing_event_count; ++i) {
+    KesshoProductEvent& pending = pending_phrase_timing_events[i];
+    if (pending.event_kind == event.event_kind &&
+        pending.target_id == event.target_id &&
+        pending.index == event.index &&
+        pending.param_id == event.param_id) {
+      pending = event;
+      return;
+    }
+  }
+  if (pending_phrase_timing_event_count >= kMaxPendingPhraseTimingEvents) {
+    telemetry.last_error_code = KESSHO_PRODUCT_ERROR_EVENT_QUEUE_FULL;
+    return;
+  }
+  if (pending_phrase_timing_event_count == 0u) {
+    pending_phrase_timing_apply_frame = transport.nextPhraseBoundaryFrame(sample_rate);
+  }
+  pending_phrase_timing_events[pending_phrase_timing_event_count++] = event;
+}
+
+  void KesshoProductEngine::applyPendingTransportTransition() {
+  const float previous_bpm = transport.bpm;
+  const bool transport_applied = transport.applyPendingTransition(sample_rate);
+  const bool timing_due = pending_phrase_timing_event_count > 0u &&
+      transport.sample_frame >= pending_phrase_timing_apply_frame;
+  if (!transport_applied && !timing_due) return;
+
+  uint32_t synth_timing_lane_mask = 0u;
+  uint32_t drum_timing_lane_mask = 0u;
+  if (timing_due) {
+    const uint32_t event_count = pending_phrase_timing_event_count;
+    pending_phrase_timing_event_count = 0u;
+    pending_phrase_timing_apply_frame = 0u;
+    for (uint32_t i = 0u; i < event_count; ++i) {
+      KesshoProductEvent timing_event = pending_phrase_timing_events[i];
+      timing_event.flags &= ~KESSHO_PRODUCT_TIMING_APPLY_NEXT_PHRASE;
+      if (timing_event.target_id == KESSHO_PRODUCT_SEQUENCER_SYNTH && timing_event.index < 32u) {
+        synth_timing_lane_mask |= 1u << timing_event.index;
+      } else if (timing_event.target_id == KESSHO_PRODUCT_SEQUENCER_DRUM && timing_event.index < 32u) {
+        drum_timing_lane_mask |= 1u << timing_event.index;
+      }
+      applyControlEvent(timing_event);
+    }
+  }
+
+  if (transport_applied) {
+    const float tempo_ratio = transport.bpm > 0.0f ? previous_bpm / transport.bpm : 1.0f;
+    fx.delay_a_time_left_ms = clampFloat(fx.delay_a_time_left_ms * tempo_ratio, 10.0f, 5000.0f);
+    fx.delay_a_time_right_ms = clampFloat(fx.delay_a_time_right_ms * tempo_ratio, 10.0f, 5000.0f);
+    fx.delay_b_base_time_ms = clampFloat(fx.delay_b_base_time_ms * tempo_ratio, 20.0f, 5000.0f);
+    configureFxModules();
+  }
+  for (uint32_t i = 0; i < synth_lane_count; ++i) {
+    if (!transport_applied && (synth_timing_lane_mask & (1u << i)) == 0u) continue;
+    clearPendingRatchets(synth_lanes[i]);
+    resetSequencerLaneRuntime(synth_lanes[i], false);
+  }
+  for (uint32_t i = 0; i < drum_lane_count; ++i) {
+    if (!transport_applied && (drum_timing_lane_mask & (1u << i)) == 0u) continue;
+    clearPendingRatchets(drum_lanes[i]);
+    resetSequencerLaneRuntime(drum_lanes[i], false);
+  }
+}
+
   void KesshoProductEngine::applyControlEvent(const KesshoProductEvent& event) {
+  if (transport.running &&
+      (event.flags & KESSHO_PRODUCT_TIMING_APPLY_NEXT_PHRASE) != 0u &&
+      isNextPhraseTimingEvent(event)) {
+    stageNextPhraseTimingEvent(event);
+    return;
+  }
   switch (event.event_kind) {
     case KESSHO_PRODUCT_EVENT_KIND_START:
       if (!transport.running) {
@@ -541,7 +624,34 @@ void KesshoProductEngine::sortControlEvents() {
       }
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_TRANSPORT:
+      if ((event.flags & KESSHO_PRODUCT_TRANSPORT_APPLY_NEXT_PHRASE) != 0u && transport.running) {
+        transport.stageNextPhraseTransition(
+            event.value,
+            event.value2 > 0.0f
+                ? static_cast<uint32_t>(std::lround(event.value2))
+                : transport.beats_per_bar,
+            event.value3 > 0.0f
+                ? static_cast<uint32_t>(std::lround(event.value3))
+                : transport.bars_per_phrase,
+            event.value4,
+            sample_rate);
+        break;
+      }
       transport.bpm = clampFloat(event.value, 1.0f, 400.0f);
+      if (event.value2 > 0.0f) {
+        transport.beats_per_bar = clampU32(static_cast<uint32_t>(std::lround(event.value2)), 1u, 32u);
+      }
+      if (event.value3 > 0.0f) {
+        transport.bars_per_phrase = clampU32(static_cast<uint32_t>(std::lround(event.value3)), 1u, 256u);
+      }
+      transport.phrase_seconds = event.value4 > 0.0f
+          ? clampFloat(event.value4, 0.001f, 4096.0f)
+          : static_cast<float>(
+              (60.0 / static_cast<double>(transport.bpm)) *
+              static_cast<double>(transport.beats_per_bar) *
+              static_cast<double>(transport.bars_per_phrase));
+      transport.transition_pending = false;
+      transport.pending_apply_frame = 0u;
       for (uint32_t i = 0; i < synth_lane_count; ++i) {
         clearPendingRatchets(synth_lanes[i]);
         synth_lanes[i].arp.next_event_sample = 0u;

@@ -4,12 +4,13 @@ import fs from 'node:fs';
 import { extractCascade, extractParams, getVersionData } from './codec';
 import { HybridPresetStore } from './HybridPresetStore';
 import type { IPresetStore } from './PresetStore';
-import { hashCanonicalJson } from './presetStorageV2';
+import { evictPresetPayloadCacheV2, hashCanonicalJson } from './presetStorageV2';
 import { SupabasePresetStore } from './SupabasePresetStore';
 import type { PresetEntry, PresetLevel, PresetSummary } from './types';
 import { DEFAULT_STATE } from '../ui/state';
 import { createDiamondJourney } from '../audio/journeyTypes';
 import { encodeJourneyPresetData, getJourneyNodeRefSlot } from './journeyPresetCodec';
+import { extractOptimizedStatePresetData } from './statePresetOptimization';
 
 type Filter =
   | { kind: 'eq'; column: string; value: unknown }
@@ -253,6 +254,7 @@ class FakeSupabaseClient {
     presets_v2: [] as FakePresetV2Row[],
     preset_versions_v2: [] as FakePresetVersionV2Row[],
     preset_version_refs_v2: [] as FakeRow[],
+    preset_version_content_refs_v2: [] as FakeRow[],
     preset_payloads_v2: [] as FakePayloadV2Row[],
     presets: [] as FakeRow[],
   };
@@ -278,6 +280,10 @@ class FakeSupabaseClient {
 
     if (functionName === 'kessho_soft_delete_preset_v2') {
       return this.softDeletePreset(String(args.target_preset_id));
+    }
+
+    if (functionName === 'kessho_restore_preset_v2') {
+      return this.restorePreset(String(args.target_preset_id));
     }
 
     if (functionName === 'kessho_soft_delete_legacy_preset') {
@@ -419,6 +425,9 @@ class FakeSupabaseClient {
       const refRows = this.rows('preset_version_refs_v2');
       const keptRefs = refRows.filter(row => !ids.has(row.version_id));
       refRows.splice(0, refRows.length, ...keptRefs);
+      const contentRefRows = this.rows('preset_version_content_refs_v2');
+      const keptContentRefs = contentRefRows.filter(row => !ids.has(row.version_id));
+      contentRefRows.splice(0, contentRefRows.length, ...keptContentRefs);
     }
   }
 
@@ -522,6 +531,46 @@ class FakeSupabaseClient {
     return { data: true, error: null };
   }
 
+  private restorePreset(targetPresetId: string): { data: boolean | null; error: { message: string } | null } {
+    const target = this.tables.presets_v2.find(row => row.id === targetPresetId && !!row.deleted_at);
+    if (!target || !this.authUserId || (target.owner_key !== 'public' && target.owner_user_id !== this.authUserId)) {
+      return { data: false, error: null };
+    }
+
+    const graph: FakePresetV2Row[] = [];
+    const visited = new Set<string>();
+    const queue = [target];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (visited.has(current.id)) continue;
+      visited.add(current.id);
+      graph.push(current);
+      for (const ref of this.tables.preset_version_refs_v2.filter(candidate => candidate.version_id === current.latest_version_id)) {
+        const child = this.tables.presets_v2.find(candidate => candidate.id === ref.target_preset_id);
+        if (child) queue.push(child);
+      }
+    }
+
+    const blocked = graph.filter(row => row.id !== target.id && !!row.deleted_at && !this.isInternalDerived(row));
+    if (blocked.length > 0) {
+      return {
+        data: null,
+        error: {
+          message: `Cannot restore preset "${target.name}": restore visible dependencies first (${blocked.map(row => row.name).join(', ')})`,
+        },
+      };
+    }
+
+    for (const row of graph) {
+      if (row.id !== target.id && !this.isInternalDerived(row)) continue;
+      row.deleted_at = null;
+      row.deleted_by = null;
+      row.archived = false;
+      row.updated_at = this.now();
+    }
+    return { data: true, error: null };
+  }
+
   private softDeleteLegacyPreset(
     targetType: string,
     targetName: string,
@@ -549,6 +598,7 @@ class FakeSupabaseClient {
       presets_v2: structuredClone(this.tables.presets_v2),
       preset_versions_v2: structuredClone(this.tables.preset_versions_v2),
       preset_version_refs_v2: structuredClone(this.tables.preset_version_refs_v2),
+      preset_version_content_refs_v2: structuredClone(this.tables.preset_version_content_refs_v2),
       preset_payloads_v2: structuredClone(this.tables.preset_payloads_v2),
       nextId: this.nextId,
       clock: this.clock,
@@ -560,6 +610,7 @@ class FakeSupabaseClient {
       const version = args.version_payload as FakeRow;
       const payloads = (args.payloads_payload as FakeRow[] | undefined) ?? [];
       const refs = (args.refs_payload as FakeRow[] | undefined) ?? [];
+      const contentRefs = (args.content_refs_payload as FakeRow[] | undefined) ?? [];
 
       for (const payload of payloads) {
         const hash = String(payload.hash);
@@ -633,6 +684,15 @@ class FakeSupabaseClient {
           created_at: ref.created_at ?? versionRow.created_at,
         });
       }
+      for (const ref of contentRefs) {
+        this.tables.preset_version_content_refs_v2.push({
+          version_id: versionRow.id,
+          ref_slot: ref.ref_slot,
+          content_hash: ref.content_hash,
+          content_type: ref.content_type,
+          created_at: ref.created_at ?? versionRow.created_at,
+        });
+      }
 
       return {
         data: {
@@ -645,6 +705,7 @@ class FakeSupabaseClient {
       this.tables.presets_v2.splice(0, this.tables.presets_v2.length, ...snapshot.presets_v2);
       this.tables.preset_versions_v2.splice(0, this.tables.preset_versions_v2.length, ...snapshot.preset_versions_v2);
       this.tables.preset_version_refs_v2.splice(0, this.tables.preset_version_refs_v2.length, ...snapshot.preset_version_refs_v2);
+      this.tables.preset_version_content_refs_v2.splice(0, this.tables.preset_version_content_refs_v2.length, ...snapshot.preset_version_content_refs_v2);
       this.tables.preset_payloads_v2.splice(0, this.tables.preset_payloads_v2.length, ...snapshot.preset_payloads_v2);
       this.nextId = snapshot.nextId;
       this.clock = snapshot.clock;
@@ -714,6 +775,10 @@ class FakeSupabaseClient {
       .filter(row => versionIds.has(String(row.version_id)))
       .sort((left, right) => String(left.version_id).localeCompare(String(right.version_id))
         || String(left.ref_slot).localeCompare(String(right.ref_slot)));
+    const contentRefs = this.tables.preset_version_content_refs_v2
+      .filter(row => versionIds.has(String(row.version_id)))
+      .sort((left, right) => String(left.version_id).localeCompare(String(right.version_id))
+        || String(left.ref_slot).localeCompare(String(right.ref_slot)));
     const targetIds = new Set(refs.map(row => String(row.target_preset_id)));
     const targetPresets = this.tables.presets_v2
       .filter(row => targetIds.has(row.id) && !row.deleted_at && this.canReadPresetV2(row))
@@ -728,6 +793,7 @@ class FakeSupabaseClient {
     for (const ref of refs) {
       if (ref.override_hash) payloadHashes.add(String(ref.override_hash));
     }
+    for (const ref of contentRefs) payloadHashes.add(String(ref.content_hash));
     for (const target of targetPresets) {
       if (target.latest_resolved_hash) payloadHashes.add(target.latest_resolved_hash);
     }
@@ -740,6 +806,7 @@ class FakeSupabaseClient {
         preset,
         versions,
         refs,
+        contentRefs,
         targetPresets,
         payloads: this.compactDetailPayloads ? payloads.map(row => row.payload) : payloads,
       },
@@ -771,6 +838,9 @@ class FakeSupabaseClient {
     const refs = this.tables.preset_version_refs_v2
       .filter(row => row.version_id === latestVersion.id)
       .sort((left, right) => String(left.ref_slot).localeCompare(String(right.ref_slot)));
+    const contentRefs = this.tables.preset_version_content_refs_v2
+      .filter(row => row.version_id === latestVersion.id)
+      .sort((left, right) => String(left.ref_slot).localeCompare(String(right.ref_slot)));
     const targetIds = new Set(refs.map(row => String(row.target_preset_id)));
     const targetPresets = this.tables.presets_v2
       .filter(row => targetIds.has(row.id) && !row.deleted_at && this.canReadPresetV2(row))
@@ -785,6 +855,7 @@ class FakeSupabaseClient {
     for (const ref of refs) {
       if (ref.override_hash) requiredHashes.add(String(ref.override_hash));
     }
+    for (const ref of contentRefs) requiredHashes.add(String(ref.content_hash));
     for (const target of targetPresets) {
       if (target.latest_resolved_hash) requiredHashes.add(target.latest_resolved_hash);
     }
@@ -794,6 +865,7 @@ class FakeSupabaseClient {
         preset,
         latest_version: latestVersion,
         refs,
+        content_refs: contentRefs,
         target_presets: targetPresets,
         required_hashes: [...requiredHashes].sort(),
       },
@@ -971,15 +1043,19 @@ class FakeSupabaseClient {
   private getPresetVersionRefKeysV2(targetVersionId: string): { data: unknown; error: { message: string } | null } {
     if (!this.canReadVersion(targetVersionId)) return { data: [], error: null };
     return {
-      data: this.tables.preset_version_refs_v2
+      data: [
+        ...this.tables.preset_version_refs_v2
         .filter(row => row.version_id === targetVersionId)
         .map(row => [
           row.ref_slot,
           row.target_preset_id,
           row.target_version_no ?? 'latest',
           row.override_hash ?? '',
-        ].join(':'))
-        .sort(),
+        ].join(':')),
+        ...this.tables.preset_version_content_refs_v2
+          .filter(row => row.version_id === targetVersionId)
+          .map(row => ['content', row.ref_slot, row.content_type, row.content_hash].join(':')),
+      ].sort(),
       error: null,
     };
   }
@@ -1192,7 +1268,7 @@ class FakeSupabaseClient {
   }
 
   private pruneInternalDerived(): { data: number; error: null } {
-    const protectedIds = this.activeVisibleGraphPresetIds();
+    const protectedIds = this.retainedVisibleGraphPresetIds();
     let deletedCount = 0;
     for (const row of this.tables.presets_v2) {
       if (row.deleted_at || !this.isInternalDerived(row) || protectedIds.has(row.id)) continue;
@@ -1205,11 +1281,10 @@ class FakeSupabaseClient {
     return { data: deletedCount, error: null };
   }
 
-  private activeVisibleGraphPresetIds(): Set<string> {
+  private retainedVisibleGraphPresetIds(): Set<string> {
     const protectedIds = new Set<string>();
     const queue = this.tables.presets_v2.filter(row => (
-      !row.deleted_at
-      && row.latest_version_id
+      row.latest_version_id
       && !this.isInternalDerived(row)
     ));
     while (queue.length > 0) {
@@ -1219,7 +1294,7 @@ class FakeSupabaseClient {
       for (const ref of this.tables.preset_version_refs_v2.filter(candidate => candidate.version_id === current.latest_version_id)) {
         const child = this.tables.presets_v2.find(candidate => (
           candidate.id === ref.target_preset_id
-          && !candidate.deleted_at
+          && candidate.latest_version_id
         ));
         if (child) queue.push(child);
       }
@@ -1328,6 +1403,32 @@ function isInternalDerivedPresetRow(row: Pick<FakePresetV2Row, 'name' | 'tags'>)
 
 function activeInternalDerivedRows(client: FakeSupabaseClient): FakePresetV2Row[] {
   return client.tables.presets_v2.filter(row => row.deleted_at == null && isInternalDerivedPresetRow(row));
+}
+
+function hardPurgeFakePreset(client: FakeSupabaseClient, presetId: string): void {
+  const versionIds = new Set(client.tables.preset_versions_v2
+    .filter(version => version.preset_id === presetId)
+    .map(version => version.id));
+  client.tables.preset_version_refs_v2.splice(
+    0,
+    client.tables.preset_version_refs_v2.length,
+    ...client.tables.preset_version_refs_v2.filter(ref => !versionIds.has(String(ref.version_id))),
+  );
+  client.tables.preset_version_content_refs_v2.splice(
+    0,
+    client.tables.preset_version_content_refs_v2.length,
+    ...client.tables.preset_version_content_refs_v2.filter(ref => !versionIds.has(String(ref.version_id))),
+  );
+  client.tables.preset_versions_v2.splice(
+    0,
+    client.tables.preset_versions_v2.length,
+    ...client.tables.preset_versions_v2.filter(version => version.preset_id !== presetId),
+  );
+  client.tables.presets_v2.splice(
+    0,
+    client.tables.presets_v2.length,
+    ...client.tables.presets_v2.filter(preset => preset.id !== presetId),
+  );
 }
 
 function activeLogicalRows(
@@ -1641,7 +1742,7 @@ async function testActiveDependencyBlocksSoftDeleteAcrossL1ToL4(): Promise<void>
   assert.equal(synth.deleted_at, null, 'blocked L3 delete should leave the row active');
 }
 
-async function testDeletingStatePrunesUnreferencedInternalDerivedGraph(): Promise<void> {
+async function testDeletingStateRetainsInternalGraphForRestore(): Promise<void> {
   const client = new FakeSupabaseClient();
   const store = new SupabasePresetStore(client as never);
   const userId = '15151515-1515-4151-8151-151515151515';
@@ -1659,14 +1760,23 @@ async function testDeletingStatePrunesUnreferencedInternalDerivedGraph(): Promis
 
   await store.delete('state', stateName, 'global');
 
-  assert.equal(
-    activeInternalDerivedRows(client).length,
-    0,
-    'deleting the only visible root should recycle the entire unreferenced internal-derived graph',
+  assert.ok(
+    activeInternalDerivedRows(client).length > 0,
+    'a retained recycled root should keep its internal-derived graph available for restore',
   );
+
+  const synth = latestRefTarget(client, state, 'synth');
+  assert.ok(synth, 'state should retain its synth child edge while recycled');
+  synth.deleted_at = client.now();
+  synth.archived = true;
+  const { data, error } = await client.rpc('kessho_restore_preset_v2', { target_preset_id: state.id });
+  assert.equal(error, null, 'restore should complete when only hidden descendants are recycled');
+  assert.equal(data, true, 'restore should report a restored graph');
+  assert.equal(state.deleted_at, null, 'restore should reactivate the visible root');
+  assert.equal(synth.deleted_at, null, 'restore should reactivate recycled hidden descendants');
 }
 
-async function testSharedDerivedChildSurvivesUntilLastVisibleRootDeletes(): Promise<void> {
+async function testSharedDerivedChildSurvivesUntilLastRetainedRootPurges(): Promise<void> {
   const client = new FakeSupabaseClient();
   const store = new SupabasePresetStore(client as never);
   const userId = '16161616-1616-4161-8161-161616161616';
@@ -1691,10 +1801,18 @@ async function testSharedDerivedChildSurvivesUntilLastVisibleRootDeletes(): Prom
   assert.ok(activeInternalDerivedRows(client).length > 0, 'shared internal-derived graph should remain while one state is active');
 
   await store.delete('state', stateBName, 'global');
+  assert.ok(
+    activeInternalDerivedRows(client).length > 0,
+    'recycled visible roots should retain the shared graph until their histories are hard-purged',
+  );
+
+  hardPurgeFakePreset(client, stateA.id);
+  hardPurgeFakePreset(client, stateB.id);
+  await client.rpc('kessho_prune_internal_derived_v2', {});
   assert.equal(
     activeInternalDerivedRows(client).length,
     0,
-    'shared internal-derived graph should recycle after the last visible root is deleted',
+    'shared internal-derived graph should recycle after the last retained root is hard-purged',
   );
 }
 
@@ -2247,11 +2365,11 @@ async function testLegacyDeleteUsesSoftDeleteRpc(): Promise<void> {
 }
 
 function testRecycleBinSqlContainsGraphGuards(): void {
-  const sql = fs.readFileSync('docs/preset_storage_v2_recycle_bin.sql', 'utf8');
-  assert.match(sql, /kessho_guard_preset_recycle_update_v2/, 'SQL patch should guard direct deleted_at edits');
-  assert.match(sql, /active_graph\(preset_id, version_id\)/, 'purge should compute active latest reachability');
-  assert.match(sql, /historical_versions_to_prune/, 'purge should prune historical versions that only reference expired recycled rows');
-  assert.match(sql, /active latest presets still reference it/, 'soft delete should block active parent dependencies');
+  const sql = fs.readFileSync('supabase/migrations/20260713205616_preset_graph_lifecycle_integrity_v2.sql', 'utf8');
+  assert.match(sql, /retained_visible_graph/, 'hidden GC should retain descendants needed by recycled visible roots');
+  assert.doesNotMatch(sql, /historical_versions_to_prune/, 'purge must not delete historical owner versions to break refs');
+  assert.match(sql, /restore visible dependencies first/, 'restore should fail closed on independently visible recycled dependencies');
+  assert.match(sql, /preset_version_content_refs_v2/, 'maintenance should treat direct content refs as reachability roots');
 }
 
 async function testHybridSharedDeletePropagatesCloudFailure(): Promise<void> {
@@ -2361,6 +2479,106 @@ async function testSupabaseRenamePreservesPresetId(): Promise<void> {
   );
 }
 
+async function testGraphOnlyStateLoadWithoutResolvedPayload(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '56565656-5656-4656-8656-565656565656';
+  client.authUserId = userId;
+  store.setUserId(userId);
+  const state = {
+    ...DEFAULT_STATE,
+    synthEuclid1Steps: 13,
+    synthEuclid1Hits: 8,
+    synthEuclid1Source: 'pad2',
+    synthEuclid1VoiceMask: 45,
+    synthEuclid1Level: 0.37,
+    rootNote: 9,
+    tension: 0.61,
+  } as unknown as Record<string, unknown>;
+  const name = 'Graph Only State';
+  const optimizedState = extractOptimizedStatePresetData(state as never);
+  assert.ok(Object.keys(optimizedState).length < Object.keys(state).length, 'fixture should omit derived runtime values');
+  await store.save(makePresetEntry('state', 'global', name, optimizedState));
+
+  const preset = findPresetRow(client, 'state', 'global', name);
+  const version = client.tables.preset_versions_v2.find(row => row.id === preset.latest_version_id);
+  assert.equal(version?.resolved_hash, null, 'new L4 versions should not store an expanded resolved payload');
+  assert.equal(preset.latest_resolved_hash, null, 'new L4 rollups should remain graph-authoritative');
+  client.presetLatestManifestRpcCalls = 0;
+  client.presetPayloadRpcCalls = 0;
+  const loaded = await store.load('state', name, 'global');
+  const restored = loaded ? getVersionData(loaded) : null;
+  assert.ok(restored, 'graph-only state should load without a resolved payload');
+  for (const key of [
+    'synthEuclid1Steps', 'synthEuclid1Hits', 'synthEuclid1Source', 'synthEuclid1VoiceMask',
+    'synthEuclid1Level', 'rootNote', 'tension', 'sample1LibraryKey', 'granularV1Mode',
+    'dynamicsEq1LowFreq', 'padOscAWave', 'drumKickFreq', 'waterIntensity',
+  ]) {
+    assert.deepEqual(restored[key], state[key], `graph-only load should restore ${key}`);
+  }
+  assert.equal(client.presetLatestManifestRpcCalls, 1, 'cold graph load should use one manifest request');
+  assert.equal(client.presetPayloadRpcCalls, 1, 'cold graph load should batch all unique payloads into one request');
+  await store.load('state', name, 'global');
+  assert.equal(client.presetPayloadRpcCalls, 1, 'warm graph load should reuse the verified hash cache');
+}
+
+async function testGraphSemanticNoOpAndBindingIsolation(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '57575757-5757-4757-8757-575757575757';
+  client.authUserId = userId;
+  store.setUserId(userId);
+  const optimized = extractOptimizedStatePresetData(DEFAULT_STATE);
+  const entry = makePresetEntry('state', 'global', 'Graph Signature State', optimized);
+  entry.versions.push({ v: 2, note: 'semantic no-op', timestamp: entry.updatedAt + 1, data: structuredClone(optimized) });
+  entry.currentVersion = 2;
+  await store.save(entry);
+  const preset = findPresetRow(client, 'state', 'global', entry.name);
+  let versions = client.tables.preset_versions_v2.filter(row => row.preset_id === preset.id);
+  assert.equal(versions.length, 1, 'semantic no-op graph version should not be stored');
+
+  const bindingChanged = { ...optimized, synthEuclid1Source: 'pad2', synthEuclid1Level: 0.31 };
+  entry.versions.push({ v: 3, note: 'binding change', timestamp: entry.updatedAt + 2, data: bindingChanged });
+  entry.currentVersion = 3;
+  await store.save(entry);
+  versions = client.tables.preset_versions_v2.filter(row => row.preset_id === preset.id);
+  assert.equal(versions.length, 2, 'binding change should store a new graph version');
+  const hashesFor = (versionId: string) => client.tables.preset_version_content_refs_v2
+    .filter(ref => ref.version_id === versionId && String(ref.ref_slot).startsWith('sequencer.synth.1.'))
+    .map(ref => `${ref.ref_slot}:${ref.content_hash}`).sort();
+  assert.deepEqual(hashesFor(versions[0]!.id), hashesFor(versions[1]!.id), 'binding changes must reuse sequencer content hashes');
+}
+
+async function testMissingDerivedEndpointFallsBackWithWarning(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '58585858-5858-4858-8858-585858585858';
+  client.authUserId = userId;
+  store.setUserId(userId);
+  const name = 'Missing Endpoint State';
+  await store.save(makePresetEntry(
+    'state',
+    'global',
+    name,
+    extractOptimizedStatePresetData(DEFAULT_STATE),
+  ));
+  const preset = findPresetRow(client, 'state', 'global', name);
+  const endpointRef = client.tables.preset_version_content_refs_v2.find(ref => (
+    ref.version_id === preset.latest_version_id && ref.ref_slot === 'derived.pad.1.endpoint-a'
+  ));
+  assert.ok(endpointRef);
+  const index = client.tables.preset_payloads_v2.findIndex(row => row.hash === endpointRef.content_hash);
+  client.tables.preset_payloads_v2.splice(index, 1);
+  evictPresetPayloadCacheV2(String(endpointRef.content_hash));
+
+  const loaded = await store.load('state', name, 'global');
+  const restored = loaded ? getVersionData(loaded) : null;
+  assert.equal(restored?.padOscAWave, DEFAULT_STATE.padOscAWave, 'legacy selector fallback should restore missing endpoint data');
+  assert.ok(loaded?.recoveryWarnings?.some(warning => (
+    warning.slot === 'derived.pad.1.endpoint-a' && warning.reason === 'missing_payload'
+  )));
+}
+
 await testSupabaseDeleteMovesPresetToRecycleBin();
 await testCompactDetailPayloadBundleLoadsByContentHash();
 await testLatestManifestPayloadCacheAvoidsRepeatPayloadRpc();
@@ -2368,8 +2586,8 @@ await testAtomicSaveDedupesIdenticalPayloadHashes();
 await testAtomicSaveSkipsVisibleExistingPayloadHashes();
 await testAtomicSaveRetriesPayloadKindConflictHashes();
 await testActiveDependencyBlocksSoftDeleteAcrossL1ToL4();
-await testDeletingStatePrunesUnreferencedInternalDerivedGraph();
-await testSharedDerivedChildSurvivesUntilLastVisibleRootDeletes();
+await testDeletingStateRetainsInternalGraphForRestore();
+await testSharedDerivedChildSurvivesUntilLastRetainedRootPurges();
 await testOrphanInternalDerivedChainPrunesAllLevels();
 await testConcurrentSameIdentitySaveKeepsOneActiveV2Row();
 await testLegacyCaseFoldedNameSemanticsStayConsistent();
@@ -2387,3 +2605,6 @@ testRecycleBinSqlContainsGraphGuards();
 await testHybridSharedDeletePropagatesCloudFailure();
 await testSharedV2DoesNotLeakLegacyRows();
 await testSupabaseRenamePreservesPresetId();
+await testGraphOnlyStateLoadWithoutResolvedPayload();
+await testGraphSemanticNoOpAndBindingIsolation();
+await testMissingDerivedEndpointFallsBackWithWarning();

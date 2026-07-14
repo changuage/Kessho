@@ -62,7 +62,8 @@ function walk(dir, out = []) {
 
 for (const file of walk(path.join(root, 'src')).map((file) => path.relative(root, file))) {
   const text = read(file);
-  if (text.includes('resolveSample(') && !allowedResolverFiles.has(file)) {
+  const isTestFile = /\.test\.[cm]?[jt]sx?$/.test(file);
+  if (text.includes('resolveSample(') && !isTestFile && !allowedResolverFiles.has(file)) {
     fail(file, 'TypeScript resolver must stay in tests, prediction, or host asset prefetch only');
   }
   if (text.includes("source: 'piano'") && !text.includes('ALLOW_PIANO_ALIAS_MIGRATION')) {

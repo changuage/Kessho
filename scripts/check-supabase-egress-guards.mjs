@@ -171,16 +171,14 @@ function assertTextIncludes(filePath, text, token, message = `missing required e
 {
   const { filePath, text } = readRepoFile('src/presets/presetStorageV2.ts');
   for (const token of [
-    'const PRESET_TEXT_ENCODER = new TextEncoder()',
-    'const HEX_BYTE_LOOKUP = Array.from({ length: 256 }',
     'export async function hashCanonicalJsonText(canonicalJson: string)',
     'const PRESET_PAYLOAD_CACHE_TOUCH_THROTTLE_MS = 5 * 60_000',
     'const PRESET_PAYLOAD_CACHE_PRUNE_THROTTLE_MS = 60_000',
     'let presetPayloadPersistentCacheLastPrunedAt = 0',
     'const PRESET_PAYLOAD_HASH_PATTERN = /^[0-9a-f]{64}$/',
     'export function collectPresetPayloadHashesV2(hashes: readonly unknown[], maxHashes = 100): string[]',
-    'PRESET_TEXT_ENCODER.encode(canonicalJson)',
-    'return hashCanonicalJsonText(stableStringifyCanonical(value))',
+    'return hashCanonicalContentText(canonicalJson)',
+    'return hashCanonicalContent(value)',
     'export function readPresetPayloadCacheV2(hash: string): unknown | undefined',
     'export async function readVerifiedPresetPayloadCacheV2(hash: string): Promise<unknown | undefined>',
     'const presetPayloadSessionVerifiedHashes = new Set<string>()',
@@ -189,9 +187,7 @@ function assertTextIncludes(filePath, text, token, message = `missing required e
     'const payloadJson = options?.verifiedCanonicalJson ?? stableStringifyCanonical(payload)',
     'if (options?.verifiedCanonicalJson === undefined)',
     'const computedHash = await hashCanonicalJsonText(payloadJson)',
-    'PRESET_TEXT_ENCODER.encode(payloadJson).byteLength',
-    'const keys = Object.keys(value).sort(compareCanonicalKeys)',
-    'const normalized: Record<string, unknown> = {}',
+    'return contentUtf8ByteLength(payloadJson)',
   ]) {
     assertTextIncludes(filePath, text, token);
   }
@@ -300,6 +296,20 @@ function assertTextIncludes(filePath, text, token, message = `missing required e
     if (collectHashesBody.includes('.filter(') || collectHashesBody.includes('.slice(')) {
       fail(filePath, findLine(text, 'collectPresetPayloadHashesV2'), 'collectPresetPayloadHashesV2 must avoid filter/slice allocation before hash fetches');
     }
+  }
+}
+
+{
+  const { filePath, text } = readRepoFile('src/presets/contentCanonicalization.ts');
+  for (const token of [
+    'const CONTENT_TEXT_ENCODER = new TextEncoder()',
+    'const HEX_BYTE_LOOKUP = Array.from(',
+    'CONTENT_TEXT_ENCODER.encode(canonicalJson)',
+    'return hashCanonicalContentText(stableStringifyContent(value))',
+    'for (const key of Object.keys(value).sort(compareCanonicalKeys))',
+    'const normalized: Record<string, unknown> = {}',
+  ]) {
+    assertTextIncludes(filePath, text, token);
   }
 }
 

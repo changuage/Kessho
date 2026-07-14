@@ -63,4 +63,18 @@ for (const lane of [5, 6]) {
   );
 }
 
+{
+  const previous = baseState();
+  const next = {
+    ...previous,
+    phraseLength: 32,
+    sequencerMasterBPM: 30,
+  };
+  assert.equal(
+    shouldRejoinCoreProductSequencerClocks(previous, next),
+    false,
+    'global transport timing changes must use the pending phrase transition instead of resetting lanes',
+  );
+}
+
 console.log('Core Product sequencer lane-count regression passed');

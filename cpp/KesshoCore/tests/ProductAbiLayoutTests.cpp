@@ -24,7 +24,7 @@ int main() {
   static_assert(sizeof(KesshoProductGranularVisualEvent) == 32, "granular visual event ABI size changed");
   static_assert(sizeof(KesshoProductDebugSourceState) == 32, "product debug source telemetry ABI size changed");
   static_assert(sizeof(KesshoProductDebugVoiceSpawn) == 48, "product debug voice telemetry ABI size changed");
-  static_assert(sizeof(KesshoProductTelemetry) == 15112, "product telemetry ABI size changed");
+  static_assert(sizeof(KesshoProductTelemetry) == 15168, "product telemetry ABI size changed");
   static_assert(sizeof(KesshoProductSequencerLaneUiState) == 3296, "sequencer UI lane state ABI size changed");
   static_assert(sizeof(KesshoProductSequencerUiState) == 105508, "sequencer UI state ABI size changed");
 
@@ -151,6 +151,11 @@ int main() {
   require(
       offsetof(KesshoProductTelemetry, synth_anchor_walker_output_velocities) == 14856,
       "telemetry synth Anchor Walker output-velocity offset changed");
+  require(offsetof(KesshoProductTelemetry, transport_bpm) == 15112, "telemetry transport BPM offset changed");
+  require(offsetof(KesshoProductTelemetry, transport_transition_pending) == 15128, "telemetry pending transition offset changed");
+  require(offsetof(KesshoProductTelemetry, transport_pending_apply_frame) == 15152, "telemetry pending apply frame offset changed");
+  require(offsetof(KesshoProductTelemetry, transport_transition_revision) == 15160, "telemetry transition revision offset changed");
+  require(offsetof(KesshoProductTelemetry, transport_phrase_progress) == 15164, "telemetry phrase progress offset changed");
   require(
       offsetof(KesshoProductSequencerLaneUiState, nudge_override_set_low) == 100,
       "sequencer UI nudge override low offset changed");

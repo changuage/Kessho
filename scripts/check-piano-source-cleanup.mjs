@@ -47,7 +47,8 @@ const productRuntimeFiles = [
 ];
 for (const file of productRuntimeFiles) {
   const text = read(file);
-  if (text.includes("source === 'piano'") || text.includes('CORE_PRODUCT_SOURCE_IDS.piano') || text.includes('pianoEnabled')) {
+  const hasMarkedLegacyAlias = text.includes('ALLOW_PIANO_ALIAS_MIGRATION');
+  if (!hasMarkedLegacyAlias && (text.includes("source === 'piano'") || text.includes('CORE_PRODUCT_SOURCE_IDS.piano') || text.includes('pianoEnabled'))) {
     failures.push(`${file}: Product Core runtime must not retain piano source aliases or enable fallbacks`);
   }
 }

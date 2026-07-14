@@ -278,3 +278,13 @@ export const DRUM_DELAY_PARAMS: DrumParamDef[] = [
 ];
 
 export const DRUM_VOICE_ORDER: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'];
+
+export const DRUM_VOICE_SCOPES = {
+  sub: 'drumSub',
+  kick: 'drumKick',
+  click: 'drumClick',
+  beepHi: 'drumBeepHi',
+  beepLo: 'drumBeepLo',
+  noise: 'drumNoise',
+  membrane: 'drumMembrane',
+} as const satisfies Record<DrumVoiceType, string>;

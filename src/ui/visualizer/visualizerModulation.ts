@@ -157,6 +157,23 @@ export const VISUAL_MOD_TARGETS = Array.from(
   new Set(VISUAL_MOD_MATRIX.map((route) => route.target)),
 );
 
+type CompiledVisualModTarget = {
+  target: VisualizerNumericControlKey;
+  routes: VisualModRoute[];
+};
+
+const VISUAL_MOD_ROUTES_BY_TARGET = new Map<VisualizerNumericControlKey, VisualModRoute[]>();
+for (const route of VISUAL_MOD_MATRIX) {
+  const routes = VISUAL_MOD_ROUTES_BY_TARGET.get(route.target);
+  if (routes) routes.push(route);
+  else VISUAL_MOD_ROUTES_BY_TARGET.set(route.target, [route]);
+}
+
+const COMPILED_VISUAL_MOD_TARGETS: CompiledVisualModTarget[] = Array.from(
+  VISUAL_MOD_ROUTES_BY_TARGET,
+  ([target, routes]) => ({ target, routes }),
+);
+
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));
@@ -244,8 +261,10 @@ export function buildVisualBuses(
 }
 
 export function getEffectiveReactionDepth(settings: VisualizerReactionSettings): number {
-  const modeDepth = settings.mode === 'preset' ? clamp01(settings.morphAroundPreset) : 1;
-  const depth = clamp01(settings.reactionAmount) * modeDepth;
+  // Morph depth is a centered sensitivity trim in every mode. At the default
+  // 0.5 it is neutral; the endpoints halve or increase modulation depth.
+  const morphDepth = 0.5 + clamp01(settings.morphAroundPreset);
+  const depth = clamp01(settings.reactionAmount) * morphDepth;
   return Math.min(1, depth * 1.28 + 0.04);
 }
 
@@ -277,16 +296,15 @@ export function applyVisualizerModulation(
     return next;
   }
 
-  const driveByTarget = new Map<VisualizerNumericControlKey, number>();
-  for (const route of VISUAL_MOD_MATRIX) {
-    const bus = buses[route.bus];
-    const signal = bus?.[route.signal] ?? 0;
-    const centeredSignal = route.signal === 'phase' ? (signal - 0.5) * 2 : signal;
-    const contribution = centeredSignal * route.amount * (route.polarity ?? 1);
-    driveByTarget.set(route.target, (driveByTarget.get(route.target) ?? 0) + contribution);
-  }
-
-  for (const [target, rawDrive] of driveByTarget) {
+  for (const compiledTarget of COMPILED_VISUAL_MOD_TARGETS) {
+    const target = compiledTarget.target;
+    let rawDrive = 0;
+    for (const route of compiledTarget.routes) {
+      const bus = buses[route.bus];
+      const signal = bus[route.signal];
+      const centeredSignal = route.signal === 'phase' ? (signal - 0.5) * 2 : signal;
+      rawDrive += centeredSignal * route.amount * (route.polarity ?? 1);
+    }
     const baseValue = baseControls[target] as number;
     const drive = clamp(rawDrive, -1, 1);
     const range = ranges[target] ?? { min: baseValue, max: baseValue };
@@ -305,7 +323,7 @@ export function applyVisualizerModulation(
 }
 
 export function getDriversForTarget(target: VisualizerNumericControlKey): VisualModRoute[] {
-  return VISUAL_MOD_MATRIX.filter((route) => route.target === target);
+  return VISUAL_MOD_ROUTES_BY_TARGET.get(target) ?? [];
 }
 
 export function getDriverEnginesForTarget(target: VisualizerNumericControlKey): VisualDriverEngine[] {

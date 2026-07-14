@@ -10,6 +10,7 @@ interface DragNumberProps {
   shapeByDrag?: boolean;
   disabled?: boolean;
   displayValue?: React.ReactNode;
+  commitOnRelease?: boolean;
 }
 
 const SEQ_DRAG_NUM_SLOW_FACTOR = 1.8;
@@ -24,11 +25,13 @@ const DragNumber: React.FC<DragNumberProps> = ({
   shapeByDrag = false,
   disabled = false,
   displayValue,
+  commitOnRelease = false,
 }) => {
   const [dragging, setDragging] = useState(false);
   const [ghostValue, setGhostValue] = useState<number | null>(null);
   const startY = useRef(0);
   const startValue = useRef(value);
+  const ghostValueRef = useRef<number | null>(null);
 
   const effectiveStep = Number.isFinite(step) && step > 0 ? step : 1;
   const range = max - min;
@@ -67,13 +70,24 @@ const DragNumber: React.FC<DragNumberProps> = ({
       delta = totalY / pxPerStep;
     }
     const next = quantize(startValue.current + delta * effectiveStep);
+    ghostValueRef.current = next;
     setGhostValue(next);
-    onChange(next);
+    if (!commitOnRelease) onChange(next);
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (!dragging) return;
+    if (commitOnRelease && ghostValueRef.current !== null) onChange(ghostValueRef.current);
     setDragging(false);
+    ghostValueRef.current = null;
+    setGhostValue(null);
+    (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
+  };
+
+  const onPointerCancel = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!dragging) return;
+    setDragging(false);
+    ghostValueRef.current = null;
     setGhostValue(null);
     (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
   };
@@ -88,7 +102,8 @@ const DragNumber: React.FC<DragNumberProps> = ({
         className={`seq-drag-num${dragging ? ' dragging' : ''}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
+      onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
         title={`${label}: drag up/down`}
       >
         {display}

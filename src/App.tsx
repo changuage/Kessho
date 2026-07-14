@@ -21,6 +21,8 @@ import type { ProductEngineState } from './audio/product/ProductEngineTypes';
 import { ProductRuntimeSwitch } from './ui/ProductRuntimeSwitch';
 import { AppFooterMark } from './ui/AppFooterMark';
 import { useProductRuntimeManualTriggers } from './ui/useProductRuntimeManualTriggers';
+import { useLiveNoteInput } from './ui/keyboard/liveNoteInput';
+import type { ProductLiveNoteEvent } from './audio/product/liveNoteEvents';
 import { useProductRuntimeMorphSurface } from './ui/useProductRuntimeMorphSurface';
 import { useProductRuntimeSurfaces } from './ui/useProductRuntimeSurfaces';
 import { useMorphEndpointStatePatch } from './ui/useMorphEndpointStatePatch';
@@ -89,9 +91,17 @@ import {
   statePresetEntryToSavedPreset,
   type SavedPreset,
 } from './presets/statePresetRuntime';
-import { buildPresetVersionMetadata } from './presets/versionMetadataHelpers';
+import {
+  buildPresetVersionMetadata,
+  normalizeStatePresetPitchMetadata,
+} from './presets/versionMetadataHelpers';
 import { PresetPoolProvider } from './presets/PresetPoolContext';
-import { createEmptyPresetPool, normalizePresetPoolMetadata } from './presets/presetPool';
+import {
+  createEmptyPresetPool,
+  normalizePresetPoolMetadata,
+  readPresetPoolPreference,
+  writePresetPoolPreference,
+} from './presets/presetPool';
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
 
 import { OptionalVisualizerGate } from './ui/components/OptionalVisualizerGate';
@@ -100,7 +110,6 @@ import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveCon
 import { serializeStepOverrides } from './ui/sequencer/stepOverrideSerialization';
 import { type ClockDivision, type PitchBindingMode } from './audio/drumSeqTypes';
 import { sanitizeProductPlayConfigs, type ProductPlayConfig } from './audio/productPlaySequencer';
-import { normalizeSequencerPitchSettingsArray } from './audio/sequencerPitchSettings';
 import {
   getRoutingSourceDef,
   getRoutingSourceToggleKeys,
@@ -118,6 +127,14 @@ import { useSavedPresetLoadRuntimeSurface } from './ui/useSavedPresetLoadRuntime
 import { createDefaultPitchSettings, sanitizeSequencerSubLaneStates } from './ui/usePresetSequencerRestore';
 import { useProductRuntimePageSurface } from './ui/useProductRuntimePageSurface';
 import { useLazySequencerTransport } from './ui/useLazySequencerTransport';
+import {
+  isReleaseCommittedTransportTimingKey,
+  isTransportClockStateKey,
+} from './ui/transportTimingPolicy';
+import {
+  DRUM_LANE_ENABLED_KEYS,
+  drumLaneEnableTouchedAfterPresetRestore,
+} from './ui/sequencer/sequencerTransportPolicy';
 import { useProductRuntimeLifecycleSurface } from './ui/useProductRuntimeLifecycleSurface';
 import { useProductRuntimeCallbackRegistrations } from './ui/useProductRuntimeCallbackRegistrations';
 import { useProductRuntimeCoordination } from './ui/useProductRuntimeCoordination';
@@ -208,6 +225,30 @@ const DEFAULT_AUTO_START_PRESET_NAME = 'String Waves';
 const CLOUD_ENABLED = isCloudPresetConfigEnabled();
 
 // Main App
+
+function normalizeTransportClockState(prev: SliderState): SliderState {
+  const barsPerPhrase = Math.max(1, prev.transportBarsPerPhrase ?? 4);
+  const beatsPerBar = Math.max(1, prev.transportBeatsPerBar ?? 4);
+  const phraseSeconds = Math.max(0.001, prev.phraseLength ?? 16);
+  const bpm = Math.max(1, prev.sequencerMasterBPM ?? prev.synthEuclidBaseBPM ?? prev.drumEuclidBaseBPM ?? 120);
+  const primaryClock = prev.transportPrimaryClock ?? 'seconds';
+  const nextBpm = quantize('sequencerMasterBPM', bpm);
+
+  if (primaryClock === 'decoupled') {
+    if (nextBpm === prev.sequencerMasterBPM && nextBpm === prev.synthEuclidBaseBPM && nextBpm === prev.drumEuclidBaseBPM) return prev;
+    return { ...prev, sequencerMasterBPM: nextBpm, synthEuclidBaseBPM: nextBpm, drumEuclidBaseBPM: nextBpm };
+  }
+
+  if (primaryClock === 'seconds') {
+    const derivedBpm = quantize('sequencerMasterBPM', (barsPerPhrase * beatsPerBar * 60) / phraseSeconds);
+    if (derivedBpm === prev.sequencerMasterBPM && derivedBpm === prev.synthEuclidBaseBPM && derivedBpm === prev.drumEuclidBaseBPM) return prev;
+    return { ...prev, sequencerMasterBPM: derivedBpm, synthEuclidBaseBPM: derivedBpm, drumEuclidBaseBPM: derivedBpm };
+  }
+
+  const derivedPhrase = quantize('phraseLength', (barsPerPhrase * beatsPerBar * 60) / bpm);
+  if (derivedPhrase === prev.phraseLength && nextBpm === prev.sequencerMasterBPM && nextBpm === prev.synthEuclidBaseBPM && nextBpm === prev.drumEuclidBaseBPM) return prev;
+  return { ...prev, phraseLength: derivedPhrase, sequencerMasterBPM: nextBpm, synthEuclidBaseBPM: nextBpm, drumEuclidBaseBPM: nextBpm };
+}
 
 const App: React.FC = () => {
   const { showSplash, splashOpacity, splashGradient, windowSize } = useAppSplash();
@@ -501,7 +542,10 @@ const App: React.FC = () => {
   const handleWelcomeSliderChange = useCallback((key: keyof SliderState, value: number) => {
     setWelcomeDisplayState((prev) => ({ ...prev, [key]: value }));
   }, []);
-  const [activePresetPool, setActivePresetPool] = useState(() => createEmptyPresetPool());
+  const [activePresetPool, setActivePresetPool] = useState(readPresetPoolPreference);
+  useEffect(() => {
+    writePresetPoolPreference(activePresetPool);
+  }, [activePresetPool]);
   const handlePresetPoolLoad = useCallback((preset: { presetPool?: unknown }) => {
     setActivePresetPool(normalizePresetPoolMetadata(preset.presetPool) ?? createEmptyPresetPool());
   }, []);
@@ -675,6 +719,15 @@ const App: React.FC = () => {
 
   const [drumPresetVersion, setDrumPresetVersion] = useState(0);
   const [synthPresetVersion, setSynthPresetVersion] = useState(0);
+  const drumLaneEnableTouchedRef = useRef(false);
+  const previousDrumLaneIntentPresetVersionRef = useRef(drumPresetVersion);
+  useEffect(() => {
+    if (previousDrumLaneIntentPresetVersionRef.current === drumPresetVersion) return;
+    previousDrumLaneIntentPresetVersionRef.current = drumPresetVersion;
+    drumLaneEnableTouchedRef.current = drumLaneEnableTouchedAfterPresetRestore({
+      anyLaneEnabled: DRUM_LANE_ENABLED_KEYS.some((key) => Boolean(state[key])),
+    });
+  }, [drumPresetVersion, state]);
 
   const { applyDualRangesFromPreset, restoreEvolveConfigs } = usePresetRestoreRuntimeSurface({
     drumClockDivsRef,
@@ -733,8 +786,10 @@ const App: React.FC = () => {
         drumSubLaneStates: sanitizeSequencerSubLaneStates(drumSubLaneStatesRef.current),
         synthSubLaneStates: sanitizeSequencerSubLaneStates(synthSubLaneStatesRef.current),
         synthArpConfigs: sanitizeProductPlayConfigs(synthArpConfigsRef.current),
-        drumPitchSettings: normalizeSequencerPitchSettingsArray(drumPitchSettingsRef.current, 4) as PitchSettings[],
-        synthPitchSettings: normalizeSequencerPitchSettingsArray(synthPitchSettingsRef.current, 4) as PitchSettings[],
+        ...normalizeStatePresetPitchMetadata({
+          drumPitchSettings: drumPitchSettingsRef.current,
+          synthPitchSettings: synthPitchSettingsRef.current,
+        }),
         synthPitchBindingModes: synthPitchBindingModesRef.current,
         presetPool: activePresetPool,
         refs: visualizerPresetName
@@ -858,51 +913,7 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
-    setState((prev) => {
-      const barsPerPhrase = Math.max(1, prev.transportBarsPerPhrase ?? 4);
-      const beatsPerBar = Math.max(1, prev.transportBeatsPerBar ?? 4);
-      const phraseSeconds = Math.max(0.001, prev.phraseLength ?? 16);
-      const bpm = Math.max(1, prev.sequencerMasterBPM ?? prev.synthEuclidBaseBPM ?? prev.drumEuclidBaseBPM ?? 120);
-      const primaryClock = prev.transportPrimaryClock ?? 'seconds';
-      const nextBpm = quantize('sequencerMasterBPM', bpm);
-
-      if (primaryClock === 'decoupled') {
-        if (nextBpm === prev.sequencerMasterBPM && nextBpm === prev.synthEuclidBaseBPM && nextBpm === prev.drumEuclidBaseBPM) {
-          return prev;
-        }
-        return {
-          ...prev,
-          sequencerMasterBPM: nextBpm,
-          synthEuclidBaseBPM: nextBpm,
-          drumEuclidBaseBPM: nextBpm,
-        };
-      }
-
-      if (primaryClock === 'seconds') {
-        const derivedBpm = quantize('sequencerMasterBPM', (barsPerPhrase * beatsPerBar * 60) / phraseSeconds);
-        if (derivedBpm === prev.sequencerMasterBPM && derivedBpm === prev.synthEuclidBaseBPM && derivedBpm === prev.drumEuclidBaseBPM) {
-          return prev;
-        }
-        return {
-          ...prev,
-          sequencerMasterBPM: derivedBpm,
-          synthEuclidBaseBPM: derivedBpm,
-          drumEuclidBaseBPM: derivedBpm,
-        };
-      }
-
-      const derivedPhrase = quantize('phraseLength', (barsPerPhrase * beatsPerBar * 60) / bpm);
-      if (derivedPhrase === prev.phraseLength && nextBpm === prev.sequencerMasterBPM && nextBpm === prev.synthEuclidBaseBPM && nextBpm === prev.drumEuclidBaseBPM) {
-        return prev;
-      }
-      return {
-        ...prev,
-        phraseLength: derivedPhrase,
-        sequencerMasterBPM: nextBpm,
-        synthEuclidBaseBPM: nextBpm,
-        drumEuclidBaseBPM: nextBpm,
-      };
-    });
+    setState(normalizeTransportClockState);
   }, [
     state.transportPrimaryClock,
     state.phraseLength,
@@ -982,6 +993,11 @@ const App: React.FC = () => {
       setState((prev) => {
         const preservedEnabledFlags = options?.preserveEnabledFlags ? captureRuntimeEnabledFlags(prev) : null;
         let newState = { ...prev, [key]: stateValue };
+        if (isTransportClockStateKey(key)) {
+          // Timing edits are a single transport transaction. Derive linked clock
+          // values in the same state commit so the runtime receives one boundary edit.
+          newState = normalizeTransportClockState(newState as SliderState);
+        }
         let drumMorphOverrideState = getCurrentDrumMorphOverrideState(prev);
 
         if (key === 'chordProgressionSteps' && typeof stateValue === 'number') {
@@ -1321,17 +1337,18 @@ const App: React.FC = () => {
       const keyStr = paramKey as string;
       const productRuntimeRangeSupported = productRuntimeSupportsRangeKey(keyStr);
       const dualModeSupported = !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);
-      const mode: SliderMode = dualModeSupported ? (normalizeDualSliderMode(keyStr, sliderModes[keyStr]) ?? 'single') : 'single';
+      const resolvedDualModeSupported = dualModeSupported && !isReleaseCommittedTransportTimingKey(paramKey);
+      const mode: SliderMode = resolvedDualModeSupported ? (normalizeDualSliderMode(keyStr, sliderModes[keyStr]) ?? 'single') : 'single';
       const walkPos = getRuntimeSliderPosition(keyStr, mode);
       const isFlashing = getRuntimeSliderFlashing(keyStr, mode);
 
       return {
         mode,
-        dualRange: dualModeSupported ? dualSliderRanges[paramKey] : undefined,
-        walkPosition: dualModeSupported && productRuntimeRangeSupported ? walkPos : undefined,
-        isFlashing: dualModeSupported && productRuntimeRangeSupported ? isFlashing : false,
-        onCycleMode: dualModeSupported ? handleCycleSliderMode : undefined,
-        onDualRangeChange: dualModeSupported ? handleDualRangeChange : undefined,
+        dualRange: resolvedDualModeSupported ? dualSliderRanges[paramKey] : undefined,
+        walkPosition: resolvedDualModeSupported && productRuntimeRangeSupported ? walkPos : undefined,
+        isFlashing: resolvedDualModeSupported && productRuntimeRangeSupported ? isFlashing : false,
+        onCycleMode: resolvedDualModeSupported ? handleCycleSliderMode : undefined,
+        onDualRangeChange: resolvedDualModeSupported ? handleDualRangeChange : undefined,
       };
     },
     [productRuntimeSupportsRangeKey, sliderModes, dualSliderRanges, handleCycleSliderMode, handleDualRangeChange],
@@ -1376,7 +1393,10 @@ const App: React.FC = () => {
       hasUserInteractedRef.current = true;
       const padMorphParamChange = getPadMorphParamChange(key);
       setState((prev) => {
-        const newState: SliderState = { ...prev, [key]: value } as SliderState;
+        let newState: SliderState = { ...prev, [key]: value } as SliderState;
+        if (isTransportClockStateKey(key)) {
+          newState = normalizeTransportClockState(newState);
+        }
         if (isLeadPresetSlotKey(key) && prev[key] !== value) {
           pendingImmediateLeadPresetSyncRef.current = true;
         }
@@ -1692,6 +1712,7 @@ const App: React.FC = () => {
     handleSelectChange,
     startPlayback: handleStart,
     isEditableShortcutTarget,
+    drumLaneEnableTouchedRef,
   });
 
   const {
@@ -1784,6 +1805,43 @@ const App: React.FC = () => {
       setProductSynthStepPositionCallback,
     },
   });
+
+  const midiLiveNoteStart = productPageRuntimeSurface.synthPageRuntimeProps.onLiveNoteStart;
+  const midiLiveNoteStop = productPageRuntimeSurface.synthPageRuntimeProps.onLiveNoteStop;
+  const midiLiveNoteInput = useLiveNoteInput({
+    start: (event) => midiLiveNoteStart?.(event),
+    stop: (event) => midiLiveNoteStop?.(event),
+  });
+  const previousMidiLiveNoteBridgeRef = useRef({ midiLiveNoteStart, midiLiveNoteStop });
+  useEffect(() => {
+    const previous = previousMidiLiveNoteBridgeRef.current;
+    if (previous.midiLiveNoteStart !== midiLiveNoteStart || previous.midiLiveNoteStop !== midiLiveNoteStop) {
+      midiLiveNoteInput.releaseAll();
+      previousMidiLiveNoteBridgeRef.current = { midiLiveNoteStart, midiLiveNoteStop };
+    }
+  }, [midiLiveNoteInput, midiLiveNoteStart, midiLiveNoteStop]);
+  const handleMidiLiveNoteEvent = useCallback((event: ProductLiveNoteEvent, inputId: string): boolean => {
+    // Drum MIDI retains its native one-shot routing semantics; the shared owned-note
+    // lifecycle is for sustained synth sources with paired note-offs.
+    if (event.instrument === 'drum') return false;
+    if (event.kind === 'live-note-off') {
+      return midiLiveNoteInput.noteOff(inputId, {
+        timestampMs: event.timestampMs,
+        timestampHostTime: event.timestampHostTime,
+        timestampAudioFrame: event.timestampAudioFrame,
+      });
+    }
+    return midiLiveNoteInput.noteOn(inputId, {
+      source: 'midi',
+      instrument: event.instrument,
+      note: event.note,
+      velocity: event.velocity,
+      channel: event.channel,
+      timestampMs: event.timestampMs,
+      timestampHostTime: event.timestampHostTime,
+      timestampAudioFrame: event.timestampAudioFrame,
+    });
+  }, [midiLiveNoteInput]);
 
   // Result type for lerpPresets - includes both state and dual ranges
   interface LerpResult {
@@ -3264,6 +3322,7 @@ const App: React.FC = () => {
         <MidiLearnProvider
         onParamChange={handleRoutingParamChange}
         onMidiMessage={pushProductMidiMessage}
+        onLiveNoteEvent={handleMidiLiveNoteEvent}
         onOpenMidiPage={() => {
           setUiMode('advanced');
           setActiveTab('routing');
@@ -3531,6 +3590,7 @@ const App: React.FC = () => {
                 onArpConfigsChange={productPageRuntimeSurface.synthPageSequencerBridge.onArpConfigsChange}
                 onRawStepOverridesChange={productPageRuntimeSurface.synthPageSequencerBridge.onRawStepOverridesChange}
                 onStepOverridesChange={productPageRuntimeSurface.synthPageSequencerBridge.onStepOverridesChange}
+                onSequencerRuntimeDetach={productPageRuntimeSurface.synthPageSequencerBridge.reassertRuntimeState}
                 initialClockDivs={synthClockDivsRef.current}
                 onClockDivsChange={productPageRuntimeSurface.synthPageSequencerBridge.onClockDivsChange}
                 initialSwings={synthSwingsRef.current}
@@ -3568,6 +3628,7 @@ const App: React.FC = () => {
             {activeTab === 'drums' && (
               <DrumPage
                 state={state}
+                drumLaneEnableTouchedRef={drumLaneEnableTouchedRef}
                 isMobile={isMobile}
                 isRunning={playbackIsRunning}
                 expandedPanels={expandedPanels}
@@ -3674,7 +3735,6 @@ const App: React.FC = () => {
                 onParamChange={handleRoutingParamChange}
                 onColumnParamChange={handleRoutingColumnChange}
                 onToggleSource={handleRoutingSourceToggle}
-                onMidiMessage={pushProductMidiMessage}
                 dawOutputRouting={dawOutputRouting}
                 dawOutputDeviceSelection={dawOutputDevice}
                 onDawOutputRoutingChange={setDawOutputRouting}

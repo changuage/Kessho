@@ -65,21 +65,31 @@ export function createCoreProductTransportDebugState(
   transport: CoreProductSnapshot['transport'] | undefined,
 ): TransportDebugSnapshot | null {
   if (!telemetry || !transport) return null;
-  const effectiveBpm = Number.isFinite(transport.bpm) && transport.bpm > 0 ? transport.bpm : 120;
-  const beatsPerBar = Math.max(1, transport.beatsPerBar || 4);
-  const barsPerPhrase = Math.max(1, transport.barsPerPhrase || 4);
-  const beatDurationSec = 60 / effectiveBpm;
-  const effectivePhraseSeconds = beatDurationSec * beatsPerBar * barsPerPhrase;
-  const beatsPerPhrase = beatsPerBar * barsPerPhrase;
-  const beatPosition = Number.isFinite(telemetry.beatPosition ?? NaN) ? telemetry.beatPosition! : 0;
-  const beatInPhrase = ((beatPosition % beatsPerPhrase) + beatsPerPhrase) % beatsPerPhrase;
-  const remainingBeats = beatInPhrase === 0 && telemetry.transportRunning
-    ? beatsPerPhrase
-    : Math.max(0, beatsPerPhrase - beatInPhrase);
+  const effectiveBpm = Number.isFinite(telemetry.transportBpm ?? NaN) && telemetry.transportBpm! > 0
+    ? telemetry.transportBpm!
+    : Number.isFinite(transport.bpm) && transport.bpm > 0 ? transport.bpm : 120;
+  const beatsPerBar = Math.max(1, telemetry.transportBeatsPerBar ?? transport.beatsPerBar ?? 4);
+  const barsPerPhrase = Math.max(1, telemetry.transportBarsPerPhrase ?? transport.barsPerPhrase ?? 4);
+  const effectivePhraseSeconds = Number.isFinite(telemetry.transportPhraseSeconds ?? NaN) && telemetry.transportPhraseSeconds! > 0
+    ? telemetry.transportPhraseSeconds!
+    : (60 / effectiveBpm) * beatsPerBar * barsPerPhrase;
+  const progress = Math.max(0, Math.min(1, telemetry.transportPhraseProgress ?? 0));
+  const pendingTransitionIn = telemetry.transportTransitionPending &&
+      Number.isFinite(telemetry.transportPendingApplyFrame ?? NaN) &&
+      Number.isFinite(telemetry.absoluteSampleTime ?? NaN) &&
+      Number.isFinite(telemetry.sampleRate ?? NaN) && telemetry.sampleRate! > 0
+    ? Math.max(0, (telemetry.transportPendingApplyFrame! - telemetry.absoluteSampleTime!) / telemetry.sampleRate!)
+    : null;
   return {
     effectiveBpm,
     effectivePhraseSeconds,
-    nextPhraseBoundaryIn: telemetry.transportRunning ? remainingBeats * beatDurationSec : 0,
+    nextPhraseBoundaryIn: telemetry.transportRunning
+      ? pendingTransitionIn ?? Math.max(0, (1 - progress) * effectivePhraseSeconds)
+      : 0,
+    pendingBpm: telemetry.transportTransitionPending ? telemetry.transportPendingBpm ?? null : null,
+    pendingPhraseSeconds: telemetry.transportTransitionPending ? telemetry.transportPendingPhraseSeconds ?? null : null,
+    pendingTransitionIn,
+    transitionRevision: telemetry.transportTransitionRevision ?? 0,
     nextHarmonyEventIn: null,
     nextProgressionStepIn: null,
   };

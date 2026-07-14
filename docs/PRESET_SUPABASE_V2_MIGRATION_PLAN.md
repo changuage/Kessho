@@ -96,6 +96,12 @@ Each ref may also carry a small per-child override blob.
 
 If no intentionally saved child preset has the exact content hash, the V2 save path creates a private hidden child named `__derived__/{scope}/{hash12}` and tags it `internal-derived`. These rows are still readable for ref resolution, but the app filters them from preset lists and dropdowns.
 
+### `preset_version_content_refs_v2`
+
+Immutable direct edges from a version to opaque content-addressed components. Hierarchical slots identify sequencer components, shared voices/processors, Harmony banks/context, pinned derived endpoints, and coarse parameter-behavior maps. Multiple destination slots may point to one hash; destination binding remains in the parent override.
+
+These refs replace new hidden-derived writes where a user-visible identity has no value. Manifest/detail RPCs return them in bulk, and maintenance treats them as payload reachability roots. Browser roles have no direct table access.
+
 ### `preset_payloads_v2`
 
 Content-addressed JSON storage.
@@ -103,6 +109,8 @@ Content-addressed JSON storage.
 This is where dedupe happens.
 
 If twenty presets reference the same pad payload or metadata payload, Supabase stores that JSON once and everything else points to the hash.
+
+`payload_kind = 'content'` stores a versioned `{ schemaVersion, contentType, content }` envelope. New L4 versions use graph checkpoints and leave `resolved_hash` null; legacy snapshots remain readable.
 
 ## Storage Strategy By Level
 

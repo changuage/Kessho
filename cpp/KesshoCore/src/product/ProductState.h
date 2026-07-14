@@ -48,6 +48,11 @@ struct KesshoProductEngine : ProductGraphState {
   QueuedProductEvent control_events[kessho::product::generated::KESSHO_PRODUCT_MAX_CONTROL_EVENTS]{};
   uint32_t control_event_count = 0;
   uint32_t next_control_sequence = 1;
+  // One coalesced clock-division, tempo-multiplier, and swing edit per lane.
+  static constexpr uint32_t kMaxPendingPhraseTimingEvents = kMaxLaneCount * 2u * 3u;
+  KesshoProductEvent pending_phrase_timing_events[kMaxPendingPhraseTimingEvents]{};
+  uint32_t pending_phrase_timing_event_count = 0u;
+  uint64_t pending_phrase_timing_apply_frame = 0u;
   KesshoProductGeneratedSequencerCaptureConfig generated_sequencer_capture_config{};
   kessho::product::GeneratedSequencerCaptureRing<2048> generated_sequencer_capture_ring{};
   uint64_t generated_sequencer_capture_event_counter = 1u;
@@ -227,6 +232,9 @@ struct KesshoProductEngine : ProductGraphState {
   void sortControlEvents();
   float manualNoteHoldSeconds(uint32_t source_id, float requested_seconds) const;
   void applyControlEvent(const KesshoProductEvent& event);
+  void applyPendingTransportTransition();
+  bool isNextPhraseTimingEvent(const KesshoProductEvent& event) const;
+  void stageNextPhraseTimingEvent(const KesshoProductEvent& event);
   uint32_t resolveMidiTargetSource(const KesshoProductEvent& event, uint32_t status) const;
   void applyMidiEvent(const KesshoProductEvent& event);
   void clearStepOverride(LaneState& lane, uint32_t step);

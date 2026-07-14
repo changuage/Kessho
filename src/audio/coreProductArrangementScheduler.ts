@@ -1,6 +1,6 @@
 import { createCoreProductManualNoteEvent, type CoreProductEvent } from './coreProductEvents';
 import { createCoreProductHarmonyParamEvents } from './coreProductHarmonyParamEvents';
-import { arrangementRestartKey, PAD_VOICE_COUNT } from './coreProductArrangementVoiceMapping';
+import { ARRANGEMENT_TRANSPORT_TIMING_KEYS, arrangementRestartKey, PAD_VOICE_COUNT } from './coreProductArrangementVoiceMapping';
 import { coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
 import { getEffectiveTension, updateHarmonyState, type HarmonyState } from './harmony';
 import { createRng, getUtcBucket } from './rng';
@@ -43,6 +43,7 @@ import {
   updateRuntimePlanNotes,
 } from './coreProductArrangementRuntimePlan';
 import type { ProductSimpleSequencerVisualPlanActive } from './product/ProductEngineTypes';
+import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 
 type PostEvent = (event: CoreProductEvent) => void;
 type PublishTrigger = (name: string, ...payload: unknown[]) => void;
@@ -58,6 +59,8 @@ export class CoreProductArrangementScheduler {
   private harmonyTimer: number | null = null;
   private leadPhraseTimer: number | null = null;
   private chordSequencerTimer: number | null = null;
+  private pendingTransportState: Record<string, unknown> | null = null;
+  private observedTransportTransitionRevision = 0;
   private readonly padNoteTimers = new Set<number>();
   private readonly leadNoteTimers = new Set<number>();
   private padChordPlan: SimpleSequencerPhrasePreview | null = null;
@@ -115,6 +118,25 @@ export class CoreProductArrangementScheduler {
       this.restartKey = '';
       return;
     }
+    if (!this.state) {
+      this.start(state);
+      return;
+    }
+    const activeState = this.state;
+    const candidate = { ...state };
+    const timingChanged = ARRANGEMENT_TRANSPORT_TIMING_KEYS.some((key) => activeState[key] !== candidate[key]);
+    if (timingChanged || this.pendingTransportState) {
+      const candidateMatchesActive = ARRANGEMENT_TRANSPORT_TIMING_KEYS.every((key) => activeState[key] === candidate[key]);
+      if (candidateMatchesActive) {
+        this.pendingTransportState = null;
+      } else {
+        this.pendingTransportState = candidate;
+      }
+      state = {
+        ...candidate,
+        ...Object.fromEntries(ARRANGEMENT_TRANSPORT_TIMING_KEYS.map((key) => [key, activeState[key]])),
+      };
+    }
     const nextRestartKey = arrangementRestartKey(state);
     if (nextRestartKey !== this.restartKey) {
       this.start(state, true);
@@ -166,6 +188,17 @@ export class CoreProductArrangementScheduler {
     this.previousRandomTimingPlan = null;
     this.restartKey = '';
     this.phraseState = null;
+    this.pendingTransportState = null;
+    this.observedTransportTransitionRevision = 0;
+  }
+  syncTransportTelemetry(telemetry: CoreProductTelemetrySnapshot): void {
+    const revision = telemetry.transportTransitionRevision ?? 0;
+    if (revision === this.observedTransportTransitionRevision) return;
+    this.observedTransportTransitionRevision = revision;
+    const pending = this.pendingTransportState;
+    this.pendingTransportState = null;
+    if (!pending || !this.running) return;
+    this.start(pending, false);
   }
   setRuntimePlanCaptureEnabled(active: ProductSimpleSequencerVisualPlanActive): void {
     const next = {

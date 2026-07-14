@@ -1,7 +1,7 @@
 const EVENT_BYTES = 40;
 const GENERATED_CAPTURE_EVENT_BYTES = 64;
 const GENERATED_CAPTURE_EVENT_CAPACITY = 256;
-const TELEMETRY_BYTES = 15048;
+const TELEMETRY_BYTES = 15168;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
 const EXPECTED_PRODUCT_SCHEMA_HASH = 0xa4a992e6;
 const SEQUENCER_UI_STATE_LANES = 16;
@@ -1385,6 +1385,18 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       beatPosition: this.view.getFloat64(ptr + 32, true),
       barIndex: this.readUint64Number(ptr + 40),
       phraseIndex: this.readUint64Number(ptr + 48),
+      transportBpm: this.view.getFloat32(ptr + 15112, true),
+      transportBeatsPerBar: this.view.getUint32(ptr + 15116, true),
+      transportBarsPerPhrase: this.view.getUint32(ptr + 15120, true),
+      transportPhraseSeconds: this.view.getFloat32(ptr + 15124, true),
+      transportTransitionPending: this.view.getUint32(ptr + 15128, true) !== 0,
+      transportPendingBpm: this.view.getFloat32(ptr + 15132, true),
+      transportPendingBeatsPerBar: this.view.getUint32(ptr + 15136, true),
+      transportPendingBarsPerPhrase: this.view.getUint32(ptr + 15140, true),
+      transportPendingPhraseSeconds: this.view.getFloat32(ptr + 15144, true),
+      transportPendingApplyFrame: this.readUint64Number(ptr + 15152),
+      transportTransitionRevision: this.view.getUint32(ptr + 15160, true),
+      transportPhraseProgress: this.view.getFloat32(ptr + 15164, true),
       activeSources: this.view.getUint32(ptr + 56, true),
       activeVoices: this.view.getUint32(ptr + 60, true),
       activeAssets: this.view.getUint32(ptr + 64, true),
@@ -1802,6 +1814,18 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       schemaHash: this.view.getUint32(ptr, true),
       transportRunning: this.view.getUint32(ptr + 20, true) !== 0,
       absoluteSampleTime: this.readUint64Number(ptr + 24),
+      transportBpm: this.view.getFloat32(ptr + 15112, true),
+      transportBeatsPerBar: this.view.getUint32(ptr + 15116, true),
+      transportBarsPerPhrase: this.view.getUint32(ptr + 15120, true),
+      transportPhraseSeconds: this.view.getFloat32(ptr + 15124, true),
+      transportTransitionPending: this.view.getUint32(ptr + 15128, true) !== 0,
+      transportPendingBpm: this.view.getFloat32(ptr + 15132, true),
+      transportPendingBeatsPerBar: this.view.getUint32(ptr + 15136, true),
+      transportPendingBarsPerPhrase: this.view.getUint32(ptr + 15140, true),
+      transportPendingPhraseSeconds: this.view.getFloat32(ptr + 15144, true),
+      transportPendingApplyFrame: this.readUint64Number(ptr + 15152),
+      transportTransitionRevision: this.view.getUint32(ptr + 15160, true),
+      transportPhraseProgress: this.view.getFloat32(ptr + 15164, true),
       activeGrains: this.view.getUint32(ptr + 68, true),
       runtimeWalkCount,
       runtimeWalkValues,

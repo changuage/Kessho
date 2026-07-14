@@ -53,6 +53,7 @@ import {
   type PresetPayloadV2Row,
   type PresetV2Row,
   type PresetVersionRefV2Row,
+  type PresetVersionContentRefV2Row,
   type PresetVersionStorageSignature,
   type PresetVersionV2Row,
   writePresetPayloadCacheV2,
@@ -60,6 +61,49 @@ import {
   stableStringifyCanonical,
 } from './presetStorageV2';
 import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
+import { preparePresetContentBatch, presetContentRefSlot } from './contentNodes';
+import {
+  applySequencerContentComponents,
+  buildSequencerContentGroup,
+  sequencerContentCandidates,
+  stripSequencerMetadataFromSoundContent,
+  stripPortableSequencerContentFromL4Override,
+  stripSequencerStateFromSoundContent,
+  type SequencerContentComponent,
+  type SequencerPageKind,
+} from './sequencerContent';
+import { DRUM_EUCLIDEAN_LANE_COUNT, SYNTH_EUCLIDEAN_LANE_COUNT } from '../audio/sequencerLaneCounts';
+import {
+  buildDynamicsEqPoolInstance,
+  buildGranularVoicePoolInstance,
+  buildSampleVoicePoolInstance,
+  buildPadVoicePoolInstance,
+  hydrateSharedComponentRef,
+  sharedComponentPoolCandidates,
+  stripSharedComponentContentFromParent,
+} from './sharedComponentPools';
+import {
+  buildHarmonyContentInstances,
+  harmonyContentCandidates,
+  hydrateHarmonyContentRef,
+  stripHarmonyContentFromL4Override,
+} from './harmonyContent';
+import {
+  buildPadDerivedEndpointInstances,
+  buildDrumDerivedEndpointInstances,
+  buildGranularAndWaterDerivedEndpointInstances,
+  derivedEndpointCandidates,
+  hydratePadDerivedEndpointRefs,
+  hydrateDrumDerivedEndpointRefs,
+  hydrateGranularAndWaterDerivedEndpointRefs,
+  findMissingDerivedEndpointSlots,
+} from './derivedEndpointContent';
+import {
+  buildParameterBehaviorInstances,
+  hydrateParameterBehaviorRefs,
+  parameterBehaviorCandidates,
+  stripParameterBehaviorsFromV2Metadata,
+} from './parameterBehaviorContent';
 import type {
   PresetEntry,
   PresetLevel,
@@ -69,6 +113,9 @@ import type {
   PresetSummary,
   PresetVersionMetadata,
 } from './types';
+import { preparePresetVersionMetadataForV2Storage } from './versionMetadataHelpers';
+import { hydrateOptimizedStatePresetData } from './statePresetOptimization';
+import { recordPresetLegacyContentRead } from './presetLegacyContentTelemetry';
 
 const VERSION_CHECKPOINT_INTERVAL = 8;
 const PATCH_TO_SNAPSHOT_RATIO = 0.65;
@@ -97,10 +144,21 @@ interface PendingVersionRefV2 {
   overrideHash?: string | null;
 }
 
+interface PendingVersionContentRefV2 {
+  slot: string;
+  contentHash: string;
+  contentType: string;
+}
+
 interface StorablePayloadV2 {
   hash: string;
   payloadKind: PresetPayloadKind;
   payload: Record<string, unknown>;
+}
+
+interface PreparedVersionContentV2 {
+  payloads: StorablePayloadV2[];
+  refs: PendingVersionContentRefV2[];
 }
 
 interface CachedPresetList {
@@ -112,6 +170,7 @@ interface PresetV2DetailBundle {
   preset: PresetV2Row;
   versions: PresetVersionV2Row[];
   refs: PresetVersionRefV2Row[];
+  contentRefs: PresetVersionContentRefV2Row[];
   targetPresets: PresetV2Row[];
   payloads: PresetPayloadV2Row[];
 }
@@ -125,6 +184,7 @@ interface PresetV2LatestManifest {
   preset: PresetV2Row;
   latest_version: PresetVersionV2Row;
   refs: PresetVersionRefV2Row[];
+  content_refs: PresetVersionContentRefV2Row[];
   target_presets?: PresetV2Row[];
   targetPresets?: PresetV2Row[];
   required_hashes: string[];
@@ -136,6 +196,7 @@ interface PresetStorageStats {
 }
 
 const PAYLOAD_KIND_INSERT_PRIORITY: Record<PresetPayloadKind, number> = {
+  content: 6,
   resolved: 5,
   metadata: 4,
   patch: 3,
@@ -1407,6 +1468,92 @@ export class SupabasePresetStore implements IPresetStore {
     };
   }
 
+  private async prepareVersionContentV2(
+    type: PresetLevel,
+    scope: string | undefined,
+    state: Record<string, unknown>,
+    metadata: PresetVersionMetadata | undefined,
+  ): Promise<PreparedVersionContentV2> {
+    const groups = type === 'state' ? [
+      ...Array.from({ length: SYNTH_EUCLIDEAN_LANE_COUNT }, (_, laneIndex) =>
+        buildSequencerContentGroup({ state, metadata, kind: 'synth', laneIndex })),
+      ...Array.from({ length: DRUM_EUCLIDEAN_LANE_COUNT }, (_, laneIndex) =>
+        buildSequencerContentGroup({ state, metadata, kind: 'drum', laneIndex })),
+    ] : [];
+    const sharedInstances = type === 'kit' && scope === 'granularKit'
+      ? Array.from({ length: 4 }, (_, laneIndex) => buildGranularVoicePoolInstance(state, laneIndex))
+      : type === 'source' && scope === 'dynamicsBus'
+        ? Array.from({ length: 2 }, (_, laneIndex) => buildDynamicsEqPoolInstance(state, laneIndex))
+        : type === 'source' && scope === 'synth'
+          ? Array.from({ length: 2 }, (_, laneIndex) => buildSampleVoicePoolInstance(state, laneIndex))
+          : type === 'kit' && scope === 'pad1Kit'
+            ? [buildPadVoicePoolInstance(state, 0)]
+            : type === 'kit' && scope === 'pad2Kit'
+              ? [buildPadVoicePoolInstance(state, 1)]
+              : [];
+    const harmonyInstances = type === 'state' ? buildHarmonyContentInstances(state) : [];
+    const derivedEndpointInstances = type === 'state'
+      ? [
+          ...buildPadDerivedEndpointInstances(state),
+          ...buildDrumDerivedEndpointInstances(state),
+          ...buildGranularAndWaterDerivedEndpointInstances(state),
+        ]
+      : [];
+    const behaviorInstances = buildParameterBehaviorInstances(metadata);
+    const candidates = [
+      ...groups.flatMap(sequencerContentCandidates),
+      ...sharedComponentPoolCandidates(sharedInstances),
+      ...harmonyContentCandidates(harmonyInstances),
+      ...derivedEndpointCandidates(derivedEndpointInstances),
+      ...parameterBehaviorCandidates(behaviorInstances),
+    ];
+    if (candidates.length === 0) return { payloads: [], refs: [] };
+    const batch = await preparePresetContentBatch(candidates);
+    const refs: PendingVersionContentRefV2[] = [];
+    for (const group of groups) {
+      const groupSlot = `sequencer.${group.kind}.${group.laneIndex + 1}`;
+      for (const component of group.components) {
+        const candidate = batch.byId.get(`${group.kind}.${group.laneIndex}.${component.componentSlot}`);
+        if (!candidate) throw new Error(`Missing prepared sequencer component ${groupSlot}.${component.componentSlot}`);
+        refs.push({
+          slot: presetContentRefSlot(groupSlot, component.componentSlot),
+          contentHash: candidate.hash,
+          contentType: candidate.envelope.contentType,
+        });
+      }
+    }
+    for (const instance of sharedInstances) {
+      const candidate = batch.byId.get(instance.id);
+      if (!candidate) throw new Error(`Missing prepared shared component ${instance.refSlot}`);
+      refs.push({ slot: instance.refSlot, contentHash: candidate.hash, contentType: candidate.envelope.contentType });
+    }
+    if (type === 'state') {
+      for (const instance of harmonyInstances) {
+        const candidate = batch.byId.get(instance.id);
+        if (!candidate) throw new Error(`Missing prepared harmony component ${instance.refSlot}`);
+        refs.push({ slot: instance.refSlot, contentHash: candidate.hash, contentType: candidate.envelope.contentType });
+      }
+      for (const instance of derivedEndpointInstances) {
+        const candidate = batch.byId.get(instance.id);
+        if (!candidate) throw new Error(`Missing prepared derived endpoint ${instance.refSlot}`);
+        refs.push({ slot: instance.refSlot, contentHash: candidate.hash, contentType: candidate.envelope.contentType });
+      }
+    }
+    for (const instance of behaviorInstances) {
+      const candidate = batch.byId.get(instance.id);
+      if (!candidate) throw new Error(`Missing prepared parameter behavior ${instance.refSlot}`);
+      refs.push({ slot: instance.refSlot, contentHash: candidate.hash, contentType: candidate.envelope.contentType });
+    }
+    return {
+      payloads: [...batch.uniqueByHash.values()].map(node => ({
+        hash: node.hash,
+        payloadKind: 'content',
+        payload: { ...node.envelope },
+      })),
+      refs,
+    };
+  }
+
   private async fetchVersionRefKeysV2(versionId: string | null | undefined): Promise<string[]> {
     if (!versionId) return [];
 
@@ -1424,21 +1571,30 @@ export class SupabasePresetStore implements IPresetStore {
     versionPayload: Record<string, unknown>,
     payloads: StorablePayloadV2[],
     refsToInsert: PendingVersionRefV2[],
+    contentRefsToInsert: PendingVersionContentRefV2[] = [],
   ): Promise<{ preset: PresetV2Row; version: PresetVersionV2Row }> {
     const uniquePayloads = dedupeStorablePayloadsByHashV2(payloads);
+    const legacyPayloads = uniquePayloads.filter(payload => payload.payloadKind !== 'content');
+    const contentPayloads = uniquePayloads.filter(payload => payload.payloadKind === 'content');
     const existingHashes = await this.fetchExistingPayloadHashesForInsertV2(
-      uniquePayloads.map(payload => payload.hash),
+      legacyPayloads.map(payload => payload.hash),
     );
     for (const hash of existingHashes) this.knownPayloadHashesV2.add(hash);
 
-    let payloadsToInsert = uniquePayloads.filter(payload => !this.knownPayloadHashesV2.has(payload.hash));
+    let payloadsToInsert = [
+      ...legacyPayloads.filter(payload => !this.knownPayloadHashesV2.has(payload.hash)),
+      ...contentPayloads,
+    ];
     const skippedConflictHashes = new Set<string>();
+    let useDirectContentRefs = contentRefsToInsert.length > 0;
 
     while (true) {
       const { data, error } = await this.client.rpc('kessho_save_preset_v2', {
         identity_payload: identityPayload,
         version_payload: versionPayload,
-        payloads_payload: payloadsToInsert.map((payload) => ({
+        payloads_payload: payloadsToInsert
+          .filter(payload => useDirectContentRefs || payload.payloadKind !== 'content')
+          .map((payload) => ({
           hash: payload.hash,
           payload_kind: payload.payloadKind,
           payload: payload.payload,
@@ -1449,9 +1605,21 @@ export class SupabasePresetStore implements IPresetStore {
           override_hash: ref.overrideHash ?? null,
           created_at: versionPayload.created_at,
         })),
+        ...(useDirectContentRefs ? {
+          content_refs_payload: contentRefsToInsert.map(ref => ({
+            ref_slot: ref.slot,
+            content_hash: ref.contentHash,
+            content_type: ref.contentType,
+            created_at: versionPayload.created_at,
+          })),
+        } : {}),
       });
 
       if (error) {
+        if (useDirectContentRefs && isMissingRpcError(error, 'kessho_save_preset_v2')) {
+          useDirectContentRefs = false;
+          continue;
+        }
         const conflictHash = getPayloadKindConflictHash(error);
         if (
           conflictHash
@@ -1639,6 +1807,11 @@ export class SupabasePresetStore implements IPresetStore {
       preset: data.preset as unknown as PresetV2Row,
       versions: Array.isArray(data.versions) ? data.versions as unknown as PresetVersionV2Row[] : [],
       refs: Array.isArray(data.refs) ? data.refs as unknown as PresetVersionRefV2Row[] : [],
+      contentRefs: Array.isArray(data.contentRefs)
+        ? data.contentRefs as unknown as PresetVersionContentRefV2Row[]
+        : Array.isArray(data.content_refs)
+          ? data.content_refs as unknown as PresetVersionContentRefV2Row[]
+          : [],
       targetPresets: Array.isArray(data.targetPresets)
         ? data.targetPresets as unknown as PresetV2Row[]
         : Array.isArray(data.target_presets)
@@ -1654,6 +1827,11 @@ export class SupabasePresetStore implements IPresetStore {
       preset: data.preset as unknown as PresetV2Row,
       latest_version: data.latest_version as unknown as PresetVersionV2Row,
       refs: Array.isArray(data.refs) ? data.refs as unknown as PresetVersionRefV2Row[] : [],
+      content_refs: Array.isArray(data.content_refs)
+        ? data.content_refs as unknown as PresetVersionContentRefV2Row[]
+        : Array.isArray(data.contentRefs)
+          ? data.contentRefs as unknown as PresetVersionContentRefV2Row[]
+          : [],
       targetPresets: Array.isArray(data.targetPresets)
         ? data.targetPresets as unknown as PresetV2Row[]
         : Array.isArray(data.target_presets)
@@ -1701,9 +1879,82 @@ export class SupabasePresetStore implements IPresetStore {
       preset: manifest.preset,
       versions: [latestVersion],
       refs: manifest.refs,
+      contentRefs: manifest.content_refs,
       targetPresets: manifest.targetPresets ?? [],
       payloads: [],
     }, undefined, payloadMap);
+  }
+
+  private hydrateSequencerContentRefsV2(
+    state: Record<string, unknown>,
+    metadata: PresetVersionMetadata | undefined,
+    refs: readonly PresetVersionContentRefV2Row[],
+    payloadMap: Map<string, unknown>,
+    recoveryWarnings?: PresetRecoveryWarning[],
+  ): { state: Record<string, unknown>; metadata: PresetVersionMetadata | undefined } {
+    if (refs.length === 0) return { state, metadata };
+    const grouped = new Map<string, {
+      kind: SequencerPageKind;
+      laneIndex: number;
+      components: SequencerContentComponent[];
+    }>();
+    for (const ref of refs) {
+      const match = /^sequencer\.(synth|drum)\.([1-9][0-9]*)\.([a-z][a-z0-9-]*)$/.exec(ref.ref_slot);
+      if (!match) continue;
+      const payload = payloadMap.get(ref.content_hash);
+      if (!isPlainObject(payload)
+          || payload.schemaVersion !== 1
+          || payload.contentType !== ref.content_type
+          || !isPlainObject(payload.content)) {
+        recoveryWarnings?.push({
+          slot: ref.ref_slot,
+          reason: payload === undefined ? 'missing_payload' : 'invalid_payload_shape',
+          fallback: 'default',
+        });
+        continue;
+      }
+      const kind = match[1] as SequencerPageKind;
+      const laneIndex = Number(match[2]) - 1;
+      const key = `${kind}.${laneIndex}`;
+      const group = grouped.get(key) ?? { kind, laneIndex, components: [] };
+      group.components.push({
+        componentSlot: match[3] as SequencerContentComponent['componentSlot'],
+        contentType: ref.content_type as SequencerContentComponent['contentType'],
+        content: payload.content,
+      });
+      grouped.set(key, group);
+    }
+
+    let nextState = { ...state };
+    let nextMetadata = metadata;
+    for (const group of grouped.values()) {
+      const hydrated = applySequencerContentComponents({
+        state: nextState,
+        metadata: nextMetadata,
+        kind: group.kind,
+        laneIndex: group.laneIndex,
+        components: group.components,
+      });
+      nextState = { ...nextState, ...hydrated.statePatch };
+      nextMetadata = hydrated.metadata;
+    }
+    return { state: nextState, metadata: nextMetadata };
+  }
+
+  private hydrateSharedContentRefsV2(
+    state: Record<string, unknown>,
+    refs: readonly PresetVersionContentRefV2Row[],
+    payloadMap: Map<string, unknown>,
+  ): Record<string, unknown> {
+    let next = state;
+    for (const ref of refs) {
+      const payload = payloadMap.get(ref.content_hash);
+      if (!isPlainObject(payload) || !isPlainObject(payload.content)) continue;
+      const patch = hydrateSharedComponentRef(ref.ref_slot, ref.content_type, payload.content);
+      const harmonyPatch = hydrateHarmonyContentRef(ref.ref_slot, ref.content_type, payload.content);
+      if (patch || harmonyPatch) next = { ...next, ...(patch ?? harmonyPatch) };
+    }
+    return next;
   }
 
   private async loadLatestManifestV2(id: string): Promise<PresetEntry | null | undefined> {
@@ -1770,6 +2021,12 @@ export class SupabasePresetStore implements IPresetStore {
       bucket.push(refRow);
       refsByVersionId.set(refRow.version_id, bucket);
     }
+    const contentRefsByVersionId = new Map<string, PresetVersionContentRefV2Row[]>();
+    for (const refRow of bundle.contentRefs) {
+      const bucket = contentRefsByVersionId.get(refRow.version_id) ?? [];
+      bucket.push(refRow);
+      contentRefsByVersionId.set(refRow.version_id, bucket);
+    }
 
     const materializedVersions: PresetEntry['versions'] = [];
     const targetVersionNo = version ?? row.latest_version_no;
@@ -1790,7 +2047,7 @@ export class SupabasePresetStore implements IPresetStore {
         };
       }
 
-      const resolvedData = await this.loadResolvedSnapshotByVersionRowV2(
+      let resolvedData = await this.loadResolvedSnapshotByVersionRowV2(
         versionRow,
         row.type,
         rowScope ?? null,
@@ -1800,11 +2057,45 @@ export class SupabasePresetStore implements IPresetStore {
         previousResolved,
         versionRow.version_no === targetVersionNo ? recoveryWarnings : undefined,
       );
-      previousResolved = resolvedData;
-
+      if (row.type === 'state') {
+        for (const slot of findMissingDerivedEndpointSlots(
+          contentRefsByVersionId.get(versionRow.id) ?? [],
+          payloadMap,
+        )) {
+          if (versionRow.version_no === targetVersionNo) recoveryWarnings.push({
+            slot,
+            reason: 'missing_payload',
+            fallback: 'default',
+            version: versionRow.version_no,
+          });
+        }
+        resolvedData = hydratePadDerivedEndpointRefs(
+          resolvedData,
+          contentRefsByVersionId.get(versionRow.id) ?? [],
+          payloadMap,
+        );
+        resolvedData = hydrateDrumDerivedEndpointRefs(
+          resolvedData,
+          contentRefsByVersionId.get(versionRow.id) ?? [],
+          payloadMap,
+        );
+        resolvedData = hydrateGranularAndWaterDerivedEndpointRefs(
+          resolvedData,
+          contentRefsByVersionId.get(versionRow.id) ?? [],
+          payloadMap,
+        );
+        resolvedData = canonicalizeRecord(hydrateOptimizedStatePresetData(resolvedData));
+      }
       const metadataPayload = versionRow.metadata_hash ? payloadMap.get(versionRow.metadata_hash) : undefined;
       const metadata = isPlainObject(metadataPayload) ? metadataPayload as PresetVersionMetadata : undefined;
-      const reconstructedMetadata = reconstructRoutingMuteGroupMetadata(
+      recordPresetLegacyContentRead({
+        type: row.type,
+        resolvedHash: versionRow.resolved_hash,
+        metadata,
+        refs: versionRefs,
+        contentRefs: contentRefsByVersionId.get(versionRow.id) ?? [],
+      });
+      let reconstructedMetadata = reconstructRoutingMuteGroupMetadata(
         metadata,
         (refSlot) => {
           const refRow = versionRefs.find(candidate => candidate.ref_slot === refSlot);
@@ -1823,6 +2114,26 @@ export class SupabasePresetStore implements IPresetStore {
           version: versionRow.version_no,
         },
       );
+      const hydratedSequencers = this.hydrateSequencerContentRefsV2(
+        resolvedData,
+        reconstructedMetadata,
+        contentRefsByVersionId.get(versionRow.id) ?? [],
+        payloadMap,
+        versionRow.version_no === targetVersionNo ? recoveryWarnings : undefined,
+      );
+      resolvedData = hydratedSequencers.state;
+      reconstructedMetadata = hydratedSequencers.metadata;
+      reconstructedMetadata = hydrateParameterBehaviorRefs(
+        reconstructedMetadata,
+        contentRefsByVersionId.get(versionRow.id) ?? [],
+        payloadMap,
+      );
+      resolvedData = this.hydrateSharedContentRefsV2(
+        resolvedData,
+        contentRefsByVersionId.get(versionRow.id) ?? [],
+        payloadMap,
+      );
+      previousResolved = resolvedData;
       materializedVersions.push(
         materializePresetVersion(
           versionRow,
@@ -1884,7 +2195,7 @@ export class SupabasePresetStore implements IPresetStore {
         fallback: 'default',
         version: row.version_no,
       });
-    } else {
+    } else if (parentType !== 'state') {
       recoveryWarnings?.push({
         slot: 'resolved',
         reason: 'missing_payload',
@@ -2200,12 +2511,44 @@ export class SupabasePresetStore implements IPresetStore {
     for (const version of versionsToPersist) {
       const snapshot = getResolvedVersionSnapshot(normalized, version.v);
       const rawResolvedData = snapshot?.data ?? getVersionData(normalized, version.v) ?? version.data;
-      const resolvedData = normalizeResolvedVersionData(normalized.type, scope, rawResolvedData);
-      const metadata = snapshot?.metadata ?? extractPresetVersionMetadata(version);
+      const normalizedResolvedData = normalized.type === 'state' || internalDerived
+        ? canonicalizeRecord(rawResolvedData)
+        : normalizeResolvedVersionData(normalized.type, scope, rawResolvedData);
+      const isSoundOnlySource = normalized.type === 'source' && (scope === 'synth' || scope === 'drums');
+      const resolvedData = isSoundOnlySource
+        ? stripSequencerStateFromSoundContent(normalizedResolvedData)
+        : normalizedResolvedData;
+      const storageResolvedData = normalized.type === 'state'
+        ? canonicalizeRecord(rawResolvedData)
+        : resolvedData;
+      const rawMetadata = snapshot?.metadata ?? extractPresetVersionMetadata(version);
+      const metadata = isSoundOnlySource
+        ? stripSequencerMetadataFromSoundContent(rawMetadata)
+        : rawMetadata;
       const muteGroupStoragePlan = await planRoutingMuteGroupMetadataStorage(metadata);
-      const metadataForStorage = muteGroupStoragePlan.metadata;
+      const preparedVersionContent = await this.prepareVersionContentV2(
+        normalized.type,
+        scope,
+        resolvedData,
+        muteGroupStoragePlan.metadata,
+      );
+      const metadataForStorage = normalized.type === 'state'
+        ? stripSequencerMetadataFromSoundContent(muteGroupStoragePlan.metadata)
+        : muteGroupStoragePlan.metadata;
+      const v2MetadataForStorage = preparePresetVersionMetadataForV2Storage(
+        stripParameterBehaviorsFromV2Metadata(metadataForStorage),
+        normalized.type === 'state',
+      );
 
-      const childSpecs = getPresetChildSpecs(normalized.type, scope);
+      const childSpecs = getPresetChildSpecs(normalized.type, scope)
+        .filter((childSpec) => {
+          if (isSoundOnlySource && childSpec.slot === 'euclideanPattern') return false;
+          if (normalized.type === 'kit' && scope === 'granularKit' && /^granularVoice[1-4]$/.test(childSpec.slot)) return false;
+          if (normalized.type === 'source' && scope === 'dynamicsBus' && (childSpec.slot === 'eq1' || childSpec.slot === 'eq2')) return false;
+          if (normalized.type === 'kit' && scope === 'pad1Kit' && childSpec.slot === 'pad1') return false;
+          if (normalized.type === 'kit' && scope === 'pad2Kit' && childSpec.slot === 'pad2') return false;
+          return true;
+        });
       const childRefData: Record<string, Record<string, unknown>> = {};
       const refsToInsert: PendingVersionRefV2[] = [];
 
@@ -2282,12 +2625,26 @@ export class SupabasePresetStore implements IPresetStore {
         refsToInsert.push(explicitRef);
       }
 
-      const overrideData = stripReferencedChildData(resolvedData, childRefData);
-      const pendingRefKeys = refsToInsert.map(makePendingRefKey).sort();
-      const patch = previousResolvedRecord ? computeRecordPatch(previousResolvedRecord, resolvedData) : null;
+      const childStrippedOverrideData = stripSharedComponentContentFromParent(
+        stripReferencedChildData(resolvedData, childRefData),
+        normalized.type,
+        scope,
+      );
+      const overrideData = normalized.type === 'state'
+        ? stripHarmonyContentFromL4Override(stripPortableSequencerContentFromL4Override(childStrippedOverrideData))
+        : childStrippedOverrideData;
+      const pendingRefKeys = [
+        ...refsToInsert.map(makePendingRefKey),
+        ...preparedVersionContent.refs.map(ref => [
+          'content', ref.slot, ref.contentType, ref.contentHash,
+        ].join(':')),
+      ].sort();
+      const patch = previousResolvedRecord ? computeRecordPatch(previousResolvedRecord, storageResolvedData) : null;
       const patchBytes = patch ? stableStringifyCanonical(patch).length : 0;
-      const snapshotBytes = stableStringifyCanonical(resolvedData).length;
+      const snapshotBytes = stableStringifyCanonical(storageResolvedData).length;
       const forceCheckpoint =
+        normalized.type === 'state'
+        ||
         version.v === 1
         || version.v % VERSION_CHECKPOINT_INTERVAL === 0
         || !patch
@@ -2298,8 +2655,8 @@ export class SupabasePresetStore implements IPresetStore {
 
       const [nextOverrideHash, nextMetadataHash, nextResolvedHash] = await Promise.all([
         this.hashStorablePayloadV2(overrideData),
-        metadataForStorage ? this.hashStorablePayloadV2(metadataForStorage) : Promise.resolve(null),
-        this.hashStorablePayloadV2(resolvedData),
+        v2MetadataForStorage ? this.hashStorablePayloadV2(v2MetadataForStorage) : Promise.resolve(null),
+        normalized.type === 'state' ? Promise.resolve(null) : this.hashStorablePayloadV2(storageResolvedData),
       ]);
 
       const previousSignature: PresetVersionStorageSignature | null = previousStoredVersionRow
@@ -2318,15 +2675,19 @@ export class SupabasePresetStore implements IPresetStore {
       };
 
       if (presetVersionStorageSignaturesEqual(previousSignature, nextSignature)) {
-        previousResolvedRecord = resolvedData;
+        previousResolvedRecord = storageResolvedData;
         continue;
       }
 
       const [overridePayload, metadataPayload, patchPayload, resolvedPayload] = await Promise.all([
         this.makeStorablePayloadV2('override', overrideData),
-        metadataForStorage ? this.makeStorablePayloadV2('metadata', metadataForStorage) : Promise.resolve(null),
-        storageMode === 'patch' && patch ? this.makeStorablePayloadV2('patch', patch) : Promise.resolve(null),
-        this.makeStorablePayloadV2('resolved', resolvedData),
+        v2MetadataForStorage ? this.makeStorablePayloadV2('metadata', v2MetadataForStorage) : Promise.resolve(null),
+        normalized.type !== 'state' && storageMode === 'patch' && patch
+          ? this.makeStorablePayloadV2('patch', patch)
+          : Promise.resolve(null),
+        normalized.type === 'state'
+          ? Promise.resolve(null)
+          : this.makeStorablePayloadV2('resolved', storageResolvedData),
       ]);
 
       const { preset, version: versionRow } = await this.savePresetVersionAtomicallyV2(
@@ -2347,13 +2708,14 @@ export class SupabasePresetStore implements IPresetStore {
           is_checkpoint: storageMode !== 'patch',
           created_at: this.getVersionTimestamp(version),
         },
-        [overridePayload, metadataPayload, patchPayload, resolvedPayload]
+        [overridePayload, metadataPayload, patchPayload, resolvedPayload, ...preparedVersionContent.payloads]
           .filter((payload): payload is StorablePayloadV2 => Boolean(payload)),
         refsToInsert,
+        preparedVersionContent.refs,
       );
       presetRow = preset;
       previousStoredVersionRow = versionRow;
-      previousResolvedRecord = resolvedData;
+      previousResolvedRecord = storageResolvedData;
       previousRefKeys = pendingRefKeys;
     }
 

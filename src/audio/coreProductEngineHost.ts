@@ -747,7 +747,7 @@ class CoreProductEngineHost {
   private handleTelemetry(telemetry: CoreProductTelemetrySnapshot): void {
     const hostTelemetry = this.generatedSequencerCaptureTelemetryHistory.withHistory(this.withHostDiagnostics(telemetry));
     logCoreProductDebugTelemetry(hostTelemetry);
-    this.latestTelemetry = hostTelemetry;
+    this.latestTelemetry = hostTelemetry; this.arrangementBridge.syncTransportTelemetry(hostTelemetry);
     if (this.journeyMorphClock.running && typeof hostTelemetry.journeyMorphPhase === 'number') {
       this.adapterState = {
         ...this.adapterState,

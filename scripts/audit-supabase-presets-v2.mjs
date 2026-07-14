@@ -72,6 +72,16 @@ async function fetchAll(table, select, query = (builder) => builder, pageSize = 
   return rows;
 }
 
+async function fetchOptionalTable(table, select, query) {
+  try {
+    return await fetchAll(table, select, query);
+  } catch (error) {
+    const text = String(error?.message ?? error).toLowerCase();
+    if (text.includes('does not exist') || text.includes('schema cache') || text.includes('pgrst205')) return [];
+    throw error;
+  }
+}
+
 function isPermissionDenied(error) {
   const text = String(error?.message ?? error ?? '').toLowerCase();
   return text.includes('permission denied') || text.includes('42501');
@@ -93,8 +103,9 @@ async function fetchRowsFromPostgres() {
   await client.connect();
   try {
     const presetsResult = await client.query(`
-        select id, owner_key, type, scope, name, latest_version_no, latest_version_id,
-               latest_resolved_hash, latest_metadata_hash, updated_at, archived, deleted_at, tags
+        select id, owner_key, type, scope, name, family_name, variant_name, variant_rank,
+               latest_version_no, latest_version_id, latest_resolved_hash, latest_metadata_hash,
+               updated_at, archived, deleted_at, tags
           from public.presets_v2
          order by id asc
       `);
@@ -110,16 +121,55 @@ async function fetchRowsFromPostgres() {
           from public.preset_version_refs_v2
          order by version_id asc, ref_slot asc
       `);
+    const hasContentRefs = (await client.query(
+      "select to_regclass('public.preset_version_content_refs_v2') is not null present",
+    )).rows[0]?.present === true;
+    const contentRefsResult = hasContentRefs
+      ? await client.query(`
+          select version_id, ref_slot, content_hash, content_type, created_at
+            from public.preset_version_content_refs_v2
+           order by version_id asc, ref_slot asc
+        `)
+      : { rows: [] };
     const payloadsResult = await client.query(`
         select hash, payload_kind, payload, payload_bytes, created_at, last_seen_at
           from public.preset_payloads_v2
          order by hash asc
       `);
+    const lifecycleResult = await client.query(`
+      select
+        exists (
+          select 1 from cron.job
+           where jobname = 'kessho-v2-lifecycle-maintenance'
+             and active
+             and command = 'select public.kessho_run_preset_lifecycle_maintenance_v2();'
+        ) lifecycle_cron_installed,
+        coalesce(
+          pg_get_functiondef(to_regprocedure('public.kessho_run_preset_storage_maintenance_v2(boolean,integer)'))
+            like '%preset_version_content_refs_v2%',
+          false
+        ) maintenance_counts_content_refs,
+        coalesce(
+          pg_get_functiondef(to_regprocedure('public.kessho_purge_recycled_presets_v2(boolean,interval,integer)'))
+            not like '%historical_versions_to_prune%',
+          false
+        ) purge_preserves_historical_versions,
+        coalesce(
+          has_function_privilege(
+            'authenticated',
+            to_regprocedure('public.kessho_restore_preset_v2(uuid)'),
+            'EXECUTE'
+          ),
+          false
+        ) authenticated_restore_enabled
+    `);
     return {
       presets: presetsResult.rows,
       versions: versionsResult.rows,
       refs: refsResult.rows,
+      contentRefs: contentRefsResult.rows,
       payloads: payloadsResult.rows,
+      lifecycle: lifecycleResult.rows[0] ?? null,
     };
   } finally {
     await client.end();
@@ -290,16 +340,18 @@ if (!skipAuth && !usesPrivilegedKey && !databaseUrl) {
 let presets;
 let versions;
 let refs;
+let contentRefs;
 let payloads;
+let lifecycle = null;
 let auditMode = usesPrivilegedKey ? 'service-role-rest' : databaseUrl ? 'direct-postgres' : 'authenticated-rest';
 try {
   if (!usesPrivilegedKey && databaseUrl) {
-    ({ presets, versions, refs, payloads } = await fetchRowsFromPostgres());
+    ({ presets, versions, refs, contentRefs, payloads, lifecycle } = await fetchRowsFromPostgres());
   } else {
-    [presets, versions, refs, payloads] = await Promise.all([
+    [presets, versions, refs, contentRefs, payloads] = await Promise.all([
       fetchAll(
         'presets_v2',
-        'id,owner_key,type,scope,name,latest_version_no,latest_version_id,latest_resolved_hash,latest_metadata_hash,updated_at,archived,deleted_at,tags',
+        'id,owner_key,type,scope,name,family_name,variant_name,variant_rank,latest_version_no,latest_version_id,latest_resolved_hash,latest_metadata_hash,updated_at,archived,deleted_at,tags',
         (builder) => builder.order('id', { ascending: true }),
       ),
       fetchAll(
@@ -310,6 +362,11 @@ try {
       fetchAll(
         'preset_version_refs_v2',
         'version_id,ref_slot,target_preset_id,target_version_no,follow_latest,override_hash,created_at',
+        (builder) => builder.order('version_id', { ascending: true }).order('ref_slot', { ascending: true }),
+      ),
+      fetchOptionalTable(
+        'preset_version_content_refs_v2',
+        'version_id,ref_slot,content_hash,content_type,created_at',
         (builder) => builder.order('version_id', { ascending: true }).order('ref_slot', { ascending: true }),
       ),
       fetchAll(
@@ -331,6 +388,32 @@ const presetById = new Map(presets.map((row) => [row.id, row]));
 const versionById = new Map(versions.map((row) => [row.id, row]));
 const versionByPresetAndNo = new Map(versions.map((row) => [key(row.preset_id, row.version_no), row]));
 const payloadByHash = new Map(payloads.map((row) => [row.hash, row]));
+const refsByVersionId = new Map();
+for (const ref of refs) {
+  const bucket = refsByVersionId.get(ref.version_id) ?? [];
+  bucket.push(ref);
+  refsByVersionId.set(ref.version_id, bucket);
+}
+
+function isInternalDerivedPreset(preset) {
+  return String(preset?.name ?? '').startsWith('__derived__/')
+    || (Array.isArray(preset?.tags) && preset.tags.includes('internal-derived'));
+}
+
+function reachablePresetIdsFrom(roots) {
+  const reachable = new Set();
+  const queue = [...roots];
+  while (queue.length > 0) {
+    const preset = queue.shift();
+    if (!preset || reachable.has(preset.id)) continue;
+    reachable.add(preset.id);
+    for (const ref of refsByVersionId.get(preset.latest_version_id) ?? []) {
+      const child = presetById.get(ref.target_preset_id);
+      if (child?.latest_version_id) queue.push(child);
+    }
+  }
+  return reachable;
+}
 
 const uses = [];
 for (const version of versions) {
@@ -347,6 +430,12 @@ for (const ref of refs) {
   const context = `${ownerPreset?.type}:${ownerPreset?.scope ?? ''}:${ownerPreset?.name}:v${ownerVersion?.version_no}:${ref.ref_slot}`;
   if (ref.override_hash) uses.push({ hash: ref.override_hash, role: 'refs_override', context });
 }
+for (const ref of contentRefs) {
+  const ownerVersion = versionById.get(ref.version_id);
+  const ownerPreset = ownerVersion ? presetById.get(ownerVersion.preset_id) : null;
+  const context = `${ownerPreset?.type}:${ownerPreset?.scope ?? ''}:${ownerPreset?.name}:v${ownerVersion?.version_no}:${ref.ref_slot}`;
+  uses.push({ hash: ref.content_hash, role: 'content', context });
+}
 
 const missingPayloadUses = uses.filter((use) => !payloadByHash.has(use.hash));
 const roleByHash = new Map();
@@ -356,6 +445,7 @@ for (const use of uses) {
 }
 
 const expectedKindByRole = {
+  content: 'content',
   override: 'override',
   metadata: 'metadata',
   patch: 'patch',
@@ -484,13 +574,19 @@ for (const ref of refs) {
   }
 }
 
-const referencedPresetIds = new Set(refs.map((ref) => ref.target_preset_id));
-const activeUnreferencedInternalDerived = presets
+const activeVisibleRoots = presets.filter(preset => (
+  preset.deleted_at == null && preset.latest_version_id && !isInternalDerivedPreset(preset)
+));
+const retainedVisibleRoots = presets.filter(preset => (
+  preset.latest_version_id && !isInternalDerivedPreset(preset)
+));
+const activeVisibleReachableIds = reachablePresetIdsFrom(activeVisibleRoots);
+const retainedVisibleReachableIds = reachablePresetIdsFrom(retainedVisibleRoots);
+const activeUnreachableInternalDerived = presets
   .filter((preset) => (
     preset.deleted_at == null
-    && Array.isArray(preset.tags)
-    && preset.tags.includes('internal-derived')
-    && !referencedPresetIds.has(preset.id)
+    && isInternalDerivedPreset(preset)
+    && !retainedVisibleReachableIds.has(preset.id)
   ))
   .map((preset) => ({
     type: preset.type,
@@ -498,8 +594,72 @@ const activeUnreferencedInternalDerived = presets
     name: preset.name,
     updatedAt: preset.updated_at,
   }))
-  .sort((left, right) => timestampKey(left.updatedAt).localeCompare(timestampKey(right.updatedAt)))
+  .sort((left, right) => timestampKey(left.updatedAt).localeCompare(timestampKey(right.updatedAt)));
+
+const activeInternalRetainedOnly = presets
+  .filter((preset) => (
+    preset.deleted_at == null
+    && isInternalDerivedPreset(preset)
+    && retainedVisibleReachableIds.has(preset.id)
+    && !activeVisibleReachableIds.has(preset.id)
+  ))
+  .map((preset) => ({ type: preset.type, scope: preset.scope, name: preset.name }))
   .slice(0, 20);
+
+const recycledRootsWithDeletedInternalDescendants = [];
+for (const root of retainedVisibleRoots.filter(preset => preset.deleted_at != null)) {
+  const graphIds = reachablePresetIdsFrom([root]);
+  const deletedInternal = [...graphIds]
+    .map(id => presetById.get(id))
+    .filter(preset => preset && preset.id !== root.id && preset.deleted_at != null && isInternalDerivedPreset(preset));
+  if (deletedInternal.length > 0) {
+    recycledRootsWithDeletedInternalDescendants.push({
+      type: root.type,
+      scope: root.scope,
+      name: root.name,
+      deletedInternalDescendants: deletedInternal.length,
+      descendants: deletedInternal.slice(0, 5).map(preset => preset.name),
+    });
+  }
+}
+recycledRootsWithDeletedInternalDescendants.sort((left, right) => (
+  right.deletedInternalDescendants - left.deletedInternalDescendants || left.name.localeCompare(right.name)
+));
+
+const orphanedPatchRoots = versions
+  .filter(version => (
+    version.version_no > 1
+    && version.storage_mode === 'patch'
+    && !version.parent_version_id
+  ))
+  .map((version) => {
+    const preset = presetById.get(version.preset_id);
+    return {
+      context: `${preset?.type}:${preset?.scope ?? ''}:${preset?.name}:v${version.version_no}`,
+      hasResolved: Boolean(version.resolved_hash),
+    };
+  });
+
+const activeFamilyGroups = new Map();
+for (const preset of presets.filter(row => row.deleted_at == null && !isInternalDerivedPreset(row))) {
+  const familyName = String(preset.family_name ?? preset.name ?? '').trim();
+  const familyKey = key(preset.owner_key, preset.type, preset.scope, familyName.toLowerCase());
+  const group = activeFamilyGroups.get(familyKey) ?? { familyName, rows: [] };
+  group.rows.push(preset);
+  activeFamilyGroups.set(familyKey, group);
+}
+const activeFamiliesWithoutParent = [...activeFamilyGroups.values()]
+  .filter(group => !group.rows.some(preset => (
+    preset.name === group.familyName
+    || preset.variant_name === group.familyName
+    || preset.variant_rank === 0
+  )))
+  .map(group => ({
+    familyName: group.familyName,
+    type: group.rows[0]?.type,
+    scope: group.rows[0]?.scope,
+    variants: group.rows.map(preset => preset.name).sort(),
+  }));
 
 const hashMismatches = [];
 for (const payload of payloads) {
@@ -639,12 +799,24 @@ function duplicateGroupsFrom(map, includeMetadata) {
     .slice(0, 20);
 }
 
+const lifecycleConfigurationIssues = lifecycle
+  ? Object.entries({
+      lifecycle_cron_installed: lifecycle.lifecycle_cron_installed,
+      maintenance_counts_content_refs: lifecycle.maintenance_counts_content_refs,
+      purge_preserves_historical_versions: lifecycle.purge_preserves_historical_versions,
+      authenticated_restore_enabled: lifecycle.authenticated_restore_enabled,
+    })
+      .filter(([, enabled]) => enabled !== true)
+      .map(([check]) => check)
+  : [];
+
 const report = {
   mode: auditMode,
   counts: {
     presets: presets.length,
     versions: versions.length,
     refs: refs.length,
+    contentRefs: contentRefs.length,
     payloads: payloads.length,
   },
   integrity: {
@@ -664,8 +836,18 @@ const report = {
     fixedRefPolicyIssues: fixedRefPolicyIssues.slice(0, 20),
     activeLatestRefToRecycledCount: activeLatestRefsToRecycled.length,
     activeLatestRefsToRecycled: activeLatestRefsToRecycled.slice(0, 20),
-    activeUnreferencedInternalDerivedCount: activeUnreferencedInternalDerived.length,
-    activeUnreferencedInternalDerived,
+    activeUnreachableInternalDerivedCount: activeUnreachableInternalDerived.length,
+    activeUnreachableInternalDerived: activeUnreachableInternalDerived.slice(0, 20),
+    activeInternalRetainedOnlyCount: activeInternalRetainedOnly.length,
+    activeInternalRetainedOnly,
+    recycledRootRestoreHazardCount: recycledRootsWithDeletedInternalDescendants.length,
+    recycledRootRestoreHazards: recycledRootsWithDeletedInternalDescendants.slice(0, 20),
+    orphanedPatchRootCount: orphanedPatchRoots.length,
+    orphanedPatchRoots: orphanedPatchRoots.slice(0, 20),
+    activeFamilyWithoutParentCount: activeFamiliesWithoutParent.length,
+    activeFamiliesWithoutParent: activeFamiliesWithoutParent.slice(0, 20),
+    lifecycleConfigurationIssueCount: lifecycleConfigurationIssues.length,
+    lifecycleConfigurationIssues,
     kindMismatchCount: 0,
     kindMismatches: [],
     payloadKindReuseCount: payloadKindReuse.length,
@@ -694,6 +876,7 @@ const report = {
     sameResolvedAndMetadataHash: duplicateGroupsFrom(groupsByResolvedMetadata, true),
   },
   duplicateActiveLogicalIdentities,
+  lifecycle,
 };
 
 const blockingIssueCount =
@@ -703,6 +886,12 @@ const blockingIssueCount =
   + report.integrity.refIssueCount
   + report.integrity.fixedRefPolicyIssueCount
   + report.integrity.activeLatestRefToRecycledCount
+  + report.integrity.activeUnreachableInternalDerivedCount
+  + report.integrity.recycledRootRestoreHazardCount
+  + report.integrity.orphanedPatchRootCount
+  + report.integrity.activeFamilyWithoutParentCount
+  + report.integrity.lifecycleConfigurationIssueCount
+  + report.integrity.unreferencedPayloadCount
   + report.duplicateActiveLogicalIdentities.length;
 
 if (outputJson) {
@@ -710,7 +899,7 @@ if (outputJson) {
 } else {
   console.log('Supabase preset V2 audit');
   console.log(`Mode: ${auditMode}`);
-  console.log(`Rows: ${report.counts.presets} presets, ${report.counts.versions} versions, ${report.counts.refs} refs, ${report.counts.payloads} payloads`);
+  console.log(`Rows: ${report.counts.presets} presets, ${report.counts.versions} versions, ${report.counts.refs} refs, ${report.counts.contentRefs} content refs, ${report.counts.payloads} payloads`);
   console.log(`Dedupe: ${formatBytes(logicalReferencedBytes)} logical -> ${formatBytes(uniqueReferencedBytes)} unique referenced (${report.dedupe.estimatedSavingsPercent}% saved)`);
   console.log(`Payload storage: ${formatBytes(allPayloadBytes)} total, ${formatBytes(report.integrity.unreferencedPayloadBytes)} unreferenced`);
   console.log(`Removable historical resolved cache: ${formatBytes(report.dedupe.removableHistoricalResolvedBytes)} across ${report.dedupe.removableHistoricalResolvedPayloads} payloads`);
@@ -719,6 +908,12 @@ if (outputJson) {
   console.log(`Recycled latest rollup tombstones: ${report.integrity.recycledLatestRollupIssueCount}`);
   console.log(`Fixed ref policy issues: ${report.integrity.fixedRefPolicyIssueCount}`);
   console.log(`Duplicate active logical identities: ${report.duplicateActiveLogicalIdentities.length}`);
+  console.log(`Active unreachable internal-derived presets: ${report.integrity.activeUnreachableInternalDerivedCount}`);
+  console.log(`Recycled-root restore hazards: ${report.integrity.recycledRootRestoreHazardCount}`);
+  console.log(`Orphaned patch roots: ${report.integrity.orphanedPatchRootCount}`);
+  console.log(`Active families without a parent: ${report.integrity.activeFamilyWithoutParentCount}`);
+  console.log(`Lifecycle configuration issues: ${report.integrity.lifecycleConfigurationIssueCount}`);
+  console.log(`Unreferenced payloads: ${report.integrity.unreferencedPayloadCount}`);
   console.log(`Version storage warnings: ${report.integrity.versionStorageIssueCount}`);
   console.log(`Payload-kind reuse allowed: ${report.integrity.payloadKindReuseCount}`);
   if (report.integrity.versionStorageIssueCount > 0) {

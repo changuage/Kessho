@@ -48,10 +48,14 @@ import SeqMiniOverview from './SeqMiniOverview';
 import SeqLane from './SeqLane';
 import SeqSparkline from './SeqSparkline';
 import {
+  DRUM_LANE_ENABLED_KEYS,
+  applySequencerTransportPlan,
   drumLaneEnableTouchedAfterPresetRestore,
-  shouldAutoEnableDrumLaneOnTransportStart,
-} from './drumSequencerTransportPolicy';
+  planDrumSequencerTransportToggle,
+} from '../sequencer/sequencerTransportPolicy';
 import { useSliderHelp } from '../SliderHelpOverlay';
+import { isEditableShortcutTarget } from '../keyboard/keyboardTargets';
+import { useKeyboardScope } from '../keyboard/useKeyboardScope';
 import { useVisualFeatureToggle } from '../hooks/useVisualFeatureToggle';
 import { SliderPrimitive } from '../sliderSystem';
 import { serializeStepOverrides } from '../sequencer/stepOverrideSerialization';
@@ -93,15 +97,6 @@ const LANE_CONFIGS = makeDrumLaneArray((laneIndex) => ({
   color: SEQUENCER_LANE_COLORS[laneIndex] ?? SEQUENCER_LANE_COLORS[0],
   name: `Seq ${laneIndex + 1}`,
 }));
-
-const DRUM_LANE_ENABLED_KEYS = [
-  'drumEuclid1Enabled',
-  'drumEuclid2Enabled',
-  'drumEuclid3Enabled',
-  'drumEuclid4Enabled',
-  'drumEuclid5Enabled',
-  'drumEuclid6Enabled',
-] as const satisfies readonly (keyof SliderState)[];
 
 type EvolvedSequencerPatch = {
   laneIndex: number;
@@ -233,6 +228,7 @@ export interface DrumPageProps {
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   onRequestPlaybackStart?: (statePatch?: Partial<SliderState>) => void;
+  drumLaneEnableTouchedRef?: React.MutableRefObject<boolean>;
   togglePanel: (id: string) => void;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   triggerVoice: (voice: DrumVoiceType, options?: ScatterPreviewTriggerOptions) => void;
@@ -302,6 +298,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     onParamChange,
     onSelectChange,
     onRequestPlaybackStart,
+    drumLaneEnableTouchedRef: sharedDrumLaneEnableTouchedRef,
     togglePanel,
     sliderProps,
     triggerVoice,
@@ -365,7 +362,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   const [triggeredVoices, setTriggeredVoices] = useState<Record<string, boolean>>({});
   const leftShiftHeldRef = useRef(false);
   const zHeldRef = useRef(false);
-  const drumLaneEnableTouchedRef = useRef(false);
+  const localDrumLaneEnableTouchedRef = useRef(false);
+  const drumLaneEnableTouchedRef = sharedDrumLaneEnableTouchedRef ?? localDrumLaneEnableTouchedRef;
   const previousPresetVersionRef = useRef(presetVersion);
   const drumTriggerTimersRef = useRef<Record<string, number | null>>({});
   const evolveFlashTimersRef = useRef<Array<number | null>>(makeDrumLaneArray(() => null));
@@ -629,8 +627,6 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
 
   const setSharedSequencerBpm = useCallback((bpm: number) => {
     onParamChange('sequencerMasterBPM' as keyof SliderState, bpm);
-    onParamChange('synthEuclidBaseBPM' as keyof SliderState, bpm);
-    onParamChange('drumEuclidBaseBPM' as keyof SliderState, bpm);
   }, [onParamChange]);
 
   // Notify parent when viewMode changes so it persists across tab switches
@@ -1132,34 +1128,15 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   }, [seq.viewMode, seq.setViewMode]);
 
   const toggleDrumSequencerTransport = useCallback(() => {
-    const next = !state.drumEuclidMasterEnabled;
-    const startPatch: Partial<SliderState> = next ? { drumEuclidMasterEnabled: true } : {};
-    if (next && !state.drumEnabled) {
-      onSelectChange('drumEnabled', true);
-      startPatch.drumEnabled = true;
-    }
-    if (shouldAutoEnableDrumLaneOnTransportStart({
-      starting: next,
-      anyLaneEnabled: anyDrumLaneEnabled,
-      laneEnableTouched: drumLaneEnableTouchedRef.current,
-    })) {
-      const activeLaneEnabledKey = DRUM_LANE_ENABLED_KEYS[seq.activeTab] ?? DRUM_LANE_ENABLED_KEYS[0];
-      onSelectChange(activeLaneEnabledKey, true);
-      startPatch[activeLaneEnabledKey] = true;
-    }
-    onSelectChange('drumEuclidMasterEnabled', next);
-    if (next && !isRunning) {
-      onRequestPlaybackStart?.(startPatch);
-    }
+    const plan = planDrumSequencerTransportToggle(state, seq.activeTab, drumLaneEnableTouchedRef.current);
+    applySequencerTransportPlan(plan, onSelectChange, !isRunning ? onRequestPlaybackStart : undefined);
   }, [
+    drumLaneEnableTouchedRef,
     isRunning,
     onRequestPlaybackStart,
     onSelectChange,
     seq.activeTab,
-    anyDrumLaneEnabled,
-    drumLaneEnabledSignature,
-    state.drumEnabled,
-    state.drumEuclidMasterEnabled,
+    state,
   ]);
 
   const startDrumPlaybackForOverdub = useCallback(() => {
@@ -1270,9 +1247,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       : 'Ready';
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    const tag = (e.target as HTMLElement)?.tagName;
     if (e.defaultPrevented) return;
-    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    if (isEditableShortcutTarget(e.target)) return;
     if (e.repeat) return;
 
     if ((e.metaKey || e.ctrlKey) && e.code === 'KeyC') {
@@ -1424,14 +1400,17 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     if (e.code === 'KeyZ') zHeldRef.current = false;
   }, []);
 
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, [handleKeyDown, handleKeyUp]);
+  const handleKeyboardBlur = useCallback(() => {
+    leftShiftHeldRef.current = false;
+    zHeldRef.current = false;
+  }, []);
+
+  useKeyboardScope({
+    priority: 50,
+    onKeyDown: handleKeyDown,
+    onKeyUp: handleKeyUp,
+    onBlur: handleKeyboardBlur,
+  });
 
   return (
     <div className="drum-root">
@@ -1560,6 +1539,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               label="BPM"
               onChange={setSharedSequencerBpm}
               shapeByDrag
+              commitOnRelease
             />
             <div className={`live-overdub-controls${drumLiveOverdub.isArmed ? ' active' : ''}`}>
               <button

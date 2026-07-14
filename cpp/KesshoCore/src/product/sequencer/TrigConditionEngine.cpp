@@ -4,8 +4,7 @@
   if (trig_condition == KESSHO_PRODUCT_TRIG_ALWAYS) {
     return true;
   }
-  const double samples_per_bar = transport.samplesPerBeat(sample_rate) * static_cast<double>(std::max(1u, transport.beats_per_bar));
-  const uint64_t bar = static_cast<uint64_t>(static_cast<double>(absolute_sample) / samples_per_bar);
+  const uint64_t bar = transport.barIndexAt(sample_rate, absolute_sample);
   if (trig_condition == KESSHO_PRODUCT_TRIG_EVERY_2_BARS) {
     return (bar % 2u) == 0u;
   }

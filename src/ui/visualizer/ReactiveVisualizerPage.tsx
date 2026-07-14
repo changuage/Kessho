@@ -27,19 +27,22 @@ import {
 } from './visualizerModulation';
 import {
   DEFAULT_LAYER_STACK,
+  DEFAULT_VISUALIZER_LAYER_MACROS,
   DEFAULT_VISUALIZER_MACROS,
   VISUALIZER_LAYER_DEFS,
-  derivePerformanceMacroPatch,
   layerOrderToStack,
   moveLayerInStack,
   normalizeLayerOrder,
   stackToLayerOrder,
   updateControlsPatch,
   type VisualizerLayerId,
+  type VisualizerLayerMacroId,
+  type VisualizerLayerMacros,
   type VisualizerPerformanceMacroId,
   type VisualizerPerformanceMacros,
   type VisualizerQualityMode,
 } from './visualizerControls';
+import { resolveVisualizerMacroControls } from './visualizerSceneResolver';
 import {
   resolveVisualizerQualityMode,
   type VisualizerQualitySettings,
@@ -51,7 +54,29 @@ import {
   saveVisualizerPreset,
 } from './visualizerPresetStore';
 import type { PresetSummary } from '../../presets/types';
-import { getVisualizerPulseSnapshot } from './visualizerSignals';
+import {
+  getVisualizerPulseSnapshot,
+  setVisualizerSignalDemand,
+  subscribeVisualizerSignals,
+} from './visualizerSignals';
+import {
+  resolveVisualizerFramePlan,
+  type VisualizerFrameMode,
+} from './visualizerFrameScheduler';
+import {
+  recordVisualizerFramePerformance,
+  recordVisualizerParkedTransition,
+  visualizerPerformanceInstrumentationEnabled,
+} from './visualizerPerformance';
+import { readVisualizerTelemetrySignal } from './visualizerTelemetry';
+import { formatVisualizerControlValue } from './visualizerControlDomains';
+import {
+  DEFAULT_VISUALIZER_CONTROLS,
+  VISUALIZER_CONTROL_GROUPS,
+  VISUALIZER_FOCUS_OPTIONS,
+} from './visualizerControlSchema';
+import { VisualizerMacroPanels } from './VisualizerMacroPanels';
+import { VisualizerCanvasSurface } from './VisualizerCanvasSurface';
 import { reactiveVisualizerRootSignal } from './reactiveVisualizerHarmony';
 import './reactiveVisualizer.css';
 
@@ -76,14 +101,6 @@ type ReactiveVisualizerPageInnerProps = Omit<ReactiveVisualizerPageProps, 'enabl
 
 type NumericControlKey = VisualizerNumericControlKey;
 
-type ControlDefinition = {
-  key: NumericControlKey;
-  label: string;
-  left: string;
-  right: string;
-  step?: number;
-};
-
 type EngineMeter = {
   key: keyof Pick<
     ReactiveVisualizerSnapshot,
@@ -93,58 +110,7 @@ type EngineMeter = {
   color: string;
 };
 
-const DEFAULT_CONTROLS: ReactiveVisualizerControls = {
-  style: 0,
-  kaleidoscope: 0,
-  triggerResponse: 0,
-  ripples: 0,
-  motion: 0,
-  color: 0,
-  diffusion: 0,
-  background: 0,
-  frameRate: 0,
-  shape: 0,
-  organic: 0,
-  edges: 0,
-  backdropFade: 0,
-  noiseTurbulence: 0,
-  noiseFlow: 0,
-  noiseSpeed: 0,
-  noiseColor: 0,
-  pulseSync: 0,
-  shapeSize: 0,
-  shapeSpread: 0,
-  shapeCount: 0,
-  noiseSize: 0,
-  noiseDensity: 0,
-  bloomSize: 0,
-  kaleidoSize: 0,
-  glitchIntensity: 0,
-  glitchScale: 0,
-  glitchChromatic: 0,
-  glitchRate: 0,
-  charAmount: 0,
-  charStyle: 0,
-  charGrain: 0,
-  charDrift: 0,
-  kaleidoSegments: 0,
-  kaleidoSpin: 0,
-  kaleidoType: 0,
-  kaleidoReflections: 0,
-  kaleidoPattern: 0,
-  brightness: 0,
-  vibrance: 0,
-  saturation: 0,
-  impactFlash: 0,
-  visualLimiter: 0,
-  pointCloudAmount: 0,
-  pointCloudSize: 0,
-  pointCloudDensity: 0,
-  pointCloudScatter: 0,
-  pointCloudColor: 0,
-  layerOrder: [0, 1, 2, 3, 4],  // shapes, atmosphere, glitch, kaleidoscope, pointCloud
-  focus: 'stringWaves',
-};
+const DEFAULT_CONTROLS = DEFAULT_VISUALIZER_CONTROLS;
 
 const DEFAULT_REACTION: VisualizerReactionSettings = {
   reactionAmount: 0.5,
@@ -155,112 +121,8 @@ const DEFAULT_REACTION: VisualizerReactionSettings = {
 
 const DEFAULT_QUALITY_MODE: VisualizerQualityMode = 'auto';
 
-const FOCUS_OPTIONS: Array<{ value: VisualizerFocus; label: string }> = [
-  { value: 'stringWaves', label: 'String Waves' },
-  { value: 'all', label: 'All' },
-  { value: 'synth', label: 'Synth' },
-  { value: 'earth', label: 'Earth' },
-  { value: 'granular', label: 'Granular' },
-  { value: 'drums', label: 'Drums' },
-  { value: 'fx', label: 'FX' },
-];
-
-const CONTROL_GROUPS: Array<{ label: string; collapsed?: boolean; controls: ControlDefinition[] }> = [
-  {
-    label: 'Shape',
-    controls: [
-      { key: 'shape', label: 'Geometry', left: 'Angular', right: 'Round' },
-      { key: 'shapeCount', label: 'Count', left: 'Few', right: 'Many' },
-      { key: 'shapeSize', label: 'Size', left: 'Small', right: 'Large' },
-      { key: 'shapeSpread', label: 'Spread', left: 'Cluster', right: 'Wide' },
-      { key: 'organic', label: 'Organic', left: 'Uniform', right: 'Irregular' },
-      { key: 'edges', label: 'Edges', left: 'Amoeba', right: 'Gradient' },
-      { key: 'diffusion', label: 'Opacity', left: 'Solid', right: 'Faded' },
-    ],
-  },
-  {
-    label: 'Color',
-    controls: [
-      { key: 'color', label: 'Palette', left: 'Electric', right: 'Pastel' },
-      { key: 'brightness', label: 'Brightness', left: 'Dim', right: 'Bright' },
-      { key: 'saturation', label: 'Saturation', left: 'Muted', right: 'Rich' },
-      { key: 'background', label: 'Background', left: 'Indigo', right: 'Blush' },
-      { key: 'backdropFade', label: 'Backdrop', left: 'Hidden', right: 'Glow' },
-    ],
-  },
-  {
-    label: 'Motion',
-    controls: [
-      { key: 'motion', label: 'Drift', left: 'Fast orbit', right: 'Slow breathe' },
-      { key: 'ripples', label: 'Ripple', left: 'Tight', right: 'Soft' },
-      { key: 'triggerResponse', label: 'Trigger', left: 'Sparks', right: 'Afterglow' },
-    ],
-  },
-  {
-    label: 'Atmosphere',
-    controls: [
-      { key: 'style', label: 'Type', left: 'Nebula', right: 'Aurora' },
-      { key: 'noiseTurbulence', label: 'Turbulence', left: 'Smooth', right: 'Chaotic' },
-      { key: 'noiseFlow', label: 'Flow', left: 'Horizontal', right: 'Vertical' },
-      { key: 'noiseSpeed', label: 'Speed', left: 'Frozen', right: 'Fast' },
-      { key: 'noiseColor', label: 'Color', left: 'Random', right: 'Shape sync' },
-      { key: 'noiseSize', label: 'Scale', left: 'Detail', right: 'Broad' },
-      { key: 'noiseDensity', label: 'Density', left: 'Sparse', right: 'Dense' },
-      { key: 'bloomSize', label: 'Bloom', left: 'Tight', right: 'Wide' },
-    ],
-  },
-  {
-    label: 'Glitch',
-    collapsed: true,
-    controls: [
-      { key: 'glitchIntensity', label: 'Mode', left: 'VHS', right: 'Digital' },
-      { key: 'glitchScale', label: 'Size', left: 'Large', right: 'Fine' },
-      { key: 'glitchChromatic', label: 'Chromatic', left: 'Clean', right: 'RGB split' },
-      { key: 'glitchRate', label: 'Rate', left: 'Slow', right: 'Chaotic' },
-    ],
-  },
-  {
-    label: 'Kaleidoscope',
-    collapsed: true,
-    controls: [
-      { key: 'kaleidoscope', label: 'Intensity', left: 'Fractal', right: 'Glass' },
-      { key: 'kaleidoSegments', label: 'Segments', left: 'Few', right: 'Many' },
-      { key: 'kaleidoSpin', label: 'Spin', left: 'Reverse', right: 'Forward' },
-      { key: 'kaleidoType', label: 'Mode', left: 'Prism', right: 'Liquid' },
-      { key: 'kaleidoPattern', label: 'Pattern', left: 'Radial', right: 'Repeat' },
-      { key: 'kaleidoSize', label: 'Coverage', left: 'Center', right: 'Full' },
-    ],
-  },
-  {
-    label: 'Point Cloud',
-    collapsed: true,
-    controls: [
-      { key: 'pointCloudAmount', label: 'Amount', left: 'Off', right: 'Cloud' },
-      { key: 'pointCloudSize', label: 'Dot Size', left: 'Fine', right: 'Large' },
-      { key: 'pointCloudDensity', label: 'Density', left: 'Sparse', right: 'Dense' },
-      { key: 'pointCloudScatter', label: 'Scatter', left: 'Grid', right: 'Jitter' },
-      { key: 'pointCloudColor', label: 'Color Boost', left: 'Source', right: 'Neon' },
-    ],
-  },
-  {
-    label: 'Character',
-    collapsed: true,
-    controls: [
-      { key: 'charAmount', label: 'Amount', left: 'Clean', right: 'Heavy' },
-      { key: 'charStyle', label: 'Style', left: 'Tape', right: 'Digital' },
-      { key: 'charGrain', label: 'Grain', left: 'Smooth', right: 'Noisy' },
-      { key: 'charDrift', label: 'Drift', left: 'Stable', right: 'Wobbly' },
-    ],
-  },
-  {
-    label: 'System',
-    collapsed: true,
-    controls: [
-      { key: 'pulseSync', label: 'Pulse sync', left: 'Free', right: 'Locked' },
-      { key: 'frameRate', label: 'Performance', left: 'Battery', right: 'Smooth' },
-    ],
-  },
-];
+const FOCUS_OPTIONS = VISUALIZER_FOCUS_OPTIONS;
+const CONTROL_GROUPS = VISUALIZER_CONTROL_GROUPS;
 
 const ENGINE_METERS: EngineMeter[] = [
   { key: 'pad', label: 'Pad', color: '#E07A84' },
@@ -272,22 +134,6 @@ const ENGINE_METERS: EngineMeter[] = [
   { key: 'reverb', label: 'Reverb', color: '#B0785A' },
   { key: 'dynamics', label: 'Dynamics', color: '#CC7DB8' },
 ];
-
-const PERFORMANCE_MACRO_LABELS: Record<VisualizerPerformanceMacroId, string> = {
-  soft: 'Soft',
-  pulse: 'Pulse',
-  particles: 'Particles',
-  glitch: 'Glitch',
-  bright: 'Bright',
-};
-
-const PERFORMANCE_MACRO_HERO: Record<VisualizerPerformanceMacroId, string> = {
-  soft: '#a7d8ff',
-  pulse: '#8fffd0',
-  particles: '#ffdc6d',
-  glitch: '#ff7adf',
-  bright: '#fff47a',
-};
 
 const QUALITY_MODE_LABELS: Record<VisualizerQualityMode, string> = {
   auto: 'Auto',
@@ -376,6 +222,18 @@ function sanitizePerformanceMacros(source: Partial<VisualizerPerformanceMacros> 
     particles: clamp01(source?.particles ?? DEFAULT_VISUALIZER_MACROS.particles),
     glitch: clamp01(source?.glitch ?? DEFAULT_VISUALIZER_MACROS.glitch),
     bright: clamp01(source?.bright ?? DEFAULT_VISUALIZER_MACROS.bright),
+  };
+}
+
+function sanitizeLayerMacros(source: Partial<VisualizerLayerMacros> | undefined): VisualizerLayerMacros {
+  return {
+    formation: clamp01(source?.formation ?? DEFAULT_VISUALIZER_LAYER_MACROS.formation),
+    weather: clamp01(source?.weather ?? DEFAULT_VISUALIZER_LAYER_MACROS.weather),
+    fragmentation: clamp01(source?.fragmentation ?? DEFAULT_VISUALIZER_LAYER_MACROS.fragmentation),
+    symmetry: clamp01(source?.symmetry ?? DEFAULT_VISUALIZER_LAYER_MACROS.symmetry),
+    material: clamp01(source?.material ?? DEFAULT_VISUALIZER_LAYER_MACROS.material),
+    age: clamp01(source?.age ?? DEFAULT_VISUALIZER_LAYER_MACROS.age),
+    depth: clamp01(source?.depth ?? DEFAULT_VISUALIZER_LAYER_MACROS.depth),
   };
 }
 
@@ -484,15 +342,14 @@ function focusSnapshot(snapshot: ReactiveVisualizerSnapshot, focus: VisualizerFo
   return next;
 }
 
-function buildSnapshot(
+type ReactiveVisualizerIntentSnapshot = Omit<ReactiveVisualizerSnapshot, 'activeGrains' | 'pulses'>;
+
+function buildIntentSnapshot(
   state: SliderState,
   sliderModes: Record<string, SliderMode>,
   dualRanges: DualRanges,
   engineState: ProductEngineState,
-  activeGrains: number,
-  controls: ReactiveVisualizerControls,
-  timeMs: number,
-): ReactiveVisualizerSnapshot {
+): ReactiveVisualizerIntentSnapshot {
   const value = (key: string, fallback = 0) => runtimeValue(state, sliderModes, dualRanges, key, fallback);
   const padLevel = Math.max(value('synthLevel'), value('pad2Level') * (readBoolean(state, 'pad2Enabled') ? 1 : 0.55));
   const padMorph = Math.max(value('padMorph'), value('pad2Morph'));
@@ -596,14 +453,12 @@ function buildSnapshot(
 
   const modulationRangeEnergy = clamp01(Object.keys(dualRanges).length / 80);
   const transportPulse = engineState.isRunning ? 0.12 : 0;
-  const pulses = getVisualizerPulseSnapshot(timeMs);
-
-  const snapshot: ReactiveVisualizerSnapshot = {
+  return {
     pad: clamp01(padLevel * 0.72 + padTone * 0.32 + padMotion * 0.28 + padMorph * 0.2),
     lead: clamp01(leadLevel * 0.72 + leadMorph * 0.32 + leadRhythm * 0.3),
     drums: clamp01(value('drumLevel') * 0.75 + drumVoiceLevel * 0.3 + drumSeqLevel * 0.3),
     earth: clamp01(earthLevel * 0.5 + earthSources * 0.7),
-    granular: clamp01(value('granularLevel') * 0.6 + granularDensities * 0.32 + granularSends * 0.28 + activeGrains / 36),
+    granular: clamp01(value('granularLevel') * 0.6 + granularDensities * 0.32 + granularSends * 0.28),
     delay: clamp01(delayEnergy * 1.2),
     reverb: clamp01(reverbEnergy * 1.15),
     dynamics: clamp01(dynamicsEnergy * 1.1),
@@ -616,17 +471,46 @@ function buildSnapshot(
     tension: clamp01(value('tension') * 0.8 + modulationRangeEnergy * 0.2),
     spread: clamp01(value('waveSpread') * 0.58 + value('voicingSpread') * 0.32 + transportPulse),
     detune: clamp01(value('detune') / 25),
-    morph: clamp01(Math.max(padMorph, leadMorph, pulses.sequencer)),
+    morph: clamp01(Math.max(padMorph, leadMorph)),
     brightness: clamp01(Math.max(
       logNorm(value('filterCutoffMax', 1600), 40, 12000),
       value('presence'),
       value('reverbInputTone', 0) * 0.5 + 0.5,
     )),
+  };
+}
+
+function buildSnapshotFromIntent(
+  intent: ReactiveVisualizerIntentSnapshot,
+  activeGrains: number,
+  controls: ReactiveVisualizerControls,
+  timeMs: number,
+): ReactiveVisualizerSnapshot {
+  const pulses = getVisualizerPulseSnapshot(timeMs);
+  const snapshot: ReactiveVisualizerSnapshot = {
+    ...intent,
+    pad: resolveLiveVisualizerLevel('pad', intent.pad, timeMs),
+    lead: resolveLiveVisualizerLevel('lead', intent.lead, timeMs),
+    drums: resolveLiveVisualizerLevel('drums', intent.drums, timeMs),
+    earth: resolveLiveVisualizerLevel('earth', intent.earth, timeMs),
+    granular: resolveLiveVisualizerLevel('granular', clamp01(intent.granular + activeGrains / 36), timeMs),
+    delay: resolveLiveVisualizerLevel('delay', intent.delay, timeMs),
+    reverb: resolveLiveVisualizerLevel('reverb', intent.reverb, timeMs),
+    dynamics: resolveLiveVisualizerLevel('dynamics', intent.dynamics, timeMs),
+    morph: clamp01(Math.max(intent.morph, pulses.sequencer)),
     activeGrains,
     pulses,
   };
-
   return focusSnapshot(snapshot, controls.focus);
+}
+
+function resolveLiveVisualizerLevel(
+  key: Parameters<typeof readVisualizerTelemetrySignal>[0],
+  fallback: number,
+  timeMs: number,
+): number {
+  const level = readVisualizerTelemetrySignal(key, 'level', timeMs);
+  return level === null ? fallback : clamp01(fallback * 0.24 + level * 0.86);
 }
 
 function fpsFromControl(value: number): number {
@@ -656,27 +540,50 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   const engineStateRef = useRef(engineState);
   const isPlayingRef = useRef(isPlaying);
   const getActiveGrainsRef = useRef(getActiveGrains);
+  const intentSnapshotRef = useRef<ReactiveVisualizerIntentSnapshot>(
+    buildIntentSnapshot(state, sliderModes, dualRanges, engineState),
+  );
+  const intentSnapshotUpdatedAtRef = useRef(0);
+  const intentSnapshotDirtyRef = useRef(true);
   const mobileReducedVisualsRef = useRef(mobileReducedVisuals);
   const sizeRef = useRef({ width: 960, height: 640 });
   const renderSizeRef = useRef({ width: 0, height: 0, dpr: 0 });
   const lastFrameRef = useRef(0);
+  const lastInteractionRef = useRef(0);
+  const wakeRenderRef = useRef<(interaction?: boolean) => void>(() => undefined);
   const coarsePointerRef = useRef(false);
   const vizAutomationStateRef = useRef<Record<string, DualSliderAutomationState>>({});
   const [controls, setControls] = useState<ReactiveVisualizerControls>(DEFAULT_CONTROLS);
   const [seed, setSeed] = useState(createVisualizerSeed);
   const seedRef = useRef(seed);
   const [performanceMacros, setPerformanceMacros] = useState<VisualizerPerformanceMacros>(DEFAULT_VISUALIZER_MACROS);
+  const performanceMacrosRef = useRef(performanceMacros);
+  const [layerMacros, setLayerMacros] = useState<VisualizerLayerMacros>(DEFAULT_VISUALIZER_LAYER_MACROS);
+  const layerMacrosRef = useRef(layerMacros);
   const [qualityMode, setQualityMode] = useState<VisualizerQualityMode>(DEFAULT_QUALITY_MODE);
   const qualityModeRef = useRef(qualityMode);
   const [rendererMode, setRendererMode] = useState<'webgl2' | 'canvas2d'>('webgl2');
+  const [frameMode, setFrameMode] = useState<VisualizerFrameMode>('settling');
+  const frameModeRef = useRef<VisualizerFrameMode>('settling');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenFallback, setFullscreenFallback] = useState(false);
   const [meterSnapshot, setMeterSnapshot] = useState<ReactiveVisualizerSnapshot>(() => (
-    buildSnapshot(state, sliderModes, dualRanges, engineState, getActiveGrains(), DEFAULT_CONTROLS, 0)
+    buildSnapshotFromIntent(
+      intentSnapshotRef.current,
+      getActiveGrains(),
+      DEFAULT_CONTROLS,
+      0,
+    )
   ));
   const [modulatedControlsState, setModulatedControlsState] = useState<ReactiveVisualizerControls>(DEFAULT_CONTROLS);
   const meterUpdateRef = useRef(0);
-  const { canAnimate } = useAnimationVisibility(rootRef, { rootMargin: '80px' });
+  const metersOpenRef = useRef(false);
+  const { canAnimate } = useAnimationVisibility(canvasWrapRef, { rootMargin: '80px' });
+
+  useEffect(() => {
+    setVisualizerSignalDemand(canAnimate);
+    return () => setVisualizerSignalDemand(false);
+  }, [canAnimate]);
 
   // --- Reaction / modulation state ---
   const [reaction, setReaction] = useState<VisualizerReactionSettings>(DEFAULT_REACTION);
@@ -698,6 +605,8 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   const [presetSaving, setPresetSaving] = useState(false);
 
   controlsRef.current = controls;
+  performanceMacrosRef.current = performanceMacros;
+  layerMacrosRef.current = layerMacros;
   seedRef.current = seed;
   qualityModeRef.current = qualityMode;
   stateRef.current = state;
@@ -711,7 +620,9 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const renderer = new ReactiveVisualizerRenderer(canvas);
+    const forceCanvas2d = import.meta.env.DEV && new URLSearchParams(window.location.search)
+      .get('visualizerRenderer') === 'canvas2d';
+    const renderer = new ReactiveVisualizerRenderer(canvas, { forceCanvas2d });
     rendererRef.current = renderer;
     setRendererMode(renderer.mode);
     return () => {
@@ -764,35 +675,79 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   useEffect(() => {
     if (!canAnimate) {
       lastFrameRef.current = 0;
+      frameModeRef.current = 'parked';
+      setFrameMode('parked');
       return undefined;
     }
     let frameId = 0;
+    let timerId: number | null = null;
+    let scheduled = false;
+
+    const publishFrameMode = (mode: VisualizerFrameMode) => {
+      if (frameModeRef.current === mode) return;
+      frameModeRef.current = mode;
+      setFrameMode(mode);
+      if (mode === 'parked') recordVisualizerParkedTransition();
+    };
+
+    const scheduleFrame = (delayMs = 0) => {
+      if (scheduled) return;
+      scheduled = true;
+      const requestFrame = () => {
+        timerId = null;
+        frameId = requestAnimationFrame(loop);
+      };
+      if (delayMs > 18) {
+        timerId = window.setTimeout(requestFrame, Math.max(0, delayMs - 8));
+      } else {
+        requestFrame();
+      }
+    };
+
     const loop = (timeMs: number) => {
+      scheduled = false;
       const renderer = rendererRef.current;
       if (renderer) {
-        const controlState = controlsRef.current;
+        const measurePerformance = visualizerPerformanceInstrumentationEnabled();
+        const frameStartedAt = measurePerformance ? performance.now() : 0;
+        let intentBuildMs = 0;
+        let intentBuilt = false;
+        const controlState = resolveVisualizerMacroControls(
+          controlsRef.current,
+          performanceMacrosRef.current,
+          layerMacrosRef.current,
+        );
         const quality = resolveCurrentQuality(
           qualityModeRef.current,
           mobileReducedVisualsRef.current,
           coarsePointerRef.current,
         );
-        const requestedFps = isPlayingRef.current
-          ? fpsFromControl(controlState.frameRate)
-          : Math.min(24, fpsFromControl(controlState.frameRate));
-        const fps = clamp(requestedFps, 12, quality.targetFps);
-        const frameInterval = 1000 / fps;
-        if (timeMs - lastFrameRef.current >= frameInterval) {
-          const deltaSeconds = lastFrameRef.current > 0
-            ? clamp((timeMs - lastFrameRef.current) / 1000, 0, 0.25)
-            : 1 / 60;
-          lastFrameRef.current = timeMs;
+        const requestedFps = fpsFromControl(controlState.frameRate);
+        const deltaSeconds = lastFrameRef.current > 0
+          ? clamp((timeMs - lastFrameRef.current) / 1000, 0, 0.25)
+          : 1 / 60;
+        lastFrameRef.current = timeMs;
           const { width, height } = sizeRef.current;
           const dpr = quality.maxDpr;
-          const snapshot = buildSnapshot(
-            stateRef.current,
-            sliderModesRef.current,
-            dualRangesRef.current,
-            engineStateRef.current,
+          const intentRefreshIntervalMs = isPlayingRef.current ? 100 : 500;
+          if (
+            intentSnapshotDirtyRef.current ||
+            timeMs - intentSnapshotUpdatedAtRef.current >= intentRefreshIntervalMs
+          ) {
+            const intentStartedAt = measurePerformance ? performance.now() : 0;
+            intentSnapshotRef.current = buildIntentSnapshot(
+              stateRef.current,
+              sliderModesRef.current,
+              dualRangesRef.current,
+              engineStateRef.current,
+            );
+            intentSnapshotUpdatedAtRef.current = timeMs;
+            intentSnapshotDirtyRef.current = false;
+            intentBuilt = true;
+            if (measurePerformance) intentBuildMs = performance.now() - intentStartedAt;
+          }
+          const snapshot = buildSnapshotFromIntent(
+            intentSnapshotRef.current,
             getActiveGrainsRef.current(),
             controlState,
             timeMs,
@@ -838,12 +793,14 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
           // Apply modulation: visual buses → mod matrix → modulated controls
           const currentReaction = reactionRef.current;
           const buses = buildVisualBuses(snapshot, currentReaction);
+          const modulationStartedAt = measurePerformance ? performance.now() : 0;
           const modulatedControls = applyVisualizerModulation(
             automatedControls,
             reactiveRangesRef.current,
             buses,
             currentReaction,
           );
+          const modulationMs = measurePerformance ? performance.now() - modulationStartedAt : 0;
           const lastRenderSize = renderSizeRef.current;
           if (
             Math.abs(lastRenderSize.width - width) > 0.5 ||
@@ -863,19 +820,81 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
             seed: seedRef.current,
             quality,
           });
-          const meterUpdateIntervalMs = mobileReducedVisualsRef.current ? 300 : 180;
-          if (timeMs - meterUpdateRef.current >= meterUpdateIntervalMs) {
+          const meterUpdateIntervalMs = mobileReducedVisualsRef.current ? 400 : 250;
+          let uiPublished = false;
+          const modulationIndicatorDemand = Object.values(vizSliderModesRef.current)
+            .some((mode) => mode === 'walk' || mode === 'sampleHold');
+          if (
+            (metersOpenRef.current || modulationIndicatorDemand) &&
+            timeMs - meterUpdateRef.current >= meterUpdateIntervalMs
+          ) {
             meterUpdateRef.current = timeMs;
-            setMeterSnapshot(snapshot);
-            setModulatedControlsState(modulatedControls);
+            if (metersOpenRef.current) setMeterSnapshot(snapshot);
+            if (modulationIndicatorDemand) setModulatedControlsState(modulatedControls);
+            uiPublished = true;
           }
-        }
+          const pulses = snapshot.pulses;
+          const pulseActivity = Math.max(
+            pulses.global,
+            pulses.synth,
+            pulses.pad,
+            pulses.lead,
+            pulses.drums,
+            pulses.earth,
+            pulses.granular,
+            pulses.delay,
+            pulses.reverb,
+            pulses.dynamics,
+            pulses.sequencer,
+          );
+          const hasAutomation = Object.values(vizSliderModesRef.current)
+            .some((mode) => mode === 'walk' || mode === 'sampleHold');
+          const plan = resolveVisualizerFramePlan({
+            canAnimate: true,
+            isPlaying: isPlayingRef.current,
+            hasAutomation,
+            pulseActivity,
+            millisecondsSinceInteraction: Math.max(0, timeMs - lastInteractionRef.current),
+            requestedFps,
+            qualityTargetFps: quality.targetFps,
+          });
+          publishFrameMode(plan.mode);
+          if (measurePerformance) {
+            recordVisualizerFramePerformance(
+              performance.now() - frameStartedAt,
+              intentBuildMs,
+              modulationMs,
+              intentBuilt,
+              uiPublished,
+            );
+          }
+          if (plan.delayMs !== null) scheduleFrame(plan.delayMs);
       }
-      frameId = requestAnimationFrame(loop);
     };
-    frameId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(frameId);
+
+    wakeRenderRef.current = (interaction = false) => {
+      if (interaction) lastInteractionRef.current = performance.now();
+      scheduleFrame(0);
+    };
+    const unsubscribeSignals = subscribeVisualizerSignals(() => wakeRenderRef.current(false));
+    lastInteractionRef.current = performance.now();
+    scheduleFrame(0);
+    return () => {
+      unsubscribeSignals();
+      wakeRenderRef.current = () => undefined;
+      if (timerId !== null) window.clearTimeout(timerId);
+      if (frameId) cancelAnimationFrame(frameId);
+    };
   }, [canAnimate]);
+
+  useEffect(() => {
+    intentSnapshotDirtyRef.current = true;
+    wakeRenderRef.current(false);
+  }, [dualRanges, engineState, isPlaying, mobileReducedVisuals, sliderModes, state]);
+
+  useEffect(() => {
+    wakeRenderRef.current(true);
+  }, [controls, layerMacros, performanceMacros, qualityMode, reaction, reactiveRanges, seed, vizSliderModes]);
 
   const updateControl = useCallback((key: NumericControlKey, value: number) => {
     const nextControlsForRange = {
@@ -936,6 +955,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
     setReactiveRanges(createDefaultReactiveRanges(DEFAULT_CONTROLS));
     setReaction(DEFAULT_REACTION);
     setPerformanceMacros(DEFAULT_VISUALIZER_MACROS);
+    setLayerMacros(DEFAULT_VISUALIZER_LAYER_MACROS);
     setQualityMode(DEFAULT_QUALITY_MODE);
     setVizSliderModes({});
     vizAutomationStateRef.current = {};
@@ -965,6 +985,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
       reactiveRanges,
       reaction,
       performanceMacros,
+      layerMacros,
       qualityMode,
       seed,
     };
@@ -973,7 +994,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
     _onVisualizerPresetChange(name);
     refreshPresets();
     setPresetSaving(false);
-  }, [presetName, controls, reactiveRanges, reaction, performanceMacros, qualityMode, seed, refreshPresets, _onVisualizerPresetChange]);
+  }, [presetName, controls, reactiveRanges, reaction, performanceMacros, layerMacros, qualityMode, seed, refreshPresets, _onVisualizerPresetChange]);
 
   const handleLoadPreset = useCallback(async (name: string) => {
     const result = await loadVisualizerPreset(name);
@@ -987,6 +1008,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
     });
     setReaction(data.reaction ?? DEFAULT_REACTION);
     setPerformanceMacros(sanitizePerformanceMacros(data.performanceMacros));
+    setLayerMacros(sanitizeLayerMacros(data.layerMacros));
     setQualityMode(isVisualizerQualityMode(data.qualityMode) ? data.qualityMode : DEFAULT_QUALITY_MODE);
     setSeed(Number.isFinite(data.seed) ? data.seed : createVisualizerSeed());
     setVizSliderModes({});
@@ -1021,6 +1043,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   }, []);
 
   const [metersOpen, setMetersOpen] = useState(false);
+  metersOpenRef.current = metersOpen;
   const displayedRequestedFps = isPlaying
     ? fpsFromControl(controls.frameRate)
     : Math.min(24, fpsFromControl(controls.frameRate));
@@ -1068,11 +1091,12 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   }, []);
 
   const updatePerformanceMacro = useCallback((macroKey: VisualizerPerformanceMacroId, value: number) => {
-    setPerformanceMacros((prev) => {
-      const next = sanitizePerformanceMacros({ ...prev, [macroKey]: value });
-      setControls((controlPrev) => updateControlsPatch(controlPrev, derivePerformanceMacroPatch(next)));
-      return next;
-    });
+    setPerformanceMacros((prev) => sanitizePerformanceMacros({ ...prev, [macroKey]: value }));
+    setActivePresetName(null);
+  }, []);
+
+  const updateLayerMacro = useCallback((macroKey: VisualizerLayerMacroId, value: number) => {
+    setLayerMacros((prev) => sanitizeLayerMacros({ ...prev, [macroKey]: value }));
     setActivePresetName(null);
   }, []);
 
@@ -1083,16 +1107,20 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   }, []);
 
   return (
-    <div ref={rootRef} className={`visualizer-root${fullscreenFallback ? ' visualizer-root--fullscreen-fallback' : ''}`}>
-      <div ref={canvasWrapRef} className="visualizer-canvas-wrap">
-        <canvas ref={canvasRef} className="visualizer-canvas" aria-label="Reactive visualizer" />
-        <div className="visualizer-status-row">
-          <span>{rendererMode === 'webgl2' ? 'WebGL2' : '2D'}</span>
-          <span>{isPlaying ? 'Live' : 'Idle'}</span>
-          <span>{displayedFps} FPS</span>
-          <span>{formatSeed(seed)}</span>
-        </div>
-      </div>
+    <div
+      ref={rootRef}
+      className={`visualizer-root${fullscreenFallback ? ' visualizer-root--fullscreen-fallback' : ''}`}
+      data-frame-mode={frameMode}
+    >
+      <VisualizerCanvasSurface
+        canvasRef={canvasRef}
+        wrapRef={canvasWrapRef}
+        rendererMode={rendererMode}
+        isPlaying={isPlaying}
+        frameMode={frameMode}
+        displayedFps={displayedFps}
+        seedLabel={formatSeed(seed)}
+      />
 
       <aside className="visualizer-controls" aria-label="Visualizer controls">
         <div className="visualizer-controls-head">
@@ -1168,36 +1196,21 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
           </div>
         </section>
 
-        <section className="visualizer-performance-panel" aria-label="Visualizer performance macros">
-          <div className="visualizer-panel-header">
-            <h3>Performance Macros</h3>
-          </div>
-          <div className="visualizer-performance-macro-grid">
-            {(['soft', 'pulse', 'particles', 'glitch', 'bright'] as const).map((macroKey) => (
-              <div className="visualizer-performance-macro" key={macroKey}>
-                <SliderPrimitive
-                  label={PERFORMANCE_MACRO_LABELS[macroKey]}
-                  mode="single"
-                  value={performanceMacros[macroKey] * 100}
-                  variant="full"
-                  density="compact"
-                  hero={PERFORMANCE_MACRO_HERO[macroKey]}
-                  formatValue={(p) => `${Math.round(p)}%`}
-                  displayValue={`${Math.round(performanceMacros[macroKey] * 100)}%`}
-                  onValueChange={(p) => updatePerformanceMacro(macroKey, p / 100)}
-                />
-              </div>
-            ))}
-          </div>
-        </section>
+        <VisualizerMacroPanels
+          sceneMacros={performanceMacros}
+          layerMacros={layerMacros}
+          onSceneMacroChange={updatePerformanceMacro}
+          onLayerMacroChange={updateLayerMacro}
+        />
 
-        <section className="visualizer-layer-panel" aria-label="Visualizer layer order">
+        <section className="visualizer-layer-panel" aria-label="Visualizer effect scope and order">
           <div className="visualizer-layer-panel-header">
-            <h3>Layers</h3>
+            <h3>Effect Scope &amp; Order</h3>
             <button type="button" onClick={resetLayerStack} title="Reset layer order">
               Reset
             </button>
           </div>
+          <p className="visualizer-layer-help">Effects process only source layers placed below them.</p>
           <ol className="visualizer-layer-list">
             {layerStack.map((layerId, index) => {
               const def = VISUALIZER_LAYER_DEFS.find((entry) => entry.id === layerId);
@@ -1372,11 +1385,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
                       hero="#9ccfbd"
                       formatValue={formatBipolar}
                       displayValue={
-                        Math.abs(numericValue) < 0.01
-                          ? '—'
-                          : numericValue < 0
-                            ? `${def.left} ${Math.round(Math.abs(numericValue) * 100)}%`
-                            : `${def.right} ${Math.round(numericValue * 100)}%`
+                        formatVisualizerControlValue(def.key, numericValue, def.left, def.right)
                       }
                       onValueChange={(nextPercent) => {
                         const bipolar = (nextPercent / 50) - 1;

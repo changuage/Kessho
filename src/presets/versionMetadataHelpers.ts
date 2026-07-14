@@ -2,6 +2,12 @@ import { getVersionData } from './codec';
 import { extractPresetVersionMetadata } from './presetUtils';
 import { normalizePresetPoolMetadata } from './presetPool';
 import type { PresetEntry, PresetVersionMetadata } from './types';
+import {
+  DRUM_EUCLIDEAN_LANE_COUNT,
+  SYNTH_EUCLIDEAN_LANE_COUNT,
+} from '../audio/sequencerLaneCounts';
+import { normalizeSequencerPitchSettingsArray } from '../audio/sequencerPitchSettings';
+import type { PitchSettings } from '../ui/sequencer/useEuclideanSequencer';
 
 function cloneJson<T>(value: T): T {
   if (typeof globalThis.structuredClone === 'function') {
@@ -12,6 +18,33 @@ function cloneJson<T>(value: T): T {
     }
   }
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+export function normalizeStatePresetPitchMetadata(source: {
+  drumPitchSettings?: readonly unknown[];
+  synthPitchSettings?: readonly unknown[];
+}): Pick<PresetVersionMetadata, 'drumPitchSettings' | 'synthPitchSettings'> {
+  return {
+    drumPitchSettings: normalizeSequencerPitchSettingsArray(
+      source.drumPitchSettings,
+      DRUM_EUCLIDEAN_LANE_COUNT,
+    ) as PitchSettings[],
+    synthPitchSettings: normalizeSequencerPitchSettingsArray(
+      source.synthPitchSettings,
+      SYNTH_EUCLIDEAN_LANE_COUNT,
+    ) as PitchSettings[],
+  };
+}
+
+export function preparePresetVersionMetadataForV2Storage(
+  metadata: PresetVersionMetadata | undefined,
+  isL4State: boolean,
+): PresetVersionMetadata | undefined {
+  if (!metadata) return undefined;
+  const next = { ...metadata };
+  delete next.refs;
+  if (isL4State) delete next.presetPool;
+  return Object.keys(next).length > 0 ? next : undefined;
 }
 
 export function buildPresetVersionMetadata(

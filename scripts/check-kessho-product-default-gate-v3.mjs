@@ -1051,7 +1051,7 @@ assert(
     !app.includes('setProductSynthPitchBindingModes: setSelectedSynthPitchBindingModes') &&
     productRuntimePageControlProps.includes('export type ProductRuntimePageControlProps = {') &&
     productRuntimePageControlProps.includes('preloadProductRuntime: () => Promise<unknown>') &&
-    productRuntimePageControlProps.includes('productRuntimeManualTriggers: ProductRuntimeManualTriggers') &&
+    productRuntimePageControlProps.includes('productRuntimeManualTriggers: RuntimeManualTriggerSurface') &&
     productRuntimePageControlProps.includes('setProductDrumStepPositionCallback') &&
     productRuntimePageControlProps.includes('return useMemo(() => ({') &&
     productRuntimePageControlProps.includes('setProductDrumStepPositionCallback,') &&

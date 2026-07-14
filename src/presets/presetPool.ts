@@ -14,6 +14,7 @@ export interface PresetPoolCandidate {
 
 export const PRESET_POOL_ICON = '⧉' as const;
 export const PRESET_POOL_METADATA_VERSION = 1 as const;
+export const PRESET_POOL_PREFERENCE_STORAGE_KEY = 'kessho:presetPool:v1';
 
 const PAD_POOL_KEY = 'pad';
 const LEAD_POOL_KEY = 'lead4opfm';
@@ -47,6 +48,27 @@ const DEFAULT_POOL_HINTS: Record<string, string[]> = {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function readPresetPoolPreference(): PresetPoolMetadata {
+  if (typeof window === 'undefined') return createEmptyPresetPool();
+  try {
+    const stored = window.localStorage.getItem(PRESET_POOL_PREFERENCE_STORAGE_KEY);
+    return normalizePresetPoolMetadata(stored ? JSON.parse(stored) : null)
+      ?? createEmptyPresetPool();
+  } catch {
+    return createEmptyPresetPool();
+  }
+}
+
+export function writePresetPoolPreference(value: unknown): void {
+  if (typeof window === 'undefined') return;
+  const normalized = normalizePresetPoolMetadata(value) ?? createEmptyPresetPool();
+  try {
+    window.localStorage.setItem(PRESET_POOL_PREFERENCE_STORAGE_KEY, JSON.stringify(normalized));
+  } catch {
+    // Storage can be unavailable in private or constrained browser contexts.
+  }
 }
 
 export function normalizePresetTag(tag: unknown): string | null {

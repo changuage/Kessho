@@ -160,6 +160,45 @@ async function verifyViewport(chromium, baseUrl, viewport) {
     assert(bodyLength > 500, 'Synth Play UI proof found an unexpectedly sparse page', { viewport, bodyLength });
     assert(errors.length === 0, 'Synth Play UI proof found console/page errors', { viewport, errors });
 
+    if (viewport.width > 760) {
+      await page.getByRole('button', { name: 'Keys', exact: true }).click();
+      const manualAKey = page.locator('.synth-keyboard-key').filter({
+        has: page.locator('.synth-keyboard-key-shortcut', { hasText: 'A' }),
+      }).first();
+      await manualAKey.waitFor({ state: 'visible', timeout: 10000 });
+      await page.keyboard.down('a');
+      await page.waitForTimeout(50);
+      assert((await manualAKey.getAttribute('class'))?.includes('active'), 'Physical keydown should activate the manual key');
+      await manualAKey.evaluate((element) => {
+        element.setPointerCapture = () => {};
+        element.dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 77,
+          pointerType: 'touch',
+          isPrimary: true,
+        }));
+      });
+      await page.keyboard.up('a');
+      await page.waitForTimeout(50);
+      assert(
+        (await manualAKey.getAttribute('class'))?.includes('active'),
+        'Releasing one input must keep the key active while another input still holds it',
+      );
+      await manualAKey.evaluate((element) => {
+        element.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 77,
+          pointerType: 'touch',
+          isPrimary: true,
+        }));
+      });
+      await page.waitForTimeout(50);
+      assert(!(await manualAKey.getAttribute('class'))?.includes('active'), 'The key should clear after its final input releases');
+      await page.getByRole('button', { name: 'Keys', exact: true }).click();
+    }
+
     const playStrip = page.locator('.seq-spark-strip:has-text("Play:")').first();
     await playStrip.waitFor({ state: 'visible', timeout: 10000 });
     const beforeClass = await playStrip.getAttribute('class');
@@ -197,10 +236,60 @@ async function verifyViewport(chromium, baseUrl, viewport) {
     const afterEnableClass = await playStrip.getAttribute('class');
     assert(!afterEnableClass?.includes('disabled'), 'Play enable button should turn Play on independently of mode selection', { viewport, afterEnableClass });
 
-    await modeSegment.getByRole('button', { name: /^ARP$/i }).click();
+    await page.getByText('Global', { exact: true }).click();
+    await page.waitForTimeout(300);
+    const transportSection = page.getByText('Transport & Sync', { exact: true });
+    const phraseSlider = page.locator('.sl-slider').filter({ hasText: 'Phrase Seconds' }).first();
+    if (!(await phraseSlider.isVisible())) await transportSection.click();
+    await phraseSlider.waitFor({ state: 'visible', timeout: 10000 });
+    const phraseRail = phraseSlider.locator('.sl-slider-rail');
+    const phraseSummary = page.getByText(/phrase is the master clock and derives/i).first();
+    const summaryBeforeDrag = await phraseSummary.textContent();
+    const sliderValueBeforeDrag = await phraseSlider.locator('.sl-slider-value').textContent();
+    const phraseRailBox = await phraseRail.boundingBox();
+    assert(phraseRailBox, 'Phrase Seconds rail must have a measurable drag target', { viewport });
+    await page.mouse.move(phraseRailBox.x + phraseRailBox.width * 0.3, phraseRailBox.y + phraseRailBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(phraseRailBox.x + phraseRailBox.width * 0.8, phraseRailBox.y + phraseRailBox.height / 2, { steps: 12 });
+    const summaryDuringDrag = await phraseSummary.textContent();
+    const sliderValueDuringDrag = await phraseSlider.locator('.sl-slider-value').textContent();
+    assert(summaryDuringDrag === summaryBeforeDrag, 'Phrase Seconds drag must not commit application state before pointer release', {
+      viewport,
+      summaryBeforeDrag,
+      summaryDuringDrag,
+    });
+    assert(sliderValueDuringDrag !== sliderValueBeforeDrag, 'Phrase Seconds drag should preview the candidate value locally', {
+      viewport,
+      sliderValueBeforeDrag,
+      sliderValueDuringDrag,
+    });
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    const summaryAfterRelease = await phraseSummary.textContent();
+    assert(summaryAfterRelease !== summaryBeforeDrag, 'Phrase Seconds must commit once the pointer is released', {
+      viewport,
+      summaryBeforeDrag,
+      summaryAfterRelease,
+    });
+
+    await page.getByText('Synth', { exact: true }).click();
+    await page.waitForTimeout(500);
+    await page.getByRole('button', { name: /^Detail$/i }).click();
+    const restoredPlayStrip = page.locator('.seq-spark-strip:has-text("Play:")').first();
+    await restoredPlayStrip.waitFor({ state: 'visible', timeout: 10000 });
+    const restoredPlayClass = await restoredPlayStrip.getAttribute('class');
+    assert(!restoredPlayClass?.includes('disabled'), 'Chord Play must remain enabled after navigating away from Synth', {
+      viewport,
+      restoredPlayClass,
+    });
+    const restoredModeSegment = page.locator('.seq-play-mode-segment').first();
+    const restoredModes = await restoredModeSegment.locator('button.active').evaluateAll((buttons) => buttons.map((button) => button.textContent?.trim()));
+    assert(restoredModes.includes('Chord'), 'Chord Play mode must survive Synth page unmount/remount', { viewport, restoredModes });
+
+    await restoredModeSegment.getByRole('button', { name: /^ARP$/i }).click();
     await page.waitForTimeout(450);
-    const afterArpClass = await playStrip.getAttribute('class');
-    const activeModesAfterArp = await modeSegment.locator('button.active').evaluateAll((buttons) => buttons.map((button) => button.textContent?.trim()));
+    const afterArpClass = await restoredPlayStrip.getAttribute('class');
+    const activeModesAfterArp = await restoredModeSegment.locator('button.active').evaluateAll((buttons) => buttons.map((button) => button.textContent?.trim()));
     assert(!afterArpClass?.includes('disabled'), 'Clicking ARP mode should preserve the current on Play state', { viewport, afterArpClass });
     assert(activeModesAfterArp.includes('ARP'), 'ARP mode did not become active', { viewport, activeModesAfterArp });
 

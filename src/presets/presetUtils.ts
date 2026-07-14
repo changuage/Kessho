@@ -20,7 +20,7 @@ import {
 } from './presetScopeAliases';
 
 const PREFIX = 'preset:';
-const METADATA_FIELDS = [
+export const PRESET_VERSION_METADATA_FIELDS = [
   'routingMuteGroups',
   'dualRanges',
   'sliderModes',
@@ -55,7 +55,7 @@ const LEGACY_DELAY_A_KEY_ALIASES = {
   leadDelaySend: 'delayASend',
 } as const;
 
-type MetadataField = (typeof METADATA_FIELDS)[number];
+type MetadataField = (typeof PRESET_VERSION_METADATA_FIELDS)[number];
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -298,7 +298,7 @@ export function normalizePresetVersion(input: unknown): PresetVersion | null {
     (version as unknown as Record<string, unknown>)._isDelta = true;
   }
 
-  for (const field of METADATA_FIELDS) {
+  for (const field of PRESET_VERSION_METADATA_FIELDS) {
     const normalized = field === 'journeyPreview'
       ? normalizeJourneyPresetPreview(input[field])
       : field === 'presetPool'
@@ -320,7 +320,7 @@ export function extractPresetVersionMetadata(version: PresetVersion | null | und
   const metadata: PresetVersionMetadata = {};
   let hasMetadata = false;
 
-  for (const field of METADATA_FIELDS) {
+  for (const field of PRESET_VERSION_METADATA_FIELDS) {
     const value = version[field];
     if (value !== undefined) {
       (metadata as Record<string, unknown>)[field] = cloneJson(value);
@@ -511,7 +511,7 @@ export function comparePresetVersions(
     diffValues(key, current.data[key], other.data[key], changed);
   }
 
-  for (const field of METADATA_FIELDS) {
+  for (const field of PRESET_VERSION_METADATA_FIELDS) {
     diffValues(field, current[field], other[field], changed);
   }
 

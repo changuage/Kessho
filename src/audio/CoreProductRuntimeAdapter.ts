@@ -1,5 +1,5 @@
 import type { CoreProductEvent } from './coreProductEvents';
-import { CORE_PRODUCT_SOURCE_IDS, createCoreProductHarmonyControlClearManualIntentEvent, createCoreProductHarmonyControlSetManualIntentEvent, createCoreProductHarmonySequenceSetEnabledEvent, createCoreProductHarmonySequenceSetStepEvent, createCoreProductHarmonySlotSetEvent, createCoreProductJourneyStateEvent, createCoreProductParamEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSourceOverrideCommitEvent, createCoreProductSourceOverrideSlotEvent, createCoreProductSourcePresetEvent } from './coreProductEvents';
+import { CORE_PRODUCT_SOURCE_IDS, createCoreProductHarmonyControlClearManualIntentEvent, createCoreProductHarmonyControlSetManualIntentEvent, createCoreProductHarmonySequenceSetEnabledEvent, createCoreProductHarmonySequenceSetStepEvent, createCoreProductHarmonySlotSetEvent, createCoreProductJourneyStateEvent, createCoreProductParamEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSourceOverrideCommitEvent, createCoreProductSourceOverrideSlotEvent, createCoreProductSourcePresetEvent, createCoreProductTransportTransitionEvent } from './coreProductEvents';
 import { usesLegacyGranularRuntimeSeed, type CoreProductSnapshot } from './coreProductSnapshot';
 import {
   appendCoreProductSourcePresetEndpointDiffs,
@@ -50,7 +50,8 @@ class CoreProductRuntimeAdapter {
     this.appendSourceOverrideDiffs(events, previous.sources, next.sources);
     this.appendSequencerLaneDiffs(events, 'synth', previous.synthLanes, next.synthLanes, options.forceSequencerClockRejoin === true);
     this.appendSequencerLaneDiffs(events, 'drum', previous.drumLanes, next.drumLanes, options.forceSequencerClockRejoin === true);
-    this.appendFxRoutingMasterDiffs(events, previous, next);
+    const runningBpmTransition = previous.transport.running && next.transport.running && this.valuesDiffer(previous.transport.bpm, next.transport.bpm);
+    this.appendFxRoutingMasterDiffs(events, previous, next, runningBpmTransition);
     this.appendEvolutionDiffs(events, previous, next);
     this.appendRngDiffs(events, previous, next, options.forwardRngDiffs === true);
 
@@ -256,9 +257,23 @@ class CoreProductRuntimeAdapter {
     next: CoreProductSnapshot,
   ): void {
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.TransportRunning, previous.transport.running, next.transport.running);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.TransportBpm, previous.transport.bpm, next.transport.bpm);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.TransportBeatsPerBar, previous.transport.beatsPerBar, next.transport.beatsPerBar);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.TransportBarsPerPhrase, previous.transport.barsPerPhrase, next.transport.barsPerPhrase);
+    const timingChanged =
+      this.valuesDiffer(previous.transport.bpm, next.transport.bpm) ||
+      previous.transport.beatsPerBar !== next.transport.beatsPerBar ||
+      previous.transport.barsPerPhrase !== next.transport.barsPerPhrase ||
+      this.valuesDiffer(previous.transport.phraseSeconds, next.transport.phraseSeconds);
+    if (timingChanged && previous.transport.running && next.transport.running) {
+      events.push(createCoreProductTransportTransitionEvent({
+        bpm: next.transport.bpm,
+        beatsPerBar: next.transport.beatsPerBar,
+        barsPerPhrase: next.transport.barsPerPhrase,
+        phraseSeconds: next.transport.phraseSeconds,
+      }));
+    } else {
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.TransportBpm, previous.transport.bpm, next.transport.bpm);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.TransportBeatsPerBar, previous.transport.beatsPerBar, next.transport.beatsPerBar);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.TransportBarsPerPhrase, previous.transport.barsPerPhrase, next.transport.barsPerPhrase);
+    }
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.TransportSwing, previous.transport.swing, next.transport.swing);
   }
 
@@ -469,9 +484,15 @@ class CoreProductRuntimeAdapter {
     events: CoreProductEvent[],
     previous: CoreProductSnapshot,
     next: CoreProductSnapshot,
+    deferTempoSyncedDelayTimes: boolean,
   ): void {
     for (const param of KESSHO_PRODUCT_PARAMS) {
       if (!param.path.startsWith('fx.') && !param.path.startsWith('routing.') && !param.path.startsWith('master.')) continue;
+      if (deferTempoSyncedDelayTimes && (
+        param.id === KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeLeftMs ||
+        param.id === KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeRightMs ||
+        param.id === KESSHO_PRODUCT_PARAM_IDS.FxDelayBBaseTimeMs
+      )) continue;
       this.appendParamDiff(
         events,
         param.id,

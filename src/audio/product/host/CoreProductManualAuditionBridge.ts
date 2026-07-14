@@ -38,6 +38,7 @@ function shouldApplyExternalState(context: CoreProductManualAuditionContext, ext
 }
 
 function sampleSlotForManualSource(source: RequiredManualSynthNote['source']): SampleSlotId | null {
+  // ALLOW_PIANO_ALIAS_MIGRATION: legacy callers normalize Piano to Sample 1.
   if (source === 'sample2') return 'sample2';
   if (source === 'sample1' || source === 'piano') return 'sample1';
   return null;

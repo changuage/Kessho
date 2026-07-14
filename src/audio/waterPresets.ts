@@ -487,6 +487,14 @@ export function morphWaterPresets(
 ): WaterPresetState {
   const presetA = getWaterPresetState(idxA);
   const presetB = getWaterPresetState(idxB);
+  return morphWaterPresetStates(presetA, presetB, t);
+}
+
+export function morphWaterPresetStates(
+  presetA: Partial<WaterPresetState>,
+  presetB: Partial<WaterPresetState>,
+  t: number,
+): WaterPresetState {
   const fallback = buildStockWaterPresetState(0);
 
   // Smoothstep for nicer feel

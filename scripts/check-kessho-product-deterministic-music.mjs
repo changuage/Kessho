@@ -95,7 +95,7 @@ const debugRenderEvents = resolveExport(wasm, 'kessho_product_debug_render_event
 
 const SNAPSHOT_SIZE = snapshotConstNumber('SNAPSHOT_BYTES');
 const SOURCE_SIZE = snapshotConstNumber('SOURCE_BYTES');
-const SOURCE_COUNT = 7;
+const SOURCE_COUNT = 8;
 const HEADER_BYTES = 8;
 const TRANSPORT_BYTES = 24;
 const HARMONY_BYTES = 132;
@@ -110,7 +110,8 @@ const PAD_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_PAD_PARAM_COUNT');
 const LEAD_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_LEAD_PARAM_COUNT');
 const DRUM_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_DRUM_PARAM_COUNT');
 const DRUM_VOICE_COUNT = generatedConstNumber('KESSHO_PRODUCT_DRUM_VOICE_COUNT');
-const DEFAULT_SOURCE_PRESET_IDS = [1001, 1001, 2001, 2001, 3001, 4001, 5001];
+const DEFAULT_SOURCE_PRESET_IDS = [1001, 1001, 2001, 2001, 3001, 4001, 5001, 4001];
+assert(DEFAULT_SOURCE_PRESET_IDS.length === SOURCE_COUNT, 'deterministic source defaults must cover every snapshot source');
 const DEFAULT_DRUM_VOICE_PRESET_IDS = [3101, 3201, 3301, 3401, 3501, 3601, 3701];
 const DEFAULT_SOURCE_ENVELOPE = [0.005, 0.65, 0.72, 0.5, 1.4];
 const SOURCE_PRESET_A_OFFSET = 12;
@@ -121,6 +122,7 @@ const SOURCE_DRY_GAIN_OFFSET = 48;
 const SOURCE_POST_LPF_HZ_OFFSET = 76;
 const SOURCE_STEREO_WIDTH_OFFSET = 80;
 const SOURCE_COMMON_BYTES = 100;
+const SOURCE_SAMPLE_CONFIG_BYTES = 40;
 const sparseGeneratedBlockBytes = (paramCount) => 4 + paramCount * 4 + 4 + paramCount * 4 + paramCount * 4;
 const SOURCE_DRUM_VOICE_PRESET_A_OFFSET =
   SOURCE_COMMON_BYTES +
@@ -130,7 +132,10 @@ const SOURCE_DRUM_VOICE_PRESET_A_OFFSET =
 const SOURCE_DRUM_VOICE_PRESET_B_OFFSET = SOURCE_DRUM_VOICE_PRESET_A_OFFSET + DRUM_VOICE_COUNT * 4;
 const SOURCE_DRUM_VOICE_MORPH_OFFSET = SOURCE_DRUM_VOICE_PRESET_B_OFFSET + DRUM_VOICE_COUNT * 4;
 const SOURCE_ENVELOPE_OFFSET = SOURCE_DRUM_VOICE_MORPH_OFFSET + DRUM_VOICE_COUNT * 4;
-assert(SOURCE_ENVELOPE_OFFSET + 5 * 4 === SOURCE_SIZE, `deterministic source offsets are stale: ${SOURCE_ENVELOPE_OFFSET + 5 * 4} !== ${SOURCE_SIZE}`);
+assert(
+  SOURCE_ENVELOPE_OFFSET + 5 * 4 + SOURCE_SAMPLE_CONFIG_BYTES === SOURCE_SIZE,
+  `deterministic source offsets are stale: ${SOURCE_ENVELOPE_OFFSET + 5 * 4 + SOURCE_SAMPLE_CONFIG_BYTES} !== ${SOURCE_SIZE}`,
+);
 const ASSET_REF_COUNT = 32;
 const SOUNDSCAPE_TEXTURE_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT');
 const SOUNDSCAPE_MODULE_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT');
@@ -190,7 +195,7 @@ function expectedEvolvedLaneValue(stepId, sample, component, base, depth, minVal
 
 const snapshotPtr = malloc(SNAPSHOT_SIZE);
 const eventsPtr = malloc(SEQUENCER_EVENT_SIZE * 8);
-const telemetryPtr = malloc(15048);
+const telemetryPtr = malloc(15168);
 const engine = create(48000, 128, 0);
 assert(snapshotPtr && eventsPtr && telemetryPtr && engine, 'WASM deterministic timeline allocation failed');
 

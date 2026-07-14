@@ -637,6 +637,7 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
     applyControlEvent(control_events[control_index].event);
     ++control_index;
   }
+  applyPendingTransportTransition();
 
   advanceModulationRanges(frames);
   advanceGranularPhraseReseed();
@@ -653,10 +654,23 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
       applyControlEvent(control_events[control_index].event);
       ++control_index;
     }
+    applyPendingTransportTransition();
 
     uint32_t control_segment_end = frames;
     if (control_index < control_event_count) {
       control_segment_end = std::min(control_segment_end, control_events[control_index].event.sample_offset);
+    }
+    if (transport.transition_pending && transport.pending_apply_frame > transport.sample_frame) {
+      const uint64_t frames_until_transition = transport.pending_apply_frame - transport.sample_frame;
+      control_segment_end = std::min<uint32_t>(
+          control_segment_end,
+          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_transition, frames - cursor)));
+    }
+    if (pending_phrase_timing_event_count > 0u && pending_phrase_timing_apply_frame > transport.sample_frame) {
+      const uint64_t frames_until_timing = pending_phrase_timing_apply_frame - transport.sample_frame;
+      control_segment_end = std::min<uint32_t>(
+          control_segment_end,
+          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_timing, frames - cursor)));
     }
     if (control_segment_end <= cursor) {
       control_segment_end = cursor + 1u;

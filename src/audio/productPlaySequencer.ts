@@ -394,6 +394,7 @@ export function resolveProductPlayMidiPattern(options: {
   harmony: ProductArpHarmonyContext;
   laneIndex: number;
   runtimeTick?: number;
+  anchorMidi?: number | null;
 }): number[] | null {
   const config = normalizeProductPlayConfig(options.config);
   if (!config.enabled) return null;
@@ -406,6 +407,7 @@ export function resolveProductPlayMidiPattern(options: {
     harmony: options.harmony,
     laneIndex: options.laneIndex,
     runtimeTick: options.runtimeTick,
+    anchorMidi: options.anchorMidi,
   });
 }
 
@@ -417,6 +419,7 @@ export function resolveProductPlayEnginePattern(options: {
   pitchBindingMode?: PitchBindingMode;
   triggerPattern?: readonly boolean[] | null;
   triggerStepMs?: number;
+  anchorMidi?: number | null;
 }): ProductPlayEnginePattern | null {
   const config = normalizeProductPlayConfig(options.config);
   if (!config.enabled) return null;

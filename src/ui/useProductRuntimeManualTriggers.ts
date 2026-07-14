@@ -3,7 +3,10 @@ import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioR
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { ProductDrumVoice, ProductManualSynthNote, ProductManualSynthSource } from '../audio/product/ProductEngineTypes';
 import type { ManualSynthNoteOptions } from '../audio/engineSharedTypes';
-import { CORE_PRODUCT_SOURCE_IDS, createCoreProductManualNoteKillEvent } from '../audio/coreProductEvents';
+import { createCoreProductManualNoteKillEvent, createCoreProductParamEvent } from '../audio/coreProductEvents';
+import { KESSHO_PRODUCT_PARAM_IDS } from '../audio/generated/kesshoProductParams';
+import type { ProductLiveNoteEvent } from '../audio/product/liveNoteEvents';
+import { MANUAL_SYNTH_SOURCE_CONFIG, isProductManualSynthSource } from '../audio/product/manualSynthSources';
 import { commitProductControlActionThenTrigger } from '../product-control';
 import type { SliderState } from './state';
 
@@ -18,23 +21,21 @@ export type ProductDrumVoiceTriggerOptions = {
   triggerCritical?: boolean;
 };
 
-type ProductRuntimeManualTriggers = {
+export type ProductRuntimeManualTriggers = {
   auditionSynthNote: (note: ManualSynthNoteOptions) => void;
+  startSynthLiveNote: (event: ProductLiveNoteEvent) => Promise<void>;
+  stopSynthLiveNote: (event: ProductLiveNoteEvent) => void;
   auditionSynthNoteWithState: (note: ManualSynthNoteOptions, externalState: SliderState) => void;
   triggerDrumVoice: (voice: ProductDrumVoice, options?: ProductDrumVoiceTriggerOptions) => void;
   triggerDrumVoiceWithState: (voice: ProductDrumVoice, externalState: SliderState, velocity?: number) => void;
 };
 
-const DEFAULT_MANUAL_DRUM_VELOCITY = 0.8;
-const MANUAL_SYNTH_SOURCE_IDS: Record<ProductManualSynthSource, number> = {
-  pad1: CORE_PRODUCT_SOURCE_IDS.pad1,
-  pad2: CORE_PRODUCT_SOURCE_IDS.pad2,
-  lead1: CORE_PRODUCT_SOURCE_IDS.lead1,
-  lead2: CORE_PRODUCT_SOURCE_IDS.lead2,
-  sample1: CORE_PRODUCT_SOURCE_IDS.sample1,
-  sample2: CORE_PRODUCT_SOURCE_IDS.sample2,
-};
+export type RuntimeManualTriggerSurface = Pick<
+  ProductRuntimeManualTriggers,
+  'auditionSynthNote' | 'startSynthLiveNote' | 'stopSynthLiveNote' | 'triggerDrumVoice'
+>;
 
+const DEFAULT_MANUAL_DRUM_VELOCITY = 0.8;
 function shouldWaitForManualTriggerSnapshot(): boolean {
   return productEngine.getLifecycleState() === 'running';
 }
@@ -50,7 +51,7 @@ function manualTriggerCommitOptions(triggerCritical: boolean): {
 }
 
 function requireProductManualSynthNote(note: ManualSynthNoteOptions): ProductManualSynthNote {
-  if (!Object.prototype.hasOwnProperty.call(MANUAL_SYNTH_SOURCE_IDS, note.source)) {
+  if (!isProductManualSynthSource(note.source)) {
     throw new Error(`Product Core manual synth source is not supported: ${String(note.source)}`);
   }
   return note as ProductManualSynthNote;
@@ -73,7 +74,7 @@ export function useProductRuntimeManualTriggers({
     previousSynthAuditionSourceRef.current = null;
     if (!productRuntimeActiveRef.current) return;
     try {
-      productEngine.enqueueEvent(createCoreProductManualNoteKillEvent(MANUAL_SYNTH_SOURCE_IDS[previousSource]));
+      productEngine.enqueueEvent(createCoreProductManualNoteKillEvent(MANUAL_SYNTH_SOURCE_CONFIG[previousSource].sourceId));
     } catch {
       // The previous audition may belong to a runtime that has since been stopped or reloaded.
     }
@@ -123,6 +124,51 @@ export function useProductRuntimeManualTriggers({
     ));
   }, [productRuntimeActive, queueSynthAudition, stateRef]);
 
+  const startSynthLiveNote = useCallback(async (event: ProductLiveNoteEvent): Promise<void> => {
+    if (!productRuntimeActive || event.kind !== 'live-note-on' || !isProductManualSynthSource(event.instrument)) return;
+    const source = event.instrument;
+    const enabledKey = MANUAL_SYNTH_SOURCE_CONFIG[source].enabledKey as keyof SliderState;
+    // UI keyboard preview historically enables a disabled source for audition.
+    // Preserve that behavior with one cheap realtime event while running; cold
+    // startup still commits once so the source configuration and assets are ready.
+    // Hardware MIDI keeps native channel routing and does not auto-enable sources.
+    if (event.source !== 'midi' && !Boolean(stateRef.current[enabledKey])) {
+      if (productEngine.getLifecycleState() !== 'running') {
+        const externalState = { ...stateRef.current, [enabledKey]: true } as SliderState;
+        const productNote: ProductManualSynthNote = {
+          source,
+          midi: event.note,
+          velocity: event.velocity,
+        };
+        await commitProductControlActionThenTrigger(
+          productEngine,
+          externalState,
+          {
+            type: 'manual-trigger/request',
+            source,
+            kind: 'synth-note',
+            note: productNote,
+            velocity: event.velocity,
+          },
+          () => productEngine.enqueueLiveNoteEvent(event),
+          manualTriggerCommitOptions(false),
+        );
+        return;
+      }
+      productEngine.enqueueEvent(createCoreProductParamEvent(
+        KESSHO_PRODUCT_PARAM_IDS.SourceEnabled,
+        1,
+        MANUAL_SYNTH_SOURCE_CONFIG[source].sourceId,
+      ));
+    }
+    productEngine.enqueueLiveNoteEvent(event);
+  }, [productRuntimeActive, stateRef]);
+
+  const stopSynthLiveNote = useCallback((event: ProductLiveNoteEvent): void => {
+    if (!productRuntimeActive || event.kind !== 'live-note-off') return;
+    productEngine.enqueueLiveNoteEvent(event);
+  }, [productRuntimeActive]);
+
   const triggerDrumVoice = useCallback((voice: ProductDrumVoice, options: ProductDrumVoiceTriggerOptions = {}): void => {
     if (!productRuntimeActive) return;
     const velocity = options.velocity ?? DEFAULT_MANUAL_DRUM_VELOCITY;
@@ -166,6 +212,8 @@ export function useProductRuntimeManualTriggers({
 
   return {
     auditionSynthNote,
+    startSynthLiveNote,
+    stopSynthLiveNote,
     auditionSynthNoteWithState,
     triggerDrumVoice,
     triggerDrumVoiceWithState,

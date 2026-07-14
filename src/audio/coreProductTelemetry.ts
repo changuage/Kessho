@@ -146,6 +146,18 @@ export type CoreProductTelemetrySnapshot = {
   beatPosition?: number;
   barIndex?: number;
   phraseIndex?: number;
+  transportBpm?: number;
+  transportBeatsPerBar?: number;
+  transportBarsPerPhrase?: number;
+  transportPhraseSeconds?: number;
+  transportTransitionPending?: boolean;
+  transportPendingBpm?: number;
+  transportPendingBeatsPerBar?: number;
+  transportPendingBarsPerPhrase?: number;
+  transportPendingPhraseSeconds?: number;
+  transportPendingApplyFrame?: number;
+  transportTransitionRevision?: number;
+  transportPhraseProgress?: number;
   activeSources: number;
   activeVoices: number;
   activeAssets: number;
@@ -270,6 +282,18 @@ export type CoreProductVisualTelemetrySnapshot = Pick<
   | 'schemaHash'
   | 'transportRunning'
   | 'absoluteSampleTime'
+  | 'transportBpm'
+  | 'transportBeatsPerBar'
+  | 'transportBarsPerPhrase'
+  | 'transportPhraseSeconds'
+  | 'transportTransitionPending'
+  | 'transportPendingBpm'
+  | 'transportPendingBeatsPerBar'
+  | 'transportPendingBarsPerPhrase'
+  | 'transportPendingPhraseSeconds'
+  | 'transportPendingApplyFrame'
+  | 'transportTransitionRevision'
+  | 'transportPhraseProgress'
   | 'activeGrains'
   | 'runtimeWalkCount'
   | 'runtimeWalkValues'

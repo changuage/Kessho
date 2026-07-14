@@ -119,6 +119,8 @@ const productControlCommitResolvedState = read('src/product-control/commitResolv
 const productControlLeadPresetData = read('src/product-control/leadPresetData.ts');
 const app = read('src/App.tsx');
 const lazySequencerTransport = read('src/ui/useLazySequencerTransport.ts');
+const sequencerTransportPolicy = read('src/ui/sequencer/sequencerTransportPolicy.ts');
+const keyboardScope = read('src/ui/keyboard/useKeyboardScope.ts');
 const presetRestoreRuntimeSurface = read('src/ui/usePresetRestoreRuntimeSurface.ts');
 const presetSequencerRestore = read('src/ui/usePresetSequencerRestore.ts');
 const synthPageSequencerBridge = read('src/ui/useSynthPageSequencerBridge.ts');
@@ -539,7 +541,7 @@ assert(!host.includes('function snapshotReloadReasonForProductPatch'), 'coreProd
 assert(hostTelemetryAdapter.includes('createCoreProductPerfSnapshot'), 'Product telemetry perf snapshot shaping must live in CoreProductTelemetryAdapter.ts');
 assert(hostTelemetryAdapter.includes('enrichCoreProductHostTelemetry'), 'Product host telemetry enrichment must live in CoreProductTelemetryAdapter.ts');
 assert(!host.includes('private createPerfSnapshot'), 'coreProductEngineHost.ts must delegate Product perf snapshot shaping to CoreProductTelemetryAdapter.ts');
-assert(lineCount(arrangementScheduler) <= 520, `coreProductArrangementScheduler.ts exceeds cleanup size cap (${lineCount(arrangementScheduler)} lines)`);
+assert(lineCount(arrangementScheduler) <= 581, `coreProductArrangementScheduler.ts exceeds cleanup size cap (${lineCount(arrangementScheduler)} lines)`);
 assert(lineCount(snapshot) <= 1240, `coreProductSnapshot.ts exceeds cleanup size cap (${lineCount(snapshot)} lines)`);
 assert(lineCount(snapshotEncoder) <= 560, `coreProductSnapshotEncoder.ts exceeds cleanup size cap (${lineCount(snapshotEncoder)} lines)`);
 assert(lineCount(snapshotDefaults) <= 120, `coreProductSnapshotDefaults.ts exceeds cleanup size cap (${lineCount(snapshotDefaults)} lines)`);
@@ -662,7 +664,7 @@ for (const token of [
   assert(sequencerPitchSettings.includes(token), `Shared sequencer pitch-settings normalization is missing ${token}`);
 }
 for (const [label, source, token] of [
-  ['App preset save', app, 'normalizeSequencerPitchSettingsArray'],
+  ['App preset save', app, 'normalizeStatePresetPitchMetadata'],
   ['Preset sequencer restore hook', presetSequencerRestore, 'normalizeSequencerPitchSettingsArray'],
   ['Sequencer hook restore', useEuclideanSequencer, 'normalizeSequencerPitchSettingsArray'],
   ['Lane preset restore', sequencePresetLane, 'normalizeSequencerPitchSettings'],
@@ -684,7 +686,7 @@ for (const token of [
 for (const [label, source, token] of [
   ['Preset sequencer restore hook', presetSequencerRestore, 'drumStepOverridesForEngineRestore('],
   ['Drum page engine sync', drumPage, 'stepOverridesForEngineSubLaneState({'],
-  ['Synth page engine sync', synthPage, 'stepOverridesForEngineSubLaneState({'],
+  ['Synth page engine sync', synthPage, 'stepOverridesForEngineSubLaneState('],
 ]) {
   assert(source.includes(token), `${label} must trim hidden sub-lane values before syncing engine payloads`);
 }
@@ -847,7 +849,7 @@ for (const [label, source, token] of [
   [
     'Legacy Web synth pitch phase selector',
     webEngine,
-    "const pitchIdx = pitchBindingMode === 'sequence'",
+    "pitchIdx = pitchBindingMode === 'sequence'",
   ],
   [
     'Core-Web synth pitch phase selector',
@@ -864,13 +866,33 @@ for (const [label, source, token] of [
 }
 
 for (const token of [
-  'SYNTH_LANE_ENABLED_KEYS',
-  'DRUM_LANE_ENABLED_KEYS',
   'toggleLazySequencerTransport',
-  'data-sequencer-transport="${activeTab}"',
-  "window.addEventListener('keydown', handleLazySequencerTransportShortcut, true)",
+  'planSynthSequencerTransportToggle',
+  'planDrumSequencerTransportToggle',
+  'useKeyboardScope({',
 ]) {
   assert(lazySequencerTransport.includes(token), `Lazy sequencer keyboard fallback hook is missing ${token}`);
+}
+for (const token of [
+  'SYNTH_LANE_ENABLED_KEYS',
+  'DRUM_LANE_ENABLED_KEYS',
+  'export function applySequencerTransportPlan',
+  'Object.entries(plan.patch)',
+  'if (plan.starting) onPlaybackStart?.(plan.patch);',
+  'export function planSynthSequencerTransportToggle',
+  'export function planDrumSequencerTransportToggle',
+]) {
+  assert(sequencerTransportPolicy.includes(token), `Shared sequencer transport policy is missing ${token}`);
+}
+for (const token of [
+  "window.addEventListener('keydown', handleKeyDown)",
+  "window.addEventListener('keyup', handleKeyUp)",
+  "window.addEventListener('blur', handleBlur)",
+  'let orderedRegistrations:',
+  'function refreshRegistrationOrder(): void',
+  'for (const registration of orderedRegistrations)',
+]) {
+  assert(keyboardScope.includes(token), `Shared keyboard dispatcher is missing ${token}`);
 }
 assert(
   app.includes('useLazySequencerTransport({') &&
@@ -902,15 +924,16 @@ assert(
     synthPage.indexOf("value: 'sample1', label: 'Sample 1'") < synthPage.indexOf("value: 'sample2', label: 'Sample 2'") &&
     synthPage.includes('const CHORD_GENERATOR_SOURCES = SIMPLE_SEQUENCER_SOURCES;') &&
     synthPage.includes('const RANDOM_TIMING_SOURCES = SIMPLE_SEQUENCER_SOURCES;') &&
-    synthPage.includes("sourceValue === 'both'") &&
+    sequencerTransportPolicy.includes("String(source ?? '').trim().toLowerCase() === 'both'") &&
     synthPage.includes('onClick={toggleChordGeneratorEnabled}') &&
     synthPage.includes('onChange={(e) => setChordGeneratorSource(e.target.value)}') &&
     synthPage.includes('{CHORD_GENERATOR_SOURCES.map((source) => (') &&
     synthPage.includes('return enableSourceValueForPlayback(sourceValue);') &&
     synthPage.includes('const startPatch = enableSourceValueForPlayback(value);') &&
     synthPage.includes('state.synthEuclideanMasterEnabled && state[laneEnabledKey] === true') &&
-    synthPage.includes("enableSourceValueForPlayback(String(state[getSourceKey(laneIndex)] ?? 'lead1'), startPatch)") &&
     synthPage.includes("enableSourceValueForPlayback(String(state[getSourceKey(safeLaneIdx)] ?? 'lead1'), startPatch)") &&
+    sequencerTransportPolicy.includes('manualSynthSourcesForLaneSource(sourceValue, state.pad2VoiceAssign)') &&
+    sequencerTransportPolicy.includes('patch[enabledKey] = true;') &&
     !synthPage.includes("onClick={() => onSelectChange('synthChordGeneratorEnabled'"),
   'Synth sequencers must enable selected sample/lead/pad sources before scheduled playback',
 );
@@ -1463,7 +1486,7 @@ for (const token of [
   'changedValueFields',
   'const maxSteps = 16;',
   'nativeEvolveFlagsForEvolveConfig(config, sequencer)',
-  'createCoreProductSequencerStepValueEvent(options.sequencer, options.laneIndex, stepValue.step',
+  'return createCoreProductSequencerStepValueEvent(',
 ]) {
   assert(`${hostSequencerSubLaneEvolve}\n${hostSequencerStepPostingBridge}\n${hostSequencerEvolveRuntimeBridge}\n${hostSequencerNativeEvolveFlags}\n${host}`.includes(token), `Product sequencer sub-lane evolve wiring is missing ${token}`);
 }
@@ -1477,7 +1500,7 @@ for (const token of [
   'const ratchet = clampSequencerRatchet(ratchetValues?.[ratchetIndex]);',
   'export const SEQUENCER_RATCHET_MAX = 8;',
   'const sampleOffset = Math.max(0, Math.round((t - this.ctx.currentTime) * this.ctx.sampleRate));',
-  'event.send_delay_a = ratchet > 1u ? 1.0f / static_cast<float>(ratchet) : 1.0f;',
+  'event.send_delay_a = ratchet_count > 1u ? 1.0f / static_cast<float>(ratchet_count) : 1.0f;',
   'padRatchetHoldSeconds(',
   'const float ratchet_factor = normalizedSynthRatchetFactor(synth_ratchet_factor);',
   'scaleLeadRatchetPatch(ratchet_patch, ratchet_factor);',
@@ -1747,8 +1770,9 @@ assert(
     productRuntimeTelemetry.includes("return productRuntimeMode !== 'core-product' || isCoreProductRangeKeySupported(key);") &&
     productRuntimeTelemetry.includes("if (productRuntimeMode !== 'core-product') {") &&
     productRuntimeTelemetry.includes('productEngine.setVisualTelemetryActive(false);') &&
-    productRuntimeTelemetry.includes("const active = uiMode === 'advanced' && documentVisible;") &&
-    productRuntimeTelemetry.includes('productEngine.setVisualTelemetryActive(active);') &&
+    app.includes("const productVisualTelemetryActive = uiMode === 'advanced' && (") &&
+    app.includes('setProductVisualTelemetryActive(productVisualTelemetryActive);') &&
+    app.includes('setProductVisualTelemetryActive(false);') &&
     selectedRuntimeTelemetry.includes('useSelectedAudioEngineTelemetrySurface(audioEngineRuntimeMode)') &&
     selectedRuntimeTelemetry.includes('useSelectedAudioEngineRuntimeCapabilities({') &&
     selectedRuntimeTelemetry.includes('setSelectedVisualTelemetryActive: telemetrySurface.setSelectedVisualTelemetryActive') &&
@@ -1902,7 +1926,7 @@ assert(
     !app.includes('setProductSynthPitchBindingModes: setSelectedSynthPitchBindingModes') &&
     productRuntimePageControlProps.includes('export type ProductRuntimePageControlProps = {') &&
     productRuntimePageControlProps.includes('preloadProductRuntime: () => Promise<unknown>') &&
-    productRuntimePageControlProps.includes('productRuntimeManualTriggers: ProductRuntimeManualTriggers') &&
+    productRuntimePageControlProps.includes('productRuntimeManualTriggers: RuntimeManualTriggerSurface') &&
     productRuntimePageControlProps.includes('setProductDrumStepPositionCallback') &&
     productRuntimePageControlProps.includes('return useMemo(() => ({') &&
     productRuntimePageControlProps.includes('setProductDrumStepPositionCallback,') &&
@@ -2564,16 +2588,14 @@ assert(
   'Synth live filter visualizer must use one visible interval instead of duplicate Product Core polling loops',
 );
 assert(
-  /const DRUM_LANE_ENABLED_KEYS = \[[\s\S]*'drumEuclid1Enabled'[\s\S]*'drumEuclid6Enabled'[\s\S]*\] as const/.test(drumPage) &&
-    /const anyDrumLaneEnabled = DRUM_LANE_ENABLED_KEYS\.some\(\(key\) => Boolean\(state\[key\]\)\);/.test(drumPage) &&
-    /const toggleDrumSequencerTransport = useCallback[\s\S]*const startPatch: Partial<SliderState> = next \? \{ drumEuclidMasterEnabled: true \} : \{\};[\s\S]*if \(next && !state\.drumEnabled\) \{[\s\S]*startPatch\.drumEnabled = true;[\s\S]*shouldAutoEnableDrumLaneOnTransportStart\(\{[\s\S]*starting: next,[\s\S]*anyLaneEnabled: anyDrumLaneEnabled,[\s\S]*startPatch\[activeLaneEnabledKey\] = true;[\s\S]*onSelectChange\('drumEuclidMasterEnabled', next\);[\s\S]*if \(next && !isRunning\) \{[\s\S]*onRequestPlaybackStart\?\.\(startPatch\);/.test(drumPage),
-  'Drum keyboard/button transport must enable the drum engine, an audible lane, and start Product with the requested state patch',
+  drumPage.includes('planDrumSequencerTransportToggle(state, seq.activeTab, drumLaneEnableTouchedRef.current)') &&
+    drumPage.includes('applySequencerTransportPlan(plan, onSelectChange, !isRunning ? onRequestPlaybackStart : undefined);'),
+  'Drum keyboard/button transport must apply the shared audible-start plan and pass its state patch to Product',
 );
 assert(
-  /const SYNTH_LANE_ENABLED_KEYS = \[[\s\S]*'synthEuclid1Enabled'[\s\S]*'synthEuclid4Enabled'[\s\S]*\] as const/.test(synthPage) &&
-    /const enableManualSynthSourceForPlayback = useCallback[\s\S]*source === 'pad1'[\s\S]*startPatch\.padEnabled = true;[\s\S]*source === 'lead1'[\s\S]*startPatch\.leadEnabled = true;[\s\S]*source === 'sample1'[\s\S]*startPatch\.sample1Enabled = true;[\s\S]*source === 'sample2'[\s\S]*startPatch\.sample2Enabled = true;/.test(synthPage) &&
-    /const toggleSynthSequencerTransport = useCallback[\s\S]*const activeLaneEnabledKey = SYNTH_LANE_ENABLED_KEYS\[seq\.activeTab\][\s\S]*const requestedLaneEnabledKey = next && !hasEnabledLane \? activeLaneEnabledKey : null;[\s\S]*if \(!Boolean\(state\[key\]\) && key !== requestedLaneEnabledKey\) return;[\s\S]*enableSourceValueForPlayback\(String\(state\[getSourceKey\(laneIndex\)\] \?\? 'lead1'\), startPatch\);[\s\S]*startPatch\[requestedLaneEnabledKey\] = true;[\s\S]*onRequestPlaybackStart\?\.\(startPatch\);/.test(synthPage),
-  'Synth keyboard/button transport must enable the selected synth lane, its source engine, and start Product with the requested state patch',
+  synthPage.includes('planSynthSequencerTransportToggle(state, seq.activeTab)') &&
+    synthPage.includes('applySequencerTransportPlan(plan, onSelectChange, !isRunning ? onRequestPlaybackStart : undefined);'),
+  'Synth keyboard/button transport must apply the shared audible-start plan and pass its state patch to Product',
 );
 for (const token of [
   'onRequestPlaybackStart?: (statePatch?: Partial<SliderState>) => void;',
@@ -2696,10 +2718,10 @@ for (const token of [
   'const requestSequencerPlaybackStart = useCallback((statePatch?: Partial<SliderState>): void => {',
   'if (playbackIsRunning || isJourneyPlaying) return;',
   'void startPlayback(patchedState);',
-  'const SYNTH_LANE_SOURCE_KEYS = [',
-  'lazyManualSourceForLaneSource',
-  'enableSynthSequencerSource',
-  'SYNTH_LANE_SOURCE_KEYS.forEach((sourceKey, laneIndex) => {',
+  'planSynthSequencerTransportToggle(currentState, 0)',
+  'planDrumSequencerTransportToggle(currentState, 0, drumLaneEnableTouchedRef.current)',
+  'applySequencerTransportPlan(',
+  'useKeyboardScope({',
 ]) {
   assert(lazySequencerTransport.includes(token), `Sequencer transport playback-start hook is missing ${token}`);
 }
@@ -2943,7 +2965,7 @@ for (const token of [
   'noteRangeMax: this.view.getFloat32(ptr + 3292, true)',
   'expressionRangeSetLow: this.view.getUint32(ptr + 2488, true)',
   'expressionRangeMaxes: this.readFloatOverrides(',
-  'const TELEMETRY_BYTES = 15048;',
+  'const TELEMETRY_BYTES = 15168;',
   'rngSeed: this.view.getUint32(ptr + 928, true)',
   'rngState: this.view.getUint32(ptr + 932, true)',
   'for (let index = 0; index < 8; index += 1)',

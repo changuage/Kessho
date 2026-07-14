@@ -109,6 +109,7 @@ int64_t sequencerFirstStep(uint64_t block_start, double samples_per_step);
 int64_t sequencerLastStep(uint64_t block_end, double samples_per_step);
 
 uint64_t sequencerAlignForwardSampleFrame(uint64_t sample_frame, double samples_per_period);
+uint64_t sequencerAlignForwardFromOrigin(uint64_t sample_frame, uint64_t origin_frame, double samples_per_period);
 
 uint64_t sequencerLaneStartSampleFrame(
     const ProductTransport& transport,

@@ -263,7 +263,7 @@ try {
           payloadByHash.set(hash, payload);
         }
 
-        const [presets, versions, refs, payloadRows] = await Promise.all([
+        const [presets, versions, refs, contentRefs, payloadRows] = await Promise.all([
           fetchAll(
             'presets_v2',
             'id,owner_key,type,scope,name,latest_version_no,latest_version_id,latest_resolved_hash,latest_metadata_hash,updated_at,archived,deleted_at,tags,visibility',
@@ -280,6 +280,11 @@ try {
             (builder) => builder.order('version_id', { ascending: true }).order('ref_slot', { ascending: true }),
           ),
           fetchAll(
+            'preset_version_content_refs_v2',
+            'version_id,ref_slot,content_hash,content_type,created_at',
+            (builder) => builder.order('version_id', { ascending: true }).order('ref_slot', { ascending: true }),
+          ).catch((error) => /does not exist|schema cache|pgrst205/i.test(String(error?.message ?? error)) ? [] : Promise.reject(error)),
+          fetchAll(
             'preset_payloads_v2',
             'hash,payload_kind,payload,payload_bytes,created_at,last_seen_at',
             (builder) => builder.order('hash', { ascending: true }),
@@ -291,6 +296,7 @@ try {
               presets_v2: presets,
               preset_versions_v2: versions,
               preset_version_refs_v2: refs,
+              preset_version_content_refs_v2: contentRefs,
               preset_payloads_v2: payloadRows,
             })
           : null;
@@ -310,6 +316,12 @@ try {
           rows.push(ref);
           refsByVersion.set(ref.version_id, rows);
         }
+        const contentRefsByVersion = new Map();
+        for (const ref of contentRefs) {
+          const rows = contentRefsByVersion.get(ref.version_id) ?? [];
+          rows.push(ref);
+          contentRefsByVersion.set(ref.version_id, rows);
+        }
         const payloadByHash = new Map(payloadRows.map((row) => [row.hash, row.payload]));
         const payloadKindByHash = new Map(payloadRows.map((row) => [row.hash, row.payload_kind]));
         const payloadRowByHash = new Map(payloadRows.map((row) => [row.hash, row]));
@@ -321,11 +333,10 @@ try {
           return latestVersion(versionsByPreset.get(presetId) ?? []);
         }
 
-        function activeVisibleGraphPresetIds() {
+        function retainedVisibleGraphPresetIds() {
           const protectedIds = new Set();
           const queue = presets.filter((preset) => (
-            preset.deleted_at == null
-            && preset.latest_version_id
+            preset.latest_version_id
             && !isInternalDerived(preset)
           ));
           while (queue.length > 0) {
@@ -334,7 +345,7 @@ try {
             protectedIds.add(current.id);
             for (const ref of refsByVersion.get(current.latest_version_id) ?? []) {
               const child = presetById.get(ref.target_preset_id);
-              if (child && child.deleted_at == null && child.latest_version_id) {
+              if (child && child.latest_version_id) {
                 queue.push(child);
               }
             }
@@ -430,6 +441,10 @@ try {
         const versionResolvedSkips = [];
         for (const version of versions) {
           if (version.resolved_hash) continue;
+          if ((contentRefsByVersion.get(version.id) ?? []).length > 0) {
+            versionResolvedSkips.push({ id: version.id, context: 'graph-authoritative-content-refs' });
+            continue;
+          }
           const resolved = await materializeVersion(version);
           if (!resolved) {
             const preset = presetById.get(version.preset_id);
@@ -528,7 +543,7 @@ try {
           refTargets.add(rewrite.canonical.id);
         }
 
-        const protectedGraphIds = activeVisibleGraphPresetIds();
+        const protectedGraphIds = retainedVisibleGraphPresetIds();
         const unreferencedInternal = presets.filter((preset) => (
           preset.deleted_at == null
           && !archivedPresetIds.has(preset.id)
@@ -559,6 +574,7 @@ try {
         for (const ref of refs) {
           if (ref.override_hash) referencedHashes.add(ref.override_hash);
         }
+        for (const ref of contentRefs) referencedHashes.add(ref.content_hash);
         for (const preset of presets) {
           if (preset.latest_resolved_hash) referencedHashes.add(preset.latest_resolved_hash);
           if (preset.latest_metadata_hash) referencedHashes.add(preset.latest_metadata_hash);
@@ -600,6 +616,7 @@ try {
             presets: presets.length,
             versions: versions.length,
             refs: refs.length,
+            contentRefs: contentRefs.length,
             payloads: payloadRows.length,
           },
           backup: backupManifest,
@@ -634,7 +651,7 @@ try {
           console.log(JSON.stringify(report, null, 2));
         } else {
           console.log('Supabase preset V2 maintenance ' + (write ? 'write' : 'dry run'));
-          console.log('Rows: ' + report.counts.presets + ' presets, ' + report.counts.versions + ' versions, ' + report.counts.refs + ' refs, ' + report.counts.payloads + ' payloads');
+          console.log('Rows: ' + report.counts.presets + ' presets, ' + report.counts.versions + ' versions, ' + report.counts.refs + ' refs, ' + report.counts.contentRefs + ' content refs, ' + report.counts.payloads + ' payloads');
           if (backupManifest) console.log('Backup: ' + backupManifest.dir);
           console.log('Backfill resolved_hash: ' + actions.versionsResolvedBackfilled + ' versions; payloads inserted ' + actions.payloadsInserted + ', reused ' + actions.payloadsReused);
           if (actions.versionsResolvedSkipped) console.log('Skipped resolved_hash backfill: ' + actions.versionsResolvedSkipped + ' versions');

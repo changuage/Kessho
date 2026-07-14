@@ -3,8 +3,6 @@ export const PAD_VOICE_MASK_ALL = (1 << PAD_VOICE_COUNT) - 1;
 export const PAD_VOICE_DEFAULT_MASK = 1 << (PAD_VOICE_COUNT - 1);
 
 const ARRANGEMENT_RESTART_KEYS = [
-  'phraseLength', 'transportPrimaryClock', 'transportBeatsPerBar', 'transportBarsPerPhrase',
-  'sequencerMasterBPM', 'synthEuclidBaseBPM', 'drumEuclidBaseBPM',
   'harmonyClockSource', 'chordProgressionClockSource', 'chordProgressionPhraseMultiplier',
   'chordRate', 'seedWindow', 'scaleMode', 'manualScale', 'rootNote',
   'chordProgressionEnabled', 'chordProgressionPattern', 'chordProgressionSteps',
@@ -16,6 +14,16 @@ const ARRANGEMENT_RESTART_KEYS = [
   'padEnabled', 'pad2Enabled', 'synthVoiceMask', 'pad2VoiceAssign', 'synthOctave',
   'waveSpread', 'leadRandomEnabled', 'leadRandomSource', 'leadRandomClockSource',
   'leadRandomSyncPolicy', 'leadEnabled', 'lead2Enabled', 'sample1Enabled', 'sample2Enabled',
+] as const;
+
+export const ARRANGEMENT_TRANSPORT_TIMING_KEYS = [
+  'phraseLength',
+  'transportPrimaryClock',
+  'transportBeatsPerBar',
+  'transportBarsPerPhrase',
+  'sequencerMasterBPM',
+  'synthEuclidBaseBPM',
+  'drumEuclidBaseBPM',
 ] as const;
 
 const ARRANGEMENT_RESTART_STATE_KEY = '__arrangementRestartState';

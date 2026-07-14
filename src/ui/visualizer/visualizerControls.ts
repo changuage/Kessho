@@ -5,6 +5,14 @@ export type VisualizerLayerId = 'shapes' | 'atmosphere' | 'glitch' | 'kaleidosco
 export type VisualizerQualityMode = 'auto' | 'mobileSafe' | 'desktopBeauty';
 
 export type VisualizerPerformanceMacroId = 'soft' | 'pulse' | 'particles' | 'glitch' | 'bright';
+export type VisualizerLayerMacroId =
+  | 'formation'
+  | 'weather'
+  | 'fragmentation'
+  | 'symmetry'
+  | 'material'
+  | 'age'
+  | 'depth';
 
 export interface VisualizerLayerDefinition {
   id: VisualizerLayerId;
@@ -21,6 +29,8 @@ export interface VisualizerPerformanceMacros {
   glitch: number;
   bright: number;
 }
+
+export type VisualizerLayerMacros = Record<VisualizerLayerMacroId, number>;
 
 export const VISUALIZER_LAYER_DEFS: VisualizerLayerDefinition[] = [
   {
@@ -42,21 +52,21 @@ export const VISUALIZER_LAYER_DEFS: VisualizerLayerDefinition[] = [
     label: 'Glitch',
     shortLabel: 'Glitch',
     kind: 'effect',
-    description: 'Processes all visual content below it.',
+    description: 'Transforms source layers positioned below it in the single-pass effect stack.',
   },
   {
     id: 'kaleidoscope',
     label: 'Kaleidoscope',
     shortLabel: 'Kaleido',
     kind: 'effect',
-    description: 'Folds all visual content below it.',
+    description: 'Folds source layers positioned below it in the single-pass effect stack.',
   },
   {
     id: 'pointCloud',
     label: 'Point Cloud',
     shortLabel: 'Points',
     kind: 'effect',
-    description: 'Converts all visual content below it into dots.',
+    description: 'Converts source layers positioned below it into dots.',
   },
 ];
 
@@ -74,6 +84,16 @@ export const DEFAULT_VISUALIZER_MACROS: VisualizerPerformanceMacros = {
   particles: 0.5,
   glitch: 0.5,
   bright: 0.5,
+};
+
+export const DEFAULT_VISUALIZER_LAYER_MACROS: VisualizerLayerMacros = {
+  formation: 0.5,
+  weather: 0.5,
+  fragmentation: 0.5,
+  symmetry: 0.5,
+  material: 0.5,
+  age: 0.5,
+  depth: 0.5,
 };
 
 const LAYER_TO_INDEX: Record<VisualizerLayerId, number> = {
@@ -180,42 +200,5 @@ export function updateControlsPatch(
     ...previous,
     ...patch,
     layerOrder: normalizeLayerOrder(patch.layerOrder ?? previous.layerOrder),
-  };
-}
-
-export function derivePerformanceMacroPatch(
-  macros: VisualizerPerformanceMacros,
-): Partial<ReactiveVisualizerControls> {
-  const soft = clamp01(macros.soft);
-  const pulse = clamp01(macros.pulse);
-  const particles = clamp01(macros.particles);
-  const glitch = clamp01(macros.glitch);
-  const bright = clamp01(macros.bright);
-
-  return {
-    shapeCount: clampBipolar(0.15 + particles * 0.62 - soft * 0.28),
-    noiseDensity: clampBipolar(0.08 + particles * 0.34 - soft * 0.22),
-    motion: clampBipolar(0.12 + pulse * 0.44 - soft * 0.2),
-    pulseSync: clampBipolar(-0.05 + pulse * 1.02),
-    triggerResponse: clampBipolar(0.08 + pulse * 0.9),
-    ripples: clampBipolar(-0.2 + pulse * 0.75),
-    shapeSize: clampBipolar(-0.08 + pulse * 0.38 + particles * 0.22 - soft * 0.18),
-    shapeSpread: clampBipolar(-0.18 + particles * 0.44 + pulse * 0.28 - soft * 0.24),
-    bloomSize: clampBipolar(0.04 + pulse * 0.28 + bright * 0.28),
-    pointCloudAmount: clampBipolar(-1 + particles * 2),
-    pointCloudDensity: clampBipolar(-0.25 + particles * 1.1),
-    pointCloudScatter: clampBipolar(-0.15 + particles * 0.9),
-    pointCloudSize: clampBipolar(-0.15 + particles * 0.45 + pulse * 0.18),
-    pointCloudColor: clampBipolar(-0.05 + bright * 0.95),
-    glitchIntensity: clampBipolar(glitch * 0.62 - soft * 0.28),
-    glitchChromatic: clampBipolar(glitch * 0.58),
-    glitchScale: clampBipolar(glitch * 0.34),
-    kaleidoscope: clampBipolar(glitch * 0.54),
-    kaleidoSegments: clampBipolar(glitch * 0.42),
-    kaleidoSpin: clampBipolar(glitch * 0.26),
-    brightness: clampBipolar(-0.22 + bright * 1.08 + pulse * 0.12 - soft * 0.34),
-    vibrance: clampBipolar(0.05 + bright * 0.92),
-    saturation: clampBipolar(-0.16 + bright * 0.88 + particles * 0.18 - soft * 0.28),
-    color: clampBipolar(-0.2 + bright * 0.9),
   };
 }

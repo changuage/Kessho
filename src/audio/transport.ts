@@ -26,6 +26,10 @@ export interface TransportDebugSnapshot {
   effectiveBpm: number;
   effectivePhraseSeconds: number;
   nextPhraseBoundaryIn: number;
+  pendingBpm?: number | null;
+  pendingPhraseSeconds?: number | null;
+  pendingTransitionIn?: number | null;
+  transitionRevision?: number;
   nextHarmonyEventIn: number | null;
   nextProgressionStepIn: number | null;
   padChordPhraseSeconds?: number | null;

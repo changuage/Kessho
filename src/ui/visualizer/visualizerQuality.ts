@@ -9,6 +9,7 @@ export interface VisualizerQualitySettings {
   noiseDensityScale: number;
   pointCloudDensityScale: number;
   maxPointCloudGrid: number;
+  maxShapes: number;
   shaderDetail: number;
 }
 
@@ -35,6 +36,7 @@ export function resolveVisualizerQualityMode(params: {
       noiseDensityScale: 0.72,
       pointCloudDensityScale: 0.66,
       maxPointCloudGrid: 56,
+      maxShapes: 8,
       shaderDetail: 0,
     };
   }
@@ -48,6 +50,7 @@ export function resolveVisualizerQualityMode(params: {
     noiseDensityScale: 1,
     pointCloudDensityScale: 1,
     maxPointCloudGrid: 96,
+    maxShapes: 12,
     shaderDetail: 1,
   };
 }

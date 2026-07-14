@@ -28,7 +28,7 @@ import {
   type KesshoMidiMessage,
   type KesshoMidiStatus,
 } from '../../native/midi/midiTypes';
-import { midiMessageToProductLiveNoteEvent } from '../../native/midi/midiLiveNoteAdapter';
+import { midiLiveNoteInputId, midiMessageToProductLiveNoteEvent } from '../../native/midi/midiLiveNoteAdapter';
 import type { ProductLiveNoteEvent } from '../../audio/product/liveNoteEvents';
 import type { SliderState } from '../state';
 import { MidiLearnContext, type MidiActivityEntry } from './useMidiLearn';
@@ -44,7 +44,7 @@ export interface MidiLearnProviderProps {
   children: React.ReactNode;
   onParamChange: (key: keyof SliderState, value: number) => void;
   onMidiMessage?: (message: KesshoMidiMessage) => void;
-  onLiveNoteEvent?: (event: ProductLiveNoteEvent) => void;
+  onLiveNoteEvent?: (event: ProductLiveNoteEvent, inputId: string) => boolean;
   onOpenMidiPage?: () => void;
 }
 
@@ -167,16 +167,19 @@ export function MidiLearnProvider({
   }, []);
 
   const handleMidiMessage = React.useCallback((message: KesshoMidiMessage) => {
-    onMidiMessageRef.current?.(message);
-
     const isLiveNoteMessage = message.kind === 'noteOn' || message.kind === 'noteOff';
+    let liveNoteHandled = false;
     if (isLiveNoteMessage) {
       const liveNoteHandler = onLiveNoteEventRef.current;
       if (liveNoteHandler) {
         const liveNoteEvent = midiMessageToProductLiveNoteEvent(message);
-        if (liveNoteEvent) liveNoteHandler(liveNoteEvent);
+        const inputId = midiLiveNoteInputId(message);
+        if (liveNoteEvent && inputId) {
+          liveNoteHandled = liveNoteHandler(liveNoteEvent, inputId);
+        }
       }
     }
+    if (!liveNoteHandled) onMidiMessageRef.current?.(message);
 
     const now = performance.now();
     if (now - lastMonitorUpdateRef.current >= MONITOR_THROTTLE_MS) {

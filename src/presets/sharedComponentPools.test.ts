@@ -1,0 +1,68 @@
+import assert from 'node:assert/strict';
+import { DEFAULT_STATE } from '../ui/state';
+import { preparePresetContentBatch } from './contentNodes';
+import {
+  buildDynamicsEqPoolInstance,
+  buildGranularVoicePoolInstance,
+  buildSampleVoicePoolInstance,
+  buildPadVoicePoolInstance,
+  hydrateSharedComponentRef,
+  sharedComponentPoolCandidates,
+} from './sharedComponentPools';
+import { PAD1_TO_PAD2_KEY, PAD_PRESET_PARAM_KEYS } from '../audio/padPresets';
+
+const state = { ...DEFAULT_STATE } as unknown as Record<string, unknown>;
+
+export async function runSharedComponentPoolRegression(): Promise<void> {
+  for (let lane = 2; lane <= 4; lane += 1) {
+    for (const key of Object.keys(state).filter(key => key.startsWith('granularV1'))) {
+      state[key.replace('granularV1', `granularV${lane}`)] = state[key];
+    }
+  }
+  for (const key of Object.keys(state).filter(key => key.startsWith('dynamicsEq1'))) {
+    state[key.replace('dynamicsEq1', 'dynamicsEq2')] = state[key];
+  }
+
+  const granular = Array.from({ length: 4 }, (_, index) => buildGranularVoicePoolInstance(state, index));
+  const eq = Array.from({ length: 2 }, (_, index) => buildDynamicsEqPoolInstance(state, index));
+  const batch = await preparePresetContentBatch(sharedComponentPoolCandidates([...granular, ...eq]));
+  assert.equal(new Set(granular.map(item => batch.byId.get(item.id)?.hash)).size, 1);
+  assert.equal(new Set(eq.map(item => batch.byId.get(item.id)?.hash)).size, 1);
+  assert.equal(batch.uniqueByHash.size, 2);
+
+  state.granularV1Enabled = false;
+  state.granularV1Gain = 0.1;
+  const bindingChanged = await preparePresetContentBatch(sharedComponentPoolCandidates([
+    buildGranularVoicePoolInstance(state, 0),
+  ]));
+  assert.equal(bindingChanged.byId.get('granular.0')?.hash, batch.byId.get('granular.0')?.hash);
+
+  const hydrated = hydrateSharedComponentRef('granular.voice.4.content', 'granularVoice', granular[0]!.content);
+  assert.equal(hydrated?.granularV4Mode, state.granularV1Mode);
+  assert.equal('granularV4Enabled' in (hydrated ?? {}), false);
+
+  for (const key of Object.keys(state).filter(key => key.startsWith('sample1'))) {
+    state[key.replace('sample1', 'sample2')] = state[key];
+  }
+  const samples = [buildSampleVoicePoolInstance(state, 0), buildSampleVoicePoolInstance(state, 1)];
+  const sampleBatch = await preparePresetContentBatch(sharedComponentPoolCandidates(samples));
+  assert.equal(sampleBatch.byId.get('sample.0')?.hash, sampleBatch.byId.get('sample.1')?.hash);
+  assert.equal('Enabled' in samples[0]!.content, false);
+  assert.equal('ReverbSend' in samples[0]!.content, false);
+
+  for (const key of PAD_PRESET_PARAM_KEYS) {
+    const pad2Key = PAD1_TO_PAD2_KEY[key];
+    if (pad2Key) state[pad2Key] = state[key];
+  }
+  state.detune = 0;
+  const pads = [buildPadVoicePoolInstance(state, 0), buildPadVoicePoolInstance(state, 1)];
+  const padBatch = await preparePresetContentBatch(sharedComponentPoolCandidates(pads));
+  assert.equal(padBatch.byId.get('pad.0')?.hash, padBatch.byId.get('pad.1')?.hash);
+  state.detune = 0.25;
+  const extendedPad = await preparePresetContentBatch(sharedComponentPoolCandidates([
+    buildPadVoicePoolInstance(state, 0),
+  ]));
+  assert.notEqual(extendedPad.byId.get('pad.0')?.hash, padBatch.byId.get('pad.0')?.hash);
+}
+
+await runSharedComponentPoolRegression();

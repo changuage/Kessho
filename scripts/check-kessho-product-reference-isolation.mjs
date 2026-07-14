@@ -80,7 +80,6 @@ const forbiddenAudioModules = new Set([
   './engine',
   './euclidean',
   './granularMacroModel',
-  './granularSeqEvolve',
   './morphUtils',
   './padPresets',
   './padRandomize',

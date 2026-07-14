@@ -26,12 +26,28 @@ const checks = {
   liveNoteAdapter: adapter.includes('ProductLiveNoteEvent'),
   hostTimestamp: swift.includes('timestampHostTime') || swift.includes('timeStamp'),
 };
+const productionNativePlaybackWired =
+  swift.includes('loadProductSnapshot') &&
+  swift.includes('enqueueProductEvents') &&
+  !swift.includes('startNativeProductRendererForDiagnostics');
+const nativeMidiDirectToProductCore = swift.includes('KesshoProductEvent') && swift.includes('enqueueEvent');
 fs.mkdirSync('docs/reports', { recursive: true });
-fs.writeFileSync('docs/reports/kessho-macos-live-note-latency-latest.json', `${JSON.stringify({ ...report, checks }, null, 2)}\n`);
+fs.writeFileSync('docs/reports/kessho-macos-live-note-latency-latest.json', `${JSON.stringify({
+  ...report,
+  status: 'prep-only',
+  productionNativePlaybackWired,
+  nativeMidiDirectToProductCore,
+  blockers: [
+    'The macOS native renderer is diagnostics-only.',
+    'CoreMIDI host timestamps are forwarded to JavaScript rather than scheduled directly into Product Core.',
+    'No physical-device event-to-render measurements have been recorded.',
+  ],
+  checks,
+}, null, 2)}\n`);
 
 const failed = Object.entries(checks).filter(([, ok]) => !ok);
 if (failed.length) {
   console.error(`macos live note latency prep failed: ${failed.map(([name]) => name).join(', ')}`);
   process.exit(1);
 }
-console.log('macos live note latency prep passed');
+console.log('macOS live-note latency prep is present; production wiring and device measurements are pending');

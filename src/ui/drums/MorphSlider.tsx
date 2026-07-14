@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
+import { VOICE_MORPH_KEYS } from '../../audio/drumMorph';
+import { DRUM_VOICE_SCOPES } from '../../audio/drumVoiceConfig';
 import { usePresets } from '../../presets/usePresets';
 import { removeRuntimeValues, useRuntimeValue } from '../runtimeValueState';
 import {
@@ -25,26 +27,6 @@ interface MorphSliderProps {
   poolPopupSlot?: 'A' | 'B' | null;
   onPoolPopupSlotChange?: (slot: 'A' | 'B' | null) => void;
 }
-
-const MORPH_KEYS: Record<DrumVoiceType, { a: keyof SliderState; b: keyof SliderState; morph: keyof SliderState }> = {
-  sub: { a: 'drumSubPresetA', b: 'drumSubPresetB', morph: 'drumSubMorph' },
-  kick: { a: 'drumKickPresetA', b: 'drumKickPresetB', morph: 'drumKickMorph' },
-  click: { a: 'drumClickPresetA', b: 'drumClickPresetB', morph: 'drumClickMorph' },
-  beepHi: { a: 'drumBeepHiPresetA', b: 'drumBeepHiPresetB', morph: 'drumBeepHiMorph' },
-  beepLo: { a: 'drumBeepLoPresetA', b: 'drumBeepLoPresetB', morph: 'drumBeepLoMorph' },
-  noise: { a: 'drumNoisePresetA', b: 'drumNoisePresetB', morph: 'drumNoiseMorph' },
-  membrane: { a: 'drumMembranePresetA', b: 'drumMembranePresetB', morph: 'drumMembraneMorph' },
-};
-
-const DRUM_ENGINE_SCOPES: Record<DrumVoiceType, string> = {
-  sub: 'drumSub',
-  kick: 'drumKick',
-  click: 'drumClick',
-  beepHi: 'drumBeepHi',
-  beepLo: 'drumBeepLo',
-  noise: 'drumNoise',
-  membrane: 'drumMembrane',
-};
 
 const DRUM_POOL_PREVIEW_LEVEL_FLOOR = 0.68;
 
@@ -98,14 +80,14 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
   poolPopupSlot: controlledPoolPopupSlot,
   onPoolPopupSlotChange,
 }) => {
-  const morph = MORPH_KEYS[voice];
-  const engineScope = DRUM_ENGINE_SCOPES[voice];
+  const { presetA, presetB, morph: morphKey } = VOICE_MORPH_KEYS[voice];
+  const engineScope = DRUM_VOICE_SCOPES[voice];
   const { presets: enginePresets, save, load, remove, updateMetadata } = usePresets('engine', engineScope);
   const [internalPoolPopupSlot, setInternalPoolPopupSlot] = useState<'A' | 'B' | null>(null);
   const poolPopupSlot = controlledPoolPopupSlot !== undefined ? controlledPoolPopupSlot : internalPoolPopupSlot;
   const setPoolPopupSlot = onPoolPopupSlotChange ?? setInternalPoolPopupSlot;
-  const liveMorphValue = useRuntimeValue(String(morph.morph));
-  const morphValue = liveMorphValue ?? (state[morph.morph] as number);
+  const liveMorphValue = useRuntimeValue(String(morphKey));
+  const morphValue = liveMorphValue ?? (state[morphKey] as number);
   const factoryPresetNames = getFactoryPresetNames(voice);
   const knownPresetNames = getPresetNames(voice);
   const summaryByName = useMemo(() => new Map(enginePresets.map(preset => [preset.name, preset])), [enginePresets]);
@@ -140,8 +122,8 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
     return candidates;
   }, [factoryPresetNames, knownPresetNames, summaryByName]);
   const pool = usePresetPoolCandidates('engine', engineScope, poolCandidates, [
-    String(state[morph.a] ?? ''),
-    String(state[morph.b] ?? ''),
+    String(state[presetA] ?? ''),
+    String(state[presetB] ?? ''),
   ]);
   const visiblePresetNames = useMemo(() => {
     const names = new Set<string>();
@@ -153,8 +135,8 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
   }, [pool.filteredCandidates]);
   const pooledFactoryPresetNames = factoryPresetNames.filter(name => visiblePresetNames.has(name));
   const clearLiveMorphValue = useCallback(() => {
-    removeRuntimeValues([String(morph.morph)]);
-  }, [morph.morph]);
+    removeRuntimeValues([String(morphKey)]);
+  }, [morphKey]);
   const handleMorphChange = useCallback((key: keyof SliderState, value: number) => {
     clearLiveMorphValue();
     onParamChange(key, value as SliderState[keyof SliderState]);
@@ -165,16 +147,16 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
       onStateChange((previous) => applyDrumPresetSlotChange(previous, voice, 'A', value));
       return;
     }
-    onParamChange(morph.a, value as SliderState[keyof SliderState]);
-  }, [clearLiveMorphValue, morph.a, onParamChange, onStateChange, voice]);
+    onParamChange(presetA, value as SliderState[keyof SliderState]);
+  }, [clearLiveMorphValue, onParamChange, onStateChange, presetA, voice]);
   const handlePresetBChange = useCallback((value: string) => {
     clearLiveMorphValue();
     if (onStateChange) {
       onStateChange((previous) => applyDrumPresetSlotChange(previous, voice, 'B', value));
       return;
     }
-    onParamChange(morph.b, value as SliderState[keyof SliderState]);
-  }, [clearLiveMorphValue, morph.b, onParamChange, onStateChange, voice]);
+    onParamChange(presetB, value as SliderState[keyof SliderState]);
+  }, [clearLiveMorphValue, onParamChange, onStateChange, presetB, voice]);
   const handlePoolLoad = useCallback((candidate: PresetPoolCandidate) => {
     if (poolPopupSlot === 'A') {
       handlePresetAChange(candidate.name);
@@ -188,11 +170,11 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
     if (!poolPopupSlot || !onAuditionPresetPreview) return;
     const endpointState = {
       ...state,
-      [morph.morph]: poolPopupSlot === 'A' ? 0 : 1,
+      [morphKey]: poolPopupSlot === 'A' ? 0 : 1,
     } as SliderState;
     const previewState = applyDrumPoolPreviewLevelFloor(applyDrumPresetSlotChange(endpointState, voice, poolPopupSlot, candidate.name));
     void onAuditionPresetPreview(voice, previewState);
-  }, [morph.morph, onAuditionPresetPreview, poolPopupSlot, state, voice]);
+  }, [morphKey, onAuditionPresetPreview, poolPopupSlot, state, voice]);
 
   const handlePoolDelete = useCallback((candidate: PresetPoolCandidate) => {
     return remove(candidate.name);
@@ -264,7 +246,7 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
       <span className="morph-label">A</span>
       <div className="morph-slot-wrap">
         <select
-          value={String(state[morph.a])}
+          value={String(state[presetA])}
           onChange={(e) => handlePresetAChange(e.target.value)}
           data-voice={voice}
           data-slot="A"
@@ -290,17 +272,17 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
         <SliderComponent
           label="Morph"
           value={morphValue}
-          paramKey={morph.morph}
+          paramKey={morphKey}
           onChange={handleMorphChange}
           format={(value: number) => String(Math.round(value * 100))}
           unit="%"
-          {...getSliderProps(morph.morph)}
+          {...getSliderProps(morphKey)}
         />
       </div>
 
       <div className="morph-slot-wrap">
         <select
-          value={String(state[morph.b])}
+          value={String(state[presetB])}
           onChange={(e) => handlePresetBChange(e.target.value)}
           data-voice={voice}
           data-slot="B"

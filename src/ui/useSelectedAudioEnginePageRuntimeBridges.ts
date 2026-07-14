@@ -4,13 +4,12 @@ import type { DynamicsVisualTelemetrySnapshot, EarthTextureDebugState } from '..
 import { useDrumPageRuntimeBridge } from './useDrumPageRuntimeBridge';
 import { useDrumPageSequencerBridge } from './useDrumPageSequencerBridge';
 import { useSynthPageSequencerBridge } from './useSynthPageSequencerBridge';
-import type { ManualSynthNoteOptions } from '../audio/engineSharedTypes';
 import type {
-  ProductDrumVoice,
   ProductSynthAnchorWalkerVisualStateCallback,
   ProductSynthOrbitVisualStateCallback,
 } from '../audio/product/ProductEngineTypes';
 import type { SliderState } from './state';
+import type { RuntimeManualTriggerSurface } from './useProductRuntimeManualTriggers';
 
 export type SelectedAudioEnginePageRuntimeBridgeOptions =
   Parameters<typeof useSynthPageSequencerBridge>[0] &
@@ -20,10 +19,7 @@ export type SelectedAudioEnginePageRuntimeBridgeOptions =
       drumVoiceAnalyser?: ((voice: unknown) => AnalyserNode | undefined) | undefined;
       dynamicsAnalyser?: ((key: unknown) => AnalyserNode | null) | undefined;
     };
-    productRuntimeManualTriggers: {
-      auditionSynthNote: (note: ManualSynthNoteOptions) => void;
-      triggerDrumVoice: (voice: ProductDrumVoice) => void;
-    };
+    productRuntimeManualTriggers: RuntimeManualTriggerSurface;
     getEarthTextureDebugState: () => EarthTextureDebugState;
     getSelectedLeadMorphedParams: (lead: 1 | 2) => { attack: number; decay: number; sustain: number; release: number } | null;
     getSelectedDynamicsVisualTelemetry: () => DynamicsVisualTelemetrySnapshot;
@@ -58,6 +54,8 @@ export function useSelectedAudioEnginePageRuntimeBridges(options: SelectedAudioE
     liveSourceTelemetryAvailable: true,
     onRequestPlaybackStart: options.onRequestPlaybackStart,
     onAuditionNote: options.productRuntimeManualTriggers.auditionSynthNote,
+    onLiveNoteStart: options.productRuntimeManualTriggers.startSynthLiveNote,
+    onLiveNoteStop: options.productRuntimeManualTriggers.stopSynthLiveNote,
     getPadFilterFreq: options.getSelectedPadFilterFreq,
     getPadLfoValue: options.getSelectedPadLfoValue,
     setStepPositionCallback: options.setSelectedSynthStepPositionCallback,
@@ -71,6 +69,8 @@ export function useSelectedAudioEnginePageRuntimeBridges(options: SelectedAudioE
     options.liveLeadMorphedParamsAvailable,
     options.onRequestPlaybackStart,
     options.productRuntimeManualTriggers.auditionSynthNote,
+    options.productRuntimeManualTriggers.startSynthLiveNote,
+    options.productRuntimeManualTriggers.stopSynthLiveNote,
     options.setSelectedSynthEvolveTriggerCallback,
     options.setSelectedSynthAnchorWalkerVisualStateCallback,
     options.setSelectedSynthOrbitVisualStateCallback,

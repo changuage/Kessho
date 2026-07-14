@@ -588,6 +588,11 @@ assert.equal(
   16,
   'Product Play ARP should only send native step events for active ARP lanes',
 );
+assert.equal(
+  arpOverrideEvents.length,
+  24,
+  'an ARP-only commit should fit one bounded runtime batch and must not synthesize unrelated sequencer restore events',
+);
 const sequenceBoundArpEnginePattern = resolveProductPlayEnginePattern({
   config: continuousArpPlayConfig,
   harmony: productArpTestHarmony([60, 64, 67, 71]),
@@ -713,8 +718,42 @@ assert.deepEqual(
     contour: [1, -2, 12],
     contourMode: 'semitone',
   }, productArpTestHarmony([60, 64, 67])),
-  [61, 62, 79],
-  'Product arp semitone contour mode should offset base traversal chromatically',
+  [61, 58, 72],
+  'Product arp semitone contour mode should apply signed chromatic moves from one stable base',
+);
+assert.deepEqual(
+  resolveProductArpMidiPattern({
+    config: normalizeProductArpConfig({
+      enabled: true,
+      flow: 'up',
+      length: 3,
+      pulseMask: 0b111,
+      contour: [0, -2, 2],
+      contourMode: 'semitone',
+    }),
+    harmony: productArpTestHarmony([60, 64, 67, 71]),
+    laneIndex: 0,
+    anchorMidi: 66,
+  }),
+  [67, 65, 69],
+  'Product arp semitone mode should anchor to the nearest enabled pitch-lane note and preserve negative direction',
+);
+assert.deepEqual(
+  resolveProductArpMidiPattern({
+    config: normalizeProductArpConfig({
+      enabled: true,
+      flow: 'up',
+      length: 3,
+      pulseMask: 0b111,
+      contour: [0, 0, 0],
+      contourMode: 'pool',
+    }),
+    harmony: productArpTestHarmony([60, 64, 67, 71]),
+    laneIndex: 0,
+    anchorMidi: 66,
+  }),
+  [67, 71, 60],
+  'Product arp pool traversal should start at the nearest enabled pitch-lane note',
 );
 
 const resetDetails = resolveProductArpPatternDetails({
@@ -819,6 +858,68 @@ assert.equal(
 );
 
 const originalWindow = (globalThis as { window?: unknown }).window;
+{
+  let nextTimerId = 1;
+  const timerCallbacks = new Map<number, () => void>();
+  (globalThis as { window?: unknown }).window = {
+    setTimeout: (callback: () => void) => {
+      const id = nextTimerId++;
+      timerCallbacks.set(id, callback);
+      return id;
+    },
+    clearTimeout: (id: number) => { timerCallbacks.delete(id); },
+  };
+  try {
+    const scheduler = new CoreProductArrangementScheduler(() => undefined, () => null);
+    const baseTransportState = {
+      ...DEFAULT_STATE,
+      transportPrimaryClock: 'seconds' as const,
+      phraseLength: 16,
+      sequencerMasterBPM: 60,
+      synthEuclidBaseBPM: 60,
+      drumEuclidBaseBPM: 60,
+    };
+    scheduler.start(baseTransportState);
+    scheduler.update({
+      ...baseTransportState,
+      phraseLength: 32,
+      sequencerMasterBPM: 30,
+      synthEuclidBaseBPM: 30,
+      drumEuclidBaseBPM: 30,
+    });
+    const pendingScheduler = scheduler as unknown as {
+      state: Record<string, unknown>;
+      pendingTransportState: Record<string, unknown> | null;
+    };
+    assert.equal(pendingScheduler.state.phraseLength, 16, 'arrangement timing should remain active until the phrase boundary');
+    assert.equal(pendingScheduler.pendingTransportState?.phraseLength, 32, 'arrangement timing should stage the requested phrase');
+    scheduler.update({
+      ...baseTransportState,
+      phraseLength: 48,
+      sequencerMasterBPM: 20,
+      synthEuclidBaseBPM: 20,
+      drumEuclidBaseBPM: 20,
+    });
+    assert.equal(pendingScheduler.pendingTransportState?.phraseLength, 48, 'later timing edits should replace the pending arrangement state');
+    scheduler.syncTransportTelemetry({
+      schemaHash: 0,
+      transportRunning: true,
+      activeSources: 0,
+      activeVoices: 0,
+      activeAssets: 0,
+      sequencerEventCount: 0,
+      controlQueueDepth: 0,
+      assetMissingCount: 0,
+      lastErrorCode: 0,
+      transportTransitionRevision: 1,
+    });
+    assert.equal(pendingScheduler.state.phraseLength, 48, 'latest arrangement timing should become active at the boundary');
+    assert.equal(pendingScheduler.pendingTransportState, null, 'applied arrangement timing should clear pending state');
+    scheduler.stop();
+  } finally {
+    (globalThis as { window?: unknown }).window = originalWindow;
+  }
+}
 const postedHarmonyEvents: Array<{ paramId?: number; value?: number }> = [];
 (globalThis as { window?: unknown }).window = {
   setTimeout: () => 1,

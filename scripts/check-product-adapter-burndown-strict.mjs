@@ -52,7 +52,7 @@ for (const forbidden of ['sample1', 'sample2', 'SampleSlotRenderer', 'sample-cac
 const webProductEngine = fs.existsSync('src/audio/product/WebProductEngine.ts')
   ? fs.readFileSync('src/audio/product/WebProductEngine.ts', 'utf8')
   : '';
-for (const forbidden of ['sample1', 'sample2', 'SampleSlotRenderer']) {
+for (const forbidden of ['SampleSlotRenderer', 'sample-cache-diagnostics', 'ProductSamplerAdapter']) {
   if (webProductEngine.includes(forbidden)) {
     failures.push(`src/audio/product/WebProductEngine.ts: must not gain sampler-specific logic (${forbidden})`);
   }

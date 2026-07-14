@@ -4,6 +4,7 @@ import type { PresetEntry, PresetSummary } from '../../presets/types';
 import type { ReactiveVisualizerControls } from './ReactiveVisualizerRenderer';
 import type {
   VisualizerPerformanceMacros,
+  VisualizerLayerMacros,
   VisualizerQualityMode,
 } from './visualizerControls';
 import type {
@@ -23,6 +24,7 @@ export type VisualizerPresetData = {
   reactiveRanges: VisualizerReactiveRanges;
   reaction: VisualizerReactionSettings;
   performanceMacros?: VisualizerPerformanceMacros;
+  layerMacros?: VisualizerLayerMacros;
   qualityMode?: VisualizerQualityMode;
   seed: number;
 };

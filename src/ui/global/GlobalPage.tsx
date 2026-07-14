@@ -990,6 +990,10 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   const isDecoupled = primaryClock === 'decoupled';
   const phraseSeconds = state.phraseLength ?? transportMetrics.phraseDurationFromBeatClockSec;
   const beatBpm = state.sequencerMasterBPM ?? transportMetrics.effectiveBpm;
+  const pendingTransportDebug = engineState.transportDebug?.pendingTransitionIn !== null &&
+    engineState.transportDebug?.pendingTransitionIn !== undefined
+    ? engineState.transportDebug
+    : null;
   const toggleSection = (id: string) => {
     setExpandedSections(prev => {
       const next = new Set(prev);
@@ -1612,6 +1616,14 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                   <br />
                   {`${state.transportBarsPerPhrase} bars of ${state.transportBeatsPerBar}/4 per phrase`}
                 </div>
+                {pendingTransportDebug && (
+                  <div style={{ marginBottom: '8px', padding: '7px 9px', border: '1px solid #7c5b18', borderRadius: '8px', background: '#251d0d', color: '#f2c96d', fontSize: '0.68rem' }}>
+                    Audio continues at {pendingTransportDebug.effectivePhraseSeconds.toFixed(1)}s / {pendingTransportDebug.effectiveBpm.toFixed(1)} BPM.{' '}
+                    {pendingTransportDebug.pendingPhraseSeconds?.toFixed(1) ?? phraseSeconds.toFixed(1)}s /{' '}
+                    {pendingTransportDebug.pendingBpm?.toFixed(1) ?? transportMetrics.effectiveBpm.toFixed(1)} BPM applies at the next phrase
+                    {pendingTransportDebug.pendingTransitionIn !== null ? ` in ${pendingTransportDebug.pendingTransitionIn?.toFixed(2)}s` : ''}.
+                  </div>
+                )}
                 <div className="harmony-grid-2">
                   <Select
                     label="Primary Clock"
@@ -1801,7 +1813,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '6px 12px', fontSize: '0.68rem' }}>
                     <div><span style={{ color: '#777' }}>Harmony:</span> <span style={{ color: '#ddd' }}>{engineState.transportDebug?.nextHarmonyEventIn !== null && engineState.transportDebug?.nextHarmonyEventIn !== undefined ? `${engineState.transportDebug.nextHarmonyEventIn.toFixed(2)}s` : '—'}</span></div>
                     <div><span style={{ color: '#777' }}>Phrase:</span> <span style={{ color: '#ddd' }}>{engineState.transportDebug ? `${engineState.transportDebug.nextPhraseBoundaryIn.toFixed(2)}s` : '—'}</span></div>
-                    <div><span style={{ color: '#777' }}>Beat BPM:</span> <span style={{ color: '#ddd' }}>{transportMetrics.effectiveBpm.toFixed(1)}</span></div>
+                    <div><span style={{ color: '#777' }}>Beat BPM:</span> <span style={{ color: '#ddd' }}>{(engineState.transportDebug?.effectiveBpm ?? transportMetrics.effectiveBpm).toFixed(1)}</span></div>
                   </div>
                 </div>
               </div>

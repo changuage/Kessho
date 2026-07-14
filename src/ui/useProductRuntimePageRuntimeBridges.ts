@@ -63,7 +63,6 @@ export function useProductRuntimePageRuntimeBridges({
   const selectedRuntimeCallbacks = useSelectedAudioEngineCallbackSurfaces(productRuntimeMode);
   const selectedRuntimeControls = useSelectedAudioEngineControlSurfaces(productRuntimeMode);
   const selectedRuntimeManualTriggers = useSelectedAudioEngineManualTriggers({
-    audioEngineRuntimeMode: productRuntimeMode,
     stateRef,
   });
   const productSynthPageEvents = useProductRuntimeSynthPageEvents(productRuntimeMode, stateRef);

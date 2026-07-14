@@ -26,11 +26,28 @@ int32_t kessho_product_debug_render_events(
       engine->applyControlEvent(engine->control_events[control_index].event);
       ++control_index;
     }
+    engine->applyPendingTransportTransition();
     uint32_t control_segment_end = frames;
     if (control_index < engine->control_event_count) {
       control_segment_end = std::min(
           control_segment_end,
           engine->control_events[control_index].event.sample_offset);
+    }
+    if (engine->transport.transition_pending &&
+        engine->transport.pending_apply_frame > engine->transport.sample_frame) {
+      const uint64_t frames_until_transition =
+          engine->transport.pending_apply_frame - engine->transport.sample_frame;
+      control_segment_end = std::min<uint32_t>(
+          control_segment_end,
+          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_transition, frames - cursor)));
+    }
+    if (engine->pending_phrase_timing_event_count > 0u &&
+        engine->pending_phrase_timing_apply_frame > engine->transport.sample_frame) {
+      const uint64_t frames_until_timing =
+          engine->pending_phrase_timing_apply_frame - engine->transport.sample_frame;
+      control_segment_end = std::min<uint32_t>(
+          control_segment_end,
+          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_timing, frames - cursor)));
     }
     if (control_segment_end <= cursor) {
       control_segment_end = cursor + 1u;

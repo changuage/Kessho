@@ -134,6 +134,15 @@ export function useSynthPageSequencerBridge({
     setSelectedSynthStepOverrides(engineOverrides, subLaneStates ?? synthSubLaneStatesRef.current);
   }, [setSelectedSynthStepOverrides, synthSubLaneStatesRef]);
 
+  const reassertRuntimeState = useCallback(() => {
+    const engineOverrides = engineStepOverridesRef.current;
+    if (!engineOverrides) return;
+    // SynthPage owns the editor, not playback. Re-post the last complete engine
+    // payload while the page detaches so a concurrent snapshot/state flush cannot
+    // leave native chord/step overrides cleared. This does not restart lane clocks.
+    setSelectedSynthStepOverrides(engineOverrides, synthSubLaneStatesRef.current);
+  }, [setSelectedSynthStepOverrides, synthSubLaneStatesRef]);
+
   const onClockDivsChange = useCallback((divs: ClockDivision[]) => {
     synthClockDivsRef.current = divs;
     setSelectedSynthEuclidClockDivs(divs);
@@ -173,6 +182,7 @@ export function useSynthPageSequencerBridge({
     onPitchBindingModesChange,
     onPitchSettingsChange,
     onRawStepOverridesChange,
+    reassertRuntimeState,
     onStepOverridesChange,
     onSubLaneStatesChange,
     onArpConfigsChange,
@@ -187,6 +197,7 @@ export function useSynthPageSequencerBridge({
     onPitchBindingModesChange,
     onPitchSettingsChange,
     onRawStepOverridesChange,
+    reassertRuntimeState,
     onStepOverridesChange,
     onSubLaneStatesChange,
     onArpConfigsChange,

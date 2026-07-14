@@ -75,7 +75,7 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   u32(snapshot.transport.beatsPerBar);
   u32(snapshot.transport.barsPerPhrase);
   f32(snapshot.transport.swing);
-  u32(0);
+  f32(snapshot.transport.phraseSeconds);
   f32(snapshot.harmony.rootMidi);
   u32(snapshot.harmony.scaleId);
   f32(snapshot.harmony.tension);

@@ -42,7 +42,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS preset_payloads_v2 (
   hash TEXT PRIMARY KEY,
   payload_kind TEXT NOT NULL CHECK (
-    payload_kind IN ('override', 'metadata', 'resolved', 'patch', 'refs_override')
+    payload_kind IN ('override', 'metadata', 'resolved', 'patch', 'refs_override', 'content')
   ),
   payload JSONB NOT NULL,
   payload_bytes INTEGER NOT NULL DEFAULT 0,
@@ -184,6 +184,21 @@ CREATE TABLE IF NOT EXISTS preset_version_refs_v2 (
 
 CREATE INDEX IF NOT EXISTS idx_preset_version_refs_v2_target
   ON preset_version_refs_v2(target_preset_id);
+
+-- Direct immutable component edges. Production migrations add the complete
+-- hierarchical slot/content-type compatibility constraint.
+CREATE TABLE IF NOT EXISTS preset_version_content_refs_v2 (
+  version_id UUID NOT NULL REFERENCES preset_versions_v2(id) ON DELETE CASCADE,
+  ref_slot TEXT NOT NULL,
+  content_hash TEXT NOT NULL REFERENCES preset_payloads_v2(hash) ON DELETE RESTRICT,
+  content_type TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (version_id, ref_slot),
+  CHECK (content_hash ~ '^[0-9a-f]{64}$')
+);
+
+CREATE INDEX IF NOT EXISTS idx_preset_version_content_refs_v2_hash
+  ON preset_version_content_refs_v2(content_hash);
 
 ALTER TABLE presets_v2
   ADD CONSTRAINT presets_v2_latest_version_fk

@@ -154,6 +154,7 @@ function transportFromState(state: Record<string, unknown> | undefined): CorePro
       bpm: 120,
       beatsPerBar: 4,
       barsPerPhrase: 4,
+      phraseSeconds: 16,
       swing: 0,
     };
   }
@@ -164,6 +165,7 @@ function transportFromState(state: Record<string, unknown> | undefined): CorePro
     bpm: clamp(metrics.effectiveBpm, 1, 400),
     beatsPerBar: clamp(Math.round(numberFromState(state, 'transportBeatsPerBar', 4)), 1, 32),
     barsPerPhrase: clamp(Math.round(numberFromState(state, 'transportBarsPerPhrase', 4)), 1, 256),
+    phraseSeconds: clamp(metrics.phraseDurationFromPhraseClockSec, 0.001, 4096),
     swing: 0,
   };
 }

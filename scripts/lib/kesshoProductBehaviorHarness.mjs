@@ -506,6 +506,7 @@ export function loadCoreProductHostHarness(options = {}) {
       start() {}
       update() {}
       stop() {}
+      syncTransportTelemetry() {}
     },
     createCoreProductSnapshot: () => ({
       assetRefs: [],

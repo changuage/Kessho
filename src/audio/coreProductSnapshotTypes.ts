@@ -259,6 +259,7 @@ export type CoreProductSnapshot = {
     bpm: number;
     beatsPerBar: number;
     barsPerPhrase: number;
+    phraseSeconds: number;
     swing: number;
   };
   harmony: ProductHarmonySnapshot;

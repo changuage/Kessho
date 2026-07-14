@@ -1,5 +1,7 @@
 import type { VisualizerPulseSnapshot } from './visualizerSignals';
 import type { VisualizerQualitySettings } from './visualizerQuality';
+import { ReactiveVisualizerUniformPacker } from './ReactiveVisualizerUniformPacker';
+import { ReactiveVisualizerCanvas2DRenderer } from './ReactiveVisualizerCanvas2DRenderer';
 
 export type VisualizerFocus =
   | 'all'
@@ -184,6 +186,8 @@ float noise(vec2 p) {
 
 float fbm(vec2 p, float octaves) {
   float v = 0.0, a = 0.5, f = 1.0;
+  float qualityOctaves = mix(3.0, 5.0, clamp(u_quality.x, 0.0, 1.0));
+  octaves = min(octaves, qualityOctaves);
   for (int i = 0; i < 5; i++) {
     if (float(i) >= octaves) break;
     v += a * noise(p * f);
@@ -1074,6 +1078,7 @@ void main() {
 
   for (int i = 0; i < 12; i++) {
     float fi = float(i);
+    if (fi >= max(1.0, u_quality.w)) break;
     float id = fi + seed * 0.013;
 
     float orbitSpeed = 0.03 + hash(vec2(id, 11.3)) * 0.06;
@@ -1426,11 +1431,6 @@ void main() {
 }
 `;
 
-function clamp(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
-  return Math.max(min, Math.min(max, value));
-}
-
 function compileShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
   const shader = gl.createShader(type);
   if (!shader) {
@@ -1473,13 +1473,14 @@ export class ReactiveVisualizerRenderer {
   private vertexBuffer: WebGLBuffer | null = null;
   private vertexArray: WebGLVertexArrayObject | null = null;
   private uniforms = new Map<UniformName, WebGLUniformLocation>();
-  private fallbackPhase = 0;
+  private readonly uniformPacker = new ReactiveVisualizerUniformPacker();
+  private fallbackRenderer: ReactiveVisualizerCanvas2DRenderer | null = null;
   private cssWidth = 0;
   private cssHeight = 0;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, options: { forceCanvas2d?: boolean } = {}) {
     this.canvas = canvas;
-    const gl = canvas.getContext('webgl2', {
+    const gl = options.forceCanvas2d ? null : canvas.getContext('webgl2', {
       alpha: false,
       antialias: false,
       depth: false,
@@ -1495,6 +1496,9 @@ export class ReactiveVisualizerRenderer {
         console.warn('Reactive visualizer WebGL2 init failed; using 2D fallback.', error);
         this.destroyGl();
       }
+    }
+    if (!this.program) {
+      this.fallbackRenderer = new ReactiveVisualizerCanvas2DRenderer(canvas);
     }
   }
 
@@ -1530,11 +1534,12 @@ export class ReactiveVisualizerRenderer {
       this.renderGl(this.gl, frame);
       return;
     }
-    this.renderFallback(frame);
+    this.fallbackRenderer?.render(frame);
   }
 
   destroy(): void {
     this.destroyGl();
+    this.fallbackRenderer = null;
   }
 
   private initGl(gl: WebGL2RenderingContext): void {
@@ -1609,257 +1614,40 @@ export class ReactiveVisualizerRenderer {
   }
 
   private renderGl(gl: WebGL2RenderingContext, frame: ReactiveVisualizerFrame): void {
-    const snapshot = frame.snapshot;
-    const controls = frame.controls;
-    const quality = frame.quality;
-    const pulses = snapshot.pulses;
-    const width = Math.max(1, Math.floor(frame.width * frame.dpr));
-    const height = Math.max(1, Math.floor(frame.height * frame.dpr));
-    const triggerGain = 1.3
-      + Math.max(0, controls.triggerResponse) * 0.72
-      + Math.max(0, -controls.triggerResponse) * 0.36
-      + Math.max(0, controls.impactFlash) * 0.66;
+    const packed = this.uniformPacker.pack(frame);
+    const width = packed.resolution[0] ?? 1;
+    const height = packed.resolution[1] ?? 1;
 
     gl.useProgram(this.program);
     gl.bindVertexArray(this.vertexArray);
     gl.viewport(0, 0, width, height);
-
-    gl.uniform2f(this.uniform('u_resolution'), width, height);
-    gl.uniform1f(this.uniform('u_time'), frame.timeMs / 1000);
-    gl.uniform4f(
-      this.uniform('u_engineA'),
-      clamp(snapshot.pad, 0, 1),
-      clamp(snapshot.lead, 0, 1),
-      clamp(snapshot.drums, 0, 1),
-      clamp(snapshot.earth, 0, 1),
-    );
-    gl.uniform4f(
-      this.uniform('u_engineB'),
-      clamp(snapshot.granular, 0, 1),
-      clamp(snapshot.delay, 0, 1),
-      clamp(snapshot.reverb, 0, 1),
-      clamp(snapshot.dynamics, 0, 1),
-    );
-    gl.uniform4f(
-      this.uniform('u_harmony'),
-      clamp(snapshot.root, 0, 1),
-      clamp(snapshot.tension, 0, 1),
-      clamp(snapshot.spread, 0, 1),
-      clamp(snapshot.detune, 0, 1),
-    );
-    gl.uniform4f(
-      this.uniform('u_reactive'),
-      clamp(pulses.global * triggerGain, 0, 1),
-      clamp(pulses.sequencer * triggerGain, 0, 1),
-      clamp(pulses.synthStepPhase, 0, 1),
-      clamp(pulses.drumStepPhase, 0, 1),
-    );
-    gl.uniform4f(
-      this.uniform('u_controlA'),
-      clamp(controls.style, -1, 1),
-      clamp(controls.kaleidoscope + Math.max(0, controls.kaleidoscope) * snapshot.activeGrains * 0.0015, -1, 1),
-      clamp(controls.triggerResponse, -1, 1),
-      clamp(controls.ripples, -1, 1),
-    );
-    gl.uniform4f(
-      this.uniform('u_controlB'),
-      clamp(controls.motion, -1, 1),
-      clamp(controls.color + snapshot.brightness * 0.08, -1, 1),
-      clamp(controls.diffusion, -1, 1),
-      clamp(controls.backdropFade, -1, 1),
-    );
-    gl.uniform4f(
-      this.uniform('u_controlC'),
-      clamp(controls.shape, -1, 1),
-      clamp(controls.organic, -1, 1),
-      clamp(controls.edges, -1, 1),
-      clamp(controls.pulseSync, -1, 1),
-    );
-    gl.uniform4f(
-      this.uniform('u_controlD'),
-      clamp(controls.noiseTurbulence, -1, 1),
-      clamp(controls.noiseFlow, -1, 1),
-      clamp(controls.noiseSpeed, -1, 1),
-      clamp(controls.noiseColor, -1, 1),
-    );
-    gl.uniform4f(
-      this.uniform('u_controlE'),
-      clamp(controls.shapeSize, -1, 1),
-      clamp(controls.noiseSize, -1, 1),
-      clamp(controls.bloomSize, -1, 1),
-      clamp(controls.kaleidoSize, -1, 1),
-    );
-    gl.uniform1f(this.uniform('u_shapeSpread'), clamp(controls.shapeSpread ?? 0, -1, 1));
-    gl.uniform4f(
-      this.uniform('u_controlF'),
-      clamp(controls.glitchIntensity, -1, 1),
-      clamp(controls.glitchScale, -1, 1),
-      clamp(controls.glitchChromatic, -1, 1),
-      clamp(controls.glitchRate, -1, 1),
-    );
-    gl.uniform4f(
-      this.uniform('u_controlG'),
-      clamp(controls.charAmount, -1, 1),
-      clamp(controls.charStyle, -1, 1),
-      clamp(controls.charGrain, -1, 1),
-      clamp(controls.charDrift, -1, 1),
-    );
-    gl.uniform4f(
-      this.uniform('u_controlH'),
-      clamp(controls.kaleidoSegments ?? 0, -1, 1),
-      clamp(controls.kaleidoSpin ?? 0, -1, 1),
-      clamp(controls.kaleidoType ?? -1, -1, 1),
-      clamp(controls.kaleidoReflections ?? -1, -1, 1),
-    );
-    gl.uniform1f(
-      this.uniform('u_kaleidoPattern'),
-      clamp(controls.kaleidoPattern ?? 0, -1, 1),
-    );
-    gl.uniform4f(
-      this.uniform('u_post'),
-      clamp(controls.brightness ?? 0, -1, 1),
-      clamp(controls.vibrance ?? 0, -1, 1),
-      clamp(controls.saturation ?? 0, -1, 1),
-      clamp(controls.visualLimiter ?? 0, -1, 1),
-    );
-    const rawOrder = controls.layerOrder?.length >= 5
-      ? controls.layerOrder
-      : [
-          controls.layerOrder?.[0] ?? 0,
-          controls.layerOrder?.[1] ?? 1,
-          controls.layerOrder?.[2] ?? 2,
-          controls.layerOrder?.[3] ?? 3,
-          4,
-        ];
-    gl.uniform4f(
-      this.uniform('u_layerOrder'),
-      clamp(Math.round(rawOrder[0] ?? 0), 0, 4),
-      clamp(Math.round(rawOrder[1] ?? 1), 0, 4),
-      clamp(Math.round(rawOrder[2] ?? 2), 0, 4),
-      clamp(Math.round(rawOrder[3] ?? 3), 0, 4),
-    );
-    gl.uniform4f(
-      this.uniform('u_pointCloudA'),
-      clamp(Math.round(rawOrder[4] ?? 4), 0, 4),
-      clamp(controls.pointCloudAmount ?? -1, -1, 1),
-      clamp(controls.pointCloudSize ?? 0, -1, 1),
-      clamp(controls.pointCloudDensity ?? 0, -1, 1),
-    );
-    gl.uniform4f(
-      this.uniform('u_pointCloudB'),
-      clamp(controls.pointCloudScatter ?? 0, -1, 1),
-      clamp(controls.pointCloudColor ?? 0, -1, 1),
-      0,
-      0,
-    );
-    gl.uniform4f(
-      this.uniform('u_quality'),
-      quality.shaderDetail,
-      quality.maxPointCloudGrid,
-      quality.pointCloudDensityScale,
-      0,
-    );
-    gl.uniform4f(
-      this.uniform('u_environment'),
-      clamp(frame.seed, 0.001, 0.999999),
-      clamp(controls.background, -1, 1),
-      clamp(controls.shapeCount * quality.shapeCountScale, -1, 1),
-      clamp(controls.noiseDensity * quality.noiseDensityScale, -1, 1),
-    );
-    gl.uniform4f(
-      this.uniform('u_pulseA'),
-      clamp(pulses.synth * triggerGain, 0, 1),
-      clamp(pulses.pad * triggerGain, 0, 1),
-      clamp(pulses.lead * triggerGain, 0, 1),
-      clamp(pulses.drums * triggerGain, 0, 1),
-    );
-    gl.uniform4f(
-      this.uniform('u_pulseB'),
-      clamp(pulses.earth * triggerGain, 0, 1),
-      clamp(pulses.granular * triggerGain, 0, 1),
-      clamp(pulses.delay * triggerGain, 0, 1),
-      clamp(pulses.reverb * triggerGain, 0, 1),
-    );
+    gl.uniform2fv(this.uniform('u_resolution'), packed.resolution);
+    gl.uniform1f(this.uniform('u_time'), packed.time);
+    gl.uniform4fv(this.uniform('u_engineA'), packed.engineA);
+    gl.uniform4fv(this.uniform('u_engineB'), packed.engineB);
+    gl.uniform4fv(this.uniform('u_harmony'), packed.harmony);
+    gl.uniform4fv(this.uniform('u_reactive'), packed.reactive);
+    gl.uniform4fv(this.uniform('u_controlA'), packed.controlA);
+    gl.uniform4fv(this.uniform('u_controlB'), packed.controlB);
+    gl.uniform4fv(this.uniform('u_controlC'), packed.controlC);
+    gl.uniform4fv(this.uniform('u_controlD'), packed.controlD);
+    gl.uniform4fv(this.uniform('u_controlE'), packed.controlE);
+    gl.uniform4fv(this.uniform('u_controlF'), packed.controlF);
+    gl.uniform4fv(this.uniform('u_controlG'), packed.controlG);
+    gl.uniform4fv(this.uniform('u_controlH'), packed.controlH);
+    gl.uniform1f(this.uniform('u_kaleidoPattern'), packed.kaleidoPattern);
+    gl.uniform1f(this.uniform('u_shapeSpread'), packed.shapeSpread);
+    gl.uniform4fv(this.uniform('u_post'), packed.post);
+    gl.uniform4fv(this.uniform('u_layerOrder'), packed.layerOrder);
+    gl.uniform4fv(this.uniform('u_pointCloudA'), packed.pointCloudA);
+    gl.uniform4fv(this.uniform('u_pointCloudB'), packed.pointCloudB);
+    gl.uniform4fv(this.uniform('u_quality'), packed.quality);
+    gl.uniform4fv(this.uniform('u_environment'), packed.environment);
+    gl.uniform4fv(this.uniform('u_pulseA'), packed.pulseA);
+    gl.uniform4fv(this.uniform('u_pulseB'), packed.pulseB);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
   }
 
-  private renderFallback(frame: ReactiveVisualizerFrame): void {
-    const ctx = this.canvas.getContext('2d');
-    if (!ctx) return;
-    const width = Math.max(1, frame.width);
-    const height = Math.max(1, frame.height);
-    const snapshot = frame.snapshot;
-    const controls = frame.controls;
-    const pulses = snapshot.pulses;
-    const cx = width / 2;
-    const cy = height / 2;
-    const radius = Math.min(width, height) * 0.42;
-    this.fallbackPhase += 0.008 + Math.max(0, controls.motion) * 0.018 + Math.max(0, -controls.motion) * 0.035;
-
-    ctx.setTransform(frame.dpr, 0, 0, frame.dpr, 0, 0);
-    // atmospheric dark background with fade trail
-    const litBackground = Math.max(0, controls.background);
-    const darkBackground = Math.max(0, -controls.background);
-    const bgR = Math.round(16 + litBackground * 30);
-    const bgG = Math.round(15 + litBackground * 28);
-    const bgB = Math.round(14 + litBackground * 24);
-    ctx.fillStyle = `rgba(${bgR}, ${bgG}, ${bgB}, ${0.12 + darkBackground * 0.14 + litBackground * 0.08 + Math.max(0, controls.diffusion) * 0.1})`;
-    ctx.fillRect(0, 0, width, height);
-
-    // kaleidoscope symmetry from control
-    const symmetry = Math.max(4, Math.round(6 + Math.max(0, -controls.kaleidoscope) * 10 + Math.abs(controls.kaleidoscope) * 4));
-    const engines = [
-      ['rgba(232, 220, 196, 0.45)', snapshot.pad + pulses.pad],       // cream
-      ['rgba(212, 165, 32, 0.42)', snapshot.lead + pulses.lead],       // gold
-      ['rgba(139, 92, 246, 0.38)', snapshot.drums + pulses.drums],     // violet
-      ['rgba(123, 154, 109, 0.4)', snapshot.earth + pulses.earth],     // sage
-      ['rgba(232, 180, 74, 0.4)', snapshot.granular + pulses.granular],// granular
-      ['rgba(94, 168, 166, 0.36)', snapshot.delay + pulses.delay],     // teal
-      ['rgba(176, 120, 90, 0.38)', snapshot.reverb + pulses.reverb],   // clay
-    ] as const;
-
-    ctx.globalCompositeOperation = 'lighter';
-    // shape control affects polygon sides: -1=3 sides (tri), 0=4, +1=high (circle-like)
-    const shapeSides = Math.max(3, Math.round(4 + controls.shape * (controls.shape > 0 ? 20 : 1)));
-    const organicWarp = Math.max(0, controls.organic);
-    const blobWarp = Math.max(0, -controls.edges);
-    for (let ring = 0; ring < engines.length; ring += 1) {
-      const engine = engines[ring];
-      if (!engine) continue;
-      const [color, amount] = engine;
-      const amp = clamp(amount + pulses.global * 0.25, 0, 1.2);
-      if (amp < 0.02) continue;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 0.8 + amp * 2.4;
-      ctx.beginPath();
-      const sides = Math.max(3, shapeSides + Math.round((ring - 3) * 0.3));
-      const pointsPerSide = Math.max(6, Math.round(40 / sides * symmetry));
-      const totalPoints = sides * pointsPerSide;
-      for (let i = 0; i <= totalPoints; i += 1) {
-        const unit = i / Math.max(1, totalPoints);
-        const angle = unit * Math.PI * 2;
-        const warp = Math.sin(unit * Math.PI * 2 * symmetry + this.fallbackPhase * (ring * 0.7 + 1))
-          + Math.sin(unit * Math.PI * 4 * symmetry * 0.5 + this.fallbackPhase * 0.6 + ring) * 0.4;
-        const breathe = Math.sin(this.fallbackPhase * 0.3 + ring * 0.9) * 0.02;
-        // polygon shape: modulate radius by angular distance to nearest vertex
-        const sectorAngle = Math.PI * 2 / sides;
-        const withinSector = ((angle % sectorAngle) + sectorAngle) % sectorAngle;
-        const polyMod = Math.cos(withinSector - sectorAngle / 2);
-        const stretchMod = 1 + organicWarp * Math.sin(angle * 2 + ring * 1.3 + this.fallbackPhase * 0.2) * 0.15;
-        const blobMod = 1 + blobWarp * (Math.sin(angle * 3 + ring * 2.1 + this.fallbackPhase * 0.4) * 0.12
-          + Math.sin(angle * 5 + ring * 1.3 - this.fallbackPhase * 0.3) * 0.08);
-        const baseR = radius * (0.18 + ring * 0.088 + warp * 0.02 * (1 + amp) + breathe);
-        const r = baseR / Math.max(0.5, polyMod) * stretchMod * blobMod;
-        const x = cx + Math.cos(angle) * r;
-        const y = cy + Math.sin(angle) * r;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.closePath();
-      ctx.stroke();
-    }
-    ctx.globalCompositeOperation = 'source-over';
-  }
 }

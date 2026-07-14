@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import { SOURCE_COLORS } from '../designSystem/colors';
 import { APP_TAB_SYMBOLS } from '../designSystem/textSymbols';
+export { isEditableShortcutTarget } from '../ui/keyboard/keyboardTargets';
 
 export type AdvancedTab = 'global' | 'visualizer' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'texture' | 'routing';
 export type AdvancedEditorTab = Exclude<AdvancedTab, 'visualizer'>;
@@ -65,12 +66,6 @@ export const TOP_LEVEL_SHORTCUTS: Record<string, TopLevelShortcutTarget | Advanc
   '`': 'routing',
   Backquote: 'routing',
 };
-
-export function isEditableShortcutTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  return !!target.closest('input, textarea, select, [contenteditable="true"]');
-}
 
 export const FX_BUS_LABELS = {
   delayA: 'Delay A',

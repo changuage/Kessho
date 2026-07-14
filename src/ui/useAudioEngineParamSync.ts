@@ -6,6 +6,7 @@ import { commitProductControlPatchForProduct } from '../product-control';
 import { collectChangedStatePatch } from './audioEngineStatePatch';
 import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import type { SliderState } from './state';
+import { isTransportClockStateKey } from './transportTimingPolicy';
 
 const CORE_PRODUCT_PARAM_UPDATE_INTERVAL_MS = 33;
 
@@ -112,7 +113,8 @@ function isMorphControlPatchKey(key: string): boolean {
 }
 
 function isTransportControlPatchKey(key: string): boolean {
-  return TRANSPORT_CONTROL_KEY_PATTERNS.some((pattern) => pattern.test(key));
+  return isTransportClockStateKey(key as keyof SliderState) ||
+    TRANSPORT_CONTROL_KEY_PATTERNS.some((pattern) => pattern.test(key));
 }
 
 function isSequencerControlPatchKey(key: string): boolean {
@@ -120,7 +122,8 @@ function isSequencerControlPatchKey(key: string): boolean {
 }
 
 function isSequencerTransportTriggerPatchKey(key: string): boolean {
-  return SEQUENCER_TRANSPORT_TRIGGER_KEYS.has(key);
+  return SEQUENCER_TRANSPORT_TRIGGER_KEYS.has(key) ||
+    isTransportClockStateKey(key as keyof SliderState);
 }
 
 function isSequencerLaneEnabledPatchKey(key: string): boolean {

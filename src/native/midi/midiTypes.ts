@@ -12,13 +12,19 @@ export type KesshoMidiMessageKind =
 export type KesshoMidiEndpointInfo = {
   uniqueID: number;
   name: string;
+  displayName?: string;
   manufacturer?: string;
+  transport?: 'usb' | 'bluetooth' | 'network' | 'virtual' | 'other' | 'unknown';
+  isBluetooth?: boolean;
+  isNetworkSession?: boolean;
+  persistentIdentity?: string;
   isConnected: boolean;
   lastSeenAt?: string;
 };
 
 export type KesshoMidiMessage = {
   timestamp: number;
+  timestampMs?: number;
   timestampHostTime?: number;
   kind: KesshoMidiMessageKind;
   status: number;
@@ -35,6 +41,11 @@ export type KesshoMidiStatus = {
   isStarted: boolean;
   inputCount: number;
   connectedInputIDs: number[];
+  hotplugEventCount?: number;
+  reconnectAttemptCount?: number;
+  reconnectSuccessCount?: number;
+  receivedMessageCount?: number;
+  droppedActivityEventCount?: number;
   lastErrorMessage?: string | null;
 };
 

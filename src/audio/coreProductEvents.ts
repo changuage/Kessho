@@ -87,6 +87,12 @@ export const CORE_PRODUCT_SEQUENCER_IDS = Object.freeze({
   drum: 2,
 } as const);
 
+export const CORE_PRODUCT_TRANSPORT_FLAGS = Object.freeze({
+  applyNextPhrase: 1 << 0,
+} as const);
+
+export const CORE_PRODUCT_TIMING_FLAGS = CORE_PRODUCT_TRANSPORT_FLAGS;
+
 export const CORE_PRODUCT_ANCHOR_WALKER_ACTIONS = Object.freeze({
   gestureTap: 1,
   gestureDown: 2,
@@ -1716,6 +1722,22 @@ export function createCoreProductParamEvent(
   };
 }
 
+export function createCoreProductTransportTransitionEvent(options: {
+  bpm: number;
+  beatsPerBar: number;
+  barsPerPhrase: number;
+  phraseSeconds: number;
+}): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.SetTransport,
+    value: requireNumberInRange(options.bpm, 'bpm', 1, 400),
+    value2: requireIntegerInRange(options.beatsPerBar, 'beatsPerBar', 1, 32),
+    value3: requireIntegerInRange(options.barsPerPhrase, 'barsPerPhrase', 1, 256),
+    value4: requireNumberInRange(options.phraseSeconds, 'phraseSeconds', 0.001, 4096),
+    flags: CORE_PRODUCT_TRANSPORT_FLAGS.applyNextPhrase,
+  };
+}
+
 export function createCoreProductModulationRangeEvent(
   target: CoreProductRangeTarget,
   range: { min: number; max: number } | null,
@@ -1773,15 +1795,20 @@ export function createCoreProductSequencerLaneParamEvent(
   laneIndex: number,
   paramId: number,
   value: number,
-  flags = 0,
+  flags?: number,
 ): CoreProductEvent {
+  const timingFlags = paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision ||
+    paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneTempoMultiplier ||
+    paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing
+    ? CORE_PRODUCT_TIMING_FLAGS.applyNextPhrase
+    : 0;
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSequencerLane,
     targetId: requireSequencerId(sequencer),
     index: requireIntegerInRange(laneIndex, 'laneIndex', 0, 15),
     paramId: requireParamId(paramId),
     value: requireFiniteNumber(value, 'value'),
-    flags,
+    flags: flags ?? timingFlags,
   };
 }
 
@@ -1897,6 +1924,7 @@ export function createCoreProductSequencerClockDivisionEvents(
       laneIndex,
       KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision,
       sequencerClockDivisionToNumericValue(divs[laneIndex], 16),
+      CORE_PRODUCT_TIMING_FLAGS.applyNextPhrase,
     ));
 }
 
@@ -1910,6 +1938,7 @@ export function createCoreProductSequencerSwingEvents(
       laneIndex,
       KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing,
       normalizeSequencerSwing(swings[laneIndex], 0),
+      CORE_PRODUCT_TIMING_FLAGS.applyNextPhrase,
     ));
 }
 

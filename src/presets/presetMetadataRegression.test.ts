@@ -13,7 +13,11 @@ import {
   extractOptimizedStatePresetData,
 } from './statePresetOptimization';
 import { isStatePresetDiffKeyActive, normalizeStatePresetDiffData } from './statePresetDiffs';
-import { buildPresetVersionMetadata, getPresetVersionSnapshot } from './versionMetadataHelpers';
+import {
+  buildPresetVersionMetadata,
+  getPresetVersionSnapshot,
+  normalizeStatePresetPitchMetadata,
+} from './versionMetadataHelpers';
 import { buildJourneyPresetPreview } from './journeyPresetPreview';
 import {
   planRoutingMuteGroupMetadataStorage,
@@ -260,6 +264,29 @@ function testMigratePresetPreservesSynthPitchBindingModes(): void {
     [...SYNTH_BINDING_MODES],
     'migratePreset should preserve synthPitchBindingModes',
   );
+}
+
+function testStatePresetPitchMetadataUsesAuthoritativeLaneCounts(): void {
+  const drumPitchSettings: PitchSettings[] = Array.from({ length: 6 }, (_, index) => ({
+    mode: index % 2 === 0 ? 'notes' : 'semitones',
+    root: 40 + index,
+    scale: index % 2 === 0 ? 'Minor' : 'Major',
+  }));
+  const synthPitchSettings: PitchSettings[] = Array.from({ length: 4 }, (_, index) => ({
+    mode: 'notes',
+    root: 60 + index,
+    scale: 'Dorian',
+  }));
+
+  const normalized = normalizeStatePresetPitchMetadata({
+    drumPitchSettings,
+    synthPitchSettings,
+  });
+
+  assert.equal(normalized.drumPitchSettings?.length, 6);
+  assert.deepStrictEqual(normalized.drumPitchSettings, drumPitchSettings);
+  assert.equal(normalized.synthPitchSettings?.length, 4);
+  assert.deepStrictEqual(normalized.synthPitchSettings, synthPitchSettings);
 }
 
 function testBuildPresetVersionMetadataIncludesAllSupportedFields(): void {
@@ -1354,6 +1381,7 @@ async function run(): Promise<void> {
   testSynthLanePatternRoundTripKeepsNoteRangeBounds();
   testEngineStepOverridesTrimHiddenSubLaneValues();
   testMigratePresetPreservesSynthPitchBindingModes();
+  testStatePresetPitchMetadataUsesAuthoritativeLaneCounts();
   testBuildPresetVersionMetadataIncludesAllSupportedFields();
   testPresetPoolDefaultsUseStableIdsAndSharedEngineScopes();
   testPresetPoolMatchingNormalizationAndTags();
