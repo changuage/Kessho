@@ -130,9 +130,7 @@ function writeGateReport(report) {
 const app = read('src/App.tsx');
 const audioEngineRuntimeUi = read('src/ui/audioEngineRuntimeUi.ts');
 const productRuntimeUiHelpers = read('src/ui/productRuntimeUi.ts');
-const audioEngineRuntimeSwitch = read('src/ui/AudioEngineRuntimeSwitch.tsx');
 const runtimeModeSwitch = read('src/ui/RuntimeModeSwitch.tsx');
-const selectedAudioEngineRuntimeSwitch = read('src/ui/SelectedAudioEngineRuntimeSwitch.tsx');
 const productRuntimeSwitch = read('src/ui/ProductRuntimeSwitch.tsx');
 const audioEngineRuntimeNavigation = read('src/ui/useAudioEngineRuntimeNavigation.ts');
 const productRuntimeNavigationCore = read('src/ui/useProductRuntimeNavigationCore.ts');
@@ -157,7 +155,6 @@ const globalPage = read('src/ui/global/GlobalPage.tsx');
 const globalRuntimeComparisonPanel = read('src/ui/global/GlobalRuntimeComparisonPanel.tsx');
 const audioRecording = read('src/ui/useAudioRecording.ts');
 const selectedAudioEngineMacRecovery = read('src/ui/useSelectedAudioEngineMacRecovery.ts');
-const selectedAudioEngineLiveTriggerCallbacks = read('src/ui/useSelectedAudioEngineLiveTriggerCallbacks.ts');
 const liveTriggerUiCallbacks = read('src/ui/useLiveTriggerUiCallbacks.ts');
 const selectedAudioEngineEvolveOverrideCallbacks = read('src/ui/useSelectedAudioEngineEvolveOverrideCallbacks.ts');
 const selectedAudioEngineRuntimeValueCleanup = read('src/ui/useSelectedAudioEngineRuntimeValueCleanup.ts');
@@ -200,7 +197,6 @@ const productRuntimePlaybackUiProps = read('src/ui/useProductRuntimePlaybackUiPr
 const productRuntimePresetLoadFade = read('src/ui/useProductRuntimePresetLoadFade.ts');
 const productRuntimeStartAction = read('src/ui/useProductRuntimeStartAction.ts');
 const productRuntimeStopAction = read('src/ui/useProductRuntimeStopAction.ts');
-const selectedAudioEnginePlaybackSurface = read('src/ui/useSelectedAudioEnginePlaybackSurface.ts');
 const selectedAudioEnginePlaybackTimer = read('src/ui/useSelectedAudioEnginePlaybackTimer.ts');
 const capacitorAudioSessionDiagnostics = read('src/ui/useCapacitorAudioSessionDiagnostics.ts');
 const selectedAudioEngineCapacitorAudioSession = read('src/ui/useSelectedAudioEngineCapacitorAudioSession.ts');
@@ -235,9 +231,6 @@ const selectedPageTelemetryRuntimeProps = read('src/ui/useSelectedAudioEnginePag
 const selectedPageSequencerRuntimeProps = read('src/ui/useSelectedAudioEnginePageSequencerRuntimeProps.ts');
 const selectedPageControlRuntimeProps = read('src/ui/useSelectedAudioEnginePageControlRuntimeProps.ts');
 const productRuntimeCallbackRegistrations = read('src/ui/useProductRuntimeCallbackRegistrations.ts');
-const productRuntimeLiveTriggerCallbacks = read('src/ui/useProductRuntimeLiveTriggerCallbacks.ts');
-const productRuntimeVisualizerCallbacks = read('src/ui/useProductRuntimeVisualizerCallbacks.ts');
-const selectedAudioEngineRuntimeCallbackRegistrations = read('src/ui/useSelectedAudioEngineRuntimeCallbackRegistrations.ts');
 const selectedAudioEngineVisualizerCallbacks = read('src/ui/useSelectedAudioEngineVisualizerCallbacks.ts');
 const productApi = read('cpp/KesshoCore/src/product/KesshoProductApi.cpp');
 const productTypesHeader = read('cpp/KesshoCore/include/KesshoCore/KesshoProductTypes.h');
@@ -335,8 +328,9 @@ assert(
     productRuntimeTelemetry.includes('getProductDynamicsVisualTelemetry: () => ProductDynamicsVisualTelemetry') &&
     productRuntimeTelemetry.includes('pushProductMidiMessage: (message: KesshoMidiMessage) => void') &&
     productRuntimeTelemetry.includes("import { isCoreProductRangeKeySupported } from '../audio/coreProductEvents'") &&
-    productRuntimeTelemetry.includes('return isCoreProductRangeKeySupported(key);') &&
-    productRuntimeTelemetry.includes("const active = uiMode === 'advanced' && documentVisible;") &&
+    productRuntimeTelemetry.includes("productRuntimeMode !== 'core-product' || isCoreProductRangeKeySupported(key)") &&
+    app.includes('setProductVisualTelemetryActive(productVisualTelemetryActive);') &&
+    productRuntimeTelemetry.includes('const setProductVisualTelemetryActive = useCallback((active: boolean): void => {') &&
     productRuntimeTelemetry.includes('productEngine.setVisualTelemetryActive(active);') &&
     !productRuntimeTelemetry.includes('SelectedRuntimeTelemetryOptions') &&
     !productRuntimeTelemetry.includes('Parameters<typeof useSelectedAudioEngineRuntimeTelemetry>') &&
@@ -353,9 +347,9 @@ assert(
     app.includes('useProductRuntimeCallbackRegistrations({') &&
     !app.includes("from './ui/useSelectedAudioEngineRuntimeCallbackRegistrations'") &&
     !app.includes('useSelectedAudioEngineRuntimeCallbackRegistrations({') &&
-    productRuntimeCallbackRegistrations.includes("from './useProductRuntimeVisualizerCallbacks'") &&
-    productRuntimeCallbackRegistrations.includes('useProductRuntimeVisualizerCallbacks({') &&
-    productRuntimeCallbackRegistrations.includes('useProductRuntimeLiveTriggerCallbacks(options)') &&
+    productRuntimeCallbackRegistrations.includes("from './useSelectedAudioEngineVisualizerCallbacks'") &&
+    productRuntimeCallbackRegistrations.includes('useSelectedAudioEngineVisualizerCallbacks({') &&
+    productRuntimeCallbackRegistrations.includes('useLiveTriggerUiCallbacks({') &&
     !productRuntimeCallbackRegistrations.includes('productEngine') &&
     !productRuntimeCallbackRegistrations.includes('selectedProductRuntime') &&
     !productRuntimeCallbackRegistrations.includes('referenceAudioEngineDebug') &&
@@ -363,11 +357,8 @@ assert(
     !app.includes("from './ui/useSelectedAudioEngineVisualizerCallbacks'") &&
     !app.includes('useSelectedAudioEngineVisualizerCallbacks({') &&
     !app.includes('setVisualizerSequencerState') &&
-    productRuntimeVisualizerCallbacks.includes('export type ProductRuntimeVisualizerCallbacksOptions = {') &&
-    productRuntimeVisualizerCallbacks.includes('setProductDrumEvolveTriggerCallback:') &&
-    productRuntimeVisualizerCallbacks.includes('setSelectedDrumEvolveTriggerCallback: setProductDrumEvolveTriggerCallback') &&
-    productRuntimeVisualizerCallbacks.includes('setSelectedSynthStepPositionCallback: setProductSynthStepPositionCallback') &&
-    !productRuntimeVisualizerCallbacks.includes('Parameters<typeof useSelectedAudioEngineVisualizerCallbacks>') &&
+    productRuntimeCallbackRegistrations.includes('setSelectedDrumEvolveTriggerCallback: setProductDrumEvolveTriggerCallback') &&
+    productRuntimeCallbackRegistrations.includes('setSelectedSynthStepPositionCallback: setProductSynthStepPositionCallback') &&
     selectedAudioEngineVisualizerCallbacks.includes('setVisualizerSequencerState') &&
     selectedAudioEngineVisualizerCallbacks.includes("if (uiMode !== 'advanced' || activeTab !== 'visualizer') return") &&
     selectedAudioEngineVisualizerCallbacks.includes('setSelectedDrumTriggerCallback((voice: string, velocity: number) =>'),
@@ -378,9 +369,9 @@ assert(
     app.includes('useProductRuntimeCallbackRegistrations({') &&
     !app.includes("from './ui/useSelectedAudioEngineRuntimeCallbackRegistrations'") &&
     !app.includes('useSelectedAudioEngineRuntimeCallbackRegistrations({') &&
-    productRuntimeCallbackRegistrations.includes("from './useProductRuntimeLiveTriggerCallbacks'") &&
-    productRuntimeCallbackRegistrations.includes('useProductRuntimeVisualizerCallbacks({') &&
-    productRuntimeCallbackRegistrations.includes('useProductRuntimeLiveTriggerCallbacks(options)') &&
+    productRuntimeCallbackRegistrations.includes("from './useLiveTriggerUiCallbacks'") &&
+    productRuntimeCallbackRegistrations.includes('useSelectedAudioEngineVisualizerCallbacks({') &&
+    productRuntimeCallbackRegistrations.includes('useLiveTriggerUiCallbacks({') &&
     !productRuntimeCallbackRegistrations.includes('productEngine') &&
     !productRuntimeCallbackRegistrations.includes('selectedProductRuntime') &&
     !productRuntimeCallbackRegistrations.includes('referenceAudioEngineDebug') &&
@@ -393,15 +384,8 @@ assert(
     !app.includes('setSelectedGranularSHTriggerCallback,') &&
     !app.includes('setSelectedLeadExpressionCallback((expression) =>') &&
     !app.includes('setSelectedGranularSHTriggerCallback((positions: Record<string, number>) =>') &&
-    productRuntimeLiveTriggerCallbacks.includes('export type ProductRuntimeLiveTriggerCallbacksOptions = {') &&
-    productRuntimeLiveTriggerCallbacks.includes('setProductLeadExpressionCallback: (callback: ((expression: Record<string, number>) => void) | null) => void') &&
-    productRuntimeLiveTriggerCallbacks.includes('setProductGranularSHTriggerCallback: (callback: ((positions: Record<string, number>) => void) | null) => void') &&
-    productRuntimeLiveTriggerCallbacks.includes('setLeadExpressionCallback: setProductLeadExpressionCallback') &&
-    productRuntimeLiveTriggerCallbacks.includes('setGranularSHTriggerCallback: setProductGranularSHTriggerCallback') &&
-    !productRuntimeLiveTriggerCallbacks.includes('SelectedRuntimeLiveTriggerCallbacksOptions') &&
-    !productRuntimeLiveTriggerCallbacks.includes('Parameters<typeof useSelectedAudioEngineLiveTriggerCallbacks>') &&
-    selectedAudioEngineLiveTriggerCallbacks.includes('setLeadExpressionCallback: setSelectedLeadExpressionCallback') &&
-    selectedAudioEngineLiveTriggerCallbacks.includes('setGranularSHTriggerCallback: setSelectedGranularSHTriggerCallback') &&
+    productRuntimeCallbackRegistrations.includes('setLeadExpressionCallback: setProductLeadExpressionCallback') &&
+    productRuntimeCallbackRegistrations.includes('setGranularSHTriggerCallback: setProductGranularSHTriggerCallback') &&
     liveTriggerUiCallbacks.includes('setLeadExpressionCallback((expression) =>') &&
     liveTriggerUiCallbacks.includes('setGranularSHTriggerCallback((positions: Record<string, number>) =>') &&
     liveTriggerUiCallbacks.includes('emitVisualizerPulses({') &&
@@ -530,8 +514,6 @@ assert(
     !app.includes('replaceRuntimeWalkPositionSnapshot(newWalkPositions)') &&
     !app.includes('replaceRuntimeWalkPositionSnapshot({})') &&
     app.includes('usePresetRestoreRuntimeSurface({') &&
-    app.includes('clearRuntimeWalkPositions([keyStr])') &&
-    app.includes('seedRuntimeWalkPosition(keyStr)') &&
     app.includes('resetRuntimeWalkPositionsForKeys(') &&
     app.includes('resetRuntimeWalkPositionsForModes,') &&
     morphPositionRuntimeSurface.includes('resetRuntimeWalkPositionsForModes(morphResult.dualModes)') &&
@@ -1353,17 +1335,10 @@ assert(
     productRuntimeUiHelpers.includes('PRODUCT_RUNTIME_PARAM') &&
     productRuntimeUiHelpers.includes('PRODUCT_RUNTIME_SWITCHER_PARAM') &&
     audioEngineRuntimeUi.includes('shouldShowAudioEngineSwitcher') &&
-    audioEngineRuntimeSwitch.includes("import { RuntimeModeSwitch } from './RuntimeModeSwitch'") &&
-    audioEngineRuntimeSwitch.includes('<RuntimeModeSwitch') &&
     runtimeModeSwitch.includes('PRODUCT_RUNTIME_SWITCH_COLUMN_COUNT') &&
     runtimeModeSwitch.includes('productRuntimeModeLabel(mode)') &&
     runtimeModeSwitch.includes('productRuntimeModeTitle(mode)') &&
-    audioEngineRuntimeSwitch.includes("testId = 'main-audio-engine-switch'") &&
     runtimeModeSwitch.includes('data-testid={testId}') &&
-    selectedAudioEngineRuntimeSwitch.includes("import { AudioEngineRuntimeSwitch } from './AudioEngineRuntimeSwitch'") &&
-    selectedAudioEngineRuntimeSwitch.includes('visible: boolean') &&
-    selectedAudioEngineRuntimeSwitch.includes('if (!visible) return null;') &&
-    selectedAudioEngineRuntimeSwitch.includes('<AudioEngineRuntimeSwitch') &&
     productRuntimeSwitch.includes("import { RuntimeModeSwitch } from './RuntimeModeSwitch'") &&
     productRuntimeSwitch.includes('export type ProductRuntimeSwitchMode = ProductRuntimeSelectionMode') &&
     productRuntimeSwitch.includes('<RuntimeModeSwitch') &&
@@ -1372,7 +1347,7 @@ assert(
     productRuntimeNavigationCore.includes('buildProductRuntimeSwitchUrl(mode, stateRef.current)') &&
     selectedAudioEngineRuntimeUi.includes('preloadSelectedAudioEngine,') &&
     selectedAudioEngineRuntimeUi.includes('stopSelectedAudioEngine,'),
-  'App runtime switch UI must stay behind AudioEngineRuntimeSwitch/navigation modules that consume product-owned query constants',
+  'App runtime switch UI must use the product-owned switch and navigation contracts without retired AudioEngine compatibility components',
 );
 assert(
   !app.includes('getAudioEngineRuntimeMode,\n  getAudioEngineRuntimeModes,\n  preloadAudioEngine'),

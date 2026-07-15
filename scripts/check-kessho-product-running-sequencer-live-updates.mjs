@@ -50,7 +50,6 @@ const files = {
   host: read('src/audio/coreProductEngineHost.ts'),
   manualTriggers: read('src/ui/useProductRuntimeManualTriggers.ts'),
   selectedManualTriggers: read('src/ui/useSelectedAudioEngineManualTriggers.ts'),
-  liveTriggerCallbacks: read('src/ui/useSelectedAudioEngineLiveTriggerCallbacks.ts'),
   liveTriggerUiCallbacks: read('src/ui/useLiveTriggerUiCallbacks.ts'),
   liveSequencerTiming: read('src/ui/commitLiveSequencerTiming.ts'),
   productEvents: read('src/audio/coreProductEvents.ts'),

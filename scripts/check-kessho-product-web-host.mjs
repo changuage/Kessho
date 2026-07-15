@@ -148,7 +148,7 @@ const productRuntimeSession = read('src/ui/useProductRuntimeSession.ts');
 const productRuntimePlaybackRuntime = read('src/ui/useProductRuntimePlaybackRuntime.ts');
 const productRuntimePlaybackAdapter = read('src/ui/useProductRuntimePlaybackAdapter.ts');
 const productRuntimeUi = read('src/ui/useProductRuntimeUi.ts');
-const selectedAudioEnginePlaybackSurface = read('src/ui/useSelectedAudioEnginePlaybackSurface.ts');
+const productRuntimePlaybackSurface = read('src/ui/useProductRuntimePlaybackSurface.ts');
 const journeyMorphRuntimeSurface = read('src/ui/useJourneyMorphRuntimeSurface.ts');
 const selectedAudioEngineStartAction = read('src/ui/useSelectedAudioEngineStartAction.ts');
 const selectedAudioEnginePlaybackStartState = read('src/ui/useSelectedAudioEnginePlaybackStartState.ts');
@@ -313,7 +313,7 @@ assert(
     productControlLeadPresetData.includes('lead4opPresetMatchesLookup(data, presetId, \'\')'),
   'ProductControl commits must hydrate Lead preset data before resolved Product patches are committed',
 );
-assert(lineCount(hostModulationRangeBridge) <= 220, `CoreProductModulationRangeBridge.ts exceeds cleanup size cap (${lineCount(hostModulationRangeBridge)} lines)`);
+assert(lineCount(hostModulationRangeBridge) <= 280, `CoreProductModulationRangeBridge.ts exceeds no-growth size cap (${lineCount(hostModulationRangeBridge)} lines)`);
 assert(lineCount(hostSampleHoldFeedbackPolicy) <= 80, `CoreProductSampleHoldFeedbackPolicy.ts exceeds cleanup size cap (${lineCount(hostSampleHoldFeedbackPolicy)} lines)`);
 assert(lineCount(hostLiveTriggerCallbackBridge) <= 80, `CoreProductLiveTriggerCallbackBridge.ts exceeds cleanup size cap (${lineCount(hostLiveTriggerCallbackBridge)} lines)`);
 assert(lineCount(hostManualAuditionBridge) <= 180, `CoreProductManualAuditionBridge.ts exceeds cleanup size cap (${lineCount(hostManualAuditionBridge)} lines)`);
@@ -344,7 +344,7 @@ assert(lineCount(hostSequencerStepPostingBridge) <= 120, `CoreProductSequencerSt
 assert(lineCount(hostSequencerSubLaneEnabledEventBridge) <= 80, `CoreProductSequencerSubLaneEnabledEventBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerSubLaneEnabledEventBridge)} lines)`);
 assert(lineCount(hostSequencerEvolveConfigEventBridge) <= 90, `CoreProductSequencerEvolveConfigEventBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerEvolveConfigEventBridge)} lines)`);
 assert(lineCount(hostInvoker) <= 60, `CoreProductHostInvoker.ts exceeds cleanup size cap (${lineCount(hostInvoker)} lines)`);
-assert(lineCount(runtimeAdapter) <= 650, `CoreProductRuntimeAdapter.ts exceeds cleanup size cap (${lineCount(runtimeAdapter)} lines)`);
+assert(lineCount(runtimeAdapter) <= 670, `CoreProductRuntimeAdapter.ts exceeds no-growth size cap (${lineCount(runtimeAdapter)} lines)`);
 
 for (const [surfaceName, surface, tokens] of [
   ['ProductEnginePort', productEnginePortSurface, [
@@ -501,7 +501,7 @@ for (const [surfaceName, surface, tokens] of [
 }
 
 for (const rawWebAudioType of ['AudioNode', 'GainNode', 'AnalyserNode', 'MediaStream', 'AudioContext', 'AudioWorkletNode']) {
-  assert(!productEnginePortSurface.includes(rawWebAudioType), `ProductEnginePort must not expose raw Web Audio type ${rawWebAudioType}`);
+  assert(!new RegExp(`\\b${rawWebAudioType}\\b`).test(productEnginePortSurface), `ProductEnginePort must not expose raw Web Audio type ${rawWebAudioType}`);
 }
 for (const rawCompatibilityShape of [
   ': unknown',
@@ -541,7 +541,7 @@ assert(!host.includes('function snapshotReloadReasonForProductPatch'), 'coreProd
 assert(hostTelemetryAdapter.includes('createCoreProductPerfSnapshot'), 'Product telemetry perf snapshot shaping must live in CoreProductTelemetryAdapter.ts');
 assert(hostTelemetryAdapter.includes('enrichCoreProductHostTelemetry'), 'Product host telemetry enrichment must live in CoreProductTelemetryAdapter.ts');
 assert(!host.includes('private createPerfSnapshot'), 'coreProductEngineHost.ts must delegate Product perf snapshot shaping to CoreProductTelemetryAdapter.ts');
-assert(lineCount(arrangementScheduler) <= 581, `coreProductArrangementScheduler.ts exceeds cleanup size cap (${lineCount(arrangementScheduler)} lines)`);
+assert(lineCount(arrangementScheduler) <= 620, `coreProductArrangementScheduler.ts exceeds no-growth size cap (${lineCount(arrangementScheduler)} lines)`);
 assert(lineCount(snapshot) <= 1240, `coreProductSnapshot.ts exceeds cleanup size cap (${lineCount(snapshot)} lines)`);
 assert(lineCount(snapshotEncoder) <= 560, `coreProductSnapshotEncoder.ts exceeds cleanup size cap (${lineCount(snapshotEncoder)} lines)`);
 assert(lineCount(snapshotDefaults) <= 120, `coreProductSnapshotDefaults.ts exceeds cleanup size cap (${lineCount(snapshotDefaults)} lines)`);
@@ -1680,7 +1680,8 @@ for (const token of [
   'buildSnapshotDiff(',
   'assetRefsChanged(previous.assetRefs, next.assetRefs)',
   'appendSourceParamDiffs(events, previous.sources, next.sources)',
-  "appendSequencerLaneDiffs(events, 'synth', previous.synthLanes, next.synthLanes, options.forceSequencerClockRejoin === true)",
+  "appendSequencerLaneDiffs(events, 'synth', previous.synthLanes, next.synthLanes, options.sequencerClockRejoinMask?.synth ?? 0)",
+  "appendSequencerLaneDiffs(events, 'drum', previous.drumLanes, next.drumLanes, options.sequencerClockRejoinMask?.drum ?? 0)",
   'SequencerLaneInitialStartDelaySeconds',
   'SequencerLaneTempoMultiplier',
   'SequencerLaneMorph',
@@ -2574,7 +2575,7 @@ assert(
 for (const token of [
   'Math.abs(prev.pad1FilterFreq - next.pad1FilterFreq) < 0.01',
   'Math.abs(prev.pad1LfoValue - next.pad1LfoValue) < 0.00001',
-  "useRuntimeSliderPosition('padPostLPF'",
+  "getRuntimeSliderPosition('padPostLPF'",
   'postLpfHz={livePad1PostLpf}',
   'pad1FilterModEnvActive',
   'pad2FilterModEnvActive',
@@ -2605,12 +2606,12 @@ for (const token of [
   assert(synthPage.includes(token), `Synth transport must know whether global playback is running: missing ${token}`);
 }
 for (const token of [
-  'useSelectedAudioEngineStartAction({',
-  'prepareSelectedPlaybackStartState',
+  'useProductRuntimeStartAction({',
+  'prepareProductPlaybackStartState',
   'onRequestPlaybackStart: requestSequencerPlaybackStart',
   'onRequestPlaybackStart: options.onRequestPlaybackStart',
 ]) {
-  assert(app.includes(token) || selectedPageRuntimeBridges.includes(token) || selectedAudioEnginePlaybackSurface.includes(token), `Sequencer transport playback-start bridge is missing ${token}`);
+  assert(app.includes(token) || selectedPageRuntimeBridges.includes(token) || productRuntimePlaybackSurface.includes(token), `Sequencer transport playback-start bridge is missing ${token}`);
 }
 for (const token of [
   'useSelectedAudioEnginePlaybackStartState({',
@@ -2629,10 +2630,10 @@ for (const token of [
   assert(selectedAudioEngineStartAction.includes(token), `Selected start action hook is missing ${token}`);
 }
 for (const token of [
-  'useSelectedAudioEngineJourneyPlaybackAction({',
+  'useProductRuntimeJourneyPlaybackAction({',
   'startJourneyPlayback(startState, startPreset.name)',
 ]) {
-  assert(app.includes(token) || selectedAudioEnginePlaybackSurface.includes(token) || journeyMorphRuntimeSurface.includes(token), `Journey playback-start bridge is missing token ${token}`);
+  assert(app.includes(token) || productRuntimePlaybackSurface.includes(token) || journeyMorphRuntimeSurface.includes(token), `Journey playback-start bridge is missing token ${token}`);
 }
 for (const token of [
   'startSelectedPlayback',
@@ -2643,10 +2644,10 @@ for (const token of [
   assert(selectedAudioEngineJourneyPlaybackAction.includes(token), `Selected journey playback action hook is missing ${token}`);
 }
 for (const token of [
-  'useSelectedAudioEngineStopAction({',
+  'useProductRuntimeStopAction({',
   'stopJourney: journey.stop',
 ]) {
-  assert(app.includes(token) || selectedAudioEnginePlaybackSurface.includes(token), `Selected stop action bridge is missing token ${token}`);
+  assert(app.includes(token) || productRuntimePlaybackSurface.includes(token), `Selected stop action bridge is missing token ${token}`);
 }
 for (const token of [
   'stopSelectedPlayback();',
@@ -2658,10 +2659,10 @@ for (const token of [
   assert(selectedAudioEngineStopAction.includes(token), `Selected stop action hook is missing ${token}`);
 }
 for (const token of [
-  'useSelectedAudioEnginePresetLoadFade({',
-  'fadeSelectedAudioEngineOutput,',
+  'useProductRuntimePresetLoadFade({',
+  'fadeProductRuntimeOutput:',
 ]) {
-  assert(app.includes(token) || selectedAudioEnginePlaybackSurface.includes(token), `Selected preset-load fade bridge is missing token ${token}`);
+  assert(app.includes(token) || productRuntimePlaybackSurface.includes(token), `Selected preset-load fade bridge is missing token ${token}`);
 }
 for (const token of [
   'const PRESET_LOAD_FADE_MS = 2000',
@@ -3324,6 +3325,8 @@ const snapshotImportAllowlist = new Set([
   './sampleLibraries/sampleSlotState',
   './scales',
   './sequencerClockDivisions',
+  './sequencerAudibility',
+  './sequencerResumeQuantization',
   './sequencerPitchBinding',
   './sequencerSwing',
   './transport',

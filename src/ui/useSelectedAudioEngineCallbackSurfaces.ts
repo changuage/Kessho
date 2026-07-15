@@ -1,15 +1,21 @@
 import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { useSelectedAudioEngineEvolveOverrideSurface } from './useSelectedAudioEngineEvolveOverrideSurface';
 import { useSelectedAudioEngineLiveTriggerSurface } from './useSelectedAudioEngineLiveTriggerSurface';
-import { useSelectedAudioEngineSequencerCallbacks } from './useSelectedAudioEngineSequencerCallbacks';
+import { useRuntimeSequencerProjectionCallbacks } from './useRuntimeSequencerProjectionCallbacks';
 
 export function useSelectedAudioEngineCallbackSurfaces(audioEngineRuntimeMode: AudioEngineRuntimeMode) {
-  const sequencerCallbacks = useSelectedAudioEngineSequencerCallbacks(audioEngineRuntimeMode);
+  const projectionCallbacks = useRuntimeSequencerProjectionCallbacks(audioEngineRuntimeMode);
   const liveTriggerSurface = useSelectedAudioEngineLiveTriggerSurface(audioEngineRuntimeMode);
   const evolveOverrideSurface = useSelectedAudioEngineEvolveOverrideSurface(audioEngineRuntimeMode);
 
   return {
-    ...sequencerCallbacks,
+    setSelectedDrumStepPositionCallback: projectionCallbacks.setDrumStepPositionCallback,
+    setSelectedDrumEvolveTriggerCallback: projectionCallbacks.setDrumEvolveTriggerCallback,
+    setSelectedDrumTriggerCallback: projectionCallbacks.setDrumTriggerCallback,
+    setSelectedSynthStepPositionCallback: projectionCallbacks.setSynthStepPositionCallback,
+    setSelectedSynthOrbitVisualStateCallback: projectionCallbacks.setSynthOrbitVisualStateCallback,
+    setSelectedSynthAnchorWalkerVisualStateCallback: projectionCallbacks.setSynthAnchorWalkerVisualStateCallback,
+    setSelectedSynthEvolveTriggerCallback: projectionCallbacks.setSynthEvolveTriggerCallback,
     ...liveTriggerSurface,
     ...evolveOverrideSurface,
   };

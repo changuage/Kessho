@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import { useDocumentVisibility } from './useDocumentVisibility';
 
 interface UseVisibleIntervalOptions {
   enabled?: boolean;
@@ -20,28 +21,9 @@ export function useVisibleInterval(
   } = options;
 
   const callbackRef = useRef(callback);
-  const [documentVisible, setDocumentVisible] = useState(() => (
-    typeof document === 'undefined' ? true : document.visibilityState === 'visible'
-  ));
+  const documentVisible = useDocumentVisibility(pauseWhenHidden);
 
   callbackRef.current = callback;
-
-  useEffect(() => {
-    if (!pauseWhenHidden || typeof document === 'undefined') {
-      setDocumentVisible(true);
-      return;
-    }
-
-    const update = () => {
-      setDocumentVisible(document.visibilityState === 'visible');
-    };
-
-    update();
-    document.addEventListener('visibilitychange', update);
-    return () => {
-      document.removeEventListener('visibilitychange', update);
-    };
-  }, [pauseWhenHidden]);
 
   useEffect(() => {
     if (!enabled || delayMs === null) return;

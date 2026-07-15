@@ -206,7 +206,6 @@ const productNativeRuntimeHookFiles = new Set([
   'src/ui/useProductRuntimeModulationRanges.ts',
   'src/ui/useProductRuntimeMorphRuntimeSurface.ts',
   'src/ui/useProductRuntimeRecordingRuntime.ts',
-  'src/ui/useProductRuntimeSequencerCallbacks.ts',
   'src/ui/useProductRuntimeSequencerControls.ts',
   'src/ui/useProductRuntimeStateRuntime.ts',
   'src/ui/useProductRuntimeSynthPageEvents.ts',
@@ -3712,18 +3711,19 @@ for (const rootDir of sourceRoots) {
       for (const requiredSnippet of [
         "import { useProductRuntimeEvolveOverrideSurface } from './useProductRuntimeEvolveOverrideSurface'",
         "import { useProductRuntimeLiveTriggerSurface } from './useProductRuntimeLiveTriggerSurface'",
-        "import { useProductRuntimeSequencerCallbacks } from './useProductRuntimeSequencerCallbacks'",
+        "import { useRuntimeSequencerProjectionCallbacks } from './useRuntimeSequencerProjectionCallbacks'",
         "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
         'export function useProductRuntimeCallbackSurfaces(productRuntimeMode: ProductRuntimeSelectionMode)',
-        'useProductRuntimeSequencerCallbacks(productRuntimeMode)',
+        'useRuntimeSequencerProjectionCallbacks(productRuntimeMode)',
         'useProductRuntimeLiveTriggerSurface(productRuntimeMode)',
         'useProductRuntimeEvolveOverrideSurface(productRuntimeMode)',
-        '...sequencerCallbacks',
+        'setProductDrumStepPositionCallback: projectionCallbacks.setDrumStepPositionCallback',
+        'setProductSynthEvolveTriggerCallback: projectionCallbacks.setSynthEvolveTriggerCallback',
         '...liveTriggerSurface',
         '...evolveOverrideSurface',
       ]) {
         if (!source.includes(requiredSnippet)) {
-          failures.push(`${relative}: product runtime callback surfaces must compose product-named callback wrappers; missing ${requiredSnippet}`);
+          failures.push(`${relative}: product runtime callback surfaces must compose shared sequencer projections with product-named fields; missing ${requiredSnippet}`);
         }
       }
       if (
@@ -3766,7 +3766,7 @@ for (const rootDir of sourceRoots) {
 
     if (relative === 'src/ui/useProductRuntimeSequencerCallbacks.ts') {
       for (const requiredSnippet of [
-        "import { useSelectedAudioEngineSequencerCallbacks } from './useSelectedAudioEngineSequencerCallbacks'",
+        "import { useRuntimeSequencerProjectionCallbacks } from './useRuntimeSequencerProjectionCallbacks'",
         "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
         'type ProductRuntimeSequencerCallbacks = {',
         'setProductDrumStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void',
@@ -3962,15 +3962,34 @@ for (const rootDir of sourceRoots) {
       }
     }
 
+    if (relative === 'src/ui/useRuntimeSequencerProjectionCallbacks.ts') {
+      for (const requiredSnippet of [
+        'export function useRuntimeSequencerProjectionCallbacks(runtimeMode: ProductRuntimeSelectionMode)',
+        'productEngine.setDrumStepPositionCallback(callback)',
+        'productEngine.setDrumEuclidEvolveTriggerCallback(callback)',
+        'productEngine.setDrumTriggerCallback(',
+        'productEngine.setSynthStepPositionCallback(callback)',
+        'productEngine.setSynthOrbitVisualStateCallback(callback)',
+        'productEngine.setSynthAnchorWalkerVisualStateCallback(callback)',
+        'productEngine.setSynthEuclidEvolveTriggerCallback(callback)',
+      ]) {
+        if (!source.includes(requiredSnippet)) failures.push(`${relative}: canonical sequencer projection hook is missing ${requiredSnippet}`);
+      }
+      for (const forbidden of ['enqueueEvents', 'commitLiveSequencerTiming', 'setInterval', 'requestAnimationFrame', 'primeAudioContext', 'resumeQuant']) {
+        if (source.includes(forbidden)) failures.push(`${relative}: projection hook must not own timing/lifecycle behavior (${forbidden})`);
+      }
+    }
+
     if (relative === 'src/ui/useSelectedAudioEngineCallbackSurfaces.ts') {
       for (const requiredSnippet of [
-        "import { useSelectedAudioEngineSequencerCallbacks } from './useSelectedAudioEngineSequencerCallbacks'",
+        "import { useRuntimeSequencerProjectionCallbacks } from './useRuntimeSequencerProjectionCallbacks'",
         "import { useSelectedAudioEngineLiveTriggerSurface } from './useSelectedAudioEngineLiveTriggerSurface'",
         "import { useSelectedAudioEngineEvolveOverrideSurface } from './useSelectedAudioEngineEvolveOverrideSurface'",
-        'useSelectedAudioEngineSequencerCallbacks(audioEngineRuntimeMode)',
+        'useRuntimeSequencerProjectionCallbacks(audioEngineRuntimeMode)',
         'useSelectedAudioEngineLiveTriggerSurface(audioEngineRuntimeMode)',
         'useSelectedAudioEngineEvolveOverrideSurface(audioEngineRuntimeMode)',
-        '...sequencerCallbacks',
+        'setSelectedDrumStepPositionCallback: projectionCallbacks.setDrumStepPositionCallback',
+        'setSelectedSynthEvolveTriggerCallback: projectionCallbacks.setSynthEvolveTriggerCallback',
         '...liveTriggerSurface',
         '...evolveOverrideSurface',
       ]) {
@@ -4898,20 +4917,18 @@ for (const rootDir of sourceRoots) {
 
     if (relative === 'src/ui/useProductRuntimeCallbackRegistrations.ts') {
       for (const token of [
-        "import { useProductRuntimeLiveTriggerCallbacks } from './useProductRuntimeLiveTriggerCallbacks'",
-        'type { ProductRuntimeLiveTriggerCallbacksOptions }',
-        'useProductRuntimeVisualizerCallbacks,',
-        'type ProductRuntimeVisualizerCallbacksOptions',
-        'type ProductRuntimeCallbackRegistrationsOptions =',
-        'ProductRuntimeLiveTriggerCallbacksOptions &',
-        'ProductRuntimeVisualizerCallbacksOptions',
+        "from './useLiveTriggerUiCallbacks'",
+        "from './useSelectedAudioEngineVisualizerCallbacks'",
         'export function useProductRuntimeCallbackRegistrations({',
         'setProductDrumStepPositionCallback,',
         'setProductSynthEvolveTriggerCallback,',
-        'useProductRuntimeLiveTriggerCallbacks(options)',
+        'useSelectedAudioEngineVisualizerCallbacks({',
+        'useLiveTriggerUiCallbacks({',
+        'setLeadExpressionCallback: setProductLeadExpressionCallback',
+        'setGranularSHTriggerCallback: setProductGranularSHTriggerCallback',
       ]) {
         if (!source.includes(token)) {
-          failures.push(`${relative}: product runtime callback registration surface must compose product-named callback registration wrappers; missing ${token}`);
+          failures.push(`${relative}: product runtime callback registration surface must compose shared projection implementations; missing ${token}`);
         }
       }
       const productCallbackOptionsType = source.match(/type ProductRuntimeCallbackRegistrationsOptions =[\s\S]*?;\n/)?.[0] ?? '';
@@ -4919,13 +4936,11 @@ for (const rootDir of sourceRoots) {
         failures.push(`${relative}: product runtime callback registration options must expose product-named sequencer callbacks`);
       }
       if (
-        source.includes('Parameters<typeof useProductRuntimeVisualizerCallbacks>') ||
-        source.includes('Parameters<typeof useProductRuntimeLiveTriggerCallbacks>') ||
         source.includes('SelectedSequencerCallbackKey') ||
-        source.includes('setSelectedDrumStepPositionCallback: setProductDrumStepPositionCallback') ||
-        source.includes('setSelectedSynthEvolveTriggerCallback: setProductSynthEvolveTriggerCallback')
+        source.includes('useProductRuntimeLiveTriggerCallbacks') ||
+        source.includes('useProductRuntimeVisualizerCallbacks')
       ) {
-        failures.push(`${relative}: product runtime callback registration surface must compose product-owned callback option types`);
+        failures.push(`${relative}: product runtime callback registration surface must not restore retired projection wrappers`);
       }
       if (
         source.includes('productEngine') ||

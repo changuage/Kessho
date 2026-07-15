@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { RefObject } from 'react';
+import { useDocumentVisibility } from './useDocumentVisibility';
 
 interface UseAnimationVisibilityOptions {
   enabled?: boolean;
@@ -37,28 +38,9 @@ export function useAnimationVisibility<T extends Element>(
     defaultVisible = true,
   } = options;
 
-  const [isDocumentVisible, setIsDocumentVisible] = useState(() => (
-    typeof document === 'undefined' ? true : document.visibilityState === 'visible'
-  ));
+  const documentVisible = useDocumentVisibility(enabled);
+  const isDocumentVisible = !enabled || documentVisible;
   const [isElementVisible, setIsElementVisible] = useState(defaultVisible);
-
-  useEffect(() => {
-    if (!enabled) {
-      setIsDocumentVisible(true);
-      return;
-    }
-    if (typeof document === 'undefined') return;
-
-    const updateVisibility = () => {
-      setIsDocumentVisible(document.visibilityState === 'visible');
-    };
-
-    updateVisibility();
-    document.addEventListener('visibilitychange', updateVisibility);
-    return () => {
-      document.removeEventListener('visibilitychange', updateVisibility);
-    };
-  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) {

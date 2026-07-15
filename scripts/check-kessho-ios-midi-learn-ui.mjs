@@ -13,21 +13,8 @@ function assertIncludes(source, token, label, failures) {
 }
 
 const failures = [];
-const sheetPath = 'src/ui/midiLearn/MidiMappingBottomSheet.tsx';
 const guardsPath = 'src/ui/midiLearn/iosTouchLearnGuards.ts';
-const sheet = read(sheetPath);
 const guards = read(guardsPath);
-
-for (const token of [
-  'role="dialog"',
-  'aria-modal="true"',
-  'env(safe-area-inset-bottom)',
-  'minHeight: 44',
-  'onClose',
-  'destructive',
-]) {
-  assertIncludes(sheet, token, sheetPath, failures);
-}
 
 for (const token of [
   'shouldAssignIOSMidiLearnFromSliderGesture',
@@ -38,6 +25,9 @@ for (const token of [
   'value-change-drag',
   'isIOSLongPressDuration',
   'iosMidiLearnSafeAreaStyle',
+  'env(safe-area-inset-bottom)',
+  'env(safe-area-inset-left)',
+  'env(safe-area-inset-right)',
 ]) {
   assertIncludes(guards, token, guardsPath, failures);
 }
@@ -47,13 +37,13 @@ const report = {
   status: failures.length === 0 ? 'pass' : 'fail',
   evidenceMode: 'static',
   physicalDeviceEvidenceClaimed: false,
-  checkedFiles: [sheetPath, guardsPath],
+  checkedFiles: [guardsPath],
   touchRules: {
     requiresCapturedSource: guards.includes('no-captured-source'),
     rejectsScrollGesture: guards.includes('scroll-gesture'),
     rejectsTapOnly: guards.includes('tap-only'),
     requiresValueChange: guards.includes('no-value-change'),
-    bottomSheetSafeAreaAware: sheet.includes('env(safe-area-inset-bottom)'),
+    touchControlSafeAreaAware: guards.includes('env(safe-area-inset-bottom)'),
   },
   failures,
 };

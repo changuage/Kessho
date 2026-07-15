@@ -15,13 +15,12 @@ function assert(condition, message) {
 }
 
 const productManual = read('src/ui/useProductRuntimeManualTriggers.ts');
-const productLive = read('src/ui/useProductRuntimeLiveTriggerCallbacks.ts');
+const productRegistrations = read('src/ui/useProductRuntimeCallbackRegistrations.ts');
 const sharedLive = read('src/ui/useLiveTriggerUiCallbacks.ts');
 const actions = read('src/product-control/ProductControlActions.ts');
 
 const productTriggerFiles = [
   ['src/ui/useProductRuntimeManualTriggers.ts', productManual],
-  ['src/ui/useProductRuntimeLiveTriggerCallbacks.ts', productLive],
 ];
 
 for (const [file, text] of productTriggerFiles) {
@@ -33,7 +32,7 @@ for (const [file, text] of productTriggerFiles) {
 assert(
   productManual.includes("import { productEngine } from '../audio/product/ProductEngineProxy'") &&
     productManual.includes('commitProductControlActionThenTrigger') &&
-    productManual.includes('(_revision, resolvedSliders) => productEngine.auditionSynthNote(note, resolvedSliders)') &&
+    productManual.includes('(_revision, resolvedSliders) => productEngine.auditionSynthNote(productNote, resolvedSliders)') &&
     productManual.includes('const velocity = options.velocity ?? DEFAULT_MANUAL_DRUM_VELOCITY') &&
     productManual.includes('(_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, velocity, resolvedSliders)'),
   'Product manual triggers must commit Product Control state before calling productEngine trigger APIs.',
@@ -47,9 +46,11 @@ assert(
   'Product manual triggers must include kind/note/voice/velocity metadata.',
 );
 assert(
-  productLive.includes('useLiveTriggerUiCallbacks') &&
-    !productLive.includes('useSelectedAudioEngineLiveTriggerCallbacks'),
-  'Product live trigger callbacks must use the product-owned shared UI callback hook.',
+  productRegistrations.includes('useLiveTriggerUiCallbacks({') &&
+    productRegistrations.includes('setLeadExpressionCallback: setProductLeadExpressionCallback') &&
+    productRegistrations.includes('setGranularSHTriggerCallback: setProductGranularSHTriggerCallback') &&
+    !productRegistrations.includes('useSelectedAudioEngineLiveTriggerCallbacks'),
+  'Product callback registration must use the runtime-neutral live projection hook.',
 );
 assert(
   sharedLive.includes('export function useLiveTriggerUiCallbacks') &&

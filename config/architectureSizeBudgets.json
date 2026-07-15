@@ -20,11 +20,6 @@
       "targetCeiling": 1514,
       "mode": "fail-on-growth-warn-above-target"
     },
-    "src/ui/earth/components/EarthSceneMixer.tsx": {
-      "noGrowthCeiling": 1419,
-      "targetCeiling": 1341,
-      "mode": "fail-on-growth-warn-above-target"
-    },
     "src/ui/global/RoutingMatrix.tsx": {
       "noGrowthCeiling": 1298,
       "targetCeiling": 1228,
