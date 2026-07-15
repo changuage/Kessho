@@ -1,4 +1,5 @@
 import React from 'react';
+import { recordSliderSystemCounter } from '../../diagnostics/sliderSystemInstrumentation';
 import type { SliderMode } from '../state';
 import { tapeHeroBoldVars } from './tapeHeroBold';
 import type {
@@ -9,11 +10,14 @@ import type {
 } from './types';
 import {
   LONG_PRESS_MS,
+  axisToNormalized,
   getTouchGestureIntent,
   releasePointerCaptureSafely,
   setSliderTouchSelectionLock,
+  shiftRangePreservingWidth,
 } from './matrixMath';
 import './sliderPrimitive.css';
+import { useRafCoalescedEmitter } from './useRafCoalescedEmitter';
 
 const MODE_LABEL: Record<SliderMode, string> = {
   single: 'Single',
@@ -66,6 +70,7 @@ export interface SliderPrimitiveProps {
   style?: React.CSSProperties;
   title?: string;
   onValueChange?: (value: number) => void;
+  updatePolicy?: SliderUpdatePolicy;
   /** Preview pointer drags locally and notify onValueChange only on pointer release. */
   commitValueOnRelease?: boolean;
   onRangeChange?: (range: SliderPrimitiveRange) => void;
@@ -74,6 +79,8 @@ export interface SliderPrimitiveProps {
   onValueGestureStart?: () => void;
   headAdornment?: React.ReactNode;
 }
+
+export type SliderUpdatePolicy = 'continuous' | 'frame' | 'release';
 
 export function SliderPrimitive({
   label,
@@ -96,6 +103,7 @@ export function SliderPrimitive({
   style,
   title,
   onValueChange,
+  updatePolicy = 'frame',
   commitValueOnRelease = false,
   onRangeChange,
   onModeCycle,
@@ -150,22 +158,74 @@ export function SliderPrimitive({
   const visualIndicatorPct = clamp(dragging && dragIndicatorRef.current != null ? dragIndicatorRef.current : indicatorPct, 0, 100);
   const isDirect = stylingModel === 'tapeHeroBold';
   const showsModeControl = typeof onModeCycle === 'function';
-  const emitValueChange = React.useCallback((nextValue: number) => {
+  const commitValueChange = React.useCallback((nextValue: number) => {
     if (!onValueChange) return;
     if (lastEmittedValueRef.current === nextValue) return;
     lastEmittedValueRef.current = nextValue;
+    recordSliderSystemCounter('sliderValueCallbacks');
     onValueChange(nextValue);
   }, [onValueChange]);
-  const emitRangeChange = React.useCallback((nextRange: SliderPrimitiveRange) => {
+  const commitRangeChange = React.useCallback((nextRange: SliderPrimitiveRange) => {
     if (!onRangeChange) return;
     const last = lastEmittedRangeRef.current;
     if (last && last.min === nextRange.min && last.max === nextRange.max) return;
     lastEmittedRangeRef.current = nextRange;
+    recordSliderSystemCounter('rangeCallbacks');
     onRangeChange(nextRange);
   }, [onRangeChange]);
+  const valueEmitter = useRafCoalescedEmitter(commitValueChange);
+  const rangeEmitter = useRafCoalescedEmitter(commitRangeChange);
+  const resolvedUpdatePolicy: SliderUpdatePolicy = commitValueOnRelease ? 'release' : updatePolicy;
+  const scheduleValueChange = (nextValue: number) => {
+    if (resolvedUpdatePolicy === 'continuous') commitValueChange(nextValue);
+    else if (resolvedUpdatePolicy === 'frame') valueEmitter.schedule(nextValue);
+  };
+  const scheduleRangeChange = (nextRange: SliderPrimitiveRange) => {
+    if (resolvedUpdatePolicy === 'continuous') commitRangeChange(nextRange);
+    else if (resolvedUpdatePolicy === 'frame') rangeEmitter.schedule(nextRange);
+  };
+
+  const keyboardDelta = (event: React.KeyboardEvent, direction: -1 | 1): number => (
+    direction * (event.shiftKey ? 10 : 1)
+  );
+  const handleSingleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (disabled || mode !== 'single') return;
+    let nextValue: number | null = null;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') nextValue = currentValue + keyboardDelta(event, -1);
+    else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') nextValue = currentValue + keyboardDelta(event, 1);
+    else if (event.key === 'Home') nextValue = 0;
+    else if (event.key === 'End') nextValue = 100;
+    if (nextValue === null) return;
+    event.preventDefault();
+    const clampedValue = clamp(nextValue, 0, 100);
+    setLiveValue(clampedValue);
+    valueEmitter.flush(clampedValue);
+    lastEmittedValueRef.current = null;
+  };
+  const handleRangeKeyDown = (
+    event: React.KeyboardEvent<HTMLSpanElement>,
+    handle: 'min' | 'max',
+  ) => {
+    if (disabled || mode === 'single') return;
+    let nextValue: number | null = null;
+    const currentHandleValue = currentRange[handle];
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') nextValue = currentHandleValue + keyboardDelta(event, -1);
+    else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') nextValue = currentHandleValue + keyboardDelta(event, 1);
+    else if (event.key === 'Home') nextValue = handle === 'min' ? 0 : currentRange.min + 4;
+    else if (event.key === 'End') nextValue = handle === 'max' ? 100 : currentRange.max - 4;
+    if (nextValue === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const nextRange = handle === 'min'
+      ? { min: clamp(nextValue, 0, currentRange.max - 4), max: currentRange.max }
+      : { min: currentRange.min, max: clamp(nextValue, currentRange.min + 4, 100) };
+    setLiveRange(nextRange);
+    rangeEmitter.flush(nextRange);
+    lastEmittedRangeRef.current = null;
+  };
 
   const percentFromClientX = (clientX: number, rect: DOMRect) => (
-    clamp(((clientX - rect.left) / Math.max(1, rect.width)) * 100, 0, 100)
+    axisToNormalized(clientX, rect.left, rect.width) * 100
   );
 
   const getRangeTarget = (clientX: number, rect: DOMRect): 'min' | 'max' | 'band' => {
@@ -186,7 +246,7 @@ export function SliderPrimitive({
     if (mode === 'single') {
       const nextValue = percentFromClientX(clientX, rect);
       setLiveValue(nextValue);
-      emitValueChange(nextValue);
+      valueEmitter.flush(nextValue);
       lastEmittedValueRef.current = null;
       return;
     }
@@ -199,7 +259,7 @@ export function SliderPrimitive({
       ? { min: Math.min(pointerValue, currentRange.max - 4), max: currentRange.max }
       : { min: currentRange.min, max: Math.max(pointerValue, currentRange.min + 4) };
     setLiveRange(nextRange);
-    emitRangeChange(nextRange);
+    rangeEmitter.flush(nextRange);
     lastEmittedRangeRef.current = null;
   };
 
@@ -235,6 +295,7 @@ export function SliderPrimitive({
       window.removeEventListener('pointercancel', onEnd);
       releasePointerCaptureSafely(currentTarget, pointerId);
       if (isTouch) setSliderTouchSelectionLock(false);
+      pendingTouchCleanupRef.current = null;
     };
 
     if (mode === 'single') {
@@ -264,7 +325,7 @@ export function SliderPrimitive({
           setLiveValue(nextValue);
         }
 
-        if (!commitValueOnRelease) emitValueChange(nextValue);
+        scheduleValueChange(nextValue);
       };
 
       setLiveValue(lastValue);
@@ -291,7 +352,8 @@ export function SliderPrimitive({
         if (cancelled && valueTextRef.current) {
           valueTextRef.current.textContent = displayValue ?? formatValue(value, unit);
         }
-        if (!cancelled) emitValueChange(lastValue);
+        if (cancelled) valueEmitter.cancel();
+        else valueEmitter.flush(lastValue);
         lastEmittedValueRef.current = null;
         setDragging(false);
         cleanupCommittedDrag(onMove, onEnd);
@@ -300,6 +362,7 @@ export function SliderPrimitive({
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onEnd);
       window.addEventListener('pointercancel', onEnd);
+      pendingTouchCleanupRef.current = () => cleanupCommittedDrag(onMove, onEnd);
       return;
     }
 
@@ -321,26 +384,11 @@ export function SliderPrimitive({
       startRange.max,
     );
     dragThumbPxRef.current = (dragIndicatorRef.current / 100) * rect.width;
-    emitRangeChange(startRange);
 
     const getNextRange = (clientX: number) => {
       const delta = ((clientX - rect.left - startX) / Math.max(1, rect.width)) * 100;
       if (target === 'band') {
-        const span = startRange.max - startRange.min;
-        let nextMin = startRange.min + delta;
-        let nextMax = nextMin + span;
-        if (nextMin < 0) {
-          nextMax += -nextMin;
-          nextMin = 0;
-        }
-        if (nextMax > 100) {
-          nextMin -= nextMax - 100;
-          nextMax = 100;
-        }
-        return {
-          min: clamp(nextMin, 0, 100),
-          max: clamp(nextMax, 0, 100),
-        };
+        return shiftRangePreservingWidth(startRange, delta, 0, 100);
       }
 
       const raw = clamp(target === 'min' ? startRange.min + delta : startRange.max + delta, 0, 100);
@@ -379,7 +427,7 @@ export function SliderPrimitive({
         setLiveRange(nextRange);
       }
 
-      emitRangeChange(nextRange);
+      scheduleRangeChange(nextRange);
     };
 
     if (initialClientX !== startClientX) {
@@ -394,7 +442,8 @@ export function SliderPrimitive({
 
     const onEnd = (endEvent: PointerEvent) => {
       if (endEvent.pointerId !== pointerId) return;
-      setLiveRange(lastRange);
+      const cancelled = endEvent.type === 'pointercancel';
+      setLiveRange(cancelled ? currentRange : lastRange);
       dragRangeRef.current = null;
       dragIndicatorRef.current = null;
       dragThumbPxRef.current = null;
@@ -402,7 +451,8 @@ export function SliderPrimitive({
         thumbRef.current.style.transform = '';
         thumbRef.current.style.left = '';
       }
-      emitRangeChange(lastRange);
+      if (cancelled) rangeEmitter.cancel();
+      else rangeEmitter.flush(lastRange);
       lastEmittedRangeRef.current = null;
       setDragging(false);
       setActiveHandle(null);
@@ -412,6 +462,7 @@ export function SliderPrimitive({
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onEnd);
     window.addEventListener('pointercancel', onEnd);
+    pendingTouchCleanupRef.current = () => cleanupCommittedDrag(onMove, onEnd);
   };
 
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -560,11 +611,11 @@ export function SliderPrimitive({
         }}
       >
         {showsModeControl ? (
-          <span
+          <button
+            type="button"
             className={`sl-slider-mode sl-slider-mode--${mode}${disabled ? '' : ' interactive'}`}
             aria-label={MODE_LABEL[mode]}
-            role={disabled ? undefined : 'button'}
-            tabIndex={disabled ? -1 : 0}
+            disabled={disabled}
             title={disabled ? MODE_LABEL[mode] : `Mode: ${MODE_LABEL[mode]}. Click to cycle.`}
             onClick={(event) => {
               event.preventDefault();
@@ -586,7 +637,7 @@ export function SliderPrimitive({
           >
             <span className="sl-slider-mode-glyph">{MODE_GLYPH[mode]}</span>
             <span className="sl-slider-mode-text">{MODE_LABEL[mode]}</span>
-          </span>
+          </button>
         ) : (
           hero && <span className="sl-slider-hero-dot" aria-hidden="true" />
         )}
@@ -598,6 +649,15 @@ export function SliderPrimitive({
       <div
         ref={railRef}
         className="sl-slider-rail"
+        role={mode === 'single' ? 'slider' : undefined}
+        tabIndex={mode === 'single' && !disabled ? 0 : -1}
+        aria-label={mode === 'single' ? label : undefined}
+        aria-valuemin={mode === 'single' ? 0 : undefined}
+        aria-valuemax={mode === 'single' ? 100 : undefined}
+        aria-valuenow={mode === 'single' ? currentValue : undefined}
+        aria-valuetext={mode === 'single' ? formatValue(currentValue, unit) : undefined}
+        aria-disabled={mode === 'single' ? disabled : undefined}
+        onKeyDown={handleSingleKeyDown}
         onDoubleClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -634,11 +694,29 @@ export function SliderPrimitive({
               ref={edgeMinRef}
               className={`sl-slider-edge sl-slider-edge--min${activeHandle === 'min' || activeHandle === 'band' ? ' active' : ''}`}
               style={{ left: `${minPct}%` }}
+              role="slider"
+              tabIndex={disabled ? -1 : 0}
+              aria-label={`${label} minimum`}
+              aria-valuemin={0}
+              aria-valuemax={currentRange.max - 4}
+              aria-valuenow={currentRange.min}
+              aria-valuetext={formatValue(currentRange.min, unit)}
+              aria-disabled={disabled}
+              onKeyDown={(event) => handleRangeKeyDown(event, 'min')}
             />
             <span
               ref={edgeMaxRef}
               className={`sl-slider-edge sl-slider-edge--max${activeHandle === 'max' || activeHandle === 'band' ? ' active' : ''}`}
               style={{ left: `${maxPct}%` }}
+              role="slider"
+              tabIndex={disabled ? -1 : 0}
+              aria-label={`${label} maximum`}
+              aria-valuemin={currentRange.min + 4}
+              aria-valuemax={100}
+              aria-valuenow={currentRange.max}
+              aria-valuetext={formatValue(currentRange.max, unit)}
+              aria-disabled={disabled}
+              onKeyDown={(event) => handleRangeKeyDown(event, 'max')}
             />
           </>
         )}

@@ -93,6 +93,12 @@ export const CORE_PRODUCT_TRANSPORT_FLAGS = Object.freeze({
 
 export const CORE_PRODUCT_TIMING_FLAGS = CORE_PRODUCT_TRANSPORT_FLAGS;
 
+export type CoreProductTimingApplyPolicy = 'live' | 'nextPhrase';
+
+function timingApplyFlags(policy: CoreProductTimingApplyPolicy): number {
+  return policy === 'nextPhrase' ? CORE_PRODUCT_TIMING_FLAGS.applyNextPhrase : 0;
+}
+
 export const CORE_PRODUCT_ANCHOR_WALKER_ACTIONS = Object.freeze({
   gestureTap: 1,
   gestureDown: 2,
@@ -1727,6 +1733,7 @@ export function createCoreProductTransportTransitionEvent(options: {
   beatsPerBar: number;
   barsPerPhrase: number;
   phraseSeconds: number;
+  applyPolicy?: CoreProductTimingApplyPolicy;
 }): CoreProductEvent {
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.SetTransport,
@@ -1734,7 +1741,7 @@ export function createCoreProductTransportTransitionEvent(options: {
     value2: requireIntegerInRange(options.beatsPerBar, 'beatsPerBar', 1, 32),
     value3: requireIntegerInRange(options.barsPerPhrase, 'barsPerPhrase', 1, 256),
     value4: requireNumberInRange(options.phraseSeconds, 'phraseSeconds', 0.001, 4096),
-    flags: CORE_PRODUCT_TRANSPORT_FLAGS.applyNextPhrase,
+    flags: timingApplyFlags(options.applyPolicy ?? 'live'),
   };
 }
 
@@ -1797,19 +1804,29 @@ export function createCoreProductSequencerLaneParamEvent(
   value: number,
   flags?: number,
 ): CoreProductEvent {
-  const timingFlags = paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision ||
+  const timingParam = paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision ||
     paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneTempoMultiplier ||
-    paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing
-    ? CORE_PRODUCT_TIMING_FLAGS.applyNextPhrase
-    : 0;
+    paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing;
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSequencerLane,
     targetId: requireSequencerId(sequencer),
     index: requireIntegerInRange(laneIndex, 'laneIndex', 0, 15),
     paramId: requireParamId(paramId),
     value: requireFiniteNumber(value, 'value'),
-    flags: flags ?? timingFlags,
+    flags: flags ?? (timingParam ? timingApplyFlags('live') : 0),
   };
+}
+
+export function isCoreProductLiveSequencerTimingEvent(event: CoreProductEvent): boolean {
+  if (
+    event.eventKind !== KESSHO_PRODUCT_EVENT_IDS.SetSequencerLane ||
+    (event.flags ?? 0) !== timingApplyFlags('live')
+  ) {
+    return false;
+  }
+  return event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision ||
+    event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneTempoMultiplier ||
+    event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing;
 }
 
 export function createCoreProductAnchorWalkerPerformanceEvent(
@@ -1924,7 +1941,7 @@ export function createCoreProductSequencerClockDivisionEvents(
       laneIndex,
       KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision,
       sequencerClockDivisionToNumericValue(divs[laneIndex], 16),
-      CORE_PRODUCT_TIMING_FLAGS.applyNextPhrase,
+      timingApplyFlags('live'),
     ));
 }
 
@@ -1938,7 +1955,7 @@ export function createCoreProductSequencerSwingEvents(
       laneIndex,
       KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing,
       normalizeSequencerSwing(swings[laneIndex], 0),
-      CORE_PRODUCT_TIMING_FLAGS.applyNextPhrase,
+      timingApplyFlags('live'),
     ));
 }
 

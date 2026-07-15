@@ -34,6 +34,8 @@ import { readSampleSlotState } from './sampleLibraries/sampleSlotState';
 import { sampleSlotSnapshotFields } from './sampleLibraries/sampleSlotProductSnapshot';
 import type { SampleSlotId, SampleSlotState } from './sampleLibraries/SampleLibraryTypes';
 import type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductLaneSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
+import { resolveSequencerLaneAudibility } from './sequencerAudibility';
+import { sequencerResumeQuantizationForLane } from './sequencerResumeQuantization';
 export type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductHarmonySnapshot, ProductLaneSnapshot, ProductSoundscapeSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 
 // SNAPSHOT_AUTHORITY: GENERATED_SCHEMA_SERIALIZATION - this file maps app/UI state into generated Product Core fields.
@@ -541,9 +543,9 @@ function synthLaneFromState(
   lane.morph = macroDefaults.morph;
   lane.distance = macroDefaults.distance;
   lane.barReset = String(state?.synthEuclidJoinPolicy ?? 'bar') === 'bar';
-  lane.enabled =
-    booleanFromState(state, 'synthEuclideanMasterEnabled', defaultEnabled) &&
-    booleanFromState(state, `${prefix}Enabled`, laneNumber === 1);
+  lane.enabled = booleanFromState(state, 'synthEuclideanMasterEnabled', defaultEnabled);
+  lane.muted = resolveSequencerLaneAudibility(state, 'synth', laneNumber).muted;
+  lane.resumeQuantization = sequencerResumeQuantizationForLane(state, 'synth', laneNumber);
   const defaults = defaultSynthEuclidPattern(laneNumber - 1);
   const resolved = resolveEuclidPatternParams(
     String(state?.[`${prefix}Preset`] ?? 'custom'),
@@ -644,8 +646,9 @@ function drumLaneBaseFromState(
   lane.barReset = String(state?.drumEuclidJoinPolicy ?? 'bar') === 'bar';
   lane.enabled =
     booleanFromState(state, 'drumEnabled', defaultEnabled) &&
-    booleanFromState(state, 'drumEuclidMasterEnabled', defaultEnabled) &&
-    booleanFromState(state, `${prefix}Enabled`, false);
+    booleanFromState(state, 'drumEuclidMasterEnabled', defaultEnabled);
+  lane.muted = resolveSequencerLaneAudibility(state, 'drum', laneNumber).muted;
+  lane.resumeQuantization = sequencerResumeQuantizationForLane(state, 'drum', laneNumber);
   const defaults = defaultDrumEuclidPattern(laneNumber - 1);
   const resolved = resolveEuclidPatternParams(
     String(state?.[`${prefix}Preset`] ?? 'custom'),

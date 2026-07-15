@@ -3,6 +3,7 @@ import type { SliderState } from './state';
 import { useSelectedAudioEngineLifecycle } from './useSelectedAudioEngineLifecycle';
 
 type ProductRuntimeLifecycle = {
+  primeProductRuntimeAudio: () => void;
   startProductRuntime: (stateToStart: SliderState) => Promise<void>;
   resumeProductRuntime: () => Promise<void>;
   suspendProductRuntime: () => Promise<void>;
@@ -20,6 +21,7 @@ export function useProductRuntimeLifecycle(
   const selectedLifecycle = useSelectedAudioEngineLifecycle(productRuntimeMode);
 
   return {
+    primeProductRuntimeAudio: selectedLifecycle.primeSelectedAudioEngine,
     startProductRuntime: selectedLifecycle.startSelectedAudioEngine,
     resumeProductRuntime: selectedLifecycle.resumeSelectedAudioEngine,
     suspendProductRuntime: selectedLifecycle.suspendSelectedAudioEngine,

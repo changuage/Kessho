@@ -85,9 +85,8 @@ export async function triggerCoreProductDrumVoice(context: CoreProductManualAudi
     return;
   }
   if (externalState) context.setLatestSliderState({ ...externalState, drumEnabled: true });
-  await context.runtime.ensureStarted();
-  context.setRuntimeReady(true);
   await context.runtime.resume();
+  context.setRuntimeReady(true);
   if (applyExternalState || !productSourceEnabled(context, CORE_PRODUCT_SOURCE_IDS.drum)) {
     await context.applyLatestSnapshotUpdate('runtime-bootstrap');
   }
@@ -118,9 +117,9 @@ export function triggerCoreProductSynthVoice(
   };
   if (runtimeCanPostEventsImmediately(context)) { post(); return; }
   if (context.runtimeReady()) { void context.runtime.resume().then(post); return; }
-  void context.runtime.ensureStarted().then(() => {
+  void context.runtime.resume().then(() => {
     context.setRuntimeReady(true);
-    return context.applyLatestSnapshotUpdate('runtime-bootstrap').then(() => context.runtime.resume());
+    return context.applyLatestSnapshotUpdate('runtime-bootstrap');
   }).then(post);
 }
 
@@ -137,9 +136,8 @@ export async function auditionCoreProductSynthNote(context: CoreProductManualAud
   if (!productSourceEnabled(context, targetSourceId) || applyExternalState) {
     context.setLatestSliderState(manualAuditionState(manualNote.source, externalState ?? context.latestSliderState() ?? undefined));
   }
-  await context.runtime.ensureStarted();
-  context.setRuntimeReady(true);
   await context.runtime.resume();
+  context.setRuntimeReady(true);
   if (applyExternalState || !productSourceEnabled(context, targetSourceId)) {
     await context.applyLatestSnapshotUpdate(sampleSlotId != null ? 'manual-sample-asset' : 'runtime-bootstrap');
   }
@@ -161,9 +159,8 @@ export async function auditionCoreProductSynthNotes(context: CoreProductManualAu
     for (const note of manualNotes) nextState = manualAuditionState(note.source, nextState);
     context.setLatestSliderState(nextState);
   }
-  await context.runtime.ensureStarted();
-  context.setRuntimeReady(true);
   await context.runtime.resume();
+  context.setRuntimeReady(true);
   if (applyExternalState || !productSourcesEnabled(context, targetSourceIds)) {
     await context.applyLatestSnapshotUpdate(manualNotes.some((note) => sampleSlotForManualSource(note.source) != null) ? 'manual-sample-asset' : 'runtime-bootstrap');
   }

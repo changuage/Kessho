@@ -24,6 +24,7 @@ import type { ProductEvent } from '../audio/product/ProductEngineTypes';
 import { commitProductControlActionForProduct } from '../product-control';
 import type { SliderState } from './state';
 import type { SequencerSubLaneConfigState } from '../audio/CoreProductHostSequencerAdapter';
+import { commitLiveSequencerTiming } from './commitLiveSequencerTiming';
 
 type SequencerPitchState = { steps?: number; direction?: string; scaleQuantize?: boolean } | null;
 type SequencerLaneHomeCaptureOptions = {
@@ -137,11 +138,13 @@ export function useSelectedAudioEngineSequencerControls(
 
   const setSelectedDrumEuclidClockDivs = useCallback((divs: readonly unknown[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      commitCoreProductSequencerEvents(
+      if (!stateRef) throw new Error('ProductControl sequencer timing commits require current SliderState');
+      commitLiveSequencerTiming({
+        engine: productEngine,
         stateRef,
-        sequencerPatch('drumEuclidClockDivs', divs),
-        createCoreProductSequencerClockDivisionEvents('drum', divs),
-      );
+        patch: sequencerPatch('drumEuclidClockDivs', divs),
+        events: createCoreProductSequencerClockDivisionEvents('drum', divs),
+      });
       return;
     }
     selectedProductRuntime.setDrumEuclidClockDivs(divs);
@@ -149,11 +152,13 @@ export function useSelectedAudioEngineSequencerControls(
 
   const setSelectedSynthEuclidClockDivs = useCallback((divs: readonly unknown[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      commitCoreProductSequencerEvents(
+      if (!stateRef) throw new Error('ProductControl sequencer timing commits require current SliderState');
+      commitLiveSequencerTiming({
+        engine: productEngine,
         stateRef,
-        sequencerPatch('synthEuclidClockDivs', divs),
-        createCoreProductSequencerClockDivisionEvents('synth', divs),
-      );
+        patch: sequencerPatch('synthEuclidClockDivs', divs),
+        events: createCoreProductSequencerClockDivisionEvents('synth', divs),
+      });
       return;
     }
     selectedProductRuntime.setSynthEuclidClockDivs(divs);
@@ -161,11 +166,13 @@ export function useSelectedAudioEngineSequencerControls(
 
   const setSelectedDrumEuclidSwings = useCallback((swings: readonly unknown[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      commitCoreProductSequencerEvents(
+      if (!stateRef) throw new Error('ProductControl sequencer timing commits require current SliderState');
+      commitLiveSequencerTiming({
+        engine: productEngine,
         stateRef,
-        sequencerPatch('drumEuclidSwings', swings),
-        createCoreProductSequencerSwingEvents('drum', swings),
-      );
+        patch: sequencerPatch('drumEuclidSwings', swings),
+        events: createCoreProductSequencerSwingEvents('drum', swings),
+      });
       return;
     }
     selectedProductRuntime.setDrumEuclidSwings(swings);
@@ -173,11 +180,13 @@ export function useSelectedAudioEngineSequencerControls(
 
   const setSelectedSynthEuclidSwings = useCallback((swings: readonly unknown[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      commitCoreProductSequencerEvents(
+      if (!stateRef) throw new Error('ProductControl sequencer timing commits require current SliderState');
+      commitLiveSequencerTiming({
+        engine: productEngine,
         stateRef,
-        sequencerPatch('synthEuclidSwings', swings),
-        createCoreProductSequencerSwingEvents('synth', swings),
-      );
+        patch: sequencerPatch('synthEuclidSwings', swings),
+        events: createCoreProductSequencerSwingEvents('synth', swings),
+      });
       return;
     }
     selectedProductRuntime.setSynthEuclidSwings(swings);

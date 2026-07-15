@@ -10,6 +10,7 @@ type StartSelectedPlayback = (options: {
 }) => Promise<void>;
 
 type SelectedAudioEngineStartActionOptions = {
+  primeSelectedPlayback?: () => void;
   preparePlaybackStartState: (requestedState?: SliderState) => Promise<SliderState>;
   startSelectedPlayback: StartSelectedPlayback;
   startArmedRecordingAfterPlaybackStart: () => void;
@@ -18,6 +19,7 @@ type SelectedAudioEngineStartActionOptions = {
 };
 
 export function useSelectedAudioEngineStartAction({
+  primeSelectedPlayback,
   preparePlaybackStartState,
   startSelectedPlayback,
   startArmedRecordingAfterPlaybackStart,
@@ -26,6 +28,7 @@ export function useSelectedAudioEngineStartAction({
 }: SelectedAudioEngineStartActionOptions) {
   return useCallback(async (requestedState?: SliderState): Promise<void> => {
     try {
+      primeSelectedPlayback?.();
       const stateToStart = await preparePlaybackStartState(requestedState);
       await startSelectedPlayback({
         state: stateToStart,
@@ -40,6 +43,7 @@ export function useSelectedAudioEngineStartAction({
   }, [
     dualRanges,
     preparePlaybackStartState,
+    primeSelectedPlayback,
     startArmedRecordingAfterPlaybackStart,
     startSelectedPlayback,
     title,

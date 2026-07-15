@@ -7,6 +7,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import './drums.css';
 import type { SerializedStepOverrides, SliderState } from '../state';
+import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumStepOverrides } from '../../audio/drumSeqTypes';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
@@ -35,6 +36,7 @@ import {
 } from '../sequencer/drumPitchSequencer';
 import { normalizeSequencerPitchSettings } from '../../audio/sequencerPitchSettings';
 import { normalizeSequencerSwing } from '../../audio/sequencerSwing';
+import { SequencerResumeQuantizeButton } from '../sequencer/SequencerResumeQuantizeButton';
 import DrumPanel from './DrumPanel';
 import DragNumber from './DragNumber';
 import SeqOverview from './SeqOverview';
@@ -230,7 +232,7 @@ export interface DrumPageProps {
   onRequestPlaybackStart?: (statePatch?: Partial<SliderState>) => void;
   drumLaneEnableTouchedRef?: React.MutableRefObject<boolean>;
   togglePanel: (id: string) => void;
-  sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
+  sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
   triggerVoice: (voice: DrumVoiceType, options?: ScatterPreviewTriggerOptions) => void;
   previewTriggerVoice?: (voice: DrumVoiceType, externalState: SliderState, velocity?: number) => void;
   getAnalyserNode?: (voice: DrumVoiceType) => AnalyserNode | undefined;
@@ -241,8 +243,7 @@ export interface DrumPageProps {
   resetEvolveHome: (laneIdx: number) => void;
   captureEvolveHome?: (laneIdx: number, pitchState?: SubLaneState | null) => void;
   diceLane?: (laneIdx: number, intensity: number) => void;
-  SliderComponent: React.ComponentType<Record<string, unknown>>;
-  CollapsiblePanelComponent: React.ComponentType<Record<string, unknown>>;
+  SliderComponent: React.ComponentType<SliderRendererProps<keyof SliderState>>;
   editingVoice: string | null;
   onToggleEditing: (voice: string) => void;
   /** Called when evolve configs change, so parent can sync to audio engine */
@@ -289,7 +290,7 @@ export interface DrumPageProps {
 }
 
 const DrumPage: React.FC<DrumPageProps> = (props) => {
-  const Slider = props.SliderComponent as React.ComponentType<Record<string, unknown>>;
+  const Slider = props.SliderComponent;
   const {
     state,
     isMobile,
@@ -312,7 +313,6 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     captureEvolveHome,
     diceLane,
     SliderComponent,
-    CollapsiblePanelComponent,
     editingVoice,
     onToggleEditing,
     onEvolveConfigsChange,
@@ -1504,7 +1504,6 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               onAuditionPresetPreview={auditionDrumPresetPreview}
               onStateChange={onStateChange}
               SliderComponent={SliderComponent}
-              CollapsiblePanelComponent={CollapsiblePanelComponent}
               editingVoice={editingVoice}
               onToggleEditing={onToggleEditing}
               triggeredVoices={triggeredVoices}
@@ -1539,7 +1538,6 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               label="BPM"
               onChange={setSharedSequencerBpm}
               shapeByDrag
-              commitOnRelease
             />
             <div className={`live-overdub-controls${drumLiveOverdub.isArmed ? ' active' : ''}`}>
               <button
@@ -1683,7 +1681,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                       max={0.75}
                       step={0.05}
                       value={seq.swings[seq.activeTab] ?? 0}
-                      onChange={(e) => seq.setSwing(seq.activeTab, parseFloat(e.target.value))}
+                      onChange={(event) => seq.setSwing(seq.activeTab, Number.parseFloat(event.currentTarget.value))}
                     />
                     <span className="seq-swing-val">{Math.round((seq.swings[seq.activeTab] ?? 0) * 100)}%</span>
                   </label>
@@ -1706,6 +1704,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                   >
                     Evolve
                   </button>
+                  <SequencerResumeQuantizeButton state={state} kind="drum" laneIndex={seq.activeTab} onSelectChange={onSelectChange} />
                   </div>{/* end seq-per-controls */}
                 </div>{/* end seq-sources */}
                 <div className="seq-sequence-preset-row">

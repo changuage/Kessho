@@ -91,19 +91,13 @@ export function useSelectedAudioEngineLiveTriggerSurface(
   }, [audioEngineRuntimeMode]);
 
   const setSelectedSample1DistanceTriggerCallback = useCallback((callback: ((distance: number) => void) | null): void => {
-    if (audioEngineRuntimeMode === 'core-product') {
-      productEngine.setSample1DistanceTriggerCallback(callback);
-      return;
-    }
-    selectedProductRuntime.setSample1DistanceTriggerCallback?.(callback ?? (() => {}));
+    if (audioEngineRuntimeMode !== 'core-product') return;
+    productEngine.setSample1DistanceTriggerCallback(callback);
   }, [audioEngineRuntimeMode]);
 
   const setSelectedSample2DistanceTriggerCallback = useCallback((callback: ((distance: number) => void) | null): void => {
-    if (audioEngineRuntimeMode === 'core-product') {
-      productEngine.setSample2DistanceTriggerCallback(callback);
-      return;
-    }
-    selectedProductRuntime.setSample2DistanceTriggerCallback?.(callback ?? (() => {}));
+    if (audioEngineRuntimeMode !== 'core-product') return;
+    productEngine.setSample2DistanceTriggerCallback(callback);
   }, [audioEngineRuntimeMode]);
 
   const setSelectedLeadDelayCallback = useCallback((callback: ((delay: Record<string, number | string>) => void) | null): void => {

@@ -1,5 +1,6 @@
 import React from 'react';
 import type { SliderState } from '../state';
+import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
 import { DRUM_VOICES, DRUM_VOICE_ORDER, DRUM_VOICE_SCOPES } from '../../audio/drumVoiceConfig';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import VoiceCard from './VoiceCard';
@@ -10,13 +11,12 @@ interface DrumPanelProps {
   expandedPanels: Set<string>;
   togglePanel: (id: string) => void;
   onParamChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
-  sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
+  sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
   getPresetNames: (voice: DrumVoiceType) => string[];
   triggerVoice: (voice: DrumVoiceType) => void;
   onAuditionPresetPreview?: (voice: DrumVoiceType, externalState: SliderState) => void | Promise<void>;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
-  SliderComponent: React.ComponentType<Record<string, unknown>>;
-  CollapsiblePanelComponent: React.ComponentType<Record<string, unknown>>;
+  SliderComponent: React.ComponentType<SliderRendererProps<keyof SliderState>>;
   editingVoice?: string | null;
   onToggleEditing?: (voice: string) => void;
   triggeredVoices?: Record<string, boolean>;
@@ -37,7 +37,6 @@ const DrumPanel: React.FC<DrumPanelProps> = ({
   onAuditionPresetPreview,
   onStateChange,
   SliderComponent,
-  CollapsiblePanelComponent,
   editingVoice,
   onToggleEditing,
   triggeredVoices,
@@ -64,7 +63,6 @@ const DrumPanel: React.FC<DrumPanelProps> = ({
           onAuditionPresetPreview={onAuditionPresetPreview}
           onStateChange={onStateChange}
           SliderComponent={SliderComponent}
-          CollapsiblePanelComponent={CollapsiblePanelComponent}
           editingVoice={editingVoice}
           onToggleEditing={onToggleEditing}
           isTriggered={triggeredVoices?.[voice] ?? false}

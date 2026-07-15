@@ -18,8 +18,9 @@ import { JourneyPresetGlyph } from './JourneyPresetGlyph';
 import { useSnowflakeV2, FX_COLORS, ENGINE_GROUPS, type EngineGroupDef, type StarDirection } from './snowflakeV2';
 import { generateSnowflake } from '../snowflake/SnowflakeGenerator';
 import type { SnowflakeLineCap, SnowflakeLineJoin, SnowflakeParams, SnowflakeRingStyle } from '../snowflake/types';
-import { getRuntimeSliderPosition, useRuntimeSliderVersion } from './runtimeSliderState';
-import { getRuntimeValue, useRuntimeValueVersion } from './runtimeValueState';
+import { getRuntimeSliderPosition, useRuntimeSliderKeysVersion } from './runtimeSliderState';
+import { getRuntimeValue, useRuntimeValueKeysVersion } from './runtimeValueState';
+import { resolveEffectiveSliderValue } from './sliderSystem/effectiveValue';
 
 /** Set to true to enable V2 snowflake rendering. Flip to false to revert to V1. */
 const SNOWFLAKE_V2_ENABLED = true;
@@ -142,22 +143,16 @@ function getSnowflakeRuntimeNumber(
 
   const keyString = String(key);
   const liveValue = getRuntimeValue(keyString);
-  if (typeof liveValue === 'number' && Number.isFinite(liveValue)) return liveValue;
-
   const mode = sliderModes?.[keyString] ?? 'single';
-  if (mode === 'single') return authored;
-
   const runtimePosition = getRuntimeSliderPosition(keyString, mode);
-  if (typeof runtimePosition !== 'number' || !Number.isFinite(runtimePosition)) return authored;
-
   const range = (dualSliderRanges as Partial<Record<string, { min: number; max: number } | undefined>> | undefined)?.[keyString];
-  if (!range || !Number.isFinite(range.min) || !Number.isFinite(range.max)) return runtimePosition;
-
-  const min = Math.min(range.min, range.max);
-  const max = Math.max(range.min, range.max);
-  if (!Number.isFinite(min) || !Number.isFinite(max) || Math.abs(max - min) < 0.000001) return authored;
-
-  return min + clamp01(runtimePosition) * (max - min);
+  return resolveEffectiveSliderValue({
+    authoredValue: authored,
+    mode,
+    range: range ? [range.min, range.max] : undefined,
+    runtimePosition,
+    runtimeValue: liveValue,
+  });
 }
 
 function resolveSnowflakeRuntimeState(
@@ -651,8 +646,9 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const runtimeSliderVersion = useRuntimeSliderVersion();
-  const runtimeValueVersion = useRuntimeValueVersion();
+  const runtimeKeys = SNOWFLAKE_RUNTIME_KEYS as readonly string[];
+  const runtimeSliderVersion = useRuntimeSliderKeysVersion(runtimeKeys);
+  const runtimeValueVersion = useRuntimeValueKeysVersion(runtimeKeys);
   const snowflakeState = useMemo(
     () => resolveSnowflakeRuntimeState(state, sliderModes, dualSliderRanges),
     [dualSliderRanges, runtimeSliderVersion, runtimeValueVersion, sliderModes, state],

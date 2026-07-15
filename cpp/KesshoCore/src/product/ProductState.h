@@ -183,6 +183,7 @@ struct KesshoProductEngine : ProductGraphState {
   float dynamicsModRoute(const float sources[kDynamicsModSourceCount], uint32_t target) const;
   void configureDynamicsDriftModule();
   void configureFxModules();
+  void retimeTempoSyncedFx(float previous_bpm);
   void configureReverbModule();
   void resetReverbHarmonyCoupling();
   void advanceReverbHarmonyCoupling(uint32_t frames);
@@ -233,7 +234,9 @@ struct KesshoProductEngine : ProductGraphState {
   float manualNoteHoldSeconds(uint32_t source_id, float requested_seconds) const;
   void applyControlEvent(const KesshoProductEvent& event);
   void applyPendingTransportTransition();
-  bool isNextPhraseTimingEvent(const KesshoProductEvent& event) const;
+  void applyPendingSequencerAudibilityTransitions();
+  uint64_t nextPendingSequencerAudibilityFrame() const;
+  bool isSequencerLaneTimingEvent(const KesshoProductEvent& event) const;
   void stageNextPhraseTimingEvent(const KesshoProductEvent& event);
   uint32_t resolveMidiTargetSource(const KesshoProductEvent& event, uint32_t status) const;
   void applyMidiEvent(const KesshoProductEvent& event);

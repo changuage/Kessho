@@ -272,6 +272,8 @@ enqueueRawEvent(
 );
 enqueueRawEvent({ eventKind: 3 }, 'WASM product transport start enqueue failed');
 render(engine, leftPtr, rightPtr, frames);
+assert(copyTelemetry(engine, telemetryPtr) === 1, 'WASM product initial transport telemetry copy failed');
+const initialTransitionRevision = view.getUint32(telemetryPtr + TELEMETRY_TRANSPORT_REVISION_OFFSET, true);
 enqueueRawEvent(
   { eventKind: 2, value: 30, value2: 1, value3: 1, value4: 0.02, flags: 1 },
   'WASM product pending transport enqueue failed',
@@ -285,7 +287,11 @@ render(engine, leftPtr, rightPtr, frames);
 render(engine, leftPtr, rightPtr, frames);
 assert(copyTelemetry(engine, telemetryPtr) === 1, 'WASM product applied transport telemetry copy failed');
 assert(view.getUint32(telemetryPtr + TELEMETRY_TRANSPORT_PENDING_OFFSET, true) === 0, 'WASM product pending transition did not clear at the phrase boundary');
-assert(view.getUint32(telemetryPtr + TELEMETRY_TRANSPORT_REVISION_OFFSET, true) === 1, 'WASM product transition revision did not advance');
+const appliedTransitionRevision = view.getUint32(telemetryPtr + TELEMETRY_TRANSPORT_REVISION_OFFSET, true);
+assert(
+  appliedTransitionRevision === initialTransitionRevision + 1,
+  `WASM product transition revision did not advance exactly once (initial=${initialTransitionRevision}, applied=${appliedTransitionRevision}, bpm=${view.getFloat32(telemetryPtr + TELEMETRY_TRANSPORT_BPM_OFFSET, true)})`,
+);
 assert(view.getFloat32(telemetryPtr + TELEMETRY_TRANSPORT_BPM_OFFSET, true) === 30, 'WASM product did not apply BPM at the phrase boundary');
 assert(Math.abs(view.getFloat32(telemetryPtr + TELEMETRY_TRANSPORT_PHRASE_SECONDS_OFFSET, true) - 0.02) < 0.0001, 'WASM product did not apply phrase duration at the phrase boundary');
 

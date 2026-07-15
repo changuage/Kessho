@@ -21,6 +21,7 @@ type StartProductPlaybackOptions = {
 };
 
 type ProductRuntimePlaybackAdapter = {
+  primeProductRuntimeAudio: () => void;
   startProductPlayback: (options: StartProductPlaybackOptions) => Promise<void>;
   stopProductPlayback: () => void;
   preloadProductRuntime: () => Promise<unknown>;
@@ -37,6 +38,7 @@ export function useProductRuntimePlaybackAdapter({
   setCapacitorAudioSessionDiagnosticActive,
 }: UseProductRuntimePlaybackAdapterOptions): ProductRuntimePlaybackAdapter {
   const {
+    primeProductRuntimeAudio,
     startProductRuntime,
     resumeProductRuntime,
     suspendProductRuntime,
@@ -90,6 +92,7 @@ export function useProductRuntimePlaybackAdapter({
   }, [stopProductPlaybackBase]);
 
   return useMemo(() => ({
+    primeProductRuntimeAudio,
     startProductPlayback,
     stopProductPlayback,
     preloadProductRuntime,
@@ -102,6 +105,7 @@ export function useProductRuntimePlaybackAdapter({
     backgroundAudioStatus,
     fadeProductRuntimeOutput,
     preloadProductRuntime,
+    primeProductRuntimeAudio,
     releaseVisiblePageWakeLock,
     requestVisiblePageWakeLock,
     startProductPlayback,

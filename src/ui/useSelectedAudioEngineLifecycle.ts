@@ -8,6 +8,7 @@ import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { SliderState } from './state';
 
 type SelectedAudioEngineLifecycle = {
+  primeSelectedAudioEngine: () => void;
   startSelectedAudioEngine: (stateToStart: SliderState) => Promise<void>;
   resumeSelectedAudioEngine: () => Promise<void>;
   suspendSelectedAudioEngine: () => Promise<void>;
@@ -19,6 +20,12 @@ type SelectedAudioEngineLifecycle = {
 export function useSelectedAudioEngineLifecycle(
   audioEngineRuntimeMode: AudioEngineRuntimeMode,
 ): SelectedAudioEngineLifecycle {
+  const primeSelectedAudioEngine = useCallback((): void => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      productEngine.primeAudioContext();
+    }
+  }, [audioEngineRuntimeMode]);
+
   const startSelectedAudioEngine = useCallback((stateToStart: SliderState): Promise<void> => (
     audioEngineRuntimeMode === 'core-product'
       ? productEngine.start({ initialState: { ...stateToStart } })
@@ -67,6 +74,7 @@ export function useSelectedAudioEngineLifecycle(
   }, [setSelectedOutputGain]);
 
   return {
+    primeSelectedAudioEngine,
     startSelectedAudioEngine,
     resumeSelectedAudioEngine,
     suspendSelectedAudioEngine,

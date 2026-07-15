@@ -12,6 +12,7 @@ import { useSliderHelp } from './SliderHelpOverlay';
 import type { SliderPageId } from './sliderHelpCatalog';
 import { useRuntimeSliderIndicator } from './runtimeSliderState';
 import { SliderPrimitive, type SliderPrimitiveRange } from './sliderSystem';
+import { normToValue, valueToNorm } from './sliderSystem/scale';
 import { MidiLearnSliderAdornment } from './midiLearn/MidiLearnSliderAdornment';
 import { useMidiLearn } from './midiLearn/useMidiLearn';
 
@@ -61,29 +62,6 @@ function valuesNearlyEqual(a: number, b: number, tolerance: number): boolean {
   return Math.abs(a - b) <= tolerance;
 }
 
-function linearToLog(value: number, min: number, max: number): number {
-  const minLog = Math.log(min);
-  const maxLog = Math.log(max);
-  return Math.exp(minLog + value * (maxLog - minLog));
-}
-
-function logToLinear(value: number, min: number, max: number): number {
-  const minLog = Math.log(min);
-  const maxLog = Math.log(max);
-  return (Math.log(value) - minLog) / (maxLog - minLog);
-}
-
-function getEffectiveLogMin(info: DualSliderParamInfo): number | null {
-  if (info.max <= 0) return null;
-  if (info.min > 0) return info.min;
-  const stepFloor = info.step > 0 ? info.step : info.max * 0.001;
-  return Math.max(1e-9, Math.min(info.max, stepFloor));
-}
-
-function canUseLog(info: DualSliderParamInfo, logarithmic?: boolean): boolean {
-  return Boolean(logarithmic && getEffectiveLogMin(info) != null);
-}
-
 function normalizePercent(value: number): number {
   return clamp(value, 0, 100);
 }
@@ -128,21 +106,17 @@ export function DualSlider<K extends string = string>({
   }, [announceSlider, helpPage, label, paramKey]);
 
   const valueToPercent = React.useCallback((nextValue: number) => {
-    const clamped = clamp(nextValue, info.min, info.max);
-    if (canUseLog(info, logarithmic)) {
-      const effectiveLogMin = getEffectiveLogMin(info) ?? info.min;
-      if (clamped <= info.min) return 0;
-      return normalizePercent(logToLinear(Math.max(effectiveLogMin, clamped), effectiveLogMin, info.max) * 100);
-    }
-    return normalizePercent(((clamped - info.min) / Math.max(1e-9, info.max - info.min)) * 100);
+    return normalizePercent(valueToNorm(nextValue, {
+      ...info,
+      scale: logarithmic ? 'log' : 'linear',
+    }) * 100);
   }, [info, logarithmic]);
 
   const percentToValue = React.useCallback((percent: number) => {
-    const normalized = normalizePercent(percent) / 100;
-    const effectiveLogMin = getEffectiveLogMin(info);
-    const raw = canUseLog(info, logarithmic) && effectiveLogMin != null
-      ? (normalized <= 0 && info.min <= 0 ? info.min : linearToLog(normalized, effectiveLogMin, info.max))
-      : info.min + normalized * (info.max - info.min);
+    const raw = normToValue(normalizePercent(percent) / 100, {
+      ...info,
+      scale: logarithmic ? 'log' : 'linear',
+    });
     return quantizeFn(paramKey, raw);
   }, [info, logarithmic, paramKey, quantizeFn]);
 
@@ -189,7 +163,7 @@ export function DualSlider<K extends string = string>({
         let shiftedMin: number;
         let shiftedMax: number;
 
-        if (canUseLog(info, logarithmic) && clampedValue > 0) {
+        if (logarithmic && info.max > 0 && clampedValue > 0) {
           const ratio = clampedGhost / clampedValue;
           shiftedMin = dualRange.min * ratio;
           shiftedMax = dualRange.max * ratio;

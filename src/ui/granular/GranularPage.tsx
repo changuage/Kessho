@@ -17,13 +17,14 @@ import type { ClockDivision } from '../../audio/drumSeqTypes';
 import type { CoreProductGranularVisualEvent } from '../../audio/coreProductTelemetry';
 import type { DynamicsAnalyserKey, DynamicsVisualTelemetrySnapshot } from '../../audio/engineSharedTypes';
 import { computeGranularMacroModel } from '../../audio/granularMacroModel';
+import { resolveEffectiveSliderValue } from '../sliderSystem/effectiveValue';
+import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
 import GranularBufferCanvas from './GranularBufferCanvas';
 import type { CanvasVoiceVisual } from './GranularBufferCanvas';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
 import { useDocumentVisibility } from '../hooks/useDocumentVisibility';
 import { useVisualFeatureToggle } from '../hooks/useVisualFeatureToggle';
-import { useRuntimeSliderVersion } from '../runtimeSliderState';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import { extractParams } from '../../presets/codec';
 import { GRANULAR_VOICE_COLORS } from '../../designSystem/colors';
@@ -164,8 +165,8 @@ export interface GranularPageProps {
   onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
-  sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
-  SliderComponent: React.ComponentType<Record<string, unknown>>;
+  sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
+  SliderComponent: React.ComponentType<SliderRendererProps<keyof SliderState>>;
   getDynamicsAnalyser?: (key: DynamicsAnalyserKey) => AnalyserNode | null;
   getDynamicsTelemetry?: () => DynamicsVisualTelemetrySnapshot;
   getActiveGrainCount: () => number;
@@ -406,7 +407,6 @@ const GranularPage: React.FC<GranularPageProps> = ({
   }), []);
   const [scenePresetName, setScenePresetName] = useState<string | undefined>();
   const [scenePresetDescription, setScenePresetDescription] = useState<string>('');
-  const runtimeSliderVersion = useRuntimeSliderVersion();
   const handleScenePresetLoad = useCallback((entry: PresetEntry, _data: Record<string, unknown>) => {
     setScenePresetName(entry.name);
     const currentVersion = entry.versions.find(version => version.v === entry.currentVersion);
@@ -414,16 +414,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
   }, []);
 
   // Alias Slider for convenience (it's passed as generic ComponentType)
-  const Slider = SliderComponent as React.ComponentType<{
-    label: string;
-    value: number;
-    paramKey: keyof SliderState;
-    ghostValue?: number;
-    unit?: string;
-    logarithmic?: boolean;
-    onChange: (key: keyof SliderState, value: number) => void;
-    [key: string]: unknown;
-  }>;
+  const Slider = SliderComponent;
 
   const resolveCurrentSliderValue = useCallback((paramKey: keyof SliderState): number => {
     const baseValue = state[paramKey];
@@ -433,10 +424,14 @@ const GranularPage: React.FC<GranularPageProps> = ({
       dualRange?: { min: number; max: number };
       walkPosition?: number;
     };
-    if (runtime.mode !== 'walk' && runtime.mode !== 'sampleHold') return numericBase;
-    if (!runtime.dualRange || runtime.walkPosition === undefined) return numericBase;
-    return runtime.dualRange.min + runtime.walkPosition * (runtime.dualRange.max - runtime.dualRange.min);
-  }, [runtimeSliderVersion, sliderProps, state]);
+    const mode = runtime.mode === 'walk' || runtime.mode === 'sampleHold' ? runtime.mode : 'single';
+    return resolveEffectiveSliderValue({
+      authoredValue: numericBase,
+      mode,
+      range: runtime.dualRange ? [runtime.dualRange.min, runtime.dualRange.max] : undefined,
+      runtimePosition: runtime.walkPosition,
+    });
+  }, [sliderProps, state]);
 
   const granularMacroModel = useMemo(() => (
     computeGranularMacroModel(state, (paramKey, fallback) => {

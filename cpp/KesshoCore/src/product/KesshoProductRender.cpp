@@ -638,6 +638,7 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
     ++control_index;
   }
   applyPendingTransportTransition();
+  applyPendingSequencerAudibilityTransitions();
 
   advanceModulationRanges(frames);
   advanceGranularPhraseReseed();
@@ -655,6 +656,7 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
       ++control_index;
     }
     applyPendingTransportTransition();
+    applyPendingSequencerAudibilityTransitions();
 
     uint32_t control_segment_end = frames;
     if (control_index < control_event_count) {
@@ -671,6 +673,13 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
       control_segment_end = std::min<uint32_t>(
           control_segment_end,
           cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_timing, frames - cursor)));
+    }
+    const uint64_t next_audibility_frame = nextPendingSequencerAudibilityFrame();
+    if (next_audibility_frame != UINT64_MAX && next_audibility_frame > transport.sample_frame) {
+      const uint64_t frames_until_audibility = next_audibility_frame - transport.sample_frame;
+      control_segment_end = std::min<uint32_t>(
+          control_segment_end,
+          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_audibility, frames - cursor)));
     }
     if (control_segment_end <= cursor) {
       control_segment_end = cursor + 1u;

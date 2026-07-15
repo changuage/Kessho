@@ -287,14 +287,14 @@ export function applyVisualizerModulation(
   buses: VisualBuses,
   settings: VisualizerReactionSettings,
 ): ReactiveVisualizerControls {
+  const depth = getEffectiveReactionDepth(settings);
+  if (depth <= 0.0001 || settings.reactionAmount <= 0.0001) {
+    return baseControls;
+  }
   const next: ReactiveVisualizerControls = {
     ...baseControls,
     layerOrder: [...baseControls.layerOrder],
   };
-  const depth = getEffectiveReactionDepth(settings);
-  if (depth <= 0.0001 || settings.reactionAmount <= 0.0001) {
-    return next;
-  }
 
   for (const compiledTarget of COMPILED_VISUAL_MOD_TARGETS) {
     const target = compiledTarget.target;

@@ -14,7 +14,6 @@ import {
   quantize,
   getParamInfo,
   getSliderNumericValue,
-  getStateValueFromSliderNumber,
 } from './ui/state';
 import type { DualSliderRange } from './ui/DualSlider';
 import type { ProductEngineState } from './audio/product/ProductEngineTypes';
@@ -52,6 +51,7 @@ import { clampMorphPosition, isInMidMorph, isAtEndpoint0, isAtEndpoint1 } from '
 import {
   getRuntimeSliderFlashing,
   getRuntimeSliderPosition,
+  useRuntimeSliderDemand,
 } from './ui/runtimeSliderState';
 import { useProductCoreDebugSummary } from './ui/useProductCoreDebugSummary';
 import { useProductRuntimeParityProbe } from './ui/useProductRuntimeParityProbe';
@@ -102,7 +102,6 @@ import {
   readPresetPoolPreference,
   writePresetPoolPreference,
 } from './presets/presetPool';
-import { CollapsiblePanel } from './ui/CollapsiblePanel';
 
 import { OptionalVisualizerGate } from './ui/components/OptionalVisualizerGate';
 import { useVisualFeatureToggle } from './ui/hooks/useVisualFeatureToggle';
@@ -128,7 +127,6 @@ import { createDefaultPitchSettings, sanitizeSequencerSubLaneStates } from './ui
 import { useProductRuntimePageSurface } from './ui/useProductRuntimePageSurface';
 import { useLazySequencerTransport } from './ui/useLazySequencerTransport';
 import {
-  isReleaseCommittedTransportTimingKey,
   isTransportClockStateKey,
 } from './ui/transportTimingPolicy';
 import {
@@ -166,6 +164,11 @@ import {
   preserveRunningDrumSequencerSource,
 } from './app/drumSequencerSourcePolicy';
 import type { DualSliderState } from './app/nativeDualRanges';
+import {
+  createParameterCommand,
+  type ParameterCommand,
+  type ParameterDomain,
+} from './app/parameterCommands';
 import { useDualSliderRuntimeState } from './app/useDualSliderRuntimeState';
 import {
   clearSnowflakeGeneratorRoute,
@@ -307,6 +310,7 @@ const App: React.FC = () => {
     setProductPerfMonitorEnabled,
     setProductPerfUpdateCallback,
     globalRuntimeComparison,
+    primeProductRuntimeAudio,
     startProductPlayback,
     stopProductPlayback,
     preloadProductRuntime,
@@ -864,10 +868,8 @@ const App: React.FC = () => {
     usesCapacitorLocalPresetLibrary,
     usesCloudBackedStatePresetLibrary,
   });
-  const shouldMirrorRuntimeWalkPositions = productRuntimeMode === 'core-product'
-    || uiMode === 'snowflake'
-    || uiMode === 'advanced'
-    || snowflakePrototypeRoute;
+  const runtimeSliderDemand = useRuntimeSliderDemand();
+  const shouldMirrorRuntimeWalkPositions = runtimeSliderDemand > 0;
 
   const { drumEvolvedOverrides, synthEvolvedOverrides } = useProductRuntimeCoordination({
     activeTab,
@@ -945,8 +947,9 @@ const App: React.FC = () => {
 
   const applyMorphEndpointStatePatch = useMorphEndpointStatePatch<SavedPreset>(morphPosition, setMorphPresetA, setMorphPresetB);
 
-  const handleSliderChangeWithOptions = useCallback(
-    (key: keyof SliderState, value: number | string, options?: SliderChangeOptions) => {
+  const dispatchParameterCommand = useCallback(
+    (command: ParameterCommand, options?: SliderChangeOptions) => {
+      const { domain, key, sliderValue: value, stateValue } = command;
       // Mark that user has interacted with the UI
       hasUserInteractedRef.current = true;
 
@@ -958,8 +961,6 @@ const App: React.FC = () => {
 
       // Rule 1: Mid-morph changes are temporary overrides (numeric only)
       // Rule 2: Endpoint changes (0% or 100%) update the respective preset permanently (all types)
-      const quantizedSliderValue = typeof value === 'number' ? quantize(key, value) : null;
-      const stateValue = quantizedSliderValue !== null ? getStateValueFromSliderNumber(key, quantizedSliderValue) : value;
       const isStateNumericValue = typeof stateValue === 'number';
       const isMorphActive = morphPresetA !== null || morphPresetB !== null;
 
@@ -971,22 +972,15 @@ const App: React.FC = () => {
         };
       }
 
-      // ═══════════════════════════════════════════════════════════════════════
-      // DRUM SYNTH PARAMETER OVERRIDE SYSTEM
-      // When a drum synth param (like drumSubFreq) is changed at a drum morph
-      // endpoint (0 or 1), save as override so it persists during morph
-      // ═══════════════════════════════════════════════════════════════════════
       const keyStr = key as string;
-      const padMorphParamChange = getPadMorphParamChange(key);
+      const padMorphParamChange = domain === 'synth' ? getPadMorphParamChange(key) : null;
 
-      const drumParamRoute = getDrumVoiceParamRoute(key);
+      const drumParamRoute = domain === 'drum' ? getDrumVoiceParamRoute(key) : null;
       const drumVoice = drumParamRoute?.voice ?? null;
       const drumMorphKey = drumParamRoute?.morphKey ?? null;
 
-      // If this is a drum synth param, check for drum morph endpoint and save override
       if (drumVoice && drumMorphKey && isStateNumericValue) {
-        // Get current drum morph position for this voice from state
-        // We need to read from the current state, so we'll do this inside setState
+        // The state transaction below reads the voice's current morph position.
       }
 
       let drumMorphProductControlChanged = false;
@@ -1035,8 +1029,8 @@ const App: React.FC = () => {
         newState = normalizeRoutingRuntimeEnabledFlags(newState as SliderState);
 
         // When drum morph slider or preset selectors change, apply morphed values to sliders.
-        const drumPresetRoute = getDrumVoicePresetRoute(key);
-        const drumMorphRoute = getDrumVoiceMorphRoute(key);
+        const drumPresetRoute = domain === 'drum' ? getDrumVoicePresetRoute(key) : null;
+        const drumMorphRoute = domain === 'drum' ? getDrumVoiceMorphRoute(key) : null;
         const drumSelectorRoute = drumPresetRoute ?? drumMorphRoute;
         if (drumSelectorRoute) {
           const voice = drumSelectorRoute.voice;
@@ -1081,29 +1075,15 @@ const App: React.FC = () => {
           newState = { ...newState, ...morphedParams };
         }
 
-        // ═══════════════════════════════════════════════════════════════════════
-        // PAD SYNTH PRESET MORPH SYSTEM
-        // When padMorph slider changes, morph between padPresetA & padPresetB
-        // and apply the resulting params to state
-        // ═══════════════════════════════════════════════════════════════════════
-        if (key === 'padMorph') {
+        if (domain === 'synth' && key === 'padMorph') {
           applyPadPresetMorphToState(newState as SliderState, 'pad1', padMorphEndpointOverridesRef.current);
         }
 
-        // ═══════════════════════════════════════════════════════════════════════
-        // PAD 2 PRESET MORPH SYSTEM
-        // When pad2Morph slider changes, morph between pad2PresetA & pad2PresetB
-        // and apply the resulting params to pad2 state keys
-        // ═══════════════════════════════════════════════════════════════════════
-        if (key === 'pad2Morph') {
+        if (domain === 'synth' && key === 'pad2Morph') {
           applyPadPresetMorphToState(newState as SliderState, 'pad2', padMorphEndpointOverridesRef.current);
         }
 
-        // ═══════════════════════════════════════════════════════════════════════
-        // WATER PRESET MORPH SYSTEM
-        // When waterMorph slider changes, morph between waterMorphA & waterMorphB
-        // ═══════════════════════════════════════════════════════════════════════
-        if (key === 'waterMorph' || key === 'waterMorphA' || key === 'waterMorphB') {
+        if (domain === 'synth' && (key === 'waterMorph' || key === 'waterMorphA' || key === 'waterMorphB')) {
           const morphed = morphWaterPresets(newState.waterMorphA as number, newState.waterMorphB as number, newState.waterMorph as number);
           for (const k of WATER_MORPH_PARAM_KEYS) {
             if (k in morphed) {
@@ -1141,7 +1121,7 @@ const App: React.FC = () => {
       });
 
       // Apply water preset dual ranges when morph endpoints or position change
-      if (key === 'waterMorph' || key === 'waterMorphA' || key === 'waterMorphB') {
+      if (domain === 'synth' && (key === 'waterMorph' || key === 'waterMorphA' || key === 'waterMorphB')) {
         // Read target preset from latest state
         setState((prev) => {
           const presetIdx = prev.waterPreset as number;
@@ -1174,7 +1154,7 @@ const App: React.FC = () => {
 
       // When a preset changes, only reset dual slider modes/ranges if we're at that endpoint
       // If preset A changes and we're at endpoint 1 (B), preserve the current dual modes
-      const presetRoute = getDrumVoicePresetRoute(key);
+      const presetRoute = domain === 'drum' ? getDrumVoicePresetRoute(key) : null;
       if (presetRoute) {
         const currentMorph = state[presetRoute.morphKey] as number;
 
@@ -1216,7 +1196,7 @@ const App: React.FC = () => {
       // Apply interpolated dual range overrides for drum morph
       // This happens at EVERY morph position, not just endpoints
       // Mimics lerpPresets behavior: ranges interpolate smoothly, mode only snaps when range collapses
-      const morphRoute = getDrumVoiceMorphRoute(key);
+      const morphRoute = domain === 'drum' ? getDrumVoiceMorphRoute(key) : null;
       if (morphRoute) {
         const morphVoice = morphRoute.voice;
         const morphValue = value as number;
@@ -1284,26 +1264,46 @@ const App: React.FC = () => {
     ],
   );
 
-  // Handle slider change
-  const handleSliderChange = useCallback(
-    (key: keyof SliderState, value: number | string) => {
-      handleSliderChangeWithOptions(key, value);
+  const handleParameterChange = useCallback(
+    (domain: ParameterDomain, key: keyof SliderState, value: number | string, options?: SliderChangeOptions) => {
+      dispatchParameterCommand(createParameterCommand(domain, key, value), options);
     },
-    [handleSliderChangeWithOptions],
+    [dispatchParameterCommand],
+  );
+
+  const handleSynthParameterChange = useCallback(
+    (key: keyof SliderState, value: number | string) => {
+      handleParameterChange('synth', key, value);
+    },
+    [handleParameterChange],
+  );
+
+  const handleFxParameterChange = useCallback(
+    (key: keyof SliderState, value: number | string) => {
+      handleParameterChange('fx', key, value);
+    },
+    [handleParameterChange],
+  );
+
+  const handleDrumParameterChange = useCallback(
+    (key: keyof SliderState, value: number | string) => {
+      handleParameterChange('drum', key, value);
+    },
+    [handleParameterChange],
   );
 
   const handleRoutingColumnChange = useCallback(
     (key: keyof SliderState, value: number) => {
-      handleSliderChangeWithOptions(key, value, { preserveEnabledFlags: true });
+      handleParameterChange('routing', key, value, { preserveEnabledFlags: true });
     },
-    [handleSliderChangeWithOptions],
+    [handleParameterChange],
   );
 
   const handleRoutingParamChange = useCallback(
     (key: keyof SliderState, value: number) => {
-      handleSliderChangeWithOptions(key, value, { preserveEnabledFlags: true });
+      handleParameterChange('routing', key, value, { preserveEnabledFlags: true });
     },
-    [handleSliderChangeWithOptions],
+    [handleParameterChange],
   );
 
   const handleRoutingBooleanParamChange = useCallback(
@@ -1337,7 +1337,9 @@ const App: React.FC = () => {
       const keyStr = paramKey as string;
       const productRuntimeRangeSupported = productRuntimeSupportsRangeKey(keyStr);
       const dualModeSupported = !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);
-      const resolvedDualModeSupported = dualModeSupported && !isReleaseCommittedTransportTimingKey(paramKey);
+      const resolvedDualModeSupported = dualModeSupported
+        && !isTransportClockStateKey(paramKey)
+        && productRuntimeRangeSupported;
       const mode: SliderMode = resolvedDualModeSupported ? (normalizeDualSliderMode(keyStr, sliderModes[keyStr]) ?? 'single') : 'single';
       const walkPos = getRuntimeSliderPosition(keyStr, mode);
       const isFlashing = getRuntimeSliderFlashing(keyStr, mode);
@@ -1671,6 +1673,7 @@ const App: React.FC = () => {
     startJourneyPlayback,
     stopJourneyMorphPlaybackRef,
   } = useProductRuntimePlaybackSurface({
+    primeProductRuntimeAudio,
     snowflakeActivated,
     setSnowflakeActivated,
     stateRef,
@@ -3488,14 +3491,14 @@ const App: React.FC = () => {
                 state={state}
                 expandedPanels={expandedPanels}
                 togglePanel={togglePanel}
-                onParamChange={handleSliderChange}
+                onParamChange={handleSynthParameterChange}
                 onSelectChange={handleSelectChange}
                 onStateChange={handleStateChange}
                 onAuditionHarmonyNote={productRuntimeManualTriggers.auditionSynthNote}
                 sliderProps={sliderProps}
-                SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
-                SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
-                CircleOfFifthsComponent={CircleOfFifths as unknown as React.ComponentType<Record<string, unknown>>}
+                SliderComponent={Slider}
+                SelectComponent={Select}
+                CircleOfFifthsComponent={CircleOfFifths}
                 engineState={engineState}
                 routingMuteGroupSnapshot={routingMuteGroupsController.runtimeSnapshot}
                 {...globalRuntimeProps}
@@ -3560,14 +3563,13 @@ const App: React.FC = () => {
                 state={state}
                 isMobile={isMobile}
                 expandedPanels={expandedPanels}
-                onParamChange={handleSliderChange}
+                onParamChange={handleSynthParameterChange}
                 onSelectChange={handleSelectChange}
                 onStateChange={handleStateChange}
                 togglePanel={togglePanel}
                 sliderProps={sliderProps}
-                SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
-                SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
-                CollapsiblePanelComponent={CollapsiblePanel as unknown as React.ComponentType<Record<string, unknown>>}
+                SliderComponent={Slider}
+                SelectComponent={Select}
                 isRunning={playbackIsRunning}
                 transportDebug={engineState.transportDebug}
                 onSimpleVisualizerRuntimePlanVisibilityChange={setProductSimpleSequencerVisualPlanActive}
@@ -3590,7 +3592,6 @@ const App: React.FC = () => {
                 onArpConfigsChange={productPageRuntimeSurface.synthPageSequencerBridge.onArpConfigsChange}
                 onRawStepOverridesChange={productPageRuntimeSurface.synthPageSequencerBridge.onRawStepOverridesChange}
                 onStepOverridesChange={productPageRuntimeSurface.synthPageSequencerBridge.onStepOverridesChange}
-                onSequencerRuntimeDetach={productPageRuntimeSurface.synthPageSequencerBridge.reassertRuntimeState}
                 initialClockDivs={synthClockDivsRef.current}
                 onClockDivsChange={productPageRuntimeSurface.synthPageSequencerBridge.onClockDivsChange}
                 initialSwings={synthSwingsRef.current}
@@ -3615,12 +3616,12 @@ const App: React.FC = () => {
               <ReverbPage
                 state={state}
                 isMobile={isMobile}
-                onParamChange={handleSliderChange}
+                onParamChange={handleFxParameterChange}
                 onSelectChange={handleSelectChange}
                 onStateChange={handleStateChange}
                 sliderProps={sliderProps}
-                SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
-                SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
+                SliderComponent={Slider}
+                SelectComponent={Select}
               />
             )}
 
@@ -3632,7 +3633,7 @@ const App: React.FC = () => {
                 isMobile={isMobile}
                 isRunning={playbackIsRunning}
                 expandedPanels={expandedPanels}
-                onParamChange={handleSliderChange}
+                onParamChange={handleDrumParameterChange}
                 onSelectChange={handleSelectChange}
                 onStateChange={handleStateChange}
                 togglePanel={togglePanel}
@@ -3643,8 +3644,7 @@ const App: React.FC = () => {
                 captureEvolveHome={productPageRuntimeSurface.drumPageSequencerBridge.captureEvolveHome}
                 diceLane={productPageRuntimeSurface.drumPageSequencerBridge.diceLane}
                 evolvedOverrides={drumEvolvedOverrides}
-                SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
-                CollapsiblePanelComponent={CollapsiblePanel as unknown as React.ComponentType<Record<string, unknown>>}
+                SliderComponent={Slider}
                 editingVoice={drumEditingVoice}
                 onToggleEditing={(v) => setDrumEditingVoice((prev) => (prev === v ? null : v))}
                 onEvolveConfigsChange={productPageRuntimeSurface.drumPageSequencerBridge.onEvolveConfigsChange}
@@ -3685,11 +3685,11 @@ const App: React.FC = () => {
                 isRunning={playbackIsRunning}
                 expandedPanels={expandedPanels}
                 togglePanel={togglePanel}
-                onParamChange={handleSliderChange}
+                onParamChange={handleFxParameterChange}
                 onSelectChange={handleSelectChange}
                 onStateChange={handleStateChange}
                 sliderProps={sliderProps}
-                SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
+                SliderComponent={Slider}
                 {...productPageRuntimeSurface.granularPageRuntimeProps}
               />
             )}
@@ -3699,11 +3699,11 @@ const App: React.FC = () => {
               <DelayPage
                 state={state}
                 isMobile={isMobile}
-                onParamChange={handleSliderChange}
+                onParamChange={handleFxParameterChange}
                 onSelectChange={handleSelectChange}
                 onStateChange={handleStateChange}
                 sliderProps={sliderProps}
-                SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
+                SliderComponent={Slider}
                 sliderModes={sliderModes}
                 dualSliderRanges={dualSliderRanges}
                 onDualStateChange={applyScopedDualRangesFromPreset}
@@ -3715,11 +3715,11 @@ const App: React.FC = () => {
               <TexturePage
                 state={state}
                 isMobile={isMobile}
-                onParamChange={handleSliderChange}
+                onParamChange={handleFxParameterChange}
                 onSelectChange={handleSelectChange}
                 onStateChange={handleStateChange}
                 sliderProps={sliderProps}
-                SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
+                SliderComponent={Slider}
                 onVisualTelemetryActiveChange={setTextureVisualTelemetryActive}
                 {...productPageRuntimeSurface.dynamicsPageRuntimeProps}
               />
@@ -3747,7 +3747,7 @@ const App: React.FC = () => {
             {activeTab === 'earth' && (
               <EarthPage
                 state={state}
-                onParamChange={handleSliderChange}
+                onParamChange={handleSynthParameterChange}
                 onSelectChange={handleSelectChange}
                 onStateChange={handleStateChange}
                 sliderProps={sliderProps}

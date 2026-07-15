@@ -27,6 +27,7 @@ int32_t kessho_product_debug_render_events(
       ++control_index;
     }
     engine->applyPendingTransportTransition();
+    engine->applyPendingSequencerAudibilityTransitions();
     uint32_t control_segment_end = frames;
     if (control_index < engine->control_event_count) {
       control_segment_end = std::min(
@@ -48,6 +49,13 @@ int32_t kessho_product_debug_render_events(
       control_segment_end = std::min<uint32_t>(
           control_segment_end,
           cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_timing, frames - cursor)));
+    }
+    const uint64_t next_audibility_frame = engine->nextPendingSequencerAudibilityFrame();
+    if (next_audibility_frame != UINT64_MAX && next_audibility_frame > engine->transport.sample_frame) {
+      const uint64_t frames_until_audibility = next_audibility_frame - engine->transport.sample_frame;
+      control_segment_end = std::min<uint32_t>(
+          control_segment_end,
+          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_audibility, frames - cursor)));
     }
     if (control_segment_end <= cursor) {
       control_segment_end = cursor + 1u;

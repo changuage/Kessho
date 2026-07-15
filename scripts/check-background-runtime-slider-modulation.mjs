@@ -72,7 +72,7 @@ assert(
 assert(
   host.includes('setTelemetryTransportRunning') &&
     host.includes('setTelemetryPollingEnabled') &&
-    host.includes('this.productTelemetryCallback !== null') &&
+    host.includes('this.telemetryCallbackScheduler.hasCallback()') &&
     host.includes('this.running'),
   'Host must wire transport/callback state into runtime telemetry polling.',
 );

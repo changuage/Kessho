@@ -50,6 +50,36 @@ function waitForTelemetryResponse(): Promise<void> {
   });
 }
 
+const PRODUCT_RUNTIME_TELEMETRY_PROBE_SELECTOR = 'product-runtime-telemetry-probe';
+
+function publishProductRuntimeTelemetryProbe(
+  output: HTMLOutputElement,
+  runtime: ProductEnginePort,
+): void {
+  const productState = runtime.getProductState();
+  if (productState.isRunning) runtime.requestTelemetryOnce();
+  const telemetry = runtime.getTelemetry();
+  const diagnostics = runtime.getDiagnostics();
+  output.textContent = JSON.stringify({
+    audioContextAvailable: typeof window.AudioContext === 'function',
+    audioWorkletNodeAvailable: typeof window.AudioWorkletNode === 'function',
+    runtimeStartupPhase: document.documentElement.dataset.coreProductRuntimePhase ?? null,
+    runtimeStartupError: document.documentElement.dataset.coreProductRuntimeError ?? null,
+    audioPrime: document.documentElement.dataset.coreProductAudioPrime ?? null,
+    userActivation: document.documentElement.dataset.coreProductUserActivation ?? null,
+    audioContextState: document.documentElement.dataset.coreProductAudioContextState ?? null,
+    stateRunning: productState.isRunning,
+    running: telemetry?.transportRunning === true,
+    synthStep: telemetry?.synthSequencerCurrentSteps?.[0] ?? null,
+    synthHitCount: telemetry?.synthSequencerHitCounts?.[0] ?? null,
+    phraseSeconds: telemetry?.transportPhraseSeconds ?? null,
+    transitionPending: telemetry?.transportTransitionPending === true,
+    pendingPhraseSeconds: telemetry?.transportPendingPhraseSeconds ?? null,
+    transitionRevision: telemetry?.transportTransitionRevision ?? 0,
+    lastRejectedLifecycleTransitionReason: diagnostics.lastRejectedLifecycleTransitionReason,
+  });
+}
+
 declare global {
   interface Window {
     __kesshoProductRuntimeProbe?: {
@@ -95,6 +125,12 @@ declare global {
         midiPattern?: number[];
       }): Promise<void>;
       configureSynthArpSequencer(options?: { laneIndex?: number }): Promise<void>;
+      configureSynthLaneTiming(options?: {
+        laneIndex?: number;
+        clockDivision?: number;
+        swing?: number;
+        tempoMultiplier?: number;
+      }): Promise<void>;
       readRuntimeWalkProbe(key: string): {
         position?: number;
         runtimeSliderDebug: ReturnType<typeof getRuntimeSliderDebugState>;
@@ -127,6 +163,14 @@ export function useProductRuntimeParityProbe({
 }: ProductRuntimeParityProbeOptions): void {
   useEffect(() => {
     if (!enabled) return;
+    const telemetryOutput = document.createElement('output');
+    telemetryOutput.hidden = true;
+    telemetryOutput.dataset.testid = PRODUCT_RUNTIME_TELEMETRY_PROBE_SELECTOR;
+    document.body.append(telemetryOutput);
+    publishProductRuntimeTelemetryProbe(telemetryOutput, runtime);
+    const telemetryTimer = window.setInterval(() => {
+      publishProductRuntimeTelemetryProbe(telemetryOutput, runtime);
+    }, 100);
     const configureRange = async (
       keyText: string,
       mode: SliderMode,
@@ -266,6 +310,36 @@ export function useProductRuntimeParityProbe({
         ]);
         await waitForTelemetryResponse();
       },
+      async configureSynthLaneTiming(options = {}) {
+        const laneIndex = Math.max(0, Math.min(15, Math.round(options.laneIndex ?? 0)));
+        const events: ReturnType<typeof createCoreProductSequencerLaneParamEvent>[] = [];
+        if (typeof options.clockDivision === 'number' && Number.isFinite(options.clockDivision)) {
+          events.push(createCoreProductSequencerLaneParamEvent(
+            'synth',
+            laneIndex,
+            KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision,
+            Math.max(1, Math.min(128, Math.round(options.clockDivision))),
+          ));
+        }
+        if (typeof options.swing === 'number' && Number.isFinite(options.swing)) {
+          events.push(createCoreProductSequencerLaneParamEvent(
+            'synth',
+            laneIndex,
+            KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing,
+            Math.max(0, Math.min(0.75, options.swing)),
+          ));
+        }
+        if (typeof options.tempoMultiplier === 'number' && Number.isFinite(options.tempoMultiplier)) {
+          events.push(createCoreProductSequencerLaneParamEvent(
+            'synth',
+            laneIndex,
+            KESSHO_PRODUCT_PARAM_IDS.SequencerLaneTempoMultiplier,
+            Math.max(0.25, Math.min(12, options.tempoMultiplier)),
+          ));
+        }
+        if (events.length > 0) runtime.enqueueEvents(events);
+        await waitForTelemetryResponse();
+      },
       readRuntimeWalkProbe(key) {
         runtime.requestTelemetryOnce();
         return {
@@ -288,6 +362,8 @@ export function useProductRuntimeParityProbe({
       },
     };
     return () => {
+      window.clearInterval(telemetryTimer);
+      telemetryOutput.remove();
       delete window.__kesshoProductRuntimeProbe;
     };
   }, [

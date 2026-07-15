@@ -104,6 +104,7 @@ typedef struct KesshoProductSourceSnapshot {
 
 typedef struct KesshoProductSequencerLaneSnapshot {
   uint32_t enabled;
+  uint32_t muted;
   uint32_t target_source_id;
   uint32_t step_count;
   uint32_t fill_count;

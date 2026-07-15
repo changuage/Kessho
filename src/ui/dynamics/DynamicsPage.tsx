@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
 import { DEFAULT_STATE, type SliderState } from '../state';
 import type { DynamicsAnalyserKey, DynamicsVisualTelemetrySnapshot } from '../../audio/engineSharedTypes';
 import type { SliderPageId } from '../sliderHelpCatalog';
@@ -235,8 +236,8 @@ export interface DynamicsPageProps {
   onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
-  sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
-  SliderComponent: React.ComponentType<Record<string, unknown>>;
+  sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
+  SliderComponent: React.ComponentType<SliderRendererProps<keyof SliderState>>;
   getDynamicsAnalyser?: (key: DynamicsAnalyserKey) => AnalyserNode | null;
   getDynamicsTelemetry?: () => DynamicsVisualTelemetrySnapshot;
   onVisualTelemetryActiveChange?: (active: boolean) => void;
@@ -254,8 +255,8 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
   getDynamicsTelemetry,
   onVisualTelemetryActiveChange,
 }) => {
-  const Slider = SliderComponent as React.ComponentType<any>;
-  const { announceHelp, announceSlider } = useSliderHelp();
+  const Slider = SliderComponent;
+  const { announceHelp } = useSliderHelp();
   const dynamicsVisualizersToggle = useVisualFeatureToggle(
     'kessho.visualizers.dynamics.enabled',
     !isMobile,
@@ -274,12 +275,6 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
   const [erosionPresetName, setErosionPresetName] = useState<string | undefined>();
   const [saturationPresetName, setSaturationPresetName] = useState<string | undefined>();
   const [erosionMatrixOpen, setErosionMatrixOpen] = useState(false);
-
-  const bindSliderHelp = useCallback((paramKey: keyof SliderState, label: string, page: SliderPageId = 'texture') => ({
-    onMouseEnter: () => announceSlider(String(paramKey), { label, page }),
-    onPointerDown: () => announceSlider(String(paramKey), { label, page }),
-    onFocus: () => announceSlider(String(paramKey), { label, page }),
-  }), [announceSlider]);
 
   const bindHelp = useCallback((helpKey: string, options: { label?: string; page?: SliderPageId } = {}) => ({
     onMouseEnter: () => announceHelp(helpKey, options),
@@ -366,9 +361,8 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
       unit={control.unit}
       logarithmic={control.logarithmic}
       {...sliderProps(control.key)}
-      {...(control.announceHelp ? bindSliderHelp(control.key, control.label) : {})}
     />
-  ), [Slider, bindSliderHelp, onParamChange, sliderProps, state]);
+  ), [Slider, onParamChange, sliderProps, state]);
 
   const setModuleEnabled = useCallback((key: ToggleableDynamicsModule, enabled: boolean) => {
     const shouldEnableDynamics = key === 'sidechainEnabled' || key === 'endCompEnabled';

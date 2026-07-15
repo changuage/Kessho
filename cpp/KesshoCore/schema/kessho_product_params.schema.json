@@ -4585,6 +4585,12 @@
       "max": 1
     },
     {
+      "name": "SequencerLaneMuted",
+      "path": "sequencers.*.lanes.*.muted",
+      "type": "bool",
+      "id": 430
+    },
+    {
       "name": "MasterGain",
       "path": "master.gain",
       "type": "float",

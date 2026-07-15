@@ -589,6 +589,7 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   RoutingDynamicsDegradeBus: 427,
   RoutingDynamicsReverbBus: 428,
   RoutingDegradeToReverb: 429,
+  SequencerLaneMuted: 430,
   MasterGain: 500,
   MasterLimiterCeilingDb: 501,
   RngSeed: 600,
@@ -5181,6 +5182,12 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 429,
     "min": 0,
     "max": 1
+  },
+  {
+    "name": "SequencerLaneMuted",
+    "path": "sequencers.*.lanes.*.muted",
+    "type": "bool",
+    "id": 430
   },
   {
     "name": "MasterGain",

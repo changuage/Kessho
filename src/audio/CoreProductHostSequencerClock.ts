@@ -10,45 +10,56 @@ function booleanFromState(state: Record<string, unknown>, key: string, fallback 
   return typeof value === 'boolean' ? value : fallback;
 }
 
-function resolvedSequencerLaneEnabled(
-  state: Record<string, unknown>,
-  kind: SequencerClockKind,
-  laneNumber: number,
+export type CoreProductSequencerClockRejoinMask = Readonly<{
+  synth: number;
+  drum: number;
+}>;
+
+export const EMPTY_CORE_PRODUCT_SEQUENCER_CLOCK_REJOIN_MASK: CoreProductSequencerClockRejoinMask = {
+  synth: 0,
+  drum: 0,
+};
+
+export function hasCoreProductSequencerClockRejoin(
+  mask: CoreProductSequencerClockRejoinMask,
 ): boolean {
-  const prefix = kind === 'synth' ? 'synthEuclid' : 'drumEuclid';
-  const masterKey = kind === 'synth' ? 'synthEuclideanMasterEnabled' : 'drumEuclidMasterEnabled';
-  if (!booleanFromState(state, masterKey, false)) return false;
-  const defaultLaneEnabled = kind === 'synth' && laneNumber === 1;
-  return booleanFromState(state, `${prefix}${laneNumber}Enabled`, defaultLaneEnabled);
+  return mask.synth !== 0 || mask.drum !== 0;
 }
 
-function shouldRejoinSequencerKind(
+function sequencerKindRejoinMask(
   previous: Record<string, unknown>,
   next: Record<string, unknown>,
   kind: SequencerClockKind,
-): boolean {
+): number {
   const prefix = kind === 'synth' ? 'synthEuclid' : 'drumEuclid';
   const masterKey = kind === 'synth' ? 'synthEuclideanMasterEnabled' : 'drumEuclidMasterEnabled';
-  if (!booleanFromState(next, masterKey, false)) return false;
+  if (!booleanFromState(next, masterKey, false)) return 0;
+  const laneCount = euclideanLaneCount(kind);
+  const allLaneMask = (1 << laneCount) - 1;
+  if (!booleanFromState(previous, masterKey, false)) return allLaneMask;
   const timingKeys = [
     `${prefix}ClockSource`,
     `${prefix}JoinPolicy`,
   ];
-  if (timingKeys.some((key) => previous[key] !== next[key])) return true;
-  const laneCount = euclideanLaneCount(kind);
-  for (let lane = 1; lane <= laneCount; lane += 1) {
-    if (!resolvedSequencerLaneEnabled(previous, kind, lane) && resolvedSequencerLaneEnabled(next, kind, lane)) return true;
-  }
-  return false;
+  return timingKeys.some((key) => previous[key] !== next[key]) ? allLaneMask : 0;
+}
+
+export function coreProductSequencerClockRejoinMask(
+  previous: Record<string, unknown> | null,
+  next: Record<string, unknown>,
+): CoreProductSequencerClockRejoinMask {
+  if (!previous) return EMPTY_CORE_PRODUCT_SEQUENCER_CLOCK_REJOIN_MASK;
+  return {
+    synth: sequencerKindRejoinMask(previous, next, 'synth'),
+    drum: sequencerKindRejoinMask(previous, next, 'drum'),
+  };
 }
 
 export function shouldRejoinCoreProductSequencerClocks(
   previous: Record<string, unknown> | null,
   next: Record<string, unknown>,
 ): boolean {
-  if (!previous) return false;
-  return shouldRejoinSequencerKind(previous, next, 'synth') ||
-    shouldRejoinSequencerKind(previous, next, 'drum');
+  return hasCoreProductSequencerClockRejoin(coreProductSequencerClockRejoinMask(previous, next));
 }
 
 export function withCoreProductClockStartDelayState(

@@ -6,7 +6,12 @@ import { enrichCoreProductModulationDebug } from './CoreProductModulationDebugEn
 import { createCoreProductSampleHoldDebugState, snapshotCoreProductSampleHoldDebugState, updateCoreProductSampleHoldTriggerFeedback, type CoreProductSampleHoldDebugState } from './CoreProductSampleHoldFeedbackBridge';
 import { shouldPublishCoreProductSampleHoldFeedback, type CoreProductSampleHoldFeedbackCallbackLookup } from './CoreProductSampleHoldFeedbackPolicy';
 import { createCoreProductRuntimeWalkDebugState, snapshotCoreProductRuntimeWalkDebugState, type CoreProductRuntimeWalkDebugState } from './CoreProductRuntimeWalkDebug';
-type ProductRangeState = { range: { min: number; max: number }; targets: CoreProductRangeTarget[] };
+import { recordSliderSystemCounter } from '../../../diagnostics/sliderSystemInstrumentation';
+type ProductRangeState = {
+  range: { min: number; max: number };
+  targets: CoreProductRangeTarget[];
+  contextSignature: string;
+};
 type RuntimeWalkPositionUpdateOptions = Readonly<{ publish?: boolean }>;
 type CoreProductModulationRangeBridgeOptions = {
   isRuntimeReady: () => boolean;
@@ -135,7 +140,18 @@ export class CoreProductModulationRangeBridge {
     }
     const normalized = { min: Math.min(range.min, range.max), max: Math.max(range.min, range.max) };
     const targets = Array.isArray(target) ? target : [target];
-    store.set(key, { range: normalized, targets });
+    const contextSignature = this.currentRangeContextSignature();
+    const previous = store.get(key);
+    if (
+      previous &&
+      previous.range.min === normalized.min &&
+      previous.range.max === normalized.max &&
+      previous.contextSignature === contextSignature &&
+      this.targetsEqual(previous.targets, targets)
+    ) {
+      return;
+    }
+    store.set(key, { range: normalized, targets, contextSignature });
     if (this.options.isRuntimeReady()) {
       for (const rangeTarget of targets) this.postModulationRange(rangeTarget, normalized, mode, displayKey);
     }
@@ -147,6 +163,7 @@ export class CoreProductModulationRangeBridge {
     mode: CoreProductModulationRangeMode,
   ): void {
     const nextKeys = new Set<string>();
+    const contextSignature = this.currentRangeContextSignature();
     for (const [key, range] of Object.entries(ranges)) {
       if (!range || !Number.isFinite(range.min) || !Number.isFinite(range.max)) continue;
       const targets = resolveCoreProductRangeTargets(key, mode);
@@ -155,8 +172,18 @@ export class CoreProductModulationRangeBridge {
         continue;
       }
       const normalized = { min: Math.min(range.min, range.max), max: Math.max(range.min, range.max) };
-      store.set(key, { range: normalized, targets });
       nextKeys.add(key);
+      const previous = store.get(key);
+      if (
+        previous &&
+        previous.range.min === normalized.min &&
+        previous.range.max === normalized.max &&
+        previous.contextSignature === contextSignature &&
+        this.targetsEqual(previous.targets, targets)
+      ) {
+        continue;
+      }
+      store.set(key, { range: normalized, targets, contextSignature });
       if (this.options.isRuntimeReady()) {
         for (const target of targets) this.postModulationRange(target, normalized, mode, key);
       }
@@ -168,6 +195,37 @@ export class CoreProductModulationRangeBridge {
       }
       store.delete(key);
     }
+  }
+
+  private targetsEqual(left: CoreProductRangeTarget[], right: CoreProductRangeTarget[]): boolean {
+    if (left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index += 1) {
+      const leftTarget = left[index];
+      const rightTarget = right[index];
+      if (
+        !leftTarget ||
+        !rightTarget ||
+        leftTarget.targetId !== rightTarget.targetId ||
+        leftTarget.paramId !== rightTarget.paramId ||
+        leftTarget.controlId !== rightTarget.controlId ||
+        leftTarget.sampleHoldTrigger !== rightTarget.sampleHoldTrigger
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private currentRangeContextSignature(): string {
+    const latestProductSnapshot = this.options.latestProductSnapshot();
+    const state = this.options.latestSliderState();
+    const context = coreProductRangeValueContext(latestProductSnapshot?.transport.bpm, state);
+    return JSON.stringify({
+      bpm: context.bpm,
+      randomWalkMode: context.randomWalkMode,
+      randomWalkSpeed: context.randomWalkSpeed,
+      state,
+    });
   }
   private postModulationRange(
     target: CoreProductRangeTarget,
@@ -207,6 +265,7 @@ export class CoreProductModulationRangeBridge {
     if (mode === CORE_PRODUCT_MODULATION_RANGE_MODE.randomWalk) {
       this.runtimeWalkDebugState.postedEventCount += 1;
     }
+    recordSliderSystemCounter('productRangeEvents');
     this.options.post(event);
   }
   private currentNumericValue(key: string, range: { min: number; max: number } | null, latestSliderState: Record<string, unknown> | null): number {

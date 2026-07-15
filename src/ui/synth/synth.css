@@ -933,11 +933,12 @@
 }
 
 /* ── Link / Evolve buttons ── */
-.synth-root .seq-link-btn, .synth-root .seq-evolve-btn {
+.synth-root .seq-link-btn, .synth-root .seq-evolve-btn, .synth-root .seq-resume-quantize-btn {
   padding: 5px 12px; font-size: 0.68rem; font-weight: 700; border: none;
   border-radius: var(--radius-sm); cursor: pointer; background: var(--bg-control);
   color: var(--text-muted); transition: all 0.15s; letter-spacing: 0.3px;
 }
+.synth-root .seq-resume-quantize-btn { white-space: nowrap; }
 .synth-root .seq-link-btn.on { background: var(--sc, var(--accent-cyan)); color: #000; }
 .synth-root .seq-evolve-btn.on { background: #a855f7; color: #000; }
 
@@ -1782,7 +1783,7 @@
 .synth-root button, .synth-root select, .synth-root input,
 .synth-root .seq-tab, .synth-root .seq-step-cell, .synth-root .seq-step-ratchet,
 .synth-root .seq-trig-cond, .synth-root .seq-preset-btn, .synth-root .seq-view-btn,
-.synth-root .seq-link-btn, .synth-root .seq-evolve-btn, .synth-root .seq-lane-enable-btn,
+.synth-root .seq-link-btn, .synth-root .seq-evolve-btn, .synth-root .seq-resume-quantize-btn, .synth-root .seq-lane-enable-btn,
 .synth-root .seq-ov-header, .synth-root .seq-lane-header, .synth-root .seq-mini-row {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
@@ -3561,7 +3562,7 @@
   .synth-root .seq-sequence-preset-control { width: 100%; min-width: 0; flex: 1 1 100%; }
   .synth-root .seq-sequence-preset-label { font-size: 0.6rem; }
   .synth-root .seq-sequence-preset-dropdown { width: 100%; }
-  .synth-root .seq-link-btn, .synth-root .seq-evolve-btn { padding: 6px 10px; font-size: 0.6rem; min-height: 36px; }
+  .synth-root .seq-link-btn, .synth-root .seq-evolve-btn, .synth-root .seq-resume-quantize-btn { padding: 6px 10px; font-size: 0.6rem; min-height: 36px; }
   .synth-root .seq-evolve-panel { padding: 8px 10px; }
   .synth-root .seq-evolve-panel label { font-size: 0.62rem; gap: 4px; }
   .synth-root .seq-evolve-panel input[type=range] { width: 56px; }

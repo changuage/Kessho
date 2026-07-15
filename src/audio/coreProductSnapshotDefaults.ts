@@ -73,7 +73,7 @@ export function sourceDefaults(sourceId: number): ProductSourceSnapshot {
 
 export function laneDefaults(targetSourceId: number, midiNote: number): ProductLaneSnapshot {
   return {
-    enabled: false, sequencerMode: 0, targetSourceId, stepCount: 16, fillCount: 4, rotation: 0, clockDivision: 16,
+    enabled: false, muted: false, resumeQuantization: 'nextBeat', sequencerMode: 0, targetSourceId, stepCount: 16, fillCount: 4, rotation: 0, clockDivision: 16,
     swing: 0, probability: 1, ratchet: 1, trigCondition: 0, midiNote, velocity: 0.75,
     holdSeconds: 0.18, morph: 0, distance: 0, expression: 0.75, seed: 1,
     barReset: true, phraseReset: false, manualStepMaskLow: 0, manualStepMaskHigh: 0,

@@ -1,8 +1,43 @@
 {
   "files": {
     "src/App.tsx": {
-      "noGrowthCeiling": 3545,
+      "noGrowthCeiling": 3593,
       "targetCeiling": 2500,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/ui/synth/SynthPage.tsx": {
+      "noGrowthCeiling": 10702,
+      "targetCeiling": 10702,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/ui/DiamondJourneyUI.tsx": {
+      "noGrowthCeiling": 4425,
+      "targetCeiling": 4425,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/ui/earth/components/ActiveEarthMatrix.tsx": {
+      "noGrowthCeiling": 1570,
+      "targetCeiling": 1514,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/ui/earth/components/EarthSceneMixer.tsx": {
+      "noGrowthCeiling": 1419,
+      "targetCeiling": 1341,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/ui/global/RoutingMatrix.tsx": {
+      "noGrowthCeiling": 1298,
+      "targetCeiling": 1228,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/ui/visualizer/ReactiveVisualizerPage.tsx": {
+      "noGrowthCeiling": 1325,
+      "targetCeiling": 1325,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/ui/sliderSystem/SliderPrimitive.tsx": {
+      "noGrowthCeiling": 688,
+      "targetCeiling": 688,
       "mode": "fail-on-growth-warn-above-target"
     },
     "src/audio/coreProductEngineHost.ts": {

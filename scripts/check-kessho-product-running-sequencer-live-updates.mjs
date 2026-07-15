@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadCoreProductHostHarness, methodBody } from './lib/kesshoProductBehaviorHarness.mjs';
@@ -6,6 +7,11 @@ import { loadCoreProductHostHarness, methodBody } from './lib/kesshoProductBehav
 const root = process.cwd();
 const reportJsonPath = resolve(root, 'docs/reports/kessho-product-running-sequencer-live-updates-latest.json');
 const reportMarkdownPath = resolve(root, 'docs/reports/kessho-product-running-sequencer-live-updates-latest.md');
+
+execFileSync(process.execPath, ['--import', 'tsx', 'src/ui/commitLiveSequencerTiming.test.ts'], {
+  cwd: root,
+  stdio: 'inherit',
+});
 
 function read(path) {
   return readFileSync(resolve(root, path), 'utf8');
@@ -46,6 +52,8 @@ const files = {
   selectedManualTriggers: read('src/ui/useSelectedAudioEngineManualTriggers.ts'),
   liveTriggerCallbacks: read('src/ui/useSelectedAudioEngineLiveTriggerCallbacks.ts'),
   liveTriggerUiCallbacks: read('src/ui/useLiveTriggerUiCallbacks.ts'),
+  liveSequencerTiming: read('src/ui/commitLiveSequencerTiming.ts'),
+  productEvents: read('src/audio/coreProductEvents.ts'),
   synthPage: read('src/ui/synth/SynthPage.tsx'),
   morphPosition: read('src/ui/useMorphPositionRuntimeSurface.ts'),
   morphSlotLoad: read('src/ui/useMorphSlotLoadRuntimeSurface.ts'),
@@ -123,6 +131,31 @@ check(
     files.host.includes("options?.applyMode === 'event'") &&
     files.hostCommitService.includes("commit.applyMode === 'event'"),
   'sequencer controls must commit explicit Product events without forcing snapshot receipt waits',
+);
+
+check(
+  'lane-timing-bypasses-trigger-critical-commit-queue',
+  files.liveSequencerTiming.includes('engine.enqueueEvents(events);') &&
+    files.liveSequencerTiming.indexOf('engine.enqueueEvents(events);') <
+      files.liveSequencerTiming.indexOf('commitProductControlActionForProduct(') &&
+    files.liveSequencerTiming.includes('events.every(isCoreProductLiveSequencerTimingEvent)') &&
+    files.liveSequencerTiming.includes('triggerCritical: false') &&
+    files.liveSequencerTiming.includes('syncVisibleSliders: false') &&
+    files.productRuntimeSequencerControls.includes("patch: sequencerPatch('synthEuclidClockDivs', divs)") &&
+    files.productRuntimeSequencerControls.includes("patch: sequencerPatch('drumEuclidClockDivs', divs)") &&
+    files.productRuntimeSequencerControls.includes("patch: sequencerPatch('synthEuclidSwings', swings)") &&
+    files.productRuntimeSequencerControls.includes("patch: sequencerPatch('drumEuclidSwings', swings)"),
+  'per-lane clock and swing changes must reach the runtime before asynchronous ProductControl persistence',
+);
+
+check(
+  'live-lane-timing-event-classification',
+  files.productEvents.includes('export function isCoreProductLiveSequencerTimingEvent') &&
+    files.productEvents.includes('KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision') &&
+    files.productEvents.includes('KESSHO_PRODUCT_PARAM_IDS.SequencerLaneTempoMultiplier') &&
+    files.productEvents.includes('KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing') &&
+    files.productEvents.includes("(event.flags ?? 0) !== timingApplyFlags('live')"),
+  'the immediate lane-timing path must be restricted to explicitly live timing ProductEvents',
 );
 
 check(
@@ -235,12 +268,12 @@ check(
       rejoin(
         { ...runningSynthBase, synthEuclid2Enabled: false },
         { ...runningSynthBase, synthEuclid2Enabled: true },
-      ) === true &&
+      ) === false &&
       rejoin(
         { ...runningSynthBase, sequencerMasterBPM: 120 },
         { ...runningSynthBase, sequencerMasterBPM: 121 },
       ) === false,
-    'preset morph/full resolved patches and phrase-timing edits must stay staged, while real lane enables still rejoin',
+    'preset morph/full resolved patches, phase-continuous lane unmutes, and phrase-timing edits must not rejoin sequencer clocks',
   );
 }
 
@@ -282,9 +315,10 @@ check(
       callbackRegistrationBody.includes('if (running)') &&
       callbackRegistrationBody.includes('if (telemetry) this.publish(telemetry)') &&
       !files.host.includes('callback?.([0, 0, 0, 0], [0, 0, 0, 0]);') &&
-      files.sequencerClock.includes('resolvedSequencerLaneEnabled') &&
-      files.sequencerClock.includes("kind === 'synth' && laneNumber === 1"),
-    'running callback registration and clock rejoin decisions must preserve existing playhead state',
+      files.sequencerClock.includes('sequencerKindRejoinMask') &&
+      files.sequencerClock.includes('return timingKeys.some') &&
+      !files.sequencerClock.includes('resolvedSequencerLaneEnabled'),
+    'running callback registration and phase-continuous lane audibility changes must preserve existing playhead state',
   );
 }
 
@@ -327,8 +361,8 @@ check(
 check(
   'audio-sync-sequencer-lane-enabled-resolved',
   files.audioSync.includes('SEQUENCER_LANE_ENABLED_KEY_PATTERNS') &&
-    files.audioSync.includes('/^synthEuclid[1-4]Enabled$/') &&
-    files.audioSync.includes('/^drumEuclid[1-6]Enabled$/') &&
+    files.audioSync.includes('/^synthEuclid[1-4](Enabled|Solo)$/') &&
+    files.audioSync.includes('/^drumEuclid[1-6](Enabled|Solo)$/') &&
     count(files.audioSync, 'requiresSequencerLaneEnabledResolvedCommit(patch)') >= 3,
   'sequencer lane enable/mute keys must route through immediate trigger-critical ProductControl commits',
 );
@@ -504,8 +538,9 @@ check(
 check(
   'sequencer-controls-no-direct-productevent-enqueue',
   !files.sequencerControls.includes('productEngine.enqueueEvent(') &&
-    !files.sequencerControls.includes('productEngine.enqueueEvents('),
-  'sequencer control UI must route generated ProductEvents through ProductControl resolved commits, not direct enqueue calls',
+    !files.sequencerControls.includes('productEngine.enqueueEvents(') &&
+    count(files.liveSequencerTiming, 'engine.enqueueEvents(events);') === 1,
+  'only the validated live timing helper may bypass ProductControl resolved-event delivery',
 );
 
 check(

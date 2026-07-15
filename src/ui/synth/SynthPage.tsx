@@ -35,6 +35,7 @@ import { shouldShowTriggerSourceBadge, triggerSourceDisplayLabel } from '../sequ
 import AnchorWalkerSequencerBody from '../sequencer/AnchorWalkerSequencerBody';
 import OrbitSequencerBody from '../sequencer/OrbitSequencerBody';
 import SequencerCapturePreviewOverlay from '../sequencer/SequencerCapturePreviewOverlay';
+import { sequencerTriggerPatternSyncKey } from '../sequencer/sequencerTriggerPatternSyncKey';
 import { useGeneratedSequenceCapture } from '../sequencer/useGeneratedSequenceCapture';
 import type { CapturedPitchReference } from '../sequencer/generatedSequencerCapturePitch';
 import {
@@ -99,6 +100,7 @@ import {
   normalizeSequencerPitchBindingModes,
 } from '../../audio/sequencerPitchBinding';
 import { normalizeSequencerPitchSettings } from '../../audio/sequencerPitchSettings';
+import { SequencerResumeQuantizeButton } from '../sequencer/SequencerResumeQuantizeButton';
 import { SYNTH_EUCLIDEAN_LANE_COUNT } from '../../audio/sequencerLaneCounts';
 import type { HarmonyState } from '../../audio/harmony';
 import type {
@@ -107,15 +109,21 @@ import type {
   ProductSynthOrbitVisualLaneState,
 } from '../../audio/product/ProductEngineTypes';
 import { useSliderHelp } from '../SliderHelpOverlay';
-import { SliderPrimitive } from '../sliderSystem';
+import {
+  SliderPrimitive,
+  type SliderRendererProps,
+  type SliderRuntimeRendererProps,
+} from '../sliderSystem';
+import type { SelectRenderer } from '../../app/AppControls';
+import { resolveEffectiveSliderValue } from '../sliderSystem/effectiveValue';
 import { isEditableShortcutTarget } from '../keyboard/keyboardTargets';
 import { useLiveNoteInput } from '../keyboard/liveNoteInput';
 import { useKeyboardScope } from '../keyboard/useKeyboardScope';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
 import { useVisualFeatureToggle } from '../hooks/useVisualFeatureToggle';
 import { OptionalVisualizerGate } from '../components/OptionalVisualizerGate';
-import { removeRuntimeValues, useRuntimeValue } from '../runtimeValueState';
-import { useRuntimeSliderPosition } from '../runtimeSliderState';
+import { getRuntimeValue, removeRuntimeValues } from '../runtimeValueState';
+import { getRuntimeSliderPosition } from '../runtimeSliderState';
 import { blurSelectAfterChange } from '../shared/selectFocus';
 import './synth.css';
 import SynthPresetManager from './SynthPresetManager';
@@ -283,10 +291,6 @@ type RuntimeSliderProps = {
   walkPosition?: number;
 };
 
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value));
-}
-
 function resolveRuntimeSliderValue(
   value: number,
   runtimeProps: RuntimeSliderProps,
@@ -294,9 +298,12 @@ function resolveRuntimeSliderValue(
 ): number {
   const mode = runtimeProps.mode ?? 'single';
   const range = runtimeProps.dualRange;
-  if (mode === 'single' || !range) return value;
-  const position = runtimePosition ?? runtimeProps.walkPosition ?? 0.5;
-  return range.min + clamp01(position) * (range.max - range.min);
+  return resolveEffectiveSliderValue({
+    authoredValue: value,
+    mode,
+    range: range ? [range.min, range.max] : undefined,
+    runtimePosition: runtimePosition ?? runtimeProps.walkPosition,
+  });
 }
 
 const formatEnvelopeSeconds = (value: number): string => {
@@ -2413,10 +2420,9 @@ export interface SynthPageProps {
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   togglePanel: (id: string) => void;
-  sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
-  SliderComponent: React.ComponentType<Record<string, unknown>>;
-  SelectComponent: React.ComponentType<Record<string, unknown>>;
-  CollapsiblePanelComponent: React.ComponentType<Record<string, unknown>>;
+  sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
+  SliderComponent: React.ComponentType<SliderRendererProps<keyof SliderState>>;
+  SelectComponent: SelectRenderer;
   /** Whether audio engine is running */
   isRunning: boolean;
   /** Live transport timing used by simple phrase visualizers */
@@ -2446,8 +2452,6 @@ export interface SynthPageProps {
   onStepOverridesChange?: (overrides: StepOverrides, subLaneStates?: Record<SubLaneKind, SubLaneState>[]) => void;
   /** Raw step overrides change callback (unconverted pitch offsets for persistence/round-trip) */
   onRawStepOverridesChange?: (overrides: StepOverrides) => void;
-  /** Reasserts persistent audio-thread sequencer state before this editor unmounts. */
-  onSequencerRuntimeDetach?: () => void;
   /** Initial step overrides to restore across tab switches */
   initialStepOverrides?: StepOverrides;
   /** Initial sub-lane states to restore across tab switches */
@@ -2534,7 +2538,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onEvolveConfigsChange,
     onStepOverridesChange,
     onRawStepOverridesChange,
-    onSequencerRuntimeDetach,
     initialStepOverrides,
     initialSubLaneStates,
     onSubLaneStatesChange,
@@ -2710,8 +2713,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, []);
   const toggleEdit = (section: string) => setEditingSection(prev => prev === section ? null : section);
 
-  const Slider = SliderComponent as React.ComponentType<any>;
-  const Select = SelectComponent as React.ComponentType<any>;
+  const Slider = SliderComponent;
+  const Select = SelectComponent;
   const sampleLibraryOptions = useMemo(() => SAMPLE_LIBRARY_REGISTRY_GENERATED.map((library) => ({
     value: library.libraryKey,
     label: library.displayName,
@@ -2939,14 +2942,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     });
   }, [getPadFilterFreq, getPadLfoValue, liveSourceTelemetryAvailable]);
 
-  const livePad1Morph = useRuntimeValue('padMorph');
-  const livePad2Morph = useRuntimeValue('pad2Morph');
-  const liveLead1Morph = useRuntimeValue('lead1Morph');
-  const liveLead2Morph = useRuntimeValue('lead2Morph');
-  const livePad1Distance = useRuntimeValue('padDistance', state.padDistance ?? 0) ?? (state.padDistance ?? 0);
-  const livePad2Distance = useRuntimeValue('pad2Distance', state.pad2Distance ?? 0) ?? (state.pad2Distance ?? 0);
-  const liveLead1Distance = useRuntimeValue('lead1Distance', state.lead1Distance ?? 0) ?? (state.lead1Distance ?? 0);
-  const liveLead2Distance = useRuntimeValue('lead2Distance', state.lead2Distance ?? 0) ?? (state.lead2Distance ?? 0);
+  const livePad1Morph = getRuntimeValue('padMorph');
+  const livePad2Morph = getRuntimeValue('pad2Morph');
+  const liveLead1Morph = getRuntimeValue('lead1Morph');
+  const liveLead2Morph = getRuntimeValue('lead2Morph');
+  const livePad1Distance = getRuntimeValue('padDistance') ?? (state.padDistance ?? 0);
+  const livePad2Distance = getRuntimeValue('pad2Distance') ?? (state.pad2Distance ?? 0);
+  const liveLead1Distance = getRuntimeValue('lead1Distance') ?? (state.lead1Distance ?? 0);
+  const liveLead2Distance = getRuntimeValue('lead2Distance') ?? (state.lead2Distance ?? 0);
   const pad1FilterMinRuntime = sliderProps('filterCutoffMin') as RuntimeSliderProps;
   const pad1FilterMaxRuntime = sliderProps('filterCutoffMax') as RuntimeSliderProps;
   const pad1PostLpfRuntime = sliderProps('padPostLPF') as RuntimeSliderProps;
@@ -2961,20 +2964,20 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const lead1DensityRuntime = sliderProps('lead1Density') as RuntimeSliderProps;
   const lead1OctaveRuntime = sliderProps('lead1Octave') as RuntimeSliderProps;
   const lead1OctaveRangeRuntime = sliderProps('lead1OctaveRange') as RuntimeSliderProps;
-  const livePad1FilterMinPosition = useRuntimeSliderPosition('filterCutoffMin', pad1FilterMinRuntime.mode ?? 'single', pad1FilterMinRuntime.walkPosition);
-  const livePad1FilterMaxPosition = useRuntimeSliderPosition('filterCutoffMax', pad1FilterMaxRuntime.mode ?? 'single', pad1FilterMaxRuntime.walkPosition);
-  const livePad1PostLpfPosition = useRuntimeSliderPosition('padPostLPF', pad1PostLpfRuntime.mode ?? 'single', pad1PostLpfRuntime.walkPosition);
-  const livePad2FilterMinPosition = useRuntimeSliderPosition('pad2FilterCutoffMin', pad2FilterMinRuntime.mode ?? 'single', pad2FilterMinRuntime.walkPosition);
-  const livePad2FilterMaxPosition = useRuntimeSliderPosition('pad2FilterCutoffMax', pad2FilterMaxRuntime.mode ?? 'single', pad2FilterMaxRuntime.walkPosition);
-  const livePad2PostLpfPosition = useRuntimeSliderPosition('pad2PostLPF', pad2PostLpfRuntime.mode ?? 'single', pad2PostLpfRuntime.walkPosition);
-  const liveChordRatePosition = useRuntimeSliderPosition('chordRate', chordRateRuntime.mode ?? 'single', chordRateRuntime.walkPosition);
-  const liveVoicingSpreadPosition = useRuntimeSliderPosition('voicingSpread', voicingSpreadRuntime.mode ?? 'single', voicingSpreadRuntime.walkPosition);
-  const liveWaveSpreadPosition = useRuntimeSliderPosition('waveSpread', waveSpreadRuntime.mode ?? 'single', waveSpreadRuntime.walkPosition);
-  const liveDetunePosition = useRuntimeSliderPosition('detune', detuneRuntime.mode ?? 'single', detuneRuntime.walkPosition);
-  const liveSynthOctavePosition = useRuntimeSliderPosition('synthOctave', synthOctaveRuntime.mode ?? 'single', synthOctaveRuntime.walkPosition);
-  const liveLead1DensityPosition = useRuntimeSliderPosition('lead1Density', lead1DensityRuntime.mode ?? 'single', lead1DensityRuntime.walkPosition);
-  const liveLead1OctavePosition = useRuntimeSliderPosition('lead1Octave', lead1OctaveRuntime.mode ?? 'single', lead1OctaveRuntime.walkPosition);
-  const liveLead1OctaveRangePosition = useRuntimeSliderPosition('lead1OctaveRange', lead1OctaveRangeRuntime.mode ?? 'single', lead1OctaveRangeRuntime.walkPosition);
+  const livePad1FilterMinPosition = getRuntimeSliderPosition('filterCutoffMin', pad1FilterMinRuntime.mode ?? 'single') ?? pad1FilterMinRuntime.walkPosition;
+  const livePad1FilterMaxPosition = getRuntimeSliderPosition('filterCutoffMax', pad1FilterMaxRuntime.mode ?? 'single') ?? pad1FilterMaxRuntime.walkPosition;
+  const livePad1PostLpfPosition = getRuntimeSliderPosition('padPostLPF', pad1PostLpfRuntime.mode ?? 'single') ?? pad1PostLpfRuntime.walkPosition;
+  const livePad2FilterMinPosition = getRuntimeSliderPosition('pad2FilterCutoffMin', pad2FilterMinRuntime.mode ?? 'single') ?? pad2FilterMinRuntime.walkPosition;
+  const livePad2FilterMaxPosition = getRuntimeSliderPosition('pad2FilterCutoffMax', pad2FilterMaxRuntime.mode ?? 'single') ?? pad2FilterMaxRuntime.walkPosition;
+  const livePad2PostLpfPosition = getRuntimeSliderPosition('pad2PostLPF', pad2PostLpfRuntime.mode ?? 'single') ?? pad2PostLpfRuntime.walkPosition;
+  const liveChordRatePosition = getRuntimeSliderPosition('chordRate', chordRateRuntime.mode ?? 'single') ?? chordRateRuntime.walkPosition;
+  const liveVoicingSpreadPosition = getRuntimeSliderPosition('voicingSpread', voicingSpreadRuntime.mode ?? 'single') ?? voicingSpreadRuntime.walkPosition;
+  const liveWaveSpreadPosition = getRuntimeSliderPosition('waveSpread', waveSpreadRuntime.mode ?? 'single') ?? waveSpreadRuntime.walkPosition;
+  const liveDetunePosition = getRuntimeSliderPosition('detune', detuneRuntime.mode ?? 'single') ?? detuneRuntime.walkPosition;
+  const liveSynthOctavePosition = getRuntimeSliderPosition('synthOctave', synthOctaveRuntime.mode ?? 'single') ?? synthOctaveRuntime.walkPosition;
+  const liveLead1DensityPosition = getRuntimeSliderPosition('lead1Density', lead1DensityRuntime.mode ?? 'single') ?? lead1DensityRuntime.walkPosition;
+  const liveLead1OctavePosition = getRuntimeSliderPosition('lead1Octave', lead1OctaveRuntime.mode ?? 'single') ?? lead1OctaveRuntime.walkPosition;
+  const liveLead1OctaveRangePosition = getRuntimeSliderPosition('lead1OctaveRange', lead1OctaveRangeRuntime.mode ?? 'single') ?? lead1OctaveRangeRuntime.walkPosition;
   const livePad1FilterMinBase = resolveRuntimeSliderValue(state.filterCutoffMin ?? 400, pad1FilterMinRuntime, livePad1FilterMinPosition);
   const livePad1FilterMaxBase = resolveRuntimeSliderValue(state.filterCutoffMax ?? 3000, pad1FilterMaxRuntime, livePad1FilterMaxPosition);
   const livePad1PostLpfBase = resolveRuntimeSliderValue(state.padPostLPF ?? 18000, pad1PostLpfRuntime, livePad1PostLpfPosition);
@@ -3041,14 +3044,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const livePad1PostLpf = livePad1DistanceState.padPostLPF ?? livePad1PostLpfBase;
   const livePad2PostLpf = livePad2DistanceState.pad2PostLPF ?? livePad2PostLpfBase;
   const padEnvelopeTimelineSeconds = getPadEnvelopeTimelineSeconds(state);
-  const liveSynthNoteMin1 = useRuntimeValue('synthEuclid1NoteMin', state.synthEuclid1NoteMin ?? 48) ?? (state.synthEuclid1NoteMin ?? 48);
-  const liveSynthNoteMax1 = useRuntimeValue('synthEuclid1NoteMax', state.synthEuclid1NoteMax ?? 72) ?? (state.synthEuclid1NoteMax ?? 72);
-  const liveSynthNoteMin2 = useRuntimeValue('synthEuclid2NoteMin', state.synthEuclid2NoteMin ?? 48) ?? (state.synthEuclid2NoteMin ?? 48);
-  const liveSynthNoteMax2 = useRuntimeValue('synthEuclid2NoteMax', state.synthEuclid2NoteMax ?? 72) ?? (state.synthEuclid2NoteMax ?? 72);
-  const liveSynthNoteMin3 = useRuntimeValue('synthEuclid3NoteMin', state.synthEuclid3NoteMin ?? 48) ?? (state.synthEuclid3NoteMin ?? 48);
-  const liveSynthNoteMax3 = useRuntimeValue('synthEuclid3NoteMax', state.synthEuclid3NoteMax ?? 72) ?? (state.synthEuclid3NoteMax ?? 72);
-  const liveSynthNoteMin4 = useRuntimeValue('synthEuclid4NoteMin', state.synthEuclid4NoteMin ?? 48) ?? (state.synthEuclid4NoteMin ?? 48);
-  const liveSynthNoteMax4 = useRuntimeValue('synthEuclid4NoteMax', state.synthEuclid4NoteMax ?? 72) ?? (state.synthEuclid4NoteMax ?? 72);
+  const liveSynthNoteMin1 = getRuntimeValue('synthEuclid1NoteMin') ?? (state.synthEuclid1NoteMin ?? 48);
+  const liveSynthNoteMax1 = getRuntimeValue('synthEuclid1NoteMax') ?? (state.synthEuclid1NoteMax ?? 72);
+  const liveSynthNoteMin2 = getRuntimeValue('synthEuclid2NoteMin') ?? (state.synthEuclid2NoteMin ?? 48);
+  const liveSynthNoteMax2 = getRuntimeValue('synthEuclid2NoteMax') ?? (state.synthEuclid2NoteMax ?? 72);
+  const liveSynthNoteMin3 = getRuntimeValue('synthEuclid3NoteMin') ?? (state.synthEuclid3NoteMin ?? 48);
+  const liveSynthNoteMax3 = getRuntimeValue('synthEuclid3NoteMax') ?? (state.synthEuclid3NoteMax ?? 72);
+  const liveSynthNoteMin4 = getRuntimeValue('synthEuclid4NoteMin') ?? (state.synthEuclid4NoteMin ?? 48);
+  const liveSynthNoteMax4 = getRuntimeValue('synthEuclid4NoteMax') ?? (state.synthEuclid4NoteMax ?? 72);
   const pad1MorphValue = livePad1Morph ?? (state.padMorph ?? 0);
   const pad2MorphValue = livePad2Morph ?? (state.pad2Morph ?? 0);
   const pad1MorphSequencerLocked = livePad1Morph !== undefined;
@@ -5658,23 +5661,22 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const engineArpConfigsRef = useRef<ProductPlayConfig[] | null>(null);
   const engineArpPatternSignatureRef = useRef<string | null>(null);
   const enginePitchBindingModesRef = useRef<PitchBindingMode[] | null>(null);
-  const engineSequencerModelsRef = useRef<SequencerState[] | null>(null);
-  const engineClockDivsRef = useRef(seq.clockDivs);
-  const engineSequencerBeatSecondsRef = useRef(chordSequencerUiBeatSeconds(state));
-  useEffect(() => () => {
-    onSequencerRuntimeDetach?.();
-  }, [onSequencerRuntimeDetach]);
+  // Sequencer models are recreated for unrelated SliderState edits. Key the audio
+  // payload only to the trigger data it actually consumes so transport timing
+  // changes cannot clear and rebuild every step lane.
+  const sequencerTriggerPatternSignature = useMemo(
+    () => sequencerTriggerPatternSyncKey(seq.sequencerModels),
+    [seq.sequencerModels],
+  );
+  const engineTriggerPatternSignatureRef = useRef<string | null>(null);
   useEffect(() => {
-    const sequencerBeatSeconds = chordSequencerUiBeatSeconds(state);
     const overridesChanged = stepOverridesRef.current !== seq.stepOverrides;
     const settingsChanged = pitchSettingsRef.current !== seq.pitchSettings;
     const subLaneStatesChanged = pitchSubLaneStatesRef.current !== seq.subLaneStates;
     const arpConfigsChanged = engineArpConfigsRef.current !== arpConfigs;
     const pitchBindingModesChanged = enginePitchBindingModesRef.current !== pitchBindingModes;
-    const sequencerModelsChanged = engineSequencerModelsRef.current !== seq.sequencerModels;
-    const clockDivsChanged = engineClockDivsRef.current !== seq.clockDivs;
-    const sequencerBeatSecondsChanged = engineSequencerBeatSecondsRef.current !== sequencerBeatSeconds;
-    if (overridesChanged || settingsChanged || subLaneStatesChanged || arpConfigsChanged || pitchBindingModesChanged || sequencerModelsChanged || clockDivsChanged || sequencerBeatSecondsChanged) {
+    const triggerPatternsChanged = engineTriggerPatternSignatureRef.current !== sequencerTriggerPatternSignature;
+    if (overridesChanged || settingsChanged || subLaneStatesChanged || arpConfigsChanged || pitchBindingModesChanged || triggerPatternsChanged) {
       const now = Date.now();
       let resolvedPendingDiceSync = false;
       const blockedByPendingDice = pendingDiceSyncUntilRef.current.some((until, laneIndex) => {
@@ -5699,9 +5701,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         pitchSubLaneStatesRef.current = seq.subLaneStates;
         engineArpConfigsRef.current = arpConfigs;
         enginePitchBindingModesRef.current = pitchBindingModes;
-        engineSequencerModelsRef.current = seq.sequencerModels;
-        engineClockDivsRef.current = seq.clockDivs;
-        engineSequencerBeatSecondsRef.current = sequencerBeatSeconds;
+        engineTriggerPatternSignatureRef.current = sequencerTriggerPatternSignature;
         return;
       }
       if (blockedByPendingDice) return;
@@ -5710,11 +5710,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       pitchSubLaneStatesRef.current = seq.subLaneStates;
       engineArpConfigsRef.current = arpConfigs;
       enginePitchBindingModesRef.current = pitchBindingModes;
-      engineSequencerModelsRef.current = seq.sequencerModels;
-      engineClockDivsRef.current = seq.clockDivs;
-      engineSequencerBeatSecondsRef.current = sequencerBeatSeconds;
+      engineTriggerPatternSignatureRef.current = sequencerTriggerPatternSignature;
+      const sequencerTriggerPatterns = JSON.parse(sequencerTriggerPatternSignature) as boolean[][];
       const playEnginePatterns = arpConfigs.map((config, laneIdx) => {
-        const laneClockDivision = seq.sequencerModels[laneIdx]?.clockDiv ?? seq.clockDivs[laneIdx] ?? '1/8';
         const pitchAnchor = arpPitchAnchorMidi(
           seq.subLaneStates[laneIdx]?.pitch?.enabled,
           seq.stepOverrides.pitch[laneIdx],
@@ -5727,8 +5725,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           harmony: arpHarmonyContext,
           laneIndex: laneIdx,
           pitchBindingMode: pitchBindingModes[laneIdx] ?? 'polyrhythmic',
-          triggerPattern: seq.sequencerModels[laneIdx]?.trigger.pattern ?? null,
-          triggerStepMs: Math.max(1, sequencerClockDivisionToSeconds(laneClockDivision, sequencerBeatSeconds, '1/8') * 1000),
+          triggerPattern: sequencerTriggerPatterns[laneIdx] ?? null,
           anchorMidi: pitchAnchor,
         });
       });
@@ -5759,8 +5756,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       const arpPatternChanged = engineArpPatternSignatureRef.current !== arpPatternSignature;
       const onlyArpPatternChanged = arpPatternChanged && arpConfigsChanged &&
         !overridesChanged && !settingsChanged && !subLaneStatesChanged &&
-        !pitchBindingModesChanged && !sequencerModelsChanged && !clockDivsChanged &&
-        !sequencerBeatSecondsChanged;
+        !pitchBindingModesChanged && !triggerPatternsChanged;
       if (onlyArpPatternChanged) {
         onStepOverridesChange?.({ playArps } as StepOverrides);
         engineArpPatternSignatureRef.current = arpPatternSignature;
@@ -5843,7 +5839,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     }
   // The live-tone tick only refreshes the visual preview. Reposting ARP state here
   // cancels native notes that are already scheduled inside the current hold window.
-  }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, seq.sequencerModels, seq.clockDivs, arpConfigs, arpHarmonyContext, harmonyState, pitchBindingModes, state.sequencerMasterBPM, state.synthEuclidBaseBPM, state.drumEuclidBaseBPM, onStepOverridesChange, onRawStepOverridesChange]);
+  }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, sequencerTriggerPatternSignature, arpConfigs, arpHarmonyContext, harmonyState, pitchBindingModes, onStepOverridesChange, onRawStepOverridesChange]);
 
   // Persist sub-lane states (enabled/steps/direction) across tab switches
   const subLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | null>(null);
@@ -9736,7 +9732,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               max={300}
               label="BPM"
               onChange={setSharedSequencerBpm}
-              commitOnRelease
             />
             {!isMobile && (
               <button
@@ -10186,7 +10181,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         max={0.75}
                         step={0.05}
                         value={seq.swings[seq.activeTab] ?? 0}
-                        onChange={(e) => seq.setSwing(seq.activeTab, parseFloat(e.target.value))}
+                        onChange={(event) => seq.setSwing(seq.activeTab, Number.parseFloat(event.currentTarget.value))}
                       />
                       <span className="seq-swing-val">{Math.round((seq.swings[seq.activeTab] ?? 0) * 100)}%</span>
                     </label>
@@ -10215,6 +10210,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         >
                           Evolve
                         </button>
+                        <SequencerResumeQuantizeButton state={state} kind="synth" laneIndex={seq.activeTab} onSelectChange={onSelectChange} />
                       </>
                     )}
                   </div>

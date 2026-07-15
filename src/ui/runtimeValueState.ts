@@ -1,22 +1,36 @@
-import { useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
+import { recordSliderSystemCounter } from '../diagnostics/sliderSystemInstrumentation';
 
 type RuntimeValueStoreState = {
-  version: number;
   values: Record<string, number>;
 };
 
-const listeners = new Set<() => void>();
+const keyListeners = new Map<string, Set<() => void>>();
+const keyVersions = new Map<string, number>();
 
 let storeState: RuntimeValueStoreState = {
-  version: 0,
   values: {},
 };
 
-function subscribe(listener: () => void): () => void {
+export function subscribeRuntimeValueKey(key: string, listener: () => void): () => void {
+  let listeners = keyListeners.get(key);
+  if (!listeners) {
+    listeners = new Set();
+    keyListeners.set(key, listeners);
+  }
   listeners.add(listener);
   return () => {
-    listeners.delete(listener);
+    listeners?.delete(listener);
+    if (listeners?.size === 0) keyListeners.delete(key);
   };
+}
+
+export function subscribeRuntimeValueKeys(
+  keys: readonly string[],
+  listener: () => void,
+): () => void {
+  const unsubscribers = keys.map((key) => subscribeRuntimeValueKey(key, listener));
+  return () => { unsubscribers.forEach((unsubscribe) => unsubscribe()); };
 }
 
 function recordsEqual(left: Record<string, number>, right: Record<string, number>): boolean {
@@ -29,12 +43,19 @@ function recordsEqual(left: Record<string, number>, right: Record<string, number
   return true;
 }
 
-function emit(nextValues: Record<string, number>): void {
+function emit(nextValues: Record<string, number>, changedKeys: Set<string>): void {
   storeState = {
-    version: storeState.version + 1,
     values: nextValues,
   };
-  listeners.forEach((listener) => listener());
+  let notificationCount = 0;
+  for (const key of changedKeys) {
+    keyVersions.set(key, (keyVersions.get(key) ?? 0) + 1);
+    const listeners = keyListeners.get(key);
+    if (!listeners) continue;
+    notificationCount += listeners.size;
+    listeners.forEach((listener) => listener());
+  }
+  recordSliderSystemCounter('runtimeStoreListenerNotifications', notificationCount);
 }
 
 function updateStore(
@@ -43,7 +64,14 @@ function updateStore(
   const current = storeState.values;
   const next = updater(current);
   if (recordsEqual(current, next)) return;
-  emit(next);
+  const changedKeys = new Set<string>();
+  for (const key of Object.keys(current)) {
+    if (!(key in next) || Math.abs(current[key]! - next[key]!) > 0.0005) changedKeys.add(key);
+  }
+  for (const key of Object.keys(next)) {
+    if (!(key in current) || Math.abs(current[key]! - next[key]!) > 0.0005) changedKeys.add(key);
+  }
+  emit(next, changedKeys);
 }
 
 export function mergeRuntimeValues(partial: Record<string, number>): void {
@@ -52,7 +80,9 @@ export function mergeRuntimeValues(partial: Record<string, number>): void {
     const next = { ...current };
     for (const [key, value] of Object.entries(partial)) {
       if (!Number.isFinite(value)) continue;
-      if (Math.abs((current[key] ?? 0) - value) <= 0.0005) continue;
+      const hasCurrent = Object.prototype.hasOwnProperty.call(current, key);
+      const currentValue = current[key];
+      if (hasCurrent && currentValue !== undefined && Math.abs(currentValue - value) <= 0.0005) continue;
       next[key] = value;
       changed = true;
     }
@@ -81,6 +111,10 @@ export function useRuntimeValue(
   key: string,
   fallback?: number,
 ): number | undefined {
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeRuntimeValueKey(key, listener),
+    [key],
+  );
   return useSyncExternalStore(
     subscribe,
     () => getRuntimeValue(key) ?? fallback,
@@ -88,10 +122,14 @@ export function useRuntimeValue(
   );
 }
 
-export function useRuntimeValueVersion(): number {
+export function useRuntimeValueKeysVersion(keys: readonly string[]): number {
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeRuntimeValueKeys(keys, listener),
+    [keys],
+  );
   return useSyncExternalStore(
     subscribe,
-    () => storeState.version,
+    () => keys.reduce((version, key) => version + (keyVersions.get(key) ?? 0), 0),
     () => 0,
   );
 }

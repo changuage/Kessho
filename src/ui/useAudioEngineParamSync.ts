@@ -53,8 +53,8 @@ const SEQUENCER_TRANSPORT_TRIGGER_KEYS = new Set<string>([
 ]);
 
 const SEQUENCER_LANE_ENABLED_KEY_PATTERNS: readonly RegExp[] = [
-  /^synthEuclid[1-4]Enabled$/,
-  /^drumEuclid[1-6]Enabled$/,
+  /^synthEuclid[1-4](Enabled|Solo)$/,
+  /^drumEuclid[1-6](Enabled|Solo)$/,
 ];
 
 const SEQUENCER_TARGET_KEY_PATTERNS: readonly RegExp[] = [
@@ -122,8 +122,10 @@ function isSequencerControlPatchKey(key: string): boolean {
 }
 
 function isSequencerTransportTriggerPatchKey(key: string): boolean {
-  return SEQUENCER_TRANSPORT_TRIGGER_KEYS.has(key) ||
-    isTransportClockStateKey(key as keyof SliderState);
+  // Start/stop edits must cross the resolved-state barrier before triggering
+  // audio. Timing drags are safe event diffs and stay on the 33 ms coalescing
+  // path so rapid pointer motion cannot flood the audio thread.
+  return SEQUENCER_TRANSPORT_TRIGGER_KEYS.has(key);
 }
 
 function isSequencerLaneEnabledPatchKey(key: string): boolean {

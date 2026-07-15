@@ -36,12 +36,11 @@ export class CoreProductRealtimeInputBootstrap {
     const { runtime } = this.options;
     if (this.options.runtimeReady()) return runtime.resume();
     if (!this.bootstrapPromise) {
-      this.bootstrapPromise = runtime.ensureStarted()
+      this.bootstrapPromise = runtime.resume()
         .then(() => {
           this.options.setRuntimeReady(true);
           return this.options.loadLatestSnapshot();
         })
-        .then(() => runtime.resume())
         .finally(() => {
           this.bootstrapPromise = null;
         });

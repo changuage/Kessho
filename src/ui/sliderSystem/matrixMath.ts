@@ -1,6 +1,12 @@
 import type { DualSliderRange } from '../DualSlider';
+import {
+  normToValue as sharedNormToValue,
+  quantizeToStep,
+  valueToNorm as sharedValueToNorm,
+} from './scale';
 
 export type MatrixCellHandle = 'single' | 'min' | 'max' | 'both';
+export type NumericRange = { min: number; max: number };
 export type QuantizationRange = { min: number; max: number; step: number };
 
 export const TRACK_PAD_PX = 6;
@@ -11,6 +17,34 @@ export const TOUCH_DRAG_INTENT_PX = 10;
 
 export function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
+}
+
+export function axisToNormalized(clientPosition: number, axisStart: number, axisLength: number): number {
+  return clamp01((clientPosition - axisStart) / Math.max(1, axisLength));
+}
+
+export function shiftRangePreservingWidth(
+  range: NumericRange,
+  delta: number,
+  lowerBound = 0,
+  upperBound = 1,
+): NumericRange {
+  const width = Math.min(upperBound - lowerBound, Math.max(0, range.max - range.min));
+  const min = Math.min(upperBound - width, Math.max(lowerBound, range.min + delta));
+  return { min, max: min + width };
+}
+
+export function getNearestRangeHandle(
+  value: number,
+  range: NumericRange,
+  threshold: number,
+): 'min' | 'max' | 'both' {
+  const safeThreshold = Math.max(0, threshold);
+  if (range.max - range.min <= safeThreshold * 2 && value >= range.min && value <= range.max) return 'both';
+  if (value <= range.min + safeThreshold) return 'min';
+  if (value >= range.max - safeThreshold) return 'max';
+  if (value > range.min && value < range.max) return 'both';
+  return Math.abs(value - range.min) <= Math.abs(value - range.max) ? 'min' : 'max';
 }
 
 export function quantize01(value: number): number {
@@ -26,22 +60,13 @@ export function normalizeUnitRange(range?: DualSliderRange): DualSliderRange | u
 
 export function pointerToTrackNorm(clientX: number, rect: DOMRect): number {
   const innerWidth = Math.max(1, rect.width - TRACK_PAD_PX * 2);
-  return clamp01((clientX - rect.left - TRACK_PAD_PX) / innerWidth);
+  return axisToNormalized(clientX, rect.left + TRACK_PAD_PX, innerWidth);
 }
 
 export function getDualHandle(norm: number, range: DualSliderRange, rect: DOMRect): MatrixCellHandle {
   const innerWidth = Math.max(1, rect.width - TRACK_PAD_PX * 2);
   const threshold = Math.min(0.18, EDGE_HANDLE_PX / innerWidth);
-  const bandWidth = range.max - range.min;
-
-  if (bandWidth <= threshold * 2 && norm >= range.min && norm <= range.max) {
-    return 'both';
-  }
-  if (norm < range.min - threshold) return 'min';
-  if (norm <= range.min + threshold) return 'min';
-  if (norm > range.max + threshold) return 'max';
-  if (norm >= range.max - threshold) return 'max';
-  return 'both';
+  return getNearestRangeHandle(norm, range, threshold);
 }
 
 export function trackLeftCalc(norm: number): string {
@@ -82,33 +107,16 @@ export function rangesEqual(a?: DualSliderRange, b?: DualSliderRange): boolean {
   return a.min === b.min && a.max === b.max;
 }
 
-function canUseLog(info: QuantizationRange, logarithmic?: boolean): boolean {
-  return Boolean(logarithmic && info.min > 0 && info.max > 0);
-}
-
 export function quantizeValue(value: number, info: QuantizationRange): number {
-  const clamped = Math.max(info.min, Math.min(info.max, value));
-  return info.min + Math.round((clamped - info.min) / info.step) * info.step;
+  return quantizeToStep(value, info);
 }
 
 export function valueToNorm(value: number, info: QuantizationRange, logarithmic?: boolean): number {
-  const safe = Math.max(info.min, Math.min(info.max, value));
-  if (canUseLog(info, logarithmic)) {
-    const minLog = Math.log(info.min);
-    const maxLog = Math.log(info.max);
-    return clamp01((Math.log(safe) - minLog) / (maxLog - minLog));
-  }
-  return clamp01((safe - info.min) / Math.max(1e-9, info.max - info.min));
+  return sharedValueToNorm(value, { ...info, scale: logarithmic ? 'log' : 'linear' });
 }
 
 export function normToValue(norm: number, info: QuantizationRange, logarithmic?: boolean): number {
-  const clampedNorm = clamp01(norm);
-  if (canUseLog(info, logarithmic)) {
-    const minLog = Math.log(info.min);
-    const maxLog = Math.log(info.max);
-    return Math.exp(minLog + clampedNorm * (maxLog - minLog));
-  }
-  return info.min + clampedNorm * (info.max - info.min);
+  return sharedNormToValue(norm, { ...info, scale: logarithmic ? 'log' : 'linear' });
 }
 
 export function normalizeQuantizedRange(
@@ -121,7 +129,7 @@ export function normalizeQuantizedRange(
   const max = quantizeValue(range.max, info);
   const normalizedMin = Math.max(info.min, Math.min(info.max, Math.min(min, max)));
   const normalizedMax = Math.max(info.min, Math.min(info.max, Math.max(min, max)));
-  if (canUseLog(info, logarithmic) && normalizedMin <= 0) {
+  if (logarithmic && info.min > 0 && info.max > 0 && normalizedMin <= 0) {
     return { min: info.min, max: normalizedMax };
   }
   return { min: normalizedMin, max: normalizedMax };

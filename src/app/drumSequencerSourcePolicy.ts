@@ -24,6 +24,12 @@ export function preserveRunningDrumSequencerSource(
   if (options.allowExplicitDrumDisable && previous.drumEnabled !== next.drumEnabled && next.drumEnabled === false) {
     return next;
   }
+  // Preserve an already-running source, but never invent source intent. Once the
+  // user turns drums off, unrelated state edits must not turn them back on just
+  // because the drum sequencer remains active.
+  if (previous.drumEnabled !== true) {
+    return next;
+  }
   if (!isDrumSequencerActive(previous) && !isDrumSequencerActive(next)) {
     return next;
   }

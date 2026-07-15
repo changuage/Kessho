@@ -14,12 +14,17 @@ struct QueuedProductEvent {
 struct SequencerBuffer {
   KesshoSequencerEvent events[kessho::product::generated::KESSHO_PRODUCT_MAX_SEQUENCER_EVENTS]{};
   uint32_t count = 0;
+  bool discard_events = false;
 
   void clear() {
     count = 0;
+    discard_events = false;
   }
 
   bool push(const KesshoSequencerEvent& event) {
+    if (discard_events) {
+      return true;
+    }
     if (count >= kessho::product::generated::KESSHO_PRODUCT_MAX_SEQUENCER_EVENTS) {
       return false;
     }

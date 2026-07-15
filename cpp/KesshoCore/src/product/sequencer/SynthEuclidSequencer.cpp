@@ -838,7 +838,7 @@ float captureRelativeStepFloatForSample(
   if (!lane.sequencer_runtime_initialized || lane.step_count == 0u || lane.clock_division == 0u) {
     return -1.0f;
   }
-  if (absolute_sample < lane.sequencer_start_sample_frame) {
+  if (static_cast<double>(absolute_sample) < static_cast<double>(lane.sequencer_start_sample_frame)) {
     return -1.0f;
   }
   const double samples_per_step =
@@ -1192,7 +1192,7 @@ bool generateAnchorWalkerLaneEvents(
       emitAnchorWalkerTrigger(engine, lane, walker, lane_index, event_sample, tick_index, pattern_index, gesture_delta, 1.0f, pitch_mask);
     }
   } else if (step_grid) {
-    if (block_end <= lane.sequencer_start_sample_frame) {
+    if (static_cast<double>(block_end) <= static_cast<double>(lane.sequencer_start_sample_frame)) {
       walker.runtime_sample_frame = block_end;
       lane.sequencer_runtime_sample_frame = block_end;
       return true;
@@ -1664,6 +1664,22 @@ bool generateOrbitLaneEvents(
   return true;
 }
 
+class ScopedSequencerAudibilityGate {
+ public:
+  ScopedSequencerAudibilityGate(SequencerBuffer& output, bool muted)
+      : output_(output), previous_discard_(output.discard_events) {
+    output_.discard_events = previous_discard_ || muted;
+  }
+
+  ~ScopedSequencerAudibilityGate() {
+    output_.discard_events = previous_discard_;
+  }
+
+ private:
+  SequencerBuffer& output_;
+  bool previous_discard_;
+};
+
 } // namespace
 
   void KesshoProductEngine::generateLaneEvents(
@@ -1676,6 +1692,7 @@ bool generateOrbitLaneEvents(
   const bool macro_evolution_active = evolutionDepth() > 0.000001f;
   for (uint32_t lane_index = 0; lane_index < lane_count; ++lane_index) {
     LaneState& lane = lanes[lane_index];
+    ScopedSequencerAudibilityGate audibility_gate(out, lane.muted);
     if (lane.sequencer_mode == kSequencerModeAnchorWalker) {
       if (!generateAnchorWalkerLaneEvents(*this, lane, lane_index, frames, out)) {
         return;
@@ -1721,7 +1738,7 @@ bool generateOrbitLaneEvents(
     if (!drainPendingRatchets(lane, block_start, block_end, *this, out, telemetry)) {
       return;
     }
-    if (block_end <= lane.sequencer_start_sample_frame) {
+    if (static_cast<double>(block_end) <= static_cast<double>(lane.sequencer_start_sample_frame)) {
       lane.sequencer_runtime_sample_frame = block_end;
       continue;
     }

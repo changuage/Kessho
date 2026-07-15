@@ -59,7 +59,7 @@ bool exactParamBlockEmpty(uint32_t count, const float* values, uint32_t param_co
 struct SequencerLaneRuntimePhase {
   uint64_t emitted_hit_count = 0u;
   uint64_t sequencer_runtime_sample_frame = 0u;
-  uint64_t sequencer_start_sample_frame = 0u;
+  int64_t sequencer_start_sample_frame = 0;
 };
 
 double wrappedAngleDistance(double left, double right) {
@@ -871,6 +871,7 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     }
     lanes[i].sequencer_mode = next_mode;
     lanes[i].enabled = lane.enabled != 0u;
+    lanes[i].muted = lane.muted != 0u;
     (void) fallback_source;
     lanes[i].target_source_id = lane.target_source_id;
     const bool pad_lane =

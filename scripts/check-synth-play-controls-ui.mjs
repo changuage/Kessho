@@ -4,6 +4,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 const root = process.cwd();
 const DEFAULT_PORT = 4209;
+const PRODUCT_RUNTIME_TELEMETRY_PROBE_SELECTOR = '[data-testid="product-runtime-telemetry-probe"]';
 const VIEWPORTS = Object.freeze([
   { width: 1440, height: 1200 },
   { width: 390, height: 844 },
@@ -127,6 +128,7 @@ function appUrl(baseUrl) {
   url.searchParams.set('engineAB', '1');
   url.searchParams.set('localPresets', '1');
   url.searchParams.set('advanced', '1');
+  url.searchParams.set('parity', '1');
   return url.toString();
 }
 
@@ -136,6 +138,57 @@ function ignoredConsoleError(text) {
     text.includes('Failed to load resource: net::ERR_CONNECTION_REFUSED') ||
     text.includes('Failed to load resource: net::ERR_CONNECTION_RESET') ||
     text.includes('status of 429');
+}
+
+async function sampleSynthSequencerRuntime(page, sampleCount = 20) {
+  return page.evaluate(async ({ count, selector }) => {
+    const samples = [];
+    for (let index = 0; index < count; index += 1) {
+      const telemetry = JSON.parse(document.querySelector(selector)?.textContent ?? '{}');
+      samples.push({
+        running: telemetry.running === true,
+        step: telemetry.synthStep ?? null,
+        hitCount: telemetry.synthHitCount ?? null,
+      });
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+    }
+    return samples;
+  }, { count: sampleCount, selector: PRODUCT_RUNTIME_TELEMETRY_PROBE_SELECTOR });
+}
+
+async function readTransportRuntime(page) {
+  return page.evaluate((selector) => {
+    const telemetry = JSON.parse(document.querySelector(selector)?.textContent ?? '{}');
+    return {
+      running: telemetry.running === true,
+      phraseSeconds: telemetry.phraseSeconds ?? null,
+      pending: telemetry.transitionPending === true,
+      pendingPhraseSeconds: telemetry.pendingPhraseSeconds ?? null,
+      revision: telemetry.transitionRevision ?? 0,
+    };
+  }, PRODUCT_RUNTIME_TELEMETRY_PROBE_SELECTOR);
+}
+
+async function waitForTransportBoundary(page, baselineRevision, timeoutMs = 20000) {
+  return page.evaluate(async ({ revision, selector, timeout }) => {
+    const deadline = performance.now() + timeout;
+    const samples = [];
+    while (performance.now() < deadline) {
+      const telemetry = JSON.parse(document.querySelector(selector)?.textContent ?? '{}');
+      const sample = {
+        running: telemetry.running === true,
+        phraseSeconds: telemetry.phraseSeconds ?? null,
+        pending: telemetry.transitionPending === true,
+        revision: telemetry.transitionRevision ?? 0,
+        step: telemetry.synthStep ?? null,
+        hitCount: telemetry.synthHitCount ?? null,
+      };
+      samples.push(sample);
+      if (sample.revision > revision) return { applied: sample, samples };
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+    }
+    return { applied: null, samples };
+  }, { revision: baselineRevision, selector: PRODUCT_RUNTIME_TELEMETRY_PROBE_SELECTOR, timeout: timeoutMs });
 }
 
 async function verifyViewport(chromium, baseUrl, viewport) {
@@ -231,6 +284,14 @@ async function verifyViewport(chromium, baseUrl, viewport) {
     assert(!labels.some((label) => label === 'FREE'), 'Chord labels should not show FREE for captured/default Harmony slots', { viewport, labels });
     assert(stepTexts.includes('16'), 'Chord Play grid is missing stored step 16', { viewport, stepTexts });
 
+    const firstChordLabel = page.locator('.seq-play-chord-label').first();
+    await firstChordLabel.click();
+    assert(
+      !(await firstChordLabel.getAttribute('class'))?.includes('muted'),
+      'Chord Play runtime proof needs an active audible step',
+      { viewport },
+    );
+
     await page.locator('.seq-play-mode-header .seq-lane-enable-btn').first().click();
     await page.waitForTimeout(300);
     const afterEnableClass = await playStrip.getAttribute('class');
@@ -238,6 +299,20 @@ async function verifyViewport(chromium, baseUrl, viewport) {
 
     await page.getByText('Global', { exact: true }).click();
     await page.waitForTimeout(300);
+    const offPageRuntimeSamples = await sampleSynthSequencerRuntime(page);
+    const runningSamples = offPageRuntimeSamples.filter((sample) => sample.running);
+    const observedSteps = new Set(runningSamples.map((sample) => sample.step).filter((step) => step !== null));
+    const observedHitCounts = runningSamples.map((sample) => sample.hitCount).filter((count) => count !== null);
+    const hitCountAdvanced = observedHitCounts.length > 1 && Math.max(...observedHitCounts) > Math.min(...observedHitCounts);
+    assert(runningSamples.length > 0, 'Transport must remain running after navigating away from Synth', {
+      viewport,
+      offPageRuntimeSamples,
+    });
+    assert(
+      observedSteps.size > 1 || hitCountAdvanced,
+      'Synth sequencer runtime must continue advancing while the Synth page is unmounted',
+      { viewport, offPageRuntimeSamples },
+    );
     const transportSection = page.getByText('Transport & Sync', { exact: true });
     const phraseSlider = page.locator('.sl-slider').filter({ hasText: 'Phrase Seconds' }).first();
     if (!(await phraseSlider.isVisible())) await transportSection.click();
@@ -246,11 +321,16 @@ async function verifyViewport(chromium, baseUrl, viewport) {
     const phraseSummary = page.getByText(/phrase is the master clock and derives/i).first();
     const summaryBeforeDrag = await phraseSummary.textContent();
     const sliderValueBeforeDrag = await phraseSlider.locator('.sl-slider-value').textContent();
+    const transportBeforeDrag = await readTransportRuntime(page);
     const phraseRailBox = await phraseRail.boundingBox();
+    const phraseThumbBox = await phraseSlider.locator('.sl-slider-thumb').boundingBox();
     assert(phraseRailBox, 'Phrase Seconds rail must have a measurable drag target', { viewport });
-    await page.mouse.move(phraseRailBox.x + phraseRailBox.width * 0.3, phraseRailBox.y + phraseRailBox.height / 2);
+    assert(phraseThumbBox, 'Phrase Seconds thumb must have a measurable drag target', { viewport });
+    await page.mouse.move(phraseThumbBox.x + phraseThumbBox.width / 2, phraseThumbBox.y + phraseThumbBox.height / 2);
     await page.mouse.down();
-    await page.mouse.move(phraseRailBox.x + phraseRailBox.width * 0.8, phraseRailBox.y + phraseRailBox.height / 2, { steps: 12 });
+    const phrase32Percent = (32 - 4) / (128 - 4);
+    await page.mouse.move(phraseRailBox.x + phraseRailBox.width * phrase32Percent, phraseRailBox.y + phraseRailBox.height / 2, { steps: 12 });
+    const dragRuntimeSamples = await sampleSynthSequencerRuntime(page, 12);
     const summaryDuringDrag = await phraseSummary.textContent();
     const sliderValueDuringDrag = await phraseSlider.locator('.sl-slider-value').textContent();
     assert(summaryDuringDrag === summaryBeforeDrag, 'Phrase Seconds drag must not commit application state before pointer release', {
@@ -263,6 +343,17 @@ async function verifyViewport(chromium, baseUrl, viewport) {
       sliderValueBeforeDrag,
       sliderValueDuringDrag,
     });
+    assert(sliderValueDuringDrag?.trim() === '32', 'Phrase Seconds drag should preview the requested 32-second phrase', {
+      viewport,
+      sliderValueDuringDrag,
+    });
+    const dragSteps = new Set(dragRuntimeSamples.filter((sample) => sample.running).map((sample) => sample.step).filter((step) => step !== null));
+    const dragHitCounts = dragRuntimeSamples.map((sample) => sample.hitCount).filter((count) => count !== null);
+    assert(
+      dragRuntimeSamples.every((sample) => sample.running) && (dragSteps.size > 1 || Math.max(...dragHitCounts) > Math.min(...dragHitCounts)),
+      'Synth sequencer playback must continue on the active clock throughout a Phrase Seconds drag',
+      { viewport, dragRuntimeSamples },
+    );
     await page.mouse.up();
     await page.waitForTimeout(300);
     const summaryAfterRelease = await phraseSummary.textContent();
@@ -270,6 +361,42 @@ async function verifyViewport(chromium, baseUrl, viewport) {
       viewport,
       summaryBeforeDrag,
       summaryAfterRelease,
+    });
+    const transportAfterRelease = await readTransportRuntime(page);
+    assert(transportAfterRelease.running, 'Transport must remain running after Phrase Seconds release', {
+      viewport,
+      transportAfterRelease,
+    });
+    if (transportAfterRelease.revision === transportBeforeDrag.revision) {
+      assert(transportAfterRelease.pending, 'Released Phrase Seconds should stage one native transport transition', {
+        viewport,
+        transportBeforeDrag,
+        transportAfterRelease,
+      });
+      assert(
+        transportAfterRelease.phraseSeconds === transportBeforeDrag.phraseSeconds,
+        'Active phrase timing must remain unchanged before the boundary',
+        { viewport, transportBeforeDrag, transportAfterRelease },
+      );
+      assert(transportAfterRelease.pendingPhraseSeconds === 32, 'The pending native phrase should be exactly 32 seconds', {
+        viewport,
+        transportAfterRelease,
+      });
+    }
+    const boundaryResult = await waitForTransportBoundary(page, transportBeforeDrag.revision);
+    assert(boundaryResult.applied, 'Phrase Seconds transition did not apply at the next phrase boundary', {
+      viewport,
+      transportBeforeDrag,
+      transportAfterRelease,
+      samples: boundaryResult.samples.slice(-20),
+    });
+    assert(boundaryResult.samples.every((sample) => sample.running), 'Transport must not stop while waiting for the new phrase timing', {
+      viewport,
+      samples: boundaryResult.samples,
+    });
+    assert(boundaryResult.applied?.phraseSeconds === 32, 'The new phrase must begin with the staged 32-second timing', {
+      viewport,
+      applied: boundaryResult.applied,
     });
 
     await page.getByText('Synth', { exact: true }).click();

@@ -48,6 +48,10 @@ export const coreProductRuntimeHostPort = {
     return callCoreProductHost<Promise<void>>('start', initialState);
   },
 
+  primeAudioContext(): void {
+    callCoreProductHost<void>('primeAudioContext');
+  },
+
   stop(): Promise<void> { return Promise.resolve(callCoreProductHost<void>('stop')); },
 
   suspend(): Promise<void> {

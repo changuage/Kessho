@@ -37,17 +37,25 @@ type CoreProductHostLifecycleCoordinatorOptions = {
 export class CoreProductHostLifecycleCoordinator {
   constructor(private readonly options: CoreProductHostLifecycleCoordinatorOptions) {}
 
+  private publishParityStartupPhase(phase: string): void {
+    if (typeof window === 'undefined' || new URLSearchParams(window.location.search).get('parity') !== '1') return;
+    document.documentElement.dataset.coreProductRuntimePhase = phase;
+  }
+
   async start(sliderState?: Record<string, unknown>): Promise<void> {
     if (sliderState) {
       this.options.setLatestSliderState({ ...sliderState });
     }
-    await this.options.runtime.ensureStarted();
+    await this.options.runtime.resume();
+    this.publishParityStartupPhase('runtime-resumed');
     this.options.setRuntimeReady(true);
     await this.options.assetRegistrar.ensureDefaultAssetsForState();
+    this.publishParityStartupPhase('assets-ready');
     this.options.resetSequencerEvolveState();
-    await this.options.runtime.resume();
     await this.options.loadLatestSnapshot('runtime-start', true, true);
+    this.publishParityStartupPhase('snapshot-ready');
     this.startRunningSurfaces();
+    this.publishParityStartupPhase('running');
     this.options.modulationRangeBridge.flushModulationRanges();
     this.options.arrangementBridge.start(this.options.latestSliderState(), this.options.adapterState());
     this.options.publishStateChange(true);

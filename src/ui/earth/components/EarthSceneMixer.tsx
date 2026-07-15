@@ -6,10 +6,17 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { DualSliderRange } from '../../DualSlider';
 import { QUANTIZATION, type SliderMode, type SliderState } from '../../state';
+import {
+  axisToNormalized,
+  getNearestRangeHandle,
+  releasePointerCaptureSafely,
+  shiftRangePreservingWidth,
+} from '../../sliderSystem/matrixMath';
 
 type BooleanSliderKey = {
   [K in keyof SliderState]: SliderState[K] extends boolean ? K : never
@@ -140,11 +147,7 @@ function quantizeValue(key: NumericSliderKey, value: number): number {
 }
 
 function valueFromRailClientY(rect: DOMRect, clientY: number): number {
-  return clamp(1 - ((clientY - rect.top) / rect.height), 0, 1);
-}
-
-function railClientY(rect: DOMRect, value: number): number {
-  return rect.top + (1 - clamp(value, 0, 1)) * rect.height;
+  return 1 - axisToNormalized(clientY, rect.top, rect.height);
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -884,6 +887,7 @@ const SceneRail = memo(function SceneRail({
   highlighted,
   onPointerDown,
   onDoubleClick,
+  onKeyDown,
 }: {
   zone: ZoneData;
   kind: RailKind;
@@ -895,6 +899,12 @@ const SceneRail = memo(function SceneRail({
     event: ReactPointerEvent<HTMLDivElement>,
   ) => void;
   onDoubleClick: (zone: ZoneData, kind: RailKind) => void;
+  onKeyDown: (
+    zone: ZoneData,
+    kind: RailKind,
+    target: RailDragTarget,
+    event: KeyboardEvent<HTMLElement>,
+  ) => void;
 }) {
   const rail = kind === 'level' ? zone.levelRail : zone.reverbRail;
   const dualRange = rail.mode !== 'single' && rail.dualRange && rail.key ? rail.dualRange : null;
@@ -912,6 +922,13 @@ const SceneRail = memo(function SceneRail({
         onDoubleClick(zone, kind);
       }}
       title={rail.key ? `${kind === 'level' ? 'Level' : 'Reverb'} rail • double-click to cycle single / walk / S&H` : undefined}
+      role={rail.key && !isDualMode ? 'slider' : undefined}
+      tabIndex={rail.key && !isDualMode ? 0 : -1}
+      aria-label={rail.key && !isDualMode ? `${zone.label} ${kind}` : undefined}
+      aria-valuemin={rail.key && !isDualMode ? 0 : undefined}
+      aria-valuemax={rail.key && !isDualMode ? 1 : undefined}
+      aria-valuenow={rail.key && !isDualMode ? rail.currentValue : undefined}
+      onKeyDown={(event) => onKeyDown(zone, kind, 'single', event)}
     >
       <div className="earth-scene-rail-track" />
       {isDualMode && (
@@ -945,11 +962,25 @@ const SceneRail = memo(function SceneRail({
           <div
             className="earth-scene-rail-handle earth-scene-rail-handle-max"
             style={{ bottom: `${maxValue * 100}%` }}
+            role={isDualMode ? 'slider' : undefined}
+            tabIndex={isDualMode ? 0 : -1}
+            aria-label={isDualMode ? `${zone.label} ${kind} maximum` : undefined}
+            aria-valuemin={isDualMode ? minValue : undefined}
+            aria-valuemax={isDualMode ? 1 : undefined}
+            aria-valuenow={isDualMode ? maxValue : undefined}
+            onKeyDown={(event) => onKeyDown(zone, kind, 'max', event)}
           />
           {isDualMode && (
             <div
               className="earth-scene-rail-handle earth-scene-rail-handle-min"
               style={{ bottom: `${minValue * 100}%` }}
+              role="slider"
+              tabIndex={0}
+              aria-label={`${zone.label} ${kind} minimum`}
+              aria-valuemin={0}
+              aria-valuemax={maxValue}
+              aria-valuenow={minValue}
+              onKeyDown={(event) => onKeyDown(zone, kind, 'min', event)}
             />
           )}
         </>
@@ -966,6 +997,7 @@ const SceneZone = memo(function SceneZone({
   onPointerDown,
   onRailPointerDown,
   onRailDoubleClick,
+  onRailKeyDown,
 }: {
   zone: ZoneData;
   highlighted: boolean;
@@ -979,6 +1011,12 @@ const SceneZone = memo(function SceneZone({
     event: ReactPointerEvent<HTMLDivElement>,
   ) => void;
   onRailDoubleClick: (zone: ZoneData, kind: RailKind) => void;
+  onRailKeyDown: (
+    zone: ZoneData,
+    kind: RailKind,
+    target: RailDragTarget,
+    event: KeyboardEvent<HTMLElement>,
+  ) => void;
 }) {
   const visualOpacity = 0.18 + zone.level * 0.9;
   const visualScale = zone.id === 'waves'
@@ -1006,6 +1044,7 @@ const SceneZone = memo(function SceneZone({
         highlighted={highlighted && dragAxis === 'reverb'}
         onPointerDown={onRailPointerDown}
         onDoubleClick={onRailDoubleClick}
+        onKeyDown={onRailKeyDown}
       />
       <SceneRail
         zone={zone}
@@ -1013,6 +1052,7 @@ const SceneZone = memo(function SceneZone({
         highlighted={highlighted && dragAxis === 'level'}
         onPointerDown={onRailPointerDown}
         onDoubleClick={onRailDoubleClick}
+        onKeyDown={onRailKeyDown}
       />
       <div
         className="earth-scene-zone-visual"
@@ -1069,7 +1109,9 @@ export function EarthSceneMixer({ state, onParamChange, onSelectChange, sliderPr
     key: NumericSliderKey;
     element: HTMLDivElement;
     target: RailDragTarget;
+    pointerId: number;
     startValue: number;
+    startCurrent: number;
     startMin: number;
     startMax: number;
   } | null>(null);
@@ -1176,18 +1218,14 @@ export function EarthSceneMixer({ state, onParamChange, onSelectChange, sliderPr
       return;
     }
 
-    const delta = rawValue - drag.startValue;
-    let nextMin = drag.startMin + delta;
-    let nextMax = drag.startMax + delta;
-    const span = drag.startMax - drag.startMin;
-    if (nextMin < q.min) {
-      nextMin = q.min;
-      nextMax = q.min + span;
-    }
-    if (nextMax > q.max) {
-      nextMax = q.max;
-      nextMin = q.max - span;
-    }
+    const shifted = shiftRangePreservingWidth(
+      { min: drag.startMin, max: drag.startMax },
+      rawValue - drag.startValue,
+      q.min,
+      q.max,
+    );
+    let nextMin = shifted.min;
+    let nextMax = shifted.max;
     nextMin = quantizeValue(drag.key, nextMin);
     nextMax = quantizeValue(drag.key, nextMax);
     if (nextMax < nextMin) {
@@ -1240,11 +1278,23 @@ export function EarthSceneMixer({ state, onParamChange, onSelectChange, sliderPr
 
     const handleMove = (event: PointerEvent) => {
       const drag = railDragRef.current;
-      if (!drag) return;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      if (event.pointerType === 'touch') event.preventDefault();
       handleRailValueChange(drag, event.clientY);
     };
 
-    const handleUp = () => {
+    const handleUp = (event: PointerEvent) => {
+      const drag = railDragRef.current;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      if (event.type === 'pointercancel') {
+        const slider = sliderProps(drag.key);
+        if (drag.target === 'single' || !slider.dualRange) {
+          onParamChange(drag.key, drag.startCurrent);
+        } else {
+          slider.onDualRangeChange?.(drag.key, drag.startMin, drag.startMax);
+        }
+      }
+      releasePointerCaptureSafely(drag.element, drag.pointerId);
       setRailDragState(null);
       setHoveredZoneId(null);
       railDragRef.current = null;
@@ -1257,8 +1307,10 @@ export function EarthSceneMixer({ state, onParamChange, onSelectChange, sliderPr
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
       window.removeEventListener('pointercancel', handleUp);
+      const drag = railDragRef.current;
+      if (drag) releasePointerCaptureSafely(drag.element, drag.pointerId);
     };
-  }, [handleRailValueChange, railDragState]);
+  }, [handleRailValueChange, onParamChange, railDragState, sliderProps]);
 
   const handleZonePointerDown = useCallback((
     zone: ZoneData,
@@ -1300,17 +1352,9 @@ export function EarthSceneMixer({ state, onParamChange, onSelectChange, sliderPr
     let target: RailDragTarget = 'single';
 
     if (rail.mode !== 'single' && rail.dualRange) {
-      const minY = railClientY(rect, minValue);
-      const maxY = railClientY(rect, maxValue);
-      if (Math.abs(clientY - minY) <= BAR_HANDLE_PX) {
-        target = 'min';
-      } else if (Math.abs(clientY - maxY) <= BAR_HANDLE_PX) {
-        target = 'max';
-      } else if (clientY >= maxY && clientY <= minY) {
-        target = 'range';
-      } else {
-        target = Math.abs(clientY - minY) < Math.abs(clientY - maxY) ? 'min' : 'max';
-      }
+      const pointerValue = valueFromRailClientY(rect, clientY);
+      const handle = getNearestRangeHandle(pointerValue, rail.dualRange, BAR_HANDLE_PX / Math.max(1, rect.height));
+      target = handle === 'both' ? 'range' : handle;
     }
 
     railDragRef.current = {
@@ -1319,14 +1363,47 @@ export function EarthSceneMixer({ state, onParamChange, onSelectChange, sliderPr
       key: rail.key,
       element,
       target,
+      pointerId: event.pointerId,
       startValue: valueFromRailClientY(rect, clientY),
+      startCurrent: currentValue,
       startMin: minValue,
       startMax: maxValue,
     };
+    try { element.setPointerCapture(event.pointerId); } catch { /* Pointer may already be cancelled. */ }
     setHoveredZoneId(zone.id);
     setRailDragState({ zoneId: zone.id, axis: kind });
     handleRailValueChange(railDragRef.current, clientY);
   }, [handleRailValueChange]);
+
+  const handleRailKeyDown = useCallback((
+    zone: ZoneData,
+    kind: RailKind,
+    target: RailDragTarget,
+    event: KeyboardEvent<HTMLElement>,
+  ) => {
+    const rail = kind === 'level' ? zone.levelRail : zone.reverbRail;
+    if (!rail.key) return;
+    const q = quantizationFor(rail.key);
+    if (!q) return;
+    const range = rail.dualRange;
+    const current = target === 'min' ? (range?.min ?? rail.currentValue)
+      : target === 'max' ? (range?.max ?? rail.currentValue)
+        : rail.currentValue;
+    const increment = q.step * (event.shiftKey ? 10 : 1);
+    let next: number | null = null;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') next = current - increment;
+    else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') next = current + increment;
+    else if (event.key === 'Home') next = q.min;
+    else if (event.key === 'End') next = q.max;
+    if (next === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const quantized = quantizeValue(rail.key, next);
+    const slider = sliderProps(rail.key);
+    if (target === 'single' || !range) onParamChange(rail.key, quantized);
+    else if (target === 'min') slider.onDualRangeChange?.(rail.key, Math.min(quantized, range.max), range.max);
+    else slider.onDualRangeChange?.(rail.key, range.min, Math.max(quantized, range.min));
+  }, [onParamChange, sliderProps]);
 
   const handleRailDoubleClick = useCallback((zone: ZoneData, kind: RailKind) => {
     const rail = kind === 'level' ? zone.levelRail : zone.reverbRail;
@@ -1404,6 +1481,7 @@ export function EarthSceneMixer({ state, onParamChange, onSelectChange, sliderPr
                   onPointerDown={handleZonePointerDown}
                   onRailPointerDown={handleRailPointerDown}
                   onRailDoubleClick={handleRailDoubleClick}
+                  onRailKeyDown={handleRailKeyDown}
                 />
               ))}
             </div>

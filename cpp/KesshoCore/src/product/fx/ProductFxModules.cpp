@@ -1,5 +1,35 @@
 #include "../KesshoProductEngineInternal.h"
 
+void KesshoProductEngine::retimeTempoSyncedFx(float previous_bpm) {
+  if (!std::isfinite(previous_bpm) || !std::isfinite(transport.bpm) ||
+      previous_bpm <= 0.0f || transport.bpm <= 0.0f ||
+      std::fabs(previous_bpm - transport.bpm) <= 0.0001f) {
+    return;
+  }
+  const float tempo_ratio = previous_bpm / transport.bpm;
+  fx.delay_a_time_left_ms = clampFloat(fx.delay_a_time_left_ms * tempo_ratio, 10.0f, 5000.0f);
+  fx.delay_a_time_right_ms = clampFloat(fx.delay_a_time_right_ms * tempo_ratio, 10.0f, 5000.0f);
+  fx.delay_b_base_time_ms = clampFloat(fx.delay_b_base_time_ms * tempo_ratio, 20.0f, 5000.0f);
+
+  // A live tempo drag can produce many control events per second. Only publish
+  // the three affected delay parameters instead of rebuilding every FX module.
+  if (delay_a_module) {
+    float* params = delay_a_module->params();
+    if (params != nullptr && delay_a_module->paramCount() >= 3) {
+      params[1] = fx.delay_a_time_left_ms;
+      params[2] = fx.delay_a_time_right_ms;
+      delay_a_module->commitParams();
+    }
+  }
+  if (delay_b_module) {
+    float* params = delay_b_module->params();
+    if (params != nullptr && delay_b_module->paramCount() >= 4) {
+      params[3] = fx.delay_b_base_time_ms;
+      delay_b_module->commitParams();
+    }
+  }
+}
+
 void KesshoProductEngine::configureFxModules() {
   if (delay_a_module) {
     float* params = delay_a_module->params();

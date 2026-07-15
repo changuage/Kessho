@@ -1,4 +1,5 @@
 import React from 'react';
+import { resolveEffectiveSliderValue } from '../sliderSystem/effectiveValue';
 import type { DualSliderRange } from '../DualSlider';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import type { SliderPageId } from '../sliderHelpCatalog';
@@ -17,6 +18,7 @@ import {
   quantize01,
   rangesEqual,
   releasePointerCaptureSafely,
+  shiftRangePreservingWidth,
   setSliderTouchSelectionLock,
   trackLeftCalc,
   trackWidthCalc,
@@ -545,11 +547,12 @@ const RoutingMatrixCellIndicatorLayer = React.memo(function RoutingMatrixCellInd
     fallbackWalkPosition,
     fallbackFlashing,
   );
-  const indicatorNorm = range
-    ? clamp01(
-      range.min + (clamp01(runtimeIndicator.walkPosition ?? fallbackWalkPosition ?? value) * (range.max - range.min)),
-    )
-    : value;
+  const indicatorNorm = clamp01(resolveEffectiveSliderValue({
+    authoredValue: value,
+    mode,
+    range: range ? [range.min, range.max] : undefined,
+    runtimePosition: runtimeIndicator.walkPosition ?? fallbackWalkPosition,
+  }));
 
   return (
     <>
@@ -686,6 +689,29 @@ export default function RoutingMatrix({
     setDraggingId(null);
     return true;
   }, []);
+
+  const cancelDrag = React.useCallback((dragId: string, pointerId: number) => {
+    const drag = dragStateRef.current;
+    if (!drag || drag.dragId !== dragId || drag.pointerId !== pointerId) return false;
+    if (drag.kind === 'cell') {
+      if (drag.mode === 'single' || !drag.startRange) {
+        onParamChange(drag.key, drag.startValue);
+      } else {
+        drag.onDualRangeChange(drag.key, drag.startRange.min, drag.startRange.max);
+      }
+    } else {
+      for (const target of drag.targets) {
+        if (target.mode === 'single' || !target.startRange) {
+          (onColumnParamChange ?? onParamChange)(target.key, target.startValue);
+        } else {
+          target.onDualRangeChange(target.key, target.startRange.min, target.startRange.max);
+        }
+      }
+    }
+    dragStateRef.current = null;
+    setDraggingId(null);
+    return true;
+  }, [onColumnParamChange, onParamChange]);
 
   const resetInteraction = React.useCallback(() => {
     clearLongPress();
@@ -848,12 +874,14 @@ export default function RoutingMatrix({
         max: quantize01(Math.max(pointerNorm, drag.startRange.min)),
       };
     } else {
-      const widthNorm = drag.startRange.max - drag.startRange.min;
-      const rawMin = drag.startRange.min + (pointerNorm - drag.startPointerNorm);
-      const nextMin = quantize01(Math.min(Math.max(0, rawMin), 1 - widthNorm));
+      const shifted = shiftRangePreservingWidth(
+        drag.startRange,
+        pointerNorm - drag.startPointerNorm,
+      );
+      const nextMin = quantize01(shifted.min);
       nextRange = {
         min: nextMin,
-        max: quantize01(nextMin + widthNorm),
+        max: quantize01(nextMin + (drag.startRange.max - drag.startRange.min)),
       };
     }
 
@@ -937,7 +965,7 @@ export default function RoutingMatrix({
           resetInteraction();
         }}
         onPointerCancel={(event) => {
-          stopDrag(headerId, event.pointerId);
+          cancelDrag(headerId, event.pointerId);
           releasePointerCaptureSafely(event.currentTarget, event.pointerId);
           resetInteraction();
         }}
@@ -945,7 +973,7 @@ export default function RoutingMatrix({
         <span className="routing-matrix-header-label">{column.label}</span>
       </button>
     );
-  }, [announceHelp, applyColumnDrag, clearLongPress, draggingId, helpPage, resetInteraction, sliderProps, startColumnDrag, state, stopDrag, visibleRows]);
+  }, [announceHelp, applyColumnDrag, cancelDrag, clearLongPress, draggingId, helpPage, resetInteraction, sliderProps, startColumnDrag, state, stopDrag, visibleRows]);
 
   const renderDynamicsCell = React.useCallback((row: MatrixRow, rowEnabled: boolean, suffix = '') => {
     const route = DYNAMICS_ROUTE_BY_ROW[row.id];
@@ -1023,15 +1051,45 @@ export default function RoutingMatrix({
       && dragStateRef.current.dragId === cellId
       ? dragStateRef.current.handle
       : null;
+    const handleKeyboard = (
+      handle: 'single' | 'min' | 'max',
+      event: React.KeyboardEvent<HTMLElement>,
+    ) => {
+      if (!route || !runtime) return;
+      const increment = event.shiftKey ? 0.1 : 0.01;
+      const currentValue = handle === 'single' ? value : (range?.[handle] ?? value);
+      let next: number | null = null;
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') next = currentValue - increment;
+      else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') next = currentValue + increment;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = 1;
+      if (next === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const normalized = quantize01(next);
+      if (handle === 'single' || !range) {
+        onParamChange(route.key, normalized);
+      } else if (handle === 'min') {
+        runtime.onDualRangeChange?.(route.key, Math.min(normalized, range.max), range.max);
+      } else {
+        runtime.onDualRangeChange?.(route.key, range.min, Math.max(normalized, range.min));
+      }
+    };
 
     return (
-      <button
+      <div
         key={cellId}
-        type="button"
         className={`routing-matrix-cell ${cell.kind}${column.id === 'level' ? ' level-col' : ''}${draggingId === cellId ? ' dragging' : ''}${offInAll ? ' source-off' : ''}`}
         style={{ '--row-accent': offInAll ? '#7e8794' : row.accent } as React.CSSProperties}
         title={cell.note ?? row.note}
-        disabled={cell.kind !== 'editable' || !route}
+        aria-disabled={cell.kind !== 'editable' || !route}
+        role={cell.kind === 'editable' && route && mode === 'single' ? 'slider' : undefined}
+        tabIndex={cell.kind === 'editable' && route && mode === 'single' ? 0 : -1}
+        aria-label={cell.kind === 'editable' && route && mode === 'single' ? route.label : undefined}
+        aria-valuemin={cell.kind === 'editable' && route && mode === 'single' ? 0 : undefined}
+        aria-valuemax={cell.kind === 'editable' && route && mode === 'single' ? 1 : undefined}
+        aria-valuenow={cell.kind === 'editable' && route && mode === 'single' ? value : undefined}
+        onKeyDown={(event) => handleKeyboard('single', event)}
         onMouseEnter={() => {
           if (!route) return;
           announceSlider(String(route.key), { page: helpPage });
@@ -1175,7 +1233,7 @@ export default function RoutingMatrix({
           resetInteraction();
         }}
         onPointerCancel={(event) => {
-          stopDrag(cellId, event.pointerId);
+          cancelDrag(cellId, event.pointerId);
           releasePointerCaptureSafely(event.currentTarget, event.pointerId);
           resetInteraction();
         }}
@@ -1206,10 +1264,24 @@ export default function RoutingMatrix({
                 <span
                   className={`routing-matrix-cell-edge min${activeHandle === 'min' || activeHandle === 'both' ? ' active' : ''}`}
                   style={{ left: trackLeftCalc(range.min) }}
+                  role="slider"
+                  tabIndex={0}
+                  aria-label={`${route?.label ?? row.label} minimum`}
+                  aria-valuemin={0}
+                  aria-valuemax={range.max}
+                  aria-valuenow={range.min}
+                  onKeyDown={(event) => handleKeyboard('min', event)}
                 />
                 <span
                   className={`routing-matrix-cell-edge max${activeHandle === 'max' || activeHandle === 'both' ? ' active' : ''}`}
                   style={{ left: trackLeftCalc(range.max) }}
+                  role="slider"
+                  tabIndex={0}
+                  aria-label={`${route?.label ?? row.label} maximum`}
+                  aria-valuemin={range.min}
+                  aria-valuemax={1}
+                  aria-valuenow={range.max}
+                  onKeyDown={(event) => handleKeyboard('max', event)}
                 />
               </>
             )}
@@ -1230,11 +1302,12 @@ export default function RoutingMatrix({
         {cell.kind !== 'editable' && (
           <span className="routing-matrix-cell-static">{readout}</span>
         )}
-      </button>
+      </div>
     );
   }, [
     announceSlider,
     applyCellDrag,
+    cancelDrag,
     clearLongPress,
     draggingId,
     helpPage,

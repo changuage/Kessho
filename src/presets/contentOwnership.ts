@@ -118,8 +118,8 @@ const METADATA_OWNERS: Readonly<Record<string, PresetPersistenceOwner>> = Object
 });
 
 function isSequencerBindingKey(key: string): boolean {
-  return /^synthEuclid\d+(?:Enabled|Solo|Level|Source|VoiceMask)$/.test(key)
-    || /^drumEuclid\d+(?:Enabled|Solo|Level|Target[A-Za-z0-9]+)$/.test(key);
+  return /^synthEuclid\d+(?:Enabled|Solo|Level|Source|VoiceMask|ResumeQuantization)$/.test(key)
+    || /^drumEuclid\d+(?:Enabled|Solo|Level|ResumeQuantization|Target[A-Za-z0-9]+)$/.test(key);
 }
 
 function isMixBindingKey(key: string, level: ParamLevel): boolean {

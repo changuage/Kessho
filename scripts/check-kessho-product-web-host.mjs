@@ -2228,9 +2228,9 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 151444',
+  'const SNAPSHOT_BYTES = 151572',
   'const SOURCE_BYTES = 5188',
-  'const LANE_BYTES = 96',
+  'const LANE_BYTES = 100',
   'KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES',
   'KESSHO_PRODUCT_DRUM_PARAM_COUNT',
   'KESSHO_PRODUCT_DRUM_VOICE_COUNT',

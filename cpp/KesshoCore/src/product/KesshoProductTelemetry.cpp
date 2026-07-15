@@ -413,12 +413,9 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
   telemetry.transport_pending_phrase_seconds = transport.pending_phrase_seconds;
   telemetry.transport_pending_apply_frame = transport.pending_apply_frame;
   telemetry.transport_transition_revision = transport.transition_revision;
-  const uint64_t phrase_elapsed_frames = transport.sample_frame >= transport.phrase_origin_frame
-      ? transport.sample_frame - transport.phrase_origin_frame
-      : 0u;
-  const double phrase_period_frames = transport.samplesPerPhrase(sample_rate);
-  telemetry.transport_phrase_progress = phrase_period_frames > 0.0
-      ? static_cast<float>(std::fmod(static_cast<double>(phrase_elapsed_frames), phrase_period_frames) / phrase_period_frames)
+  const double phrase_position = transport.phrasePositionAt(sample_rate, transport.sample_frame);
+  telemetry.transport_phrase_progress = std::isfinite(phrase_position)
+      ? static_cast<float>(phrase_position - std::floor(phrase_position))
       : 0.0f;
   telemetry.active_sources = active_source_count;
   telemetry.active_voices = active_voice_count;

@@ -360,9 +360,9 @@ void testPendingTransportTransition() {
       &transition_snapshot.synth_euclid,
       &transition_snapshot.drum_euclid}) {
     KesshoProductSequencerLaneSnapshot& lane = sequencer->lanes[0];
-    lane.step_count = 1u;
-    lane.fill_count = 1u;
-    lane.manual_step_mask_low = 1u;
+    lane.step_count = 8u;
+    lane.fill_count = 8u;
+    lane.manual_step_mask_low = 0xffu;
     lane.manual_step_mask_high = 0u;
     lane.clock_division = 16u;
     lane.initial_start_delay_seconds = 0.0f;
@@ -411,6 +411,12 @@ void testPendingTransportTransition() {
   require(
       kessho_product_enqueue_event(transition_engine, &transition) == KESSHO_PRODUCT_OK,
       "coalesced transport transition enqueue failed");
+  const uint64_t synth_hits_before_transport_retime = transition_engine->synth_lanes[0].emitted_hit_count;
+  const uint64_t drum_hits_before_transport_retime = transition_engine->drum_lanes[0].emitted_hit_count;
+  transition_engine->synth_lanes[0].arp.runtime_initialized = true;
+  transition_engine->synth_lanes[0].arp.cursor = 3u;
+  transition_engine->synth_lanes[0].arp.current_step = 2u;
+  transition_engine->synth_lanes[0].arp.next_event_sample = 1100u;
   append_events(500u, renderEventsInBlocks(transition_engine, 125u, 750u));
 
   const std::vector<uint32_t> expected_offsets = {
@@ -420,7 +426,7 @@ void testPendingTransportTransition() {
     750u, 750u,
     1000u, 1000u,
   };
-  require(absolute_offsets == expected_offsets, "transport transition must keep old-clock events playing through the boundary and restart both lanes exactly at the boundary");
+  require(absolute_offsets == expected_offsets, "transport transition must keep old-clock events playing through the boundary and continue both lanes on the new clock");
   require(!transition_engine->transport.transition_pending, "transport transition should clear after boundary application");
   require(transition_engine->transport.transition_revision == 1u, "coalesced transport edits should apply as one transition");
   require(std::fabs(transition_engine->transport.bpm - 40.0f) < 0.001f, "latest coalesced BPM should become active");
@@ -433,10 +439,34 @@ void testPendingTransportTransition() {
   require(std::fabs(transition_engine->fx.delay_b_base_time_ms - 300.0f) < 0.001f, "delay B should retime atomically with the applied BPM");
   require(transition_engine->voices[0].active, "transport transition must preserve active voices");
   require(transition_engine->voices[0].remaining_frames == 777u, "transport transition must preserve active voice tails");
+  require(
+      transition_engine->synth_lanes[0].emitted_hit_count >= synth_hits_before_transport_retime,
+      "transport retime must not reset synth hit-count phase");
+  require(
+      transition_engine->drum_lanes[0].emitted_hit_count >= drum_hits_before_transport_retime,
+      "transport retime must not reset drum hit-count phase");
+  require(
+      transition_engine->synth_lanes[0].sequencer_start_sample_frame == -500,
+      "transport retime must rebase the synth clock origin to preserve its fractional step position");
+  require(
+      transition_engine->drum_lanes[0].sequencer_start_sample_frame == -500,
+      "transport retime must rebase the drum clock origin to preserve its fractional step position");
+  require(
+      transition_engine->synth_lanes[0].arp.runtime_initialized &&
+          transition_engine->synth_lanes[0].arp.cursor == 3u &&
+          transition_engine->synth_lanes[0].arp.current_step == 2u,
+      "transport retime must preserve ARP sequence position");
+  require(
+      transition_engine->synth_lanes[0].arp.next_event_sample == 1150u,
+      "transport retime must scale the remaining ARP event time onto the new clock");
   const KesshoProductTelemetry transition_telemetry = kessho_product_get_telemetry(transition_engine);
   require(transition_telemetry.transport_transition_pending == 0u, "telemetry should report the applied transition");
   require(transition_telemetry.transport_transition_revision == 1u, "telemetry should report the applied transition revision");
   require(std::fabs(transition_telemetry.transport_bpm - 40.0f) < 0.001f, "telemetry should report active BPM rather than requested snapshot BPM");
+  require(
+      transition_telemetry.synth_sequencer_current_steps[0] == 4u &&
+          transition_telemetry.drum_sequencer_current_steps[0] == 4u,
+      "transport retime must continue from the same pattern step instead of restarting at step zero");
 
   KesshoProductEvent lane_timing{};
   lane_timing.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
@@ -450,6 +480,10 @@ void testPendingTransportTransition() {
   require(transition_engine->pending_phrase_timing_event_count == 1u, "lane timing should remain pending before the phrase boundary");
   require(transition_engine->pending_phrase_timing_apply_frame == 2500u, "lane timing should target the next active phrase boundary");
   require(transition_engine->synth_lanes[0].clock_division == 16u, "lane clock division must remain active while its replacement is pending");
+  const uint64_t synth_hits_before_lane_retime = transition_engine->synth_lanes[0].emitted_hit_count;
+  transition_engine->synth_lanes[0].arp.runtime_initialized = true;
+  transition_engine->synth_lanes[0].arp.cursor = 5u;
+  transition_engine->synth_lanes[0].arp.current_step = 4u;
 
   lane_timing.value = 4.0f;
   require(kessho_product_enqueue_event(transition_engine, &lane_timing) == KESSHO_PRODUCT_OK, "coalesced lane timing enqueue failed");
@@ -459,6 +493,17 @@ void testPendingTransportTransition() {
   renderEventsInBlocks(transition_engine, 125u, 125u);
   require(transition_engine->pending_phrase_timing_event_count == 0u, "lane timing should clear at the phrase boundary");
   require(transition_engine->synth_lanes[0].clock_division == 4u, "latest coalesced lane timing should apply at the phrase boundary");
+  require(
+      transition_engine->synth_lanes[0].emitted_hit_count >= synth_hits_before_lane_retime,
+      "lane clock retime must not reset synth hit-count phase");
+  require(
+      transition_engine->synth_lanes[0].sequencer_start_sample_frame == -9500,
+      "lane clock retime must preserve its absolute step position on the new division");
+  require(
+      transition_engine->synth_lanes[0].arp.runtime_initialized &&
+          transition_engine->synth_lanes[0].arp.cursor == 5u &&
+          transition_engine->synth_lanes[0].arp.current_step == 4u,
+      "lane clock retime must preserve ARP sequence position");
   kessho_product_destroy(transition_engine);
 }
 
@@ -661,6 +706,64 @@ void requireProductSequencerSynthArpRuntimeTests() {
     const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
     require(telemetry.synth_sequencer_hit_counts[0] == 4u, "synth arp should count parent triggers once");
     require(telemetry.synth_arp_current_steps[0] == 3u, "synth arp telemetry should expose the current arp step");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "synth arp live-retime engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot();
+    require(
+        kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+        "synth arp live-retime snapshot load failed");
+    enqueueSynthArpPattern(engine, arp_notes, 0x0fu, 4u, 1.0f);
+
+    std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 3000u);
+    expectAbsoluteOffsets(events, {0u, 1500u}, "synth arp live-retime setup should reach the third arp slot");
+    expectRenderedMidiNotes(events, {60.0f, 62.0f}, "synth arp live-retime setup should advance normally");
+    require(engine->synth_lanes[0].arp.runtime_initialized, "synth arp should be initialized before live retiming");
+    const uint64_t hits_before_tempo = engine->synth_lanes[0].emitted_hit_count;
+    const double phrase_position_before_tempo = engine->transport.phrasePositionAt(sample_rate, engine->transport.sample_frame);
+    const double bar_position_before_tempo = engine->transport.barPositionAt(sample_rate, engine->transport.sample_frame);
+
+    KesshoProductEvent tempo{};
+    tempo.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_TRANSPORT;
+    tempo.value = 60.0f;
+    tempo.value2 = 4.0f;
+    tempo.value3 = 4.0f;
+    tempo.value4 = 16.0f;
+    require(kessho_product_enqueue_event(engine, &tempo) == KESSHO_PRODUCT_OK, "synth arp live tempo event enqueue failed");
+    events = renderEventsInBlocks(engine, block_size, 6000u);
+    expectAbsoluteOffsets(events, {0u, 3000u}, "live tempo retime should continue the arp without a silence or restart");
+    expectRenderedMidiNotes(events, {64.0f, 65.0f}, "live tempo retime should preserve the arp cursor");
+    require(engine->synth_lanes[0].arp.runtime_initialized, "live tempo retime must keep the arp initialized");
+    require(
+        engine->synth_lanes[0].emitted_hit_count == hits_before_tempo,
+        "live tempo retime must not synthesize or reset a parent step");
+    require(engine->transport.transition_revision == 1u, "live tempo retime should publish one transition revision");
+    require(
+        std::fabs(
+            engine->transport.phrasePositionAt(sample_rate, engine->transport.sample_frame) -
+            (phrase_position_before_tempo + 6000.0 / (16.0 * sample_rate))) < 1e-9,
+        "live tempo retime must preserve fractional phrase position");
+    require(
+        std::fabs(
+            engine->transport.barPositionAt(sample_rate, engine->transport.sample_frame) -
+            (bar_position_before_tempo + 6000.0 / (4.0 * 48000.0))) < 1e-9,
+        "live tempo retime must preserve fractional bar position");
+
+    KesshoProductEvent clock{};
+    clock.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+    clock.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    clock.index = 0u;
+    clock.param_id = KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_CLOCK_DIVISION_ID;
+    clock.value = 32.0f;
+    require(kessho_product_enqueue_event(engine, &clock) == KESSHO_PRODUCT_OK, "synth arp live clock event enqueue failed");
+    events = renderEventsInBlocks(engine, block_size, 6000u);
+    expectAbsoluteOffsets(events, {0u, 1500u, 3000u, 4500u}, "live lane-clock retime should immediately follow the faster clock");
+    expectRenderedMidiNotes(events, arp_notes, "live lane-clock retime should preserve arp order and wrap naturally");
+    require(engine->synth_lanes[0].arp.runtime_initialized, "live lane-clock retime must keep the arp initialized");
+    require(engine->synth_lanes[0].emitted_hit_count == hits_before_tempo + 1u, "live lane-clock retime should continue at the next parent step");
     kessho_product_destroy(engine);
   }
 
@@ -897,19 +1000,46 @@ void requireProductSequencerRatchetPendingClearTests() {
 
   {
     KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
-    require(engine != nullptr, "ratchet tempo-clear engine create failed");
+    require(engine != nullptr, "ratchet tempo-retime engine create failed");
     KesshoProductSnapshotV2 snapshot = makeSingleRatchetSnapshot(KESSHO_PRODUCT_SOURCE_PAD1, 8u);
-    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "ratchet tempo-clear snapshot load failed");
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "ratchet tempo-retime snapshot load failed");
     std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, 64u, 64u);
-    expectAbsoluteOffsets(events, {0u}, "ratchet tempo-clear setup should emit only the first subhit");
-    require(engine->synth_lanes[0].pending_ratchet_count > 0u, "ratchet tempo-clear setup should leave future subhits pending");
+    expectAbsoluteOffsets(events, {0u}, "ratchet tempo-retime setup should emit only the first subhit");
+    require(engine->synth_lanes[0].pending_ratchet_count > 0u, "ratchet tempo-retime setup should leave future subhits pending");
     KesshoProductEvent tempo{};
     tempo.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_TRANSPORT;
     tempo.value = 60.0f;
     require(kessho_product_enqueue_event(engine, &tempo) == KESSHO_PRODUCT_OK, "ratchet tempo event enqueue failed");
-    events = renderEventsInBlocks(engine, 64u, 6000u);
-    require(events.empty(), "tempo change should clear pending ratchets with old absolute timing");
-    require(engine->synth_lanes[0].pending_ratchet_count == 0u, "tempo change should empty pending ratchet queue");
+    events = renderEventsInBlocks(engine, 64u, 11000u);
+    expectAbsoluteOffsets(
+        events,
+        {1372u, 2872u, 4372u, 5872u, 7372u, 8872u, 10372u},
+        "live tempo change should retime every pending ratchet without dropping the phrase");
+    require(engine->synth_lanes[0].pending_ratchet_count == 0u, "retimed ratchets should drain normally");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "ratchet lane-clock-retime engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleRatchetSnapshot(KESSHO_PRODUCT_SOURCE_PAD1, 8u);
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "ratchet lane-clock-retime snapshot load failed");
+    std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, 64u, 64u);
+    expectAbsoluteOffsets(events, {0u}, "ratchet lane-clock-retime setup should emit only the first subhit");
+    require(engine->synth_lanes[0].pending_ratchet_count == 7u, "ratchet lane-clock-retime setup should retain seven future subhits");
+    KesshoProductEvent clock{};
+    clock.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+    clock.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    clock.index = 0u;
+    clock.param_id = KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_CLOCK_DIVISION_ID;
+    clock.value = 32.0f;
+    require(kessho_product_enqueue_event(engine, &clock) == KESSHO_PRODUCT_OK, "ratchet lane clock event enqueue failed");
+    events = renderEventsInBlocks(engine, 64u, 2700u);
+    expectAbsoluteOffsets(
+        events,
+        {343u, 718u, 1093u, 1468u, 1843u, 2218u, 2593u},
+        "live lane clock change should retime every pending ratchet without dropping the phrase");
+    require(engine->synth_lanes[0].pending_ratchet_count == 0u, "lane-clock-retimed ratchets should drain normally");
     kessho_product_destroy(engine);
   }
 }
@@ -3966,6 +4096,110 @@ void requireSampleSourceEnvelopeLongRanges() {
   kessho_product_destroy(engine);
 }
 
+void requireSequencerMutePreservesRuntimePhase() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "sequencer mute phase engine allocation failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0u;
+  snapshot.synth_euclid.lanes[0].muted = 0u;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "sequencer mute phase snapshot load failed");
+
+  LaneState& lane = engine->synth_lanes[0];
+  lane.arp.enabled = true;
+  lane.arp.length = 4u;
+  lane.arp.active_mask = 0x0fu;
+  lane.arp.midi_notes[0] = 60.0f;
+  lane.arp.midi_notes[1] = 64.0f;
+  lane.arp.midi_notes[2] = 67.0f;
+  lane.arp.midi_notes[3] = 72.0f;
+
+  KesshoSequencerEvent events[64]{};
+  const int32_t audible_count = kessho_product_debug_render_events(engine, events, 64u, 48000u);
+  require(audible_count > 0, "audible sequencer should emit before mute");
+  require(lane.sequencer_runtime_initialized, "sequencer should initialize before mute");
+  const int64_t start_frame_before_mute = lane.sequencer_start_sample_frame;
+  const uint64_t hits_before_mute = lane.emitted_hit_count;
+  const uint64_t arp_next_event_before_mute = lane.arp.next_event_sample;
+
+  KesshoProductEvent mute_event{};
+  mute_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+  mute_event.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  mute_event.index = 0u;
+  mute_event.param_id = KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MUTED_ID;
+  mute_event.value = 1.0f;
+  engine->applySequencerLaneParamEvent(mute_event);
+  require(lane.muted, "live mute event should close the lane audibility gate");
+
+  const int32_t muted_count = kessho_product_debug_render_events(engine, events, 64u, 96000u);
+  require(muted_count == 0, "muted sequencer must not emit audio events");
+  require(lane.sequencer_start_sample_frame == start_frame_before_mute, "mute must not move the sequencer clock origin");
+  require(lane.emitted_hit_count > hits_before_mute, "muted sequencer must continue advancing pattern phase");
+  require(
+      lane.arp.runtime_initialized && lane.arp.next_event_sample > arp_next_event_before_mute,
+      "muted synth arp must continue advancing its scheduled phase");
+
+  mute_event.value = 0.0f;
+  engine->applySequencerLaneParamEvent(mute_event);
+  require(!lane.muted, "live unmute event should open the lane audibility gate");
+  const int32_t resumed_count = kessho_product_debug_render_events(engine, events, 64u, 48000u);
+  require(resumed_count > 0, "unmuted sequencer should resume without waiting for a restart");
+  require(lane.sequencer_start_sample_frame == start_frame_before_mute, "unmute must preserve the sequencer clock origin");
+  kessho_product_destroy(engine);
+}
+
+void requireQuantizedSequencerUnmuteBoundaries() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "quantized unmute engine allocation failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0u;
+  snapshot.synth_euclid.lanes[0].muted = 1u;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "quantized unmute snapshot load failed");
+
+  KesshoSequencerEvent events[64]{};
+  kessho_product_debug_render_events(engine, events, 64u, 12000u);
+  LaneState& lane = engine->synth_lanes[0];
+
+  KesshoProductEvent unmute{};
+  unmute.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+  unmute.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  unmute.index = 0u;
+  unmute.param_id = KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MUTED_ID;
+  unmute.value = 0.0f;
+  unmute.flags = KESSHO_PRODUCT_SEQUENCER_AUDIBILITY_APPLY_NEXT_BEAT;
+  engine->applySequencerLaneParamEvent(unmute);
+  require(lane.muted && lane.pending_unmute_quantization == 1u, "next-beat unmute should stage while keeping the lane silent");
+  kessho_product_debug_render_events(engine, events, 64u, 12000u);
+  require(lane.muted, "next-beat unmute must stay silent before the beat boundary");
+  kessho_product_debug_render_events(engine, events, 64u, 1u);
+  require(!lane.muted && lane.pending_unmute_quantization == 0u, "next-beat unmute must open at the shared beat boundary");
+
+  unmute.value = 1.0f;
+  unmute.flags = 0u;
+  engine->applySequencerLaneParamEvent(unmute);
+  require(lane.muted, "mute must apply immediately");
+  unmute.value = 0.0f;
+  unmute.flags = KESSHO_PRODUCT_SEQUENCER_AUDIBILITY_APPLY_NEXT_BAR;
+  engine->applySequencerLaneParamEvent(unmute);
+  require(lane.muted && lane.pending_unmute_quantization == 2u, "next-bar unmute should stage independently");
+  kessho_product_debug_render_events(engine, events, 64u, 71999u);
+  require(lane.muted, "next-bar unmute must stay silent before the bar boundary");
+  kessho_product_debug_render_events(engine, events, 64u, 1u);
+  require(!lane.muted, "next-bar unmute must open at the shared bar boundary");
+
+  unmute.value = 1.0f;
+  unmute.flags = 0u;
+  engine->applySequencerLaneParamEvent(unmute);
+  unmute.value = 0.0f;
+  engine->applySequencerLaneParamEvent(unmute);
+  require(!lane.muted && lane.pending_unmute_quantization == 0u, "immediate unmute must open without staging");
+
+  kessho_product_destroy(engine);
+}
+
 } // namespace
 
 int main() {
@@ -3987,6 +4221,8 @@ int main() {
   requireControlEventEnqueueOrdering();
   requireSample2LiveLibrarySwitchUsesNewAsset();
   requireSampleSourceEnvelopeLongRanges();
+  requireSequencerMutePreservesRuntimePhase();
+  requireQuantizedSequencerUnmuteBoundaries();
   requireRuntimeWalkMovementAcrossAudioAndFxTargets();
   requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets();
   requireDrumExactRuntimeRangesApplyToSourceAndModule();

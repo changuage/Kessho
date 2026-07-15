@@ -170,6 +170,7 @@ export class CoreProductRuntime {
     this.prepareMediaSessionPlayback();
     const context = createProductAudioContext();
     this.context = context;
+    this.publishParityStartupPhase('context-created');
     if (this.dawOutputDeviceId) {
       await this.applyDawOutputDeviceId(context);
     }
@@ -183,6 +184,7 @@ export class CoreProductRuntime {
     await withRuntimeAssetRetries((attempt) =>
       context.audioWorklet.addModule(productAssetUrl('worklets/kessho-core-product.worklet.js', attempt))
     );
+    this.publishParityStartupPhase('worklet-module-loaded');
     const wasmUrl = productAssetUrl('worklets/kessho_core.wasm');
     const wasmBinary = await withRuntimeAssetRetries(async (attempt) => {
       const attemptWasmUrl = productAssetUrl('worklets/kessho_core.wasm', attempt);
@@ -192,9 +194,11 @@ export class CoreProductRuntime {
       if (!response.ok) throw new Error(`Failed to fetch ${wasmUrl}: ${response.status}`);
       return response.arrayBuffer();
     });
+    this.publishParityStartupPhase('wasm-fetched');
 
     await new Promise<void>((resolve, reject) => {
       const node = this.createProductWorkletNode(context, wasmBinary, wasmUrl.toString());
+      this.publishParityStartupPhase('worklet-node-created');
       const outputGain = context.createGain();
       outputGain.gain.value = 1;
       this.configureOutputNode(outputGain);
@@ -207,11 +211,16 @@ export class CoreProductRuntime {
       node.port.onmessage = (event: MessageEvent<RuntimeMessage>) => {
         const message = event.data;
         if (message.type === 'ready') {
+          this.publishParityStartupPhase('ready');
           this.postDawOutputRouting();
           resolve();
           return;
         }
         if (message.type === 'error') {
+          this.publishParityStartupPhase('error');
+          if (new URLSearchParams(window.location.search).get('parity') === '1') {
+            document.documentElement.dataset.coreProductRuntimeError = message.message;
+          }
           this.lastError = message.message;
           const runtimeError = new Error(message.message);
           this.rejectPendingSnapshotReceipts(runtimeError);
@@ -263,12 +272,27 @@ export class CoreProductRuntime {
     });
   }
 
+  private publishParityStartupPhase(phase: string): void {
+    if (typeof window === 'undefined' || new URLSearchParams(window.location.search).get('parity') !== '1') return;
+    document.documentElement.dataset.coreProductRuntimePhase = phase;
+  }
+
   async resume(): Promise<void> {
-    await this.ensureStarted();
-    await this.context?.resume();
+    const ready = this.ensureStarted();
+    const resumed = this.context?.resume() ?? Promise.resolve();
+    this.publishParityAudioContextState();
+    await ready;
+    await resumed;
+    if (this.context?.state !== 'running') await this.context?.resume();
+    this.publishParityAudioContextState();
     if (isIOSLikeDevice()) {
       void this.connectMediaSessionPlayback();
     }
+  }
+
+  private publishParityAudioContextState(): void {
+    if (typeof window === 'undefined' || new URLSearchParams(window.location.search).get('parity') !== '1') return;
+    document.documentElement.dataset.coreProductAudioContextState = this.context?.state ?? 'missing';
   }
 
   async suspend(): Promise<void> {

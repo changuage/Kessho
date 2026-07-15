@@ -522,7 +522,7 @@
 .drum-root .seq-per-controls .seq-swing-range { width: 60px; height: 3px; accent-color: var(--sc, var(--accent-cyan)); }
 .drum-root .seq-per-controls .seq-swing-val { font-size: var(--font-xs); color: var(--page-accent); min-width: 22px; }
 .drum-root .seq-per-controls .seq-clock-select { width: 52px; font-size: 0.7rem; }
-.drum-root .seq-link-btn, .drum-root .seq-evolve-btn {
+.drum-root .seq-link-btn, .drum-root .seq-evolve-btn, .drum-root .seq-resume-quantize-btn {
   padding: 5px 12px; font-size: 0.68rem; font-weight: 700; border: none;
   border-radius: var(--radius-sm); cursor: pointer; background: var(--bg-control);
   color: var(--text-muted); transition: all 0.15s; letter-spacing: 0.3px;
@@ -1533,7 +1533,7 @@
 .drum-root .seq-source-toggle, .drum-root .seq-mini-row, .drum-root .section-header,
 .drum-root .seq-step-cell, .drum-root .seq-step-ratchet, .drum-root .seq-trig-cond,
 .drum-root .seq-preset-btn, .drum-root .seq-offset-btn, .drum-root .seq-view-btn,
-.drum-root .seq-link-btn, .drum-root .seq-evolve-btn, .drum-root .seq-lane-enable-btn,
+.drum-root .seq-link-btn, .drum-root .seq-evolve-btn, .drum-root .seq-resume-quantize-btn, .drum-root .seq-lane-enable-btn,
 .drum-root .trigger-btn, .drum-root .seq-ov-header, .drum-root .seq-lane-header {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
@@ -1547,7 +1547,7 @@
 .drum-root .seq-lane-controls button:active { background: rgba(255,255,255,0.3); }
 .drum-root .seq-mini-row:active { background: rgba(255,255,255,0.08); }
 .drum-root .section-header:active { background: rgba(255,255,255,0.06); }
-.drum-root .seq-link-btn:active, .drum-root .seq-evolve-btn:active { background: rgba(255,255,255,0.2); }
+.drum-root .seq-link-btn:active, .drum-root .seq-evolve-btn:active, .drum-root .seq-resume-quantize-btn:active { background: rgba(255,255,255,0.2); }
 .drum-root .seq-lane-enable-btn:active { background: rgba(255,255,255,0.2); }
 .drum-root .seq-source-toggle:active { background: rgba(255,255,255,0.12); }
 .drum-root .trigger-btn:active { transform: scale(0.97); background: rgba(165, 196, 212, 0.5); }
@@ -1620,8 +1620,11 @@
 }
 
 /* ── Link / Evolve buttons ── */
-.drum-root .seq-link-btn, .drum-root .seq-evolve-btn {
+.drum-root .seq-link-btn, .drum-root .seq-evolve-btn, .drum-root .seq-resume-quantize-btn {
   padding: 5px 12px; font-size: 0.68rem;
+}
+.drum-root .seq-resume-quantize-btn {
+  white-space: nowrap;
 }
 
 /* ── Lane enable buttons ── */
@@ -1866,7 +1869,8 @@
 
   /* ── Link / Evolve buttons ── */
   .drum-root .seq-link-btn,
-  .drum-root .seq-evolve-btn {
+  .drum-root .seq-evolve-btn,
+  .drum-root .seq-resume-quantize-btn {
     padding: 6px 10px; font-size: 0.6rem; min-height: 36px;
   }
 

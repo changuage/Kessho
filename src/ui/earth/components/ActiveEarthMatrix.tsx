@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import type { DualSliderRange } from '../../DualSlider';
 import { useSliderHelp } from '../../SliderHelpOverlay';
 import { QUANTIZATION, type SliderMode, type SliderState } from '../../state';
@@ -18,6 +18,7 @@ import {
   quantizeValue,
   releasePointerCaptureSafely,
   setSliderTouchSelectionLock,
+  shiftRangePreservingWidth,
   stepDecimals,
   trackLeftCalc,
   trackWidthCalc,
@@ -154,10 +155,6 @@ const WATER_LAYER_KEYS: readonly NumericSliderKey[] = [
 ] as const;
 
 const routeAccent = (color: string, amount = 40): string => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 function numeric(state: SliderState, key: NumericSliderKey): number {
   return Number(state[key] ?? 0) || 0;
@@ -1388,14 +1385,45 @@ function EarthMatrixSliderCell({
       return;
     }
 
-    const bandWidth = drag.startRangeNorm.max - drag.startRangeNorm.min;
-    const rawMinNorm = drag.startRangeNorm.min + (pointerNorm - drag.startPointerNorm);
-    const nextMinNorm = clamp(rawMinNorm, 0, 1 - bandWidth);
-    const nextMaxNorm = nextMinNorm + bandWidth;
+    const shifted = shiftRangePreservingWidth(
+      drag.startRangeNorm,
+      pointerNorm - drag.startPointerNorm,
+    );
+    const nextMinNorm = shifted.min;
+    const nextMaxNorm = shifted.max;
     const nextMin = quantizeValue(normToValue(nextMinNorm, quantization, control.logarithmic), quantization);
     const nextMax = quantizeValue(normToValue(nextMaxNorm, quantization, control.logarithmic), quantization);
     runtime.onDualRangeChange(control.key, Math.min(nextMin, nextMax), Math.max(nextMin, nextMax));
   }, [control.key, control.logarithmic, mode, onParamChange, quantization, runtime]);
+
+  const handleKeyboard = useCallback((
+    handle: 'single' | 'min' | 'max',
+    event: KeyboardEvent<HTMLElement>,
+  ) => {
+    if (!quantization) return;
+    const currentValue = handle === 'single'
+      ? value
+      : handle === 'min'
+        ? (range?.min ?? value)
+        : (range?.max ?? value);
+    const increment = quantization.step * (event.shiftKey ? 10 : 1);
+    let next: number | null = null;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') next = currentValue - increment;
+    else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') next = currentValue + increment;
+    else if (event.key === 'Home') next = quantization.min;
+    else if (event.key === 'End') next = quantization.max;
+    if (next === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const quantized = quantizeValue(next, quantization);
+    if (handle === 'single' || !range) {
+      onParamChange(control.key, quantized);
+    } else if (handle === 'min') {
+      runtime.onDualRangeChange?.(control.key, Math.min(quantized, range.max), range.max);
+    } else {
+      runtime.onDualRangeChange?.(control.key, range.min, Math.max(quantized, range.min));
+    }
+  }, [control.key, onParamChange, quantization, range, runtime, value]);
 
   const scheduleLongPress = useCallback((pointerId: number, startX: number, startY: number) => {
     clearLongPress();
@@ -1434,11 +1462,17 @@ function EarthMatrixSliderCell({
   }
 
   return (
-    <button
-      type="button"
+    <div
       className={`earth-matrix-cell earth-matrix-cell-slider${columnId === 'level' ? ' level-col' : ''}${dragging ? ' dragging' : ''}`}
       style={{ '--row-accent': accent } as CSSProperties}
       title={control.label}
+      role={mode === 'single' ? 'slider' : undefined}
+      tabIndex={mode === 'single' ? 0 : -1}
+      aria-label={mode === 'single' ? control.label : undefined}
+      aria-valuemin={mode === 'single' ? quantization.min : undefined}
+      aria-valuemax={mode === 'single' ? quantization.max : undefined}
+      aria-valuenow={mode === 'single' ? value : undefined}
+      onKeyDown={(event) => handleKeyboard('single', event)}
       onMouseEnter={announce}
       onFocus={announce}
       onDoubleClick={() => runtime.onCycleMode?.(control.key)}
@@ -1564,6 +1598,14 @@ function EarthMatrixSliderCell({
         releasePointerCaptureSafely(event.currentTarget, event.pointerId);
       }}
       onPointerCancel={(event) => {
+        const drag = dragRef.current;
+        if (drag) {
+          if (mode === 'single' || drag.handle === 'single' || !drag.startRange) {
+            onParamChange(control.key, value);
+          } else {
+            runtime.onDualRangeChange?.(control.key, drag.startRange.min, drag.startRange.max);
+          }
+        }
         clearLongPress();
         pendingTouchRef.current = null;
         dragRef.current = null;
@@ -1601,16 +1643,30 @@ function EarthMatrixSliderCell({
           style={{ left: trackLeftCalc(walkNorm) }}
         />
       ) : null}
-      {rangeNorm ? (
+      {rangeNorm && range ? (
         <>
-          <span
-            className={`earth-matrix-cell-edge min${dragHandle === 'min' || dragHandle === 'both' ? ' active' : ''}`}
-            style={{ left: trackLeftCalc(rangeNorm.min) }}
-          />
-          <span
-            className={`earth-matrix-cell-edge max${dragHandle === 'max' || dragHandle === 'both' ? ' active' : ''}`}
-            style={{ left: trackLeftCalc(rangeNorm.max) }}
-          />
+            <span
+              className={`earth-matrix-cell-edge min${dragHandle === 'min' || dragHandle === 'both' ? ' active' : ''}`}
+              style={{ left: trackLeftCalc(rangeNorm.min) }}
+              role="slider"
+              tabIndex={0}
+              aria-label={`${control.label} minimum`}
+              aria-valuemin={quantization.min}
+              aria-valuemax={range.max}
+              aria-valuenow={range.min}
+              onKeyDown={(event) => handleKeyboard('min', event)}
+            />
+            <span
+              className={`earth-matrix-cell-edge max${dragHandle === 'max' || dragHandle === 'both' ? ' active' : ''}`}
+              style={{ left: trackLeftCalc(rangeNorm.max) }}
+              role="slider"
+              tabIndex={0}
+              aria-label={`${control.label} maximum`}
+              aria-valuemin={range.min}
+              aria-valuemax={quantization.max}
+              aria-valuenow={range.max}
+              onKeyDown={(event) => handleKeyboard('max', event)}
+            />
         </>
       ) : null}
       <span className="earth-matrix-cell-readout">
@@ -1623,6 +1679,6 @@ function EarthMatrixSliderCell({
           </>
         )}
       </span>
-    </button>
+    </div>
   );
 }

@@ -499,6 +499,7 @@ export function loadCoreProductHostHarness(options = {}) {
     logProductStateDebug: () => {},
     logCoreProductDebugTelemetry: () => {},
     productStateDebugEnabled: () => false,
+    recordSliderSystemCounter: () => {},
     buildCoreProductSnapshotDiff: () => ({ applied: true, events: [] }),
     productSamplePlaybackTriggerCriticalChange,
     shouldForwardCoreProductRngDiffs: () => false,

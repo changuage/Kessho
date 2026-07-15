@@ -84,7 +84,7 @@ export function getMorphedRootNote(
   };
 }
 
-interface CircleOfFifthsProps {
+export interface CircleOfFifthsProps {
   homeRoot: number;           // Home key (0-11 semitone)
   currentStep: number;        // Current step offset from home (-6 to +6)
   driftRange: number;         // Max drift range (1-6)

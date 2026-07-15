@@ -34,6 +34,7 @@ import {
   normalizeSequencerPitchSettingsArray,
 } from '../../audio/sequencerPitchSettings';
 import { normalizeSequencerSwing, normalizeSequencerSwings } from '../../audio/sequencerSwing';
+import { resolveSequencerLaneAudibility } from '../../audio/sequencerAudibility';
 import { EUCLIDEAN_SUB_LANE_STEP_MAX, clampEuclideanSubLaneSteps } from './sequencerLimits';
 import type { TriggerClip } from './triggerClip';
 import {
@@ -1222,8 +1223,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
         sources[voiceKey.charAt(0).toLowerCase() + voiceKey.slice(1)] = Boolean(state[key]);
       }
 
-      // Muted = !Enabled (the Enabled param in SliderState is inverted for mute)
-      const enabled = state[makeKey(prefix, laneNum, 'Enabled')] as boolean;
+      const muted = resolveSequencerLaneAudibility(state, prefix === 'synth' ? 'synth' : 'drum', laneNum).muted;
 
       const cfg = lanes[idx] ?? { color: '#a855f7', name: `Seq ${laneNum}` };
       const expressionState = subLaneStates[idx]?.expression;
@@ -1234,7 +1234,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
         rng: Math.random,
         color: cfg.color,
         name: cfg.name,
-        muted: !enabled,
+        muted,
         solo: soloSet.has(idx),
         clockDiv: clockDivs[idx] ?? '1/8',
         swing: swings[idx] ?? 0,
@@ -1728,11 +1728,11 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
         next.add(laneIdx);
       }
 
-      // If no lanes are soloed, re-enable all; otherwise enable only soloed lanes.
+      // Solo is an audibility gate. Preserve each lane's enabled/mute choice and
+      // let Product Core keep every lane clock running in phase.
       for (let i = 0; i < laneCount; i++) {
         const soloed = next.has(i);
         onSelectChange(makeKey(prefix, i + 1, 'Solo'), soloed);
-        onSelectChange(makeKey(prefix, i + 1, 'Enabled'), next.size === 0 ? true : soloed);
       }
     },
     [prefix, laneCount, onSelectChange, soloSet]

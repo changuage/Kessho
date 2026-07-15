@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { SliderState } from '../state';
+import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumVoiceConfig } from '../../audio/drumVoiceConfig';
 import MorphSlider from './MorphSlider';
@@ -16,13 +17,12 @@ interface VoiceCardProps {
   isExpanded: boolean;
   togglePanel: (id: string) => void;
   onParamChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
-  sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
+  sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
   getPresetNames: (voice: DrumVoiceType) => string[];
   triggerVoice: (voice: DrumVoiceType) => void;
   onAuditionPresetPreview?: (voice: DrumVoiceType, externalState: SliderState) => void | Promise<void>;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
-  SliderComponent: React.ComponentType<Record<string, unknown>>;
-  CollapsiblePanelComponent: React.ComponentType<Record<string, unknown>>;
+  SliderComponent: React.ComponentType<SliderRendererProps<keyof SliderState>>;
   editingVoice?: string | null;
   onToggleEditing?: (voice: string) => void;
   isTriggered?: boolean;

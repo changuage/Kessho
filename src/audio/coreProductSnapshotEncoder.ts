@@ -16,9 +16,9 @@ type LegacyExactBridgeSource = ProductSourceSnapshot & {
   exactDrumParams?: unknown;
 };
 
-const SNAPSHOT_BYTES = 151444;
+const SNAPSHOT_BYTES = 151572;
 const SOURCE_BYTES = 5188;
-const LANE_BYTES = 96;
+const LANE_BYTES = 100;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES + 16 * KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES;
 
 function bool(value: unknown): number {
@@ -170,6 +170,7 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
     for (let index = 0; index < 16; index += 1) {
       const lane = lanes[index] ?? laneDefaults(CORE_PRODUCT_SOURCE_IDS.pad1, 60);
       u32(bool(lane.enabled));
+      u32(bool(lane.muted));
       u32(lane.targetSourceId);
       u32(lane.stepCount);
       u32(lane.fillCount);

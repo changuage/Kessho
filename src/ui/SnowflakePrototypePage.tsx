@@ -8,7 +8,6 @@ import {
 import {
   getRuntimeSliderFlashing,
   getRuntimeSliderPosition,
-  useRuntimeSliderVersion,
 } from './runtimeSliderState';
 import { JOURNEY_COLORS, SOURCE_COLORS } from '../designSystem/colors';
 
@@ -787,7 +786,6 @@ const SnowflakePrototypePage: React.FC<SnowflakePrototypePageProps> = ({
   const trimAnimationsRef = useRef<Record<string, { from: number; to: number; start: number; duration: number }>>({});
   const longPressTimerRef = useRef<number | null>(null);
   const centerLongPressTimerRef = useRef<number | null>(null);
-  const runtimeVersion = useRuntimeSliderVersion();
   const scenarioLabels: Record<PrototypeScenario, string> = {
     dense: 'Dense',
     sparse: 'Sparse',
@@ -845,7 +843,7 @@ const SnowflakePrototypePage: React.FC<SnowflakePrototypePageProps> = ({
       return buildLiveSources(state, dualRanges, sliderModes, trims, time);
     }
     return buildDemoSources(scenario, trims, time);
-  }, [dualRanges, runtimeVersion, scenario, sliderModes, state, time, trims]);
+  }, [dualRanges, scenario, sliderModes, state, time, trims]);
 
   const layout = useMemo(() => buildLayout(visualSources), [visualSources]);
   const sourceById = useMemo(() => {

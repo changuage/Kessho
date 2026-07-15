@@ -30,6 +30,27 @@ function emptyLaneState<T>(): T[][] {
 
 const PRODUCT_PLAY_MAX_STEPS = 16;
 
+const SYNTH_STEP_OVERRIDE_KEYS = new Set([
+  'triggerToggles',
+  'probability',
+  'ratchet',
+  'trigCondition',
+  'expression',
+  'pitch',
+  'morph',
+  'distance',
+  'nudge',
+  'expressionRanges',
+  'morphRanges',
+  'distanceRanges',
+  'expressionDirection',
+  'pitchDirection',
+  'morphDirection',
+  'distanceDirection',
+  'nudgeDirection',
+  'playNotes',
+]);
+
 type ProductArpEngineLane = {
   enabled: boolean;
   mode: 'arp' | 'chord';
@@ -43,11 +64,17 @@ export function createCoreProductSynthSequencerStepOverrideEvents(
   overrides: unknown,
   subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[],
 ): CoreProductEvent[] {
-  const toggles = normalizeSequencerStepToggleOverrides(overrides, emptyLaneState());
-  const values = normalizeSequencerStepValueOverrides(overrides, emptyLaneState(), true);
-  const configs = normalizeSequencerStepValueConfigs(overrides, emptyLaneState(), true, subLaneStates);
+  const hasStepOverrides = hasSynthSequencerStepOverridePayload(overrides, subLaneStates);
+  const stepEvents = hasStepOverrides
+    ? createCoreProductSequencerStepOverrideEvents(
+        'synth',
+        normalizeSequencerStepToggleOverrides(overrides, emptyLaneState()),
+        normalizeSequencerStepValueOverrides(overrides, emptyLaneState(), true),
+        normalizeSequencerStepValueConfigs(overrides, emptyLaneState(), true, subLaneStates),
+      )
+    : [];
   return [
-    ...createCoreProductSequencerStepOverrideEvents('synth', toggles, values, configs),
+    ...stepEvents,
     ...createCoreProductSynthArpEvents(overrides),
   ];
 }
@@ -58,16 +85,31 @@ export function createCoreProductSynthSequencerLaneStepOverrideEvents(
   subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[],
 ): CoreProductEvent[] {
   const safeLaneIndex = Math.max(0, Math.min(15, Math.round(laneIndex)));
-  const toggles = normalizeSequencerStepToggleOverrides(overrides, emptyLaneState());
-  const values = normalizeSequencerStepValueOverrides(overrides, emptyLaneState(), true);
-  const configs = normalizeSequencerStepValueConfigs(overrides, emptyLaneState(), true, subLaneStates);
-  return createCoreProductSequencerLaneStepOverrideEvents(
-    'synth',
-    safeLaneIndex,
-    toggles[safeLaneIndex] ?? [],
-    values[safeLaneIndex] ?? [],
-    configs[safeLaneIndex] ?? [],
-  ).concat(createCoreProductSynthArpEvents(overrides, safeLaneIndex));
+  const hasStepOverrides = hasSynthSequencerStepOverridePayload(overrides, subLaneStates);
+  let stepEvents: CoreProductEvent[] = [];
+  if (hasStepOverrides) {
+    const toggles = normalizeSequencerStepToggleOverrides(overrides, emptyLaneState());
+    const values = normalizeSequencerStepValueOverrides(overrides, emptyLaneState(), true);
+    const configs = normalizeSequencerStepValueConfigs(overrides, emptyLaneState(), true, subLaneStates);
+    stepEvents = createCoreProductSequencerLaneStepOverrideEvents(
+      'synth',
+      safeLaneIndex,
+      toggles[safeLaneIndex] ?? [],
+      values[safeLaneIndex] ?? [],
+      configs[safeLaneIndex] ?? [],
+    );
+  }
+  return stepEvents.concat(createCoreProductSynthArpEvents(overrides, safeLaneIndex));
+}
+
+function hasSynthSequencerStepOverridePayload(
+  overrides: unknown,
+  subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[],
+): boolean {
+  if (subLaneStates !== undefined) return true;
+  if (Array.isArray(overrides) || overrides instanceof Map) return true;
+  if (!overrides || typeof overrides !== 'object') return false;
+  return Object.keys(overrides as Record<string, unknown>).some((key) => SYNTH_STEP_OVERRIDE_KEYS.has(key));
 }
 
 export function createCoreProductDrumSequencerStepOverrideEvents(

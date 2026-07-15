@@ -49,6 +49,8 @@ struct PendingRatchetEvent {
 struct LaneState {
   uint32_t sequencer_mode = kSequencerModeEuclid;
   bool enabled = false;
+  bool muted = false;
+  uint32_t pending_unmute_quantization = 0u;
   uint32_t target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
   uint32_t step_count = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SEQUENCER_STEPS;
   uint32_t fill_count = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SEQUENCER_FILLS;
@@ -134,7 +136,9 @@ struct LaneState {
   uint32_t last_emitted_drum_voice = DRUM_NUM_VOICE_TYPES;
   uint64_t last_emitted_sample_frame = 0;
   uint64_t sequencer_runtime_sample_frame = 0;
-  uint64_t sequencer_start_sample_frame = 0;
+  // Signed so phase-preserving tempo changes can move the clock origin before
+  // transport frame zero without resetting the pattern position.
+  int64_t sequencer_start_sample_frame = 0;
   bool sequencer_runtime_initialized = false;
   bool sequencer_join_pending = true;
   PendingRatchetEvent pending_ratchets[kMaxPendingRatchetsPerLane]{};

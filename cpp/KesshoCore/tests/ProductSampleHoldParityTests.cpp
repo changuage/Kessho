@@ -175,9 +175,11 @@ void requireSourceTriggerRanges() {
 
 void requireDrumTriggerRanges() {
   KesshoProductEngine* engine = makeEngine();
+  const uint32_t kick_target = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE +
+      static_cast<uint32_t>(defaultDrumKitMapEntry(36.0f).voice);
   ModulationRange* morph = applySampleHoldRange(
       *engine,
-      KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE,
+      kick_target,
       KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID,
       1201u,
       0.35f,
@@ -185,7 +187,7 @@ void requireDrumTriggerRanges() {
       0.4f);
   ModulationRange* exact = applySampleHoldRange(
       *engine,
-      KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE,
+      kick_target,
       kProductDrumRuntimeParamIdBase,
       1202u,
       80.0f,

@@ -43,6 +43,14 @@ import type { DrumStepOverrides, LaneDirection, TrigCondition, ClockDivision, Pi
 import { SCALES } from '../../drumSeqTypes';
 import { seqLaneIndex, seqEuclidean } from '../../drumSequencer';
 import { sequencerClockDivisionToSeconds } from '../../sequencerClockDivisions';
+import { resolveSequencerLaneAudibility } from '../../sequencerAudibility';
+import { sequencerResumeQuantizationForLane } from '../../sequencerResumeQuantization';
+import {
+  createSequencerResumeRuntimeState,
+  invalidatePendingSequencerResumeBoundaries,
+  resetSequencerResumeRuntimeState,
+  updateSequencerResumeRuntimeLane,
+} from '../../sequencerResumeRuntime';
 import { normalizeSequencerPitchBindingMode } from '../../sequencerPitchBinding';
 import { normalizeSequencerPitchSettings, type SequencerPitchSettings } from '../../sequencerPitchSettings';
 import { normalizeSequencerSwing } from '../../sequencerSwing';
@@ -93,6 +101,7 @@ import {
 import { chordIntervalSecondsFromState, resolveChordsPerPhrase } from '../../chordPhraseTiming';
 import { harmonySeedPayloadJsonFromState } from '../../harmonySeedMaterial';
 import { SEQUENCER_VISUAL_SYNC_OFFSET_MS } from '../../sequencerVisualSync';
+import { getChangedRuntimeWalkParameterKeys } from './runtimeWalkParameterDiff';
 import type { StemRecordTrackId } from '../../recordingTracks';
 import { DEFAULT_REVERB_PRE_COMP, getIndexedDelayDivisionValue, getStateValueFromSliderNumber, quantize, type IndexedDelayDivisionKey, type SliderState } from '../../../ui/state';
 import {
@@ -1374,6 +1383,7 @@ export class AudioEngine {
   private effectiveRoot = 4;  // Current root note including CoF drift
   private transportAnchors: TransportAnchors | null = null;
   private prevSynthEuclidLaneEnabled: Quad<boolean> = [false, false, false, false];
+  private synthResumeRuntime = createSequencerResumeRuntimeState(4);
 
   // Reverb harmony coupling — transient modulation amounts
   private reverbWashBoost = 0;       // 0..1 decays after chord change
@@ -7032,6 +7042,7 @@ export class AudioEngine {
     this.reverbDirectSend = null;
     this.transportAnchors = null;
     this.prevSynthEuclidLaneEnabled = [false, false, false, false];
+    resetSequencerResumeRuntimeState(this.synthResumeRuntime);
 
     this.isRunning = false;
     this.notifyStateChange();
@@ -7252,6 +7263,7 @@ export class AudioEngine {
     }
 
     if (this.synthEuclidScheduleTimer && synthBeatTransportChanged) {
+      invalidatePendingSequencerResumeBoundaries(this.synthResumeRuntime);
       const resetCounters = (effectiveState.synthEuclidJoinPolicy ?? 'bar') === 'bar';
       if (effectiveState.synthEuclidClockSource === 'localBeat') {
         this.resetLocalBeatAnchor();
@@ -8431,7 +8443,7 @@ export class AudioEngine {
             Math.round(elapsedMs / RUNTIME_RANDOM_WALK_INTERVAL_MS) || 1,
           ),
         );
-      let runtimeChanged = false;
+      const movedKeys = new Set<string>();
 
       for (const key of Object.keys(this.runtimeWalkRanges)) {
         const walkState = this.runtimeWalkStates.get(key) ?? { position: 0.5, velocity: 0 };
@@ -8459,7 +8471,7 @@ export class AudioEngine {
         }
 
         if (Math.abs(walkState.position - nextPosition) > 0.0005 || Math.abs(walkState.velocity - nextVelocity) > 0.0005) {
-          runtimeChanged = true;
+          movedKeys.add(key);
           this.runtimeWalkStates.set(key, {
             position: nextPosition,
             velocity: nextVelocity,
@@ -8467,8 +8479,12 @@ export class AudioEngine {
         }
       }
 
-      if (!runtimeChanged) return;
+      if (movedKeys.size === 0) return;
       this.emitRuntimeWalkPositions();
+      const nextEffectiveState = this.getEffectiveRuntimeAutoMorphState(
+        this.getEffectiveRuntimeRandomWalkState(sourceState),
+      );
+      if (getChangedRuntimeWalkParameterKeys(this.sliderState, nextEffectiveState, movedKeys).length === 0) return;
       this.updateParams(sourceState);
     }, RUNTIME_RANDOM_WALK_INTERVAL_MS);
   }
@@ -11947,6 +11963,7 @@ export class AudioEngine {
 
         this.synthEuclidNextStepTime = [0, 0, 0, 0];
         this.prevSynthEuclidLaneEnabled = [false, false, false, false];
+        resetSequencerResumeRuntimeState(this.synthResumeRuntime);
         this.ensureTransportAnchors();
 
         const scheduleSynthEuclid = () => {
@@ -11980,21 +11997,16 @@ export class AudioEngine {
 
             // Read lane params fresh each tick (so changes take effect seamlessly)
             const laneParams = [
-              { enabled: this.sliderState.synthEuclid1Enabled, preset: this.sliderState.synthEuclid1Preset, steps: this.sliderState.synthEuclid1Steps, hits: this.sliderState.synthEuclid1Hits, rotation: this.sliderState.synthEuclid1Rotation, noteMin: this.sliderState.synthEuclid1NoteMin, noteMax: this.sliderState.synthEuclid1NoteMax, level: this.sliderState.synthEuclid1Level, probability: this.sliderState.synthEuclid1Probability ?? 1.0, source: (this.sliderState.synthEuclid1Source ?? 'lead') as string },
-              { enabled: this.sliderState.synthEuclid2Enabled, preset: this.sliderState.synthEuclid2Preset, steps: this.sliderState.synthEuclid2Steps, hits: this.sliderState.synthEuclid2Hits, rotation: this.sliderState.synthEuclid2Rotation, noteMin: this.sliderState.synthEuclid2NoteMin, noteMax: this.sliderState.synthEuclid2NoteMax, level: this.sliderState.synthEuclid2Level, probability: this.sliderState.synthEuclid2Probability ?? 1.0, source: (this.sliderState.synthEuclid2Source ?? 'lead') as string },
-              { enabled: this.sliderState.synthEuclid3Enabled, preset: this.sliderState.synthEuclid3Preset, steps: this.sliderState.synthEuclid3Steps, hits: this.sliderState.synthEuclid3Hits, rotation: this.sliderState.synthEuclid3Rotation, noteMin: this.sliderState.synthEuclid3NoteMin, noteMax: this.sliderState.synthEuclid3NoteMax, level: this.sliderState.synthEuclid3Level, probability: this.sliderState.synthEuclid3Probability ?? 1.0, source: (this.sliderState.synthEuclid3Source ?? 'lead') as string },
-              { enabled: this.sliderState.synthEuclid4Enabled, preset: this.sliderState.synthEuclid4Preset, steps: this.sliderState.synthEuclid4Steps, hits: this.sliderState.synthEuclid4Hits, rotation: this.sliderState.synthEuclid4Rotation, noteMin: this.sliderState.synthEuclid4NoteMin, noteMax: this.sliderState.synthEuclid4NoteMax, level: this.sliderState.synthEuclid4Level, probability: this.sliderState.synthEuclid4Probability ?? 1.0, source: (this.sliderState.synthEuclid4Source ?? 'lead') as string },
+              { enabled: true, muted: resolveSequencerLaneAudibility(this.sliderState, 'synth', 1).muted, preset: this.sliderState.synthEuclid1Preset, steps: this.sliderState.synthEuclid1Steps, hits: this.sliderState.synthEuclid1Hits, rotation: this.sliderState.synthEuclid1Rotation, noteMin: this.sliderState.synthEuclid1NoteMin, noteMax: this.sliderState.synthEuclid1NoteMax, level: this.sliderState.synthEuclid1Level, probability: this.sliderState.synthEuclid1Probability ?? 1.0, source: (this.sliderState.synthEuclid1Source ?? 'lead') as string },
+              { enabled: true, muted: resolveSequencerLaneAudibility(this.sliderState, 'synth', 2).muted, preset: this.sliderState.synthEuclid2Preset, steps: this.sliderState.synthEuclid2Steps, hits: this.sliderState.synthEuclid2Hits, rotation: this.sliderState.synthEuclid2Rotation, noteMin: this.sliderState.synthEuclid2NoteMin, noteMax: this.sliderState.synthEuclid2NoteMax, level: this.sliderState.synthEuclid2Level, probability: this.sliderState.synthEuclid2Probability ?? 1.0, source: (this.sliderState.synthEuclid2Source ?? 'lead') as string },
+              { enabled: true, muted: resolveSequencerLaneAudibility(this.sliderState, 'synth', 3).muted, preset: this.sliderState.synthEuclid3Preset, steps: this.sliderState.synthEuclid3Steps, hits: this.sliderState.synthEuclid3Hits, rotation: this.sliderState.synthEuclid3Rotation, noteMin: this.sliderState.synthEuclid3NoteMin, noteMax: this.sliderState.synthEuclid3NoteMax, level: this.sliderState.synthEuclid3Level, probability: this.sliderState.synthEuclid3Probability ?? 1.0, source: (this.sliderState.synthEuclid3Source ?? 'lead') as string },
+              { enabled: true, muted: resolveSequencerLaneAudibility(this.sliderState, 'synth', 4).muted, preset: this.sliderState.synthEuclid4Preset, steps: this.sliderState.synthEuclid4Steps, hits: this.sliderState.synthEuclid4Hits, rotation: this.sliderState.synthEuclid4Rotation, noteMin: this.sliderState.synthEuclid4NoteMin, noteMax: this.sliderState.synthEuclid4NoteMax, level: this.sliderState.synthEuclid4Level, probability: this.sliderState.synthEuclid4Probability ?? 1.0, source: (this.sliderState.synthEuclid4Source ?? 'lead') as string },
             ] as const;
 
         for (const laneIndex of SYNTH_LANE_INDICES) {
           const lane = laneParams[laneIndex];
           const wasEnabled = this.prevSynthEuclidLaneEnabled[laneIndex];
           const justEnabled = lane.enabled && !wasEnabled;
-          if (!lane.enabled) {
-            this.prevSynthEuclidLaneEnabled[laneIndex] = false;
-            continue;
-          }
-
           // Resolve pattern params
           let steps: number, hits: number, rotation: number;
           if (lane.preset === 'custom') {
@@ -12024,6 +12036,22 @@ export class AudioEngine {
           const laneStepDuration = clockDivToSec(laneClockDiv);
           const laneClockSource = this.sliderState.synthEuclidClockSource ?? 'localBeat';
           const joinPolicy = this.sliderState.synthEuclidJoinPolicy ?? 'bar';
+          const isMutedAt = updateSequencerResumeRuntimeLane({
+            state: this.synthResumeRuntime,
+            laneIndex,
+            requestedMuted: lane.muted,
+            policy: sequencerResumeQuantizationForLane(this.sliderState, 'synth', laneIndex + 1),
+            now,
+            nextBoundaryTime: (policy) => policy === 'nextBar'
+              ? getNextBarBoundaryCtxTime(laneClockSource, this.sliderState!, anchors, nowWallSec, now)
+              : getNextBeatGridCtxTime(
+                laneClockSource,
+                60 / Math.max(1, getEffectiveSequencerBpm(this.sliderState!)),
+                anchors,
+                nowWallSec,
+                now,
+              ),
+          });
           if (justEnabled && joinPolicy === 'bar') {
             this.synthEuclidCurrentStep[laneIndex] = 0;
             this.synthEuclidHitCounts[laneIndex] = 0;
@@ -12303,6 +12331,7 @@ export class AudioEngine {
 
                   for (let r = 0; r < ratchet; r++) {
                     const ratchetDelayMs = delayMs + r * ratchetWindow * 1000;
+                    if (isMutedAt(now + ratchetDelayMs / 1000)) continue;
                     for (const note of triggerNotes) {
                       const frequency = midiToFreq(note.midi);
                       const noteVelocity = Math.max(0, Math.min(1, velocity * note.velocity));
@@ -12410,6 +12439,7 @@ export class AudioEngine {
     this.resetSynthEuclidEvolveBarCounters();
     this.synthEuclidNextStepTime = [0, 0, 0, 0];
     this.prevSynthEuclidLaneEnabled = [false, false, false, false];
+    resetSequencerResumeRuntimeState(this.synthResumeRuntime);
     this.synthTrigConditionCounters = [[], [], [], []];
     this.onSynthStepPositionChange?.([0, 0, 0, 0], [0, 0, 0, 0]);
 

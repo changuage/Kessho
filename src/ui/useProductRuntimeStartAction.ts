@@ -10,6 +10,7 @@ type StartProductPlayback = (options: {
 }) => Promise<void>;
 
 export type ProductRuntimeStartActionOptions = {
+  primeProductRuntimeAudio: () => void;
   preparePlaybackStartState: (requestedState?: SliderState) => Promise<SliderState>;
   startProductPlayback: StartProductPlayback;
   startArmedRecordingAfterPlaybackStart: () => void;
@@ -18,6 +19,7 @@ export type ProductRuntimeStartActionOptions = {
 };
 
 export function useProductRuntimeStartAction({
+  primeProductRuntimeAudio,
   startProductPlayback,
   ...options
 }: ProductRuntimeStartActionOptions) {
@@ -26,6 +28,7 @@ export function useProductRuntimeStartAction({
   // compatibility implementation behind this product runtime facade.
   return useSelectedAudioEngineStartAction({
     ...options,
+    primeSelectedPlayback: primeProductRuntimeAudio,
     startSelectedPlayback: startProductPlayback,
   });
 }

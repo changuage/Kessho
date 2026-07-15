@@ -1,5 +1,6 @@
 import React from 'react';
 import type { SliderState } from '../state';
+import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumVoiceConfig } from '../../audio/drumVoiceConfig';
 import EnvelopeVisualizer from './EnvelopeVisualizer';
@@ -9,8 +10,8 @@ interface VoiceCardAdvancedProps {
   config: DrumVoiceConfig;
   state: SliderState;
   onParamChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
-  sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
-  SliderComponent: React.ComponentType<Record<string, unknown>>;
+  sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
+  SliderComponent: React.ComponentType<SliderRendererProps<keyof SliderState>>;
   isTriggered?: boolean;
   analyserNode?: AnalyserNode;
   liveCaptureEnabled?: boolean;
@@ -42,7 +43,7 @@ const VoiceCardAdvanced: React.FC<VoiceCardAdvancedProps> = ({
   analyserNode,
   liveCaptureEnabled = true,
 }) => {
-  const Slider = SliderComponent as React.ComponentType<Record<string, unknown>>;
+  const Slider = SliderComponent;
   return (
     <div>
       <EnvelopeVisualizer

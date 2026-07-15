@@ -1,6 +1,7 @@
 #include "KesshoProductEngineInternal.h"
 
 #include <initializer_list>
+#include <limits>
 
 namespace {
 
@@ -224,6 +225,79 @@ const GranularVoiceParamSpec* findGranularExtVoiceParamSpec(uint32_t offset) {
     }
   }
   return nullptr;
+}
+
+double laneTimingSamplesPerStep(const KesshoProductEngine& engine, const LaneState& lane) {
+  return sequencerSamplesPerStep(engine.transport, engine.sample_rate, lane.clock_division) /
+      static_cast<double>(clampFloat(lane.tempo_multiplier, 0.25f, 12.0f));
+}
+
+uint64_t retimedFutureSample(
+    uint64_t sample,
+    uint64_t transition_sample,
+    double timing_ratio) {
+  if (sample <= transition_sample) return sample;
+  const double retimed = static_cast<double>(transition_sample) +
+      static_cast<double>(sample - transition_sample) * timing_ratio;
+  if (!std::isfinite(retimed) || retimed >= static_cast<double>(std::numeric_limits<uint64_t>::max())) {
+    return std::numeric_limits<uint64_t>::max();
+  }
+  return static_cast<uint64_t>(std::llround(std::max(0.0, retimed)));
+}
+
+void retimeSequencerLanePreservingPhase(
+    KesshoProductEngine& engine,
+    LaneState& lane,
+    double previous_samples_per_step) {
+  if (!lane.sequencer_runtime_initialized ||
+      !std::isfinite(previous_samples_per_step) ||
+      previous_samples_per_step <= 0.0) {
+    return;
+  }
+  const double next_samples_per_step = laneTimingSamplesPerStep(engine, lane);
+  if (!std::isfinite(next_samples_per_step) || next_samples_per_step <= 0.0) return;
+  const uint64_t transition_sample = engine.transport.sample_frame;
+  const double previous_step_position =
+      (static_cast<double>(transition_sample) - static_cast<double>(lane.sequencer_start_sample_frame)) /
+      previous_samples_per_step;
+  if (!std::isfinite(previous_step_position)) return;
+  const double next_origin = static_cast<double>(transition_sample) -
+      previous_step_position * next_samples_per_step;
+  const double clamped_origin = std::clamp(
+      next_origin,
+      static_cast<double>(std::numeric_limits<int64_t>::min()),
+      static_cast<double>(std::numeric_limits<int64_t>::max()));
+  lane.sequencer_start_sample_frame = static_cast<int64_t>(std::llround(clamped_origin));
+  lane.sequencer_runtime_sample_frame = transition_sample;
+  lane.sequencer_join_pending = false;
+
+  const double timing_ratio = next_samples_per_step / previous_samples_per_step;
+  for (uint32_t i = 0u; i < lane.pending_ratchet_count; ++i) {
+    lane.pending_ratchets[i].absolute_sample = retimedFutureSample(
+        lane.pending_ratchets[i].absolute_sample,
+        transition_sample,
+        timing_ratio);
+  }
+  if (lane.arp.runtime_initialized) {
+    lane.arp.next_event_sample = retimedFutureSample(
+        lane.arp.next_event_sample,
+        transition_sample,
+        timing_ratio);
+  }
+  if (lane.anchor_walker.runtime_initialized) {
+    lane.anchor_walker.runtime_sample_frame = transition_sample;
+    lane.anchor_walker.next_walk_sample = retimedFutureSample(
+        lane.anchor_walker.next_walk_sample,
+        transition_sample,
+        timing_ratio);
+    lane.anchor_walker.next_gesture_walk_sample = retimedFutureSample(
+        lane.anchor_walker.next_gesture_walk_sample,
+        transition_sample,
+        timing_ratio);
+  }
+  if (lane.orbit.runtime_initialized) {
+    lane.orbit.runtime_sample_frame = transition_sample;
+  }
 }
 
 } // namespace
@@ -512,7 +586,7 @@ void KesshoProductEngine::sortControlEvents() {
   return clampFloat(requested_seconds, 0.001f, 20.0f);
 }
 
-bool KesshoProductEngine::isNextPhraseTimingEvent(const KesshoProductEvent& event) const {
+bool KesshoProductEngine::isSequencerLaneTimingEvent(const KesshoProductEvent& event) const {
   if (event.event_kind != KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE) return false;
   return event.param_id == KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_CLOCK_DIVISION_ID ||
       event.param_id == KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TEMPO_MULTIPLIER_ID ||
@@ -541,11 +615,22 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
 }
 
   void KesshoProductEngine::applyPendingTransportTransition() {
-  const float previous_bpm = transport.bpm;
-  const bool transport_applied = transport.applyPendingTransition(sample_rate);
+  const bool transport_due = transport.transition_pending &&
+      transport.sample_frame >= transport.pending_apply_frame;
   const bool timing_due = pending_phrase_timing_event_count > 0u &&
       transport.sample_frame >= pending_phrase_timing_apply_frame;
-  if (!transport_applied && !timing_due) return;
+  if (!transport_due && !timing_due) return;
+
+  double previous_synth_samples_per_step[kMaxLaneCount]{};
+  double previous_drum_samples_per_step[kMaxLaneCount]{};
+  for (uint32_t i = 0u; i < synth_lane_count; ++i) {
+    previous_synth_samples_per_step[i] = laneTimingSamplesPerStep(*this, synth_lanes[i]);
+  }
+  for (uint32_t i = 0u; i < drum_lane_count; ++i) {
+    previous_drum_samples_per_step[i] = laneTimingSamplesPerStep(*this, drum_lanes[i]);
+  }
+  const float previous_bpm = transport.bpm;
+  const bool transport_applied = transport.applyPendingTransition(sample_rate);
 
   uint32_t synth_timing_lane_mask = 0u;
   uint32_t drum_timing_lane_mask = 0u;
@@ -561,33 +646,27 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       } else if (timing_event.target_id == KESSHO_PRODUCT_SEQUENCER_DRUM && timing_event.index < 32u) {
         drum_timing_lane_mask |= 1u << timing_event.index;
       }
-      applyControlEvent(timing_event);
+      applySequencerLaneParamEvent(timing_event);
     }
   }
 
   if (transport_applied) {
-    const float tempo_ratio = transport.bpm > 0.0f ? previous_bpm / transport.bpm : 1.0f;
-    fx.delay_a_time_left_ms = clampFloat(fx.delay_a_time_left_ms * tempo_ratio, 10.0f, 5000.0f);
-    fx.delay_a_time_right_ms = clampFloat(fx.delay_a_time_right_ms * tempo_ratio, 10.0f, 5000.0f);
-    fx.delay_b_base_time_ms = clampFloat(fx.delay_b_base_time_ms * tempo_ratio, 20.0f, 5000.0f);
-    configureFxModules();
+    retimeTempoSyncedFx(previous_bpm);
   }
   for (uint32_t i = 0; i < synth_lane_count; ++i) {
     if (!transport_applied && (synth_timing_lane_mask & (1u << i)) == 0u) continue;
-    clearPendingRatchets(synth_lanes[i]);
-    resetSequencerLaneRuntime(synth_lanes[i], false);
+    retimeSequencerLanePreservingPhase(*this, synth_lanes[i], previous_synth_samples_per_step[i]);
   }
   for (uint32_t i = 0; i < drum_lane_count; ++i) {
     if (!transport_applied && (drum_timing_lane_mask & (1u << i)) == 0u) continue;
-    clearPendingRatchets(drum_lanes[i]);
-    resetSequencerLaneRuntime(drum_lanes[i], false);
+    retimeSequencerLanePreservingPhase(*this, drum_lanes[i], previous_drum_samples_per_step[i]);
   }
 }
 
   void KesshoProductEngine::applyControlEvent(const KesshoProductEvent& event) {
   if (transport.running &&
       (event.flags & KESSHO_PRODUCT_TIMING_APPLY_NEXT_PHRASE) != 0u &&
-      isNextPhraseTimingEvent(event)) {
+      isSequencerLaneTimingEvent(event)) {
     stageNextPhraseTimingEvent(event);
     return;
   }
@@ -637,28 +716,34 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
             sample_rate);
         break;
       }
-      transport.bpm = clampFloat(event.value, 1.0f, 400.0f);
-      if (event.value2 > 0.0f) {
-        transport.beats_per_bar = clampU32(static_cast<uint32_t>(std::lround(event.value2)), 1u, 32u);
-      }
-      if (event.value3 > 0.0f) {
-        transport.bars_per_phrase = clampU32(static_cast<uint32_t>(std::lround(event.value3)), 1u, 256u);
-      }
-      transport.phrase_seconds = event.value4 > 0.0f
-          ? clampFloat(event.value4, 0.001f, 4096.0f)
-          : static_cast<float>(
-              (60.0 / static_cast<double>(transport.bpm)) *
-              static_cast<double>(transport.beats_per_bar) *
-              static_cast<double>(transport.bars_per_phrase));
-      transport.transition_pending = false;
-      transport.pending_apply_frame = 0u;
-      for (uint32_t i = 0; i < synth_lane_count; ++i) {
-        clearPendingRatchets(synth_lanes[i]);
-        synth_lanes[i].arp.next_event_sample = 0u;
-        synth_lanes[i].arp.runtime_initialized = false;
-      }
-      for (uint32_t i = 0; i < drum_lane_count; ++i) {
-        clearPendingRatchets(drum_lanes[i]);
+      {
+        double previous_synth_samples_per_step[kMaxLaneCount]{};
+        double previous_drum_samples_per_step[kMaxLaneCount]{};
+        for (uint32_t i = 0u; i < synth_lane_count; ++i) {
+          previous_synth_samples_per_step[i] = laneTimingSamplesPerStep(*this, synth_lanes[i]);
+        }
+        for (uint32_t i = 0u; i < drum_lane_count; ++i) {
+          previous_drum_samples_per_step[i] = laneTimingSamplesPerStep(*this, drum_lanes[i]);
+        }
+        const float previous_bpm = transport.bpm;
+        const bool transport_applied = transport.applyImmediateTransition(
+            event.value,
+            event.value2 > 0.0f
+                ? static_cast<uint32_t>(std::lround(event.value2))
+                : transport.beats_per_bar,
+            event.value3 > 0.0f
+                ? static_cast<uint32_t>(std::lround(event.value3))
+                : transport.bars_per_phrase,
+            event.value4,
+            sample_rate);
+        if (!transport_applied) break;
+        retimeTempoSyncedFx(previous_bpm);
+        for (uint32_t i = 0u; i < synth_lane_count; ++i) {
+          retimeSequencerLanePreservingPhase(*this, synth_lanes[i], previous_synth_samples_per_step[i]);
+        }
+        for (uint32_t i = 0u; i < drum_lane_count; ++i) {
+          retimeSequencerLanePreservingPhase(*this, drum_lanes[i], previous_drum_samples_per_step[i]);
+        }
       }
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP:
@@ -674,7 +759,20 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       applyCommitSynthArpPatternEvent(event);
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE:
-      applySequencerLaneParamEvent(event);
+      if (transport.running && isSequencerLaneTimingEvent(event)) {
+        uint32_t lane_count = 0u;
+        LaneState* lanes = sequencerLanesForEvent(event, lane_count);
+        if (lanes == nullptr || event.index >= lane_count) {
+          applySequencerLaneParamEvent(event);
+          break;
+        }
+        LaneState& lane = lanes[event.index];
+        const double previous_samples_per_step = laneTimingSamplesPerStep(*this, lane);
+        applySequencerLaneParamEvent(event);
+        retimeSequencerLanePreservingPhase(*this, lane, previous_samples_per_step);
+      } else {
+        applySequencerLaneParamEvent(event);
+      }
       break;
     case KESSHO_PRODUCT_EVENT_KIND_ANCHOR_WALKER_PERFORMANCE:
       applyAnchorWalkerPerformanceEvent(event);

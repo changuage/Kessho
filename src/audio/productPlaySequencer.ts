@@ -418,7 +418,6 @@ export function resolveProductPlayEnginePattern(options: {
   runtimeTick?: number;
   pitchBindingMode?: PitchBindingMode;
   triggerPattern?: readonly boolean[] | null;
-  triggerStepMs?: number;
   anchorMidi?: number | null;
 }): ProductPlayEnginePattern | null {
   const config = normalizeProductPlayConfig(options.config);

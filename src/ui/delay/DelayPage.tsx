@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
 import { formatIndexedDelayDivision, getSliderNumericValue, type SliderMode, type SliderState } from '../state';
 import type { SliderPageId } from '../sliderHelpCatalog';
 import { useSliderHelp } from '../SliderHelpOverlay';
@@ -58,8 +59,8 @@ export interface DelayPageProps {
   onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
-  sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
-  SliderComponent: React.ComponentType<Record<string, unknown>>;
+  sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
+  SliderComponent: React.ComponentType<SliderRendererProps<keyof SliderState>>;
   sliderModes?: Record<string, SliderMode>;
   dualSliderRanges?: Record<string, { min: number; max: number }>;
   onDualStateChange?: (
@@ -92,7 +93,7 @@ const DelayPage: React.FC<DelayPageProps> = ({
   dualSliderRanges,
   onDualStateChange,
 }) => {
-  const Slider = SliderComponent as React.ComponentType<any>;
+  const Slider = SliderComponent;
   const { announceHelp, announceSlider } = useSliderHelp();
   const delayRhythmMapToggle = useVisualFeatureToggle(
     'kessho.visualizers.delayRhythmMap.enabled',

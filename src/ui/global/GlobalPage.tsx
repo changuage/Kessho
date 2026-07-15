@@ -13,6 +13,10 @@ import { DYNAMICS_ENGINE_COLORS, SOURCE_COLORS } from '../../designSystem/colors
 import { APP_TAB_SYMBOLS, TEXT_SYMBOLS } from '../../designSystem/textSymbols';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { getRuntimeSliderPosition } from '../runtimeSliderState';
+import { resolveEffectiveSliderValue } from '../sliderSystem/effectiveValue';
+import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
+import type { SelectRenderer } from '../../app/AppControls';
+import type { CircleOfFifthsProps } from '../CircleOfFifths';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
 import { HarmonyEnginePanel } from '../harmony/HarmonyEnginePanel';
 import { GlobalRuntimeComparisonPanel, type GlobalRuntimeComparisonPanelProps } from './GlobalRuntimeComparisonPanel';
@@ -411,22 +415,13 @@ function getSceneRuntimeNumber(
   const mode = sliderModes?.[keyString] ?? 'single';
   const range = dualSliderRanges?.[keyString];
   const authored = state[key];
-  if (
-    mode === 'single' ||
-    !range ||
-    typeof authored !== 'number' ||
-    !Number.isFinite(authored)
-  ) {
-    return typeof authored === 'number' && Number.isFinite(authored) ? authored : null;
-  }
-
-  const min = Math.min(range.min, range.max);
-  const max = Math.max(range.min, range.max);
-  if (!Number.isFinite(min) || !Number.isFinite(max) || Math.abs(max - min) < 0.000001) return authored;
-
-  const fallbackPosition = clamp01((authored - min) / (max - min));
-  const runtimePosition = getRuntimeSliderPosition(keyString, mode) ?? fallbackPosition;
-  return min + clamp01(runtimePosition) * (max - min);
+  if (typeof authored !== 'number' || !Number.isFinite(authored)) return null;
+  return resolveEffectiveSliderValue({
+    authoredValue: authored,
+    mode,
+    range: range ? [range.min, range.max] : undefined,
+    runtimePosition: getRuntimeSliderPosition(keyString, mode),
+  });
 }
 
 function hasSceneRuntimeDualParams(
@@ -825,20 +820,15 @@ export interface GlobalPageProps {
   state: SliderState;
   expandedPanels: Set<string>;
   togglePanel: (id: string) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onParamChange: (key: any, value: number) => void;
+  onParamChange: (key: keyof SliderState, value: number) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onSelectChange: (key: any, value: any) => void;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   onAuditionHarmonyNote?: (note: ProductManualSynthNote) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sliderProps: (paramKey: any) => Record<string, unknown>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  SliderComponent: React.ComponentType<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  SelectComponent: React.ComponentType<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  CircleOfFifthsComponent: React.ComponentType<any>;
+  sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
+  SliderComponent: React.ComponentType<SliderRendererProps<keyof SliderState>>;
+  SelectComponent: SelectRenderer;
+  CircleOfFifthsComponent: React.ComponentType<CircleOfFifthsProps>;
 
   // Engine state
   engineState: ProductEngineState;

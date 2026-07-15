@@ -11,6 +11,13 @@ import {
   drumLaneEnableTouchedAfterPresetRestore,
   shouldAutoEnableDrumLaneOnTransportStart,
 } from '../sequencer/sequencerTransportPolicy';
+import { preserveRunningDrumSequencerSource } from '../../app/drumSequencerSourcePolicy';
+import {
+  applyRoutingActivationForSliderValue,
+  captureRuntimeEnabledFlags,
+  normalizeRoutingRuntimeEnabledFlags,
+  restoreRuntimeEnabledFlags,
+} from '../../app/sliderRoutingState';
 import { DEFAULT_STATE } from '../state';
 
 assert.equal(
@@ -153,5 +160,62 @@ assert.equal(
   false,
   'preset restore with enabled lanes should keep first-start auto-enable available after lanes are later cleared by preset replacement',
 );
+
+{
+  const drumsExplicitlyDisabled = {
+    ...DEFAULT_STATE,
+    padEnabled: true,
+    synthLevel: 0.5,
+    drumEnabled: false,
+    drumEuclidMasterEnabled: true,
+    drumEuclid1Enabled: true,
+  };
+  const preservedEnabledFlags = captureRuntimeEnabledFlags(drumsExplicitlyDisabled);
+  let routedState = applyRoutingActivationForSliderValue(
+    drumsExplicitlyDisabled,
+    { ...drumsExplicitlyDisabled, synthLevel: 0.75 },
+    'synthLevel',
+    0.75,
+  );
+  routedState = preserveRunningDrumSequencerSource(drumsExplicitlyDisabled, routedState);
+  routedState = normalizeRoutingRuntimeEnabledFlags(routedState);
+  routedState = restoreRuntimeEnabledFlags(routedState, preservedEnabledFlags);
+  routedState = preserveRunningDrumSequencerSource(drumsExplicitlyDisabled, routedState);
+
+  assert.equal(routedState.padEnabled, true, 'Pad 1 routing edits should preserve the enabled Pad source');
+  assert.equal(routedState.synthLevel, 0.75, 'Pad 1 routing edits should commit the requested level');
+  assert.equal(
+    routedState.drumEnabled,
+    false,
+    'Pad 1 routing edits must not reactivate an explicitly disabled drum source while its sequencer is running',
+  );
+  assert.equal(routedState.drumEuclidMasterEnabled, true, 'the drum sequencer transport state should remain unchanged');
+  assert.equal(routedState.drumEuclid1Enabled, true, 'the active drum lane state should remain unchanged');
+}
+
+{
+  const runningDrums = {
+    ...DEFAULT_STATE,
+    drumEnabled: true,
+    drumEuclidMasterEnabled: true,
+    drumEuclid1Enabled: true,
+  };
+  const incidentallyDisabled = preserveRunningDrumSequencerSource(
+    runningDrums,
+    { ...runningDrums, drumEnabled: false },
+  );
+  assert.equal(
+    incidentallyDisabled.drumEnabled,
+    true,
+    'a running drum source should retain the existing protection against incidental disablement',
+  );
+
+  const explicitlyDisabled = preserveRunningDrumSequencerSource(
+    runningDrums,
+    { ...runningDrums, drumEnabled: false },
+    { allowExplicitDrumDisable: true },
+  );
+  assert.equal(explicitlyDisabled.drumEnabled, false, 'an explicit drum disable must remain authoritative');
+}
 
 console.log('Drum sequencer transport policy tests passed');

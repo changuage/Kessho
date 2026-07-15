@@ -23,6 +23,7 @@ import { createCoreProductSequencerSubLaneEnabledEvents } from '../audio/product
 import type { SequencerSubLaneConfigState } from '../audio/CoreProductHostSequencerAdapter';
 import { commitProductControlActionForProduct } from '../product-control';
 import type { SliderState } from './state';
+import { commitLiveSequencerTiming } from './commitLiveSequencerTiming';
 
 type ProductRuntimeSequencerPitchState = { steps?: number; direction?: string; scaleQuantize?: boolean } | null;
 type ProductRuntimeSequencerLaneHomeCaptureOptions = {
@@ -144,38 +145,42 @@ export function useProductRuntimeSequencerControls({
 
   const setProductDrumEuclidClockDivs = useCallback((divs: readonly unknown[]): void => {
     if (!productRuntimeActive) return;
-    commitCoreProductSequencerEvents(
+    commitLiveSequencerTiming({
+      engine: productEngine,
       stateRef,
-      sequencerPatch('drumEuclidClockDivs', divs),
-      createCoreProductSequencerClockDivisionEvents('drum', divs),
-    );
+      patch: sequencerPatch('drumEuclidClockDivs', divs),
+      events: createCoreProductSequencerClockDivisionEvents('drum', divs),
+    });
   }, [productRuntimeActive, stateRef]);
 
   const setProductSynthEuclidClockDivs = useCallback((divs: readonly unknown[]): void => {
     if (!productRuntimeActive) return;
-    commitCoreProductSequencerEvents(
+    commitLiveSequencerTiming({
+      engine: productEngine,
       stateRef,
-      sequencerPatch('synthEuclidClockDivs', divs),
-      createCoreProductSequencerClockDivisionEvents('synth', divs),
-    );
+      patch: sequencerPatch('synthEuclidClockDivs', divs),
+      events: createCoreProductSequencerClockDivisionEvents('synth', divs),
+    });
   }, [productRuntimeActive, stateRef]);
 
   const setProductDrumEuclidSwings = useCallback((swings: readonly unknown[]): void => {
     if (!productRuntimeActive) return;
-    commitCoreProductSequencerEvents(
+    commitLiveSequencerTiming({
+      engine: productEngine,
       stateRef,
-      sequencerPatch('drumEuclidSwings', swings),
-      createCoreProductSequencerSwingEvents('drum', swings),
-    );
+      patch: sequencerPatch('drumEuclidSwings', swings),
+      events: createCoreProductSequencerSwingEvents('drum', swings),
+    });
   }, [productRuntimeActive, stateRef]);
 
   const setProductSynthEuclidSwings = useCallback((swings: readonly unknown[]): void => {
     if (!productRuntimeActive) return;
-    commitCoreProductSequencerEvents(
+    commitLiveSequencerTiming({
+      engine: productEngine,
       stateRef,
-      sequencerPatch('synthEuclidSwings', swings),
-      createCoreProductSequencerSwingEvents('synth', swings),
-    );
+      patch: sequencerPatch('synthEuclidSwings', swings),
+      events: createCoreProductSequencerSwingEvents('synth', swings),
+    });
   }, [productRuntimeActive, stateRef]);
 
   const setProductDrumSubLaneEnabled = useCallback((states: Record<string, boolean>[]): void => {

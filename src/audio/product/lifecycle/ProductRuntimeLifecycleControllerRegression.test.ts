@@ -201,11 +201,10 @@ function createDelegate(overrides: Partial<ProductLifecycleDelegate> = {}) {
     calls,
     [
       'setLatestState',
-      'ensureStarted',
+      'resume',
       'runtimeReady:true',
       'ensureAssets',
       'resetEvolve',
-      'resume',
       'load:runtime-start:true:true',
     ],
     'host lifecycle must resume the audio context before waiting for an acked runtime-start snapshot',

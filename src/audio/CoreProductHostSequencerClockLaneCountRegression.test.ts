@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { shouldRejoinCoreProductSequencerClocks } from './CoreProductHostSequencerClock';
+import {
+  coreProductSequencerClockRejoinMask,
+  shouldRejoinCoreProductSequencerClocks,
+} from './CoreProductHostSequencerClock';
 import {
   DRUM_EUCLIDEAN_LANE_COUNT,
   SYNTH_EUCLIDEAN_LANE_COUNT,
@@ -38,8 +41,8 @@ for (const lane of [1, 2, 3, 4, 5, 6]) {
   const next = withLane(baseState(), 'drum', lane, true);
   assert.equal(
     shouldRejoinCoreProductSequencerClocks(previous, next),
-    true,
-    `enabling drum lane ${lane} must rejoin Product Core sequencer clocks`,
+    false,
+    `unmuting drum lane ${lane} must preserve Product Core sequencer phase`,
   );
 }
 
@@ -48,8 +51,28 @@ for (const lane of [1, 2, 3, 4]) {
   const next = withLane(baseState(), 'synth', lane, true);
   assert.equal(
     shouldRejoinCoreProductSequencerClocks(previous, next),
-    true,
-    `enabling synth lane ${lane} must rejoin Product Core sequencer clocks`,
+    false,
+    `unmuting synth lane ${lane} must preserve Product Core sequencer phase`,
+  );
+}
+
+{
+  const previous = { ...baseState(), drumEuclidMasterEnabled: false };
+  const next = { ...previous, drumEuclidMasterEnabled: true };
+  assert.deepEqual(
+    coreProductSequencerClockRejoinMask(previous, next),
+    { synth: 0, drum: 0b11_1111 },
+    'starting Drum must arm only Drum lanes and leave every Synth clock untouched',
+  );
+}
+
+{
+  const previous = { ...baseState(), synthEuclideanMasterEnabled: false };
+  const next = { ...previous, synthEuclideanMasterEnabled: true };
+  assert.deepEqual(
+    coreProductSequencerClockRejoinMask(previous, next),
+    { synth: 0b1111, drum: 0 },
+    'starting Synth must arm only Synth lanes and leave every Drum clock untouched',
   );
 }
 

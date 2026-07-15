@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { createCoreProductSnapshot } from './coreProductSnapshot';
 import { buildCoreProductSnapshotDiff } from './CoreProductRuntimeAdapter';
+import { coreProductSequencerClockRejoinMask } from './CoreProductHostSequencerClock';
 import {
   CORE_PRODUCT_SOURCE_IDS,
   CORE_PRODUCT_TIMING_FLAGS,
   CORE_PRODUCT_TRANSPORT_FLAGS,
   createCoreProductSequencerLaneParamEvent,
+  createCoreProductTransportTransitionEvent,
   resolveCoreProductRangeTargets,
 } from './coreProductEvents';
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
@@ -39,16 +41,14 @@ import {
 import { generateOrbitConstellation } from '../ui/sequencer/orbitConstellation';
 import { createDefaultOrbitNote, normalizeOrbitSequencerConfig } from '../ui/sequencer/orbitSequencerTypes';
 import { createWalkerLayer } from '../ui/sequencer/anchorWalkerTypes';
-import {
-  isReleaseCommittedTransportTimingKey,
-  isTransportClockStateKey,
-} from '../ui/transportTimingPolicy';
+import { isTransportClockStateKey } from '../ui/transportTimingPolicy';
+import { CORE_PRODUCT_SEQUENCER_AUDIBILITY_FLAGS } from './sequencerResumeQuantization';
 
-assert.equal(isReleaseCommittedTransportTimingKey('phraseLength'), true);
-assert.equal(isReleaseCommittedTransportTimingKey('sequencerMasterBPM'), true);
-assert.equal(isReleaseCommittedTransportTimingKey('transportBarsPerPhrase'), true);
-assert.equal(isReleaseCommittedTransportTimingKey('transportBeatsPerBar'), true);
-assert.equal(isReleaseCommittedTransportTimingKey('synthLevel'), false);
+assert.equal(isTransportClockStateKey('phraseLength'), true);
+assert.equal(isTransportClockStateKey('sequencerMasterBPM'), true);
+assert.equal(isTransportClockStateKey('transportBarsPerPhrase'), true);
+assert.equal(isTransportClockStateKey('transportBeatsPerBar'), true);
+assert.equal(isTransportClockStateKey('synthLevel'), false);
 assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
 
 for (const paramId of [
@@ -58,10 +58,32 @@ for (const paramId of [
 ]) {
   assert.equal(
     createCoreProductSequencerLaneParamEvent('synth', 0, paramId, 1).flags,
-    CORE_PRODUCT_TIMING_FLAGS.applyNextPhrase,
-    'sequencer timing event constructors should default to next-phrase application',
+    0,
+    'sequencer timing event constructors should default to live application',
   );
 }
+assert.equal(
+  createCoreProductSequencerLaneParamEvent(
+    'synth',
+    0,
+    KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision,
+    16,
+    CORE_PRODUCT_TIMING_FLAGS.applyNextPhrase,
+  ).flags,
+  CORE_PRODUCT_TIMING_FLAGS.applyNextPhrase,
+  'the reusable lane timing event must retain explicit next-phrase staging support',
+);
+assert.equal(
+  createCoreProductTransportTransitionEvent({
+    bpm: 120,
+    beatsPerBar: 4,
+    barsPerPhrase: 4,
+    phraseSeconds: 8,
+    applyPolicy: 'nextPhrase',
+  }).flags,
+  CORE_PRODUCT_TRANSPORT_FLAGS.applyNextPhrase,
+  'the reusable transport event must retain explicit next-phrase staging support',
+);
 
 const disabledDelaySnapshot = createCoreProductSnapshot({
   padEnabled: true,
@@ -85,6 +107,95 @@ const disabledDelaySnapshot = createCoreProductSnapshot({
 });
 
 {
+  const audibleState = {
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid2Enabled: false,
+    synthEuclid1Solo: false,
+    synthEuclid2Solo: false,
+  };
+  const snapshot = createCoreProductSnapshot(audibleState);
+  assert.equal(snapshot.synthLanes[0]?.enabled, true, 'Synth master owns the lane clock');
+  assert.equal(snapshot.synthLanes[0]?.muted, false, 'enabled lane must be audible');
+  assert.equal(snapshot.synthLanes[1]?.enabled, true, 'muted lane clock must remain active');
+  assert.equal(snapshot.synthLanes[1]?.muted, true, 'disabled UI lane must become an output mute');
+
+  const unmuted = createCoreProductSnapshot({ ...audibleState, synthEuclid2Enabled: true });
+  const unmuteDiff = buildCoreProductSnapshotDiff(snapshot, unmuted);
+  assert.equal(unmuteDiff.applied, true);
+  if (unmuteDiff.applied) {
+    assert.equal(
+      unmuteDiff.events.some((event) => event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMuted && event.index === 1),
+      true,
+      'unmute must be delivered as a live audibility event',
+    );
+    const unmuteEvent = unmuteDiff.events.find(
+      (event) => event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMuted && event.index === 1,
+    );
+    assert.equal(
+      unmuteEvent?.flags,
+      CORE_PRODUCT_SEQUENCER_AUDIBILITY_FLAGS.applyNextBeat,
+      'new and legacy lanes should resume on the next shared beat by default',
+    );
+    assert.equal(
+      unmuteDiff.events.some((event) => event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneEnabled || event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneInitialStartDelaySeconds),
+      false,
+      'unmute must not stop, reset, or rejoin any sequencer clock',
+    );
+  }
+
+  const immediateUnmuted = createCoreProductSnapshot({
+    ...audibleState,
+    synthEuclid2Enabled: true,
+    synthEuclid2ResumeQuantization: 'immediate',
+  });
+  const immediateDiff = buildCoreProductSnapshotDiff(snapshot, immediateUnmuted);
+  assert.equal(immediateDiff.applied, true);
+  if (immediateDiff.applied) {
+    const unmuteEvent = immediateDiff.events.find(
+      (event) => event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMuted && event.index === 1,
+    );
+    assert.equal(unmuteEvent?.flags, 0, 'immediate lane resume must remain a live gate-open event');
+  }
+
+  const soloed = createCoreProductSnapshot({ ...audibleState, synthEuclid1Solo: true });
+  assert.equal(soloed.synthLanes[0]?.muted, false, 'soloed lane remains audible');
+  assert.equal(soloed.synthLanes[1]?.muted, true, 'non-soloed lane is output-muted');
+  assert.equal(soloed.synthLanes[1]?.enabled, true, 'solo must leave non-soloed lane clocks active');
+}
+
+{
+  const runningSynthState = {
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    drumEnabled: true,
+    drumEuclidMasterEnabled: false,
+    drumEuclid1Enabled: true,
+  };
+  const previous = createCoreProductSnapshot(runningSynthState);
+  previous.transport.running = true;
+  const nextState = { ...runningSynthState, drumEuclidMasterEnabled: true };
+  const next = createCoreProductSnapshot(nextState);
+  next.transport.running = true;
+  const joinDiff = buildCoreProductSnapshotDiff(previous, next, {
+    sequencerClockRejoinMask: coreProductSequencerClockRejoinMask(runningSynthState, nextState),
+  });
+  assert.equal(joinDiff.applied, true);
+  if (joinDiff.applied) {
+    assert.equal(
+      joinDiff.events.some((event) => event.targetId === 1 && event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneInitialStartDelaySeconds),
+      false,
+      'starting Drum must not post a reset/rejoin event to Synth',
+    );
+    assert.equal(
+      joinDiff.events.filter((event) => event.targetId === 2 && event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneInitialStartDelaySeconds).length,
+      6,
+      'starting Drum arms every Drum lane at its next clock boundary',
+    );
+  }
+}
+
+{
   const active16 = createCoreProductSnapshot({
     transportPrimaryClock: 'seconds',
     phraseLength: 16,
@@ -103,20 +214,20 @@ const disabledDelaySnapshot = createCoreProductSnapshot({
     synthEuclid1Enabled: true,
   });
   requested32.transport.running = true;
-  const transitionDiff = buildCoreProductSnapshotDiff(active16, requested32, { forceSequencerClockRejoin: false });
+  const transitionDiff = buildCoreProductSnapshotDiff(active16, requested32);
   assert.equal(transitionDiff.applied, true, 'running phrase changes should remain dirty-diffable');
   if (transitionDiff.applied) {
     const transition = transitionDiff.events.find((event) => event.eventKind === KESSHO_PRODUCT_EVENT_IDS.SetTransport);
-    assert(transition, 'running phrase changes should emit one pending transport transition');
+    assert(transition, 'running phrase changes should emit one live transport transition');
     assert.equal(transition.value, 30);
     assert.equal(transition.value2, 4);
     assert.equal(transition.value3, 4);
     assert.equal(transition.value4, 32);
-    assert.equal(transition.flags, CORE_PRODUCT_TRANSPORT_FLAGS.applyNextPhrase);
+    assert.equal(transition.flags, 0);
     assert.equal(
       transitionDiff.events.some((event) => event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneInitialStartDelaySeconds),
       false,
-      'running phrase changes must not reset enabled lanes while waiting for the phrase boundary',
+      'running phrase changes must not reset enabled lanes during a live retime',
     );
     assert.equal(
       transitionDiff.events.some((event) => ([
@@ -143,14 +254,14 @@ const disabledDelaySnapshot = createCoreProductSnapshot({
     synthEuclid1ClockDivision: 8,
   });
   requestedClock.transport.running = true;
-  const clockDiff = buildCoreProductSnapshotDiff(activeClock, requestedClock, { forceSequencerClockRejoin: false });
+  const clockDiff = buildCoreProductSnapshotDiff(activeClock, requestedClock);
   assert.equal(clockDiff.applied, true);
   if (clockDiff.applied) {
     const event = clockDiff.events.find((candidate) =>
       candidate.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision
     );
     assert(event, 'running sequencer clock changes should emit a lane timing event');
-    assert.equal(event.flags, CORE_PRODUCT_TIMING_FLAGS.applyNextPhrase);
+    assert.equal(event.flags, 0);
   }
 }
 
@@ -418,8 +529,13 @@ for (const mode of ['anchorWalker', 'orbit'] as const) {
     });
     assert.equal(
       snapshot.synthLanes[0]?.enabled,
-      false,
-      `${mode} should respect the parent synth lane mute gate`,
+      true,
+      `${mode} should retain its clock while the parent synth lane is muted`,
+    );
+    assert.equal(
+      snapshot.synthLanes[0]?.muted,
+      true,
+      `${mode} should respect the parent synth lane audibility gate`,
     );
   }
 }

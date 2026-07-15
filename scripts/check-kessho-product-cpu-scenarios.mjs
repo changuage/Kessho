@@ -209,7 +209,7 @@ assert(
 );
 assert(
   productManualTriggers.includes('commitProductControlActionThenTrigger') &&
-    productManualTriggers.includes('(_revision, resolvedSliders) => productEngine.auditionSynthNote(note, resolvedSliders)') &&
+    productManualTriggers.includes('(_revision, resolvedSliders) => productEngine.auditionSynthNote(productNote, resolvedSliders)') &&
     productManualTriggers.includes('const velocity = options.velocity ?? DEFAULT_MANUAL_DRUM_VELOCITY') &&
     productManualTriggers.includes('(_revision, resolvedSliders) => productEngine.triggerDrumVoice(voice, velocity, resolvedSliders)'),
   'CPU manual trigger burst scenario requires Product Control commit before productEngine trigger calls',

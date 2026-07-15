@@ -118,9 +118,9 @@ uint64_t sequencerLaneStartSampleFrame(
     uint64_t block_start,
     double samples_per_step);
 
-int64_t sequencerFirstRelativeStep(uint64_t block_start, uint64_t origin, double samples_per_step);
+int64_t sequencerFirstRelativeStep(uint64_t block_start, int64_t origin, double samples_per_step);
 
-int64_t sequencerLastRelativeStep(uint64_t block_end, uint64_t origin, double samples_per_step);
+int64_t sequencerLastRelativeStep(uint64_t block_end, int64_t origin, double samples_per_step);
 
 uint32_t sequencerCurrentRelativeStep(const LaneState& lane, uint64_t sample_frame, double samples_per_step);
 

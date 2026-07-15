@@ -1,6 +1,7 @@
 import type { CoreProductEvent } from '../../coreProductEvents';
 import { encodeCoreProductSnapshot, type CoreProductSnapshot } from '../../coreProductSnapshot';
 import { buildCoreProductSnapshotDiff, type SnapshotReloadReason } from '../../CoreProductRuntimeAdapter';
+import type { CoreProductSequencerClockRejoinMask } from '../../CoreProductHostSequencerClock';
 import { fnv1a32Bytes } from '../../../debug/productStateDebugHash';
 import type {
   ProductRuntimeSnapshotMetadata,
@@ -45,7 +46,7 @@ export type CoreProductSnapshotUpdateOptions = {
   fallbackReloadReason: SnapshotReloadReason;
   pendingReloadReason: SnapshotReloadReason | null;
   forceFullSnapshot?: boolean;
-  forceSequencerClockRejoin?: boolean;
+  sequencerClockRejoinMask?: CoreProductSequencerClockRejoinMask;
   forwardRngDiffs?: boolean;
   metadata?: Omit<ProductRuntimeSnapshotMetadata, 'encodedSnapshotHash'>;
   awaitAudioThreadAck?: boolean;
@@ -97,7 +98,7 @@ export async function applyCoreProductSnapshotUpdate(options: CoreProductSnapsho
   if (options.previousSnapshot) {
     const diff = buildCoreProductSnapshotDiff(options.previousSnapshot, options.nextSnapshot, {
       forwardRngDiffs: options.forwardRngDiffs,
-      forceSequencerClockRejoin: options.forceSequencerClockRejoin,
+      sequencerClockRejoinMask: options.sequencerClockRejoinMask,
     });
     if (diff.applied) {
       for (const event of diff.events) {

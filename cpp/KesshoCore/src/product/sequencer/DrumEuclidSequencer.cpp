@@ -27,6 +27,7 @@ void armAnchorWalkerGesture(
   switch (param_id) {
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_CLOCK_MODE_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_ENABLED_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MUTED_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TARGET_SOURCE_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_STEP_COUNT_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_FILL_COUNT_ID:
@@ -89,6 +90,24 @@ void armAnchorWalkerGesture(
         resetSequencerLaneRuntime(lane);
       }
       lane.enabled = enabled;
+      break;
+    }
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MUTED_ID: {
+      const bool muted = event.value >= 0.5f;
+      lane.pending_unmute_quantization = 0u;
+      if (muted || !transport.running) {
+        lane.muted = muted;
+        break;
+      }
+      if ((event.flags & KESSHO_PRODUCT_SEQUENCER_AUDIBILITY_APPLY_NEXT_BAR) != 0u) {
+        lane.muted = true;
+        lane.pending_unmute_quantization = 2u;
+      } else if ((event.flags & KESSHO_PRODUCT_SEQUENCER_AUDIBILITY_APPLY_NEXT_BEAT) != 0u) {
+        lane.muted = true;
+        lane.pending_unmute_quantization = 1u;
+      } else {
+        lane.muted = false;
+      }
       break;
     }
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TARGET_SOURCE_ID: {
@@ -490,15 +509,54 @@ void armAnchorWalkerGesture(
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_STEP_COUNT_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_FILL_COUNT_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_ROTATION_ID:
-    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_CLOCK_DIVISION_ID:
-    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_SWING_ID:
-    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TEMPO_MULTIPLIER_ID:
       clearPendingRatchets(lane);
       break;
     default:
       break;
   }
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
+}
+
+namespace {
+
+uint64_t pendingAudibilityBoundaryFrame(
+    const ProductTransport& transport,
+    const LaneState& lane,
+    double sample_rate) {
+  if (lane.pending_unmute_quantization == 2u) {
+    return transport.barBoundaryFrameAt(sample_rate, transport.sample_frame);
+  }
+  return transport.beatBoundaryFrameAt(sample_rate, transport.sample_frame);
+}
+
+} // namespace
+
+void KesshoProductEngine::applyPendingSequencerAudibilityTransitions() {
+  auto apply = [&](LaneState* lanes, uint32_t lane_count) {
+    for (uint32_t i = 0u; i < lane_count; ++i) {
+      LaneState& lane = lanes[i];
+      if (lane.pending_unmute_quantization == 0u) continue;
+      if (pendingAudibilityBoundaryFrame(transport, lane, sample_rate) > transport.sample_frame) continue;
+      lane.pending_unmute_quantization = 0u;
+      lane.muted = false;
+    }
+  };
+  apply(synth_lanes, synth_lane_count);
+  apply(drum_lanes, drum_lane_count);
+}
+
+uint64_t KesshoProductEngine::nextPendingSequencerAudibilityFrame() const {
+  uint64_t next = UINT64_MAX;
+  auto inspect = [&](const LaneState* lanes, uint32_t lane_count) {
+    for (uint32_t i = 0u; i < lane_count; ++i) {
+      const LaneState& lane = lanes[i];
+      if (lane.pending_unmute_quantization == 0u) continue;
+      next = std::min(next, pendingAudibilityBoundaryFrame(transport, lane, sample_rate));
+    }
+  };
+  inspect(synth_lanes, synth_lane_count);
+  inspect(drum_lanes, drum_lane_count);
+  return next;
 }
 
   void KesshoProductEngine::applyAnchorWalkerPerformanceEvent(const KesshoProductEvent& event) {

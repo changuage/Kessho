@@ -54,18 +54,10 @@ uint64_t sequencerLaneStartSampleFrame(
     return block_start;
   }
   if (lane.phrase_reset || lane.bar_reset) {
-    const double samples_per_bar =
-        transport.samplesPerBeat(sample_rate) * static_cast<double>(std::max(1u, transport.beats_per_bar));
     if (lane.phrase_reset) {
-      return sequencerAlignForwardFromOrigin(
-          block_start,
-          transport.phrase_origin_frame,
-          transport.samplesPerPhrase(sample_rate));
+      return transport.phraseBoundaryFrameAt(sample_rate, block_start);
     }
-    return sequencerAlignForwardFromOrigin(
-        block_start,
-        transport.beat_origin_frame,
-        samples_per_bar);
+    return transport.barBoundaryFrameAt(sample_rate, block_start);
   }
   return sequencerAlignForwardFromOrigin(
       block_start,
@@ -73,12 +65,12 @@ uint64_t sequencerLaneStartSampleFrame(
       samples_per_step);
 }
 
-int64_t sequencerFirstRelativeStep(uint64_t block_start, uint64_t origin, double samples_per_step) {
+int64_t sequencerFirstRelativeStep(uint64_t block_start, int64_t origin, double samples_per_step) {
   const double relative = static_cast<double>(block_start) - static_cast<double>(origin);
   return static_cast<int64_t>(std::floor(relative / samples_per_step)) - 1;
 }
 
-int64_t sequencerLastRelativeStep(uint64_t block_end, uint64_t origin, double samples_per_step) {
+int64_t sequencerLastRelativeStep(uint64_t block_end, int64_t origin, double samples_per_step) {
   const double relative = static_cast<double>(block_end) - static_cast<double>(origin);
   return static_cast<int64_t>(std::ceil(relative / samples_per_step)) + 1;
 }
@@ -87,7 +79,8 @@ uint32_t sequencerCurrentRelativeStep(const LaneState& lane, uint64_t sample_fra
   if (lane.step_count == 0u || !std::isfinite(samples_per_step) || samples_per_step <= 0.0) {
     return 0u;
   }
-  if (!lane.sequencer_runtime_initialized || sample_frame <= lane.sequencer_start_sample_frame) {
+  if (!lane.sequencer_runtime_initialized ||
+      static_cast<double>(sample_frame) <= static_cast<double>(lane.sequencer_start_sample_frame)) {
     return 0u;
   }
   const double relative = static_cast<double>(sample_frame) - static_cast<double>(lane.sequencer_start_sample_frame);

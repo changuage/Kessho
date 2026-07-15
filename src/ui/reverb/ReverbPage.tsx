@@ -11,8 +11,9 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { DEFAULT_STATE, type SliderState, type SliderMode } from '../state';
-import type { DualSliderRange } from '../DualSlider';
+import { DEFAULT_STATE, type SliderState } from '../state';
+import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
+import type { SelectRenderer } from '../../app/AppControls';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import type { PresetEntry } from '../../presets/types';
 import ReverbEnvelopeCanvas from './ReverbEnvelopeCanvas';
@@ -427,16 +428,9 @@ export interface ReverbPageProps {
   onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: <K extends keyof SliderState>(key: K, value: SliderState[K]) => void;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
-  sliderProps: (paramKey: keyof SliderState) => {
-    mode: SliderMode;
-    dualRange?: DualSliderRange;
-    walkPosition?: number;
-    isFlashing?: boolean;
-    onCycleMode?: (key: keyof SliderState) => void;
-    onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
-  };
-  SliderComponent: React.ComponentType<Record<string, unknown>>;
-  SelectComponent: React.ComponentType<Record<string, unknown>>;
+  sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
+  SliderComponent: React.ComponentType<SliderRendererProps<keyof SliderState>>;
+  SelectComponent: SelectRenderer;
 }
 
 // ═══ Component ═══
@@ -468,27 +462,9 @@ export default function ReverbPage({
     setSetupPresetDescription(entry.description ?? currentVersion?.note ?? '');
   }, []);
 
-  // Cast components so TS allows our props
-  const Slider = SliderComponent as React.ComponentType<{
-    label: string;
-    value: number;
-    paramKey: keyof SliderState;
-    unit?: string;
-    onChange: (key: keyof SliderState, value: number) => void;
-    mode?: SliderMode;
-    dualRange?: DualSliderRange;
-    walkPosition?: number;
-    isFlashing?: boolean;
-    onCycleMode?: (key: keyof SliderState) => void;
-    onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
-  }>;
+  const Slider = SliderComponent;
 
-  const Select = SelectComponent as React.ComponentType<{
-    label: string;
-    value: string;
-    options: { value: string; label: string }[];
-    onChange: (v: string) => void;
-  }>;
+  const Select = SelectComponent;
 
   // Helper to spread slider props
   function sp(key: keyof SliderState) {

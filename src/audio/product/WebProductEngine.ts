@@ -82,6 +82,10 @@ export class WebProductEngine implements ProductEnginePort {
     return this.lifecycleController.preload();
   }
 
+  primeAudioContext(): void {
+    coreProductRuntimeHostPort.primeAudioContext();
+  }
+
   start(options?: ProductEngineStartOptions): Promise<void> {
     this.pendingStartOptions = options;
     return this.lifecycleController.start();

@@ -228,3 +228,15 @@
     transform: translateX(-50%) scaleY(1.18);
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .global-root .routing-matrix .routing-matrix-cell-fill,
+  .global-root .routing-matrix .routing-matrix-cell-indicator,
+  .global-root .routing-matrix .routing-matrix-cell-edge,
+  .earth-root .earth-active-matrix .earth-matrix-cell-fill,
+  .earth-root .earth-active-matrix .earth-matrix-cell-indicator,
+  .earth-root .earth-active-matrix .earth-matrix-cell-edge {
+    animation: none;
+    transition: none;
+  }
+}

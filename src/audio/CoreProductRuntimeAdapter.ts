@@ -12,6 +12,8 @@ import { KESSHO_PRODUCT_PARAM_IDS, KESSHO_PRODUCT_PARAMS } from './generated/kes
 import { KESSHO_PRODUCT_DRUM_PARAM_COUNT, KESSHO_PRODUCT_LEAD_PARAM_COUNT, KESSHO_PRODUCT_PAD_PARAM_COUNT } from './generated/kesshoProductSchema';
 import { HARMONY_QUALITY_IDS, type HarmonyChordQuality } from './CoreProductHarmonyControl';
 import { appendSequencerModeConfigDiffs } from './CoreProductRuntimeAdapterSequencerFaces';
+import type { CoreProductSequencerClockRejoinMask } from './CoreProductHostSequencerClock';
+import { coreProductSequencerAudibilityFlags } from './sequencerResumeQuantization';
 
 export const MAX_SNAPSHOT_DIFF_EVENTS = 1024;
 
@@ -23,7 +25,10 @@ type ProductSourceSnapshot = CoreProductSnapshot['sources'][number];
 type ProductLaneSnapshot = CoreProductSnapshot['synthLanes'][number];
 type SnapshotScalar = number | boolean;
 
-export type CoreProductSnapshotDiffOptions = { forwardRngDiffs?: boolean; forceSequencerClockRejoin?: boolean };
+export type CoreProductSnapshotDiffOptions = {
+  forwardRngDiffs?: boolean;
+  sequencerClockRejoinMask?: CoreProductSequencerClockRejoinMask;
+};
 
 export type CoreProductSnapshotDiffResult = { applied: true; events: CoreProductEvent[] } | { applied: false; reason: SnapshotReloadReason };
 
@@ -48,8 +53,8 @@ class CoreProductRuntimeAdapter {
     this.appendSourceParamDiffs(events, previous.sources, next.sources);
     appendCoreProductSourcePresetEndpointDiffs(events, previous.sources, next.sources);
     this.appendSourceOverrideDiffs(events, previous.sources, next.sources);
-    this.appendSequencerLaneDiffs(events, 'synth', previous.synthLanes, next.synthLanes, options.forceSequencerClockRejoin === true);
-    this.appendSequencerLaneDiffs(events, 'drum', previous.drumLanes, next.drumLanes, options.forceSequencerClockRejoin === true);
+    this.appendSequencerLaneDiffs(events, 'synth', previous.synthLanes, next.synthLanes, options.sequencerClockRejoinMask?.synth ?? 0);
+    this.appendSequencerLaneDiffs(events, 'drum', previous.drumLanes, next.drumLanes, options.sequencerClockRejoinMask?.drum ?? 0);
     const runningBpmTransition = previous.transport.running && next.transport.running && this.valuesDiffer(previous.transport.bpm, next.transport.bpm);
     this.appendFxRoutingMasterDiffs(events, previous, next, runningBpmTransition);
     this.appendEvolutionDiffs(events, previous, next);
@@ -448,17 +453,27 @@ class CoreProductRuntimeAdapter {
     events.push(createCoreProductSourceOverrideCommitEvent(sourceId, overrideCount, morphAnchor));
   }
 
-  private appendSequencerLaneDiffs(events: CoreProductEvent[], sequencer: SequencerKind, previousLanes: ProductLaneSnapshot[], nextLanes: ProductLaneSnapshot[], forceClockRejoin: boolean): void {
+  private appendSequencerLaneDiffs(events: CoreProductEvent[], sequencer: SequencerKind, previousLanes: ProductLaneSnapshot[], nextLanes: ProductLaneSnapshot[], clockRejoinMask: number): void {
     for (let laneIndex = 0; laneIndex < nextLanes.length; laneIndex += 1) {
       const previous = previousLanes[laneIndex];
       const next = nextLanes[laneIndex];
       if (!previous || !next) continue;
       const nextInitialDelay = next.initialStartDelaySeconds ?? -1;
       const previousInitialDelay = previous.initialStartDelaySeconds ?? -1;
-      if ((forceClockRejoin && next.enabled) || (nextInitialDelay >= 0 && this.valuesDiffer(previousInitialDelay, nextInitialDelay))) {
+      const laneClockRejoin = (clockRejoinMask & (1 << laneIndex)) !== 0;
+      if ((laneClockRejoin && next.enabled) || (nextInitialDelay >= 0 && this.valuesDiffer(previousInitialDelay, nextInitialDelay))) {
         events.push(createCoreProductSequencerLaneParamEvent(sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneInitialStartDelaySeconds, nextInitialDelay));
       }
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneEnabled, previous.enabled, next.enabled);
+      if (previous.muted !== next.muted) {
+        events.push(createCoreProductSequencerLaneParamEvent(
+          sequencer,
+          laneIndex,
+          KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMuted,
+          next.muted ? 1 : 0,
+          next.muted ? 0 : coreProductSequencerAudibilityFlags(next.resumeQuantization),
+        ));
+      }
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneTargetSource, previous.targetSourceId, next.targetSourceId);
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneStepCount, previous.stepCount, next.stepCount);
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneFillCount, previous.fillCount, next.fillCount);

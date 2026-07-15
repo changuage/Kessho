@@ -28,6 +28,7 @@ type ProductRuntimePlaybackSurfaceOptions =
 export function useProductRuntimePlaybackSurface(options: ProductRuntimePlaybackSurfaceOptions) {
   const prepareProductPlaybackStartState = useProductRuntimePlaybackStartState(options);
   const handleStart = useProductRuntimeStartAction({
+    primeProductRuntimeAudio: options.primeProductRuntimeAudio,
     preparePlaybackStartState: prepareProductPlaybackStartState,
     startProductPlayback: options.startProductPlayback,
     startArmedRecordingAfterPlaybackStart: options.startArmedRecordingAfterPlaybackStart,

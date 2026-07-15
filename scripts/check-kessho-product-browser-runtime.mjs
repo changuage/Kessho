@@ -382,7 +382,7 @@ async function captureSampleHoldProbe(page, baseUrl) {
 async function captureSynthArpProbe(page, baseUrl) {
   await page.goto(withQuery(baseUrl, { parity: '1' }), { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => Boolean(window.__kesshoProductRuntimeProbe?.configureSynthArpSequencer), null, { timeout: 15000 });
-  return page.evaluate(async () => {
+  const capture = await page.evaluate(async () => {
     const probe = window.__kesshoProductRuntimeProbe;
     const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
     await probe.startState({
@@ -452,11 +452,143 @@ async function captureSynthArpProbe(page, baseUrl) {
       await wait(100);
       samples.push(probe.readProductStateProbe());
     }
+    const timingSamples = [];
+    const sampleTimingWindow = async (label, durationMs) => {
+      const startedAt = Date.now();
+      const deadline = startedAt + durationMs;
+      while (Date.now() < deadline) {
+        await wait(50);
+        timingSamples.push({
+          label,
+          elapsedMs: Date.now() - startedAt,
+          ...probe.readProductStateProbe(),
+        });
+      }
+    };
+    await sampleTimingWindow('baseline', 250);
+    await probe.applyStatePatch({
+      activeTab: 'global',
+      patch: {
+        phraseLength: 4,
+        transportPrimaryClock: 'seconds',
+        sequencerMasterBPM: 240,
+        synthEuclidBaseBPM: 240,
+        drumEuclidBaseBPM: 240,
+      },
+    });
+    await sampleTimingWindow('phrase-seconds-live', 350);
+    await probe.configureSynthLaneTiming({ laneIndex: 0, clockDivision: 32, swing: 0.35 });
+    await sampleTimingWindow('lane-clock-swing-live', 350);
+    await probe.applyStatePatch({
+      activeTab: 'drums',
+      patch: {
+        phraseLength: 3,
+        transportBeatsPerBar: 3,
+        transportBarsPerPhrase: 2,
+        sequencerMasterBPM: 120,
+        synthEuclidBaseBPM: 120,
+        drumEuclidBaseBPM: 120,
+      },
+    });
+    await sampleTimingWindow('bar-beat-live', 350);
+    await probe.configureSynthLaneTiming({ laneIndex: 0, tempoMultiplier: 1.5 });
+    await sampleTimingWindow('lane-multiplier-live', 350);
+    await probe.applyStatePatch({ activeTab: 'global', patch: {} });
+    await sampleTimingWindow('away-from-synth', 350);
+    for (const transition of [
+      { phraseLength: 2.5, sequencerMasterBPM: 144 },
+      { phraseLength: 3.75, sequencerMasterBPM: 96 },
+      { phraseLength: 2, sequencerMasterBPM: 180 },
+    ]) {
+      await probe.applyStatePatch({
+        activeTab: 'synth',
+        patch: {
+          ...transition,
+          transportBeatsPerBar: 3,
+          transportBarsPerPhrase: 2,
+          synthEuclidBaseBPM: transition.sequencerMasterBPM,
+          drumEuclidBaseBPM: transition.sequencerMasterBPM,
+        },
+      });
+      await sampleTimingWindow('repeated-live-drag', 220);
+    }
     return {
       parentHitCountAtPendingUpdate: activePhrase.telemetry?.synthSequencerHitCounts?.[0] ?? 0,
       samples,
+      timingSamples,
     };
   });
+
+  const sampleUiTimingWindow = (label, durationMs, intervalMs = 50) => page.evaluate(
+    async ({ label: sampleLabel, durationMs: sampleDurationMs, intervalMs: sampleIntervalMs }) => {
+      const probe = window.__kesshoProductRuntimeProbe;
+      const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+      const samples = [];
+      const startedAt = Date.now();
+      const deadline = startedAt + sampleDurationMs;
+      while (Date.now() < deadline) {
+        await wait(sampleIntervalMs);
+        samples.push({
+          label: sampleLabel,
+          elapsedMs: Date.now() - startedAt,
+          ...probe.readProductStateProbe(),
+        });
+      }
+      return samples;
+    },
+    { label, durationMs, intervalMs },
+  );
+
+  // Align native timing with the visible controls, then exercise the real UI
+  // callbacks. This guards against a live native event path being correct while
+  // the Clock/Swing controls are accidentally routed through a delayed commit.
+  await page.evaluate(async () => {
+    await window.__kesshoProductRuntimeProbe.configureSynthLaneTiming({
+      laneIndex: 0,
+      clockDivision: 16,
+      swing: 0,
+      tempoMultiplier: 1,
+    });
+  });
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+  capture.timingSamples.push(...await sampleUiTimingWindow('ui-clock-baseline', 600));
+
+  const clockSelect = page.getByRole('combobox', { name: 'Clock', exact: true });
+  await clockSelect.selectOption('1/32');
+  capture.timingSamples.push(...await sampleUiTimingWindow('ui-clock-live', 600));
+
+  const swingSlider = page.getByRole('slider', { name: /^Swing/ });
+  const swingBox = await swingSlider.boundingBox();
+  assert(swingBox, 'synth Swing slider has no browser layout box');
+  const swingY = swingBox.y + swingBox.height / 2;
+  const uiSwingDragValues = [];
+  await page.mouse.move(swingBox.x + swingBox.width * 0.05, swingY);
+  await page.mouse.down();
+  for (const fraction of [0.25, 0.55, 0.85]) {
+    await page.mouse.move(swingBox.x + swingBox.width * fraction, swingY, { steps: 4 });
+    uiSwingDragValues.push(Number.parseFloat(await swingSlider.inputValue()));
+    capture.timingSamples.push(...await sampleUiTimingWindow('ui-swing-drag-live', 180, 45));
+  }
+  assert(
+    new Set(uiSwingDragValues).size >= 2 && Math.max(...uiSwingDragValues) >= 0.5,
+    `visible Swing control did not update before pointer release (${uiSwingDragValues.join(', ')})`,
+  );
+  await page.mouse.up();
+  capture.timingSamples.push(...await sampleUiTimingWindow('ui-swing-release', 250));
+  capture.uiSwingDragValues = uiSwingDragValues;
+  return capture;
+}
+
+function observedSequencerStepAdvance(samples, label, stepCount = 16) {
+  const steps = samples
+    .filter((sample) => sample.label === label)
+    .map((sample) => sample.telemetry?.synthSequencerCurrentSteps?.[0])
+    .filter((step) => Number.isInteger(step));
+  let advance = 0;
+  for (let index = 1; index < steps.length; index += 1) {
+    advance += (steps[index] - steps[index - 1] + stepCount) % stepCount;
+  }
+  return { advance, steps };
 }
 
 function assertRuntimeWalkProbe(samples) {
@@ -486,11 +618,17 @@ function assertRuntimeWalkProbe(samples) {
   assert((bridgeDebug.postedEventCount ?? 0) > 0, 'runtime-walk bridge did not post ProductEvents');
   assert((bridgeDebug.telemetryValueCount ?? 0) > 0, 'runtime-walk bridge did not receive telemetry values');
   assert((bridgeDebug.publishedPositionCount ?? 0) > 0, 'runtime-walk bridge did not publish positions');
-  assert((runtimeSliderDebug.walkStoreUpdateCount ?? 0) > 0, 'runtime-walk UI store did not receive position updates');
-  assert((runtimeSliderDebug.walkIndicatorConsumeCount ?? 0) > 0, 'runtime-walk DualSlider indicator did not consume positions');
   assert(
-    (runtimeSliderDebug.triggerStoreUpdateCount ?? 0) > 0 && (runtimeSliderDebug.lastTriggerKeys ?? []).includes('pianoDistance'),
-    `runtime-walk piano random timing did not publish pianoDistance trigger animation: ${JSON.stringify({ runtimeSliderDebug, transportDebug })}`,
+    (runtimeSliderDebug.walkStoreUpdateCount ?? 0) === 0,
+    `inactive runtime-walk UI store received unnecessary position updates: ${JSON.stringify(runtimeSliderDebug)}`,
+  );
+  assert(
+    (runtimeSliderDebug.walkIndicatorConsumeCount ?? 0) === 0,
+    `inactive runtime-walk indicator consumed positions: ${JSON.stringify(runtimeSliderDebug)}`,
+  );
+  assert(
+    (runtimeSliderDebug.triggerStoreUpdateCount ?? 0) === 0,
+    `inactive piano trigger UI received unnecessary updates: ${JSON.stringify({ runtimeSliderDebug, transportDebug })}`,
   );
   assertCleanProbeDiagnostics(latest, 'runtime-walk probe');
   return {
@@ -556,9 +694,18 @@ function assertSampleHoldProbe(samples) {
   const runtimeSliderDebug = latest.runtimeSliderDebug ?? {};
   assert((sampleHoldDebug.changedTriggerCount ?? 0) > 0, 'sample-hold bridge did not observe trigger changes');
   assert((sampleHoldDebug.publishedGenericCount ?? 0) > 0, 'sample-hold bridge did not publish UI trigger positions');
-  assert((runtimeSliderDebug.triggerStoreUpdateCount ?? 0) > 0, 'sample-hold UI store did not receive trigger position updates');
-  assert((runtimeSliderDebug.triggerFlashUpdateCount ?? 0) > 0, 'sample-hold UI store did not receive flash updates');
-  assert((runtimeSliderDebug.triggerIndicatorConsumeCount ?? 0) > 0, 'sample-hold DualSlider indicator did not consume positions');
+  assert(
+    (runtimeSliderDebug.triggerStoreUpdateCount ?? 0) === 0,
+    `inactive sample-hold UI store received trigger positions: ${JSON.stringify(runtimeSliderDebug)}`,
+  );
+  assert(
+    (runtimeSliderDebug.triggerFlashUpdateCount ?? 0) === 0,
+    `inactive sample-hold UI store received flash updates: ${JSON.stringify(runtimeSliderDebug)}`,
+  );
+  assert(
+    (runtimeSliderDebug.triggerIndicatorConsumeCount ?? 0) === 0,
+    `inactive sample-hold indicator consumed positions: ${JSON.stringify(runtimeSliderDebug)}`,
+  );
   assertCleanProbeDiagnostics(latest, 'sample-hold probe');
   return {
     id: 'sample-hold-ui',
@@ -594,12 +741,104 @@ function assertSynthArpProbe(capture) {
     telemetry.every((sample) => (sample.lastErrorCode ?? 0) > 0),
     `synth ARP Product Core error: ${telemetry.map((sample) => sample.lastErrorCode ?? 0).join(', ')}`,
   );
+  const timingSamples = Array.isArray(capture?.timingSamples) ? capture.timingSamples : [];
+  assert(timingSamples.length >= 30, 'synth ARP live-timing probe did not return enough telemetry samples');
+  const timingTelemetry = timingSamples.map((sample) => sample?.telemetry ?? {});
+  const timingArpSteps = timingTelemetry
+    .map((sample) => sample.synthArpCurrentSteps?.[0])
+    .filter((step) => Number.isInteger(step));
+  const timingHitCounts = timingTelemetry.map((sample) => sample.synthSequencerHitCounts?.[0] ?? 0);
+  for (let index = 1; index < timingHitCounts.length; index += 1) {
+    assert(
+      timingHitCounts[index] >= timingHitCounts[index - 1],
+      `live timing reset the synth parent-hit count (${timingHitCounts.join(', ')})`,
+    );
+  }
+  const timingRevisions = timingTelemetry.map((sample) => sample.transportTransitionRevision ?? 0);
+  for (let index = 1; index < timingRevisions.length; index += 1) {
+    assert(
+      timingRevisions[index] >= timingRevisions[index - 1],
+      `live timing regressed the transport transition revision (${timingRevisions.join(', ')})`,
+    );
+  }
+  assert(
+    Math.max(...timingRevisions) > Math.min(...timingRevisions),
+    `live transport timing changes did not reach Product Core (${JSON.stringify(timingSamples.map((sample) => ({
+      label: sample.label,
+      revision: sample.telemetry?.transportTransitionRevision ?? 0,
+      bpm: sample.telemetry?.transportBpm ?? null,
+      phraseSeconds: sample.telemetry?.transportPhraseSeconds ?? null,
+      running: sample.telemetry?.transportRunning ?? null,
+      reloads: sample.diagnostics?.snapshotReloadReasons ?? [],
+      dirtyDiffCount: sample.diagnostics?.dirtyDiffCount ?? null,
+    })))})`,
+  );
+  assert(
+    timingTelemetry.every((sample) => sample.transportTransitionPending !== true),
+    'live timing unexpectedly staged a next-phrase transport transition',
+  );
+  assert(
+    new Set(timingArpSteps).size >= 4,
+    `synth ARP did not keep advancing through live timing and page changes (${timingArpSteps.join(', ')})`,
+  );
+  const uiClockBaseline = observedSequencerStepAdvance(timingSamples, 'ui-clock-baseline');
+  const uiClockLive = observedSequencerStepAdvance(timingSamples, 'ui-clock-live');
+  assert(
+    uiClockBaseline.advance >= 2,
+    `visible Clock baseline did not advance enough to measure (${uiClockBaseline.steps.join(', ')})`,
+  );
+  assert(
+    uiClockLive.advance >= uiClockBaseline.advance * 1.5,
+    `visible Clock change did not retime the running lane (${uiClockBaseline.advance} -> ${uiClockLive.advance}; ${uiClockLive.steps.join(', ')})`,
+  );
+  const liveSignal = timingTelemetry.map((sample) => (
+    (sample.activeVoices ?? 0) > 0 ||
+    (sample.masterOutputRms ?? 0) > 0.000001 ||
+    (sample.workletLeadStemPeak ?? 0) > 0.000001
+  ));
+  let longestSilentRun = 0;
+  let silentRun = 0;
+  for (const active of liveSignal) {
+    silentRun = active ? 0 : silentRun + 1;
+    longestSilentRun = Math.max(longestSilentRun, silentRun);
+  }
+  assert(
+    longestSilentRun <= 5,
+    `synth ARP audio became inactive for more than 250 ms during live timing (${liveSignal.map((active) => active ? 1 : 0).join('')})`,
+  );
+  for (const label of [
+    'phrase-seconds-live',
+    'lane-clock-swing-live',
+    'bar-beat-live',
+    'lane-multiplier-live',
+    'away-from-synth',
+    'repeated-live-drag',
+    'ui-clock-live',
+    'ui-swing-drag-live',
+    'ui-swing-release',
+  ]) {
+    assert(
+      timingSamples.some((sample) => sample.label === label && (
+        (sample.telemetry?.activeVoices ?? 0) > 0 ||
+        (sample.telemetry?.workletLeadStemPeak ?? 0) > 0.000001
+      )),
+      `synth ARP produced no audio evidence during ${label}`,
+    );
+  }
+  assertCleanProbeDiagnostics(timingSamples.at(-1), 'synth ARP live-timing probe');
   return {
     id: 'synth-arp-native-runtime',
     arpSteps,
     distinctStepCount: distinctSteps.length,
     hitCount: parentHitCountAtPendingUpdate,
     peak: Math.max(...telemetry.map((sample) => Math.max(sample.workletLeadStemPeak ?? 0, sample.masterOutputPeak ?? 0))),
+    liveTimingSampleCount: timingSamples.length,
+    liveTimingDistinctArpSteps: new Set(timingArpSteps).size,
+    liveTimingTransitionRevisions: [...new Set(timingRevisions)],
+    liveTimingLongestSilentMs: longestSilentRun * 50,
+    uiClockBaselineAdvance: uiClockBaseline.advance,
+    uiClockLiveAdvance: uiClockLive.advance,
+    uiSwingDragValues: capture.uiSwingDragValues,
   };
 }
 
@@ -642,7 +881,7 @@ function writeReport(report) {
     '## Synth ARP',
     '',
     report.synthArpProbe
-      ? `Distinct native ARP steps: ${report.synthArpProbe.distinctStepCount}; parent hits: ${report.synthArpProbe.hitCount}; peak: ${report.synthArpProbe.peak.toFixed(6)}`
+      ? `Distinct native ARP steps: ${report.synthArpProbe.distinctStepCount}; parent hits: ${report.synthArpProbe.hitCount}; peak: ${report.synthArpProbe.peak.toFixed(6)}; live timing samples: ${report.synthArpProbe.liveTimingSampleCount}; live timing ARP steps: ${report.synthArpProbe.liveTimingDistinctArpSteps}; longest inactive window: ${report.synthArpProbe.liveTimingLongestSilentMs} ms`
       : 'Not run',
     '',
   ];

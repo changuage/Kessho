@@ -49,7 +49,10 @@ import {
   type HarmonyChordQuality,
 } from './CoreProductHarmonyControl';
 import { sampleDescriptorForSlotNote, samplePredictionState } from './product/host/CoreProductSampleAssetResolver';
-import { createCoreProductSynthSequencerStepOverrideEvents } from './product/ProductSequencerStepOverrideEvents';
+import {
+  createCoreProductSynthSequencerLaneStepOverrideEvents,
+  createCoreProductSynthSequencerStepOverrideEvents,
+} from './product/ProductSequencerStepOverrideEvents';
 
 function assertNoWebExactPatchFields(source: unknown, label: string): void {
   assert(source && typeof source === 'object', `${label} source should exist`);
@@ -548,7 +551,6 @@ const continuousArpEnginePattern = resolveProductPlayEnginePattern({
   harmony: productArpTestHarmony([60, 64, 67, 71]),
   laneIndex: 0,
   triggerPattern: [true, false, false, false, true, false, false, false],
-  triggerStepMs: 125,
 });
 assert.deepEqual(
   continuousArpEnginePattern?.midiPattern,
@@ -593,13 +595,25 @@ assert.equal(
   24,
   'an ARP-only commit should fit one bounded runtime batch and must not synthesize unrelated sequencer restore events',
 );
+const laneArpOverrideEvents = createCoreProductSynthSequencerLaneStepOverrideEvents(0, {
+  playArps: [{
+    enabled: true,
+    mode: 'arp',
+    arp: { enabled: true, length: 4, rate: 1, pulseMask: 0b1111 },
+    midiPattern: [60, 64, 67, 71],
+  }],
+});
+assert.equal(
+  laneArpOverrideEvents.length,
+  18,
+  'a lane-scoped ARP commit must not clear or rebuild its sequencer step lane',
+);
 const sequenceBoundArpEnginePattern = resolveProductPlayEnginePattern({
   config: continuousArpPlayConfig,
   harmony: productArpTestHarmony([60, 64, 67, 71]),
   laneIndex: 0,
   pitchBindingMode: 'sequence',
   triggerPattern: [true, false, false, false, true, false, false, false],
-  triggerStepMs: 125,
 });
 assert.deepEqual(
   sequenceBoundArpEnginePattern?.midiPattern,
@@ -916,6 +930,82 @@ const originalWindow = (globalThis as { window?: unknown }).window;
     assert.equal(pendingScheduler.state.phraseLength, 48, 'latest arrangement timing should become active at the boundary');
     assert.equal(pendingScheduler.pendingTransportState, null, 'applied arrangement timing should clear pending state');
     scheduler.stop();
+
+    const hostTimingScheduler = new CoreProductArrangementScheduler(() => undefined, () => null);
+    const hostTimingState = {
+      ...baseTransportState,
+      synthChordSequencerEnabled: true,
+      synthChordSequencerClockDivision: '1/8' as const,
+    };
+    hostTimingScheduler.start(hostTimingState);
+    const activeHostTimingScheduler = hostTimingScheduler as unknown as {
+      chordSequencerTimer: number | null;
+    };
+    const activeChordSequencerTimer = activeHostTimingScheduler.chordSequencerTimer;
+    assert.notEqual(activeChordSequencerTimer, null, 'enabled host chord timing should have an active sequencer timer');
+    hostTimingScheduler.update({
+      ...hostTimingState,
+      synthChordSequencerClockDivision: '1/16' as const,
+    });
+    const pendingHostTimingScheduler = hostTimingScheduler as unknown as {
+      state: Record<string, unknown>;
+      pendingHostTimingState: Record<string, unknown> | null;
+      onHarmonyTick: (isPhraseBoundary: boolean) => void;
+      chordSequencerTimer: number | null;
+    };
+    assert.equal(
+      pendingHostTimingScheduler.state.synthChordSequencerClockDivision,
+      '1/8',
+      'host sequencer timing should remain active until the phrase boundary',
+    );
+    assert.equal(
+      pendingHostTimingScheduler.pendingHostTimingState?.synthChordSequencerClockDivision,
+      '1/16',
+      'host sequencer timing should stage the requested clock division',
+    );
+    assert.equal(
+      pendingHostTimingScheduler.chordSequencerTimer,
+      activeChordSequencerTimer,
+      'staging host sequencer timing must leave the current phrase timer running',
+    );
+    hostTimingScheduler.update({
+      ...hostTimingState,
+      synthChordSequencerClockDivision: '1/16' as const,
+      seedWindow: hostTimingState.seedWindow === 'day' ? 'hour' : 'day',
+    });
+    assert.equal(
+      pendingHostTimingScheduler.pendingHostTimingState?.synthChordSequencerClockDivision,
+      '1/16',
+      'an unrelated arrangement restart must preserve staged host timing',
+    );
+    const chordSequencerTimerBeforeBoundary = pendingHostTimingScheduler.chordSequencerTimer;
+    assert.notEqual(
+      chordSequencerTimerBeforeBoundary,
+      null,
+      'an unrelated arrangement restart must leave the host chord sequencer running',
+    );
+    pendingHostTimingScheduler.onHarmonyTick(true);
+    assert.equal(
+      pendingHostTimingScheduler.state.synthChordSequencerClockDivision,
+      '1/16',
+      'host sequencer timing should become active at the next phrase boundary',
+    );
+    assert.equal(
+      pendingHostTimingScheduler.pendingHostTimingState,
+      null,
+      'applied host sequencer timing should clear pending state',
+    );
+    assert.notEqual(
+      pendingHostTimingScheduler.chordSequencerTimer,
+      chordSequencerTimerBeforeBoundary,
+      'the phrase boundary should replace the old host timer with one using the staged timing',
+    );
+    assert.notEqual(
+      pendingHostTimingScheduler.chordSequencerTimer,
+      null,
+      'the host chord sequencer must remain running after its timing transition',
+    );
+    hostTimingScheduler.stop();
   } finally {
     (globalThis as { window?: unknown }).window = originalWindow;
   }

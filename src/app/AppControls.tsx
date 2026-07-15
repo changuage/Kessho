@@ -9,55 +9,15 @@ import {
   PAD_FILTER_CUTOFF_KEY_PAIRS,
   quantize,
 } from '../ui/state';
-import { DualSlider, type DualSliderRange } from '../ui/DualSlider';
+import { DualSlider } from '../ui/DualSlider';
 import { SliderPrimitive } from '../ui/sliderSystem';
+import type { SliderRendererProps } from '../ui/sliderSystem';
+import { normToValue, quantizeToStep, valueToNorm } from '../ui/sliderSystem/scale';
 import { useSliderHelp } from '../ui/SliderHelpOverlay';
 import { MidiLearnSliderAdornment } from '../ui/midiLearn/MidiLearnSliderAdornment';
 import { useMidiLearn } from '../ui/midiLearn/useMidiLearn';
-import type { SliderPageId } from '../ui/pages/pageAliases';
-import { isReleaseCommittedTransportTimingKey } from '../ui/transportTimingPolicy';
 
-function linearToLog(value: number, min: number, max: number): number {
-  const minLog = Math.log(min);
-  const maxLog = Math.log(max);
-  return Math.exp(minLog + value * (maxLog - minLog));
-}
-
-function logToLinear(value: number, min: number, max: number): number {
-  const minLog = Math.log(min);
-  const maxLog = Math.log(max);
-  return (Math.log(value) - minLog) / (maxLog - minLog);
-}
-
-function getEffectiveLogMin(min: number, max: number, step: number): number | null {
-  if (max <= 0) return null;
-  if (min > 0) return min;
-  const stepFloor = step > 0 ? step : max * 0.001;
-  return Math.max(1e-9, Math.min(max, stepFloor));
-}
-
-export interface SliderProps {
-  label: string;
-  value: number;
-  paramKey: keyof SliderState;
-  ghostValue?: number;
-  format?: (value: number) => string;
-  unit?: string;
-  min?: number;
-  max?: number;
-  step?: number;
-  logarithmic?: boolean;
-  helpPage?: SliderPageId;
-  disabled?: boolean;
-  /** Keep pointer-drag changes local until the pointer is released. */
-  commitOnRelease?: boolean;
-  onChange: (key: keyof SliderState, value: number) => void;
-  mode?: SliderMode;
-  dualRange?: DualSliderRange;
-  walkPosition?: number;
-  isFlashing?: boolean;
-  onCycleMode?: (key: keyof SliderState) => void;
-  onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
+export interface SliderProps extends SliderRendererProps<keyof SliderState> {
 }
 
 export const WALK_ONLY_DUAL_KEYS = new Set<string>([
@@ -173,13 +133,10 @@ export const Slider: React.FC<SliderProps> = ({
     max: max ?? baseInfo.max,
     step: step ?? baseInfo.step,
   };
-  const releaseCommitted = commitOnRelease ?? isReleaseCommittedTransportTimingKey(paramKey);
+  const releaseCommitted = commitOnRelease ?? false;
 
   const quantizeWithInfo = (_key: keyof SliderState, nextValue: number): number => {
-    const clamped = Math.max(info.min, Math.min(info.max, nextValue));
-    const stepSize = Math.max(info.step, 1e-9);
-    const steps = Math.round((clamped - info.min) / stepSize);
-    return info.min + steps * stepSize;
+    return quantizeToStep(nextValue, info);
   };
 
   if (!releaseCommitted && onCycleMode && onDualRangeChange && !SINGLE_ONLY_SLIDER_KEYS.has(String(paramKey))) {
@@ -209,21 +166,17 @@ export const Slider: React.FC<SliderProps> = ({
   }
 
   const valueToPercent = (nextValue: number) => {
-    const clampedValue = Math.max(info.min, Math.min(info.max, nextValue));
-    const effectiveLogMin = logarithmic ? getEffectiveLogMin(info.min, info.max, info.step) : null;
-    if (effectiveLogMin != null) {
-      if (clampedValue <= info.min) return 0;
-      return logToLinear(Math.max(effectiveLogMin, clampedValue), effectiveLogMin, info.max) * 100;
-    }
-    return ((clampedValue - info.min) / Math.max(1e-9, info.max - info.min)) * 100;
+    return valueToNorm(nextValue, {
+      ...info,
+      scale: logarithmic ? 'log' : 'linear',
+    }) * 100;
   };
 
   const percentToValue = (percent: number) => {
-    const normalized = Math.max(0, Math.min(100, percent)) / 100;
-    const effectiveLogMin = logarithmic ? getEffectiveLogMin(info.min, info.max, info.step) : null;
-    const raw = effectiveLogMin != null
-      ? (normalized <= 0 && info.min <= 0 ? info.min : linearToLog(normalized, effectiveLogMin, info.max))
-      : info.min + normalized * (info.max - info.min);
+    const raw = normToValue(percent / 100, {
+      ...info,
+      scale: logarithmic ? 'log' : 'linear',
+    });
     return quantizeWithInfo(paramKey, raw);
   };
 
@@ -285,7 +238,7 @@ export const HelpButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> 
   );
 };
 
-interface SelectProps<T extends string> {
+export interface SelectProps<T extends string | number = string> {
   label: string;
   value: T;
   options: { value: T; label: string }[];
@@ -295,7 +248,9 @@ interface SelectProps<T extends string> {
   onFocus?: React.FocusEventHandler<HTMLSelectElement>;
 }
 
-export function Select<T extends string>({ label, value, options, onChange, onMouseEnter, onPointerDown, onFocus }: SelectProps<T>) {
+export type SelectRenderer = <T extends string | number>(props: SelectProps<T>) => React.ReactNode;
+
+export function Select<T extends string | number>({ label, value, options, onChange, onMouseEnter, onPointerDown, onFocus }: SelectProps<T>) {
   return (
     <div className="app-slider-group" style={styles.sliderGroup} onMouseEnter={onMouseEnter} onPointerDown={onPointerDown}>
       <div className="app-slider-label" style={styles.sliderLabel}>
@@ -310,7 +265,16 @@ export function Select<T extends string>({ label, value, options, onChange, onMo
           {label}
         </span>
       </div>
-      <select value={value} onChange={(event) => onChange(event.target.value as T)} onFocus={onFocus} className="app-select" style={{ ...styles.select, maxWidth: '100%' }}>
+      <select
+        value={value}
+        onChange={(event) => {
+          const selected = options.find((option) => String(option.value) === event.target.value);
+          if (selected) onChange(selected.value);
+        }}
+        onFocus={onFocus}
+        className="app-select"
+        style={{ ...styles.select, maxWidth: '100%' }}
+      >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}

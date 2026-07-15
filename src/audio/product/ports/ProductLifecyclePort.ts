@@ -9,6 +9,7 @@ export type ProductEngineLifecyclePort = {
   readonly mode: ProductEngineRuntimeMode;
 
   preload(): Promise<void>;
+  primeAudioContext(): void;
   start(options?: ProductEngineStartOptions): Promise<void>;
   stop(): Promise<void>;
   suspend(): Promise<void>;

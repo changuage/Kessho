@@ -1,5 +1,7 @@
 import { sampleGlobalWalkPosition } from '../../audio/transport';
 import type { SliderMode, SliderState } from '../state';
+import { advanceRandomWalk } from '../sliderSystem/automationKernel';
+import { normToValue, valueToNorm } from '../sliderSystem/scale';
 
 export interface DualSliderAutomationInput {
   key: string;
@@ -10,6 +12,7 @@ export interface DualSliderAutomationInput {
   lowerBound?: number;
   upperBound?: number;
   nowSeconds: number;
+  epochSeconds?: number;
   deltaSeconds: number;
   triggerAmount: number;
   seed: number;
@@ -28,15 +31,13 @@ export interface DualSliderAutomationState {
   holdValue: number;
   stepIndex: number;
   lastTriggerAmount: number;
+  accumulatorSeconds: number;
 }
 
 export interface DualSliderAutomationResult {
   value: number;
   state: DualSliderAutomationState;
 }
-
-const WALK_STEP_SECONDS = 1 / 15;
-const MAX_CATCHUP_STEPS = 6;
 
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
@@ -69,11 +70,11 @@ function normalizeRange(input: DualSliderAutomationInput): { min: number; max: n
 }
 
 function valueToPosition(value: number, range: { min: number; max: number }): number {
-  return clamp((value - range.min) / Math.max(0.000001, range.max - range.min), 0, 1);
+  return valueToNorm(value, range);
 }
 
 function positionToValue(position: number, range: { min: number; max: number }): number {
-  return range.min + clamp(position, 0, 1) * (range.max - range.min);
+  return normToValue(position, range);
 }
 
 function createInitialState(input: DualSliderAutomationInput, range: { min: number; max: number }): DualSliderAutomationState {
@@ -87,6 +88,7 @@ function createInitialState(input: DualSliderAutomationInput, range: { min: numb
     holdValue: initial,
     stepIndex: 0,
     lastTriggerAmount: 0,
+    accumulatorSeconds: 0,
   };
 }
 
@@ -108,6 +110,7 @@ export function resolveDualSliderAutomation(input: DualSliderAutomationInput): D
         target: valueToPosition(baseValue, range),
         velocity: 0,
         lastStepTime: input.nowSeconds,
+        accumulatorSeconds: 0,
       },
     };
   }
@@ -122,6 +125,7 @@ export function resolveDualSliderAutomation(input: DualSliderAutomationInput): D
         velocity: 0,
         holdValue: range.min,
         lastStepTime: input.nowSeconds,
+        accumulatorSeconds: 0,
       },
     };
   }
@@ -130,7 +134,12 @@ export function resolveDualSliderAutomation(input: DualSliderAutomationInput): D
     const speed = Math.max(0.01, input.walkSpeed ?? 1);
 
     if (input.walkMode === 'globalWalk') {
-      const position = sampleGlobalWalkPosition(input.key, speed, input.seedWindow ?? 'hour', input.nowSeconds);
+      const position = sampleGlobalWalkPosition(
+        input.key,
+        speed,
+        input.seedWindow ?? 'hour',
+        input.epochSeconds ?? Date.now() / 1000,
+      );
       const value = positionToValue(position, range);
       return {
         value,
@@ -141,45 +150,41 @@ export function resolveDualSliderAutomation(input: DualSliderAutomationInput): D
           velocity: 0,
           holdValue: value,
           lastStepTime: input.nowSeconds,
+          accumulatorSeconds: 0,
         },
       };
     }
 
-    const elapsedSeconds = Math.max(input.deltaSeconds, input.nowSeconds - previous.lastStepTime, WALK_STEP_SECONDS);
-    const stepCount = Math.max(1, Math.min(MAX_CATCHUP_STEPS, Math.round(elapsedSeconds / WALK_STEP_SECONDS) || 1));
-    let position = Number.isFinite(previous.target) ? clamp(previous.target, 0, 1) : valueToPosition(previous.value, range);
-    let velocity = Number.isFinite(previous.velocity) ? previous.velocity : 0;
+    const position = Number.isFinite(previous.target) ? clamp(previous.target, 0, 1) : valueToPosition(previous.value, range);
     let stepIndex = previous.stepIndex;
+    const walked = advanceRandomWalk(
+      {
+        position,
+        velocity: previous.velocity,
+        accumulatorSeconds: previous.accumulatorSeconds ?? 0,
+      },
+      input.deltaSeconds,
+      speed,
+      () => {
+        const randomUnit = nextSeededUnit(input.key, input.seed, stepIndex);
+        stepIndex += 1;
+        return randomUnit;
+      },
+    );
 
-    for (let step = 0; step < stepCount; step += 1) {
-      const randomUnit = nextSeededUnit(input.key, input.seed, stepIndex);
-      stepIndex += 1;
-      velocity += (randomUnit - 0.5) * 0.01 * speed;
-      velocity *= 0.98;
-      velocity = clamp(velocity, -0.05 * speed, 0.05 * speed);
-      position += velocity;
-
-      if (position < 0) {
-        position = 0;
-        velocity = Math.abs(velocity);
-      } else if (position > 1) {
-        position = 1;
-        velocity = -Math.abs(velocity);
-      }
-    }
-
-    const value = positionToValue(position, range);
+    const value = positionToValue(walked.position, range);
     return {
       value,
       state: {
         ...previous,
         value,
-        target: position,
-        velocity,
+        target: walked.position,
+        velocity: walked.velocity,
         holdValue: value,
         lastStepTime: input.nowSeconds,
         stepIndex,
         lastTriggerAmount: input.triggerAmount,
+        accumulatorSeconds: walked.accumulatorSeconds,
       },
     };
   }
@@ -211,6 +216,7 @@ export function resolveDualSliderAutomation(input: DualSliderAutomationInput): D
       value: holdValue,
       target: valueToPosition(holdValue, range),
       velocity: 0,
+      accumulatorSeconds: 0,
       lastStepTime: stepTime,
       lastTriggerBucket: triggerBucket,
       holdValue,

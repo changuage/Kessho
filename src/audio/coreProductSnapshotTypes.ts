@@ -55,6 +55,8 @@ export type ProductSourceSnapshot = {
 
 export type ProductLaneSnapshot = {
   enabled: boolean;
+  muted: boolean;
+  resumeQuantization: import('./sequencerResumeQuantization').SequencerResumeQuantization;
   sequencerMode: number;
   targetSourceId: number;
   stepCount: number;

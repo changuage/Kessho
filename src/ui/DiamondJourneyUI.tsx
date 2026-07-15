@@ -30,6 +30,10 @@ import {
 } from '../audio/journeyTypes';
 import { SavedPreset } from './state';
 import { PHRASE_LENGTH } from '../audio/harmony';
+import {
+  axisToNormalized,
+  releasePointerCaptureSafely,
+} from './sliderSystem/matrixMath';
 
 // ============================================================================
 // CONSTANTS
@@ -1636,6 +1640,168 @@ const GhostConnectionLines: React.FC<GhostConnectionLinesProps> = ({
 // POPUP COMPONENTS
 // ============================================================================
 
+interface JourneyDualRangeRailProps {
+  label: string;
+  minValue: number;
+  maxValue: number;
+  minBound?: number;
+  maxBound?: number;
+  minColor: string;
+  maxColor?: string;
+  onMinChange: (value: number) => void;
+  onMaxChange: (value: number) => void;
+  onModeToggle: () => void;
+  onLongPressStart: () => void;
+  onLongPressEnd: () => void;
+  onLongPressMove: () => void;
+}
+
+const JourneyDualRangeRail: React.FC<JourneyDualRangeRailProps> = ({
+  label,
+  minValue,
+  maxValue,
+  minBound = 1,
+  maxBound = 64,
+  minColor,
+  maxColor = '#8b5cf6',
+  onMinChange,
+  onMaxChange,
+  onModeToggle,
+  onLongPressStart,
+  onLongPressEnd,
+  onLongPressMove,
+}) => {
+  const railRef = useRef<HTMLDivElement>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragCleanupRef.current?.(), []);
+
+  const toPercent = (value: number) => ((value - minBound) / Math.max(1, maxBound - minBound)) * 100;
+  const valueFromClientX = (clientX: number, rect: DOMRect) => Math.round(
+    minBound + axisToNormalized(clientX, rect.left, rect.width) * (maxBound - minBound),
+  );
+  const beginDrag = (handle: 'min' | 'max', event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onLongPressEnd();
+    dragCleanupRef.current?.();
+    const rail = railRef.current;
+    if (!rail) return;
+    const target = event.currentTarget;
+    const pointerId = event.pointerId;
+    const startValue = handle === 'min' ? minValue : maxValue;
+    const rect = rail.getBoundingClientRect();
+    try { target.setPointerCapture(pointerId); } catch { /* Pointer may already be cancelled. */ }
+
+    const apply = (clientX: number) => {
+      const raw = valueFromClientX(clientX, rect);
+      if (handle === 'min') onMinChange(Math.min(raw, maxValue));
+      else onMaxChange(Math.max(raw, minValue));
+    };
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onEnd);
+      window.removeEventListener('pointercancel', onEnd);
+      releasePointerCaptureSafely(target, pointerId);
+      if (dragCleanupRef.current === cleanup) dragCleanupRef.current = null;
+    };
+    const onMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+      if (moveEvent.pointerType === 'touch') moveEvent.preventDefault();
+      apply(moveEvent.clientX);
+    };
+    const onEnd = (endEvent: PointerEvent) => {
+      if (endEvent.pointerId !== pointerId) return;
+      if (endEvent.type === 'pointercancel') {
+        if (handle === 'min') onMinChange(startValue);
+        else onMaxChange(startValue);
+      } else {
+        apply(endEvent.clientX);
+      }
+      cleanup();
+    };
+    apply(event.clientX);
+    dragCleanupRef.current = cleanup;
+    window.addEventListener('pointermove', onMove, { passive: false });
+    window.addEventListener('pointerup', onEnd);
+    window.addEventListener('pointercancel', onEnd);
+  };
+
+  const onThumbKeyDown = (handle: 'min' | 'max', event: React.KeyboardEvent<HTMLDivElement>) => {
+    const current = handle === 'min' ? minValue : maxValue;
+    const increment = event.shiftKey ? 5 : 1;
+    let next: number | null = null;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') next = current - increment;
+    else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') next = current + increment;
+    else if (event.key === 'Home') next = minBound;
+    else if (event.key === 'End') next = maxBound;
+    if (next === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (handle === 'min') onMinChange(Math.max(minBound, Math.min(next, maxValue)));
+    else onMaxChange(Math.min(maxBound, Math.max(next, minValue)));
+  };
+
+  const thumbStyle = (value: number, color: string): React.CSSProperties => ({
+    position: 'absolute',
+    top: 4,
+    left: `${toPercent(value)}%`,
+    transform: 'translateX(-50%)',
+    width: 12,
+    height: 12,
+    borderRadius: '50%',
+    background: color,
+    border: '2px solid rgba(255,255,255,0.9)',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+    cursor: 'grab',
+    touchAction: 'none',
+  });
+
+  return (
+    <div
+      ref={railRef}
+      style={{ position: 'relative', width: '100%', height: 20, cursor: 'pointer' }}
+      onDoubleClick={onModeToggle}
+      onTouchStart={onLongPressStart}
+      onTouchEnd={onLongPressEnd}
+      onTouchMove={onLongPressMove}
+      title="Double-click or long-press for single value mode"
+    >
+      <div style={{ position: 'absolute', top: 7, left: 0, right: 0, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.1)' }} />
+      <div style={{
+        position: 'absolute',
+        top: 7,
+        left: `${toPercent(minValue)}%`,
+        width: `${toPercent(maxValue) - toPercent(minValue)}%`,
+        height: 6,
+        borderRadius: 3,
+        background: `linear-gradient(90deg, ${minColor}, ${maxColor})`,
+      }} />
+      <div
+        style={thumbStyle(minValue, minColor)}
+        role="slider"
+        tabIndex={0}
+        aria-label={`${label} minimum`}
+        aria-valuemin={minBound}
+        aria-valuemax={maxValue}
+        aria-valuenow={minValue}
+        onPointerDown={(event) => beginDrag('min', event)}
+        onKeyDown={(event) => onThumbKeyDown('min', event)}
+      />
+      <div
+        style={thumbStyle(maxValue, maxColor)}
+        role="slider"
+        tabIndex={0}
+        aria-label={`${label} maximum`}
+        aria-valuemin={minValue}
+        aria-valuemax={maxBound}
+        aria-valuenow={maxValue}
+        onPointerDown={(event) => beginDrag('max', event)}
+        onKeyDown={(event) => onThumbKeyDown('max', event)}
+      />
+    </div>
+  );
+};
+
 interface NodePopupProps {
   node: JourneyNode;
   outgoingConnections: Array<{ connection: JourneyConnection; targetName: string; targetColor: string; normalizedProbability: number }>;
@@ -1666,7 +1832,6 @@ const NodePopup: React.FC<NodePopupProps> = ({
   onRectChange,
 }) => {
   const popupRef = useRef<HTMLDivElement>(null);
-  const sliderContainerRef = useRef<HTMLDivElement>(null);
   
   // Dual mode is active when phraseLengthMax is defined and different from phraseLength
   const isDualMode = node.phraseLengthMax !== undefined;
@@ -1850,150 +2015,18 @@ const NodePopup: React.FC<NodePopupProps> = ({
         </div>
         
         {isDualMode ? (
-          // Dual mode - range slider with two thumbs
-          <div
-            ref={sliderContainerRef}
-            style={{
-              position: 'relative',
-              width: '100%',
-              height: 20,
-              cursor: 'pointer',
-            }}
-            onDoubleClick={onTogglePhraseDual}
-            onTouchStart={handleLongPressStart}
-            onTouchEnd={handleLongPressEnd}
-            onTouchMove={handleLongPressMove}
-            title="Double-click or long-press for single value mode"
-          >
-            {/* Track background */}
-            <div style={{
-              position: 'absolute',
-              top: 7,
-              left: 0,
-              right: 0,
-              height: 6,
-              borderRadius: 3,
-              background: 'rgba(255,255,255,0.1)',
-            }} />
-            {/* Active range track */}
-            <div style={{
-              position: 'absolute',
-              top: 7,
-              left: `${((minValue - 1) / 63) * 100}%`,
-              width: `${((maxValue - minValue) / 63) * 100}%`,
-              height: 6,
-              borderRadius: 3,
-              background: `linear-gradient(90deg, ${node.color || COLORS.filledNode}, rgba(139, 92, 246, 0.8))`,
-            }} />
-            {/* Min thumb */}
-            <div
-              style={{
-                position: 'absolute',
-                top: 4,
-                left: `${((minValue - 1) / 63) * 100}%`,
-                transform: 'translateX(-50%)',
-                width: 12,
-                height: 12,
-                borderRadius: '50%',
-                background: node.color || COLORS.filledNode,
-                border: '2px solid rgba(255,255,255,0.9)',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                cursor: 'grab',
-              }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const container = sliderContainerRef.current;
-                if (!container) return;
-                const move = (me: MouseEvent) => {
-                  const rect = container.getBoundingClientRect();
-                  const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                  const newVal = Math.round(1 + pct * 63);
-                  onChangePhraseMin(Math.min(newVal, maxValue));
-                };
-                const up = () => { 
-                  window.removeEventListener('mousemove', move); 
-                  window.removeEventListener('mouseup', up); 
-                };
-                window.addEventListener('mousemove', move);
-                window.addEventListener('mouseup', up);
-              }}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                handleLongPressEnd(); // Cancel long press when dragging thumb
-                const container = sliderContainerRef.current;
-                if (!container) return;
-                const move = (te: TouchEvent) => {
-                  const rect = container.getBoundingClientRect();
-                  const touch = te.touches[0];
-                  if (!touch) return;
-                  const pct = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
-                  const newVal = Math.round(1 + pct * 63);
-                  onChangePhraseMin(Math.min(newVal, maxValue));
-                };
-                const up = () => { 
-                  window.removeEventListener('touchmove', move); 
-                  window.removeEventListener('touchend', up); 
-                };
-                window.addEventListener('touchmove', move);
-                window.addEventListener('touchend', up);
-              }}
-            />
-            {/* Max thumb */}
-            <div
-              style={{
-                position: 'absolute',
-                top: 4,
-                left: `${((maxValue - 1) / 63) * 100}%`,
-                transform: 'translateX(-50%)',
-                width: 12,
-                height: 12,
-                borderRadius: '50%',
-                background: '#8b5cf6',
-                border: '2px solid rgba(255,255,255,0.9)',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                cursor: 'grab',
-              }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const container = sliderContainerRef.current;
-                if (!container) return;
-                const move = (me: MouseEvent) => {
-                  const rect = container.getBoundingClientRect();
-                  const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                  const newVal = Math.round(1 + pct * 63);
-                  onChangePhraseMax(Math.max(newVal, minValue));
-                };
-                const up = () => { 
-                  window.removeEventListener('mousemove', move); 
-                  window.removeEventListener('mouseup', up); 
-                };
-                window.addEventListener('mousemove', move);
-                window.addEventListener('mouseup', up);
-              }}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                handleLongPressEnd(); // Cancel long press when dragging thumb
-                const container = sliderContainerRef.current;
-                if (!container) return;
-                const move = (te: TouchEvent) => {
-                  const rect = container.getBoundingClientRect();
-                  const touch = te.touches[0];
-                  if (!touch) return;
-                  const pct = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
-                  const newVal = Math.round(1 + pct * 63);
-                  onChangePhraseMax(Math.max(newVal, minValue));
-                };
-                const up = () => { 
-                  window.removeEventListener('touchmove', move); 
-                  window.removeEventListener('touchend', up); 
-                };
-                window.addEventListener('touchmove', move);
-                window.addEventListener('touchend', up);
-              }}
-            />
-          </div>
+          <JourneyDualRangeRail
+            label="Phrase length"
+            minValue={minValue}
+            maxValue={maxValue}
+            minColor={node.color || COLORS.filledNode}
+            onMinChange={onChangePhraseMin}
+            onMaxChange={onChangePhraseMax}
+            onModeToggle={onTogglePhraseDual}
+            onLongPressStart={handleLongPressStart}
+            onLongPressEnd={handleLongPressEnd}
+            onLongPressMove={handleLongPressMove}
+          />
         ) : (
           // Single mode - regular slider
           <input
@@ -2210,7 +2243,6 @@ const ConnectionPopup: React.FC<ConnectionPopupProps> = ({
 }) => {
   const probabilities = [0.2, 0.4, 0.6, 0.8, 1.0];
   const popupRef = useRef<HTMLDivElement>(null);
-  const sliderContainerRef = useRef<HTMLDivElement>(null);
   
   // If adjacentRect is provided, position adjacent to it (right edge touching, same top)
   // Otherwise use x,y with normal centering transform
@@ -2403,150 +2435,18 @@ const ConnectionPopup: React.FC<ConnectionPopupProps> = ({
         </div>
         
         {isDualMode ? (
-          // Dual mode - range slider with two thumbs
-          <div
-            ref={sliderContainerRef}
-            style={{
-              position: 'relative',
-              width: '100%',
-              height: 20,
-              cursor: 'pointer',
-            }}
-            onDoubleClick={onToggleDurationDual}
-            onTouchStart={handleLongPressStart}
-            onTouchEnd={handleLongPressEnd}
-            onTouchMove={handleLongPressMove}
-            title="Double-click or long-press for single value mode"
-          >
-            {/* Track background */}
-            <div style={{
-              position: 'absolute',
-              top: 7,
-              left: 0,
-              right: 0,
-              height: 6,
-              borderRadius: 3,
-              background: 'rgba(255,255,255,0.1)',
-            }} />
-            {/* Active range track */}
-            <div style={{
-              position: 'absolute',
-              top: 7,
-              left: `${((minValue - 1) / 63) * 100}%`,
-              width: `${((maxValue - minValue) / 63) * 100}%`,
-              height: 6,
-              borderRadius: 3,
-              background: `linear-gradient(90deg, ${COLORS.connectionActive}, rgba(139, 92, 246, 0.8))`,
-            }} />
-            {/* Min thumb */}
-            <div
-              style={{
-                position: 'absolute',
-                top: 4,
-                left: `${((minValue - 1) / 63) * 100}%`,
-                transform: 'translateX(-50%)',
-                width: 12,
-                height: 12,
-                borderRadius: '50%',
-                background: COLORS.connectionActive,
-                border: '2px solid rgba(255,255,255,0.9)',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                cursor: 'grab',
-              }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const container = sliderContainerRef.current;
-                if (!container) return;
-                const move = (me: MouseEvent) => {
-                  const rect = container.getBoundingClientRect();
-                  const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                  const newVal = Math.round(1 + pct * 63);
-                  onChangeDurationMin(Math.min(newVal, maxValue));
-                };
-                const up = () => { 
-                  window.removeEventListener('mousemove', move); 
-                  window.removeEventListener('mouseup', up); 
-                };
-                window.addEventListener('mousemove', move);
-                window.addEventListener('mouseup', up);
-              }}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                handleLongPressEnd(); // Cancel long press when dragging thumb
-                const container = sliderContainerRef.current;
-                if (!container) return;
-                const move = (te: TouchEvent) => {
-                  const rect = container.getBoundingClientRect();
-                  const touch = te.touches[0];
-                  if (!touch) return;
-                  const pct = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
-                  const newVal = Math.round(1 + pct * 63);
-                  onChangeDurationMin(Math.min(newVal, maxValue));
-                };
-                const up = () => { 
-                  window.removeEventListener('touchmove', move); 
-                  window.removeEventListener('touchend', up); 
-                };
-                window.addEventListener('touchmove', move);
-                window.addEventListener('touchend', up);
-              }}
-            />
-            {/* Max thumb */}
-            <div
-              style={{
-                position: 'absolute',
-                top: 4,
-                left: `${((maxValue - 1) / 63) * 100}%`,
-                transform: 'translateX(-50%)',
-                width: 12,
-                height: 12,
-                borderRadius: '50%',
-                background: '#8b5cf6',
-                border: '2px solid rgba(255,255,255,0.9)',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                cursor: 'grab',
-              }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const container = sliderContainerRef.current;
-                if (!container) return;
-                const move = (me: MouseEvent) => {
-                  const rect = container.getBoundingClientRect();
-                  const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                  const newVal = Math.round(1 + pct * 63);
-                  onChangeDurationMax(Math.max(newVal, minValue));
-                };
-                const up = () => { 
-                  window.removeEventListener('mousemove', move); 
-                  window.removeEventListener('mouseup', up); 
-                };
-                window.addEventListener('mousemove', move);
-                window.addEventListener('mouseup', up);
-              }}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                handleLongPressEnd(); // Cancel long press when dragging thumb
-                const container = sliderContainerRef.current;
-                if (!container) return;
-                const move = (te: TouchEvent) => {
-                  const rect = container.getBoundingClientRect();
-                  const touch = te.touches[0];
-                  if (!touch) return;
-                  const pct = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
-                  const newVal = Math.round(1 + pct * 63);
-                  onChangeDurationMax(Math.max(newVal, minValue));
-                };
-                const up = () => { 
-                  window.removeEventListener('touchmove', move); 
-                  window.removeEventListener('touchend', up); 
-                };
-                window.addEventListener('touchmove', move);
-                window.addEventListener('touchend', up);
-              }}
-            />
-          </div>
+          <JourneyDualRangeRail
+            label="Morph duration"
+            minValue={minValue}
+            maxValue={maxValue}
+            minColor={COLORS.connectionActive}
+            onMinChange={onChangeDurationMin}
+            onMaxChange={onChangeDurationMax}
+            onModeToggle={onToggleDurationDual}
+            onLongPressStart={handleLongPressStart}
+            onLongPressEnd={handleLongPressEnd}
+            onLongPressMove={handleLongPressMove}
+          />
         ) : (
           // Single mode - regular slider
           <input

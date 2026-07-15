@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { recordSliderSystemCounter } from '../../diagnostics/sliderSystemInstrumentation';
 import type { ProductEngineState } from '../../audio/product/ProductEngineTypes';
 import { useAnimationVisibility } from '../hooks/useAnimationVisibility';
 import { getRuntimeSliderPosition } from '../runtimeSliderState';
@@ -8,6 +9,8 @@ import {
   type DualSliderAutomationState,
 } from '../shared/dualSliderAutomation';
 import { SliderPrimitive } from '../sliderSystem';
+import { resolveEffectiveSliderValue } from '../sliderSystem/effectiveValue';
+import { valueToNorm } from '../sliderSystem/scale';
 import type { SliderMode, SliderState } from '../state';
 import {
   ReactiveVisualizerRenderer,
@@ -69,7 +72,6 @@ import {
   visualizerPerformanceInstrumentationEnabled,
 } from './visualizerPerformance';
 import { readVisualizerTelemetrySignal } from './visualizerTelemetry';
-import { formatVisualizerControlValue } from './visualizerControlDomains';
 import {
   DEFAULT_VISUALIZER_CONTROLS,
   VISUALIZER_CONTROL_GROUPS,
@@ -77,6 +79,11 @@ import {
 } from './visualizerControlSchema';
 import { VisualizerMacroPanels } from './VisualizerMacroPanels';
 import { VisualizerCanvasSurface } from './VisualizerCanvasSurface';
+import { VisualizerControlRow } from './VisualizerControlRow';
+import {
+  clearVisualizerIndicator,
+  publishVisualizerIndicator,
+} from './visualizerIndicatorStore';
 import { reactiveVisualizerRootSignal } from './reactiveVisualizerHarmony';
 import './reactiveVisualizer.css';
 
@@ -100,6 +107,12 @@ type ReactiveVisualizerPageInnerProps = Omit<ReactiveVisualizerPageProps, 'enabl
 };
 
 type NumericControlKey = VisualizerNumericControlKey;
+
+interface CompiledAutomation {
+  key: VisualizerNumericControlKey;
+  mode: Exclude<SliderMode, 'single'>;
+  range: { min: number; max: number };
+}
 
 type EngineMeter = {
   key: keyof Pick<
@@ -245,16 +258,6 @@ function resolveVisualizerSliderMode(
   return modes[key] ?? 'single';
 }
 
-function normalizedRange(value: number, min: number, max: number): number {
-  return clamp01((value - min) / Math.max(0.00001, max - min));
-}
-
-function logNorm(value: number, min: number, max: number): number {
-  const safeMin = Math.max(0.0001, min);
-  const safeValue = clamp(value, safeMin, max);
-  return clamp01((Math.log(safeValue) - Math.log(safeMin)) / (Math.log(max) - Math.log(safeMin)));
-}
-
 function runtimeValue(
   state: SliderState,
   sliderModes: Record<string, SliderMode>,
@@ -262,22 +265,17 @@ function runtimeValue(
   key: string,
   fallback = 0,
 ): number {
+  const authoredValue = readNumber(state, key, fallback);
   const liveValue = getRuntimeValue(key);
-  if (typeof liveValue === 'number' && Number.isFinite(liveValue)) return liveValue;
-  const mode = sliderModes[key];
-  if (mode === 'walk' || mode === 'sampleHold') {
-    const position = getRuntimeSliderPosition(key, mode);
-    if (typeof position === 'number' && Number.isFinite(position)) {
-      const range = dualRanges[key];
-      if (range && Number.isFinite(range.min) && Number.isFinite(range.max)) {
-        const min = Math.min(range.min, range.max);
-        const max = Math.max(range.min, range.max);
-        return min + (max - min) * clamp01(position);
-      }
-      return position;
-    }
-  }
-  return readNumber(state, key, fallback);
+  const mode = sliderModes[key] ?? 'single';
+  const range = dualRanges[key];
+  return resolveEffectiveSliderValue({
+    authoredValue,
+    mode,
+    range: range ? [range.min, range.max] : undefined,
+    runtimePosition: getRuntimeSliderPosition(key, mode),
+    runtimeValue: liveValue,
+  });
 }
 
 function focusSnapshot(snapshot: ReactiveVisualizerSnapshot, focus: VisualizerFocus): ReactiveVisualizerSnapshot {
@@ -354,15 +352,15 @@ function buildIntentSnapshot(
   const padLevel = Math.max(value('synthLevel'), value('pad2Level') * (readBoolean(state, 'pad2Enabled') ? 1 : 0.55));
   const padMorph = Math.max(value('padMorph'), value('pad2Morph'));
   const padMotion = Math.max(
-    normalizedRange(value('padLfo1Rate', 0), 0.05, 20),
-    normalizedRange(value('padLfo2Rate', 0), 0.05, 20),
-    normalizedRange(value('filterModSpeed', 0), 0, 20),
+    valueToNorm(value('padLfo1Rate', 0), { min: 0.05, max: 20 }),
+    valueToNorm(value('padLfo2Rate', 0), { min: 0.05, max: 20 }),
+    valueToNorm(value('filterModSpeed', 0), { min: 0, max: 20 }),
   );
   const padTone = Math.max(
     value('hardness'),
     value('warmth'),
     value('presence'),
-    logNorm(value('filterCutoffMax', 1600), 40, 12000),
+    valueToNorm(value('filterCutoffMax', 1600), { min: 40, max: 12000, scale: 'log' }),
   );
 
   const leadLevel = Math.max(
@@ -411,10 +409,10 @@ function buildIntentSnapshot(
   );
 
   const granularDensities = Math.max(
-    normalizedRange(value('granularV1Density', value('density', 20)), 1, 64),
-    normalizedRange(value('granularV2Density', 20), 1, 64),
-    normalizedRange(value('granularV3Density', 20), 1, 64),
-    normalizedRange(value('granularV4Density', 20), 1, 64),
+    valueToNorm(value('granularV1Density', value('density', 20)), { min: 1, max: 64 }),
+    valueToNorm(value('granularV2Density', 20), { min: 1, max: 64 }),
+    valueToNorm(value('granularV3Density', 20), { min: 1, max: 64 }),
+    valueToNorm(value('granularV4Density', 20), { min: 1, max: 64 }),
   );
   const granularSends = Math.max(
     value('granularPad1Send'),
@@ -437,7 +435,7 @@ function buildIntentSnapshot(
   const reverbEnergy = Math.max(
     value('reverbLevel'),
     value('reverbDecay'),
-    normalizedRange(value('reverbSize', 2), 0.5, 10),
+    valueToNorm(value('reverbSize', 2), { min: 0.5, max: 10 }),
     value('reverbModulation'),
     value('granularReverbSend'),
   );
@@ -473,7 +471,7 @@ function buildIntentSnapshot(
     detune: clamp01(value('detune') / 25),
     morph: clamp01(Math.max(padMorph, leadMorph)),
     brightness: clamp01(Math.max(
-      logNorm(value('filterCutoffMax', 1600), 40, 12000),
+      valueToNorm(value('filterCutoffMax', 1600), { min: 40, max: 12000, scale: 'log' }),
       value('presence'),
       value('reverbInputTone', 0) * 0.5 + 0.5,
     )),
@@ -551,17 +549,14 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   const lastFrameRef = useRef(0);
   const lastInteractionRef = useRef(0);
   const wakeRenderRef = useRef<(interaction?: boolean) => void>(() => undefined);
-  const coarsePointerRef = useRef(false);
   const vizAutomationStateRef = useRef<Record<string, DualSliderAutomationState>>({});
   const [controls, setControls] = useState<ReactiveVisualizerControls>(DEFAULT_CONTROLS);
   const [seed, setSeed] = useState(createVisualizerSeed);
   const seedRef = useRef(seed);
   const [performanceMacros, setPerformanceMacros] = useState<VisualizerPerformanceMacros>(DEFAULT_VISUALIZER_MACROS);
-  const performanceMacrosRef = useRef(performanceMacros);
   const [layerMacros, setLayerMacros] = useState<VisualizerLayerMacros>(DEFAULT_VISUALIZER_LAYER_MACROS);
-  const layerMacrosRef = useRef(layerMacros);
   const [qualityMode, setQualityMode] = useState<VisualizerQualityMode>(DEFAULT_QUALITY_MODE);
-  const qualityModeRef = useRef(qualityMode);
+  const [coarsePointer, setCoarsePointer] = useState(false);
   const [rendererMode, setRendererMode] = useState<'webgl2' | 'canvas2d'>('webgl2');
   const [frameMode, setFrameMode] = useState<VisualizerFrameMode>('settling');
   const frameModeRef = useRef<VisualizerFrameMode>('settling');
@@ -575,10 +570,14 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
       0,
     )
   ));
-  const [modulatedControlsState, setModulatedControlsState] = useState<ReactiveVisualizerControls>(DEFAULT_CONTROLS);
   const meterUpdateRef = useRef(0);
+  const indicatorUpdateRef = useRef(0);
   const metersOpenRef = useRef(false);
   const { canAnimate } = useAnimationVisibility(canvasWrapRef, { rootMargin: '80px' });
+
+  useEffect(() => {
+    recordSliderSystemCounter('visualizerRootCommits');
+  });
 
   useEffect(() => {
     setVisualizerSignalDemand(canAnimate);
@@ -593,10 +592,35 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   const reactionRef = useRef(reaction);
   const reactiveRangesRef = useRef(reactiveRanges);
   const [vizSliderModes, setVizSliderModes] = useState<Record<string, SliderMode>>({});
-  const vizSliderModesRef = useRef(vizSliderModes);
   reactionRef.current = reaction;
   reactiveRangesRef.current = reactiveRanges;
-  vizSliderModesRef.current = vizSliderModes;
+
+  const resolvedMacroControls = useMemo(
+    () => resolveVisualizerMacroControls(controls, performanceMacros, layerMacros),
+    [controls, layerMacros, performanceMacros],
+  );
+  const macroControlsRef = useRef(resolvedMacroControls);
+  macroControlsRef.current = resolvedMacroControls;
+
+  const resolvedQuality = useMemo(
+    () => resolveCurrentQuality(qualityMode, mobileReducedVisuals, coarsePointer),
+    [coarsePointer, mobileReducedVisuals, qualityMode],
+  );
+  const qualityRef = useRef(resolvedQuality);
+  qualityRef.current = resolvedQuality;
+
+  const compiledAutomations = useMemo<CompiledAutomation[]>(() => {
+    const compiled: CompiledAutomation[] = [];
+    for (const [key, mode] of Object.entries(vizSliderModes)) {
+      if (mode !== 'walk' && mode !== 'sampleHold') continue;
+      const range = reactiveRanges[key as VisualizerNumericControlKey];
+      if (!range) continue;
+      compiled.push({ key: key as VisualizerNumericControlKey, mode, range });
+    }
+    return compiled;
+  }, [reactiveRanges, vizSliderModes]);
+  const compiledAutomationsRef = useRef(compiledAutomations);
+  compiledAutomationsRef.current = compiledAutomations;
 
   // --- Preset state ---
   const [presetList, setPresetList] = useState<PresetSummary[]>([]);
@@ -605,10 +629,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   const [presetSaving, setPresetSaving] = useState(false);
 
   controlsRef.current = controls;
-  performanceMacrosRef.current = performanceMacros;
-  layerMacrosRef.current = layerMacros;
   seedRef.current = seed;
-  qualityModeRef.current = qualityMode;
   stateRef.current = state;
   sliderModesRef.current = sliderModes;
   dualRangesRef.current = dualRanges;
@@ -663,7 +684,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
     const mediaQuery = window.matchMedia('(pointer: coarse)');
     const updatePointerMode = () => {
-      coarsePointerRef.current = mediaQuery.matches;
+      setCoarsePointer(mediaQuery.matches);
     };
     updatePointerMode();
     mediaQuery.addEventListener?.('change', updatePointerMode);
@@ -712,16 +733,8 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
         const frameStartedAt = measurePerformance ? performance.now() : 0;
         let intentBuildMs = 0;
         let intentBuilt = false;
-        const controlState = resolveVisualizerMacroControls(
-          controlsRef.current,
-          performanceMacrosRef.current,
-          layerMacrosRef.current,
-        );
-        const quality = resolveCurrentQuality(
-          qualityModeRef.current,
-          mobileReducedVisualsRef.current,
-          coarsePointerRef.current,
-        );
+        const controlState = macroControlsRef.current;
+        const quality = qualityRef.current;
         const requestedFps = fpsFromControl(controlState.frameRate);
         const deltaSeconds = lastFrameRef.current > 0
           ? clamp((timeMs - lastFrameRef.current) / 1000, 0, 0.25)
@@ -752,22 +765,18 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
             controlState,
             timeMs,
           );
-          const automatedControls: ReactiveVisualizerControls = {
-            ...controlState,
-            layerOrder: [...controlState.layerOrder],
-          };
+          const currentAutomations = compiledAutomationsRef.current;
+          const hasAutomation = currentAutomations.length > 0;
+          const automatedControls: ReactiveVisualizerControls = hasAutomation
+            ? { ...controlState, layerOrder: [...controlState.layerOrder] }
+            : controlState;
           const triggerAmount = Math.max(
             snapshot.pulses.global,
             snapshot.pulses.drums,
             snapshot.pulses.lead,
             snapshot.pulses.sequencer,
           );
-          const currentSliderModes = vizSliderModesRef.current;
-          const currentRanges = reactiveRangesRef.current;
-          for (const [key, range] of Object.entries(currentRanges) as Array<[VisualizerNumericControlKey, { min: number; max: number } | undefined]>) {
-            const mode = resolveVisualizerSliderMode(key, currentSliderModes, currentRanges);
-            if (mode !== 'walk' && mode !== 'sampleHold') continue;
-            if (!range) continue;
+          for (const { key, mode, range } of currentAutomations) {
             const baseValue = controlState[key];
             if (typeof baseValue !== 'number') continue;
             const result = resolveDualSliderAutomation({
@@ -779,6 +788,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
               lowerBound: range.min,
               upperBound: range.max,
               nowSeconds: timeMs / 1000,
+              epochSeconds: Date.now() / 1000,
               deltaSeconds,
               triggerAmount,
               seed: seedRef.current,
@@ -820,17 +830,23 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
             seed: seedRef.current,
             quality,
           });
-          const meterUpdateIntervalMs = mobileReducedVisualsRef.current ? 400 : 250;
           let uiPublished = false;
-          const modulationIndicatorDemand = Object.values(vizSliderModesRef.current)
-            .some((mode) => mode === 'walk' || mode === 'sampleHold');
-          if (
-            (metersOpenRef.current || modulationIndicatorDemand) &&
-            timeMs - meterUpdateRef.current >= meterUpdateIntervalMs
-          ) {
+          if (hasAutomation && timeMs - indicatorUpdateRef.current >= 100) {
+            indicatorUpdateRef.current = timeMs;
+            for (const { key } of currentAutomations) {
+              const automationValue = automatedControls[key];
+              const modulatedValue = modulatedControls[key];
+              publishVisualizerIndicator(key, {
+                automationPosition: (automationValue + 1) * 0.5,
+                modulatedPosition: (modulatedValue + 1) * 0.5,
+              });
+            }
+            uiPublished = true;
+          }
+          const meterUpdateIntervalMs = mobileReducedVisualsRef.current ? 400 : 250;
+          if (metersOpenRef.current && timeMs - meterUpdateRef.current >= meterUpdateIntervalMs) {
             meterUpdateRef.current = timeMs;
-            if (metersOpenRef.current) setMeterSnapshot(snapshot);
-            if (modulationIndicatorDemand) setModulatedControlsState(modulatedControls);
+            setMeterSnapshot(snapshot);
             uiPublished = true;
           }
           const pulses = snapshot.pulses;
@@ -847,8 +863,6 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
             pulses.dynamics,
             pulses.sequencer,
           );
-          const hasAutomation = Object.values(vizSliderModesRef.current)
-            .some((mode) => mode === 'walk' || mode === 'sampleHold');
           const plan = resolveVisualizerFramePlan({
             canAnimate: true,
             isPlaying: isPlayingRef.current,
@@ -894,7 +908,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
 
   useEffect(() => {
     wakeRenderRef.current(true);
-  }, [controls, layerMacros, performanceMacros, qualityMode, reaction, reactiveRanges, seed, vizSliderModes]);
+  }, [coarsePointer, controls, layerMacros, performanceMacros, qualityMode, reaction, reactiveRanges, seed, vizSliderModes]);
 
   const updateControl = useCallback((key: NumericControlKey, value: number) => {
     const nextControlsForRange = {
@@ -1047,7 +1061,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   const displayedRequestedFps = isPlaying
     ? fpsFromControl(controls.frameRate)
     : Math.min(24, fpsFromControl(controls.frameRate));
-  const displayedQuality = resolveCurrentQuality(qualityMode, mobileReducedVisuals, coarsePointerRef.current);
+  const displayedQuality = resolvedQuality;
   const displayedFps = clamp(displayedRequestedFps, 12, displayedQuality.targetFps);
 
   // Per-slider mode: single (value line) / walk (range band + indicator) / sampleHold
@@ -1060,19 +1074,14 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   }, []);
 
   useEffect(() => {
-    const activeKeys = new Set<string>(
-      (Object.keys(reactiveRanges) as VisualizerNumericControlKey[])
-        .filter((key) => {
-          const mode = resolveVisualizerSliderMode(key, vizSliderModes, reactiveRanges);
-          return mode === 'walk' || mode === 'sampleHold';
-        }),
-    );
+    const activeKeys = new Set<string>(compiledAutomations.map(({ key }) => key));
     for (const key of Object.keys(vizAutomationStateRef.current)) {
       if (!activeKeys.has(key)) {
         delete vizAutomationStateRef.current[key];
+        clearVisualizerIndicator(key as VisualizerNumericControlKey);
       }
     }
-  }, [reactiveRanges, vizSliderModes]);
+  }, [compiledAutomations]);
 
   const layerStack = useMemo(() => layerOrderToStack(controls.layerOrder), [controls.layerOrder]);
 
@@ -1353,74 +1362,32 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
               {!isCollapsed && group.controls.map((def) => {
                 const value = controls[def.key];
                 const numericValue = typeof value === 'number' ? value : 0;
-                // Map bipolar -1..+1 to 0..100 for SliderPrimitive
-                const percent = (numericValue + 1) * 50;
-                // Reactive range mapped to 0-100%
                 const rr = reactiveRanges[def.key as VisualizerNumericControlKey];
-                const sliderRange = rr
-                  ? { min: (rr.min + 1) * 50, max: (rr.max + 1) * 50 }
-                  : undefined;
-                // Modulated value mapped to 0-100%
-                const modVal = modulatedControlsState[def.key];
-                const modPercent = typeof modVal === 'number' ? (modVal + 1) * 50 : percent;
-                // Mod routes driving this param
                 const drivers = getDriversForTarget(def.key as VisualizerNumericControlKey);
-                const modActive = Math.abs(modPercent - percent) > 0.5;
-                // Per-slider mode (default walk if has range, else single)
                 const sliderMode = resolveVisualizerSliderMode(
                   def.key as VisualizerNumericControlKey,
                   vizSliderModes,
                   reactiveRanges,
                 );
                 return (
-                  <div className="visualizer-slider-wrap" key={def.key}>
-                    <SliderPrimitive
-                      label={def.label}
-                      mode={sliderMode}
-                      value={percent}
-                      range={sliderMode !== 'single' ? sliderRange : undefined}
-                      indicatorValue={sliderMode !== 'single' ? modPercent : undefined}
-                      variant="full"
-                      density="compact"
-                      hero="#9ccfbd"
-                      formatValue={formatBipolar}
-                      displayValue={
-                        formatVisualizerControlValue(def.key, numericValue, def.left, def.right)
-                      }
-                      onValueChange={(nextPercent) => {
-                        const bipolar = (nextPercent / 50) - 1;
-                        updateControl(def.key, clamp(bipolar, -1, 1));
-                      }}
-                      onRangeChange={sliderMode !== 'single' ? (nextRange) => {
-                        const bipolarMin = (nextRange.min / 50) - 1;
-                        const bipolarMax = (nextRange.max / 50) - 1;
-                        setReactiveRanges((prev) => ({
-                          ...prev,
-                          [def.key]: { min: bipolarMin, max: bipolarMax },
-                        }));
-                      } : undefined}
-                      onModeCycle={() => cycleVizMode(def.key)}
-                    />
-                    {drivers.length > 0 && (
-                      <div className={`visualizer-mod-drivers${modActive ? ' active' : ''}`}>
-                        {drivers.map((route) => {
-                          const effectivePct = Math.round(route.amount * getEffectiveReactionDepth(reaction) * 100);
-                          return (
-                            <span
-                              key={route.label}
-                              className={`visualizer-mod-chip${route.eventDriven ? ' visualizer-mod-chip--event' : ' visualizer-mod-chip--engine'}`}
-                              title={`${route.label} — ${route.engines.join(', ')} → ${route.target} (${effectivePct}%)`}
-                            >
-                              <span className="visualizer-mod-chip-bar" style={{ width: `${effectivePct}%` }} />
-                              <span className="visualizer-mod-chip-text">
-                              {route.eventDriven ? '▲ ' : '∼ '}{route.label}
-                              </span>
-                            </span>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  <VisualizerControlRow
+                    key={def.key}
+                    definition={def}
+                    value={numericValue}
+                    mode={sliderMode}
+                    range={rr}
+                    drivers={drivers}
+                    reactionDepth={getEffectiveReactionDepth(reaction)}
+                    formatValue={formatBipolar}
+                    onValueChange={(nextValue) => updateControl(def.key, clamp(nextValue, -1, 1))}
+                    onRangeChange={sliderMode !== 'single' ? (nextRange) => {
+                      setReactiveRanges((prev) => ({
+                        ...prev,
+                        [def.key]: nextRange,
+                      }));
+                    } : undefined}
+                    onModeCycle={() => cycleVizMode(def.key)}
+                  />
                 );
               })}
             </section>

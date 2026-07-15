@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SliderState } from '../state';
+import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import { VOICE_MORPH_KEYS } from '../../audio/drumMorph';
 import { DRUM_VOICE_SCOPES } from '../../audio/drumVoiceConfig';
@@ -21,8 +22,8 @@ interface MorphSliderProps {
   getPresetNames: (voice: DrumVoiceType) => string[];
   onParamChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
-  sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
-  SliderComponent: React.ComponentType<Record<string, unknown>>;
+  sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
+  SliderComponent: React.ComponentType<SliderRendererProps<keyof SliderState>>;
   onAuditionPresetPreview?: (voice: DrumVoiceType, externalState: SliderState) => void | Promise<void>;
   poolPopupSlot?: 'A' | 'B' | null;
   onPoolPopupSlotChange?: (slot: 'A' | 'B' | null) => void;

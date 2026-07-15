@@ -10,7 +10,6 @@ interface DragNumberProps {
   shapeByDrag?: boolean;
   disabled?: boolean;
   displayValue?: React.ReactNode;
-  commitOnRelease?: boolean;
 }
 
 const SEQ_DRAG_NUM_SLOW_FACTOR = 1.8;
@@ -25,13 +24,11 @@ const DragNumber: React.FC<DragNumberProps> = ({
   shapeByDrag = false,
   disabled = false,
   displayValue,
-  commitOnRelease = false,
 }) => {
   const [dragging, setDragging] = useState(false);
   const [ghostValue, setGhostValue] = useState<number | null>(null);
   const startY = useRef(0);
   const startValue = useRef(value);
-  const ghostValueRef = useRef<number | null>(null);
 
   const effectiveStep = Number.isFinite(step) && step > 0 ? step : 1;
   const range = max - min;
@@ -70,16 +67,13 @@ const DragNumber: React.FC<DragNumberProps> = ({
       delta = totalY / pxPerStep;
     }
     const next = quantize(startValue.current + delta * effectiveStep);
-    ghostValueRef.current = next;
     setGhostValue(next);
-    if (!commitOnRelease) onChange(next);
+    onChange(next);
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (!dragging) return;
-    if (commitOnRelease && ghostValueRef.current !== null) onChange(ghostValueRef.current);
     setDragging(false);
-    ghostValueRef.current = null;
     setGhostValue(null);
     (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
   };
@@ -87,7 +81,6 @@ const DragNumber: React.FC<DragNumberProps> = ({
   const onPointerCancel = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (!dragging) return;
     setDragging(false);
-    ghostValueRef.current = null;
     setGhostValue(null);
     (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
   };

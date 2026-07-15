@@ -1,6 +1,11 @@
 import { createCoreProductManualNoteEvent, type CoreProductEvent } from './coreProductEvents';
 import { createCoreProductHarmonyParamEvents } from './coreProductHarmonyParamEvents';
-import { ARRANGEMENT_TRANSPORT_TIMING_KEYS, arrangementRestartKey, PAD_VOICE_COUNT } from './coreProductArrangementVoiceMapping';
+import {
+  ARRANGEMENT_HOST_NEXT_PHRASE_TIMING_KEYS,
+  ARRANGEMENT_TRANSPORT_TIMING_KEYS,
+  arrangementRestartKey,
+  PAD_VOICE_COUNT,
+} from './coreProductArrangementVoiceMapping';
 import { coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
 import { getEffectiveTension, updateHarmonyState, type HarmonyState } from './harmony';
 import { createRng, getUtcBucket } from './rng';
@@ -60,6 +65,7 @@ export class CoreProductArrangementScheduler {
   private leadPhraseTimer: number | null = null;
   private chordSequencerTimer: number | null = null;
   private pendingTransportState: Record<string, unknown> | null = null;
+  private pendingHostTimingState: Record<string, unknown> | null = null;
   private observedTransportTransitionRevision = 0;
   private readonly padNoteTimers = new Set<number>();
   private readonly leadNoteTimers = new Set<number>();
@@ -137,9 +143,22 @@ export class CoreProductArrangementScheduler {
         ...Object.fromEntries(ARRANGEMENT_TRANSPORT_TIMING_KEYS.map((key) => [key, activeState[key]])),
       };
     }
+    const hostTimingChanged = ARRANGEMENT_HOST_NEXT_PHRASE_TIMING_KEYS.some((key) => activeState[key] !== candidate[key]);
+    if (hostTimingChanged || this.pendingHostTimingState) {
+      const candidateMatchesActive = ARRANGEMENT_HOST_NEXT_PHRASE_TIMING_KEYS.every((key) => activeState[key] === candidate[key]);
+      this.pendingHostTimingState = candidateMatchesActive ? null : candidate;
+      state = {
+        ...state,
+        ...Object.fromEntries(ARRANGEMENT_HOST_NEXT_PHRASE_TIMING_KEYS.map((key) => [key, activeState[key]])),
+      };
+    }
     const nextRestartKey = arrangementRestartKey(state);
     if (nextRestartKey !== this.restartKey) {
+      const pendingTransportState = this.pendingTransportState;
+      const pendingHostTimingState = this.pendingHostTimingState;
       this.start(state, true);
+      this.pendingTransportState = pendingTransportState;
+      this.pendingHostTimingState = pendingHostTimingState;
       return;
     }
     const previousState = this.state;
@@ -189,6 +208,7 @@ export class CoreProductArrangementScheduler {
     this.restartKey = '';
     this.phraseState = null;
     this.pendingTransportState = null;
+    this.pendingHostTimingState = null;
     this.observedTransportTransitionRevision = 0;
   }
   syncTransportTelemetry(telemetry: CoreProductTelemetrySnapshot): void {
@@ -260,6 +280,18 @@ export class CoreProductArrangementScheduler {
     if (!this.state) return null;
     this.phraseState = { ...this.state };
     return this.phraseState;
+  }
+
+  private applyPendingHostTimingState(): void {
+    const pending = this.pendingHostTimingState;
+    this.pendingHostTimingState = null;
+    if (!pending || !this.state) return;
+    this.state = {
+      ...this.state,
+      ...Object.fromEntries(ARRANGEMENT_HOST_NEXT_PHRASE_TIMING_KEYS.map((key) => [key, pending[key]])),
+    };
+    this.clearTimer('chordSequencerTimer');
+    if (booleanFromState(this.state, 'synthChordSequencerEnabled', false)) this.startChordSequencer();
   }
 
   private ensurePadChordPlan(
@@ -411,6 +443,7 @@ export class CoreProductArrangementScheduler {
 
   private onHarmonyTick(isPhraseBoundary: boolean): void {
     if (!this.state || !this.harmonyState || !this.anchors) return;
+    if (isPhraseBoundary && !this.pendingTransportState) this.applyPendingHostTimingState();
     const phraseState = isPhraseBoundary ? this.capturePhraseState() : this.getPhraseState();
     if (!phraseState) return;
     const sliderState = sliderStateFromRecord(phraseState);

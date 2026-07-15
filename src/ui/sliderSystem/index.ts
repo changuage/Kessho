@@ -7,6 +7,8 @@ export {
   TRACK_PAD_PX,
   TOUCH_DRAG_INTENT_PX,
   clamp01,
+  axisToNormalized,
+  getNearestRangeHandle,
   getTouchGestureIntent,
   getDualHandle,
   normToValue,
@@ -18,6 +20,7 @@ export {
   rangesEqual,
   releasePointerCaptureSafely,
   setSliderTouchSelectionLock,
+  shiftRangePreservingWidth,
   stepDecimals,
   trackLeftCalc,
   trackWidthCalc,
@@ -31,9 +34,11 @@ export type {
   SliderPrimitiveMode,
   SliderPrimitiveRange,
   SliderPrimitiveSpec,
+  SliderRendererProps,
+  SliderRuntimeRendererProps,
   SliderPrimitiveSurface,
   SliderStylingModel,
   SliderVariant,
   SliderViewport,
 } from './types';
-export type { MatrixCellHandle, QuantizationRange } from './matrixMath';
+export type { MatrixCellHandle, NumericRange, QuantizationRange } from './matrixMath';

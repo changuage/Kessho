@@ -19,7 +19,7 @@ import { drumVoiceIndex, runtimeWalkConfigChanged, runtimeWalkConfigFromState } 
 import { CoreProductRuntime, type CoreProductGraphTapCaptureChunk } from './coreProductRuntime';
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
-import { shouldRejoinCoreProductSequencerClocks } from './CoreProductHostSequencerClock';
+import { coreProductSequencerClockRejoinMask, EMPTY_CORE_PRODUCT_SEQUENCER_CLOCK_REJOIN_MASK, hasCoreProductSequencerClockRejoin, type CoreProductSequencerClockRejoinMask } from './CoreProductHostSequencerClock';
 import { CoreProductHostSequencerChain } from './CoreProductHostSequencerChain';
 import { createCoreProductSequencerHomeStore } from './CoreProductHostSequencerHome';
 import { createCoreProductHostMidiEvent, createCoreProductLiveNoteEvent } from './CoreProductHostMidi';
@@ -319,7 +319,7 @@ class CoreProductEngineHost {
     const previousSliderState = this.latestSliderState, previousWalkConfig = runtimeWalkConfigFromState(previousSliderState);
     this.latestSliderState = sliderState;
     const nextWalkConfig = runtimeWalkConfigFromState(this.latestSliderState);
-    const forceSequencerClockRejoin = shouldRejoinCoreProductSequencerClocks(previousSliderState, sliderState);
+    const sequencerClockRejoinMask = coreProductSequencerClockRejoinMask(previousSliderState, sliderState);
     this.adapterState = this.leadPresetDataLoader.syncPresetData(sliderState, this.adapterState);
     if (!this.running && !this.sequencerTransportStartInFlight && this.sequencerTransportRequested(sliderState)) {
       this.sequencerTransportStartInFlight = true;
@@ -339,7 +339,7 @@ class CoreProductEngineHost {
       (this.assetRegistrar.hasMissingDefaultAssetsForState() || samplePlaybackCritical);
     if (shouldRefreshAssetsAndAck) {
       await this.assetRegistrar.ensureDefaultAssetsForState();
-      const receipt = await this.applyLatestSnapshotUpdate('asset-reference-change', forceSequencerClockRejoin, {
+      const receipt = await this.applyLatestSnapshotUpdate('asset-reference-change', sequencerClockRejoinMask, {
         ...options,
         triggerCritical: true,
         forceFullSnapshot: true,
@@ -357,7 +357,7 @@ class CoreProductEngineHost {
       this.publishStateIfHarmonyChanged();
       return { applied: true, mode: 'event' };
     }
-    const receipt = await this.applyLatestSnapshotUpdate(fallbackReloadReason, forceSequencerClockRejoin, options);
+    const receipt = await this.applyLatestSnapshotUpdate(fallbackReloadReason, sequencerClockRejoinMask, options);
     if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.modulationRangeBridge.flushRuntimeWalkRanges();
     if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState);
     this.publishStateIfHarmonyChanged();
@@ -412,6 +412,24 @@ class CoreProductEngineHost {
 
   async start(sliderState?: Record<string, unknown>): Promise<void> {
     await this.lifecycleCoordinator.start(sliderState);
+  }
+
+  primeAudioContext(): void {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('parity') === '1') {
+      document.documentElement.dataset.coreProductAudioPrime = 'requested';
+      document.documentElement.dataset.coreProductUserActivation = navigator.userActivation?.isActive ? 'active' : 'inactive';
+    }
+    void this.runtime.resume().then(() => {
+      this.runtimeReady = true;
+      if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('parity') === '1') {
+        document.documentElement.dataset.coreProductAudioPrime = 'ready';
+      }
+    }).catch((error: unknown) => {
+      if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('parity') === '1') {
+        document.documentElement.dataset.coreProductAudioPrime = 'error';
+      }
+      console.warn('Failed to prime Product Core audio context:', error);
+    });
   }
 
   async resume(): Promise<void> {
@@ -567,29 +585,15 @@ class CoreProductEngineHost {
   setSynthEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void { this.setDisplayCallback('synthEuclidEvolve', callback); }
   setGranularUiActive(active: boolean): void { this.displayCallbacks.setValue('granularUiActive', active); this.runtime.setGranularWaveformTelemetryActive(active); }
 
-  async triggerDrumVoice(
-    voice: unknown,
-    velocity: number,
-    externalState?: Record<string, unknown>,
-  ): Promise<void> {
-    await triggerCoreProductDrumVoice(this.manualAuditionContext(), voice, velocity, externalState);
-  }
+  async triggerDrumVoice(voice: unknown, velocity: number, externalState?: Record<string, unknown>): Promise<void> { await triggerCoreProductDrumVoice(this.manualAuditionContext(), voice, velocity, externalState); }
 
-  resetSynthEuclidLaneHome(laneIndex: number): void {
-    this.postProductEvent(createCoreProductSequencerResetHomeEvent('synth', laneIndex));
-  }
+  resetSynthEuclidLaneHome(laneIndex: number): void { this.postProductEvent(createCoreProductSequencerResetHomeEvent('synth', laneIndex)); }
 
-  diceSynthEuclidLane(laneIndex: number, intensity: number = 1): void {
-    this.postProductEvent(createCoreProductSequencerDiceEvent('synth', laneIndex, intensity));
-  }
+  diceSynthEuclidLane(laneIndex: number, intensity: number = 1): void { this.postProductEvent(createCoreProductSequencerDiceEvent('synth', laneIndex, intensity)); }
 
-  resetDrumEuclidLaneHome(laneIndex: number): void {
-    this.postProductEvent(createCoreProductSequencerResetHomeEvent('drum', laneIndex));
-  }
+  resetDrumEuclidLaneHome(laneIndex: number): void { this.postProductEvent(createCoreProductSequencerResetHomeEvent('drum', laneIndex)); }
 
-  diceDrumEuclidLane(laneIndex: number, intensity: number = 1): void {
-    this.postProductEvent(createCoreProductSequencerDiceEvent('drum', laneIndex, intensity));
-  }
+  diceDrumEuclidLane(laneIndex: number, intensity: number = 1): void { this.postProductEvent(createCoreProductSequencerDiceEvent('drum', laneIndex, intensity)); }
 
   startJourneyMorphClock(): void {
     if (!this.journeyMorphClock.start()) return;
@@ -629,9 +633,7 @@ class CoreProductEngineHost {
     await auditionCoreProductSynthNotes(this.manualAuditionContext(), notes, externalState);
   }
 
-  private recordSoundTrigger(): void {
-    this.resolvedStateCommitService.recordSoundTrigger();
-  }
+  private recordSoundTrigger(): void { this.resolvedStateCommitService.recordSoundTrigger(); }
 
   private manualAuditionContext(): CoreProductManualAuditionContext {
     return {
@@ -668,7 +670,7 @@ class CoreProductEngineHost {
 
   private applyLatestSnapshotUpdate(
     reason: SnapshotReloadReason = 'product-patch',
-    forceSequencerClockRejoin = false,
+    sequencerClockRejoinMask: CoreProductSequencerClockRejoinMask = EMPTY_CORE_PRODUCT_SEQUENCER_CLOCK_REJOIN_MASK,
     options?: CoreProductStateApplyOptions,
   ): Promise<ProductPatchApplyReceipt> {
     if (!this.runtimeReady) return Promise.resolve({ applied: false, mode: 'deferred' });
@@ -680,11 +682,11 @@ class CoreProductEngineHost {
     return applyCoreProductSnapshotUpdate({
       runtime: this.runtime,
       previousSnapshot: this.latestProductSnapshot,
-      nextSnapshot: this.createLatestSnapshot(forceSequencerClockRejoin),
+      nextSnapshot: this.createLatestSnapshot(hasCoreProductSequencerClockRejoin(sequencerClockRejoinMask)),
       fallbackReloadReason: reason,
       pendingReloadReason: this.pendingSnapshotReloadReason,
       forceFullSnapshot: applyOptions.forceFullSnapshot,
-      forceSequencerClockRejoin,
+      sequencerClockRejoinMask,
       forwardRngDiffs: shouldForwardCoreProductRngDiffs(this.latestSliderState, this.latestTelemetry),
       metadata,
       awaitAudioThreadAck,
@@ -724,11 +726,7 @@ class CoreProductEngineHost {
 
   flushPostSnapshotEventQueue(): void { this.postSnapshotEvents.flush(); }
 
-  private nowMs(): number {
-    return typeof performance !== 'undefined' && typeof performance.now === 'function'
-      ? performance.now()
-      : Date.now();
-  }
+  private nowMs(): number { return typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now(); }
 
   private createLatestSnapshot(includeClockStartDelay = false): CoreProductSnapshot {
     return createCoreProductHostSnapshot({
@@ -740,9 +738,7 @@ class CoreProductEngineHost {
     }, includeClockStartDelay);
   }
 
-  private createLatestArrangementState(): Record<string, unknown> | null {
-    return this.arrangementBridge.createState(this.latestSliderState, this.adapterState);
-  }
+  private createLatestArrangementState(): Record<string, unknown> | null { return this.arrangementBridge.createState(this.latestSliderState, this.adapterState); }
 
   private handleTelemetry(telemetry: CoreProductTelemetrySnapshot): void {
     const hostTelemetry = this.generatedSequencerCaptureTelemetryHistory.withHistory(this.withHostDiagnostics(telemetry));

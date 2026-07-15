@@ -31,7 +31,7 @@ Use `npm run core:product:apple-native-code-audit:strict` as a release gate; it 
 | iOS production native routing | Diagnostic only | The plugin explicitly leaves sound generation with React/WebAudio. Native start/probe methods are diagnostics. |
 | macOS production native routing | Diagnostic only | The app shell links Product Core and runs native probes, but production playback remains in the embedded web runtime. |
 | Native snapshot/event integration | Missing | The bridge allowlist has no Product snapshot/event methods. The iOS renderer's snapshot and event methods are stubs. |
-| Native bridge payload | Incompatible | The snapshot ABI is 151,444 bytes while current playback bridge options are capped at 8 KiB. Do not encode snapshots as ordinary bridge JSON. |
+| Native bridge payload | Incompatible | The snapshot ABI is 151,572 bytes while current playback bridge options are capped at 8 KiB. Do not encode snapshots as ordinary bridge JSON. |
 | Native control thread safety | Blocker | Snapshot/reset and asset operations mutate the render engine directly. Production wiring requires render-boundary commands and explicit asset lifetime handoff. |
 | Native asset path | Compiled, not wired | Apple audio-file decode and Product asset registration exist below the app bridge. No production app API invokes them; decode is whole-file and resampling is synchronous linear interpolation. |
 | Native MIDI scheduling | Collected to JS only | CoreMIDI timestamps are captured. They are not mapped to Product sample time and enqueued directly into the native renderer. |
@@ -66,7 +66,7 @@ Use these measurement buckets:
 
 1. Complete the scheduler boundary: either move harmony/chord/lead scheduling into Product Core or explicitly declare those features unavailable during WebView suspension. The former is required for background parity.
 2. Make native engine control real-time safe: render-boundary snapshot commands, serialized event production, deferred asset reclamation, bounded acknowledgements, and no control-thread mutation of active render state.
-3. Freeze a generated binary native contract for snapshot revision/hash, bounded event batches, asset identity/lifetime, telemetry, and sample-time mapping. The 151,444-byte snapshot must not use the current 8 KiB JSON request path.
+3. Freeze a generated binary native contract for snapshot revision/hash, bounded event batches, asset identity/lifetime, telemetry, and sample-time mapping. The 151,572-byte snapshot must not use the current 8 KiB JSON request path.
 4. Add host-time-to-sample-time conversion using CoreMIDI host timestamps and `AudioTimeStamp`, preserving `sample_offset` within each render block.
 5. Collapse iOS ownership to one native engine and rebuild it from actual device sample rate and safe maximum callback size after activation and route changes. Add real CoreAudio route listeners on macOS.
 6. Add a native `ProductEnginePort` implementation while retaining the WebView as UI and non-realtime state authority.
