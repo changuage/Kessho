@@ -1490,11 +1490,31 @@ async function readLaneTimingEditorState(page) {
 }
 
 async function setLaneTimingEditorState(page, expected) {
-  await page.locator('.seq-clock-select:visible').first().waitFor({ timeout: 10000 });
-  await page.locator('.seq-clock-select:visible').first().selectOption(expected.clockDiv);
-  await page.waitForTimeout(250);
-  await setRangeInputValue(page.locator('.seq-swing-range:visible').first(), expected.swing);
-  await page.waitForTimeout(250);
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const clockSelect = page.locator('.seq-clock-select:visible').first();
+    await clockSelect.waitFor({ timeout: 10000 });
+    if (await clockSelect.inputValue() !== expected.clockDiv) {
+      await clockSelect.selectOption(expected.clockDiv);
+      await page.waitForTimeout(250);
+    }
+
+    const swingRange = page.locator('.seq-swing-range:visible').first();
+    if (Math.abs(Number(await swingRange.inputValue()) - expected.swing) >= 0.001) {
+      await setRangeInputValue(swingRange, expected.swing);
+    }
+    await page.waitForTimeout(350);
+
+    const actual = await readLaneTimingEditorState(page);
+    if (actual.clockDiv !== expected.clockDiv || Math.abs(actual.swing - expected.swing) >= 0.001) continue;
+    await page.waitForTimeout(500);
+    const stable = await readLaneTimingEditorState(page);
+    if (stable.clockDiv === expected.clockDiv && Math.abs(stable.swing - expected.swing) < 0.001) return;
+  }
+  assertLaneTimingEditorState(
+    await readLaneTimingEditorState(page),
+    expected,
+    'lane timing editor did not retain the requested state',
+  );
 }
 
 function assertLaneTimingEditorState(actual, expected, context) {
