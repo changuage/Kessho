@@ -57,6 +57,7 @@ float renderPeakForStem(
     std::vector<float>& stem_l,
     std::vector<float>& stem_r,
     uint32_t blocks) {
+  require(kessho_product_set_stems_enabled(engine, 1u) == KESSHO_PRODUCT_OK, "stem enable failed");
   float result = 0.0f;
   for (uint32_t block = 0; block < blocks; ++block) {
     std::fill(left.begin(), left.end(), 0.0f);

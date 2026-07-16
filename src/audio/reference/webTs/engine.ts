@@ -11719,6 +11719,11 @@ export class AudioEngine {
         effectiveHarmonyPhraseSeconds,
         this.getHarmonyParams()
       );
+      // Independent sequencer/manual-audition startup does not pass through
+      // initializeHarmony(), so publish the newly-created preview state here.
+      // This keeps stopped UI harmony context intact after the independent
+      // transport is stopped without booting the full master graph.
+      this.notifyStateChange();
     }
     // Create lead audio chain if not exists
     if (!this.leadGain) {

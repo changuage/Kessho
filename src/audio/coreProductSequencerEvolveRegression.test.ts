@@ -15,6 +15,7 @@ import { CoreProductSequencerEvolveRuntimeBridge } from './product/host/CoreProd
 import { CORE_PRODUCT_DICE_FLAGS, CORE_PRODUCT_EVOLVE_FLAGS, CORE_PRODUCT_SEQUENCER_IDS, CORE_PRODUCT_STEP_VALUE_FIELDS, CORE_PRODUCT_SUBLANE_DIRECTIONS, encodeCoreProductSequencerEvolveTension, type CoreProductEvent } from './coreProductEvents';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
+import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 
 const baseConfig = {
   enabled: true,
@@ -58,12 +59,6 @@ function runWrap(clock: ReturnType<typeof createCoreProductSequencerEvolveClock>
   clock.tick({ ...input, telemetry: telemetry(0, 0) as typeof input.telemetry });
   clock.tick({ ...input, telemetry: telemetry(1, 1) as typeof input.telemetry });
   clock.tick({ ...input, telemetry: telemetry(0, 0) as typeof input.telemetry });
-}
-
-function runBridgeWrap(bridge: CoreProductSequencerEvolveRuntimeBridge): void {
-  bridge.tick(telemetry(0, 0));
-  bridge.tick(telemetry(1, 1));
-  bridge.tick(telemetry(0, 0));
 }
 
 function hasUnsignedFlag(flags: number | undefined, flag: number): boolean {
@@ -154,8 +149,6 @@ function hasUnsignedFlag(flags: number | undefined, flag: number): boolean {
 
 {
   const posted: CoreProductEvent[] = [];
-  const published: Array<{ name: string; payload: unknown[] }> = [];
-  const captured: Array<{ sequencer: string; laneIndex: number }> = [];
   const bridge = new CoreProductSequencerEvolveRuntimeBridge({
     adapterState: () => ({
       synthEuclidEvolveConfigs: [{ ...baseConfig, methods: { swingDrift: true } }],
@@ -163,70 +156,28 @@ function hasUnsignedFlag(flags: number | undefined, flag: number): boolean {
     }),
     latestSliderState: () => null,
     latestProductSnapshot: () => null,
+    latestTelemetry: () => telemetry(0, 0),
     runtimeReady: () => true,
-    captureLaneHome: (sequencer, laneIndex) => captured.push({ sequencer, laneIndex }),
-    getEnabledSubLanes: () => ['pitch', 'expression', 'morph', 'distance', 'probability', 'ratchet'],
     postWithHomeCapture: (event) => posted.push(event),
-    publish: (name, ...payload) => published.push({ name, payload }),
   });
 
-  runBridgeWrap(bridge);
-  assert.equal(posted.length, 1, 'Product runtime scheduled evolve should use native Product Core for swing-only evolve methods');
-  assert.equal(posted[0]?.eventKind, KESSHO_PRODUCT_EVENT_IDS.DiceSequencerLane);
-  assert.equal(posted[0]?.targetId, CORE_PRODUCT_SEQUENCER_IDS.synth);
-  assert(hasUnsignedFlag(posted[0]?.flags, CORE_PRODUCT_EVOLVE_FLAGS.modeParity), 'native scheduled evolve must request Product Core parity mode');
-  assert(hasUnsignedFlag(posted[0]?.flags, CORE_PRODUCT_EVOLVE_FLAGS.swingDrift), 'native scheduled evolve must carry swingDrift into Product Core');
-  assert(hasUnsignedFlag(posted[0]?.flags, CORE_PRODUCT_EVOLVE_FLAGS.rngStream), 'native scheduled evolve must use the shared web-ts RNG stream seed');
-  assert(hasUnsignedFlag(posted[0]?.flags, CORE_PRODUCT_EVOLVE_FLAGS.mutationStrict), 'native scheduled evolve must preserve strict mutation mode');
-  assert.deepEqual(captured, [{ sequencer: 'synth', laneIndex: 0 }], 'native scheduled evolve should capture Product home before posting the native event');
-  assert.deepEqual(published, [{ name: 'synthEuclidEvolve', payload: [0] }], 'native scheduled evolve should publish only trigger feedback before UI-state reconciliation');
-}
+  bridge.syncLane('synth', 0);
+  assert.equal(posted.length, 3, 'native scheduled evolve should synchronize two seed halves and one compact runtime config');
+  const configEvent = posted[2];
+  assert.equal(configEvent?.paramId, KESSHO_PRODUCT_PARAM_IDS.SequencerEvolveRuntimeConfig);
+  assert.equal(configEvent?.targetId, CORE_PRODUCT_SEQUENCER_IDS.synth);
+  assert.equal(configEvent?.value, 1, 'native scheduled evolve config should be enabled');
+  assert.equal(configEvent?.value2, baseConfig.evolution);
+  assert.equal(configEvent?.value3, baseConfig.everyBars);
+  assert.equal(configEvent?.value4, baseConfig.writeOffset);
+  assert(hasUnsignedFlag(configEvent?.flags, CORE_PRODUCT_EVOLVE_FLAGS.modeParity), 'native scheduled evolve must request parity mode');
+  assert(hasUnsignedFlag(configEvent?.flags, CORE_PRODUCT_EVOLVE_FLAGS.swingDrift), 'native scheduled evolve must carry swingDrift into Product Core');
+  assert(hasUnsignedFlag(configEvent?.flags, CORE_PRODUCT_EVOLVE_FLAGS.rngStream), 'native scheduled evolve must use the shared RNG stream seed');
+  assert(hasUnsignedFlag(configEvent?.flags, CORE_PRODUCT_EVOLVE_FLAGS.mutationStrict), 'native scheduled evolve must preserve strict mutation mode');
 
-{
-  const posted: CoreProductEvent[] = [];
-  const published: Array<{ name: string; payload: unknown[] }> = [];
-  const bridge = new CoreProductSequencerEvolveRuntimeBridge({
-    adapterState: () => ({
-      synthEuclidEvolveConfigs: [{ ...baseConfig, evolution: 1, methods: { subLaneDirectionFlip: true }, enabledSubLanes: ['morph'] }],
-      drumEuclidEvolveConfigs: [],
-    }),
-    latestSliderState: () => null,
-    latestProductSnapshot: () => null,
-    runtimeReady: () => true,
-    captureLaneHome: () => {},
-    getEnabledSubLanes: () => ['morph'],
-    postWithHomeCapture: (event) => posted.push(event),
-    publish: (name, ...payload) => published.push({ name, payload }),
-  });
-
-  runBridgeWrap(bridge);
-  assert.equal(posted.length, 1, 'Product runtime scheduled evolve should route sub-lane config drift to native Product Core');
-  assert(hasUnsignedFlag(posted[0]?.flags, CORE_PRODUCT_EVOLVE_FLAGS.subLaneDirectionFlip), 'native scheduled evolve must carry subLaneDirectionFlip into Product Core');
-  assert(hasUnsignedFlag(posted[0]?.flags, CORE_PRODUCT_DICE_FLAGS.morph), 'native sub-lane drift must include the selected sub-lane field mask');
-  assert(!hasUnsignedFlag(posted[0]?.flags, CORE_PRODUCT_DICE_FLAGS.expression), 'native sub-lane drift must not widen to disabled sub-lanes');
-  assert.deepEqual(published, [{ name: 'synthEuclidEvolve', payload: [0] }]);
-}
-
-{
-  const posted: CoreProductEvent[] = [];
-  const published: Array<{ name: string; payload: unknown[] }> = [];
-  const bridge = new CoreProductSequencerEvolveRuntimeBridge({
-    adapterState: () => ({
-      synthEuclidEvolveConfigs: [{ ...baseConfig, methods: { pitchWalk: true }, enabledSubLanes: ['pitch'] }],
-      drumEuclidEvolveConfigs: [],
-    }),
-    latestSliderState: () => null,
-    latestProductSnapshot: () => null,
-    runtimeReady: () => true,
-    captureLaneHome: () => {},
-    getEnabledSubLanes: () => ['expression'],
-    postWithHomeCapture: (event) => posted.push(event),
-    publish: (name, ...payload) => published.push({ name, payload }),
-  });
-
-  runBridgeWrap(bridge);
-  assert.deepEqual(posted, [], 'native scheduled evolve should suppress disabled pitchWalk instead of posting a no-op Product Core mutation');
-  assert.deepEqual(published, [], 'native scheduled evolve should not flash when the effective config has no native mutation');
+  bridge.tick(telemetry(1, 1));
+  bridge.tick(telemetry(0, 0));
+  assert.equal(posted.length, 24, 'visible telemetry changes should only synchronize the remaining seven lane configs, not drive evolve cadence');
 }
 
 {

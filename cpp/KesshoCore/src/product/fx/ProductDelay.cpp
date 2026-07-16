@@ -72,8 +72,10 @@
         frame,
         output_l_sample,
         output_r_sample);
-    stem_l[KESSHO_PRODUCT_STEM_FX][frame] += output_l_sample;
-    stem_r[KESSHO_PRODUCT_STEM_FX][frame] += output_r_sample;
+    if (captureStems()) {
+      stem_l[KESSHO_PRODUCT_STEM_FX][frame] += output_l_sample;
+      stem_r[KESSHO_PRODUCT_STEM_FX][frame] += output_r_sample;
+    }
     reverb_bus_l[frame] += reverb_l_sample;
     reverb_bus_r[frame] += reverb_r_sample;
     cross_l[frame] += cross_l_sample;

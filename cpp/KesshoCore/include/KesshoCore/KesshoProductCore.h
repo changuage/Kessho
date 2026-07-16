@@ -63,11 +63,27 @@ int32_t kessho_product_set_graph_taps_enabled(
     KesshoProductEngine* engine,
     uint32_t enabled);
 
+int32_t kessho_product_set_stems_enabled(
+    KesshoProductEngine* engine,
+    uint32_t enabled);
+
 KesshoProductTelemetry kessho_product_get_telemetry(KesshoProductEngine* engine);
 
 int32_t kessho_product_copy_telemetry(
     KesshoProductEngine* engine,
     KesshoProductTelemetry* out_telemetry);
+
+int32_t kessho_product_refresh_telemetry(KesshoProductEngine* engine);
+
+int32_t kessho_product_set_meter_demand(
+    KesshoProductEngine* engine,
+    uint32_t enabled);
+
+int32_t kessho_product_set_debug_voice_spawn_demand(
+    KesshoProductEngine* engine,
+    uint32_t enabled);
+
+uint64_t kessho_product_get_telemetry_refresh_count(KesshoProductEngine* engine);
 
 uint32_t kessho_product_drain_generated_sequencer_capture_events(
     KesshoProductEngine* engine,

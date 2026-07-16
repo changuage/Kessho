@@ -217,6 +217,7 @@ void triggerKick(KesshoProductEngine* engine, float velocity = 1.0f) {
 }
 
 float renderFxPeak(KesshoProductEngine* engine, uint32_t blocks) {
+  require(kessho_product_set_stems_enabled(engine, 1u) == KESSHO_PRODUCT_OK, "FX stem enable failed");
   std::vector<float> left(128);
   std::vector<float> right(128);
   std::vector<float> fx_l(128);
@@ -272,6 +273,7 @@ struct RenderPeaks {
 };
 
 RenderPeaks renderMasterAndFxPeaks(KesshoProductEngine* engine, uint32_t blocks) {
+  require(kessho_product_set_stems_enabled(engine, 1u) == KESSHO_PRODUCT_OK, "FX stem enable failed");
   std::vector<float> left(128);
   std::vector<float> right(128);
   std::vector<float> fx_l(128);
@@ -913,6 +915,7 @@ void requireMasterLimiterAppliesWebAudioMakeup() {
 void requireMasterTelemetryReportsLimiterSaturationAndLoudness() {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "master telemetry engine create failed");
+  require(kessho_product_set_meter_demand(engine, 1u) == KESSHO_PRODUCT_OK, "master telemetry meter demand enable failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   snapshot.master.gain = 1.8f;
   snapshot.master.limiter_ceiling_db = -24.0f;

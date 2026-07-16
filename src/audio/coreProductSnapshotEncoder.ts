@@ -4,6 +4,8 @@ import { SOUNDSCAPE_TEXTURE_PARAM_COUNT, SOUNDSCAPES_PRODUCT_PARAM_COUNT } from 
 import { granularVoiceDefaults, laneDefaults, SOURCE_ORDER, sourceDefaults } from './coreProductSnapshotDefaults';
 import type { CoreProductSnapshot } from './coreProductSnapshot';
 import { encodeCoreProductSequencerFaceModes, KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES } from './coreProductSequencerFaceEncoder';
+import { encodeCoreProductArrangementSnapshot } from './coreProductArrangementSnapshotEncoder';
+import { encodeCoreProductHarmonySnapshot } from './coreProductHarmonySnapshotEncoder';
 
 type ProductSourceSnapshot = CoreProductSnapshot['sources'][number];
 type ProductLaneSnapshot = CoreProductSnapshot['synthLanes'][number];
@@ -16,7 +18,7 @@ type LegacyExactBridgeSource = ProductSourceSnapshot & {
   exactDrumParams?: unknown;
 };
 
-const SNAPSHOT_BYTES = 151572;
+const SNAPSHOT_BYTES = 152760;
 const SOURCE_BYTES = 5188;
 const LANE_BYTES = 100;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES + 16 * KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES;
@@ -67,6 +69,12 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
     view.setFloat32(offset, Number.isFinite(value) ? value : 0, true);
     offset += 4;
   };
+  const fixedUtf8 = (value: string, bytes: number) => {
+    const encoded = new TextEncoder().encode(value);
+    if (encoded.length >= bytes) throw new RangeError(`fixed UTF-8 field exceeds ${bytes - 1} bytes`);
+    new Uint8Array(buffer, offset, bytes).set(encoded);
+    offset += bytes;
+  };
 
   u32(KESSHO_PRODUCT_SCHEMA_VERSION);
   u32(KESSHO_PRODUCT_SCHEMA_HASH);
@@ -76,25 +84,7 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   u32(snapshot.transport.barsPerPhrase);
   f32(snapshot.transport.swing);
   f32(snapshot.transport.phraseSeconds);
-  f32(snapshot.harmony.rootMidi);
-  u32(snapshot.harmony.scaleId);
-  f32(snapshot.harmony.tension);
-  u32(snapshot.harmony.chordMode);
-  u32(snapshot.harmony.voicingMode);
-  u32(snapshot.harmony.controlMode);
-  u32(snapshot.harmony.controlStrength);
-  u32(snapshot.harmony.activeSource);
-  i32(snapshot.harmony.activeSlotId);
-  i32(snapshot.harmony.activeStepIndex);
-  u32(bool(snapshot.harmony.manualControlAvailable));
-  u32(snapshot.harmony.notePoolCount);
-  for (let index = 0; index < 8; index += 1) f32(snapshot.harmony.notePoolMidi[index] ?? 0);
-  f32(snapshot.harmony.bassMidi);
-  u32(snapshot.harmony.nextNotePoolCount);
-  for (let index = 0; index < 8; index += 1) f32(snapshot.harmony.nextNotePoolMidi[index] ?? 0);
-  u32(snapshot.harmony.nextSource);
-  i32(snapshot.harmony.nextStepIndex);
-  u32(0);
+  encodeCoreProductHarmonySnapshot(snapshot.harmony, { u32, i32, f32, fixedUtf8 });
 
   for (let index = 0; index < 8; index += 1) {
     const source = snapshot.sources[index] ?? sourceDefaults(SOURCE_ORDER[index] ?? CORE_PRODUCT_SOURCE_IDS.pad1);
@@ -542,6 +532,7 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   for (let paramIndex = 0; paramIndex < SOUNDSCAPE_TEXTURE_PARAM_COUNT; paramIndex += 1) f32(soundscape.textureParams[paramIndex] ?? 0);
   u32(Math.min(soundscape.moduleParamCount, SOUNDSCAPES_PRODUCT_PARAM_COUNT));
   for (let paramIndex = 0; paramIndex < SOUNDSCAPES_PRODUCT_PARAM_COUNT; paramIndex += 1) f32(soundscape.moduleParams[paramIndex] ?? 0);
+  encodeCoreProductArrangementSnapshot(snapshot.arrangement, { u32, i32, f32 });
 
   if (offset !== SNAPSHOT_BYTES) {
     throw new Error(`Kessho Product snapshot encoder wrote ${offset} bytes; expected ${SNAPSHOT_BYTES}`);

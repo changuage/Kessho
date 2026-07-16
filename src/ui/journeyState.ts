@@ -585,18 +585,11 @@ export function useJourney(
   }, [cancelScheduledTick, msPerPhrase, selectNextNode]); // Uses refs to avoid stale closures
 
   const scheduleNextTick = useCallback(() => {
-    if (document.visibilityState === 'visible') {
-      animationRef.current = requestAnimationFrame((frameTime) => {
-        animationRef.current = null;
-        animate(frameTime);
-      });
-      return;
-    }
-
-    timeoutRef.current = window.setTimeout(() => {
-      timeoutRef.current = null;
-      animate(performance.now());
-    }, 100);
+    if (document.visibilityState !== 'visible') return;
+    animationRef.current = requestAnimationFrame((frameTime) => {
+      animationRef.current = null;
+      animate(frameTime);
+    });
   }, [animate]);
   scheduleTickRef.current = scheduleNextTick;
   
@@ -704,6 +697,7 @@ export function useJourney(
       const currentState = stateRef.current;
       if (currentState.phase === 'idle' || currentState.phase === 'ended') return;
       cancelScheduledTick();
+      if (document.visibilityState !== 'visible') return;
       lastTimeRef.current = performance.now();
       scheduleNextTick();
     };

@@ -1,4 +1,4 @@
-import { CoreProductArrangementScheduler } from '../../coreProductArrangementScheduler';
+import { CoreProductArrangementProjection } from './CoreProductArrangementProjection';
 import type { CoreProductEvent } from '../../coreProductEvents';
 import type { ProductSimpleSequencerVisualPlanActive } from '../ProductEngineTypes';
 import type { SampleSlotId } from '../../sampleLibraries/SampleLibraryTypes';
@@ -11,7 +11,7 @@ type CoreProductArrangementPublishTrigger = (name: string, ...payload: unknown[]
 type CoreProductArrangementSampleAssetLoader = (slotId: SampleSlotId, midi: number, velocity: number) => Promise<void>;
 
 export class CoreProductArrangementBridge {
-  private readonly scheduler: CoreProductArrangementScheduler;
+  private readonly scheduler: CoreProductArrangementProjection;
   private runtimeWalkStatePatch: Record<string, number> = {};
 
   constructor(
@@ -20,7 +20,7 @@ export class CoreProductArrangementBridge {
     publishTrigger?: CoreProductArrangementPublishTrigger,
     ensureScheduledSampleAsset?: CoreProductArrangementSampleAssetLoader,
   ) {
-    this.scheduler = new CoreProductArrangementScheduler(postEvent, audioContext, publishTrigger, ensureScheduledSampleAsset);
+    this.scheduler = new CoreProductArrangementProjection(postEvent, audioContext, publishTrigger, ensureScheduledSampleAsset);
   }
 
   createState(

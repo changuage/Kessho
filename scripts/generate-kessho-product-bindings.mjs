@@ -9,6 +9,14 @@ const schemaPath = resolve(schemaDir, 'kessho_product.schema.json');
 const paramsPath = resolve(schemaDir, 'kessho_product_params.schema.json');
 const eventsPath = resolve(schemaDir, 'kessho_product_events.schema.json');
 const drumParamsPath = resolve(schemaDir, 'kessho_product_drum_params.schema.json');
+const productWorkletSourcePath = resolve(
+  root,
+  'cpp/KesshoCore/adapters/wasm/kessho-core-product.worklet.js',
+);
+const productWorkletOutputPath = resolve(
+  root,
+  'public/worklets/kessho-core-product.worklet.js',
+);
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
@@ -61,9 +69,7 @@ const productWorkletEventNames = [
   'CommitSynthArpPattern',
 ];
 
-function updateProductWorkletBindings(schemaHashLiteral, events) {
-  const workletPath = resolve(root, 'public/worklets/kessho-core-product.worklet.js');
-  const source = readFileSync(workletPath, 'utf8');
+function applyProductBindings(source, schemaHashLiteral, events) {
   const schemaHashPattern = /const EXPECTED_PRODUCT_SCHEMA_HASH = 0x[0-9a-f]+;/;
   if (!schemaHashPattern.test(source)) {
     throw new Error('Product worklet schema hash constant was not found');
@@ -83,13 +89,12 @@ function updateProductWorkletBindings(schemaHashLiteral, events) {
   const generatedEventIds = `const PRODUCT_EVENT_IDS = Object.freeze({\n${workletEvents
     .map((event) => `  ${event.name}: ${event.id},`)
     .join('\n')}\n});`;
-  const next = source
+  return source
     .replace(
       schemaHashPattern,
     `const EXPECTED_PRODUCT_SCHEMA_HASH = ${schemaHashLiteral};`,
     )
     .replace(eventIdsPattern, generatedEventIds);
-  writeFileSync(workletPath, next);
 }
 
 function upperSnake(name) {
@@ -785,6 +790,10 @@ export const KESSHO_PRODUCT_EVENTS = Object.freeze(${JSON.stringify(events, null
 export type KesshoProductEventName = keyof typeof KESSHO_PRODUCT_EVENT_IDS;
 `);
 
-updateProductWorkletBindings(schemaHashJsLiteral, events);
+const productWorkletSource = readFileSync(productWorkletSourcePath, 'utf8');
+writeGenerated(
+  productWorkletOutputPath,
+  applyProductBindings(productWorkletSource, schemaHashJsLiteral, events),
+);
 
 console.log(`Generated Kessho product bindings (${hashHex}).`);

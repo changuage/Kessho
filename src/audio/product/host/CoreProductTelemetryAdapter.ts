@@ -27,12 +27,16 @@ export function enrichCoreProductHostTelemetry(
   telemetry: CoreProductTelemetrySnapshot,
   diagnostics: ProductRuntimeDiagnostics,
   decodedAssetBytes: number,
+  hostDecodedBytes: number,
+  inFlightDecodedBytes: number,
 ): CoreProductTelemetrySnapshot {
   return {
     ...telemetry,
     wasmHeapBudgetBytes: CORE_PRODUCT_MEMORY_BUDGETS.webWorkletHeapBytes,
     decodedAssetBytes: telemetry.decodedAssetBytes ?? decodedAssetBytes,
     decodedAssetBudgetBytes: CORE_PRODUCT_MEMORY_BUDGETS.totalRegisteredDecodedBytes,
+    hostDecodedBytes,
+    inFlightDecodedBytes,
     ...diagnostics,
     lastSnapshotReloadReason: diagnostics.lastSnapshotReloadReason ?? undefined,
   };

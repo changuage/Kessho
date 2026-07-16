@@ -10,6 +10,7 @@ namespace kessho::product::native {
 
 inline constexpr uint32_t kNativeProductMaxBlockFrames = 1024;
 inline constexpr uint32_t kNativeProductEventQueueCapacity = 256;
+inline constexpr uint32_t kNativeProductTelemetryBlockCadence = 16;
 
 struct NativeProductRuntimeConfig {
   double sample_rate = 48000.0;
@@ -39,6 +40,10 @@ class NativeProductRuntime {
   const float* preallocatedRight() const { return render_right_.data(); }
 
   int32_t copyTelemetry(KesshoProductTelemetry& telemetry) const;
+  void requestTelemetryRefresh() { telemetry_refresh_requested_.store(true, std::memory_order_release); }
+  uint64_t telemetryPublicationCount() const {
+    return telemetry_publication_count_.load(std::memory_order_acquire);
+  }
 
   int32_t registerAssetBuffer(
       uint32_t asset_id,
@@ -64,6 +69,9 @@ class NativeProductRuntime {
   std::atomic<uint32_t> dropped_event_count_{0};
   std::array<KesshoProductTelemetry, 2> telemetry_buffers_{};
   std::atomic<uint32_t> active_telemetry_index_{0};
+  std::atomic<bool> telemetry_refresh_requested_{false};
+  std::atomic<uint64_t> telemetry_publication_count_{0};
+  uint32_t telemetry_blocks_since_publish_ = 0u;
   std::array<float, kNativeProductMaxBlockFrames> render_left_{};
   std::array<float, kNativeProductMaxBlockFrames> render_right_{};
 };

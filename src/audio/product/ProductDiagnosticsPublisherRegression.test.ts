@@ -62,12 +62,14 @@ function diagnosticsWithRevision(revision: number): ProductRuntimeDiagnostics {
 }
 
 {
+  let hidden = true;
   const hiddenTimers: Array<{ callback: () => void; delayMs: number }> = [];
+  const frameCallbacks: Array<(time: number) => void> = [];
   const scheduler = new ProductFrameScheduler({
-    hiddenIntervalMs: 250,
-    isHidden: () => true,
-    requestAnimationFrame: () => {
-      throw new Error('hidden scheduler should not request animation frames');
+    isHidden: () => hidden,
+    requestAnimationFrame: (callback) => {
+      frameCallbacks.push(callback);
+      return frameCallbacks.length;
     },
     setTimeout: (callback, delayMs) => {
       hiddenTimers.push({ callback, delayMs });
@@ -81,11 +83,14 @@ function diagnosticsWithRevision(revision: number): ProductRuntimeDiagnostics {
   });
   scheduler.markDirty('visuals');
 
-  assert.equal(hiddenTimers.length, 1, 'hidden scheduler should use a low-rate timer');
-  assert.equal(hiddenTimers[0]?.delayMs, 250);
+  assert.equal(hiddenTimers.length, 0, 'hidden scheduler must not create timers');
+  assert.equal(frameCallbacks.length, 0, 'hidden scheduler must not request animation frames');
+  assert.deepEqual(flushed, []);
 
-  hiddenTimers[0]?.callback();
-
+  hidden = false;
+  scheduler.setDocumentHidden(false);
+  assert.equal(frameCallbacks.length, 1, 'foreground should schedule one consolidated refresh');
+  frameCallbacks[0]?.(16);
   assert.deepEqual(flushed, ['visuals']);
 }
 

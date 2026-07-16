@@ -34,6 +34,8 @@ const host = read('src/audio/coreProductEngineHost.ts');
 const viteConfig = read('vite.config.ts');
 const packageJson = JSON.parse(read('package.json'));
 const hostAssetRegistrar = read('src/audio/product/host/CoreProductAssetRegistrar.ts');
+const hostAssetReadiness = read('src/audio/product/host/CoreProductAssetReadiness.ts');
+const hostAssetSurface = `${hostAssetRegistrar}\n${hostAssetReadiness}`;
 const fallbackDiagnostics = read('src/audio/CoreProductFallbackDiagnostics.ts');
 const hostSequencerAdapter = read('src/audio/CoreProductHostSequencerAdapter.ts');
 const hostSequencerSubLaneConfig = read('src/audio/CoreProductHostSequencerSubLaneConfig.ts');
@@ -176,13 +178,15 @@ const selectedAudioEngineRecordingRuntime = read('src/ui/useSelectedAudioEngineR
 const audioRecordingHook = read('src/ui/useAudioRecording.ts');
 const events = read('src/audio/coreProductEvents.ts');
 const snapshot = read('src/audio/coreProductSnapshot.ts');
+const snapshotSampleSlots = read('src/audio/coreProductSampleSlotSnapshot.ts');
 const snapshotPadVoiceRouting = read('src/audio/coreProductSnapshotPadVoiceRouting.ts');
 const snapshotTypes = read('src/audio/coreProductSnapshotTypes.ts');
 const generatedParams = read('src/audio/generated/kesshoProductParams.ts');
 const sequencerHold = read('src/audio/coreProductSequencerHold.ts');
 const arrangementPadChord = read('src/audio/coreProductArrangementPadChord.ts');
-const arrangementScheduler = read('src/audio/coreProductArrangementScheduler.ts');
+const arrangementScheduler = read('src/audio/reference/CoreProductArrangementSchedulerReference.ts');
 const arrangementSchedulerUtils = read('src/audio/coreProductArrangementSchedulerUtils.ts');
+const arrangementProjection = read('src/audio/product/host/CoreProductArrangementProjection.ts');
 const coreProductSourcePlayability = read('src/audio/coreProductSourcePlayability.ts');
 const arrangementSchedulerSurface = `${arrangementScheduler}\n${arrangementPadChord}`;
 const snapshotEncoder = read('src/audio/coreProductSnapshotEncoder.ts');
@@ -230,6 +234,8 @@ const filterLfoViz = read('src/ui/synth/FilterLfoViz.tsx');
 const assets = `${read('src/audio/coreProductAssets.ts')}\n${read('src/audio/coreProductAssetManifest.json')}`;
 const generatedSchema = read('src/audio/generated/kesshoProductSchema.ts');
 const worklet = read('public/worklets/kessho-core-product.worklet.js');
+const workletSource = read('cpp/KesshoCore/adapters/wasm/kessho-core-product.worklet.js');
+const productBindingsGenerator = read('scripts/generate-kessho-product-bindings.mjs');
 const manifest = read('scripts/kessho-core-build-manifest.mjs');
 const productRatchetEngine = read('cpp/KesshoCore/src/product/sequencer/RatchetEngine.cpp');
 const productSequencerClock = read('cpp/KesshoCore/src/product/sequencer/SequencerClock.cpp');
@@ -258,13 +264,14 @@ assert(
   !existsSync(resolve(root, 'src/audio/product/host/CoreProductSequencerUiPatchBridge.ts')),
   'Product sequencer UI patch bridge must stay deleted; use generated Product events instead',
 );
-const snapshotSurface = `${snapshotTypes}\n${snapshot}\n${snapshotPadVoiceRouting}\n${snapshotEncoder}\n${snapshotDefaults}\n${snapshotReverb}\n${productLeadPatch}\n${productPadPatch}\n${productDrumPatch}`;
+const snapshotSurface = `${snapshotTypes}\n${snapshot}\n${snapshotSampleSlots}\n${snapshotPadVoiceRouting}\n${snapshotEncoder}\n${snapshotDefaults}\n${snapshotReverb}\n${productLeadPatch}\n${productPadPatch}\n${productDrumPatch}`;
 
 const lineCount = (source) => source.split('\n').length;
 assert(lineCount(host) <= 1000, `coreProductEngineHost.ts exceeds cleanup size cap (${lineCount(host)} lines)`);
 assert(lineCount(hostRealtimeInputBootstrap) <= 80, `CoreProductRealtimeInputBootstrap.ts exceeds cleanup size cap (${lineCount(hostRealtimeInputBootstrap)} lines)`);
 assert(lineCount(hostArrangementBridge) <= 80, `CoreProductArrangementBridge.ts exceeds cleanup size cap (${lineCount(hostArrangementBridge)} lines)`);
-assert(lineCount(hostAssetRegistrar) <= 220, `CoreProductAssetRegistrar.ts exceeds cleanup size cap (${lineCount(hostAssetRegistrar)} lines)`);
+assert(lineCount(hostAssetRegistrar) <= 360, `CoreProductAssetRegistrar.ts exceeds cleanup size cap (${lineCount(hostAssetRegistrar)} lines)`);
+assert(lineCount(hostAssetReadiness) <= 100, `CoreProductAssetReadiness.ts exceeds cleanup size cap (${lineCount(hostAssetReadiness)} lines)`);
 assert(lineCount(hostDisplayCallbackRegistry) <= 60, `CoreProductDisplayCallbackRegistry.ts exceeds cleanup size cap (${lineCount(hostDisplayCallbackRegistry)} lines)`);
 assert(lineCount(hostGraphTapBridge) <= 80, `CoreProductGraphTapBridge.ts exceeds cleanup size cap (${lineCount(hostGraphTapBridge)} lines)`);
 assert(lineCount(hostHarmonyStateBridge) <= 80, `CoreProductHarmonyStateBridge.ts exceeds cleanup size cap (${lineCount(hostHarmonyStateBridge)} lines)`);
@@ -541,7 +548,7 @@ assert(!host.includes('function snapshotReloadReasonForProductPatch'), 'coreProd
 assert(hostTelemetryAdapter.includes('createCoreProductPerfSnapshot'), 'Product telemetry perf snapshot shaping must live in CoreProductTelemetryAdapter.ts');
 assert(hostTelemetryAdapter.includes('enrichCoreProductHostTelemetry'), 'Product host telemetry enrichment must live in CoreProductTelemetryAdapter.ts');
 assert(!host.includes('private createPerfSnapshot'), 'coreProductEngineHost.ts must delegate Product perf snapshot shaping to CoreProductTelemetryAdapter.ts');
-assert(lineCount(arrangementScheduler) <= 620, `coreProductArrangementScheduler.ts exceeds no-growth size cap (${lineCount(arrangementScheduler)} lines)`);
+assert(lineCount(arrangementScheduler) <= 680, `CoreProductArrangementSchedulerReference.ts exceeds development-reference size cap (${lineCount(arrangementScheduler)} lines)`);
 assert(lineCount(snapshot) <= 1240, `coreProductSnapshot.ts exceeds cleanup size cap (${lineCount(snapshot)} lines)`);
 assert(lineCount(snapshotEncoder) <= 560, `coreProductSnapshotEncoder.ts exceeds cleanup size cap (${lineCount(snapshotEncoder)} lines)`);
 assert(lineCount(snapshotDefaults) <= 120, `coreProductSnapshotDefaults.ts exceeds cleanup size cap (${lineCount(snapshotDefaults)} lines)`);
@@ -1212,7 +1219,7 @@ for (const token of [
   'private readonly assetRegistrar = new CoreProductAssetRegistrar',
   'buildCoreProductSnapshotDiff(options.previousSnapshot, options.nextSnapshot',
   'shouldForwardCoreProductRngDiffs(this.latestSliderState, this.latestTelemetry)',
-  'registerAsset(asset: DecodedCoreProductAsset): void',
+  'registerAsset(asset: DecodedCoreProductAsset): Promise<void>',
   'this.assetRegistrar.registerAsset(asset)',
   'unregisterAsset(assetId: number): void',
   'this.assetRegistrar.unregisterAsset(assetId)',
@@ -1437,7 +1444,7 @@ for (const token of [
   'function hasCapturedHomeContent(state: CoreProductSequencerHomeState): boolean',
   "typeof state.swing === 'number' && Number.isFinite(state.swing)",
   'existing && hasCapturedHomeContent(existing)',
-  "this.captureSequencerHomeLane('synth', laneIndex);",
+  'this.captureSequencerHomeForEvent(event);',
   "setSynthNoteRangeOverride: (noteLaneIndex, value) => { this.synthNoteRangeOverrides[noteLaneIndex] = value; }",
   'coreProductSynthNoteRangeHome({',
   "options.publish('synthNoteRangeEvolved', laneIndex, home.noteRange.min, home.noteRange.max)",
@@ -1710,28 +1717,32 @@ for (const token of [
   'registeredAssetIds',
   'defaultSoundscapeAssetPromises',
   'registeredAssetDecodedBytes',
-  'registerAsset(asset: DecodedCoreProductAsset): void',
+  'registerAsset(asset: DecodedCoreProductAsset): Promise<void>',
   'unregisterAsset(assetId: number): void',
-  'this.runtime.unregisterAsset(assetId)',
+  'pendingReleaseAssetIds',
+  'requiredAssetIds',
+  'this.runtime.requestAssetRelease(assetId)',
+  'this.runtime.setAssetReleaseCallback',
+  'handleAssetReleaseComplete(assetId: number)',
   'getDecodedCoreProductAssetByteLength(asset)',
   'registeredDecodedAssetByteLength(): number',
   'hasMissingDefaultAssetsForState(): boolean',
-  'ensureDefaultAssetsForState(): Promise<void>',
+  'ensureDefaultAssetsForState(): Promise<CoreProductAssetEnsureResult>',
   'sampleAssetCache',
   'ensureSampleAssetsForState(): Promise<void>',
   'predictedSampleAssetsForState(samplePredictionState(this.readSliderState()))',
   'sampleDescriptorForSlotNote(samplePredictionState(this.readSliderState())',
-  'ensureSampleSlotAssetForNote(slotId: SampleSlotId, midiNote: number, velocity: number): Promise<void>',
+  'ensureSampleSlotAssetForNote(',
   'ensureDefaultSoundscapeAsset(): Promise<void>',
   'ensureSoundscapeAssetsForState(): Promise<void>',
   'getCoreProductSoundscapeAssetDescriptorsForState(this.readSliderState())',
-  'decodeCoreProductAsset(',
+  'this.decodeAsset(',
   'birds2Enabled',
   'insects2Enabled',
   'CORE_PRODUCT_ASSET_FLAGS.sample',
   'CORE_PRODUCT_ASSET_FLAGS.loop | CORE_PRODUCT_ASSET_FLAGS.soundscape',
 ]) {
-  assert(hostAssetRegistrar.includes(token), `CoreProductAssetRegistrar is missing ${token}`);
+  assert(hostAssetSurface.includes(token), `CoreProduct asset registration/readiness is missing ${token}`);
 }
 
 assert(
@@ -2137,14 +2148,6 @@ assert(
 for (const token of [
   'class CoreProductArrangementScheduler',
   'createSchedulerHarmonyState',
-  'scheduleHarmonyTicks',
-  'scheduleNextHarmonyTick',
-  'onHarmonyTick(isPhraseBoundary',
-  'triggerPadChord',
-  'startLeadMelody',
-  'scheduleLeadPhrase',
-  'getTimeUntilNextBoundaryWall',
-  'getCurrentClockIndexWall',
   'updateHarmonyState',
   'getScaleNotesInRange',
   'createCoreProductManualNoteEvent',
@@ -2154,9 +2157,10 @@ for (const token of [
   "boundedNumber(this.state, 'lead1Density', 0.5, 0.1, 12)",
   'const timingSeconds = (this.rng() * phraseMs) / 1000;',
   'pickChordWeightedNote(this.rng, availableNotes',
-  'this.scheduleNote(note.delaySeconds',
+  'private scheduleNotes(notes:',
+  'sampleOffset: coreProductSampleOffsetForDelay(delaySeconds, sampleRate)',
 ]) {
-  assert(arrangementSchedulerSurface.includes(token), `Product arrangement scheduler must preserve web timing/music intent: missing ${token}`);
+  assert(arrangementSchedulerSurface.includes(token), `Product development parity reference must preserve web timing/music intent: missing ${token}`);
 }
 assert(
   arrangementScheduler.includes('private readonly ensureScheduledSampleAsset?: EnsureScheduledSampleAsset') &&
@@ -2164,11 +2168,18 @@ assert(
     arrangementSchedulerUtils.includes('export type EnsureScheduledSampleAsset') &&
     arrangementSchedulerUtils.includes('export function ensureScheduledSampleAssetForEvent') &&
     arrangementSchedulerUtils.includes("if (sourceId === CORE_PRODUCT_SOURCE_IDS.sample1) return 'sample1';") &&
-    hostArrangementBridge.includes('ensureScheduledSampleAsset?: CoreProductArrangementSampleAssetLoader') &&
-    hostArrangementBridge.includes('new CoreProductArrangementScheduler(postEvent, audioContext, publishTrigger, ensureScheduledSampleAsset)') &&
     host.includes('this.assetRegistrar.ensureSampleSlotAssetForNote(slotId, midi, velocity)') &&
     harmonyParityRegression.includes('Product scheduler should load Sample 1 assets before generated note playback'),
-  'Product generated sample notes must ensure their sample assets before posting playback events',
+  'Product development parity reference must preserve phrase-level sample readiness ordering',
+);
+assert(
+  hostArrangementBridge.includes("import { CoreProductArrangementProjection } from './CoreProductArrangementProjection';") &&
+    hostArrangementBridge.includes('new CoreProductArrangementProjection(') &&
+    !hostArrangementBridge.includes('CoreProductArrangementScheduler') &&
+    arrangementProjection.includes('export class CoreProductArrangementProjection') &&
+    !arrangementProjection.includes('setTimeout(') &&
+    !arrangementProjection.includes('setInterval('),
+  'Production Product arrangement host must be projection-only with no wall-clock timer owner',
 );
 {
   const assetEnsureIndex = host.indexOf('await this.assetRegistrar.ensureDefaultAssetsForState();');
@@ -2229,7 +2240,7 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 151572',
+  'const SNAPSHOT_BYTES = 152760',
   'const SOURCE_BYTES = 5188',
   'const LANE_BYTES = 100',
   'KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES',
@@ -2565,11 +2576,13 @@ for (const token of [
 }
 assert(
   assets.includes('export function cloneDecodedCoreProductAssetForTransfer') &&
-    runtime.includes('const transferAsset = cloneDecodedCoreProductAssetForTransfer(asset);') &&
+    runtime.includes("ownership === 'retain-host-copy'") &&
+    runtime.includes('? cloneDecodedCoreProductAssetForTransfer(asset)') &&
     runtime.includes('channels: transferAsset.channels') &&
     runtime.includes('transferAsset.channels.map((channel) => channel.buffer)') &&
-    sampleDecodedAssetCacheTest.includes('cached sample buffers must remain usable after runtime transfer'),
-  'core-product runtime must clone decoded sample channels before transferring them to the worklet',
+    hostAssetRegistrar.includes("this.mobile ? 'transfer' : 'retain-host-copy'") &&
+    hostAssetRegistrar.includes('this.sampleAssetCache.take(asset.assetId)'),
+  'core-product runtime must retain desktop cache ownership and transfer mobile cache ownership',
 );
 
 for (const token of [
@@ -2932,6 +2945,8 @@ for (const token of [
 
 for (const token of [
   "this.resolve('kessho_product_copy_telemetry')",
+  "this.resolve('kessho_product_refresh_telemetry')",
+  "this.resolve('kessho_product_set_meter_demand')",
   "this.resolve('kessho_product_copy_granular_waveform')",
   "this.resolve('kessho_product_copy_sequencer_ui_state')",
   'copyTelemetry(this.engine, this.telemetryPtr) !== 1',
@@ -2940,6 +2955,8 @@ for (const token of [
   'const SEQUENCER_UI_STATE_BYTES = 105508;',
   "message.type === 'request-telemetry'",
   "message.type === 'request-visual-telemetry'",
+  "message.type === 'meter-demand'",
+  'this.api.refreshTelemetry(this.engine) !== 1',
   "this.port.postMessage({ type: 'telemetry', telemetry });",
   "this.port.postMessage({ type: 'visual-telemetry', telemetry }, transfer);",
   'readVisualTelemetry(includeGranularWaveform = false)',
@@ -2949,8 +2966,19 @@ for (const token of [
   'decodedAssetBytes: this.assetDecodedBytes',
   'assetAllocationBytes: this.assetAllocationBytes',
   "getStem: this.resolve('kessho_product_get_stem')",
+  "setStemsEnabled: this.resolve('kessho_product_set_stems_enabled')",
   "getGraphTap: this.resolve('kessho_product_get_graph_tap')",
   'workletStemPeaks: this.lastStemPeaks',
+  "if (message.type === 'stem-demand')",
+  'this.syncStemDemand();',
+  'this.pendingAssetReleases = new Set();',
+  'const ASSET_RELEASE_RETRY_SECONDS = 0.05;',
+  'this.assetReleaseRetryCountdownBlocks = 0;',
+  'this.assetReleaseRetryIntervalBlocks = Math.max(',
+  'requestAssetRelease(assetId)',
+  'retryPendingAssetReleases()',
+  "type: 'asset-release-complete'",
+  "type: 'asset-release-failed'",
   'workletGraphTapPeaks: this.lastGraphTapPeaks',
   'workletPadStemPeak: this.lastStemPeaks[1] || 0',
   'workletLeadStemPeak: Math.max(this.lastStemPeaks[3] || 0, this.lastStemPeaks[4] || 0)',
@@ -2996,6 +3024,10 @@ for (const token of [
   'sequencerUiState,',
 ]) {
   assert(worklet.includes(token), `core-product worklet is missing ${token}`);
+  assert(workletSource.includes(token), `authoritative core-product worklet source is missing ${token}`);
+}
+for (const token of ['productWorkletSourcePath', 'productWorkletOutputPath', 'applyProductBindings']) {
+  assert(productBindingsGenerator.includes(token), `core-product binding generator is missing ${token}`);
 }
 assert(
   !/requireUint\(event, 'targetId', 1, 7\)/.test(worklet) &&
@@ -3005,11 +3037,21 @@ assert(
 
 assert(
   manifest.includes("'kessho_product_copy_telemetry'") &&
+    manifest.includes("'kessho_product_refresh_telemetry'") &&
+    manifest.includes("'kessho_product_set_meter_demand'") &&
     manifest.includes("'kessho_product_copy_granular_waveform'") &&
     manifest.includes("'kessho_product_copy_sequencer_ui_state'") &&
     manifest.includes("'kessho_product_get_graph_tap'"),
   'WASM manifest must export Product Core telemetry, sequencer UI state, and graph tap APIs',
 );
+
+for (const token of [
+  'private syncMeterDemand(): void',
+  "this.node.port.postMessage({ type: 'meter-demand', enabled })",
+  'this.syncMeterDemand();',
+]) {
+  assert(runtime.includes(token), `core-product runtime meter demand wiring is missing ${token}`);
+}
 
 for (const token of [
   'transport',
@@ -3298,6 +3340,8 @@ const snapshotImportAllowlist = new Set([
   './CoreProductPresetIds',
   './coreProductDelaySnapshot',
   './coreProductAssets',
+  './coreProductArrangementSchedulerUtils',
+  './coreProductArrangementSnapshot',
   './coreProductEvents',
   './coreProductHarmonyScaleIds',
   './coreProductSequencerMacroDefaults',
@@ -3308,6 +3352,7 @@ const snapshotImportAllowlist = new Set([
   './coreProductSnapshotEncoder',
   './coreProductSnapshotPadVoiceRouting',
   './coreProductReverbSnapshot',
+  './coreProductSampleSlotSnapshot',
   './coreProductSourcePlayability',
   './coreProductSourceMapping',
   './coreProductSnapshotState',
@@ -3318,6 +3363,7 @@ const snapshotImportAllowlist = new Set([
   './generated/kesshoProductSchema',
   './granularMacroCore',
   './harmony',
+  './harmonySeedMaterial',
   './outputTrims',
   './rng',
   './sampleLibraries/SampleLibraryTypes',
@@ -3409,7 +3455,6 @@ const hostImportAllowlist = new Set([
   './CoreProductLeadPatch',
   './CoreProductRuntimeAdapter',
   './coreMidiEvents',
-  './coreProductArrangementScheduler',
   './coreProductAssets',
   './CoreProductFallbackDiagnostics',
   './coreProductEvents',

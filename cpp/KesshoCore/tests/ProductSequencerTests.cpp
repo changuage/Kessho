@@ -3043,6 +3043,7 @@ void requireRuntimeWalkMovementAcrossAudioAndFxTargets() {
     std::fill(right.begin(), right.end(), 0.0f);
     kessho_product_render(product_walk, left.data(), right.data(), 128u);
   }
+  require(kessho_product_refresh_telemetry(product_walk) == KESSHO_PRODUCT_OK, "runtime walk telemetry refresh failed");
   const uint32_t product_probe_count = static_cast<uint32_t>(sizeof(product_probes) / sizeof(product_probes[0]));
   require(product_walk->telemetry.runtime_walk_count == product_probe_count, "runtime walk telemetry missed product/FX targets");
 
@@ -3070,6 +3071,7 @@ void requireRuntimeWalkMovementAcrossAudioAndFxTargets() {
     std::fill(right.begin(), right.end(), 0.0f);
     kessho_product_render(source_walk, left.data(), right.data(), 128u);
   }
+  require(kessho_product_refresh_telemetry(source_walk) == KESSHO_PRODUCT_OK, "source runtime walk telemetry refresh failed");
   const ModulationRange* pad_level = source_walk->findModulationRange(KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID);
   const ModulationRange* lead_expression = source_walk->findModulationRange(KESSHO_PRODUCT_SOURCE_LEAD1, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID);
   const ModulationRange* drum_delay = source_walk->findModulationRange(KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID);
@@ -3171,6 +3173,7 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
     enqueueRuntimeWalkRange(product_walk, 0u, probe.param_id, control_id++, probe.min_value, probe.max_value, probe.current_value, low_rate_flags);
   }
   renderSilentBlocks(product_walk, kLowRateRenderBlocks);
+  require(kessho_product_refresh_telemetry(product_walk) == KESSHO_PRODUCT_OK, "low-rate runtime walk telemetry refresh failed");
   const uint32_t product_probe_count = static_cast<uint32_t>(sizeof(product_probes) / sizeof(product_probes[0]));
   require(product_walk->telemetry.runtime_walk_count == product_probe_count, "low-rate runtime walk telemetry missed product/FX targets");
 
@@ -3247,6 +3250,7 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
       0.38f,
       low_rate_flags);
   renderSilentBlocks(source_walk, kLowRateRenderBlocks);
+  require(kessho_product_refresh_telemetry(source_walk) == KESSHO_PRODUCT_OK, "low-rate source runtime walk telemetry refresh failed");
 
   const uint32_t source_probe_count = static_cast<uint32_t>(sizeof(source_probes) / sizeof(source_probes[0]));
   require(source_walk->telemetry.runtime_walk_count == source_probe_count + 1u, "low-rate runtime walk telemetry missed source/drum targets");
@@ -3298,6 +3302,7 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
         low_rate_flags);
   }
   renderSilentBlocks(soundscape_asset_walk, kLowRateRenderBlocks);
+  require(kessho_product_refresh_telemetry(soundscape_asset_walk) == KESSHO_PRODUCT_OK, "soundscape runtime walk telemetry refresh failed");
   require(
       soundscape_asset_walk->telemetry.runtime_walk_count == soundscape_asset_probe_count,
       "low-rate soundscape asset runtime walk telemetry missed asset-ref targets");
@@ -3335,6 +3340,7 @@ void requireDrumExactRuntimeRangesApplyToSourceAndModule() {
       300.0f,
       low_rate_flags);
   renderSilentBlocks(drum_walk, kLowRateRenderBlocks);
+  require(kessho_product_refresh_telemetry(drum_walk) == KESSHO_PRODUCT_OK, "drum runtime walk telemetry refresh failed");
   const ModulationRange* kick_decay = drum_walk->findModulationRange(kick_target, kick_decay_param_id);
   require(kick_decay != nullptr, "Drum exact kick decay runtime walk range missing");
   require(std::fabs(kick_decay->random_walk_speed - 0.09f) < 0.001f, "Drum exact kick decay runtime walk speed mismatch");
@@ -3702,6 +3708,7 @@ void requireLowRateGranularRuntimeWalkMovementAcrossEngineParams() {
   }
 
   renderSilentBlocks(granular_walk, kLowRateRenderBlocks);
+  require(kessho_product_refresh_telemetry(granular_walk) == KESSHO_PRODUCT_OK, "granular runtime walk telemetry refresh failed");
   const uint32_t global_probe_count = static_cast<uint32_t>(sizeof(global_probes) / sizeof(global_probes[0]));
   const uint32_t voice_probe_count = static_cast<uint32_t>(sizeof(voice_probes) / sizeof(voice_probes[0]));
   const uint32_t total_probe_count = global_probe_count + kGranularVoiceCount * voice_probe_count;
@@ -4200,6 +4207,128 @@ void requireQuantizedSequencerUnmuteBoundaries() {
   kessho_product_destroy(engine);
 }
 
+void requireNativeSequencerBackgroundCadence() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 4096, 0);
+  require(engine != nullptr, "native background cadence engine create failed");
+
+  engine->transport.running = true;
+  engine->transport.sample_frame = 100u;
+  engine->synth_lane_count = 2u;
+  engine->synth_sequencer_chain.enabled = true;
+  engine->synth_sequencer_chain.entry_count = 2u;
+  engine->synth_sequencer_chain.entry_lane_indices[0] = 0u;
+  engine->synth_sequencer_chain.entry_lane_indices[1] = 1u;
+  engine->synth_sequencer_chain.entry_duration_seconds[0] = 0.01f;
+  engine->synth_sequencer_chain.entry_duration_seconds[1] = 0.01f;
+  engine->applySequencerChainTransitions();
+  require(!engine->synth_lanes[0].chain_muted && engine->synth_lanes[1].chain_muted,
+      "native sequencer chain should start on its first lane");
+  require(engine->synth_sequencer_chain.next_boundary_frame == 580u,
+      "native sequencer chain boundary should be derived from sample frames");
+
+  engine->transport.sample_frame = 579u;
+  engine->applySequencerChainTransitions();
+  require(engine->synth_lanes[1].chain_muted, "native sequencer chain transitioned before its sample boundary");
+  engine->transport.sample_frame = 580u;
+  engine->applySequencerChainTransitions();
+  require(engine->synth_lanes[0].chain_muted && !engine->synth_lanes[1].chain_muted,
+      "native sequencer chain should transition exactly at its sample boundary");
+
+  LaneState& lane = engine->synth_lanes[0];
+  lane.evolve_runtime.enabled = true;
+  lane.evolve_runtime.intensity = 1.0f;
+  lane.evolve_runtime.every_cycles = 4u;
+  lane.evolve_runtime.write_offset = 0;
+  lane.evolve_runtime.flags = KESSHO_PRODUCT_EVOLVE_MODE_PARITY |
+      KESSHO_PRODUCT_EVOLVE_METHOD_SWING_DRIFT;
+  lane.evolve_runtime.seed = 0x12345678u;
+  const uint32_t revision_before = engine->sequencer_ui_state_revision;
+  engine->applyScheduledSequencerEvolution(lane, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 1u);
+  engine->applyScheduledSequencerEvolution(lane, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 2u);
+  require(engine->sequencer_ui_state_revision == revision_before,
+      "native scheduled evolve should wait for its configured cycle cadence");
+  engine->applyScheduledSequencerEvolution(lane, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 4u);
+  require(engine->sequencer_ui_state_revision == revision_before + 1u,
+      "native scheduled evolve should fire on the configured cycle boundary");
+  engine->applyScheduledSequencerEvolution(lane, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 4u);
+  require(engine->sequencer_ui_state_revision == revision_before + 1u,
+      "native scheduled evolve should not fire twice for the same cycle");
+
+  kessho_product_destroy(engine);
+}
+
+void requireDebugVoiceSpawnDemandGating() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128u, 0u);
+  require(engine != nullptr, "debug voice-spawn demand engine create failed");
+  engine->recordDebugVoiceSpawn(KESSHO_PRODUCT_SOURCE_PAD1, 3u, 71u);
+  require(engine->telemetry.debug_voice_spawn_count == 0u,
+      "debug voice-spawn hashing must default to disabled");
+  require(kessho_product_set_debug_voice_spawn_demand(engine, 1u) == KESSHO_PRODUCT_OK,
+      "debug voice-spawn demand enable failed");
+  engine->recordDebugVoiceSpawn(KESSHO_PRODUCT_SOURCE_PAD1, 3u, 71u);
+  require(engine->telemetry.debug_voice_spawn_count == 1u,
+      "explicit debug voice-spawn demand did not record a spawn");
+  require(engine->telemetry.debug_voice_spawns[0].source_id == KESSHO_PRODUCT_SOURCE_PAD1,
+      "debug voice-spawn demand recorded the wrong source");
+  require(kessho_product_set_debug_voice_spawn_demand(engine, 0u) == KESSHO_PRODUCT_OK,
+      "debug voice-spawn demand disable failed");
+  engine->recordDebugVoiceSpawn(KESSHO_PRODUCT_SOURCE_PAD1, 4u, 72u);
+  require(engine->telemetry.debug_voice_spawn_count == 1u,
+      "disabled debug voice-spawn demand recorded another spawn");
+  kessho_product_destroy(engine);
+}
+
+void requireActiveModulationRangeIndexing() {
+  KesshoProductEngine engine(48000.0, 128u, 0u);
+  const auto apply_walk = [&](uint32_t param_id, uint32_t control_id, float current_value) {
+    KesshoProductEvent event{};
+    event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
+    event.target_id = 0u;
+    event.index = control_id;
+    event.param_id = param_id;
+    event.value = 0.1f;
+    event.value2 = 0.9f;
+    event.value3 = static_cast<float>(KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK);
+    event.value4 = current_value;
+    event.flags = KESSHO_PRODUCT_MODULATION_RANGE_ACTIVE | randomWalkSpeedFlags(1.0f);
+    engine.applyModulationRangeEvent(event);
+    require(engine.telemetry.last_error_code == KESSHO_PRODUCT_OK,
+        "active modulation index range apply failed");
+  };
+  apply_walk(KESSHO_PRODUCT_PARAM_MASTER_GAIN_ID, 801u, 0.25f);
+  apply_walk(KESSHO_PRODUCT_PARAM_FX_DELAY_AFEEDBACK_ID, 802u, 0.35f);
+  apply_walk(KESSHO_PRODUCT_PARAM_FX_DELAY_BMIX_ID, 803u, 0.45f);
+  require(engine.active_modulation_range_count == 3u,
+      "active modulation index count did not include all ranges");
+  require(engine.active_modulation_range_indices[0] == 0u &&
+          engine.active_modulation_range_indices[1] == 1u &&
+          engine.active_modulation_range_indices[2] == 2u,
+      "active modulation indices did not preserve ascending slot order");
+
+  KesshoProductEvent disable{};
+  disable.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
+  disable.target_id = 0u;
+  disable.param_id = KESSHO_PRODUCT_PARAM_FX_DELAY_AFEEDBACK_ID;
+  disable.value3 = static_cast<float>(KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK);
+  engine.applyModulationRangeEvent(disable);
+  require(engine.active_modulation_range_count == 2u,
+      "active modulation index count retained a disabled range");
+  require(engine.active_modulation_range_indices[0] == 0u &&
+          engine.active_modulation_range_indices[1] == 2u,
+      "active modulation indices did not preserve a disabled-slot hole");
+
+  const float first_before = engine.modulation_ranges[0].current_value;
+  const float disabled_before = engine.modulation_ranges[1].current_value;
+  const float third_before = engine.modulation_ranges[2].current_value;
+  engine.advanceModulationRanges(4800u);
+  require(std::fabs(engine.modulation_ranges[0].current_value - first_before) > 0.000001f,
+      "first indexed random walk did not advance");
+  require(engine.modulation_ranges[1].current_value == disabled_before,
+      "disabled modulation slot changed during indexed advance");
+  require(std::fabs(engine.modulation_ranges[2].current_value - third_before) > 0.000001f,
+      "third indexed random walk did not advance across a slot hole");
+}
+
 } // namespace
 
 int main() {
@@ -4223,6 +4352,9 @@ int main() {
   requireSampleSourceEnvelopeLongRanges();
   requireSequencerMutePreservesRuntimePhase();
   requireQuantizedSequencerUnmuteBoundaries();
+  requireNativeSequencerBackgroundCadence();
+  requireDebugVoiceSpawnDemandGating();
+  requireActiveModulationRangeIndexing();
   requireRuntimeWalkMovementAcrossAudioAndFxTargets();
   requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets();
   requireDrumExactRuntimeRangesApplyToSourceAndModule();
@@ -6655,6 +6787,8 @@ int main() {
   require(
       kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
       "running Pad endpoint hot-swap snapshot load failed");
+  require(kessho_product_set_debug_voice_spawn_demand(engine, 1u) == KESSHO_PRODUCT_OK,
+      "running Pad endpoint hot-swap debug demand enable failed");
   renderSilentBlocks(engine, 60u);
   KesshoProductTelemetry running_before_telemetry = kessho_product_get_telemetry(engine);
   const KesshoProductDebugVoiceSpawn running_before_spawn = latestDebugVoiceSpawnForSource(
@@ -6687,6 +6821,8 @@ int main() {
       engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].source_preset_a_id ==
           kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT,
       "running Pad endpoint hot-swap should update endpoint A state");
+  require(kessho_product_set_debug_voice_spawn_demand(engine, 0u) == KESSHO_PRODUCT_OK,
+      "running Pad endpoint hot-swap debug demand disable failed");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();

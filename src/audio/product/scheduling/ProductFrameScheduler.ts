@@ -4,7 +4,6 @@ type TimeoutHandle = ReturnType<typeof setTimeout>;
 type FrameRequestCallbackLike = (time: number) => void;
 
 export interface ProductFrameSchedulerOptions {
-  hiddenIntervalMs?: number;
   visibleFallbackIntervalMs?: number;
   isHidden?: () => boolean;
   requestAnimationFrame?: (callback: FrameRequestCallbackLike) => number;
@@ -14,10 +13,13 @@ export interface ProductFrameSchedulerOptions {
 export class ProductFrameScheduler {
   private queued = false;
   private disposed = false;
+  private hidden: boolean;
   private readonly callbacks = new Map<ProductFrameChannel, Set<() => void>>();
   private readonly dirty = new Set<ProductFrameChannel>();
 
-  constructor(private readonly options: ProductFrameSchedulerOptions = {}) {}
+  constructor(private readonly options: ProductFrameSchedulerOptions = {}) {
+    this.hidden = this.readHiddenState();
+  }
 
   subscribe(channel: ProductFrameChannel, callback: () => void): () => void {
     if (this.disposed) return () => undefined;
@@ -33,7 +35,18 @@ export class ProductFrameScheduler {
   markDirty(channel: ProductFrameChannel): void {
     if (this.disposed) return;
     this.dirty.add(channel);
+    if (this.hidden) return;
     this.schedule();
+  }
+
+  setDocumentHidden(hidden: boolean): void {
+    if (this.disposed || this.hidden === hidden) return;
+    this.hidden = hidden;
+    if (hidden) {
+      this.queued = false;
+      return;
+    }
+    if (this.dirty.size > 0) this.schedule();
   }
 
   flushNowForTests(): void {
@@ -52,23 +65,22 @@ export class ProductFrameScheduler {
     if (this.queued) return;
     this.queued = true;
 
-    const setTimeoutFn = this.options.setTimeout ?? setTimeout;
-    if (this.isHidden()) {
-      setTimeoutFn(() => this.flush(), this.options.hiddenIntervalMs ?? 100);
-      return;
-    }
-
     const requestFrame = this.options.requestAnimationFrame ?? this.readRequestAnimationFrame();
     if (requestFrame) {
       requestFrame(() => this.flush());
       return;
     }
 
+    const setTimeoutFn = this.options.setTimeout ?? setTimeout;
     setTimeoutFn(() => this.flush(), this.options.visibleFallbackIntervalMs ?? 16);
   }
 
   private flush(): void {
     if (this.disposed) return;
+    if (this.hidden) {
+      this.queued = false;
+      return;
+    }
     if (!this.queued && this.dirty.size === 0) return;
     this.queued = false;
     const dirtyChannels = Array.from(this.dirty);
@@ -83,7 +95,7 @@ export class ProductFrameScheduler {
     }
   }
 
-  private isHidden(): boolean {
+  private readHiddenState(): boolean {
     if (this.options.isHidden) return this.options.isHidden();
     return typeof document !== 'undefined' && document.visibilityState === 'hidden';
   }

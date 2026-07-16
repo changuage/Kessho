@@ -18,11 +18,10 @@ export type ProductRuntimeSchedulerChannel =
   | 'sample-voice-telemetry';
 
 export interface ProductRuntimeSchedulerOptions {
-  readonly isMobile?: () => boolean;
-  readonly isDebugEnabled?: () => boolean;
   readonly isDocumentHidden?: () => boolean;
   readonly requestAnimationFrame?: ProductFrameSchedulerOptions['requestAnimationFrame'];
   readonly setTimeout?: ProductFrameSchedulerOptions['setTimeout'];
+  readonly clearTimeout?: (handle: ReturnType<typeof setTimeout>) => void;
   readonly now?: () => number;
 }
 
@@ -58,41 +57,36 @@ const VISIBLE_SAMPLE_CHANNEL_DELAY_MS: Partial<Record<ProductRuntimeSchedulerCha
   'sample-decode-progress': 250,
 };
 
-const HIDDEN_SAMPLE_CHANNEL_DELAY_MS: Partial<Record<ProductRuntimeSchedulerChannel, number>> = {
-  'sample-cache-diagnostics': 5000,
-  'sample-asset-miss-diagnostics': 2000,
-};
-
 export class ProductRuntimeScheduler {
   private readonly frameScheduler: ProductFrameScheduler;
-  private readonly callbacks = new Map<ProductRuntimeSchedulerChannel, Set<() => void>>();
+  private readonly callbacks = new Map<ProductRuntimeSchedulerChannel, () => void>();
   private readonly sampleTimers = new Map<ProductRuntimeSchedulerChannel, ProductRuntimeTimerHandle>();
   private readonly sampleLastFlushMs = new Map<ProductRuntimeSchedulerChannel, number>();
   private disposed = false;
+  private documentHidden: boolean;
+  private readonly handleVisibilityChange = (): void => {
+    this.setDocumentHidden(this.readDocumentHidden());
+  };
 
   constructor(private readonly options: ProductRuntimeSchedulerOptions = {}) {
+    this.documentHidden = this.readDocumentHidden();
     this.frameScheduler = new ProductFrameScheduler({
-      hiddenIntervalMs: options.isMobile?.() ? 2500 : 1000,
-      isHidden: options.isDocumentHidden,
+      isHidden: () => this.documentHidden,
       requestAnimationFrame: options.requestAnimationFrame,
       setTimeout: options.setTimeout,
     });
     for (const frameChannel of ['visuals', 'telemetry', 'diagnostics', 'midiActivity'] as const) {
       this.frameScheduler.subscribe(frameChannel, () => this.flushFrameChannel(frameChannel));
     }
+    if (typeof document !== 'undefined' && !options.isDocumentHidden) {
+      document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    }
   }
 
   schedule(channel: ProductRuntimeSchedulerChannel, callback: () => void): void {
     if (this.disposed) return;
-    if (channel === 'perf-overlay' && this.isDocumentHidden() && !this.options.isDebugEnabled?.()) return;
-    if (channel === 'sample-decode-progress' && this.isDocumentHidden() && !this.options.isDebugEnabled?.()) return;
-    if (channel === 'sample-voice-telemetry' && this.isDocumentHidden()) return;
-    let callbacks = this.callbacks.get(channel);
-    if (!callbacks) {
-      callbacks = new Set();
-      this.callbacks.set(channel, callbacks);
-    }
-    callbacks.add(callback);
+    this.callbacks.set(channel, callback);
+    if (this.documentHidden) return;
     if (SAMPLE_CHANNELS.has(channel)) {
       this.scheduleSampleChannel(channel);
       return;
@@ -115,11 +109,32 @@ export class ProductRuntimeScheduler {
     this.frameScheduler.flushNowForTests();
   }
 
+  setDocumentHidden(hidden: boolean): void {
+    if (this.disposed || this.documentHidden === hidden) return;
+    this.documentHidden = hidden;
+    this.frameScheduler.setDocumentHidden(hidden);
+    if (hidden) {
+      const clearTimeoutFn = this.options.clearTimeout ?? clearTimeout;
+      for (const timer of this.sampleTimers.values()) {
+        clearTimeoutFn(timer as ReturnType<typeof setTimeout>);
+      }
+      this.sampleTimers.clear();
+      return;
+    }
+    for (const channel of this.callbacks.keys()) {
+      this.frameScheduler.markDirty(CHANNEL_TO_FRAME_CHANNEL[channel]);
+    }
+  }
+
   dispose(): void {
     this.disposed = true;
+    if (typeof document !== 'undefined' && !this.options.isDocumentHidden) {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    }
     this.callbacks.clear();
+    const clearTimeoutFn = this.options.clearTimeout ?? clearTimeout;
     for (const timer of this.sampleTimers.values()) {
-      clearTimeout(timer as ReturnType<typeof setTimeout>);
+      clearTimeoutFn(timer as ReturnType<typeof setTimeout>);
     }
     this.sampleTimers.clear();
     this.sampleLastFlushMs.clear();
@@ -160,9 +175,6 @@ export class ProductRuntimeScheduler {
   }
 
   private sampleChannelDelayMs(channel: ProductRuntimeSchedulerChannel): number {
-    if (this.isDocumentHidden()) {
-      return HIDDEN_SAMPLE_CHANNEL_DELAY_MS[channel] ?? 5000;
-    }
     return VISIBLE_SAMPLE_CHANNEL_DELAY_MS[channel] ?? 250;
   }
 
@@ -174,12 +186,12 @@ export class ProductRuntimeScheduler {
 
   private flushChannel(channel: ProductRuntimeSchedulerChannel): void {
     const callbacks = this.callbacks.get(channel);
-    if (!callbacks?.size) return;
+    if (!callbacks || this.documentHidden) return;
     this.callbacks.delete(channel);
-    for (const callback of callbacks) callback();
+    callbacks();
   }
 
-  private isDocumentHidden(): boolean {
+  private readDocumentHidden(): boolean {
     if (this.options.isDocumentHidden) return this.options.isDocumentHidden();
     return typeof document !== 'undefined' && document.visibilityState === 'hidden';
   }

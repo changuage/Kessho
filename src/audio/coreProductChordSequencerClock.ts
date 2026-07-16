@@ -42,31 +42,3 @@ export function nextCoreProductChordSequencerStepDelaySeconds(
   const nextStepIndex = Math.floor((nowWallSec - anchor) / stepSeconds) + 1;
   return Math.max(0.001, anchor + nextStepIndex * stepSeconds - nowWallSec);
 }
-
-export interface CoreProductChordSequencerTimerControls {
-  getState: () => Record<string, unknown> | null;
-  getAnchors: () => TransportAnchors | null;
-  isRunning: () => boolean;
-  isEnabled: () => boolean;
-  trigger: () => void;
-  setTimer: (timer: number | null) => void;
-}
-
-export function startCoreProductChordSequencerTimer(controls: CoreProductChordSequencerTimerControls): void {
-  controls.trigger();
-  scheduleCoreProductChordSequencerTimer(controls);
-}
-
-function scheduleCoreProductChordSequencerTimer(controls: CoreProductChordSequencerTimerControls): void {
-  const state = controls.getState();
-  const anchors = controls.getAnchors();
-  if (!controls.isRunning() || !state || !anchors) return;
-  const delaySeconds = nextCoreProductChordSequencerStepDelaySeconds(state, anchors);
-  const timer = window.setTimeout(() => {
-    controls.setTimer(null);
-    if (!controls.isRunning() || !controls.isEnabled()) return;
-    controls.trigger();
-    scheduleCoreProductChordSequencerTimer(controls);
-  }, delaySeconds * 1000);
-  controls.setTimer(timer);
-}

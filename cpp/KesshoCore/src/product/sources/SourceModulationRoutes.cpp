@@ -48,6 +48,10 @@
 
   void KesshoProductEngine::resetModulationRouteCache() {
   active_modulation_range_count = 0u;
+  std::fill(
+      active_modulation_range_indices,
+      active_modulation_range_indices + kMaxModulationRanges,
+      kInvalidModulationRouteIndex);
   std::fill(source_modulation_param_masks, source_modulation_param_masks + kSourceCount, 0u);
   std::fill(
       drum_source_modulation_param_masks,
@@ -79,6 +83,8 @@
     if (!range.active) {
       continue;
     }
+    active_modulation_range_indices[active_modulation_range_count] =
+        static_cast<uint16_t>(range_index);
     ++active_modulation_range_count;
     const uint16_t route_index = static_cast<uint16_t>(range_index);
     const uint32_t source_param_slot = sourceModulationParamSlot(range.param_id);

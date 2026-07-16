@@ -288,7 +288,14 @@ int main() {
   kessho_product_render(engine, left.data(), right.data(), 128);
   require(peak(left) > 0.001f || peak(right) > 0.001f, "registered asset did not render");
 
-  require(kessho_product_unregister_asset_buffer(engine, asset_id) == KESSHO_PRODUCT_OK, "asset unregister failed");
+  require(
+      kessho_product_unregister_asset_buffer(engine, asset_id) == KESSHO_PRODUCT_ERROR_ASSET_IN_USE,
+      "active asset unregister was not deferred");
+  std::fill(left.begin(), left.end(), 0.0f);
+  std::fill(right.begin(), right.end(), 0.0f);
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  require(peak(left) > 0.001f || peak(right) > 0.001f, "deferred asset release truncated active audio");
+  require(kessho_product_unregister_asset_buffer(engine, asset_id) == KESSHO_PRODUCT_OK, "finished asset unregister failed");
   telemetry = kessho_product_get_telemetry(engine);
   require(telemetry.active_assets == 0, "asset unregister telemetry mismatch");
   kessho_product_destroy(engine);

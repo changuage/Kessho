@@ -91,8 +91,10 @@ void KesshoProductEngine::mixFxBuffer(const float* in_l, const float* in_r, floa
       const float right = in_r[i] * gain;
       out_l[frame] += left;
       out_r[frame] += right;
-      stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;
-      stem_r[KESSHO_PRODUCT_STEM_FX][frame] += right;
+      if (captureStems()) {
+        stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;
+        stem_r[KESSHO_PRODUCT_STEM_FX][frame] += right;
+      }
     }
     return;
   }
@@ -111,8 +113,10 @@ void KesshoProductEngine::mixFxBuffer(const float* in_l, const float* in_r, floa
     }
     out_l[frame] += left;
     out_r[frame] += right;
-    stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;
-    stem_r[KESSHO_PRODUCT_STEM_FX][frame] += right;
+    if (captureStems()) {
+      stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;
+      stem_r[KESSHO_PRODUCT_STEM_FX][frame] += right;
+    }
   }
 }
 
@@ -153,7 +157,9 @@ void KesshoProductEngine::renderDegradeSend(float* out_l, float* out_r, uint32_t
       reverb_bus_r[frame] += module_r[i] * routing.degrade_to_reverb;
     }
     routeTerminalSample(routing.dynamics_routes[kDynamicsRouteDegrade], out_l, out_r, frame, left, right);
-    stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;
-    stem_r[KESSHO_PRODUCT_STEM_FX][frame] += right;
+    if (captureStems()) {
+      stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;
+      stem_r[KESSHO_PRODUCT_STEM_FX][frame] += right;
+    }
   }
 }

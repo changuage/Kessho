@@ -6,7 +6,7 @@
 #ifdef __cplusplus
 namespace kessho::product::generated {
 
-inline constexpr uint32_t KESSHO_PRODUCT_GROUP_COUNT = 25u;
+inline constexpr uint32_t KESSHO_PRODUCT_GROUP_COUNT = 26u;
 inline constexpr uint32_t KESSHO_PRODUCT_SOURCE_COUNT = 8u;
 inline constexpr uint32_t KESSHO_PRODUCT_SOURCE_PRESET_COUNT = 42u;
 inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_PAD_SOURCE_PRESET_COUNT = 24u;
@@ -70,6 +70,7 @@ inline constexpr const char* KESSHO_PRODUCT_GROUPS[] = {
   "assets",
   "rng",
   "evolution",
+  "arrangement",
   "telemetry"
 };
 

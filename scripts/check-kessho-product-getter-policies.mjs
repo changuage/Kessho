@@ -131,8 +131,9 @@ assert(
   debugSurfaceBody('getTransportDebugState').includes('this.options.latestTelemetry()') &&
     debugSurfaceBody('getTransportDebugState').includes('this.options.latestProductSnapshot()?.transport') &&
     debugSurfaceBody('getTransportDebugState').includes('createCoreProductTransportDebugState') &&
-    helperBody('createCoreProductTransportDebugState').includes('telemetry.beatPosition') &&
-    helperBody('createCoreProductTransportDebugState').includes('telemetry.transportRunning'),
+    helperBody('createCoreProductTransportDebugState').includes('telemetry.transportPhraseProgress') &&
+    helperBody('createCoreProductTransportDebugState').includes('telemetry.transportRunning') &&
+    methodBody('getTransportDebugState').includes('this.arrangementBridge.getTransportDebugState()'),
   'transport debug state must use Product Core telemetry and generated transport state instead of a fixed placeholder',
 );
 assert(

@@ -11,6 +11,8 @@ NativeProductRuntime::NativeProductRuntime(const NativeProductRuntimeConfig& con
   }
   engine_ = kessho_product_create(config.sample_rate, config.max_block_size, config.flags);
   if (engine_ != nullptr) {
+    (void)kessho_product_set_meter_demand(engine_, 1u);
+    (void)kessho_product_refresh_telemetry(engine_);
     KesshoProductTelemetry telemetry{};
     if (kessho_product_copy_telemetry(engine_, &telemetry) == KESSHO_PRODUCT_OK) {
       telemetry_buffers_[0] = telemetry;
@@ -38,6 +40,10 @@ int32_t NativeProductRuntime::reset() {
   event_read_index_.store(0, std::memory_order_release);
   event_write_index_.store(0, std::memory_order_release);
   dropped_event_count_.store(0, std::memory_order_release);
+  telemetry_refresh_requested_.store(false, std::memory_order_release);
+  telemetry_publication_count_.store(0u, std::memory_order_release);
+  telemetry_blocks_since_publish_ = 0u;
+  (void)kessho_product_refresh_telemetry(engine_);
   KesshoProductTelemetry telemetry{};
   if (kessho_product_copy_telemetry(engine_, &telemetry) == KESSHO_PRODUCT_OK) {
     telemetry_buffers_[0] = telemetry;
@@ -150,9 +156,19 @@ void NativeProductRuntime::drainQueuedEventsOnRenderThread() {
 }
 
 void NativeProductRuntime::publishTelemetryOnRenderThread() {
+  const bool explicitly_requested = telemetry_refresh_requested_.exchange(false, std::memory_order_acq_rel);
+  ++telemetry_blocks_since_publish_;
+  if (!explicitly_requested && telemetry_blocks_since_publish_ < kNativeProductTelemetryBlockCadence) {
+    return;
+  }
+  telemetry_blocks_since_publish_ = 0u;
+  if (kessho_product_refresh_telemetry(engine_) != KESSHO_PRODUCT_OK) {
+    return;
+  }
   const uint32_t inactive = (active_telemetry_index_.load(std::memory_order_relaxed) + 1u) & 1u;
   if (kessho_product_copy_telemetry(engine_, &telemetry_buffers_[inactive]) == KESSHO_PRODUCT_OK) {
     active_telemetry_index_.store(inactive, std::memory_order_release);
+    telemetry_publication_count_.fetch_add(1u, std::memory_order_release);
   }
 }
 

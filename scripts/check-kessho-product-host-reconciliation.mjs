@@ -419,16 +419,16 @@ await runCheckWithReport({
 
     const postSequencerBody = hostMethodBody('postSequencerControlEvent');
     assert(postSequencerBody.includes('if (this.runtimeReady)'), 'postSequencerControlEvent() must branch on runtime readiness');
-    assert(postSequencerBody.includes('this.runtime.postEvent(event)'), 'postSequencerControlEvent() must post the live event');
+    assert(postSequencerBody.includes('this.postRuntimeProductEvent(event)'), 'postSequencerControlEvent() must post the live event');
     assert(
-      postSequencerBody.indexOf('this.runtime.postEvent(event)') < postSequencerBody.indexOf('this.loadLatestSnapshot()') ||
-        postSequencerBody.includes('const post = () => this.runtime.postEvent(event);'),
+      postSequencerBody.indexOf('this.postRuntimeProductEvent(event)') < postSequencerBody.indexOf('this.loadLatestSnapshot(') ||
+        postSequencerBody.includes('const post = () => this.postRuntimeProductEvent(event);'),
       'runtime-ready sequencer control events must post before any snapshot bootstrap path',
     );
     const postManualSynthDiceBody = hostMethodBody('postManualSynthDiceEvent');
     for (const token of [
       'if (this.runtimeReady)',
-      'this.runtime.postEvent(event)',
+      'this.postRuntimeProductEvent(event)',
       'this.runtime.ensureStarted().then',
       "this.loadLatestSnapshot('runtime-bootstrap')",
     ]) {
@@ -455,7 +455,7 @@ await runCheckWithReport({
       "patchCoreProductSequencerLaneAdapterParam(this.adapterState, sequencer, laneIndex, 'ClockDivision', normalizeClockDivisionValue(event.value, 16))",
       "patchCoreProductSequencerLaneAdapterParam(this.adapterState, sequencer, laneIndex, 'Swing', normalizeSequencerSwing(event.value, 0))",
       'patchCoreProductSynthPitchBindingModeFromEvent(this.adapterState, laneIndex, event)',
-      'if (this.runtimeReady) this.runtime.postEvent(event)',
+      'if (this.runtimeReady) this.postRuntimeProductEvent(event)',
       'handleCoreProductSequencerControlEvent({',
       'restoreLaneHome: (restoreSequencer, restoreLaneIndex) => this.restoreSequencerLaneHome(restoreSequencer, restoreLaneIndex)',
       "if (event.eventKind === KESSHO_PRODUCT_EVENT_IDS.DiceSequencerLane && sequencer === 'synth')",
@@ -1821,7 +1821,7 @@ await runCheckWithReport({
     harness.runtime.audioContext = { state: 'running', sampleRate: 48000, currentTime: 0 };
     harness.host.runtimeReady = true;
     await harness.host.loadLatestSnapshot('adapter-update');
-    harness.host.flushPostSnapshotEventQueue();
+    for (let batch = 0; batch < 4; batch += 1) harness.host.flushPostSnapshotEventQueue();
     const replayedEvents = harness.runtime.events.slice(eventCountBeforeReload);
     assert(harness.runtime.snapshots.length === 1, 'full snapshot reload must call runtime.loadSnapshot');
     assert(

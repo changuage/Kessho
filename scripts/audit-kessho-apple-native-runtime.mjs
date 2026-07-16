@@ -28,7 +28,9 @@ const paths = {
   telemetryRates: 'src/ui/productRuntimeTelemetryRateLimits.ts',
   productRender: 'cpp/KesshoCore/src/product/KesshoProductRender.cpp',
   productAssets: 'src/audio/coreProductAssets.ts',
-  arrangementScheduler: 'src/audio/coreProductArrangementScheduler.ts',
+  assetRegistrar: 'src/audio/product/host/CoreProductAssetRegistrar.ts',
+  browserAudioSession: 'src/audio/product/browser/ProductBrowserAudioSession.ts',
+  arrangementScheduler: 'src/audio/product/host/CoreProductArrangementProjection.ts',
   journeyClock: 'src/audio/product/host/CoreProductJourneyMorphClock.ts',
   backgroundSupport: 'src/ui/useProductRuntimeBackgroundAudioSupport.ts',
 };
@@ -68,13 +70,12 @@ const webEventBatchingWired =
   has('statePatchQueue', 'requestAnimationFrame', 'pendingPatch');
 
 const webTelemetryThrottlingWired =
-  has('webRuntime', 'setTelemetryPollingEnabled', 'setVisualTelemetryActive', 'document.visibilityState') &&
-  has('telemetryRates', 'PRODUCT_VISUAL_TELEMETRY_HZ', 'PRODUCT_BACKGROUND_VISUAL_TELEMETRY_HZ');
+  has('webRuntime', 'setTelemetryPollingEnabled', 'setVisualTelemetryActive', 'document.visibilityState', "type: 'host-visibility'");
 const productTelemetryGeneratedEveryBlock = has('productRender', 'updateTelemetry(frames);');
-const productStemsRenderedEveryBlock = has(
+const productStemsOptIn = has(
   'productRender',
-  'clearStemOutput(stem_frames);',
-  'stem_l[voice.source_id][frame] += left;',
+  'if (captureStems()) {',
+  'if (captureStems() && voice.source_id < kStemCount)',
 );
 const desktopWorkletAlwaysRequestsMaxChannels = has(
   'webRuntime',
@@ -85,6 +86,11 @@ const decodedAssetsClonedBeforeTransfer = has(
   'productAssets',
   'cloneDecodedCoreProductAssetForTransfer',
   'new Float32Array(channel)',
+);
+const mobileDecodedAssetsTransferOwnership = has(
+  'assetRegistrar',
+  "const ownership: AssetTransferOwnership = this.mobile ? 'transfer' : 'retain-host-copy';",
+  'this.sampleAssetCache.take(asset.assetId)',
 );
 
 const capabilityDisabled = has('capability', 'report.supports_native_bridge = 0;');
@@ -174,8 +180,8 @@ const iosRemoteCommandsDriveNativeEngine =
   iosRemotePauseBody.includes('nativeProductEngine');
 const macObservesCoreAudioRouteChanges = has('macApp', 'AudioObjectAddPropertyListener');
 const webUsesPlaybackAudioSession =
-  /navigator\.audioSession/.test(source.webRuntime) ||
-  /navigator\.audioSession/.test(source.backgroundSupport);
+  /audioSession/.test(source.browserAudioSession) &&
+  has('browserAudioSession', "this.session.type = requested ? 'playback' : 'auto'", "this.session?.addEventListener('statechange'");
 const webHasLifecycleResume = has(
   'backgroundSupport',
   'visibilitychange',
@@ -240,25 +246,29 @@ const findings = [
   },
   {
     id: 'shared-telemetry-throttling',
-    status: webTelemetryThrottlingWired && productTelemetryGeneratedEveryBlock
-      ? 'transport-throttled-render-eager'
-      : 'partial',
+    status: webTelemetryThrottlingWired && !productTelemetryGeneratedEveryBlock
+      ? 'demand-driven'
+      : webTelemetryThrottlingWired ? 'transport-throttled-render-eager' : 'partial',
     productionReady: webTelemetryThrottlingWired && !productTelemetryGeneratedEveryBlock,
-    summary: 'Web telemetry messages are visibility- and consumer-gated, but Product Core still rebuilds the large telemetry state every render block.',
+    summary: productTelemetryGeneratedEveryBlock
+      ? 'Web telemetry messages are visibility- and consumer-gated, but Product Core still rebuilds the large telemetry state every render block.'
+      : 'Product telemetry refresh and meter work are demand-driven, and hidden hosts disable telemetry publication.',
     evidence: [
       evidence('webRuntime', 'setVisualTelemetryActive', 'Visual telemetry is explicitly activated by consumers.'),
-      evidence('telemetryRates', 'PRODUCT_BACKGROUND_VISUAL_TELEMETRY_HZ', 'Background visual telemetry has a lower rate.'),
-      evidence('productRender', 'updateTelemetry(frames);', 'Product Core generates telemetry after every render block.'),
+      evidence('webRuntime', "type: 'host-visibility'", 'Host visibility disables hidden diagnostic publication.'),
+      evidence('productRender', 'finishRealtimeTelemetryBlock(frames);', 'The render path updates only bounded realtime counters.'),
     ],
   },
   {
     id: 'shared-opt-in-stem-rendering',
-    status: productStemsRenderedEveryBlock ? 'always-on' : 'partial',
-    productionReady: !productStemsRenderedEveryBlock,
-    summary: 'Stem buffers are cleared and populated during normal stereo playback even when recording and DAW routing are inactive.',
+    status: productStemsOptIn ? 'demand-driven' : 'partial',
+    productionReady: productStemsOptIn,
+    summary: productStemsOptIn
+      ? 'Stem buffers are cleared and populated only for explicit stem or graph-tap demand.'
+      : 'Stem capture demand could not be proven from the render path.',
     evidence: [
-      evidence('productRender', 'clearStemOutput(stem_frames);', 'All stem buffers are cleared each block.'),
-      evidence('productRender', 'stem_l[voice.source_id][frame] += left;', 'Source samples are accumulated into stems unconditionally.'),
+      evidence('productRender', 'if (captureStems()) {', 'Stem clear and finalization are demand-gated.'),
+      evidence('productRender', 'if (captureStems() && voice.source_id < kStemCount)', 'Source accumulation is demand-gated.'),
     ],
   },
   {
@@ -272,11 +282,16 @@ const findings = [
   },
   {
     id: 'shared-decoded-asset-transfer-copy',
-    status: decodedAssetsClonedBeforeTransfer ? 'full-copy-before-transfer' : 'partial',
-    productionReady: !decodedAssetsClonedBeforeTransfer,
-    summary: 'Decoded sample channels are fully cloned before transfer to the worklet, increasing preset-load CPU and peak memory, especially on iOS.',
+    status: mobileDecodedAssetsTransferOwnership
+      ? 'mobile-transfer-owned'
+      : decodedAssetsClonedBeforeTransfer ? 'full-copy-before-transfer' : 'partial',
+    productionReady: mobileDecodedAssetsTransferOwnership,
+    summary: mobileDecodedAssetsTransferOwnership
+      ? 'Mobile registration transfers the owned decoded buffers directly; desktop may retain and clone its host cache copy.'
+      : 'Decoded sample channels are fully cloned before transfer to the worklet, increasing preset-load CPU and peak memory, especially on iOS.',
     evidence: [
-      evidence('productAssets', 'new Float32Array(channel)', 'Each decoded channel is copied before ownership transfer.'),
+      evidence('assetRegistrar', "this.mobile ? 'transfer' : 'retain-host-copy'", 'Mobile and desktop use explicit transfer ownership policies.'),
+      evidence('assetRegistrar', 'this.sampleAssetCache.take(asset.assetId)', 'Mobile removes the host cache entry before transferring ownership.'),
     ],
   },
   {
@@ -285,10 +300,13 @@ const findings = [
       ? 'partial-missing-audio-session'
       : webUsesPlaybackAudioSession ? 'partial-unmeasured' : 'missing',
     productionReady: false,
-    summary: 'The web runtime has an iOS media-element carrier and foreground recovery, but does not request playback Audio Session mode or track Audio Session interruptions.',
+    summary: webUsesPlaybackAudioSession
+      ? 'The browser runtime has a media-element carrier, foreground recovery, playback Audio Session ownership, and one-shot interruption recovery; physical-device behavior remains unmeasured.'
+      : 'The web runtime has an iOS media-element carrier and foreground recovery, but does not request playback Audio Session mode or track Audio Session interruptions.',
     evidence: [
       evidence('webRuntime', 'createMediaStreamDestination', 'iOS WebAudio is routed through an HTML media-element carrier.'),
       evidence('backgroundSupport', 'attemptGracefulResume', 'The UI attempts idempotent recovery after lifecycle changes.'),
+      evidence('browserAudioSession', "requested ? 'playback' : 'auto'", 'Browser Audio Session type follows requested playback.'),
     ],
   },
   {
@@ -320,7 +338,7 @@ const findings = [
     productionReady: snapshotFitsCurrentBridge && bridgeHasProductionControlPlane,
     summary: `The ${snapshotBytes}-byte Product snapshot cannot fit the current ${audioSessionBridgeLimitBytes}-byte audio-session options limit. A binary/chunked contract is required.`,
     evidence: [
-      evidence('abiTests', 'sizeof(KesshoProductSnapshotV2) == 151572', 'The native snapshot ABI is 151,572 bytes.'),
+      evidence('abiTests', 'sizeof(KesshoProductSnapshotV2) == 152760', 'The native snapshot ABI is 152,760 bytes.'),
       evidence('bridgePolicy', 'startPlayback", maxOptionsBytes: 8 * 1024', 'The current playback request permits 8 KiB of JSON options.'),
     ],
   },
@@ -366,11 +384,13 @@ const findings = [
   },
   {
     id: 'native-background-scheduler-independence',
-    status: jsArrangementSchedulingActive ? 'host-dependent' : 'partial',
+    status: jsArrangementSchedulingActive ? 'host-dependent' : 'sample-frame-owned',
     productionReady: !jsArrangementSchedulingActive,
-    summary: 'Harmony, chord, lead, and note scheduling still use JavaScript timers. Native audio can keep rendering while musical behavior stalls when the WebView is suspended.',
+    summary: jsArrangementSchedulingActive
+      ? 'Harmony, chord, lead, and note scheduling still use JavaScript timers. Native audio can keep rendering while musical behavior stalls when the WebView is suspended.'
+      : 'Production host arrangement behavior is projection-only; Product Core owns ongoing harmony, chord, lead, and note scheduling on sample frames.',
     evidence: [
-      evidence('arrangementScheduler', 'window.setTimeout', 'Arrangement scheduling is driven by WebView timers.'),
+      evidence('arrangementScheduler', 'CoreProductArrangementProjection', 'The production host retains UI/debug projection only and owns no musical timer.'),
       evidence('journeyClock', 'window.requestAnimationFrame', 'The journey display callback is visibility-driven; this part is UI-only but must not be mistaken for the C++ journey clock.'),
     ],
   },

@@ -308,7 +308,7 @@ struct SoundscapeRenderBlockCache {
           ? dynamicsBusForSoundscapeLayer(soundscape_layer)
           : dynamicsBusForSource(voice.source_id);
       routeTerminalSample(terminal_bus, out_l, out_r, frame, left, right);
-      if (voice.source_id < kStemCount) {
+      if (captureStems() && voice.source_id < kStemCount) {
         stem_l[voice.source_id][frame] += left;
         stem_r[voice.source_id][frame] += right;
       }
@@ -351,7 +351,8 @@ struct SoundscapeRenderBlockCache {
     }
   }
   const float ceiling = master_limiter_ceiling_gain;
-  const bool publish_master_telemetry = (master_telemetry_block_counter++ & 0x3u) == 0u;
+  const bool publish_master_telemetry =
+      meter_demand_enabled && (master_telemetry_block_counter++ & 0x3u) == 0u;
   float master_input_peak = 0.0f;
   float master_output_peak = 0.0f;
   float master_true_peak = 0.0f;
@@ -365,17 +366,17 @@ struct SoundscapeRenderBlockCache {
       graph_master_pre_limiter_l[i] = pre_limiter_l;
       graph_master_pre_limiter_r[i] = pre_limiter_r;
     }
-    const float input_peak = std::max(std::fabs(pre_limiter_l), std::fabs(pre_limiter_r));
     const float limiter_input_l = pre_limiter_l * kMasterLimiterWebAudioMakeupGain;
     const float limiter_input_r = pre_limiter_r * kMasterLimiterWebAudioMakeupGain;
-    const float limiter_input_peak = input_peak * kMasterLimiterWebAudioMakeupGain;
     if (publish_master_telemetry) {
+      const float input_peak = std::max(std::fabs(pre_limiter_l), std::fabs(pre_limiter_r));
+      const float limiter_input_peak = input_peak * kMasterLimiterWebAudioMakeupGain;
       master_input_peak = std::max(master_input_peak, limiter_input_peak);
-    }
-    if (publish_master_telemetry && limiter_input_peak > ceiling && ceiling > 0.0f) {
-      limiter_gain_reduction_db = std::max(
-          limiter_gain_reduction_db,
-          20.0f * std::log10(limiter_input_peak / ceiling));
+      if (limiter_input_peak > ceiling && ceiling > 0.0f) {
+        limiter_gain_reduction_db = std::max(
+            limiter_gain_reduction_db,
+            20.0f * std::log10(limiter_input_peak / ceiling));
+      }
     }
     out_l[i] = clampFloat(limiter_input_l, -ceiling, ceiling);
     out_r[i] = clampFloat(limiter_input_r, -ceiling, ceiling);
@@ -395,10 +396,14 @@ struct SoundscapeRenderBlockCache {
       master_loudness_energy += static_cast<double>(out_l[i]) * static_cast<double>(out_l[i]);
       master_loudness_energy += static_cast<double>(out_r[i]) * static_cast<double>(out_r[i]);
     }
-    master_true_peak_prev_l = out_l[i];
-    master_true_peak_prev_r = out_r[i];
-    stem_l[KESSHO_PRODUCT_STEM_MASTER][i] = out_l[i];
-    stem_r[KESSHO_PRODUCT_STEM_MASTER][i] = out_r[i];
+    if (publish_master_telemetry) {
+      master_true_peak_prev_l = out_l[i];
+      master_true_peak_prev_r = out_r[i];
+    }
+    if (captureStems()) {
+      stem_l[KESSHO_PRODUCT_STEM_MASTER][i] = out_l[i];
+      stem_r[KESSHO_PRODUCT_STEM_MASTER][i] = out_r[i];
+    }
   }
   telemetry.dynamics_saturation_drive = fx.dynamics_saturation_drive;
   if (!publish_master_telemetry) {
@@ -611,13 +616,15 @@ struct SoundscapeRenderBlockCache {
   void KesshoProductEngine::clearOutput(float* out_l, float* out_r, uint32_t frames) {
   const uint32_t stem_frames = std::min<uint32_t>(frames, kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES);
   clearAudioOutput(out_l, out_r, frames);
-  clearStemOutput(stem_frames);
+  if (captureStems()) {
+    clearStemOutput(stem_frames);
+  }
   clearBusOutput(stem_frames);
   if (graph_taps_enabled) {
     clearGraphTapOutput(stem_frames);
   }
   diffuse_bus_active_this_block = false;
-  last_stem_frames = stem_frames;
+  last_stem_frames = captureStems() ? stem_frames : 0u;
 }
 
 void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
@@ -639,6 +646,7 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
   }
   applyPendingTransportTransition();
   applyPendingSequencerAudibilityTransitions();
+  applySequencerChainTransitions();
 
   advanceModulationRanges(frames);
   advanceGranularPhraseReseed();
@@ -657,6 +665,8 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
     }
     applyPendingTransportTransition();
     applyPendingSequencerAudibilityTransitions();
+    applySequencerChainTransitions();
+    advanceHarmonyClock();
 
     uint32_t control_segment_end = frames;
     if (control_index < control_event_count) {
@@ -680,6 +690,19 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
       control_segment_end = std::min<uint32_t>(
           control_segment_end,
           cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_audibility, frames - cursor)));
+    }
+    const uint64_t next_chain_frame = nextSequencerChainBoundaryFrame();
+    if (next_chain_frame != UINT64_MAX && next_chain_frame > transport.sample_frame) {
+      const uint64_t frames_until_chain = next_chain_frame - transport.sample_frame;
+      control_segment_end = std::min<uint32_t>(
+          control_segment_end,
+          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_chain, frames - cursor)));
+    }
+    if (harmony.next_harmony_frame != UINT64_MAX && harmony.next_harmony_frame > transport.sample_frame) {
+      const uint64_t frames_until_harmony = harmony.next_harmony_frame - transport.sample_frame;
+      control_segment_end = std::min<uint32_t>(
+          control_segment_end,
+          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_harmony, frames - cursor)));
     }
     if (control_segment_end <= cursor) {
       control_segment_end = cursor + 1u;
@@ -732,5 +755,5 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
   compactControlEvents(frames, control_index);
   advanceJourney(frames);
   product_render_frame += frames;
-  updateTelemetry(frames);
+  finishRealtimeTelemetryBlock(frames);
 }

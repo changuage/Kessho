@@ -135,8 +135,10 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
       graph_granular_to_delay_b_send_r[frame] = delay_b_r;
     }
     routeTerminalSample(routing.dynamics_routes[kDynamicsRouteGranular], out_l, out_r, frame, direct_l, direct_r);
-    stem_l[KESSHO_PRODUCT_STEM_FX][frame] += direct_l;
-    stem_r[KESSHO_PRODUCT_STEM_FX][frame] += direct_r;
+    if (captureStems()) {
+      stem_l[KESSHO_PRODUCT_STEM_FX][frame] += direct_l;
+      stem_r[KESSHO_PRODUCT_STEM_FX][frame] += direct_r;
+    }
     reverb_bus_l[frame] += reverb_l;
     reverb_bus_r[frame] += reverb_r;
     delay_a_bus_l[frame] += delay_a_l;

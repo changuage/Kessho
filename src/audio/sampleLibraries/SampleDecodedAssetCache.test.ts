@@ -43,6 +43,12 @@ assert.equal(decodeCalls, 1, 'loader should run once for concurrent requests');
 assert.equal(cache.diagnostics().decodeCount, 1);
 assert.equal(cache.diagnostics().hitCount, 1);
 
+const taken = cache.take(1);
+assert.strictEqual(taken, first, 'take should return cache ownership without cloning');
+assert.equal(cache.has(1), false, 'take should remove the cache entry');
+assert.equal(cache.diagnostics().bytesUsed, 0, 'take should remove cached byte accounting');
+assert.equal(cache.take(1), null, 'take should not return detached or removed entries twice');
+
 const evictingCache = new SampleDecodedAssetCache(32);
 await evictingCache.getOrLoad(descriptor(2), async () => decodedAsset(2, 4));
 await evictingCache.getOrLoad(descriptor(3), async () => decodedAsset(3, 8));

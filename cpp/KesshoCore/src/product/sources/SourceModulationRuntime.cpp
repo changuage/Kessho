@@ -40,13 +40,16 @@ float smoothRandomWalkPosition(const ModulationRange& range, double seconds) {
 } // namespace
 
   void KesshoProductEngine::advanceModulationRanges(uint32_t frames) {
-  if (frames == 0u) {
+  if (frames == 0u || active_modulation_range_count == 0u) {
     return;
   }
-  for (ModulationRange& range : modulation_ranges) {
-    if (!range.active) {
+  for (uint32_t active_index = 0u; active_index < active_modulation_range_count; ++active_index) {
+    const uint32_t range_index = active_modulation_range_indices[active_index];
+    if (range_index >= kMaxModulationRanges) {
       continue;
     }
+    ModulationRange& range = modulation_ranges[range_index];
+    if (!range.active) continue;
     if (range.mode == KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD) {
       if (range.target_id != 0u && !isSoundscapeAssetLevelRangeTarget(range.target_id)) {
         continue;

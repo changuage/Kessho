@@ -153,7 +153,9 @@ constexpr float kReverbBoostEpsilon = 0.001f;
     const float left = module_l[i] * return_gain;
     const float right = module_r[i] * return_gain;
     routeTerminalSample(routing.dynamics_routes[kDynamicsRouteReverb], out_l, out_r, frame, left, right);
-    stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;
-    stem_r[KESSHO_PRODUCT_STEM_FX][frame] += right;
+    if (captureStems()) {
+      stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;
+      stem_r[KESSHO_PRODUCT_STEM_FX][frame] += right;
+    }
   }
 }

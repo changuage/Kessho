@@ -172,6 +172,8 @@ export type CoreProductTelemetrySnapshot = {
   decodedAssetBytes?: number;
   decodedAssetBudgetBytes?: number;
   assetAllocationBytes?: number;
+  hostDecodedBytes?: number;
+  inFlightDecodedBytes?: number;
   sequencerEventCount: number;
   controlQueueDepth: number;
   assetMissingCount: number;

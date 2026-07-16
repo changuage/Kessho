@@ -114,6 +114,14 @@ export class SampleDecodedAssetCache {
     return entry.asset;
   }
 
+  take(assetId: number): DecodedCoreProductAsset | null {
+    const entry = this.entries.get(assetId);
+    if (!entry) return null;
+    this.entries.delete(assetId);
+    this.bytesUsed = Math.max(0, this.bytesUsed - entry.bytes);
+    return entry.asset;
+  }
+
   async getOrLoad(
     descriptor: SampleAssetDescriptor,
     loader: SampleDecodedAssetLoader,

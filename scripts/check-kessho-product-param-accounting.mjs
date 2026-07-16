@@ -394,7 +394,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     };
   }
 
-  if (/^synthEuclid[1-4](Enabled|Source|VoiceMask|Steps|Hits|Rotation|ClockDivision|Swing|Probability|Level|NoteMin|NoteMax)$/.test(key)) {
+  if (/^synthEuclid[1-4](Enabled|Source|VoiceMask|Steps|Hits|Rotation|ClockDivision|Swing|Probability|Level|NoteMin|NoteMax|ResumeQuantization)$/.test(key)) {
     return {
       path: 'sequencer-lane-diff',
       evidence: ['src/audio/CoreProductRuntimeAdapter.ts#appendSequencerLaneDiffs', 'cpp/KesshoCore/src/product/sequencer/SynthEuclidSequencer.cpp'],
@@ -424,7 +424,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     };
   }
 
-  if (/^drumEuclid[1-4](Enabled|Steps|Hits|Rotation|ClockDivision|Swing|Probability|Level)$/.test(key)) {
+  if (/^drumEuclid[1-6](Enabled|Steps|Hits|Rotation|ClockDivision|Swing|Probability|Level|ResumeQuantization)$/.test(key)) {
     return {
       path: 'sequencer-lane-diff',
       evidence: ['src/audio/CoreProductRuntimeAdapter.ts#appendSequencerLaneDiffs', 'cpp/KesshoCore/src/product/sequencer/DrumEuclidSequencer.cpp'],
@@ -453,7 +453,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     };
   }
 
-  if (/^drumEuclid[1-4]Target(Sub|Kick|Click|BeepHi|BeepLo|Noise|Membrane)$/.test(key)) {
+  if (/^drumEuclid[1-6]Target(Sub|Kick|Click|BeepHi|BeepLo|Noise|Membrane)$/.test(key)) {
     return {
       path: 'sequencer-structure-full-snapshot',
       evidence: ['src/audio/CoreProductRuntimeAdapter.ts#canApplyLaneDiffs', 'docs/kessho-product-control-classification.md#Structural Full Snapshot Reloads'],
@@ -477,7 +477,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     };
   }
 
-  if (/^(pad|pad2|lead|lead2|drum|piano)Enabled$/.test(key)) {
+  if (/^(pad|pad2|lead|lead2|drum|piano|sample1|sample2)Enabled$/.test(key)) {
     return {
       path: 'source-param-diff',
       evidence: ['src/audio/CoreProductRuntimeAdapter.ts#appendSourceParamDiffs', 'cpp/KesshoCore/src/product/sources/ProductSources.cpp'],
@@ -575,12 +575,13 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
 
   if (key === 'padFitEnvelopeToChord' || key === 'pad2FitEnvelopeToChord') {
     return {
-      path: 'arrangement-scheduler-event',
+      path: 'arrangement-snapshot',
       evidence: [
-        'src/audio/coreProductSequencerHold.ts#coreProductPadEnvelopeGateSecondsFromState',
-        'src/audio/coreProductEvents.ts#createCoreProductManualNoteEvent',
+        'src/audio/coreProductArrangementSnapshot.ts#pad1FitEnvelopeToChord',
+        'src/audio/coreProductArrangementSnapshot.ts#pad2FitEnvelopeToChord',
+        'cpp/KesshoCore/src/product/sequencer/ProductArrangementSequencer.cpp',
       ],
-      reason: 'Pad fit-to-chord flags clamp generated manual-note gate lengths in host arrangement scheduling.',
+      reason: 'Pad fit-to-chord flags are snapshot-owned and clamp generated note gates inside Product Core arrangement scheduling.',
     };
   }
 
@@ -621,9 +622,9 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     'waveSpread',
   ].includes(key)) {
     return {
-      path: 'arrangement-scheduler-event',
-      evidence: ['src/audio/coreProductArrangementScheduler.ts', 'src/audio/coreProductArrangementPadChord.ts', 'src/audio/coreProductArrangementSchedulerUtils.ts', 'src/audio/coreProductEvents.ts#createCoreProductManualNoteEvent'],
-      reason: 'Host arrangement scheduling turns this control into Product Core manual-note events and scheduler restarts rather than scalar Product params.',
+      path: 'arrangement-snapshot',
+      evidence: ['src/audio/coreProductArrangementSnapshot.ts', 'src/audio/coreProductArrangementSnapshotEncoder.ts', 'src/audio/coreProductSnapshotTypes.ts', 'cpp/KesshoCore/src/product/sequencer/ProductArrangementSequencer.cpp'],
+      reason: 'The Product snapshot carries this control into Product Core sample-frame arrangement state rather than a scalar Product param.',
     };
   }
 
@@ -799,9 +800,12 @@ function addDynamicSequencerKeys(keys) {
       'Swing',
       'Probability',
       'Level',
+      'ResumeQuantization',
     ]) {
       keys.add(`synthEuclid${lane}${suffix}`);
     }
+  }
+  for (let lane = 1; lane <= 6; lane += 1) {
     for (const suffix of [
       'ManualStepMaskLow',
       'ManualStepMaskHigh',
@@ -813,6 +817,7 @@ function addDynamicSequencerKeys(keys) {
       'Swing',
       'Probability',
       'Level',
+      'ResumeQuantization',
       'TargetSub',
       'TargetKick',
       'TargetClick',
@@ -823,6 +828,41 @@ function addDynamicSequencerKeys(keys) {
     ]) {
       keys.add(`drumEuclid${lane}${suffix}`);
     }
+  }
+}
+
+function addDynamicSampleSlotKeys(keys) {
+  for (const slotId of ['sample1', 'sample2']) {
+    for (const suffix of [
+      'Enabled',
+      'LibraryKey',
+      'Role',
+      'Articulation',
+      'SelectionMode',
+      'DynamicMode',
+      'FixedDynamic',
+      'VariantMode',
+      'Level',
+      'AttackMs',
+      'DecayMs',
+      'Sustain',
+      'HoldMs',
+      'ReleaseMs',
+      'LoopEnabled',
+      'MaxVoices',
+      'Distance',
+      'ReverbSend',
+      'DelayASend',
+      'DelayBSend',
+      'DiffuseSend',
+      'PostLPF',
+      'StereoWidth',
+    ]) {
+      keys.add(`${slotId}${suffix}`);
+    }
+    const title = `${slotId[0]?.toUpperCase() ?? ''}${slotId.slice(1)}`;
+    keys.add(`granular${title}Send`);
+    keys.add(`degrade${title}Send`);
   }
 }
 
@@ -950,8 +990,8 @@ const PRODUCT_SNAPSHOT_KEY_PATHS = [
   'src/audio/coreProductSequencerFaceSnapshot.ts',
   'src/audio/coreProductSequencerHold.ts',
   'src/audio/coreProductAssets.ts',
+  'src/audio/coreProductArrangementSnapshot.ts',
   'src/audio/coreProductArrangementPadChord.ts',
-  'src/audio/coreProductArrangementScheduler.ts',
   'src/audio/coreProductArrangementSchedulerUtils.ts',
   'src/audio/coreProductChordSequencerClock.ts',
   'src/audio/coreProductChordVoices.ts',
@@ -1018,6 +1058,7 @@ function collectProductSnapshotReferencedKeys(sliderKeys) {
   addGeneratedProductSnapshotKeys(keys);
   addArrangementSchedulerSnapshotKeys(keys);
   addDynamicSequencerKeys(keys);
+  addDynamicSampleSlotKeys(keys);
   addDynamicGranularVoiceKeys(keys);
   return keys;
 }

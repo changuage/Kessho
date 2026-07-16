@@ -139,8 +139,8 @@ for (const token of [
   'offsetof(KesshoProductTelemetry, drum_sequencer_hit_counts) == 1104',
   'offsetof(KesshoProductTelemetry, synth_sequencer_current_steps) == 1168',
   'offsetof(KesshoProductTelemetry, drum_sequencer_current_steps) == 1232',
-  'offsetof(KesshoProductTelemetry, granular_visual_event_count) == 7736',
-  'offsetof(KesshoProductTelemetry, granular_visual_events) == 7740',
+  'offsetof(KesshoProductTelemetry, granular_visual_event_count) == 7800',
+  'offsetof(KesshoProductTelemetry, granular_visual_events) == 7804',
 ]) {
   assert(abiTest.includes(token), `ABI layout test is missing ${token}`);
 }

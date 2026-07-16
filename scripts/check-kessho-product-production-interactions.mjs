@@ -40,9 +40,10 @@ requireTokens('scripts/check-kessho-product-browser-runtime.mjs', [
   "const key = 'lead1Density'",
   "activeTab: 'synth'",
   "leadRandomSource: 'piano'",
-  "'runtime-walk piano random timing did not publish pianoDistance trigger animation'",
   'distinctPositions.length >= 3',
   'runtimeSliderDebug.walkIndicatorConsumeCount',
+  'inactive runtime-walk UI store received unnecessary position updates',
+  'inactive runtime-walk indicator consumed positions',
   'captureSampleHoldProbe',
   'assertSampleHoldProbe',
   'sample-hold-ui',
@@ -60,7 +61,7 @@ requireTokens('scripts/check-kessho-product-browser-runtime.mjs', [
 ]);
 
 for (const token of [
-  "const shouldMirrorRuntimeWalkPositions = productRuntimeMode === 'core-product'",
+  'const shouldMirrorRuntimeWalkPositions = runtimeSliderDemand > 0',
   'setProductRuntimeWalkPositionsCallback',
   'shouldMirrorRuntimeWalkPositions,',
 ]) {
@@ -108,14 +109,21 @@ requireTokens('src/audio/coreProductArrangementVoiceMapping.ts', [
   'state[ARRANGEMENT_RESTART_STATE_KEY]',
 ]);
 
-requireTokens('src/audio/coreProductArrangementScheduler.ts', [
-  'publishManualNoteTrigger',
-  'private phraseState',
-  'capturePhraseState()',
-  'harmonySeedMaterialFromState(sliderState)',
-  "this.publishTrigger('pianoDistance'",
-  "this.publishTrigger('leadDistance'",
-  "this.publishTrigger('padDistance'",
+requireTokens('src/audio/product/host/CoreProductArrangementProjection.ts', [
+  'export class CoreProductArrangementProjection',
+  'getTransportDebugState(',
+  'padChordPlan: null',
+  'randomTimingPlan: null',
+]);
+const arrangementProjection = read('src/audio/product/host/CoreProductArrangementProjection.ts');
+assert(!arrangementProjection.includes('setTimeout('), 'Product arrangement projection must not own musical timers');
+assert(!arrangementProjection.includes('setInterval('), 'Product arrangement projection must not own musical intervals');
+
+requireTokens('cpp/KesshoCore/src/product/sequencer/ProductArrangementSequencer.cpp', [
+  'const uint64_t block_start = transport.sample_frame;',
+  'arrangement.next_chord_sequencer_frame',
+  'arrangement.next_lead_phrase_frame',
+  'queue_chord(',
 ]);
 
 requireTokens('src/audio/simpleSequencerPhrasePreview.ts', [

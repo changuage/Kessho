@@ -9,36 +9,9 @@ function read(path) {
 
 function drumEuclidTargetStructuralKeys() {
   const keys = [];
-  for (let lane = 1; lane <= 4; lane += 1) {
+  for (let lane = 1; lane <= 6; lane += 1) {
     for (const target of ['Sub', 'Kick', 'Click', 'BeepHi', 'BeepLo', 'Noise', 'Membrane']) {
       keys.push(`drumEuclid${lane}Target${target}`);
-    }
-  }
-  return keys;
-}
-
-function drumScatterMemorySlotKeys() {
-  const keys = [];
-  for (const lane of [5, 6]) {
-    for (const suffix of [
-      'Enabled',
-      'Preset',
-      'Steps',
-      'Hits',
-      'Rotation',
-      'TargetSub',
-      'TargetKick',
-      'TargetClick',
-      'TargetBeepHi',
-      'TargetBeepLo',
-      'TargetNoise',
-      'TargetMembrane',
-      'Probability',
-      'VelocityMin',
-      'VelocityMax',
-      'Level',
-    ]) {
-      keys.push(`drumEuclid${lane}${suffix}`);
     }
   }
   return keys;
@@ -173,6 +146,7 @@ export function collectAppVisibleStructuralPolicyInventory(appVisibleLiveUpdateP
 }
 
 export function controlDomain(key) {
+  if (/^sample[12]/.test(key)) return 'source.sample';
   if (/^piano/.test(key)) return 'source.piano';
   if (/^(synthAttack|synthDecay|synthSustain|synthHold|synthRelease|synthLevel|synthVoiceMask)$/.test(key)) return 'source.pad';
   if (/^(pad|pad2|filter|lfo|env|warmth|hardness|presence|motion|shimmer|bloom|noise|drive|sub|dist|velocity|retrigger|stereo|chorus)/.test(key)) return 'source.pad';
@@ -190,6 +164,7 @@ export function controlDomain(key) {
 }
 
 export const behaviorEvidenceByDomain = {
+  'source.sample': ['core:product:assets', 'core:product:sources', 'ProductAssetTests.cpp', 'ProductSourceWrapperTests.cpp'],
   'source.piano': ['core:product:assets', 'ProductAssetTests.cpp#renderPianoAttackProbe'],
   'source.pad': ['core:product:sources', 'core:product:source-parity', 'ProductSourceWrapperTests.cpp', 'ProductPadExactPatchTests.cpp'],
   'source.lead': ['core:product:sources', 'core:product:source-parity', 'ProductSourceWrapperTests.cpp', 'ProductLeadExactPatchTests.cpp'],
@@ -205,6 +180,16 @@ export const behaviorEvidenceByDomain = {
 };
 
 export const behaviorEvidenceByAppVisibleGroup = {
+  'source.sample|range-event': {
+    owner: 'Product Core sample source owner',
+    reason: 'Sample slot level and send controls apply through generated Product source params and rendered source/FX paths.',
+    evidence: ['core:product:assets', 'core:product:sources', 'ProductAssetTests.cpp', 'ProductSourceWrapperTests.cpp'],
+  },
+  'source.sample|source-param-diff': {
+    owner: 'Product Core sample source owner',
+    reason: 'Sample slot enablement applies through generated Product source state and asset-backed rendering.',
+    evidence: ['core:product:assets', 'core:product:sources', 'ProductAssetTests.cpp', 'ProductSourceWrapperTests.cpp'],
+  },
   'fx.delay|fx-param-diff': {
     owner: 'Product Core Delay owner',
     reason: 'Discrete Delay A/B controls must apply through generated Product params and alter rendered FX traces.',
@@ -255,9 +240,9 @@ export const behaviorEvidenceByAppVisibleGroup = {
     reason: 'Master range controls must apply before limiter/saturation and report master telemetry.',
     evidence: ['core:product:fx-depth', 'ProductFxRoutingTests.cpp#requireProductParamSampleHoldRangeChangesMaster'],
   },
-  'music.sequencer|arrangement-scheduler-event': {
+  'music.sequencer|arrangement-snapshot': {
     owner: 'Product Core arrangement owner',
-    reason: 'Arrangement and scheduler controls must materialize as Product Core generated musical events.',
+    reason: 'Arrangement controls must enter snapshot-owned Product Core sample-frame scheduling and materialize as generated musical events.',
     evidence: ['core:product:harmony', 'ProductHarmonyTests.cpp#renderEvents', 'ProductHarmonyTests.cpp#journey state event should alter generated sequencer event values'],
   },
   'music.sequencer|harmony-param-diff': {
@@ -300,9 +285,9 @@ export const behaviorEvidenceByAppVisibleGroup = {
     reason: 'Transport controls must affect Product Core clocked event generation and telemetry.',
     evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#TransportRunning SetParam should stop C++ sequencer event generation', 'ProductSequencerTests.cpp#transport should keep running through a 64-step sequencer render'],
   },
-  'source.drum|arrangement-scheduler-event': {
+  'source.drum|arrangement-snapshot': {
     owner: 'Product Core drum sequencer owner',
-    reason: 'Drum sequencer enable policy must drive Product Core event generation and manual drum render coverage.',
+    reason: 'Drum sequencer enable policy must enter the Product snapshot and drive native event generation and manual drum render coverage.',
     evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#manual drum trigger should render non-silence', 'ProductSequencerTests.cpp#kessho_product_debug_render_events'],
   },
   'source.drum|drum-generated-preset-endpoint-diff': {
@@ -340,14 +325,9 @@ export const behaviorEvidenceByAppVisibleGroup = {
     reason: 'Drum source enable/level params must drive rendered Drum output.',
     evidence: ['core:product:sources', 'ProductSourceWrapperTests.cpp#requireDrumSourceParamsDriveModule'],
   },
-  'source.drum|transport-param-diff': {
-    owner: 'Product Core drum transport owner',
-    reason: 'Drum BPM/transport changes must affect Product Core sequencer timing.',
-    evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#expected sequencer offset was not generated', 'ProductSequencerTests.cpp#transport should keep running through a 64-step sequencer render'],
-  },
-  'source.lead|arrangement-scheduler-event': {
+  'source.lead|arrangement-snapshot': {
     owner: 'Product Core Lead arrangement owner',
-    reason: 'Lead random scheduler controls must produce Product Core generated note events.',
+    reason: 'Lead random controls must drive Product Core sample-frame arrangement note generation.',
     evidence: ['core:product:harmony', 'ProductHarmonyTests.cpp#journey state event should alter generated sequencer event values', 'ProductSourceWrapperTests.cpp#requireBroadLeadPresetFamiliesRender'],
   },
   'source.lead|range-event': {
@@ -360,10 +340,10 @@ export const behaviorEvidenceByAppVisibleGroup = {
     reason: 'Lead enable, hold, and structured envelope/algorithm override controls must drive Product Core source render behavior.',
     evidence: ['core:product:sources', 'ProductSourceWrapperTests.cpp#requireSourceParamEventsAffectRender', 'ProductSourceWrapperTests.cpp#requireBroadLeadPresetFamiliesRender'],
   },
-  'source.pad|arrangement-scheduler-event': {
+  'source.pad|arrangement-snapshot': {
     owner: 'Product Core Pad arrangement owner',
-    reason: 'Pad gate-fit controls must change generated manual note durations before events are sent to Product Core.',
-    evidence: ['core:product:sequencer-ui', 'src/audio/coreProductSequencerHold.ts#coreProductPadEnvelopeGateSecondsFromState', 'src/audio/coreProductEvents.ts#createCoreProductManualNoteEvent'],
+    reason: 'Pad gate-fit controls must change note durations generated by Product Core arrangement scheduling.',
+    evidence: ['core:product:harmony', 'src/audio/coreProductArrangementSnapshot.ts#pad1FitEnvelopeToChord', 'ProductHarmonyTests.cpp#renderEvents'],
   },
   'source.pad|pad-voice-routing-snapshot': {
     owner: 'Product Core Pad sequencer owner',
@@ -384,16 +364,6 @@ export const behaviorEvidenceByAppVisibleGroup = {
     owner: 'Product Core Pad source owner',
     reason: 'Pad enable/level params must drive rendered Pad output.',
     evidence: ['core:product:sources', 'ProductSourceWrapperTests.cpp#requireSourceParamEventsAffectRender', 'ProductSourceWrapperTests.cpp#requireSourceRenders'],
-  },
-  'source.piano|range-event': {
-    owner: 'Product Core Piano asset/source owner',
-    reason: 'Piano range controls must alter registered-asset rendering and source post-chain sends.',
-    evidence: ['core:product:assets', 'ProductAssetTests.cpp#renderPianoAttackProbe', 'ProductSourceWrapperTests.cpp#requirePianoFxSendsFollowPostLpf'],
-  },
-  'source.piano|source-param-diff': {
-    owner: 'Product Core Piano asset/source owner',
-    reason: 'Piano enable/source params must preserve registered-asset render behavior.',
-    evidence: ['core:product:assets', 'ProductAssetTests.cpp#registered asset did not render', 'ProductSequencerTests.cpp#registered piano asset should render through Product Core'],
   },
   'source.soundscape|range-event': {
     owner: 'Product Core soundscape source owner',
@@ -622,8 +592,8 @@ export const productDeferredClassifications = [
     patterns: [
       /^synthEuclid[1-4]Preset$/,
       /^drumEuclidDivision$/,
-      /^drumEuclid[1-4]Preset$/,
-      /^drumEuclid[1-4]Velocity(Min|Max)$/,
+      /^drumEuclid[1-6]Preset$/,
+      /^drumEuclid[1-6]Velocity(Min|Max)$/,
     ],
   },
   {
@@ -635,13 +605,21 @@ export const productDeferredClassifications = [
     patterns: [/^(?:synthEuclid[1-4]|drumEuclid[1-6])Solo$/],
   },
   {
-    id: 'drum-scatter-memory-slots',
-    owner: 'Drum Scatter phrase memory owner',
+    id: 'sample-slot-routing-deferred',
+    owner: 'C++ Product Core sample source routing owner',
     allowWiredReferences: true,
     reason:
-      'Drum Euclid slots 5 and 6 are UI phrase-memory parking slots for generated Scatter phrases; Product Core committed playback remains limited to lanes 1-4.',
+      'The Product snapshot ABI still exposes one legacy piano dynamics/sidechain route; independent Sample 1 and Sample 2 dynamics and sidechain routes require generated per-slot fields.',
+    patterns: [/^(?:dynamicsSample[12]Bus|sidechainSample[12]Target)$/],
+  },
+  {
+    id: 'legacy-piano-sample-aliases',
+    owner: 'Legacy piano-to-Sample 1 compatibility cleanup',
+    allowWiredReferences: true,
+    reason:
+      'Product Core uses canonical Sample 1 slot fields and source sends; these piano-named fields remain only for web-ts and preset compatibility.',
     patterns: [
-      /^drumEuclid[5-6](Enabled|Preset|Steps|Hits|Rotation|TargetSub|TargetKick|TargetClick|TargetBeepHi|TargetBeepLo|TargetNoise|TargetMembrane|Probability|VelocityMin|VelocityMax|Level)$/,
+      /^(?:degradePianoSend|granularPianoSend|piano(?:Attack|Decay|DelayASend|DelayBSend|DiffuseSend|Hold|Level|PostLPF|Release|ReverbSend|StereoWidth|Sustain))$/,
     ],
   },
   {
@@ -772,6 +750,12 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
     'drumEuclid4Preset',
     'drumEuclid4VelocityMax',
     'drumEuclid4VelocityMin',
+    'drumEuclid5Preset',
+    'drumEuclid5VelocityMax',
+    'drumEuclid5VelocityMin',
+    'drumEuclid6Preset',
+    'drumEuclid6VelocityMax',
+    'drumEuclid6VelocityMin',
     'drumEuclidDivision',
     'synthEuclid1Preset',
     'synthEuclid2Preset',
@@ -790,7 +774,28 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
     'synthEuclid3Solo',
     'synthEuclid4Solo',
   ],
-  'drum-scatter-memory-slots': drumScatterMemorySlotKeys(),
+  'sample-slot-routing-deferred': [
+    'dynamicsSample1Bus',
+    'dynamicsSample2Bus',
+    'sidechainSample1Target',
+    'sidechainSample2Target',
+  ],
+  'legacy-piano-sample-aliases': [
+    'degradePianoSend',
+    'granularPianoSend',
+    'pianoAttack',
+    'pianoDecay',
+    'pianoDelayASend',
+    'pianoDelayBSend',
+    'pianoDiffuseSend',
+    'pianoHold',
+    'pianoLevel',
+    'pianoPostLPF',
+    'pianoRelease',
+    'pianoReverbSend',
+    'pianoStereoWidth',
+    'pianoSustain',
+  ],
   'legacy-timbre-alias': [
     'leadTimbre',
   ],

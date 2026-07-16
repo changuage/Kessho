@@ -170,8 +170,10 @@ void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t 
     const float drift_r = dry_r * degrade_send;
 
     routeTerminalSample(dynamicsBusForSource(KESSHO_PRODUCT_SOURCE_DRUM), out_l, out_r, frame, dry_l, dry_r);
-    stem_l[KESSHO_PRODUCT_STEM_DRUM][frame] += dry_l;
-    stem_r[KESSHO_PRODUCT_STEM_DRUM][frame] += dry_r;
+    if (captureStems()) {
+      stem_l[KESSHO_PRODUCT_STEM_DRUM][frame] += dry_l;
+      stem_r[KESSHO_PRODUCT_STEM_DRUM][frame] += dry_r;
+    }
     reverb_bus_l[frame] += reverb_l;
     reverb_bus_r[frame] += reverb_r;
     delay_a_bus_l[frame] += delay_a_l;
@@ -329,8 +331,10 @@ void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, ui
         frame,
         insects_out_l,
         insects_out_r);
-    stem_l[KESSHO_PRODUCT_STEM_SOUNDSCAPE][frame] += water_out_l + insects_out_l;
-    stem_r[KESSHO_PRODUCT_STEM_SOUNDSCAPE][frame] += water_out_r + insects_out_r;
+    if (captureStems()) {
+      stem_l[KESSHO_PRODUCT_STEM_SOUNDSCAPE][frame] += water_out_l + insects_out_l;
+      stem_r[KESSHO_PRODUCT_STEM_SOUNDSCAPE][frame] += water_out_r + insects_out_r;
+    }
     reverb_bus_l[frame] += water_l * water_reverb_send + insects_prefader_l * insects_reverb_send;
     reverb_bus_r[frame] += water_r * water_reverb_send + insects_prefader_r * insects_reverb_send;
     delay_a_bus_l[frame] += water_l * water_delay_a_send + insects_prefader_l * insects_delay_a_send;

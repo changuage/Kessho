@@ -4631,6 +4631,58 @@
       "path": "evolution.state",
       "type": "uint",
       "id": 701
+    },
+    {
+      "name": "SequencerChainEnabled",
+      "path": "sequencers.*.chain.enabled",
+      "type": "bool",
+      "id": 1205
+    },
+    {
+      "name": "SequencerChainEntryCount",
+      "path": "sequencers.*.chain.entryCount",
+      "type": "uint",
+      "id": 1206,
+      "min": 0,
+      "max": 16
+    },
+    {
+      "name": "SequencerChainEntryLane",
+      "path": "sequencers.*.chain.entries.*.laneIndex",
+      "type": "uint",
+      "id": 1207,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "name": "SequencerChainEntryDurationSeconds",
+      "path": "sequencers.*.chain.entries.*.durationSeconds",
+      "type": "float",
+      "id": 1208,
+      "min": 0.001,
+      "max": 4096
+    },
+    {
+      "name": "SequencerEvolveRuntimeConfig",
+      "path": "sequencers.*.lanes.*.evolve.runtimeConfig",
+      "type": "uint",
+      "id": 1209
+    },
+    {
+      "name": "SequencerEvolveRuntimeSeedLow",
+      "path": "sequencers.*.lanes.*.evolve.seedLow",
+      "type": "uint",
+      "id": 1210,
+      "min": 0,
+      "max": 65535
+    },
+    {
+      "name": "SequencerEvolveRuntimeSeedHigh",
+      "path": "sequencers.*.lanes.*.evolve.seedHigh",
+      "type": "uint",
+      "id": 1211,
+      "min": 0,
+      "max": 65535
     }
   ]
 }

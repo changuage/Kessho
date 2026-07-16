@@ -6,6 +6,7 @@ import { useProductRuntimeMacRecovery } from './useProductRuntimeMacRecovery';
 import { useProductRuntimeRecordingRuntime } from './useProductRuntimeRecordingRuntime';
 import { useProductRuntimeStateRuntime } from './useProductRuntimeStateRuntime';
 import { useProductRuntimeTelemetry } from './useProductRuntimeTelemetry';
+import { useSelectedAudioEngineStateRuntime } from './useSelectedAudioEngineStateRuntime';
 
 type ProductRuntimeLifecycleUiMode = 'snowflake' | 'advanced' | 'journey';
 
@@ -29,6 +30,13 @@ export function useProductRuntimeLifecycleSurface(options: ProductRuntimeLifecyc
     productRuntimeMode: options.productRuntimeMode,
     enabled: options.playbackIsRunning,
     getProductTransportDebugState: options.getProductTransportDebugState,
+    setEngineState: options.setEngineState,
+  });
+  useSelectedAudioEngineStateRuntime({
+    audioEngineRuntimeMode: options.productRuntimeMode,
+    enabled: false,
+    getSelectedTransportDebugState: options.getProductTransportDebugState,
+    stateReconciliationEnabled: options.productRuntimeMode !== 'core-product',
     setEngineState: options.setEngineState,
   });
 

@@ -26,6 +26,7 @@ type CaptureOptions = {
   manualTriggerDelayMs?: number;
   manualWarmup?: boolean;
   telemetrySampleIntervalMs?: number;
+  captureStems?: boolean;
 };
 
 type TimedStateEventOptions = {
@@ -112,6 +113,7 @@ type HarnessEngine = ProductGraphCaptureHost & ModulationRangeHost & {
   getRecordableBusNodes?: () => Record<string, RecordableTrackSource>;
   getSonicParityDebugState?: () => unknown;
   requestSonicParityTelemetry?: () => void;
+  setVisualTelemetryActive?: (active: boolean) => void;
   resetSonicParityFx?: () => void;
   auditionSynthNote: (note: ManualSynthNoteOptions, externalState?: SliderState) => Promise<void> | void;
   auditionSynthNotes?: (notes: ManualSynthNoteOptions[], externalState?: SliderState) => Promise<void> | void;
@@ -525,6 +527,7 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
       };
 
       await engine.start(state);
+      if (options.captureStems) engine.setVisualTelemetryActive?.(true);
       const productGraphCaptureHost = getProductGraphCaptureHost(engine, trackId);
       const engineContext = engine.getAudioContext();
       if (!engineContext) {
@@ -672,6 +675,7 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
         }
         collectTelemetryPeaks();
       } finally {
+        if (options.captureStems) engine.setVisualTelemetryActive?.(false);
         if (telemetrySampler !== null) {
           window.clearInterval(telemetrySampler);
         }

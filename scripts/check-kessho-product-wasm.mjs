@@ -82,6 +82,10 @@ const reset = resolveExport(wasm, 'kessho_product_reset');
 const enqueueEvent = resolveExport(wasm, 'kessho_product_enqueue_event');
 const render = resolveExport(wasm, 'kessho_product_render');
 const copyTelemetry = resolveExport(wasm, 'kessho_product_copy_telemetry');
+const refreshTelemetry = resolveExport(wasm, 'kessho_product_refresh_telemetry');
+const setMeterDemand = resolveExport(wasm, 'kessho_product_set_meter_demand');
+const setDebugVoiceSpawnDemand = resolveExport(wasm, 'kessho_product_set_debug_voice_spawn_demand');
+const setStemsEnabled = resolveExport(wasm, 'kessho_product_set_stems_enabled');
 const copySequencerUiState = resolveExport(wasm, 'kessho_product_copy_sequencer_ui_state');
 const EVENT_DICE_SEQUENCER_LANE = 29;
 const SEQUENCER_SYNTH = 1;
@@ -115,6 +119,9 @@ const telemetryPtr = malloc(TELEMETRY_BYTES);
 const sequencerUiStatePtr = malloc(105508);
 const engine = create(48000, frames, 0);
 assert(leftPtr && rightPtr && eventPtr && telemetryPtr && sequencerUiStatePtr && engine, 'WASM product smoke allocation failed');
+assert(setMeterDemand(engine, 1) === 1, 'WASM product meter demand enable failed');
+assert(setDebugVoiceSpawnDemand(engine, 1) === 1, 'WASM product debug voice-spawn demand enable failed');
+assert(setStemsEnabled(engine, 1) === 1, 'WASM product stem enable failed');
 
 const view = new DataView(wasm.memory.buffer);
 const heap = new Float32Array(wasm.memory.buffer);
@@ -134,6 +141,11 @@ function writeEvent(fields) {
 function enqueueRawEvent(fields, message) {
   writeEvent(fields);
   assert(enqueueEvent(engine, eventPtr) === 1, message);
+}
+
+function refreshAndCopyTelemetry(message) {
+  assert(refreshTelemetry(engine) === 1, `${message} refresh failed`);
+  assert(copyTelemetry(engine, telemetryPtr) === 1, `${message} copy failed`);
 }
 
 function renderPeak(blocks = 1) {
@@ -189,7 +201,7 @@ enqueueRawEvent(
 );
 assert(renderPeak(32) > 0.001, 'WASM product lead manual note rendered silence');
 
-assert(copyTelemetry(engine, telemetryPtr) === 1, 'WASM product telemetry copy failed');
+refreshAndCopyTelemetry('WASM product telemetry');
 assert(view.getUint32(telemetryPtr + 60, true) > 0, 'WASM product telemetry did not report active voices');
 assert(view.getUint32(telemetryPtr + 928, true) > 0, 'WASM product telemetry did not expose RNG seed');
 assert(view.getUint32(telemetryPtr + 932, true) > 0, 'WASM product telemetry did not expose RNG state');
@@ -206,6 +218,7 @@ assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_VOICE_OFFSET + 16, true) ==
 assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_VOICE_OFFSET + 28, true) > 0, 'WASM product telemetry did not expose Lead debug voice source revision');
 assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_VOICE_OFFSET + 32, true) > 0, 'WASM product telemetry did not expose Lead debug voice source hash');
 assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_VOICE_OFFSET + 36, true) > 0, 'WASM product telemetry did not expose Lead debug voice compiled hash');
+assert(setDebugVoiceSpawnDemand(engine, 0) === 1, 'WASM product debug voice-spawn demand disable failed');
 assert(view.getFloat32(telemetryPtr + 972, true) > 0, 'WASM product telemetry did not expose master output peak');
 assert(view.getFloat32(telemetryPtr + 976, true) > 0, 'WASM product telemetry did not expose master output RMS');
 assert(view.getFloat32(telemetryPtr + 992, true) >= view.getFloat32(telemetryPtr + 972, true), 'WASM product telemetry did not expose master true peak');
@@ -231,7 +244,7 @@ view.setFloat32(eventPtr + 32, 0, true);
 view.setUint32(eventPtr + 36, 0, true);
 assert(enqueueEvent(engine, eventPtr) === 1, 'WASM product sequencer dice enqueue failed');
 render(engine, leftPtr, rightPtr, frames);
-assert(copyTelemetry(engine, telemetryPtr) === 1, 'WASM product post-dice telemetry copy failed');
+refreshAndCopyTelemetry('WASM product post-dice telemetry');
 assert(view.getUint32(telemetryPtr + 988, true) > 0, 'WASM product telemetry did not expose sequencer UI revision');
 assert(copySequencerUiState(engine, sequencerUiStatePtr) === 1, 'WASM product sequencer UI state copy failed');
 assert(view.getUint32(sequencerUiStatePtr + 4, true) === view.getUint32(telemetryPtr + 988, true), 'WASM product sequencer UI revision mismatch');
@@ -272,20 +285,20 @@ enqueueRawEvent(
 );
 enqueueRawEvent({ eventKind: 3 }, 'WASM product transport start enqueue failed');
 render(engine, leftPtr, rightPtr, frames);
-assert(copyTelemetry(engine, telemetryPtr) === 1, 'WASM product initial transport telemetry copy failed');
+refreshAndCopyTelemetry('WASM product initial transport telemetry');
 const initialTransitionRevision = view.getUint32(telemetryPtr + TELEMETRY_TRANSPORT_REVISION_OFFSET, true);
 enqueueRawEvent(
   { eventKind: 2, value: 30, value2: 1, value3: 1, value4: 0.02, flags: 1 },
   'WASM product pending transport enqueue failed',
 );
 render(engine, leftPtr, rightPtr, frames);
-assert(copyTelemetry(engine, telemetryPtr) === 1, 'WASM product pending transport telemetry copy failed');
+refreshAndCopyTelemetry('WASM product pending transport telemetry');
 assert(view.getUint32(telemetryPtr + TELEMETRY_TRANSPORT_PENDING_OFFSET, true) === 1, 'WASM product telemetry did not report a pending transport transition');
 assert(view.getFloat32(telemetryPtr + TELEMETRY_TRANSPORT_BPM_OFFSET, true) === 60, 'WASM product changed BPM before the phrase boundary');
 assert(Number(view.getBigUint64(telemetryPtr + TELEMETRY_TRANSPORT_PENDING_APPLY_FRAME_OFFSET, true)) === 480, 'WASM product pending transition targeted the wrong phrase boundary');
 render(engine, leftPtr, rightPtr, frames);
 render(engine, leftPtr, rightPtr, frames);
-assert(copyTelemetry(engine, telemetryPtr) === 1, 'WASM product applied transport telemetry copy failed');
+refreshAndCopyTelemetry('WASM product applied transport telemetry');
 assert(view.getUint32(telemetryPtr + TELEMETRY_TRANSPORT_PENDING_OFFSET, true) === 0, 'WASM product pending transition did not clear at the phrase boundary');
 const appliedTransitionRevision = view.getUint32(telemetryPtr + TELEMETRY_TRANSPORT_REVISION_OFFSET, true);
 assert(
@@ -361,8 +374,8 @@ function instantiateWorklet({ wasmBinaryOverride = toArrayBuffer(wasmBinary), we
   };
 }
 
-function fakeWebAssemblyWithTelemetryHash(schemaHash) {
-  const memory = new WebAssembly.Memory({ initial: 1 });
+function fakeWebAssemblyWithTelemetryHash(schemaHash, hooks = {}) {
+  const memory = new WebAssembly.Memory({ initial: 4 });
   let nextPtr = 1024;
   const align = (value) => (value + 7) & ~7;
   const malloc = (bytes) => {
@@ -377,7 +390,7 @@ function fakeWebAssemblyWithTelemetryHash(schemaHash) {
   const exports = {
     memory,
     malloc,
-    free: () => {},
+    free: (ptr) => hooks.free?.(ptr),
     kessho_product_create: () => 64,
     kessho_product_reset: () => {},
     kessho_product_reset_parity_fx: () => {},
@@ -385,14 +398,18 @@ function fakeWebAssemblyWithTelemetryHash(schemaHash) {
     kessho_product_get_stem: () => 0,
     kessho_product_get_graph_tap: () => 0,
     kessho_product_set_graph_taps_enabled: () => 1,
+    kessho_product_set_stems_enabled: () => 1,
     kessho_product_load_snapshot_v2: () => 1,
     kessho_product_enqueue_event: () => 1,
     kessho_product_copy_telemetry: copyTelemetry,
+    kessho_product_refresh_telemetry: () => 1,
+    kessho_product_set_meter_demand: () => 1,
+    kessho_product_set_debug_voice_spawn_demand: (engine, enabled) => hooks.setDebugVoiceSpawnDemand?.(engine, enabled) ?? 1,
     kessho_product_drain_generated_sequencer_capture_events: () => 0,
     kessho_product_copy_granular_waveform: () => 1,
     kessho_product_copy_sequencer_ui_state: () => 1,
     kessho_product_register_asset_buffer: () => 1,
-    kessho_product_unregister_asset_buffer: () => 1,
+    kessho_product_unregister_asset_buffer: (...args) => hooks.unregisterAsset?.(...args) ?? 1,
   };
   return {
     instantiate: async () => ({ instance: { exports } }),
@@ -410,10 +427,117 @@ assert(
 );
 assert(staleWasm.processor.ready === false, 'Product worklet must not become ready after stale WASM schema mismatch');
 
+let deferredReleaseAttempts = 0;
+const deferredFreedPointers = [];
+const debugVoiceSpawnDemandValues = [];
+const deferredWorklet = instantiateWorklet({
+  wasmBinaryOverride: new ArrayBuffer(8),
+  webAssemblyOverride: fakeWebAssemblyWithTelemetryHash(expectedSchemaHash, {
+    free: (ptr) => deferredFreedPointers.push(ptr),
+    unregisterAsset: () => (++deferredReleaseAttempts === 1 ? -16 : 1),
+    setDebugVoiceSpawnDemand: (_engine, enabled) => {
+      debugVoiceSpawnDemandValues.push(enabled);
+      return 1;
+    },
+  }),
+});
+await waitForMessage(deferredWorklet.messages, (message) => message.type === 'ready' || message.type === 'error');
+assert(deferredWorklet.processor.ready, 'Deferred-release worklet fixture did not initialize');
+assert(debugVoiceSpawnDemandValues.length === 0, 'debug voice-spawn demand should remain disabled by default');
+deferredWorklet.processor.handleMessage({ type: 'debug-voice-spawn-demand', enabled: true });
+assert(debugVoiceSpawnDemandValues.join(',') === '1', 'visible explicit debug voice-spawn demand was not enabled');
+deferredWorklet.processor.handleMessage({ type: 'host-visibility', hidden: true });
+assert(debugVoiceSpawnDemandValues.join(',') === '1,0', 'hidden host did not disable debug voice-spawn demand');
+deferredWorklet.processor.handleMessage({ type: 'host-visibility', hidden: false });
+assert(debugVoiceSpawnDemandValues.join(',') === '1,0,1', 'visible host did not restore explicit debug voice-spawn demand');
+deferredWorklet.processor.handleMessage({ type: 'debug-voice-spawn-demand', enabled: false });
+assert(debugVoiceSpawnDemandValues.join(',') === '1,0,1,0', 'explicit debug voice-spawn demand disable was not applied');
+deferredWorklet.processor.handleMessage({
+  type: 'register-asset',
+  assetId: 42,
+  sampleRate: 48000,
+  flags: 8,
+  channels: [new Float32Array(256).fill(0.25)],
+});
+assert(deferredWorklet.processor.assetAllocations.has(42), 'Worklet asset fixture did not register');
+assert(
+  deferredWorklet.messages.filter((message) => message.type === 'asset-registration-complete' && message.assetId === 42).length === 1,
+  'Worklet did not acknowledge asset registration',
+);
+const freeCountBeforeDuplicate = deferredFreedPointers.length;
+deferredWorklet.processor.handleMessage({
+  type: 'register-asset',
+  assetId: 42,
+  sampleRate: 48000,
+  flags: 8,
+  channels: [new Float32Array(256).fill(0.5)],
+});
+assert(
+  deferredFreedPointers.length === freeCountBeforeDuplicate,
+  'Duplicate worklet registration freed an active allocation',
+);
+assert(
+  deferredWorklet.messages.some((message) => message.type === 'asset-registration-failed' && message.assetId === 42),
+  'Duplicate worklet registration did not return a failed acknowledgement',
+);
+deferredWorklet.processor.handleMessage({ type: 'unregister-asset', assetId: 42 });
+deferredWorklet.processor.process([], [[new Float32Array(128), new Float32Array(128)]]);
+assert(deferredWorklet.processor.assetAllocations.has(42), 'ASSET_IN_USE freed the worklet allocation');
+assert(deferredFreedPointers.length === freeCountBeforeDuplicate, 'ASSET_IN_USE called free');
+const assetReleaseRetryIntervalBlocks = deferredWorklet.processor.assetReleaseRetryIntervalBlocks;
+for (let block = 1; block < assetReleaseRetryIntervalBlocks; block += 1) {
+  deferredWorklet.processor.process([], [[new Float32Array(128), new Float32Array(128)]]);
+}
+assert(deferredReleaseAttempts === 1, 'Deferred asset release retried before its block interval elapsed');
+assert(deferredWorklet.processor.assetAllocations.has(42), 'Deferred retry interval freed the worklet allocation');
+deferredWorklet.processor.process([], [[new Float32Array(128), new Float32Array(128)]]);
+assert(!deferredWorklet.processor.assetAllocations.has(42), 'Successful retry retained the worklet allocation');
+assert(deferredReleaseAttempts === 2, 'Successful deferred asset release did not retry exactly once');
+assert(deferredFreedPointers.length === freeCountBeforeDuplicate + 2, 'Successful retry did not free pointers exactly once');
+assert(
+  deferredWorklet.messages.filter((message) => message.type === 'asset-release-complete' && message.assetId === 42).length === 1,
+  'Worklet did not acknowledge asset release exactly once',
+);
+deferredWorklet.processor.handleMessage({
+  type: 'register-asset',
+  assetId: 43,
+  sampleRate: 48000,
+  flags: 8,
+  channels: [new Float32Array(64).fill(0.25)],
+});
+deferredWorklet.processor.handleMessage({ type: 'unregister-asset', assetId: 43 });
+deferredWorklet.processor.process([], [[new Float32Array(128), new Float32Array(128)]]);
+assert(deferredReleaseAttempts === 3, 'A new asset release did not run immediately after the queue emptied');
+assert(!deferredWorklet.processor.assetAllocations.has(43), 'Immediate new asset release retained its allocation');
+assert(
+  deferredWorklet.messages.filter((message) => message.type === 'asset-release-complete' && message.assetId === 43).length === 1,
+  'Immediate new asset release was not acknowledged exactly once',
+);
+
 const liveWorklet = instantiateWorklet();
 await waitForMessage(liveWorklet.messages, (message) => message.type === 'ready' || message.type === 'error');
 const liveInitError = liveWorklet.messages.find((message) => message.type === 'error');
 assert(!liveInitError, `Product worklet failed to initialize with committed WASM: ${liveInitError?.message}`);
+let warmedHeapBytes = 0;
+for (let cycle = 0; cycle < 1000; cycle += 1) {
+  liveWorklet.processor.handleMessage({
+    type: 'register-asset',
+    assetId: 5000,
+    sampleRate: 48000,
+    flags: 8,
+    channels: [new Float32Array([0.25])],
+  });
+  liveWorklet.processor.handleMessage({ type: 'unregister-asset', assetId: 5000 });
+  liveWorklet.processor.process([], [[new Float32Array(128), new Float32Array(128)]]);
+  if (cycle === 9) warmedHeapBytes = liveWorklet.processor.exports.memory.buffer.byteLength;
+}
+assert(liveWorklet.processor.assetAllocations.size === 0, 'Register/release cycles leaked worklet allocations');
+assert(liveWorklet.processor.assetDecodedBytes === 0, 'Register/release cycles drifted decoded byte accounting');
+assert(liveWorklet.processor.assetAllocationBytes === 0, 'Register/release cycles drifted allocation byte accounting');
+assert(
+  liveWorklet.processor.exports.memory.buffer.byteLength === warmedHeapBytes,
+  'Repeated asset cycles grew the warmed WASM heap high-water mark',
+);
 const staleSnapshot = new ArrayBuffer(16);
 new DataView(staleSnapshot).setUint32(4, expectedSchemaHash ^ 0xffffffff, true);
 liveWorklet.processor.handleMessage({ type: 'snapshot', snapshot: staleSnapshot });

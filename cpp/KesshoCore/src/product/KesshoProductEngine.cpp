@@ -60,12 +60,16 @@
   routing = {};
   rng_seed = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
   rng_state = rng_seed;
+  resetHarmonyClock();
+  resetArrangementRuntime();
   sequencer_evolve_rng_stream_seed = 0u;
   sequencer_evolve_rng_stream_state = 0u;
   sequencer_evolve_rng_stream_initialized = false;
   generated_sequencer_capture_config = {};
   generated_sequencer_capture_ring.reset();
   generated_sequencer_capture_event_counter = 1u;
+  synth_sequencer_chain = {};
+  drum_sequencer_chain = {};
   evolution_amount = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_EVOLUTION_AMOUNT;
   evolution_state = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_EVOLUTION_STATE;
   journey_running = false;

@@ -402,7 +402,10 @@ export function loadCoreProductHostHarness(options = {}) {
       return false;
     }
 
-    async ensureDefaultAssetsForState() {}
+    updateRequiredAssetsForState() {}
+    async ensureDefaultAssetsForState() {
+      return { status: 'ready' };
+    }
     async ensureSampleSlotAssetForNote() {}
     clear() {
       this.assets = [];
@@ -411,6 +414,12 @@ export function loadCoreProductHostHarness(options = {}) {
       this.assets.push(asset);
     }
     registeredDecodedAssetByteLength() {
+      return 0;
+    }
+    hostDecodedBytes() {
+      return 0;
+    }
+    inFlightDecodedByteLength() {
       return 0;
     }
   }
@@ -503,6 +512,10 @@ export function loadCoreProductHostHarness(options = {}) {
     buildCoreProductSnapshotDiff: () => ({ applied: true, events: [] }),
     productSamplePlaybackTriggerCriticalChange,
     shouldForwardCoreProductRngDiffs: () => false,
+    sliderStateFromRecord: (state) => state,
+    harmonyPhraseSeconds: () => 16,
+    getPhraseDurationForClockSource: () => 16,
+    getTimeUntilNextBoundaryWall: () => 0,
     CoreProductArrangementScheduler: class {
       start() {}
       update() {}
@@ -902,6 +915,8 @@ export function loadCoreProductHostHarness(options = {}) {
       event('sequencer-step', { sequencer, laneIndex, step, value }),
     createCoreProductSequencerStepValueEvent: (sequencer, laneIndex, step, field, value, value2, flags = 0) =>
       event('sequencer-step-value', { sequencer, laneIndex, step, field, value, value2, flags }),
+    createCoreProductSequencerExtendedStepValueEvent: (sequencer, laneIndex, step, field, value, value2, value3, value4, flags = 0) =>
+      event('sequencer-step-value', { sequencer, laneIndex, step, field, value, value2, value3, value4, flags }),
     createCoreProductStartEvent: () => event('start'),
     createCoreProductStopEvent: () => event('stop'),
     getCoreProductSequencerLaneSwing: (adapterState, latestSliderState, sequencer, laneIndex) => {
@@ -1330,6 +1345,14 @@ Object.assign(globalThis, {
 Object.assign(globalThis, {
   CoreProductHostDebugSurface,
 });`, context, { filename: hostDebugSurfacePath });
+
+  const arrangementProjectionPath = 'src/audio/product/host/CoreProductArrangementProjection.ts';
+  const arrangementProjectionSource = stripImportsAndExports(readProjectFile(arrangementProjectionPath));
+  const arrangementProjectionJs = transpileForVm(arrangementProjectionSource, resolve(root, arrangementProjectionPath));
+  vm.runInNewContext(`${arrangementProjectionJs}
+Object.assign(globalThis, {
+  CoreProductArrangementProjection,
+});`, context, { filename: arrangementProjectionPath });
 
   const arrangementBridgePath = 'src/audio/product/host/CoreProductArrangementBridge.ts';
   const arrangementBridgeSource = stripImportsAndExports(readProjectFile(arrangementBridgePath));

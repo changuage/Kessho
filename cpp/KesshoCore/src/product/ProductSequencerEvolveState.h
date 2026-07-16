@@ -13,6 +13,17 @@ struct StepValueSubLaneConfig {
   uint32_t direction = KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD;
 };
 
+struct LaneEvolveRuntimeConfig {
+  bool enabled = false;
+  bool initialized = false;
+  float intensity = 0.0f;
+  uint32_t every_cycles = 1u;
+  int32_t write_offset = -1;
+  uint32_t flags = 0u;
+  uint32_t seed = 0u;
+  uint64_t last_cycle = 0u;
+};
+
 struct LaneEvolveHomeState {
   bool captured = false;
   uint32_t step_count = generated::KESSHO_PRODUCT_DEFAULT_SEQUENCER_STEPS;

@@ -6,7 +6,7 @@ import {
 } from './coreProductArrangementPadChord';
 import { createPadChordPhrasePreview, createRandomTimingPhrasePreview } from './simpleSequencerPhrasePreview';
 import { arrangementRestartKey } from './coreProductArrangementVoiceMapping';
-import { CoreProductArrangementScheduler } from './coreProductArrangementScheduler';
+import { CoreProductArrangementScheduler } from './reference/CoreProductArrangementSchedulerReference';
 import { createHarmonyState } from './harmony';
 import { PRODUCT_HARMONY_SCALE_IDS } from './coreProductHarmonyScaleIds';
 import { createCoreProductSnapshot } from './coreProductSnapshot';

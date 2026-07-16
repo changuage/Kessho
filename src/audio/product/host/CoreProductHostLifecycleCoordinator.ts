@@ -1,7 +1,7 @@
 import { createCoreProductStartEvent, createCoreProductStopEvent, type CoreProductEvent } from '../../coreProductEvents';
 import type { SnapshotReloadReason } from '../../CoreProductRuntimeAdapter';
 import type { CoreProductRuntime } from '../../coreProductRuntime';
-import type { CoreProductAssetRegistrar } from './CoreProductAssetRegistrar';
+import { CoreProductAssetNotReadyError, type CoreProductAssetRegistrar } from './CoreProductAssetRegistrar';
 import type { CoreProductArrangementBridge } from './CoreProductArrangementBridge';
 import type { CoreProductJourneyMorphClock } from './CoreProductJourneyMorphClock';
 import type { CoreProductModulationRangeBridge } from './CoreProductModulationRangeBridge';
@@ -49,7 +49,10 @@ export class CoreProductHostLifecycleCoordinator {
     await this.options.runtime.resume();
     this.publishParityStartupPhase('runtime-resumed');
     this.options.setRuntimeReady(true);
-    await this.options.assetRegistrar.ensureDefaultAssetsForState();
+    const assetResult = await this.options.assetRegistrar.ensureDefaultAssetsForState();
+    if (assetResult.status === 'not-ready') {
+      throw new CoreProductAssetNotReadyError(assetResult);
+    }
     this.publishParityStartupPhase('assets-ready');
     this.options.resetSequencerEvolveState();
     await this.options.loadLatestSnapshot('runtime-start', true, true);

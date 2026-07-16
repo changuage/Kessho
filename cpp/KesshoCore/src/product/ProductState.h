@@ -5,21 +5,16 @@
 #include "ProductFxState.h"
 #include "ProductMidiRuntimeState.h"
 #include "ProductModulationState.h"
+#include "ProductModuleRuntimeState.h"
 #include "ProductPresetBridge.h"
 #include "ProductSequencerState.h"
 #include "ProductTransportState.h"
 #include "ProductVoiceState.h"
 #include "KesshoCore/KesshoProductGeneratedSequencerCapture.h"
-#include <array>
-#include <memory>
-#include "../modules/KesshoModule.h"
 #include "kessho_drum.h"
-#include "kessho_pad.h"
-
 using namespace kessho::product::internal;
-struct KesshoProductEngine : ProductGraphState {
+struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   explicit KesshoProductEngine(double in_sample_rate, uint32_t in_max_block_size, uint32_t in_flags);
-
   double sample_rate = 48000.0;
   uint32_t max_block_size = 128;
   uint32_t flags = 0;
@@ -38,6 +33,7 @@ struct KesshoProductEngine : ProductGraphState {
   bool active_voice_list_dirty = true;
   ModulationRange modulation_ranges[kMaxModulationRanges]{};
   uint32_t active_modulation_range_count = 0u;
+  uint16_t active_modulation_range_indices[kMaxModulationRanges]{};
   uint32_t source_modulation_param_masks[kSourceCount]{};
   uint32_t drum_source_modulation_param_masks[DRUM_NUM_VOICE_TYPES]{};
   uint32_t drum_runtime_modulation_masks[DRUM_NUM_VOICE_TYPES][4]{};
@@ -58,8 +54,11 @@ struct KesshoProductEngine : ProductGraphState {
   uint64_t generated_sequencer_capture_event_counter = 1u;
   bool snapshot_loaded_once = false;
   SequencerBuffer sequencer_events{};
+  ProductArrangementState arrangement{};
   KesshoProductTelemetry telemetry{};
+  uint64_t telemetry_refresh_count = 0u;
   uint64_t debug_voice_spawn_sequence = 0u;
+  bool debug_voice_spawn_demand_enabled = false;
   float stem_l[kStemCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float stem_r[kStemCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float silent_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
@@ -88,7 +87,6 @@ struct KesshoProductEngine : ProductGraphState {
   float dynamics_sidechain_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float diffuse_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float diffuse_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
-
   float reverb_pre_comp_gain = 1.0f;
   float reverb_wash_boost = 0.0f;
   float reverb_bloom_boost = 0.0f;
@@ -126,6 +124,7 @@ struct KesshoProductEngine : ProductGraphState {
   bool diffuse_runtime_active = false;
   uint32_t diffuse_idle_frames_remaining = 0u;
   uint32_t last_stem_frames = 0;
+  bool stems_enabled = false;
   float master_gain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_MASTER_GAIN;
   float master_limiter_ceiling_db = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_MASTER_LIMITER_CEILING_DB;
   float master_limiter_ceiling_gain = dbToGain(kessho::product::generated::KESSHO_PRODUCT_DEFAULT_MASTER_LIMITER_CEILING_DB);
@@ -134,6 +133,7 @@ struct KesshoProductEngine : ProductGraphState {
   double master_integrated_loudness_energy = 0.0;
   uint64_t master_integrated_loudness_frames = 0;
   uint32_t master_telemetry_block_counter = 0u;
+  bool meter_demand_enabled = false;
   bool drum_module_trigger_pending = false;
   FxState fx{};
   RoutingState routing{};
@@ -142,6 +142,8 @@ struct KesshoProductEngine : ProductGraphState {
   uint32_t sequencer_evolve_rng_stream_seed = 0u;
   uint32_t sequencer_evolve_rng_stream_state = 0u;
   bool sequencer_evolve_rng_stream_initialized = false;
+  SequencerChainState synth_sequencer_chain{};
+  SequencerChainState drum_sequencer_chain{};
   uint32_t sequencer_ui_state_revision = 1u;
   uint32_t sequencer_ui_last_changed_target_id = 0u;
   uint32_t sequencer_ui_last_changed_lane_index = 0xffffffffu;
@@ -151,34 +153,6 @@ struct KesshoProductEngine : ProductGraphState {
   bool journey_running = false;
   float journey_phase = 0.0f;
   float journey_rate_bars = 8.0f;
-  bool modules_ready = false;
-  std::unique_ptr<kessho::core::IKesshoModule> pad_module{};
-  std::unique_ptr<kessho::core::IKesshoModule> lead_modules[2]{};
-  std::unique_ptr<kessho::core::IKesshoModule> drum_module{};
-  std::unique_ptr<kessho::core::IKesshoModule> delay_a_module{};
-  std::unique_ptr<kessho::core::IKesshoModule> delay_b_module{};
-  std::unique_ptr<kessho::core::IKesshoModule> reverb_module{};
-  std::unique_ptr<kessho::core::IKesshoModule> granular_module{};
-  std::unique_ptr<kessho::core::IKesshoModule> spectral_freeze_module{};
-  std::unique_ptr<kessho::core::IKesshoModule> dynamics_drift_module{};
-  std::unique_ptr<kessho::core::IKesshoModule> dynamics_degrade_send_module{};
-  std::unique_ptr<kessho::core::IKesshoModule> soundscapes_module{};
-  std::array<float, kSoundscapeModuleParamCount> soundscapes_module_param_cache{};
-  bool soundscapes_module_params_configured = false;
-  SoundscapeTextureRuntime soundscape_texture_runtimes[kSoundscapeTextureSlotCount]{};
-  float soundscape_texture_delay[kSoundscapeTextureSlotCount][kSoundscapeTextureHaasDelayMaxFrames]{};
-  uint32_t soundscape_texture_delay_index[kSoundscapeTextureSlotCount]{};
-  uint64_t product_render_frame = 0u;
-  uint32_t pad_voice_cursors[2]{};
-  uint32_t pad_voice_release_frames[PAD_NUM_PADS][PAD_NUM_VOICES]{};
-  MidiNoteRuntimeSlot midi_note_slots[kMaxProductMidiNoteSlots]{};
-  MidiControllerRuntimeState midi_controller_state[kSourceCount][kProductMidiChannelCount]{};
-  bool midi_sustain_down[kSourceCount][kProductMidiChannelCount]{};
-  uint32_t next_midi_note_slot = 0u;
-  PadPostChainState pad_post_chains[PAD_NUM_PADS]{};
-  PadPostChainState pad_send_post_chains[PAD_NUM_PADS]{};
-  LeadPostChainState lead_post_chains[2]{};
-
   bool prepareProductModules();
   float dynamicsModRoute(const float sources[kDynamicsModSourceCount], uint32_t target) const;
   void configureDynamicsDriftModule();
@@ -236,6 +210,9 @@ struct KesshoProductEngine : ProductGraphState {
   void applyPendingTransportTransition();
   void applyPendingSequencerAudibilityTransitions();
   uint64_t nextPendingSequencerAudibilityFrame() const;
+  void applySequencerChainParamEvent(const KesshoProductEvent& event);
+  void applySequencerChainTransitions();
+  uint64_t nextSequencerChainBoundaryFrame() const;
   bool isSequencerLaneTimingEvent(const KesshoProductEvent& event) const;
   void stageNextPhraseTimingEvent(const KesshoProductEvent& event);
   uint32_t resolveMidiTargetSource(const KesshoProductEvent& event, uint32_t status) const;
@@ -295,6 +272,11 @@ struct KesshoProductEngine : ProductGraphState {
   bool dicePatternMatchesBase(const LaneState& lane, uint32_t rotation, uint32_t fills) const;
   void captureSequencerEvolveHome(LaneState& lane);
   void clearSequencerEvolveHome(LaneState& lane);
+  void applyScheduledSequencerEvolution(
+      LaneState& lane,
+      uint32_t target_id,
+      uint32_t lane_index,
+      uint64_t cycle);
   void applyParityEvolveSequencerLaneEvent(const KesshoProductEvent& event);
   void applyDiceSequencerLaneEvent(const KesshoProductEvent& event);
   void applyJourneyStateEvent(const KesshoProductEvent& event);
@@ -359,6 +341,7 @@ struct KesshoProductEngine : ProductGraphState {
   void triggerFxSampleHoldRanges(uint32_t source_id, float delay_a_strength, float delay_b_strength, float granular_strength, float reverb_strength, uint32_t sample_seed);
   void advanceModulationRanges(uint32_t frames);
   void applySourceParam(const KesshoProductEvent& event);
+  int32_t applySampleSourceParam(const KesshoProductEvent& event, SourceState& source, bool& release_voices);
   void compactControlEvents(uint32_t frames, uint32_t first_unprocessed);
   bool trigConditionPass(uint32_t trig_condition, uint64_t absolute_sample) const;
   bool stepTrigConditionPass(const LaneState& lane, uint32_t step, int64_t absolute_step) const;
@@ -369,6 +352,8 @@ struct KesshoProductEngine : ProductGraphState {
       uint32_t step_id,
       uint64_t absolute_sample) const;
   void updateHarmonyTelemetry(uint64_t absolute_sample);
+  void resetHarmonyClock();
+  void advanceHarmonyClock();
   void markSequencerUiStateChanged(uint32_t target_id, uint32_t lane_index, uint32_t change_kind);
   void copySequencerLaneUiState(const LaneState& lane, KesshoProductSequencerLaneUiState& out) const;
   void copySequencerUiState(KesshoProductSequencerUiState& out) const;
@@ -391,7 +376,10 @@ struct KesshoProductEngine : ProductGraphState {
       uint32_t frames,
       SequencerBuffer& out);
   void generateSequencerEvents(uint32_t frames);
+  void resetArrangementRuntime();
+  void generateArrangementEvents(uint32_t frames, SequencerBuffer& out);
   uint32_t findAssetSlot(uint32_t asset_id) const;
+  bool assetHasActiveVoice(uint32_t asset_id) const;
   bool pianoAssetRootMidi(uint32_t asset_id, float& out_midi, bool* out_short_variant = nullptr) const;
   uint32_t findPianoAssetSlot(float midi_note, float velocity, float& out_root_midi) const;
   uint32_t allocateVoice();
@@ -611,11 +599,13 @@ struct KesshoProductEngine : ProductGraphState {
   void renderDynamics(float* out_l, float* out_r, uint32_t frames);
   void applyMaster(float* out_l, float* out_r, uint32_t frames);
   void clearAudioOutput(float* out_l, float* out_r, uint32_t frames);
+  bool captureStems() const { return stems_enabled || graph_taps_enabled; }
   void clearStemOutput(uint32_t frames);
   void clearBusOutput(uint32_t frames);
   void clearGraphTapOutput(uint32_t frames);
   void clearOutput(float* out_l, float* out_r, uint32_t frames);
   void advanceJourney(uint32_t frames);
   void render(float* out_l, float* out_r, uint32_t frames);
-  void updateTelemetry(uint32_t frames);
+  void finishRealtimeTelemetryBlock(uint32_t frames);
+  void setMeterDemand(bool enabled); void updateTelemetry(uint32_t frames);
 };

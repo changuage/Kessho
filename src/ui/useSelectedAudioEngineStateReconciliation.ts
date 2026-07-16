@@ -5,6 +5,7 @@ import type {
 } from '../audio/product/ProductEngineTypes';
 
 type SelectedAudioEngineStateReconciliationOptions = {
+  enabled?: boolean;
   setEngineState: Dispatch<SetStateAction<ProductEngineState>>;
   setSelectedEngineStateChangeCallback: (callback: ((state: ProductEngineState) => void) | null) => void;
 };
@@ -12,10 +13,12 @@ type SelectedAudioEngineStateReconciliationOptions = {
 const FX_OWNERSHIP_BUSES = ['delayA', 'delayB', 'granular', 'reverb'] as const satisfies readonly ProductFxOwnershipBus[];
 
 export function useSelectedAudioEngineStateReconciliation({
+  enabled = true,
   setEngineState,
   setSelectedEngineStateChangeCallback,
 }: SelectedAudioEngineStateReconciliationOptions): void {
   useEffect(() => {
+    if (!enabled) return;
     setSelectedEngineStateChangeCallback((nextState) => {
       setEngineState((prev) => {
         const fxOwnersChanged = FX_OWNERSHIP_BUSES.some((bus) => {
@@ -54,5 +57,5 @@ export function useSelectedAudioEngineStateReconciliation({
     return () => {
       setSelectedEngineStateChangeCallback(null);
     };
-  }, [setEngineState, setSelectedEngineStateChangeCallback]);
+  }, [enabled, setEngineState, setSelectedEngineStateChangeCallback]);
 }

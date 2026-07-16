@@ -200,6 +200,21 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
   telemetry.master_integrated_lufs = kProductTelemetrySilenceDb;
 }
 
+  void KesshoProductEngine::setMeterDemand(bool enabled) {
+  if (enabled && !meter_demand_enabled) {
+    resetMasterTelemetryState();
+  }
+  meter_demand_enabled = enabled;
+}
+
+  void KesshoProductEngine::finishRealtimeTelemetryBlock(uint32_t frames) {
+  telemetry.block_size = frames;
+  telemetry.transport_running = transport.running ? 1u : 0u;
+  telemetry.absolute_sample_time = transport.sample_frame;
+  telemetry.sequencer_event_count = sequencer_events.count;
+  telemetry.control_queue_depth = control_event_count;
+}
+
   void KesshoProductEngine::markSequencerUiStateChanged(uint32_t target_id, uint32_t lane_index, uint32_t change_kind) {
   ++sequencer_ui_state_revision;
   if (sequencer_ui_state_revision == 0u) {
@@ -327,6 +342,9 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
 }
 
   void KesshoProductEngine::recordDebugVoiceSpawn(uint32_t source_id, uint32_t voice_id, uint32_t sample_seed) {
+  if (!debug_voice_spawn_demand_enabled) {
+    return;
+  }
   if (source_id < 1u || source_id > kSourceCount) {
     return;
   }
@@ -355,6 +373,7 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
 }
 
   void KesshoProductEngine::updateTelemetry(uint32_t frames) {
+  ++telemetry_refresh_count;
   updateHarmonyTelemetry(transport.sample_frame);
   uint32_t active_voice_count = 0;
   uint32_t active_source_mask = 0;
@@ -395,7 +414,7 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
 
   telemetry.schema_hash = KESSHO_PRODUCT_SNAPSHOT_SCHEMA_HASH;
   telemetry.sample_rate = sample_rate;
-  telemetry.block_size = frames == 0u ? max_block_size : frames;
+  if (frames > 0u) telemetry.block_size = frames;
   telemetry.transport_running = transport.running ? 1u : 0u;
   telemetry.absolute_sample_time = transport.sample_frame;
   telemetry.beat_position = transport.beatPosition(sample_rate);

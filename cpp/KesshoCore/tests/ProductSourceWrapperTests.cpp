@@ -96,6 +96,7 @@ struct RenderStemPeaks {
 };
 
 RenderStemPeaks renderAndStemPeakBlocks(KesshoProductEngine* engine, uint32_t stem_id, uint32_t blocks = 64) {
+  require(kessho_product_set_stems_enabled(engine, 1u) == KESSHO_PRODUCT_OK, "stem enable failed");
   std::vector<float> left(128);
   std::vector<float> right(128);
   std::vector<float> stem_l(128);
@@ -2275,6 +2276,7 @@ void requireRepresentativeFullArrangementProbe() {
   std::vector<float> stem_r(128);
   float master_peak = 0.0f;
   float stem_peaks[8]{};
+  require(kessho_product_set_stems_enabled(engine, 1u) == KESSHO_PRODUCT_OK, "full arrangement stem enable failed");
   for (uint32_t block = 0; block < 256; ++block) {
     std::fill(left.begin(), left.end(), 0.0f);
     std::fill(right.begin(), right.end(), 0.0f);

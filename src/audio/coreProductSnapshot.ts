@@ -30,12 +30,17 @@ import {
   synthSourceIdFromState,
   synthSourcePadVoiceMaskFromState,
 } from './coreProductSnapshotPadVoiceRouting';
-import { readSampleSlotState } from './sampleLibraries/sampleSlotState';
-import { sampleSlotSnapshotFields } from './sampleLibraries/sampleSlotProductSnapshot';
-import type { SampleSlotId, SampleSlotState } from './sampleLibraries/SampleLibraryTypes';
+import { assignSampleSlotSourceSnapshot } from './coreProductSampleSlotSnapshot';
 import type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductLaneSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 import { resolveSequencerLaneAudibility } from './sequencerAudibility';
 import { sequencerResumeQuantizationForLane } from './sequencerResumeQuantization';
+import {
+  createSchedulerHarmonyState,
+  harmonyChordIntervalSeconds,
+  progressionPhraseSeconds,
+} from './coreProductArrangementSchedulerUtils';
+import { harmonySeedMaterialFromState } from './harmonySeedMaterial';
+import { coreProductArrangementSnapshotFromState } from './coreProductArrangementSnapshot';
 export type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductHarmonySnapshot, ProductLaneSnapshot, ProductSoundscapeSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 
 // SNAPSHOT_AUTHORITY: GENERATED_SCHEMA_SERIALIZATION - this file maps app/UI state into generated Product Core fields.
@@ -330,46 +335,6 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
   };
 }
 
-function sampleSlotStateForSource(
-  slotId: SampleSlotId,
-  state: Record<string, unknown> | undefined,
-): SampleSlotState {
-  return readSampleSlotState(state, slotId);
-}
-
-function assignSampleSlotSource(
-  source: ProductSourceSnapshot,
-  slotId: SampleSlotId,
-  state: Record<string, unknown> | undefined,
-): void {
-  const slot = sampleSlotStateForSource(slotId, state);
-  Object.assign(source, sampleSlotSnapshotFields(slot));
-  const sampleKey = (suffix: string) => `${slotId}${suffix}`;
-  const numberFromSampleState = (suffix: string, fallback: number): number => {
-    const explicit = numberFromState(state, sampleKey(suffix), Number.NaN);
-    if (Number.isFinite(explicit)) return explicit;
-    return fallback;
-  };
-  source.enabled = slot.enabled;
-  source.assetId = 0;
-  source.level = slot.level * (slot.libraryKey === 'piano' ? ENGINE_TRIMS.piano : 1);
-  source.distance = numberFromSampleState('Distance', source.distance);
-  source.attackSeconds = slot.attackMs / 1000;
-  source.decaySeconds = slot.decayMs / 1000;
-  source.sustain = slot.sustain;
-  source.holdSeconds = slot.holdMs / 1000;
-  source.releaseSeconds = slot.releaseMs / 1000;
-  source.reverbSend = numberFromSampleState('ReverbSend', source.reverbSend);
-  source.delayASend = numberFromSampleState('DelayASend', source.delayASend);
-  source.delayBSend = numberFromSampleState('DelayBSend', source.delayBSend);
-  source.granularSend = numberFromState(state, `granular${slotId === 'sample1' ? 'Sample1' : 'Sample2'}Send`, source.granularSend);
-  source.degradeSend = numberFromState(state, `degrade${slotId === 'sample1' ? 'Sample1' : 'Sample2'}Send`, source.degradeSend);
-  source.diffuseSend = numberFromSampleState('DiffuseSend', source.diffuseSend);
-  source.postLpfHz = numberFromSampleState('PostLPF', source.postLpfHz);
-  source.stereoWidth = numberFromSampleState('StereoWidth', source.stereoWidth);
-  source.presetId = sourcePresetId('sample', 'default', 'default');
-}
-
 function assignSourcePresetEndpoints(source: ProductSourceSnapshot, sourceFamily: 'pad' | 'lead', morph: number, keyA: unknown, keyB: unknown, fallbackKey: string): void {
   const presetA = sourcePresetId(sourceFamily, keyA, fallbackKey), presetB = sourcePresetId(sourceFamily, keyB, fallbackKey);
   source.sourcePresetAId = presetA; source.sourcePresetBId = presetB; source.morph = clamp(morph, 0, 1);
@@ -483,7 +448,7 @@ function sourceFromState(
       Object.assign(source, exactDrumPatchFromState(state));
       break;
     case CORE_PRODUCT_SOURCE_IDS.sample1:
-      assignSampleSlotSource(source, 'sample1', state);
+      assignSampleSlotSourceSnapshot(source, 'sample1', state);
       break;
     case CORE_PRODUCT_SOURCE_IDS.soundscape:
       {
@@ -501,7 +466,7 @@ function sourceFromState(
       }
       break;
     case CORE_PRODUCT_SOURCE_IDS.sample2:
-      assignSampleSlotSource(source, 'sample2', state);
+      assignSampleSlotSourceSnapshot(source, 'sample2', state);
       break;
     default:
       break;
@@ -789,6 +754,19 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
     morphPercent: journey.morphPhase * 100,
   });
   const harmonyFrame = harmonyControl.resolvedHarmonyFrame;
+  const schedulerHarmony = createSchedulerHarmonyState(sliderState as unknown as SliderState);
+  const harmonyClockSource = sliderState?.harmonyClockSource ?? 'globalPhrase';
+  const progressionClockSource = sliderState?.chordProgressionClockSource === 'harmony'
+    ? harmonyClockSource
+    : sliderState?.chordProgressionClockSource ?? harmonyClockSource;
+  const snapshotWallSeconds = numberFromState(sliderState, CORE_PRODUCT_SNAPSHOT_WALL_SEC_STATE_KEY, 0);
+  const nextHarmonyPhraseIndex = harmonyClockSource === 'localBeat' || harmonyClockSource === 'localPhrase'
+    ? 1
+    : Math.floor(snapshotWallSeconds / Math.max(0.001, transport.phraseSeconds)) + 1;
+  const progressionSeconds = progressionPhraseSeconds(sliderState as unknown as SliderState);
+  const nextProgressionPhraseIndex = progressionClockSource === 'localBeat' || progressionClockSource === 'localPhrase'
+    ? 1
+    : Math.floor(snapshotWallSeconds / Math.max(0.001, progressionSeconds)) + 1;
   const granularEnabled =
     booleanFromState(sliderState, 'granularEnabled', false) ||
     numberFromState(sliderState, 'granularDegradeSend', 0) > 0.0001;
@@ -878,6 +856,44 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       nextNotePoolMidi: fixedHarmonyPool(harmonyFrame.nextNotePool),
       nextSource: harmonyFrame.nextSource ? HARMONY_SOURCE_IDS[harmonyFrame.nextSource] : -1,
       nextStepIndex: harmonyFrame.nextStepIndex ?? -1,
+      chordIntervalSeconds: harmonyChordIntervalSeconds(sliderState as unknown as SliderState),
+      seedMaterial: harmonySeedMaterialFromState(sliderState),
+      nextPhraseIndex: nextHarmonyPhraseIndex,
+      nextProgressionPhraseIndex,
+      phraseLengthSeconds: transport.phraseSeconds,
+      progressionPhraseSeconds: progressionSeconds,
+      voicingSpread: clamp(numberFromState(sliderState, 'voicingSpread', 0.5), 0, 1),
+      detuneCents: clamp(numberFromState(sliderState, 'detune', 8), 0, 100),
+      scaleMode: sliderState?.scaleMode === 'manual' ? 1 : 0,
+      phrasesUntilChange: schedulerHarmony.phrasesUntilChange,
+      currentDegree: schedulerHarmony.currentDegree,
+      progressionEnabled: schedulerHarmony.progression.enabled,
+      progressionPattern: [...schedulerHarmony.progression.pattern],
+      progressionStepEnabledMask: schedulerHarmony.progression.stepEnabled.reduce(
+        (mask, enabled, index) => enabled && index < 8 ? mask | (1 << index) : mask,
+        0,
+      ),
+      progressionSteps: Math.min(8, schedulerHarmony.progression.stepEnabled.length),
+      progressionStep: schedulerHarmony.progression.step,
+      progressionPhraseMultiplier: schedulerHarmony.progression.phraseMultiplier,
+      progressionPhraseCounter: schedulerHarmony.progression.phraseCounter,
+      tensionArcType: schedulerHarmony.tensionArc.type === 'building'
+        ? 1
+        : schedulerHarmony.tensionArc.type === 'resolving'
+          ? 2
+          : 0,
+      tensionArcPhrasesRemaining: schedulerHarmony.tensionArc.phrasesRemaining,
+      cofEnabled: schedulerHarmony.cof.enabled,
+      cofCurrentStep: schedulerHarmony.cof.currentStep,
+      cofPhraseCounter: schedulerHarmony.cof.phraseCounter,
+      cofHomeRoot: schedulerHarmony.cof.homeRoot,
+      cofDriftRate: clamp(numberFromState(sliderState, 'cofDriftRate', 2), 1, 8),
+      cofDriftDirection: sliderState?.cofDriftDirection === 'ccw'
+        ? 1
+        : sliderState?.cofDriftDirection === 'random'
+          ? 2
+          : 0,
+      cofDriftRange: clamp(numberFromState(sliderState, 'cofDriftRange', 3), 1, 6),
     },
     sources,
     synthLanes,
@@ -1206,6 +1222,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       moduleParamCount: soundscapePayload.moduleParamCount,
       moduleParams: soundscapePayload.moduleParams,
     },
+    arrangement: coreProductArrangementSnapshotFromState(sliderState),
   };
 }
 

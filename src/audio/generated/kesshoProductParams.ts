@@ -595,7 +595,14 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   RngSeed: 600,
   RngState: 601,
   EvolutionAmount: 700,
-  EvolutionState: 701
+  EvolutionState: 701,
+  SequencerChainEnabled: 1205,
+  SequencerChainEntryCount: 1206,
+  SequencerChainEntryLane: 1207,
+  SequencerChainEntryDurationSeconds: 1208,
+  SequencerEvolveRuntimeConfig: 1209,
+  SequencerEvolveRuntimeSeedLow: 1210,
+  SequencerEvolveRuntimeSeedHigh: 1211
 } as const);
 
 export const KESSHO_PRODUCT_PARAMS = Object.freeze([
@@ -5230,6 +5237,58 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "path": "evolution.state",
     "type": "uint",
     "id": 701
+  },
+  {
+    "name": "SequencerChainEnabled",
+    "path": "sequencers.*.chain.enabled",
+    "type": "bool",
+    "id": 1205
+  },
+  {
+    "name": "SequencerChainEntryCount",
+    "path": "sequencers.*.chain.entryCount",
+    "type": "uint",
+    "id": 1206,
+    "min": 0,
+    "max": 16
+  },
+  {
+    "name": "SequencerChainEntryLane",
+    "path": "sequencers.*.chain.entries.*.laneIndex",
+    "type": "uint",
+    "id": 1207,
+    "min": 0,
+    "max": 5
+  },
+  {
+    "name": "SequencerChainEntryDurationSeconds",
+    "path": "sequencers.*.chain.entries.*.durationSeconds",
+    "type": "float",
+    "id": 1208,
+    "min": 0.001,
+    "max": 4096
+  },
+  {
+    "name": "SequencerEvolveRuntimeConfig",
+    "path": "sequencers.*.lanes.*.evolve.runtimeConfig",
+    "type": "uint",
+    "id": 1209
+  },
+  {
+    "name": "SequencerEvolveRuntimeSeedLow",
+    "path": "sequencers.*.lanes.*.evolve.seedLow",
+    "type": "uint",
+    "id": 1210,
+    "min": 0,
+    "max": 65535
+  },
+  {
+    "name": "SequencerEvolveRuntimeSeedHigh",
+    "path": "sequencers.*.lanes.*.evolve.seedHigh",
+    "type": "uint",
+    "id": 1211,
+    "min": 0,
+    "max": 65535
   }
 ] as const);
 export type KesshoProductParamName = keyof typeof KESSHO_PRODUCT_PARAM_IDS;

@@ -14,6 +14,32 @@ Primary goals:
 
 Native Apple audio routing is intentionally last. The current Apple apps use the same WebAudio/WASM Product Core path as the browser, so phases 0-9 benefit all three current products. Native routing is not required to implement or measure those phases.
 
+## Implementation Status (2026-07-16)
+
+The shared Product Core implementation work for phases 0-8 is complete. The software milestone is green for Product Core; physical iPhone evidence is intentionally deferred to the final acceptance checkpoint.
+
+| Phase | Status | Evidence summary |
+| --- | --- | --- |
+| 0 | Software complete; device baselines pending | Evidence schemas, recorders, validators, CPU reports, and memory reports are implemented. Required physical iPhone baselines remain part of phase 9 acceptance. |
+| 1 | Complete | The adapter worklet is authoritative and generated output is deterministic. |
+| 2 | Complete | Telemetry and meters are demand-driven; normal rendering performs no full telemetry scan. |
+| 3 | Complete | Stem capture and metering are opt-in and disabled for normal stereo playback. |
+| 4 | Complete | Asset release is deferred until Product Core acknowledges that no active voice uses the allocation. |
+| 5 | Complete | Mobile asset admission, serialized decoding, transfer ownership, cache take/release, allocation accounting, and explicit background asset closure are bounded. Required prediction is uncapped unless a caller explicitly requests a cap. |
+| 6 | Complete in software | Browser audio-session ownership, gesture-preserving carrier activation, interruption handling, and native-shell exclusion pass automated checks. |
+| 7 | Complete | Hidden UI/diagnostic scheduling is suppressed while Product Core audio rendering continues. Journey and host morph animation pause without hidden polling and resume from visibility transitions. |
+| 8 | Complete | Arrangement, harmony, chord, lead, sequencer-chain, and scheduled-evolve timing are Product Core-owned and advance from sample frames. The retired wall-clock arrangement implementation lives only at `src/audio/reference/CoreProductArrangementSchedulerReference.ts` for development parity; production uses timer-free host projections/configuration bridges. |
+| 9 | Pending final checkpoint | Run the physical matrix on iPhone 11 and a current iPhone only after all software work is frozen. |
+| 10 | Not started | Must remain blocked until phase 9 passes. |
+
+Latest Product Core CPU repeatability evidence: disabled effects `4.85700%` median mean with `0.450%` spread, active effects `8.09904%` median mean with `1.344%` spread, and zero missed render quanta across all three runs. The sampler loop-boundary stress case measured `4.33535%` mean / `4.71563%` peak with zero missed quanta.
+
+Current validation scope is Product Core. Reference `web-ts` runtime cases are not part of this milestone's remaining work; deterministic offline reference fixtures may still be used to prove Product Core output and event parity.
+
+The current requirement-to-evidence audit is recorded in `docs/reports/shared-cpu-mobile-background-software-audit-latest.md`.
+
+The final code audit also closed three narrow gaps: hidden Morph/Journey polling, false-ready or incomplete background asset closure (including both Piano variants at MIDI 37), and host/telemetry-driven sequencer chain/evolve cadence. Focused regressions cover only those failures.
+
 ## Code-Validated Starting State
 
 | Area | Current source behavior | Consequence |
@@ -147,6 +173,7 @@ Add `hostDecodedBytes` and `inFlightDecodedBytes` to runtime diagnostics. Keep o
 npm run type-check
 npm run core:product:asset-manifest
 npm run core:product:cpu
+npm run core:product:cpu-repeatability
 npm run core:product:sampler-cpu
 npm run core:product:background-audio
 ```
@@ -796,7 +823,9 @@ node scripts/check-generated-files-clean.mjs
 npm run type-check
 npm run core:product:ci:prereqs
 npm run core:product:cpu-scenarios
+npm run core:product:cpu-repeatability
 npm run core:product:background-audio
+npm run core:product:mobile-web-evidence:acceptance
 npm run build
 ```
 

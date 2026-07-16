@@ -645,6 +645,34 @@ void KesshoProductEngine::clearSequencerEvolveHome(LaneState& lane) {
   lane.evolve_home = {};
 }
 
+void KesshoProductEngine::applyScheduledSequencerEvolution(
+    LaneState& lane,
+    uint32_t target_id,
+    uint32_t lane_index,
+    uint64_t cycle) {
+  LaneEvolveRuntimeConfig& runtime = lane.evolve_runtime;
+  if (!runtime.enabled || runtime.intensity <= 0.0f || runtime.flags == 0u) return;
+  if (!runtime.initialized) {
+    runtime.initialized = true;
+    runtime.last_cycle = cycle;
+    return;
+  }
+  if (cycle <= runtime.last_cycle) return;
+  runtime.last_cycle = cycle;
+  if (cycle % std::max<uint32_t>(1u, runtime.every_cycles) != 0u) return;
+
+  KesshoProductEvent event{};
+  event.target_id = static_cast<uint16_t>(target_id);
+  event.index = static_cast<uint16_t>(lane_index);
+  event.param_id = runtime.seed;
+  event.value = runtime.intensity;
+  event.value2 = static_cast<float>(runtime.seed);
+  event.value3 = static_cast<float>(runtime.write_offset);
+  event.value4 = static_cast<float>(cycle);
+  event.flags = runtime.flags;
+  applyParityEvolveSequencerLaneEvent(event);
+}
+
 void KesshoProductEngine::applyParityEvolveSequencerLaneEvent(const KesshoProductEvent& event) {
   uint32_t lane_count = 0u;
   LaneState* lanes = sequencerLanesForEvent(event, lane_count);

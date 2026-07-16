@@ -1,6 +1,6 @@
 {
   "name": "kessho-product",
-  "version": 12,
+  "version": 23,
   "groups": [
     "transport",
     "harmony",
@@ -26,6 +26,7 @@
     "assets",
     "rng",
     "evolution",
+    "arrangement",
     "telemetry"
   ],
   "sourceIds": [

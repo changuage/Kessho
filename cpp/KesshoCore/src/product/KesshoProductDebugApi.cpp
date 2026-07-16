@@ -1,18 +1,12 @@
 #include "KesshoProductEngineInternal.h"
-
 extern "C" {
 
 int32_t kessho_product_debug_render_events(
     KesshoProductEngine* engine,
     KesshoSequencerEvent* out_events,
-    uint32_t max_event_count,
-    uint32_t frames) {
-  if (engine == nullptr) {
-    return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
-  }
-  if (out_events == nullptr && max_event_count > 0u) {
-    return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
-  }
+    uint32_t max_event_count, uint32_t frames) {
+  if (engine == nullptr) return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
+  if (out_events == nullptr && max_event_count > 0u) return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
   engine->advanceModulationRanges(frames);
   engine->sortControlEvents();
   uint32_t control_index = 0;
@@ -28,11 +22,10 @@ int32_t kessho_product_debug_render_events(
     }
     engine->applyPendingTransportTransition();
     engine->applyPendingSequencerAudibilityTransitions();
+    engine->advanceHarmonyClock();
     uint32_t control_segment_end = frames;
     if (control_index < engine->control_event_count) {
-      control_segment_end = std::min(
-          control_segment_end,
-          engine->control_events[control_index].event.sample_offset);
+      control_segment_end = std::min(control_segment_end, engine->control_events[control_index].event.sample_offset);
     }
     if (engine->transport.transition_pending &&
         engine->transport.pending_apply_frame > engine->transport.sample_frame) {

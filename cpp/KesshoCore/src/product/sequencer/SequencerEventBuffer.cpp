@@ -44,6 +44,7 @@
   lane.sequencer_start_sample_frame = 0;
   lane.sequencer_runtime_initialized = false;
   lane.sequencer_join_pending = wait_for_join_boundary;
+  lane.evolve_runtime.initialized = false;
   lane.pending_unmute_quantization = 0u;
   lane.anchor_walker.cursor_degree = 0;
   lane.anchor_walker.cursor_midi = lane.anchor_walker.manual_anchor_midi;

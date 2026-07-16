@@ -317,7 +317,8 @@
           "tokens": [
             "padDiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)]",
             "lead1DiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)]",
-            "pianoDiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)]"
+            "sample1DiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)]",
+            "sample2DiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)]"
           ]
         },
         {
@@ -1105,16 +1106,16 @@
         {
           "file": "src/audio/product/host/CoreProductAssetRegistrar.ts",
           "tokens": [
-            "ensurePianoAssetForMidi(midiNote: number, variant",
-            "ensurePianoAssetForNote",
-            "choosePianoSampleVariant",
-            "getCoreProductPianoAssetIdForMidiVariant"
+            "ensureSampleSlotAssetForNote(",
+            "sampleDescriptorForSlotNote(",
+            "predictedSampleAssetsForState(",
+            "this.sampleAssetCache.getOrLoad(descriptor"
           ]
         },
         {
           "file": "src/audio/product/host/CoreProductManualAuditionBridge.ts",
           "tokens": [
-            "context.assetRegistrar.ensurePianoAssetForNote(manualNote.midi, manualNote.velocity)"
+            "context.assetRegistrar.ensureSampleSlotAssetForNote(sampleSlotId, manualNote.midi, manualNote.velocity)"
           ]
         },
         {

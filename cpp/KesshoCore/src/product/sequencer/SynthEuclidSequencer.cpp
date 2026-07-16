@@ -1692,7 +1692,7 @@ class ScopedSequencerAudibilityGate {
   const bool macro_evolution_active = evolutionDepth() > 0.000001f;
   for (uint32_t lane_index = 0; lane_index < lane_count; ++lane_index) {
     LaneState& lane = lanes[lane_index];
-    ScopedSequencerAudibilityGate audibility_gate(out, lane.muted);
+    ScopedSequencerAudibilityGate audibility_gate(out, lane.muted || lane.chain_muted);
     if (lane.sequencer_mode == kSequencerModeAnchorWalker) {
       if (!generateAnchorWalkerLaneEvents(*this, lane, lane_index, frames, out)) {
         return;
@@ -1759,6 +1759,17 @@ class ScopedSequencerAudibilityGate {
         continue;
       }
       const uint32_t step_id = static_cast<uint32_t>(relative_step % static_cast<int64_t>(lane.step_count));
+      if (step_id == 0u && relative_step > 0 && !lane.muted && !lane.chain_muted) {
+        const uint64_t boundary_sample = roundedSampleFrame(
+            sequencerAnchorSample(lane, relative_step, samples_per_step, swing_samples));
+        if (boundary_sample >= block_start && boundary_sample < block_end) {
+          applyScheduledSequencerEvolution(
+              lane,
+              lanes == drum_lanes ? KESSHO_PRODUCT_SEQUENCER_DRUM : KESSHO_PRODUCT_SEQUENCER_SYNTH,
+              lane_index,
+              static_cast<uint64_t>(relative_step) / std::max<uint32_t>(1u, lane.step_count));
+        }
+      }
       if (!manualMaskHit(lane, step_id)) {
         continue;
       }
@@ -2142,11 +2153,41 @@ class ScopedSequencerAudibilityGate {
   }
   generateLaneEvents(synth_lanes, synth_lane_count, frames, sequencer_events);
   generateLaneEvents(drum_lanes, drum_lane_count, frames, sequencer_events);
+  generateArrangementEvents(frames, sequencer_events);
   sequencer_events.sortByOffset();
 }
 
   void KesshoProductEngine::triggerSequencerEvent(const KesshoSequencerEvent& event) {
   if (!sequencerTargetSourceEnabled(*this, event.source_id)) {
+    return;
+  }
+  // Arrangement notes used to enter Product Core through the host manual-note
+  // path. Preserve those trigger semantics after moving their clock into the
+  // render thread: source envelope ownership, unscaled velocity, and the
+  // manual-note seed stream are all audible parts of the reference output.
+  if (
+      event.event_kind == static_cast<uint16_t>(KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON) &&
+      event.lane_id == 0xfffeu) {
+    if (event.source_id >= 1u && event.source_id <= kSourceCount) {
+      SourceState& source = sources[event.source_id - 1u];
+      if (event.morph >= 0.0f) source.morph = clampFloat(event.morph, 0.0f, 1.0f);
+      if (event.distance >= 0.0f) source.distance = clampFloat(event.distance, 0.0f, 1.0f);
+    }
+    triggerVoice(
+        event.source_id,
+        event.midi_note,
+        event.velocity,
+        manualNoteHoldSeconds(event.source_id, event.hold_seconds),
+        -1.0f,
+        -1.0f,
+        -1.0f,
+        0u,
+        0u,
+        false,
+        0.0f,
+        1.0e10f,
+        1.0e10f,
+        padVoiceIndexFromSequencerEventFlags(event.flags));
     return;
   }
   const uint32_t seed = hashU32(

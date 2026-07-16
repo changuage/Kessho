@@ -217,6 +217,7 @@ async function captureCase(page, caseDef) {
       statePatch: caseDef.statePatch,
       manualNotes: caseDef.manualNotes,
       manualWarmup: false,
+      captureStems: caseDef.captureStems === true,
     },
   );
   await page.evaluate(() => window.__kesshoSonicParity?.teardown());
@@ -959,6 +960,7 @@ try {
         { source: 'pad1', midi: 60, velocity: 0.8, durationMs: 1600 },
         { source: 'piano', midi: 64, velocity: 0.85, durationMs: 1200 },
       ],
+      captureStems: true,
       baseUrl: vite.url,
     },
     {
@@ -967,6 +969,7 @@ try {
       settleMs: 800,
       statePatch: stringWavesArrangementPatch(),
       manualNotes: [{ source: 'pad1', midi: 60, velocity: 0.8, durationMs: 20000 }],
+      captureStems: true,
       baseUrl: vite.url,
     },
   ];

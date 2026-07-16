@@ -116,6 +116,19 @@ bool nearlyEqual(float left, float right) {
   return kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS;
 }
 
+  bool KesshoProductEngine::assetHasActiveVoice(uint32_t asset_id) const {
+  const uint32_t slot = findAssetSlot(asset_id);
+  if (slot == kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS) {
+    return false;
+  }
+  for (const Voice& voice : voices) {
+    if (voice.active && voice.sample_voice && voice.asset_slot == slot) {
+      return true;
+    }
+  }
+  return false;
+}
+
   bool KesshoProductEngine::pianoAssetRootMidi(uint32_t asset_id, float& out_midi, bool* out_short_variant) const {
   return decodePianoAssetRootMidi(asset_id, kPianoAssetIdBase, false, out_midi, out_short_variant) ||
       decodePianoAssetRootMidi(asset_id, kPianoShortAssetIdBase, true, out_midi, out_short_variant);

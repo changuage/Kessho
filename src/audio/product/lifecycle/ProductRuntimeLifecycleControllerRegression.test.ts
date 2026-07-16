@@ -148,7 +148,10 @@ function createDelegate(overrides: Partial<ProductLifecycleDelegate> = {}) {
       suspend: async () => { calls.push('suspend'); },
     } as never,
     assetRegistrar: {
-      ensureDefaultAssetsForState: async () => { calls.push('ensureAssets'); },
+      ensureDefaultAssetsForState: async () => {
+        calls.push('ensureAssets');
+        return { status: 'ready' };
+      },
       clear: () => { calls.push('clearAssets'); },
     } as never,
     arrangementBridge: {

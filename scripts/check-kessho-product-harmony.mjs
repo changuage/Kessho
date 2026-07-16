@@ -48,6 +48,8 @@ requireTokens('cpp/KesshoCore/tests/ProductHarmonyTests.cpp', [
   'journey state event should alter generated sequencer event values',
   'manual harmony intent should be ignored during morph',
   'manual harmony pool should feed sequencer voicing',
+  'requireTypeScriptHarmonySequenceParity',
+  '60-minute harmony event sequence diverged from deterministic TypeScript reference',
 ]);
 
 requireTokens('cpp/KesshoCore/src/product/music/ScaleEngine.cpp', [
@@ -81,7 +83,7 @@ requireTokens('src/audio/coreProductSnapshot.ts', [
   'notePoolMidi: fixedHarmonyPool',
 ]);
 
-requireTokens('src/audio/coreProductArrangementScheduler.ts', [
+requireTokens('src/audio/reference/CoreProductArrangementSchedulerReference.ts', [
   'updateHarmonyState(',
   'pickChordWeightedNote(this.rng, availableNotes',
   'createCoreProductManualNoteEvent',

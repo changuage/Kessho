@@ -1,9 +1,11 @@
+// Authoritative Product worklet behavior source. Generated bindings are written only to public/.
 const EVENT_BYTES = 40;
 const GENERATED_CAPTURE_EVENT_BYTES = 64;
 const GENERATED_CAPTURE_EVENT_CAPACITY = 256;
 const TELEMETRY_BYTES = 15168;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
-const EXPECTED_PRODUCT_SCHEMA_HASH = 0xae226b36;
+const EXPECTED_PRODUCT_SCHEMA_HASH = 0xf446dbcc;
+const PRODUCT_ERROR_ASSET_IN_USE = -16;
 const SEQUENCER_UI_STATE_LANES = 16;
 const SEQUENCER_UI_STATE_STEPS = 64;
 const SEQUENCER_UI_LANE_BYTES = 3296;
@@ -63,6 +65,7 @@ const TELEMETRY_MODULATION_DEBUG_OFFSET = 1652;
 const TELEMETRY_MODULATION_DEBUG_LAST_TRIGGER_FRAME_OFFSET = 7032;
 const STEM_PEAK_PROBE_INTERVAL_BLOCKS = 64;
 const GRAPH_TAP_IDLE_DISABLE_SECONDS = 0.05;
+const ASSET_RELEASE_RETRY_SECONDS = 0.05;
 const GRANULAR_WAVEFORM_BINS = 512;
 const GRANULAR_WAVEFORM_BYTES = GRANULAR_WAVEFORM_BINS * Float32Array.BYTES_PER_ELEMENT;
 const GRANULAR_WAVEFORM_SKIP = 15;
@@ -127,9 +130,15 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.pendingSnapshots = [];
     this.renderedFrameCount = 0;
     this.assetAllocations = new Map();
+    this.pendingAssetReleases = new Set();
     this.assetDecodedBytes = 0;
     this.assetAllocationBytes = 0;
     this.frames = 128;
+    this.assetReleaseRetryCountdownBlocks = 0;
+    this.assetReleaseRetryIntervalBlocks = Math.max(
+      1,
+      Math.ceil((sampleRate * ASSET_RELEASE_RETRY_SECONDS) / this.frames),
+    );
     this.lastOutputPeak = 0;
     this.outputPeakWindow = 0;
     this.lastStemPeaks = new Array(STEM_PEAK_COUNT).fill(0);
@@ -137,6 +146,12 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.stemPeakProbeCountdown = 0;
     this.lastGraphTapPeaks = new Array(PRODUCT_GRAPH_TAP_COUNT).fill(0);
     this.graphTapCaptures = new Map();
+    this.hostMeterDemand = false;
+    this.coreMeterDemand = null;
+    this.hostStemDemand = false;
+    this.coreStemsEnabled = null;
+    this.hostDebugVoiceSpawnDemand = false;
+    this.coreDebugVoiceSpawnDemand = null;
     this.graphCaptureAllowed = options.processorOptions?.graphCaptureAllowed === true;
     this.coreGraphTapsEnabled = null;
     this.graphTapDisableCountdownBlocks = 0;
@@ -144,6 +159,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.dawOutputClearMarks = new Uint8Array(DAW_OUTPUT_MAX_CHANNELS);
     this.dawOutputClearToken = 1;
     this.perfEnabled = false;
+    this.perfRequested = false;
+    this.hostHidden = false;
     this.perfTotalMs = 0;
     this.perfCount = 0;
     this.perfPeakMs = 0;
@@ -241,9 +258,13 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         getStem: this.resolve('kessho_product_get_stem'),
         getGraphTap: this.resolve('kessho_product_get_graph_tap'),
         setGraphTapsEnabled: this.resolve('kessho_product_set_graph_taps_enabled'),
+        setStemsEnabled: this.resolve('kessho_product_set_stems_enabled'),
         loadSnapshot: this.resolve('kessho_product_load_snapshot_v2'),
         enqueueEvent: this.resolve('kessho_product_enqueue_event'),
         copyTelemetry: this.resolve('kessho_product_copy_telemetry'),
+        refreshTelemetry: this.resolve('kessho_product_refresh_telemetry'),
+        setMeterDemand: this.resolve('kessho_product_set_meter_demand'),
+        setDebugVoiceSpawnDemand: this.resolve('kessho_product_set_debug_voice_spawn_demand'),
         drainGeneratedSequencerCaptureEvents: this.resolve('kessho_product_drain_generated_sequencer_capture_events'),
         copyGranularWaveform: this.resolve('kessho_product_copy_granular_waveform'),
         copySequencerUiState: this.resolve('kessho_product_copy_sequencer_ui_state'),
@@ -278,6 +299,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       }
       this.assertSchemaHash('WASM telemetry', this.view.getUint32(this.telemetryPtr, true));
       this.setCoreGraphTapsEnabled(false);
+      this.setCoreStemsEnabled(false);
       this.ready = true;
       this.port.postMessage({ type: 'ready' });
     } catch (error) {
@@ -288,7 +310,18 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   handleMessage(message) {
     if (!message) return;
     if (message.type === 'enablePerf') {
-      this.setPerfEnabled(Boolean(message.enabled));
+      this.perfRequested = Boolean(message.enabled);
+      this.setPerfEnabled(this.perfRequested && !this.hostHidden);
+      return;
+    }
+    if (message.type === 'host-visibility') {
+      this.hostHidden = Boolean(message.hidden);
+      this.setPerfEnabled(this.perfRequested && !this.hostHidden);
+      if (this.ready) {
+        this.syncMeterDemand();
+        this.syncStemDemand();
+        this.syncDebugVoiceSpawnDemand();
+      }
       return;
     }
     if (!this.ready) return;
@@ -320,15 +353,39 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         return;
       }
       if (message.type === 'register-asset') {
-        this.registerAsset(message);
+        try {
+          this.registerAsset(message);
+        } catch (error) {
+          this.port.postMessage({
+            type: 'asset-registration-failed',
+            assetId: message.assetId,
+            result: 0,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
         return;
       }
       if (message.type === 'unregister-asset') {
-        this.unregisterAsset(message.assetId);
+        this.requestAssetRelease(message.assetId);
         return;
       }
       if (message.type === 'request-telemetry') {
         this.postTelemetry();
+        return;
+      }
+      if (message.type === 'meter-demand') {
+        this.hostMeterDemand = Boolean(message.enabled);
+        this.syncMeterDemand();
+        return;
+      }
+      if (message.type === 'stem-demand') {
+        this.hostStemDemand = Boolean(message.enabled);
+        this.syncStemDemand();
+        return;
+      }
+      if (message.type === 'debug-voice-spawn-demand') {
+        this.hostDebugVoiceSpawnDemand = Boolean(message.enabled);
+        this.syncDebugVoiceSpawnDemand();
         return;
       }
       if (message.type === 'request-visual-telemetry') {
@@ -433,6 +490,48 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.coreGraphTapsEnabled = enabled;
   }
 
+  setCoreStemsEnabled(enabled) {
+    if (!this.api?.setStemsEnabled || !this.engine) return;
+    if (this.coreStemsEnabled === enabled) return;
+    const result = this.api.setStemsEnabled(this.engine, enabled ? 1 : 0);
+    if (result !== 1) {
+      throw new Error(`Kessho Product Core stem mode update failed: ${result}`);
+    }
+    this.coreStemsEnabled = enabled;
+  }
+
+  syncStemDemand() {
+    const enabled = this.hostStemDemand && !this.hostHidden;
+    this.setCoreStemsEnabled(enabled);
+    if (!enabled) {
+      this.lastStemPeaks.fill(0);
+      this.resetStemPeakWindow();
+      this.stemPeakProbeCountdown = 0;
+    }
+  }
+
+  syncMeterDemand() {
+    if (!this.api?.setMeterDemand || !this.engine) return;
+    const enabled = (this.hostMeterDemand && !this.hostHidden) || this.graphTapCaptures.size > 0;
+    if (this.coreMeterDemand === enabled) return;
+    const result = this.api.setMeterDemand(this.engine, enabled ? 1 : 0);
+    if (result !== 1) {
+      throw new Error(`Kessho Product Core meter demand update failed: ${result}`);
+    }
+    this.coreMeterDemand = enabled;
+  }
+
+  syncDebugVoiceSpawnDemand() {
+    if (!this.api?.setDebugVoiceSpawnDemand || !this.engine) return;
+    const enabled = this.hostDebugVoiceSpawnDemand && !this.hostHidden;
+    if (this.coreDebugVoiceSpawnDemand === enabled) return;
+    const result = this.api.setDebugVoiceSpawnDemand(this.engine, enabled ? 1 : 0);
+    if (result !== 1) {
+      throw new Error(`Kessho Product Core debug voice-spawn demand update failed: ${result}`);
+    }
+    this.coreDebugVoiceSpawnDemand = enabled;
+  }
+
   scheduleGraphTapIdleDisable() {
     this.graphTapDisableCountdownBlocks = Math.max(
       1,
@@ -529,6 +628,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       rightChunk: new Float32Array(chunkFrames),
       writeIndex: 0,
     });
+    this.syncMeterDemand();
   }
 
   emitGraphTapCaptureChunk(capture, frameCount) {
@@ -583,6 +683,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       }
       if (stopped) {
         this.graphTapCaptures.delete(tapId);
+        this.syncMeterDemand();
         if (this.graphTapCaptures.size === 0) {
           this.scheduleGraphTapIdleDisable();
         }
@@ -996,13 +1097,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     if (!Number.isInteger(message.flags) || message.flags < 0) {
       throw new Error(`Kessho Product Core asset ${message.assetId} missing required flags`);
     }
-    const old = this.assetAllocations.get(message.assetId);
-    if (old) {
-      this.api.unregisterAsset(this.engine, message.assetId);
-      old.ptrs.forEach((ptr) => this.api.free(ptr));
-      this.api.free(old.ptrArray);
-      this.assetDecodedBytes -= old.decodedBytes || 0;
-      this.assetAllocationBytes -= old.allocationBytes || 0;
+    if (this.assetAllocations.has(message.assetId) || this.pendingAssetReleases.has(message.assetId)) {
+      throw new Error(`Kessho Product Core asset ${message.assetId} must finish release before re-registration`);
     }
     let decodedBytes = 0;
     const ptrs = channels.slice(0, 2).map((channel) => {
@@ -1046,20 +1142,57 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       this.api.free(ptrArray);
       throw new Error(`Kessho Product Core asset registration failed for asset ${message.assetId}: ${result}`);
     }
+    this.port.postMessage({ type: 'asset-registration-complete', assetId: message.assetId });
   }
 
-  unregisterAsset(assetId) {
+  freeAssetAllocation(assetId) {
+    const allocation = this.assetAllocations.get(assetId);
+    if (!allocation) return;
+    allocation.ptrs.forEach((ptr) => this.api.free(ptr));
+    this.api.free(allocation.ptrArray);
+    this.assetAllocations.delete(assetId);
+    this.assetDecodedBytes -= allocation.decodedBytes || 0;
+    this.assetAllocationBytes -= allocation.allocationBytes || 0;
+  }
+
+  requestAssetRelease(assetId) {
     if (!Number.isInteger(assetId) || assetId <= 0) {
       throw new Error('Kessho Product Core asset unregistration missing required assetId');
     }
-    const old = this.assetAllocations.get(assetId);
-    if (!old) return;
-    this.api.unregisterAsset(this.engine, assetId);
-    old.ptrs.forEach((ptr) => this.api.free(ptr));
-    this.api.free(old.ptrArray);
-    this.assetAllocations.delete(assetId);
-    this.assetDecodedBytes -= old.decodedBytes || 0;
-    this.assetAllocationBytes -= old.allocationBytes || 0;
+    if (!this.assetAllocations.has(assetId)) {
+      this.port.postMessage({ type: 'asset-release-complete', assetId });
+      return;
+    }
+    if (this.pendingAssetReleases.size === 0) {
+      this.assetReleaseRetryCountdownBlocks = 0;
+    }
+    this.pendingAssetReleases.add(assetId);
+  }
+
+  retryPendingAssetReleases() {
+    if (this.pendingAssetReleases.size === 0) {
+      this.assetReleaseRetryCountdownBlocks = 0;
+      return;
+    }
+    if (this.assetReleaseRetryCountdownBlocks > 0) {
+      this.assetReleaseRetryCountdownBlocks -= 1;
+      return;
+    }
+    this.assetReleaseRetryCountdownBlocks = this.assetReleaseRetryIntervalBlocks - 1;
+    for (const assetId of this.pendingAssetReleases) {
+      const result = this.api.unregisterAsset(this.engine, assetId);
+      if (result === PRODUCT_ERROR_ASSET_IN_USE) continue;
+      this.pendingAssetReleases.delete(assetId);
+      if (result !== 1) {
+        this.port.postMessage({ type: 'asset-release-failed', assetId, result });
+        continue;
+      }
+      this.freeAssetAllocation(assetId);
+      this.port.postMessage({ type: 'asset-release-complete', assetId });
+    }
+    if (this.pendingAssetReleases.size === 0) {
+      this.assetReleaseRetryCountdownBlocks = 0;
+    }
   }
 
   readUint64Number(byteOffset) {
@@ -1332,7 +1465,11 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   }
 
   readTelemetry() {
-    if (!this.telemetryPtr || this.api.copyTelemetry(this.engine, this.telemetryPtr) !== 1) {
+    if (
+      !this.telemetryPtr ||
+      this.api.refreshTelemetry(this.engine) !== 1 ||
+      this.api.copyTelemetry(this.engine, this.telemetryPtr) !== 1
+    ) {
       return null;
     }
     this.flushPerfWindow();
@@ -1785,7 +1922,11 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   }
 
   readVisualTelemetry(includeGranularWaveform = false) {
-    if (!this.telemetryPtr || this.api.copyTelemetry(this.engine, this.telemetryPtr) !== 1) {
+    if (
+      !this.telemetryPtr ||
+      this.api.refreshTelemetry(this.engine) !== 1 ||
+      this.api.copyTelemetry(this.engine, this.telemetryPtr) !== 1
+    ) {
       return null;
     }
     const ptr = this.telemetryPtr;
@@ -1868,6 +2009,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   }
 
   postTelemetry() {
+    if (this.hostHidden) return;
     try {
       const telemetry = this.readTelemetry();
       if (telemetry) {
@@ -1879,6 +2021,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   }
 
   postVisualTelemetry(includeGranularWaveform = false) {
+    if (this.hostHidden) return;
     try {
       const telemetry = this.readVisualTelemetry(includeGranularWaveform);
       if (telemetry) {
@@ -1916,12 +2059,13 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       return true;
     }
     this.api.render(this.engine, this.leftPtr, this.rightPtr, frames);
+    this.retryPendingAssetReleases();
     if (this.heapF32.buffer !== this.exports.memory.buffer) {
       this.refreshViews();
     }
     left.set(this.heapF32.subarray(this.leftPtr >> 2, (this.leftPtr >> 2) + frames));
     right.set(this.heapF32.subarray(this.rightPtr >> 2, (this.rightPtr >> 2) + frames));
-    if (this.shouldSampleStemPeaks()) {
+    if (this.hostStemDemand && this.shouldSampleStemPeaks()) {
       this.sampleOutputPeak(left, right, frames);
       this.sampleStemPeaks(frames);
     }

@@ -23,7 +23,7 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
       const float send_right = send_r[i] * source_gate;
       const float granular_send = granularSendGainForFrame(source_id, source.granular_send, transport.sample_frame + i);
       routeTerminalSample(dynamicsBusForSource(source_id), out_l, out_r, frame, dry_left, dry_right);
-      addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
+      if (captureStems()) addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
       addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
       addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
       addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);
@@ -44,7 +44,7 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
     const float granular_send = granularSendGainForFrame(source_id, source.granular_send, transport.sample_frame + i);
     recordSourceGraphTaps(source_id, frame, source, graph_dry_left, graph_dry_right, dry_left, dry_right, send_left, send_right, granular_send);
     routeTerminalSample(dynamicsBusForSource(source_id), out_l, out_r, frame, dry_left, dry_right);
-    addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
+    if (captureStems()) addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
     addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
     addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
     addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);
@@ -81,7 +81,7 @@ void KesshoProductEngine::mixSourceBuffer(
       const float send_right = send_in_r[i] * send_gain * source_gate;
       const float granular_send = granularSendGainForFrame(source_id, source.granular_send, transport.sample_frame + i);
       routeTerminalSample(dynamicsBusForSource(source_id), out_l, out_r, frame, dry_left, dry_right);
-      addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
+      if (captureStems()) addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
       addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
       addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
       addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);
@@ -102,7 +102,7 @@ void KesshoProductEngine::mixSourceBuffer(
     const float granular_send = granularSendGainForFrame(source_id, source.granular_send, transport.sample_frame + i);
     recordSourceGraphTaps(source_id, frame, source, graph_dry_left, graph_dry_right, dry_left, dry_right, send_left, send_right, granular_send);
     routeTerminalSample(dynamicsBusForSource(source_id), out_l, out_r, frame, dry_left, dry_right);
-    addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
+    if (captureStems()) addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
     addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
     addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
     addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);

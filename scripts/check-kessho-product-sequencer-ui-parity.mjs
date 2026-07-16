@@ -26,7 +26,7 @@ const BASE_SUB_LANE_SPARK_INDEX = Object.freeze({
   nudge: 4,
 });
 const SYNTH_SUB_LANE_SPARK_INDEX = Object.freeze({
-  arp: 0,
+  play: 0,
   pitch: 1,
   expression: 2,
   morph: 3,
@@ -60,8 +60,9 @@ function visibleSubLaneOrder() {
 }
 
 const VISIBLE_SUB_LANE_LABELS = Object.freeze({
-  a: 'arp',
-  arp: 'arp',
+  a: 'play',
+  arp: 'play',
+  play: 'play',
   p: 'pitch',
   pitch: 'pitch',
   e: 'expression',

@@ -142,7 +142,11 @@ double percentile(std::vector<double> values, double percentile_value) {
 
 RenderCpuStats renderCpuStats(const KesshoProductSnapshotV2& snapshot, uint32_t blocks) {
   constexpr uint32_t frames = 128;
-  constexpr uint32_t warmup_blocks = 256;
+  // The disabled-FX path is cheap enough that a short fresh-process run is
+  // dominated by cold code/data pages and CPU frequency ramp. Warm through a
+  // substantial render window before timing so repeated benchmark processes
+  // measure steady render cost rather than process startup effects.
+  constexpr uint32_t warmup_blocks = 4096;
   constexpr uint32_t timed_blocks_per_sample = 5;
   KesshoProductEngine* engine = kessho_product_create(48000.0, frames, 0);
   require(engine != nullptr, "engine create failed");
@@ -208,7 +212,7 @@ void printCpuStats(const char* label, const RenderCpuStats& stats) {
 } // namespace
 
 int main() {
-  constexpr uint32_t blocks = 750;
+  constexpr uint32_t blocks = 3000;
   constexpr uint32_t max_allowed_missed_quantums = 2;
   constexpr double quantum_ms = 128.0 * 1000.0 / 48000.0;
   KesshoProductSnapshotV2 disabled_snapshot = makeSnapshot();

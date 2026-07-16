@@ -162,7 +162,10 @@ function predictSlotAssets(
   const library = registry.find((candidate) => candidate.libraryKey === slot.libraryKey);
   if (!library) return [];
 
-  const maxAssets = Math.max(1, Math.min(128, Math.round(input.maxAssetsPerSlot ?? 96)));
+  const maxAssets = Math.max(
+    1,
+    Math.min(library.samples.length, Math.round(input.maxAssetsPerSlot ?? library.samples.length)),
+  );
   const descriptors = new Map<number, SampleAssetDescriptor>();
   const candidates = collectCandidateMidi(input, slotId, slot, library);
   const velocities = velocityCandidatesForSlot(library, slot);

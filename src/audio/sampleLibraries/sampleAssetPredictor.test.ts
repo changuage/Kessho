@@ -34,6 +34,21 @@ assert.ok(
   'legacy Piano prediction should include short variant',
 );
 
+const backgroundClosurePrediction = predictSampleAssets({
+  state,
+  recentMidiBySlot: new Map(),
+  sequencerLaneRanges: [{ source: 'sample1', minMidi: 37, maxMidi: 37 }],
+  manualPriorityMidi: [],
+});
+assert.ok(
+  backgroundClosurePrediction.some((descriptor) => descriptor.assetId === getCoreProductPianoAssetIdForMidiVariant(37, 'regular')),
+  'uncapped background prediction must include the regular Piano asset required by MIDI 37',
+);
+assert.ok(
+  backgroundClosurePrediction.some((descriptor) => descriptor.assetId === getCoreProductPianoAssetIdForMidiVariant(37, 'short')),
+  'uncapped background prediction must include the short Piano asset required by MIDI 37',
+);
+
 const softStringSpurs = getSampleLibrary('soft-string-spurs');
 assert.ok(softStringSpurs, 'Soft String Spurs sample library should be delivered in the app registry');
 const sample1StringState = writeSampleSlotStateToFlatState('sample1', getDefaultSampleSlotState({

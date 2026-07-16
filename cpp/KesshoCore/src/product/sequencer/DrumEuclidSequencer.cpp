@@ -25,6 +25,13 @@ void armAnchorWalkerGesture(
 
   bool KesshoProductEngine::isSequencerLaneParam(uint32_t param_id) const {
   switch (param_id) {
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_CHAIN_ENABLED_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_CHAIN_ENTRY_COUNT_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_CHAIN_ENTRY_LANE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_CHAIN_ENTRY_DURATION_SECONDS_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_EVOLVE_RUNTIME_CONFIG_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_EVOLVE_RUNTIME_SEED_LOW_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_EVOLVE_RUNTIME_SEED_HIGH_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_CLOCK_MODE_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_ENABLED_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MUTED_ID:
@@ -72,6 +79,13 @@ void armAnchorWalkerGesture(
 }
 
   void KesshoProductEngine::applySequencerLaneParamEvent(const KesshoProductEvent& event) {
+  if (event.param_id == KESSHO_PRODUCT_PARAM_SEQUENCER_CHAIN_ENABLED_ID ||
+      event.param_id == KESSHO_PRODUCT_PARAM_SEQUENCER_CHAIN_ENTRY_COUNT_ID ||
+      event.param_id == KESSHO_PRODUCT_PARAM_SEQUENCER_CHAIN_ENTRY_LANE_ID ||
+      event.param_id == KESSHO_PRODUCT_PARAM_SEQUENCER_CHAIN_ENTRY_DURATION_SECONDS_ID) {
+    applySequencerChainParamEvent(event);
+    return;
+  }
   uint32_t lane_count = 0;
   LaneState* lanes = sequencerLanesForEvent(event, lane_count);
   if (lanes == nullptr) {
@@ -92,6 +106,27 @@ void armAnchorWalkerGesture(
       lane.enabled = enabled;
       break;
     }
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_EVOLVE_RUNTIME_CONFIG_ID:
+      lane.evolve_runtime.enabled = event.value >= 0.5f && event.value2 > 0.0f;
+      lane.evolve_runtime.intensity = clampFloat(event.value2, 0.0f, 1.0f);
+      lane.evolve_runtime.every_cycles = clampU32(
+          static_cast<uint32_t>(std::lround(event.value3)), 1u, 1024u);
+      lane.evolve_runtime.write_offset = event.value4 < 0.0f
+          ? -1
+          : static_cast<int32_t>(std::lround(event.value4));
+      lane.evolve_runtime.flags = event.flags;
+      lane.evolve_runtime.initialized = false;
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_EVOLVE_RUNTIME_SEED_LOW_ID:
+      lane.evolve_runtime.seed = (lane.evolve_runtime.seed & 0xffff0000u) |
+          (static_cast<uint32_t>(std::lround(event.value)) & 0xffffu);
+      lane.evolve_runtime.initialized = false;
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_EVOLVE_RUNTIME_SEED_HIGH_ID:
+      lane.evolve_runtime.seed = (lane.evolve_runtime.seed & 0x0000ffffu) |
+          ((static_cast<uint32_t>(std::lround(event.value)) & 0xffffu) << 16u);
+      lane.evolve_runtime.initialized = false;
+      break;
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MUTED_ID: {
       const bool muted = event.value >= 0.5f;
       lane.pending_unmute_quantization = 0u;

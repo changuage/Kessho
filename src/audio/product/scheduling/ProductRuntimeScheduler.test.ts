@@ -27,29 +27,39 @@ import type { CoreProductTelemetrySnapshot } from '../../coreProductTelemetry';
 }
 
 {
+  let hidden = true;
   const timers: Array<{ callback: () => void; delayMs: number }> = [];
+  const frames: Array<(time: number) => void> = [];
   const scheduler = new ProductRuntimeScheduler({
-    isDocumentHidden: () => true,
+    isDocumentHidden: () => hidden,
     setTimeout: (callback, delayMs) => {
       timers.push({ callback, delayMs });
       return timers.length as unknown as ReturnType<typeof setTimeout>;
     },
-    requestAnimationFrame: () => {
-      throw new Error('hidden scheduler should not request animation frames');
+    requestAnimationFrame: (callback) => {
+      frames.push(callback);
+      return frames.length;
     },
   });
   let flushCount = 0;
-  scheduler.schedule('telemetry-hidden', () => { flushCount += 1; });
+  for (let index = 0; index < 600; index += 1) {
+    scheduler.schedule('telemetry-hidden', () => { flushCount = index + 1; });
+  }
 
-  assert.equal(timers[0]?.delayMs, 1000, 'hidden desktop runtime scheduler should use 1000ms minimum');
-  timers[0]?.callback();
-  assert.equal(flushCount, 1);
+  assert.equal(timers.length, 0, 'ten minutes of hidden dirty bursts must create zero timers');
+  assert.equal(frames.length, 0, 'hidden dirty bursts must create zero animation frames');
+  scheduler.flushNowForTests();
+  assert.equal(flushCount, 0, 'hidden dirty bursts must invoke zero callbacks');
+  hidden = false;
+  scheduler.setDocumentHidden(false);
+  assert.equal(frames.length, 1, 'foreground should schedule one consolidated refresh');
+  frames[0]?.(16);
+  assert.equal(flushCount, 600, 'foreground should publish only the latest channel state');
 }
 
 {
   const timers: Array<{ callback: () => void; delayMs: number }> = [];
   const scheduler = new ProductRuntimeScheduler({
-    isMobile: () => true,
     isDocumentHidden: () => true,
     setTimeout: (callback, delayMs) => {
       timers.push({ callback, delayMs });
@@ -57,7 +67,7 @@ import type { CoreProductTelemetrySnapshot } from '../../coreProductTelemetry';
     },
   });
   scheduler.schedule('telemetry-hidden', () => undefined);
-  assert.equal(timers[0]?.delayMs, 2500, 'mobile hidden runtime scheduler should use a longer delay');
+  assert.equal(timers.length, 0, 'hidden runtime scheduling must not depend on background timer cadence');
 }
 
 {
@@ -118,16 +128,22 @@ import type { CoreProductTelemetrySnapshot } from '../../coreProductTelemetry';
   assert.equal(timers.length, 1, 'sample cache diagnostic bursts should coalesce into one timer');
   assert.equal(timers[0]?.delayMs, 500, 'sample cache diagnostics should publish at a low visible rate');
   timers[0]?.callback();
-  assert.equal(publishes, 2, 'coalesced sample cache publish should run queued subscribers once');
+  assert.equal(publishes, 1, 'coalesced sample cache publish should retain one current callback');
 }
 
 {
+  let hidden = true;
   const timers: Array<{ callback: () => void; delayMs: number }> = [];
+  const frames: Array<(time: number) => void> = [];
   const scheduler = new ProductRuntimeScheduler({
-    isDocumentHidden: () => true,
+    isDocumentHidden: () => hidden,
     setTimeout: (callback, delayMs) => {
       timers.push({ callback, delayMs });
       return timers.length as unknown as ReturnType<typeof setTimeout>;
+    },
+    requestAnimationFrame: (callback) => {
+      frames.push(callback);
+      return frames.length;
     },
   });
   let cachePublishes = 0;
@@ -135,10 +151,15 @@ import type { CoreProductTelemetrySnapshot } from '../../coreProductTelemetry';
   scheduler.schedule('sample-cache-diagnostics', () => { cachePublishes += 1; });
   scheduler.schedule('sample-decode-progress', () => { decodePublishes += 1; });
 
-  assert.equal(timers[0]?.delayMs, 5000, 'hidden sample cache diagnostics should use the background interval');
-  timers[0]?.callback();
+  assert.equal(timers.length, 0, 'hidden sample diagnostics must not create timers');
+  assert.equal(cachePublishes, 0);
+  assert.equal(decodePublishes, 0);
+  hidden = false;
+  scheduler.setDocumentHidden(false);
+  assert.equal(frames.length, 1);
+  frames[0]?.(16);
   assert.equal(cachePublishes, 1);
-  assert.equal(decodePublishes, 0, 'hidden decode progress should be suspended unless debug is enabled');
+  assert.equal(decodePublishes, 1, 'foreground should flush the latest decode progress once');
 }
 
 {

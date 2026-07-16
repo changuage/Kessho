@@ -23,7 +23,7 @@ import { coreProductSequencerClockRejoinMask, EMPTY_CORE_PRODUCT_SEQUENCER_CLOCK
 import { CoreProductHostSequencerChain } from './CoreProductHostSequencerChain';
 import { createCoreProductSequencerHomeStore } from './CoreProductHostSequencerHome';
 import { createCoreProductHostMidiEvent, createCoreProductLiveNoteEvent } from './CoreProductHostMidi';
-import { CoreProductAssetRegistrar } from './product/host/CoreProductAssetRegistrar';
+import { CoreProductAssetNotReadyError, CoreProductAssetRegistrar } from './product/host/CoreProductAssetRegistrar';
 import { CoreProductDisplayCallbackRegistry } from './product/host/CoreProductDisplayCallbackRegistry';
 import { CoreProductGraphTapBridge } from './product/host/CoreProductGraphTapBridge';
 import { CoreProductHarmonyStateBridge } from './product/host/CoreProductHarmonyStateBridge';
@@ -78,7 +78,7 @@ type SequencerLanePitchState = { steps?: number; direction?: LaneDirection; scal
 class CoreProductEngineHost {
   private readonly runtime = new CoreProductRuntime();
   private readonly graphTapBridge = new CoreProductGraphTapBridge(this.runtime);
-  private readonly sequencerChain = new CoreProductHostSequencerChain({ post: (event) => this.postRuntimeProductEvent(event), nowMs: () => this.nowMs() });
+  private readonly sequencerChain = new CoreProductHostSequencerChain({ post: (event) => this.postRuntimeProductEvent(event) });
   private readonly snapshotAckMetadata = new CoreProductSnapshotAckMetadataFactory();
   private latestSliderState: Record<string, unknown> | null = null;
   private readonly assetRegistrar = new CoreProductAssetRegistrar(this.runtime, () => this.latestSliderState);
@@ -144,7 +144,7 @@ class CoreProductEngineHost {
   private readonly telemetryCallbackScheduler = new CoreProductTelemetryCallbackScheduler();
   private readonly postSnapshotEvents = new CoreProductPostSnapshotEventQueue({ canFlush: () => this.runtimeReady && this.runtime.audioContext?.state === 'running', post: (events) => this.postRuntimeProductEvents(events) });
   private readonly generatedSequencerCaptureTelemetryHistory = new CoreProductGeneratedSequencerCaptureTelemetryHistory();
-  private readonly sequencerEvolveBridge = new CoreProductSequencerEvolveRuntimeBridge({ adapterState: () => this.adapterState, latestSliderState: () => this.latestSliderState, latestProductSnapshot: () => this.latestProductSnapshot, runtimeReady: () => this.runtimeReady, captureLaneHome: (sequencer, laneIndex) => { if (sequencer === 'synth') this.captureSequencerHomeLane('synth', laneIndex); else this.captureSequencerHomeLane('drum', laneIndex); }, getEnabledSubLanes: (sequencer, laneIndex) => this.enabledSequencerSubLanes(sequencer, laneIndex), postWithHomeCapture: (event) => { this.captureSequencerHomeForEvent(event); this.postRuntimeProductEvent(event); }, publish: (name, ...payload) => this.invokeDisplayCallback(name, ...payload) });
+  private readonly sequencerEvolveBridge = new CoreProductSequencerEvolveRuntimeBridge({ adapterState: () => this.adapterState, latestSliderState: () => this.latestSliderState, latestProductSnapshot: () => this.latestProductSnapshot, latestTelemetry: () => this.latestTelemetry, runtimeReady: () => this.runtimeReady, postWithHomeCapture: (event) => { this.captureSequencerHomeForEvent(event); this.postRuntimeProductEvent(event); } });
   private readonly harmonyStateBridge = new CoreProductHarmonyStateBridge();
   private readonly lifecycleCoordinator = new CoreProductHostLifecycleCoordinator({
     runtime: this.runtime,
@@ -334,11 +334,13 @@ class CoreProductEngineHost {
     }
     const samplePlaybackCritical = this.running &&
       productSamplePlaybackTriggerCriticalChange(previousSliderState, this.latestSliderState);
+    this.assetRegistrar.updateRequiredAssetsForState();
     const shouldRefreshAssetsAndAck =
       this.runtimeReady &&
       (this.assetRegistrar.hasMissingDefaultAssetsForState() || samplePlaybackCritical);
     if (shouldRefreshAssetsAndAck) {
-      await this.assetRegistrar.ensureDefaultAssetsForState();
+      const assetResult = await this.assetRegistrar.ensureDefaultAssetsForState();
+      if (assetResult.status === 'not-ready') throw new CoreProductAssetNotReadyError(assetResult);
       const receipt = await this.applyLatestSnapshotUpdate('asset-reference-change', sequencerClockRejoinMask, {
         ...options,
         triggerCritical: true,
@@ -584,9 +586,7 @@ class CoreProductEngineHost {
   setDrumEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void { this.setDisplayCallback('drumEuclidEvolve', callback); }
   setSynthEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void { this.setDisplayCallback('synthEuclidEvolve', callback); }
   setGranularUiActive(active: boolean): void { this.displayCallbacks.setValue('granularUiActive', active); this.runtime.setGranularWaveformTelemetryActive(active); }
-
   async triggerDrumVoice(voice: unknown, velocity: number, externalState?: Record<string, unknown>): Promise<void> { await triggerCoreProductDrumVoice(this.manualAuditionContext(), voice, velocity, externalState); }
-
   resetSynthEuclidLaneHome(laneIndex: number): void { this.postProductEvent(createCoreProductSequencerResetHomeEvent('synth', laneIndex)); }
 
   diceSynthEuclidLane(laneIndex: number, intensity: number = 1): void { this.postProductEvent(createCoreProductSequencerDiceEvent('synth', laneIndex, intensity)); }
@@ -665,6 +665,7 @@ class CoreProductEngineHost {
     });
     this.latestProductSnapshot = result.snapshot;
     this.sequencerChain.update(this.latestSliderState, this.adapterState, true);
+    this.sequencerEvolveBridge.syncAll();
     this.diagnostics.recordFullSnapshotReload(result.reason, result.cpuMs);
   }
 
@@ -696,6 +697,7 @@ class CoreProductEngineHost {
       this.latestProductSnapshot = result.snapshot;
       this.pendingSnapshotReloadReason = null;
       this.sequencerChain.update(this.latestSliderState, this.adapterState, result.mode === 'full-snapshot' || this.sequencerChain.active(this.latestSliderState, this.adapterState));
+      this.sequencerEvolveBridge.syncAll();
       if (result.mode === 'dirty-diff') {
         this.diagnostics.recordDirtyDiff();
         return { applied: true, mode: 'dirty-diff' };
@@ -819,6 +821,7 @@ class CoreProductEngineHost {
       });
       if (evolveConfigResult.handled) {
         this.adapterState = evolveConfigResult.adapterState;
+        this.sequencerEvolveBridge.syncLane(sequencer, laneIndex);
         return true;
       }
       if (event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision) {
@@ -935,6 +938,7 @@ class CoreProductEngineHost {
         telemetry,
         this.diagnostics.snapshot(),
         this.assetRegistrar.registeredDecodedAssetByteLength(),
+        this.assetRegistrar.hostDecodedBytes(), this.assetRegistrar.inFlightDecodedByteLength(),
       )),
       earthTextureDebugState: createCoreProductEarthTextureDebugState(
         this.latestSliderState,

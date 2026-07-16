@@ -388,6 +388,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
         morphPlayTimeoutRef.current = null;
       }
     };
+    let hiddenStartedAt: number | null = document.visibilityState === 'visible' ? null : Date.now();
 
     const animate = () => {
       const now = Date.now();
@@ -516,7 +517,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     };
 
     const scheduleNextTick = () => {
-      if (!isEngineRunning) return;
+      if (!isEngineRunning || document.visibilityState !== 'visible') return;
       morphPlayTimeoutRef.current = window.setTimeout(() => {
         morphPlayTimeoutRef.current = null;
         animate();
@@ -526,6 +527,14 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
 
     const handleVisibilityChange = () => {
       cancelMorphPlayLoop();
+      if (document.visibilityState !== 'visible') {
+        hiddenStartedAt = Date.now();
+        return;
+      }
+      if (hiddenStartedAt !== null) {
+        phaseStartTimeRef.current += Math.max(0, Date.now() - hiddenStartedAt);
+        hiddenStartedAt = null;
+      }
       animate();
       scheduleNextTick();
     };

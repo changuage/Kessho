@@ -14,6 +14,9 @@ import {
 import { CORE_PRODUCT_RUNTIME_ASSET_VERSION } from './generated/coreProductRuntimeAssetVersion';
 import { isIOSLikeDevice, isMobileDevice } from '../platform';
 import { logProductStateDebug } from '../debug/productStateDebug';
+import { ProductBrowserAudioSession } from './product/browser/ProductBrowserAudioSession';
+
+export type AssetTransferOwnership = 'retain-host-copy' | 'transfer';
 
 const CORE_PRODUCT_GRAPH_TAP_COUNT = 116;
 const CORE_PRODUCT_TELEMETRY_DESKTOP_INTERVAL_MS = 250;
@@ -39,7 +42,11 @@ type RuntimeMessage =
   | { type: 'telemetry'; telemetry: CoreProductTelemetrySnapshot }
   | { type: 'visual-telemetry'; telemetry: CoreProductVisualTelemetrySnapshot }
   | { type: 'graph-capture-chunk'; tapId: number; frameCount: number; left: Float32Array; right: Float32Array }
-  | { type: 'graph-capture-flushed'; tapId: number; stopped?: boolean };
+  | { type: 'graph-capture-flushed'; tapId: number; stopped?: boolean }
+  | { type: 'asset-release-complete'; assetId: number }
+  | { type: 'asset-release-failed'; assetId: number; result: number }
+  | { type: 'asset-registration-complete'; assetId: number }
+  | { type: 'asset-registration-failed'; assetId: number; result: number; message: string };
 
 export type CoreProductGraphTapCaptureChunk = {
   tapId: number;
@@ -104,11 +111,22 @@ export class CoreProductRuntime {
   private mediaStreamDest: MediaStreamAudioDestinationNode | null = null;
   private mediaSessionAudio: HTMLAudioElement | null = null;
   private readyPromise: Promise<void> | null = null;
+  private playbackRevision = 0;
+  private playbackRequested = false;
+  private readonly browserAudioSession = new ProductBrowserAudioSession(() => {
+    if (this.playbackRequested) {
+      void this.resumeAfterInterruption().catch((error: unknown) => {
+        console.warn('Core Product interruption recovery failed:', error);
+      });
+    }
+  });
   private lastError: string | null = null;
   private telemetryTimer: number | null = null;
   private visualTelemetryTimer: number | null = null;
   private telemetryCallback: ((telemetry: CoreProductTelemetrySnapshot) => void) | null = null;
   private visualTelemetryCallback: ((telemetry: CoreProductVisualTelemetrySnapshot) => void) | null = null;
+  private assetReleaseCallback: ((assetId: number) => void) | null = null;
+  private assetReleaseFailureCallback: ((assetId: number, result: number) => void) | null = null;
   private telemetryPollingEnabled = false;
   private transportRunningForTelemetry = false;
   private visualTelemetryActive = false;
@@ -117,10 +135,18 @@ export class CoreProductRuntime {
   private dawOutputRouting: DawOutputRoutingConfig = createDefaultDawOutputRoutingConfig();
   private dawOutputDeviceId: string | null = null;
   private readonly pendingSnapshotReceipts = new Map<number, PendingSnapshotReceipt>();
+  private readonly pendingAssetRegistrations = new Map<number, {
+    resolve: () => void;
+    reject: (error: Error) => void;
+  }>();
   private readonly graphTapCaptureSessions = new Map<number, GraphTapCaptureSession>();
   private readonly handleVisibilityChange = (): void => {
+    const hidden = !this.isDocumentVisible();
+    this.node?.port.postMessage({ type: 'host-visibility', hidden });
     this.syncTelemetryLoop();
     this.syncVisualTelemetryLoop();
+    this.syncMeterDemand();
+    this.syncStemDemand();
     if (this.isDocumentVisible()) {
       this.requestTelemetryOnce('visibility-resume');
     }
@@ -167,9 +193,9 @@ export class CoreProductRuntime {
   }
 
   private async initializeRuntime(): Promise<void> {
-    this.prepareMediaSessionPlayback();
     const context = createProductAudioContext();
     this.context = context;
+    this.prepareMediaSessionPlayback(context);
     this.publishParityStartupPhase('context-created');
     if (this.dawOutputDeviceId) {
       await this.applyDawOutputDeviceId(context);
@@ -205,6 +231,7 @@ export class CoreProductRuntime {
       this.node = node;
       this.outputGain = outputGain;
       this.bindVisibilityTelemetrySync();
+      node.port.postMessage({ type: 'host-visibility', hidden: !this.isDocumentVisible() });
       if (this.perfMonitorEnabled) {
         node.port.postMessage({ type: 'enablePerf', enabled: true });
       }
@@ -213,6 +240,8 @@ export class CoreProductRuntime {
         if (message.type === 'ready') {
           this.publishParityStartupPhase('ready');
           this.postDawOutputRouting();
+          this.syncMeterDemand();
+          this.syncStemDemand();
           resolve();
           return;
         }
@@ -242,6 +271,24 @@ export class CoreProductRuntime {
         }
         if (message.type === 'visual-telemetry') {
           this.visualTelemetryCallback?.(message.telemetry);
+          return;
+        }
+        if (message.type === 'asset-release-complete') {
+          this.assetReleaseCallback?.(message.assetId);
+          return;
+        }
+        if (message.type === 'asset-release-failed') {
+          this.assetReleaseFailureCallback?.(message.assetId, message.result);
+          return;
+        }
+        if (message.type === 'asset-registration-complete') {
+          this.pendingAssetRegistrations.get(message.assetId)?.resolve();
+          this.pendingAssetRegistrations.delete(message.assetId);
+          return;
+        }
+        if (message.type === 'asset-registration-failed') {
+          this.pendingAssetRegistrations.get(message.assetId)?.reject(new Error(message.message));
+          this.pendingAssetRegistrations.delete(message.assetId);
           return;
         }
         if (message.type === 'graph-capture-chunk') {
@@ -277,17 +324,38 @@ export class CoreProductRuntime {
     document.documentElement.dataset.coreProductRuntimePhase = phase;
   }
 
+  resumeFromUserGesture(): Promise<void> {
+    return this.requestResume();
+  }
+
   async resume(): Promise<void> {
+    await this.requestResume();
+  }
+
+  private async resumeAfterInterruption(): Promise<void> {
+    if (!this.playbackRequested) return;
+    await this.requestResume();
+  }
+
+  private async requestResume(): Promise<void> {
+    const revision = ++this.playbackRevision;
+    this.playbackRequested = true;
     const ready = this.ensureStarted();
     const resumed = this.context?.resume() ?? Promise.resolve();
+    const carrierPlayed = this.connectMediaSessionPlayback();
+    this.browserAudioSession.setPlaybackRequested(true);
     this.publishParityAudioContextState();
-    await ready;
-    await resumed;
-    if (this.context?.state !== 'running') await this.context?.resume();
-    this.publishParityAudioContextState();
-    if (isIOSLikeDevice()) {
-      void this.connectMediaSessionPlayback();
+    await Promise.all([ready, resumed, carrierPlayed]);
+    if (revision !== this.playbackRevision) {
+      if (!this.playbackRequested) await this.context?.suspend();
+      return;
     }
+    if (this.context?.state !== 'running') await this.context?.resume();
+    if (revision !== this.playbackRevision && !this.playbackRequested) {
+      await this.context?.suspend();
+      return;
+    }
+    this.publishParityAudioContextState();
   }
 
   private publishParityAudioContextState(): void {
@@ -296,13 +364,17 @@ export class CoreProductRuntime {
   }
 
   async suspend(): Promise<void> {
+    ++this.playbackRevision;
+    this.playbackRequested = false;
+    this.browserAudioSession.setPlaybackRequested(false);
+    this.pauseMediaSessionPlayback();
     await this.context?.suspend();
-    if (isIOSLikeDevice()) {
-      this.pauseMediaSessionPlayback();
-    }
   }
 
   dispose(): void {
+    ++this.playbackRevision;
+    this.playbackRequested = false;
+    this.browserAudioSession.dispose();
     if (this.telemetryTimer !== null) {
       window.clearInterval(this.telemetryTimer);
       this.telemetryTimer = null;
@@ -317,6 +389,9 @@ export class CoreProductRuntime {
     this.mediaStreamDest?.disconnect();
     this.disconnectMediaSessionPlayback();
     this.rejectPendingSnapshotReceipts(new Error('Core Product runtime disposed before pending snapshots were applied'));
+    const registrationError = new Error('Core Product runtime disposed before pending asset registrations completed');
+    for (const pending of this.pendingAssetRegistrations.values()) pending.reject(registrationError);
+    this.pendingAssetRegistrations.clear();
     const context = this.context;
     this.node = null;
     this.outputGain = null;
@@ -332,9 +407,18 @@ export class CoreProductRuntime {
     this.telemetryCallback = callback;
   }
 
+  setAssetReleaseCallback(callback: ((assetId: number) => void) | null): void {
+    this.assetReleaseCallback = callback;
+  }
+
+  setAssetReleaseFailureCallback(callback: ((assetId: number, result: number) => void) | null): void {
+    this.assetReleaseFailureCallback = callback;
+  }
+
   setTelemetryPollingEnabled(enabled: boolean): void {
     this.telemetryPollingEnabled = enabled;
     this.syncTelemetryLoop();
+    this.syncMeterDemand();
   }
 
   setTelemetryTransportRunning(running: boolean): void {
@@ -349,6 +433,8 @@ export class CoreProductRuntime {
   setVisualTelemetryActive(active: boolean): void {
     this.visualTelemetryActive = active;
     this.syncVisualTelemetryLoop();
+    this.syncMeterDemand();
+    this.syncStemDemand();
   }
 
   setGranularWaveformTelemetryActive(active: boolean): void {
@@ -358,6 +444,7 @@ export class CoreProductRuntime {
   setPerfMonitorEnabled(enabled: boolean): void {
     this.perfMonitorEnabled = enabled;
     this.node?.port.postMessage({ type: 'enablePerf', enabled });
+    this.syncMeterDemand();
   }
 
   setDawOutputRouting(config: DawOutputRoutingConfig): void {
@@ -371,19 +458,22 @@ export class CoreProductRuntime {
     return this.applyDawOutputDeviceId();
   }
 
-  private prepareMediaSessionPlayback(): void {
+  private prepareMediaSessionPlayback(context: AudioContext): void {
     if (!isIOSLikeDevice() || this.mediaSessionAudio) return;
     const audio = new Audio();
     audio.loop = false;
     audio.volume = 1;
     audio.setAttribute('playsinline', 'true');
     (audio as HTMLAudioElement & { webkitPreservesPitch?: boolean }).webkitPreservesPitch = false;
+    const destination = context.createMediaStreamDestination();
+    this.mediaStreamDest = destination;
+    audio.srcObject = destination.stream;
     this.mediaSessionAudio = audio;
   }
 
   private connectMediaSessionPlayback(): Promise<void> {
     if (!isIOSLikeDevice()) return Promise.resolve();
-    this.prepareMediaSessionPlayback();
+    if (this.context) this.prepareMediaSessionPlayback(this.context);
     const audio = this.mediaSessionAudio;
     const stream = this.mediaStreamDest?.stream ?? null;
     if (!audio || !stream) return Promise.resolve();
@@ -486,26 +576,43 @@ export class CoreProductRuntime {
     return this.requestGraphTapFlush(tapId, true);
   }
 
-  registerAsset(asset: DecodedCoreProductAsset): void {
-    const transferAsset = cloneDecodedCoreProductAssetForTransfer(asset);
-    this.requireNode('registerAsset').port.postMessage({
+  registerAsset(
+    asset: DecodedCoreProductAsset,
+    ownership: AssetTransferOwnership = 'retain-host-copy',
+  ): Promise<void> {
+    if (this.pendingAssetRegistrations.has(asset.assetId)) {
+      return Promise.reject(new Error(`Core Product asset ${asset.assetId} registration is already pending`));
+    }
+    const transferAsset = ownership === 'retain-host-copy'
+      ? cloneDecodedCoreProductAssetForTransfer(asset)
+      : asset;
+    const node = this.requireNode('registerAsset');
+    const registration = new Promise<void>((resolve, reject) => {
+      this.pendingAssetRegistrations.set(asset.assetId, { resolve, reject });
+    });
+    node.port.postMessage({
       type: 'register-asset',
       assetId: transferAsset.assetId,
       sampleRate: transferAsset.sampleRate,
       flags: transferAsset.flags,
       channels: transferAsset.channels,
     }, transferAsset.channels.map((channel) => channel.buffer));
+    return registration;
   }
 
-  unregisterAsset(assetId: number): void {
+  requestAssetRelease(assetId: number): void {
     const normalizedAssetId = Math.trunc(Number(assetId));
     if (!Number.isFinite(normalizedAssetId) || normalizedAssetId <= 0) {
       throw new Error(`Core Product asset id is invalid: ${String(assetId)}`);
     }
-    this.requireNode('unregisterAsset').port.postMessage({
+    this.requireNode('requestAssetRelease').port.postMessage({
       type: 'unregister-asset',
       assetId: normalizedAssetId,
     });
+  }
+
+  unregisterAsset(assetId: number): void {
+    this.requestAssetRelease(assetId);
   }
 
   private handleSnapshotApplied(message: Extract<RuntimeMessage, { type: 'snapshot-applied' }>): void {
@@ -769,6 +876,20 @@ export class CoreProductRuntime {
     };
     requestVisualTelemetry();
     this.visualTelemetryTimer = window.setInterval(requestVisualTelemetry, this.visualTelemetryIntervalMs());
+  }
+
+  private syncMeterDemand(): void {
+    if (!this.node) return;
+    const enabled = this.isDocumentVisible() && (
+      this.telemetryPollingEnabled || this.visualTelemetryActive || this.perfMonitorEnabled
+    );
+    this.node.port.postMessage({ type: 'meter-demand', enabled });
+  }
+
+  private syncStemDemand(): void {
+    if (!this.node) return;
+    const enabled = this.isDocumentVisible() && this.visualTelemetryActive;
+    this.node.port.postMessage({ type: 'stem-demand', enabled });
   }
 
   private assertGraphCaptureAllowed(): void {

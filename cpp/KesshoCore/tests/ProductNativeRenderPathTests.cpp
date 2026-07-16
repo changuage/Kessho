@@ -195,6 +195,13 @@ void runNativeRuntimeAdapterSmoke() {
   require(telemetry.sample_rate == 48000.0, "native runtime adapter telemetry sample rate mismatch");
   require(telemetry.block_size == kBlockFrames, "native runtime adapter telemetry block size mismatch");
   require(runtime.droppedEventCount() == 0, "native runtime adapter dropped events unexpectedly");
+  require(runtime.telemetryPublicationCount() <= 4u, "native telemetry published more often than every 16 blocks");
+  const uint64_t publications_before_request = runtime.telemetryPublicationCount();
+  runtime.requestTelemetryRefresh();
+  require(runtime.renderIntoPreallocatedBuffers(kBlockFrames) == KESSHO_PRODUCT_OK, "native requested telemetry render failed");
+  require(
+      runtime.telemetryPublicationCount() == publications_before_request + 1u,
+      "native explicit diagnostic request did not publish exactly once");
   require(runtime.reset() == KESSHO_PRODUCT_OK, "native runtime adapter reset failed");
   require(runtime.queuedEventCount() == 0, "native runtime adapter reset left queued events");
 }

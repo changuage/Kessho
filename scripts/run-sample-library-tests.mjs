@@ -10,6 +10,8 @@ const tests = [
   'src/audio/sampleLibraries/sampleAssetPredictor.test.ts',
   'src/audio/sampleLibraries/sampleLibraryPlaybackMatrix.test.ts',
   'src/audio/sampleLibraries/SampleDecodedAssetCache.test.ts',
+  'src/audio/product/host/CoreProductAssetWorkingSet.test.ts',
+  'src/audio/product/host/CoreProductAssetMobilePolicy.test.ts',
 ];
 
 const tempDir = await mkdtemp(path.join(tmpdir(), 'sample-library-tests-'));

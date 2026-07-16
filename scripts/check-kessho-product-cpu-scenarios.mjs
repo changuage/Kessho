@@ -321,11 +321,12 @@ const moduleAttribution = [
   {
     module: 'ui-subscription-callbacks',
     status:
-      browserRuntime.runtimeWalkProbe?.walkStoreUpdateCount > 0 &&
-      browserRuntime.runtimeWalkProbe?.walkIndicatorConsumeCount > 0
+      browserRuntime.runtimeWalkProbe?.bridgeDebug?.publishedPositionCount > 0 &&
+      browserRuntime.runtimeWalkProbe?.walkStoreUpdateCount === 0 &&
+      browserRuntime.runtimeWalkProbe?.walkIndicatorConsumeCount === 0
         ? 'pass'
         : 'fail',
-    source: 'browser runtime callback/store update counts',
+    source: 'browser runtime callback publication with inactive UI subscriptions kept quiet',
     metrics: {
       walkStoreUpdateCount: browserRuntime.runtimeWalkProbe?.walkStoreUpdateCount ?? null,
       walkIndicatorConsumeCount: browserRuntime.runtimeWalkProbe?.walkIndicatorConsumeCount ?? null,
