@@ -2629,6 +2629,16 @@ function writeReport(report, path = reportPath) {
   writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`);
 }
 
+function emitGithubError(error) {
+  if (process.env.GITHUB_ACTIONS !== 'true') return;
+  const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  const escaped = detail
+    .replaceAll('%', '%25')
+    .replaceAll('\r', '%0D')
+    .replaceAll('\n', '%0A');
+  process.stderr.write(`::error title=Sequencer UI parity failed::${escaped}\n`);
+}
+
 function stripReportRunNames(value) {
   if (Array.isArray(value)) return value.map(stripReportRunNames);
   if (!value || typeof value !== 'object') return value;
@@ -2754,6 +2764,7 @@ try {
     cases: results,
   };
   writeReport(report, activeReportPath);
+  emitGithubError(error);
   throw error;
 } finally {
   if (browser) await browser.close();
