@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { stripVTControlCharacters } from 'node:util';
 
 const root = process.cwd();
 const DEFAULT_PORT = 4197;
@@ -165,11 +166,13 @@ function killProcessTree(child, signal = 'SIGTERM') {
 }
 
 function viteReadyFromOutput(output, url) {
-  return output.includes(url) && /\bLocal:\s+/.test(output);
+  const plainOutput = stripVTControlCharacters(output);
+  return plainOutput.includes(url) && /\bLocal:\s+/.test(plainOutput);
 }
 
 function portBusyFromOutput(output, port) {
-  return output.includes(`Port ${port} is already in use`) || output.includes(`EADDRINUSE`);
+  const plainOutput = stripVTControlCharacters(output);
+  return plainOutput.includes(`Port ${port} is already in use`) || plainOutput.includes(`EADDRINUSE`);
 }
 
 async function startSharedViteOnPort(port) {
