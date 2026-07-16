@@ -8,7 +8,6 @@
 #include "ProductSequencerRuntimeState.h"
 #include "ProductSequencerChainState.h"
 #include "kessho_drum.h"
-
 #include <cstdint>
 
 namespace kessho::product::internal {
@@ -106,8 +105,7 @@ struct LaneState {
   uint32_t last_emitted_drum_voice = DRUM_NUM_VOICE_TYPES;
   uint64_t last_emitted_sample_frame = 0;
   uint64_t sequencer_runtime_sample_frame = 0;
-  // Signed so phase-preserving tempo changes can move the clock origin before
-  // transport frame zero without resetting the pattern position.
+  // Signed to preserve phase when the clock origin moves before transport frame zero.
   int64_t sequencer_start_sample_frame = 0;
   bool sequencer_runtime_initialized = false;
   bool sequencer_join_pending = true;

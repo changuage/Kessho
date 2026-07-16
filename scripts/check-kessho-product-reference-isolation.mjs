@@ -231,6 +231,7 @@ const classifiedRuntimeAllowlist = new Map([
   ['../../CoreProductLeadPatch', 'Product Core Lead preset data hydration bridge'],
   ['../../CoreProductHostRuntimeGuards', 'product host strict runtime guards'],
   ['./CoreProductAssetRegistrar', 'product host asset fetch/decode/register adapter'],
+  ['./CoreProductAssetReadiness', 'product host asset readiness and release coordination policy'],
   ['./CoreProductAssetWorkingSet', 'product mobile asset working-set policy'],
   ['./CoreProductSampleAssetResolver', 'product sample asset resolution adapter'],
   ['./CoreProductSnapshotDebug', 'product host encoded snapshot debug logger'],

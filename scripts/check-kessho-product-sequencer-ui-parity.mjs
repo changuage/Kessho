@@ -465,24 +465,23 @@ async function selectedEditorStep(page) {
 
 async function setSelectedEditorStep(page, desiredStep, engineMode, tab, label) {
   const step = page.locator('.seq-lane-editor-wrap:visible .seq-step').nth(desiredStep);
-  if ((await step.count()) > 0) {
-    const target = step.locator('.seq-pitch-bar-wrap, .seq-vel-bar-wrap').first();
-    if ((await target.count()) > 0) {
-      await target.click({ timeout: 5000 });
-      await page.waitForTimeout(250);
-      if ((await selectedEditorStep(page)) === desiredStep) return;
-    }
-  }
+  const target = step.locator('.seq-pitch-bar-wrap, .seq-vel-bar-wrap, .seq-morph-bar-wrap').first();
   for (let attempt = 0; attempt < 24; attempt += 1) {
-    const current = await selectedEditorStep(page);
+    const indexes = await selectedStepIndexes(page, '.seq-lane-editor-wrap:visible .seq-step');
+    const current = indexes.length === 1 ? indexes[0] : null;
     if (current === desiredStep) return;
-    await page.keyboard.press(current < desiredStep ? 'ArrowRight' : 'ArrowLeft');
+    if (current == null) {
+      if ((await target.count()) > 0) await target.click({ timeout: 5000 });
+    } else {
+      await page.keyboard.press(current < desiredStep ? 'ArrowRight' : 'ArrowLeft');
+    }
     await page.waitForTimeout(150);
   }
-  const current = await selectedEditorStep(page);
+  const indexes = await selectedStepIndexes(page, '.seq-lane-editor-wrap:visible .seq-step');
+  const current = indexes.length === 1 ? indexes[0] : null;
   assert(
     current === desiredStep,
-    `${engineMode}/${tab}: ${label} editor cursor did not reach step ${desiredStep}; got ${current}`,
+    `${engineMode}/${tab}: ${label} editor cursor did not reach step ${desiredStep}; got ${current ?? 'none'}`,
   );
 }
 

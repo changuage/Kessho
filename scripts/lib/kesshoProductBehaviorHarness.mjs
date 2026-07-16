@@ -871,6 +871,8 @@ export function loadCoreProductHostHarness(options = {}) {
       tick(hostTelemetry) {
         this.tickTelemetry.push(hostTelemetry);
       }
+      syncAll() {}
+      syncLane() {}
       setEvolvedSequencerLaneSwing(sequencer, laneIndex, swing) {
         this.options.captureLaneHome(sequencer, laneIndex);
         const normalizedSwing = Math.max(0, Math.min(0.75, swing));

@@ -184,24 +184,15 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   uint32_t normalizedDynamicsBus(float value) const;
   uint32_t dynamicsBusForSource(uint32_t source_id) const;
   uint32_t dynamicsBusForSoundscapeLayer(uint32_t layer) const;
-  void routeTerminalSample(
-      uint32_t bus,
-      float* out_l,
-      float* out_r,
-      uint32_t frame,
-      float left,
-      float right);
+  void routeTerminalSample(uint32_t bus, float* out_l, float* out_r, uint32_t frame, float left, float right);
   void renderDynamicsBuses(float* out_l, float* out_r, uint32_t start, uint32_t frames);
   void loadDefaults();
   void reset();
   void resetSonicParityFxRuntime();
   void resetDiffuseRuntime();
   int32_t loadSnapshot(const KesshoProductSnapshotV2& snapshot);
-  void loadLaneSnapshots(
-      const KesshoProductSequencerSnapshot& snapshot,
-      LaneState* lanes,
-      uint32_t fallback_source,
-      bool preserve_running_runtime = false);
+  void loadLaneSnapshots(const KesshoProductSequencerSnapshot& snapshot, LaneState* lanes,
+                         uint32_t fallback_source, bool preserve_running_runtime = false);
   int32_t enqueueEvent(const KesshoProductEvent& event);
   int32_t validateEvent(const KesshoProductEvent& event) const;
   void sortControlEvents();
@@ -224,12 +215,8 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   bool stepMaskHas(uint32_t low, uint32_t high, uint32_t step) const;
   void setStepMask(uint32_t& low, uint32_t& high, uint32_t step);
   void clearStepMask(uint32_t& low, uint32_t& high, uint32_t step);
-  float stepFloatValue(
-      uint32_t step,
-      uint32_t low,
-      uint32_t high,
-      const float values[64],
-      float fallback) const;
+  float stepFloatValue(uint32_t step, uint32_t low, uint32_t high,
+                       const float values[64], float fallback) const;
   float stepFloatRangeValue(
       uint32_t step,
       uint32_t low,
