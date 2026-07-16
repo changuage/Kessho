@@ -1791,12 +1791,33 @@ async function proofEuclideanTriggerPatternControls(page, engineMode, tab) {
 }
 
 async function ensureEvolvePanelOpen(page, engineMode, tab) {
-  const evolveButton = page.locator('.seq-evolve-btn:visible').first();
-  await evolveButton.waitFor({ timeout: 15000 });
-  if (!String(await evolveButton.getAttribute('class')).includes(' on')) {
-    await evolveButton.click({ timeout: 5000 });
+  let evolveButton = null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    await ensureSequencerDetailMode(page, engineMode, tab);
+    const candidate = page.locator('.seq-evolve-btn:visible').first();
+    if ((await candidate.count()) > 0 && await candidate.isVisible().catch(() => false)) {
+      evolveButton = candidate;
+      break;
+    }
+    await page.waitForTimeout(500);
   }
-  await page.locator('.seq-evolve-panel.open:visible').first().waitFor({ timeout: 5000 });
+  assert(evolveButton, `${engineMode}/${tab}: evolve control did not recover after restoring Detail view`);
+
+  let panelOpen = false;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (!String(await evolveButton.getAttribute('class')).includes(' on')) {
+      await evolveButton.click({ timeout: 5000 });
+    }
+    await page.waitForTimeout(350);
+    const panel = page.locator('.seq-evolve-panel.open:visible').first();
+    if ((await panel.count()) > 0 && await panel.isVisible().catch(() => false)) {
+      panelOpen = true;
+      break;
+    }
+    evolveButton = page.locator('.seq-evolve-btn:visible').first();
+  }
+  assert(panelOpen, `${engineMode}/${tab}: evolve panel did not open after Detail view recovery`);
+
   const diceButton = page.locator('.seq-evolve-dice:visible').first();
   const resetButton = page.locator('.seq-evolve-reset:visible').first();
   await diceButton.waitFor({ timeout: 5000 });
