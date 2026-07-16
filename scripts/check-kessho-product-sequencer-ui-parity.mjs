@@ -2608,6 +2608,22 @@ async function proofRuntime(browser, baseUrl, engineMode, tab) {
   }
 }
 
+function isTransientBrowserTimeout(error) {
+  if (!(error instanceof Error)) return false;
+  if (error.message.includes('; console/page errors:')) return false;
+  return error.name === 'TimeoutError' || /Timeout \d+ms exceeded/.test(error.message);
+}
+
+async function proofRuntimeWithTimeoutRetry(browser, baseUrl, engineMode, tab) {
+  try {
+    return await proofRuntime(browser, baseUrl, engineMode, tab);
+  } catch (error) {
+    if (!isTransientBrowserTimeout(error)) throw error;
+    process.stderr.write(`[retry] ${engineMode}/${tab}: ${error.message.split('\n')[0]}\n`);
+    return proofRuntime(browser, baseUrl, engineMode, tab);
+  }
+}
+
 function writeReport(report, path = reportPath) {
   mkdirSync(resolve(root, 'docs/reports'), { recursive: true });
   writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`);
@@ -2710,7 +2726,7 @@ try {
   for (const engineMode of engineModes) {
     for (const tab of tabs) {
       process.stderr.write(`[${results.length + 1}/${totalCases}] ${engineMode}/${tab}\n`);
-      const result = await proofRuntime(browser, baseUrl, engineMode, tab);
+      const result = await proofRuntimeWithTimeoutRetry(browser, baseUrl, engineMode, tab);
       results.push(result);
       process.stderr.write(`[${results.length}/${totalCases}] ${engineMode}/${tab}: pass\n`);
     }
