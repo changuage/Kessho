@@ -1170,8 +1170,8 @@
         "masterPostLimiter"
       ],
       "smokeCaseIds": [
-        "manual-pad-dynamics-input-active-character",
-        "manual-pad-dynamics-output-active-character",
+        "manual-pad-dynamics-input-active-drift",
+        "manual-pad-dynamics-output-active-drift",
         "manual-pad-dynamics-input-saturation",
         "manual-pad-dynamics-output-saturation",
         "manual-pad-dynamics-input-end-comp",
