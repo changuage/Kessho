@@ -154,23 +154,6 @@ function midiToNoteRangePercent(midi) {
   return ((Math.max(36, Math.min(96, midi)) - 36) / 60) * 100;
 }
 
-async function waitForHttp(url, timeoutMs, outputProvider = () => '') {
-  const deadline = Date.now() + timeoutMs;
-  let lastError = null;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(url);
-      if (response.ok) return;
-      lastError = new Error(`HTTP ${response.status}`);
-    } catch (error) {
-      lastError = error;
-    }
-    await delay(250);
-  }
-  const detail = lastError instanceof Error ? lastError.message : String(lastError);
-  throw new Error(`Timed out waiting for ${url}: ${detail}\n${outputProvider()}`);
-}
-
 function killProcessTree(child, signal = 'SIGTERM') {
   if (!child.pid) return;
   try {
@@ -229,7 +212,8 @@ async function startSharedViteOnPort(port) {
     if (ready === 'timeout') {
       throw new Error(`Timed out waiting for Vite to start ${url}:\n${output}`);
     }
-    await waitForHttp(url, 15000, () => output);
+    await delay(250);
+    if (exited) throw exitError;
   } catch (error) {
     killProcessTree(child);
     if (error && typeof error === 'object') {
