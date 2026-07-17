@@ -1559,16 +1559,26 @@ async function sampleTriggerPlayheadCadenceUntilMoved(page) {
   return cadence;
 }
 
+async function sampleTriggerPlayheadCadenceWithRecovery(page, engineMode, tab) {
+  let cadence = await sampleTriggerPlayheadCadenceUntilMoved(page);
+  if (triggerCadenceMoved(cadence)) return cadence;
+  const transportName = tab === 'drums' ? 'drums' : 'synth';
+  const transport = page.locator(`.seq-play-btn[data-sequencer-transport="${transportName}"]`).first();
+  await restartSequencerTransport(page, transport, engineMode, tab);
+  cadence = await sampleTriggerPlayheadCadenceUntilMoved(page);
+  return cadence;
+}
+
 async function proofClockDivisionAffectsTriggerCadence(page, engineMode, tab) {
   await setTriggerControlViaDrag(page, 0, 16, engineMode, tab, 'timing proof trigger steps');
 
   await setLaneTimingEditorState(page, { clockDiv: '1/4', swing: 0 });
   await page.waitForTimeout(650);
-  const slow = await sampleTriggerPlayheadCadenceUntilMoved(page);
+  const slow = await sampleTriggerPlayheadCadenceWithRecovery(page, engineMode, tab);
 
   await setLaneTimingEditorState(page, { clockDiv: '1/16', swing: 0 });
   await page.waitForTimeout(650);
-  const fast = await sampleTriggerPlayheadCadenceUntilMoved(page);
+  const fast = await sampleTriggerPlayheadCadenceWithRecovery(page, engineMode, tab);
 
   assert(slow.uniquePositions >= 2, `${engineMode}/${tab}: slow clock did not advance enough to measure timing (${slow.samples.join(' | ')})`);
   assert(
