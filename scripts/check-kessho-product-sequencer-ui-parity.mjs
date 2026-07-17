@@ -1549,16 +1549,26 @@ async function sampleTriggerPlayheadCadence(page, durationMs = 2200, intervalMs 
   };
 }
 
+async function sampleTriggerPlayheadCadenceUntilMoved(page) {
+  let cadence = null;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    cadence = await sampleTriggerPlayheadCadence(page);
+    if (triggerCadenceMoved(cadence)) return cadence;
+    await page.waitForTimeout(500);
+  }
+  return cadence;
+}
+
 async function proofClockDivisionAffectsTriggerCadence(page, engineMode, tab) {
   await setTriggerControlViaDrag(page, 0, 16, engineMode, tab, 'timing proof trigger steps');
 
   await setLaneTimingEditorState(page, { clockDiv: '1/4', swing: 0 });
   await page.waitForTimeout(650);
-  const slow = await sampleTriggerPlayheadCadence(page);
+  const slow = await sampleTriggerPlayheadCadenceUntilMoved(page);
 
   await setLaneTimingEditorState(page, { clockDiv: '1/16', swing: 0 });
   await page.waitForTimeout(650);
-  const fast = await sampleTriggerPlayheadCadence(page);
+  const fast = await sampleTriggerPlayheadCadenceUntilMoved(page);
 
   assert(slow.uniquePositions >= 2, `${engineMode}/${tab}: slow clock did not advance enough to measure timing (${slow.samples.join(' | ')})`);
   assert(
