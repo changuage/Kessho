@@ -58,6 +58,10 @@ const prerequisiteSteps = [
   'core:product:sequencer-ui',
   'core:product:cpu',
   'core:product:browser-runtime',
+  'core:product:granular-artifacts',
+  'core:product:reverb-tail-quality',
+  'core:product:web-cpu-comparison',
+  'core:product:page-cpu-comparison',
   'core:product:module-cpu',
   'core:product:cpu-scenarios',
 ];

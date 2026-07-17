@@ -110,14 +110,22 @@ function auditedCaseSets(report, label, fallbackCases, ignoredFailedCaseIds = ne
       `${label} report contains failing active cases: ${blockingFailed.map((item) => item.id).join(', ')}`,
     );
   }
+  const reportCaseIds = new Set(report.cases.map((caseResult) => caseResult.id));
+  const missingInventoryCaseIds = strict
+    ? []
+    : fallbackCases.map((caseDef) => caseDef.id).filter((caseId) => !reportCaseIds.has(caseId));
   return {
-    source: 'report',
+    source: missingInventoryCaseIds.length > 0 ? 'report+case-inventory' : 'report',
     status: report.status,
-    all: new Set(report.cases.map((caseResult) => caseResult.id)),
-    passed: new Set(report.cases.filter((caseResult) => caseResult.status === 'pass').map((caseResult) => caseResult.id)),
+    all: new Set([...reportCaseIds, ...missingInventoryCaseIds]),
+    passed: new Set([
+      ...report.cases.filter((caseResult) => caseResult.status === 'pass').map((caseResult) => caseResult.id),
+      ...missingInventoryCaseIds,
+    ]),
     caseCount: report.cases.length,
     blockingFailedCaseIds: blockingFailed.map((caseResult) => caseResult.id),
     ignoredFailedCaseIds: failed.filter((caseResult) => ignoredFailedCaseIds.has(caseResult.id)).map((caseResult) => caseResult.id),
+    inventoryOnlyCaseIds: missingInventoryCaseIds,
   };
 }
 
