@@ -25,7 +25,15 @@ function readJson(path) {
 }
 
 function assert(condition, message) {
-  if (!condition) throw new Error(message);
+  if (condition) return;
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    const escaped = String(message)
+      .replaceAll('%', '%25')
+      .replaceAll('\r', '%0D')
+      .replaceAll('\n', '%0A');
+    process.stderr.write(`::error title=Module CPU report failed::${escaped}\n`);
+  }
+  throw new Error(message);
 }
 
 function round(value, digits = 6) {
