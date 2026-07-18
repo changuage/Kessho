@@ -1,5 +1,17 @@
 #include "../KesshoProductEngineInternal.h"
-
+void KesshoProductEngine::applySourceMorphValue(uint32_t source_id, float value, bool manual_edit) {
+  if (source_id < 1u || source_id > kSourceCount) return;
+  if (manual_edit) {
+    disableSourceMorphAutomationForSource(source_id);
+  }
+  SourceState& source = sources[source_id - 1u];
+  const float clamped = clampFloat(value, 0.0f, 1.0f);
+  if (!manual_edit && std::fabs(source.morph - clamped) <= 0.000001f) return;
+  source.morph = clamped;
+  if (isPadProductSource(source_id) || isLeadProductSource(source_id)) {
+    (void) applyStructuredSourceOverridesToModuleForCurrentMorph(source_id);
+  }
+}
 void KesshoProductEngine::applySourceParam(const KesshoProductEvent& event) {
   if (event.target_id < 1u || event.target_id > kSourceCount) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
@@ -26,7 +38,7 @@ void KesshoProductEngine::applySourceParam(const KesshoProductEvent& event) {
       sync_drum_module_param(kProductDrumMasterLevelParam, source.level);
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID:
-      source.morph = clampFloat(event.value, 0.0f, 1.0f);
+      applySourceMorphValue(event.target_id, event.value, true);
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID:
       source.distance = clampFloat(event.value, 0.0f, 1.0f);
@@ -109,7 +121,6 @@ void KesshoProductEngine::applySourceParam(const KesshoProductEvent& event) {
     releaseSourceVoices(event.target_id);
   }
   switch (event.param_id) {
-    case KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_ATTACK_SECONDS_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_DECAY_SECONDS_ID:

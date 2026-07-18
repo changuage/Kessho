@@ -29,6 +29,18 @@ export type VisualBusId = 'geometry' | 'atmosphere' | 'fragment' | 'echo' | 'tex
 export type VisualBus = Record<VisualBusSignal, number>;
 export type VisualBuses = Record<VisualBusId, VisualBus>;
 
+export function createVisualBuses(): VisualBuses {
+  const createBus = (): VisualBus => ({ level: 0, pulse: 0, phase: 0, density: 0 });
+  return {
+    geometry: createBus(),
+    atmosphere: createBus(),
+    fragment: createBus(),
+    echo: createBus(),
+    texture: createBus(),
+    impact: createBus(),
+  };
+}
+
 export type VisualDriverEngine =
   | 'Synth'
   | 'Lead'
@@ -207,9 +219,17 @@ function shapedPulse(value: number, afterglow: number): number {
   return clamp01(Math.pow(pulse, exponent));
 }
 
+function setVisualBus(bus: VisualBus, level: number, pulse: number, phase: number, density: number): void {
+  bus.level = level;
+  bus.pulse = pulse;
+  bus.phase = phase;
+  bus.density = density;
+}
+
 export function buildVisualBuses(
   snapshot: ReactiveVisualizerSnapshot,
   settings: Pick<VisualizerReactionSettings, 'afterglow'>,
+  output = createVisualBuses(),
 ): VisualBuses {
   const pulses = snapshot.pulses;
   const afterglow = clamp01(settings.afterglow);
@@ -220,44 +240,37 @@ export function buildVisualBuses(
   const earthPulse = shapedPulse(Math.max(pulses.earth, pulses.global * 0.5), afterglow);
   const impactPulse = shapedPulse(Math.max(pulses.drums, pulses.global * 0.65, pulses.lead * 0.32), afterglow);
 
-  return {
-    geometry: {
-      level: clamp01(snapshot.lead * 0.62 + snapshot.pad * 0.18 + snapshot.morph * 0.16 + snapshot.spread * 0.12),
-      pulse: synthPulse,
-      phase: clamp01(snapshot.pulses.synthStepPhase),
-      density: clamp01(snapshot.pulses.synthHitDensity * 0.68 + snapshot.lead * 0.32),
-    },
-    atmosphere: {
-      level: clamp01(snapshot.pad * 0.44 + snapshot.reverb * 0.38 + snapshot.earth * 0.16 + snapshot.delay * 0.08),
-      pulse: padPulse,
-      phase: clamp01(snapshot.morph * 0.48 + snapshot.root * 0.32 + snapshot.pulses.synthStepPhase * 0.2),
-      density: clamp01(snapshot.reverb * 0.42 + snapshot.pad * 0.38 + snapshot.tension * 0.18),
-    },
-    fragment: {
-      level: clamp01(snapshot.granular * 0.74 + snapshot.activeGrains / 128),
-      pulse: granularPulse,
-      phase: clamp01((snapshot.activeGrains % 32) / 32),
-      density: clamp01(snapshot.granular * 0.42 + snapshot.activeGrains / 96 + pulses.granular * 0.24),
-    },
-    echo: {
-      level: clamp01(snapshot.delay * 0.72 + snapshot.reverb * 0.16 + pulses.delay * 0.16),
-      pulse: delayPulse,
-      phase: clamp01(snapshot.root * 0.36 + pulses.synthStepPhase * 0.28 + pulses.drumStepPhase * 0.2 + snapshot.delay * 0.16),
-      density: clamp01(snapshot.delay * 0.5 + snapshot.spread * 0.24 + snapshot.tension * 0.16),
-    },
-    texture: {
-      level: clamp01(snapshot.earth * 0.54 + snapshot.dynamics * 0.28 + pulses.earth * 0.18),
-      pulse: earthPulse,
-      phase: clamp01(snapshot.root * 0.22 + snapshot.tension * 0.28 + pulses.drumStepPhase * 0.14 + snapshot.earth * 0.36),
-      density: clamp01(snapshot.earth * 0.42 + snapshot.dynamics * 0.34 + snapshot.granular * 0.14),
-    },
-    impact: {
-      level: clamp01(snapshot.drums * 0.58 + snapshot.dynamics * 0.26 + pulses.drums * 0.22),
-      pulse: impactPulse,
-      phase: clamp01(pulses.drumStepPhase),
-      density: clamp01(pulses.drumHitDensity * 0.72 + snapshot.drums * 0.28),
-    },
-  };
+  setVisualBus(output.geometry,
+    clamp01(snapshot.lead * 0.62 + snapshot.pad * 0.18 + snapshot.morph * 0.16 + snapshot.spread * 0.12),
+    synthPulse,
+    clamp01(snapshot.pulses.synthStepPhase),
+    clamp01(snapshot.pulses.synthHitDensity * 0.68 + snapshot.lead * 0.32));
+  setVisualBus(output.atmosphere,
+    clamp01(snapshot.pad * 0.44 + snapshot.reverb * 0.38 + snapshot.earth * 0.16 + snapshot.delay * 0.08),
+    padPulse,
+    clamp01(snapshot.morph * 0.48 + snapshot.root * 0.32 + snapshot.pulses.synthStepPhase * 0.2),
+    clamp01(snapshot.reverb * 0.42 + snapshot.pad * 0.38 + snapshot.tension * 0.18));
+  setVisualBus(output.fragment,
+    clamp01(snapshot.granular * 0.74 + snapshot.activeGrains / 128),
+    granularPulse,
+    clamp01((snapshot.activeGrains % 32) / 32),
+    clamp01(snapshot.granular * 0.42 + snapshot.activeGrains / 96 + pulses.granular * 0.24));
+  setVisualBus(output.echo,
+    clamp01(snapshot.delay * 0.72 + snapshot.reverb * 0.16 + pulses.delay * 0.16),
+    delayPulse,
+    clamp01(snapshot.root * 0.36 + pulses.synthStepPhase * 0.28 + pulses.drumStepPhase * 0.2 + snapshot.delay * 0.16),
+    clamp01(snapshot.delay * 0.5 + snapshot.spread * 0.24 + snapshot.tension * 0.16));
+  setVisualBus(output.texture,
+    clamp01(snapshot.earth * 0.54 + snapshot.dynamics * 0.28 + pulses.earth * 0.18),
+    earthPulse,
+    clamp01(snapshot.root * 0.22 + snapshot.tension * 0.28 + pulses.drumStepPhase * 0.14 + snapshot.earth * 0.36),
+    clamp01(snapshot.earth * 0.42 + snapshot.dynamics * 0.34 + snapshot.granular * 0.14));
+  setVisualBus(output.impact,
+    clamp01(snapshot.drums * 0.58 + snapshot.dynamics * 0.26 + pulses.drums * 0.22),
+    impactPulse,
+    clamp01(pulses.drumStepPhase),
+    clamp01(pulses.drumHitDensity * 0.72 + snapshot.drums * 0.28));
+  return output;
 }
 
 export function getEffectiveReactionDepth(settings: VisualizerReactionSettings): number {
@@ -286,15 +299,20 @@ export function applyVisualizerModulation(
   ranges: VisualizerReactiveRanges,
   buses: VisualBuses,
   settings: VisualizerReactionSettings,
+  output?: ReactiveVisualizerControls,
 ): ReactiveVisualizerControls {
   const depth = getEffectiveReactionDepth(settings);
   if (depth <= 0.0001 || settings.reactionAmount <= 0.0001) {
     return baseControls;
   }
-  const next: ReactiveVisualizerControls = {
+  const next: ReactiveVisualizerControls = output ?? {
     ...baseControls,
     layerOrder: [...baseControls.layerOrder],
   };
+  if (output) {
+    Object.assign(output, baseControls);
+    output.layerOrder = baseControls.layerOrder;
+  }
 
   for (const compiledTarget of COMPILED_VISUAL_MOD_TARGETS) {
     const target = compiledTarget.target;

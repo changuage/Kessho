@@ -59,6 +59,13 @@ export interface UseJourneyResult {
   // Playback
   play: () => void;
   stop: () => void;
+  projectProductRuntime: (projection: {
+    phase: JourneyState['phase'];
+    currentNodeId: string | null;
+    nextNodeId: string | null;
+    phraseProgress: number;
+    morphProgress: number;
+  }) => void;
   
   // Simulation (for demo/testing)
   simulatePhraseProgress: (progress: number) => void;
@@ -692,6 +699,21 @@ export function useJourney(
     }));
   }, [cancelScheduledTick]);
 
+  const projectProductRuntime = useCallback((projection: {
+    phase: JourneyState['phase'];
+    currentNodeId: string | null;
+    nextNodeId: string | null;
+    phraseProgress: number;
+    morphProgress: number;
+  }) => {
+    cancelScheduledTick();
+    setState((previous) => ({
+      ...previous,
+      ...projection,
+      plannedNextNodeId: projection.nextNodeId,
+    }));
+  }, [cancelScheduledTick]);
+
   useEffect(() => {
     const handleVisibilityChange = () => {
       const currentState = stateRef.current;
@@ -779,6 +801,7 @@ export function useJourney(
     updateConnection,
     play,
     stop,
+    projectProductRuntime,
     simulatePhraseProgress,
     simulateMorphProgress,
     simulateNextPhase,

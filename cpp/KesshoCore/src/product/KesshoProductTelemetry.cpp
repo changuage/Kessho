@@ -212,6 +212,35 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
   telemetry.transport_running = transport.running ? 1u : 0u;
   telemetry.absolute_sample_time = transport.sample_frame;
   telemetry.sequencer_event_count = sequencer_events.count;
+  telemetry.scatter_current_phrase_id = scatter_runtime.current_phrase_id;
+  telemetry.scatter_current_voice = scatter_runtime.current_voice;
+  telemetry.scatter_current_step = scatter_runtime.current_step;
+  telemetry.scatter_pulse_count = scatter_runtime.pulse_count;
+  telemetry.scene_program_revision = scene_program_runtime.active
+      ? scene_program_runtime.buffers[scene_program_runtime.active_buffer].revision
+      : 0u;
+  telemetry.scene_position = scene_program_runtime.position;
+  telemetry.routing_mute_group_revision = routing_mute_groups.revision;
+  telemetry.routing_mute_group_active_slot = routing_mute_groups.active_slot;
+  telemetry.routing_mute_group_next_slot = routing_mute_groups.next_slot;
+  telemetry.routing_mute_group_mask = 0u;
+  for (uint32_t row = 0u; row < kProductRoutingMuteRowCount; ++row) {
+    if (routing_mute_groups.rows[row].target_gain <= 0.0001f) {
+      telemetry.routing_mute_group_mask |= 1u << row;
+    }
+  }
+  telemetry.routing_mute_group_next_change_frame = routing_mute_groups.next_change_frame;
+  if (routing_mute_groups.fade_end_frame > transport.sample_frame) {
+    uint64_t fade_start = routing_mute_groups.fade_end_frame;
+    for (const auto& row : routing_mute_groups.rows) fade_start = std::min(fade_start, row.start_frame);
+    const uint64_t duration = routing_mute_groups.fade_end_frame - fade_start;
+    telemetry.routing_mute_group_transition_progress = duration == 0u ? 1.0f : clampFloat(
+        static_cast<float>(transport.sample_frame - fade_start) / static_cast<float>(duration), 0.0f, 1.0f);
+  } else {
+    telemetry.routing_mute_group_transition_progress = 1.0f;
+  }
+  telemetry.routing_mute_groups_enabled = routing_mute_groups.enabled ? 1u : 0u;
+  telemetry.routing_mute_group_trace_revision = routing_mute_groups.trace_revision;
   telemetry.control_queue_depth = control_event_count;
 }
 
@@ -479,6 +508,7 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
     telemetry.synth_sequencer_current_steps[i] = 0u;
     telemetry.drum_sequencer_current_steps[i] = 0u;
     telemetry.synth_arp_current_steps[i] = 0u;
+    telemetry.synth_arp_current_midis[i] = -1.0f;
     telemetry.synth_orbit_visual_note_counts[i] = 0u;
     telemetry.synth_orbit_visual_base_angles[i] = 0.0f;
     telemetry.synth_anchor_walker_visual_flags[i] = 0u;
@@ -553,6 +583,7 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
     telemetry.synth_arp_current_steps[i] = lane.arp.enabled
         ? lane.arp.current_step % std::max(1u, lane.arp.length)
         : 0u;
+    telemetry.synth_arp_current_midis[i] = lane.arp.enabled ? lane.arp.current_midi : -1.0f;
   }
   for (uint32_t i = 0; i < std::min<uint32_t>(drum_lane_count, KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES); ++i) {
     const LaneState& lane = drum_lanes[i];
@@ -569,6 +600,38 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
   telemetry.control_queue_depth = control_event_count;
   telemetry.journey_morph_running = journey_running ? 1u : 0u;
   telemetry.journey_morph_phase = journey_phase;
+  {
+    const ProductJourneyScheduleRuntimeState& runtime = journey_schedule_runtime;
+    const ProductJourneyScheduleBuffer& schedule = runtime.buffers[runtime.active_buffer];
+    telemetry.journey_schedule_revision = runtime.active ? schedule.revision : 0u;
+    telemetry.journey_schedule_phase = static_cast<uint32_t>(runtime.phase);
+    telemetry.journey_schedule_index = runtime.schedule_index;
+    telemetry.journey_loop_index = schedule.loop_start_index;
+    telemetry.journey_prepared_total_frames = schedule.prepared_total_frames;
+    telemetry.journey_transition_count = runtime.transition_count;
+    telemetry.journey_schedule_running = runtime.running ? 1u : 0u;
+    telemetry.journey_rng_state_after_plan = schedule.rng_state_after_plan;
+    telemetry.journey_schedule_entry_count = schedule.entry_count;
+    telemetry.journey_hold_progress = 0.0f;
+    telemetry.journey_morph_progress = 0.0f;
+    if (runtime.active && runtime.schedule_index < schedule.entry_count) {
+      const ProductJourneyScheduleEntry& entry = schedule.entries[runtime.schedule_index];
+      telemetry.journey_current_node_index = entry.from_node_index;
+      telemetry.journey_next_node_index = entry.to_node_index;
+      const uint64_t duration = runtime.phase_end_frame > runtime.phase_start_frame
+          ? runtime.phase_end_frame - runtime.phase_start_frame
+          : 0u;
+      const float progress = duration > 0u && runtime.phase_end_frame != UINT64_MAX
+          ? std::clamp(static_cast<float>(static_cast<double>(transport.sample_frame - runtime.phase_start_frame) /
+              static_cast<double>(duration)), 0.0f, 1.0f)
+          : 0.0f;
+      if (runtime.phase == ProductJourneyPhase::Hold) telemetry.journey_hold_progress = progress;
+      if (runtime.phase == ProductJourneyPhase::Morph) telemetry.journey_morph_progress = progress;
+    } else {
+      telemetry.journey_current_node_index = 0u;
+      telemetry.journey_next_node_index = 0u;
+    }
+  }
   telemetry.harmony_root_midi = harmony.root_midi;
   telemetry.harmony_scale_id = harmony.scale_id;
   telemetry.harmony_tension = harmony.tension;
@@ -766,4 +829,24 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
     telemetry.debug_source_states[i] = debugSourceState(i + 1u);
   }
   telemetry.sequencer_ui_state_revision = sequencer_ui_state_revision;
+  telemetry.source_morph_automation_enabled_mask = 0u;
+  for (uint32_t target = 0u; target < kProductSourceMorphAutomationCount; ++target) {
+    const auto& automation = sonic_runtime.source_morph[target];
+    if (automation.enabled != 0u) {
+      telemetry.source_morph_automation_enabled_mask |= 1u << target;
+    }
+    telemetry.source_morph_values[target] = target < kProductDirectSourceMorphAutomationCount
+        ? sources[target].morph
+        : sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u]
+            .drum_voice_morphs[target - kProductDirectSourceMorphAutomationCount];
+  }
+  telemetry.auto_stop_enabled = sonic_runtime.auto_stop.enabled ? 1u : 0u;
+  telemetry.auto_stop_target_sample_frame = sonic_runtime.auto_stop.target_sample_frame;
+  telemetry.auto_cycle_revision = auto_cycle_runtime.revision;
+  telemetry.auto_cycle_phase = static_cast<uint32_t>(auto_cycle_runtime.phase);
+  telemetry.auto_cycle_position = auto_cycle_runtime.position;
+  telemetry.auto_cycle_phase_start_frame = auto_cycle_runtime.phase_start_frame;
+  telemetry.auto_cycle_phase_end_frame = auto_cycle_runtime.phase_end_frame;
+  telemetry.auto_cycle_transition_count = auto_cycle_runtime.transition_count;
+  telemetry.auto_cycle_enabled = auto_cycle_runtime.enabled ? 1u : 0u;
 }

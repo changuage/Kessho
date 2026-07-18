@@ -82,7 +82,7 @@
   border-radius: 3px;
   background: color-mix(in srgb, var(--row-accent, #a5c4d4) 34%, transparent);
   pointer-events: none;
-  transition: left 0.12s ease-out, width 0.12s ease-out, opacity 0.12s ease-out, background 0.12s ease-out;
+  transition: opacity 0.12s ease-out, background 0.12s ease-out;
 }
 
 .global-root .routing-matrix .routing-matrix-cell-fill.walk,
@@ -130,7 +130,6 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--row-accent, #a5c4d4) 92%, white 8%);
   box-shadow: 0 0 6px color-mix(in srgb, var(--row-accent, #a5c4d4) 28%, transparent);
-  transition: left 0.12s ease-out;
 }
 
 .global-root .routing-matrix .routing-matrix-cell-indicator.walk,

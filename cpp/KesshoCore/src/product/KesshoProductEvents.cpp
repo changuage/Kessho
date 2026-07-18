@@ -5,6 +5,11 @@
 
 namespace {
 
+bool finiteEventValues(const KesshoProductEvent& event) {
+  return std::isfinite(event.value) && std::isfinite(event.value2) &&
+      std::isfinite(event.value3) && std::isfinite(event.value4);
+}
+
 bool resolvePadRuntimeParamId(
     uint32_t param_id,
     uint32_t& source_id,
@@ -348,9 +353,19 @@ void retimeSequencerLanePreservingPhase(
     case KESSHO_PRODUCT_EVENT_KIND_SET_SYNTH_ARP_CONFIG:
       return event.target_id == KESSHO_PRODUCT_SEQUENCER_SYNTH &&
               event.index < kMaxLaneCount &&
+              event.param_id <= 0xffffu &&
               event.value >= 0.0f && event.value <= 1.0f &&
               event.value2 >= 1.0f && event.value2 <= static_cast<float>(kMaxProductArpSteps) &&
-              event.value3 >= 0.25f && event.value3 <= 4.0f
+              event.value3 >= 0.25f && event.value3 <= 4.0f &&
+              event.value4 >= 0.0f && event.value4 <= 65535.0f &&
+              (event.flags & ~(
+                  KESSHO_PRODUCT_ARP_FLOW_MASK |
+                  KESSHO_PRODUCT_ARP_CONTOUR_SEMITONE |
+                  KESSHO_PRODUCT_ARP_BOUNDARY_MASK |
+                  KESSHO_PRODUCT_ARP_FIXED_MIDI |
+                  KESSHO_PRODUCT_ARP_MUSICAL_CONFIG)) == 0u &&
+              (event.flags & KESSHO_PRODUCT_ARP_FLOW_MASK) <= 5u &&
+              ((event.flags & KESSHO_PRODUCT_ARP_BOUNDARY_MASK) >> KESSHO_PRODUCT_ARP_BOUNDARY_SHIFT) <= 2u
           ? KESSHO_PRODUCT_OK
           : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SYNTH_ARP_STEP:
@@ -358,11 +373,196 @@ void retimeSequencerLanePreservingPhase(
               event.index < kMaxLaneCount &&
               event.param_id < kMaxProductArpSteps &&
               event.value >= -1.0f && event.value <= 127.0f &&
-              event.value2 >= 0.0f && event.value2 <= 1.0f
+              event.value2 >= 0.0f && event.value2 <= 1.0f &&
+              event.value3 >= -12.0f && event.value3 <= 12.0f &&
+              event.value4 >= -1.0f && event.value4 <= 7.0f &&
+              (event.flags & ~KESSHO_PRODUCT_ARP_STEP_RESET) == 0u
           ? KESSHO_PRODUCT_OK
           : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     case KESSHO_PRODUCT_EVENT_KIND_COMMIT_SYNTH_ARP_PATTERN:
       return event.target_id == KESSHO_PRODUCT_SEQUENCER_SYNTH && event.index < kMaxLaneCount
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_AUTO_STOP:
+      return event.value >= 0.0f && event.value <= 604800.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SCATTER_VOICE_PARAM: {
+      const bool unit_param =
+          event.param_id == KESSHO_PRODUCT_SCATTER_PARAM_ENABLED ||
+          event.param_id == KESSHO_PRODUCT_SCATTER_PARAM_TRIGGER_PROBABILITY ||
+          event.param_id == KESSHO_PRODUCT_SCATTER_PARAM_BURST_PROBABILITY ||
+          event.param_id == KESSHO_PRODUCT_SCATTER_PARAM_RANDOM_WALK ||
+          event.param_id == KESSHO_PRODUCT_SCATTER_PARAM_RANDOM_WALK_ENABLED ||
+          (event.param_id >= KESSHO_PRODUCT_SCATTER_PARAM_ANCHOR &&
+           event.param_id <= KESSHO_PRODUCT_SCATTER_PARAM_SPREAD);
+      const bool feel_param =
+          event.param_id == KESSHO_PRODUCT_SCATTER_PARAM_FEEL_X ||
+          event.param_id == KESSHO_PRODUCT_SCATTER_PARAM_FEEL_Y;
+      return event.index < kProductScatterVoiceCount &&
+              ((unit_param && event.value >= 0.0f && event.value <= 1.0f) ||
+               (feel_param && event.value >= -1.0f && event.value <= 1.0f))
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    }
+    case KESSHO_PRODUCT_EVENT_KIND_COMMIT_SCATTER_CONFIG:
+      return event.index == 0u && event.param_id == 0u
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SCATTER_ENABLED:
+      return event.value >= 0.0f && event.value <= 1.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_BEGIN_SCENE_PROGRAM:
+      return finiteEventValues(event) &&
+              event.value >= 0.0f && event.value <= static_cast<float>(kProductSceneMaxEntries) &&
+              event.value2 >= 0.0f && event.value2 <= static_cast<float>(kProductSceneMaxCommands) &&
+              event.value3 >= 0.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SCENE_ENTRY: {
+      if (!finiteEventValues(event)) return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      const uint32_t nested_kind = static_cast<uint32_t>(std::lround(event.value4));
+      const uint32_t interpolation = event.flags & KESSHO_PRODUCT_SCENE_INTERPOLATION_MASK;
+      const uint32_t nested_index = event.flags >> KESSHO_PRODUCT_SCENE_ENTRY_INDEX_SHIFT;
+      return event.index < kProductSceneMaxEntries && event.param_id != 0u &&
+              (nested_kind == KESSHO_PRODUCT_EVENT_KIND_SET_PARAM ||
+               nested_kind == KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE) &&
+              interpolation <= static_cast<uint32_t>(ProductSceneInterpolation::EnableGate) &&
+              nested_index < kMaxLaneCount && event.value3 >= 0.0f && event.value3 <= 1.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    }
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SCENE_COMMAND_HEADER: {
+      if (!finiteEventValues(event)) return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      const uint32_t nested_kind = static_cast<uint32_t>(std::lround(event.value3));
+      const uint32_t direction = static_cast<uint32_t>(std::lround(event.value4));
+      const bool forbidden =
+          nested_kind >= KESSHO_PRODUCT_EVENT_KIND_BEGIN_SCENE_PROGRAM &&
+          nested_kind <= KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_SCHEDULE_ENABLED;
+      return event.index < kProductSceneMaxCommands && !forbidden && nested_kind > 0u &&
+              event.value >= 0.0f && event.value2 >= 0.0f && event.value2 <= 1.0f &&
+              direction >= KESSHO_PRODUCT_SCENE_COMMAND_FORWARD &&
+              direction <= (KESSHO_PRODUCT_SCENE_COMMAND_FORWARD | KESSHO_PRODUCT_SCENE_COMMAND_REVERSE)
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    }
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SCENE_COMMAND_VALUES:
+      return event.index < kProductSceneMaxCommands && finiteEventValues(event)
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_COMMIT_SCENE_PROGRAM:
+      return KESSHO_PRODUCT_OK;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SCENE_POSITION:
+      return std::isfinite(event.value) && event.value >= 0.0f && event.value <= 1.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_CONFIGURE_GLOBAL_AUTO_CYCLE:
+      return finiteEventValues(event) && event.value >= 0.0f && event.value <= 1.0f &&
+              event.value2 >= 0.0f && event.value2 <= 1024.0f &&
+              event.value3 >= 0.0f && event.value3 <= 1024.0f &&
+              event.value4 >= 0.0f && event.value4 <= 16777215.0f &&
+              (event.flags & ~3u) == 0u
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_BEGIN_JOURNEY_SCHEDULE:
+      return finiteEventValues(event) &&
+              event.value >= 1.0f && event.value <= static_cast<float>(kProductJourneyMaxEntries) &&
+              event.value2 >= 0.0f && event.value2 <= static_cast<float>(kProductJourneyMaxPrograms) &&
+              event.value3 >= 0.0f && event.value3 <= static_cast<float>(kProductJourneyMaxEntries)
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_SCHEDULE_ENTRY_HOLD:
+      return finiteEventValues(event) && event.index < kProductJourneyMaxEntries &&
+              (event.param_id == kProductJourneyNoProgram || event.param_id < kProductJourneyMaxPrograms) &&
+              event.value >= 0.0f && event.value <= 65535.0f &&
+              event.value2 >= 0.0f && event.value2 <= 65535.0f &&
+              event.value3 >= 0.0f && event.value3 <= 65535.0f &&
+              event.value4 >= 0.0f && event.value4 <= 65535.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_SCHEDULE_ENTRY_MORPH:
+      return finiteEventValues(event) && event.index < kProductJourneyMaxEntries &&
+              event.value >= 0.0f && event.value <= 65535.0f &&
+              event.value2 >= 0.0f && event.value2 <= 65535.0f &&
+              event.value3 >= 0.0f && event.value3 <= 65535.0f &&
+              event.value4 >= 0.0f && event.value4 <= 65535.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_BEGIN_JOURNEY_TRANSITION_PROGRAM:
+      return finiteEventValues(event) && event.index < kProductJourneyMaxPrograms &&
+              event.value >= 0.0f && event.value <= static_cast<float>(kProductSceneMaxEntries) &&
+              event.value2 >= 0.0f && event.value2 <= static_cast<float>(kProductSceneMaxCommands)
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_TRANSITION_ENTRY: {
+      if (!finiteEventValues(event)) return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      const uint32_t program = event.index >> 16u;
+      const uint32_t slot = event.index & 0xffffu;
+      const uint32_t nested_kind = static_cast<uint32_t>(std::lround(event.value4));
+      const uint32_t interpolation = event.flags & KESSHO_PRODUCT_SCENE_INTERPOLATION_MASK;
+      return program < kProductJourneyMaxPrograms && slot < kProductSceneMaxEntries &&
+              event.param_id != 0u &&
+              (nested_kind == KESSHO_PRODUCT_EVENT_KIND_SET_PARAM || nested_kind == KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE) &&
+              interpolation <= static_cast<uint32_t>(ProductSceneInterpolation::EnableGate) &&
+              event.value3 >= 0.0f && event.value3 <= 1.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    }
+    case KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_TRANSITION_COMMAND_HEADER: {
+      if (!finiteEventValues(event)) return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      const uint32_t program = event.index >> 16u;
+      const uint32_t slot = event.index & 0xffffu;
+      const uint32_t nested_kind = static_cast<uint32_t>(std::lround(event.value3));
+      const uint32_t direction = static_cast<uint32_t>(std::lround(event.value4));
+      const bool forbidden = nested_kind >= KESSHO_PRODUCT_EVENT_KIND_BEGIN_SCENE_PROGRAM &&
+          nested_kind <= KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_SCHEDULE_ENABLED;
+      return program < kProductJourneyMaxPrograms && slot < kProductSceneMaxCommands &&
+              !forbidden && nested_kind > 0u && event.value >= 0.0f &&
+              event.value2 >= 0.0f && event.value2 <= 1.0f &&
+              direction >= KESSHO_PRODUCT_SCENE_COMMAND_FORWARD &&
+              direction <= (KESSHO_PRODUCT_SCENE_COMMAND_FORWARD | KESSHO_PRODUCT_SCENE_COMMAND_REVERSE)
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    }
+    case KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_TRANSITION_COMMAND_VALUES:
+      return (event.index >> 16u) < kProductJourneyMaxPrograms &&
+              (event.index & 0xffffu) < kProductSceneMaxCommands &&
+              finiteEventValues(event)
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_COMMIT_JOURNEY_TRANSITION_PROGRAM:
+      return event.index < kProductJourneyMaxPrograms ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_COMMIT_JOURNEY_SCHEDULE:
+      return KESSHO_PRODUCT_OK;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_SCHEDULE_ENABLED:
+      return event.value >= 0.0f && event.value <= 1.0f ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_BEGIN_ROUTING_MUTE_GROUPS:
+      return event.value >= 0.0f && event.value2 >= 1.0f &&
+              event.value3 >= 0.0f && event.value3 <= 1.0f &&
+              event.value4 >= 0.0f && event.value4 <= 1.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_ROUTING_MUTE_GROUP_SLOT:
+      return event.index < kProductRoutingMuteGroupSlotCount &&
+              event.target_id < (1u << kProductRoutingMuteRowCount) &&
+              event.value >= 1.0f && event.value <= 800.0f &&
+              event.value2 >= event.value && event.value2 <= 800.0f &&
+              event.value3 >= 0.0f && event.value3 <= static_cast<float>(sample_rate * 600.0) &&
+              event.value4 >= 0.0f && event.value4 <= 16777215.0f &&
+              (event.flags & ~(KESSHO_PRODUCT_ROUTING_MUTE_SLOT_ELIGIBLE |
+                               KESSHO_PRODUCT_ROUTING_MUTE_GRANULAR_MASK)) == 0u
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_COMMIT_ROUTING_MUTE_GROUPS:
+      return KESSHO_PRODUCT_OK;
+    case KESSHO_PRODUCT_EVENT_KIND_RECALL_ROUTING_MUTE_GROUP:
+      return (event.index < kProductRoutingMuteGroupSlotCount || event.index == UINT32_MAX) &&
+              event.value >= 0.0f && event.value <= static_cast<float>(sample_rate * 600.0)
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_ROUTING_MUTE_GROUPS_ENABLED:
+      return event.value >= 0.0f && event.value <= 1.0f
           ? KESSHO_PRODUCT_OK
           : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     case KESSHO_PRODUCT_EVENT_KIND_SET_PARAM:
@@ -757,6 +957,84 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       break;
     case KESSHO_PRODUCT_EVENT_KIND_COMMIT_SYNTH_ARP_PATTERN:
       applyCommitSynthArpPatternEvent(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_AUTO_STOP:
+      configureProductAutoStop(event.value > 0.0f, event.value);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SCATTER_VOICE_PARAM:
+      applyScatterVoiceParamEvent(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_COMMIT_SCATTER_CONFIG:
+      commitScatterConfig();
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SCATTER_ENABLED:
+      setScatterEnabled(event.value >= 0.5f);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_BEGIN_SCENE_PROGRAM:
+      beginSceneProgram(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SCENE_ENTRY:
+      setSceneProgramEntry(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SCENE_COMMAND_HEADER:
+      setSceneProgramCommandHeader(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SCENE_COMMAND_VALUES:
+      setSceneProgramCommandValues(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_COMMIT_SCENE_PROGRAM:
+      commitSceneProgram();
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SCENE_POSITION:
+      setSceneProgramPosition(event.value);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_BEGIN_ROUTING_MUTE_GROUPS:
+      beginRoutingMuteGroups(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_ROUTING_MUTE_GROUP_SLOT:
+      setRoutingMuteGroupSlot(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_COMMIT_ROUTING_MUTE_GROUPS:
+      commitRoutingMuteGroups(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_RECALL_ROUTING_MUTE_GROUP:
+      recallRoutingMuteGroup(event.index, static_cast<uint32_t>(std::lround(event.value)));
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_ROUTING_MUTE_GROUPS_ENABLED:
+      setRoutingMuteGroupsEnabled(event.value >= 0.5f);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_CONFIGURE_GLOBAL_AUTO_CYCLE:
+      configureGlobalAutoCycle(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_BEGIN_JOURNEY_SCHEDULE:
+      beginJourneySchedule(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_SCHEDULE_ENTRY_HOLD:
+      setJourneyScheduleEntryHold(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_SCHEDULE_ENTRY_MORPH:
+      setJourneyScheduleEntryMorph(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_BEGIN_JOURNEY_TRANSITION_PROGRAM:
+      beginJourneyTransitionProgram(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_TRANSITION_ENTRY:
+      setJourneyTransitionEntry(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_TRANSITION_COMMAND_HEADER:
+      setJourneyTransitionCommandHeader(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_TRANSITION_COMMAND_VALUES:
+      setJourneyTransitionCommandValues(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_COMMIT_JOURNEY_TRANSITION_PROGRAM:
+      commitJourneyTransitionProgram(event);
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_COMMIT_JOURNEY_SCHEDULE:
+      commitJourneySchedule();
+      break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_SCHEDULE_ENABLED:
+      setJourneyScheduleEnabled(event.value >= 0.5f);
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE:
       if (transport.running && isSequencerLaneTimingEvent(event)) {
@@ -1386,6 +1664,31 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
 }
 
   void KesshoProductEngine::applyParam(const KesshoProductEvent& event) {
+  if (event.target_id >= kSoundscapeAssetLevelRangeTargetBase &&
+      event.target_id < kSoundscapeAssetLevelRangeTargetEnd &&
+      event.param_id == KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID) {
+    applySoundscapeAssetLevelValue(event.target_id - kSoundscapeAssetLevelRangeTargetBase, event.value);
+    telemetry.last_error_code = KESSHO_PRODUCT_OK;
+    return;
+  }
+  SourceState& soundscape_source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
+  if (event.target_id >= kSoundscapeTextureParamTargetBase &&
+      event.target_id < kSoundscapeTextureParamTargetBase + kSoundscapeTextureParamCount) {
+    const uint32_t index = event.target_id - kSoundscapeTextureParamTargetBase;
+    soundscape_source.soundscape_texture_params[index] = event.value;
+    soundscape_source.soundscape_texture_param_count = std::max(soundscape_source.soundscape_texture_param_count, index + 1u);
+    telemetry.last_error_code = KESSHO_PRODUCT_OK;
+    return;
+  }
+  if (event.target_id >= kSoundscapeModuleParamTargetBase &&
+      event.target_id < kSoundscapeModuleParamTargetBase + kSoundscapeProductModuleParamCount) {
+    const uint32_t index = event.target_id - kSoundscapeModuleParamTargetBase;
+    soundscape_source.soundscape_module_params[index] = event.value;
+    soundscape_source.soundscape_module_param_count = std::max(soundscape_source.soundscape_module_param_count, index + 1u);
+    configureSoundscapesModuleFromSource();
+    telemetry.last_error_code = KESSHO_PRODUCT_OK;
+    return;
+  }
   uint32_t pad_source_id = 0u;
   uint32_t pad_index = 0u;
   uint32_t pad_param_index = 0u;

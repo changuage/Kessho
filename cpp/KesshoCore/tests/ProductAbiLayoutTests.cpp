@@ -18,23 +18,48 @@ void require(bool condition, const char* message) {
 int main() {
   static_assert(sizeof(KesshoProductSourceSnapshot) == 5188, "source snapshot ABI size changed");
   static_assert(sizeof(KesshoProductSequencerLaneSnapshot) == 100, "sequencer lane snapshot ABI size changed");
-  static_assert(sizeof(KesshoProductSnapshotV2) == 152760, "product snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductSnapshotV2) == 152936, "product snapshot ABI size changed");
   static_assert(sizeof(KesshoProductEvent) == 40, "product event ABI size changed");
   static_assert(sizeof(KesshoSequencerEvent) == 60, "sequencer event ABI size changed");
   static_assert(sizeof(KesshoProductGranularVisualEvent) == 32, "granular visual event ABI size changed");
   static_assert(sizeof(KesshoProductDebugSourceState) == 32, "product debug source telemetry ABI size changed");
   static_assert(sizeof(KesshoProductDebugVoiceSpawn) == 48, "product debug voice telemetry ABI size changed");
-  static_assert(sizeof(KesshoProductTelemetry) == 15168, "product telemetry ABI size changed");
+  static_assert(sizeof(KesshoProductTelemetry) == 15448, "product telemetry ABI size changed");
   static_assert(sizeof(KesshoProductSequencerLaneUiState) == 3296, "sequencer UI lane state ABI size changed");
   static_assert(sizeof(KesshoProductSequencerUiState) == 105508, "sequencer UI state ABI size changed");
 
   require(offsetof(KesshoProductSnapshotV2, schema_hash) == 4, "snapshot schema hash offset changed");
   require(offsetof(KesshoProductSnapshotV2, sources) == 428, "snapshot sources offset changed");
+  require(offsetof(KesshoProductSnapshotV2, sonic_runtime) == 152760, "snapshot sonic runtime offset changed");
   require(offsetof(KesshoProductEvent, sample_offset) == 0, "event sample offset changed");
   require(offsetof(KesshoProductEvent, event_kind) == 4, "event kind offset changed");
   require(offsetof(KesshoSequencerEvent, midi_note) == 16, "sequencer event midi offset changed");
   require(offsetof(KesshoSequencerEvent, flags) == 56, "sequencer event flags offset changed");
   require(offsetof(KesshoProductTelemetry, schema_hash) == 0, "telemetry schema hash offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, source_morph_automation_enabled_mask) == 15168,
+      "source morph telemetry offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, auto_stop_target_sample_frame) == 15224,
+      "auto-stop telemetry offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, synth_arp_current_midis) == 15232,
+      "telemetry synth ARP current MIDI offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, scatter_current_phrase_id) == 15296,
+      "telemetry Scatter projection offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, scene_program_revision) == 15312,
+      "telemetry scene projection offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, routing_mute_group_revision) == 15320,
+      "telemetry routing mute group projection offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, journey_schedule_revision) == 15392,
+      "telemetry Journey schedule projection offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, journey_prepared_total_frames) == 15424,
+      "telemetry Journey prepared-frame offset changed");
   require(offsetof(KesshoProductTelemetry, rng_seed) == 928, "telemetry rng seed offset changed");
   require(offsetof(KesshoProductTelemetry, master_input_peak) == 968, "telemetry master input peak offset changed");
   require(
@@ -156,6 +181,10 @@ int main() {
   require(offsetof(KesshoProductTelemetry, transport_pending_apply_frame) == 15152, "telemetry pending apply frame offset changed");
   require(offsetof(KesshoProductTelemetry, transport_transition_revision) == 15160, "telemetry transition revision offset changed");
   require(offsetof(KesshoProductTelemetry, transport_phrase_progress) == 15164, "telemetry phrase progress offset changed");
+  require(offsetof(KesshoProductTelemetry, auto_cycle_revision) == 15356, "telemetry auto-cycle revision offset changed");
+  require(offsetof(KesshoProductTelemetry, auto_cycle_phase_start_frame) == 15368, "telemetry auto-cycle phase-start offset changed");
+  require(offsetof(KesshoProductTelemetry, auto_cycle_phase_end_frame) == 15376, "telemetry auto-cycle phase-end offset changed");
+  require(sizeof(KesshoProductTelemetry) == 15448, "telemetry byte size changed");
   require(
       offsetof(KesshoProductSequencerLaneUiState, nudge_override_set_low) == 100,
       "sequencer UI nudge override low offset changed");

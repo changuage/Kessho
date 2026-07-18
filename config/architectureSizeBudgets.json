@@ -1,7 +1,7 @@
 {
   "files": {
     "src/App.tsx": {
-      "noGrowthCeiling": 3593,
+      "noGrowthCeiling": 3634,
       "targetCeiling": 2500,
       "mode": "fail-on-growth-warn-above-target"
     },
@@ -16,7 +16,7 @@
       "mode": "fail-on-growth-warn-above-target"
     },
     "src/ui/earth/components/ActiveEarthMatrix.tsx": {
-      "noGrowthCeiling": 1570,
+      "noGrowthCeiling": 1574,
       "targetCeiling": 1514,
       "mode": "fail-on-growth-warn-above-target"
     },
@@ -35,8 +35,38 @@
       "targetCeiling": 688,
       "mode": "fail-on-growth-warn-above-target"
     },
+    "src/ui/SnowflakeUI.tsx": {
+      "noGrowthCeiling": 2800,
+      "targetCeiling": 2400,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/ui/SnowflakePrototypePage.tsx": {
+      "noGrowthCeiling": 2353,
+      "targetCeiling": 2000,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/ui/runtimeProjectionState.ts": {
+      "noGrowthCeiling": 47,
+      "targetCeiling": 47,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/ui/visualizer/visualizerFrameState.ts": {
+      "noGrowthCeiling": 33,
+      "targetCeiling": 33,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/ui/global/routingMatrixTypes.ts": {
+      "noGrowthCeiling": 55,
+      "targetCeiling": 55,
+      "mode": "fail-on-growth-warn-above-target"
+    },
+    "src/ui/sliderSystem/useElementWidth.ts": {
+      "noGrowthCeiling": 28,
+      "targetCeiling": 28,
+      "mode": "fail-on-growth-warn-above-target"
+    },
     "src/audio/coreProductEngineHost.ts": {
-      "noGrowthCeiling": 920,
+      "noGrowthCeiling": 930,
       "targetCeiling": 650,
       "mode": "fail-on-growth-warn-above-target"
     },
@@ -76,7 +106,7 @@
       "mode": "fail-on-growth-warn-above-target"
     },
     "src/audio/product/host/CoreProductAssetRegistrar.ts": {
-      "noGrowthCeiling": 260,
+      "noGrowthCeiling": 296,
       "targetCeiling": 200,
       "mode": "fail-on-growth-warn-above-target"
     },

@@ -90,18 +90,16 @@ export function deriveLayerMacroPatch(
 }
 
 function addControlOffsets(
-  controls: ReactiveVisualizerControls,
+  next: ReactiveVisualizerControls,
   offsets: Partial<ReactiveVisualizerControls>,
-): ReactiveVisualizerControls {
-  const next = { ...controls, layerOrder: [...controls.layerOrder] };
+): void {
   for (const [key, offset] of Object.entries(offsets)) {
     if (typeof offset !== 'number') continue;
     const controlKey = key as keyof ReactiveVisualizerControls;
-    const baseValue = controls[controlKey];
+    const baseValue = next[controlKey];
     if (typeof baseValue !== 'number') continue;
     (next as unknown as Record<string, number>)[key] = clampBipolar(baseValue + offset);
   }
-  return next;
 }
 
 export function resolveVisualizerMacroControls(
@@ -109,8 +107,8 @@ export function resolveVisualizerMacroControls(
   sceneMacros: VisualizerPerformanceMacros,
   layerMacros: VisualizerLayerMacros,
 ): ReactiveVisualizerControls {
-  return addControlOffsets(
-    addControlOffsets(baseControls, deriveSceneMacroPatch(sceneMacros)),
-    deriveLayerMacroPatch(layerMacros),
-  );
+  const next = { ...baseControls, layerOrder: [...baseControls.layerOrder] };
+  addControlOffsets(next, deriveSceneMacroPatch(sceneMacros));
+  addControlOffsets(next, deriveLayerMacroPatch(layerMacros));
+  return next;
 }

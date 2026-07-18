@@ -10,6 +10,10 @@ uint32_t KesshoProductEngine::sourceEnableFadeFrames(uint32_t source_id) const {
 }
 
 bool KesshoProductEngine::sourceRenderActive(const SourceState& source) const {
+  const uint32_t mute_row = routingMuteRowForSource(source.source_id);
+  if (mute_row < kProductRoutingMuteRowCount && routingMuteRowSuppressed(mute_row)) {
+    return false;
+  }
   return source.enabled ||
       source.enabled_gain > 0.0001f ||
       source.enabled_gain_target > 0.0001f ||

@@ -15,6 +15,7 @@ for (const file of filesThatMustNotConstructFrameSchedulers) {
 }
 
 const runtimeScheduler = 'src/audio/product/scheduling/ProductRuntimeScheduler.ts';
+const runtimeSchedulerTest = 'src/audio/product/scheduling/ProductRuntimeScheduler.test.ts';
 if (!fs.existsSync(runtimeScheduler)) {
   failures.push(`${runtimeScheduler} missing`);
 } else {
@@ -27,18 +28,32 @@ if (!fs.existsSync(runtimeScheduler)) {
     'diagnostics-hidden',
     'telemetry-hidden',
     'perf-overlay',
-    '5000',
-    '2000',
     'sample-decode-progress',
-    'isDebugEnabled',
   ]) {
     if (!text.includes(token)) failures.push(`${runtimeScheduler}: missing channel ${token}`);
   }
-  if (!text.includes("channel === 'sample-voice-telemetry' && this.isDocumentHidden()")) {
-    failures.push(`${runtimeScheduler}: sample voice telemetry must be disabled while hidden`);
+  if (!text.includes('if (this.documentHidden) return;')) {
+    failures.push(`${runtimeScheduler}: all UI and diagnostic scheduling must be disabled while hidden`);
   }
   if (!text.includes("channel === 'sample-asset-miss-diagnostics'")) {
     failures.push(`${runtimeScheduler}: sampler asset miss diagnostics must use a first-miss/throttled path`);
+  }
+  if (!text.includes("'sample-cache-diagnostics': 500") || !text.includes("'sample-decode-progress': 250")) {
+    failures.push(`${runtimeScheduler}: visible sampler diagnostics must retain bounded low-rate publishing`);
+  }
+}
+
+if (!fs.existsSync(runtimeSchedulerTest)) {
+  failures.push(`${runtimeSchedulerTest} missing`);
+} else {
+  const text = fs.readFileSync(runtimeSchedulerTest, 'utf8');
+  for (const token of [
+    'hidden sample diagnostics must not create timers',
+    'hidden dirty bursts must create zero timers',
+    'perf overlay should not publish while hidden',
+    'sample voice telemetry should publish on the visible animation frame',
+  ]) {
+    if (!text.includes(token)) failures.push(`${runtimeSchedulerTest}: missing policy fixture ${token}`);
   }
 }
 

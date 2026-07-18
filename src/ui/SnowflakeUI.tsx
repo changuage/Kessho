@@ -18,8 +18,9 @@ import { JourneyPresetGlyph } from './JourneyPresetGlyph';
 import { useSnowflakeV2, FX_COLORS, ENGINE_GROUPS, type EngineGroupDef, type StarDirection } from './snowflakeV2';
 import { generateSnowflake } from '../snowflake/SnowflakeGenerator';
 import type { SnowflakeLineCap, SnowflakeLineJoin, SnowflakeParams, SnowflakeRingStyle } from '../snowflake/types';
-import { getRuntimeSliderPosition, useRuntimeSliderKeysVersion } from './runtimeSliderState';
-import { getRuntimeValue, useRuntimeValueKeysVersion } from './runtimeValueState';
+import { getRuntimeSliderPosition } from './runtimeSliderState';
+import { getRuntimeValue } from './runtimeValueState';
+import { useRuntimeProjectionVersion } from './runtimeProjectionState';
 import { resolveEffectiveSliderValue } from './sliderSystem/effectiveValue';
 
 /** Set to true to enable V2 snowflake rendering. Flip to false to revert to V1. */
@@ -646,12 +647,10 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const runtimeKeys = SNOWFLAKE_RUNTIME_KEYS as readonly string[];
-  const runtimeSliderVersion = useRuntimeSliderKeysVersion(runtimeKeys);
-  const runtimeValueVersion = useRuntimeValueKeysVersion(runtimeKeys);
+  const runtimeProjectionVersion = useRuntimeProjectionVersion(SNOWFLAKE_RUNTIME_KEYS as readonly string[]);
   const snowflakeState = useMemo(
     () => resolveSnowflakeRuntimeState(state, sliderModes, dualSliderRanges),
-    [dualSliderRanges, runtimeSliderVersion, runtimeValueVersion, sliderModes, state],
+    [dualSliderRanges, runtimeProjectionVersion, sliderModes, state],
   );
 
   // --- Snowflake V2 hook (no-op when disabled, zero cost) ---

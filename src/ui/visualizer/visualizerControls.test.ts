@@ -6,7 +6,12 @@ import {
   DEFAULT_VISUALIZER_MACROS,
 } from './visualizerControls';
 import { resolveVisualizerMacroControls } from './visualizerSceneResolver';
-import { buildVisualBuses, getEffectiveReactionDepth } from './visualizerModulation';
+import {
+  applyVisualizerModulation,
+  buildVisualBuses,
+  createVisualBuses,
+  getEffectiveReactionDepth,
+} from './visualizerModulation';
 import { resolveVisualizerQualityMode } from './visualizerQuality';
 import {
   publishVisualizerTelemetrySignal,
@@ -155,12 +160,23 @@ function renderFallbackForTest(frame: ReactiveVisualizerFrame): FakeCanvasContex
 
 {
   const snapshot = createTestFrame(false).snapshot;
-  const buses = buildVisualBuses(snapshot, { afterglow: 0.5 });
+  const busScratch = createVisualBuses();
+  const buses = buildVisualBuses(snapshot, { afterglow: 0.5 }, busScratch);
+  assert.equal(buses, busScratch, 'visual bus updates should reuse the frame-owned scratch object');
   assert.ok(buses.geometry.pulse > 0.2, 'synth and lead events should drive geometry transients');
   assert.ok(buses.atmosphere.level > 0.3, 'pad and reverb energy should drive atmosphere');
   assert.ok(buses.fragment.pulse > 0.1, 'granular events should drive fragmentation');
   assert.ok(buses.echo.level > 0.2, 'delay and reverb energy should drive echo transforms');
   assert.ok(buses.impact.pulse > 0.4, 'drum transients should dominate the impact bus');
+  const controlsScratch = { ...base, layerOrder: [...base.layerOrder] };
+  const modulated = applyVisualizerModulation(
+    base,
+    { brightness: { min: -1, max: 1 } },
+    buses,
+    { reactionAmount: 1, morphAroundPreset: 0.5, afterglow: 0.5, mode: 'auto' },
+    controlsScratch,
+  );
+  assert.equal(modulated, controlsScratch, 'visual modulation should reuse the frame-owned controls scratch object');
 }
 
 {

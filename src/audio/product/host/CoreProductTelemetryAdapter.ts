@@ -2,6 +2,9 @@ import { CORE_PRODUCT_MEMORY_BUDGETS } from '../../coreProductAssets';
 import type { CoreProductTelemetrySnapshot, CoreProductVisualTelemetrySnapshot } from '../../coreProductTelemetry';
 import type { ProductPerfSnapshot } from '../ProductEngineTypes';
 import type { ProductRuntimeDiagnostics } from '../ProductRuntimeDiagnostics';
+import { CoreProductSonicAutonomyTracker } from './CoreProductSonicAutonomyFingerprint';
+
+export { CoreProductSonicAutonomyTracker };
 
 export function mergeCoreProductVisualTelemetry(
   previous: CoreProductTelemetrySnapshot | null,
@@ -29,7 +32,9 @@ export function enrichCoreProductHostTelemetry(
   decodedAssetBytes: number,
   hostDecodedBytes: number,
   inFlightDecodedBytes: number,
+  autonomyTracker: CoreProductSonicAutonomyTracker,
 ): CoreProductTelemetrySnapshot {
+  const autonomy = autonomyTracker.observe(telemetry);
   return {
     ...telemetry,
     wasmHeapBudgetBytes: CORE_PRODUCT_MEMORY_BUDGETS.webWorkletHeapBytes,
@@ -37,6 +42,8 @@ export function enrichCoreProductHostTelemetry(
     decodedAssetBudgetBytes: CORE_PRODUCT_MEMORY_BUDGETS.totalRegisteredDecodedBytes,
     hostDecodedBytes,
     inFlightDecodedBytes,
+    sonicAutonomyRevision: autonomy.revision,
+    sonicAutonomyFingerprint: autonomy.fingerprint,
     ...diagnostics,
     lastSnapshotReloadReason: diagnostics.lastSnapshotReloadReason ?? undefined,
   };

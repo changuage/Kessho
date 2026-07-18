@@ -4,7 +4,6 @@ import {
   CORE_PRODUCT_STEP_VALUE_FIELDS,
   CORE_PRODUCT_SUBLANE_DIRECTIONS,
   CORE_PRODUCT_SOURCE_IDS,
-  createCoreProductParamEvent,
   createCoreProductSynthArpCommitEvent,
   createCoreProductSynthArpConfigEvent,
   createCoreProductSynthArpStepEvent,
@@ -14,6 +13,7 @@ import {
   createCoreProductSequencerSubLaneConfigEvent,
 } from '../audio/coreProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from '../audio/generated/kesshoProductParams';
+import { KESSHO_PRODUCT_EVENT_IDS } from '../audio/generated/kesshoProductEvents';
 import type { ProductEnginePort } from '../audio/product/ProductEnginePort';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { SliderMode, SliderState } from './state';
@@ -168,7 +168,8 @@ export function useProductRuntimeParityProbe({
     telemetryOutput.dataset.testid = PRODUCT_RUNTIME_TELEMETRY_PROBE_SELECTOR;
     document.body.append(telemetryOutput);
     publishProductRuntimeTelemetryProbe(telemetryOutput, runtime);
-    const telemetryTimer = window.setInterval(() => {
+    const passiveProbe = new URLSearchParams(window.location.search).get('parityPassive') === '1';
+    const telemetryTimer = passiveProbe ? null : window.setInterval(() => {
       publishProductRuntimeTelemetryProbe(telemetryOutput, runtime);
     }, 100);
     const configureRange = async (
@@ -292,21 +293,21 @@ export function useProductRuntimeParityProbe({
       async configureSynthArpSequencer(options = {}) {
         const laneIndex = Math.max(0, Math.min(15, Math.round(options.laneIndex ?? 0)));
         runtime.enqueueEvents([
-          createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.SourceEnabled, 1, CORE_PRODUCT_SOURCE_IDS.lead1),
-          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneEnabled, 0),
+          { eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSourceEnabled, targetId: CORE_PRODUCT_SOURCE_IDS.lead1, value: 1 },
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneEnabled, 1),
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMuted, 0),
           createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneTargetSource, CORE_PRODUCT_SOURCE_IDS.lead1),
-          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneStepCount, 16),
-          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneFillCount, 0),
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneStepCount, 4),
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneFillCount, 1),
+          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneRotation, 0),
           createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision, 16),
           createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneProbability, 1),
           createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneRatchet, 1),
           createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMidiNote, 60),
           createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneVelocity, 1),
           createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneHoldSeconds, 0.1),
-          ...Array.from({ length: 16 }, (_, stepIndex) =>
-            createCoreProductSequencerStepEvent('synth', laneIndex, stepIndex, stepIndex === 0),
-          ),
-          createCoreProductSequencerLaneParamEvent('synth', laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneEnabled, 1),
+          ...Array.from({ length: 4 }, (_, step) => createCoreProductSequencerStepEvent('synth', laneIndex, step, step === 0)),
+          { eventKind: KESSHO_PRODUCT_EVENT_IDS.ResetTransport },
         ]);
         await waitForTelemetryResponse();
       },
@@ -362,7 +363,7 @@ export function useProductRuntimeParityProbe({
       },
     };
     return () => {
-      window.clearInterval(telemetryTimer);
+      if (telemetryTimer !== null) window.clearInterval(telemetryTimer);
       telemetryOutput.remove();
       delete window.__kesshoProductRuntimeProbe;
     };

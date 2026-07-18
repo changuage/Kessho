@@ -2,6 +2,10 @@ export function isSonicParityRoute(): boolean {
   return readSearchFlag('parity');
 }
 
+export function isMobileWebEvidenceRoute(): boolean {
+  return readSearchFlag('mobileEvidence');
+}
+
 export function isSnowflakePrototypeRoute(): boolean {
   return readSearchFlag('snowflakePrototype');
 }

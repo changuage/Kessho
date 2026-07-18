@@ -1,7 +1,11 @@
 #include "KesshoProductEngineInternal.h"
 
+#include <new>
+
   KesshoProductEngine::KesshoProductEngine(double in_sample_rate, uint32_t in_max_block_size, uint32_t in_flags)
-      : sample_rate(in_sample_rate), max_block_size(in_max_block_size), flags(in_flags) {
+      : sample_rate(in_sample_rate), max_block_size(in_max_block_size), flags(in_flags),
+        journey_schedule_runtime_storage(std::make_unique<ProductJourneyScheduleRuntimeState>()),
+        journey_schedule_runtime(*journey_schedule_runtime_storage) {
   modules_ready = prepareProductModules();
   loadDefaults();
 }
@@ -60,6 +64,13 @@
   routing = {};
   rng_seed = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
   rng_state = rng_seed;
+  resetSonicRuntimeState();
+  scatter_runtime = {};
+  scene_program_runtime = {};
+  // This member is already value-initialized. Aggregate assignment would create
+  // the multi-megabyte schedule bank on the constrained WASM stack.
+  auto_cycle_runtime = {};
+  routing_mute_groups = {};
   resetHarmonyClock();
   resetArrangementRuntime();
   sequencer_evolve_rng_stream_seed = 0u;
@@ -212,6 +223,11 @@
   std::fill(delay_a_cross_carry_r, delay_a_cross_carry_r + kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES, 0.0f);
   resetDiffuseRuntime();
   rng_state = rng_seed;
+  resetSonicRuntimeState();
+  scatter_runtime = {};
+  scene_program_runtime = {};
+  journey_schedule_runtime.~ProductJourneyScheduleRuntimeState();
+  new (&journey_schedule_runtime) ProductJourneyScheduleRuntimeState{};
   generated_sequencer_capture_config = {};
   generated_sequencer_capture_ring.reset();
   generated_sequencer_capture_event_counter = 1u;

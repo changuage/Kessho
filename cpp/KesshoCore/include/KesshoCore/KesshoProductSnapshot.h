@@ -681,6 +681,20 @@ typedef struct KesshoProductArrangementSnapshot {
   float lead_initial_delay_seconds;
 } KesshoProductArrangementSnapshot;
 
+#define KESSHO_PRODUCT_SOURCE_MORPH_AUTOMATION_COUNT 11u
+
+typedef struct KesshoProductSourceMorphAutomationSnapshot {
+  uint32_t enabled;
+  uint32_t mode;
+  float phrases_per_cycle;
+  uint32_t seed;
+} KesshoProductSourceMorphAutomationSnapshot;
+
+typedef struct KesshoProductSonicRuntimeSnapshot {
+  KesshoProductSourceMorphAutomationSnapshot
+      source_morph[KESSHO_PRODUCT_SOURCE_MORPH_AUTOMATION_COUNT];
+} KesshoProductSonicRuntimeSnapshot;
+
 typedef struct KesshoProductSnapshotV2 {
   uint32_t version;
   uint32_t schema_hash;
@@ -702,4 +716,5 @@ typedef struct KesshoProductSnapshotV2 {
   uint32_t soundscape_module_param_count;
   float soundscape_module_params[KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT];
   KesshoProductArrangementSnapshot arrangement;
+  KesshoProductSonicRuntimeSnapshot sonic_runtime;
 } KesshoProductSnapshotV2;

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GlobalPageProps } from './global/GlobalPage';
 import { useVisibleInterval } from './hooks/useVisibleInterval';
+import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
+import { createCoreProductAutoStopEvent } from '../audio/coreProductEvents';
+import { productEngine } from '../audio/product/ProductEngineProxy';
 
 type ProductRuntimeGlobalProps = Pick<
   GlobalPageProps,
@@ -38,7 +41,7 @@ type ProductRuntimeGlobalRecordingProps = Pick<
 
 type ProductRuntimeGlobalSurfaceOptions = {
   playbackIsRunning: boolean;
-  stopProductPlayback: () => void;
+  productRuntimeMode: ProductRuntimeSelectionMode;
   runtimeComparison: ProductRuntimeGlobalProps['runtimeComparison'];
   onResetCofDrift: ProductRuntimeGlobalProps['onResetCofDrift'];
   recordingProps: ProductRuntimeGlobalRecordingProps;
@@ -46,7 +49,7 @@ type ProductRuntimeGlobalSurfaceOptions = {
 
 export function useProductRuntimeGlobalSurface({
   playbackIsRunning,
-  stopProductPlayback,
+  productRuntimeMode,
   runtimeComparison,
   onResetCofDrift,
   recordingProps,
@@ -61,7 +64,7 @@ export function useProductRuntimeGlobalSurface({
     setPlaybackTimerRemaining(null);
   }, []);
 
-  const updatePlaybackTimerCountdown = useCallback(() => {
+  const updatePlaybackTimerProjection = useCallback(() => {
     if (!playbackIsRunning || !playbackTimerEnabled) return;
 
     const targetTime = playbackTimerTargetTimeRef.current;
@@ -69,10 +72,8 @@ export function useProductRuntimeGlobalSurface({
 
     const remainingMs = targetTime - Date.now();
     if (remainingMs <= 0) {
-      resetPlaybackTimer();
-      window.setTimeout(() => {
-        stopProductPlayback();
-      }, 0);
+      playbackTimerTargetTimeRef.current = null;
+      setPlaybackTimerRemaining(0);
       return;
     }
 
@@ -82,7 +83,6 @@ export function useProductRuntimeGlobalSurface({
     playbackIsRunning,
     playbackTimerEnabled,
     resetPlaybackTimer,
-    stopProductPlayback,
   ]);
 
   useEffect(() => {
@@ -93,27 +93,37 @@ export function useProductRuntimeGlobalSurface({
         if (playbackTimerRemaining === null) {
           setPlaybackTimerRemaining(initialRemaining);
         }
+        if (productRuntimeMode === 'core-product') {
+          productEngine.enqueueEvent(createCoreProductAutoStopEvent(initialRemaining));
+        }
       }
-      updatePlaybackTimerCountdown();
+      updatePlaybackTimerProjection();
       return;
     }
 
     if (!playbackIsRunning) {
+      if (productRuntimeMode === 'core-product') {
+        productEngine.enqueueEvent(createCoreProductAutoStopEvent(null));
+      }
       resetPlaybackTimer();
       return;
     }
 
     playbackTimerTargetTimeRef.current = null;
+    if (productRuntimeMode === 'core-product') {
+      productEngine.enqueueEvent(createCoreProductAutoStopEvent(null));
+    }
   }, [
     playbackIsRunning,
     playbackTimerEnabled,
     playbackTimerMinutes,
     playbackTimerRemaining,
+    productRuntimeMode,
     resetPlaybackTimer,
-    updatePlaybackTimerCountdown,
+    updatePlaybackTimerProjection,
   ]);
 
-  useVisibleInterval(updatePlaybackTimerCountdown, 1000, {
+  useVisibleInterval(updatePlaybackTimerProjection, 1000, {
     enabled: playbackIsRunning && playbackTimerEnabled,
     immediate: false,
   });

@@ -33,6 +33,7 @@ import type {
   ProductRange,
   ProductRangeMap,
   ProductResolvedStateCommit,
+  ProductStateRecord,
   ProductResolvedStateCommitReceipt,
   ProductRuntimeWalkPositionsCallback,
   ProductScalarCallback,
@@ -209,6 +210,38 @@ export class WebProductEngine implements ProductEnginePort {
     // Asset lifecycle stays product-shaped here; keep host failures visible.
     coreProductRuntimeHostPort.unregisterAsset(assetId);
     this.scheduleDiagnosticsPublish();
+  }
+
+  prepareSceneAssets(states: readonly ProductStateRecord[]): Promise<void> {
+    return coreProductRuntimeHostPort.prepareSceneAssets(states);
+  }
+
+  clearSceneAssets(): void {
+    coreProductRuntimeHostPort.clearSceneAssets();
+  }
+
+  prepareBackgroundJourney(plan: Parameters<typeof coreProductRuntimeHostPort.prepareBackgroundJourney>[0], states: Parameters<typeof coreProductRuntimeHostPort.prepareBackgroundJourney>[1]) {
+    return coreProductRuntimeHostPort.prepareBackgroundJourney(plan, states);
+  }
+
+  startBackgroundJourney(revision: number): boolean {
+    return coreProductRuntimeHostPort.startBackgroundJourney(revision);
+  }
+
+  stopBackgroundJourney(): void {
+    coreProductRuntimeHostPort.stopBackgroundJourney();
+  }
+
+  discardBackgroundJourney(): void {
+    coreProductRuntimeHostPort.discardBackgroundJourney();
+  }
+
+  getBackgroundJourneyReadiness() {
+    return coreProductRuntimeHostPort.getBackgroundJourneyReadiness();
+  }
+
+  estimateBackgroundJourneyAssets(states: Parameters<typeof coreProductRuntimeHostPort.estimateBackgroundJourneyAssets>[0]) {
+    return coreProductRuntimeHostPort.estimateBackgroundJourneyAssets(states);
   }
 
   auditionSynthNote(note: ProductManualSynthNote, externalState?: ProductExternalState): Promise<void> {

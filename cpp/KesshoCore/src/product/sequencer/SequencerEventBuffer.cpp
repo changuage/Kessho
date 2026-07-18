@@ -444,6 +444,19 @@ void KesshoProductEngine::applySynthArpConfigEvent(const KesshoProductEvent& eve
       1u,
       kMaxProductArpSteps);
   pending_arp.rate = clampFloat(event.value3, 0.25f, 4.0f);
+  if ((event.flags & KESSHO_PRODUCT_ARP_MUSICAL_CONFIG) != 0u) {
+    pending_arp.active_mask = event.param_id & 0xffffu;
+    pending_arp.reset_mask = static_cast<uint32_t>(std::lround(event.value4)) & 0xffffu;
+  }
+  pending_arp.flow = static_cast<ProductArpFlow>(event.flags & KESSHO_PRODUCT_ARP_FLOW_MASK);
+  pending_arp.contour_mode = (event.flags & KESSHO_PRODUCT_ARP_CONTOUR_SEMITONE) != 0u
+      ? ProductArpContourMode::Semitone
+      : ProductArpContourMode::Pool;
+  pending_arp.boundary_mode = static_cast<ProductArpBoundaryMode>(
+      (event.flags & KESSHO_PRODUCT_ARP_BOUNDARY_MASK) >> KESSHO_PRODUCT_ARP_BOUNDARY_SHIFT);
+  pending_arp.fixed_midi_mode =
+      (event.flags & KESSHO_PRODUCT_ARP_FIXED_MIDI) != 0u ||
+      (event.flags & KESSHO_PRODUCT_ARP_MUSICAL_CONFIG) == 0u;
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
 }
 
@@ -460,7 +473,14 @@ void KesshoProductEngine::applySynthArpStepEvent(const KesshoProductEvent& event
   ProductArpPatternState& pending_arp = lane.pending_arp;
   const uint32_t bit = 1u << event.param_id;
   pending_arp.midi_notes[event.param_id] = clampFloat(event.value, -1.0f, 127.0f);
-  if (event.value2 >= 0.5f && event.value >= 0.0f) {
+  pending_arp.contour[event.param_id] = clampInt(static_cast<int32_t>(std::lround(event.value3)), -12, 12);
+  pending_arp.slot_lane[event.param_id] = clampInt(static_cast<int32_t>(std::lround(event.value4)), -1, 7);
+  if ((event.flags & KESSHO_PRODUCT_ARP_STEP_RESET) != 0u) {
+    pending_arp.reset_mask |= bit;
+  } else {
+    pending_arp.reset_mask &= ~bit;
+  }
+  if (event.value2 >= 0.5f && (!pending_arp.fixed_midi_mode || event.value >= 0.0f)) {
     pending_arp.active_mask |= bit;
   } else {
     pending_arp.active_mask &= ~bit;
@@ -481,19 +501,35 @@ void KesshoProductEngine::applyCommitSynthArpPatternEvent(const KesshoProductEve
   arp.length = pending_arp.length;
   arp.rate = pending_arp.rate;
   arp.active_mask = pending_arp.active_mask;
+  arp.reset_mask = pending_arp.reset_mask;
+  arp.flow = pending_arp.flow;
+  arp.contour_mode = pending_arp.contour_mode;
+  arp.boundary_mode = pending_arp.boundary_mode;
+  arp.fixed_midi_mode = pending_arp.fixed_midi_mode;
   for (uint32_t step = 0u; step < kMaxProductArpSteps; ++step) {
     arp.midi_notes[step] = pending_arp.midi_notes[step];
+    arp.contour[step] = pending_arp.contour[step];
+    arp.slot_lane[step] = pending_arp.slot_lane[step];
+    arp.dice_indices[step] = hashU32(
+        arp.active_mask * 0x9e3779b1u +
+        arp.reset_mask * 0x632be59bu +
+        event.index * 0x85ebca6bu +
+        step * 0xc2b2ae35u);
   }
   if (!arp.enabled) {
     arp.cursor = 0u;
     arp.current_step = 0u;
+    arp.current_midi = -1.0f;
     arp.next_event_sample = 0u;
     arp.runtime_initialized = false;
+    arp.random_counter = 0u;
   } else if (!was_enabled) {
     arp.cursor = 0u;
     arp.current_step = 0u;
+    arp.current_midi = -1.0f;
     arp.next_event_sample = 0u;
     arp.runtime_initialized = false;
+    arp.random_counter = 0u;
   } else if (arp.cursor >= arp.length) {
     arp.cursor %= arp.length;
   }

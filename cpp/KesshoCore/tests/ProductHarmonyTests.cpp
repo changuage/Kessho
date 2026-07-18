@@ -169,7 +169,8 @@ __attribute__((noinline)) void requireDirectMusicCoverage() {
   requireScaleIntervals(10u, {0, 2, 3, 5, 7, 9, 11}, "melodic minor scale interval mismatch");
   requireScaleIntervals(11u, {0, 1, 4, 5, 7, 8, 10}, "phrygian dominant scale interval mismatch");
 
-  KesshoProductEngine direct(48000.0, 128, 0);
+  auto direct_storage = std::make_unique<KesshoProductEngine>(48000.0, 128, 0);
+  KesshoProductEngine& direct = *direct_storage;
   direct.transport.running = true;
   direct.transport.bpm = 120.0f;
   direct.transport.beats_per_bar = 4u;

@@ -27,6 +27,8 @@ export {
   valueToNorm,
 } from './matrixMath';
 export { SliderPrimitive } from './SliderPrimitive';
+export { useRafCoalescedEmitter } from './useRafCoalescedEmitter';
+export type { RafCoalescedEmitter } from './useRafCoalescedEmitter';
 export { tapeHeroBoldVars } from './tapeHeroBold';
 export type {
   SliderDensity,

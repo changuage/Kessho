@@ -150,11 +150,12 @@ void KesshoProductEngine::renderDegradeSend(float* out_l, float* out_r, uint32_t
       static_cast<int>(frames));
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const float left = module_l[i] * routing.degrade_return_level;
-    const float right = module_r[i] * routing.degrade_return_level;
+    const float mute_gain = routingMuteGainForFrame(kRoutingMuteRowDegrade, transport.sample_frame + i);
+    const float left = module_l[i] * routing.degrade_return_level * mute_gain;
+    const float right = module_r[i] * routing.degrade_return_level * mute_gain;
     if (routing.degrade_to_reverb > 0.0001f) {
-      reverb_bus_l[frame] += module_l[i] * routing.degrade_to_reverb;
-      reverb_bus_r[frame] += module_r[i] * routing.degrade_to_reverb;
+      reverb_bus_l[frame] += module_l[i] * routing.degrade_to_reverb * mute_gain;
+      reverb_bus_r[frame] += module_r[i] * routing.degrade_to_reverb * mute_gain;
     }
     routeTerminalSample(routing.dynamics_routes[kDynamicsRouteDegrade], out_l, out_r, frame, left, right);
     if (captureStems()) {

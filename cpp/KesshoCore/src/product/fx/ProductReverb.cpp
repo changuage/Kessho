@@ -144,14 +144,16 @@ constexpr float kReverbBoostEpsilon = 0.001f;
   if (degrade_send_active) {
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;
-      degrade_bus_l[frame] += module_l[i] * degrade_gain;
-      degrade_bus_r[frame] += module_r[i] * degrade_gain;
+      const float mute_gain = routingMuteGainForFrame(kRoutingMuteRowReverb, transport.sample_frame + i);
+      degrade_bus_l[frame] += module_l[i] * degrade_gain * mute_gain;
+      degrade_bus_r[frame] += module_r[i] * degrade_gain * mute_gain;
     }
   }
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const float left = module_l[i] * return_gain;
-    const float right = module_r[i] * return_gain;
+    const float mute_gain = routingMuteGainForFrame(kRoutingMuteRowReverb, transport.sample_frame + i);
+    const float left = module_l[i] * return_gain * mute_gain;
+    const float right = module_r[i] * return_gain * mute_gain;
     routeTerminalSample(routing.dynamics_routes[kDynamicsRouteReverb], out_l, out_r, frame, left, right);
     if (captureStems()) {
       stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;

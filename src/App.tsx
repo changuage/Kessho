@@ -68,6 +68,7 @@ import { SliderHelpProvider } from './ui/SliderHelpOverlay';
 import { MidiLearnProvider } from './ui/midiLearn/MidiLearnProvider';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import { useJourney } from './ui/journeyState';
+import { useBackgroundJourneyRuntimeSurface } from './ui/useBackgroundJourneyRuntimeSurface';
 import { TEXT_SYMBOLS } from './designSystem/textSymbols';
 import {
   DRUM_VOICE_PARAM_ROUTES,
@@ -173,6 +174,7 @@ import { useDualSliderRuntimeState } from './app/useDualSliderRuntimeState';
 import {
   clearSnowflakeGeneratorRoute,
   clearSnowflakePrototypeRoute,
+  isMobileWebEvidenceRoute,
   isSnowflakeGeneratorRoute,
   isSnowflakePrototypeRoute,
   isSonicParityRoute,
@@ -256,6 +258,7 @@ function normalizeTransportClockState(prev: SliderState): SliderState {
 const App: React.FC = () => {
   const { showSplash, splashOpacity, splashGradient, windowSize } = useAppSplash();
   const sonicParityMode = isSonicParityRoute();
+  const mobileWebEvidenceMode = isMobileWebEvidenceRoute();
   const snowflakePrototypeRoute = isSnowflakePrototypeRoute();
   const snowflakeGeneratorRoute = isSnowflakeGeneratorRoute();
 
@@ -392,7 +395,7 @@ const App: React.FC = () => {
     liveLeadMorphedParamsAvailable,
     liveWaveformTelemetryAvailable,
     textureDebugAvailable,
-    updateProductReferenceParams,
+    productAutoCycleRuntime, updateProductReferenceParams,
   } = useProductRuntimeSurfaces({ productRuntimeMode, stateRef });
 
   const [engineState, setEngineState] = useState<ProductEngineState>({
@@ -680,7 +683,7 @@ const App: React.FC = () => {
   });
   const { globalRuntimeProps, resetPlaybackTimer } = useProductRuntimeGlobalSurface({
     playbackIsRunning,
-    stopProductPlayback,
+    productRuntimeMode,
     runtimeComparison: globalRuntimeComparison,
     onResetCofDrift: resetCofDrift,
     recordingProps: globalRecordingProps,
@@ -706,6 +709,7 @@ const App: React.FC = () => {
     state,
     stateRef,
     triggerDrumVoice: productRuntimeManualTriggers.triggerDrumVoice,
+    productRuntimeMode,
   });
 
   // ── Lead/Synth Euclidean sequencer state ──
@@ -868,6 +872,20 @@ const App: React.FC = () => {
     usesCapacitorLocalPresetLibrary,
     usesCloudBackedStatePresetLibrary,
   });
+  const backgroundJourney = useBackgroundJourneyRuntimeSurface({
+    config: journey.config,
+    journey,
+    resolveSavedPresetByName,
+    startProductPlayback,
+    setIsJourneyPlaying,
+  });
+  const handleJourneyPlay = useCallback(() => {
+    if (backgroundJourney.uiState.status === 'ready') {
+      void backgroundJourney.startPrepared();
+      return;
+    }
+    backgroundJourney.foregroundOnly();
+  }, [backgroundJourney]);
   const runtimeSliderDemand = useRuntimeSliderDemand();
   const shouldMirrorRuntimeWalkPositions = runtimeSliderDemand > 0;
 
@@ -1662,6 +1680,22 @@ const App: React.FC = () => {
     };
   }, [sonicParityMode]);
 
+  useEffect(() => {
+    if (!mobileWebEvidenceMode) return;
+    let cancelled = false;
+    import('./audio/mobileWebEvidenceHarness')
+      .then(({ installMobileWebEvidenceHarness }) => {
+        if (!cancelled) installMobileWebEvidenceHarness();
+      })
+      .catch((error) => {
+        console.error('Failed to install mobile web evidence harness:', error);
+      });
+    return () => {
+      cancelled = true;
+      window.__kesshoMobileWebEvidence?.teardown();
+    };
+  }, [mobileWebEvidenceMode]);
+
   const {
     advancedTransportButton,
     fadeOutAndStopForPresetLoad,
@@ -1693,14 +1727,14 @@ const App: React.FC = () => {
     title: statePresetName || 'Generative Ambient',
     stopProductPlayback,
     isJourneyPlaying,
-    stopJourney: journey.stop,
+    stopJourney: backgroundJourney.stop,
     setIsJourneyPlaying,
     resetPlaybackTimer,
     playbackIsRunning,
     journey: {
       activeJourneyPresetName,
       config: journey.config,
-      play: journey.play,
+      play: handleJourneyPlay,
       validation: activeJourneyValidation,
     },
     fadeProductRuntimeOutput,
@@ -2836,6 +2870,8 @@ const App: React.FC = () => {
     currentCofStep: engineState.cofCurrentStep,
     state,
     stateRef,
+    morphPlayPhrases,
+    morphTransitionPhrases,
     morphPlayPhrasesRef,
     morphTransitionPhrasesRef,
     morphCapturedStateRef,
@@ -2856,6 +2892,7 @@ const App: React.FC = () => {
     resetRuntimeWalkPositionsForModes,
     scheduleProductRuntimeParamUpdate,
     isEngineRunning: engineState.isRunning,
+    productRuntimeActive: productRuntimeMode === 'core-product', productAutoCycleRuntime,
   });
 
   const handleMorphSlotAClear = useCallback(() => {
@@ -3090,6 +3127,7 @@ const App: React.FC = () => {
     onBooleanParamChange: handleRoutingBooleanParamChange,
     isRunning: playbackIsRunning,
     phraseSeconds: engineState.transportDebug?.effectivePhraseSeconds ?? getEffectivePhraseDuration(state),
+    productRuntimeActive: productRuntimeMode === 'core-product',
   });
 
   const renderWithPresetPoolProvider = (children: React.ReactNode) => (
@@ -3147,6 +3185,15 @@ const App: React.FC = () => {
             onUndoJourneyPreset={handleUndoJourneyPreset}
             onRateJourneyPreset={(name, rating) => journeyPresets.updateMetadata(name, { rating })}
             onJourneyEnd={handleJourneyEnd}
+            backgroundJourney={{
+              state: backgroundJourney.uiState,
+              onPrepare: () => { void backgroundJourney.prepare(); },
+              onOptimize: backgroundJourney.findOptimization,
+              onConfirmOptimization: () => { void backgroundJourney.confirmOptimization(); },
+              onStartPrepared: backgroundJourney.startPrepared,
+              onForegroundOnly: backgroundJourney.foregroundOnly,
+              onCancel: backgroundJourney.cancel,
+            }}
             {...journeyPlaybackProps}
             onShowSnowflake={() => setUiMode('snowflake')}
             onShowVisualizer={() => openAdvancedTab('visualizer')}

@@ -33,6 +33,7 @@ void KesshoProductEngine::applySourcePresetEvent(const KesshoProductEvent& event
         source.drum_voice_preset_a_ids[voice_index] = preset_id;
       }
       if ((event.flags & kSourcePresetEndpointHasMorphFlag) != 0u) {
+        disableSourceMorphAutomationForDrumVoice(voice_index);
         source.drum_voice_morphs[voice_index] = clampFloat(event.value2, 0.0f, 1.0f);
       }
       compileSourcePresetRuntime(source);

@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -407,6 +408,13 @@ assert(
   'package.json must expose core:product:background-audio',
 );
 assert(
+  packageJson.scripts?.['core:product:sonic-autonomy']?.includes('ProductSonicAutonomyTests') &&
+    packageJson.scripts['core:product:sonic-autonomy'].includes('ProductJourneyScheduleTests') &&
+    packageJson.scripts['core:product:sonic-autonomy'].includes('check-kessho-product-sonic-ownership.mjs') &&
+    !packageJson.scripts['core:product:sonic-autonomy'].includes('--expect-incomplete'),
+  'package.json must expose the completed Journey suspension and ownership gates',
+);
+assert(
   packageJson.scripts?.['core:product:background-audio-device-evidence'] === 'node scripts/check-kessho-product-background-audio-device-evidence.mjs',
   'package.json must expose core:product:background-audio-device-evidence',
 );
@@ -422,5 +430,11 @@ assert(
   packageJson.scripts?.['core:product:native-background-smoke'] === 'npm run core:product:macos-app-background-smoke',
   'package.json must expose core:product:native-background-smoke as the plan-level native background alias',
 );
+
+// UI projection may pause while hidden, but Product Core must retain all sonic ownership.
+execFileSync(process.execPath, ['scripts/check-kessho-product-sonic-ownership.mjs'], {
+  cwd: root,
+  stdio: 'inherit',
+});
 
 console.log('Kessho Product background audio support checks passed');

@@ -8,6 +8,12 @@
 #include "ProductModuleRuntimeState.h"
 #include "ProductPresetBridge.h"
 #include "ProductSequencerState.h"
+#include "ProductScatterRuntimeState.h"
+#include "ProductSceneProgramRuntimeState.h"
+#include "ProductJourneyScheduleRuntimeState.h"
+#include "ProductAutoCycleRuntimeState.h"
+#include "ProductRoutingMuteGroupRuntimeState.h"
+#include "ProductSonicRuntimeState.h"
 #include "ProductTransportState.h"
 #include "ProductVoiceState.h"
 #include "KesshoCore/KesshoProductGeneratedSequencerCapture.h"
@@ -19,6 +25,13 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   uint32_t max_block_size = 128;
   uint32_t flags = 0;
   ProductTransport transport{};
+  ProductSonicRuntimeState sonic_runtime{};
+  ProductScatterRuntimeState scatter_runtime{};
+  ProductSceneProgramRuntimeState scene_program_runtime{};
+  std::unique_ptr<ProductJourneyScheduleRuntimeState> journey_schedule_runtime_storage;
+  ProductJourneyScheduleRuntimeState& journey_schedule_runtime;
+  ProductAutoCycleRuntimeState auto_cycle_runtime{};
+  ProductRoutingMuteGroupRuntimeState routing_mute_groups{};
   HarmonyState harmony{};
   SourceState sources[kSourceCount]{};
   LaneState synth_lanes[kMaxLaneCount]{};
@@ -244,12 +257,7 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
       uint32_t trigger_step,
       int64_t absolute_step,
       uint64_t hit_count_phase) const;
-  void clearStepFieldOverride(LaneState& lane, uint32_t field, uint32_t step);
-  void setStepFieldOverride(LaneState& lane, uint32_t field, uint32_t step, float value, float value2, float value3 = 0.0f, float value4 = 0.0f, uint32_t flags = 0u);
-  void applySequencerStepEvent(const KesshoProductEvent& event);
-  void applySynthArpConfigEvent(const KesshoProductEvent& event);
-  void applySynthArpStepEvent(const KesshoProductEvent& event);
-  void applyCommitSynthArpPatternEvent(const KesshoProductEvent& event);
+#include "ProductSonicRuntimeMethods.inc"
   bool isSequencerLaneParam(uint32_t param_id) const;
   void applySequencerLaneParamEvent(const KesshoProductEvent& event);
   void applyAnchorWalkerPerformanceEvent(const KesshoProductEvent& event);
@@ -259,14 +267,6 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   bool dicePatternMatchesBase(const LaneState& lane, uint32_t rotation, uint32_t fills) const;
   void captureSequencerEvolveHome(LaneState& lane);
   void clearSequencerEvolveHome(LaneState& lane);
-  void applyScheduledSequencerEvolution(
-      LaneState& lane,
-      uint32_t target_id,
-      uint32_t lane_index,
-      uint64_t cycle);
-  void applyParityEvolveSequencerLaneEvent(const KesshoProductEvent& event);
-  void applyDiceSequencerLaneEvent(const KesshoProductEvent& event);
-  void applyJourneyStateEvent(const KesshoProductEvent& event);
   bool applyGranularVoiceParamEvent(const KesshoProductEvent& event);
   bool applyGranularParamEvent(const KesshoProductEvent& event);
   bool applyDynamicsModParamEvent(const KesshoProductEvent& event);
@@ -306,6 +306,7 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   bool applyStructuredSourceOverridesToModuleAtMorph(uint32_t source_id, float morph);
   bool applyStructuredSourceOverridesToModuleAtMorphAndDistance(uint32_t source_id, float morph, float distance);
   bool applyStructuredSourceOverridesToModuleForCurrentMorph(uint32_t source_id);
+  void applySourceMorphValue(uint32_t source_id, float value, bool manual_edit);
   void compileSourcePresetRuntime(SourceState& source);
   void compileSourcePresetEndpoints(SourceState& source);
   void applySourcePresetMacros(const SourceState& source, float& morph, float& distance, float& expression) const;

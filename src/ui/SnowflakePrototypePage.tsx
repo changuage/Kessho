@@ -801,11 +801,17 @@ const SnowflakePrototypePage: React.FC<SnowflakePrototypePageProps> = ({
 
   useEffect(() => {
     let raf = 0;
+    let timer: number | null = null;
     const start = performance.now();
     const tick = (now: number) => {
+      raf = 0;
+      if (document.visibilityState === 'hidden') {
+        return;
+      }
       setTime((now - start) / 1000);
       const animations = trimAnimationsRef.current;
-      if (Object.keys(animations).length > 0) {
+      const hasActiveTrimAnimations = Object.keys(animations).length > 0;
+      if (hasActiveTrimAnimations) {
         setTrims((current) => {
           let changed = false;
           const next = { ...current };
@@ -821,10 +827,27 @@ const SnowflakePrototypePage: React.FC<SnowflakePrototypePageProps> = ({
           return changed ? next : current;
         });
       }
-      raf = requestAnimationFrame(tick);
+      if (hasActiveTrimAnimations) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        timer = window.setTimeout(() => {
+          timer = null;
+          raf = requestAnimationFrame(tick);
+        }, 100);
+      }
     };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !raf && timer === null) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (raf) cancelAnimationFrame(raf);
+      if (timer !== null) window.clearTimeout(timer);
+    };
   }, []);
 
   const size = useMemo(() => {

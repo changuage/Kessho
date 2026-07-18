@@ -155,7 +155,9 @@ void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t 
   const float degrade_send = std::max(0.0f, source.degrade_send);
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const float source_gate = sourceEnableGainForFrame(source, transport.sample_frame + i);
+    const uint64_t absolute_frame = transport.sample_frame + i;
+    const float source_gate = sourceEnableGainForFrame(source, absolute_frame) *
+        routingMuteGainForFrame(kRoutingMuteRowDrums, absolute_frame);
     const float dry_l = module_tap_l[0][i] * source_gate;
     const float dry_r = module_tap_r[0][i] * source_gate;
     const float reverb_l = module_tap_l[1][i] * source_gate;
@@ -281,13 +283,16 @@ void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, ui
 
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const float source_gate = sourceEnableGainForFrame(source, transport.sample_frame + i);
-    const float water_l = module_tap_l[0][i] * water_level * source_gate;
-    const float water_r = module_tap_r[0][i] * water_level * source_gate;
+    const uint64_t absolute_frame = transport.sample_frame + i;
+    const float source_gate = sourceEnableGainForFrame(source, absolute_frame);
+    const float water_gate = routingMuteGainForFrame(kRoutingMuteRowWater, absolute_frame);
+    const float insects_gate = routingMuteGainForFrame(kRoutingMuteRowInsects, absolute_frame);
+    const float water_l = module_tap_l[0][i] * water_level * source_gate * water_gate;
+    const float water_r = module_tap_r[0][i] * water_level * source_gate * water_gate;
     const float insects_prefader_l =
-        (module_tap_l[1][i] * insects_level + module_tap_l[2][i] * insects2_level) * insects_shared_level * source_gate;
+        (module_tap_l[1][i] * insects_level + module_tap_l[2][i] * insects2_level) * insects_shared_level * source_gate * insects_gate;
     const float insects_prefader_r =
-        (module_tap_r[1][i] * insects_level + module_tap_r[2][i] * insects2_level) * insects_shared_level * source_gate;
+        (module_tap_r[1][i] * insects_level + module_tap_r[2][i] * insects2_level) * insects_shared_level * source_gate * insects_gate;
     const float water_out_l = water_l * earth_level;
     const float water_out_r = water_r * earth_level;
     const float insects_out_l = insects_prefader_l * earth_level;

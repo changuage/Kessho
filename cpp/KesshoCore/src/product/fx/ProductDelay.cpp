@@ -45,16 +45,19 @@
   module->processPlanarStereoTaps(input_l + start, input_r + start, tap_l, tap_r, tap_count, static_cast<int>(frames));
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const float output_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_MAIN][i];
-    const float output_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_MAIN][i];
-    const float reverb_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_REVERB_SEND][i];
-    const float reverb_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_REVERB_SEND][i];
-    const float cross_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_DELAY_B_SEND][i];
-    const float cross_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_DELAY_B_SEND][i];
-    const float granular_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND][i];
-    const float granular_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND][i];
-    const float drift_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_DRIFT_SEND][i];
-    const float drift_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_DRIFT_SEND][i];
+    const float mute_gain = routingMuteGainForFrame(
+        is_delay_a ? kRoutingMuteRowDelayA : kRoutingMuteRowDelayB,
+        transport.sample_frame + i);
+    const float output_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_MAIN][i] * mute_gain;
+    const float output_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_MAIN][i] * mute_gain;
+    const float reverb_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_REVERB_SEND][i] * mute_gain;
+    const float reverb_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_REVERB_SEND][i] * mute_gain;
+    const float cross_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_DELAY_B_SEND][i] * mute_gain;
+    const float cross_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_DELAY_B_SEND][i] * mute_gain;
+    const float granular_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND][i] * mute_gain;
+    const float granular_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND][i] * mute_gain;
+    const float drift_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_DRIFT_SEND][i] * mute_gain;
+    const float drift_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_DRIFT_SEND][i] * mute_gain;
     if (graph_taps_enabled) {
       graph_output_l[frame] = output_l_sample;
       graph_output_r[frame] = output_r_sample;

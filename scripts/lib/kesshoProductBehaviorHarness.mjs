@@ -91,6 +91,7 @@ function writeMachineReport({ reportName, status, command, evidence, blocker, de
 function stripImportsAndExports(source) {
   return source
     .replace(/^\s*import[\s\S]*?;\s*/gm, '')
+    .replace(/^\s*export\s*\{[^}]*\};?\s*$/gm, '')
     .replace(/\bexport\s+(?=(?:const|async\s+function|function|class|type|interface)\b)/g, '');
 }
 
@@ -1524,6 +1525,15 @@ Object.assign(globalThis, {
   applyCoreProductSnapshotUpdate,
 });`, context, { filename: snapshotCoordinatorPath });
 
+  const autonomyFingerprintPath = 'src/audio/product/host/CoreProductSonicAutonomyFingerprint.ts';
+  const autonomyFingerprintSource = stripImportsAndExports(readProjectFile(autonomyFingerprintPath));
+  const autonomyFingerprintJs = transpileForVm(autonomyFingerprintSource, resolve(root, autonomyFingerprintPath));
+  vm.runInNewContext(`${autonomyFingerprintJs}
+Object.assign(globalThis, {
+  deriveCoreProductSonicAutonomyFingerprint,
+  CoreProductSonicAutonomyTracker,
+});`, context, { filename: autonomyFingerprintPath });
+
   const telemetryAdapterPath = 'src/audio/product/host/CoreProductTelemetryAdapter.ts';
   const telemetryAdapterSource = stripImportsAndExports(readProjectFile(telemetryAdapterPath));
   const telemetryAdapterJs = transpileForVm(telemetryAdapterSource, resolve(root, telemetryAdapterPath));
@@ -1616,6 +1626,17 @@ Object.assign(globalThis, {
 Object.assign(globalThis, {
   CoreProductHostLifecycleCoordinator,
 });`, context, { filename: lifecycleCoordinatorPath });
+
+  const backgroundJourneyCoordinatorPath = 'src/audio/product/host/CoreProductBackgroundJourneyCoordinator.ts';
+  const backgroundJourneyCoordinatorSource = stripImportsAndExports(readProjectFile(backgroundJourneyCoordinatorPath));
+  const backgroundJourneyCoordinatorJs = transpileForVm(
+    backgroundJourneyCoordinatorSource,
+    resolve(root, backgroundJourneyCoordinatorPath),
+  );
+  vm.runInNewContext(`${backgroundJourneyCoordinatorJs}
+Object.assign(globalThis, {
+  CoreProductBackgroundJourneyCoordinator,
+});`, context, { filename: backgroundJourneyCoordinatorPath });
 
   const path = 'src/audio/coreProductEngineHost.ts';
   const source = stripImportsAndExports(readProjectFile(path)).replaceAll('import.meta.env', '__IMPORT_META_ENV__');

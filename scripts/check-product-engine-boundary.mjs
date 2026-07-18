@@ -1078,7 +1078,7 @@ for (const rootDir of sourceRoots) {
         !source.includes('startJourneyPlayback,') ||
         source.includes("from './ui/useSelectedAudioEngineStopAction'") ||
         source.includes('useSelectedAudioEngineStopAction({') ||
-        !source.includes('stopJourney: journey.stop') ||
+        !source.includes('stopJourney: backgroundJourney.stop') ||
         source.includes("from './ui/useSelectedAudioEnginePlaybackUiProps'") ||
         source.includes('useSelectedAudioEnginePlaybackUiProps({') ||
         !source.includes('{...snowflakePrototypePlaybackProps}') ||

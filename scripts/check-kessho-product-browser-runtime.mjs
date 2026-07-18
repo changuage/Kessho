@@ -284,7 +284,7 @@ async function captureRuntimeWalkProbe(page, baseUrl) {
     await probe.configureRuntimeWalk({
       key,
       range: { min: 0.1, max: 4.5 },
-      activeTab: 'synth',
+      activeTab: 'global',
       statePatch: {
         leadEnabled: false,
         lead2Enabled: false,
@@ -419,13 +419,41 @@ async function captureSynthArpProbe(page, baseUrl) {
         synthEuclid4Enabled: false,
       },
     });
+    let stableRevision = probe.readProductStateProbe().diagnostics.lastCommittedRevision;
+    let stableSince = Date.now();
+    const reconciliationDeadline = Date.now() + 5000;
+    while (Date.now() < reconciliationDeadline && Date.now() - stableSince < 750) {
+      await wait(50);
+      const diagnostics = probe.readProductStateProbe().diagnostics;
+      if (diagnostics.lastCommittedRevision !== stableRevision || diagnostics.pendingCommitCount > 0) {
+        stableRevision = diagnostics.lastCommittedRevision;
+        stableSince = Date.now();
+      }
+    }
+    if (Date.now() - stableSince < 750) {
+      throw new Error(`synth ARP startup reconciliation did not settle (revision=${stableRevision})`);
+    }
+    const fixtureDeadline = Date.now() + 5000;
+    while (true) {
+      const fixtureRevision = probe.readProductStateProbe().diagnostics.lastCommittedRevision;
+      await probe.configureSynthArpSequencer({ laneIndex: 0 });
+      await wait(300);
+      const diagnostics = probe.readProductStateProbe().diagnostics;
+      if (diagnostics.lastCommittedRevision === fixtureRevision && diagnostics.pendingCommitCount === 0) break;
+      if (Date.now() >= fixtureDeadline) {
+        throw new Error(
+          `synth ARP fixture was repeatedly superseded by host commits ` +
+            `(before=${fixtureRevision}, after=${diagnostics.lastCommittedRevision}, pending=${diagnostics.pendingCommitCount})`,
+        );
+      }
+    }
     await probe.configureSynthArp({
       laneIndex: 0,
       length: 8,
       rate: 1,
       midiPattern: [60, 62, 64, 65, 67, 69, 71, 72],
     });
-    await probe.configureSynthArpSequencer({ laneIndex: 0 });
+    const parentHitBaseline = probe.readProductStateProbe().telemetry?.synthSequencerHitCounts?.[0] ?? 0;
     const firstArpTriggerDeadline = Date.now() + 7000;
     let activePhrase = null;
     let lastParentProbe = null;
@@ -433,13 +461,16 @@ async function captureSynthArpProbe(page, baseUrl) {
       await wait(80);
       const sample = probe.readProductStateProbe();
       lastParentProbe = sample;
-      if ((sample.telemetry?.synthSequencerHitCounts?.[0] ?? 0) >= 1) {
+      if ((sample.telemetry?.synthSequencerHitCounts?.[0] ?? 0) > parentHitBaseline) {
         activePhrase = sample;
         break;
       }
     }
     if (!activePhrase) {
-      throw new Error(`synth ARP did not receive a parent trigger after the pattern commit: ${JSON.stringify(lastParentProbe)}`);
+      throw new Error(
+        `synth ARP did not receive a parent trigger after the pattern commit ` +
+          `(baseline=${parentHitBaseline}): ${JSON.stringify(lastParentProbe)}`,
+      );
     }
     await wait(80);
     await probe.configureSynthArp({
@@ -449,9 +480,11 @@ async function captureSynthArpProbe(page, baseUrl) {
       midiPattern: [72, 74, 76, 77, 79, 81, 83, 84],
     });
     const samples = [];
-    for (let index = 0; index < 12; index += 1) {
-      await wait(100);
-      samples.push(probe.readProductStateProbe());
+    for (let index = 0; index < 20; index += 1) {
+      await wait(50);
+      const sample = probe.readProductStateProbe();
+      if ((sample.telemetry?.synthSequencerHitCounts?.[0] ?? 0) !== parentHitBaseline + 1) break;
+      samples.push(sample);
     }
     const timingSamples = [];
     const sampleTimingWindow = async (label, durationMs) => {
@@ -729,10 +762,21 @@ function assertSynthArpProbe(capture) {
     .map((sample) => sample.synthArpCurrentSteps?.[0])
     .filter((step) => Number.isInteger(step));
   const distinctSteps = [...new Set(arpSteps)];
-  assert(distinctSteps.length >= 3, `synth ARP did not advance through multiple native steps (${arpSteps.join(', ')})`);
+  assert(
+    distinctSteps.length >= 3,
+    `synth ARP did not advance through multiple native steps (${arpSteps.join(', ')}); ` +
+      `midis=${telemetry.map((sample) => sample.synthArpCurrentMidis?.[0] ?? null).join(', ')}; ` +
+      `parentHits=${telemetry.map((sample) => sample.synthSequencerHitCounts?.[0] ?? null).join(', ')}; ` +
+      `errors=${telemetry.map((sample) => sample.lastErrorCode ?? null).join(', ')}; ` +
+      `output=${telemetry.map((sample) => sample.workletLeadStemPeak ?? sample.masterOutputPeak ?? 0).join(', ')}`,
+  );
   assert(
     telemetry.every((sample) => (sample.synthSequencerHitCounts?.[0] ?? 0) === parentHitCountAtPendingUpdate),
     `synth ARP pending update crossed a parent-trigger boundary (${telemetry.map((sample) => sample.synthSequencerHitCounts?.[0] ?? 0).join(', ')})`,
+  );
+  assert(
+    telemetry.some((sample) => (sample.synthArpCurrentMidis?.[0] ?? -1) >= 72),
+    `synth ARP pending pattern did not become audible before the next parent trigger (${telemetry.map((sample) => sample.synthArpCurrentMidis?.[0] ?? -1).join(', ')})`,
   );
   assert(
     telemetry.some((sample) => (sample.workletLeadStemPeak ?? 0) > 0.000001 || (sample.masterOutputPeak ?? 0) > 0.000001),

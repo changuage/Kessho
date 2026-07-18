@@ -346,16 +346,8 @@ export function useRuntimeSliderIndicator(
   return { walkPosition, isFlashing };
 }
 
-export function useRuntimeSliderKeysVersion(keys: readonly string[]): number {
-  const subscribe = useCallback(
-    (listener: () => void) => subscribeRuntimeSliderKeys(keys, listener),
-    [keys],
-  );
-  return useSyncExternalStore(
-    subscribe,
-    () => keys.reduce((version, key) => version + (keyVersions.get(key) ?? 0), 0),
-    () => 0,
-  );
+export function getRuntimeSliderKeysVersion(keys: readonly string[]): number {
+  return keys.reduce((version, key) => version + (keyVersions.get(key) ?? 0), 0);
 }
 
 export function getRuntimeSliderDemandCount(): number {

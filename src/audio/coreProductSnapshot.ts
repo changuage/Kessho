@@ -41,6 +41,7 @@ import {
 } from './coreProductArrangementSchedulerUtils';
 import { harmonySeedMaterialFromState } from './harmonySeedMaterial';
 import { coreProductArrangementSnapshotFromState } from './coreProductArrangementSnapshot';
+import { compileProductSourceMorphAutomation } from './product/compileProductSourceMorphAutomation';
 export type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductHarmonySnapshot, ProductLaneSnapshot, ProductSoundscapeSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 
 // SNAPSHOT_AUTHORITY: GENERATED_SCHEMA_SERIALIZATION - this file maps app/UI state into generated Product Core fields.
@@ -1221,6 +1222,9 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       textureParams: soundscapePayload.textureParams,
       moduleParamCount: soundscapePayload.moduleParamCount,
       moduleParams: soundscapePayload.moduleParams,
+    },
+    sonicRuntime: {
+      sourceMorph: compileProductSourceMorphAutomation(sliderState, rngSeed),
     },
     arrangement: coreProductArrangementSnapshotFromState(sliderState),
   };

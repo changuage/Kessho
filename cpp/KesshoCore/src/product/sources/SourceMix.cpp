@@ -16,7 +16,9 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
   if (!graph_taps_enabled && source.diffuse_send <= 0.0f) {
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;
-      const float source_gate = sourceEnableGainForFrame(source, transport.sample_frame + i);
+      const uint64_t absolute_frame = transport.sample_frame + i;
+      const float source_gate = sourceEnableGainForFrame(source, absolute_frame) *
+          routingMuteGainForFrame(routingMuteRowForSource(source_id), absolute_frame);
       const float dry_left = dry_l[i] * graph_dry_gain * freeze_dry_gain * source_gate;
       const float dry_right = dry_r[i] * graph_dry_gain * freeze_dry_gain * source_gate;
       const float send_left = send_l[i] * source_gate;
@@ -34,7 +36,9 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
   }
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const float source_gate = sourceEnableGainForFrame(source, transport.sample_frame + i);
+    const uint64_t absolute_frame = transport.sample_frame + i;
+    const float source_gate = sourceEnableGainForFrame(source, absolute_frame) *
+        routingMuteGainForFrame(routingMuteRowForSource(source_id), absolute_frame);
     const float graph_dry_left = dry_l[i] * graph_dry_gain * source_gate;
     const float graph_dry_right = dry_r[i] * graph_dry_gain * source_gate;
     const float dry_left = graph_dry_left * freeze_dry_gain;
@@ -52,7 +56,6 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
     addStereo(degrade_bus_l, degrade_bus_r, frame, send_left * source.degrade_send, send_right * source.degrade_send);
   }
 }
-
 void KesshoProductEngine::mixSourceBuffer(
     uint32_t source_id,
     const float* dry_in_l,
@@ -74,7 +77,9 @@ void KesshoProductEngine::mixSourceBuffer(
   if (!graph_taps_enabled && source.diffuse_send <= 0.0f) {
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;
-      const float source_gate = sourceEnableGainForFrame(source, transport.sample_frame + i);
+      const uint64_t absolute_frame = transport.sample_frame + i;
+      const float source_gate = sourceEnableGainForFrame(source, absolute_frame) *
+          routingMuteGainForFrame(routingMuteRowForSource(source_id), absolute_frame);
       const float dry_left = dry_in_l[i] * dry_gain * source_gate;
       const float dry_right = dry_in_r[i] * dry_gain * source_gate;
       const float send_left = send_in_l[i] * send_gain * source_gate;
@@ -92,7 +97,9 @@ void KesshoProductEngine::mixSourceBuffer(
   }
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const float source_gate = sourceEnableGainForFrame(source, transport.sample_frame + i);
+    const uint64_t absolute_frame = transport.sample_frame + i;
+    const float source_gate = sourceEnableGainForFrame(source, absolute_frame) *
+        routingMuteGainForFrame(routingMuteRowForSource(source_id), absolute_frame);
     const float dry_left = dry_in_l[i] * dry_gain * source_gate;
     const float dry_right = dry_in_r[i] * dry_gain * source_gate;
     const float graph_dry_left = dry_in_l[i] * graph_dry_gain * source_gate;

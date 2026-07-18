@@ -37,6 +37,8 @@ import {
   type HarmonyChordQuality,
   type HarmonyControlStrength,
 } from './CoreProductHarmonyControl';
+import type { RoutingMuteGroupsState } from '../ui/routing/routingMuteGroups';
+import { resolveSequencerLaneAudibility } from './sequencerAudibility';
 
 export type CoreProductEvent = {
   sampleOffset?: number;
@@ -64,6 +66,8 @@ export const CORE_PRODUCT_SOURCE_IDS = Object.freeze({
 
 export const CORE_PRODUCT_CONTROL_ONLY_MODULATION_TARGET_ID = 0x7ffffff0;
 export const CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE = 0x51000000;
+export const CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE = 0x52000000;
+export const CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE = 0x53000000;
 
 export const CORE_PRODUCT_MODULATION_RANGE_MODE = Object.freeze({
   off: 0,
@@ -90,6 +94,213 @@ export const CORE_PRODUCT_SEQUENCER_IDS = Object.freeze({
 export const CORE_PRODUCT_TRANSPORT_FLAGS = Object.freeze({
   applyNextPhrase: 1 << 0,
 } as const);
+
+export function createCoreProductAutoStopEvent(durationSeconds: number | null): CoreProductEvent {
+  const value = durationSeconds === null ? 0 : durationSeconds;
+  if (!Number.isFinite(value) || value < 0 || value > 604800) {
+    throw new RangeError(`Auto-stop duration must be between 0 and 604800 seconds; received ${value}`);
+  }
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.SetAutoStop,
+    value,
+  };
+}
+
+const CORE_PRODUCT_SCATTER_PARAM_IDS = Object.freeze({
+  enabled: 1,
+  triggerProbability: 2,
+  burstProbability: 3,
+  randomWalk: 4,
+  randomWalkEnabled: 5,
+  feelX: 6,
+  feelY: 7,
+  anchor: 8,
+  breath: 9,
+  memory: 10,
+  motion: 11,
+  fracture: 12,
+  spread: 13,
+} as const);
+
+type CoreProductScatterVoiceConfig = {
+  enabled: boolean;
+  triggerProbability: number;
+  burstProbability: number;
+  randomWalk?: number;
+  randomWalkEnabled?: boolean;
+  feelX: number;
+  feelY: number;
+  rules: {
+    anchor: number;
+    breath: number;
+    memory: number;
+    motion: number;
+    fracture: number;
+    spread: number;
+  };
+};
+
+export function createCoreProductScatterConfigEvents(
+  configs: readonly CoreProductScatterVoiceConfig[],
+): CoreProductEvent[] {
+  const events: CoreProductEvent[] = [];
+  const push = (index: number, paramId: number, value: number) => {
+    events.push({
+      eventKind: KESSHO_PRODUCT_EVENT_IDS.SetScatterVoiceParam,
+      index,
+      paramId,
+      value,
+    });
+  };
+  configs.slice(0, 7).forEach((config, index) => {
+    push(index, CORE_PRODUCT_SCATTER_PARAM_IDS.enabled, config.enabled ? 1 : 0);
+    push(index, CORE_PRODUCT_SCATTER_PARAM_IDS.triggerProbability, config.triggerProbability);
+    push(index, CORE_PRODUCT_SCATTER_PARAM_IDS.burstProbability, config.burstProbability);
+    push(index, CORE_PRODUCT_SCATTER_PARAM_IDS.randomWalk, config.randomWalk ?? 0);
+    push(index, CORE_PRODUCT_SCATTER_PARAM_IDS.randomWalkEnabled, config.randomWalkEnabled ? 1 : 0);
+    push(index, CORE_PRODUCT_SCATTER_PARAM_IDS.feelX, config.feelX);
+    push(index, CORE_PRODUCT_SCATTER_PARAM_IDS.feelY, config.feelY);
+    push(index, CORE_PRODUCT_SCATTER_PARAM_IDS.anchor, config.rules.anchor);
+    push(index, CORE_PRODUCT_SCATTER_PARAM_IDS.breath, config.rules.breath);
+    push(index, CORE_PRODUCT_SCATTER_PARAM_IDS.memory, config.rules.memory);
+    push(index, CORE_PRODUCT_SCATTER_PARAM_IDS.motion, config.rules.motion);
+    push(index, CORE_PRODUCT_SCATTER_PARAM_IDS.fracture, config.rules.fracture);
+    push(index, CORE_PRODUCT_SCATTER_PARAM_IDS.spread, config.rules.spread);
+  });
+  events.push({ eventKind: KESSHO_PRODUCT_EVENT_IDS.CommitScatterConfig });
+  return events;
+}
+
+export function createCoreProductScatterEnabledEvent(enabled: boolean): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.SetScatterEnabled,
+    value: enabled ? 1 : 0,
+  };
+}
+
+const CORE_PRODUCT_ROUTING_MUTE_ROW_BITS = Object.freeze({
+  pad1: 1 << 0,
+  pad2: 1 << 1,
+  lead1: 1 << 2,
+  lead2: 1 << 3,
+  sample1: 1 << 4,
+  sample2: 1 << 5,
+  drums: 1 << 6,
+  granular: 1 << 7,
+  waves: 1 << 8,
+  water: 1 << 9,
+  insects: 1 << 10,
+  nature: 1 << 11,
+  delayAOut: 1 << 12,
+  delayBOut: 1 << 13,
+  degrade: 1 << 14,
+  reverb: 1 << 15,
+} as const);
+
+function routingMuteGroupRevision(groups: RoutingMuteGroupsState): number {
+  const text = JSON.stringify(groups);
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = Math.imul(hash ^ text.charCodeAt(index), 16777619);
+  }
+  return hash >>> 0;
+}
+
+function routingMuteSequencerMasks(state: SliderState): {
+  synth: number;
+  drum: number;
+  granular: number;
+} {
+  let synthEnabled = 0;
+  let synthMuted = 0;
+  let drumEnabled = 0;
+  let drumMuted = 0;
+  let granular = 0;
+  for (let lane = 1; lane <= 4; lane += 1) {
+    if (state.synthEuclideanMasterEnabled === true) synthEnabled |= 1 << (lane - 1);
+    if (resolveSequencerLaneAudibility(state, 'synth', lane).muted) synthMuted |= 1 << (lane - 1);
+    if (state[`granularV${lane}Enabled` as keyof SliderState] === true) granular |= 1 << (lane - 1);
+  }
+  for (let lane = 1; lane <= 6; lane += 1) {
+    if (state.drumEnabled === true && state.drumEuclidMasterEnabled === true) drumEnabled |= 1 << (lane - 1);
+    if (resolveSequencerLaneAudibility(state, 'drum', lane).muted) drumMuted |= 1 << (lane - 1);
+  }
+  return {
+    synth: synthEnabled | (synthMuted << 16),
+    drum: drumEnabled | (drumMuted << 16),
+    granular,
+  };
+}
+
+export function createCoreProductRoutingMuteGroupEvents(
+  groups: RoutingMuteGroupsState,
+  options: { sampleRate: number; phraseSeconds: number; seed: number; state: SliderState },
+): CoreProductEvent[] {
+  if (!Number.isFinite(options.sampleRate) || options.sampleRate <= 0) {
+    throw new RangeError('Routing mute groups require a positive sample rate');
+  }
+  if (!Number.isFinite(options.phraseSeconds) || options.phraseSeconds <= 0) {
+    throw new RangeError('Routing mute groups require a positive phrase duration');
+  }
+  const random = groups.random;
+  const eligible = random?.eligibleSlotIndexes ? new Set(random.eligibleSlotIndexes) : null;
+  const defaultMin = random?.defaultMinPhrases ?? 2;
+  const defaultMax = random?.defaultMaxPhrases ?? 6;
+  const transitionFrames = Math.round(
+    Math.max(0.25, random?.transitionPhrases ?? 1) * options.phraseSeconds * options.sampleRate,
+  );
+  const baselineMasks = routingMuteSequencerMasks(options.state);
+  const events: CoreProductEvent[] = [{
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.BeginRoutingMuteGroups,
+    targetId: baselineMasks.synth,
+    index: baselineMasks.drum,
+    paramId: baselineMasks.granular,
+    value: routingMuteGroupRevision(groups),
+    value2: Math.max(1, options.seed >>> 0),
+    value3: random?.avoidRepeat === false ? 0 : 1,
+    value4: random?.enabled === true ? 1 : 0,
+  }];
+  groups.slots.slice(0, 8).forEach((slot, index) => {
+    if (!slot) return;
+    const range = slot.phraseRange ?? { min: defaultMin, max: defaultMax };
+    const muteMask = slot.mutedSourceIds.reduce((mask, id) => (
+      mask | (CORE_PRODUCT_ROUTING_MUTE_ROW_BITS[id] ?? 0)
+    ), 0);
+    const sceneState = { ...options.state, ...(slot.statePatch ?? {}) } as SliderState;
+    const sceneMasks = routingMuteSequencerMasks(sceneState);
+    events.push({
+      eventKind: KESSHO_PRODUCT_EVENT_IDS.SetRoutingMuteGroupSlot,
+      targetId: muteMask,
+      index,
+      paramId: sceneMasks.synth,
+      value: Math.max(1, Math.round(range.min * 4)),
+      value2: Math.max(1, Math.round(range.max * 4)),
+      value3: transitionFrames,
+      value4: sceneMasks.drum,
+      flags: (eligible === null || eligible.has(index) ? 1 : 0) | (sceneMasks.granular << 8),
+    });
+  });
+  events.push({ eventKind: KESSHO_PRODUCT_EVENT_IDS.CommitRoutingMuteGroups });
+  return events;
+}
+
+export function createCoreProductRoutingMuteGroupRecallEvent(
+  slotIndex: number | null,
+  transitionFrames: number,
+): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.RecallRoutingMuteGroup,
+    index: slotIndex === null ? 0xffffffff : slotIndex,
+    value: Math.max(0, Math.round(transitionFrames)),
+  };
+}
+
+export function createCoreProductRoutingMuteGroupsEnabledEvent(enabled: boolean): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.SetRoutingMuteGroupsEnabled,
+    value: enabled ? 1 : 0,
+  };
+}
 
 export const CORE_PRODUCT_TIMING_FLAGS = CORE_PRODUCT_TRANSPORT_FLAGS;
 
@@ -1893,15 +2104,31 @@ export function createCoreProductSynthArpConfigEvent(
     enabled: boolean;
     length: number;
     rate: number;
+    pulseMask?: number;
+    resetMask?: number;
+    flow?: 'up' | 'down' | 'upDown' | 'downUp' | 'randomLiveTone' | 'diceHold';
+    contourMode?: 'pool' | 'semitone';
+    boundaryMode?: 'fold' | 'wrap' | 'clamp';
+    fixedMidiMode?: boolean;
   },
 ): CoreProductEvent {
+  const flowIds = { up: 0, down: 1, upDown: 2, downUp: 3, randomLiveTone: 4, diceHold: 5 } as const;
+  const boundaryIds = { fold: 0, wrap: 1, clamp: 2 } as const;
+  const flags = flowIds[options.flow ?? 'up'] |
+    (options.contourMode === 'semitone' ? 1 << 3 : 0) |
+    (boundaryIds[options.boundaryMode ?? 'fold'] << 4) |
+    (options.fixedMidiMode ? 1 << 6 : 0) |
+    (options.flow !== undefined || options.contourMode !== undefined || options.boundaryMode !== undefined ? 1 << 7 : 0);
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSynthArpConfig,
     targetId: requireSequencerId('synth'),
     index: requireIntegerInRange(laneIndex, 'laneIndex', 0, 15),
+    paramId: requireIntegerInRange(options.pulseMask ?? 0xffff, 'pulseMask', 0, 0xffff),
     value: options.enabled ? 1 : 0,
     value2: requireIntegerInRange(options.length, 'length', 1, 16),
     value3: requireNumberInRange(options.rate, 'rate', 0.25, 4),
+    value4: requireIntegerInRange(options.resetMask ?? 0, 'resetMask', 0, 0xffff),
+    flags,
   };
 }
 
@@ -1911,6 +2138,9 @@ export function createCoreProductSynthArpStepEvent(
   options: {
     midi: number;
     active: boolean;
+    contour?: number;
+    slot?: number;
+    reset?: boolean;
   },
 ): CoreProductEvent {
   return {
@@ -1920,6 +2150,9 @@ export function createCoreProductSynthArpStepEvent(
     paramId: requireIntegerInRange(stepIndex, 'stepIndex', 0, 15),
     value: requireNumberInRange(options.midi, 'midi', -1, 127),
     value2: options.active ? 1 : 0,
+    value3: requireIntegerInRange(options.contour ?? 0, 'contour', -12, 12),
+    value4: requireIntegerInRange(options.slot ?? -1, 'slot', -1, 7),
+    flags: options.reset ? 1 : 0,
   };
 }
 

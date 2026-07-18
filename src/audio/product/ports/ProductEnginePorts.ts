@@ -3,12 +3,14 @@ import type { ProductEngineCommandPort } from './ProductCommandPort';
 import type { ProductEngineControlPort } from './ProductControlPort';
 import type { ProductEngineDiagnosticsPort } from './ProductDiagnosticsPort';
 import type { ProductEngineLifecyclePort } from './ProductLifecyclePort';
+import type { ProductEngineJourneyPort } from './ProductJourneyPort';
 import type { ProductEngineModulationPort } from './ProductModulationPort';
 import type { ProductEngineSequencerPort } from './ProductSequencerPort';
 import type { ProductEngineTelemetryPort } from './ProductTelemetryPort';
 
 export type ProductEnginePorts = {
   lifecycle: ProductEngineLifecyclePort;
+  journey: ProductEngineJourneyPort;
   command: ProductEngineCommandPort;
   control: ProductEngineControlPort;
   assets: ProductEngineAssetPort;
@@ -20,6 +22,7 @@ export type ProductEnginePorts = {
 
 export type ProductEnginePort =
   ProductEngineLifecyclePort &
+  ProductEngineJourneyPort &
   ProductEngineCommandPort &
   ProductEngineControlPort &
   ProductEngineAssetPort &

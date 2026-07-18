@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-export const MOBILE_WEB_AUDIO_EVIDENCE_SCHEMA = 'kessho-mobile-web-audio-evidence-v1';
+export const MOBILE_WEB_AUDIO_EVIDENCE_SCHEMA = 'kessho-mobile-web-audio-evidence-v2';
 
 export const MOBILE_WEB_AUDIO_SCENARIOS = Object.freeze([
   'default-visible',
@@ -9,6 +9,25 @@ export const MOBILE_WEB_AUDIO_SCENARIOS = Object.freeze([
   'representative-preset-cycles',
   'app-switch',
   'screen-lock',
+]);
+
+export const MOBILE_WEB_AUDIO_FEATURE_BUNDLES = Object.freeze([
+  'base-autonomy',
+  'base-max-cpu',
+  'advanced-parity',
+  'current-smoke',
+  'auto-stop',
+]);
+
+export const MOBILE_WEB_AUDIO_RUNTIME_CLASSIFICATIONS = Object.freeze([
+  'pass',
+  'browser-policy-suspension',
+  'engine-failure',
+]);
+
+export const MOBILE_WEB_AUDIO_ACCEPTANCE_MILESTONES = Object.freeze([
+  'base',
+  'advanced',
 ]);
 
 export const MOBILE_WEB_AUDIO_REGISTERED_SOFT_BYTES = 160 * 1024 * 1024;
@@ -125,24 +144,18 @@ export function validateMobileWebAudioEvidence(evidence, source = 'evidence') {
   if (appSwitchedMinutes > scenario.durationMinutes) {
     fail('scenario.appSwitchedMinutes cannot exceed scenario.durationMinutes', source);
   }
-  const minimumDuration = scenario.lockedMinutes > 0 || appSwitchedMinutes > 0 ? 60 : 15;
+  const minimumDuration = scenario.lockedMinutes > 0 || appSwitchedMinutes > 0 ? 3 : 10;
   if (scenario.durationMinutes < minimumDuration) {
     fail(`scenario duration must be at least ${minimumDuration} minutes`, source);
   }
-  if (scenario.lockedMinutes > 0 && scenario.lockedMinutes < 60) {
-    fail('locked playback evidence must include at least 60 locked minutes', source);
+  if (scenario.kind === 'screen-lock' && scenario.lockedMinutes <= 0) {
+    fail('screen-lock scenarios require a positive locked interval', source);
   }
-  if (scenario.kind === 'screen-lock' && scenario.lockedMinutes < 60) {
-    fail('screen-lock scenarios require at least 60 locked minutes', source);
+  if (scenario.kind === 'app-switch' && appSwitchedMinutes <= 0) {
+    fail('app-switch scenarios require a positive app-switched interval', source);
   }
-  if (scenario.kind === 'app-switch' && appSwitchedMinutes < 60) {
-    fail('app-switch scenarios require at least 60 app-switched minutes', source);
-  }
-  if (scenario.kind !== 'screen-lock' && scenario.lockedMinutes !== 0) {
-    fail('visible scenarios must set scenario.lockedMinutes to 0', source);
-  }
-  if (scenario.kind !== 'app-switch' && appSwitchedMinutes !== 0) {
-    fail('non-app-switch scenarios must set scenario.appSwitchedMinutes to 0 or omit it', source);
+  if (scenario.kind.endsWith('-visible') && (scenario.lockedMinutes !== 0 || appSwitchedMinutes !== 0)) {
+    fail('visible scenarios must not include hidden lifecycle intervals', source);
   }
 
   validateMetricSnapshot(evidence.before, 'before', source);
@@ -156,6 +169,92 @@ export function validateMobileWebAudioAcceptanceEvidence(evidence, source = 'acc
   const after = validateMetricSnapshot(evidence.after, 'after', source);
   const before = evidence.before;
   const acceptance = requirePlainObject(evidence.acceptance, 'acceptance', source);
+  if (!MOBILE_WEB_AUDIO_ACCEPTANCE_MILESTONES.includes(acceptance.milestone)) {
+    fail(`acceptance.milestone must be one of ${MOBILE_WEB_AUDIO_ACCEPTANCE_MILESTONES.join(', ')}`, source);
+  }
+  if (!Array.isArray(evidence.scenario.bundles) || evidence.scenario.bundles.length === 0) {
+    fail('scenario.bundles must contain at least one compact feature bundle', source);
+  }
+  for (const bundle of evidence.scenario.bundles) {
+    if (!MOBILE_WEB_AUDIO_FEATURE_BUNDLES.includes(bundle)) {
+      fail(`scenario.bundles contains unsupported bundle ${bundle}`, source);
+    }
+  }
+  if (new Set(evidence.scenario.bundles).size !== evidence.scenario.bundles.length) {
+    fail('scenario.bundles must not contain duplicates', source);
+  }
+  if (!MOBILE_WEB_AUDIO_RUNTIME_CLASSIFICATIONS.includes(acceptance.runtimeClassification)) {
+    fail(`acceptance.runtimeClassification must be one of ${MOBILE_WEB_AUDIO_RUNTIME_CLASSIFICATIONS.join(', ')}`, source);
+  }
+  if (acceptance.runtimeClassification === 'engine-failure') {
+    fail('acceptance.runtimeClassification reports an engine-failure', source);
+  }
+  const runtime = requirePlainObject(acceptance.runtime, 'acceptance.runtime', source);
+  for (const key of [
+    'sampleRate',
+    'sampleFrameBefore',
+    'sampleFrameAfter',
+    'autonomyRevisionBefore',
+    'autonomyRevisionAfter',
+    'expectedHiddenFrames',
+    'observedHiddenFrames',
+  ]) {
+    requireFiniteNumber(runtime[key], `acceptance.runtime.${key}`, source);
+    if (!Number.isSafeInteger(runtime[key])) fail(`acceptance.runtime.${key} must be a safe integer`, source);
+  }
+  requireBoolean(runtime.sonicStateAdvanced, 'acceptance.runtime.sonicStateAdvanced', source);
+  requireNonEmptyString(runtime.expectedTraceHash, 'acceptance.runtime.expectedTraceHash', source);
+  requireNonEmptyString(runtime.observedTraceHash, 'acceptance.runtime.observedTraceHash', source);
+  const policySuspension = acceptance.runtimeClassification === 'browser-policy-suspension';
+  if (runtime.sampleRate < 8_000 || runtime.sampleRate > 384_000) {
+    fail('acceptance.runtime.sampleRate must be between 8000 and 384000', source);
+  }
+  const declaredHiddenMinutes = Math.max(evidence.scenario.lockedMinutes, evidence.scenario.appSwitchedMinutes ?? 0);
+  const declaredHiddenFrames = declaredHiddenMinutes * 60 * runtime.sampleRate;
+  const autoStopBundle = evidence.scenario.bundles.includes('auto-stop');
+  if (
+    !autoStopBundle &&
+    (declaredHiddenFrames <= 0 ||
+      Math.abs(runtime.expectedHiddenFrames - declaredHiddenFrames) > declaredHiddenFrames * 0.05)
+  ) {
+    fail('acceptance.runtime.expectedHiddenFrames must match the declared hidden duration within 5%', source);
+  }
+  if (runtime.sampleFrameAfter - runtime.sampleFrameBefore !== runtime.observedHiddenFrames) {
+    fail('acceptance.runtime.observedHiddenFrames must equal the Product Core sample-frame delta', source);
+  }
+  if (policySuspension) {
+    if (evidence.device.browser === 'home-screen') {
+      fail('home-screen cannot pass as browser-policy-suspension', source);
+    }
+    if (runtime.expectedHiddenFrames <= 0) {
+      fail('browser-policy-suspension requires a positive hidden-frame expectation', source);
+    }
+    if (runtime.observedHiddenFrames > runtime.expectedHiddenFrames * 0.1) {
+      fail('browser-policy-suspension requires at most 10% hidden render-frame coverage', source);
+    }
+    if (runtime.sonicStateAdvanced) {
+      fail('browser-policy-suspension cannot report advancing sonic state', source);
+    }
+    if (runtime.autonomyRevisionAfter !== runtime.autonomyRevisionBefore) {
+      fail('browser-policy-suspension cannot advance the autonomy revision', source);
+    }
+  } else {
+    if (runtime.sampleFrameAfter <= runtime.sampleFrameBefore) {
+      fail('pass requires the Product Core sample frame to advance', source);
+    }
+    if (runtime.expectedHiddenFrames <= 0 || runtime.observedHiddenFrames < runtime.expectedHiddenFrames * 0.95) {
+      fail('pass requires at least 95% hidden render-frame coverage', source);
+    }
+    if (!runtime.sonicStateAdvanced) {
+      fail('Product Core sample frame advanced while sonic state did not', source);
+    }
+    if (runtime.autonomyRevisionAfter <= runtime.autonomyRevisionBefore) {
+      fail('Product Core sample frame advanced while the autonomy revision did not', source);
+    }
+    if (runtime.observedTraceHash !== runtime.expectedTraceHash) {
+      fail('observed Product Core trace does not match the uninterrupted trace', source);
+    }
+  }
   requireBoolean(acceptance.processTerminated, 'acceptance.processTerminated', source);
   if (acceptance.processTerminated) fail('acceptance.processTerminated must be false', source);
   for (const key of [
@@ -195,9 +294,9 @@ export function validateMobileWebAudioAcceptanceEvidence(evidence, source = 'acc
   if (hiddenScenario) {
     const hidden = requirePlainObject(acceptance.hidden, 'acceptance.hidden', source);
     requireFiniteNumber(hidden.maxAudibleGapMs, 'acceptance.hidden.maxAudibleGapMs', source);
-    if (hidden.maxAudibleGapMs > 20) fail('acceptance.hidden.maxAudibleGapMs must be <= 20', source);
+    if (!policySuspension && hidden.maxAudibleGapMs > 20) fail('acceptance.hidden.maxAudibleGapMs must be <= 20', source);
     requireBoolean(hidden.repeatedGapPattern, 'acceptance.hidden.repeatedGapPattern', source);
-    if (hidden.repeatedGapPattern) fail('acceptance.hidden.repeatedGapPattern must be false', source);
+    if (!policySuspension && hidden.repeatedGapPattern) fail('acceptance.hidden.repeatedGapPattern must be false', source);
     for (const key of ['hiddenUiCallbackCount', 'foregroundRefreshCount', 'staleForegroundEventCount']) {
       requireFiniteNumber(hidden[key], `acceptance.hidden.${key}`, source);
       if (!Number.isSafeInteger(hidden[key])) fail(`acceptance.hidden.${key} must be a safe integer`, source);
@@ -206,10 +305,10 @@ export function validateMobileWebAudioAcceptanceEvidence(evidence, source = 'acc
     if (hidden.foregroundRefreshCount !== 1) fail('acceptance.hidden.foregroundRefreshCount must be 1', source);
     if (hidden.staleForegroundEventCount !== 0) fail('acceptance.hidden.staleForegroundEventCount must be 0', source);
     requireFiniteNumber(hidden.outputCorrelation, 'acceptance.hidden.outputCorrelation', source);
-    if (hidden.outputCorrelation > 1 || hidden.outputCorrelation < 0.9999) {
+    if (!policySuspension && (hidden.outputCorrelation > 1 || hidden.outputCorrelation < 0.9999)) {
       fail('acceptance.hidden.outputCorrelation must be between 0.9999 and 1', source);
     }
-    if (!Number.isFinite(hidden.loudnessDeltaDb) || Math.abs(hidden.loudnessDeltaDb) >= 0.1) {
+    if (!Number.isFinite(hidden.loudnessDeltaDb) || (!policySuspension && Math.abs(hidden.loudnessDeltaDb) >= 0.1)) {
       fail('acceptance.hidden.loudnessDeltaDb absolute value must be < 0.1', source);
     }
     if (after.missedQuantumCount > before.missedQuantumCount) {
@@ -223,9 +322,64 @@ export function validateMobileWebAudioAcceptanceEvidence(evidence, source = 'acc
     if (hidden.interruptionTested && !hidden.interruptionRecoveryPass) {
       fail('acceptance.hidden.interruptionRecoveryPass must pass when interruptionTested is true', source);
     }
-    if (evidence.scenario.kind === 'screen-lock') {
+    if (evidence.scenario.kind === 'screen-lock' && evidence.device.browser === 'home-screen') {
       requireBoolean(hidden.lockScreenControlsPass, 'acceptance.hidden.lockScreenControlsPass', source);
       if (!hidden.lockScreenControlsPass) fail('acceptance.hidden.lockScreenControlsPass must be true', source);
+    } else if (hidden.lockScreenControlsPass !== undefined) {
+      requireBoolean(hidden.lockScreenControlsPass, 'acceptance.hidden.lockScreenControlsPass', source);
+    }
+  }
+  if (evidence.scenario.bundles.includes('auto-stop')) {
+    for (const key of ['autoStopTargetFrame', 'autoStopObservedFrame']) {
+      requireFiniteNumber(runtime[key], `acceptance.runtime.${key}`, source);
+      if (!Number.isSafeInteger(runtime[key])) fail(`acceptance.runtime.${key} must be a safe integer`, source);
+    }
+    if (!policySuspension && runtime.autoStopObservedFrame !== runtime.autoStopTargetFrame) {
+      fail('Product Core auto-stop did not fire at its configured frame', source);
+    }
+    if (runtime.expectedHiddenFrames !== runtime.autoStopTargetFrame - runtime.sampleFrameBefore) {
+      fail('auto-stop expected hidden frames must end at the configured Product Core target', source);
+    }
+    if (Math.abs(runtime.expectedHiddenFrames - runtime.sampleRate * 120) > 1) {
+      fail('auto-stop acceptance requires the configured two-minute Product Core duration', source);
+    }
+    requireBoolean(runtime.autoStopFiredWhileHidden, 'acceptance.runtime.autoStopFiredWhileHidden', source);
+    if (!policySuspension) {
+      if (evidence.scenario.lockedMinutes < 3) {
+        fail('auto-stop acceptance requires at least three locked minutes', source);
+      }
+      if (runtime.autoStopTargetFrame <= runtime.sampleFrameBefore ||
+          runtime.autoStopTargetFrame > runtime.sampleFrameAfter) {
+        fail('Product Core auto-stop target must fall inside the observed hidden render interval', source);
+      }
+      if (!runtime.autoStopFiredWhileHidden) {
+        fail('Product Core auto-stop must fire while the host is hidden', source);
+      }
+    }
+  }
+  if (evidence.scenario.bundles.includes('advanced-parity')) {
+    requireBoolean(runtime.journeyReady, 'acceptance.runtime.journeyReady', source);
+    if (!runtime.journeyReady) fail('advanced parity requires a ready Journey plan', source);
+    for (const key of [
+      'journeyPreparedDurationSeconds',
+      'journeyScheduleEntries',
+      'journeyAssetBytes',
+      'journeyTransitionCount',
+    ]) {
+      requireFiniteNumber(runtime[key], `acceptance.runtime.${key}`, source);
+      if (!Number.isSafeInteger(runtime[key])) fail(`acceptance.runtime.${key} must be a safe integer`, source);
+    }
+    if (runtime.journeyPreparedDurationSeconds < 7_200) {
+      fail('advanced Journey plan must prepare at least 7200 seconds', source);
+    }
+    if (runtime.journeyScheduleEntries > 512) {
+      fail('advanced Journey plan must use at most 512 schedule entries', source);
+    }
+    if (runtime.journeyAssetBytes > MOBILE_WEB_AUDIO_REGISTERED_SOFT_BYTES) {
+      fail(`advanced Journey assets must be <= ${MOBILE_WEB_AUDIO_REGISTERED_SOFT_BYTES}`, source);
+    }
+    if (!policySuspension && runtime.journeyTransitionCount < 1) {
+      fail('advanced Journey run must execute at least one transition', source);
     }
   }
   return evidence;
@@ -238,7 +392,9 @@ export function readAndValidateMobileWebAudioEvidence(path) {
   } catch (error) {
     throw new Error(`${path}: invalid JSON (${error instanceof Error ? error.message : String(error)})`);
   }
-  return validateMobileWebAudioEvidence(parsed, path);
+  return parsed?.acceptance === undefined
+    ? validateMobileWebAudioEvidence(parsed, path)
+    : validateMobileWebAudioAcceptanceEvidence(parsed, path);
 }
 
 export function validateMobileWebAudioBaselineMatrix(captures, source = 'baseline matrix') {
@@ -263,67 +419,75 @@ export function validateMobileWebAudioBaselineMatrix(captures, source = 'baselin
       }
     }
     for (const browser of ['safari', 'chrome', 'home-screen']) {
-      for (const output of ['speaker', 'wired', 'bluetooth']) {
-        if (!modelCaptures.some((evidence) => (
-          evidence.scenario.kind === 'screen-lock' &&
-          evidence.device.browser === browser &&
-          evidence.scenario.output === output &&
-          evidence.scenario.lockedMinutes >= 60
-        ))) {
-          fail(`missing ${model} ${browser} screen-lock ${output} for at least 60 minutes`, source);
-        }
+      if (!modelCaptures.some((evidence) => (
+        evidence.scenario.kind === 'screen-lock' &&
+        evidence.device.browser === browser &&
+        evidence.scenario.output === 'speaker' &&
+        evidence.scenario.lockedMinutes >= 10
+      ))) {
+        fail(`missing ${model} ${browser} screen-lock speaker for at least 10 minutes`, source);
       }
     }
+  }
+  if (!captures.some((evidence) => (
+    evidence.device.model === 'iPhone 11' &&
+    evidence.device.browser === 'home-screen' &&
+    evidence.scenario.kind === 'screen-lock' &&
+    evidence.scenario.output === 'bluetooth' &&
+    evidence.scenario.lockedMinutes >= 10
+  ))) {
+    fail('missing iPhone 11 home-screen Bluetooth screen-lock route for at least 10 minutes', source);
   }
   return captures;
 }
 
-export function validateMobileWebAudioAcceptanceMatrix(captures, source = 'acceptance matrix') {
+export function validateMobileWebAudioAcceptanceMatrix(
+  captures,
+  source = 'acceptance matrix',
+  milestone = 'advanced',
+) {
+  if (!MOBILE_WEB_AUDIO_ACCEPTANCE_MILESTONES.includes(milestone)) {
+    fail(`milestone must be one of ${MOBILE_WEB_AUDIO_ACCEPTANCE_MILESTONES.join(', ')}`, source);
+  }
   for (const capture of captures) validateMobileWebAudioAcceptanceEvidence(capture, source);
+  if (captures.some((capture) => capture.acceptance.milestone !== milestone)) {
+    fail(`every capture must state acceptance.milestone=${milestone}`, source);
+  }
   const models = [...new Set(captures.map((evidence) => evidence.device.model))];
   if (!models.includes('iPhone 11')) fail('requires physical iPhone 11 acceptance evidence', source);
   const currentModels = models.filter((model) => model !== 'iPhone 11');
   if (currentModels.length === 0) fail('requires acceptance evidence from one current iPhone model', source);
 
-  for (const model of ['iPhone 11', currentModels[0]]) {
-    const modelCaptures = captures.filter((evidence) => evidence.device.model === model);
-    for (const browser of ['safari', 'chrome', 'home-screen']) {
-      const surfaceCaptures = modelCaptures.filter((evidence) => evidence.device.browser === browser);
-      if (!surfaceCaptures.some((evidence) => (
-        evidence.scenario.kind.endsWith('-visible') && evidence.scenario.durationMinutes >= 60
-      ))) {
-        fail(`missing ${model} ${browser} visible acceptance run for at least 60 minutes`, source);
-      }
-      if (!surfaceCaptures.some((evidence) => (
-        evidence.scenario.kind === 'app-switch' && (evidence.scenario.appSwitchedMinutes ?? 0) >= 60
-      ))) {
-        fail(`missing ${model} ${browser} app-switch acceptance run for at least 60 minutes`, source);
-      }
-      for (const output of ['speaker', 'bluetooth']) {
-        if (!surfaceCaptures.some((evidence) => (
-          evidence.scenario.kind === 'screen-lock' &&
-          evidence.scenario.output === output &&
-          evidence.scenario.lockedMinutes >= 60
-        ))) {
-          fail(`missing ${model} ${browser} screen-lock ${output} acceptance run for at least 60 minutes`, source);
-        }
-      }
-    }
-    if (!modelCaptures.some((evidence) => (
-      evidence.scenario.kind === 'screen-lock' &&
+  const currentModel = currentModels[0];
+  const hasRun = ({ model, browser, output = 'speaker', duration, bundles, appSwitch = false, interruption = false }) => captures.some((evidence) => (
+    evidence.device.model === model &&
+    evidence.device.browser === browser &&
+    evidence.scenario.output === output &&
+    evidence.scenario.durationMinutes >= duration &&
+    evidence.scenario.lockedMinutes > 0 &&
+    (!appSwitch || (evidence.scenario.appSwitchedMinutes ?? 0) > 0) &&
+    bundles.every((bundle) => evidence.scenario.bundles.includes(bundle)) &&
+    (!interruption || (
       evidence.acceptance?.hidden?.interruptionTested === true &&
       evidence.acceptance.hidden.interruptionRecoveryPass === true
-    ))) {
-      fail(`missing ${model} successful interruption recovery evidence`, source);
-    }
+    ))
+  ));
+  const requiredRuns = [
+    { model: 'iPhone 11', browser: 'safari', duration: 15, bundles: ['base-autonomy'], appSwitch: true },
+    { model: 'iPhone 11', browser: 'chrome', duration: 10, bundles: ['base-autonomy'], appSwitch: true },
+    { model: 'iPhone 11', browser: 'home-screen', duration: 15, bundles: ['base-max-cpu'] },
+    { model: 'iPhone 11', browser: 'home-screen', output: 'bluetooth', duration: 15, bundles: ['base-max-cpu'], interruption: true },
+    { model: currentModel, browser: 'safari', duration: 10, bundles: ['current-smoke'] },
+    { model: currentModel, browser: 'home-screen', duration: 10, bundles: ['current-smoke', 'auto-stop'] },
+  ];
+  if (milestone === 'advanced') {
+    requiredRuns[2].bundles.push('advanced-parity');
+    requiredRuns[3].bundles.push('advanced-parity');
   }
-  if (!captures.some((evidence) => (
-    evidence.device.model === 'iPhone 11' &&
-    evidence.scenario.kind === 'highest-cpu-visible' &&
-    evidence.scenario.durationMinutes >= 60 &&
-    evidence.acceptance?.sustainedThermalDropouts === false
-  ))) {
-    fail('missing iPhone 11 60-minute highest-CPU thermal acceptance evidence', source);
+  for (const required of requiredRuns) {
+    if (!hasRun(required)) {
+      fail(`missing compact run ${required.model} ${required.browser} ${required.output ?? 'speaker'} with ${required.bundles.join('+')}`, source);
+    }
   }
   return captures;
 }

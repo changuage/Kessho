@@ -22,6 +22,7 @@ import {
   stepDecimals,
   trackLeftCalc,
   trackWidthCalc,
+  useRafCoalescedEmitter,
   valueToNorm,
   type MatrixCellHandle,
   type QuantizationRange,
@@ -1395,6 +1396,7 @@ function EarthMatrixSliderCell({
     const nextMax = quantizeValue(normToValue(nextMaxNorm, quantization, control.logarithmic), quantization);
     runtime.onDualRangeChange(control.key, Math.min(nextMin, nextMax), Math.max(nextMin, nextMax));
   }, [control.key, control.logarithmic, mode, onParamChange, quantization, runtime]);
+  const valueEmitter = useRafCoalescedEmitter(applyValueAtNorm);
 
   const handleKeyboard = useCallback((
     handle: 'single' | 'min' | 'max',
@@ -1518,7 +1520,7 @@ function EarthMatrixSliderCell({
         };
         setDragHandle(nextHandle);
         setDragging(true);
-        applyValueAtNorm(pointerNorm);
+        valueEmitter.flush(pointerNorm);
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
       onPointerMove={(event) => {
@@ -1554,7 +1556,7 @@ function EarthMatrixSliderCell({
           };
           setDragHandle(pendingTouch.handle);
           setDragging(true);
-          applyValueAtNorm(pointerToTrackNorm(event.clientX, event.currentTarget.getBoundingClientRect()));
+          valueEmitter.schedule(pointerToTrackNorm(event.clientX, event.currentTarget.getBoundingClientRect()));
           return;
         }
 
@@ -1562,7 +1564,7 @@ function EarthMatrixSliderCell({
         if (longPressConsumedRef.current) return;
         if (!dragRef.current || dragRef.current.pointerId !== event.pointerId) return;
         if (event.pointerType === 'touch') event.preventDefault();
-        applyValueAtNorm(pointerToTrackNorm(event.clientX, event.currentTarget.getBoundingClientRect()));
+        valueEmitter.schedule(pointerToTrackNorm(event.clientX, event.currentTarget.getBoundingClientRect()));
       }}
       onPointerUp={(event) => {
         const pendingTouch = pendingTouchRef.current;
@@ -1578,7 +1580,7 @@ function EarthMatrixSliderCell({
               startRange: pendingTouch.startRange,
               startRangeNorm: pendingTouch.startRangeNorm,
             };
-            applyValueAtNorm(pendingTouch.pointerNorm);
+            valueEmitter.flush(pendingTouch.pointerNorm);
           }
           dragRef.current = null;
           setDragging(false);
@@ -1589,6 +1591,7 @@ function EarthMatrixSliderCell({
           return;
         }
 
+        valueEmitter.flush();
         clearLongPress();
         dragRef.current = null;
         setDragging(false);
@@ -1598,6 +1601,7 @@ function EarthMatrixSliderCell({
         releasePointerCaptureSafely(event.currentTarget, event.pointerId);
       }}
       onPointerCancel={(event) => {
+        valueEmitter.cancel();
         const drag = dragRef.current;
         if (drag) {
           if (mode === 'single' || drag.handle === 'single' || !drag.startRange) {

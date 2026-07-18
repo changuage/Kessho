@@ -5,6 +5,7 @@ import type { DualSliderRange } from './DualSlider';
 import type { ProductRuntimeParamUpdateOptions } from './useProductRuntimePresetSurface';
 import { USER_PREFERENCE_KEYS } from './presetUtils';
 import { DEFAULT_STATE, type SliderMode, type SliderState } from './state';
+import type { ProductAutoCycleRuntimeSurface } from './useProductRuntimeAutoCycleSurface';
 
 type MorphCoFViz = {
   isMorphing: boolean;
@@ -43,6 +44,8 @@ type UseMorphPositionRuntimeSurfaceOptions<TPreset extends MorphRuntimePreset> =
   currentCofStep: number;
   state: SliderState;
   stateRef: MutableRefObject<SliderState>;
+  morphPlayPhrases: number;
+  morphTransitionPhrases: number;
   morphPlayPhrasesRef: MutableRefObject<number>;
   morphTransitionPhrasesRef: MutableRefObject<number>;
   morphCapturedStateRef: MutableRefObject<SliderState | null>;
@@ -70,6 +73,8 @@ type UseMorphPositionRuntimeSurfaceOptions<TPreset extends MorphRuntimePreset> =
   resetRuntimeWalkPositionsForModes: (modes: Record<string, SliderMode>) => void;
   scheduleProductRuntimeParamUpdate: (nextState: SliderState, options?: ProductRuntimeParamUpdateOptions) => void;
   isEngineRunning: boolean;
+  productRuntimeActive: boolean;
+  productAutoCycleRuntime: ProductAutoCycleRuntimeSurface;
 };
 
 type MorphPositionRuntimeSurface = {
@@ -84,6 +89,8 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
   currentCofStep,
   state,
   stateRef,
+  morphPlayPhrases,
+  morphTransitionPhrases,
   morphPlayPhrasesRef,
   morphTransitionPhrasesRef,
   morphCapturedStateRef,
@@ -104,6 +111,8 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
   resetRuntimeWalkPositionsForModes,
   scheduleProductRuntimeParamUpdate,
   isEngineRunning,
+  productRuntimeActive,
+  productAutoCycleRuntime,
 }: UseMorphPositionRuntimeSurfaceOptions<TPreset>): MorphPositionRuntimeSurface {
   const prevMorphPresetARef = useRef<TPreset | null>(null);
   const prevMorphPresetBRef = useRef<TPreset | null>(null);
@@ -115,6 +124,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
   const currentPhaseRef = useRef<MorphPhase>('hold');
   const phaseStartTimeRef = useRef<number>(Date.now());
   const phaseDurationRef = useRef<number>(0);
+  const productAutoCycleInitialPositionRef = useRef(morphPosition);
 
   useEffect(() => {
     currentCofStepRef.current = currentCofStep;
@@ -170,6 +180,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     prevMorphPresetBRef.current = morphPresetB;
 
     if (!presetAChanged && !presetBChanged) return;
+    if (productRuntimeActive) return;
     if (!morphPresetA && !morphPresetB) return;
     if (!isInMidMorph(morphPosition, true)) return;
 
@@ -204,6 +215,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     scheduleProductRuntimeParamUpdate,
     setState,
     state,
+    productRuntimeActive,
   ]);
 
   const handleMorphPositionChange = useCallback(
@@ -325,6 +337,113 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
   );
 
   useEffect(() => {
+    if (morphMode !== 'auto') productAutoCycleInitialPositionRef.current = morphPosition;
+  }, [morphMode, morphPosition]);
+
+  useEffect(() => {
+    if (!productRuntimeActive) return undefined;
+    const enabled = morphMode === 'auto' && isEngineRunning && !!(morphPresetA || morphPresetB);
+    if (!enabled) {
+      productAutoCycleRuntime.stop(true);
+      setMorphCountdown(null);
+      return undefined;
+    }
+
+    const fallbackPreset = buildFallbackPreset();
+    const effectiveA = morphPresetA || fallbackPreset;
+    const effectiveB = morphPresetB || fallbackPreset;
+    const currentState = stateRef.current;
+    const endpointState = (preset: TPreset): SliderState & Record<string, unknown> => {
+      const next = { ...DEFAULT_STATE, ...preset.state } as SliderState & Record<string, unknown>;
+      for (const key of USER_PREFERENCE_KEYS) {
+        (next as Record<string, unknown>)[key] = currentState[key];
+      }
+      return next;
+    };
+    const endpointA = endpointState(effectiveA);
+    const endpointB = endpointState(effectiveB);
+    const abortController = new AbortController();
+    void productAutoCycleRuntime.start({
+      endpointA,
+      endpointB,
+      initialPosition: productAutoCycleInitialPositionRef.current / 100,
+      playPhrases: morphPlayPhrasesRef.current,
+      transitionPhrases: morphTransitionPhrasesRef.current,
+      signal: abortController.signal,
+    }).catch((error) => {
+      if (!abortController.signal.aborted) console.warn('Product auto-cycle assets are not ready:', error);
+    });
+
+    return () => {
+      abortController.abort();
+      productAutoCycleRuntime.stop(false);
+    };
+  }, [
+    buildFallbackPreset,
+    isEngineRunning,
+    morphMode,
+    morphPlayPhrasesRef,
+    morphPresetA,
+    morphPresetB,
+    morphTransitionPhrasesRef,
+    productAutoCycleRuntime,
+    productRuntimeActive,
+    setMorphCountdown,
+    stateRef,
+  ]);
+
+  useEffect(() => {
+    if (!productRuntimeActive || morphMode !== 'auto' || !isEngineRunning) return;
+    productAutoCycleRuntime.updateDurations(morphPlayPhrases, morphTransitionPhrases);
+  }, [
+    isEngineRunning,
+    morphMode,
+    morphPlayPhrases,
+    morphTransitionPhrases,
+    productAutoCycleRuntime,
+    productRuntimeActive,
+  ]);
+
+  useEffect(() => {
+    if (!productRuntimeActive || morphMode !== 'auto' || !isEngineRunning || typeof window === 'undefined') {
+      return undefined;
+    }
+    let frame = 0;
+    let lastReadMs = 0;
+    const tick = (now: number) => {
+      frame = window.requestAnimationFrame(tick);
+      if (document.visibilityState !== 'visible' || now - lastReadMs < 100) return;
+      lastReadMs = now;
+      const telemetry = productAutoCycleRuntime.readProjection();
+      if (!telemetry?.enabled) return;
+      const position = Math.round(telemetry.position * 100);
+      setMorphPosition(position);
+      const samplesLeft = Math.max(0, telemetry.phaseEndFrame - telemetry.absoluteSampleTime);
+      const phraseSamples = Math.max(
+        1,
+        (telemetry.phraseSeconds ?? stateRef.current.phraseLength ?? 16) * telemetry.sampleRate,
+      );
+      const phrasesLeft = Math.ceil(samplesLeft / phraseSamples);
+      setMorphCountdown((previous) => (
+        previous?.phase === telemetry.phase && previous.phrasesLeft === phrasesLeft
+          ? previous
+          : { phase: telemetry.phase, phrasesLeft }
+      ));
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    isEngineRunning,
+    morphMode,
+    productAutoCycleRuntime,
+    productRuntimeActive,
+    setMorphCountdown,
+    setMorphPosition,
+    stateRef,
+  ]);
+
+  useEffect(() => {
+    if (productRuntimeActive) return undefined;
     if (morphMode !== 'auto' || !isEngineRunning || (!morphPresetA && !morphPresetB)) {
       setMorphCountdown(null);
       return;
@@ -572,6 +691,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     state.phraseLength,
     stateRef,
     lastMorphEndpointRef,
+    productRuntimeActive,
   ]);
 
   return { handleMorphPositionChange };

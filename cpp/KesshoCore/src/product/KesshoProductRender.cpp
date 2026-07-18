@@ -183,7 +183,12 @@ struct SoundscapeRenderBlockCache {
       if ((active_source_mask & (1u << source_index)) == 0u) {
         continue;
       }
-      source_gates[source_index] = sourceEnableGainForFrame(sources[source_index], transport.sample_frame + i);
+      const uint64_t absolute_frame = transport.sample_frame + i;
+      source_gates[source_index] = sourceEnableGainForFrame(sources[source_index], absolute_frame);
+      const uint32_t mute_row = routingMuteRowForSource(source_index + 1u);
+      if (mute_row < kProductRoutingMuteRowCount) {
+        source_gates[source_index] *= routingMuteGainForFrame(mute_row, absolute_frame);
+      }
     }
     for (uint32_t active_i = 0u; active_i < active_voice_count; ++active_i) {
       Voice& voice = voices[active_voice_indices[active_i]];
@@ -200,7 +205,19 @@ struct SoundscapeRenderBlockCache {
       float value_r = 0.0f;
       renderVoiceSample(voice, value_l, value_r);
       SourceState& source = sources[voice.source_id - 1u];
-      const float source_gate = source_gates[voice.source_id - 1u];
+      float source_gate = source_gates[voice.source_id - 1u];
+      if (voice.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
+        const uint32_t layer = voice.soundscape_layer < kSoundscapeLayerCount
+            ? voice.soundscape_layer
+            : (voice.asset_slot < kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS
+                ? soundscapeLayerIndexForAsset(assets[voice.asset_slot].asset_id)
+                : kSoundscapeLayerCount);
+        if (layer < kSoundscapeLayerCount) {
+          source_gate *= routingMuteGainForFrame(
+              kRoutingMuteRowWaves + layer,
+              transport.sample_frame + i);
+        }
+      }
       if (voice.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE &&
           voice.sample_voice &&
           voice.soundscape_texture_voice &&
@@ -329,6 +346,7 @@ struct SoundscapeRenderBlockCache {
 }
 
   void KesshoProductEngine::renderSegment(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
+  scheduleRoutingMuteGroups(frames);
   renderSidechainGains(start, frames);
   renderProductModules(out_l, out_r, start, frames);
   renderSampleVoices(out_l, out_r, start, frames);
@@ -647,6 +665,9 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
   applyPendingTransportTransition();
   applyPendingSequencerAudibilityTransitions();
   applySequencerChainTransitions();
+  scheduleJourneyRuntime();
+  scheduleGlobalAutoCycle();
+  scheduleSceneRuntimeEvents();
 
   advanceModulationRanges(frames);
   advanceGranularPhraseReseed();
@@ -666,7 +687,12 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
     applyPendingTransportTransition();
     applyPendingSequencerAudibilityTransitions();
     applySequencerChainTransitions();
+    scheduleJourneyRuntime();
+    scheduleGlobalAutoCycle();
+    scheduleSceneRuntimeEvents();
     advanceHarmonyClock();
+    applyAutoStopAtCurrentFrame();
+    scheduleSourceMorphAutomation();
 
     uint32_t control_segment_end = frames;
     if (control_index < control_event_count) {
@@ -703,6 +729,27 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
       control_segment_end = std::min<uint32_t>(
           control_segment_end,
           cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_harmony, frames - cursor)));
+    }
+    const uint64_t auto_stop_frame = nextAutoStopFrame();
+    if (auto_stop_frame != UINT64_MAX && auto_stop_frame > transport.sample_frame) {
+      const uint64_t frames_until_stop = auto_stop_frame - transport.sample_frame;
+      control_segment_end = std::min<uint32_t>(
+          control_segment_end,
+          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_stop, frames - cursor)));
+    }
+    const uint64_t auto_cycle_frame = nextGlobalAutoCycleFrame();
+    if (auto_cycle_frame != UINT64_MAX && auto_cycle_frame > transport.sample_frame) {
+      const uint64_t frames_until_auto_cycle = auto_cycle_frame - transport.sample_frame;
+      control_segment_end = std::min<uint32_t>(
+          control_segment_end,
+          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_auto_cycle, frames - cursor)));
+    }
+    const uint64_t journey_frame = nextJourneyScheduleFrame();
+    if (journey_frame != UINT64_MAX && journey_frame > transport.sample_frame) {
+      const uint64_t frames_until_journey = journey_frame - transport.sample_frame;
+      control_segment_end = std::min<uint32_t>(
+          control_segment_end,
+          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_journey, frames - cursor)));
     }
     if (control_segment_end <= cursor) {
       control_segment_end = cursor + 1u;

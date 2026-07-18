@@ -34,6 +34,7 @@ import {
   axisToNormalized,
   releasePointerCaptureSafely,
 } from './sliderSystem/matrixMath';
+import { useRafCoalescedEmitter } from './sliderSystem/useRafCoalescedEmitter';
 
 // ============================================================================
 // CONSTANTS
@@ -1673,6 +1674,10 @@ const JourneyDualRangeRail: React.FC<JourneyDualRangeRailProps> = ({
 }) => {
   const railRef = useRef<HTMLDivElement>(null);
   const dragCleanupRef = useRef<(() => void) | null>(null);
+  const dragEmitter = useRafCoalescedEmitter(({ handle, value }: { handle: 'min' | 'max'; value: number }) => {
+    if (handle === 'min') onMinChange(Math.min(value, maxValue));
+    else onMaxChange(Math.max(value, minValue));
+  });
   useEffect(() => () => dragCleanupRef.current?.(), []);
 
   const toPercent = (value: number) => ((value - minBound) / Math.max(1, maxBound - minBound)) * 100;
@@ -1692,11 +1697,7 @@ const JourneyDualRangeRail: React.FC<JourneyDualRangeRailProps> = ({
     const rect = rail.getBoundingClientRect();
     try { target.setPointerCapture(pointerId); } catch { /* Pointer may already be cancelled. */ }
 
-    const apply = (clientX: number) => {
-      const raw = valueFromClientX(clientX, rect);
-      if (handle === 'min') onMinChange(Math.min(raw, maxValue));
-      else onMaxChange(Math.max(raw, minValue));
-    };
+    const apply = (clientX: number) => dragEmitter.schedule({ handle, value: valueFromClientX(clientX, rect) });
     const cleanup = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onEnd);
@@ -1712,14 +1713,15 @@ const JourneyDualRangeRail: React.FC<JourneyDualRangeRailProps> = ({
     const onEnd = (endEvent: PointerEvent) => {
       if (endEvent.pointerId !== pointerId) return;
       if (endEvent.type === 'pointercancel') {
+        dragEmitter.cancel();
         if (handle === 'min') onMinChange(startValue);
         else onMaxChange(startValue);
       } else {
-        apply(endEvent.clientX);
+        dragEmitter.flush({ handle, value: valueFromClientX(endEvent.clientX, rect) });
       }
       cleanup();
     };
-    apply(event.clientX);
+    dragEmitter.flush({ handle, value: valueFromClientX(event.clientX, rect) });
     dragCleanupRef.current = cleanup;
     window.addEventListener('pointermove', onMove, { passive: false });
     window.addEventListener('pointerup', onEnd);

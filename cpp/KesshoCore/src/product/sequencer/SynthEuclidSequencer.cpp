@@ -218,6 +218,114 @@ void advanceProductArpCursor(kessho::product::internal::ProductArpRuntimeState& 
   arp.cursor = static_cast<uint32_t>((static_cast<uint64_t>(arp.cursor % length) + count) % length);
 }
 
+int32_t productArpPositiveModulo(int32_t value, int32_t modulus) {
+  if (modulus <= 0) return 0;
+  const int32_t result = value % modulus;
+  return result < 0 ? result + modulus : result;
+}
+
+uint32_t productArpPingPongIndex(int32_t position, uint32_t length) {
+  if (length <= 1u) return 0u;
+  const int32_t period = static_cast<int32_t>((length - 1u) * 2u);
+  const int32_t folded = productArpPositiveModulo(position, period);
+  return static_cast<uint32_t>(folded <= static_cast<int32_t>(length - 1u) ? folded : period - folded);
+}
+
+uint32_t resolveProductArpTraversalIndex(
+    kessho::product::internal::ProductArpRuntimeState& arp,
+    const kessho::product::internal::LaneState& lane,
+    uint32_t lane_index,
+    uint32_t step,
+    uint32_t local_step,
+    uint32_t pool_count,
+    int32_t anchor_index) {
+  using namespace kessho::product::internal;
+  if (pool_count <= 1u) return 0u;
+  if (arp.flow == ProductArpFlow::RandomLiveTone) {
+    const uint32_t decision = hashU32(
+        lane.seed ^ lane_index * 0x119de1f3u ^ step * 0x27d4eb2du ^ arp.random_counter++ * 0x45d9f3bu);
+    return decision % pool_count;
+  }
+  if (arp.flow == ProductArpFlow::DiceHold) {
+    return arp.dice_indices[step] % pool_count;
+  }
+  const int32_t position = static_cast<int32_t>(local_step);
+  if (anchor_index >= 0) {
+    int32_t offset = position;
+    if (arp.flow == ProductArpFlow::Down) offset = -position;
+    if (arp.flow == ProductArpFlow::UpDown || arp.flow == ProductArpFlow::DownUp) {
+      const int32_t magnitude = position <= 0 ? 0 : (position + 1) / 2;
+      offset = position % 2 == 1 ? magnitude : -magnitude;
+      if (arp.flow == ProductArpFlow::DownUp) offset = -offset;
+    }
+    return static_cast<uint32_t>(productArpPositiveModulo(anchor_index + offset, static_cast<int32_t>(pool_count)));
+  }
+  if (arp.flow == ProductArpFlow::Down) return pool_count - 1u - (local_step % pool_count);
+  if (arp.flow == ProductArpFlow::UpDown) return productArpPingPongIndex(position, pool_count);
+  if (arp.flow == ProductArpFlow::DownUp) return pool_count - 1u - productArpPingPongIndex(position, pool_count);
+  return local_step % pool_count;
+}
+
+float resolveProductArpMidi(
+    KesshoProductEngine& engine,
+    kessho::product::internal::LaneState& lane,
+    uint32_t lane_index,
+    uint32_t step,
+    float anchor_midi) {
+  using namespace kessho::product::internal;
+  ProductArpRuntimeState& arp = lane.arp;
+  if (arp.fixed_midi_mode) return arp.midi_notes[step];
+
+  float pool[8]{};
+  uint32_t pool_count = 0u;
+  const int32_t slot = arp.slot_lane[step];
+  if (slot >= 0 && slot < 8 && engine.arrangement.chord_slot_note_count[slot] > 0u) {
+    pool_count = std::min<uint32_t>(engine.arrangement.chord_slot_note_count[slot], 8u);
+    for (uint32_t index = 0u; index < pool_count; ++index) {
+      pool[index] = engine.arrangement.chord_slot_midi[static_cast<uint32_t>(slot) * 8u + index];
+    }
+  } else {
+    pool_count = std::min<uint32_t>(engine.harmony.note_pool_count, 8u);
+    for (uint32_t index = 0u; index < pool_count; ++index) pool[index] = engine.harmony.note_pool_midi[index];
+  }
+  if (pool_count == 0u) return anchor_midi;
+
+  int32_t anchor_index = -1;
+  if (std::isfinite(anchor_midi) && anchor_midi >= 0.0f) {
+    float best_distance = std::numeric_limits<float>::max();
+    for (uint32_t index = 0u; index < pool_count; ++index) {
+      const float distance = std::fabs(pool[index] - anchor_midi);
+      if (distance < best_distance) {
+        best_distance = distance;
+        anchor_index = static_cast<int32_t>(index);
+      }
+    }
+  }
+
+  uint32_t segment_start = 0u;
+  for (uint32_t index = 0u; index <= step; ++index) {
+    if ((arp.reset_mask & (1u << index)) != 0u) segment_start = index;
+  }
+  const uint32_t local_step = step - segment_start;
+  const uint32_t base_index = arp.contour_mode == ProductArpContourMode::Semitone
+      ? static_cast<uint32_t>(std::max(0, anchor_index))
+      : resolveProductArpTraversalIndex(arp, lane, lane_index, step, local_step, pool_count, anchor_index);
+  const int32_t move = arp.contour[step];
+  if (arp.contour_mode == ProductArpContourMode::Semitone) {
+    return clampFloat(pool[base_index] + static_cast<float>(move), 0.0f, 127.0f);
+  }
+  const int32_t moved_index = static_cast<int32_t>(base_index) + move;
+  uint32_t output_index = 0u;
+  if (arp.boundary_mode == ProductArpBoundaryMode::Wrap) {
+    output_index = static_cast<uint32_t>(productArpPositiveModulo(moved_index, static_cast<int32_t>(pool_count)));
+  } else if (arp.boundary_mode == ProductArpBoundaryMode::Clamp) {
+    output_index = static_cast<uint32_t>(std::clamp(moved_index, 0, static_cast<int32_t>(pool_count - 1u)));
+  } else {
+    output_index = productArpPingPongIndex(moved_index, pool_count);
+  }
+  return pool[output_index];
+}
+
 uint32_t productArpSlotsPerWindow(
     const kessho::product::internal::ProductArpRuntimeState& arp,
     uint64_t window_samples,
@@ -292,6 +400,7 @@ void recordDrainedRatchet(
   if (pending.arp_step_index != UINT32_MAX) {
     lane.arp.current_step = pending.arp_step_index %
         kessho::product::internal::kMaxProductArpSteps;
+    lane.arp.current_midi = event.midi_note;
   }
   if (event.morph >= 0.0f) {
     lane.last_emitted_morph_valid = true;
@@ -1710,11 +1819,6 @@ class ScopedSequencerAudibilityGate {
       resetSequencerLaneRuntime(lane);
       continue;
     }
-    if (!sequencerTargetSourceEnabled(*this, lane.target_source_id)) {
-      clearPendingRatchets(lane);
-      lane.sequencer_runtime_sample_frame = block_end;
-      continue;
-    }
     const double samples_per_step =
         sequencerSamplesPerStep(transport, sample_rate, lane.clock_division) /
         static_cast<double>(clampFloat(lane.tempo_multiplier, 0.25f, 12.0f));
@@ -1734,6 +1838,11 @@ class ScopedSequencerAudibilityGate {
               samples_per_step);
       lane.sequencer_runtime_initialized = true;
       lane.sequencer_join_pending = false;
+    }
+    if (!sequencerTargetSourceEnabled(*this, lane.target_source_id)) {
+      clearPendingRatchets(lane);
+      lane.sequencer_runtime_sample_frame = block_end;
+      continue;
     }
     if (!drainPendingRatchets(lane, block_start, block_end, *this, out, telemetry)) {
       return;
@@ -2099,7 +2208,9 @@ class ScopedSequencerAudibilityGate {
         while (emitted_arp_slots < window_slots && emitted_arp_slots < kMaxPendingRatchetsPerLane) {
           const uint32_t arp_step = arp.cursor % arp_length;
           const bool arp_step_active = (arp.active_mask & (1u << arp_step)) != 0u;
-          const float arp_midi_note = arp.midi_notes[arp_step];
+          const float arp_midi_note = arp_step_active
+              ? resolveProductArpMidi(*this, lane, lane_index, arp_step, sequenced_midi_note)
+              : -1.0f;
           const uint64_t arp_sample = productArpSlotSample(
               event_sample,
               window_samples,
@@ -2153,6 +2264,7 @@ class ScopedSequencerAudibilityGate {
   }
   generateLaneEvents(synth_lanes, synth_lane_count, frames, sequencer_events);
   generateLaneEvents(drum_lanes, drum_lane_count, frames, sequencer_events);
+  scheduleScatterEvents(frames, sequencer_events);
   generateArrangementEvents(frames, sequencer_events);
   sequencer_events.sortByOffset();
 }

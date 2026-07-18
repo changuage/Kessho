@@ -18,6 +18,13 @@ import {
 } from '../ui/drums/scatter/useScatterPhrasePlayer';
 import { useScatterSequencerRuntime } from '../ui/drums/scatter/useScatterSequencerRuntime';
 import type { AdvancedTab } from './appNavigation';
+import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
+import { productEngine } from '../audio/product/ProductEngineProxy';
+import {
+  createCoreProductScatterConfigEvents,
+  createCoreProductScatterEnabledEvent,
+} from '../audio/coreProductEvents';
+import { DRUM_VOICE_ORDER } from '../audio/drumVoiceConfig';
 
 type UseDrumScatterRuntimeStateOptions = {
   readonly activeTab: AdvancedTab;
@@ -26,6 +33,7 @@ type UseDrumScatterRuntimeStateOptions = {
   readonly state: SliderState;
   readonly stateRef: MutableRefObject<SliderState>;
   readonly triggerDrumVoice: (voice: DrumVoiceType, options?: ProductDrumVoiceTriggerOptions) => void;
+  readonly productRuntimeMode: ProductRuntimeSelectionMode;
 };
 
 export function useDrumScatterRuntimeState({
@@ -35,12 +43,15 @@ export function useDrumScatterRuntimeState({
   state,
   stateRef,
   triggerDrumVoice,
+  productRuntimeMode,
 }: UseDrumScatterRuntimeStateOptions) {
+  const productRuntimeActive = productRuntimeMode === 'core-product';
   const drumSeqSimpleStateRef = useRef<SeqSimpleState | undefined>(undefined);
   const [drumSeqScatterState, setDrumSeqScatterState] = useState<SeqScatterState>(() =>
     normalizeSeqScatterState(undefined, drumSeqSimpleStateRef.current)
   );
   const [drumScatterRuntimePulses, setDrumScatterRuntimePulses] = useState<Record<string, number>>({});
+  const lastProductScatterPulseRef = useRef(0);
 
   const handleDrumSeqScatterStateChange = useCallback((next: SeqScatterState) => {
     drumSeqSimpleStateRef.current = seqSimpleStateFromScatterState(next);
@@ -90,7 +101,7 @@ export function useDrumScatterRuntimeState({
   }, [activeTab]);
 
   useScatterSequencerRuntime({
-    active: drumSeqScatterState.active,
+    active: drumSeqScatterState.active && !productRuntimeActive,
     isRunning: playbackIsRunning,
     state: drumSeqScatterState,
     setState: handleDrumSeqScatterStateChange,
@@ -98,6 +109,33 @@ export function useDrumScatterRuntimeState({
     playPhrase: playDrumScatterRuntimePhrase,
     onVisualPulse: pulseDrumScatterRuntimeEngine,
   });
+
+  useEffect(() => {
+    if (!productRuntimeActive) return;
+    productEngine.enqueueEvents(createCoreProductScatterConfigEvents(
+      DRUM_VOICE_ORDER.map((voice) => drumSeqScatterState.engines[voice]),
+    ));
+    productEngine.enqueueEvent(createCoreProductScatterEnabledEvent(
+      drumSeqScatterState.active && playbackIsRunning,
+    ));
+  }, [drumSeqScatterState, playbackIsRunning, productRuntimeActive]);
+
+  useEffect(() => {
+    if (!productRuntimeActive || activeTab !== 'drums' || !drumSeqScatterState.active) return;
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
+      const telemetry = productEngine.getTelemetry();
+      const pulseCount = telemetry?.scatterPulseCount ?? 0;
+      const voiceIndex = telemetry?.scatterCurrentVoice ?? -1;
+      if (pulseCount === lastProductScatterPulseRef.current || voiceIndex < 0 || voiceIndex >= DRUM_VOICE_ORDER.length) return;
+      lastProductScatterPulseRef.current = pulseCount;
+      const voice = DRUM_VOICE_ORDER[voiceIndex];
+      if (voice) pulseDrumScatterRuntimeEngine(voice, 'burst');
+    };
+    tick();
+    const timer = window.setInterval(tick, 67);
+    return () => window.clearInterval(timer);
+  }, [activeTab, drumSeqScatterState.active, productRuntimeActive, pulseDrumScatterRuntimeEngine]);
 
   return {
     drumSeqSimpleStateRef,

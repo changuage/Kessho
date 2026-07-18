@@ -103,6 +103,7 @@ import {
 import { clampSequencerRatchet } from './seqEvolveCore';
 import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
 import { DEFAULT_REVERB_PRE_COMP, getStateValueFromSliderNumber, quantize, type SliderState } from '../ui/state';
+import { getChangedRuntimeWalkParameterKeys } from './reference/webTs/runtimeWalkParameterDiff';
 
 const DYNAMICS_DRIFT_DISABLED_CONFIG_KEY = 'dynamics-drift:disabled-v1';
 const HOST_PIANO_SAMPLE_CACHE_LIMIT_PER_VARIANT = 16;
@@ -5873,6 +5874,8 @@ export class CoreEngineHost {
       const localStepCount = globalWalk
         ? 1
         : Math.max(1, Math.min(RANDOM_WALK_MAX_CATCHUP_STEPS, Math.round(elapsedMs / RUNTIME_RANDOM_WALK_INTERVAL_MS) || 1));
+      const previousEffectiveState = this.getEffectiveRuntimeRandomWalkState(sourceState);
+      const movedKeys = new Set<string>();
       let changed = false;
       for (const key of Object.keys(this.runtimeWalkRanges)) {
         const walkState = this.runtimeWalkStates.get(key) ?? { position: 0.5, velocity: 0 };
@@ -5898,11 +5901,14 @@ export class CoreEngineHost {
         }
         if (Math.abs(walkState.position - nextPosition) > 0.0005 || Math.abs(walkState.velocity - nextVelocity) > 0.0005) {
           changed = true;
+          movedKeys.add(key);
           this.runtimeWalkStates.set(key, { position: nextPosition, velocity: nextVelocity });
         }
       }
       if (!changed) return;
       this.emitRuntimeWalkPositions();
+      const nextEffectiveState = this.getEffectiveRuntimeRandomWalkState(sourceState);
+      if (getChangedRuntimeWalkParameterKeys(previousEffectiveState, nextEffectiveState, movedKeys).length === 0) return;
       this.reapplyLastState();
     }, RUNTIME_RANDOM_WALK_INTERVAL_MS);
   }

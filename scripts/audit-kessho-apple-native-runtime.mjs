@@ -32,6 +32,7 @@ const paths = {
   browserAudioSession: 'src/audio/product/browser/ProductBrowserAudioSession.ts',
   arrangementScheduler: 'src/audio/product/host/CoreProductArrangementProjection.ts',
   journeyClock: 'src/audio/product/host/CoreProductJourneyMorphClock.ts',
+  journeySurface: 'src/ui/useJourneyMorphRuntimeSurface.ts',
   backgroundSupport: 'src/ui/useProductRuntimeBackgroundAudioSupport.ts',
 };
 
@@ -151,7 +152,9 @@ const jsArrangementSchedulingActive = has(
   'scheduleHarmonyTicks',
   'startLeadMelody',
 );
-const jsJourneyDisplayClockActive = has('journeyClock', 'window.requestAnimationFrame');
+const jsJourneySoundAuthorityActive =
+  has('journeyClock', 'window.requestAnimationFrame', 'this.options.invoke(now)') &&
+  has('journeySurface', "reason: 'journey-morph-change'", 'startJourneyMorphClock');
 const iosCreatesDuplicateNativeEngines = has(
   'iosPlugin',
   'private var nativeProductEngine',
@@ -338,7 +341,7 @@ const findings = [
     productionReady: snapshotFitsCurrentBridge && bridgeHasProductionControlPlane,
     summary: `The ${snapshotBytes}-byte Product snapshot cannot fit the current ${audioSessionBridgeLimitBytes}-byte audio-session options limit. A binary/chunked contract is required.`,
     evidence: [
-      evidence('abiTests', 'sizeof(KesshoProductSnapshotV2) == 152760', 'The native snapshot ABI is 152,760 bytes.'),
+      evidence('abiTests', 'sizeof(KesshoProductSnapshotV2) == 152936', 'The native snapshot ABI is 152,936 bytes.'),
       evidence('bridgePolicy', 'startPlayback", maxOptionsBytes: 8 * 1024', 'The current playback request permits 8 KiB of JSON options.'),
     ],
   },
@@ -384,14 +387,14 @@ const findings = [
   },
   {
     id: 'native-background-scheduler-independence',
-    status: jsArrangementSchedulingActive ? 'host-dependent' : 'sample-frame-owned',
-    productionReady: !jsArrangementSchedulingActive,
-    summary: jsArrangementSchedulingActive
-      ? 'Harmony, chord, lead, and note scheduling still use JavaScript timers. Native audio can keep rendering while musical behavior stalls when the WebView is suspended.'
+    status: jsArrangementSchedulingActive || jsJourneySoundAuthorityActive ? 'host-dependent' : 'sample-frame-owned',
+    productionReady: !jsArrangementSchedulingActive && !jsJourneySoundAuthorityActive,
+    summary: jsArrangementSchedulingActive || jsJourneySoundAuthorityActive
+      ? 'JavaScript still owns audible arrangement or Journey state changes. Native audio can keep rendering while musical behavior stalls when the WebView is suspended.'
       : 'Production host arrangement behavior is projection-only; Product Core owns ongoing harmony, chord, lead, and note scheduling on sample frames.',
     evidence: [
       evidence('arrangementScheduler', 'CoreProductArrangementProjection', 'The production host retains UI/debug projection only and owns no musical timer.'),
-      evidence('journeyClock', 'window.requestAnimationFrame', 'The journey display callback is visibility-driven; this part is UI-only but must not be mistaken for the C++ journey clock.'),
+      evidence('journeySurface', "reason: 'journey-morph-change'", 'The visibility-driven Journey callback uploads audible morph state and is therefore sound-authoritative.'),
     ],
   },
   {
@@ -435,7 +438,7 @@ const findings = [
     summary: 'The native audio thread copies 15,168 bytes of telemetry every block, yet native render CPU is not timed and the published iOS underrun counter is never updated.',
     evidence: [
       evidence('nativeRuntime', 'publishTelemetryOnRenderThread();', 'Full telemetry is published after every render callback.'),
-      evidence('abiTests', 'sizeof(KesshoProductTelemetry) == 15168', 'Each telemetry snapshot is 15,168 bytes.'),
+      evidence('abiTests', 'sizeof(KesshoProductTelemetry) == 15448', 'Each telemetry snapshot is 15,448 bytes.'),
       evidence('iosRenderer', 'private(set) var underrunCount = 0', 'The iOS counter exists without an increment path.'),
     ],
   },

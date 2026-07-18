@@ -468,6 +468,7 @@ export class DrumMorphManager {
       const voiceState = this.voiceStates.get(voice)!;
       const speed = state[keys.speed] as number;
       const mode = state[keys.mode] as MorphMode;
+      const previousPhase = voiceState.phase;
       
       const result = updateAutoMorph(
         voiceState.phase,
@@ -482,7 +483,7 @@ export class DrumMorphManager {
       
       // For random mode, only update on phase reset
       if (mode === 'random') {
-        if (result.phase < voiceState.phase) {
+        if (result.phase < previousPhase) {
           voiceState.lastMorph = result.morph;
         }
         newMorphValues.set(voice, voiceState.lastMorph);

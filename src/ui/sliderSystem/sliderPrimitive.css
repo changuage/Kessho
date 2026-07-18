@@ -192,7 +192,7 @@
 
 .sl-slider-thumb,
 .sl-slider-ghost {
-  transition: left 100ms linear;
+  transition: transform 100ms linear;
 }
 
 .sl-slider--dragging .sl-slider-thumb,
@@ -282,7 +282,6 @@ html.sl-slider-touch-lock * {
   background: var(--hero, #cfd9e8);
   box-shadow: 0 0 0 1px var(--hero, #cfd9e8);
   pointer-events: none;
-  will-change: transform;
 }
 
 .sl-slider-ghost,
@@ -296,7 +295,8 @@ html.sl-slider-touch-lock * {
 .sl-slider-ghost {
   width: 2px;
   height: 16px;
-  transform: translate(-50%, -50%);
+  margin-left: -1px;
+  transform: translateY(-50%);
   border-radius: 999px;
   background: rgba(255, 226, 150, 0.98);
   box-shadow: 0 0 8px rgba(255, 214, 120, 0.7);

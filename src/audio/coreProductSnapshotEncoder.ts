@@ -18,7 +18,7 @@ type LegacyExactBridgeSource = ProductSourceSnapshot & {
   exactDrumParams?: unknown;
 };
 
-const SNAPSHOT_BYTES = 152760;
+const SNAPSHOT_BYTES = 152936;
 const SOURCE_BYTES = 5188;
 const LANE_BYTES = 100;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES + 16 * KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES;
@@ -533,6 +533,15 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   u32(Math.min(soundscape.moduleParamCount, SOUNDSCAPES_PRODUCT_PARAM_COUNT));
   for (let paramIndex = 0; paramIndex < SOUNDSCAPES_PRODUCT_PARAM_COUNT; paramIndex += 1) f32(soundscape.moduleParams[paramIndex] ?? 0);
   encodeCoreProductArrangementSnapshot(snapshot.arrangement, { u32, i32, f32 });
+  if (snapshot.sonicRuntime.sourceMorph.length !== 11) {
+    throw new RangeError(`Product source morph automation requires 11 targets; received ${snapshot.sonicRuntime.sourceMorph.length}`);
+  }
+  for (const automation of snapshot.sonicRuntime.sourceMorph) {
+    u32(bool(automation.enabled));
+    u32(clamp(Math.round(automation.mode), 0, 2));
+    f32(clamp(automation.phrasesPerCycle, 1, 4096));
+    u32(automation.seed);
+  }
 
   if (offset !== SNAPSHOT_BYTES) {
     throw new Error(`Kessho Product snapshot encoder wrote ${offset} bytes; expected ${SNAPSHOT_BYTES}`);

@@ -49,6 +49,18 @@ assert(
   workletSource.includes('const base = ptr + TELEMETRY_EARTH_OFFSET;'),
   'Product worklet must read Earth texture telemetry relative to the telemetry pointer',
 );
+for (const [name, id] of [
+  ['SetAutoStop', 51],
+  ['SetScatterEnabled', 54],
+  ['CommitSceneProgram', 59],
+  ['SetRoutingMuteGroupsEnabled', 65],
+  ['ConfigureGlobalAutoCycle', 66],
+]) {
+  assert(
+    workletSource.includes(`${name}: ${id}`),
+    `Product worklet validator is missing ${name} event ${id}`,
+  );
+}
 
 const module = await WebAssembly.compile(wasmBinary);
 const instance = await WebAssembly.instantiate(module, {
@@ -97,7 +109,7 @@ const SEQUENCER_UI_LANE_BASE_OFFSET = 36;
 const SEQUENCER_UI_LANE_SIZE = 3296;
 const LANE_EXPRESSION_OVERRIDE_SET_LOW_OFFSET = 76;
 const LANE_EXPRESSION_OVERRIDES_OFFSET = 1448;
-const TELEMETRY_BYTES = 15168;
+const TELEMETRY_BYTES = 15448;
 const TELEMETRY_SYNTH_ARP_CURRENT_STEPS_OFFSET = 1296;
 const TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET = 8828;
 const TELEMETRY_DEBUG_SOURCE_OFFSET = 8832;

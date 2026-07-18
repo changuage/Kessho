@@ -10,6 +10,9 @@
 }
 
   void KesshoProductEngine::advanceJourney(uint32_t frames) {
+  if (journey_schedule_runtime.running) {
+    return;
+  }
   if (!journey_running || !transport.running) {
     return;
   }

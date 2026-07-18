@@ -4,7 +4,9 @@ import type { DawOutputRoutingConfig } from '../../dawOutputRouting';
 import type { ProductRuntimeCapabilityReport } from '../ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from '../ProductRuntimeDiagnostics';
 import type { ProductLiveNoteEvent } from '../liveNoteEvents';
-import type { ProductAssetHandle, ProductAssetRegistration, ProductDrumTriggerCallback, ProductDrumVoice, ProductDynamicsVisualTelemetry, ProductEngineStartOptions, ProductEngineState, ProductEvent, ProductEvolveOverridesCallback, ProductExternalState, ProductManualSynthNote, ProductMidiMessage, ProductPerfSnapshot, ProductRange, ProductRangeMap, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductRuntimeWalkPositionsCallback, ProductSequencerEvolveTriggerCallback, ProductSequencerStepPositionCallback, ProductSimpleSequencerVisualPlanActive, ProductSnapshotPatch, ProductSnapshotPatchReason, ProductSynthAnchorWalkerVisualStateCallback, ProductSynthNoteRangeEvolvedCallback, ProductSynthOrbitVisualStateCallback, ProductTelemetrySnapshot } from '../ProductEngineTypes';
+import type { ProductAssetHandle, ProductAssetRegistration, ProductDrumTriggerCallback, ProductDrumVoice, ProductDynamicsVisualTelemetry, ProductEngineStartOptions, ProductEngineState, ProductEvent, ProductEvolveOverridesCallback, ProductExternalState, ProductManualSynthNote, ProductMidiMessage, ProductPerfSnapshot, ProductRange, ProductRangeMap, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductRuntimeWalkPositionsCallback, ProductSequencerEvolveTriggerCallback, ProductSequencerStepPositionCallback, ProductSimpleSequencerVisualPlanActive, ProductSnapshotPatch, ProductSnapshotPatchReason, ProductStateRecord, ProductSynthAnchorWalkerVisualStateCallback, ProductSynthNoteRangeEvolvedCallback, ProductSynthOrbitVisualStateCallback, ProductTelemetrySnapshot } from '../ProductEngineTypes';
+import type { BackgroundJourneyPlan } from '../journey/compileBackgroundJourneyPlan';
+import type { ProductBackgroundJourneyReadiness } from '../ports/ProductJourneyPort';
 
 // TODO(product-core-burn-down): replace this bound WebProductEngine host port with product-owned
 // generated runtime APIs once the web adapter no longer binds Product host method names itself.
@@ -54,14 +56,8 @@ export const coreProductRuntimeHostPort = {
 
   stop(): Promise<void> { return Promise.resolve(callCoreProductHost<void>('stop')); },
 
-  suspend(): Promise<void> {
-    return callCoreProductHost<Promise<void>>('suspend');
-  },
-
-  resume(): Promise<void> {
-    return callCoreProductHost<Promise<void>>('resume');
-  },
-
+  suspend(): Promise<void> { return callCoreProductHost<Promise<void>>('suspend'); },
+  resume(): Promise<void> { return callCoreProductHost<Promise<void>>('resume'); },
   setOutputGain(target: number, durationSeconds: number): void {
     callCoreProductHost<void>('setOutputGain', target, durationSeconds);
   },
@@ -103,15 +99,19 @@ export const coreProductRuntimeHostPort = {
     callCoreProductHost<void>('enqueueLiveNoteEvent', event);
   },
 
-  registerAsset(asset: ProductAssetRegistration): ProductAssetHandle {
-    callCoreProductHost<void>('registerAsset', asset);
-    return { assetId: asset.assetId };
-  },
+  registerAsset(asset: ProductAssetRegistration): ProductAssetHandle { callCoreProductHost<void>('registerAsset', asset); return { assetId: asset.assetId }; },
 
-  unregisterAsset(assetId: number): void {
-    callCoreProductHost<void>('unregisterAsset', assetId);
-  },
+  unregisterAsset(assetId: number): void { callCoreProductHost<void>('unregisterAsset', assetId); },
 
+  prepareSceneAssets(states: readonly ProductStateRecord[]): Promise<void> { return callCoreProductHost<Promise<void>>('prepareSceneAssets', states); },
+
+  clearSceneAssets(): void { callCoreProductHost<void>('clearSceneAssets'); },
+  prepareBackgroundJourney(plan: BackgroundJourneyPlan, states: readonly ProductStateRecord[]): Promise<ProductBackgroundJourneyReadiness> { return callCoreProductHost<Promise<ProductBackgroundJourneyReadiness>>('prepareBackgroundJourney', plan, states); },
+  startBackgroundJourney(revision: number): boolean { return callCoreProductHost<boolean>('startBackgroundJourney', revision); },
+  stopBackgroundJourney(): void { callCoreProductHost<void>('stopBackgroundJourney'); },
+  discardBackgroundJourney(): void { callCoreProductHost<void>('discardBackgroundJourney'); },
+  getBackgroundJourneyReadiness(): ProductBackgroundJourneyReadiness { return callCoreProductHost<ProductBackgroundJourneyReadiness>('getBackgroundJourneyReadiness'); },
+  estimateBackgroundJourneyAssets(states: readonly ProductStateRecord[]): { complete: boolean; decodedBytes: number; sharedAssetReuse: number } { return callCoreProductHost('estimateBackgroundJourneyAssets', states); },
   auditionSynthNote(note: ProductManualSynthNote, externalState?: ProductExternalState): Promise<void> {
     return callCoreProductHost<Promise<void>>('auditionSynthNote', note, externalState);
   },

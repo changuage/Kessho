@@ -194,7 +194,6 @@ import { SEQUENCER_LANE_COLORS, SEQUENCER_SUB_LANE_COLORS, SOURCE_COLORS } from 
 import {
   createProductArpHarmonyContext,
   normalizeProductArpConfig,
-  resolveProductArpMidiPattern,
   resolveProductArpPatternDetails,
   type ProductArpBoundaryMode,
   type ProductArpConfig,
@@ -2505,6 +2504,7 @@ export interface SynthPageProps {
   setProductGeneratedSequencerCaptureEnabled?: ProductRuntimeSynthPageEvents['setProductGeneratedSequencerCaptureEnabled'];
   commitProductGeneratedSequencerCaptureToStep?: ProductRuntimeSynthPageEvents['commitProductGeneratedSequencerCaptureToStep'];
   getProductGeneratedSequencerCaptureTelemetry?: ProductRuntimeSynthPageEvents['getProductGeneratedSequencerCaptureTelemetry'];
+  getProductArpAudibleTelemetry?: ProductRuntimeSynthPageEvents['getProductArpAudibleTelemetry'];
   /** Current harmony snapshot for keyboard note coloring */
   harmonyState?: HarmonyState | null;
 }
@@ -2568,6 +2568,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     setProductGeneratedSequencerCaptureEnabled,
     commitProductGeneratedSequencerCaptureToStep,
     getProductGeneratedSequencerCaptureTelemetry,
+    getProductArpAudibleTelemetry,
     harmonyState,
   } = props;
   const onStateChange = props.onStateChange;
@@ -5120,7 +5121,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   );
 
   const [arpConfigs, setArpConfigs] = useState<ProductPlayConfig[]>(() => normalizeProductPlayConfigs(initialArpConfigs, 4));
-  const [arpRuntimeTick, setArpRuntimeTick] = useState(0);
   const [arpUiPlayheads, setArpUiPlayheads] = useState<number[]>(() => [0, 0, 0, 0]);
   const [selectedArpSteps, setSelectedArpSteps] = useState<number[]>(() => [0, 0, 0, 0]);
   const arpHarmonyState = state as unknown as Record<string, unknown>;
@@ -5158,13 +5158,21 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     harmonyState,
     state[`synthEuclid${seq.activeTab + 1}NoteMin` as keyof SliderState],
   );
-  const activeArpResolvedSteps = useMemo(() => resolveProductArpPatternDetails({
-    config: { ...activeArpConfig, enabled: true },
-    harmony: arpHarmonyContext,
-    laneIndex: seq.activeTab,
-    runtimeTick: arpRuntimeTick,
-    anchorMidi: activeArpPitchAnchor,
-  }) ?? [], [activeArpConfig, activeArpPitchAnchor, arpHarmonyContext, arpRuntimeTick, seq.activeTab]);
+  const activeArpResolvedSteps = useMemo(() => {
+    const projected = resolveProductArpPatternDetails({
+      config: { ...activeArpConfig, enabled: true },
+      harmony: arpHarmonyContext,
+      laneIndex: seq.activeTab,
+      anchorMidi: activeArpPitchAnchor,
+    }) ?? [];
+    if (!isRunning || !getProductArpAudibleTelemetry) return projected;
+    const telemetry = getProductArpAudibleTelemetry();
+    const step = telemetry.steps[seq.activeTab];
+    const midi = telemetry.midis[seq.activeTab];
+    if (typeof step !== 'number' || typeof midi !== 'number' ||
+        !Number.isInteger(step) || !Number.isFinite(midi) || midi < 0 || step >= projected.length) return projected;
+    return projected.map((value, index) => index === step ? { ...value, outputMidi: midi } : value);
+  }, [activeArpConfig, activeArpPitchAnchor, arpHarmonyContext, getProductArpAudibleTelemetry, isRunning, seq.activeTab]);
   const activeChordResolvedSteps = useMemo(() => resolveProductChordPlayPatternDetails({
     config: activePlayConfig.chord,
     harmony: arpHarmonyContext,
@@ -5297,23 +5305,20 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     });
   }, []);
 
+  const initialArpConfigsSignature = JSON.stringify(initialArpConfigs);
   useEffect(() => {
-    setArpConfigs(normalizeProductPlayConfigs(initialArpConfigs, 4));
-  }, [initialArpConfigs, presetVersion]);
+    const next = normalizeProductPlayConfigs(initialArpConfigs, 4);
+    setArpConfigs((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next);
+  }, [initialArpConfigsSignature, presetVersion]);
 
-  const arpConfigsRef = useRef<ProductPlayConfig[] | null>(null);
+  const arpConfigsSignature = JSON.stringify(arpConfigs);
+  const arpConfigsSignatureRef = useRef<string | null>(null);
   useEffect(() => {
-    if (arpConfigsRef.current !== arpConfigs) {
-      arpConfigsRef.current = arpConfigs;
+    if (arpConfigsSignatureRef.current !== arpConfigsSignature) {
+      arpConfigsSignatureRef.current = arpConfigsSignature;
       onArpConfigsChange?.(arpConfigs);
     }
-  }, [arpConfigs, onArpConfigsChange]);
-
-  useEffect(() => {
-    if (!isRunning || !arpConfigs.some((config) => config.enabled && config.mode === 'arp' && config.arp.flow === 'randomLiveTone')) return;
-    const intervalId = window.setInterval(() => setArpRuntimeTick((tick) => tick + 1), 250);
-    return () => window.clearInterval(intervalId);
-  }, [arpConfigs, isRunning]);
+  }, [arpConfigsSignature, arpConfigs, onArpConfigsChange]);
 
   const synthEuclideanPatternOptions = React.useMemo<UsePresetsOptions[]>(() => LANE_CONFIGS.map((_, laneIdx) => ({
     customExtract: (currentState) => {
@@ -5486,21 +5491,23 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   ]);
 
   // Sync evolve configs to audio engine
-  const evolveConfigsRef = useRef(seq.evolveConfigs);
+  const evolveConfigsSignature = JSON.stringify(seq.evolveConfigs);
+  const evolveConfigsSignatureRef = useRef<string | null>(null);
   useEffect(() => {
-    if (evolveConfigsRef.current !== seq.evolveConfigs) {
-      evolveConfigsRef.current = seq.evolveConfigs;
+    if (evolveConfigsSignatureRef.current !== evolveConfigsSignature) {
+      evolveConfigsSignatureRef.current = evolveConfigsSignature;
       onEvolveConfigsChange?.(seq.evolveConfigs);
     }
-  }, [seq.evolveConfigs, onEvolveConfigsChange]);
+  }, [evolveConfigsSignature, seq.evolveConfigs, onEvolveConfigsChange]);
 
-  const pitchBindingModesRef = useRef(pitchBindingModes);
+  const pitchBindingModesSignature = JSON.stringify(pitchBindingModes);
+  const pitchBindingModesSignatureRef = useRef<string | null>(null);
   useEffect(() => {
-    if (pitchBindingModesRef.current !== pitchBindingModes) {
-      pitchBindingModesRef.current = pitchBindingModes;
+    if (pitchBindingModesSignatureRef.current !== pitchBindingModesSignature) {
+      pitchBindingModesSignatureRef.current = pitchBindingModesSignature;
       onPitchBindingModesChange?.(pitchBindingModes);
     }
-  }, [onPitchBindingModesChange, pitchBindingModes]);
+  }, [onPitchBindingModesChange, pitchBindingModesSignature, pitchBindingModes]);
 
   useEffect(() => {
     onKeyboardUiStateChange?.({
@@ -5655,12 +5662,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   // Sync step overrides to audio engine
   // Track both stepOverrides AND pitchSettings so conversion re-runs on either change
-  const stepOverridesRef = useRef<StepOverrides | null>(null);
-  const pitchSettingsRef = useRef<PitchSettings[] | null>(null);
-  const pitchSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | null>(null);
-  const engineArpConfigsRef = useRef<ProductPlayConfig[] | null>(null);
+  const stepOverridesSignature = JSON.stringify(seq.stepOverrides);
+  const stepOverridesSignatureRef = useRef<string | null>(null);
+  const pitchSettingsSignature = JSON.stringify(seq.pitchSettings);
+  const pitchSettingsSignatureRef = useRef<string | null>(null);
+  const pitchSubLaneStatesSignature = JSON.stringify(seq.subLaneStates);
+  const pitchSubLaneStatesSignatureRef = useRef<string | null>(null);
+  const engineArpConfigsSignatureRef = useRef<string | null>(null);
   const engineArpPatternSignatureRef = useRef<string | null>(null);
-  const enginePitchBindingModesRef = useRef<PitchBindingMode[] | null>(null);
+  const enginePitchBindingModesSignatureRef = useRef<string | null>(null);
   // Sequencer models are recreated for unrelated SliderState edits. Key the audio
   // payload only to the trigger data it actually consumes so transport timing
   // changes cannot clear and rebuild every step lane.
@@ -5670,11 +5680,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   );
   const engineTriggerPatternSignatureRef = useRef<string | null>(null);
   useEffect(() => {
-    const overridesChanged = stepOverridesRef.current !== seq.stepOverrides;
-    const settingsChanged = pitchSettingsRef.current !== seq.pitchSettings;
-    const subLaneStatesChanged = pitchSubLaneStatesRef.current !== seq.subLaneStates;
-    const arpConfigsChanged = engineArpConfigsRef.current !== arpConfigs;
-    const pitchBindingModesChanged = enginePitchBindingModesRef.current !== pitchBindingModes;
+    const overridesChanged = stepOverridesSignatureRef.current !== stepOverridesSignature;
+    const settingsChanged = pitchSettingsSignatureRef.current !== pitchSettingsSignature;
+    const subLaneStatesChanged = pitchSubLaneStatesSignatureRef.current !== pitchSubLaneStatesSignature;
+    const arpConfigsChanged = engineArpConfigsSignatureRef.current !== arpConfigsSignature;
+    const pitchBindingModesChanged = enginePitchBindingModesSignatureRef.current !== pitchBindingModesSignature;
     const triggerPatternsChanged = engineTriggerPatternSignatureRef.current !== sequencerTriggerPatternSignature;
     if (overridesChanged || settingsChanged || subLaneStatesChanged || arpConfigsChanged || pitchBindingModesChanged || triggerPatternsChanged) {
       const now = Date.now();
@@ -5696,20 +5706,20 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         return true;
       });
       if (resolvedPendingDiceSync) {
-        stepOverridesRef.current = seq.stepOverrides;
-        pitchSettingsRef.current = seq.pitchSettings;
-        pitchSubLaneStatesRef.current = seq.subLaneStates;
-        engineArpConfigsRef.current = arpConfigs;
-        enginePitchBindingModesRef.current = pitchBindingModes;
+        stepOverridesSignatureRef.current = stepOverridesSignature;
+        pitchSettingsSignatureRef.current = pitchSettingsSignature;
+        pitchSubLaneStatesSignatureRef.current = pitchSubLaneStatesSignature;
+        engineArpConfigsSignatureRef.current = arpConfigsSignature;
+        enginePitchBindingModesSignatureRef.current = pitchBindingModesSignature;
         engineTriggerPatternSignatureRef.current = sequencerTriggerPatternSignature;
         return;
       }
       if (blockedByPendingDice) return;
-      stepOverridesRef.current = seq.stepOverrides;
-      pitchSettingsRef.current = seq.pitchSettings;
-      pitchSubLaneStatesRef.current = seq.subLaneStates;
-      engineArpConfigsRef.current = arpConfigs;
-      enginePitchBindingModesRef.current = pitchBindingModes;
+      stepOverridesSignatureRef.current = stepOverridesSignature;
+      pitchSettingsSignatureRef.current = pitchSettingsSignature;
+      pitchSubLaneStatesSignatureRef.current = pitchSubLaneStatesSignature;
+      engineArpConfigsSignatureRef.current = arpConfigsSignature;
+      enginePitchBindingModesSignatureRef.current = pitchBindingModesSignature;
       engineTriggerPatternSignatureRef.current = sequencerTriggerPatternSignature;
       const sequencerTriggerPatterns = JSON.parse(sequencerTriggerPatternSignature) as boolean[][];
       const playEnginePatterns = arpConfigs.map((config, laneIdx) => {
@@ -5729,27 +5739,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           anchorMidi: pitchAnchor,
         });
       });
-      const playArps = arpConfigs.map((config, laneIdx) => {
+      const playArps = arpConfigs.map((config) => {
         const playConfig = normalizeProductPlayConfig(config ?? defaultProductPlayConfig());
-        const midiPattern = playConfig.enabled && playConfig.mode === 'arp'
-          ? resolveProductArpMidiPattern({
-            config: { ...playConfig.arp, enabled: true },
-            harmony: arpHarmonyContext,
-            laneIndex: laneIdx,
-            anchorMidi: arpPitchAnchorMidi(
-              seq.subLaneStates[laneIdx]?.pitch?.enabled,
-              seq.stepOverrides.pitch[laneIdx],
-              seq.pitchSettings[laneIdx],
-              harmonyState,
-              state[`synthEuclid${laneIdx + 1}NoteMin` as keyof SliderState],
-            ),
-          }) ?? []
-          : [];
         return {
           enabled: playConfig.enabled,
           mode: playConfig.mode,
           arp: playConfig.arp,
-          midiPattern,
+          midiPattern: [],
         };
       });
       const arpPatternSignature = JSON.stringify(playArps);
@@ -5839,43 +5835,45 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     }
   // The live-tone tick only refreshes the visual preview. Reposting ARP state here
   // cancels native notes that are already scheduled inside the current hold window.
-  }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, sequencerTriggerPatternSignature, arpConfigs, arpHarmonyContext, harmonyState, pitchBindingModes, onStepOverridesChange, onRawStepOverridesChange]);
+  }, [stepOverridesSignature, pitchSettingsSignature, pitchSubLaneStatesSignature, sequencerTriggerPatternSignature, arpConfigsSignature, arpHarmonyContext, harmonyState, pitchBindingModesSignature, onStepOverridesChange, onRawStepOverridesChange]);
 
   // Persist sub-lane states (enabled/steps/direction) across tab switches
-  const subLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | null>(null);
+  const subLaneStatesSignatureRef = useRef<string | null>(null);
   useEffect(() => {
-    if (subLaneStatesRef.current !== seq.subLaneStates) {
-      subLaneStatesRef.current = seq.subLaneStates;
+    if (subLaneStatesSignatureRef.current !== pitchSubLaneStatesSignature) {
+      subLaneStatesSignatureRef.current = pitchSubLaneStatesSignature;
       onSubLaneStatesChange?.(seq.subLaneStates);
     }
-  }, [seq.subLaneStates, onSubLaneStatesChange]);
+  }, [pitchSubLaneStatesSignature, seq.subLaneStates, onSubLaneStatesChange]);
 
   // Persist pitch settings (mode/root/scale) across tab switches
-  const pitchSettingsRef2 = useRef(seq.pitchSettings);
+  const persistedPitchSettingsSignatureRef = useRef<string | null>(null);
   useEffect(() => {
-    if (pitchSettingsRef2.current !== seq.pitchSettings) {
-      pitchSettingsRef2.current = seq.pitchSettings;
+    if (persistedPitchSettingsSignatureRef.current !== pitchSettingsSignature) {
+      persistedPitchSettingsSignatureRef.current = pitchSettingsSignature;
       onPitchSettingsChange?.(seq.pitchSettings);
     }
-  }, [seq.pitchSettings, onPitchSettingsChange]);
+  }, [pitchSettingsSignature, seq.pitchSettings, onPitchSettingsChange]);
 
   // Sync per-lane clock divisions to audio engine
-  const clockDivsRef = useRef(seq.clockDivs);
+  const clockDivsSignature = JSON.stringify(seq.clockDivs);
+  const clockDivsSignatureRef = useRef<string | null>(null);
   useEffect(() => {
-    if (clockDivsRef.current !== seq.clockDivs) {
-      clockDivsRef.current = seq.clockDivs;
+    if (clockDivsSignatureRef.current !== clockDivsSignature) {
+      clockDivsSignatureRef.current = clockDivsSignature;
       onClockDivsChange?.(seq.clockDivs);
     }
-  }, [seq.clockDivs, onClockDivsChange]);
+  }, [clockDivsSignature, seq.clockDivs, onClockDivsChange]);
 
   // Sync per-lane swing amounts to audio engine
-  const swingsRef = useRef(seq.swings);
+  const swingsSignature = JSON.stringify(seq.swings);
+  const swingsSignatureRef = useRef<string | null>(null);
   useEffect(() => {
-    if (swingsRef.current !== seq.swings) {
-      swingsRef.current = seq.swings;
+    if (swingsSignatureRef.current !== swingsSignature) {
+      swingsSignatureRef.current = swingsSignature;
       onSwingsChange?.(seq.swings);
     }
-  }, [seq.swings, onSwingsChange]);
+  }, [swingsSignature, seq.swings, onSwingsChange]);
 
   const linkedRef = useRef(seq.linked);
   useEffect(() => {

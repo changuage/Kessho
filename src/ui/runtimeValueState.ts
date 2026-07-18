@@ -122,14 +122,6 @@ export function useRuntimeValue(
   );
 }
 
-export function useRuntimeValueKeysVersion(keys: readonly string[]): number {
-  const subscribe = useCallback(
-    (listener: () => void) => subscribeRuntimeValueKeys(keys, listener),
-    [keys],
-  );
-  return useSyncExternalStore(
-    subscribe,
-    () => keys.reduce((version, key) => version + (keyVersions.get(key) ?? 0), 0),
-    () => 0,
-  );
+export function getRuntimeValueKeysVersion(keys: readonly string[]): number {
+  return keys.reduce((version, key) => version + (keyVersions.get(key) ?? 0), 0);
 }

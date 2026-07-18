@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SliderState } from '../ui/state';
+import { productEngine } from '../audio/product/ProductEngineProxy';
+import {
+  createCoreProductRoutingMuteGroupEvents,
+  createCoreProductRoutingMuteGroupRecallEvent,
+} from '../audio/coreProductEvents';
 import {
   captureRoutingMuteGroupSlot,
   createRoutingMuteGroupTransitionController,
@@ -10,6 +15,7 @@ import {
   normalizeRoutingMuteGroupSlot,
   ROUTING_MUTE_GROUP_PHRASE_STEP,
   ROUTING_MUTE_GROUP_SLOT_COUNT,
+  ROUTING_MUTE_GROUP_SOURCE_IDS,
   routingMuteGroupSlotColor,
   routingMuteGroupSlotPhraseRange,
   setRoutingMuteGroupRandomSettings,
@@ -37,6 +43,7 @@ type UseRoutingMuteGroupSystemOptions = {
   onBooleanParamChange: (key: keyof SliderState, value: boolean) => void;
   isRunning: boolean;
   phraseSeconds: number;
+  productRuntimeActive: boolean;
 };
 
 type RuntimeTimer = ReturnType<typeof setTimeout>;
@@ -128,6 +135,7 @@ export function useRoutingMuteGroupSystem({
   onBooleanParamChange,
   isRunning,
   phraseSeconds,
+  productRuntimeActive,
 }: UseRoutingMuteGroupSystemOptions): RoutingMuteGroupsController {
   const normalizedMuteGroups = normalizeRoutingMuteGroupsState(routingMuteGroups);
   const randomEnabled = normalizedMuteGroups.random?.enabled === true;
@@ -136,6 +144,16 @@ export function useRoutingMuteGroupSystem({
   const [runtimeSnapshot, setRuntimeSnapshot] = useState<RoutingMuteGroupRuntimeSnapshot>(() => (
     emptyRuntimeSnapshot(0)
   ));
+  const productSceneStateSignature = [
+    state.synthEuclideanMasterEnabled,
+    state.drumEnabled,
+    state.drumEuclidMasterEnabled,
+    ...Array.from({ length: 4 }, (_, index) => state[`synthEuclid${index + 1}Enabled` as keyof SliderState]),
+    ...Array.from({ length: 4 }, (_, index) => state[`synthEuclid${index + 1}Solo` as keyof SliderState]),
+    ...Array.from({ length: 6 }, (_, index) => state[`drumEuclid${index + 1}Enabled` as keyof SliderState]),
+    ...Array.from({ length: 6 }, (_, index) => state[`drumEuclid${index + 1}Solo` as keyof SliderState]),
+    ...Array.from({ length: 4 }, (_, index) => state[`granularV${index + 1}Enabled` as keyof SliderState]),
+  ].map((value) => value === true ? '1' : '0').join('');
 
   const stateRef = useRef(state);
   const muteGroupsRef = useRef(normalizedMuteGroups);
@@ -231,6 +249,62 @@ export function useRoutingMuteGroupSystem({
     setRuntimeSnapshot(buildRuntimeSnapshot());
   }, [buildRuntimeSnapshot]);
   publishSnapshotRef.current = publishRuntimeSnapshot;
+
+  useEffect(() => {
+    if (!productRuntimeActive) return;
+    const telemetry = productEngine.getTelemetry();
+    productEngine.enqueueEvents(createCoreProductRoutingMuteGroupEvents(normalizedMuteGroups, {
+      sampleRate: telemetry?.sampleRate ?? 48_000,
+      phraseSeconds: phraseSecondsRef.current,
+      seed: 1,
+      state: stateRef.current,
+    }));
+  }, [phraseSeconds, productRuntimeActive, productSceneStateSignature, routingMuteGroups]);
+
+  useEffect(() => {
+    if (!productRuntimeActive || typeof window === 'undefined') return undefined;
+    let frame = 0;
+    let lastReadMs = 0;
+    const sourceIds = ROUTING_MUTE_GROUP_SOURCE_IDS;
+    const tick = (now: number) => {
+      frame = window.requestAnimationFrame(tick);
+      if (document.visibilityState !== 'visible' || now - lastReadMs < 100) return;
+      lastReadMs = now;
+      const telemetry = productEngine.getTelemetry();
+      if (!telemetry) return;
+      const rawActive = telemetry.routingMuteGroupActiveSlot ?? 0xffffffff;
+      const rawNext = telemetry.routingMuteGroupNextSlot ?? 0xffffffff;
+      const active = rawActive < ROUTING_MUTE_GROUP_SLOT_COUNT ? rawActive : null;
+      const next = rawNext < ROUTING_MUTE_GROUP_SLOT_COUNT ? rawNext : null;
+      const mask = telemetry.routingMuteGroupMask ?? 0;
+      const progress = telemetry.routingMuteGroupTransitionProgress ?? 1;
+      activeSlotIndexRef.current = active;
+      setActiveSlotIndex(active);
+      setRuntimeSnapshot({
+        randomEnabled: telemetry.routingMuteGroupsEnabled === true,
+        phase: telemetry.routingMuteGroupsEnabled
+          ? progress < 1 ? 'transitioning' : active === null ? 'empty' : 'holding'
+          : active === null ? 'off' : 'holding',
+        activeSlotIndex: active,
+        activeSlotColor: active === null ? null : routingMuteGroupSlotColor(active, muteGroupsRef.current.slots[active]),
+        selectedSlotIndex: selectedSlotIndexRef.current,
+        nextSlotIndex: next,
+        nextSlotColor: next === null ? null : routingMuteGroupSlotColor(next, muteGroupsRef.current.slots[next]),
+        secondsToNextChange: telemetry.routingMuteGroupNextChangeFrame !== undefined
+          && telemetry.routingMuteGroupNextChangeFrame < Number.MAX_SAFE_INTEGER
+          ? Math.max(0, telemetry.routingMuteGroupNextChangeFrame - (telemetry.absoluteSampleTime ?? 0)) /
+            Math.max(1, telemetry.sampleRate ?? 48_000)
+          : null,
+        transitionProgress: progress,
+        holdPhrases: null,
+        transitionPhrases: muteGroupsRef.current.random?.transitionPhrases ?? 1,
+        currentMutedSourceIds: sourceIds.filter((_, index) => (mask & (1 << index)) !== 0),
+        nextMutedSourceIds: next === null ? [] : muteGroupsRef.current.slots[next]?.mutedSourceIds ?? [],
+      });
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [productRuntimeActive]);
 
   const setSelectedSlotIndex = useCallback((slotIndex: number) => {
     const nextSlotIndex = clampSlotIndex(slotIndex);
@@ -380,6 +454,11 @@ export function useRoutingMuteGroupSystem({
   }, [clearRandomTimers, controller]);
 
   useEffect(() => {
+    if (productRuntimeActive) {
+      clearRandomTimers();
+      controller.cancel();
+      return;
+    }
     const settings = muteGroupsRef.current.random ?? normalizeRoutingMuteGroupRandomSettings(undefined);
     if (!settings.enabled) {
       clearRandomTimers();
@@ -408,13 +487,13 @@ export function useRoutingMuteGroupSystem({
     } else {
       publishSnapshotRef.current();
     }
-  }, [clearRandomTimers, isRunning, pauseRandomCycle, randomEnabled, resumeOrStartRandomCycle]);
+  }, [clearRandomTimers, controller, isRunning, pauseRandomCycle, productRuntimeActive, randomEnabled, resumeOrStartRandomCycle]);
 
   useEffect(() => {
-    if (!randomEnabled || typeof window === 'undefined') return undefined;
+    if (productRuntimeActive || !randomEnabled || typeof window === 'undefined') return undefined;
     const handle = window.setInterval(() => publishSnapshotRef.current(), 250);
     return () => window.clearInterval(handle);
-  }, [randomEnabled]);
+  }, [productRuntimeActive, randomEnabled]);
 
   useEffect(() => {
     publishSnapshotRef.current();
@@ -456,6 +535,18 @@ export function useRoutingMuteGroupSystem({
     const slot = groups.slots[targetSlotIndex];
     if (!slot) return;
 
+    if (productRuntimeActive) {
+      const sampleRate = productEngine.getTelemetry()?.sampleRate ?? 48_000;
+      const transitionFrames = isRunningRef.current
+        ? Math.round(transitionMsForSettings(settings) * sampleRate / 1000)
+        : 0;
+      productEngine.enqueueEvent(createCoreProductRoutingMuteGroupRecallEvent(
+        activeSlotIndexRef.current === targetSlotIndex ? null : targetSlotIndex,
+        transitionFrames,
+      ));
+      return;
+    }
+
     if (settings.enabled) {
       if (isRunningRef.current) {
         scheduleRandomCycle(targetSlotIndex, {
@@ -486,7 +577,7 @@ export function useRoutingMuteGroupSystem({
     }
 
     controller.recall(slot, targetSlotIndex, isRunningRef.current ? undefined : { transitionMs: 0 });
-  }, [controller, scheduleRandomCycle, setSelectedSlotIndex, transitionMsForSettings]);
+  }, [controller, productRuntimeActive, scheduleRandomCycle, setSelectedSlotIndex, transitionMsForSettings]);
 
   const saveSelectedSlot = useCallback((): SaveSlotResult => (
     saveSlot(selectedSlotIndexRef.current)
@@ -498,14 +589,18 @@ export function useRoutingMuteGroupSystem({
     muteGroupsRef.current = nextGroups;
     onRoutingMuteGroupsChangeRef.current(nextGroups);
     if (activeSlotIndexRef.current === targetSlotIndex) {
-      controller.release(isRunningRef.current ? undefined : { transitionMs: 0 });
+      if (productRuntimeActive) {
+        productEngine.enqueueEvent(createCoreProductRoutingMuteGroupRecallEvent(null, 0));
+      } else {
+        controller.release(isRunningRef.current ? undefined : { transitionMs: 0 });
+      }
       if ((nextGroups.random ?? normalizeRoutingMuteGroupRandomSettings(undefined)).enabled && isRunningRef.current) {
         randomRuntimeRef.current = { ...EMPTY_RANDOM_RUNTIME };
         resumeOrStartRandomCycle();
       }
     }
     setSelectedSlotIndex(targetSlotIndex);
-  }, [controller, resumeOrStartRandomCycle, setSelectedSlotIndex]);
+  }, [controller, productRuntimeActive, resumeOrStartRandomCycle, setSelectedSlotIndex]);
 
   const clearSelectedSlot = useCallback(() => {
     clearSlot(selectedSlotIndexRef.current);

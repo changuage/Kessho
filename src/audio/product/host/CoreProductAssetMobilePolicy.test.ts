@@ -65,4 +65,38 @@ assert.equal(hiddenEnsureResult.status === 'not-ready' ? hiddenEnsureResult.reas
 assert.equal(hiddenRegistrar.backgroundAssetClosure().ready, false, 'hidden document must not report a closed background asset set');
 assert.equal(hiddenRegistrar.backgroundAssetClosure().notReadyReason, 'document-hidden');
 
+const sceneRegistrar = new CoreProductAssetRegistrar(runtime, () => ({}), false, decode, () => true);
+const sceneResult = await sceneRegistrar.ensureSceneAssets([
+  { sample1Enabled: true, sample1Library: 'piano' },
+  { sample2Enabled: true, sample2Library: 'strings' },
+]);
+assert.equal(sceneResult.status, 'ready', 'scene endpoint asset union did not become ready');
+assert.ok(sceneRegistrar.backgroundAssetClosure().requiredAssetIds.length > 0, 'scene endpoint union was not retained');
+assert.equal(sceneRegistrar.backgroundAssetClosure().ready, true, 'scene endpoint union did not close');
+sceneRegistrar.clearSceneAssets();
+assert.equal(sceneRegistrar.backgroundAssetClosure().requiredAssetIds.length, 0, 'scene asset requirements survived clear');
+
+let releaseStaleDecode = (): void => { throw new Error('stale decode did not start'); };
+let notifyStaleDecodeStarted = (): void => undefined;
+const staleDecodeStarted = new Promise<void>((resolve) => { notifyStaleDecodeStarted = resolve; });
+const staleDecodeGate = new Promise<void>((resolve) => { releaseStaleDecode = resolve; });
+const staleRegistrations: number[] = [];
+const staleRuntime = {
+  ...runtime,
+  registerAsset: async (asset: DecodedCoreProductAsset) => { staleRegistrations.push(asset.assetId); },
+} as unknown as CoreProductRuntime;
+const staleDecode: typeof decodeCoreProductAsset = async (_context, assetId, _url, flags) => {
+  notifyStaleDecodeStarted();
+  await staleDecodeGate;
+  return { assetId, sampleRate: 48000, flags, channels: [new Float32Array(32)] };
+};
+const staleRegistrar = new CoreProductAssetRegistrar(staleRuntime, () => ({}), true, staleDecode, () => true);
+const staleEnsure = staleRegistrar.ensureSceneAssets([{ sample1Enabled: true, sample1Library: 'piano' }]);
+await staleDecodeStarted;
+staleRegistrar.clearSceneAssets();
+releaseStaleDecode();
+await staleEnsure;
+assert.deepEqual(staleRegistrations, [], 'cleared scene registered an asset after its decode completed');
+assert.equal(staleRegistrar.backgroundAssetClosure().requiredAssetIds.length, 0, 'stale scene decode restored cleared requirements');
+
 console.log('Core Product mobile asset policy tests passed');

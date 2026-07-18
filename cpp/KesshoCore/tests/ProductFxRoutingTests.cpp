@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <vector>
 
 #include "KesshoCore/KesshoProductCore.h"
@@ -1290,7 +1291,8 @@ void requireFxSnapshotEventParity(uint32_t param_id, float value, const char* me
 }
 
 void requireDirectFxCoverage() {
-  KesshoProductEngine direct(48000.0, 128, 0);
+  auto direct_storage = std::make_unique<KesshoProductEngine>(48000.0, 128, 0);
+  KesshoProductEngine& direct = *direct_storage;
   for (uint32_t source = 0; source < kDynamicsModSourceCount; ++source) {
     for (uint32_t target = 0; target < kDynamicsModTargetCount; ++target) {
       direct.fx.dynamics_mod[source][target] = 0.0f;

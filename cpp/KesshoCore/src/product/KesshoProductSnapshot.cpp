@@ -103,6 +103,15 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_SCHEMA_HASH_MISMATCH;
     return KESSHO_PRODUCT_ERROR_SCHEMA_HASH_MISMATCH;
   }
+  for (const auto& automation : snapshot.sonic_runtime.source_morph) {
+    if (automation.enabled > 1u ||
+        (automation.enabled != 0u &&
+         (automation.mode > 2u || !std::isfinite(automation.phrases_per_cycle) ||
+          automation.phrases_per_cycle < 1.0f || automation.phrases_per_cycle > 4096.0f))) {
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
+      return KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
+    }
+  }
   for (uint32_t i = 0; i < kSourceCount; ++i) {
     const KesshoProductSourceSnapshot& source = snapshot.sources[i];
     if (source.source_id != i + 1u || source.preset_id == 0u) {
@@ -912,6 +921,15 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   drum_lane_count = std::min<uint32_t>(snapshot.drum_euclid.lane_count, kMaxLaneCount);
   loadLaneSnapshots(snapshot.synth_euclid, synth_lanes, KESSHO_PRODUCT_SOURCE_PAD1, preserve_running_sequencer_runtime);
   loadLaneSnapshots(snapshot.drum_euclid, drum_lanes, KESSHO_PRODUCT_SOURCE_DRUM, preserve_running_sequencer_runtime);
+  for (uint32_t target_id = 0u; target_id < kProductSourceMorphAutomationCount; ++target_id) {
+    const auto& automation = snapshot.sonic_runtime.source_morph[target_id];
+    configureSourceMorphAutomation(
+        target_id,
+        automation.enabled != 0u,
+        static_cast<ProductMorphMode>(automation.mode),
+        automation.phrases_per_cycle,
+        automation.seed);
+  }
   if (!transport.running) {
     stopSoundscapeTransportRuntime();
   }

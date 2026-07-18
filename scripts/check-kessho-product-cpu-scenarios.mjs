@@ -128,6 +128,13 @@ const routePredicates = read('src/ui/routing/routePredicates.ts');
 const snowflakeEngineGroups = read('src/ui/snowflakeV2/engineGroups.ts');
 const presetV2Migration = read('src/presets/presetV2Migration.ts');
 const coreProductEvents = read('src/audio/coreProductEvents.ts');
+const fallbackCoreHost = read('src/audio/coreEngineHost.ts');
+const snowflakePrototype = read('src/ui/SnowflakePrototypePage.tsx');
+const visualizerPage = read('src/ui/visualizer/ReactiveVisualizerPage.tsx');
+const routingMatrix = read('src/ui/global/RoutingMatrix.tsx');
+const activeEarthMatrix = read('src/ui/earth/components/ActiveEarthMatrix.tsx');
+const runtimeProjectionState = read('src/ui/runtimeProjectionState.ts');
+const matrixSurfaceCss = read('src/ui/sliderSystem/matrixSurface.css');
 
 assert(cpuBudget.status === 'pass', 'CPU budget report must pass');
 assert(cpuBudget.cpu?.scenarios?.activeFx?.status === 'pass', 'active-FX CPU budget must pass');
@@ -225,6 +232,41 @@ assert(
     coreProductEvents.includes('degradeReverbSend') &&
     coreProductEvents.includes('reverbDegradeSend'),
   'CPU dirty-diff classification scenario requires bounded dirty-diff fallback and focused Degrade/Reverb events',
+);
+assert(
+  fallbackCoreHost.includes('getChangedRuntimeWalkParameterKeys(previousEffectiveState, nextEffectiveState, movedKeys)') &&
+    fallbackCoreHost.indexOf('getChangedRuntimeWalkParameterKeys(previousEffectiveState, nextEffectiveState, movedKeys)') <
+      fallbackCoreHost.indexOf('this.reapplyLastState();', fallbackCoreHost.indexOf('private startRuntimeRandomWalk')),
+  'fallback random walk must reject inaudible quantized updates before its monolithic state reapplication',
+);
+assert(
+  snowflakePrototype.includes('hasActiveTrimAnimations') &&
+    snowflakePrototype.includes('}, 100);') &&
+    snowflakePrototype.includes("document.visibilityState === 'hidden'"),
+  'Snowflake prototype must park its full-rate animation loop while idle or hidden',
+);
+assert(
+  visualizerPage.includes('frameScratch.automatedControls') &&
+    visualizerPage.includes('frameScratch.modulatedControls') &&
+    visualizerPage.includes('frameScratch.buses'),
+  'visualizer frames must reuse automation, modulation, and bus scratch storage',
+);
+assert(
+  routingMatrix.includes('columnDragEmitter.schedule') &&
+    routingMatrix.includes('cellDragEmitter.schedule') &&
+    activeEarthMatrix.includes('valueEmitter.schedule'),
+  'specialized matrix sliders must coalesce pointer movement to animation frames',
+);
+assert(
+  runtimeProjectionState.includes('100 - (performance.now() - lastNotificationAt)') &&
+    runtimeProjectionState.includes('subscribeRuntimeSliderKeys(keys, schedule)') &&
+    runtimeProjectionState.includes('subscribeRuntimeValueKeys(keys, schedule)'),
+  'runtime visual projections must combine both stores and publish no faster than 10 Hz',
+);
+assert(
+  !matrixSurfaceCss.includes('transition: left') &&
+    !matrixSurfaceCss.includes('transition: width'),
+  'matrix runtime indicators must not animate layout properties between telemetry samples',
 );
 
 const freshHours = 72;

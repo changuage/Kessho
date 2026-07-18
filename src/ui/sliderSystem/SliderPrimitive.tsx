@@ -17,6 +17,7 @@ import {
   shiftRangePreservingWidth,
 } from './matrixMath';
 import './sliderPrimitive.css';
+import { useElementWidth } from './useElementWidth';
 import { useRafCoalescedEmitter } from './useRafCoalescedEmitter';
 
 const MODE_LABEL: Record<SliderMode, string> = {
@@ -116,6 +117,7 @@ export function SliderPrimitive({
   const [dragging, setDragging] = React.useState(false);
   const [activeHandle, setActiveHandle] = React.useState<'min' | 'max' | 'band' | null>(null);
   const railRef = React.useRef<HTMLDivElement>(null);
+  const railWidth = useElementWidth(railRef);
   const thumbRef = React.useRef<HTMLSpanElement>(null);
   const fillRef = React.useRef<HTMLSpanElement>(null);
   const edgeMinRef = React.useRef<HTMLSpanElement>(null);
@@ -311,7 +313,7 @@ export function SliderPrimitive({
 
         if (isDirect) {
           if (thumbRef.current) {
-            thumbRef.current.style.transform = `translateX(${dragThumbPxRef.current}px) translateY(-50%)`;
+            thumbRef.current.style.transform = `translate3d(${dragThumbPxRef.current}px, -50%, 0)`;
             thumbRef.current.style.left = '0';
           }
           if (fillRef.current) {
@@ -418,7 +420,7 @@ export function SliderPrimitive({
           fillRef.current.style.opacity = String(0.15 + (nextRange.max / 100) * 0.85);
         }
         if (thumbRef.current) {
-          thumbRef.current.style.transform = `translateX(${dragThumbPxRef.current}px) translateY(-50%)`;
+          thumbRef.current.style.transform = `translate3d(${dragThumbPxRef.current}px, -50%, 0)`;
           thumbRef.current.style.left = '0';
         }
         if (edgeMinRef.current) edgeMinRef.current.style.left = `${nextRange.min}%`;
@@ -572,12 +574,18 @@ export function SliderPrimitive({
   const valueText = displayValue ?? (mode === 'single'
     ? formatValue(visualValue, unit)
     : `${formatValue(visualRange.min, unit)}-${formatValue(visualRange.max, unit)}`);
+  const markerStyle = (percent: number): React.CSSProperties => railWidth > 0
+    ? {
+        left: '0',
+        transform: `translate3d(${(clamp(percent, 0, 100) / 100) * railWidth}px, -50%, 0)`,
+      }
+    : { left: `${clamp(percent, 0, 100)}%` };
   const thumbStyle: React.CSSProperties = dragging && dragThumbPxRef.current != null
     ? {
         left: '0',
-        transform: `translateX(${dragThumbPxRef.current}px) translateY(-50%)`,
+        transform: `translate3d(${dragThumbPxRef.current}px, -50%, 0)`,
       }
-    : { left: `${visualIndicatorPct}%` };
+    : markerStyle(visualIndicatorPct);
 
   const rootStyle: React.CSSProperties = {
     ...(hero ? { ['--hero' as string]: hero } : {}),
@@ -731,7 +739,7 @@ export function SliderPrimitive({
           />
         )}
         {typeof ghostValue === 'number' && Number.isFinite(ghostValue) && (
-          <span className="sl-slider-ghost" style={{ left: `${clamp(ghostValue, 0, 100)}%` }} />
+          <span className="sl-slider-ghost" style={markerStyle(ghostValue)} />
         )}
         <span ref={thumbRef} className="sl-slider-thumb" style={thumbStyle} />
       </div>

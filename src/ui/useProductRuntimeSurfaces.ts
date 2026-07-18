@@ -5,6 +5,7 @@ import type { SliderState } from './state';
 import { useProductRuntimeCallbackSurfaces } from './useProductRuntimeCallbackSurfaces';
 import { useProductRuntimeControlSurfaces } from './useProductRuntimeControlSurfaces';
 import { useProductRuntimeDebugRuntime } from './useProductRuntimeDebugRuntime';
+import { useProductRuntimeAutoCycleSurface } from './useProductRuntimeAutoCycleSurface';
 
 type ProductRuntimeSurfacesOptions = {
   productRuntimeMode: ProductRuntimeSelectionMode;
@@ -18,14 +19,17 @@ export function useProductRuntimeSurfaces({
   const callbackSurfaces = useProductRuntimeCallbackSurfaces(productRuntimeMode);
   const controlSurfaces = useProductRuntimeControlSurfaces({ productRuntimeMode, stateRef });
   const debugRuntime = useProductRuntimeDebugRuntime(productRuntimeMode);
+  const productAutoCycleRuntime = useProductRuntimeAutoCycleSurface();
 
   return useMemo(() => ({
     ...callbackSurfaces,
     ...controlSurfaces,
     ...debugRuntime,
+    productAutoCycleRuntime,
   }), [
     callbackSurfaces,
     controlSurfaces,
     debugRuntime,
+    productAutoCycleRuntime,
   ]);
 }

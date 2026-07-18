@@ -14,6 +14,7 @@ import type { JourneyValidationResult } from '../presets/journeyPresetCodec';
 import { PresetRatingStars } from '../presets/PresetRatingStars';
 import { isMobileDevice } from '../platform';
 import { JourneyPresetGlyph } from './JourneyPresetGlyph';
+import type { BackgroundJourneyUiState } from './useBackgroundJourneyRuntimeSurface';
 
 const TEXT_SYMBOLS = {
   snowflake: '❄\uFE0E',
@@ -79,6 +80,15 @@ interface JourneyModeViewProps {
   onShowVisualizer: () => void;
   onShowAdvanced: () => void;
   isPlaying: boolean;
+  backgroundJourney: {
+    state: BackgroundJourneyUiState;
+    onPrepare: () => void;
+    onOptimize: () => void;
+    onConfirmOptimization: () => void;
+    onStartPrepared: () => Promise<boolean>;
+    onForegroundOnly: () => void;
+    onCancel: () => void;
+  };
 }
 
 export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
@@ -100,6 +110,7 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
   onShowVisualizer,
   onShowAdvanced,
   isPlaying: _isPlaying,
+  backgroundJourney,
 }) => {
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [panelOpen, setPanelOpen] = useState(false);
@@ -212,10 +223,52 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
     await onRateJourneyPreset(name, rating);
   }, [onRateJourneyPreset]);
 
+  const backgroundStatus = useMemo(() => {
+    const state = backgroundJourney.state;
+    const MiB = 1024 * 1024;
+    if (state.status === 'ready') {
+      const minutes = Math.floor(state.durationSeconds / 60);
+      const hours = Math.floor(minutes / 60);
+      return `Background ready · ${hours}h ${minutes % 60}m · ${Math.round(state.assetBytes / MiB)} / 160 MiB`;
+    }
+    if (state.status === 'planning') return 'Planning background route';
+    if (state.status === 'preparing') return `Preparing audio · ${state.uploadedEvents} of ${state.totalEvents}`;
+    if (state.status === 'optimizable') return `Background route available · ${state.sceneCount} of ${state.totalSceneCount} scenes · ${Math.round(state.assetBytes / MiB)} / 160 MiB`;
+    if (state.status === 'stale') return 'Journey changed · prepare again';
+    if (state.status === 'unavailable') {
+      if (state.reason === 'asset-soft-budget') return `Background unavailable · ${Math.round((state.assetBytes ?? 0) / MiB)} / 160 MiB`;
+      return `Background unavailable · ${state.reason.split('-').join(' ')}`;
+    }
+    return 'Background not prepared';
+  }, [backgroundJourney.state]);
+
   return (
     <div style={styles.container}>
       {/* Main Journey UI */}
       <div style={styles.journeyShell}>
+        <div style={styles.backgroundReadiness}>
+          <span>{backgroundStatus}</span>
+          <span style={styles.backgroundActions}>
+            {(backgroundJourney.state.status === 'idle' || backgroundJourney.state.status === 'stale' || backgroundJourney.state.status === 'unavailable') && (
+              <button type="button" style={styles.backgroundButton} onClick={backgroundJourney.onPrepare}>Prepare</button>
+            )}
+            {backgroundJourney.state.status === 'unavailable' && (
+              <button type="button" style={styles.backgroundButton} onClick={backgroundJourney.onForegroundOnly}>Foreground only</button>
+            )}
+            {backgroundJourney.state.status === 'unavailable' && backgroundJourney.state.reason === 'asset-soft-budget' && (
+              <button type="button" style={styles.backgroundButton} onClick={backgroundJourney.onOptimize}>Optimize</button>
+            )}
+            {backgroundJourney.state.status === 'optimizable' && (
+              <button type="button" style={styles.backgroundButton} onClick={backgroundJourney.onConfirmOptimization}>Use reduced route</button>
+            )}
+            {backgroundJourney.state.status === 'optimizable' && (
+              <button type="button" style={styles.backgroundButton} onClick={backgroundJourney.onForegroundOnly}>Foreground only</button>
+            )}
+            {(backgroundJourney.state.status === 'planning' || backgroundJourney.state.status === 'preparing') && (
+              <button type="button" style={styles.backgroundButton} onClick={backgroundJourney.onCancel}>Cancel</button>
+            )}
+          </span>
+        </div>
         <DiamondJourneyUI
           config={journey.config}
           state={journey.state}
@@ -226,7 +279,11 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
               alert(`Journey cannot play yet:\n\n${journeyValidation.issues.join('\n')}`);
               return;
             }
-            journey.play();
+            if (backgroundJourney.state.status === 'ready') {
+              void backgroundJourney.onStartPrepared();
+            } else {
+              backgroundJourney.onForegroundOnly();
+            }
           }}
           onStop={handleStop}
         />
@@ -540,6 +597,42 @@ const styles: { [key: string]: React.CSSProperties } = {
     width: '100%',
     height: '100%',
     position: 'relative',
+  },
+  backgroundReadiness: {
+    position: 'fixed',
+    top: 'calc(54px + env(safe-area-inset-top))',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 52,
+    width: 'min(92vw, 520px)',
+    minHeight: 34,
+    boxSizing: 'border-box',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    padding: '6px 8px 6px 10px',
+    border: '1px solid rgba(184,224,255,0.18)',
+    borderRadius: 6,
+    background: 'rgba(16,15,14,0.9)',
+    color: 'rgba(244,237,228,0.74)',
+    fontSize: 11,
+  },
+  backgroundActions: {
+    display: 'flex',
+    gap: 6,
+    flexShrink: 0,
+  },
+  backgroundButton: {
+    minHeight: 26,
+    padding: '0 9px',
+    border: '1px solid rgba(184,224,255,0.24)',
+    borderRadius: 5,
+    background: 'rgba(184,224,255,0.08)',
+    color: '#B8E0FF',
+    cursor: 'pointer',
+    font: 'inherit',
+    fontWeight: 700,
   },
   triggerChip: {
     position: 'fixed',

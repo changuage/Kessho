@@ -266,10 +266,12 @@ export class CoreProductRuntime {
           return;
         }
         if (message.type === 'telemetry') {
+          if (!this.isDocumentVisible()) return;
           this.telemetryCallback?.(message.telemetry);
           return;
         }
         if (message.type === 'visual-telemetry') {
+          if (!this.isDocumentVisible()) return;
           this.visualTelemetryCallback?.(message.telemetry);
           return;
         }
@@ -416,12 +418,14 @@ export class CoreProductRuntime {
   }
 
   setTelemetryPollingEnabled(enabled: boolean): void {
+    if (this.telemetryPollingEnabled === enabled) return;
     this.telemetryPollingEnabled = enabled;
     this.syncTelemetryLoop();
     this.syncMeterDemand();
   }
 
   setTelemetryTransportRunning(running: boolean): void {
+    if (this.transportRunningForTelemetry === running) return;
     this.transportRunningForTelemetry = running;
     this.syncTelemetryLoop();
   }

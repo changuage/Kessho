@@ -40,12 +40,14 @@ export type ProductRuntimeSynthPageEvents = {
     commit: GeneratedCaptureStepCommit,
   ) => void;
   getProductGeneratedSequencerCaptureTelemetry: () => ProductGeneratedSequencerCaptureTelemetry;
+  getProductArpAudibleTelemetry: () => { steps: readonly number[]; midis: readonly number[] };
 };
 
 const EMPTY_GENERATED_CAPTURE_TELEMETRY: ProductGeneratedSequencerCaptureTelemetry = {
   events: [],
   overflowCount: 0,
 };
+const EMPTY_ARP_AUDIBLE_TELEMETRY = { steps: [] as readonly number[], midis: [] as readonly number[] };
 
 export function useProductRuntimeSynthPageEvents(
   productRuntimeMode: ProductRuntimeSelectionMode,
@@ -89,6 +91,15 @@ export function useProductRuntimeSynthPageEvents(
     };
   }, [productRuntimeActive]);
 
+  const getProductArpAudibleTelemetry = useCallback(() => {
+    if (!productRuntimeActive) return EMPTY_ARP_AUDIBLE_TELEMETRY;
+    const telemetry = productEngine.getTelemetry();
+    return {
+      steps: telemetry?.synthArpCurrentSteps ?? EMPTY_ARP_AUDIBLE_TELEMETRY.steps,
+      midis: telemetry?.synthArpCurrentMidis ?? EMPTY_ARP_AUDIBLE_TELEMETRY.midis,
+    };
+  }, [productRuntimeActive]);
+
   const commitProductGeneratedSequencerCaptureToStep = useCallback((commit: GeneratedCaptureStepCommit): void => {
     if (!productRuntimeActive) return;
     try {
@@ -119,11 +130,13 @@ export function useProductRuntimeSynthPageEvents(
   return useMemo(() => ({
     commitProductGeneratedSequencerCaptureToStep,
     getProductGeneratedSequencerCaptureTelemetry,
+    getProductArpAudibleTelemetry,
     sendProductAnchorWalkerPerformanceEvent,
     setProductGeneratedSequencerCaptureEnabled,
   }), [
     commitProductGeneratedSequencerCaptureToStep,
     getProductGeneratedSequencerCaptureTelemetry,
+    getProductArpAudibleTelemetry,
     sendProductAnchorWalkerPerformanceEvent,
     setProductGeneratedSequencerCaptureEnabled,
   ]);

@@ -1,6 +1,7 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import {
+  MOBILE_WEB_AUDIO_EVIDENCE_SCHEMA,
   validateMobileWebAudioAcceptanceEvidence,
   validateMobileWebAudioEvidence,
 } from './lib/kesshoMobileWebAudioEvidence.mjs';
@@ -28,7 +29,7 @@ function usage() {
     [--output=docs/reports/kessho-mobile-web-audio-evidence-iphone11-safari-lock.json] \\
     [--dry-run]
 
-The input must use schema kessho-mobile-web-audio-evidence-v1. The recorder
+The input must use schema ${MOBILE_WEB_AUDIO_EVIDENCE_SCHEMA}. The recorder
 validates the complete capture before atomically writing it under docs/reports.
 `);
 }
@@ -57,6 +58,10 @@ const defaultName = [
   evidence.device.browser,
   evidence.scenario.kind,
   evidence.scenario.output,
+  evidence.acceptance?.milestone ?? 'baseline',
+  ...(evidence.acceptance === undefined
+    ? [slug(evidence.scenario.presetId)]
+    : evidence.scenario.bundles.map(slug).sort()),
 ].join('-') + '.json';
 const outputPath = resolve(root, args.get('output') ?? `docs/reports/${defaultName}`);
 const reportsRoot = resolve(root, 'docs/reports');
@@ -71,6 +76,9 @@ if (args.get('dry-run') === 'true') {
 }
 
 mkdirSync(dirname(outputPath), { recursive: true });
+if (existsSync(outputPath)) {
+  throw new Error(`Refusing to overwrite existing evidence capture: ${outputPath}`);
+}
 const temporaryPath = resolve(dirname(outputPath), `.${basename(outputPath)}.${process.pid}.tmp`);
 writeFileSync(temporaryPath, serialized, { flag: 'wx' });
 renameSync(temporaryPath, outputPath);

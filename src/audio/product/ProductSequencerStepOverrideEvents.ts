@@ -57,6 +57,12 @@ type ProductArpEngineLane = {
   length: number;
   rate: number;
   pulseMask: number;
+  resetMask: number;
+  flow: 'up' | 'down' | 'upDown' | 'downUp' | 'randomLiveTone' | 'diceHold';
+  contourMode: 'pool' | 'semitone';
+  boundaryMode: 'fold' | 'wrap' | 'clamp';
+  contour: number[];
+  slotLane: number[];
   midiPattern: number[];
 };
 
@@ -237,12 +243,23 @@ function createCoreProductSynthArpEvents(overrides: unknown, onlyLaneIndex?: num
       enabled: arpEnabled,
       length: lane.length,
       rate: lane.rate,
+      pulseMask: lane.pulseMask,
+      resetMask: lane.resetMask,
+      flow: lane.flow,
+      contourMode: lane.contourMode,
+      boundaryMode: lane.boundaryMode,
     }));
     if (arpEnabled) {
       for (let step = 0; step < PRODUCT_PLAY_MAX_STEPS; step += 1) {
         const midi = finiteNumber(lane.midiPattern[step], -1);
         const active = (lane.pulseMask & (1 << step)) !== 0 && midi >= 0;
-        events.push(createCoreProductSynthArpStepEvent(laneIndex, step, { midi, active }));
+        events.push(createCoreProductSynthArpStepEvent(laneIndex, step, {
+          midi,
+          active,
+          contour: lane.contour[step] ?? 0,
+          slot: lane.slotLane[step] ?? -1,
+          reset: (lane.resetMask & (1 << step)) !== 0,
+        }));
       }
     }
     events.push(createCoreProductSynthArpCommitEvent(laneIndex));
@@ -276,6 +293,21 @@ function normalizeProductArpEngineLane(value: unknown): ProductArpEngineLane {
     length: clampInteger(arpRecord.length, 1, PRODUCT_PLAY_MAX_STEPS, 1),
     rate: clampNumber(arpRecord.rate, 0.25, 4, 1),
     pulseMask: clampInteger(arpRecord.pulseMask, 0, 0xffff, 0),
+    resetMask: clampInteger(arpRecord.resetMask, 0, 0xffff, 0),
+    flow: arpRecord.flow === 'down' || arpRecord.flow === 'upDown' || arpRecord.flow === 'downUp' ||
+      arpRecord.flow === 'randomLiveTone' || arpRecord.flow === 'diceHold'
+      ? arpRecord.flow
+      : 'up',
+    contourMode: arpRecord.contourMode === 'semitone' ? 'semitone' : 'pool',
+    boundaryMode: arpRecord.boundaryMode === 'wrap' || arpRecord.boundaryMode === 'clamp'
+      ? arpRecord.boundaryMode
+      : 'fold',
+    contour: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, (_, step) =>
+      clampInteger(Array.isArray(arpRecord.contour) ? arpRecord.contour[step] : 0, -12, 12, 0)
+    ),
+    slotLane: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, (_, step) =>
+      clampInteger(Array.isArray(arpRecord.slotLane) ? arpRecord.slotLane[step] : -1, -1, 7, -1)
+    ),
     midiPattern: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, (_, step) =>
       clampNumber(midiPatternSource[step], -1, 127, -1)
     ),
@@ -289,6 +321,12 @@ function emptyProductArpEngineLane(): ProductArpEngineLane {
     length: 1,
     rate: 1,
     pulseMask: 0,
+    resetMask: 0,
+    flow: 'up',
+    contourMode: 'pool',
+    boundaryMode: 'fold',
+    contour: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, () => 0),
+    slotLane: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, () => -1),
     midiPattern: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, () => -1),
   };
 }

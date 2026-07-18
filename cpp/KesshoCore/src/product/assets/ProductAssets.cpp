@@ -32,6 +32,11 @@
       return;
     }
   }
+  if (source.asset_ref_count < kMaxSoundscapeAssetRefs) {
+    const uint32_t index = source.asset_ref_count++;
+    source.asset_refs[index] = asset_id;
+    source.asset_ref_levels[index] = clampFloat(value, 0.0f, 2.0f);
+  }
 }
 
   bool KesshoProductEngine::soundscapeModuleParamsAvailable(const SourceState& source) const {

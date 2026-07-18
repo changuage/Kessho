@@ -112,6 +112,7 @@ const classifiedRuntimeAllowlist = new Map([
   ['./CoreProductHostMidi', 'product host MIDI event adapter'],
   ['./product/host/CoreProductArrangementBridge', 'product host arrangement bridge'],
   ['./product/host/CoreProductAssetRegistrar', 'product host asset fetch/decode/register adapter'],
+  ['./product/host/CoreProductBackgroundJourneyCoordinator', 'product host bounded background Journey upload coordinator'],
   ['./product/host/CoreProductDisplayCallbackRegistry', 'product host display callback registry'],
   ['./product/host/CoreProductEarthTextureDebug', 'product host Earth texture debug telemetry adapter'],
   ['./product/host/CoreProductGraphTapBridge', 'product host graph tap bridge'],
@@ -132,6 +133,9 @@ const classifiedRuntimeAllowlist = new Map([
   ['./product/host/CoreProductRealtimeTimestampMapper', 'product realtime input frame timestamp mapper'],
   ['./product/host/CoreProductTelemetryCallbackScheduler', 'product demand-driven telemetry callback scheduler'],
   ['./product/host/CoreProductHostLifecycleCoordinator', 'product host runtime lifecycle coordinator'],
+  ['./product/journey/compileBackgroundJourneyPlan', 'type-only deterministic background Journey plan contract'],
+  ['./product/ports/ProductJourneyPort', 'type-only Product Journey port contract'],
+  ['./product/compileProductSourceMorphAutomation', 'deterministic Product Core source-morph compiler'],
   ['./product/host/CoreProductGeneratedSequencerCaptureTelemetryHistory', 'product generated sequencer capture telemetry history'],
   ['./product/host/CoreProductSamplePlaybackChange', 'product sample playback reload classifier'],
   ['./product/host/CoreProductHostSnapshotFactory', 'product host snapshot state factory'],
@@ -232,8 +236,12 @@ const classifiedRuntimeAllowlist = new Map([
   ['../../CoreProductHostRuntimeGuards', 'product host strict runtime guards'],
   ['./CoreProductAssetRegistrar', 'product host asset fetch/decode/register adapter'],
   ['./CoreProductAssetReadiness', 'product host asset readiness and release coordination policy'],
+  ['./CoreProductAssetDecodeService', 'product host bounded asset decode service'],
+  ['./CoreProductAssetPrediction', 'product host exact decoded-asset byte prediction'],
+  ['./CoreProductAssetRequirements', 'product host scene asset requirement resolver'],
   ['./CoreProductAssetWorkingSet', 'product mobile asset working-set policy'],
   ['./CoreProductSampleAssetResolver', 'product sample asset resolution adapter'],
+  ['./CoreProductSonicAutonomyFingerprint', 'Product Core telemetry autonomy fingerprint'],
   ['./CoreProductSnapshotDebug', 'product host encoded snapshot debug logger'],
   ['./CoreProductHostDiagnostics', 'product host diagnostics counter/timing adapter'],
   ['./CoreProductPatchClassifier', 'product host patch reload reason classifier'],
@@ -298,6 +306,7 @@ const classifiedRuntimeAllowlist = new Map([
   ['../platform', 'host platform detection for Product snapshot policy'],
   ['../native/capacitorMidiRouting', 'type-only MIDI message interface'],
   ['../ui/state', 'UI serialization defaults only'],
+  ['../ui/routing/routingMuteGroups', 'type-only routing mute-group event input contract'],
 ]);
 
 function assert(condition, message) {
@@ -318,6 +327,9 @@ for (const file of productFiles) {
   const source = readFileSync(resolve(root, file), 'utf8');
   for (const imported of importDeclarations(source)) {
     const specifier = imported.specifier;
+    if (specifier === '../ui/routing/routingMuteGroups') {
+      assert(imported.typeOnly, `${file} routing mute-group dependency must remain type-only`);
+    }
     if (specifier === './engine' && imported.typeOnly) {
       continue;
     }

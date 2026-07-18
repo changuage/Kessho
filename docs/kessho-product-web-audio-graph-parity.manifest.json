@@ -1108,8 +1108,19 @@
           "tokens": [
             "ensureSampleSlotAssetForNote(",
             "sampleDescriptorForSlotNote(",
-            "predictedSampleAssetsForState(",
-            "this.sampleAssetCache.getOrLoad(descriptor"
+            "this.decodeService.ensureSampleAsset(descriptor)"
+          ]
+        },
+        {
+          "file": "src/audio/product/host/CoreProductAssetRequirements.ts",
+          "tokens": [
+            "predictedSampleAssetsForState("
+          ]
+        },
+        {
+          "file": "src/audio/product/host/CoreProductAssetDecodeService.ts",
+          "tokens": [
+            "this.options.cache.getOrLoad(descriptor"
           ]
         },
         {

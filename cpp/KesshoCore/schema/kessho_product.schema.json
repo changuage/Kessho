@@ -1,6 +1,6 @@
 {
   "name": "kessho-product",
-  "version": 23,
+  "version": 24,
   "groups": [
     "transport",
     "harmony",
@@ -2216,9 +2216,14 @@
       "granularPitchMacro": 0
     }
   },
+  "sonicRuntime": {
+    "sourceMorphAutomationCount": 11,
+    "sourceMorphModeCount": 3,
+    "maxPhrasesPerCycle": 4096
+  },
   "limits": {
     "maxBlockSize": 4096,
-    "maxControlEvents": 512,
+    "maxControlEvents": 4096,
     "maxSequencerEvents": 1024,
     "maxAutomationEvents": 256,
     "maxSynthLanes": 8,

@@ -2,7 +2,6 @@ import React from 'react';
 import { resolveEffectiveSliderValue } from '../sliderSystem/effectiveValue';
 import type { DualSliderRange } from '../DualSlider';
 import { useSliderHelp } from '../SliderHelpOverlay';
-import type { SliderPageId } from '../sliderHelpCatalog';
 import type { SliderMode, SliderState } from '../state';
 import { useRuntimeSliderIndicator } from '../runtimeSliderState';
 import { getRoutingSourceDef, ROUTING_SOURCE_REGISTRY } from '../routing';
@@ -22,127 +21,15 @@ import {
   setSliderTouchSelectionLock,
   trackLeftCalc,
   trackWidthCalc,
-  type MatrixCellHandle,
+  useRafCoalescedEmitter,
 } from '../sliderSystem';
 import '../sliderSystem/matrixSurface.css';
-
-type SliderColumnId = 'level' | 'delayA' | 'delayB' | 'granular' | 'degrade' | 'reverb';
-type ColumnId = SliderColumnId | 'texture';
-type CellHandle = MatrixCellHandle;
-
-interface RouteControl {
-  key: keyof SliderState;
-  label: string;
-}
-
-interface MatrixCell {
-  kind: 'editable' | 'self' | 'blocked';
-  route?: RouteControl;
-  note?: string;
-}
-
-interface MatrixRow {
-  id: string;
-  label: string;
-  accent: string;
-  note?: string;
-  sourceToggle?: 'toggle' | 'disable-only';
-  cells: Record<SliderColumnId, MatrixCell>;
-}
-
-interface RoutingColumn {
-  id: ColumnId;
-  label: string;
-  helpKey: string;
-  note?: string;
-}
-
-interface DynamicsRouteControl {
-  key: keyof SliderState;
-  label: string;
-}
-
-interface RoutingSliderRuntime {
-  mode: SliderMode;
-  dualRange?: DualSliderRange;
-  walkPosition?: number;
-  isFlashing?: boolean;
-  onCycleMode?: (key: keyof SliderState) => void;
-  onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
-}
-
-interface ColumnDragTarget {
-  key: keyof SliderState;
-  mode: SliderMode;
-  startValue: number;
-  startRange?: DualSliderRange;
-  onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
-}
-
-interface ColumnDragMemoryTarget {
-  key: keyof SliderState;
-  mode: SliderMode;
-  startValue: number;
-  startRange?: DualSliderRange;
-}
-
-interface ColumnDragMemory {
-  targets: ColumnDragMemoryTarget[];
-  lastDelta: number;
-}
-
-interface CellDragState {
-  kind: 'cell';
-  dragId: string;
-  pointerId: number;
-  key: keyof SliderState;
-  mode: SliderMode;
-  handle: CellHandle;
-  startValue: number;
-  startRange?: DualSliderRange;
-  startPointerNorm: number;
-  onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
-  lastValue?: number;
-  lastRange?: DualSliderRange;
-}
-
-interface PendingCellTouchState {
-  pointerId: number;
-  dragId: string;
-  startX: number;
-  startY: number;
-  key: keyof SliderState;
-  mode: SliderMode;
-  handle: CellHandle;
-  startValue: number;
-  startRange?: DualSliderRange;
-  startPointerNorm: number;
-  onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
-}
-
-interface ColumnDragState {
-  kind: 'column';
-  columnId: ColumnId;
-  dragId: string;
-  pointerId: number;
-  startClientX: number;
-  targets: ColumnDragTarget[];
-  currentDelta: number;
-  lastValues: Partial<Record<keyof SliderState, number>>;
-  lastRanges: Partial<Record<keyof SliderState, DualSliderRange>>;
-}
-
-type DragState = CellDragState | ColumnDragState;
-
-export interface RoutingMatrixProps {
-  state: SliderState;
-  isMobile: boolean;
-  onParamChange: (key: keyof SliderState, value: number) => void;
-  onColumnParamChange?: (key: keyof SliderState, value: number) => void;
-  onToggleSource?: (sourceId: string, enabled: boolean) => void;
-  sliderProps: (paramKey: keyof SliderState) => RoutingSliderRuntime;
-  helpPage?: SliderPageId;
-}
+import type {
+  CellHandle, ColumnDragMemory, ColumnDragMemoryTarget, ColumnDragTarget,
+  ColumnId, DragState, DynamicsRouteControl, MatrixRow, PendingCellTouchState,
+  RouteControl, RoutingColumn, RoutingMatrixProps, RoutingSliderRuntime, SliderColumnId,
+} from './routingMatrixTypes';
+export type { RoutingMatrixProps } from './routingMatrixTypes';
 
 const ROUTING_MATRIX_ACTIVE_FILTER_STORAGE_KEY = 'routing-matrix:show-active-only:v1';
 
@@ -889,6 +776,10 @@ export default function RoutingMatrix({
     drag.lastRange = nextRange;
     drag.onDualRangeChange(drag.key, nextRange.min, nextRange.max);
   }, [onParamChange]);
+  const columnDragEmitter = useRafCoalescedEmitter(({ clientX, width }: { clientX: number; width: number }) => {
+    applyColumnDrag(clientX, width);
+  });
+  const cellDragEmitter = useRafCoalescedEmitter(applyCellDrag);
 
   const renderRowLabel = React.useCallback((row: MatrixRow, rowEnabled: boolean, suffix = '') => {
     const disableOnly = row.sourceToggle === 'disable-only';
@@ -957,14 +848,19 @@ export default function RoutingMatrix({
         onPointerMove={(event) => {
           const drag = dragStateRef.current;
           if (!drag || drag.kind !== 'column' || drag.dragId !== headerId || drag.pointerId !== event.pointerId) return;
-          applyColumnDrag(event.clientX, event.currentTarget.getBoundingClientRect().width);
+          columnDragEmitter.schedule({
+            clientX: event.clientX,
+            width: event.currentTarget.getBoundingClientRect().width,
+          });
         }}
         onPointerUp={(event) => {
+          columnDragEmitter.flush();
           stopDrag(headerId, event.pointerId);
           releasePointerCaptureSafely(event.currentTarget, event.pointerId);
           resetInteraction();
         }}
         onPointerCancel={(event) => {
+          columnDragEmitter.cancel();
           cancelDrag(headerId, event.pointerId);
           releasePointerCaptureSafely(event.currentTarget, event.pointerId);
           resetInteraction();
@@ -1155,7 +1051,7 @@ export default function RoutingMatrix({
             pointerNorm,
             runtime.onDualRangeChange ?? (() => undefined),
           );
-          applyCellDrag(pointerNorm);
+          cellDragEmitter.flush(pointerNorm);
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {
@@ -1193,7 +1089,7 @@ export default function RoutingMatrix({
               pendingTouch.startPointerNorm,
               pendingTouch.onDualRangeChange,
             );
-            applyCellDrag(pointerToTrackNorm(event.clientX, event.currentTarget.getBoundingClientRect()));
+            cellDragEmitter.schedule(pointerToTrackNorm(event.clientX, event.currentTarget.getBoundingClientRect()));
             return;
           }
 
@@ -1203,7 +1099,7 @@ export default function RoutingMatrix({
           const drag = dragStateRef.current;
           if (!drag || drag.kind !== 'cell' || drag.dragId !== cellId || drag.pointerId !== event.pointerId) return;
           if (event.pointerType === 'touch') event.preventDefault();
-          applyCellDrag(pointerToTrackNorm(event.clientX, event.currentTarget.getBoundingClientRect()));
+          cellDragEmitter.schedule(pointerToTrackNorm(event.clientX, event.currentTarget.getBoundingClientRect()));
         }}
         onPointerUp={(event) => {
           const pendingTouch = pendingCellTouchRef.current;
@@ -1220,7 +1116,7 @@ export default function RoutingMatrix({
                 pendingTouch.startPointerNorm,
                 pendingTouch.onDualRangeChange,
               );
-              applyCellDrag(pendingTouch.startPointerNorm);
+              cellDragEmitter.flush(pendingTouch.startPointerNorm);
               stopDrag(cellId, event.pointerId);
             }
             releasePointerCaptureSafely(event.currentTarget, event.pointerId);
@@ -1228,11 +1124,13 @@ export default function RoutingMatrix({
             return;
           }
 
+          cellDragEmitter.flush();
           stopDrag(cellId, event.pointerId);
           releasePointerCaptureSafely(event.currentTarget, event.pointerId);
           resetInteraction();
         }}
         onPointerCancel={(event) => {
+          cellDragEmitter.cancel();
           cancelDrag(cellId, event.pointerId);
           releasePointerCaptureSafely(event.currentTarget, event.pointerId);
           resetInteraction();

@@ -142,7 +142,8 @@ const SOUNDSCAPE_MODULE_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_SOUND
 const SOUNDSCAPE_BYTES = 4 + SOUNDSCAPE_TEXTURE_PARAM_COUNT * 4 + 4 + SOUNDSCAPE_MODULE_PARAM_COUNT * 4;
 const ASSET_REF_BYTES = ASSET_REF_COUNT * 4 * 2;
 const ARRANGEMENT_BYTES = 924;
-const EVOLUTION_AMOUNT_OFFSET = SNAPSHOT_SIZE - ARRANGEMENT_BYTES - SOUNDSCAPE_BYTES - ASSET_REF_BYTES - 8;
+const SONIC_RUNTIME_BYTES = 11 * 16;
+const EVOLUTION_AMOUNT_OFFSET = SNAPSHOT_SIZE - SONIC_RUNTIME_BYTES - ARRANGEMENT_BYTES - SOUNDSCAPE_BYTES - ASSET_REF_BYTES - 8;
 const EVOLUTION_STATE_OFFSET = EVOLUTION_AMOUNT_OFFSET + 4;
 const RNG_SEED_OFFSET = EVOLUTION_AMOUNT_OFFSET - 8;
 const RNG_STATE_OFFSET = EVOLUTION_AMOUNT_OFFSET - 4;
@@ -196,7 +197,7 @@ function expectedEvolvedLaneValue(stepId, sample, component, base, depth, minVal
 
 const snapshotPtr = malloc(SNAPSHOT_SIZE);
 const eventsPtr = malloc(SEQUENCER_EVENT_SIZE * 8);
-const telemetryPtr = malloc(15168);
+const telemetryPtr = malloc(15448);
 const engine = create(48000, 128, 0);
 assert(snapshotPtr && eventsPtr && telemetryPtr && engine, 'WASM deterministic timeline allocation failed');
 

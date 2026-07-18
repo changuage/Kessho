@@ -114,16 +114,17 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
     advanceGranularReturnGains(transport.sample_frame + i);
-    const float direct_l = direct_armed ? output_lpf_l[i] * granular_mix_gain : 0.0f;
-    const float direct_r = direct_armed ? output_lpf_r[i] * granular_mix_gain : 0.0f;
-    const float reverb_l = reverb_armed ? reverb_branch_l[i] * granular_reverb_send_gain : 0.0f;
-    const float reverb_r = reverb_armed ? reverb_branch_r[i] * granular_reverb_send_gain : 0.0f;
-    const float delay_a_l = delay_a_armed ? output_lpf_l[i] * granular_delay_a_send_gain : 0.0f;
-    const float delay_a_r = delay_a_armed ? output_lpf_r[i] * granular_delay_a_send_gain : 0.0f;
-    const float delay_b_l = delay_b_armed ? output_lpf_l[i] * granular_delay_b_send_gain : 0.0f;
-    const float delay_b_r = delay_b_armed ? output_lpf_r[i] * granular_delay_b_send_gain : 0.0f;
-    const float drift_l = drift_armed ? output_lpf_l[i] * granular_degrade_send_gain : 0.0f;
-    const float drift_r = drift_armed ? output_lpf_r[i] * granular_degrade_send_gain : 0.0f;
+    const float mute_gain = routingMuteGainForFrame(kRoutingMuteRowGranular, transport.sample_frame + i);
+    const float direct_l = direct_armed ? output_lpf_l[i] * granular_mix_gain * mute_gain : 0.0f;
+    const float direct_r = direct_armed ? output_lpf_r[i] * granular_mix_gain * mute_gain : 0.0f;
+    const float reverb_l = reverb_armed ? reverb_branch_l[i] * granular_reverb_send_gain * mute_gain : 0.0f;
+    const float reverb_r = reverb_armed ? reverb_branch_r[i] * granular_reverb_send_gain * mute_gain : 0.0f;
+    const float delay_a_l = delay_a_armed ? output_lpf_l[i] * granular_delay_a_send_gain * mute_gain : 0.0f;
+    const float delay_a_r = delay_a_armed ? output_lpf_r[i] * granular_delay_a_send_gain * mute_gain : 0.0f;
+    const float delay_b_l = delay_b_armed ? output_lpf_l[i] * granular_delay_b_send_gain * mute_gain : 0.0f;
+    const float delay_b_r = delay_b_armed ? output_lpf_r[i] * granular_delay_b_send_gain * mute_gain : 0.0f;
+    const float drift_l = drift_armed ? output_lpf_l[i] * granular_degrade_send_gain * mute_gain : 0.0f;
+    const float drift_r = drift_armed ? output_lpf_r[i] * granular_degrade_send_gain * mute_gain : 0.0f;
     if (graph_taps_enabled) {
       graph_granular_output_l[frame] = direct_l;
       graph_granular_output_r[frame] = direct_r;

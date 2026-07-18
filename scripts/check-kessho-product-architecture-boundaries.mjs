@@ -55,6 +55,7 @@ const focusedHeaders = [
   ['cpp/KesshoCore/src/product/ProductVoiceState.h', 180],
   ['cpp/KesshoCore/src/product/ProductHarmonyState.h', 90],
   ['cpp/KesshoCore/src/product/ProductArrangementState.h', 120],
+  ['cpp/KesshoCore/src/product/ProductArpRuntimeState.h', 60],
   ['cpp/KesshoCore/src/product/ProductSequencerRuntimeState.h', 60],
   ['cpp/KesshoCore/src/product/ProductMidiRuntimeState.h', 80],
   ['cpp/KesshoCore/src/product/ProductFxState.h', 260],

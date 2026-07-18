@@ -2,7 +2,13 @@
 const EVENT_BYTES = 40;
 const GENERATED_CAPTURE_EVENT_BYTES = 64;
 const GENERATED_CAPTURE_EVENT_CAPACITY = 256;
-const TELEMETRY_BYTES = 15168;
+const TELEMETRY_BYTES = 15448;
+const TELEMETRY_SYNTH_ARP_CURRENT_MIDIS_OFFSET = 15232;
+const TELEMETRY_SCATTER_OFFSET = 15296;
+const TELEMETRY_SCENE_OFFSET = 15312;
+const TELEMETRY_ROUTING_MUTE_GROUP_OFFSET = 15320;
+const TELEMETRY_AUTO_CYCLE_OFFSET = 15356;
+const TELEMETRY_JOURNEY_SCHEDULE_OFFSET = 15392;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
 const EXPECTED_PRODUCT_SCHEMA_HASH = 0xae226b36;
 const PRODUCT_ERROR_ASSET_IN_USE = -16;
@@ -47,6 +53,22 @@ const PRODUCT_EVENT_IDS = Object.freeze({
   SetSynthArpConfig: 48,
   SetSynthArpStep: 49,
   CommitSynthArpPattern: 50,
+  SetAutoStop: 51,
+  SetScatterVoiceParam: 52,
+  CommitScatterConfig: 53,
+  SetScatterEnabled: 54,
+  BeginSceneProgram: 55,
+  SetSceneEntry: 56,
+  SetSceneCommandHeader: 57,
+  SetSceneCommandValues: 58,
+  CommitSceneProgram: 59,
+  SetScenePosition: 60,
+  BeginRoutingMuteGroups: 61,
+  SetRoutingMuteGroupSlot: 62,
+  CommitRoutingMuteGroups: 63,
+  RecallRoutingMuteGroup: 64,
+  SetRoutingMuteGroupsEnabled: 65,
+  ConfigureGlobalAutoCycle: 66,
 });
 const PRODUCT_EVENT_ID_SET = new Set(Object.values(PRODUCT_EVENT_IDS));
 const PRODUCT_EVENT_MAX_ID = Math.max(...PRODUCT_EVENT_ID_SET);
@@ -1003,9 +1025,12 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       case PRODUCT_EVENT_IDS.SetSynthArpConfig:
         normalized.targetId = this.requireUint(event, 'targetId', 1, 1);
         normalized.index = this.requireUint(event, 'index', 0, SEQUENCER_UI_STATE_LANES - 1);
+        normalized.paramId = this.requireUint(event, 'paramId', 0, 0xffff);
         normalized.value = this.requireFloat(event, 'value', 0, 1);
         normalized.value2 = this.requireFloat(event, 'value2', 1, 16);
         normalized.value3 = this.requireFloat(event, 'value3', 0.25, 4);
+        normalized.value4 = this.requireFloat(event, 'value4', 0, 0xffff);
+        normalized.flags = this.requireUint(event, 'flags', 0, 0xff);
         return normalized;
       case PRODUCT_EVENT_IDS.SetSynthArpStep:
         normalized.targetId = this.requireUint(event, 'targetId', 1, 1);
@@ -1013,10 +1038,48 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         normalized.paramId = this.requireUint(event, 'paramId', 0, 15);
         normalized.value = this.requireFloat(event, 'value', -1, 127);
         normalized.value2 = this.requireFloat(event, 'value2', 0, 1);
+        normalized.value3 = this.requireFloat(event, 'value3', -12, 12);
+        normalized.value4 = this.requireFloat(event, 'value4', -1, 7);
+        normalized.flags = this.requireUint(event, 'flags', 0, 1);
         return normalized;
       case PRODUCT_EVENT_IDS.CommitSynthArpPattern:
         normalized.targetId = this.requireUint(event, 'targetId', 1, 1);
         normalized.index = this.requireUint(event, 'index', 0, SEQUENCER_UI_STATE_LANES - 1);
+        return normalized;
+      case PRODUCT_EVENT_IDS.SetAutoStop:
+      case PRODUCT_EVENT_IDS.SetScatterVoiceParam:
+      case PRODUCT_EVENT_IDS.CommitScatterConfig:
+      case PRODUCT_EVENT_IDS.SetScatterEnabled:
+      case PRODUCT_EVENT_IDS.BeginSceneProgram:
+      case PRODUCT_EVENT_IDS.SetSceneEntry:
+      case PRODUCT_EVENT_IDS.SetSceneCommandHeader:
+      case PRODUCT_EVENT_IDS.SetSceneCommandValues:
+      case PRODUCT_EVENT_IDS.CommitSceneProgram:
+      case PRODUCT_EVENT_IDS.SetScenePosition:
+      case PRODUCT_EVENT_IDS.BeginRoutingMuteGroups:
+      case PRODUCT_EVENT_IDS.SetRoutingMuteGroupSlot:
+      case PRODUCT_EVENT_IDS.CommitRoutingMuteGroups:
+      case PRODUCT_EVENT_IDS.RecallRoutingMuteGroup:
+      case PRODUCT_EVENT_IDS.SetRoutingMuteGroupsEnabled:
+      case PRODUCT_EVENT_IDS.ConfigureGlobalAutoCycle:
+      case PRODUCT_EVENT_IDS.BeginJourneySchedule:
+      case PRODUCT_EVENT_IDS.SetJourneyScheduleEntryHold:
+      case PRODUCT_EVENT_IDS.SetJourneyScheduleEntryMorph:
+      case PRODUCT_EVENT_IDS.BeginJourneyTransitionProgram:
+      case PRODUCT_EVENT_IDS.SetJourneyTransitionEntry:
+      case PRODUCT_EVENT_IDS.SetJourneyTransitionCommandHeader:
+      case PRODUCT_EVENT_IDS.SetJourneyTransitionCommandValues:
+      case PRODUCT_EVENT_IDS.CommitJourneyTransitionProgram:
+      case PRODUCT_EVENT_IDS.CommitJourneySchedule:
+      case PRODUCT_EVENT_IDS.SetJourneyScheduleEnabled:
+        normalized.targetId = this.optionalUint(event, 'targetId', 0, 0, 0xffffffff);
+        normalized.index = this.optionalUint(event, 'index', 0, 0, 0xffffffff);
+        normalized.paramId = this.optionalUint(event, 'paramId', 0, 0, 0xffffffff);
+        normalized.value = this.optionalFloat(event, 'value', 0);
+        normalized.value2 = this.optionalFloat(event, 'value2', 0);
+        normalized.value3 = this.optionalFloat(event, 'value3', 0);
+        normalized.value4 = this.optionalFloat(event, 'value4', 0);
+        normalized.flags = this.optionalUint(event, 'flags', 0, 0, 0xffffffff);
         return normalized;
       default:
         throw new Error(`Unhandled Kessho Product Core event kind: ${eventKind}`);
@@ -1042,7 +1105,18 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.writeEvent(event);
     const result = this.api.enqueueEvent(this.engine, this.eventPtr);
     if (result !== 1) {
-      throw new Error(`Kessho Product Core event enqueue failed: ${result}`);
+      const detail = {
+        eventKind: event?.eventKind,
+        targetId: event?.targetId,
+        index: event?.index,
+        paramId: event?.paramId,
+        value: event?.value,
+        value2: event?.value2,
+        value3: event?.value3,
+        value4: event?.value4,
+        flags: event?.flags,
+      };
+      throw new Error(`Kessho Product Core event enqueue failed: ${result}; event=${JSON.stringify(detail)}`);
     }
   }
 
@@ -1494,12 +1568,14 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const synthSequencerCurrentSteps = [];
     const drumSequencerCurrentSteps = [];
     const synthArpCurrentSteps = [];
+    const synthArpCurrentMidis = [];
     for (let index = 0; index < 16; index += 1) {
       synthSequencerHitCounts.push(this.view.getUint32(ptr + 1040 + index * 4, true));
       drumSequencerHitCounts.push(this.view.getUint32(ptr + 1104 + index * 4, true));
       synthSequencerCurrentSteps.push(this.view.getUint32(ptr + 1168 + index * 4, true));
       drumSequencerCurrentSteps.push(this.view.getUint32(ptr + 1232 + index * 4, true));
       synthArpCurrentSteps.push(this.view.getUint32(ptr + 1296 + index * 4, true));
+      synthArpCurrentMidis.push(this.view.getFloat32(ptr + TELEMETRY_SYNTH_ARP_CURRENT_MIDIS_OFFSET + index * 4, true));
     }
     const sequencerUiStateRevision = this.view.getUint32(ptr + 988, true);
     const sequencerUiState =
@@ -1534,6 +1610,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       transportPendingApplyFrame: this.readUint64Number(ptr + 15152),
       transportTransitionRevision: this.view.getUint32(ptr + 15160, true),
       transportPhraseProgress: this.view.getFloat32(ptr + 15164, true),
+      sourceMorphAutomationEnabledMask: this.view.getUint32(ptr + 15168, true),
+      sourceMorphValues: Array.from({ length: 11 }, (_, index) => this.view.getFloat32(ptr + 15172 + index * 4, true)),
+      autoStopEnabled: this.view.getUint32(ptr + 15216, true) !== 0,
+      autoStopTargetSampleFrame: this.readUint64Number(ptr + 15224),
       activeSources: this.view.getUint32(ptr + 56, true),
       activeVoices: this.view.getUint32(ptr + 60, true),
       activeAssets: this.view.getUint32(ptr + 64, true),
@@ -1598,6 +1678,41 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       synthSequencerCurrentSteps,
       drumSequencerCurrentSteps,
       synthArpCurrentSteps,
+      synthArpCurrentMidis,
+      scatterCurrentPhraseId: this.view.getUint32(ptr + TELEMETRY_SCATTER_OFFSET, true),
+      scatterCurrentVoice: this.view.getUint32(ptr + TELEMETRY_SCATTER_OFFSET + 4, true),
+      scatterCurrentStep: this.view.getUint32(ptr + TELEMETRY_SCATTER_OFFSET + 8, true),
+      scatterPulseCount: this.view.getUint32(ptr + TELEMETRY_SCATTER_OFFSET + 12, true),
+      sceneProgramRevision: this.view.getUint32(ptr + TELEMETRY_SCENE_OFFSET, true),
+      scenePosition: this.view.getFloat32(ptr + TELEMETRY_SCENE_OFFSET + 4, true),
+      routingMuteGroupRevision: this.view.getUint32(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET, true),
+      routingMuteGroupActiveSlot: this.view.getUint32(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET + 4, true),
+      routingMuteGroupNextSlot: this.view.getUint32(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET + 8, true),
+      routingMuteGroupMask: this.view.getUint32(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET + 12, true),
+      routingMuteGroupNextChangeFrame: Number(this.view.getBigUint64(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET + 16, true)),
+      routingMuteGroupTransitionProgress: this.view.getFloat32(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET + 24, true),
+      routingMuteGroupsEnabled: this.view.getUint32(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET + 28, true) !== 0,
+      routingMuteGroupTraceRevision: this.view.getUint32(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET + 32, true),
+      autoCycleRevision: this.view.getUint32(ptr + TELEMETRY_AUTO_CYCLE_OFFSET, true),
+      autoCyclePhase: this.view.getUint32(ptr + TELEMETRY_AUTO_CYCLE_OFFSET + 4, true),
+      autoCyclePosition: this.view.getFloat32(ptr + TELEMETRY_AUTO_CYCLE_OFFSET + 8, true),
+      autoCyclePhaseStartFrame: this.readUint64Number(ptr + TELEMETRY_AUTO_CYCLE_OFFSET + 12),
+      autoCyclePhaseEndFrame: this.readUint64Number(ptr + TELEMETRY_AUTO_CYCLE_OFFSET + 20),
+      autoCycleTransitionCount: this.view.getUint32(ptr + TELEMETRY_AUTO_CYCLE_OFFSET + 28, true),
+      autoCycleEnabled: this.view.getUint32(ptr + TELEMETRY_AUTO_CYCLE_OFFSET + 32, true) !== 0,
+      journeyScheduleRevision: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET, true),
+      journeySchedulePhase: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 4, true),
+      journeyCurrentNodeIndex: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 8, true),
+      journeyNextNodeIndex: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 12, true),
+      journeyScheduleIndex: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 16, true),
+      journeyLoopIndex: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 20, true),
+      journeyHoldProgress: this.view.getFloat32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 24, true),
+      journeyMorphProgress: this.view.getFloat32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 28, true),
+      journeyPreparedTotalFrames: this.readUint64Number(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 32),
+      journeyTransitionCount: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 40, true),
+      journeyScheduleRunning: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 44, true) !== 0,
+      journeyRngStateAfterPlan: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 48, true),
+      journeyScheduleEntryCount: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 52, true),
       synthOrbitVisualLanes,
       synthAnchorWalkerVisualLanes,
       generatedSequencerCaptureEvents: generatedSequencerCapture.events,
@@ -1944,12 +2059,14 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const synthSequencerCurrentSteps = [];
     const drumSequencerCurrentSteps = [];
     const synthArpCurrentSteps = [];
+    const synthArpCurrentMidis = [];
     for (let index = 0; index < 16; index += 1) {
       synthSequencerHitCounts.push(this.view.getUint32(ptr + 1040 + index * 4, true));
       drumSequencerHitCounts.push(this.view.getUint32(ptr + 1104 + index * 4, true));
       synthSequencerCurrentSteps.push(this.view.getUint32(ptr + 1168 + index * 4, true));
       drumSequencerCurrentSteps.push(this.view.getUint32(ptr + 1232 + index * 4, true));
       synthArpCurrentSteps.push(this.view.getUint32(ptr + 1296 + index * 4, true));
+      synthArpCurrentMidis.push(this.view.getFloat32(ptr + TELEMETRY_SYNTH_ARP_CURRENT_MIDIS_OFFSET + index * 4, true));
     }
     const telemetry = {
       schemaHash: this.view.getUint32(ptr, true),
@@ -1967,6 +2084,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       transportPendingApplyFrame: this.readUint64Number(ptr + 15152),
       transportTransitionRevision: this.view.getUint32(ptr + 15160, true),
       transportPhraseProgress: this.view.getFloat32(ptr + 15164, true),
+      sourceMorphAutomationEnabledMask: this.view.getUint32(ptr + 15168, true),
+      sourceMorphValues: Array.from({ length: 11 }, (_, index) => this.view.getFloat32(ptr + 15172 + index * 4, true)),
+      autoStopEnabled: this.view.getUint32(ptr + 15216, true) !== 0,
+      autoStopTargetSampleFrame: this.readUint64Number(ptr + 15224),
       activeGrains: this.view.getUint32(ptr + 68, true),
       runtimeWalkCount,
       runtimeWalkValues,
@@ -1992,6 +2113,41 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       synthSequencerCurrentSteps,
       drumSequencerCurrentSteps,
       synthArpCurrentSteps,
+      synthArpCurrentMidis,
+      scatterCurrentPhraseId: this.view.getUint32(ptr + TELEMETRY_SCATTER_OFFSET, true),
+      scatterCurrentVoice: this.view.getUint32(ptr + TELEMETRY_SCATTER_OFFSET + 4, true),
+      scatterCurrentStep: this.view.getUint32(ptr + TELEMETRY_SCATTER_OFFSET + 8, true),
+      scatterPulseCount: this.view.getUint32(ptr + TELEMETRY_SCATTER_OFFSET + 12, true),
+      sceneProgramRevision: this.view.getUint32(ptr + TELEMETRY_SCENE_OFFSET, true),
+      scenePosition: this.view.getFloat32(ptr + TELEMETRY_SCENE_OFFSET + 4, true),
+      routingMuteGroupRevision: this.view.getUint32(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET, true),
+      routingMuteGroupActiveSlot: this.view.getUint32(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET + 4, true),
+      routingMuteGroupNextSlot: this.view.getUint32(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET + 8, true),
+      routingMuteGroupMask: this.view.getUint32(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET + 12, true),
+      routingMuteGroupNextChangeFrame: Number(this.view.getBigUint64(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET + 16, true)),
+      routingMuteGroupTransitionProgress: this.view.getFloat32(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET + 24, true),
+      routingMuteGroupsEnabled: this.view.getUint32(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET + 28, true) !== 0,
+      routingMuteGroupTraceRevision: this.view.getUint32(ptr + TELEMETRY_ROUTING_MUTE_GROUP_OFFSET + 32, true),
+      autoCycleRevision: this.view.getUint32(ptr + TELEMETRY_AUTO_CYCLE_OFFSET, true),
+      autoCyclePhase: this.view.getUint32(ptr + TELEMETRY_AUTO_CYCLE_OFFSET + 4, true),
+      autoCyclePosition: this.view.getFloat32(ptr + TELEMETRY_AUTO_CYCLE_OFFSET + 8, true),
+      autoCyclePhaseStartFrame: this.readUint64Number(ptr + TELEMETRY_AUTO_CYCLE_OFFSET + 12),
+      autoCyclePhaseEndFrame: this.readUint64Number(ptr + TELEMETRY_AUTO_CYCLE_OFFSET + 20),
+      autoCycleTransitionCount: this.view.getUint32(ptr + TELEMETRY_AUTO_CYCLE_OFFSET + 28, true),
+      autoCycleEnabled: this.view.getUint32(ptr + TELEMETRY_AUTO_CYCLE_OFFSET + 32, true) !== 0,
+      journeyScheduleRevision: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET, true),
+      journeySchedulePhase: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 4, true),
+      journeyCurrentNodeIndex: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 8, true),
+      journeyNextNodeIndex: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 12, true),
+      journeyScheduleIndex: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 16, true),
+      journeyLoopIndex: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 20, true),
+      journeyHoldProgress: this.view.getFloat32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 24, true),
+      journeyMorphProgress: this.view.getFloat32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 28, true),
+      journeyPreparedTotalFrames: this.readUint64Number(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 32),
+      journeyTransitionCount: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 40, true),
+      journeyScheduleRunning: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 44, true) !== 0,
+      journeyRngStateAfterPlan: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 48, true),
+      journeyScheduleEntryCount: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 52, true),
       synthOrbitVisualLanes: this.readSynthOrbitVisualLanes(ptr),
       synthAnchorWalkerVisualLanes: this.readSynthAnchorWalkerVisualLanes(ptr),
       workletOutputPeak: this.lastOutputPeak,

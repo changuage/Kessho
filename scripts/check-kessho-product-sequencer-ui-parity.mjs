@@ -271,6 +271,8 @@ function withEngine(baseUrl, engineMode) {
   url.searchParams.set('engineAB', '1');
   url.searchParams.set('localPresets', '1');
   url.searchParams.set('advanced', '1');
+  url.searchParams.set('parity', '1');
+  url.searchParams.set('parityPassive', '1');
   return url.toString();
 }
 
@@ -1571,16 +1573,36 @@ async function sampleTriggerPlayheadCadenceWithRecovery(page, engineMode, tab) {
 
 async function proofClockDivisionAffectsTriggerCadence(page, engineMode, tab) {
   await setTriggerControlViaDrag(page, 0, 16, engineMode, tab, 'timing proof trigger steps');
+  await ensureActiveTriggerLaneEnabled(page, engineMode, tab);
 
   await setLaneTimingEditorState(page, { clockDiv: '1/4', swing: 0 });
   await page.waitForTimeout(650);
   const slow = await sampleTriggerPlayheadCadenceWithRecovery(page, engineMode, tab);
+  const slowFailureState = triggerCadenceMoved(slow) ? null : await page.evaluate(() => {
+    const probe = window.__kesshoProductRuntimeProbe?.readProductStateProbe();
+    const telemetry = probe?.telemetry;
+    const diagnostics = probe?.diagnostics;
+    return {
+      runtimePhase: document.documentElement.dataset.coreProductRuntimePhase ?? null,
+      runtimeError: document.documentElement.dataset.coreProductRuntimeError ?? null,
+      transportRunning: telemetry?.transportRunning ?? null,
+      absoluteSampleTime: telemetry?.absoluteSampleTime ?? null,
+      synthSteps: telemetry?.synthSequencerCurrentSteps?.slice(0, 4) ?? null,
+      synthHits: telemetry?.synthSequencerHitCounts?.slice(0, 4) ?? null,
+      synthLane0: telemetry?.sequencerUiState?.synthLanes?.[0] ?? null,
+      sequencerRevision: telemetry?.sequencerUiStateRevision ?? null,
+      lastError: telemetry?.lastErrorCode ?? null,
+      committedRevision: diagnostics?.lastCommittedRevision ?? null,
+      pendingRevision: diagnostics?.lastPendingRevision ?? null,
+      rejectedLifecycle: diagnostics?.lastRejectedLifecycleTransitionReason ?? null,
+    };
+  });
 
   await setLaneTimingEditorState(page, { clockDiv: '1/16', swing: 0 });
   await page.waitForTimeout(650);
   const fast = await sampleTriggerPlayheadCadenceWithRecovery(page, engineMode, tab);
 
-  assert(slow.uniquePositions >= 2, `${engineMode}/${tab}: slow clock did not advance enough to measure timing (${slow.samples.join(' | ')})`);
+  assert(slow.uniquePositions >= 2, `${engineMode}/${tab}: slow clock did not advance enough to measure timing (${slow.samples.join(' | ')}); runtime=${JSON.stringify(slowFailureState)}`);
   assert(
     fast.transitions > slow.transitions || fast.uniquePositions > slow.uniquePositions,
     `${engineMode}/${tab}: fast clock did not increase trigger playhead cadence (slow ${slow.transitions}/${slow.uniquePositions}, fast ${fast.transitions}/${fast.uniquePositions})`,

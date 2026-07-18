@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <vector>
 
 #include "KesshoCore/KesshoProductCore.h"
@@ -533,7 +534,8 @@ KesshoProductSnapshotV2 makeSingleRatchetSnapshot(
     uint32_t source_id,
     uint32_t ratchet,
     float initial_start_delay_seconds = 0.0f) {
-  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  auto snapshot_storage = std::make_unique<KesshoProductSnapshotV2>(makeSnapshot());
+  KesshoProductSnapshotV2& snapshot = *snapshot_storage;
   snapshot.transport.running = 1;
   const bool drum = source_id == KESSHO_PRODUCT_SOURCE_DRUM;
   snapshot.synth_euclid.lane_count = drum ? 0u : 1u;
@@ -642,6 +644,47 @@ void enqueueSynthArpPattern(
   enqueueSynthArpCommit(engine);
 }
 
+void enqueueMusicalSynthArpPattern(
+    KesshoProductEngine* engine,
+    ProductArpFlow flow,
+    ProductArpContourMode contour_mode,
+    ProductArpBoundaryMode boundary_mode,
+    const std::vector<int32_t>& contour,
+    uint32_t active_mask = 0x0fu,
+    uint32_t reset_mask = 0u,
+    const std::vector<int32_t>& slot_lane = {},
+    uint32_t length = 4u,
+    float rate = 1.0f) {
+  KesshoProductEvent config{};
+  config.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SYNTH_ARP_CONFIG;
+  config.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  config.index = 0u;
+  config.param_id = active_mask;
+  config.value = 1.0f;
+  config.value2 = static_cast<float>(length);
+  config.value3 = rate;
+  config.value4 = static_cast<float>(reset_mask);
+  config.flags = KESSHO_PRODUCT_ARP_MUSICAL_CONFIG |
+      static_cast<uint32_t>(flow) |
+      (contour_mode == ProductArpContourMode::Semitone ? KESSHO_PRODUCT_ARP_CONTOUR_SEMITONE : 0u) |
+      (static_cast<uint32_t>(boundary_mode) << KESSHO_PRODUCT_ARP_BOUNDARY_SHIFT);
+  require(kessho_product_enqueue_event(engine, &config) == KESSHO_PRODUCT_OK, "musical arp config enqueue failed");
+  for (uint32_t step = 0u; step < 16u; ++step) {
+    KesshoProductEvent event{};
+    event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SYNTH_ARP_STEP;
+    event.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    event.index = 0u;
+    event.param_id = step;
+    event.value = -1.0f;
+    event.value2 = (active_mask & (1u << step)) != 0u ? 1.0f : 0.0f;
+    event.value3 = step < contour.size() ? static_cast<float>(contour[step]) : 0.0f;
+    event.value4 = step < slot_lane.size() ? static_cast<float>(slot_lane[step]) : -1.0f;
+    event.flags = (reset_mask & (1u << step)) != 0u ? KESSHO_PRODUCT_ARP_STEP_RESET : 0u;
+    require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "musical arp step enqueue failed");
+  }
+  enqueueSynthArpCommit(engine);
+}
+
 void expectRenderedMidiNotes(
     const std::vector<RenderedSequencerEvent>& events,
     const std::vector<float>& expected_notes,
@@ -685,6 +728,174 @@ void requireProductSequencerSynthArpRuntimeTests() {
   constexpr uint32_t block_size = 64u;
   const std::vector<float> arp_notes = {60.0f, 62.0f, 64.0f, 65.0f};
   const std::vector<float> arp_notes_8 = {60.0f, 62.0f, 64.0f, 65.0f, 67.0f, 69.0f, 71.0f, 72.0f};
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "musical arp harmony engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot(1u, 1u, 60.0f);
+    snapshot.harmony.note_pool_count = 3u;
+    snapshot.harmony.note_pool_midi[0] = 60.0f;
+    snapshot.harmony.note_pool_midi[1] = 64.0f;
+    snapshot.harmony.note_pool_midi[2] = 67.0f;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "musical arp snapshot load failed");
+    enqueueMusicalSynthArpPattern(
+        engine,
+        ProductArpFlow::Up,
+        ProductArpContourMode::Pool,
+        ProductArpBoundaryMode::Fold,
+        {0, 0, 0, 0});
+    std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 6000u);
+    expectRenderedMidiNotes(events, {60.0f, 64.0f, 67.0f, 60.0f}, "musical arp did not resolve Product Core harmony");
+
+    engine->harmony.note_pool_count = 3u;
+    engine->harmony.note_pool_midi[0] = 62.0f;
+    engine->harmony.note_pool_midi[1] = 65.0f;
+    engine->harmony.note_pool_midi[2] = 69.0f;
+    events = renderEventsInBlocks(engine, block_size, 6000u);
+    expectRenderedMidiNotes(events, {62.0f, 65.0f, 69.0f, 62.0f}, "musical arp did not follow harmony after host suspension");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    struct FlowFixture {
+      ProductArpFlow flow;
+      std::vector<float> expected;
+    };
+    const FlowFixture fixtures[] = {
+        {ProductArpFlow::Up, {60.0f, 64.0f, 67.0f, 60.0f}},
+        {ProductArpFlow::Down, {60.0f, 67.0f, 64.0f, 60.0f}},
+        {ProductArpFlow::UpDown, {60.0f, 64.0f, 67.0f, 67.0f}},
+        {ProductArpFlow::DownUp, {60.0f, 67.0f, 64.0f, 64.0f}},
+    };
+    for (const FlowFixture& fixture : fixtures) {
+      KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+      require(engine != nullptr, "musical arp flow engine create failed");
+      KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot(1u, 1u, 60.0f);
+      snapshot.harmony.note_pool_count = 3u;
+      snapshot.harmony.note_pool_midi[0] = 60.0f;
+      snapshot.harmony.note_pool_midi[1] = 64.0f;
+      snapshot.harmony.note_pool_midi[2] = 67.0f;
+      require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "musical arp flow snapshot load failed");
+      enqueueMusicalSynthArpPattern(
+          engine, fixture.flow, ProductArpContourMode::Pool, ProductArpBoundaryMode::Fold, {0, 0, 0, 0});
+      const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 6000u);
+      expectRenderedMidiNotes(events, fixture.expected, "musical arp flow traversal mismatch");
+      const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+      require(
+          std::fabs(telemetry.synth_arp_current_midis[0] - events.back().event.midi_note) < 0.001f,
+          "musical arp audible MIDI telemetry must match the last drained event");
+      kessho_product_destroy(engine);
+    }
+  }
+
+  {
+    struct BoundaryFixture {
+      ProductArpBoundaryMode boundary;
+      float expected;
+    };
+    const BoundaryFixture fixtures[] = {
+        {ProductArpBoundaryMode::Fold, 60.0f},
+        {ProductArpBoundaryMode::Wrap, 62.0f},
+        {ProductArpBoundaryMode::Clamp, 64.0f},
+    };
+    for (const BoundaryFixture& fixture : fixtures) {
+      KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+      require(engine != nullptr, "musical arp boundary engine create failed");
+      KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot(1u, 1u, 60.0f);
+      snapshot.harmony.note_pool_count = 3u;
+      snapshot.harmony.note_pool_midi[0] = 60.0f;
+      snapshot.harmony.note_pool_midi[1] = 62.0f;
+      snapshot.harmony.note_pool_midi[2] = 64.0f;
+      require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "musical arp boundary snapshot load failed");
+      enqueueMusicalSynthArpPattern(
+          engine, ProductArpFlow::Up, ProductArpContourMode::Pool, fixture.boundary, {4}, 0x01u, 0u, {}, 1u);
+      const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 6000u);
+      expectRenderedMidiNotes(events, {fixture.expected}, "musical arp boundary mismatch");
+      kessho_product_destroy(engine);
+    }
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "musical arp contour/reset engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot(1u, 1u, 60.0f);
+    snapshot.harmony.note_pool_count = 4u;
+    snapshot.harmony.note_pool_midi[0] = 60.0f;
+    snapshot.harmony.note_pool_midi[1] = 62.0f;
+    snapshot.harmony.note_pool_midi[2] = 64.0f;
+    snapshot.harmony.note_pool_midi[3] = 67.0f;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "musical arp contour/reset snapshot load failed");
+    enqueueMusicalSynthArpPattern(
+        engine, ProductArpFlow::Up, ProductArpContourMode::Pool, ProductArpBoundaryMode::Fold,
+        {0, 0, 0, 0, 0}, 0x1fu, 1u << 3u, {}, 5u);
+    std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 6000u);
+    expectRenderedMidiNotes(events, {60.0f, 62.0f, 64.0f, 60.0f, 62.0f}, "musical arp reset traversal mismatch");
+
+    enqueueMusicalSynthArpPattern(
+        engine, ProductArpFlow::Up, ProductArpContourMode::Semitone, ProductArpBoundaryMode::Fold,
+        {1, -2, 12}, 0x07u, 0u, {}, 3u);
+    events = renderEventsInBlocks(engine, block_size, 6000u);
+    expectRenderedMidiNotes(events, {61.0f, 58.0f, 72.0f}, "musical arp semitone contour mismatch");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "musical arp slot lock engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot(1u, 1u, 60.0f);
+    snapshot.harmony.note_pool_count = 3u;
+    snapshot.harmony.note_pool_midi[0] = 60.0f;
+    snapshot.harmony.note_pool_midi[1] = 62.0f;
+    snapshot.harmony.note_pool_midi[2] = 64.0f;
+    snapshot.arrangement.chord_slot_note_count[0] = 3u;
+    snapshot.arrangement.chord_slot_midi[0] = 72.0f;
+    snapshot.arrangement.chord_slot_midi[1] = 76.0f;
+    snapshot.arrangement.chord_slot_midi[2] = 79.0f;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "musical arp slot lock snapshot load failed");
+    enqueueMusicalSynthArpPattern(
+        engine, ProductArpFlow::Up, ProductArpContourMode::Pool, ProductArpBoundaryMode::Fold,
+        {0, 0}, 0x03u, 0u, {-1, 0}, 2u);
+    const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 6000u);
+    expectRenderedMidiNotes(events, {60.0f, 76.0f}, "musical arp slot lock mismatch");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    auto renderRandomFlow = [&](ProductArpFlow flow) {
+      KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+      require(engine != nullptr, "musical arp random engine create failed");
+      KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot(1u, 1u, 60.0f);
+      snapshot.synth_euclid.lanes[0].seed = 90210u;
+      snapshot.harmony.note_pool_count = 4u;
+      snapshot.harmony.note_pool_midi[0] = 60.0f;
+      snapshot.harmony.note_pool_midi[1] = 62.0f;
+      snapshot.harmony.note_pool_midi[2] = 65.0f;
+      snapshot.harmony.note_pool_midi[3] = 69.0f;
+      require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "musical arp random snapshot load failed");
+      enqueueMusicalSynthArpPattern(
+          engine, flow, ProductArpContourMode::Pool, ProductArpBoundaryMode::Fold,
+          {0, 0, 0, 0, 0, 0, 0, 0}, 0xffu, 0u, {}, 8u);
+      const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 12000u);
+      std::vector<float> notes;
+      for (const RenderedSequencerEvent& event : events) notes.push_back(event.event.midi_note);
+      kessho_product_destroy(engine);
+      return notes;
+    };
+
+    const std::vector<float> random_a = renderRandomFlow(ProductArpFlow::RandomLiveTone);
+    const std::vector<float> random_b = renderRandomFlow(ProductArpFlow::RandomLiveTone);
+    require(random_a == random_b, "musical arp Random Live must be deterministic for the same seed/config");
+    require(std::adjacent_find(random_a.begin(), random_a.end(), std::not_equal_to<float>()) != random_a.end(), "musical arp Random Live must advance without host activity");
+    for (float midi : random_a) {
+      require(midi == 60.0f || midi == 62.0f || midi == 65.0f || midi == 69.0f, "musical arp Random Live escaped its pitch pool");
+    }
+
+    const std::vector<float> dice_a = renderRandomFlow(ProductArpFlow::DiceHold);
+    const std::vector<float> dice_b = renderRandomFlow(ProductArpFlow::DiceHold);
+    require(dice_a == dice_b, "musical arp Dice Hold must be deterministic for the same seed/config");
+    require(dice_a.size() == 16u, "musical arp Dice Hold fixture should render two complete patterns");
+    require(std::equal(dice_a.begin(), dice_a.begin() + 8, dice_a.begin() + 8), "musical arp Dice Hold must retain its committed choices");
+  }
 
   {
     KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
@@ -1266,6 +1477,10 @@ void requireProductSequencerDisabledTargetSourceTests() {
     KesshoSequencerEvent events[8]{};
     const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 96000u);
     require(event_count == 0, "synth sequencer must not emit events for disabled Pad source");
+    require(engine->synth_lanes[0].sequencer_runtime_initialized,
+        "disabled synth target must not prevent lane clock initialization");
+    require(engine->synth_lanes[0].sequencer_runtime_sample_frame == 96000u,
+        "disabled synth target lane clock did not follow transport time");
     kessho_product_destroy(engine);
   }
 
@@ -4429,7 +4644,8 @@ int main() {
   require(hot_swap_before_telemetry.drum_sequencer_current_steps[0] == 2u, "drum hot-swap setup should be mid-pattern");
   require(hot_swap_before_telemetry.synth_sequencer_hit_counts[0] == 2u, "synth hot-swap setup should have advanced hit phase");
   require(hot_swap_before_telemetry.drum_sequencer_hit_counts[0] == 2u, "drum hot-swap setup should have advanced hit phase");
-  KesshoProductSnapshotV2 hot_swap_snapshot = snapshot;
+  auto hot_swap_snapshot_storage = std::make_unique<KesshoProductSnapshotV2>(snapshot);
+  KesshoProductSnapshotV2& hot_swap_snapshot = *hot_swap_snapshot_storage;
   hot_swap_snapshot.synth_euclid.lanes[0].midi_note = 67.0f;
   hot_swap_snapshot.drum_euclid.lanes[0].midi_note = 38.0f;
   require(
@@ -4779,9 +4995,10 @@ int main() {
       std::fabs(sequencer_ui_state.synth_lanes[0].expression_overrides[0] -
           engine->synth_lanes[0].expression_overrides[0]) < 0.000001f,
       "sequencer UI state should expose detailed diced override values");
-  const LaneState diced_lane_state = engine->synth_lanes[0];
-  require(laneHasGeneratedOverrides(diced_lane_state), "sequencer dice should leave Core-owned lane override state");
-  KesshoProductSnapshotV2 preserved_reload_snapshot = makeSnapshot();
+  const auto diced_lane_state = std::make_unique<LaneState>(engine->synth_lanes[0]);
+  require(laneHasGeneratedOverrides(*diced_lane_state), "sequencer dice should leave Core-owned lane override state");
+  auto preserved_reload_snapshot_storage = std::make_unique<KesshoProductSnapshotV2>(makeSnapshot());
+  KesshoProductSnapshotV2& preserved_reload_snapshot = *preserved_reload_snapshot_storage;
   preserved_reload_snapshot.drum_euclid.lane_count = 0;
   preserved_reload_snapshot.rng.seed = dice_seed_telemetry.rng_seed;
   preserved_reload_snapshot.rng.state = dice_seed_telemetry.rng_state;
@@ -4801,7 +5018,7 @@ int main() {
   require(event_count > 0, "reconciled UI replay should restore diced event generation after full reload");
   requireLaneMutationStateEqual(
       engine->synth_lanes[0],
-      diced_lane_state,
+      *diced_lane_state,
       "full snapshot reload plus reconciled UI replay must preserve Core-owned dice state");
   enqueueParam(
       engine,
@@ -4814,7 +5031,7 @@ int main() {
   require(event_count > 0, "unrelated source-level diff should keep diced sequencer active");
   requireLaneMutationStateEqual(
       engine->synth_lanes[0],
-      diced_lane_state,
+      *diced_lane_state,
       "unrelated source-level diff must preserve Core-owned dice state");
   KesshoProductEvent reset_lane_home{};
   reset_lane_home.event_kind = KESSHO_PRODUCT_EVENT_KIND_RESET_SEQUENCER_LANE_HOME;
@@ -4824,9 +5041,9 @@ int main() {
   event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
   require(event_count == 4, "sequencer reset-home should restore base event count");
   expectOffsets(events, static_cast<uint32_t>(event_count), {18000, 42000, 66000, 90000});
-  const LaneState reset_home_lane_state = engine->synth_lanes[0];
-  require(reset_home_lane_state.midi_note_override_set_low == 0u && reset_home_lane_state.midi_note_override_set_high == 0u, "sequencer reset-home should clear pitch dice overrides");
-  require(!laneHasGeneratedOverrides(reset_home_lane_state), "reset-home should clear Core-owned lane override state");
+  const auto reset_home_lane_state = std::make_unique<LaneState>(engine->synth_lanes[0]);
+  require(reset_home_lane_state->midi_note_override_set_low == 0u && reset_home_lane_state->midi_note_override_set_high == 0u, "sequencer reset-home should clear pitch dice overrides");
+  require(!laneHasGeneratedOverrides(*reset_home_lane_state), "reset-home should clear Core-owned lane override state");
   const uint32_t reset_revision = kessho_product_get_telemetry(engine).sequencer_ui_state_revision;
   require(
       kessho_product_copy_sequencer_ui_state(engine, &sequencer_ui_state) == KESSHO_PRODUCT_OK,
@@ -4851,7 +5068,7 @@ int main() {
   require(event_count == 4, "unrelated source-level diff should preserve reset-home event count");
   requireLaneMutationStateEqual(
       engine->synth_lanes[0],
-      reset_home_lane_state,
+      *reset_home_lane_state,
       "unrelated source-level diff must preserve reset-home lane state");
 
   kessho_product_reset(engine);
@@ -4868,14 +5085,14 @@ int main() {
   require(kessho_product_enqueue_event(engine, &pitch_only_dice) == KESSHO_PRODUCT_OK, "method-filtered dice enqueue failed");
   event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
   require(event_count == 4, "method-filtered pitch dice should preserve trigger event count");
-  const LaneState pitch_only_lane_state = engine->synth_lanes[0];
-  require(pitch_only_lane_state.midi_note_override_set_low != 0u, "method-filtered pitch dice should set MIDI overrides");
-  require(pitch_only_lane_state.step_override_set_low == 0u && pitch_only_lane_state.step_override_set_high == 0u, "method-filtered pitch dice should not alter trigger overrides");
-  require(pitch_only_lane_state.probability_override_set_low == 0u && pitch_only_lane_state.probability_override_set_high == 0u, "method-filtered pitch dice should not alter probability overrides");
-  require(pitch_only_lane_state.ratchet_override_set_low == 0u && pitch_only_lane_state.ratchet_override_set_high == 0u, "method-filtered pitch dice should not alter ratchet overrides");
-  require(pitch_only_lane_state.expression_override_set_low == 0u && pitch_only_lane_state.expression_override_set_high == 0u, "method-filtered pitch dice should not alter expression overrides");
-  require(pitch_only_lane_state.morph_override_set_low == 0u && pitch_only_lane_state.morph_override_set_high == 0u, "method-filtered pitch dice should not alter morph overrides");
-  require(pitch_only_lane_state.distance_override_set_low == 0u && pitch_only_lane_state.distance_override_set_high == 0u, "method-filtered pitch dice should not alter distance overrides");
+  const auto pitch_only_lane_state = std::make_unique<LaneState>(engine->synth_lanes[0]);
+  require(pitch_only_lane_state->midi_note_override_set_low != 0u, "method-filtered pitch dice should set MIDI overrides");
+  require(pitch_only_lane_state->step_override_set_low == 0u && pitch_only_lane_state->step_override_set_high == 0u, "method-filtered pitch dice should not alter trigger overrides");
+  require(pitch_only_lane_state->probability_override_set_low == 0u && pitch_only_lane_state->probability_override_set_high == 0u, "method-filtered pitch dice should not alter probability overrides");
+  require(pitch_only_lane_state->ratchet_override_set_low == 0u && pitch_only_lane_state->ratchet_override_set_high == 0u, "method-filtered pitch dice should not alter ratchet overrides");
+  require(pitch_only_lane_state->expression_override_set_low == 0u && pitch_only_lane_state->expression_override_set_high == 0u, "method-filtered pitch dice should not alter expression overrides");
+  require(pitch_only_lane_state->morph_override_set_low == 0u && pitch_only_lane_state->morph_override_set_high == 0u, "method-filtered pitch dice should not alter morph overrides");
+  require(pitch_only_lane_state->distance_override_set_low == 0u && pitch_only_lane_state->distance_override_set_high == 0u, "method-filtered pitch dice should not alter distance overrides");
 
   bool native_synth_notes_pitch_walk_used_scale = false;
   for (uint32_t attempt = 0u; attempt < 96u && !native_synth_notes_pitch_walk_used_scale; ++attempt) {
@@ -5741,8 +5958,9 @@ int main() {
   require(
       std::fabs(sequencer_ui_state.synth_lanes[0].expression_range_maxes[0] - 0.3f) < 0.000001f,
       "sequencer UI state should expose expression range max values");
-  const LaneState range_lane_state = engine->synth_lanes[0];
-  KesshoProductSnapshotV2 range_reload_snapshot = makeSnapshot();
+  const auto range_lane_state = std::make_unique<LaneState>(engine->synth_lanes[0]);
+  auto range_reload_snapshot_storage = std::make_unique<KesshoProductSnapshotV2>(makeSnapshot());
+  KesshoProductSnapshotV2& range_reload_snapshot = *range_reload_snapshot_storage;
   range_reload_snapshot.drum_euclid.lane_count = 0;
   range_reload_snapshot.synth_euclid.lanes[0].step_count = 4;
   range_reload_snapshot.synth_euclid.lanes[0].fill_count = 4;
@@ -5758,7 +5976,7 @@ int main() {
   require(event_count == 4, "range UI replay should preserve trigger event count");
   requireLaneMutationStateEqual(
       engine->synth_lanes[0],
-      range_lane_state,
+      *range_lane_state,
       "full snapshot reload plus reconciled UI replay must preserve range sub-lane state");
 
   kessho_product_reset(engine);
@@ -5885,7 +6103,8 @@ int main() {
       "sequencer explicit drum morph should not be modulated twice at trigger");
 
   {
-    KesshoProductEngine route_cache(48000.0, 128, 0);
+    auto route_cache_storage = std::make_unique<KesshoProductEngine>(48000.0, 128, 0);
+    KesshoProductEngine& route_cache = *route_cache_storage;
     const uint32_t source_params[] = {
         KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID,
         KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID,
@@ -5958,7 +6177,8 @@ int main() {
   }
 
   {
-    KesshoProductEngine direct_sh(48000.0, 128, 0);
+    auto direct_sh_storage = std::make_unique<KesshoProductEngine>(48000.0, 128, 0);
+    KesshoProductEngine& direct_sh = *direct_sh_storage;
     direct_sh.master_gain = 1.0f;
     KesshoProductEvent product_range{};
     product_range.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
@@ -5978,7 +6198,8 @@ int main() {
   }
 
   {
-    KesshoProductEngine owned_sh(48000.0, 128, 0);
+    auto owned_sh_storage = std::make_unique<KesshoProductEngine>(48000.0, 128, 0);
+    KesshoProductEngine& owned_sh = *owned_sh_storage;
     owned_sh.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].enabled = true;
     owned_sh.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].delay_a_send = 1.0f;
     owned_sh.fx.delay_a_enabled = true;
@@ -6028,7 +6249,8 @@ int main() {
       "runtime walk telemetry value out of range");
 
   {
-    KesshoProductEngine configured_walk(48000.0, 128, 0);
+    auto configured_walk_storage = std::make_unique<KesshoProductEngine>(48000.0, 128, 0);
+    KesshoProductEngine& configured_walk = *configured_walk_storage;
     KesshoProductEvent configured_range = walk_range;
     configured_range.index = 202u;
     configured_range.flags =
@@ -6050,7 +6272,8 @@ int main() {
   }
 
   {
-    KesshoProductEngine paired_walk(48000.0, 128, 0);
+    auto paired_walk_storage = std::make_unique<KesshoProductEngine>(48000.0, 128, 0);
+    KesshoProductEngine& paired_walk = *paired_walk_storage;
     KesshoProductEvent pair_a{};
     pair_a.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
     pair_a.target_id = KESSHO_PRODUCT_SOURCE_PAD1;

@@ -28,6 +28,7 @@ import {
   getDriversForTarget,
   getEffectiveReactionDepth,
 } from './visualizerModulation';
+import { compileVisualizerAutomations, useVisualizerFrameScratch } from './visualizerFrameState';
 import {
   DEFAULT_LAYER_STACK,
   DEFAULT_VISUALIZER_LAYER_MACROS,
@@ -107,12 +108,6 @@ type ReactiveVisualizerPageInnerProps = Omit<ReactiveVisualizerPageProps, 'enabl
 };
 
 type NumericControlKey = VisualizerNumericControlKey;
-
-interface CompiledAutomation {
-  key: VisualizerNumericControlKey;
-  mode: Exclude<SliderMode, 'single'>;
-  range: { min: number; max: number };
-}
 
 type EngineMeter = {
   key: keyof Pick<
@@ -550,6 +545,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   const lastInteractionRef = useRef(0);
   const wakeRenderRef = useRef<(interaction?: boolean) => void>(() => undefined);
   const vizAutomationStateRef = useRef<Record<string, DualSliderAutomationState>>({});
+  const frameScratch = useVisualizerFrameScratch(DEFAULT_CONTROLS);
   const [controls, setControls] = useState<ReactiveVisualizerControls>(DEFAULT_CONTROLS);
   const [seed, setSeed] = useState(createVisualizerSeed);
   const seedRef = useRef(seed);
@@ -609,16 +605,10 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   const qualityRef = useRef(resolvedQuality);
   qualityRef.current = resolvedQuality;
 
-  const compiledAutomations = useMemo<CompiledAutomation[]>(() => {
-    const compiled: CompiledAutomation[] = [];
-    for (const [key, mode] of Object.entries(vizSliderModes)) {
-      if (mode !== 'walk' && mode !== 'sampleHold') continue;
-      const range = reactiveRanges[key as VisualizerNumericControlKey];
-      if (!range) continue;
-      compiled.push({ key: key as VisualizerNumericControlKey, mode, range });
-    }
-    return compiled;
-  }, [reactiveRanges, vizSliderModes]);
+  const compiledAutomations = useMemo(
+    () => compileVisualizerAutomations(vizSliderModes, reactiveRanges),
+    [reactiveRanges, vizSliderModes],
+  );
   const compiledAutomationsRef = useRef(compiledAutomations);
   compiledAutomationsRef.current = compiledAutomations;
 
@@ -767,9 +757,13 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
           );
           const currentAutomations = compiledAutomationsRef.current;
           const hasAutomation = currentAutomations.length > 0;
-          const automatedControls: ReactiveVisualizerControls = hasAutomation
-            ? { ...controlState, layerOrder: [...controlState.layerOrder] }
+          const automatedControls = hasAutomation
+            ? frameScratch.automatedControls
             : controlState;
+          if (hasAutomation) {
+            Object.assign(automatedControls, controlState);
+            automatedControls.layerOrder = controlState.layerOrder;
+          }
           const triggerAmount = Math.max(
             snapshot.pulses.global,
             snapshot.pulses.drums,
@@ -802,14 +796,17 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
           }
           // Apply modulation: visual buses → mod matrix → modulated controls
           const currentReaction = reactionRef.current;
-          const buses = buildVisualBuses(snapshot, currentReaction);
           const modulationStartedAt = measurePerformance ? performance.now() : 0;
-          const modulatedControls = applyVisualizerModulation(
-            automatedControls,
-            reactiveRangesRef.current,
-            buses,
-            currentReaction,
-          );
+          const modulationActive = currentReaction.reactionAmount > 0.0001;
+          const modulatedControls = modulationActive
+            ? applyVisualizerModulation(
+                automatedControls,
+                reactiveRangesRef.current,
+                buildVisualBuses(snapshot, currentReaction, frameScratch.buses),
+                currentReaction,
+                frameScratch.modulatedControls,
+              )
+            : automatedControls;
           const modulationMs = measurePerformance ? performance.now() - modulationStartedAt : 0;
           const lastRenderSize = renderSizeRef.current;
           if (

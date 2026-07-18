@@ -35,7 +35,9 @@ const viteConfig = read('vite.config.ts');
 const packageJson = JSON.parse(read('package.json'));
 const hostAssetRegistrar = read('src/audio/product/host/CoreProductAssetRegistrar.ts');
 const hostAssetReadiness = read('src/audio/product/host/CoreProductAssetReadiness.ts');
-const hostAssetSurface = `${hostAssetRegistrar}\n${hostAssetReadiness}`;
+const hostAssetRequirements = read('src/audio/product/host/CoreProductAssetRequirements.ts');
+const hostAssetDecodeService = read('src/audio/product/host/CoreProductAssetDecodeService.ts');
+const hostAssetSurface = `${hostAssetRegistrar}\n${hostAssetReadiness}\n${hostAssetRequirements}\n${hostAssetDecodeService}`;
 const fallbackDiagnostics = read('src/audio/CoreProductFallbackDiagnostics.ts');
 const hostSequencerAdapter = read('src/audio/CoreProductHostSequencerAdapter.ts');
 const hostSequencerSubLaneConfig = read('src/audio/CoreProductHostSequencerSubLaneConfig.ts');
@@ -151,6 +153,7 @@ const productRuntimePlaybackRuntime = read('src/ui/useProductRuntimePlaybackRunt
 const productRuntimePlaybackAdapter = read('src/ui/useProductRuntimePlaybackAdapter.ts');
 const productRuntimeUi = read('src/ui/useProductRuntimeUi.ts');
 const productRuntimePlaybackSurface = read('src/ui/useProductRuntimePlaybackSurface.ts');
+const backgroundJourneyRuntimeSurface = read('src/ui/useBackgroundJourneyRuntimeSurface.ts');
 const journeyMorphRuntimeSurface = read('src/ui/useJourneyMorphRuntimeSurface.ts');
 const selectedAudioEngineStartAction = read('src/ui/useSelectedAudioEngineStartAction.ts');
 const selectedAudioEnginePlaybackStartState = read('src/ui/useSelectedAudioEnginePlaybackStartState.ts');
@@ -272,6 +275,8 @@ assert(lineCount(hostRealtimeInputBootstrap) <= 80, `CoreProductRealtimeInputBoo
 assert(lineCount(hostArrangementBridge) <= 80, `CoreProductArrangementBridge.ts exceeds cleanup size cap (${lineCount(hostArrangementBridge)} lines)`);
 assert(lineCount(hostAssetRegistrar) <= 360, `CoreProductAssetRegistrar.ts exceeds cleanup size cap (${lineCount(hostAssetRegistrar)} lines)`);
 assert(lineCount(hostAssetReadiness) <= 100, `CoreProductAssetReadiness.ts exceeds cleanup size cap (${lineCount(hostAssetReadiness)} lines)`);
+assert(lineCount(hostAssetRequirements) <= 80, `CoreProductAssetRequirements.ts exceeds cleanup size cap (${lineCount(hostAssetRequirements)} lines)`);
+assert(lineCount(hostAssetDecodeService) <= 140, `CoreProductAssetDecodeService.ts exceeds cleanup size cap (${lineCount(hostAssetDecodeService)} lines)`);
 assert(lineCount(hostDisplayCallbackRegistry) <= 60, `CoreProductDisplayCallbackRegistry.ts exceeds cleanup size cap (${lineCount(hostDisplayCallbackRegistry)} lines)`);
 assert(lineCount(hostGraphTapBridge) <= 80, `CoreProductGraphTapBridge.ts exceeds cleanup size cap (${lineCount(hostGraphTapBridge)} lines)`);
 assert(lineCount(hostHarmonyStateBridge) <= 80, `CoreProductHarmonyStateBridge.ts exceeds cleanup size cap (${lineCount(hostHarmonyStateBridge)} lines)`);
@@ -785,10 +790,12 @@ assert(
   'Legacy Web drum evolve config updates must preserve and apply enabled sub-lane filters',
 );
 assert(
-  synthPage.includes('useRef<Record<SubLaneKind, SubLaneState>[] | null>(null)') &&
-    synthPage.includes('const stepOverridesRef = useRef<StepOverrides | null>(null);') &&
+  synthPage.includes('const stepOverridesSignatureRef = useRef<string | null>(null);') &&
+    synthPage.includes('const pitchSubLaneStatesSignatureRef = useRef<string | null>(null);') &&
+    synthPage.includes('const overridesChanged = stepOverridesSignatureRef.current !== stepOverridesSignature;') &&
+    synthPage.includes('const subLaneStatesChanged = pitchSubLaneStatesSignatureRef.current !== pitchSubLaneStatesSignature;') &&
     drumPage.includes('useRef<Record<SubLaneKind, SubLaneState>[] | null>(null)'),
-  'Synth and drum pages must sync initial sub-lane and step override state to the engine',
+  'Synth and drum pages must semantically sync initial sub-lane and step override state to the engine',
 );
 assert(
   webEngine.includes("sl === 'probability' || sl === 'ratchet' || uiEnabled[sl] === true") &&
@@ -1715,7 +1722,7 @@ for (const token of ['FxDynamicsModSlowWow', 'FxDynamicsModNoiseAlias']) {
 for (const token of [
   'class CoreProductAssetRegistrar',
   'registeredAssetIds',
-  'defaultSoundscapeAssetPromises',
+  'soundscapePromises',
   'registeredAssetDecodedBytes',
   'registerAsset(asset: DecodedCoreProductAsset): Promise<void>',
   'unregisterAsset(assetId: number): void',
@@ -1729,14 +1736,15 @@ for (const token of [
   'hasMissingDefaultAssetsForState(): boolean',
   'ensureDefaultAssetsForState(): Promise<CoreProductAssetEnsureResult>',
   'sampleAssetCache',
-  'ensureSampleAssetsForState(): Promise<void>',
-  'predictedSampleAssetsForState(samplePredictionState(this.readSliderState()))',
+  'ensureSampleAssetsForStates(',
+  'predictedSampleAssetsForState(samplePredictionState(state))',
   'sampleDescriptorForSlotNote(samplePredictionState(this.readSliderState())',
   'ensureSampleSlotAssetForNote(',
-  'ensureDefaultSoundscapeAsset(): Promise<void>',
-  'ensureSoundscapeAssetsForState(): Promise<void>',
-  'getCoreProductSoundscapeAssetDescriptorsForState(this.readSliderState())',
-  'this.decodeAsset(',
+  'ensureSoundscapeAssetsForStates(',
+  'getCoreProductSoundscapeAssetDescriptorsForState(state)',
+  'replaceSceneStates(states:',
+  'clearSceneStates(): boolean',
+  'this.options.decodeAsset(',
   'birds2Enabled',
   'insects2Enabled',
   'CORE_PRODUCT_ASSET_FLAGS.sample',
@@ -2240,7 +2248,7 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 152760',
+  'const SNAPSHOT_BYTES = 152936',
   'const SOURCE_BYTES = 5188',
   'const LANE_BYTES = 100',
   'KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES',
@@ -2580,8 +2588,8 @@ assert(
     runtime.includes('? cloneDecodedCoreProductAssetForTransfer(asset)') &&
     runtime.includes('channels: transferAsset.channels') &&
     runtime.includes('transferAsset.channels.map((channel) => channel.buffer)') &&
-    hostAssetRegistrar.includes("this.mobile ? 'transfer' : 'retain-host-copy'") &&
-    hostAssetRegistrar.includes('this.sampleAssetCache.take(asset.assetId)'),
+    hostAssetSurface.includes("this.mobile ? 'transfer' : 'retain-host-copy'") &&
+    hostAssetSurface.includes('this.options.cache.take(asset.assetId)'),
   'core-product runtime must retain desktop cache ownership and transfer mobile cache ownership',
 );
 
@@ -2656,11 +2664,24 @@ for (const token of [
 ]) {
   assert(selectedAudioEngineJourneyPlaybackAction.includes(token), `Selected journey playback action hook is missing ${token}`);
 }
-for (const token of [
-  'useProductRuntimeStopAction({',
-  'stopJourney: journey.stop',
-]) {
-  assert(app.includes(token) || productRuntimePlaybackSurface.includes(token), `Selected stop action bridge is missing token ${token}`);
+assert(app.includes('useProductRuntimeStopAction({') || productRuntimePlaybackSurface.includes('useProductRuntimeStopAction({'), 'Selected stop action bridge is missing useProductRuntimeStopAction');
+assert(
+  app.includes('stopJourney: journey.stop') || app.includes('stopJourney: backgroundJourney.stop'),
+  'Selected stop action bridge must bind the active Journey stop action',
+);
+if (app.includes('stopJourney: backgroundJourney.stop')) {
+  assert(backgroundJourneyRuntimeSurface.includes('productEngine.stopBackgroundJourney();'), 'Background Journey stop must disable the Product schedule');
+  assert(backgroundJourneyRuntimeSurface.includes('journey.stop();'), 'Background Journey stop must also disable foreground Journey');
+  assert(backgroundJourneyRuntimeSurface.includes('useVisibleInterval('), 'Background Journey UI polling must use the visibility-aware interval hook');
+  assert(!backgroundJourneyRuntimeSurface.includes('window.setInterval('), 'Background Journey UI must not retain raw intervals while hidden');
+  for (const token of [
+    'productEngine.discardBackgroundJourney();',
+    'setIsJourneyPlaying(false);',
+    'setRuntimeProjectionActive(false);',
+    'setPreparationPollingGeneration(null);',
+  ]) {
+    assert(backgroundJourneyRuntimeSurface.includes(token), `Background Journey invalidation is missing ${token}`);
+  }
 }
 for (const token of [
   'stopSelectedPlayback();',
@@ -2994,7 +3015,7 @@ for (const token of [
   'noteRangeMax: this.view.getFloat32(ptr + 3292, true)',
   'expressionRangeSetLow: this.view.getUint32(ptr + 2488, true)',
   'expressionRangeMaxes: this.readFloatOverrides(',
-  'const TELEMETRY_BYTES = 15168;',
+  'const TELEMETRY_BYTES = 15448;',
   'rngSeed: this.view.getUint32(ptr + 928, true)',
   'rngState: this.view.getUint32(ptr + 932, true)',
   'for (let index = 0; index < 8; index += 1)',
@@ -3365,6 +3386,7 @@ const snapshotImportAllowlist = new Set([
   './harmony',
   './harmonySeedMaterial',
   './outputTrims',
+  './product/compileProductSourceMorphAutomation',
   './rng',
   './sampleLibraries/SampleLibraryTypes',
   './sampleLibraries/sampleSlotProductSnapshot',
@@ -3400,6 +3422,7 @@ const hostImportAllowlist = new Set([
   './CoreProductHostHarmonyState',
   './CoreProductHostMidi',
   './product/host/CoreProductArrangementBridge',
+  './product/host/CoreProductBackgroundJourneyCoordinator',
   './product/host/CoreProductHostDiagnostics',
   './product/host/CoreProductHostDebugSurface',
   './product/host/CoreProductDisplayCallbackRegistry',
@@ -3472,6 +3495,8 @@ const hostImportAllowlist = new Set([
   './generated/kesshoProductEvents',
   './generated/kesshoProductParams',
   './product/ProductEngineTypes',
+  './product/journey/compileBackgroundJourneyPlan',
+  './product/ports/ProductJourneyPort',
   './product/liveNoteEvents',
   './product/ProductRuntimeCapabilityReport',
   './product/ProductRuntimeDiagnostics',

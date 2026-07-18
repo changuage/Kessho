@@ -39,7 +39,7 @@ import { snapshotReloadReasonForProductPatch } from './product/host/CoreProductP
 import { CoreProductSnapshotAckMetadataFactory } from './product/host/CoreProductSnapshotAckMetadata';
 import { applyCoreProductSnapshotUpdate, loadCoreProductSnapshot } from './product/host/CoreProductSnapshotCoordinator';
 import { createCoreProductHostSnapshot } from './product/host/CoreProductHostSnapshotFactory';
-import { createCoreProductPerfSnapshot, enrichCoreProductHostTelemetry, mergeCoreProductVisualTelemetry } from './product/host/CoreProductTelemetryAdapter';
+import { CoreProductSonicAutonomyTracker, createCoreProductPerfSnapshot, enrichCoreProductHostTelemetry, mergeCoreProductVisualTelemetry } from './product/host/CoreProductTelemetryAdapter';
 import { createCoreProductEarthTextureDebugState } from './product/host/CoreProductEarthTextureDebug';
 import { logCoreProductDebugTelemetry } from './CoreProductHostDebugTelemetry';
 import { reconcileCoreProductSequencerUiState } from './product/host/CoreProductSequencerUiAdapter';
@@ -73,6 +73,9 @@ import { CoreProductTelemetryCallbackScheduler } from './product/host/CoreProduc
 import { CoreProductHostLifecycleCoordinator } from './product/host/CoreProductHostLifecycleCoordinator';
 import { CoreProductGeneratedSequencerCaptureTelemetryHistory } from './product/host/CoreProductGeneratedSequencerCaptureTelemetryHistory';
 import { productSamplePlaybackTriggerCriticalChange } from './product/host/CoreProductSamplePlaybackChange';
+import type { BackgroundJourneyPlan } from './product/journey/compileBackgroundJourneyPlan';
+import type { ProductBackgroundJourneyReadiness } from './product/ports/ProductJourneyPort';
+import { CoreProductBackgroundJourneyCoordinator } from './product/host/CoreProductBackgroundJourneyCoordinator';
 const PRODUCT_VISIBLE_SYNTH_LANE_COUNT = SYNTH_EUCLIDEAN_LANE_COUNT, PRODUCT_VISIBLE_DRUM_LANE_COUNT = DRUM_EUCLIDEAN_LANE_COUNT;
 type SequencerLanePitchState = { steps?: number; direction?: LaneDirection; scaleQuantize?: boolean };
 class CoreProductEngineHost {
@@ -111,10 +114,11 @@ class CoreProductEngineHost {
   private readonly debugSurface = new CoreProductHostDebugSurface({ engineMode: 'core-product', runtime: this.runtime, running: () => this.running, runtimeReady: () => this.runtimeReady, latestProductSnapshot: () => this.latestProductSnapshot, latestSliderState: () => this.latestSliderState, latestTelemetry: () => this.latestTelemetry, runtimeWalkDebug: () => this.modulationRangeBridge.getRuntimeWalkDebugState() });
   private synthSubLaneEnabled: Record<string, boolean>[] = Array.from({ length: PRODUCT_VISIBLE_SYNTH_LANE_COUNT }, () => ({}));
   private drumSubLaneEnabled: Record<string, boolean>[] = Array.from({ length: PRODUCT_VISIBLE_DRUM_LANE_COUNT }, () => ({}));
-  private latestTelemetry: CoreProductTelemetrySnapshot | null = null;
+  private latestTelemetry: CoreProductTelemetrySnapshot | null = null; private readonly sonicAutonomyTracker = new CoreProductSonicAutonomyTracker();
   private runtimeReady = false;
   private running = false;
   private readonly journeyMorphClock = new CoreProductJourneyMorphClock({ hasCallback: () => this.displayCallbacks.has('journeyMorphClock'), invoke: (now) => this.invokeDisplayCallback('journeyMorphClock', now), isDocumentVisible: () => this.isDocumentVisible(), nowMs: () => this.nowMs() });
+  private readonly backgroundJourney = new CoreProductBackgroundJourneyCoordinator({ runtime: this.runtime, assets: this.assetRegistrar, telemetry: () => this.latestTelemetry, isDocumentVisible: () => this.isDocumentVisible(), post: (event) => this.postRuntimeProductEvent(event), stopLegacyMorphClock: () => this.journeyMorphClock.stop() });
   private readonly diagnostics = new CoreProductHostDiagnostics();
   private readonly statePatchQueue = new CoreProductStatePatchQueue({ latestSliderState: () => this.latestSliderState, applyProductState: (sliderState, reason, options) => this.applyProductState(sliderState, reason, options) });
   private readonly resolvedStateCommitService = new CoreProductResolvedStateCommitService({ diagnostics: this.diagnostics, applyProductStatePatch: (patch, reason, options) => this.applyProductStatePatch(patch, reason, options), postProductEvents: (events) => this.postProductEvents(events) });
@@ -142,6 +146,7 @@ class CoreProductEngineHost {
   });
   private readonly productEventBatcher = new CoreProductRuntimeEventBatcher(this.runtime);
   private readonly telemetryCallbackScheduler = new CoreProductTelemetryCallbackScheduler();
+  private mobileWebEvidenceTelemetryObserver: ((telemetry: CoreProductTelemetrySnapshot) => void) | null = null;
   private readonly postSnapshotEvents = new CoreProductPostSnapshotEventQueue({ canFlush: () => this.runtimeReady && this.runtime.audioContext?.state === 'running', post: (events) => this.postRuntimeProductEvents(events) });
   private readonly generatedSequencerCaptureTelemetryHistory = new CoreProductGeneratedSequencerCaptureTelemetryHistory();
   private readonly sequencerEvolveBridge = new CoreProductSequencerEvolveRuntimeBridge({ adapterState: () => this.adapterState, latestSliderState: () => this.latestSliderState, latestProductSnapshot: () => this.latestProductSnapshot, latestTelemetry: () => this.latestTelemetry, runtimeReady: () => this.runtimeReady, postWithHomeCapture: (event) => { this.captureSequencerHomeForEvent(event); this.postRuntimeProductEvent(event); } });
@@ -259,6 +264,12 @@ class CoreProductEngineHost {
   }
   requestProductTelemetryOnce(): void {
     this.runtime.requestTelemetryOnce('manual');
+  }
+
+  setMobileWebEvidenceTelemetryObserver(
+    observer: ((telemetry: CoreProductTelemetrySnapshot) => void) | null,
+  ): void {
+    this.mobileWebEvidenceTelemetryObserver = observer;
   }
 
   getProductRuntimeDiagnostics(): ProductRuntimeDiagnostics {
@@ -462,7 +473,8 @@ class CoreProductEngineHost {
     runtime.setTelemetryPollingEnabled?.(
       this.telemetryCallbackScheduler.hasCallback() ||
       this.stateChangeCallback !== null ||
-      (this.perfMonitorEnabled && this.perfUpdateCallback !== null)
+      (this.perfMonitorEnabled && this.perfUpdateCallback !== null) ||
+      this.displayCallbacks.has('synthStepPosition') || this.displayCallbacks.has('drumStepPosition')
     );
     runtime.setTelemetryTransportRunning?.(this.running);
   }
@@ -518,19 +530,17 @@ class CoreProductEngineHost {
   ): void {
     triggerCoreProductSynthVoice(this.manualAuditionContext(), voiceIndex, frequency, velocity, noteDuration, padParamsOverride);
   }
-
-  async loadLeadPreset(slot: unknown, presetId: unknown): Promise<void> {
-    await this.leadPresetDataLoader.loadLeadPreset(slot, presetId);
-  }
-
-  registerAsset(asset: DecodedCoreProductAsset): void {
-    this.assetRegistrar.registerAsset(asset);
-  }
-
-  unregisterAsset(assetId: number): void {
-    this.assetRegistrar.unregisterAsset(assetId);
-  }
-
+  async loadLeadPreset(slot: unknown, presetId: unknown): Promise<void> { await this.leadPresetDataLoader.loadLeadPreset(slot, presetId); }
+  registerAsset(asset: DecodedCoreProductAsset): void { this.assetRegistrar.registerAsset(asset); }
+  unregisterAsset(assetId: number): void { this.assetRegistrar.unregisterAsset(assetId); }
+  async prepareSceneAssets(states: readonly Record<string, unknown>[]): Promise<void> { const result = await this.assetRegistrar.ensureSceneAssets(states); if (result.status === 'not-ready') throw new CoreProductAssetNotReadyError(result); }
+  clearSceneAssets(): void { this.assetRegistrar.clearSceneAssets(); }
+  async prepareBackgroundJourney(plan: BackgroundJourneyPlan, states: readonly Record<string, unknown>[]): Promise<ProductBackgroundJourneyReadiness> { return this.backgroundJourney.prepare(plan, states); }
+  startBackgroundJourney(revision: number): boolean { return this.backgroundJourney.start(revision); }
+  stopBackgroundJourney(): void { this.backgroundJourney.stop(); }
+  discardBackgroundJourney(): void { this.backgroundJourney.discard(); }
+  getBackgroundJourneyReadiness(): ProductBackgroundJourneyReadiness { return this.backgroundJourney.getReadiness(); }
+  estimateBackgroundJourneyAssets(states: readonly Record<string, unknown>[]): { complete: boolean; decodedBytes: number; sharedAssetReuse: number } { return this.backgroundJourney.estimateAssets(states); }
   pushMidiMessage(message: KesshoMidiMessage): void {
     const event = createCoreProductHostMidiEvent(message, this.realtimeTimestampMapper.midiContext(message, this.runtime.audioContext));
     this.realtimeInputBootstrap.postWhenReady(event, 'midi');
@@ -539,11 +549,7 @@ class CoreProductEngineHost {
     const productEvent = createCoreProductLiveNoteEvent(event, this.realtimeTimestampMapper.liveNoteContext(event, this.runtime.audioContext));
     this.realtimeInputBootstrap.postWhenReady(productEvent, 'live-note');
   }
-
-  setRuntimeWalkPositionsCallback(callback: ((positions: Record<string, number>) => void) | null): void {
-    this.setDisplayCallback('runtimeWalkPositions', callback);
-    callback?.(this.modulationRangeBridge.getRuntimeWalkPositions());
-  }
+  setRuntimeWalkPositionsCallback(callback: ((positions: Record<string, number>) => void) | null): void { this.setDisplayCallback('runtimeWalkPositions', callback); callback?.(this.modulationRangeBridge.getRuntimeWalkPositions()); }
   setDrumMorphRange(voice: unknown, range: { min: number; max: number } | null): void {
     const voiceIndex = drumVoiceIndex(voice);
     this.modulationRangeBridge.setDrumMorphRange(voiceIndex, range);
@@ -725,9 +731,7 @@ class CoreProductEngineHost {
   private queuePostSnapshotEvents(events: readonly CoreProductEvent[]): void {
     this.postSnapshotEvents.queue(events);
   }
-
   flushPostSnapshotEventQueue(): void { this.postSnapshotEvents.flush(); }
-
   private nowMs(): number { return typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now(); }
 
   private createLatestSnapshot(includeClockStartDelay = false): CoreProductSnapshot {
@@ -741,7 +745,6 @@ class CoreProductEngineHost {
   }
 
   private createLatestArrangementState(): Record<string, unknown> | null { return this.arrangementBridge.createState(this.latestSliderState, this.adapterState); }
-
   private handleTelemetry(telemetry: CoreProductTelemetrySnapshot): void {
     const hostTelemetry = this.generatedSequencerCaptureTelemetryHistory.withHistory(this.withHostDiagnostics(telemetry));
     logCoreProductDebugTelemetry(hostTelemetry);
@@ -762,6 +765,7 @@ class CoreProductEngineHost {
     this.reconcileSequencerUiState(hostTelemetry);
     if (documentVisible) this.sequencerVisuals.updateMorphFeedback(hostTelemetry);
     hostTelemetry.sampleHoldDebug = this.modulationRangeBridge.getSampleHoldDebugState();
+    this.mobileWebEvidenceTelemetryObserver?.(hostTelemetry);
     this.tickSequencerEvolveClock(hostTelemetry); this.publishStateIfHarmonyChanged();
     this.telemetryCallbackScheduler.schedule(hostTelemetry);
     if (documentVisible) {
@@ -793,15 +797,12 @@ class CoreProductEngineHost {
   }
 
   private captureSequencerHomeForEvent(event: CoreProductEvent): void { const sequencer = event.targetId === CORE_PRODUCT_SEQUENCER_IDS.synth ? 'synth' : event.targetId === CORE_PRODUCT_SEQUENCER_IDS.drum ? 'drum' : null; const laneIndex = typeof event.index === 'number' ? event.index : -1; if (sequencer) this.captureSequencerHomeLane(sequencer, laneIndex); }
-
   private sequencerCacheState(): CoreProductSequencerCacheState { return this.sequencerCache; }
-
   private armSequencerManualDice(sequencer: SequencerKind, laneIndex: number): void {
     armCoreProductSequencerManualDice({ state: this.manualSynthDiceState, sequencer, laneIndex, cache: this.sequencerCacheState(), arm: (diceSequencer, diceLaneIndex) => this.sequencerHome.armManualDice(diceSequencer, diceLaneIndex) });
   }
 
   private markManualSynthDiceReady(laneIndex: number): void { markCoreProductManualSynthDiceReady(this.manualSynthDiceState, laneIndex, (readyLaneIndex) => this.sequencerHome.markManualDiceReady('synth', readyLaneIndex)); }
-
   private applyManualSynthDice(laneIndex: number, intensity: number): boolean {
     this.ensureSequencerLaneCache('synth', laneIndex);
     return applyCoreProductManualSynthDice({ state: this.manualSynthDiceState, laneIndex, intensity, cache: this.sequencerCacheState(), adapterState: this.adapterState, latestSliderState: this.latestSliderState, latestProductSnapshot: this.latestProductSnapshot, latestTelemetry: this.latestTelemetry, enabledSubLanes: this.enabledSequencerSubLanes('synth', laneIndex), armManualDice: () => this.sequencerHome.armManualDice('synth', laneIndex), post: (event) => this.postManualSynthDiceEvent(event), publish: (name, ...payload) => this.invokeDisplayCallback(name, ...payload), captureHome: (force = false) => this.captureSequencerHomeLane('synth', laneIndex, force) });
@@ -938,7 +939,7 @@ class CoreProductEngineHost {
         telemetry,
         this.diagnostics.snapshot(),
         this.assetRegistrar.registeredDecodedAssetByteLength(),
-        this.assetRegistrar.hostDecodedBytes(), this.assetRegistrar.inFlightDecodedByteLength(),
+        this.assetRegistrar.hostDecodedBytes(), this.assetRegistrar.inFlightDecodedByteLength(), this.sonicAutonomyTracker,
       )),
       earthTextureDebugState: createCoreProductEarthTextureDebugState(
         this.latestSliderState,
@@ -988,9 +989,7 @@ class CoreProductEngineHost {
   private collectSequencerStepToggleEvents(events: CoreProductEvent[], sequencer: SequencerKind, forceClear: boolean): void {
     syncCoreProductSequencerStepState({ sequencer, cache: this.sequencerCacheState(), forceClear, synthSubLaneEnabled: this.synthSubLaneEnabled, drumSubLaneEnabled: this.drumSubLaneEnabled, post: (event) => events.push(event) });
   }
-  private setDisplayCallback(name: string, callback: unknown): void {
-    this.displayCallbacks.setCallback(name, callback);
-  }
+  private setDisplayCallback(name: string, callback: unknown): void { this.displayCallbacks.setCallback(name, callback); this.updateRuntimeTelemetryPolling(); }
   private invokeDisplayCallback(name: string, ...args: unknown[]): void {
     this.displayCallbacks.invoke(name, ...args);
   }

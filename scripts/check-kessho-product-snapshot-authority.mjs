@@ -68,6 +68,7 @@ const allowedImports = new Set([
   './granularMacroCore',
   './harmonySeedMaterial',
   './outputTrims',
+  './product/compileProductSourceMorphAutomation',
   './rng',
   './sequencerClockDivisions',
   './sequencerAudibility',

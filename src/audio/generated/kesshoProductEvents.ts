@@ -50,7 +50,33 @@ export const KESSHO_PRODUCT_EVENT_IDS = Object.freeze({
   GeneratedSequencerCapture: 47,
   SetSynthArpConfig: 48,
   SetSynthArpStep: 49,
-  CommitSynthArpPattern: 50
+  CommitSynthArpPattern: 50,
+  SetAutoStop: 51,
+  SetScatterVoiceParam: 52,
+  CommitScatterConfig: 53,
+  SetScatterEnabled: 54,
+  BeginSceneProgram: 55,
+  SetSceneEntry: 56,
+  SetSceneCommandHeader: 57,
+  SetSceneCommandValues: 58,
+  CommitSceneProgram: 59,
+  SetScenePosition: 60,
+  BeginRoutingMuteGroups: 61,
+  SetRoutingMuteGroupSlot: 62,
+  CommitRoutingMuteGroups: 63,
+  RecallRoutingMuteGroup: 64,
+  SetRoutingMuteGroupsEnabled: 65,
+  ConfigureGlobalAutoCycle: 66,
+  BeginJourneySchedule: 67,
+  SetJourneyScheduleEntryHold: 68,
+  SetJourneyScheduleEntryMorph: 69,
+  BeginJourneyTransitionProgram: 70,
+  SetJourneyTransitionEntry: 71,
+  SetJourneyTransitionCommandHeader: 72,
+  SetJourneyTransitionCommandValues: 73,
+  CommitJourneyTransitionProgram: 74,
+  CommitJourneySchedule: 75,
+  SetJourneyScheduleEnabled: 76
 } as const);
 
 export const KESSHO_PRODUCT_EVENTS = Object.freeze([
@@ -253,6 +279,110 @@ export const KESSHO_PRODUCT_EVENTS = Object.freeze([
   {
     "name": "CommitSynthArpPattern",
     "id": 50
+  },
+  {
+    "name": "SetAutoStop",
+    "id": 51
+  },
+  {
+    "name": "SetScatterVoiceParam",
+    "id": 52
+  },
+  {
+    "name": "CommitScatterConfig",
+    "id": 53
+  },
+  {
+    "name": "SetScatterEnabled",
+    "id": 54
+  },
+  {
+    "name": "BeginSceneProgram",
+    "id": 55
+  },
+  {
+    "name": "SetSceneEntry",
+    "id": 56
+  },
+  {
+    "name": "SetSceneCommandHeader",
+    "id": 57
+  },
+  {
+    "name": "SetSceneCommandValues",
+    "id": 58
+  },
+  {
+    "name": "CommitSceneProgram",
+    "id": 59
+  },
+  {
+    "name": "SetScenePosition",
+    "id": 60
+  },
+  {
+    "name": "BeginRoutingMuteGroups",
+    "id": 61
+  },
+  {
+    "name": "SetRoutingMuteGroupSlot",
+    "id": 62
+  },
+  {
+    "name": "CommitRoutingMuteGroups",
+    "id": 63
+  },
+  {
+    "name": "RecallRoutingMuteGroup",
+    "id": 64
+  },
+  {
+    "name": "SetRoutingMuteGroupsEnabled",
+    "id": 65
+  },
+  {
+    "name": "ConfigureGlobalAutoCycle",
+    "id": 66
+  },
+  {
+    "name": "BeginJourneySchedule",
+    "id": 67
+  },
+  {
+    "name": "SetJourneyScheduleEntryHold",
+    "id": 68
+  },
+  {
+    "name": "SetJourneyScheduleEntryMorph",
+    "id": 69
+  },
+  {
+    "name": "BeginJourneyTransitionProgram",
+    "id": 70
+  },
+  {
+    "name": "SetJourneyTransitionEntry",
+    "id": 71
+  },
+  {
+    "name": "SetJourneyTransitionCommandHeader",
+    "id": 72
+  },
+  {
+    "name": "SetJourneyTransitionCommandValues",
+    "id": 73
+  },
+  {
+    "name": "CommitJourneyTransitionProgram",
+    "id": 74
+  },
+  {
+    "name": "CommitJourneySchedule",
+    "id": 75
+  },
+  {
+    "name": "SetJourneyScheduleEnabled",
+    "id": 76
   }
 ] as const);
 export type KesshoProductEventName = keyof typeof KESSHO_PRODUCT_EVENT_IDS;

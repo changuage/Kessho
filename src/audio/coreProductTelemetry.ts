@@ -158,6 +158,10 @@ export type CoreProductTelemetrySnapshot = {
   transportPendingApplyFrame?: number;
   transportTransitionRevision?: number;
   transportPhraseProgress?: number;
+  sourceMorphAutomationEnabledMask?: number;
+  sourceMorphValues?: number[];
+  autoStopEnabled?: boolean;
+  autoStopTargetSampleFrame?: number;
   activeSources: number;
   activeVoices: number;
   activeAssets: number;
@@ -249,6 +253,43 @@ export type CoreProductTelemetrySnapshot = {
   synthSequencerCurrentSteps?: number[];
   drumSequencerCurrentSteps?: number[];
   synthArpCurrentSteps?: number[];
+  synthArpCurrentMidis?: number[];
+  scatterCurrentPhraseId?: number;
+  scatterCurrentVoice?: number;
+  scatterCurrentStep?: number;
+  scatterPulseCount?: number;
+  sceneProgramRevision?: number;
+  scenePosition?: number;
+  routingMuteGroupRevision?: number;
+  routingMuteGroupActiveSlot?: number;
+  routingMuteGroupNextSlot?: number;
+  routingMuteGroupMask?: number;
+  routingMuteGroupNextChangeFrame?: number;
+  routingMuteGroupTransitionProgress?: number;
+  routingMuteGroupsEnabled?: boolean;
+  routingMuteGroupTraceRevision?: number;
+  autoCycleRevision?: number;
+  autoCyclePhase?: number;
+  autoCyclePosition?: number;
+  autoCyclePhaseStartFrame?: number;
+  autoCyclePhaseEndFrame?: number;
+  autoCycleTransitionCount?: number;
+  autoCycleEnabled?: boolean;
+  journeyScheduleRevision?: number;
+  journeySchedulePhase?: number;
+  journeyCurrentNodeIndex?: number;
+  journeyNextNodeIndex?: number;
+  journeyScheduleIndex?: number;
+  journeyLoopIndex?: number;
+  journeyHoldProgress?: number;
+  journeyMorphProgress?: number;
+  journeyPreparedTotalFrames?: number;
+  journeyTransitionCount?: number;
+  journeyScheduleRunning?: boolean;
+  journeyRngStateAfterPlan?: number;
+  journeyScheduleEntryCount?: number;
+  sonicAutonomyRevision?: number;
+  sonicAutonomyFingerprint?: string;
   synthOrbitVisualLanes?: Array<CoreProductOrbitVisualLaneState | null>;
   synthAnchorWalkerVisualLanes?: Array<CoreProductAnchorWalkerVisualLaneState | null>;
   generatedSequencerCaptureEvents?: GeneratedSequencerCaptureEvent[];
@@ -318,6 +359,34 @@ export type CoreProductVisualTelemetrySnapshot = Pick<
   | 'synthSequencerCurrentSteps'
   | 'drumSequencerCurrentSteps'
   | 'synthArpCurrentSteps'
+  | 'synthArpCurrentMidis'
+  | 'scatterCurrentPhraseId'
+  | 'scatterCurrentVoice'
+  | 'scatterCurrentStep'
+  | 'scatterPulseCount'
+  | 'sceneProgramRevision'
+  | 'scenePosition'
+  | 'routingMuteGroupRevision'
+  | 'routingMuteGroupActiveSlot'
+  | 'routingMuteGroupNextSlot'
+  | 'routingMuteGroupMask'
+  | 'routingMuteGroupNextChangeFrame'
+  | 'routingMuteGroupTransitionProgress'
+  | 'routingMuteGroupsEnabled'
+  | 'routingMuteGroupTraceRevision'
+  | 'journeyScheduleRevision'
+  | 'journeySchedulePhase'
+  | 'journeyCurrentNodeIndex'
+  | 'journeyNextNodeIndex'
+  | 'journeyScheduleIndex'
+  | 'journeyLoopIndex'
+  | 'journeyHoldProgress'
+  | 'journeyMorphProgress'
+  | 'journeyPreparedTotalFrames'
+  | 'journeyTransitionCount'
+  | 'journeyScheduleRunning'
+  | 'journeyRngStateAfterPlan'
+  | 'journeyScheduleEntryCount'
   | 'synthOrbitVisualLanes'
   | 'synthAnchorWalkerVisualLanes'
   | 'workletOutputPeak'

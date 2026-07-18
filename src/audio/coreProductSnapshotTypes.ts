@@ -53,6 +53,13 @@ export type ProductSourceSnapshot = {
   drumVoiceMorphs: number[];
 };
 
+export type ProductSourceMorphAutomationSnapshot = {
+  enabled: boolean;
+  mode: number;
+  phrasesPerCycle: number;
+  seed: number;
+};
+
 export type ProductLaneSnapshot = {
   enabled: boolean;
   muted: boolean;
@@ -598,6 +605,9 @@ export type CoreProductSnapshot = {
   assetRefs: number[];
   assetRefLevels: number[];
   soundscape: ProductSoundscapeSnapshot;
+  sonicRuntime: {
+    sourceMorph: ProductSourceMorphAutomationSnapshot[];
+  };
   arrangement: {
     chordGeneratorEnabled: boolean;
     chordGeneratorSourceId: number;

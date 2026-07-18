@@ -668,7 +668,7 @@ assert(
     journeyMorphRuntimeSurface.includes('startJourneyPlayback(startState, startPreset.name)') &&
     !app.includes("from './ui/useSelectedAudioEngineStopAction'") &&
     !app.includes('useSelectedAudioEngineStopAction({') &&
-    app.includes('stopJourney: journey.stop') &&
+    app.includes('stopJourney: backgroundJourney.stop') &&
     !app.includes("from './ui/useSelectedAudioEnginePresetLoadFade'") &&
     !app.includes('useSelectedAudioEnginePresetLoadFade({') &&
     app.includes('fadeProductRuntimeOutput,') &&
@@ -1194,15 +1194,15 @@ assert(
     productRuntimeGlobalSurface.includes("import { useVisibleInterval } from './hooks/useVisibleInterval'") &&
     productRuntimeGlobalSurface.includes('type ProductRuntimeGlobalProps = Pick<') &&
     productRuntimeGlobalSurface.includes('type ProductRuntimeGlobalRecordingProps = Pick<') &&
-    productRuntimeGlobalSurface.includes('stopProductPlayback: () => void') &&
     productRuntimeGlobalSurface.includes('recordingProps: ProductRuntimeGlobalRecordingProps') &&
     productRuntimeGlobalSurface.includes('const playbackTimerTargetTimeRef = useRef<number | null>(null)') &&
-    productRuntimeGlobalSurface.includes('const updatePlaybackTimerCountdown = useCallback(() =>') &&
-    productRuntimeGlobalSurface.includes('stopProductPlayback();') &&
-    productRuntimeGlobalSurface.includes('useVisibleInterval(updatePlaybackTimerCountdown, 1000') &&
+    productRuntimeGlobalSurface.includes('const updatePlaybackTimerProjection = useCallback(() =>') &&
+    productRuntimeGlobalSurface.includes('createCoreProductAutoStopEvent(initialRemaining)') &&
+    productRuntimeGlobalSurface.includes('createCoreProductAutoStopEvent(null)') &&
+    productRuntimeGlobalSurface.includes('useVisibleInterval(updatePlaybackTimerProjection, 1000') &&
     !productRuntimeGlobalSurface.includes('SelectedAudioEngineGlobalRuntimeSurfaceOptions') &&
     !productRuntimeGlobalSurface.includes('Parameters<typeof useSelectedAudioEngineGlobalRuntimeSurface>') &&
-    !productRuntimeGlobalSurface.includes('productEngine') &&
+    productRuntimeGlobalSurface.includes('productEngine.enqueueEvent(') &&
     !productRuntimeGlobalSurface.includes('selectedProductRuntime') &&
     !productRuntimeGlobalSurface.includes('referenceAudioEngineDebug') &&
     !app.includes("from './ui/useSelectedAudioEnginePlaybackTimer'") &&
@@ -1212,8 +1212,8 @@ assert(
     app.includes('resetPlaybackTimer,') &&
     app.includes('useProductRuntimePlaybackSurface({') &&
     !app.includes('playbackTimerTargetTimeRef') &&
-    !app.includes('const updatePlaybackTimerCountdown = useCallback(') &&
-    !app.includes('useVisibleInterval(updatePlaybackTimerCountdown') &&
+    !app.includes('const updatePlaybackTimerProjection = useCallback(') &&
+    !app.includes('useVisibleInterval(updatePlaybackTimerProjection') &&
     selectedAudioEngineGlobalRuntimeSurface.includes('useSelectedAudioEnginePlaybackTimer({') &&
     selectedAudioEngineGlobalRuntimeSurface.includes('useSelectedAudioEngineGlobalRuntimeProps({') &&
     selectedAudioEngineGlobalRuntimeSurface.includes('playbackTimerProps: {') &&
@@ -1224,7 +1224,7 @@ assert(
     selectedAudioEnginePlaybackTimer.includes('const updatePlaybackTimerCountdown = useCallback(() =>') &&
     selectedAudioEnginePlaybackTimer.includes('stopSelectedPlayback();') &&
     selectedAudioEnginePlaybackTimer.includes('useVisibleInterval(updatePlaybackTimerCountdown, 1000'),
-  'Product global surface must own Product playback timer while selected global surface owns selected timer hook',
+  'Product global surface must schedule Product Core auto-stop and project its countdown while the selected surface owns the reference timer hook',
 );
 assert(
   productAudioRuntimeSelection.includes("const PRODUCT_RUNTIME_MODES = ['core-product']"),

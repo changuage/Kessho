@@ -47,6 +47,7 @@ export type CoreProductSoundscapeAssetKey = CoreProductSoundscapeAssetManifestKe
 export type CoreProductSoundscapeAssetDescriptor = {
   assetId: number;
   url: string;
+  assetPath: string;
   level: number;
 };
 
@@ -161,6 +162,9 @@ export function getCoreProductSoundscapeAssetDescriptorsForState(
       candidates.push({ key: 'ocean', level: oceanLevel });
     }
   }
+  if (booleanFromState(state, 'waterEnabled')) {
+    candidates.push({ key: 'water', level: clamp01(numberFromState(state, 'waterLevel') ?? 0) });
+  }
   if (booleanFromState(state, 'birdsEnabled')) {
     candidates.push({ key: 'birds', level: clamp01(numberFromState(state, 'birdsLevel') ?? 0) * natureLevel });
   }
@@ -169,6 +173,16 @@ export function getCoreProductSoundscapeAssetDescriptorsForState(
   }
   if (booleanFromState(state, 'frogsEnabled')) {
     candidates.push({ key: 'frogs', level: clamp01(numberFromState(state, 'frogsLevel') ?? 0) * natureLevel });
+  }
+  if (booleanFromState(state, 'insectsEnabled') || booleanFromState(state, 'insects2Enabled')) {
+    const insectsLevel = booleanFromState(state, 'insectsEnabled')
+      ? clamp01(numberFromState(state, 'insectsLevel') ?? 0)
+      : 0;
+    const insects2Level = booleanFromState(state, 'insects2Enabled')
+      ? clamp01(numberFromState(state, 'insects2Level') ?? 0)
+      : 0;
+    const sharedLevel = clamp01(numberFromState(state, 'insectsSharedLevel') ?? 1);
+    candidates.push({ key: 'insects', level: Math.max(insectsLevel, insects2Level) * sharedLevel * natureLevel });
   }
   const seen = new Set<number>();
   return candidates.flatMap(({ key, level }) => {
@@ -180,6 +194,7 @@ export function getCoreProductSoundscapeAssetDescriptorsForState(
     return [{
       assetId: asset.assetId,
       url: resolveCoreProductAssetUrl(asset.path),
+      assetPath: asset.path,
       level: clampedLevel,
     }];
   });
