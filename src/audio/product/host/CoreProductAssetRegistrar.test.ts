@@ -40,7 +40,7 @@ assert.equal(registrar.registeredDecodedAssetByteLength(), 256);
 registrar.unregisterAsset(77);
 assert.deepEqual(releaseRequests, [77]);
 assert.equal(registrar.registeredDecodedAssetByteLength(), 256, 'pending release changed byte accounting early');
-await assert.rejects(registrar.registerAsset(asset), /already registered or pending release/);
+await assert.rejects(registrar.registerAsset(asset), /pending release/);
 releaseComplete(77);
 assert.equal(registrar.registeredDecodedAssetByteLength(), 0, 'release completion did not update byte accounting');
 
@@ -54,5 +54,25 @@ assert.equal(registrar.backgroundAssetClosure().notReadyReason, 'release-failed'
 const mobileRegistrar = new CoreProductAssetRegistrar(runtime, () => null, true);
 await mobileRegistrar.registerAsset({ ...asset, assetId: 78 });
 assert.equal(ownerships[ownerships.length - 1], 'transfer', 'mobile registration should transfer original decoded arrays');
+
+let completeRegistration = (): void => { throw new Error('registration resolver was not installed'); };
+const concurrentRegistrations: number[] = [];
+const concurrentRuntime = {
+  ...runtime,
+  registerAsset: async (candidate: DecodedCoreProductAsset) => {
+    concurrentRegistrations.push(candidate.assetId);
+    await new Promise<void>((resolve) => {
+      completeRegistration = resolve;
+    });
+  },
+} as unknown as CoreProductRuntime;
+const concurrentRegistrar = new CoreProductAssetRegistrar(concurrentRuntime, () => null);
+const concurrentAsset = { ...asset, assetId: 79 };
+const firstRegistration = concurrentRegistrar.registerAsset(concurrentAsset);
+const secondRegistration = concurrentRegistrar.registerAsset(concurrentAsset);
+assert.deepEqual(concurrentRegistrations, [79], 'concurrent registration should coalesce duplicate asset ids');
+completeRegistration?.();
+await Promise.all([firstRegistration, secondRegistration]);
+assert.equal(concurrentRegistrar.registeredDecodedAssetByteLength(), 256);
 
 console.log('Core Product asset registrar release tests passed');

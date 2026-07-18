@@ -29,6 +29,7 @@ export class CoreProductAssetRegistrar {
   private readonly registeredAssetIds = new Set<number>();
   private readonly pendingReleaseAssetIds = new Set<number>();
   private readonly pendingRegistrationAssetIds = new Set<number>();
+  private readonly pendingRegistrationPromises = new Map<number, Promise<void>>();
   private readonly requiredAssetIds = new Set<number>();
   private readonly registeredAssetDecodedBytes = new Map<number, number>();
   private readonly mobile: boolean;
@@ -84,15 +85,28 @@ export class CoreProductAssetRegistrar {
   }
 
   async registerAsset(asset: DecodedCoreProductAsset): Promise<void> {
-    if (this.registeredAssetIds.has(asset.assetId) || this.pendingReleaseAssetIds.has(asset.assetId)) {
-      throw new Error(`Core Product asset ${asset.assetId} is already registered or pending release`);
+    const pendingRegistration = this.pendingRegistrationPromises.get(asset.assetId);
+    if (pendingRegistration) return pendingRegistration;
+    if (this.pendingReleaseAssetIds.has(asset.assetId)) {
+      throw new Error(`Core Product asset ${asset.assetId} is pending release`);
     }
+    if (this.registeredAssetIds.has(asset.assetId)) return;
     const decodedBytes = getDecodedCoreProductAssetByteLength(asset);
     const ownership: AssetTransferOwnership = this.mobile ? 'transfer' : 'retain-host-copy';
-    await this.runtime.registerAsset(asset, ownership);
-    this.registeredAssetIds.add(asset.assetId);
-    this.registeredAssetDecodedBytes.set(asset.assetId, decodedBytes);
-    this.workingSet.recordRegistration(asset.assetId, decodedBytes);
+    this.pendingRegistrationAssetIds.add(asset.assetId);
+    const registration = (async () => {
+      await this.runtime.registerAsset(asset, ownership);
+      this.registeredAssetIds.add(asset.assetId);
+      this.registeredAssetDecodedBytes.set(asset.assetId, decodedBytes);
+      this.workingSet.recordRegistration(asset.assetId, decodedBytes);
+    })();
+    this.pendingRegistrationPromises.set(asset.assetId, registration);
+    try {
+      await registration;
+    } finally {
+      this.pendingRegistrationPromises.delete(asset.assetId);
+      this.pendingRegistrationAssetIds.delete(asset.assetId);
+    }
   }
 
   unregisterAsset(assetId: number): void {

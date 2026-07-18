@@ -138,6 +138,7 @@ export class CoreProductRuntime {
   private readonly pendingAssetRegistrations = new Map<number, {
     resolve: () => void;
     reject: (error: Error) => void;
+    promise: Promise<void>;
   }>();
   private readonly graphTapCaptureSessions = new Map<number, GraphTapCaptureSession>();
   private readonly handleVisibilityChange = (): void => {
@@ -584,15 +585,22 @@ export class CoreProductRuntime {
     asset: DecodedCoreProductAsset,
     ownership: AssetTransferOwnership = 'retain-host-copy',
   ): Promise<void> {
-    if (this.pendingAssetRegistrations.has(asset.assetId)) {
-      return Promise.reject(new Error(`Core Product asset ${asset.assetId} registration is already pending`));
-    }
+    const pending = this.pendingAssetRegistrations.get(asset.assetId);
+    if (pending) return pending.promise;
     const transferAsset = ownership === 'retain-host-copy'
       ? cloneDecodedCoreProductAssetForTransfer(asset)
       : asset;
     const node = this.requireNode('registerAsset');
+    let resolveRegistration: (() => void) | null = null;
+    let rejectRegistration: ((error: Error) => void) | null = null;
     const registration = new Promise<void>((resolve, reject) => {
-      this.pendingAssetRegistrations.set(asset.assetId, { resolve, reject });
+      resolveRegistration = resolve;
+      rejectRegistration = reject;
+    });
+    this.pendingAssetRegistrations.set(asset.assetId, {
+      resolve: () => resolveRegistration?.(),
+      reject: (error) => rejectRegistration?.(error),
+      promise: registration,
     });
     node.port.postMessage({
       type: 'register-asset',
