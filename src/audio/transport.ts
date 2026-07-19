@@ -32,6 +32,7 @@ export interface TransportDebugSnapshot {
   transitionRevision?: number;
   nextHarmonyEventIn: number | null;
   nextProgressionStepIn: number | null;
+  simpleSequencerPlansAuthoritative?: boolean;
   padChordPhraseSeconds?: number | null;
   nextPadChordBoundaryIn?: number | null;
   padChordPlan?: SimpleSequencerPhrasePreview | null;

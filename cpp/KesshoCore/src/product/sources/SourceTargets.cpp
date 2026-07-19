@@ -58,3 +58,14 @@ uint32_t KesshoProductEngine::soundscapeAssetIdForLevelRangeTarget(uint32_t targ
       ? target_id - kSoundscapeAssetLevelRangeTargetBase
       : 0u;
 }
+
+bool KesshoProductEngine::isSoundscapeTextureLevelRangeTarget(uint32_t target_id) const {
+  return target_id >= kSoundscapeTextureLevelRangeTargetBase &&
+      target_id < kSoundscapeTextureLevelRangeTargetEnd;
+}
+
+uint32_t KesshoProductEngine::soundscapeTextureSlotForLevelRangeTarget(uint32_t target_id) const {
+  return isSoundscapeTextureLevelRangeTarget(target_id)
+      ? target_id - kSoundscapeTextureLevelRangeTargetBase
+      : kSoundscapeTextureSlotCount;
+}

@@ -1,5 +1,20 @@
 import type { GeneratedSequencerCaptureEvent } from './coreProductGeneratedSequencerCaptureTypes';
 
+export type CoreProductSimpleSequencerVisualEvent = {
+  eventId: number;
+  absoluteSample: number;
+  phraseStartSample: number;
+  phraseIndex: number;
+  kind: 'padChord' | 'randomTiming';
+  targetSourceId: number;
+  midiNote: number;
+  velocity: number;
+  gateSeconds: number;
+  voiceIndex: number;
+  phraseSeconds: number;
+  triggerIntervalSeconds: number;
+};
+
 export type CoreProductSequencerLaneUiState = {
   enabled: boolean;
   targetSourceId: number;
@@ -294,6 +309,8 @@ export type CoreProductTelemetrySnapshot = {
   synthAnchorWalkerVisualLanes?: Array<CoreProductAnchorWalkerVisualLaneState | null>;
   generatedSequencerCaptureEvents?: GeneratedSequencerCaptureEvent[];
   generatedSequencerCaptureOverflowCount?: number;
+  simpleSequencerVisualEvents?: CoreProductSimpleSequencerVisualEvent[];
+  simpleSequencerVisualOverflowCount?: number;
 };
 
 export type CoreProductModulationDebugEntry = {

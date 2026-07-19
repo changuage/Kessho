@@ -17,6 +17,7 @@
 #include "ProductTransportState.h"
 #include "ProductVoiceState.h"
 #include "KesshoCore/KesshoProductGeneratedSequencerCapture.h"
+#include "KesshoCore/KesshoProductSimpleSequencerVisual.h"
 #include "kessho_drum.h"
 using namespace kessho::product::internal;
 struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
@@ -65,6 +66,9 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   KesshoProductGeneratedSequencerCaptureConfig generated_sequencer_capture_config{};
   kessho::product::GeneratedSequencerCaptureRing<2048> generated_sequencer_capture_ring{};
   uint64_t generated_sequencer_capture_event_counter = 1u;
+  uint32_t simple_sequencer_visual_demand_mask = 0u;
+  kessho::product::SimpleSequencerVisualRing<256> simple_sequencer_visual_ring{};
+  uint64_t simple_sequencer_visual_event_counter = 1u;
   bool snapshot_loaded_once = false;
   SequencerBuffer sequencer_events{};
   ProductArrangementState arrangement{};
@@ -278,6 +282,8 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   bool isDrumRangeTarget(uint32_t target_id) const;
   bool isSoundscapeAssetLevelRangeTarget(uint32_t target_id) const;
   uint32_t soundscapeAssetIdForLevelRangeTarget(uint32_t target_id) const;
+  bool isSoundscapeTextureLevelRangeTarget(uint32_t target_id) const;
+  uint32_t soundscapeTextureSlotForLevelRangeTarget(uint32_t target_id) const;
   uint32_t sourceEnableFadeFrames(uint32_t source_id) const;
   bool sourceRenderActive(const SourceState& source) const;
   void setSourceEnabled(SourceState& source, bool enabled, bool immediate);
@@ -327,6 +333,7 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   float fxSampleHoldSourceStrength(uint32_t bus, uint32_t source_id, float drum_delay_send) const;
   bool shouldTriggerFxSampleHoldBus(uint32_t bus, uint32_t source_id, float strength) const;
   void triggerFxSampleHoldRanges(uint32_t source_id, float delay_a_strength, float delay_b_strength, float granular_strength, float reverb_strength, uint32_t sample_seed);
+  void triggerSoundscapeTextureSampleHoldRanges(uint32_t texture_slot, uint32_t slice_id);
   void advanceModulationRanges(uint32_t frames);
   void applySourceParam(const KesshoProductEvent& event);
   int32_t applySampleSourceParam(const KesshoProductEvent& event, SourceState& source, bool& release_voices);
@@ -363,7 +370,7 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
       uint32_t lane_count,
       uint32_t frames,
       SequencerBuffer& out);
-  void generateSequencerEvents(uint32_t frames);
+  void generateSequencerEvents(uint32_t frames, bool include_inactive_sources = false);
   void resetArrangementRuntime();
   void generateArrangementEvents(uint32_t frames, SequencerBuffer& out);
   uint32_t findAssetSlot(uint32_t asset_id) const;
@@ -505,6 +512,8 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   float soundscapeLayerPlaybackRate(const AssetSlot& asset, uint32_t sample_seed) const;
   uint32_t soundscapeLayerIndexForAsset(uint32_t asset_id) const;
   uint32_t soundscapeTextureSlotForAsset(uint32_t asset_id) const;
+  uint32_t soundscapeTextureAssetId(const SourceState& source, uint32_t slot) const;
+  bool soundscapeTextureSlotEnabled(const SourceState& source, uint32_t slot) const;
   bool soundscapeParityFixtureEnabled(const SourceState& source) const;
   bool soundscapeTextureParamsAvailable(const SourceState& source) const;
   float soundscapeTextureParam(
@@ -519,10 +528,11 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   void resetSoundscapeTextureRuntime(uint32_t slot);
   void resetSoundscapeTextureRuntimes();
   void suspendSoundscapeTextureRuntimes();
-  void releaseSoundscapeTextureVoices(uint32_t asset_id);
-  void ensureSoundscapeTextureVoice(SourceState& source, uint32_t asset_id, uint32_t asset_slot);
+  void releaseSoundscapeTextureVoices(uint32_t texture_slot);
+  void ensureSoundscapeTextureVoice(SourceState& source, uint32_t texture_slot, uint32_t asset_id, uint32_t asset_slot);
   void configureSoundscapeTextureSpatialRuntime(uint32_t asset_id, SoundscapeTextureRuntime& runtime) const;
   void processSoundscapeTextureSpatialForSlot(uint32_t slot, float& left, float& right);
+  void processSoundscapeTextureFilter(Voice& voice, const SourceState& source, float& left, float& right);
   float soundscapeLayerRouteSend(const SourceState& source, uint32_t layer, uint32_t route, float fallback) const;
   float sampleVoiceEnvelope(const Voice& voice) const;
   float assetSample(const AssetSlot& asset, uint32_t channel, uint32_t frame) const;

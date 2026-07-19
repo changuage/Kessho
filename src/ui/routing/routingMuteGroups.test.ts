@@ -193,7 +193,10 @@ function testRandomSettingsAndSlotMetadataNormalization(): void {
 }
 
 function testSourceEligibilityMatchesRoutingRegistry(): void {
-  assert.deepStrictEqual(ROUTING_MUTE_GROUP_SOURCE_IDS, ROUTING_SOURCE_IDS);
+  assert.deepStrictEqual(
+    ROUTING_MUTE_GROUP_SOURCE_IDS,
+    ROUTING_SOURCE_IDS.filter((sourceId) => sourceId !== 'waves'),
+  );
   assert.ok(ROUTING_MUTE_GROUP_SOURCE_IDS.includes('delayAOut'));
   assert.ok(ROUTING_MUTE_GROUP_SOURCE_IDS.includes('delayBOut'));
   assert.ok(ROUTING_MUTE_GROUP_SOURCE_IDS.includes('degrade'));
@@ -534,7 +537,7 @@ function testFxReturnSavedBooleanStateRecall(): void {
   assert.equal(harness.getState().granularDelayEnabled, true);
 }
 
-function testImmediateSlotSwitchTurnsMutedEnginesOff(): void {
+function testImmediateSlotSwitchKeepsEarthLifecycleIndependent(): void {
   const harness = makeHarness(makeState({
     delayAEnabled: false,
     delayAMix: 0.7,
@@ -578,7 +581,7 @@ function testImmediateSlotSwitchTurnsMutedEnginesOff(): void {
   assert.equal(harness.getState().delayAEnabled, false);
   assert.equal(harness.getState().granularDelayEnabled, false);
   assert.equal(harness.getState().padEnabled, false);
-  assert.equal(harness.getState().waterEnabled, false);
+  assert.equal(harness.getState().waterEnabled, true);
   assert.ok(harness.log.some((entry) => entry.type === 'runtime-level' && entry.key === 'delayAMix' && entry.value === 0));
   assert.ok(harness.log.some((entry) => entry.type === 'runtime-level' && entry.key === 'granularDelayMix' && entry.value === 0));
   assert.ok(harness.log.some((entry) => entry.type === 'runtime-level' && entry.key === 'synthLevel' && entry.value === 0));
@@ -604,6 +607,7 @@ function testCaptureUsesEffectiveMutedSourcesDuringFade(): void {
 function testMultiEnabledKeyRowsRestoreSnapshots(): void {
   const harness = makeHarness(makeState({
     natureLevel: 0.6,
+    natureMasterEnabled: true,
     birdsEnabled: true,
     birds2Enabled: false,
     frogsEnabled: true,
@@ -611,12 +615,14 @@ function testMultiEnabledKeyRowsRestoreSnapshots(): void {
 
   harness.controller.recall({ mutedSourceIds: ['nature'] }, 1);
   harness.scheduler.advanceBy(10);
-  assert.equal(harness.getState().birdsEnabled, false);
+  assert.equal(harness.getState().natureMasterEnabled, true);
+  assert.equal(harness.getState().birdsEnabled, true);
   assert.equal(harness.getState().birds2Enabled, false);
-  assert.equal(harness.getState().frogsEnabled, false);
+  assert.equal(harness.getState().frogsEnabled, true);
   assert.equal(harness.getState().natureLevel, 0.6);
 
   harness.controller.release();
+  assert.equal(harness.getState().natureMasterEnabled, true);
   assert.equal(harness.getState().birdsEnabled, true);
   assert.equal(harness.getState().birds2Enabled, false);
   assert.equal(harness.getState().frogsEnabled, true);
@@ -706,7 +712,8 @@ function testRecallRestoresPresetLoadedSourceState(): void {
   const wavesZeroIndex = harness.log.findIndex((entry) => entry.type === 'runtime-level' && entry.key === 'oceanSampleLevel' && entry.value === 0);
   const wavesEnableIndex = harness.log.findIndex((entry) => entry.type === 'boolean' && entry.key === 'oceanSampleEnabled' && entry.value === true);
   assert.ok(granularZeroIndex >= 0 && granularEnableIndex > granularZeroIndex);
-  assert.ok(wavesZeroIndex >= 0 && wavesEnableIndex > wavesZeroIndex);
+  assert.equal(wavesZeroIndex, -1);
+  assert.ok(wavesEnableIndex >= 0);
 
   harness.scheduler.advanceBy(13);
   assert.equal(harness.getState().granularEnabled, true);
@@ -714,7 +721,7 @@ function testRecallRestoresPresetLoadedSourceState(): void {
   assert.equal(harness.getState().oceanSampleEnabled, true);
   assert.equal(harness.getState().oceanSampleLevel, 0.6);
   assert.ok(harness.log.some((entry) => entry.type === 'runtime-level' && entry.key === 'granularLevel' && entry.value === null));
-  assert.ok(harness.log.some((entry) => entry.type === 'runtime-level' && entry.key === 'oceanSampleLevel' && entry.value === null));
+  assert.equal(harness.log.some((entry) => entry.type === 'runtime-level' && entry.key === 'oceanSampleLevel'), false);
 }
 
 function testSlotSwitchRestoresSavedOnSourceSnapshot(): void {
@@ -792,7 +799,7 @@ testTransitionOrderAndSendPreservation();
 testRuntimeRampUpdatesAreBatchedByStep();
 testFxReturnTransitionOrder();
 testFxReturnSavedBooleanStateRecall();
-testImmediateSlotSwitchTurnsMutedEnginesOff();
+testImmediateSlotSwitchKeepsEarthLifecycleIndependent();
 testCaptureUsesEffectiveMutedSourcesDuringFade();
 testMultiEnabledKeyRowsRestoreSnapshots();
 testPerformanceMuteSceneRecallAndRelease();

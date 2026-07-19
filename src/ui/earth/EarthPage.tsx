@@ -34,7 +34,6 @@ import {
   EarthDualSliderOptions,
 } from './components/EarthControls';
 import { WaterCard } from './components/WaterCard';
-import { OceanCard } from './components/OceanCard';
 import { NatureCard } from './components/NatureCard';
 import { InsectsCard } from './components/InsectsCard';
 import { WalkSpeedCard } from './components/WalkSpeedCard';
@@ -70,6 +69,7 @@ const EARTH_DUAL_KEYS: readonly (keyof SliderState)[] = [
   'birdsLevel', 'birdsSliceDuration', 'birdsSliceDensity',
   'birds2Level', 'birds2SliceDuration', 'birds2SliceDensity',
   'frogsLevel', 'frogsSliceDuration', 'frogsSliceDensity',
+  'nature1Level', 'nature2Level', 'nature3Level', 'nature4Level',
   'natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend',
   'insectsDensity', 'insectsTemperature', 'insectsDistance', 'insectsProximity',
   'insectsAntiphony', 'insectsClickRate', 'insectsMotion',
@@ -90,7 +90,7 @@ const EARTH_DUAL_KEYS: readonly (keyof SliderState)[] = [
   'waterChannelsMorph', 'waterChannelsSpeed',
 ] as const;
 
-const EARTH_ENGINE_CARD_IDS = ['water', 'ocean', 'birds', 'birds2', 'frogs', 'insects1', 'insects2'] as const;
+const EARTH_ENGINE_CARD_IDS = ['water', 'nature1', 'nature2', 'nature3', 'nature4', 'insects1', 'insects2'] as const;
 
 type EarthEngineCardId = typeof EARTH_ENGINE_CARD_IDS[number];
 
@@ -181,19 +181,19 @@ export default function EarthPage({
 
   const defaultExpandedCards = useMemo<Record<EarthEngineCardId, boolean>>(() => ({
     water: Boolean(state.waterEnabled),
-    ocean: Boolean(state.oceanSampleEnabled),
-    birds: Boolean(state.birdsEnabled),
-    birds2: Boolean(state.birds2Enabled),
-    frogs: Boolean(state.frogsEnabled),
+    nature1: Boolean(state.nature1Enabled),
+    nature2: Boolean(state.nature2Enabled),
+    nature3: Boolean(state.nature3Enabled),
+    nature4: Boolean(state.nature4Enabled),
     insects1: Boolean(state.insectsEnabled),
     insects2: Boolean(state.insects2Enabled),
   }), [
-    state.birds2Enabled,
-    state.birdsEnabled,
-    state.frogsEnabled,
+    state.nature1Enabled,
+    state.nature2Enabled,
+    state.nature3Enabled,
+    state.nature4Enabled,
     state.insects2Enabled,
     state.insectsEnabled,
-    state.oceanSampleEnabled,
     state.waterEnabled,
   ]);
 
@@ -685,15 +685,24 @@ export default function EarthPage({
     const sp = sliderProps(key);
     const q = (QUANTIZATION as Record<string, QuantizationRange>)[key as string];
     if (!q) return null;
+    const max = opts?.max == null ? q.max : Math.max(q.min, Math.min(q.max, opts.max));
+    const paramInfo = max === q.max ? q : { ...q, max };
+    const boundedDualRange = sp.dualRange
+      ? (() => {
+          const min = Math.min(max, Math.max(q.min, sp.dualRange!.min));
+          const rangeMax = Math.min(max, Math.max(q.min, sp.dualRange!.max));
+          return { min: Math.min(min, rangeMax), max: Math.max(min, rangeMax) };
+        })()
+      : undefined;
     return (
       <DualSlider<keyof SliderState>
         label={label}
         value={state[key] as number}
         paramKey={key}
-        paramInfo={q}
-        quantizeFn={(_, v) => quantize(key as string, v)}
+        paramInfo={paramInfo}
+        quantizeFn={(_, v) => Math.min(max, quantize(key as string, v))}
         mode={sp.mode}
-        dualRange={sp.dualRange}
+        dualRange={boundedDualRange}
         walkPosition={sp.walkPosition}
         isFlashing={sp.isFlashing}
         onChange={onParamChange}
@@ -742,62 +751,22 @@ export default function EarthPage({
             onWaterPresetRate={(option, rating) => { void handleWaterPresetRate(option, rating); }}
             enabled={state.waterEnabled}
           />
-          <OceanCard
-            state={state}
-            ds={ds}
-            expandedCards={expandedCards}
-            onToggleCard={toggleCard}
-            onSelectChange={onSelectChange}
-            enabled={Boolean(state.oceanSampleEnabled)}
-          />
-          <NatureCard
-            cardId="birds"
-            title="Birds — Alps"
-            accent="#a5c4d4"
-            enabledKey="birdsEnabled"
-            levelKey="birdsLevel"
-            sliceDurationKey="birdsSliceDuration"
-            sliceDensityKey="birdsSliceDensity"
-            state={state}
-            ds={ds}
-            expandedCards={expandedCards}
-            onToggleCard={toggleCard}
-            onSelectChange={onSelectChange}
-            enabled={Boolean(state.birdsEnabled)}
-          />
-          <NatureCard
-            cardId="birds2"
-            title="Birds — Fujian"
-            accent="#8ec5d4"
-            enabledKey="birds2Enabled"
-            levelKey="birds2Level"
-            sliceDurationKey="birds2SliceDuration"
-            sliceDensityKey="birds2SliceDensity"
-            state={state}
-            ds={ds}
-            expandedCards={expandedCards}
-            onToggleCard={toggleCard}
-            onSelectChange={onSelectChange}
-            enabled={Boolean(state.birds2Enabled)}
-          />
-          <NatureCard
-            cardId="frogs"
-            title="Frogs"
-            accent="#b4b450"
-            enabledKey="frogsEnabled"
-            levelKey="frogsLevel"
-            sliceDurationKey="frogsSliceDuration"
-            sliceDensityKey="frogsSliceDensity"
-            state={state}
-            ds={ds}
-            expandedCards={expandedCards}
-            onToggleCard={toggleCard}
-            onSelectChange={onSelectChange}
-            enabled={Boolean(state.frogsEnabled)}
-          />
+          {([1, 2, 3, 4] as const).map((slot, index) => (
+            <NatureCard
+              key={slot}
+              slot={slot}
+              accent={['#00d4ff', '#a5c4d4', '#8ec5d4', '#b4b450'][index] ?? '#a5c4d4'}
+              state={state}
+              ds={ds}
+              expandedCards={expandedCards}
+              onToggleCard={toggleCard}
+              onSelectChange={onSelectChange}
+              enabled={state[`nature${slot}Enabled`]}
+            />
+          ))}
           <InsectsCard
             scope="insects1"
-            title="Insects — Layer 1"
+            title={`${INSECT_ENGINES[state.insectsEngine] ?? 'Insects'} — Insect 1`}
             accent="#2ecc71"
             selectedPreset={selectedInsects1Preset}
             presetOptions={insects1PresetOptions}
@@ -808,12 +777,14 @@ export default function EarthPage({
             onPresetRate={handleInsectsPresetRate}
             ds={ds}
             enabled={Boolean(state.insectsEnabled)}
-            onToggleEnabled={() => onSelectChange('insectsEnabled', !state.insectsEnabled)}
-            engineName={INSECT_ENGINES[state.insectsEngine] ?? ''}
+            onToggleEnabled={() => {
+              if (!state.insectsEnabled) onSelectChange('insectsMasterEnabled', true);
+              onSelectChange('insectsEnabled', !state.insectsEnabled);
+            }}
           />
           <InsectsCard
             scope="insects2"
-            title="Insects — Layer 2"
+            title={`${INSECT_ENGINES[state.insects2Engine] ?? 'Insects'} — Insect 2`}
             accent="#27ae60"
             selectedPreset={selectedInsects2Preset}
             presetOptions={insects2PresetOptions}
@@ -824,8 +795,10 @@ export default function EarthPage({
             onPresetRate={handleInsectsPresetRate}
             ds={ds}
             enabled={Boolean(state.insects2Enabled)}
-            onToggleEnabled={() => onSelectChange('insects2Enabled', !state.insects2Enabled)}
-            engineName={INSECT_ENGINES[state.insects2Engine] ?? ''}
+            onToggleEnabled={() => {
+              if (!state.insects2Enabled) onSelectChange('insectsMasterEnabled', true);
+              onSelectChange('insects2Enabled', !state.insects2Enabled);
+            }}
           />
           {anyWalkMode && (
             <WalkSpeedCard

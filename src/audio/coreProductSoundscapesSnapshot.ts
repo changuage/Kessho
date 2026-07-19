@@ -11,6 +11,8 @@ import {
 } from './generated/kesshoProductSchema';
 import { getUtcBucket, xmur3 } from './rng';
 import { morphWaterPresets, type WaterPresetState } from './waterPresets';
+import { NATURE_SLOT_KEYS } from './natureSlots';
+import { natureSampleDefinition } from './natureSampleCatalog';
 
 // SNAPSHOT_AUTHORITY: GENERATED_SCHEMA_SERIALIZATION - soundscape module params and layer route slots.
 
@@ -35,12 +37,7 @@ export const SOUNDSCAPE_TEXTURE_PARAM_STRIDE = KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE
 export const SOUNDSCAPE_TEXTURE_SLOT_COUNT = KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_SLOT_COUNT;
 export const SOUNDSCAPE_TEXTURE_PARAM_COUNT = KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT;
 
-const SOUNDSCAPE_TEXTURE_SLOT_CONFIG = [
-  { layer: 'ocean', sliceKey: 'oceanSliceDuration', densityKey: 'oceanSliceDensity', sliceDuration: 22, density: 0.38, fadeTime: 5.5 },
-  { layer: 'birds', sliceKey: 'birdsSliceDuration', densityKey: 'birdsSliceDensity', sliceDuration: 20, density: 0.45, fadeTime: 3.2 },
-  { layer: 'birds2', sliceKey: 'birds2SliceDuration', densityKey: 'birds2SliceDensity', sliceDuration: 20, density: 0.48, fadeTime: 3.1 },
-  { layer: 'frogs', sliceKey: 'frogsSliceDuration', densityKey: 'frogsSliceDensity', sliceDuration: 18, density: 0.52, fadeTime: 2.6 },
-] as const;
+const NATURE_FILTER_TYPE_VALUE = { lowpass: 0, bandpass: 1, highpass: 2, notch: 3 } as const;
 
 const SOUNDSCAPES_MODULE_PARAM_COUNT = KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT;
 export const SOUNDSCAPES_PRODUCT_PARAM_COUNT = KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT;
@@ -72,6 +69,9 @@ const SOUNDSCAPES_PRODUCT_PARAM_INDEX = {
   insects2Level: SOUNDSCAPES_MODULE_PARAM_COUNT + 2,
   insectsSharedLevel: SOUNDSCAPES_MODULE_PARAM_COUNT + 3,
   earthLevel: SOUNDSCAPES_MODULE_PARAM_COUNT + 4,
+  waterMasterEnabled: SOUNDSCAPES_MODULE_PARAM_COUNT + 5,
+  insectsMasterEnabled: SOUNDSCAPES_MODULE_PARAM_COUNT + 6,
+  natureMasterEnabled: SOUNDSCAPES_MODULE_PARAM_COUNT + 7,
 } as const;
 
 function numberFromState(state: Record<string, unknown> | undefined, key: string, fallback: number): number {
@@ -111,15 +111,23 @@ export function writeSoundscapeTextureParamsFromState(
   params: number[],
   state: Record<string, unknown> | undefined,
 ): void {
-  for (let slot = 0; slot < SOUNDSCAPE_TEXTURE_SLOT_CONFIG.length; slot += 1) {
-    const config = SOUNDSCAPE_TEXTURE_SLOT_CONFIG[slot] ?? SOUNDSCAPE_TEXTURE_SLOT_CONFIG[0];
+  for (let slot = 0; slot < NATURE_SLOT_KEYS.length; slot += 1) {
+    const keys = NATURE_SLOT_KEYS[slot]!;
+    const sample = natureSampleDefinition(state?.[keys.sampleIdKey], keys.slot);
     const offset = SOUNDSCAPE_TEXTURE_PARAM_START + slot * SOUNDSCAPE_TEXTURE_PARAM_STRIDE;
-    const seed = earthTextureSeed(config.layer, state);
-    params[offset] = boundedNumber(state?.[config.sliceKey], config.sliceDuration, 1.5, 120);
-    params[offset + 1] = boundedNumber(state?.[config.densityKey], config.density, 0, 1);
-    params[offset + 2] = boundedNumber(state?.soundscapeParityFixture === true ? 0 : config.fadeTime, config.fadeTime, 0, 30);
+    const seed = earthTextureSeed(`nature-${keys.slot}`, state);
+    params[offset] = boundedNumber(state?.[keys.sliceDurationKey], sample.defaultSliceDuration, 1.5, Math.max(1.5, sample.durationSeconds));
+    params[offset + 1] = boundedNumber(state?.[keys.sliceDensityKey], sample.defaultSliceDensity, 0, 1);
+    params[offset + 2] = boundedNumber(state?.soundscapeParityFixture === true ? 0 : 5, 5, 0, 30);
     params[offset + 3] = seed & 0xffff;
     params[offset + 4] = seed >>> 16;
+    params[offset + 5] = sample.assetId;
+    params[offset + 6] = booleanFromState(state, keys.enabledKey, false) ? 1 : 0;
+    params[offset + 7] = boundedNumber(state?.[keys.levelKey], 0.5, 0, 1);
+    const filterType = state?.[keys.filterTypeKey];
+    params[offset + 8] = NATURE_FILTER_TYPE_VALUE[filterType === 'bandpass' || filterType === 'highpass' || filterType === 'notch' ? filterType : 'lowpass'];
+    params[offset + 9] = boundedNumber(state?.[keys.filterCutoffKey], sample.defaultFilterCutoff, 40, 20000);
+    params[offset + 10] = boundedNumber(state?.[keys.filterResonanceKey], sample.defaultFilterResonance, 0, 1);
   }
 }
 
@@ -149,7 +157,12 @@ function earthLayerActive(
 export function exactSoundscapesModuleParamsFromState(state: Record<string, unknown> | undefined): number[] {
   const params = Array.from({ length: SOUNDSCAPES_PRODUCT_PARAM_COUNT }, () => 0);
   const water = resolveWaterState(state);
-  const waterActive = earthLayerActive(state, 'waterEnabled', 'waterLevel', 0.8);
+  const waterActive = numberFromState(state, 'waterLevel', 0.8) > 0.0001 && [
+    water.waterLayerHardDrops, water.waterLayerWaterDrops, water.waterLayerTurbulence,
+    water.waterLayerBubbling, water.waterLayerSurf, water.waterLayerChannels,
+  ].some((value) => finiteNumber(value, 0) > 0.0001);
+  const insectsMasterEnabled = booleanFromState(state, 'insectsMasterEnabled',
+    booleanFromState(state, 'insectsEnabled', false) || booleanFromState(state, 'insects2Enabled', false));
   const insectsActive = earthLayerActive(state, 'insectsEnabled', 'insectsLevel', 0.7);
   const insects2Active = earthLayerActive(state, 'insects2Enabled', 'insects2Level', 0.5);
   const deterministicSeeds = booleanFromState(state, 'soundscapeParityFixture', false);
@@ -302,10 +315,13 @@ export function exactSoundscapesModuleParamsFromState(state: Record<string, unkn
         ? 1
         : 0;
   params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.waterLevel] = waterActive ? numberFromState(state, 'waterLevel', 0.8) : 0;
-  params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.insectsLevel] = insectsActive ? numberFromState(state, 'insectsLevel', 0.7) : 0;
-  params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.insects2Level] = insects2Active ? numberFromState(state, 'insects2Level', 0.5) : 0;
+  params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.insectsLevel] = numberFromState(state, 'insectsLevel', 0.7);
+  params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.insects2Level] = numberFromState(state, 'insects2Level', 0.5);
   params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.insectsSharedLevel] = numberFromState(state, 'insectsSharedLevel', 1);
   params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.earthLevel] = numberFromState(state, 'earthLevel', 1);
+  params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.waterMasterEnabled] = booleanFromState(state, 'waterEnabled', false) ? 1 : 0;
+  params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.insectsMasterEnabled] = insectsMasterEnabled ? 1 : 0;
+  params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.natureMasterEnabled] = booleanFromState(state, 'natureMasterEnabled', false) ? 1 : 0;
   return params;
 }
 
@@ -320,15 +336,16 @@ export type SoundscapeSnapshotPayload = {
 };
 
 export function soundscapeSnapshotPayloadFromState(state: Record<string, unknown> | undefined): SoundscapeSnapshotPayload {
-  const oceanActive = booleanFromState(state, 'oceanSampleEnabled', false);
   const waterActive = booleanFromState(state, 'waterEnabled', false);
-  const insectsActive = booleanFromState(state, 'insectsEnabled', false) || booleanFromState(state, 'insects2Enabled', false);
-  const natureActive = booleanFromState(state, 'birdsEnabled', false) ||
-    booleanFromState(state, 'birds2Enabled', false) || booleanFromState(state, 'frogsEnabled', false);
+  const insectsActive = booleanFromState(state, 'insectsMasterEnabled',
+    booleanFromState(state, 'insectsEnabled', false) || booleanFromState(state, 'insects2Enabled', false)) &&
+    (booleanFromState(state, 'insectsEnabled', false) || booleanFromState(state, 'insects2Enabled', false));
+  const natureActive = booleanFromState(state, 'natureMasterEnabled', false) && NATURE_SLOT_KEYS.some((keys) =>
+    booleanFromState(state, keys.enabledKey, false));
   const parityFixture = booleanFromState(state, 'soundscapeParityFixture', false);
   const textureParams = Array.from({ length: SOUNDSCAPE_TEXTURE_PARAM_COUNT }, () => 0);
   const moduleParams = exactSoundscapesModuleParamsFromState(state).slice(0, SOUNDSCAPES_PRODUCT_PARAM_COUNT);
-  const layerActive = [oceanActive, waterActive, insectsActive, natureActive];
+  const layerActive = [false, waterActive, insectsActive, natureActive];
   const routePeaks = [0, 0, 0, 0, 0];
 
   if (parityFixture) textureParams[SOUNDSCAPE_PARITY_FIXTURE_PARAM] = 1;
@@ -347,7 +364,9 @@ export function soundscapeSnapshotPayloadFromState(state: Record<string, unknown
   }
 
   return {
-    enabled: oceanActive || waterActive || insectsActive || natureActive,
+    // The shared source stays alive as a lightweight container. Individual Earth
+    // families own their 5 s lifecycle gates, avoiding a final-source hard stop.
+    enabled: true,
     routePeaks,
     parityFixture,
     textureParamCount: SOUNDSCAPE_TEXTURE_PARAM_COUNT,

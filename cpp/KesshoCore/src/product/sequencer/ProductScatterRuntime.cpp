@@ -336,9 +336,12 @@ void KesshoProductEngine::setScatterEnabled(bool enabled) {
   if (!enabled) scatter_runtime.current_phrase = {};
 }
 
-void KesshoProductEngine::scheduleScatterEvents(uint32_t frames, SequencerBuffer& out) {
+void KesshoProductEngine::scheduleScatterEvents(
+    uint32_t frames,
+    SequencerBuffer& out,
+    bool include_inactive_sources) {
   if (!scatter_runtime.enabled || !transport.running || frames == 0u) return;
-  if (!sourceRenderActive(sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u])) return;
+  if (!include_inactive_sources && !sourceRenderActive(sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u])) return;
   const uint64_t block_start = transport.sample_frame;
   const uint64_t block_end = block_start + frames;
   const double selector_frames = transport.samplesPerBeat(sample_rate) * 0.25;

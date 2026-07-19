@@ -10,6 +10,28 @@ enum ProductModuleMask : uint32_t {
   kModuleSoundscape = 1u << 4,
 };
 
+float soundscapeFamilyGainForFrame(
+    kessho::product::internal::SoundscapeFamilyGainState& state,
+    bool enabled,
+    uint64_t absolute_frame,
+    double sample_rate) {
+  const float target = enabled ? 1.0f : 0.0f;
+  if (state.target != target) {
+    state.target = target;
+    state.remaining = std::max<uint32_t>(1u, static_cast<uint32_t>(std::ceil(sample_rate * 5.0)));
+    state.delta = (target - state.gain) / static_cast<float>(state.remaining);
+    state.frame = absolute_frame;
+  }
+  if (absolute_frame > state.frame && state.remaining > 0u) {
+    const uint32_t elapsed = static_cast<uint32_t>(std::min<uint64_t>(absolute_frame - state.frame, state.remaining));
+    state.gain += state.delta * static_cast<float>(elapsed);
+    state.remaining -= elapsed;
+    state.frame += elapsed;
+    if (state.remaining == 0u) state.gain = state.target;
+  }
+  return std::max(0.0f, std::min(1.0f, state.gain));
+}
+
 } // namespace
 
 void KesshoProductEngine::renderPadModule(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
@@ -224,6 +246,16 @@ void KesshoProductEngine::configureSoundscapesModuleFromSource() {
   for (uint32_t i = 0; i < kSoundscapeModuleParamCount; ++i) {
     desired[i] = std::isfinite(source.soundscape_module_params[i]) ? source.soundscape_module_params[i] : 0.0f;
   }
+  // Keep an insect generator alive until its child gate has completed the
+  // release. This avoids stopping oscillator state while it is still audible.
+  if (soundscape_insects_layer_gains[0].gain > 0.0001f ||
+      soundscape_insects_layer_gains[0].remaining > 0u) {
+    desired[kSoundscapeModuleInsectsActiveParam] = 1.0f;
+  }
+  if (soundscape_insects_layer_gains[1].gain > 0.0001f ||
+      soundscape_insects_layer_gains[1].remaining > 0u) {
+    desired[kSoundscapeModuleInsects2ActiveParam] = 1.0f;
+  }
   bool changed = !soundscapes_module_params_configured;
   if (!changed) {
     for (uint32_t i = 0; i < kSoundscapeModuleParamCount; ++i) {
@@ -270,6 +302,10 @@ void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, ui
   const float insects2_level = clampFloat(source.soundscape_module_params[kSoundscapeModuleInsects2LevelParam], 0.0f, 2.0f);
   const float insects_shared_level = clampFloat(source.soundscape_module_params[kSoundscapeModuleInsectsSharedLevelParam], 0.0f, 2.0f);
   const float earth_level = clampFloat(source.soundscape_module_params[kSoundscapeModuleEarthLevelParam], 0.0f, 2.0f);
+  const bool water_master_enabled = source.soundscape_module_params[kSoundscapeModuleWaterMasterEnabledParam] > 0.5f;
+  const bool insects_master_enabled = source.soundscape_module_params[kSoundscapeModuleInsectsMasterEnabledParam] > 0.5f;
+  const bool insects_enabled = source.soundscape_module_params[kSoundscapeModuleInsectsActiveParam] > 0.5f;
+  const bool insects2_enabled = source.soundscape_module_params[kSoundscapeModuleInsects2ActiveParam] > 0.5f;
   const float water_reverb_send = soundscapeLayerRouteSend(source, kSoundscapeLayerWater, kSoundscapeLayerRouteReverb, 0.0f);
   const float water_delay_a_send = soundscapeLayerRouteSend(source, kSoundscapeLayerWater, kSoundscapeLayerRouteDelayA, 0.0f);
   const float water_delay_b_send = soundscapeLayerRouteSend(source, kSoundscapeLayerWater, kSoundscapeLayerRouteDelayB, 0.0f);
@@ -285,14 +321,26 @@ void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, ui
     const uint32_t frame = start + i;
     const uint64_t absolute_frame = transport.sample_frame + i;
     const float source_gate = sourceEnableGainForFrame(source, absolute_frame);
+    const float water_family_gate = soundscapeFamilyGainForFrame(
+        soundscape_family_gains[0], water_master_enabled, absolute_frame, sample_rate);
+    const float insects_family_gate = soundscapeFamilyGainForFrame(
+        soundscape_family_gains[1], insects_master_enabled, absolute_frame, sample_rate);
+    const float insects_layer_gate = soundscapeFamilyGainForFrame(
+        soundscape_insects_layer_gains[0], insects_enabled, absolute_frame, sample_rate);
+    const float insects2_layer_gate = soundscapeFamilyGainForFrame(
+        soundscape_insects_layer_gains[1], insects2_enabled, absolute_frame, sample_rate);
     const float water_gate = routingMuteGainForFrame(kRoutingMuteRowWater, absolute_frame);
     const float insects_gate = routingMuteGainForFrame(kRoutingMuteRowInsects, absolute_frame);
-    const float water_l = module_tap_l[0][i] * water_level * source_gate * water_gate;
-    const float water_r = module_tap_r[0][i] * water_level * source_gate * water_gate;
+    const float water_l = module_tap_l[0][i] * water_level * source_gate * water_gate * water_family_gate;
+    const float water_r = module_tap_r[0][i] * water_level * source_gate * water_gate * water_family_gate;
     const float insects_prefader_l =
-        (module_tap_l[1][i] * insects_level + module_tap_l[2][i] * insects2_level) * insects_shared_level * source_gate * insects_gate;
+        (module_tap_l[1][i] * insects_level * insects_layer_gate +
+         module_tap_l[2][i] * insects2_level * insects2_layer_gate) *
+        insects_shared_level * source_gate * insects_gate * insects_family_gate;
     const float insects_prefader_r =
-        (module_tap_r[1][i] * insects_level + module_tap_r[2][i] * insects2_level) * insects_shared_level * source_gate * insects_gate;
+        (module_tap_r[1][i] * insects_level * insects_layer_gate +
+         module_tap_r[2][i] * insects2_level * insects2_layer_gate) *
+        insects_shared_level * source_gate * insects_gate * insects_family_gate;
     const float water_out_l = water_l * earth_level;
     const float water_out_r = water_r * earth_level;
     const float insects_out_l = insects_prefader_l * earth_level;

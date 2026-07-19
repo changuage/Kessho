@@ -46,6 +46,8 @@ export interface RoutingSourceDef {
   sends: Partial<Record<RoutingSendDestination, keyof SliderState>>;
   dynamicsBusKey?: keyof SliderState;
   snowflakeArmEligible: boolean;
+  muteGroupEligible?: boolean;
+  muteGroupKeepsEngineRunning?: boolean;
   isEnabled(state: SliderState): boolean;
   isAudible(state: SliderState): boolean;
 }
@@ -184,7 +186,8 @@ export const ROUTING_SOURCE_REGISTRY = [
     toggleMode: 'simple-toggle',
     sends: { delayA: 'oceanDelayASend', delayB: 'oceanDelayBSend', granular: 'granularWavesSend', degrade: 'degradeWavesSend', reverb: 'oceanReverbSend' },
     dynamicsBusKey: 'dynamicsWavesBus',
-    snowflakeArmEligible: true,
+    snowflakeArmEligible: false,
+    muteGroupEligible: false,
   }),
   source({
     id: 'water',
@@ -196,6 +199,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     sends: { delayA: 'waterDelayASend', delayB: 'waterDelayBSend', granular: 'granularWaterSend', degrade: 'degradeWaterSend', reverb: 'waterReverbSend' },
     dynamicsBusKey: 'dynamicsWaterBus',
     snowflakeArmEligible: true,
+    muteGroupKeepsEngineRunning: true,
   }),
   source({
     id: 'insects',
@@ -203,23 +207,25 @@ export const ROUTING_SOURCE_REGISTRY = [
     accent: '#7B9A6D',
     note: 'The current Earth engine exposes one shared insects dry master plus combined wet sends for both insect layers, so this row controls the family-level routing.',
     levelKey: 'insectsSharedLevel',
-    enabledKeys: ['insectsEnabled', 'insects2Enabled'],
-    toggleMode: 'disable-only-family',
+    enabledKeys: ['insectsMasterEnabled'],
+    toggleMode: 'simple-toggle',
     sends: { delayA: 'insDelayASend', delayB: 'insDelayBSend', granular: 'granularInsectsSend', degrade: 'degradeInsectsSend', reverb: 'insectsReverbSend' },
     dynamicsBusKey: 'dynamicsInsectsBus',
     snowflakeArmEligible: true,
+    muteGroupKeepsEngineRunning: true,
   }),
   source({
     id: 'nature',
     label: 'Nature',
     accent: '#A6B98A',
-    note: 'Nature has a shared dry master plus one wet bus for Birds Alps, Birds Fujian, and Frogs. Individual source levels and texture shaping still live in the Active Earth Matrix.',
+    note: 'Nature has a shared dry master plus one wet bus for the selected Nature samples. Individual source levels and texture shaping still live in the Active Earth Matrix.',
     levelKey: 'natureLevel',
-    enabledKeys: ['birdsEnabled', 'birds2Enabled', 'frogsEnabled'],
-    toggleMode: 'disable-only-family',
+    enabledKeys: ['natureMasterEnabled'],
+    toggleMode: 'simple-toggle',
     sends: { delayA: 'natureDelayASend', delayB: 'natureDelayBSend', granular: 'granularNatureSend', degrade: 'degradeNatureSend', reverb: 'natureReverbSend' },
     dynamicsBusKey: 'dynamicsNatureBus',
     snowflakeArmEligible: true,
+    muteGroupKeepsEngineRunning: true,
   }),
   source({
     id: 'delayAOut',

@@ -61,6 +61,30 @@
       "max": 1
     },
     {
+      "name": "HarmonyVoicingSpread",
+      "path": "harmony.voicingSpread",
+      "type": "float",
+      "id": 23,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "ArrangementSynthOctave",
+      "path": "arrangement.synthOctave",
+      "type": "int",
+      "id": 43,
+      "min": -2,
+      "max": 2
+    },
+    {
+      "name": "ArrangementWaveSpread",
+      "path": "arrangement.waveSpread",
+      "type": "float",
+      "id": 44,
+      "min": 0,
+      "max": 1
+    },
+    {
       "name": "JourneyEnabled",
       "path": "journey.enabled",
       "type": "bool",

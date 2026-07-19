@@ -28,6 +28,7 @@ function transportDebugMatchesCurrent(
       Math.abs(current.nextPhraseBoundaryIn - transportDebug.nextPhraseBoundaryIn) < 0.05 &&
       Math.abs((current.nextHarmonyEventIn ?? -1) - (transportDebug.nextHarmonyEventIn ?? -1)) < 0.05 &&
       Math.abs((current.nextProgressionStepIn ?? -1) - (transportDebug.nextProgressionStepIn ?? -1)) < 0.05 &&
+      current.simpleSequencerPlansAuthoritative === transportDebug.simpleSequencerPlansAuthoritative &&
       Math.abs((current.padChordPhraseSeconds ?? -1) - (transportDebug.padChordPhraseSeconds ?? -1)) < 0.05 &&
       Math.abs((current.nextPadChordBoundaryIn ?? -1) - (transportDebug.nextPadChordBoundaryIn ?? -1)) < 0.05 &&
       (current.padChordPlan?.key ?? null) === (transportDebug.padChordPlan?.key ?? null) &&

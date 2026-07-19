@@ -111,6 +111,12 @@ uint64_t fxSampleHoldOwnershipWindowFrames(double sample_rate) {
 }
 
   uint32_t KesshoProductEngine::sampleHoldTriggerBusForEvent(const KesshoProductEvent& event) const {
+  if (isSoundscapeTextureLevelRangeTarget(event.target_id)) {
+    const uint32_t slot = soundscapeTextureSlotForLevelRangeTarget(event.target_id);
+    return slot < kSoundscapeTextureSlotCount
+        ? kProductSampleHoldTriggerNature1 + slot
+        : kProductSampleHoldTriggerTimed;
+  }
   const uint32_t flags = event.flags & KESSHO_PRODUCT_MODULATION_RANGE_TRIGGER_MASK;
   if ((flags & KESSHO_PRODUCT_MODULATION_RANGE_TRIGGER_DELAY_A) != 0u) return kProductSampleHoldTriggerDelayA;
   if ((flags & KESSHO_PRODUCT_MODULATION_RANGE_TRIGGER_DELAY_B) != 0u) return kProductSampleHoldTriggerDelayB;
@@ -122,6 +128,33 @@ uint64_t fxSampleHoldOwnershipWindowFrames(double sample_rate) {
   void KesshoProductEngine::resetFxSampleHoldOwners() {
   for (ProductFxSampleHoldOwner& owner : fx_sample_hold_owners) {
     owner = {};
+  }
+}
+
+void KesshoProductEngine::triggerSoundscapeTextureSampleHoldRanges(
+    uint32_t texture_slot,
+    uint32_t slice_id) {
+  if (texture_slot >= kSoundscapeTextureSlotCount) return;
+  const uint32_t target_id = kSoundscapeTextureLevelRangeTargetBase + texture_slot;
+  const uint32_t trigger_bus = kProductSampleHoldTriggerNature1 + texture_slot;
+  for (uint32_t active_index = 0u; active_index < active_modulation_range_count; ++active_index) {
+    const uint32_t range_index = active_modulation_range_indices[active_index];
+    if (range_index >= kMaxModulationRanges) continue;
+    ModulationRange& range = modulation_ranges[range_index];
+    if (!range.active ||
+        range.target_id != target_id ||
+        range.mode != KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD ||
+        range.sample_hold_trigger_bus != trigger_bus) {
+      continue;
+    }
+    ++range.sample_hold_counter;
+    const uint32_t trigger_seed = slice_id ^
+        (texture_slot * 0x9e3779b9u) ^
+        (range.sample_hold_counter * 0x85ebca6bu);
+    range.current_value = modulationRangeSample(range, range.current_value, trigger_seed);
+    range.last_trigger_frame = transport.sample_frame;
+    range.last_trigger_source = KESSHO_PRODUCT_SOURCE_SOUNDSCAPE;
+    applyModulationRangeValue(range);
   }
 }
 

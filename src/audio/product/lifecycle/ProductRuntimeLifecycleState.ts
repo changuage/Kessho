@@ -30,6 +30,6 @@ export const PRODUCT_RUNTIME_ALLOWED_INTENTS: Record<ProductRuntimeLifecycleStat
   suspended: ['resume', 'stop', 'dispose', 'fail'],
   stopping: ['dispose', 'fail'],
   stopped: ['start', 'dispose', 'fail'],
-  failed: ['stop', 'dispose'],
+  failed: ['start', 'stop', 'dispose'],
   disposed: [],
 };

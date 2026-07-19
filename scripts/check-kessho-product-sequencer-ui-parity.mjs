@@ -19,6 +19,7 @@ const REQUIRED_ARCHITECTURE_GATES = Object.freeze([
   'core:product:live-note-contract',
   'core:product:cpu',
 ]);
+const CASE_TIMEOUT_MS = Number.parseInt(process.env.KESSHO_SEQUENCER_UI_CASE_TIMEOUT_MS ?? '240000', 10);
 const BASE_SUB_LANE_SPARK_INDEX = Object.freeze({
   pitch: 0,
   expression: 1,
@@ -454,13 +455,18 @@ async function selectedEditorStep(page) {
 
 async function setSelectedEditorStep(page, desiredStep, engineMode, tab, label) {
   const step = page.locator('.seq-lane-editor-wrap:visible .seq-step').nth(desiredStep);
-  const target = step.locator('.seq-pitch-bar-wrap, .seq-vel-bar-wrap, .seq-morph-bar-wrap').first();
+  await step.waitFor({ timeout: 5000 });
+  const target = step.locator('.seq-pitch-bar-wrap, .seq-vel-bar-wrap, .seq-morph-bar-wrap, .seq-step-cell').first();
   for (let attempt = 0; attempt < 24; attempt += 1) {
     const indexes = await selectedStepIndexes(page, '.seq-lane-editor-wrap:visible .seq-step');
     const current = indexes.length === 1 ? indexes[0] : null;
     if (current === desiredStep) return;
     if (current == null) {
-      if ((await target.count()) > 0) await target.click({ timeout: 5000 });
+      if ((await target.count()) > 0) {
+        await target.click({ timeout: 5000 });
+      } else {
+        await step.click({ timeout: 5000 });
+      }
     } else {
       await page.keyboard.press(current < desiredStep ? 'ArrowRight' : 'ArrowLeft');
     }
@@ -793,6 +799,21 @@ async function editorSteps(page) {
   const value = Number.parseInt(text.trim(), 10);
   assert(Number.isFinite(value), `Could not read editor step count from ${text}`);
   return value;
+}
+
+async function waitForEditorStepCount(page, expectedSteps, engineMode, tab, label) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const current = await editorSteps(page);
+    const rendered = await page.locator('.seq-lane-editor-wrap:visible .seq-step').count();
+    if (current === expectedSteps && rendered >= expectedSteps) return;
+    await page.waitForTimeout(100);
+  }
+  const current = await editorSteps(page);
+  const rendered = await page.locator('.seq-lane-editor-wrap:visible .seq-step').count();
+  assert(
+    current === expectedSteps && rendered >= expectedSteps,
+    `${engineMode}/${tab}: ${label} did not render ${expectedSteps} steps (control=${current}, rendered=${rendered})`,
+  );
 }
 
 async function readEditorDragNumber(page, controlIndex, label) {
@@ -1178,6 +1199,7 @@ async function nudgeSelectedEditorValueUntilChanged(page, preferredDirection) {
 
 async function writeRangeSubLaneStepValues(page, engineMode, tab, lane, state, moves, options = {}) {
   await setRangeSubLaneState(page, lane, state);
+  await waitForEditorStepCount(page, state.steps, engineMode, tab, `${lane} value editor`);
   if (options.resetStepValues) {
     await resetRangeSubLaneStepValues(page, engineMode, tab, lane, state.steps);
   }
@@ -2525,7 +2547,22 @@ async function proofRuntime(browser, baseUrl, engineMode, tab) {
   activeParityTab = tab;
   const context = await browser.newContext({ viewport: { width: 1280, height: 780 } });
   const page = await context.newPage();
+  page.setDefaultTimeout(15000);
+  page.setDefaultNavigationTimeout(45000);
   const consoleErrors = [];
+  let currentStep = 'create page';
+  let caseTimedOut = false;
+  const caseTimeout = Number.isFinite(CASE_TIMEOUT_MS) && CASE_TIMEOUT_MS > 0
+    ? setTimeout(() => {
+      caseTimedOut = true;
+      process.stderr.write(`[timeout] ${engineMode}/${tab}: case exceeded ${CASE_TIMEOUT_MS}ms during ${currentStep}\n`);
+      context.close().catch(() => {});
+    }, CASE_TIMEOUT_MS)
+    : null;
+  const markStep = (step) => {
+    currentStep = step;
+    process.stderr.write(`[step] ${engineMode}/${tab}: ${step}\n`);
+  };
   page.on('console', (msg) => {
     const text = msg.text();
     if (msg.type() === 'error' && !ignoredConsoleError(text)) {
@@ -2537,6 +2574,7 @@ async function proofRuntime(browser, baseUrl, engineMode, tab) {
   });
 
   try {
+    markStep('load app');
     await page.goto(withEngine(baseUrl, engineMode), {
       timeout: 45000,
       waitUntil: 'domcontentloaded',
@@ -2551,34 +2589,51 @@ async function proofRuntime(browser, baseUrl, engineMode, tab) {
       .click({ timeout: 10000 });
     await page.waitForTimeout(900);
 
+	    markStep('detail mode');
 	    await ensureSequencerDetailMode(page, engineMode, tab);
 	    await page.waitForTimeout(600);
 	
+	    markStep('keyboard transport');
 	    const keyboardTransport = await proofKeyboardOnlyTransportStartStop(page, engineMode, tab);
+	    markStep('visible sub-lanes');
 	    const visibleSubLaneCoverage = await proofVisibleSubLaneCoverage(page, engineMode, tab);
+	    markStep('keyboard controls');
 	    const keyboardControls = tab === 'drums'
 	      ? await proofDrumKeyboard(page, engineMode)
       : await proofSynthKeyboard(page, engineMode);
+    markStep('initial harmony context');
     const initialSynthKeyboardHarmonyContext = tab === 'synth'
       ? await proofSynthKeyboardHarmonyContext(page, engineMode, 'stopped')
       : null;
 
+    markStep('euclidean controls');
     const euclideanPatternControls = await proofEuclideanTriggerPatternControls(page, engineMode, tab);
+    markStep('linked hit badge');
     const linkedHitCountBadge = await proofLinkedHitCountBadgeTracksHits(page, engineMode, tab);
+    markStep('linked trigger badge');
     const linkedTriggerToggleBadge = await proofLinkedHitCountBadgeTracksTriggerToggle(page, engineMode, tab);
+    markStep('linked sequence preset round trip');
     const linkedSequencePresetRoundTrip = await proofLinkedSequencePresetRoundTrip(page, engineMode, tab);
+    markStep('synth note range sequence preset round trip');
     const synthNoteRangeSequencePresetRoundTrip = tab === 'synth'
       ? await proofSynthNoteRangeSequencePresetRoundTrip(page, engineMode)
       : null;
+    markStep('expression ratchet');
     const expressionRatchetControl = await proofExpressionRatchetControl(page, engineMode, tab);
+    markStep('sequence preset round trip');
     const sequencePresetRoundTrip = await proofSequencePresetRoundTrip(page, engineMode, tab);
+    markStep('sequence preset step round trip');
     const sequencePresetStepValueRoundTrip = await proofSequencePresetStepValueRoundTrip(page, engineMode, tab);
+    markStep('evolve dice');
     const evolveDiceMutation = await proofEvolveDiceMutatesState(page, engineMode, tab);
 
     const evolveFeedback = [];
+    markStep('stopped evolve flash');
     evolveFeedback.push(await captureEvolveFlash(page, engineMode, tab, 'stopped'));
+    markStep('stopped evolve reset');
     evolveFeedback.push(await exerciseEvolveReset(page, engineMode, tab, 'stopped'));
 
+    markStep('start transport');
     const transportName = tab === 'drums' ? 'drums' : 'synth';
     const transport = page.locator(`.seq-play-btn[data-sequencer-transport="${transportName}"]`).first();
     await transport.waitFor({ timeout: 15000 });
@@ -2591,13 +2646,17 @@ async function proofRuntime(browser, baseUrl, engineMode, tab) {
       ? await proofSynthKeyboardHarmonyContext(page, engineMode, 'running')
       : null;
 
+    markStep('running evolve flash');
     evolveFeedback.push(await captureEvolveFlash(page, engineMode, tab, 'running'));
+    markStep('running evolve reset');
     evolveFeedback.push(await exerciseEvolveReset(page, engineMode, tab, 'running'));
 
+    markStep('clock division timing');
     const clockDivisionTiming = await proofClockDivisionAffectsTriggerCadence(page, engineMode, tab);
 	    let triggerSamples = clockDivisionTiming.fast.samples;
 	    let subLaneSparkSamples = [];
 	    if (tab === 'drums') {
+	      markStep('drum playhead proof setup');
 	      await prepareSubLaneCursorAnimationProof(page, engineMode, tab);
 	      await ensureDrumLinkedBadges(page, engineMode);
 	      await ensureAuditedSubLaneSparklinesEnabled(page);
@@ -2610,12 +2669,15 @@ async function proofRuntime(browser, baseUrl, engineMode, tab) {
 	      subLaneSparkSamples = movementSamples.subLaneSparkSamples;
 	    }
 	
+	    markStep('stop transport');
 	    await page.keyboard.press('Space');
 	    await page.waitForTimeout(600);
 	    assert((await transport.textContent())?.trim() === '\u25b6', `${engineMode}/${tab}: Space did not stop transport`);
+	    markStep('stopped playhead freeze');
 	    const stoppedPlayheadSamples = await sampleSequencerPlayheads(page);
 	    const stoppedPlayheadFreeze = assertStoppedPlayheadsFrozen(stoppedPlayheadSamples, engineMode, tab);
 	
+	    markStep('restart transport');
 	    await page.keyboard.press('Space');
 	    await page.waitForTimeout(800);
 	    assert((await transport.textContent())?.trim() === '\u25a0', `${engineMode}/${tab}: Space did not restart transport`);
@@ -2647,12 +2709,15 @@ async function proofRuntime(browser, baseUrl, engineMode, tab) {
 	      sequencePresetStepValueRoundTrip,
 	    };
   } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const timeoutDetail = caseTimedOut ? ` timed out after ${CASE_TIMEOUT_MS}ms;` : '';
+    const errorWithStep = new Error(`${engineMode}/${tab}:${timeoutDetail} failed during ${currentStep}: ${detail}`);
     if (consoleErrors.length > 0) {
-      const detail = error instanceof Error ? error.message : String(error);
-      throw new Error(`${detail}; console/page errors: ${consoleErrors.join(' | ')}`);
+      throw new Error(`${errorWithStep.message}; console/page errors: ${consoleErrors.join(' | ')}`);
     }
-    throw error;
+    throw errorWithStep;
   } finally {
+    if (caseTimeout !== null) clearTimeout(caseTimeout);
     await context.close().catch(() => {});
   }
 }
@@ -2660,7 +2725,7 @@ async function proofRuntime(browser, baseUrl, engineMode, tab) {
 function isTransientBrowserTimeout(error) {
   if (!(error instanceof Error)) return false;
   if (error.message.includes('; console/page errors:')) return false;
-  return error.name === 'TimeoutError' || /Timeout \d+ms exceeded/.test(error.message);
+  return error.name === 'TimeoutError' || /Timeout \d+ms exceeded|timed out after \d+ms/.test(error.message);
 }
 
 async function proofRuntimeWithTimeoutRetry(browser, baseUrl, engineMode, tab) {

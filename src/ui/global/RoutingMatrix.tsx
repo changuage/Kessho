@@ -5,6 +5,9 @@ import { useSliderHelp } from '../SliderHelpOverlay';
 import type { SliderMode, SliderState } from '../state';
 import { useRuntimeSliderIndicator } from '../runtimeSliderState';
 import { getRoutingSourceDef, ROUTING_SOURCE_REGISTRY } from '../routing';
+import { NATURE_SLOT_KEYS } from '../../audio/natureSlots';
+import { natureSampleLabel } from '../../audio/natureSampleCatalog';
+import { INSECT_ENGINES } from '../../audio/waterPresets';
 import {
   LONG_PRESS_MOVE_TOLERANCE_PX,
   LONG_PRESS_MS,
@@ -175,22 +178,10 @@ const ROWS: MatrixRow[] = [
     },
   },
   {
-    id: 'waves',
-    label: 'Waves',
-    accent: '#5A7B8A',
-    cells: {
-      level: { kind: 'editable', route: { key: 'oceanSampleLevel', label: 'Waves Level' } },
-      delayA: { kind: 'editable', route: { key: 'oceanDelayASend', label: 'Waves → Delay A' } },
-      delayB: { kind: 'editable', route: { key: 'oceanDelayBSend', label: 'Waves → Delay B' } },
-      granular: { kind: 'editable', route: { key: 'granularWavesSend', label: 'Waves → Granular' } },
-      degrade: { kind: 'editable', route: { key: 'degradeWavesSend', label: 'Waves → Degrade' } },
-      reverb: { kind: 'editable', route: { key: 'oceanReverbSend', label: 'Waves → Reverb' } },
-    },
-  },
-  {
     id: 'water',
     label: 'Water',
     accent: '#6F9AB1',
+    earthFamily: 'water',
     cells: {
       level: { kind: 'editable', route: { key: 'waterLevel', label: 'Water Level' } },
       delayA: { kind: 'editable', route: { key: 'waterDelayASend', label: 'Water → Delay A' } },
@@ -204,7 +195,7 @@ const ROWS: MatrixRow[] = [
     id: 'insects',
     label: 'Insects',
     accent: '#7B9A6D',
-    sourceToggle: 'disable-only',
+    earthFamily: 'insects',
     note: 'The current Earth engine exposes one shared insects dry master plus combined wet sends for both insect layers, so this row controls the family-level routing.',
     cells: {
       level: { kind: 'editable', route: { key: 'insectsSharedLevel', label: 'Insects Level' } },
@@ -219,8 +210,8 @@ const ROWS: MatrixRow[] = [
     id: 'nature',
     label: 'Nature',
     accent: '#A6B98A',
-    sourceToggle: 'disable-only',
-    note: 'Nature now has a shared dry master plus one wet bus for Birds Alps, Birds Fujian, and Frogs. Individual source levels and texture shaping still live in the Active Earth Matrix.',
+    earthFamily: 'nature',
+    note: 'Nature has a shared dry master plus one wet bus for the selected Nature samples. Individual source levels and texture shaping still live in the Active Earth Matrix.',
     cells: {
       level: { kind: 'editable', route: { key: 'natureLevel', label: 'Nature Level' } },
       delayA: { kind: 'editable', route: { key: 'natureDelayASend', label: 'Nature → Delay A' } },
@@ -364,7 +355,59 @@ function dynamicsDestinationIndex(value: unknown): number {
 }
 
 function rowIsEnabled(row: MatrixRow, state: SliderState): boolean {
+  if (row.childToggleId) return true;
   return getRoutingSourceDef(row.id)?.isEnabled(state) ?? true;
+}
+
+const blockedChildCells = (levelKey: keyof SliderState, label: string): MatrixRow['cells'] => ({
+  level: { kind: 'editable', route: { key: levelKey, label: `${label} Level` } },
+  delayA: { kind: 'blocked', note: 'Uses the parent family send.' },
+  delayB: { kind: 'blocked', note: 'Uses the parent family send.' },
+  granular: { kind: 'blocked', note: 'Uses the parent family send.' },
+  degrade: { kind: 'blocked', note: 'Uses the parent family send.' },
+  reverb: { kind: 'blocked', note: 'Uses the parent family send.' },
+});
+
+function activeEarthChildRows(family: NonNullable<MatrixRow['earthFamily']>, state: SliderState): MatrixRow[] {
+  if (family === 'nature') return NATURE_SLOT_KEYS.flatMap((keys) => {
+    if (!state[keys.enabledKey]) return [];
+    const sampleLabel = natureSampleLabel(state[keys.sampleIdKey], keys.slot);
+    return [{
+      id: `nature-child-${keys.slot}`,
+      childToggleId: `nature${keys.slot}`,
+      label: sampleLabel,
+      accent: '#A6B98A',
+      cells: blockedChildCells(keys.levelKey, sampleLabel),
+    }];
+  });
+  if (family === 'insects') return ([
+    ['insects1', 'insectsEnabled', 'insectsLevel', state.insectsEngine, 'Insect 1'],
+    ['insects2', 'insects2Enabled', 'insects2Level', state.insects2Engine, 'Insect 2'],
+  ] as const).flatMap(([id, enabledKey, levelKey, engineIndex, fallbackLabel]) => {
+    if (!state[enabledKey]) return [];
+    const label = INSECT_ENGINES[engineIndex] ?? fallbackLabel;
+    return [{
+      id: `insects-child-${id}`,
+      childToggleId: id,
+      label,
+      accent: '#7B9A6D',
+      cells: blockedChildCells(levelKey, label),
+    }];
+  });
+  return ([
+    ['waterHardDrops', 'Hard Drops', 'waterLayerHardDrops'],
+    ['waterDrops', 'Water Drops', 'waterLayerWaterDrops'],
+    ['waterBubbling', 'Bubbling', 'waterLayerBubbling'],
+    ['waterChannels', 'Channels', 'waterLayerChannels'],
+    ['waterTurbulence', 'Turbulence', 'waterLayerTurbulence'],
+    ['waterSurf', 'Surf', 'waterLayerSurf'],
+  ] as const).flatMap(([id, label, levelKey]) => Number(state[levelKey]) > 0.0001 ? [{
+    id: `water-child-${id}`,
+    childToggleId: id,
+    label,
+    accent: '#6F9AB1',
+    cells: blockedChildCells(levelKey, label),
+  }] : []);
 }
 
 function getResolvedMode(runtime: RoutingSliderRuntime | null): SliderMode {
@@ -477,6 +520,7 @@ export default function RoutingMatrix({
   const { announceHelp, announceSlider } = useSliderHelp();
   const [draggingId, setDraggingId] = React.useState<string | null>(null);
   const [activeMobileColumn, setActiveMobileColumn] = React.useState<ColumnId>('level');
+  const [expandedEarthFamilies, setExpandedEarthFamilies] = React.useState<Set<string>>(() => new Set());
   const [showActiveOnly, setShowActiveOnly] = React.useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -524,7 +568,7 @@ export default function RoutingMatrix({
   // Bidirectional mutual exclusion: Granular ↔ Delay B
   const granularToDelayBActive = (state.granularDelayBSend ?? 0) > 0.0001;
   const delayBToGranularActive = (state.delayBGranularSend ?? 0) > 0.0001;
-  const effectiveRows = React.useMemo(() => ROWS.map(row => {
+  const effectiveRows = React.useMemo(() => ROWS.flatMap(row => {
     const source = getRoutingSourceDef(row.id);
     const registryRow = source
       ? {
@@ -536,13 +580,15 @@ export default function RoutingMatrix({
         }
       : row;
     if (registryRow.id === 'granular' && delayBToGranularActive) {
-      return { ...registryRow, cells: { ...registryRow.cells, delayB: { kind: 'blocked' as const, note: 'Blocked while Delay B → Granular is active' } } };
+      return [{ ...registryRow, cells: { ...registryRow.cells, delayB: { kind: 'blocked' as const, note: 'Blocked while Delay B → Granular is active' } } }];
     }
     if (registryRow.id === 'delayBOut' && granularToDelayBActive) {
-      return { ...registryRow, cells: { ...registryRow.cells, granular: { kind: 'blocked' as const, note: 'Blocked while Granular → Delay B is active' } } };
+      return [{ ...registryRow, cells: { ...registryRow.cells, granular: { kind: 'blocked' as const, note: 'Blocked while Granular → Delay B is active' } } }];
     }
-    return registryRow;
-  }), [granularToDelayBActive, delayBToGranularActive]);
+    return registryRow.earthFamily && expandedEarthFamilies.has(registryRow.earthFamily)
+      ? [registryRow, ...activeEarthChildRows(registryRow.earthFamily, state)]
+      : [registryRow];
+  }), [expandedEarthFamilies, granularToDelayBActive, delayBToGranularActive, state]);
   const visibleRows = React.useMemo(
     () => (showActiveOnly ? effectiveRows.filter((row) => rowIsEnabled(row, state)) : effectiveRows),
     [effectiveRows, showActiveOnly, state],
@@ -783,7 +829,7 @@ export default function RoutingMatrix({
 
   const renderRowLabel = React.useCallback((row: MatrixRow, rowEnabled: boolean, suffix = '') => {
     const disableOnly = row.sourceToggle === 'disable-only';
-    const canToggle = !showActiveOnly && !!onToggleSource && (!disableOnly || rowEnabled);
+    const canToggle = !!onToggleSource && (!disableOnly || rowEnabled);
     const offInAll = !showActiveOnly && !rowEnabled;
     const note = row.note ?? row.label;
     const title = disableOnly && !rowEnabled && !showActiveOnly
@@ -792,23 +838,55 @@ export default function RoutingMatrix({
         ? `${note} Click or tap to ${disableOnly ? 'disable this family' : 'toggle this source'}.`
         : note;
 
+    if (row.earthFamily) {
+      const expanded = expandedEarthFamilies.has(row.earthFamily);
+      return (
+        <div
+          key={`row:${row.id}${suffix}`}
+          className={`routing-matrix-rowlabel routing-matrix-earth-parent${offInAll ? ' source-off' : ''}`}
+          style={{ '--row-accent': offInAll ? '#7e8794' : row.accent } as React.CSSProperties}
+        >
+          <span className={`routing-matrix-earth-triangle${expanded ? ' is-expanded' : ''}`} aria-hidden="true" />
+          <span>{row.label}</span>
+          <button
+            type="button"
+            className="routing-matrix-earth-disclosure"
+            aria-expanded={expanded}
+            aria-label={`${expanded ? 'Collapse' : 'Expand'} ${row.label}`}
+            onClick={() => setExpandedEarthFamilies((current) => {
+              const next = new Set(current);
+              if (next.has(row.earthFamily!)) next.delete(row.earthFamily!); else next.add(row.earthFamily!);
+              return next;
+            })}
+          />
+          <button
+            type="button"
+            className="routing-matrix-earth-toggle"
+            aria-pressed={rowEnabled}
+            aria-label={`${rowEnabled ? 'Disable' : 'Enable'} ${row.label}`}
+            onClick={canToggle ? () => onToggleSource(row.id, !rowEnabled) : undefined}
+          />
+        </div>
+      );
+    }
+    const childToggle = row.childToggleId && onToggleSource;
     return (
       <button
         key={`row:${row.id}${suffix}`}
         type="button"
-        className={`routing-matrix-rowlabel routing-matrix-rowlabel-button${canToggle ? ' is-toggleable' : ''}${offInAll ? ' source-off' : ''}`}
+        className={`routing-matrix-rowlabel routing-matrix-rowlabel-button${canToggle || childToggle ? ' is-toggleable' : ''}${row.childToggleId ? ' earth-child' : ''}${offInAll ? ' source-off' : ''}`}
         style={{ '--row-accent': offInAll ? '#7e8794' : row.accent } as React.CSSProperties}
         title={title}
         aria-pressed={canToggle ? rowEnabled : undefined}
         aria-disabled={!canToggle}
         tabIndex={canToggle ? 0 : -1}
-        onClick={canToggle ? () => onToggleSource(row.id, !rowEnabled) : undefined}
+        onClick={childToggle ? () => onToggleSource(row.childToggleId!, false) : canToggle ? () => onToggleSource(row.id, !rowEnabled) : undefined}
       >
         <span className={`routing-matrix-rowdot${offInAll ? ' is-off' : ''}`} style={{ backgroundColor: offInAll ? undefined : row.accent }} />
         <span>{row.label}</span>
       </button>
     );
-  }, [onToggleSource, showActiveOnly]);
+  }, [expandedEarthFamilies, onToggleSource, showActiveOnly]);
 
   const renderSourceHeader = React.useCallback((suffix = '') => (
     <button

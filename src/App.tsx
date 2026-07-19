@@ -42,6 +42,7 @@ import {
   type DawOutputRoutingConfig,
 } from './audio/dawOutputRouting';
 import { getEffectivePhraseDuration } from './audio/transport';
+import { NATURE_SLOT_KEYS } from './audio/natureSlots';
 import {
   applyMorphToState,
 } from './audio/drumMorph';
@@ -228,6 +229,34 @@ import {
 
 const DEFAULT_AUTO_START_PRESET_NAME = 'String Waves';
 const CLOUD_ENABLED = isCloudPresetConfigEnabled();
+
+const WATER_CHILD_LEVEL_KEYS = [
+  'waterLayerHardDrops',
+  'waterLayerWaterDrops',
+  'waterLayerBubbling',
+  'waterLayerChannels',
+  'waterLayerTurbulence',
+  'waterLayerSurf',
+] as const satisfies readonly (keyof SliderState)[];
+
+function clearSharedEarthChildren(nextState: SliderState, family: 'water' | 'nature' | 'insects'): void {
+  const set = (key: keyof SliderState, value: unknown) => {
+    (nextState as unknown as Record<string, unknown>)[key] = value;
+  };
+
+  if (family === 'water') {
+    WATER_CHILD_LEVEL_KEYS.forEach((key) => set(key, 0));
+    return;
+  }
+  if (family === 'nature') {
+    NATURE_SLOT_KEYS.forEach((keys) => {
+      set(keys.enabledKey, false);
+    });
+    return;
+  }
+  set('insectsEnabled', false);
+  set('insects2Enabled', false);
+}
 
 // Main App
 
@@ -1414,6 +1443,9 @@ const App: React.FC = () => {
       const padMorphParamChange = getPadMorphParamChange(key);
       setState((prev) => {
         let newState: SliderState = { ...prev, [key]: value } as SliderState;
+        if (key === 'waterEnabled' && value === false) clearSharedEarthChildren(newState, 'water');
+        if (key === 'natureMasterEnabled' && value === false) clearSharedEarthChildren(newState, 'nature');
+        if (key === 'insectsMasterEnabled' && value === false) clearSharedEarthChildren(newState, 'insects');
         if (isTransportClockStateKey(key)) {
           newState = normalizeTransportClockState(newState);
         }
@@ -2018,7 +2050,9 @@ const App: React.FC = () => {
         // "Nature" engine = birds OR birds2 OR frogs. Master nature router values
         // collapse to 0 only when ALL nature sub-engines are off on that side.
         {
-          isOn: (s) => !!s.birdsEnabled || !!s.birds2Enabled || !!s.frogsEnabled,
+          isOn: (s) => !!s.natureMasterEnabled && (
+            !!s.nature1Enabled || !!s.nature2Enabled || !!s.nature3Enabled || !!s.nature4Enabled
+          ),
           keys: ['natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'granularNatureSend', 'degradeNatureSend'],
         },
         {
@@ -2032,7 +2066,12 @@ const App: React.FC = () => {
         },
         { isOn: (s) => !!s.insectsEnabled, keys: ['insectsLevel'] },
         { isOn: (s) => !!s.insects2Enabled, keys: ['insects2Level'] },
-        // Per-sub-engine nature levels follow their own toggles.
+        // Per-slot Nature levels follow their own toggles.
+        { isOn: (s) => !!s.natureMasterEnabled && !!s.nature1Enabled, keys: ['nature1Level'] },
+        { isOn: (s) => !!s.natureMasterEnabled && !!s.nature2Enabled, keys: ['nature2Level'] },
+        { isOn: (s) => !!s.natureMasterEnabled && !!s.nature3Enabled, keys: ['nature3Level'] },
+        { isOn: (s) => !!s.natureMasterEnabled && !!s.nature4Enabled, keys: ['nature4Level'] },
+        // Legacy preset fields remain migration-only compatibility controls.
         { isOn: (s) => !!s.birdsEnabled, keys: ['birdsLevel'] },
         { isOn: (s) => !!s.birds2Enabled, keys: ['birds2Level'] },
         { isOn: (s) => !!s.frogsEnabled, keys: ['frogsLevel'] },
@@ -2248,6 +2287,10 @@ const App: React.FC = () => {
         birdsEnabled: ['birdsLevel', 'birdsSliceDuration', 'birdsSliceDensity'],
         birds2Enabled: ['birds2Level', 'birds2SliceDuration', 'birds2SliceDensity'],
         frogsEnabled: ['frogsLevel', 'frogsSliceDuration', 'frogsSliceDensity'],
+        nature1Enabled: ['nature1Level', 'nature1SliceDuration', 'nature1SliceDensity'],
+        nature2Enabled: ['nature2Level', 'nature2SliceDuration', 'nature2SliceDensity'],
+        nature3Enabled: ['nature3Level', 'nature3SliceDuration', 'nature3SliceDensity'],
+        nature4Enabled: ['nature4Level', 'nature4SliceDuration', 'nature4SliceDensity'],
       };
 
       // Router-matrix child keys (per engine toggle) that represent the engine's
@@ -2536,6 +2579,10 @@ const App: React.FC = () => {
         'frogsLevel',
         'frogsSliceDuration',
         'frogsSliceDensity',
+        'nature1Level',
+        'nature2Level',
+        'nature3Level',
+        'nature4Level',
         'natureLevel',
         'natureReverbSend',
         'natureDelayASend',
@@ -3083,6 +3130,22 @@ const App: React.FC = () => {
     (sourceId: string, enabled: boolean) => {
       hasUserInteractedRef.current = true;
       setState((prev) => {
+        const natureChild = /^nature([1-4])$/.exec(sourceId);
+        if (natureChild) {
+          const key = `nature${natureChild[1]}Enabled` as keyof SliderState;
+          return { ...prev, [key]: enabled };
+        }
+        if (sourceId === 'insects1' || sourceId === 'insects2') {
+          const key = sourceId === 'insects1' ? 'insectsEnabled' : 'insects2Enabled';
+          return { ...prev, [key]: enabled };
+        }
+        const waterChildKeys: Record<string, keyof SliderState> = {
+          waterHardDrops: 'waterLayerHardDrops', waterDrops: 'waterLayerWaterDrops',
+          waterBubbling: 'waterLayerBubbling', waterChannels: 'waterLayerChannels',
+          waterTurbulence: 'waterLayerTurbulence', waterSurf: 'waterLayerSurf',
+        };
+        const waterChildKey = waterChildKeys[sourceId];
+        if (waterChildKey) return { ...prev, [waterChildKey]: enabled ? 0.5 : 0 };
         const source = getRoutingSourceDef(sourceId);
         if (!source) return prev;
         let nextState: SliderState | null = null;
@@ -3098,6 +3161,9 @@ const App: React.FC = () => {
         const toggleKeys = getRoutingSourceToggleKeys(sourceId);
         if (source.toggleMode === 'simple-toggle' || source.toggleMode === 'return-row') {
           toggleKeys.forEach((key) => setFlag(key, enabled));
+          if (!enabled && sourceId === 'water') clearSharedEarthChildren(ensureNextState(), 'water');
+          if (!enabled && sourceId === 'nature') clearSharedEarthChildren(ensureNextState(), 'nature');
+          if (!enabled && sourceId === 'insects') clearSharedEarthChildren(ensureNextState(), 'insects');
           const finalState = nextState ?? prev;
           if (nextState) {
             applyMorphEndpointStatePatch(prev, finalState);

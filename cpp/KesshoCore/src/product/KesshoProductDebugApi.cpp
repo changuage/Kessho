@@ -54,7 +54,7 @@ int32_t kessho_product_debug_render_events(
       control_segment_end = cursor + 1u;
     }
     const uint32_t control_segment_frames = control_segment_end - cursor;
-    engine->generateSequencerEvents(control_segment_frames);
+    engine->generateSequencerEvents(control_segment_frames, true);
     generated_count += engine->sequencer_events.count;
     const uint32_t available = max_event_count > copied_count ? max_event_count - copied_count : 0u;
     const uint32_t copy_count = std::min<uint32_t>(engine->sequencer_events.count, available);

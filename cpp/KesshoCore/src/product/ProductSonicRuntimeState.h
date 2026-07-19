@@ -6,6 +6,8 @@ namespace kessho::product::internal {
 
 constexpr uint32_t kProductSourceMorphAutomationCount = 11u;
 constexpr uint32_t kProductDirectSourceMorphAutomationCount = 4u;
+// Avoid rebuilding structured overrides for sub-millipercent control-rate changes.
+constexpr float kAutomatedSourceMorphApplyThreshold = 1.0f / 1024.0f;
 
 enum class ProductMorphMode : uint32_t {
   Linear = 0u,

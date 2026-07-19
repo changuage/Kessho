@@ -1230,7 +1230,7 @@ const earthEntries: Record<string, SliderHelpEntry> = {
   ),
   natureLevel: entry(
     'Sets the shared master for the Nature sample group and scales the group FX routing.',
-    'Low values pull Birds Alps, Birds Fujian, and Frogs down together while also reducing their shared FX feed. High values let the Nature stack sit forward in the Earth mix with proportionally stronger routing.',
+    'Low values pull the selected Nature samples down together while also reducing their shared FX feed. High values let the Nature stack sit forward in the Earth mix with proportionally stronger routing.',
     [
       rt('Routing Matrix', 'Nature Level'),
       ea('Active Earth Matrix', 'Nature Master'),
@@ -1238,7 +1238,7 @@ const earthEntries: Record<string, SliderHelpEntry> = {
   ),
   natureReverbSend: entry(
     'Sets how much the shared Nature bus feeds the common reverb.',
-    'Low values keep birds and frogs more direct. High values let the Nature layers dissolve further into the shared ambience.',
+    'Low values keep the selected samples more direct. High values let the Nature layers dissolve further into the shared ambience.',
     [
       rt('Routing Matrix', 'Nature → Reverb'),
       ea('Active Earth Matrix', 'Nature Reverb'),

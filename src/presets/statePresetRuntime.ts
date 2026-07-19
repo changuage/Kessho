@@ -7,6 +7,7 @@ import {
 import { getPadPreset, morphPadPresets, PAD1_TO_PAD2_KEY, PAD_PRESET_PARAM_KEYS } from '../audio/padPresets';
 import { normalizeDegradeReverbCrossfeed } from '../ui/routing';
 import { DEFAULT_STATE, migratePreset, type SliderState } from '../ui/state';
+import { migrateLegacyNatureSlotState } from '../audio/natureSlots';
 import { loadPresetsFromFolder, type BundledSavedPreset } from './bundledPresetLoader';
 import { getVersionData } from './codec';
 import { extractPresetVersionMetadata } from './presetUtils';
@@ -47,8 +48,8 @@ export const checkPresetCompatibility = (preset: SavedPreset): string[] => {
 
 // Normalize iOS-only settings to web-compatible values
 export const normalizePresetForWeb = (state: SliderState): SliderState => {
-  const normalized = { ...state };
   const raw = state as Partial<SliderState> & Record<string, unknown>;
+  const normalized = migrateLegacyNatureSlotState(raw) as unknown as SliderState;
 
   // Replace iOS-only reverb types with 'hall'
   if (normalized.reverbType && IOS_ONLY_REVERB_TYPES.has(normalized.reverbType)) {
@@ -143,7 +144,7 @@ export const normalizePresetForWeb = (state: SliderState): SliderState => {
   Object.assign(
     normalized,
     normalizeDynamicsQualityFields(
-      normalizeDynamicsErosionAliases(normalized as Record<string, unknown>),
+      normalizeDynamicsErosionAliases(normalized as unknown as Record<string, unknown>),
     ),
   );
 

@@ -3,6 +3,7 @@
 #include "KesshoCore/KesshoProductAssets.h"
 #include "KesshoCore/KesshoProductEvents.h"
 #include "KesshoCore/KesshoProductGeneratedSequencerCapture.h"
+#include "KesshoCore/KesshoProductSimpleSequencerVisual.h"
 #include "KesshoCore/KesshoProductSnapshot.h"
 #include "KesshoCore/KesshoProductTelemetry.h"
 #include "KesshoCore/KesshoProductTypes.h"
@@ -82,6 +83,16 @@ int32_t kessho_product_set_meter_demand(
 int32_t kessho_product_set_debug_voice_spawn_demand(
     KesshoProductEngine* engine,
     uint32_t enabled);
+
+int32_t kessho_product_set_simple_sequencer_visual_demand(
+    KesshoProductEngine* engine,
+    uint32_t demand_mask);
+
+uint32_t kessho_product_drain_simple_sequencer_visual_events(
+    KesshoProductEngine* engine,
+    KesshoProductSimpleSequencerVisualEvent* out_events,
+    uint32_t max_event_count,
+    uint32_t* out_overflow_count);
 
 uint64_t kessho_product_get_telemetry_refresh_count(KesshoProductEngine* engine);
 

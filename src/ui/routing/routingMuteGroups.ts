@@ -3,7 +3,6 @@ import { PARAM_REGISTRY } from '../../presets/ParamRegistry';
 import {
   getRoutingSourceDef,
   ROUTING_SOURCE_REGISTRY,
-  ROUTING_SOURCE_IDS,
   type RoutingRowId,
   type RoutingSourceDef,
 } from './routingSourceRegistry';
@@ -34,7 +33,9 @@ export const ROUTING_MUTE_GROUP_SLOT_COLORS = [
   '#A5C4D4',
 ] as const;
 
-export const ROUTING_MUTE_GROUP_SOURCE_IDS = ROUTING_SOURCE_IDS;
+export const ROUTING_MUTE_GROUP_SOURCE_IDS = ROUTING_SOURCE_REGISTRY
+  .filter((source) => source.muteGroupEligible !== false)
+  .map((source) => source.id);
 export const DEFAULT_ROUTING_MUTE_GROUP_SOURCE_IDS = ROUTING_MUTE_GROUP_SOURCE_IDS;
 export type RoutingMuteGroupSourceId = RoutingRowId;
 
@@ -44,6 +45,12 @@ const SEQUENCER_BOOLEAN_SUFFIXES = ['Enabled', 'Solo'] as const;
 export const ROUTING_MUTE_GROUP_EARTH_BOOLEAN_KEYS = [
   'oceanSampleEnabled',
   'waterEnabled',
+  'natureMasterEnabled',
+  'nature1Enabled',
+  'nature2Enabled',
+  'nature3Enabled',
+  'nature4Enabled',
+  'insectsMasterEnabled',
   'birdsEnabled',
   'birds2Enabled',
   'frogsEnabled',
@@ -859,6 +866,7 @@ export function createRoutingMuteGroupTransitionController({
     }
 
     schedule(token, transition.fadeDownMs, () => {
+      if (source.muteGroupKeepsEngineRunning) return;
       for (const key of source.enabledKeys ?? []) {
         if (Boolean(getState()[key])) onBooleanParamChange(key, false);
       }

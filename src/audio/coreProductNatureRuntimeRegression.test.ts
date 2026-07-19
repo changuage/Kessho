@@ -9,6 +9,7 @@ import {
   CORE_PRODUCT_PAD2_RUNTIME_PARAM_ID_BASE,
   CORE_PRODUCT_SOURCE_IDS,
   CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE,
+  CORE_PRODUCT_SOUNDSCAPE_TEXTURE_LEVEL_RANGE_TARGET_BASE,
   createCoreProductModulationRangeEvent,
   resolveCoreProductRangeTargets,
   type CoreProductModulationRangeMode,
@@ -82,6 +83,10 @@ function assetTarget(assetId: number): number {
   return CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE + assetId;
 }
 
+function natureSlotLevelTarget(slotIndex: number): number {
+  return CORE_PRODUCT_SOUNDSCAPE_TEXTURE_LEVEL_RANGE_TARGET_BASE + slotIndex;
+}
+
 function drumRuntimeParamId(key: string): number {
   const spec = KESSHO_PRODUCT_DRUM_PARAM_SPECS.find((candidate) => candidate.key === key);
   assert(spec, `Missing generated drum param spec for ${key}`);
@@ -129,6 +134,10 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
     ]],
     ['sample1Level', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['sample2Level', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature1Level', [{ targetId: natureSlotLevelTarget(0), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature2Level', [{ targetId: natureSlotLevelTarget(1), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature3Level', [{ targetId: natureSlotLevelTarget(2), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature4Level', [{ targetId: natureSlotLevelTarget(3), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['oceanSampleLevel', [{ targetId: assetTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.ocean.assetId), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['waterLevel', [{ targetId: CORE_PRODUCT_SOURCE_IDS.soundscape, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['insectsSharedLevel', [{ targetId: CORE_PRODUCT_SOURCE_IDS.soundscape, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],

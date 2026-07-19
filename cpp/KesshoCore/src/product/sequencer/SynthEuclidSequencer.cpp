@@ -2257,14 +2257,14 @@ class ScopedSequencerAudibilityGate {
   }
 }
 
-  void KesshoProductEngine::generateSequencerEvents(uint32_t frames) {
+  void KesshoProductEngine::generateSequencerEvents(uint32_t frames, bool include_inactive_sources) {
   sequencer_events.clear();
   if (!transport.running) {
     return;
   }
   generateLaneEvents(synth_lanes, synth_lane_count, frames, sequencer_events);
   generateLaneEvents(drum_lanes, drum_lane_count, frames, sequencer_events);
-  scheduleScatterEvents(frames, sequencer_events);
+  scheduleScatterEvents(frames, sequencer_events, include_inactive_sources);
   generateArrangementEvents(frames, sequencer_events);
   sequencer_events.sortByOffset();
 }

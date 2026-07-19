@@ -911,6 +911,53 @@
   border-color: rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.04);
 }
+.routing-root .routing-matrix-earth-parent {
+  position: relative;
+  /* Keep aggregate rows on the exact same text metrics as source buttons. */
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+}
+.routing-root .routing-matrix-earth-disclosure,
+.routing-root .routing-matrix-earth-toggle {
+  position: absolute;
+  inset-block: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  z-index: 1;
+}
+.routing-root .routing-matrix-earth-disclosure {
+  inset-inline-start: 0;
+  width: 20%;
+}
+.routing-root .routing-matrix-earth-toggle {
+  inset-inline-start: 20%;
+  inset-inline-end: 0;
+}
+.routing-root .routing-matrix-earth-parent:has(button:hover) {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+.routing-root .routing-matrix-earth-parent:has(button:focus-visible) {
+  outline: 2px solid rgba(165, 196, 212, 0.72);
+  outline-offset: -2px;
+}
+.routing-root .routing-matrix-earth-triangle {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  background: var(--row-accent);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  transform-origin: 50% 50%;
+  transition: transform 120ms ease;
+}
+.routing-root .routing-matrix-earth-triangle.is-expanded {
+  transform: rotate(90deg);
+}
+.routing-root .routing-matrix-rowlabel.earth-child {
+  padding-inline-start: 16px;
+}
 
 .routing-root .routing-matrix-rowlabel.source-off {
   background: rgba(255, 255, 255, 0.018);

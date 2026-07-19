@@ -6,7 +6,7 @@ void KesshoProductEngine::applySourceMorphValue(uint32_t source_id, float value,
   }
   SourceState& source = sources[source_id - 1u];
   const float clamped = clampFloat(value, 0.0f, 1.0f);
-  if (!manual_edit && std::fabs(source.morph - clamped) <= 0.000001f) return;
+  if (!manual_edit && std::fabs(source.morph - clamped) < kAutomatedSourceMorphApplyThreshold) return;
   source.morph = clamped;
   if (isPadProductSource(source_id) || isLeadProductSource(source_id)) {
     (void) applyStructuredSourceOverridesToModuleForCurrentMorph(source_id);

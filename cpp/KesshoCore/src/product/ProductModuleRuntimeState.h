@@ -10,6 +10,14 @@
 
 namespace kessho::product::internal {
 
+struct SoundscapeFamilyGainState {
+  float gain = 0.0f;
+  float target = 0.0f;
+  float delta = 0.0f;
+  uint32_t remaining = 0u;
+  uint64_t frame = 0u;
+};
+
 struct ProductModuleRuntimeState {
   bool modules_ready = false;
   std::unique_ptr<kessho::core::IKesshoModule> pad_module{};
@@ -28,6 +36,8 @@ struct ProductModuleRuntimeState {
   SoundscapeTextureRuntime soundscape_texture_runtimes[kSoundscapeTextureSlotCount]{};
   float soundscape_texture_delay[kSoundscapeTextureSlotCount][kSoundscapeTextureHaasDelayMaxFrames]{};
   uint32_t soundscape_texture_delay_index[kSoundscapeTextureSlotCount]{};
+  SoundscapeFamilyGainState soundscape_family_gains[2]{}; // Water, Insects
+  SoundscapeFamilyGainState soundscape_insects_layer_gains[2]{};
   uint64_t product_render_frame = 0u;
   uint32_t pad_voice_cursors[2]{};
   uint32_t pad_voice_release_frames[PAD_NUM_PADS][PAD_NUM_VOICES]{};

@@ -271,6 +271,7 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   harmony.phrase_length_seconds = clampFloat(snapshot.harmony.phrase_length_seconds, 0.001f, 4096.0f);
   harmony.progression_phrase_seconds = clampFloat(snapshot.harmony.progression_phrase_seconds, 0.001f, 4096.0f);
   harmony.voicing_spread = clampFloat(snapshot.harmony.voicing_spread, 0.0f, 1.0f);
+  harmony.requested_voicing_spread = harmony.voicing_spread;
   harmony.detune_cents = clampFloat(snapshot.harmony.detune_cents, 0.0f, 100.0f);
   harmony.scale_mode = snapshot.harmony.scale_mode == 1u ? 1u : 0u;
   harmony.phrases_until_change = std::max<uint32_t>(1u, snapshot.harmony.phrases_until_change);
@@ -320,7 +321,9 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   arrangement.lead_velocity_max = clampFloat(snapshot.arrangement.lead_velocity_max, arrangement.lead_velocity_min, 1.0f);
   arrangement.rng_seed = snapshot.arrangement.rng_state == 0u ? 1u : snapshot.arrangement.rng_state;
   arrangement.wave_spread = clampFloat(snapshot.arrangement.wave_spread, 0.0f, 1.0f);
+  arrangement.requested_wave_spread = arrangement.wave_spread;
   arrangement.synth_octave = std::max(-2, std::min(2, snapshot.arrangement.synth_octave));
+  arrangement.requested_synth_octave = arrangement.synth_octave;
   arrangement.lead_chord_bias = clampFloat(snapshot.arrangement.lead_chord_bias, 0.0f, 1.0f);
   arrangement.synth_voice_mask = snapshot.arrangement.synth_voice_mask & 0xffu;
   arrangement.pad2_voice_assign = snapshot.arrangement.pad2_voice_assign & 0xffu;

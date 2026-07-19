@@ -124,6 +124,29 @@ KesshoProductSnapshotV2 makeTextureSoundscapeSnapshot(
   return snapshot;
 }
 
+KesshoProductSnapshotV2 makeCanonicalNatureSnapshot(uint32_t enabled_slot) {
+  using namespace kessho::product::internal;
+  const uint32_t asset_ids[kSoundscapeTextureSlotCount] = {
+      kSoundscapeAssetOcean, kSoundscapeAssetBirds, kSoundscapeAssetBirds2, kSoundscapeAssetFrogs};
+  KesshoProductSnapshotV2 snapshot = makeSoundscapeSnapshot(asset_ids[std::min(enabled_slot, kSoundscapeTextureSlotCount - 1u)]);
+  snapshot.soundscape_texture_param_count = kSoundscapeTextureParamCount;
+  snapshot.soundscape_module_param_count = kSoundscapeProductModuleParamCount;
+  snapshot.soundscape_module_params[kSoundscapeModuleNatureMasterEnabledParam] = 1.0f;
+  for (uint32_t slot = 0u; slot < kSoundscapeTextureSlotCount; ++slot) {
+    snapshot.asset_refs[slot] = asset_ids[slot];
+    snapshot.asset_ref_levels[slot] = 1.0f;
+    const uint32_t offset = kSoundscapeTextureParamStart + slot * kSoundscapeTextureParamStride;
+    snapshot.soundscape_texture_params[offset + kSoundscapeTextureParamSliceDuration] = 1.5f;
+    snapshot.soundscape_texture_params[offset + kSoundscapeTextureParamDensity] = 1.0f;
+    snapshot.soundscape_texture_params[offset + kSoundscapeTextureParamFadeTime] = 0.1f;
+    snapshot.soundscape_texture_params[offset + kSoundscapeTextureParamSeedLo] = static_cast<float>(123u + slot);
+    snapshot.soundscape_texture_params[offset + kSoundscapeTextureParamAssetId] = static_cast<float>(asset_ids[slot]);
+    snapshot.soundscape_texture_params[offset + kSoundscapeTextureParamEnabled] = slot == enabled_slot ? 1.0f : 0.0f;
+    snapshot.soundscape_texture_params[offset + kSoundscapeTextureParamLevel] = 0.5f;
+  }
+  return snapshot;
+}
+
 uint32_t distinctRecentSoundscapeOffsets(
     const kessho::product::internal::SoundscapeTextureRuntime& runtime,
     float threshold = 0.25f) {
@@ -250,6 +273,82 @@ float renderPianoAttackProbe(float attack_seconds, bool via_param_event = false)
   kessho_product_render(engine, left.data(), right.data(), 128);
   const float rendered_peak = std::max(peak(left), peak(right));
   kessho_product_destroy(engine);
+
+  {
+    using namespace kessho::product::internal;
+    constexpr uint32_t enabled_nature_slot = 1u;
+    KesshoProductEngine* nature_slot_engine = kessho_product_create(48000.0, 128, 0);
+    require(nature_slot_engine != nullptr, "canonical Nature slot engine create failed");
+    KesshoProductSnapshotV2 nature_slot_snapshot = makeCanonicalNatureSnapshot(enabled_nature_slot);
+    require(
+        kessho_product_load_snapshot_v2(nature_slot_engine, &nature_slot_snapshot, sizeof(nature_slot_snapshot)) ==
+            KESSHO_PRODUCT_OK,
+        "canonical Nature slot snapshot load failed");
+    std::vector<float> nature_slot_data(48000u * 3u, 0.2f);
+    const float* nature_slot_channels[1] = {nature_slot_data.data()};
+    const uint32_t nature_asset_ids[kSoundscapeTextureSlotCount] = {
+        kSoundscapeAssetOcean, kSoundscapeAssetBirds, kSoundscapeAssetBirds2, kSoundscapeAssetFrogs};
+    for (uint32_t slot = 0u; slot < kSoundscapeTextureSlotCount; ++slot) {
+      require(
+          kessho_product_register_asset_buffer(
+              nature_slot_engine,
+              nature_asset_ids[slot],
+              nature_slot_channels,
+              1,
+              static_cast<uint32_t>(nature_slot_data.size()),
+              48000.0,
+              KESSHO_PRODUCT_ASSET_LOOP | KESSHO_PRODUCT_ASSET_SOUNDSCAPE) == KESSHO_PRODUCT_OK,
+          "canonical Nature asset registration failed");
+    }
+
+    KesshoProductEvent active_range{};
+    active_range.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
+    active_range.target_id = kSoundscapeTextureLevelRangeTargetBase + enabled_nature_slot;
+    active_range.index = 0x13579u;
+    active_range.param_id = KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID;
+    active_range.value = 0.1f;
+    active_range.value2 = 0.9f;
+    active_range.value3 = static_cast<float>(KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD);
+    active_range.value4 = 0.5f;
+    active_range.flags = KESSHO_PRODUCT_MODULATION_RANGE_ACTIVE;
+    require(
+        kessho_product_enqueue_event(nature_slot_engine, &active_range) == KESSHO_PRODUCT_OK,
+        "canonical Nature sample-and-hold event enqueue failed");
+    KesshoProductEvent inactive_range = active_range;
+    inactive_range.target_id = kSoundscapeTextureLevelRangeTargetBase;
+    inactive_range.index = 0x24680u;
+    require(
+        kessho_product_enqueue_event(nature_slot_engine, &inactive_range) == KESSHO_PRODUCT_OK,
+        "inactive Nature sample-and-hold event enqueue failed");
+
+    for (uint32_t block = 0u; block < 32u; ++block) {
+      std::fill(left.begin(), left.end(), 0.0f);
+      std::fill(right.begin(), right.end(), 0.0f);
+      kessho_product_render(nature_slot_engine, left.data(), right.data(), 128);
+    }
+    for (uint32_t slot = 0u; slot < kSoundscapeTextureSlotCount; ++slot) {
+      require(
+          nature_slot_engine->soundscape_texture_runtimes[slot].initialized == (slot == enabled_nature_slot),
+          "inactive canonical Nature slot initialized a playback runtime");
+    }
+    for (const Voice& voice : nature_slot_engine->voices) {
+      if (!voice.active || !voice.soundscape_texture_voice) continue;
+      require(
+          voice.soundscape_texture_slot == enabled_nature_slot,
+          "inactive canonical Nature slot queued a texture voice");
+    }
+    const ModulationRange* enabled_range = nature_slot_engine->findModulationRange(
+        kSoundscapeTextureLevelRangeTargetBase + enabled_nature_slot,
+        KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID);
+    const ModulationRange* disabled_range = nature_slot_engine->findModulationRange(
+        kSoundscapeTextureLevelRangeTargetBase,
+        KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID);
+    require(enabled_range != nullptr && enabled_range->sample_hold_counter > 0u,
+        "enabled Nature slot did not sample its level at slice onset");
+    require(disabled_range != nullptr && disabled_range->sample_hold_counter == 0u,
+        "inactive Nature slot sampled a level without a slice onset");
+    kessho_product_destroy(nature_slot_engine);
+  }
   return rendered_peak;
 }
 

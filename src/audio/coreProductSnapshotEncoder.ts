@@ -18,7 +18,7 @@ type LegacyExactBridgeSource = ProductSourceSnapshot & {
   exactDrumParams?: unknown;
 };
 
-const SNAPSHOT_BYTES = 152936;
+const SNAPSHOT_BYTES = 153044;
 const SOURCE_BYTES = 5188;
 const LANE_BYTES = 100;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES + 16 * KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES;

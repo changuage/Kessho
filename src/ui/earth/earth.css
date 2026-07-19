@@ -1280,6 +1280,36 @@
   background: color-mix(in srgb, var(--row-accent, #a5c4d4) 92%, white 8%);
   box-shadow: 0 0 6px color-mix(in srgb, var(--row-accent, #a5c4d4) 28%, transparent);
 }
+.earth-root .ec-disclosure {
+  align-self: stretch;
+  flex: 0 0 20%;
+  min-width: 44px;
+  border: 0;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.earth-root .ec-disclosure.on {
+  color: var(--sc, var(--accent-green));
+}
+.earth-root .ec-name-toggle {
+  flex: 1 1 80%;
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.earth-root .ec-name-toggle.off {
+  color: var(--text-muted);
+}
+.earth-root .ec-disclosure:focus-visible,
+.earth-root .ec-name-toggle:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--sc, var(--accent-green)) 72%, transparent);
+  outline-offset: 2px;
+}
 
 .earth-root .earth-matrix-cell-indicator.walk {
   width: 1px;

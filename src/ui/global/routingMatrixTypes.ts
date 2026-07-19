@@ -10,6 +10,7 @@ export interface RouteControl { key: keyof SliderState; label: string }
 export interface MatrixCell { kind: 'editable' | 'self' | 'blocked'; route?: RouteControl; note?: string }
 export interface MatrixRow {
   id: string; label: string; accent: string; note?: string; sourceToggle?: 'toggle' | 'disable-only';
+  earthFamily?: 'water' | 'insects' | 'nature'; childToggleId?: string;
   cells: Record<SliderColumnId, MatrixCell>;
 }
 export interface RoutingColumn { id: ColumnId; label: string; helpKey: string; note?: string }

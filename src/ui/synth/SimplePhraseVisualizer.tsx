@@ -402,25 +402,30 @@ export const SimplePhraseVisualizer: React.FC<SimplePhraseVisualizerProps> = ({
   }, [isRunning]);
 
   const allowRuntimePlan = kind !== 'padChord' || state.synthChordGeneratorEnabled === true;
+  const runtimePlansAuthoritative = transportDebug?.simpleSequencerPlansAuthoritative === true;
   const runtimeCurrentPlan = allowRuntimePlan ? runtimePlanForKind(kind, transportDebug) : null;
   const runtimePreviousPlan = allowRuntimePlan ? previousRuntimePlanForKind(kind, transportDebug) : null;
   const currentPreview = useMemo(
-    () => runtimeCurrentPlan ?? (
-      kind === 'padChord'
+    () => {
+      if (runtimeCurrentPlan) return runtimeCurrentPlan;
+      const modeled = kind === 'padChord'
         ? createPadChordPhrasePreview(phrasePlan.currentState, phrasePlan.index)
-        : createRandomTimingPhrasePreview(phrasePlan.currentState, phrasePlan.index)
-    ),
-    [kind, phrasePlan, runtimeCurrentPlan?.key],
+        : createRandomTimingPhrasePreview(phrasePlan.currentState, phrasePlan.index);
+      return runtimePlansAuthoritative
+        ? { ...modeled, notes: [], key: `${kind}:core:waiting:${phrasePlan.index}` }
+        : modeled;
+    },
+    [kind, phrasePlan, runtimeCurrentPlan?.key, runtimePlansAuthoritative],
   );
   const previousPreview = useMemo(
-    (): SimpleSequencerPhrasePreview | null => runtimePreviousPlan ?? (
+    (): SimpleSequencerPhrasePreview | null => runtimePreviousPlan ?? (runtimePlansAuthoritative ? null : (
       phrasePlan.index <= 0
         ? null
         : kind === 'padChord'
         ? createPadChordPhrasePreview(phrasePlan.previousState, Math.max(0, phrasePlan.index - 1))
         : createRandomTimingPhrasePreview(phrasePlan.previousState, Math.max(0, phrasePlan.index - 1))
-    ),
-    [kind, phrasePlan, runtimePreviousPlan?.key],
+    )),
+    [kind, phrasePlan, runtimePreviousPlan?.key, runtimePlansAuthoritative],
   );
 
   useEffect(() => {
@@ -522,7 +527,13 @@ export const SimplePhraseVisualizer: React.FC<SimplePhraseVisualizerProps> = ({
 
   return (
     <div className="simple-phrase-viz" aria-label={kind === 'padChord' ? 'Pad chord phrase visualizer' : 'Random timing phrase visualizer'}>
-      <canvas ref={canvasRef} />
+      <canvas
+        ref={canvasRef}
+        data-phrase-index={currentPreview.phraseIndex ?? phrasePlan.index}
+        data-note-signature={currentPreview.notes
+          .map((note) => `${Math.round(note.midi)}@${note.triggerSeconds.toFixed(4)}`)
+          .join('|')}
+      />
     </div>
   );
 };

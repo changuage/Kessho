@@ -29,14 +29,6 @@ const WATER_DETAIL_BLUE = 'rgba(96,165,250,0.5)';
 const SURF_CYAN = 'rgba(0,180,216,0.5)';
 const CHANNEL_TEAL = 'rgba(0,150,136,0.5)';
 const REVERB_VIOLET = 'rgba(139,92,246,0.5)';
-const WATER_SUB_ENGINE_LEVEL_KEYS = [
-  'waterLayerHardDrops',
-  'waterLayerWaterDrops',
-  'waterLayerBubbling',
-  'waterLayerTurbulence',
-  'waterLayerSurf',
-  'waterLayerChannels',
-] as const satisfies readonly (keyof SliderState)[];
 
 function SubSection({
   title,
@@ -94,10 +86,6 @@ export function WaterCard({
   const handleToggleWaterEnabled = () => {
     const nextEnabled = !state.waterEnabled;
     onSelectChange('waterEnabled', nextEnabled);
-
-    if (!nextEnabled) {
-      WATER_SUB_ENGINE_LEVEL_KEYS.forEach((key) => onSelectChange(key, 0));
-    }
   };
 
   return (

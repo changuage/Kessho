@@ -102,6 +102,27 @@ function createDelegate(overrides: Partial<ProductLifecycleDelegate> = {}) {
 }
 
 {
+  const failure = new Error('transient start failure');
+  let attempts = 0;
+  const { calls, delegate, states } = createDelegate({
+    startRuntime: async () => {
+      calls.push('start');
+      attempts += 1;
+      if (attempts === 1) throw failure;
+    },
+  });
+  const controller = new ProductRuntimeLifecycleController(delegate);
+
+  await assert.rejects(() => controller.start(), failure);
+  await controller.start();
+
+  assert.equal(controller.currentStatus, 'running');
+  assert.equal(controller.lastRejectedTransitionReason, null);
+  assert.deepEqual(calls, ['start', 'start']);
+  assert.deepEqual(states, ['starting', 'failed', 'starting', 'running']);
+}
+
+{
   const gate = createDeferred();
   const { calls, delegate, states } = createDelegate({
     startRuntime: async () => { calls.push('start'); await gate.promise; },

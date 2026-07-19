@@ -284,9 +284,17 @@ int32_t driftedRoot(int32_t home_root, int32_t step) {
 void KesshoProductEngine::resetHarmonyClock() {
   harmony.harmony_tick_index = 0u;
   harmony.progression_phrase_index = harmony.next_progression_phrase_index;
-  harmony.chord_sub_tick = 0u;
   harmony.harmony_rng_state = rng_seed == 0u ? 1u : rng_seed;
   const uint64_t interval = harmonyIntervalFrames(sample_rate, harmony.chord_interval_seconds);
+  const uint32_t chords_per_phrase = interval == 0u ? 1u : std::max<uint32_t>(
+      1u,
+      static_cast<uint32_t>(std::llround(
+          static_cast<double>(harmony.phrase_length_seconds) /
+          std::max(0.001, static_cast<double>(harmony.chord_interval_seconds)))));
+  // The snapshot/current chord is tick zero of the phrase. The next clock tick
+  // is therefore tick one; starting again at zero mislabeled an in-phrase
+  // chord change as a phrase boundary.
+  harmony.chord_sub_tick = chords_per_phrase > 1u ? 1u : 0u;
   harmony.next_harmony_frame = interval == 0u || harmony.control_mode != 0u
       ? UINT64_MAX
       : transport.sample_frame + interval;
@@ -308,6 +316,13 @@ void KesshoProductEngine::advanceHarmonyClock() {
   while (transport.sample_frame >= harmony.next_harmony_frame) {
     ++harmony.harmony_tick_index;
     const bool phrase_boundary = harmony.chord_sub_tick == 0u;
+    bool staged_voicing_change = false;
+    if (phrase_boundary) {
+      staged_voicing_change = harmony.voicing_spread != harmony.requested_voicing_spread;
+      arrangement.synth_octave = arrangement.requested_synth_octave;
+      arrangement.wave_spread = arrangement.requested_wave_spread;
+      harmony.voicing_spread = harmony.requested_voicing_spread;
+    }
     const uint64_t phrase_index = phrase_boundary
         ? harmony.next_phrase_index++
         : harmony.next_phrase_index > 0u ? harmony.next_phrase_index - 1u : 0u;
@@ -317,7 +332,7 @@ void KesshoProductEngine::advanceHarmonyClock() {
     harmony.progression_phrase_index = progression_index;
     HarmonyRng random = phraseRng(harmony, phrase_index);
     const float chord_tension = std::fmod(harmony.tension, 0.5f) * 2.0f;
-    bool force_new_chord = false;
+    bool force_new_chord = staged_voicing_change;
 
     if (phrase_boundary && harmony.cof_enabled) {
       ++harmony.cof_phrase_counter;
@@ -407,9 +422,11 @@ void KesshoProductEngine::advanceHarmonyClock() {
                 static_cast<double>(harmony.chord_interval_seconds) /
                 std::max(0.001, static_cast<double>(harmony.phrase_length_seconds)))));
       }
-      arrangement.chord_generator_pending = arrangement.chord_generator_enabled;
     } else if (phrase_boundary && harmony.phrases_until_change > 0u) {
       --harmony.phrases_until_change;
+    }
+    if (phrase_boundary) {
+      arrangement.chord_generator_pending = arrangement.chord_generator_enabled;
     }
     harmony.harmony_rng_state = random.state;
     harmony.chord_sub_tick = (harmony.chord_sub_tick + 1u) % chords_per_phrase;

@@ -112,8 +112,10 @@ requireTokens('src/audio/coreProductArrangementVoiceMapping.ts', [
 requireTokens('src/audio/product/host/CoreProductArrangementProjection.ts', [
   'export class CoreProductArrangementProjection',
   'getTransportDebugState(',
-  'padChordPlan: null',
-  'randomTimingPlan: null',
+  'syncTransportTelemetry(telemetry:',
+  'simpleSequencerVisualEvents',
+  'cloneRuntimePlan(this.captureActive.padChord',
+  'cloneRuntimePlan(this.captureActive.randomTiming',
 ]);
 const arrangementProjection = read('src/audio/product/host/CoreProductArrangementProjection.ts');
 assert(!arrangementProjection.includes('setTimeout('), 'Product arrangement projection must not own musical timers');

@@ -79,6 +79,8 @@
   generated_sequencer_capture_config = {};
   generated_sequencer_capture_ring.reset();
   generated_sequencer_capture_event_counter = 1u;
+  simple_sequencer_visual_ring.reset();
+  simple_sequencer_visual_event_counter = 1u;
   synth_sequencer_chain = {};
   drum_sequencer_chain = {};
   evolution_amount = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_EVOLUTION_AMOUNT;
@@ -231,6 +233,8 @@
   generated_sequencer_capture_config = {};
   generated_sequencer_capture_ring.reset();
   generated_sequencer_capture_event_counter = 1u;
+  simple_sequencer_visual_ring.reset();
+  simple_sequencer_visual_event_counter = 1u;
   debug_voice_spawn_sequence = 0u;
   telemetry.debug_voice_spawn_count = 0u;
   sequencer_evolve_rng_stream_seed = 0u;

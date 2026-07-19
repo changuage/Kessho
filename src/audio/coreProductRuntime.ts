@@ -24,7 +24,7 @@ const CORE_PRODUCT_TELEMETRY_MOBILE_INTERVAL_MS = 500;
 const CORE_PRODUCT_VISUAL_TELEMETRY_DESKTOP_INTERVAL_MS = 33;
 const CORE_PRODUCT_VISUAL_TELEMETRY_MOBILE_INTERVAL_MS = 67;
 const CORE_PRODUCT_RUNTIME_ASSET_RETRY_COUNT = 2;
-const SNAPSHOT_APPLIED_TIMEOUT_MS = 1000;
+const SNAPSHOT_APPLIED_TIMEOUT_MS = 4000;
 const CORE_PRODUCT_GRAPH_CAPTURE_ALLOWED =
   import.meta.env.DEV || import.meta.env.VITE_KESSHO_ENABLE_GRAPH_CAPTURE === 'true';
 
@@ -131,6 +131,7 @@ export class CoreProductRuntime {
   private transportRunningForTelemetry = false;
   private visualTelemetryActive = false;
   private granularWaveformTelemetryActive = false;
+  private simpleSequencerVisualDemandMask = 0;
   private perfMonitorEnabled = false;
   private dawOutputRouting: DawOutputRoutingConfig = createDefaultDawOutputRoutingConfig();
   private dawOutputDeviceId: string | null = null;
@@ -243,6 +244,7 @@ export class CoreProductRuntime {
           this.postDawOutputRouting();
           this.syncMeterDemand();
           this.syncStemDemand();
+          this.syncSimpleSequencerVisualDemand();
           resolve();
           return;
         }
@@ -444,6 +446,13 @@ export class CoreProductRuntime {
 
   setGranularWaveformTelemetryActive(active: boolean): void {
     this.granularWaveformTelemetryActive = active;
+  }
+
+  setSimpleSequencerVisualPlanActive(active: { padChord: boolean; randomTiming: boolean }): void {
+    this.simpleSequencerVisualDemandMask =
+      (active.padChord ? 1 : 0) |
+      (active.randomTiming ? 2 : 0);
+    this.syncSimpleSequencerVisualDemand();
   }
 
   setPerfMonitorEnabled(enabled: boolean): void {
@@ -902,6 +911,13 @@ export class CoreProductRuntime {
     if (!this.node) return;
     const enabled = this.isDocumentVisible() && this.visualTelemetryActive;
     this.node.port.postMessage({ type: 'stem-demand', enabled });
+  }
+
+  private syncSimpleSequencerVisualDemand(): void {
+    this.node?.port.postMessage({
+      type: 'simple-sequencer-visual-demand',
+      mask: this.simpleSequencerVisualDemandMask,
+    });
   }
 
   private assertGraphCaptureAllowed(): void {

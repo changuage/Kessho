@@ -8,18 +8,14 @@ void KesshoProductEngine::ensureSoundscapeVoice() {
     return;
   }
   releaseUnwantedSoundscapeVoices(source);
-  if (source.asset_ref_count == 0u) {
-    suspendSoundscapeTextureRuntimes();
-    return;
-  }
   const bool parity_fixture = soundscapeParityFixtureEnabled(source);
-  for (uint32_t ref_index = 0; ref_index < source.asset_ref_count; ++ref_index) {
-    const uint32_t asset_id = source.asset_refs[ref_index];
-    if (asset_id == 0u || soundscapeAssetUsesModule(source, asset_id)) {
+  for (uint32_t texture_slot = 0u; texture_slot < kSoundscapeTextureSlotCount; ++texture_slot) {
+    if (!soundscapeTextureSlotEnabled(source, texture_slot)) {
+      releaseSoundscapeTextureVoices(texture_slot);
       continue;
     }
-    const uint32_t texture_slot = soundscapeTextureSlotForAsset(asset_id);
-    const bool texture_asset = texture_slot < kSoundscapeTextureSlotCount;
+    const uint32_t asset_id = soundscapeTextureAssetId(source, texture_slot);
+    const bool texture_asset = asset_id != 0u && isSoundscapeTextureAsset(asset_id);
     const uint32_t slot = findAssetSlot(asset_id);
     if (slot == kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS) {
       if (texture_asset) {
@@ -41,7 +37,7 @@ void KesshoProductEngine::ensureSoundscapeVoice() {
     if (shouldUseSoundscapeTextureSlices(source, asset_id)) {
       soundscape_texture_runtimes[texture_slot].last_fallback_reason = kSoundscapeTextureFallbackNone;
       releaseLegacySoundscapeVoices(asset_id);
-      ensureSoundscapeTextureVoice(source, asset_id, slot);
+      ensureSoundscapeTextureVoice(source, texture_slot, asset_id, slot);
       continue;
     }
     if (texture_asset) {
@@ -49,7 +45,7 @@ void KesshoProductEngine::ensureSoundscapeVoice() {
       runtime.last_fallback_reason = parity_fixture
           ? kSoundscapeTextureFallbackParityFixture
           : kSoundscapeTextureFallbackTextureParamsUnavailable;
-      releaseSoundscapeTextureVoices(asset_id);
+      releaseSoundscapeTextureVoices(texture_slot);
     }
     if (hasActiveLegacySoundscapeVoice(asset_id)) {
       continue;
@@ -64,5 +60,22 @@ void KesshoProductEngine::ensureSoundscapeVoice() {
         source.expression,
         hashU32(rng_seed ^ asset_id ^ 0x51f15ca9u),
         asset_id);
+  }
+  // Preserve legacy/custom whole-sample refs that are not one of the four
+  // canonical texture assets. Canonical slots never depend on this list.
+  for (uint32_t ref_index = 0u; ref_index < source.asset_ref_count; ++ref_index) {
+    const uint32_t asset_id = source.asset_refs[ref_index];
+    if (asset_id == 0u || soundscapeAssetUsesModule(source, asset_id) || isSoundscapeTextureAsset(asset_id)) continue;
+    const uint32_t slot = findAssetSlot(asset_id);
+    if (slot == kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS) {
+      reportMissingSourceAsset(source, asset_id);
+      continue;
+    }
+    if ((assets[slot].flags & KESSHO_PRODUCT_ASSET_SOUNDSCAPE) == 0u || hasActiveLegacySoundscapeVoice(asset_id)) continue;
+    triggerVoice(
+        KESSHO_PRODUCT_SOURCE_SOUNDSCAPE, 60.0f, 1.0f,
+        static_cast<float>(static_cast<double>(assets[slot].frame_count) / std::max(1.0, assets[slot].sample_rate)),
+        source.morph, source.distance, source.expression,
+        hashU32(rng_seed ^ asset_id ^ 0x51f15ca9u), asset_id);
   }
 }

@@ -49,6 +49,12 @@ class CoreProductRuntimeAdapter {
     const events: CoreProductEvent[] = [];
     this.appendTransportDiffs(events, previous, next);
     this.appendHarmonyDiffs(events, previous, next);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.HarmonyVoicingSpread,
+      previous.harmony.voicingSpread, next.harmony.voicingSpread);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementSynthOctave,
+      previous.arrangement.synthOctave, next.arrangement.synthOctave);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementWaveSpread,
+      previous.arrangement.waveSpread, next.arrangement.waveSpread);
     this.appendJourneyDiffs(events, previous, next);
     this.appendSourceParamDiffs(events, previous.sources, next.sources);
     appendCoreProductSourcePresetEndpointDiffs(events, previous.sources, next.sources);

@@ -12,6 +12,7 @@ import {
   routingMuteGroupSlotColor,
   routingMuteGroupSlotActiveCount,
   routingMuteGroupSlotSeqSummaries,
+  ROUTING_MUTE_GROUP_SOURCE_IDS,
   type RoutingMuteGroupPhraseRange,
   type RoutingMuteGroupRandomSettings,
   type RoutingMuteGroupRuntimeSnapshot,
@@ -19,7 +20,7 @@ import {
   type RoutingMuteGroupSlot,
   type SaveSlotResult,
 } from './routingMuteGroups';
-import { ROUTING_SOURCE_REGISTRY } from './routingSourceRegistry';
+import { getRoutingSourceDef, type RoutingSourceDef } from './routingSourceRegistry';
 
 type RoutingMuteGroupsPanelProps = {
   muteGroups: RoutingMuteGroupsState;
@@ -354,12 +355,15 @@ const SOURCE_ABBREV: Record<string, string> = {
 function SourceDotStrip({ slot }: { slot: RoutingMuteGroupSlot }) {
   const mutedSet = new Set(slot.mutedSourceIds);
   const seqSummaries = routingMuteGroupSlotSeqSummaries(slot);
-  const activeEngines = ROUTING_SOURCE_REGISTRY.filter((s) => !mutedSet.has(s.id));
+  const visibleSources = ROUTING_MUTE_GROUP_SOURCE_IDS
+    .map((sourceId) => getRoutingSourceDef(sourceId))
+    .filter((source): source is RoutingSourceDef => source !== null);
+  const activeEngines = visibleSources.filter((source) => !mutedSet.has(source.id));
 
   return (
     <div className="routing-mute-source-dots" aria-label="Engine mute summary">
       <div className="routing-mute-source-dots-row">
-        {ROUTING_SOURCE_REGISTRY.map((source) => {
+        {visibleSources.map((source) => {
           const muted = mutedSet.has(source.id);
           return (
             <span

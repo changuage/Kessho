@@ -35,7 +35,9 @@ struct ProductArrangementState {
   uint32_t rng_seed = 1u;
   uint32_t rng_state = 1u;
   float wave_spread = 0.125f;
+  float requested_wave_spread = 0.125f;
   int32_t synth_octave = 0;
+  int32_t requested_synth_octave = 0;
   float lead_chord_bias = 0.78f;
   uint32_t synth_voice_mask = 63u;
   uint32_t pad2_voice_assign = 0u;

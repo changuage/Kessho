@@ -55,7 +55,10 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
 
   const auto queue_note = [&](uint64_t absolute_sample, uint32_t source_id, float midi,
                               float velocity, float hold_seconds, uint32_t voice_index,
-                              float morph, float distance, float expression) {
+                              float morph, float distance, float expression,
+                              uint32_t visual_kind, uint64_t phrase_start_sample,
+                              uint64_t phrase_index, float phrase_seconds,
+                              float trigger_interval_seconds) {
     if (arrangement.pending_count >= kMaxArrangementPendingEvents) return;
     ProductArrangementPendingEvent& pending = arrangement.pending[arrangement.pending_count++];
     pending.absolute_sample = absolute_sample;
@@ -75,13 +78,37 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
     if (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) {
       pending.event.flags = sequencerPadVoiceEventFlags(voice_index % kProductPadVoiceCount);
     }
+    // The visualizers are phrase previews, not trigger-history meters. Publish
+    // the exact event as soon as it enters the arrangement queue so every dot
+    // is visible before the playhead reaches it.
+    if (visual_kind != 0u && source_id >= 1u && source_id <= kSourceCount &&
+        sources[source_id - 1u].enabled &&
+        (simple_sequencer_visual_demand_mask & visual_kind) != 0u) {
+      KesshoProductSimpleSequencerVisualEvent visual{};
+      visual.event_id = simple_sequencer_visual_event_counter++;
+      visual.absolute_sample = absolute_sample;
+      visual.phrase_start_sample = phrase_start_sample;
+      visual.phrase_index = phrase_index;
+      visual.kind = visual_kind;
+      visual.target_source_id = pending.event.source_id;
+      visual.midi_note = pending.event.midi_note;
+      visual.velocity = pending.event.velocity;
+      visual.gate_seconds = pending.event.hold_seconds;
+      visual.voice_index = voice_index;
+      visual.phrase_seconds = phrase_seconds;
+      visual.trigger_interval_seconds = trigger_interval_seconds;
+      simple_sequencer_visual_ring.push(visual);
+    }
   };
 
   const auto queue_chord = [&](uint64_t absolute_sample, uint32_t source_id,
                                uint32_t voice_count, float velocity, float hold_seconds,
                                float spread_interval_seconds, bool pad_split, bool hold_span_override,
                                const float* override_midi, uint32_t override_count, uint32_t playback_mode,
-                               uint64_t absolute_tick, float nudge_seconds, float morph, float distance) {
+                               uint64_t absolute_tick, float nudge_seconds, float morph, float distance,
+                               uint32_t visual_kind, uint64_t phrase_start_sample,
+                               uint64_t visual_phrase_index, float visual_phrase_seconds,
+                               float visual_trigger_interval_seconds) {
     const uint32_t pool_count = override_midi && override_count > 0u
         ? std::min<uint32_t>(override_count, 8u)
         : harmony.note_pool_count > 0u
@@ -218,7 +245,12 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
           voice.voice_index,
           morph_supported ? morph : -1.0f,
           distance_supported ? distance : -1.0f,
-          1.0f);
+          1.0f,
+          visual_kind,
+          phrase_start_sample,
+          visual_phrase_index,
+          visual_phrase_seconds,
+          visual_trigger_interval_seconds);
     };
 
     if (playback_mode == 1u) {
@@ -293,6 +325,9 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
 
   if (arrangement.chord_generator_pending) {
     arrangement.chord_generator_pending = false;
+    const uint64_t phrase_frames = arrangementFrames(sample_rate, harmony.phrase_length_seconds);
+    const uint64_t phrase_index = block_start / phrase_frames;
+    const uint64_t phrase_start_sample = phrase_index * phrase_frames;
     queue_chord(
         block_start,
         arrangement.chord_generator_source_id,
@@ -308,7 +343,12 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
         0u,
         0.0f,
         -1.0f,
-        -1.0f);
+        -1.0f,
+        KESSHO_PRODUCT_SIMPLE_SEQUENCER_VISUAL_CHORD,
+        phrase_start_sample,
+        phrase_index,
+        harmony.phrase_length_seconds,
+        harmony.chord_interval_seconds);
   }
 
   if (arrangement.chord_sequencer_enabled) {
@@ -378,7 +418,12 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
             absolute_tick,
             nudge,
             morph,
-            distance);
+            distance,
+            0u,
+            0u,
+            0u,
+            0.0f,
+            0.0f);
       }
       ++arrangement.chord_step_index;
       arrangement.next_chord_sequencer_frame += step_frames;
@@ -454,7 +499,12 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
             note,
             -1.0f,
             -1.0f,
-            1.0f);
+            1.0f,
+            KESSHO_PRODUCT_SIMPLE_SEQUENCER_VISUAL_RANDOM_TIMING,
+            arrangement.next_lead_phrase_frame,
+            arrangement.lead_phrase_index > 0u ? arrangement.lead_phrase_index - 1u : 0u,
+            arrangement.lead_phrase_seconds,
+            arrangement.lead_phrase_seconds);
       }
       arrangement.next_lead_phrase_frame += phrase_frames;
     }

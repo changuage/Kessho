@@ -5,6 +5,7 @@ import type { SliderState } from '../../state';
 export type EarthDualSliderOptions = {
   format?: (v: number) => string;
   logarithmic?: boolean;
+  max?: number;
 };
 
 export type EarthDualSliderRenderer = (
@@ -50,52 +51,42 @@ export function EarthCard({
 }: EarthCardProps) {
   const expanded = expandedCards.has(cardId);
   const clickable = typeof onToggleCard === 'function';
-  const handleHeaderToggle = () => {
-    if (clickable) onToggleCard(cardId);
-  };
   return (
     <div
       className={`earth-card${expanded ? ' expanded' : ''}`}
       style={{ '--sc': accent } as React.CSSProperties}
     >
-      <div
-        className={`earth-card-header${clickable ? ' clickable' : ''}`}
-        role={clickable ? 'button' : undefined}
-        tabIndex={clickable ? 0 : undefined}
-        aria-expanded={clickable ? expanded : undefined}
-        onClick={clickable ? handleHeaderToggle : undefined}
-        onKeyDown={clickable ? (event) => {
-          if (event.key !== 'Enter' && event.key !== ' ') return;
-          event.preventDefault();
-          handleHeaderToggle();
-        } : undefined}
-      >
-        <span className="ec-name">{title}</span>
+      <div className={`earth-card-header${clickable ? ' clickable' : ''}`}>
+        {clickable ? (
+          <button
+            type="button"
+            className={`ec-disclosure${enabled ? ' on' : ''}`}
+            aria-expanded={expanded}
+            aria-label={`${expanded ? 'Collapse' : 'Expand'} ${title}`}
+            onClick={() => onToggleCard(cardId)}
+          >
+            {expanded ? '▼' : '▶'}
+          </button>
+        ) : null}
+        {onToggleEnabled ? (
+          <button
+            type="button"
+            className={`ec-name ec-name-toggle${enabled ? ' on' : ' off'}`}
+            onClick={onToggleEnabled}
+            title={enableTitle}
+            aria-label={enableTitle}
+            aria-pressed={enabled}
+          >
+            {title}
+          </button>
+        ) : (
+          <span className="ec-name">{title}</span>
+        )}
         {subtitle && !expanded && (
           <span style={{ fontSize: '0.55rem', color: 'var(--text-dim)', fontWeight: 400 }}>{subtitle}</span>
         )}
         <div className="ec-header-right">
-          {enabled !== undefined && (
-            onToggleEnabled ? (
-              <button
-                type="button"
-                className={`ec-status-dot ec-status-dot-button ${enabled ? 'on' : 'off'}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onToggleEnabled();
-                }}
-                onKeyDown={(event) => {
-                  event.stopPropagation();
-                }}
-                title={enableTitle}
-                aria-label={enableTitle}
-                aria-pressed={enabled}
-              />
-            ) : (
-              <span className={`ec-status-dot ${enabled ? 'on' : 'off'}`} />
-            )
-          )}
-          {clickable ? <span className="ec-chevron">{expanded ? '▼' : '▶'}</span> : null}
+          {enabled !== undefined && !onToggleEnabled ? <span className={`ec-status-dot ${enabled ? 'on' : 'off'}`} /> : null}
         </div>
       </div>
 

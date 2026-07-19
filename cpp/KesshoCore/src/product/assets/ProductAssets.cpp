@@ -32,11 +32,8 @@
       return;
     }
   }
-  if (source.asset_ref_count < kMaxSoundscapeAssetRefs) {
-    const uint32_t index = source.asset_ref_count++;
-    source.asset_refs[index] = asset_id;
-    source.asset_ref_levels[index] = clampFloat(value, 0.0f, 2.0f);
-  }
+  // Asset-level automation may only update the authoritative snapshot list.
+  // Appending an absent asset here used to resurrect a removed Waves texture.
 }
 
   bool KesshoProductEngine::soundscapeModuleParamsAvailable(const SourceState& source) const {
@@ -45,11 +42,17 @@
 }
 
   bool KesshoProductEngine::soundscapeModuleShouldRun(const SourceState& source) const {
-  return sourceRenderActive(source) &&
-      soundscapeModuleParamsAvailable(source) &&
-      (source.soundscape_module_params[kSoundscapeModuleWaterActiveParam] > 0.5f ||
-       source.soundscape_module_params[kSoundscapeModuleInsectsActiveParam] > 0.5f ||
-       source.soundscape_module_params[kSoundscapeModuleInsects2ActiveParam] > 0.5f);
+  if (!sourceRenderActive(source) || !soundscapeModuleParamsAvailable(source)) return false;
+  const bool water_configured = source.soundscape_module_params[kSoundscapeModuleWaterActiveParam] > 0.5f;
+  const bool insects_configured = source.soundscape_module_params[kSoundscapeModuleInsectsActiveParam] > 0.5f ||
+      source.soundscape_module_params[kSoundscapeModuleInsects2ActiveParam] > 0.5f ||
+      soundscape_insects_layer_gains[0].gain > 0.0001f || soundscape_insects_layer_gains[0].remaining > 0u ||
+      soundscape_insects_layer_gains[1].gain > 0.0001f || soundscape_insects_layer_gains[1].remaining > 0u;
+  const bool water_gate_active = source.soundscape_module_params[kSoundscapeModuleWaterMasterEnabledParam] > 0.5f ||
+      soundscape_family_gains[0].gain > 0.0001f || soundscape_family_gains[0].remaining > 0u;
+  const bool insects_gate_active = source.soundscape_module_params[kSoundscapeModuleInsectsMasterEnabledParam] > 0.5f ||
+      soundscape_family_gains[1].gain > 0.0001f || soundscape_family_gains[1].remaining > 0u;
+  return (water_configured && water_gate_active) || (insects_configured && insects_gate_active);
 }
 
   bool KesshoProductEngine::soundscapeAssetUsesModule(const SourceState& source, uint32_t asset_id) const {
@@ -159,6 +162,30 @@
     default:
       return kSoundscapeTextureSlotCount;
   }
+}
+
+  uint32_t KesshoProductEngine::soundscapeTextureAssetId(const SourceState& source, uint32_t slot) const {
+  const float value = soundscapeTextureParam(source, slot, kSoundscapeTextureParamAssetId, 0.0f);
+  if (value > 0.0f) return static_cast<uint32_t>(std::lround(value));
+  const uint32_t legacy_assets[kSoundscapeTextureSlotCount] = {
+      kSoundscapeAssetOcean, kSoundscapeAssetBirds, kSoundscapeAssetBirds2, kSoundscapeAssetFrogs};
+  return slot < kSoundscapeTextureSlotCount ? legacy_assets[slot] : 0u;
+}
+
+  bool KesshoProductEngine::soundscapeTextureSlotEnabled(const SourceState& source, uint32_t slot) const {
+  const uint32_t asset_id = soundscapeTextureAssetId(source, slot);
+  const bool legacy_selected = soundscapeWantsAsset(source, asset_id);
+  const bool canonical_slot = soundscapeTextureParam(
+      source, slot, kSoundscapeTextureParamAssetId, 0.0f) > 0.0f;
+  const uint32_t new_param_count = kSoundscapeTextureParamStart +
+      slot * kSoundscapeTextureParamStride + kSoundscapeTextureParamEnabled + 1u;
+  const bool child_enabled = canonical_slot && source.soundscape_texture_param_count >= new_param_count
+      ? soundscapeTextureParam(source, slot, kSoundscapeTextureParamEnabled, legacy_selected ? 1.0f : 0.0f) >= 0.5f
+      : legacy_selected;
+  const bool master_enabled = source.soundscape_module_param_count > kSoundscapeModuleNatureMasterEnabledParam
+      ? source.soundscape_module_params[kSoundscapeModuleNatureMasterEnabledParam] >= 0.5f
+      : true;
+  return child_enabled && master_enabled;
 }
 
   float KesshoProductEngine::soundscapeLayerLevel(const AssetSlot& asset, uint32_t sample_seed) const {
@@ -308,13 +335,11 @@
   }
 }
 
-  void KesshoProductEngine::releaseSoundscapeTextureVoices(uint32_t asset_id) {
+  void KesshoProductEngine::releaseSoundscapeTextureVoices(uint32_t texture_slot) {
   for (Voice& voice : voices) {
     if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE ||
         !voice.sample_voice || !voice.soundscape_texture_voice ||
-        voice.asset_slot >= kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS ||
-        !assets[voice.asset_slot].active ||
-        assets[voice.asset_slot].asset_id != asset_id) {
+        voice.soundscape_texture_slot != texture_slot) {
       continue;
     }
     releaseSoundscapeTextureVoice(voice, voice.soundscape_asset_level);
@@ -400,6 +425,47 @@
   right = mono * runtime.spatial_center_gain +
       mono * runtime.spatial_side_gain * runtime.spatial_left_branch_r +
       delayed * runtime.spatial_side_gain * runtime.spatial_right_branch_r;
+}
+
+  void KesshoProductEngine::processSoundscapeTextureFilter(
+      Voice& voice,
+      const SourceState& source,
+      float& left,
+      float& right) {
+  const uint32_t slot = voice.soundscape_texture_slot;
+  if (slot >= kSoundscapeTextureSlotCount || sample_rate <= 0.0) return;
+  const uint8_t type = static_cast<uint8_t>(clampU32(
+      static_cast<uint32_t>(std::lround(soundscapeTextureParam(source, slot, kSoundscapeTextureParamFilterType, 0.0f))), 0u, 3u));
+  const float cutoff = clampFloat(
+      soundscapeTextureParam(source, slot, kSoundscapeTextureParamFilterCutoff, 12000.0f),
+      40.0f,
+      static_cast<float>(sample_rate * 0.45));
+  const float resonance = clampFloat(
+      soundscapeTextureParam(source, slot, kSoundscapeTextureParamFilterResonance, 0.05f), 0.0f, 1.0f);
+  const float q = 0.5f + resonance * 9.5f;
+  if (voice.post_coeff_cutoff != cutoff || voice.post_filter_q != q || voice.post_filter_type != type) {
+    const float omega = 2.0f * static_cast<float>(M_PI) * cutoff / static_cast<float>(sample_rate);
+    const float cos_omega = std::cos(omega);
+    const float sin_omega = std::sin(omega);
+    const float alpha = sin_omega / (2.0f * q);
+    float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f;
+    if (type == 0u) { b0 = (1.0f - cos_omega) * 0.5f; b1 = 1.0f - cos_omega; b2 = b0; }
+    else if (type == 1u) { b0 = alpha; b1 = 0.0f; b2 = -alpha; }
+    else if (type == 2u) { b0 = (1.0f + cos_omega) * 0.5f; b1 = -(1.0f + cos_omega); b2 = b0; }
+    else { b0 = 1.0f; b1 = -2.0f * cos_omega; b2 = 1.0f; }
+    const float a0 = 1.0f + alpha;
+    voice.post_b0 = b0 / a0; voice.post_b1 = b1 / a0; voice.post_b2 = b2 / a0;
+    voice.post_a1 = (-2.0f * cos_omega) / a0; voice.post_a2 = (1.0f - alpha) / a0;
+    voice.post_coeff_cutoff = cutoff; voice.post_filter_q = q; voice.post_filter_type = type;
+  }
+  auto process = [&voice](BiquadState& state, float input) {
+    const float output = voice.post_b0 * input + voice.post_b1 * state.x1 + voice.post_b2 * state.x2 -
+        voice.post_a1 * state.y1 - voice.post_a2 * state.y2;
+    state.x2 = state.x1; state.x1 = input; state.y2 = state.y1; state.y1 = output;
+    return output;
+  };
+  left = process(voice.post_left, left);
+  right = process(voice.post_right, right);
 }
 
   float KesshoProductEngine::soundscapeLayerRouteSend(

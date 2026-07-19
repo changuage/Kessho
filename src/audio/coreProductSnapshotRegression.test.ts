@@ -51,6 +51,71 @@ assert.equal(isTransportClockStateKey('transportBeatsPerBar'), true);
 assert.equal(isTransportClockStateKey('synthLevel'), false);
 assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
 
+{
+  const octaveZero = createCoreProductSnapshot({ synthOctave: 0 });
+  const octaveUp = createCoreProductSnapshot({ synthOctave: 1 });
+  const octaveDiff = buildCoreProductSnapshotDiff(octaveZero, octaveUp);
+  assert.equal(octaveDiff.applied, true, 'synth octave changes should use the live dirty-diff path');
+  assert.deepEqual(
+    octaveDiff.applied
+      ? octaveDiff.events.filter((event) => event.paramId === KESSHO_PRODUCT_PARAM_IDS.ArrangementSynthOctave)
+      : [],
+    [{
+      eventKind: KESSHO_PRODUCT_EVENT_IDS.SetParam,
+      targetId: 0,
+      index: 0,
+      paramId: KESSHO_PRODUCT_PARAM_IDS.ArrangementSynthOctave,
+      value: 1,
+    }],
+    'synth octave changes must reach the core arrangement generator',
+  );
+}
+
+{
+  const compactSpread = createCoreProductSnapshot({ voicingSpread: 0, waveSpread: 0 });
+  const wideSpread = createCoreProductSnapshot({ voicingSpread: 1, waveSpread: 1 });
+  const spreadDiff = buildCoreProductSnapshotDiff(compactSpread, wideSpread);
+  assert.equal(spreadDiff.applied, true, 'spread changes should use the live dirty-diff path');
+  assert.deepEqual(
+    spreadDiff.applied
+      ? spreadDiff.events.filter((event) =>
+          event.paramId === KESSHO_PRODUCT_PARAM_IDS.HarmonyVoicingSpread ||
+          event.paramId === KESSHO_PRODUCT_PARAM_IDS.ArrangementWaveSpread
+        )
+      : [],
+    [
+      {
+        eventKind: KESSHO_PRODUCT_EVENT_IDS.SetParam,
+        targetId: 0,
+        index: 0,
+        paramId: KESSHO_PRODUCT_PARAM_IDS.HarmonyVoicingSpread,
+        value: 1,
+      },
+      {
+        eventKind: KESSHO_PRODUCT_EVENT_IDS.SetParam,
+        targetId: 0,
+        index: 0,
+        paramId: KESSHO_PRODUCT_PARAM_IDS.ArrangementWaveSpread,
+        value: 1,
+      },
+    ],
+    'spread changes must reach the core harmony and arrangement generators',
+  );
+
+  const voicingRangeTargets = resolveCoreProductRangeTargets('voicingSpread');
+  const waveRangeTargets = resolveCoreProductRangeTargets('waveSpread');
+  assert.deepEqual(
+    voicingRangeTargets.map(({ targetId, paramId }) => ({ targetId, paramId })),
+    [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.HarmonyVoicingSpread }],
+    'Voicing Spread Walk mode must modulate the native harmony parameter',
+  );
+  assert.deepEqual(
+    waveRangeTargets.map(({ targetId, paramId }) => ({ targetId, paramId })),
+    [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.ArrangementWaveSpread }],
+    'Wave Spread Walk mode must modulate the native arrangement parameter',
+  );
+}
+
 for (const paramId of [
   KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision,
   KESSHO_PRODUCT_PARAM_IDS.SequencerLaneTempoMultiplier,

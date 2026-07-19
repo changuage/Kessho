@@ -673,7 +673,8 @@ void retimeSequencerLanePreservingPhase(
           event.target_id != kProductControlOnlyModulationTarget &&
           !valid_source(event.target_id) &&
           !isDrumRangeTarget(event.target_id) &&
-          !isSoundscapeAssetLevelRangeTarget(event.target_id)) {
+          !isSoundscapeAssetLevelRangeTarget(event.target_id) &&
+          !isSoundscapeTextureLevelRangeTarget(event.target_id)) {
         return KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
       }
       return KESSHO_PRODUCT_OK;
@@ -1872,6 +1873,33 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
     case KESSHO_PRODUCT_PARAM_HARMONY_TENSION_ID:
       harmony.tension = clampFloat(event.value, 0.0f, 1.0f);
       break;
+    case KESSHO_PRODUCT_PARAM_HARMONY_VOICING_SPREAD_ID: {
+      const float next_spread = clampFloat(event.value, 0.0f, 1.0f);
+      harmony.requested_voicing_spread = next_spread;
+      if (!transport.running) {
+        harmony.voicing_spread = next_spread;
+        arrangement.chord_generator_pending = arrangement.chord_generator_enabled;
+      }
+      break;
+    }
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_SYNTH_OCTAVE_ID: {
+      const int32_t next_octave = std::max(-2, std::min(2, static_cast<int32_t>(std::lround(event.value))));
+      arrangement.requested_synth_octave = next_octave;
+      if (!transport.running && arrangement.synth_octave != next_octave) {
+        arrangement.synth_octave = next_octave;
+        arrangement.chord_generator_pending = arrangement.chord_generator_enabled;
+      }
+      break;
+    }
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_WAVE_SPREAD_ID: {
+      const float next_spread = clampFloat(event.value, 0.0f, 1.0f);
+      arrangement.requested_wave_spread = next_spread;
+      if (!transport.running) {
+        arrangement.wave_spread = next_spread;
+        arrangement.chord_generator_pending = arrangement.chord_generator_enabled;
+      }
+      break;
+    }
     case KESSHO_PRODUCT_PARAM_JOURNEY_ENABLED_ID:
       journey_running = event.value >= 0.5f;
       break;

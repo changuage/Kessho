@@ -1,4 +1,5 @@
 import { CORE_PRODUCT_ASSET_FLAGS } from '../../coreProductAssets';
+import { NATURE_SLOT_KEYS } from '../../natureSlots';
 import type { SampleAssetDescriptor } from '../../sampleLibraries/sampleAssetDescriptors';
 import type { CoreProductAssetAdmission } from './CoreProductAssetWorkingSet';
 
@@ -26,10 +27,10 @@ export const SAMPLE_DECODE_RESERVATION_BYTES = 4 * 1024 * 1024;
 export const SOUNDSCAPE_DECODE_RESERVATION_BYTES = 128 * 1024 * 1024;
 
 export function coreProductStateUsesSoundscape(state: Record<string, unknown> | null): boolean {
-  return !!state && [
+  return !!state && (NATURE_SLOT_KEYS.some((keys) => state[keys.enabledKey] === true) || [
     'oceanSampleEnabled', 'waterEnabled', 'insectsEnabled', 'insects2Enabled',
     'birdsEnabled', 'birds2Enabled', 'frogsEnabled',
-  ].some((key) => state[key] === true);
+  ].some((key) => state[key] === true));
 }
 
 export function coreProductSampleFlags(descriptor: SampleAssetDescriptor): number {

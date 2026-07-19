@@ -72,9 +72,9 @@
     "layerCount": 4,
     "layerRouteStride": 5,
     "textureSlotCount": 4,
-    "textureParamStride": 5,
+    "textureParamStride": 11,
     "moduleParamCount": 96,
-    "productModuleExtraParamCount": 5
+    "productModuleExtraParamCount": 8
   },
   "sourceParamLayout": {
     "pad": {

@@ -68,6 +68,7 @@ export const CORE_PRODUCT_CONTROL_ONLY_MODULATION_TARGET_ID = 0x7ffffff0;
 export const CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE = 0x51000000;
 export const CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE = 0x52000000;
 export const CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE = 0x53000000;
+export const CORE_PRODUCT_SOUNDSCAPE_TEXTURE_LEVEL_RANGE_TARGET_BASE = 0x54000000;
 
 export const CORE_PRODUCT_MODULATION_RANGE_MODE = Object.freeze({
   off: 0,
@@ -717,6 +718,15 @@ function soundscapeAssetLevelTarget(
   };
 }
 
+function soundscapeTextureLevelTarget(slotIndex: number, key: string): CoreProductRangeTarget {
+  return {
+    targetId: CORE_PRODUCT_SOUNDSCAPE_TEXTURE_LEVEL_RANGE_TARGET_BASE +
+      requireIntegerInRange(slotIndex, 'soundscape texture slot', 0, 3),
+    paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel,
+    controlId: stableControlId(key),
+  };
+}
+
 function delayBTapeHeadMaskMap(headIndex: number): (value: number, context: CoreProductRangeValueContext) => number {
   return (value, context) => {
     let mask = 0;
@@ -1135,6 +1145,10 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   ],
   sample1Level: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
   sample2Level: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
+  nature1Level: (key) => [soundscapeTextureLevelTarget(0, key)],
+  nature2Level: (key) => [soundscapeTextureLevelTarget(1, key)],
+  nature3Level: (key) => [soundscapeTextureLevelTarget(2, key)],
+  nature4Level: (key) => [soundscapeTextureLevelTarget(3, key)],
   natureLevel: (key) => [
     soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds.assetId, key, soundscapeNatureMasterAssetLevelMap('birdsLevel')),
     soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds2.assetId, key, soundscapeNatureMasterAssetLevelMap('birds2Level')),
@@ -1350,10 +1364,10 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
     controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision, key),
   ],
   voicingSpread: (key) => [
-    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.HarmonyTension, key),
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.HarmonyVoicingSpread, key),
   ],
   waveSpread: (key) => [
-    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing, key),
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.ArrangementWaveSpread, key),
   ],
   detune: (key) => [
     controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneVelocity, key),

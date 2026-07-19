@@ -32,6 +32,8 @@ import { INSECT_ENGINES } from '../../../audio/waterPresets';
 import type { EarthTextureDebugState } from '../../../audio/engineSharedTypes';
 import { EARTH_ENGINE_COLORS, SOURCE_COLORS } from '../../../designSystem/colors';
 import { NatureSliceViz } from './NatureSliceViz';
+import { NATURE_SLOT_KEYS } from '../../../audio/natureSlots';
+import { natureSampleLabel } from '../../../audio/natureSampleCatalog';
 
 type NumericSliderKey = {
   [K in keyof SliderState]: SliderState[K] extends number ? K : never
@@ -271,7 +273,7 @@ export function ActiveEarthMatrix({
 }: ActiveEarthMatrixProps) {
   const { announceHelp } = useSliderHelp();
   const anyWaterChildActive = WATER_LAYER_KEYS.some((key) => numeric(state, key) > 0.01);
-  const anyNatureChildActive = state.birdsEnabled || state.birds2Enabled || state.frogsEnabled;
+  const anyNatureChildActive = NATURE_SLOT_KEYS.some((keys) => state[keys.enabledKey]);
   const anyInsectChildActive = state.insectsEnabled || state.insects2Enabled;
   const announceMatrixHelp = useCallback(() => {
     announceHelp(ACTIVE_EARTH_MATRIX_HELP_KEY, { page: 'earth', label: 'Active Earth Matrix' });
@@ -295,12 +297,6 @@ export function ActiveEarthMatrix({
     }
   }, [ensureAudibleLevel, onSelectChange, state]);
 
-  const toggleWaves = useCallback(() => {
-    const active = Boolean(state.oceanSampleEnabled);
-    onSelectChange('oceanSampleEnabled', !active);
-    if (!active) ensureAudibleLevel('oceanSampleLevel', 0.55);
-  }, [ensureAudibleLevel, onSelectChange, state.oceanSampleEnabled]);
-
   const toggleWaterChild = useCallback((key: NumericSliderKey) => {
     const current = numeric(state, key);
     if (current > 0.01) {
@@ -316,34 +312,18 @@ export function ActiveEarthMatrix({
   }, [ensureAudibleLevel, onParamChange, onSelectChange, state]);
 
   const disableWaterFamily = useCallback(() => {
-    WATER_LAYER_KEYS.forEach((key) => onParamChange(key, 0));
-    onSelectChange('waterEnabled', false);
-  }, [onParamChange, onSelectChange]);
+    onSelectChange('waterEnabled', !state.waterEnabled);
+  }, [onSelectChange, state.waterEnabled]);
 
   const disableNatureFamily = useCallback(() => {
-    onSelectChange('birdsEnabled', false);
-    onSelectChange('birds2Enabled', false);
-    onSelectChange('frogsEnabled', false);
-  }, [onSelectChange]);
+    onSelectChange('natureMasterEnabled', !state.natureMasterEnabled);
+  }, [onSelectChange, state.natureMasterEnabled]);
 
   const disableInsectsFamily = useCallback(() => {
-    onSelectChange('insectsEnabled', false);
-    onSelectChange('insects2Enabled', false);
-  }, [onSelectChange]);
+    onSelectChange('insectsMasterEnabled', !state.insectsMasterEnabled);
+  }, [onSelectChange, state.insectsMasterEnabled]);
 
   const selectorGroups = useMemo<SelectorGroup[]>(() => [
-    {
-      label: 'Waves',
-      chips: [
-        {
-          id: 'waves',
-          label: 'Waves',
-          accent: EARTH_ENGINE_COLORS.waves,
-          active: Boolean(state.oceanSampleEnabled),
-          onToggle: toggleWaves,
-        },
-      ],
-    },
     {
       label: 'Water',
       chips: [
@@ -393,80 +373,46 @@ export function ActiveEarthMatrix({
     },
     {
       label: 'Nature',
-      chips: [
-        {
-          id: 'birds',
-          label: 'Birds Alps',
-          accent: EARTH_ENGINE_COLORS.birds,
-          active: Boolean(state.birdsEnabled),
-          onToggle: () => {
-            if (!state.birdsEnabled) ensureAudibleLevel('natureLevel', 0.7);
-            toggleBooleanChild('birdsEnabled', 'birdsLevel', 0.5);
-          },
+      chips: NATURE_SLOT_KEYS.map((keys) => ({
+        id: `nature${keys.slot}`,
+        label: natureSampleLabel(state[keys.sampleIdKey], keys.slot),
+        accent: [EARTH_ENGINE_COLORS.waves, EARTH_ENGINE_COLORS.birds, EARTH_ENGINE_COLORS.birds2, EARTH_ENGINE_COLORS.frogs][keys.slot - 1]!,
+        active: state[keys.enabledKey],
+        onToggle: () => {
+          if (!state[keys.enabledKey]) onSelectChange('natureMasterEnabled', true);
+          toggleBooleanChild(keys.enabledKey, keys.levelKey, 0.5);
         },
-        {
-          id: 'birds2',
-          label: 'Birds Fujian',
-          accent: EARTH_ENGINE_COLORS.birds2,
-          active: Boolean(state.birds2Enabled),
-          onToggle: () => {
-            if (!state.birds2Enabled) ensureAudibleLevel('natureLevel', 0.7);
-            toggleBooleanChild('birds2Enabled', 'birds2Level', 0.5);
-          },
-        },
-        {
-          id: 'frogs',
-          label: 'Frogs',
-          accent: EARTH_ENGINE_COLORS.frogs,
-          active: Boolean(state.frogsEnabled),
-          onToggle: () => {
-            if (!state.frogsEnabled) ensureAudibleLevel('natureLevel', 0.7);
-            toggleBooleanChild('frogsEnabled', 'frogsLevel', 0.5);
-          },
-        },
-      ],
+      })),
     },
     {
       label: 'Insects',
       chips: [
         {
           id: 'insects1',
-          label: 'Insects 1',
+          label: INSECT_ENGINES[state.insectsEngine] ?? 'Insect 1',
           accent: EARTH_ENGINE_COLORS.insects,
           active: Boolean(state.insectsEnabled),
-          onToggle: () => toggleBooleanChild('insectsEnabled', 'insectsLevel', 0.5),
+          onToggle: () => {
+            if (!state.insectsEnabled) onSelectChange('insectsMasterEnabled', true);
+            toggleBooleanChild('insectsEnabled', 'insectsLevel', 0.5);
+          },
         },
         {
           id: 'insects2',
-          label: 'Insects 2',
+          label: INSECT_ENGINES[state.insects2Engine] ?? 'Insect 2',
           accent: EARTH_ENGINE_COLORS.insects2,
           active: Boolean(state.insects2Enabled),
-          onToggle: () => toggleBooleanChild('insects2Enabled', 'insects2Level', 0.5),
+          onToggle: () => {
+            if (!state.insects2Enabled) onSelectChange('insectsMasterEnabled', true);
+            toggleBooleanChild('insects2Enabled', 'insects2Level', 0.5);
+          },
         },
       ],
     },
-  ], [ensureAudibleLevel, state, toggleBooleanChild, toggleWaves, toggleWaterChild]);
+  ], [onSelectChange, state, toggleBooleanChild, toggleWaterChild]);
 
   const sharedRows = useMemo<SharedRow[]>(() => {
     const rows: SharedRow[] = [];
-
-    if (state.oceanSampleEnabled) {
-      rows.push({
-        id: 'shared-waves',
-        label: 'Waves',
-        detail: 'shared routing',
-        accent: EARTH_ENGINE_COLORS.waves,
-        toggle: () => onSelectChange('oceanSampleEnabled', false),
-        toggleTitle: 'Disable Waves',
-        cells: {
-          level: sliderCell({ key: 'oceanSampleLevel', label: 'Waves Level', accent: routeAccent(EARTH_ENGINE_COLORS.waves, 44) }),
-          space: sliderCell({ key: 'oceanReverbSend', label: 'Waves Reverb', accent: routeAccent(SOURCE_COLORS.reverb, 38) }),
-          delayA: sliderCell({ key: 'oceanDelayASend', label: 'Waves Delay A', accent: routeAccent(SOURCE_COLORS.delayA, 34) }),
-          delayB: sliderCell({ key: 'oceanDelayBSend', label: 'Waves Delay B', accent: routeAccent(SOURCE_COLORS.delayB, 30) }),
-          granular: sliderCell({ key: 'granularWavesSend', label: 'Waves Granular', accent: routeAccent(SOURCE_COLORS.granular, 34) }),
-        },
-      });
-    }
 
     if (anyWaterChildActive) {
       rows.push({
@@ -475,7 +421,7 @@ export function ActiveEarthMatrix({
         detail: 'shared routing',
         accent: EARTH_ENGINE_COLORS.water,
         toggle: disableWaterFamily,
-        toggleTitle: 'Disable Water layers',
+        toggleTitle: state.waterEnabled ? 'Disable Water' : 'Enable Water',
         cells: {
           level: sliderCell({ key: 'waterLevel', label: 'Water Level', accent: routeAccent(EARTH_ENGINE_COLORS.water, 42) }),
           space: sliderCell({ key: 'waterReverbSend', label: 'Water Reverb', accent: routeAccent(SOURCE_COLORS.reverb, 38) }),
@@ -493,7 +439,7 @@ export function ActiveEarthMatrix({
         detail: 'shared routing',
         accent: EARTH_ENGINE_COLORS.nature,
         toggle: disableNatureFamily,
-        toggleTitle: 'Disable Nature sources',
+        toggleTitle: state.natureMasterEnabled ? 'Disable Nature' : 'Enable Nature',
         cells: {
           level: sliderCell({ key: 'natureLevel', label: 'Nature Level', accent: routeAccent(EARTH_ENGINE_COLORS.nature, 40) }),
           space: sliderCell({ key: 'natureReverbSend', label: 'Nature Reverb', accent: routeAccent(SOURCE_COLORS.reverb, 38) }),
@@ -511,7 +457,7 @@ export function ActiveEarthMatrix({
         detail: 'shared routing',
         accent: EARTH_ENGINE_COLORS.insects,
         toggle: disableInsectsFamily,
-        toggleTitle: 'Disable Insect layers',
+        toggleTitle: state.insectsMasterEnabled ? 'Disable Insects' : 'Enable Insects',
         cells: {
           level: sliderCell({ key: 'insectsSharedLevel', label: 'Insects Level', accent: routeAccent(EARTH_ENGINE_COLORS.insects, 40) }),
           space: sliderCell({ key: 'insectsReverbSend', label: 'Insects Reverb', accent: routeAccent(SOURCE_COLORS.reverb, 38) }),
@@ -527,22 +473,6 @@ export function ActiveEarthMatrix({
 
   const activeRows = useMemo<ChildRow[]>(() => {
     const rows: ChildRow[] = [];
-
-    if (state.oceanSampleEnabled) {
-      rows.push({
-        id: 'child-waves',
-        label: 'Waves',
-        family: 'Waves',
-        accent: EARTH_ENGINE_COLORS.waves,
-        preview: 'waves',
-        density: numeric(state, 'oceanSliceDensity'),
-        intensity: numeric(state, 'oceanSampleLevel'),
-        toggle: () => onSelectChange('oceanSampleEnabled', false),
-        toggleTitle: 'Disable Waves',
-        level: { key: 'oceanSampleLevel', label: 'Waves Level', accent: routeAccent(EARTH_ENGINE_COLORS.waves, 44) },
-        textureDebugKey: 'waves',
-      });
-    }
 
     if (numeric(state, 'waterLayerHardDrops') > 0.01) {
       rows.push({
@@ -640,58 +570,31 @@ export function ActiveEarthMatrix({
       });
     }
 
-    if (state.birdsEnabled) {
+    NATURE_SLOT_KEYS.forEach((keys) => {
+      if (!state[keys.enabledKey]) return;
+      const accents = [EARTH_ENGINE_COLORS.waves, EARTH_ENGINE_COLORS.birds, EARTH_ENGINE_COLORS.birds2, EARTH_ENGINE_COLORS.frogs] as const;
+      const debugKeys = ['waves', 'birds', 'birds2', 'frogs'] as const;
+      const label = natureSampleLabel(state[keys.sampleIdKey], keys.slot);
       rows.push({
-        id: 'child-birds',
-        label: 'Birds Alps',
+        id: `child-nature-${keys.slot}`,
+        label,
         family: 'Nature',
-        accent: EARTH_ENGINE_COLORS.birds,
-        preview: 'birds',
-        density: numeric(state, 'birdsSliceDensity'),
-        intensity: numeric(state, 'birdsLevel') * numeric(state, 'natureLevel'),
-        toggle: () => onSelectChange('birdsEnabled', false),
-        toggleTitle: 'Disable Birds Alps',
-        level: { key: 'birdsLevel', label: 'Birds Alps Level', accent: routeAccent(EARTH_ENGINE_COLORS.birds, 38) },
-        textureDebugKey: 'birds',
+        accent: accents[keys.slot - 1]!,
+        preview: keys.slot === 4 ? 'frogs' : keys.slot === 1 ? 'waves' : 'birds',
+        density: numeric(state, keys.sliceDensityKey),
+        intensity: numeric(state, keys.levelKey) * numeric(state, 'natureLevel'),
+        toggle: () => onSelectChange(keys.enabledKey, false),
+        toggleTitle: `Disable ${label}`,
+        level: { key: keys.levelKey, label: `${label} Level`, accent: routeAccent(accents[keys.slot - 1]!, 38) },
+        textureDebugKey: debugKeys[keys.slot - 1]!,
       });
-    }
-
-    if (state.birds2Enabled) {
-      rows.push({
-        id: 'child-birds2',
-        label: 'Birds Fujian',
-        family: 'Nature',
-        accent: EARTH_ENGINE_COLORS.birds2,
-        preview: 'birds',
-        density: numeric(state, 'birds2SliceDensity'),
-        intensity: numeric(state, 'birds2Level') * numeric(state, 'natureLevel'),
-        toggle: () => onSelectChange('birds2Enabled', false),
-        toggleTitle: 'Disable Birds Fujian',
-        level: { key: 'birds2Level', label: 'Birds Fujian Level', accent: routeAccent(EARTH_ENGINE_COLORS.birds2, 38) },
-        textureDebugKey: 'birds2',
-      });
-    }
-
-    if (state.frogsEnabled) {
-      rows.push({
-        id: 'child-frogs',
-        label: 'Frogs',
-        family: 'Nature',
-        accent: EARTH_ENGINE_COLORS.frogs,
-        preview: 'frogs',
-        density: numeric(state, 'frogsSliceDensity'),
-        intensity: numeric(state, 'frogsLevel') * numeric(state, 'natureLevel'),
-        toggle: () => onSelectChange('frogsEnabled', false),
-        toggleTitle: 'Disable Frogs',
-        level: { key: 'frogsLevel', label: 'Frogs Level', accent: routeAccent(EARTH_ENGINE_COLORS.frogs, 38) },
-        textureDebugKey: 'frogs',
-      });
-    }
+    });
 
     if (state.insectsEnabled) {
+      const label = INSECT_ENGINES[state.insectsEngine] ?? 'Insect 1';
       rows.push({
         id: 'child-insects1',
-        label: 'Insects 1',
+        label,
         family: 'Insects',
         info: INSECT_ENGINES[state.insectsEngine] ?? 'Layer 1 engine',
         accent: EARTH_ENGINE_COLORS.insects,
@@ -699,15 +602,16 @@ export function ActiveEarthMatrix({
         density: numeric(state, 'insectsDensity'),
         intensity: numeric(state, 'insectsLevel'),
         toggle: () => onSelectChange('insectsEnabled', false),
-        toggleTitle: 'Disable Insects 1',
-        level: { key: 'insectsLevel', label: 'Insects 1 Level', accent: routeAccent(EARTH_ENGINE_COLORS.insects, 38) },
+        toggleTitle: `Disable ${label}`,
+        level: { key: 'insectsLevel', label: `${label} Level`, accent: routeAccent(EARTH_ENGINE_COLORS.insects, 38) },
       });
     }
 
     if (state.insects2Enabled) {
+      const label = INSECT_ENGINES[state.insects2Engine] ?? 'Insect 2';
       rows.push({
         id: 'child-insects2',
-        label: 'Insects 2',
+        label,
         family: 'Insects',
         info: INSECT_ENGINES[state.insects2Engine] ?? 'Layer 2 engine',
         accent: EARTH_ENGINE_COLORS.insects2,
@@ -715,8 +619,8 @@ export function ActiveEarthMatrix({
         density: numeric(state, 'insects2Density'),
         intensity: numeric(state, 'insects2Level'),
         toggle: () => onSelectChange('insects2Enabled', false),
-        toggleTitle: 'Disable Insects 2',
-        level: { key: 'insects2Level', label: 'Insects 2 Level', accent: routeAccent(EARTH_ENGINE_COLORS.insects2, 38) },
+        toggleTitle: `Disable ${label}`,
+        level: { key: 'insects2Level', label: `${label} Level`, accent: routeAccent(EARTH_ENGINE_COLORS.insects2, 38) },
       });
     }
 

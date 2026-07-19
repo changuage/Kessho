@@ -203,6 +203,15 @@ struct SoundscapeRenderBlockCache {
       }
       float value_l = 0.0f;
       float value_r = 0.0f;
+      if (voice.soundscape_texture_voice &&
+          !voice.soundscape_texture_sample_hold_triggered &&
+          voice.start_delay_frames == 0u &&
+          voice.soundscape_texture_slot < kSoundscapeTextureSlotCount) {
+        voice.soundscape_texture_sample_hold_triggered = true;
+        triggerSoundscapeTextureSampleHoldRanges(
+            voice.soundscape_texture_slot,
+            voice.soundscape_texture_slice_id);
+      }
       renderVoiceSample(voice, value_l, value_r);
       SourceState& source = sources[voice.source_id - 1u];
       float source_gate = source_gates[voice.source_id - 1u];
@@ -223,6 +232,9 @@ struct SoundscapeRenderBlockCache {
           voice.soundscape_texture_voice &&
           voice.age_frames > 0u &&
           voice.soundscape_texture_slot < kSoundscapeTextureSlotCount) {
+        if (soundscapeTextureParam(source, voice.soundscape_texture_slot, kSoundscapeTextureParamAssetId, 0.0f) > 0.0f) {
+          processSoundscapeTextureFilter(voice, source, value_l, value_r);
+        }
         processSoundscapeTextureSpatialForSlot(voice.soundscape_texture_slot, value_l, value_r);
       }
       const float pan_l = voice.pan <= 0.0f ? 1.0f : 1.0f - voice.pan * 0.5f;
@@ -264,7 +276,10 @@ struct SoundscapeRenderBlockCache {
             : soundscapeLayerIndexForAsset(assets[voice.asset_slot].asset_id);
         soundscape_asset_level = voice.soundscape_releasing
             ? voice.soundscape_asset_level
-            : soundscapeAssetRefLevel(source, assets[voice.asset_slot].asset_id);
+            : (voice.soundscape_texture_voice && voice.soundscape_texture_slot < kSoundscapeTextureSlotCount &&
+                soundscapeTextureParam(source, voice.soundscape_texture_slot, kSoundscapeTextureParamAssetId, 0.0f) > 0.0f
+                ? clampFloat(soundscapeTextureParam(source, voice.soundscape_texture_slot, kSoundscapeTextureParamLevel, 0.5f), 0.0f, 1.0f)
+                : soundscapeAssetRefLevel(source, assets[voice.asset_slot].asset_id));
         voice.soundscape_asset_level = soundscape_asset_level;
         soundscape_earth_level = soundscape_cache.earth_level;
         graph_dry_left = dry_left * soundscape_asset_level;

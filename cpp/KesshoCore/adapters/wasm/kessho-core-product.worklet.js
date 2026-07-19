@@ -2,6 +2,8 @@
 const EVENT_BYTES = 40;
 const GENERATED_CAPTURE_EVENT_BYTES = 64;
 const GENERATED_CAPTURE_EVENT_CAPACITY = 256;
+const SIMPLE_SEQUENCER_VISUAL_EVENT_BYTES = 64;
+const SIMPLE_SEQUENCER_VISUAL_EVENT_CAPACITY = 256;
 const TELEMETRY_BYTES = 15448;
 const TELEMETRY_SYNTH_ARP_CURRENT_MIDIS_OFFSET = 15232;
 const TELEMETRY_SCATTER_OFFSET = 15296;
@@ -144,6 +146,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.telemetryPtr = 0;
     this.generatedCaptureEventsPtr = 0;
     this.generatedCaptureOverflowPtr = 0;
+    this.simpleSequencerVisualEventsPtr = 0;
+    this.simpleSequencerVisualOverflowPtr = 0;
     this.granularWaveformPtr = 0;
     this.granularWaveformReportCounter = 0;
     this.sequencerUiStatePtr = 0;
@@ -174,6 +178,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.coreStemsEnabled = null;
     this.hostDebugVoiceSpawnDemand = false;
     this.coreDebugVoiceSpawnDemand = null;
+    this.hostSimpleSequencerVisualDemandMask = 0;
+    this.coreSimpleSequencerVisualDemandMask = null;
     this.graphCaptureAllowed = options.processorOptions?.graphCaptureAllowed === true;
     this.coreGraphTapsEnabled = null;
     this.graphTapDisableCountdownBlocks = 0;
@@ -287,7 +293,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         refreshTelemetry: this.resolve('kessho_product_refresh_telemetry'),
         setMeterDemand: this.resolve('kessho_product_set_meter_demand'),
         setDebugVoiceSpawnDemand: this.resolve('kessho_product_set_debug_voice_spawn_demand'),
+        setSimpleSequencerVisualDemand: this.resolve('kessho_product_set_simple_sequencer_visual_demand'),
         drainGeneratedSequencerCaptureEvents: this.resolve('kessho_product_drain_generated_sequencer_capture_events'),
+        drainSimpleSequencerVisualEvents: this.resolve('kessho_product_drain_simple_sequencer_visual_events'),
         copyGranularWaveform: this.resolve('kessho_product_copy_granular_waveform'),
         copySequencerUiState: this.resolve('kessho_product_copy_sequencer_ui_state'),
         registerAsset: this.resolve('kessho_product_register_asset_buffer'),
@@ -300,6 +308,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       this.telemetryPtr = this.api.malloc(TELEMETRY_BYTES);
       this.generatedCaptureEventsPtr = this.api.malloc(GENERATED_CAPTURE_EVENT_BYTES * GENERATED_CAPTURE_EVENT_CAPACITY);
       this.generatedCaptureOverflowPtr = this.api.malloc(4);
+      this.simpleSequencerVisualEventsPtr = this.api.malloc(
+        SIMPLE_SEQUENCER_VISUAL_EVENT_BYTES * SIMPLE_SEQUENCER_VISUAL_EVENT_CAPACITY,
+      );
+      this.simpleSequencerVisualOverflowPtr = this.api.malloc(4);
       this.granularWaveformPtr = this.api.malloc(GRANULAR_WAVEFORM_BYTES);
       this.sequencerUiStatePtr = this.api.malloc(SEQUENCER_UI_STATE_BYTES);
       this.engine = this.api.create(sampleRate, this.frames, 0);
@@ -311,6 +323,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         !this.telemetryPtr ||
         !this.generatedCaptureEventsPtr ||
         !this.generatedCaptureOverflowPtr ||
+        !this.simpleSequencerVisualEventsPtr ||
+        !this.simpleSequencerVisualOverflowPtr ||
         !this.granularWaveformPtr ||
         !this.sequencerUiStatePtr
       ) {
@@ -343,6 +357,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         this.syncMeterDemand();
         this.syncStemDemand();
         this.syncDebugVoiceSpawnDemand();
+        this.syncSimpleSequencerVisualDemand();
       }
       return;
     }
@@ -408,6 +423,11 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       if (message.type === 'debug-voice-spawn-demand') {
         this.hostDebugVoiceSpawnDemand = Boolean(message.enabled);
         this.syncDebugVoiceSpawnDemand();
+        return;
+      }
+      if (message.type === 'simple-sequencer-visual-demand') {
+        this.hostSimpleSequencerVisualDemandMask = Math.max(0, Math.min(3, Number(message.mask) || 0));
+        this.syncSimpleSequencerVisualDemand();
         return;
       }
       if (message.type === 'request-visual-telemetry') {
@@ -552,6 +572,17 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       throw new Error(`Kessho Product Core debug voice-spawn demand update failed: ${result}`);
     }
     this.coreDebugVoiceSpawnDemand = enabled;
+  }
+
+  syncSimpleSequencerVisualDemand() {
+    if (!this.api?.setSimpleSequencerVisualDemand || !this.engine) return;
+    const mask = this.hostHidden ? 0 : this.hostSimpleSequencerVisualDemandMask;
+    if (this.coreSimpleSequencerVisualDemandMask === mask) return;
+    const result = this.api.setSimpleSequencerVisualDemand(this.engine, mask);
+    if (result !== 1) {
+      throw new Error(`Kessho Product Core simple-sequencer visual demand update failed: ${result}`);
+    }
+    this.coreSimpleSequencerVisualDemandMask = mask;
   }
 
   scheduleGraphTapIdleDisable() {
@@ -1328,6 +1359,43 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     };
   }
 
+  readSimpleSequencerVisualEvents() {
+    if (!this.simpleSequencerVisualEventsPtr || !this.simpleSequencerVisualOverflowPtr) {
+      return { events: [], overflowCount: 0 };
+    }
+    this.view.setUint32(this.simpleSequencerVisualOverflowPtr, 0, true);
+    const count = this.api.drainSimpleSequencerVisualEvents(
+      this.engine,
+      this.simpleSequencerVisualEventsPtr,
+      SIMPLE_SEQUENCER_VISUAL_EVENT_CAPACITY,
+      this.simpleSequencerVisualOverflowPtr,
+    );
+    const safeCount = Math.max(0, Math.min(SIMPLE_SEQUENCER_VISUAL_EVENT_CAPACITY, Number(count) || 0));
+    const events = [];
+    for (let index = 0; index < safeCount; index += 1) {
+      const ptr = this.simpleSequencerVisualEventsPtr + index * SIMPLE_SEQUENCER_VISUAL_EVENT_BYTES;
+      const kindId = this.view.getUint32(ptr + 32, true);
+      events.push({
+        eventId: this.readUint64Number(ptr),
+        absoluteSample: this.readUint64Number(ptr + 8),
+        phraseStartSample: this.readUint64Number(ptr + 16),
+        phraseIndex: this.readUint64Number(ptr + 24),
+        kind: kindId === 1 ? 'padChord' : 'randomTiming',
+        targetSourceId: this.view.getUint32(ptr + 36, true),
+        midiNote: this.view.getFloat32(ptr + 40, true),
+        velocity: this.view.getFloat32(ptr + 44, true),
+        gateSeconds: this.view.getFloat32(ptr + 48, true),
+        voiceIndex: this.view.getUint32(ptr + 52, true),
+        phraseSeconds: this.view.getFloat32(ptr + 56, true),
+        triggerIntervalSeconds: this.view.getFloat32(ptr + 60, true),
+      });
+    }
+    return {
+      events,
+      overflowCount: this.view.getUint32(this.simpleSequencerVisualOverflowPtr, true),
+    };
+  }
+
   hash32Hex(value) {
     return (value >>> 0).toString(16).padStart(8, '0');
   }
@@ -1589,6 +1657,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const synthOrbitVisualLanes = this.readSynthOrbitVisualLanes(ptr);
     const synthAnchorWalkerVisualLanes = this.readSynthAnchorWalkerVisualLanes(ptr);
     const generatedSequencerCapture = this.readGeneratedSequencerCaptureEvents();
+    const simpleSequencerVisual = this.readSimpleSequencerVisualEvents();
     return {
       schemaHash: this.view.getUint32(ptr, true),
       sampleRate: this.view.getFloat64(ptr + 8, true),
@@ -1717,6 +1786,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       synthAnchorWalkerVisualLanes,
       generatedSequencerCaptureEvents: generatedSequencerCapture.events,
       generatedSequencerCaptureOverflowCount: generatedSequencerCapture.overflowCount,
+      simpleSequencerVisualEvents: simpleSequencerVisual.events,
+      simpleSequencerVisualOverflowCount: simpleSequencerVisual.overflowCount,
       sequencerUiState,
       sequencerUiChangeDice: SEQUENCER_UI_CHANGE_DICE,
       sequencerUiChangeResetHome: SEQUENCER_UI_CHANGE_RESET_HOME,

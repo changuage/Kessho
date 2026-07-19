@@ -37,6 +37,7 @@ struct HarmonyState {
   float phrase_length_seconds = 16.0f;
   float progression_phrase_seconds = 16.0f;
   float voicing_spread = 0.5f;
+  float requested_voicing_spread = 0.5f;
   float detune_cents = 8.0f;
   uint32_t scale_mode = 0u;
   uint32_t phrases_until_change = 1u;

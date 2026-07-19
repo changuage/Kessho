@@ -1,5 +1,7 @@
 import { getNearestPianoSample, type PianoSampleVariant } from './pianoSamples';
 import coreProductAssetManifest from './coreProductAssetManifest.json';
+import { NATURE_SLOT_KEYS } from './natureSlots';
+import { natureSampleDefinition } from './natureSampleCatalog';
 
 export const CORE_PRODUCT_ASSET_FLAGS = Object.freeze({
   loop: coreProductAssetManifest.flags.loop,
@@ -76,7 +78,7 @@ export function cloneDecodedCoreProductAssetForTransfer(asset: DecodedCoreProduc
 }
 
 export function resolveCoreProductAssetUrl(path: string): string {
-  const base = new URL(import.meta.env.BASE_URL, window.location.origin);
+  const base = new URL(import.meta.env?.BASE_URL ?? '/', window.location.origin);
   return new URL(`${CORE_PRODUCT_ASSET_BASE_PATH}/${path}`, base).toString();
 }
 
@@ -107,11 +109,6 @@ export function getCoreProductPianoAssetUrlForMidiVariant(
   return resolveCoreProductAssetUrl(getManifestPianoSamplePath(variant, index));
 }
 
-function numberFromState(state: Record<string, unknown> | undefined | null, key: string): number | null {
-  const value = state?.[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
 function booleanFromState(state: Record<string, unknown> | undefined | null, key: string): boolean {
   return state?.[key] === true;
 }
@@ -137,6 +134,9 @@ export function getDefaultCoreProductSoundscapeAssetId(state?: Record<string, un
 }
 
 export function getPrimaryCoreProductSoundscapeAssetIdForState(state?: Record<string, unknown> | null): number {
+  for (const keys of NATURE_SLOT_KEYS) {
+    if (booleanFromState(state, keys.enabledKey)) return natureSampleDefinition(state?.[keys.sampleIdKey], keys.slot).assetId;
+  }
   if (booleanFromState(state, 'frogsEnabled')) return CORE_PRODUCT_SOUNDSCAPE_ASSETS.frogs.assetId;
   if (booleanFromState(state, 'birds2Enabled')) return CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds2.assetId;
   if (booleanFromState(state, 'birdsEnabled')) return CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds.assetId;
@@ -152,37 +152,11 @@ export function getDefaultCoreProductSoundscapeAssetUrl(state?: Record<string, u
 export function getCoreProductSoundscapeAssetDescriptorsForState(
   state?: Record<string, unknown> | null,
 ): CoreProductSoundscapeAssetDescriptor[] {
-  const natureLevel = clamp01(numberFromState(state, 'natureLevel') ?? 1);
   const candidates: Array<{ key: CoreProductSoundscapeAssetKey; level: number }> = [];
-  const oceanSendActive = booleanFromState(state, 'oceanSampleEnabled');
-  // required: oceanSendActive
-  if (oceanSendActive) {
-    const oceanLevel = clamp01(numberFromState(state, 'oceanSampleLevel') ?? 0);
-    if (oceanLevel > 0.0001) {
-      candidates.push({ key: 'ocean', level: oceanLevel });
-    }
-  }
-  if (booleanFromState(state, 'waterEnabled')) {
-    candidates.push({ key: 'water', level: clamp01(numberFromState(state, 'waterLevel') ?? 0) });
-  }
-  if (booleanFromState(state, 'birdsEnabled')) {
-    candidates.push({ key: 'birds', level: clamp01(numberFromState(state, 'birdsLevel') ?? 0) * natureLevel });
-  }
-  if (booleanFromState(state, 'birds2Enabled')) {
-    candidates.push({ key: 'birds2', level: clamp01(numberFromState(state, 'birds2Level') ?? 0) * natureLevel });
-  }
-  if (booleanFromState(state, 'frogsEnabled')) {
-    candidates.push({ key: 'frogs', level: clamp01(numberFromState(state, 'frogsLevel') ?? 0) * natureLevel });
-  }
-  if (booleanFromState(state, 'insectsEnabled') || booleanFromState(state, 'insects2Enabled')) {
-    const insectsLevel = booleanFromState(state, 'insectsEnabled')
-      ? clamp01(numberFromState(state, 'insectsLevel') ?? 0)
-      : 0;
-    const insects2Level = booleanFromState(state, 'insects2Enabled')
-      ? clamp01(numberFromState(state, 'insects2Level') ?? 0)
-      : 0;
-    const sharedLevel = clamp01(numberFromState(state, 'insectsSharedLevel') ?? 1);
-    candidates.push({ key: 'insects', level: Math.max(insectsLevel, insects2Level) * sharedLevel * natureLevel });
+  for (const keys of NATURE_SLOT_KEYS) {
+    if (!booleanFromState(state, keys.enabledKey)) continue;
+    const sample = natureSampleDefinition(state?.[keys.sampleIdKey], keys.slot);
+    candidates.push({ key: sample.assetKey, level: 1 });
   }
   const seen = new Set<number>();
   return candidates.flatMap(({ key, level }) => {

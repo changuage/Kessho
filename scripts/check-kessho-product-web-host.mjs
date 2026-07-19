@@ -193,6 +193,7 @@ const arrangementProjection = read('src/audio/product/host/CoreProductArrangemen
 const coreProductSourcePlayability = read('src/audio/coreProductSourcePlayability.ts');
 const arrangementSchedulerSurface = `${arrangementScheduler}\n${arrangementPadChord}`;
 const snapshotEncoder = read('src/audio/coreProductSnapshotEncoder.ts');
+const productAbiLayout = read('cpp/KesshoCore/tests/ProductAbiLayoutTests.cpp');
 const snapshotDefaults = read('src/audio/coreProductSnapshotDefaults.ts');
 const snapshotReverb = read('src/audio/coreProductReverbSnapshot.ts');
 const productLeadPatch = read('src/audio/CoreProductLeadPatch.ts');
@@ -2247,8 +2248,14 @@ for (const token of [
   assert(assets.includes(token), `core-product assets are missing ${token}`);
 }
 
+const webSnapshotBytes = Number(/const SNAPSHOT_BYTES = (\d+)/.exec(snapshotEncoder)?.[1]);
+const nativeSnapshotBytes = Number(/sizeof\(KesshoProductSnapshotV2\) == (\d+)/.exec(productAbiLayout)?.[1]);
+assert(Number.isFinite(webSnapshotBytes), 'web Product snapshot byte size is missing');
+assert(Number.isFinite(nativeSnapshotBytes), 'native Product snapshot ABI byte size is missing');
+assert(webSnapshotBytes === nativeSnapshotBytes,
+  `Product snapshot byte size mismatch: web ${webSnapshotBytes}, native ${nativeSnapshotBytes}`);
+
 for (const token of [
-  'const SNAPSHOT_BYTES = 152936',
   'const SOURCE_BYTES = 5188',
   'const LANE_BYTES = 100',
   'KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES',

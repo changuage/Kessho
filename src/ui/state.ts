@@ -62,6 +62,11 @@ import {
   type SampleSelectionMode,
   type SampleVariantMode,
 } from '../audio/sampleLibraries/SampleLibraryTypes';
+import {
+  defaultNatureSlotState,
+  migrateLegacyNatureSlotState,
+  type NatureSlotState,
+} from '../audio/natureSlots';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
 export type GranularQuality = 'eco' | 'balanced' | 'hq';
@@ -321,7 +326,7 @@ export interface SavedPreset {
   presetPool?: PresetPoolMetadata;
 }
 
-export interface SliderState {
+export interface SliderState extends NatureSlotState {
   // Master Mixer
   masterVolume: number;       // 0..1 step 0.01
   synthLevel: number;         // 0..1 step 0.01 - pad 1 dry level (ENGINE_TRIMS.pad applied in engine)
@@ -1523,6 +1528,7 @@ export interface SliderState {
   waterChannelsMorph: number;   // 0..1 — 0=stream, 1=wind
   waterChannelsSpeed: number;   // 0..1 — LFO speed
   // Insects Layer 1
+  insectsMasterEnabled: boolean; // aggregate gate; preserves child selections
   insectsEnabled: boolean;
   insectsEngine: number;        // 0..6 (Cricket..Fly/Bee)
   insectsDensity: number;       // 0..1
@@ -2757,6 +2763,15 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'oceanFilterType',
   'oceanFilterCutoff',
   'oceanFilterResonance',
+  'natureMasterEnabled',
+  'nature1Enabled', 'nature1SampleId', 'nature1Level', 'nature1SliceDuration', 'nature1SliceDensity',
+  'nature1FilterType', 'nature1FilterCutoff', 'nature1FilterResonance',
+  'nature2Enabled', 'nature2SampleId', 'nature2Level', 'nature2SliceDuration', 'nature2SliceDensity',
+  'nature2FilterType', 'nature2FilterCutoff', 'nature2FilterResonance',
+  'nature3Enabled', 'nature3SampleId', 'nature3Level', 'nature3SliceDuration', 'nature3SliceDensity',
+  'nature3FilterType', 'nature3FilterCutoff', 'nature3FilterResonance',
+  'nature4Enabled', 'nature4SampleId', 'nature4Level', 'nature4SliceDuration', 'nature4SliceDensity',
+  'nature4FilterType', 'nature4FilterCutoff', 'nature4FilterResonance',
   'birdsEnabled', 'birdsLevel', 'birdsReverbSend', 'birdsDelayASend', 'birdsDelayBSend', 'birdsSliceDuration', 'birdsSliceDensity',
   'birds2Enabled', 'birds2Level', 'birds2ReverbSend', 'birds2DelayASend', 'birds2DelayBSend', 'birds2SliceDuration', 'birds2SliceDensity',
   'frogsEnabled', 'frogsLevel', 'frogsReverbSend', 'frogsDelayASend', 'frogsDelayBSend', 'frogsSliceDuration', 'frogsSliceDensity',
@@ -2777,7 +2792,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'waterDensityHardSend', 'waterDensityWaterSend', 'waterDensityBubbleSend',
   'waterDensityFeedback', 'waterDensityTone', 'waterDensityRing', 'waterDensityWet',
   'waterChannelsMorph', 'waterChannelsSpeed',
-  'insectsEnabled', 'insectsEngine',
+  'insectsMasterEnabled', 'insectsEnabled', 'insectsEngine',
   'insectsDensity', 'insectsTemperature', 'insectsDistance', 'insectsProximity',
   'insectsAntiphony', 'insectsClickRate', 'insectsMotion', 'insectsLevel', 'insectsSharedLevel', 'insectsReverbSend', 'insDelayASend', 'insDelayBSend', 'degradeInsectsSend',
   'insects2Enabled', 'insects2Engine',
@@ -3945,6 +3960,7 @@ export const DEFAULT_STATE: SliderState = {
   oceanFilterType: 'lowpass' as const,
   oceanFilterCutoff: 8000,
   oceanFilterResonance: 0.1,
+  ...defaultNatureSlotState(),
   birdsEnabled: false,
   birdsLevel: 0.6,
   birdsReverbSend: 0.15,
@@ -4019,6 +4035,7 @@ export const DEFAULT_STATE: SliderState = {
   waterDensityWet: 0.48,
   waterChannelsMorph: 0.0,
   waterChannelsSpeed: 0.5,
+  insectsMasterEnabled: false,
   insectsEnabled: false,
   insectsEngine: 0,
   insectsDensity: 0.5,
@@ -5026,6 +5043,26 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   oceanSliceDensity: { min: 0, max: 1, step: 0.01 },
   oceanFilterCutoff: { min: 40, max: 12000, step: 10 },
   oceanFilterResonance: { min: 0, max: 1, step: 0.01 },
+  nature1Level: { min: 0, max: 1, step: 0.01 },
+  nature1SliceDuration: { min: 1.5, max: 120, step: 0.1 },
+  nature1SliceDensity: { min: 0, max: 1, step: 0.01 },
+  nature1FilterCutoff: { min: 40, max: 20000, step: 10 },
+  nature1FilterResonance: { min: 0, max: 1, step: 0.01 },
+  nature2Level: { min: 0, max: 1, step: 0.01 },
+  nature2SliceDuration: { min: 1.5, max: 120, step: 0.1 },
+  nature2SliceDensity: { min: 0, max: 1, step: 0.01 },
+  nature2FilterCutoff: { min: 40, max: 20000, step: 10 },
+  nature2FilterResonance: { min: 0, max: 1, step: 0.01 },
+  nature3Level: { min: 0, max: 1, step: 0.01 },
+  nature3SliceDuration: { min: 1.5, max: 120, step: 0.1 },
+  nature3SliceDensity: { min: 0, max: 1, step: 0.01 },
+  nature3FilterCutoff: { min: 40, max: 20000, step: 10 },
+  nature3FilterResonance: { min: 0, max: 1, step: 0.01 },
+  nature4Level: { min: 0, max: 1, step: 0.01 },
+  nature4SliceDuration: { min: 1.5, max: 120, step: 0.1 },
+  nature4SliceDensity: { min: 0, max: 1, step: 0.01 },
+  nature4FilterCutoff: { min: 40, max: 20000, step: 10 },
+  nature4FilterResonance: { min: 0, max: 1, step: 0.01 },
   birdsLevel: { min: 0, max: 1, step: 0.01 },
   birdsReverbSend: { min: 0, max: 1, step: 0.01 },
   birdsDelayASend: { min: 0, max: 1, step: 0.01 },
@@ -6144,6 +6181,10 @@ export function migratePreset(preset: any): SavedPreset {
   applyLegacyStateKeyAliases(state as Record<string, unknown>);
   applyLegacyStateKeyAliases(dualRanges as Record<string, unknown>);
   applyLegacyStateKeyAliases(sliderModes as Record<string, unknown>);
+  Object.assign(state, migrateLegacyNatureSlotState(state));
+  if (typeof state.insectsMasterEnabled !== 'boolean') {
+    state.insectsMasterEnabled = state.insectsEnabled === true || state.insects2Enabled === true;
+  }
   migrateChordGeneratorAndSeq5(state as Record<string, unknown>);
 
   // Migrate *Min/*Max pairs → single value + dualRanges + sliderModes

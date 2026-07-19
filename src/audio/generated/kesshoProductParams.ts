@@ -9,6 +9,9 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   HarmonyRootMidi: 20,
   HarmonyScaleId: 21,
   HarmonyTension: 22,
+  HarmonyVoicingSpread: 23,
+  ArrangementSynthOctave: 43,
+  ArrangementWaveSpread: 44,
   JourneyEnabled: 40,
   JourneyMorphPhase: 41,
   JourneyMorphRateBars: 42,
@@ -663,6 +666,30 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "path": "harmony.tension",
     "type": "float",
     "id": 22,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "HarmonyVoicingSpread",
+    "path": "harmony.voicingSpread",
+    "type": "float",
+    "id": 23,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "ArrangementSynthOctave",
+    "path": "arrangement.synthOctave",
+    "type": "int",
+    "id": 43,
+    "min": -2,
+    "max": 2
+  },
+  {
+    "name": "ArrangementWaveSpread",
+    "path": "arrangement.waveSpread",
+    "type": "float",
+    "id": 44,
     "min": 0,
     "max": 1
   },

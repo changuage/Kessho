@@ -253,6 +253,7 @@ class CoreProductEngineHost {
     this.runtime.setVisualTelemetryActive(active);
   }
   setSimpleSequencerVisualPlanActive(active: ProductSimpleSequencerVisualPlanActive): void {
+    this.runtime.setSimpleSequencerVisualPlanActive(active);
     this.arrangementBridge.setRuntimePlanCaptureEnabled(active);
   }
   setProductTelemetryCallback(callback: ((telemetry: CoreProductTelemetrySnapshot) => void) | null): void {

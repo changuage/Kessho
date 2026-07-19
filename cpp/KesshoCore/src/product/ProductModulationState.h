@@ -12,6 +12,10 @@ enum ProductSampleHoldTriggerBus : uint32_t {
   kProductSampleHoldTriggerDelayB = 2,
   kProductSampleHoldTriggerGranular = 3,
   kProductSampleHoldTriggerReverb = 4,
+  kProductSampleHoldTriggerNature1 = 5,
+  kProductSampleHoldTriggerNature2 = 6,
+  kProductSampleHoldTriggerNature3 = 7,
+  kProductSampleHoldTriggerNature4 = 8,
 };
 
 constexpr uint32_t kSourceModulationParamSlotCount = 17u;

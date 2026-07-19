@@ -2,9 +2,9 @@
 
 void KesshoProductEngine::ensureSoundscapeTextureVoice(
       SourceState& source,
+      uint32_t texture_slot,
       uint32_t asset_id,
       uint32_t asset_slot) {
-  const uint32_t texture_slot = soundscapeTextureSlotForAsset(asset_id);
   if (texture_slot >= kSoundscapeTextureSlotCount) {
     return;
   }
@@ -17,12 +17,13 @@ void KesshoProductEngine::ensureSoundscapeTextureVoice(
     return;
   }
   const uint32_t seed = soundscapeTextureSeed(source, texture_slot, hashU32(rng_seed ^ asset_id ^ 0x51f15ca9u));
-  if (!runtime.initialized || runtime.seed != seed) {
+  if (!runtime.initialized || runtime.seed != seed || runtime.asset_id != asset_id) {
     const uint32_t reset_count = runtime.runtime_reset_count + 1u;
-    releaseSoundscapeTextureVoices(asset_id);
+    releaseSoundscapeTextureVoices(texture_slot);
     runtime = {};
     runtime.runtime_reset_count = reset_count;
     runtime.initialized = true;
+    runtime.asset_id = asset_id;
     runtime.seed = seed;
     runtime.rng_state = seed;
     runtime.next_slice_id = 1u;
@@ -112,11 +113,17 @@ void KesshoProductEngine::ensureSoundscapeTextureVoice(
     voice.sample_voice = true;
     voice.soundscape_texture_voice = true;
     voice.soundscape_texture_slot = static_cast<uint8_t>(texture_slot);
-    voice.soundscape_layer = static_cast<uint8_t>(soundscapeLayerIndexForAsset(asset_id));
+    voice.soundscape_layer = static_cast<uint8_t>(
+        soundscapeTextureParam(source, texture_slot, kSoundscapeTextureParamAssetId, 0.0f) > 0.0f
+            ? kSoundscapeLayerNature
+            : soundscapeLayerIndexForAsset(asset_id));
     voice.soundscape_texture_slice_id = slice_id;
     voice.soundscape_texture_start_frame = runtime.next_start_frame;
     voice.soundscape_texture_start_offset_seconds = static_cast<float>(offset);
-    voice.soundscape_asset_level = soundscapeAssetRefLevel(source, asset_id);
+    voice.soundscape_asset_level = soundscapeTextureParam(
+        source, texture_slot, kSoundscapeTextureParamAssetId, 0.0f) > 0.0f
+        ? clampFloat(soundscapeTextureParam(source, texture_slot, kSoundscapeTextureParamLevel, 0.5f), 0.0f, 1.0f)
+        : soundscapeAssetRefLevel(source, asset_id);
     voice.asset_slot = asset_slot;
     voice.frequency = 0.0f;
     voice.amplitude = 1.0f;

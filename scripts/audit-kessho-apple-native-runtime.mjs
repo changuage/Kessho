@@ -129,7 +129,7 @@ const nativeFeatureSurfacesWired = has(
   'startGraphTapCapture',
   'setDawOutputRouting',
 );
-const snapshotBytes = 151_444;
+const snapshotBytes = 153_044;
 const audioSessionBridgeLimitBytes = 8 * 1024;
 const snapshotFitsCurrentBridge = snapshotBytes <= audioSessionBridgeLimitBytes;
 const nativeControlMutatesEngineDirectly = has(
@@ -341,7 +341,7 @@ const findings = [
     productionReady: snapshotFitsCurrentBridge && bridgeHasProductionControlPlane,
     summary: `The ${snapshotBytes}-byte Product snapshot cannot fit the current ${audioSessionBridgeLimitBytes}-byte audio-session options limit. A binary/chunked contract is required.`,
     evidence: [
-      evidence('abiTests', 'sizeof(KesshoProductSnapshotV2) == 152936', 'The native snapshot ABI is 152,936 bytes.'),
+      evidence('abiTests', 'sizeof(KesshoProductSnapshotV2) == 153044', 'The native snapshot ABI is 153,044 bytes.'),
       evidence('bridgePolicy', 'startPlayback", maxOptionsBytes: 8 * 1024', 'The current playback request permits 8 KiB of JSON options.'),
     ],
   },

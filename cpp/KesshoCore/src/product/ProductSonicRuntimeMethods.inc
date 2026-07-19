@@ -8,7 +8,7 @@
   void commitScatterConfig();
   void setScatterEnabled(bool enabled);
   ProductScatterPhrase generateScatterPhrase(uint32_t voice, uint32_t seed) const;
-  void scheduleScatterEvents(uint32_t frames, SequencerBuffer& out);
+  void scheduleScatterEvents(uint32_t frames, SequencerBuffer& out, bool include_inactive_sources);
   void beginSceneProgram(const KesshoProductEvent& event);
   void setSceneProgramEntry(const KesshoProductEvent& event);
   void setSceneProgramCommandHeader(const KesshoProductEvent& event);
