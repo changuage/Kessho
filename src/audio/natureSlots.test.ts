@@ -104,3 +104,25 @@ test('only enabled Nature slots request playback assets', () => {
     Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow });
   }
 });
+
+test('legacy soundscape enables still request playback assets', () => {
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { location: { origin: 'http://localhost' } },
+  });
+  try {
+    const descriptors = getCoreProductSoundscapeAssetDescriptorsForState({
+      oceanSampleEnabled: true,
+      oceanSampleLevel: 0.23,
+      birdsEnabled: true,
+      birdsLevel: 0.41,
+    });
+    assert.deepEqual(
+      descriptors.map((descriptor) => [descriptor.assetId, descriptor.level]),
+      [[7101, 0.23], [7102, 0.41]],
+    );
+  } finally {
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow });
+  }
+});

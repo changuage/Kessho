@@ -640,6 +640,14 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     };
   }
 
+  if (key === 'insectsMasterEnabled' || key === 'natureMasterEnabled') {
+    return {
+      path: 'soundscape-structured-full-snapshot',
+      evidence: ['src/audio/coreProductSoundscapesSnapshot.ts#exactSoundscapesModuleParamsFromState', 'src/audio/CoreProductRuntimeAdapter.ts#soundscapeSnapshotChanged'],
+      reason: 'Aggregate soundscape gates are carried in dedicated Product Soundscape module snapshot fields so child selections remain available for fade-in/fade-out transitions.',
+    };
+  }
+
   if (key === 'randomness') {
     return {
       path: 'rng-seed-snapshot-policy',
@@ -866,6 +874,32 @@ function addDynamicSampleSlotKeys(keys) {
   }
 }
 
+function addDynamicNatureSlotKeys(keys) {
+  keys.add('natureMasterEnabled');
+  for (let slot = 1; slot <= 4; slot += 1) {
+    for (const suffix of [
+      'Enabled',
+      'SampleId',
+      'Level',
+      'SliceDuration',
+      'SliceDensity',
+      'FilterType',
+      'FilterCutoff',
+      'FilterResonance',
+    ]) {
+      keys.add(`nature${slot}${suffix}`);
+    }
+  }
+}
+
+function addLegacyNatureSnapshotKeys(keys) {
+  // These legacy range aliases still have Product snapshot coverage through the
+  // state migration bridge, even though canonical Nature slots own new state.
+  for (const key of ['birds2Level', 'birdsLevel', 'frogsLevel', 'natureLevel', 'oceanSampleLevel']) {
+    keys.add(key);
+  }
+}
+
 function addDynamicGranularVoiceKeys(keys) {
   for (let voice = 1; voice <= 4; voice += 1) {
     for (const suffix of [
@@ -1059,6 +1093,8 @@ function collectProductSnapshotReferencedKeys(sliderKeys) {
   addArrangementSchedulerSnapshotKeys(keys);
   addDynamicSequencerKeys(keys);
   addDynamicSampleSlotKeys(keys);
+  addDynamicNatureSlotKeys(keys);
+  addLegacyNatureSnapshotKeys(keys);
   addDynamicGranularVoiceKeys(keys);
   return keys;
 }

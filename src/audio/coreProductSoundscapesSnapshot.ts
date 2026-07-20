@@ -111,6 +111,8 @@ export function writeSoundscapeTextureParamsFromState(
   params: number[],
   state: Record<string, unknown> | undefined,
 ): void {
+  const config = { fadeTime: 5 };
+  const soundscapeParityFixture = state?.soundscapeParityFixture === true;
   for (let slot = 0; slot < NATURE_SLOT_KEYS.length; slot += 1) {
     const keys = NATURE_SLOT_KEYS[slot]!;
     const sample = natureSampleDefinition(state?.[keys.sampleIdKey], keys.slot);
@@ -118,7 +120,7 @@ export function writeSoundscapeTextureParamsFromState(
     const seed = earthTextureSeed(`nature-${keys.slot}`, state);
     params[offset] = boundedNumber(state?.[keys.sliceDurationKey], sample.defaultSliceDuration, 1.5, Math.max(1.5, sample.durationSeconds));
     params[offset + 1] = boundedNumber(state?.[keys.sliceDensityKey], sample.defaultSliceDensity, 0, 1);
-    params[offset + 2] = boundedNumber(state?.soundscapeParityFixture === true ? 0 : 5, 5, 0, 30);
+    params[offset + 2] = soundscapeParityFixture === true ? 0 : config.fadeTime;
     params[offset + 3] = seed & 0xffff;
     params[offset + 4] = seed >>> 16;
     params[offset + 5] = sample.assetId;

@@ -605,14 +605,14 @@
           "getPrimaryCoreProductSoundscapeAssetIdForState"
         ]
         },
-        {
-          "file": "src/audio/coreProductAssets.ts",
-          "tokens": [
-            "oceanSendActive",
-            "required: oceanSendActive",
-            "birdsLevel') ?? 0) * natureLevel"
-          ]
-        },
+      {
+        "file": "src/audio/coreProductAssets.ts",
+        "tokens": [
+          "NATURE_SLOT_KEYS",
+          "natureSampleDefinition(state?.[keys.sampleIdKey], keys.slot)",
+          "candidates.push({ key: sample.assetKey, level: 1 })"
+        ]
+      },
         {
         "file": "src/audio/coreProductSoundscapesSnapshot.ts",
         "tokens": [

@@ -110,8 +110,7 @@ struct Voice {
   uint8_t soundscape_texture_slot = kSoundscapeTextureSlotCount;
   uint8_t soundscape_layer = kSoundscapeLayerCount;
   bool soundscape_releasing = false;
-  uint32_t soundscape_texture_slice_id = 0;
-  bool soundscape_texture_sample_hold_triggered = false;
+  uint32_t soundscape_texture_slice_id = 0; bool soundscape_texture_sample_hold_triggered = false;
   uint64_t soundscape_texture_start_frame = 0u;
   float soundscape_texture_start_offset_seconds = 0.0f;
   float soundscape_asset_level = 1.0f;
@@ -134,9 +133,7 @@ struct Voice {
   uint32_t envelope_release_frames = 1;
   uint32_t loop_crossfade_frames = 0;
   float envelope_sustain = 1.0f;
-  float post_coeff_cutoff = -1.0f;
-  float post_filter_q = -1.0f;
-  uint8_t post_filter_type = 0u;
+  float post_coeff_cutoff = -1.0f; float post_filter_q = -1.0f; uint8_t post_filter_type = 0u;
   float post_b0 = 1.0f;
   float post_b1 = 0.0f;
   float post_b2 = 0.0f;
@@ -157,8 +154,7 @@ enum SoundscapeTextureFallbackReason : uint32_t {
 };
 
 struct SoundscapeTextureRuntime {
-  bool initialized = false;
-  uint32_t asset_id = 0u;
+  bool initialized = false; uint32_t asset_id = 0u;
   uint32_t seed = 0u, rng_state = 0u;
   uint64_t next_start_frame = 0u;
   uint32_t next_slice_id = 1u, last_slice_id = 0u;

@@ -674,7 +674,8 @@ void retimeSequencerLanePreservingPhase(
           !valid_source(event.target_id) &&
           !isDrumRangeTarget(event.target_id) &&
           !isSoundscapeAssetLevelRangeTarget(event.target_id) &&
-          !isSoundscapeTextureLevelRangeTarget(event.target_id)) {
+          !isSoundscapeTextureLevelRangeTarget(event.target_id) &&
+          !isSoundscapeTextureParamTarget(event.target_id)) {
         return KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
       }
       return KESSHO_PRODUCT_OK;
@@ -1674,7 +1675,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
   }
   SourceState& soundscape_source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
   if (event.target_id >= kSoundscapeTextureParamTargetBase &&
-      event.target_id < kSoundscapeTextureParamTargetBase + kSoundscapeTextureParamCount) {
+      event.target_id < kSoundscapeTextureParamTargetEnd) {
     const uint32_t index = event.target_id - kSoundscapeTextureParamTargetBase;
     soundscape_source.soundscape_texture_params[index] = event.value;
     soundscape_source.soundscape_texture_param_count = std::max(soundscape_source.soundscape_texture_param_count, index + 1u);

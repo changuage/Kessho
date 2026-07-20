@@ -192,6 +192,11 @@
 
 .sl-slider-thumb,
 .sl-slider-ghost {
+  transition: none;
+}
+
+.sl-slider--motion-ready .sl-slider-thumb,
+.sl-slider--motion-ready .sl-slider-ghost {
   transition: transform 100ms linear;
 }
 
@@ -203,7 +208,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .sl-slider-thumb,
-  .sl-slider-ghost {
+  .sl-slider-ghost,
+  .sl-slider--motion-ready .sl-slider-thumb,
+  .sl-slider--motion-ready .sl-slider-ghost {
     transition: none;
   }
 }

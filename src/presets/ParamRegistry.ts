@@ -84,6 +84,40 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   natureReverbSend:      { level: 4, scope: 'global' },
   natureDelayASend:      { level: 4, scope: 'global' },
   natureDelayBSend:      { level: 4, scope: 'global' },
+  insectsMasterEnabled:  { level: 4, scope: 'global' },
+  natureMasterEnabled:   { level: 4, scope: 'global' },
+  nature1Enabled:        { level: 4, scope: 'global' },
+  nature1SampleId:       { level: 4, scope: 'global' },
+  nature1Level:          { level: 4, scope: 'global' },
+  nature1SliceDuration:  { level: 4, scope: 'global' },
+  nature1SliceDensity:   { level: 4, scope: 'global' },
+  nature1FilterType:     { level: 4, scope: 'global' },
+  nature1FilterCutoff:   { level: 4, scope: 'global' },
+  nature1FilterResonance: { level: 4, scope: 'global' },
+  nature2Enabled:        { level: 4, scope: 'global' },
+  nature2SampleId:       { level: 4, scope: 'global' },
+  nature2Level:          { level: 4, scope: 'global' },
+  nature2SliceDuration:  { level: 4, scope: 'global' },
+  nature2SliceDensity:   { level: 4, scope: 'global' },
+  nature2FilterType:     { level: 4, scope: 'global' },
+  nature2FilterCutoff:   { level: 4, scope: 'global' },
+  nature2FilterResonance: { level: 4, scope: 'global' },
+  nature3Enabled:        { level: 4, scope: 'global' },
+  nature3SampleId:       { level: 4, scope: 'global' },
+  nature3Level:          { level: 4, scope: 'global' },
+  nature3SliceDuration:  { level: 4, scope: 'global' },
+  nature3SliceDensity:   { level: 4, scope: 'global' },
+  nature3FilterType:     { level: 4, scope: 'global' },
+  nature3FilterCutoff:   { level: 4, scope: 'global' },
+  nature3FilterResonance: { level: 4, scope: 'global' },
+  nature4Enabled:        { level: 4, scope: 'global' },
+  nature4SampleId:       { level: 4, scope: 'global' },
+  nature4Level:          { level: 4, scope: 'global' },
+  nature4SliceDuration:  { level: 4, scope: 'global' },
+  nature4SliceDensity:   { level: 4, scope: 'global' },
+  nature4FilterType:     { level: 4, scope: 'global' },
+  nature4FilterCutoff:   { level: 4, scope: 'global' },
+  nature4FilterResonance: { level: 4, scope: 'global' },
   granularPad1Send:      { level: 4, scope: 'global' },
   granularPad2Send:      { level: 4, scope: 'global' },
   granularLead1Send:     { level: 4, scope: 'global' },
@@ -1508,7 +1542,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1275) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1275`);
+  if (count !== 1309) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1309`);
   }
 }

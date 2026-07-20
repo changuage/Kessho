@@ -52,13 +52,12 @@ class CoreProductRuntimeAdapter {
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.HarmonyVoicingSpread,
       previous.harmony.voicingSpread, next.harmony.voicingSpread);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementSynthOctave,
-      previous.arrangement.synthOctave, next.arrangement.synthOctave);
+      previous.arrangement?.synthOctave ?? 0, next.arrangement?.synthOctave ?? 0);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementWaveSpread,
-      previous.arrangement.waveSpread, next.arrangement.waveSpread);
+      previous.arrangement?.waveSpread ?? 0, next.arrangement?.waveSpread ?? 0);
     this.appendJourneyDiffs(events, previous, next);
     this.appendSourceParamDiffs(events, previous.sources, next.sources);
-    appendCoreProductSourcePresetEndpointDiffs(events, previous.sources, next.sources);
-    this.appendSourceOverrideDiffs(events, previous.sources, next.sources);
+    appendCoreProductSourcePresetEndpointDiffs(events, previous.sources, next.sources); this.appendSourceOverrideDiffs(events, previous.sources, next.sources);
     this.appendSequencerLaneDiffs(events, 'synth', previous.synthLanes, next.synthLanes, options.sequencerClockRejoinMask?.synth ?? 0);
     this.appendSequencerLaneDiffs(events, 'drum', previous.drumLanes, next.drumLanes, options.sequencerClockRejoinMask?.drum ?? 0);
     const runningBpmTransition = previous.transport.running && next.transport.running && this.valuesDiffer(previous.transport.bpm, next.transport.bpm);

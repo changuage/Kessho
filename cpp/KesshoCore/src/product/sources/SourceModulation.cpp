@@ -36,13 +36,15 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
   const bool control_only = target_id == kProductControlOnlyModulationTarget;
   const bool soundscape_asset_level_target = isSoundscapeAssetLevelRangeTarget(target_id);
   const bool soundscape_texture_level_target = isSoundscapeTextureLevelRangeTarget(target_id);
+  const bool soundscape_texture_param_target = isSoundscapeTextureParamTarget(target_id);
   if (param_id == 0u ||
       (!isSourceTarget(target_id) && !isDrumRangeTarget(target_id) && target_id != 0u &&
-       !control_only && !soundscape_asset_level_target && !soundscape_texture_level_target)) {
+       !control_only && !soundscape_asset_level_target && !soundscape_texture_level_target &&
+       !soundscape_texture_param_target)) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
     return;
   }
-  if ((soundscape_asset_level_target || soundscape_texture_level_target) &&
+  if ((soundscape_asset_level_target || soundscape_texture_level_target || soundscape_texture_param_target) &&
       param_id != KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
     return;
@@ -121,7 +123,7 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
     applyParam(param_event);
     return;
   }
-  if (soundscape_asset_level_target || soundscape_texture_level_target) {
+  if (soundscape_asset_level_target || soundscape_texture_level_target || soundscape_texture_param_target) {
     applyModulationRangeValue(*range);
   }
   telemetry.last_error_code = KESSHO_PRODUCT_OK;

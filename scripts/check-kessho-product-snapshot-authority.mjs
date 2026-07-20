@@ -87,6 +87,8 @@ for (const source of allowedImports) {
 
 const soundscapesAllowedImports = new Set([
   './generated/kesshoProductSchema',
+  './natureSampleCatalog',
+  './natureSlots',
   './rng',
   './waterPresets',
 ]);

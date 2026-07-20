@@ -303,6 +303,8 @@ const classifiedRuntimeAllowlist = new Map([
   ['./pianoSamples', 'asset manifest helper'],
   ['./transport', 'transport serialization metrics'],
   ['./waterPresets', 'temporary Water/Soundscape preset morph bridge'],
+  ['./natureSlots', 'canonical nature slot state normalization'],
+  ['./natureSampleCatalog', 'canonical nature sample metadata'],
   ['../platform', 'host platform detection for Product snapshot policy'],
   ['../native/capacitorMidiRouting', 'type-only MIDI message interface'],
   ['../ui/state', 'UI serialization defaults only'],

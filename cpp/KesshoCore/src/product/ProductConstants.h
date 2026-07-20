@@ -176,6 +176,8 @@ constexpr uint32_t kSoundscapeTextureParamFilterType = 8u;
 constexpr uint32_t kSoundscapeTextureParamFilterCutoff = 9u;
 constexpr uint32_t kSoundscapeTextureParamFilterResonance = 10u;
 constexpr uint32_t kSoundscapeTextureParamCount = kessho::product::generated::KESSHO_PRODUCT_GENERATED_SOUNDSCAPE_TEXTURE_PARAM_COUNT;
+constexpr uint32_t kSoundscapeTextureParamTargetEnd =
+    kSoundscapeTextureParamTargetBase + kSoundscapeTextureParamCount;
 static_assert(
     kSoundscapeTextureParamCount == KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT,
     "Soundscape texture snapshot ABI count must match Product Core texture params");

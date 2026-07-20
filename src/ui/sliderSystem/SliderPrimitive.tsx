@@ -118,6 +118,8 @@ export function SliderPrimitive({
   const [activeHandle, setActiveHandle] = React.useState<'min' | 'max' | 'band' | null>(null);
   const railRef = React.useRef<HTMLDivElement>(null);
   const railWidth = useElementWidth(railRef);
+  // Do not animate the initial percentage-to-pixel coordinate handoff.
+  const [motionReady, setMotionReady] = React.useState(false);
   const thumbRef = React.useRef<HTMLSpanElement>(null);
   const fillRef = React.useRef<HTMLSpanElement>(null);
   const edgeMinRef = React.useRef<HTMLSpanElement>(null);
@@ -144,6 +146,11 @@ export function SliderPrimitive({
       setLiveRange(range);
     }
   }, [range, usesControlledRange]);
+
+  React.useEffect(() => {
+    // Enable motion only after the measured transform has had a chance to paint.
+    if (railWidth > 0) setMotionReady(true);
+  }, [railWidth]);
 
   React.useEffect(() => () => {
     pendingTouchCleanupRef.current?.();
@@ -601,6 +608,7 @@ export function SliderPrimitive({
         `sl-slider--${variant}`,
         `sl-slider--${density}`,
         `sl-slider--mode-${mode}`,
+        motionReady ? 'sl-slider--motion-ready' : '',
         disabled ? 'sl-slider--disabled' : '',
         isFlashing ? 'sl-slider--flashing' : '',
         dragging ? 'sl-slider--dragging' : '',

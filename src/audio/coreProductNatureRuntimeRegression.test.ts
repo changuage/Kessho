@@ -9,6 +9,8 @@ import {
   CORE_PRODUCT_PAD2_RUNTIME_PARAM_ID_BASE,
   CORE_PRODUCT_SOURCE_IDS,
   CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE,
+  CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX,
+  CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE,
   CORE_PRODUCT_SOUNDSCAPE_TEXTURE_LEVEL_RANGE_TARGET_BASE,
   createCoreProductModulationRangeEvent,
   resolveCoreProductRangeTargets,
@@ -18,6 +20,7 @@ import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 import { KESSHO_PRODUCT_DRUM_PARAM_SPECS, KESSHO_PRODUCT_PAD_PARAM_SPECS } from './generated/kesshoProductSchema';
 import { CORE_PRODUCT_SOUNDSCAPE_ASSETS } from './coreProductAssets';
+import { SOUNDSCAPE_TEXTURE_PARAM_START, SOUNDSCAPE_TEXTURE_PARAM_STRIDE } from './coreProductSoundscapesSnapshot';
 import { createCoreProductEarthTextureDebugState } from './product/host/CoreProductEarthTextureDebug';
 import type { SliderState } from '../ui/state';
 
@@ -87,6 +90,11 @@ function natureSlotLevelTarget(slotIndex: number): number {
   return CORE_PRODUCT_SOUNDSCAPE_TEXTURE_LEVEL_RANGE_TARGET_BASE + slotIndex;
 }
 
+function natureSlotParamTarget(slotIndex: number, paramIndex: number): number {
+  return CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE +
+    SOUNDSCAPE_TEXTURE_PARAM_START + slotIndex * SOUNDSCAPE_TEXTURE_PARAM_STRIDE + paramIndex;
+}
+
 function drumRuntimeParamId(key: string): number {
   const spec = KESSHO_PRODUCT_DRUM_PARAM_SPECS.find((candidate) => candidate.key === key);
   assert(spec, `Missing generated drum param spec for ${key}`);
@@ -138,6 +146,22 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
     ['nature2Level', [{ targetId: natureSlotLevelTarget(1), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['nature3Level', [{ targetId: natureSlotLevelTarget(2), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['nature4Level', [{ targetId: natureSlotLevelTarget(3), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature1SliceDuration', [{ targetId: natureSlotParamTarget(0, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.sliceDuration), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature2SliceDuration', [{ targetId: natureSlotParamTarget(1, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.sliceDuration), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature3SliceDuration', [{ targetId: natureSlotParamTarget(2, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.sliceDuration), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature4SliceDuration', [{ targetId: natureSlotParamTarget(3, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.sliceDuration), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature1SliceDensity', [{ targetId: natureSlotParamTarget(0, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.density), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature2SliceDensity', [{ targetId: natureSlotParamTarget(1, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.density), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature3SliceDensity', [{ targetId: natureSlotParamTarget(2, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.density), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature4SliceDensity', [{ targetId: natureSlotParamTarget(3, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.density), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature1FilterCutoff', [{ targetId: natureSlotParamTarget(0, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterCutoff), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature2FilterCutoff', [{ targetId: natureSlotParamTarget(1, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterCutoff), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature3FilterCutoff', [{ targetId: natureSlotParamTarget(2, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterCutoff), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature4FilterCutoff', [{ targetId: natureSlotParamTarget(3, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterCutoff), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature1FilterResonance', [{ targetId: natureSlotParamTarget(0, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterResonance), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature2FilterResonance', [{ targetId: natureSlotParamTarget(1, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterResonance), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature3FilterResonance', [{ targetId: natureSlotParamTarget(2, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterResonance), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['nature4FilterResonance', [{ targetId: natureSlotParamTarget(3, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterResonance), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['oceanSampleLevel', [{ targetId: assetTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.ocean.assetId), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['waterLevel', [{ targetId: CORE_PRODUCT_SOURCE_IDS.soundscape, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['insectsSharedLevel', [{ targetId: CORE_PRODUCT_SOURCE_IDS.soundscape, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],

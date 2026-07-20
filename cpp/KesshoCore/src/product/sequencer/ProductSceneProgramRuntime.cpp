@@ -34,25 +34,67 @@ bool sceneValueChanged(float previous, float next) {
 }
 
 template <typename Program>
+bool applySourceLevelEntriesAsBatch(
+    KesshoProductEngine& engine,
+    Program& active,
+    float position) {
+  if (active.entry_count < 2u) return false;
+
+  // Scene uploads commonly contain repeated source-level entries when a
+  // snapshot expands a parameter group. Only the final value for each source
+  // is observable after the block's scene update, so collapse that case to
+  // one control event per source while retaining each entry's change cache.
+  float final_values[kSourceCount]{};
+  bool final_changed[kSourceCount]{};
+  for (uint32_t index = 0u; index < active.entry_count; ++index) {
+    ProductSceneEntry& entry = active.entries[index];
+    if (entry.event_kind != KESSHO_PRODUCT_EVENT_KIND_SET_PARAM ||
+        entry.param_id != KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID ||
+        entry.target_id < 1u || entry.target_id > kSourceCount) {
+      return false;
+    }
+    const float value = sceneValue(entry, position);
+    final_values[entry.target_id - 1u] = value;
+    final_changed[entry.target_id - 1u] = !entry.applied ||
+        sceneValueChanged(entry.last_applied_value, value);
+    entry.last_applied_value = value;
+    entry.applied = true;
+  }
+
+  for (uint32_t source_index = 0u; source_index < kSourceCount; ++source_index) {
+    if (!final_changed[source_index]) continue;
+    KesshoProductEvent event{};
+    event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+    event.target_id = source_index + 1u;
+    event.param_id = KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID;
+    event.value = final_values[source_index];
+    engine.applyControlEvent(event);
+  }
+  return true;
+}
+
+template <typename Program>
 void applySceneProgram(
     KesshoProductEngine& engine,
     Program& active,
     float previous,
     float position,
     bool program_changed) {
-  for (uint32_t index = 0u; index < active.entry_count; ++index) {
-    ProductSceneEntry& entry = active.entries[index];
-    const float value = sceneValue(entry, position);
-    if (entry.applied && !sceneValueChanged(entry.last_applied_value, value)) continue;
-    KesshoProductEvent event{};
-    event.event_kind = entry.event_kind;
-    event.target_id = entry.target_id;
-    event.index = entry.index;
-    event.param_id = entry.param_id;
-    event.value = value;
-    engine.applyControlEvent(event);
-    entry.last_applied_value = value;
-    entry.applied = true;
+  if (!applySourceLevelEntriesAsBatch(engine, active, position)) {
+    for (uint32_t index = 0u; index < active.entry_count; ++index) {
+      ProductSceneEntry& entry = active.entries[index];
+      const float value = sceneValue(entry, position);
+      if (entry.applied && !sceneValueChanged(entry.last_applied_value, value)) continue;
+      KesshoProductEvent event{};
+      event.event_kind = entry.event_kind;
+      event.target_id = entry.target_id;
+      event.index = entry.index;
+      event.param_id = entry.param_id;
+      event.value = value;
+      engine.applyControlEvent(event);
+      entry.last_applied_value = value;
+      entry.applied = true;
+    }
   }
   const bool forward = position > previous;
   const bool reverse = position < previous;

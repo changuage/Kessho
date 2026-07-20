@@ -158,6 +158,21 @@ export function getCoreProductSoundscapeAssetDescriptorsForState(
     const sample = natureSampleDefinition(state?.[keys.sampleIdKey], keys.slot);
     candidates.push({ key: sample.assetKey, level: 1 });
   }
+  if (candidates.length === 0) {
+    const legacyCandidates: Array<{ key: CoreProductSoundscapeAssetKey; enabledKey: string; levelKey: string }> = [
+      { key: 'ocean', enabledKey: 'oceanSampleEnabled', levelKey: 'oceanSampleLevel' },
+      { key: 'birds', enabledKey: 'birdsEnabled', levelKey: 'birdsLevel' },
+      { key: 'birds2', enabledKey: 'birds2Enabled', levelKey: 'birds2Level' },
+      { key: 'frogs', enabledKey: 'frogsEnabled', levelKey: 'frogsLevel' },
+    ];
+    for (const candidate of legacyCandidates) {
+      if (!booleanFromState(state, candidate.enabledKey)) continue;
+      candidates.push({
+        key: candidate.key,
+        level: clamp01(Number(state?.[candidate.levelKey] ?? 1)),
+      });
+    }
+  }
   const seen = new Set<number>();
   return candidates.flatMap(({ key, level }) => {
     const clampedLevel = clamp01(level);

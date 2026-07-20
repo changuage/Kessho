@@ -69,3 +69,25 @@ uint32_t KesshoProductEngine::soundscapeTextureSlotForLevelRangeTarget(uint32_t 
       ? target_id - kSoundscapeTextureLevelRangeTargetBase
       : kSoundscapeTextureSlotCount;
 }
+
+bool KesshoProductEngine::isSoundscapeTextureParamTarget(uint32_t target_id) const {
+  return target_id >= kSoundscapeTextureParamTargetBase &&
+      target_id < kSoundscapeTextureParamTargetEnd;
+}
+
+uint32_t KesshoProductEngine::soundscapeTextureParamIndexForRangeTarget(uint32_t target_id) const {
+  return isSoundscapeTextureParamTarget(target_id)
+      ? target_id - kSoundscapeTextureParamTargetBase
+      : kSoundscapeTextureParamCount;
+}
+
+uint32_t KesshoProductEngine::soundscapeTextureSlotForParamRangeTarget(uint32_t target_id) const {
+  if (!isSoundscapeTextureParamTarget(target_id)) return kSoundscapeTextureSlotCount;
+  const uint32_t index = soundscapeTextureParamIndexForRangeTarget(target_id);
+  if (index < kSoundscapeTextureParamStart) return kSoundscapeTextureSlotCount;
+  const uint32_t slot = (index - kSoundscapeTextureParamStart) / kSoundscapeTextureParamStride;
+  const uint32_t slot_param = (index - kSoundscapeTextureParamStart) % kSoundscapeTextureParamStride;
+  return slot < kSoundscapeTextureSlotCount && slot_param < kSoundscapeTextureParamStride
+      ? slot
+      : kSoundscapeTextureSlotCount;
+}

@@ -30,6 +30,10 @@ import {
 } from './CoreProductModeIds';
 import { CORE_PRODUCT_SOUNDSCAPE_ASSETS } from './coreProductAssets';
 import {
+  SOUNDSCAPE_TEXTURE_PARAM_START,
+  SOUNDSCAPE_TEXTURE_PARAM_STRIDE,
+} from './coreProductSoundscapesSnapshot';
+import {
   HARMONY_QUALITY_IDS,
   HARMONY_SLOT_COUNT,
   HARMONY_SEQUENCE_STEP_COUNT,
@@ -69,6 +73,12 @@ export const CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE = 0x51000000;
 export const CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE = 0x52000000;
 export const CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE = 0x53000000;
 export const CORE_PRODUCT_SOUNDSCAPE_TEXTURE_LEVEL_RANGE_TARGET_BASE = 0x54000000;
+export const CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX = Object.freeze({
+  sliceDuration: 0,
+  density: 1,
+  filterCutoff: 9,
+  filterResonance: 10,
+} as const);
 
 export const CORE_PRODUCT_MODULATION_RANGE_MODE = Object.freeze({
   off: 0,
@@ -727,6 +737,24 @@ function soundscapeTextureLevelTarget(slotIndex: number, key: string): CoreProdu
   };
 }
 
+function soundscapeTextureParamTarget(
+  slotIndex: number,
+  paramIndex: number,
+  key: string,
+): CoreProductRangeTarget {
+  const slot = requireIntegerInRange(slotIndex, 'soundscape texture slot', 0, 3);
+  const parameter = requireIntegerInRange(paramIndex, 'soundscape texture parameter', 0, SOUNDSCAPE_TEXTURE_PARAM_STRIDE - 1);
+  return {
+    targetId: CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE +
+      SOUNDSCAPE_TEXTURE_PARAM_START + slot * SOUNDSCAPE_TEXTURE_PARAM_STRIDE + parameter,
+    // Texture parameter targets are stored in the soundscape source's texture
+    // parameter array. SourceLevel is the modulation ABI parameter for these
+    // custom targets; the target id selects the actual texture parameter.
+    paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel,
+    controlId: stableControlId(key),
+  };
+}
+
 function delayBTapeHeadMaskMap(headIndex: number): (value: number, context: CoreProductRangeValueContext) => number {
   return (value, context) => {
     let mask = 0;
@@ -1149,6 +1177,22 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   nature2Level: (key) => [soundscapeTextureLevelTarget(1, key)],
   nature3Level: (key) => [soundscapeTextureLevelTarget(2, key)],
   nature4Level: (key) => [soundscapeTextureLevelTarget(3, key)],
+  nature1SliceDuration: (key) => [soundscapeTextureParamTarget(0, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.sliceDuration, key)],
+  nature2SliceDuration: (key) => [soundscapeTextureParamTarget(1, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.sliceDuration, key)],
+  nature3SliceDuration: (key) => [soundscapeTextureParamTarget(2, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.sliceDuration, key)],
+  nature4SliceDuration: (key) => [soundscapeTextureParamTarget(3, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.sliceDuration, key)],
+  nature1SliceDensity: (key) => [soundscapeTextureParamTarget(0, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.density, key)],
+  nature2SliceDensity: (key) => [soundscapeTextureParamTarget(1, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.density, key)],
+  nature3SliceDensity: (key) => [soundscapeTextureParamTarget(2, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.density, key)],
+  nature4SliceDensity: (key) => [soundscapeTextureParamTarget(3, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.density, key)],
+  nature1FilterCutoff: (key) => [soundscapeTextureParamTarget(0, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterCutoff, key)],
+  nature2FilterCutoff: (key) => [soundscapeTextureParamTarget(1, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterCutoff, key)],
+  nature3FilterCutoff: (key) => [soundscapeTextureParamTarget(2, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterCutoff, key)],
+  nature4FilterCutoff: (key) => [soundscapeTextureParamTarget(3, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterCutoff, key)],
+  nature1FilterResonance: (key) => [soundscapeTextureParamTarget(0, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterResonance, key)],
+  nature2FilterResonance: (key) => [soundscapeTextureParamTarget(1, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterResonance, key)],
+  nature3FilterResonance: (key) => [soundscapeTextureParamTarget(2, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterResonance, key)],
+  nature4FilterResonance: (key) => [soundscapeTextureParamTarget(3, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterResonance, key)],
   natureLevel: (key) => [
     soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds.assetId, key, soundscapeNatureMasterAssetLevelMap('birdsLevel')),
     soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds2.assetId, key, soundscapeNatureMasterAssetLevelMap('birds2Level')),

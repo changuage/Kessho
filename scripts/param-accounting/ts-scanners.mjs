@@ -71,18 +71,39 @@ export function objectLiteralConst(path, declarationName) {
 
 export function collectSliderStateKeys() {
   const keys = new Set();
-  const state = sourceFile('src/ui/state.ts');
-  function visit(node) {
-    if (ts.isInterfaceDeclaration(node) && node.name.text === 'SliderState') {
-      for (const member of node.members) {
-        if (ts.isPropertySignature(member) && ts.isIdentifier(member.name)) {
-          keys.add(member.name.text);
+  const interfaceSources = new Map([
+    ['SliderState', 'src/ui/state.ts'],
+    ['NatureSlotState', 'src/audio/natureSlots.ts'],
+  ]);
+  const visited = new Set();
+
+  function collectInterface(interfaceName) {
+    if (visited.has(interfaceName)) return;
+    visited.add(interfaceName);
+    const path = interfaceSources.get(interfaceName);
+    if (!path) return;
+
+    const file = sourceFile(path);
+    function visit(node) {
+      if (ts.isInterfaceDeclaration(node) && node.name.text === interfaceName) {
+        for (const member of node.members) {
+          if (ts.isPropertySignature(member) && ts.isIdentifier(member.name)) {
+            keys.add(member.name.text);
+          }
+        }
+        for (const clause of node.heritageClauses ?? []) {
+          if (clause.token !== ts.SyntaxKind.ExtendsKeyword) continue;
+          for (const type of clause.types) {
+            if (ts.isIdentifier(type.expression)) collectInterface(type.expression.text);
+          }
         }
       }
+      ts.forEachChild(node, visit);
     }
-    ts.forEachChild(node, visit);
+    visit(file);
   }
-  visit(state);
+
+  collectInterface('SliderState');
   return keys;
 }
 

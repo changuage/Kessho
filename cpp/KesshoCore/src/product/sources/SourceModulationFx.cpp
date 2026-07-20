@@ -111,8 +111,11 @@ uint64_t fxSampleHoldOwnershipWindowFrames(double sample_rate) {
 }
 
   uint32_t KesshoProductEngine::sampleHoldTriggerBusForEvent(const KesshoProductEvent& event) const {
-  if (isSoundscapeTextureLevelRangeTarget(event.target_id)) {
-    const uint32_t slot = soundscapeTextureSlotForLevelRangeTarget(event.target_id);
+  if (isSoundscapeTextureLevelRangeTarget(event.target_id) ||
+      isSoundscapeTextureParamTarget(event.target_id)) {
+    const uint32_t slot = isSoundscapeTextureLevelRangeTarget(event.target_id)
+        ? soundscapeTextureSlotForLevelRangeTarget(event.target_id)
+        : soundscapeTextureSlotForParamRangeTarget(event.target_id);
     return slot < kSoundscapeTextureSlotCount
         ? kProductSampleHoldTriggerNature1 + slot
         : kProductSampleHoldTriggerTimed;
@@ -141,8 +144,11 @@ void KesshoProductEngine::triggerSoundscapeTextureSampleHoldRanges(
     const uint32_t range_index = active_modulation_range_indices[active_index];
     if (range_index >= kMaxModulationRanges) continue;
     ModulationRange& range = modulation_ranges[range_index];
+    const bool slot_target = range.target_id == target_id ||
+        (isSoundscapeTextureParamTarget(range.target_id) &&
+         soundscapeTextureSlotForParamRangeTarget(range.target_id) == texture_slot);
     if (!range.active ||
-        range.target_id != target_id ||
+        !slot_target ||
         range.mode != KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD ||
         range.sample_hold_trigger_bus != trigger_bus) {
       continue;

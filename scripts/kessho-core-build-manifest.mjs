@@ -10,6 +10,7 @@ export const kesshoCoreSourceFiles = Object.freeze([
   'cpp/KesshoCore/src/KesshoMixer.cpp',
   'cpp/KesshoCore/src/product/KesshoProductEngine.cpp',
   'cpp/KesshoCore/src/product/KesshoProductApi.cpp',
+  'cpp/KesshoCore/src/product/KesshoProductSequencerVisualApi.cpp',
   'cpp/KesshoCore/src/product/KesshoProductAssetApi.cpp',
   'cpp/KesshoCore/src/product/KesshoProductDebugApi.cpp',
   'cpp/KesshoCore/src/product/KesshoProductGraph.cpp',

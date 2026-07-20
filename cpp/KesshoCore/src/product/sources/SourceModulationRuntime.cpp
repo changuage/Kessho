@@ -53,7 +53,8 @@ float smoothRandomWalkPosition(const ModulationRange& range, double seconds) {
     if (range.mode == KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD) {
       if (range.target_id != 0u &&
           !isSoundscapeAssetLevelRangeTarget(range.target_id) &&
-          !isSoundscapeTextureLevelRangeTarget(range.target_id)) {
+          !isSoundscapeTextureLevelRangeTarget(range.target_id) &&
+          !isSoundscapeTextureParamTarget(range.target_id)) {
         continue;
       }
       if (range.sample_hold_trigger_bus != kProductSampleHoldTriggerTimed) {
