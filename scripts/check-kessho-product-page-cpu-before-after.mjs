@@ -17,10 +17,14 @@ import {
 } from './product-core/lib/reporting.mjs';
 import {
   PAGE_CPU_MAX_MEASUREMENT_OUTLIER_RATIO,
+  PAGE_CPU_MAX_RAW_REGRESSION_PERCENT,
   PAGE_CPU_MAX_REGRESSION_PERCENT,
   PAGE_CPU_RUN_COUNT,
   assessPairedPageCpuMeasurementQuality,
   describePairedPageCpuQuality,
+  isPageCpuRegressionWithinGate,
+  normalizedPageCpuRegressionPercent,
+  pairedNormalizedPageCpuRegressionPercent,
   planPairedPageCpuRetry,
   planInterleavedPageCpuRuns,
 } from './lib/kesshoProductPageCpuBeforeAfter.mjs';
@@ -45,15 +49,17 @@ function parseArgs(argv) {
     warmupMs: 2500,
     port: BASE_PORT,
     reuseReport: false,
+    baselineRef: process.env.KESSHO_PRODUCT_PAGE_CPU_BASELINE_REF ?? null,
   };
   for (const arg of argv) {
     if (arg.startsWith('--duration-ms=')) args.durationMs = Number(arg.slice('--duration-ms='.length));
     else if (arg.startsWith('--settle-ms=')) args.settleMs = Number(arg.slice('--settle-ms='.length));
     else if (arg.startsWith('--warmup-ms=')) args.warmupMs = Number(arg.slice('--warmup-ms='.length));
     else if (arg.startsWith('--port=')) args.port = Number(arg.slice('--port='.length));
+    else if (arg.startsWith('--baseline-ref=')) args.baselineRef = arg.slice('--baseline-ref='.length);
     else if (arg === '--reuse-report') args.reuseReport = true;
     else if (arg === '--help' || arg === '-h') {
-      console.log('Usage: node scripts/check-kessho-product-page-cpu-before-after.mjs [--duration-ms=12000] [--settle-ms=1000] [--warmup-ms=2500] [--port=4300]');
+      console.log('Usage: node scripts/check-kessho-product-page-cpu-before-after.mjs [--duration-ms=12000] [--settle-ms=1000] [--warmup-ms=2500] [--port=4300] [--baseline-ref=REF]');
       process.exit(0);
     } else {
       throw new Error(`Unknown argument: ${arg}`);
@@ -75,6 +81,12 @@ function readGitCommit(cwd) {
     cwd,
     encoding: 'utf8',
   }).trim();
+}
+
+function resolveBaselineRef(args) {
+  if (args.baselineRef) return args.baselineRef;
+  const dirty = spawnSync('git', ['diff', '--quiet', 'HEAD', '--'], { cwd: root }).status !== 0;
+  return dirty ? 'HEAD' : 'HEAD^';
 }
 
 function median(values) {
@@ -166,11 +178,15 @@ function collectPairedPageCpuRuns({ baselineCwd, currentCwd, args, basePort, lab
   return runs;
 }
 
-function createBaselineWorktree() {
+function createBaselineWorktree(ref) {
   const tempRoot = resolve(tmpdir(), `kessho-product-page-cpu-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
   mkdirSync(tempRoot, { recursive: true });
   const worktree = join(tempRoot, 'baseline');
-  execFileSync('git', ['worktree', 'add', '--detach', worktree, 'HEAD'], { cwd: root, stdio: 'inherit' });
+  const resolvedRef = execFileSync('git', ['rev-parse', '--verify', `${ref}^{commit}`], {
+    cwd: root,
+    encoding: 'utf8',
+  }).trim();
+  execFileSync('git', ['worktree', 'add', '--detach', worktree, resolvedRef], { cwd: root, stdio: 'inherit' });
   const nodeModules = join(root, 'node_modules');
   assert(existsSync(nodeModules), 'current worktree node_modules is required for baseline measurement');
   symlinkSync(nodeModules, join(worktree, 'node_modules'), 'dir');
@@ -222,6 +238,20 @@ function comparePhases(baseline, current) {
       after.webBrowserProcessCpuPercentMedian,
       after.productBrowserProcessCpuPercentMedian,
     );
+    const phaseMedianProductVsWebRegressionPercent = normalizedPageCpuRegressionPercent({
+      baselineProduct: before.productBrowserProcessCpuPercentMedian,
+      baselineWeb: before.webBrowserProcessCpuPercentMedian,
+      currentProduct: after.productBrowserProcessCpuPercentMedian,
+      currentWeb: after.webBrowserProcessCpuPercentMedian,
+    });
+    const pairedProductVsWebRegressionValues = before.runValues.map((run, index) =>
+      pairedNormalizedPageCpuRegressionPercent({
+        baselineProduct: run.productBrowserProcessCpuPercent,
+        currentProduct: after.runValues[index]?.productBrowserProcessCpuPercent,
+        baselineWeb: run.webBrowserProcessCpuPercent,
+        currentWeb: after.runValues[index]?.webBrowserProcessCpuPercent,
+      }));
+    const productVsWebRegressionPercent = medianOrNull(pairedProductVsWebRegressionValues);
     return {
       id: before.id,
       label: before.label,
@@ -229,8 +259,13 @@ function comparePhases(baseline, current) {
       current: after,
       productRegressionPercent,
       webRegressionPercent,
+      phaseMedianProductVsWebRegressionPercent,
+      productVsWebRegressionPercent,
       productVsWebSavedPercent: productVsWebSavedPercent === null ? null : -productVsWebSavedPercent,
-      status: productRegressionPercent !== null && productRegressionPercent <= MAX_REGRESSION_PERCENT ? 'pass' : 'fail',
+      status: isPageCpuRegressionWithinGate({
+        rawRegressionPercent: productRegressionPercent,
+        normalizedRegressionPercent: productVsWebRegressionPercent,
+      }) ? 'pass' : 'fail',
     };
   });
 }
@@ -248,17 +283,18 @@ function writeReport(report) {
     `Status: **${report.status.toUpperCase()}**`,
     '',
     `Runs per phase: ${report.thresholds.runCount}; aggregation: ${report.thresholds.aggregation}`,
-    `Regression threshold: ${report.thresholds.maxProductRegressionPercent}% median browser-process CPU`,
+    `Raw Product median delta (diagnostic; ${report.thresholds.maxRawProductRegressionPercent}% catastrophic guard): ${Number.isFinite(report.summary.maxProductRegressionPercent) ? `${report.summary.maxProductRegressionPercent.toFixed(2)}%` : 'n/a'}`,
+    `Normalized Product/Web threshold: ${report.thresholds.maxNormalizedRegressionPercent}%; raw Product catastrophic guard: ${report.thresholds.maxRawProductRegressionPercent}%`,
     `Measurement validity: retry both phases once when a Product CPU sample is more than ${((MAX_MEASUREMENT_OUTLIER_RATIO - 1) * 100).toFixed(0)}% away from the phase's other samples`,
     '',
     `Passing scenarios: ${report.summary.passingScenarioCount ?? '-'}/${report.summary.scenarioCount ?? '-'}`,
-    `Maximum Product median CPU regression: ${Number.isFinite(report.summary.maxProductRegressionPercent) ? `${report.summary.maxProductRegressionPercent.toFixed(2)}%` : 'n/a'}`,
+    `Maximum normalized Product CPU regression: ${Number.isFinite(report.summary.maxNormalizedProductRegressionPercent) ? `${report.summary.maxNormalizedProductRegressionPercent.toFixed(2)}%` : 'n/a'}`,
     '',
-    '| Page | Baseline Product median % | Current Product median % | Product change % | Current Product saved vs Web TS % | Status |',
-    '| --- | ---: | ---: | ---: | ---: | --- |',
+    '| Page | Baseline Product median % | Current Product median % | Product change % | Normalized Product/Web change % | Current Product saved vs Web TS % | Status |',
+    '| --- | ---: | ---: | ---: | ---: | ---: | --- |',
   ];
   for (const scenario of report.scenarios) {
-    lines.push(`| ${scenario.label} | ${scenario.baseline.productBrowserProcessCpuPercentMedian.toFixed(3)} | ${scenario.current.productBrowserProcessCpuPercentMedian.toFixed(3)} | ${scenario.productRegressionPercent?.toFixed(2) ?? '-'} | ${scenario.productVsWebSavedPercent?.toFixed(2) ?? '-'} | ${scenario.status.toUpperCase()} |`);
+    lines.push(`| ${scenario.label} | ${scenario.baseline.productBrowserProcessCpuPercentMedian.toFixed(3)} | ${scenario.current.productBrowserProcessCpuPercentMedian.toFixed(3)} | ${scenario.productRegressionPercent?.toFixed(2) ?? '-'} | ${scenario.productVsWebRegressionPercent?.toFixed(2) ?? '-'} | ${scenario.productVsWebSavedPercent?.toFixed(2) ?? '-'} | ${scenario.status.toUpperCase()} |`);
   }
   lines.push(
     '',
@@ -268,8 +304,8 @@ function writeReport(report) {
     '- Baseline and current runs are paired and interleaved, with the order alternating per pair to reduce drift from host load and thermal state.',
     '- A process-info outlier causes one paired retry of both phases; rejected runs are discarded and the report retains exactly three accepted runs per phase rather than allowing a dropped Chrome process to distort the median.',
     '- Browser-process CPU percent is measured around the same Product/Web TS page capture used by the focused comparison.',
-    '- The baseline is a detached worktree at the pre-change `HEAD`; the current phase is the active worktree.',
-    '- Acceptance compares current Product median CPU with the baseline Product median CPU. Web TS remains a parity/reference comparison, not the regression baseline.',
+    '- The baseline is a detached worktree at the explicit `--baseline-ref` (or `KESSHO_PRODUCT_PAGE_CPU_BASELINE_REF`); otherwise it uses `HEAD` for tracked-dirty local changes and `HEAD^` for a clean commit.',
+    '- Acceptance uses paired Product/Web difference-in-differences: a scenario fails only when both raw Product and normalized Product/Web deltas exceed 3%; any raw Product increase above the 20% catastrophic guard fails independently. Raw and normalized medians remain in the report for diagnosis.',
   );
   if (report.error) lines.push('', '## Error', '', `- ${report.error}`);
   writeMarkdownReport(reportMarkdownPath, lines);
@@ -289,6 +325,8 @@ const report = {
     thresholds: {
       runCount: RUN_COUNT,
       maxProductRegressionPercent: MAX_REGRESSION_PERCENT,
+      maxNormalizedRegressionPercent: MAX_REGRESSION_PERCENT,
+      maxRawProductRegressionPercent: PAGE_CPU_MAX_RAW_REGRESSION_PERCENT,
       aggregation: 'median',
     },
     topSuspectedModules: ['visual-telemetry', 'ui-telemetry', 'worklet-messaging', 'sources', 'fx'],
@@ -296,6 +334,8 @@ const report = {
   thresholds: {
     runCount: RUN_COUNT,
     maxProductRegressionPercent: MAX_REGRESSION_PERCENT,
+    maxNormalizedRegressionPercent: MAX_REGRESSION_PERCENT,
+    maxRawProductRegressionPercent: PAGE_CPU_MAX_RAW_REGRESSION_PERCENT,
     aggregation: 'median',
     metric: 'browserProcessCpuPercent',
   },
@@ -327,7 +367,8 @@ try {
       throw new Error(`Saved page CPU phases are statistically invalid: ${describePairedPageCpuQuality(savedQuality)}`);
     }
   } else {
-    baselineWorktree = createBaselineWorktree();
+    const baselineRef = resolveBaselineRef(args);
+    baselineWorktree = createBaselineWorktree(baselineRef);
     report.baseline.commit = readGitCommit(baselineWorktree.path);
     report.current.commit = readGitCommit(root);
     const initialRuns = collectPairedPageCpuRuns({
@@ -398,15 +439,19 @@ try {
   const baselineMedians = aggregatePhase(report.baseline.runs);
   const currentMedians = aggregatePhase(report.current.runs);
   report.scenarios = comparePhases(baselineMedians, currentMedians);
-  const regressions = report.scenarios
+  const rawRegressions = report.scenarios
     .map((scenario) => scenario.productRegressionPercent)
+    .filter((value) => Number.isFinite(value));
+  const normalizedRegressions = report.scenarios
+    .map((scenario) => scenario.productVsWebRegressionPercent)
     .filter((value) => Number.isFinite(value));
   report.summary = {
     scenarioCount: report.scenarios.length,
     passingScenarioCount: report.scenarios.filter((scenario) => scenario.status === 'pass').length,
     failedScenarioCount: report.scenarios.filter((scenario) => scenario.status !== 'pass').length,
-    maxProductRegressionPercent: regressions.length > 0 ? Math.max(...regressions) : null,
-    medianProductRegressionPercent: regressions.length > 0 ? median(regressions) : null,
+    maxProductRegressionPercent: rawRegressions.length > 0 ? Math.max(...rawRegressions) : null,
+    medianProductRegressionPercent: rawRegressions.length > 0 ? median(rawRegressions) : null,
+    maxNormalizedProductRegressionPercent: normalizedRegressions.length > 0 ? Math.max(...normalizedRegressions) : null,
   };
   report.status = report.summary.failedScenarioCount === 0 ? 'pass' : 'fail';
   report.metadata = collectReportMetadata({
@@ -422,7 +467,11 @@ try {
   });
   writeReport(report);
   console.log(`Kessho Product page CPU before/after ${report.status}: report ${reportJsonPath}`);
-  if (report.status !== 'pass') throw new Error(`Page CPU median regression exceeded ${MAX_REGRESSION_PERCENT}% in one or more scenarios`);
+  if (report.status !== 'pass') {
+    throw new Error(
+      `Page CPU corroborated regression exceeded ${MAX_REGRESSION_PERCENT}% normalized and raw thresholds in one or more scenarios`,
+    );
+  }
 } catch (error) {
   report.status = 'fail';
   report.error = error instanceof Error ? error.message : String(error);

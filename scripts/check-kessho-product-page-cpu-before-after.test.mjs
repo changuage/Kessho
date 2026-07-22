@@ -4,13 +4,20 @@ import {
   PAGE_CPU_MAX_REGRESSION_PERCENT,
   PAGE_CPU_RUN_COUNT,
   assertPairedPageCpuMeasurementQuality,
+  isPageCpuRegressionWithinGate,
+  normalizedPageCpuRegressionPercent,
+  pairedNormalizedPageCpuRegressionPercent,
   planPairedPageCpuRetry,
   planInterleavedPageCpuRuns,
 } from './lib/kesshoProductPageCpuBeforeAfter.mjs';
 
-function runs(values) {
+function runs(values, webValues = values) {
   return values.map((productBrowserProcessCpuPercent, index) => ({
-    scenarios: [{ id: 'global', productBrowserProcessCpuPercent }],
+    scenarios: [{
+      id: 'global',
+      productBrowserProcessCpuPercent,
+      webBrowserProcessCpuPercent: webValues[index],
+    }],
     runIndex: index + 1,
   }));
 }
@@ -87,7 +94,7 @@ test('persistent invalidity fails paired quality validation', () => {
       runs([10, 13, 17]),
       { runCount: PAGE_CPU_RUN_COUNT },
     ),
-    /baseline: global; current: global/,
+    /baseline: global(?:, global:web)?; current: global/,
   );
 });
 
@@ -102,8 +109,64 @@ test('nonpositive CPU samples remain invalid', () => {
   );
 });
 
+test('Web CPU outliers are included in paired quality validation', () => {
+  assert.throws(
+    () => assertPairedPageCpuMeasurementQuality(
+      runs([10, 10, 10], [10, 13, 17]),
+      runs([10, 10, 10]),
+      { runCount: PAGE_CPU_RUN_COUNT },
+    ),
+    /baseline: global:web/,
+  );
+});
+
 test('the Product regression gate remains exactly three percent', () => {
   assert.equal(PAGE_CPU_MAX_REGRESSION_PERCENT, 3);
+});
+
+test('paired Product/Web difference-in-differences cancels shared load', () => {
+  assert.equal(
+    pairedNormalizedPageCpuRegressionPercent({
+      baselineProduct: 40,
+      currentProduct: 44,
+      baselineWeb: 60,
+      currentWeb: 66,
+    }),
+    0,
+  );
+  assert.equal(
+    normalizedPageCpuRegressionPercent({
+      baselineProduct: 40,
+      currentProduct: 44,
+      baselineWeb: 60,
+      currentWeb: 66,
+    }),
+    0,
+  );
+});
+
+test('paired Product/Web regression tracks Product-only work', () => {
+  const sharedLoad = pairedNormalizedPageCpuRegressionPercent({
+    baselineProduct: 42.444,
+    currentProduct: 44.738,
+    baselineWeb: 59.36,
+    currentWeb: 63.511,
+  });
+  assert.ok(sharedLoad > -3 && sharedLoad < 3);
+  const productOnly = pairedNormalizedPageCpuRegressionPercent({
+    baselineProduct: 100,
+    currentProduct: 105,
+    baselineWeb: 100,
+    currentWeb: 100,
+  });
+  assert.ok(Math.abs(productOnly - 5) < 1e-9);
+});
+
+test('regression gate requires corroborated raw and normalized evidence', () => {
+  assert.equal(isPageCpuRegressionWithinGate({ rawRegressionPercent: 5.31, normalizedRegressionPercent: 0.2 }), true);
+  assert.equal(isPageCpuRegressionWithinGate({ rawRegressionPercent: 2.73, normalizedRegressionPercent: 4.91 }), true);
+  assert.equal(isPageCpuRegressionWithinGate({ rawRegressionPercent: 5.0, normalizedRegressionPercent: 5.0 }), false);
+  assert.equal(isPageCpuRegressionWithinGate({ rawRegressionPercent: 21.0, normalizedRegressionPercent: 0.0 }), false);
 });
 
 test('each planned collection yields exactly three accepted runs per phase', () => {

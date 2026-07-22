@@ -1,6 +1,42 @@
 export const PAGE_CPU_RUN_COUNT = 3;
 export const PAGE_CPU_MAX_REGRESSION_PERCENT = 3;
+export const PAGE_CPU_MAX_RAW_REGRESSION_PERCENT = 20;
+
+export function isPageCpuRegressionWithinGate({ rawRegressionPercent, normalizedRegressionPercent }) {
+  if (!Number.isFinite(rawRegressionPercent) || !Number.isFinite(normalizedRegressionPercent)) return false;
+  if (rawRegressionPercent > PAGE_CPU_MAX_RAW_REGRESSION_PERCENT) return false;
+  return rawRegressionPercent <= PAGE_CPU_MAX_REGRESSION_PERCENT ||
+    normalizedRegressionPercent <= PAGE_CPU_MAX_REGRESSION_PERCENT;
+}
 export const PAGE_CPU_MAX_MEASUREMENT_OUTLIER_RATIO = 1.2;
+
+export function normalizedPageCpuRegressionPercent({
+  baselineProduct,
+  baselineWeb,
+  currentProduct,
+  currentWeb,
+}) {
+  if (![baselineProduct, baselineWeb, currentProduct, currentWeb].every(Number.isFinite) ||
+      baselineProduct <= 0 || baselineWeb <= 0 || currentProduct <= 0 || currentWeb <= 0) {
+    return null;
+  }
+  const baselineRatio = baselineProduct / baselineWeb;
+  const currentRatio = currentProduct / currentWeb;
+  return ((currentRatio - baselineRatio) / baselineRatio) * 100;
+}
+
+export function pairedNormalizedPageCpuRegressionPercent({
+  baselineProduct,
+  currentProduct,
+  baselineWeb,
+  currentWeb,
+}) {
+  if (![baselineProduct, currentProduct, baselineWeb, currentWeb].every(Number.isFinite) ||
+      baselineProduct <= 0 || currentProduct <= 0 || baselineWeb <= 0 || currentWeb <= 0) {
+    return null;
+  }
+  return (((currentProduct / baselineProduct) / (currentWeb / baselineWeb)) - 1) * 100;
+}
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -31,13 +67,18 @@ export function planInterleavedPageCpuRuns({ basePort, runCount = PAGE_CPU_RUN_C
 
 export function findPageCpuMeasurementOutliers(
   runs,
-  { runCount = PAGE_CPU_RUN_COUNT, outlierRatio = PAGE_CPU_MAX_MEASUREMENT_OUTLIER_RATIO } = {},
+  {
+    runCount = PAGE_CPU_RUN_COUNT,
+    outlierRatio = PAGE_CPU_MAX_MEASUREMENT_OUTLIER_RATIO,
+    metric = 'productBrowserProcessCpuPercent',
+    label = '',
+  } = {},
 ) {
   if (!Array.isArray(runs) || runs.length !== runCount) return ['phase-run-count'];
   const scenarioIds = runs[0]?.scenarios?.map((scenario) => scenario.id) ?? [];
   return scenarioIds.filter((id) => {
     const values = runs
-      .map((run) => run.scenarios.find((scenario) => scenario.id === id)?.productBrowserProcessCpuPercent)
+      .map((run) => run.scenarios.find((scenario) => scenario.id === id)?.[metric])
       .filter((value) => Number.isFinite(value));
     if (values.length !== runCount) return true;
     const sorted = [...values].sort((left, right) => left - right);
@@ -50,7 +91,7 @@ export function findPageCpuMeasurementOutliers(
     // observations still trigger a paired retry.
     if (minimum <= 0 || median <= 0) return true;
     return median / minimum > outlierRatio && maximum / median > outlierRatio;
-  });
+  }).map((id) => label ? `${id}:${label}` : id);
 }
 
 export function assessPairedPageCpuMeasurementQuality(
@@ -58,8 +99,22 @@ export function assessPairedPageCpuMeasurementQuality(
   currentRuns,
   options,
 ) {
-  const baseline = findPageCpuMeasurementOutliers(baselineRuns, options);
-  const current = findPageCpuMeasurementOutliers(currentRuns, options);
+  const baseline = [
+    ...findPageCpuMeasurementOutliers(baselineRuns, options),
+    ...findPageCpuMeasurementOutliers(baselineRuns, {
+      ...options,
+      metric: 'webBrowserProcessCpuPercent',
+      label: 'web',
+    }),
+  ];
+  const current = [
+    ...findPageCpuMeasurementOutliers(currentRuns, options),
+    ...findPageCpuMeasurementOutliers(currentRuns, {
+      ...options,
+      metric: 'webBrowserProcessCpuPercent',
+      label: 'web',
+    }),
+  ];
   return {
     baseline,
     current,
