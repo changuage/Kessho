@@ -1,33 +1,49 @@
 import { useMemo } from 'react';
 import type { MutableRefObject } from 'react';
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import type { SliderState } from './state';
-import { useProductRuntimeCallbackSurfaces } from './useProductRuntimeCallbackSurfaces';
+import type { ProductRuntimeReferenceAdapterSurface, ProductRuntimeStateSurface, ProductRuntimeTelemetrySurface } from './productRuntimeConstruction';
+import type { ReferenceRuntimeCallbackSurfaces } from './referenceRuntime/useReferenceRuntimeCallbackSurfaces';
 import { useProductRuntimeControlSurfaces } from './useProductRuntimeControlSurfaces';
 import { useProductRuntimeDebugRuntime } from './useProductRuntimeDebugRuntime';
 import { useProductRuntimeAutoCycleSurface } from './useProductRuntimeAutoCycleSurface';
 
 type ProductRuntimeSurfacesOptions = {
-  productRuntimeMode: ProductRuntimeSelectionMode;
+  productRuntimeCore: boolean;
+  productRuntimeCallbackSurfaces: RuntimeCallbackSurfaces;
+  productRuntimeReferenceAdapter: ProductRuntimeReferenceAdapterSurface;
+  productRuntimeState: ProductRuntimeStateSurface;
+  productRuntimeTelemetry: ProductRuntimeTelemetrySurface;
   stateRef: MutableRefObject<SliderState>;
 };
 
+type RuntimeCallbackSurfaces = ReferenceRuntimeCallbackSurfaces;
+
 export function useProductRuntimeSurfaces({
-  productRuntimeMode,
+  productRuntimeCore,
+  productRuntimeCallbackSurfaces,
+  productRuntimeReferenceAdapter,
+  productRuntimeState,
+  productRuntimeTelemetry,
   stateRef,
 }: ProductRuntimeSurfacesOptions) {
-  const callbackSurfaces = useProductRuntimeCallbackSurfaces(productRuntimeMode);
-  const controlSurfaces = useProductRuntimeControlSurfaces({ productRuntimeMode, stateRef });
-  const debugRuntime = useProductRuntimeDebugRuntime(productRuntimeMode);
+  const controlSurfaces = useProductRuntimeControlSurfaces({
+    productRuntimeCore,
+    productRuntimeReferenceAdapter,
+    stateRef,
+  });
+  const debugRuntime = useProductRuntimeDebugRuntime({
+    productRuntimeState,
+    productRuntimeTelemetry,
+  });
   const productAutoCycleRuntime = useProductRuntimeAutoCycleSurface();
 
   return useMemo(() => ({
-    ...callbackSurfaces,
+    ...productRuntimeCallbackSurfaces,
     ...controlSurfaces,
     ...debugRuntime,
     productAutoCycleRuntime,
   }), [
-    callbackSurfaces,
+    productRuntimeCallbackSurfaces,
     controlSurfaces,
     debugRuntime,
     productAutoCycleRuntime,

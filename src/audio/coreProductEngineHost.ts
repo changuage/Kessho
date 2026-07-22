@@ -92,10 +92,8 @@ class CoreProductEngineHost {
     (slotId, midi, velocity) => this.assetRegistrar.ensureSampleSlotAssetForNote(slotId, midi, velocity),
   );
   private readonly displayCallbacks = new CoreProductDisplayCallbackRegistry();
-  private stateChangeCallback: ((state: ProductEngineState) => void) | null = null;
-  private perfMonitorEnabled = false;
-  private perfUpdateCallback: ((data: ProductPerfSnapshot) => void) | null = null;
-  private latestProductSnapshot: CoreProductSnapshot | null = null;
+  private stateChangeCallback: ((state: ProductEngineState) => void) | null = null; private perfMonitorEnabled = false;
+  private perfUpdateCallback: ((data: ProductPerfSnapshot) => void) | null = null; private latestProductSnapshot: CoreProductSnapshot | null = null;
   private adapterState: Record<string, unknown> = {};
   private readonly leadPresetDataLoader = new CoreProductLeadPresetDataLoader();
   private readonly modulationRangeBridge = new CoreProductModulationRangeBridge({
@@ -115,8 +113,7 @@ class CoreProductEngineHost {
   private synthSubLaneEnabled: Record<string, boolean>[] = Array.from({ length: PRODUCT_VISIBLE_SYNTH_LANE_COUNT }, () => ({}));
   private drumSubLaneEnabled: Record<string, boolean>[] = Array.from({ length: PRODUCT_VISIBLE_DRUM_LANE_COUNT }, () => ({}));
   private latestTelemetry: CoreProductTelemetrySnapshot | null = null; private readonly sonicAutonomyTracker = new CoreProductSonicAutonomyTracker();
-  private runtimeReady = false;
-  private running = false;
+  private runtimeReady = false; private running = false;
   private readonly journeyMorphClock = new CoreProductJourneyMorphClock({ hasCallback: () => this.displayCallbacks.has('journeyMorphClock'), invoke: (now) => this.invokeDisplayCallback('journeyMorphClock', now), isDocumentVisible: () => this.isDocumentVisible(), nowMs: () => this.nowMs() });
   private readonly backgroundJourney = new CoreProductBackgroundJourneyCoordinator({ runtime: this.runtime, assets: this.assetRegistrar, telemetry: () => this.latestTelemetry, isDocumentVisible: () => this.isDocumentVisible(), post: (event) => this.postRuntimeProductEvent(event), stopLegacyMorphClock: () => this.journeyMorphClock.stop() });
   private readonly diagnostics = new CoreProductHostDiagnostics();
@@ -140,7 +137,6 @@ class CoreProductEngineHost {
     sequencerCache: () => this.sequencerCache,
     synthSubLaneEnabled: () => this.synthSubLaneEnabled,
     drumSubLaneEnabled: () => this.drumSubLaneEnabled,
-    fallbackSampleRate: () => this.runtime.audioContext?.sampleRate ?? 48000,
     hasCallback: (name) => this.displayCallbacks.has(name),
     publish: (name, ...payload) => this.invokeDisplayCallback(name, ...payload),
   });
@@ -426,6 +422,7 @@ class CoreProductEngineHost {
 
   async start(sliderState?: Record<string, unknown>): Promise<void> {
     await this.lifecycleCoordinator.start(sliderState);
+    this.latestProductSnapshot = this.createLatestSnapshot();
   }
 
   primeAudioContext(): void {
@@ -448,6 +445,7 @@ class CoreProductEngineHost {
 
   async resume(): Promise<void> {
     await this.lifecycleCoordinator.resume();
+    this.latestProductSnapshot = this.createLatestSnapshot();
   }
 
   async suspend(): Promise<void> {
@@ -640,8 +638,6 @@ class CoreProductEngineHost {
     await auditionCoreProductSynthNotes(this.manualAuditionContext(), notes, externalState);
   }
 
-  private recordSoundTrigger(): void { this.resolvedStateCommitService.recordSoundTrigger(); }
-
   private manualAuditionContext(): CoreProductManualAuditionContext {
     return {
       runtime: this.runtime,
@@ -653,7 +649,7 @@ class CoreProductEngineHost {
       setRuntimeReady: (ready) => { this.runtimeReady = ready; },
       applyProductStatePatch: (patch) => this.applyProductStatePatch(patch, snapshotReloadReasonForProductPatch('ui-control-change')),
       applyLatestSnapshotUpdate: (reason) => this.applyLatestSnapshotUpdate(reason),
-      recordSoundTrigger: () => this.recordSoundTrigger(),
+      recordSoundTrigger: () => this.resolvedStateCommitService.recordSoundTrigger(),
       publish: (name, ...args) => this.invokeDisplayCallback(name, ...args),
     };
   }
@@ -932,8 +928,10 @@ class CoreProductEngineHost {
   }
 
   private withHostDiagnostics(telemetry: CoreProductTelemetrySnapshot): CoreProductTelemetrySnapshot {
-    const nowTime = (telemetry.absoluteSampleTime ?? 0) > 0
-      ? (telemetry.absoluteSampleTime ?? 0) / Math.max(1, telemetry.sampleRate ?? 48000)
+    const telemetrySampleRate = telemetry.sampleRate;
+    const nowTime = (telemetry.absoluteSampleTime ?? 0) > 0 &&
+      typeof telemetrySampleRate === 'number' && Number.isFinite(telemetrySampleRate) && telemetrySampleRate > 0
+      ? (telemetry.absoluteSampleTime ?? 0) / telemetrySampleRate
       : this.runtime.audioContext?.currentTime ?? 0;
     return {
       ...this.modulationRangeBridge.enrichModulationDebug(enrichCoreProductHostTelemetry(

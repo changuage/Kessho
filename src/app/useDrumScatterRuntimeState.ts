@@ -18,7 +18,6 @@ import {
 } from '../ui/drums/scatter/useScatterPhrasePlayer';
 import { useScatterSequencerRuntime } from '../ui/drums/scatter/useScatterSequencerRuntime';
 import type { AdvancedTab } from './appNavigation';
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import {
   createCoreProductScatterConfigEvents,
@@ -33,7 +32,7 @@ type UseDrumScatterRuntimeStateOptions = {
   readonly state: SliderState;
   readonly stateRef: MutableRefObject<SliderState>;
   readonly triggerDrumVoice: (voice: DrumVoiceType, options?: ProductDrumVoiceTriggerOptions) => void;
-  readonly productRuntimeMode: ProductRuntimeSelectionMode;
+  readonly productRuntimeCore: boolean;
 };
 
 export function useDrumScatterRuntimeState({
@@ -43,9 +42,9 @@ export function useDrumScatterRuntimeState({
   state,
   stateRef,
   triggerDrumVoice,
-  productRuntimeMode,
+  productRuntimeCore,
 }: UseDrumScatterRuntimeStateOptions) {
-  const productRuntimeActive = productRuntimeMode === 'core-product';
+  const productRuntimeActive = productRuntimeCore;
   const drumSeqSimpleStateRef = useRef<SeqSimpleState | undefined>(undefined);
   const [drumSeqScatterState, setDrumSeqScatterState] = useState<SeqScatterState>(() =>
     normalizeSeqScatterState(undefined, drumSeqSimpleStateRef.current)

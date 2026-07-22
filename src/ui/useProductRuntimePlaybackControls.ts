@@ -1,5 +1,12 @@
+import { useCallback } from 'react';
+import {
+  isCapacitorAudioSessionAvailable,
+  isCapacitorNativeShell,
+  shouldUseCapacitorAudioSessionDiagnostics,
+  startCapacitorAudioSessionPlayback,
+  stopCapacitorAudioSessionPlayback,
+} from '../native/capacitorAudioSession';
 import type { SliderState } from './state';
-import { useSelectedAudioEnginePlaybackControls } from './useSelectedAudioEnginePlaybackControls';
 
 type NativeDualRanges = Record<string, { min: number; max: number }>;
 
@@ -33,21 +40,49 @@ export function useProductRuntimePlaybackControls({
   connectProductMediaSessionToAudio,
   stopProductIOSMediaSession,
 }: UseProductRuntimePlaybackControlsOptions): ProductRuntimePlaybackControls {
-  // TODO(product-fallback-retire:runtime-playback-controls): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
-  // This maps product playback names onto the selected-audio-engine
-  // implementation while Batch 10 continues moving lifecycle/media code behind product runtime surfaces.
-  const selectedPlaybackControls = useSelectedAudioEnginePlaybackControls({
+  const startProductPlayback = useCallback(async ({ state, dualRanges, title }: StartProductPlaybackOptions): Promise<void> => {
+    const audioSessionDiagnosticEnabled = capacitorAudioSessionDiagnosticActive || (
+      shouldUseCapacitorAudioSessionDiagnostics() &&
+      isCapacitorNativeShell() &&
+      isCapacitorAudioSessionAvailable()
+    );
+    if (!capacitorAudioSessionDiagnosticActive && audioSessionDiagnosticEnabled) {
+      setCapacitorAudioSessionDiagnosticActive(true);
+    }
+
+    // iOS media-session setup must stay synchronous with the initiating gesture.
+    setupProductIOSMediaSession();
+    await startProductRuntime(state);
+    connectProductMediaSessionToAudio();
+
+    if (audioSessionDiagnosticEnabled) {
+      await startCapacitorAudioSessionPlayback(
+        { state, dualRanges },
+        {
+          title,
+          artist: 'Kessho',
+          album: 'Kessho Capacitor',
+          isLiveStream: true,
+          isPlaying: true,
+        },
+      );
+    }
+  }, [
     capacitorAudioSessionDiagnosticActive,
+    connectProductMediaSessionToAudio,
     setCapacitorAudioSessionDiagnosticActive,
-    startSelectedAudioEngine: startProductRuntime,
-    stopSelectedAudioEngine: stopProductRuntime,
-    setupSelectedIOSMediaSession: setupProductIOSMediaSession,
-    connectSelectedMediaSessionToAudio: connectProductMediaSessionToAudio,
-    stopSelectedIOSMediaSession: stopProductIOSMediaSession,
-  });
+    setupProductIOSMediaSession,
+    startProductRuntime,
+  ]);
+
+  const stopProductPlayback = useCallback((): void => {
+    if (capacitorAudioSessionDiagnosticActive) void stopCapacitorAudioSessionPlayback();
+    stopProductIOSMediaSession();
+    stopProductRuntime();
+  }, [capacitorAudioSessionDiagnosticActive, stopProductIOSMediaSession, stopProductRuntime]);
 
   return {
-    startProductPlayback: selectedPlaybackControls.startSelectedPlayback,
-    stopProductPlayback: selectedPlaybackControls.stopSelectedPlayback,
+    startProductPlayback,
+    stopProductPlayback,
   };
 }

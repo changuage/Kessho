@@ -1,6 +1,6 @@
-import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
+import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 
-import { useSelectedAudioEnginePlaybackStartState } from './useSelectedAudioEnginePlaybackStartState';
+import { applyPreset } from './presetUtils';
 import type { SavedPreset, SliderMode, SliderState } from './state';
 
 type AutoStartPresetSource = 'cloud' | 'device-local' | 'bundled';
@@ -17,7 +17,6 @@ export type ProductRuntimePlaybackStartStateOptions = {
     preset: PlaybackStartPreset | null;
     source: AutoStartPresetSource | null;
   }>;
-  normalizePresetForWeb: (state: SliderState) => SliderState;
   setState: Dispatch<SetStateAction<SliderState>>;
   setStatePresetName: Dispatch<SetStateAction<string>>;
   setMorphPresetA: (preset: PlaybackStartPreset) => void;
@@ -30,8 +29,60 @@ export type ProductRuntimePlaybackStartStateOptions = {
 };
 
 export function useProductRuntimePlaybackStartState(options: ProductRuntimePlaybackStartStateOptions) {
-  // TODO(product-fallback-retire:runtime-playback-start-state): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
-  // Default preset start-state preparation still delegates
-  // to the selected-runtime compatibility hook until preset playback ownership is product-only.
-  return useSelectedAudioEnginePlaybackStartState(options);
+  const {
+    snowflakeActivated,
+    setSnowflakeActivated,
+    stateRef,
+    hasLoadedPresetRef,
+    hasUserInteractedRef,
+    resolveDefaultAutoStartPreset,
+    setState,
+    setStatePresetName,
+    setMorphPresetA,
+    applyDualRangesFromPreset,
+    restoreEvolveConfigs,
+    onRoutingMuteGroupsLoad,
+  } = options;
+
+  return useCallback(async (requestedState?: SliderState): Promise<SliderState> => {
+    if (!snowflakeActivated) setSnowflakeActivated(true);
+
+    let stateToStart = requestedState ?? stateRef.current;
+    if (!hasLoadedPresetRef.current && !hasUserInteractedRef.current) {
+      const { preset: defaultPreset, source: defaultPresetSource } = await resolveDefaultAutoStartPreset();
+      if (defaultPreset) {
+        console.log(`[App] Auto-loading default preset: ${defaultPreset.name}${defaultPresetSource ? ` (${defaultPresetSource})` : ''}`);
+        hasLoadedPresetRef.current = true;
+        const result = applyPreset(defaultPreset, {
+          loadMode: 'exact-as-saved',
+          currentState: stateToStart,
+          updateEngine: false,
+          resetCofDrift: false,
+          normalize: (current) => current,
+        });
+        setState(result.state);
+        setStatePresetName(defaultPreset.name);
+        setMorphPresetA(result.preset);
+        stateToStart = result.state;
+        onRoutingMuteGroupsLoad?.(result.preset.routingMuteGroups);
+        applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
+        restoreEvolveConfigs(result.preset);
+      }
+    }
+
+    return stateToStart;
+  }, [
+    applyDualRangesFromPreset,
+    hasLoadedPresetRef,
+    hasUserInteractedRef,
+    onRoutingMuteGroupsLoad,
+    resolveDefaultAutoStartPreset,
+    restoreEvolveConfigs,
+    setMorphPresetA,
+    setSnowflakeActivated,
+    setState,
+    setStatePresetName,
+    snowflakeActivated,
+    stateRef,
+  ]);
 }

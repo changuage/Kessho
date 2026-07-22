@@ -17,7 +17,11 @@ import {
   type CommitGeneratedCaptureArgs,
   type GeneratedCaptureStepCommit,
 } from './commitGeneratedCaptureToEuclid';
-import { firstEventRelativeTargetStep } from './useGeneratedSequenceCapture';
+import {
+  firstEventRelativeTargetStep,
+  generatedCapturePositionFromAuthoritativeTarget,
+} from './useGeneratedSequenceCapture';
+import { createGeneratedSequencerCapturePreviewGate } from './generatedSequencerCapturePreviewGate';
 import {
   buildProductGeneratedCaptureStepCommitEvents,
   generatedCaptureStepPatchForState,
@@ -983,6 +987,241 @@ function testEmptyCaptureDoesNotOverwriteEuclidLane(): void {
   assert.equal(pitchSettings, previousPitchSettings);
 }
 
+function testGeneratedCaptureFocusedBoundaryCases(): void {
+  const emptyBeforeFirstNote = createCaptureScratch(4);
+  assert.equal(
+    captureStepCount(emptyBeforeFirstNote),
+    0,
+    'capture must remain empty before the first generated note arrives',
+  );
+  assert.equal(
+    captureScratchForDisplay(makeCaptureSession(emptyBeforeFirstNote, null, null)),
+    emptyBeforeFirstNote,
+    'an empty capture must not invent a printable phrase before its first note',
+  );
+
+  let emptyBetweenNotes = createCaptureScratch(4);
+  emptyBetweenNotes = writeCaptureEventToStep(emptyBetweenNotes, 1, 0, {
+    eventId: 201,
+    midiNote: 60,
+    velocity: 0.7,
+    gateSeconds: 0.1,
+  });
+  emptyBetweenNotes = markCaptureStepVisited(emptyBetweenNotes, 0, 1);
+  emptyBetweenNotes = writeCaptureEventToStep(emptyBetweenNotes, 0, 1, {
+    eventId: 202,
+    midiNote: 62,
+    velocity: 0.8,
+    gateSeconds: 0.1,
+  });
+  emptyBetweenNotes = markCaptureStepVisited(emptyBetweenNotes, 1, 1);
+  assert.equal(
+    emptyBetweenNotes.cells[1]?.hasNote,
+    false,
+    'a visited empty step must clear the previous phrase note instead of retaining stale audio',
+  );
+  emptyBetweenNotes = writeCaptureEventToStep(emptyBetweenNotes, 2, 1, {
+    eventId: 203,
+    midiNote: 64,
+    velocity: 0.9,
+    gateSeconds: 0.1,
+  });
+  assert.deepEqual(
+    emptyBetweenNotes.events.map((event) => event.targetStepIndex),
+    [0, 2],
+    'notes on either side of an empty step must survive in the same captured phrase',
+  );
+
+  let previousRelativeStep: number | null = null;
+  const wrappedRelativeSteps = [30, 31, 0, 1].map((step) => {
+    const relative = firstEventRelativeTargetStep(step, 30, 32, previousRelativeStep);
+    previousRelativeStep = relative;
+    return relative;
+  });
+  assert.deepEqual(
+    wrappedRelativeSteps,
+    [0, 1, 2, 3],
+    'loop wrap must continue the first-event capture phrase monotonically',
+  );
+
+  assert.equal(generatedCaptureStepPastHalf(15, 16), true);
+  assert.deepEqual(
+    chooseGeneratedCaptureStopAction({
+      currentStepIndex: 15,
+      stepCount: 16,
+      completedCycleIndex: null,
+    }),
+    { kind: 'finishCurrentPhrase' },
+    'stopping during the final phrase must finish the current phrase even without a prior cycle',
+  );
+
+  const createTelemetryEvent = (
+    eventId: number,
+    targetStepIndex: number,
+  ): NonNullable<CoreProductTelemetrySnapshot['generatedSequencerCaptureEvents']>[number] => ({
+    eventId,
+    absoluteSample: eventId * 128,
+    sourceLaneIndex: 0,
+    sourceMode: 'orbit',
+    targetSourceId: 1,
+    midiNote: 60 + eventId,
+    velocity: 0.75,
+    gateSeconds: 0.2,
+    sourceStepIndex: targetStepIndex,
+    sourceLayerIndex: null,
+    sourceNoteIndex: null,
+    targetStepIndex,
+    targetStepFloat: targetStepIndex,
+    nudge: 0,
+  });
+  const history = new CoreProductGeneratedSequencerCaptureTelemetryHistory();
+  history.withHistory({
+    generatedSequencerCaptureEvents: [createTelemetryEvent(301, 0)],
+    generatedSequencerCaptureOverflowCount: 0,
+  } as CoreProductTelemetrySnapshot);
+  const lateBatch = history.withHistory({
+    generatedSequencerCaptureEvents: [createTelemetryEvent(302, 2)],
+    generatedSequencerCaptureOverflowCount: 7,
+  } as CoreProductTelemetrySnapshot);
+  assert.deepEqual(
+    lateBatch.generatedSequencerCaptureEvents?.map((event) => event.eventId),
+    [301, 302],
+    'a late telemetry batch must merge with the already captured event history',
+  );
+  assert.equal(
+    lateBatch.generatedSequencerCaptureOverflowCount,
+    7,
+    'capture overflow telemetry must remain visible alongside a late batch',
+  );
+}
+
+function testGeneratedCaptureHiddenForegroundUsesAuthoritativePosition(): void {
+  const events = [1.25, 3.25, 4.25].map((targetStepFloat, index) => ({
+    eventId: index + 1,
+    absoluteSample: [90_000, 100, 200][index]!,
+    sourceLaneIndex: 0,
+    sourceMode: 'orbit' as const,
+    targetSourceId: 1,
+    midiNote: 60 + index,
+    velocity: 0.8,
+    gateSeconds: 0.2,
+    sourceStepIndex: Math.round(targetStepFloat) % 4,
+    sourceLayerIndex: null,
+    sourceNoteIndex: null,
+    targetStepIndex: Math.round(targetStepFloat) % 4,
+    targetStepFloat,
+    nudge: 0,
+  }));
+  const history = new CoreProductGeneratedSequencerCaptureTelemetryHistory();
+  history.withHistory({ generatedSequencerCaptureEvents: [events[0]] } as CoreProductTelemetrySnapshot);
+  history.withHistory({ generatedSequencerCaptureEvents: [events[1]] } as CoreProductTelemetrySnapshot);
+  const foregroundTelemetry = history.withHistory({ generatedSequencerCaptureEvents: [events[2]] } as CoreProductTelemetrySnapshot);
+
+  assert.deepEqual(
+    foregroundTelemetry.generatedSequencerCaptureEvents?.map((event) => event.eventId),
+    [1, 2, 3],
+    'Product capture history must retain hidden-interval events until the foreground reconciliation read',
+  );
+  assert.deepEqual(
+    events.map((event) => generatedCapturePositionFromAuthoritativeTarget(
+      event.targetStepFloat,
+      event.targetStepIndex,
+      4,
+      0,
+    )),
+    [
+      { stepIndex: 1, cycleIndex: 0 },
+      { stepIndex: 3, cycleIndex: 0 },
+      { stepIndex: 0, cycleIndex: 1 },
+    ],
+    'foreground capture reconciliation must use Product target position for the current step/cycle, not wall-clock elapsed time',
+  );
+}
+
+function testGeneratedCapturePreviewGateReconcilesHiddenAuthoritativeSession(): void {
+  const scheduledFrames: Array<() => void> = [];
+  const cancelledFrames: number[] = [];
+  const published: Array<{ stepIndex: number; cycleIndex: number }> = [];
+  const gate = createGeneratedSequencerCapturePreviewGate<CaptureSession | null>({
+    initialDocumentVisible: true,
+    initialValue: null,
+    onPreview: (value) => {
+      if (value) {
+        published.push({
+          stepIndex: value.scratch.lastStepIndex ?? -1,
+          cycleIndex: value.scratch.cycleIndex,
+        });
+      }
+    },
+    scheduleFrame: (callback) => {
+      scheduledFrames.push(callback);
+      return scheduledFrames.length - 1;
+    },
+    cancelFrame: (frame) => cancelledFrames.push(frame),
+  });
+
+  const sessionFor = (stepIndex: number, cycleIndex: number): CaptureSession => {
+    let scratch = createCaptureScratch(4);
+    scratch = writeCaptureEventToStep(scratch, stepIndex, cycleIndex, {
+      eventId: stepIndex + cycleIndex * 10,
+      midiNote: 60 + stepIndex,
+      velocity: 0.8,
+      gateSeconds: 0.2,
+    });
+    return makeCaptureSession(scratch, null, null);
+  };
+
+  gate.publishAuthoritative(sessionFor(1, 0));
+  assert.equal(scheduledFrames.length, 1, 'visible capture preview should retain the existing frame coalescing');
+
+  gate.setDocumentVisible(false);
+  gate.publishAuthoritative(sessionFor(3, 0));
+  gate.publishAuthoritative(sessionFor(0, 1));
+  assert.deepEqual(cancelledFrames, [0], 'hiding must cancel a pending preview frame');
+  assert.equal(scheduledFrames.length, 1, 'hidden Product events must not schedule preview frames');
+  assert.deepEqual(published, [], 'hidden Product events must remain authoritative without publishing UI preview state');
+
+  gate.setDocumentVisible(true);
+  assert.deepEqual(
+    published,
+    [{ stepIndex: 0, cycleIndex: 1 }],
+    'foreground transition must immediately publish the latest hidden authoritative step and cycle',
+  );
+
+  scheduledFrames[0]?.();
+  assert.deepEqual(
+    published,
+    [{ stepIndex: 0, cycleIndex: 1 }],
+    'a cancelled stale frame must not reset the foreground preview to an older step',
+  );
+
+  gate.publishAuthoritative(sessionFor(2, 1));
+  gate.publishAuthoritative(sessionFor(3, 1));
+  assert.equal(scheduledFrames.length, 2, 'visible publications after foreground must still coalesce');
+  assert.deepEqual(
+    published,
+    [{ stepIndex: 0, cycleIndex: 1 }],
+    'coalesced visible updates should wait for their scheduled preview frame',
+  );
+  scheduledFrames[1]?.();
+  assert.deepEqual(
+    published,
+    [{ stepIndex: 0, cycleIndex: 1 }, { stepIndex: 3, cycleIndex: 1 }],
+    'the coalesced visible frame should publish its latest authoritative session',
+  );
+
+  gate.publishAuthoritative(sessionFor(1, 2));
+  assert.equal(scheduledFrames.length, 3);
+  gate.dispose();
+  assert.deepEqual(cancelledFrames, [0, 2], 'dispose must cancel any pending preview frame');
+  scheduledFrames[2]?.();
+  assert.deepEqual(
+    published,
+    [{ stepIndex: 0, cycleIndex: 1 }, { stepIndex: 3, cycleIndex: 1 }],
+    'a disposed gate must not publish a pending frame',
+  );
+}
+
 testCaptureScratch();
 testCaptureScratchKeepsLatestCycleOnly();
 testCaptureDisplayScratchTracksPrintablePhrase();
@@ -996,3 +1235,6 @@ testCommitExpandsGridForSubstepCaptureCollisions();
 testCommitUsesLatestCaptureCycle();
 testSameStepCapturePacksPitchAndDistributesTriggers();
 testEmptyCaptureDoesNotOverwriteEuclidLane();
+testGeneratedCaptureFocusedBoundaryCases();
+testGeneratedCaptureHiddenForegroundUsesAuthoritativePosition();
+testGeneratedCapturePreviewGateReconcilesHiddenAuthoritativeSession();

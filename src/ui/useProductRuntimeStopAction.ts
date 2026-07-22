@@ -1,6 +1,4 @@
-import type { Dispatch, SetStateAction } from 'react';
-
-import { useSelectedAudioEngineStopAction } from './useSelectedAudioEngineStopAction';
+import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import type { SliderState } from './state';
 
 export type ProductRuntimeStopActionOptions = {
@@ -15,13 +13,33 @@ export type ProductRuntimeStopActionOptions = {
 
 export function useProductRuntimeStopAction({
   stopProductPlayback,
-  ...options
+  isJourneyPlaying,
+  stopJourney,
+  stopJourneyMorphPlayback,
+  setIsJourneyPlaying,
+  setState,
+  resetPlaybackTimer,
 }: ProductRuntimeStopActionOptions) {
-  // TODO(product-fallback-retire:runtime-stop-action): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
-  // Selected-audio-engine stop action remains the temporary
-  // compatibility implementation behind this product runtime facade.
-  return useSelectedAudioEngineStopAction({
-    ...options,
-    stopSelectedPlayback: stopProductPlayback,
-  });
+  return useCallback(() => {
+    stopProductPlayback();
+    setState((prev) => ({
+      ...prev,
+      drumEuclidMasterEnabled: false,
+      synthEuclideanMasterEnabled: false,
+    }));
+    if (isJourneyPlaying) {
+      stopJourney();
+      stopJourneyMorphPlayback(true);
+      setIsJourneyPlaying(false);
+    }
+    resetPlaybackTimer();
+  }, [
+    isJourneyPlaying,
+    resetPlaybackTimer,
+    setIsJourneyPlaying,
+    setState,
+    stopJourney,
+    stopJourneyMorphPlayback,
+    stopProductPlayback,
+  ]);
 }

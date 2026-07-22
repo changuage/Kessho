@@ -1,6 +1,6 @@
 import type { MutableRefObject } from 'react';
 
-import { useSelectedAudioEngineEvolveOverrideCallbacks } from './useSelectedAudioEngineEvolveOverrideCallbacks';
+import { useRuntimeEvolveOverrideCallbacks } from './useRuntimeEvolveOverrideCallbacks';
 import type { PitchSettings, StepOverrides, SubLaneKind, SubLaneState } from './sequencer/useEuclideanSequencer';
 
 type ProductRuntimeEvolvedSubLanePatch = Partial<Record<SubLaneKind, Partial<SubLaneState>>>;
@@ -41,13 +41,10 @@ export function useProductRuntimeEvolveOverrideCallbacks({
   drumEvolvedOverrides: ProductRuntimeEvolvedOverrideState | undefined;
   synthEvolvedOverrides: ProductRuntimeEvolvedOverrideState | undefined;
 } {
-  // TODO(product-fallback-retire:runtime-evolve-override-callbacks): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
-  // Selected evolve override callback processing remains
-  // the compatibility implementation behind product-named callback registration.
-  return useSelectedAudioEngineEvolveOverrideCallbacks({
+  return useRuntimeEvolveOverrideCallbacks({
     ...options,
-    setSelectedDrumEvolveOverridesChangedCallback: setProductDrumEvolveOverridesChangedCallback,
-    setSelectedSynthEvolveOverridesChangedCallback: setProductSynthEvolveOverridesChangedCallback,
-    setSelectedSynthNoteRangeEvolvedCallback: setProductSynthNoteRangeEvolvedCallback,
+    setDrumEvolveOverridesChangedCallback: setProductDrumEvolveOverridesChangedCallback,
+    setSynthEvolveOverridesChangedCallback: setProductSynthEvolveOverridesChangedCallback,
+    setSynthNoteRangeEvolvedCallback: setProductSynthNoteRangeEvolvedCallback,
   });
 }

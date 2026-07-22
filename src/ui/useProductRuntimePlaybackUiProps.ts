@@ -1,4 +1,4 @@
-import { useSelectedAudioEnginePlaybackUiProps } from './useSelectedAudioEnginePlaybackUiProps';
+import { useCallback, useMemo } from 'react';
 
 type ProductRuntimePlaybackAction = () => void | Promise<void>;
 
@@ -21,16 +21,45 @@ export type ProductRuntimePlaybackUiPropsOptions = {
 };
 
 export function useProductRuntimePlaybackUiProps({
+  playbackIsRunning,
+  isJourneyPlaying,
   startProductPlayback,
   stopProductPlayback,
-  ...options
+  journey,
 }: ProductRuntimePlaybackUiPropsOptions) {
-  // TODO(product-fallback-retire:runtime-playback-ui-props): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
-  // Playback UI prop assembly still delegates to the
-  // selected-runtime implementation while the product surface exposes product names.
-  return useSelectedAudioEnginePlaybackUiProps({
-    ...options,
-    startPlayback: startProductPlayback,
-    stopPlayback: stopProductPlayback,
-  });
+  const anyPlaybackIsRunning = playbackIsRunning || isJourneyPlaying;
+  const startProductPlaybackFromUi = useCallback((): void => {
+    void startProductPlayback();
+  }, [startProductPlayback]);
+  const toggleSnowflakePlayback = useCallback((): void => {
+    if (anyPlaybackIsRunning) {
+      stopProductPlayback();
+      return;
+    }
+    if (journey.activeJourneyPresetName && journey.config) {
+      if (!journey.validation.playable) {
+        alert(`Journey cannot play yet:\n\n${journey.validation.issues.join('\n')}`);
+        return;
+      }
+      journey.play();
+      return;
+    }
+    void startProductPlayback();
+  }, [anyPlaybackIsRunning, journey, startProductPlayback, stopProductPlayback]);
+
+  return useMemo(() => ({
+    advancedTransportButton: {
+      isPlaying: anyPlaybackIsRunning,
+      onStart: startProductPlaybackFromUi,
+      onStop: stopProductPlayback,
+    },
+    journeyPlaybackProps: {
+      isPlaying: playbackIsRunning,
+      onStopAudio: stopProductPlayback,
+    },
+    snowflakePlaybackProps: {
+      isPlaying: anyPlaybackIsRunning,
+      onTogglePlay: toggleSnowflakePlayback,
+    },
+  }), [anyPlaybackIsRunning, playbackIsRunning, startProductPlaybackFromUi, stopProductPlayback, toggleSnowflakePlayback]);
 }

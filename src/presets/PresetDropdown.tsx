@@ -498,7 +498,18 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   // Import preset from file
   const handleImport = useCallback(async () => {
     const requestId = ++loadRequestIdRef.current;
-    const entry = await importPresetFromFile();
+    let entry: PresetEntry | null;
+    try {
+      entry = await importPresetFromFile();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The selected preset file is incompatible with this version.';
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert(message);
+      } else {
+        console.warn(message);
+      }
+      return;
+    }
     if (!entry) return;
 
     if (!isPresetCompatibleWithSlot(entry, level, scope)) {

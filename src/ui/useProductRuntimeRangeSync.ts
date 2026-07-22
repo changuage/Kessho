@@ -1,4 +1,5 @@
-import { useSelectedAudioEngineRangeSync } from './useSelectedAudioEngineRangeSync';
+import { useEffect } from 'react';
+import { DRUM_MORPH_KEYS } from './state';
 import type { ProductDrumVoice } from '../audio/product/ProductEngineTypes';
 import type { SliderMode, SliderState } from './state';
 
@@ -23,14 +24,47 @@ export function useProductRuntimeRangeSync({
   setProductDualRanges,
   ...options
 }: ProductRuntimeRangeSyncOptions): void {
-  // TODO(product-fallback-retire:runtime-range-sync): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
-  // Selected runtime range sync remains the compatibility
-  // implementation while product range ownership is exposed through product-named props.
-  useSelectedAudioEngineRangeSync({
-    ...options,
-    selectedRuntimeSupportsRangeKey: productRuntimeSupportsRangeKey,
-    setSelectedDrumMorphRange: setProductDrumMorphRange,
-    setSelectedDrumParamSHRange: setProductDrumParamSHRange,
-    setSelectedDualRanges: setProductDualRanges,
-  });
+  const {
+    drumMorphKeyToVoice,
+    drumMorphKeys,
+    drumSHParamKeys,
+    dualSliderRanges,
+    sliderModes,
+  } = options;
+  useEffect(() => {
+    drumMorphKeys.forEach((key) => {
+      const voice = drumMorphKeyToVoice[key];
+      if (!voice) return;
+      const keyStr = key as string;
+      if (sliderModes[keyStr] === 'sampleHold') {
+        const range = dualSliderRanges[key as keyof SliderState];
+        if (range) setProductDrumMorphRange(voice, range);
+      } else {
+        setProductDrumMorphRange(voice, null);
+      }
+    });
+  }, [drumMorphKeyToVoice, drumMorphKeys, dualSliderRanges, setProductDrumMorphRange, sliderModes]);
+
+  useEffect(() => {
+    drumSHParamKeys.forEach((key) => {
+      if (!productRuntimeSupportsRangeKey(key)) return;
+      if (sliderModes[key] === 'sampleHold') {
+        const range = dualSliderRanges[key as keyof SliderState];
+        if (range) setProductDrumParamSHRange(key, range);
+      } else {
+        setProductDrumParamSHRange(key, null);
+      }
+    });
+  }, [drumSHParamKeys, dualSliderRanges, productRuntimeSupportsRangeKey, setProductDrumParamSHRange, sliderModes]);
+
+  useEffect(() => {
+    const engineRanges: Partial<Record<string, ProductRuntimeRange>> = {};
+    Object.entries(dualSliderRanges).forEach(([key, range]) => {
+      if (!productRuntimeSupportsRangeKey(key)) return;
+      if (range && !DRUM_MORPH_KEYS.has(key as keyof SliderState) && !drumSHParamKeys.has(key) && sliderModes[key] === 'sampleHold') {
+        engineRanges[key] = range;
+      }
+    });
+    setProductDualRanges(engineRanges);
+  }, [drumSHParamKeys, dualSliderRanges, productRuntimeSupportsRangeKey, setProductDualRanges, sliderModes]);
 }

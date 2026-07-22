@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GlobalPageProps } from './global/GlobalPage';
 import { useVisibleInterval } from './hooks/useVisibleInterval';
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
-import { createCoreProductAutoStopEvent } from '../audio/coreProductEvents';
-import { productEngine } from '../audio/product/ProductEngineProxy';
+import type { ProductRuntimeAutoStopSurface } from './productRuntimeConstruction';
 
 type ProductRuntimeGlobalProps = Pick<
   GlobalPageProps,
@@ -41,7 +39,7 @@ type ProductRuntimeGlobalRecordingProps = Pick<
 
 type ProductRuntimeGlobalSurfaceOptions = {
   playbackIsRunning: boolean;
-  productRuntimeMode: ProductRuntimeSelectionMode;
+  productRuntimeAutoStop: ProductRuntimeAutoStopSurface;
   runtimeComparison: ProductRuntimeGlobalProps['runtimeComparison'];
   onResetCofDrift: ProductRuntimeGlobalProps['onResetCofDrift'];
   recordingProps: ProductRuntimeGlobalRecordingProps;
@@ -49,7 +47,7 @@ type ProductRuntimeGlobalSurfaceOptions = {
 
 export function useProductRuntimeGlobalSurface({
   playbackIsRunning,
-  productRuntimeMode,
+  productRuntimeAutoStop,
   runtimeComparison,
   onResetCofDrift,
   recordingProps,
@@ -93,32 +91,26 @@ export function useProductRuntimeGlobalSurface({
         if (playbackTimerRemaining === null) {
           setPlaybackTimerRemaining(initialRemaining);
         }
-        if (productRuntimeMode === 'core-product') {
-          productEngine.enqueueEvent(createCoreProductAutoStopEvent(initialRemaining));
-        }
+        if (productRuntimeAutoStop.available) productRuntimeAutoStop.setAutoStopSeconds(initialRemaining);
       }
       updatePlaybackTimerProjection();
       return;
     }
 
     if (!playbackIsRunning) {
-      if (productRuntimeMode === 'core-product') {
-        productEngine.enqueueEvent(createCoreProductAutoStopEvent(null));
-      }
+      if (productRuntimeAutoStop.available) productRuntimeAutoStop.setAutoStopSeconds(null);
       resetPlaybackTimer();
       return;
     }
 
     playbackTimerTargetTimeRef.current = null;
-    if (productRuntimeMode === 'core-product') {
-      productEngine.enqueueEvent(createCoreProductAutoStopEvent(null));
-    }
+    if (productRuntimeAutoStop.available) productRuntimeAutoStop.setAutoStopSeconds(null);
   }, [
     playbackIsRunning,
     playbackTimerEnabled,
     playbackTimerMinutes,
     playbackTimerRemaining,
-    productRuntimeMode,
+    productRuntimeAutoStop,
     resetPlaybackTimer,
     updatePlaybackTimerProjection,
   ]);

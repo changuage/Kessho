@@ -1,5 +1,4 @@
 import { useCallback, useRef, type MutableRefObject } from 'react';
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { ProductDrumVoice, ProductManualSynthNote, ProductManualSynthSource } from '../audio/product/ProductEngineTypes';
 import type { ManualSynthNoteOptions } from '../audio/engineSharedTypes';
@@ -11,7 +10,7 @@ import { commitProductControlActionThenTrigger } from '../product-control';
 import type { SliderState } from './state';
 
 type ProductRuntimeManualTriggersOptions = {
-  productRuntimeMode: ProductRuntimeSelectionMode;
+  productRuntimeCore: boolean;
   stateRef: MutableRefObject<SliderState>;
 };
 
@@ -58,10 +57,10 @@ function requireProductManualSynthNote(note: ManualSynthNoteOptions): ProductMan
 }
 
 export function useProductRuntimeManualTriggers({
-  productRuntimeMode,
+  productRuntimeCore,
   stateRef,
 }: ProductRuntimeManualTriggersOptions): ProductRuntimeManualTriggers {
-  const productRuntimeActive = productRuntimeMode === 'core-product';
+  const productRuntimeActive = productRuntimeCore;
   const productRuntimeActiveRef = useRef(productRuntimeActive);
   const previousSynthAuditionSourceRef = useRef<ProductManualSynthSource | null>(null);
   const synthAuditionQueueRef = useRef<Promise<unknown>>(Promise.resolve());

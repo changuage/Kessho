@@ -576,9 +576,13 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
 
   const pendingSequenceHomeCaptureRef = useRef<number | null>(null);
   const pendingSequenceResetHomeRef = useRef<number | null>(null);
+  const sequenceLoadCallbackGuardUntilRef = useRef(0);
   const sequenceSubLaneHomeRef = useRef<(Record<SubLaneKind, SubLaneState> | null)[]>(makeDrumLaneArray(() => null));
+  const sequencePitchHomeRef = useRef<(PitchSettings | null)[]>(makeDrumLaneArray(() => null));
   const [sequenceHomeCaptureVersion, setSequenceHomeCaptureVersion] = useState(0);
   const handleEuclidSequenceLoad = useCallback((laneIdx: number, entry: PresetEntry, data: Record<string, unknown>) => {
+    pendingSequenceResetHomeRef.current = null;
+    sequenceLoadCallbackGuardUntilRef.current = performance.now() + 10000;
     setEuclidPresetNameForLane(laneIdx, entry.name);
     const stepOverrides = data[EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY] as SerializedStepOverrides | undefined;
     const sequenceState = data[EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY] as SerializedSequenceLanePresetState | undefined;
@@ -592,7 +596,9 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     seq.setSwings((current) => applySequencePresetSwings(current, sequenceState, laneIdx));
     seq.setLinked((current) => applySequencePresetLinked(current, sequenceState, laneIdx));
     seq.setEvolveConfigs((current) => applySequencePresetEvolveConfigs(current, sequenceState, laneIdx, 'drum'));
-    seq.setPitchSettings((current) => applySequencePresetPitchSettings(current, sequenceState, laneIdx));
+    const nextPitchSettings = applySequencePresetPitchSettings(seq.pitchSettings, sequenceState, laneIdx);
+    sequencePitchHomeRef.current[laneIdx] = nextPitchSettings[laneIdx] ?? null;
+    seq.setPitchSettings(nextPitchSettings);
     pendingSequenceHomeCaptureRef.current = laneIdx;
     setSequenceHomeCaptureVersion((version) => version + 1);
   }, [seq, setEuclidPresetNameForLane]);
@@ -621,9 +627,14 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   ), [drumEuclideanPatternOptions, euclidPresetNames, handleEuclidSequenceLoad, onStateChange, state]);
 
   const handleResetEvolveHome = useCallback((laneIdx: number) => {
+    sequenceLoadCallbackGuardUntilRef.current = 0;
     pendingSequenceResetHomeRef.current = laneIdx;
     resetEvolveHome(laneIdx);
   }, [resetEvolveHome]);
+  const handleDiceEvolveLane = useCallback((laneIdx: number, intensity: number) => {
+    sequenceLoadCallbackGuardUntilRef.current = 0;
+    diceLane?.(laneIdx, intensity);
+  }, [diceLane]);
 
   const setSharedSequencerBpm = useCallback((bpm: number) => {
     onParamChange('sequencerMasterBPM' as keyof SliderState, bpm);
@@ -728,26 +739,30 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   useEffect(() => {
     if (!evolvedOverrides || evolvedOverrides.version === evolvedVersionRef.current) return;
     evolvedVersionRef.current = evolvedOverrides.version;
+    if (performance.now() < sequenceLoadCallbackGuardUntilRef.current) return;
     const { laneIndex, data, swing, subLaneStates } = evolvedOverrides;
     const restoredPitchSettings = data.pitchSettings?.[laneIndex]
       ? normalizeSequencerPitchSettings(data.pitchSettings[laneIndex], seq.pitchSettings[laneIndex]) as PitchSettings
       : null;
     const restoreSequenceHome = pendingSequenceResetHomeRef.current === laneIndex;
     if (restoreSequenceHome) pendingSequenceResetHomeRef.current = null;
-    const sequenceHome = restoreSequenceHome ? sequenceSubLaneHomeRef.current[laneIndex] : null;
+    const effectiveRestoredPitchSettings = restoreSequenceHome
+      ? sequencePitchHomeRef.current[laneIndex] ?? restoredPitchSettings
+      : restoredPitchSettings;
+    const sequenceHome = sequenceSubLaneHomeRef.current[laneIndex];
     const effectiveSubLaneStates = sequenceHome
       ? Object.fromEntries(Object.entries(sequenceHome).map(([key, value]) => [
           key,
           { ...((subLaneStates as Record<string, Partial<SubLaneState>> | undefined)?.[key] ?? {}), ...value },
         ])) as Partial<Record<SubLaneKind, Partial<SubLaneState>>>
       : subLaneStates;
-    if (restoredPitchSettings) {
-      seq.setPitchSettings(prev => prev.map((settings, index) => (index === laneIndex ? restoredPitchSettings : settings)));
+    if (effectiveRestoredPitchSettings && restoreSequenceHome) {
+      seq.setPitchSettings(prev => prev.map((settings, index) => (index === laneIndex ? effectiveRestoredPitchSettings : settings)));
     }
     if (typeof swing === 'number' && Number.isFinite(swing)) {
       seq.setSwings(prev => prev.map((value, index) => (index === laneIndex ? swing : value)));
     }
-    if (effectiveSubLaneStates && typeof effectiveSubLaneStates === 'object') {
+    if (restoreSequenceHome && effectiveSubLaneStates && typeof effectiveSubLaneStates === 'object') {
       seq.setSubLaneStates(prev => prev.map((laneState, index) => (
         index === laneIndex
           ? {
@@ -908,6 +923,9 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     if (laneIndex == null) return;
     pendingSequenceHomeCaptureRef.current = null;
     captureEvolveHome?.(laneIndex, sequenceSubLaneHomeRef.current[laneIndex]?.pitch ?? null);
+    // The UI already owns the freshly loaded home snapshot. Do not let a
+    // late callback from the previous reference-runtime snapshot restore over it.
+    if (pendingSequenceResetHomeRef.current === laneIndex) pendingSequenceResetHomeRef.current = null;
   }, [sequenceHomeCaptureVersion, captureEvolveHome]);
 
   const activeSeq = seq.activeSeq;
@@ -1793,7 +1811,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                           onValueChange={(value) => setDiceIntensity(Math.round(value / 5) * 5 / 100)}
                           title={`Dice intensity: ${Math.round(diceIntensity * 100)}%`}
                         />
-                        <button className="seq-evolve-dice" onClick={() => diceLane(seq.activeTab, diceIntensity)} title={`Randomize lane (${Math.round(diceIntensity * 100)}%)`}>&#x1F3B2;</button>
+                        <button className="seq-evolve-dice" onClick={() => handleDiceEvolveLane(seq.activeTab, diceIntensity)} title={`Randomize lane (${Math.round(diceIntensity * 100)}%)`}>&#x1F3B2;</button>
                       </span>
                     )}
                   </div>

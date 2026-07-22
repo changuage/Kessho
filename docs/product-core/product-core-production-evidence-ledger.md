@@ -534,3 +534,41 @@ New evidence:
 Remaining blocker:
 
 - Native reliable background audio still requires physical iOS/macOS rows before `supports_native_bridge` or `supportsNativeBridge` may be enabled.
+
+## Tech-debt cleanup implementation-plan closeout evidence
+
+Date: 2026-07-22.
+
+The remaining implementation-plan packages were completed, followed by aggregate validation:
+
+- Package 2: `src/ui/productRuntimeConstruction.ts` is the development selection boundary. Product UI consumers receive selected typed lifecycle, state, telemetry, reference-adapter, and auto-stop facets; capability consumers no longer branch on `productRuntimeMode`.
+- Package 4: runtime fallback, getter-policy, live-note-contract, and runtime-selection checks now use executable behavior tests and TypeScript AST dependency/declaration checks. The final-gate runner now records prerequisite `pass` before invoking `core:product:default-gate-v3`.
+- Package 5: Product chord playhead state is sourced from Product telemetry, stopped Web TS state refreshes the authoritative harmony projection, and the global synth telemetry subscription is limited to the active Synth surface with unchanged-step React updates suppressed.
+
+Focused evidence:
+
+- `npm run core:product:sequencer-ui`: pass, full 4/4 Product/Web TS parity cases; Product and Web TS synth cases both pass the stopped-playhead/harmony checks.
+- `npm run core:product:runtime-fallbacks`: pass; missing Product capabilities throw and record diagnostics.
+- `npm run core:product:getter-policies`: pass; Product telemetry getters and AST reference boundary are green.
+- `npm run core:product:live-note-contract`: pass; executable live-note lifecycle regression and AST Product boundary are green.
+- `npm run core:product:background-audio`: pass; browser session tests and sonic ownership checks are green.
+- `npm run core:product:browser-runtime`: pass; default browser runtime remains `core-product`.
+- `npm run core:product:page-cpu-before-after`: pass; accepted baseline/current counts `3/3`, paired retry metadata recorded an original invalid baseline `synth` scenario, then a replacement interleaved run set on base port `4306` with three runs per phase and no replacement invalid scenarios. Nine scenarios passed the 3% per-scenario threshold. The `pageCpu=1` route keeps runtime selection available while parking development runtime-comparison instrumentation during the measurement.
+- `npm run core:product:ci`: pass, aggregate `70 pass / 0 fail`.
+- `core:product:default-gate-v3`: pass; `defaultPromotionReady=true`, web default runtime `core-product`.
+
+Three-run page CPU medians (`browserProcessCpuPercent`, baseline `449fb2bd` versus current worktree):
+
+| Scenario | Baseline median | Current median | Change | Result |
+|---|---:|---:|---:|---|
+| Global | 52.740 | 49.796 | -5.58% | pass |
+| Synth | 53.582 | 51.239 | -4.37% | pass |
+| Drums | 31.388 | 29.038 | -7.49% | pass |
+| Earth | 37.879 | 36.052 | -4.82% | pass |
+| Granular | 55.180 | 55.639 | +0.83% | pass |
+| Delay | 59.129 | 58.752 | -0.64% | pass |
+| Reverb | 59.789 | 58.993 | -1.33% | pass |
+| Texture | 56.098 | 56.226 | +0.23% | pass |
+| Routing | 56.328 | 54.850 | -2.62% | pass |
+
+No accepted scenario exceeded the 3% median regression threshold; the report maximum median regression was `+0.8304607776%` and the median scenario regression was `-2.6229816947%`. Aggregate CI and the default promotion gate are now complete for this implementation-plan closeout.

@@ -95,7 +95,7 @@ assertIncludes(files.get('README.md'), 'src/audio/reference/webTs/engine.ts', 'R
 assertIncludes(files.get('MIGRATION_STATUS.md'), 'fast behavioral port mode', 'MIGRATION_STATUS.md', failures);
 assertIncludes(files.get('MIGRATION_STATUS.md'), 'Batch 13', 'MIGRATION_STATUS.md', failures);
 assertIncludes(files.get('docs/product-core/reference-web-ts.md'), 'src/audio/reference/webTs/engine.ts', 'docs/product-core/reference-web-ts.md', failures);
-assertIncludes(files.get('docs/product-core/reference-web-ts.md'), 'src/audio/reference/ReferenceSelectedRuntime.ts', 'docs/product-core/reference-web-ts.md', failures);
+assertIncludes(files.get('docs/product-core/reference-web-ts.md'), 'src/ui/productRuntimeConstruction.ts', 'docs/product-core/reference-web-ts.md', failures);
 assertIncludes(files.get('docs/product-core/reference-web-ts.md'), 'Keep Active — Archive Later', 'docs/product-core/reference-web-ts.md', failures);
 assertIncludes(files.get('docs/product-core/reference-web-ts.md'), 'docs/product-core/web-ts-ab-compatibility-burn-down.md', 'docs/product-core/reference-web-ts.md', failures);
 assertIncludes(files.get('docs/product-core/web-ts-ab-compatibility-burn-down.md'), 'ProductEnginePort', 'docs/product-core/web-ts-ab-compatibility-burn-down.md', failures);

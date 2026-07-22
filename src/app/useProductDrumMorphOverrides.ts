@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef } from 'react';
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import {
   createInitialProductControlState,
@@ -12,8 +11,8 @@ import {
 } from '../product-control';
 import type { SliderState } from '../ui/state';
 
-export function useProductDrumMorphOverrides(productRuntimeMode: ProductRuntimeSelectionMode) {
-  const productRuntimeActive = productRuntimeMode === 'core-product';
+export function useProductDrumMorphOverrides(productRuntimeCore: boolean) {
+  const productRuntimeActive = productRuntimeCore;
   const fallbackControlStateRef = useRef<ProductControlState | null>(null);
 
   useEffect(() => {

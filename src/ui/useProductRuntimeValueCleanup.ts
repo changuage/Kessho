@@ -1,8 +1,24 @@
-import { useSelectedAudioEngineRuntimeValueCleanup } from './useSelectedAudioEngineRuntimeValueCleanup';
+import { useEffect } from 'react';
+
+import { removeRuntimeTriggerPositions } from './runtimeSliderState';
+import { removeRuntimeValues } from './runtimeValueState';
+
+const STOPPED_RUNTIME_VALUE_KEYS = [
+  'padMorph', 'pad2Morph', 'lead1Morph', 'lead2Morph', 'lead1Distance', 'lead2Distance',
+  'padDistance', 'pad2Distance', 'pianoDistance', 'sample1Distance', 'sample2Distance',
+  'synthEuclid1NoteMin', 'synthEuclid1NoteMax', 'synthEuclid2NoteMin', 'synthEuclid2NoteMax',
+  'synthEuclid3NoteMin', 'synthEuclid3NoteMax', 'synthEuclid4NoteMin', 'synthEuclid4NoteMax',
+];
+
+const STOPPED_TRIGGER_POSITION_KEYS = [
+  'lead1Distance', 'lead2Distance', 'padDistance', 'pad2Distance',
+  'pianoDistance', 'sample1Distance', 'sample2Distance',
+];
 
 export function useProductRuntimeValueCleanup(playbackIsRunning: boolean): void {
-  // TODO(product-fallback-retire:runtime-value-cleanup): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
-  // Stopped-value cleanup remains a compatibility
-  // delegation until runtime value state is fully product-owned.
-  useSelectedAudioEngineRuntimeValueCleanup(playbackIsRunning);
+  useEffect(() => {
+    if (playbackIsRunning) return;
+    removeRuntimeValues(STOPPED_RUNTIME_VALUE_KEYS);
+    removeRuntimeTriggerPositions(STOPPED_TRIGGER_POSITION_KEYS);
+  }, [playbackIsRunning]);
 }

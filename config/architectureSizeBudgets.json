@@ -40,11 +40,6 @@
       "targetCeiling": 2400,
       "mode": "fail-on-growth-warn-above-target"
     },
-    "src/ui/SnowflakePrototypePage.tsx": {
-      "noGrowthCeiling": 2353,
-      "targetCeiling": 2000,
-      "mode": "fail-on-growth-warn-above-target"
-    },
     "src/ui/runtimeProjectionState.ts": {
       "noGrowthCeiling": 47,
       "targetCeiling": 47,

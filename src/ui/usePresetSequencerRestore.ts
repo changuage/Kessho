@@ -48,13 +48,13 @@ type PresetSequencerRestoreOptions = {
   drumSubLaneStatesRef: MutableRefObject<Record<SubLaneKind, SubLaneState>[] | undefined>;
   drumSwingsRef: MutableRefObject<number[] | undefined>;
   setDrumPresetVersion: Dispatch<SetStateAction<number>>;
-  setSelectedDrumEuclidClockDivs: (clockDivs: ClockDivision[]) => void;
-  setSelectedDrumEuclidEvolveConfigs: (configs: EvolveConfig[]) => void;
-  setSelectedDrumEuclidSwings: (swings: number[]) => void;
-  setSelectedDrumPitchSettings: (settings: PitchSettings[]) => void;
-  setSelectedDrumStepOverrides: (overrides: StepOverrides, subLaneStates?: Record<SubLaneKind, SubLaneState>[]) => void;
-  setSelectedDrumSubLaneEnabled: (enabled: Record<string, boolean>[]) => void;
-  setSelectedSequencerPresetHomeSnapshots: (
+  setProductDrumEuclidClockDivs: (clockDivs: ClockDivision[]) => void;
+  setProductDrumEuclidEvolveConfigs: (configs: EvolveConfig[]) => void;
+  setProductDrumEuclidSwings: (swings: number[]) => void;
+  setProductDrumPitchSettings: (settings: PitchSettings[]) => void;
+  setProductDrumStepOverrides: (overrides: StepOverrides, subLaneStates?: Record<SubLaneKind, SubLaneState>[]) => void;
+  setProductDrumSubLaneEnabled: (enabled: Record<string, boolean>[]) => void;
+  setProductSequencerPresetHomeSnapshots: (
     drumPitchSettings?: PitchSettings[],
     drumPitchStates?: (SubLaneState | null | undefined)[],
     synthPitchStates?: (SubLaneState | null | undefined)[],
@@ -65,13 +65,13 @@ type PresetSequencerRestoreOptions = {
       synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
     },
   ) => void;
-  setSelectedSynthEuclidClockDivs: (clockDivs: ClockDivision[]) => void;
-  setSelectedSynthEuclidEvolveConfigs: (configs: EvolveConfig[]) => void;
-  setSelectedSynthEuclidSwings: (swings: number[]) => void;
-  setSelectedSynthPitchBindingModes: (modes: PitchBindingMode[]) => void;
-  setSelectedSynthPitchSettings: (settings: PitchSettings[]) => void;
-  setSelectedSynthStepOverrides: (overrides: StepOverrides, subLaneStates?: Record<SubLaneKind, SubLaneState>[]) => void;
-  setSelectedSynthSubLaneEnabled: (enabled: Record<string, boolean>[]) => void;
+  setProductSynthEuclidClockDivs: (clockDivs: ClockDivision[]) => void;
+  setProductSynthEuclidEvolveConfigs: (configs: EvolveConfig[]) => void;
+  setProductSynthEuclidSwings: (swings: number[]) => void;
+  setProductSynthPitchBindingModes: (modes: PitchBindingMode[]) => void;
+  setProductSynthPitchSettings: (settings: PitchSettings[]) => void;
+  setProductSynthStepOverrides: (overrides: StepOverrides, subLaneStates?: Record<SubLaneKind, SubLaneState>[]) => void;
+  setProductSynthSubLaneEnabled: (enabled: Record<string, boolean>[]) => void;
   setSynthPresetVersion: Dispatch<SetStateAction<number>>;
   synthClockDivsRef: MutableRefObject<ClockDivision[] | undefined>;
   synthEvolveConfigsRef: MutableRefObject<EvolveConfig[] | undefined>;
@@ -364,20 +364,20 @@ export function usePresetSequencerRestore({
   drumSubLaneStatesRef,
   drumSwingsRef,
   setDrumPresetVersion,
-  setSelectedDrumEuclidClockDivs,
-  setSelectedDrumEuclidEvolveConfigs,
-  setSelectedDrumEuclidSwings,
-  setSelectedDrumPitchSettings,
-  setSelectedDrumStepOverrides,
-  setSelectedDrumSubLaneEnabled,
-  setSelectedSequencerPresetHomeSnapshots,
-  setSelectedSynthEuclidClockDivs,
-  setSelectedSynthEuclidEvolveConfigs,
-  setSelectedSynthEuclidSwings,
-  setSelectedSynthPitchBindingModes,
-  setSelectedSynthPitchSettings,
-  setSelectedSynthStepOverrides,
-  setSelectedSynthSubLaneEnabled,
+  setProductDrumEuclidClockDivs,
+  setProductDrumEuclidEvolveConfigs,
+  setProductDrumEuclidSwings,
+  setProductDrumPitchSettings,
+  setProductDrumStepOverrides,
+  setProductDrumSubLaneEnabled,
+  setProductSequencerPresetHomeSnapshots,
+  setProductSynthEuclidClockDivs,
+  setProductSynthEuclidEvolveConfigs,
+  setProductSynthEuclidSwings,
+  setProductSynthPitchBindingModes,
+  setProductSynthPitchSettings,
+  setProductSynthStepOverrides,
+  setProductSynthSubLaneEnabled,
   setSynthPresetVersion,
   synthClockDivsRef,
   synthEvolveConfigsRef,
@@ -393,25 +393,25 @@ export function usePresetSequencerRestore({
     (preset: SequencerRestorePreset) => {
       const drumConfigs = normalizeSequencerEvolveConfigs('drum', preset.drumEvolveConfigs, DRUM_EUCLIDEAN_LANE_COUNT);
       drumEvolveConfigsRef.current = drumConfigs;
-      setSelectedDrumEuclidEvolveConfigs(drumConfigs);
+      setProductDrumEuclidEvolveConfigs(drumConfigs);
 
       const synthConfigs = normalizeSequencerEvolveConfigs('synth', preset.synthEvolveConfigs, SYNTH_EUCLIDEAN_LANE_COUNT);
       synthEvolveConfigsRef.current = synthConfigs;
-      setSelectedSynthEuclidEvolveConfigs(synthConfigs);
+      setProductSynthEuclidEvolveConfigs(synthConfigs);
 
       const drumClockDivs = normalizeSequencerClockDivisions(preset.drumClockDivs ?? DEFAULT_DRUM_EUCLIDEAN_CLOCK_DIVS, DRUM_EUCLIDEAN_LANE_COUNT);
       drumClockDivsRef.current = drumClockDivs;
-      setSelectedDrumEuclidClockDivs(drumClockDivs);
+      setProductDrumEuclidClockDivs(drumClockDivs);
       const synthClockDivs = normalizeSequencerClockDivisions(preset.synthClockDivs ?? DEFAULT_SYNTH_EUCLIDEAN_CLOCK_DIVS, SYNTH_EUCLIDEAN_LANE_COUNT);
       synthClockDivsRef.current = synthClockDivs;
-      setSelectedSynthEuclidClockDivs(synthClockDivs);
+      setProductSynthEuclidClockDivs(synthClockDivs);
 
       const drumSwings = normalizeSequencerSwings(preset.drumSwings ?? DEFAULT_DRUM_EUCLIDEAN_SWINGS, DRUM_EUCLIDEAN_LANE_COUNT);
       drumSwingsRef.current = drumSwings;
-      setSelectedDrumEuclidSwings(drumSwings);
+      setProductDrumEuclidSwings(drumSwings);
       const synthSwings = normalizeSequencerSwings(preset.synthSwings ?? DEFAULT_SYNTH_EUCLIDEAN_SWINGS, SYNTH_EUCLIDEAN_LANE_COUNT);
       synthSwingsRef.current = synthSwings;
-      setSelectedSynthEuclidSwings(synthSwings);
+      setProductSynthEuclidSwings(synthSwings);
 
       drumLinkedRef.current = Array.from({ length: DRUM_EUCLIDEAN_LANE_COUNT }, (_, index) => preset.drumLinked?.[index] === true || DEFAULT_DRUM_EUCLIDEAN_LINKED[index] === true);
       synthLinkedRef.current = Array.from({ length: SYNTH_EUCLIDEAN_LANE_COUNT }, (_, index) => preset.synthLinked?.[index] === true || DEFAULT_SYNTH_EUCLIDEAN_LINKED[index] === true);
@@ -427,14 +427,14 @@ export function usePresetSequencerRestore({
       const synthArpConfigs = normalizeProductPlayConfigs(preset.synthArpConfigs, SYNTH_EUCLIDEAN_LANE_COUNT);
       synthArpConfigsRef.current = synthArpConfigs;
 
-      setSelectedDrumSubLaneEnabled(mapSubLaneStatesToEnabledFlags(drumSubLaneStates, undefined, DRUM_EUCLIDEAN_LANE_COUNT));
-      setSelectedSynthSubLaneEnabled(mapSubLaneStatesToEnabledFlags(synthSubLaneStates, synthArpConfigs, SYNTH_EUCLIDEAN_LANE_COUNT));
-      setSelectedDrumPitchSettings(drumPitchSettings);
-      setSelectedSynthPitchSettings(synthPitchSettings);
+      setProductDrumSubLaneEnabled(mapSubLaneStatesToEnabledFlags(drumSubLaneStates, undefined, DRUM_EUCLIDEAN_LANE_COUNT));
+      setProductSynthSubLaneEnabled(mapSubLaneStatesToEnabledFlags(synthSubLaneStates, synthArpConfigs, SYNTH_EUCLIDEAN_LANE_COUNT));
+      setProductDrumPitchSettings(drumPitchSettings);
+      setProductSynthPitchSettings(synthPitchSettings);
 
       const synthPitchBindingModes = normalizeSequencerPitchBindingModes(preset.synthPitchBindingModes ?? DEFAULT_SYNTH_PITCH_BINDING_MODES, SYNTH_EUCLIDEAN_LANE_COUNT);
       synthPitchBindingModesRef.current = synthPitchBindingModes;
-      setSelectedSynthPitchBindingModes(synthPitchBindingModes);
+      setProductSynthPitchBindingModes(synthPitchBindingModes);
 
       const drumStepOverrides = expandStepOverridesToLaneCount(
         deserializeStepOverrides(preset.drumStepOverrides) ?? createEmptyStepOverrides(DRUM_EUCLIDEAN_LANE_COUNT),
@@ -448,7 +448,7 @@ export function usePresetSequencerRestore({
         preset.state,
         DRUM_EUCLIDEAN_LANE_COUNT,
       );
-      setSelectedDrumStepOverrides(
+      setProductDrumStepOverrides(
         drumEngineStepOverrides,
         drumSubLaneStates,
       );
@@ -464,11 +464,11 @@ export function usePresetSequencerRestore({
         preset.state,
         SYNTH_EUCLIDEAN_LANE_COUNT,
       );
-      setSelectedSynthStepOverrides(
+      setProductSynthStepOverrides(
         synthEngineStepOverrides,
         synthSubLaneStates,
       );
-      setSelectedSequencerPresetHomeSnapshots(
+      setProductSequencerPresetHomeSnapshots(
         drumPitchSettings,
         drumSubLaneStates?.map((state) => state.pitch),
         synthSubLaneStates?.map((state) => state.pitch),
@@ -492,20 +492,20 @@ export function usePresetSequencerRestore({
       drumSubLaneStatesRef,
       drumSwingsRef,
       setDrumPresetVersion,
-      setSelectedDrumEuclidClockDivs,
-      setSelectedDrumEuclidEvolveConfigs,
-      setSelectedDrumEuclidSwings,
-      setSelectedDrumPitchSettings,
-      setSelectedDrumStepOverrides,
-      setSelectedDrumSubLaneEnabled,
-      setSelectedSequencerPresetHomeSnapshots,
-      setSelectedSynthEuclidClockDivs,
-      setSelectedSynthEuclidEvolveConfigs,
-      setSelectedSynthEuclidSwings,
-      setSelectedSynthPitchBindingModes,
-      setSelectedSynthPitchSettings,
-      setSelectedSynthStepOverrides,
-      setSelectedSynthSubLaneEnabled,
+      setProductDrumEuclidClockDivs,
+      setProductDrumEuclidEvolveConfigs,
+      setProductDrumEuclidSwings,
+      setProductDrumPitchSettings,
+      setProductDrumStepOverrides,
+      setProductDrumSubLaneEnabled,
+      setProductSequencerPresetHomeSnapshots,
+      setProductSynthEuclidClockDivs,
+      setProductSynthEuclidEvolveConfigs,
+      setProductSynthEuclidSwings,
+      setProductSynthPitchBindingModes,
+      setProductSynthPitchSettings,
+      setProductSynthStepOverrides,
+      setProductSynthSubLaneEnabled,
       setSynthPresetVersion,
       synthClockDivsRef,
       synthEvolveConfigsRef,

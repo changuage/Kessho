@@ -1,8 +1,7 @@
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import type { SliderState } from './state';
-import { useSelectedAudioEngineLifecycle } from './useSelectedAudioEngineLifecycle';
+import type { ProductEngineLifecycleState } from '../audio/product/ProductEngineTypes';
 
-type ProductRuntimeLifecycle = {
+export type ProductRuntimeLifecycle = {
   primeProductRuntimeAudio: () => void;
   startProductRuntime: (stateToStart: SliderState) => Promise<void>;
   resumeProductRuntime: () => Promise<void>;
@@ -10,23 +9,10 @@ type ProductRuntimeLifecycle = {
   preloadProductRuntime: () => Promise<unknown>;
   stopProductRuntime: () => void;
   fadeProductRuntimeOutput: (target: number, durationMs: number) => Promise<void>;
+  getProductLifecycleState: () => ProductEngineLifecycleState;
+  supportsBackgroundResume: boolean;
 };
 
-export function useProductRuntimeLifecycle(
-  productRuntimeMode: ProductRuntimeSelectionMode,
-): ProductRuntimeLifecycle {
-  // TODO(product-fallback-retire:runtime-lifecycle): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
-  // Burn this adapter down after the selected-audio-engine lifecycle
-  // helpers are either product-renamed or isolated under reference/dev runtime code.
-  const selectedLifecycle = useSelectedAudioEngineLifecycle(productRuntimeMode);
-
-  return {
-    primeProductRuntimeAudio: selectedLifecycle.primeSelectedAudioEngine,
-    startProductRuntime: selectedLifecycle.startSelectedAudioEngine,
-    resumeProductRuntime: selectedLifecycle.resumeSelectedAudioEngine,
-    suspendProductRuntime: selectedLifecycle.suspendSelectedAudioEngine,
-    preloadProductRuntime: selectedLifecycle.preloadSelectedAudioEngine,
-    stopProductRuntime: selectedLifecycle.stopSelectedAudioEngine,
-    fadeProductRuntimeOutput: selectedLifecycle.fadeSelectedAudioEngineOutput,
-  };
+export function useProductRuntimeLifecycle(lifecycle: ProductRuntimeLifecycle): ProductRuntimeLifecycle {
+  return lifecycle;
 }

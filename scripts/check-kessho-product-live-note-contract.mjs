@@ -1,62 +1,119 @@
-import fs from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import ts from 'typescript';
+import {
+  collectImportSpecifiers,
+  collectSourceFiles,
+  parseTypeScriptSource,
+  relativeSourcePath,
+} from './lib/sourceArchitectureRules.mjs';
 
-const contract = fs.readFileSync('src/audio/product/liveNoteEvents.ts', 'utf8');
-const adapter = fs.readFileSync('src/native/midi/midiLiveNoteAdapter.ts', 'utf8');
-const port = fs.readFileSync('src/audio/product/ports/ProductCommandPort.ts', 'utf8');
-const webEngine = fs.readFileSync('src/audio/product/WebProductEngine.ts', 'utf8');
-const runtimeHostPort = fs.readFileSync('src/audio/product/host/CoreProductRuntimeHostPort.ts', 'utf8');
-const selectedRuntime = fs.readFileSync('src/audio/product/SelectedProductRuntime.ts', 'utf8');
-const provider = fs.readFileSync('src/ui/midiLearn/MidiLearnProvider.tsx', 'utf8');
-const app = fs.readFileSync('src/App.tsx', 'utf8');
-const liveNoteInput = fs.readFileSync('src/ui/keyboard/liveNoteInput.ts', 'utf8');
-const host = fs.readFileSync('src/audio/coreProductEngineHost.ts', 'utf8');
-const coreHostMidi = fs.readFileSync('src/audio/CoreProductHostMidi.ts', 'utf8');
-const manualTriggers = fs.readFileSync('src/ui/useProductRuntimeManualTriggers.ts', 'utf8');
-const checks = {
-  contract: contract.includes('ProductLiveNoteEvent') && contract.includes('live-note-on') && contract.includes('live-note-off'),
-  adapter: adapter.includes('midiMessageToProductLiveNoteEvent'),
-  channelRoutingPreserved: adapter.includes('midiChannelToProductLiveNoteInstrument') &&
-    adapter.includes("case 5: return null") && adapter.includes("case 9: return 'drum'"),
-  port: port.includes('enqueueLiveNoteEvent(event: ProductLiveNoteEvent)') && !port.includes('enqueueLiveNoteEvent?'),
-  webEngine: webEngine.includes('enqueueLiveNoteEvent(event: ProductLiveNoteEvent): void') &&
-    webEngine.includes('coreProductRuntimeHostPort.enqueueLiveNoteEvent(event);'),
-  runtimeHostPort: runtimeHostPort.includes('enqueueLiveNoteEvent(event: ProductLiveNoteEvent): void') &&
-    runtimeHostPort.includes("callCoreProductHost<void>('enqueueLiveNoteEvent', event);"),
-  selectedRuntime: selectedRuntime.includes('enqueueLiveNoteEvent(event: ProductLiveNoteEvent): void | Promise<void>;'),
-  ownedLiveNotesBypassRawMidi: provider.includes('let liveNoteHandled = false;') &&
-    provider.includes('if (!liveNoteHandled) onMidiMessageRef.current?.(message);'),
-  lazyLiveNoteAllocation: provider.includes('const liveNoteHandler = onLiveNoteEventRef.current;') &&
-    provider.includes('if (liveNoteHandler) {') &&
-    provider.includes('const liveNoteEvent = midiMessageToProductLiveNoteEvent(message);') &&
-    provider.includes('const inputId = midiLiveNoteInputId(message);'),
-  appOwnsMidiLifecycle: app.includes('onLiveNoteEvent={handleMidiLiveNoteEvent}') &&
-    app.includes('const midiLiveNoteInput = useLiveNoteInput({') &&
-    app.includes("source: 'midi'") &&
-    liveNoteInput.includes('timestampHostTime: descriptor.timestampHostTime'),
-  liveNoteBeforeMonitor: provider.indexOf('const isLiveNoteMessage =') >= 0 &&
-    provider.indexOf('const isLiveNoteMessage =') < provider.indexOf('const now = performance.now();') &&
-    provider.indexOf('if (isLiveNoteMessage) return;') > provider.indexOf('setActivity((current) =>'),
-  directRunningPost: host.includes("this.realtimeInputBootstrap.postWhenReady(productEvent, 'live-note');"),
-  coreLiveNoteEvent: coreHostMidi.includes('createCoreProductLiveNoteEvent') &&
-    coreHostMidi.includes('createCoreProductMidiEvent') &&
-    coreHostMidi.includes('targetId: liveNoteSourceId(event.instrument)') &&
-    coreHostMidi.includes("event.kind === 'live-note-off'") &&
-    host.includes('enqueueLiveNoteEvent(event: ProductLiveNoteEvent)') &&
-    host.includes('createCoreProductLiveNoteEvent(event'),
-  noRunningSnapshot: !adapter.includes('Snapshot') && !contract.includes('Snapshot') &&
-    !coreHostMidi.includes('Snapshot') && (() => {
-      const liveNoteTrigger = manualTriggers.slice(
-        manualTriggers.indexOf('const startSynthLiveNote'),
-        manualTriggers.indexOf('const stopSynthLiveNote'),
-      );
-      return liveNoteTrigger.includes("getLifecycleState() !== 'running'") &&
-        liveNoteTrigger.includes('manualTriggerCommitOptions(false)') &&
-        !liveNoteTrigger.includes('shouldWaitForManualTriggerSnapshot()');
-    })(),
-};
-const failed = Object.entries(checks).filter(([, ok]) => !ok);
-if (failed.length) {
-  console.error(`live note contract check failed: ${failed.map(([name]) => name).join(', ')}`);
-  process.exit(1);
+const root = process.cwd();
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
 }
-console.log('live note contract check passed');
+
+function readSource(relativePath) {
+  const filePath = resolve(root, relativePath);
+  assert(existsSync(filePath), `${relativePath} is missing`);
+  return {
+    filePath,
+    source: readFileSync(filePath, 'utf8'),
+    ast: parseTypeScriptSource(filePath, readFileSync(filePath, 'utf8')),
+  };
+}
+
+function declarationNames(ast) {
+  const names = new Set();
+  const visit = (node) => {
+    if (
+      (ts.isFunctionDeclaration(node)
+        || ts.isClassDeclaration(node)
+        || ts.isInterfaceDeclaration(node)
+        || ts.isTypeAliasDeclaration(node)
+        || ts.isEnumDeclaration(node))
+      && node.name
+    ) {
+      names.add(node.name.text);
+    }
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      names.add(node.name.text);
+    }
+    if (
+      (ts.isMethodDeclaration(node)
+        || ts.isMethodSignature(node)
+        || ts.isPropertyDeclaration(node)
+        || ts.isPropertySignature(node)
+        || ts.isPropertyAssignment(node))
+      && (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name))
+    ) {
+      names.add(node.name.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(ast);
+  return names;
+}
+
+function assertDeclarations(relativePath, names) {
+  const { ast } = readSource(relativePath);
+  const declarations = declarationNames(ast);
+  for (const name of names) {
+    assert(declarations.has(name), `${relativePath} must expose the ${name} declaration`);
+  }
+}
+
+function findRuntimeBoundaryImports() {
+  const violations = [];
+  for (const filePath of collectSourceFiles(resolve(root, 'src'))) {
+    const relativePath = relativeSourcePath(root, filePath);
+    if (relativePath.startsWith('src/audio/reference/') || relativePath.startsWith('src/ui/referenceRuntime/')) continue;
+    for (const entry of collectImportSpecifiers(filePath)) {
+      if (entry.isTypeOnly) continue;
+      if (/useSelectedAudioEngine|SelectedProductRuntime/.test(entry.specifier)) {
+        violations.push(`${relativePath}: ${entry.kind} import ${entry.specifier}`);
+      }
+    }
+  }
+  return violations;
+}
+
+const requiredDeclarations = [
+  ['src/audio/product/liveNoteEvents.ts', ['ProductLiveNoteEvent']],
+  ['src/native/midi/midiLiveNoteAdapter.ts', [
+    'midiChannelToProductLiveNoteInstrument',
+    'midiLiveNoteInputId',
+    'midiMessageToProductLiveNoteEvent',
+  ]],
+  ['src/audio/product/ports/ProductCommandPort.ts', ['ProductEngineCommandPort', 'enqueueLiveNoteEvent']],
+  ['src/audio/product/WebProductEngine.ts', ['enqueueLiveNoteEvent']],
+  ['src/audio/product/host/CoreProductRuntimeHostPort.ts', ['enqueueLiveNoteEvent']],
+  ['src/audio/coreProductEngineHost.ts', ['enqueueLiveNoteEvent']],
+  ['src/audio/CoreProductHostMidi.ts', ['createCoreProductLiveNoteEvent']],
+  ['src/ui/keyboard/liveNoteInput.ts', ['LiveNoteInputController', 'noteOn', 'noteOff']],
+];
+
+for (const [relativePath, names] of requiredDeclarations) {
+  assertDeclarations(relativePath, names);
+}
+
+assert(
+  !existsSync(resolve(root, 'src/audio/product/SelectedProductRuntime.ts')),
+  'retired SelectedProductRuntime must remain deleted',
+);
+const boundaryViolations = findRuntimeBoundaryImports();
+assert(
+  boundaryViolations.length === 0,
+  `live-note production path imports a retired/reference runtime: ${boundaryViolations.join(', ')}`,
+);
+
+const behavior = spawnSync(process.execPath, ['scripts/run-live-note-input-regression.mjs'], {
+  cwd: root,
+  env: process.env,
+  stdio: 'inherit',
+});
+assert(behavior.status === 0, `live-note executable regression failed with exit code ${behavior.status ?? 'unknown'}`);
+
+console.log('live note contract check passed: executable lifecycle behavior and AST Product boundary are green');

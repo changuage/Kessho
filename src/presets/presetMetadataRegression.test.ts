@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 
-import { createLegacyStatePresetEntry } from './fileIO';
 import {
   hashCanonicalJson,
   materializePresetVersion,
@@ -579,21 +578,6 @@ function testGetPresetVersionSnapshotReturnsSelectedVersionMetadata(): void {
       synthPitchBindingModes: [...SYNTH_BINDING_MODES],
     },
   });
-}
-
-function testLegacyImportPreservesSynthPitchBindingModes(): void {
-  const entry = createLegacyStatePresetEntry({
-    name: 'Legacy Import',
-    timestamp: '2026-04-21T00:00:00.000Z',
-    state: { ...DEFAULT_STATE },
-    synthPitchBindingModes: [...SYNTH_BINDING_MODES],
-  } as SavedPreset);
-
-  assert.deepStrictEqual(
-    entry.versions[0]?.synthPitchBindingModes,
-    [...SYNTH_BINDING_MODES],
-    'legacy import should preserve synthPitchBindingModes metadata',
-  );
 }
 
 function testSequenceLanePresetRoundTripKeepsRuntimeLaneState(): void {
@@ -1387,7 +1371,6 @@ async function run(): Promise<void> {
   testPresetPoolMatchingNormalizationAndTags();
   testPresetPoolMetadataRoundTripsThroughL4SavedPreset();
   testGetPresetVersionSnapshotReturnsSelectedVersionMetadata();
-  testLegacyImportPreservesSynthPitchBindingModes();
   testSequenceLanePresetRoundTripKeepsRuntimeLaneState();
   testDrumPitchPresetRestoreUsesEngineOffsets();
   testOptimizedStatePresetRoundTripKeepsOnlyOverrides();

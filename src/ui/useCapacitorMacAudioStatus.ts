@@ -42,7 +42,7 @@ type UseCapacitorMacAudioStatusOptions = {
   playbackIsRunning: boolean;
   isJourneyPlaying: boolean;
   title: string;
-  preloadSelectedAudioEngine: () => Promise<unknown>;
+  preloadProductRuntime: () => Promise<unknown>;
 };
 
 type CapacitorMacAudioStatus = {
@@ -57,7 +57,7 @@ export function useCapacitorMacAudioStatus({
   playbackIsRunning,
   isJourneyPlaying,
   title,
-  preloadSelectedAudioEngine,
+  preloadProductRuntime,
 }: UseCapacitorMacAudioStatusOptions): CapacitorMacAudioStatus {
   const [macAudioOutputStatus, setMacAudioOutputStatus] = useState<KesshoMacAudioOutputStatus | null>(null);
   const [macAirPlayPerformancePinned, setMacAirPlayPerformancePinned] = useState(readMacAirPlayPerformancePinned);
@@ -81,8 +81,8 @@ export function useCapacitorMacAudioStatus({
 
   useEffect(() => {
     if (!macShellAvailable) return;
-    void preloadSelectedAudioEngine();
-  }, [macShellAvailable, preloadSelectedAudioEngine]);
+    void preloadProductRuntime();
+  }, [macShellAvailable, preloadProductRuntime]);
 
   const handleMacAirPlayPerformanceToggle = useCallback(() => {
     setMacAirPlayPerformancePinned((prev) => {

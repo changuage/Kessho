@@ -129,7 +129,6 @@ const snowflakeEngineGroups = read('src/ui/snowflakeV2/engineGroups.ts');
 const presetV2Migration = read('src/presets/presetV2Migration.ts');
 const coreProductEvents = read('src/audio/coreProductEvents.ts');
 const fallbackCoreHost = read('src/audio/coreEngineHost.ts');
-const snowflakePrototype = read('src/ui/SnowflakePrototypePage.tsx');
 const visualizerPage = read('src/ui/visualizer/ReactiveVisualizerPage.tsx');
 const routingMatrix = read('src/ui/global/RoutingMatrix.tsx');
 const activeEarthMatrix = read('src/ui/earth/components/ActiveEarthMatrix.tsx');
@@ -238,12 +237,6 @@ assert(
     fallbackCoreHost.indexOf('getChangedRuntimeWalkParameterKeys(previousEffectiveState, nextEffectiveState, movedKeys)') <
       fallbackCoreHost.indexOf('this.reapplyLastState();', fallbackCoreHost.indexOf('private startRuntimeRandomWalk')),
   'fallback random walk must reject inaudible quantized updates before its monolithic state reapplication',
-);
-assert(
-  snowflakePrototype.includes('hasActiveTrimAnimations') &&
-    snowflakePrototype.includes('}, 100);') &&
-    snowflakePrototype.includes("document.visibilityState === 'hidden'"),
-  'Snowflake prototype must park its full-rate animation loop while idle or hidden',
 );
 assert(
   visualizerPage.includes('frameScratch.automatedControls') &&

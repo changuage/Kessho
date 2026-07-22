@@ -1,22 +1,28 @@
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import type { MutableRefObject } from 'react';
 import type { SliderState } from './state';
+import type { ProductRuntimeReferenceAdapterSurface } from './productRuntimeConstruction';
 import { useProductRuntimeModulationRanges } from './useProductRuntimeModulationRanges';
 import { useProductRuntimeMorphRuntimeSurface } from './useProductRuntimeMorphRuntimeSurface';
 import { useProductRuntimeSequencerControls } from './useProductRuntimeSequencerControls';
 
 type ProductRuntimeControlSurfacesOptions = {
-  productRuntimeMode: ProductRuntimeSelectionMode;
+  productRuntimeCore: boolean;
+  productRuntimeReferenceAdapter: ProductRuntimeReferenceAdapterSurface;
   stateRef: MutableRefObject<SliderState>;
 };
 
 export function useProductRuntimeControlSurfaces({
-  productRuntimeMode,
+  productRuntimeCore,
+  productRuntimeReferenceAdapter,
   stateRef,
 }: ProductRuntimeControlSurfacesOptions) {
-  const modulationRanges = useProductRuntimeModulationRanges(productRuntimeMode);
-  const morphRuntimeSurface = useProductRuntimeMorphRuntimeSurface(productRuntimeMode);
-  const sequencerControls = useProductRuntimeSequencerControls({ productRuntimeMode, stateRef });
+  const modulationRanges = useProductRuntimeModulationRanges(productRuntimeCore);
+  const morphRuntimeSurface = useProductRuntimeMorphRuntimeSurface(productRuntimeCore);
+  const sequencerControls = useProductRuntimeSequencerControls({
+    productRuntimeCore,
+    productRuntimeReferenceAdapter,
+    stateRef,
+  });
 
   return {
     ...modulationRanges,

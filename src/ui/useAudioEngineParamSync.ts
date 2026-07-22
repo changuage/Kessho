@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { referenceAudioEngineDebug } from '../audio/reference/ReferenceAudioEngineDebugCompat';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { ProductSnapshotPatchReason } from '../audio/product/ProductEngineTypes';
 import { commitProductControlPatchForProduct } from '../product-control';
 import { collectChangedStatePatch } from './audioEngineStatePatch';
-import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import type { SliderState } from './state';
 import { isTransportClockStateKey } from './transportTimingPolicy';
 
@@ -117,6 +115,10 @@ function isTransportControlPatchKey(key: string): boolean {
     TRANSPORT_CONTROL_KEY_PATTERNS.some((pattern) => pattern.test(key));
 }
 
+function requiresTransportControlResolvedCommit(patch: Partial<SliderState>): boolean {
+  return Object.keys(patch).some(isTransportControlPatchKey);
+}
+
 function isSequencerControlPatchKey(key: string): boolean {
   return SEQUENCER_CONTROL_KEY_PATTERNS.some((pattern) => pattern.test(key));
 }
@@ -204,6 +206,7 @@ function requiresResolvedCommit(
     || options?.immediate === true
     || options?.forceFullSnapshot === true
     || requiresSequencerTransportResolvedCommit(patch)
+    || requiresTransportControlResolvedCommit(patch)
     || requiresSequencerLaneEnabledResolvedCommit(patch)
     || requiresSequencerTargetResolvedCommit(patch)
     || requiresSequencerFaceResolvedCommit(patch)
@@ -222,6 +225,7 @@ function resolvedCommitTriggerCritical(
   return options?.triggerCritical ?? (
     forceFullSnapshot ||
     requiresSequencerTransportResolvedCommit(patch) ||
+    requiresTransportControlResolvedCommit(patch) ||
     requiresSequencerLaneEnabledResolvedCommit(patch) ||
     requiresSequencerTargetResolvedCommit(patch) ||
     requiresSequencerFaceResolvedCommit(patch) ||
@@ -245,6 +249,7 @@ function shouldFlushImmediatelyForResolvedCommit(
   const patch = collectChangedStatePatch(previousState, nextState);
   const reason = inferProductPatchReason(patch, options?.reason);
   if (requiresSequencerTransportResolvedCommit(patch)) return true;
+  if (requiresTransportControlResolvedCommit(patch)) return true;
   if (requiresSequencerLaneEnabledResolvedCommit(patch)) return true;
   if (requiresSequencerTargetResolvedCommit(patch)) return true;
   if (requiresSequencerFaceResolvedCommit(patch)) return true;
@@ -254,7 +259,7 @@ function shouldFlushImmediatelyForResolvedCommit(
   return reason === 'preset-load';
 }
 
-export function useAudioEngineParamSync(audioEngineRuntimeMode: AudioEngineRuntimeMode): ((
+export function useAudioEngineParamSync(): ((
   nextState: SliderState,
   options?: AudioEngineParamUpdateOptions,
 ) => void) {
@@ -265,33 +270,28 @@ export function useAudioEngineParamSync(audioEngineRuntimeMode: AudioEngineRunti
   const lastAudioEngineUpdateMsRef = useRef(0);
 
   const applyAudioEngineStateUpdate = useCallback((nextState: SliderState, options?: AudioEngineParamUpdateOptions) => {
-    if (audioEngineRuntimeMode === 'core-product') {
-      const previousState = lastAppliedAudioEngineStateRef.current;
-      const patch = previousState && !options?.forceFullSnapshot
-        ? collectChangedStatePatch(previousState, nextState)
-        : { ...nextState };
-      lastAppliedAudioEngineStateRef.current = nextState;
-      if (previousState && Object.keys(patch).length === 0) return;
-      const reason = inferProductPatchReason(patch, options?.reason);
-      const forceFullSnapshot = requiresSourceCoreFullSnapshot(patch, reason, options);
-      if (requiresResolvedCommit(reason, patch, options)) {
-        const triggerCritical = resolvedCommitTriggerCritical(reason, forceFullSnapshot, patch, options) &&
-          canWaitForProductSnapshotAck();
-        void commitProductControlPatchForProduct(productEngine, nextState, patch, {
-          reason,
-          triggerCritical,
-          forceFullSnapshot,
-        }).catch((error) => {
-          console.warn('Product resolved-state commit failed:', error);
-        });
-        return;
-      }
-      productEngine.updateSnapshotPatch(reason, patch);
+    const previousState = lastAppliedAudioEngineStateRef.current;
+    const patch = previousState && !options?.forceFullSnapshot
+      ? collectChangedStatePatch(previousState, nextState)
+      : { ...nextState };
+    lastAppliedAudioEngineStateRef.current = nextState;
+    if (previousState && Object.keys(patch).length === 0) return;
+    const reason = inferProductPatchReason(patch, options?.reason);
+    const forceFullSnapshot = requiresSourceCoreFullSnapshot(patch, reason, options);
+    if (requiresResolvedCommit(reason, patch, options)) {
+      const triggerCritical = resolvedCommitTriggerCritical(reason, forceFullSnapshot, patch, options) &&
+        canWaitForProductSnapshotAck();
+      void commitProductControlPatchForProduct(productEngine, nextState, patch, {
+        reason,
+        triggerCritical,
+        forceFullSnapshot,
+      }).catch((error) => {
+        console.warn('Product resolved-state commit failed:', error);
+      });
       return;
     }
-    lastAppliedAudioEngineStateRef.current = nextState;
-    referenceAudioEngineDebug.updateParams(nextState);
-  }, [audioEngineRuntimeMode]);
+    productEngine.updateSnapshotPatch(reason, patch);
+  }, []);
 
   const flushAudioEngineParamUpdate = useCallback(() => {
     audioEngineUpdateTimerRef.current = null;
@@ -308,11 +308,7 @@ export function useAudioEngineParamSync(audioEngineRuntimeMode: AudioEngineRunti
     nextState: SliderState,
     options?: AudioEngineParamUpdateOptions,
   ) => {
-    if (
-      audioEngineRuntimeMode !== 'core-product'
-      || options?.immediate
-      || shouldFlushImmediatelyForResolvedCommit(lastAppliedAudioEngineStateRef.current, nextState, options)
-    ) {
+    if (options?.immediate || shouldFlushImmediatelyForResolvedCommit(lastAppliedAudioEngineStateRef.current, nextState, options)) {
       pendingAudioEngineStateRef.current = null;
       pendingAudioEngineUpdateOptionsRef.current = undefined;
       if (audioEngineUpdateTimerRef.current !== null) {
@@ -332,7 +328,7 @@ export function useAudioEngineParamSync(audioEngineRuntimeMode: AudioEngineRunti
     const elapsedMs = now - lastAudioEngineUpdateMsRef.current;
     const delayMs = Math.max(0, CORE_PRODUCT_PARAM_UPDATE_INTERVAL_MS - elapsedMs);
     audioEngineUpdateTimerRef.current = window.setTimeout(flushAudioEngineParamUpdate, delayMs);
-  }, [audioEngineRuntimeMode, applyAudioEngineStateUpdate, flushAudioEngineParamUpdate]);
+  }, [applyAudioEngineStateUpdate, flushAudioEngineParamUpdate]);
 
   useEffect(() => () => {
     if (audioEngineUpdateTimerRef.current !== null) {

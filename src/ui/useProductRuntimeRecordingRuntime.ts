@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from 'react';
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { unavailableProductRecordingBridge } from '../audio/product/ProductRecordingBridge';
 import {
   STEM_RECORD_DEFAULTS,
@@ -17,7 +16,7 @@ function formatRecordingTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-export function useProductRuntimeRecordingRuntime(_productRuntimeMode: ProductRuntimeSelectionMode) {
+export function useProductRuntimeRecordingRuntime() {
   const [recordFormats, setRecordFormats] = useState<RecordingFormats>({ webm: true, wav: false });
   const [recordStems, setRecordStems] = useState<Record<StemRecordTrackId, boolean>>(STEM_RECORD_DEFAULTS);
   const recordingDuration = 0;

@@ -3,12 +3,6 @@ import { useProductRuntimePlaybackAdapter } from './useProductRuntimePlaybackAda
 type ProductRuntimePlaybackAdapterOptions = Parameters<typeof useProductRuntimePlaybackAdapter>[0];
 type ProductRuntimePlaybackRuntimeOptions = ProductRuntimePlaybackAdapterOptions;
 
-export function useProductRuntimePlaybackRuntime({
-  productRuntimeMode,
-  ...options
-}: ProductRuntimePlaybackRuntimeOptions) {
-  return useProductRuntimePlaybackAdapter({
-    ...options,
-    productRuntimeMode,
-  });
+export function useProductRuntimePlaybackRuntime(options: ProductRuntimePlaybackRuntimeOptions) {
+  return useProductRuntimePlaybackAdapter(options);
 }

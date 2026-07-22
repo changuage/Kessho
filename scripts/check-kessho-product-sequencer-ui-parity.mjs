@@ -470,7 +470,7 @@ async function setSelectedEditorStep(page, desiredStep, engineMode, tab, label) 
     } else {
       await page.keyboard.press(current < desiredStep ? 'ArrowRight' : 'ArrowLeft');
     }
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(50);
   }
   const indexes = await selectedStepIndexes(page, '.seq-lane-editor-wrap:visible .seq-step');
   const current = indexes.length === 1 ? indexes[0] : null;
@@ -505,7 +505,7 @@ async function setTriggerProbabilityPercent(page, stepIndex, desired, engineMode
     const current = await triggerProbabilityPercent(page, stepIndex);
     if (current === desired) return;
     await page.keyboard.press(current < desired ? 'ArrowUp' : 'ArrowDown');
-    await page.waitForTimeout(180);
+    await page.waitForTimeout(50);
   }
   assert(
     (await triggerProbabilityPercent(page, stepIndex)) === desired,
@@ -817,14 +817,24 @@ async function waitForEditorStepCount(page, expectedSteps, engineMode, tab, labe
 }
 
 async function readEditorDragNumber(page, controlIndex, label) {
-  const text = String(await page.locator('.seq-lane-editor-wrap:visible .seq-drag-num').nth(controlIndex).textContent());
+  const control = label === 'pitch root'
+    ? page.locator('.seq-lane-editor-wrap:visible .seq-drag-num-label').filter({ hasText: /^Root$/ }).locator('..').locator('.seq-drag-num').first()
+    : page.locator('.seq-lane-editor-wrap:visible .seq-drag-num').nth(controlIndex);
+  const text = String(await control.textContent());
+  const rawValue = await control.getAttribute('data-drag-value');
+  if (rawValue !== null) {
+    const numericValue = Number(rawValue);
+    if (Number.isFinite(numericValue)) return numericValue;
+  }
   const value = parseEditorDragNumberText(text, label);
   assert(Number.isFinite(value), `Could not read ${label} editor control from ${text}`);
   return value;
 }
 
 async function setEditorControlViaDrag(page, controlIndex, desiredValue, engineMode, tab, label) {
-  const control = page.locator('.seq-lane-editor-wrap:visible .seq-drag-num').nth(controlIndex);
+  const control = label === 'pitch root'
+    ? page.locator('.seq-lane-editor-wrap:visible .seq-drag-num-label').filter({ hasText: /^Root$/ }).locator('..').locator('.seq-drag-num').first()
+    : page.locator('.seq-lane-editor-wrap:visible .seq-drag-num').nth(controlIndex);
   await control.waitFor({ timeout: 5000 });
   for (let attempt = 0; attempt < 30; attempt += 1) {
     const current = await readEditorDragNumber(page, controlIndex, label);
@@ -886,7 +896,7 @@ async function setRangeSubLaneValueMode(page, mode) {
 }
 
 async function setPitchSubLaneMode(page, mode) {
-  const select = page.locator('.seq-lane-editor-wrap:visible select.seq-pitch-mode').first();
+  const select = page.locator('.seq-lane-editor-wrap:visible .seq-lane-pitch select.seq-pitch-mode').first();
   await select.waitFor({ timeout: 5000 });
   await select.selectOption(mode);
   await page.waitForTimeout(300);
@@ -901,7 +911,7 @@ async function visibleLaneEditor(page) {
 
 async function visiblePitchModeSelects(page) {
   const editor = await visibleLaneEditor(page);
-  return editor.locator('select.seq-pitch-mode:visible');
+  return editor.locator('.seq-lane-pitch select.seq-pitch-mode:visible');
 }
 
 async function waitForVisiblePitchModeSelects(page, minimumCount, context) {
@@ -997,7 +1007,7 @@ async function readPitchSubLaneEditorState(page) {
   const modeSelects = await visiblePitchModeSelects(page);
   const mode = await modeSelects.first().inputValue();
   const bindingMode = (await modeSelects.count()) >= 2 ? await modeSelects.nth(1).inputValue() : undefined;
-  const scaleSelect = page.locator('.seq-lane-editor-wrap:visible select.seq-pitch-scale').first();
+  const scaleSelect = page.locator('.seq-lane-editor-wrap:visible .seq-lane-pitch select.seq-pitch-scale').first();
   const scale = (await scaleSelect.count()) > 0 ? await scaleSelect.inputValue() : undefined;
   const steps = await editorSteps(page);
   const rootControlCount = await page.locator('.seq-lane-editor-wrap:visible .seq-drag-num').count();
@@ -1158,7 +1168,7 @@ async function editorStepValueOnlySignature(page) {
 async function nudgeSelectedEditorValue(page, direction, times = 1) {
   for (let index = 0; index < times; index += 1) {
     await page.keyboard.press(direction > 0 ? 'ArrowUp' : 'ArrowDown');
-    await page.waitForTimeout(180);
+    await page.waitForTimeout(50);
   }
 }
 
@@ -1253,6 +1263,7 @@ async function prepareSubLaneCursorAnimationProof(page, engineMode, tab) {
 }
 
 async function proofEvolveDiceMutatesState(page, engineMode, tab) {
+  await setEvolveEnabled(page, true);
   await ensureEvolvePanelOpen(page, engineMode, tab);
   await writeRangeSubLaneStepValues(page, engineMode, tab, 'expression', {
     steps: 8,
@@ -1490,6 +1501,20 @@ async function setEvolveEditorState(page, engineMode, tab, expected) {
     }
   }
   await page.waitForTimeout(350);
+}
+
+async function setEvolveEnabled(page, enabled) {
+  const button = page.locator('.seq-evolve-btn:visible').first();
+  await button.waitFor({ timeout: 5000 });
+  const current = String(await button.getAttribute('class')).includes(' on');
+  if (current !== enabled) {
+    await button.click({ timeout: 5000 });
+    await page.waitForTimeout(500);
+  }
+  assert(
+    String(await button.getAttribute('class')).includes(' on') === enabled,
+    `Evolve enabled state did not reach ${enabled}`,
+  );
 }
 
 function assertEvolveEditorState(actual, expected, context) {
@@ -2196,6 +2221,9 @@ async function proofSynthNoteRangeSequencePresetRoundTrip(page, engineMode) {
 }
 
 async function proofSequencePresetStepValueRoundTrip(page, engineMode, tab) {
+  // Evolve intentionally mutates live step values. Freeze it while this audit
+  // measures persistence so the saved snapshot is the one just captured.
+  await setEvolveEnabled(page, false);
   const presetName = `__sequencer_audit_${engineMode}_${tab}_step_values`;
   const pitchState = {
     steps: 4,
@@ -2628,6 +2656,7 @@ async function proofRuntime(browser, baseUrl, engineMode, tab) {
     const evolveDiceMutation = await proofEvolveDiceMutatesState(page, engineMode, tab);
 
     const evolveFeedback = [];
+    await setEvolveEnabled(page, false);
     markStep('stopped evolve flash');
     evolveFeedback.push(await captureEvolveFlash(page, engineMode, tab, 'stopped'));
     markStep('stopped evolve reset');
@@ -2642,6 +2671,7 @@ async function proofRuntime(browser, baseUrl, engineMode, tab) {
     }
     await page.waitForTimeout(1000);
     assert((await transport.textContent())?.trim() === '\u25a0', `${engineMode}/${tab}: click did not start transport`);
+    await setEvolveEnabled(page, true);
     const synthKeyboardHarmonyContext = tab === 'synth'
       ? await proofSynthKeyboardHarmonyContext(page, engineMode, 'running')
       : null;

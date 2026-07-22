@@ -21,7 +21,7 @@ const packageJson = readJson('package.json');
 const diagnostics = read('src/audio/product/ProductRuntimeDiagnostics.ts');
 const hostDiagnostics = read('src/audio/product/host/CoreProductHostDiagnostics.ts');
 const capabilityReport = read('src/audio/product/ProductRuntimeCapabilityReport.ts');
-const unsupportedPolicy = read('src/audio/product/host/CoreProductUnsupportedPolicy.ts');
+const fallbackDiagnostics = read('src/audio/CoreProductFallbackDiagnostics.ts');
 const unsupportedSurfaceDoc = read('docs/product-core/unsupported-surface.md');
 const unsupportedAudit = read('scripts/audit-product-host-unsupported-surface.mjs');
 const runtimeFallbackGate = read('scripts/check-kessho-product-runtime-fallbacks.mjs');
@@ -88,17 +88,13 @@ for (const token of [
 }
 
 for (const token of [
-  'CoreProductUnsupportedDecision',
-  "'replace with product concept'",
-  "'delete'",
-  "'dev/reference-only'",
-  'CORE_PRODUCT_UNSUPPORTED_SURFACE_POLICY',
-  'CORE_PRODUCT_UNSUPPORTED_PRODUCTION_FINDING_TARGET = 0',
-  'getAllStemNodes',
-  'getDynamicsAnalyser',
-  'getLimiterNode',
+  'RuntimeFallbackClassification',
+  'ProductCoreGetterPolicy',
+  'CORE_PRODUCT_GETTER_POLICIES',
+  'classifyCoreProductRuntimeFallback',
+  "'forbidden-production-fallback'",
 ]) {
-  assert(unsupportedPolicy.includes(token), `CoreProductUnsupportedPolicy missing ${token}`);
+  assert(fallbackDiagnostics.includes(token), `CoreProductFallbackDiagnostics missing ${token}`);
 }
 
 for (const legacyMethod of [
@@ -208,7 +204,7 @@ for (const token of [
   '05-spectral-freeze-scene',
   '06-random-walk-sample-hold-modulation-scene',
   '07-mobile-browser-foreground',
-  '09-native-ios-render',
+  '16-native-ios-render',
   'Native Product Core render/device evidence is Batch 4 scope.',
 ]) {
   assert(cpuScenarioGate.includes(token), `CPU scenario gate must cover ${token}`);
@@ -225,7 +221,7 @@ for (const token of [
 }
 
 assert(!commonControlRouting.includes('| partial |'), 'common-control-routing.md must not retain vague partial status rows');
-for (const requiredStatus of ['| ok |', '| allowed |', '| allowed structural snapshot |', '| deferred-ticket |']) {
+for (const requiredStatus of ['| ok |', '| allowed |', '| allowed structural snapshot |']) {
   assert(commonControlRouting.includes(requiredStatus), `common-control-routing.md must include status ${requiredStatus}`);
 }
 for (const requiredTicket of [
@@ -240,9 +236,9 @@ for (const requiredTicket of [
 }
 
 for (const token of [
-  'development fallback throws must increment runtimeFallbackDiagnosticCount',
-  'production fallback must increment audioCriticalFallbackCount',
-  'guarded retired getters must not increment runtimeFallbackDiagnosticCount',
+  'development missing getter did not increment audio-critical diagnostics',
+  'production missing getter did not increment audio-critical diagnostics',
+  'Missing Product getter behavior throws and records an audio-critical diagnostic',
 ]) {
   assert(runtimeFallbackGate.includes(token), `runtime fallback gate must cover ${token}`);
 }

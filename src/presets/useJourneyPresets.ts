@@ -3,7 +3,8 @@ import type { JourneyConfig, JourneyNode } from '../audio/journeyTypes';
 import { getPresetStore, subscribePresetStore } from './PresetStore';
 import { getVersionData } from './codec';
 import { buildJourneyPresetPreview } from './journeyPresetPreview';
-import { getPresetScope, normalizePresetEntry } from './presetUtils';
+import { getPresetScope } from './presetUtils';
+import { decodeCurrentPresetEntry } from './currentPresetSchema';
 import { isSharedPresetCloudOnlyMode } from './sharedMode';
 import type { JourneyPresetPreview, PresetEntry, PresetRef, PresetSummary, PresetVersion } from './types';
 import {
@@ -156,7 +157,7 @@ export function coerceJourneyPresetEntry(
   refs: Record<string, PresetRef> | undefined,
   note = 'Saved journey graph',
 ): PresetEntry {
-  return normalizePresetEntry(capJourneyVersions(existing, name, data, refs, note))!;
+  return decodeCurrentPresetEntry(capJourneyVersions(existing, name, data, refs, note));
 }
 
 export async function resolveJourneyStatePresetRef(node: JourneyNode): Promise<PresetRef> {

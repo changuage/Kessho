@@ -1,14 +1,3 @@
-/**
- * SynthPage — Combined Pad + Lead synth page
- * Two-column layout matching DrumPage:
- *   Left  = Collapsible panels for Pad Synth ADSR, Pad Timbre, Lead Synth
- *   Right = Sequencer with Simple / Detail / Overview view modes
- *
- * Simple  = Probability-based controls (chords per phrase, voicing spread, etc.)
- * Detail  = Euclidean sequencer per-lane (reuses useEuclideanSequencer hook)
- * Overview = All 4 trigger lanes at once
- */
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatIndexedDelayDivision, getSliderNumericValue, type SerializedStepOverrides, type SliderMode, type SliderState } from '../state';
 import { useEuclideanSequencer, type EvolveConfig, type SequencerViewMode, type StepOverrides, type SubLaneKind, type SubLaneState, type PitchSettings } from '../sequencer/useEuclideanSequencer';
@@ -84,7 +73,6 @@ import {
   semitoneToScaleDegree,
 } from '../../audio/drumSeqTypes';
 import type { ClockDivision, PitchBindingMode, SequencerState } from '../../audio/drumSeqTypes';
-import { sequencerClockDivisionToSeconds } from '../../audio/sequencerClockDivisions';
 import {
   HARMONY_POOL_MAX_NOTES,
   formatHarmonyIntentChordLabel,
@@ -173,7 +161,7 @@ import {
 import type { ManualSynthNoteOptions, ManualSynthSource } from '../../audio/engineSharedTypes';
 import { isProductManualSynthSource } from '../../audio/product/manualSynthSources';
 import type { TransportDebugSnapshot } from '../../audio/transport';
-import { getEffectiveSequencerBpm, getPhraseDurationForClockSource } from '../../audio/transport';
+import { getPhraseDurationForClockSource } from '../../audio/transport';
 import { chordIntervalSecondsFromState } from '../../audio/chordPhraseTiming';
 import {
   applyLeadDistanceEnvelope,
@@ -262,25 +250,6 @@ import type {
   ProductGeneratedSequencerCaptureRequest,
   ProductRuntimeSynthPageEvents,
 } from '../useProductRuntimeSynthPageEvents';
-
-function currentWallSeconds(): number {
-  return typeof performance !== 'undefined' ? performance.now() / 1000 : Date.now() / 1000;
-}
-
-function chordSequencerUiBeatSeconds(state: SliderState): number {
-  const bpm = Number.isFinite(state.sequencerMasterBPM)
-    ? state.sequencerMasterBPM
-    : Number.isFinite(state.synthEuclidBaseBPM)
-      ? state.synthEuclidBaseBPM
-      : Number.isFinite(state.drumEuclidBaseBPM)
-        ? state.drumEuclidBaseBPM
-        : 120;
-  return 60 / Math.max(1, bpm);
-}
-
-function chordSequencerUiStepSeconds(state: SliderState, clockDivision: ClockDivision): number {
-  return Math.max(0.001, sequencerClockDivisionToSeconds(clockDivision, chordSequencerUiBeatSeconds(state), '1/4'));
-}
 
 const OV_PROB_DRAG_PX = 80;
 
@@ -2438,8 +2407,8 @@ export interface SynthPageProps {
   getPadFilterFreq: (pad: 'pad1' | 'pad2') => number;
   getPadLfoValue: (pad: 'pad1' | 'pad2') => number;
   setStepPositionCallback: (callback: ((steps: number[], hitCounts: number[], arpSteps?: number[]) => void) | null) => void;
-  setOrbitVisualStateCallback: (callback: ((lanes: Array<ProductSynthOrbitVisualLaneState | null>) => void) | null) => void;
-  setAnchorWalkerVisualStateCallback: (callback: ((lanes: Array<ProductSynthAnchorWalkerVisualLaneState | null>) => void) | null) => void;
+  setOrbitVisualStateCallback?: (callback: ((lanes: Array<ProductSynthOrbitVisualLaneState | null>) => void) | null) => void;
+  setAnchorWalkerVisualStateCallback?: (callback: ((lanes: Array<ProductSynthAnchorWalkerVisualLaneState | null>) => void) | null) => void;
   setEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
   /** Evolve configs change callback */
   onEvolveConfigsChange?: (configs: EvolveConfig[]) => void;
@@ -2493,11 +2462,9 @@ export interface SynthPageProps {
   initialArpConfigs?: ProductPlayConfig[];
   /** Called when Play configs change, so parent can persist and bridge engine lane flags. */
   onArpConfigsChange?: (configs: ProductPlayConfig[]) => void;
-  /** Fire a one-shot manual audition note from the synth keyboard */
-  onAuditionNote?: (note: ManualSynthNoteOptions) => void | Promise<void>;
   /** Start and stop held live notes from computer-keyboard and pointer input. */
-  onLiveNoteStart?: (event: import('../../audio/product/liveNoteEvents').ProductLiveNoteEvent) => Promise<void>;
-  onLiveNoteStop?: (event: import('../../audio/product/liveNoteEvents').ProductLiveNoteEvent) => void;
+  onLiveNoteStart: (event: import('../../audio/product/liveNoteEvents').ProductLiveNoteEvent) => Promise<void>;
+  onLiveNoteStop: (event: import('../../audio/product/liveNoteEvents').ProductLiveNoteEvent) => void;
   /** Fire a one-shot manual audition note using a temporary, non-UI preset state */
   onAuditionPresetPreview?: (note: ManualSynthNoteOptions, externalState: SliderState) => void | Promise<void>;
   sendProductAnchorWalkerPerformanceEvent?: ProductRuntimeSynthPageEvents['sendProductAnchorWalkerPerformanceEvent'];
@@ -2505,6 +2472,7 @@ export interface SynthPageProps {
   commitProductGeneratedSequencerCaptureToStep?: ProductRuntimeSynthPageEvents['commitProductGeneratedSequencerCaptureToStep'];
   getProductGeneratedSequencerCaptureTelemetry?: ProductRuntimeSynthPageEvents['getProductGeneratedSequencerCaptureTelemetry'];
   getProductArpAudibleTelemetry?: ProductRuntimeSynthPageEvents['getProductArpAudibleTelemetry'];
+  getProductChordSequencerPlayheadTelemetry?: ProductRuntimeSynthPageEvents['getProductChordSequencerPlayheadTelemetry'];
   /** Current harmony snapshot for keyboard note coloring */
   harmonyState?: HarmonyState | null;
 }
@@ -2560,7 +2528,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onKeyboardUiStateChange,
     initialArpConfigs,
     onArpConfigsChange,
-    onAuditionNote,
     onLiveNoteStart,
     onLiveNoteStop,
     onAuditionPresetPreview,
@@ -2569,6 +2536,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     commitProductGeneratedSequencerCaptureToStep,
     getProductGeneratedSequencerCaptureTelemetry,
     getProductArpAudibleTelemetry,
+    getProductChordSequencerPlayheadTelemetry,
     harmonyState,
   } = props;
   const onStateChange = props.onStateChange;
@@ -2653,8 +2621,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [hitCounts, setHitCounts] = useState<number[]>([0, 0, 0, 0]);
   const [chordSequencerPlayhead, setChordSequencerPlayhead] = useState(0);
   const [chordSequencerAbsoluteStep, setChordSequencerAbsoluteStep] = useState(0);
-  const chordSequencerClockAnchorRef = useRef<number | null>(null);
-  const chordSequencerWasRunningRef = useRef(false);
   const [orbitVisualStates, setOrbitVisualStates] = useState<Array<ProductSynthOrbitVisualLaneState | null>>([null, null, null, null]);
   const [walkerVisualStates, setWalkerVisualStates] = useState<Array<ProductSynthAnchorWalkerVisualLaneState | null>>([null, null, null, null]);
   const [evolveFlashing, setEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
@@ -2663,6 +2629,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     save: savePad1Preset,
     load: loadPad1Preset,
     remove: removePad1Preset,
+    rename: renamePad1Preset,
     refresh: refreshPad1Presets,
     updateMetadata: updatePad1PresetMetadata,
   } = usePresets('engine', 'pad1');
@@ -2671,6 +2638,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     save: savePad2Preset,
     load: loadPad2Preset,
     remove: removePad2Preset,
+    rename: renamePad2Preset,
     refresh: refreshPad2Presets,
     updateMetadata: updatePad2PresetMetadata,
   } = usePresets('engine', 'pad2');
@@ -2681,6 +2649,24 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     refresh: refreshLeadFmPresets,
     updateMetadata: updateLeadFmPresetMetadata,
   } = usePresets('engine', 'lead4opfm');
+  const pad1PresetRepository = useMemo(() => ({
+    presets: pad1EnginePresets,
+    save: savePad1Preset,
+    load: loadPad1Preset,
+    remove: removePad1Preset,
+    refresh: refreshPad1Presets,
+    rename: renamePad1Preset,
+    updateMetadata: updatePad1PresetMetadata,
+  }), [loadPad1Preset, pad1EnginePresets, refreshPad1Presets, removePad1Preset, renamePad1Preset, savePad1Preset, updatePad1PresetMetadata]);
+  const pad2PresetRepository = useMemo(() => ({
+    presets: pad2EnginePresets,
+    save: savePad2Preset,
+    load: loadPad2Preset,
+    remove: removePad2Preset,
+    refresh: refreshPad2Presets,
+    rename: renamePad2Preset,
+    updateMetadata: updatePad2PresetMetadata,
+  }), [loadPad2Preset, pad2EnginePresets, refreshPad2Presets, removePad2Preset, renamePad2Preset, savePad2Preset, updatePad2PresetMetadata]);
   const leadStockIdByName = useMemo(
     () => new Map(
       lead4opPresets.map((preset) => [preset.name.trim().toLowerCase(), preset.id]),
@@ -2821,17 +2807,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const leftShiftHeldRef = useRef(false);
   const zHeldRef = useRef(false);
   const liveNoteInput = useLiveNoteInput({
-    start: (event) => {
-      if (onLiveNoteStart) return onLiveNoteStart(event);
-      if (!isProductManualSynthSource(event.instrument)) return;
-      return onAuditionNote?.({
-        source: event.instrument,
-        midi: event.note,
-        velocity: event.velocity,
-        durationMs: 180,
-      });
+    start: onLiveNoteStart,
+    stop: onLiveNoteStop,
+    onStartFailure: ({ event, error }) => {
+      console.error(`Held live-note start failed for ${event.instrument}`, error);
     },
-    stop: (event) => onLiveNoteStop?.(event),
   });
   const previousLiveNoteBridgeRef = useRef({ onLiveNoteStart, onLiveNoteStop });
   useEffect(() => {
@@ -3249,51 +3229,17 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, [chordSequencerActiveStepCount, chordSequencerClockDivision, chordSequencerConfig, chordSequencerEnabled]);
 
   useEffect(() => {
-    if (!isRunning) {
-      chordSequencerWasRunningRef.current = false;
-      chordSequencerClockAnchorRef.current = null;
-      setChordSequencerPlayhead(0);
-      setChordSequencerAbsoluteStep(0);
-      return;
-    }
-    const startingTransport = !chordSequencerWasRunningRef.current || chordSequencerClockAnchorRef.current == null;
-    if (startingTransport) {
-      chordSequencerClockAnchorRef.current = currentWallSeconds();
-      setChordSequencerPlayhead(0);
-      setChordSequencerAbsoluteStep(0);
-    }
-    chordSequencerWasRunningRef.current = true;
-    if (!chordSequencerEnabled) return;
+    setChordSequencerPlayhead(0);
+    setChordSequencerAbsoluteStep(0);
+  }, [chordSequencerEnabled, isRunning]);
 
-    let rafId: number | null = null;
-    let lastAbsoluteStep = -1;
-    const stepCount = Math.max(1, chordSequencerConfig.stepCount);
-    const tick = () => {
-      if (document.visibilityState === 'visible') {
-        const anchor = chordSequencerClockAnchorRef.current ?? currentWallSeconds();
-        const stepSeconds = chordSequencerUiStepSeconds(state, chordSequencerClockDivision);
-        const absoluteStep = Math.max(0, Math.floor((currentWallSeconds() - anchor) / stepSeconds));
-        if (absoluteStep !== lastAbsoluteStep) {
-          lastAbsoluteStep = absoluteStep;
-          setChordSequencerAbsoluteStep(absoluteStep);
-          setChordSequencerPlayhead(absoluteStep % stepCount);
-        }
-      }
-      rafId = window.requestAnimationFrame(tick);
-    };
-    tick();
-    return () => {
-      if (rafId !== null) window.cancelAnimationFrame(rafId);
-    };
-  }, [
-    chordSequencerClockDivision,
-    chordSequencerConfig.stepCount,
-    chordSequencerEnabled,
-    isRunning,
-    state.drumEuclidBaseBPM,
-    state.sequencerMasterBPM,
-    state.synthEuclidBaseBPM,
-  ]);
+  useEffect(() => {
+    if (!isRunning || !chordSequencerEnabled || !getProductChordSequencerPlayheadTelemetry) return;
+    const playhead = getProductChordSequencerPlayheadTelemetry();
+    if (!Number.isSafeInteger(playhead.absoluteStep) || !Number.isInteger(playhead.currentStep)) return;
+    setChordSequencerAbsoluteStep(playhead.absoluteStep);
+    setChordSequencerPlayhead(playhead.currentStep);
+  }, [chordSequencerEnabled, getProductChordSequencerPlayheadTelemetry, isRunning]);
 
   const chordSequencerHitCount = useMemo(
     () => synthChordSequencerTriggerOrdinalForTick(chordSequencerConfig, chordSequencerAbsoluteStep) + 1,
@@ -5051,15 +4997,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   useEffect(() => {
     if (!orbitRuntimeVisualsVisible) {
-      setOrbitVisualStateCallback(null);
+      setOrbitVisualStateCallback?.(null);
       setOrbitVisualStates(prev => (prev.some(Boolean) ? [null, null, null, null] : prev));
       return () => {
-        setOrbitVisualStateCallback(null);
+        setOrbitVisualStateCallback?.(null);
       };
     }
     let rafId: number | null = null;
     let pendingStates: Array<ProductSynthOrbitVisualLaneState | null> = [null, null, null, null];
-    setOrbitVisualStateCallback((nextStates: Array<ProductSynthOrbitVisualLaneState | null>) => {
+    setOrbitVisualStateCallback?.((nextStates: Array<ProductSynthOrbitVisualLaneState | null>) => {
       if (document.visibilityState !== 'visible') return;
       pendingStates = [0, 1, 2, 3].map((index) => nextStates[index] ?? null);
       if (rafId !== null) return;
@@ -5072,21 +5018,21 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       if (rafId !== null) {
         window.cancelAnimationFrame(rafId);
       }
-      setOrbitVisualStateCallback(null);
+      setOrbitVisualStateCallback?.(null);
     };
   }, [orbitRuntimeVisualsVisible, setOrbitVisualStateCallback]);
 
   useEffect(() => {
     if (!anchorWalkerRuntimeVisualsVisible) {
-      setAnchorWalkerVisualStateCallback(null);
+      setAnchorWalkerVisualStateCallback?.(null);
       setWalkerVisualStates(prev => (prev.some(Boolean) ? [null, null, null, null] : prev));
       return () => {
-        setAnchorWalkerVisualStateCallback(null);
+        setAnchorWalkerVisualStateCallback?.(null);
       };
     }
     let rafId: number | null = null;
     let pendingStates: Array<ProductSynthAnchorWalkerVisualLaneState | null> = [null, null, null, null];
-    setAnchorWalkerVisualStateCallback((nextStates: Array<ProductSynthAnchorWalkerVisualLaneState | null>) => {
+    setAnchorWalkerVisualStateCallback?.((nextStates: Array<ProductSynthAnchorWalkerVisualLaneState | null>) => {
       if (document.visibilityState !== 'visible') return;
       pendingStates = [0, 1, 2, 3].map((index) => nextStates[index] ?? null);
       if (rafId !== null) return;
@@ -5099,7 +5045,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       if (rafId !== null) {
         window.cancelAnimationFrame(rafId);
       }
-      setAnchorWalkerVisualStateCallback(null);
+      setAnchorWalkerVisualStateCallback?.(null);
     };
   }, [anchorWalkerRuntimeVisualsVisible, setAnchorWalkerVisualStateCallback]);
 
@@ -5177,11 +5123,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     config: activePlayConfig.chord,
     harmony: arpHarmonyContext,
   }), [activePlayConfig.chord, arpHarmonyContext]);
-  const updatePlayConfig = useCallback((laneIdx: number, patch: Partial<ProductPlayConfig>) => {
-    setArpConfigs((current) => current.map((config, index) => (
-      index === laneIdx ? normalizeProductPlayConfig({ ...config, ...patch }) : config
-    )));
-  }, []);
   const updateArpConfig = useCallback((laneIdx: number, patch: Partial<ProductArpConfig>) => {
     setArpConfigs((current) => current.map((config, index) => {
       if (index !== laneIdx) return config;
@@ -5311,6 +5252,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     setArpConfigs((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next);
   }, [initialArpConfigsSignature, presetVersion]);
 
+  useEffect(() => {
+    const activeConfig = normalizeProductPlayConfigs(initialArpConfigs, 4)[seq.activeTab];
+    if (activeConfig?.enabled) seq.setOpenLane('arp' as never);
+  }, [initialArpConfigsSignature, presetVersion, seq.activeTab, seq.setOpenLane]);
+
   const arpConfigsSignature = JSON.stringify(arpConfigs);
   const arpConfigsSignatureRef = useRef<string | null>(null);
   useEffect(() => {
@@ -5355,11 +5301,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   const pendingSequenceHomeCaptureRef = useRef<number | null>(null);
   const pendingSequenceResetHomeRef = useRef<number | null>(null);
+  const sequenceLoadCallbackGuardUntilRef = useRef(0);
   const sequenceSubLaneHomeRef = useRef<(Record<SubLaneKind, SubLaneState> | null)[]>([null, null, null, null]);
   const sequencePitchHomeRef = useRef<(SubLaneState | null)[]>([null, null, null, null]);
   const sequencePitchBindingHomeRef = useRef<(PitchBindingMode | null)[]>([null, null, null, null]);
   const [sequenceHomeCaptureVersion, setSequenceHomeCaptureVersion] = useState(0);
   const handleEuclidSequenceLoad = useCallback((laneIdx: number, entry: PresetEntry, data: Record<string, unknown>) => {
+    pendingSequenceResetHomeRef.current = null;
+    sequenceLoadCallbackGuardUntilRef.current = performance.now() + 10000;
     setEuclidPresetNameForLane(laneIdx, entry.name);
     const stepOverrides = data[EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY] as SerializedStepOverrides | undefined;
     const sequenceState = data[EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY] as SerializedSequenceLanePresetState | undefined;
@@ -5415,11 +5364,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   ), [euclidPresetNames, handleEuclidSequenceLoad, onStateChange, state, synthEuclideanPatternOptions]);
 
   const handleResetEvolveHome = useCallback((laneIdx: number) => {
+    sequenceLoadCallbackGuardUntilRef.current = 0;
     pendingSequenceResetHomeRef.current = laneIdx;
     resetEvolveHome?.(laneIdx);
   }, [resetEvolveHome]);
   const handleDiceLane = useCallback((laneIdx: number, intensity: number) => {
     const index = Math.max(0, Math.min(LANE_CONFIGS.length - 1, Math.trunc(laneIdx)));
+    sequenceLoadCallbackGuardUntilRef.current = 0;
     pendingDiceSyncUntilRef.current[index] = Date.now() + SYNTH_DICE_SYNC_SUPPRESSION_MS;
     pendingDiceExpectedSignatureRef.current[index] = null;
     diceLane?.(laneIdx, intensity);
@@ -5588,6 +5539,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   useEffect(() => {
     if (!evolvedOverrides || evolvedOverrides.version === evolvedVersionRef.current) return;
     evolvedVersionRef.current = evolvedOverrides.version;
+    if (performance.now() < sequenceLoadCallbackGuardUntilRef.current) return;
     const { laneIndex, data, swing, subLaneStates } = evolvedOverrides;
     const restoredPitchSettings = data.pitchSettings?.[laneIndex]
       ? normalizeSequencerPitchSettings(data.pitchSettings[laneIndex], seq.pitchSettings[laneIndex]) as PitchSettings
@@ -6033,21 +5985,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     cancelCapture: cancelGeneratedCapture,
     captureManualNote: captureGeneratedManualNote,
     ingestProductEvents: ingestGeneratedCaptureEvents,
-    markCurrentStepFromPlayhead: markGeneratedCaptureStepFromPlayhead,
   } = generatedSequenceCapture;
-
-  useEffect(() => {
-    if (!generatedCaptureIsCapturing) return;
-
-    let rafId = window.requestAnimationFrame(function markCaptureStep() {
-      markGeneratedCaptureStepFromPlayhead();
-      rafId = window.requestAnimationFrame(markCaptureStep);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(rafId);
-    };
-  }, [generatedCaptureIsCapturing, markGeneratedCaptureStepFromPlayhead]);
 
   useVisibleInterval(() => {
     if (!generatedCaptureIsCapturing) return;
@@ -6135,6 +6073,18 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     }
     return startPatch;
   }, [enableManualSynthSourceForPlayback, state.pad2VoiceAssign]);
+
+  const updatePlayConfig = useCallback((laneIdx: number, patch: Partial<ProductPlayConfig>) => {
+    setArpConfigs((current) => current.map((config, index) => (
+      index === laneIdx ? normalizeProductPlayConfig({ ...config, ...patch }) : config
+    )));
+    if (patch.enabled !== true || isRunning) return;
+    const laneEnabledKey = SYNTH_LANE_ENABLED_KEYS[laneIdx] ?? SYNTH_LANE_ENABLED_KEYS[0];
+    onRequestPlaybackStart?.({
+      synthEuclideanMasterEnabled: true,
+      [laneEnabledKey]: true,
+    });
+  }, [isRunning, onRequestPlaybackStart]);
 
   const defaultLaneVoiceMask = useCallback((laneIdx: number): number => {
     let usedMask = 0;
@@ -7408,12 +7358,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     if (!layout) return;
     const midi = keyboardBaseMidi + layout.semitone;
     if (!isProductManualSynthSource(effectiveKeyboardSource)) return;
-    if (!liveNoteInput.noteOn(inputId, {
+    const startResult = liveNoteInput.noteOn(inputId, {
       source: inputSource,
       instrument: effectiveKeyboardSource,
       note: midi,
       velocity: MANUAL_KEYBOARD_VELOCITY,
-    })) return;
+    });
+    if (startResult.status !== 'started') return;
     if (generatedCaptureIsCapturing) {
       const targetLaneIndex = generatedCaptureSession?.targetLaneIndex ?? seq.activeTab;
       const targetStepCount = generatedCaptureSession?.targetStepCount ?? getTriggerStepCountForLane(targetLaneIndex);
@@ -8113,6 +8064,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 state={state}
                 onSelectChange={handlePresetEndpointSelectChange}
                 color="#4a9eff"
+                repository={pad1PresetRepository}
                 onOpenPool={() => setPadPoolPopupSlot({ scope: 'pad1', slotKey: 'padPresetA' as keyof SliderState })}
                 poolButtonTitle="Edit pad preset pool"
                 poolButtonAriaLabel="Edit pad preset pool"
@@ -8762,6 +8714,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 state={state}
                 onSelectChange={handlePresetEndpointSelectChange}
                 color="#8b5cf6"
+                repository={pad2PresetRepository}
                 onOpenPool={() => setPadPoolPopupSlot({ scope: 'pad2', slotKey: 'pad2PresetA' as keyof SliderState })}
                 poolButtonTitle="Edit pad preset pool"
                 poolButtonAriaLabel="Edit pad preset pool"
@@ -10705,7 +10658,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                 onChangePitchRoot: (root) => seq.setPitchRoot(seq.activeTab, root),
                                 onChangePitchScale: (scale) => seq.setPitchScale(seq.activeTab, scale),
                                 allowHarmonyPitchScale: true,
-                                pitchRootDisplayValue: formatMidiNoteName(activeResolvedPitchSettings.root),
                                 pitchDisplayRoot: activeResolvedPitchSettings.root,
                                 pitchDisplayScaleIntervals: activeResolvedPitchSettings.scaleIntervals,
                                 hidePitchNoteRange: activePitchBindingMode === 'sequence',
@@ -10760,10 +10712,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     color={activeSeq.color}
                     harmonyState={harmonyState}
                     isRunning={isRunning}
-                    transportBpm={transportDebug?.effectiveBpm ?? getEffectiveSequencerBpm(state)}
-                    clockDivision={seq.clockDivs[seq.activeTab]}
-                    stepCount={activeSeq.trigger.steps}
-                    tempoMultiplier={Number.isFinite(state.synthEuclideanTempo) ? state.synthEuclideanTempo : 1}
                     runtimeVisualState={orbitVisualStates[seq.activeTab] ?? null}
                     captureSlot={generatedSequencerCaptureControls}
                     onChange={(nextConfig) => updateSequencerSlot(seq.activeTab, (slot) => ({

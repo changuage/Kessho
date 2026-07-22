@@ -7,6 +7,8 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useVisibleInterval } from './hooks/useVisibleInterval';
 import { useDocumentVisibility } from './hooks/useDocumentVisibility';
 import { PRODUCT_CPU_OVERLAY_REFRESH_MS } from './productRuntimeTelemetryRateLimits';
+import { isEditableShortcutTarget } from './keyboard/keyboardTargets';
+import { useKeyboardScope } from './keyboard/useKeyboardScope';
 
 type PerfMetrics = {
   avgPercent: number;
@@ -126,17 +128,16 @@ export const CpuOverlay: React.FC<CpuOverlayProps> = ({
     enabled: visible,
   });
 
-  // Keyboard shortcut: Ctrl+Shift+P
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.code === 'KeyP') {
-        e.preventDefault();
+  useKeyboardScope({
+    priority: 1000,
+    onKeyDown: (event) => {
+      if (event.defaultPrevented || event.repeat || isEditableShortcutTarget(event.target)) return;
+      if (event.ctrlKey && event.shiftKey && event.code === 'KeyP') {
+        event.preventDefault();
         toggle();
       }
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [toggle]);
+    },
+  });
 
   const primaryMetrics = Object.values(displayPerfData).filter((entry) => entry.scope !== 'source');
   const headerAvg = primaryMetrics.reduce((sum, entry) => sum + entry.avgPercent, 0);

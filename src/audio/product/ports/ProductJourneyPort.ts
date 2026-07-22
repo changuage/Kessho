@@ -13,7 +13,7 @@ export type ProductBackgroundJourneyReadiness =
     }
   | {
       status: 'not-ready';
-      reason: 'document-hidden' | 'asset-closure-incomplete' | 'asset-soft-budget' | 'decode-peak-budget' | 'host-cache-budget' | 'asset-metadata-missing' | 'hard-budget' | 'release-failed' | 'runtime-unavailable' | 'upload-timeout' | 'runtime-error';
+      reason: 'document-hidden' | 'asset-closure-incomplete' | 'asset-soft-budget' | 'decode-peak-budget' | 'host-cache-budget' | 'asset-metadata-missing' | 'sample-rate-unavailable' | 'hard-budget' | 'release-failed' | 'runtime-unavailable' | 'upload-timeout' | 'runtime-error';
       registeredAssetBytes?: number;
       requiredBytes?: number;
       limitBytes?: number;

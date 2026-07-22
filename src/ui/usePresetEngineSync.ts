@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import type { ProductSnapshotPatchReason } from '../audio/product/ProductEngineTypes';
 import type { ApplyPresetOptions } from './presetUtils';
 import type { SliderState } from './state';
 
-type PresetEngineUpdateOptions = Pick<
+export type PresetEngineUpdateOptions = Pick<
   ApplyPresetOptions,
   'updateEngine' | 'resetCofDrift' | 'onUpdateEngine' | 'onResetCofDrift'
 >;
+
+export type ProductPresetSyncOptions = {
+  immediate: true;
+  reason: 'preset-load';
+  forceFullSnapshot: true;
+  triggerCritical: true;
+};
 
 type ScheduleAudioEngineParamUpdate = (
   nextState: SliderState,
@@ -20,7 +26,7 @@ type ScheduleAudioEngineParamUpdate = (
 ) => void;
 
 type UsePresetEngineSyncOptions = {
-  audioEngineRuntimeMode: AudioEngineRuntimeMode;
+  audioEngineProductCore: boolean;
   scheduleAudioEngineParamUpdate: ScheduleAudioEngineParamUpdate;
   resetSelectedCofDrift: () => void;
   updateSelectedReferenceParams: (
@@ -36,8 +42,42 @@ type PresetEngineSyncControls = {
   skipNextPresetLoadEngineSync: () => void;
 };
 
+export function createPresetEngineUpdateOptions(
+  audioEngineProductCore: boolean,
+  resetSelectedCofDrift: () => void,
+  updateSelectedReferenceParams: (
+    nextState: SliderState,
+    metadata: { presetId: string; presetName: string },
+  ) => void,
+): PresetEngineUpdateOptions {
+  return {
+    updateEngine: !audioEngineProductCore,
+    resetCofDrift: !audioEngineProductCore,
+    onUpdateEngine: (
+      nextState: SliderState,
+      metadata: { presetId: string; presetName: string },
+    ) => {
+      if (audioEngineProductCore) return;
+      updateSelectedReferenceParams(nextState, metadata);
+    },
+    onResetCofDrift: () => {
+      if (audioEngineProductCore) return;
+      resetSelectedCofDrift();
+    },
+  };
+}
+
+export function createProductPresetSyncOptions(): ProductPresetSyncOptions {
+  return {
+    immediate: true,
+    reason: 'preset-load',
+    forceFullSnapshot: true,
+    triggerCritical: true,
+  };
+}
+
 export function usePresetEngineSync({
-  audioEngineRuntimeMode,
+  audioEngineProductCore,
   scheduleAudioEngineParamUpdate,
   resetSelectedCofDrift,
   updateSelectedReferenceParams,
@@ -50,32 +90,20 @@ export function usePresetEngineSync({
     skipNextPresetLoadEngineSyncRef.current = false;
   }, []);
 
-  const presetEngineUpdateOptions = useMemo((): PresetEngineUpdateOptions => ({
-    updateEngine: audioEngineRuntimeMode !== 'core-product',
-    resetCofDrift: audioEngineRuntimeMode !== 'core-product',
-    onUpdateEngine: (
-      nextState: SliderState,
-      metadata: { presetId: string; presetName: string },
-    ) => {
-      if (audioEngineRuntimeMode === 'core-product') return;
-      updateSelectedReferenceParams(nextState, metadata);
-    },
-    onResetCofDrift: () => {
-      if (audioEngineRuntimeMode === 'core-product') return;
-      resetSelectedCofDrift();
-    },
-  }), [audioEngineRuntimeMode, resetSelectedCofDrift, updateSelectedReferenceParams]);
+  const presetEngineUpdateOptions = useMemo(
+    () => createPresetEngineUpdateOptions(
+      audioEngineProductCore,
+      resetSelectedCofDrift,
+      updateSelectedReferenceParams,
+    ),
+    [audioEngineProductCore, resetSelectedCofDrift, updateSelectedReferenceParams],
+  );
 
   const syncCoreProductAppliedPreset = useCallback((nextState: SliderState): void => {
-    if (audioEngineRuntimeMode !== 'core-product') return;
+    if (!audioEngineProductCore) return;
     immediatelyAppliedAudioEngineStateRef.current = nextState;
-    scheduleAudioEngineParamUpdate(nextState, {
-      immediate: true,
-      reason: 'preset-load',
-      forceFullSnapshot: true,
-      triggerCritical: true,
-    });
-  }, [audioEngineRuntimeMode, scheduleAudioEngineParamUpdate]);
+    scheduleAudioEngineParamUpdate(nextState, createProductPresetSyncOptions());
+  }, [audioEngineProductCore, scheduleAudioEngineParamUpdate]);
 
   const syncScheduledAudioEngineState = useCallback((nextState: SliderState): void => {
     if (immediatelyAppliedAudioEngineStateRef.current === nextState) {

@@ -186,7 +186,7 @@ void requireExactRatchetOffsets() {
   engine->scatter_runtime.global_cooldown_until_frame = UINT64_MAX;
   engine->scatter_runtime.next_selector_frame = UINT64_MAX;
   SequencerBuffer events{};
-  engine->scheduleScatterEvents(24001u, events);
+  engine->scheduleScatterEvents(24001u, events, false);
   require(events.count == 3u, "exact scheduler ratchet count mismatch");
   events.sortByOffset();
   require(events.events[0].sample_offset == 0u, "exact scheduler first hit offset mismatch");

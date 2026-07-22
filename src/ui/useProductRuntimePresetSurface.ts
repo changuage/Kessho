@@ -1,8 +1,10 @@
-import { useSelectedAudioEnginePresetRuntimeSurface } from './useSelectedAudioEnginePresetRuntimeSurface';
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
+import { useCallback, useRef } from 'react';
 import type { ProductSnapshotPatchReason } from '../audio/product/ProductEngineTypes';
+import type { ProductRuntimeReferenceAdapterSurface } from './productRuntimeConstruction';
 import type { ApplyPresetOptions } from './presetUtils';
 import type { SliderState } from './state';
+import { useAudioEngineParamSync } from './useAudioEngineParamSync';
+import { usePresetEngineSync } from './usePresetEngineSync';
 
 export type ProductRuntimeParamUpdateOptions = {
   immediate?: boolean;
@@ -17,12 +19,9 @@ type ProductRuntimePresetUpdateOptions = Pick<
 >;
 
 export type ProductRuntimePresetSurfaceOptions = {
-  productRuntimeMode: ProductRuntimeSelectionMode;
+  productRuntimeCore: boolean;
+  productRuntimeReferenceAdapter: ProductRuntimeReferenceAdapterSurface;
   resetProductCofDrift: () => void;
-  updateSelectedReferenceParams: (
-    nextState: SliderState,
-    metadata: { presetId: string; presetName: string },
-  ) => void;
 };
 
 export type ProductRuntimePresetSurface = {
@@ -37,24 +36,53 @@ export type ProductRuntimePresetSurface = {
 };
 
 export function useProductRuntimePresetSurface({
-  productRuntimeMode,
+  productRuntimeCore,
+  productRuntimeReferenceAdapter,
   resetProductCofDrift,
-  ...options
 }: ProductRuntimePresetSurfaceOptions): ProductRuntimePresetSurface {
-  // TODO(product-fallback-retire:runtime-preset-surface): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
-  // Keep selected-audio-engine preset sync hidden behind this
-  // product runtime facade until preset/session orchestration is fully product-owned.
-  const selectedPresetSurface = useSelectedAudioEnginePresetRuntimeSurface({
-    ...options,
-    audioEngineRuntimeMode: productRuntimeMode,
-    resetSelectedCofDrift: resetProductCofDrift,
+  const scheduleCoreProductRuntimeParamUpdate = useAudioEngineParamSync();
+  type ReferenceRuntimeAdapter = Awaited<ReturnType<ProductRuntimeReferenceAdapterSurface['load']>>;
+  const referenceRuntimeAdapterPromiseRef = useRef<Promise<ReferenceRuntimeAdapter> | null>(null);
+  const updateReferenceRuntimeParams = useCallback((nextState: SliderState, metadata?: unknown): void => {
+    if (productRuntimeCore || !productRuntimeReferenceAdapter.available) return;
+    if (!referenceRuntimeAdapterPromiseRef.current) {
+      referenceRuntimeAdapterPromiseRef.current = productRuntimeReferenceAdapter.load();
+    }
+    void referenceRuntimeAdapterPromiseRef.current.then((referenceRuntimeAdapter) => {
+      referenceRuntimeAdapter.updateParams(nextState, metadata);
+    });
+  }, [productRuntimeCore, productRuntimeReferenceAdapter]);
+  const resetReferenceRuntimeCofDrift = useCallback((): void => {
+    if (productRuntimeCore || !productRuntimeReferenceAdapter.available) return;
+    if (!referenceRuntimeAdapterPromiseRef.current) {
+      referenceRuntimeAdapterPromiseRef.current = productRuntimeReferenceAdapter.load();
+    }
+    void referenceRuntimeAdapterPromiseRef.current.then((referenceRuntimeAdapter) => {
+      referenceRuntimeAdapter.resetCofDrift();
+    });
+  }, [productRuntimeCore, productRuntimeReferenceAdapter]);
+  const scheduleProductRuntimeParamUpdate = useCallback((
+    nextState: SliderState,
+    updateOptions?: ProductRuntimeParamUpdateOptions,
+  ): void => {
+    if (productRuntimeCore) {
+      scheduleCoreProductRuntimeParamUpdate(nextState, updateOptions);
+      return;
+    }
+    updateReferenceRuntimeParams(nextState, updateOptions);
+  }, [productRuntimeCore, scheduleCoreProductRuntimeParamUpdate, updateReferenceRuntimeParams]);
+  const presetEngineSurface = usePresetEngineSync({
+    audioEngineProductCore: productRuntimeCore,
+    scheduleAudioEngineParamUpdate: scheduleProductRuntimeParamUpdate,
+    resetSelectedCofDrift: productRuntimeCore ? resetProductCofDrift : resetReferenceRuntimeCofDrift,
+    updateSelectedReferenceParams: updateReferenceRuntimeParams,
   });
 
   return {
-    scheduleProductRuntimeParamUpdate: selectedPresetSurface.scheduleAudioEngineParamUpdate,
-    presetProductRuntimeUpdateOptions: selectedPresetSurface.presetEngineUpdateOptions,
-    syncCoreProductAppliedPreset: selectedPresetSurface.syncCoreProductAppliedPreset,
-    syncScheduledProductRuntimeState: selectedPresetSurface.syncScheduledAudioEngineState,
-    skipNextPresetLoadEngineSync: selectedPresetSurface.skipNextPresetLoadEngineSync,
+    scheduleProductRuntimeParamUpdate,
+    presetProductRuntimeUpdateOptions: presetEngineSurface.presetEngineUpdateOptions,
+    syncCoreProductAppliedPreset: presetEngineSurface.syncCoreProductAppliedPreset,
+    syncScheduledProductRuntimeState: presetEngineSurface.syncScheduledAudioEngineState,
+    skipNextPresetLoadEngineSync: presetEngineSurface.skipNextPresetLoadEngineSync,
   };
 }

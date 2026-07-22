@@ -1,23 +1,17 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { useAnimationVisibility } from '../hooks/useAnimationVisibility';
 import type { OrbitNoteConfig, OrbitRuntimeVisualState, OrbitSequencerConfig, OrbitSplineConfig } from './orbitSequencerTypes';
 import {
   ORBIT_RADIUS_SCALE,
-  adjustedOrbitSpeedValue,
   cartesianToPolar,
-  directionSign,
-  effectiveOrbitDirection,
   lineAngleOffset,
-  orbitClockedBpmPercent,
   orbitAuthoredPhaseFromVisual,
-  orbitSpeedOffsetStats,
   orbitVisualPhase,
   polarToCartesian,
-  resolveAngularSpeed,
   rotateOrbitPoint,
   sampleBezierSpline,
   snapOrbitPhase,
   splineAngleAtRadius,
-  wrapRadians,
   type OrbitPoint,
   type OrbitSplineSample,
 } from './orbitSequencerMath';
@@ -27,10 +21,6 @@ interface OrbitSequencerCanvasProps {
   color: string;
   selectedNoteId: string | null;
   active: boolean;
-  transportBpm?: number;
-  clockDivision?: unknown;
-  stepCount?: number;
-  tempoMultiplier?: number;
   runtimeVisualState?: OrbitRuntimeVisualState | null;
   playbackEditActive?: boolean;
   onSelectNote: (id: string | null) => void;
@@ -202,36 +192,6 @@ function nativeRuntimeCoversNotes(
   return !!runtime &&
     runtime.noteCount === config.notes.length &&
     runtime.noteAngles.length >= config.notes.length;
-}
-
-function advanceFallbackRuntimeNote(
-  runtime: RuntimeNote,
-  note: OrbitNoteConfig,
-  noteIndex: number,
-  config: OrbitSequencerConfig,
-  transportBpm: number,
-  orbitBpmPercent: number,
-  dt: number,
-  speedStats = orbitSpeedOffsetStats(config.notes),
-): void {
-  if (!note.enabled) return;
-  const speedValue = adjustedOrbitSpeedValue(
-    note.speedMode,
-    note.speedValue,
-    note.radiusNorm,
-    config.speedOffset,
-    speedStats,
-  );
-  const direction = effectiveOrbitDirection(note.direction, noteIndex, {
-    evenOffset: config.evenOffset,
-    evenReverseMode: config.evenReverseMode,
-  });
-  runtime.angle = wrapRadians(
-    runtime.angle +
-    directionSign(direction) *
-    resolveAngularSpeed(note.speedMode, speedValue, orbitBpmPercent, transportBpm) *
-    dt,
-  );
 }
 
 function noteScreenPoint(
@@ -456,10 +416,6 @@ export function OrbitSequencerCanvas({
   color,
   selectedNoteId,
   active,
-  transportBpm = 120,
-  clockDivision = 8,
-  stepCount = 16,
-  tempoMultiplier = 1,
   runtimeVisualState = null,
   playbackEditActive = false,
   onSelectNote,
@@ -468,14 +424,11 @@ export function OrbitSequencerCanvas({
   onUpdateSpline,
 }: OrbitSequencerCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const { canAnimate } = useAnimationVisibility(canvasRef, { rootMargin: '0px' });
   const configRef = useRef(config);
   const selectedNoteIdRef = useRef(selectedNoteId);
   const activeRef = useRef(active);
   const playbackEditActiveRef = useRef(playbackEditActive);
-  const transportBpmRef = useRef(transportBpm);
-  const clockDivisionRef = useRef(clockDivision);
-  const stepCountRef = useRef(stepCount);
-  const tempoMultiplierRef = useRef(tempoMultiplier);
   const runtimeVisualStateRef = useRef<OrbitRuntimeVisualState | null>(runtimeVisualState);
   const runtimeRef = useRef<Map<string, RuntimeNote>>(new Map());
   const phaseRef = useRef<Map<string, number>>(new Map());
@@ -572,22 +525,6 @@ export function OrbitSequencerCanvas({
   }, [playbackEditActive]);
 
   useEffect(() => {
-    transportBpmRef.current = transportBpm;
-  }, [transportBpm]);
-
-  useEffect(() => {
-    clockDivisionRef.current = clockDivision;
-  }, [clockDivision]);
-
-  useEffect(() => {
-    stepCountRef.current = stepCount;
-  }, [stepCount]);
-
-  useEffect(() => {
-    tempoMultiplierRef.current = tempoMultiplier;
-  }, [tempoMultiplier]);
-
-  useEffect(() => {
     runtimeVisualStateRef.current = runtimeVisualState;
     if (!runtimeVisualState) return;
     if (!activeRef.current) return;
@@ -630,7 +567,8 @@ export function OrbitSequencerCanvas({
     }
   }, [runtimeVisualState]);
 
-  const drawStaticOrbit = () => {
+  const drawStaticOrbit = useCallback(() => {
+    if (!canAnimate) return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     const { width, height, dpr } = sizeRef.current;
@@ -649,7 +587,11 @@ export function OrbitSequencerCanvas({
         ? nativeRuntime.baseAngle
         : undefined,
     });
-  };
+  }, [canAnimate, color]);
+
+  useEffect(() => {
+    drawStaticOrbit();
+  }, [active, canAnimate, config, drawStaticOrbit, playbackEditActive, runtimeVisualState, selectedNoteId]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -664,128 +606,11 @@ export function OrbitSequencerCanvas({
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       sizeRef.current = { width, height, dpr };
+      drawStaticOrbit();
     });
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    let raf = 0;
-    let idleTimer = 0;
-    let lastTime = performance.now();
-
-    const scheduleNext = () => {
-      if (activeRef.current || dragStateRef.current) {
-        raf = requestAnimationFrame(loop);
-        return;
-      }
-      idleTimer = window.setTimeout(() => {
-        loop(performance.now());
-      }, 180);
-    };
-
-    const loop = (time: number) => {
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext('2d');
-      const { width, height, dpr } = sizeRef.current;
-      if (canvas && ctx && width > 0 && height > 0) {
-        const configNow = configRef.current;
-        const dt = Math.max(0, (time - lastTime) / 1000);
-        const decayDt = Math.min(0.05, dt);
-        const shouldAdvance = activeRef.current;
-        const transportBpmNow = transportBpmRef.current;
-        const orbitBpmPercent = configNow.clockMode === 'transport'
-          ? orbitClockedBpmPercent(
-            stepCountRef.current,
-            clockDivisionRef.current,
-            tempoMultiplierRef.current,
-            configNow.bpmPercent / 100,
-          )
-          : configNow.bpmPercent;
-        const nativeRuntime = runtimeVisualStateRef.current;
-        const activeNativeRuntime = shouldAdvance && nativeRuntimeCoversNotes(nativeRuntime, configNow)
-          ? nativeRuntime
-          : null;
-        const speedStats = orbitSpeedOffsetStats(configNow.notes);
-        const dragState = dragStateRef.current;
-        const playbackEditActiveNow = playbackEditActiveRef.current;
-        const draggingNoteId = !playbackEditActiveNow && dragState?.type === 'note' ? dragState.id : null;
-        const authoredVisualGuardActive = !playbackEditActiveNow && time < authoredVisualGuardUntilRef.current;
-        const hasNativeRuntime = activeNativeRuntime !== null;
-        const noteGuards = authoredNoteGuardUntilRef.current;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        for (let noteIndex = 0; noteIndex < configNow.notes.length; noteIndex += 1) {
-          const note = configNow.notes[noteIndex];
-          if (!note) continue;
-          const runtime = runtimeRef.current.get(note.id);
-          if (!runtime) continue;
-          const noteGuardUntil = playbackEditActiveNow ? 0 : noteGuards.get(note.id) ?? 0;
-          const noteAuthoredActive = !shouldAdvance || note.id === draggingNoteId || noteGuardUntil > time;
-          if (noteAuthoredActive) {
-            runtime.angle = note.phase;
-            runtime.nativeAngle = undefined;
-            runtime.flash = Math.max(0, runtime.flash - decayDt * 2.5);
-            continue;
-          }
-          if (!playbackEditActiveNow && noteGuardUntil > 0) noteGuards.delete(note.id);
-          if (!hasNativeRuntime) {
-            runtime.nativeAngle = undefined;
-          }
-          if (hasNativeRuntime) {
-            const nativeAngle = activeNativeRuntime.noteAngles[noteIndex];
-            if (typeof nativeAngle === 'number' && Number.isFinite(nativeAngle)) {
-              runtime.nativeAngle = nativeAngle;
-              runtime.flash = Math.max(0, activeNativeRuntime.noteFlashes[noteIndex] ?? runtime.flash);
-            } else {
-              runtime.nativeAngle = undefined;
-            }
-          } else if (shouldAdvance && note.enabled) {
-            advanceFallbackRuntimeNote(runtime, note, noteIndex, configNow, transportBpmNow, orbitBpmPercent, dt, speedStats);
-          }
-          if (!hasNativeRuntime) {
-            runtime.flash = Math.max(0, runtime.flash - decayDt * 2.5);
-          }
-        }
-        if (
-          shouldAdvance &&
-          configNow.spline.spinEnabled &&
-          !hasNativeRuntime &&
-          !authoredVisualGuardActive
-        ) {
-          configRef.current = {
-            ...configNow,
-            spline: {
-              ...configNow.spline,
-              baseAngle: wrapRadians(
-                configNow.spline.baseAngle +
-                directionSign(configNow.spline.spinDirection) *
-                resolveAngularSpeed('bpmPercent', 100, orbitBpmPercent, transportBpmNow) *
-                dt,
-              ),
-            },
-          };
-        }
-        drawOrbit(ctx, {
-          config: configRef.current,
-          color,
-          selectedNoteId: selectedNoteIdRef.current,
-          runtimes: runtimeRef.current,
-          width,
-          height,
-          runtimeBaseAngle: activeNativeRuntime && !authoredVisualGuardActive
-            ? activeNativeRuntime.baseAngle
-            : undefined,
-        });
-      }
-      lastTime = time;
-      scheduleNext();
-    };
-    raf = requestAnimationFrame(loop);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.clearTimeout(idleTimer);
-    };
-  }, [color]);
+  }, [drawStaticOrbit]);
 
   const canvasPointer = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;

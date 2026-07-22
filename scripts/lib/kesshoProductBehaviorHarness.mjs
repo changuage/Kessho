@@ -1171,14 +1171,6 @@ Object.assign(globalThis, {
   handleCoreProductSequencerControlEvent,
 });`, context, { filename: sequencerControlEventBridgePath });
 
-  const sequencerEvolveBridgePath = 'src/audio/product/host/CoreProductSequencerEvolveBridge.ts';
-  const sequencerEvolveBridgeSource = stripImportsAndExports(readProjectFile(sequencerEvolveBridgePath));
-  const sequencerEvolveBridgeJs = transpileForVm(sequencerEvolveBridgeSource, resolve(root, sequencerEvolveBridgePath));
-  vm.runInNewContext(`${sequencerEvolveBridgeJs}
-Object.assign(globalThis, {
-  CoreProductSequencerEvolveBridge,
-});`, context, { filename: sequencerEvolveBridgePath });
-
   const sequencerCacheBridgePath = 'src/audio/product/host/CoreProductSequencerCacheBridge.ts';
   const sequencerCacheBridgeSource = stripImportsAndExports(readProjectFile(sequencerCacheBridgePath));
   const sequencerCacheBridgeJs = transpileForVm(sequencerCacheBridgeSource, resolve(root, sequencerCacheBridgePath));
@@ -1230,14 +1222,6 @@ Object.assign(globalThis, {
 Object.assign(globalThis, {
   CoreProductSequencerVisualBridge,
 });`, context, { filename: sequencerVisualBridgePath });
-
-  const sequencerEvolvePayloadBridgePath = 'src/audio/product/host/CoreProductSequencerEvolvePayloadBridge.ts';
-  const sequencerEvolvePayloadBridgeSource = stripImportsAndExports(readProjectFile(sequencerEvolvePayloadBridgePath));
-  const sequencerEvolvePayloadBridgeJs = transpileForVm(sequencerEvolvePayloadBridgeSource, resolve(root, sequencerEvolvePayloadBridgePath));
-  vm.runInNewContext(`${sequencerEvolvePayloadBridgeJs}
-Object.assign(globalThis, {
-  createCoreProductEvolvedSubLanePayload,
-});`, context, { filename: sequencerEvolvePayloadBridgePath });
 
   const sequencerHomeCaptureBridgePath = 'src/audio/product/host/CoreProductSequencerHomeCaptureBridge.ts';
   const sequencerHomeCaptureBridgeSource = stripImportsAndExports(readProjectFile(sequencerHomeCaptureBridgePath));

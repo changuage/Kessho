@@ -16,7 +16,6 @@ for (const path of retired) assert(!existsSync(path), `${path} must remain retir
 
 const projection = read('src/ui/useRuntimeSequencerProjectionCallbacks.ts');
 const productSurface = read('src/ui/useProductRuntimeCallbackSurfaces.ts');
-const selectedSurface = read('src/ui/useSelectedAudioEngineCallbackSurfaces.ts');
 const registrations = read('src/ui/useProductRuntimeCallbackRegistrations.ts');
 
 for (const token of [
@@ -40,10 +39,9 @@ for (const forbidden of [
   'visibilitychange',
 ]) assert(!projection.includes(forbidden), `projection hook must not own timing/lifecycle behavior: ${forbidden}`);
 
-assert(productSurface.includes('useRuntimeSequencerProjectionCallbacks(productRuntimeMode)'), 'product surface must consume canonical sequencer projections');
-assert(selectedSurface.includes('useRuntimeSequencerProjectionCallbacks(audioEngineRuntimeMode)'), 'selected surface must consume canonical sequencer projections');
+assert(productSurface.includes('useRuntimeSequencerProjectionCallbacks()'), 'product surface must consume canonical sequencer projections');
 assert(registrations.includes('useLiveTriggerUiCallbacks({'), 'live runtime projections must use the neutral shared implementation');
-assert(registrations.includes('useSelectedAudioEngineVisualizerCallbacks({'), 'visualizer projections must use one shared implementation');
+assert(productSurface.includes('useRuntimeSequencerProjectionCallbacks()'), 'Product surface must consume canonical sequencer projections');
 
 if (failures.length > 0) {
   console.error(`Runtime projection unification check failed:\n${failures.map((failure) => `- ${failure}`).join('\n')}`);

@@ -14,6 +14,18 @@ const prerequisiteSteps = [
   'core:product:workflow',
   'core:product:architecture',
   'migration:product-boundary',
+  'architecture:web-tsx-reachability',
+  'architecture:budget:strict',
+  'architecture:runtime-scheduler',
+  'test:preset-current-schema',
+  'test:preset-manager-query-ownership',
+  'test:document-visibility',
+  'test:live-note-input',
+  'core:product:live-note-contract',
+  'test:generated-sequencer-capture',
+  'core:product:background-audio',
+  'core:product:background-audio-docs',
+  'core:product:running-sequencer-live-updates',
   'migration:docs',
   'migration:no-web-ts-bundle',
   'core:product:sequencer-lane-count',
@@ -61,13 +73,13 @@ const prerequisiteSteps = [
   'core:product:granular-artifacts',
   'core:product:reverb-tail-quality',
   'core:product:web-cpu-comparison',
-  'core:product:page-cpu-comparison',
+  'core:product:page-cpu-before-after',
   'core:product:module-cpu',
   'core:product:cpu-scenarios',
 ];
 
 const finalGateStep = 'core:product:default-gate-v3';
-const steps = skipFinalGate ? prerequisiteSteps : [...prerequisiteSteps, finalGateStep];
+const expectedSteps = skipFinalGate ? prerequisiteSteps : [...prerequisiteSteps, finalGateStep];
 
 const report = {
   schemaVersion: 1,
@@ -78,7 +90,7 @@ const report = {
   finalGateStep,
   finalGateSkipped: skipFinalGate,
   prerequisiteSteps,
-  expectedSteps: steps,
+  expectedSteps,
   steps: [],
   summary: {
     status: 'running',
@@ -98,7 +110,7 @@ function writeReport() {
 
 writeReport();
 
-for (const step of steps) {
+for (const step of prerequisiteSteps) {
   const label = `npm run ${step}`;
   if (process.env.GITHUB_ACTIONS === 'true') {
     console.log(`::group::${label}`);
@@ -137,3 +149,40 @@ for (const step of steps) {
 
 report.summary.status = 'pass';
 writeReport();
+
+if (!skipFinalGate) {
+  const step = finalGateStep;
+  const label = `npm run ${step}`;
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.log(`::group::${label}`);
+  }
+  const startedAt = new Date().toISOString();
+  const startMs = performance.now();
+  const result = spawnSync('npm', ['run', step], {
+    cwd: root,
+    env: process.env,
+    stdio: 'inherit',
+  });
+  const finishedAt = new Date().toISOString();
+  report.steps.push({
+    step,
+    label,
+    status: result.status === 0 ? 'pass' : 'fail',
+    startedAt,
+    finishedAt,
+    durationMs: Math.round(performance.now() - startMs),
+    exitCode: result.status,
+    signal: result.signal,
+  });
+  report.summary.status = result.status === 0 ? 'pass' : 'fail';
+  writeReport();
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.log('::endgroup::');
+  }
+  if (result.status !== 0) {
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      console.error(`::error title=Product Core final gate failed::${label} exited with code ${result.status ?? 'unknown'}`);
+    }
+    process.exit(result.status ?? 1);
+  }
+}

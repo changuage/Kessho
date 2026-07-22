@@ -12,7 +12,7 @@ type MacAudioStatusPillProps = {
 };
 
 type BackgroundAudioStatusPillProps = {
-  readonly productRuntimeMode: string;
+  readonly productRuntimeCore: boolean;
   readonly backgroundAudioStatus: ProductRuntimeBackgroundAudioStatus;
   readonly nativeProductRendererDiagnosticStatus: NativeProductRendererDiagnosticStatus;
   readonly requestVisiblePageWakeLock: () => void | Promise<void>;
@@ -57,13 +57,13 @@ export function MacAudioStatusPill({
 }
 
 export function BackgroundAudioStatusPill({
-  productRuntimeMode,
+  productRuntimeCore,
   backgroundAudioStatus,
   nativeProductRendererDiagnosticStatus,
   requestVisiblePageWakeLock,
   releaseVisiblePageWakeLock,
 }: BackgroundAudioStatusPillProps) {
-  if (productRuntimeMode !== 'core-product') return null;
+  if (!productRuntimeCore) return null;
   const wakeLockAction = backgroundAudioStatus.wakeLockStatus === 'active'
     ? releaseVisiblePageWakeLock
     : requestVisiblePageWakeLock;

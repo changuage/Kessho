@@ -43,7 +43,6 @@ type UseSavedPresetLoadRuntimeSurfaceOptions<TPreset extends SavedPreset> = {
   presetEngineUpdateOptions: PresetEngineUpdateOptions;
   syncCoreProductAppliedPreset: (nextState: SliderState) => void;
   skipNextPresetLoadEngineSync: () => void;
-  normalizeState: (state: SliderState) => SliderState;
   applyDualRangesFromPreset: (
     dualRanges?: Record<string, { min: number; max: number }>,
     presetSliderModes?: Record<string, SliderMode>,
@@ -81,7 +80,6 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
   presetEngineUpdateOptions,
   syncCoreProductAppliedPreset,
   skipNextPresetLoadEngineSync,
-  normalizeState,
   applyDualRangesFromPreset,
   restoreEvolveConfigs,
   onPresetPoolLoad,
@@ -145,8 +143,9 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
 
       if (shouldApplyPresetA) {
         const result = applyPreset(resolvedPreset, {
+          loadMode: 'exact-as-saved',
           currentState: state,
-          normalize: normalizeState,
+          normalize: (current) => current,
           ...presetEngineUpdateOptions,
           updateEngine: false,
           resetCofDrift: false,
@@ -177,7 +176,6 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
       lastAppliedPresetLoadRef,
       morphPosition,
       morphPresetB,
-      normalizeState,
       onPresetPoolLoad,
       presetEngineUpdateOptions,
       resolveSavedPresetForLoad,

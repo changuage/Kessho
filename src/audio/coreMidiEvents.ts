@@ -12,7 +12,7 @@ export interface KesshoCoreMidiEventPayload {
 }
 
 export interface KesshoCoreMidiTimingOptions {
-  sampleRate: number;
+  sampleRate: number | null;
   currentTimeSeconds?: number;
   timestampOriginSeconds?: number;
   maxSampleOffset?: number;
@@ -63,7 +63,8 @@ export function midiSampleOffset(
   message: Pick<KesshoMidiMessage, 'timestamp'>,
   options: KesshoCoreMidiTimingOptions,
 ): number {
-  const sampleRate = Math.max(1, Number.isFinite(options.sampleRate) ? options.sampleRate : 48000);
+  const sampleRate = options.sampleRate;
+  if (typeof sampleRate !== 'number' || !Number.isFinite(sampleRate) || sampleRate <= 0) return 0;
   const maxSampleOffset = clampInteger(
     options.maxSampleOffset,
     DEFAULT_MAX_SAMPLE_OFFSET,

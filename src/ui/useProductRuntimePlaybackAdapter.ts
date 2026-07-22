@@ -1,15 +1,15 @@
 import { useCallback, useMemo, useState } from 'react';
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import type { SliderState } from './state';
 import { useProductRuntimeBackgroundAudioSupport, type ProductRuntimeBackgroundAudioStatus } from './useProductRuntimeBackgroundAudioSupport';
 import { useProductRuntimeLifecycle } from './useProductRuntimeLifecycle';
+import type { ProductRuntimeLifecycle } from './useProductRuntimeLifecycle';
 import { useProductRuntimeMediaSession } from './useProductRuntimeMediaSession';
 import { useProductRuntimePlaybackControls } from './useProductRuntimePlaybackControls';
 
 type NativeDualRanges = Record<string, { min: number; max: number }>;
 
 type UseProductRuntimePlaybackAdapterOptions = {
-  productRuntimeMode: ProductRuntimeSelectionMode;
+  productRuntimeLifecycle: ProductRuntimeLifecycle;
   capacitorAudioSessionDiagnosticActive: boolean;
   setCapacitorAudioSessionDiagnosticActive: (active: boolean) => void;
 };
@@ -33,7 +33,7 @@ type ProductRuntimePlaybackAdapter = {
 };
 
 export function useProductRuntimePlaybackAdapter({
-  productRuntimeMode,
+  productRuntimeLifecycle,
   capacitorAudioSessionDiagnosticActive,
   setCapacitorAudioSessionDiagnosticActive,
 }: UseProductRuntimePlaybackAdapterOptions): ProductRuntimePlaybackAdapter {
@@ -45,14 +45,15 @@ export function useProductRuntimePlaybackAdapter({
     preloadProductRuntime,
     stopProductRuntime,
     fadeProductRuntimeOutput,
-  } = useProductRuntimeLifecycle(productRuntimeMode);
+  } = useProductRuntimeLifecycle(productRuntimeLifecycle);
   const [browserPlaybackActive, setBrowserPlaybackActive] = useState(false);
   const {
     backgroundAudioStatus,
     requestVisiblePageWakeLock,
     releaseVisiblePageWakeLock,
   } = useProductRuntimeBackgroundAudioSupport({
-    productRuntimeMode,
+    productRuntimeSupportsBackgroundResume: productRuntimeLifecycle.supportsBackgroundResume,
+    getProductLifecycleState: productRuntimeLifecycle.getProductLifecycleState,
     playbackActive: browserPlaybackActive,
     resumeProductRuntime,
   });
@@ -62,7 +63,6 @@ export function useProductRuntimePlaybackAdapter({
     setupProductIOSMediaSession,
     stopProductIOSMediaSession,
   } = useProductRuntimeMediaSession({
-    productRuntimeMode,
     resumeProductRuntime,
     suspendProductRuntime,
     stopProductRuntime,

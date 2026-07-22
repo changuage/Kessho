@@ -1,4 +1,4 @@
-import { useSelectedAudioEngineJourneyPlaybackAction } from './useSelectedAudioEngineJourneyPlaybackAction';
+import { useCallback } from 'react';
 import type { SliderState } from './state';
 
 type ProductRuntimeDualRanges = Record<string, { min: number; max: number }>;
@@ -16,13 +16,14 @@ export type ProductRuntimeJourneyPlaybackActionOptions = {
 
 export function useProductRuntimeJourneyPlaybackAction({
   startProductPlayback,
-  ...options
+  dualRanges,
 }: ProductRuntimeJourneyPlaybackActionOptions) {
-  // TODO(product-fallback-retire:runtime-journey-playback-action): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
-  // Journey playback still delegates through the selected-audio-engine
-  // action while Batch 10 isolates compatibility names behind product runtime facades.
-  return useSelectedAudioEngineJourneyPlaybackAction({
-    ...options,
-    startSelectedPlayback: startProductPlayback,
-  });
+  return useCallback(async (state: SliderState, title: string): Promise<void> => {
+    console.log('[Journey] Starting audio engine');
+    try {
+      await startProductPlayback({ state, dualRanges, title });
+    } catch (err) {
+      console.error('[Journey] Failed to start audio:', err);
+    }
+  }, [dualRanges, startProductPlayback]);
 }

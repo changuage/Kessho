@@ -159,8 +159,6 @@ interface SeqLaneProps {
   onChangePitchScale?: (scale: ScaleName) => void;
   /** Show the synthetic Harmony scale option before concrete scales. */
   allowHarmonyPitchScale?: boolean;
-  /** Root text shown in the pitch root drag control. */
-  pitchRootDisplayValue?: string;
   /** Root used for pitch note labels after caller-specific resolution. */
   pitchDisplayRoot?: number;
   /** Scale intervals used for pitch note labels after caller-specific resolution. */
@@ -215,7 +213,6 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   onChangePitchRoot,
   onChangePitchScale,
   allowHarmonyPitchScale = false,
-  pitchRootDisplayValue,
   pitchDisplayRoot,
   pitchDisplayScaleIntervals,
   selectedStep = null,
@@ -373,7 +370,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                         min={0}
                         max={127}
                         label="Root"
-                        displayValue={pitchRootDisplayValue}
+                        displayValue={midiToName(sequencer.pitch.root)}
                         onChange={(v) => onChangePitchRoot?.(v)}
                       />
                     )}

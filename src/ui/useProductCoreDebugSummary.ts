@@ -27,7 +27,7 @@ function summarizeProductCoreModulation(entries: CoreProductModulationDebugEntry
 }
 
 export function useProductCoreDebugSummary(
-  productRuntimeMode: string,
+  productRuntimeCore: boolean,
   runtime: Pick<ProductEnginePort, 'getTelemetry'> = productEngine,
 ): ProductCoreDebugSummary | null {
   const [summary, setSummary] = useState<ProductCoreDebugSummary | null>(null);
@@ -51,13 +51,13 @@ export function useProductCoreDebugSummary(
   }, [runtime]);
 
   useEffect(() => {
-    if (productRuntimeMode !== 'core-product') {
+    if (!productRuntimeCore) {
       setSummary(null);
     }
-  }, [productRuntimeMode]);
+  }, [productRuntimeCore]);
 
   useVisibleInterval(readDebugSummary, PRODUCT_CORE_DEBUG_SUMMARY_REFRESH_MS, {
-    enabled: productRuntimeMode === 'core-product',
+    enabled: productRuntimeCore,
   });
 
   return summary;

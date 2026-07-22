@@ -17,11 +17,8 @@ function observeWidth(element: Element, listener: (width: number) => void): () =
   };
 }
 
-/** One shared ResizeObserver serves every slider rail. */
 export function useElementWidth(ref: RefObject<Element>): number {
   const [width, setWidth] = useState(0);
-  // Resolve the initial rail width before paint so the first visible thumb
-  // uses pixel positioning without animating from its percentage fallback.
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return undefined;

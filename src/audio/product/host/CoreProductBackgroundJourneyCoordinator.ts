@@ -56,9 +56,13 @@ export class CoreProductBackgroundJourneyCoordinator {
     this.uploadCompletion = completion;
     const generation = ++this.uploadGeneration;
     try {
+      const sampleRate = runtime.audioContext?.sampleRate ?? this.dependencies.telemetry()?.sampleRate;
+      if (typeof sampleRate !== 'number' || !Number.isFinite(sampleRate) || sampleRate <= 0) {
+        return this.fail({ status: 'not-ready', reason: 'sample-rate-unavailable' });
+      }
       const prediction = assets.predictSceneAssetBytes(
         states,
-        runtime.audioContext?.sampleRate ?? this.dependencies.telemetry()?.sampleRate ?? 48_000,
+        sampleRate,
       );
       if (!prediction.complete) return this.fail({ status: 'not-ready', reason: 'asset-metadata-missing' });
       if (prediction.decodedBytes > IOS_WEB_BACKGROUND_JOURNEY_LIMITS.registeredAssetSoftBytes) {

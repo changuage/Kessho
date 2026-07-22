@@ -12,7 +12,6 @@ import {
   captureScratchForDisplay,
   captureStepCount,
   createCaptureScratch,
-  markCaptureStepVisited,
   positiveModulo,
   writeCaptureEventToStep,
 } from './generatedSequencerCaptureScratch';
@@ -24,6 +23,11 @@ import type { CapturedPitchReference } from './generatedSequencerCapturePitch';
 import {
   chooseGeneratedCaptureStopAction,
 } from './generatedSequencerCapturePhrase';
+import {
+  createGeneratedSequencerCapturePreviewGate,
+  type GeneratedSequencerCapturePreviewGate,
+} from './generatedSequencerCapturePreviewGate';
+import { useDocumentVisibility } from '../hooks/useDocumentVisibility';
 
 const GENERATED_CAPTURE_COMMIT_FLUSH_MS = 320;
 
@@ -77,7 +81,6 @@ export interface GeneratedSequenceCaptureApi {
     events: readonly GeneratedSequencerCaptureEvent[],
     overflowCount?: number,
   ) => void;
-  markCurrentStepFromPlayhead: () => void;
 }
 
 function sourceModeForLaneMode(
@@ -103,6 +106,27 @@ function currentStepFromSessionPlayhead(session: CaptureSession, playhead: numbe
     );
   }
   return currentStepFromPlayhead(playhead, session.targetStepCount);
+}
+
+export function generatedCapturePositionFromAuthoritativeTarget(
+  targetStepFloat: number | null,
+  targetStepIndex: number | null,
+  stepCount: number,
+  fallbackStepIndex: number,
+): { stepIndex: number; cycleIndex: number } {
+  const safeStepCount = Math.max(1, Math.round(stepCount));
+  const target = typeof targetStepFloat === 'number' && Number.isFinite(targetStepFloat)
+    ? targetStepFloat
+    : typeof targetStepIndex === 'number' && Number.isFinite(targetStepIndex)
+      ? targetStepIndex
+      : null;
+  if (target === null) {
+    return { stepIndex: positiveModulo(Math.round(fallbackStepIndex), safeStepCount), cycleIndex: 0 };
+  }
+  return {
+    stepIndex: positiveModulo(Math.round(target), safeStepCount),
+    cycleIndex: Math.max(0, Math.floor(target / safeStepCount)),
+  };
 }
 
 function currentCaptureStepIndex(session: CaptureSession, playhead: number): number {
@@ -151,30 +175,40 @@ export function useGeneratedSequenceCapture({
 }: UseGeneratedSequenceCaptureArgs): GeneratedSequenceCaptureApi {
   const [session, setSession] = useState<CaptureSession | null>(null);
   const sessionRef = useRef<CaptureSession | null>(null);
-  const previewRafRef = useRef<number | null>(null);
   const commitFlushTimerRef = useRef<number | null>(null);
   const manualEventIdRef = useRef(-1);
   const capturePitchReferenceRef = useRef<CapturedPitchReference | null>(null);
+  const documentVisible = useDocumentVisibility();
+  const previewGateRef = useRef<GeneratedSequencerCapturePreviewGate<CaptureSession | null> | null>(null);
 
-  useEffect(() => () => {
-    if (previewRafRef.current !== null) {
-      cancelAnimationFrame(previewRafRef.current);
-      previewRafRef.current = null;
-    }
-    if (commitFlushTimerRef.current !== null) {
-      window.clearTimeout(commitFlushTimerRef.current);
-      commitFlushTimerRef.current = null;
-    }
+  useEffect(() => {
+    const gate = createGeneratedSequencerCapturePreviewGate<CaptureSession | null>({
+      initialDocumentVisible: documentVisible,
+      initialValue: null,
+      onPreview: setSession,
+      scheduleFrame: (callback) => window.requestAnimationFrame(callback),
+      cancelFrame: (frame) => window.cancelAnimationFrame(frame),
+    });
+    previewGateRef.current = gate;
+
+    return () => {
+      gate.dispose();
+      if (previewGateRef.current === gate) previewGateRef.current = null;
+      if (commitFlushTimerRef.current !== null) {
+        window.clearTimeout(commitFlushTimerRef.current);
+        commitFlushTimerRef.current = null;
+      }
+    };
   }, []);
 
   const publishSession = useCallback((next: CaptureSession | null) => {
     sessionRef.current = next;
-    if (previewRafRef.current !== null) return;
-    previewRafRef.current = requestAnimationFrame(() => {
-      previewRafRef.current = null;
-      setSession(sessionRef.current);
-    });
+    previewGateRef.current?.publishAuthoritative(next);
   }, []);
+
+  useEffect(() => {
+    previewGateRef.current?.setDocumentVisible(documentVisible);
+  }, [documentVisible]);
 
   const startCapture = useCallback((request?: number | {
     sourceLaneIndex?: number;
@@ -427,39 +461,6 @@ export function useGeneratedSequenceCapture({
     return true;
   }, [beginCommit, publishSession, seq.playheads]);
 
-  const markCurrentStepFromPlayhead = useCallback(() => {
-    const current = sessionRef.current;
-    if (!current?.active || !isRunning) return;
-    if (current.status === 'committing') return;
-
-    const playhead = seq.playheads[current.targetLaneIndex] ?? 0;
-    const stepIndex = currentStepFromSessionPlayhead(current, playhead);
-    if (stepIndex === null) return;
-    const previousStep = current.scratch.lastStepIndex;
-    let cycleIndex = current.scratch.cycleIndex;
-    if (previousStep !== null && stepIndex < previousStep) {
-      cycleIndex += 1;
-    }
-    if (previousStep === stepIndex && current.scratch.cycleIndex === cycleIndex) {
-      return;
-    }
-
-    const completedScratch = cycleIndex > current.scratch.cycleIndex
-      ? current.scratch
-      : current.completedScratch;
-    const scratch = markCaptureStepVisited(current.scratch, stepIndex, cycleIndex);
-    const next = {
-      ...current,
-      completedScratch,
-      scratch,
-    };
-    if (current.status === 'finishing' && completedScratch?.cycleIndex === current.scratch.cycleIndex) {
-      beginCommit(next, completedScratch.cycleIndex);
-      return;
-    }
-    publishSession(next);
-  }, [beginCommit, isRunning, publishSession, seq.playheads]);
-
   useEffect(() => {
     if (isRunning) return;
     const current = sessionRef.current;
@@ -528,11 +529,17 @@ export function useGeneratedSequenceCapture({
       if (current.startMode === 'firstEvent' && typeof sessionTargetStep === 'number') {
         previousFirstEventRelativeStep = sessionTargetStep;
       }
-      const eventStepIndex = typeof sessionTargetStep === 'number'
-        ? positiveModulo(Math.round(sessionTargetStep), current.targetStepCount)
+      const eventPosition = generatedCapturePositionFromAuthoritativeTarget(
+        typeof sessionTargetStep === 'number' ? sessionTargetStep : null,
+        relativeTargetStep,
+        current.targetStepCount,
+        fallbackStepIndex,
+      );
+      const eventStepIndex = typeof sessionTargetStep === 'number' || relativeTargetStep !== null
+        ? eventPosition.stepIndex
         : fallbackStepIndex;
-      const eventCycleIndex = typeof sessionTargetStep === 'number'
-        ? Math.max(0, Math.floor(sessionTargetStep / current.targetStepCount))
+      const eventCycleIndex = typeof sessionTargetStep === 'number' || relativeTargetStep !== null
+        ? eventPosition.cycleIndex
         : scratch.cycleIndex;
       if (eventCycleIndex < scratch.cycleIndex) {
         if (!completedScratch || completedScratch.cycleIndex !== eventCycleIndex) continue;
@@ -627,6 +634,5 @@ export function useGeneratedSequenceCapture({
     cancelCapture,
     captureManualNote,
     ingestProductEvents,
-    markCurrentStepFromPlayhead,
   };
 }

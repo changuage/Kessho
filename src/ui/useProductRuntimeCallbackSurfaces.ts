@@ -1,14 +1,14 @@
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { useProductRuntimeEvolveOverrideSurface } from './useProductRuntimeEvolveOverrideSurface';
 import { useProductRuntimeLiveTriggerSurface } from './useProductRuntimeLiveTriggerSurface';
 import { useRuntimeSequencerProjectionCallbacks } from './useRuntimeSequencerProjectionCallbacks';
+import { useMemo } from 'react';
 
-export function useProductRuntimeCallbackSurfaces(productRuntimeMode: ProductRuntimeSelectionMode) {
-  const projectionCallbacks = useRuntimeSequencerProjectionCallbacks(productRuntimeMode);
-  const liveTriggerSurface = useProductRuntimeLiveTriggerSurface(productRuntimeMode);
-  const evolveOverrideSurface = useProductRuntimeEvolveOverrideSurface(productRuntimeMode);
+export function useProductRuntimeCallbackSurfaces() {
+  const projectionCallbacks = useRuntimeSequencerProjectionCallbacks();
+  const liveTriggerSurface = useProductRuntimeLiveTriggerSurface();
+  const evolveOverrideSurface = useProductRuntimeEvolveOverrideSurface();
 
-  return {
+  return useMemo(() => ({
     setProductDrumStepPositionCallback: projectionCallbacks.setDrumStepPositionCallback,
     setProductDrumEvolveTriggerCallback: projectionCallbacks.setDrumEvolveTriggerCallback,
     setProductDrumTriggerCallback: projectionCallbacks.setDrumTriggerCallback,
@@ -18,5 +18,5 @@ export function useProductRuntimeCallbackSurfaces(productRuntimeMode: ProductRun
     setProductSynthEvolveTriggerCallback: projectionCallbacks.setSynthEvolveTriggerCallback,
     ...liveTriggerSurface,
     ...evolveOverrideSurface,
-  };
+  }), [evolveOverrideSurface, liveTriggerSurface, projectionCallbacks]);
 }

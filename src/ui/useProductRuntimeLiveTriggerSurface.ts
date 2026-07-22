@@ -1,5 +1,5 @@
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
-import { useSelectedAudioEngineLiveTriggerSurface } from './useSelectedAudioEngineLiveTriggerSurface';
+import { useCallback, useMemo } from 'react';
+import { productEngine } from '../audio/product/ProductEngineProxy';
 
 type ProductLeadMorph = { lead1: number; lead2: number };
 type ProductLeadDistance = { lead1: number; lead2: number };
@@ -22,24 +22,79 @@ type ProductRuntimeLiveTriggerSurface = {
 };
 
 export function useProductRuntimeLiveTriggerSurface(
-  productRuntimeMode: ProductRuntimeSelectionMode,
 ): ProductRuntimeLiveTriggerSurface {
-  const liveTriggerSurface = useSelectedAudioEngineLiveTriggerSurface(productRuntimeMode);
+  const setProductLeadExpressionCallback = useCallback((callback: ((expression: Record<string, number>) => void) | null) => {
+    productEngine.setLeadExpressionCallback(callback);
+  }, []);
+  const setProductLeadMorphCallback = useCallback((callback: ((morph: ProductLeadMorph) => void) | null) => {
+    productEngine.setLeadMorphCallback(callback);
+  }, []);
+  const setProductPadMorphTriggerCallback = useCallback((callback: ((morphPosition: number) => void) | null) => {
+    productEngine.setPadMorphTriggerCallback(callback);
+  }, []);
+  const setProductPad2MorphTriggerCallback = useCallback((callback: ((morphPosition: number) => void) | null) => {
+    productEngine.setPad2MorphTriggerCallback(callback);
+  }, []);
+  const setProductLeadDistanceCallback = useCallback((callback: ((distance: ProductLeadDistance) => void) | null) => {
+    productEngine.setLeadDistanceCallback(callback);
+  }, []);
+  const setProductPadDistanceTriggerCallback = useCallback((callback: ((distance: number) => void) | null) => {
+    productEngine.setPadDistanceTriggerCallback(callback);
+  }, []);
+  const setProductPad2DistanceTriggerCallback = useCallback((callback: ((distance: number) => void) | null) => {
+    productEngine.setPad2DistanceTriggerCallback(callback);
+  }, []);
+  const setProductPianoDistanceTriggerCallback = useCallback((callback: ((distance: number) => void) | null) => {
+    productEngine.setPianoDistanceTriggerCallback(callback);
+  }, []);
+  const setProductSample1DistanceTriggerCallback = useCallback((callback: ((distance: number) => void) | null) => {
+    productEngine.setSample1DistanceTriggerCallback(callback);
+  }, []);
+  const setProductSample2DistanceTriggerCallback = useCallback((callback: ((distance: number) => void) | null) => {
+    productEngine.setSample2DistanceTriggerCallback(callback);
+  }, []);
+  const setProductLeadDelayCallback = useCallback((callback: ((delay: Record<string, number | string>) => void) | null) => {
+    productEngine.setLeadDelayCallback(callback);
+  }, []);
+  const setProductDrumMorphTriggerCallback = useCallback((callback: ((voice: unknown, morphPosition: number) => void) | null) => {
+    productEngine.setDrumMorphTriggerCallback(callback);
+  }, []);
+  const setProductDrumParamSHTriggerCallback = useCallback((callback: ((voice: unknown, key: string, position: number) => void) | null) => {
+    productEngine.setDrumParamSHTriggerCallback(callback);
+  }, []);
+  const setProductGranularSHTriggerCallback = useCallback((callback: ((positions: Record<string, number>) => void) | null) => {
+    productEngine.setGranularSHTriggerCallback(callback);
+  }, []);
 
-  return {
-    setProductLeadExpressionCallback: liveTriggerSurface.setSelectedLeadExpressionCallback,
-    setProductLeadMorphCallback: liveTriggerSurface.setSelectedLeadMorphCallback,
-    setProductPadMorphTriggerCallback: liveTriggerSurface.setSelectedPadMorphTriggerCallback,
-    setProductPad2MorphTriggerCallback: liveTriggerSurface.setSelectedPad2MorphTriggerCallback,
-    setProductLeadDistanceCallback: liveTriggerSurface.setSelectedLeadDistanceCallback,
-    setProductPadDistanceTriggerCallback: liveTriggerSurface.setSelectedPadDistanceTriggerCallback,
-    setProductPad2DistanceTriggerCallback: liveTriggerSurface.setSelectedPad2DistanceTriggerCallback,
-    setProductPianoDistanceTriggerCallback: liveTriggerSurface.setSelectedPianoDistanceTriggerCallback,
-    setProductSample1DistanceTriggerCallback: liveTriggerSurface.setSelectedSample1DistanceTriggerCallback,
-    setProductSample2DistanceTriggerCallback: liveTriggerSurface.setSelectedSample2DistanceTriggerCallback,
-    setProductLeadDelayCallback: liveTriggerSurface.setSelectedLeadDelayCallback,
-    setProductDrumMorphTriggerCallback: liveTriggerSurface.setSelectedDrumMorphTriggerCallback,
-    setProductDrumParamSHTriggerCallback: liveTriggerSurface.setSelectedDrumParamSHTriggerCallback,
-    setProductGranularSHTriggerCallback: liveTriggerSurface.setSelectedGranularSHTriggerCallback,
-  };
+  return useMemo(() => ({
+    setProductLeadExpressionCallback,
+    setProductLeadMorphCallback,
+    setProductPadMorphTriggerCallback,
+    setProductPad2MorphTriggerCallback,
+    setProductLeadDistanceCallback,
+    setProductPadDistanceTriggerCallback,
+    setProductPad2DistanceTriggerCallback,
+    setProductPianoDistanceTriggerCallback,
+    setProductSample1DistanceTriggerCallback,
+    setProductSample2DistanceTriggerCallback,
+    setProductLeadDelayCallback,
+    setProductDrumMorphTriggerCallback,
+    setProductDrumParamSHTriggerCallback,
+    setProductGranularSHTriggerCallback,
+  }), [
+    setProductLeadExpressionCallback,
+    setProductLeadMorphCallback,
+    setProductPadMorphTriggerCallback,
+    setProductPad2MorphTriggerCallback,
+    setProductLeadDistanceCallback,
+    setProductPadDistanceTriggerCallback,
+    setProductPad2DistanceTriggerCallback,
+    setProductPianoDistanceTriggerCallback,
+    setProductSample1DistanceTriggerCallback,
+    setProductSample2DistanceTriggerCallback,
+    setProductLeadDelayCallback,
+    setProductDrumMorphTriggerCallback,
+    setProductDrumParamSHTriggerCallback,
+    setProductGranularSHTriggerCallback,
+  ]);
 }

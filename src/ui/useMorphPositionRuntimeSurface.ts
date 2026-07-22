@@ -418,6 +418,10 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
       if (!telemetry?.enabled) return;
       const position = Math.round(telemetry.position * 100);
       setMorphPosition(position);
+      if (telemetry.sampleRate === null) {
+        setMorphCountdown(null);
+        return;
+      }
       const samplesLeft = Math.max(0, telemetry.phaseEndFrame - telemetry.absoluteSampleTime);
       const phraseSamples = Math.max(
         1,

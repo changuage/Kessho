@@ -1,47 +1,39 @@
 import { useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import type { ProductEngineState } from '../audio/product/ProductEngineTypes';
+import type { ProductRuntimeLifecycle } from './useProductRuntimeLifecycle';
+import type { ProductRuntimeStateSurface, ProductRuntimeTelemetrySurface } from './productRuntimeConstruction';
 import type { SliderState } from './state';
 import { useProductRuntimeMacRecovery } from './useProductRuntimeMacRecovery';
 import { useProductRuntimeRecordingRuntime } from './useProductRuntimeRecordingRuntime';
 import { useProductRuntimeStateRuntime } from './useProductRuntimeStateRuntime';
 import { useProductRuntimeTelemetry } from './useProductRuntimeTelemetry';
-import { useSelectedAudioEngineStateRuntime } from './useSelectedAudioEngineStateRuntime';
 
 type ProductRuntimeLifecycleUiMode = 'snowflake' | 'advanced' | 'journey';
 
 type ProductRuntimeLifecycleSurfaceOptions = {
-  productRuntimeMode: ProductRuntimeSelectionMode;
+  productRuntimeLifecycle: ProductRuntimeLifecycle;
   uiMode: ProductRuntimeLifecycleUiMode;
   playbackIsRunning: boolean;
-  getProductTransportDebugState: () => ProductEngineState['transportDebug'];
+  productRuntimeState: ProductRuntimeStateSurface;
+  productRuntimeTelemetry: ProductRuntimeTelemetrySurface;
   setEngineState: Dispatch<SetStateAction<ProductEngineState>>;
   macShellAvailable: boolean;
   stateRef: MutableRefObject<SliderState>;
 };
 
 export function useProductRuntimeLifecycleSurface(options: ProductRuntimeLifecycleSurfaceOptions) {
-  const recordingRuntime = useProductRuntimeRecordingRuntime(options.productRuntimeMode);
+  const recordingRuntime = useProductRuntimeRecordingRuntime();
   const runtimeTelemetry = useProductRuntimeTelemetry({
-    productRuntimeMode: options.productRuntimeMode,
+    productRuntimeTelemetry: options.productRuntimeTelemetry,
   });
 
   useProductRuntimeStateRuntime({
-    productRuntimeMode: options.productRuntimeMode,
+    productRuntimeState: options.productRuntimeState,
     enabled: options.playbackIsRunning,
-    getProductTransportDebugState: options.getProductTransportDebugState,
     setEngineState: options.setEngineState,
   });
-  useSelectedAudioEngineStateRuntime({
-    audioEngineRuntimeMode: options.productRuntimeMode,
-    enabled: false,
-    getSelectedTransportDebugState: options.getProductTransportDebugState,
-    stateReconciliationEnabled: options.productRuntimeMode !== 'core-product',
-    setEngineState: options.setEngineState,
-  });
-
   useProductRuntimeMacRecovery({
-    productRuntimeMode: options.productRuntimeMode,
+    productRuntimeLifecycle: options.productRuntimeLifecycle,
     macShellAvailable: options.macShellAvailable,
     playbackIsRunning: options.playbackIsRunning,
     stateRef: options.stateRef,

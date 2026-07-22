@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import type { ProductEngineLifecycleState } from '../audio/product/ProductEngineTypes';
-import { productEngine } from '../audio/product/ProductEngineProxy';
 
 type WakeLockSentinelLike = EventTarget & {
   readonly released: boolean;
@@ -32,7 +30,8 @@ export type ProductRuntimeBackgroundAudioStatus = {
 };
 
 type UseProductRuntimeBackgroundAudioSupportOptions = {
-  productRuntimeMode: ProductRuntimeSelectionMode;
+  productRuntimeSupportsBackgroundResume: boolean;
+  getProductLifecycleState: () => ProductEngineLifecycleState;
   playbackActive: boolean;
   resumeProductRuntime: () => void | Promise<void>;
 };
@@ -52,13 +51,9 @@ function mediaSessionSupported(): boolean {
   return typeof navigator !== 'undefined' && 'mediaSession' in navigator;
 }
 
-function lifecycleStateForMode(productRuntimeMode: ProductRuntimeSelectionMode): ProductEngineLifecycleState {
-  if (productRuntimeMode !== 'core-product') return 'cold';
-  return productEngine.getLifecycleState();
-}
-
 export function useProductRuntimeBackgroundAudioSupport({
-  productRuntimeMode,
+  productRuntimeSupportsBackgroundResume,
+  getProductLifecycleState,
   playbackActive,
   resumeProductRuntime,
 }: UseProductRuntimeBackgroundAudioSupportOptions) {
@@ -67,7 +62,7 @@ export function useProductRuntimeBackgroundAudioSupport({
   const resumeProductRuntimeRef = useRef(resumeProductRuntime);
   const [pageStatus, setPageStatus] = useState<ProductRuntimeBackgroundPageStatus>(() => currentPageStatus());
   const [lifecycleEvent, setLifecycleEvent] = useState('init');
-  const [productLifecycleState, setProductLifecycleState] = useState<ProductEngineLifecycleState>(() => lifecycleStateForMode(productRuntimeMode));
+  const [productLifecycleState, setProductLifecycleState] = useState<ProductEngineLifecycleState>(() => getProductLifecycleState());
   const [wakeLockStatus, setWakeLockStatus] = useState<ProductRuntimeWakeLockStatus>(() => wakeLockSupported() ? 'inactive' : 'unsupported');
   const [mediaSessionStatus, setMediaSessionStatus] = useState<ProductRuntimeMediaSessionStatus>(() => mediaSessionSupported() ? 'ready' : 'unsupported');
   const [resumeAttemptCount, setResumeAttemptCount] = useState(0);
@@ -79,8 +74,8 @@ export function useProductRuntimeBackgroundAudioSupport({
   }, [resumeProductRuntime]);
 
   const refreshProductLifecycleState = useCallback((): void => {
-    setProductLifecycleState(lifecycleStateForMode(productRuntimeMode));
-  }, [productRuntimeMode]);
+    setProductLifecycleState(getProductLifecycleState());
+  }, [getProductLifecycleState]);
 
   const releaseVisiblePageWakeLock = useCallback(async (): Promise<void> => {
     wakeLockWantedRef.current = false;
@@ -125,7 +120,7 @@ export function useProductRuntimeBackgroundAudioSupport({
   }, []);
 
   const attemptGracefulResume = useCallback((reason: string): void => {
-    if (productRuntimeMode !== 'core-product' || !playbackActive) return;
+    if (!productRuntimeSupportsBackgroundResume || !playbackActive) return;
     setResumeAttemptCount((count) => count + 1);
     setLastResumeReason(reason);
     try {
@@ -133,7 +128,7 @@ export function useProductRuntimeBackgroundAudioSupport({
     } catch (error) {
       setLastError(error instanceof Error ? error.message : String(error));
     }
-  }, [playbackActive, productRuntimeMode, refreshProductLifecycleState]);
+  }, [playbackActive, productRuntimeSupportsBackgroundResume, refreshProductLifecycleState]);
 
   useEffect(() => {
     setMediaSessionStatus(mediaSessionSupported() ? playbackActive ? 'active' : 'ready' : 'unsupported');

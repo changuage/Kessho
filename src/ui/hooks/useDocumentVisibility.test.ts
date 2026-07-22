@@ -42,6 +42,12 @@ test('document visibility store fans out through one browser listener', () => {
     assert.equal(firstUpdates, 1);
     assert.equal(secondUpdates, 1);
 
+    visibilityState = 'visible';
+    for (const listener of browserListeners) listener();
+    assert.equal(isDocumentVisible(), true);
+    assert.equal(firstUpdates, 2);
+    assert.equal(secondUpdates, 2);
+
     unsubscribeFirst();
     assert.equal(removeCount, 0);
     unsubscribeSecond();

@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 
 type DrumPageRuntimeBridgeOptions = {
-  preloadSelectedAudioEngine: () => Promise<unknown>;
+  preloadProductRuntime: () => Promise<unknown>;
 };
 
 type DrumPageRuntimeBridge = {
@@ -9,11 +9,11 @@ type DrumPageRuntimeBridge = {
 };
 
 export function useDrumPageRuntimeBridge({
-  preloadSelectedAudioEngine,
+  preloadProductRuntime,
 }: DrumPageRuntimeBridgeOptions): DrumPageRuntimeBridge {
   const preloadAudioEngine = useCallback((): Promise<unknown> => (
-    preloadSelectedAudioEngine()
-  ), [preloadSelectedAudioEngine]);
+    preloadProductRuntime()
+  ), [preloadProductRuntime]);
 
   return useMemo(() => ({
     preloadAudioEngine,

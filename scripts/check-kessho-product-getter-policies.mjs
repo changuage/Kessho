@@ -1,37 +1,19 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import {
+  collectImportSpecifiers,
+  collectSourceFiles,
+  relativeSourcePath,
+} from './lib/sourceArchitectureRules.mjs';
+import {
+  assert,
+  loadCoreProductHostHarness,
+  loadFallbackDiagnosticsHarness,
+} from './lib/kesshoProductBehaviorHarness.mjs';
 
 const root = process.cwd();
-const host = readFileSync(resolve(root, 'src/audio/coreProductEngineHost.ts'), 'utf8');
-const hostDebugTelemetry = readFileSync(resolve(root, 'src/audio/CoreProductHostDebugTelemetry.ts'), 'utf8');
-const hostDebugSurface = readFileSync(resolve(root, 'src/audio/product/host/CoreProductHostDebugSurface.ts'), 'utf8');
-const hostEarthTextureDebug = readFileSync(resolve(root, 'src/audio/product/host/CoreProductEarthTextureDebug.ts'), 'utf8');
-const behaviorHarness = readFileSync(resolve(root, 'scripts/lib/kesshoProductBehaviorHarness.mjs'), 'utf8');
-const fallbackDiagnostics = readFileSync(resolve(root, 'src/audio/CoreProductFallbackDiagnostics.ts'), 'utf8');
-const doc = readFileSync(resolve(root, 'docs/kessho-product-getter-policies.md'), 'utf8');
-const app = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
-const selectedAudioEngineDebugSurface = readFileSync(resolve(root, 'src/ui/useSelectedAudioEngineDebugSurface.ts'), 'utf8');
-const selectedAudioEngineDebugAnalyserBridge = readFileSync(resolve(root, 'src/ui/useSelectedAudioEngineDebugAnalyserBridge.ts'), 'utf8');
-const selectedAudioEngineDebugRuntime = readFileSync(resolve(root, 'src/ui/useSelectedAudioEngineDebugRuntime.ts'), 'utf8');
-const productRuntimeSurfaces = readFileSync(resolve(root, 'src/ui/useProductRuntimeSurfaces.ts'), 'utf8');
-const selectedAudioEngineRuntimeSurfaces = readFileSync(resolve(root, 'src/ui/useSelectedAudioEngineRuntimeSurfaces.ts'), 'utf8');
-const productRuntimeLifecycleSurface = readFileSync(resolve(root, 'src/ui/useProductRuntimeLifecycleSurface.ts'), 'utf8');
-const productRuntimeRecordingRuntime = readFileSync(resolve(root, 'src/ui/useProductRuntimeRecordingRuntime.ts'), 'utf8');
-const selectedAudioEnginePageRuntimeBridges = readFileSync(resolve(root, 'src/ui/useSelectedAudioEnginePageRuntimeBridges.ts'), 'utf8');
-const selectedAudioEngineRecordingRuntime = readFileSync(resolve(root, 'src/ui/useSelectedAudioEngineRecordingRuntime.ts'), 'utf8');
-const selectedAudioEngineGlobalRuntimeProps = readFileSync(resolve(root, 'src/ui/useSelectedAudioEngineGlobalRuntimeProps.ts'), 'utf8');
-const audioRecordingHook = readFileSync(resolve(root, 'src/ui/useAudioRecording.ts'), 'utf8');
-const globalPage = readFileSync(resolve(root, 'src/ui/global/GlobalPage.tsx'), 'utf8');
-const granularPage = readFileSync(resolve(root, 'src/ui/granular/GranularPage.tsx'), 'utf8');
-const synthPage = readFileSync(resolve(root, 'src/ui/synth/SynthPage.tsx'), 'utf8');
-const earthPage = readFileSync(resolve(root, 'src/ui/earth/EarthPage.tsx'), 'utf8');
-const activeEarthMatrix = readFileSync(resolve(root, 'src/ui/earth/components/ActiveEarthMatrix.tsx'), 'utf8');
 
-if (existsSync(resolve(root, 'src/ui/useSelectedAudioEngineSurface.ts'))) {
-  throw new Error('Broad selected audio engine surface must remain removed; use focused selected runtime surfaces');
-}
-
-const getters = [
+const getterNames = [
   'getDynamicsVisualTelemetry',
   'getGranularActiveGrainCount',
   'getGranularVoicePositions',
@@ -41,308 +23,81 @@ const getters = [
   'getTransportDebugState',
 ];
 
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
+const allowedReferenceImportFiles = new Set([
+  'src/ui/audioEngineMediaSession.ts',
+  'src/ui/sliderSystem/sliderSystem.test.ts',
+]);
 
-function methodBody(name, source = host, label = 'getter') {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const definition = new RegExp(`(?:^|\\n)\\s*(?:private\\s+)?(?:async\\s+)?${escaped}(?:<[^>]+>)?\\s*\\(`).exec(source);
-  assert(definition, `missing ${label} ${name}()`);
-  return balancedBody(source, source.indexOf('{', definition.index), `${name}()`);
-}
-
-function debugSurfaceBody(name) {
-  return methodBody(name, hostDebugSurface, 'debug surface getter');
-}
-
-function helperBody(name) {
-  return helperBodyFromSource(hostDebugTelemetry, name, 'host debug telemetry');
-}
-
-function helperBodyFromSource(source, name, label) {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const definition = new RegExp(`(?:^|\\n)\\s*(?:export\\s+)?function\\s+${escaped}\\s*\\(`).exec(source);
-  assert(definition, `missing ${label} helper ${name}()`);
-  return balancedBody(source, source.indexOf('{', definition.index), `${name}()`);
-}
-
-function balancedBody(source, open, label) {
-  let depth = 0;
-  for (let index = open; index < source.length; index += 1) {
-    const char = source[index];
-    if (char === '{') depth += 1;
-    if (char === '}') {
-      depth -= 1;
-      if (depth === 0) return source.slice(open + 1, index);
+function findProductionReferenceImports() {
+  const violations = [];
+  for (const filePath of collectSourceFiles(resolve(root, 'src/ui'))) {
+    const relativePath = relativeSourcePath(root, filePath);
+    if (relativePath.startsWith('src/ui/referenceRuntime/') || allowedReferenceImportFiles.has(relativePath)) continue;
+    for (const entry of collectImportSpecifiers(filePath)) {
+      if (entry.isTypeOnly) continue;
+      if (/audio\/reference|useSelectedAudioEngine|SelectedProductRuntime/.test(entry.specifier)) {
+        violations.push(`${relativePath}: ${entry.kind} import ${entry.specifier}`);
+      }
     }
   }
-  throw new Error(`${label} body was not balanced`);
+  return violations;
 }
 
-for (const token of [
-  'type ProductCoreGetterPolicy',
-  'CORE_PRODUCT_GETTER_POLICIES',
-  "'backed-by-product-core-api'",
-]) {
-  assert(fallbackDiagnostics.includes(token), `Product Core getter policy code is missing ${token}`);
-}
-assert(
-  !fallbackDiagnostics.includes("'explicitly-unsupported-hidden'"),
-  'Product Core getter policies must not keep explicit unsupported hidden getter classifications',
-);
-
-for (const forbidden of ['classifiedPlaceholderGetter', 'PlaceholderGetterClassification', 'CORE_PRODUCT_PLACEHOLDER_GETTER_CLASSIFICATIONS']) {
-  assert(!fallbackDiagnostics.includes(forbidden), `Product Core getter policy must not keep ${forbidden}`);
-  assert(!host.includes(forbidden), `coreProductEngineHost.ts must not keep ${forbidden}`);
+function assertFinite(value, label) {
+  assert(Number.isFinite(value), `${label} must be finite, received ${String(value)}`);
 }
 
-for (const getter of getters) {
-  assert(fallbackDiagnostics.includes(`${getter}: {`), `Product Core getter ${getter} is not classified in code`);
-  assert(doc.includes(`\`${getter}\``), `Product Core getter ${getter} is not classified in docs`);
+const deletedSelectedModules = [
+  'src/ui/useSelectedAudioEngineDebugSurface.ts',
+  'src/ui/useSelectedAudioEngineDebugRuntime.ts',
+  'src/ui/useSelectedAudioEngineRuntimeSurfaces.ts',
+  'src/ui/useSelectedAudioEnginePageRuntimeBridges.ts',
+  'src/ui/useSelectedAudioEngineRecordingRuntime.ts',
+];
+for (const path of deletedSelectedModules) {
+  assert(!existsSync(resolve(root, path)), `${path} must remain deleted`);
 }
 
-assert(
-  debugSurfaceBody('getGranularActiveGrainCount').includes('this.options.latestTelemetry()?.activeGrains'),
-  'granular active grain count must use Product Core telemetry instead of a fixed placeholder',
-);
-assert(
-  debugSurfaceBody('getGranularVoicePositions').includes('this.options.latestTelemetry()?.granularVoicePositions') &&
-    debugSurfaceBody('getGranularVoicePositions').includes('normalizedTelemetryPosition'),
-  'granular voice positions must use Product Core granular telemetry instead of a hidden fallback',
-);
-assert(
-  debugSurfaceBody('getGranularWriteHeadPosition').includes('this.options.latestTelemetry()?.granularWriteHeadPosition') &&
-    debugSurfaceBody('getGranularWriteHeadPosition').includes('normalizedTelemetryPosition'),
-  'granular write head must use Product Core granular telemetry instead of a hidden fallback',
-);
-assert(
-  debugSurfaceBody('getDynamicsVisualTelemetry').includes('this.options.latestTelemetry()') &&
-    debugSurfaceBody('getDynamicsVisualTelemetry').includes('createCoreProductDynamicsVisualTelemetry') &&
-    helperBody('createCoreProductDynamicsVisualTelemetry').includes('telemetry.masterInputPeak') &&
-    helperBody('createCoreProductDynamicsVisualTelemetry').includes('telemetry.masterOutputPeak') &&
-    helperBody('createCoreProductDynamicsVisualTelemetry').includes('telemetry.masterLimiterGainReductionDb') &&
-    helperBody('createCoreProductDynamicsVisualTelemetry').includes('telemetry.dynamicsSaturationDrive'),
-  'dynamics visual telemetry must use Product Core master/dynamics telemetry instead of fixed placeholders',
-);
-assert(
-  debugSurfaceBody('getTransportDebugState').includes('this.options.latestTelemetry()') &&
-    debugSurfaceBody('getTransportDebugState').includes('this.options.latestProductSnapshot()?.transport') &&
-    debugSurfaceBody('getTransportDebugState').includes('createCoreProductTransportDebugState') &&
-    helperBody('createCoreProductTransportDebugState').includes('telemetry.transportPhraseProgress') &&
-    helperBody('createCoreProductTransportDebugState').includes('telemetry.transportRunning') &&
-    methodBody('getTransportDebugState').includes('this.arrangementBridge.getTransportDebugState()'),
-  'transport debug state must use Product Core telemetry and generated transport state instead of a fixed placeholder',
-);
-assert(
-  methodBody('getCurrentPadFilterFreq').includes('this.latestTelemetry?.pad1FilterFreq') &&
-    methodBody('getCurrentPadFilterFreq').includes('this.latestTelemetry?.pad2FilterFreq'),
-  'Pad filter frequency getter must use Product Core Pad telemetry instead of a hidden fallback',
-);
-assert(
-  methodBody('getCurrentPadLfoValue').includes('this.latestTelemetry?.pad1Lfo1Value') &&
-    methodBody('getCurrentPadLfoValue').includes('this.latestTelemetry?.pad2Lfo1Value'),
-  'Pad LFO getter must use Product Core Pad telemetry instead of a hidden fallback',
-);
-assert(
-  !host.includes('unsupportedGetter<T>') &&
-    !host.includes('unsupportedGetter(') &&
-    !host.includes('explicitlyUnsupportedGetter') &&
-    !host.includes('CoreProductUnsupportedPolicy') &&
-    !host.includes('throwUnsupportedProductMethod'),
-  'retired Product Core getters must not keep unsupported getter helpers or policy imports',
-);
-for (const retiredGetter of [
-  'getDynamicsAnalyser',
-  'getDrumVoiceAnalyser',
-  'getGranularBufferWaveform',
-  'getLeadMorphedParams',
-  'getEarthTextureDebugState',
-  'getCurrentFilterFreq',
-  'getCurrentLfoValue',
-  'getCurrentLfo2Value',
-  'getMediaStream',
-  'getLimiterNode',
-  'getRecordableBusNodes',
-  'getAllStemNodes',
-]) {
-  assert(!host.includes(`${retiredGetter}(`), `${retiredGetter}() must remain retired from the Product Core host surface`);
-  assert(!fallbackDiagnostics.includes(`${retiredGetter}: {`), `${retiredGetter} must remain retired from Product Core getter policies`);
-  assert(!doc.includes(`\`${retiredGetter}\``), `${retiredGetter} must remain retired from Product Core getter policy docs`);
+const importViolations = findProductionReferenceImports();
+assert(importViolations.length === 0, `Product UI reference imports crossed the development boundary: ${importViolations.join(', ')}`);
+
+const diagnostics = loadFallbackDiagnosticsHarness();
+for (const getter of getterNames) {
+  assert(Object.hasOwn(diagnostics.CORE_PRODUCT_GETTER_POLICIES, getter), `Product getter policy is missing ${getter}`);
+  assert(
+    diagnostics.classifyCoreProductRuntimeFallback(getter) === 'forbidden-production-fallback',
+    `${getter} must fail visibly when unavailable`,
+  );
 }
-assert(
-  app.includes("from './ui/useProductRuntimeLifecycleSurface'") &&
-    app.includes('useProductRuntimeLifecycleSurface({') &&
-    !app.includes("from './ui/useSelectedAudioEngineRuntimeLifecycleSurface'") &&
-    !app.includes('useSelectedAudioEngineRuntimeLifecycleSurface({') &&
-    productRuntimeLifecycleSurface.includes("import { useProductRuntimeRecordingRuntime } from './useProductRuntimeRecordingRuntime'") &&
-    productRuntimeLifecycleSurface.includes("import { useProductRuntimeTelemetry } from './useProductRuntimeTelemetry'") &&
-    productRuntimeLifecycleSurface.includes("import { useProductRuntimeStateRuntime } from './useProductRuntimeStateRuntime'") &&
-    productRuntimeLifecycleSurface.includes("import { useProductRuntimeMacRecovery } from './useProductRuntimeMacRecovery'") &&
-    productRuntimeLifecycleSurface.includes('useProductRuntimeRecordingRuntime(options.productRuntimeMode)') &&
-    productRuntimeLifecycleSurface.includes('useProductRuntimeTelemetry({') &&
-    productRuntimeLifecycleSurface.includes('useProductRuntimeStateRuntime({') &&
-    productRuntimeLifecycleSurface.includes('useProductRuntimeMacRecovery({') &&
-    !productRuntimeLifecycleSurface.includes('useSelectedAudioEngineRuntimeLifecycleSurface') &&
-    !productRuntimeLifecycleSurface.includes('productEngine') &&
-    !productRuntimeLifecycleSurface.includes('selectedProductRuntime') &&
-    !productRuntimeLifecycleSurface.includes('referenceAudioEngineDebug'),
-  'App must consume runtime lifecycle through the product-named facade while the facade composes product lifecycle wrappers',
-);
 
-assert(
-    app.includes('useProductRuntimeLifecycleSurface({') &&
-    !app.includes('useSelectedAudioEngineRecordingRuntime(audioEngineRuntimeMode)') &&
-    !app.includes("from './ui/useAudioRecording'") &&
-    productRuntimeLifecycleSurface.includes('useProductRuntimeRecordingRuntime(options.productRuntimeMode)') &&
-    productRuntimeRecordingRuntime.includes("import { unavailableProductRecordingBridge } from '../audio/product/ProductRecordingBridge'") &&
-    productRuntimeRecordingRuntime.includes('const recordingAvailable = unavailableProductRecordingBridge.available;') &&
-    productRuntimeRecordingRuntime.includes('visible: recordingAvailable') &&
-    productRuntimeRecordingRuntime.includes('stemRecordingAvailable: recordingAvailable') &&
-    !productRuntimeRecordingRuntime.includes('useSelectedAudioEngineRecordingRuntime') &&
-    !productRuntimeRecordingRuntime.includes('useAudioRecording') &&
-    !productRuntimeRecordingRuntime.includes('referenceAudioEngineDebug') &&
-    !productRuntimeRecordingRuntime.includes('getLimiterNode') &&
-    !productRuntimeRecordingRuntime.includes('getRecordableBusNodes') &&
-    selectedAudioEngineRecordingRuntime.includes('useAudioRecording(audioEngineRuntimeMode)') &&
-    selectedAudioEngineRecordingRuntime.includes('advancedRecordingButton') &&
-    selectedAudioEngineRecordingRuntime.includes('globalRecordingProps') &&
-    selectedAudioEngineRecordingRuntime.includes('snowflakeRecordingProps') &&
-    selectedAudioEngineRecordingRuntime.includes('startArmedRecordingAfterPlaybackStart') &&
-    audioRecordingHook.includes("throw new Error('Recording is explicitly unavailable in core-product until a Product recording bridge exists')") &&
-    audioRecordingHook.includes("const recordingAvailable = audioEngineRuntimeMode !== 'core-product';") &&
-    audioRecordingHook.includes('const stemRecordingAvailable = recordingAvailable;') &&
-    app.includes('{advancedRecordingButton.visible && (') &&
-    app.includes('{...globalRuntimeProps}') &&
-    selectedAudioEngineGlobalRuntimeProps.includes('recordingProps: GlobalRecordingProps') &&
-    selectedAudioEngineGlobalRuntimeProps.includes('...recordingProps') &&
-    audioRecordingHook.includes('const enabledStemIds = STEM_RECORD_TRACK_IDS.filter((trackId) => recordStems[trackId]);') &&
-    audioRecordingHook.includes("if (audioEngineRuntimeMode === 'core-product') return;") &&
-    audioRecordingHook.includes("if (audioEngineRuntimeMode === 'core-product') {") &&
-    audioRecordingHook.includes('setRecordingDuration(0);'),
-  'core-product must hide recording controls and block recording calls that require Web Audio nodes',
-);
-assert(
-  globalPage.includes('recordingAvailable: boolean;') &&
-    globalPage.includes('stemRecordingAvailable: boolean;') &&
-    globalPage.includes('{recordingAvailable && (') &&
-    globalPage.includes('{stemRecordingAvailable && (') &&
-    !globalPage.includes("const recordingAvailable = audioEngineMode !== 'core-product';") &&
-    globalPage.includes('STEM_RECORD_TRACK_IDS.map'),
-  'core-product UI must hide recording controls when Product recording bridge support is unavailable',
-);
-assert(
-    selectedAudioEnginePageRuntimeBridges.includes('liveBufferTelemetryAvailable: true') &&
-    !app.includes("liveBufferTelemetryAvailable={audioEngineRuntimeMode !== 'core-product'}") &&
-    app.includes('{...productPageRuntimeSurface.granularPageRuntimeProps}') &&
-    !app.includes('liveWaveformTelemetryAvailable={liveWaveformTelemetryAvailable}') &&
-    selectedAudioEnginePageRuntimeBridges.includes('liveBufferTelemetryAvailable: true') &&
-    selectedAudioEnginePageRuntimeBridges.includes('liveWaveformTelemetryAvailable: options.liveWaveformTelemetryAvailable') &&
-    selectedAudioEngineDebugSurface.includes("return productEngine.getTelemetry()?.granularBufferWaveform ?? null;") &&
-    selectedAudioEngineDebugSurface.includes("liveWaveformTelemetryAvailable: referenceRuntimeActive || audioEngineRuntimeMode === 'core-product'") &&
-    !host.includes('getGranularBufferWaveform(') &&
-    granularPage.includes('liveBufferTelemetryAvailable?: boolean;') &&
-    granularPage.includes('liveWaveformTelemetryAvailable?: boolean;') &&
-    granularPage.includes('if (!liveBufferTelemetryAvailable) return;') &&
-    granularPage.includes('if (liveWaveformTelemetryAvailable) {') &&
-    granularPage.includes('{liveBufferTelemetryAvailable && ('),
-  'core-product UI must enable granular live head/voice/waveform telemetry through Product telemetry',
-);
-assert(
-  app.includes('{...productPageRuntimeSurface.dynamicsPageRuntimeProps}') &&
-    app.includes('{...productPageRuntimeSurface.drumPageRuntimeProps}') &&
-    !app.includes('getDynamicsAnalyser={productRuntimeDebugAnalysers.dynamicsAnalyser}') &&
-    !app.includes('getAnalyserNode={productRuntimeDebugAnalysers.drumVoiceAnalyser}') &&
-    app.includes("from './ui/useProductRuntimeSurfaces'") &&
-    app.includes('useProductRuntimeSurfaces({ productRuntimeMode, stateRef })') &&
-    !app.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") &&
-    !app.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') &&
-    productRuntimeSurfaces.includes("import { useProductRuntimeDebugRuntime } from './useProductRuntimeDebugRuntime'") &&
-    productRuntimeSurfaces.includes('useProductRuntimeDebugRuntime(productRuntimeMode)') &&
-    productRuntimeSurfaces.includes('...debugRuntime') &&
-    !productRuntimeSurfaces.includes('useSelectedAudioEngineRuntimeSurfaces') &&
-    !app.includes("from './ui/useSelectedAudioEngineDebugRuntime'") &&
-    !app.includes("from './ui/useSelectedAudioEngineDebugSurface'") &&
-    !app.includes("from './ui/useSelectedAudioEngineDebugAnalyserBridge'") &&
-    selectedAudioEnginePageRuntimeBridges.includes('getDynamicsAnalyser: options.productRuntimeDebugAnalysers.dynamicsAnalyser') &&
-    selectedAudioEnginePageRuntimeBridges.includes('getAnalyserNode: options.productRuntimeDebugAnalysers.drumVoiceAnalyser') &&
-    selectedAudioEngineRuntimeSurfaces.includes('useSelectedAudioEngineDebugRuntime(audioEngineRuntimeMode)') &&
-    selectedAudioEngineRuntimeSurfaces.includes('...debugRuntime') &&
-    selectedAudioEngineDebugRuntime.includes('useSelectedAudioEngineDebugSurface(audioEngineRuntimeMode)') &&
-    selectedAudioEngineDebugRuntime.includes('useSelectedAudioEngineDebugAnalyserBridge({') &&
-    selectedAudioEngineDebugRuntime.includes('selectedAudioEngineDebugAnalysers,') &&
-    selectedAudioEngineDebugAnalyserBridge.includes('drumVoiceAnalyser: referenceDrumVoiceAnalyser') &&
-    selectedAudioEngineDebugAnalyserBridge.includes('dynamicsAnalyser: referenceDynamicsAnalyser') &&
-    selectedAudioEngineDebugSurface.includes('referenceDynamicsAnalyser: referenceRuntimeActive ? getSelectedDynamicsAnalyser : undefined') &&
-    selectedAudioEngineDebugSurface.includes('referenceDrumVoiceAnalyser: referenceRuntimeActive ? getSelectedDrumVoiceAnalyser : undefined') &&
-    selectedAudioEngineDebugSurface.includes("audioEngineRuntimeMode === 'core-product' ? null : referenceAudioEngineDebug.getDynamicsAnalyser(key)") &&
-    selectedAudioEngineDebugSurface.includes("audioEngineRuntimeMode === 'core-product' ? undefined : referenceAudioEngineDebug.getDrumVoiceAnalyser(voice)") &&
-    !host.includes('getDynamicsAnalyser(') &&
-    !host.includes('getDrumVoiceAnalyser('),
-  'core-product UI must hide analyser-node getter paths and keep them retired from the Product Core host surface',
-);
-assert(
-  app.includes('{...productPageRuntimeSurface.synthPageRuntimeProps}') &&
-    selectedAudioEnginePageRuntimeBridges.includes('liveSourceTelemetryAvailable: true') &&
-    selectedAudioEnginePageRuntimeBridges.includes('getPadFilterFreq: options.getSelectedPadFilterFreq') &&
-    selectedAudioEnginePageRuntimeBridges.includes('getPadLfoValue: options.getSelectedPadLfoValue') &&
-    !app.includes('getPadFilterFreq={getSelectedPadFilterFreq}') &&
-    !app.includes('getPadLfoValue={getSelectedPadLfoValue}') &&
-    !app.includes("liveSourceTelemetryAvailable={audioEngineRuntimeMode !== 'core-product'}") &&
-    synthPage.includes('liveSourceTelemetryAvailable?: boolean;') &&
-    synthPage.includes('if (!liveSourceTelemetryAvailable) return;') &&
-    synthPage.includes('enabled: isRunning && liveSourceTelemetryAvailable') &&
-    synthPage.includes('isRunning={isRunning && liveSourceTelemetryAvailable}'),
-  'core-product Synth UI must enable Pad filter/LFO polling while preserving the telemetry availability guard',
-);
-assert(
-  app.includes('{...productPageRuntimeSurface.synthPageRuntimeProps}') &&
-    selectedAudioEnginePageRuntimeBridges.includes('getLeadMorphedParams: options.getSelectedLeadMorphedParams') &&
-    selectedAudioEnginePageRuntimeBridges.includes('liveLeadMorphedParamsAvailable: options.liveLeadMorphedParamsAvailable') &&
-    !app.includes('getLeadMorphedParams={getSelectedLeadMorphedParams}') &&
-    !app.includes('liveLeadMorphedParamsAvailable={liveLeadMorphedParamsAvailable}') &&
-    selectedAudioEngineDebugSurface.includes('liveLeadMorphedParamsAvailable: referenceRuntimeActive') &&
-    selectedAudioEngineDebugSurface.includes("audioEngineRuntimeMode === 'core-product'") &&
-    selectedAudioEngineDebugSurface.includes('readOptionalReferenceDebugValue(() => referenceAudioEngineDebug.getLeadMorphedParams(lead), null)') &&
-    !host.includes('getLeadMorphedParams('),
-  'core-product Synth UI must keep Lead morphed preview polling disabled and retired from the Product Core host surface',
-);
-assert(
-    selectedAudioEngineDebugSurface.includes('EMPTY_EARTH_TEXTURE_DEBUG_STATE') &&
-    app.includes('{...productPageRuntimeSurface.earthPageRuntimeProps}') &&
-    !app.includes('textureDebugAvailable={textureDebugAvailable}') &&
-    selectedAudioEnginePageRuntimeBridges.includes('textureDebugAvailable: options.textureDebugAvailable') &&
-    selectedAudioEnginePageRuntimeBridges.includes('getEarthTextureDebugState: options.getEarthTextureDebugState') &&
-    selectedAudioEngineDebugSurface.includes("productEngine.getTelemetry()?.earthTextureDebugState ?? EMPTY_EARTH_TEXTURE_DEBUG_STATE") &&
-    selectedAudioEngineDebugSurface.includes("textureDebugAvailable: referenceRuntimeActive || audioEngineRuntimeMode === 'core-product'") &&
-    !host.includes('getEarthTextureDebugState(') &&
-    earthPage.includes('textureDebugAvailable?: boolean;') &&
-    activeEarthMatrix.includes('textureDebugAvailable?: boolean;') &&
-    activeEarthMatrix.includes('enabled: textureDebugAvailable && activeTextureDebugKeys.length > 0') &&
-    activeEarthMatrix.includes('row.textureDebugKey && textureDebugAvailable'),
-  'core-product Earth UI must poll Product Core soundscape texture telemetry through the selected debug surface',
-);
-assert(
-  methodBody('withHostDiagnostics').includes('telemetry.earthTextureDebugState') &&
-    methodBody('withHostDiagnostics').includes('createCoreProductEarthTextureDebugState(') &&
-    helperBodyFromSource(hostEarthTextureDebug, 'createCoreProductEarthTextureDebugState', 'Earth texture debug').includes('telemetryState?.[config.key]'),
-  'core-product Earth texture diagnostics must enrich Product Core telemetry instead of replacing it with host-only preview state',
-);
-assert(
-  !behaviorHarness.includes('createCoreProductEarthTextureDebugState: () => ({})') &&
-    behaviorHarness.includes("src/audio/product/host/CoreProductEarthTextureDebug.ts") &&
-    behaviorHarness.includes('createCoreProductEarthTextureDebugState,'),
-  'Product host behavior harness must load the real Earth texture debug adapter instead of stubbing it empty',
-);
+const harness = loadCoreProductHostHarness({ dev: true });
+const engine = harness.host;
+engine.latestTelemetry = {
+  activeGrains: 7,
+  granularVoicePositions: [0.1, 0.2, 0.3, 0.4],
+  granularWriteHeadPosition: 0.6,
+  pad1FilterFreq: 1234,
+  pad2FilterFreq: 2345,
+  pad1Lfo1Value: 0.12,
+  pad2Lfo1Value: 0.34,
+  masterInputPeak: 0.2,
+  masterOutputPeak: 0.3,
+  masterLimiterGainReductionDb: 1,
+  transportRunning: false,
+};
+engine.latestProductSnapshot = {
+  transport: { bpm: 120 },
+};
+assert(engine.getGranularActiveGrainCount() === 7, 'granular active-grain getter did not return Product telemetry');
+assert(JSON.stringify(engine.getGranularVoicePositions()) === JSON.stringify([0.1, 0.2, 0.3, 0.4]), 'granular voice getter did not return Product telemetry');
+assert(engine.getGranularWriteHeadPosition() === 0.6, 'granular write-head getter did not return Product telemetry');
+assert(engine.getCurrentPadFilterFreq('pad1') === 1234, 'Pad filter getter did not return Product telemetry');
+assert(engine.getCurrentPadLfoValue('pad2') === 0.34, 'Pad LFO getter did not return Product telemetry');
+assertFinite(engine.getDynamicsVisualTelemetry().worklet?.outputPeak, 'dynamics telemetry output peak');
+assert(engine.getTransportDebugState() !== null, 'transport debug getter did not return Product transport telemetry');
+assert(typeof engine.getDynamicsAnalyser === 'undefined', 'Product host must not expose reference analyser getters');
+assert(typeof engine.getDrumVoiceAnalyser === 'undefined', 'Product host must not expose reference analyser getters');
+assert(typeof engine.getMediaStream === 'undefined', 'Product host must not expose reference recording getters');
+assert(typeof engine.getRecordableBusNodes === 'undefined', 'Product host must not expose reference recording getters');
 
-for (const classification of ['`backed-by-product-core-api`']) {
-  assert(doc.includes(classification), `Product Core getter policy docs are missing classification ${classification}`);
-}
-assert(
-  !doc.includes('`explicitly-unsupported-hidden`'),
-  'Product Core getter policy docs must not keep retired explicit unsupported hidden classifications',
-);
-
-console.log('Kessho Product getter policy checks passed');
+console.log('Kessho Product getter policy checks passed: AST boundary and Product telemetry behavior are green');

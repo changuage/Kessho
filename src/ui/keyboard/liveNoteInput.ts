@@ -19,9 +19,17 @@ export type LiveNoteReleaseTiming = {
 };
 
 export type LiveNoteInputCallbacks = {
-  readonly start: (event: ProductLiveNoteEvent) => Promise<void> | void;
+  readonly start: (event: ProductLiveNoteEvent) => Promise<void>;
   readonly stop: (event: ProductLiveNoteEvent) => void;
+  readonly onStartFailure: (result: LiveNoteStartFailure) => void;
 };
+
+export type LiveNoteStartResult =
+  | { readonly status: 'started'; readonly event: ProductLiveNoteEvent }
+  | { readonly status: 'duplicate'; readonly event: ProductLiveNoteEvent }
+  | { readonly status: 'failed'; readonly event: ProductLiveNoteEvent; readonly error: Error };
+
+type LiveNoteStartFailure = Extract<LiveNoteStartResult, { readonly status: 'failed' }>;
 
 type ActiveLiveNote = {
   readonly event: ProductLiveNoteEvent;
@@ -51,8 +59,9 @@ export class LiveNoteInputController {
     this.callbacks = callbacks;
   }
 
-  noteOn(inputId: string, descriptor: LiveNoteInputDescriptor): boolean {
-    if (this.active.has(inputId)) return false;
+  noteOn(inputId: string, descriptor: LiveNoteInputDescriptor): LiveNoteStartResult {
+    const existing = this.active.get(inputId);
+    if (existing) return { status: 'duplicate', event: existing.event };
     const event: ProductLiveNoteEvent = {
       kind: 'live-note-on',
       eventID: `live-input-${nextLiveNoteEventId++}`,
@@ -68,16 +77,19 @@ export class LiveNoteInputController {
     const { start, stop } = this.callbacks;
     let started: Promise<void>;
     try {
-      started = Promise.resolve(start(event));
-    } catch {
-      return false;
+      started = start(event);
+    } catch (error) {
+      const result: LiveNoteStartResult = { status: 'failed', event, error: toError(error) };
+      this.callbacks.onStartFailure(result);
+      return result;
     }
     const activeNote = { event, started, stop };
     this.active.set(inputId, activeNote);
-    void started.catch(() => {
+    void started.catch((error) => {
       if (this.active.get(inputId) === activeNote) this.active.delete(inputId);
+      this.callbacks.onStartFailure({ status: 'failed', event, error: toError(error) });
     });
-    return true;
+    return { status: 'started', event };
   }
 
   noteOff(inputId: string, timing: number | LiveNoteReleaseTiming = performance.now()): boolean {
@@ -106,6 +118,10 @@ export class LiveNoteInputController {
   activeCount(): number {
     return this.active.size;
   }
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 export function useLiveNoteInput(callbacks: LiveNoteInputCallbacks): LiveNoteInputController {

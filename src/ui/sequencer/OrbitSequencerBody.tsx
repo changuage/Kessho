@@ -25,7 +25,6 @@ interface OrbitSequencerBodyProps {
   color: string;
   harmonyState?: HarmonyState | null;
   isRunning?: boolean;
-  transportBpm?: number;
   clockDivision?: unknown;
   stepCount?: number;
   tempoMultiplier?: number;
@@ -67,7 +66,6 @@ export function OrbitSequencerBody({
   color,
   harmonyState,
   isRunning = false,
-  transportBpm = 120,
   clockDivision = 8,
   stepCount = 16,
   tempoMultiplier = 1,
@@ -298,10 +296,6 @@ export function OrbitSequencerBody({
           color={color}
           selectedNoteId={orbit.selectedNoteId}
           active={isRunning}
-          transportBpm={transportBpm}
-          clockDivision={clockDivision}
-          stepCount={stepCount}
-          tempoMultiplier={tempoMultiplier}
           runtimeVisualState={runtimeVisualState}
           onSelectNote={orbit.setSelectedNoteId}
           onAddNote={orbit.addNote}

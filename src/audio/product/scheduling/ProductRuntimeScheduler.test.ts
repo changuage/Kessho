@@ -58,6 +58,32 @@ import type { CoreProductTelemetrySnapshot } from '../../coreProductTelemetry';
 }
 
 {
+  let hidden = true;
+  const frames: Array<(time: number) => void> = [];
+  const scheduler = new ProductRuntimeScheduler({
+    isDocumentHidden: () => hidden,
+    requestAnimationFrame: (callback) => {
+      frames.push(callback);
+      return frames.length;
+    },
+  });
+  let visualCallbackCount = 0;
+  for (let index = 0; index < 120; index += 1) {
+    scheduler.schedule('visible-visuals', () => { visualCallbackCount += 1; });
+  }
+
+  assert.equal(frames.length, 0, 'visual callbacks must not request animation frames while hidden');
+  scheduler.flushNowForTests();
+  assert.equal(visualCallbackCount, 0, 'visual callbacks must remain parked for the whole hidden interval');
+
+  hidden = false;
+  scheduler.setDocumentHidden(false);
+  assert.equal(frames.length, 1, 'foreground should request one consolidated visual refresh');
+  frames[0]?.(16);
+  assert.equal(visualCallbackCount, 1, 'foreground should publish the latest visual callback once');
+}
+
+{
   const timers: Array<{ callback: () => void; delayMs: number }> = [];
   const scheduler = new ProductRuntimeScheduler({
     isDocumentHidden: () => true,

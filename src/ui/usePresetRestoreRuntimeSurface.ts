@@ -7,39 +7,7 @@ import { usePresetSequencerRestore } from './usePresetSequencerRestore';
 type DualSliderState = Partial<Record<keyof SliderState, DualSliderRange>>;
 
 type PresetSequencerRestoreOptions = Parameters<typeof usePresetSequencerRestore>[0];
-type SelectedPresetSequencerSetterKey =
-  | 'setSelectedDrumEuclidClockDivs'
-  | 'setSelectedDrumEuclidEvolveConfigs'
-  | 'setSelectedDrumEuclidSwings'
-  | 'setSelectedDrumPitchSettings'
-  | 'setSelectedDrumStepOverrides'
-  | 'setSelectedDrumSubLaneEnabled'
-  | 'setSelectedSequencerPresetHomeSnapshots'
-  | 'setSelectedSynthEuclidClockDivs'
-  | 'setSelectedSynthEuclidEvolveConfigs'
-  | 'setSelectedSynthEuclidSwings'
-  | 'setSelectedSynthPitchBindingModes'
-  | 'setSelectedSynthPitchSettings'
-  | 'setSelectedSynthStepOverrides'
-  | 'setSelectedSynthSubLaneEnabled';
-type ProductPresetSequencerRestoreOptions = Omit<PresetSequencerRestoreOptions, SelectedPresetSequencerSetterKey> & {
-  setProductDrumEuclidClockDivs: PresetSequencerRestoreOptions['setSelectedDrumEuclidClockDivs'];
-  setProductDrumEuclidEvolveConfigs: PresetSequencerRestoreOptions['setSelectedDrumEuclidEvolveConfigs'];
-  setProductDrumEuclidSwings: PresetSequencerRestoreOptions['setSelectedDrumEuclidSwings'];
-  setProductDrumPitchSettings: PresetSequencerRestoreOptions['setSelectedDrumPitchSettings'];
-  setProductDrumStepOverrides: PresetSequencerRestoreOptions['setSelectedDrumStepOverrides'];
-  setProductDrumSubLaneEnabled: PresetSequencerRestoreOptions['setSelectedDrumSubLaneEnabled'];
-  setProductSequencerPresetHomeSnapshots: PresetSequencerRestoreOptions['setSelectedSequencerPresetHomeSnapshots'];
-  setProductSynthEuclidClockDivs: PresetSequencerRestoreOptions['setSelectedSynthEuclidClockDivs'];
-  setProductSynthEuclidEvolveConfigs: PresetSequencerRestoreOptions['setSelectedSynthEuclidEvolveConfigs'];
-  setProductSynthEuclidSwings: PresetSequencerRestoreOptions['setSelectedSynthEuclidSwings'];
-  setProductSynthPitchBindingModes: PresetSequencerRestoreOptions['setSelectedSynthPitchBindingModes'];
-  setProductSynthPitchSettings: PresetSequencerRestoreOptions['setSelectedSynthPitchSettings'];
-  setProductSynthStepOverrides: PresetSequencerRestoreOptions['setSelectedSynthStepOverrides'];
-  setProductSynthSubLaneEnabled: PresetSequencerRestoreOptions['setSelectedSynthSubLaneEnabled'];
-};
-
-type PresetRestoreRuntimeSurfaceOptions = ProductPresetSequencerRestoreOptions & {
+type PresetRestoreRuntimeSurfaceOptions = PresetSequencerRestoreOptions & {
   normalizeDualSliderMode: (key: string, mode?: SliderMode) => SliderMode | undefined;
   setDualSliderRanges: Dispatch<SetStateAction<DualSliderState>>;
   setSliderModes: Dispatch<SetStateAction<Record<string, SliderMode>>>;
@@ -49,39 +17,9 @@ export function usePresetRestoreRuntimeSurface({
   normalizeDualSliderMode,
   setDualSliderRanges,
   setSliderModes,
-  setProductDrumEuclidClockDivs,
-  setProductDrumEuclidEvolveConfigs,
-  setProductDrumEuclidSwings,
-  setProductDrumPitchSettings,
-  setProductDrumStepOverrides,
-  setProductDrumSubLaneEnabled,
-  setProductSequencerPresetHomeSnapshots,
-  setProductSynthEuclidClockDivs,
-  setProductSynthEuclidEvolveConfigs,
-  setProductSynthEuclidSwings,
-  setProductSynthPitchBindingModes,
-  setProductSynthPitchSettings,
-  setProductSynthStepOverrides,
-  setProductSynthSubLaneEnabled,
   ...sequencerRestoreOptions
 }: PresetRestoreRuntimeSurfaceOptions) {
-  const restoreEvolveConfigs = usePresetSequencerRestore({
-    ...sequencerRestoreOptions,
-    setSelectedDrumEuclidClockDivs: setProductDrumEuclidClockDivs,
-    setSelectedDrumEuclidEvolveConfigs: setProductDrumEuclidEvolveConfigs,
-    setSelectedDrumEuclidSwings: setProductDrumEuclidSwings,
-    setSelectedDrumPitchSettings: setProductDrumPitchSettings,
-    setSelectedDrumStepOverrides: setProductDrumStepOverrides,
-    setSelectedDrumSubLaneEnabled: setProductDrumSubLaneEnabled,
-    setSelectedSequencerPresetHomeSnapshots: setProductSequencerPresetHomeSnapshots,
-    setSelectedSynthEuclidClockDivs: setProductSynthEuclidClockDivs,
-    setSelectedSynthEuclidEvolveConfigs: setProductSynthEuclidEvolveConfigs,
-    setSelectedSynthEuclidSwings: setProductSynthEuclidSwings,
-    setSelectedSynthPitchBindingModes: setProductSynthPitchBindingModes,
-    setSelectedSynthPitchSettings: setProductSynthPitchSettings,
-    setSelectedSynthStepOverrides: setProductSynthStepOverrides,
-    setSelectedSynthSubLaneEnabled: setProductSynthSubLaneEnabled,
-  });
+  const restoreEvolveConfigs = usePresetSequencerRestore(sequencerRestoreOptions);
 
   const applyDualRangesFromPreset = useCallback((dualRanges?: Record<string, { min: number; max: number }>, presetSliderModes?: Record<string, SliderMode>) => {
     if (dualRanges && Object.keys(dualRanges).length > 0) {

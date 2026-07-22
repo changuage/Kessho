@@ -11,7 +11,7 @@ import { presetValuesEqual } from './presetUtils';
 import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 import { PresetRatingStars } from './PresetRatingStars';
 import { PresetTagEditor } from './PresetTagEditor';
-import { DEFAULT_STATE, migratePreset, type SliderState } from '../ui/state';
+import type { SliderState } from '../ui/state';
 import type { SliderMode } from '../ui/state';
 import { DERIVED_PAD_KEYS } from '../audio/padPresets';
 import { isStatePresetDiffKeyActive, normalizeStatePresetDiffData } from './statePresetDiffs';
@@ -582,24 +582,15 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   const getCanonicalVersionData = useCallback((entry: PresetEntry, versionNum?: number): Record<string, unknown> => {
     const paramLevel = level === 'state' ? 4 : level === 'source' ? 3 : level === 'kit' ? 2 : 1;
     const rawData = getVersionData(entry, versionNum) || {};
-    // Filter reconstituted data to only PARAM_REGISTRY keys BEFORE migration.
-    // Delta reconstitution can reintroduce legacy v1 keys (e.g. oceanDurationMin)
-    // which migratePreset would then use to overwrite correct values.
+    // Filter reconstituted data to the current registry before displaying a diff.
+    // Current entries are already canonical; an incomplete/legacy entry is not
+    // repaired here and is rejected by the store boundary.
     const registryOnly: Record<string, unknown> = {};
     const cascadeKeys = new Set(getCascadeKeys(paramLevel as 1 | 2 | 3 | 4, scope));
     for (const [k, v] of Object.entries(rawData)) {
       if (cascadeKeys.has(k)) registryOnly[k] = v;
     }
-    const migrated = migratePreset({
-      name: entry.name,
-      timestamp: new Date().toISOString(),
-      state: registryOnly as unknown as SliderState,
-    });
-    const canonicalState = {
-      ...DEFAULT_STATE,
-      ...(migrated.state as Partial<SliderState>),
-    } as SliderState;
-    return normalizeDiffData(extractCascade(canonicalState, paramLevel as 1 | 2 | 3 | 4, scope));
+    return normalizeDiffData(registryOnly);
   }, [level, scope, normalizeDiffData]);
 
   const getCurrentSaveMetadata = useCallback((): PresetVersionMetadata | undefined => {

@@ -27,7 +27,7 @@ export type ProductAutoCycleProjection = {
   phaseEndFrame: number;
   absoluteSampleTime: number;
   phraseSeconds: number | null;
-  sampleRate: number;
+  sampleRate: number | null;
 };
 
 export type ProductAutoCycleRuntimeSurface = {
@@ -88,7 +88,9 @@ export function useProductRuntimeAutoCycleSurface(): ProductAutoCycleRuntimeSurf
         phaseEndFrame: telemetry.autoCyclePhaseEndFrame ?? telemetry.absoluteSampleTime ?? 0,
         absoluteSampleTime: telemetry.absoluteSampleTime ?? 0,
         phraseSeconds: telemetry.transportPhraseSeconds ?? null,
-        sampleRate: Math.max(1, telemetry.sampleRate ?? 48_000),
+        sampleRate: typeof telemetry.sampleRate === 'number' && Number.isFinite(telemetry.sampleRate) && telemetry.sampleRate > 0
+          ? telemetry.sampleRate
+          : null,
       };
     },
   }), []);

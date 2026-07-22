@@ -20,7 +20,10 @@ Disallowed uses:
 
 The production runtime default is `core-product`. The normal product mode list exposes only `core-product`; remaining `web-ts` access must stay behind explicit reference harnesses or dev query contexts and should not be used to justify keeping unsupported Product Core host methods alive.
 
-The selected runtime compatibility bridge delegates reference loading through `src/audio/reference/ReferenceSelectedRuntime.ts`. Product-side runtime files must not dynamically import `referenceAudioRuntime` or load `web-ts` directly; they may only call the explicit reference bridge after `ProductAudioRuntimeSelection` has selected a dev/reference mode.
+Development selection is constructed once in `src/ui/productRuntimeConstruction.ts`.
+That module owns the lazy `ReferenceRuntimeAdapter` load and exposes only typed
+capability facets to application hooks. Product hooks must not dynamically
+import `referenceAudioRuntime` or `web-ts` directly.
 
 `npm run migration:no-web-ts-bundle` scans the production build output for forbidden legacy runtime markers after `npm run build`.
 

@@ -24,7 +24,7 @@ int main() {
   static_assert(sizeof(KesshoProductGranularVisualEvent) == 32, "granular visual event ABI size changed");
   static_assert(sizeof(KesshoProductDebugSourceState) == 32, "product debug source telemetry ABI size changed");
   static_assert(sizeof(KesshoProductDebugVoiceSpawn) == 48, "product debug voice telemetry ABI size changed");
-  static_assert(sizeof(KesshoProductTelemetry) == 15448, "product telemetry ABI size changed");
+  static_assert(sizeof(KesshoProductTelemetry) == 15464, "product telemetry ABI size changed");
   static_assert(sizeof(KesshoProductSequencerLaneUiState) == 3296, "sequencer UI lane state ABI size changed");
   static_assert(sizeof(KesshoProductSequencerUiState) == 105508, "sequencer UI state ABI size changed");
 
@@ -60,6 +60,12 @@ int main() {
   require(
       offsetof(KesshoProductTelemetry, journey_prepared_total_frames) == 15424,
       "telemetry Journey prepared-frame offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, chord_sequencer_absolute_step) == 15448,
+      "telemetry chord absolute-step offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, chord_sequencer_current_step) == 15456,
+      "telemetry chord current-step offset changed");
   require(offsetof(KesshoProductTelemetry, rng_seed) == 928, "telemetry rng seed offset changed");
   require(offsetof(KesshoProductTelemetry, master_input_peak) == 968, "telemetry master input peak offset changed");
   require(
@@ -184,7 +190,7 @@ int main() {
   require(offsetof(KesshoProductTelemetry, auto_cycle_revision) == 15356, "telemetry auto-cycle revision offset changed");
   require(offsetof(KesshoProductTelemetry, auto_cycle_phase_start_frame) == 15368, "telemetry auto-cycle phase-start offset changed");
   require(offsetof(KesshoProductTelemetry, auto_cycle_phase_end_frame) == 15376, "telemetry auto-cycle phase-end offset changed");
-  require(sizeof(KesshoProductTelemetry) == 15448, "telemetry byte size changed");
+  require(sizeof(KesshoProductTelemetry) == 15464, "telemetry byte size changed");
   require(
       offsetof(KesshoProductSequencerLaneUiState, nudge_override_set_low) == 100,
       "sequencer UI nudge override low offset changed");

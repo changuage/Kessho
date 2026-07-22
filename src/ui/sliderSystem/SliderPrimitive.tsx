@@ -72,7 +72,6 @@ export interface SliderPrimitiveProps {
   title?: string;
   onValueChange?: (value: number) => void;
   updatePolicy?: SliderUpdatePolicy;
-  /** Preview pointer drags locally and notify onValueChange only on pointer release. */
   commitValueOnRelease?: boolean;
   onRangeChange?: (range: SliderPrimitiveRange) => void;
   onModeCycle?: () => void;
@@ -118,7 +117,6 @@ export function SliderPrimitive({
   const [activeHandle, setActiveHandle] = React.useState<'min' | 'max' | 'band' | null>(null);
   const railRef = React.useRef<HTMLDivElement>(null);
   const railWidth = useElementWidth(railRef);
-  // Do not animate the initial percentage-to-pixel coordinate handoff.
   const [motionReady, setMotionReady] = React.useState(false);
   const thumbRef = React.useRef<HTMLSpanElement>(null);
   const fillRef = React.useRef<HTMLSpanElement>(null);
@@ -148,7 +146,6 @@ export function SliderPrimitive({
   }, [range, usesControlledRange]);
 
   React.useEffect(() => {
-    // Enable motion only after the measured transform has had a chance to paint.
     if (railWidth > 0) setMotionReady(true);
   }, [railWidth]);
 
@@ -291,9 +288,7 @@ export function SliderPrimitive({
     if (isTouch) setSliderTouchSelectionLock(true);
     try {
       currentTarget.setPointerCapture(pointerId);
-    } catch {
-      // Some browsers decline capture if the pointer is already cancelled.
-    }
+    } catch {}
 
     const cleanupCommittedDrag = (
       onMove: (moveEvent: PointerEvent) => void,
@@ -570,9 +565,7 @@ export function SliderPrimitive({
     pendingTouchCleanupRef.current = cleanupPendingTouch;
     try {
       currentTarget.setPointerCapture(event.pointerId);
-    } catch {
-      // Capture can fail if the browser has already handed the touch to scroll.
-    }
+    } catch {}
     window.addEventListener('pointermove', onPendingMove, { passive: false });
     window.addEventListener('pointerup', onPendingEnd);
     window.addEventListener('pointercancel', onPendingEnd);

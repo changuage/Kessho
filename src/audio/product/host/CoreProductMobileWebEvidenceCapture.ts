@@ -174,7 +174,10 @@ export class CoreProductMobileWebEvidenceCapture {
     const beforeFrame = sampleFrame(beforeTelemetry);
     const afterFrame = sampleFrame(afterTelemetry);
     const observedHiddenFrames = Math.max(0, afterFrame - beforeFrame);
-    const sampleRate = Math.max(1, finite(beforeTelemetry.sampleRate) || finite(afterTelemetry.sampleRate) || 48_000);
+    const sampleRate = finite(beforeTelemetry.sampleRate) || finite(afterTelemetry.sampleRate);
+    if (!(sampleRate > 0)) {
+      throw new Error('Mobile evidence capture requires Product sample-rate telemetry before frame-based validation.');
+    }
     let expectedHiddenFrames = Math.max(
       1,
       Math.round(Math.max(0, this.hiddenEndedMs - this.hiddenStartedMs) * sampleRate / 1000),

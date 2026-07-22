@@ -93,6 +93,7 @@ const DragNumber: React.FC<DragNumberProps> = ({
       <button
         type="button"
         className={`seq-drag-num${dragging ? ' dragging' : ''}`}
+        data-drag-value={value}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

@@ -1,9 +1,9 @@
 import { referenceAudioEngineDebug } from '../audio/reference/ReferenceAudioEngineDebugCompat';
-import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
+import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { isIOSLikeDevice } from '../platform';
 
 type IOSMediaSessionEngineControls = {
-  audioEngineRuntimeMode: AudioEngineRuntimeMode;
+  audioEngineRuntimeMode: ProductRuntimeSelectionMode;
   resumeSelectedAudioEngine: () => void | Promise<void>;
   suspendSelectedAudioEngine: () => void | Promise<void>;
   stopSelectedAudioEngine: () => void | Promise<void>;
@@ -58,7 +58,7 @@ export function setupIOSMediaSession({
   });
 }
 
-export function connectMediaSessionToWebAudio(audioEngineRuntimeMode: AudioEngineRuntimeMode): void {
+export function connectMediaSessionToWebAudio(audioEngineRuntimeMode: ProductRuntimeSelectionMode): void {
   if (!mediaSessionAudio) return;
   if (audioEngineRuntimeMode === 'core-product') return;
 
@@ -75,7 +75,7 @@ export function connectMediaSessionToWebAudio(audioEngineRuntimeMode: AudioEngin
   }
 }
 
-export function stopIOSMediaSession(audioEngineRuntimeMode: AudioEngineRuntimeMode): void {
+export function stopIOSMediaSession(audioEngineRuntimeMode: ProductRuntimeSelectionMode): void {
   if (audioEngineRuntimeMode !== 'core-product' && mediaSessionAudio) {
     mediaSessionAudio.pause();
     mediaSessionAudio.srcObject = null;

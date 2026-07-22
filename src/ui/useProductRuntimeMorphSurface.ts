@@ -1,4 +1,4 @@
-import { useSelectedAudioEngineMorphRuntime } from './useSelectedAudioEngineMorphRuntime';
+import { useCallback } from 'react';
 
 type ProductJourneyMorphClockCallback = (now: number) => void;
 
@@ -15,13 +15,10 @@ export function useProductRuntimeMorphSurface({
   startProductJourneyMorphClock,
   stopProductJourneyMorphClock,
 }: ProductRuntimeMorphSurfaceOptions) {
-  // TODO(product-fallback-retire:runtime-morph-surface): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
-  // CoF drift and journey morph clock ownership still
-  // delegates through the selected-runtime compatibility hook until morph runtime is product-owned.
-  return useSelectedAudioEngineMorphRuntime({
-    resetSelectedCofDrift: resetProductCofDrift,
-    setSelectedJourneyMorphClockCallback: setProductJourneyMorphClockCallback,
-    startSelectedJourneyMorphClock: startProductJourneyMorphClock,
-    stopSelectedJourneyMorphClock: stopProductJourneyMorphClock,
-  });
+  return {
+    resetProductCofDrift: useCallback(resetProductCofDrift, [resetProductCofDrift]),
+    setProductJourneyMorphClockCallback: useCallback(setProductJourneyMorphClockCallback, [setProductJourneyMorphClockCallback]),
+    startProductJourneyMorphClock: useCallback(startProductJourneyMorphClock, [startProductJourneyMorphClock]),
+    stopProductJourneyMorphClock: useCallback(stopProductJourneyMorphClock, [stopProductJourneyMorphClock]),
+  };
 }

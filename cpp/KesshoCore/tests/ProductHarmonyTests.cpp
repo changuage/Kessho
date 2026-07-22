@@ -520,7 +520,39 @@ __attribute__((noinline)) void requireArrangementScheduling() {
         arp_events.events[index].midi_note == arp_midi[index],
         "TypeScript parity arp event stream mismatch");
   }
+  arp_engine->updateTelemetry(0u);
+  require(arp_engine->telemetry.chord_sequencer_absolute_step == 0u,
+      "chord telemetry must expose the first scheduled absolute step");
+  require(arp_engine->telemetry.chord_sequencer_current_step == 0u,
+      "chord telemetry must expose the first scheduled current step");
   kessho_product_destroy(arp_engine);
+
+  auto playhead_snapshot = std::make_unique<KesshoProductSnapshotV2>(*mode_snapshot);
+  playhead_snapshot->arrangement.chord_sequencer_step_count = 4u;
+  playhead_snapshot->arrangement.chord_sequencer_enabled_mask = 0x0fu;
+  for (uint32_t index = 0u; index < 4u; ++index) {
+    playhead_snapshot->arrangement.chord_sequencer_probability[index] = 1.0f;
+    playhead_snapshot->arrangement.chord_sequencer_hold_steps[index] = 1u;
+  }
+  KesshoProductEngine* playhead_engine = kessho_product_create(48000.0, 128u, 0u);
+  require(playhead_engine != nullptr, "arrangement playhead engine create failed");
+  require(kessho_product_load_snapshot_v2(
+      playhead_engine, playhead_snapshot.get(), sizeof(*playhead_snapshot)) == KESSHO_PRODUCT_OK,
+      "arrangement playhead snapshot load failed");
+  SequencerBuffer first_playhead_block{};
+  playhead_engine->generateArrangementEvents(48000u, first_playhead_block);
+  playhead_engine->updateTelemetry(0u);
+  require(playhead_engine->telemetry.chord_sequencer_absolute_step == 0u &&
+      playhead_engine->telemetry.chord_sequencer_current_step == 0u,
+      "chord telemetry first block playhead mismatch");
+  playhead_engine->transport.sample_frame = 48000u;
+  SequencerBuffer second_playhead_block{};
+  playhead_engine->generateArrangementEvents(48000u, second_playhead_block);
+  playhead_engine->updateTelemetry(0u);
+  require(playhead_engine->telemetry.chord_sequencer_absolute_step == 1u &&
+      playhead_engine->telemetry.chord_sequencer_current_step == 1u,
+      "chord telemetry must advance from the scheduler cursor");
+  kessho_product_destroy(playhead_engine);
 
   mode_snapshot->arrangement.chord_playback_mode = 2u;
   mode_snapshot->arrangement.chord_strum_direction = 0u;

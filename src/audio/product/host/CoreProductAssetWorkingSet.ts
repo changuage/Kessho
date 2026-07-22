@@ -87,4 +87,8 @@ export class CoreProductAssetWorkingSet {
     for (const entry of this.registered.values()) total += entry.bytes;
     return total;
   }
+
+  assetBytes(assetId: number): number | undefined {
+    return this.registered.get(assetId)?.bytes;
+  }
 }

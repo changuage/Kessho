@@ -42,7 +42,7 @@ assert.equal(exact.state.synthEuclideanMasterEnabled, maximalSixLanePreset.state
 assert.equal(exact.state.drumEnabled, true);
 assert.equal(exact.state.drumEuclid5Enabled, true);
 assert.equal(exact.state.drumEuclid6Enabled, true);
-assert.equal(exact.repairApplied, false);
+assert.equal(exact.safeAuditionChanged, false);
 assert.equal(exact.transportDisabledByLoadMode, false);
 
 const safe = applyPreset(maximalSixLanePreset, { loadMode: 'safe-audition', normalize });
@@ -55,8 +55,10 @@ const legacyRaw = makePreset({
   granularDelayEnabled: true,
 } as Partial<SliderState>);
 delete (legacyRaw.state as Partial<SliderState>).granularDelayBSend;
-const repaired = applyPreset(legacyRaw, { loadMode: 'legacy-repair', normalize });
-assert.equal(repaired.state.granularDelayBSend, 1);
-assert.equal(repaired.repairApplied, true);
+assert.throws(
+  () => applyPreset(legacyRaw, { loadMode: 'exact-as-saved', normalize }),
+  /missing canonical fields/,
+  'legacy/missing current fields must be rejected instead of repaired',
+);
 
 console.log('preset exact load regression passed');

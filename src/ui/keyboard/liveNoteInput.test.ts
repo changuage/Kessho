@@ -17,6 +17,7 @@ const controller = new LiveNoteInputController({
     return new Promise<void>((resolve) => { releaseStart = resolve; });
   },
   stop: (event) => stopped.push(event),
+  onStartFailure: () => {},
 });
 
 assert.equal(controller.noteOn('keyboard:KeyA', {
@@ -25,13 +26,13 @@ assert.equal(controller.noteOn('keyboard:KeyA', {
   note: 60.2,
   velocity: 1.5,
   timestampMs: 100,
-}), true);
+}).status, 'started');
 assert.equal(controller.noteOn('keyboard:KeyA', {
   source: 'computer-keyboard',
   instrument: 'lead1',
   note: 61,
   velocity: 0.5,
-}), false, 'held input should suppress repeated note-on');
+}).status, 'duplicate', 'held input should suppress repeated note-on');
 assert.equal(controller.activeCount(), 1);
 assert.equal(started[0]?.note, 60);
 assert.equal(started[0]?.velocity, 1);
@@ -48,8 +49,9 @@ assert.equal(stopped[0]?.velocity, 0);
 assert.equal(stopped[0]?.timestampMs, 250);
 
 controller.setCallbacks({
-  start: (event) => { started.push(event); },
+  start: async (event) => { started.push(event); },
   stop: (event) => stopped.push(event),
+  onStartFailure: () => {},
 });
 controller.noteOn('pointer:1', { source: 'ui-pad', instrument: 'pad1', note: 64, velocity: 0.8 });
 controller.noteOn('pointer:2', { source: 'ui-pad', instrument: 'pad1', note: 67, velocity: 0.8 });
@@ -61,8 +63,9 @@ assert.equal(stopped.length, 3, 'releaseAll should stop every active input');
 
 const stopDestinations: string[] = [];
 const runtimeAffinityController = new LiveNoteInputController({
-  start: () => undefined,
+  start: async () => undefined,
   stop: () => stopDestinations.push('runtime-a'),
+  onStartFailure: () => {},
 });
 runtimeAffinityController.noteOn('keyboard:KeyS', {
   source: 'computer-keyboard',
@@ -71,8 +74,9 @@ runtimeAffinityController.noteOn('keyboard:KeyS', {
   velocity: 0.8,
 });
 runtimeAffinityController.setCallbacks({
-  start: () => undefined,
+  start: async () => undefined,
   stop: () => stopDestinations.push('runtime-b'),
+  onStartFailure: () => {},
 });
 runtimeAffinityController.noteOff('keyboard:KeyS');
 await Promise.resolve();
@@ -82,18 +86,22 @@ assert.deepEqual(stopDestinations, ['runtime-a'], 'note-off must return to the r
 const synchronousFailureController = new LiveNoteInputController({
   start: () => { throw new Error('synchronous start failure'); },
   stop: () => { throw new Error('stop should not run'); },
+  onStartFailure: (result) => {
+    assert.equal(result.status, 'failed');
+  },
 });
 assert.equal(synchronousFailureController.noteOn('pointer:failed', {
   source: 'ui-pad',
   instrument: 'pad1',
   note: 64,
   velocity: 0.8,
-}), false, 'synchronous start failures should be contained');
+}).status, 'failed', 'synchronous start failures are returned and reported');
 assert.equal(synchronousFailureController.activeCount(), 0);
 
 const stopFailureController = new LiveNoteInputController({
-  start: () => undefined,
+  start: async () => undefined,
   stop: () => { throw new Error('synchronous stop failure'); },
+  onStartFailure: () => {},
 });
 stopFailureController.noteOn('pointer:stop-failure', {
   source: 'ui-pad',
@@ -146,8 +154,9 @@ assert.equal(midiMessageToProductLiveNoteEvent({ ...midiNoteOn, channel: 5 }), n
 
 const midiStopped: ProductLiveNoteEvent[] = [];
 const midiController = new LiveNoteInputController({
-  start: () => undefined,
+  start: async () => undefined,
   stop: (event) => midiStopped.push(event),
+  onStartFailure: () => {},
 });
 midiController.noteOn('midi:42:1:60', {
   source: 'midi',

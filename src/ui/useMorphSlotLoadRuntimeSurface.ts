@@ -4,7 +4,7 @@ import type { PresetEntry } from '../presets/types';
 import { isAtEndpoint0, isAtEndpoint1, isInMidMorph } from '../audio/morphUtils';
 import type { DualSliderRange } from './DualSlider';
 import { applyPreset, type ApplyPresetOptions, USER_PREFERENCE_KEYS } from './presetUtils';
-import { migratePreset, type SavedPreset, type SliderMode, type SliderState } from './state';
+import { type SavedPreset, type SliderMode, type SliderState } from './state';
 import type { ProductRuntimeParamUpdateOptions } from './useProductRuntimePresetSurface';
 import { VISUALIZER_PRESET_SCOPE } from './visualizer/visualizerPresetStore';
 
@@ -69,13 +69,13 @@ type MorphSlotLoadRuntimeSurface = {
 
 function presetEntryToSavedPreset(entry: PresetEntry, data: Record<string, unknown>, normalizeState: (state: SliderState) => SliderState): SavedPreset {
   const version = entry.versions.find((v) => v.v === entry.currentVersion) ?? entry.versions[entry.versions.length - 1];
-  return migratePreset({
+  return {
     name: entry.name,
     timestamp: new Date().toISOString(),
     state: normalizeState(data as unknown as SliderState),
     tags: entry.tags,
     ...(extractPresetVersionMetadata(version) ?? {}),
-  });
+  };
 }
 
 function getLinkedVisualizerPresetName(entry: PresetEntry): string {
@@ -227,7 +227,6 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
       const appliedMidMorph = applyMidMorphSlotReplacement(preset, morphPresetB);
       if (!appliedMidMorph && (atEndpoint0 || !morphPresetB)) {
         const result = applyPreset(preset, {
-          migrate: false,
           currentState: state,
           normalize: (s) => s,
           ...presetEngineUpdateOptions,
@@ -279,7 +278,6 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
       const appliedMidMorph = applyMidMorphSlotReplacement(morphPresetA, preset);
       if (!appliedMidMorph && (atEndpoint1 || !morphPresetA)) {
         const result = applyPreset(preset, {
-          migrate: false,
           currentState: state,
           normalize: (s) => s,
           ...presetEngineUpdateOptions,

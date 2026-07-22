@@ -1,4 +1,4 @@
-import { useSelectedAudioEngineStartAction } from './useSelectedAudioEngineStartAction';
+import { useCallback } from 'react';
 import type { SliderState } from './state';
 
 type ProductRuntimeDualRanges = Record<string, { min: number; max: number }>;
@@ -20,15 +20,28 @@ export type ProductRuntimeStartActionOptions = {
 
 export function useProductRuntimeStartAction({
   primeProductRuntimeAudio,
+  preparePlaybackStartState,
   startProductPlayback,
-  ...options
+  startArmedRecordingAfterPlaybackStart,
+  dualRanges,
+  title,
 }: ProductRuntimeStartActionOptions) {
-  // TODO(product-fallback-retire:runtime-start-action): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
-  // Selected-audio-engine start action remains the temporary
-  // compatibility implementation behind this product runtime facade.
-  return useSelectedAudioEngineStartAction({
-    ...options,
-    primeSelectedPlayback: primeProductRuntimeAudio,
-    startSelectedPlayback: startProductPlayback,
-  });
+  return useCallback(async (requestedState?: SliderState): Promise<void> => {
+    try {
+      primeProductRuntimeAudio();
+      const stateToStart = await preparePlaybackStartState(requestedState);
+      await startProductPlayback({ state: stateToStart, dualRanges, title });
+      startArmedRecordingAfterPlaybackStart();
+    } catch (err) {
+      console.error('Failed to start audio:', err);
+      alert(`Audio failed to start: ${err instanceof Error ? err.message : String(err)}\n\nCheck console for details.`);
+    }
+  }, [
+    dualRanges,
+    preparePlaybackStartState,
+    primeProductRuntimeAudio,
+    startArmedRecordingAfterPlaybackStart,
+    startProductPlayback,
+    title,
+  ]);
 }

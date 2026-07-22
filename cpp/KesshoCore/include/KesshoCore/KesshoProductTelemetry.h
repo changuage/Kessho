@@ -325,4 +325,8 @@ typedef struct KesshoProductTelemetry {
   uint32_t journey_schedule_running;
   uint32_t journey_rng_state_after_plan;
   uint32_t journey_schedule_entry_count;
+  // The arrangement scheduler cursor is the authoritative chord playhead.
+  // These fields are appended to preserve every existing telemetry offset.
+  uint64_t chord_sequencer_absolute_step;
+  uint32_t chord_sequencer_current_step;
 } KesshoProductTelemetry;

@@ -1,5 +1,4 @@
 import { useEffect, useMemo } from 'react';
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import {
   filterDawOutputRoutingConfigForSources,
@@ -15,19 +14,19 @@ import { getActiveDawOutputSourceIds } from '../ui/routing';
 import type { SliderState } from '../ui/state';
 
 interface ProductDawOutputSyncOptions {
-  productRuntimeMode: ProductRuntimeSelectionMode;
+  productRuntimeCore: boolean;
   state: SliderState;
   dawOutputRouting: DawOutputRoutingConfig;
   dawOutputDevice: DawOutputDeviceSelection;
 }
 
 export function useProductDawOutputSync({
-  productRuntimeMode,
+  productRuntimeCore,
   state,
   dawOutputRouting,
   dawOutputDevice,
 }: ProductDawOutputSyncOptions): void {
-  const productRuntimeActive = productRuntimeMode === 'core-product';
+  const productRuntimeActive = productRuntimeCore;
   const activeDawOutputSources = useMemo(
     () => productRuntimeActive ? getActiveDawOutputSourceIds(state) as DawOutputSourceId[] : [],
     [

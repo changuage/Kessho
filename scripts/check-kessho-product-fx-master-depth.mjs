@@ -100,7 +100,7 @@ for (const token of [
 }
 
 for (const token of [
-  'const TELEMETRY_BYTES = 15448;',
+  'const TELEMETRY_BYTES = 15464;',
   'masterInputPeak: this.view.getFloat32(ptr + 968, true)',
   'masterOutputPeak: this.view.getFloat32(ptr + 972, true)',
   'masterOutputRms: this.view.getFloat32(ptr + 976, true)',
@@ -119,12 +119,14 @@ for (const token of [
   'drumSequencerHitCounts.push(this.view.getUint32(ptr + 1104 + index * 4, true));',
   'synthSequencerCurrentSteps.push(this.view.getUint32(ptr + 1168 + index * 4, true));',
   'drumSequencerCurrentSteps.push(this.view.getUint32(ptr + 1232 + index * 4, true));',
+  'chordSequencerAbsoluteStep: this.readUint64Number(ptr + TELEMETRY_CHORD_SEQUENCER_ABSOLUTE_STEP_OFFSET),',
+  'chordSequencerCurrentStep: this.view.getUint32(ptr + TELEMETRY_CHORD_SEQUENCER_CURRENT_STEP_OFFSET, true),',
 ]) {
   assert(worklet.includes(token), `worklet telemetry reader is missing ${token}`);
 }
 
 for (const token of [
-  'sizeof(KesshoProductTelemetry) == 15448',
+  'sizeof(KesshoProductTelemetry) == 15464',
   'offsetof(KesshoProductTelemetry, master_input_peak) == 968',
   'offsetof(KesshoProductTelemetry, dynamics_saturation_drive) == 984',
   'offsetof(KesshoProductTelemetry, master_true_peak) == 992',

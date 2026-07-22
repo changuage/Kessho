@@ -27,7 +27,6 @@ const productRuntimePolicy = read('src/audio/product/runtime/ProductRuntimePolic
 const productionEngineFactory = read('src/audio/product/runtime/createProductionProductEngine.ts');
 const referenceRuntime = read('src/audio/referenceAudioRuntime.ts');
 const referenceWebTs = read('src/audio/reference/webTs/engine.ts');
-const selectedRuntime = read('src/audio/product/SelectedProductRuntime.ts');
 const legacyCoreHost = read('src/audio/coreEngineHost.ts');
 
 if (!productProxy.includes("return 'core-product';")) {
@@ -54,9 +53,6 @@ if (!productRuntimePolicy.includes('failClosedOnProductCoreUnavailable: true')) 
 if (!productionEngineFactory.includes('throw new ProductCoreUnavailableError(')) {
   failures.push('createProductionProductEngine must throw ProductCoreUnavailableError instead of falling back');
 }
-if (!selectedRuntime.includes("if (runtimeMode === 'core-product')")) {
-  failures.push('SelectedProductRuntime must refuse pre-init reference dispatch for core-product mode');
-}
 if (legacyCoreHost.includes("source === 'piano' || source === 'sample1'")) {
   failures.push('legacy Core host must not translate Sample 1 into the Piano sample fallback');
 }
@@ -75,7 +71,6 @@ if (
 
 const allowedReferenceImports = new Set([
   'src/audio/coreEngineHost.ts',
-  'src/audio/product/SelectedProductRuntime.ts',
   'src/audio/referenceAudioRuntime.ts',
   'src/audio/reference/ReferenceAudioEngineDebugCompat.ts',
 ]);
@@ -85,9 +80,6 @@ for (const file of walk('src')) {
   const source = read(file);
   if (/from ['"].*reference\/webTs/.test(source) && !allowedReferenceImports.has(file)) {
     failures.push(`${file}: imports web-ts reference runtime directly`);
-  }
-  if (/from ['"].*\.\.\/reference\/ReferenceSelectedRuntime/.test(source) && !allowedReferenceImports.has(file)) {
-    failures.push(`${file}: reference runtime loading must stay centralized in SelectedProductRuntime`);
   }
   if (/fallback.*web[-_]?ts|web[-_]?ts.*fallback|rescue.*reference runtime/i.test(source)) {
     failures.push(`${file}: appears to implement a silent web-ts/reference fallback`);

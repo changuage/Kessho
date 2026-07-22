@@ -13,7 +13,6 @@ type UseCloudSharedPresetRuntimeSurfaceOptions = {
   setState: Dispatch<SetStateAction<SliderState>>;
   presetEngineUpdateOptions: PresetEngineUpdateOptions;
   syncCoreProductAppliedPreset: (nextState: SliderState) => void;
-  normalizeState: (state: SliderState) => SliderState;
   applyDualRangesFromPreset: (
     dualRanges?: Record<string, { min: number; max: number }>,
     presetSliderModes?: Record<string, SliderMode>,
@@ -32,7 +31,6 @@ export function useCloudSharedPresetRuntimeSurface({
   setState,
   presetEngineUpdateOptions,
   syncCoreProductAppliedPreset,
-  normalizeState,
   applyDualRangesFromPreset,
   restoreEvolveConfigs,
   onRoutingMuteGroupsLoad,
@@ -70,8 +68,9 @@ export function useCloudSharedPresetRuntimeSurface({
   const applyCloudSharedPreset = useCallback(
     (preset: SavedPreset, metadata: { name: string; author: string }) => {
       const result = applyPreset(preset, {
+        loadMode: 'exact-as-saved',
         currentState: stateRef.current,
-        normalize: normalizeState,
+        normalize: (current) => current,
         ...presetEngineUpdateOptions,
       });
       syncCoreProductAppliedPreset(result.state);
@@ -83,7 +82,6 @@ export function useCloudSharedPresetRuntimeSurface({
     },
     [
       applyDualRangesFromPreset,
-      normalizeState,
       presetEngineUpdateOptions,
       restoreEvolveConfigs,
       setState,

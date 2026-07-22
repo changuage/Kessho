@@ -11,7 +11,6 @@ function read(file) {
 
 for (const file of [
   'src/ui/harmony/HarmonyEnginePanel.tsx',
-  'src/ui/SnowflakePrototypePage.tsx',
   'src/ui/routing/routingSourceRegistry.ts',
   'src/ui/synth/SynthPage.tsx',
   'src/ui/global/GlobalPage.tsx',

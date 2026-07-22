@@ -1,5 +1,4 @@
 import { useCallback } from 'react';
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import type { ProductDrumVoice } from '../audio/product/ProductEngineTypes';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 
@@ -14,9 +13,9 @@ type ProductRuntimeModulationRanges = {
 };
 
 export function useProductRuntimeModulationRanges(
-  productRuntimeMode: ProductRuntimeSelectionMode,
+  productRuntimeCore: boolean,
 ): ProductRuntimeModulationRanges {
-  const productRuntimeActive = productRuntimeMode === 'core-product';
+  const productRuntimeActive = productRuntimeCore;
 
   const setProductRuntimeWalkPositionsCallback = useCallback((callback: ((positions: Record<string, number>) => void) | null): void => {
     if (!productRuntimeActive) return;

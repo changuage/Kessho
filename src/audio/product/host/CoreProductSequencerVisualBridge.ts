@@ -17,7 +17,6 @@ type CoreProductSequencerVisualBridgeOptions = {
   sequencerCache: () => CoreProductSequencerCacheState;
   synthSubLaneEnabled: () => Record<string, boolean>[];
   drumSubLaneEnabled: () => Record<string, boolean>[];
-  fallbackSampleRate: () => number;
   hasCallback: (name: CoreProductVisualCallbackName) => boolean;
   publish: (name: string, ...payload: unknown[]) => void;
 };
@@ -28,7 +27,8 @@ export class CoreProductSequencerVisualBridge {
   constructor(private readonly options: CoreProductSequencerVisualBridgeOptions) {}
 
   publish(telemetry: CoreProductTelemetrySnapshot | null): void {
-    if (this.hasStepVisualCallback()) {
+    const sampleRate = telemetry?.sampleRate;
+    if (this.hasStepVisualCallback() && typeof sampleRate === 'number' && Number.isFinite(sampleRate) && sampleRate > 0) {
       const latestSliderState = this.options.latestSliderState();
       publishCoreProductSequencerVisuals({
         telemetry,
@@ -38,7 +38,7 @@ export class CoreProductSequencerVisualBridge {
         drumToggles: selectCoreProductSequencerCache(this.options.sequencerCache(), 'drum').toggles,
         synthVisibleLaneCount: this.options.synthVisibleLaneCount,
         drumVisibleLaneCount: this.options.drumVisibleLaneCount,
-        sampleRate: telemetry?.sampleRate ?? this.options.fallbackSampleRate(),
+        sampleRate,
         hasCallback: (name) => this.options.hasCallback(name),
         publish: (name, steps, hitCounts, arpSteps) => this.options.publish(name, steps, hitCounts, arpSteps),
       });

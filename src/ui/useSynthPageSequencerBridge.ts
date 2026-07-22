@@ -8,20 +8,20 @@ import { sanitizeSequencerSubLaneStates } from './usePresetSequencerRestore';
 type SynthPitchHomeState = { steps?: number; direction?: string; scaleQuantize?: boolean };
 
 type SynthPageSequencerBridgeOptions = {
-  captureSelectedSynthEuclidLaneHome: (
+  captureProductSynthEuclidLaneHome: (
     laneIdx: number,
     pitchState?: SynthPitchHomeState | null,
     options?: { stepOverrides?: Partial<StepOverrides>; subLaneStates?: Record<SubLaneKind, SubLaneState>[] },
   ) => void;
-  diceSelectedSynthEuclidLane: (laneIdx: number, intensity: number) => void;
-  resetSelectedSynthEuclidLaneHome: (laneIdx: number) => void;
-  setSelectedSynthEuclidClockDivs: (divs: ClockDivision[]) => void;
-  setSelectedSynthEuclidEvolveConfigs: (configs: EvolveConfig[]) => void;
-  setSelectedSynthEuclidSwings: (swings: number[]) => void;
-  setSelectedSynthPitchBindingModes: (modes: PitchBindingMode[]) => void;
-  setSelectedSynthPitchSettings: (settings: PitchSettings[]) => void;
-  setSelectedSynthStepOverrides: (overrides: Partial<StepOverrides>, subLaneStates?: Record<SubLaneKind, SubLaneState>[]) => void;
-  setSelectedSynthSubLaneEnabled: (enabled: Record<string, boolean>[]) => void;
+  diceProductSynthEuclidLane: (laneIdx: number, intensity: number) => void;
+  resetProductSynthEuclidLaneHome: (laneIdx: number) => void;
+  setProductSynthEuclidClockDivs: (divs: ClockDivision[]) => void;
+  setProductSynthEuclidEvolveConfigs: (configs: EvolveConfig[]) => void;
+  setProductSynthEuclidSwings: (swings: number[]) => void;
+  setProductSynthPitchBindingModes: (modes: PitchBindingMode[]) => void;
+  setProductSynthPitchSettings: (settings: PitchSettings[]) => void;
+  setProductSynthStepOverrides: (overrides: Partial<StepOverrides>, subLaneStates?: Record<SubLaneKind, SubLaneState>[]) => void;
+  setProductSynthSubLaneEnabled: (enabled: Record<string, boolean>[]) => void;
   synthClockDivsRef: MutableRefObject<ClockDivision[] | undefined>;
   synthEvolveConfigsRef: MutableRefObject<EvolveConfig[] | undefined>;
   synthLinkedRef: MutableRefObject<boolean[] | undefined>;
@@ -78,16 +78,16 @@ function synthEngineStepOverrides(overrides: StepOverrides): Partial<StepOverrid
 }
 
 export function useSynthPageSequencerBridge({
-  captureSelectedSynthEuclidLaneHome,
-  diceSelectedSynthEuclidLane,
-  resetSelectedSynthEuclidLaneHome,
-  setSelectedSynthEuclidClockDivs,
-  setSelectedSynthEuclidEvolveConfigs,
-  setSelectedSynthEuclidSwings,
-  setSelectedSynthPitchBindingModes,
-  setSelectedSynthPitchSettings,
-  setSelectedSynthStepOverrides,
-  setSelectedSynthSubLaneEnabled,
+  captureProductSynthEuclidLaneHome,
+  diceProductSynthEuclidLane,
+  resetProductSynthEuclidLaneHome,
+  setProductSynthEuclidClockDivs,
+  setProductSynthEuclidEvolveConfigs,
+  setProductSynthEuclidSwings,
+  setProductSynthPitchBindingModes,
+  setProductSynthPitchSettings,
+  setProductSynthStepOverrides,
+  setProductSynthSubLaneEnabled,
   synthClockDivsRef,
   synthEvolveConfigsRef,
   synthLinkedRef,
@@ -103,23 +103,23 @@ export function useSynthPageSequencerBridge({
   const onSubLaneStatesChange = useCallback((states: Record<SubLaneKind, SubLaneState>[]) => {
     const sanitized = sanitizeSequencerSubLaneStates(states) ?? states;
     synthSubLaneStatesRef.current = sanitized;
-    setSelectedSynthSubLaneEnabled(subLaneEnabledFlags(sanitized, synthArpConfigsRef.current));
-  }, [setSelectedSynthSubLaneEnabled, synthArpConfigsRef, synthSubLaneStatesRef]);
+    setProductSynthSubLaneEnabled(subLaneEnabledFlags(sanitized, synthArpConfigsRef.current));
+  }, [setProductSynthSubLaneEnabled, synthArpConfigsRef, synthSubLaneStatesRef]);
 
   const onArpConfigsChange = useCallback((configs: ProductPlayConfig[]) => {
     synthArpConfigsRef.current = configs;
-    setSelectedSynthSubLaneEnabled(subLaneEnabledFlags(synthSubLaneStatesRef.current, configs));
-  }, [setSelectedSynthSubLaneEnabled, synthArpConfigsRef, synthSubLaneStatesRef]);
+    setProductSynthSubLaneEnabled(subLaneEnabledFlags(synthSubLaneStatesRef.current, configs));
+  }, [setProductSynthSubLaneEnabled, synthArpConfigsRef, synthSubLaneStatesRef]);
 
   const onPitchSettingsChange = useCallback((settings: PitchSettings[]) => {
     synthPitchSettingsRef.current = settings;
-    setSelectedSynthPitchSettings(settings);
-  }, [setSelectedSynthPitchSettings, synthPitchSettingsRef]);
+    setProductSynthPitchSettings(settings);
+  }, [setProductSynthPitchSettings, synthPitchSettingsRef]);
 
   const onPitchBindingModesChange = useCallback((modes: PitchBindingMode[]) => {
     synthPitchBindingModesRef.current = modes;
-    setSelectedSynthPitchBindingModes(modes);
-  }, [setSelectedSynthPitchBindingModes, synthPitchBindingModesRef]);
+    setProductSynthPitchBindingModes(modes);
+  }, [setProductSynthPitchBindingModes, synthPitchBindingModesRef]);
 
   const onRawStepOverridesChange = useCallback((raw: StepOverrides) => {
     synthStepOverridesRef.current = raw;
@@ -131,18 +131,18 @@ export function useSynthPageSequencerBridge({
   ) => {
     const engineOverrides = synthEngineStepOverrides(overrides);
     engineStepOverridesRef.current = engineOverrides;
-    setSelectedSynthStepOverrides(engineOverrides, subLaneStates ?? synthSubLaneStatesRef.current);
-  }, [setSelectedSynthStepOverrides, synthSubLaneStatesRef]);
+    setProductSynthStepOverrides(engineOverrides, subLaneStates ?? synthSubLaneStatesRef.current);
+  }, [setProductSynthStepOverrides, synthSubLaneStatesRef]);
 
   const onClockDivsChange = useCallback((divs: ClockDivision[]) => {
     synthClockDivsRef.current = divs;
-    setSelectedSynthEuclidClockDivs(divs);
-  }, [setSelectedSynthEuclidClockDivs, synthClockDivsRef]);
+    setProductSynthEuclidClockDivs(divs);
+  }, [setProductSynthEuclidClockDivs, synthClockDivsRef]);
 
   const onSwingsChange = useCallback((swings: number[]) => {
     synthSwingsRef.current = swings;
-    setSelectedSynthEuclidSwings(swings);
-  }, [setSelectedSynthEuclidSwings, synthSwingsRef]);
+    setProductSynthEuclidSwings(swings);
+  }, [setProductSynthEuclidSwings, synthSwingsRef]);
 
   const onLinkedChange = useCallback((linked: boolean[]) => {
     synthLinkedRef.current = linked;
@@ -150,11 +150,11 @@ export function useSynthPageSequencerBridge({
 
   const onEvolveConfigsChange = useCallback((configs: EvolveConfig[]) => {
     synthEvolveConfigsRef.current = configs;
-    setSelectedSynthEuclidEvolveConfigs(configs);
-  }, [setSelectedSynthEuclidEvolveConfigs, synthEvolveConfigsRef]);
+    setProductSynthEuclidEvolveConfigs(configs);
+  }, [setProductSynthEuclidEvolveConfigs, synthEvolveConfigsRef]);
 
   const captureEvolveHome = useCallback((laneIdx: number, pitchState?: { steps?: number; direction?: string; scaleQuantize?: boolean } | null) => {
-    captureSelectedSynthEuclidLaneHome(
+    captureProductSynthEuclidLaneHome(
       laneIdx,
       pitchState ?? synthSubLaneStatesRef.current?.[laneIdx]?.pitch,
       {
@@ -162,11 +162,11 @@ export function useSynthPageSequencerBridge({
         subLaneStates: synthSubLaneStatesRef.current,
       },
     );
-  }, [captureSelectedSynthEuclidLaneHome, synthSubLaneStatesRef]);
+  }, [captureProductSynthEuclidLaneHome, synthSubLaneStatesRef]);
 
   return useMemo(() => ({
     captureEvolveHome,
-    diceLane: diceSelectedSynthEuclidLane,
+    diceLane: diceProductSynthEuclidLane,
     onClockDivsChange,
     onEvolveConfigsChange,
     onLinkedChange,
@@ -177,10 +177,10 @@ export function useSynthPageSequencerBridge({
     onSubLaneStatesChange,
     onArpConfigsChange,
     onSwingsChange,
-    resetEvolveHome: resetSelectedSynthEuclidLaneHome,
+    resetEvolveHome: resetProductSynthEuclidLaneHome,
   }), [
     captureEvolveHome,
-    diceSelectedSynthEuclidLane,
+    diceProductSynthEuclidLane,
     onClockDivsChange,
     onEvolveConfigsChange,
     onLinkedChange,
@@ -191,6 +191,6 @@ export function useSynthPageSequencerBridge({
     onSubLaneStatesChange,
     onArpConfigsChange,
     onSwingsChange,
-    resetSelectedSynthEuclidLaneHome,
+    resetProductSynthEuclidLaneHome,
   ]);
 }

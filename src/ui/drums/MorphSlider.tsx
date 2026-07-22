@@ -4,7 +4,7 @@ import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderS
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import { VOICE_MORPH_KEYS } from '../../audio/drumMorph';
 import { DRUM_VOICE_SCOPES } from '../../audio/drumVoiceConfig';
-import { usePresets } from '../../presets/usePresets';
+import type { PresetManagerRepository } from '../../presets/PresetManagerController';
 import { removeRuntimeValues, useRuntimeValue } from '../runtimeValueState';
 import {
   getFactoryPresetNames,
@@ -27,6 +27,7 @@ interface MorphSliderProps {
   onAuditionPresetPreview?: (voice: DrumVoiceType, externalState: SliderState) => void | Promise<void>;
   poolPopupSlot?: 'A' | 'B' | null;
   onPoolPopupSlotChange?: (slot: 'A' | 'B' | null) => void;
+  repository: PresetManagerRepository;
 }
 
 const DRUM_POOL_PREVIEW_LEVEL_FLOOR = 0.68;
@@ -80,10 +81,11 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
   onAuditionPresetPreview,
   poolPopupSlot: controlledPoolPopupSlot,
   onPoolPopupSlotChange,
+  repository,
 }) => {
   const { presetA, presetB, morph: morphKey } = VOICE_MORPH_KEYS[voice];
   const engineScope = DRUM_VOICE_SCOPES[voice];
-  const { presets: enginePresets, save, load, remove, updateMetadata } = usePresets('engine', engineScope);
+  const { presets: enginePresets, save, load, remove, updateMetadata } = repository;
   const [internalPoolPopupSlot, setInternalPoolPopupSlot] = useState<'A' | 'B' | null>(null);
   const poolPopupSlot = controlledPoolPopupSlot !== undefined ? controlledPoolPopupSlot : internalPoolPopupSlot;
   const setPoolPopupSlot = onPoolPopupSlotChange ?? setInternalPoolPopupSlot;

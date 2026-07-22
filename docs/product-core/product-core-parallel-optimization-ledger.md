@@ -651,3 +651,15 @@ Parallel coordination notes:
 
 Next batch:
 - No remaining CPU/tech-debt batch in this plan. Native physical-device evidence remains the release-readiness follow-up if native/iOS/macOS shipment is in scope.
+
+## Current implementation-plan CPU closeout
+
+Date: 2026-07-22.
+
+The required three-run page CPU before/after measurement is complete. The baseline is detached `HEAD 449fb2bd`; the current phase is the implementation worktree. All nine scenarios passed paired/interleaved median aggregation with a 3% per-scenario regression threshold using a 12-second capture, 2.5-second warmup, and 1-second settle. The paired retry metadata records an original invalid baseline `synth` scenario, followed by a replacement interleaved run set on base port `4306` with no replacement invalid scenarios; accepted baseline/current counts are `3/3`. The report maximum median regression is `+0.8304607776%`; the median scenario regression is `-2.6229816947%`.
+
+Report: `docs/reports/kessho-product-page-cpu-before-after-latest.json`.
+
+The main UI CPU changes limit Product Synth telemetry subscription to the active Synth surface, suppress React updates when the absolute/current step is unchanged, lazily bind Product telemetry getters at the construction boundary, and park development runtime-comparison instrumentation during page-CPU capture.
+
+Closeout validation: aggregate `npm run core:product:ci` passed `70/70` (`70 pass / 0 fail`); `core:product:default-gate-v3` passed with `defaultPromotionReady=true` and web default runtime `core-product`; sequencer UI parity was a full `4/4` pass.

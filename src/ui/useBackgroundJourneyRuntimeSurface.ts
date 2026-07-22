@@ -15,11 +15,16 @@ import {
 import type { ProductBackgroundJourneyReadiness } from '../audio/product/ports/ProductJourneyPort';
 import {
   reconcileBackgroundJourneyTerminal,
-  resolveBackgroundJourneyRuntimePhase,
 } from '../audio/product/journey/reconcileBackgroundJourneyProjection';
 import type { SavedPreset, SliderState } from './state';
 import type { UseJourneyResult } from './journeyState';
+import {
+  projectBackgroundJourneyTelemetry,
+  requestAndReadBackgroundJourneyTelemetry,
+  shouldRefreshBackgroundJourneyTelemetry,
+} from './backgroundJourneyRuntimeCoordinator';
 import { useVisibleInterval } from './hooks/useVisibleInterval';
+import { useDocumentVisibility } from './hooks/useDocumentVisibility';
 
 export type BackgroundJourneyUiState =
   | { status: 'idle' }
@@ -28,7 +33,7 @@ export type BackgroundJourneyUiState =
   | { status: 'ready'; durationSeconds: number; assetBytes: number; sceneCount: number; revision: number }
   | { status: 'optimizable'; sceneCount: number; totalSceneCount: number; assetBytes: number }
   | { status: 'stale' }
-  | { status: 'unavailable'; reason: BackgroundJourneyPlanReason | Exclude<Extract<ProductBackgroundJourneyReadiness, { status: 'not-ready' }>['reason'], never>; assetBytes?: number; requiredBytes?: number; limitBytes?: number };
+  | { status: 'unavailable'; reason: BackgroundJourneyUnavailableReason; assetBytes?: number; requiredBytes?: number; limitBytes?: number };
 
 type StartProductPlayback = (options: {
   state: SliderState;
@@ -40,6 +45,7 @@ type PreparedJourney = {
   plan: BackgroundJourneyPlan;
   playableNodes: JourneyConfig['nodes'];
   presets: Map<string, SavedPreset>;
+  sampleRate: number;
   configFingerprint: string;
 };
 
@@ -53,6 +59,20 @@ type OptimizationContext = {
   sampleRate: number;
   configFingerprint: string;
 };
+
+export type { BackgroundJourneyTelemetryProjection } from './backgroundJourneyRuntimeCoordinator';
+export {
+  projectBackgroundJourneyTelemetry,
+  requestAndReadBackgroundJourneyTelemetry,
+} from './backgroundJourneyRuntimeCoordinator';
+
+type BackgroundJourneyUnavailableReason = BackgroundJourneyPlanReason |
+  Exclude<Extract<ProductBackgroundJourneyReadiness, { status: 'not-ready' }>['reason'], never>;
+
+function productSampleRate(): number | null {
+  const sampleRate = productEngine.getTelemetry()?.sampleRate;
+  return typeof sampleRate === 'number' && Number.isFinite(sampleRate) && sampleRate > 0 ? sampleRate : null;
+}
 
 function revisionFor(fingerprintValue: string): number {
   let hash = 2166136261;
@@ -99,6 +119,7 @@ export function useBackgroundJourneyRuntimeSurface(options: {
   setIsJourneyPlaying: (playing: boolean) => void;
 }) {
   const { config, journey, resolveSavedPresetByName, startProductPlayback, setIsJourneyPlaying } = options;
+  const documentVisible = useDocumentVisibility();
   const [uiState, setUiState] = useState<BackgroundJourneyUiState>({ status: 'idle' });
   const [telemetry, setTelemetry] = useState<CoreProductTelemetrySnapshot | null>(null);
   const [runtimeProjectionActive, setRuntimeProjectionActive] = useState(false);
@@ -112,6 +133,33 @@ export function useBackgroundJourneyRuntimeSurface(options: {
   latestConfigFingerprintRef.current = configFingerprint;
   const appliedConfigFingerprintRef = useRef(configFingerprint);
   const terminalStateRef = useRef({ terminalRevision: null as number | null, observedRunning: false });
+  const previousVisibilityRef = useRef({ documentVisible, runtimeProjectionActive: false });
+  const pendingTelemetryRefreshRef = useRef<(() => void) | null>(null);
+
+  const cancelPendingTelemetryRefresh = useCallback(() => {
+    pendingTelemetryRefreshRef.current?.();
+    pendingTelemetryRefreshRef.current = null;
+  }, []);
+
+  const requestFreshTelemetry = useCallback(() => {
+    cancelPendingTelemetryRefresh();
+    pendingTelemetryRefreshRef.current = requestAndReadBackgroundJourneyTelemetry(
+      () => productEngine.requestTelemetryOnce(),
+      () => productEngine.getTelemetry(),
+      (callback) => {
+        if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+          const timeout = setTimeout(callback, 0);
+          return () => clearTimeout(timeout);
+        }
+        const frame = window.requestAnimationFrame(() => callback());
+        return () => window.cancelAnimationFrame(frame);
+      },
+      (freshTelemetry) => {
+        pendingTelemetryRefreshRef.current = null;
+        setTelemetry(freshTelemetry);
+      },
+    );
+  }, [cancelPendingTelemetryRefresh]);
 
   useEffect(() => {
     if (appliedConfigFingerprintRef.current === configFingerprint) return;
@@ -130,11 +178,27 @@ export function useBackgroundJourneyRuntimeSurface(options: {
   }, [configFingerprint, journey.stop, setIsJourneyPlaying]);
 
   useEffect(() => {
+    const currentVisibility = { documentVisible, runtimeProjectionActive };
+    const shouldRefresh = shouldRefreshBackgroundJourneyTelemetry(
+      previousVisibilityRef.current,
+      currentVisibility,
+    );
+    previousVisibilityRef.current = currentVisibility;
+    if (!shouldRefresh) {
+      if (!documentVisible || !runtimeProjectionActive) cancelPendingTelemetryRefresh();
+      return;
+    }
+    requestFreshTelemetry();
+    return cancelPendingTelemetryRefresh;
+  }, [cancelPendingTelemetryRefresh, documentVisible, requestFreshTelemetry, runtimeProjectionActive]);
+
+  useEffect(() => cancelPendingTelemetryRefresh, [cancelPendingTelemetryRefresh]);
+
+  useEffect(() => {
     if (!telemetry || !preparedRef.current) return;
     const prepared = preparedRef.current;
-    const current = prepared.playableNodes[telemetry.journeyCurrentNodeIndex ?? 0];
-    const next = prepared.playableNodes[telemetry.journeyNextNodeIndex ?? 0];
-    const phase = resolveBackgroundJourneyRuntimePhase(telemetry);
+    const projection = projectBackgroundJourneyTelemetry(telemetry, prepared.playableNodes);
+    const phase = projection.phase;
     if (reconcileBackgroundJourneyTerminal(
       terminalStateRef.current,
       telemetry.journeyScheduleRevision ?? prepared.plan.revision,
@@ -143,7 +207,7 @@ export function useBackgroundJourneyRuntimeSurface(options: {
       {
         projectEnded: () => journey.projectProductRuntime({
           phase: 'ended',
-          currentNodeId: next?.id ?? current?.id ?? null,
+          currentNodeId: projection.nextNodeId ?? projection.currentNodeId,
           nextNodeId: null,
           phraseProgress: 1,
           morphProgress: 1,
@@ -165,17 +229,21 @@ export function useBackgroundJourneyRuntimeSurface(options: {
     )) return;
     journey.projectProductRuntime({
       phase: phase === 'morphing' ? 'morphing' : 'playing',
-      currentNodeId: current?.id ?? null,
-      nextNodeId: next?.id ?? null,
-      phraseProgress: telemetry.journeyHoldProgress ?? 0,
-      morphProgress: telemetry.journeyMorphProgress ?? 0,
+      currentNodeId: projection.currentNodeId,
+      nextNodeId: projection.nextNodeId,
+      phraseProgress: projection.phraseProgress,
+      morphProgress: projection.morphProgress,
     });
   }, [journey.projectProductRuntime, journey.stop, setIsJourneyPlaying, telemetry]);
 
   useVisibleInterval(() => {
-    productEngine.requestTelemetryOnce();
-    setTelemetry(productEngine.getTelemetry());
-  }, 100, { enabled: runtimeProjectionActive, immediate: true, pauseWhenHidden: true });
+    requestFreshTelemetry();
+  }, 100, {
+    enabled: runtimeProjectionActive,
+    immediate: false,
+    pauseWhenHidden: false,
+    isVisible: documentVisible,
+  });
 
   useVisibleInterval(() => {
     const readiness = productEngine.getBackgroundJourneyReadiness();
@@ -212,12 +280,18 @@ export function useBackgroundJourneyRuntimeSurface(options: {
     }
     const firstSnapshot = resolvedNodes.values().next().value?.snapshot;
     const revision = revisionFor(configFingerprint);
+    const sampleRate = productSampleRate();
+    if (sampleRate === null) {
+      productEngine.discardBackgroundJourney();
+      setUiState({ status: 'unavailable', reason: 'sample-rate-unavailable' });
+      return;
+    }
     const result = compileBackgroundJourneyPlan({
       config,
       resolvedNodes,
       productSeed: firstSnapshot?.rng.seed ?? 1,
       revision,
-      sampleRate: productEngine.getTelemetry()?.sampleRate ?? 48_000,
+      sampleRate,
     });
     if (result.status !== 'ready') {
       productEngine.discardBackgroundJourney();
@@ -231,7 +305,7 @@ export function useBackgroundJourneyRuntimeSurface(options: {
       resolvedNodes,
       productSeed: firstSnapshot?.rng.seed ?? 1,
       revision,
-      sampleRate: productEngine.getTelemetry()?.sampleRate ?? 48_000,
+      sampleRate,
       configFingerprint: expectedFingerprint,
     };
     const referencedStates = playableNodes
@@ -251,9 +325,9 @@ export function useBackgroundJourneyRuntimeSurface(options: {
       productEngine.discardBackgroundJourney();
       return;
     }
-    setUiState(uiStateFromHost(readiness, result.plan, referencedStates.length, productEngine.getTelemetry()?.sampleRate ?? 48_000));
+    setUiState(uiStateFromHost(readiness, result.plan, referencedStates.length, sampleRate));
     if (readiness.status === 'ready') {
-      preparedRef.current = { plan: result.plan, playableNodes, presets, configFingerprint };
+      preparedRef.current = { plan: result.plan, playableNodes, presets, sampleRate, configFingerprint };
     }
   }, [config, configFingerprint, resolveSavedPresetByName]);
 
@@ -306,6 +380,7 @@ export function useBackgroundJourneyRuntimeSurface(options: {
         plan: candidate.plan,
         playableNodes: candidate.playableNodes,
         presets: context.presets,
+        sampleRate: context.sampleRate,
         configFingerprint: expectedFingerprint,
       };
     }
@@ -335,7 +410,7 @@ export function useBackgroundJourneyRuntimeSurface(options: {
         productEngine.getBackgroundJourneyReadiness(),
         prepared.plan,
         prepared.playableNodes.length,
-        productEngine.getTelemetry()?.sampleRate ?? 48_000,
+        prepared.sampleRate,
       ));
       return false;
     }

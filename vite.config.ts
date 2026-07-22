@@ -23,6 +23,10 @@ export default defineConfig(({ mode }) => ({
           find: /^\.\.\/referenceAudioRuntime$/,
           replacement: fileURLToPath(new URL('./src/audio/referenceAudioRuntime.unavailable.ts', import.meta.url)),
         },
+        {
+          find: /^\.\.\/\.\.\/audio\/referenceAudioRuntime$/,
+          replacement: fileURLToPath(new URL('./src/audio/referenceAudioRuntime.unavailable.ts', import.meta.url)),
+        },
       ]
       : [],
   },

@@ -1,8 +1,7 @@
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import type { EarthTextureDebugState } from '../audio/engineSharedTypes';
 import type { TransportDebugSnapshot } from '../audio/transport';
-import { useSelectedAudioEngineDebugRuntime } from './useSelectedAudioEngineDebugRuntime';
-import type { SliderState } from './state';
+import { useCallback } from 'react';
+import type { ProductRuntimeStateSurface, ProductRuntimeTelemetrySurface } from './productRuntimeConstruction';
 
 type ProductLeadMorphedParams = { attack: number; decay: number; sustain: number; release: number } | null;
 
@@ -20,30 +19,33 @@ type ProductRuntimeDebugRuntime = {
   liveLeadMorphedParamsAvailable: boolean;
   liveWaveformTelemetryAvailable: boolean;
   textureDebugAvailable: boolean;
-  updateProductReferenceParams: (nextState: SliderState, metadata: { presetId: string; presetName: string }) => void;
 };
 
-export function useProductRuntimeDebugRuntime(
-  productRuntimeMode: ProductRuntimeSelectionMode,
-): ProductRuntimeDebugRuntime {
-  // TODO(product-fallback-retire:runtime-debug-runtime): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
-  // Keep selected debug/runtime names isolated here until
-  // the debug surface itself is product-owned.
-  const {
-    getSelectedGranularBufferWaveform: getProductGranularBufferWaveform,
-    getSelectedTransportDebugState: getProductTransportDebugState,
-    getSelectedLeadMorphedParams: getProductLeadMorphedParams,
-    selectedAudioEngineDebugAnalysers: productRuntimeDebugAnalysers,
-    updateSelectedReferenceParams: updateProductReferenceParams,
-    ...productDebugRuntime
-  } = useSelectedAudioEngineDebugRuntime(productRuntimeMode);
+type ProductRuntimeDebugRuntimeOptions = {
+  productRuntimeState: ProductRuntimeStateSurface;
+  productRuntimeTelemetry: ProductRuntimeTelemetrySurface;
+};
 
+export function useProductRuntimeDebugRuntime({
+  productRuntimeState,
+  productRuntimeTelemetry,
+}: ProductRuntimeDebugRuntimeOptions): ProductRuntimeDebugRuntime {
   return {
-    ...productDebugRuntime,
-    getProductGranularBufferWaveform,
-    getProductTransportDebugState,
-    getProductLeadMorphedParams,
-    productRuntimeDebugAnalysers,
-    updateProductReferenceParams,
+    getProductGranularBufferWaveform: useCallback(
+      () => productRuntimeTelemetry.getTelemetry()?.granularBufferWaveform ?? null,
+      [productRuntimeTelemetry],
+    ),
+    getProductTransportDebugState: useCallback(
+      () => productRuntimeState.getTransportDebugState() as TransportDebugSnapshot | null,
+      [productRuntimeState],
+    ),
+    getEarthTextureDebugState: useCallback(() => (
+      productRuntimeTelemetry.getTelemetry()?.earthTextureDebugState ?? { waves: null, birds: null, birds2: null, frogs: null }
+    ), [productRuntimeTelemetry]),
+    getProductLeadMorphedParams: useCallback(() => null, []),
+    productRuntimeDebugAnalysers: { drumVoiceAnalyser: undefined, dynamicsAnalyser: undefined },
+    liveLeadMorphedParamsAvailable: false,
+    liveWaveformTelemetryAvailable: productRuntimeTelemetry.available,
+    textureDebugAvailable: productRuntimeTelemetry.available,
   };
 }

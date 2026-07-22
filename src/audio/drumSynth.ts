@@ -747,29 +747,29 @@ export class DrumSynth {
     return this.transientNodeGroups.length;
   }
 
-  setDrumTriggerCallback(callback: (voice: DrumVoiceType, velocity: number, time?: number) => void): void {
+  setDrumTriggerCallback(callback: ((voice: DrumVoiceType, velocity: number, time?: number) => void) | null): void {
     this.onDrumTrigger = callback;
   }
   
-  setMorphTriggerCallback(callback: (voice: DrumVoiceType, morphPosition: number) => void): void {
+  setMorphTriggerCallback(callback: ((voice: DrumVoiceType, morphPosition: number) => void) | null): void {
     this.onMorphTrigger = callback;
   }
 
-  setParamSHTriggerCallback(callback: (voice: DrumVoiceType, key: string, position: number) => void): void {
+  setParamSHTriggerCallback(callback: ((voice: DrumVoiceType, key: string, position: number) => void) | null): void {
     this.onParamSHTrigger = callback;
   }
 
-  setEuclidEvolveTriggerCallback(callback: (laneIndex: number) => void): void {
+  setEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void {
     this.onEuclidEvolveTrigger = callback;
   }
 
-  setEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: DrumEvolveOverridesPayload) => void): void {
+  setEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: DrumEvolveOverridesPayload) => void) | null): void {
     this.onEvolveOverridesChanged = callback;
   }
 
-  setStepPositionCallback(callback: (steps: number[], hitCounts: number[]) => void): void {
+  setStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void {
     this.onStepPositionChange = callback;
-    callback([...this.euclidCurrentStep], [...this.euclidVisualHitCounts]);
+    callback?.([...this.euclidCurrentStep], [...this.euclidVisualHitCounts]);
   }
 
   getEuclidCurrentStep(): number[] {

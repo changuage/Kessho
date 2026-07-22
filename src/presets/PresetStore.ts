@@ -5,14 +5,13 @@
 import type { PresetEntry, PresetLevel, PresetRenameIdentity, PresetSummary } from './types';
 import { compressVersions } from './codec';
 import {
-  buildPresetKeyCandidates,
   getPresetScope,
   isPresetCompatibleWithSlot,
   makePresetKey,
-  normalizePresetEntry,
   normalizePresetSummary,
   parsePresetKey,
 } from './presetUtils';
+import { decodeCurrentPresetEntry } from './currentPresetSchema';
 
 const PREFIX = 'preset:';
 const LIBRARY_SORT_ORDER = {
@@ -20,8 +19,6 @@ const LIBRARY_SORT_ORDER = {
   user: 1,
   cloud: 2,
 } as const;
-
-const LEGACY_DELAY_A_KEY_PATTERN = /"leadDelay(?:ReverbSend|Time|Feedback|Mix|Enabled|Spread|Filter|Send)"/;
 
 function getBrowserPresetStorage(): Storage | null {
   if (typeof localStorage === 'undefined') return null;
@@ -50,9 +47,9 @@ export interface IPresetStore {
 
 // ─── Key helpers ────────────────────────────────────────────────────────────
 
-function readNormalizedEntry(raw: string): PresetEntry | null {
+function readCurrentEntry(raw: string): PresetEntry | null {
   try {
-    return normalizePresetEntry(JSON.parse(raw));
+    return decodeCurrentPresetEntry(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -85,48 +82,30 @@ export class LocalStoragePresetStore implements IPresetStore {
     if (!storage) {
       throw new Error('Preset localStorage backend is unavailable');
     }
-    const normalized = normalizePresetEntry(entry);
-    if (!normalized) {
-      throw new Error('Invalid preset entry');
-    }
+    const normalized = decodeCurrentPresetEntry(entry);
 
     // Authoritative version retention/compression lives at the store boundary.
     compressVersions(normalized);
     normalized.updatedAt = Date.now();
 
     const key = getLogicalKey(normalized);
-    for (const candidate of buildPresetKeyCandidates(normalized.type, normalized.name, getPresetScope(normalized, normalized.type))) {
-      if (candidate !== key) {
-        storage.removeItem(candidate);
-      }
-    }
-
     storage.setItem(key, JSON.stringify(normalized));
   }
 
   async load(type: PresetLevel, name: string, scope?: string, version?: number): Promise<PresetEntry | null> {
     const storage = getBrowserPresetStorage();
     if (!storage) return null;
-    for (const key of buildPresetKeyCandidates(type, name, scope)) {
-      const raw = storage.getItem(key);
-      if (!raw) continue;
-      const entry = readNormalizedEntry(raw);
-      if (!entry || entry.type !== type) continue;
-      if (!isPresetCompatibleWithSlot(entry, type, scope)) continue;
-      if (LEGACY_DELAY_A_KEY_PATTERN.test(raw)) {
-        storage.setItem(key, JSON.stringify(entry));
-      }
-      if (version !== undefined) {
-        const selected = entry.versions.find(v => v.v === version);
-        if (!selected) continue;
-        return {
-          ...entry,
-          currentVersion: selected.v,
-        };
-      }
-      return entry;
+    const key = makePresetKey(type, name, scope);
+    const raw = storage.getItem(key);
+    if (!raw) return null;
+    const entry = readCurrentEntry(raw);
+    if (!entry || entry.type !== type || !isPresetCompatibleWithSlot(entry, type, scope)) return null;
+    if (version !== undefined) {
+      const selected = entry.versions.find(v => v.v === version);
+      if (!selected) return null;
+      return { ...entry, currentVersion: selected.v };
     }
-    return null;
+    return entry;
   }
 
   async loadById(id: string, version?: number): Promise<PresetEntry | null> {
@@ -138,12 +117,9 @@ export class LocalStoragePresetStore implements IPresetStore {
       if (!key?.startsWith(PREFIX)) continue;
       const raw = storage.getItem(key);
       if (!raw) continue;
-      const entry = readNormalizedEntry(raw);
+      const entry = readCurrentEntry(raw);
       if (!entry) continue;
       if (entry.id !== targetId && entry.remoteId !== targetId) continue;
-      if (LEGACY_DELAY_A_KEY_PATTERN.test(raw)) {
-        storage.setItem(key, JSON.stringify(entry));
-      }
       if (version !== undefined) {
         const selected = entry.versions.find(v => v.v === version);
         if (!selected) return null;
@@ -169,11 +145,8 @@ export class LocalStoragePresetStore implements IPresetStore {
       if (parsed.type !== type) continue;
       const raw = storage.getItem(key);
       if (!raw) continue;
-      const entry = readNormalizedEntry(raw);
+      const entry = readCurrentEntry(raw);
       if (!entry) continue;
-      if (LEGACY_DELAY_A_KEY_PATTERN.test(raw)) {
-        storage.setItem(key, JSON.stringify(entry));
-      }
       if (!isPresetCompatibleWithSlot(entry, type, scope)) continue;
       const logicalKey = getLogicalKey(entry);
       const existing = results.get(logicalKey);
@@ -198,9 +171,7 @@ export class LocalStoragePresetStore implements IPresetStore {
   async delete(type: PresetLevel, name: string, scope?: string): Promise<void> {
     const storage = getBrowserPresetStorage();
     if (!storage) return;
-    for (const key of buildPresetKeyCandidates(type, name, scope)) {
-      storage.removeItem(key);
-    }
+    storage.removeItem(makePresetKey(type, name, scope));
   }
 
   async rename(
@@ -223,7 +194,7 @@ export class LocalStoragePresetStore implements IPresetStore {
     }
 
     const previousScope = getPresetScope(entry, type);
-    const renamed = normalizePresetEntry({
+    const renamed = decodeCurrentPresetEntry({
       ...entry,
       ...identity,
       name: trimmedName,
@@ -231,21 +202,14 @@ export class LocalStoragePresetStore implements IPresetStore {
       remoteId: entry.remoteId,
       updatedAt: Date.now(),
     });
-    if (!renamed) throw new Error('Invalid preset rename payload');
 
     compressVersions(renamed);
     renamed.updatedAt = Date.now();
 
     const nextScope = getPresetScope(renamed, type);
     const nextKey = getLogicalKey(renamed);
-    for (const candidate of [
-      ...buildPresetKeyCandidates(type, name, previousScope),
-      ...buildPresetKeyCandidates(type, trimmedName, nextScope),
-    ]) {
-      if (candidate !== nextKey) {
-        storage.removeItem(candidate);
-      }
-    }
+    storage.removeItem(makePresetKey(type, name, previousScope));
+    storage.removeItem(makePresetKey(type, trimmedName, nextScope));
     storage.setItem(nextKey, JSON.stringify(renamed));
     return renamed;
   }
@@ -253,10 +217,7 @@ export class LocalStoragePresetStore implements IPresetStore {
   async exists(type: PresetLevel, name: string, scope?: string): Promise<boolean> {
     const storage = getBrowserPresetStorage();
     if (!storage) return false;
-    for (const key of buildPresetKeyCandidates(type, name, scope)) {
-      if (storage.getItem(key) !== null) return true;
-    }
-    return false;
+    return storage.getItem(makePresetKey(type, name, scope)) !== null;
   }
 
   async findReferences(_type: PresetLevel, name: string): Promise<string[]> {
@@ -268,7 +229,7 @@ export class LocalStoragePresetStore implements IPresetStore {
       if (!key?.startsWith(PREFIX)) continue;
       const raw = storage.getItem(key);
       if (!raw) continue;
-      const entry = readNormalizedEntry(raw);
+      const entry = readCurrentEntry(raw);
       if (!entry) continue;
       for (const version of entry.versions) {
         const versionRefs = version.refs ? Object.values(version.refs) : [];
@@ -313,7 +274,7 @@ export class LocalStoragePresetStore implements IPresetStore {
         if (key.includes('factory-loaded') || key.includes('migration-version') || key.includes('storage-backend')) continue;
         const raw = storage.getItem(key);
         if (!raw) continue;
-        const entry = readNormalizedEntry(raw);
+        const entry = readCurrentEntry(raw);
         if (!entry) continue;
         const logicalKey = getLogicalKey(entry);
         const existing = entries.get(logicalKey);
@@ -339,11 +300,8 @@ export class LocalStoragePresetStore implements IPresetStore {
     }
     let count = 0;
     for (const entry of parsed.entries) {
-      const normalized = normalizePresetEntry(entry);
-      if (normalized) {
-        await this.save(normalized);
-        count++;
-      }
+      await this.save(decodeCurrentPresetEntry(entry));
+      count++;
     }
     return count;
   }

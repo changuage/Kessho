@@ -1,61 +1,87 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import ts from 'typescript';
+import {
+  collectImportSpecifiers,
+  collectSourceFiles,
+  parseTypeScriptSource,
+  relativeSourcePath,
+} from './lib/sourceArchitectureRules.mjs';
 
 const root = process.cwd();
-const referenceBoundaryFiles = new Set([
+const explicitBoundaryFiles = new Set([
   'src/audio/coreEngineHost.ts',
   'src/audio/referenceAudioRuntime.ts',
   'src/audio/referenceAudioRuntime.unavailable.ts',
   'src/audio/product/ProductAudioRuntimeSelection.ts',
-  'src/audio/product/SelectedProductRuntime.ts',
+  'src/audio/sonicParityHarness.ts',
+  'src/ui/audioEngineMediaSession.ts',
+  'src/ui/sliderSystem/sliderSystem.test.ts',
 ]);
 
-const files = execFileSync('git', ['ls-files', 'src/**/*.ts', 'src/**/*.tsx'], { cwd: root, encoding: 'utf8' })
-  .split('\n')
-  .filter(Boolean)
-  .filter((path) => existsSync(join(root, path)))
-  .filter((path) => !path.startsWith('src/audio/reference/'))
-  .filter((path) => !path.startsWith('src/ui/referenceRuntime/'))
-  .filter((path) => !path.startsWith('src/ui/useSelectedAudioEngine'))
-  .filter((path) => !referenceBoundaryFiles.has(path))
-  .filter((path) => !path.includes('.test.'))
-  .filter((path) => !path.includes('sonicParityHarness'))
-  .filter((path) => !path.includes('RuntimeSwitch'));
-
-const forbidden = [
-  'ProductAudioEngineCompat',
-  'ReferenceSelectedRuntime',
-  'referenceAudioRuntime',
-  'reference/webTs',
-];
-
-let failed = false;
-const productEngineProxy = readFileSync(join(root, 'src/audio/product/ProductEngineProxy.ts'), 'utf8');
-for (const token of ['URLSearchParams', 'window.location', 'native-product', 'test-product', 'web-ts', 'web-audio', 'core-smoke']) {
-  if (productEngineProxy.includes(token)) {
-    console.error(`ProductEngineProxy must be core-product only and must not contain runtime selection token ${token}`);
-    failed = true;
-  }
-}
-if (
-  !productEngineProxy.includes("export function getProductEngineRuntimeMode(): 'core-product'") ||
-  !productEngineProxy.includes("return 'core-product';") ||
-  !productEngineProxy.includes('new WebProductEngine()')
-) {
-  console.error('ProductEngineProxy must expose a direct core-product WebProductEngine runtime.');
-  failed = true;
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
 }
 
-for (const path of files) {
-  const text = readFileSync(join(root, path), 'utf8');
-  for (const token of forbidden) {
-    if (text.includes(token)) {
-      console.error(`runtime selection isolation violation: ${path} contains ${token}`);
-      failed = true;
+function collectNamedDeclarations(filePath) {
+  const source = parseTypeScriptSource(filePath, readFileSync(filePath, 'utf8'));
+  const names = new Set();
+  const visit = (node) => {
+    if (
+      (ts.isFunctionDeclaration(node)
+        || ts.isClassDeclaration(node)
+        || ts.isInterfaceDeclaration(node)
+        || ts.isTypeAliasDeclaration(node))
+      && node.name
+    ) {
+      names.add(node.name.text);
+    }
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      names.add(node.name.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return names;
+}
+
+function isExplicitBoundary(relativePath) {
+  return explicitBoundaryFiles.has(relativePath)
+    || relativePath.startsWith('src/audio/reference/')
+    || relativePath.startsWith('src/ui/referenceRuntime/')
+    || relativePath.startsWith('src/ui/useSelectedAudioEngine')
+    || relativePath.includes('.test.');
+}
+
+const violations = [];
+for (const filePath of collectSourceFiles(resolve(root, 'src'))) {
+  const relativePath = relativeSourcePath(root, filePath);
+  if (isExplicitBoundary(relativePath)) continue;
+  for (const entry of collectImportSpecifiers(filePath)) {
+    if (entry.isTypeOnly) continue;
+    if (/useSelectedAudioEngine|SelectedProductRuntime|(?:^|\/)audio\/reference(?:\/|$)/.test(entry.specifier)) {
+      violations.push(`${relativePath}: ${entry.kind} import ${entry.specifier}`);
     }
   }
 }
 
-if (failed) process.exit(1);
-console.log('runtime selection isolation guard passed');
+const productProxyPath = resolve(root, 'src/audio/product/ProductEngineProxy.ts');
+assert(existsSync(productProxyPath), 'ProductEngineProxy.ts is missing');
+const productProxyImports = collectImportSpecifiers(productProxyPath);
+assert(
+  productProxyImports.every((entry) => !/reference|SelectedProductRuntime|useSelectedAudioEngine/.test(entry.specifier)),
+  'ProductEngineProxy must not import a reference or selected runtime',
+);
+const productProxyDeclarations = collectNamedDeclarations(productProxyPath);
+for (const name of ['getProductEngineRuntimeMode', 'loadProductEngine', 'productEngine']) {
+  assert(productProxyDeclarations.has(name), `ProductEngineProxy must expose ${name}`);
+}
+
+assert(
+  !existsSync(resolve(root, 'src/audio/product/SelectedProductRuntime.ts')),
+  'retired SelectedProductRuntime must remain deleted',
+);
+assert(violations.length === 0, `runtime selection isolation violations: ${violations.join(', ')}`);
+
+console.log(`runtime selection isolation guard passed (${collectSourceFiles(resolve(root, 'src')).length} source files inspected)`);

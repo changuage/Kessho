@@ -1,11 +1,14 @@
 import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { ClockDivision, PitchBindingMode } from '../audio/drumSeqTypes';
 import {
-  migratePreset,
   type SerializedStepOverrides,
   type SliderMode,
   type SliderState,
 } from '../ui/state';
+import { getVersionData } from './codec';
+import { decodeCurrentPresetEntry } from './currentPresetSchema';
+import { extractPresetVersionMetadata } from './presetUtils';
+import { enforceProductCorePresetBoundaryState } from './productCorePresetBoundary';
 import type { RoutingMuteGroupsState } from '../ui/routing/routingMuteGroups';
 import type {
   EvolveConfig,
@@ -63,37 +66,35 @@ export interface BundledSavedPreset {
 }
 
 function bundledPresetFromFileData(
-  data: Partial<BundledSavedPreset> & Record<string, unknown>,
+  data: Record<string, unknown>,
   fallbackName: string,
   source: SavedPresetSource,
 ): BundledSavedPreset {
-  const migrated = migratePreset({
-    name: typeof data.name === 'string' && data.name.trim() ? data.name : fallbackName,
-    timestamp: typeof data.timestamp === 'string' ? data.timestamp : new Date().toISOString(),
-    state: (data.state && typeof data.state === 'object' ? data.state : data) as SliderState,
-    tags: Array.isArray(data.tags) ? data.tags : undefined,
-    routingMuteGroups: data.routingMuteGroups,
-    dualRanges: data.dualRanges,
-    sliderModes: data.sliderModes,
-    drumEvolveConfigs: data.drumEvolveConfigs,
-    synthEvolveConfigs: data.synthEvolveConfigs,
-    drumStepOverrides: data.drumStepOverrides,
-    synthStepOverrides: data.synthStepOverrides,
-    drumClockDivs: data.drumClockDivs,
-    synthClockDivs: data.synthClockDivs,
-    drumSwings: data.drumSwings,
-    synthSwings: data.synthSwings,
-    drumLinked: data.drumLinked,
-    synthLinked: data.synthLinked,
-    drumSubLaneStates: data.drumSubLaneStates,
-    synthSubLaneStates: data.synthSubLaneStates,
-    synthArpConfigs: data.synthArpConfigs as ProductPlayConfig[] | undefined,
-    drumPitchSettings: data.drumPitchSettings,
-    synthPitchSettings: data.synthPitchSettings,
-    synthPitchBindingModes: data.synthPitchBindingModes,
-    presetPool: data.presetPool,
-  });
-  return { ...migrated, source } as BundledSavedPreset;
+  const rawEntry = data.kesshoPreset === true && data.entry ? data.entry : data;
+  const entry = decodeCurrentPresetEntry(rawEntry);
+  if (entry.type !== 'state') {
+    throw new Error(`Bundled preset ${fallbackName} is not a state preset`);
+  }
+  const version = entry.versions.find(candidate => candidate.v === entry.currentVersion);
+  const versionData = version ? getVersionData(entry, version.v) : null;
+  if (!version || !versionData) throw new Error(`Bundled preset ${fallbackName} has no current version`);
+  const metadata = extractPresetVersionMetadata(version) ?? {};
+  return {
+    id: entry.id,
+    name: entry.name,
+    timestamp: new Date(version.timestamp).toISOString(),
+    state: enforceProductCorePresetBoundaryState(versionData as unknown as SliderState),
+    ...metadata,
+    source,
+    tags: entry.tags,
+    familyId: entry.familyId,
+    familyName: entry.familyName,
+    variantId: entry.variantId,
+    variantName: entry.variantName,
+    variantRank: entry.variantRank,
+    versionCount: entry.versions.length,
+    currentVersion: entry.currentVersion,
+  } as BundledSavedPreset;
 }
 
 async function loadBundledPresetFiles(files: readonly string[]): Promise<BundledSavedPreset[]> {

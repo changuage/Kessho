@@ -1,10 +1,3 @@
-﻿/**
- * Main App Component
- *
- * Complete UI with all sliders, selects, and debug panel.
- * Wires up to the product runtime with deterministic state management.
- */
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { appStyles as styles } from './app/appStyles';
 import {
@@ -63,8 +56,6 @@ import {
 import { VISUALIZER_PRESET_SCOPE } from './ui/visualizer/visualizerPresetStore';
 import { getGranularPresetData, getGranularPresetSliderModes, isGranularDelayBStateKey } from './ui/granular/granularPresets';
 import SnowflakeUI from './ui/SnowflakeUI';
-import SnowflakePrototypePage from './ui/SnowflakePrototypePage';
-import { CpuOverlay } from './ui/CpuOverlay';
 import { SliderHelpProvider } from './ui/SliderHelpOverlay';
 import { MidiLearnProvider } from './ui/midiLearn/MidiLearnProvider';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
@@ -120,13 +111,12 @@ import {
   type RoutingMuteGroupsState,
 } from './ui/routing';
 import type { SynthKeyboardUiState } from './ui/synth/SynthPage';
-import SnowflakeGeneratorPage from './ui/snowflakeGenerator/SnowflakeGeneratorPage';
 import { usePlatformRuntimeCapabilities } from './ui/usePlatformRuntimeCapabilities';
 import { usePresetLibraryRuntimeSurface } from './ui/usePresetLibraryRuntimeSurface';
 import { useCloudSharedPresetRuntimeSurface } from './ui/useCloudSharedPresetRuntimeSurface';
 import { useSavedPresetLoadRuntimeSurface } from './ui/useSavedPresetLoadRuntimeSurface';
 import { createDefaultPitchSettings, sanitizeSequencerSubLaneStates } from './ui/usePresetSequencerRestore';
-import { useProductRuntimePageSurface } from './ui/useProductRuntimePageSurface';
+import { useProductRuntimePageRuntimeBridges } from './ui/useProductRuntimePageRuntimeBridges';
 import { useLazySequencerTransport } from './ui/useLazySequencerTransport';
 import {
   isTransportClockStateKey,
@@ -173,11 +163,7 @@ import {
 } from './app/parameterCommands';
 import { useDualSliderRuntimeState } from './app/useDualSliderRuntimeState';
 import {
-  clearSnowflakeGeneratorRoute,
-  clearSnowflakePrototypeRoute,
   isMobileWebEvidenceRoute,
-  isSnowflakeGeneratorRoute,
-  isSnowflakePrototypeRoute,
   isSonicParityRoute,
 } from './app/appRouteFlags';
 import {
@@ -258,8 +244,6 @@ function clearSharedEarthChildren(nextState: SliderState, family: 'water' | 'nat
   set('insects2Enabled', false);
 }
 
-// Main App
-
 function normalizeTransportClockState(prev: SliderState): SliderState {
   const barsPerPhrase = Math.max(1, prev.transportBarsPerPhrase ?? 4);
   const beatsPerBar = Math.max(1, prev.transportBeatsPerBar ?? 4);
@@ -284,12 +268,17 @@ function normalizeTransportClockState(prev: SliderState): SliderState {
   return { ...prev, phraseLength: derivedPhrase, sequencerMasterBPM: nextBpm, synthEuclidBaseBPM: nextBpm, drumEuclidBaseBPM: nextBpm };
 }
 
+const DevCpuOverlay = import.meta.env.DEV
+  ? React.lazy(async () => {
+      const module = await import('./ui/CpuOverlay');
+      return { default: module.CpuOverlay };
+    })
+  : null;
+
 const App: React.FC = () => {
   const { showSplash, splashOpacity, splashGradient, windowSize } = useAppSplash();
   const sonicParityMode = isSonicParityRoute();
   const mobileWebEvidenceMode = isMobileWebEvidenceRoute();
-  const snowflakePrototypeRoute = isSnowflakePrototypeRoute();
-  const snowflakeGeneratorRoute = isSnowflakeGeneratorRoute();
 
   const { macShellAvailable, cloudPresetAllowed, usesCapacitorLocalPresetLibrary, usesCloudBackedStatePresetLibrary, shouldInitializeCloudPresetStore } =
     usePlatformRuntimeCapabilities({
@@ -298,11 +287,8 @@ const App: React.FC = () => {
       localPresetStoreOverride: isLocalPresetStoreOverride(),
     });
 
-  // Track if user has loaded a preset (for auto-loading default on first play)
   const hasLoadedPresetRef = useRef(false);
-  // Track if user has interacted with any UI element (sliders, buttons, etc.)
   const hasUserInteractedRef = useRef(false);
-  // Saved presets list - start empty, load from folder on mount
   const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
   const { cloudPresetStoreReadyPromiseRef, resolveDefaultAutoStartPreset } = usePresetBootstrapRuntimeSurface<SavedPreset>({
     cloudEnabled: CLOUD_ENABLED,
@@ -318,7 +304,6 @@ const App: React.FC = () => {
     usesCloudBackedStatePresetLibrary,
   });
 
-  // Load initial state from URL or defaults
   const [state, setState] = useState<SliderState>(() => resolveProductRuntimeInitialState({ normalizeState: normalizePresetForWeb }));
   const [routingMuteGroups, setRoutingMuteGroups] = useState<RoutingMuteGroupsState>(() => loadRoutingMuteGroupsState());
   const [dawOutputRouting, setDawOutputRouting] = useState<DawOutputRoutingConfig>(() => loadDawOutputRoutingConfig());
@@ -327,7 +312,16 @@ const App: React.FC = () => {
   stateRef.current = state;
   const pendingImmediateLeadPresetSyncRef = useRef(false);
   const padMorphEndpointOverridesRef = useRef<PadMorphEndpointOverrides>(createPadMorphEndpointOverrides());
-  const { productRuntimeMode } = useProductRuntimeSession();
+  const {
+    productRuntimeMode,
+    productRuntimeCore,
+    productRuntimeLifecycle,
+    productRuntimeState,
+    productRuntimeTelemetry,
+    productRuntimeReferenceAdapter,
+    productRuntimeAutoStop,
+    productRuntimeCallbackSurfaces,
+  } = useProductRuntimeSession();
   const lastAppliedPresetLoadRef = useRef<{
     preset: SavedPreset;
     state: SliderState;
@@ -352,11 +346,12 @@ const App: React.FC = () => {
     releaseVisiblePageWakeLock,
   } = useProductRuntimeShell({
     productRuntimeMode,
+    productRuntimeLifecycle,
     capacitorAudioSessionDiagnosticActive,
     setCapacitorAudioSessionDiagnosticActive,
     stateRef,
   });
-  useProductDawOutputSync({ productRuntimeMode, state, dawOutputRouting, dawOutputDevice });
+  useProductDawOutputSync({ productRuntimeCore, state, dawOutputRouting, dawOutputDevice });
 
   useEffect(() => {
     saveRoutingMuteGroupsState(routingMuteGroups);
@@ -417,15 +412,21 @@ const App: React.FC = () => {
     captureProductDrumEuclidLaneHome,
     diceProductDrumEuclidLane,
     getProductGranularBufferWaveform,
-    getProductTransportDebugState,
     getEarthTextureDebugState,
     getProductLeadMorphedParams,
     productRuntimeDebugAnalysers,
     liveLeadMorphedParamsAvailable,
     liveWaveformTelemetryAvailable,
     textureDebugAvailable,
-    productAutoCycleRuntime, updateProductReferenceParams,
-  } = useProductRuntimeSurfaces({ productRuntimeMode, stateRef });
+    productAutoCycleRuntime,
+  } = useProductRuntimeSurfaces({
+    productRuntimeCore,
+    productRuntimeCallbackSurfaces,
+    productRuntimeReferenceAdapter,
+    productRuntimeState,
+    productRuntimeTelemetry,
+    stateRef,
+  });
 
   const [engineState, setEngineState] = useState<ProductEngineState>({
     isRunning: false,
@@ -446,7 +447,11 @@ const App: React.FC = () => {
   });
   const playbackIsRunning = engineState.isRunning;
 
-  const { resetCofDrift, startJourneyMorphClock, stopJourneyMorphClock } = useProductRuntimeMorphSurface({
+  const {
+    resetProductCofDrift: resetCofDrift,
+    startProductJourneyMorphClock: startJourneyMorphClock,
+    stopProductJourneyMorphClock: stopJourneyMorphClock,
+  } = useProductRuntimeMorphSurface({
     resetProductCofDrift: resetProductCofDriftRuntime,
     setProductJourneyMorphClockCallback: setProductJourneyMorphClockCallbackRuntime,
     startProductJourneyMorphClock: startProductJourneyMorphClockRuntime,
@@ -459,9 +464,9 @@ const App: React.FC = () => {
     syncScheduledProductRuntimeState,
     skipNextPresetLoadEngineSync,
   } = useProductRuntimePresetSurface({
-    productRuntimeMode,
+    productRuntimeCore,
+    productRuntimeReferenceAdapter,
     resetProductCofDrift: resetCofDrift,
-    updateSelectedReferenceParams: updateProductReferenceParams,
   });
 
   const {
@@ -475,27 +480,24 @@ const App: React.FC = () => {
   const {
     getCurrentDrumMorphOverrideState: getProductDrumMorphOverrideState,
     dispatchDrumMorphProductControlAction,
-  } = useProductDrumMorphOverrides(productRuntimeMode);
+  } = useProductDrumMorphOverrides(productRuntimeCore);
   const getCurrentDrumMorphOverrideState = useCallback(
     (sourceState: SliderState = stateRef.current) => getProductDrumMorphOverrideState(sourceState),
     [getProductDrumMorphOverrideState],
   );
 
   const productRuntimeManualTriggers = useProductRuntimeManualTriggers({
-    productRuntimeMode,
+    productRuntimeCore,
     stateRef,
   });
 
-  // L4 State preset name tracking
   const [statePresetName, setStatePresetName] = useState('');
   const [visualizerPresetName, setVisualizerPresetName] = useState('');
   const [linkedVisualizerPresetRequest, setLinkedVisualizerPresetRequest] = useState<{ name: string; nonce: number } | null>(null);
 
-  // Morph slot name tracking (for PresetDropdown display)
   const [morphSlotAName, setMorphSlotAName] = useState('');
   const [morphSlotBName, setMorphSlotBName] = useState('');
 
-  // Preset Morph state
   const [morphPresetA, setMorphPresetA] = useState<SavedPreset | null>(null);
   const [morphPresetB, setMorphPresetB] = useState<SavedPreset | null>(null);
   const [morphPosition, setMorphPosition] = useState(0); // 0 = full A, 100 = full B
@@ -507,7 +509,6 @@ const App: React.FC = () => {
     phrasesLeft: number;
   } | null>(null);
 
-  // Refs for journey mode animation - updated synchronously to avoid stale closures
   const journeyPresetARef = useRef<SavedPreset | null>(null);
   const journeyPresetBRef = useRef<SavedPreset | null>(null);
   const journeyLastAppliedStateRef = useRef<SliderState | null>(null);
@@ -523,7 +524,6 @@ const App: React.FC = () => {
     totalSteps: number;
   } | null>(null);
 
-  // Morph CoF visualization state
   const [morphCoFViz, setMorphCoFViz] = useState<{
     isMorphing: boolean;
     startRoot: number; // Original starting root (captured at morph start)
@@ -533,7 +533,6 @@ const App: React.FC = () => {
     totalSteps: number;
   } | null>(null);
 
-  // Refs for phrase settings - used in animation loop to avoid restarting effect
   const morphPlayPhrasesRef = useRef(morphPlayPhrases);
   const morphTransitionPhrasesRef = useRef(morphTransitionPhrases);
   useEffect(() => {
@@ -543,7 +542,6 @@ const App: React.FC = () => {
     morphTransitionPhrasesRef.current = morphTransitionPhrases;
   }, [morphTransitionPhrases]);
 
-  // UI mode: 'snowflake', 'advanced', or 'journey'
   const [uiMode, setUiMode] = useState<'snowflake' | 'advanced' | 'journey'>(startInAdvancedEditor ? 'advanced' : 'snowflake');
   const {
     advancedRecordingButton,
@@ -563,16 +561,16 @@ const App: React.FC = () => {
     getProductPadLfoValue,
     productRuntimeSupportsRangeKey,
   } = useProductRuntimeLifecycleSurface({
-    productRuntimeMode,
-    getProductTransportDebugState,
+    productRuntimeLifecycle,
+    productRuntimeState,
+    productRuntimeTelemetry,
     macShellAvailable,
     playbackIsRunning,
     setEngineState,
     stateRef,
     uiMode,
   });
-  const productCoreDebugSummary = useProductCoreDebugSummary(productRuntimeMode);
-  // Snowflake welcome state: local-only six-arm macro seed until playback, preset load, or advanced mode activation.
+  const productCoreDebugSummary = useProductCoreDebugSummary(productRuntimeCore);
   const [snowflakeActivated, setSnowflakeActivated] = useState(startInAdvancedEditor);
   const [welcomeDisplayState, setWelcomeDisplayState] = useState<SliderState>(() => createSignedSnowflakeWelcomeState());
   const handleWelcomeSliderChange = useCallback((key: keyof SliderState, value: number) => {
@@ -586,18 +584,13 @@ const App: React.FC = () => {
     setActivePresetPool(normalizePresetPoolMetadata(preset.presetPool) ?? createEmptyPresetPool());
   }, []);
 
-  // Journey mode playing state - when true, sliders should be read-only
   const [isJourneyPlaying, setIsJourneyPlaying] = useState(false);
 
-  // Journey morph direction tracking - alternates between toB (0→100) and toA (100→0)
   const journeyMorphDirectionRef = useRef<'toB' | 'toA'>('toB');
 
-  // Journey mode state - managed at App level so it persists across UI mode switches
-  // Note: The callbacks are defined later in the file, so we use refs to avoid stale closures
   const journeyLoadPresetRef = useRef<(presetName: string) => void>(() => {});
   const journeyMorphToRef = useRef<(presetName: string, duration: number) => void>(() => {});
 
-  // Journey uses phrase-based timing (1 phrase = phraseLength seconds)
   const journey = useJourney(
     state.phraseLength ?? 16,
     (presetName, duration) => journeyMorphToRef.current(presetName, duration),
@@ -712,7 +705,7 @@ const App: React.FC = () => {
   });
   const { globalRuntimeProps, resetPlaybackTimer } = useProductRuntimeGlobalSurface({
     playbackIsRunning,
-    productRuntimeMode,
+    productRuntimeAutoStop,
     runtimeComparison: globalRuntimeComparison,
     onResetCofDrift: resetCofDrift,
     recordingProps: globalRecordingProps,
@@ -738,10 +731,9 @@ const App: React.FC = () => {
     state,
     stateRef,
     triggerDrumVoice: productRuntimeManualTriggers.triggerDrumVoice,
-    productRuntimeMode,
+    productRuntimeCore,
   });
 
-  // ── Lead/Synth Euclidean sequencer state ──
   const synthViewModeRef = useRef<SequencerViewMode>('simple');
   const synthStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
   const synthSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
@@ -846,13 +838,11 @@ const App: React.FC = () => {
     setRoutingMuteGroups(normalizeRoutingMuteGroupsState(value));
   }, []);
 
-  // Drum morph keys - these use per-trigger randomization, not random walk
   const drumMorphKeys = useMemo(
     () => new Set<keyof SliderState>(DRUM_VOICE_PARAM_ROUTES.map((route) => route.morphKey)),
     [],
   );
 
-  // Map drum morph keys to voice names for engine API
   const drumMorphKeyToVoice = useMemo<Record<string, DrumPresetVoice>>(
     () => Object.fromEntries(
       DRUM_VOICE_PARAM_ROUTES.map((route) => [route.morphKey, route.voice]),
@@ -860,7 +850,6 @@ const App: React.FC = () => {
     [],
   );
 
-  // Drum S&H param keys — all numeric per-voice drum params except morph/preset selectors.
   const drumSHParamKeys = useMemo(
     () =>
       new Set(
@@ -877,7 +866,6 @@ const App: React.FC = () => {
     setState,
     presetEngineUpdateOptions: presetProductRuntimeUpdateOptions,
     syncCoreProductAppliedPreset,
-    normalizeState: normalizePresetForWeb,
     applyDualRangesFromPreset,
     restoreEvolveConfigs,
     onRoutingMuteGroupsLoad: restoreRoutingMuteGroupsFromPreset,
@@ -973,8 +961,6 @@ const App: React.FC = () => {
     state.transportBeatsPerBar,
   ]);
 
-  // Web audio does not consume dual-slider ranges, so avoid re-sending params when
-  // only the UI runtime range model changes.
   useEffect(() => {
     const runtimeState = applyRoutingMuteGroupRuntimeLevels(state);
     if (pendingImmediateLeadPresetSyncRef.current) {
@@ -997,22 +983,17 @@ const App: React.FC = () => {
   const dispatchParameterCommand = useCallback(
     (command: ParameterCommand, options?: SliderChangeOptions) => {
       const { domain, key, sliderValue: value, stateValue } = command;
-      // Mark that user has interacted with the UI
       hasUserInteractedRef.current = true;
 
-      // Block slider changes when journey mode is playing
       if (isJourneyPlaying) {
         console.log('[Journey] Slider change blocked - journey is playing');
         return;
       }
 
-      // Rule 1: Mid-morph changes are temporary overrides (numeric only)
-      // Rule 2: Endpoint changes (0% or 100%) update the respective preset permanently (all types)
       const isStateNumericValue = typeof stateValue === 'number';
       const isMorphActive = morphPresetA !== null || morphPresetB !== null;
 
       if (isMorphActive && isInMidMorph(morphPosition, true) && isStateNumericValue) {
-        // Mid-morph: store as temporary override (numeric only)
         morphManualOverridesRef.current[key] = {
           value: stateValue as number,
           morphPosition,
@@ -1027,7 +1008,6 @@ const App: React.FC = () => {
       const drumMorphKey = drumParamRoute?.morphKey ?? null;
 
       if (drumVoice && drumMorphKey && isStateNumericValue) {
-        // The state transaction below reads the voice's current morph position.
       }
 
       let drumMorphProductControlChanged = false;
@@ -1035,8 +1015,6 @@ const App: React.FC = () => {
         const preservedEnabledFlags = options?.preserveEnabledFlags ? captureRuntimeEnabledFlags(prev) : null;
         let newState = { ...prev, [key]: stateValue };
         if (isTransportClockStateKey(key)) {
-          // Timing edits are a single transport transaction. Derive linked clock
-          // values in the same state commit so the runtime receives one boundary edit.
           newState = normalizeTransportClockState(newState as SliderState);
         }
         let drumMorphOverrideState = getCurrentDrumMorphOverrideState(prev);
@@ -1054,12 +1032,8 @@ const App: React.FC = () => {
           newState.chordProgressionRotation = Math.min(Math.max(0, prev.chordProgressionRotation ?? 0), Math.max(0, nextSteps - 1));
         }
 
-        // Handle drum synth param override at any morph position
-        // Works like the main morph system: endpoint changes are permanent,
-        // mid-morph changes blend toward destination
         if (drumVoice && drumMorphKey && isStateNumericValue) {
           const drumMorphPosition = prev[drumMorphKey] as number; // 0-1
-          // Store override at current morph position (works for both endpoints and mid-morph)
           const nextDrumMorphOverrideState = dispatchDrumMorphProductControlAction(prev, {
             type: 'drum-morph/override-set',
             voice: drumVoice,
@@ -1075,14 +1049,11 @@ const App: React.FC = () => {
         newState = preserveRunningDrumSequencerSource(prev, newState as SliderState);
         newState = normalizeRoutingRuntimeEnabledFlags(newState as SliderState);
 
-        // When drum morph slider or preset selectors change, apply morphed values to sliders.
         const drumPresetRoute = domain === 'drum' ? getDrumVoicePresetRoute(key) : null;
         const drumMorphRoute = domain === 'drum' ? getDrumVoiceMorphRoute(key) : null;
         const drumSelectorRoute = drumPresetRoute ?? drumMorphRoute;
         if (drumSelectorRoute) {
           const voice = drumSelectorRoute.voice;
-          // Clear only the relevant endpoint's overrides when a preset changes
-          // This preserves user edits at the OTHER endpoint
           if (key === drumSelectorRoute.presetAKey) {
             const nextDrumMorphOverrideState = dispatchDrumMorphProductControlAction(prev, {
               type: 'drum-morph/endpoint-clear',
@@ -1103,7 +1074,6 @@ const App: React.FC = () => {
             drumMorphOverrideState = nextDrumMorphOverrideState;
           }
 
-          // Clear mid-morph overrides when reaching an endpoint (keep endpoint edits)
           if (key === drumSelectorRoute.morphKey) {
             const morphValue = value as number;
             if (isAtEndpoint0(morphValue) || isAtEndpoint1(morphValue)) {
@@ -1117,7 +1087,6 @@ const App: React.FC = () => {
             }
           }
 
-          // Apply morphed preset values to the state
           const morphedParams = applyMorphToState(newState, voice, drumMorphOverrideState);
           newState = { ...newState, ...morphedParams };
         }
@@ -1137,7 +1106,6 @@ const App: React.FC = () => {
               (newState as Record<string, unknown>)[k] = morphed[k];
             }
           }
-          // Snap waterPreset to nearest morph endpoint
           newState.waterPreset = (newState.waterMorph as number) < 0.5 ? (newState.waterMorphA as number) : (newState.waterMorphB as number);
         }
 
@@ -1167,18 +1135,14 @@ const App: React.FC = () => {
         return newState;
       });
 
-      // Apply water preset dual ranges when morph endpoints or position change
       if (domain === 'synth' && (key === 'waterMorph' || key === 'waterMorphA' || key === 'waterMorphB')) {
-        // Read target preset from latest state
         setState((prev) => {
           const presetIdx = prev.waterPreset as number;
           const ranges = getWaterPresetDualRanges(presetIdx);
           const modes = getWaterPresetSliderModes(presetIdx);
 
-          // Water surf keys that presets can control
           const waterSurfKeys = ['waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfProximity', 'waterSurfDepth'];
 
-          // Merge preset ranges into existing dual ranges (additive, not replacing)
           setSliderModes((prev) => {
             const next = { ...prev };
             for (const k of waterSurfKeys) {
@@ -1199,25 +1163,17 @@ const App: React.FC = () => {
         });
       }
 
-      // When a preset changes, only reset dual slider modes/ranges if we're at that endpoint
-      // If preset A changes and we're at endpoint 1 (B), preserve the current dual modes
       const presetRoute = domain === 'drum' ? getDrumVoicePresetRoute(key) : null;
       if (presetRoute) {
         const currentMorph = state[presetRoute.morphKey] as number;
 
-        // Determine if we should reset dual modes
-        // Only reset if we're at the endpoint matching the changed preset
         const isPresetA = key === presetRoute.presetAKey;
         const atEndpoint0 = isAtEndpoint0(currentMorph);
         const atEndpoint1 = isAtEndpoint1(currentMorph);
 
-        // Reset dual modes only if:
-        // - Preset A changed and we're at endpoint 0 (or mid-morph)
-        // - Preset B changed and we're at endpoint 1 (or mid-morph)
         const shouldResetDualModes = (isPresetA && !atEndpoint1) || (!isPresetA && !atEndpoint0);
 
         if (shouldResetDualModes) {
-          // Reset all dual modes for params starting with this prefix (excluding Morph/Preset keys)
           setSliderModes((prev) => {
             const next = { ...prev };
             for (const modeKey of Object.keys(prev)) {
@@ -1227,7 +1183,6 @@ const App: React.FC = () => {
             }
             return next;
           });
-          // Also clear the ranges
           setDualSliderRanges((prev) => {
             const newRanges = { ...prev };
             for (const rangeKey of Object.keys(prev)) {
@@ -1240,16 +1195,11 @@ const App: React.FC = () => {
         }
       }
 
-      // Apply interpolated dual range overrides for drum morph
-      // This happens at EVERY morph position, not just endpoints
-      // Mimics lerpPresets behavior: ranges interpolate smoothly, mode only snaps when range collapses
       const morphRoute = domain === 'drum' ? getDrumVoiceMorphRoute(key) : null;
       if (morphRoute) {
         const morphVoice = morphRoute.voice;
         const morphValue = value as number;
 
-        // Build current values map for fallback
-        // We need to read current state values for the interpolation
         const currentValues: Record<string, number> = {};
         const drumMorphOverrideState = getCurrentDrumMorphOverrideState();
         const overrides = getProductDrumMorphDualRangeOverrides(drumMorphOverrideState, morphVoice);
@@ -1260,7 +1210,6 @@ const App: React.FC = () => {
           }
         }
 
-        // Get interpolated dual ranges for all params
         const interpolatedRanges = interpolateProductDrumMorphDualRanges(
           drumMorphOverrideState,
           morphVoice,
@@ -1268,7 +1217,6 @@ const App: React.FC = () => {
           currentValues,
         );
 
-        // Apply the interpolated states
         for (const [param, interpState] of Object.entries(interpolatedRanges)) {
           const paramKey = param as keyof SliderState;
 
@@ -1375,6 +1323,7 @@ const App: React.FC = () => {
       paramKey: keyof SliderState,
     ): {
       mode: SliderMode;
+      commitOnRelease?: boolean;
       dualRange?: DualSliderRange;
       walkPosition?: number;
       isFlashing?: boolean;
@@ -1393,6 +1342,7 @@ const App: React.FC = () => {
 
       return {
         mode,
+        commitOnRelease: isTransportClockStateKey(paramKey),
         dualRange: resolvedDualModeSupported ? dualSliderRanges[paramKey] : undefined,
         walkPosition: resolvedDualModeSupported && productRuntimeRangeSupported ? walkPos : undefined,
         isFlashing: resolvedDualModeSupported && productRuntimeRangeSupported ? isFlashing : false,
@@ -1435,10 +1385,8 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Handle select change
   const handleSelectChange = useCallback(
     <K extends keyof SliderState>(key: K, value: SliderState[K]) => {
-      // Mark that user has interacted with the UI
       hasUserInteractedRef.current = true;
       const padMorphParamChange = getPadMorphParamChange(key);
       setState((prev) => {
@@ -1696,7 +1644,8 @@ const App: React.FC = () => {
   );
 
   useEffect(() => {
-    if (!sonicParityMode) return;
+    const sonicParityHarnessEnabled = import.meta.env.DEV || import.meta.env.VITE_KESSHO_ENABLE_GRAPH_CAPTURE === 'true';
+    if (!sonicParityHarnessEnabled || !sonicParityMode) return;
     let cancelled = false;
     import('./audio/sonicParityHarness')
       .then(({ installSonicParityHarness }) => {
@@ -1735,7 +1684,6 @@ const App: React.FC = () => {
     handleStop,
     journeyPlaybackProps,
     snowflakePlaybackProps,
-    snowflakePrototypePlaybackProps,
     startJourneyPlayback,
     stopJourneyMorphPlaybackRef,
   } = useProductRuntimePlaybackSurface({
@@ -1746,7 +1694,6 @@ const App: React.FC = () => {
     hasLoadedPresetRef,
     hasUserInteractedRef,
     resolveDefaultAutoStartPreset,
-    normalizePresetForWeb,
     setState,
     setStatePresetName,
     setMorphPresetA,
@@ -1804,8 +1751,9 @@ const App: React.FC = () => {
     stopProductPlayback: handleStop,
   });
 
-  const productPageRuntimeSurface = useProductRuntimePageSurface({
-    telemetry: {
+  const productPageRuntimeSurface = useProductRuntimePageRuntimeBridges({
+    ...{
+      activeTab,
       getEarthTextureDebugState,
       getProductDynamicsVisualTelemetry,
       getProductGranularActiveGrainCount,
@@ -1822,7 +1770,7 @@ const App: React.FC = () => {
       setProductGranularUiActive,
       textureDebugAvailable,
     },
-    sequencer: {
+    ...{
       captureProductSynthEuclidLaneHome,
       captureProductDrumEuclidLaneHome,
       diceProductSynthEuclidLane,
@@ -1859,11 +1807,11 @@ const App: React.FC = () => {
       synthSubLaneStatesRef,
       synthSwingsRef,
     },
-    control: {
+    ...{
       onRequestPlaybackStart: requestSequencerPlaybackStart,
       preloadProductRuntime,
       productRuntimeManualTriggers,
-      productRuntimeMode,
+      productRuntimeTelemetry,
       stateRef,
       setProductDrumEvolveTriggerCallback,
       setProductDrumStepPositionCallback,
@@ -1878,8 +1826,11 @@ const App: React.FC = () => {
   const midiLiveNoteStart = productPageRuntimeSurface.synthPageRuntimeProps.onLiveNoteStart;
   const midiLiveNoteStop = productPageRuntimeSurface.synthPageRuntimeProps.onLiveNoteStop;
   const midiLiveNoteInput = useLiveNoteInput({
-    start: (event) => midiLiveNoteStart?.(event),
-    stop: (event) => midiLiveNoteStop?.(event),
+    start: midiLiveNoteStart,
+    stop: midiLiveNoteStop,
+    onStartFailure: ({ event, error }) => {
+      console.error(`MIDI live-note start failed for ${event.instrument}`, error);
+    },
   });
   const previousMidiLiveNoteBridgeRef = useRef({ midiLiveNoteStart, midiLiveNoteStop });
   useEffect(() => {
@@ -1909,7 +1860,7 @@ const App: React.FC = () => {
       timestampMs: event.timestampMs,
       timestampHostTime: event.timestampHostTime,
       timestampAudioFrame: event.timestampAudioFrame,
-    });
+    }).status === 'started';
   }, [midiLiveNoteInput]);
 
   // Result type for lerpPresets - includes both state and dual ranges
@@ -2939,7 +2890,7 @@ const App: React.FC = () => {
     resetRuntimeWalkPositionsForModes,
     scheduleProductRuntimeParamUpdate,
     isEngineRunning: engineState.isRunning,
-    productRuntimeActive: productRuntimeMode === 'core-product', productAutoCycleRuntime,
+    productRuntimeActive: productRuntimeCore, productAutoCycleRuntime,
   });
 
   const handleMorphSlotAClear = useCallback(() => {
@@ -2981,8 +2932,8 @@ const App: React.FC = () => {
     presetEngineUpdateOptions: presetProductRuntimeUpdateOptions,
     syncCoreProductAppliedPreset,
     scheduleProductRuntimeParamUpdate,
+    normalizeState: (current) => current,
     lerpPresets,
-    normalizeState: normalizePresetForWeb,
     applyDualRangesFromPreset,
     restoreEvolveConfigs,
     confirmOverrideArmedJourneyForStatePreset,
@@ -3013,7 +2964,6 @@ const App: React.FC = () => {
     presetEngineUpdateOptions: presetProductRuntimeUpdateOptions,
     syncCoreProductAppliedPreset,
     skipNextPresetLoadEngineSync,
-    normalizeState: normalizePresetForWeb,
     applyDualRangesFromPreset,
     restoreEvolveConfigs,
     onPresetPoolLoad: handlePresetPoolLoad,
@@ -3193,7 +3143,7 @@ const App: React.FC = () => {
     onBooleanParamChange: handleRoutingBooleanParamChange,
     isRunning: playbackIsRunning,
     phraseSeconds: engineState.transportDebug?.effectivePhraseSeconds ?? getEffectivePhraseDuration(state),
-    productRuntimeActive: productRuntimeMode === 'core-product',
+    productRuntimeActive: productRuntimeCore,
   });
 
   const renderWithPresetPoolProvider = (children: React.ReactNode) => (
@@ -3201,36 +3151,6 @@ const App: React.FC = () => {
       {children}
     </PresetPoolProvider>
   );
-
-  if (snowflakeGeneratorRoute) {
-    return (
-      <SnowflakeGeneratorPage
-        onBack={() => {
-          clearSnowflakeGeneratorRoute();
-          setUiMode('snowflake');
-        }}
-      />
-    );
-  }
-
-  if (snowflakePrototypeRoute) {
-    return (
-      <SnowflakePrototypePage
-        state={state}
-        dualRanges={dualSliderRanges}
-        sliderModes={sliderModes}
-        {...snowflakePrototypePlaybackProps}
-        onBack={() => {
-          clearSnowflakePrototypeRoute();
-          setUiMode('snowflake');
-        }}
-        onShowAdvanced={() => {
-          clearSnowflakePrototypeRoute();
-          setUiMode('advanced');
-        }}
-      />
-    );
-  }
 
   // Render journey mode UI
   if (uiMode === 'journey') {
@@ -3275,7 +3195,7 @@ const App: React.FC = () => {
           onOpenMacSoundSettings={openMacSoundSettings}
         />
         <BackgroundAudioStatusPill
-          productRuntimeMode={productRuntimeMode}
+          productRuntimeCore={productRuntimeCore}
           backgroundAudioStatus={backgroundAudioStatus}
           nativeProductRendererDiagnosticStatus={nativeProductRendererDiagnosticStatus}
           requestVisiblePageWakeLock={requestVisiblePageWakeLock}
@@ -3384,7 +3304,7 @@ const App: React.FC = () => {
             onOpenMacSoundSettings={openMacSoundSettings}
           />
           <BackgroundAudioStatusPill
-            productRuntimeMode={productRuntimeMode}
+            productRuntimeCore={productRuntimeCore}
             backgroundAudioStatus={backgroundAudioStatus}
             nativeProductRendererDiagnosticStatus={nativeProductRendererDiagnosticStatus}
             requestVisiblePageWakeLock={requestVisiblePageWakeLock}
@@ -3452,7 +3372,11 @@ const App: React.FC = () => {
           ...m?.container,
         }}
       >
-        <CpuOverlay setPerfMonitorEnabled={setProductPerfMonitorEnabled} setPerfUpdateCallback={setProductPerfUpdateCallback} />
+        {DevCpuOverlay && (
+          <React.Suspense fallback={null}>
+            <DevCpuOverlay setPerfMonitorEnabled={setProductPerfMonitorEnabled} setPerfUpdateCallback={setProductPerfUpdateCallback} />
+          </React.Suspense>
+        )}
         {renderJourneyOverridePrompt()}
         <MacAudioStatusPill
           macShellAvailable={macShellAvailable}
@@ -3462,7 +3386,7 @@ const App: React.FC = () => {
           onOpenMacSoundSettings={openMacSoundSettings}
         />
         <BackgroundAudioStatusPill
-          productRuntimeMode={productRuntimeMode}
+          productRuntimeCore={productRuntimeCore}
           backgroundAudioStatus={backgroundAudioStatus}
           nativeProductRendererDiagnosticStatus={nativeProductRendererDiagnosticStatus}
           requestVisiblePageWakeLock={requestVisiblePageWakeLock}
@@ -3874,7 +3798,7 @@ const App: React.FC = () => {
         <AppDebugPanel
           state={state}
           engineState={engineState}
-          productRuntimeMode={productRuntimeMode}
+          productRuntimeCore={productRuntimeCore}
           productCoreDebugSummary={productCoreDebugSummary}
           backgroundAudioStatus={backgroundAudioStatus}
           nativeProductRendererDiagnosticStatus={nativeProductRendererDiagnosticStatus}

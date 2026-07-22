@@ -20,7 +20,7 @@ const FX_BUSES = ['delayA', 'delayB', 'granular', 'reverb'] as const;
 type AppDebugPanelProps = {
   readonly state: SliderState;
   readonly engineState: ProductEngineState;
-  readonly productRuntimeMode: string;
+  readonly productRuntimeCore: boolean;
   readonly productCoreDebugSummary: ProductCoreDebugSummary | null;
   readonly backgroundAudioStatus: ProductRuntimeBackgroundAudioStatus;
   readonly nativeProductRendererDiagnosticStatus: NativeProductRendererDiagnosticStatus;
@@ -81,7 +81,7 @@ function formatNativeProductStatus(status: NativeProductRendererDiagnosticStatus
 export function AppDebugPanel({
   state,
   engineState,
-  productRuntimeMode,
+  productRuntimeCore,
   productCoreDebugSummary,
   backgroundAudioStatus,
   nativeProductRendererDiagnosticStatus,
@@ -157,7 +157,7 @@ export function AppDebugPanel({
         <span style={styles.debugLabel}>Beat BPM:</span>
         <span style={styles.debugValue}>{engineState.transportDebug ? `${engineState.transportDebug.effectiveBpm.toFixed(1)}` : '—'}</span>
       </div>
-      {productRuntimeMode === 'core-product' && (
+      {productRuntimeCore && (
         <>
           <DebugSection title="Product Core" />
           <div style={styles.debugRow}>

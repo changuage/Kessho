@@ -7,17 +7,18 @@ import {
 } from './productCorePresetBoundary';
 
 {
-  const normalized = normalizePresetForWeb({
+  const malformed = {
     ...DEFAULT_STATE,
     masterVolume: Number.NaN,
     padEnabled: 'yes',
     reverbType: 'largeRoom',
-  } as unknown as SliderState);
+  } as unknown as SliderState;
 
-  assert.equal(normalized.masterVolume, DEFAULT_STATE.masterVolume, 'non-finite numeric materialized values should repair to defaults');
-  assert.equal(normalized.padEnabled, DEFAULT_STATE.padEnabled, 'non-boolean materialized values should repair to defaults');
-  assert.equal(normalized.reverbType, 'hall', 'iOS-only reverb materialized values should normalize for web/Product Core');
-  assert.equal(validateProductCorePresetBoundaryState(normalized).valid, true);
+  assert.throws(
+    () => normalizePresetForWeb(malformed),
+    /Product Core preset boundary validation failed/,
+    'malformed current state must fail instead of being repaired with defaults',
+  );
 }
 
 {

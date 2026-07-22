@@ -1,18 +1,15 @@
 // src/presets/SupabasePresetStore.ts
 // Cloud preset store backed by Supabase.
-// Reads the V2 normalized schema when available, falls back to the legacy
-// inline-json table during cutover, and keeps the existing IPresetStore API.
+// Reads the current V2 normalized schema only. Legacy row helpers remain isolated
+// for explicit maintenance tooling; normal store operations never decode legacy rows.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   isSupabaseEgressListRefreshPaused,
   isSupabaseEgressQuotaCircuitOpen,
 } from '../cloud/supabaseEgressDiagnostics';
-import {
-  LEGACY_PRESET_SUMMARY_SELECT,
-  PRESET_V2_SUMMARY_SELECT,
-} from '../cloud/presetSelects';
-import { compressVersions, getVersionData } from './codec';
+import { PRESET_V2_SUMMARY_SELECT } from '../cloud/presetSelects';
+import { getVersionData } from './codec';
 import {
   buildDrumEuclideanStateFromPatternData,
   buildSynthEuclideanStateFromPatternData,
@@ -21,9 +18,9 @@ import type { IPresetStore } from './PresetStore';
 import {
   extractPresetVersionMetadata,
   getPresetScope,
-  normalizePresetEntry,
   normalizePresetSummary,
 } from './presetUtils';
+import { decodeCurrentPresetEntry, UnsupportedPresetVersionError } from './currentPresetSchema';
 import {
   canonicalizePresetScope,
   getPresetScopeReadCandidates,
@@ -218,53 +215,6 @@ function dedupeStorablePayloadsByHashV2(payloads: StorablePayloadV2[]): Storable
   return [...byHash.values()];
 }
 
-/** Row shape returned from the legacy Supabase `presets` table */
-interface PresetRow {
-  id: string;
-  user_id: string | null;
-  type: string;
-  scope: string | null;
-  name: string;
-  author: string;
-  library: string;
-  creator: string | null;
-  description: string | null;
-  tags: string[] | null;
-  visibility: string;
-  family_name: string | null;
-  variant_name: string | null;
-  variant_rank: number | null;
-  forked_from: string | null;
-  plays: number;
-  versions: unknown;
-  current_version: number;
-  created_at: string;
-  updated_at: string;
-  rating: number | null;
-}
-
-interface LegacyPresetSummaryRow {
-  id: string;
-  user_id: string | null;
-  type: string;
-  scope: string | null;
-  name: string;
-  author: string;
-  library: string;
-  creator: string | null;
-  description: string | null;
-  tags: string[] | null;
-  visibility: string;
-  family_name: string | null;
-  variant_name: string | null;
-  variant_rank: number | null;
-  plays: number | null;
-  current_version: number;
-  created_at: string;
-  updated_at: string;
-  rating: number | null;
-}
-
 type PresetV2ComparableRow = Pick<
   PresetV2Row,
   'type' | 'scope' | 'name' | 'owner_user_id' | 'visibility' | 'latest_version_no' | 'created_at' | 'updated_at'
@@ -297,129 +247,6 @@ type PresetV2SummaryRow = Pick<
 
 function normalizeNameKey(name: string): string {
   return name.trim().toLowerCase();
-}
-
-type LegacyComparableRow = Pick<PresetRow, 'type' | 'scope' | 'name' | 'user_id' | 'visibility' | 'created_at' | 'updated_at'> & {
-  current_version?: number;
-  versions?: unknown;
-};
-
-function getLegacyLogicalKey(row: Pick<PresetRow, 'type' | 'scope' | 'name'>): string {
-  return `${row.type}:${canonicalizePresetScope(row.scope) ?? ''}:${normalizeNameKey(row.name)}`;
-}
-
-function getLegacyVersionCount(row: Pick<LegacyComparableRow, 'current_version' | 'versions'>): number {
-  if (Array.isArray(row.versions)) return row.versions.length;
-  return Math.max(row.current_version ?? 0, 0);
-}
-
-function compareLegacyPresetRowPriority<T extends LegacyComparableRow>(left: T, right: T, userId: string | null): number {
-  const leftVersionCount = getLegacyVersionCount(left);
-  const rightVersionCount = getLegacyVersionCount(right);
-
-  if (SHARED_PRESET_TEST_MODE) {
-    if (leftVersionCount !== rightVersionCount) return rightVersionCount - leftVersionCount;
-
-    const leftUpdated = new Date(left.updated_at).getTime();
-    const rightUpdated = new Date(right.updated_at).getTime();
-    if (leftUpdated !== rightUpdated) return rightUpdated - leftUpdated;
-
-    const leftCreated = new Date(left.created_at).getTime();
-    const rightCreated = new Date(right.created_at).getTime();
-    return rightCreated - leftCreated;
-  }
-
-  const leftOwn = !!userId && left.user_id === userId;
-  const rightOwn = !!userId && right.user_id === userId;
-  if (leftOwn !== rightOwn) return leftOwn ? -1 : 1;
-
-  const leftVisibilityRank = left.visibility === 'featured' ? 1 : 0;
-  const rightVisibilityRank = right.visibility === 'featured' ? 1 : 0;
-  if (leftVisibilityRank !== rightVisibilityRank) return rightVisibilityRank - leftVisibilityRank;
-
-  const leftUpdated = new Date(left.updated_at).getTime();
-  const rightUpdated = new Date(right.updated_at).getTime();
-  if (leftUpdated !== rightUpdated) return rightUpdated - leftUpdated;
-
-  if (leftVersionCount !== rightVersionCount) return rightVersionCount - leftVersionCount;
-
-  const leftCreated = new Date(left.created_at).getTime();
-  const rightCreated = new Date(right.created_at).getTime();
-  return rightCreated - leftCreated;
-}
-
-function dedupePreferredLegacyRows<T extends LegacyComparableRow>(rows: T[], userId: string | null): T[] {
-  const preferred = new Map<string, T>();
-  for (const row of rows) {
-    const key = getLegacyLogicalKey(row);
-    const existing = preferred.get(key);
-    if (!existing || compareLegacyPresetRowPriority(row, existing, userId) < 0) {
-      preferred.set(key, row);
-    }
-  }
-  return Array.from(preferred.values()).sort((left, right) => compareLegacyPresetRowPriority(left, right, userId));
-}
-
-function legacyRowToEntry(row: PresetRow): PresetEntry {
-  return normalizePresetEntry({
-    id: row.id,
-    type: row.type as PresetLevel,
-    scope: canonicalizePresetScope(row.scope),
-    engine: row.type === 'engine' ? canonicalizePresetScope(row.scope) : undefined,
-    source: row.type !== 'engine' ? canonicalizePresetScope(row.scope) : undefined,
-    name: row.name,
-    author: row.author as PresetEntry['author'],
-    library: row.library as 'stock' | 'user' | 'cloud',
-    creator: row.creator ?? undefined,
-    description: row.description ?? undefined,
-    visibility: (row.visibility ?? 'private') as 'private' | 'public' | 'featured',
-    familyName: row.family_name ?? row.name,
-    variantName: row.variant_name ?? row.name,
-    variantRank: row.variant_rank ?? undefined,
-    tags: row.tags ?? [],
-    versions: Array.isArray(row.versions) ? row.versions as PresetEntry['versions'] : [],
-    currentVersion: row.current_version,
-    createdAt: new Date(row.created_at).getTime(),
-    updatedAt: new Date(row.updated_at).getTime(),
-    remoteId: row.id,
-    playCount: row.plays,
-    rating: row.rating ?? undefined,
-  })!;
-}
-
-function legacySummaryRowToSummary(row: LegacyPresetSummaryRow): PresetSummary {
-  const type = row.type as PresetLevel;
-  const scope = canonicalizePresetScope(row.scope);
-  const familyName = row.family_name ?? row.name;
-  const variantName = row.variant_name ?? row.name;
-  const versionCount = Math.max(row.current_version ?? 1, 1);
-  const visibility = (row.visibility ?? 'private') as PresetSummary['visibility'];
-  return {
-    id: row.id,
-    type,
-    scope,
-    engine: type === 'engine' ? scope : undefined,
-    source: type !== 'engine' ? scope : undefined,
-    name: row.name,
-    author: row.author as PresetSummary['author'],
-    library: row.library as PresetSummary['library'],
-    creator: row.creator ?? undefined,
-    description: row.description ?? undefined,
-    visibility,
-    familyId: `${type}:${scope ?? 'global'}:${normalizeNameKey(familyName)}`,
-    familyName,
-    variantId: `${type}:${scope ?? 'global'}:${normalizeNameKey(familyName)}:${normalizeNameKey(variantName)}`,
-    variantName,
-    variantRank: row.variant_rank ?? undefined,
-    remoteId: row.id,
-    playCount: row.plays ?? undefined,
-    featured: visibility === 'featured',
-    rating: row.rating ?? undefined,
-    tags: row.tags ?? [],
-    versionCount,
-    currentVersion: versionCount,
-    updatedAt: new Date(row.updated_at).getTime(),
-  };
 }
 
 function clonePresetSummaries(summaries: PresetSummary[]): PresetSummary[] {
@@ -495,7 +322,7 @@ function clearPresetListSessionCache(): void {
   }
 }
 
-function entryToLegacyRow(entry: PresetEntry, userId: string | null): Record<string, unknown> {
+export function entryToLegacyRow(entry: PresetEntry, userId: string | null): Record<string, unknown> {
   return {
     user_id: userId,
     type: entry.type,
@@ -685,9 +512,7 @@ let sharedReadCircuitOpenUntil = 0;
 let sharedDetailRpcAvailable: boolean | null = null;
 let sharedLatestManifestRpcAvailable: boolean | null = null;
 let sharedMissingPayloadRpcAvailable: boolean | null = null;
-let sharedLegacyDetailRpcAvailable: boolean | null = null;
 let sharedRuntimeReadRpcAvailable: boolean | null = null;
-let sharedLegacySaveRpcAvailable: boolean | null = null;
 
 function isSharedReadCircuitOpen(now = Date.now()): boolean {
   return sharedReadCircuitOpenUntil > now || isSupabaseEgressQuotaCircuitOpen(now);
@@ -763,27 +588,6 @@ export class SupabasePresetStore implements IPresetStore {
     return data as T;
   }
 
-  private async callLegacySaveRpc<T>(
-    functionName: string,
-    args: Record<string, unknown>,
-    label: string,
-  ): Promise<T | undefined> {
-    if (sharedLegacySaveRpcAvailable === false) return undefined;
-
-    const { data, error } = await this.client.rpc(functionName, args);
-    if (error) {
-      if (isMissingRpcError(error, functionName)) {
-        sharedLegacySaveRpcAvailable = false;
-        return undefined;
-      }
-      if (isPermissionDeniedError(error)) return undefined;
-      throw new Error(`${label} failed: ${error.message}`);
-    }
-
-    sharedLegacySaveRpcAvailable = true;
-    return data as T;
-  }
-
   private getVersionTimestamp(version: PresetEntry['versions'][number]): string {
     return new Date(version.timestamp || Date.now()).toISOString();
   }
@@ -840,189 +644,6 @@ export class SupabasePresetStore implements IPresetStore {
     return isSharedReadCircuitOpen();
   }
 
-  private async rewriteLegacyDelayAKeysIfOwned(row: PresetRow, entry: PresetEntry): Promise<void> {
-    void row;
-    void entry;
-  }
-
-  private async fetchLegacyDetailRpc(
-    type?: PresetLevel,
-    name?: string,
-    scope?: string,
-    id?: string,
-  ): Promise<PresetRow | null | undefined> {
-    if (sharedLegacyDetailRpcAvailable === false) return undefined;
-
-    const functionName = 'kessho_get_legacy_preset_detail';
-    const targetScopes = scope ? getPresetScopeReadCandidates(scope) : null;
-    const { data, error } = await this.client.rpc(functionName, {
-      target_preset_id: id ?? null,
-      target_type: type ?? null,
-      target_name: name ?? null,
-      target_scopes: targetScopes,
-    });
-
-    if (error) {
-      if (isMissingRpcError(error, functionName)) {
-        sharedLegacyDetailRpcAvailable = false;
-        return undefined;
-      }
-      if (isPermissionDeniedError(error)) return undefined;
-      throw new Error(`Legacy preset detail RPC failed: ${error.message}`);
-    }
-
-    sharedLegacyDetailRpcAvailable = true;
-    return data === null ? null : data as unknown as PresetRow;
-  }
-
-  private async saveLegacy(entry: PresetEntry): Promise<void> {
-    const normalized = normalizePresetEntry(entry);
-    if (!normalized) throw new Error('Invalid preset entry');
-
-    compressVersions(normalized);
-    const row = entryToLegacyRow(normalized, this.userId);
-    if (SHARED_PRESET_TEST_MODE) {
-      row.visibility = 'public';
-    } else if (this.isAnonymous && !normalized.visibility) {
-      row.visibility = 'public';
-    }
-
-    const saved = await this.callLegacySaveRpc<PresetRow | null>(
-      'kessho_save_legacy_preset',
-      { preset_payload: row },
-      'Legacy cloud save RPC',
-    );
-    if (saved === undefined) {
-      throw new Error('Cloud save failed: legacy save RPC is unavailable.');
-    }
-  }
-
-  private async loadLegacy(type: PresetLevel, name: string, scope?: string, version?: number): Promise<PresetEntry | null> {
-    const rpcRow = await this.fetchLegacyDetailRpc(type, name, scope);
-    if (rpcRow !== undefined) {
-      if (!rpcRow) return null;
-      const entry = legacyRowToEntry(rpcRow);
-      await this.rewriteLegacyDelayAKeysIfOwned(rpcRow, entry);
-      if (version !== undefined) {
-        const selected = entry.versions.find(v => v.v === version);
-        if (!selected) return null;
-        return { ...entry, currentVersion: selected.v };
-      }
-      return entry;
-    }
-    return null;
-  }
-
-  private async listLegacy(type: PresetLevel, scope?: string): Promise<PresetSummary[]> {
-    const buildQuery = () => {
-      let query = this.client
-        .from('legacy_preset_summaries')
-        .select(LEGACY_PRESET_SUMMARY_SELECT)
-        .eq('type', type);
-
-      if (scope) {
-        const scopes = getPresetScopeReadCandidates(scope);
-        if (scopes.length > 1) query = query.in('scope', scopes);
-        else query = query.eq('scope', scopes[0] ?? scope);
-      }
-
-      if (!SHARED_PRESET_TEST_MODE) {
-        if (this.userId) {
-          query = query.or(`user_id.eq.${this.userId},visibility.in.(public,featured)`);
-        } else {
-          query = query.in('visibility', ['public', 'featured']);
-        }
-      }
-
-      return query.order('updated_at', { ascending: false }).limit(PRESET_LIBRARY_INITIAL_PAGE_SIZE);
-    };
-
-    const { data, error } = await buildQuery();
-    if (error) {
-      this.openListCircuitIfTerminal(error);
-      console.error('SupabasePresetStore.list error:', error);
-      return [];
-    }
-
-    return dedupePreferredLegacyRows(
-      (data ?? []) as unknown as LegacyPresetSummaryRow[],
-      SHARED_PRESET_TEST_MODE ? null : this.userId,
-    ).map(legacySummaryRowToSummary);
-  }
-
-  private async deleteLegacy(type: PresetLevel, name: string, scope?: string): Promise<void> {
-    if (!PRESET_DELETE_ENABLED) {
-      console.warn('Shared preset delete is disabled in testing mode:', type, scope ?? '', name);
-      return;
-    }
-
-    const { data, error } = await this.client.rpc('kessho_soft_delete_legacy_preset', {
-      target_type: type,
-      target_name: name,
-      target_scope: scope ?? null,
-    });
-
-    if (error) {
-      throw new Error(`Legacy cloud preset delete failed: ${error.message}`);
-    }
-
-    if (data === false) {
-      throw new Error(`Legacy cloud preset delete failed: "${name}" is not deletable or is already archived.`);
-    }
-  }
-
-  private async existsLegacy(type: PresetLevel, name: string, scope?: string): Promise<boolean> {
-    let query = this.client
-      .from('legacy_preset_summaries')
-      .select('id')
-      .eq('type', type)
-      .ilike('name', name.trim());
-
-    if (scope) {
-      const scopes = getPresetScopeReadCandidates(scope);
-      if (scopes.length > 1) query = query.in('scope', scopes);
-      else query = query.eq('scope', scopes[0] ?? scope);
-    }
-    if (!SHARED_PRESET_TEST_MODE && this.userId) query = query.eq('user_id', this.userId);
-
-    const { data, error } = await query.limit(1);
-    if (error) return false;
-    return !!data && data.length > 0;
-  }
-
-  private buildRenamePayloadFromRow(
-    row: {
-      name: string;
-      creator?: string | null;
-      description?: string | null;
-      visibility?: string | null;
-      family_name?: string | null;
-      variant_name?: string | null;
-      variant_rank?: number | null;
-      rating?: number | null;
-      tags?: string[] | null;
-    },
-    nextName: string,
-    identity?: PresetRenameIdentity,
-  ): Record<string, unknown> {
-    const payload: Record<string, unknown> = {
-      name: nextName,
-      creator: identity && 'creator' in identity ? identity.creator ?? null : row.creator ?? null,
-      description: identity && 'description' in identity ? identity.description ?? null : row.description ?? null,
-      visibility: identity && 'visibility' in identity ? identity.visibility ?? 'private' : row.visibility ?? 'private',
-      family_name: identity && 'familyName' in identity ? identity.familyName ?? null : row.family_name ?? null,
-      variant_name: identity && 'variantName' in identity ? identity.variantName ?? null : row.variant_name ?? null,
-      variant_rank: identity && 'variantRank' in identity ? identity.variantRank ?? null : row.variant_rank ?? null,
-      rating: identity && 'rating' in identity ? identity.rating ?? null : row.rating ?? null,
-    };
-    if (identity && 'tags' in identity) {
-      payload.tags = identity.tags ?? [];
-    } else if (row.tags) {
-      payload.tags = row.tags;
-    }
-    return payload;
-  }
-
   private buildRenamePayload(
     nextName: string,
     identity?: PresetRenameIdentity,
@@ -1038,36 +659,6 @@ export class SupabasePresetStore implements IPresetStore {
     if ('rating' in identity) payload.rating = identity.rating ?? null;
     if ('tags' in identity) payload.tags = identity.tags ?? [];
     return payload;
-  }
-
-  private async renameLegacy(
-    type: PresetLevel,
-    name: string,
-    nextName: string,
-    scope?: string,
-    identity?: PresetRenameIdentity,
-  ): Promise<PresetEntry | null> {
-    const target = await this.fetchLegacyDetailRpc(type, name, scope);
-    if (!target) return null;
-
-    const conflict = await this.fetchLegacyDetailRpc(type, nextName, scope);
-    if (conflict && conflict.id !== target.id) {
-      throw new Error(`A preset named "${nextName}" already exists.`);
-    }
-
-    const { data, error } = await this.client.rpc('kessho_rename_legacy_preset', {
-      target_preset_id: target.id,
-      rename_payload: this.buildRenamePayloadFromRow(target, nextName, identity),
-    });
-
-    if (error) {
-      throw new Error(`Legacy cloud preset rename failed: ${error.message}`);
-    }
-    if (!data) {
-      throw new Error(`Legacy cloud preset rename failed: "${name}" was not updated.`);
-    }
-
-    return legacyRowToEntry(data as PresetRow);
   }
 
   private async queryPresetRowsV2(
@@ -2144,7 +1735,7 @@ export class SupabasePresetStore implements IPresetStore {
       );
     }
 
-    const entry = normalizePresetEntry({
+    const entry = decodeCurrentPresetEntry({
       id: row.id,
       remoteId: row.id,
       type: row.type,
@@ -2169,7 +1760,7 @@ export class SupabasePresetStore implements IPresetStore {
       updatedAt: new Date(row.updated_at).getTime(),
     });
 
-    if (entry && recoveryWarnings.length > 0) {
+    if (recoveryWarnings.length > 0) {
       entry.recoveryWarnings = recoveryWarnings;
     }
 
@@ -2458,8 +2049,7 @@ export class SupabasePresetStore implements IPresetStore {
   }
 
   private async saveV2(entry: PresetEntry): Promise<void> {
-    const normalized = normalizePresetEntry(entry);
-    if (!normalized) throw new Error('Invalid preset entry');
+    const normalized = decodeCurrentPresetEntry(entry);
 
     const scope = getPresetScope(normalized, normalized.type);
     const internalDerived = isInternalDerivedEntry(normalized);
@@ -2722,12 +2312,10 @@ export class SupabasePresetStore implements IPresetStore {
   }
 
   async save(entry: PresetEntry): Promise<void> {
-    if (await this.supportsV2()) {
-      await this.saveV2(entry);
-      this.clearListCache();
-      return;
+    if (!(await this.supportsV2())) {
+      throw new UnsupportedPresetVersionError('Current preset storage is unavailable; legacy cloud preset storage is disabled.');
     }
-    await this.saveLegacy(entry);
+    await this.saveV2(entry);
     this.clearListCache();
   }
 
@@ -2735,15 +2323,11 @@ export class SupabasePresetStore implements IPresetStore {
     if (this.shouldSkipReadForCircuit()) return null;
 
     try {
-      if (await this.supportsV2()) {
-        if (this.shouldSkipReadForCircuit()) return null;
-        const v2Entry = await this.loadV2(type, name, scope, version);
-        if (v2Entry) return v2Entry;
-        if (SHARED_PRESET_TEST_MODE) return null;
+      if (!(await this.supportsV2())) {
+        throw new UnsupportedPresetVersionError('Current preset storage is unavailable; legacy cloud preset storage is disabled.');
       }
-
       if (this.shouldSkipReadForCircuit()) return null;
-      return this.loadLegacy(type, name, scope, version);
+      return this.loadV2(type, name, scope, version);
     } catch (error) {
       if (isTerminalSupabaseListError(error)) {
         this.openListCircuitIfTerminal(error);
@@ -2758,23 +2342,12 @@ export class SupabasePresetStore implements IPresetStore {
     if (!targetId || this.shouldSkipReadForCircuit()) return null;
 
     try {
-      if (await this.supportsV2()) {
-        if (this.shouldSkipReadForCircuit()) return null;
-        const row = await this.findPresetRowByIdV2(targetId);
-        if (row) return this.loadV2ByRow(row, version);
-        if (SHARED_PRESET_TEST_MODE) return null;
+      if (!(await this.supportsV2())) {
+        throw new UnsupportedPresetVersionError('Current preset storage is unavailable; legacy cloud preset storage is disabled.');
       }
-
       if (this.shouldSkipReadForCircuit()) return null;
-      const rpcRow = await this.fetchLegacyDetailRpc(undefined, undefined, undefined, targetId);
-      if (!rpcRow) return null;
-      const entry = legacyRowToEntry(rpcRow);
-      await this.rewriteLegacyDelayAKeysIfOwned(rpcRow, entry);
-      if (version !== undefined) {
-        const selected = entry.versions.find(v => v.v === version);
-        return selected ? { ...entry, currentVersion: selected.v } : null;
-      }
-      return entry;
+      const row = await this.findPresetRowByIdV2(targetId);
+      return row ? this.loadV2ByRow(row, version) : null;
     } catch (error) {
       if (isTerminalSupabaseListError(error)) {
         this.openListCircuitIfTerminal(error);
@@ -2841,13 +2414,10 @@ export class SupabasePresetStore implements IPresetStore {
     const trimmedName = nextName.trim();
     if (!trimmedName) return null;
 
-    if (await this.supportsV2()) {
-      const renamed = await this.renameV2(type, name, trimmedName, scope, identity);
-      this.clearListCache();
-      if (renamed || SHARED_PRESET_TEST_MODE) return renamed;
+    if (!(await this.supportsV2())) {
+      throw new UnsupportedPresetVersionError('Current preset storage is unavailable; legacy cloud preset storage is disabled.');
     }
-
-    const renamed = await this.renameLegacy(type, name, trimmedName, scope, identity);
+    const renamed = await this.renameV2(type, name, trimmedName, scope, identity);
     this.clearListCache();
     return renamed;
   }
@@ -2855,56 +2425,28 @@ export class SupabasePresetStore implements IPresetStore {
   private async listUncached(type: PresetLevel, scope?: string): Promise<PresetSummary[]> {
     const summaries: PresetSummary[] = [];
 
-    if (await this.supportsV2()) {
-      if (this.shouldSkipReadForCircuit()) return summaries;
-      summaries.push(...await this.listV2(type, scope));
-      if (SHARED_PRESET_TEST_MODE) return summaries;
+    if (!(await this.supportsV2())) {
+      throw new UnsupportedPresetVersionError('Current preset storage is unavailable; legacy cloud preset storage is disabled.');
     }
-
     if (this.shouldSkipReadForCircuit()) return summaries;
-    const legacySummaries = await this.listLegacy(type, scope);
-    const byKey = new Map<string, PresetSummary>();
-
-    for (const summary of [...summaries, ...legacySummaries]) {
-      const key = `${summary.type}:${canonicalizePresetScope(summary.scope) ?? ''}:${normalizeNameKey(summary.name)}`;
-      const existing = byKey.get(key);
-      if (!existing) {
-        byKey.set(key, summary);
-        continue;
-      }
-      const existingIsV2 = Boolean(existing.remoteId);
-      const summaryIsV2 = Boolean(summary.remoteId);
-      if (summaryIsV2 && !existingIsV2) {
-        byKey.set(key, summary);
-        continue;
-      }
-      if ((summary.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
-        byKey.set(key, summary);
-      }
-    }
-
-    return [...byKey.values()];
+    return this.listV2(type, scope);
   }
 
   async delete(type: PresetLevel, name: string, scope?: string): Promise<void> {
-    if (await this.supportsV2()) {
-      await this.deleteV2(type, name, scope);
-      this.clearListCache();
-      return;
+    if (!(await this.supportsV2())) {
+      throw new UnsupportedPresetVersionError('Current preset storage is unavailable; legacy cloud preset storage is disabled.');
     }
-    await this.deleteLegacy(type, name, scope);
+    await this.deleteV2(type, name, scope);
     this.clearListCache();
   }
 
   async exists(type: PresetLevel, name: string, scope?: string): Promise<boolean> {
     if (this.shouldSkipReadForCircuit()) return false;
-    if (await this.supportsV2()) {
-      if (this.shouldSkipReadForCircuit()) return false;
-      if (await this.existsV2(type, name, scope)) return true;
-      if (SHARED_PRESET_TEST_MODE) return false;
+    if (!(await this.supportsV2())) {
+      throw new UnsupportedPresetVersionError('Current preset storage is unavailable; legacy cloud preset storage is disabled.');
     }
     if (this.shouldSkipReadForCircuit()) return false;
-    return this.existsLegacy(type, name, scope);
+    return this.existsV2(type, name, scope);
   }
 
   async findReferences(type: PresetLevel, name: string): Promise<string[]> {
@@ -2927,28 +2469,19 @@ export class SupabasePresetStore implements IPresetStore {
 
   async getStorageUsed(): Promise<{ bytes: number; count: number }> {
     if (this.shouldSkipReadForCircuit()) return { bytes: 0, count: 0 };
-    if (await this.supportsV2()) {
-      if (this.shouldSkipReadForCircuit()) return { bytes: 0, count: 0 };
-      const stats = await this.callRuntimeReadRpc<PresetStorageStats | null>(
-        'kessho_get_preset_storage_stats_v2',
-        {},
-        'V2 storage stats RPC',
-      );
-      return {
-        bytes: stats?.bytes ?? 0,
-        count: stats?.count ?? 0,
-      };
+    if (!(await this.supportsV2())) {
+      throw new UnsupportedPresetVersionError('Current preset storage is unavailable; legacy cloud preset storage is disabled.');
     }
-
-    if (!this.userId) return { bytes: 0, count: 0 };
-
-    const { count, error } = await this.client
-      .from('legacy_preset_summaries')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', this.userId);
-
-    if (error) return { bytes: 0, count: 0 };
-    return { bytes: 0, count: count ?? 0 };
+    if (this.shouldSkipReadForCircuit()) return { bytes: 0, count: 0 };
+    const stats = await this.callRuntimeReadRpc<PresetStorageStats | null>(
+      'kessho_get_preset_storage_stats_v2',
+      {},
+      'V2 storage stats RPC',
+    );
+    return {
+      bytes: stats?.bytes ?? 0,
+      count: stats?.count ?? 0,
+    };
   }
 
   async exportAll(): Promise<Blob> {
@@ -2965,44 +2498,13 @@ export class SupabasePresetStore implements IPresetStore {
       return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     }
 
-    const v2Supported = await this.supportsV2();
-    if (v2Supported) {
-      if (this.shouldSkipReadForCircuit()) {
-        const payload = {
-          kesshoBackup: true,
-          formatVersion: 2,
-          exportedAt: new Date().toISOString(),
-          count: 0,
-          entries,
-        };
-        return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      }
+    if (!(await this.supportsV2())) {
+      throw new UnsupportedPresetVersionError('Current preset storage is unavailable; legacy cloud preset storage is disabled.');
+    }
+    if (!this.shouldSkipReadForCircuit()) {
       for (const row of await this.fetchExportRowsV2()) {
         const entry = await this.loadV2ByRow(row);
         if (entry) entries.push(entry);
-      }
-    }
-
-    if (v2Supported && SHARED_PRESET_TEST_MODE) {
-      const payload = {
-        kesshoBackup: true,
-        formatVersion: 2,
-        exportedAt: new Date().toISOString(),
-        count: entries.length,
-        entries,
-      };
-      return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    }
-
-    let legacyQuery = this.client
-      .from('legacy_preset_summaries')
-      .select('id');
-    if (this.userId) legacyQuery = legacyQuery.eq('user_id', this.userId);
-    const { data: legacyRows } = await legacyQuery;
-    if (legacyRows) {
-      for (const row of legacyRows as Array<{ id: string }>) {
-        const detail = await this.fetchLegacyDetailRpc(undefined, undefined, undefined, row.id);
-        if (detail) entries.push(legacyRowToEntry(detail));
       }
     }
 
@@ -3025,9 +2527,7 @@ export class SupabasePresetStore implements IPresetStore {
 
     let count = 0;
     for (const entry of parsed.entries) {
-      const normalized = normalizePresetEntry(entry);
-      if (!normalized) continue;
-      await this.save(normalized);
+      await this.save(decodeCurrentPresetEntry(entry));
       count += 1;
     }
     return count;

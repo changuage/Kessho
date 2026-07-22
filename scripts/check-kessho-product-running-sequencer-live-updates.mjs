@@ -49,7 +49,6 @@ const files = {
   generatedCapturePhrase: read('src/ui/sequencer/generatedSequencerCapturePhrase.ts'),
   host: read('src/audio/coreProductEngineHost.ts'),
   manualTriggers: read('src/ui/useProductRuntimeManualTriggers.ts'),
-  selectedManualTriggers: read('src/ui/useSelectedAudioEngineManualTriggers.ts'),
   liveTriggerUiCallbacks: read('src/ui/useLiveTriggerUiCallbacks.ts'),
   liveSequencerTiming: read('src/ui/commitLiveSequencerTiming.ts'),
   productEvents: read('src/audio/coreProductEvents.ts'),
@@ -69,7 +68,7 @@ const files = {
   sequencerStepOverrideEvents: read('src/audio/product/ProductSequencerStepOverrideEvents.ts'),
   productSynthPageEvents: read('src/ui/useProductRuntimeSynthPageEvents.ts'),
   productRuntimeSequencerControls: read('src/ui/useProductRuntimeSequencerControls.ts'),
-  sequencerControls: read('src/ui/useSelectedAudioEngineSequencerControls.ts'),
+  sequencerControls: read('src/ui/useProductRuntimeSequencerControls.ts'),
   sequencerStepOverrideEventBridge: read('src/audio/product/host/CoreProductSequencerStepOverrideEventBridge.ts'),
   sequencerVisualBridge: read('src/audio/product/host/CoreProductSequencerVisualBridge.ts'),
   drumMorph: read('src/audio/drumMorph.ts'),
@@ -431,15 +430,13 @@ check(
 );
 
 check(
-  'selected-manual-trigger-reference-only',
-  files.selectedManualTriggers.includes('selectedProductRuntime.auditionSynthNote(note, stateRef.current)') &&
-    files.selectedManualTriggers.includes('selectedProductRuntime.enqueueLiveNoteEvent(event)') &&
-    files.selectedManualTriggers.includes('selectedProductRuntime.triggerDrumVoice(voice, 0.8, stateRef.current)') &&
-    !files.selectedManualTriggers.includes('productRuntimeManualTriggers') &&
-    !files.selectedManualTriggers.includes('audioEngineRuntimeMode') &&
-    !files.selectedManualTriggers.includes('commitProductControlActionThenTrigger(') &&
-    !files.selectedManualTriggers.includes('productEngine'),
-  'selected manual trigger adapter must remain a reference-runtime-only implementation',
+  'product-manual-trigger-boundary',
+  files.manualTriggers.includes('productEngine.auditionSynthNote') &&
+    files.manualTriggers.includes('productEngine.triggerDrumVoice') &&
+    files.manualTriggers.includes('commitProductControlActionThenTrigger(') &&
+    !files.manualTriggers.includes('selectedProductRuntime') &&
+    !files.manualTriggers.includes('SelectedProductRuntime'),
+  'manual triggers must use the direct Product runtime boundary',
 );
 
 check(

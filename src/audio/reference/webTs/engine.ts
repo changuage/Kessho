@@ -1528,6 +1528,7 @@ export class AudioEngine {
   private drumHomePitchSettings: (SequencerPitchSettings | null)[] = [null, null, null, null];
   private drumHomePitchScaleQuantize: (boolean | null)[] = [null, null, null, null];
   private drumHomePitchSubLaneStates: ({ steps?: number; direction?: LaneDirection; scaleQuantize?: boolean } | null)[] = [null, null, null, null];
+  private drumSubLaneStates: Record<string, { enabled?: boolean; steps?: number; direction?: LaneDirection }>[] = [];
   // Pending drum clock divs, swings, sub-lane enabled (applied when DrumSynth is created)
   private pendingDrumClockDivs: ClockDivision[] | null = null;
   private pendingDrumSwings: number[] | null = null;
@@ -4814,7 +4815,7 @@ export class AudioEngine {
   }
 
   /** Callback fired when engine-owned S&H params resample, including onset-driven owners. */
-  setGranularSHTriggerCallback(cb: (positions: Record<string, number>) => void) {
+  setGranularSHTriggerCallback(cb: ((positions: Record<string, number>) => void) | null) {
     this.onGranularSHTrigger = cb;
   }
 
@@ -4943,19 +4944,20 @@ export class AudioEngine {
 
 
 
-  setStateChangeCallback(callback: (state: EngineState) => void) {
+  setStateChangeCallback(callback: ((state: EngineState) => void) | null) {
     this.onStateChange = callback;
+    if (callback) this.notifyStateChange();
   }
 
-  setLeadExpressionCallback(callback: (expression: { vibratoDepth: number; vibratoRate: number; glide: number }) => void) {
+  setLeadExpressionCallback(callback: ((expression: { vibratoDepth: number; vibratoRate: number; glide: number }) => void) | null) {
     this.onLeadExpressionTrigger = callback;
   }
 
-  setLeadMorphCallback(callback: (morph: { lead1: number; lead2: number }) => void) {
+  setLeadMorphCallback(callback: ((morph: { lead1: number; lead2: number }) => void) | null) {
     this.onLeadMorphTrigger = callback;
   }
 
-  setLeadDelayCallback(callback: (delay: { time: number; feedback: number; mix: number }) => void) {
+  setLeadDelayCallback(callback: ((delay: { time: number; feedback: number; mix: number }) => void) | null) {
     this.onLeadDelayTrigger = callback;
   }
 
@@ -4993,7 +4995,7 @@ export class AudioEngine {
     this.granularFxNode.port.postMessage({ type: 'uiActive', active });
   }
 
-  setDrumTriggerCallback(callback: (voice: DrumVoiceType, velocity: number) => void) {
+  setDrumTriggerCallback(callback: ((voice: DrumVoiceType, velocity: number) => void) | null) {
     this.onDrumTrigger = callback;
     // Pass through to drum synth if it exists
     if (this.drumSynth) {
@@ -5001,7 +5003,7 @@ export class AudioEngine {
     }
   }
 
-  setDrumMorphTriggerCallback(callback: (voice: DrumVoiceType, morphPosition: number) => void) {
+  setDrumMorphTriggerCallback(callback: ((voice: DrumVoiceType, morphPosition: number) => void) | null) {
     this.onDrumMorphTrigger = callback;
     // Pass through to drum synth if it exists
     if (this.drumSynth) {
@@ -5009,38 +5011,38 @@ export class AudioEngine {
     }
   }
 
-  setPadMorphTriggerCallback(callback: (morphPosition: number) => void) {
+  setPadMorphTriggerCallback(callback: ((morphPosition: number) => void) | null) {
     this.onPadMorphTrigger = callback;
   }
 
-  setPad2MorphTriggerCallback(callback: (morphPosition: number) => void) {
+  setPad2MorphTriggerCallback(callback: ((morphPosition: number) => void) | null) {
     this.onPad2MorphTrigger = callback;
   }
 
-  setLeadDistanceCallback(callback: (distance: { lead1: number; lead2: number }) => void) {
+  setLeadDistanceCallback(callback: ((distance: { lead1: number; lead2: number }) => void) | null) {
     this.onLeadDistanceTrigger = callback;
   }
 
-  setPianoDistanceTriggerCallback(callback: (distance: number) => void) {
+  setPianoDistanceTriggerCallback(callback: ((distance: number) => void) | null) {
     this.onPianoDistanceTrigger = callback;
   }
 
-  setPadDistanceTriggerCallback(callback: (distance: number) => void) {
+  setPadDistanceTriggerCallback(callback: ((distance: number) => void) | null) {
     this.onPadDistanceTrigger = callback;
   }
 
-  setPad2DistanceTriggerCallback(callback: (distance: number) => void) {
+  setPad2DistanceTriggerCallback(callback: ((distance: number) => void) | null) {
     this.onPad2DistanceTrigger = callback;
   }
 
-  setDrumEuclidEvolveTriggerCallback(callback: (laneIndex: number) => void) {
+  setDrumEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null) {
     this.onDrumEuclidEvolveTrigger = callback;
     if (this.drumSynth) {
       this.drumSynth.setEuclidEvolveTriggerCallback(callback);
     }
   }
 
-  setDrumStepPositionCallback(callback: (steps: number[], hitCounts: number[]) => void) {
+  setDrumStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null) {
     this.onDrumStepPositionChange = callback;
     if (this.drumSynth) {
       this.drumSynth.setStepPositionCallback(callback);
@@ -5283,12 +5285,12 @@ export class AudioEngine {
   }
 
   /** Register callback for synth evolve trigger (UI flash). */
-  setSynthEuclidEvolveTriggerCallback(callback: (laneIndex: number) => void) {
+  setSynthEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null) {
     this.onSynthEvolveTrigger = callback;
   }
 
   /** Register callback for synth evolve overrides push-back to UI. */
-  setSynthEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: SynthEvolveOverridesPayload) => void) {
+  setSynthEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: SynthEvolveOverridesPayload) => void) | null) {
     this.onSynthEvolveOverridesChanged = callback;
   }
 
@@ -5299,6 +5301,15 @@ export class AudioEngine {
     ) as Quad<{ mode: PitchMode; root: number; scale: ScaleName }>;
   }
 
+  /** Keep drum evolve-home pitch metadata aligned with the reference UI. */
+  setDrumPitchSettings(settings: (SequencerPitchSettings | null)[]) {
+    this.drumHomePitchSettings = DRUM_LANE_INDICES.map((index) =>
+      settings[index]
+        ? normalizeSequencerPitchSettings(settings[index]!, this.drumHomePitchSettings[index] ?? undefined)
+        : (this.drumHomePitchSettings[index] ?? null),
+    );
+  }
+
   /** Set per-lane pitch binding/indexing mode for the synth Euclidean sequencer. */
   setSynthPitchBindingModes(modes: PitchBindingMode[]) {
     this.synthPitchBindingModes = SYNTH_LANE_INDICES.map(i =>
@@ -5307,12 +5318,12 @@ export class AudioEngine {
   }
 
   /** Register callback for noteRange evolve push-back to UI. */
-  setSynthNoteRangeEvolvedCallback(callback: (laneIndex: number, noteMin: number, noteMax: number) => void) {
+  setSynthNoteRangeEvolvedCallback(callback: ((laneIndex: number, noteMin: number, noteMax: number) => void) | null) {
     this.onSynthNoteRangeEvolved = callback;
   }
 
   /** Register callback for drum evolve overrides push-back to UI. */
-  setDrumEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: DrumEvolveOverridesPayload) => void) {
+  setDrumEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: DrumEvolveOverridesPayload) => void) | null) {
     if (this.drumSynth) {
       this.drumSynth.setEvolveOverridesChangedCallback(callback);
     }
@@ -5565,7 +5576,7 @@ export class AudioEngine {
     }
   }
 
-  setDrumParamSHTriggerCallback(callback: (voice: DrumVoiceType, key: string, position: number) => void) {
+  setDrumParamSHTriggerCallback(callback: ((voice: DrumVoiceType, key: string, position: number) => void) | null) {
     this.onDrumParamSHTrigger = callback;
     if (this.drumSynth) {
       this.drumSynth.setParamSHTriggerCallback(callback);
@@ -5627,7 +5638,16 @@ export class AudioEngine {
       ? [null, null, null, null] as (SequencerPitchSettings | null)[]
       : null;
     if (pitchSettings) pitchSettings[laneIndex] = { ...this.drumHomePitchSettings[laneIndex]! };
-    const subLaneStates = drumStepOverrideSubLaneStatePatch(overrides, laneIndex, fallback);
+    const subLaneStates = {
+      ...drumStepOverrideSubLaneStatePatch(overrides, laneIndex, fallback),
+      ...(this.drumSubLaneStates[laneIndex]
+        ? Object.fromEntries(Object.entries(this.drumSubLaneStates[laneIndex]).map(([key, state]) => [key, {
+          enabled: state.enabled,
+          steps: state.steps,
+          direction: state.direction,
+        }]))
+        : {}),
+    };
     if (options.includePitchSettings && this.drumHomePitchSubLaneStates[laneIndex]) {
       subLaneStates.pitch = { ...(subLaneStates.pitch ?? { enabled: false, steps: 1, direction: 'forward' }), ...this.drumHomePitchSubLaneStates[laneIndex]! };
     }
@@ -5704,8 +5724,12 @@ export class AudioEngine {
   }
 
   /** Sync full step overrides from the UI sequencer to the audio engine's scheduler */
-  setDrumStepOverrides(overrides: DrumStepOverrides) {
+  setDrumStepOverrides(
+    overrides: DrumStepOverrides,
+    subLaneStates?: Record<string, { enabled?: boolean; steps?: number; direction?: LaneDirection }>[],
+  ) {
     this.pendingStepOverrides = cloneDrumStepOverrides(overrides);
+    if (subLaneStates) this.drumSubLaneStates = subLaneStates.map((state) => ({ ...state }));
     if (drumStepOverridesHomeIsEmpty(this.drumHomeStepOverrides)) {
       this.drumHomeStepOverrides = cloneDrumStepOverrides(overrides);
     }

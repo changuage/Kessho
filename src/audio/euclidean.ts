@@ -1,1 +1,0 @@
-export { seqEuclidean } from './euclideanPatterns';

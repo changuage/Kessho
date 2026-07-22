@@ -317,6 +317,7 @@ async function verifyViewport(chromium, baseUrl, viewport) {
     const phraseSlider = page.locator('.sl-slider').filter({ hasText: 'Phrase Seconds' }).first();
     if (!(await phraseSlider.isVisible())) await transportSection.click();
     await phraseSlider.waitFor({ state: 'visible', timeout: 10000 });
+    await phraseSlider.scrollIntoViewIfNeeded();
     const phraseRail = phraseSlider.locator('.sl-slider-rail');
     const phraseSummary = page.getByText(/phrase is the master clock and derives/i).first();
     const summaryBeforeDrag = await phraseSummary.textContent();

@@ -940,6 +940,7 @@ async function measureEngineScenario({ chromium, baseUrl, mode, args, scenario }
   const url = withQuery(baseUrl, {
     parity: '1',
     engineAB: '1',
+    pageCpu: '1',
     engine: mode,
     engineState: stateKey,
   });
@@ -1083,6 +1084,7 @@ function writeReport(report) {
     '',
     '- Browser-process CPU uses Chrome process CPU deltas around each page scenario. This includes renderer/audio-thread/browser process work while the matching app tab is visible.',
     '- Each scenario preloads the page state through the app engine-state loader, then the sonic parity harness captures the same state for Product Core and Web TS.',
+    '- The pageCpu query keeps runtime selection available while parking the development runtime-comparison panel and perf monitor so the measurement does not benchmark its own debug instrumentation.',
     '- Web TS is measured only through the local dev/reference runtime path; production preview/build requests for Web TS continue to resolve to Product Core.',
     '- Internal avg/peak keeps the overlay-style metric visible. For Web TS, that is still worklet-reported CPU only and excludes native WebAudio node DSP.',
     '',

@@ -18,6 +18,7 @@ import { morphWaterPresets, WATER_PRESETS } from '../audio/waterPresets';
 import { SHARED_PRESET_TEST_MODE } from './sharedMode';
 import { normalizeResolvedVersionData } from './presetStorageV2';
 import { getPresetScope, presetValuesEqual } from './presetUtils';
+import { decodeCurrentPresetEntry } from './currentPresetSchema';
 import {
   buildEuclideanPatternPresetData,
   EUCLIDEAN_PATTERN_LABELS,
@@ -526,8 +527,9 @@ async function loadStateFactory(): Promise<PresetEntry[]> {
         const res = await fetch(`/presets/${file}`);
         if (!res.ok) continue;
         const data = await res.json();
-        if (data?.kesshoPreset && data?.entry?.type === 'state') {
-          const entry = data.entry as PresetEntry;
+        if (data?.kesshoPreset === true && data?.entry) {
+          const entry = decodeCurrentPresetEntry(data.entry);
+          if (entry.type !== 'state') continue;
           const latest = getLatestVersionData(entry);
           if (!latest) continue;
           addFactoryEntry(entries, seen, makeFactory('state', entry.name || file.replace('.json', ''), latest, {
@@ -536,14 +538,7 @@ async function loadStateFactory(): Promise<PresetEntry[]> {
           }));
           continue;
         }
-
-        const name = data.name || file.replace('.json', '');
-        const state = data.state || data;
-        if (!state || typeof state !== 'object') continue;
-        addFactoryEntry(entries, seen, makeFactory('state', name, state as Record<string, unknown>, {
-          scope: 'global',
-          tags: ['factory'],
-        }));
+        throw new Error(`Bundled state preset ${file} is not a current Kessho preset envelope`);
       } catch {
         // Skip
       }

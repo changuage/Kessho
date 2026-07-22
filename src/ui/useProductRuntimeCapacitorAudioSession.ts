@@ -1,5 +1,6 @@
-import { useSelectedAudioEngineCapacitorAudioSession } from './useSelectedAudioEngineCapacitorAudioSession';
 import type { NativeProductRendererDiagnosticStatus } from './useCapacitorAudioSessionDiagnostics';
+import { useCapacitorAudioSessionDiagnostics } from './useCapacitorAudioSessionDiagnostics';
+import { useProductRuntimeRemoteCommandPlayback } from './useProductRuntimeRemoteCommandPlayback';
 import type { SliderState } from './state';
 
 type ProductRuntimeNativeDualRanges = Record<string, { min: number; max: number }>;
@@ -21,12 +22,14 @@ export function useProductRuntimeCapacitorAudioSession({
   stopProductPlayback,
   ...options
 }: ProductRuntimeCapacitorAudioSessionOptions): NativeProductRendererDiagnosticStatus {
-  // TODO(product-fallback-retire:runtime-capacitor-audio-session): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
-  // Capacitor session diagnostics still delegate to the
-  // selected-runtime remote command handler while product surfaces expose product playback names.
-  return useSelectedAudioEngineCapacitorAudioSession({
-    ...options,
+  const onRemoteCommand = useProductRuntimeRemoteCommandPlayback({
+    playbackIsRunning: options.playbackIsRunning,
     startPlayback: startProductPlayback,
     stopPlayback: stopProductPlayback,
+  });
+  return useCapacitorAudioSessionDiagnostics({
+    ...options,
+    isPlaying: options.playbackIsRunning || options.isJourneyPlaying,
+    onRemoteCommand,
   });
 }

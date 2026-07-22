@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { collectImportSpecifiers } from './lib/sourceArchitectureRules.mjs';
 
 const root = process.cwd();
 
@@ -317,30 +318,21 @@ function assert(condition, message) {
   }
 }
 
-function importDeclarations(source) {
-  return Array.from(source.matchAll(/import\s+(type\s+)?[\s\S]*?\s+from\s+['"]([^'"]+)['"]/g), (match) => ({
-    typeOnly: Boolean(match[1]),
-    specifier: match[2],
-    declaration: match[0],
-  }));
-}
-
 for (const file of productFiles) {
-  const source = readFileSync(resolve(root, file), 'utf8');
-  for (const imported of importDeclarations(source)) {
+  for (const imported of collectImportSpecifiers(resolve(root, file))) {
     const specifier = imported.specifier;
     if (specifier === '../ui/routing/routingMuteGroups') {
-      assert(imported.typeOnly, `${file} routing mute-group dependency must remain type-only`);
+      assert(imported.isTypeOnly, `${file} routing mute-group dependency must remain type-only`);
     }
-    if (specifier === './engine' && imported.typeOnly) {
+    if (specifier === './engine' && imported.isTypeOnly) {
       continue;
     }
     if (specifier === './lead4opfm' && file === 'src/audio/CoreProductLeadPatch.ts') {
-      assert(source.includes('SNAPSHOT_AUTHORITY: PRODUCT_CORE_LEAD_OVERRIDE_BRIDGE'), `${specifier} bridge import must stay labeled as PRODUCT_CORE_LEAD_OVERRIDE_BRIDGE`);
+      assert(imported.kind === 'static' && !imported.isTypeOnly, `${file} ${specifier} bridge must remain a static runtime dependency`);
       continue;
     }
     if (specifier === './padPresets' && file === 'src/audio/CoreProductPadPatch.ts') {
-      assert(source.includes('SNAPSHOT_AUTHORITY: PRODUCT_CORE_PAD_OVERRIDE_BRIDGE'), `${specifier} bridge import must stay labeled as PRODUCT_CORE_PAD_OVERRIDE_BRIDGE`);
+      assert(imported.kind === 'static' && !imported.isTypeOnly, `${file} ${specifier} bridge must remain a static runtime dependency`);
       continue;
     }
     assert(
@@ -357,12 +349,26 @@ for (const file of productFiles) {
 const bridgePolicy = readFileSync(resolve(root, 'docs/kessho-product-patch-bridge-policy.md'), 'utf8');
 const doc = readFileSync(resolve(root, 'docs/kessho-product-reference-isolation.md'), 'utf8');
 
+function assertRuntimeStaticImport(file, specifier, message) {
+  const imports = collectImportSpecifiers(resolve(root, file));
+  assert(
+    imports.some((entry) => entry.kind === 'static' && !entry.isTypeOnly && entry.specifier === specifier),
+    message,
+  );
+}
+
 assert(
-  readFileSync(resolve(root, 'src/audio/CoreProductLeadPatch.ts'), 'utf8').includes("from './lead4opfm'"),
+  classifiedRuntimeAllowlist.has('./lead4opfm'),
+  'Lead preset-data bridge import must remain reference-isolation classified',
+);
+assertRuntimeStaticImport(
+  'src/audio/CoreProductLeadPatch.ts',
+  './lead4opfm',
   'Lead preset-data bridge import must remain visible in CoreProductLeadPatch until bounded Lead overrides retire it',
 );
-assert(
-  readFileSync(resolve(root, 'src/audio/CoreProductPadPatch.ts'), 'utf8').includes("from './padPresets'"),
+assertRuntimeStaticImport(
+  'src/audio/CoreProductPadPatch.ts',
+  './padPresets',
   'Pad override bridge import must remain visible in CoreProductPadPatch until generated/Product-native Pad overrides retire it',
 );
 assert(bridgePolicy.includes('TEMP_COMPAT_WEB_REFERENCE'), 'temporary web reference bridge must have a documented policy');
@@ -381,18 +387,6 @@ for (const token of [
 }
 for (const specifier of classifiedRuntimeAllowlist.keys()) {
   assert(doc.includes(`\`${specifier}\``), `reference isolation doc does not classify allowlisted import ${specifier}`);
-}
-
-for (const file of [
-  'src/audio/reference/webTs/engine.ts',
-  'src/audio/coreEngineHost.ts',
-  'src/audio/referenceAudioRuntime.ts',
-  'src/audio/reference/ReferenceSelectedRuntime.ts',
-  'src/audio/reference/ReferenceAudioEngineDebugCompat.ts',
-  'src/audio/sonicParityHarness.ts',
-]) {
-  const source = readFileSync(resolve(root, file), 'utf8');
-  assert(source.includes('Status: Keep Active — Archive Later'), `${file} must be labeled Keep Active — Archive Later`);
 }
 
 console.log('Kessho Product reference isolation checks passed');

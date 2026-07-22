@@ -2,11 +2,11 @@
  * Centralized preset loading utility.
  *
  * Replaces the 10+ copy-paste preset-load sequences in App.tsx with a single
- * canonical function that handles migration, normalization, default merge,
- * user-preference preservation, granular auto-disable, and engine update.
+ * canonical function that handles current-schema validation, user-preference
+ * preservation, safe-audition policy, and engine update.
  */
 
-import { SliderState, DEFAULT_STATE, migratePreset, SavedPreset } from './state';
+import { SliderState, DEFAULT_STATE, SavedPreset } from './state';
 import { getAllMorphedDrumParams } from '../audio/drumMorph';
 import { normalizeDegradeReverbCrossfeed } from './routing';
 
@@ -19,7 +19,6 @@ export const USER_PREFERENCE_KEYS: (keyof SliderState)[] = [
 export type PresetLoadMode =
   | 'safe-audition'
   | 'exact-as-saved'
-  | 'legacy-repair'
   | 'session-restore';
 
 export interface ApplyPresetOptions {
@@ -31,13 +30,11 @@ export interface ApplyPresetOptions {
   resetCofDrift?: boolean;
   onUpdateEngine?: (state: SliderState, metadata: { presetId: string; presetName: string }) => void;
   onResetCofDrift?: () => void;
-  /** Whether to run migratePreset() on the raw input. Default: true. */
-  migrate?: boolean;
   /** Whether to restore saved live sequencer transport flags. Default: false. */
   preserveSequencerTransport?: boolean;
   /** Whether to preserve silent engine enabled flags. Default follows loadMode. */
   preserveSilentEngines?: boolean;
-  /** Controls whether preset load is safe-audition, exact, legacy repair, or session restore. */
+  /** Controls whether preset load is safe-audition, exact, or session restore. */
   loadMode?: PresetLoadMode;
   /** The normalizePresetForWeb function (defined in App.tsx, passed in to avoid circular deps). */
   normalize: (state: SliderState) => SliderState;
@@ -46,10 +43,10 @@ export interface ApplyPresetOptions {
 export interface ApplyPresetResult {
   /** The final merged SliderState, ready for setState(). */
   state: SliderState;
-  /** The migrated preset (with dualRanges and sliderModes) for applyDualRangesFromPreset(). */
+  /** The current preset (with dualRanges and sliderModes) for applyDualRangesFromPreset(). */
   preset: SavedPreset;
-  /** True when legacy repair or safe-audition compatibility changed loaded behavior. */
-  repairApplied?: boolean;
+  /** True when safe-audition intentionally changed loaded behavior. */
+  safeAuditionChanged?: boolean;
   /** True when load mode intentionally stopped sequencer transport. */
   transportDisabledByLoadMode?: boolean;
 }
@@ -68,15 +65,11 @@ function shouldPreserveSilentEngines(mode: PresetLoadMode): boolean {
   return mode === 'exact-as-saved' || mode === 'session-restore';
 }
 
-function shouldApplyLegacyRepair(mode: PresetLoadMode): boolean {
-  return mode === 'legacy-repair' || mode === 'safe-audition';
-}
-
 /**
- * Canonical preset loading: migrate → normalize → merge defaults → preserve
- * user preferences → auto-disable zero-level features → update engine.
+ * Canonical current-preset loading: validate → preserve user preferences →
+ * apply safe-audition policy → update engine.
  *
- * Returns the final state and migrated preset so the caller can:
+ * Returns the final state and canonical preset so the caller can:
  *   setState(result.state)
  *   applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes)
  */
@@ -90,7 +83,6 @@ export function applyPreset(
     resetCofDrift = true,
     onUpdateEngine,
     onResetCofDrift,
-    migrate = true,
     preserveSequencerTransport,
     preserveSilentEngines,
     loadMode,
@@ -99,20 +91,21 @@ export function applyPreset(
   const resolvedLoadMode = loadMode ?? resolvePresetLoadMode(options);
   const preserveTransport = preserveSequencerTransport ?? shouldPreserveSequencerTransport(resolvedLoadMode);
   const preserveEngines = preserveSilentEngines ?? shouldPreserveSilentEngines(resolvedLoadMode);
-  const applyLegacyRepair = shouldApplyLegacyRepair(resolvedLoadMode);
-  let repairApplied = false;
+  let safeAuditionChanged = false;
   let transportDisabledByLoadMode = false;
 
-  // 1. Migrate (handles legacy field renames, dualRange inference, etc.)
-  const migrated: SavedPreset = migrate ? migratePreset(raw) : (raw as SavedPreset);
+  const currentPreset: SavedPreset = raw as SavedPreset;
 
-  // 2. Normalize (iOS reverb types, legacy lead timbre/ADSR, defensive sanitization)
-  const normalizedState = normalize(migrated.state);
+  // 1. Normalize only current canonical values; missing fields are incompatible.
+  const normalizedState = normalize(currentPreset.state);
+  const missingKeys = (Object.keys(DEFAULT_STATE) as (keyof SliderState)[])
+    .filter((key) => !Object.prototype.hasOwnProperty.call(normalizedState, key));
+  if (missingKeys.length > 0) {
+    throw new Error(`Current preset state is missing canonical fields: ${missingKeys.slice(0, 8).join(', ')}`);
+  }
+  const newState: SliderState = { ...normalizedState };
 
-  // 3. Merge with defaults (fills any missing fields)
-  const newState: SliderState = { ...DEFAULT_STATE, ...normalizedState };
-
-  // 4. Preserve user preference keys from current state
+  // 2. Preserve user preference keys from current state
   if (currentState) {
     for (const key of USER_PREFERENCE_KEYS) {
       (newState as unknown as Record<string, unknown>)[key] = currentState[key];
@@ -127,39 +120,9 @@ export function applyPreset(
     transportDisabledByLoadMode = true;
   }
 
-  const presetState = migrated.state as Partial<SliderState>;
-
-  // Legacy granular presets used a Clocked Space on/off flag instead of the shared Delay B send.
-  if (applyLegacyRepair && presetState.granularDelayBSend === undefined && typeof presetState.granularDelayEnabled === 'boolean') {
-    newState.granularDelayBSend = presetState.granularDelayEnabled ? 1 : 0;
-    repairApplied = true;
-  }
-
-  const delayBHasFeed =
-    (newState.granularDelayBSend ?? 0) > 0 ||
-    (newState.pad1DelayBSend ?? 0) > 0 ||
-    (newState.pad2DelayBSend ?? 0) > 0 ||
-    (newState.lead1DelayBSend ?? 0) > 0 ||
-    (newState.lead2DelayBSend ?? 0) > 0 ||
-    (newState.pianoDelayBSend ?? 0) > 0 ||
-    (newState.drumDelayBSend ?? 0) > 0 ||
-    (newState.oceanDelayBSend ?? 0) > 0 ||
-    (newState.natureDelayBSend ?? 0) > 0 ||
-    (newState.waterDelayBSend ?? 0) > 0 ||
-    (newState.insDelayBSend ?? 0) > 0 ||
-    (newState.delayAToBSend ?? 0) > 0;
-  const delayBHasOutput =
-    (newState.granularDelayMix ?? 0) > 0 ||
-    (newState.granularDelayReverbSend ?? 0) > 0 ||
-    (newState.delayBToASend ?? 0) > 0 ||
-    (newState.delayBGranularSend ?? 0) > 0;
-  if (delayBHasFeed && delayBHasOutput) {
-    newState.granularDelayEnabled = true;
-  }
-
   Object.assign(newState, normalizeDegradeReverbCrossfeed(newState));
 
-  // 5. Auto-disable engines if both dry level and reverb send are 0
+  // 3. Auto-disable engines if both dry level and reverb send are 0 in audition mode.
   if (!preserveEngines && (
     newState.granularLevel === 0 &&
     newState.granularReverbSend === 0 &&
@@ -176,7 +139,7 @@ export function applyPreset(
     (newState.granularWaterSend ?? 0) === 0 &&
     (newState.granularInsectsSend ?? 0) === 0
   )) {
-    repairApplied = repairApplied || newState.granularEnabled === true;
+    safeAuditionChanged = safeAuditionChanged || newState.granularEnabled === true;
     newState.granularEnabled = false;
   }
   if (!preserveEngines && (
@@ -185,7 +148,7 @@ export function applyPreset(
     (newState.lead1DelayASend ?? 0) === 0 &&
     (newState.lead1DelayBSend ?? 0) === 0
   )) {
-    repairApplied = repairApplied || newState.leadEnabled === true;
+    safeAuditionChanged = safeAuditionChanged || newState.leadEnabled === true;
     newState.leadEnabled = false;
   }
   if (!preserveEngines && (
@@ -195,7 +158,7 @@ export function applyPreset(
     (newState.drumDelayBSend ?? 0) === 0 &&
     (newState.granularDrumSend ?? 0) === 0
   )) {
-    repairApplied = repairApplied || newState.drumEnabled === true;
+    safeAuditionChanged = safeAuditionChanged || newState.drumEnabled === true;
     newState.drumEnabled = false;
   }
   if (!preserveEngines && (
@@ -205,7 +168,7 @@ export function applyPreset(
     (newState.oceanDelayBSend ?? 0) === 0 &&
     (newState.granularWavesSend ?? 0) === 0
   )) {
-    repairApplied = repairApplied || newState.oceanSampleEnabled === true;
+    safeAuditionChanged = safeAuditionChanged || newState.oceanSampleEnabled === true;
     newState.oceanSampleEnabled = false;
   }
   if (!preserveEngines && (
@@ -215,7 +178,7 @@ export function applyPreset(
     (newState.natureDelayBSend ?? 0) === 0 &&
     (newState.granularNatureSend ?? 0) === 0
   )) {
-    repairApplied = repairApplied || newState.birdsEnabled === true;
+    safeAuditionChanged = safeAuditionChanged || newState.birdsEnabled === true;
     newState.birdsEnabled = false;
   }
   if (!preserveEngines && (
@@ -225,7 +188,7 @@ export function applyPreset(
     (newState.natureDelayBSend ?? 0) === 0 &&
     (newState.granularNatureSend ?? 0) === 0
   )) {
-    repairApplied = repairApplied || newState.birds2Enabled === true;
+    safeAuditionChanged = safeAuditionChanged || newState.birds2Enabled === true;
     newState.birds2Enabled = false;
   }
   if (!preserveEngines && (
@@ -235,7 +198,7 @@ export function applyPreset(
     (newState.natureDelayBSend ?? 0) === 0 &&
     (newState.granularNatureSend ?? 0) === 0
   )) {
-    repairApplied = repairApplied || newState.frogsEnabled === true;
+    safeAuditionChanged = safeAuditionChanged || newState.frogsEnabled === true;
     newState.frogsEnabled = false;
   }
   if (!preserveEngines && (
@@ -245,7 +208,7 @@ export function applyPreset(
     (newState.pad1DelayBSend ?? 0) === 0 &&
     (newState.granularPad1Send ?? 0) === 0
   )) {
-    repairApplied = repairApplied || newState.padEnabled === true;
+    safeAuditionChanged = safeAuditionChanged || newState.padEnabled === true;
     newState.padEnabled = false;
   }
   if (!preserveEngines && (
@@ -255,7 +218,7 @@ export function applyPreset(
     (newState.pad2DelayBSend ?? 0) === 0 &&
     (newState.granularPad2Send ?? 0) === 0
   )) {
-    repairApplied = repairApplied || newState.pad2Enabled === true;
+    safeAuditionChanged = safeAuditionChanged || newState.pad2Enabled === true;
     newState.pad2Enabled = false;
   }
   if (!preserveEngines && (
@@ -265,7 +228,7 @@ export function applyPreset(
     (newState.waterDelayBSend ?? 0) === 0 &&
     (newState.granularWaterSend ?? 0) === 0
   )) {
-    repairApplied = repairApplied || newState.waterEnabled === true;
+    safeAuditionChanged = safeAuditionChanged || newState.waterEnabled === true;
     newState.waterEnabled = false;
   }
   if (!preserveEngines && (
@@ -275,7 +238,7 @@ export function applyPreset(
     (newState.insDelayBSend ?? 0) === 0 &&
     (newState.granularInsectsSend ?? 0) === 0
   )) {
-    repairApplied = repairApplied || newState.insectsEnabled === true;
+    safeAuditionChanged = safeAuditionChanged || newState.insectsEnabled === true;
     newState.insectsEnabled = false;
   }
   if (!preserveEngines && (
@@ -285,15 +248,15 @@ export function applyPreset(
     (newState.insDelayBSend ?? 0) === 0 &&
     (newState.granularInsectsSend ?? 0) === 0
   )) {
-    repairApplied = repairApplied || newState.insects2Enabled === true;
+    safeAuditionChanged = safeAuditionChanged || newState.insects2Enabled === true;
     newState.insects2Enabled = false;
   }
 
   // 6. Update audio engine
   if (updateEngine) {
     onUpdateEngine?.(newState, {
-      presetId: migrated.name,
-      presetName: migrated.name,
+      presetId: currentPreset.name,
+      presetName: currentPreset.name,
     });
   }
   if (resetCofDrift) {
@@ -302,8 +265,8 @@ export function applyPreset(
 
   return {
     state: newState,
-    preset: { ...migrated, state: newState },
-    repairApplied,
+    preset: { ...currentPreset, state: newState },
+    safeAuditionChanged,
     transportDisabledByLoadMode,
   };
 }

@@ -197,6 +197,7 @@ export const appStyles = {
     background: 'rgba(6, 10, 14, 0.82)',
     boxShadow: '0 10px 24px rgba(0, 0, 0, 0.22)',
     backdropFilter: 'blur(12px)',
+    pointerEvents: 'none',
   } as CSSProperties,
   backgroundAudioStatus: {
     position: 'fixed',
@@ -213,6 +214,7 @@ export const appStyles = {
     background: 'rgba(6, 10, 14, 0.82)',
     boxShadow: '0 10px 24px rgba(0, 0, 0, 0.22)',
     backdropFilter: 'blur(12px)',
+    pointerEvents: 'none',
   } as CSSProperties,
   macAudioStatusText: {
     minWidth: 0,
@@ -235,6 +237,7 @@ export const appStyles = {
     fontSize: '0.68rem',
     fontWeight: 800,
     lineHeight: 1,
+    pointerEvents: 'auto',
   } as CSSProperties,
   macAudioStatusButtonActive: {
     borderColor: 'rgba(94, 234, 212, 0.45)',

@@ -30,7 +30,8 @@ function liveNoteSourceId(instrument: ProductLiveNoteInstrument): number {
 
 function liveNoteSampleOffset(event: ProductLiveNoteEvent, options?: KesshoCoreMidiTimingOptions): number {
   if (!options) return 0;
-  const sampleRate = Math.max(1, Number.isFinite(options.sampleRate) ? options.sampleRate : 48000);
+  const sampleRate = options.sampleRate;
+  if (typeof sampleRate !== 'number' || !Number.isFinite(sampleRate) || sampleRate <= 0) return 0;
   const currentTimeSeconds = typeof options.currentTimeSeconds === 'number' && Number.isFinite(options.currentTimeSeconds)
     ? options.currentTimeSeconds
     : 0;

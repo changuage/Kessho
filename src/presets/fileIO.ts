@@ -4,11 +4,10 @@
 
 import type { PresetFile, PresetEntry, PresetLevel } from './types';
 import { extractParams } from './codec';
-import { generatePresetId, normalizePresetEntry } from './presetUtils';
+import { generatePresetId } from './presetUtils';
+import { decodeCurrentPresetEntry, UnsupportedPresetVersionError } from './currentPresetSchema';
 import type { ParamLevel } from './ParamRegistry';
-import type { SavedPreset, SliderState } from '../ui/state';
-import { migratePreset } from '../ui/state';
-import { buildPresetVersionMetadata } from './versionMetadataHelpers';
+import type { SliderState } from '../ui/state';
 
 const APP_VERSION = '1.0.0';
 
@@ -26,7 +25,7 @@ function levelToPresetLevel(level: ParamLevel): PresetLevel {
 
 /** Download a PresetEntry as a .json file */
 export async function exportPresetToFile(entry: PresetEntry): Promise<void> {
-  const normalized = normalizePresetEntry(entry) ?? entry;
+  const normalized = decodeCurrentPresetEntry(entry);
   const envelope: PresetFile = {
     kesshoPreset: true,
     formatVersion: 1,
@@ -78,80 +77,31 @@ export async function exportPresetToFile(entry: PresetEntry): Promise<void> {
 
 // ─── Import ─────────────────────────────────────────────────────────────────
 
-/** Upload a .json file and return the parsed PresetEntry */
-export function createLegacyStatePresetEntry(parsed: SavedPreset): PresetEntry {
-  const migrated = migratePreset(parsed);
-  const timestamp = Date.parse(migrated.timestamp) || Date.now();
-  return {
-    id: generatePresetId(),
-    type: 'state',
-    scope: undefined,
-    name: parsed.name,
-    author: 'user',
-    versions: [{
-      v: 1,
-      note: 'imported from legacy format',
-      timestamp,
-      data: migrated.state as unknown as Record<string, unknown>,
-      ...(buildPresetVersionMetadata(migrated) ?? {}),
-    }],
-    currentVersion: 1,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
+/** Upload a JSON file and return only the current canonical PresetEntry. */
 export function importPresetFromFile(): Promise<PresetEntry | null> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return resolve(null);
-      const text = await file.text();
       try {
+        const text = await file.text();
         const parsed = JSON.parse(text);
 
-        // New Kessho format
-        if (parsed && typeof parsed === 'object' && parsed.kesshoPreset && parsed.entry) {
-          resolve(normalizePresetEntry(parsed.entry));
-          return;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || parsed.kesshoPreset !== true) {
+          throw new UnsupportedPresetVersionError('Preset file is not a current Kessho preset envelope');
         }
-
-        // Legacy SavedPreset format (full state dump)
-        if (parsed && typeof parsed === 'object' && parsed.state && parsed.name) {
-          resolve(createLegacyStatePresetEntry(parsed as SavedPreset));
-          return;
+        if (parsed.formatVersion !== 1) {
+          throw new UnsupportedPresetVersionError(`Unsupported preset file format version: ${String(parsed.formatVersion)}`);
         }
-
-        // Raw state object (no wrapper)
-        if (parsed && typeof parsed === 'object' && (parsed.masterVolume !== undefined || parsed.synthLevel !== undefined)) {
-          const now = Date.now();
-          resolve({
-            id: generatePresetId(),
-            type: 'state',
-            scope: undefined,
-            name: file.name.replace('.json', ''),
-            author: 'user',
-            versions: [{
-              v: 1,
-              note: 'imported from raw state file',
-              timestamp: now,
-              data: parsed,
-            }],
-            currentVersion: 1,
-            createdAt: now,
-            updatedAt: now,
-          });
-          return;
-        }
-
-        console.warn('Unrecognized preset file format');
-        resolve(null);
-      } catch {
-        console.warn('Failed to parse preset file');
-        resolve(null);
+        if (!parsed.entry) throw new UnsupportedPresetVersionError('Current preset file is missing its entry');
+        resolve(decodeCurrentPresetEntry(parsed.entry));
+      } catch (error) {
+        reject(error instanceof UnsupportedPresetVersionError
+          ? error
+          : new UnsupportedPresetVersionError(`Unable to read current preset file: ${error instanceof Error ? error.message : String(error)}`));
       }
     };
     // Handle cancel (no change event fires)

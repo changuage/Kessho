@@ -158,6 +158,10 @@ void requireNonFiniteSceneValuesAreRejected() {
 void requireSoundscapeTargetsAndTelemetry() {
   KesshoProductEngine* engine = createEngine();
   ProductSceneProgramBuffer& active = engine->scene_program_runtime.buffers[0];
+  SourceState& soundscape = engine->sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
+  soundscape.asset_ref_count = 1u;
+  soundscape.asset_refs[0] = 7102u;
+  soundscape.asset_ref_levels[0] = 0.8f;
   active.entry_count = 3u;
   active.revision = 91u;
   active.entries[0] = {

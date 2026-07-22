@@ -16,8 +16,8 @@ Ownership:
 - `src/App.tsx`
 - `src/audio/product/ProductEngineProxy.ts`
 - `src/audio/product/ProductAudioRuntimeSelection.ts`
-- `src/audio/product/SelectedProductRuntime.ts`
-- `src/audio/product/ProductAudioEngineCompat.ts` (deprecated alias)
+- `src/ui/productRuntimeConstruction.ts`
+- `src/ui/referenceRuntime/ReferenceRuntimeAdapter.ts` (development-only adapter boundary)
 - `src/audio/coreProduct*.ts`
 - `src/audio/CoreProduct*.ts`
 - `src/audio/generated/**`
@@ -44,6 +44,7 @@ Ownership:
 
 - `src/audio/referenceAudioRuntime.ts`
 - `src/audio/reference/webTs/engine.ts`
+- `src/ui/referenceRuntime/ReferenceRuntimeAdapter.ts`
 - `src/audio/drumSynth.ts`
 - `src/audio/lead4opfm.ts`
 - `src/audio/drumSequencer.ts`

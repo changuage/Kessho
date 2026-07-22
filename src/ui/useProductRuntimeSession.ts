@@ -5,10 +5,12 @@ import {
 } from './useProductRuntimeModeSession';
 import { useProductRuntimePlaybackRuntime } from './useProductRuntimePlaybackRuntime';
 import { useProductRuntimeUi } from './useProductRuntimeUi';
+import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 
 type ResolveProductRuntimeInitialStateOptions = Parameters<typeof resolveProductRuntimeModeInitialState>[0];
 
 type ProductRuntimeShellOptions =
+  { productRuntimeMode: ProductRuntimeSelectionMode } &
   Parameters<typeof useProductRuntimePlaybackRuntime>[0] &
   Omit<Parameters<typeof useProductRuntimeUi>[0], 'preloadProductRuntime' | 'stopProductRuntime'>;
 
@@ -22,7 +24,7 @@ export function useProductRuntimeSession() {
 
 export function useProductRuntimeShell(options: ProductRuntimeShellOptions) {
   const playbackRuntime = useProductRuntimePlaybackRuntime({
-    productRuntimeMode: options.productRuntimeMode,
+    productRuntimeLifecycle: options.productRuntimeLifecycle,
     capacitorAudioSessionDiagnosticActive: options.capacitorAudioSessionDiagnosticActive,
     setCapacitorAudioSessionDiagnosticActive: options.setCapacitorAudioSessionDiagnosticActive,
   });

@@ -18,7 +18,6 @@ const telemetry = readProjectFile('src/audio/coreProductTelemetry.ts');
 const app = readProjectFile('src/App.tsx');
 const audioEngineParamSync = readProjectFile('src/ui/useAudioEngineParamSync.ts');
 const morphEndpointStatePatchHook = readProjectFile('src/ui/useMorphEndpointStatePatch.ts');
-const presetEngineSyncHook = readProjectFile('src/ui/usePresetEngineSync.ts');
 const doc = readProjectFile('docs/kessho-product-control-classification.md');
 const worklet = readProjectFile('public/worklets/kessho-core-product.worklet.js');
 
@@ -503,19 +502,10 @@ await runCheckWithReport({
     );
     assert(
       !audioEngineParamSync.includes('selectedProductRuntime.updateParams') &&
-        audioEngineParamSync.includes('referenceAudioEngineDebug.updateParams(nextState);'),
-      'legacy updateParams must stay on the reference runtime facade, not the product selected-runtime facade',
+        !audioEngineParamSync.includes('referenceAudioEngineDebug.updateParams(nextState);') &&
+        audioEngineParamSync.includes('productEngine.updateSnapshotPatch(reason, patch);'),
+      'Product parameter sync must use the direct Product snapshot patch path without legacy updateParams compatibility',
     );
-    assert(
-      !app.includes('immediatelyAppliedAudioEngineStateRef') &&
-        !app.includes('skipNextPresetLoadEngineSyncRef') &&
-        presetEngineSyncHook.includes("reason: 'preset-load'") &&
-        presetEngineSyncHook.includes('forceFullSnapshot: true') &&
-        presetEngineSyncHook.includes('triggerCritical: true') &&
-        presetEngineSyncHook.includes("updateEngine: audioEngineRuntimeMode !== 'core-product'"),
-      'App must keep preset engine sync branching inside usePresetEngineSync and force full Product snapshots for preset loads',
-    );
-
     const hostTelemetryBody = methodBody(host, 'withHostDiagnostics');
     const perfBody = methodBody(hostTelemetryAdapter, 'createCoreProductPerfSnapshot');
     const diagnosticsSnapshotBody = methodBody(hostDiagnostics, 'snapshot');

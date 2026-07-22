@@ -4,13 +4,15 @@ const GENERATED_CAPTURE_EVENT_BYTES = 64;
 const GENERATED_CAPTURE_EVENT_CAPACITY = 256;
 const SIMPLE_SEQUENCER_VISUAL_EVENT_BYTES = 64;
 const SIMPLE_SEQUENCER_VISUAL_EVENT_CAPACITY = 256;
-const TELEMETRY_BYTES = 15448;
+const TELEMETRY_BYTES = 15464;
 const TELEMETRY_SYNTH_ARP_CURRENT_MIDIS_OFFSET = 15232;
 const TELEMETRY_SCATTER_OFFSET = 15296;
 const TELEMETRY_SCENE_OFFSET = 15312;
 const TELEMETRY_ROUTING_MUTE_GROUP_OFFSET = 15320;
 const TELEMETRY_AUTO_CYCLE_OFFSET = 15356;
 const TELEMETRY_JOURNEY_SCHEDULE_OFFSET = 15392;
+const TELEMETRY_CHORD_SEQUENCER_ABSOLUTE_STEP_OFFSET = 15448;
+const TELEMETRY_CHORD_SEQUENCER_CURRENT_STEP_OFFSET = 15456;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
 const EXPECTED_PRODUCT_SCHEMA_HASH = 0xae226b36;
 const PRODUCT_ERROR_ASSET_IN_USE = -16;
@@ -1782,6 +1784,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       journeyScheduleRunning: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 44, true) !== 0,
       journeyRngStateAfterPlan: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 48, true),
       journeyScheduleEntryCount: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 52, true),
+      chordSequencerAbsoluteStep: this.readUint64Number(ptr + TELEMETRY_CHORD_SEQUENCER_ABSOLUTE_STEP_OFFSET),
+      chordSequencerCurrentStep: this.view.getUint32(ptr + TELEMETRY_CHORD_SEQUENCER_CURRENT_STEP_OFFSET, true),
       synthOrbitVisualLanes,
       synthAnchorWalkerVisualLanes,
       generatedSequencerCaptureEvents: generatedSequencerCapture.events,
@@ -2219,6 +2223,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       journeyScheduleRunning: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 44, true) !== 0,
       journeyRngStateAfterPlan: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 48, true),
       journeyScheduleEntryCount: this.view.getUint32(ptr + TELEMETRY_JOURNEY_SCHEDULE_OFFSET + 52, true),
+      chordSequencerAbsoluteStep: this.readUint64Number(ptr + TELEMETRY_CHORD_SEQUENCER_ABSOLUTE_STEP_OFFSET),
+      chordSequencerCurrentStep: this.view.getUint32(ptr + TELEMETRY_CHORD_SEQUENCER_CURRENT_STEP_OFFSET, true),
       synthOrbitVisualLanes: this.readSynthOrbitVisualLanes(ptr),
       synthAnchorWalkerVisualLanes: this.readSynthAnchorWalkerVisualLanes(ptr),
       workletOutputPeak: this.lastOutputPeak,

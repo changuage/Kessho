@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { productEngine } from '../audio/product/ProductEngineProxy';
-import { selectedProductRuntime } from '../audio/product/SelectedProductRuntime';
 import type { CpuOverlayPerfCallback } from './CpuOverlay';
 import {
   filterProductRuntimePerfMetrics,
@@ -82,35 +81,17 @@ export function useProductRuntimePerfAdapter(
 
   const setProductPerfMonitorEnabled = useCallback((enabled: boolean): void => {
     const nextEnabled = enabled && documentVisible;
-    if (productRuntimeMode === 'core-product') {
-      productEngine.setPerfMonitorEnabled(nextEnabled);
-      return;
-    }
-    (selectedProductRuntime as unknown as {
-      setPerfMonitorEnabled?: (nextEnabled: boolean) => void;
-    }).setPerfMonitorEnabled?.(nextEnabled);
+    productEngine.setPerfMonitorEnabled(productRuntimeMode === 'core-product' && nextEnabled);
   }, [documentVisible, productRuntimeMode]);
 
   const setProductPerfUpdateCallback = useCallback((callback: CpuOverlayPerfCallback | null): void => {
-    if (!documentVisible) {
-      if (productRuntimeMode === 'core-product') {
-        productEngine.setPerfUpdateCallback(null);
-        return;
-      }
-      (selectedProductRuntime as unknown as {
-        setPerfUpdateCallback?: (nextCallback: CpuOverlayPerfCallback | null) => void;
-      }).setPerfUpdateCallback?.(null);
+    if (!documentVisible || productRuntimeMode !== 'core-product') {
+      productEngine.setPerfUpdateCallback(null);
       return;
     }
-    if (productRuntimeMode === 'core-product') {
-      productEngine.setPerfUpdateCallback(callback ? (data) => {
-        callback(filterProductRuntimePerfMetrics(data));
-      } : null);
-      return;
-    }
-    (selectedProductRuntime as unknown as {
-      setPerfUpdateCallback?: (nextCallback: CpuOverlayPerfCallback | null) => void;
-    }).setPerfUpdateCallback?.(callback);
+    productEngine.setPerfUpdateCallback(callback ? (data) => {
+      callback(filterProductRuntimePerfMetrics(data));
+    } : null);
   }, [documentVisible, productRuntimeMode]);
 
   useEffect(() => {

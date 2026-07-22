@@ -1,4 +1,4 @@
-import { useSelectedAudioEngineRuntimeWalkSync } from './useSelectedAudioEngineRuntimeWalkSync';
+import { useRuntimeWalkSync } from './useRuntimeWalkSync';
 import type { SliderMode, SliderState } from './state';
 
 type ProductRuntimeWalkRange = { min: number; max: number };
@@ -20,13 +20,10 @@ export function useProductRuntimeWalkSync({
   setProductRuntimeWalkRanges,
   ...options
 }: ProductRuntimeWalkSyncOptions): void {
-  // TODO(product-fallback-retire:runtime-walk-sync): owner=product-runtime, remove-by=runtime-compat-closure, guard=core:product:no-temporary-runtime-compat
-  // Selected runtime walk sync remains the compatibility
-  // implementation while product range support is exposed through product-named props.
-  useSelectedAudioEngineRuntimeWalkSync({
+  useRuntimeWalkSync({
     ...options,
-    selectedRuntimeSupportsRangeKey: productRuntimeSupportsRangeKey,
-    setSelectedRuntimeWalkPositionsCallback: setProductRuntimeWalkPositionsCallback,
-    setSelectedRuntimeWalkRanges: setProductRuntimeWalkRanges,
+    runtimeSupportsRangeKey: productRuntimeSupportsRangeKey,
+    setRuntimeWalkPositionsCallback: setProductRuntimeWalkPositionsCallback,
+    setRuntimeWalkRanges: setProductRuntimeWalkRanges,
   });
 }

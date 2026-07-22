@@ -32,6 +32,12 @@ export {
   isPresetCompatibleWithSlot,
   comparePresetVersions,
 } from './presetUtils';
+export {
+  CURRENT_PRESET_SCHEMA,
+  UnsupportedPresetVersionError,
+  decodeCurrentPresetEntry,
+  isCurrentPresetEntry,
+} from './currentPresetSchema';
 export { buildPresetFamilies, getPresetDisplayLabel } from './catalog';
 
 // Phase 1: PresetStore

@@ -6,14 +6,14 @@ import {
 } from '../audio/product/ProductAudioRuntimeSelection';
 import type { ProductPerfSnapshot, ProductTelemetrySnapshot } from '../audio/product/ProductEngineTypes';
 import {
-  DEFAULT_STATE,
-  migratePreset,
   serializeState,
   type SliderState,
 } from './state';
+import { validateProductCorePresetBoundaryState } from '../presets/productCorePresetBoundary';
 
 export const PRODUCT_RUNTIME_SWITCH_STATE_PARAM = 'engineState';
 export const PRODUCT_RUNTIME_SWITCH_COLUMN_COUNT = 3;
+export const PRODUCT_RUNTIME_PAGE_CPU_PARAM = 'pageCpu';
 
 const PRODUCT_RUNTIME_CPU_SUMMARY_STORAGE_KEY = 'kessho:audio-engine-cpu-summary:v1';
 const PRODUCT_RUNTIME_SWITCH_STATE_STORAGE_PREFIX = 'kessho:audio-engine-switch-state:v1:';
@@ -39,6 +39,7 @@ export function shouldShowProductRuntimeSwitcher(): boolean {
   if (typeof window === 'undefined') return false;
   try {
     const params = new URLSearchParams(window.location.search);
+    if (params.get(PRODUCT_RUNTIME_PAGE_CPU_PARAM) === '1') return false;
     return (
       getProductRuntimeModes().length > 1 ||
       params.get(PRODUCT_RUNTIME_SWITCHER_PARAM) === '1' ||
@@ -100,10 +101,8 @@ export function readProductRuntimeSwitchStateFromSession(): SliderState | null {
     if (!serialized) return null;
     const parsed = JSON.parse(serialized);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-    return migratePreset({
-      name: 'Product Runtime Switch',
-      state: { ...DEFAULT_STATE, ...(parsed as Partial<SliderState>) },
-    }).state;
+    const candidate = parsed as SliderState;
+    return validateProductCorePresetBoundaryState(candidate).valid ? candidate : null;
   } catch {
     return null;
   }
@@ -114,7 +113,7 @@ export function buildProductRuntimeSwitchUrl(mode: ProductRuntimeSelectionMode, 
   const nextParams = new URLSearchParams();
   const stateKey = saveProductRuntimeSwitchState(state);
 
-  for (const key of [PRODUCT_RUNTIME_SWITCHER_PARAM, 'parity', 'snowflakePrototype']) {
+  for (const key of [PRODUCT_RUNTIME_SWITCHER_PARAM, 'parity']) {
     const value = currentParams.get(key);
     if (value !== null) nextParams.set(key, value);
   }

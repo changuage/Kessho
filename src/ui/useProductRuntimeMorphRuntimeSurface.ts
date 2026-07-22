@@ -1,5 +1,4 @@
 import { useCallback } from 'react';
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 
 type ProductJourneyMorphClockCallback = (now: number) => void;
@@ -12,9 +11,9 @@ type ProductRuntimeMorphRuntimeSurface = {
 };
 
 export function useProductRuntimeMorphRuntimeSurface(
-  productRuntimeMode: ProductRuntimeSelectionMode,
+  productRuntimeCore: boolean,
 ): ProductRuntimeMorphRuntimeSurface {
-  const productRuntimeActive = productRuntimeMode === 'core-product';
+  const productRuntimeActive = productRuntimeCore;
 
   const setProductJourneyMorphClockCallback = useCallback((callback: ProductJourneyMorphClockCallback | null): void => {
     if (!productRuntimeActive) return;

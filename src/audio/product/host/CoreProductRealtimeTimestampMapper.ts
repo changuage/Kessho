@@ -7,7 +7,7 @@ type TimestampedLiveNoteEvent = {
 };
 
 export interface CoreProductRealtimeTimestampContext {
-  sampleRate: number;
+  sampleRate: number | null;
   currentTimeSeconds: number;
   timestampOriginSeconds?: number;
 }
@@ -37,7 +37,7 @@ export class CoreProductRealtimeTimestampMapper {
 
   private context(audioContext: AudioContext | null, currentTimeSeconds: number): CoreProductRealtimeTimestampContext {
     return {
-      sampleRate: audioContext?.sampleRate ?? 48000,
+      sampleRate: audioContext?.sampleRate ?? null,
       currentTimeSeconds,
       timestampOriginSeconds: this.timestampOriginSeconds ?? undefined,
     };

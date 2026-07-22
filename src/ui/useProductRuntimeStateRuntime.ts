@@ -1,20 +1,20 @@
 import { useCallback, useEffect, type Dispatch, type SetStateAction } from 'react';
-import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
-import { productEngine } from '../audio/product/ProductEngineProxy';
 import type {
   ProductEngineState,
   ProductFxOwnershipBus,
 } from '../audio/product/ProductEngineTypes';
+import type { ProductRuntimeStateProjection, ProductRuntimeStateSurface } from './productRuntimeConstruction';
 import { useVisibleInterval } from './hooks/useVisibleInterval';
 
 type ProductRuntimeStateRuntimeOptions = {
-  productRuntimeMode: ProductRuntimeSelectionMode;
+  productRuntimeState: ProductRuntimeStateSurface;
   enabled: boolean;
-  getProductTransportDebugState: () => ProductEngineState['transportDebug'];
   setEngineState: Dispatch<SetStateAction<ProductEngineState>>;
 };
 
 const FX_OWNERSHIP_BUSES = ['delayA', 'delayB', 'granular', 'reverb'] as const satisfies readonly ProductFxOwnershipBus[];
+
+type RuntimeStateProjection = ProductRuntimeStateProjection & Partial<Pick<ProductEngineState, 'fxOwners'>>;
 
 function transportDebugMatchesCurrent(
   current: ProductEngineState['transportDebug'],
@@ -40,59 +40,82 @@ function transportDebugMatchesCurrent(
   );
 }
 
-export function useProductRuntimeStateRuntime({
-  enabled,
-  getProductTransportDebugState,
-  productRuntimeMode,
-  setEngineState,
-}: ProductRuntimeStateRuntimeOptions): void {
-  useEffect(() => {
-    if (productRuntimeMode !== 'core-product') {
-      productEngine.setStateChangeCallback(null);
-      return;
-    }
-    productEngine.setStateChangeCallback((nextState) => {
-      setEngineState((prev) => {
-        const fxOwnersChanged = FX_OWNERSHIP_BUSES.some((bus) => {
-          const previous = prev.fxOwners[bus];
-          const next = nextState.fxOwners[bus];
-          return (
+function applyRuntimeStateProjection(
+  setEngineState: Dispatch<SetStateAction<ProductEngineState>>,
+  nextState: RuntimeStateProjection,
+): void {
+  setEngineState((prev) => {
+    const fxOwnersChanged = nextState.fxOwners
+      ? FX_OWNERSHIP_BUSES.some((bus) => {
+        const previous = prev.fxOwners[bus];
+        const next = nextState.fxOwners?.[bus];
+        return Boolean(
+          next && (
             previous.owner !== next.owner ||
             Math.abs(previous.strength - next.strength) > 0.0005 ||
             previous.lastOrigin !== next.lastOrigin ||
             previous.active !== next.active
-          );
-        });
+          ),
+        );
+      })
+      : false;
 
-        if (
-          prev.isRunning === nextState.isRunning &&
-          prev.harmonyState === nextState.harmonyState &&
-          prev.currentSeed === nextState.currentSeed &&
-          prev.currentBucket === nextState.currentBucket &&
-          prev.cofCurrentStep === nextState.cofCurrentStep &&
-          !fxOwnersChanged
-        ) {
-          return prev;
-        }
+    if (
+      prev.isRunning === nextState.isRunning &&
+      prev.harmonyState === nextState.harmonyState &&
+      prev.currentSeed === nextState.currentSeed &&
+      prev.currentBucket === nextState.currentBucket &&
+      prev.cofCurrentStep === nextState.cofCurrentStep &&
+      !fxOwnersChanged
+    ) {
+      return prev;
+    }
 
-        return {
-          ...prev,
-          isRunning: nextState.isRunning,
-          harmonyState: nextState.harmonyState,
-          currentSeed: nextState.currentSeed,
-          currentBucket: nextState.currentBucket,
-          cofCurrentStep: nextState.cofCurrentStep,
-          fxOwners: fxOwnersChanged ? nextState.fxOwners : prev.fxOwners,
-        };
-      });
-    });
-    return () => {
-      productEngine.setStateChangeCallback(null);
+    return {
+      ...prev,
+      isRunning: nextState.isRunning,
+      harmonyState: nextState.harmonyState,
+      currentSeed: nextState.currentSeed,
+      currentBucket: nextState.currentBucket,
+      cofCurrentStep: nextState.cofCurrentStep,
+      fxOwners: fxOwnersChanged && nextState.fxOwners ? nextState.fxOwners : prev.fxOwners,
     };
-  }, [productRuntimeMode, setEngineState]);
+  });
+}
+
+export function useProductRuntimeStateRuntime({
+  enabled,
+  productRuntimeState,
+  setEngineState,
+}: ProductRuntimeStateRuntimeOptions): void {
+  const applyRuntimeState = useCallback((nextState: ProductRuntimeStateProjection): void => {
+    applyRuntimeStateProjection(setEngineState, nextState);
+  }, [setEngineState]);
+
+  useEffect(() => productRuntimeState.subscribe(applyRuntimeState), [applyRuntimeState, productRuntimeState]);
+
+  const refreshRuntimeState = useCallback((): void => {
+    if (!productRuntimeState.refresh) return;
+    void productRuntimeState.refresh()
+      .then(applyRuntimeState)
+      .catch(() => {
+        // A development reference runtime can be torn down while a refresh is
+        // in flight; the subscription remains the authoritative update path.
+      });
+  }, [applyRuntimeState, productRuntimeState]);
+
+  useEffect(() => {
+    refreshRuntimeState();
+  }, [refreshRuntimeState]);
+
+  useVisibleInterval(
+    refreshRuntimeState,
+    productRuntimeState.refreshIntervalMs ?? 1000,
+    { enabled: productRuntimeState.refreshIntervalMs !== undefined },
+  );
 
   const updateTransportDebug = useCallback(() => {
-    const transportDebug = getProductTransportDebugState();
+    const transportDebug = productRuntimeState.getTransportDebugState();
     setEngineState((prev) => {
       const current = prev.transportDebug;
       if (transportDebugMatchesCurrent(current, transportDebug)) {
@@ -100,7 +123,7 @@ export function useProductRuntimeStateRuntime({
       }
       return { ...prev, transportDebug };
     });
-  }, [getProductTransportDebugState, setEngineState]);
+  }, [productRuntimeState, setEngineState]);
 
   useVisibleInterval(updateTransportDebug, 1000, {
     enabled,

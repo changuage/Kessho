@@ -465,6 +465,15 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
   telemetry.transport_phrase_progress = std::isfinite(phrase_position)
       ? static_cast<float>(phrase_position - std::floor(phrase_position))
       : 0.0f;
+  telemetry.chord_sequencer_absolute_step = 0u;
+  telemetry.chord_sequencer_current_step = 0u;
+  if (transport.running && arrangement.chord_sequencer_enabled && arrangement.chord_sequencer_step_count > 0u) {
+    telemetry.chord_sequencer_absolute_step = arrangement.chord_step_index == 0u
+        ? 0u
+        : arrangement.chord_step_index - 1u;
+    telemetry.chord_sequencer_current_step = static_cast<uint32_t>(
+        telemetry.chord_sequencer_absolute_step % arrangement.chord_sequencer_step_count);
+  }
   telemetry.active_sources = active_source_count;
   telemetry.active_voices = active_voice_count;
   telemetry.active_assets = active_asset_count;

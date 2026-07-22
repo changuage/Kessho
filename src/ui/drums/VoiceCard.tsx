@@ -7,6 +7,8 @@ import MorphSlider from './MorphSlider';
 import VoiceCardAdvanced from './VoiceCardAdvanced';
 import DrumPresetManager from './DrumPresetManager';
 import { useSliderHelp } from '../SliderHelpOverlay';
+import { usePresets } from '../../presets/usePresets';
+import { DRUM_VOICE_SCOPES } from '../../audio/drumVoiceConfig';
 
 interface VoiceCardProps {
   voice: DrumVoiceType;
@@ -77,6 +79,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
   const [poolPopupSlot, setPoolPopupSlot] = useState<'A' | 'B' | null>(null);
   const { announceHelp } = useSliderHelp();
   const delaySendKey = DELAY_SEND_KEYS[voice];
+  const presetRepository = usePresets('engine', DRUM_VOICE_SCOPES[voice]);
   const bindHelp = useCallback((helpKey: string) => ({
     onMouseEnter: () => announceHelp(helpKey),
     onPointerDown: () => announceHelp(helpKey),
@@ -161,6 +164,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
             onAuditionPresetPreview={onAuditionPresetPreview}
             poolPopupSlot={poolPopupSlot}
             onPoolPopupSlotChange={setPoolPopupSlot}
+            repository={presetRepository}
           />
 
           {/* Macro sliders: Variation + Distance in 2-column grid */}
@@ -201,6 +205,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
             color={config.color}
             onParamChange={onParamChange}
             onStateChange={onStateChange}
+            repository={presetRepository}
             onOpenPool={() => setPoolPopupSlot('A')}
             poolButtonTitle="Edit drum preset pool"
             poolButtonAriaLabel="Edit drum preset pool"

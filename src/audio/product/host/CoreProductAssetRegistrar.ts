@@ -1,6 +1,5 @@
 import { decodeCoreProductAsset, getDecodedCoreProductAssetByteLength, type DecodedCoreProductAsset } from '../../coreProductAssets';
-import type { CoreProductRuntime } from '../../coreProductRuntime';
-import type { AssetTransferOwnership } from '../../coreProductRuntime';
+import type { AssetTransferOwnership, CoreProductRuntime } from '../../coreProductRuntime';
 import { SampleDecodedAssetCache, defaultSampleDecodedAssetCacheBytes } from '../../sampleLibraries/SampleDecodedAssetCache';
 import type { SampleSlotId } from '../../sampleLibraries/SampleLibraryTypes';
 import {
@@ -31,7 +30,6 @@ export class CoreProductAssetRegistrar {
   private readonly pendingRegistrationAssetIds = new Set<number>();
   private readonly pendingRegistrationPromises = new Map<number, Promise<void>>();
   private readonly requiredAssetIds = new Set<number>();
-  private readonly registeredAssetDecodedBytes = new Map<number, number>();
   private readonly mobile: boolean;
   private readonly sampleAssetCache: SampleDecodedAssetCache;
   private readonly workingSet = new CoreProductAssetWorkingSet();
@@ -47,9 +45,7 @@ export class CoreProductAssetRegistrar {
     private readonly readSliderState: SliderStateReader,
     mobile = isMobileDevice() || isIOSLikeDevice(),
     decodeAsset: AssetDecoder = decodeCoreProductAsset,
-    private readonly documentVisible: () => boolean = () => (
-      typeof document === 'undefined' || document.visibilityState === 'visible'
-    ),
+    private readonly documentVisible: () => boolean = () => typeof document === 'undefined' || document.visibilityState === 'visible',
   ) {
     this.mobile = mobile;
     this.sampleAssetCache = new SampleDecodedAssetCache(
@@ -62,26 +58,17 @@ export class CoreProductAssetRegistrar {
       decodeAsset,
       registeredAssetIds: this.registeredAssetIds,
       pendingRegistrationAssetIds: this.pendingRegistrationAssetIds,
-      isRequired: (assetId) => this.requiredAssetIds.has(assetId),
-      prepareAdmission: (assetId, bytes) => this.prepareAdmission(assetId, bytes),
-      canStartDecode: () => this.canStartDecode(),
-      setNotReady: (reason, bytes) => this.setNotReady(reason, bytes),
-      registerAsset: (asset) => this.registerAsset(asset),
-      runMobileOperation: (operation) => this.runMobileOperation(operation),
+      isRequired: (assetId) => this.requiredAssetIds.has(assetId), prepareAdmission: (assetId, bytes) => this.prepareAdmission(assetId, bytes),
+      canStartDecode: this.documentVisible, setNotReady: (reason, bytes) => this.setNotReady(reason, bytes),
+      registerAsset: (asset) => this.registerAsset(asset), runMobileOperation: (operation) => this.runMobileOperation(operation),
     });
     this.runtime.setAssetReleaseCallback((assetId) => this.handleAssetReleaseComplete(assetId));
     this.runtime.setAssetReleaseFailureCallback((assetId) => this.handleAssetReleaseFailure(assetId));
   }
 
   clear(): void {
-    this.registeredAssetIds.clear();
-    this.pendingReleaseAssetIds.clear();
-    this.pendingRegistrationAssetIds.clear();
-    this.requiredAssetIds.clear();
-    this.registeredAssetDecodedBytes.clear();
-    this.sampleAssetCache.clear();
-    this.requirements.clear();
-    this.decodeService.clear();
+    this.registeredAssetIds.clear(); this.pendingReleaseAssetIds.clear(); this.pendingRegistrationAssetIds.clear(); this.requiredAssetIds.clear();
+    this.sampleAssetCache.clear(); this.requirements.clear(); this.decodeService.clear();
   }
 
   async registerAsset(asset: DecodedCoreProductAsset): Promise<void> {
@@ -97,7 +84,6 @@ export class CoreProductAssetRegistrar {
     const registration = (async () => {
       await this.runtime.registerAsset(asset, ownership);
       this.registeredAssetIds.add(asset.assetId);
-      this.registeredAssetDecodedBytes.set(asset.assetId, decodedBytes);
       this.workingSet.recordRegistration(asset.assetId, decodedBytes);
     })();
     this.pendingRegistrationPromises.set(asset.assetId, registration);
@@ -118,7 +104,6 @@ export class CoreProductAssetRegistrar {
   private handleAssetReleaseComplete(assetId: number): void {
     this.pendingReleaseAssetIds.delete(assetId);
     this.registeredAssetIds.delete(assetId);
-    this.registeredAssetDecodedBytes.delete(assetId);
     this.decodeService.forget(assetId);
     this.workingSet.recordRelease(assetId);
     this.releaseCoordinator.resolve(assetId, true);
@@ -131,11 +116,7 @@ export class CoreProductAssetRegistrar {
   }
 
   registeredDecodedAssetByteLength(): number {
-    let total = 0;
-    for (const bytes of this.registeredAssetDecodedBytes.values()) {
-      total += bytes;
-    }
-    return total;
+    return this.workingSet.registeredBytes();
   }
 
   hostDecodedBytes(): number {
@@ -162,15 +143,14 @@ export class CoreProductAssetRegistrar {
     decodedBytes: number;
     sharedAssetReuse: number;
   } {
-    const perStateIds = states.map((state) => new Set([
-      ...this.requirements.sampleDescriptors([state]).map((descriptor) => descriptor.assetId),
-      ...this.requirements.soundscapeDescriptors([state]).map((descriptor) => descriptor.assetId),
-    ]));
+    const perStateIds = states.map((state) => new Set(
+      this.assetDescriptorsForStates([state]).map((descriptor) => descriptor.assetId),
+    ));
     const uniqueIds = new Set(perStateIds.flatMap((ids) => [...ids]));
     let decodedBytes = 0;
     let complete = true;
     for (const assetId of uniqueIds) {
-      const bytes = this.registeredAssetDecodedBytes.get(assetId);
+      const bytes = this.workingSet.assetBytes(assetId);
       if (bytes === undefined) complete = false;
       else decodedBytes += bytes;
     }
@@ -184,16 +164,13 @@ export class CoreProductAssetRegistrar {
     largestPendingDecodeBytes: number;
     assetCount: number;
   } {
-    const descriptors = [
-      ...this.requirements.sampleDescriptors(states),
-      ...this.requirements.soundscapeDescriptors(states),
-    ];
+    const descriptors = this.assetDescriptorsForStates(states);
     const unique = new Map(descriptors.map((descriptor) => [descriptor.assetId, descriptor]));
     let complete = true;
     let decodedBytes = 0;
     let largestPendingDecodeBytes = 0;
     for (const [assetId, descriptor] of unique) {
-      const registeredBytes = this.registeredAssetDecodedBytes.get(assetId);
+      const registeredBytes = this.workingSet.assetBytes(assetId);
       const predictedBytes = registeredBytes ?? predictedDecodedAssetBytes(descriptor.assetPath, outputSampleRate);
       if (predictedBytes === null) {
         complete = false;
@@ -206,16 +183,16 @@ export class CoreProductAssetRegistrar {
   }
 
   hasMissingDefaultAssetsForState(): boolean {
-    return this.hasMissingAssetsForStates(this.requiredStates());
+    return this.hasMissingAssetsForStates(this.requirements.states(this.readSliderState()));
   }
 
   async ensureDefaultAssetsForState(): Promise<CoreProductAssetEnsureResult> {
-    return this.ensureAssetsForStates(this.requiredStates());
+    return this.ensureAssetsForStates(this.requirements.states(this.readSliderState()));
   }
 
   async ensureSceneAssets(states: readonly Record<string, unknown>[]): Promise<CoreProductAssetEnsureResult> {
     this.requirements.replaceSceneStates(states);
-    return this.ensureAssetsForStates(this.requiredStates());
+    return this.ensureAssetsForStates(this.requirements.states(this.readSliderState()));
   }
 
   clearSceneAssets(): void {
@@ -228,10 +205,7 @@ export class CoreProductAssetRegistrar {
   ): Promise<CoreProductAssetEnsureResult> {
     this.ensureResult = { status: 'ready' };
     this.refreshRequiredAssetIds(states);
-    await Promise.all([
-      this.ensureSampleAssetsForStates(states),
-      this.ensureSoundscapeAssetsForStates(states),
-    ]);
+    await Promise.all([this.ensureSampleAssetsForStates(states), this.ensureSoundscapeAssetsForStates(states)]);
     if (this.ensureResult.status === 'ready' && this.hasMissingAssetsForStates(states)) {
       this.setNotReady('asset-closure-incomplete');
     }
@@ -239,7 +213,7 @@ export class CoreProductAssetRegistrar {
   }
 
   updateRequiredAssetsForState(): void {
-    this.refreshRequiredAssetIds(this.requiredStates());
+    this.refreshRequiredAssetIds(this.requirements.states(this.readSliderState()));
     if (!this.mobile) return;
     for (const assetId of this.workingSet.obsoleteReleaseAssetIds()) this.unregisterAsset(assetId);
   }
@@ -254,19 +228,25 @@ export class CoreProductAssetRegistrar {
     if (descriptor) await this.runMobileOperation(() => this.decodeService.ensureSampleAsset(descriptor));
     const result = this.currentEnsureResult();
     if (result.status === 'not-ready') {
-      throw new CoreProductAssetNotReadyError(result);
+      throw new CoreProductAssetNotReadyError(
+        result,
+      );
     }
   }
 
-  private requiredStates(): Record<string, unknown>[] {
-    return this.requirements.states(this.readSliderState());
+  private hasMissingAssetsForStates(states: readonly Record<string, unknown>[]): boolean {
+    return this.assetDescriptorsForStates(states).some((descriptor) => !this.registeredAssetIds.has(descriptor.assetId));
   }
 
-  private hasMissingAssetsForStates(states: readonly Record<string, unknown>[]): boolean {
-    return this.requirements.sampleDescriptors(states)
-      .some((descriptor) => !this.registeredAssetIds.has(descriptor.assetId)) ||
-      this.requirements.soundscapeDescriptors(states)
-      .some((descriptor) => !this.registeredAssetIds.has(descriptor.assetId));
+  private currentEnsureResult(): CoreProductAssetEnsureResult {
+    return this.ensureResult;
+  }
+
+  private assetDescriptorsForStates(states: readonly Record<string, unknown>[]) {
+    return [
+      ...this.requirements.sampleDescriptors(states),
+      ...this.requirements.soundscapeDescriptors(states),
+    ];
   }
 
   private async ensureSampleAssetsForStates(states: readonly Record<string, unknown>[]): Promise<void> {
@@ -281,10 +261,8 @@ export class CoreProductAssetRegistrar {
   }
 
   private refreshRequiredAssetIds(states: readonly Record<string, unknown>[]): void {
-    const sampleDescriptors = this.requirements.sampleDescriptors(states);
-    const soundscapeDescriptors = this.requirements.soundscapeDescriptors(states);
     this.requiredAssetIds.clear();
-    for (const descriptor of [...sampleDescriptors, ...soundscapeDescriptors]) {
+    for (const descriptor of this.assetDescriptorsForStates(states)) {
       this.requiredAssetIds.add(descriptor.assetId);
     }
     this.requiredRevision += 1;
@@ -312,10 +290,6 @@ export class CoreProductAssetRegistrar {
     return true;
   }
 
-  private canStartDecode(): boolean {
-    return this.documentVisible();
-  }
-
   private setNotReady(
     reason: Extract<CoreProductAssetEnsureResult, { status: 'not-ready' }>['reason'],
     additionalBytes = 0,
@@ -335,7 +309,4 @@ export class CoreProductAssetRegistrar {
     return result;
   }
 
-  private currentEnsureResult(): CoreProductAssetEnsureResult {
-    return this.ensureResult;
-  }
 }
