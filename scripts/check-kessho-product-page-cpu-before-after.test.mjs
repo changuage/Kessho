@@ -25,10 +25,44 @@ test('valid paired phases do not request a retry', () => {
   assert.deepEqual(decision.plan, []);
 });
 
+test('single moderate tail sample does not invalidate an otherwise stable phase', () => {
+  const decision = planPairedPageCpuRetry({
+    baselineRuns: runs([10, 11, 10]),
+    currentRuns: runs([10, 11, 13]),
+    basePort: 5306,
+  });
+  assert.equal(decision.retry, false);
+});
+
+test('one high or low tail sample is accepted by the two-of-three consensus', () => {
+  for (const values of [[10, 10, 13], [10, 13, 13]]) {
+    const decision = planPairedPageCpuRetry({
+      baselineRuns: runs(values),
+      currentRuns: runs([10, 11, 10]),
+      basePort: 5306,
+    });
+    assert.equal(decision.retry, false);
+  }
+});
+
+test('known low browser-process samples from texture and routing remain valid', () => {
+  for (const values of [
+    [73.711, 73.251, 59.427],
+    [72.559, 73.674, 60.057],
+  ]) {
+    const decision = planPairedPageCpuRetry({
+      baselineRuns: runs(values),
+      currentRuns: runs([10, 11, 10]),
+      basePort: 5306,
+    });
+    assert.equal(decision.retry, false);
+  }
+});
+
 test('one invalid phase requests a fresh paired replacement with alternating unique ports', () => {
   const decision = planPairedPageCpuRetry({
     baselineRuns: runs([10, 11, 10]),
-    currentRuns: runs([10, 10, 13]),
+    currentRuns: runs([10, 13, 17]),
     basePort: 5306,
   });
   assert.equal(decision.retry, true);
@@ -49,11 +83,22 @@ test('one invalid phase requests a fresh paired replacement with alternating uni
 test('persistent invalidity fails paired quality validation', () => {
   assert.throws(
     () => assertPairedPageCpuMeasurementQuality(
-      runs([10, 11, 10]),
-      runs([10, 10, 13]),
+      runs([10, 13, 17]),
+      runs([10, 13, 17]),
       { runCount: PAGE_CPU_RUN_COUNT },
     ),
-    /current: global/,
+    /baseline: global; current: global/,
+  );
+});
+
+test('nonpositive CPU samples remain invalid', () => {
+  assert.throws(
+    () => assertPairedPageCpuMeasurementQuality(
+      runs([0, 10, 13]),
+      runs([10, 13, 17]),
+      { runCount: PAGE_CPU_RUN_COUNT },
+    ),
+    /baseline: global/,
   );
 });
 

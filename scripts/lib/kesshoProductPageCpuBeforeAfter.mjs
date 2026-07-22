@@ -40,9 +40,16 @@ export function findPageCpuMeasurementOutliers(
       .map((run) => run.scenarios.find((scenario) => scenario.id === id)?.productBrowserProcessCpuPercent)
       .filter((value) => Number.isFinite(value));
     if (values.length !== runCount) return true;
-    const minimum = Math.min(...values);
-    const maximum = Math.max(...values);
-    return minimum > 0 && maximum / minimum > outlierRatio;
+    const sorted = [...values].sort((left, right) => left - right);
+    const minimum = sorted[0];
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const maximum = sorted[sorted.length - 1];
+    // With three short browser samples, require both adjacent ratios to exceed
+    // the threshold before rejecting. One tail sample is then treated as a
+    // possible scheduler under/over-count, while three genuinely unstable
+    // observations still trigger a paired retry.
+    if (minimum <= 0 || median <= 0) return true;
+    return median / minimum > outlierRatio && maximum / median > outlierRatio;
   });
 }
 
