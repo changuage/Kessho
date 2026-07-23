@@ -2,8 +2,8 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import type { SliderState } from '../state';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import type { HarmonyState } from '../../audio/harmony';
+import { resolveHarmonyProjection, type HarmonyProjection } from '../../audio/harmony/harmonyProjection';
 import { SCALE_FAMILIES } from '../../audio/scales';
-import { productHarmonyScaleIdFromName } from '../../audio/coreProductHarmonyScaleIds';
 import type { ProductManualSynthNote, ProductManualSynthSource } from '../../audio/product/ProductEngineTypes';
 import {
   HARMONY_NOTE_KEYS,
@@ -15,7 +15,6 @@ import {
   generateHarmonySequence,
   generateHarmonySlots,
   generateHarmonySlotsAndSequence,
-  resolveProductHarmonyState,
   resolveHarmonyIntentToNotePool,
   sanitizeHarmonyIntent,
   sanitizeHarmonySequenceLength,
@@ -157,6 +156,8 @@ const AUDITION_SOURCE_OPTIONS: readonly { value: ProductManualSynthSource; label
 export interface HarmonyEnginePanelProps {
   state: SliderState;
   harmonyState?: HarmonyState | null;
+  /** Shared read-only Harmony context supplied by the runtime host. */
+  harmonyProjection?: HarmonyProjection;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   onAuditionNote?: (note: ProductManualSynthNote) => void;
 }
@@ -178,28 +179,6 @@ function midiNoteName(value: number): string {
 
 function noteName(value: number): string {
   return NOTE_NAMES[pitchClass(value)] ?? 'C';
-}
-
-function rootMidiFromState(state: SliderState): number {
-  const record = state as unknown as Record<string, unknown>;
-  const explicit = record.rootMidi;
-  if (typeof explicit === 'number' && Number.isFinite(explicit)) return clamp(explicit, 0, 127);
-  return 60 + pitchClass(state.rootNote);
-}
-
-function rootMidiWithPitchClass(baseMidi: number, rootPitchClass: number): number {
-  const base = clamp(Math.round(baseMidi), 0, 127);
-  const candidate = Math.floor(base / 12) * 12 + pitchClass(rootPitchClass);
-  return clamp(candidate > 127 ? candidate - 12 : candidate, 0, 127);
-}
-
-function morphPercentFromState(state: SliderState): number {
-  const record = state as unknown as Record<string, unknown>;
-  const explicit = record.harmonyMorphPercent;
-  if (typeof explicit === 'number' && Number.isFinite(explicit)) return clamp(explicit, 0, 100);
-  const journeyPhase = record.journeyMorphPhase;
-  if (typeof journeyPhase === 'number' && Number.isFinite(journeyPhase)) return clamp(journeyPhase * 100, 0, 100);
-  return 0;
 }
 
 function seedFromState(state: SliderState, salt: number): number {
@@ -1912,7 +1891,7 @@ function ChordLabPopup({
   );
 }
 
-export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAuditionNote }: HarmonyEnginePanelProps) {
+export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onStateChange, onAuditionNote }: HarmonyEnginePanelProps) {
   const [activePopup, setActivePopup] = useState<HarmonyPopup>(null);
   const [voicingInputMode, setVoicingInputMode] = useState<VoicingInputMode>('root');
   const [voicingAdvancedOpen, setVoicingAdvancedOpen] = useState(false);
@@ -1940,34 +1919,42 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
   }, [announceHelp]);
 
   const harmonyContext = useMemo(() => {
-    const stateRootMidi = rootMidiFromState(state);
-    const rootMidi = harmonyState
-      ? rootMidiWithPitchClass(stateRootMidi, harmonyState.effectiveRoot)
-      : stateRootMidi;
-    const scaleName = harmonyState?.scaleFamily.name ?? state.manualScale;
-    const scaleId = productHarmonyScaleIdFromName(scaleName);
-    const tension = clamp(state.tension, 0, 1);
-    const morphPercent = morphPercentFromState(state);
-    const resolved = resolveProductHarmonyState({
-      state: state as unknown as Record<string, unknown>,
-      rootMidi,
-      scaleId,
-      tension,
-      seed: seedFromState(state, 0),
-      morphPercent,
-    });
-    const bank: HarmonyBank = morphPercent >= 50 ? 'B' : 'A';
+    if (harmonyProjection) {
+      return {
+        bank: harmonyProjection.bank,
+        rootMidi: harmonyProjection.engine.rootMidi,
+        scaleId: harmonyProjection.engine.scaleId,
+        scaleName: harmonyProjection.engine.scaleName,
+        tension: harmonyProjection.tension,
+        morphPercent: harmonyProjection.activeFrame.morphPercent,
+        isEndpoint: harmonyProjection.isEndpoint,
+        manualControl: harmonyProjection.manualControl,
+        chordSlots: harmonyProjection.slots,
+        chordSequence: harmonyProjection.chordSequence,
+        chordSequenceEnabled: harmonyProjection.chordSequenceEnabled,
+        chordSequenceLength: harmonyProjection.chordSequenceLength,
+        chordSequenceStepIndex: harmonyProjection.chordSequenceStepIndex,
+        resolvedHarmonyFrame: harmonyProjection.activeFrame,
+      };
+    }
+    const projection = resolveHarmonyProjection(state, { harmonyState });
     return {
-      bank,
-      rootMidi,
-      scaleId,
-      scaleName,
-      tension,
-      morphPercent,
-      isEndpoint: morphPercent <= 0 || morphPercent >= 100,
-      ...resolved,
+      bank: projection.bank,
+      rootMidi: projection.engine.rootMidi,
+      scaleId: projection.engine.scaleId,
+      scaleName: projection.engine.scaleName,
+      tension: projection.tension,
+      morphPercent: projection.activeFrame.morphPercent,
+      isEndpoint: projection.isEndpoint,
+      manualControl: projection.manualControl,
+      chordSlots: projection.slots,
+      chordSequence: projection.chordSequence,
+      chordSequenceEnabled: projection.chordSequenceEnabled,
+      chordSequenceLength: projection.chordSequenceLength,
+      chordSequenceStepIndex: projection.chordSequenceStepIndex,
+      resolvedHarmonyFrame: projection.activeFrame,
     };
-  }, [harmonyState, state]);
+  }, [harmonyProjection, harmonyState, state]);
 
   const record = state as unknown as Record<string, unknown>;
   const manual = harmonyContext.manualControl;

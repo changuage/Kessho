@@ -194,7 +194,9 @@ import {
   type ProductArpRate,
   type ProductArpResolvedStep,
   type ProductArpSlotChoice,
+  type ProductArpHarmonyContext,
 } from '../../audio/productArpeggiator';
+import { resolveHarmonyProjection, type HarmonyProjection } from '../../audio/harmony/harmonyProjection';
 import {
   defaultProductPlayConfig,
   normalizeProductPlayConfig,
@@ -2480,6 +2482,8 @@ export interface SynthPageProps {
   getProductChordSequencerPlayheadTelemetry?: ProductRuntimeSynthPageEvents['getProductChordSequencerPlayheadTelemetry'];
   /** Current harmony snapshot for keyboard note coloring */
   harmonyState?: HarmonyState | null;
+  /** Authoritative Harmony projection shared with the Global page and Seq lanes. */
+  harmonyProjection?: HarmonyProjection;
 }
 
 // ═══════════════ Component ═══════════════
@@ -5074,32 +5078,26 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [arpConfigs, setArpConfigs] = useState<ProductPlayConfig[]>(() => normalizeProductPlayConfigs(initialArpConfigs, 4));
   const [arpUiPlayheads, setArpUiPlayheads] = useState<number[]>(() => [0, 0, 0, 0]);
   const [selectedArpSteps, setSelectedArpSteps] = useState<number[]>(() => [0, 0, 0, 0]);
-  const arpHarmonyState = state as unknown as Record<string, unknown>;
-  const arpHarmonyInputs = useMemo(() => ({
-    rootMidi: arpHarmonyState.rootMidi,
-    rootNote: arpHarmonyState.rootNote,
-    tension: arpHarmonyState.tension,
-    manualScale: arpHarmonyState.manualScale,
-    scaleMode: arpHarmonyState.scaleMode,
-    seedWindow: arpHarmonyState.seedWindow,
-    rngSeed: arpHarmonyState.rngSeed,
-    seed: arpHarmonyState.seed,
-    journeyMorphPhase: arpHarmonyState.journeyMorphPhase,
-  }), [
-    arpHarmonyState.rootMidi,
-    arpHarmonyState.rootNote,
-    arpHarmonyState.tension,
-    arpHarmonyState.manualScale,
-    arpHarmonyState.scaleMode,
-    arpHarmonyState.seedWindow,
-    arpHarmonyState.rngSeed,
-    arpHarmonyState.seed,
-    arpHarmonyState.journeyMorphPhase,
-  ]);
-  const arpHarmonyContext = useMemo(() => createProductArpHarmonyContext(
-    arpHarmonyInputs,
-    harmonyState,
-  ), [arpHarmonyInputs, harmonyState]);
+  const arpHarmonyContext = useMemo<ProductArpHarmonyContext>(() => {
+    if (props.harmonyProjection) {
+      return {
+        rootMidi: props.harmonyProjection.engine.rootMidi,
+        scaleId: props.harmonyProjection.engine.scaleId,
+        tension: props.harmonyProjection.tension,
+        notePoolMidi: props.harmonyProjection.activeFrame.currentNotePool,
+        chordSlots: props.harmonyProjection.slots,
+      };
+    }
+    // Compatibility fallback for embedders that have not yet adopted the projection.
+    const projection = resolveHarmonyProjection(state, { harmonyState });
+    return {
+      rootMidi: projection.engine.rootMidi,
+      scaleId: projection.engine.scaleId,
+      tension: projection.tension,
+      notePoolMidi: projection.activeFrame.currentNotePool,
+      chordSlots: projection.slots,
+    };
+  }, [props.harmonyProjection, state, harmonyState]);
   const activePlayConfig = arpConfigs[seq.activeTab] ?? defaultProductPlayConfig();
   const activeArpConfig = activePlayConfig.arp;
   const activeArpPitchAnchor = arpPitchAnchorMidi(

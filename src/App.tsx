@@ -26,6 +26,7 @@ import {
 } from './ui/useProductRuntimeSession';
 import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/config';
 import { calculateDriftedRoot } from './audio/harmony';
+import { resolveHarmonyProjection, type HarmonyProjection } from './audio/harmony/harmonyProjection';
 import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, INSECT_ENGINE_DEFAULTS, getWaterPresetDualRanges, getWaterPresetSliderModes } from './audio/waterPresets';
 import {
@@ -446,6 +447,10 @@ const App: React.FC = () => {
     transportDebug: null,
   });
   const playbackIsRunning = engineState.isRunning;
+  const harmonyProjection: HarmonyProjection = useMemo(
+    () => resolveHarmonyProjection(state, { harmonyState: engineState.harmonyState }),
+    [state, engineState.harmonyState],
+  );
 
   const {
     resetProductCofDrift: resetCofDrift,
@@ -3537,6 +3542,7 @@ const App: React.FC = () => {
                 SelectComponent={Select}
                 CircleOfFifthsComponent={CircleOfFifths}
                 engineState={engineState}
+                harmonyProjection={harmonyProjection}
                 routingMuteGroupSnapshot={routingMuteGroupsController.runtimeSnapshot}
                 {...globalRuntimeProps}
                 morphCoFViz={morphCoFViz}
@@ -3645,6 +3651,7 @@ const App: React.FC = () => {
                 {...productPageRuntimeSurface.synthPageRuntimeProps}
                 onAuditionPresetPreview={productRuntimeManualTriggers.auditionSynthNoteWithState}
                 harmonyState={engineState.harmonyState}
+                harmonyProjection={harmonyProjection}
               />
             )}
 
