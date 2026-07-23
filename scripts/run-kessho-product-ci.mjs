@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = process.cwd();
@@ -108,6 +108,16 @@ function writeReport() {
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
 }
 
+function pageCpuBeforeAfterOutcome() {
+  const path = resolve(root, 'docs/reports/kessho-product-page-cpu-before-after-latest.json');
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')).status ?? null;
+  } catch {
+    return null;
+  }
+}
+
 writeReport();
 
 for (const step of prerequisiteSteps) {
@@ -124,6 +134,9 @@ for (const step of prerequisiteSteps) {
   });
   const finishedAt = new Date().toISOString();
   const status = result.status === 0 ? 'pass' : 'fail';
+  const evidenceOutcome = step === 'core:product:page-cpu-before-after'
+    ? pageCpuBeforeAfterOutcome()
+    : null;
   report.steps.push({
     step,
     label,
@@ -133,6 +146,7 @@ for (const step of prerequisiteSteps) {
     durationMs: Math.round(performance.now() - startMs),
     exitCode: result.status,
     signal: result.signal,
+    ...(evidenceOutcome ? { outcome: evidenceOutcome } : {}),
   });
   report.summary.status = status === 'fail' ? 'fail' : 'running';
   writeReport();

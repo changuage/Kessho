@@ -102,7 +102,7 @@ const runCommands = workflow
   .filter((line) => line.startsWith('- run: '))
   .map((line) => line.slice('- run: '.length).trim());
 assert(
-  runCommands.at(-1) === 'npm run core:product:default-gate-v3',
+  runCommands.filter((command) => command.startsWith('npm run ')).at(-1) === 'npm run core:product:default-gate-v3',
   'Product Default Gate v3 must be the final Product Core workflow command',
 );
 assert(

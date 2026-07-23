@@ -53,10 +53,17 @@ on:
 jobs:
   product-core:
     runs-on: macos-14
+    env:
+      # The page CPU gate must compare against the PR base (or the previous
+      # pushed commit), never whichever commit happens to be HEAD^ in a
+      # shallow/merge checkout.
+      KESSHO_PRODUCT_PAGE_CPU_BASELINE_REF: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+      KESSHO_PRODUCT_PAGE_CPU_PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+      KESSHO_PRODUCT_PAGE_CPU_PUSH_BEFORE_SHA: ${{ github.event.before || '' }}
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 2
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -66,3 +73,34 @@ jobs:
       - run: brew install emscripten
       - run: npm run core:product:ci:prereqs
       - run: npm run core:product:default-gate-v3
+
+      - name: Upload Product CPU gate reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-core-cpu-gate-reports
+          if-no-files-found: warn
+          path: |
+            docs/reports/kessho-product-page-cpu-before-after-latest.json
+            docs/reports/kessho-product-page-cpu-before-after-latest.md
+            docs/reports/kessho-product-page-cpu-comparison-latest.json
+            docs/reports/kessho-product-page-cpu-comparison-latest.md
+            docs/reports/kessho-product-ci-latest.json
+            docs/reports/kessho-product-default-gate-v3-latest.json
+            docs/reports/kessho-product-default-gate-v3-latest.md
+
+      - name: Surface Product CPU gate summary
+        if: always()
+        shell: bash
+        run: |
+          for report in \
+            docs/reports/kessho-product-page-cpu-before-after-latest.md \
+            docs/reports/kessho-product-page-cpu-comparison-latest.md \
+            docs/reports/kessho-product-default-gate-v3-latest.md; do
+            if [ -f "$report" ]; then
+              {
+                echo "## $report"
+                cat "$report"
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done

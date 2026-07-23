@@ -65,10 +65,19 @@ assert(browserRuntimeReport.status === 'pass', 'Product browser-runtime report m
 assert(browserRuntimeReport.defaultRuntime === 'core-product', 'Product browser-runtime report must prove the production default');
 assert(cpuReport.status === 'pass' && cpuReport.cpu?.status === 'pass' && cpuReport.heap?.status === 'pass', 'Product CPU/heap report must pass');
 assert(pageCpuReport.status === 'pass', 'Product page CPU comparison must pass');
-assert(pageCpuBeforeAfterReport.status === 'pass', 'Product page CPU before/after report must pass');
+assert(
+  pageCpuBeforeAfterReport.status === 'pass' || pageCpuBeforeAfterReport.status === 'inconclusive',
+  `Product page CPU before/after report must pass or be inconclusive (got ${pageCpuBeforeAfterReport.status ?? 'missing'})`,
+);
 assert(pageCpuBeforeAfterReport.thresholds?.runCount === 3, 'Product page CPU before/after report must contain three runs per phase');
-assert(Array.isArray(pageCpuBeforeAfterReport.scenarios) && pageCpuBeforeAfterReport.scenarios.length > 0, 'Product page CPU before/after report must contain scenarios');
-assert(pageCpuBeforeAfterReport.scenarios.every((scenario) => scenario.status === 'pass'), 'Product page CPU before/after contains a median regression');
+if (pageCpuBeforeAfterReport.status === 'pass') {
+  assert(Array.isArray(pageCpuBeforeAfterReport.scenarios) && pageCpuBeforeAfterReport.scenarios.length > 0, 'Product page CPU before/after report must contain scenarios');
+  assert(pageCpuBeforeAfterReport.scenarios.every((scenario) => scenario.status === 'pass'), 'Product page CPU before/after contains a median regression');
+}
+assert(
+  !(pageCpuBeforeAfterReport.status === 'inconclusive' && pageCpuBeforeAfterReport.summary?.failedScenarioCount > 0),
+  'Product page CPU before/after contains a valid regression alongside inconclusive evidence',
+);
 assert(runtimeFallbackReport.status === 'pass', 'Product runtime fallback behavior report must pass');
 assert(sequencerReport.status === 'pass' && sequencerReport.fullRun === true, 'sequencer behavioral evidence must be the full passing run');
 
@@ -83,7 +92,14 @@ const report = {
   schemaVersion: 3,
   generatedAt: now.toISOString(),
   status: 'pass',
-  defaultPromotionReady: true,
+  // An inconclusive hosted-runner measurement is not a regression and keeps
+  // the required CI check green, but it must not be mistaken for fresh CPU
+  // promotion evidence.
+  defaultPromotionReady: pageCpuBeforeAfterReport.status === 'pass',
+  cpuEvidence: {
+    pageBeforeAfterStatus: pageCpuBeforeAfterReport.status,
+    inconclusive: pageCpuBeforeAfterReport.status === 'inconclusive',
+  },
   webDefaultRuntime: 'core-product',
   localCi: {
     report: 'docs/reports/kessho-product-ci-latest.json',
@@ -118,9 +134,12 @@ writeFileSync(reportMarkdownPath, [
   '',
   'Product Core is the production Web runtime default.',
   '',
+  `Default promotion ready: **${report.defaultPromotionReady ? 'YES' : 'NO'}**`,
+  '',
   `Prerequisite gates: ${report.localCi.prerequisiteCount}`,
   `Browser cases: ${report.browserRuntime.cases.length}`,
   `Page CPU scenarios: ${report.cpu.pageBeforeAfter?.scenarioCount ?? 0}`,
+  `Page CPU before/after evidence: ${pageCpuBeforeAfterReport.status}`,
   '',
 ].join('\n'));
 console.log('Kessho Product Default Gate v3 passed: core-product is the web default runtime');

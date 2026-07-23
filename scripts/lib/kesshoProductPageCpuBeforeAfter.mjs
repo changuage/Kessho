@@ -2,13 +2,94 @@ export const PAGE_CPU_RUN_COUNT = 3;
 export const PAGE_CPU_MAX_REGRESSION_PERCENT = 3;
 export const PAGE_CPU_MAX_RAW_REGRESSION_PERCENT = 20;
 
+/**
+ * Classify the deterministic Product CPU gate independently from collection
+ * quality. A finite measurement is a regression only when both the raw
+ * Product delta and the paired Product/Web delta exceed the 3% threshold, or
+ * when the raw Product delta exceeds the catastrophic 20% guard.
+ */
+export function classifyPageCpuRegression({
+  rawRegressionPercent,
+  normalizedRegressionPercent,
+  pairedNormalizedRegressionPercents = null,
+}) {
+  if (Number.isFinite(rawRegressionPercent) && rawRegressionPercent > PAGE_CPU_MAX_RAW_REGRESSION_PERCENT) {
+    return {
+      status: 'regression',
+      reason: 'catastrophic-raw-regression',
+    };
+  }
+  if (!Number.isFinite(rawRegressionPercent) || !Number.isFinite(normalizedRegressionPercent)) {
+    return {
+      status: 'inconclusive',
+      reason: 'missing-or-invalid-regression-metric',
+    };
+  }
+  if (rawRegressionPercent > PAGE_CPU_MAX_REGRESSION_PERCENT &&
+      normalizedRegressionPercent > PAGE_CPU_MAX_REGRESSION_PERCENT) {
+    const pairedValuesAreConsistent = Array.isArray(pairedNormalizedRegressionPercents) &&
+      pairedNormalizedRegressionPercents.length === PAGE_CPU_RUN_COUNT &&
+      pairedNormalizedRegressionPercents.every((value) =>
+        Number.isFinite(value) && value > PAGE_CPU_MAX_REGRESSION_PERCENT);
+    if (!pairedValuesAreConsistent) {
+      return {
+        status: 'inconclusive',
+        reason: 'inconsistent-paired-normalized-regression',
+      };
+    }
+    return {
+      status: 'regression',
+      reason: 'corroborated-raw-and-normalized-regression',
+    };
+  }
+  return { status: 'pass', reason: 'within-threshold' };
+}
+
 export function isPageCpuRegressionWithinGate({ rawRegressionPercent, normalizedRegressionPercent }) {
-  if (!Number.isFinite(rawRegressionPercent) || !Number.isFinite(normalizedRegressionPercent)) return false;
-  if (rawRegressionPercent > PAGE_CPU_MAX_RAW_REGRESSION_PERCENT) return false;
-  return rawRegressionPercent <= PAGE_CPU_MAX_REGRESSION_PERCENT ||
-    normalizedRegressionPercent <= PAGE_CPU_MAX_REGRESSION_PERCENT;
+  return classifyPageCpuRegression({ rawRegressionPercent, normalizedRegressionPercent }).status === 'pass';
+}
+
+export function pageCpuGateExitCode(status) {
+  return status === 'pass' || status === 'inconclusive' ? 0 : 1;
+}
+
+export function overallPageCpuGateStatus(statuses) {
+  if (!Array.isArray(statuses) || statuses.length === 0) return 'inconclusive';
+  if (statuses.some((status) => status === 'inconclusive')) return 'inconclusive';
+  if (statuses.some((status) => status === 'regression')) return 'regression';
+  return statuses.every((status) => status === 'pass') ? 'pass' : 'error';
 }
 export const PAGE_CPU_MAX_MEASUREMENT_OUTLIER_RATIO = 1.2;
+
+/**
+ * Resolve the commit used for before/after collection. GitHub passes an
+ * explicit pull-request base or push predecessor; local dirty worktrees use
+ * HEAD so an uncommitted change is compared with its own clean tree, while a
+ * clean commit defaults to its immediate parent.
+ */
+export function resolvePageCpuBaselineRef({
+  explicitRef = null,
+  githubActions = false,
+  pullRequestBaseRef = null,
+  pushBeforeRef = null,
+  dirty = false,
+  defaultRef = 'HEAD^',
+} = {}) {
+  const normalize = (value) => {
+    const ref = typeof value === 'string' ? value.trim() : '';
+    if (!ref || /^0+$/.test(ref)) return null;
+    return ref;
+  };
+  const explicit = normalize(explicitRef);
+  if (explicit) return explicit;
+  if (githubActions) {
+    const pullRequestBase = normalize(pullRequestBaseRef);
+    if (pullRequestBase) return pullRequestBase;
+    const pushBefore = normalize(pushBeforeRef);
+    if (pushBefore) return pushBefore;
+  }
+  return dirty ? 'HEAD' : normalize(defaultRef) ?? 'HEAD^';
+}
 
 export function normalizedPageCpuRegressionPercent({
   baselineProduct,

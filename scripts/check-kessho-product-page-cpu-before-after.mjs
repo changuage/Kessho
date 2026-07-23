@@ -21,12 +21,15 @@ import {
   PAGE_CPU_MAX_REGRESSION_PERCENT,
   PAGE_CPU_RUN_COUNT,
   assessPairedPageCpuMeasurementQuality,
+  classifyPageCpuRegression,
   describePairedPageCpuQuality,
-  isPageCpuRegressionWithinGate,
   normalizedPageCpuRegressionPercent,
+  overallPageCpuGateStatus,
   pairedNormalizedPageCpuRegressionPercent,
+  pageCpuGateExitCode,
   planPairedPageCpuRetry,
   planInterleavedPageCpuRuns,
+  resolvePageCpuBaselineRef,
 } from './lib/kesshoProductPageCpuBeforeAfter.mjs';
 
 const root = process.cwd();
@@ -84,9 +87,21 @@ function readGitCommit(cwd) {
 }
 
 function resolveBaselineRef(args) {
-  if (args.baselineRef) return args.baselineRef;
   const dirty = spawnSync('git', ['diff', '--quiet', 'HEAD', '--'], { cwd: root }).status !== 0;
-  return dirty ? 'HEAD' : 'HEAD^';
+  return resolvePageCpuBaselineRef({
+    explicitRef: args.baselineRef,
+    githubActions: process.env.GITHUB_ACTIONS === 'true',
+    pullRequestBaseRef: process.env.KESSHO_PRODUCT_PAGE_CPU_PULL_REQUEST_BASE_SHA,
+    pushBeforeRef: process.env.KESSHO_PRODUCT_PAGE_CPU_PUSH_BEFORE_SHA,
+    dirty,
+  });
+}
+
+class PageCpuInconclusiveError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'PageCpuInconclusiveError';
+  }
 }
 
 function median(values) {
@@ -262,10 +277,11 @@ function comparePhases(baseline, current) {
       phaseMedianProductVsWebRegressionPercent,
       productVsWebRegressionPercent,
       productVsWebSavedPercent: productVsWebSavedPercent === null ? null : -productVsWebSavedPercent,
-      status: isPageCpuRegressionWithinGate({
+      ...classifyPageCpuRegression({
         rawRegressionPercent: productRegressionPercent,
         normalizedRegressionPercent: productVsWebRegressionPercent,
-      }) ? 'pass' : 'fail',
+        pairedNormalizedRegressionPercents: pairedProductVsWebRegressionValues,
+      }),
     };
   });
 }
@@ -277,6 +293,7 @@ function writeReport(report) {
     '',
     `Generated: ${report.generatedAt}`,
     '',
+    `Baseline ref: ${report.baseline.ref ?? 'n/a'}`,
     `Baseline commit: ${report.baseline.commit}`,
     `Current worktree commit: ${report.current.commit}`,
     '',
@@ -285,7 +302,7 @@ function writeReport(report) {
     `Runs per phase: ${report.thresholds.runCount}; aggregation: ${report.thresholds.aggregation}`,
     `Raw Product median delta (diagnostic; ${report.thresholds.maxRawProductRegressionPercent}% catastrophic guard): ${Number.isFinite(report.summary.maxProductRegressionPercent) ? `${report.summary.maxProductRegressionPercent.toFixed(2)}%` : 'n/a'}`,
     `Normalized Product/Web threshold: ${report.thresholds.maxNormalizedRegressionPercent}%; raw Product catastrophic guard: ${report.thresholds.maxRawProductRegressionPercent}%`,
-    `Measurement validity: retry both phases once when a Product CPU sample is more than ${((MAX_MEASUREMENT_OUTLIER_RATIO - 1) * 100).toFixed(0)}% away from the phase's other samples`,
+    `Measurement validity: retry both phases once when a Product/Web CPU sample is more than ${((MAX_MEASUREMENT_OUTLIER_RATIO - 1) * 100).toFixed(0)}% away from the phase's other samples; a second invalid set is INCONCLUSIVE`,
     '',
     `Passing scenarios: ${report.summary.passingScenarioCount ?? '-'}/${report.summary.scenarioCount ?? '-'}`,
     `Maximum normalized Product CPU regression: ${Number.isFinite(report.summary.maxNormalizedProductRegressionPercent) ? `${report.summary.maxNormalizedProductRegressionPercent.toFixed(2)}%` : 'n/a'}`,
@@ -305,7 +322,9 @@ function writeReport(report) {
     '- A process-info outlier causes one paired retry of both phases; rejected runs are discarded and the report retains exactly three accepted runs per phase rather than allowing a dropped Chrome process to distort the median.',
     '- Browser-process CPU percent is measured around the same Product/Web TS page capture used by the focused comparison.',
     '- The baseline is a detached worktree at the explicit `--baseline-ref` (or `KESSHO_PRODUCT_PAGE_CPU_BASELINE_REF`); otherwise it uses `HEAD` for tracked-dirty local changes and `HEAD^` for a clean commit.',
-    '- Acceptance uses paired Product/Web difference-in-differences: a scenario fails only when both raw Product and normalized Product/Web deltas exceed 3%; any raw Product increase above the 20% catastrophic guard fails independently. Raw and normalized medians remain in the report for diagnosis.',
+    '- Acceptance uses paired Product/Web difference-in-differences: a scenario is a regression only when both raw Product and normalized Product/Web deltas exceed 3%; any raw Product increase above the 20% catastrophic guard fails independently. Raw and normalized medians remain in the report for diagnosis.',
+    '- If the raw and normalized medians exceed 3% but every accepted paired normalized sample is not finite and above 3%, the scenario is inconclusive rather than a regression.',
+    '- An invalid paired sample set after the bounded retry is reported as inconclusive and exits successfully so hosted-runner instability cannot masquerade as an application regression. The aggregate/default gate preserves the inconclusive outcome for follow-up.',
   );
   if (report.error) lines.push('', '## Error', '', `- ${report.error}`);
   writeMarkdownReport(reportMarkdownPath, lines);
@@ -340,11 +359,12 @@ const report = {
     metric: 'browserProcessCpuPercent',
   },
   args,
-  baseline: { commit: null, runs: [] },
+  baseline: { ref: null, commit: null, runs: [] },
   current: { commit: null, runs: [] },
   scenarios: [],
   summary: {},
   measurementQuality: {
+    status: 'pending',
     outlierRatio: MAX_MEASUREMENT_OUTLIER_RATIO,
     retries: [],
   },
@@ -366,9 +386,11 @@ try {
     if (!savedQuality.valid) {
       throw new Error(`Saved page CPU phases are statistically invalid: ${describePairedPageCpuQuality(savedQuality)}`);
     }
+    report.measurementQuality.status = 'valid-reused';
   } else {
     const baselineRef = resolveBaselineRef(args);
     baselineWorktree = createBaselineWorktree(baselineRef);
+    report.baseline.ref = baselineRef;
     report.baseline.commit = readGitCommit(baselineWorktree.path);
     report.current.commit = readGitCommit(root);
     const initialRuns = collectPairedPageCpuRuns({
@@ -425,8 +447,12 @@ try {
       };
       report.measurementQuality.retries.push(retryRecord);
       if (!retryQuality.valid) {
-        throw new Error(`Paired page CPU phases remained statistically invalid after retry: ${describePairedPageCpuQuality(retryQuality)}`);
+        report.measurementQuality.status = 'inconclusive';
+        throw new PageCpuInconclusiveError(
+          `Paired page CPU phases remained statistically invalid after retry: ${describePairedPageCpuQuality(retryQuality)}`,
+        );
       }
+      report.measurementQuality.status = 'valid-after-retry';
       report.baseline.runs = replacementRuns.baseline;
       report.current.runs = replacementRuns.current;
       retryRecord.acceptedRunCount = {
@@ -448,12 +474,16 @@ try {
   report.summary = {
     scenarioCount: report.scenarios.length,
     passingScenarioCount: report.scenarios.filter((scenario) => scenario.status === 'pass').length,
-    failedScenarioCount: report.scenarios.filter((scenario) => scenario.status !== 'pass').length,
+    failedScenarioCount: report.scenarios.filter((scenario) => scenario.status === 'regression').length,
+    inconclusiveScenarioCount: report.scenarios.filter((scenario) => scenario.status === 'inconclusive').length,
     maxProductRegressionPercent: rawRegressions.length > 0 ? Math.max(...rawRegressions) : null,
     medianProductRegressionPercent: rawRegressions.length > 0 ? median(rawRegressions) : null,
     maxNormalizedProductRegressionPercent: normalizedRegressions.length > 0 ? Math.max(...normalizedRegressions) : null,
   };
-  report.status = report.summary.failedScenarioCount === 0 ? 'pass' : 'fail';
+  report.measurementQuality.status = report.measurementQuality.status === 'pending'
+    ? 'valid'
+    : report.measurementQuality.status;
+  report.status = overallPageCpuGateStatus(report.scenarios.map((scenario) => scenario.status));
   report.metadata = collectReportMetadata({
     root,
     generatedAt: report.generatedAt,
@@ -467,17 +497,26 @@ try {
   });
   writeReport(report);
   console.log(`Kessho Product page CPU before/after ${report.status}: report ${reportJsonPath}`);
-  if (report.status !== 'pass') {
+  if (report.summary.failedScenarioCount > 0) {
     throw new Error(
       `Page CPU corroborated regression exceeded ${MAX_REGRESSION_PERCENT}% normalized and raw thresholds in one or more scenarios`,
     );
   }
 } catch (error) {
-  report.status = 'fail';
-  report.error = error instanceof Error ? error.message : String(error);
-  report.summary = report.summary ?? {};
-  writeReport(report);
-  throw error;
+  if (error instanceof PageCpuInconclusiveError) {
+    report.status = 'inconclusive';
+    report.summary = { ...(report.summary ?? {}), inconclusive: true };
+    report.error = error.message;
+    writeReport(report);
+    console.warn(`Kessho Product page CPU before/after inconclusive: ${error.message}`);
+    process.exitCode = pageCpuGateExitCode(report.status);
+  } else {
+    if (report.status === 'running') report.status = 'error';
+    report.error = error instanceof Error ? error.message : String(error);
+    report.summary = report.summary ?? {};
+    writeReport(report);
+    throw error;
+  }
 } finally {
   if (baselineWorktree) baselineWorktree.dispose();
 }

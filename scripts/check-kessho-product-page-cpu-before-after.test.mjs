@@ -4,11 +4,15 @@ import {
   PAGE_CPU_MAX_REGRESSION_PERCENT,
   PAGE_CPU_RUN_COUNT,
   assertPairedPageCpuMeasurementQuality,
+  classifyPageCpuRegression,
   isPageCpuRegressionWithinGate,
   normalizedPageCpuRegressionPercent,
+  overallPageCpuGateStatus,
   pairedNormalizedPageCpuRegressionPercent,
+  pageCpuGateExitCode,
   planPairedPageCpuRetry,
   planInterleavedPageCpuRuns,
+  resolvePageCpuBaselineRef,
 } from './lib/kesshoProductPageCpuBeforeAfter.mjs';
 
 function runs(values, webValues = values) {
@@ -167,6 +171,80 @@ test('regression gate requires corroborated raw and normalized evidence', () => 
   assert.equal(isPageCpuRegressionWithinGate({ rawRegressionPercent: 2.73, normalizedRegressionPercent: 4.91 }), true);
   assert.equal(isPageCpuRegressionWithinGate({ rawRegressionPercent: 5.0, normalizedRegressionPercent: 5.0 }), false);
   assert.equal(isPageCpuRegressionWithinGate({ rawRegressionPercent: 21.0, normalizedRegressionPercent: 0.0 }), false);
+});
+
+test('regression policy distinguishes valid regressions from inconclusive metrics', () => {
+  assert.deepEqual(
+    classifyPageCpuRegression({
+      rawRegressionPercent: 5.1,
+      normalizedRegressionPercent: 4.2,
+      pairedNormalizedRegressionPercents: [4.1, 5.2, 4.8],
+    }),
+    { status: 'regression', reason: 'corroborated-raw-and-normalized-regression' },
+  );
+  assert.deepEqual(
+    classifyPageCpuRegression({
+      rawRegressionPercent: 5.1,
+      normalizedRegressionPercent: 4.2,
+      pairedNormalizedRegressionPercents: [4.1, 2.2, 5.8],
+    }),
+    { status: 'inconclusive', reason: 'inconsistent-paired-normalized-regression' },
+  );
+  assert.deepEqual(
+    classifyPageCpuRegression({
+      rawRegressionPercent: 5.1,
+      normalizedRegressionPercent: 4.2,
+      pairedNormalizedRegressionPercents: [4.1],
+    }),
+    { status: 'inconclusive', reason: 'inconsistent-paired-normalized-regression' },
+  );
+  assert.deepEqual(
+    classifyPageCpuRegression({ rawRegressionPercent: 21, normalizedRegressionPercent: 0 }),
+    { status: 'regression', reason: 'catastrophic-raw-regression' },
+  );
+  assert.deepEqual(
+    classifyPageCpuRegression({ rawRegressionPercent: 21, normalizedRegressionPercent: null }),
+    { status: 'regression', reason: 'catastrophic-raw-regression' },
+  );
+  assert.deepEqual(
+    classifyPageCpuRegression({ rawRegressionPercent: null, normalizedRegressionPercent: 4 }),
+    { status: 'inconclusive', reason: 'missing-or-invalid-regression-metric' },
+  );
+  assert.equal(isPageCpuRegressionWithinGate({ rawRegressionPercent: null, normalizedRegressionPercent: 0 }), false);
+});
+
+test('baseline resolution is explicit and stable across GitHub event types', () => {
+  assert.equal(resolvePageCpuBaselineRef({ explicitRef: 'release-baseline' }), 'release-baseline');
+  assert.equal(resolvePageCpuBaselineRef({
+    githubActions: true,
+    pullRequestBaseRef: 'abc123',
+    pushBeforeRef: 'def456',
+  }), 'abc123');
+  assert.equal(resolvePageCpuBaselineRef({
+    githubActions: true,
+    pushBeforeRef: 'def456',
+  }), 'def456');
+  assert.equal(resolvePageCpuBaselineRef({
+    githubActions: true,
+    pullRequestBaseRef: '0000000000000000000000000000000000000000',
+    pushBeforeRef: '0000000000000000000000000000000000000000',
+    dirty: false,
+  }), 'HEAD^');
+  assert.equal(resolvePageCpuBaselineRef({ dirty: true }), 'HEAD');
+});
+
+test('inconclusive measurements do not fail the required process gate', () => {
+  assert.equal(pageCpuGateExitCode('pass'), 0);
+  assert.equal(pageCpuGateExitCode('inconclusive'), 0);
+  assert.equal(pageCpuGateExitCode('regression'), 1);
+  assert.equal(pageCpuGateExitCode('error'), 1);
+});
+
+test('inconclusive scenario evidence takes overall precedence over pass', () => {
+  assert.equal(overallPageCpuGateStatus(['pass', 'pass']), 'pass');
+  assert.equal(overallPageCpuGateStatus(['pass', 'inconclusive']), 'inconclusive');
+  assert.equal(overallPageCpuGateStatus(['regression', 'inconclusive']), 'inconclusive');
+  assert.equal(overallPageCpuGateStatus(['pass', 'regression']), 'regression');
 });
 
 test('each planned collection yields exactly three accepted runs per phase', () => {
