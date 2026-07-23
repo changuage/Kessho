@@ -33,6 +33,8 @@ type SequencerRestorePreset = {
   synthLinked?: boolean[];
   drumSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
+  synthPlayConfigs?: ProductPlayConfig[];
+  /** @deprecated Legacy metadata key retained for decode compatibility. */
   synthArpConfigs?: ProductPlayConfig[];
   drumPitchSettings?: PitchSettings[];
   synthPitchSettings?: PitchSettings[];
@@ -78,7 +80,7 @@ type PresetSequencerRestoreOptions = {
   synthLinkedRef: MutableRefObject<boolean[] | undefined>;
   synthPitchBindingModesRef: MutableRefObject<PitchBindingMode[] | undefined>;
   synthPitchSettingsRef: MutableRefObject<PitchSettings[] | undefined>;
-  synthArpConfigsRef: MutableRefObject<ProductPlayConfig[] | undefined>;
+  synthPlayConfigsRef: MutableRefObject<ProductPlayConfig[] | undefined>;
   synthStepOverridesRef: MutableRefObject<StepOverrides | undefined>;
   synthSubLaneStatesRef: MutableRefObject<Record<SubLaneKind, SubLaneState>[] | undefined>;
   synthSwingsRef: MutableRefObject<number[] | undefined>;
@@ -226,11 +228,11 @@ function restoreSequencerSubLaneStates(
 
 function mapSubLaneStatesToEnabledFlags(
   states: Record<SubLaneKind, SubLaneState>[] | undefined,
-  arpConfigs?: ProductPlayConfig[],
+  playConfigs?: ProductPlayConfig[],
   laneCount: number = SYNTH_EUCLIDEAN_LANE_COUNT,
 ): Record<string, boolean>[] {
   return Array.from({ length: laneCount }, (_, index) => ({
-    pitch: states?.[index]?.pitch.enabled === true || arpConfigs?.[index]?.enabled === true,
+    pitch: states?.[index]?.pitch.enabled === true || playConfigs?.[index]?.enabled === true,
     expression: states?.[index]?.expression.enabled === true,
     ratchet: states?.[index]?.expression.enabled === true,
     morph: states?.[index]?.morph.enabled === true,
@@ -238,8 +240,8 @@ function mapSubLaneStatesToEnabledFlags(
     nudge: states?.[index]?.nudge.enabled === true,
     slice: states?.[index]?.slice.enabled === true,
     reverse: states?.[index]?.reverse.enabled === true,
-    arp: arpConfigs?.[index]?.enabled === true,
-    play: arpConfigs?.[index]?.enabled === true,
+    arp: playConfigs?.[index]?.enabled === true,
+    play: playConfigs?.[index]?.enabled === true,
   }));
 }
 
@@ -384,7 +386,7 @@ export function usePresetSequencerRestore({
   synthLinkedRef,
   synthPitchBindingModesRef,
   synthPitchSettingsRef,
-  synthArpConfigsRef,
+  synthPlayConfigsRef,
   synthStepOverridesRef,
   synthSubLaneStatesRef,
   synthSwingsRef,
@@ -424,11 +426,14 @@ export function usePresetSequencerRestore({
       const synthPitchSettings = normalizeSequencerPitchSettingsArray(preset.synthPitchSettings ?? createDefaultSynthPitchSettings(), SYNTH_EUCLIDEAN_LANE_COUNT) as PitchSettings[];
       drumPitchSettingsRef.current = drumPitchSettings;
       synthPitchSettingsRef.current = synthPitchSettings;
-      const synthArpConfigs = normalizeProductPlayConfigs(preset.synthArpConfigs, SYNTH_EUCLIDEAN_LANE_COUNT);
-      synthArpConfigsRef.current = synthArpConfigs;
+      const synthPlayConfigs = normalizeProductPlayConfigs(
+        preset.synthPlayConfigs ?? preset.synthArpConfigs,
+        SYNTH_EUCLIDEAN_LANE_COUNT,
+      );
+      synthPlayConfigsRef.current = synthPlayConfigs;
 
       setProductDrumSubLaneEnabled(mapSubLaneStatesToEnabledFlags(drumSubLaneStates, undefined, DRUM_EUCLIDEAN_LANE_COUNT));
-      setProductSynthSubLaneEnabled(mapSubLaneStatesToEnabledFlags(synthSubLaneStates, synthArpConfigs, SYNTH_EUCLIDEAN_LANE_COUNT));
+      setProductSynthSubLaneEnabled(mapSubLaneStatesToEnabledFlags(synthSubLaneStates, synthPlayConfigs, SYNTH_EUCLIDEAN_LANE_COUNT));
       setProductDrumPitchSettings(drumPitchSettings);
       setProductSynthPitchSettings(synthPitchSettings);
 
@@ -512,7 +517,7 @@ export function usePresetSequencerRestore({
       synthLinkedRef,
       synthPitchBindingModesRef,
       synthPitchSettingsRef,
-      synthArpConfigsRef,
+      synthPlayConfigsRef,
       synthStepOverridesRef,
       synthSubLaneStatesRef,
       synthSwingsRef,

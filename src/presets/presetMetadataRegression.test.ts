@@ -16,6 +16,7 @@ import {
   buildPresetVersionMetadata,
   getPresetVersionSnapshot,
   normalizeStatePresetPitchMetadata,
+  preparePresetVersionMetadataForV2Storage,
 } from './versionMetadataHelpers';
 import { buildJourneyPresetPreview } from './journeyPresetPreview';
 import {
@@ -68,6 +69,8 @@ import {
   evolvedDrumPitchOffsetToUiValue,
 } from '../ui/sequencer/drumPitchSequencer';
 import type { PitchBindingMode } from '../audio/drumSeqTypes';
+import { normalizeProductPlayConfig } from '../audio/productPlaySequencer';
+import { getPresetMetadataOwner } from './contentOwnership';
 import { drumVoiceBaseMidi } from '../audio/drumVoiceMidi';
 import { createDiamondJourney, createJourneyConnection } from '../audio/journeyTypes';
 import {
@@ -263,6 +266,44 @@ function testMigratePresetPreservesSynthPitchBindingModes(): void {
     [...SYNTH_BINDING_MODES],
     'migratePreset should preserve synthPitchBindingModes',
   );
+}
+
+function testSynthPlayConfigMetadataMigratesLegacyKeyWithoutReauthoringIt(): void {
+  const arpConfig = normalizeProductPlayConfig({
+    enabled: true,
+    mode: 'arp',
+    arp: { enabled: true, length: 4, rate: 2, flow: 'up', pulseMask: 15 },
+  });
+  const chordConfig = normalizeProductPlayConfig({
+    enabled: true,
+    mode: 'chord',
+    chord: { style: 'strum', length: 3, flow: 'reverse', gate: 0.72, voiceCount: 4 },
+  });
+  const playConfigs = [arpConfig, chordConfig];
+  const migrated = migratePreset({
+    name: 'Legacy Play',
+    timestamp: '2026-07-24T00:00:00.000Z',
+    state: { ...DEFAULT_STATE },
+    synthArpConfigs: playConfigs,
+  });
+  assert.deepStrictEqual(migrated.synthPlayConfigs, playConfigs);
+  assert.equal(migrated.synthArpConfigs, undefined, 'migrated presets should expose only the canonical Play key');
+
+  const metadata = buildPresetVersionMetadata({ synthArpConfigs: playConfigs });
+  assert.deepStrictEqual(metadata?.synthPlayConfigs, playConfigs);
+  assert.equal(metadata && 'synthArpConfigs' in metadata, false, 'new metadata must not author the legacy key');
+
+  const canonicalWins = buildPresetVersionMetadata({
+    synthPlayConfigs: [arpConfig],
+    synthArpConfigs: [chordConfig],
+  });
+  assert.deepStrictEqual(canonicalWins?.synthPlayConfigs, [arpConfig]);
+  assert.deepStrictEqual(
+    preparePresetVersionMetadataForV2Storage({ synthArpConfigs: playConfigs }, true),
+    { synthPlayConfigs: playConfigs },
+  );
+  assert.equal(getPresetMetadataOwner('synthPlayConfigs'), 'portable-content');
+  assert.equal(getPresetMetadataOwner('synthArpConfigs'), 'portable-content');
 }
 
 function testStatePresetPitchMetadataUsesAuthoritativeLaneCounts(): void {
@@ -1365,6 +1406,7 @@ async function run(): Promise<void> {
   testSynthLanePatternRoundTripKeepsNoteRangeBounds();
   testEngineStepOverridesTrimHiddenSubLaneValues();
   testMigratePresetPreservesSynthPitchBindingModes();
+  testSynthPlayConfigMetadataMigratesLegacyKeyWithoutReauthoringIt();
   testStatePresetPitchMetadataUsesAuthoritativeLaneCounts();
   testBuildPresetVersionMetadataIncludesAllSupportedFields();
   testPresetPoolDefaultsUseStableIdsAndSharedEngineScopes();

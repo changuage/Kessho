@@ -748,7 +748,7 @@ const App: React.FC = () => {
   const synthPitchSettingsRef = useRef<PitchSettings[] | undefined>(undefined);
   const synthPitchBindingModesRef = useRef<PitchBindingMode[] | undefined>(undefined);
   const synthKeyboardUiStateRef = useRef<SynthKeyboardUiState | undefined>(undefined);
-  const synthArpConfigsRef = useRef<ProductPlayConfig[] | undefined>(undefined);
+  const synthPlayConfigsRef = useRef<ProductPlayConfig[] | undefined>(undefined);
   const synthEvolveConfigsRef = useRef<EvolveConfig[] | undefined>(undefined);
 
   const [drumPresetVersion, setDrumPresetVersion] = useState(0);
@@ -792,7 +792,7 @@ const App: React.FC = () => {
     synthLinkedRef,
     synthPitchBindingModesRef,
     synthPitchSettingsRef,
-    synthArpConfigsRef,
+    synthPlayConfigsRef,
     synthStepOverridesRef,
     synthSubLaneStatesRef,
     synthSwingsRef,
@@ -819,7 +819,7 @@ const App: React.FC = () => {
         synthLinked: synthLinkedRef.current,
         drumSubLaneStates: sanitizeSequencerSubLaneStates(drumSubLaneStatesRef.current),
         synthSubLaneStates: sanitizeSequencerSubLaneStates(synthSubLaneStatesRef.current),
-        synthArpConfigs: sanitizeProductPlayConfigs(synthArpConfigsRef.current),
+        synthPlayConfigs: sanitizeProductPlayConfigs(synthPlayConfigsRef.current),
         ...normalizeStatePresetPitchMetadata({
           drumPitchSettings: drumPitchSettingsRef.current,
           synthPitchSettings: synthPitchSettingsRef.current,
@@ -1807,7 +1807,7 @@ const App: React.FC = () => {
       synthLinkedRef,
       synthPitchBindingModesRef,
       synthPitchSettingsRef,
-      synthArpConfigsRef,
+      synthPlayConfigsRef,
       synthStepOverridesRef,
       synthSubLaneStatesRef,
       synthSwingsRef,
@@ -3631,8 +3631,8 @@ const App: React.FC = () => {
                 onKeyboardUiStateChange={(keyboardState) => {
                   synthKeyboardUiStateRef.current = keyboardState;
                 }}
-                initialArpConfigs={synthArpConfigsRef.current}
-                onArpConfigsChange={productPageRuntimeSurface.synthPageSequencerBridge.onArpConfigsChange}
+                initialPlayConfigs={synthPlayConfigsRef.current}
+                onPlayConfigsChange={productPageRuntimeSurface.synthPageSequencerBridge.onPlayConfigsChange}
                 onRawStepOverridesChange={productPageRuntimeSurface.synthPageSequencerBridge.onRawStepOverridesChange}
                 onStepOverridesChange={productPageRuntimeSurface.synthPageSequencerBridge.onStepOverridesChange}
                 initialClockDivs={synthClockDivsRef.current}

@@ -36,6 +36,8 @@ export const PRESET_VERSION_METADATA_FIELDS = [
   'synthLinked',
   'drumSubLaneStates',
   'synthSubLaneStates',
+  'synthPlayConfigs',
+  // Legacy metadata is retained for decoding old preset versions only.
   'synthArpConfigs',
   'drumPitchSettings',
   'synthPitchSettings',
@@ -326,6 +328,12 @@ export function extractPresetVersionMetadata(version: PresetVersion | null | und
       (metadata as Record<string, unknown>)[field] = cloneJson(value);
       hasMetadata = true;
     }
+  }
+
+  // Decode the pre-Milestone-3 key into the canonical Play metadata shape.
+  if (metadata.synthPlayConfigs === undefined && metadata.synthArpConfigs !== undefined) {
+    metadata.synthPlayConfigs = metadata.synthArpConfigs;
+    delete metadata.synthArpConfigs;
   }
 
   if (version.refs) {

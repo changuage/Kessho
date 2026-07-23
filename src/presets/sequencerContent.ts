@@ -298,7 +298,9 @@ function extractControlContent(
     kind === 'synth' ? metadata?.synthEvolveConfigs : metadata?.drumEvolveConfigs,
     laneIndex,
   );
-  const playConfig = kind === 'synth' ? laneArrayValue(metadata?.synthArpConfigs, laneIndex) : undefined;
+  const playConfig = kind === 'synth'
+    ? laneArrayValue(metadata?.synthPlayConfigs ?? metadata?.synthArpConfigs, laneIndex)
+    : undefined;
   return {
     clockDiv,
     swing,
@@ -473,12 +475,14 @@ export function applySequencerContentComponents(options: {
         ) as never;
       }
       if (kind === 'synth' && content.playConfig) {
-        metadata.synthArpConfigs = setLaneArrayValue(
-          metadata.synthArpConfigs,
+        const existingPlayConfigs = metadata.synthPlayConfigs ?? metadata.synthArpConfigs;
+        metadata.synthPlayConfigs = setLaneArrayValue(
+          existingPlayConfigs,
           laneIndex,
           count,
           content.playConfig as never,
         ) as never;
+        delete metadata.synthArpConfigs;
       }
       continue;
     }
@@ -572,7 +576,7 @@ export function stripPortableSequencerContentFromL4Override(
 const SEQUENCER_METADATA_FIELDS: readonly (keyof PresetVersionMetadata)[] = [
   'drumEvolveConfigs', 'synthEvolveConfigs', 'drumStepOverrides', 'synthStepOverrides',
   'drumClockDivs', 'synthClockDivs', 'drumSwings', 'synthSwings', 'drumLinked', 'synthLinked',
-  'drumSubLaneStates', 'synthSubLaneStates', 'synthArpConfigs', 'drumPitchSettings',
+  'drumSubLaneStates', 'synthSubLaneStates', 'synthPlayConfigs', 'synthArpConfigs', 'drumPitchSettings',
   'synthPitchSettings', 'synthPitchBindingModes',
 ];
 

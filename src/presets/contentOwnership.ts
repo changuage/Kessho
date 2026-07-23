@@ -108,6 +108,8 @@ const METADATA_OWNERS: Readonly<Record<string, PresetPersistenceOwner>> = Object
   synthLinked: 'portable-content',
   drumSubLaneStates: 'portable-content',
   synthSubLaneStates: 'portable-content',
+  synthPlayConfigs: 'portable-content',
+  // Legacy metadata is accepted for migration and rewritten as synthPlayConfigs.
   synthArpConfigs: 'portable-content',
   drumPitchSettings: 'portable-content',
   synthPitchSettings: 'portable-content',

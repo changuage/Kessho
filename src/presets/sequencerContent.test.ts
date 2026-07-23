@@ -13,6 +13,7 @@ import {
   preparePresetContentBatch,
   type PresetContentComponentRef,
 } from './contentNodes';
+import { normalizeProductPlayConfig } from '../audio/productPlaySequencer';
 
 function metadataFixture(): PresetVersionMetadata {
   return {
@@ -144,6 +145,25 @@ assert.equal(merged.synthEuclid2NoteMin, 48);
 assert.equal(merged.synthEuclid2NoteMax, 72);
 assert.deepStrictEqual(applied.metadata.synthStepOverrides?.pitch?.[1], [0, 2, 4, 7]);
 assert.deepStrictEqual(applied.metadata.synthPitchSettings?.[1], { mode: 'notes', root: 57, scale: 'Minor' });
+
+const legacyPlayConfigs: PresetVersionMetadata = {
+  synthArpConfigs: [
+    normalizeProductPlayConfig({ mode: 'arp', arp: { enabled: true, length: 3 } }),
+    normalizeProductPlayConfig({ mode: 'chord', chord: { length: 2, flow: 'reverse' } }),
+  ],
+};
+const legacyGroup = buildSequencerContentGroup({ state, metadata: legacyPlayConfigs, kind: 'synth', laneIndex: 0 });
+const legacyControl = legacyGroup.components.find((component) => component.componentSlot === 'control');
+assert.ok(legacyControl);
+const canonicalizedLegacy = applySequencerContentComponents({
+  state,
+  metadata: legacyPlayConfigs,
+  kind: 'synth',
+  laneIndex: 0,
+  components: [legacyControl!],
+});
+assert.deepStrictEqual(canonicalizedLegacy.metadata.synthPlayConfigs?.slice(0, 2), legacyPlayConfigs.synthArpConfigs);
+assert.equal(canonicalizedLegacy.metadata.synthArpConfigs, undefined);
 
 const drumState = {
   ...DEFAULT_STATE,

@@ -319,6 +319,8 @@ export interface SavedPreset {
   synthLinked?: boolean[];
   drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
+  synthPlayConfigs?: ProductPlayConfig[];
+  /** @deprecated Legacy metadata key retained for decode compatibility. */
   synthArpConfigs?: ProductPlayConfig[];
   drumPitchSettings?: SerializedPitchSettings[];
   synthPitchSettings?: SerializedPitchSettings[];
@@ -6507,7 +6509,7 @@ export function migratePreset(preset: any): SavedPreset {
     synthLinked: preset.synthLinked,
     drumSubLaneStates: preset.drumSubLaneStates,
     synthSubLaneStates: preset.synthSubLaneStates,
-    synthArpConfigs: preset.synthArpConfigs,
+    synthPlayConfigs: preset.synthPlayConfigs ?? preset.synthArpConfigs,
     drumPitchSettings: preset.drumPitchSettings,
     synthPitchSettings: preset.synthPitchSettings,
     synthPitchBindingModes: preset.synthPitchBindingModes,

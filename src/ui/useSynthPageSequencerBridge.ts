@@ -27,7 +27,7 @@ type SynthPageSequencerBridgeOptions = {
   synthLinkedRef: MutableRefObject<boolean[] | undefined>;
   synthPitchBindingModesRef: MutableRefObject<PitchBindingMode[] | undefined>;
   synthPitchSettingsRef: MutableRefObject<PitchSettings[] | undefined>;
-  synthArpConfigsRef: MutableRefObject<ProductPlayConfig[] | undefined>;
+  synthPlayConfigsRef: MutableRefObject<ProductPlayConfig[] | undefined>;
   synthStepOverridesRef: MutableRefObject<StepOverrides | undefined>;
   synthSubLaneStatesRef: MutableRefObject<Record<SubLaneKind, SubLaneState>[] | undefined>;
   synthSwingsRef: MutableRefObject<number[] | undefined>;
@@ -35,7 +35,7 @@ type SynthPageSequencerBridgeOptions = {
 
 function subLaneEnabledFlags(
   states: Record<SubLaneKind, SubLaneState>[] | undefined,
-  arpConfigs: ProductPlayConfig[] | undefined,
+  playConfigs: ProductPlayConfig[] | undefined,
 ): Record<string, boolean>[] {
   return Array.from({ length: 4 }, (_, laneIndex) => {
     const state = states?.[laneIndex];
@@ -44,7 +44,7 @@ function subLaneEnabledFlags(
       out[key] = value.enabled;
     }
     out.ratchet = out.expression === true;
-    if (arpConfigs?.[laneIndex]?.enabled) {
+    if (playConfigs?.[laneIndex]?.enabled) {
       out.arp = true;
       out.play = true;
       out.pitch = true;
@@ -93,7 +93,7 @@ export function useSynthPageSequencerBridge({
   synthLinkedRef,
   synthPitchBindingModesRef,
   synthPitchSettingsRef,
-  synthArpConfigsRef,
+  synthPlayConfigsRef,
   synthStepOverridesRef,
   synthSubLaneStatesRef,
   synthSwingsRef,
@@ -103,13 +103,13 @@ export function useSynthPageSequencerBridge({
   const onSubLaneStatesChange = useCallback((states: Record<SubLaneKind, SubLaneState>[]) => {
     const sanitized = sanitizeSequencerSubLaneStates(states) ?? states;
     synthSubLaneStatesRef.current = sanitized;
-    setProductSynthSubLaneEnabled(subLaneEnabledFlags(sanitized, synthArpConfigsRef.current));
-  }, [setProductSynthSubLaneEnabled, synthArpConfigsRef, synthSubLaneStatesRef]);
+    setProductSynthSubLaneEnabled(subLaneEnabledFlags(sanitized, synthPlayConfigsRef.current));
+  }, [setProductSynthSubLaneEnabled, synthPlayConfigsRef, synthSubLaneStatesRef]);
 
-  const onArpConfigsChange = useCallback((configs: ProductPlayConfig[]) => {
-    synthArpConfigsRef.current = configs;
+  const onPlayConfigsChange = useCallback((configs: ProductPlayConfig[]) => {
+    synthPlayConfigsRef.current = configs;
     setProductSynthSubLaneEnabled(subLaneEnabledFlags(synthSubLaneStatesRef.current, configs));
-  }, [setProductSynthSubLaneEnabled, synthArpConfigsRef, synthSubLaneStatesRef]);
+  }, [setProductSynthSubLaneEnabled, synthPlayConfigsRef, synthSubLaneStatesRef]);
 
   const onPitchSettingsChange = useCallback((settings: PitchSettings[]) => {
     synthPitchSettingsRef.current = settings;
@@ -175,7 +175,7 @@ export function useSynthPageSequencerBridge({
     onRawStepOverridesChange,
     onStepOverridesChange,
     onSubLaneStatesChange,
-    onArpConfigsChange,
+    onPlayConfigsChange,
     onSwingsChange,
     resetEvolveHome: resetProductSynthEuclidLaneHome,
   }), [
@@ -189,7 +189,7 @@ export function useSynthPageSequencerBridge({
     onRawStepOverridesChange,
     onStepOverridesChange,
     onSubLaneStatesChange,
-    onArpConfigsChange,
+    onPlayConfigsChange,
     onSwingsChange,
     resetProductSynthEuclidLaneHome,
   ]);

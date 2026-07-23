@@ -42,6 +42,11 @@ export function preparePresetVersionMetadataForV2Storage(
 ): PresetVersionMetadata | undefined {
   if (!metadata) return undefined;
   const next = { ...metadata };
+  // Canonicalize legacy ARP-only metadata when a loaded preset is saved again.
+  if (next.synthPlayConfigs === undefined && next.synthArpConfigs !== undefined) {
+    next.synthPlayConfigs = cloneJson(next.synthArpConfigs);
+  }
+  delete next.synthArpConfigs;
   delete next.refs;
   if (isL4State) delete next.presetPool;
   return Object.keys(next).length > 0 ? next : undefined;
@@ -143,8 +148,9 @@ export function buildPresetVersionMetadata(
     hasMetadata = true;
   }
 
-  if (source.synthArpConfigs && source.synthArpConfigs.length > 0) {
-    metadata.synthArpConfigs = cloneJson(source.synthArpConfigs);
+  const synthPlayConfigs = source.synthPlayConfigs ?? source.synthArpConfigs;
+  if (synthPlayConfigs && synthPlayConfigs.length > 0) {
+    metadata.synthPlayConfigs = cloneJson(synthPlayConfigs);
     hasMetadata = true;
   }
 
