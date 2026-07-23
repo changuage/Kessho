@@ -53,6 +53,17 @@ function subLaneEnabledFlags(
   });
 }
 
+export function effectiveProductSynthPitchBindingModes(
+  modes: readonly PitchBindingMode[],
+  playConfigs: readonly ProductPlayConfig[] | undefined,
+): PitchBindingMode[] {
+  return modes.map((mode, laneIndex) => (
+    playConfigs?.[laneIndex]?.enabled && playConfigs[laneIndex]?.mode === 'chord'
+      ? 'polyrhythmic'
+      : mode
+  ));
+}
+
 function synthEngineStepOverrides(overrides: StepOverrides): Partial<StepOverrides> {
   return {
     pitch: overrides.pitch,
@@ -109,7 +120,9 @@ export function useSynthPageSequencerBridge({
   const onPlayConfigsChange = useCallback((configs: ProductPlayConfig[]) => {
     synthPlayConfigsRef.current = configs;
     setProductSynthSubLaneEnabled(subLaneEnabledFlags(synthSubLaneStatesRef.current, configs));
-  }, [setProductSynthSubLaneEnabled, synthPlayConfigsRef, synthSubLaneStatesRef]);
+    const authoredModes = synthPitchBindingModesRef.current ?? [];
+    setProductSynthPitchBindingModes(effectiveProductSynthPitchBindingModes(authoredModes, configs));
+  }, [setProductSynthPitchBindingModes, setProductSynthSubLaneEnabled, synthPitchBindingModesRef, synthPlayConfigsRef, synthSubLaneStatesRef]);
 
   const onPitchSettingsChange = useCallback((settings: PitchSettings[]) => {
     synthPitchSettingsRef.current = settings;
@@ -118,8 +131,12 @@ export function useSynthPageSequencerBridge({
 
   const onPitchBindingModesChange = useCallback((modes: PitchBindingMode[]) => {
     synthPitchBindingModesRef.current = modes;
-    setProductSynthPitchBindingModes(modes);
-  }, [setProductSynthPitchBindingModes, synthPitchBindingModesRef]);
+    // Product chord choices are indexed by audible trigger hits. Force only
+    // the runtime binding to the hit-count path; authored UI binding modes
+    // remain untouched for persistence and editing.
+    const effectiveModes = effectiveProductSynthPitchBindingModes(modes, synthPlayConfigsRef.current);
+    setProductSynthPitchBindingModes(effectiveModes);
+  }, [setProductSynthPitchBindingModes, synthPitchBindingModesRef, synthPlayConfigsRef]);
 
   const onRawStepOverridesChange = useCallback((raw: StepOverrides) => {
     synthStepOverridesRef.current = raw;

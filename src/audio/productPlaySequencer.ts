@@ -22,7 +22,6 @@ export type ProductChordStyle = 'straight' | 'strum';
 export type ProductChordFlow = 'forward' | 'reverse' | 'pingpong';
 
 export interface ProductChordStep {
-  active: boolean;
   slotId: number;
 }
 
@@ -35,7 +34,8 @@ export interface ProductChordStrumConfig {
 
 export interface ProductChordPlayConfig {
   style: ProductChordStyle;
-  length: number;
+  /** Number of saved-slot choices traversed by audible trigger hits. */
+  choiceLength: number;
   flow: ProductChordFlow;
   gate: number;
   voiceCount: number;
@@ -53,7 +53,8 @@ export interface ProductPlayConfig {
 export interface ProductChordResolvedStep {
   step: number;
   sourceStep: number;
-  active: boolean;
+  /** Choice index selected for this audible trigger ordinal. */
+  choiceIndex: number;
   slotId: number;
   label: string;
   locked: boolean;
@@ -115,9 +116,8 @@ function normalizeChordSlotId(value: unknown, fallback: number): number {
   return clamp(finiteInteger(value, fallback), 0, HARMONY_SLOT_COUNT - 1);
 }
 
-function defaultChordStep(index: number, active = false): ProductChordStep {
+function defaultChordStep(index: number): ProductChordStep {
   return {
-    active,
     slotId: index % HARMONY_SLOT_COUNT,
   };
 }
@@ -125,11 +125,11 @@ function defaultChordStep(index: number, active = false): ProductChordStep {
 export function defaultProductChordPlayConfig(): ProductChordPlayConfig {
   return {
     style: 'straight',
-    length: 8,
+    choiceLength: 8,
     flow: 'forward',
     gate: 0.86,
     voiceCount: HARMONY_POOL_MAX_NOTES,
-    steps: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, (_, index) => defaultChordStep(index, false)),
+    steps: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, (_, index) => defaultChordStep(index)),
     strum: {
       direction: 'up',
       spreadMs: 90,
@@ -149,32 +149,29 @@ export function defaultProductPlayConfig(): ProductPlayConfig {
   };
 }
 
-function normalizeChordStep(value: unknown, index: number, fallbackActive = false): ProductChordStep {
-  const fallback = defaultChordStep(index, fallbackActive);
+function normalizeChordStep(value: unknown, index: number): ProductChordStep {
+  const fallback = defaultChordStep(index);
   if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
   const record = value as Record<string, unknown>;
-  return {
-    active: boolValue(record.active, fallback.active),
-    slotId: normalizeChordSlotId(record.slotId, fallback.slotId),
-  };
+  return { slotId: normalizeChordSlotId(record.slotId, fallback.slotId) };
 }
 
 export function normalizeProductChordPlayConfig(value: unknown): ProductChordPlayConfig {
   const fallback = defaultProductChordPlayConfig();
   if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
   const record = value as Record<string, unknown>;
-  const length = normalizeStepLength(record.length, fallback.length);
+  const choiceLength = normalizeStepLength(record.choiceLength ?? record.length, fallback.choiceLength);
   const rawStrum = record.strum && typeof record.strum === 'object' && !Array.isArray(record.strum)
     ? record.strum as Record<string, unknown>
     : {};
   const rawSteps = Array.isArray(record.steps) ? record.steps : [];
   return {
     style: enumValue(record.style, PRODUCT_CHORD_STYLES, fallback.style),
-    length,
+    choiceLength,
     flow: enumValue(record.flow, PRODUCT_CHORD_FLOWS, fallback.flow),
     gate: clamp(finiteNumber(record.gate, fallback.gate), 0.05, 1),
     voiceCount: clamp(finiteInteger(record.voiceCount, fallback.voiceCount), 1, HARMONY_POOL_MAX_NOTES),
-    steps: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, (_, index) => normalizeChordStep(rawSteps[index], index, false)),
+    steps: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, (_, index) => normalizeChordStep(rawSteps[index], index)),
     strum: {
       direction: enumValue(rawStrum.direction, PRODUCT_STRUM_DIRECTIONS, fallback.strum.direction),
       spreadMs: clamp(finiteNumber(rawStrum.spreadMs, fallback.strum.spreadMs), 0, 400),
@@ -248,6 +245,15 @@ function directedStepIndex(flow: ProductChordFlow, length: number, ordinal: numb
   return safeOrdinal % steps;
 }
 
+/** Resolve a saved-slot choice from an audible trigger-hit ordinal. */
+export function resolveProductChordChoiceIndex(
+  flow: ProductChordFlow,
+  choiceLength: number,
+  audibleHitOrdinal: number,
+): number {
+  return directedStepIndex(flow, choiceLength, audibleHitOrdinal);
+}
+
 function orderChordNotes(notes: readonly number[], direction: SynthChordSequencerStrumDirection, step: number): number[] {
   const ascending = [...notes].sort((left, right) => left - right);
   if (direction === 'down') return ascending.reverse();
@@ -307,31 +313,23 @@ export function resolveProductChordPlayPatternDetails(options: {
   harmony: ProductArpHarmonyContext;
 }): ProductChordResolvedStep[] {
   const config = normalizeProductChordPlayConfig(options.config);
-  return Array.from({ length: config.length }, (_, step) => {
-    const sourceStep = directedStepIndex(config.flow, config.length, step);
+  const choiceLength = config.choiceLength;
+  return Array.from({ length: choiceLength }, (_, step) => {
+    const sourceStep = directedStepIndex(config.flow, choiceLength, step);
     const chordStep = config.steps[sourceStep] ?? defaultChordStep(sourceStep);
     const resolved = resolveChordStepNotes(chordStep, options.harmony, config.voiceCount);
     const ordered = orderChordNotes(resolved.notes, config.strum.direction, sourceStep);
     return {
       step,
       sourceStep,
-      active: chordStep.active,
+      choiceIndex: sourceStep,
       slotId: chordStep.slotId,
       label: resolved.label,
       locked: resolved.locked,
-      notes: chordStep.active ? resolved.notes : [],
+      notes: resolved.notes,
       strumOrder: ordered,
     };
   });
-}
-
-function resolveProductChordPlayActivePatternDetails(options: {
-  config: ProductChordPlayConfig;
-  harmony: ProductArpHarmonyContext;
-}): ProductChordResolvedStep[] {
-  return resolveProductChordPlayPatternDetails(options)
-    .filter((detail) => detail.active && detail.notes.length > 0)
-    .map((detail, step) => ({ ...detail, step }));
 }
 
 export function resolveProductChordPlayEvents(options: {
@@ -339,7 +337,8 @@ export function resolveProductChordPlayEvents(options: {
   harmony: ProductArpHarmonyContext;
 }): ProductPlayNoteEvent[] {
   const config = normalizeProductChordPlayConfig(options.config);
-  return resolveProductChordPlayActivePatternDetails({ config, harmony: options.harmony }).flatMap((detail) => {
+  return resolveProductChordPlayPatternDetails({ config, harmony: options.harmony }).flatMap((detail) => {
+    if (detail.notes.length === 0) return [];
     const ordered = config.style === 'strum' ? detail.strumOrder : detail.notes;
     return ordered.map((midi, index) => ({
       step: detail.step,
@@ -399,8 +398,8 @@ export function resolveProductPlayMidiPattern(options: {
   const config = normalizeProductPlayConfig(options.config);
   if (!config.enabled) return null;
   if (config.mode === 'chord') {
-    const activeSteps = resolveProductChordPlayActivePatternDetails({ config: config.chord, harmony: options.harmony });
-    return activeSteps.length > 0 ? activeSteps.map((step) => step.notes[0] ?? -1) : [-1];
+    const choices = resolveProductChordPlayPatternDetails({ config: config.chord, harmony: options.harmony });
+    return choices.length > 0 ? choices.map((step) => step.notes[0] ?? -1) : [-1];
   }
   return resolveProductArpMidiPattern({
     config: { ...config.arp, enabled: true },
@@ -423,12 +422,30 @@ export function resolveProductPlayEnginePattern(options: {
   const config = normalizeProductPlayConfig(options.config);
   if (!config.enabled) return null;
 
-  const midiPattern = resolveProductPlayMidiPattern({ ...options, config });
+  const chordChoices = config.mode === 'chord'
+    ? resolveProductChordPlayPatternDetails({ config: config.chord, harmony: options.harmony })
+    : null;
+  const midiPattern = chordChoices
+    ? chordChoices.map((choice) => choice.notes[0] ?? -1)
+    : resolveProductPlayMidiPattern({ ...options, config });
   if (!midiPattern || midiPattern.length === 0) return null;
-  const playNotes = resolveProductPlayNoteEvents({
-    config,
-    harmony: options.harmony,
-  });
+  const playNotes = chordChoices
+    ? chordChoices.flatMap((detail) => {
+      if (detail.notes.length === 0) return [];
+      const ordered = config.chord.style === 'strum' ? detail.strumOrder : detail.notes;
+      return ordered.map((midi, voiceIndex) => ({
+        step: detail.step,
+        sourceStep: detail.sourceStep,
+        slotId: detail.slotId,
+        midi,
+        offsetMs: config.chord.style === 'strum'
+          ? strumOffsetMs(voiceIndex, ordered.length, config.chord.strum.spreadMs, config.chord.strum.curve)
+          : 0,
+        velocity: clamp(1 - voiceIndex * config.chord.strum.velocityFalloff, 0.05, 1),
+        voiceIndex,
+      }));
+    })
+    : resolveProductPlayNoteEvents({ config, harmony: options.harmony });
   if (config.mode === 'arp') {
     return {
       midiPattern,
@@ -436,48 +453,10 @@ export function resolveProductPlayEnginePattern(options: {
       steps: midiPattern.length,
     };
   }
-  const shouldUseTriggerStepBinding =
-    options.pitchBindingMode === 'sequence' &&
-    Array.isArray(options.triggerPattern) &&
-    options.triggerPattern.length > 0;
-  if (!shouldUseTriggerStepBinding) {
-    return {
-      midiPattern,
-      playNotes,
-      steps: midiPattern.length,
-    };
-  }
-
-  const notesByStep = new Map<number, ProductPlayNoteEvent[]>();
-  for (const event of playNotes ?? []) {
-    const events = notesByStep.get(event.step) ?? [];
-    events.push(event);
-    notesByStep.set(event.step, events);
-  }
-
-  let hitOrdinal = 0;
-  const expandedMidiPattern = options.triggerPattern!.map((enabled) => {
-    if (!enabled) return -1;
-    const sourceStep = hitOrdinal % midiPattern.length;
-    hitOrdinal += 1;
-    return midiPattern[sourceStep] ?? -1;
-  });
-
-  hitOrdinal = 0;
-  const expandedPlayNotes: ProductPlayNoteEvent[] = [];
-  options.triggerPattern!.forEach((enabled, triggerStep) => {
-    if (!enabled) return;
-    const sourceStep = hitOrdinal % midiPattern.length;
-    hitOrdinal += 1;
-    for (const event of notesByStep.get(sourceStep) ?? []) {
-      expandedPlayNotes.push({ ...event, step: triggerStep });
-    }
-  });
-
   return {
-    midiPattern: expandedMidiPattern,
-    playNotes: expandedPlayNotes.length > 0 ? expandedPlayNotes : null,
-    steps: expandedMidiPattern.length,
+    midiPattern,
+    playNotes,
+    steps: midiPattern.length,
   };
 }
 
@@ -486,13 +465,12 @@ export function productPlayPulseValues(config: ProductPlayConfig): number[] {
   if (normalized.mode === 'arp') return productArpPulseValues(normalized.arp);
   const chord = normalized.chord;
   return Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, (_, step) => {
-    if (step >= chord.length) return 0;
     const chordStep = chord.steps[step] ?? defaultChordStep(step);
-    return chordStep.active ? (chordStep.slotId + 1) / HARMONY_SLOT_COUNT : 0;
+    return step < chord.choiceLength ? (chordStep.slotId + 1) / HARMONY_SLOT_COUNT : 0;
   });
 }
 
 export function productPlayLiveLength(config: ProductPlayConfig): number {
   const normalized = normalizeProductPlayConfig(config);
-  return normalized.mode === 'chord' ? normalized.chord.length : normalized.arp.length;
+  return normalized.mode === 'chord' ? normalized.chord.choiceLength : normalized.arp.length;
 }

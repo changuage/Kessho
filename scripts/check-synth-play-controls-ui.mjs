@@ -274,13 +274,15 @@ async function verifyViewport(chromium, baseUrl, viewport) {
     const mutedCount = await page.locator('.seq-play-chord-label.muted').count();
     const outCount = await page.locator('.seq-play-chord-label.out').count();
     const onDotCount = await page.locator('.seq-play-chord-dot.on').count();
+    const emptyWarningCount = await page.getByText('Empty slot — silent', { exact: true }).count();
     const labels = await page.locator('.seq-play-chord-label').evaluateAll((buttons) => buttons.map((button) => button.textContent?.trim()));
     const stepTexts = await page.locator('.seq-play-chord-step').evaluateAll((buttons) => buttons.map((button) => button.textContent?.trim()));
 
     assert(stepCount === 16 && labelCount === 16, 'Chord Play grid should always render 16 stored steps', { viewport, stepCount, labelCount, stepTexts });
-    assert(mutedCount === 16, 'Default Chord Play steps should all be off/muted', { viewport, mutedCount, labels });
+    assert(mutedCount === outCount, 'Only out-of-range stored rows may use the muted visual treatment; choices have no inactive state', { viewport, mutedCount, outCount, labels });
     assert(outCount === 8, 'Default Chord Play length 8 should mark steps 9-16 out of active range', { viewport, outCount });
-    assert(onDotCount === 0, 'Default inactive Chord Play should not show active chord pitch dots', { viewport, onDotCount });
+    assert(onDotCount === 0, 'Empty Chord Play slots should remain silent', { viewport, onDotCount });
+    assert(emptyWarningCount > 0, 'Empty Chord Play slots should show the silent warning', { viewport, emptyWarningCount });
     assert(!labels.some((label) => label === 'FREE'), 'Chord labels should not show FREE for captured/default Harmony slots', { viewport, labels });
     assert(stepTexts.includes('16'), 'Chord Play grid is missing stored step 16', { viewport, stepTexts });
 
@@ -426,6 +428,7 @@ async function verifyViewport(chromium, baseUrl, viewport) {
       stepCount,
       mutedCount,
       outCount,
+      emptyWarningCount,
       chordLabels: labels.slice(0, 8),
     };
   } finally {

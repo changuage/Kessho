@@ -204,6 +204,7 @@ import {
   productPlayLiveLength,
   productPlayPulseValues,
   resolveProductChordPlayPatternDetails,
+  resolveProductChordChoiceIndex,
   resolveProductPlayEnginePattern,
   type ProductChordFlow,
   type ProductChordPlayConfig,
@@ -1262,10 +1263,9 @@ function armNewChordLengthSteps(
   oldLength: number,
   nextLength: number,
 ): ProductChordPlayConfig['steps'] {
-  if (nextLength <= oldLength) return steps.map((step, index) => step ?? { active: false, slotId: index % 8 });
+  if (nextLength <= oldLength) return steps.map((step, index) => step ?? { slotId: index % 8 });
   return Array.from({ length: ARP_VISIBLE_STEPS }, (_, index) => {
-    const step = steps[index] ?? { active: false, slotId: index % 8 };
-    return index >= oldLength && index < nextLength ? { ...step, active: true } : step;
+    return steps[index] ?? { slotId: index % 8 };
   });
 }
 
@@ -1741,6 +1741,7 @@ interface ChordPlayEditorProps {
   harmony: ReturnType<typeof createProductArpHarmonyContext>;
   resolvedSteps: ProductChordResolvedStep[];
   selectedStep: number;
+  activeChoiceIndex?: number | null;
   onSelectStep: (step: number) => void;
   onUpdateConfig: (patch: Partial<ProductChordPlayConfig>) => void;
   onCommitSlotMidiPool?: (slotId: number, midiNotes: readonly number[]) => void;
@@ -1752,13 +1753,17 @@ const ChordPlayEditor: React.FC<ChordPlayEditorProps> = ({
   harmony,
   resolvedSteps,
   selectedStep,
+  activeChoiceIndex = null,
   onSelectStep,
   onUpdateConfig,
   onCommitSlotMidiPool,
 }) => {
-  const length = clampArpLengthValue(config.length);
+  const length = clampArpLengthValue(config.choiceLength);
   const selected = Math.max(0, Math.min(ARP_VISIBLE_STEPS - 1, Math.round(selectedStep)));
   const selectedDetail = resolvedSteps.find((step) => step.sourceStep === selected) ?? resolvedSteps[selected];
+  const activeDetail = activeChoiceIndex == null
+    ? undefined
+    : resolvedSteps.find((step) => step.choiceIndex === activeChoiceIndex);
   const pitches = chordPitchViewport(resolvedSteps);
   const [selectedNote, setSelectedNote] = useState<{ slotId: number; midi: number } | null>(null);
   const slotNotePools = useMemo(() => harmony.chordSlots.map((slot) => slot.chord ? sharedChordResolvedMidiPool(slot.chord, {
@@ -1771,12 +1776,12 @@ const ChordPlayEditor: React.FC<ChordPlayEditorProps> = ({
   const selectedSlot = harmony.chordSlots[selectedSlotId];
   const selectedSlotLocked = selectedSlot?.locked === true;
   const selectedSlotUses = config.steps.reduce((count, step, index) => (
-    index < length && step.active && step.slotId === selectedSlotId ? count + 1 : count
+    index < length && step.slotId === selectedSlotId ? count + 1 : count
   ), 0);
   const canEditChordNotes = Boolean(onCommitSlotMidiPool);
   const updateStep = useCallback((step: number, patch: Partial<ProductChordPlayConfig['steps'][number]>) => {
     const steps = [...config.steps];
-    steps[step] = { active: true, slotId: step % 8, ...(steps[step] ?? {}), ...patch };
+    steps[step] = { slotId: step % 8, ...(steps[step] ?? {}), ...patch };
     onUpdateConfig({ steps });
   }, [config.steps, onUpdateConfig]);
   const commitSlotNotes = useCallback((slotId: number, nextNotes: readonly number[]) => {
@@ -1787,7 +1792,7 @@ const ChordPlayEditor: React.FC<ChordPlayEditorProps> = ({
     onCommitSlotMidiPool(slotId, normalized);
   }, [harmony.chordSlots, onCommitSlotMidiPool]);
   const togglePitchForStep = useCallback((step: number, midi: number, hasNote: boolean) => {
-    const chordStep = config.steps[step] ?? { active: true, slotId: step % 8 };
+    const chordStep = config.steps[step] ?? { slotId: step % 8 };
     const slot = harmony.chordSlots[chordStep.slotId];
     if (!slot || slot.locked || !onCommitSlotMidiPool) {
       onSelectStep(step);
@@ -1860,7 +1865,7 @@ const ChordPlayEditor: React.FC<ChordPlayEditorProps> = ({
             value={length}
             onChange={(event) => {
               const nextLength = Number.parseInt(event.target.value, 10);
-              if (Number.isFinite(nextLength)) onUpdateConfig({ length: nextLength });
+              if (Number.isFinite(nextLength)) onUpdateConfig({ choiceLength: nextLength });
             }}
           />
         </label>
@@ -1979,22 +1984,23 @@ const ChordPlayEditor: React.FC<ChordPlayEditorProps> = ({
         ))}
         {Array.from({ length: ARP_VISIBLE_STEPS }, (_, step) => {
           const inRange = step < length;
-          const chordStep = config.steps[step] ?? { active: false, slotId: step % 8 };
+          const chordStep = config.steps[step] ?? { slotId: step % 8 };
           const detail = resolvedSteps.find((entry) => entry.sourceStep === step);
           const slot = harmony.chordSlots[chordStep.slotId];
           const fallbackNotes = (slotNotePools[chordStep.slotId] ?? []).slice(0, config.voiceCount);
-          const displayNotes = detail?.notes.length ? detail.notes : (chordStep.active ? fallbackNotes : []);
+          const displayNotes = detail?.notes.length ? detail.notes : fallbackNotes;
           const displayLabel = detail?.label ?? (slot
             ? (slot.chord?.recognizedLabel ?? 'Empty')
             : `S${chordStep.slotId + 1}`);
           const locked = detail?.locked ?? slot?.locked === true;
-          const active = inRange && chordStep.active;
+          const active = inRange;
           const sameSlot = chordStep.slotId === selectedSlotId;
+          const playing = activeChoiceIndex === detail?.choiceIndex;
           return (
             <React.Fragment key={step}>
               <button
                 type="button"
-                className={`seq-play-chord-step${selected === step ? ' selected' : ''}${sameSlot ? ' same-slot' : ''}${inRange ? '' : ' out'}`}
+                className={`seq-play-chord-step${selected === step ? ' selected' : ''}${playing ? ' playing' : ''}${sameSlot ? ' same-slot' : ''}${inRange ? '' : ' out'}`}
                 onClick={() => onSelectStep(step)}
               >
                 {String(step + 1).padStart(2, '0')}
@@ -2012,17 +2018,16 @@ const ChordPlayEditor: React.FC<ChordPlayEditorProps> = ({
               </select>
               <button
                 type="button"
-                className={`seq-play-chord-label${active ? '' : ' muted'}${locked ? ' locked' : ''}${sameSlot ? ' same-slot' : ''}${inRange ? '' : ' out'}`}
+                className={`seq-play-chord-label${active ? '' : ' muted'}${playing ? ' playing' : ''}${locked ? ' locked' : ''}${sameSlot ? ' same-slot' : ''}${inRange ? '' : ' out'}`}
                 onClick={() => {
-                  updateStep(step, { active: !chordStep.active });
                   onSelectStep(step);
                 }}
-                title={locked ? 'Locked global harmony slot' : 'Toggle chord step'}
+                title={locked ? 'Locked global harmony slot' : slot?.chord ? 'Chord choice' : 'Empty slot — silent'}
               >
                 {displayLabel}
               </button>
               {pitches.map((midi) => {
-                const hasNote = chordStep.active && displayNotes.includes(midi);
+                const hasNote = inRange && displayNotes.includes(midi);
                 const order = hasNote && config.style === 'strum' && detail ? strumOrderIndex(detail, midi) : 0;
                 const selectedDot = selectedNote?.slotId === chordStep.slotId && selectedNote.midi === midi;
                 return (
@@ -2060,12 +2065,20 @@ const ChordPlayEditor: React.FC<ChordPlayEditorProps> = ({
           {String(selected + 1).padStart(2, '0')}
         </span>
         <span className="seq-arp-inspector-item">
+          <strong>Choice</strong>
+          {selectedDetail ? String(selectedDetail.choiceIndex + 1).padStart(2, '0') : '--'}
+        </span>
+        <span className="seq-arp-inspector-item">
+          <strong>Active</strong>
+          {activeChoiceIndex == null || !activeDetail ? '--' : `S${activeDetail.slotId + 1} / Choice ${activeChoiceIndex + 1}`}
+        </span>
+        <span className="seq-arp-inspector-item">
           <strong>Slot</strong>
           S{selectedSlotId + 1}{selectedSlotLocked ? ' Locked' : ''}
         </span>
         <span className="seq-arp-inspector-item">
           <strong>Chord</strong>
-          {selectedDetail?.label ?? (selectedSlot ? formatHarmonyIntentChordLabel(selectedSlot.intent, { rootMidi: harmony.rootMidi, scaleId: harmony.scaleId }) : '--')}
+          {selectedDetail?.label ?? (selectedSlot ? formatHarmonyIntentChordLabel(selectedSlot.intent, { rootMidi: harmony.rootMidi, scaleId: harmony.scaleId }) : `S${selectedSlotId + 1} Empty`)}
         </span>
         <span className="seq-arp-inspector-item">
           <strong>Notes</strong>
@@ -2079,6 +2092,11 @@ const ChordPlayEditor: React.FC<ChordPlayEditorProps> = ({
           <strong>Range</strong>
           {selected < length ? 'Live' : 'Stored'}
         </span>
+        {!selectedSlot?.chord && (
+          <span className="seq-arp-inspector-item" role="status">
+            Empty slot — silent
+          </span>
+        )}
         <span className="seq-arp-inspector-item">
           <strong>Edit</strong>
           {selectedNote ? formatMidiNoteName(selectedNote.midi) : selectedSlotLocked ? 'Locked' : canEditChordNotes ? 'Ready' : 'Preview'}
@@ -5126,6 +5144,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     config: activePlayConfig.chord,
     harmony: arpHarmonyContext,
   }), [activePlayConfig.chord, arpHarmonyContext]);
+  const activeChordChoiceIndex = isRunning && activePlayConfig.enabled && activePlayConfig.mode === 'chord' && (seq.hitCounts[seq.activeTab] ?? 0) > 0
+    ? resolveProductChordChoiceIndex(
+      activePlayConfig.chord.flow,
+      activePlayConfig.chord.choiceLength,
+      Math.max(0, (seq.hitCounts[seq.activeTab] ?? 0) - 1),
+    )
+    : null;
   const updateArpConfig = useCallback((laneIdx: number, patch: Partial<ProductArpConfig>) => {
     setPlayConfigs((current) => current.map((config, index) => {
       if (index !== laneIdx) return config;
@@ -5194,10 +5219,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     setPlayConfigs((current) => current.map((config, index) => {
       if (index !== laneIdx) return config;
       const nextPatch: Partial<ProductChordPlayConfig> = { ...patch };
-      if (typeof patch.length === 'number' && Number.isFinite(patch.length)) {
-        const oldLength = clampArpLengthValue(config.chord.length);
-        const nextLength = clampArpLengthValue(patch.length);
-        nextPatch.length = nextLength;
+      if (typeof patch.choiceLength === 'number' && Number.isFinite(patch.choiceLength)) {
+        const oldLength = clampArpLengthValue(config.chord.choiceLength);
+        const nextLength = clampArpLengthValue(patch.choiceLength);
+        nextPatch.choiceLength = nextLength;
         nextPatch.steps = armNewChordLengthSteps(patch.steps ?? config.chord.steps, oldLength, nextLength);
       }
       return normalizeProductPlayConfig({ ...config, chord: { ...config.chord, ...nextPatch } });
@@ -5757,11 +5782,22 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       ));
       const engineSubLaneStates = seq.subLaneStates.map((laneState, laneIdx) => (
         playEnginePatterns[laneIdx]
-          ? { ...laneState, pitch: { ...laneState.pitch, enabled: true, steps: playEnginePatterns[laneIdx]!.steps, direction: 'forward' as const } }
+          ? { ...laneState, pitch: {
+            ...laneState.pitch,
+            enabled: true,
+            steps: playEnginePatterns[laneIdx]!.steps,
+            direction: playConfigs[laneIdx]?.mode === 'chord'
+              ? playConfigs[laneIdx]!.chord.flow
+              : 'forward' as const,
+          } }
           : laneState
       ));
       const pitchDirection = seq.stepOverrides.pitchDirection.map((direction, laneIdx) => (
-        playConfigs[laneIdx]?.enabled ? 'forward' as const : direction
+        playConfigs[laneIdx]?.enabled
+          ? playConfigs[laneIdx]?.mode === 'chord'
+            ? playConfigs[laneIdx]!.chord.flow
+            : 'forward' as const
+          : direction
       ));
       // Persist raw (unconverted) overrides for round-trip safety
       if (overridesChanged) {
@@ -10536,6 +10572,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                 harmony={arpHarmonyContext}
                                 resolvedSteps={activeChordResolvedSteps}
                                 selectedStep={selectedArpStep}
+                                activeChoiceIndex={activeChordChoiceIndex}
                                 onSelectStep={(step) => selectArpStep(seq.activeTab, step)}
                                 onUpdateConfig={(patch) => updateChordPlayConfig(seq.activeTab, patch)}
                                 onCommitSlotMidiPool={commitChordPlaySlotMidiPool}

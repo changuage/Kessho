@@ -376,8 +376,8 @@ const disabledDesignedPlay = normalizeProductPlayConfig({
 });
 assert.equal(disabledDesignedPlay.enabled, false, 'Product Play should keep disabled state without dropping design');
 assert.equal(disabledDesignedPlay.mode, 'chord', 'Product Play should preserve disabled chord mode');
-assert.equal(disabledDesignedPlay.chord.length, 12, 'Product Play should preserve disabled chord length');
-assert.equal(disabledDesignedPlay.chord.steps[2]?.active, false, 'Product Play should preserve disabled chord step edits');
+assert.equal(disabledDesignedPlay.chord.choiceLength, 12, 'Product Play should preserve disabled chord-choice length');
+assert.equal('active' in (disabledDesignedPlay.chord.steps[2] ?? {}), false, 'Product Play chord choices should not carry active state');
 
 const defaultChordLength8 = normalizeProductPlayConfig({
   enabled: false,
@@ -385,16 +385,16 @@ const defaultChordLength8 = normalizeProductPlayConfig({
   chord: { length: 8 },
 });
 assert.equal(defaultChordLength8.chord.steps.length, 16, 'Product Play chord mode should always preserve 16 stored steps');
-assert.equal(defaultChordLength8.chord.steps[0]?.active, false, 'Product Play chord mode should default step 1 off');
-assert.equal(defaultChordLength8.chord.steps[7]?.active, false, 'Product Play chord mode should default the final live step off');
-assert.equal(defaultChordLength8.chord.steps[8]?.active, false, 'Product Play chord mode should keep default out-of-range steps stored off');
+assert.equal(defaultChordLength8.chord.steps[0]?.slotId, 0, 'Product Play chord mode should default step 1 to S1');
+assert.equal(defaultChordLength8.chord.steps[7]?.slotId, 7, 'Product Play chord mode should default the final live step to S8');
+assert.equal('active' in (defaultChordLength8.chord.steps[8] ?? {}), false, 'Product Play chord mode should keep stored choices slot-only');
 const defaultChordLength12 = normalizeProductPlayConfig({
   enabled: false,
   mode: 'chord',
   chord: { length: 12 },
 });
-assert.equal(defaultChordLength12.chord.steps[10]?.active, false, 'Product Play chord mode should keep newly included default steps off');
-assert.equal(defaultChordLength12.chord.steps[11]?.active, false, 'Product Play chord mode should keep step 12 off by default');
+assert.equal(defaultChordLength12.chord.steps[10]?.slotId, 2, 'Product Play chord mode should default newly included choices by slot');
+assert.equal(defaultChordLength12.chord.steps[11]?.slotId, 3, 'Product Play chord mode should default choice 12 by slot');
 const rememberedChordLength10 = normalizeProductPlayConfig({
   enabled: false,
   mode: 'chord',
@@ -407,9 +407,9 @@ const rememberedChordLength12 = normalizeProductPlayConfig({
   ...rememberedChordLength10,
   chord: { ...rememberedChordLength10.chord, length: 12 },
 });
-assert.equal(rememberedChordLength10.chord.steps[10]?.active, true, 'Product Play chord mode should store step 11 above a shorter active length');
-assert.equal(rememberedChordLength12.chord.steps[10]?.active, true, 'Product Play chord mode should restore stored step 11 when length expands');
-assert.equal(rememberedChordLength12.chord.steps[11]?.active, true, 'Product Play chord mode should restore stored step 12 when length expands');
+assert.equal(rememberedChordLength10.chord.steps[10]?.slotId, 2, 'Product Play chord mode should preserve choice 11 above a shorter length');
+assert.equal(rememberedChordLength12.chord.steps[10]?.slotId, 2, 'Product Play chord mode should restore stored choice 11 when length expands');
+assert.equal(rememberedChordLength12.chord.steps[11]?.slotId, 3, 'Product Play chord mode should restore stored choice 12 when length expands');
 
 const legacyArp = normalizeProductArpConfig({
   enabled: true,
@@ -455,8 +455,8 @@ const emptyChordPlayConfig = normalizeProductPlayConfig({
 });
 assert.deepEqual(
   resolveProductPlayMidiPattern({ config: emptyChordPlayConfig, harmony: chordPlayHarmony, laneIndex: 0 }),
-  [-1],
-  'Product Play chord mode should resolve default empty chord steps as a silent engine step',
+  [60, -1, -1, -1],
+  'Product Play chord mode should preserve empty slot choices as silent positions',
 );
 const chordPlayConfig = normalizeProductPlayConfig({
   enabled: true,
@@ -465,8 +465,8 @@ const chordPlayConfig = normalizeProductPlayConfig({
     style: 'straight',
     length: 2,
     steps: [
-      { active: true, slotId: 0 },
-      { active: false, slotId: 0 },
+      { slotId: 0 },
+      { slotId: 0 },
     ],
   },
 });
@@ -475,7 +475,7 @@ const chordPlayDetails = resolveProductChordPlayPatternDetails({
   harmony: chordPlayHarmony,
 });
 assert.deepEqual(chordPlayDetails[0]?.notes, [60, 64, 67, 71, 74], 'Product Play chord mode should resolve S1 through global Harmony slot');
-assert.deepEqual(chordPlayDetails[1]?.notes, [], 'Product Play chord mode should suppress inactive chord steps');
+assert.deepEqual(chordPlayDetails[1]?.notes, [60, 64, 67, 71, 74], 'Product Play chord mode should treat every choice as a trigger event');
 chordPlaySlot.intent = absoluteHarmonyIntent({ quality: 'nine' });
 assert.deepEqual(
   resolveProductChordPlayPatternDetails({ config: chordPlayConfig.chord, harmony: chordPlayHarmony })[0]?.notes,
@@ -484,13 +484,13 @@ assert.deepEqual(
 );
 assert.deepEqual(
   resolveProductPlayMidiPattern({ config: chordPlayConfig, harmony: chordPlayHarmony, laneIndex: 0 }),
-  [60],
-  'Product Play short-term MIDI bridge should skip inactive chord rows in the engine sequence',
+  [60, 60],
+  'Product Play chord choices should retain one engine position per choice',
 );
 assert.deepEqual(
   resolveProductChordPlayEvents({ config: chordPlayConfig.chord, harmony: chordPlayHarmony }).map((event) => event.step),
-  [0, 0, 0, 0, 0],
-  'Product Play chord note fan-out should attach to compact active engine steps',
+  [0, 0, 0, 0, 0, 1, 1, 1, 1, 1],
+  'Product Play chord note fan-out should attach voices to each trigger choice',
 );
 const sparseChordPlayConfig = normalizeProductPlayConfig({
   enabled: true,
@@ -499,10 +499,10 @@ const sparseChordPlayConfig = normalizeProductPlayConfig({
     style: 'straight',
     length: 8,
     steps: [
-      { active: false, slotId: 0 },
-      { active: false, slotId: 0 },
-      { active: false, slotId: 0 },
-      { active: true, slotId: 0 },
+      { slotId: 0 },
+      { slotId: 0 },
+      { slotId: 0 },
+      { slotId: 0 },
     ],
   },
 });
@@ -513,10 +513,10 @@ const sparseChordEnginePattern = resolveProductPlayEnginePattern({
 });
 assert.deepEqual(
   sparseChordEnginePattern?.midiPattern,
-  [60],
-  'Product Play chord engine pattern should skip off rows before the first active chord row',
+  [60, 60, 60, 60, -1, -1, -1, -1],
+  'Product Play chord engine pattern should preserve every slot choice',
 );
-assert.equal(sparseChordEnginePattern?.steps, 1, 'single active Product Play chord row should clock as a one-step engine pattern');
+assert.equal(sparseChordEnginePattern?.steps, 8, 'Product Play chord choices should clock at their authored choice length');
 const sequenceBoundChordEnginePattern = resolveProductPlayEnginePattern({
   config: chordPlayConfig,
   harmony: chordPlayHarmony,
@@ -526,13 +526,13 @@ const sequenceBoundChordEnginePattern = resolveProductPlayEnginePattern({
 });
 assert.deepEqual(
   sequenceBoundChordEnginePattern?.midiPattern,
-  [60, -1, -1, 60, -1, -1, -1, 60],
-  'sequence-bound Product Play should expand compact chord steps onto ON trigger positions',
+  [60, 60],
+  'chord Product Play should keep choice-length pitch pattern for hit-count binding',
 );
 assert.deepEqual(
   sequenceBoundChordEnginePattern?.playNotes?.map((event) => event.step),
-  [0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 7, 7, 7, 7, 7],
-  'sequence-bound Product Play chord fan-out should post voices at ON trigger positions',
+  [0, 0, 0, 0, 0, 1, 1, 1, 1, 1],
+  'chord Product Play should fan out voices by choice index for hit-count binding',
 );
 const continuousArpPlayConfig = normalizeProductPlayConfig({
   enabled: true,

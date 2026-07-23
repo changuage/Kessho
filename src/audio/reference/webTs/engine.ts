@@ -12224,6 +12224,9 @@ export class AudioEngine {
               // Per-step probability (from sub-lane, multiplied with lane probability)
               const stepProb = Math.max(0, Math.min(1, probArr ? (probArr[stepInPattern] ?? 1) : 1));
 
+              // Probability gates the complete trigger event. For Product chord
+              // playback this means all voices are suppressed together rather
+              // than drawing once per chord note.
               if (trigCondPassed && rng() <= lane.probability * stepProb) {
                 // Note selection via pitch sub-lane
                 let midiNote: number | undefined;
@@ -12358,6 +12361,8 @@ export class AudioEngine {
                   const ratchetStepDuration = clockDivToSec(ratchetClockDiv);
                   const ratchetWindow = ratchetStepDuration / ratchet;
 
+                  // Ratchet repeats the complete trigger event; note offsets are
+                  // recomputed from zero on each repeat so strum restarts too.
                   for (let r = 0; r < ratchet; r++) {
                     const ratchetDelayMs = delayMs + r * ratchetWindow * 1000;
                     if (isMutedAt(now + ratchetDelayMs / 1000)) continue;
