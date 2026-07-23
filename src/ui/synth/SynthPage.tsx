@@ -78,11 +78,15 @@ import {
   formatHarmonyIntentChordLabel,
   recognizeHarmonyIntentFromMidiPool,
   resolvePresetMorphContext,
-  resolveHarmonyIntentToNotePool,
   sanitizeHarmonyChordSlots,
   type HarmonyChordSlot,
   type HarmonyIntent,
 } from '../../audio/CoreProductHarmonyControl';
+import {
+  editSharedChordExactNotes,
+  legacyHarmonySlotToSharedSlot,
+  sharedChordResolvedMidiPool,
+} from '../../audio/harmony/harmonyChordAdapters';
 import {
   normalizeSequencerPitchBindingMode,
   normalizeSequencerPitchBindingModes,
@@ -1202,7 +1206,7 @@ function formatArpIntentTitle(intent: HarmonyIntent | null | undefined): string 
 function formatArpSlotChoiceLabel(slots: readonly HarmonyChordSlot[], choice: ProductArpSlotChoice): string {
   if (choice < 0) return 'F';
   const slot = slots[choice];
-  return slot ? `S${choice + 1} ${formatArpIntentTitle(slot.intent)}` : `S${choice + 1}`;
+  return slot ? `S${choice + 1} ${slot.chord?.intent ? formatArpIntentTitle(slot.chord.intent) : 'Empty'}` : `S${choice + 1}`;
 }
 
 function formatArpSlotChoiceCompactLabel(choice: ProductArpSlotChoice): string {
@@ -1217,13 +1221,14 @@ function formatArpSlotChoiceTitle(
   if (choice < 0) return 'Follow current harmony';
   const slot = slots[choice];
   if (!slot) return `Slot ${choice + 1}`;
-  const notes = resolveHarmonyIntentToNotePool({
-    intent: { ...slot.intent, source: 'slot' },
+  if (!slot.chord) return `S${choice + 1} Empty`;
+  const notes = sharedChordResolvedMidiPool(slot.chord, {
     rootMidi: harmony.rootMidi,
+    effectiveRootMidi: harmony.rootMidi,
     scaleId: harmony.scaleId,
     tension: harmony.tension,
   }).map(formatMidiNoteName);
-  return `S${choice + 1} ${formatArpIntentTitle(slot.intent)}${notes.length ? ` · ${notes.join(' ')}` : ''}`;
+  return `S${choice + 1} ${slot.chord.intent ? formatArpIntentTitle(slot.chord.intent) : 'Custom'}${notes.length ? ` · ${notes.join(' ')}` : ''}`;
 }
 
 function clampArpContourValue(value: number): number {
@@ -1754,12 +1759,12 @@ const ChordPlayEditor: React.FC<ChordPlayEditorProps> = ({
   const selectedDetail = resolvedSteps.find((step) => step.sourceStep === selected) ?? resolvedSteps[selected];
   const pitches = chordPitchViewport(resolvedSteps);
   const [selectedNote, setSelectedNote] = useState<{ slotId: number; midi: number } | null>(null);
-  const slotNotePools = useMemo(() => harmony.chordSlots.map((slot) => resolveHarmonyIntentToNotePool({
-    intent: slot.intent,
+  const slotNotePools = useMemo(() => harmony.chordSlots.map((slot) => slot.chord ? sharedChordResolvedMidiPool(slot.chord, {
     rootMidi: harmony.rootMidi,
+    effectiveRootMidi: harmony.rootMidi,
     scaleId: harmony.scaleId,
     tension: harmony.tension,
-  })), [harmony.chordSlots, harmony.rootMidi, harmony.scaleId, harmony.tension]);
+  }) : []), [harmony.chordSlots, harmony.rootMidi, harmony.scaleId, harmony.tension]);
   const selectedSlotId = config.steps[selected]?.slotId ?? 0;
   const selectedSlot = harmony.chordSlots[selectedSlotId];
   const selectedSlotLocked = selectedSlot?.locked === true;
@@ -1978,7 +1983,7 @@ const ChordPlayEditor: React.FC<ChordPlayEditorProps> = ({
           const fallbackNotes = (slotNotePools[chordStep.slotId] ?? []).slice(0, config.voiceCount);
           const displayNotes = detail?.notes.length ? detail.notes : (chordStep.active ? fallbackNotes : []);
           const displayLabel = detail?.label ?? (slot
-            ? formatHarmonyIntentChordLabel(slot.intent, { rootMidi: harmony.rootMidi, scaleId: harmony.scaleId })
+            ? (slot.chord?.recognizedLabel ?? 'Empty')
             : `S${chordStep.slotId + 1}`);
           const locked = detail?.locked ?? slot?.locked === true;
           const active = inRange && chordStep.active;
@@ -5221,13 +5226,28 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       if (!slot || slot.locked) return previous;
       const recognizedIntent = recognizeHarmonyIntentFromMidiPool({
         midiNotes: nextMidiPool,
-        previousIntent: { ...slot.intent, source: 'slot' },
+        previousIntent: slot.chord?.intent ? { ...slot.chord.intent, source: 'slot' } : null,
         rootMidi: arpHarmonyContext.rootMidi,
         scaleId: arpHarmonyContext.scaleId,
         tension: arpHarmonyContext.tension,
       });
       const nextSlots = slots.map((entry) => entry.id === slotId
-        ? { ...entry, intent: { ...recognizedIntent, source: 'slot' }, name: entry.name || `Slot ${slotId + 1}` }
+        ? (() => {
+          const exactIntent = { ...recognizedIntent, source: 'slot' as const };
+          const baseChord = entry.chord ?? legacyHarmonySlotToSharedSlot({ id: slotId, exactMidiNotes: nextMidiPool }, {
+            rootMidi: arpHarmonyContext.rootMidi,
+            scaleId: arpHarmonyContext.scaleId,
+            tension: arpHarmonyContext.tension,
+          }).chord;
+          const chord = baseChord
+            ? editSharedChordExactNotes(baseChord, nextMidiPool, {
+              rootMidi: arpHarmonyContext.rootMidi,
+              scaleId: arpHarmonyContext.scaleId,
+              tension: arpHarmonyContext.tension,
+            })
+            : null;
+          return { ...entry, intent: chord?.intent ?? exactIntent, chord, name: entry.name || `Slot ${slotId + 1}` };
+        })()
         : entry);
       const keys = harmonyBankKeys(bank);
       const patch: Record<string, unknown> = {

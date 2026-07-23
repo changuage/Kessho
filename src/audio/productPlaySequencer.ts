@@ -1,9 +1,8 @@
 import {
   HARMONY_POOL_MAX_NOTES,
   HARMONY_SLOT_COUNT,
-  formatHarmonyIntentChordLabel,
-  resolveHarmonyIntentToNotePool,
 } from './CoreProductHarmonyControl';
+import { sharedSlotResolvedMidiPool } from './harmony/harmonyChordAdapters';
 import type { PitchBindingMode } from './drumSeqTypes';
 import {
   defaultProductArpConfig,
@@ -289,15 +288,16 @@ function resolveChordStepNotes(step: ProductChordStep, harmony: ProductArpHarmon
 } {
   const slot = harmony.chordSlots[step.slotId];
   if (!slot) return { notes: [], label: `S${step.slotId + 1}`, locked: false };
-  const notes = resolveHarmonyIntentToNotePool({
-    intent: { ...slot.intent, source: 'slot' },
+  if (!slot.chord) return { notes: [], label: `S${step.slotId + 1} Empty`, locked: slot.locked };
+  const notes = sharedSlotResolvedMidiPool(slot, {
     rootMidi: harmony.rootMidi,
+    effectiveRootMidi: harmony.rootMidi,
     scaleId: harmony.scaleId,
     tension: harmony.tension,
   }).slice(0, voiceCount);
   return {
     notes,
-    label: formatHarmonyIntentChordLabel(slot.intent, { rootMidi: harmony.rootMidi, scaleId: harmony.scaleId }),
+    label: slot.chord.recognizedLabel || 'custom',
     locked: slot.locked,
   };
 }

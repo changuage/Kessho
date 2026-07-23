@@ -1,144 +1,55 @@
+import type {
+  HarmonyBassMode,
+  HarmonyChordAlteration,
+  HarmonyChordQuality,
+  HarmonyControlSource,
+  HarmonyControlStrength,
+  HarmonyIntent,
+  HarmonyRootMode,
+  HarmonySequenceStep,
+  HarmonySequenceStepMode,
+  ManualHarmonyControlMode,
+  ManualHarmonyControlState,
+  ResolvedHarmonyFrame,
+  L4HarmonyStateExtension,
+  HarmonyChordSlot,
+  SharedHarmonyChord,
+} from './harmony/harmonyTypes';
+export type {
+  HarmonyBassMode,
+  HarmonyChordAlteration,
+  HarmonyChordQuality,
+  HarmonyChordExtension,
+  HarmonyControlSource,
+  HarmonyControlStrength,
+  HarmonyIntent,
+  HarmonyRootMode,
+  HarmonySequenceStep,
+  HarmonySequenceStepMode,
+  ManualHarmonyControlMode,
+  ManualHarmonyControlState,
+  ResolvedHarmonyFrame,
+  L4HarmonyStateExtension,
+  HarmonyChordSlot,
+  HarmonyCapturedContext,
+  HarmonyDraftChord,
+  HarmonyPlaybackBehavior,
+  SharedHarmonyChord,
+  SharedHarmonyChordSlot,
+} from './harmony/harmonyTypes';
+
 export const HARMONY_SLOT_COUNT = 8 as const;
 export const HARMONY_SEQUENCE_STEP_COUNT = 8 as const;
 export const HARMONY_SEQUENCE_STEP_MIN = 3 as const;
 export const HARMONY_POOL_MAX_NOTES = 8 as const;
+/** Auto retains the authored exact voicing through this many semitones of root movement. */
+export const HARMONY_AUTO_EXACT_THRESHOLD_SEMITONES = 6 as const;
 
 export const HARMONY_SLOT_TRIGGER_KEYS = ['z', 'x', 'c', 'v', 'b', 'n', 'm', ','] as const;
 export const HARMONY_NOTE_KEYS = ['a', 'w', 's', 'e', 'd', 'f', 't', 'g', 'y', 'h', 'u', 'j'] as const;
 
-export type HarmonyIntentSource =
-  | 'baseline'
-  | 'sequence'
-  | 'slot'
-  | 'manualControl'
-  | 'audition'
-  | 'presetMorph';
-
-export type HarmonyControlStrength = 'bias' | 'force';
-export type HarmonyRootMode = 'degree' | 'absolute' | 'captured';
-export type HarmonyChordQuality =
-  | 'auto'
-  | 'dim'
-  | 'min'
-  | 'maj'
-  | 'sus'
-  | 'maj7'
-  | 'min7'
-  | 'dom7'
-  | 'add9'
-  | 'six'
-  | 'sixNine'
-  | 'nine'
-  | 'quartal'
-  | 'cluster'
-  | 'custom';
-export type HarmonyChordExtension =
-  | '6'
-  | '7'
-  | 'maj7'
-  | '9'
-  | '11'
-  | '13'
-  | 'six'
-  | 'min7'
-  | 'dom7'
-  | 'add9'
-  | 'nine'
-  | 'sixNine';
-export type HarmonyChordAlteration =
-  | 'b5'
-  | '#5'
-  | 'b9'
-  | '#9'
-  | '#11'
-  | 'b13'
-  | 'omit3'
-  | 'omit5';
-export type HarmonyBassMode = 'off' | 'root' | 'fifth' | 'captured';
-export type HarmonySequenceStepMode = 'auto' | 'intent' | 'slotCopy' | 'slotFollow';
-export type ManualHarmonyControlMode = 'audition' | 'control' | 'capture';
-
-export interface HarmonyIntent {
-  source: HarmonyIntentSource;
-  strength: HarmonyControlStrength;
-  rootMode: HarmonyRootMode;
-  degree: number;
-  rootNote: number;
-  quality: HarmonyChordQuality;
-  extensions: string[];
-  alterations?: HarmonyChordAlteration[];
-  inversion: number;
-  spread: number;
-  octave: number;
-  bassMode: HarmonyBassMode;
-  bassNote: number | null;
-  capturedMidiNotes: number[];
-  preserveCapturedVoicing: boolean;
-}
-
-export interface HarmonyChordSlot {
-  id: number;
-  name: string;
-  intent: HarmonyIntent;
-  locked: boolean;
-}
-
-export interface HarmonySequenceStep {
-  id: number;
-  enabled: boolean;
-  locked: boolean;
-  mode: HarmonySequenceStepMode;
-  degree: number;
-  quality: HarmonyChordQuality;
-  intent: HarmonyIntent | null;
-  slotId: number | null;
-  probability: number;
-}
-
-export interface ManualHarmonyControlState {
-  enabled: boolean;
-  mode: ManualHarmonyControlMode;
-  strength: HarmonyControlStrength;
-  selectedRootNote: number;
-  selectedDegree: number;
-  selectedQuality: HarmonyChordQuality;
-  selectedExtensions: string[];
-  selectedOctave: number;
-  selectedInversion: number;
-  selectedSpread: number;
-  selectedBassMode: HarmonyBassMode;
-  activeIntent: HarmonyIntent | null;
-  auditionIntent: HarmonyIntent | null;
-  slotTriggerMode: boolean;
-  activeSlotId: number | null;
-}
-
-export interface ResolvedHarmonyFrame {
-  activeSource: HarmonyIntentSource;
-  activeStepIndex: number | null;
-  activeSlotId: number | null;
-  rootMidi: number;
-  scaleId: number;
-  degree: number;
-  quality: HarmonyChordQuality;
-  currentNotePool: number[];
-  bassNote: number | null;
-  nextNotePool: number[];
-  nextSource: HarmonyIntentSource | null;
-  nextStepIndex: number | null;
-  morphPercent: number;
-  manualControlAvailable: boolean;
-}
-
-export interface L4HarmonyStateExtension {
-  manualControl: ManualHarmonyControlState;
-  chordSlots: HarmonyChordSlot[];
-  chordSequence: HarmonySequenceStep[];
-  chordSequenceEnabled: boolean;
-  chordSequenceLength: number;
-  chordSequenceStepIndex: number;
-  resolvedHarmonyFrame: ResolvedHarmonyFrame;
-}
+/** Compatibility name retained for older callers of the Harmony control. */
+export type HarmonyIntentSource = HarmonyControlSource;
 
 export const HARMONY_SOURCE_IDS = Object.freeze({
   baseline: 0,
@@ -444,10 +355,32 @@ export function defaultHarmonyIntent(source: HarmonyIntentSource = 'baseline', d
 }
 
 export function defaultHarmonyChordSlot(id: number): HarmonyChordSlot {
+  const intent = defaultHarmonyIntent('slot', id % 7);
+  const exactMidiNotes = resolveHarmonyIntentToNotePool({ intent, rootMidi: 60, scaleId: 1, tension: 0.35 });
   return {
     id: clamp(Math.round(id), 0, HARMONY_SLOT_COUNT - 1),
     name: `Slot ${id + 1}`,
+    intent,
+    chord: {
+      intent,
+      intentSource: 'confirmed',
+      exactMidiNotes,
+      recognizedLabel: formatHarmonyIntentChordLabel(intent, { rootMidi: 60, scaleId: 1 }),
+      playbackBehavior: 'auto',
+      capturedContext: { rootMidi: 60, rootMidiAnchor: 60, scaleId: 1 },
+    },
+    locked: false,
+  };
+}
+
+/** A stable empty slot used by the sanitizer for absent array positions. */
+export function emptyHarmonyChordSlot(id: number): HarmonyChordSlot {
+  return {
+    id: clamp(Math.round(id), 0, HARMONY_SLOT_COUNT - 1),
+    name: `Slot ${id + 1}`,
+    // Keep a non-audible legacy shape for old UI controls; `chord: null` is authoritative.
     intent: defaultHarmonyIntent('slot', id % 7),
+    chord: null,
     locked: false,
   };
 }
@@ -493,6 +426,7 @@ export function defaultResolvedHarmonyFrame(rootMidi = 60, scaleId = 1, tension 
     activeStepIndex: null,
     activeSlotId: null,
     rootMidi,
+    effectiveRootMidiAnchor: rootMidi,
     scaleId,
     degree: intent.degree,
     quality: 'auto',
@@ -533,16 +467,87 @@ export function sanitizeHarmonyChordSlots(value: unknown): HarmonyChordSlot[] {
     if (!item || typeof item !== 'object') return null;
     const record = item as Record<string, unknown>;
     const id = clamp(finiteInteger(record.id, 0), 0, HARMONY_SLOT_COUNT - 1);
+    const legacyIntent = record.intent ? sanitizeHarmonyIntent(record.intent, defaultHarmonyIntent('slot', id % 7)) : null;
+    const hasExplicitChord = Object.prototype.hasOwnProperty.call(record, 'chord');
+    const topLevelExactMidiNotes = normalizeMidiPool(arrayValue(
+      record.exactMidiNotes ?? record.capturedMidiNotes,
+      (entry) => typeof entry === 'number' ? entry : null,
+    ));
+    const rawChord = record.chord;
+    let chord: SharedHarmonyChord | null = null;
+    if (rawChord && typeof rawChord === 'object') {
+      const chordRecord = rawChord as Record<string, unknown>;
+      const chordIntent = chordRecord.intent
+        ? sanitizeHarmonyIntent(chordRecord.intent, legacyIntent ?? defaultHarmonyIntent('slot', id % 7))
+        : legacyIntent;
+      const exactMidiNotes = normalizeMidiPool(arrayValue(
+        chordRecord.exactMidiNotes ?? chordRecord.capturedMidiNotes,
+        (entry) => typeof entry === 'number' ? entry : null,
+      ));
+      const exactRecognition = !chordIntent && exactMidiNotes.length > 0
+        ? recognizeHarmonyIntentFromMidiPool({ midiNotes: exactMidiNotes, rootMidi: 60, scaleId: 1, tension: 0.35 })
+        : null;
+      const inferredIntent = exactRecognition?.quality === 'custom' ? null : exactRecognition;
+      const semanticIntent = chordIntent ?? inferredIntent;
+      if (semanticIntent || exactMidiNotes.length > 0) {
+        const snapshot = exactMidiNotes.length > 0
+          ? exactMidiNotes
+          : resolveHarmonyIntentToNotePool({ intent: semanticIntent!, rootMidi: 60, scaleId: 1, tension: 0.35 });
+        chord = {
+          intent: semanticIntent,
+          intentSource: semanticIntent
+            ? (chordRecord.intentSource === 'inferred' || chordRecord.intentSource === 'confirmed'
+              ? chordRecord.intentSource
+              : chordIntent ? 'confirmed' : 'inferred')
+            : null,
+          exactMidiNotes: snapshot,
+          recognizedLabel: stringValue(
+            chordRecord.recognizedLabel,
+            semanticIntent
+              ? formatHarmonyIntentChordLabel(semanticIntent, { rootMidi: 60, scaleId: 1 })
+              : 'custom',
+          ),
+          playbackBehavior: enumValue(chordRecord.playbackBehavior, ['auto', 'relative', 'exact'] as const, 'auto'),
+          capturedContext: {
+            rootMidi: finiteNumber((chordRecord.capturedContext as Record<string, unknown> | null)?.rootMidi, 60),
+            rootMidiAnchor: finiteNumber((chordRecord.capturedContext as Record<string, unknown> | null)?.rootMidiAnchor, finiteNumber((chordRecord.capturedContext as Record<string, unknown> | null)?.rootMidi, 60)),
+            scaleId: finiteInteger((chordRecord.capturedContext as Record<string, unknown> | null)?.scaleId, 1),
+          },
+        };
+      }
+    } else if (!hasExplicitChord && (legacyIntent || topLevelExactMidiNotes.length > 0)) {
+      const legacyCaptured = legacyIntent?.capturedMidiNotes ?? [];
+      const exactMidiNotes = topLevelExactMidiNotes.length > 0
+        ? topLevelExactMidiNotes
+        : legacyCaptured.length > 0
+        ? normalizeMidiPool(legacyCaptured)
+        : resolveHarmonyIntentToNotePool({ intent: legacyIntent!, rootMidi: 60, scaleId: 1, tension: 0.35 });
+      const exactRecognition = legacyIntent
+        ? null
+        : recognizeHarmonyIntentFromMidiPool({ midiNotes: exactMidiNotes, rootMidi: 60, scaleId: 1, tension: 0.35 });
+      const recognizedIntent = legacyIntent ?? (exactRecognition?.quality === 'custom' ? null : exactRecognition);
+      chord = {
+        intent: recognizedIntent,
+        intentSource: legacyIntent ? 'confirmed' : recognizedIntent ? 'inferred' : null,
+        exactMidiNotes,
+        recognizedLabel: recognizedIntent
+          ? formatHarmonyIntentChordLabel(recognizedIntent, { rootMidi: 60, scaleId: 1 })
+          : 'custom',
+        playbackBehavior: legacyIntent?.preserveCapturedVoicing ? 'exact' : 'auto',
+        capturedContext: { rootMidi: 60, rootMidiAnchor: 60, scaleId: 1 },
+      };
+    }
     return {
       id,
       name: stringValue(record.name, `Slot ${id + 1}`),
-      intent: sanitizeHarmonyIntent(record.intent, defaultHarmonyIntent('slot', id % 7)),
+      intent: chord?.intent ?? legacyIntent ?? defaultHarmonyIntent('slot', id % 7),
+      chord,
       locked: boolValue(record.locked, false),
     };
   });
   return Array.from({ length: HARMONY_SLOT_COUNT }, (_, id) => {
     const match = slots.find((slot) => slot.id === id);
-    return match ?? defaultHarmonyChordSlot(id);
+    return match ?? emptyHarmonyChordSlot(id);
   });
 }
 
@@ -631,7 +636,9 @@ export function resolveSequenceIntent(args: {
   }
   if ((step.mode === 'slotCopy' || step.mode === 'slotFollow') && step.slotId !== null) {
     const slot = args.slots[step.slotId];
-    return slot ? { ...slot.intent, source: 'sequence' } : null;
+    // `chord: null` is authoritative: an empty saved slot cannot fabricate a
+    // fallback legacy intent or produce audible material.
+    return slot?.chord?.intent ? { ...slot.chord.intent, source: 'sequence' } : null;
   }
   if (step.mode === 'intent' && step.intent) {
     return { ...step.intent, source: 'sequence' };
@@ -650,7 +657,7 @@ export function resolveSlotTriggerIntent(args: {
   if (args.morphPercent > 0 && args.morphPercent < 100) return null;
   if (!args.manualControl.slotTriggerMode || args.manualControl.activeSlotId === null) return null;
   const slot = args.slots[args.manualControl.activeSlotId];
-  return slot ? { ...slot.intent, source: 'slot' } : null;
+  return slot?.chord?.intent ? { ...slot.chord.intent, source: 'slot' } : null;
 }
 
 export function resolveManualControlIntent(args: {
@@ -910,6 +917,7 @@ export function resolveAuditionPreview(args: {
     activeStepIndex: null,
     activeSlotId: null,
     rootMidi: args.rootMidi,
+    effectiveRootMidiAnchor: args.rootMidi,
     scaleId: args.scaleId,
     degree: intent.degree,
     quality: intent.quality,
@@ -966,6 +974,8 @@ export function resolveNextHarmonyFrame(args: {
 export function resolveProductHarmonyState(args: {
   state: Record<string, unknown> | undefined;
   rootMidi: number;
+  /** Optional continuous anchor supplied by drift/adoption/morph hosts. */
+  rootMidiAnchor?: number;
   scaleId: number;
   tension: number;
   seed: number;
@@ -1018,6 +1028,7 @@ export function resolveProductHarmonyState(args: {
     activeStepIndex: activeIntent.source === 'sequence' ? chordSequenceStepIndex : null,
     activeSlotId: activeIntent.source === 'slot' ? manualControl.activeSlotId : null,
     rootMidi: args.rootMidi,
+    effectiveRootMidiAnchor: args.rootMidiAnchor ?? args.rootMidi,
     scaleId: args.scaleId,
     degree: activeIntent.degree,
     quality: activeIntent.quality,
@@ -1166,14 +1177,24 @@ export function generateHarmonySlots(
   return slots.map((slot, id) => {
     if (settings.respectLocks && slot.locked) return slot;
     const unit = unitFromSeed((seed >>> 0) ^ Math.imul(id + 1, 0x9e3779b9));
+    const intent = {
+      ...defaultHarmonyIntent('slot', generatedSequenceDegree(id, unit, settings)),
+      rootNote: pitchClass(params.rootMidi ?? 60),
+      quality: generatedHarmonyQuality(unit, settings),
+    };
+    const exactMidiNotes = resolveHarmonyIntentToNotePool({ intent, rootMidi: params.rootMidi ?? 60, scaleId: params.scaleId ?? 1, tension: settings.tension });
     return {
       ...slot,
       id,
       name: slot.name || `Slot ${id + 1}`,
-      intent: {
-        ...defaultHarmonyIntent('slot', generatedSequenceDegree(id, unit, settings)),
-        rootNote: pitchClass(params.rootMidi ?? 60),
-        quality: generatedHarmonyQuality(unit, settings),
+      intent,
+      chord: {
+        intent,
+        intentSource: 'confirmed',
+        exactMidiNotes,
+        recognizedLabel: formatHarmonyIntentChordLabel(intent, { rootMidi: params.rootMidi ?? 60, scaleId: params.scaleId ?? 1 }),
+        playbackBehavior: 'auto',
+        capturedContext: { rootMidi: params.rootMidi ?? 60, rootMidiAnchor: params.rootMidi ?? 60, scaleId: params.scaleId ?? 1 },
       },
     };
   });

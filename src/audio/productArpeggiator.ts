@@ -1,10 +1,10 @@
 import { DEFAULT_STATE } from '../ui/state';
 import {
   HARMONY_POOL_MAX_NOTES,
-  resolveHarmonyIntentToNotePool,
   resolveProductHarmonyState,
   type HarmonyChordSlot,
 } from './CoreProductHarmonyControl';
+import { sharedSlotResolvedMidiPool } from './harmony/harmonyChordAdapters';
 import { productHarmonyScaleIdFromName } from './coreProductHarmonyScaleIds';
 import { createRng, getUtcBucket } from './rng';
 import { getScaleByName, selectScaleFamily } from './scales';
@@ -437,9 +437,10 @@ function resolveSourcePool(config: ProductArpConfig, harmony: ProductArpHarmonyC
   if (slotChoice >= 0) {
     const slot = harmony.chordSlots[slotChoice];
     if (slot) {
-      return normalizePool(resolveHarmonyIntentToNotePool({
-        intent: { ...slot.intent, source: 'slot' },
+      if (!slot.chord) return [];
+      return normalizePool(sharedSlotResolvedMidiPool(slot, {
         rootMidi: harmony.rootMidi,
+        effectiveRootMidi: harmony.rootMidi,
         scaleId: harmony.scaleId,
         tension: harmony.tension,
       }));

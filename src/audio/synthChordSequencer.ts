@@ -1,10 +1,10 @@
 import {
   HARMONY_POOL_MAX_NOTES,
   HARMONY_SLOT_COUNT,
-  resolveHarmonyIntentToNotePool,
   resolveProductHarmonyState,
   type HarmonyChordSlot,
 } from './CoreProductHarmonyControl';
+import { sharedSlotResolvedMidiPool } from './harmony/harmonyChordAdapters';
 import { productHarmonyScaleIdFromName } from './coreProductHarmonyScaleIds';
 import { coreProductSequencerBeatDurationSeconds } from './coreProductChordSequencerClock';
 import type { HarmonyState } from './harmony';
@@ -566,9 +566,10 @@ export function resolveSynthChordStepMidiPool(args: {
   if (args.step.slotId === null) return normalizePool(args.fallbackMidi);
   const slot = args.context.chordSlots[args.step.slotId];
   if (!slot) return normalizePool(args.fallbackMidi);
-  return normalizePool(resolveHarmonyIntentToNotePool({
-    intent: { ...slot.intent, source: 'slot' },
+  if (!slot.chord) return [];
+  return normalizePool(sharedSlotResolvedMidiPool(slot, {
     rootMidi: args.context.rootMidi,
+    effectiveRootMidi: args.context.rootMidi,
     scaleId: args.context.scaleId,
     tension: args.context.tension,
   }));

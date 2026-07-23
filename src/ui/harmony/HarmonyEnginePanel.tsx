@@ -31,6 +31,10 @@ import {
   type ManualHarmonyControlState,
   type ResolvedHarmonyFrame,
 } from '../../audio/CoreProductHarmonyControl';
+import {
+  editSharedChordIntent,
+  legacyHarmonySlotToSharedSlot,
+} from '../../audio/harmony/harmonyChordAdapters';
 import './HarmonyEnginePanel.css';
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
@@ -273,7 +277,7 @@ function sequenceStepTitle(step: HarmonySequenceStep, slots: readonly HarmonyCho
   if (step.mode === 'slotCopy' && step.intent) return intentTitle(step.intent);
   if (step.mode === 'slotCopy' || step.mode === 'slotFollow') {
     const slot = step.slotId !== null ? slots[step.slotId] : null;
-    return slot ? `S${slot.id + 1} ${intentTitle(slot.intent)}` : 'Slot';
+    return slot ? `S${slot.id + 1} ${intentTitle(slot.chord?.intent)}` : 'Slot';
   }
   if (step.mode === 'intent' && step.intent) return intentTitle(step.intent);
   return `${ROMAN_DEGREES[clamp(step.degree, 0, 6)] ?? 'I'} ${step.quality === 'auto' ? 'Auto' : step.quality}`;
@@ -1203,6 +1207,9 @@ function ChordSlotBank({
       </div>
       <div className="harmony-slot-bank">
         {slots.map((slot) => (
+          (() => {
+            const displayIntent = slot.chord?.intent ?? null;
+            return (
           <button
             key={slot.id}
             type="button"
@@ -1215,14 +1222,16 @@ function ChordSlotBank({
               event.dataTransfer.setData('application/x-harmony-slot-id', String(slot.id));
               event.dataTransfer.setData('text/plain', String(slot.id));
             }}
-            title={`S${slot.id + 1}: ${intentTitle(slot.intent)}`}
+            title={`S${slot.id + 1}: ${intentTitle(displayIntent)}`}
             {...harmonyHelpAttrs('harmonyLabSlot')}
           >
             <span>S{slot.id + 1}</span>
-            <strong>{intentTitle(slot.intent)}</strong>
-            <em>{slot.intent.rootMode === 'degree' ? ROMAN_DEGREES[slot.intent.degree] ?? 'I' : noteName(slot.intent.rootNote)}</em>
+            <strong>{intentTitle(displayIntent)}</strong>
+            <em>{displayIntent ? (displayIntent.rootMode === 'degree' ? ROMAN_DEGREES[displayIntent.degree] ?? 'I' : noteName(displayIntent.rootNote)) : '—'}</em>
             {slot.locked && <small>Locked</small>}
           </button>
+            );
+          })()
         ))}
       </div>
     </div>
@@ -1468,7 +1477,9 @@ function ChordStepInspector({
   const snapshotSlotIntent = (slotId: number | null): HarmonyIntent | null => {
     if (slotId === null) return null;
     const slot = slots[slotId];
-    return slot ? sanitizeHarmonyIntent({ ...slot.intent, source: 'sequence' }) : null;
+    return slot?.chord?.intent
+      ? sanitizeHarmonyIntent({ ...slot.chord.intent, source: 'sequence' })
+      : null;
   };
   return (
     <div className="harmony-inspector">
@@ -2098,19 +2109,25 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
       source: 'slot',
       rootMode: manual.auditionIntent?.rootMode ?? manual.activeIntent?.rootMode ?? 'absolute',
     });
+    const migrated = legacyHarmonySlotToSharedSlot({ id: slotId, intent }, {
+      rootMidi: harmonyContext.rootMidi,
+      scaleId: harmonyContext.scaleId,
+      tension: harmonyContext.tension,
+    });
     patchSlots(slots.map((slot) => slot.id === slotId
-      ? { ...slot, intent, name: slot.name || `Slot ${slotId + 1}` }
+      ? { ...slot, intent, chord: migrated.chord, name: slot.name || `Slot ${slotId + 1}` }
       : slot));
-  }, [manual, patchSlots, selectedBaseIntent, slots, writeLocked]);
+  }, [harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.tension, manual, patchSlots, selectedBaseIntent, slots, writeLocked]);
 
   const activateSlot = useCallback((slotId: number) => {
     const slot = slots[slotId];
-    if (!slot) return;
+    if (!slot?.chord?.intent) return;
     if (manual.mode === 'capture') {
       captureSelectedToSlot(slotId);
       return;
     }
     if (manual.mode === 'control' && !manualLocked) {
+      if (!slot.chord) return;
       updateManual({
         ...manual,
         enabled: false,
@@ -2121,21 +2138,39 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
       });
       return;
     }
+    if (!slot.chord?.intent) return;
     updateManual({
       ...manual,
       mode: 'audition',
       enabled: false,
-      auditionIntent: { ...slot.intent, source: 'audition' },
+      auditionIntent: { ...slot.chord.intent, source: 'audition' },
       slotTriggerMode: false,
       activeSlotId: null,
     });
-    previewAuditionIntent({ ...slot.intent, source: 'audition' });
+    previewAuditionIntent({ ...slot.chord.intent, source: 'audition' });
   }, [captureSelectedToSlot, manual, manualLocked, previewAuditionIntent, slots, updateManual]);
 
   const updateSlot = useCallback((slotId: number, patch: Partial<HarmonyChordSlot>) => {
     if (writeLocked) return;
-    patchSlots(slots.map((slot) => slot.id === slotId ? { ...slot, ...patch } : slot));
-  }, [patchSlots, slots, writeLocked]);
+    patchSlots(slots.map((slot) => {
+      if (slot.id !== slotId) return slot;
+      if (patch.intent && !patch.chord) {
+        const chord = slot.chord
+          ? editSharedChordIntent(slot.chord, patch.intent, {
+            rootMidi: harmonyContext.rootMidi,
+            scaleId: harmonyContext.scaleId,
+            tension: harmonyContext.tension,
+          })
+          : legacyHarmonySlotToSharedSlot({ id: slotId, intent: patch.intent }, {
+            rootMidi: harmonyContext.rootMidi,
+            scaleId: harmonyContext.scaleId,
+            tension: harmonyContext.tension,
+          }).chord;
+        return { ...slot, ...patch, chord };
+      }
+      return { ...slot, ...patch };
+    }));
+  }, [harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.tension, patchSlots, slots, writeLocked]);
 
   const updateStep = useCallback((stepId: number, patch: Partial<HarmonySequenceStep>) => {
     if (writeLocked) return;
@@ -2147,6 +2182,8 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
     const slot = slots[slotId];
     const step = sequence[stepId];
     if (!slot || !step || step.locked) return;
+    const slotIntent = slot.chord?.intent;
+    if (!slotIntent) return;
     setSelectedSlotId(slot.id);
     setSelectedStepId(step.id);
     setLabSelectionKind('step');
@@ -2155,12 +2192,12 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
         mode: 'slotFollow',
         slotId: slot.id,
         intent: null,
-        degree: slot.intent.degree,
-        quality: slot.intent.quality,
+        degree: slotIntent.degree,
+        quality: slotIntent.quality,
       });
       return;
     }
-    const copiedIntent = sanitizeHarmonyIntent({ ...slot.intent, source: 'sequence' });
+    const copiedIntent = sanitizeHarmonyIntent({ ...slotIntent, source: 'sequence' });
     updateStep(step.id, {
       mode: 'slotCopy',
       slotId: slot.id,
@@ -2346,7 +2383,7 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
   const activeIntentLabel = useMemo(() => {
     if (manual.slotTriggerMode && manual.activeSlotId !== null) {
       const slot = slots[manual.activeSlotId];
-      return slot ? `Slot ${slot.id + 1} ${intentTitle(slot.intent)}` : 'Slot';
+      return slot ? `Slot ${slot.id + 1} ${intentTitle(slot.chord?.intent)}` : 'Slot';
     }
     return intentTitle(manual.activeIntent ?? manual.auditionIntent ?? selectedBaseIntent('audition'));
   }, [manual.activeIntent, manual.activeSlotId, manual.auditionIntent, manual.slotTriggerMode, selectedBaseIntent, slots]);
@@ -2386,16 +2423,16 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
     setLabSelectionKind('slot');
     if (manual.mode !== 'audition') return;
     const slot = slots[slotId];
-    if (!slot) return;
+    if (!slot?.chord?.intent) return;
     updateManual({
       ...manual,
       mode: 'audition',
       enabled: false,
-      auditionIntent: { ...slot.intent, source: 'audition' },
+      auditionIntent: { ...slot.chord.intent, source: 'audition' },
       slotTriggerMode: false,
       activeSlotId: null,
     });
-    previewAuditionIntent({ ...slot.intent, source: 'audition' });
+    previewAuditionIntent({ ...slot.chord.intent, source: 'audition' });
   }, [manual, previewAuditionIntent, slots, updateManual]);
 
 
