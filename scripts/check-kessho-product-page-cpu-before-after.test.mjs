@@ -14,6 +14,16 @@ import {
   planInterleavedPageCpuRuns,
   resolvePageCpuBaselineRef,
 } from './lib/kesshoProductPageCpuBeforeAfter.mjs';
+import {
+  PAGE_CPU_MAX_TRANSIENT_RETRIES,
+  PAGE_CPU_LEGACY_VITE_DISABLE_HMR_ENV,
+  PAGE_CPU_VITE_CACHE_DIR_ENV,
+  PAGE_CPU_VITE_DISABLE_HMR_ENV,
+  classifyPageCpuTransientError,
+  createPageCpuViteEnv,
+  createPageCpuRetryEntry,
+  shouldRetryPageCpuAttempt,
+} from './lib/kesshoProductPageCpuComparison.mjs';
 
 function runs(values, webValues = values) {
   return values.map((productBrowserProcessCpuPercent, index) => ({
@@ -252,4 +262,43 @@ test('each planned collection yields exactly three accepted runs per phase', () 
   for (const planned of planInterleavedPageCpuRuns({ basePort: 5400 })) accepted[planned.phase].push(planned);
   assert.equal(accepted.baseline.length, PAGE_CPU_RUN_COUNT);
   assert.equal(accepted.current.length, PAGE_CPU_RUN_COUNT);
+});
+
+test('page CPU retry policy only accepts the explicitly transient failures', () => {
+  assert.equal(PAGE_CPU_MAX_TRANSIENT_RETRIES, 1);
+  assert.equal(shouldRetryPageCpuAttempt({ attempt: 1, reason: 'silent-capture' }), true);
+  assert.equal(shouldRetryPageCpuAttempt({ attempt: 2, reason: 'silent-capture' }), false);
+  assert.equal(shouldRetryPageCpuAttempt({ attempt: 1, reason: null }), false);
+  assert.equal(classifyPageCpuTransientError(new Error('Execution context was destroyed, most likely because of a navigation.')), 'execution-context-destroyed');
+  assert.equal(classifyPageCpuTransientError(new Error('No execution context available')), 'execution-context-destroyed');
+  assert.equal(classifyPageCpuTransientError(new Error('Cannot find context with specified id')), 'execution-context-destroyed');
+  assert.equal(classifyPageCpuTransientError(new Error('Timed out waiting for Product snapshot revision -1 (hash) to be applied by the audio thread')), 'initial-product-snapshot-revision-minus-one-timeout');
+  assert.equal(classifyPageCpuTransientError(new Error('AudioContext was destroyed while stopping')), null);
+  assert.equal(classifyPageCpuTransientError(new Error('routing/core-product: capture RMS stayed silent (0)')), 'silent-capture');
+  assert.equal(classifyPageCpuTransientError(new Error('capture failed because the route is invalid')), null);
+  assert.deepEqual(createPageCpuRetryEntry({
+    attempt: 1,
+    status: 'fail',
+    reason: 'silent-capture',
+    error: new Error('capture RMS stayed silent (0)'),
+  }), {
+    attempt: 1,
+    status: 'fail',
+    transient: true,
+    reason: 'silent-capture',
+    error: 'capture RMS stayed silent (0)',
+  });
+});
+
+test('Vite phase env construction is isolated and browser-proof', () => {
+  assert.equal(PAGE_CPU_VITE_DISABLE_HMR_ENV, 'KESSHO_VITE_DISABLE_HMR');
+  assert.equal(PAGE_CPU_VITE_CACHE_DIR_ENV, 'KESSHO_VITE_CACHE_DIR');
+  assert.deepEqual(createPageCpuViteEnv({ PATH: '/bin', BROWSER: 'chrome' }, '/tmp/page-cpu-cache'), {
+    PATH: '/bin',
+    BROWSER: 'none',
+    KESSHO_VITE_DISABLE_HMR: '1',
+    KESSHO_SEQUENCER_UI_PROOF_DISABLE_HMR: '1',
+    KESSHO_VITE_CACHE_DIR: '/tmp/page-cpu-cache',
+  });
+  assert.equal(PAGE_CPU_LEGACY_VITE_DISABLE_HMR_ENV, 'KESSHO_SEQUENCER_UI_PROOF_DISABLE_HMR');
 });

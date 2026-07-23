@@ -36,6 +36,7 @@ const root = process.cwd();
 const reportJsonPath = resolve(root, 'docs/reports/kessho-product-page-cpu-before-after-latest.json');
 const reportMarkdownPath = resolve(root, 'docs/reports/kessho-product-page-cpu-before-after-latest.md');
 const pageCpuReportPath = 'docs/reports/kessho-product-page-cpu-comparison-latest.json';
+const pageCpuComparisonScriptPath = resolve(root, 'scripts/check-kessho-product-page-cpu-comparison.mjs');
 const RUN_COUNT = PAGE_CPU_RUN_COUNT;
 const MAX_REGRESSION_PERCENT = PAGE_CPU_MAX_REGRESSION_PERCENT;
 const MAX_MEASUREMENT_OUTLIER_RATIO = PAGE_CPU_MAX_MEASUREMENT_OUTLIER_RATIO;
@@ -164,10 +165,8 @@ function removeReportIfPresent(cwd) {
 function runPageCpuComparison(cwd, phase, runIndex, args, port) {
   removeReportIfPresent(cwd);
   console.log(`\n[${phase} ${runIndex}/${RUN_COUNT}] page CPU comparison on ${readGitCommit(cwd)} (port ${port})`);
-  const result = spawnSync('npm', [
-    'run',
-    'core:product:page-cpu-comparison',
-    '--',
+  const result = spawnSync(process.execPath, [
+    pageCpuComparisonScriptPath,
     `--duration-ms=${args.durationMs}`,
     `--settle-ms=${args.settleMs}`,
     `--warmup-ms=${args.warmupMs}`,

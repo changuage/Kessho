@@ -1,8 +1,17 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { performance } from 'node:perf_hooks';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import {
+  PAGE_CPU_MAX_TRANSIENT_RETRIES,
+  classifyPageCpuTransientError,
+  createPageCpuViteEnv,
+  createPageCpuRetryEntry,
+  shouldRetryPageCpuAttempt,
+} from './lib/kesshoProductPageCpuComparison.mjs';
 import {
   collectReportMetadata,
   writeJsonReport,
@@ -68,12 +77,40 @@ async function waitForHttp(url, timeoutMs, outputProvider = () => '') {
   throw new Error(`Timed out waiting for ${url}: ${detail}\n${outputProvider()}`);
 }
 
+function killProcessGroup(child, signal) {
+  if (!child?.pid) return;
+  try {
+    if (process.platform === 'win32') child.kill(signal);
+    else process.kill(-child.pid, signal);
+  } catch {
+    try { child.kill(signal); } catch { /* already exited */ }
+  }
+}
+
+function childExitPromise(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  return new Promise((resolveExit) => child.once('exit', resolveExit));
+}
+
+async function stopPreviewProcess(child, exitedPromise) {
+  if (child.exitCode === null && child.signalCode === null) {
+    killProcessGroup(child, 'SIGTERM');
+    await Promise.race([exitedPromise, delay(1500)]);
+  }
+  if (child.exitCode === null && child.signalCode === null) {
+    killProcessGroup(child, 'SIGKILL');
+    await Promise.race([exitedPromise, delay(1000)]);
+  }
+}
+
 async function startPreview(port) {
   const url = `http://127.0.0.1:${port}/`;
-  const child = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'kessho-page-cpu-vite-cache-'));
+  const child = spawn(process.execPath, [resolve(root, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
     cwd: root,
+    detached: process.platform !== 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, BROWSER: 'none' },
+    env: createPageCpuViteEnv(process.env, cacheDir),
   });
   let output = '';
   const append = (chunk) => {
@@ -81,17 +118,19 @@ async function startPreview(port) {
   };
   child.stdout.on('data', append);
   child.stderr.on('data', append);
+  const exitedPromise = childExitPromise(child);
   try {
     await waitForHttp(url, 120000, () => output);
   } catch (error) {
-    child.kill();
+    await stopPreviewProcess(child, exitedPromise);
+    await rm(cacheDir, { recursive: true, force: true });
     throw error;
   }
   return {
     url,
     stop: async () => {
-      child.kill();
-      await delay(250);
+      await stopPreviewProcess(child, exitedPromise);
+      await rm(cacheDir, { recursive: true, force: true });
     },
   };
 }
@@ -920,23 +959,12 @@ function summarizeCapture(capture) {
   };
 }
 
-async function measureEngineScenario({ chromium, baseUrl, mode, args, scenario }) {
-  const browser = await chromium.launch({
-    headless: true,
-    args: ['--autoplay-policy=no-user-gesture-required'],
-  });
+async function measureEngineScenarioAttempt({ browser, baseUrl, mode, args, scenario }) {
   const stateKey = `page-cpu-${scenario.id}-${mode}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const storageKey = `${ENGINE_STATE_STORAGE_PREFIX}${stateKey}`;
   const context = await browser.newContext();
-  await context.addInitScript(
-    ({ storageKey: initStorageKey, cpuSummaryKey, scenarioState }) => {
-      window.sessionStorage.setItem(initStorageKey, JSON.stringify(scenarioState));
-      window.sessionStorage.removeItem(cpuSummaryKey);
-    },
-    { storageKey, cpuSummaryKey: CPU_SUMMARY_STORAGE_KEY, scenarioState: scenario.state },
-  );
-  const cdp = await browser.newBrowserCDPSession();
-  const page = await context.newPage();
+  let cdp = null;
+  let page = null;
   const url = withQuery(baseUrl, {
     parity: '1',
     engineAB: '1',
@@ -945,6 +973,15 @@ async function measureEngineScenario({ chromium, baseUrl, mode, args, scenario }
     engineState: stateKey,
   });
   try {
+    await context.addInitScript(
+      ({ storageKey: initStorageKey, cpuSummaryKey, scenarioState }) => {
+        window.sessionStorage.setItem(initStorageKey, JSON.stringify(scenarioState));
+        window.sessionStorage.removeItem(cpuSummaryKey);
+      },
+      { storageKey, cpuSummaryKey: CPU_SUMMARY_STORAGE_KEY, scenarioState: scenario.state },
+    );
+    cdp = await browser.newBrowserCDPSession();
+    page = await context.newPage();
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => Boolean(window.__kesshoSonicParity?.capture), null, { timeout: 15000 });
     await openScenarioTab(page, scenario);
@@ -978,10 +1015,46 @@ async function measureEngineScenario({ chromium, baseUrl, mode, args, scenario }
       capture: summarizeCapture(capture),
     };
   } finally {
-    await page.close().catch(() => {});
+    await page?.close().catch(() => {});
     await context.close().catch(() => {});
-    await browser.close().catch(() => {});
+    if (cdp) await cdp.detach().catch(() => {});
   }
+}
+
+async function measureEngineScenario(params) {
+  const retryAttempts = [];
+  for (let attempt = 1; attempt <= PAGE_CPU_MAX_TRANSIENT_RETRIES + 1; attempt += 1) {
+    try {
+      const result = await measureEngineScenarioAttempt(params);
+      retryAttempts.push(createPageCpuRetryEntry({ attempt, status: 'pass' }));
+      return attempt > 1
+        ? {
+          ...result,
+          retryMetadata: {
+            retried: true,
+            attempts: retryAttempts,
+          },
+        }
+        : result;
+    } catch (error) {
+      const reason = classifyPageCpuTransientError(error);
+      retryAttempts.push(createPageCpuRetryEntry({ attempt, status: 'fail', error, reason }));
+      if (!shouldRetryPageCpuAttempt({ attempt, reason })) {
+        const retryMetadata = {
+          retried: attempt > 1,
+          attempts: retryAttempts,
+        };
+        if (error && typeof error === 'object') {
+          error.retryMetadata = retryMetadata;
+          throw error;
+        }
+        const normalizedError = new Error(String(error));
+        normalizedError.retryMetadata = retryMetadata;
+        throw normalizedError;
+      }
+    }
+  }
+  throw new Error('Page CPU measurement retry policy exhausted unexpectedly.');
 }
 
 function scenarioComparison(result) {
@@ -1078,6 +1151,23 @@ function writeReport(report) {
     for (const failure of failures) lines.push(`- ${failure}`);
   }
 
+  const retryEntries = report.scenarios.flatMap((scenario) => {
+    const entries = [];
+    for (const [mode, metadata] of Object.entries(scenario.retryMetadata ?? {})) {
+      entries.push(`${scenario.id}/${mode}: ${JSON.stringify(metadata)}`);
+    }
+    for (const [mode, measurement] of Object.entries(scenario.engines ?? {})) {
+      if (measurement.retryMetadata) {
+        entries.push(`${scenario.id}/${mode}: ${JSON.stringify(measurement.retryMetadata)}`);
+      }
+    }
+    return entries;
+  });
+  if (retryEntries.length > 0) {
+    lines.push('', '## Transient Retry Metadata', '');
+    for (const entry of retryEntries) lines.push(`- ${entry}`);
+  }
+
   lines.push(
     '',
     '## Notes',
@@ -1096,104 +1186,118 @@ function writeReport(report) {
 const args = parseArgs(process.argv.slice(2));
 const selectedScenarios = selectScenarios(args);
 const server = args.url ? { url: args.url, stop: async () => {} } : await startPreview(args.port);
-const { chromium } = await loadPlaywright();
-const generatedAt = new Date().toISOString();
-
-const report = {
-  schemaVersion: 1,
-  generatedAt,
-  status: 'running',
-  metadata: collectReportMetadata({
-    root,
-    generatedAt,
-    command: process.argv.map(String).join(' '),
-    scenarioName: selectedScenarios.map((scenario) => scenario.id).join(','),
-    sampleRate: null,
-    blockSize: RENDER_BLOCK_FRAMES,
-    durationMs: args.durationMs,
-    thresholds: {
-      minRms: 'scenario-specific',
-    },
-    topSuspectedModules: ['visual-telemetry', 'ui-telemetry', 'worklet-messaging', 'sources', 'fx'],
-  }),
-  url: server.url,
-  defaults: {
-    durationMs: args.durationMs,
-    settleMs: args.settleMs,
-    warmupMs: args.warmupMs,
-    serverMode: args.url ? 'external' : 'vite-dev-reference',
-  },
-  scenarios: [],
-  summary: {},
-};
+let browser = null;
+let report = null;
 
 try {
-  for (const scenario of selectedScenarios) {
-    const result = {
-      id: scenario.id,
-      label: scenario.label,
-      tabLabel: scenario.tabLabel,
-      activeModules: scenario.activeModules,
-      engines: {},
-      comparison: {},
-      errors: {},
-    };
+  const { chromium } = await loadPlaywright();
+  browser = await chromium.launch({
+    headless: true,
+    args: ['--autoplay-policy=no-user-gesture-required'],
+  });
+  const generatedAt = new Date().toISOString();
 
-    for (const mode of ['core-product', 'web-ts']) {
-      try {
-        result.engines[mode] = await measureEngineScenario({ chromium, baseUrl: server.url, mode, args, scenario });
-      } catch (error) {
-        result.errors[mode] = error instanceof Error ? error.message : String(error);
+  report = {
+    schemaVersion: 1,
+    generatedAt,
+    status: 'running',
+    metadata: collectReportMetadata({
+      root,
+      generatedAt,
+      command: process.argv.map(String).join(' '),
+      scenarioName: selectedScenarios.map((scenario) => scenario.id).join(','),
+      sampleRate: null,
+      blockSize: RENDER_BLOCK_FRAMES,
+      durationMs: args.durationMs,
+      thresholds: {
+        minRms: 'scenario-specific',
+      },
+      topSuspectedModules: ['visual-telemetry', 'ui-telemetry', 'worklet-messaging', 'sources', 'fx'],
+    }),
+    url: server.url,
+    defaults: {
+      durationMs: args.durationMs,
+      settleMs: args.settleMs,
+      warmupMs: args.warmupMs,
+      serverMode: args.url ? 'external' : 'vite-dev-reference',
+    },
+    scenarios: [],
+    summary: {},
+  };
+
+  try {
+    for (const scenario of selectedScenarios) {
+      const result = {
+        id: scenario.id,
+        label: scenario.label,
+        tabLabel: scenario.tabLabel,
+        activeModules: scenario.activeModules,
+        engines: {},
+        comparison: {},
+        errors: {},
+      };
+
+      for (const mode of ['core-product', 'web-ts']) {
+        try {
+          result.engines[mode] = await measureEngineScenario({ browser, baseUrl: server.url, mode, args, scenario });
+        } catch (error) {
+          result.errors[mode] = error instanceof Error ? error.message : String(error);
+          if (error?.retryMetadata) {
+            result.retryMetadata ??= {};
+            result.retryMetadata[mode] = error.retryMetadata;
+          }
+        }
+      }
+
+      result.comparison = scenarioComparison(result);
+      report.scenarios.push(result);
+
+      const product = result.engines['core-product'];
+      const web = result.engines['web-ts'];
+      const saved = result.comparison.browserProcessCpuSavedPercent;
+      if (product && web) {
+        console.log(
+          `${scenario.id}: Product ${product.browserProcessCpuPercent.toFixed(3)}%, ` +
+          `Web TS ${web.browserProcessCpuPercent.toFixed(3)}%, saved ${saved?.toFixed(2) ?? 'n/a'}%`,
+        );
+      } else {
+        console.log(`${scenario.id}: failed (${Object.entries(result.errors).map(([mode, error]) => `${mode}: ${error}`).join('; ')})`);
       }
     }
 
-    result.comparison = scenarioComparison(result);
-    report.scenarios.push(result);
-
-    const product = result.engines['core-product'];
-    const web = result.engines['web-ts'];
-    const saved = result.comparison.browserProcessCpuSavedPercent;
-    if (product && web) {
-      console.log(
-        `${scenario.id}: Product ${product.browserProcessCpuPercent.toFixed(3)}%, ` +
-        `Web TS ${web.browserProcessCpuPercent.toFixed(3)}%, saved ${saved?.toFixed(2) ?? 'n/a'}%`,
-      );
-    } else {
-      console.log(`${scenario.id}: failed (${Object.entries(result.errors).map(([mode, error]) => `${mode}: ${error}`).join('; ')})`);
-    }
-  }
-
-  report.summary = reportSummary(report.scenarios);
-  const firstCapture = report.scenarios
-    .map((scenario) => scenario.engines?.['core-product']?.capture ?? scenario.engines?.['web-ts']?.capture)
-    .find((capture) => capture?.sampleRate);
-  report.metadata = collectReportMetadata({
-    root,
-    generatedAt: report.generatedAt,
-    command: process.argv.map(String).join(' '),
-    scenarioName: report.scenarios.map((scenario) => scenario.id).join(','),
-    sampleRate: firstCapture?.sampleRate ?? null,
-    blockSize: RENDER_BLOCK_FRAMES,
-    durationMs: args.durationMs,
-    thresholds: {
-      minRms: 'scenario-specific',
-    },
-    topSuspectedModules: ['visual-telemetry', 'ui-telemetry', 'worklet-messaging', 'sources', 'fx'],
-  });
-  report.status = report.scenarios.some((scenario) => Object.keys(scenario.errors ?? {}).length > 0) ? 'fail' : 'pass';
-  writeReport(report);
-  console.log(`Kessho Product/Web page CPU comparison ${report.status}: report ${reportJsonPath}`);
-  if (report.status !== 'pass') {
-    throw new Error(`Page CPU comparison failed; see ${reportJsonPath}`);
-  }
-} catch (error) {
-  if (report.status === 'running') {
-    report.status = 'fail';
-    report.error = error instanceof Error ? error.message : String(error);
     report.summary = reportSummary(report.scenarios);
+    const firstCapture = report.scenarios
+      .map((scenario) => scenario.engines?.['core-product']?.capture ?? scenario.engines?.['web-ts']?.capture)
+      .find((capture) => capture?.sampleRate);
+    report.metadata = collectReportMetadata({
+      root,
+      generatedAt: report.generatedAt,
+      command: process.argv.map(String).join(' '),
+      scenarioName: report.scenarios.map((scenario) => scenario.id).join(','),
+      sampleRate: firstCapture?.sampleRate ?? null,
+      blockSize: RENDER_BLOCK_FRAMES,
+      durationMs: args.durationMs,
+      thresholds: {
+        minRms: 'scenario-specific',
+      },
+      topSuspectedModules: ['visual-telemetry', 'ui-telemetry', 'worklet-messaging', 'sources', 'fx'],
+    });
+    report.status = report.scenarios.some((scenario) => Object.keys(scenario.errors ?? {}).length > 0) ? 'fail' : 'pass';
     writeReport(report);
+    console.log(`Kessho Product/Web page CPU comparison ${report.status}: report ${reportJsonPath}`);
+    if (report.status !== 'pass') {
+      throw new Error(`Page CPU comparison failed; see ${reportJsonPath}`);
+    }
+  } catch (error) {
+    if (report.status === 'running') {
+      report.status = 'fail';
+      report.error = error instanceof Error ? error.message : String(error);
+      report.summary = reportSummary(report.scenarios);
+      writeReport(report);
+    }
+    throw error;
   }
-  throw error;
 } finally {
+  if (browser) await browser.close().catch(() => {});
   await server.stop();
 }
