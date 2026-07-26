@@ -1383,6 +1383,53 @@
   }
 }
 
+/* Combined Overview: one compact surface shared by Arrange, Edit and Manage. */
+.harmony-overview-surface { display: grid; gap: 10px; padding: 12px; border: 1px solid rgba(140, 170, 210, .24); border-radius: 12px; background: rgba(10, 18, 30, .72); outline: none; }
+.harmony-overview-surface:focus-visible { box-shadow: 0 0 0 2px rgba(115, 186, 255, .72); }
+.harmony-overview-header, .harmony-overview-action-bar, .harmony-overview-replace { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.harmony-overview-header { justify-content: space-between; }
+.harmony-overview-header small, .harmony-overview-edit small, .harmony-overview-manage small { display: block; color: var(--muted-text, #9caec3); font-size: 11px; }
+.harmony-overview-mode-tabs { display: flex; gap: 4px; }
+.harmony-overview-mode-tabs button, .harmony-overview-action-bar button, .harmony-overview-edit button, .harmony-overview-replace button { border: 1px solid rgba(140, 170, 210, .35); border-radius: 7px; background: rgba(30, 44, 64, .84); color: inherit; padding: 5px 8px; font-size: 11px; }
+.harmony-overview-mode-tabs button.active, .harmony-overview-row.selected { border-color: rgba(115, 186, 255, .9); background: rgba(44, 83, 120, .65); }
+.harmony-overview-action-bar button:disabled, .harmony-overview-pool-row button:disabled { opacity: .42; cursor: not-allowed; }
+.harmony-overview-row-viewport { max-height: 380px; min-height: 76px; overflow-y: auto; border: 1px solid rgba(140, 170, 210, .2); border-radius: 8px; }
+.harmony-overview-row { display: grid; grid-template-columns: 32px minmax(90px, 1fr) 92px minmax(100px, 1.4fr) 42px; align-items: center; gap: 7px; width: 100%; min-height: 76px; padding: 8px 10px; border: 0; border-bottom: 1px solid rgba(140, 170, 210, .14); color: inherit; text-align: left; background: transparent; }
+.harmony-overview-row:hover { background: rgba(52, 79, 112, .38); }
+.harmony-overview-row.playing { box-shadow: inset 3px 0 0 #8de0ff; background: rgba(42, 95, 130, .56); }
+.harmony-overview-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.harmony-overview-row small { color: var(--muted-text, #9caec3); font-size: 10px; }
+.harmony-overview-row-index { color: #86c9ff; font-variant-numeric: tabular-nums; }
+.harmony-overview-row-play { color: #a9d9ff; font-size: 11px; text-align: right; }
+.harmony-overview-duration { display: flex; align-items: center; gap: 6px; color: var(--muted-text, #9caec3); font-size: 11px; }
+.harmony-overview-duration select { padding: 4px 6px; border: 1px solid rgba(140, 170, 210, .3); border-radius: 6px; background: #152438; color: inherit; }
+.harmony-overview-takeover-keyboard { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 3px; }
+.harmony-overview-takeover-keyboard button { display: grid; gap: 2px; min-height: 42px; padding: 5px 2px; border: 1px solid rgba(140, 170, 210, .28); border-radius: 5px; background: rgba(22, 38, 57, .86); color: inherit; }
+.harmony-overview-takeover-keyboard button:active { border-color: #86c9ff; background: rgba(63, 125, 175, .75); }
+.harmony-overview-takeover-keyboard small { color: var(--muted-text, #9caec3); font-size: 9px; }
+.harmony-overview-edit, .harmony-overview-manage { display: grid; gap: 10px; }
+.harmony-overview-note-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.harmony-overview-note-list span { padding: 3px 6px; border-radius: 5px; background: rgba(53, 80, 110, .55); font-size: 11px; }
+.harmony-overview-exact-matrix { display: grid; grid-template-columns: repeat(13, minmax(28px, 1fr)); gap: 3px; }
+.harmony-overview-exact-matrix button { min-height: 28px; border: 1px solid rgba(140, 170, 210, .25); border-radius: 4px; background: rgba(24, 38, 57, .82); color: inherit; font-size: 9px; }
+.harmony-overview-exact-matrix button.filled { border-color: #86c9ff; background: rgba(63, 125, 175, .75); color: #fff; }
+.harmony-overview-pool-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 6px; }
+.harmony-overview-pool-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto auto; align-items: center; gap: 5px; padding: 6px; border: 1px solid rgba(140, 170, 210, .18); border-radius: 7px; }
+.harmony-overview-pool-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.harmony-overview-pool-row small { font-size: 10px; }
+.harmony-overview-replace select { min-width: 92px; padding: 5px; border-radius: 6px; background: #152438; color: inherit; border: 1px solid rgba(140, 170, 210, .3); }
+.harmony-overview-error { color: #ffc0c0; border: 1px solid rgba(244, 120, 120, .45); border-radius: 7px; padding: 7px 9px; font-size: 11px; }
+.harmony-overview-suggestions { border-top: 1px solid rgba(140, 170, 210, .18); padding-top: 8px; }
+.harmony-overview-suggestion-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid rgba(140, 170, 210, .18); font-size: 11px; }
+.harmony-overview-suggestion-actions strong { margin-right: auto; }
+@media (max-width: 640px) {
+  .harmony-overview-action-bar { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
+  .harmony-overview-action-bar button { flex: 0 0 auto; }
+  .harmony-overview-row { grid-template-columns: 28px minmax(72px, 1fr) 70px 42px; }
+  .harmony-overview-row small { grid-column: 2 / 4; }
+  .harmony-overview-row .harmony-relative-chord-dot-map { display: none; }
+}
+
 .harmony-suggestion-dock{margin:10px 0;padding:9px;border:1px solid rgba(148,163,184,.25);border-radius:9px;background:rgba(15,23,42,.56)}
 .harmony-suggestion-dock-header,.harmony-suggestion-action-dock{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px}.harmony-suggestion-dock-header span{opacity:.68;margin-left:auto}.harmony-suggestion-action-dock{margin-top:7px;padding-top:7px;border-top:1px solid rgba(148,163,184,.2)}.harmony-suggestion-action-dock strong{margin-right:auto}.harmony-suggestion-action-dock button{border:1px solid #475569;border-radius:5px;background:#1e293b;color:#cbd5e1;padding:4px 7px;font-size:11px}.harmony-suggestion-action-dock button:hover{border-color:#22d3ee;background:#155e75}.harmony-suggestion-grid-empty{display:grid;gap:2px;min-height:48px;padding:5px;border:1px dashed #334155;border-radius:6px;color:#64748b}.harmony-suggestion-grid-empty kbd{color:#fbbf24}.harmony-suggestion-error{margin:6px 0;color:#fca5a5;font-size:11px}
 
