@@ -1,6 +1,7 @@
 import type { HarmonyProjection } from '../../audio/harmony/harmonyProjection';
 import type { ResolvedHarmonyFrame } from '../../audio/CoreProductHarmonyControl';
 import type { HarmonyWorkspaceView } from './harmonyWorkspaceState';
+import type { TonalContextDisplay } from '../../audio/harmony/tonalContextAnalysis';
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
 
@@ -40,6 +41,7 @@ export interface HarmonyWorkspaceHeaderProps {
   view: HarmonyWorkspaceView;
   onViewChange: (view: HarmonyWorkspaceView) => void;
   morphReadOnly?: boolean;
+  tonalContext?: TonalContextDisplay | null;
 }
 
 export interface HarmonyWorkspaceHeaderModel {
@@ -48,9 +50,25 @@ export interface HarmonyWorkspaceHeaderModel {
   effective: string;
   position: string;
   scope: string;
+  tonal?: { engine: string; context: string; mode: 'playing' | 'preview' };
 }
 
-export function deriveHarmonyWorkspaceHeader(projection: HarmonyProjection): HarmonyWorkspaceHeaderModel {
+function tonalLabel(context: TonalContextDisplay): { engine: string; context: string; mode: 'playing' | 'preview' } {
+  const engine = `${noteName(context.engine.rootPitchClass)} · ${context.engine.scaleName ?? `Scale ${context.engine.scaleId}`}`;
+  const preview = context.preview?.top ? context.preview : null;
+  const selected = preview ?? context.playing;
+  const mode = preview ? 'preview' : 'playing';
+  const candidate = selected.top;
+  return {
+    engine,
+    mode,
+    context: candidate
+      ? `${noteName(candidate.rootPitchClass)} ${candidate.scaleName} · ${Math.round(candidate.confidence * 100)}%`
+      : 'Insufficient evidence',
+  };
+}
+
+export function deriveHarmonyWorkspaceHeader(projection: HarmonyProjection, tonalContext?: TonalContextDisplay | null): HarmonyWorkspaceHeaderModel {
   const position = projection.position.eventIndex >= 0
     ? `${projection.position.eventIndex + 1}/${Math.max(1, projection.progression.length)} · bar ${projection.position.barInEvent + 1}`
     : '—';
@@ -60,11 +78,12 @@ export function deriveHarmonyWorkspaceHeader(projection: HarmonyProjection): Har
     effective: frameLabel(projection.activeFrame),
     position,
     scope: liveScopeLabel(projection.activeLiveInputScope ?? projection.liveLayer?.scope),
+    ...(tonalContext ? { tonal: tonalLabel(tonalContext) } : {}),
   };
 }
 
-export function HarmonyWorkspaceHeader({ projection, view, onViewChange, morphReadOnly = false }: HarmonyWorkspaceHeaderProps) {
-  const header = deriveHarmonyWorkspaceHeader(projection);
+export function HarmonyWorkspaceHeader({ projection, view, onViewChange, morphReadOnly = false, tonalContext = null }: HarmonyWorkspaceHeaderProps) {
+  const header = deriveHarmonyWorkspaceHeader(projection, tonalContext);
   return (
     <header className="harmony-workspace-header">
       <div className="harmony-workspace-context" aria-label="Harmony context">
@@ -73,6 +92,7 @@ export function HarmonyWorkspaceHeader({ projection, view, onViewChange, morphRe
         <div><span>Effective</span><strong>{header.effective}</strong></div>
         <div><span>Position</span><strong>{header.position}</strong></div>
         <div><span>Live scope</span><strong>{header.scope}</strong></div>
+        {header.tonal && <div aria-label="Tonal context"><span>Engine</span><strong>{header.tonal.engine}</strong><span>{header.tonal.mode === 'preview' ? 'Preview' : 'Playing'}</span><strong>{header.tonal.context}</strong></div>}
       </div>
       {morphReadOnly && <div className="harmony-workspace-morph-banner" role="status">Morph in progress · Harmony is read-only</div>}
       <nav className="harmony-workspace-tabs" aria-label="Harmony views">

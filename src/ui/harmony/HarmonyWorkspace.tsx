@@ -7,7 +7,8 @@ import type { CircleOfFifthsProps } from '../CircleOfFifths';
 import { HarmonyEnginePanel } from './HarmonyEnginePanel';
 import { HarmonySlotStrip } from './HarmonySlotStrip';
 import { HarmonyWorkspaceHeader } from './HarmonyWorkspaceHeader';
-import { useHarmonyWorkspaceController } from './useHarmonyWorkspaceController';
+import { deriveHarmonyWorkspaceTonalContext, useHarmonyWorkspaceController } from './useHarmonyWorkspaceController';
+import type { TonalContextDisplay } from '../../audio/harmony/tonalContextAnalysis';
 import { harmonyWorkspaceActionsLocked, harmonyWorkspaceSurfaceForView } from './harmonyWorkspaceState';
 import './HarmonyWorkspace.css';
 import './HarmonySimple.css';
@@ -27,6 +28,8 @@ export interface HarmonyWorkspaceProps {
   onResetCofDrift?: () => void;
   onHarmonyLiveLayerChange?: (layer: HarmonyLiveLayer | null) => void;
   isRunning?: boolean;
+  /** Advisory context only; Engine state remains the sole mutation authority. */
+  tonalContext?: TonalContextDisplay | null;
 }
 
 function viewDescription(view: 'simple' | 'detail' | 'overview'): string {
@@ -35,10 +38,11 @@ function viewDescription(view: 'simple' | 'detail' | 'overview'): string {
   return 'Canonical progression, performance, and Harmony takeover';
 }
 
-export function HarmonyWorkspace({ state, harmonyState, harmonyProjection, onStateChange, onAuditionNote, morphReadOnly = false, CircleOfFifthsComponent, cofCurrentStep = 0, morphCoFViz = null, morphPosition = 0, onResetCofDrift, onHarmonyLiveLayerChange, isRunning = false }: HarmonyWorkspaceProps) {
+export function HarmonyWorkspace({ state, harmonyState, harmonyProjection, onStateChange, onAuditionNote, morphReadOnly = false, CircleOfFifthsComponent, cofCurrentStep = 0, morphCoFViz = null, morphPosition = 0, onResetCofDrift, onHarmonyLiveLayerChange, isRunning = false, tonalContext = null }: HarmonyWorkspaceProps) {
   const projection = useMemo(() => harmonyProjection ?? resolveHarmonyProjection(state, { harmonyState }), [harmonyProjection, harmonyState, state]);
   const actionsLocked = harmonyWorkspaceActionsLocked(morphReadOnly, projection.engine.morphLocked);
   const controller = useHarmonyWorkspaceController(state, actionsLocked ? undefined : onStateChange);
+  const workspaceTonalContext = useMemo(() => tonalContext ?? deriveHarmonyWorkspaceTonalContext(projection, Date.now(), isRunning), [projection, tonalContext, isRunning]);
   const editableStateChange = actionsLocked ? undefined : controller.onStateChange;
   const transientStateChange = actionsLocked ? undefined : controller.onTransientStateChange;
   const activeSlotId = projection.position.eventIndex >= 0 ? projection.progression[projection.position.eventIndex]?.slotId ?? null : null;
@@ -47,7 +51,7 @@ export function HarmonyWorkspace({ state, harmonyState, harmonyProjection, onSta
 
   return (
     <section className={`harmony-workspace harmony-workspace--${controller.view}`} aria-label="Harmony workspace" data-harmony-view={controller.view}>
-      <HarmonyWorkspaceHeader projection={projection} view={controller.view} onViewChange={controller.setView} morphReadOnly={actionsLocked} />
+      <HarmonyWorkspaceHeader projection={projection} view={controller.view} onViewChange={controller.setView} morphReadOnly={actionsLocked} tonalContext={workspaceTonalContext} />
       <HarmonySlotStrip slots={projection.slots} activeSlotId={activeSlotId} />
       <div className="harmony-workspace-toolbar">
         <span>{viewDescription(controller.view)}</span>
