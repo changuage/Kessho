@@ -45,6 +45,8 @@ test('a custom exact-only chord remains playable without fabricated semantic int
   assert.equal(slot.chord.intentSource, null);
   assert.equal(slot.chord.recognizedLabel, 'custom');
   assert.equal(slot.chord.playbackBehavior, 'exact');
+  assert.deepEqual(sharedChordResolvedMidiPool({ ...slot.chord, playbackBehavior: 'auto' }), [], 'ambiguous Custom Auto must wait for semantic selection');
+  assert.deepEqual(sharedChordResolvedMidiPool({ ...slot.chord, playbackBehavior: 'relative' }), [], 'ambiguous Custom Relative must wait for semantic selection');
 });
 
 test('missing and explicitly empty slots stay genuinely empty', () => {
@@ -83,7 +85,19 @@ test('editing exact notes retains confirmed semantic intent; editing intent refr
   const chord = legacyHarmonySlotToSharedSlot({ id: 0, intent }).chord!;
   const editedExact = editSharedChordExactNotes(chord, [61, 65, 68]);
   assert.equal(editedExact.intent?.quality, 'maj');
+  assert.deepEqual(editedExact.exactMidiNotes, [61, 65, 68]);
+  assert.deepEqual(chord.exactMidiNotes, [60, 64, 67]);
   const editedIntent = editSharedChordIntent(chord, { ...intent, quality: 'min' });
   assert.equal(editedIntent.intent?.quality, 'min');
   assert.deepEqual(editedIntent.exactMidiNotes, resolveHarmonyIntentToNotePool({ intent: editedIntent.intent!, rootMidi: 60, scaleId: 1, tension: 0.35 }));
+});
+
+test('a unique high-confidence inferred exact edit refreshes intent without mutating the source', () => {
+  const chord = legacyHarmonySlotToSharedSlot({ id: 0, capturedMidiNotes: [60, 64, 67] }).chord!;
+  const edited = editSharedChordExactNotes(chord, [62, 66, 69]);
+  assert.equal(edited.intentSource, 'inferred');
+  assert.equal(edited.intent?.rootNote, 2);
+  assert.equal(edited.intent?.quality, 'maj');
+  assert.deepEqual(edited.exactMidiNotes, [62, 66, 69]);
+  assert.deepEqual(chord.exactMidiNotes, [60, 64, 67]);
 });

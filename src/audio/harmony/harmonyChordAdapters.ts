@@ -1,7 +1,7 @@
 import {
   defaultHarmonyIntent,
   formatHarmonyIntentChordLabel,
-  recognizeHarmonyIntentFromMidiPool,
+  recognizeHarmonyCandidatesFromMidiPool,
   resolveHarmonyIntentToNotePool,
   sanitizeHarmonyIntent,
   type HarmonyChordSlot,
@@ -13,12 +13,23 @@ import type {
   SharedHarmonyChord,
   SharedHarmonyChordSlot,
 } from './harmonyTypes';
+import { harmonyRequiresSemanticSelection, uniqueHarmonyRecognitionCandidate } from './chordRecognition';
 import { HARMONY_AUTO_EXACT_THRESHOLD_SEMITONES, HARMONY_SLOT_COUNT } from '../CoreProductHarmonyControl';
 
 export interface HarmonyChordAdapterContext {
   rootMidi?: number;
   scaleId?: number;
   tension?: number;
+}
+
+function semanticMatches(left: HarmonyIntent | null, right: HarmonyIntent | null): boolean {
+  if (!left || !right) return left === right;
+  return left.rootMode === right.rootMode
+    && left.degree === right.degree
+    && left.rootNote === right.rootNote
+    && left.quality === right.quality
+    && [...left.extensions].sort().join(',') === [...right.extensions].sort().join(',')
+    && [...(left.alterations ?? [])].sort().join(',') === [...(right.alterations ?? [])].sort().join(',');
 }
 
 function finite(value: unknown, fallback: number): number {
@@ -69,15 +80,17 @@ export function legacyHarmonySlotToSharedSlot(value: unknown, context: HarmonyCh
   const exactMidiNotes = resolveSnapshot(intent, chordRecord.exactMidiNotes ?? chordRecord.capturedMidiNotes ?? record.exactMidiNotes ?? record.capturedMidiNotes ?? legacyIntent?.capturedMidiNotes, capturedContext, context.tension ?? 0.35);
   if (!intent && exactMidiNotes.length === 0) return { id, name, chord: null, locked: record.locked === true };
 
-  const recognizedIntent = exactMidiNotes.length > 0
-    ? recognizeHarmonyIntentFromMidiPool({
+  const recognitionCandidates = exactMidiNotes.length > 0
+    ? recognizeHarmonyCandidatesFromMidiPool({
       midiNotes: exactMidiNotes,
+      previousIntent: intent,
       rootMidi: capturedContext.rootMidi,
       scaleId: capturedContext.scaleId,
       tension: context.tension ?? 0.35,
     })
-    : null;
-  const inferredIntent = intent ?? (recognizedIntent?.quality === 'custom' ? null : recognizedIntent);
+    : [];
+  const inferredCandidate = uniqueHarmonyRecognitionCandidate(recognitionCandidates);
+  const inferredIntent = intent ?? inferredCandidate?.intent ?? null;
   const intentSource = chordRecord.intentSource === 'inferred' || chordRecord.intentSource === 'confirmed'
     ? chordRecord.intentSource
     : intent ? 'confirmed' : inferredIntent ? 'inferred' : null;
@@ -94,6 +107,9 @@ export function legacyHarmonySlotToSharedSlot(value: unknown, context: HarmonyCh
       : inferredIntent ? formatHarmonyIntentChordLabel(inferredIntent, { rootMidi: capturedContext.rootMidi, scaleId: capturedContext.scaleId }) : 'custom',
     playbackBehavior,
     capturedContext,
+    recognitionCandidates: recognitionCandidates.length > 0 ? recognitionCandidates : undefined,
+    recognitionMismatch: Boolean(intent && inferredCandidate && !semanticMatches(intent, inferredCandidate.intent)),
+    requiresSemanticSelection: harmonyRequiresSemanticSelection({ intent: inferredIntent, playbackBehavior }),
   };
   return { id, name, chord, locked: record.locked === true };
 }
@@ -106,6 +122,9 @@ export function sharedHarmonyChordToLegacyIntent(chord: SharedHarmonyChord | nul
 export function sharedChordResolvedMidiPool(chord: SharedHarmonyChord | null, args: HarmonyChordAdapterContext & { effectiveRootMidi?: number } = {}): number[] {
   if (!chord) return [];
   const exact = midiPool(chord.exactMidiNotes);
+  // Relative/Auto semantics for an ambiguous custom capture are pending an
+  // explicit candidate or manual Root/Degree/Quality/Extensions selection.
+  if (harmonyRequiresSemanticSelection(chord)) return [];
   const rootMidi = finite(args.rootMidi, chord.capturedContext.rootMidi);
   const effectiveRootMidi = finite(args.effectiveRootMidi, rootMidi);
   const displacement = effectiveRootMidi - finite(chord.capturedContext.rootMidiAnchor, chord.capturedContext.rootMidi);
@@ -144,11 +163,13 @@ export function editSharedChordExactNotes(chord: SharedHarmonyChord, exactMidiNo
     rootMidiAnchor: finite(context.rootMidi, finite(chord.capturedContext.rootMidiAnchor, chord.capturedContext.rootMidi)),
     scaleId: Math.round(finite(context.scaleId, chord.capturedContext.scaleId)),
   };
-  const recognized = exact.length > 0
-    ? recognizeHarmonyIntentFromMidiPool({ midiNotes: exact, previousIntent: chord.intent, rootMidi: nextContext.rootMidi, scaleId: nextContext.scaleId, tension: context.tension ?? 0.35 })
-    : chord.intent;
+  const recognitionCandidates = exact.length > 0
+    ? recognizeHarmonyCandidatesFromMidiPool({ midiNotes: exact, previousIntent: chord.intent, rootMidi: nextContext.rootMidi, scaleId: nextContext.scaleId, tension: context.tension ?? 0.35 })
+    : [];
+  const inferredCandidate = uniqueHarmonyRecognitionCandidate(recognitionCandidates);
+  const recognized = inferredCandidate?.intent ?? null;
   // A confirmed semantic intent is never silently replaced by recognition.
-  const nextIntent = chord.intentSource === 'confirmed' ? chord.intent : recognized?.quality === 'custom' ? null : recognized;
+  const nextIntent = chord.intentSource === 'confirmed' ? chord.intent : recognized;
   return {
     ...chord,
     intent: nextIntent,
@@ -156,6 +177,9 @@ export function editSharedChordExactNotes(chord: SharedHarmonyChord, exactMidiNo
     exactMidiNotes: exact,
     recognizedLabel: nextIntent ? formatHarmonyIntentChordLabel(nextIntent, { rootMidi: nextContext.rootMidi, scaleId: nextContext.scaleId }) : 'custom',
     capturedContext: nextContext,
+    recognitionCandidates: recognitionCandidates.length > 0 ? recognitionCandidates : undefined,
+    recognitionMismatch: chord.intentSource === 'confirmed' && Boolean(inferredCandidate && !semanticMatches(chord.intent, inferredCandidate.intent)),
+    requiresSemanticSelection: harmonyRequiresSemanticSelection({ intent: nextIntent, playbackBehavior: chord.playbackBehavior }),
   };
 }
 
@@ -176,6 +200,9 @@ export function editSharedChordIntent(chord: SharedHarmonyChord, intent: Harmony
     exactMidiNotes: exact,
     recognizedLabel: intent ? formatHarmonyIntentChordLabel(intent, { rootMidi: nextContext.rootMidi, scaleId: nextContext.scaleId }) : 'custom',
     capturedContext: nextContext,
+    recognitionCandidates: undefined,
+    recognitionMismatch: false,
+    requiresSemanticSelection: harmonyRequiresSemanticSelection({ intent, playbackBehavior: chord.playbackBehavior }),
   };
 }
 
@@ -190,6 +217,9 @@ export function sharedChordToDraft(chord: SharedHarmonyChord | null): HarmonyDra
     editFocus: null,
     source: 'slot',
     dirty: false,
+    recognitionCandidates: chord?.recognitionCandidates,
+    recognitionMismatch: chord?.recognitionMismatch,
+    requiresSemanticSelection: chord?.requiresSemanticSelection,
   };
 }
 
@@ -201,5 +231,8 @@ export function sharedChordFromDraft(draft: HarmonyDraftChord): SharedHarmonyCho
     recognizedLabel: draft.recognizedLabel,
     playbackBehavior: draft.playbackBehavior,
     capturedContext: draft.capturedContext,
+    recognitionCandidates: draft.recognitionCandidates,
+    recognitionMismatch: draft.recognitionMismatch,
+    requiresSemanticSelection: draft.requiresSemanticSelection,
   };
 }

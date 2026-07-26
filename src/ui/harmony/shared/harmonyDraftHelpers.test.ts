@@ -53,3 +53,13 @@ test('live re-anchor honors Exact, Relative, and Auto threshold', () => {
   assert.deepEqual(resolveLiveReanchoredNotes(auto, 66, 66, 1), [60, 64, 67]);
   assert.equal(resolveLiveReanchoredNotes(auto, 67, 67, 1).length > 0, true);
 });
+
+test('ambiguous Custom draft playback is pending explicit semantic selection', () => {
+  const context = { rootMidi: 60, rootMidiAnchor: 60, scaleId: 1 };
+  const draft = updateDraftExactNotes(emptyHarmonyDraft(context), [60, 61, 66]);
+  assert.equal(draft.intent, null);
+  assert.deepEqual(resolveDraftNotes({ ...draft, playbackBehavior: 'auto' }, 72), []);
+  assert.deepEqual(resolveDraftNotes({ ...draft, playbackBehavior: 'relative' }, 72), []);
+  const custom = { intent: null, exactMidiNotes: [60, 61, 66], playbackBehavior: 'relative' as const, capturedContext: context };
+  assert.deepEqual(resolveLiveReanchoredNotes(custom, 72, 72, 1), []);
+});

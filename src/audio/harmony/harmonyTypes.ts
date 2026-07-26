@@ -60,6 +60,25 @@ export interface HarmonyIntent {
   preserveCapturedVoicing: boolean;
 }
 
+export interface HarmonyRecognitionVoicing {
+  bassMidi: number;
+  inversion: number;
+  doubledPitchClasses: number[];
+  omittedChordTones: string[];
+  spread: number;
+}
+
+export interface HarmonyRecognitionCandidate {
+  intent: HarmonyIntent;
+  label: string;
+  quality: HarmonyChordQuality;
+  extensions: HarmonyChordExtension[];
+  confidence: number;
+  pitchClassScore: number;
+  contextScore: number;
+  voicing: HarmonyRecognitionVoicing;
+}
+
 export type HarmonyPlaybackBehavior = 'auto' | 'relative' | 'exact';
 export type HarmonyIntentSource = 'inferred' | 'confirmed' | null;
 
@@ -79,6 +98,12 @@ export interface SharedHarmonyChord {
   recognizedLabel: string;
   playbackBehavior: HarmonyPlaybackBehavior;
   capturedContext: HarmonyCapturedContext;
+  /** Ranked semantic interpretations retained for mismatch/adopt UI. */
+  recognitionCandidates?: HarmonyRecognitionCandidate[];
+  /** True when an exact edit diverges from a confirmed semantic intent. */
+  recognitionMismatch?: boolean;
+  /** Relative/Auto custom voicings need an explicit semantic choice first. */
+  requiresSemanticSelection?: boolean;
 }
 
 export interface SharedHarmonyChordSlot {
@@ -162,6 +187,9 @@ export interface HarmonyDraftChord {
   intentSource?: HarmonyIntentSource;
   exactMidiNotes: number[];
   semanticCandidates?: Array<{ intent: HarmonyIntent; confidence: number }>;
+  recognitionCandidates?: HarmonyRecognitionCandidate[];
+  recognitionMismatch?: boolean;
+  requiresSemanticSelection?: boolean;
   quality?: HarmonyChordQuality | null;
   extensions?: HarmonyChordExtension[];
   playbackBehavior: HarmonyPlaybackBehavior;

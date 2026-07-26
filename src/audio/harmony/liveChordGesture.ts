@@ -2,6 +2,7 @@ import type { ResolvedHarmonyFrame } from './harmonyTypes';
 import type { HarmonyDraftChord } from './harmonyTypes';
 import type { HarmonyLiveLayer } from './harmonyProjection';
 import { HARMONY_AUTO_EXACT_THRESHOLD_SEMITONES, resolveHarmonyIntentToNotePool } from '../CoreProductHarmonyControl';
+import { harmonyRequiresSemanticSelection } from './chordRecognition';
 
 export type LiveChordScope =
   | 'detail-draft'
@@ -94,6 +95,7 @@ function frameForDraft(base: ResolvedHarmonyFrame, notes: readonly number[]): Re
 
 function resolveDraftNotes(draft: HarmonyDraftChord, effectiveRootMidi: number, scaleId: number): number[] {
   const exact = draft.exactMidiNotes.slice();
+  if (harmonyRequiresSemanticSelection(draft)) return [];
   if (draft.playbackBehavior === 'exact') return exact;
   const anchor = draft.capturedContext.rootMidiAnchor ?? draft.capturedContext.rootMidi;
   if (draft.playbackBehavior === 'auto' && exact.length > 0 && Math.abs(effectiveRootMidi - anchor) <= HARMONY_AUTO_EXACT_THRESHOLD_SEMITONES) return exact;

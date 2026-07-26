@@ -1,6 +1,6 @@
 import {
   HARMONY_AUTO_EXACT_THRESHOLD_SEMITONES,
-  recognizeHarmonyIntentFromMidiPool,
+  recognizeHarmonyCandidatesFromMidiPool,
   resolveHarmonyIntentToNotePool,
   defaultHarmonyIntent,
   type HarmonyIntent,
@@ -18,6 +18,7 @@ import type {
   SharedHarmonyChord,
   SharedHarmonyChordSlot,
 } from '../../../audio/harmony/harmonyTypes';
+import { harmonyRequiresSemanticSelection, uniqueHarmonyRecognitionCandidate } from '../../../audio/harmony/chordRecognition';
 
 export { HARMONY_AUTO_EXACT_THRESHOLD_SEMITONES };
 
@@ -79,15 +80,20 @@ export function draftFromExactNotes(
   previousIntent: HarmonyIntent | null = null,
 ): HarmonyDraftChord {
   const exactMidiNotes = Array.from(new Set(notes.map((note) => Math.max(0, Math.min(127, Math.round(note)))))).sort((a, b) => a - b);
-  const recognized = exactMidiNotes.length > 0
-    ? recognizeHarmonyIntentFromMidiPool({ midiNotes: exactMidiNotes, previousIntent, rootMidi: context.rootMidi, scaleId: context.scaleId, tension: 0.35 })
-    : null;
-  const intent = previousIntent && previousIntent.preserveCapturedVoicing ? previousIntent : recognized?.quality === 'custom' ? null : recognized;
+  const recognitionCandidates = exactMidiNotes.length > 0
+    ? recognizeHarmonyCandidatesFromMidiPool({ midiNotes: exactMidiNotes, previousIntent, rootMidi: context.rootMidi, scaleId: context.scaleId, tension: 0.35 })
+    : [];
+  const top = recognitionCandidates[0];
+  const unique = uniqueHarmonyRecognitionCandidate(recognitionCandidates);
+  const intent = previousIntent && previousIntent.preserveCapturedVoicing ? previousIntent : unique?.intent ?? null;
   return {
     intent,
     intentSource: previousIntent ? 'confirmed' : intent ? 'inferred' : null,
     exactMidiNotes,
-    semanticCandidates: recognized ? [{ intent: recognized, confidence: recognized.quality === 'custom' ? 0.2 : 0.8 }] : [],
+    semanticCandidates: top ? [{ intent: top.intent, confidence: top.confidence }] : [],
+    recognitionCandidates,
+    recognitionMismatch: Boolean(previousIntent && unique && (previousIntent.rootNote !== unique.intent.rootNote || previousIntent.quality !== unique.intent.quality)),
+    requiresSemanticSelection: harmonyRequiresSemanticSelection({ intent, playbackBehavior: 'auto' }),
     quality: intent?.quality ?? null,
     extensions: (intent?.extensions?.slice() ?? []) as HarmonyChordExtension[],
     playbackBehavior: 'auto',
@@ -134,6 +140,7 @@ export function updateDraftIntent(draft: HarmonyDraftChord, intent: HarmonyInten
 }
 
 export function resolveDraftNotes(draft: HarmonyDraftChord, effectiveRootMidi: number, scaleId = draft.capturedContext.scaleId): number[] {
+  if (harmonyRequiresSemanticSelection(draft)) return [];
   const anchor = draft.capturedContext.rootMidiAnchor ?? draft.capturedContext.rootMidi;
   const displacement = effectiveRootMidi - anchor;
   if (draft.playbackBehavior !== 'relative' && Math.abs(displacement) <= HARMONY_AUTO_EXACT_THRESHOLD_SEMITONES && draft.exactMidiNotes.length > 0) {
@@ -149,6 +156,7 @@ export function resolveLiveReanchoredNotes(
   effectiveRootMidi: number,
   scaleId: number,
 ): number[] {
+  if (harmonyRequiresSemanticSelection(chord)) return [];
   if (chord.playbackBehavior === 'exact' && chord.exactMidiNotes.length > 0) return [...chord.exactMidiNotes];
   const displacement = pressedRootMidi - (chord.capturedContext.rootMidiAnchor ?? chord.capturedContext.rootMidi);
   if (chord.playbackBehavior === 'auto' && Math.abs(displacement) <= HARMONY_AUTO_EXACT_THRESHOLD_SEMITONES && chord.exactMidiNotes.length > 0) return [...chord.exactMidiNotes];

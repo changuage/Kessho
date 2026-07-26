@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createLiveChordGesture, createLiveChordLayerController, nextSafeAudioBlock, releaseLiveChordGesture, resolveLiveChordExecution, shouldEmitLiveChordMonitorNotes, stopLiveChordGesture } from './liveChordGesture';
+import { defaultHarmonyIntent } from '../CoreProductHarmonyControl';
 import type { HarmonyDraftChord, ResolvedHarmonyFrame } from './harmonyTypes';
 
 const draft = (playbackBehavior: HarmonyDraftChord['playbackBehavior'] = 'auto'): HarmonyDraftChord => ({
-  intent: null,
-  intentSource: null,
+  intent: { ...defaultHarmonyIntent('manualControl'), quality: 'maj' as const },
+  intentSource: 'confirmed',
   exactMidiNotes: [60, 64, 67],
   semanticCandidates: [],
   quality: 'maj',
@@ -62,4 +63,12 @@ test('App layer controller releases only the active gesture and never mutates au
   assert.equal(controller.activeGestureId(), null);
   assert.equal(changes[changes.length - 1], null);
   assert.deepEqual(authored, { slots: [{ id: 0, chord: 'C' }], progression: ['S1'] });
+});
+
+test('ambiguous Custom live playback is pending explicit semantic selection', () => {
+  const custom = { ...draft(), intent: null, intentSource: null, playbackBehavior: 'auto' as const };
+  const gesture = createLiveChordGesture({ id: 'custom', scope: 'detail-draft', target: 'harmony', source: 'midi', draft: custom });
+  const execution = resolveLiveChordExecution({ gesture, draft: custom, effectiveFrame: frame, currentAudioBlock: 1, running: true });
+  assert.deepEqual(execution.notes, []);
+  assert.equal(execution.temporaryHarmonyFrame?.currentNotePool.length, 0);
 });

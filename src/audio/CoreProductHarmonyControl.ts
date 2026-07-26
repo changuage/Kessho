@@ -19,6 +19,15 @@ import type {
   HarmonyChordSlot,
   SharedHarmonyChord,
 } from './harmony/harmonyTypes';
+import {
+  recognizeHarmonyCandidates,
+  recognizeHarmonyIntentFromCandidates,
+} from './harmony/chordRecognition';
+import {
+  DEFAULT_HARMONY_SCALE_INTERVALS,
+  HARMONY_SCALE_INTERVALS,
+} from './harmony/harmonyScaleIntervals';
+import type { HarmonyRecognitionCandidate } from './harmony/harmonyTypes';
 export type {
   HarmonyBassMode,
   HarmonyChordAlteration,
@@ -44,6 +53,7 @@ export type {
   HarmonyPlaybackBehavior,
   SharedHarmonyChord,
   SharedHarmonyChordSlot,
+  HarmonyRecognitionCandidate,
 } from './harmony/harmonyTypes';
 
 export const HARMONY_SLOT_COUNT = 8 as const;
@@ -119,20 +129,6 @@ export const MANUAL_HARMONY_MODE_IDS = Object.freeze({
   capture: 2,
 } as const);
 
-const SCALE_INTERVALS: Record<number, readonly number[]> = {
-  1: [0, 2, 4, 5, 7, 9, 11],
-  2: [0, 2, 3, 5, 7, 8, 10],
-  3: [0, 2, 4, 7, 9],
-  4: [0, 1, 3, 4, 6, 7, 9, 10],
-  5: [0, 2, 4, 6, 7, 9, 11],
-  6: [0, 2, 4, 5, 7, 9, 10],
-  7: [0, 3, 5, 7, 10],
-  8: [0, 2, 3, 5, 7, 9, 10],
-  9: [0, 2, 3, 5, 7, 8, 11],
-  10: [0, 2, 3, 5, 7, 9, 11],
-  11: [0, 1, 4, 5, 7, 8, 10],
-};
-
 const QUALITY_INTERVALS: Partial<Record<HarmonyChordQuality, readonly number[]>> = {
   dim: [0, 3, 6],
   min: [0, 3, 7],
@@ -177,36 +173,6 @@ const HARMONY_CHORD_ALTERATIONS: readonly HarmonyChordAlteration[] = [
 ] as const;
 
 const CHROMATIC_ROOT_LABELS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'] as const;
-
-type HarmonyRecognitionRecipe = {
-  quality: HarmonyChordQuality;
-  extensions?: string[];
-  alterations?: HarmonyChordAlteration[];
-};
-
-const HARMONY_RECOGNITION_RECIPES: readonly HarmonyRecognitionRecipe[] = [
-  { quality: 'maj' },
-  { quality: 'min' },
-  { quality: 'dim' },
-  { quality: 'sus' },
-  { quality: 'maj7' },
-  { quality: 'min7' },
-  { quality: 'dom7' },
-  { quality: 'add9' },
-  { quality: 'six' },
-  { quality: 'sixNine' },
-  { quality: 'nine' },
-  { quality: 'maj7', extensions: ['9'] },
-  { quality: 'min7', extensions: ['9'] },
-  { quality: 'dom7', extensions: ['add13'] },
-  { quality: 'dom7', extensions: ['13'] },
-  { quality: 'dom7', alterations: ['b9'] },
-  { quality: 'dom7', alterations: ['#9'] },
-  { quality: 'dom7', alterations: ['#11'] },
-  { quality: 'dom7', alterations: ['b13'] },
-  { quality: 'quartal' },
-  { quality: 'cluster' },
-] as const;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -779,7 +745,7 @@ export function buildBaselineHarmonyIntent(args: {
   barIndex: number;
   phraseIndex: number;
 }): HarmonyIntent {
-  const intervals = SCALE_INTERVALS[Math.round(args.scaleId)] ?? SCALE_INTERVALS[1] ?? [0, 2, 4, 5, 7, 9, 11];
+  const intervals = HARMONY_SCALE_INTERVALS[Math.round(args.scaleId)] ?? DEFAULT_HARMONY_SCALE_INTERVALS;
   const degree = args.tension <= 0.5
     ? 0
     : hashU32((args.seed >>> 0) ^ Math.imul(Math.round(args.barIndex), 31) ^ Math.imul(Math.round(args.phraseIndex), 131)) % Math.max(1, intervals.length);
@@ -857,7 +823,7 @@ export function chooseActiveHarmonyIntent(args: {
 }
 
 function scaleDegreeMidi(rootMidi: number, scaleId: number, degree: number, octaveShift = 0): number {
-  const intervals = SCALE_INTERVALS[Math.round(scaleId)] ?? SCALE_INTERVALS[1] ?? [0, 2, 4, 5, 7, 9, 11];
+  const intervals = HARMONY_SCALE_INTERVALS[Math.round(scaleId)] ?? DEFAULT_HARMONY_SCALE_INTERVALS;
   const safeDegree = ((Math.round(degree) % intervals.length) + intervals.length) % intervals.length;
   return Math.round(rootMidi) + (intervals[safeDegree] ?? 0) + octaveShift * 12;
 }
@@ -906,14 +872,6 @@ export function resolveHarmonyIntentToNotePool(args: {
   return normalizeMidiPool(applyInversion(raw, intent.inversion));
 }
 
-function midiPoolsEqual(left: readonly number[], right: readonly number[]): boolean {
-  if (left.length !== right.length) return false;
-  for (let index = 0; index < left.length; index += 1) {
-    if (Math.round(left[index] ?? -1) !== Math.round(right[index] ?? -2)) return false;
-  }
-  return true;
-}
-
 function pitchClassSignatureForRoot(notes: readonly number[], rootPc: number): string {
   return [...new Set(notes.map((note) => (pitchClass(note) - rootPc + 12) % 12))]
     .sort((left, right) => left - right)
@@ -951,43 +909,6 @@ function formatCapturedVoicingChordLabel(notes: readonly number[]): string {
   return `${CHROMATIC_ROOT_LABELS[rootPc] ?? 'C'} custom`;
 }
 
-function rootCandidatesForRecognition(previous: HarmonyIntent, rootMidi: number, scaleId: number): Array<Pick<HarmonyIntent, 'rootMode' | 'degree' | 'rootNote'>> {
-  const candidates: Array<Pick<HarmonyIntent, 'rootMode' | 'degree' | 'rootNote'>> = [];
-  const push = (candidate: Pick<HarmonyIntent, 'rootMode' | 'degree' | 'rootNote'>) => {
-    if (candidates.some((entry) => entry.rootMode === candidate.rootMode && entry.degree === candidate.degree && entry.rootNote === candidate.rootNote)) return;
-    candidates.push(candidate);
-  };
-  push({ rootMode: previous.rootMode, degree: previous.degree, rootNote: previous.rootNote });
-  if (previous.rootMode === 'degree') {
-    for (let degree = 0; degree < 7; degree += 1) {
-      push({ rootMode: 'degree', degree, rootNote: pitchClass(scaleDegreeMidi(rootMidi, scaleId, degree)) });
-    }
-  }
-  for (let rootNote = 0; rootNote < 12; rootNote += 1) {
-    push({ rootMode: 'absolute', degree: previous.degree, rootNote });
-  }
-  return candidates;
-}
-
-function recognitionScore(previous: HarmonyIntent, candidate: HarmonyIntent, recipeIndex: number): number {
-  let score = recipeIndex * 10;
-  if (candidate.rootMode !== previous.rootMode) score += 500;
-  if (candidate.rootMode === 'degree') {
-    score += Math.abs(candidate.degree - previous.degree) * 20;
-  } else {
-    const distance = Math.min(
-      Math.abs(candidate.rootNote - previous.rootNote),
-      12 - Math.abs(candidate.rootNote - previous.rootNote),
-    );
-    score += distance * 20;
-  }
-  if (candidate.quality !== previous.quality) score += 12;
-  score += candidate.extensions.length * 4;
-  score += (candidate.alterations ?? []).length * 6;
-  score += Math.abs(candidate.inversion - previous.inversion) * 3;
-  return score;
-}
-
 export function recognizeHarmonyIntentFromMidiPool(args: {
   midiNotes: readonly number[];
   previousIntent?: HarmonyIntent | null;
@@ -995,48 +916,27 @@ export function recognizeHarmonyIntentFromMidiPool(args: {
   scaleId: number;
   tension: number;
 }): HarmonyIntent {
-  const targetPool = normalizeMidiPool(args.midiNotes);
   const previous = args.previousIntent ? sanitizeHarmonyIntent(args.previousIntent) : defaultHarmonyIntent('slot');
-  let best: { intent: HarmonyIntent; score: number } | null = null;
-  const rootCandidates = rootCandidatesForRecognition(previous, args.rootMidi, args.scaleId);
-  for (const rootCandidate of rootCandidates) {
-    for (let recipeIndex = 0; recipeIndex < HARMONY_RECOGNITION_RECIPES.length; recipeIndex += 1) {
-      const recipe = HARMONY_RECOGNITION_RECIPES[recipeIndex]!;
-      const candidate: HarmonyIntent = {
-        ...previous,
-        source: previous.source,
-        rootMode: rootCandidate.rootMode,
-        degree: rootCandidate.degree,
-        rootNote: rootCandidate.rootNote,
-        quality: recipe.quality,
-        extensions: [...(recipe.extensions ?? [])],
-        alterations: [...(recipe.alterations ?? [])],
-        inversion: 0,
-        bassMode: 'off',
-        bassNote: null,
-        capturedMidiNotes: [],
-        preserveCapturedVoicing: false,
-      };
-      const resolved = resolveHarmonyIntentToNotePool({
-        intent: candidate,
-        rootMidi: args.rootMidi,
-        scaleId: args.scaleId,
-        tension: args.tension,
-      });
-      if (!midiPoolsEqual(resolved, targetPool)) continue;
-      const score = recognitionScore(previous, candidate, recipeIndex);
-      if (!best || score < best.score) best = { intent: candidate, score };
-    }
-  }
-  if (best) return best.intent;
-  return {
-    ...previous,
-    quality: 'custom',
-    extensions: [],
-    alterations: [],
-    capturedMidiNotes: targetPool,
-    preserveCapturedVoicing: true,
-  };
+  return recognizeHarmonyIntentFromCandidates({
+    midiNotes: args.midiNotes,
+    previousIntent: previous,
+    rootMidi: args.rootMidi,
+    scaleId: args.scaleId,
+    tension: args.tension,
+  });
+}
+
+/** Ranked recognition metadata for dual-representation capture and adopt UI. */
+export function recognizeHarmonyCandidatesFromMidiPool(args: {
+  midiNotes: readonly number[];
+  previousIntent?: HarmonyIntent | null;
+  rootMidi: number;
+  scaleId: number;
+  tension: number;
+  engineContext?: { rootPitchClass?: number; quality?: HarmonyChordQuality; degree?: number };
+  maxCandidates?: number;
+}): HarmonyRecognitionCandidate[] {
+  return recognizeHarmonyCandidates(args);
 }
 
 export function formatHarmonyIntentChordLabel(intent: HarmonyIntent, args?: {
