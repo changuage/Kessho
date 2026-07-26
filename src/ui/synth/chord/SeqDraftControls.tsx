@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { HarmonyDraftChord, HarmonyChordQuality, HarmonyChordExtension } from '../../../audio/harmony/harmonyTypes';
 import QualityExtensionControls from '../../harmony/shared/QualityExtensionControls';
 import ExactVoicingEditor from '../../harmony/shared/ExactVoicingEditor';
@@ -14,10 +14,13 @@ export interface SeqDraftControlsProps {
   onChange: (draft: HarmonyDraftChord) => void;
   onCapture: () => void;
   onClear: () => void;
-  onPlay?: () => void;
+  onPlay?: (route: HarmonyDraftPlayRoute) => void;
 }
 
+export type HarmonyDraftPlayRoute = 'track' | 'harmony';
+
 export const SeqDraftControls: React.FC<SeqDraftControlsProps> = ({ draft, locked = false, sharedSlotLabel = 'Unsaved', useCount = 0, axis, onChange, onCapture, onClear, onPlay }) => {
+  const [route, setRoute] = useState<HarmonyDraftPlayRoute>('track');
   const quality = draft.quality ?? draft.intent?.quality ?? null;
   const extensions = draft.extensions ?? (draft.intent?.extensions as HarmonyChordExtension[] | undefined) ?? [];
   const mode = draft.intent?.rootMode ?? 'root';
@@ -31,7 +34,7 @@ export const SeqDraftControls: React.FC<SeqDraftControlsProps> = ({ draft, locke
     <QualityExtensionControls quality={quality} extensions={extensions} disabled={locked} onQualityChange={(next: HarmonyChordQuality) => onChange(updateDraftIntent(draft, { ...semanticIntent, quality: next }, {}))} onExtensionsChange={(next) => onChange(updateDraftIntent(draft, { ...semanticIntent, extensions: next }, {}))} />
     <RelativeChordDotMap notes={draft.exactMidiNotes} axis={axis} />
     <ExactVoicingEditor notes={draft.exactMidiNotes} axis={axis} locked={locked} onChange={(notes) => onChange(updateDraftExactNotes({ ...draft, source: 'matrix' }, notes))} />
-    <div className="seq-draft-actions"><button type="button" onClick={onPlay} disabled={!onPlay || draft.exactMidiNotes.length === 0}>Play</button><button type="button" onClick={onClear} disabled={locked}>Clear draft</button><button type="button" onClick={onCapture} disabled={locked || (draft.exactMidiNotes.length === 0 && !draft.intent)}>Capture</button></div>
+    <div className="seq-draft-actions"><span className="seq-draft-route" aria-label="Draft play route"><strong>Route</strong><button type="button" className={route === 'track' ? 'active' : ''} onClick={() => setRoute('track')}>Track</button><button type="button" className={route === 'harmony' ? 'active' : ''} onClick={() => setRoute('harmony')}>Harmony</button></span><button type="button" onClick={() => onPlay?.(route)} disabled={!onPlay || draft.exactMidiNotes.length === 0}>Play</button><button type="button" onClick={onClear} disabled={locked}>Clear draft</button><button type="button" onClick={onCapture} disabled={locked || (draft.exactMidiNotes.length === 0 && !draft.intent)}>Capture</button></div>
   </section>;
 };
 export default SeqDraftControls;

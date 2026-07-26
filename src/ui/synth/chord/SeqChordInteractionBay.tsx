@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { HarmonyDraftChord, SharedHarmonyChordSlot } from '../../../audio/harmony/harmonyTypes';
 import LiveChordKeyboard, { type LiveChordScope } from '../../harmony/live/LiveChordKeyboard';
-import SeqDraftControls from './SeqDraftControls';
+import SeqDraftControls, { type HarmonyDraftPlayRoute } from './SeqDraftControls';
 import SeqLiveChordControls from './SeqLiveChordControls';
 import SuggestionGrid, { type HarmonySuggestion } from '../../harmony/shared/SuggestionGrid';
 import SharedChordMatrix from '../../harmony/shared/SharedChordMatrix';
@@ -20,7 +20,7 @@ export interface SeqChordInteractionBayProps {
   onDraftChange: (draft: HarmonyDraftChord) => void;
   onDraftCapture: () => void;
   onDraftClear: () => void;
-  onDraftPlay?: () => void;
+  onDraftPlay?: (route: HarmonyDraftPlayRoute) => void;
   onLiveSlot: (slotId: number) => void;
   onLiveHoldChange?: (held: boolean) => void;
   onLiveLatch: () => void;

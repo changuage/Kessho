@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import type { HarmonyState } from '../../audio/harmony';
-import { resolveHarmonyProjection, type HarmonyProjection } from '../../audio/harmony/harmonyProjection';
+import { resolveHarmonyProjection, type HarmonyLiveLayer, type HarmonyProjection } from '../../audio/harmony/harmonyProjection';
 import type { ProductManualSynthNote } from '../../audio/product/ProductEngineTypes';
 import type { SliderState } from '../state';
 import type { CircleOfFifthsProps } from '../CircleOfFifths';
@@ -25,6 +25,8 @@ export interface HarmonyWorkspaceProps {
   morphCoFViz?: { cofStep: number; startRoot: number; targetRoot: number } | null;
   morphPosition?: number;
   onResetCofDrift?: () => void;
+  onHarmonyLiveLayerChange?: (layer: HarmonyLiveLayer | null) => void;
+  isRunning?: boolean;
 }
 
 function viewDescription(view: 'simple' | 'detail' | 'overview'): string {
@@ -33,7 +35,7 @@ function viewDescription(view: 'simple' | 'detail' | 'overview'): string {
   return 'Canonical progression, performance, and Harmony takeover';
 }
 
-export function HarmonyWorkspace({ state, harmonyState, harmonyProjection, onStateChange, onAuditionNote, morphReadOnly = false, CircleOfFifthsComponent, cofCurrentStep = 0, morphCoFViz = null, morphPosition = 0, onResetCofDrift }: HarmonyWorkspaceProps) {
+export function HarmonyWorkspace({ state, harmonyState, harmonyProjection, onStateChange, onAuditionNote, morphReadOnly = false, CircleOfFifthsComponent, cofCurrentStep = 0, morphCoFViz = null, morphPosition = 0, onResetCofDrift, onHarmonyLiveLayerChange, isRunning = false }: HarmonyWorkspaceProps) {
   const projection = useMemo(() => harmonyProjection ?? resolveHarmonyProjection(state, { harmonyState }), [harmonyProjection, harmonyState, state]);
   const actionsLocked = harmonyWorkspaceActionsLocked(morphReadOnly, projection.engine.morphLocked);
   const controller = useHarmonyWorkspaceController(state, actionsLocked ? undefined : onStateChange);
@@ -93,6 +95,8 @@ export function HarmonyWorkspace({ state, harmonyState, harmonyProjection, onSta
           onStateChange={editableStateChange}
           onTransientStateChange={transientStateChange}
           onAuditionNote={actionsLocked ? undefined : onAuditionNote}
+          onHarmonyLiveLayerChange={onHarmonyLiveLayerChange}
+          isRunning={isRunning}
           workspaceView={controller.view}
         />
       </div>

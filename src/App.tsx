@@ -26,7 +26,7 @@ import {
 } from './ui/useProductRuntimeSession';
 import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/config';
 import { calculateDriftedRoot } from './audio/harmony';
-import { resolveHarmonyProjection, type HarmonyProjection } from './audio/harmony/harmonyProjection';
+import { resolveHarmonyProjection, type HarmonyLiveLayer, type HarmonyProjection } from './audio/harmony/harmonyProjection';
 import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, INSECT_ENGINE_DEFAULTS, getWaterPresetDualRanges, getWaterPresetSliderModes } from './audio/waterPresets';
 import {
@@ -447,9 +447,10 @@ const App: React.FC = () => {
     transportDebug: null,
   });
   const playbackIsRunning = engineState.isRunning;
+  const [harmonyLiveLayer, setHarmonyLiveLayer] = useState<HarmonyLiveLayer | null>(null);
   const harmonyProjection: HarmonyProjection = useMemo(
-    () => resolveHarmonyProjection(state, { harmonyState: engineState.harmonyState }),
-    [state, engineState.harmonyState],
+    () => resolveHarmonyProjection(state, { harmonyState: engineState.harmonyState, liveLayer: harmonyLiveLayer }),
+    [engineState.harmonyState, harmonyLiveLayer, state],
   );
 
   const {
@@ -3543,6 +3544,7 @@ const App: React.FC = () => {
                 CircleOfFifthsComponent={CircleOfFifths}
                 engineState={engineState}
                 harmonyProjection={harmonyProjection}
+                onHarmonyLiveLayerChange={setHarmonyLiveLayer}
                 routingMuteGroupSnapshot={routingMuteGroupsController.runtimeSnapshot}
                 {...globalRuntimeProps}
                 morphCoFViz={morphCoFViz}
@@ -3652,6 +3654,7 @@ const App: React.FC = () => {
                 onAuditionPresetPreview={productRuntimeManualTriggers.auditionSynthNoteWithState}
                 harmonyState={engineState.harmonyState}
                 harmonyProjection={harmonyProjection}
+                onHarmonyLiveLayerChange={setHarmonyLiveLayer}
               />
             )}
 

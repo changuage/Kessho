@@ -2,7 +2,7 @@ import React from 'react';
 import type { SliderState, SavedPreset } from '../state';
 import type { ProductEngineState, ProductManualSynthNote } from '../../audio/product/ProductEngineTypes';
 import type { TensionArcType } from '../../audio/harmony';
-import type { HarmonyProjection } from '../../audio/harmony/harmonyProjection';
+import type { HarmonyLiveLayer, HarmonyProjection } from '../../audio/harmony/harmonyProjection';
 import type { PresetEntry, PresetVersionMetadata } from '../../presets/types';
 import { PresetDropdown, PresetFamilyTree } from '../../presets';
 import { extractOptimizedStatePresetData } from '../../presets/statePresetOptimization';
@@ -834,6 +834,7 @@ export interface GlobalPageProps {
   // Engine state
   engineState: ProductEngineState;
   harmonyProjection?: HarmonyProjection;
+  onHarmonyLiveLayerChange?: (layer: HarmonyLiveLayer | null) => void;
   routingMuteGroupSnapshot?: RoutingMuteGroupRuntimeSnapshot;
   runtimeComparison?: GlobalRuntimeComparisonPanelProps;
   onResetCofDrift: () => void;
@@ -906,6 +907,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   CircleOfFifthsComponent: CircleOfFifths,
   engineState,
   harmonyProjection,
+  onHarmonyLiveLayerChange,
   routingMuteGroupSnapshot,
   runtimeComparison,
   onResetCofDrift,
@@ -1517,6 +1519,8 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
           morphCoFViz={morphCoFViz}
           morphPosition={morphPosition}
           onResetCofDrift={onResetCofDrift}
+          onHarmonyLiveLayerChange={onHarmonyLiveLayerChange}
+          isRunning={engineState.isRunning}
         />
 
         <div className="harmony-card evolution-card">

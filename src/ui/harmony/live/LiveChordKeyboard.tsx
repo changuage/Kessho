@@ -21,11 +21,11 @@ export interface LiveChordKeyboardProps {
   className?: string;
 }
 
-const WHITE_KEYS = [0, 2, 4, 5, 7, 9, 11] as const;
-const BLACK_KEYS = [1, 3, 6, 8, 10] as const;
-const KEY_MAP: Readonly<Record<string, number>> = { a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11, k: 12 };
+export const LIVE_CHORD_WHITE_KEYS = [0, 2, 4, 5, 7, 9, 11] as const;
+export const LIVE_CHORD_BLACK_KEYS = [1, 3, 6, 8, 10] as const;
+export const LIVE_CHORD_KEY_MAP: Readonly<Record<string, number>> = { a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11, k: 12 };
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
-const SHORTCUTS = ['A', 'W', 'S', 'E', 'D', 'F', 'T', 'G', 'Y', 'H', 'U', 'J'] as const;
+const SHORTCUT_BY_PITCH: Readonly<Record<number, string>> = Object.fromEntries(Object.entries(LIVE_CHORD_KEY_MAP).map(([key, pitch]) => [pitch, key.toUpperCase()]));
 
 function clampMidi(midi: number): number { return Math.max(0, Math.min(127, Math.round(midi))); }
 function scopeLabel(scope: LiveChordScope): string {
@@ -61,7 +61,7 @@ export const LiveChordKeyboard: React.FC<LiveChordKeyboardProps> = ({
     priority: scope.kind === 'seq-live' ? 20 : 10,
     onKeyDown: (event) => {
       if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
-      const offset = KEY_MAP[event.key.toLowerCase()];
+      const offset = LIVE_CHORD_KEY_MAP[event.key.toLowerCase()];
       if (offset == null) return;
       event.preventDefault();
       const id = `q:${event.key.toLowerCase()}`;
@@ -116,7 +116,7 @@ export const LiveChordKeyboard: React.FC<LiveChordKeyboardProps> = ({
       >
         <span>{pitchClass === rootNote ? 'Root' : ''}</span>
         <strong>{NOTE_NAMES[pitchClass % 12]}</strong>
-        <small>{SHORTCUTS[pitchClass % 12]} · {pitchClass}</small>
+        <small>{SHORTCUT_BY_PITCH[pitchClass] ?? ''} · degree {pitchClass}</small>
       </button>
     );
   };
@@ -124,8 +124,8 @@ export const LiveChordKeyboard: React.FC<LiveChordKeyboardProps> = ({
     <section className={`harmony-live-keyboard ${className ?? ''}`} data-live-scope={scope.kind} aria-label={`${scopeLabel(scope)} piano`}>
       <header className="harmony-live-keyboard-header"><strong>{scopeLabel(scope)}</strong><span>QWERTY A–K · MIDI · Touch</span><button type="button" onClick={releaseAll} disabled={disabled}>Release</button></header>
       <div className="harmony-live-keyboard-keys" onFocus={onScopeFocus}>
-        <div className="harmony-live-white-keys">{WHITE_KEYS.map((pitch) => renderKey(pitch, false))}</div>
-        <div className="harmony-live-black-keys">{BLACK_KEYS.map((pitch) => renderKey(pitch, true))}</div>
+        <div className="harmony-live-white-keys">{LIVE_CHORD_WHITE_KEYS.map((pitch) => renderKey(pitch, false))}</div>
+        <div className="harmony-live-black-keys">{LIVE_CHORD_BLACK_KEYS.map((pitch) => renderKey(pitch, true))}</div>
       </div>
     </section>
   );

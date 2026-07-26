@@ -188,10 +188,11 @@ import {
   type ProductArpSlotChoice,
   type ProductArpHarmonyContext,
 } from '../../audio/productArpeggiator';
-import { resolveHarmonyProjection, type HarmonyProjection } from '../../audio/harmony/harmonyProjection';
+import { resolveHarmonyProjection, type HarmonyLiveLayer, type HarmonyProjection } from '../../audio/harmony/harmonyProjection';
+import { resolveLiveChordExecution, createLiveChordGesture, shouldEmitLiveChordMonitorNotes } from '../../audio/harmony/liveChordGesture';
 import SeqChordInteractionBay from './chord/SeqChordInteractionBay';
 import SeqChordChoiceLane from './chord/SeqChordChoiceLane';
-import { countSharedSlotUses, draftFromSlot, emptyHarmonyDraft, captureDraftToSlot, resolveDraftNotes, resolveLiveReanchoredNotes, updateDraftExactNotes } from '../harmony/shared/harmonyDraftHelpers';
+import { countSharedSlotUses, draftFromSlot, emptyHarmonyDraft, captureDraftToSlot, resolveLiveReanchoredNotes, updateDraftExactNotes } from '../harmony/shared/harmonyDraftHelpers';
 import type { HarmonyDraftChord } from '../../audio/harmony/harmonyTypes';
 import {
   defaultProductPlayConfig,
@@ -1923,6 +1924,8 @@ export interface SynthPageProps {
   harmonyState?: HarmonyState | null;
   /** Authoritative Harmony projection shared with the Global page and Seq lanes. */
   harmonyProjection?: HarmonyProjection;
+  /** Temporary Harmony target for Draft Play; null releases the live layer. */
+  onHarmonyLiveLayerChange?: (layer: HarmonyLiveLayer | null) => void;
 }
 
 // ═══════════════ Component ═══════════════
@@ -1985,6 +1988,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     getProductGeneratedSequencerCaptureTelemetry,
     getProductArpAudibleTelemetry,
     harmonyState,
+    onHarmonyLiveLayerChange,
   } = props;
   const onStateChange = props.onStateChange;
 
@@ -3705,6 +3709,26 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [seqLiveLatched, setSeqLiveLatched] = useState<boolean[]>(() => [false, false, false, false]);
   const seqLiveHeldRef = useRef<Array<string[]>>([[], [], [], []]);
   const seqDraftHeldRef = useRef<Array<string[]>>([[], [], [], []]);
+  const harmonyReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const harmonyGestureRevisionRef = useRef(0);
+  const releaseHarmonyLayer = useCallback(() => {
+    harmonyGestureRevisionRef.current += 1;
+    if (harmonyReleaseTimerRef.current !== null) clearTimeout(harmonyReleaseTimerRef.current);
+    harmonyReleaseTimerRef.current = null;
+    onHarmonyLiveLayerChange?.(null);
+  }, [onHarmonyLiveLayerChange]);
+  const startHarmonyLayer = useCallback((layer: HarmonyLiveLayer) => {
+    harmonyGestureRevisionRef.current += 1;
+    const revision = harmonyGestureRevisionRef.current;
+    if (harmonyReleaseTimerRef.current !== null) clearTimeout(harmonyReleaseTimerRef.current);
+    onHarmonyLiveLayerChange?.(layer);
+    harmonyReleaseTimerRef.current = setTimeout(() => {
+      if (harmonyGestureRevisionRef.current !== revision) return;
+      harmonyReleaseTimerRef.current = null;
+      onHarmonyLiveLayerChange?.(null);
+    }, 350);
+  }, [onHarmonyLiveLayerChange]);
+  useEffect(() => () => releaseHarmonyLayer(), [releaseHarmonyLayer]);
   const arpHarmonyContext = useMemo<ProductArpHarmonyContext>(() => {
     if (props.harmonyProjection) {
       return {
@@ -3879,18 +3903,28 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const notes = slot?.chord ? resolveLiveReanchoredNotes(slot.chord, pressedRootMidi, arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId) : [];
     seqLiveHeldRef.current[laneIdx] = notes.map((midi) => { const id = `seq-live-${laneIdx}-${midi}`; liveNoteInput.noteOn(id, { source: 'ui-pad', instrument: 'pad1', note: midi, velocity: 0.82 }); return id; });
   }, [arpHarmonyContext, liveNoteInput]);
-  const playSeqDraft = useCallback((laneIdx: number) => {
+  const playSeqDraft = useCallback((laneIdx: number, route: 'track' | 'harmony' = 'track') => {
     seqDraftHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
     const draft = seqDrafts[laneIdx] ?? emptyHarmonyDraft();
-    seqDraftHeldRef.current[laneIdx] = resolveDraftNotes(draft, arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId).map((midi) => { const id = `seq-draft-${laneIdx}-${midi}`; liveNoteInput.noteOn(id, { source: 'ui-pad', instrument: 'pad1', note: midi, velocity: 0.82 }); return id; });
-  }, [arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId, liveNoteInput, seqDrafts]);
+    const projection = resolveHarmonyProjection(state, { harmonyState });
+    const gesture = createLiveChordGesture({ id: `seq-draft-${laneIdx}-${Date.now()}`, scope: { kind: 'seq', seqId: laneIdx }, target: route, source: 'onscreen', draft });
+    const execution = resolveLiveChordExecution({ gesture, draft, effectiveFrame: projection.activeFrame, currentAudioBlock: 0, running: isRunning, scaleId: arpHarmonyContext.scaleId });
+    if (route === 'harmony' && !execution.bypassesHarmony && execution.temporaryHarmonyFrame) {
+      startHarmonyLayer({ kind: 'harmony-takeover', frame: execution.temporaryHarmonyFrame, latched: false });
+    } else {
+      releaseHarmonyLayer();
+    }
+    const notes = shouldEmitLiveChordMonitorNotes({ target: route, running: isRunning, bypassesHarmony: execution.bypassesHarmony }) ? execution.notes : [];
+    seqDraftHeldRef.current[laneIdx] = notes.map((midi) => { const id = `seq-draft-${laneIdx}-${midi}`; liveNoteInput.noteOn(id, { source: 'ui-pad', instrument: 'pad1', note: midi, velocity: 0.82 }); return id; });
+  }, [arpHarmonyContext.scaleId, harmonyState, isRunning, liveNoteInput, releaseHarmonyLayer, seqDrafts, startHarmonyLayer, state]);
   const stopSeqChordGestures = useCallback((laneIdx: number) => {
     seqLiveHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
     seqDraftHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
     seqLiveHeldRef.current[laneIdx] = [];
     seqDraftHeldRef.current[laneIdx] = [];
+    releaseHarmonyLayer();
     stopSeqLive(laneIdx);
-  }, [liveNoteInput, stopSeqLive]);
+  }, [liveNoteInput, releaseHarmonyLayer, stopSeqLive]);
   useEffect(() => () => {
     [0, 1, 2, 3].forEach((laneIdx) => stopSeqChordGestures(laneIdx));
   }, [stopSeqChordGestures, seq.activeTab]);
@@ -9125,7 +9159,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                 onDraftChange={(draft) => updateSeqDraft(seq.activeTab, draft)}
                                 onDraftCapture={() => captureSeqDraft(seq.activeTab)}
                                 onDraftClear={() => updateSeqDraft(seq.activeTab, emptyHarmonyDraft())}
-                                onDraftPlay={() => playSeqDraft(seq.activeTab)}
+                                onDraftPlay={(route) => playSeqDraft(seq.activeTab, route)}
                                 onSharedMatrixChange={(notes) => {
                                   const slotId = seqDraftSlots[seq.activeTab];
                                   if (slotId == null || !onStateChange) return;
