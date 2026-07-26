@@ -240,6 +240,15 @@ export type ProductHarmonySnapshot = L4HarmonyStateExtension & {
   cofDriftRate: number;
   cofDriftDirection: number;
   cofDriftRange: number;
+  canonicalProgressionVersion?: number;
+  canonicalProgressionEnabled?: boolean;
+  canonicalProgressionEventCount?: number;
+  canonicalProgressionCurrentEvent?: number;
+  canonicalProgressionBarsPerPhrase?: number;
+  canonicalProgressionSource?: number[];
+  canonicalProgressionSlotId?: number[];
+  canonicalProgressionDurationUnit?: number[];
+  canonicalProgressionDurationValue?: number[];
 };
 
 export type ProductGranularVoiceSnapshot = {

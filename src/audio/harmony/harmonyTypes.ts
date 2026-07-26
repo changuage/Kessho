@@ -19,6 +19,29 @@ export type HarmonyBassMode = 'off' | 'root' | 'fifth' | 'captured';
 export type HarmonySequenceStepMode = 'auto' | 'intent' | 'slotCopy' | 'slotFollow';
 export type ManualHarmonyControlMode = 'audition' | 'control' | 'capture';
 
+/** Canonical global Harmony progression.  Events are deliberately tiny so
+ * they can be copied into Product Core's fixed-size snapshot without heap
+ * work on the audio thread. */
+export type HarmonyProgressionDurationUnit = 'bar' | 'phrase';
+export type HarmonyProgressionDurationValue = 1 | 2 | 4 | 8;
+export type HarmonyProgressionEventSource =
+  | { type: 'auto' }
+  | { type: 'slot'; slotId: number };
+export interface HarmonyProgressionEvent {
+  id: string;
+  source: HarmonyProgressionEventSource;
+  duration: {
+    unit: HarmonyProgressionDurationUnit;
+    value: HarmonyProgressionDurationValue;
+  };
+}
+export interface HarmonyProgression {
+  version: 1;
+  enabled: boolean;
+  events: HarmonyProgressionEvent[];
+  currentEventIndex: number;
+}
+
 export interface HarmonyIntent {
   source: HarmonyControlSource;
   strength: HarmonyControlStrength;
@@ -130,6 +153,8 @@ export interface L4HarmonyStateExtension {
   chordSequenceLength: number;
   chordSequenceStepIndex: number;
   resolvedHarmonyFrame: ResolvedHarmonyFrame;
+  /** Canonical progression; legacy chordSequence is a compatibility view. */
+  progression: HarmonyProgression;
 }
 
 export interface HarmonyDraftChord {

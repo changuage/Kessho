@@ -69,6 +69,16 @@ typedef struct KesshoProductHarmonySnapshot {
   uint32_t cof_drift_rate;
   uint32_t cof_drift_direction;
   uint32_t cof_drift_range;
+  // Canonical global Harmony progression (fixed-capacity, audio-thread safe).
+  uint32_t canonical_progression_version;
+  uint32_t canonical_progression_enabled;
+  uint32_t canonical_progression_event_count;
+  uint32_t canonical_progression_current_event;
+  uint32_t canonical_progression_bars_per_phrase;
+  uint32_t canonical_progression_source[64];
+  uint32_t canonical_progression_slot_id[64];
+  uint32_t canonical_progression_duration_unit[64];
+  uint32_t canonical_progression_duration_value[64];
 } KesshoProductHarmonySnapshot;
 
 typedef struct KesshoProductSourceSnapshot {

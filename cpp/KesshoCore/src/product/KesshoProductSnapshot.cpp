@@ -303,6 +303,23 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   harmony.cof_drift_rate = clampU32(snapshot.harmony.cof_drift_rate, 1u, 8u);
   harmony.cof_drift_direction = std::min<uint32_t>(snapshot.harmony.cof_drift_direction, 2u);
   harmony.cof_drift_range = clampU32(snapshot.harmony.cof_drift_range, 1u, 6u);
+  harmony.canonical_progression_present = snapshot.harmony.canonical_progression_version == 1u;
+  harmony.canonical_progression_enabled = harmony.canonical_progression_present && snapshot.harmony.canonical_progression_enabled != 0u;
+  harmony.canonical_progression_event_count = clampU32(snapshot.harmony.canonical_progression_event_count, 1u, 64u);
+  harmony.canonical_progression_current_event = snapshot.harmony.canonical_progression_current_event % harmony.canonical_progression_event_count;
+  harmony.canonical_progression_bars_per_phrase = clampU32(snapshot.harmony.canonical_progression_bars_per_phrase, 1u, 16u);
+  for (uint32_t index = 0u; index < 64u; ++index) {
+    harmony.canonical_progression_source[index] = snapshot.harmony.canonical_progression_source[index] == 1u ? 1u : 0u;
+    harmony.canonical_progression_slot_id[index] = std::min<uint32_t>(snapshot.harmony.canonical_progression_slot_id[index], 7u);
+    harmony.canonical_progression_duration_unit[index] = snapshot.harmony.canonical_progression_duration_unit[index] == 0u ? 0u : 1u;
+    const uint32_t duration = snapshot.harmony.canonical_progression_duration_value[index];
+    harmony.canonical_progression_duration_value[index] = duration == 2u || duration == 4u || duration == 8u ? duration : 1u;
+  }
+  // Canonical progression supersedes the legacy degree-pattern controls when
+  // present; the legacy fields remain only for old snapshot compatibility.
+  harmony.progression_enabled = harmony.canonical_progression_present
+      ? harmony.canonical_progression_enabled
+      : snapshot.harmony.progression_enabled != 0u;
   arrangement.chord_generator_enabled = snapshot.arrangement.chord_generator_enabled != 0u;
   arrangement.chord_generator_source_id = clampU32(snapshot.arrangement.chord_generator_source_id, 1u, kSourceCount);
   arrangement.chord_generator_voice_count = clampU32(snapshot.arrangement.chord_generator_voice_count, 1u, 8u);

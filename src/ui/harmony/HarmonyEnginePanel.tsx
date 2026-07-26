@@ -6,18 +6,20 @@ import { resolveHarmonyProjection, type HarmonyProjection } from '../../audio/ha
 import { SCALE_FAMILIES } from '../../audio/scales';
 import type { ProductManualSynthNote, ProductManualSynthSource } from '../../audio/product/ProductEngineTypes';
 import {
+  HARMONY_PROGRESSION_CAPACITY,
   HARMONY_NOTE_KEYS,
-  HARMONY_SEQUENCE_STEP_COUNT,
-  HARMONY_SEQUENCE_STEP_MIN,
   HARMONY_SLOT_TRIGGER_KEYS,
   commitBaselineMap,
   defaultHarmonyIntent,
   generateHarmonySequence,
   generateHarmonySlots,
   generateHarmonySlotsAndSequence,
+  reduceHarmonyProgression,
   resolveHarmonyIntentToNotePool,
   sanitizeHarmonyIntent,
-  sanitizeHarmonySequenceLength,
+  type HarmonyProgression,
+  type HarmonyProgressionDurationUnit,
+  type HarmonyProgressionDurationValue,
   sanitizeManualHarmonyControl,
   type HarmonyBassMode,
   type HarmonyChordQuality,
@@ -273,10 +275,10 @@ function isTextInputTarget(target: EventTarget | null): boolean {
   return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
 }
 
-function bankKeys(bank: HarmonyBank): { slots: string; sequence: string } {
+function bankKeys(bank: HarmonyBank): { slots: string; sequence: string; progression: string } {
   return bank === 'B'
-    ? { slots: 'harmonyChordSlotsB', sequence: 'harmonyChordSequenceB' }
-    : { slots: 'harmonyChordSlotsA', sequence: 'harmonyChordSequenceA' };
+    ? { slots: 'harmonyChordSlotsB', sequence: 'harmonyChordSequenceB', progression: 'harmonyProgressionB' }
+    : { slots: 'harmonyChordSlotsA', sequence: 'harmonyChordSequenceA', progression: 'harmonyProgressionA' };
 }
 
 function shouldMirrorBaseBank(record: Record<string, unknown>, bank: HarmonyBank): boolean {
@@ -317,7 +319,8 @@ function generateTargetLabel(target: GenerateTarget): string {
 }
 
 function progressionStepCount(value: unknown): number {
-  return sanitizeHarmonySequenceLength(value);
+  const numeric = typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : 1;
+  return Math.max(1, Math.min(HARMONY_PROGRESSION_CAPACITY, numeric));
 }
 
 function HarmonyNotePoolPills({ notes, compact = false }: { notes: readonly number[]; compact?: boolean }) {
@@ -1330,6 +1333,7 @@ function ChordSlotInspector({
 
 function ChordSequenceStrip({
   sequence,
+  progression,
   sequenceLength,
   slots,
   selectedStepId,
@@ -1339,8 +1343,10 @@ function ChordSequenceStrip({
   onSequenceEnabledChange,
   onSequenceLengthChange,
   onApplySlotToStep,
+  onDurationChange,
 }: {
   sequence: readonly HarmonySequenceStep[];
+  progression: HarmonyProgression;
   sequenceLength: number;
   slots: readonly HarmonyChordSlot[];
   selectedStepId: number;
@@ -1350,6 +1356,7 @@ function ChordSequenceStrip({
   onSequenceEnabledChange: (enabled: boolean) => void;
   onSequenceLengthChange: (length: number) => void;
   onApplySlotToStep: (stepId: number, slotId: number, link: boolean) => void;
+  onDurationChange: (eventId: string, unit: HarmonyProgressionDurationUnit, value: HarmonyProgressionDurationValue) => void;
 }) {
   const visibleSequence = sequence.slice(0, sequenceLength);
   return (
@@ -1369,15 +1376,15 @@ function ChordSequenceStrip({
             <span>Steps</span>
             <input
               type="number"
-              min={HARMONY_SEQUENCE_STEP_MIN}
-              max={HARMONY_SEQUENCE_STEP_COUNT}
+              min={1}
+              max={HARMONY_PROGRESSION_CAPACITY}
               step={1}
               value={sequenceLength}
               onChange={(event) => onSequenceLengthChange(progressionStepCount(Number(event.target.value)))}
             />
           </label>
           <div className="harmony-step-count-pills" aria-label="Progression step count">
-            {Array.from({ length: HARMONY_SEQUENCE_STEP_COUNT - HARMONY_SEQUENCE_STEP_MIN + 1 }, (_, index) => HARMONY_SEQUENCE_STEP_MIN + index).map((count) => (
+            {Array.from({ length: Math.min(8, HARMONY_PROGRESSION_CAPACITY) }, (_, index) => index + 1).map((count) => (
               <button
                 key={count}
                 type="button"
@@ -1415,6 +1422,23 @@ function ChordSequenceStrip({
             <span className="harmony-step-cell">
               <strong>{sequenceStepTitle(step, slots)}</strong>
               <em>{stepSourceLabel(step)}</em>
+              {progression.events[step.id] && (
+                <select
+                  aria-label={`Duration for progression event ${step.id + 1}`}
+                  value={`${progression.events[step.id]!.duration.unit}:${progression.events[step.id]!.duration.value}`}
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) => {
+                    const [unit, rawValue] = event.target.value.split(':');
+                    onDurationChange(step.id < progression.events.length ? progression.events[step.id]!.id : '', unit as HarmonyProgressionDurationUnit, Number(rawValue) as HarmonyProgressionDurationValue);
+                  }}
+                  disabled={!chordSequenceEnabled}
+                >
+                  {[1, 2, 4, 8].flatMap((value) => [
+                    <option key={`bar:${value}`} value={`bar:${value}`}>{value} bar{value === 1 ? '' : 's'}</option>,
+                    <option key={`phrase:${value}`} value={`phrase:${value}`}>{value} phrase{value === 1 ? '' : 's'}</option>,
+                  ])}
+                </select>
+              )}
             </span>
             <i style={{ transform: `scaleX(${clamp(step.probability, 0, 1)})` }} />
           </button>
@@ -1757,6 +1781,7 @@ function ChordLabPopup({
   bank,
   slots,
   sequence,
+  progression,
   sequenceLength,
   manual,
   selectionKind,
@@ -1780,6 +1805,7 @@ function ChordLabPopup({
   onSequenceEnabledChange,
   onSequenceLengthChange,
   onApplySlotToStep,
+  onDurationChange,
   onGenerateTargetChange,
   onGenerateVariationChange,
   onGenerateMotionChange,
@@ -1790,6 +1816,7 @@ function ChordLabPopup({
   bank: HarmonyBank;
   slots: readonly HarmonyChordSlot[];
   sequence: readonly HarmonySequenceStep[];
+  progression: HarmonyProgression;
   sequenceLength: number;
   manual: ManualHarmonyControlState;
   selectionKind: ChordLabSelectionKind;
@@ -1813,6 +1840,7 @@ function ChordLabPopup({
   onSequenceEnabledChange: (enabled: boolean) => void;
   onSequenceLengthChange: (length: number) => void;
   onApplySlotToStep: (stepId: number, slotId: number, link: boolean) => void;
+  onDurationChange: (eventId: string, unit: HarmonyProgressionDurationUnit, value: HarmonyProgressionDurationValue) => void;
   onGenerateTargetChange: (target: GenerateTarget) => void;
   onGenerateVariationChange: (variation: number) => void;
   onGenerateMotionChange: (motion: number) => void;
@@ -1833,6 +1861,7 @@ function ChordLabPopup({
       {selectedStep && (
         <ChordSequenceStrip
           sequence={sequence}
+          progression={progression}
           sequenceLength={sequenceLength}
           slots={slots}
           selectedStepId={selectedStep.id}
@@ -1842,6 +1871,7 @@ function ChordLabPopup({
           onSequenceEnabledChange={onSequenceEnabledChange}
           onSequenceLengthChange={onSequenceLengthChange}
           onApplySlotToStep={onApplySlotToStep}
+          onDurationChange={onDurationChange}
         />
       )}
       {selectedSlot && (
@@ -1936,6 +1966,7 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
         chordSequenceEnabled: harmonyProjection.chordSequenceEnabled,
         chordSequenceLength: harmonyProjection.chordSequenceLength,
         chordSequenceStepIndex: harmonyProjection.chordSequenceStepIndex,
+        progression: harmonyProjection.canonicalProgression,
         resolvedHarmonyFrame: harmonyProjection.activeFrame,
       };
     }
@@ -1954,6 +1985,7 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
       chordSequenceEnabled: projection.chordSequenceEnabled,
       chordSequenceLength: projection.chordSequenceLength,
       chordSequenceStepIndex: projection.chordSequenceStepIndex,
+      progression: projection.canonicalProgression,
       resolvedHarmonyFrame: projection.activeFrame,
     };
   }, [harmonyProjection, harmonyState, state]);
@@ -1963,6 +1995,7 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
   const slots = harmonyContext.chordSlots;
   const sequence = harmonyContext.chordSequence;
   const sequenceLength = harmonyContext.chordSequenceLength;
+  const progression = harmonyContext.progression;
   const resolvedFrame = harmonyContext.resolvedHarmonyFrame;
   const canWriteState = Boolean(onStateChange);
   const manualLocked = !resolvedFrame.manualControlAvailable || !harmonyContext.isEndpoint;
@@ -1988,6 +2021,18 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
     }
     applyPatch(patch);
   }, [applyPatch, harmonyContext.bank, record]);
+
+  const setProgressionDuration = useCallback((eventId: string, unit: HarmonyProgressionDurationUnit, value: HarmonyProgressionDurationValue) => {
+    if (writeLocked) return;
+    const nextProgression: HarmonyProgression = {
+      ...progression,
+      events: progression.events.map((event) => event.id === eventId ? { ...event, duration: { unit, value } } : event),
+    };
+    const key = bankKeys(harmonyContext.bank).progression;
+    const patch: Record<string, unknown> = { [key]: nextProgression };
+    if (record.harmonyProgressionA === undefined && record.harmonyProgressionB === undefined && harmonyContext.bank === 'A') patch.harmonyProgression = nextProgression;
+    applyPatch(patch);
+  }, [applyPatch, harmonyContext.bank, progression, record, writeLocked]);
 
   const updateManual = useCallback((nextManual: ManualHarmonyControlState) => {
     applyPatch({ manualHarmonyControl: sanitizeManualHarmonyControl(nextManual) });
@@ -2197,17 +2242,36 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
   }, [sequence, slots, updateStep, writeLocked]);
 
   const setSequenceEnabled = useCallback((enabled: boolean) => {
-    applyPatch({ harmonyChordSequenceEnabled: enabled });
-  }, [applyPatch]);
+    const keys = bankKeys(harmonyContext.bank);
+    const nextProgression = { ...progression, enabled };
+    const patch: Record<string, unknown> = { [keys.progression]: nextProgression };
+    if (record.harmonyProgressionA === undefined && record.harmonyProgressionB === undefined && harmonyContext.bank === 'A') patch.harmonyProgression = nextProgression;
+    applyPatch(patch);
+  }, [applyPatch, harmonyContext.bank, progression, record]);
 
   const setSequenceLength = useCallback((length: number) => {
     const nextLength = progressionStepCount(length);
+    let nextProgression = progression;
+    while (nextProgression.events.length < nextLength) {
+      nextProgression = reduceHarmonyProgression(nextProgression, { type: 'insert' });
+    }
+    while (nextProgression.events.length > nextLength && nextProgression.events.length > 1) {
+      const lastEvent = nextProgression.events[nextProgression.events.length - 1];
+      if (!lastEvent) break;
+      nextProgression = reduceHarmonyProgression(nextProgression, { type: 'delete', id: lastEvent.id });
+    }
     setSelectedStepId((current) => Math.min(current, nextLength - 1));
-    applyPatch({
+    const keys = bankKeys(harmonyContext.bank);
+    const patch: Record<string, unknown> = {
+      [keys.progression]: nextProgression,
       harmonyChordSequenceLength: nextLength,
-      harmonyChordSequenceStepIndex: harmonyContext.chordSequenceStepIndex % nextLength,
-    });
-  }, [applyPatch, harmonyContext.chordSequenceStepIndex]);
+      harmonyChordSequenceStepIndex: nextProgression.currentEventIndex % nextLength,
+    };
+    if (record.harmonyProgressionA === undefined && record.harmonyProgressionB === undefined && harmonyContext.bank === 'A') {
+      patch.harmonyProgression = nextProgression;
+    }
+    applyPatch(patch);
+  }, [applyPatch, harmonyContext.bank, harmonyContext.chordSequenceStepIndex, progression, record]);
 
   const generateSlotsAction = useCallback(() => {
     if (writeLocked) return;
@@ -2527,6 +2591,7 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
           bank={harmonyContext.bank}
           slots={slots}
           sequence={sequence}
+          progression={progression}
           sequenceLength={sequenceLength}
           manual={manual}
           selectionKind={labSelectionKind}
@@ -2553,6 +2618,7 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
           onSequenceEnabledChange={setSequenceEnabled}
           onSequenceLengthChange={setSequenceLength}
           onApplySlotToStep={applySlotToStep}
+          onDurationChange={setProgressionDuration}
           onGenerateTargetChange={setGenerateTarget}
           onGenerateVariationChange={setGenerateVariation}
           onGenerateMotionChange={setGenerateMotion}

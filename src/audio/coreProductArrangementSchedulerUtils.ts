@@ -1,6 +1,7 @@
 import { CORE_PRODUCT_SOURCE_IDS, type CoreProductEvent } from './coreProductEvents';
 import { chordIntervalSecondsFromState } from './chordPhraseTiming';
 import { createHarmonyState, type HarmonyParams, type HarmonyState } from './harmony';
+import { sanitizeHarmonyProgression } from './CoreProductHarmonyControl';
 import { harmonySeedMaterialFromState } from './harmonySeedMaterial';
 import { productSourceEnabledForPlayback } from './coreProductSourcePlayability';
 import {
@@ -60,6 +61,8 @@ export function harmonyParamsFromState(state: SliderState): Partial<HarmonyParam
     chordProgressionSteps: state.chordProgressionSteps ?? 4,
     chordProgressionStepEnabled: state.chordProgressionStepEnabled ?? [true, true, true, true],
     chordProgressionPhraseMultiplier: state.chordProgressionPhraseMultiplier ?? 1,
+    canonicalProgression: sanitizeHarmonyProgression(state.harmonyProgression, state.harmonyChordSequence, state.harmonyChordSequenceEnabled),
+    transportBarsPerPhrase: state.transportBarsPerPhrase ?? 4,
   };
 }
 

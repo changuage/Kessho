@@ -58,6 +58,15 @@ struct HarmonyState {
   uint32_t cof_drift_rate = 2u;
   uint32_t cof_drift_direction = 0u;
   uint32_t cof_drift_range = 3u;
+  bool canonical_progression_present = false;
+  bool canonical_progression_enabled = false;
+  uint32_t canonical_progression_event_count = 1u;
+  uint32_t canonical_progression_current_event = 0u;
+  uint32_t canonical_progression_bars_per_phrase = 4u;
+  uint32_t canonical_progression_source[64]{};
+  uint32_t canonical_progression_slot_id[64]{};
+  uint32_t canonical_progression_duration_unit[64]{};
+  uint32_t canonical_progression_duration_value[64]{};
 };
 
 } // namespace kessho::product::internal

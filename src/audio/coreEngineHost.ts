@@ -67,6 +67,7 @@ import { computeGranularMacroModel } from './granularMacroModel';
 import { getPadPreset, morphPadPresets, PAD1_TO_PAD2_KEY } from './padPresets';
 import { normalizeSynthEuclidSource } from './coreProductSourceMapping';
 import { createHarmonyState, getEffectiveTension, updateHarmonyState, type HarmonyParams, type HarmonyState } from './harmony';
+import { sanitizeHarmonyProgression } from './CoreProductHarmonyControl';
 import { chordIntervalSecondsFromState, resolveChordsPerPhrase } from './chordPhraseTiming';
 import { harmonySeedMaterialFromState } from './harmonySeedMaterial';
 import { computeSeed, createRng, getUtcBucket } from './rng';
@@ -1482,6 +1483,8 @@ function getCorePreviewHarmonyParams(sliderState: SliderState): Partial<HarmonyP
     chordProgressionSteps: sliderState.chordProgressionSteps ?? 4,
     chordProgressionStepEnabled: sliderState.chordProgressionStepEnabled ?? [true, true, true, true],
     chordProgressionPhraseMultiplier: sliderState.chordProgressionPhraseMultiplier ?? 1,
+    canonicalProgression: sanitizeHarmonyProgression(sliderState.harmonyProgression, sliderState.harmonyChordSequence, sliderState.harmonyChordSequenceEnabled),
+    transportBarsPerPhrase: sliderState.transportBarsPerPhrase ?? 4,
   };
 }
 
@@ -1932,12 +1935,12 @@ function createLeadRandomPreview(
     boundedNumber(state.leadTensionValue, 0, -0.5, 0.5),
   );
   const chordBias = leadTension < 0 ? 0.9 : 0.9 - leadTension * 0.4;
+  const canonicalProgression = sanitizeHarmonyProgression(sliderState.harmonyProgression, sliderState.harmonyChordSequence, sliderState.harmonyChordSequenceEnabled);
   const phraseCount = clamp(
     Math.max(
       4,
-      sliderState.chordProgressionEnabled
-        ? boundedInteger(sliderState.chordProgressionSteps, 4, 1, 16) *
-          boundedInteger(sliderState.chordProgressionPhraseMultiplier, 1, 1, 8)
+      canonicalProgression.enabled
+        ? canonicalProgression.events.length
         : 1,
     ),
     4,
@@ -5498,8 +5501,14 @@ export class CoreEngineHost {
       clockSource,
     );
     const progressionPhraseSeconds = getPhraseDurationForClockSource(state, progressionSource);
-    const progressionStepSeconds = progressionPhraseSeconds * Math.max(1, state.chordProgressionPhraseMultiplier ?? 1);
-    const nextProgressionStepIn = state.chordProgressionEnabled
+    const canonicalProgression = sanitizeHarmonyProgression(state.harmonyProgression, state.harmonyChordSequence, state.harmonyChordSequenceEnabled);
+    const currentProgressionEvent = canonicalProgression.events[canonicalProgression.currentEventIndex] ?? canonicalProgression.events[0];
+    const progressionStepSeconds = currentProgressionEvent
+      ? currentProgressionEvent.duration.unit === 'bar'
+        ? progressionPhraseSeconds * currentProgressionEvent.duration.value / Math.max(1, Number(state.transportBarsPerPhrase) || 4)
+        : progressionPhraseSeconds * currentProgressionEvent.duration.value
+      : progressionPhraseSeconds;
+    const nextProgressionStepIn = canonicalProgression.enabled
       ? getTimeUntilNextBoundaryWall(progressionSource, progressionStepSeconds, anchors, nowWallSec)
       : null;
 

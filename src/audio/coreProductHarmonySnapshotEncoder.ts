@@ -61,4 +61,13 @@ export function encodeCoreProductHarmonySnapshot(
   u32(harmony.cofDriftRate);
   u32(harmony.cofDriftDirection);
   u32(harmony.cofDriftRange);
+  u32(harmony.canonicalProgressionVersion ?? 1);
+  u32(harmony.canonicalProgressionEnabled ? 1 : 0);
+  u32(harmony.canonicalProgressionEventCount ?? 1);
+  u32(harmony.canonicalProgressionCurrentEvent ?? 0);
+  u32(harmony.canonicalProgressionBarsPerPhrase ?? 4);
+  for (let index = 0; index < 64; index += 1) u32(harmony.canonicalProgressionSource?.[index] ?? 0);
+  for (let index = 0; index < 64; index += 1) u32(harmony.canonicalProgressionSlotId?.[index] ?? 0);
+  for (let index = 0; index < 64; index += 1) u32(harmony.canonicalProgressionDurationUnit?.[index] ?? 1);
+  for (let index = 0; index < 64; index += 1) u32(harmony.canonicalProgressionDurationValue?.[index] ?? 1);
 }

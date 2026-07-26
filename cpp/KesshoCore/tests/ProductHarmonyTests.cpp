@@ -974,6 +974,114 @@ int main() {
   kessho_product_destroy(long_clock_a);
   kessho_product_destroy(long_clock_b);
 
+  // Canonical progression uses fixed storage, preserves mixed durations, and
+  // accepts the full 64-event endpoint without an audio-thread allocation.
+  auto canonical_snapshot = std::make_unique<KesshoProductSnapshotV2>(makeSnapshot(60.0f, 1u, 0.3f, 4321u));
+  canonical_snapshot->harmony.canonical_progression_version = 1u;
+  canonical_snapshot->harmony.canonical_progression_enabled = 1u;
+  canonical_snapshot->harmony.canonical_progression_event_count = 64u;
+  canonical_snapshot->harmony.canonical_progression_current_event = 63u;
+  canonical_snapshot->harmony.canonical_progression_bars_per_phrase = 4u;
+  for (uint32_t index = 0u; index < 64u; ++index) {
+    canonical_snapshot->harmony.canonical_progression_source[index] = index % 2u;
+    canonical_snapshot->harmony.canonical_progression_slot_id[index] = index % 8u;
+    canonical_snapshot->harmony.canonical_progression_duration_unit[index] = index % 2u;
+    canonical_snapshot->harmony.canonical_progression_duration_value[index] = (index % 4u == 0u) ? 8u : (index % 4u == 1u ? 4u : (index % 4u == 2u ? 2u : 1u));
+  }
+  KesshoProductEngine* canonical_engine = kessho_product_create(48000.0, 256u, 0u);
+  require(canonical_engine != nullptr, "canonical progression engine create failed");
+  require(kessho_product_load_snapshot_v2(canonical_engine, canonical_snapshot.get(), sizeof(*canonical_snapshot)) == KESSHO_PRODUCT_OK,
+      "canonical progression snapshot load failed");
+  require(canonical_engine->harmony.canonical_progression_event_count == 64u, "canonical progression capacity must be 64 events");
+  require(canonical_engine->harmony.canonical_progression_current_event == 63u, "canonical progression current event mismatch");
+  require(canonical_engine->harmony.canonical_progression_duration_value[0] == 8u && canonical_engine->harmony.canonical_progression_duration_unit[1] == 1u,
+      "canonical progression mixed duration payload mismatch");
+  kessho_product_destroy(canonical_engine);
+
+  // Canonical timing is authoritative at every harmony tick, including mixed
+  // bar/phrase durations and the loop boundary. The first slot event must be
+  // audible immediately, while a sequencer edit must not move progression.
+  auto mixed_snapshot = std::make_unique<KesshoProductSnapshotV2>(makeSnapshot(60.0f, 1u, 0.3f, 9001u));
+  mixed_snapshot->harmony.chord_interval_seconds = 1.0f;
+  mixed_snapshot->harmony.phrase_length_seconds = 4.0f;
+  mixed_snapshot->harmony.progression_phrase_seconds = 4.0f;
+  mixed_snapshot->harmony.canonical_progression_version = 1u;
+  mixed_snapshot->harmony.canonical_progression_enabled = 1u;
+  mixed_snapshot->harmony.canonical_progression_event_count = 8u;
+  mixed_snapshot->harmony.canonical_progression_bars_per_phrase = 4u;
+  const uint32_t mixed_units[8] = {0u, 0u, 0u, 0u, 1u, 1u, 1u, 1u};
+  const uint32_t mixed_values[8] = {1u, 2u, 4u, 8u, 1u, 2u, 4u, 8u};
+  for (uint32_t index = 0u; index < 8u; ++index) {
+    mixed_snapshot->harmony.canonical_progression_source[index] = index == 0u ? 1u : 0u;
+    mixed_snapshot->harmony.canonical_progression_slot_id[index] = 2u;
+    mixed_snapshot->harmony.canonical_progression_duration_unit[index] = mixed_units[index];
+    mixed_snapshot->harmony.canonical_progression_duration_value[index] = mixed_values[index];
+  }
+  mixed_snapshot->harmony.harmony_slot_note_count[2] = 3u;
+  mixed_snapshot->harmony.harmony_slot_midi[16] = 60.0f;
+  mixed_snapshot->harmony.harmony_slot_midi[17] = 64.0f;
+  mixed_snapshot->harmony.harmony_slot_midi[18] = 67.0f;
+  KesshoProductEngine* mixed_engine = kessho_product_create(48000.0, 256u, 0u);
+  require(mixed_engine != nullptr, "mixed canonical progression engine create failed");
+  require(kessho_product_load_snapshot_v2(mixed_engine, mixed_snapshot.get(), sizeof(*mixed_snapshot)) == KESSHO_PRODUCT_OK,
+      "mixed canonical progression snapshot load failed");
+  for (uint32_t tick = 0u; tick < 76u; ++tick) {
+    mixed_engine->transport.sample_frame = mixed_engine->harmony.next_harmony_frame;
+    mixed_engine->advanceHarmonyClock();
+    if (tick == 0u) require(mixed_engine->harmony.progression_step == 0u, "mixed canonical initial boundary mismatch");
+    if (tick == 1u) require(mixed_engine->harmony.progression_step == 1u, "mixed canonical one-bar boundary mismatch");
+    if (tick == 1u) {
+      bool retained_common_tone = false;
+      for (uint32_t current = 0u; current < mixed_engine->harmony.note_pool_count; ++current) {
+        const uint32_t current_pitch = positiveModulo(static_cast<int32_t>(std::llround(mixed_engine->harmony.note_pool_midi[current])), 12u);
+        for (const uint32_t previous_midi : {60u, 64u, 67u}) {
+          if (current_pitch == previous_midi % 12u) retained_common_tone = true;
+        }
+      }
+      require(retained_common_tone, "canonical auto transition must preserve a common tone");
+    }
+    if (tick == 3u) require(mixed_engine->harmony.progression_step == 2u, "mixed canonical two-bar boundary mismatch");
+    if (tick == 7u) require(mixed_engine->harmony.progression_step == 3u, "mixed canonical four-bar boundary mismatch");
+    if (tick == 15u) require(mixed_engine->harmony.progression_step == 4u, "mixed canonical eight-bar boundary mismatch");
+    if (tick == 19u) require(mixed_engine->harmony.progression_step == 5u, "mixed canonical one-phrase boundary mismatch");
+    if (tick == 27u) require(mixed_engine->harmony.progression_step == 6u, "mixed canonical two-phrase boundary mismatch");
+    if (tick == 43u) require(mixed_engine->harmony.progression_step == 7u, "mixed canonical four-phrase boundary mismatch");
+    if (tick == 75u) require(mixed_engine->harmony.progression_step == 0u, "mixed canonical loop boundary mismatch");
+    if (tick == 0u) {
+      require(mixed_engine->harmony.note_pool_count == 3u && mixed_engine->harmony.note_pool_midi[0] == 60.0f,
+          "initial canonical slot event was not audible");
+    }
+  }
+  const uint32_t step_before_seq = mixed_engine->harmony.progression_step;
+  KesshoProductEvent sequence_edit{};
+  sequence_edit.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP;
+  sequence_edit.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  sequence_edit.index = 0u;
+  sequence_edit.flags = KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE;
+  require(kessho_product_enqueue_event(mixed_engine, &sequence_edit) == KESSHO_PRODUCT_OK,
+      "sequencer edit enqueue failed during progression test");
+  KesshoSequencerEvent sequence_events[8]{};
+  (void)kessho_product_debug_render_events(mixed_engine, sequence_events, 8u, 64u);
+  require(mixed_engine->harmony.progression_step == step_before_seq,
+      "sequencer chord event must not change global canonical progression index");
+  kessho_product_destroy(mixed_engine);
+
+  auto track_off_snapshot = std::make_unique<KesshoProductSnapshotV2>(*mixed_snapshot);
+  track_off_snapshot->harmony.canonical_progression_enabled = 0u;
+  track_off_snapshot->harmony.progression_enabled = 1u;
+  track_off_snapshot->harmony.progression_step = 3u;
+  KesshoProductEngine* track_off_engine = kessho_product_create(48000.0, 256u, 0u);
+  require(track_off_engine != nullptr, "canonical Track Off engine create failed");
+  require(kessho_product_load_snapshot_v2(track_off_engine, track_off_snapshot.get(), sizeof(*track_off_snapshot)) == KESSHO_PRODUCT_OK,
+      "canonical Track Off snapshot load failed");
+  require(!track_off_engine->harmony.progression_enabled, "canonical Track Off must suppress legacy progression");
+  const uint32_t track_off_step = track_off_engine->harmony.progression_step;
+  track_off_engine->transport.sample_frame = track_off_engine->harmony.next_harmony_frame;
+  track_off_engine->advanceHarmonyClock();
+  require(track_off_engine->harmony.progression_step == track_off_step,
+      "Track Off must leave the progression index unchanged");
+  kessho_product_destroy(track_off_engine);
+
   requireArrangementScheduling();
   requireLongArrangementSimulation();
   requireTypeScriptHarmonySequenceParity();

@@ -49,6 +49,45 @@ uint64_t harmonyIntervalFrames(double sample_rate, float seconds) {
   return std::max<uint64_t>(1u, static_cast<uint64_t>(std::llround(sample_rate * seconds)));
 }
 
+uint32_t canonicalProgressionEventIndex(const HarmonyState& harmony, double progressionIndex) {
+  const uint32_t count = std::min<uint32_t>(harmony.canonical_progression_event_count, 64u);
+  if (count == 0u) return 0u;
+  double total = 0.0;
+  for (uint32_t index = 0u; index < count; ++index) {
+    const double value = static_cast<double>(harmony.canonical_progression_duration_value[index]);
+    total += harmony.canonical_progression_duration_unit[index] == 0u
+        ? value / static_cast<double>(std::max<uint32_t>(1u, harmony.canonical_progression_bars_per_phrase))
+        : value;
+  }
+  double cursor = std::fmod(progressionIndex, std::max(1.0, total));
+  for (uint32_t index = 0u; index < count; ++index) {
+    const double duration = harmony.canonical_progression_duration_unit[index] == 0u
+        ? static_cast<double>(harmony.canonical_progression_duration_value[index]) /
+          static_cast<double>(std::max<uint32_t>(1u, harmony.canonical_progression_bars_per_phrase))
+        : static_cast<double>(harmony.canonical_progression_duration_value[index]);
+    if (cursor < duration || index + 1u == count) return index;
+    cursor -= duration;
+  }
+  return 0u;
+}
+
+void preserveCanonicalCommonTones(const HarmonyState& harmony, float* chord, uint32_t count) {
+  if (harmony.note_pool_count == 0u) return;
+  bool used[8]{};
+  for (uint32_t index = 0u; index < count && index < 8u; ++index) {
+    const int32_t pitch = positiveModulo(static_cast<int32_t>(std::llround(chord[index])), 12u);
+    int32_t best = -1;
+    float distance = 1.0e9f;
+    for (uint32_t previous = 0u; previous < std::min<uint32_t>(harmony.note_pool_count, 8u); ++previous) {
+      if (used[previous]) continue;
+      if (positiveModulo(static_cast<int32_t>(std::llround(harmony.note_pool_midi[previous])), 12u) != static_cast<uint32_t>(pitch)) continue;
+      const float candidateDistance = std::fabs(harmony.note_pool_midi[previous] - chord[index]);
+      if (candidateDistance < distance) { distance = candidateDistance; best = static_cast<int32_t>(previous); }
+    }
+    if (best >= 0) { chord[index] = harmony.note_pool_midi[best]; used[best] = true; }
+  }
+}
+
 constexpr uint32_t kScaleIds[] = {3u, 1u, 5u, 6u, 7u, 8u, 2u, 9u, 10u, 4u, 11u};
 constexpr double kScaleTensions[] = {0.0, 0.08, 0.18, 0.28, 0.38, 0.48, 0.55, 0.65, 0.75, 0.88, 0.95};
 
@@ -354,17 +393,33 @@ void KesshoProductEngine::advanceHarmonyClock() {
     harmony.root_midi = static_cast<float>(60 + root_note);
 
     int32_t progression_degree = -1;
-    if (phrase_boundary && harmony.progression_enabled) {
-      const uint32_t next_step = static_cast<uint32_t>(
-          progression_index / std::max<uint32_t>(1u, harmony.progression_phrase_multiplier)) %
-          harmony.progression_steps;
+    uint32_t canonical_slot_count = 0u;
+    float canonical_slot_notes[8]{};
+    const bool canonical_progression_active = harmony.canonical_progression_present && harmony.canonical_progression_event_count > 0u;
+    if (harmony.progression_enabled && (phrase_boundary || harmony.canonical_progression_present)) {
+      const bool canonical = canonical_progression_active;
+      const uint32_t next_step = canonical
+          ? canonicalProgressionEventIndex(harmony,
+              static_cast<double>(harmony.harmony_tick_index - 1u) * harmony.chord_interval_seconds /
+              std::max(0.001, static_cast<double>(harmony.progression_phrase_seconds)))
+          : static_cast<uint32_t>(progression_index / std::max<uint32_t>(1u, harmony.progression_phrase_multiplier)) % harmony.progression_steps;
       const bool changed = next_step != harmony.progression_step;
       harmony.progression_step = next_step;
       harmony.progression_phrase_counter = static_cast<uint32_t>(
           progression_index % std::max<uint32_t>(1u, harmony.progression_phrase_multiplier));
-      if (changed && (harmony.progression_step_enabled_mask & (1u << next_step)) != 0u) {
+      if ((changed || (canonical && harmony.harmony_tick_index <= 1u)) && (canonical || (harmony.progression_step_enabled_mask & (1u << next_step)) != 0u)) {
         force_new_chord = true;
-        progression_degree = harmony.progression_pattern[next_step];
+        if (canonical) {
+          if (harmony.canonical_progression_source[next_step] == 1u) {
+            const uint32_t slot = harmony.canonical_progression_slot_id[next_step];
+            canonical_slot_count = std::min<uint32_t>(arrangement.harmony_slot_note_count[slot], 8u);
+            for (uint32_t note = 0u; note < canonical_slot_count; ++note) {
+              canonical_slot_notes[note] = arrangement.harmony_slot_midi[slot * 8u + note];
+            }
+          }
+        } else {
+          progression_degree = harmony.progression_pattern[next_step];
+        }
       }
     }
 
@@ -397,20 +452,16 @@ void KesshoProductEngine::advanceHarmonyClock() {
           ? static_cast<uint32_t>(progression_degree)
           : selectDegree(random, chord_tension, harmony.current_degree, degree_count);
       float chord[8]{};
-      const uint32_t count = buildChord(
-          random,
-          scale_id,
-          harmony.tension,
-          harmony.voicing_spread,
-          harmony.detune_cents,
-          root_note,
-          degree,
-          chord);
+      const uint32_t count = canonical_slot_count > 0u
+          ? canonical_slot_count
+          : buildChord(random, scale_id, harmony.tension, harmony.voicing_spread, harmony.detune_cents, root_note, degree, chord);
+      if (canonical_slot_count == 0u && canonical_progression_active) preserveCanonicalCommonTones(harmony, chord, count);
       harmony.scale_id = scale_id;
       harmony.note_pool_count = count;
       for (uint32_t index = 0u; index < 8u; ++index) {
-        harmony.note_pool_midi[index] = index < count ? chord[index] : 0.0f;
-        if (index < 4u) harmony.chord_midi[index] = index < count ? chord[index] : chord[count > 0u ? count - 1u : 0u];
+        const float note = canonical_slot_count > 0u ? canonical_slot_notes[index] : chord[index];
+        harmony.note_pool_midi[index] = index < count ? note : 0.0f;
+        if (index < 4u) harmony.chord_midi[index] = index < count ? note : (count > 0u ? harmony.note_pool_midi[count - 1u] : 0.0f);
       }
       harmony.current_degree = static_cast<int32_t>(degree);
       harmony.chord_degree = degree;

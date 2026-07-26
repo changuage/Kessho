@@ -3,6 +3,7 @@ import { chordIntervalSecondsFromState } from './chordPhraseTiming';
 import { computeGranularRuntimeSeed, getUtcBucket } from './rng';
 import { getPhraseDurationForClockSource } from './transport';
 import { getScaleByName, midiToFreq } from './scales';
+import { canonicalProgressionIndexAtPosition, sanitizeHarmonyProgression } from './CoreProductHarmonyControl';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import type { SliderState } from '../ui/state';
 
@@ -80,6 +81,8 @@ function harmonyParamsFromState(state: Record<string, unknown>): Partial<Harmony
     chordProgressionSteps: finiteInteger(state.chordProgressionSteps, 4),
     chordProgressionStepEnabled: Array.isArray(state.chordProgressionStepEnabled) ? state.chordProgressionStepEnabled.map((value) => value !== false) : [true, true, true, true],
     chordProgressionPhraseMultiplier: phraseMultiplier === 2 || phraseMultiplier === 4 || phraseMultiplier === 8 ? phraseMultiplier : 1,
+    canonicalProgression: sanitizeHarmonyProgression(state.harmonyProgression, state.harmonyChordSequence, state.harmonyChordSequenceEnabled),
+    transportBarsPerPhrase: finiteInteger(state.transportBarsPerPhrase, 4),
   };
 }
 
@@ -117,6 +120,7 @@ export function createCoreProductHostHarmonySnapshot(
   const rootNote = telemetryRoot ?? homeRoot;
   const tension = finiteNumber(telemetry?.harmonyTension, finiteNumber(state.tension, 0.3));
   const phraseSeconds = phraseSecondsFromState(state);
+  const harmonyParams = harmonyParamsFromState(state);
   const harmonyState = createHarmonyState(
     `${currentBucket}|E_ROOT`,
     tension,
@@ -127,8 +131,25 @@ export function createCoreProductHostHarmonySnapshot(
     manualScale,
     rootNote,
     phraseSeconds,
-    harmonyParamsFromState(state),
+    harmonyParams,
   );
+  const canonical = harmonyParams.canonicalProgression;
+  const barsPerPhrase = finiteNumber(telemetry?.transportBarsPerPhrase, finiteNumber(state.transportBarsPerPhrase, 4));
+  if (canonical && (telemetry?.barIndex !== undefined || telemetry?.phraseIndex !== undefined)) {
+    const step = canonicalProgressionIndexAtPosition(canonical, {
+      absoluteBarIndex: telemetry?.barIndex,
+      phraseIndex: telemetry?.phraseIndex,
+      barsPerPhrase,
+    });
+    harmonyState.progression = {
+      ...harmonyState.progression,
+      step,
+      pattern: canonical.events.map((event) => event.source.type === 'slot' ? event.source.slotId % 7 : 0),
+      stepEnabled: canonical.events.map(() => true),
+      phraseMultiplier: 1,
+      phraseCounter: 0,
+    };
+  }
 
   const scaleFamily = telemetryScaleName ? getScaleByName(telemetryScaleName) ?? harmonyState.scaleFamily : harmonyState.scaleFamily;
   const midiNotes = telemetryChordMidi(telemetry);

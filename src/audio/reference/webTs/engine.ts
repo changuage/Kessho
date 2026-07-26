@@ -28,6 +28,7 @@ import {
   HarmonyParams,
   getEffectiveTension,
 } from '../../harmony';
+import { sanitizeHarmonyProgression } from '../../CoreProductHarmonyControl';
 import { getScaleNotesInRange, midiToFreq } from '../../scales';
 import {
   createRng,
@@ -8764,6 +8765,8 @@ export class AudioEngine {
       chordProgressionSteps: s.chordProgressionSteps ?? 4,
       chordProgressionStepEnabled: s.chordProgressionStepEnabled ?? [true, true, true, true],
       chordProgressionPhraseMultiplier: s.chordProgressionPhraseMultiplier ?? 1,
+      canonicalProgression: sanitizeHarmonyProgression(s.harmonyProgression, s.harmonyChordSequence, s.harmonyChordSequenceEnabled),
+      transportBarsPerPhrase: s.transportBarsPerPhrase ?? 4,
     };
   }
 

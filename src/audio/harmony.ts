@@ -7,6 +7,7 @@
 
 import { ScaleFamily, getScaleNotesInRange, midiToFreq, selectScaleFamily, getScaleByName } from './scales';
 import { createRng, rngPick, rngInt, rngFloat, rngShuffle } from './rng';
+import type { HarmonyProgression } from './harmony/harmonyTypes';
 
 // Phrase length in seconds - chord changes align to this
 export const PHRASE_LENGTH = 16; // Legacy alias
@@ -611,6 +612,9 @@ export interface HarmonyParams {
   chordProgressionSteps: number;
   chordProgressionStepEnabled: boolean[];
   chordProgressionPhraseMultiplier: 1 | 2 | 4 | 8;
+  /** Canonical progression takes precedence over legacy degree fields. */
+  canonicalProgression?: HarmonyProgression;
+  transportBarsPerPhrase?: number;
 }
 
 /** Default HarmonyParams for backward compatibility */
@@ -636,6 +640,17 @@ export const DEFAULT_HARMONY_PARAMS: HarmonyParams = {
 
 /** Create default progression state */
 function createDefaultProgression(params: HarmonyParams): ProgressionState {
+  if (params.canonicalProgression) {
+    const events = params.canonicalProgression.events;
+    return {
+      enabled: params.canonicalProgression.enabled,
+      pattern: events.map((event) => event.source.type === 'slot' ? event.source.slotId % 7 : 0),
+      step: Math.max(0, Math.min(Math.max(0, events.length - 1), params.canonicalProgression.currentEventIndex)),
+      stepEnabled: events.map(() => true),
+      phraseMultiplier: 1,
+      phraseCounter: 0,
+    };
+  }
   const steps = Math.max(1, params.chordProgressionSteps);
   const stepEnabled = params.chordProgressionStepEnabled
     .slice(0, steps)
@@ -774,30 +789,44 @@ export function updateHarmonyState(
   let progression = { ...state.progression };
   let progressionDegree: number | undefined;
 
-  // Sync progression params from sliders
-  progression.enabled = fullParams.chordProgressionEnabled;
-  if (isPhraseBoundary && progression.enabled) {
-    progression.pattern = fullParams.chordProgressionPattern;
-    progression.stepEnabled = fullParams.chordProgressionStepEnabled
-      .slice(0, Math.max(1, fullParams.chordProgressionSteps))
-      .concat(
-        new Array(
-          Math.max(0, Math.max(1, fullParams.chordProgressionSteps) - fullParams.chordProgressionStepEnabled.length),
-        ).fill(true),
-      );
-    progression.phraseMultiplier = fullParams.chordProgressionPhraseMultiplier;
-
-    const nextStep = Math.floor(
-      Math.max(0, progressionPhraseIndex) / Math.max(1, progression.phraseMultiplier),
-    ) % Math.max(1, fullParams.chordProgressionSteps);
-    const stepChanged = nextStep !== progression.step;
-    progression.step = nextStep;
-    progression.phraseCounter = progressionPhraseIndex % Math.max(1, progression.phraseMultiplier);
-
-    // If this step is a hit, force chord change with the progression's degree
-    if (stepChanged && progression.stepEnabled[nextStep]) {
-      forceNewChord = true;
-      progressionDegree = progression.pattern[nextStep] ?? 0;
+  // Canonical progression is the only active global progression. Legacy
+  // degree fields remain as a compatibility fallback for old callers.
+  progression.enabled = fullParams.canonicalProgression?.enabled ?? fullParams.chordProgressionEnabled;
+  if ((isPhraseBoundary || fullParams.canonicalProgression) && progression.enabled) {
+    const canonical = fullParams.canonicalProgression;
+    if (canonical) {
+      progression.pattern = canonical.events.map((event) => event.source.type === 'slot' ? event.source.slotId % 7 : 0);
+      progression.stepEnabled = canonical.events.map(() => true);
+      const barsPerPhrase = Math.max(1, Math.round(fullParams.transportBarsPerPhrase ?? 4));
+      const durations = canonical.events.map((event) => event.duration.unit === 'phrase' ? event.duration.value : event.duration.value / barsPerPhrase);
+      const total = Math.max(1, durations.reduce((sum, value) => sum + value, 0));
+      let cursor = Math.max(0, progressionPhraseIndex) % total;
+      let nextStep = 0;
+      for (; nextStep < durations.length - 1 && cursor >= durations[nextStep]!; nextStep += 1) cursor -= durations[nextStep]!;
+      progression.phraseMultiplier = 1;
+      progression.phraseCounter = Math.floor(cursor);
+      const stepChanged = nextStep !== progression.step;
+      progression.step = nextStep;
+      if (stepChanged && progression.stepEnabled[nextStep]) {
+        forceNewChord = true;
+        progressionDegree = progression.pattern[nextStep] ?? 0;
+      }
+      // Canonical branch has completed all progression work for this tick.
+      // Do not consult any legacy degree-pattern fields below.
+    } else {
+      progression.pattern = fullParams.chordProgressionPattern;
+      progression.stepEnabled = fullParams.chordProgressionStepEnabled
+        .slice(0, Math.max(1, fullParams.chordProgressionSteps))
+        .concat(new Array(Math.max(0, Math.max(1, fullParams.chordProgressionSteps) - fullParams.chordProgressionStepEnabled.length)).fill(true));
+      progression.phraseMultiplier = fullParams.chordProgressionPhraseMultiplier;
+      const nextStep = Math.floor(Math.max(0, progressionPhraseIndex) / Math.max(1, progression.phraseMultiplier)) % Math.max(1, fullParams.chordProgressionSteps);
+      const stepChanged = nextStep !== progression.step;
+      progression.step = nextStep;
+      progression.phraseCounter = progressionPhraseIndex % Math.max(1, progression.phraseMultiplier);
+      if (stepChanged && progression.stepEnabled[nextStep]) {
+        forceNewChord = true;
+        progressionDegree = progression.pattern[nextStep] ?? 0;
+      }
     }
   }
 

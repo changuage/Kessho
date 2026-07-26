@@ -1,8 +1,10 @@
 import { calculateDriftedRoot } from '../harmony';
 import {
+  canonicalProgressionIndexAtPosition,
   resolveProductHarmonyState,
   type HarmonyChordSlot,
   type HarmonySequenceStep,
+  type HarmonyProgression,
   type ResolvedHarmonyFrame,
 } from '../CoreProductHarmonyControl';
 import { productHarmonyScaleIdFromName } from '../coreProductHarmonyScaleIds';
@@ -24,7 +26,7 @@ export interface MorphHarmonyPlan {
 }
 
 export interface HarmonyProgressionEvent {
-  id: number;
+  id: string;
   slotId: number | null;
   source: HarmonySequenceStep['mode'] | 'suggestion';
   durationBars: number;
@@ -65,6 +67,7 @@ export interface HarmonyProjection {
   tension: number;
   slots: HarmonyChordSlot[];
   progression: HarmonyProgressionEvent[];
+  canonicalProgression: HarmonyProgression;
   position: {
     eventIndex: number;
     eventId: string | null;
@@ -86,6 +89,7 @@ export interface HarmonyProjectionRuntimeOverlay {
     scaleFamily?: { name?: string };
     currentDegree?: number;
     currentChord?: { midiNotes?: number[] };
+    progression?: { step?: number } | null;
   } | null;
   rootMidi?: number;
   rootMidiAnchor?: number;
@@ -151,15 +155,15 @@ function sanitizeSlots(value: unknown): HarmonyChordSlot[] {
   return value.slice(0, 8) as HarmonyChordSlot[];
 }
 
-function progressionFrom(sequence: readonly HarmonySequenceStep[], state: Record<string, unknown>): HarmonyProgressionEvent[] {
+function progressionFrom(progression: HarmonyProgression, state: Record<string, unknown>): HarmonyProgressionEvent[] {
   const events: HarmonyProgressionEvent[] = [];
   let startBar = 0;
-  for (let index = 0; index < sequence.length && index < 64; index += 1) {
-    const step = sequence[index]! as HarmonySequenceStep & Record<string, unknown>;
-    if (step.enabled === false) continue;
-    const durationBars = clamp(numberValue(step.durationBars ?? step.duration, numberValue(state.harmonyProgressionDurationBars, 1)), 0.25, 128);
-    const slotId = typeof step.slotId === 'number' && step.slotId >= 0 ? Math.round(step.slotId) : null;
-    events.push({ id: index, slotId, source: step.mode === 'auto' ? 'suggestion' : step.mode, durationBars, startBar, endBar: startBar + durationBars });
+  const barsPerPhrase = clamp(numberValue(state.transportBarsPerPhrase, 4), 1, 16);
+  for (let index = 0; index < progression.events.length && index < 64; index += 1) {
+    const event = progression.events[index]!;
+    const durationBars = event.duration.unit === 'phrase' ? event.duration.value * barsPerPhrase : event.duration.value;
+    const slotId = event.source.type === 'slot' ? event.source.slotId : null;
+    events.push({ id: event.id, slotId, source: event.source.type === 'auto' ? 'suggestion' : 'slotFollow', durationBars, startBar, endBar: startBar + durationBars });
     startBar += durationBars;
   }
   return events;
@@ -280,15 +284,41 @@ export function resolveHarmonyProjection(
   const tension = clamp(numberValue(record.tension, 0.35), 0, 1);
   const morphPercent = morphPercentFromState(record, runtimeOverlay);
   const seed = integerValue(record.harmonyGenerationSeed, 0);
-  const runtime = resolveProductHarmonyState({ state: record, rootMidi, rootMidiAnchor, scaleId, tension, seed, barIndex: runtimeOverlay?.barIndex, phraseIndex: runtimeOverlay?.phraseIndex, morphPercent });
+  const hasPositionContext = runtimeOverlay?.barIndex !== undefined || runtimeOverlay?.phraseIndex !== undefined;
+  const hostStep = !hasPositionContext ? numberValue(runtimeOverlay?.harmonyState?.progression?.step, Number.NaN) : Number.NaN;
+  const positionedRecord = Number.isFinite(hostStep)
+    ? {
+      ...record,
+      harmonyProgression: record.harmonyProgression && typeof record.harmonyProgression === 'object'
+        ? { ...(record.harmonyProgression as Record<string, unknown>), currentEventIndex: hostStep }
+        : record.harmonyProgression,
+      harmonyProgressionA: record.harmonyProgressionA && typeof record.harmonyProgressionA === 'object'
+        ? { ...(record.harmonyProgressionA as Record<string, unknown>), currentEventIndex: hostStep }
+        : record.harmonyProgressionA,
+      harmonyProgressionB: record.harmonyProgressionB && typeof record.harmonyProgressionB === 'object'
+        ? { ...(record.harmonyProgressionB as Record<string, unknown>), currentEventIndex: hostStep }
+        : record.harmonyProgressionB,
+    }
+    : record;
+  const runtime = resolveProductHarmonyState({ state: positionedRecord, rootMidi, rootMidiAnchor, scaleId, tension, seed, barIndex: runtimeOverlay?.barIndex, phraseIndex: runtimeOverlay?.phraseIndex, morphPercent });
   const endpointA = resolveProductHarmonyState({ state: record, rootMidi, rootMidiAnchor, scaleId, tension, seed, morphPercent: 0 }).resolvedHarmonyFrame;
   const endpointB = resolveProductHarmonyState({ state: record, rootMidi, rootMidiAnchor, scaleId, tension, seed, morphPercent: 100 }).resolvedHarmonyFrame;
   const bank: 'A' | 'B' = morphPercent >= 50 ? 'B' : 'A';
-  const sequenceValue = bank === 'B' ? record.harmonyChordSequenceB ?? record.harmonyChordSequence : record.harmonyChordSequenceA ?? record.harmonyChordSequence;
-  const sequence = Array.isArray(sequenceValue) ? sequenceValue as HarmonySequenceStep[] : runtime.chordSequence;
-  const progression = progressionFrom(sequence, record);
-  const eventIndex = progression.length === 0 ? -1 : ((integerValue(record.harmonyChordSequenceStepIndex, 0) % progression.length) + progression.length) % progression.length;
+  const progression = progressionFrom(runtime.progression, record);
+  const eventIndex = progression.length === 0 ? -1 : hasPositionContext
+    ? canonicalProgressionIndexAtPosition(runtime.progression, {
+      absoluteBarIndex: runtimeOverlay?.barIndex,
+      phraseIndex: runtimeOverlay?.phraseIndex,
+      barsPerPhrase: numberValue(record.transportBarsPerPhrase, 4),
+    })
+    : runtime.progression.currentEventIndex % progression.length;
   const activeEvent = eventIndex >= 0 ? progression[eventIndex] : undefined;
+  const barsPerPhrase = numberValue(record.transportBarsPerPhrase, 4);
+  const absoluteBar = hasPositionContext
+    ? (runtimeOverlay?.barIndex !== undefined ? numberValue(runtimeOverlay.barIndex, 0) : numberValue(runtimeOverlay?.phraseIndex, 0) * barsPerPhrase)
+    : 0;
+  const cycleBars = progression.length > 0 ? progression[progression.length - 1]!.endBar : 0;
+  const cycleBar = cycleBars > 0 ? ((absoluteBar % cycleBars) + cycleBars) % cycleBars : 0;
   const slots = sanitizeSlots(runtime.chordSlots);
   const isEndpoint = morphPercent <= 0 || morphPercent >= 100;
   // Morph owns the top of the stack in the midpoint: performance layers are read-only and hidden.
@@ -306,7 +336,8 @@ export function resolveHarmonyProjection(
     tension,
     slots,
     progression,
-    position: { eventIndex, eventId: activeEvent ? String(activeEvent.id) : null, barInEvent: activeEvent ? Math.max(0, numberValue(runtimeOverlay?.barIndex, 0) - activeEvent.startBar) : 0, phraseIndex: integerValue(runtimeOverlay?.phraseIndex, 0) },
+    canonicalProgression: runtime.progression,
+    position: { eventIndex, eventId: activeEvent ? String(activeEvent.id) : null, barInEvent: activeEvent && hasPositionContext ? Math.max(0, cycleBar - activeEvent.startBar) : 0, phraseIndex: integerValue(runtimeOverlay?.phraseIndex, 0) },
     liveLayer,
     activeLiveInputScope: isEndpoint ? runtimeOverlay?.activeLiveInputScope ?? null : null,
     morphPlan: createMorphPlan(endpointA, endpointB, bank),

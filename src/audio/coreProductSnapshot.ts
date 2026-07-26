@@ -877,16 +877,16 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       scaleMode: sliderState?.scaleMode === 'manual' ? 1 : 0,
       phrasesUntilChange: schedulerHarmony.phrasesUntilChange,
       currentDegree: schedulerHarmony.currentDegree,
-      progressionEnabled: schedulerHarmony.progression.enabled,
-      progressionPattern: [...schedulerHarmony.progression.pattern],
-      progressionStepEnabledMask: schedulerHarmony.progression.stepEnabled.reduce(
-        (mask, enabled, index) => enabled && index < 8 ? mask | (1 << index) : mask,
-        0,
-      ),
-      progressionSteps: Math.min(8, schedulerHarmony.progression.stepEnabled.length),
-      progressionStep: schedulerHarmony.progression.step,
-      progressionPhraseMultiplier: schedulerHarmony.progression.phraseMultiplier,
-      progressionPhraseCounter: schedulerHarmony.progression.phraseCounter,
+      // Product Core retains the legacy fixed fields for ABI compatibility,
+      // but their values are projected from the canonical progression. The
+      // old degree-pattern state is no longer a runtime authority.
+      progressionEnabled: harmonyControl.progression.enabled,
+      progressionPattern: harmonyControl.progression.events.slice(0, 8).map((event) => event.source.type === 'slot' ? event.source.slotId : 0),
+      progressionStepEnabledMask: harmonyControl.progression.events.slice(0, 8).reduce((mask, _event, index) => mask | (1 << index), 0),
+      progressionSteps: Math.min(8, harmonyControl.progression.events.length),
+      progressionStep: harmonyControl.progression.currentEventIndex,
+      progressionPhraseMultiplier: 1,
+      progressionPhraseCounter: 0,
       tensionArcType: schedulerHarmony.tensionArc.type === 'building'
         ? 1
         : schedulerHarmony.tensionArc.type === 'resolving'
@@ -904,6 +904,15 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
           ? 2
           : 0,
       cofDriftRange: clamp(numberFromState(sliderState, 'cofDriftRange', 3), 1, 6),
+      canonicalProgressionVersion: 1,
+      canonicalProgressionEnabled: harmonyControl.progression.enabled,
+      canonicalProgressionEventCount: harmonyControl.progression.events.length,
+      canonicalProgressionCurrentEvent: harmonyControl.progression.currentEventIndex,
+      canonicalProgressionBarsPerPhrase: clamp(numberFromState(sliderState, 'transportBarsPerPhrase', 4), 1, 16),
+      canonicalProgressionSource: Array.from({ length: 64 }, (_, index) => harmonyControl.progression.events[index]?.source.type === 'slot' ? 1 : 0),
+      canonicalProgressionSlotId: Array.from({ length: 64 }, (_, index) => harmonyControl.progression.events[index]?.source.type === 'slot' ? harmonyControl.progression.events[index]!.source.slotId : 0),
+      canonicalProgressionDurationUnit: Array.from({ length: 64 }, (_, index) => harmonyControl.progression.events[index]?.duration.unit === 'bar' ? 0 : 1),
+      canonicalProgressionDurationValue: Array.from({ length: 64 }, (_, index) => harmonyControl.progression.events[index]?.duration.value ?? 1),
     },
     sources,
     synthLanes,

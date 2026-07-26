@@ -16,9 +16,11 @@ import {
   sanitizeHarmonyChordSlots,
   sanitizeHarmonySequence,
   sanitizeHarmonySequenceLength,
+  sanitizeHarmonyProgression,
   sanitizeManualHarmonyControl,
   type HarmonyChordSlot,
   type HarmonySequenceStep,
+  type HarmonyProgression,
   type ManualHarmonyControlState,
 } from '../audio/CoreProductHarmonyControl';
 import {
@@ -626,6 +628,10 @@ export interface SliderState extends NatureSlotState {
   harmonyChordSequenceEnabled: boolean;
   harmonyChordSequenceLength: number;
   harmonyChordSequenceStepIndex: number;
+  /** Versioned canonical global Harmony progression (legacy sequence is a migration source only). */
+  harmonyProgression: HarmonyProgression;
+  harmonyProgressionA: HarmonyProgression | undefined;
+  harmonyProgressionB: HarmonyProgression | undefined;
   // Synth voice ADSR
   synthAttack: number;        // 0.001..16 seconds
   synthDecay: number;         // 0.01..8 seconds
@@ -2069,6 +2075,9 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'harmonyChordSequenceEnabled',
   'harmonyChordSequenceLength',
   'harmonyChordSequenceStepIndex',
+  'harmonyProgression',
+  'harmonyProgressionA',
+  'harmonyProgressionB',
   'synthAttack',
   'synthDecay',
   'synthSustain',
@@ -2865,6 +2874,9 @@ const HARMONY_JSON_STATE_KEYS = new Set<keyof SliderState>([
   'harmonyChordSequence',
   'harmonyChordSequenceA',
   'harmonyChordSequenceB',
+  'harmonyProgression',
+  'harmonyProgressionA',
+  'harmonyProgressionB',
   'synthSequencerFaces',
   'synthSequencerChain',
   'drumSequencerChain',
@@ -3176,6 +3188,9 @@ export const DEFAULT_STATE: SliderState = {
   harmonyChordSequenceEnabled: false,
   harmonyChordSequenceLength: 8,
   harmonyChordSequenceStepIndex: 0,
+  harmonyProgression: sanitizeHarmonyProgression(undefined),
+  harmonyProgressionA: undefined,
+  harmonyProgressionB: undefined,
   synthAttack: 6.0,
   synthDecay: 1.0,
   synthSustain: 0.8,
@@ -5570,6 +5585,18 @@ function decodeHarmonyJsonStateValue(state: SliderState, key: keyof SliderState,
     state.harmonyChordSequenceLength = sanitizeHarmonySequenceLength(parsed);
     return true;
   }
+  if (key === 'harmonyProgression') {
+    state.harmonyProgression = sanitizeHarmonyProgression(parsed, state.harmonyChordSequence, state.harmonyChordSequenceEnabled);
+    return true;
+  }
+  if (key === 'harmonyProgressionA') {
+    state.harmonyProgressionA = sanitizeHarmonyProgression(parsed, state.harmonyChordSequenceA ?? state.harmonyChordSequence, state.harmonyChordSequenceEnabled);
+    return true;
+  }
+  if (key === 'harmonyProgressionB') {
+    state.harmonyProgressionB = sanitizeHarmonyProgression(parsed, state.harmonyChordSequenceB ?? state.harmonyChordSequence, state.harmonyChordSequenceEnabled);
+    return true;
+  }
   if (key === 'synthSequencerFaces') {
     state.synthSequencerFaces = normalizeSynthSequencerFaceState(parsed);
     return true;
@@ -5608,6 +5635,7 @@ export function decodeStateFromUrl(search: string): SliderState | null {
 
   const params = new URLSearchParams(search);
   const state = { ...DEFAULT_STATE };
+  let progressionPayloadSeen = false;
 
   try {
     for (const key of STATE_KEYS) {
@@ -5615,6 +5643,7 @@ export function decodeStateFromUrl(search: string): SliderState | null {
       if (value === null) continue;
 
       if (decodeHarmonyJsonStateValue(state, key, value)) {
+        if (key === 'harmonyProgression' || key === 'harmonyProgressionA' || key === 'harmonyProgressionB') progressionPayloadSeen = true;
         continue;
       }
 
@@ -6013,6 +6042,16 @@ export function decodeStateFromUrl(search: string): SliderState | null {
       }
     }
 
+    if (!progressionPayloadSeen) {
+      state.harmonyProgression = sanitizeHarmonyProgression(undefined, state.harmonyChordSequence, state.harmonyChordSequenceEnabled);
+      state.harmonyProgressionA = state.harmonyChordSequenceA
+        ? sanitizeHarmonyProgression(undefined, state.harmonyChordSequenceA, state.harmonyChordSequenceEnabled)
+        : undefined;
+      state.harmonyProgressionB = state.harmonyChordSequenceB
+        ? sanitizeHarmonyProgression(undefined, state.harmonyChordSequenceB, state.harmonyChordSequenceEnabled)
+        : undefined;
+    }
+
     const sharedSequencerBpm =
       typeof state.sequencerMasterBPM === 'number' ? state.sequencerMasterBPM :
       typeof state.synthEuclidBaseBPM === 'number' ? state.synthEuclidBaseBPM :
@@ -6390,6 +6429,15 @@ export function migratePreset(preset: any): SavedPreset {
         new Array(Math.max(0, progressionStepCount - state.chordProgressionStepEnabled.length)).fill(true),
       );
   }
+
+  // Versioned canonical Harmony progression migration: old chord sequence
+  // payloads are copied once into the canonical key, then never consulted as
+  // a competing runtime authority.
+  if (!state.harmonyProgression || (preset.state && !Object.prototype.hasOwnProperty.call(preset.state, 'harmonyProgression'))) {
+    state.harmonyProgression = sanitizeHarmonyProgression(undefined, state.harmonyChordSequence, state.harmonyChordSequenceEnabled);
+  }
+  if (state.harmonyChordSequenceA && !state.harmonyProgressionA) state.harmonyProgressionA = sanitizeHarmonyProgression(undefined, state.harmonyChordSequenceA, state.harmonyChordSequenceEnabled);
+  if (state.harmonyChordSequenceB && !state.harmonyProgressionB) state.harmonyProgressionB = sanitizeHarmonyProgression(undefined, state.harmonyChordSequenceB, state.harmonyChordSequenceEnabled);
 
   const hydratedState = hydrateOptimizedStatePresetData(state);
   for (const [key, value] of Object.entries(hydratedState)) {
