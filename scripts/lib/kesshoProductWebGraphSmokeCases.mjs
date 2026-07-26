@@ -26,7 +26,6 @@ const statePatch = {
   leadEnabled: false,
   lead2Enabled: false,
   pianoEnabled: false,
-  synthChordSequencerEnabled: false,
   synthEuclideanMasterEnabled: false,
 };
 
@@ -497,7 +496,6 @@ const createSequencedSynthEuclidStatePatch = (source, sourcePatch = {}) => ({
   lead2Level: 0.65,
   pianoLevel: 0.65,
   ...sourcePatch,
-  synthChordSequencerEnabled: false,
   synthEuclideanMasterEnabled: false,
   synthEuclidJoinPolicy: 'grid',
   synthEuclidClockSource: 'localBeat',
@@ -786,7 +784,6 @@ const sample2ChordGeneratorStatePatch = {
   synthChordGeneratorEnabled: false,
   synthChordGeneratorSource: 'sample2',
   synthChordGeneratorVoiceCount: 2,
-  synthChordSequencerEnabled: false,
   leadRandomEnabled: false,
   synthEuclideanMasterEnabled: true,
   synthEuclid1Enabled: false,
@@ -802,7 +799,6 @@ const sample2RandomTimingStatePatch = {
   ...sample2SoftStringPatch,
   padEnabled: false,
   synthChordGeneratorEnabled: false,
-  synthChordSequencerEnabled: false,
   leadRandomEnabled: false,
   leadRandomSource: 'sample2',
   lead1Density: 1,
@@ -818,15 +814,11 @@ const sample2RandomTimingStatePatch = {
   scaleMode: 'manual',
   manualScale: 'Major (Ionian)',
 };
-const sample2ChordSequencerStatePatch = {
+const sample2GeneratorStatePatch = {
   ...statePatch,
   ...sample2PianoPatch,
   padEnabled: false,
   synthChordGeneratorEnabled: false,
-  synthChordSequencerEnabled: false,
-  synthChordSequencerSource: 'sample2',
-  synthChordSequencerVoiceCount: 1,
-  synthChordSequencerClockDivision: '1/8',
   leadRandomEnabled: false,
   synthEuclideanMasterEnabled: true,
   synthEuclid1Enabled: false,
@@ -2075,7 +2067,7 @@ const rawCases = [
     0.00002,
   ),
   {
-    id: 'simple-chord-sequencer-sample2-dry-routing',
+    id: 'simple-chord-generator-sample2-dry-routing',
     track: 'sample2Dry',
     durationMs: 1500,
     settleMs: 50,
@@ -2083,18 +2075,16 @@ const rawCases = [
     peakTolerance: 1,
     minLagCorrelation: 0,
     minSignalRms: 0.0001,
-    statePatch: sample2ChordSequencerStatePatch,
+    statePatch: sample2GeneratorStatePatch,
     stateEvents: [
-      { delayMs: 100, patch: { synthChordSequencerEnabled: true, synthChordSequencerSource: 'sample2' } },
     ],
     manualNotes: false,
     routeSmokeOnly: true,
     coreOnly: true,
   },
   sample2MasterOutputCase(
-    'simple-chord-sequencer-sample2-master-output',
-    sample2ChordSequencerStatePatch,
-    [{ delayMs: 100, patch: { synthChordSequencerEnabled: true, synthChordSequencerSource: 'sample2' } }],
+    'simple-chord-generator-sample2-master-output',
+    sample2GeneratorStatePatch,
   ),
   {
     id: 'manual-piano-short-dry',

@@ -481,129 +481,6 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   }
   kessho_product_destroy(rng_lead_engine);
 
-  auto mode_snapshot = std::make_unique<KesshoProductSnapshotV2>(
-      makeSnapshot(60.0f, 1u, 0.4f, 909u));
-  mode_snapshot->synth_euclid.lane_count = 0u;
-  mode_snapshot->arrangement.chord_sequencer_enabled = 1u;
-  mode_snapshot->arrangement.chord_sequencer_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
-  mode_snapshot->arrangement.chord_sequencer_voice_count = 3u;
-  mode_snapshot->arrangement.chord_sequencer_step_count = 1u;
-  mode_snapshot->arrangement.chord_sequencer_enabled_mask = 1u;
-  mode_snapshot->arrangement.chord_sequencer_step_seconds = 1.0f;
-  mode_snapshot->arrangement.chord_sequencer_probability[0] = 1.0f;
-  mode_snapshot->arrangement.chord_sequencer_hold_steps[0] = 1u;
-  mode_snapshot->arrangement.chord_step_slot_id[0] = 0;
-  mode_snapshot->arrangement.chord_slot_note_count[0] = 3u;
-  mode_snapshot->arrangement.chord_slot_midi[0] = 60.0f;
-  mode_snapshot->arrangement.chord_slot_midi[1] = 64.0f;
-  mode_snapshot->arrangement.chord_slot_midi[2] = 67.0f;
-  mode_snapshot->arrangement.wave_spread = 0.0f;
-  mode_snapshot->arrangement.rng_state = 123456u;
-  mode_snapshot->arrangement.chord_playback_mode = 1u;
-  mode_snapshot->arrangement.chord_arp_speed_seconds = 0.25f;
-  mode_snapshot->arrangement.chord_arp_gate = 0.62f;
-  mode_snapshot->arrangement.chord_arp_pattern_length = 4u;
-  mode_snapshot->arrangement.chord_arp_active_mask = 0x0fu;
-  for (uint32_t index = 0u; index < 4u; ++index) mode_snapshot->arrangement.chord_arp_tone[index] = index + 1u;
-  KesshoProductEngine* arp_engine = kessho_product_create(48000.0, 128u, 0u);
-  require(arp_engine != nullptr, "arrangement arp engine create failed");
-  require(kessho_product_load_snapshot_v2(arp_engine, mode_snapshot.get(), sizeof(*mode_snapshot)) == KESSHO_PRODUCT_OK,
-      "arrangement arp snapshot load failed");
-  SequencerBuffer arp_events{};
-  arp_engine->generateArrangementEvents(48000u, arp_events);
-  arp_events.sortByOffset();
-  require(arp_events.count == 4u, "TypeScript parity arp event count mismatch");
-  const uint32_t arp_offsets[4] = {0u, 12000u, 24000u, 36000u};
-  const float arp_midi[4] = {60.0f, 64.0f, 67.0f, 72.0f};
-  for (uint32_t index = 0u; index < 4u; ++index) {
-    require(arp_events.events[index].sample_offset == arp_offsets[index] &&
-        arp_events.events[index].midi_note == arp_midi[index],
-        "TypeScript parity arp event stream mismatch");
-  }
-  arp_engine->updateTelemetry(0u);
-  require(arp_engine->telemetry.chord_sequencer_absolute_step == 0u,
-      "chord telemetry must expose the first scheduled absolute step");
-  require(arp_engine->telemetry.chord_sequencer_current_step == 0u,
-      "chord telemetry must expose the first scheduled current step");
-  kessho_product_destroy(arp_engine);
-
-  auto playhead_snapshot = std::make_unique<KesshoProductSnapshotV2>(*mode_snapshot);
-  playhead_snapshot->arrangement.chord_sequencer_step_count = 4u;
-  playhead_snapshot->arrangement.chord_sequencer_enabled_mask = 0x0fu;
-  for (uint32_t index = 0u; index < 4u; ++index) {
-    playhead_snapshot->arrangement.chord_sequencer_probability[index] = 1.0f;
-    playhead_snapshot->arrangement.chord_sequencer_hold_steps[index] = 1u;
-  }
-  KesshoProductEngine* playhead_engine = kessho_product_create(48000.0, 128u, 0u);
-  require(playhead_engine != nullptr, "arrangement playhead engine create failed");
-  require(kessho_product_load_snapshot_v2(
-      playhead_engine, playhead_snapshot.get(), sizeof(*playhead_snapshot)) == KESSHO_PRODUCT_OK,
-      "arrangement playhead snapshot load failed");
-  SequencerBuffer first_playhead_block{};
-  playhead_engine->generateArrangementEvents(48000u, first_playhead_block);
-  playhead_engine->updateTelemetry(0u);
-  require(playhead_engine->telemetry.chord_sequencer_absolute_step == 0u &&
-      playhead_engine->telemetry.chord_sequencer_current_step == 0u,
-      "chord telemetry first block playhead mismatch");
-  playhead_engine->transport.sample_frame = 48000u;
-  SequencerBuffer second_playhead_block{};
-  playhead_engine->generateArrangementEvents(48000u, second_playhead_block);
-  playhead_engine->updateTelemetry(0u);
-  require(playhead_engine->telemetry.chord_sequencer_absolute_step == 1u &&
-      playhead_engine->telemetry.chord_sequencer_current_step == 1u,
-      "chord telemetry must advance from the scheduler cursor");
-  kessho_product_destroy(playhead_engine);
-
-  mode_snapshot->arrangement.chord_playback_mode = 2u;
-  mode_snapshot->arrangement.chord_strum_direction = 0u;
-  mode_snapshot->arrangement.chord_strum_spread_seconds = 0.09f;
-  mode_snapshot->arrangement.chord_strum_curve = 0.0f;
-  mode_snapshot->arrangement.chord_strum_gate = 0.86f;
-  mode_snapshot->arrangement.chord_strum_velocity_falloff = 0.08f;
-  KesshoProductEngine* strum_engine = kessho_product_create(48000.0, 128u, 0u);
-  require(strum_engine != nullptr, "arrangement strum engine create failed");
-  require(kessho_product_load_snapshot_v2(strum_engine, mode_snapshot.get(), sizeof(*mode_snapshot)) == KESSHO_PRODUCT_OK,
-      "arrangement strum snapshot load failed");
-  SequencerBuffer strum_events{};
-  strum_engine->generateArrangementEvents(48000u, strum_events);
-  strum_events.sortByOffset();
-  require(strum_events.count == 3u, "TypeScript parity strum event count mismatch");
-  const uint32_t strum_offsets[3] = {0u, 2160u, 4320u};
-  const float strum_velocity[3] = {1.0f, 0.96f, 0.92f};
-  for (uint32_t index = 0u; index < 3u; ++index) {
-    require(strum_events.events[index].sample_offset == strum_offsets[index],
-        "TypeScript parity strum sample offset mismatch");
-    requireNear(strum_events.events[index].velocity, strum_velocity[index], 0.000001f,
-        "TypeScript parity strum velocity mismatch");
-  }
-  kessho_product_destroy(strum_engine);
-
-  mode_snapshot->arrangement.chord_playback_mode = 0u;
-  mode_snapshot->arrangement.chord_expression_mask = 0xffu;
-  mode_snapshot->arrangement.chord_morph_mask = 0xffu;
-  mode_snapshot->arrangement.chord_distance_mask = 0xffu;
-  mode_snapshot->arrangement.chord_nudge_mask = 0xffu;
-  mode_snapshot->arrangement.chord_expression[0] = 0.7f;
-  mode_snapshot->arrangement.chord_morph[0] = 0.3f;
-  mode_snapshot->arrangement.chord_distance[0] = 0.4f;
-  mode_snapshot->arrangement.chord_nudge[0] = 0.1f;
-  for (uint32_t lane = 0u; lane < 5u; ++lane) mode_snapshot->arrangement.chord_sub_lane_steps[lane] = 1u;
-  KesshoProductEngine* sub_lane_engine = kessho_product_create(48000.0, 128u, 0u);
-  require(sub_lane_engine != nullptr, "arrangement sub-lane engine create failed");
-  require(kessho_product_load_snapshot_v2(
-      sub_lane_engine, mode_snapshot.get(), sizeof(*mode_snapshot)) == KESSHO_PRODUCT_OK,
-      "arrangement sub-lane snapshot load failed");
-  SequencerBuffer sub_lane_events{};
-  sub_lane_engine->generateArrangementEvents(48000u, sub_lane_events);
-  require(sub_lane_events.count == 3u, "TypeScript parity sub-lane event count mismatch");
-  for (uint32_t index = 0u; index < sub_lane_events.count; ++index) {
-    const KesshoSequencerEvent& event = sub_lane_events.events[index];
-    require(event.sample_offset == 2160u, "TypeScript parity sub-lane nudge mismatch");
-    requireNear(event.velocity, 0.7f, 0.000001f, "TypeScript parity sub-lane expression mismatch");
-    requireNear(event.morph, 0.3f, 0.000001f, "TypeScript parity sub-lane morph mismatch");
-    requireNear(event.distance, 0.4f, 0.000001f, "TypeScript parity sub-lane distance mismatch");
-  }
-  kessho_product_destroy(sub_lane_engine);
 }
 
 __attribute__((noinline)) void requireLongArrangementSimulation() {
@@ -614,12 +491,6 @@ __attribute__((noinline)) void requireLongArrangementSimulation() {
   snapshot->arrangement.chord_generator_enabled = 1u;
   snapshot->arrangement.chord_generator_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
   snapshot->arrangement.chord_generator_voice_count = 4u;
-  snapshot->arrangement.chord_sequencer_enabled = 1u;
-  snapshot->arrangement.chord_sequencer_source_id = KESSHO_PRODUCT_SOURCE_PAD2;
-  snapshot->arrangement.chord_sequencer_voice_count = 3u;
-  snapshot->arrangement.chord_sequencer_step_count = 8u;
-  snapshot->arrangement.chord_sequencer_enabled_mask = 0xffu;
-  snapshot->arrangement.chord_sequencer_step_seconds = 0.5f;
   snapshot->arrangement.lead_random_enabled = 1u;
   snapshot->arrangement.lead_random_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
   snapshot->arrangement.lead_phrase_seconds = 2.0f;
@@ -628,11 +499,6 @@ __attribute__((noinline)) void requireLongArrangementSimulation() {
   snapshot->arrangement.lead_hold_seconds = 0.4f;
   snapshot->arrangement.lead_velocity_min = 0.5f;
   snapshot->arrangement.lead_velocity_max = 0.9f;
-  for (uint32_t step = 0u; step < 8u; ++step) {
-    snapshot->arrangement.chord_sequencer_probability[step] = 1.0f;
-    snapshot->arrangement.chord_sequencer_hold_steps[step] = 1u + (step & 1u);
-  }
-
   KesshoProductEngine* engine_a = kessho_product_create(48000.0, 4096u, 0u);
   KesshoProductEngine* engine_b = kessho_product_create(48000.0, 4096u, 0u);
   require(engine_a != nullptr && engine_b != nullptr, "long arrangement engines create failed");
@@ -672,112 +538,6 @@ __attribute__((noinline)) void requireLongArrangementSimulation() {
       "60-minute arrangement simulation increased missing-asset telemetry");
   kessho_product_destroy(engine_a);
   kessho_product_destroy(engine_b);
-}
-
-__attribute__((noinline)) void requireArrangementPcmParity() {
-  struct ExpectedNote {
-    uint32_t sample_offset;
-    float midi;
-    float velocity;
-    float hold_seconds;
-  };
-  const auto run_case = [&](uint32_t playback_mode, const std::vector<ExpectedNote>& expected) {
-    auto scheduled_snapshot = std::make_unique<KesshoProductSnapshotV2>(
-        makeSnapshot(60.0f, 1u, 0.4f, 1001u + playback_mode));
-    scheduled_snapshot->synth_euclid.lane_count = 0u;
-    scheduled_snapshot->drum_euclid.lane_count = 0u;
-    scheduled_snapshot->arrangement.chord_sequencer_enabled = 1u;
-    scheduled_snapshot->arrangement.chord_sequencer_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
-    scheduled_snapshot->arrangement.chord_sequencer_voice_count = 3u;
-    scheduled_snapshot->arrangement.chord_sequencer_step_count = 1u;
-    scheduled_snapshot->arrangement.chord_sequencer_enabled_mask = 1u;
-    scheduled_snapshot->arrangement.chord_sequencer_step_seconds = 1.0f;
-    scheduled_snapshot->arrangement.chord_sequencer_probability[0] = 1.0f;
-    scheduled_snapshot->arrangement.chord_sequencer_hold_steps[0] = 1u;
-    scheduled_snapshot->arrangement.chord_step_slot_id[0] = 0;
-    scheduled_snapshot->arrangement.chord_slot_note_count[0] = 3u;
-    scheduled_snapshot->arrangement.chord_slot_midi[0] = 60.0f;
-    scheduled_snapshot->arrangement.chord_slot_midi[1] = 64.0f;
-    scheduled_snapshot->arrangement.chord_slot_midi[2] = 67.0f;
-    scheduled_snapshot->arrangement.wave_spread = 0.0f;
-    scheduled_snapshot->arrangement.rng_state = 123456u;
-    scheduled_snapshot->arrangement.chord_playback_mode = playback_mode;
-    scheduled_snapshot->arrangement.chord_arp_speed_seconds = 0.25f;
-    scheduled_snapshot->arrangement.chord_arp_gate = 0.62f;
-    scheduled_snapshot->arrangement.chord_arp_pattern_length = 4u;
-    scheduled_snapshot->arrangement.chord_arp_active_mask = 0x0fu;
-    scheduled_snapshot->arrangement.chord_strum_direction = 0u;
-    scheduled_snapshot->arrangement.chord_strum_spread_seconds = 0.09f;
-    scheduled_snapshot->arrangement.chord_strum_curve = 0.0f;
-    scheduled_snapshot->arrangement.chord_strum_gate = 0.86f;
-    scheduled_snapshot->arrangement.chord_strum_velocity_falloff = 0.08f;
-    for (uint32_t index = 0u; index < 4u; ++index) scheduled_snapshot->arrangement.chord_arp_tone[index] = index + 1u;
-
-    auto host_snapshot = std::make_unique<KesshoProductSnapshotV2>(*scheduled_snapshot);
-    host_snapshot->arrangement.chord_sequencer_enabled = 0u;
-    KesshoProductEngine* scheduled = kessho_product_create(48000.0, 128u, 0u);
-    KesshoProductEngine* host = kessho_product_create(48000.0, 128u, 0u);
-    require(scheduled != nullptr && host != nullptr, "arrangement PCM parity engine create failed");
-    require(kessho_product_load_snapshot_v2(scheduled, scheduled_snapshot.get(), sizeof(*scheduled_snapshot)) == KESSHO_PRODUCT_OK,
-        "arrangement PCM scheduled snapshot load failed");
-    require(kessho_product_load_snapshot_v2(host, host_snapshot.get(), sizeof(*host_snapshot)) == KESSHO_PRODUCT_OK,
-        "arrangement PCM host snapshot load failed");
-    for (const ExpectedNote& note : expected) {
-      KesshoProductEvent event{};
-      event.sample_offset = note.sample_offset;
-      event.event_kind = KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON;
-      event.target_id = KESSHO_PRODUCT_SOURCE_LEAD1;
-      event.value = note.midi;
-      event.value2 = note.velocity;
-      event.value3 = note.hold_seconds;
-      require(kessho_product_enqueue_event(host, &event) == KESSHO_PRODUCT_OK,
-          "arrangement PCM host event enqueue failed");
-    }
-
-    constexpr uint32_t kFrames = 48000u;
-    std::vector<float> scheduled_left(kFrames), scheduled_right(kFrames), host_left(kFrames), host_right(kFrames);
-    for (uint32_t offset = 0u; offset < kFrames; offset += 128u) {
-      const uint32_t frames = std::min<uint32_t>(128u, kFrames - offset);
-      kessho_product_render(scheduled, scheduled_left.data() + offset, scheduled_right.data() + offset, frames);
-      kessho_product_render(host, host_left.data() + offset, host_right.data() + offset, frames);
-    }
-    double dot = 0.0;
-    double scheduled_energy = 0.0;
-    double host_energy = 0.0;
-    for (uint32_t index = 0u; index < kFrames; ++index) {
-      for (uint32_t channel = 0u; channel < 2u; ++channel) {
-        const double a = channel == 0u ? scheduled_left[index] : scheduled_right[index];
-        const double b = channel == 0u ? host_left[index] : host_right[index];
-        dot += a * b;
-        scheduled_energy += a * a;
-        host_energy += b * b;
-      }
-    }
-    require(scheduled_energy > 0.0 && host_energy > 0.0, "arrangement PCM parity rendered silence");
-    const double correlation = dot / std::sqrt(scheduled_energy * host_energy);
-    const double loudness_delta_db = 10.0 * std::log10(scheduled_energy / host_energy);
-    require(correlation >= 0.9999, "arrangement PCM parity correlation fell below 0.9999");
-    require(std::fabs(loudness_delta_db) < 0.1, "arrangement PCM parity loudness delta exceeded 0.1 dB");
-    kessho_product_destroy(scheduled);
-    kessho_product_destroy(host);
-  };
-
-  run_case(0u, {
-      {0u, 60.0f, 1.0f, 1.0f},
-      {0u, 64.0f, 1.0f, 1.0f},
-      {0u, 67.0f, 1.0f, 1.0f},
-  });
-  run_case(1u, {
-      {0u, 60.0f, 1.0f, 0.155f},
-      {12000u, 64.0f, 1.0f, 0.155f},
-      {24000u, 67.0f, 1.0f, 0.155f},
-      {36000u, 72.0f, 1.0f, 0.155f},
-  });
-  run_case(2u, {
-      {0u, 60.0f, 1.0f, 0.86f},
-      {2160u, 64.0f, 0.96f, 0.8213f},
-      {4320u, 67.0f, 0.92f, 0.7826f},
-  });
 }
 
 __attribute__((noinline)) void requireTypeScriptHarmonySequenceParity() {
@@ -1216,7 +976,6 @@ int main() {
 
   requireArrangementScheduling();
   requireLongArrangementSimulation();
-  requireArrangementPcmParity();
   requireTypeScriptHarmonySequenceParity();
 
   std::cout << "Kessho Product Harmony tests passed\n";

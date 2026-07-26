@@ -903,11 +903,6 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthChordGeneratorEnabled:  { level: 1, scope: 'synthEuclidean' },
   synthChordGeneratorSource:   { level: 1, scope: 'synthEuclidean' },
   synthChordGeneratorVoiceCount: { level: 1, scope: 'synthEuclidean' },
-  synthChordSequencerEnabled:  { level: 1, scope: 'synthEuclidean' },
-  synthChordSequencerSource:   { level: 1, scope: 'synthEuclidean' },
-  synthChordSequencerVoiceCount: { level: 1, scope: 'synthEuclidean' },
-  synthChordSequencerClockDivision: { level: 1, scope: 'synthEuclidean' },
-  synthChordSequencer:         { level: 1, scope: 'synthEuclidean' },
   synthSequencerFaces:         { level: 1, scope: 'synthEuclidean' },
   synthSequencerChain:         { level: 1, scope: 'synthEuclidean' },
   // Lane 1 (11)
@@ -1542,7 +1537,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1309) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1309`);
+  if (count !== 1304) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1304`);
   }
 }

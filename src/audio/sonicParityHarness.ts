@@ -425,7 +425,6 @@ function createCaptureState(
 
   return {
     ...patchedState,
-    synthChordSequencerEnabled: false,
   };
 }
 
@@ -456,7 +455,6 @@ function createResolvedStateEventPatch(
       state: {
         ...previousState,
         ...patch,
-        ...(manualMode ? { synthChordSequencerEnabled: false } : {}),
       },
       patch,
     };

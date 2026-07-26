@@ -279,10 +279,10 @@ float resolveProductArpMidi(
   float pool[8]{};
   uint32_t pool_count = 0u;
   const int32_t slot = arp.slot_lane[step];
-  if (slot >= 0 && slot < 8 && engine.arrangement.chord_slot_note_count[slot] > 0u) {
-    pool_count = std::min<uint32_t>(engine.arrangement.chord_slot_note_count[slot], 8u);
+  if (slot >= 0 && slot < 8 && engine.arrangement.harmony_slot_note_count[slot] > 0u) {
+    pool_count = std::min<uint32_t>(engine.arrangement.harmony_slot_note_count[slot], 8u);
     for (uint32_t index = 0u; index < pool_count; ++index) {
-      pool[index] = engine.arrangement.chord_slot_midi[static_cast<uint32_t>(slot) * 8u + index];
+      pool[index] = engine.arrangement.harmony_slot_midi[static_cast<uint32_t>(slot) * 8u + index];
     }
   } else {
     pool_count = std::min<uint32_t>(engine.harmony.note_pool_count, 8u);

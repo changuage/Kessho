@@ -757,6 +757,30 @@ void requireProductSequencerSynthArpRuntimeTests() {
   }
 
   {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "musical arp harmony-slot engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot(1u, 1u, 60.0f);
+    snapshot.harmony.note_pool_count = 3u;
+    snapshot.harmony.note_pool_midi[0] = 60.0f;
+    snapshot.harmony.note_pool_midi[1] = 62.0f;
+    snapshot.harmony.note_pool_midi[2] = 64.0f;
+    snapshot.harmony.harmony_slot_note_count[0] = 2u;
+    snapshot.harmony.harmony_slot_midi[0] = 72.0f;
+    snapshot.harmony.harmony_slot_midi[1] = 76.0f;
+    snapshot.harmony.harmony_slot_note_count[1] = 2u;
+    snapshot.harmony.harmony_slot_midi[8] = 79.0f;
+    snapshot.harmony.harmony_slot_midi[9] = 83.0f;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+        "musical arp harmony-slot snapshot load failed");
+    enqueueMusicalSynthArpPattern(
+        engine, ProductArpFlow::Up, ProductArpContourMode::Pool, ProductArpBoundaryMode::Fold,
+        {0, 0}, 0x03u, 0u, {0, 1}, 2u);
+    const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 6000u);
+    expectRenderedMidiNotes(events, {72.0f, 83.0f}, "musical arp harmony-slot lane mismatch");
+    kessho_product_destroy(engine);
+  }
+
+  {
     struct FlowFixture {
       ProductArpFlow flow;
       std::vector<float> expected;
@@ -836,27 +860,6 @@ void requireProductSequencerSynthArpRuntimeTests() {
         {1, -2, 12}, 0x07u, 0u, {}, 3u);
     events = renderEventsInBlocks(engine, block_size, 6000u);
     expectRenderedMidiNotes(events, {61.0f, 58.0f, 72.0f}, "musical arp semitone contour mismatch");
-    kessho_product_destroy(engine);
-  }
-
-  {
-    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
-    require(engine != nullptr, "musical arp slot lock engine create failed");
-    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot(1u, 1u, 60.0f);
-    snapshot.harmony.note_pool_count = 3u;
-    snapshot.harmony.note_pool_midi[0] = 60.0f;
-    snapshot.harmony.note_pool_midi[1] = 62.0f;
-    snapshot.harmony.note_pool_midi[2] = 64.0f;
-    snapshot.arrangement.chord_slot_note_count[0] = 3u;
-    snapshot.arrangement.chord_slot_midi[0] = 72.0f;
-    snapshot.arrangement.chord_slot_midi[1] = 76.0f;
-    snapshot.arrangement.chord_slot_midi[2] = 79.0f;
-    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "musical arp slot lock snapshot load failed");
-    enqueueMusicalSynthArpPattern(
-        engine, ProductArpFlow::Up, ProductArpContourMode::Pool, ProductArpBoundaryMode::Fold,
-        {0, 0}, 0x03u, 0u, {-1, 0}, 2u);
-    const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 6000u);
-    expectRenderedMidiNotes(events, {60.0f, 76.0f}, "musical arp slot lock mismatch");
     kessho_product_destroy(engine);
   }
 

@@ -79,7 +79,6 @@ const SLOT_BINDING_KEYS = new Set([
   'granularEnabled',
   'synthVoiceMask',
   'synthChordGeneratorSource',
-  'synthChordSequencerSource',
   'padDiffuseSend',
   'padDistance',
   'padFitEnvelopeToChord',

@@ -222,7 +222,6 @@ function basePatch() {
     leadEnabled: false,
     lead2Enabled: false,
     pianoEnabled: false,
-    synthChordSequencerEnabled: false,
     synthEuclideanMasterEnabled: false,
     synthEuclid1Enabled: false,
     synthEuclid2Enabled: false,
@@ -355,7 +354,6 @@ function synthSourcesPatch(level = 0.45) {
 
 function synthSequencerPatch() {
   return {
-    synthChordSequencerEnabled: true,
     synthEuclideanMasterEnabled: true,
     synthEuclidClockSource: 'globalBeat',
     synthEuclid1Enabled: true,
@@ -760,7 +758,7 @@ const SCENARIOS = [
     'synth',
     'Synth',
     'Synth Page',
-    ['pad 1', 'pad 2', 'lead 1', 'lead 2', 'piano', 'synth chord sequencer', 'synth Euclid'],
+    ['pad 1', 'pad 2', 'lead 1', 'lead 2', 'piano', 'chord generator', 'synth Euclid'],
     {
       ...synthSourcesPatch(0.4),
       ...synthSequencerPatch(),

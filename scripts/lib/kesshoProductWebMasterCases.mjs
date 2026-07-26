@@ -26,7 +26,6 @@ const baseState = {
   leadEnabled: false,
   lead2Enabled: false,
   pianoEnabled: false,
-  synthChordSequencerEnabled: false,
   synthEuclideanMasterEnabled: false,
 };
 

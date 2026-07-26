@@ -828,7 +828,6 @@ function sourceSlotFallbackOverrides(slot: string): Record<string, unknown> {
         leadRandomEnabled: false,
         pianoEnabled: false,
         synthEuclideanMasterEnabled: false,
-        synthChordSequencerEnabled: false,
         padEnabled: false,
         pad2Enabled: false,
         lead2Enabled: false,

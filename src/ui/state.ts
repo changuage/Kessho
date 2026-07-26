@@ -40,11 +40,6 @@ import {
   normalizeSequencerChainState,
   type SequencerChainState,
 } from '../audio/sequencerChain';
-import {
-  defaultSynthChordSequencerConfig,
-  sanitizeSynthChordSequencerConfig,
-  type SynthChordSequencerConfig,
-} from '../audio/synthChordSequencer';
 import type { SerializedTriggerClip } from './sequencer/triggerClip';
 import {
   normalizeRoutingMuteGroupsState,
@@ -216,7 +211,7 @@ export type ProgressionClockSource = 'harmony' | 'localPhrase' | 'globalPhrase';
 export type TransportPrimaryClock = 'seconds' | 'bpm' | 'decoupled';
 export type LeadRandomSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'sample1' | 'sample2';
 export type SynthEuclidSource = 'lead' | 'lead1' | 'lead2' | 'pad' | 'pad1' | 'pad2' | 'sample1' | 'sample2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6' | 'synth7' | 'synth8';
-export type SynthChordSequencerSource = 'pad1' | 'pad2' | 'both' | 'lead1' | 'lead2' | 'sample1' | 'sample2';
+export type SynthChordSource = 'pad1' | 'pad2' | 'both' | 'lead1' | 'lead2' | 'sample1' | 'sample2';
 
 /**
  * Serialized evolve config for preset save/load.
@@ -1081,17 +1076,10 @@ export interface SliderState extends NatureSlotState {
   synthEuclid4Source: SynthEuclidSource;
   synthEuclid4VoiceMask: number;
   
-  // Simple-page automatic chord texture. This is separate from detailed Seq 5.
+  // Simple-page automatic chord texture.
   synthChordGeneratorEnabled: boolean;
-  synthChordGeneratorSource: SynthChordSequencerSource;
+  synthChordGeneratorSource: SynthChordSource;
   synthChordGeneratorVoiceCount: number;
-
-  // Detailed Seq 5 chord/arp sequencer routing.
-  synthChordSequencerEnabled: boolean;
-  synthChordSequencerSource: SynthChordSequencerSource;
-  synthChordSequencerVoiceCount: number;
-  synthChordSequencerClockDivision: ClockDivision;
-  synthChordSequencer: SynthChordSequencerConfig;
 
   // ─── Ikeda-Style Drum Synth ───
   drumEnabled: boolean;                    // Master on/off
@@ -2455,11 +2443,6 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthChordGeneratorEnabled',
   'synthChordGeneratorSource',
   'synthChordGeneratorVoiceCount',
-  'synthChordSequencerEnabled',
-  'synthChordSequencerSource',
-  'synthChordSequencerVoiceCount',
-  'synthChordSequencerClockDivision',
-  'synthChordSequencer',
   // Drum Synth
   'drumEnabled',
   'drumLevel',
@@ -2885,7 +2868,6 @@ const HARMONY_JSON_STATE_KEYS = new Set<keyof SliderState>([
   'synthSequencerFaces',
   'synthSequencerChain',
   'drumSequencerChain',
-  'synthChordSequencer',
 ]);
 
 /**
@@ -3608,12 +3590,6 @@ export const DEFAULT_STATE: SliderState = {
   synthChordGeneratorSource: 'sample1' as const,
   synthChordGeneratorVoiceCount: 6,
 
-  // Detailed Seq 5 chord/arp sequencer routing
-  synthChordSequencerEnabled: false,
-  synthChordSequencerSource: 'sample1' as const,
-  synthChordSequencerVoiceCount: 6,
-  synthChordSequencerClockDivision: '1/4' as const,
-  synthChordSequencer: defaultSynthChordSequencerConfig(),
 
   // ─── Ikeda-Style Drum Synth ───
   drumEnabled: false,
@@ -4988,7 +4964,6 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   synthEuclid4Probability: { min: 0, max: 1, step: 0.01 },
   synthEuclid4VoiceMask: { min: 1, max: 255, step: 1 },
   synthChordGeneratorVoiceCount: { min: 1, max: 8, step: 1 },
-  synthChordSequencerVoiceCount: { min: 1, max: 8, step: 1 },
   // Drum Euclidean sequencer
   drumEuclidBaseBPM: { min: 40, max: 300, step: 1 },
   drumEuclidTempo: { min: 0.25, max: 4, step: 0.25 },
@@ -5607,10 +5582,6 @@ function decodeHarmonyJsonStateValue(state: SliderState, key: keyof SliderState,
     state.drumSequencerChain = normalizeSequencerChainState(parsed);
     return true;
   }
-  if (key === 'synthChordSequencer') {
-    state.synthChordSequencer = sanitizeSynthChordSequencerConfig(parsed);
-    return true;
-  }
   return false;
 }
 
@@ -5697,11 +5668,6 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           (value === 'localBeat' || value === 'globalBeat')
         ) {
           state.synthEuclidClockSource = value;
-        } else if (
-          key === 'synthChordSequencerClockDivision' &&
-          ['1/4', '1/4T', '1/8', '1/8T', '1/16', '1/16T', '1/32', '1/32T', '1/64'].includes(value)
-        ) {
-          state.synthChordSequencerClockDivision = value as ClockDivision;
         } else if (
           key === 'drumEuclidClockSource' &&
           (value === 'localBeat' || value === 'globalBeat')
@@ -6000,7 +5966,7 @@ export function decodeStateFromUrl(search: string): SliderState | null {
         } else if (key === 'synthEuclid4Preset') {
           state.synthEuclid4Preset = value;
         } else if (
-          (key === 'synthChordGeneratorSource' || key === 'synthChordSequencerSource') &&
+          key === 'synthChordGeneratorSource' &&
           ['pad1', 'pad2', 'both', 'lead1', 'lead2', 'piano', 'sample1', 'sample2'].includes(value)
         ) {
           (state as Record<string, unknown>)[key] = value === 'piano' ? 'sample1' : value;
@@ -6063,7 +6029,6 @@ export function decodeStateFromUrl(search: string): SliderState | null {
       state.chordRate = normalizeChordsPerPhrase(state.chordRate);
     }
 
-    migrateChordGeneratorAndSeq5(state as unknown as Record<string, unknown>);
     sanitizeGranularStateCompatibility(state as unknown as Record<string, unknown>);
     return state;
   } catch {
@@ -6118,38 +6083,6 @@ export const DRUM_MORPH_KEYS = new Set<keyof SliderState>([
   'drumBeepHiMorph', 'drumBeepLoMorph', 'drumNoiseMorph', 'drumMembraneMorph'
 ] as (keyof SliderState)[]);
 
-function isDefaultSynthChordSequencerConfig(value: unknown): boolean {
-  return JSON.stringify(sanitizeSynthChordSequencerConfig(value)) === JSON.stringify(defaultSynthChordSequencerConfig());
-}
-
-function migrateChordGeneratorAndSeq5(record: Record<string, unknown>): void {
-  const hasGeneratorKeys =
-    Object.prototype.hasOwnProperty.call(record, 'synthChordGeneratorEnabled') ||
-    Object.prototype.hasOwnProperty.call(record, 'synthChordGeneratorSource') ||
-    Object.prototype.hasOwnProperty.call(record, 'synthChordGeneratorVoiceCount');
-  if (hasGeneratorKeys) return;
-
-  const oldEnabled = record.synthChordSequencerEnabled === true;
-  const oldSource = record.synthChordSequencerSource;
-  const oldVoiceCount = record.synthChordSequencerVoiceCount;
-  const oldConfigLooksDefault = isDefaultSynthChordSequencerConfig(record.synthChordSequencer);
-  if (oldEnabled && oldConfigLooksDefault) {
-    record.synthChordGeneratorEnabled = true;
-    record.synthChordGeneratorSource = oldSource === 'piano'
-      ? 'sample1'
-      : typeof oldSource === 'string'
-        ? oldSource
-        : 'sample1';
-    record.synthChordGeneratorVoiceCount = typeof oldVoiceCount === 'number' ? oldVoiceCount : 6;
-    record.synthChordSequencerEnabled = false;
-    return;
-  }
-
-  record.synthChordGeneratorEnabled = false;
-  record.synthChordGeneratorSource = 'sample1';
-  record.synthChordGeneratorVoiceCount = 6;
-}
-
 /**
  * Migration map for converting old *Min/*Max preset fields to unified single-value + dualRanges format.
  */
@@ -6187,7 +6120,6 @@ export function migratePreset(preset: any): SavedPreset {
   if (typeof state.insectsMasterEnabled !== 'boolean') {
     state.insectsMasterEnabled = state.insectsEnabled === true || state.insects2Enabled === true;
   }
-  migrateChordGeneratorAndSeq5(state as Record<string, unknown>);
 
   // Migrate *Min/*Max pairs → single value + dualRanges + sliderModes
   for (const { minKey, maxKey, newKey, defaultMode, threshold } of PRESET_MIGRATION_MAP) {

@@ -669,7 +669,7 @@ export const BUTTON_HELP_CATALOG: Record<string, SliderHelpEntry> = {
   ),
   synthSeqViewSimple: entry(
     'Switches the Synth page to the non-Euclidean performance view.',
-    'Simple mode shows the chord-sequencer controls for the pad engine and the random-timing controls for Lead 1. It is a separate performance view, not the full four-lane Euclidean editor.',
+    'Simple mode shows the chord-generator controls for the pad engine and the random-timing controls for Lead 1. It is a separate performance view, not the full four-lane Euclidean editor.',
     [sy('Sequencer / Transport', 'Simple')],
   ),
   synthSeqViewDetail: entry(

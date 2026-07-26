@@ -2,10 +2,8 @@ import assert from 'node:assert/strict';
 import { createCoreProductHostHarmonySnapshot } from './CoreProductHostHarmonyState';
 import {
   createCoreProductChordGeneratorSchedule,
-  createCoreProductChordSequencerSchedule,
 } from './coreProductArrangementPadChord';
 import { createPadChordPhrasePreview, createRandomTimingPhrasePreview } from './simpleSequencerPhrasePreview';
-import { arrangementRestartKey } from './coreProductArrangementVoiceMapping';
 import { CoreProductArrangementScheduler } from './reference/CoreProductArrangementSchedulerReference';
 import { createHarmonyState } from './harmony';
 import { PRODUCT_HARMONY_SCALE_IDS } from './coreProductHarmonyScaleIds';
@@ -49,6 +47,7 @@ import {
   type HarmonyChordQuality,
 } from './CoreProductHarmonyControl';
 import { sampleDescriptorForSlotNote, samplePredictionState } from './product/host/CoreProductSampleAssetResolver';
+import { legacyHarmonySlotToSharedSlot, sharedSlotResolvedMidiPool } from './harmony/harmonyChordAdapters';
 import {
   createCoreProductSynthSequencerLaneStepOverrideEvents,
   createCoreProductSynthSequencerStepOverrideEvents,
@@ -931,81 +930,7 @@ const originalWindow = (globalThis as { window?: unknown }).window;
     assert.equal(pendingScheduler.pendingTransportState, null, 'applied arrangement timing should clear pending state');
     scheduler.stop();
 
-    const hostTimingScheduler = new CoreProductArrangementScheduler(() => undefined, () => null);
-    const hostTimingState = {
-      ...baseTransportState,
-      synthChordSequencerEnabled: true,
-      synthChordSequencerClockDivision: '1/8' as const,
-    };
-    hostTimingScheduler.start(hostTimingState);
-    const activeHostTimingScheduler = hostTimingScheduler as unknown as {
-      chordSequencerTimer: number | null;
-    };
-    const activeChordSequencerTimer = activeHostTimingScheduler.chordSequencerTimer;
-    assert.notEqual(activeChordSequencerTimer, null, 'enabled host chord timing should have an active sequencer timer');
-    hostTimingScheduler.update({
-      ...hostTimingState,
-      synthChordSequencerClockDivision: '1/16' as const,
-    });
-    const pendingHostTimingScheduler = hostTimingScheduler as unknown as {
-      state: Record<string, unknown>;
-      pendingHostTimingState: Record<string, unknown> | null;
-      onHarmonyTick: (isPhraseBoundary: boolean) => void;
-      chordSequencerTimer: number | null;
-    };
-    assert.equal(
-      pendingHostTimingScheduler.state.synthChordSequencerClockDivision,
-      '1/8',
-      'host sequencer timing should remain active until the phrase boundary',
-    );
-    assert.equal(
-      pendingHostTimingScheduler.pendingHostTimingState?.synthChordSequencerClockDivision,
-      '1/16',
-      'host sequencer timing should stage the requested clock division',
-    );
-    assert.equal(
-      pendingHostTimingScheduler.chordSequencerTimer,
-      activeChordSequencerTimer,
-      'staging host sequencer timing must leave the current phrase timer running',
-    );
-    hostTimingScheduler.update({
-      ...hostTimingState,
-      synthChordSequencerClockDivision: '1/16' as const,
-      seedWindow: hostTimingState.seedWindow === 'day' ? 'hour' : 'day',
-    });
-    assert.equal(
-      pendingHostTimingScheduler.pendingHostTimingState?.synthChordSequencerClockDivision,
-      '1/16',
-      'an unrelated arrangement restart must preserve staged host timing',
-    );
-    const chordSequencerTimerBeforeBoundary = pendingHostTimingScheduler.chordSequencerTimer;
-    assert.notEqual(
-      chordSequencerTimerBeforeBoundary,
-      null,
-      'an unrelated arrangement restart must leave the host chord sequencer running',
-    );
-    pendingHostTimingScheduler.onHarmonyTick(true);
-    assert.equal(
-      pendingHostTimingScheduler.state.synthChordSequencerClockDivision,
-      '1/16',
-      'host sequencer timing should become active at the next phrase boundary',
-    );
-    assert.equal(
-      pendingHostTimingScheduler.pendingHostTimingState,
-      null,
-      'applied host sequencer timing should clear pending state',
-    );
-    assert.notEqual(
-      pendingHostTimingScheduler.chordSequencerTimer,
-      chordSequencerTimerBeforeBoundary,
-      'the phrase boundary should replace the old host timer with one using the staged timing',
-    );
-    assert.notEqual(
-      pendingHostTimingScheduler.chordSequencerTimer,
-      null,
-      'the host chord sequencer must remain running after its timing transition',
-    );
-    hostTimingScheduler.stop();
+
   } finally {
     (globalThis as { window?: unknown }).window = originalWindow;
   }
@@ -1065,18 +990,8 @@ try {
     voicingSpread: 0.5,
     detune: 0,
     seedWindow: 'hour',
-    synthChordSequencerEnabled: true,
-    synthChordSequencerSource: 'pad1',
-    synthChordSequencer: {
-      ...DEFAULT_STATE.synthChordSequencer,
-      subLanes: {
-        ...DEFAULT_STATE.synthChordSequencer.subLanes,
-        chord: {
-          ...DEFAULT_STATE.synthChordSequencer.subLanes.chord,
-          enabled: false,
-        },
-      },
-    },
+    synthChordGeneratorEnabled: true,
+    synthChordGeneratorSource: 'pad1',
     padEnabled: true,
     pad2Enabled: false,
     synthVoiceMask: 1,
@@ -1431,18 +1346,8 @@ try {
     voicingSpread: 0.5,
     detune: 0,
     seedWindow: 'hour',
-    synthChordSequencerEnabled: true,
-    synthChordSequencerSource: 'pad1',
-    synthChordSequencer: {
-      ...DEFAULT_STATE.synthChordSequencer,
-      subLanes: {
-        ...DEFAULT_STATE.synthChordSequencer.subLanes,
-        chord: {
-          ...DEFAULT_STATE.synthChordSequencer.subLanes.chord,
-          enabled: false,
-        },
-      },
-    },
+    synthChordGeneratorEnabled: true,
+    synthChordGeneratorSource: 'pad1',
     padEnabled: true,
     pad2Enabled: false,
     synthVoiceMask: 1 << 5,
@@ -1929,6 +1834,31 @@ const harmonySlotTriggerSnapshot = createCoreProductSnapshot({
   }],
 });
 assert.equal(harmonySlotTriggerSnapshot.harmony.activeSource, 2, 'Product snapshot should encode slot trigger as active slot source');
+assert.equal(harmonySlotTriggerSnapshot.harmony.harmonySlotNoteCount?.[2], expectedSlotTriggerPool.length, 'Product snapshot should encode resolved shared harmony slot note count');
+assert.deepEqual(
+  harmonySlotTriggerSnapshot.harmony.harmonySlotMidi?.slice(2 * 8, 2 * 8 + expectedSlotTriggerPool.length),
+  expectedSlotTriggerPool,
+  'Product snapshot should encode resolved shared harmony slot MIDI pool',
+);
+const relativeSnapshotSlot = legacyHarmonySlotToSharedSlot({ id: 0, intent: { ...defaultHarmonyIntent('slot', 0), quality: 'maj' } }, { rootMidi: 60 }).chord!;
+const exactSnapshotSlot = { ...relativeSnapshotSlot, playbackBehavior: 'exact' as const };
+const slotPlaybackSnapshot = createCoreProductSnapshot({
+  rootMidi: 62,
+  scaleMode: 'manual',
+  manualScale: 'Major (Ionian)',
+  harmonyChordSlots: [
+    { id: 0, chord: { ...relativeSnapshotSlot, playbackBehavior: 'relative' as const } },
+    { id: 1, chord: exactSnapshotSlot },
+  ],
+});
+const expectedRelativeSnapshotPool = sharedSlotResolvedMidiPool({ chord: { ...relativeSnapshotSlot, playbackBehavior: 'relative' as const } }, {
+  rootMidi: 62,
+  effectiveRootMidi: 62,
+  scaleId: 1,
+  tension: 0.35,
+});
+assert.deepEqual(slotPlaybackSnapshot.harmony.harmonySlotMidi?.slice(0, expectedRelativeSnapshotPool.length), expectedRelativeSnapshotPool, 'relative harmony slot should encode a context-resolved pool');
+assert.deepEqual(slotPlaybackSnapshot.harmony.harmonySlotMidi?.slice(8, 11), exactSnapshotSlot.exactMidiNotes, 'exact harmony slot should preserve literal MIDI');
 assert.equal(harmonySlotTriggerSnapshot.harmony.controlMode, 3, 'Product snapshot should encode slot trigger as slot control mode');
 assert.equal(harmonySlotTriggerSnapshot.harmony.activeSlotId, 2, 'Product snapshot should encode the triggered slot id');
 assert.deepEqual(
@@ -2040,7 +1970,7 @@ const auditionState = resolveProductHarmonyState({
 assert.equal(auditionState.resolvedHarmonyFrame.activeSource, 'baseline', 'audition should not mutate active resolved harmony');
 
 {
-  const harmonyState = createHarmonyState('chord-generator-seq5-regression', 0.3, 16, 0.5, 0, 'manual', 'Major (Ionian)', 0);
+  const harmonyState = createHarmonyState('chord-generator-regression', 0.3, 16, 0.5, 0, 'manual', 'Major (Ionian)', 0);
   const baseState = {
     ...DEFAULT_STATE,
     sample1Enabled: true,
@@ -2056,152 +1986,26 @@ assert.equal(auditionState.resolvedHarmonyFrame.activeSource, 'baseline', 'audit
     sequencerMasterBPM: 120,
     synthChordGeneratorSource: 'sample1' as const,
     synthChordGeneratorVoiceCount: 2,
-    synthChordSequencerSource: 'sample1' as const,
-    synthChordSequencerVoiceCount: 1,
-    synthChordSequencerClockDivision: '1/8' as const,
   };
   const generatorSchedule = createCoreProductChordGeneratorSchedule({
     state: {
       ...baseState,
       synthChordGeneratorEnabled: true,
-      synthChordSequencerEnabled: false,
     },
     harmonyState,
     rng: () => 0,
     anchors: null,
     nowWallSec: 0,
   });
-  assert.equal(generatorSchedule.scheduledNotes.length, 2, 'Chord Generator should emit without Seq 5');
+  assert.equal(generatorSchedule.scheduledNotes.length, 2, 'Chord Generator should emit independently');
   const generatorPreview = createPadChordPhrasePreview({
     ...baseState,
     synthChordGeneratorEnabled: true,
-    synthChordSequencerEnabled: false,
   });
-  assert.equal(generatorPreview.enabled, true, 'Simple Chord Generator preview should follow generator enable, not Seq 5 enable');
-  assert(generatorPreview.notes.length > 0, 'Simple Chord Generator preview should render generator notes without Seq 5');
+  assert.equal(generatorPreview.enabled, true, 'Simple Chord Generator preview should follow generator enable');
+  assert(generatorPreview.notes.length > 0, 'Simple Chord Generator preview should render generator notes');
 
-  const seq5Schedule = createCoreProductChordSequencerSchedule({
-    state: {
-      ...baseState,
-      synthChordGeneratorEnabled: false,
-      synthChordSequencerEnabled: true,
-      synthChordSequencer: {
-        ...DEFAULT_STATE.synthChordSequencer,
-        stepCount: 4,
-        steps: DEFAULT_STATE.synthChordSequencer.steps.map((step, index) => ({
-          ...step,
-          enabled: index === 0,
-        })),
-      },
-    },
-    harmonyState,
-    rng: () => 0,
-    anchors: null,
-    nowWallSec: 0,
-  });
-  assert.equal(seq5Schedule.scheduledNotes.length, 1, 'Seq 5 should emit without Chord Generator');
-  const seq5OnlyPreview = createPadChordPhrasePreview({
-    ...baseState,
-    synthChordGeneratorEnabled: false,
-    synthChordSequencerEnabled: true,
-    synthChordSequencer: {
-      ...DEFAULT_STATE.synthChordSequencer,
-      stepCount: 4,
-      steps: DEFAULT_STATE.synthChordSequencer.steps.map((step, index) => ({
-        ...step,
-        enabled: index === 0,
-      })),
-    },
-  });
-  assert.equal(seq5OnlyPreview.enabled, false, 'Simple Chord Generator preview should stay off when only Seq 5 is enabled');
-  assert.equal(seq5OnlyPreview.notes.length, 0, 'Simple Chord Generator preview should not render Seq 5 notes');
-  assert.equal(seq5Schedule.triggerIntervalSeconds, 0.25, 'Seq 5 should use sequencer BPM and clock division for step timing');
-  assert.equal(seq5Schedule.phraseSeconds, 1, 'Seq 5 cycle length should be step interval times Seq 5 step count');
 
-  const heldArpSchedule = createCoreProductChordSequencerSchedule({
-    state: {
-      ...baseState,
-      synthChordSequencerEnabled: true,
-      synthChordSequencer: {
-        ...DEFAULT_STATE.synthChordSequencer,
-        stepCount: 4,
-        playbackMode: 'arp' as const,
-        arp: {
-          ...DEFAULT_STATE.synthChordSequencer.arp,
-          speed: '1/16' as const,
-          gate: 0.5,
-          shape: 'custom' as const,
-          patternLength: 4 as const,
-          pattern: DEFAULT_STATE.synthChordSequencer.arp.pattern.map((step, index) => ({
-            ...step,
-            active: index < 4,
-            tone: (index % 4) + 1,
-            octave: 0 as const,
-          })),
-        },
-        steps: DEFAULT_STATE.synthChordSequencer.steps.map((step, index) => ({
-          ...step,
-          enabled: index === 0,
-          holdSteps: index === 0 ? 3 : 1,
-        })),
-      },
-    },
-    harmonyState,
-    rng: () => 0,
-    anchors: null,
-    nowWallSec: 0,
-  });
-  assert(heldArpSchedule.scheduledNotes.length > seq5Schedule.scheduledNotes.length, 'Seq 5 holdSteps should extend arp pulses across multiple steps');
-
-  const bothSchedules = [
-    createCoreProductChordGeneratorSchedule({
-      state: { ...baseState, synthChordGeneratorEnabled: true },
-      harmonyState,
-      rng: () => 0,
-      anchors: null,
-      nowWallSec: 0,
-    }),
-    createCoreProductChordSequencerSchedule({
-      state: { ...baseState, synthChordSequencerEnabled: true },
-      harmonyState,
-      rng: () => 0,
-      anchors: null,
-      nowWallSec: 0,
-    }),
-  ];
-  assert.equal(
-    bothSchedules.reduce((count, schedule) => count + schedule.scheduledNotes.length, 0),
-    3,
-    'Chord Generator and Seq 5 schedules should both emit when enabled independently',
-  );
-
-  const restartKey = arrangementRestartKey({ ...baseState, synthChordSequencerEnabled: true });
-  assert.equal(
-    arrangementRestartKey({
-      ...baseState,
-      synthChordSequencerEnabled: false,
-      synthChordSequencerSource: 'lead1' as const,
-      synthChordSequencerVoiceCount: 4,
-      synthChordSequencer: {
-        ...DEFAULT_STATE.synthChordSequencer,
-        stepCount: 4,
-      },
-    }),
-    restartKey,
-    'Seq 5 live edits should not reset arrangement transport anchors',
-  );
-  assert.equal(
-    arrangementRestartKey({
-      ...baseState,
-      synthChordSequencerEnabled: true,
-      cofDriftRate: 1,
-      cofDriftRange: 6,
-      cofDriftDirection: 'ccw' as const,
-    }),
-    restartKey,
-    'CoF drift config edits should update at the next phrase without resetting the active step',
-  );
-}
 
 {
   const simpleSequencerState = {
@@ -2289,6 +2093,8 @@ assert.equal(auditionState.resolvedHarmonyFrame.activeSource, 'baseline', 'audit
     leadRandomSource: 'sample2' as const,
   });
   assert.equal(chordDisabledPreview.enabled, false, 'Random Timing enable should not turn on Chord Generator');
+}
+
 }
 
 console.log('Kessho Product harmony parity regression passed');

@@ -11,7 +11,6 @@ import {
   legacyHarmonySlotToSharedSlot,
   sharedChordResolvedMidiPool,
 } from './harmonyChordAdapters';
-import { defaultSynthChordSequencerStep, resolveSynthChordStepMidiPool } from '../synthChordSequencer';
 
 test('legacy semantic slots migrate to intent plus an exact snapshot', () => {
   const intent = { ...defaultHarmonyIntent('slot', 2), quality: 'maj' as const };
@@ -28,17 +27,6 @@ test('capture/edit materializes an empty slot while explicit empty remains empty
   assert(captured.chord, 'capturing into an empty slot must author the shared chord');
   const stillEmpty = legacyHarmonySlotToSharedSlot({ id: 1, chord: null, intent });
   assert.equal(stillEmpty.chord, null, 'compatibility intent cannot repopulate explicit emptiness');
-});
-
-test('runtime slot consumers do not play compatibility intents for empty slots', () => {
-  const emptySlot = sanitizeHarmonyChordSlots(undefined)[0]!;
-  const step = { ...defaultSynthChordSequencerStep(0), slotId: 0 as const };
-  const notes = resolveSynthChordStepMidiPool({
-    step,
-    context: { rootMidi: 60, scaleId: 1, tension: 0.35, chordSlots: [emptySlot] },
-    fallbackMidi: [60, 64, 67],
-  });
-  assert.deepEqual(notes, []);
 });
 
 test('legacy captured voicing is preserved as exact and receives inferred metadata', () => {

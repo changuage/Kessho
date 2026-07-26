@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from 'react';
+import { useCallback, useMemo, type MutableRefObject } from 'react';
 import {
   createCoreProductAnchorWalkerPerformanceEvent,
   createCoreProductGeneratedSequencerCaptureEvent,
@@ -41,10 +41,6 @@ export type ProductRuntimeSynthPageEvents = {
   ) => void;
   getProductGeneratedSequencerCaptureTelemetry: () => ProductGeneratedSequencerCaptureTelemetry;
   getProductArpAudibleTelemetry: () => { steps: readonly number[]; midis: readonly number[] };
-  getProductChordSequencerPlayheadTelemetry: () => {
-    absoluteStep: number;
-    currentStep: number;
-  };
 };
 
 const EMPTY_GENERATED_CAPTURE_TELEMETRY: ProductGeneratedSequencerCaptureTelemetry = {
@@ -52,41 +48,12 @@ const EMPTY_GENERATED_CAPTURE_TELEMETRY: ProductGeneratedSequencerCaptureTelemet
   overflowCount: 0,
 };
 const EMPTY_ARP_AUDIBLE_TELEMETRY = { steps: [] as readonly number[], midis: [] as readonly number[] };
-const EMPTY_CHORD_PLAYHEAD_TELEMETRY = { absoluteStep: 0, currentStep: 0 };
 
 export function useProductRuntimeSynthPageEvents(
   productRuntimeTelemetry: ProductRuntimeTelemetrySurface,
   stateRef: MutableRefObject<SliderState>,
-  enabled = true,
 ): ProductRuntimeSynthPageEvents {
   const productRuntimeActive = productRuntimeTelemetry.available;
-  const [productChordPlayhead, setProductChordPlayhead] = useState(EMPTY_CHORD_PLAYHEAD_TELEMETRY);
-
-  useEffect(() => {
-    if (!productRuntimeActive || !enabled) {
-      setProductChordPlayhead(EMPTY_CHORD_PLAYHEAD_TELEMETRY);
-      return;
-    }
-    productRuntimeTelemetry.setTelemetryCallback((telemetry) => {
-      const absoluteStep = telemetry.chordSequencerAbsoluteStep;
-      const currentStep = telemetry.chordSequencerCurrentStep;
-      if (
-        absoluteStep === undefined
-        || currentStep === undefined
-        || !Number.isSafeInteger(absoluteStep)
-        || !Number.isInteger(currentStep)
-      ) return;
-      setProductChordPlayhead((previous) => (
-        previous.absoluteStep === absoluteStep && previous.currentStep === currentStep
-          ? previous
-          : { absoluteStep, currentStep }
-      ));
-    });
-    return () => {
-      productRuntimeTelemetry.setTelemetryCallback(null);
-    };
-  }, [enabled, productRuntimeActive, productRuntimeTelemetry]);
-
   const sendProductAnchorWalkerPerformanceEvent = useCallback((
     laneIndex: number,
     event: AnchorWalkerPerformanceEvent,
@@ -132,11 +99,6 @@ export function useProductRuntimeSynthPageEvents(
     };
   }, [productRuntimeActive, productRuntimeTelemetry]);
 
-  const getProductChordSequencerPlayheadTelemetry = useCallback(
-    () => productChordPlayhead,
-    [productChordPlayhead],
-  );
-
   const commitProductGeneratedSequencerCaptureToStep = useCallback((commit: GeneratedCaptureStepCommit): void => {
     if (!productRuntimeActive) return;
     try {
@@ -168,14 +130,12 @@ export function useProductRuntimeSynthPageEvents(
     commitProductGeneratedSequencerCaptureToStep,
     getProductGeneratedSequencerCaptureTelemetry,
     getProductArpAudibleTelemetry,
-    getProductChordSequencerPlayheadTelemetry,
     sendProductAnchorWalkerPerformanceEvent,
     setProductGeneratedSequencerCaptureEnabled,
   }), [
     commitProductGeneratedSequencerCaptureToStep,
     getProductGeneratedSequencerCaptureTelemetry,
     getProductArpAudibleTelemetry,
-    getProductChordSequencerPlayheadTelemetry,
     sendProductAnchorWalkerPerformanceEvent,
     setProductGeneratedSequencerCaptureEnabled,
   ]);

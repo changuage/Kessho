@@ -10,7 +10,7 @@ export interface TriggerStampTriggerData {
 
 export interface TriggerStamp {
   kind: 'sequencerTriggerStamp';
-  source: 'synthLane' | 'seq5Chord';
+  source: 'synthLane';
   copiedStep: number;
   copiedHitOrdinal: number;
   trigger: TriggerStampTriggerData;

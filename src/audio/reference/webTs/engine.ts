@@ -1399,7 +1399,6 @@ export class AudioEngine {
   private _lastPadEnabled: boolean | undefined = undefined;  // Track effective pad activity transitions
   private voiceReleaseTimers = new Set<number>();  // Track triggerSynthVoice release timeouts
   private ratchetTimers = new Set<number>();  // Track ratchet retrigger timeouts
-  private padChordTriggerTimers = new Set<number>();  // Track delayed chord note-ons from waveSpread
   private softStopCleanupTimers = new Set<number>();
   private synthVoiceNoteGen: Hex<number> = [0, 0, 0, 0, 0, 0];  // Per-voice WASM noteOff generation counter
   private synthVoiceNoteOffTimers: Hex<number | null> = [null, null, null, null, null, null];
@@ -2258,14 +2257,6 @@ export class AudioEngine {
     }
   }
 
-  private clearPadChordTriggerTimers(): void {
-    if (this.padChordTriggerTimers.size === 0) return;
-    for (const timerId of this.padChordTriggerTimers) {
-      clearTimeout(timerId);
-    }
-    this.padChordTriggerTimers.clear();
-  }
-
   private clearSoftStopCleanupTimers(): void {
     if (this.softStopCleanupTimers.size === 0) return;
     for (const timerId of this.softStopCleanupTimers) {
@@ -2331,7 +2322,6 @@ export class AudioEngine {
   private softStopGraphSources(now: number): void {
     const endTime = now + SOFT_STOP_SOURCE_FADE_SECONDS;
 
-    this.clearPadChordTriggerTimers();
 
     this.fadeAudioParamToZero(this.synthDirect?.gain, now, endTime);
     this.fadeAudioParamToZero(this.pad1Bus?.gain, now, endTime);
@@ -2450,7 +2440,6 @@ export class AudioEngine {
   }
 
   private killAllPadVoicesNow(): void {
-    this.clearPadChordTriggerTimers();
     for (let voiceIndex = 0; voiceIndex < PAD_VOICE_COUNT; voiceIndex += 1) {
       this.killPadVoiceNow(voiceIndex);
     }
@@ -2854,34 +2843,6 @@ export class AudioEngine {
     const attack = Math.max(0.01, pad === 'pad2' ? (state.pad2Attack ?? 0.1) : (state.synthAttack ?? 0.1));
     const decay = Math.max(0.02, pad === 'pad2' ? (state.pad2Decay ?? 0.3) : (state.synthDecay ?? 0.3));
     return Math.max(0.16, Math.min(0.6, attack + decay * 0.75));
-  }
-
-  private getPadChordTriggerIntervalSeconds(state: SliderState): number {
-    const phraseLength = this.getEffectiveHarmonyPhraseSeconds(state);
-    return chordIntervalSecondsFromState(state.chordRate, phraseLength);
-  }
-
-  private getPadEnvelopeGateSeconds(
-    state: SliderState,
-    pad: 'pad1' | 'pad2',
-    voiceDelaySeconds: number,
-    triggerIntervalSeconds: number,
-  ): number {
-    const attack = Math.max(0.001, Math.min(16, pad === 'pad2' ? (state.pad2Attack ?? 6) : (state.synthAttack ?? 6)));
-    const decay = Math.max(0.01, Math.min(8, pad === 'pad2' ? (state.pad2Decay ?? 1) : (state.synthDecay ?? 1)));
-    const requestedHold = Math.max(0, Math.min(20, pad === 'pad2' ? (state.pad2Hold ?? 1) : (state.synthHold ?? 1)));
-    const release = Math.max(0.01, Math.min(30, pad === 'pad2' ? (state.pad2Release ?? 12) : (state.synthRelease ?? 12)));
-    const fit = pad === 'pad2' ? (state.pad2FitEnvelopeToChord ?? true) : (state.padFitEnvelopeToChord ?? true);
-    let hold = requestedHold;
-    if (fit) {
-      const maxHold = triggerIntervalSeconds - voiceDelaySeconds - 0.05 - attack - decay - release;
-      hold = Math.max(0, Math.min(requestedHold, maxHold));
-    }
-    return Math.max(0.02, Math.min(20, attack + decay + hold));
-  }
-
-  private isNonPadMelodicSource(source: string): boolean {
-    return source === 'lead' || source === 'lead1' || source === 'lead2' || source === 'piano';
   }
 
   private getFxSourceStrength(
@@ -6644,7 +6605,6 @@ export class AudioEngine {
     if (!this.isRunning && !this.forceHardGraphTeardown) return;
 
     this.clearSoftStopCleanupTimers();
-    this.clearPadChordTriggerTimers();
 
     // Stop CPU perf monitor interval (must be cleared here — survives start/stop otherwise)
     if (this.synthPerfTimer !== null) {
@@ -7329,23 +7289,6 @@ export class AudioEngine {
       this.postPadWasmAllNotesOff();
     }
     this._lastPadEnabled = padActive;
-
-    // If synth chord sequencer was just disabled, silence all synth voices
-    // BUT only if no Euclidean lanes are using synth sources
-    if (effectiveState.synthChordSequencerEnabled !== true) {
-      this.clearPadChordTriggerTimers();
-      const isLeadSrc = (s: string) => this.isNonPadMelodicSource(s);
-      const euclideanUsesSynth = [
-        effectiveState.synthEuclid1Enabled && !isLeadSrc(effectiveState.synthEuclid1Source),
-        effectiveState.synthEuclid2Enabled && !isLeadSrc(effectiveState.synthEuclid2Source),
-        effectiveState.synthEuclid3Enabled && !isLeadSrc(effectiveState.synthEuclid3Source),
-        effectiveState.synthEuclid4Enabled && !isLeadSrc(effectiveState.synthEuclid4Source),
-      ].some(Boolean);
-
-      if (!euclideanUsesSynth) {
-        this.killAllPadVoicesNow();
-      }
-    }
 
     // Schedule applyParams via RAF batching — coalesces rapid updates into 1/frame
     this._applyParamsDirty = true;
@@ -8250,10 +8193,6 @@ export class AudioEngine {
     // Sync effective root
     this.effectiveRoot = this.harmonyState.effectiveRoot;
 
-    if (this.sliderState.synthChordSequencerEnabled === true) {
-      this.applyChord(this.harmonyState.currentChord.frequencies);
-    }
-
     // Send random sequence to granulator and granular
     this.sendGranulatorRandomSequence();
     this.sendGranularRandomSequence();
@@ -8877,13 +8816,6 @@ export class AudioEngine {
     this.cofConfig.currentStep = this.harmonyState.cof.currentStep;
     this.cofConfig.phraseCounter = this.harmonyState.cof.phraseCounter;
 
-    // Apply new chord with crossfade (if synth chord sequencer is enabled)
-    if (this.sliderState.synthChordSequencerEnabled === true) {
-      // Only crossfade if chord actually changed
-      const chordChanged = prevChord.midiNotes.join(',') !== this.harmonyState.currentChord.midiNotes.join(',');
-      this.applyChord(this.harmonyState.currentChord.frequencies, chordChanged);
-    }
-
     // Phrase-boundary-only effects: granulator reseed, scale sync, reverb coupling
     if (isPhraseBoundary) {
       this.sendGranulatorRandomSequence();
@@ -8909,120 +8841,6 @@ export class AudioEngine {
     }
 
     this.notifyStateChange();
-  }
-
-  private applyChord(frequencies: number[], _crossfade = false): void {
-    if (!this.ctx || !this.sliderState || !this.rng) return;
-
-    const state = this.buildPadTriggerState('pad1', this.sliderState) ?? this.getEffectivePadState(this.sliderState);
-    if (!this.padWasmNode) {
-      this.warnPadWasmUnavailable('applyChord');
-      return;
-    }
-    this.clearPadChordTriggerTimers();
-    this.sendPadWasmParams(state);
-
-    // Build set of voice indices owned by active Euclidean synth lanes
-    // so we don't overwrite their notes/envelopes
-    const euclidOwnedVoices = new Set<number>();
-    if (state.synthEuclideanMasterEnabled) {
-      const sources = [state.synthEuclid1Source, state.synthEuclid2Source, state.synthEuclid3Source, state.synthEuclid4Source];
-      const enables = [state.synthEuclid1Enabled, state.synthEuclid2Enabled, state.synthEuclid3Enabled, state.synthEuclid4Enabled];
-      const voiceMasks = [state.synthEuclid1VoiceMask, state.synthEuclid2VoiceMask, state.synthEuclid3VoiceMask, state.synthEuclid4VoiceMask];
-      for (const li of SYNTH_LANE_INDICES) {
-        const source = sources[li];
-        if (enables[li] && source?.startsWith('synth')) {
-          const vi = parseInt(source.replace('synth', ''), 10) - 1;
-          if (vi >= 0 && vi < PAD_VOICE_COUNT) euclidOwnedVoices.add(vi);
-        } else if (enables[li] && (source === 'pad1' || source === 'pad2')) {
-          const mask = (voiceMasks[li] ?? 1) & PAD_VOICE_MASK_ALL;
-          for (let vi = 0; vi < PAD_VOICE_COUNT; vi += 1) {
-            if ((mask & (1 << vi)) !== 0) euclidOwnedVoices.add(vi);
-          }
-        }
-      }
-    }
-
-    const triggerIntervalSeconds = this.getPadChordTriggerIntervalSeconds(state);
-    const waveSpread = state.waveSpread * triggerIntervalSeconds;
-    const rng = this.rng; // Capture for use in loop
-    const pad2Assign = (state.pad2VoiceAssign ?? 0) & PAD_VOICE_MASK_ALL;
-    const voiceMask = ((state.synthVoiceMask ?? 63) & PAD_VOICE_MASK_ALL) & ~pad2Assign;
-    const octaveShift = state.synthOctave || 0; // Octave shift (-2 to +2)
-    const octaveMultiplier = Math.pow(2, octaveShift); // 0.25, 0.5, 1, 2, or 4
-
-    // Apply octave shift to all frequencies
-    frequencies = frequencies.map(f => f * octaveMultiplier);
-
-    // Filter frequencies based on voice mask - only include notes for enabled voices
-    const enabledFrequencies: number[] = [];
-    for (let i = 0; i < Math.min(PAD_VOICE_COUNT, frequencies.length); i++) {
-      if (voiceMask & (1 << i)) {
-        enabledFrequencies.push(frequencies[i] ?? frequencies[0] ?? 440);
-      }
-    }
-    // If mask would result in no voices, use at least the first frequency
-    if (enabledFrequencies.length === 0) {
-      enabledFrequencies.push(frequencies[0] ?? 440);
-    }
-
-    // Generate random stagger offsets for each WASM voice using the RNG for determinism.
-    const voiceOffsets = Array.from({ length: PAD_VOICE_COUNT }, () => rng() * waveSpread);
-    // Sort offsets so voices come in at staggered but consistent intervals
-    voiceOffsets.sort((a, b) => a - b);
-
-    let padChordTriggered = false;
-    for (let i = 0; i < PAD_VOICE_COUNT; i += 1) {
-      // Skip voices owned by Euclidean synth lanes — scheduler drives them
-      if (euclidOwnedVoices.has(i)) {
-        continue;
-      }
-
-      const isVoiceEnabled = (voiceMask & (1 << i)) !== 0;
-
-      if (!isVoiceEnabled) {
-        this.postPadWasmNoteOff(i);
-        continue;
-      }
-
-      // Map enabled voice index to the filtered frequency list
-      let enabledIndex = 0;
-      for (let j = 0; j < i; j++) {
-        if (voiceMask & (1 << j)) enabledIndex++;
-      }
-      const freq = enabledFrequencies[enabledIndex % enabledFrequencies.length] ?? frequencies[0] ?? 440;
-      const voiceDelay = voiceOffsets[i] ?? 0; // Staggered entry time for this voice
-      const holdSeconds = this.getPadEnvelopeGateSeconds(state, 'pad1', voiceDelay, triggerIntervalSeconds);
-
-      padChordTriggered = true;
-      const padNode = this.padWasmNode;
-      const trigger = () => {
-        if (!this.isRunning || this.sliderState?.synthChordSequencerEnabled !== true || this.padWasmNode !== padNode) {
-          return;
-        }
-        padNode?.port.postMessage({
-          type: 'noteOn',
-          voiceIndex: i,
-          frequency: freq,
-          velocity: 1,
-          holdSeconds,
-        });
-      };
-      const delayMs = Math.max(0, voiceDelay * 1000);
-      if (delayMs > 1) {
-        const timerId = window.setTimeout(() => {
-          this.padChordTriggerTimers.delete(timerId);
-          trigger();
-        }, delayMs);
-        this.padChordTriggerTimers.add(timerId);
-      } else {
-        trigger();
-      }
-    }
-
-    if (padChordTriggered) {
-      this.reportFxOnset('pad1', 'padChord');
-    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

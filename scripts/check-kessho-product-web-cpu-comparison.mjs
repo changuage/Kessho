@@ -160,8 +160,6 @@ function stringWavesArrangementPatch() {
     tension: 0.3,
     padEnabled: true,
     synthLevel: 0.25,
-    synthChordSequencerEnabled: true,
-    synthChordSequencerSource: 'pad1',
     synthEuclideanMasterEnabled: false,
     synthVoiceMask: 63,
     synthAttack: 6,

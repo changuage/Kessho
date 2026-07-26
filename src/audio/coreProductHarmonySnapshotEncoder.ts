@@ -25,6 +25,8 @@ export function encodeCoreProductHarmonySnapshot(
   u32(harmony.manualControlAvailable ? 1 : 0);
   u32(harmony.notePoolCount);
   for (let index = 0; index < 8; index += 1) f32(harmony.notePoolMidi[index] ?? 0);
+  for (let index = 0; index < 8; index += 1) u32(harmony.harmonySlotNoteCount?.[index] ?? 0);
+  for (let index = 0; index < 64; index += 1) f32(harmony.harmonySlotMidi?.[index] ?? 0);
   f32(harmony.bassMidi);
   u32(harmony.nextNotePoolCount);
   for (let index = 0; index < 8; index += 1) f32(harmony.nextNotePoolMidi[index] ?? 0);

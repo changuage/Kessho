@@ -72,7 +72,7 @@ import {
   scaleDegreeToSemitone,
   semitoneToScaleDegree,
 } from '../../audio/drumSeqTypes';
-import type { ClockDivision, PitchBindingMode, SequencerState } from '../../audio/drumSeqTypes';
+import type { ClockDivision, PitchBindingMode } from '../../audio/drumSeqTypes';
 import {
   sanitizeHarmonyChordSlots,
   type HarmonyChordSlot,
@@ -206,27 +206,7 @@ import {
   type ProductPlayConfig,
   type ProductPlayMode,
 } from '../../audio/productPlaySequencer';
-import {
-  SYNTH_CHORD_ARP_SPEEDS,
-  SYNTH_CHORD_ARP_RANGES,
-  SYNTH_CHORD_SUB_LANE_NAMES_V2,
-  sanitizeSynthChordSequencerConfig,
-  synthChordArpPatternForShape,
-  synthChordSequencerTriggerOrdinalForTick,
-  type SynthChordSequencerArpPatternLength,
-  type SynthChordSequencerArpRange,
-  type SynthChordSequencerArpShape,
-  type SynthChordSequencerArpSpeed,
-  type SynthChordSequencerConfig,
-  type SynthChordSequencerMelodyStep,
-  type SynthChordSequencerMelodyStepMode,
-  type SynthChordSequencerMelodyTrack,
-  type SynthChordSequencerPlaybackMode,
-  type SynthChordSequencerSubLaneConfig,
-  type SynthChordSequencerSubLaneDirection,
-  type SynthChordSequencerSubLaneName,
-  type SynthChordSequencerStrumDirection,
-} from '../../audio/synthChordSequencer';
+
 import { normalizeSynthEuclidSource } from '../../audio/coreProductSourceMapping';
 import { productSourceIdForManualSynthSource } from '../../audio/productSourceCapabilities';
 import { sequencerClockDivisionToSeconds } from '../../audio/sequencerClockDivisions';
@@ -242,12 +222,6 @@ import {
 import { SAMPLE_LIBRARY_REGISTRY_GENERATED } from '../../audio/sampleLibraries/generated/sampleLibraryRegistry.generated';
 import { applySampleLibrarySelectionDefaultsToFlatState } from '../../audio/sampleLibraries/sampleLibrarySelectionDefaults';
 import { readSampleSlotState } from '../../audio/sampleLibraries/sampleSlotState';
-import {
-  copyTriggerStamp,
-  pasteTriggerStamp,
-  type SubLaneLike,
-  type TriggerStamp,
-} from '../sequencer/sequencerTriggerStamp';
 import type {
   ProductGeneratedSequencerCaptureRequest,
   ProductRuntimeSynthPageEvents,
@@ -299,10 +273,6 @@ const LANE_CONFIGS = [
   { color: SEQUENCER_LANE_COLORS[2], name: 'Seq 3' },
   { color: SEQUENCER_LANE_COLORS[3], name: 'Seq 4' },
 ];
-const CHORD_SEQUENCER_LANE_NAME = 'Seq 5 · Chord/Arp';
-const CHORD_SEQUENCER_LANE_COLOR = SEQUENCER_LANE_COLORS[4] ?? '#22d3ee';
-const CHORD_SEQUENCER_STEP_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
-
 type WalkerEnsemblePreset = 'off' | 'wide' | 'roll' | 'diatonic' | 'counter';
 
 const WALKER_ENSEMBLE_LABELS: Record<WalkerEnsemblePreset, string> = {
@@ -607,104 +577,6 @@ const SIMPLE_SEQUENCER_SOURCES = [
 ] as const;
 
 const CHORD_GENERATOR_SOURCES = SIMPLE_SEQUENCER_SOURCES;
-
-const CHORD_SEQUENCER_SOURCES = [
-  { value: 'sample1', label: 'Sample 1', color: SOURCE_COLORS.sample1 },
-  { value: 'sample2', label: 'Sample 2', color: SOURCE_COLORS.sample2 },
-  { value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1 },
-  { value: 'lead2', label: 'Lead 2', color: SOURCE_COLORS.lead2 },
-  { value: 'pad1', label: 'Pad 1', color: SOURCE_COLORS.pad1 },
-  { value: 'pad2', label: 'Pad 2', color: SOURCE_COLORS.pad2 },
-  { value: 'both', label: 'Pad 1+2', color: SOURCE_COLORS.pad1 },
-] as const;
-
-const CHORD_PLAYBACK_MODES: Array<{ value: SynthChordSequencerPlaybackMode; label: string }> = [
-  { value: 'chord', label: 'Chord' },
-  { value: 'arp', label: 'Arp' },
-  { value: 'strum', label: 'Strum' },
-];
-
-const CHORD_ARP_SHAPES: Array<{ value: SynthChordSequencerArpShape; label: string }> = [
-  { value: 'up', label: 'Up' },
-  { value: 'down', label: 'Down' },
-  { value: 'upDown', label: 'Up/Down' },
-  { value: 'skip', label: 'Skip' },
-  { value: 'octave', label: 'Octave' },
-  { value: 'custom', label: 'Custom' },
-];
-
-const CHORD_ARP_PATTERN_LENGTHS: SynthChordSequencerArpPatternLength[] = [1, 2, 3, 4, 5, 6, 7, 8];
-const CHORD_SEQUENCER_HOLD_CYCLE_LIMIT = 4;
-
-function clampChordSequencerInt(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, Math.round(value)));
-}
-
-function formatChordSequencerHoldSteps(holdSteps: number, stepCount: number): string {
-  const safeStepCount = Math.max(1, Math.round(stepCount));
-  const safeHold = clampChordSequencerInt(holdSteps, 1, safeStepCount);
-  return safeHold >= safeStepCount && safeStepCount > CHORD_SEQUENCER_HOLD_CYCLE_LIMIT ? '∞' : String(safeHold);
-}
-
-function nextChordSequencerHoldSteps(currentHoldSteps: number, stepCount: number): number {
-  const safeStepCount = Math.max(1, Math.round(stepCount));
-  const finiteLimit = Math.min(CHORD_SEQUENCER_HOLD_CYCLE_LIMIT, safeStepCount);
-  const current = clampChordSequencerInt(currentHoldSteps, 1, safeStepCount);
-  if (current < finiteLimit) return current + 1;
-  if (safeStepCount > finiteLimit && current < safeStepCount) return safeStepCount;
-  return 1;
-}
-
-function snapChordArpPatternLength(value: number): SynthChordSequencerArpPatternLength {
-  const safe = Math.round(value);
-  return CHORD_ARP_PATTERN_LENGTHS.reduce((closest, length) => (
-    Math.abs(length - safe) < Math.abs(closest - safe) ? length : closest
-  ), 4 as SynthChordSequencerArpPatternLength);
-}
-
-const CHORD_STRUM_DIRECTIONS: Array<{ value: SynthChordSequencerStrumDirection; label: string }> = [
-  { value: 'up', label: 'Up' },
-  { value: 'down', label: 'Down' },
-  { value: 'upDown', label: 'Up/Down' },
-  { value: 'downUp', label: 'Down/Up' },
-  { value: 'random', label: 'Random' },
-];
-
-const CHORD_SUB_LANE_DIRECTIONS: Array<{ value: SynthChordSequencerSubLaneDirection; label: string }> = [
-  { value: 'forward', label: 'Fwd' },
-  { value: 'reverse', label: 'Rev' },
-  { value: 'pingpong', label: 'Ping' },
-];
-
-const CHORD_SUB_LANE_META: Record<SynthChordSequencerSubLaneName, {
-  label: string;
-  color: string;
-}> = {
-  chord: {
-    label: 'Voicing',
-    color: CHORD_SEQUENCER_LANE_COLOR,
-  },
-  pitch: {
-    label: 'Pitch',
-    color: SEQUENCER_SUB_LANE_COLORS.pitch,
-  },
-  expression: {
-    label: 'Expression',
-    color: SEQUENCER_SUB_LANE_COLORS.expression,
-  },
-  morph: {
-    label: 'Morph',
-    color: SEQUENCER_SUB_LANE_COLORS.morph,
-  },
-  distance: {
-    label: 'Distance',
-    color: SEQUENCER_SUB_LANE_COLORS.distance,
-  },
-  nudge: {
-    label: 'Nudge',
-    color: SEQUENCER_SUB_LANE_COLORS.nudge,
-  },
-};
 
 const PAD_VOICE_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 const PAD_VOICE_MASK_ALL = 0xff;
@@ -2047,7 +1919,6 @@ export interface SynthPageProps {
   commitProductGeneratedSequencerCaptureToStep?: ProductRuntimeSynthPageEvents['commitProductGeneratedSequencerCaptureToStep'];
   getProductGeneratedSequencerCaptureTelemetry?: ProductRuntimeSynthPageEvents['getProductGeneratedSequencerCaptureTelemetry'];
   getProductArpAudibleTelemetry?: ProductRuntimeSynthPageEvents['getProductArpAudibleTelemetry'];
-  getProductChordSequencerPlayheadTelemetry?: ProductRuntimeSynthPageEvents['getProductChordSequencerPlayheadTelemetry'];
   /** Current harmony snapshot for keyboard note coloring */
   harmonyState?: HarmonyState | null;
   /** Authoritative Harmony projection shared with the Global page and Seq lanes. */
@@ -2113,7 +1984,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     commitProductGeneratedSequencerCaptureToStep,
     getProductGeneratedSequencerCaptureTelemetry,
     getProductArpAudibleTelemetry,
-    getProductChordSequencerPlayheadTelemetry,
     harmonyState,
   } = props;
   const onStateChange = props.onStateChange;
@@ -2135,12 +2005,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const pendingDiceSyncUntilRef = useRef<number[]>(Array.from({ length: LANE_CONFIGS.length }, () => 0));
   const pendingDiceExpectedSignatureRef = useRef<(string | null)[]>(Array.from({ length: LANE_CONFIGS.length }, () => null));
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [chordSequencerSelected, setChordSequencerSelected] = useState(false);
-  const [chordSequencerSelectedTriggerStep, setChordSequencerSelectedTriggerStep] = useState(0);
-  const [chordSequencerOpenLane, setChordSequencerOpenLane] = useState<SynthChordSequencerSubLaneName | 'trigger'>('chord');
-  const [triggerStamp, setTriggerStamp] = useState<TriggerStamp | null>(null);
-  const [triggerStampMode, setTriggerStampMode] = useState(false);
-  const [triggerStampPickSource, setTriggerStampPickSource] = useState(false);
   const [linkedTriggerStampReady, setLinkedTriggerStampReady] = useState(false);
   const [linkedTriggerStampMode, setLinkedTriggerStampMode] = useState(false);
   const [linkedTriggerStampPickSource, setLinkedTriggerStampPickSource] = useState(false);
@@ -2196,8 +2060,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   });
   const [playheads, setPlayheads] = useState<number[]>([0, 0, 0, 0]);
   const [hitCounts, setHitCounts] = useState<number[]>([0, 0, 0, 0]);
-  const [chordSequencerPlayhead, setChordSequencerPlayhead] = useState(0);
-  const [chordSequencerAbsoluteStep, setChordSequencerAbsoluteStep] = useState(0);
   const [orbitVisualStates, setOrbitVisualStates] = useState<Array<ProductSynthOrbitVisualLaneState | null>>([null, null, null, null]);
   const [walkerVisualStates, setWalkerVisualStates] = useState<Array<ProductSynthAnchorWalkerVisualLaneState | null>>([null, null, null, null]);
   const [evolveFlashing, setEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
@@ -2655,822 +2517,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onSelectChange(key, value);
   }, [onSelectChange]);
 
-  const chordSequencerConfig = useMemo(
-    () => sanitizeSynthChordSequencerConfig(state.synthChordSequencer),
-    [state.synthChordSequencer],
-  );
-
-  const updateChordSequencerConfig = useCallback((
-    updater: (current: SynthChordSequencerConfig) => SynthChordSequencerConfig,
-  ) => {
-    const next = sanitizeSynthChordSequencerConfig(updater(chordSequencerConfig));
-    onSelectChange('synthChordSequencer' as keyof SliderState, next as SliderState[keyof SliderState]);
-  }, [chordSequencerConfig, onSelectChange]);
-
-  const updateChordSequencerStep = useCallback((
-    stepIndex: number,
-    patch: Partial<SynthChordSequencerConfig['steps'][number]>,
-  ) => {
-    updateChordSequencerConfig((current) => ({
-      ...current,
-      steps: current.steps.map((step, index) => index === stepIndex ? { ...step, ...patch } : step),
-    }));
-  }, [updateChordSequencerConfig]);
-
-  const updateChordSequencerSubLane = useCallback((
-    laneName: SynthChordSequencerSubLaneName,
-    updater: (current: SynthChordSequencerSubLaneConfig) => SynthChordSequencerSubLaneConfig,
-  ) => {
-    updateChordSequencerConfig((current) => ({
-      ...current,
-      subLanes: {
-        ...current.subLanes,
-        [laneName]: updater(current.subLanes[laneName]),
-      },
-    }));
-  }, [updateChordSequencerConfig]);
-
-  const updateChordSequencerSubLaneValue = useCallback((
-    laneName: SynthChordSequencerSubLaneName,
-    stepIndex: number,
-    value: number,
-  ) => {
-    updateChordSequencerSubLane(laneName, (lane) => ({
-      ...lane,
-      values: lane.values.map((currentValue, index) => index === stepIndex ? value : currentValue),
-    }));
-  }, [updateChordSequencerSubLane]);
-
-  const chordSequencerEnabled = state.synthChordSequencerEnabled === true;
-  const chordSequencerSourceValue = String(state.synthChordSequencerSource ?? 'sample1');
-  const chordSequencerSourceInfo =
-    CHORD_SEQUENCER_SOURCES.find((source) => source.value === chordSequencerSourceValue) ?? {
-      value: 'sample1',
-      label: 'Sample 1',
-      color: SOURCE_COLORS.sample1,
-    };
   const chordGeneratorSourceValue = String(state.synthChordGeneratorSource ?? 'sample1');
-  const chordGeneratorSourceInfo =
-    CHORD_GENERATOR_SOURCES.find((source) => source.value === chordGeneratorSourceValue) ?? {
-      value: 'sample1',
-      label: 'Sample 1',
-      color: SOURCE_COLORS.sample1,
-    };
+  const chordGeneratorSourceInfo = CHORD_GENERATOR_SOURCES.find((source) => source.value === chordGeneratorSourceValue) ?? {
+    value: 'sample1', label: 'Sample 1', color: SOURCE_COLORS.sample1,
+  };
   const randomTimingSourceValue = String(state.leadRandomSource ?? 'lead1');
-  const randomTimingSourceInfo =
-    RANDOM_TIMING_SOURCES.find((source) => source.value === randomTimingSourceValue) ?? {
-      value: 'lead1',
-      label: 'Lead 1',
-      color: SOURCE_COLORS.lead1,
-    };
-  const chordSequencerActiveStepCount = chordSequencerConfig.steps
-    .slice(0, chordSequencerConfig.stepCount)
-    .filter((step) => step.enabled).length;
-  const chordSequencerClockDivision = state.synthChordSequencerClockDivision ?? '1/4';
-
-  const chordSequencerLaneModel = useMemo<SequencerState>(() => {
-    const makeSubLane = (laneName: SynthChordSequencerSubLaneName) => ({
-      enabled: chordSequencerConfig.subLanes[laneName].enabled,
-      steps: chordSequencerConfig.subLanes[laneName].steps,
-      direction: chordSequencerConfig.subLanes[laneName].direction,
-      _ppForward: true,
-      values: chordSequencerConfig.subLanes[laneName].values,
-    });
-    const triggerPattern = chordSequencerConfig.steps.map((step, index) => index < chordSequencerConfig.stepCount && step.enabled);
-    const triggerLength = chordSequencerConfig.steps.length;
-    return {
-      id: 4,
-      rng: () => 0.5,
-      color: CHORD_SEQUENCER_LANE_COLOR,
-      name: CHORD_SEQUENCER_LANE_NAME,
-      muted: !chordSequencerEnabled,
-      solo: false,
-      clockDiv: chordSequencerClockDivision,
-      swing: 0,
-      sources: {} as SequencerState['sources'],
-      trigger: {
-        enabled: chordSequencerEnabled,
-        steps: chordSequencerConfig.stepCount,
-        hits: chordSequencerActiveStepCount,
-        rotation: 0,
-        pattern: triggerPattern,
-        overrides: new Set<number>(),
-        probability: chordSequencerConfig.steps.map((step) => step.probability),
-        ratchet: new Array(triggerLength).fill(1),
-        trigCondition: new Array(triggerLength).fill([1, 1]),
-      },
-      pitch: {
-        ...makeSubLane('pitch'),
-        offsets: chordSequencerConfig.subLanes.pitch.values,
-        mode: 'semitones',
-        root: HARMONY_PITCH_ROOT_OCTAVE_MIDI,
-        scale: HARMONY_PITCH_SCALE,
-        scaleQuantize: true,
-      },
-      expression: {
-        ...makeSubLane('expression'),
-        velocities: chordSequencerConfig.subLanes.expression.values,
-      },
-      morph: makeSubLane('morph'),
-      distance: makeSubLane('distance'),
-      nudge: makeSubLane('nudge'),
-      slice: {
-        ...makeSubLane('chord'),
-        _ppForward: true,
-        values: chordSequencerConfig.subLanes.chord.values,
-      },
-      reverse: {
-        enabled: false,
-        steps: 4,
-        direction: 'forward',
-        _ppForward: true,
-        values: new Array(8).fill(0),
-      },
-      stepIndex: 0,
-      hitCount: 0,
-      nextTime: 0,
-      lastDisplayStep: 0,
-      totalStepCount: chordSequencerConfig.stepCount,
-      linked: false,
-      evolve: {
-        enabled: false,
-        everyBars: 4,
-        evolution: 0,
-        writeOffset: 'auto',
-        mutationMode: 'biased',
-        lastEvolveBar: -1,
-        methods: {} as SequencerState['evolve']['methods'],
-        home: null,
-      },
-    };
-  }, [chordSequencerActiveStepCount, chordSequencerClockDivision, chordSequencerConfig, chordSequencerEnabled]);
-
-  useEffect(() => {
-    setChordSequencerPlayhead(0);
-    setChordSequencerAbsoluteStep(0);
-  }, [chordSequencerEnabled, isRunning]);
-
-  useEffect(() => {
-    if (!isRunning || !chordSequencerEnabled || !getProductChordSequencerPlayheadTelemetry) return;
-    const playhead = getProductChordSequencerPlayheadTelemetry();
-    if (!Number.isSafeInteger(playhead.absoluteStep) || !Number.isInteger(playhead.currentStep)) return;
-    setChordSequencerAbsoluteStep(playhead.absoluteStep);
-    setChordSequencerPlayhead(playhead.currentStep);
-  }, [chordSequencerEnabled, getProductChordSequencerPlayheadTelemetry, isRunning]);
-
-  const chordSequencerHitCount = useMemo(
-    () => synthChordSequencerTriggerOrdinalForTick(chordSequencerConfig, chordSequencerAbsoluteStep) + 1,
-    [chordSequencerAbsoluteStep, chordSequencerConfig],
-  );
-  const selectedChordSequencerTriggerStep = Math.max(
-    0,
-    Math.min(chordSequencerConfig.stepCount - 1, chordSequencerSelectedTriggerStep),
-  );
-  const canPasteChordSequencerTrigger = triggerStamp?.source === 'seq5Chord';
-
-  useEffect(() => {
-    const maxStep = Math.max(0, chordSequencerConfig.stepCount - 1);
-    if (chordSequencerSelectedTriggerStep > maxStep) {
-      setChordSequencerSelectedTriggerStep(maxStep);
-    }
-  }, [chordSequencerConfig.stepCount, chordSequencerSelectedTriggerStep]);
-
-  const setChordSequencerStepCount = useCallback((value: number) => {
-    updateChordSequencerConfig((current) => {
-      const minSteps = CHORD_SEQUENCER_STEP_OPTIONS[0] ?? 1;
-      const maxSteps = CHORD_SEQUENCER_STEP_OPTIONS[CHORD_SEQUENCER_STEP_OPTIONS.length - 1] ?? 8;
-      const stepCount = clampChordSequencerInt(value, minSteps, maxSteps);
-      return {
-        ...current,
-        stepCount,
-        steps: current.steps.map((step) => ({
-          ...step,
-          holdSteps: clampChordSequencerInt(step.holdSteps ?? 1, 1, stepCount),
-        })),
-      };
-    });
-  }, [updateChordSequencerConfig]);
-
-  const setChordSequencerHoldSteps = useCallback((stepIndex: number, holdSteps: number) => {
-    updateChordSequencerStep(stepIndex, {
-      holdSteps: clampChordSequencerInt(holdSteps, 1, chordSequencerConfig.stepCount),
-    });
-  }, [chordSequencerConfig.stepCount, updateChordSequencerStep]);
-
-  const cycleChordSequencerHoldSteps = useCallback((stepIndex: number) => {
-    const currentHold = chordSequencerConfig.steps[stepIndex]?.holdSteps ?? 1;
-    setChordSequencerHoldSteps(
-      stepIndex,
-      nextChordSequencerHoldSteps(currentHold, chordSequencerConfig.stepCount),
-    );
-  }, [chordSequencerConfig.stepCount, chordSequencerConfig.steps, setChordSequencerHoldSteps]);
-
-  const chordSequencerTriggerHoldSteps = useMemo(
-    () => chordSequencerConfig.steps.map((step, index) => index < chordSequencerConfig.stepCount
-      ? clampChordSequencerInt(step.holdSteps ?? 1, 1, chordSequencerConfig.stepCount)
-      : 1),
-    [chordSequencerConfig.stepCount, chordSequencerConfig.steps],
-  );
-
-  const chordSequencerTieSteps = useMemo(() => {
-    const ties = chordSequencerConfig.steps.map(() => false);
-    const stepCount = Math.max(1, chordSequencerConfig.stepCount);
-    for (let index = 0; index < stepCount; index += 1) {
-      const step = chordSequencerConfig.steps[index];
-      if (!step?.enabled) continue;
-      const holdSteps = clampChordSequencerInt(step.holdSteps ?? 1, 1, stepCount);
-      for (let offset = 1; offset < holdSteps && index + offset < stepCount; offset += 1) {
-        const tieIndex = index + offset;
-        if (!chordSequencerConfig.steps[tieIndex]?.enabled) ties[tieIndex] = true;
-      }
-    }
-    return ties;
-  }, [chordSequencerConfig.stepCount, chordSequencerConfig.steps]);
-
-  const chordSequencerTriggerLabels = useMemo(
-    () => chordSequencerConfig.steps.map((step, index) => {
-      if (index >= chordSequencerConfig.stepCount) return null;
-      if (step.enabled) {
-        return `●${formatChordSequencerHoldSteps(step.holdSteps ?? 1, chordSequencerConfig.stepCount)}`;
-      }
-      return chordSequencerTieSteps[index] ? '·' : '–';
-    }),
-    [chordSequencerConfig.stepCount, chordSequencerConfig.steps, chordSequencerTieSteps],
-  );
-
-  const chordSequencerStampSubLanes = useCallback((config: SynthChordSequencerConfig): Record<string, SubLaneLike> => {
-    const toLane = (laneName: SynthChordSequencerSubLaneName): SubLaneLike => ({
-      enabled: config.subLanes[laneName].enabled,
-      steps: config.subLanes[laneName].steps,
-      direction: config.subLanes[laneName].direction,
-      values: config.subLanes[laneName].values,
-    });
-    return {
-      chord: toLane('chord'),
-      expression: toLane('expression'),
-      morph: toLane('morph'),
-      distance: toLane('distance'),
-      nudge: toLane('nudge'),
-    };
-  }, []);
-
-  const copyChordSequencerTriggerStamp = useCallback((stepIndex: number): boolean => {
-    const safeStep = Math.max(0, Math.min(chordSequencerConfig.stepCount - 1, Math.round(stepIndex)));
-    const labels = [
-      chordSequencerConfig.subLanes.chord.enabled ? 'C' : '',
-      chordSequencerConfig.subLanes.expression.enabled ? 'E' : '',
-      chordSequencerConfig.subLanes.morph.enabled ? 'M' : '',
-      chordSequencerConfig.subLanes.distance.enabled ? 'D' : '',
-      chordSequencerConfig.subLanes.nudge.enabled ? 'N' : '',
-    ].filter(Boolean);
-    const summary = `Trig ${safeStep + 1}${labels.length ? ` + ${labels.join(' ')}` : ''}`;
-    const stamp = copyTriggerStamp({
-      source: 'seq5Chord',
-      stepIndex: safeStep,
-      trigger: {
-        steps: chordSequencerConfig.stepCount,
-        pattern: chordSequencerConfig.steps.slice(0, chordSequencerConfig.stepCount).map((step) => step.enabled),
-        probability: chordSequencerConfig.steps.map((step) => step.probability),
-      },
-      subLanes: chordSequencerStampSubLanes(chordSequencerConfig),
-      extraTriggerData: {
-        holdSteps: chordSequencerConfig.steps[safeStep]?.holdSteps ?? 1,
-      },
-      label: summary,
-    });
-    if (!stamp) return false;
-    setTriggerStamp(stamp);
-    setTriggerStampMode(true);
-    setTriggerStampPickSource(false);
-    return true;
-  }, [chordSequencerConfig, chordSequencerStampSubLanes]);
-
-  const beginChordSequencerTriggerStampSourcePick = useCallback(() => {
-    setTriggerStampPickSource(true);
-    setTriggerStampMode(false);
-  }, []);
-
-  const pasteChordSequencerTriggerStamp = useCallback((stepIndex: number): boolean => {
-    if (!triggerStamp || triggerStamp.source !== 'seq5Chord') return false;
-    const safeStep = Math.max(0, Math.min(chordSequencerConfig.stepCount - 1, Math.round(stepIndex)));
-    const result = pasteTriggerStamp({
-      stamp: triggerStamp,
-      stepIndex: safeStep,
-      trigger: {
-        steps: chordSequencerConfig.stepCount,
-        pattern: chordSequencerConfig.steps.slice(0, chordSequencerConfig.stepCount).map((step) => step.enabled),
-        probability: chordSequencerConfig.steps.map((step) => step.probability),
-      },
-      subLanes: chordSequencerStampSubLanes(chordSequencerConfig),
-      maxSubLaneSteps: 8,
-    });
-    updateChordSequencerConfig((current) => ({
-      ...current,
-      steps: current.steps.map((step, index) => index === safeStep
-        ? {
-            ...step,
-            enabled: true,
-            probability: result.probability?.[safeStep] ?? triggerStamp.trigger.probability ?? step.probability,
-            holdSteps: triggerStamp.trigger.holdSteps ?? step.holdSteps,
-          }
-        : {
-            ...step,
-            enabled: index < result.pattern.length ? result.pattern[index] ?? step.enabled : step.enabled,
-          }),
-      subLanes: {
-        ...current.subLanes,
-        chord: result.subLanes.chord ?? current.subLanes.chord,
-        expression: result.subLanes.expression ?? current.subLanes.expression,
-        morph: result.subLanes.morph ?? current.subLanes.morph,
-        distance: result.subLanes.distance ?? current.subLanes.distance,
-        nudge: result.subLanes.nudge ?? current.subLanes.nudge,
-      },
-    }));
-    return true;
-  }, [chordSequencerConfig, chordSequencerStampSubLanes, triggerStamp, updateChordSequencerConfig]);
-
-  const renderChordSequencerControls = (variant: 'detail' | 'simple' = 'detail') => (
-    <div className={`synth-chord-editor synth-chord-editor--${variant}`}>
-      <div className="seq-sources seq-chord-sources">
-        <select
-          className="synth-source-select"
-          aria-label="Chord sequencer source"
-          value={chordSequencerSourceValue}
-          onChange={(e) => setChordSequencerSource(e.target.value)}
-          style={{
-            borderColor: `${chordSequencerSourceInfo.color}60`,
-            color: chordSequencerSourceInfo.color,
-          }}
-        >
-          {CHORD_SEQUENCER_SOURCES.map((source) => (
-            <option key={source.value} value={source.value}>{source.label}</option>
-          ))}
-        </select>
-        <label className="synth-source-label">
-          Voices
-          <select
-            className="synth-source-select"
-            value={state.synthChordSequencerVoiceCount ?? 6}
-            onChange={(e) => onParamChange('synthChordSequencerVoiceCount', Number(e.target.value))}
-          >
-            {PAD_VOICE_NUMBERS.map((voice) => (
-              <option key={voice} value={voice}>{voice}</option>
-            ))}
-          </select>
-        </label>
-        <label className="synth-source-label">
-          Mode
-          <select
-            className="synth-source-select"
-            value={chordSequencerConfig.playbackMode}
-            onChange={(event) => updateChordSequencerConfig((current) => ({
-              ...current,
-              playbackMode: event.target.value as SynthChordSequencerPlaybackMode,
-            }))}
-          >
-            {CHORD_PLAYBACK_MODES.map((mode) => (
-              <option key={mode.value} value={mode.value}>{mode.label}</option>
-            ))}
-          </select>
-        </label>
-        <label className="synth-source-label">
-          Clock
-          <select
-            className="synth-source-select"
-            value={chordSequencerClockDivision}
-            onChange={(event) => onSelectChange('synthChordSequencerClockDivision' as keyof SliderState, event.target.value as SliderState[keyof SliderState])}
-          >
-            <option value="1/4">1/4</option>
-            <option value="1/4T">1/4T</option>
-            <option value="1/8">1/8</option>
-            <option value="1/8T">1/8T</option>
-            <option value="1/16">1/16</option>
-            <option value="1/16T">1/16T</option>
-            <option value="1/32">1/32</option>
-            <option value="1/32T">1/32T</option>
-          </select>
-        </label>
-      </div>
-      {chordSequencerConfig.playbackMode === 'strum' && (
-        <div className="synth-chord-mode-panel">
-          <label className="synth-source-label">
-            Dir
-            <select
-              className="synth-source-select"
-              value={chordSequencerConfig.strum.direction}
-              onChange={(event) => updateChordSequencerConfig((current) => ({
-                ...current,
-                strum: { ...current.strum, direction: event.target.value as SynthChordSequencerStrumDirection },
-              }))}
-            >
-              {CHORD_STRUM_DIRECTIONS.map((direction) => (
-                <option key={direction.value} value={direction.value}>{direction.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="synth-source-label">
-            Spread
-            <input
-              className="synth-chord-mini-range"
-              type="range"
-              min={0}
-              max={400}
-              step={1}
-              value={chordSequencerConfig.strum.spreadMs}
-              onChange={(event) => updateChordSequencerConfig((current) => ({
-                ...current,
-                strum: { ...current.strum, spreadMs: Number(event.target.value) },
-              }))}
-            />
-          </label>
-          <label className="synth-source-label">
-            Curve
-            <input
-              className="synth-chord-mini-range"
-              type="range"
-              min={-1}
-              max={1}
-              step={0.01}
-              value={chordSequencerConfig.strum.curve}
-              onChange={(event) => updateChordSequencerConfig((current) => ({
-                ...current,
-                strum: { ...current.strum, curve: Number(event.target.value) },
-              }))}
-            />
-          </label>
-          <label className="synth-source-label">
-            Gate
-            <input
-              className="synth-chord-mini-range"
-              type="range"
-              min={0.05}
-              max={1}
-              step={0.01}
-              value={chordSequencerConfig.strum.gate}
-              onChange={(event) => updateChordSequencerConfig((current) => ({
-                ...current,
-                strum: { ...current.strum, gate: Number(event.target.value) },
-              }))}
-            />
-          </label>
-        </div>
-      )}
-    </div>
-  );
-
-  const renderChordRhythmTrack = () => (
-    <div className="seq-trigger-always seq-chord-trigger-lane seq-chord-rhythm-track">
-      <div className="seq-lane-header seq-chord-trigger-header">
-        <span className="seq-lane-title">RHYTHM</span>
-        <div className="seq-lane-controls seq-chord-trigger-controls">
-          <DragNumber
-            value={chordSequencerConfig.stepCount}
-            min={CHORD_SEQUENCER_STEP_OPTIONS[0] ?? 1}
-            max={CHORD_SEQUENCER_STEP_OPTIONS[CHORD_SEQUENCER_STEP_OPTIONS.length - 1] ?? 8}
-            label="Steps"
-            shapeByDrag
-            onChange={setChordSequencerStepCount}
-          />
-          <button
-            type="button"
-            className={`seq-chord-clip-btn${triggerStampPickSource ? ' on' : ''}`}
-            onClick={beginChordSequencerTriggerStampSourcePick}
-          >
-            Copy
-          </button>
-          {(triggerStampPickSource || triggerStampMode) ? (
-            <span className="seq-trigger-stamp-pill">
-              {triggerStampPickSource ? 'Select source trigger' : triggerStamp?.label}
-            </span>
-          ) : null}
-        </div>
-      </div>
-      <SeqLane
-        sequencer={chordSequencerLaneModel}
-        lane="trigger"
-        color={CHORD_SEQUENCER_LANE_COLOR}
-        playhead={chordSequencerPlayhead}
-        hitCount={chordSequencerHitCount}
-        selectedStep={selectedChordSequencerTriggerStep}
-        selectedStepLabel="Seq 5"
-        onSelectStep={setChordSequencerSelectedTriggerStep}
-        onToggleTriggerStep={(step) => {
-          if (triggerStampPickSource) {
-            setChordSequencerSelectedTriggerStep(step);
-            if (chordSequencerConfig.steps[step]?.enabled) copyChordSequencerTriggerStamp(step);
-            return;
-          }
-          if (triggerStampMode && canPasteChordSequencerTrigger) {
-            pasteChordSequencerTriggerStamp(step);
-            return;
-          }
-          updateChordSequencerStep(step, {
-            enabled: !chordSequencerConfig.steps[step]?.enabled,
-          });
-        }}
-        onCycleTriggerHold={cycleChordSequencerHoldSteps}
-        onSetTriggerHold={setChordSequencerHoldSteps}
-        triggerHoldSteps={chordSequencerTriggerHoldSteps}
-        triggerTieSteps={chordSequencerTieSteps}
-        triggerStepLabels={chordSequencerTriggerLabels}
-        onSetProbability={(step, value) => updateChordSequencerStep(step, { probability: value })}
-        onResetProbability={(step) => updateChordSequencerStep(step, { probability: 1 })}
-      />
-    </div>
-  );
-
-  /* ─── Digitone-style Global Arp Config Bar (Option B) ─── */
-  const renderChordArpBar = () => {
-    if (chordSequencerConfig.playbackMode !== 'arp') return null;
-    return (
-      <div className="seq-chord-arp-bar">
-        <div className="seq-chord-arp-bar-row">
-          <div className="seq-chord-arp-bar-param">
-            <span className="seq-chord-arp-bar-label">Mode</span>
-            <div className="seq-chord-arp-bar-shapes">
-              {CHORD_ARP_SHAPES.filter((s) => s.value !== 'custom').map((shape) => (
-                <button
-                  key={shape.value}
-                  type="button"
-                  className={`seq-chord-arp-shape-btn${chordSequencerConfig.arp.shape === shape.value ? ' active' : ''}`}
-                  onClick={() => updateChordSequencerConfig((current) => ({
-                    ...current,
-                    arp: {
-                      ...current.arp,
-                      shape: shape.value as SynthChordSequencerArpShape,
-                      pattern: shape.value === 'custom'
-                        ? current.arp.pattern
-                        : synthChordArpPatternForShape(shape.value as SynthChordSequencerArpShape, current.arp.patternLength),
-                    },
-                  }))}
-                  title={shape.label}
-                >
-                  {shape.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="seq-chord-arp-bar-param">
-            <span className="seq-chord-arp-bar-label">Speed</span>
-            <select
-              className="synth-source-select seq-chord-arp-bar-select"
-              value={chordSequencerConfig.arp.speed}
-              onChange={(event) => updateChordSequencerConfig((current) => ({
-                ...current,
-                arp: { ...current.arp, speed: event.target.value as SynthChordSequencerArpSpeed },
-              }))}
-            >
-              {SYNTH_CHORD_ARP_SPEEDS.map((speed) => (
-                <option key={speed} value={speed}>{speed}</option>
-              ))}
-            </select>
-          </div>
-          <div className="seq-chord-arp-bar-param">
-            <span className="seq-chord-arp-bar-label">Range</span>
-            <select
-              className="synth-source-select seq-chord-arp-bar-select"
-              value={chordSequencerConfig.arp.range}
-              onChange={(event) => updateChordSequencerConfig((current) => ({
-                ...current,
-                arp: { ...current.arp, range: Number(event.target.value) as SynthChordSequencerArpRange },
-              }))}
-            >
-              {SYNTH_CHORD_ARP_RANGES.map((r) => (
-                <option key={r} value={r}>{r} oct</option>
-              ))}
-            </select>
-          </div>
-          <div className="seq-chord-arp-bar-param">
-            <span className="seq-chord-arp-bar-label">Length</span>
-            <DragNumber
-              value={chordSequencerConfig.arp.patternLength}
-              min={1}
-              max={8}
-              label=""
-              displayValue={chordSequencerConfig.arp.patternLength}
-              onChange={(value: number) => {
-                const patternLength = snapChordArpPatternLength(value);
-                updateChordSequencerConfig((current) => ({
-                  ...current,
-                  arp: {
-                    ...current.arp,
-                    patternLength,
-                    pattern: current.arp.shape === 'custom'
-                      ? current.arp.pattern
-                      : synthChordArpPatternForShape(current.arp.shape, patternLength),
-                  },
-                }));
-              }}
-            />
-          </div>
-          <div className="seq-chord-arp-bar-param seq-chord-arp-bar-gate">
-            <span className="seq-chord-arp-bar-label">Gate</span>
-            <input
-              className="synth-chord-mini-range"
-              type="range"
-              min={0.05}
-              max={1}
-              step={0.01}
-              value={chordSequencerConfig.arp.gate}
-              onChange={(event) => updateChordSequencerConfig((current) => ({
-                ...current,
-                arp: { ...current.arp, gate: Number(event.target.value) },
-              }))}
-            />
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  /* ─── Melody Track (Option B: independent chord slot lane) ─── */
-  const updateMelodyTrack = useCallback((
-    updater: (current: SynthChordSequencerMelodyTrack) => SynthChordSequencerMelodyTrack,
-  ) => {
-    updateChordSequencerConfig((current) => ({
-      ...current,
-      melodyTrack: updater(current.melodyTrack),
-    }));
-  }, [updateChordSequencerConfig]);
-
-  const updateMelodyStep = useCallback((
-    stepIndex: number,
-    patch: Partial<SynthChordSequencerMelodyStep>,
-  ) => {
-    updateMelodyTrack((current) => ({
-      ...current,
-      steps: current.steps.map((step, index) => index === stepIndex ? { ...step, ...patch } : step),
-    }));
-  }, [updateMelodyTrack]);
-
-  const cycleMelodySlot = useCallback((stepIndex: number) => {
-    const current = chordSequencerConfig.melodyTrack.steps[stepIndex];
-    if (!current) return;
-    const next = current.slotIndex >= 8 ? 1 : current.slotIndex + 1;
-    updateMelodyStep(stepIndex, { slotIndex: next });
-  }, [chordSequencerConfig.melodyTrack.steps, updateMelodyStep]);
-
-  const cycleMelodyDirection = useCallback(() => {
-    updateMelodyTrack((current) => {
-      const dirs: SynthChordSequencerSubLaneDirection[] = ['forward', 'reverse', 'pingpong'];
-      const idx = dirs.indexOf(current.direction);
-      return { ...current, direction: dirs[(idx + 1) % dirs.length]! };
-    });
-  }, [updateMelodyTrack]);
-
-  const melodyTrackDirectionLabel = useMemo(() => {
-    const d = chordSequencerConfig.melodyTrack.direction;
-    return d === 'forward' ? 'Fwd' : d === 'reverse' ? 'Rev' : 'Ping';
-  }, [chordSequencerConfig.melodyTrack.direction]);
-
-  const MELODY_SLOT_COLORS = useMemo(() => [
-    '#22d3ee', '#a78bfa', '#f472b6', '#fbbf24',
-    '#34d399', '#fb923c', '#60a5fa', '#e879f9',
-  ], []);
-
-  const renderChordMelodyTrack = () => {
-    const track = chordSequencerConfig.melodyTrack;
-    const visibleSteps = track.steps.slice(0, track.stepCount);
-    return (
-      <div className="seq-chord-melody-track">
-        <div className="seq-lane-header seq-chord-melody-header">
-          <span className="seq-lane-title">MELODY</span>
-          <div className="seq-lane-controls seq-chord-melody-controls">
-            <DragNumber
-              value={track.stepCount}
-              min={1}
-              max={8}
-              label="Steps"
-              shapeByDrag
-              onChange={(value: number) => updateMelodyTrack((current) => ({
-                ...current,
-                stepCount: Math.max(1, Math.min(8, Math.round(value))),
-              }))}
-            />
-            <button
-              type="button"
-              className="seq-chord-dir-btn"
-              onClick={cycleMelodyDirection}
-              title="Cycle direction"
-            >
-              {melodyTrackDirectionLabel}
-            </button>
-          </div>
-        </div>
-        <div
-          className="seq-chord-melody-grid"
-          style={{ gridTemplateColumns: `repeat(${track.stepCount}, 1fr)` }}
-        >
-          {visibleSteps.map((step, index) => {
-            const slotColor = MELODY_SLOT_COLORS[(step.slotIndex - 1) % MELODY_SLOT_COLORS.length] ?? '#22d3ee';
-            const modeLabel = step.mode === 'inherit'
-              ? ''
-              : step.mode === 'chord' ? 'C'
-              : step.mode === 'arp' ? 'A'
-              : 'S';
-            const shapeGlyph = step.mode === 'arp' || (step.mode === 'inherit' && chordSequencerConfig.playbackMode === 'arp')
-              ? (step.arpShapeOverride
-                  ? step.arpShapeOverride === 'up' ? '↗'
-                  : step.arpShapeOverride === 'down' ? '↘'
-                  : step.arpShapeOverride === 'upDown' ? '⟋⟍'
-                  : step.arpShapeOverride === 'skip' ? '⤮'
-                  : step.arpShapeOverride === 'octave' ? '⏚'
-                  : '~'
-                : '')
-              : '';
-            return (
-              <button
-                key={index}
-                type="button"
-                className="seq-chord-melody-cell"
-                style={{
-                  '--slot-color': slotColor,
-                  borderColor: `color-mix(in srgb, ${slotColor} 55%, rgba(255,255,255,0.12))`,
-                } as React.CSSProperties}
-                onClick={() => cycleMelodySlot(index)}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  const modes: SynthChordSequencerMelodyStepMode[] = ['inherit', 'chord', 'arp', 'strum'];
-                  const currentIdx = modes.indexOf(step.mode);
-                  updateMelodyStep(index, { mode: modes[(currentIdx + 1) % modes.length]! });
-                }}
-                title={`Slot ${step.slotIndex} · ${step.mode}${shapeGlyph ? ` · ${shapeGlyph}` : ''}\nClick: cycle slot · Right-click: cycle mode`}
-              >
-                <span className="seq-chord-melody-slot-badge" style={{ background: slotColor }}>
-                  {step.slotIndex}
-                </span>
-                {modeLabel && (
-                  <span className="seq-chord-melody-mode-badge">{modeLabel}</span>
-                )}
-                {shapeGlyph && (
-                  <span className="seq-chord-melody-shape">{shapeGlyph}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
-  const renderChordSubLaneEditor = (laneName: SynthChordSequencerSubLaneName) => {
-    const lane = chordSequencerConfig.subLanes[laneName];
-    const meta = CHORD_SUB_LANE_META[laneName];
-    const sparkValues = laneName === 'chord'
-      ? lane.values.map((value) => (Math.max(1, Math.min(8, Math.round(value))) - 1) / 7)
-      : laneName === 'pitch'
-      ? lane.values.map((value) => normalizeNoteDegreeOffset(value))
-      : lane.values;
-    return (
-      <React.Fragment key={laneName}>
-        <SeqSparkline
-          label={`${meta.label.charAt(0)}:`}
-          steps={lane.steps}
-          values={sparkValues}
-          color={meta.color}
-          playhead={chordSequencerPlayhead}
-          hitCount={chordSequencerHitCount}
-          playheadMode="hit"
-          direction={lane.direction}
-          bipolar={laneName === 'morph'}
-          mode={laneName === 'nudge' ? 'signed' : undefined}
-          invertFill={laneName === 'expression'}
-          enabled={lane.enabled}
-          expanded={chordSequencerOpenLane === laneName}
-          onClick={() => setChordSequencerOpenLane(chordSequencerOpenLane === laneName ? 'trigger' : laneName)}
-          onToggleEnabled={() => updateChordSequencerSubLane(laneName, (current) => ({ ...current, enabled: !current.enabled }))}
-        />
-        {chordSequencerOpenLane === laneName && (
-          <div className="seq-lane-editor-wrap">
-            <SeqLane
-              sequencer={chordSequencerLaneModel}
-              lane={laneName}
-              color={meta.color}
-              playhead={chordSequencerPlayhead}
-              hitCount={chordSequencerHitCount}
-              enabled={lane.enabled}
-              direction={lane.direction}
-              onToggleEnabled={() => updateChordSequencerSubLane(laneName, (current) => ({ ...current, enabled: !current.enabled }))}
-              onChangeSteps={(steps) => updateChordSequencerSubLane(laneName, (current) => ({
-                ...current,
-                steps: Math.max(1, Math.min(8, Math.round(steps))),
-              }))}
-              onCycleDirection={() => updateChordSequencerSubLane(laneName, (current) => {
-                const currentIndex = CHORD_SUB_LANE_DIRECTIONS.findIndex((direction) => direction.value === current.direction);
-                const nextDirection = CHORD_SUB_LANE_DIRECTIONS[(currentIndex + 1) % CHORD_SUB_LANE_DIRECTIONS.length]?.value ?? 'forward';
-                return { ...current, direction: nextDirection };
-              })}
-              onChangeValue={(step, value) => updateChordSequencerSubLaneValue(
-                laneName,
-                step,
-                laneName === 'chord' ? Math.max(1, Math.min(8, Math.round(value))) : value,
-              )}
-              maxSubLaneSteps={8}
-            />
-          </div>
-        )}
-      </React.Fragment>
-    );
+  const randomTimingSourceInfo = RANDOM_TIMING_SOURCES.find((source) => source.value === randomTimingSourceValue) ?? {
+    value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1,
   };
 
   const synthLivePollMs = useMemo(() => {
@@ -6008,18 +5061,16 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, [linkedTriggerStampReady, seq]);
 
   useEffect(() => {
-    if (!triggerStampMode && !linkedTriggerStampMode && !triggerStampPickSource && !linkedTriggerStampPickSource) return;
+    if (!linkedTriggerStampMode && !linkedTriggerStampPickSource) return;
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest('.seq-step-cell, .seq-step-select-btn, .seq-trigger-clip-btn, .seq-chord-clip-btn')) return;
-      setTriggerStampMode(false);
-      setTriggerStampPickSource(false);
+      if (target?.closest('.seq-step-cell, .seq-step-select-btn, .seq-trigger-clip-btn')) return;
       setLinkedTriggerStampMode(false);
       setLinkedTriggerStampPickSource(false);
     };
     window.addEventListener('pointerdown', handlePointerDown, true);
     return () => window.removeEventListener('pointerdown', handlePointerDown, true);
-  }, [linkedTriggerStampMode, linkedTriggerStampPickSource, triggerStampMode, triggerStampPickSource]);
+  }, [linkedTriggerStampMode, linkedTriggerStampPickSource]);
 
   const keyboardBaseMidi = 12 * (keyboardOctave + 1);
   const keyboardSourceInfo = MANUAL_KEYBOARD_SOURCES.find((source) => source.value === effectiveKeyboardSource) ?? MANUAL_KEYBOARD_SOURCES[0]!;
@@ -6339,10 +5390,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     state,
   ]);
 
-  const enableChordSequencerSource = useCallback((sourceValue = chordSequencerSourceValue): Partial<SliderState> => {
-    return enableSourceValueForPlayback(sourceValue);
-  }, [chordSequencerSourceValue, enableSourceValueForPlayback]);
-
   const toggleChordGeneratorEnabled = useCallback(() => {
     const next = !(state.synthChordGeneratorEnabled === true);
     const startPatch = next ? enableSourceValueForPlayback(chordGeneratorSourceValue) : {};
@@ -6417,44 +5464,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onRequestPlaybackStart,
     onSelectChange,
     state.leadRandomEnabled,
-  ]);
-
-  const toggleChordSequencerEnabled = useCallback(() => {
-    const next = !chordSequencerEnabled;
-    const startPatch = next ? enableChordSequencerSource(chordSequencerSourceValue) : {};
-    onSelectChange('synthChordSequencerEnabled' as keyof SliderState, next);
-    if (next && !isRunning) {
-      onRequestPlaybackStart?.({
-        ...startPatch,
-        synthChordSequencerEnabled: true,
-      });
-    }
-  }, [
-    chordSequencerEnabled,
-    chordSequencerSourceValue,
-    enableChordSequencerSource,
-    isRunning,
-    onRequestPlaybackStart,
-    onSelectChange,
-  ]);
-
-  const setChordSequencerSource = useCallback((sourceValue: string) => {
-    onSelectChange('synthChordSequencerSource' as keyof SliderState, sourceValue as SliderState[keyof SliderState]);
-    if (!chordSequencerEnabled) return;
-    const startPatch = enableChordSequencerSource(sourceValue);
-    if (!isRunning) {
-      onRequestPlaybackStart?.({
-        ...startPatch,
-        synthChordSequencerEnabled: true,
-        synthChordSequencerSource: sourceValue as SliderState['synthChordSequencerSource'],
-      });
-    }
-  }, [
-    chordSequencerEnabled,
-    enableChordSequencerSource,
-    isRunning,
-    onRequestPlaybackStart,
-    onSelectChange,
   ]);
 
   const startSynthPlaybackForLaneRecording = useCallback((laneIdx: number) => {
@@ -7183,11 +6192,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       }
       if (keyboardInputMode === 'sequence') {
         if ((event.metaKey || event.ctrlKey) && event.code === 'KeyC') {
-          if (chordSequencerSelected) {
-            event.preventDefault();
-            beginChordSequencerTriggerStampSourcePick();
-            return;
-          }
           if (activeKeyboardEditLane === 'trigger') {
             event.preventDefault();
             beginLinkedTriggerStampSourcePick();
@@ -7195,21 +6199,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           return;
         }
         if ((event.metaKey || event.ctrlKey) && event.code === 'KeyV') {
-          if (chordSequencerSelected) {
-            event.preventDefault();
-            pasteChordSequencerTriggerStamp(activeTriggerCursorStep);
-            return;
-          }
           if (activeKeyboardEditLane === 'trigger') {
             event.preventDefault();
             pasteActiveLinkedTriggerStamp();
           }
           return;
         }
-        if (event.code === 'Escape' && (triggerStampMode || linkedTriggerStampMode || triggerStampPickSource || linkedTriggerStampPickSource)) {
+        if (event.code === 'Escape' && (linkedTriggerStampMode || linkedTriggerStampPickSource)) {
           event.preventDefault();
-          setTriggerStampMode(false);
-          setTriggerStampPickSource(false);
           setLinkedTriggerStampMode(false);
           setLinkedTriggerStampPickSource(false);
           return;
@@ -9613,10 +8610,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 {seq.sequencerModels.map((seqModel, idx) => (
                   <div
                     key={seqModel.id}
-                    className={`seq-tab${!chordSequencerSelected && idx === seq.activeTab ? ' active' : ''}${seqModel.muted ? ' muted' : ''}${seq.evolveFlashing[idx] ? ' seq-evolve-flash' : ''}`}
+                    className={`seq-tab${idx === seq.activeTab ? ' active' : ''}${seqModel.muted ? ' muted' : ''}${seq.evolveFlashing[idx] ? ' seq-evolve-flash' : ''}`}
                     style={{ '--sc': seqModel.color } as React.CSSProperties}
                     onClick={() => {
-                      setChordSequencerSelected(false);
                       seq.setActiveTab(idx);
                     }}
                     role="button"
@@ -9635,30 +8631,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     </div>
                   </div>
                 ))}
-                <div
-                  className={`seq-tab seq-tab--chord${chordSequencerSelected ? ' active' : ''}${!chordSequencerEnabled ? ' muted' : ''}`}
-                  style={{ '--sc': CHORD_SEQUENCER_LANE_COLOR } as React.CSSProperties}
-                  onClick={() => setChordSequencerSelected(true)}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <span>{CHORD_SEQUENCER_LANE_NAME}</span>
-                  <div className="seq-tab-ms">
-                    <button
-                      className={`mute-btn${!chordSequencerEnabled ? ' on' : ''}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleChordSequencerEnabled();
-                      }}
-                    >
-                      M
-                    </button>
-                  </div>
-                </div>
               </div>
 
               {/* Seq body */}
-              {!chordSequencerSelected && (
               <div className={`seq-body${seq.evolveFlashing[seq.activeTab] ? ' seq-evolve-flash' : ''}`} style={{ '--sc': activeSeq.color } as React.CSSProperties}>
 
                 {/* ── Source selector + per-seq controls ── */}
@@ -10386,51 +9361,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   laneIndex={seq.activeTab}
                 />
               </div>
-              )}
-              {chordSequencerSelected && (
-                <div
-                  className="seq-body seq-chord-body"
-                  style={{ '--sc': CHORD_SEQUENCER_LANE_COLOR } as React.CSSProperties}
-                >
-                  <div className="seq-chord-header">
-                    <button
-                      type="button"
-                      className={`seq-lane-enable-btn trigger-toggle${chordSequencerEnabled ? ' on' : ''}`}
-                      style={chordSequencerEnabled ? { background: CHORD_SEQUENCER_LANE_COLOR, color: '#001018' } as React.CSSProperties : undefined}
-                      onClick={toggleChordSequencerEnabled}
-                    >
-                      {chordSequencerEnabled ? 'On' : 'Off'}
-                    </button>
-                    <div className="seq-chord-title">
-                      <span>{CHORD_SEQUENCER_LANE_NAME}</span>
-                      <strong>Chord / Arp Sequencer</strong>
-                    </div>
-                    <div className="seq-chord-meta">
-                      <span>{chordSequencerConfig.playbackMode}</span>
-                      <span>{chordSequencerConfig.stepCount} steps</span>
-                      <span>{chordSequencerSourceInfo.label}</span>
-                    </div>
-                  </div>
-                  {triggerStampMode && triggerStamp ? (
-                    <button
-                      type="button"
-                      className="seq-trigger-stamp-pill"
-                      onClick={() => setTriggerStampMode(false)}
-                      title="Click to exit stamp mode"
-                    >
-                      STAMP: {triggerStamp.label}
-                    </button>
-                  ) : null}
-                  {renderChordSequencerControls('detail')}
-                  {renderChordRhythmTrack()}
-                  {renderChordArpBar()}
-                  {renderChordMelodyTrack()}
-                  <div className="seq-spark-container seq-chord-sublane-grid">
-                    {SYNTH_CHORD_SUB_LANE_NAMES_V2.map(renderChordSubLaneEditor)}
-                  </div>
-                </div>
-              )}
-
               {/* Mini overview at bottom */}
               <SeqMiniOverview
                 patterns={seq.miniPatterns}
@@ -10438,32 +9368,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 colors={LANE_CONFIGS.map(c => c.color)}
                 sequencers={seq.sequencerModels}
                 onRowClick={(idx) => {
-                  setChordSequencerSelected(false);
                   seq.setActiveTab(idx);
                 }}
               />
-              <div className="seq-mini-overview seq-mini-overview--chord">
-                <div
-                  className={`seq-mini-row seq-mini-row--chord${chordSequencerSelected ? ' active' : ''}${!chordSequencerEnabled ? ' muted' : ''}`}
-                  style={{ '--sc': CHORD_SEQUENCER_LANE_COLOR } as React.CSSProperties}
-                  onClick={() => setChordSequencerSelected(true)}
-                >
-                  <div className="seq-mini-label">
-                    <span>{CHORD_SEQUENCER_LANE_NAME}</span>
-                    <span className="mini-ms">{chordSequencerConfig.playbackMode}</span>
-                  </div>
-                  <div className="seq-mini-dots">
-                    {chordSequencerConfig.steps.map((step, index) => (
-                      <span
-                        key={step.id}
-                        className={`${index < chordSequencerConfig.stepCount && step.enabled ? 'dot-hit' : 'dot-rest'}${index === chordSequencerPlayhead ? ' dot-cur' : ''}`}
-                      >
-                        {index < chordSequencerConfig.stepCount && step.enabled ? '●' : '·'}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
+
             </div>
           )}
 
@@ -10477,7 +9385,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 activeEntryIndex={synthChainPosition?.activeEntryIndex ?? null}
                 onChange={setSynthSequencerChain}
                 onSelectLane={(index) => {
-                  setChordSequencerSelected(false);
                   seq.setActiveTab(index);
                 }}
               />
@@ -10493,8 +9400,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       style={{ '--sc': seqModel.color } as React.CSSProperties}
                     >
                       <div className="seq-ov-header" onClick={() => {
-                        setChordSequencerSelected(false);
-                        seq.setActiveTab(row);
+                          seq.setActiveTab(row);
                         seq.setViewMode('detail');
                       }}>
                         <span className="seq-ov-name">{seqModel.name}</span>
@@ -10651,93 +9557,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     </div>
                   );
                 })}
-                <div
-                  className={`seq-ov-row seq-ov-row--chord${!chordSequencerEnabled ? ' muted' : ''}`}
-                  style={{ '--sc': CHORD_SEQUENCER_LANE_COLOR } as React.CSSProperties}
-                >
-                  <div className="seq-ov-header" onClick={() => {
-                    setChordSequencerSelected(true);
-                    seq.setViewMode('detail');
-                  }}>
-                    <span className="seq-ov-name">{CHORD_SEQUENCER_LANE_NAME}</span>
-                    <span className="seq-chain-badge active">Chord</span>
-                    <div className="seq-ov-controls" onClick={(e) => e.stopPropagation()}>
-                      <DragNumber
-                        value={chordSequencerConfig.stepCount}
-                        min={CHORD_SEQUENCER_STEP_OPTIONS[0] ?? 1}
-                        max={CHORD_SEQUENCER_STEP_OPTIONS[CHORD_SEQUENCER_STEP_OPTIONS.length - 1] ?? 8}
-                        label="S"
-                        shapeByDrag
-                        onChange={setChordSequencerStepCount}
-                      />
-                      <button
-                        type="button"
-                        className={`ov-mute-btn${!chordSequencerEnabled ? ' on' : ''}`}
-                        onClick={toggleChordSequencerEnabled}
-                      >
-                        M
-                      </button>
-                      <select
-                        className="seq-ov-select synth-ov-source"
-                        value={chordSequencerSourceValue}
-                        onChange={(event) => setChordSequencerSource(event.target.value)}
-                        style={{ color: chordSequencerSourceInfo.color }}
-                      >
-                        {CHORD_SEQUENCER_SOURCES.map((source) => (
-                          <option key={source.value} value={source.value}>{source.label}</option>
-                        ))}
-                      </select>
-                      <select
-                        className="seq-ov-select"
-                        value={chordSequencerClockDivision}
-                        onChange={(event) => onSelectChange('synthChordSequencerClockDivision' as keyof SliderState, event.target.value as SliderState[keyof SliderState])}
-                      >
-                        <option value="1/4">1/4</option>
-                        <option value="1/4T">1/4T</option>
-                        <option value="1/8">1/8</option>
-                        <option value="1/8T">1/8T</option>
-                        <option value="1/16">1/16</option>
-                        <option value="1/16T">1/16T</option>
-                        <option value="1/32">1/32</option>
-                        <option value="1/32T">1/32T</option>
-                      </select>
-                      <select
-                        className="seq-ov-select"
-                        value={chordSequencerConfig.playbackMode}
-                        onChange={(event) => updateChordSequencerConfig((current) => ({
-                          ...current,
-                          playbackMode: event.target.value as SynthChordSequencerPlaybackMode,
-                        }))}
-                      >
-                        {CHORD_PLAYBACK_MODES.map((mode) => (
-                          <option key={mode.value} value={mode.value}>{mode.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="seq-ov-grid-wrap seq-ov-grid-wrap--chord">
-                    <div className="seq-step-grid seq-chord-overview-grid" style={{ gridTemplateColumns: 'repeat(8, 1fr)' }}>
-                      {chordSequencerConfig.steps.map((step, index) => {
-                        const inRange = index < chordSequencerConfig.stepCount;
-                        const tie = inRange && chordSequencerTieSteps[index];
-                        return (
-                          <div key={step.id} className="seq-step">
-                            <span className="seq-step-num">{index + 1}</span>
-                            <button
-                              type="button"
-                              className={`seq-step-cell seq-chord-overview-cell${inRange && step.enabled ? ' active' : ''}${tie ? ' tie' : ''}${inRange && index === chordSequencerPlayhead ? ' playing' : ''}${!inRange ? ' inactive' : ''}`}
-                              onClick={() => inRange && updateChordSequencerStep(index, { enabled: !step.enabled })}
-                            >
-                              <span className="seq-chord-overview-label">
-                                {chordSequencerTriggerLabels[index] ?? ''}
-                              </span>
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
+
               </div>
               {dragPopup && (
                 <div className="seq-drag-popup" style={{ left: dragPopup.x, top: dragPopup.y }}>
@@ -10750,36 +9570,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 colors={LANE_CONFIGS.map(c => c.color)}
                 sequencers={seq.sequencerModels}
                 onRowClick={(idx) => {
-                  setChordSequencerSelected(false);
                   seq.setActiveTab(idx);
                   seq.setViewMode('detail');
                 }}
               />
-              <div className="seq-mini-overview seq-mini-overview--chord">
-                <div
-                  className={`seq-mini-row seq-mini-row--chord${chordSequencerSelected ? ' active' : ''}${!chordSequencerEnabled ? ' muted' : ''}`}
-                  style={{ '--sc': CHORD_SEQUENCER_LANE_COLOR } as React.CSSProperties}
-                  onClick={() => {
-                    setChordSequencerSelected(true);
-                    seq.setViewMode('detail');
-                  }}
-                >
-                  <div className="seq-mini-label">
-                    <span>{CHORD_SEQUENCER_LANE_NAME}</span>
-                    <span className="mini-ms">{chordSequencerConfig.playbackMode}</span>
-                  </div>
-                  <div className="seq-mini-dots">
-                    {chordSequencerConfig.steps.map((step, index) => (
-                      <span
-                        key={step.id}
-                        className={`${index < chordSequencerConfig.stepCount && step.enabled ? 'dot-hit' : 'dot-rest'}${index === chordSequencerPlayhead ? ' dot-cur' : ''}`}
-                      >
-                        {index < chordSequencerConfig.stepCount && step.enabled ? '●' : '·'}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
+
             </>
           )}
         </div>

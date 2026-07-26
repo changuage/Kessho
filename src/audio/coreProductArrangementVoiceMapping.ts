@@ -28,9 +28,7 @@ export const ARRANGEMENT_TRANSPORT_TIMING_KEYS = [
 
 // Timing owned by the host scheduler has no native transport transition revision,
 // so it is committed by the arrangement scheduler at its next phrase boundary.
-export const ARRANGEMENT_HOST_NEXT_PHRASE_TIMING_KEYS = [
-  'synthChordSequencerClockDivision',
-] as const;
+export const ARRANGEMENT_HOST_NEXT_PHRASE_TIMING_KEYS = [] as const;
 
 const ARRANGEMENT_RESTART_STATE_KEY = '__arrangementRestartState';
 

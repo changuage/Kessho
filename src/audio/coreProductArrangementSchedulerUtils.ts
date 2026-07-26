@@ -284,13 +284,8 @@ export function ensureScheduledSampleAssetForEvent(
 
 export function padChordHasEnabledTarget(state: Record<string, unknown>): boolean {
   const generatorEnabled = booleanFromState(state, 'synthChordGeneratorEnabled', false);
-  const sequencerEnabled = booleanFromState(state, 'synthChordSequencerEnabled', false);
-  if (!generatorEnabled && !sequencerEnabled) return false;
-  const source = String(
-    generatorEnabled
-      ? state.synthChordGeneratorSource ?? state.synthChordSequencerSource ?? 'sample1'
-      : state.synthChordSequencerSource ?? 'sample1',
-  ).trim().toLowerCase();
+  if (!generatorEnabled) return false;
+  const source = String(state.synthChordGeneratorSource ?? 'sample1').trim().toLowerCase();
   const sourceId = simpleSequencerSourceId(source, 0);
   if (sourceId !== 0) return manualNoteSourceEnabled(state, sourceId);
   return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad1) ||

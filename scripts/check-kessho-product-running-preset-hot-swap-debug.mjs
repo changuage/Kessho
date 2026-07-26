@@ -144,7 +144,6 @@ function baseHotSwapState() {
     sidechainEnabled: false,
     spectralFreezeEnabled: false,
     synthAttack: 0.05,
-    synthChordSequencerEnabled: false,
     synthEuclid1Enabled: true,
     synthEuclid1Hits: 4,
     synthEuclid1NoteMax: 64,

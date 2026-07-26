@@ -42,6 +42,7 @@ import {
 import { harmonySeedMaterialFromState } from './harmonySeedMaterial';
 import { coreProductArrangementSnapshotFromState } from './coreProductArrangementSnapshot';
 import { compileProductSourceMorphAutomation } from './product/compileProductSourceMorphAutomation';
+import { sharedSlotResolvedMidiPool } from './harmony/harmonyChordAdapters';
 export type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductHarmonySnapshot, ProductLaneSnapshot, ProductSoundscapeSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 
 // SNAPSHOT_AUTHORITY: GENERATED_SCHEMA_SERIALIZATION - this file maps app/UI state into generated Product Core fields.
@@ -828,6 +829,12 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   const granularUsesLegacyRuntimeSeed = usesLegacyGranularRuntimeSeed(sliderState);
   const reverbParams = resolveReverbSnapshotParams(sliderState, tension);
   const delayBTapeMode = sliderState?.delayBAlgorithm === 'tapeHeads';
+  const harmonySlotPools = harmonyControl.chordSlots.map((slot) => sharedSlotResolvedMidiPool(slot, {
+    rootMidi,
+    effectiveRootMidi: rootMidi,
+    scaleId,
+    tension,
+  }));
 
   return {
     transport,
@@ -852,6 +859,8 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       manualControlAvailable: harmonyFrame.manualControlAvailable,
       notePoolCount: Math.min(harmonyFrame.currentNotePool.length, HARMONY_POOL_MAX_NOTES),
       notePoolMidi: fixedHarmonyPool(harmonyFrame.currentNotePool),
+      harmonySlotNoteCount: harmonySlotPools.map((pool) => Math.min(pool.length, 8)),
+      harmonySlotMidi: harmonySlotPools.flatMap((pool) => fixedHarmonyPool(pool)).slice(0, 64),
       bassMidi: harmonyFrame.bassNote ?? -1,
       nextNotePoolCount: Math.min(harmonyFrame.nextNotePool.length, HARMONY_POOL_MAX_NOTES),
       nextNotePoolMidi: fixedHarmonyPool(harmonyFrame.nextNotePool),

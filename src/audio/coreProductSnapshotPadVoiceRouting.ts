@@ -53,27 +53,6 @@ export function synthEuclidUsesSourceId(state: Record<string, unknown> | undefin
   return false;
 }
 
-export function synthChordSequencerUsesSourceId(state: Record<string, unknown> | undefined, sourceId: number): boolean {
-  if (!booleanFromState(state, 'synthChordSequencerEnabled', false)) return false;
-  const source = String(state?.synthChordSequencerSource ?? 'sample1').trim().toLowerCase();
-  switch (sourceId) {
-    case CORE_PRODUCT_SOURCE_IDS.pad1:
-      return source === 'pad1' || source === 'pad' || source === 'both';
-    case CORE_PRODUCT_SOURCE_IDS.pad2:
-      return source === 'pad2' || source === 'both';
-    case CORE_PRODUCT_SOURCE_IDS.lead1:
-      return source === 'lead1' || source === 'lead';
-    case CORE_PRODUCT_SOURCE_IDS.lead2:
-      return source === 'lead2';
-    case CORE_PRODUCT_SOURCE_IDS.sample1:
-      return source === 'sample1';
-    case CORE_PRODUCT_SOURCE_IDS.sample2:
-      return source === 'sample2';
-    default:
-      return false;
-  }
-}
-
 export function encodedPadVoiceLaneSeed(baseSeed: number, voiceMask: number): number {
   const mask = Math.round(voiceMask) & PAD_VOICE_MASK_ALL;
   if (mask === 0) return baseSeed >>> 0;

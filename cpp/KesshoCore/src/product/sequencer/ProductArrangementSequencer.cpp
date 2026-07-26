@@ -14,17 +14,6 @@ double arrangementNextRandom(uint32_t& state) {
   return static_cast<double>(t ^ (t >> 14u)) / 4294967296.0;
 }
 
-uint32_t arrangementSubLaneIndex(uint32_t steps, uint32_t direction, uint64_t ordinal) {
-  const uint32_t safe_steps = std::max<uint32_t>(1u, std::min<uint32_t>(8u, steps));
-  if (direction == 1u) return safe_steps - 1u - static_cast<uint32_t>(ordinal % safe_steps);
-  if (direction == 2u && safe_steps > 1u) {
-    const uint32_t cycle = safe_steps * 2u - 2u;
-    const uint32_t phase = static_cast<uint32_t>(ordinal % cycle);
-    return phase < safe_steps ? phase : cycle - phase;
-  }
-  return static_cast<uint32_t>(ordinal % safe_steps);
-}
-
 struct ArrangementChordVoice {
   uint32_t source_id = 0u;
   float midi = 60.0f;
@@ -36,11 +25,9 @@ struct ArrangementChordVoice {
 } // namespace
 
 void KesshoProductEngine::resetArrangementRuntime() {
-  arrangement.next_chord_sequencer_frame = transport.sample_frame;
   arrangement.next_lead_phrase_frame = arrangement.lead_initial_delay_seconds <= 0.0f
       ? transport.sample_frame
       : transport.sample_frame + arrangementFrames(sample_rate, arrangement.lead_initial_delay_seconds);
-  arrangement.chord_step_index = 0u;
   arrangement.lead_phrase_index = 0u;
   arrangement.chord_generator_pending = arrangement.chord_generator_enabled;
   arrangement.pending_count = 0u;
@@ -104,8 +91,7 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
   const auto queue_chord = [&](uint64_t absolute_sample, uint32_t source_id,
                                uint32_t voice_count, float velocity, float hold_seconds,
                                float spread_interval_seconds, bool pad_split, bool hold_span_override,
-                               const float* override_midi, uint32_t override_count, uint32_t playback_mode,
-                               uint64_t absolute_tick, float nudge_seconds, float morph, float distance,
+                               const float* override_midi, uint32_t override_count, float morph, float distance,
                                uint32_t visual_kind, uint64_t phrase_start_sample,
                                uint64_t visual_phrase_index, float visual_phrase_seconds,
                                float visual_trigger_interval_seconds) {
@@ -226,7 +212,7 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
 
     const auto emit_voice = [&](const ArrangementChordVoice& voice, double delay_seconds,
                                 float event_velocity, float event_hold_seconds) {
-      const double nudged_delay = std::max(0.0, delay_seconds + static_cast<double>(nudge_seconds));
+      const double nudged_delay = std::max(0.0, delay_seconds);
       const uint64_t voice_sample = absolute_sample + static_cast<uint64_t>(std::llround(
           nudged_delay * sample_rate));
       const bool morph_supported = voice.source_id == KESSHO_PRODUCT_SOURCE_PAD1 ||
@@ -253,68 +239,6 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
           visual_trigger_interval_seconds);
     };
 
-    if (playback_mode == 1u) {
-      std::sort(built, built + built_count, [](const ArrangementChordVoice& left, const ArrangementChordVoice& right) {
-        return left.midi < right.midi || (left.midi == right.midi && left.voice_index < right.voice_index);
-      });
-      const double speed = std::max(0.001, static_cast<double>(arrangement.chord_arp_speed_seconds));
-      const double span = std::max(speed, static_cast<double>(hold_seconds));
-      const uint32_t pulse_count = clampU32(
-          static_cast<uint32_t>(std::floor((span + 0.0001) / speed)), 1u, 128u);
-      const float arp_hold = clampFloat(
-          static_cast<float>(speed) * arrangement.chord_arp_gate,
-          0.02f,
-          std::max(0.02f, static_cast<float>(speed) * 0.98f));
-      for (uint32_t pulse = 0u; pulse < pulse_count && built_count > 0u; ++pulse) {
-        const uint32_t pattern_index = pulse % arrangement.chord_arp_pattern_length;
-        if ((arrangement.chord_arp_active_mask & (1u << pattern_index)) == 0u) continue;
-        const uint32_t zero_tone = arrangement.chord_arp_tone[pattern_index] - 1u;
-        ArrangementChordVoice voice = built[zero_tone % built_count];
-        const int32_t octave = static_cast<int32_t>(zero_tone / built_count) +
-            arrangement.chord_arp_octave[pattern_index];
-        voice.midi = clampFloat(voice.midi + static_cast<float>(octave * 12), 0.0f, 127.0f);
-        emit_voice(voice, static_cast<double>(pulse) * speed, voice.velocity, arp_hold);
-      }
-      return;
-    }
-
-    if (playback_mode == 2u) {
-      std::sort(built, built + built_count, [](const ArrangementChordVoice& left, const ArrangementChordVoice& right) {
-        return left.midi < right.midi || (left.midi == right.midi && left.voice_index < right.voice_index);
-      });
-      uint32_t direction = arrangement.chord_strum_direction;
-      if (direction == 2u) direction = (absolute_tick & 1u) == 0u ? 0u : 1u;
-      if (direction == 3u) direction = (absolute_tick & 1u) == 0u ? 1u : 0u;
-      if (direction == 1u) std::reverse(built, built + built_count);
-      if (direction == 4u) {
-        struct RandomVoice { ArrangementChordVoice voice{}; double key = 0.0; } random_voices[8]{};
-        for (uint32_t index = 0u; index < built_count; ++index) {
-          random_voices[index].voice = built[index];
-          random_voices[index].key = next_random();
-        }
-        std::sort(random_voices, random_voices + built_count, [](const RandomVoice& left, const RandomVoice& right) {
-          return left.key < right.key;
-        });
-        for (uint32_t index = 0u; index < built_count; ++index) built[index] = random_voices[index].voice;
-      }
-      const uint32_t denominator = std::max<uint32_t>(1u, built_count - 1u);
-      for (uint32_t index = 0u; index < built_count; ++index) {
-        const double linear = static_cast<double>(index) / static_cast<double>(denominator);
-        const double curved = arrangement.chord_strum_curve >= 0.0f
-            ? std::pow(linear, 1.0 + static_cast<double>(arrangement.chord_strum_curve) * 2.0)
-            : 1.0 - std::pow(1.0 - linear, 1.0 + std::fabs(static_cast<double>(arrangement.chord_strum_curve)) * 2.0);
-        const double delay = curved * static_cast<double>(arrangement.chord_strum_spread_seconds);
-        const float event_velocity = clampFloat(
-            built[index].velocity * (1.0f - arrangement.chord_strum_velocity_falloff * static_cast<float>(linear)),
-            0.001f,
-            1.0f);
-        const float event_hold = std::max(0.02f, hold_seconds - static_cast<float>(delay)) *
-            arrangement.chord_strum_gate;
-        emit_voice(built[index], delay, event_velocity, event_hold);
-      }
-      return;
-    }
-
     for (uint32_t index = 0u; index < built_count; ++index) {
       const float event_hold = hold_span_override
           ? clampFloat(hold_seconds - static_cast<float>(built[index].base_delay_seconds), 0.02f, 24.0f)
@@ -339,9 +263,6 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
         false,
         nullptr,
         0u,
-        0u,
-        0u,
-        0.0f,
         -1.0f,
         -1.0f,
         KESSHO_PRODUCT_SIMPLE_SEQUENCER_VISUAL_CHORD,
@@ -349,85 +270,6 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
         phrase_index,
         harmony.phrase_length_seconds,
         harmony.chord_interval_seconds);
-  }
-
-  if (arrangement.chord_sequencer_enabled) {
-    const uint64_t step_frames = arrangementFrames(sample_rate, arrangement.chord_sequencer_step_seconds);
-    while (arrangement.next_chord_sequencer_frame < block_end) {
-      const uint64_t absolute_tick = arrangement.chord_step_index;
-      const uint32_t step = static_cast<uint32_t>(
-          absolute_tick % std::max<uint32_t>(1u, arrangement.chord_sequencer_step_count));
-      const bool enabled = (arrangement.chord_sequencer_enabled_mask & (1u << step)) != 0u;
-      const float probability = arrangement.chord_sequencer_probability[step];
-      if (enabled && (probability >= 1.0f || next_random() <= probability)) {
-        uint32_t enabled_per_cycle = 0u;
-        uint32_t ordinal_in_cycle = 0u;
-        for (uint32_t candidate = 0u; candidate < arrangement.chord_sequencer_step_count; ++candidate) {
-          const bool candidate_enabled =
-              (arrangement.chord_sequencer_enabled_mask & (1u << candidate)) != 0u &&
-              arrangement.chord_sequencer_probability[candidate] > 0.0f;
-          if (!candidate_enabled) continue;
-          ++enabled_per_cycle;
-          if (candidate <= step) ++ordinal_in_cycle;
-        }
-        enabled_per_cycle = std::max<uint32_t>(1u, enabled_per_cycle);
-        const uint64_t trigger_ordinal =
-            (absolute_tick / arrangement.chord_sequencer_step_count) * enabled_per_cycle +
-            std::max<uint32_t>(1u, ordinal_in_cycle) - 1u;
-        const auto lane_index = [&](uint32_t lane) {
-          return arrangementSubLaneIndex(
-              arrangement.chord_sub_lane_steps[lane],
-              arrangement.chord_sub_lane_directions[lane],
-              trigger_ordinal);
-        };
-        int32_t slot_id = arrangement.chord_step_slot_id[step];
-        if (arrangement.chord_slot_lane_enabled) {
-          slot_id = std::max(0, std::min(7, roundedInt(arrangement.chord_lane_values[lane_index(0u)]) - 1));
-        }
-        const float* chord_pool = slot_id >= 0
-            ? &arrangement.chord_slot_midi[static_cast<uint32_t>(slot_id) * 8u]
-            : nullptr;
-        const uint32_t chord_pool_count = slot_id >= 0
-            ? arrangement.chord_slot_note_count[static_cast<uint32_t>(slot_id)]
-            : 0u;
-        const float expression = arrangement.chord_expression_mask != 0u
-            ? arrangement.chord_expression[lane_index(1u)]
-            : 1.0f;
-        const float morph = arrangement.chord_morph_mask != 0u
-            ? arrangement.chord_morph[lane_index(2u)]
-            : -1.0f;
-        const float distance = arrangement.chord_distance_mask != 0u
-            ? arrangement.chord_distance[lane_index(3u)]
-            : -1.0f;
-        const float nudge = arrangement.chord_nudge_mask != 0u
-            ? arrangement.chord_nudge[lane_index(4u)] * arrangement.chord_sequencer_step_seconds * 0.45f
-            : 0.0f;
-        queue_chord(
-            arrangement.next_chord_sequencer_frame,
-            arrangement.chord_sequencer_source_id,
-            arrangement.chord_sequencer_voice_count,
-            expression,
-            arrangement.chord_sequencer_step_seconds *
-                static_cast<float>(std::max<uint32_t>(1u, arrangement.chord_sequencer_hold_steps[step])),
-            arrangement.chord_sequencer_step_seconds,
-            arrangement.chord_sequencer_pad_split,
-            true,
-            chord_pool,
-            chord_pool_count,
-            arrangement.chord_playback_mode,
-            absolute_tick,
-            nudge,
-            morph,
-            distance,
-            0u,
-            0u,
-            0u,
-            0.0f,
-            0.0f);
-      }
-      ++arrangement.chord_step_index;
-      arrangement.next_chord_sequencer_frame += step_frames;
-    }
   }
 
   if (arrangement.lead_random_enabled) {

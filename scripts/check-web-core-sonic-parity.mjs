@@ -1307,7 +1307,7 @@ async function main() {
     console.log(`  Core engine: ${coreLabel}`);
     console.log(`  Track: ${args.trackId}`);
     if (manualMode) {
-      console.log(`  Manual mode: ${args.manualNotes.length} note(s), synth chord sequencer disabled, trigger delay=${formatNumber(args.manualTriggerDelayMs, 0)}ms, warmup=${args.manualWarmup ? 'on' : 'off'}`);
+      console.log(`  Manual mode: ${args.manualNotes.length} note(s), chord generator disabled, trigger delay=${formatNumber(args.manualTriggerDelayMs, 0)}ms, warmup=${args.manualWarmup ? 'on' : 'off'}`);
       console.log(`  Manual notes: ${args.manualNotes.map(formatManualNote).join('; ')}`);
       console.log(`  Manual metadata: web ${formatManualMetadata(web)}; core ${formatManualMetadata(core)}`);
     }

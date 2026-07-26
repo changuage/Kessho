@@ -288,6 +288,12 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
       ? phrase_multiplier
       : 1u;
   harmony.progression_phrase_counter = snapshot.harmony.progression_phrase_counter;
+  for (uint32_t index = 0u; index < 8u; ++index) {
+    arrangement.harmony_slot_note_count[index] = clampU32(snapshot.harmony.harmony_slot_note_count[index], 0u, 8u);
+  }
+  for (uint32_t index = 0u; index < 64u; ++index) {
+    arrangement.harmony_slot_midi[index] = clampFloat(snapshot.harmony.harmony_slot_midi[index], 0.0f, 127.0f);
+  }
   harmony.tension_arc_type = std::min<uint32_t>(snapshot.harmony.tension_arc_type, 2u);
   harmony.tension_arc_phrases_remaining = snapshot.harmony.tension_arc_phrases_remaining;
   harmony.cof_enabled = snapshot.harmony.cof_enabled != 0u;
@@ -300,16 +306,6 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   arrangement.chord_generator_enabled = snapshot.arrangement.chord_generator_enabled != 0u;
   arrangement.chord_generator_source_id = clampU32(snapshot.arrangement.chord_generator_source_id, 1u, kSourceCount);
   arrangement.chord_generator_voice_count = clampU32(snapshot.arrangement.chord_generator_voice_count, 1u, 8u);
-  arrangement.chord_sequencer_enabled = snapshot.arrangement.chord_sequencer_enabled != 0u;
-  arrangement.chord_sequencer_source_id = clampU32(snapshot.arrangement.chord_sequencer_source_id, 1u, kSourceCount);
-  arrangement.chord_sequencer_voice_count = clampU32(snapshot.arrangement.chord_sequencer_voice_count, 1u, 8u);
-  arrangement.chord_sequencer_step_count = clampU32(snapshot.arrangement.chord_sequencer_step_count, 1u, 8u);
-  arrangement.chord_sequencer_enabled_mask = snapshot.arrangement.chord_sequencer_enabled_mask & 0xffu;
-  arrangement.chord_sequencer_step_seconds = clampFloat(snapshot.arrangement.chord_sequencer_step_seconds, 0.001f, 4096.0f);
-  for (uint32_t index = 0u; index < 8u; ++index) {
-    arrangement.chord_sequencer_probability[index] = clampFloat(snapshot.arrangement.chord_sequencer_probability[index], 0.0f, 1.0f);
-    arrangement.chord_sequencer_hold_steps[index] = clampU32(snapshot.arrangement.chord_sequencer_hold_steps[index], 1u, 8u);
-  }
   arrangement.lead_random_enabled = snapshot.arrangement.lead_random_enabled != 0u;
   arrangement.lead_random_source_id = clampU32(snapshot.arrangement.lead_random_source_id, 1u, kSourceCount);
   arrangement.lead_phrase_seconds = clampFloat(snapshot.arrangement.lead_phrase_seconds, 0.001f, 4096.0f);
@@ -329,48 +325,12 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   arrangement.pad2_voice_assign = snapshot.arrangement.pad2_voice_assign & 0xffu;
   arrangement.pad_euclid_owned_voice_mask = snapshot.arrangement.pad_euclid_owned_voice_mask & 0xffu;
   arrangement.chord_generator_pad_split = snapshot.arrangement.chord_generator_pad_split != 0u;
-  arrangement.chord_sequencer_pad_split = snapshot.arrangement.chord_sequencer_pad_split != 0u;
   for (uint32_t source_index = 0u; source_index < 8u; ++source_index) {
     arrangement.source_hold_seconds[source_index] = clampFloat(
         snapshot.arrangement.source_hold_seconds[source_index], 0.02f, 24.0f);
   }
   arrangement.pad1_fit_envelope_to_chord = snapshot.arrangement.pad1_fit_envelope_to_chord != 0u;
   arrangement.pad2_fit_envelope_to_chord = snapshot.arrangement.pad2_fit_envelope_to_chord != 0u;
-  for (uint32_t index = 0u; index < 8u; ++index) {
-    arrangement.chord_slot_note_count[index] = clampU32(snapshot.arrangement.chord_slot_note_count[index], 0u, 8u);
-    arrangement.chord_step_slot_id[index] = std::max(-1, std::min(7, snapshot.arrangement.chord_step_slot_id[index]));
-    arrangement.chord_expression[index] = clampFloat(snapshot.arrangement.chord_expression[index], 0.001f, 1.0f);
-    arrangement.chord_morph[index] = clampFloat(snapshot.arrangement.chord_morph[index], 0.0f, 1.0f);
-    arrangement.chord_distance[index] = clampFloat(snapshot.arrangement.chord_distance[index], 0.0f, 1.0f);
-    arrangement.chord_nudge[index] = clampFloat(snapshot.arrangement.chord_nudge[index], -1.0f, 1.0f);
-    arrangement.chord_lane_values[index] = clampFloat(snapshot.arrangement.chord_lane_values[index], 1.0f, 8.0f);
-  }
-  for (uint32_t index = 0u; index < 64u; ++index) {
-    arrangement.chord_slot_midi[index] = clampFloat(snapshot.arrangement.chord_slot_midi[index], 0.0f, 127.0f);
-  }
-  arrangement.chord_expression_mask = snapshot.arrangement.chord_expression_mask & 0xffu;
-  arrangement.chord_slot_lane_enabled = snapshot.arrangement.chord_slot_lane_enabled != 0u;
-  arrangement.chord_morph_mask = snapshot.arrangement.chord_morph_mask & 0xffu;
-  arrangement.chord_distance_mask = snapshot.arrangement.chord_distance_mask & 0xffu;
-  arrangement.chord_nudge_mask = snapshot.arrangement.chord_nudge_mask & 0xffu;
-  for (uint32_t index = 0u; index < 5u; ++index) {
-    arrangement.chord_sub_lane_steps[index] = clampU32(snapshot.arrangement.chord_sub_lane_steps[index], 1u, 8u);
-    arrangement.chord_sub_lane_directions[index] = clampU32(snapshot.arrangement.chord_sub_lane_directions[index], 0u, 2u);
-  }
-  arrangement.chord_playback_mode = clampU32(snapshot.arrangement.chord_playback_mode, 0u, 2u);
-  arrangement.chord_arp_speed_seconds = clampFloat(snapshot.arrangement.chord_arp_speed_seconds, 0.001f, 16.0f);
-  arrangement.chord_arp_gate = clampFloat(snapshot.arrangement.chord_arp_gate, 0.01f, 1.0f);
-  arrangement.chord_arp_pattern_length = clampU32(snapshot.arrangement.chord_arp_pattern_length, 1u, 8u);
-  arrangement.chord_arp_active_mask = snapshot.arrangement.chord_arp_active_mask & 0xffffu;
-  for (uint32_t index = 0u; index < 16u; ++index) {
-    arrangement.chord_arp_tone[index] = clampU32(snapshot.arrangement.chord_arp_tone[index], 1u, 8u);
-    arrangement.chord_arp_octave[index] = std::max(-1, std::min(1, snapshot.arrangement.chord_arp_octave[index]));
-  }
-  arrangement.chord_strum_direction = clampU32(snapshot.arrangement.chord_strum_direction, 0u, 4u);
-  arrangement.chord_strum_spread_seconds = clampFloat(snapshot.arrangement.chord_strum_spread_seconds, 0.0f, 2.0f);
-  arrangement.chord_strum_curve = clampFloat(snapshot.arrangement.chord_strum_curve, -1.0f, 1.0f);
-  arrangement.chord_strum_gate = clampFloat(snapshot.arrangement.chord_strum_gate, 0.01f, 1.0f);
-  arrangement.chord_strum_velocity_falloff = clampFloat(snapshot.arrangement.chord_strum_velocity_falloff, 0.0f, 1.0f);
   arrangement.lead_initial_delay_seconds = clampFloat(snapshot.arrangement.lead_initial_delay_seconds, 0.0f, 4096.0f);
   master_gain = clampFloat(snapshot.master.gain, 0.0f, 1.5f);
   setMasterLimiterCeilingDb(snapshot.master.limiter_ceiling_db);

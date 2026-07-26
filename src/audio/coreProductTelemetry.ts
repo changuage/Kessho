@@ -303,8 +303,6 @@ export type CoreProductTelemetrySnapshot = {
   journeyScheduleRunning?: boolean;
   journeyRngStateAfterPlan?: number;
   journeyScheduleEntryCount?: number;
-  chordSequencerAbsoluteStep?: number;
-  chordSequencerCurrentStep?: number;
   sonicAutonomyRevision?: number;
   sonicAutonomyFingerprint?: string;
   synthOrbitVisualLanes?: Array<CoreProductOrbitVisualLaneState | null>;
@@ -406,8 +404,6 @@ export type CoreProductVisualTelemetrySnapshot = Pick<
   | 'journeyScheduleRunning'
   | 'journeyRngStateAfterPlan'
   | 'journeyScheduleEntryCount'
-  | 'chordSequencerAbsoluteStep'
-  | 'chordSequencerCurrentStep'
   | 'synthOrbitVisualLanes'
   | 'synthAnchorWalkerVisualLanes'
   | 'workletOutputPeak'

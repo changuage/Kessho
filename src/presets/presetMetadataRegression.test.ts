@@ -102,7 +102,6 @@ function testStateUrlRoundTripRestoresBooleanSequencerState(): void {
     synthEuclideanMasterEnabled: true,
     synthEuclid1Enabled: false,
     synthEuclid2Enabled: true,
-    synthChordSequencerEnabled: false,
     granularV2TempoSync: true,
     reverbEnabled: false,
   };
@@ -119,7 +118,6 @@ function testStateUrlRoundTripRestoresBooleanSequencerState(): void {
   assert.equal(decoded.synthEuclideanMasterEnabled, true);
   assert.equal(decoded.synthEuclid1Enabled, false);
   assert.equal(decoded.synthEuclid2Enabled, true);
-  assert.equal(decoded.synthChordSequencerEnabled, false);
   assert.equal(decoded.granularV2TempoSync, true);
   assert.equal(decoded.reverbEnabled, false);
 }

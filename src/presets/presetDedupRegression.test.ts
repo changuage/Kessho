@@ -557,14 +557,6 @@ function testEuclideanSpecificDataPreservesStructuredSequencerState(): void {
     synthState.synthSequencerChain,
     'synth Euclidean child rehydration should preserve structured chain state',
   );
-  assert.deepStrictEqual(
-    buildSynthEuclideanStateFromPatternData({
-      synthChordSequencer: synthState.synthChordSequencer,
-    }).synthChordSequencer,
-    synthState.synthChordSequencer,
-    'synth Euclidean child rehydration should preserve structured chord sequencer-only payloads',
-  );
-
   const drumState = withDrumChain(DEFAULT_STATE);
   const drumData = extractEuclideanPatternDataFromDrumState(drumState);
   assert.deepStrictEqual(

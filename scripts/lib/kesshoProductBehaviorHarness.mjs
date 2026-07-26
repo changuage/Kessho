@@ -463,7 +463,6 @@ export function loadCoreProductHostHarness(options = {}) {
   ];
   const simpleSequencerSourceKeys = [
     'synthChordGeneratorSource',
-    'synthChordSequencerSource',
     'leadRandomSource',
   ];
   const stateValueChanged = (previous, next, key) => previous?.[key] !== next?.[key];

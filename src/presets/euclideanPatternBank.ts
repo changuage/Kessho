@@ -271,7 +271,6 @@ function hasSpecificEuclideanData(data: Record<string, unknown>, prefix: 'drum' 
       key.startsWith(`${prefix}Euclid`)
       || structuredKeys.has(key)
       || (prefix === 'synth' && key.startsWith('synthChordGenerator'))
-      || (prefix === 'synth' && key.startsWith('synthChordSequencer'))
     ));
 }
 
@@ -289,7 +288,6 @@ function pickSpecificEuclideanData(data: Record<string, unknown>, prefix: 'drum'
       || key === 'synthSequencerFaces'
       || key === 'synthSequencerChain'
       || key.startsWith('synthChordGenerator')
-      || key.startsWith('synthChordSequencer')
     );
     if (
       isDrumKey
@@ -369,7 +367,6 @@ export function buildSynthEuclideanStateFromPatternData(
     synthEuclideanMasterEnabled: true,
     synthEuclideanTempo: 1,
     synthEuclidBaseBPM: 120,
-    synthChordSequencerEnabled: false,
     synthEuclid1Enabled: pattern.enabled,
     synthEuclid1Preset: pattern.preset,
     synthEuclid1Steps: pattern.steps,

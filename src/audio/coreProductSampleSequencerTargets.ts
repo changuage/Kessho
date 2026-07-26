@@ -100,13 +100,6 @@ function addChordGeneratorTarget(discovery: CoreProductSequencerTargetDiscovery,
   addSampleRange(discovery, sourceId, 36 + octaveShift, 84 + octaveShift);
 }
 
-function addChordSequencerTarget(discovery: CoreProductSequencerTargetDiscovery, state: Record<string, unknown>): void {
-  if (!booleanFromState(state, 'synthChordSequencerEnabled', false)) return;
-  const sourceId = productSourceIdFromValue(state.synthChordSequencerSource, CORE_PRODUCT_SOURCE_IDS.sample1);
-  const octaveShift = Math.max(-2, Math.min(2, Math.round(numberFromState(state, 'synthOctave', 0)))) * 12;
-  addSampleRange(discovery, sourceId, 36 + octaveShift, 96 + octaveShift);
-}
-
 function addRandomTimingTarget(discovery: CoreProductSequencerTargetDiscovery, state: Record<string, unknown>): void {
   if (!booleanFromState(state, 'leadRandomEnabled', false)) return;
   const sourceId = productSourceIdFromValue(state.leadRandomSource, CORE_PRODUCT_SOURCE_IDS.lead1);
@@ -201,7 +194,6 @@ export function discoverCoreProductSequencerTargets(
   };
   if (!state) return discovery;
   addChordGeneratorTarget(discovery, state);
-  addChordSequencerTarget(discovery, state);
   addRandomTimingTarget(discovery, state);
   addNativeSynthSequencerTargets(discovery, state);
   return discovery;

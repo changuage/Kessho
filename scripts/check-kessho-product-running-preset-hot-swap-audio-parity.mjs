@@ -147,7 +147,6 @@ function lowNoisePatch() {
     reverbLevel: 0,
     sidechainEnabled: false,
     spectralFreezeEnabled: false,
-    synthChordSequencerEnabled: false,
     synthEuclideanMasterEnabled: false,
     waterEnabled: false,
   };

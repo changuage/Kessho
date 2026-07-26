@@ -813,66 +813,14 @@
 .synth-root .seq-tab-ms button.on { color: #fff; }
 .synth-root .seq-tab-ms .mute-btn.on { background: var(--accent-red); }
 .synth-root .seq-tab-ms .solo-btn.on { background: #eab308; color: #000; }
-.synth-root .seq-tab--chord {
-  border-color: color-mix(in srgb, var(--sc) 18%, transparent);
-}
+
 
 /* ── Seq Body ── */
 .synth-root .seq-body {
   background: var(--k-bg-panel); border: 1px solid var(--border-subtle);
   border-top: none; border-radius: 0 0 var(--radius-lg) var(--radius-lg); padding: 8px; margin-bottom: 6px;
 }
-.synth-root .seq-chord-body {
-  display: grid;
-  gap: 10px;
-  border-color: color-mix(in srgb, var(--sc) 26%, transparent);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--sc) 8%, transparent), transparent 170px),
-    var(--k-bg-panel);
-}
-.synth-root .seq-chord-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 42px;
-  padding: 6px 8px;
-  border-radius: var(--radius-md);
-  background: var(--k-bg-inset);
-}
-.synth-root .seq-chord-title {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-.synth-root .seq-chord-title span {
-  color: var(--sc);
-  font-size: 0.62rem;
-  font-weight: 800;
-}
-.synth-root .seq-chord-title strong {
-  color: #e8dcc4;
-  font-size: 0.82rem;
-  letter-spacing: 0;
-}
-.synth-root .seq-chord-meta {
-  margin-left: auto;
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-.synth-root .seq-chord-meta span {
-  min-height: 24px;
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid color-mix(in srgb, var(--sc) 30%, transparent);
-  border-radius: var(--radius-sm);
-  padding: 2px 7px;
-  color: color-mix(in srgb, var(--sc) 72%, #fff);
-  background: rgba(0,0,0,0.22);
-  font-size: 0.62rem;
-  font-weight: 800;
-}
+
 
 /* ── Sources ── */
 .synth-root .seq-sources {
@@ -1869,53 +1817,8 @@
   display: grid;
   gap: 8px;
 }
-.synth-root .seq-chord-sources {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  align-items: end;
-  gap: 8px;
-  margin: 0;
-}
-.synth-root .seq-chord-sources .synth-source-label {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-.synth-root .seq-chord-sources .synth-source-select {
-  width: 100%;
-  min-width: 0;
-}
-.synth-root .synth-chord-mini-range {
-  width: 100%;
-  min-width: 0;
-  accent-color: var(--accent-cyan);
-}
-.synth-root .seq-chord-sublane-grid {
-  margin-top: 8px;
-}
-.synth-root .seq-chord-trigger-lane {
-  border: 1px solid color-mix(in srgb, var(--sc, var(--accent-cyan)) 22%, var(--border-subtle));
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-.synth-root .seq-chord-trigger-header {
-  cursor: default;
-  border-bottom: 1px solid color-mix(in srgb, var(--sc, var(--accent-cyan)) 16%, transparent);
-}
-.synth-root .seq-chord-trigger-lane .seq-lane {
-  margin-bottom: 0;
-  border: 0;
-  border-radius: 0;
-}
-.synth-root .seq-chord-trigger-lane .seq-lane-body {
-  background: rgba(0, 0, 0, 0.12);
-}
-.synth-root .seq-chord-trigger-controls,
-.synth-root .seq-chord-arp-controls {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
+
+
 .synth-root .seq-lane-controls .seq-drag-num {
   width: auto;
   height: 28px;
@@ -1924,7 +1827,6 @@
   padding: 2px 8px;
   line-height: 1;
 }
-.synth-root .seq-lane-controls button.seq-chord-clip-btn,
 .synth-root .seq-lane-controls button.seq-trigger-clip-btn {
   width: auto;
   min-width: 42px;
@@ -1939,15 +1841,12 @@
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
-.synth-root .seq-lane-controls button.seq-chord-clip-btn.on,
 .synth-root .seq-lane-controls button.seq-trigger-clip-btn.on,
-.synth-root .seq-lane-controls button.seq-chord-clip-btn:hover:not(:disabled),
 .synth-root .seq-lane-controls button.seq-trigger-clip-btn:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--sc, var(--accent-cyan)) 65%, rgba(255, 255, 255, 0.12));
   background: color-mix(in srgb, var(--sc, var(--accent-cyan)) 22%, rgba(255, 255, 255, 0.04));
   color: var(--text-bright);
 }
-.synth-root .seq-lane-controls button.seq-chord-clip-btn:disabled,
 .synth-root .seq-lane-controls button.seq-trigger-clip-btn:disabled {
   opacity: 0.38;
   cursor: not-allowed;
@@ -1973,246 +1872,21 @@
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
-.synth-root .seq-chord-arp-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 4px 0 8px;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--sc, var(--accent-cyan)) 18%, var(--border-subtle));
-  border-radius: var(--radius-md);
-  background: rgba(0, 0, 0, 0.12);
-}
-.synth-root .seq-chord-arp-header {
-  justify-content: space-between;
-}
-.synth-root .seq-chord-arp-header > span {
-  color: var(--sc, var(--accent-cyan));
-}
-.synth-root .seq-chord-arp-gate {
-  min-width: 92px;
-}
-.synth-root .seq-chord-arp-grid {
-  display: grid;
-  gap: 4px;
-}
-.synth-root .seq-chord-arp-step {
-  position: relative;
-  min-height: 42px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.035);
-  color: var(--text-muted);
-  font-size: 0.74rem;
-  font-weight: 850;
-  overflow: hidden;
-  cursor: ns-resize;
-}
-.synth-root .seq-chord-arp-step.active {
-  border-color: color-mix(in srgb, var(--sc, var(--accent-cyan)) 70%, rgba(255, 255, 255, 0.12));
-  color: var(--text-bright);
-}
-.synth-root .seq-chord-arp-fill {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: var(--level, 0%);
-  background: color-mix(in srgb, var(--sc, var(--accent-cyan)) 58%, rgba(255, 255, 255, 0.03));
-  opacity: 0.55;
-  pointer-events: none;
-}
-.synth-root .seq-chord-arp-label {
-  position: relative;
-  z-index: 1;
-}
+
 
 /* ─── Option B: Dual-Track Layout ─── */
 
 /* Rhythm Track */
-.synth-root .seq-chord-rhythm-track {
-  border: 1px solid color-mix(in srgb, var(--sc, var(--accent-cyan)) 22%, var(--border-subtle));
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-.synth-root .seq-chord-rhythm-track .seq-lane-header {
-  border-bottom: 1px solid color-mix(in srgb, var(--sc, var(--accent-cyan)) 16%, transparent);
-}
+
 
 /* Global Arp Config Bar */
-.synth-root .seq-chord-arp-bar {
-  margin: 6px 0;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--sc, var(--accent-cyan)) 24%, var(--border-subtle));
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--sc, var(--accent-cyan)) 4%, rgba(0, 0, 0, 0.15));
-}
-.synth-root .seq-chord-arp-bar-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 12px;
-}
-.synth-root .seq-chord-arp-bar-param {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-.synth-root .seq-chord-arp-bar-label {
-  font-size: 0.6rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--k-text-muted);
-}
-.synth-root .seq-chord-arp-bar-shapes {
-  display: flex;
-  gap: 2px;
-}
-.synth-root .seq-chord-arp-shape-btn {
-  padding: 4px 7px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--k-text-muted);
-  font-size: 0.6rem;
-  font-weight: 800;
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-.synth-root .seq-chord-arp-shape-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--k-text-soft);
-}
-.synth-root .seq-chord-arp-shape-btn.active {
-  border-color: color-mix(in srgb, var(--sc, var(--accent-cyan)) 70%, rgba(255, 255, 255, 0.12));
-  background: color-mix(in srgb, var(--sc, var(--accent-cyan)) 22%, rgba(255, 255, 255, 0.04));
-  color: var(--k-text);
-}
-.synth-root .seq-chord-arp-bar-select {
-  min-width: 52px;
-  font-size: 0.68rem;
-}
-.synth-root .seq-chord-arp-bar-gate {
-  min-width: 72px;
-}
-.synth-root .seq-chord-arp-bar-gate .synth-chord-mini-range {
-  width: 100%;
-}
+
 
 /* Melody Track */
-.synth-root .seq-chord-melody-track {
-  margin: 6px 0;
-  border: 1px solid color-mix(in srgb, var(--sc, var(--accent-cyan)) 18%, var(--border-subtle));
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-.synth-root .seq-chord-melody-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--sc, var(--accent-cyan)) 12%, transparent);
-  background: rgba(0, 0, 0, 0.08);
-}
-.synth-root .seq-chord-melody-controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.synth-root .seq-chord-dir-btn {
-  padding: 3px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--k-text-soft);
-  font-size: 0.6rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-.synth-root .seq-chord-dir-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-.synth-root .seq-chord-melody-grid {
-  display: grid;
-  gap: 3px;
-  padding: 8px;
-  background: rgba(0, 0, 0, 0.12);
-}
-.synth-root .seq-chord-melody-cell {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  min-height: 52px;
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, var(--slot-color, var(--accent-cyan)) 40%, rgba(255, 255, 255, 0.08));
-  background: color-mix(in srgb, var(--slot-color, var(--accent-cyan)) 8%, rgba(0, 0, 0, 0.2));
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-.synth-root .seq-chord-melody-cell:hover {
-  background: color-mix(in srgb, var(--slot-color, var(--accent-cyan)) 15%, rgba(0, 0, 0, 0.15));
-  border-color: color-mix(in srgb, var(--slot-color, var(--accent-cyan)) 60%, rgba(255, 255, 255, 0.12));
-}
-.synth-root .seq-chord-melody-slot-badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  font-size: 0.68rem;
-  font-weight: 900;
-  color: #001018;
-}
-.synth-root .seq-chord-melody-mode-badge {
-  position: absolute;
-  top: 3px;
-  right: 4px;
-  font-size: 0.52rem;
-  font-weight: 900;
-  color: var(--k-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-.synth-root .seq-chord-melody-shape {
-  font-size: 0.62rem;
-  color: var(--k-text-soft);
-  line-height: 1;
-}
+
 
 /* ─── End Option B ─── */
 
-.synth-root .seq-ov-row--chord {
-  border-color: color-mix(in srgb, var(--sc) 24%, transparent);
-}
-.synth-root .seq-ov-row--chord .seq-ov-controls select {
-  width: auto;
-  min-width: 70px;
-}
-.synth-root .seq-chord-overview-cell {
-  min-height: 46px;
-}
-.synth-root .seq-chord-overview-label {
-  position: relative;
-  z-index: 1;
-  font-size: 0.58rem;
-  font-weight: 850;
-}
-.synth-root .seq-mini-overview--chord {
-  margin-top: 0;
-  padding-top: 0;
-  background: transparent;
-}
-.synth-root .seq-mini-row--chord {
-  max-width: 240px;
-  border-color: color-mix(in srgb, var(--sc) 20%, transparent);
-}
 
 /* ── Source selectors (Detail mode) ── */
 .synth-root .synth-source-label {
@@ -3531,17 +3205,8 @@
   .synth-root .synth-chord-mode-panel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .synth-root .seq-chord-header {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-  .synth-root .seq-chord-meta {
-    margin-left: 0;
-    justify-content: flex-start;
-  }
-  .synth-root .seq-chord-sources {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+
+
   .synth-root .simple-phrase-viz {
     min-height: 150px;
   }

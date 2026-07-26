@@ -19,7 +19,7 @@ import {
   type ProductArpHarmonyContext,
   type ProductArpResolvedStep,
 } from './productArpeggiator';
-import type { SynthChordSequencerStrumDirection } from './synthChordSequencer';
+type ProductStrumDirection = 'up' | 'down' | 'upDown' | 'downUp' | 'random';
 
 export type ProductPlayMode = 'arp' | 'chord';
 export type ProductChordStyle = 'straight' | 'strum';
@@ -30,7 +30,7 @@ export interface ProductChordStep {
 }
 
 export interface ProductChordStrumConfig {
-  direction: SynthChordSequencerStrumDirection;
+  direction: ProductStrumDirection;
   spreadMs: number;
   curve: number;
   velocityFalloff: number;
@@ -94,7 +94,7 @@ const MONO_GATE_WINDOW_MS = 100;
 const PRODUCT_PLAY_MODES: readonly ProductPlayMode[] = ['arp', 'chord'];
 const PRODUCT_CHORD_STYLES: readonly ProductChordStyle[] = ['straight', 'strum'];
 const PRODUCT_CHORD_FLOWS: readonly ProductChordFlow[] = ['forward', 'reverse', 'pingpong'];
-const PRODUCT_STRUM_DIRECTIONS: readonly SynthChordSequencerStrumDirection[] = ['up', 'down', 'upDown', 'downUp', 'random'];
+const PRODUCT_STRUM_DIRECTIONS: readonly ProductStrumDirection[] = ['up', 'down', 'upDown', 'downUp', 'random'];
 const PRODUCT_PLAY_MAX_STEPS = 16;
 
 function clamp(value: number, min: number, max: number): number {
@@ -263,7 +263,7 @@ export function resolveProductChordChoiceIndex(
   return directedStepIndex(flow, choiceLength, audibleHitOrdinal);
 }
 
-function orderChordNotes(notes: readonly number[], direction: SynthChordSequencerStrumDirection, step: number): number[] {
+function orderChordNotes(notes: readonly number[], direction: ProductStrumDirection, step: number): number[] {
   const ascending = [...notes].sort((left, right) => left - right);
   if (direction === 'down') return ascending.reverse();
   if (direction === 'downUp') return step % 2 === 0 ? ascending.reverse() : ascending;

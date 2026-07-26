@@ -17,7 +17,6 @@ export function useProductRuntimePageRuntimeBridges({
   const productSynthPageEvents = useProductRuntimeSynthPageEvents(
     productRuntimeTelemetry,
     stateRef,
-    options.activeTab === 'synth',
   );
   const productPageRuntimeBridges = useProductRuntimePageBridgesCore(options);
 
