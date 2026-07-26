@@ -22,6 +22,13 @@ export interface HarmonyOverviewWindow {
   totalHeight: number;
 }
 
+/** Stable event-id focus target for virtualized rows. If a focused row is
+ * outside the current window, retain its id and restore tab stop on re-entry. */
+export function overviewFocusTarget(rows: readonly HarmonyOverviewRow[], focusedId: string | null, selectedIndex = 0): string | null {
+  if (focusedId && rows.some((row) => row.id === focusedId)) return focusedId;
+  return rows[Math.max(0, Math.min(rows.length - 1, selectedIndex))]?.id ?? null;
+}
+
 export interface HarmonyOverviewActionResult {
   ok: boolean;
   progression: HarmonyProgression;

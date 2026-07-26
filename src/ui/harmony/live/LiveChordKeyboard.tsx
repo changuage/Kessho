@@ -1,6 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useKeyboardScope } from '../../keyboard/useKeyboardScope';
 import '../shared/harmonyWorkspace.css';
+import { LIVE_CHORD_BLACK_KEYS, LIVE_CHORD_KEY_MAP, LIVE_CHORD_WHITE_KEYS } from './liveKeyboardGeometry';
+export { LIVE_CHORD_BLACK_KEYS, LIVE_CHORD_KEY_MAP, LIVE_CHORD_WHITE_KEYS } from './liveKeyboardGeometry';
 
 export type LiveChordScope =
   | { kind: 'draft'; owner: 'harmony-detail' | 'seq'; seqId?: number }
@@ -21,9 +23,6 @@ export interface LiveChordKeyboardProps {
   className?: string;
 }
 
-export const LIVE_CHORD_WHITE_KEYS = [0, 2, 4, 5, 7, 9, 11] as const;
-export const LIVE_CHORD_BLACK_KEYS = [1, 3, 6, 8, 10] as const;
-export const LIVE_CHORD_KEY_MAP: Readonly<Record<string, number>> = { a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11, k: 12 };
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
 const SHORTCUT_BY_PITCH: Readonly<Record<number, string>> = Object.fromEntries(Object.entries(LIVE_CHORD_KEY_MAP).map(([key, pitch]) => [pitch, key.toUpperCase()]));
 
@@ -33,6 +32,7 @@ function scopeLabel(scope: LiveChordScope): string {
   if (scope.kind === 'harmony-takeover') return 'HARMONY TAKEOVER';
   return `SEQ ${scope.seqId + 1} LIVE`;
 }
+function scopeId(scope: LiveChordScope): string { return scopeLabel(scope).toLowerCase().replace(/\s+/g, '-'); }
 
 export const LiveChordKeyboard: React.FC<LiveChordKeyboardProps> = ({
   scope,
@@ -48,19 +48,27 @@ export const LiveChordKeyboard: React.FC<LiveChordKeyboardProps> = ({
   className,
 }) => {
   const held = useRef(new Map<string, number>());
+  const callbacksRef = useRef({ onNoteDown, onNoteUp, onScopeFocus, onReleaseAll });
+  callbacksRef.current = { onNoteDown, onNoteUp, onScopeFocus, onReleaseAll };
+  const [announcement, setAnnouncement] = useState('Ready');
   const baseMidi = Math.max(0, Math.min(108, Math.round(octave) * 12));
   const noteSet = useMemo(() => new Set(notes.map(clampMidi)), [notes]);
   const releaseAll = useCallback(() => {
-    held.current.forEach((midi, id) => onNoteUp(midi, id.startsWith('q:') ? 'qwerty' : 'onscreen'));
+    const callbacks = callbacksRef.current;
+    held.current.forEach((midi, id) => callbacks.onNoteUp(midi, id.startsWith('q:') ? 'qwerty' : 'onscreen'));
     held.current.clear();
-    onReleaseAll?.();
-  }, [onNoteUp, onReleaseAll]);
-  useEffect(() => releaseAll, [releaseAll]);
+    callbacks.onReleaseAll?.();
+  }, []);
+  useEffect(() => () => releaseAll(), [releaseAll]);
+  useEffect(() => { if (!active || disabled) releaseAll(); }, [active, disabled, releaseAll]);
+  useEffect(() => () => releaseAll(), [scope.kind, scope.kind === 'draft' ? scope.owner : scope.kind === 'seq-live' ? scope.seqId : null, releaseAll]);
   useKeyboardScope({
     enabled: active && !disabled,
     priority: scope.kind === 'seq-live' ? 20 : 10,
     onKeyDown: (event) => {
       if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '')) return;
       const offset = LIVE_CHORD_KEY_MAP[event.key.toLowerCase()];
       if (offset == null) return;
       event.preventDefault();
@@ -68,15 +76,17 @@ export const LiveChordKeyboard: React.FC<LiveChordKeyboardProps> = ({
       if (held.current.has(id)) return;
       const midi = clampMidi(baseMidi + offset);
       held.current.set(id, midi);
-      onScopeFocus?.();
-      onNoteDown(midi, 0.85, 'qwerty');
+      callbacksRef.current.onScopeFocus?.();
+      setAnnouncement(`${scopeLabel(scope)} ${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1} held`);
+      callbacksRef.current.onNoteDown(midi, 0.85, 'qwerty');
     },
     onKeyUp: (event) => {
       const id = `q:${event.key.toLowerCase()}`;
       const midi = held.current.get(id);
       if (midi == null) return;
       held.current.delete(id);
-      onNoteUp(midi, 'qwerty');
+      setAnnouncement(`${scopeLabel(scope)} released`);
+      callbacksRef.current.onNoteUp(midi, 'qwerty');
     },
     onBlur: releaseAll,
   });
@@ -90,28 +100,34 @@ export const LiveChordKeyboard: React.FC<LiveChordKeyboardProps> = ({
         type="button"
         className={`harmony-live-key ${black ? 'black' : 'white'}${isOn ? ' active' : ''}${held.current.has(keyId) ? ' held' : ''}`}
         disabled={disabled}
-        aria-label={`${midi} ${black ? 'black' : 'white'} key`}
+        aria-label={`${NOTE_NAMES[pitchClass % 12]}${Math.floor(midi / 12) - 1}, ${black ? 'black' : 'white'} key, degree ${pitchClass}, ${SHORTCUT_BY_PITCH[pitchClass] ?? 'touch'}`}
+        aria-pressed={isOn || held.current.has(keyId)}
+        title={`${NOTE_NAMES[pitchClass % 12]}${Math.floor(midi / 12) - 1} · degree ${pitchClass} · ${SHORTCUT_BY_PITCH[pitchClass] ?? 'touch'}`}
         onPointerDown={(event) => {
           if (event.button !== 0 || disabled) return;
           event.preventDefault();
-          onScopeFocus?.();
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+          callbacksRef.current.onScopeFocus?.();
           held.current.set(keyId, midi);
-          onNoteDown(midi, 0.85, 'onscreen');
+          setAnnouncement(`${scopeLabel(scope)} ${NOTE_NAMES[pitchClass % 12]}${Math.floor(midi / 12) - 1} held`);
+          callbacksRef.current.onNoteDown(midi, 0.85, 'onscreen');
         }}
-        onPointerUp={() => {
+        onPointerUp={(event) => {
           if (!held.current.has(keyId)) return;
+          if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture?.(event.pointerId);
           held.current.delete(keyId);
-          onNoteUp(midi, 'onscreen');
+          setAnnouncement(`${scopeLabel(scope)} released`);
+          callbacksRef.current.onNoteUp(midi, 'onscreen');
         }}
         onPointerCancel={() => {
           if (!held.current.has(keyId)) return;
           held.current.delete(keyId);
-          onNoteUp(midi, 'onscreen');
+          callbacksRef.current.onNoteUp(midi, 'onscreen');
         }}
         onPointerLeave={(event) => {
           if (event.buttons === 0 || !held.current.has(keyId)) return;
           held.current.delete(keyId);
-          onNoteUp(midi, 'onscreen');
+          callbacksRef.current.onNoteUp(midi, 'onscreen');
         }}
       >
         <span>{pitchClass === rootNote ? 'Root' : ''}</span>
@@ -121,9 +137,11 @@ export const LiveChordKeyboard: React.FC<LiveChordKeyboardProps> = ({
     );
   };
   return (
-    <section className={`harmony-live-keyboard ${className ?? ''}`} data-live-scope={scope.kind} aria-label={`${scopeLabel(scope)} piano`}>
-      <header className="harmony-live-keyboard-header"><strong>{scopeLabel(scope)}</strong><span>QWERTY A–K · MIDI · Touch</span><button type="button" onClick={releaseAll} disabled={disabled}>Release</button></header>
-      <div className="harmony-live-keyboard-keys" onFocus={onScopeFocus}>
+    <section className={`harmony-live-keyboard ${className ?? ''}`} data-live-scope={scope.kind} data-keyboard-owner={scopeLabel(scope)} role="group" aria-label={`${scopeLabel(scope)} piano`} aria-describedby={`${scopeId(scope)}-instructions`}>
+      <span className="harmony-sr-only" aria-live="polite">{announcement}</span>
+      <span id={`${scopeId(scope)}-instructions`} className="harmony-sr-only">Use the visible piano keys for touch. QWERTY A through J plays scoped notes; release stops held notes.</span>
+      <header className="harmony-live-keyboard-header"><strong>{scopeLabel(scope)}</strong><span>QWERTY A–J · Touch</span><button type="button" onClick={releaseAll} disabled={disabled}>Release</button></header>
+      <div className="harmony-live-keyboard-keys" onFocus={callbacksRef.current.onScopeFocus}>
         <div className="harmony-live-white-keys">{LIVE_CHORD_WHITE_KEYS.map((pitch) => renderKey(pitch, false))}</div>
         <div className="harmony-live-black-keys">{LIVE_CHORD_BLACK_KEYS.map((pitch) => renderKey(pitch, true))}</div>
       </div>

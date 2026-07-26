@@ -15,7 +15,8 @@ export const RelativeChordDotMap: React.FC<RelativeChordDotMapProps> = ({ notes,
     return { source, min, range: Math.max(1, max - min) };
   }, [axis, notes]);
   const noteSet = useMemo(() => new Set(notes), [notes]);
-  return <div className={`harmony-relative-dot-map ${className ?? ''}`} aria-label={label}>
+  const summary = notes.length ? `${label}: ${notes.join(', ')} MIDI; axis ${values.min}–${values.min + values.range}` : `${label}: empty; axis ${values.min}–${values.min + values.range}`;
+  return <div className={`harmony-relative-dot-map ${className ?? ''}`} role="img" aria-label={summary}>
     {values.source.map((midi) => <span key={midi} className={`harmony-relative-dot${noteSet.has(midi) ? ' on' : ''}`} style={{ left: `${((midi - values.min) / values.range) * 100}%` }} title={`${midi}`} />)}
   </div>;
 };

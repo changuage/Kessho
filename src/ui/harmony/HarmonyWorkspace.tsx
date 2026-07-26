@@ -117,7 +117,7 @@ export function HarmonyWorkspace({ state, harmonyState, harmonyProjection, onSta
           <span aria-live="polite">{controller.history.past.length > 0 ? `${controller.history.past.length} authored edit${controller.history.past.length === 1 ? '' : 's'}` : 'History empty'}</span>
         </div>
       </div>
-      <div className="harmony-workspace-body" data-harmony-surface={controller.view} data-harmony-simple-controls={surface.simpleControls} data-harmony-manual-voicing={surface.manualVoicing} data-harmony-progression-editor={surface.progressionEditor} data-harmony-performance-surface={surface.performanceSurface}>
+      <div id={`harmony-view-panel-${controller.view}`} role="tabpanel" aria-labelledby={`harmony-tab-${controller.view}`} tabIndex={0} className="harmony-workspace-body" data-harmony-surface={controller.view} data-harmony-simple-controls={surface.simpleControls} data-harmony-manual-voicing={surface.manualVoicing} data-harmony-progression-editor={surface.progressionEditor} data-harmony-performance-surface={surface.performanceSurface}>
         {controller.view === 'simple' && (
           <div className="harmony-simple-controls" aria-label="Simple Harmony controls">
             <div className="harmony-simple-controls-header"><strong>Simple</strong><span>Root, Scale, Circle of Fifths, and automation</span></div>

@@ -104,14 +104,14 @@ export function HarmonyWorkspaceHeader({ projection, view, onViewChange, morphRe
         <div><span>Live scope</span><strong>{header.scope}</strong></div>
         {header.tonal && <div aria-label="Tonal context"><span>Engine</span><strong>{header.tonal.engine}</strong><span>{header.tonal.mode === 'preview' ? 'Preview' : 'Playing'}</span><strong>{header.tonal.context}</strong></div>}
       </div>
-      {morphReadOnly && <div className="harmony-workspace-morph-banner" role="status">Morph in progress · Harmony is read-only</div>}
+      {morphReadOnly && <div className="harmony-workspace-morph-banner" role="status" aria-live="polite">Morph in progress · Harmony is read-only; live and authoring controls are disabled</div>}
       {adoption?.targetLabel && adoption.mode && <div className="harmony-workspace-adoption" role="status">
         <span>{adoption.active ? `Adopting ${adoption.targetLabel} at Harmony boundaries` : `Advisory ${adoption.mode}: ${adoption.targetLabel}`}</span>
         <button type="button" onClick={adoption.active ? adoption.onCancel : adoption.onAdopt} disabled={adoption.disabled}>{adoption.active ? 'Cancel' : 'Adopt'}</button>
       </div>}
-      <nav className="harmony-workspace-tabs" aria-label="Harmony views">
+      <nav className="harmony-workspace-tabs" aria-label="Harmony views" role="tablist">
         {(['simple', 'detail', 'overview'] as const).map((item) => (
-          <button key={item} type="button" className={view === item ? 'active' : ''} aria-current={view === item ? 'page' : undefined} onClick={() => onViewChange(item)}>
+          <button key={item} type="button" role="tab" id={`harmony-tab-${item}`} aria-controls={`harmony-view-panel-${item}`} className={view === item ? 'active' : ''} aria-selected={view === item} aria-current={view === item ? 'page' : undefined} onClick={() => onViewChange(item)}>
             {item[0]!.toUpperCase() + item.slice(1)}
           </button>
         ))}

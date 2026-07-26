@@ -2752,7 +2752,7 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
     if (!suggestionKeyboardOwned) return;
     const releaseAll = () => { for (const key of held) releaseSuggestion(key as import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestionTriggerKey); held.clear(); stopSuggestions(); };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (isTextInputTarget(event.target) || (event.target instanceof Element && event.target.closest('.harmony-suggestion-dock'))) return;
+      if (isTextInputTarget(event.target) || (event.target instanceof Element && event.target.closest('.harmony-suggestion-dock, .harmony-overview-suggestions, [data-keyboard-owner]'))) return;
       const key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
       if (!(['Z', 'X', 'C', 'V', 'B', 'N', 'M', ','] as string[]).includes(key) || held.has(key)) return;
       const suggestion = suggestionBank.find((entry) => entry?.triggerKey === key) ?? null;

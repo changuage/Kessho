@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { defaultHarmonyIntent } from '../../audio/CoreProductHarmonyControl';
 import type { HarmonyProgression } from '../../audio/harmony/harmonyTypes';
-import { applyHarmonyOverviewAction, makeUniqueHarmonySlot, overviewRows, toggleHarmonyOverviewNote, updateHarmonyOverviewDuration, virtualizeOverviewRows } from './harmonyOverviewModel';
+import { applyHarmonyOverviewAction, makeUniqueHarmonySlot, overviewFocusTarget, overviewRows, toggleHarmonyOverviewNote, updateHarmonyOverviewDuration, virtualizeOverviewRows } from './harmonyOverviewModel';
 
 const progression = (count: number): HarmonyProgression => ({ version: 1, enabled: true, currentEventIndex: 0, events: Array.from({ length: count }, (_, id) => ({ id: `e-${id}`, source: { type: 'auto' as const }, duration: { unit: 'bar' as const, value: 1 as const } })) });
 const slot = (id: number, notes: number[] | null) => ({ id, name: `S${id + 1}`, locked: false, intent: defaultHarmonyIntent('slot', id % 7), chord: notes ? { intent: defaultHarmonyIntent('slot', id % 7), intentSource: 'confirmed' as const, exactMidiNotes: notes, recognizedLabel: 'C', playbackBehavior: 'auto' as const, capturedContext: { rootMidi: 60, scaleId: 1 } } : null });
@@ -54,4 +54,14 @@ test('duration and exact-note edits are pure and preserve unrelated events/slots
   assert.deepEqual(toggled[0]?.chord?.exactMidiNotes, [60, 64, 67]);
   assert.deepEqual(toggleHarmonyOverviewNote(toggled, 0, 60)[0]?.chord?.exactMidiNotes, [64, 67]);
   assert.deepEqual(slots[0]?.chord?.exactMidiNotes, [60, 64]);
+});
+
+test('virtualized focus restores by stable event id after a row leaves and re-enters', () => {
+  const rows = overviewRows(progression(30), [slot(0, [60])]);
+  assert.equal(overviewFocusTarget(rows, rows[27]!.id, 0), rows[27]!.id);
+  const visible = virtualizeOverviewRows(rows, 0, 200, 76, 1);
+  assert.equal(visible.rows.some((row) => row.id === rows[27]!.id), false);
+  const reentered = virtualizeOverviewRows(rows, 27 * 76, 200, 76, 1);
+  assert.equal(reentered.rows.some((row) => row.id === rows[27]!.id), true);
+  assert.equal(overviewFocusTarget(rows, rows[27]!.id, 0), rows[27]!.id);
 });
