@@ -37,6 +37,10 @@ export class CoreProductHarmonyStateBridge {
       currentSeed: this.uiHarmonySnapshot.currentSeed,
       currentBucket: this.uiHarmonySnapshot.currentBucket,
       cofCurrentStep: this.uiHarmonySnapshot.harmonyState?.cof.currentStep ?? base.cofCurrentStep,
+      harmonyPosition: {
+        absoluteBarIndex: typeof options.telemetry?.barIndex === 'number' ? Math.max(0, Math.round(options.telemetry.barIndex)) : null,
+        phraseIndex: typeof options.telemetry?.phraseIndex === 'number' ? Math.max(0, Math.round(options.telemetry.phraseIndex)) : null,
+      },
       transportDebug: options.transportDebug,
     };
   }

@@ -80,3 +80,18 @@ test('canonical auto event resolves through the same suggestion bank used by Det
   assert.ok(expected);
   assert.deepEqual(projection.activeFrame.currentNotePool, expected.exactMidiNotes);
 });
+
+test('projection exposes absolute transport bars for canonical adoption boundaries', () => {
+  const state = {
+    rootNote: 0,
+    manualScale: 'Major (Ionian)',
+    transportBarsPerPhrase: 4,
+    harmonyProgression: { version: 1, enabled: true, currentEventIndex: 0, events: [{ id: 'long', source: { type: 'auto' }, duration: { unit: 'phrase', value: 2 } }, { id: 'next', source: { type: 'auto' }, duration: { unit: 'bar', value: 1 } }] },
+  };
+  const atBar1 = resolveHarmonyProjection(state, { barIndex: 1 });
+  const atBar8 = resolveHarmonyProjection(state, { barIndex: 8 });
+  assert.equal(atBar1.position.absoluteBarIndex, 1);
+  assert.equal(atBar1.position.eventIndex, 0);
+  assert.equal(atBar8.position.eventIndex, 1);
+  assert.equal(atBar8.position.absoluteBarIndex, 8);
+});

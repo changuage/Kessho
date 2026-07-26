@@ -449,8 +449,13 @@ const App: React.FC = () => {
   const playbackIsRunning = engineState.isRunning;
   const [harmonyLiveLayer, setHarmonyLiveLayer] = useState<HarmonyLiveLayer | null>(null);
   const harmonyProjection: HarmonyProjection = useMemo(
-    () => resolveHarmonyProjection(state, { harmonyState: engineState.harmonyState, liveLayer: harmonyLiveLayer }),
-    [engineState.harmonyState, harmonyLiveLayer, state],
+    () => resolveHarmonyProjection(state, {
+      harmonyState: engineState.harmonyState,
+      liveLayer: harmonyLiveLayer,
+      barIndex: engineState.harmonyPosition?.absoluteBarIndex ?? undefined,
+      phraseIndex: engineState.harmonyPosition?.phraseIndex ?? undefined,
+    }),
+    [engineState.harmonyPosition, engineState.harmonyState, harmonyLiveLayer, state],
   );
 
   const {

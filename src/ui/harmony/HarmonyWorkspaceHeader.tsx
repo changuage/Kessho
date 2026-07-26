@@ -42,6 +42,14 @@ export interface HarmonyWorkspaceHeaderProps {
   onViewChange: (view: HarmonyWorkspaceView) => void;
   morphReadOnly?: boolean;
   tonalContext?: TonalContextDisplay | null;
+  adoption?: {
+    targetLabel: string | null;
+    mode: 'playing' | 'preview' | null;
+    active: boolean;
+    onAdopt: () => void;
+    onCancel: () => void;
+    disabled?: boolean;
+  };
 }
 
 export interface HarmonyWorkspaceHeaderModel {
@@ -51,6 +59,7 @@ export interface HarmonyWorkspaceHeaderModel {
   position: string;
   scope: string;
   tonal?: { engine: string; context: string; mode: 'playing' | 'preview' };
+  adoption?: { target: string; mode: 'playing' | 'preview'; active: boolean };
 }
 
 function tonalLabel(context: TonalContextDisplay): { engine: string; context: string; mode: 'playing' | 'preview' } {
@@ -68,7 +77,7 @@ function tonalLabel(context: TonalContextDisplay): { engine: string; context: st
   };
 }
 
-export function deriveHarmonyWorkspaceHeader(projection: HarmonyProjection, tonalContext?: TonalContextDisplay | null): HarmonyWorkspaceHeaderModel {
+export function deriveHarmonyWorkspaceHeader(projection: HarmonyProjection, tonalContext?: TonalContextDisplay | null, adoption?: HarmonyWorkspaceHeaderProps['adoption']): HarmonyWorkspaceHeaderModel {
   const position = projection.position.eventIndex >= 0
     ? `${projection.position.eventIndex + 1}/${Math.max(1, projection.progression.length)} · bar ${projection.position.barInEvent + 1}`
     : '—';
@@ -79,11 +88,12 @@ export function deriveHarmonyWorkspaceHeader(projection: HarmonyProjection, tona
     position,
     scope: liveScopeLabel(projection.activeLiveInputScope ?? projection.liveLayer?.scope),
     ...(tonalContext ? { tonal: tonalLabel(tonalContext) } : {}),
+    ...(adoption?.targetLabel && adoption.mode ? { adoption: { target: adoption.targetLabel, mode: adoption.mode, active: adoption.active } } : {}),
   };
 }
 
-export function HarmonyWorkspaceHeader({ projection, view, onViewChange, morphReadOnly = false, tonalContext = null }: HarmonyWorkspaceHeaderProps) {
-  const header = deriveHarmonyWorkspaceHeader(projection, tonalContext);
+export function HarmonyWorkspaceHeader({ projection, view, onViewChange, morphReadOnly = false, tonalContext = null, adoption }: HarmonyWorkspaceHeaderProps) {
+  const header = deriveHarmonyWorkspaceHeader(projection, tonalContext, adoption);
   return (
     <header className="harmony-workspace-header">
       <div className="harmony-workspace-context" aria-label="Harmony context">
@@ -95,6 +105,10 @@ export function HarmonyWorkspaceHeader({ projection, view, onViewChange, morphRe
         {header.tonal && <div aria-label="Tonal context"><span>Engine</span><strong>{header.tonal.engine}</strong><span>{header.tonal.mode === 'preview' ? 'Preview' : 'Playing'}</span><strong>{header.tonal.context}</strong></div>}
       </div>
       {morphReadOnly && <div className="harmony-workspace-morph-banner" role="status">Morph in progress · Harmony is read-only</div>}
+      {adoption?.targetLabel && adoption.mode && <div className="harmony-workspace-adoption" role="status">
+        <span>{adoption.active ? `Adopting ${adoption.targetLabel} at Harmony boundaries` : `Advisory ${adoption.mode}: ${adoption.targetLabel}`}</span>
+        <button type="button" onClick={adoption.active ? adoption.onCancel : adoption.onAdopt} disabled={adoption.disabled}>{adoption.active ? 'Cancel' : 'Adopt'}</button>
+      </div>}
       <nav className="harmony-workspace-tabs" aria-label="Harmony views">
         {(['simple', 'detail', 'overview'] as const).map((item) => (
           <button key={item} type="button" className={view === item ? 'active' : ''} aria-current={view === item ? 'page' : undefined} onClick={() => onViewChange(item)}>

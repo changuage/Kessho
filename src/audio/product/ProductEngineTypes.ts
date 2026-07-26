@@ -248,6 +248,8 @@ export type ProductEngineState = {
   cofCurrentStep: number;
   fxOwners: ProductFxOwnershipDebugState;
   transportDebug: TransportDebugSnapshot | null;
+  /** Authoritative Harmony transport position from Product telemetry. */
+  harmonyPosition?: { absoluteBarIndex: number | null; phraseIndex: number | null };
 };
 
 export type ProductSimpleSequencerVisualPlanActive = Readonly<{

@@ -181,6 +181,8 @@ export function createCoreProductHostHarmonySnapshot(
     resolved.chordTension.toFixed(4),
     resolved.currentDegree,
     resolved.currentChord.midiNotes.map((note) => note.toFixed(3)).join(','),
+    telemetry?.barIndex ?? '',
+    telemetry?.phraseIndex ?? '',
   ].join('|');
 
   return { harmonyState: resolved, currentBucket, currentSeed, signature };

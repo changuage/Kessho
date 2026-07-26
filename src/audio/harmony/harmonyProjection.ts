@@ -76,6 +76,8 @@ export interface HarmonyProjection {
     eventId: string | null;
     barInEvent: number;
     phraseIndex: number;
+    /** Absolute transport bar used for canonical event-boundary consumers. */
+    absoluteBarIndex: number | null;
   };
   liveLayer: HarmonyLiveLayer | null;
   activeLiveInputScope: unknown | null;
@@ -355,7 +357,7 @@ export function resolveHarmonyProjection(
     slots,
     progression,
     canonicalProgression: runtime.progression,
-    position: { eventIndex, eventId: activeEvent ? String(activeEvent.id) : null, barInEvent: activeEvent && hasPositionContext ? Math.max(0, cycleBar - activeEvent.startBar) : 0, phraseIndex: integerValue(runtimeOverlay?.phraseIndex, 0) },
+    position: { eventIndex, eventId: activeEvent ? String(activeEvent.id) : null, barInEvent: activeEvent && hasPositionContext ? Math.max(0, cycleBar - activeEvent.startBar) : 0, phraseIndex: integerValue(runtimeOverlay?.phraseIndex, 0), absoluteBarIndex: hasPositionContext ? Math.max(0, absoluteBar) : null },
     liveLayer,
     activeLiveInputScope: isEndpoint ? runtimeOverlay?.activeLiveInputScope ?? null : null,
     morphPlan: createMorphPlan(endpointA, endpointB, bank),

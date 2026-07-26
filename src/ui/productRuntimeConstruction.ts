@@ -21,7 +21,7 @@ function loadReferenceRuntimeAdapter(): Promise<ReferenceRuntimeAdapterModule> {
 
 export type ProductRuntimeStateProjection = Pick<
   ProductEngineState,
-  'isRunning' | 'harmonyState' | 'currentSeed' | 'currentBucket' | 'cofCurrentStep'
+  'isRunning' | 'harmonyState' | 'currentSeed' | 'currentBucket' | 'cofCurrentStep' | 'harmonyPosition'
 >;
 
 export type ProductRuntimeStateSurface = {
@@ -64,6 +64,7 @@ function projectRuntimeState(state: ProductRuntimeStateProjection): ProductRunti
     currentSeed: state.currentSeed,
     currentBucket: state.currentBucket,
     cofCurrentStep: state.cofCurrentStep,
+    harmonyPosition: state.harmonyPosition,
   };
 }
 

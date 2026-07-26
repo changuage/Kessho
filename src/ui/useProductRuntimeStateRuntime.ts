@@ -66,6 +66,8 @@ function applyRuntimeStateProjection(
       prev.currentSeed === nextState.currentSeed &&
       prev.currentBucket === nextState.currentBucket &&
       prev.cofCurrentStep === nextState.cofCurrentStep &&
+      prev.harmonyPosition?.absoluteBarIndex === nextState.harmonyPosition?.absoluteBarIndex &&
+      prev.harmonyPosition?.phraseIndex === nextState.harmonyPosition?.phraseIndex &&
       !fxOwnersChanged
     ) {
       return prev;
@@ -78,6 +80,7 @@ function applyRuntimeStateProjection(
       currentSeed: nextState.currentSeed,
       currentBucket: nextState.currentBucket,
       cofCurrentStep: nextState.cofCurrentStep,
+      harmonyPosition: nextState.harmonyPosition,
       fxOwners: fxOwnersChanged && nextState.fxOwners ? nextState.fxOwners : prev.fxOwners,
     };
   });

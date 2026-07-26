@@ -129,6 +129,8 @@ export interface HarmonyWorkspaceController {
   undo: () => void;
   redo: () => void;
   commitCommand: (command: HarmonyAuthoredCommand) => void;
+  /** Apply one authored update with an explicit local-history command. */
+  commitAuthoredStateChange: (updater: React.SetStateAction<SliderState>, before?: HarmonyAuthoredSnapshot, label?: string) => void;
 }
 
 export function useHarmonyWorkspaceController(
@@ -181,5 +183,18 @@ export function useHarmonyWorkspaceController(
     });
   }, [onStateChange]);
 
-  return useMemo(() => ({ view, setView, history, canUndo: harmonyHistoryCanUndo(history), canRedo: harmonyHistoryCanRedo(history), onStateChange: dispatch, onTransientStateChange: onStateChange, undo, redo, commitCommand }), [commitCommand, dispatch, history, onStateChange, redo, setView, undo, view]);
+  const commitAuthoredStateChange = useCallback((updater: React.SetStateAction<SliderState>, beforeOverride?: HarmonyAuthoredSnapshot, label = 'Harmony edit') => {
+    if (!onStateChange) return;
+    onStateChange((previous) => {
+      const before = beforeOverride ?? snapshot(previous);
+      const next = typeof updater === 'function' ? updater(previous) : updater;
+      const after = snapshot(next);
+      setHistory((current) => reduceHarmonyWorkspaceHistory(current, { type: 'authored', before, after, label }));
+      return next;
+    });
+  }, [onStateChange]);
+
+  return useMemo(() => ({ view, setView, history, canUndo: harmonyHistoryCanUndo(history), canRedo: harmonyHistoryCanRedo(history), onStateChange: dispatch, onTransientStateChange: onStateChange, undo, redo, commitCommand, commitAuthoredStateChange }), [commitAuthoredStateChange, commitCommand, dispatch, history, onStateChange, redo, setView, undo, view]);
 }
+
+export { snapshot as captureHarmonyAuthoredSnapshot };

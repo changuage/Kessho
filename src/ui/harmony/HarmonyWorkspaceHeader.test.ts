@@ -44,6 +44,17 @@ test('Preview replaces Playing context only while hypothetical evidence exists',
   assert.match(header.tonal?.context ?? '', /A Aeolian/);
 });
 
+test('header exposes explicit Adopt state without implying automatic mutation', () => {
+  const header = deriveHarmonyWorkspaceHeader(projection, null, {
+    targetLabel: 'G · Dorian',
+    mode: 'preview',
+    active: false,
+    onAdopt: () => undefined,
+    onCancel: () => undefined,
+  });
+  assert.deepEqual(header.adoption, { target: 'G · Dorian', mode: 'preview', active: false });
+});
+
 test('workspace tonal bridge derives Playing from progression/locked slots and Preview from live layer', () => {
   const workspaceProjection = {
     ...projection,
