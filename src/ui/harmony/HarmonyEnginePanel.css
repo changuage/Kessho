@@ -1383,6 +1383,9 @@
   }
 }
 
+.harmony-suggestion-dock{margin:10px 0;padding:9px;border:1px solid rgba(148,163,184,.25);border-radius:9px;background:rgba(15,23,42,.56)}
+.harmony-suggestion-dock-header,.harmony-suggestion-action-dock{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px}.harmony-suggestion-dock-header span{opacity:.68;margin-left:auto}.harmony-suggestion-action-dock{margin-top:7px;padding-top:7px;border-top:1px solid rgba(148,163,184,.2)}.harmony-suggestion-action-dock strong{margin-right:auto}.harmony-suggestion-action-dock button{border:1px solid #475569;border-radius:5px;background:#1e293b;color:#cbd5e1;padding:4px 7px;font-size:11px}.harmony-suggestion-action-dock button:hover{border-color:#22d3ee;background:#155e75}.harmony-suggestion-grid-empty{display:grid;gap:2px;min-height:48px;padding:5px;border:1px dashed #334155;border-radius:6px;color:#64748b}.harmony-suggestion-grid-empty kbd{color:#fbbf24}.harmony-suggestion-error{margin:6px 0;color:#fca5a5;font-size:11px}
+
 /* ═══════════════ Compact Sequence Strip (below summary) ═══════════════ */
 
 .harmony-engine-panel .harmony-tension-strip {

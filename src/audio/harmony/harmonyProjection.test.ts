@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { resolveHarmonyProjection, clearHarmonyProjectionMorphPlanCache } from './harmonyProjection';
 import { defaultHarmonyIntent } from '../CoreProductHarmonyControl';
+import { generateHarmonySuggestionBank } from './chordSuggestionEngine';
 
 function slot(name: string, rootNote: number, notes: number[]) {
   const intent = { ...defaultHarmonyIntent('slot', 0), rootMode: 'absolute' as const, rootNote, quality: 'maj' as const };
@@ -64,4 +65,18 @@ test('live layer priority selects takeover and morph suppresses performance laye
   assert.equal(morphProjection.liveLayer, null);
   assert.equal(morphProjection.activeLiveInputScope, null);
   assert.equal(resolveHarmonyProjection({ harmonyMorphPercent: 0 }, { morphPercent: 50 }).bank, 'B');
+});
+
+test('canonical auto event resolves through the same suggestion bank used by Detail', () => {
+  const state = {
+    rootNote: 0,
+    scaleMode: 'manual',
+    manualScale: 'Major (Ionian)',
+    tension: 0.35,
+    harmonyProgression: { version: 1, enabled: true, currentEventIndex: 0, events: [{ id: 'auto-0', source: { type: 'auto' }, duration: { unit: 'phrase', value: 1 } }] },
+  };
+  const projection = resolveHarmonyProjection(state);
+  const expected = generateHarmonySuggestionBank({ rootMidi: 60, scaleId: 1, tension: 0.35, phrasePosition: 'opening' }).find((entry) => entry !== null);
+  assert.ok(expected);
+  assert.deepEqual(projection.activeFrame.currentNotePool, expected.exactMidiNotes);
 });

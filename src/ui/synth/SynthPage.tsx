@@ -207,6 +207,10 @@ import {
   type ProductPlayConfig,
   type ProductPlayMode,
 } from '../../audio/productPlaySequencer';
+import { assignHarmonySuggestionToPlayConfig } from '../harmony/harmonySuggestionActions';
+import type { HarmonySuggestion as AudioHarmonySuggestion } from '../../audio/harmony/chordSuggestionEngine';
+import type { HarmonySuggestion as UiHarmonySuggestion } from '../harmony/shared/SuggestionGrid';
+import { generateHarmonySuggestionBank } from '../../audio/harmony/chordSuggestionEngine';
 
 import { normalizeSynthEuclidSource } from '../../audio/coreProductSourceMapping';
 import { productSourceIdForManualSynthSource } from '../../audio/productSourceCapabilities';
@@ -3788,6 +3792,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       Math.max(0, (seq.hitCounts[seq.activeTab] ?? 0) - 1),
     )
     : null;
+  const activeSuggestionBank = useMemo(() => generateHarmonySuggestionBank({
+    rootMidi: arpHarmonyContext.rootMidi,
+    scaleId: arpHarmonyContext.scaleId,
+    tension: arpHarmonyContext.tension,
+    currentDraft: { intent: seqDrafts[seq.activeTab]?.intent ?? null, exactMidiNotes: seqDrafts[seq.activeTab]?.exactMidiNotes ?? [] },
+    previousChord: arpHarmonyContext.notePoolMidi,
+  }), [arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId, arpHarmonyContext.tension, arpHarmonyContext.notePoolMidi, seq.activeTab, seqDrafts]);
   const updateArpConfig = useCallback((laneIdx: number, patch: Partial<ProductArpConfig>) => {
     setPlayConfigs((current) => current.map((config, index) => {
       if (index !== laneIdx) return config;
@@ -3865,6 +3876,25 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       return normalizeProductPlayConfig({ ...config, chord: { ...config.chord, ...nextPatch } });
     }));
   }, []);
+  const assignSuggestionToActiveChordStep = useCallback((suggestion: UiHarmonySuggestion) => {
+    const laneIdx = seq.activeTab;
+    const stepIndex = selectedArpSteps[laneIdx] ?? 0;
+    const audioSuggestion: AudioHarmonySuggestion | undefined = suggestion.audioSuggestion;
+    if (!audioSuggestion) return;
+    const result = assignHarmonySuggestionToPlayConfig({ slots: arpHarmonyContext.chordSlots, seqPlayConfigs: playConfigs }, audioSuggestion, laneIdx, stepIndex, { rootMidi: arpHarmonyContext.rootMidi, rootMidiAnchor: arpHarmonyContext.rootMidi, scaleId: arpHarmonyContext.scaleId });
+    if (!result.ok || !result.state.seqPlayConfigs) return;
+    const nextConfig = result.state.seqPlayConfigs[laneIdx];
+    if (nextConfig) setPlayConfigs((current) => current.map((config, index) => index === laneIdx ? normalizeProductPlayConfig({ ...config, chord: { ...config.chord, steps: (nextConfig.chord?.steps ?? config.chord.steps).map((step, stepIndex) => ({ slotId: step.slotId ?? config.chord.steps[stepIndex]?.slotId ?? 0 })) } }) : config));
+    if (result.state.slots !== arpHarmonyContext.chordSlots && onStateChange) {
+      const bank = props.harmonyProjection?.bank ?? 'A';
+      onStateChange((previous) => {
+        const record = previous as unknown as Record<string, unknown>;
+        const patch: Record<string, unknown> = { [bank === 'B' ? 'harmonyChordSlotsB' : 'harmonyChordSlotsA']: result.state.slots };
+        if (record.harmonyChordSlotsA === undefined && record.harmonyChordSlotsB === undefined && bank === 'A') patch.harmonyChordSlots = result.state.slots;
+        return { ...previous, ...patch } as SliderState;
+      });
+    }
+  }, [arpHarmonyContext, onStateChange, playConfigs, props.harmonyProjection?.bank, selectedArpSteps, seq.activeTab]);
   const updateSeqDraft = useCallback((laneIdx: number, draft: HarmonyDraftChord) => setSeqDrafts((current) => current.map((entry, index) => index === laneIdx ? draft : entry)), []);
   const loadSeqDraftSlot = useCallback((laneIdx: number, slotId: number) => {
     setSeqDraftSlots((current) => current.map((entry, index) => index === laneIdx ? slotId : entry));
@@ -9186,8 +9216,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                   playSeqLiveReanchored(seq.activeTab, seqLiveSlots[seq.activeTab]!, midi);
                                 }}
                                 onNoteUp={() => { if (seqLiveSlots[seq.activeTab] != null && !seqLiveLatched[seq.activeTab]) stopSeqLive(seq.activeTab); }}
-                                suggestions={(seqDrafts[seq.activeTab]?.semanticCandidates ?? []).map((candidate, index) => ({ id: `seq-${index}`, label: candidate.intent.quality, notes: candidate.intent.capturedMidiNotes }))}
+                                suggestions={activeSuggestionBank.map((suggestion) => suggestion ? { id: suggestion.id, label: suggestion.label, notes: suggestion.exactMidiNotes, exactMidiNotes: suggestion.exactMidiNotes, category: suggestion.category, triggerKey: suggestion.triggerKey, audioSuggestion: suggestion } : null)}
                                 onSuggestion={(suggestion) => updateSeqDraft(seq.activeTab, { ...(seqDrafts[seq.activeTab] ?? emptyHarmonyDraft()), exactMidiNotes: [...suggestion.notes], recognizedLabel: suggestion.label, source: 'suggestion' })}
+                                onSuggestionAssign={assignSuggestionToActiveChordStep}
                               />
                               </>
                             )}

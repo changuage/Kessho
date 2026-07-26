@@ -10,6 +10,9 @@ import {
 import { productHarmonyScaleIdFromName } from '../coreProductHarmonyScaleIds';
 import { createRng, getUtcBucket } from '../rng';
 import { getScaleByName, selectScaleFamily } from '../scales';
+import { createHarmonySuggestionEngine } from './chordSuggestionEngine';
+
+const HARMONY_AUTO_SUGGESTION_ENGINE = createHarmonySuggestionEngine();
 
 /** A bounded, read-only description of the material used while morphing endpoints. */
 export interface MorphHarmonyPlan {
@@ -323,11 +326,26 @@ export function resolveHarmonyProjection(
   const isEndpoint = morphPercent <= 0 || morphPercent >= 100;
   // Morph owns the top of the stack in the midpoint: performance layers are read-only and hidden.
   const liveLayer = isEndpoint ? selectLiveLayer(runtimeOverlay) : null;
-  const activeFrame = liveLayer?.frame ?? runtime.resolvedHarmonyFrame;
+  const autoSuggestion = activeEvent?.source === 'suggestion'
+    ? HARMONY_AUTO_SUGGESTION_ENGINE.bank({
+      rootMidi,
+      scaleId,
+      tension,
+      phrasePosition: eventIndex === 0 ? 'opening' : eventIndex === progression.length - 1 ? 'ending' : 'middle',
+    }).find((candidate) => candidate !== null)
+    : null;
+  const suggestionFrame = autoSuggestion ? {
+    ...runtime.resolvedHarmonyFrame,
+    degree: autoSuggestion.intent.degree,
+    quality: autoSuggestion.intent.quality,
+    currentNotePool: [...autoSuggestion.exactMidiNotes],
+    nextNotePool: [...autoSuggestion.exactMidiNotes],
+  } : runtime.resolvedHarmonyFrame;
+  const activeFrame = liveLayer?.frame ?? suggestionFrame;
   return {
     engine: { homeRootNote, effectiveRootNote, rootMidi, homeScaleName, homeScaleId, scaleId, scaleName, scaleMode: record.scaleMode === 'manual' ? 'manual' : 'auto', morphLocked: !runtime.resolvedHarmonyFrame.manualControlAvailable },
     activeFrame,
-    underlyingFrame: runtime.resolvedHarmonyFrame,
+    underlyingFrame: suggestionFrame,
     manualControl: runtime.manualControl,
     chordSequence: runtime.chordSequence,
     chordSequenceEnabled: runtime.chordSequenceEnabled,

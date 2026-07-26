@@ -16,6 +16,8 @@ export interface HarmonySuggestion {
   quality: HarmonyChordQuality;
   extensions: HarmonyChordExtension[];
   exactMidiNotes: number[];
+  /** Playback policy is part of duplicate identity; suggestions default to Auto. */
+  playbackBehavior?: 'auto' | 'relative' | 'exact';
   triggerKey: HarmonySuggestionTriggerKey;
   label: string;
   confidence: number;
@@ -138,7 +140,7 @@ function metricFor(seed: CandidateSeed, intent: HarmonyIntent, notes: number[], 
     ? [formatHarmonyIntentChordLabel({ ...defaultHarmonyIntent('audition', 0), quality: 'maj', bassMode: 'root' }, { rootMidi: input.rootMidi, scaleId: input.scaleId })]
     : [];
   return {
-    id: `${seed.category}-${seed.degree}-${intent.quality}-${intent.extensions.join('.')}`, category: seed.category, intent, quality: intent.quality, extensions: intent.extensions as HarmonyChordExtension[], exactMidiNotes: notes,
+    id: `${seed.category}-${seed.degree}-${intent.quality}-${intent.extensions.join('.')}`, category: seed.category, intent, quality: intent.quality, extensions: intent.extensions as HarmonyChordExtension[], exactMidiNotes: notes, playbackBehavior: 'auto',
     triggerKey: 'Z', label, confidence, keyFit, voiceLeading: leading.voiceLeading, bassMotion: leading.bassMotion,
     movement, color, commonToneCount: leading.commonToneCount, semitoneMotion: leading.semitoneMotion,
     modeEffect: seed.modeEffect ?? null, likelyTargets: targets,

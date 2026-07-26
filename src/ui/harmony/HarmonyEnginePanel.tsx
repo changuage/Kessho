@@ -41,6 +41,9 @@ import './HarmonyEnginePanel.css';
 import LiveChordKeyboard from './live/LiveChordKeyboard';
 import useHarmonyChordCapture from './useHarmonyChordCapture';
 import { draftFromCapturedNotes, harmonyDraftWithIntent, resolveHarmonyDraftRerootPreview, setDraftPlaybackBehavior } from './harmonyDraftChord';
+import useHarmonySuggestions from './useHarmonySuggestions';
+import SuggestionGrid from './shared/SuggestionGrid';
+import { insertHarmonySuggestion, replaceHarmonySuggestion, saveHarmonySuggestion } from './harmonySuggestionActions';
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
 const ROMAN_DEGREES = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'] as const;
@@ -452,6 +455,15 @@ function HarmonySummaryCard({
   showVoicing,
   showLab,
   showPolicyControls = true,
+  suggestionBank = [],
+  suggestionAxis,
+  onSuggestionSelect,
+  onSuggestionPress,
+  onSuggestionRelease,
+  selectedSuggestion,
+  onSuggestionSave,
+  onSuggestionReplace,
+  onSuggestionInsert,
 }: {
   bank: HarmonyBank;
   rootLabel: string;
@@ -473,6 +485,15 @@ function HarmonySummaryCard({
   showVoicing?: boolean;
   showLab?: boolean;
   showPolicyControls?: boolean;
+  suggestionBank?: readonly (import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion | null)[];
+  suggestionAxis?: readonly number[];
+  onSuggestionSelect?: (suggestion: import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion) => void;
+  onSuggestionPress?: (suggestion: import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion) => void;
+  onSuggestionRelease?: (suggestion: import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion) => void;
+  selectedSuggestion?: import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion | null;
+  onSuggestionSave?: (suggestion: import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion) => void;
+  onSuggestionReplace?: () => void;
+  onSuggestionInsert?: () => void;
 }) {
   const tensionCharacter = tensionCharacterFor(tension);
   const scaleBand = tensionScaleBandLabel(tension);
@@ -557,6 +578,22 @@ function HarmonySummaryCard({
             </label>
           )}
         </div>
+      </div>}
+      {suggestionBank.length > 0 && <div className="harmony-suggestion-dock" aria-label="Harmony suggestions">
+        <div className="harmony-suggestion-dock-header"><strong>Suggestions</strong><span>Hold to preview · Shift+key saves</span></div>
+        <SuggestionGrid
+          suggestions={suggestionBank.map((suggestion) => suggestion ? { ...suggestion, notes: suggestion.exactMidiNotes, exactMidiNotes: suggestion.exactMidiNotes } : null)}
+          axis={suggestionAxis}
+          onSelect={onSuggestionSelect ? (suggestion) => { const full = suggestionBank.find((item) => item?.id === suggestion.id); if (full) onSuggestionSelect(full); } : undefined}
+          onPress={onSuggestionPress ? (suggestion) => { const full = suggestionBank.find((item) => item?.id === suggestion.id); if (full) onSuggestionPress(full); } : undefined}
+          onRelease={onSuggestionRelease ? (suggestion) => { const full = suggestionBank.find((item) => item?.id === suggestion.id); if (full) onSuggestionRelease(full); } : undefined}
+          onSave={onSuggestionSave ? (suggestion) => { const full = suggestionBank.find((item) => item?.id === suggestion.id); if (full) onSuggestionSave(full); } : undefined}
+        />
+        {selectedSuggestion && <div className="harmony-suggestion-action-dock" aria-label="Selected suggestion actions">
+          <strong>{selectedSuggestion.label}</strong>
+          <button type="button" onClick={() => selectedSuggestion && onSuggestionSave?.(selectedSuggestion)}>Save S#</button>
+          {showLab && <><button type="button" onClick={onSuggestionReplace}>Replace E#</button><button type="button" onClick={onSuggestionInsert}>Insert after E# · 1 phrase</button></>}
+        </div>}
       </div>}
       <div className="harmony-summary-grid">
         <HarmonyStatusTile
@@ -2001,6 +2038,8 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
   const [generateVariation, setGenerateVariation] = useState(0.35);
   const [generateMotion, setGenerateMotion] = useState(0.35);
   const [generateRespectLocks, setGenerateRespectLocks] = useState(true);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion | null>(null);
+  const [suggestionActionError, setSuggestionActionError] = useState<string | null>(null);
   const { announceHelp } = useSliderHelp();
   const lastHelpTargetRef = useRef<string>('');
 
@@ -2090,6 +2129,12 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
       harmonyReleaseTimerRef.current = null;
       onHarmonyLiveLayerChange?.(null);
     }, 350);
+  }, [onHarmonyLiveLayerChange]);
+  const startHeldHarmonyLayer = useCallback((layer: HarmonyLiveLayer) => {
+    harmonyGestureRevisionRef.current += 1;
+    if (harmonyReleaseTimerRef.current !== null) clearTimeout(harmonyReleaseTimerRef.current);
+    harmonyReleaseTimerRef.current = null;
+    onHarmonyLiveLayerChange?.({ ...layer, latched: false });
   }, [onHarmonyLiveLayerChange]);
   useEffect(() => {
     if (workspaceView !== 'detail') {
@@ -2596,6 +2641,112 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
     playPreviewNotes(manualPreviewNotes);
   }, [isRunning, manualPreviewNotes, manualRoute, playPreviewNotes, releaseHarmonyLayer, resolvedFrame, startHarmonyLayer]);
 
+  const suggestionController = useHarmonySuggestions({
+    rootMidi: harmonyContext.rootMidi,
+    scaleId: harmonyContext.scaleId,
+    tension: harmonyContext.tension,
+    currentDraft: {
+      intent: detailDraft.intent ?? manual.activeIntent ?? manual.auditionIntent,
+      exactMidiNotes: detailDraft.exactMidiNotes,
+      recognizedLabel: detailDraft.recognizedLabel,
+    },
+    previousChord: resolvedFrame.currentNotePool,
+    nextChord: resolvedFrame.nextNotePool,
+    phrasePosition: progression.currentEventIndex === 0 ? 'opening' : 'middle',
+    recentChords: [resolvedFrame.currentNotePool],
+    nearbyNotes: [resolvedFrame.currentNotePool, resolvedFrame.nextNotePool],
+    enabled: Boolean(onStateChange),
+    onPreviewStart: (suggestion) => {
+      const notes = suggestion.exactMidiNotes.slice(0, 8);
+      startHeldHarmonyLayer({
+        kind: 'draft-live',
+        scope: workspaceView === 'overview' ? 'overview' : 'detail-draft',
+        target: 'harmony',
+        latched: false,
+        draft: { ...detailDraft, intent: suggestion.intent, exactMidiNotes: notes, recognizedLabel: suggestion.label, source: 'suggestion' },
+        frame: {
+          ...resolvedFrame,
+          activeSource: 'audition',
+          activeStepIndex: null,
+          activeSlotId: null,
+          currentNotePool: notes,
+          nextNotePool: notes,
+          rootMidi: notes[0] ?? resolvedFrame.rootMidi,
+          effectiveRootMidiAnchor: notes[0] ?? resolvedFrame.effectiveRootMidiAnchor,
+          nextSource: null,
+          nextStepIndex: null,
+        },
+      });
+      if (!isRunning) playPreviewNotes(notes);
+    },
+    onPreviewRelease: () => releaseHarmonyLayer(),
+  });
+
+  const suggestionBank = suggestionController.bank;
+  const pressSuggestion = suggestionController.press;
+  const releaseSuggestion = suggestionController.release;
+  const stopSuggestions = suggestionController.stop;
+  const suggestionKeyboardOwned = activePopup !== null || workspaceView === 'simple';
+  const suggestionAxis = useMemo(() => Array.from({ length: Math.max(1, suggestionController.axis.max - suggestionController.axis.min + 1) }, (_, index) => suggestionController.axis.min + index), [suggestionController.axis.max, suggestionController.axis.min]);
+  const selectSuggestion = useCallback((suggestion: import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion) => {
+    setSelectedSuggestion(suggestion);
+    setSuggestionActionError(null);
+    setCapturedDraft(harmonyDraftWithIntent({ ...detailDraft, exactMidiNotes: [...suggestion.exactMidiNotes], recognizedLabel: suggestion.label, source: 'suggestion' }, suggestion.intent));
+  }, [detailDraft, setCapturedDraft]);
+
+  const applySuggestionActionResult = useCallback((result: ReturnType<typeof saveHarmonySuggestion>) => {
+    if (!result.ok) { setSuggestionActionError(result.error ?? 'Suggestion action failed'); return; }
+    const keys = bankKeys(harmonyContext.bank);
+    const patch: Record<string, unknown> = {};
+    if (result.state.slots !== slots) {
+      patch[keys.slots] = result.state.slots;
+      if (shouldMirrorBaseBank(record, harmonyContext.bank)) patch.harmonyChordSlots = result.state.slots;
+    }
+    if (result.state.progression && result.state.progression !== progression) patch[keys.progression] = result.state.progression;
+    if (result.state.sequence && result.state.sequence !== sequence) patch[keys.sequence] = result.state.sequence;
+    if (Object.keys(patch).length > 0) applyPatch(patch);
+    setSuggestionActionError(null);
+  }, [applyPatch, harmonyContext.bank, progression, record, sequence, slots]);
+
+  const saveSelectedSuggestion = useCallback((suggestion = selectedSuggestion) => {
+    if (!suggestion || writeLocked) return;
+    setSelectedSuggestion(suggestion);
+    applySuggestionActionResult(saveHarmonySuggestion({ slots, progression, sequence }, suggestion, { rootMidi: harmonyContext.rootMidi, rootMidiAnchor: harmonyContext.rootMidi, scaleId: harmonyContext.scaleId }));
+  }, [applySuggestionActionResult, harmonyContext.rootMidi, harmonyContext.scaleId, progression, selectedSuggestion, sequence, slots, writeLocked]);
+  const replaceSelectedSuggestion = useCallback(() => {
+    if (!selectedSuggestion || writeLocked) return;
+    applySuggestionActionResult(replaceHarmonySuggestion({ slots, progression, sequence }, selectedSuggestion, selectedStepId, { rootMidi: harmonyContext.rootMidi, rootMidiAnchor: harmonyContext.rootMidi, scaleId: harmonyContext.scaleId }));
+  }, [applySuggestionActionResult, harmonyContext.rootMidi, harmonyContext.scaleId, progression, selectedStepId, selectedSuggestion, sequence, slots, writeLocked]);
+  const insertSelectedSuggestion = useCallback(() => {
+    if (!selectedSuggestion || writeLocked) return;
+    applySuggestionActionResult(insertHarmonySuggestion({ slots, progression, sequence }, selectedSuggestion, selectedStepId, { rootMidi: harmonyContext.rootMidi, rootMidiAnchor: harmonyContext.rootMidi, scaleId: harmonyContext.scaleId }));
+  }, [applySuggestionActionResult, harmonyContext.rootMidi, harmonyContext.scaleId, progression, selectedStepId, selectedSuggestion, sequence, slots, writeLocked]);
+  useEffect(() => {
+    const held = new Set<string>();
+    if (!suggestionKeyboardOwned) return;
+    const releaseAll = () => { for (const key of held) releaseSuggestion(key as import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestionTriggerKey); held.clear(); stopSuggestions(); };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isTextInputTarget(event.target) || (event.target instanceof Element && event.target.closest('.harmony-suggestion-dock'))) return;
+      const key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
+      if (!(['Z', 'X', 'C', 'V', 'B', 'N', 'M', ','] as string[]).includes(key) || held.has(key)) return;
+      const suggestion = suggestionBank.find((entry) => entry?.triggerKey === key) ?? null;
+      if (!suggestion) return;
+      event.preventDefault();
+      held.add(key);
+      if (event.shiftKey) { setSelectedSuggestion(suggestion); applySuggestionActionResult(saveHarmonySuggestion({ slots, progression, sequence }, suggestion, { rootMidi: harmonyContext.rootMidi, rootMidiAnchor: harmonyContext.rootMidi, scaleId: harmonyContext.scaleId })); return; }
+      pressSuggestion(key as import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestionTriggerKey);
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      const key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
+      if (!held.delete(key)) return;
+      releaseSuggestion(key as import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestionTriggerKey);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', releaseAll);
+    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', releaseAll); releaseAll(); };
+  }, [applySuggestionActionResult, harmonyContext.rootMidi, harmonyContext.scaleId, pressSuggestion, progression, releaseSuggestion, sequence, slots, suggestionBank, suggestionKeyboardOwned, stopSuggestions]);
+
   const togglePopup = useCallback((popup: Exclude<HarmonyPopup, null>) => {
     setActivePopup((current) => current === popup ? null : popup);
   }, []);
@@ -2677,7 +2828,17 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
         onRootNoteChange={onStateChange ? (value) => applyPatch({ rootNote: value }) : undefined}
         onScaleModeChange={onStateChange ? (value) => applyPatch({ scaleMode: value }) : undefined}
         onManualScaleChange={onStateChange ? (value) => applyPatch({ manualScale: value }) : undefined}
+        suggestionBank={suggestionBank}
+        suggestionAxis={suggestionAxis}
+        onSuggestionSelect={selectSuggestion}
+        onSuggestionPress={(suggestion) => suggestionController.press(suggestion.triggerKey)}
+        onSuggestionRelease={(suggestion) => suggestionController.release(suggestion.triggerKey)}
+        selectedSuggestion={selectedSuggestion}
+        onSuggestionSave={saveSelectedSuggestion}
+        onSuggestionReplace={replaceSelectedSuggestion}
+        onSuggestionInsert={insertSelectedSuggestion}
       />
+      {suggestionActionError && <div className="harmony-suggestion-error" role="alert">{suggestionActionError}</div>}
 
       {workspaceView === 'overview' && harmonyContext.chordSequenceEnabled && (
         <CompactSequenceStrip
