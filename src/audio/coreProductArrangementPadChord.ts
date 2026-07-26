@@ -7,6 +7,7 @@ import {
   resolveCoreProductChordVoices,
   type CoreProductChordVoice,
 } from './coreProductChordVoices';
+import { isProductSourceMonophonic } from './productSourceCapabilities';
 import { coreProductChordSequencerClockSource, coreProductChordSequencerStepSeconds } from './coreProductChordSequencerClock';
 import { coreProductPadEnvelopeGateSecondsFromState, coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
 import { HARMONY_SLOT_COUNT } from './CoreProductHarmonyControl';
@@ -158,6 +159,8 @@ export function createCoreProductChordGeneratorSchedule(args: CoreProductPadChor
     chordMidi,
     octaveShift,
     triggerIntervalSeconds,
+    gate: 1,
+    timingMode: 'straight',
     rng,
     velocity: 1,
   });
@@ -284,6 +287,8 @@ export function createCoreProductChordSequencerSchedule(args: CoreProductPadChor
     chordMidi,
     octaveShift,
     triggerIntervalSeconds,
+    gate: config.playbackMode === 'strum' ? config.strum.gate : config.arp.gate,
+    timingMode: config.playbackMode === 'strum' ? 'strum' : 'straight',
     rng,
     velocity: chordVelocityScale,
   });
@@ -412,7 +417,10 @@ export function createCoreProductChordSequencerSchedule(args: CoreProductPadChor
       : config.strum.direction === 'downUp'
         ? (absoluteTickIndex % 2 === 0 ? 'down' : 'up')
         : config.strum.direction;
-    const ordered = orderedChordVoices(voices, direction, rng);
+    const mono = voices.length > 0 && voices.every((voice) => isProductSourceMonophonic(voice.sourceId));
+    const ordered = mono
+      ? [...voices].sort((left, right) => left.midi - right.midi || left.voiceIndex - right.voiceIndex)
+      : orderedChordVoices(voices, direction, rng);
     const spreadSeconds = config.strum.spreadMs / 1000;
     const denom = Math.max(1, ordered.length - 1);
     const holdTicks = Math.max(1, Math.min(config.stepCount, step.holdSteps ?? 1));

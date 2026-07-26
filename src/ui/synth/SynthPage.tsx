@@ -228,6 +228,8 @@ import {
   type SynthChordSequencerStrumDirection,
 } from '../../audio/synthChordSequencer';
 import { normalizeSynthEuclidSource } from '../../audio/coreProductSourceMapping';
+import { productSourceIdForManualSynthSource } from '../../audio/productSourceCapabilities';
+import { sequencerClockDivisionToSeconds } from '../../audio/sequencerClockDivisions';
 import {
   SAMPLE_DYNAMIC_KEYS,
   SAMPLE_DYNAMIC_MODES,
@@ -4697,7 +4699,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const activeChordResolvedSteps = useMemo(() => resolveProductChordPlayPatternDetails({
     config: activePlayConfig.chord,
     harmony: arpHarmonyContext,
-  }), [activePlayConfig.chord, arpHarmonyContext]);
+    sourceId: productSourceIdForManualSynthSource(manualSynthSourceForLaneSource(
+      state[SYNTH_LANE_SOURCE_KEYS[seq.activeTab] ?? SYNTH_LANE_SOURCE_KEYS[0]],
+      state.pad2VoiceAssign,
+    )),
+  }), [activePlayConfig.chord, arpHarmonyContext, seq.activeTab, state.pad2VoiceAssign, state.synthEuclid1Source, state.synthEuclid2Source, state.synthEuclid3Source, state.synthEuclid4Source]);
   const activeChordChoiceIndex = isRunning && activePlayConfig.enabled && activePlayConfig.mode === 'chord' && (seq.hitCounts[seq.activeTab] ?? 0) > 0
     ? resolveProductChordChoiceIndex(
       activePlayConfig.chord.flow,
@@ -5282,6 +5288,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         return resolveProductPlayEnginePattern({
           config: config ?? defaultProductPlayConfig(),
           harmony: arpHarmonyContext,
+          sourceId: productSourceIdForManualSynthSource(manualSynthSourceForLaneSource(
+            state[SYNTH_LANE_SOURCE_KEYS[laneIdx] ?? SYNTH_LANE_SOURCE_KEYS[0]],
+            state.pad2VoiceAssign,
+          )),
+          triggerIntervalMs: sequencerClockDivisionToSeconds(
+            seq.clockDivs[laneIdx],
+            60 / Math.max(1, Number(state.sequencerMasterBPM ?? state.synthEuclidBaseBPM ?? 120)),
+          ) * 1000,
           laneIndex: laneIdx,
           pitchBindingMode: pitchBindingModes[laneIdx] ?? 'polyrhythmic',
           triggerPattern: sequencerTriggerPatterns[laneIdx] ?? null,
@@ -5395,7 +5409,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     }
   // The live-tone tick only refreshes the visual preview. Reposting ARP state here
   // cancels native notes that are already scheduled inside the current hold window.
-  }, [stepOverridesSignature, pitchSettingsSignature, pitchSubLaneStatesSignature, sequencerTriggerPatternSignature, playConfigsSignature, arpHarmonyContext, harmonyState, pitchBindingModesSignature, onStepOverridesChange, onRawStepOverridesChange]);
+  }, [stepOverridesSignature, pitchSettingsSignature, pitchSubLaneStatesSignature, sequencerTriggerPatternSignature, playConfigsSignature, arpHarmonyContext, harmonyState, pitchBindingModesSignature, seq.clockDivs, state.sequencerMasterBPM, state.synthEuclidBaseBPM, onStepOverridesChange, onRawStepOverridesChange]);
 
   // Persist sub-lane states (enabled/steps/direction) across tab switches
   const subLaneStatesSignatureRef = useRef<string | null>(null);

@@ -1,4 +1,5 @@
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
+import { isProductSourceMonophonic } from './productSourceCapabilities';
 import {
   PAD_VOICE_COUNT,
   enabledChordMidiForMask,
@@ -28,6 +29,10 @@ export interface ResolveCoreProductChordVoicesArgs {
   chordMidi: readonly number[];
   octaveShift: number;
   triggerIntervalSeconds: number;
+  /** Fraction of the trigger interval available to a mono traversal. */
+  gate?: number;
+  /** Strum scheduling applies its own spread/curve after voice resolution. */
+  timingMode?: 'straight' | 'strum';
   rng: () => number;
   velocity?: number;
 }
@@ -39,8 +44,6 @@ export function resolveCoreProductChordVoices(args: ResolveCoreProductChordVoice
   const velocity = clamp(args.velocity ?? 1, 0.001, 1);
   const chordMidi = args.chordMidi.length > 0 ? args.chordMidi : [48 + boundedInteger(state, 'rootNote', 4, 0, 11)];
   const octaveShift = Math.round(args.octaveShift);
-  const waveSpreadSeconds = boundedNumber(state, 'waveSpread', 0.125, 0, 1) * triggerIntervalSeconds;
-  const voiceOffsets = Array.from({ length: PAD_VOICE_COUNT }, () => rng() * waveSpreadSeconds).sort((a, b) => a - b);
   const voices: CoreProductChordVoice[] = [];
   const nonPadSourceId = source === 'lead1' || source === 'lead'
     ? CORE_PRODUCT_SOURCE_IDS.lead1
@@ -54,17 +57,32 @@ export function resolveCoreProductChordVoices(args: ResolveCoreProductChordVoice
 
   if (nonPadSourceId !== 0) {
     if (!manualNoteSourceEnabled(state, nonPadSourceId)) return [];
-    for (let index = 0; index < voiceCount; index += 1) {
+    const mono = isProductSourceMonophonic(nonPadSourceId);
+    const orderedMidi = mono ? [...chordMidi].sort((left, right) => left - right) : chordMidi;
+    const monoCount = Math.min(voiceCount, orderedMidi.length);
+    const gate = clamp(args.gate ?? 1, 0.05, 1);
+    const waveSpreadSeconds = !mono
+      ? boundedNumber(state, 'waveSpread', 0.125, 0, 1) * triggerIntervalSeconds
+      : 0;
+    const voiceOffsets = !mono
+      ? Array.from({ length: PAD_VOICE_COUNT }, () => rng() * waveSpreadSeconds).sort((a, b) => a - b)
+      : [];
+    for (let index = 0; index < (mono ? monoCount : voiceCount); index += 1) {
       voices.push({
         sourceId: nonPadSourceId,
-        midi: clamp(chordMidi[index % chordMidi.length]! + octaveShift, 0, 127),
+        midi: clamp(orderedMidi[index % orderedMidi.length]! + octaveShift, 0, 127),
         voiceIndex: index,
-        baseDelaySeconds: voiceOffsets[index] ?? 0,
+        baseDelaySeconds: mono && args.timingMode !== 'strum'
+          ? triggerIntervalSeconds * gate * (monoCount <= 1 ? 0 : index / (monoCount - 1))
+          : voiceOffsets[index] ?? 0,
         velocity,
       });
     }
     return voices;
   }
+
+  const waveSpreadSeconds = boundedNumber(state, 'waveSpread', 0.125, 0, 1) * triggerIntervalSeconds;
+  const voiceOffsets = Array.from({ length: PAD_VOICE_COUNT }, () => rng() * waveSpreadSeconds).sort((a, b) => a - b);
 
   const maskLimit = (1 << PAD_VOICE_COUNT) - 1;
   const euclidOwnedMask = padEuclidOwnedVoiceMask(state);

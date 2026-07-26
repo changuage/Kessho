@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { resolve } from 'node:path';
-import { defaultHarmonyChordSlot, emptyHarmonyChordSlot } from './CoreProductHarmonyControl';
+import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
+import { defaultHarmonyChordSlot, emptyHarmonyChordSlot, type HarmonyIntent } from './CoreProductHarmonyControl';
+import { editSharedChordIntent } from './harmony/harmonyChordAdapters';
 import {
   normalizeProductPlayConfig,
   resolveProductChordChoiceIndex,
   resolveProductPlayEnginePattern,
+  resolveProductChordPlayEvents,
+  resolveProductChordPlayPatternDetails,
 } from './productPlaySequencer';
 
 function harmonyWithSlots(emptySlotId?: number) {
@@ -31,6 +35,27 @@ function chordConfig(overrides: Record<string, unknown> = {}) {
       ...overrides,
     },
   });
+}
+
+function seventhHarmony(notes = [60, 64, 67, 70]) {
+  const harmony = harmonyWithSlots();
+  const intent: HarmonyIntent = {
+    ...harmony.chordSlots[0]!.intent,
+    quality: 'dom7',
+    rootMode: 'absolute',
+    rootNote: 0,
+    extensions: [],
+    inversion: 0,
+    bassMode: 'off',
+    bassNote: null,
+  };
+  const slot = harmony.chordSlots[0]!;
+  slot.intent = intent;
+  slot.chord = {
+    ...editSharedChordIntent(slot.chord!, intent),
+    exactMidiNotes: [...notes],
+  };
+  return harmony;
 }
 
 test('chord choices follow audible hit ordinal and preserve 5-hit/3-choice polymeter', () => {
@@ -83,4 +108,40 @@ test('reference runtime gates probability once and ratchets the complete strumme
   assert.match(source, /if \(trigCondPassed && rng\(\) <= lane\.probability \* stepProb\) \{[\s\S]{0,18000}const triggerNotes =/);
   assert.match(source, /for \(let r = 0; r < ratchet; r\+\+\) \{[\s\S]{0,1200}for \(const note of triggerNotes\)/);
   assert.match(source, /const rDelayMs = ratchetDelayMs \+ note\.offsetMs/);
+});
+
+test('voice reduction keeps root, third, and seventh of a seventh chord', () => {
+  const config = normalizeProductPlayConfig({ enabled: true, mode: 'chord', chord: { choiceLength: 1, voiceCount: 3, steps: [{ slotId: 0 }] } });
+  const detail = resolveProductChordPlayPatternDetails({ config: config.chord, harmony: seventhHarmony() })[0];
+  assert.deepEqual(detail?.notes, [60, 64, 70]);
+});
+
+test('mono destinations traverse an ascending chord within the straight gate window', () => {
+  const config = normalizeProductPlayConfig({ enabled: true, mode: 'chord', chord: { choiceLength: 1, voiceCount: 4, style: 'straight', gate: 0.5, steps: [{ slotId: 0 }] } });
+  const events = resolveProductChordPlayEvents({ config: config.chord, harmony: seventhHarmony([64, 67, 70, 72]), sourceId: CORE_PRODUCT_SOURCE_IDS.lead1 });
+  assert.deepEqual(events.map((event) => event.midi), [64, 67, 70, 72]);
+  assert.deepEqual(events.map((event) => Math.round(event.offsetMs * 1000) / 1000), [0, 16.667, 33.333, 50]);
+});
+
+test('exact inversion remains the exact sorted note set and is not mutated', () => {
+  const harmony = seventhHarmony([64, 67, 70, 72]);
+  const before = [...harmony.chordSlots[0]!.chord!.exactMidiNotes];
+  const config = normalizeProductPlayConfig({ enabled: true, mode: 'chord', chord: { choiceLength: 1, voiceCount: 8, steps: [{ slotId: 0 }] } });
+  const detail = resolveProductChordPlayPatternDetails({ config: config.chord, harmony })[0];
+  assert.deepEqual(detail?.notes, [64, 67, 70, 72]);
+  assert.deepEqual(harmony.chordSlots[0]!.chord!.exactMidiNotes, before);
+});
+
+test('each mono trigger starts its traversal at the lowest note', () => {
+  const config = normalizeProductPlayConfig({ enabled: true, mode: 'chord', chord: { choiceLength: 2, voiceCount: 4, steps: [{ slotId: 0 }, { slotId: 0 }] } });
+  const events = resolveProductChordPlayEvents({ config: config.chord, harmony: seventhHarmony([64, 67, 70, 72]), sourceId: CORE_PRODUCT_SOURCE_IDS.lead1 });
+  assert.deepEqual(events.filter((event) => event.step === 0).map((event) => event.midi), [64, 67, 70, 72]);
+  assert.deepEqual(events.filter((event) => event.step === 1).map((event) => event.midi), [64, 67, 70, 72]);
+});
+
+test('mono strum ordering and timing are deterministic', () => {
+  const config = normalizeProductPlayConfig({ enabled: true, mode: 'chord', chord: { style: 'strum', choiceLength: 1, voiceCount: 4, strum: { spreadMs: 120, curve: -0.2 }, steps: [{ slotId: 0 }] } });
+  const options = { config: config.chord, harmony: seventhHarmony([64, 67, 70, 72]), sourceId: CORE_PRODUCT_SOURCE_IDS.lead1 };
+  assert.deepEqual(resolveProductChordPlayEvents(options), resolveProductChordPlayEvents(options));
+  assert.deepEqual(resolveProductChordPlayEvents(options).map((event) => event.midi), [64, 67, 70, 72]);
 });

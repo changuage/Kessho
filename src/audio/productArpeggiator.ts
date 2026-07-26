@@ -37,6 +37,8 @@ export interface ProductArpHarmonyContext {
   tension: number;
   notePoolMidi: number[];
   chordSlots: HarmonyChordSlot[];
+  /** Optional destination source for capability-aware chord rendering. */
+  sourceId?: number;
 }
 
 export interface ProductArpLiveHarmonyFrame {
