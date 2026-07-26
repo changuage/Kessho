@@ -134,11 +134,17 @@ export interface L4HarmonyStateExtension {
 
 export interface HarmonyDraftChord {
   intent: HarmonyIntent | null;
+  intentSource?: HarmonyIntentSource;
   exactMidiNotes: number[];
+  semanticCandidates?: Array<{ intent: HarmonyIntent; confidence: number }>;
+  quality?: HarmonyChordQuality | null;
+  extensions?: HarmonyChordExtension[];
   playbackBehavior: HarmonyPlaybackBehavior;
   capturedContext: HarmonyCapturedContext;
   recognizedLabel: string;
   editFocus: 'semantic' | 'exact' | null;
+  source?: 'qwerty' | 'midi' | 'onscreen' | 'manualVoicing' | 'matrix' | 'suggestion' | 'slot';
+  dirty?: boolean;
 }
 
 export type HarmonySemanticRoot = Pick<HarmonyIntent, 'rootMode' | 'degree' | 'rootNote'> & {

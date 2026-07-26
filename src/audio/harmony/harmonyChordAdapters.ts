@@ -182,18 +182,21 @@ export function editSharedChordIntent(chord: SharedHarmonyChord, intent: Harmony
 export function sharedChordToDraft(chord: SharedHarmonyChord | null): HarmonyDraftChord {
   return {
     intent: chord?.intent ?? null,
+    intentSource: chord?.intentSource ?? null,
     exactMidiNotes: chord ? [...chord.exactMidiNotes] : [],
     playbackBehavior: chord?.playbackBehavior ?? 'auto',
     capturedContext: chord?.capturedContext ?? { rootMidi: 60, rootMidiAnchor: 60, scaleId: 1 },
     recognizedLabel: chord?.recognizedLabel ?? 'custom',
     editFocus: null,
+    source: 'slot',
+    dirty: false,
   };
 }
 
 export function sharedChordFromDraft(draft: HarmonyDraftChord): SharedHarmonyChord {
   return {
     intent: draft.intent,
-    intentSource: draft.intent ? 'confirmed' : null,
+    intentSource: draft.intentSource ?? (draft.intent ? 'confirmed' : null),
     exactMidiNotes: midiPool(draft.exactMidiNotes),
     recognizedLabel: draft.recognizedLabel,
     playbackBehavior: draft.playbackBehavior,

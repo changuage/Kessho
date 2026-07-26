@@ -74,19 +74,11 @@ import {
 } from '../../audio/drumSeqTypes';
 import type { ClockDivision, PitchBindingMode, SequencerState } from '../../audio/drumSeqTypes';
 import {
-  HARMONY_POOL_MAX_NOTES,
-  formatHarmonyIntentChordLabel,
-  recognizeHarmonyIntentFromMidiPool,
-  resolvePresetMorphContext,
   sanitizeHarmonyChordSlots,
   type HarmonyChordSlot,
   type HarmonyIntent,
 } from '../../audio/CoreProductHarmonyControl';
-import {
-  editSharedChordExactNotes,
-  legacyHarmonySlotToSharedSlot,
-  sharedChordResolvedMidiPool,
-} from '../../audio/harmony/harmonyChordAdapters';
+import { editSharedChordExactNotes, sharedChordResolvedMidiPool } from '../../audio/harmony/harmonyChordAdapters';
 import {
   normalizeSequencerPitchBindingMode,
   normalizeSequencerPitchBindingModes,
@@ -197,6 +189,10 @@ import {
   type ProductArpHarmonyContext,
 } from '../../audio/productArpeggiator';
 import { resolveHarmonyProjection, type HarmonyProjection } from '../../audio/harmony/harmonyProjection';
+import SeqChordInteractionBay from './chord/SeqChordInteractionBay';
+import SeqChordChoiceLane from './chord/SeqChordChoiceLane';
+import { countSharedSlotUses, draftFromSlot, emptyHarmonyDraft, captureDraftToSlot, resolveDraftNotes, resolveLiveReanchoredNotes, updateDraftExactNotes } from '../harmony/shared/harmonyDraftHelpers';
+import type { HarmonyDraftChord } from '../../audio/harmony/harmonyTypes';
 import {
   defaultProductPlayConfig,
   normalizeProductPlayConfig,
@@ -206,10 +202,7 @@ import {
   resolveProductChordPlayPatternDetails,
   resolveProductChordChoiceIndex,
   resolveProductPlayEnginePattern,
-  type ProductChordFlow,
   type ProductChordPlayConfig,
-  type ProductChordResolvedStep,
-  type ProductChordStyle,
   type ProductPlayConfig,
   type ProductPlayMode,
 } from '../../audio/productPlaySequencer';
@@ -1145,16 +1138,6 @@ const PLAY_MODE_OPTIONS: Array<{ value: ProductPlayMode; label: string }> = [
   { value: 'arp', label: 'ARP' },
   { value: 'chord', label: 'Chord' },
 ];
-const CHORD_STYLE_OPTIONS: Array<{ value: ProductChordStyle; label: string }> = [
-  { value: 'straight', label: 'Straight' },
-  { value: 'strum', label: 'Strum' },
-];
-const CHORD_FLOW_OPTIONS: Array<{ value: ProductChordFlow; label: string }> = [
-  { value: 'forward', label: 'Forward' },
-  { value: 'reverse', label: 'Reverse' },
-  { value: 'pingpong', label: 'Pingpong' },
-];
-type HarmonyBank = 'A' | 'B';
 const ARP_ROMAN_DEGREES = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'] as const;
 const ARP_QUALITY_LABELS = {
   auto: 'Auto',
@@ -1301,46 +1284,6 @@ function arpContourTopPercent(value: number): number {
 
 function formatArpResolvedNote(midi: number | null | undefined): string {
   return typeof midi === 'number' && Number.isFinite(midi) && midi >= 0 ? formatMidiNoteName(midi) : '--';
-}
-
-function chordPitchViewport(details: readonly ProductChordResolvedStep[]): number[] {
-  const notes = details.flatMap((detail) => detail.notes);
-  if (notes.length === 0) return Array.from({ length: 13 }, (_, index) => 60 + index);
-  const low = Math.max(0, Math.min(...notes) - 6);
-  const high = Math.min(127, Math.max(...notes) + 6);
-  return Array.from({ length: high - low + 1 }, (_, index) => low + index);
-}
-
-function strumOrderIndex(detail: ProductChordResolvedStep, midi: number): number {
-  const index = detail.strumOrder.indexOf(midi);
-  return index >= 0 ? index + 1 : 0;
-}
-
-function normalizeChordMidiPool(notes: readonly number[]): number[] {
-  return Array.from(new Set(notes
-    .map((note) => Math.max(0, Math.min(127, Math.round(note))))
-    .filter((note) => Number.isFinite(note))))
-    .sort((left, right) => left - right);
-}
-
-function synthHarmonyMorphPercent(state: SliderState): number {
-  const record = state as unknown as Record<string, unknown>;
-  const explicit = record.harmonyMorphPercent;
-  if (typeof explicit === 'number' && Number.isFinite(explicit)) return Math.max(0, Math.min(100, explicit));
-  const journeyPhase = record.journeyMorphPhase;
-  if (typeof journeyPhase === 'number' && Number.isFinite(journeyPhase)) return Math.max(0, Math.min(100, journeyPhase * 100));
-  return 0;
-}
-
-function harmonyBankKeys(bank: HarmonyBank): { slots: keyof SliderState } {
-  return bank === 'B'
-    ? { slots: 'harmonyChordSlotsB' }
-    : { slots: 'harmonyChordSlotsA' };
-}
-
-function shouldMirrorHarmonyBaseBank(record: Record<string, unknown>, bank: HarmonyBank): boolean {
-  if (bank !== 'A') return false;
-  return record.harmonyChordSlotsA === undefined && record.harmonyChordSlotsB === undefined;
 }
 
 interface ArpContourEditorProps {
@@ -1734,401 +1677,6 @@ const ArpContourEditor: React.FC<ArpContourEditorProps> = ({
     </div>
   );
 }
-
-interface ChordPlayEditorProps {
-  config: ProductChordPlayConfig;
-  color: string;
-  harmony: ReturnType<typeof createProductArpHarmonyContext>;
-  resolvedSteps: ProductChordResolvedStep[];
-  selectedStep: number;
-  activeChoiceIndex?: number | null;
-  onSelectStep: (step: number) => void;
-  onUpdateConfig: (patch: Partial<ProductChordPlayConfig>) => void;
-  onCommitSlotMidiPool?: (slotId: number, midiNotes: readonly number[]) => void;
-}
-
-const ChordPlayEditor: React.FC<ChordPlayEditorProps> = ({
-  config,
-  color,
-  harmony,
-  resolvedSteps,
-  selectedStep,
-  activeChoiceIndex = null,
-  onSelectStep,
-  onUpdateConfig,
-  onCommitSlotMidiPool,
-}) => {
-  const length = clampArpLengthValue(config.choiceLength);
-  const selected = Math.max(0, Math.min(ARP_VISIBLE_STEPS - 1, Math.round(selectedStep)));
-  const selectedDetail = resolvedSteps.find((step) => step.sourceStep === selected) ?? resolvedSteps[selected];
-  const activeDetail = activeChoiceIndex == null
-    ? undefined
-    : resolvedSteps.find((step) => step.choiceIndex === activeChoiceIndex);
-  const pitches = chordPitchViewport(resolvedSteps);
-  const [selectedNote, setSelectedNote] = useState<{ slotId: number; midi: number } | null>(null);
-  const slotNotePools = useMemo(() => harmony.chordSlots.map((slot) => slot.chord ? sharedChordResolvedMidiPool(slot.chord, {
-    rootMidi: harmony.rootMidi,
-    effectiveRootMidi: harmony.rootMidi,
-    scaleId: harmony.scaleId,
-    tension: harmony.tension,
-  }) : []), [harmony.chordSlots, harmony.rootMidi, harmony.scaleId, harmony.tension]);
-  const selectedSlotId = config.steps[selected]?.slotId ?? 0;
-  const selectedSlot = harmony.chordSlots[selectedSlotId];
-  const selectedSlotLocked = selectedSlot?.locked === true;
-  const selectedSlotUses = config.steps.reduce((count, step, index) => (
-    index < length && step.slotId === selectedSlotId ? count + 1 : count
-  ), 0);
-  const canEditChordNotes = Boolean(onCommitSlotMidiPool);
-  const updateStep = useCallback((step: number, patch: Partial<ProductChordPlayConfig['steps'][number]>) => {
-    const steps = [...config.steps];
-    steps[step] = { slotId: step % 8, ...(steps[step] ?? {}), ...patch };
-    onUpdateConfig({ steps });
-  }, [config.steps, onUpdateConfig]);
-  const commitSlotNotes = useCallback((slotId: number, nextNotes: readonly number[]) => {
-    const slot = harmony.chordSlots[slotId];
-    if (!slot || slot.locked || !onCommitSlotMidiPool) return;
-    const normalized = normalizeChordMidiPool(nextNotes).slice(0, HARMONY_POOL_MAX_NOTES);
-    if (normalized.length === 0) return;
-    onCommitSlotMidiPool(slotId, normalized);
-  }, [harmony.chordSlots, onCommitSlotMidiPool]);
-  const togglePitchForStep = useCallback((step: number, midi: number, hasNote: boolean) => {
-    const chordStep = config.steps[step] ?? { slotId: step % 8 };
-    const slot = harmony.chordSlots[chordStep.slotId];
-    if (!slot || slot.locked || !onCommitSlotMidiPool) {
-      onSelectStep(step);
-      return;
-    }
-    const currentNotes = slotNotePools[chordStep.slotId] ?? [];
-    if (hasNote) {
-      setSelectedNote({ slotId: chordStep.slotId, midi });
-      return;
-    }
-    if (currentNotes.length >= HARMONY_POOL_MAX_NOTES) return;
-    commitSlotNotes(chordStep.slotId, [...currentNotes, midi]);
-    setSelectedNote({ slotId: chordStep.slotId, midi });
-    onSelectStep(step);
-  }, [commitSlotNotes, config.steps, harmony.chordSlots, onCommitSlotMidiPool, onSelectStep, slotNotePools]);
-  const deleteSelectedNote = useCallback(() => {
-    if (!selectedNote) return;
-    const slot = harmony.chordSlots[selectedNote.slotId];
-    if (!slot || slot.locked) return;
-    const currentNotes = slotNotePools[selectedNote.slotId] ?? [];
-    const nextNotes = currentNotes.filter((midi) => midi !== selectedNote.midi);
-    if (nextNotes.length === currentNotes.length || nextNotes.length === 0) return;
-    commitSlotNotes(selectedNote.slotId, nextNotes);
-    setSelectedNote(null);
-  }, [commitSlotNotes, harmony.chordSlots, selectedNote, slotNotePools]);
-  const moveSelectedNoteOctave = useCallback((octaves: number) => {
-    if (!selectedNote) return;
-    const slot = harmony.chordSlots[selectedNote.slotId];
-    if (!slot || slot.locked) return;
-    const currentNotes = slotNotePools[selectedNote.slotId] ?? [];
-    const nextMidi = selectedNote.midi + octaves * 12;
-    if (nextMidi < 0 || nextMidi > 127) return;
-    const nextNotes = currentNotes.map((midi) => midi === selectedNote.midi ? nextMidi : midi);
-    commitSlotNotes(selectedNote.slotId, nextNotes);
-    setSelectedNote({ slotId: selectedNote.slotId, midi: nextMidi });
-  }, [commitSlotNotes, harmony.chordSlots, selectedNote, slotNotePools]);
-  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'Backspace' && event.key !== 'Delete') return;
-    event.preventDefault();
-    deleteSelectedNote();
-  }, [deleteSelectedNote]);
-
-  return (
-    <div
-      className="seq-play-chord-editor"
-      style={{ '--seq-arp-color': color } as React.CSSProperties}
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
-    >
-      <div className="seq-play-chord-toolbar">
-        <div className="seq-arp-segment" aria-label="Chord style">
-          {CHORD_STYLE_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className={config.style === option.value ? 'active' : ''}
-              onClick={() => onUpdateConfig({ style: option.value })}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-        <label className="seq-arp-field seq-arp-length-field">
-          <span>Len</span>
-          <input
-            className="seq-arp-length-input"
-            type="number"
-            min={1}
-            max={16}
-            value={length}
-            onChange={(event) => {
-              const nextLength = Number.parseInt(event.target.value, 10);
-              if (Number.isFinite(nextLength)) onUpdateConfig({ choiceLength: nextLength });
-            }}
-          />
-        </label>
-        <label className="seq-arp-field">
-          <span>Flow</span>
-          <select
-            className="seq-arp-select"
-            value={config.flow}
-            onChange={(event) => {
-              onUpdateConfig({ flow: event.target.value as ProductChordFlow });
-              blurSelectAfterChange(event.currentTarget);
-            }}
-          >
-            {CHORD_FLOW_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        </label>
-        <label className="seq-arp-field seq-arp-length-field">
-          <span>Gate</span>
-          <input
-            className="seq-arp-length-input"
-            type="number"
-            min={5}
-            max={100}
-            value={Math.round(config.gate * 100)}
-            onChange={(event) => {
-              const nextGate = Number.parseInt(event.target.value, 10);
-              if (Number.isFinite(nextGate)) onUpdateConfig({ gate: Math.max(0.05, Math.min(1, nextGate / 100)) });
-            }}
-          />
-        </label>
-        <label className="seq-arp-field seq-arp-length-field">
-          <span>Voices</span>
-          <input
-            className="seq-arp-length-input"
-            type="number"
-            min={1}
-            max={8}
-            value={config.voiceCount}
-            onChange={(event) => {
-              const nextVoiceCount = Number.parseInt(event.target.value, 10);
-              if (Number.isFinite(nextVoiceCount)) onUpdateConfig({ voiceCount: nextVoiceCount });
-            }}
-          />
-        </label>
-      </div>
-
-      {config.style === 'strum' && (
-        <div className="seq-play-chord-toolbar compact">
-          <label className="seq-arp-field">
-            <span>Dir</span>
-            <select
-              className="seq-arp-select"
-              value={config.strum.direction}
-              onChange={(event) => {
-                onUpdateConfig({ strum: { ...config.strum, direction: event.target.value as ProductChordPlayConfig['strum']['direction'] } });
-                blurSelectAfterChange(event.currentTarget);
-              }}
-            >
-              {['up', 'down', 'upDown', 'downUp', 'random'].map((direction) => <option key={direction} value={direction}>{direction}</option>)}
-            </select>
-          </label>
-          <label className="seq-arp-field seq-arp-length-field">
-            <span>Spread</span>
-            <input
-              className="seq-arp-length-input"
-              type="number"
-              min={0}
-              max={400}
-              value={Math.round(config.strum.spreadMs)}
-              onChange={(event) => {
-                const spreadMs = Number.parseInt(event.target.value, 10);
-                if (Number.isFinite(spreadMs)) onUpdateConfig({ strum: { ...config.strum, spreadMs } });
-              }}
-            />
-          </label>
-          <label className="seq-arp-field seq-arp-length-field">
-            <span>Curve</span>
-            <input
-              className="seq-arp-length-input"
-              type="number"
-              min={-100}
-              max={100}
-              value={Math.round(config.strum.curve * 100)}
-              onChange={(event) => {
-                const curve = Number.parseInt(event.target.value, 10);
-                if (Number.isFinite(curve)) onUpdateConfig({ strum: { ...config.strum, curve: Math.max(-1, Math.min(1, curve / 100)) } });
-              }}
-            />
-          </label>
-          <label className="seq-arp-field seq-arp-length-field">
-            <span>Fall</span>
-            <input
-              className="seq-arp-length-input"
-              type="number"
-              min={0}
-              max={60}
-              value={Math.round(config.strum.velocityFalloff * 100)}
-              onChange={(event) => {
-                const velocityFalloff = Number.parseInt(event.target.value, 10);
-                if (Number.isFinite(velocityFalloff)) onUpdateConfig({ strum: { ...config.strum, velocityFalloff: Math.max(0, Math.min(0.6, velocityFalloff / 100)) } });
-              }}
-            />
-          </label>
-        </div>
-      )}
-
-      <div
-        className="seq-play-chord-grid"
-        style={{ gridTemplateColumns: `42px 66px minmax(76px, 0.45fr) repeat(${pitches.length}, minmax(10px, 1fr))` }}
-      >
-        <span className="seq-play-chord-head">Step</span>
-        <span className="seq-play-chord-head">Slot</span>
-        <span className="seq-play-chord-head">Chord</span>
-        {pitches.map((midi) => (
-          <span key={`h-${midi}`} className="seq-play-chord-pitch-label">{formatMidiNoteName(midi).replace(/\d+$/, '')}</span>
-        ))}
-        {Array.from({ length: ARP_VISIBLE_STEPS }, (_, step) => {
-          const inRange = step < length;
-          const chordStep = config.steps[step] ?? { slotId: step % 8 };
-          const detail = resolvedSteps.find((entry) => entry.sourceStep === step);
-          const slot = harmony.chordSlots[chordStep.slotId];
-          const fallbackNotes = (slotNotePools[chordStep.slotId] ?? []).slice(0, config.voiceCount);
-          const displayNotes = detail?.notes.length ? detail.notes : fallbackNotes;
-          const displayLabel = detail?.label ?? (slot
-            ? (slot.chord?.recognizedLabel ?? 'Empty')
-            : `S${chordStep.slotId + 1}`);
-          const locked = detail?.locked ?? slot?.locked === true;
-          const active = inRange;
-          const sameSlot = chordStep.slotId === selectedSlotId;
-          const playing = activeChoiceIndex === detail?.choiceIndex;
-          return (
-            <React.Fragment key={step}>
-              <button
-                type="button"
-                className={`seq-play-chord-step${selected === step ? ' selected' : ''}${playing ? ' playing' : ''}${sameSlot ? ' same-slot' : ''}${inRange ? '' : ' out'}`}
-                onClick={() => onSelectStep(step)}
-              >
-                {String(step + 1).padStart(2, '0')}
-              </button>
-              <select
-                className={`seq-play-chord-slot${selected === step ? ' selected' : ''}${sameSlot ? ' same-slot' : ''}${inRange ? '' : ' out'}`}
-                value={chordStep.slotId}
-                onChange={(event) => {
-                  updateStep(step, { slotId: Number.parseInt(event.target.value, 10) });
-                  onSelectStep(step);
-                  blurSelectAfterChange(event.currentTarget);
-                }}
-              >
-                {Array.from({ length: 8 }, (_, slot) => <option key={slot} value={slot}>S{slot + 1}</option>)}
-              </select>
-              <button
-                type="button"
-                className={`seq-play-chord-label${active ? '' : ' muted'}${playing ? ' playing' : ''}${locked ? ' locked' : ''}${sameSlot ? ' same-slot' : ''}${inRange ? '' : ' out'}`}
-                onClick={() => {
-                  onSelectStep(step);
-                }}
-                title={locked ? 'Locked global harmony slot' : slot?.chord ? 'Chord choice' : 'Empty slot — silent'}
-              >
-                {displayLabel}
-              </button>
-              {pitches.map((midi) => {
-                const hasNote = inRange && displayNotes.includes(midi);
-                const order = hasNote && config.style === 'strum' && detail ? strumOrderIndex(detail, midi) : 0;
-                const selectedDot = selectedNote?.slotId === chordStep.slotId && selectedNote.midi === midi;
-                return (
-                  <button
-                    key={`${step}-${midi}`}
-                    type="button"
-                    className={`seq-play-chord-dot${hasNote ? ' on' : ''}${selectedDot ? ' selected' : ''}${sameSlot ? ' same-slot' : ''}${locked ? ' locked' : ''}${canEditChordNotes && !locked ? ' editable' : ''}${inRange ? '' : ' out'}`}
-                    onClick={() => togglePitchForStep(step, midi, Boolean(hasNote))}
-                    onDoubleClick={() => {
-                      if (!hasNote || locked) return;
-                      setSelectedNote({ slotId: chordStep.slotId, midi });
-                      const currentNotes = slotNotePools[chordStep.slotId] ?? [];
-                      const nextNotes = currentNotes.filter((note) => note !== midi);
-                      if (nextNotes.length > 0) commitSlotNotes(chordStep.slotId, nextNotes);
-                    }}
-                    title={locked
-                      ? `${formatMidiNoteName(midi)} locked`
-                      : hasNote
-                        ? `${formatMidiNoteName(midi)}${order ? ` strum ${order}` : ''}`
-                        : `Add ${formatMidiNoteName(midi)}`}
-                    aria-label={`Step ${step + 1} ${formatMidiNoteName(midi)}`}
-                  >
-                    {order ? <span>{order}</span> : null}
-                  </button>
-                );
-              })}
-            </React.Fragment>
-          );
-        })}
-      </div>
-
-      <div className="seq-arp-inspector">
-        <span className="seq-arp-inspector-item">
-          <strong>Step</strong>
-          {String(selected + 1).padStart(2, '0')}
-        </span>
-        <span className="seq-arp-inspector-item">
-          <strong>Choice</strong>
-          {selectedDetail ? String(selectedDetail.choiceIndex + 1).padStart(2, '0') : '--'}
-        </span>
-        <span className="seq-arp-inspector-item">
-          <strong>Active</strong>
-          {activeChoiceIndex == null || !activeDetail ? '--' : `S${activeDetail.slotId + 1} / Choice ${activeChoiceIndex + 1}`}
-        </span>
-        <span className="seq-arp-inspector-item">
-          <strong>Slot</strong>
-          S{selectedSlotId + 1}{selectedSlotLocked ? ' Locked' : ''}
-        </span>
-        <span className="seq-arp-inspector-item">
-          <strong>Chord</strong>
-          {selectedDetail?.label ?? (selectedSlot ? formatHarmonyIntentChordLabel(selectedSlot.intent, { rootMidi: harmony.rootMidi, scaleId: harmony.scaleId }) : `S${selectedSlotId + 1} Empty`)}
-        </span>
-        <span className="seq-arp-inspector-item">
-          <strong>Notes</strong>
-          {slotNotePools[selectedSlotId]?.length ?? 0}
-        </span>
-        <span className="seq-arp-inspector-item">
-          <strong>Used</strong>
-          {selectedSlotUses}x
-        </span>
-        <span className="seq-arp-inspector-item">
-          <strong>Range</strong>
-          {selected < length ? 'Live' : 'Stored'}
-        </span>
-        {!selectedSlot?.chord && (
-          <span className="seq-arp-inspector-item" role="status">
-            Empty slot — silent
-          </span>
-        )}
-        <span className="seq-arp-inspector-item">
-          <strong>Edit</strong>
-          {selectedNote ? formatMidiNoteName(selectedNote.midi) : selectedSlotLocked ? 'Locked' : canEditChordNotes ? 'Ready' : 'Preview'}
-        </span>
-        <button
-          type="button"
-          className="seq-arp-inspector-toggle"
-          onClick={() => moveSelectedNoteOctave(-1)}
-          disabled={!selectedNote || selectedSlotLocked}
-        >
-          -8va
-        </button>
-        <button
-          type="button"
-          className="seq-arp-inspector-toggle"
-          onClick={() => moveSelectedNoteOctave(1)}
-          disabled={!selectedNote || selectedSlotLocked}
-        >
-          +8va
-        </button>
-        <button
-          type="button"
-          className="seq-arp-inspector-toggle"
-          onClick={deleteSelectedNote}
-          disabled={!selectedNote || selectedSlotLocked}
-        >
-          Del
-        </button>
-      </div>
-    </div>
-  );
-};
 
 function getSynthKeyboardEditLane(openLane: string): SynthKeyboardEditLane {
   if (openLane === 'pitch' || openLane === 'expression' || openLane === 'morph' || openLane === 'distance' || openLane === 'nudge') return openLane;
@@ -5096,6 +4644,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [playConfigs, setPlayConfigs] = useState<ProductPlayConfig[]>(() => normalizeProductPlayConfigs(initialPlayConfigs, 4));
   const [arpUiPlayheads, setArpUiPlayheads] = useState<number[]>(() => [0, 0, 0, 0]);
   const [selectedArpSteps, setSelectedArpSteps] = useState<number[]>(() => [0, 0, 0, 0]);
+  const [seqDrafts, setSeqDrafts] = useState<HarmonyDraftChord[]>(() => [0, 1, 2, 3].map(() => emptyHarmonyDraft()));
+  const [seqDraftSlots, setSeqDraftSlots] = useState<Array<number | null>>(() => [null, null, null, null]);
+  const [seqLiveSlots, setSeqLiveSlots] = useState<Array<number | null>>(() => [null, null, null, null]);
+  const [seqLiveLatched, setSeqLiveLatched] = useState<boolean[]>(() => [false, false, false, false]);
+  const seqLiveHeldRef = useRef<Array<string[]>>([[], [], [], []]);
+  const seqDraftHeldRef = useRef<Array<string[]>>([[], [], [], []]);
   const arpHarmonyContext = useMemo<ProductArpHarmonyContext>(() => {
     if (props.harmonyProjection) {
       return {
@@ -5228,59 +4782,59 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       return normalizeProductPlayConfig({ ...config, chord: { ...config.chord, ...nextPatch } });
     }));
   }, []);
-  const commitChordPlaySlotMidiPool = useCallback((slotId: number, midiNotes: readonly number[]) => {
-    if (!onStateChange) return;
-    const nextMidiPool = normalizeChordMidiPool(midiNotes).slice(0, HARMONY_POOL_MAX_NOTES);
-    if (nextMidiPool.length === 0) return;
+  const updateSeqDraft = useCallback((laneIdx: number, draft: HarmonyDraftChord) => setSeqDrafts((current) => current.map((entry, index) => index === laneIdx ? draft : entry)), []);
+  const loadSeqDraftSlot = useCallback((laneIdx: number, slotId: number) => {
+    setSeqDraftSlots((current) => current.map((entry, index) => index === laneIdx ? slotId : entry));
+    updateSeqDraft(laneIdx, draftFromSlot(arpHarmonyContext.chordSlots[slotId]));
+  }, [arpHarmonyContext.chordSlots, updateSeqDraft]);
+  const captureSeqDraft = useCallback((laneIdx: number) => {
+    const slotId = seqDraftSlots[laneIdx];
+    const draft = seqDrafts[laneIdx] ?? emptyHarmonyDraft();
+    if (slotId == null || !onStateChange) return;
     onStateChange((previous) => {
       const record = previous as unknown as Record<string, unknown>;
-      const morphContext = resolvePresetMorphContext({
-        state: record,
-        morphPercent: synthHarmonyMorphPercent(previous),
-      });
-      if (!morphContext.manualControlAvailable) return previous;
-      const bank = morphContext.bank;
-      const slots = sanitizeHarmonyChordSlots(
-        bank === 'B'
-          ? record.harmonyChordSlotsB ?? record.harmonyChordSlots
-          : record.harmonyChordSlotsA ?? record.harmonyChordSlots,
-      );
-      const slot = slots[slotId];
-      if (!slot || slot.locked) return previous;
-      const recognizedIntent = recognizeHarmonyIntentFromMidiPool({
-        midiNotes: nextMidiPool,
-        previousIntent: slot.chord?.intent ? { ...slot.chord.intent, source: 'slot' } : null,
-        rootMidi: arpHarmonyContext.rootMidi,
-        scaleId: arpHarmonyContext.scaleId,
-        tension: arpHarmonyContext.tension,
-      });
-      const nextSlots = slots.map((entry) => entry.id === slotId
-        ? (() => {
-          const exactIntent = { ...recognizedIntent, source: 'slot' as const };
-          const baseChord = entry.chord ?? legacyHarmonySlotToSharedSlot({ id: slotId, exactMidiNotes: nextMidiPool }, {
-            rootMidi: arpHarmonyContext.rootMidi,
-            scaleId: arpHarmonyContext.scaleId,
-            tension: arpHarmonyContext.tension,
-          }).chord;
-          const chord = baseChord
-            ? editSharedChordExactNotes(baseChord, nextMidiPool, {
-              rootMidi: arpHarmonyContext.rootMidi,
-              scaleId: arpHarmonyContext.scaleId,
-              tension: arpHarmonyContext.tension,
-            })
-            : null;
-          return { ...entry, intent: chord?.intent ?? exactIntent, chord, name: entry.name || `Slot ${slotId + 1}` };
-        })()
-        : entry);
-      const keys = harmonyBankKeys(bank);
-      const patch: Record<string, unknown> = {
-        ...record,
-        [keys.slots]: nextSlots,
-      };
-      if (shouldMirrorHarmonyBaseBank(record, bank)) patch.harmonyChordSlots = nextSlots;
-      return patch as unknown as SliderState;
+      const slots = sanitizeHarmonyChordSlots(record.harmonyChordSlots ?? []);
+      const current = slots[slotId];
+      if (!current || current.locked) return previous;
+      const captured = captureDraftToSlot(current, draft, { rootMidi: arpHarmonyContext.rootMidi, scaleId: arpHarmonyContext.scaleId });
+      return { ...previous, harmonyChordSlots: slots.map((slot) => slot.id === slotId ? { ...slot, chord: captured.chord, intent: captured.chord?.intent ?? slot.intent } : slot) } as SliderState;
     });
-  }, [arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId, arpHarmonyContext.tension, onStateChange]);
+    setSeqDrafts((currentDrafts) => currentDrafts.map((entry, index) => index === laneIdx ? { ...entry, dirty: false } : entry));
+  }, [arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId, onStateChange, seqDraftSlots, seqDrafts]);
+  const playSeqLiveSlot = useCallback((laneIdx: number, slotId: number) => {
+    seqLiveHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
+    const slot = arpHarmonyContext.chordSlots[slotId];
+    const notes = slot?.chord ? sharedChordResolvedMidiPool(slot.chord, { rootMidi: arpHarmonyContext.rootMidi, effectiveRootMidi: arpHarmonyContext.rootMidi, scaleId: arpHarmonyContext.scaleId, tension: arpHarmonyContext.tension }) : [];
+    seqLiveHeldRef.current[laneIdx] = notes.map((midi) => { const id = `seq-live-${laneIdx}-${midi}`; liveNoteInput.noteOn(id, { source: 'ui-pad', instrument: 'pad1', note: midi, velocity: 0.82 }); return id; });
+    setSeqLiveSlots((current) => current.map((entry, index) => index === laneIdx ? slotId : entry));
+  }, [arpHarmonyContext, liveNoteInput]);
+  const stopSeqLive = useCallback((laneIdx: number) => {
+    seqLiveHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
+    seqLiveHeldRef.current[laneIdx] = [];
+    setSeqLiveSlots((current) => current.map((entry, index) => index === laneIdx ? null : entry));
+    setSeqLiveLatched((current) => current.map((entry, index) => index === laneIdx ? false : entry));
+  }, [liveNoteInput]);
+  const playSeqLiveReanchored = useCallback((laneIdx: number, slotId: number, pressedRootMidi: number) => {
+    seqLiveHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
+    const slot = arpHarmonyContext.chordSlots[slotId];
+    const notes = slot?.chord ? resolveLiveReanchoredNotes(slot.chord, pressedRootMidi, arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId) : [];
+    seqLiveHeldRef.current[laneIdx] = notes.map((midi) => { const id = `seq-live-${laneIdx}-${midi}`; liveNoteInput.noteOn(id, { source: 'ui-pad', instrument: 'pad1', note: midi, velocity: 0.82 }); return id; });
+  }, [arpHarmonyContext, liveNoteInput]);
+  const playSeqDraft = useCallback((laneIdx: number) => {
+    seqDraftHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
+    const draft = seqDrafts[laneIdx] ?? emptyHarmonyDraft();
+    seqDraftHeldRef.current[laneIdx] = resolveDraftNotes(draft, arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId).map((midi) => { const id = `seq-draft-${laneIdx}-${midi}`; liveNoteInput.noteOn(id, { source: 'ui-pad', instrument: 'pad1', note: midi, velocity: 0.82 }); return id; });
+  }, [arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId, liveNoteInput, seqDrafts]);
+  const stopSeqChordGestures = useCallback((laneIdx: number) => {
+    seqLiveHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
+    seqDraftHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
+    seqLiveHeldRef.current[laneIdx] = [];
+    seqDraftHeldRef.current[laneIdx] = [];
+    stopSeqLive(laneIdx);
+  }, [liveNoteInput, stopSeqLive]);
+  useEffect(() => () => {
+    [0, 1, 2, 3].forEach((laneIdx) => stopSeqChordGestures(laneIdx));
+  }, [stopSeqChordGestures, seq.activeTab]);
   const selectArpStep = useCallback((laneIdx: number, step: number) => {
     setSelectedArpSteps((current) => {
       const next = [...current];
@@ -10566,17 +10120,53 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                 onMutate={() => mutateArpContour(seq.activeTab)}
                               />
                             ) : (
-                              <ChordPlayEditor
-                                config={playConfig.chord}
-                                color={laneColor}
-                                harmony={arpHarmonyContext}
-                                resolvedSteps={activeChordResolvedSteps}
-                                selectedStep={selectedArpStep}
-                                activeChoiceIndex={activeChordChoiceIndex}
-                                onSelectStep={(step) => selectArpStep(seq.activeTab, step)}
-                                onUpdateConfig={(patch) => updateChordPlayConfig(seq.activeTab, patch)}
-                                onCommitSlotMidiPool={commitChordPlaySlotMidiPool}
+                              <>
+                              <SeqChordChoiceLane config={playConfig.chord} harmony={arpHarmonyContext} resolvedSteps={activeChordResolvedSteps} selectedStep={selectedArpStep} activeChoiceIndex={activeChordChoiceIndex} onSelectStep={(step) => selectArpStep(seq.activeTab, step)} onLoadSlot={(slotId) => loadSeqDraftSlot(seq.activeTab, slotId)} onUpdateConfig={(patch) => updateChordPlayConfig(seq.activeTab, patch)} />
+                              <SeqChordInteractionBay
+                                seqId={seq.activeTab}
+                                draft={seqDrafts[seq.activeTab] ?? emptyHarmonyDraft()}
+                                slots={arpHarmonyContext.chordSlots}
+                                activeSlotId={seqLiveSlots[seq.activeTab]}
+                                draftSlotId={seqDraftSlots[seq.activeTab]}
+                                draftLocked={Boolean(seqDraftSlots[seq.activeTab] != null && arpHarmonyContext.chordSlots[seqDraftSlots[seq.activeTab] ?? 0]?.locked)}
+                                useCount={seqDraftSlots[seq.activeTab] == null ? 0 : countSharedSlotUses(seqDraftSlots[seq.activeTab]!, playConfigs, props.harmonyProjection?.progression ?? [])}
+                                liveLatched={seqLiveLatched[seq.activeTab]}
+                                draftActive={seqLiveSlots[seq.activeTab] == null}
+                                liveActive={seqLiveSlots[seq.activeTab] != null}
+                                onDraftChange={(draft) => updateSeqDraft(seq.activeTab, draft)}
+                                onDraftCapture={() => captureSeqDraft(seq.activeTab)}
+                                onDraftClear={() => updateSeqDraft(seq.activeTab, emptyHarmonyDraft())}
+                                onDraftPlay={() => playSeqDraft(seq.activeTab)}
+                                onSharedMatrixChange={(notes) => {
+                                  const slotId = seqDraftSlots[seq.activeTab];
+                                  if (slotId == null || !onStateChange) return;
+                                  onStateChange((previous) => {
+                                    const record = previous as unknown as Record<string, unknown>;
+                                    const slots = sanitizeHarmonyChordSlots(record.harmonyChordSlots ?? []);
+                                    const slot = slots[slotId];
+                                    if (!slot?.chord || slot.locked) return previous;
+                                    const nextChord = editSharedChordExactNotes(slot.chord, notes, { rootMidi: arpHarmonyContext.rootMidi, scaleId: arpHarmonyContext.scaleId });
+                                    return { ...previous, harmonyChordSlots: slots.map((entry) => entry.id === slotId ? { ...entry, chord: nextChord, intent: nextChord.intent ?? entry.intent } : entry) } as SliderState;
+                                  });
+                                }}
+                                onLiveSlot={(slotId) => playSeqLiveSlot(seq.activeTab, slotId)}
+                                onLiveHoldChange={(held) => { if (!held && !seqLiveLatched[seq.activeTab]) stopSeqChordGestures(seq.activeTab); }}
+                                onLiveLatch={() => setSeqLiveLatched((current) => current.map((entry, index) => index === seq.activeTab ? !entry : entry))}
+                                onLiveStop={() => stopSeqChordGestures(seq.activeTab)}
+                                onLiveRecord={() => { const slotId = seqLiveSlots[seq.activeTab]; if (slotId != null) updateChordPlayConfig(seq.activeTab, { steps: playConfig.chord.steps.map((step, index) => index === selectedArpStep ? { ...step, slotId } : step) }); }}
+                                onNoteDown={(midi) => {
+                                  if (seqLiveSlots[seq.activeTab] == null) {
+                                    const current = seqDrafts[seq.activeTab] ?? emptyHarmonyDraft();
+                                    updateSeqDraft(seq.activeTab, updateDraftExactNotes(current, [...current.exactMidiNotes, midi]));
+                                    return;
+                                  }
+                                  playSeqLiveReanchored(seq.activeTab, seqLiveSlots[seq.activeTab]!, midi);
+                                }}
+                                onNoteUp={() => { if (seqLiveSlots[seq.activeTab] != null && !seqLiveLatched[seq.activeTab]) stopSeqLive(seq.activeTab); }}
+                                suggestions={(seqDrafts[seq.activeTab]?.semanticCandidates ?? []).map((candidate, index) => ({ id: `seq-${index}`, label: candidate.intent.quality, notes: candidate.intent.capturedMidiNotes }))}
+                                onSuggestion={(suggestion) => updateSeqDraft(seq.activeTab, { ...(seqDrafts[seq.activeTab] ?? emptyHarmonyDraft()), exactMidiNotes: [...suggestion.notes], recognizedLabel: suggestion.label, source: 'suggestion' })}
                               />
+                              </>
                             )}
                           </div>
                         )}

@@ -19,6 +19,7 @@
     "test:preset-sequencer-components": "node scripts/run-preset-sequencer-component-regression.mjs",
     "test:synth-play-controls-ui": "node scripts/check-synth-play-controls-ui.mjs",
     "test:live-note-input": "node scripts/run-live-note-input-regression.mjs",
+    "test:harmony-seq-draft": "tsx --test src/ui/harmony/shared/harmonyDraftHelpers.test.ts",
     "test:generated-sequencer-capture": "node scripts/run-generated-sequencer-capture-regression.mjs",
     "test:drum-scatter-sequencer": "node scripts/run-drum-scatter-sequencer-regression.mjs",
     "test:drum-sequencer-transport-policy": "node scripts/run-drum-sequencer-transport-policy-regression.mjs",

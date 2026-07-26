@@ -35,6 +35,7 @@ import {
   legacyHarmonySlotToSharedSlot,
 } from '../../audio/harmony/harmonyChordAdapters';
 import './HarmonyEnginePanel.css';
+import LiveChordKeyboard from './live/LiveChordKeyboard';
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
 const ROMAN_DEGREES = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'] as const;
@@ -1032,6 +1033,7 @@ function ManualVoicingPopup({
         slots={slots}
       />
       <div className="harmony-manual-workspace">
+        <LiveChordKeyboard scope={{ kind: 'draft', owner: 'harmony-detail' }} notes={previewNotes} rootNote={manual.selectedRootNote} active={canWriteState} onNoteDown={(midi) => onRootChange(midi % 12)} onNoteUp={() => undefined} />
         <div className="harmony-root-panel">
           <div className="harmony-panel-topline">
             <span>Root / Degree</span>

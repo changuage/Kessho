@@ -269,30 +269,31 @@ async function verifyViewport(chromium, baseUrl, viewport) {
     const activeModes = await modeSegment.locator('button.active').evaluateAll((buttons) => buttons.map((button) => button.textContent?.trim()));
     assert(activeModes.includes('Chord'), 'Chord mode did not become active', { viewport, activeModes });
 
-    const stepCount = await page.locator('.seq-play-chord-step').count();
-    const labelCount = await page.locator('.seq-play-chord-label').count();
-    const mutedCount = await page.locator('.seq-play-chord-label.muted').count();
-    const outCount = await page.locator('.seq-play-chord-label.out').count();
-    const onDotCount = await page.locator('.seq-play-chord-dot.on').count();
-    const emptyWarningCount = await page.getByText('Empty slot — silent', { exact: true }).count();
-    const labels = await page.locator('.seq-play-chord-label').evaluateAll((buttons) => buttons.map((button) => button.textContent?.trim()));
-    const stepTexts = await page.locator('.seq-play-chord-step').evaluateAll((buttons) => buttons.map((button) => button.textContent?.trim()));
-
-    assert(stepCount === 16 && labelCount === 16, 'Chord Play grid should always render 16 stored steps', { viewport, stepCount, labelCount, stepTexts });
-    assert(mutedCount === outCount, 'Only out-of-range stored rows may use the muted visual treatment; choices have no inactive state', { viewport, mutedCount, outCount, labels });
-    assert(outCount === 8, 'Default Chord Play length 8 should mark steps 9-16 out of active range', { viewport, outCount });
-    assert(onDotCount === 0, 'Empty Chord Play slots should remain silent', { viewport, onDotCount });
-    assert(emptyWarningCount > 0, 'Empty Chord Play slots should show the silent warning', { viewport, emptyWarningCount });
-    assert(!labels.some((label) => label === 'FREE'), 'Chord labels should not show FREE for captured/default Harmony slots', { viewport, labels });
-    assert(stepTexts.includes('16'), 'Chord Play grid is missing stored step 16', { viewport, stepTexts });
-
-    const firstChordLabel = page.locator('.seq-play-chord-label').first();
-    await firstChordLabel.click();
-    assert(
-      !(await firstChordLabel.getAttribute('class'))?.includes('muted'),
-      'Chord Play runtime proof needs an active audible step',
-      { viewport },
-    );
+    const choiceLane = page.locator('.seq-chord-choice-lane').first();
+    await choiceLane.waitFor({ state: 'visible', timeout: 10000 });
+    const choiceCount = await choiceLane.locator('.seq-chord-choice-cell').count();
+    const bayCount = await page.locator('.seq-chord-interaction-bay').count();
+    const keyboardCount = await page.locator('.harmony-live-keyboard').count();
+    const whiteKeyCount = await page.locator('.harmony-live-white-keys .harmony-live-key.white').count();
+    const blackKeyCount = await page.locator('.harmony-live-black-keys .harmony-live-key.black').count();
+    const keyboardBounds = await page.locator('.harmony-live-keyboard').first().boundingBox();
+    const oldGridCount = await page.locator('.seq-play-chord-grid').count();
+    assert(choiceCount > 0, 'Extracted Seq chord choice lane should render choices', { viewport, choiceCount });
+    assert(bayCount === 1 && keyboardCount === 1, 'Seq should expose one shared interaction bay and piano', { viewport, bayCount, keyboardCount });
+    assert(whiteKeyCount === 7 && blackKeyCount === 5, 'Shared piano should expose seven white and five black keys', { viewport, whiteKeyCount, blackKeyCount });
+    assert((keyboardBounds?.width ?? 0) > 100 && (keyboardBounds?.height ?? 0) > 50, 'Shared piano should have a visible layout bound', { viewport, keyboardBounds });
+    const draftText = await page.locator('.seq-draft-controls').first().textContent();
+    assert(draftText?.includes('DRAFT') && draftText?.includes('unsaved'), 'Fresh Seq draft should be explicitly unsaved', { viewport, draftText });
+    const seqTabs = page.getByRole('button', { name: /^Seq [1-4]$/ });
+    const seqTabCount = await seqTabs.count();
+    for (let index = 0; index < Math.min(4, seqTabCount); index += 1) {
+      await seqTabs.nth(index).click();
+      await page.waitForTimeout(80);
+      assert(await page.locator('.seq-chord-choice-lane').count() === 1, 'Each Seq tab should expose one choice lane', { viewport, index });
+      assert(await page.locator('.seq-chord-interaction-bay').count() === 1, 'Each Seq tab should expose one interaction bay', { viewport, index });
+      assert(await page.locator('.harmony-live-keyboard').count() === 1, 'Each Seq tab should expose one shared piano', { viewport, index });
+    }
+    assert(oldGridCount === 0, 'Legacy chord grid must not render after extraction', { viewport, oldGridCount });
 
     await page.locator('.seq-play-mode-header .seq-lane-enable-btn').first().click();
     await page.waitForTimeout(300);
@@ -425,11 +426,9 @@ async function verifyViewport(chromium, baseUrl, viewport) {
 
     return {
       viewport,
-      stepCount,
-      mutedCount,
-      outCount,
-      emptyWarningCount,
-      chordLabels: labels.slice(0, 8),
+      choiceCount,
+      bayCount,
+      keyboardCount,
     };
   } finally {
     await browser.close();
