@@ -2,7 +2,6 @@ import { getUtcBucket } from './rng';
 
 const HARMONY_SEED_STATE_KEYS = [
   'seedWindow',
-  'harmonyGenerationSeed',
 ] as const;
 
 function normalizeSeedValue(value: unknown): unknown {

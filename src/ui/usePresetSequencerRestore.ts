@@ -34,8 +34,6 @@ type SequencerRestorePreset = {
   drumSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   synthPlayConfigs?: ProductPlayConfig[];
-  /** @deprecated Legacy metadata key retained for decode compatibility. */
-  synthArpConfigs?: ProductPlayConfig[];
   drumPitchSettings?: PitchSettings[];
   synthPitchSettings?: PitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
@@ -427,7 +425,8 @@ export function usePresetSequencerRestore({
       drumPitchSettingsRef.current = drumPitchSettings;
       synthPitchSettingsRef.current = synthPitchSettings;
       const synthPlayConfigs = normalizeProductPlayConfigs(
-        preset.synthPlayConfigs ?? preset.synthArpConfigs,
+        preset.synthPlayConfigs
+          ?? ((preset as Record<string, unknown>).synthArpConfigs as ProductPlayConfig[] | undefined),
         SYNTH_EUCLIDEAN_LANE_COUNT,
       );
       synthPlayConfigsRef.current = synthPlayConfigs;

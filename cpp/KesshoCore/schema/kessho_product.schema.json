@@ -1,6 +1,6 @@
 {
   "name": "kessho-product",
-  "version": 24,
+  "version": 25,
   "groups": [
     "transport",
     "harmony",
@@ -2221,6 +2221,19 @@
     "sourceMorphModeCount": 3,
     "maxPhrasesPerCycle": 4096
   },
+  "harmonyAuthority": {
+    "sharedSlotCount": 8,
+    "progressionCapacity": 64,
+    "playLaneCount": 4,
+    "maxVoicingNotes": 8,
+    "liveGestureCapacity": 8,
+    "takeoverAnchorCount": 12,
+    "morphEndpointCount": 2,
+    "morphPlanSlotCapacity": 8,
+    "playbackBehaviors": ["auto", "relative", "exact"],
+    "gestureScopes": ["detail", "overview", "suggestion", "seqDraft", "seqLive"],
+    "takeoverTargets": ["global", "detail", "overview", "seq1", "seq2", "seq3", "seq4"]
+  },
   "limits": {
     "maxBlockSize": 4096,
     "maxControlEvents": 4096,
@@ -2230,6 +2243,10 @@
     "maxDrumLanes": 16,
     "maxVoices": 64,
     "maxAssets": 128,
-    "maxStemFrames": 4096
+    "maxStemFrames": 4096,
+    "maxHarmonySlots": 8,
+    "maxHarmonyProgressionEvents": 64,
+    "maxHarmonyLiveGestures": 8,
+    "maxHarmonyTakeoverAnchors": 12
   }
 }

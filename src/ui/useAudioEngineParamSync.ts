@@ -42,7 +42,6 @@ const SEQUENCER_CONTROL_KEY_PATTERNS: readonly RegExp[] = [
   /^synthEuclid[1-4]/,
   /^synthSequencerFaces$/,
   /^drumEuclid/,
-  /^chordProgression/,
 ];
 
 const SEQUENCER_TRANSPORT_TRIGGER_KEYS = new Set<string>([

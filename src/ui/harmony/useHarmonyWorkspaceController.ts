@@ -21,9 +21,9 @@ import {
 const VIEW_STORAGE_KEY = 'kessho.harmony.workspace.view';
 const HARMONY_KEYS = [
   'rootNote', 'scaleMode', 'manualScale', 'tension', 'cofDriftEnabled', 'cofDriftRate', 'cofDriftDirection', 'cofDriftRange', 'cofCurrentStep',
-  'harmonyChordSlots', 'harmonyChordSlotsA', 'harmonyChordSlotsB', 'harmonyChordSequence', 'harmonyChordSequenceA', 'harmonyChordSequenceB',
-  'harmonyProgression', 'harmonyProgressionA', 'harmonyProgressionB', 'harmonyChordSequenceEnabled', 'harmonyChordSequenceLength', 'harmonyChordSequenceStepIndex',
-  'manualHarmonyControl', 'harmonyGenerationSeed',
+  'harmonyChordSlots', 'harmonyChordSlotsA', 'harmonyChordSlotsB',
+  'harmonyProgression', 'harmonyProgressionA', 'harmonyProgressionB',
+  'manualHarmonyControl',
 ] as const;
 
 function notesFromUnknown(value: unknown): number[] {
@@ -50,10 +50,10 @@ function eventFromLiveLayer(
   scaleId: number,
 ): HarmonyEvidenceEvent | null {
   if (!layer) return null;
-  const draft = layer.draft && typeof layer.draft === 'object' ? layer.draft as Record<string, unknown> : null;
+  const draft = layer.draft ?? null;
   const frame = layer.frame;
   const notes = notesFromUnknown(draft?.exactMidiNotes ?? frame?.currentNotePool);
-  const intent = draft?.intent && typeof draft.intent === 'object' ? draft.intent as Record<string, unknown> : null;
+  const intent = draft?.intent ?? null;
   const intervals = HARMONY_SCALE_INTERVALS[Math.round(scaleId)] ?? DEFAULT_HARMONY_SCALE_INTERVALS;
   const rootPitchClass = intent?.rootMode === 'degree' && typeof intent.degree === 'number'
     ? (engineRootPitchClass + (intervals[((Math.round(intent.degree) % intervals.length) + intervals.length) % intervals.length] ?? 0)) % 12

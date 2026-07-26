@@ -1478,12 +1478,12 @@ function getCorePreviewHarmonyParams(sliderState: SliderState): Partial<HarmonyP
     cofDriftRate: sliderState.cofDriftRate ?? 2,
     cofDriftDirection: sliderState.cofDriftDirection ?? 'cw',
     cofDriftRange: sliderState.cofDriftRange ?? 3,
-    chordProgressionEnabled: sliderState.chordProgressionEnabled ?? false,
-    chordProgressionPattern: sliderState.chordProgressionPattern ?? [0, 3, 4, 0],
-    chordProgressionSteps: sliderState.chordProgressionSteps ?? 4,
-    chordProgressionStepEnabled: sliderState.chordProgressionStepEnabled ?? [true, true, true, true],
-    chordProgressionPhraseMultiplier: sliderState.chordProgressionPhraseMultiplier ?? 1,
-    canonicalProgression: sanitizeHarmonyProgression(sliderState.harmonyProgression, sliderState.harmonyChordSequence, sliderState.harmonyChordSequenceEnabled),
+    chordProgressionEnabled: false,
+    chordProgressionPattern: [0, 3, 4, 0],
+    chordProgressionSteps: 4,
+    chordProgressionStepEnabled: [true, true, true, true],
+    chordProgressionPhraseMultiplier: 1,
+    canonicalProgression: sanitizeHarmonyProgression(sliderState.harmonyProgression),
     transportBarsPerPhrase: sliderState.transportBarsPerPhrase ?? 4,
   };
 }
@@ -1935,7 +1935,7 @@ function createLeadRandomPreview(
     boundedNumber(state.leadTensionValue, 0, -0.5, 0.5),
   );
   const chordBias = leadTension < 0 ? 0.9 : 0.9 - leadTension * 0.4;
-  const canonicalProgression = sanitizeHarmonyProgression(sliderState.harmonyProgression, sliderState.harmonyChordSequence, sliderState.harmonyChordSequenceEnabled);
+  const canonicalProgression = sanitizeHarmonyProgression(sliderState.harmonyProgression);
   const phraseCount = clamp(
     Math.max(
       4,
@@ -5497,11 +5497,11 @@ export class CoreEngineHost {
       : nextPhraseBoundaryIn;
 
     const progressionSource = resolveProgressionPhraseClockSource(
-      state.chordProgressionClockSource ?? 'harmony',
+      'harmony',
       clockSource,
     );
     const progressionPhraseSeconds = getPhraseDurationForClockSource(state, progressionSource);
-    const canonicalProgression = sanitizeHarmonyProgression(state.harmonyProgression, state.harmonyChordSequence, state.harmonyChordSequenceEnabled);
+    const canonicalProgression = sanitizeHarmonyProgression(state.harmonyProgression);
     const currentProgressionEvent = canonicalProgression.events[canonicalProgression.currentEventIndex] ?? canonicalProgression.events[0];
     const progressionStepSeconds = currentProgressionEvent
       ? currentProgressionEvent.duration.unit === 'bar'

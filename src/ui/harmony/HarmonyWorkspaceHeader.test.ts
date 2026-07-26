@@ -58,7 +58,7 @@ test('header exposes explicit Adopt state without implying automatic mutation', 
 test('workspace tonal bridge derives Playing from progression/locked slots and Preview from live layer', () => {
   const workspaceProjection = {
     ...projection,
-    progression: [{ id: 'slot-a', slotId: 1, source: 'slotFollow', durationBars: 1, startBar: 0, endBar: 1 }],
+    progression: [{ id: 'slot-a', slotId: 1, source: 'slot', durationBars: 1, startBar: 0, endBar: 1 }],
     slots: [{ id: 1, name: 'A', locked: true, chord: { exactMidiNotes: [64, 67, 60], intent: { rootMode: 'degree', degree: 0 }, intentSource: 'confirmed' } }],
     liveLayer: { kind: 'draft-live', draft: { exactMidiNotes: [57, 60, 64, 67], intent: { rootNote: 9 } } },
   } as unknown as HarmonyProjection;

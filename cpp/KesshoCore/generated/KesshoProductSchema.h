@@ -44,6 +44,91 @@ inline constexpr uint32_t KESSHO_PRODUCT_MAX_DRUM_LANES = 16u;
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_VOICES = 64u;
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_ASSETS = 128u;
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_STEM_FRAMES = 4096u;
+inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_SHARED_SLOT_COUNT = 8u;
+inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_PROGRESSION_CAPACITY = 64u;
+inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_PLAY_LANE_COUNT = 4u;
+inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_MAX_VOICING_NOTES = 8u;
+inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_CAPACITY = 8u;
+inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_TAKEOVER_ANCHOR_COUNT = 12u;
+
+enum KesshoProductHarmonyGestureScope : uint32_t {
+  KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_DETAIL = 0u,
+  KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_OVERVIEW = 1u,
+  KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_SUGGESTION = 2u,
+  KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_SEQDRAFT = 3u,
+  KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_SEQLIVE = 4u,
+};
+
+enum KesshoProductHarmonyTakeoverTarget : uint32_t {
+  KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_GLOBAL = 0u,
+  KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_DETAIL = 1u,
+  KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_OVERVIEW = 2u,
+  KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_SEQ1 = 3u,
+  KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_SEQ2 = 4u,
+  KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_SEQ3 = 5u,
+  KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_SEQ4 = 6u,
+};
+
+enum KesshoProductHarmonyPlaybackBehavior : uint32_t {
+  KESSHO_PRODUCT_HARMONY_PLAYBACK_AUTO = 0u,
+  KESSHO_PRODUCT_HARMONY_PLAYBACK_RELATIVE = 1u,
+  KESSHO_PRODUCT_HARMONY_PLAYBACK_EXACT = 2u,
+};
+
+struct KesshoProductHarmonySharedChord {
+  uint32_t present;
+  uint32_t playback_behavior;
+  uint32_t intent_present;
+  uint32_t intent_source;
+  uint32_t intent_strength;
+  uint32_t intent_quality;
+  uint32_t intent_root_mode;
+  int32_t intent_degree;
+  float intent_root_note;
+  int32_t intent_inversion;
+  float intent_spread;
+  int32_t intent_octave;
+  uint32_t intent_bass_mode;
+  float intent_bass_note;
+  uint32_t intent_extension_mask;
+  uint32_t intent_alteration_mask;
+  uint32_t exact_note_count;
+  float exact_midi_notes[KESSHO_PRODUCT_HARMONY_MAX_VOICING_NOTES];
+  float captured_root_midi;
+  uint32_t captured_scale_id;
+};
+
+struct KesshoProductHarmonyProgressionEvent {
+  uint32_t source_type;
+  uint32_t slot_id;
+  uint32_t duration_unit;
+  uint32_t duration_value;
+};
+
+struct KesshoProductHarmonyLiveChordGesture {
+  uint32_t revision;
+  uint32_t scope;
+  uint32_t target;
+  uint32_t phase;
+  uint32_t playback_behavior;
+  uint32_t intent_present;
+  uint32_t intent_quality;
+  uint32_t intent_root_mode;
+  int32_t intent_degree;
+  float intent_root_note;
+  int32_t intent_inversion;
+  float intent_spread;
+  int32_t intent_octave;
+  uint32_t intent_bass_mode;
+  float intent_bass_note;
+  uint32_t intent_extension_mask;
+  uint32_t intent_alteration_mask;
+  float captured_root_midi;
+  uint32_t captured_scale_id;
+  uint32_t exact_note_count;
+  float exact_midi_notes[KESSHO_PRODUCT_HARMONY_MAX_VOICING_NOTES];
+  uint64_t expires_at_frame;
+};
 
 inline constexpr const char* KESSHO_PRODUCT_GROUPS[] = {
   "transport",

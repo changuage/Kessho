@@ -3,6 +3,7 @@ import {
   SYNTH_EUCLIDEAN_LANE_COUNT,
 } from '../audio/sequencerLaneCounts';
 import type { PitchBindingMode } from '../audio/drumSeqTypes';
+import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type {
   SerializedEvolveConfig,
   SerializedPitchSettings,
@@ -299,7 +300,11 @@ function extractControlContent(
     laneIndex,
   );
   const playConfig = kind === 'synth'
-    ? laneArrayValue(metadata?.synthPlayConfigs ?? metadata?.synthArpConfigs, laneIndex)
+    ? laneArrayValue(
+        metadata?.synthPlayConfigs
+          ?? ((metadata as Record<string, unknown> | undefined)?.synthArpConfigs as ProductPlayConfig[] | undefined),
+        laneIndex,
+      )
     : undefined;
   return {
     clockDiv,
@@ -475,14 +480,15 @@ export function applySequencerContentComponents(options: {
         ) as never;
       }
       if (kind === 'synth' && content.playConfig) {
-        const existingPlayConfigs = metadata.synthPlayConfigs ?? metadata.synthArpConfigs;
+        const existingPlayConfigs = metadata.synthPlayConfigs
+          ?? ((metadata as Record<string, unknown>).synthArpConfigs as ProductPlayConfig[] | undefined);
         metadata.synthPlayConfigs = setLaneArrayValue(
           existingPlayConfigs,
           laneIndex,
           count,
           content.playConfig as never,
         ) as never;
-        delete metadata.synthArpConfigs;
+        delete (metadata as Record<string, unknown>).synthArpConfigs;
       }
       continue;
     }
@@ -576,7 +582,7 @@ export function stripPortableSequencerContentFromL4Override(
 const SEQUENCER_METADATA_FIELDS: readonly (keyof PresetVersionMetadata)[] = [
   'drumEvolveConfigs', 'synthEvolveConfigs', 'drumStepOverrides', 'synthStepOverrides',
   'drumClockDivs', 'synthClockDivs', 'drumSwings', 'synthSwings', 'drumLinked', 'synthLinked',
-  'drumSubLaneStates', 'synthSubLaneStates', 'synthPlayConfigs', 'synthArpConfigs', 'drumPitchSettings',
+  'drumSubLaneStates', 'synthSubLaneStates', 'synthPlayConfigs', 'drumPitchSettings',
   'synthPitchSettings', 'synthPitchBindingModes',
 ];
 
@@ -586,5 +592,8 @@ export function stripSequencerMetadataFromSoundContent(
   if (!metadata) return undefined;
   const stripped = { ...metadata };
   for (const field of SEQUENCER_METADATA_FIELDS) delete stripped[field];
+  // Legacy Play metadata is decode-only; do not carry it into authored sound
+  // content even when a caller passes an unnormalized old object.
+  delete (stripped as Record<string, unknown>).synthArpConfigs;
   return Object.keys(stripped).length > 0 ? stripped : undefined;
 }

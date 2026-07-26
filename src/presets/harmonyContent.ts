@@ -19,12 +19,16 @@ export function buildHarmonyContentInstances(state: Record<string, unknown>): Ha
       content: { slots: state[key] },
     });
   }
-  for (const [suffix, key] of [['a', 'harmonyChordSequenceA'], ['b', 'harmonyChordSequenceB']] as const) {
-    if (Array.isArray(state[key])) instances.push({
-      id: `harmony.sequence.${suffix}`,
-      refSlot: `harmony.program.sequence-bank-${suffix}`,
+  for (const [suffix, key, refSuffix] of [
+    ['active', 'harmonyProgression', 'active'],
+    ['a', 'harmonyProgressionA', 'a'],
+    ['b', 'harmonyProgressionB', 'b'],
+  ] as const) {
+    if (state[key] && typeof state[key] === 'object') instances.push({
+      id: `harmony.progression.${suffix}`,
+      refSlot: `harmony.program.sequence-bank-${refSuffix}`,
       contentType: 'harmonySequenceBank',
-      content: { steps: state[key] },
+      content: { progression: state[key] },
     });
   }
   instances.push({
@@ -52,7 +56,14 @@ export function hydrateHarmonyContentRef(
   }
   const sequence = /^harmony\.program\.sequence-bank-([ab])$/.exec(refSlot);
   if (sequence && contentType === 'harmonySequenceBank') {
+    if (content.progression !== undefined) {
+      return { [`harmonyProgression${sequence[1]!.toUpperCase()}`]: content.progression };
+    }
     return { [`harmonyChordSequence${sequence[1]!.toUpperCase()}`]: content.steps };
+  }
+  if (refSlot === 'harmony.program.sequence-bank-active' && contentType === 'harmonySequenceBank') {
+    if (content.progression !== undefined) return { harmonyProgression: content.progression };
+    return { harmonyChordSequence: content.steps };
   }
   return null;
 }
@@ -60,7 +71,8 @@ export function hydrateHarmonyContentRef(
 export function stripHarmonyContentFromL4Override(data: Record<string, unknown>): Record<string, unknown> {
   const moved = new Set<string>([
     ...HARMONY_CONTEXT_KEYS,
-    'harmonyChordSlotsA', 'harmonyChordSlotsB', 'harmonyChordSequenceA', 'harmonyChordSequenceB',
+    'harmonyChordSlotsA', 'harmonyChordSlotsB',
+    'harmonyProgression', 'harmonyProgressionA', 'harmonyProgressionB',
   ]);
   return Object.fromEntries(Object.entries(data).filter(([key]) => !moved.has(key)));
 }

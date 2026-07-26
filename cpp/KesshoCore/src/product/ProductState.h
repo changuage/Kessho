@@ -349,6 +349,7 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
       uint32_t lane_index,
       uint32_t step_id,
       uint64_t absolute_sample) const;
+  void rebuildHarmonyAuthorityCache();
   void updateHarmonyTelemetry(uint64_t absolute_sample);
   void resetHarmonyClock();
   void advanceHarmonyClock();

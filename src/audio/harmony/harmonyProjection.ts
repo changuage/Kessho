@@ -3,6 +3,7 @@ import {
   canonicalProgressionIndexAtPosition,
   resolveProductHarmonyState,
   type HarmonyChordSlot,
+  type HarmonyDraftChord,
   type HarmonySequenceStep,
   type HarmonyProgression,
   type ResolvedHarmonyFrame,
@@ -41,7 +42,7 @@ export interface HarmonyLiveLayer {
   kind: 'draft-live' | 'harmony-takeover' | 'seq-live';
   scope?: unknown;
   target?: unknown;
-  draft?: unknown;
+  draft?: HarmonyDraftChord;
   frame?: ResolvedHarmonyFrame;
   seqId?: number;
   slotId?: number;
@@ -168,7 +169,7 @@ function progressionFrom(progression: HarmonyProgression, state: Record<string, 
     const event = progression.events[index]!;
     const durationBars = event.duration.unit === 'phrase' ? event.duration.value * barsPerPhrase : event.duration.value;
     const slotId = event.source.type === 'slot' ? event.source.slotId : null;
-    events.push({ id: event.id, slotId, source: event.source.type === 'auto' ? 'suggestion' : 'slotFollow', durationBars, startBar, endBar: startBar + durationBars });
+    events.push({ id: event.id, slotId, source: event.source.type === 'auto' ? 'suggestion' : 'slot', durationBars, startBar, endBar: startBar + durationBars });
     startBar += durationBars;
   }
   return events;
@@ -247,7 +248,9 @@ function morphPlanKey(a: ResolvedHarmonyFrame, b: ResolvedHarmonyFrame): string 
   return [a.rootMidi, a.scaleId, a.degree, a.quality, a.currentNotePool.join(','), b.rootMidi, b.scaleId, b.degree, b.quality, b.currentNotePool.join(',')].join('|');
 }
 
-function createMorphPlan(a: ResolvedHarmonyFrame, b: ResolvedHarmonyFrame, owner: 'A' | 'B'): MorphHarmonyPlan {
+/** Resolve a bounded morph plan from already-resolved endpoint frames. The cache
+ * keeps snapshot/audio projections from repeating the assignment work. */
+export function resolveCachedMorphHarmonyPlan(a: ResolvedHarmonyFrame, b: ResolvedHarmonyFrame, owner: 'A' | 'B'): MorphHarmonyPlan {
   const key = morphPlanKey(a, b);
   const cached = MORPH_PLAN_CACHE.get(key);
   if (cached && cached.owner === owner) return cached;
@@ -288,7 +291,7 @@ export function resolveHarmonyProjection(
   const rootMidiAnchor = numberValue(runtimeOverlay?.rootMidiAnchor, numberValue(runtimeOverlay?.harmonyState?.effectiveRootMidiAnchor, rootMidi));
   const tension = clamp(numberValue(record.tension, 0.35), 0, 1);
   const morphPercent = morphPercentFromState(record, runtimeOverlay);
-  const seed = integerValue(record.harmonyGenerationSeed, 0);
+  const seed = 0;
   const hasPositionContext = runtimeOverlay?.barIndex !== undefined || runtimeOverlay?.phraseIndex !== undefined;
   const hostStep = !hasPositionContext ? numberValue(runtimeOverlay?.harmonyState?.progression?.step, Number.NaN) : Number.NaN;
   const positionedRecord = Number.isFinite(hostStep)
@@ -360,7 +363,7 @@ export function resolveHarmonyProjection(
     position: { eventIndex, eventId: activeEvent ? String(activeEvent.id) : null, barInEvent: activeEvent && hasPositionContext ? Math.max(0, cycleBar - activeEvent.startBar) : 0, phraseIndex: integerValue(runtimeOverlay?.phraseIndex, 0), absoluteBarIndex: hasPositionContext ? Math.max(0, absoluteBar) : null },
     liveLayer,
     activeLiveInputScope: isEndpoint ? runtimeOverlay?.activeLiveInputScope ?? null : null,
-    morphPlan: createMorphPlan(endpointA, endpointB, bank),
+    morphPlan: resolveCachedMorphHarmonyPlan(endpointA, endpointB, bank),
     bank,
     isEndpoint,
   };

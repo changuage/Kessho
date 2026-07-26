@@ -279,7 +279,15 @@ float resolveProductArpMidi(
   float pool[8]{};
   uint32_t pool_count = 0u;
   const int32_t slot = arp.slot_lane[step];
-  if (slot >= 0 && slot < 8 && engine.arrangement.harmony_slot_note_count[slot] > 0u) {
+  if (slot >= 0 && slot < 8 && engine.harmony.cached_voice_leading_candidate_note_counts[slot] > 0u) {
+    // Arpeggiation consumes the precomputed native authority row.  The
+    // arrangement MIDI values are only a compatibility fallback for snapshots
+    // produced before the authority cache existed.
+    pool_count = std::min<uint32_t>(engine.harmony.cached_voice_leading_candidate_note_counts[slot], 8u);
+    for (uint32_t index = 0u; index < pool_count; ++index) {
+      pool[index] = engine.harmony.cached_voice_leading_candidates[slot][index];
+    }
+  } else if (slot >= 0 && slot < 8 && engine.arrangement.harmony_slot_note_count[slot] > 0u) {
     pool_count = std::min<uint32_t>(engine.arrangement.harmony_slot_note_count[slot], 8u);
     for (uint32_t index = 0u; index < pool_count; ++index) {
       pool[index] = engine.arrangement.harmony_slot_midi[static_cast<uint32_t>(slot) * 8u + index];
@@ -1961,6 +1969,13 @@ class ScopedSequencerAudibilityGate {
           ? lane.play_note_voice_masks[midi_step_id]
           : 0u;
       const float trigger_midi_note = drum_lane ? drum_midi_note : sequenced_midi_note;
+      if (!drum_lane && trigger_midi_note >= 0.0f) {
+        harmony.harmony_play_dispatch_count += 1u;
+        harmony.harmony_play_last_dispatch_frame = event_sample;
+        harmony.harmony_play_last_dispatch_latency_ms = event_sample >= transport.sample_frame
+            ? static_cast<float>(static_cast<double>(event_sample - transport.sample_frame) * 1000.0 / sample_rate)
+            : 0.0f;
+      }
       const bool synth_arp_enabled = !drum_lane && lane.arp.enabled;
       if (!drum_lane && !synth_arp_enabled && play_note_mask == 0u && trigger_midi_note < 0.0f) {
         lane.emitted_hit_count += 1u;

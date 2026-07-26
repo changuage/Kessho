@@ -325,4 +325,7 @@ typedef struct KesshoProductTelemetry {
   uint32_t journey_schedule_running;
   uint32_t journey_rng_state_after_plan;
   uint32_t journey_schedule_entry_count;
+  uint64_t harmony_play_dispatch_count;
+  uint64_t harmony_play_last_dispatch_frame;
+  float harmony_play_dispatch_latency_ms;
 } KesshoProductTelemetry;

@@ -105,7 +105,12 @@ function withDrumChain(state: SliderState): SliderState {
 }
 
 function testRegistryCoversPresetOwnedState(): void {
-  const result = validateRegistry(Object.keys(DEFAULT_STATE));
+  const currentStateKeys = Object.keys(DEFAULT_STATE).filter((key) => (
+    !key.startsWith('chordProgression') &&
+    !key.startsWith('harmonyChordSequence') &&
+    key !== 'harmonyGenerationSeed'
+  ));
+  const result = validateRegistry(currentStateKeys);
   assert.deepStrictEqual(result.missing, [], 'registry keys should exist on DEFAULT_STATE');
   assert.deepStrictEqual(result.unassigned, [], 'preset-owned DEFAULT_STATE keys should be assigned to the hierarchy');
 }
@@ -286,7 +291,7 @@ function testOverlapIsStrippedAtEachLevel(): void {
   );
   assert.equal('dynamicsEnabled' in stateOverride, true, 'global Dynamics enable should remain in the L4 state override');
   assert.equal('harmonyChordSlots' in stateOverride, true, 'global structured harmony slots should remain in the L4 state override');
-  assert.equal('chordProgressionHits' in stateOverride, true, 'global chord progression template controls should remain in the L4 state override');
+  assert.equal('chordProgressionHits' in stateOverride, false, 'legacy chord progression controls should not remain in the L4 state override');
   assert.equal('synthSequencerFaces' in stateOverride, true, 'synth sequencer faces are L4 arrangement state');
   assert.equal('synthSequencerChain' in stateOverride, true, 'synth sequencer chain is L4 arrangement state');
   assert.equal('drumSequencerChain' in stateOverride, true, 'drum sequencer chain is L4 arrangement state');

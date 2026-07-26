@@ -90,7 +90,7 @@ test('print updates semantic and exact snapshots together and undo is reversible
 
 test('reference enumeration weights progression and enabled Seq choices', () => {
   const progression = { version: 1 as const, enabled: true, currentEventIndex: 0, events: [{ id: 'e1', source: { type: 'slot' as const, slotId: 0 }, duration: { unit: 'bar' as const, value: 2 as const } }] };
-  const sequence = [{ id: 3, enabled: true, locked: false, mode: 'slotFollow' as const, degree: 0, quality: 'maj' as const, intent: null, slotId: 0, probability: 0.5 }];
+  const sequence = [{ id: 3, enabled: true, locked: false, mode: 'slot' as const, degree: 0, quality: 'maj' as const, intent: null, slotId: 0, probability: 0.5 }];
   const refs = enumerateHarmonySlotReferences({ progression, sequence });
   assert.equal(refs.length, 2);
   assert.equal(analyzeHarmonyBank({ progression, sequence }).usageBySlot[0], 2.5);
@@ -98,9 +98,14 @@ test('reference enumeration weights progression and enabled Seq choices', () => 
 
 test('reference enumeration includes both progression endpoints and persisted Seq Play lanes exactly once', () => {
   const progression = (id: string) => ({ version: 1 as const, enabled: false, currentEventIndex: 0, events: [{ id, source: { type: 'slot' as const, slotId: 2 }, duration: { unit: 'bar' as const, value: 1 as const } }] });
-  const refs = enumerateHarmonySlotReferences({ progressions: [{ endpoint: 'A', progression: progression('a') }, { endpoint: 'B', progression: progression('b') }], seqPlayChoices: [{ lane: 1, steps: [{ id: 0, chordSlotId: 2 }] }, { lane: 2, steps: [{ id: 0, slotId: 2 }] }] });
-  assert.equal(refs.filter((ref) => ref.slotId === 2).length, 4);
+  const refs = enumerateHarmonySlotReferences({ progressions: [{ endpoint: 'A', progression: progression('a') }, { endpoint: 'B', progression: progression('b') }], seqPlayChoices: [1, 2, 3, 4].map((lane) => ({ lane, steps: [{ id: 0, chordSlotId: 2 }] })) });
+  assert.equal(refs.filter((ref) => ref.slotId === 2).length, 6);
   assert.equal(refs.filter((ref) => String(ref.id).startsWith('A:')).length, 1);
+  assert.equal(refs.filter((ref) => String(ref.id).startsWith('B:')).length, 1);
+  assert.deepEqual(
+    [...new Set(refs.filter((ref) => ref.kind === 'sequence').map((ref) => String(ref.id).split(':')[0]))].sort(),
+    ['1', '2', '3', '4'],
+  );
 });
 
 test('bank analysis infers source context from weighted slot/progression evidence', () => {
@@ -115,21 +120,34 @@ test('bank analysis infers source context from weighted slot/progression evidenc
 test('Replace References is atomic and updates every Harmony/Seq reference', () => {
   const slot = (id: number, chord: SharedHarmonyChord | null, locked = false) => ({ id, name: `S${id + 1}`, locked, chord });
   const progression = { version: 1 as const, enabled: true, currentEventIndex: 0, events: [{ id: 'e', source: { type: 'slot' as const, slotId: 0 }, duration: { unit: 'bar' as const, value: 1 as const } }] };
-  const sequence = [{ id: 1, enabled: true, locked: false, mode: 'slotFollow' as const, degree: 0, quality: 'maj' as const, intent: null, slotId: 0, probability: 1 }];
-  const state = { slots: [slot(0, semantic()), slot(1, semantic())], progression, sequence };
+  const sequence = [{ id: 1, enabled: true, locked: false, mode: 'slot' as const, degree: 0, quality: 'maj' as const, intent: null, slotId: 0, probability: 1 }];
+  const state = {
+    slots: [slot(0, semantic()), slot(1, semantic())],
+    progression,
+    progressions: [{ endpoint: 'A' as const, progression }, { endpoint: 'B' as const, progression: { ...progression, events: progression.events.map((event) => ({ ...event, id: 'b' })) } }],
+    sequence,
+    seqPlayChoices: [1, 2, 3, 4].map((lane) => ({ lane, steps: [{ id: 0, chordSlotId: 0 }] })),
+  };
   const patch = planReplaceHarmonySlotReferences(state, 0, 1);
   assert.equal(patch.ok, true);
   assert.equal(patch.after!.slots[0]!.chord, null);
   assert.equal(patch.after!.progression!.events[0]!.source.type, 'slot');
   assert.equal((patch.after!.progression!.events[0]!.source as { slotId: number }).slotId, 1);
   assert.equal(patch.after!.sequence![0]!.slotId, 1);
+  assert.equal(patch.after!.progressions?.every(({ progression: endpoint }) => endpoint?.events[0]?.source.type === 'slot' && endpoint.events[0].source.slotId === 1), true);
+  assert.equal(patch.after!.seqPlayChoices?.every(({ steps }) => steps[0]?.chordSlotId === 1), true);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(patch.undo!())),
+    JSON.parse(JSON.stringify(state)),
+    'atomic replace undo restores both endpoints and Seq1–4 references',
+  );
   assert.equal(planReplaceHarmonySlotReferences(state, 0, 0).ok, false);
   const emptyTarget = { ...state, slots: [state.slots[0]!, slot(1, null)] };
   assert.equal(planReplaceHarmonySlotReferences(emptyTarget, 0, 1).ok, false);
   assert.equal(state.slots[0]!.chord !== null, true);
   assert.equal(planReplaceHarmonySlotReferences({ ...state, slots: [slot(0, null), slot(1, semantic())] }, 0, 1).error, 'source-empty');
-  assert.equal(planReplaceHarmonySlotReferences({ ...state, progression: { ...progression, events: [] }, sequence: [] }, 0, 1).error, 'source-unreferenced');
-  const unused = { ...state, progression: { ...progression, events: [] }, sequence: [] };
+  assert.equal(planReplaceHarmonySlotReferences({ ...state, progression: { ...progression, events: [] }, progressions: [], sequence: [], seqPlayChoices: [] }, 0, 1).error, 'source-unreferenced');
+  const unused = { ...state, progression: { ...progression, events: [] }, progressions: [], sequence: [], seqPlayChoices: [] };
   assert.equal(planEmptyUnusedHarmonySlot(unused, 0).ok, true);
   assert.equal(planEmptyUnusedHarmonySlot(state, 0).error, 'referenced');
 });

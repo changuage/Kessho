@@ -285,23 +285,46 @@ function testSynthPlayConfigMetadataMigratesLegacyKeyWithoutReauthoringIt(): voi
     synthArpConfigs: playConfigs,
   });
   assert.deepStrictEqual(migrated.synthPlayConfigs, playConfigs);
-  assert.equal(migrated.synthArpConfigs, undefined, 'migrated presets should expose only the canonical Play key');
+  assert.equal((migrated as unknown as Record<string, unknown>).synthArpConfigs, undefined, 'migrated presets should expose only the canonical Play key');
 
-  const metadata = buildPresetVersionMetadata({ synthArpConfigs: playConfigs });
+  const metadata = buildPresetVersionMetadata({ synthArpConfigs: playConfigs } as never);
   assert.deepStrictEqual(metadata?.synthPlayConfigs, playConfigs);
   assert.equal(metadata && 'synthArpConfigs' in metadata, false, 'new metadata must not author the legacy key');
 
   const canonicalWins = buildPresetVersionMetadata({
     synthPlayConfigs: [arpConfig],
     synthArpConfigs: [chordConfig],
-  });
+  } as never);
   assert.deepStrictEqual(canonicalWins?.synthPlayConfigs, [arpConfig]);
   assert.deepStrictEqual(
-    preparePresetVersionMetadataForV2Storage({ synthArpConfigs: playConfigs }, true),
+    preparePresetVersionMetadataForV2Storage({ synthArpConfigs: playConfigs } as never, true),
     { synthPlayConfigs: playConfigs },
   );
   assert.equal(getPresetMetadataOwner('synthPlayConfigs'), 'portable-content');
-  assert.equal(getPresetMetadataOwner('synthArpConfigs'), 'portable-content');
+  assert.equal(getPresetMetadataOwner('synthArpConfigs'), undefined, 'legacy Play metadata is decode-only');
+}
+
+function testHarmonyLegacyFieldsAreDecodeOnly(): void {
+  const legacySequence = [{ id: 2, enabled: true, mode: 'slotFollow', slotId: 3, durationBars: 2 }];
+  const migrated = migratePreset({
+    name: 'Legacy Harmony',
+    timestamp: '2026-07-24T00:00:00.000Z',
+    state: {
+      ...DEFAULT_STATE,
+      harmonyProgression: undefined as never,
+      harmonyChordSequence: legacySequence as never,
+      harmonyChordSequenceEnabled: true,
+    },
+  });
+  assert.equal('harmonyChordSequence' in migrated.state, false);
+  assert.equal(migrated.state.harmonyProgression.enabled, true);
+  assert.equal(migrated.state.harmonyProgression.events[0]?.source.type, 'slot');
+
+  const encoded = encodeStateToUrl({ ...DEFAULT_STATE, harmonyChordSequence: legacySequence as never });
+  assert.equal(encoded.includes('harmonyChordSequence'), false, 'new URL state must not author legacy sequence fields');
+  const decoded = decodeStateFromUrl(`?harmonyChordSequence=${encodeURIComponent(JSON.stringify(legacySequence))}&harmonyChordSequenceEnabled=true`);
+  assert.ok(decoded?.harmonyProgression.events.length);
+  assert.equal(decoded?.harmonyProgression.enabled, true);
 }
 
 function testStatePresetPitchMetadataUsesAuthoritativeLaneCounts(): void {
@@ -1405,6 +1428,7 @@ async function run(): Promise<void> {
   testEngineStepOverridesTrimHiddenSubLaneValues();
   testMigratePresetPreservesSynthPitchBindingModes();
   testSynthPlayConfigMetadataMigratesLegacyKeyWithoutReauthoringIt();
+  testHarmonyLegacyFieldsAreDecodeOnly();
   testStatePresetPitchMetadataUsesAuthoritativeLaneCounts();
   testBuildPresetVersionMetadataIncludesAllSupportedFields();
   testPresetPoolDefaultsUseStableIdsAndSharedEngineScopes();

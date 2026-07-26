@@ -7,7 +7,7 @@ import { createPadChordPhrasePreview, createRandomTimingPhrasePreview } from './
 import { CoreProductArrangementScheduler } from './reference/CoreProductArrangementSchedulerReference';
 import { createHarmonyState } from './harmony';
 import { PRODUCT_HARMONY_SCALE_IDS } from './coreProductHarmonyScaleIds';
-import { createCoreProductSnapshot } from './coreProductSnapshot';
+import { createCoreProductSnapshot, setCoreProductHarmonyLiveLayer } from './coreProductSnapshot';
 import {
   createProductArpHarmonyContext,
   normalizeProductArpConfig,
@@ -35,11 +35,9 @@ import { DEFAULT_STATE } from '../ui/state';
 import {
   HARMONY_SEQUENCE_STEP_COUNT,
   HARMONY_SLOT_COUNT,
-  commitBaselineMap,
   defaultHarmonyChordSlot,
   defaultHarmonyIntent,
   formatHarmonyIntentChordLabel,
-  generateHarmonySlotsAndSequence,
   recognizeHarmonyIntentFromMidiPool,
   resolveHarmonyIntentToNotePool,
   resolveProductHarmonyState,
@@ -47,7 +45,7 @@ import {
   type HarmonyChordQuality,
 } from './CoreProductHarmonyControl';
 import { sampleDescriptorForSlotNote, samplePredictionState } from './product/host/CoreProductSampleAssetResolver';
-import { legacyHarmonySlotToSharedSlot, sharedSlotResolvedMidiPool } from './harmony/harmonyChordAdapters';
+import { legacyHarmonySlotToSharedSlot } from './harmony/harmonyChordAdapters';
 import {
   createCoreProductSynthSequencerLaneStepOverrideEvents,
   createCoreProductSynthSequencerStepOverrideEvents,
@@ -1851,14 +1849,91 @@ const slotPlaybackSnapshot = createCoreProductSnapshot({
     { id: 1, chord: exactSnapshotSlot },
   ],
 });
-const expectedRelativeSnapshotPool = sharedSlotResolvedMidiPool({ chord: { ...relativeSnapshotSlot, playbackBehavior: 'relative' as const } }, {
-  rootMidi: 62,
-  effectiveRootMidi: 62,
-  scaleId: 1,
-  tension: 0.35,
-});
-assert.deepEqual(slotPlaybackSnapshot.harmony.harmonySlotMidi?.slice(0, expectedRelativeSnapshotPool.length), expectedRelativeSnapshotPool, 'relative harmony slot should encode a context-resolved pool');
+assert.deepEqual(slotPlaybackSnapshot.harmony.harmonySlotMidi?.slice(0, relativeSnapshotSlot.exactMidiNotes.length), relativeSnapshotSlot.exactMidiNotes, 'relative harmony slot should preserve authored exact MIDI for native resolution');
 assert.deepEqual(slotPlaybackSnapshot.harmony.harmonySlotMidi?.slice(8, 11), exactSnapshotSlot.exactMidiNotes, 'exact harmony slot should preserve literal MIDI');
+
+const semanticWireIntent: ReturnType<typeof defaultHarmonyIntent> = {
+  ...defaultHarmonyIntent('slot', 3),
+  rootMode: 'absolute' as const,
+  rootNote: 2,
+  quality: 'quartal' as const,
+  extensions: ['9', 'add13'],
+  alterations: ['b5', '#11'] as HarmonyChordAlteration[],
+  inversion: -2,
+  spread: 0.8,
+  octave: 5,
+  bassMode: 'captured' as const,
+  bassNote: 47,
+  strength: 'force' as const,
+};
+const semanticWireChord = {
+  ...relativeSnapshotSlot,
+  intent: semanticWireIntent,
+  intentSource: 'confirmed' as const,
+  playbackBehavior: 'relative' as const,
+};
+const semanticWireSnapshot = createCoreProductSnapshot({
+  rootMidi: 60,
+  scaleMode: 'manual',
+  manualScale: 'Major (Ionian)',
+  harmonyChordSlots: [{ id: 3, chord: semanticWireChord }],
+});
+assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentPresent?.[3], 1, 'semantic slot intent presence should cross the Product snapshot boundary');
+assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentQuality?.[3], 12, 'quartal quality should retain its stable native wire id');
+assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentRootMode?.[3], 1, 'absolute semantic root should retain its wire mode');
+assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentRootNote?.[3], 2, 'absolute semantic pitch class should cross the Product snapshot boundary');
+assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentInversion?.[3], -2, 'negative semantic inversion should cross the Product snapshot boundary');
+assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentSpread?.[3], 0.8, 'semantic spread should cross the Product snapshot boundary');
+assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentOctave?.[3], 5, 'semantic octave should cross the Product snapshot boundary');
+assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentBassMode?.[3], 3, 'captured bass mode should retain its native wire id');
+assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentBassNote?.[3], 47, 'captured bass note should cross the Product snapshot boundary');
+assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentExtensionMask?.[3], (1 << 3) | (1 << 12), 'semantic extensions should retain stable native mask bits');
+assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentAlterationMask?.[3], (1 << 0) | (1 << 4), 'semantic alterations should retain stable native mask bits');
+
+setCoreProductHarmonyLiveLayer({
+  kind: 'seq-live',
+  seqId: 2,
+  latched: true,
+  draft: {
+    intent: semanticWireIntent,
+    intentSource: 'confirmed',
+    exactMidiNotes: [47, 62, 67, 72],
+    playbackBehavior: 'relative',
+    capturedContext: { rootMidi: 62, scaleId: 1 },
+    recognizedLabel: 'D quartal',
+    editFocus: 'semantic',
+  },
+  frame: {
+    activeSource: 'slot',
+    activeStepIndex: null,
+    activeSlotId: 3,
+    rootMidi: 62,
+    effectiveRootMidiAnchor: 62,
+    scaleId: 1,
+    degree: 3,
+    quality: 'quartal',
+    currentNotePool: [47, 62, 67, 72],
+    bassNote: 47,
+    nextNotePool: [48, 64, 69, 74],
+    nextSource: null,
+    nextStepIndex: null,
+    morphPercent: 0,
+    manualControlAvailable: true,
+  },
+});
+const semanticLiveWireSnapshot = createCoreProductSnapshot({ rootMidi: 60, tension: 0.35 });
+setCoreProductHarmonyLiveLayer(null);
+assert.equal(semanticLiveWireSnapshot.harmony.liveGestureScope, 4, 'live sequencer gesture should retain its native scope');
+assert.equal(semanticLiveWireSnapshot.harmony.liveGestureTarget, 5, 'live sequencer gesture should retain its target lane');
+assert.equal(semanticLiveWireSnapshot.harmony.liveGestureIntentPresent, 1, 'live semantic intent presence should cross the Product snapshot boundary');
+assert.equal(semanticLiveWireSnapshot.harmony.liveGestureIntentQuality, 12, 'live semantic quality should retain its native wire id');
+assert.equal(semanticLiveWireSnapshot.harmony.liveGestureIntentRootMode, 1, 'live semantic root mode should cross the Product snapshot boundary');
+assert.equal(semanticLiveWireSnapshot.harmony.liveGestureIntentInversion, -2, 'live negative inversion should cross the Product snapshot boundary');
+assert.equal(semanticLiveWireSnapshot.harmony.liveGestureIntentOctave, 5, 'live semantic octave should cross the Product snapshot boundary');
+assert.equal(semanticLiveWireSnapshot.harmony.liveGestureIntentBassMode, 3, 'live captured bass mode should retain its native wire id');
+assert.equal(semanticLiveWireSnapshot.harmony.liveGestureIntentBassNote, 47, 'live captured bass note should cross the Product snapshot boundary');
+assert.equal(semanticLiveWireSnapshot.harmony.liveGestureIntentExtensionMask, (1 << 3) | (1 << 12), 'live semantic extension mask should cross the Product snapshot boundary');
+assert.equal(semanticLiveWireSnapshot.harmony.liveGestureIntentAlterationMask, (1 << 0) | (1 << 4), 'live semantic alteration mask should cross the Product snapshot boundary');
 assert.equal(harmonySlotTriggerSnapshot.harmony.controlMode, 3, 'Product snapshot should encode slot trigger as slot control mode');
 assert.equal(harmonySlotTriggerSnapshot.harmony.activeSlotId, 2, 'Product snapshot should encode the triggered slot id');
 assert.deepEqual(
@@ -1892,29 +1967,25 @@ assert.equal(slotTriggerDuringMorph.resolvedHarmonyFrame.activeSource, 'baseline
 const morphBankState = resolveProductHarmonyState({
   state: {
     harmonyMorphPercent: 50,
-    harmonyChordSequenceEnabled: true,
-    harmonyChordSequenceA: [{ id: 0, enabled: true, locked: false, mode: 'auto', degree: 1, quality: 'auto', intent: null, slotId: null, probability: 1 }],
-    harmonyChordSequenceB: [{ id: 0, enabled: true, locked: false, mode: 'auto', degree: 5, quality: 'auto', intent: null, slotId: null, probability: 1 }],
+    harmonyProgressionA: {
+      version: 1,
+      enabled: true,
+      currentEventIndex: 0,
+      events: [{ id: 'a0', source: { type: 'slot', slotId: 0 }, duration: { unit: 'phrase', value: 1 }}],
+    },
+    harmonyProgressionB: {
+      version: 1,
+      enabled: true,
+      currentEventIndex: 0,
+      events: [{ id: 'b0', source: { type: 'slot', slotId: 1 }, duration: { unit: 'phrase', value: 1 }}],
+    },
   },
   rootMidi: 60,
   scaleId: 1,
   tension: 0.35,
   seed: 1,
 });
-assert.equal(morphBankState.chordSequence[0]?.degree, 5, 'Product harmony should select the Preset B sequence bank at 50% morph');
-
-const generatedA = generateHarmonySlotsAndSequence(1234);
-const generatedB = generateHarmonySlotsAndSequence(1234);
-assert.deepEqual(generatedA, generatedB, 'harmony slot/sequence generation should be deterministic from seed');
-const lockedSlot = { ...generatedA.slots[0]!, locked: true };
-const lockedStep = { ...generatedA.sequence[0]!, locked: true };
-const lockedGenerated = generateHarmonySlotsAndSequence(2222, {}, [lockedSlot], [lockedStep]);
-assert.deepEqual(lockedGenerated.slots[0], lockedSlot, 'locked harmony slots should survive regeneration');
-assert.deepEqual(lockedGenerated.sequence[0], lockedStep, 'locked harmony sequence steps should survive regeneration');
-
-const committedBaseline = commitBaselineMap({ seed: 99, rootMidi: 60, scaleId: 1, tension: 0.9 });
-assert.equal(committedBaseline.length, HARMONY_SEQUENCE_STEP_COUNT, 'Commit Baseline Map should write exactly 8 harmony steps');
-assert.equal(committedBaseline.every((step) => step.quality === 'auto'), true, 'Commit Baseline Map should preserve tension-engine quality:auto steps');
+assert.equal(morphBankState.chordSequence[0]?.slotId, 1, 'Product harmony should select the Preset B progression bank at 50% morph');
 
 const extendedHarmonyPool = resolveHarmonyIntentToNotePool({
   intent: {

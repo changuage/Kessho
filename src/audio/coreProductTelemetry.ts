@@ -204,6 +204,9 @@ export type CoreProductTelemetrySnapshot = {
   harmonyTension?: number;
   harmonyChordDegree?: number;
   harmonyChordMidi?: number[];
+  harmonyPlayDispatchCount?: number;
+  harmonyPlayLastDispatchFrame?: number;
+  harmonyPlayDispatchLatencyMs?: number;
   harmonyActiveSource?: number;
   harmonyActiveSlotId?: number;
   harmonyActiveStepIndex?: number;

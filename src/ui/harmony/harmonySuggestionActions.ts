@@ -134,7 +134,7 @@ export function assignHarmonySuggestionToStep(state: HarmonySuggestionActionStat
   if (!saved.ok || saved.slotId == null) return saved;
   const intent = cloneIntent(suggestion.intent);
   intent.source = 'sequence';
-  const nextStep: HarmonySequenceStep = { ...step, mode: 'slotCopy', slotId: saved.slotId, intent: null, degree: intent.degree, quality: intent.quality };
+  const nextStep: HarmonySequenceStep = { ...step, mode: 'slot', slotId: saved.slotId, intent: null, degree: intent.degree, quality: intent.quality };
   const nextSequence = sequence.map((entry, index) => index === stepIndex ? nextStep : entry);
   return { ok: true, state: { ...saved.state, sequence: nextSequence }, slotId: saved.slotId };
 }

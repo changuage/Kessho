@@ -4,6 +4,15 @@ import { resolve } from 'node:path';
 
 const root = process.cwd();
 
+const schema = JSON.parse(readFileSync(resolve(root, 'cpp/KesshoCore/schema/kessho_product.schema.json'), 'utf8'));
+const authority = schema.harmonyAuthority;
+if (!authority || authority.sharedSlotCount !== 8 || authority.progressionCapacity !== 64 || authority.liveGestureCapacity !== 8 || authority.takeoverAnchorCount !== 12) {
+  throw new Error('Product Harmony authority schema must define bounded 8/64/8/12 capacities');
+}
+if (JSON.stringify(authority.playbackBehaviors) !== JSON.stringify(['auto', 'relative', 'exact'])) {
+  throw new Error('Product Harmony playback behavior schema drifted');
+}
+
 function read(path) {
   return readFileSync(resolve(root, path), 'utf8');
 }

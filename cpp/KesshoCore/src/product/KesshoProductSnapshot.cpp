@@ -90,7 +90,221 @@ bool orbitAuthoredTimingMatches(
   }
   return true;
 }
+
 } // namespace
+
+namespace kessho::product::internal {
+
+namespace {
+
+void appendUniqueInterval(float* intervals, uint32_t& count, float value) {
+  for (uint32_t index = 0u; index < count; ++index) {
+    if (intervals[index] == value) return;
+  }
+  if (count < 8u) intervals[count++] = value;
+}
+
+void replaceOrAppendInterval(
+    float* intervals,
+    uint32_t& count,
+    float first,
+    float second,
+    float replacement) {
+  for (uint32_t index = 0u; index < count; ++index) {
+    if (intervals[index] != first && intervals[index] != second) continue;
+    intervals[index] = replacement;
+    return;
+  }
+  appendUniqueInterval(intervals, count, replacement);
+}
+
+} // namespace
+
+uint32_t buildSemanticHarmonyVoicing(
+    const HarmonyState& harmony,
+    const HarmonyIntentRecipe& recipe,
+    float root_midi,
+    float* output) {
+  if (recipe.present == 0u) return 0u;
+  float intervals[8] = {0.0f, 4.0f, 7.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  uint32_t count = 3u;
+  switch (recipe.quality) {
+    case 0u: {
+      const uint32_t scale_count = std::max(1u, harmony.cached_scale_degree_count);
+      const uint32_t degrees[4] = {0u, 2u, 4u, harmony.tension > 0.5f ? 6u : 7u};
+      count = 4u;
+      for (uint32_t index = 0u; index < count; ++index) {
+        const uint32_t degree = degrees[index];
+        intervals[index] = static_cast<float>(harmony.cached_scale_degree_map[degree % scale_count]) +
+            (degree >= 7u ? 12.0f : 0.0f);
+      }
+      break;
+    }
+    case 1u: intervals[1] = 3.0f; intervals[2] = 6.0f; break; // dim
+    case 2u: intervals[1] = 3.0f; break; // min
+    case 4u: intervals[1] = 5.0f; intervals[2] = 7.0f; break; // sus
+    case 5u: intervals[3] = 11.0f; count = 4u; break; // maj7
+    case 6u: intervals[1] = 3.0f; intervals[3] = 10.0f; count = 4u; break; // min7
+    case 7u: intervals[3] = 10.0f; count = 4u; break; // dom7
+    case 8u: intervals[3] = 14.0f; count = 4u; break; // add9
+    case 9u: intervals[3] = 9.0f; count = 4u; break; // six
+    case 10u: intervals[3] = 9.0f; intervals[4] = 14.0f; count = 5u; break;
+    case 11u: intervals[3] = 10.0f; intervals[4] = 14.0f; count = 5u; break;
+    case 12u: intervals[1] = 5.0f; intervals[2] = 10.0f; intervals[3] = 15.0f; count = 4u; break; // quartal
+    case 13u: intervals[1] = 1.0f; intervals[2] = 2.0f; intervals[3] = 4.0f; count = 4u; break; // cluster
+    default: break;
+  }
+  const auto addExtension = [&](uint32_t bit, std::initializer_list<float> values) {
+    if ((recipe.extension_mask & (1u << bit)) == 0u) return;
+    for (const float value : values) appendUniqueInterval(intervals, count, value);
+  };
+  addExtension(0u, {9.0f});
+  addExtension(1u, {10.0f});
+  addExtension(2u, {11.0f});
+  addExtension(3u, {14.0f});
+  addExtension(4u, {14.0f, 17.0f});
+  addExtension(5u, {14.0f, 21.0f});
+  addExtension(6u, {9.0f});
+  addExtension(7u, {10.0f});
+  addExtension(8u, {10.0f});
+  addExtension(9u, {14.0f});
+  addExtension(10u, {14.0f});
+  addExtension(11u, {9.0f, 14.0f});
+  addExtension(12u, {21.0f});
+
+  const uint32_t alterations = recipe.alteration_mask;
+  if ((alterations & (1u << 0u)) != 0u) replaceOrAppendInterval(intervals, count, 7.0f, 8.0f, 6.0f);
+  if ((alterations & (1u << 1u)) != 0u) replaceOrAppendInterval(intervals, count, 7.0f, 6.0f, 8.0f);
+  if ((alterations & (1u << 2u)) != 0u) replaceOrAppendInterval(intervals, count, 14.0f, 15.0f, 13.0f);
+  if ((alterations & (1u << 3u)) != 0u) replaceOrAppendInterval(intervals, count, 14.0f, 13.0f, 15.0f);
+  if ((alterations & (1u << 4u)) != 0u) replaceOrAppendInterval(intervals, count, 17.0f, 17.0f, 18.0f);
+  if ((alterations & (1u << 5u)) != 0u) replaceOrAppendInterval(intervals, count, 21.0f, 21.0f, 20.0f);
+  if ((alterations & (1u << 6u)) != 0u) for (uint32_t i = 0u; i < count; ++i) if (intervals[i] == 3.0f || intervals[i] == 4.0f) intervals[i] = -100.0f;
+  if ((alterations & (1u << 7u)) != 0u) for (uint32_t i = 0u; i < count; ++i) if (intervals[i] >= 6.0f && intervals[i] <= 8.0f) intervals[i] = -100.0f;
+
+  uint32_t output_count = 0u;
+  if (recipe.bass_mode == 1u) output[output_count++] = root_midi - 12.0f;
+  if (recipe.bass_mode == 2u) output[output_count++] = root_midi - 5.0f;
+  if (recipe.bass_mode == 3u && recipe.bass_note >= 0.0f) output[output_count++] = recipe.bass_note;
+  for (uint32_t index = 0u; index < count && output_count < 8u; ++index) {
+    if (intervals[index] < -50.0f) continue;
+    output[output_count++] = root_midi + intervals[index] + (index >= 3u && recipe.spread > 0.66f ? 12.0f : 0.0f);
+  }
+  std::sort(output, output + output_count);
+  if (recipe.inversion > 0) {
+    for (int32_t index = 0; index < recipe.inversion && output_count > 1u; ++index) {
+      const float moved = output[0];
+      for (uint32_t note = 1u; note < output_count; ++note) output[note - 1u] = output[note];
+      output[output_count - 1u] = moved + 12.0f;
+    }
+  } else if (recipe.inversion < 0) {
+    for (int32_t index = 0; index < -recipe.inversion && output_count > 1u; ++index) {
+      const float moved = output[output_count - 1u];
+      for (uint32_t note = output_count - 1u; note > 0u; --note) output[note] = output[note - 1u];
+      output[0] = moved - 12.0f;
+    }
+  }
+  std::sort(output, output + output_count);
+  uint32_t unique_count = 0u;
+  for (uint32_t index = 0u; index < output_count; ++index) {
+    if (unique_count == 0u || output[index] != output[unique_count - 1u]) output[unique_count++] = output[index];
+  }
+  return unique_count;
+}
+
+} // namespace kessho::product::internal
+
+void KesshoProductEngine::rebuildHarmonyAuthorityCache() {
+  harmony.authority_revision += 1u;
+  int intervals[kMaxScaleNotes]{};
+  harmony.cached_scale_degree_count = std::min<uint32_t>(scaleIntervals(harmony.scale_id, intervals), 7u);
+  for (uint32_t index = 0u; index < 7u; ++index) {
+    harmony.cached_scale_degree_map[index] = index < harmony.cached_scale_degree_count
+        ? static_cast<uint32_t>(std::max(0, intervals[index]))
+        : 0u;
+    harmony.cached_recipe_ids[index] = index < harmony.canonical_progression_event_count
+        ? harmony.canonical_progression_slot_id[index]
+        : index;
+  }
+  if (harmony.morph_endpoint_count >= 2u) {
+    const float phase = clampFloat(harmony.morph_plan_phase, 0.0f, 1.0f);
+    harmony.root_midi = phase < 0.5f
+        ? harmony.morph_endpoint_root_midi[0]
+        : harmony.morph_endpoint_root_midi[1];
+    harmony.tension = harmony.morph_endpoint_tension[0] +
+        (harmony.morph_endpoint_tension[1] - harmony.morph_endpoint_tension[0]) * phase;
+    harmony.scale_id = phase < 0.5f ? harmony.morph_endpoint_scale_id[0] : harmony.morph_endpoint_scale_id[1];
+    if (harmony.morph_cof_root_path_count >= 2u) {
+      const uint32_t last = harmony.morph_cof_root_path_count - 1u;
+      const float pathPosition = phase * static_cast<float>(last);
+      const uint32_t pathIndex = std::min(last, static_cast<uint32_t>(std::round(pathPosition)));
+      harmony.root_midi = harmony.morph_cof_root_path[pathIndex];
+    }
+    if (harmony.morph_scale_handover_from != harmony.morph_scale_handover_to) {
+      harmony.scale_id = phase < harmony.morph_scale_handover_at
+          ? harmony.morph_scale_handover_from
+          : harmony.morph_scale_handover_to;
+    }
+    harmony.cached_scale_degree_count = std::min<uint32_t>(scaleIntervals(harmony.scale_id, intervals), 7u);
+    for (uint32_t index = 0u; index < harmony.cached_scale_degree_count; ++index) {
+      harmony.cached_scale_degree_map[index] = static_cast<uint32_t>(std::max(0, intervals[index]));
+    }
+  }
+  harmony.cached_voice_leading_candidate_count = 0u;
+  for (uint32_t slot = 0u; slot < 8u; ++slot) {
+    const uint32_t count = std::min<uint32_t>(arrangement.harmony_slot_note_count[slot], 8u);
+    harmony.cached_voice_leading_candidate_note_counts[slot] = count;
+    float semantic_root = harmony.root_midi;
+    // Native playback owns semantic intent resolution.  Captured/exact rows
+    // remain untouched, while degree/absolute intent roots feed relative and
+    // auto playback before the bounded candidate row is cached.
+    if (harmony.slot_intent_present[slot] != 0u) {
+      const uint32_t root_mode = harmony.slot_intent_root_mode[slot];
+      if (root_mode == 0u && harmony.cached_scale_degree_count > 0u) {
+        const uint32_t degree = static_cast<uint32_t>(std::max(0, harmony.slot_intent_degree[slot])) % harmony.cached_scale_degree_count;
+        semantic_root += static_cast<float>(harmony.cached_scale_degree_map[degree]);
+      } else {
+        semantic_root = 60.0f + static_cast<float>(positiveModulo(static_cast<int>(std::round(harmony.slot_intent_root_note[slot])), 12u));
+      }
+      semantic_root += static_cast<float>(harmony.slot_intent_octave[slot] - 4) * 12.0f;
+    }
+    const float delta = semantic_root - harmony.slot_captured_root_midi[slot];
+    const float movement_delta = harmony.root_midi - harmony.slot_captured_root_midi[slot];
+    const bool exact = harmony.slot_playback_behavior[slot] == 2u ||
+        (harmony.slot_playback_behavior[slot] == 0u && std::abs(movement_delta) <= 6.0f);
+    float semantic_notes[8]{};
+    const HarmonyIntentRecipe recipe{
+      harmony.slot_intent_present[slot],
+      harmony.slot_intent_quality[slot],
+      harmony.slot_intent_inversion[slot],
+      harmony.slot_intent_spread[slot],
+      harmony.slot_intent_bass_mode[slot],
+      harmony.slot_intent_bass_note[slot],
+      harmony.slot_intent_extension_mask[slot],
+      harmony.slot_intent_alteration_mask[slot],
+    };
+    const uint32_t semantic_count = !exact
+        ? buildSemanticHarmonyVoicing(harmony, recipe, semantic_root, semantic_notes)
+        : 0u;
+    if (semantic_count > 0u) harmony.cached_voice_leading_candidate_note_counts[slot] = semantic_count;
+    for (uint32_t note = 0u; note < 8u; ++note) {
+      const float captured = note < count ? arrangement.harmony_slot_midi[slot * 8u + note] : 0.0f;
+      harmony.cached_voice_leading_candidates[slot][note] = semantic_count > 0u
+          ? (note < semantic_count ? semantic_notes[note] : 0.0f)
+          : (exact ? captured : captured + delta);
+    }
+    if (count > 0u || semantic_count > 0u) harmony.cached_voice_leading_candidate_count = slot + 1u;
+  }
+  if (harmony.takeover_anchor_count == 0u) {
+    harmony.takeover_anchor_count = std::min<uint32_t>(std::min(harmony.note_pool_count, harmony.next_note_pool_count), 12u);
+    for (uint32_t index = 0u; index < 12u; ++index) {
+      harmony.takeover_anchor_source[index] = index < harmony.takeover_anchor_count ? harmony.note_pool_midi[index] : 0.0f;
+      harmony.takeover_anchor_target[index] = index < harmony.takeover_anchor_count ? harmony.next_note_pool_midi[index] : 0.0f;
+      harmony.takeover_anchor_weight[index] = index < harmony.takeover_anchor_count
+          ? 1.0f / std::max(1.0f, std::abs(harmony.takeover_anchor_target[index] - harmony.takeover_anchor_source[index])) : 0.0f;
+    }
+  }
+}
 
 int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapshot) {
   pending_phrase_timing_event_count = 0u;
@@ -315,6 +529,82 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     const uint32_t duration = snapshot.harmony.canonical_progression_duration_value[index];
     harmony.canonical_progression_duration_value[index] = duration == 2u || duration == 4u || duration == 8u ? duration : 1u;
   }
+  harmony.live_gesture_revision = snapshot.harmony.live_gesture_revision;
+  for (uint32_t index = 0u; index < 8u; ++index) {
+    harmony.slot_playback_behavior[index] = std::min<uint32_t>(snapshot.harmony.harmony_slot_playback_behavior[index], 2u);
+    harmony.slot_intent_present[index] = snapshot.harmony.harmony_slot_intent_present[index] == 0u ? 0u : 1u;
+    harmony.slot_intent_quality[index] = std::min<uint32_t>(snapshot.harmony.harmony_slot_intent_quality[index], 14u);
+    harmony.slot_intent_root_mode[index] = std::min<uint32_t>(snapshot.harmony.harmony_slot_intent_root_mode[index], 2u);
+    harmony.slot_intent_degree[index] = std::max(0, std::min(6, snapshot.harmony.harmony_slot_intent_degree[index]));
+    harmony.slot_intent_root_note[index] = clampFloat(snapshot.harmony.harmony_slot_intent_root_note[index], 0.0f, 11.0f);
+    harmony.slot_intent_inversion[index] = std::max(-4, std::min(4, snapshot.harmony.harmony_slot_intent_inversion[index]));
+    harmony.slot_intent_spread[index] = clampFloat(snapshot.harmony.harmony_slot_intent_spread[index], 0.0f, 1.0f);
+    harmony.slot_intent_octave[index] = std::max(0, std::min(8, snapshot.harmony.harmony_slot_intent_octave[index]));
+    harmony.slot_intent_bass_mode[index] = std::min<uint32_t>(snapshot.harmony.harmony_slot_intent_bass_mode[index], 3u);
+    harmony.slot_intent_bass_note[index] = clampFloat(snapshot.harmony.harmony_slot_intent_bass_note[index], -1.0f, 127.0f);
+    harmony.slot_intent_extension_mask[index] = snapshot.harmony.harmony_slot_intent_extension_mask[index];
+    harmony.slot_intent_alteration_mask[index] = snapshot.harmony.harmony_slot_intent_alteration_mask[index];
+    harmony.slot_captured_root_midi[index] = clampFloat(snapshot.harmony.harmony_slot_captured_root_midi[index], 0.0f, 127.0f);
+    harmony.slot_captured_scale_id[index] = snapshot.harmony.harmony_slot_captured_scale_id[index] == 0u ? 1u : snapshot.harmony.harmony_slot_captured_scale_id[index];
+  }
+  harmony.live_gesture_scope = snapshot.harmony.live_gesture_scope;
+  harmony.live_gesture_target = snapshot.harmony.live_gesture_target;
+  harmony.live_gesture_phase = snapshot.harmony.live_gesture_phase;
+  harmony.live_gesture_playback_behavior = snapshot.harmony.live_gesture_playback_behavior;
+  harmony.live_gesture_intent_present = snapshot.harmony.live_gesture_intent_present == 0u ? 0u : 1u;
+  harmony.live_gesture_intent_quality = snapshot.harmony.live_gesture_intent_quality;
+  harmony.live_gesture_intent_root_mode = snapshot.harmony.live_gesture_intent_root_mode;
+  harmony.live_gesture_intent_degree = snapshot.harmony.live_gesture_intent_degree;
+  harmony.live_gesture_intent_root_note = clampFloat(snapshot.harmony.live_gesture_intent_root_note, 0.0f, 11.0f);
+  harmony.live_gesture_intent_inversion = std::max(-4, std::min(4, snapshot.harmony.live_gesture_intent_inversion));
+  harmony.live_gesture_intent_spread = clampFloat(snapshot.harmony.live_gesture_intent_spread, 0.0f, 1.0f);
+  harmony.live_gesture_intent_octave = std::max(0, std::min(8, snapshot.harmony.live_gesture_intent_octave));
+  harmony.live_gesture_intent_bass_mode = std::min<uint32_t>(snapshot.harmony.live_gesture_intent_bass_mode, 3u);
+  harmony.live_gesture_intent_bass_note = clampFloat(snapshot.harmony.live_gesture_intent_bass_note, -1.0f, 127.0f);
+  harmony.live_gesture_intent_extension_mask = snapshot.harmony.live_gesture_intent_extension_mask;
+  harmony.live_gesture_intent_alteration_mask = snapshot.harmony.live_gesture_intent_alteration_mask;
+  harmony.live_gesture_captured_root_midi = clampFloat(snapshot.harmony.live_gesture_captured_root_midi, 0.0f, 127.0f);
+  harmony.live_gesture_captured_scale_id = snapshot.harmony.live_gesture_captured_scale_id;
+  harmony.live_gesture_revision = snapshot.harmony.live_gesture_revision;
+  harmony.live_gesture_note_count = std::min<uint32_t>(snapshot.harmony.live_gesture_note_count, 8u);
+  for (uint32_t index = 0u; index < 8u; ++index) harmony.live_gesture_notes[index] = index < harmony.live_gesture_note_count ? snapshot.harmony.live_gesture_notes[index] : 0.0f;
+  harmony.live_gesture_expires_at_frame = static_cast<uint64_t>(snapshot.harmony.live_gesture_expires_at_frame_low) |
+      (static_cast<uint64_t>(snapshot.harmony.live_gesture_expires_at_frame_high) << 32u);
+  harmony.takeover_anchor_count = std::min<uint32_t>(snapshot.harmony.takeover_anchor_count, 12u);
+  harmony.takeover_progress = clampFloat(snapshot.harmony.takeover_progress, 0.0f, 1.0f);
+  harmony.takeover_target_root_midi = clampFloat(snapshot.harmony.takeover_target_root_midi, 0.0f, 127.0f);
+  harmony.takeover_target_scale_id = snapshot.harmony.takeover_target_scale_id == 0u ? 1u : snapshot.harmony.takeover_target_scale_id;
+  for (uint32_t index = 0u; index < 12u; ++index) {
+    harmony.takeover_anchor_source[index] = snapshot.harmony.takeover_anchor_source[index];
+    harmony.takeover_anchor_target[index] = snapshot.harmony.takeover_anchor_target[index];
+    harmony.takeover_anchor_weight[index] = snapshot.harmony.takeover_anchor_weight[index];
+  }
+  harmony.morph_endpoint_count = std::min<uint32_t>(snapshot.harmony.morph_endpoint_count, 2u);
+  for (uint32_t index = 0u; index < 2u; ++index) {
+    harmony.morph_endpoint_root_midi[index] = clampFloat(snapshot.harmony.morph_endpoint_root_midi[index], 0.0f, 127.0f);
+    harmony.morph_endpoint_scale_id[index] = snapshot.harmony.morph_endpoint_scale_id[index] == 0u ? 1u : snapshot.harmony.morph_endpoint_scale_id[index];
+    harmony.morph_endpoint_tension[index] = clampFloat(snapshot.harmony.morph_endpoint_tension[index], 0.0f, 1.0f);
+  }
+  harmony.morph_plan_revision = snapshot.harmony.morph_plan_revision;
+  harmony.morph_plan_phase = clampFloat(snapshot.harmony.morph_plan_phase, 0.0f, 1.0f);
+  for (uint32_t index = 0u; index < 8u; ++index) harmony.morph_plan_slot_playback_behavior[index] = std::min<uint32_t>(snapshot.harmony.morph_plan_slot_playback_behavior[index], 2u);
+  harmony.morph_common_pair_count = std::min<uint32_t>(snapshot.harmony.morph_common_pair_count, 8u);
+  harmony.morph_voice_pair_count = std::min<uint32_t>(snapshot.harmony.morph_voice_pair_count, 8u);
+  harmony.morph_unmatched_a_count = std::min<uint32_t>(snapshot.harmony.morph_unmatched_a_count, 8u);
+  harmony.morph_unmatched_b_count = std::min<uint32_t>(snapshot.harmony.morph_unmatched_b_count, 8u);
+  harmony.morph_cof_root_path_count = std::min<uint32_t>(snapshot.harmony.morph_cof_root_path_count, 13u);
+  for (uint32_t index = 0u; index < 8u; ++index) {
+    harmony.morph_common_pair_source[index] = snapshot.harmony.morph_common_pair_source[index]; harmony.morph_common_pair_target[index] = snapshot.harmony.morph_common_pair_target[index];
+    harmony.morph_voice_pair_source[index] = snapshot.harmony.morph_voice_pair_source[index]; harmony.morph_voice_pair_target[index] = snapshot.harmony.morph_voice_pair_target[index];
+    harmony.morph_unmatched_a[index] = snapshot.harmony.morph_unmatched_a[index]; harmony.morph_unmatched_b[index] = snapshot.harmony.morph_unmatched_b[index];
+  }
+  for (uint32_t index = 0u; index < 13u; ++index) {
+    harmony.morph_cof_root_path[index] = snapshot.harmony.morph_cof_root_path[index];
+  }
+  harmony.morph_scale_handover_from = snapshot.harmony.morph_scale_handover_from == 0u ? 1u : snapshot.harmony.morph_scale_handover_from;
+  harmony.morph_scale_handover_to = snapshot.harmony.morph_scale_handover_to == 0u ? 1u : snapshot.harmony.morph_scale_handover_to;
+  harmony.morph_scale_handover_at = clampFloat(snapshot.harmony.morph_scale_handover_at, 0.0f, 1.0f);
+  rebuildHarmonyAuthorityCache();
   // Canonical progression supersedes the legacy degree-pattern controls when
   // present; the legacy fields remain only for old snapshot compatibility.
   harmony.progression_enabled = harmony.canonical_progression_present

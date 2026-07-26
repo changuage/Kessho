@@ -247,9 +247,9 @@ function extractHarmonyItems(rows) {
         itemsByType.harmonyChordBank.push({ scope: key, content: { slots: payload[key] } });
       }
     }
-    for (const key of ['harmonyChordSequence', 'harmonyChordSequenceA', 'harmonyChordSequenceB']) {
-      if (Array.isArray(payload[key]) && payload[key].length > 0) {
-        itemsByType.harmonySequenceBank.push({ scope: key, content: { steps: payload[key] } });
+    for (const key of ['harmonyProgression', 'harmonyProgressionA', 'harmonyProgressionB']) {
+      if (payload[key] && typeof payload[key] === 'object') {
+        itemsByType.harmonySequenceBank.push({ scope: key, content: { progression: payload[key] } });
       }
     }
     const context = {

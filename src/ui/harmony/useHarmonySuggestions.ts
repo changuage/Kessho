@@ -69,6 +69,10 @@ export function useHarmonySuggestions(options: UseHarmonySuggestionsOptions = {}
   const [isGrouping, setIsGrouping] = useState(false);
   const [heldKeys, setHeldKeys] = useState<HarmonySuggestionTriggerKey[]>([]);
   const revisionRef = useRef(0);
+  const onPreviewStartRef = useRef(onPreviewStart);
+  const onPreviewReleaseRef = useRef(onPreviewRelease);
+  onPreviewStartRef.current = onPreviewStart;
+  onPreviewReleaseRef.current = onPreviewRelease;
 
   useEffect(() => {
     const revision = ++revisionRef.current;
@@ -84,25 +88,25 @@ export function useHarmonySuggestions(options: UseHarmonySuggestionsOptions = {}
   const press = useCallback((key: HarmonySuggestionTriggerKey) => {
     const suggestion = latch.press(key);
     setHeldKeys(latch.heldKeys());
-    if (suggestion) onPreviewStart?.(suggestion);
+    if (suggestion) onPreviewStartRef.current?.(suggestion);
     return suggestion;
-  }, [latch, onPreviewStart]);
+  }, [latch]);
 
   const release = useCallback((key: HarmonySuggestionTriggerKey) => {
     const suggestion = latch.current()[HARMONY_SUGGESTION_TRIGGER_KEYS.indexOf(key)] ?? null;
     const next = latch.release(key);
     setBank(next);
     setHeldKeys(latch.heldKeys());
-    if (latch.heldKeys().length === 0) onPreviewRelease?.(suggestion);
+    if (latch.heldKeys().length === 0) onPreviewReleaseRef.current?.(suggestion);
     return next;
-  }, [latch, onPreviewRelease]);
+  }, [latch]);
 
   const stop = useCallback(() => {
     for (const key of latch.heldKeys()) latch.release(key);
     setHeldKeys([]);
     setBank(latch.current());
-    onPreviewRelease?.(null);
-  }, [latch, onPreviewRelease]);
+    onPreviewReleaseRef.current?.(null);
+  }, [latch]);
 
   const axis = useMemo(() => sharedHarmonyPitchAxis([bank], nearbyNotes), [bank, nearbyNotes]);
   const suggestions = useMemo(() => bank.filter((item): item is HarmonySuggestion => item !== null), [bank]);

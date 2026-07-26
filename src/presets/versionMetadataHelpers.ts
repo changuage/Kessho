@@ -7,6 +7,7 @@ import {
   SYNTH_EUCLIDEAN_LANE_COUNT,
 } from '../audio/sequencerLaneCounts';
 import { normalizeSequencerPitchSettingsArray } from '../audio/sequencerPitchSettings';
+import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { PitchSettings } from '../ui/sequencer/useEuclideanSequencer';
 
 function cloneJson<T>(value: T): T {
@@ -43,10 +44,11 @@ export function preparePresetVersionMetadataForV2Storage(
   if (!metadata) return undefined;
   const next = { ...metadata };
   // Canonicalize legacy ARP-only metadata when a loaded preset is saved again.
-  if (next.synthPlayConfigs === undefined && next.synthArpConfigs !== undefined) {
-    next.synthPlayConfigs = cloneJson(next.synthArpConfigs);
+  const legacyPlayConfigs = (next as Record<string, unknown>).synthArpConfigs;
+  if (next.synthPlayConfigs === undefined && legacyPlayConfigs !== undefined) {
+    next.synthPlayConfigs = cloneJson(legacyPlayConfigs) as PresetVersionMetadata['synthPlayConfigs'];
   }
-  delete next.synthArpConfigs;
+  delete (next as Record<string, unknown>).synthArpConfigs;
   delete next.refs;
   if (isL4State) delete next.presetPool;
   return Object.keys(next).length > 0 ? next : undefined;
@@ -148,7 +150,8 @@ export function buildPresetVersionMetadata(
     hasMetadata = true;
   }
 
-  const synthPlayConfigs = source.synthPlayConfigs ?? source.synthArpConfigs;
+  const legacyPlayConfigs = (source as Record<string, unknown>).synthArpConfigs as ProductPlayConfig[] | undefined;
+  const synthPlayConfigs = source.synthPlayConfigs ?? legacyPlayConfigs;
   if (synthPlayConfigs && synthPlayConfigs.length > 0) {
     metadata.synthPlayConfigs = cloneJson(synthPlayConfigs);
     hasMetadata = true;

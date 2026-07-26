@@ -111,6 +111,10 @@ class CoreProductRuntimeAdapter {
     if (!soundscapeFadeCanCoverAssetRemoval && this.soundscapeSnapshotChanged(previous, next)) return false;
     if (previous.harmony.chordMode !== next.harmony.chordMode) return false;
     if (previous.harmony.voicingMode !== next.harmony.voicingMode) return false;
+    // Harmony authority fields are consumed by the native cache as one atomic
+    // snapshot.  Do not emit a partial dirty diff that would leave the audio
+    // thread with stale semantic/playback/gesture inputs.
+    if (this.harmonyAuthorityFieldsChanged(previous.harmony, next.harmony)) return false;
     if (previous.sources.length !== next.sources.length) return false;
     for (let index = 0; index < next.sources.length; index += 1) {
       const previousSource = previous.sources[index];
@@ -330,6 +334,42 @@ class CoreProductRuntimeAdapter {
     for (let index = 0; index < 8; index += 1) {
       if ((previous.notePoolMidi[index] ?? 0) !== (next.notePoolMidi[index] ?? 0)) return true;
       if ((previous.nextNotePoolMidi[index] ?? 0) !== (next.nextNotePoolMidi[index] ?? 0)) return true;
+    }
+    return false;
+  }
+
+  private harmonyAuthorityFieldsChanged(previous: CoreProductSnapshot['harmony'], next: CoreProductSnapshot['harmony']): boolean {
+    const scalarKeys = [
+      'canonicalProgressionVersion', 'canonicalProgressionEnabled', 'canonicalProgressionEventCount',
+      'canonicalProgressionCurrentEvent', 'canonicalProgressionBarsPerPhrase',
+      'liveGestureRevision', 'liveGestureScope', 'liveGestureTarget', 'liveGesturePhase',
+      'liveGesturePlaybackBehavior', 'liveGestureIntentQuality', 'liveGestureIntentRootMode',
+      'liveGestureIntentDegree', 'liveGestureIntentRootNote', 'liveGestureCapturedRootMidi',
+      'liveGestureCapturedScaleId', 'liveGestureNoteCount', 'liveGestureExpiresAtFrame',
+      'takeoverAnchorCount', 'takeoverTargetRootMidi', 'takeoverTargetScaleId', 'takeoverProgress',
+    ] as const;
+    const arrayKeys = [
+      'canonicalProgressionSource', 'canonicalProgressionSlotId', 'canonicalProgressionDurationUnit',
+      'canonicalProgressionDurationValue', 'harmonySlotPlaybackBehavior', 'harmonySlotIntentQuality',
+      'harmonySlotIntentRootMode', 'harmonySlotIntentDegree', 'harmonySlotIntentRootNote',
+      'harmonySlotIntentInversion', 'harmonySlotIntentSpread', 'harmonySlotIntentOctave',
+      'harmonySlotIntentBassMode', 'harmonySlotIntentStrength', 'harmonySlotIntentSource',
+      'harmonySlotIntentExtensionMask', 'harmonySlotIntentAlterationMask', 'harmonySlotCapturedRootMidi',
+      'harmonySlotCapturedScaleId', 'liveGestureNotes', 'takeoverAnchorSource', 'takeoverAnchorTarget',
+      'takeoverAnchorWeight',
+    ] as const;
+    const previousShape = previous as unknown as Record<string, unknown>;
+    const nextShape = next as unknown as Record<string, unknown>;
+    for (const key of scalarKeys) {
+      if (previousShape[key] !== nextShape[key]) return true;
+    }
+    for (const key of arrayKeys) {
+      const previousValues = Array.isArray(previousShape[key]) ? previousShape[key] as unknown[] : [];
+      const nextValues = Array.isArray(nextShape[key]) ? nextShape[key] as unknown[] : [];
+      if (previousValues.length !== nextValues.length) return true;
+      for (let index = 0; index < nextValues.length; index += 1) {
+        if (previousValues[index] !== nextValues[index]) return true;
+      }
     }
     return false;
   }

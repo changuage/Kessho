@@ -22,7 +22,7 @@ import { resolveReverbSnapshotParams, scaleIdFromState, shouldUseMobileReverbQua
 import { coreProductDrumLaneMacroDefaultsFromState, coreProductSynthLaneMacroDefaultsFromState } from './coreProductSequencerMacroDefaults';
 import { laneDefaults as coreProductLaneDefaults } from './coreProductSnapshotDefaults';
 import { soundscapeSnapshotPayloadFromState, type SoundscapeSnapshotPayload } from './coreProductSoundscapesSnapshot';
-import { HARMONY_POOL_MAX_NOTES, HARMONY_SOURCE_IDS, HARMONY_STRENGTH_IDS, resolveProductHarmonyState } from './CoreProductHarmonyControl';
+import { HARMONY_ALTERATION_IDS, HARMONY_EXTENSION_IDS, HARMONY_POOL_MAX_NOTES, HARMONY_QUALITY_IDS, HARMONY_SOURCE_IDS, HARMONY_STRENGTH_IDS, resolveProductHarmonyState } from './CoreProductHarmonyControl';
 import { coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
 import { productAnchorWalkerFromConfig, productOrbitFromConfig, SEQUENCER_MODE_IDS, synthSequencerFaceSlotsFromState } from './coreProductSequencerFaceSnapshot';
 import {
@@ -33,6 +33,12 @@ import {
 import { assignSampleSlotSourceSnapshot } from './coreProductSampleSlotSnapshot';
 import type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductLaneSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 import { resolveSequencerLaneAudibility } from './sequencerAudibility';
+import { resolveCachedMorphHarmonyPlan, type HarmonyLiveLayer } from './harmony/harmonyProjection';
+
+let activeProductHarmonyLiveLayer: HarmonyLiveLayer | null = null;
+export function setCoreProductHarmonyLiveLayer(layer: HarmonyLiveLayer | null): void {
+  activeProductHarmonyLiveLayer = layer;
+}
 import { sequencerResumeQuantizationForLane } from './sequencerResumeQuantization';
 import {
   createSchedulerHarmonyState,
@@ -42,7 +48,6 @@ import {
 import { harmonySeedMaterialFromState } from './harmonySeedMaterial';
 import { coreProductArrangementSnapshotFromState } from './coreProductArrangementSnapshot';
 import { compileProductSourceMorphAutomation } from './product/compileProductSourceMorphAutomation';
-import { sharedSlotResolvedMidiPool } from './harmony/harmonyChordAdapters';
 export type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductHarmonySnapshot, ProductLaneSnapshot, ProductSoundscapeSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 
 // SNAPSHOT_AUTHORITY: GENERATED_SCHEMA_SERIALIZATION - this file maps app/UI state into generated Product Core fields.
@@ -758,9 +763,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   const harmonyFrame = harmonyControl.resolvedHarmonyFrame;
   const schedulerHarmony = createSchedulerHarmonyState(sliderState as unknown as SliderState);
   const harmonyClockSource = sliderState?.harmonyClockSource ?? 'globalPhrase';
-  const progressionClockSource = sliderState?.chordProgressionClockSource === 'harmony'
-    ? harmonyClockSource
-    : sliderState?.chordProgressionClockSource ?? harmonyClockSource;
+  const progressionClockSource = harmonyClockSource;
   const snapshotWallSeconds = numberFromState(sliderState, CORE_PRODUCT_SNAPSHOT_WALL_SEC_STATE_KEY, 0);
   const nextHarmonyPhraseIndex = harmonyClockSource === 'localBeat' || harmonyClockSource === 'localPhrase'
     ? 1
@@ -829,12 +832,26 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   const granularUsesLegacyRuntimeSeed = usesLegacyGranularRuntimeSeed(sliderState);
   const reverbParams = resolveReverbSnapshotParams(sliderState, tension);
   const delayBTapeMode = sliderState?.delayBAlgorithm === 'tapeHeads';
-  const harmonySlotPools = harmonyControl.chordSlots.map((slot) => sharedSlotResolvedMidiPool(slot, {
-    rootMidi,
-    effectiveRootMidi: rootMidi,
-    scaleId,
-    tension,
-  }));
+  // Snapshot projection carries authored exact voicings unchanged. Native
+  // Product Core owns semantic/relative/auto resolution after load.
+  const harmonySlotAuthoredPools = harmonyControl.chordSlots.map((slot) => (slot.chord?.exactMidiNotes ?? []).slice(0, HARMONY_POOL_MAX_NOTES));
+  const harmonySlotPools = harmonySlotAuthoredPools.map((pool) => fixedHarmonyPool(pool));
+  const liveLayer = activeProductHarmonyLiveLayer;
+  const liveFrame = liveLayer?.frame;
+  const liveNotes = (liveFrame?.currentNotePool ?? []).filter((note) => Number.isFinite(note)).slice(0, 8);
+  const liveTarget = liveLayer?.kind === 'seq-live'
+    ? 3 + Math.max(0, Math.min(3, (liveLayer.seqId ?? 0)))
+    : liveLayer?.kind === 'harmony-takeover' ? 2 : 0;
+  const liveScope = liveLayer?.kind === 'seq-live' ? 4 : liveLayer?.kind === 'harmony-takeover' ? 1 : 0;
+  const liveExpiresAtFrame = liveLayer ? (liveLayer.latched ? Number.MAX_SAFE_INTEGER : numberFromState(sliderState, 'harmonyLiveGestureExpiresAtFrame', Number.MAX_SAFE_INTEGER)) : 0;
+  const endpointA = resolveProductHarmonyState({ state: sliderState, rootMidi, rootMidiAnchor: rootMidi, scaleId, tension, seed: rngSeed, morphPercent: 0 }).resolvedHarmonyFrame;
+  const endpointB = resolveProductHarmonyState({ state: sliderState, rootMidi, rootMidiAnchor: rootMidi, scaleId, tension, seed: rngSeed, morphPercent: 100 }).resolvedHarmonyFrame;
+  const morphPlan = resolveCachedMorphHarmonyPlan(endpointA, endpointB, numberFromState(sliderState, 'harmonyMorphPercent', journey.morphPhase * 100) >= 50 ? 'B' : 'A');
+  const liveDraft = liveLayer?.draft;
+  const liveIntent = liveDraft?.intent;
+  const livePlaybackBehavior = liveDraft?.playbackBehavior === 'relative' ? 1 : liveDraft?.playbackBehavior === 'exact' ? 2 : 0;
+  const liveQuality = liveIntent?.quality ? HARMONY_QUALITY_IDS[liveIntent.quality as keyof typeof HARMONY_QUALITY_IDS] ?? 0 : 0;
+  const liveRootMode = liveIntent?.rootMode === 'absolute' ? 1 : liveIntent?.rootMode === 'captured' ? 2 : 0;
 
   return {
     transport,
@@ -859,7 +876,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       manualControlAvailable: harmonyFrame.manualControlAvailable,
       notePoolCount: Math.min(harmonyFrame.currentNotePool.length, HARMONY_POOL_MAX_NOTES),
       notePoolMidi: fixedHarmonyPool(harmonyFrame.currentNotePool),
-      harmonySlotNoteCount: harmonySlotPools.map((pool) => Math.min(pool.length, 8)),
+      harmonySlotNoteCount: harmonySlotAuthoredPools.map((pool) => pool.length),
       harmonySlotMidi: harmonySlotPools.flatMap((pool) => fixedHarmonyPool(pool)).slice(0, 64),
       bassMidi: harmonyFrame.bassNote ?? -1,
       nextNotePoolCount: Math.min(harmonyFrame.nextNotePool.length, HARMONY_POOL_MAX_NOTES),
@@ -913,6 +930,83 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       canonicalProgressionSlotId: Array.from({ length: 64 }, (_, index) => harmonyControl.progression.events[index]?.source.type === 'slot' ? harmonyControl.progression.events[index]!.source.slotId : 0),
       canonicalProgressionDurationUnit: Array.from({ length: 64 }, (_, index) => harmonyControl.progression.events[index]?.duration.unit === 'bar' ? 0 : 1),
       canonicalProgressionDurationValue: Array.from({ length: 64 }, (_, index) => harmonyControl.progression.events[index]?.duration.value ?? 1),
+      morphEndpointCount: 2,
+      morphEndpointRootMidi: [
+        numberFromState(sliderState, 'harmonyMorphEndpointARootMidi', rootMidi),
+        numberFromState(sliderState, 'harmonyMorphEndpointBRootMidi', rootMidi),
+      ],
+      morphEndpointScaleId: [
+        numberFromState(sliderState, 'harmonyMorphEndpointAScaleId', scaleId),
+        numberFromState(sliderState, 'harmonyMorphEndpointBScaleId', scaleId),
+      ],
+      morphEndpointTension: [
+        numberFromState(sliderState, 'harmonyMorphEndpointATension', tension),
+        numberFromState(sliderState, 'harmonyMorphEndpointBTension', tension),
+      ],
+      morphPlanRevision: numberFromState(sliderState, 'harmonyMorphPlanRevision', 0),
+      morphPlanPhase: clamp(numberFromState(sliderState, 'harmonyMorphPercent', 0) / 100, 0, 1),
+      morphPlanSlotPlaybackBehavior: harmonyControl.chordSlots.map((slot) => slot.chord?.playbackBehavior === 'relative' ? 1 : slot.chord?.playbackBehavior === 'exact' ? 2 : 0),
+      morphCommonPairCount: morphPlan.commonToneVoicePairs.length,
+      morphCommonPairSource: morphPlan.commonToneVoicePairs.map(([source]) => source),
+      morphCommonPairTarget: morphPlan.commonToneVoicePairs.map(([, target]) => target),
+      morphVoicePairCount: morphPlan.voiceLeadingPairs.length,
+      morphVoicePairSource: morphPlan.voiceLeadingPairs.map(([source]) => source),
+      morphVoicePairTarget: morphPlan.voiceLeadingPairs.map(([, target]) => target),
+      morphUnmatchedACount: morphPlan.unmatchedA.length,
+      morphUnmatchedA: [...morphPlan.unmatchedA],
+      morphUnmatchedBCount: morphPlan.unmatchedB.length,
+      morphUnmatchedB: [...morphPlan.unmatchedB],
+      morphCofRootPathCount: morphPlan.cofRootPath.length,
+      morphCofRootPath: [...morphPlan.cofRootPath],
+      morphScaleHandoverFrom: morphPlan.scaleFamilyHandover.from,
+      morphScaleHandoverTo: morphPlan.scaleFamilyHandover.to,
+      morphScaleHandoverAt: morphPlan.scaleFamilyHandover.at,
+      harmonySlotPlaybackBehavior: harmonyControl.chordSlots.map((slot) => slot.chord?.playbackBehavior === 'relative' ? 1 : slot.chord?.playbackBehavior === 'exact' ? 2 : 0),
+      harmonySlotIntentPresent: harmonyControl.chordSlots.map((slot) => slot.chord?.intent ? 1 : 0),
+      harmonySlotIntentQuality: harmonyControl.chordSlots.map((slot) => slot.chord?.intent?.quality ? HARMONY_QUALITY_IDS[slot.chord.intent.quality] : 0),
+      harmonySlotIntentRootMode: harmonyControl.chordSlots.map((slot) => slot.chord?.intent?.rootMode === 'absolute' ? 1 : slot.chord?.intent?.rootMode === 'captured' ? 2 : 0),
+      harmonySlotIntentDegree: harmonyControl.chordSlots.map((slot) => slot.chord?.intent?.degree ?? 0),
+      harmonySlotIntentRootNote: harmonyControl.chordSlots.map((slot) => slot.chord?.intent?.rootNote ?? 0),
+      harmonySlotIntentInversion: harmonyControl.chordSlots.map((slot) => slot.chord?.intent?.inversion ?? 0),
+      harmonySlotIntentSpread: harmonyControl.chordSlots.map((slot) => slot.chord?.intent?.spread ?? 0.5),
+      harmonySlotIntentOctave: harmonyControl.chordSlots.map((slot) => slot.chord?.intent?.octave ?? 4),
+      harmonySlotIntentBassMode: harmonyControl.chordSlots.map((slot) => slot.chord?.intent?.bassMode === 'root' ? 1 : slot.chord?.intent?.bassMode === 'fifth' ? 2 : slot.chord?.intent?.bassMode === 'captured' ? 3 : 0),
+      harmonySlotIntentBassNote: harmonyControl.chordSlots.map((slot) => slot.chord?.intent?.bassNote ?? -1),
+      harmonySlotIntentStrength: harmonyControl.chordSlots.map((slot) => slot.chord?.intent?.strength === 'force' ? 1 : 0),
+      harmonySlotIntentSource: harmonyControl.chordSlots.map((slot) => slot.chord?.intent?.source === 'slot' ? 2 : 0),
+      harmonySlotIntentExtensionMask: harmonyControl.chordSlots.map((slot) => (slot.chord?.intent?.extensions ?? []).reduce((mask, extension) => mask | (1 << (HARMONY_EXTENSION_IDS[extension as keyof typeof HARMONY_EXTENSION_IDS] ?? 0)), 0)),
+      harmonySlotIntentAlterationMask: harmonyControl.chordSlots.map((slot) => (slot.chord?.intent?.alterations ?? []).reduce((mask, alteration) => mask | (1 << (HARMONY_ALTERATION_IDS[alteration] ?? 0)), 0)),
+      harmonySlotCapturedRootMidi: harmonyControl.chordSlots.map((slot) => slot.chord?.capturedContext.rootMidi ?? rootMidi),
+      harmonySlotCapturedScaleId: harmonyControl.chordSlots.map((slot) => slot.chord?.capturedContext.scaleId ?? scaleId),
+      liveGestureRevision: liveLayer ? numberFromState(sliderState, 'harmonyLiveGestureRevision', 1) + 1 : numberFromState(sliderState, 'harmonyLiveGestureRevision', 0),
+      liveGestureScope: liveLayer ? liveScope : numberFromState(sliderState, 'harmonyLiveGestureScope', 0),
+      liveGestureTarget: liveLayer ? liveTarget : numberFromState(sliderState, 'harmonyLiveGestureTarget', 0),
+      liveGesturePhase: liveLayer ? (liveLayer.latched ? 1 : 0) : numberFromState(sliderState, 'harmonyLiveGesturePhase', 0),
+      liveGesturePlaybackBehavior: liveLayer ? livePlaybackBehavior : numberFromState(sliderState, 'harmonyLiveGesturePlaybackBehavior', 0),
+      liveGestureIntentPresent: liveIntent ? 1 : 0,
+      liveGestureIntentQuality: liveLayer ? liveQuality : numberFromState(sliderState, 'harmonyLiveGestureIntentQuality', 0),
+      liveGestureIntentRootMode: liveLayer ? liveRootMode : numberFromState(sliderState, 'harmonyLiveGestureIntentRootMode', 0),
+      liveGestureIntentDegree: liveLayer ? (liveIntent?.degree ?? 0) : numberFromState(sliderState, 'harmonyLiveGestureIntentDegree', 0),
+      liveGestureIntentRootNote: liveLayer ? (liveIntent?.rootNote ?? 0) : numberFromState(sliderState, 'harmonyLiveGestureIntentRootNote', 0),
+      liveGestureIntentInversion: liveIntent?.inversion ?? 0,
+      liveGestureIntentSpread: liveIntent?.spread ?? 0.5,
+      liveGestureIntentOctave: liveIntent?.octave ?? 4,
+      liveGestureIntentBassMode: liveIntent?.bassMode === 'root' ? 1 : liveIntent?.bassMode === 'fifth' ? 2 : liveIntent?.bassMode === 'captured' ? 3 : 0,
+      liveGestureIntentBassNote: liveIntent?.bassNote ?? -1,
+      liveGestureIntentExtensionMask: (liveIntent?.extensions ?? []).reduce((mask, extension) => mask | (1 << (HARMONY_EXTENSION_IDS[extension as keyof typeof HARMONY_EXTENSION_IDS] ?? 0)), 0),
+      liveGestureIntentAlterationMask: (liveIntent?.alterations ?? []).reduce((mask, alteration) => mask | (1 << (HARMONY_ALTERATION_IDS[alteration] ?? 0)), 0),
+      liveGestureCapturedRootMidi: liveLayer ? (liveDraft?.capturedContext?.rootMidi ?? liveFrame?.rootMidi ?? rootMidi) : numberFromState(sliderState, 'harmonyLiveGestureCapturedRootMidi', rootMidi),
+      liveGestureCapturedScaleId: liveLayer ? (liveDraft?.capturedContext?.scaleId ?? liveFrame?.scaleId ?? scaleId) : numberFromState(sliderState, 'harmonyLiveGestureCapturedScaleId', scaleId),
+      liveGestureNoteCount: liveLayer ? liveNotes.length : numberFromState(sliderState, 'harmonyLiveGestureNoteCount', 0),
+      liveGestureNotes: liveLayer ? liveNotes : Array.from({ length: 8 }, (_, index) => numberFromState(sliderState, `harmonyLiveGestureNote${index}`, 0)),
+      liveGestureExpiresAtFrame: liveLayer ? liveExpiresAtFrame : numberFromState(sliderState, 'harmonyLiveGestureExpiresAtFrame', 0),
+      takeoverAnchorCount: liveLayer?.kind === 'harmony-takeover' ? Math.min(12, liveNotes.length, (liveFrame?.nextNotePool ?? []).length) : numberFromState(sliderState, 'harmonyTakeoverAnchorCount', 0),
+      takeoverAnchorSource: liveLayer?.kind === 'harmony-takeover' ? Array.from({ length: 12 }, (_, index) => liveNotes[index] ?? 0) : Array.from({ length: 12 }, (_, index) => numberFromState(sliderState, `harmonyTakeoverAnchorSource${index}`, 0)),
+      takeoverAnchorTarget: liveLayer?.kind === 'harmony-takeover' ? Array.from({ length: 12 }, (_, index) => liveFrame?.nextNotePool?.[index] ?? 0) : Array.from({ length: 12 }, (_, index) => numberFromState(sliderState, `harmonyTakeoverAnchorTarget${index}`, 0)),
+      takeoverAnchorWeight: liveLayer?.kind === 'harmony-takeover' ? Array.from({ length: 12 }, (_, index) => index < liveNotes.length ? 1 : 0) : Array.from({ length: 12 }, (_, index) => numberFromState(sliderState, `harmonyTakeoverAnchorWeight${index}`, 0)),
+      takeoverTargetRootMidi: liveFrame?.rootMidi ?? numberFromState(sliderState, 'harmonyTakeoverTargetRootMidi', rootMidi),
+      takeoverTargetScaleId: liveFrame?.scaleId ?? numberFromState(sliderState, 'harmonyTakeoverTargetScaleId', scaleId),
+      takeoverProgress: liveLayer?.kind === 'harmony-takeover' ? 1 : numberFromState(sliderState, 'harmonyTakeoverProgress', 0),
     },
     sources,
     synthLanes,

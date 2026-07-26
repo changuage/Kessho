@@ -528,26 +528,6 @@ const globalEntries: Record<string, SliderHelpEntry> = {
     'Low values keep modulation close to the home key. High values allow longer excursions before the drift logic turns back.',
     [g('Root & CoF Drift', 'Range (steps)', 'single-only', [GLOBAL_SINGLE_NOTE])],
   ),
-  chordProgressionSteps: entry(
-    'Sets the length of the chord progression loop.',
-    'Low values create a shorter, more repetitive cycle. High values create a longer loop with more room for harmonic variation.',
-    [g('Chord Progression', 'Pattern Length')],
-  ),
-  chordProgressionClockSource: entry(
-    'Chooses which phrase clock advances the chord progression steps.',
-    'Follow Harmony uses the same clock as harmony and the pad chord engine. Global Phrase and Local Phrase let the progression keep its own phrase transport while still feeding harmony degrees. This affects when progression steps advance, not how fast sub-phrase chord voicings move inside a step.',
-    [g('Chord Progression', 'Clock Source', 'single-only', [GLOBAL_SINGLE_NOTE])],
-  ),
-  chordProgressionPhraseMultiplier: entry(
-    'Sets how many phrases each progression step lasts.',
-    'Lower values move to the next progression step every phrase. Higher values hold each degree across multiple phrases before advancing.',
-    [g('Chord Progression', 'Step Length', 'single-only', [GLOBAL_SINGLE_NOTE])],
-  ),
-  chordProgressionStepEnabled: entry(
-    'Turns individual progression steps on or off.',
-    'On steps advance harmony to their chosen degree. Off steps preserve the current progression degree for that slot, which creates held chords without Euclidean hits or rotation.',
-    [g('Chord Progression', 'Step On/Off', 'single-only', [GLOBAL_SINGLE_NOTE])],
-  ),
 };
 
 Object.assign(globalEntries, {

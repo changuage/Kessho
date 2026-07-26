@@ -70,18 +70,17 @@ function scaleNameFromProductId(scaleId: unknown): string | null {
 }
 
 function harmonyParamsFromState(state: Record<string, unknown>): Partial<HarmonyParams> {
-  const phraseMultiplier = finiteInteger(state.chordProgressionPhraseMultiplier, 1);
   return {
     cofDriftEnabled: boolValue(state.cofDriftEnabled, false),
     cofDriftRate: finiteNumber(state.cofDriftRate, 2),
     cofDriftDirection: state.cofDriftDirection === 'ccw' || state.cofDriftDirection === 'random' ? state.cofDriftDirection : 'cw',
     cofDriftRange: finiteNumber(state.cofDriftRange, 3),
-    chordProgressionEnabled: boolValue(state.chordProgressionEnabled, false),
-    chordProgressionPattern: Array.isArray(state.chordProgressionPattern) ? state.chordProgressionPattern.map((value) => finiteInteger(value, 0)) : [0, 3, 4, 0],
-    chordProgressionSteps: finiteInteger(state.chordProgressionSteps, 4),
-    chordProgressionStepEnabled: Array.isArray(state.chordProgressionStepEnabled) ? state.chordProgressionStepEnabled.map((value) => value !== false) : [true, true, true, true],
-    chordProgressionPhraseMultiplier: phraseMultiplier === 2 || phraseMultiplier === 4 || phraseMultiplier === 8 ? phraseMultiplier : 1,
-    canonicalProgression: sanitizeHarmonyProgression(state.harmonyProgression, state.harmonyChordSequence, state.harmonyChordSequenceEnabled),
+    chordProgressionEnabled: false,
+    chordProgressionPattern: [0, 3, 4, 0],
+    chordProgressionSteps: 4,
+    chordProgressionStepEnabled: [true, true, true, true],
+    chordProgressionPhraseMultiplier: 1,
+    canonicalProgression: sanitizeHarmonyProgression(state.harmonyProgression),
     transportBarsPerPhrase: finiteInteger(state.transportBarsPerPhrase, 4),
   };
 }

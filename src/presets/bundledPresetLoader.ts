@@ -59,8 +59,6 @@ export interface BundledSavedPreset {
   drumSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   synthPlayConfigs?: ProductPlayConfig[];
-  /** @deprecated Legacy metadata key retained for decode compatibility. */
-  synthArpConfigs?: ProductPlayConfig[];
   drumPitchSettings?: PitchSettings[];
   synthPitchSettings?: PitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];

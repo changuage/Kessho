@@ -46,9 +46,9 @@ const HARMONY_CONTENT_KEYS = new Set([
   'harmonyChordSlots',
   'harmonyChordSlotsA',
   'harmonyChordSlotsB',
-  'harmonyChordSequence',
-  'harmonyChordSequenceA',
-  'harmonyChordSequenceB',
+  'harmonyProgression',
+  'harmonyProgressionA',
+  'harmonyProgressionB',
 ]);
 
 const SEQUENCER_ARRANGEMENT_KEYS = new Set([
@@ -108,8 +108,6 @@ const METADATA_OWNERS: Readonly<Record<string, PresetPersistenceOwner>> = Object
   drumSubLaneStates: 'portable-content',
   synthSubLaneStates: 'portable-content',
   synthPlayConfigs: 'portable-content',
-  // Legacy metadata is accepted for migration and rewritten as synthPlayConfigs.
-  synthArpConfigs: 'portable-content',
   drumPitchSettings: 'portable-content',
   synthPitchSettings: 'portable-content',
   synthPitchBindingModes: 'portable-content',

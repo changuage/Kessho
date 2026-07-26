@@ -53,7 +53,8 @@ const focusedHeaders = [
   ['cpp/KesshoCore/src/product/ProductTransportState.h', 80],
   ['cpp/KesshoCore/src/product/ProductFilterState.h', 120],
   ['cpp/KesshoCore/src/product/ProductVoiceState.h', 180],
-  ['cpp/KesshoCore/src/product/ProductHarmonyState.h', 90],
+  ['cpp/KesshoCore/src/product/ProductHarmonyAuthorityState.h', 130],
+  ['cpp/KesshoCore/src/product/ProductHarmonyState.h', 150],
   ['cpp/KesshoCore/src/product/ProductArrangementState.h', 120],
   ['cpp/KesshoCore/src/product/ProductArpRuntimeState.h', 60],
   ['cpp/KesshoCore/src/product/ProductSequencerRuntimeState.h', 60],
@@ -630,6 +631,32 @@ for (const contract of directTestContracts) {
   for (const token of contract.tokens) {
     assert(source.includes(token), `${contract.path} must directly exercise Product subsystem token: ${token}`);
   }
+}
+
+const nativeHarmonySnapshot = read('cpp/KesshoCore/src/product/KesshoProductSnapshot.cpp');
+const nativeHarmonyVoicing = read('cpp/KesshoCore/src/product/music/VoicingEngine.cpp');
+const nativeHarmonyEvents = read('cpp/KesshoCore/src/product/KesshoProductEvents.cpp');
+const nativeSequencer = read('cpp/KesshoCore/src/product/sequencer/SynthEuclidSequencer.cpp');
+assert(nativeHarmonySnapshot.includes('rebuildHarmonyAuthorityCache();'), 'Native Product snapshot must populate Harmony authority caches');
+assert(nativeHarmonyVoicing.includes('harmony.cached_scale_degree_map'), 'Native sequencer voice resolution must consume cached Harmony degree maps');
+assert(nativeHarmonyVoicing.includes('harmony.cached_voice_leading_candidates'), 'Native sequencer voice resolution must consume cached Harmony voice-leading candidates');
+assert(nativeHarmonyVoicing.includes('harmony.live_gesture_note_count'), 'Native sequencer voice resolution must consume bounded live Harmony gestures');
+assert(nativeHarmonyVoicing.includes('harmony.takeover_progress'), 'Native sequencer voice resolution must consume bounded takeover anchors');
+assert(nativeHarmonyVoicing.includes('live_gesture_playback_behavior'), 'Native sequencer voice resolution must consume live gesture playback behavior');
+assert(nativeHarmonyVoicing.includes('live_gesture_intent_quality'), 'Native sequencer voice resolution must consume live gesture semantic intent');
+assert(nativeHarmonyVoicing.includes('morph_voice_pair_count'), 'Native sequencer voice resolution must consume cached MorphHarmonyPlan pairs');
+assert(nativeSequencer.includes('harmony.harmony_play_dispatch_count'), 'Native sequencer must record actual Harmony Play dispatch telemetry');
+assert(nativeSequencer.includes('harmony.harmony_play_last_dispatch_latency_ms'), 'Native sequencer must record Harmony Play dispatch latency');
+assert(nativeHarmonyEvents.includes('rebuildHarmonyAuthorityCache();'), 'Native Harmony scale events must refresh authority caches');
+const generatedSchema = read('src/audio/generated/kesshoProductSchema.ts');
+for (const token of [
+  'KESSHO_PRODUCT_HARMONY_AUTHORITY',
+  'liveGestureCapacity',
+  'takeoverAnchorCount',
+  'morphEndpointCount',
+  'morphPlanSlotCapacity',
+]) {
+  assert(generatedSchema.includes(token), `Generated Product Harmony schema is missing ${token}`);
 }
 
 console.log('Kessho Product architecture boundary checks passed');

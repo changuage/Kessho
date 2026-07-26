@@ -250,7 +250,7 @@ export const BUTTON_HELP_CATALOG: Record<string, SliderHelpEntry> = {
   ),
   harmonyLabPalette: entry(
     'Shows reusable palette chords.',
-    'Palette chords are saved chord ideas. Select one to edit it, drag it onto a progression step, or use Copy/Link from the step inspector.',
+    'Palette chords are saved chord ideas. Select one to edit it, drag it onto a progression step, or choose it as that step’s saved chord.',
     [gl('Harmony Engine / Chord Lab', 'Chord Palette')],
   ),
   harmonyLabCreate: entry(
@@ -305,7 +305,7 @@ export const BUTTON_HELP_CATALOG: Record<string, SliderHelpEntry> = {
   ),
   harmonyLabSequenceStep: entry(
     'Selects a harmony sequence step for inspection.',
-    'Each step can be enabled, muted, locked, assigned a probability, and set to auto harmony, a custom intent, a slot copy, or a slot follow mode.',
+    'Each step exposes its canonical progression duration and can reference a palette slot for playback.',
     [gl('Harmony Engine / Chord Lab', 'Sequence Step')],
   ),
   harmonyLabSequenceEnable: entry(
@@ -318,90 +318,10 @@ export const BUTTON_HELP_CATALOG: Record<string, SliderHelpEntry> = {
     'Progression length wraps playback after this many steps. The editor keeps eight stored step slots, but only the active 3-8 steps are shown and played.',
     [gl('Harmony Engine / Chord Lab', 'Progression Steps')],
   ),
-  harmonyLabStepEnable: entry(
-    'Enables or mutes the selected sequence step.',
-    'A disabled step stays in the sequence layout but is skipped or treated as inactive by the harmony resolver.',
-    [gl('Harmony Engine / Chord Lab', 'Step Enable')],
-  ),
-  harmonyLabStepMode: entry(
-    'Chooses how the selected sequence step gets its harmony.',
-    'Auto follows generated degree logic, Intent stores a custom chord intent, Copy snapshots a slot, and Follow keeps referencing a slot as it changes.',
-    [gl('Harmony Engine / Chord Lab', 'Step Mode')],
-  ),
-  harmonyLabStepDegree: entry(
-    'Sets the selected sequence step degree.',
-    'Degree chooses I through VII for auto or intent-based sequence steps, keeping the step tied to the current scale.',
-    [gl('Harmony Engine / Chord Lab', 'Step Degree')],
-  ),
-  harmonyLabStepQuality: entry(
-    'Sets the selected sequence step quality.',
-    'Quality chooses the chord type for this step when it is using auto or intent-based harmony.',
-    [gl('Harmony Engine / Chord Lab', 'Step Quality')],
-  ),
-  harmonyLabStepSlot: entry(
-    'Chooses which palette chord this step follows.',
-    'This selector matters when the step mode is Link Slot. For a clearer workflow, select a palette chord and use Copy or Link from the step inspector.',
-    [gl('Harmony Engine / Chord Lab', 'Step Slot')],
-  ),
   harmonyLabStepSlotActions: entry(
-    'Copies or links the selected palette chord to this step.',
-    'Copy stores the selected palette chord as this step\'s own custom chord. Link keeps the step connected to the palette chord, so later palette edits change the step.',
-    [gl('Harmony Engine / Chord Lab', 'Copy / Link Palette Chord')],
-  ),
-  harmonyLabStepProbability: entry(
-    'Sets how likely this sequence step is to fire.',
-    'Lower probability makes the step less likely to affect the resolved harmony. Higher probability makes the step more dependable.',
-    [gl('Harmony Engine / Chord Lab', 'Step Probability')],
-  ),
-  harmonyLabStepStrength: entry(
-    'Sets how strongly this sequence step influences harmony.',
-    'Bias lets the step guide the result. Force makes the step chord more explicit when the sequence resolves.',
-    [gl('Harmony Engine / Chord Lab', 'Step Strength')],
-  ),
-  harmonyLabStepLock: entry(
-    'Locks or unlocks the selected sequence step.',
-    'Locked steps are protected from reset and from generation when Respect Locks is enabled.',
-    [gl('Harmony Engine / Chord Lab', 'Step Lock')],
-  ),
-  harmonyLabStepReset: entry(
-    'Resets the selected sequence step to automatic harmony.',
-    'Reset clears custom intent and slot assignment for the selected step and returns it to auto quality.',
-    [gl('Harmony Engine / Chord Lab', 'Step Reset')],
-  ),
-  harmonyGenerateTarget: entry(
-    'Chooses what generation will rewrite.',
-    'Create can target only the chord palette, only the progression, or both. This lets you refresh one layer without destroying the other.',
-    [gl('Harmony Engine / Chord Lab / Create', 'Target')],
-  ),
-  harmonyGenerateTheoryRecipe: entry(
-    'Shows the theory recipe used by generation.',
-    'The recipe comes from the main Harmony Tension slider: scale family, chord density, and the broad progression vocabulary are baked into the generated material.',
-    [gl('Harmony Engine / Chord Lab / Create', 'Theory Recipe')],
-  ),
-  harmonyGenerateMotion: entry(
-    'Sets how active generated chord movement should be.',
-    'Lower motion keeps generated harmony near home and repeats anchor degrees. Higher motion moves more assertively through the theory vocabulary for the current tension zone.',
-    [gl('Harmony Engine / Chord Lab / Create', 'Motion')],
-  ),
-  harmonyGenerateVariation: entry(
-    'Sets how surprising generated harmony can be.',
-    'Lower variation stays close to the selected tension recipe. Higher variation allows more substitutions, slot references, and less predictable degree choices.',
-    [gl('Harmony Engine / Chord Lab / Create', 'Variation')],
-  ),
-  harmonyGenerateRespectLocks: entry(
-    'Protects locked slots and steps during generation.',
-    'When Respect Locks is on, generation leaves locked Chord Lab material alone. Turn it off only when you want generation to overwrite everything in the selected target.',
-    [gl('Harmony Engine / Chord Lab / Create', 'Respect Locks')],
-  ),
-  harmonyGenerateBaselineMap: entry(
-    'Captures automatic harmony into the sequence.',
-    'Capture Auto writes the deterministic automatic harmony map for the current key, scale, tension, and seed into the editable 8-step sequence.',
-    [gl('Harmony Engine / Chord Lab / Create', 'Capture Auto')],
-  ),
-  harmonyGenerateRun: entry(
-    'Generates editable harmony from the current theory recipe.',
-    'Generate creates palette chords, progression material, or both using the current target, Harmony Tension recipe, motion, variation, and lock settings.',
-    [gl('Harmony Engine / Chord Lab / Create', 'Generate')],
+    'Assigns the selected palette slot as the canonical source for this progression event.',
+    'Use Palette Slot writes a canonical slot source into the selected progression event.',
+    [gl('Harmony Engine / Chord Lab', 'Use Palette Slot')],
   ),
   tabSynth: entry(
     'Shows the Synth page in the advanced editor.',

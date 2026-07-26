@@ -37,8 +37,6 @@ export const PRESET_VERSION_METADATA_FIELDS = [
   'drumSubLaneStates',
   'synthSubLaneStates',
   'synthPlayConfigs',
-  // Legacy metadata is retained for decoding old preset versions only.
-  'synthArpConfigs',
   'drumPitchSettings',
   'synthPitchSettings',
   'synthPitchBindingModes',
@@ -314,6 +312,13 @@ export function normalizePresetVersion(input: unknown): PresetVersion | null {
     }
   }
 
+  // Decode-only compatibility: old versions called the canonical Play
+  // metadata `synthArpConfigs`. Never copy that legacy key to a new version.
+  if (version.synthPlayConfigs === undefined && input.synthArpConfigs !== undefined) {
+    const legacyPlayConfigs = normalizeMetadataField(input.synthArpConfigs);
+    if (legacyPlayConfigs !== undefined) version.synthPlayConfigs = legacyPlayConfigs as PresetVersion['synthPlayConfigs'];
+  }
+
   return version;
 }
 
@@ -331,9 +336,9 @@ export function extractPresetVersionMetadata(version: PresetVersion | null | und
   }
 
   // Decode the pre-Milestone-3 key into the canonical Play metadata shape.
-  if (metadata.synthPlayConfigs === undefined && metadata.synthArpConfigs !== undefined) {
-    metadata.synthPlayConfigs = metadata.synthArpConfigs;
-    delete metadata.synthArpConfigs;
+  const legacyPlayConfigs = (version as unknown as Record<string, unknown>).synthArpConfigs;
+  if (metadata.synthPlayConfigs === undefined && legacyPlayConfigs !== undefined) {
+    metadata.synthPlayConfigs = cloneJson(legacyPlayConfigs) as PresetVersionMetadata['synthPlayConfigs'];
   }
 
   if (version.refs) {

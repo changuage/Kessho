@@ -513,14 +513,6 @@ export const productDeferredClassifications = [
     ],
   },
   {
-    id: 'harmony-generation-policy',
-    owner: 'Product Core harmony owner',
-    allowWiredReferences: true,
-    reason:
-      'Structured harmony slots, sequence steps, and manual control resolve into Product Core harmony frames; harmonyGenerationSeed is UI generation salt for deterministic material creation, not a live Product param.',
-    patterns: [/^harmonyGenerationSeed$/],
-  },
-  {
     id: 'arrangement-and-clock-policy',
     owner: 'C++ Product Core arrangement scheduler and transport sync policy',
     allowWiredReferences: true,
@@ -684,9 +676,6 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
   'runtime-walk-global-policy': [
     'randomWalkMode',
     'randomWalkSpeed',
-  ],
-  'harmony-generation-policy': [
-    'harmonyGenerationSeed',
   ],
   'source-scheduler-ui-policy': [
     'drumBeepHiMorphAuto',

@@ -16,7 +16,7 @@ export type HarmonyChordExtension =
   | 'add9' | 'nine' | 'sixNine';
 export type HarmonyChordAlteration = 'b5' | '#5' | 'b9' | '#9' | '#11' | 'b13' | 'omit3' | 'omit5';
 export type HarmonyBassMode = 'off' | 'root' | 'fifth' | 'captured';
-export type HarmonySequenceStepMode = 'auto' | 'intent' | 'slotCopy' | 'slotFollow';
+export type HarmonySequenceStepMode = 'auto' | 'intent' | 'slot';
 export type ManualHarmonyControlMode = 'audition' | 'control' | 'capture';
 
 /** Canonical global Harmony progression.  Events are deliberately tiny so

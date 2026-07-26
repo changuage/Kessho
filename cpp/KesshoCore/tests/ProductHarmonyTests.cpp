@@ -2,9 +2,11 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <chrono>
 #include <cstdlib>
 #include <initializer_list>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <vector>
 
@@ -46,6 +48,22 @@ void requireScaleIntervals(uint32_t scale_id, std::initializer_list<int> expecte
   uint32_t index = 0u;
   for (const int interval : expected) {
     require(index < kMaxScaleNotes && intervals[index] == interval, message);
+    ++index;
+  }
+}
+
+void requireSemanticVoicing(
+    const HarmonyState& harmony,
+    const HarmonyIntentRecipe& recipe,
+    float root_midi,
+    std::initializer_list<float> expected,
+    const char* message) {
+  float output[8]{};
+  const uint32_t count = buildSemanticHarmonyVoicing(harmony, recipe, root_midi, output);
+  require(count == expected.size(), message);
+  uint32_t index = 0u;
+  for (const float note : expected) {
+    requireNear(output[index], note, 0.001f, message);
     ++index;
   }
 }
@@ -596,6 +614,230 @@ __attribute__((noinline)) void requireTypeScriptHarmonySequenceParity() {
 
 } // namespace
 
+void requireSemanticRecipeTableParity() {
+  HarmonyState harmony{};
+  harmony.cached_scale_degree_count = 7u;
+  const uint32_t major_scale[7] = {0u, 2u, 4u, 5u, 7u, 9u, 11u};
+  std::copy(std::begin(major_scale), std::end(major_scale), harmony.cached_scale_degree_map);
+  harmony.tension = 0.3f;
+
+  struct QualityCase {
+    uint32_t quality;
+    std::initializer_list<float> expected;
+  };
+  const QualityCase cases[] = {
+      {0u, {60.0f, 64.0f, 67.0f, 72.0f}},
+      {1u, {60.0f, 63.0f, 66.0f}},
+      {2u, {60.0f, 63.0f, 67.0f}},
+      {3u, {60.0f, 64.0f, 67.0f}},
+      {4u, {60.0f, 65.0f, 67.0f}},
+      {5u, {60.0f, 64.0f, 67.0f, 71.0f}},
+      {6u, {60.0f, 63.0f, 67.0f, 70.0f}},
+      {7u, {60.0f, 64.0f, 67.0f, 70.0f}},
+      {8u, {60.0f, 64.0f, 67.0f, 74.0f}},
+      {9u, {60.0f, 64.0f, 67.0f, 69.0f}},
+      {10u, {60.0f, 64.0f, 67.0f, 69.0f, 74.0f}},
+      {11u, {60.0f, 64.0f, 67.0f, 70.0f, 74.0f}},
+      {12u, {60.0f, 65.0f, 70.0f, 75.0f}},
+      {13u, {60.0f, 61.0f, 62.0f, 64.0f}},
+      {14u, {60.0f, 64.0f, 67.0f}},
+  };
+  for (const auto& entry : cases) {
+    HarmonyIntentRecipe recipe{};
+    recipe.present = 1u;
+    recipe.quality = entry.quality;
+    requireSemanticVoicing(harmony, recipe, 60.0f, entry.expected, "semantic quality table mismatch");
+  }
+
+  HarmonyIntentRecipe altered{};
+  altered.present = 1u;
+  altered.quality = 3u;
+  altered.extension_mask = (1u << 3u) | (1u << 4u);
+  altered.alteration_mask = (1u << 0u) | (1u << 4u);
+  requireSemanticVoicing(
+      harmony,
+      altered,
+      60.0f,
+      {60.0f, 64.0f, 66.0f, 74.0f, 78.0f},
+      "semantic extension and alteration mismatch");
+
+  HarmonyIntentRecipe inverted{};
+  inverted.present = 1u;
+  inverted.quality = 3u;
+  inverted.inversion = -1;
+  requireSemanticVoicing(harmony, inverted, 60.0f, {55.0f, 60.0f, 64.0f}, "semantic negative inversion mismatch");
+
+  HarmonyIntentRecipe captured_bass{};
+  captured_bass.present = 1u;
+  captured_bass.quality = 5u;
+  captured_bass.bass_mode = 3u;
+  captured_bass.bass_note = 47.0f;
+  requireSemanticVoicing(
+      harmony,
+      captured_bass,
+      62.0f,
+      {47.0f, 62.0f, 66.0f, 69.0f, 73.0f},
+      "semantic captured bass mismatch");
+
+  harmony.cached_scale_degree_count = 5u;
+  const uint32_t pentatonic_scale[5] = {0u, 2u, 4u, 7u, 9u};
+  std::copy(std::begin(pentatonic_scale), std::end(pentatonic_scale), harmony.cached_scale_degree_map);
+  HarmonyIntentRecipe automatic{};
+  automatic.present = 1u;
+  automatic.quality = 0u;
+  requireSemanticVoicing(
+      harmony,
+      automatic,
+      60.0f,
+      {60.0f, 64.0f, 69.0f, 76.0f},
+      "semantic pentatonic octave wrapping mismatch");
+}
+
+void requireProductHarmonyAuthoritySemanticParity() {
+  auto snapshot = makeSnapshot(60.0f, 1u, 0.3f, 9007u);
+  snapshot.harmony.active_slot_id = 0;
+  snapshot.harmony.harmony_slot_note_count[0] = 3u;
+  snapshot.harmony.harmony_slot_midi[0] = 60.0f;
+  snapshot.harmony.harmony_slot_midi[1] = 64.0f;
+  snapshot.harmony.harmony_slot_midi[2] = 67.0f;
+  snapshot.harmony.harmony_slot_captured_root_midi[0] = 60.0f;
+  snapshot.harmony.harmony_slot_playback_behavior[0] = 2u;
+  auto engine = std::make_unique<KesshoProductEngine>(48000.0, 256u, 0u);
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "authority exact snapshot load failed");
+  LaneState lane{};
+  lane.target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  lane.midi_note = 60.0f;
+  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 60.0f, 0.01f, "Exact playback must bypass root movement");
+
+  snapshot.harmony.harmony_slot_playback_behavior[0] = 1u;
+  snapshot.harmony.root_midi = 62.0f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "authority relative snapshot load failed");
+  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 62.0f, 0.01f, "Relative playback must transpose once");
+
+  snapshot.harmony.harmony_slot_playback_behavior[0] = 0u;
+  snapshot.harmony.root_midi = 68.0f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "authority auto snapshot load failed");
+  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 68.0f, 0.01f, "Auto playback must use semantic movement beyond threshold");
+
+  snapshot.harmony.harmony_slot_playback_behavior[0] = 0u;
+  snapshot.harmony.root_midi = 60.0f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "authority auto near snapshot load failed");
+  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 60.0f, 0.01f, "Auto playback near capture mismatch");
+  snapshot.harmony.root_midi = 66.0f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "authority auto threshold snapshot load failed");
+  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 60.0f, 0.01f, "Auto playback threshold mismatch");
+
+  snapshot.harmony.morph_endpoint_count = 2u;
+  snapshot.harmony.morph_endpoint_root_midi[0] = 60.0f;
+  snapshot.harmony.morph_endpoint_root_midi[1] = 72.0f;
+  snapshot.harmony.morph_endpoint_scale_id[0] = 1u;
+  snapshot.harmony.morph_endpoint_scale_id[1] = 2u;
+  snapshot.harmony.morph_endpoint_tension[0] = 0.2f;
+  snapshot.harmony.morph_endpoint_tension[1] = 0.8f;
+  snapshot.harmony.morph_plan_phase = 0.5f;
+  snapshot.harmony.morph_plan_revision = 9u;
+  snapshot.harmony.morph_cof_root_path_count = 3u;
+  snapshot.harmony.morph_cof_root_path[0] = 60.0f;
+  snapshot.harmony.morph_cof_root_path[1] = 66.0f;
+  snapshot.harmony.morph_cof_root_path[2] = 72.0f;
+  snapshot.harmony.morph_scale_handover_from = 1u;
+  snapshot.harmony.morph_scale_handover_to = 2u;
+  snapshot.harmony.morph_scale_handover_at = 0.5f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "morph Harmony plan snapshot load failed");
+  requireNear(engine->harmony.root_midi, 66.0f, 0.01f, "morph Harmony plan root interpolation mismatch");
+  requireNear(
+      engine->harmony.root_midi,
+      std::round(engine->harmony.root_midi),
+      0.001f,
+      "morph Harmony plan must select a valid MIDI anchor instead of a chromatic-cent glide");
+  require(engine->harmony.morph_plan_revision == 9u && engine->harmony.scale_id == 2u, "morph Harmony plan endpoint context mismatch");
+
+  snapshot.harmony.harmony_slot_intent_quality[0] = 5u; // maj7
+  snapshot.harmony.harmony_slot_intent_present[0] = 1u;
+  snapshot.harmony.harmony_slot_intent_root_mode[0] = 1u;
+  snapshot.harmony.harmony_slot_intent_root_note[0] = 2.0f;
+  snapshot.harmony.harmony_slot_intent_octave[0] = 4;
+  snapshot.harmony.harmony_slot_intent_extension_mask[0] = 1u << 3u; // 9
+  snapshot.harmony.harmony_slot_intent_alteration_mask[0] = 1u << 0u; // b5
+  snapshot.harmony.root_midi = 62.0f;
+  snapshot.harmony.harmony_slot_playback_behavior[0] = 1u;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "native semantic recipe snapshot load failed");
+  require(engine->harmony.cached_voice_leading_candidate_note_counts[0] >= 4u, "native semantic recipe was not cached");
+  requireNear(engine->harmony.cached_voice_leading_candidates[0][0], 62.0f, 0.01f, "native semantic root mismatch");
+
+  snapshot.harmony.harmony_slot_playback_behavior[0] = 2u;
+  snapshot.harmony.takeover_anchor_count = 1u;
+  snapshot.harmony.takeover_anchor_source[0] = 60.0f;
+  snapshot.harmony.takeover_anchor_target[0] = 72.0f;
+  snapshot.harmony.takeover_anchor_weight[0] = 1.0f;
+  snapshot.harmony.harmony_slot_playback_behavior[0] = 1u;
+  snapshot.harmony.takeover_progress = 0.25f;
+  snapshot.harmony.root_midi = 60.0f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "takeover source-anchor snapshot load failed");
+  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 60.0f, 0.01f, "takeover must not glide through chromatic cents");
+  snapshot.harmony.harmony_slot_playback_behavior[0] = 2u;
+  snapshot.harmony.takeover_progress = 1.0f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "exact takeover bypass snapshot load failed");
+  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 60.0f, 0.01f, "Exact slot must bypass takeover");
+
+  snapshot.harmony.harmony_slot_playback_behavior[0] = 1u;
+  snapshot.harmony.active_slot_id = -1;
+  snapshot.harmony.takeover_progress = 0.0f;
+  snapshot.harmony.live_gesture_scope = kessho::product::generated::KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_SUGGESTION;
+  snapshot.harmony.live_gesture_target = kessho::product::generated::KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_SEQ1;
+  snapshot.harmony.live_gesture_phase = 0u;
+  snapshot.harmony.live_gesture_note_count = 1u;
+  snapshot.harmony.live_gesture_notes[0] = 74.0f;
+  snapshot.harmony.live_gesture_expires_at_frame_low = 100u;
+  snapshot.harmony.live_gesture_expires_at_frame_high = 0u;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "live gesture snapshot load failed");
+  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 50u), 74.0f, 0.01f, "Seq1 gesture target mismatch");
+  require(std::fabs(engine->resolveHarmonyMidi(lane, 1u, 0u, 50u) - 74.0f) > 0.01f, "Seq1 gesture leaked to another lane");
+  require(std::fabs(engine->resolveHarmonyMidi(lane, 0u, 0u, 101u) - 74.0f) > 0.01f, "Expired gesture remained active");
+
+  snapshot.harmony.live_gesture_playback_behavior = 1u;
+  snapshot.harmony.live_gesture_intent_present = 1u;
+  snapshot.harmony.live_gesture_intent_quality = 5u; // maj7
+  snapshot.harmony.live_gesture_intent_root_mode = 1u;
+  snapshot.harmony.live_gesture_intent_root_note = 2.0f;
+  snapshot.harmony.live_gesture_intent_octave = 4;
+  snapshot.harmony.live_gesture_expires_at_frame_low = 100u;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "semantic live gesture snapshot load failed");
+  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 50u), 62.0f, 0.01f, "semantic live gesture playback mismatch");
+}
+
+void requireProductHarmonyWorstCaseCpuBudget() {
+  auto snapshot = makeSnapshot(60.0f, 1u, 0.8f, 7711u);
+  snapshot.harmony.active_slot_id = -1;
+  snapshot.harmony.harmony_slot_note_count[0] = 8u;
+  for (uint32_t index = 0u; index < 8u; ++index) snapshot.harmony.harmony_slot_midi[index] = 48.0f + static_cast<float>(index * 3u);
+  snapshot.harmony.harmony_slot_captured_root_midi[0] = 60.0f;
+  snapshot.harmony.harmony_slot_playback_behavior[0] = 1u;
+  snapshot.harmony.takeover_anchor_count = 8u;
+  snapshot.harmony.takeover_progress = 0.5f;
+  for (uint32_t index = 0u; index < 8u; ++index) {
+    snapshot.harmony.takeover_anchor_source[index] = 48.0f + static_cast<float>(index * 3u);
+    snapshot.harmony.takeover_anchor_target[index] = 52.0f + static_cast<float>(index * 3u);
+  }
+  auto engine = std::make_unique<KesshoProductEngine>(48000.0, 256u, 0u);
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "harmony CPU budget snapshot load failed");
+  LaneState lanes[4]{};
+  for (uint32_t lane_index = 0u; lane_index < 4u; ++lane_index) {
+    lanes[lane_index].target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+    lanes[lane_index].midi_note = 48.0f + static_cast<float>(lane_index * 5u);
+    lanes[lane_index].seed = 100u + lane_index;
+  }
+  volatile float checksum = 0.0f;
+  const auto start = std::chrono::steady_clock::now();
+  for (uint32_t batch = 0u; batch < 20000u; ++batch) {
+    for (uint32_t lane_index = 0u; lane_index < 4u; ++lane_index) {
+      checksum += engine->resolveHarmonyMidi(lanes[lane_index], lane_index, batch & 15u, batch * 256u);
+    }
+  }
+  const double elapsed_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+  require(std::isfinite(checksum) && elapsed_ms < 1000.0, "worst-case four-lane harmony CPU budget exceeded");
+}
+
 int main() {
   requireDirectMusicCoverage();
 
@@ -864,6 +1106,8 @@ int main() {
   requireNear(telemetry.harmony_root_midi, 65.0f, 0.001f, "telemetry root mismatch");
   require(telemetry.harmony_scale_id == 3, "telemetry scale mismatch");
   require(telemetry.harmony_chord_midi[0] >= 65.0f, "telemetry chord should be populated");
+  require(std::isfinite(telemetry.harmony_play_dispatch_latency_ms), "harmony dispatch latency telemetry must be finite");
+  require(telemetry.harmony_play_dispatch_latency_ms >= 0.0f, "harmony dispatch latency telemetry must be non-negative");
   kessho_product_destroy(engine);
 
   KesshoProductSnapshotV2 pool_snapshot = makeSnapshot(60.0f, 1, 0.3f, 77);
@@ -1085,6 +1329,9 @@ int main() {
   requireArrangementScheduling();
   requireLongArrangementSimulation();
   requireTypeScriptHarmonySequenceParity();
+  requireSemanticRecipeTableParity();
+  requireProductHarmonyAuthoritySemanticParity();
+  requireProductHarmonyWorstCaseCpuBudget();
 
   std::cout << "Kessho Product Harmony tests passed\n";
   return 0;

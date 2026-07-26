@@ -27,6 +27,7 @@ import {
 import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/config';
 import { calculateDriftedRoot } from './audio/harmony';
 import { resolveHarmonyProjection, type HarmonyLiveLayer, type HarmonyProjection } from './audio/harmony/harmonyProjection';
+import { setCoreProductHarmonyLiveLayer } from './audio/coreProductSnapshot';
 import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, INSECT_ENGINE_DEFAULTS, getWaterPresetDualRanges, getWaterPresetSliderModes } from './audio/waterPresets';
 import {
@@ -448,6 +449,10 @@ const App: React.FC = () => {
   });
   const playbackIsRunning = engineState.isRunning;
   const [harmonyLiveLayer, setHarmonyLiveLayer] = useState<HarmonyLiveLayer | null>(null);
+  const handleHarmonyLiveLayerChange = useCallback((layer: HarmonyLiveLayer | null) => {
+    setHarmonyLiveLayer(layer);
+    setCoreProductHarmonyLiveLayer(layer);
+  }, []);
   const harmonyProjection: HarmonyProjection = useMemo(
     () => resolveHarmonyProjection(state, {
       harmonyState: engineState.harmonyState,
@@ -1030,19 +1035,6 @@ const App: React.FC = () => {
         }
         let drumMorphOverrideState = getCurrentDrumMorphOverrideState(prev);
 
-        if (key === 'chordProgressionSteps' && typeof stateValue === 'number') {
-          const nextSteps = Math.max(1, Math.round(stateValue));
-          const pattern = [...(prev.chordProgressionPattern ?? [0, 3, 4, 0])];
-          while (pattern.length < nextSteps) pattern.push(0);
-          const enabled = [...(prev.chordProgressionStepEnabled ?? new Array(pattern.length).fill(true))];
-          while (enabled.length < nextSteps) enabled.push(true);
-          newState.chordProgressionSteps = nextSteps;
-          newState.chordProgressionPattern = pattern.slice(0, nextSteps);
-          newState.chordProgressionStepEnabled = enabled.slice(0, nextSteps);
-          newState.chordProgressionHits = Math.min(nextSteps, Math.max(0, prev.chordProgressionHits ?? nextSteps));
-          newState.chordProgressionRotation = Math.min(Math.max(0, prev.chordProgressionRotation ?? 0), Math.max(0, nextSteps - 1));
-        }
-
         if (drumVoice && drumMorphKey && isStateNumericValue) {
           const drumMorphPosition = prev[drumMorphKey] as number; // 0-1
           const nextDrumMorphOverrideState = dispatchDrumMorphProductControlAction(prev, {
@@ -1410,20 +1402,6 @@ const App: React.FC = () => {
         }
         if (isLeadPresetSlotKey(key) && prev[key] !== value) {
           pendingImmediateLeadPresetSyncRef.current = true;
-        }
-
-        if (key === 'chordProgressionPattern' && Array.isArray(value)) {
-          const stepCount = Math.max(1, prev.chordProgressionSteps ?? 1, value.length);
-          const pattern = [...value];
-          while (pattern.length < stepCount) pattern.push(0);
-          newState.chordProgressionPattern = pattern.slice(0, stepCount);
-        }
-
-        if (key === 'chordProgressionStepEnabled' && Array.isArray(value)) {
-          const stepCount = Math.max(1, prev.chordProgressionSteps ?? 1, value.length);
-          const enabled = [...value];
-          while (enabled.length < stepCount) enabled.push(true);
-          newState.chordProgressionStepEnabled = enabled.slice(0, stepCount);
         }
 
         // ═══ PAD PRESET MORPH: when preset A or B changes, re-morph and apply ═══
@@ -3549,7 +3527,7 @@ const App: React.FC = () => {
                 CircleOfFifthsComponent={CircleOfFifths}
                 engineState={engineState}
                 harmonyProjection={harmonyProjection}
-                onHarmonyLiveLayerChange={setHarmonyLiveLayer}
+                onHarmonyLiveLayerChange={handleHarmonyLiveLayerChange}
                 routingMuteGroupSnapshot={routingMuteGroupsController.runtimeSnapshot}
                 {...globalRuntimeProps}
                 morphCoFViz={morphCoFViz}
@@ -3659,7 +3637,7 @@ const App: React.FC = () => {
                 onAuditionPresetPreview={productRuntimeManualTriggers.auditionSynthNoteWithState}
                 harmonyState={engineState.harmonyState}
                 harmonyProjection={harmonyProjection}
-                onHarmonyLiveLayerChange={setHarmonyLiveLayer}
+                onHarmonyLiveLayerChange={handleHarmonyLiveLayerChange}
               />
             )}
 

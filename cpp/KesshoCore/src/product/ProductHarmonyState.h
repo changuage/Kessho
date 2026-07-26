@@ -1,10 +1,12 @@
 #pragma once
 
+#include "../../generated/KesshoProductSchema.h"
+#include "ProductHarmonyAuthorityState.h"
 #include "ProductMath.h"
 
 namespace kessho::product::internal {
 
-struct HarmonyState {
+struct HarmonyState : HarmonyAuthorityState {
   float root_midi = 60.0f;
   uint32_t scale_id = 1;
   float tension = 0.35f;
@@ -67,6 +69,13 @@ struct HarmonyState {
   uint32_t canonical_progression_slot_id[64]{};
   uint32_t canonical_progression_duration_unit[64]{};
   uint32_t canonical_progression_duration_value[64]{};
+
 };
+
+uint32_t buildSemanticHarmonyVoicing(
+    const HarmonyState& harmony,
+    const HarmonyIntentRecipe& recipe,
+    float root_midi,
+    float* output);
 
 } // namespace kessho::product::internal

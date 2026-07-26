@@ -66,6 +66,7 @@ const allowedImports = new Set([
   './drumVoiceMidi',
   './euclideanPatterns',
   './granularMacroCore',
+  './harmony/harmonyProjection',
   './harmonySeedMaterial',
   './outputTrims',
   './product/compileProductSourceMorphAutomation',

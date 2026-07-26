@@ -8765,7 +8765,7 @@ export class AudioEngine {
       chordProgressionSteps: s.chordProgressionSteps ?? 4,
       chordProgressionStepEnabled: s.chordProgressionStepEnabled ?? [true, true, true, true],
       chordProgressionPhraseMultiplier: s.chordProgressionPhraseMultiplier ?? 1,
-      canonicalProgression: sanitizeHarmonyProgression(s.harmonyProgression, s.harmonyChordSequence, s.harmonyChordSequenceEnabled),
+      canonicalProgression: sanitizeHarmonyProgression(s.harmonyProgression),
       transportBarsPerPhrase: s.transportBarsPerPhrase ?? 4,
     };
   }

@@ -81,8 +81,6 @@ export interface PresetVersionMetadata {
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
   /** Current Seq 1–4 Play configuration metadata. */
   synthPlayConfigs?: ProductPlayConfig[];
-  /** @deprecated Legacy metadata key; read-only compatibility fallback. */
-  synthArpConfigs?: ProductPlayConfig[];
   drumPitchSettings?: SerializedPitchSettings[];
   synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];

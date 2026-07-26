@@ -24,12 +24,12 @@ import {
 {
   const invalid = {
     ...DEFAULT_STATE,
-    chordProgressionPattern: 'not-an-array',
+    harmonyProgression: 'not-an-object',
   } as unknown as SliderState;
 
   const validation = validateProductCorePresetBoundaryState(invalid);
   assert.equal(validation.valid, false);
-  assert.equal(validation.issues[0]?.key, 'chordProgressionPattern');
+  assert.equal(validation.issues[0]?.key, 'harmonyProgression');
   assert.throws(() => enforceProductCorePresetBoundaryState(invalid), /Product Core preset boundary validation failed/);
 }
 

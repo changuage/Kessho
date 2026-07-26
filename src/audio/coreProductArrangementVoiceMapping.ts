@@ -3,10 +3,9 @@ export const PAD_VOICE_MASK_ALL = (1 << PAD_VOICE_COUNT) - 1;
 export const PAD_VOICE_DEFAULT_MASK = 1 << (PAD_VOICE_COUNT - 1);
 
 const ARRANGEMENT_RESTART_KEYS = [
-  'harmonyClockSource', 'chordProgressionClockSource', 'chordProgressionPhraseMultiplier',
+  'harmonyClockSource',
   'chordRate', 'seedWindow', 'scaleMode', 'manualScale', 'rootNote',
-  'chordProgressionEnabled', 'chordProgressionPattern', 'chordProgressionSteps',
-  'chordProgressionStepEnabled', 'cofDriftEnabled', 'voicingSpread', 'synthEuclideanMasterEnabled',
+  'cofDriftEnabled', 'voicingSpread', 'synthEuclideanMasterEnabled',
   'synthEuclid1Enabled', 'synthEuclid1Source', 'synthEuclid1VoiceMask',
   'synthEuclid2Enabled', 'synthEuclid2Source', 'synthEuclid2VoiceMask',
   'synthEuclid3Enabled', 'synthEuclid3Source', 'synthEuclid3VoiceMask',

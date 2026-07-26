@@ -190,17 +190,13 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   randomWalkSpeed:       { level: 4, scope: 'global' },
   randomWalkMode:        { level: 4, scope: 'global' },
   harmonyMorphPercent:   { level: 4, scope: 'global' },
-  harmonyGenerationSeed: { level: 4, scope: 'global' },
   manualHarmonyControl:  { level: 4, scope: 'global' },
   harmonyChordSlots:     { level: 4, scope: 'global' },
   harmonyChordSlotsA:    { level: 4, scope: 'global' },
   harmonyChordSlotsB:    { level: 4, scope: 'global' },
-  harmonyChordSequence:  { level: 4, scope: 'global' },
-  harmonyChordSequenceA: { level: 4, scope: 'global' },
-  harmonyChordSequenceB: { level: 4, scope: 'global' },
-  harmonyChordSequenceEnabled: { level: 4, scope: 'global' },
-  harmonyChordSequenceLength: { level: 4, scope: 'global' },
-  harmonyChordSequenceStepIndex: { level: 4, scope: 'global' },
+  harmonyProgression:    { level: 4, scope: 'global' },
+  harmonyProgressionA:   { level: 4, scope: 'global' },
+  harmonyProgressionB:   { level: 4, scope: 'global' },
   transportPrimaryClock: { level: 4, scope: 'global' },
   transportBarsPerPhrase:{ level: 4, scope: 'global' },
   transportBeatsPerBar:  { level: 4, scope: 'global' },
@@ -213,14 +209,6 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumEuclidClockSource: { level: 4, scope: 'global' },
   drumEuclidJoinPolicy:  { level: 4, scope: 'global' },
   sequencerMasterBPM:    { level: 4, scope: 'global' },
-  chordProgressionEnabled: { level: 4, scope: 'global' },
-  chordProgressionPattern: { level: 4, scope: 'global' },
-  chordProgressionSteps: { level: 4, scope: 'global' },
-  chordProgressionStepEnabled: { level: 4, scope: 'global' },
-  chordProgressionPhraseMultiplier: { level: 4, scope: 'global' },
-  chordProgressionClockSource: { level: 4, scope: 'global' },
-  chordProgressionHits:  { level: 4, scope: 'global' },
-  chordProgressionRotation: { level: 4, scope: 'global' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L3: Synth Source
@@ -1537,7 +1525,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1304) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1304`);
+  if (count !== 1292) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1292`);
   }
 }

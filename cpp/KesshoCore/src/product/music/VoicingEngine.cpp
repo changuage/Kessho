@@ -23,6 +23,17 @@ float pickIndexedNote(const float* notes, int count, uint32_t seed) {
   return notes[index];
 }
 
+bool liveGestureAppliesToLane(const HarmonyState& harmony, uint32_t lane_index) {
+  // Every authored scope is eligible for the single live executor; the target
+  // is the routing authority and prevents a gesture from mutating other lanes.
+  if (harmony.live_gesture_scope > kessho::product::generated::KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_SEQLIVE) return false;
+  const uint32_t target = harmony.live_gesture_target;
+  if (target <= kessho::product::generated::KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_OVERVIEW) return true;
+  return target >= kessho::product::generated::KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_SEQ1 &&
+      target <= kessho::product::generated::KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_SEQ4 &&
+      target - kessho::product::generated::KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_SEQ1 == (lane_index % 4u);
+}
+
 int collectScaleNotesInRange(
     float root_midi,
     const int* intervals,
@@ -63,6 +74,110 @@ int nearestOctaveOffset(float center, float root_midi) {
   }
   if (lane.seed >= 3000u && lane.seed < 5000u) {
     return clampFloat(lane.midi_note, 0.0f, 127.0f);
+  }
+
+  if ((harmony.live_gesture_phase == 0u || harmony.live_gesture_phase == 1u) &&
+      harmony.live_gesture_note_count > 0u && absolute_sample <= harmony.live_gesture_expires_at_frame &&
+      liveGestureAppliesToLane(harmony, lane_index)) {
+    float semantic_notes[8]{};
+    uint32_t semantic_count = 0u;
+    if (harmony.live_gesture_playback_behavior != 2u &&
+        harmony.live_gesture_intent_present != 0u) {
+      float root = harmony.root_midi;
+      if (harmony.live_gesture_intent_root_mode == 0u && harmony.cached_scale_degree_count > 0u) {
+        const uint32_t degree = static_cast<uint32_t>(std::max(0, harmony.live_gesture_intent_degree)) % harmony.cached_scale_degree_count;
+        root = harmony.root_midi + static_cast<float>(harmony.cached_scale_degree_map[degree]);
+      } else {
+        root = 60.0f + static_cast<float>(positiveModulo(static_cast<int>(std::round(harmony.live_gesture_intent_root_note)), 12u));
+      }
+      root += static_cast<float>(harmony.live_gesture_intent_octave - 4) * 12.0f;
+      const HarmonyIntentRecipe recipe{
+        harmony.live_gesture_intent_present,
+        harmony.live_gesture_intent_quality,
+        harmony.live_gesture_intent_inversion,
+        harmony.live_gesture_intent_spread,
+        harmony.live_gesture_intent_bass_mode,
+        harmony.live_gesture_intent_bass_note,
+        harmony.live_gesture_intent_extension_mask,
+        harmony.live_gesture_intent_alteration_mask,
+      };
+      semantic_count = buildSemanticHarmonyVoicing(harmony, recipe, root, semantic_notes);
+    }
+    const float* gesture_notes = semantic_count > 0u ? semantic_notes : harmony.live_gesture_notes;
+    const uint32_t gesture_count = semantic_count > 0u ? semantic_count : harmony.live_gesture_note_count;
+    uint32_t best = 0u;
+    float distance = std::abs(gesture_notes[0] - lane.midi_note);
+    for (uint32_t index = 1u; index < gesture_count; ++index) {
+      const float next_distance = std::abs(gesture_notes[index] - lane.midi_note);
+      if (next_distance < distance) { best = index; distance = next_distance; }
+    }
+    return clampFloat(gesture_notes[best], 0.0f, 127.0f);
+  }
+
+  const bool activeSlotExact = harmony.active_slot_id >= 0 && harmony.active_slot_id < 8 &&
+      harmony.slot_playback_behavior[static_cast<uint32_t>(harmony.active_slot_id)] == 2u;
+  if (harmony.takeover_progress > 0.0f && harmony.takeover_anchor_count > 0u && !activeSlotExact) {
+    uint32_t best = 0u;
+    float distance = std::abs(harmony.takeover_anchor_source[0] - lane.midi_note);
+    for (uint32_t index = 1u; index < harmony.takeover_anchor_count; ++index) {
+      const float next_distance = std::abs(harmony.takeover_anchor_source[index] - lane.midi_note);
+      if (next_distance < distance) { best = index; distance = next_distance; }
+    }
+    const float source = harmony.takeover_anchor_source[best];
+    const float target = harmony.takeover_anchor_target[best];
+    return clampFloat(harmony.takeover_progress < 0.5f ? source : target, 0.0f, 127.0f);
+  }
+
+  if (harmony.morph_plan_phase > 0.0f && !activeSlotExact) {
+    const uint32_t pair_count = harmony.morph_voice_pair_count > 0u
+        ? harmony.morph_voice_pair_count
+        : harmony.morph_common_pair_count;
+    const float* pair_source = harmony.morph_voice_pair_count > 0u
+        ? harmony.morph_voice_pair_source
+        : harmony.morph_common_pair_source;
+    const float* pair_target = harmony.morph_voice_pair_count > 0u
+        ? harmony.morph_voice_pair_target
+        : harmony.morph_common_pair_target;
+    if (pair_count > 0u) {
+    uint32_t best = 0u;
+      float distance = std::abs(pair_source[0] - lane.midi_note);
+      for (uint32_t index = 1u; index < pair_count; ++index) {
+        const float next_distance = std::abs(pair_source[index] - lane.midi_note);
+        if (next_distance < distance) { best = index; distance = next_distance; }
+      }
+      const float source = pair_source[best];
+      const float target = pair_target[best];
+      return clampFloat(harmony.morph_plan_phase < 0.5f ? source : target, 0.0f, 127.0f);
+    }
+    if (harmony.morph_unmatched_a_count > 0u && harmony.morph_unmatched_b_count > 0u) {
+      uint32_t best = 0u;
+      float distance = std::abs(harmony.morph_unmatched_a[0] - lane.midi_note);
+      for (uint32_t index = 1u; index < harmony.morph_unmatched_a_count; ++index) {
+        const float next_distance = std::abs(harmony.morph_unmatched_a[index] - lane.midi_note);
+        if (next_distance < distance) { best = index; distance = next_distance; }
+      }
+      const uint32_t target_index = std::min(best, harmony.morph_unmatched_b_count - 1u);
+      const float source = harmony.morph_unmatched_a[best];
+      const float target = harmony.morph_unmatched_b[target_index];
+      return clampFloat(harmony.morph_plan_phase < 0.5f ? source : target, 0.0f, 127.0f);
+    }
+  }
+
+  if (harmony.active_slot_id >= 0 && harmony.active_slot_id < 8 &&
+      static_cast<uint32_t>(harmony.active_slot_id) < harmony.cached_voice_leading_candidate_count) {
+    const uint32_t slot = static_cast<uint32_t>(harmony.active_slot_id);
+    const uint32_t count = harmony.cached_voice_leading_candidate_note_counts[slot];
+    if (count > 0u) {
+      uint32_t best = 0u;
+      const float first = harmony.cached_voice_leading_candidates[slot][0];
+      float distance = std::abs(first - lane.midi_note);
+      for (uint32_t index = 1u; index < count; ++index) {
+        const float candidate = harmony.cached_voice_leading_candidates[slot][index];
+        const float next_distance = std::abs(candidate - lane.midi_note);
+        if (next_distance < distance) { best = index; distance = next_distance; }
+      }
+      return clampFloat(harmony.cached_voice_leading_candidates[slot][best], 0.0f, 127.0f);
+    }
   }
 
   if (lane.pitch_mode == kSequencerPitchModeNoteRange) {
@@ -107,8 +222,7 @@ int nearestOctaveOffset(float center, float root_midi) {
     return clampFloat(harmony.note_pool_midi[index], 0.0f, 127.0f);
   }
 
-  int intervals[kMaxScaleNotes]{};
-  const uint32_t scale_count = scaleIntervals(harmony.scale_id, intervals);
+  const uint32_t scale_count = harmony.cached_scale_degree_count;
   if (scale_count == 0u) {
     return clampFloat(lane.midi_note, 0.0f, 127.0f);
   }
@@ -128,12 +242,12 @@ int nearestOctaveOffset(float center, float root_midi) {
   if (harmony.voicing_mode == 0u) {
     const uint32_t degree = (step_id + lane_index + progression_degree) % scale_count;
     const int octave_offset = nearestOctaveOffset(clampFloat(lane.midi_note, 0.0f, 127.0f), harmony.root_midi);
-    const float resolved = harmony.root_midi + static_cast<float>(octave_offset * 12 + intervals[degree]);
+    const float resolved = harmony.root_midi + static_cast<float>(octave_offset * 12 + harmony.cached_scale_degree_map[degree]);
     return clampFloat(resolved, 0.0f, 127.0f);
   }
 
   for (uint32_t i = 0; i < 4u; ++i) {
-    const uint32_t pitch_class = (root_pitch_class + static_cast<uint32_t>(intervals[chord_degrees[i]])) % 12u;
+    const uint32_t pitch_class = (root_pitch_class + harmony.cached_scale_degree_map[chord_degrees[i] % scale_count]) % 12u;
     chord_pitch_classes[pitch_class] = true;
   }
 
@@ -147,7 +261,11 @@ int nearestOctaveOffset(float center, float root_midi) {
 
   for (int midi = low; midi <= high; ++midi) {
     const uint32_t scale_interval = positiveModulo(midi - static_cast<int>(root_pitch_class), 12u);
-    if (!scaleContainsInterval(intervals, scale_count, scale_interval)) {
+    bool scale_contains = false;
+    for (uint32_t scale_index = 0u; scale_index < scale_count; ++scale_index) {
+      if (harmony.cached_scale_degree_map[scale_index] == scale_interval) { scale_contains = true; break; }
+    }
+    if (!scale_contains) {
       continue;
     }
     const uint32_t pitch_class = positiveModulo(midi, 12u);
@@ -161,7 +279,7 @@ int nearestOctaveOffset(float center, float root_midi) {
   if (chord_tone_count == 0 && passing_tone_count == 0) {
     const uint32_t degree = (step_id + lane_index + progression_degree) % scale_count;
     const int octave_offset = nearestOctaveOffset(center, harmony.root_midi);
-    const float resolved = harmony.root_midi + static_cast<float>(octave_offset * 12 + intervals[degree]);
+    const float resolved = harmony.root_midi + static_cast<float>(octave_offset * 12 + harmony.cached_scale_degree_map[degree]);
     return clampFloat(resolved, 0.0f, 127.0f);
   }
 

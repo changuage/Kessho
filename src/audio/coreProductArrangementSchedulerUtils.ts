@@ -56,12 +56,12 @@ export function harmonyParamsFromState(state: SliderState): Partial<HarmonyParam
     cofDriftRate: state.cofDriftRate ?? 2,
     cofDriftDirection: state.cofDriftDirection ?? 'cw',
     cofDriftRange: state.cofDriftRange ?? 3,
-    chordProgressionEnabled: state.chordProgressionEnabled ?? false,
-    chordProgressionPattern: state.chordProgressionPattern ?? [0, 3, 4, 0],
-    chordProgressionSteps: state.chordProgressionSteps ?? 4,
-    chordProgressionStepEnabled: state.chordProgressionStepEnabled ?? [true, true, true, true],
-    chordProgressionPhraseMultiplier: state.chordProgressionPhraseMultiplier ?? 1,
-    canonicalProgression: sanitizeHarmonyProgression(state.harmonyProgression, state.harmonyChordSequence, state.harmonyChordSequenceEnabled),
+    chordProgressionEnabled: false,
+    chordProgressionPattern: [0, 3, 4, 0],
+    chordProgressionSteps: 4,
+    chordProgressionStepEnabled: [true, true, true, true],
+    chordProgressionPhraseMultiplier: 1,
+    canonicalProgression: sanitizeHarmonyProgression(state.harmonyProgression),
     transportBarsPerPhrase: state.transportBarsPerPhrase ?? 4,
   };
 }
@@ -72,7 +72,7 @@ export function harmonyPhraseSeconds(state: SliderState): number {
 
 export function progressionPhraseSeconds(state: SliderState): number {
   const source = resolveProgressionPhraseClockSource(
-    state.chordProgressionClockSource ?? 'harmony',
+    'harmony',
     state.harmonyClockSource ?? 'globalPhrase',
   );
   return getPhraseDurationForClockSource(state, source);

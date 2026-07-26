@@ -493,6 +493,19 @@ const drumSourcePresetRows = sourcePresetIds
   }));
 const groups = schema.groups;
 const limits = schema.limits;
+const harmonyAuthority = schema.harmonyAuthority ?? {
+  sharedSlotCount: 8,
+  progressionCapacity: 64,
+  playLaneCount: 4,
+  maxVoicingNotes: 8,
+  liveGestureCapacity: 8,
+  takeoverAnchorCount: 12,
+  morphEndpointCount: 2,
+  morphPlanSlotCapacity: 8,
+  playbackBehaviors: ['auto', 'relative', 'exact'],
+  gestureScopes: ['detail', 'overview', 'suggestion', 'seqDraft', 'seqLive'],
+  takeoverTargets: ['global', 'detail', 'overview', 'seq1', 'seq2', 'seq3', 'seq4'],
+};
 const canonical = stableStringify({
   schema,
   params,
@@ -578,6 +591,81 @@ inline constexpr uint32_t KESSHO_PRODUCT_MAX_DRUM_LANES = ${limits.maxDrumLanes}
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_VOICES = ${limits.maxVoices}u;
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_ASSETS = ${limits.maxAssets}u;
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_STEM_FRAMES = ${limits.maxStemFrames}u;
+inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_SHARED_SLOT_COUNT = ${harmonyAuthority.sharedSlotCount}u;
+inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_PROGRESSION_CAPACITY = ${harmonyAuthority.progressionCapacity}u;
+inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_PLAY_LANE_COUNT = ${harmonyAuthority.playLaneCount}u;
+inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_MAX_VOICING_NOTES = ${harmonyAuthority.maxVoicingNotes}u;
+inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_CAPACITY = ${harmonyAuthority.liveGestureCapacity}u;
+inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_TAKEOVER_ANCHOR_COUNT = ${harmonyAuthority.takeoverAnchorCount}u;
+
+enum KesshoProductHarmonyGestureScope : uint32_t {
+${harmonyAuthority.gestureScopes.map((scope, index) => `  KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_${scope.replace(/[^A-Za-z0-9]/g, '_').toUpperCase()} = ${index}u,`).join('\n')}
+};
+
+enum KesshoProductHarmonyTakeoverTarget : uint32_t {
+${harmonyAuthority.takeoverTargets.map((target, index) => `  KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_${target.replace(/[^A-Za-z0-9]/g, '_').toUpperCase()} = ${index}u,`).join('\n')}
+};
+
+enum KesshoProductHarmonyPlaybackBehavior : uint32_t {
+  KESSHO_PRODUCT_HARMONY_PLAYBACK_AUTO = 0u,
+  KESSHO_PRODUCT_HARMONY_PLAYBACK_RELATIVE = 1u,
+  KESSHO_PRODUCT_HARMONY_PLAYBACK_EXACT = 2u,
+};
+
+struct KesshoProductHarmonySharedChord {
+  uint32_t present;
+  uint32_t playback_behavior;
+  uint32_t intent_present;
+  uint32_t intent_source;
+  uint32_t intent_strength;
+  uint32_t intent_quality;
+  uint32_t intent_root_mode;
+  int32_t intent_degree;
+  float intent_root_note;
+  int32_t intent_inversion;
+  float intent_spread;
+  int32_t intent_octave;
+  uint32_t intent_bass_mode;
+  float intent_bass_note;
+  uint32_t intent_extension_mask;
+  uint32_t intent_alteration_mask;
+  uint32_t exact_note_count;
+  float exact_midi_notes[KESSHO_PRODUCT_HARMONY_MAX_VOICING_NOTES];
+  float captured_root_midi;
+  uint32_t captured_scale_id;
+};
+
+struct KesshoProductHarmonyProgressionEvent {
+  uint32_t source_type;
+  uint32_t slot_id;
+  uint32_t duration_unit;
+  uint32_t duration_value;
+};
+
+struct KesshoProductHarmonyLiveChordGesture {
+  uint32_t revision;
+  uint32_t scope;
+  uint32_t target;
+  uint32_t phase;
+  uint32_t playback_behavior;
+  uint32_t intent_present;
+  uint32_t intent_quality;
+  uint32_t intent_root_mode;
+  int32_t intent_degree;
+  float intent_root_note;
+  int32_t intent_inversion;
+  float intent_spread;
+  int32_t intent_octave;
+  uint32_t intent_bass_mode;
+  float intent_bass_note;
+  uint32_t intent_extension_mask;
+  uint32_t intent_alteration_mask;
+  float captured_root_midi;
+  uint32_t captured_scale_id;
+  uint32_t exact_note_count;
+  float exact_midi_notes[KESSHO_PRODUCT_HARMONY_MAX_VOICING_NOTES];
+  uint64_t expires_at_frame;
+};
 
 ${cppStringArray('KESSHO_PRODUCT_GROUPS', groups)}
 
@@ -802,6 +890,10 @@ ${sourcePresetIds.map((preset) => `  ${preset.name}: ${preset.id}`).join(',\n')}
 } as const);
 export const KESSHO_PRODUCT_SOURCE_PRESETS = Object.freeze(${JSON.stringify(sourcePresetRows, null, 2)} as const);
 export const KESSHO_PRODUCT_LIMITS = Object.freeze(${JSON.stringify(limits, null, 2)} as const);
+export const KESSHO_PRODUCT_HARMONY_AUTHORITY = Object.freeze(${JSON.stringify(harmonyAuthority, null, 2)} as const);
+export const KESSHO_PRODUCT_HARMONY_PLAYBACK_BEHAVIOR_IDS = Object.freeze({ auto: 0, relative: 1, exact: 2 } as const);
+export const KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_IDS = Object.freeze(${JSON.stringify(Object.fromEntries(harmonyAuthority.gestureScopes.map((scope, index) => [scope, index])), null, 2)} as const);
+export const KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_IDS = Object.freeze(${JSON.stringify(Object.fromEntries(harmonyAuthority.takeoverTargets.map((target, index) => [target, index])), null, 2)} as const);
 `);
 
 writeGenerated(resolve(root, 'src/audio/generated/kesshoProductParams.ts'), `${tsPreamble}

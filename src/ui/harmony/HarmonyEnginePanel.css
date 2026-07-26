@@ -416,8 +416,7 @@
 
 .harmony-engine-panel .harmony-voicing-switch-row,
 .harmony-engine-panel .harmony-panel-topline,
-.harmony-engine-panel .harmony-slot-strip-header,
-.harmony-engine-panel .harmony-generate-actions {
+.harmony-engine-panel .harmony-slot-strip-header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -529,8 +528,7 @@
 .harmony-engine-panel .harmony-root-panel,
 .harmony-engine-panel .harmony-right-panel,
 .harmony-engine-panel .harmony-modifier-panel,
-.harmony-engine-panel .harmony-inspector,
-.harmony-engine-panel .harmony-generate-panel {
+.harmony-engine-panel .harmony-inspector {
   min-width: 0;
   padding: 10px;
   border-radius: var(--radius-md);
@@ -1145,140 +1143,6 @@
   padding: 6px 10px;
 }
 
-.harmony-engine-panel .harmony-generate-panel {
-  margin-top: 10px;
-}
-
-.harmony-engine-panel .harmony-create-disclosure {
-  margin-top: 12px;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(232, 220, 196, 0.1);
-  background: rgba(0,0,0,0.14);
-}
-
-.harmony-engine-panel .harmony-create-disclosure summary {
-  display: flex;
-  min-height: 34px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px;
-  color: rgba(232, 220, 196, 0.68);
-  cursor: pointer;
-  list-style: none;
-}
-
-.harmony-engine-panel .harmony-create-disclosure summary::-webkit-details-marker {
-  display: none;
-}
-
-.harmony-engine-panel .harmony-create-disclosure summary::after {
-  content: "+";
-  color: rgba(184, 224, 255, 0.82);
-  font-size: 0.76rem;
-  font-weight: 900;
-}
-
-.harmony-engine-panel .harmony-create-disclosure[open] summary::after {
-  content: "-";
-}
-
-.harmony-engine-panel .harmony-create-disclosure summary span {
-  color: var(--harmony-ice);
-  font-size: 0.66rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.harmony-engine-panel .harmony-create-disclosure summary em {
-  min-width: 0;
-  overflow: hidden;
-  color: rgba(232, 220, 196, 0.58);
-  font-size: 0.58rem;
-  font-style: normal;
-  font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.harmony-engine-panel .harmony-create-disclosure .harmony-generate-panel {
-  margin-top: 0;
-  padding: 0 10px 10px;
-  border: 0;
-  background: transparent;
-}
-
-.harmony-engine-panel .harmony-theory-recipe {
-  display: grid;
-  grid-template-columns: minmax(110px, 1.1fr) repeat(3, minmax(90px, 1fr));
-  gap: 8px;
-  align-items: stretch;
-  margin-bottom: 10px;
-}
-
-.harmony-engine-panel .harmony-theory-recipe > span,
-.harmony-engine-panel .harmony-theory-recipe div {
-  min-width: 0;
-  padding: 8px 9px;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(232, 220, 196, 0.1);
-  background: rgba(184, 224, 255, 0.045);
-}
-
-.harmony-engine-panel .harmony-theory-recipe > span,
-.harmony-engine-panel .harmony-theory-recipe small {
-  display: block;
-  font-size: 0.54rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(232, 220, 196, 0.5);
-}
-
-.harmony-engine-panel .harmony-theory-recipe strong {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  color: rgba(255,255,255,0.92);
-  font-size: 0.68rem;
-  font-weight: 900;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.harmony-engine-panel .harmony-theory-recipe em {
-  display: block;
-  margin-top: 2px;
-  color: var(--harmony-ice);
-  font-size: 0.58rem;
-  font-style: normal;
-  font-weight: 900;
-}
-
-.harmony-engine-panel .harmony-wide-range {
-  display: grid;
-  grid-template-columns: 78px auto 1fr auto;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  color: rgba(232, 220, 196, 0.66);
-  font-size: 0.62rem;
-}
-
-.harmony-engine-panel .harmony-wide-range > span {
-  font-size: 0.58rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(232, 220, 196, 0.56);
-}
-
-.harmony-engine-panel .harmony-wide-range input {
-  height: 3px;
-  accent-color: var(--harmony-ice);
-}
 
 @media (max-width: 760px) {
   .harmony-engine-panel .harmony-engine-header,
@@ -1378,9 +1242,6 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .harmony-engine-panel .harmony-theory-recipe {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 /* Combined Overview: one compact surface shared by Arrange, Edit and Manage. */

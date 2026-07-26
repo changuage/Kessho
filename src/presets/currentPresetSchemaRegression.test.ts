@@ -3,6 +3,24 @@ import {
   decodeCurrentPresetEntry,
   UnsupportedPresetVersionError,
 } from './currentPresetSchema';
+import { DEFAULT_STATE, serializeState } from '../ui/state';
+import { PRESET_VERSION_METADATA_FIELDS } from './presetUtils';
+import { SYNTH_EUCLIDEAN_LANE_COUNT } from '../audio/sequencerLaneCounts';
+
+const currentStatePayload = JSON.parse(serializeState(DEFAULT_STATE)) as Record<string, unknown>;
+for (const legacyKey of [
+  'harmonyChordSequence', 'harmonyChordSequenceA', 'harmonyChordSequenceB',
+  'harmonyChordSequenceEnabled', 'harmonyChordSequenceLength', 'harmonyChordSequenceStepIndex',
+  'synthArpConfigs',
+  'chordProgressionEnabled', 'chordProgressionPattern', 'chordProgressionSteps',
+  'chordProgressionHits', 'chordProgressionRotation', 'chordProgressionStepEnabled',
+  'chordProgressionPhraseMultiplier', 'chordProgressionClockSource',
+]) {
+  assert.equal(legacyKey in currentStatePayload, false, `current state must not author ${legacyKey}`);
+}
+assert.equal(PRESET_VERSION_METADATA_FIELDS.includes('synthArpConfigs' as never), false, 'legacy Play metadata is decode-only');
+assert.equal(SYNTH_EUCLIDEAN_LANE_COUNT, 4, 'current schema has exactly four authored Synth Euclid lanes');
+assert.equal(Object.keys(currentStatePayload).some((key) => /^synthEuclid5/.test(key)), false, 'Seq5 state keys are not authored');
 
 const entry = {
   type: 'engine' as const,

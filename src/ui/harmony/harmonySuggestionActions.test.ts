@@ -70,7 +70,7 @@ test('Seq Assign Step is atomic and respects locks', () => {
   const state = { slots: [emptySlot(0)], sequence: [step(0)] };
   const assigned = assignHarmonySuggestionToStep(state, suggestion(), 0);
   assert.equal(assigned.ok, true);
-  assert.equal(assigned.state.sequence?.[0]?.mode, 'slotCopy');
+  assert.equal(assigned.state.sequence?.[0]?.mode, 'slot');
   assert.equal(assigned.state.sequence?.[0]?.slotId, 0);
   assert.ok(assigned.state.slots[0]?.chord);
   const locked = assignHarmonySuggestionToStep({ ...state, sequence: [step(0, true)] }, suggestion(), 0);

@@ -639,6 +639,9 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
   for (uint32_t i = 0; i < 4u; ++i) {
     telemetry.harmony_chord_midi[i] = harmony.chord_midi[i];
   }
+  telemetry.harmony_play_dispatch_count = harmony.harmony_play_dispatch_count;
+  telemetry.harmony_play_last_dispatch_frame = harmony.harmony_play_last_dispatch_frame;
+  telemetry.harmony_play_dispatch_latency_ms = harmony.harmony_play_last_dispatch_latency_ms;
   uint32_t active_range_count = 0;
   uint32_t walk_count = 0;
   for (uint32_t i = 0; i < kMaxRuntimeWalkTelemetry; ++i) {

@@ -464,6 +464,7 @@ void KesshoProductEngine::advanceHarmonyClock() {
         if (index < 4u) harmony.chord_midi[index] = index < count ? note : (count > 0u ? harmony.note_pool_midi[count - 1u] : 0.0f);
       }
       harmony.current_degree = static_cast<int32_t>(degree);
+      rebuildHarmonyAuthorityCache();
       harmony.chord_degree = degree;
       harmony.active_step_index = static_cast<int32_t>(degree);
       if (phrase_boundary) {

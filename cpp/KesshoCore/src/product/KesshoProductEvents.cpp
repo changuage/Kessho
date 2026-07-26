@@ -1131,6 +1131,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SCALE:
       harmony.scale_id = event.target_id;
+      rebuildHarmonyAuthorityCache();
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SEED:
       rng_seed = event.target_id;
@@ -1870,6 +1871,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       break;
     case KESSHO_PRODUCT_PARAM_HARMONY_SCALE_ID_ID:
       harmony.scale_id = static_cast<uint32_t>(std::max(1.0f, event.value));
+      rebuildHarmonyAuthorityCache();
       break;
     case KESSHO_PRODUCT_PARAM_HARMONY_TENSION_ID:
       harmony.tension = clampFloat(event.value, 0.0f, 1.0f);
