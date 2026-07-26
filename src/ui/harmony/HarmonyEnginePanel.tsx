@@ -163,6 +163,8 @@ export interface HarmonyEnginePanelProps {
   harmonyProjection?: HarmonyProjection;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   onAuditionNote?: (note: ProductManualSynthNote) => void;
+  onTransientStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
+  workspaceView?: 'simple' | 'detail' | 'overview';
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -394,28 +396,32 @@ function HarmonyStatusTile({
 function HarmonyActionButtons({
   activePopup,
   onTogglePopup,
+  showVoicing = true,
+  showLab = true,
 }: {
   activePopup: HarmonyPopup;
   onTogglePopup: (popup: Exclude<HarmonyPopup, null>) => void;
+  showVoicing?: boolean;
+  showLab?: boolean;
 }) {
   return (
     <div className="harmony-engine-actions">
-      <button
+      {showVoicing && <button
         type="button"
         className={`harmony-engine-action${activePopup === 'manual' ? ' active' : ''}`}
         onClick={() => onTogglePopup('manual')}
         {...harmonyHelpAttrs('harmonyOpenVoicing')}
       >
         Voicing
-      </button>
-      <button
+      </button>}
+      {showLab && <button
         type="button"
         className={`harmony-engine-action${activePopup === 'lab' ? ' active' : ''}`}
         onClick={() => onTogglePopup('lab')}
         {...harmonyHelpAttrs('harmonyOpenLab')}
       >
         Lab
-      </button>
+      </button>}
     </div>
   );
 }
@@ -438,6 +444,9 @@ function HarmonySummaryCard({
   onRootNoteChange,
   onScaleModeChange,
   onManualScaleChange,
+  showVoicing,
+  showLab,
+  showPolicyControls = true,
 }: {
   bank: HarmonyBank;
   rootLabel: string;
@@ -456,6 +465,9 @@ function HarmonySummaryCard({
   onRootNoteChange?: (rootNote: number) => void;
   onScaleModeChange?: (mode: string) => void;
   onManualScaleChange?: (scale: string) => void;
+  showVoicing?: boolean;
+  showLab?: boolean;
+  showPolicyControls?: boolean;
 }) {
   const tensionCharacter = tensionCharacterFor(tension);
   const scaleBand = tensionScaleBandLabel(tension);
@@ -479,9 +491,9 @@ function HarmonySummaryCard({
             {rootLabel} {scaleName} · Bank {bank} · Morph {Math.round(resolvedFrame.morphPercent)}%
           </div>
         </div>
-        <HarmonyActionButtons activePopup={activePopup} onTogglePopup={onTogglePopup} />
+        <HarmonyActionButtons activePopup={activePopup} onTogglePopup={onTogglePopup} showVoicing={showVoicing} showLab={showLab} />
       </div>
-      <div className="harmony-tension-strip" title={`Tension still drives scale selection and chord complexity. Scale: ${scaleBand}. Chords: ${chordBand}. Character: ${tensionCharacter.label} (${tensionCharacter.description}).`}>
+      {showPolicyControls && <div className="harmony-tension-strip" title={`Tension still drives scale selection and chord complexity. Scale: ${scaleBand}. Chords: ${chordBand}. Character: ${tensionCharacter.label} (${tensionCharacter.description}).`}>
         <label className="harmony-tension-label" {...harmonyHelpAttrs('harmonyTension')}>
           <span>Tension / Character</span>
           <input
@@ -515,8 +527,8 @@ function HarmonySummaryCard({
             </button>
           ))}
         </div>
-      </div>
-      <div className="harmony-palette-strip">
+      </div>}
+      {showPolicyControls && <div className="harmony-palette-strip">
         <div className="harmony-palette-row">
           <label className="harmony-palette-select" {...harmonyHelpAttrs('harmonyRootNote')}>
             <span>Root</span>
@@ -540,7 +552,7 @@ function HarmonySummaryCard({
             </label>
           )}
         </div>
-      </div>
+      </div>}
       <div className="harmony-summary-grid">
         <HarmonyStatusTile
           label="Now"
@@ -1923,7 +1935,7 @@ function ChordLabPopup({
   );
 }
 
-export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onStateChange, onAuditionNote }: HarmonyEnginePanelProps) {
+export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onStateChange, onTransientStateChange, onAuditionNote, workspaceView = 'overview' }: HarmonyEnginePanelProps) {
   const [activePopup, setActivePopup] = useState<HarmonyPopup>(null);
   const [voicingInputMode, setVoicingInputMode] = useState<VoicingInputMode>('root');
   const [voicingAdvancedOpen, setVoicingAdvancedOpen] = useState(false);
@@ -2038,6 +2050,12 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
     applyPatch({ manualHarmonyControl: sanitizeManualHarmonyControl(nextManual) });
   }, [applyPatch]);
 
+  const updateManualTransient = useCallback((nextManual: ManualHarmonyControlState) => {
+    const dispatch = onTransientStateChange ?? onStateChange;
+    if (!dispatch) return;
+    dispatch((previous) => statePatch({ ...(previous as unknown as Record<string, unknown>), manualHarmonyControl: sanitizeManualHarmonyControl(nextManual) }));
+  }, [onStateChange, onTransientStateChange]);
+
   const selectedBaseIntent = useCallback((
     source: HarmonyIntent['source'],
     overrides: Partial<HarmonyIntent> = {},
@@ -2080,7 +2098,8 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
       });
       return;
     }
-    updateManual({
+    const dispatchManual = nextMode === 'audition' ? updateManualTransient : updateManual;
+    dispatchManual({
       ...mergedManual,
       enabled: false,
       activeIntent: nextMode === 'audition' ? mergedManual.activeIntent : null,
@@ -2088,7 +2107,7 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
       slotTriggerMode: false,
       activeSlotId: null,
     });
-  }, [manual, manualLocked, selectedBaseIntent, updateManual]);
+  }, [manual, manualLocked, selectedBaseIntent, updateManual, updateManualTransient]);
 
   const setManualMode = useCallback((mode: ManualHarmonyControlMode) => {
     if (mode !== 'audition' && manualLocked) return;
@@ -2173,7 +2192,7 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
       return;
     }
     if (!slot.chord?.intent) return;
-    updateManual({
+    updateManualTransient({
       ...manual,
       mode: 'audition',
       enabled: false,
@@ -2182,7 +2201,7 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
       activeSlotId: null,
     });
     previewAuditionIntent({ ...slot.chord.intent, source: 'audition' });
-  }, [captureSelectedToSlot, manual, manualLocked, previewAuditionIntent, slots, updateManual]);
+  }, [captureSelectedToSlot, manual, manualLocked, previewAuditionIntent, slots, updateManualTransient]);
 
   const updateSlot = useCallback((slotId: number, patch: Partial<HarmonyChordSlot>) => {
     if (writeLocked) return;
@@ -2477,7 +2496,7 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
     if (manual.mode !== 'audition') return;
     const slot = slots[slotId];
     if (!slot?.chord?.intent) return;
-    updateManual({
+    updateManualTransient({
       ...manual,
       mode: 'audition',
       enabled: false,
@@ -2486,7 +2505,7 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
       activeSlotId: null,
     });
     previewAuditionIntent({ ...slot.chord.intent, source: 'audition' });
-  }, [manual, previewAuditionIntent, slots, updateManual]);
+  }, [manual, previewAuditionIntent, slots, updateManualTransient]);
 
 
   const setPreserveExactVoicing = useCallback((preserve: boolean) => {
@@ -2518,6 +2537,9 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
         scaleName={harmonyContext.scaleName}
         resolvedFrame={resolvedFrame}
         activePopup={activePopup}
+        showVoicing={workspaceView === 'detail'}
+        showLab={workspaceView === 'overview'}
+        showPolicyControls={workspaceView === 'simple'}
         manualLocked={manualLocked}
         chordSequenceEnabled={harmonyContext.chordSequenceEnabled}
         tension={harmonyContext.tension}
@@ -2532,7 +2554,7 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
         onManualScaleChange={onStateChange ? (value) => applyPatch({ manualScale: value }) : undefined}
       />
 
-      {harmonyContext.chordSequenceEnabled && (
+      {workspaceView === 'overview' && harmonyContext.chordSequenceEnabled && (
         <CompactSequenceStrip
           sequence={sequence}
           sequenceLength={sequenceLength}
@@ -2548,7 +2570,7 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
         />
       )}
 
-      {activePopup === 'manual' && (
+      {workspaceView === 'detail' && activePopup === 'manual' && (
         <ManualVoicingPopup
           scaleLabel={`${noteName(harmonyContext.rootMidi)} ${harmonyContext.scaleName}`}
           manual={manual}
@@ -2586,7 +2608,7 @@ export function HarmonyEnginePanel({ state, harmonyState, harmonyProjection, onS
         />
       )}
 
-      {activePopup === 'lab' && (
+      {workspaceView === 'overview' && activePopup === 'lab' && (
         <ChordLabPopup
           bank={harmonyContext.bank}
           slots={slots}

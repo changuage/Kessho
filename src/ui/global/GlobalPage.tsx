@@ -19,7 +19,7 @@ import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderS
 import type { SelectRenderer } from '../../app/AppControls';
 import type { CircleOfFifthsProps } from '../CircleOfFifths';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
-import { HarmonyEnginePanel } from '../harmony/HarmonyEnginePanel';
+import { HarmonyWorkspace } from '../harmony/HarmonyWorkspace';
 import { GlobalRuntimeComparisonPanel, type GlobalRuntimeComparisonPanelProps } from './GlobalRuntimeComparisonPanel';
 import type { RoutingMuteGroupRuntimeSnapshot, RoutingMuteGroupSourceId } from '../routing';
 import './global.css';
@@ -1503,65 +1503,24 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
         {runtimeComparison && <GlobalRuntimeComparisonPanel {...runtimeComparison} />}
       </div>
 
-      {/* Harmony Engine */}
+      {/* Harmony workspace — the single Global Harmony surface. */}
       <div className="global-engine-panel">
-        <HarmonyEnginePanel
+        <HarmonyWorkspace
           state={state}
           harmonyState={engineState.harmonyState}
           harmonyProjection={harmonyProjection}
           onStateChange={onStateChange}
           onAuditionNote={onAuditionHarmonyNote}
+          morphReadOnly={Boolean(harmonyProjection?.engine.morphLocked)}
+          CircleOfFifthsComponent={CircleOfFifths}
+          cofCurrentStep={engineState.cofCurrentStep}
+          morphCoFViz={morphCoFViz}
+          morphPosition={morphPosition}
+          onResetCofDrift={onResetCofDrift}
         />
 
         <div className="harmony-card evolution-card">
           <h3 className="harmony-card-title">Evolution</h3>
-
-          {/* CoF Drift — always visible compact row */}
-          <div className="evolution-block">
-            <div className="evolution-block-header">
-              <span className="evolution-block-label">CoF Drift</span>
-              <button
-                onClick={() => onSelectChange('cofDriftEnabled', !state.cofDriftEnabled)}
-                className={`evolution-toggle-btn${state.cofDriftEnabled ? ' active' : ''}`}
-              >
-                {state.cofDriftEnabled ? 'ON' : 'OFF'}
-              </button>
-            </div>
-            {state.cofDriftEnabled && (
-              <div className="evolution-cof-content">
-                <CircleOfFifths
-                  homeRoot={state.rootNote}
-                  currentStep={morphCoFViz ? morphCoFViz.cofStep : engineState.cofCurrentStep}
-                  driftRange={state.cofDriftRange}
-                  driftDirection={state.cofDriftDirection}
-                  enabled={state.cofDriftEnabled}
-                  size={120}
-                  isMorphing={!!morphCoFViz}
-                  morphStartRoot={morphCoFViz?.startRoot}
-                  morphTargetRoot={morphCoFViz?.targetRoot}
-                  morphProgress={morphPosition}
-                  onSelectRoot={(semitone: number) => {
-                    onSelectChange('rootNote', semitone);
-                    onResetCofDrift();
-                  }}
-                />
-                <div className="evolution-cof-params">
-                  <Slider label="Rate" value={state.cofDriftRate} paramKey="cofDriftRate" onChange={onParamChange} />
-                  <Slider label="Range" value={state.cofDriftRange} paramKey="cofDriftRange" onChange={onParamChange} />
-                  <Select
-                    label="Dir"
-                    value={state.cofDriftDirection}
-                    options={[
-                      { value: 'cw', label: 'CW' },
-                      { value: 'ccw', label: 'CCW' },
-                      { value: 'random', label: 'Rnd' },
-                    ]}
-                    onChange={(v: string) => onSelectChange('cofDriftDirection', v)}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
 
           {/* Lead Melody + Seed — flat grid, no accordion */}
           <div className="evolution-block">
