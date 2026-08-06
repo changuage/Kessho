@@ -14,7 +14,6 @@ const SAMPLE_SLOT_TRIGGER_CRITICAL_SUFFIXES = [
 ] as const;
 
 const SIMPLE_SEQUENCER_SOURCE_KEYS = [
-  'synthChordGeneratorSource',
   'leadRandomSource',
 ] as const;
 

@@ -29,6 +29,16 @@ export {
 export { SliderPrimitive } from './SliderPrimitive';
 export { useRafCoalescedEmitter } from './useRafCoalescedEmitter';
 export type { RafCoalescedEmitter } from './useRafCoalescedEmitter';
+export {
+  getSliderCapability,
+  isSliderModeAllowed,
+  isSliderRangeCapable,
+  normalizeSliderMode,
+  SINGLE_ONLY_SLIDER_KEYS,
+  SLIDER_CAPABILITIES,
+  WALK_ONLY_DUAL_KEYS,
+} from './sliderCapabilities';
+export type { SliderCapability } from './sliderCapabilities';
 export { tapeHeroBoldVars } from './tapeHeroBold';
 export type {
   SliderDensity,

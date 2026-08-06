@@ -109,38 +109,37 @@ PadParams makeSentinelPadParams() {
   params[18] = 0.47f;
   params[19] = 2.0f;
   params[20] = 2.0f;
-  params[21] = 450.0f;
-  params[22] = 1850.0f;
-  params[23] = 0.12f;
-  params[24] = 0.91f;
-  params[25] = 24.0f;
-  params[26] = 0.33f;
-  params[27] = 1.0f;
-  params[28] = 0.0f;
-  params[29] = 540.0f;
-  params[30] = 0.18f;
-  params[31] = 1.4f;
-  params[32] = 2.0f;
-  params[33] = 0.012f;
-  params[34] = 0.42f;
-  params[35] = 0.36f;
-  params[36] = 1.7f;
-  params[37] = 0.18f;
-  params[38] = 0.09f;
-  params[39] = 5.0f;
-  params[40] = 6.0f;
-  params[41] = 0.37f;
-  params[42] = 0.05f;
-  params[43] = 1.0f;
-  params[44] = 4.0f;
-  params[45] = 1.0f;
-  params[46] = 0.021f;
-  params[47] = 0.31f;
-  params[48] = 0.12f;
-  params[49] = 0.61f;
-  params[50] = 0.27f;
-  params[51] = 2.0f;
-  params[52] = 0.5f;
+  params[21] = 1150.0f;
+  params[22] = 0.12f;
+  params[23] = 0.91f;
+  params[24] = 24.0f;
+  params[25] = 0.33f;
+  params[26] = 1.0f;
+  params[27] = 0.0f;
+  params[28] = 540.0f;
+  params[29] = 0.18f;
+  params[30] = 1.4f;
+  params[31] = 2.0f;
+  params[32] = 0.012f;
+  params[33] = 0.42f;
+  params[34] = 0.36f;
+  params[35] = 1.7f;
+  params[36] = 0.18f;
+  params[37] = 0.09f;
+  params[38] = 5.0f;
+  params[39] = 6.0f;
+  params[40] = 0.37f;
+  params[41] = 0.05f;
+  params[42] = 1.0f;
+  params[43] = 4.0f;
+  params[44] = 1.0f;
+  params[45] = 0.021f;
+  params[46] = 0.31f;
+  params[47] = 0.12f;
+  params[48] = 0.61f;
+  params[49] = 0.27f;
+  params[50] = 2.0f;
+  params[51] = 0.5f;
   return params;
 }
 
@@ -285,8 +284,7 @@ void requirePadGainSafetyAndLadderRender() {
   pad_instance_set_sub_enabled(pad, 0, 1);
   pad_instance_set_sub_level(pad, 0, 0.8f);
   pad_instance_set_filter_type(pad, 0, PAD_FILTER_LADDER_LP);
-  pad_instance_set_filter_cutoff_min(pad, 0, 4800.0f);
-  pad_instance_set_filter_cutoff_max(pad, 0, 12000.0f);
+  pad_instance_set_filter_cutoff(pad, 0, 8400.0f);
   pad_instance_set_filter_q(pad, 0, 8.0f);
   pad_instance_set_filter_resonance(pad, 0, 1.0f);
   pad_instance_set_hardness(pad, 0, 1.0f);
@@ -426,15 +424,15 @@ void requirePadRetriggerRespectsLongAttack() {
       kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
       "pad retrigger attack snapshot load failed");
 
-  requirePadRuntimeOverride(engine, KESSHO_PRODUCT_SOURCE_PAD1, 33u, 0.001f, "pad retrigger fast attack override failed");
-  requirePadRuntimeOverride(engine, KESSHO_PRODUCT_SOURCE_PAD1, 34u, 0.01f, "pad retrigger decay override failed");
-  requirePadRuntimeOverride(engine, KESSHO_PRODUCT_SOURCE_PAD1, 35u, 1.0f, "pad retrigger sustain override failed");
+  requirePadRuntimeOverride(engine, KESSHO_PRODUCT_SOURCE_PAD1, 32u, 0.001f, "pad retrigger fast attack override failed");
+  requirePadRuntimeOverride(engine, KESSHO_PRODUCT_SOURCE_PAD1, 33u, 0.01f, "pad retrigger decay override failed");
+  requirePadRuntimeOverride(engine, KESSHO_PRODUCT_SOURCE_PAD1, 34u, 1.0f, "pad retrigger sustain override failed");
 
   triggerPadVoice(engine, KESSHO_PRODUCT_SOURCE_PAD1, 0u, 20.0f);
   const float loud_peak = renderPadPeakBlocks(engine, 12u);
   require(loud_peak > 0.02f, "pad retrigger setup did not reach an audible envelope level");
 
-  requirePadRuntimeOverride(engine, KESSHO_PRODUCT_SOURCE_PAD1, 33u, 10.4f, "pad retrigger long attack override failed");
+  requirePadRuntimeOverride(engine, KESSHO_PRODUCT_SOURCE_PAD1, 32u, 10.4f, "pad retrigger long attack override failed");
   triggerPadVoice(engine, KESSHO_PRODUCT_SOURCE_PAD1, 0u, 20.0f);
   const float retrigger_peak = renderPadPeakBlocks(engine, 1u);
   require(
@@ -530,15 +528,14 @@ void applyExpectedPadDistance(PadParams& params, float distance) {
   if (distance <= 0.0001f) {
     return;
   }
-  params[33] = padDistanceAttack(params[33], distance, 1.35f, 4.0f);
-  params[34] = padDistanceMultiply(params[34], distance, 1.08f, 1.35f, 0.01f, 8.0f);
-  params[35] = padDistanceAdd(params[35], distance, -0.03f, -0.18f, 0.0f, 1.0f);
-  params[36] = padDistanceMultiply(params[36], distance, 1.18f, 2.40f, 0.01f, 30.0f);
+  params[32] = padDistanceAttack(params[32], distance, 1.35f, 4.0f);
+  params[33] = padDistanceMultiply(params[33], distance, 1.08f, 1.35f, 0.01f, 8.0f);
+  params[34] = padDistanceAdd(params[34], distance, -0.03f, -0.18f, 0.0f, 1.0f);
+  params[35] = padDistanceMultiply(params[35], distance, 1.18f, 2.40f, 0.01f, 30.0f);
   params[15] = padDistanceAdd(params[15], distance, -0.04f, -0.22f, 0.0f, 2.0f);
   params[16] = padDistanceAdd(params[16], distance, 0.04f, 0.18f, 0.0f, 1.0f);
   params[17] = padDistanceAdd(params[17], distance, -0.05f, -0.30f, 0.0f, 1.0f);
   params[21] = padDistanceMultiply(params[21], distance, 0.85f, 0.45f, 40.0f, 8000.0f);
-  params[22] = padDistanceMultiply(params[22], distance, 0.92f, 0.55f, 40.0f, 8000.0f);
 }
 
 PadParams expectedEndpointMorphParams(float morph, float distance = 0.0f) {
@@ -667,14 +664,14 @@ void requireStableEndpointPadPatchIsCachedAcrossTriggers() {
 
 void requireNamedPluckPresetParams() {
   const PadParams soft = exactPadParamsFromPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SOFT_PLUCK);
-  requireParamClose("PadSoftPluck filter cutoff max", 22u, soft[22], 2200.0f);
+  requireParamClose("PadSoftPluck filter cutoff", 21u, soft[21], 1400.0f);
   requireParamClose("PadSoftPluck warmth", 16u, soft[16], 0.6f);
-  requireParamClose("PadSoftPluck output trim", 52u, soft[52], 0.5f);
+  requireParamClose("PadSoftPluck output trim", 51u, soft[51], 0.5f);
 
   const PadParams buchla = exactPadParamsFromPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_BUCHLA_PLUCK);
   requireParamClose("PadBuchlaPluck fold amount", 18u, buchla[18], 0.28f);
-  requireParamClose("PadBuchlaPluck attack", 33u, buchla[33], 0.003f);
-  requireParamClose("PadBuchlaPluck mod env enabled", 45u, buchla[45], 1.0f);
+  requireParamClose("PadBuchlaPluck attack", 32u, buchla[32], 0.003f);
+  requireParamClose("PadBuchlaPluck mod env enabled", 44u, buchla[44], 1.0f);
 }
 
 } // namespace

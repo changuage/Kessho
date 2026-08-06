@@ -27,7 +27,7 @@ export function coreProductArrangementSnapshotFromState(
 ): CoreProductSnapshot['arrangement'] {
   const arrangementState = state ?? {};
   const sliderState = arrangementState as unknown as SliderState;
-  const chordGeneratorSource = String(arrangementState.synthChordGeneratorSource ?? 'sample1').trim().toLowerCase();
+  const chordGeneratorSource = synthChordGeneratorSource(arrangementState);
   const randomSource = leadRandomSource(arrangementState);
   const leadTensionMode = arrangementState.leadTensionMode === 'locked' || arrangementState.leadTensionMode === 'bypass'
     ? arrangementState.leadTensionMode
@@ -41,18 +41,22 @@ export function coreProductArrangementSnapshotFromState(
     sliderState,
     sliderState.leadRandomClockSource ?? 'globalPhrase',
   );
-  const leadClockSource = sliderState.leadRandomClockSource ?? 'globalPhrase';
-  const snapshotWallSec = numberFromState(arrangementState, '__coreProductSnapshotWallSec', 0);
-  const leadInitialDelaySeconds = (sliderState.leadRandomSyncPolicy ?? 'nextPhrase') === 'nextPhrase'
-    ? leadClockSource === 'globalPhrase' || leadClockSource === 'globalBeat'
-      ? Math.max(0, Math.ceil(snapshotWallSec / leadPhraseSeconds) * leadPhraseSeconds - snapshotWallSec)
-      : leadPhraseSeconds
-    : 0;
+  // Playback start is the shared phrase-zero boundary for both Simple-mode
+  // generators. Live "next phrase" enables are aligned by the native event
+  // handler instead of carrying wall-clock phase across a stop/resume.
+  const leadInitialDelaySeconds = 0;
 
   return {
+    // Harmony owns the pitches; Arrangement owns only rendering/routing.
     chordGeneratorEnabled: synthChordGeneratorSourceEnabled(arrangementState),
-    chordGeneratorSourceId: simpleSequencerSourceId(synthChordGeneratorSource(arrangementState)),
-    chordGeneratorVoiceCount: clamp(Math.round(numberFromState(arrangementState, 'synthChordGeneratorVoiceCount', 6)), 1, 8),
+    chordGeneratorSourceId: simpleSequencerSourceId(
+      chordGeneratorSource === 'both' ? 'pad1' : chordGeneratorSource,
+    ),
+    chordGeneratorVoiceCount: clamp(
+      Math.round(numberFromState(arrangementState, 'synthChordGeneratorVoiceCount', 6)),
+      1,
+      8,
+    ),
     leadRandomEnabled: leadRandomSourceEnabled(arrangementState, randomSource),
     leadRandomSourceId: leadRandomSourceId(randomSource),
     leadPhraseSeconds,
@@ -73,7 +77,7 @@ export function coreProductArrangementSnapshotFromState(
     synthVoiceMask: clamp(Math.round(numberFromState(arrangementState, 'synthVoiceMask', 63)), 0, 255) >>> 0,
     pad2VoiceAssign: clamp(Math.round(numberFromState(arrangementState, 'pad2VoiceAssign', 0)), 0, 255) >>> 0,
     padEuclidOwnedVoiceMask: padEuclidOwnedVoiceMask(arrangementState) >>> 0,
-    chordGeneratorPadSplit: chordGeneratorSource === 'pad',
+    chordGeneratorPadSplit: chordGeneratorSource === 'both',
     sourceHoldSeconds: Array.from(
       { length: 8 },
       (_, index) => coreProductSynthSequencerHoldSecondsFromState(arrangementState, index + 1, 0.5),

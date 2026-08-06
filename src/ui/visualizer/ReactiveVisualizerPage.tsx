@@ -355,7 +355,7 @@ function buildIntentSnapshot(
     value('hardness'),
     value('warmth'),
     value('presence'),
-    valueToNorm(value('filterCutoffMax', 1600), { min: 40, max: 12000, scale: 'log' }),
+    valueToNorm(value('filterCutoff', 1600), { min: 40, max: 12000, scale: 'log' }),
   );
 
   const leadLevel = Math.max(
@@ -466,7 +466,7 @@ function buildIntentSnapshot(
     detune: clamp01(value('detune') / 25),
     morph: clamp01(Math.max(padMorph, leadMorph)),
     brightness: clamp01(Math.max(
-      valueToNorm(value('filterCutoffMax', 1600), { min: 40, max: 12000, scale: 'log' }),
+      valueToNorm(value('filterCutoff', 1600), { min: 40, max: 12000, scale: 'log' }),
       value('presence'),
       value('reverbInputTone', 0) * 0.5 + 0.5,
     )),
@@ -617,6 +617,8 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   const [presetName, setPresetName] = useState('');
   const [activePresetName, setActivePresetName] = useState<string | null>(null);
   const [presetSaving, setPresetSaving] = useState(false);
+  const [presetSaveError, setPresetSaveError] = useState('');
+  const presetSaveInFlightRef = useRef(false);
 
   controlsRef.current = controls;
   seedRef.current = seed;
@@ -986,26 +988,36 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
 
   const handleSavePreset = useCallback(async () => {
     const name = presetName.trim();
-    if (!name) return;
+    if (!name || presetSaveInFlightRef.current) return;
+    presetSaveInFlightRef.current = true;
+    setPresetSaveError('');
     setPresetSaving(true);
-    const data: VisualizerPresetData = {
-      format: 'kessho-visualizer-preset',
-      formatVersion: 1,
-      mode: reaction.mode,
-      controls,
-      reactiveRanges,
-      reaction,
-      performanceMacros,
-      layerMacros,
-      qualityMode,
-      seed,
-    };
-    await saveVisualizerPreset(name, data);
-    setActivePresetName(name);
-    _onVisualizerPresetChange(name);
-    refreshPresets();
-    setPresetSaving(false);
-  }, [presetName, controls, reactiveRanges, reaction, performanceMacros, layerMacros, qualityMode, seed, refreshPresets, _onVisualizerPresetChange]);
+    try {
+      const data: VisualizerPresetData = {
+        format: 'kessho-visualizer-preset',
+        formatVersion: 2,
+        mode: reaction.mode,
+        controls,
+        reactiveRanges,
+        vizSliderModes,
+        reaction,
+        performanceMacros,
+        layerMacros,
+        qualityMode,
+        seed,
+      };
+      const saved = await saveVisualizerPreset(name, data);
+      if (!saved) throw new Error('Visualizer preset could not be saved.');
+      setActivePresetName(saved.name);
+      _onVisualizerPresetChange(saved.name);
+      refreshPresets();
+    } catch (error) {
+      setPresetSaveError(error instanceof Error ? error.message : 'Visualizer preset save failed.');
+    } finally {
+      presetSaveInFlightRef.current = false;
+      setPresetSaving(false);
+    }
+  }, [presetName, controls, reactiveRanges, reaction, performanceMacros, layerMacros, qualityMode, seed, vizSliderModes, refreshPresets, _onVisualizerPresetChange]);
 
   const handleLoadPreset = useCallback(async (name: string) => {
     const result = await loadVisualizerPreset(name);
@@ -1022,7 +1034,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
     setLayerMacros(sanitizeLayerMacros(data.layerMacros));
     setQualityMode(isVisualizerQualityMode(data.qualityMode) ? data.qualityMode : DEFAULT_QUALITY_MODE);
     setSeed(Number.isFinite(data.seed) ? data.seed : createVisualizerSeed());
-    setVizSliderModes({});
+    setVizSliderModes(data.vizSliderModes ?? {});
     vizAutomationStateRef.current = {};
     setActivePresetName(name);
     setPresetName(name);
@@ -1328,6 +1340,11 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
               ⟲
             </button>
           </div>
+          {presetSaveError && (
+            <div role="alert" className="visualizer-preset-error">
+              {presetSaveError}
+            </div>
+          )}
           {presetList.length > 0 && (
             <div className="visualizer-preset-list">
               {presetList.map((p) => (

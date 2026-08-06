@@ -319,7 +319,14 @@ function expectSoundActionChangesResolvedOutput(
   assert.equal(padPreview.latestState?.padPostLPF, 1234, 'running pad preview should keep candidate tone params');
   assert.deepEqual(
     padPreview.postedEvents[0],
-    createCoreProductManualNoteEvent(CORE_PRODUCT_SOURCE_IDS.pad1, 60, 0.82, 1100),
+    createCoreProductManualNoteEvent(
+      CORE_PRODUCT_SOURCE_IDS.pad1,
+      60,
+      0.82,
+      1100,
+      undefined,
+      { transientAudition: true },
+    ),
     'running pad preview should still post the requested manual note',
   );
   assert.ok(
@@ -349,7 +356,14 @@ function expectSoundActionChangesResolvedOutput(
   assert.equal(leadPreview.latestState?.lead1Release, 6.5, 'running lead preview should keep candidate envelope release');
   assert.deepEqual(
     leadPreview.postedEvents[0],
-    createCoreProductManualNoteEvent(CORE_PRODUCT_SOURCE_IDS.lead1, 67, 0.84, 720),
+    createCoreProductManualNoteEvent(
+      CORE_PRODUCT_SOURCE_IDS.lead1,
+      67,
+      0.84,
+      720,
+      undefined,
+      { transientAudition: true },
+    ),
     'running lead preview should still post the requested manual note',
   );
   assert.ok(

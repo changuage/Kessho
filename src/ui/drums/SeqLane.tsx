@@ -20,6 +20,12 @@ import {
   sequencerGridColumnCount,
 } from '../sequencer/sequencerLimits';
 import { clampNudge, nudgeLabel } from '../sequencer/nudgeTiming';
+import {
+  normalizeSeqLaneRange,
+  seqLaneRangeFromPercent,
+  seqLaneRangeToPercent,
+  type SeqLaneRange,
+} from './seqLaneRange';
 
 type LaneKind = 'trigger' | 'chord' | 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge' | 'slice' | 'reverse';
 
@@ -112,6 +118,60 @@ function getRangeHint(lane: LaneKind, min: number, max: number): string {
     return `Each trigger picks a random preset morph between ${formatRangeValue(lane, min)} and ${formatRangeValue(lane, max)}.`;
   }
   return `Each trigger picks a random distance between ${formatRangeValue(lane, min)} and ${formatRangeValue(lane, max)}.`;
+}
+
+interface SeqLaneRangeSliderProps {
+  label: string;
+  low: number;
+  high: number;
+  color: string;
+  toUnit?: (value: number) => number;
+  fromUnit?: (value: number) => number;
+  formatValue: (value: number) => string;
+  onChangeRange: (min: number, max: number) => void;
+}
+
+/**
+ * Shared endpoint editor for lane ranges. SliderPrimitive owns pointer/touch,
+ * keyboard and RAF-coalesced range callbacks; this adapter only maps lane
+ * storage values into its normalized 0–100 presentation domain.
+ */
+function SeqLaneRangeSlider({
+  label,
+  low,
+  high,
+  color,
+  toUnit = (value) => value,
+  fromUnit = (value) => value,
+  formatValue,
+  onChangeRange,
+}: SeqLaneRangeSliderProps) {
+  const authoredRange = normalizeSeqLaneRange(toUnit(low), toUnit(high));
+  const sliderRange = seqLaneRangeToPercent(authoredRange);
+  const displayValue = `${formatValue(fromUnit(authoredRange.min))}–${formatValue(fromUnit(authoredRange.max))}`;
+  const midpoint = (sliderRange.min + sliderRange.max) * 0.5;
+
+  return (
+    <SliderPrimitive
+      className="seq-lane-range-slider"
+      label={label}
+      mode="walk"
+      value={midpoint}
+      range={sliderRange}
+      hero={color}
+      variant="full"
+      density="compact"
+      displayValue={displayValue}
+      formatValue={(percent) => formatValue(fromUnit(percent / 100))}
+      updatePolicy="frame"
+      minRangeGap={0}
+      onRangeChange={(nextRange: SeqLaneRange) => {
+        const normalized = seqLaneRangeFromPercent(nextRange);
+        onChangeRange(fromUnit(normalized.min), fromUnit(normalized.max));
+      }}
+      title={`${label}: ${displayValue}. Drag either endpoint or the range band.`}
+    />
+  );
 }
 
 interface SeqLaneProps {
@@ -406,72 +466,33 @@ const SeqLane: React.FC<SeqLaneProps> = ({
       {/* Step grid — or noteRange controls when pitch mode is noteRange */}
       {hasPitchControls && lane === 'pitch' && sequencer.pitch.mode === 'noteRange' ? (
         <div className="seq-lane-body seq-noterange-body">
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '8px 4px' }}>
-            <div style={{ flex: 1 }}>
-              <SliderPrimitive
-                className="seq-note-range-slider"
-                label="Low"
-                mode="single"
-                value={midiToPercent(pitchNoteMin ?? 48)}
-                hero={color}
-                variant="full"
-                density="compact"
-                displayValue={midiToName(pitchNoteMin ?? 48)}
-                formatValue={(percent) => midiToName(percentToMidi(percent))}
-                onValueChange={(percent) => onChangePitchNoteMin?.(Math.min(percentToMidi(percent), pitchNoteMax ?? 72))}
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              <SliderPrimitive
-                className="seq-note-range-slider"
-                label="High"
-                mode="single"
-                value={midiToPercent(pitchNoteMax ?? 72)}
-                hero={color}
-                variant="full"
-                density="compact"
-                displayValue={midiToName(pitchNoteMax ?? 72)}
-                formatValue={(percent) => midiToName(percentToMidi(percent))}
-                onValueChange={(percent) => onChangePitchNoteMax?.(Math.max(percentToMidi(percent), pitchNoteMin ?? 48))}
-              />
-            </div>
-          </div>
+          <SeqLaneRangeSlider
+            label="Note range"
+            low={pitchNoteMin ?? 48}
+            high={pitchNoteMax ?? 72}
+            color={color}
+            toUnit={(midi) => midiToPercent(midi) / 100}
+            fromUnit={(unit) => percentToMidi(unit * 100)}
+            formatValue={midiToName}
+            onChangeRange={(min, max) => {
+              onChangePitchNoteMin?.(min);
+              onChangePitchNoteMax?.(max);
+            }}
+          />
           <div style={{ fontSize: '0.6rem', color: '#666', textAlign: 'center' }}>
             Each trigger picks a random note between {midiToName(pitchNoteMin ?? 48)} and {midiToName(pitchNoteMax ?? 72)}
           </div>
         </div>
       ) : supportsRangeMode && valueMode === 'range' ? (
         <div className="seq-lane-body seq-noterange-body">
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '8px 4px' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>
-                Low: {formatRangeValue(lane, rangeLow)}
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={rangeLow}
-                onChange={(e) => onChangeRange?.(Math.min(parseFloat(e.target.value), rangeHigh), rangeHigh)}
-                style={{ width: '100%', cursor: 'pointer' }}
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>
-                High: {formatRangeValue(lane, rangeHigh)}
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={rangeHigh}
-                onChange={(e) => onChangeRange?.(rangeLow, Math.max(parseFloat(e.target.value), rangeLow))}
-                style={{ width: '100%', cursor: 'pointer' }}
-              />
-            </div>
-          </div>
+          <SeqLaneRangeSlider
+            label="Range"
+            low={rangeLow}
+            high={rangeHigh}
+            color={color}
+            formatValue={(value) => formatRangeValue(lane, value)}
+            onChangeRange={(min, max) => onChangeRange?.(min, max)}
+          />
           <div style={{ fontSize: '0.6rem', color: '#666', textAlign: 'center' }}>
             {getRangeHint(lane, rangeLow, rangeHigh)}
           </div>

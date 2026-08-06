@@ -334,6 +334,35 @@ float resolveProductArpMidi(
   return pool[output_index];
 }
 
+float resolveProductHarmonySlotNote(
+    KesshoProductEngine& engine,
+    int32_t slot_id,
+    uint32_t tone_index,
+    float fallback_midi) {
+  using namespace kessho::product::internal;
+  if (slot_id < 0 || slot_id >= 8) return fallback_midi;
+  float pool[8]{};
+  uint32_t pool_count = 0u;
+  if (engine.harmony.cached_voice_leading_candidate_note_counts[slot_id] > 0u) {
+    pool_count = std::min<uint32_t>(engine.harmony.cached_voice_leading_candidate_note_counts[slot_id], 8u);
+    for (uint32_t index = 0u; index < pool_count; ++index) {
+      pool[index] = engine.harmony.cached_voice_leading_candidates[slot_id][index];
+    }
+  } else if (engine.arrangement.harmony_slot_note_count[slot_id] > 0u) {
+    pool_count = std::min<uint32_t>(engine.arrangement.harmony_slot_note_count[slot_id], 8u);
+    for (uint32_t index = 0u; index < pool_count; ++index) {
+      pool[index] = engine.arrangement.harmony_slot_midi[static_cast<uint32_t>(slot_id) * 8u + index];
+    }
+  }
+  return pool_count == 0u ? fallback_midi : clampFloat(pool[tone_index % pool_count], 0.0f, 127.0f);
+}
+
+bool productHarmonySlotHasPool(const KesshoProductEngine& engine, int32_t slot_id) {
+  if (slot_id < 0 || slot_id >= 8) return false;
+  return engine.harmony.cached_voice_leading_candidate_note_counts[slot_id] > 0u ||
+      engine.arrangement.harmony_slot_note_count[slot_id] > 0u;
+}
+
 uint32_t productArpSlotsPerWindow(
     const kessho::product::internal::ProductArpRuntimeState& arp,
     uint64_t window_samples,
@@ -467,7 +496,8 @@ bool drainPendingRatchets(
       lane.pending_ratchets[write_index++] = pending;
       continue;
     }
-    if (!sequencerTargetSourceEnabled(engine, pending.event.source_id)) {
+    if (!sequencerTargetSourceEnabled(engine, pending.event.source_id) &&
+        (pending.event.flags & kSequencerEventTransientAuditionFlag) == 0u) {
       continue;
     }
     pending.event.sample_offset = static_cast<uint32_t>(pending.absolute_sample - block_start);
@@ -1032,7 +1062,8 @@ bool emitAnchorWalkerTrigger(
     uint32_t pattern_index,
     int32_t gesture_delta,
     float gesture_velocity,
-    uint16_t pitch_mask) {
+    uint16_t pitch_mask,
+    bool transient_audition) {
   using namespace kessho::product::internal;
   const int32_t safe_gesture_delta = clampInt(gesture_delta, -7, 7);
   if (safe_gesture_delta == 0) {
@@ -1105,7 +1136,7 @@ bool emitAnchorWalkerTrigger(
         static_cast<uint32_t>(tick_index * 2654435761ull) ^
         (layer_index * 16777619u));
     const uint32_t event_source = sourceOrFollow(layer.target_source_id, walker.target_source_id);
-    if (!sequencerTargetSourceEnabled(engine, event_source)) {
+    if (!transient_audition && !sequencerTargetSourceEnabled(engine, event_source)) {
       continue;
     }
     KesshoSequencerEvent event = makeFaceSequencerEvent(
@@ -1119,6 +1150,9 @@ bool emitAnchorWalkerTrigger(
         hold_seconds,
         event_seed,
         layer_index);
+    if (transient_audition) {
+      event.flags |= kSequencerEventTransientAuditionFlag;
+    }
     if (layer_event_index < kMaxAnchorWalkerLayers) {
       walker.last_output_midis[layer_event_index] = event.midi_note;
       walker.last_output_velocities[layer_event_index] = event.velocity;
@@ -1158,12 +1192,15 @@ bool generateAnchorWalkerLaneEvents(
     kessho::product::internal::LaneState& lane,
     uint32_t lane_index,
     uint32_t frames,
-    kessho::product::internal::SequencerBuffer& out) {
+    kessho::product::internal::SequencerBuffer& out,
+    bool allow_inactive_lane = false) {
   using namespace kessho::product::internal;
-  const uint64_t block_start = engine.transport.sample_frame;
+  const uint64_t block_start = engine.transport.running
+      ? engine.transport.sample_frame
+      : engine.audio_render_sample_frame;
   const uint64_t block_end = block_start + frames;
   AnchorWalkerState& walker = lane.anchor_walker;
-  if (!lane.enabled || !walker.enabled) {
+  if ((!allow_inactive_lane && !lane.enabled) || !walker.enabled) {
     engine.resetSequencerLaneRuntime(lane);
     return true;
   }
@@ -1252,7 +1289,8 @@ bool generateAnchorWalkerLaneEvents(
           static_cast<uint32_t>(tick_index % pattern_length),
           walker.held_gesture_delta,
           walker.held_gesture_velocity,
-          pitch_mask);
+          pitch_mask,
+          true);
     }
     if (walker.gesture_held && std::isfinite(samples_per_period) && samples_per_period > 0.0) {
       const uint64_t tick_advance = static_cast<uint64_t>(std::max<long long>(
@@ -1282,7 +1320,8 @@ bool generateAnchorWalkerLaneEvents(
             static_cast<uint32_t>(tick_index % pattern_length),
             walker.held_gesture_delta,
             walker.held_gesture_velocity,
-            pitch_mask);
+            pitch_mask,
+            true);
       }
     }
   } else if (auto_clock) {
@@ -1306,7 +1345,7 @@ bool generateAnchorWalkerLaneEvents(
       if (!engine.trigConditionPass(lane.trig_condition, event_sample)) {
         continue;
       }
-      emitAnchorWalkerTrigger(engine, lane, walker, lane_index, event_sample, tick_index, pattern_index, gesture_delta, 1.0f, pitch_mask);
+      emitAnchorWalkerTrigger(engine, lane, walker, lane_index, event_sample, tick_index, pattern_index, gesture_delta, 1.0f, pitch_mask, false);
     }
   } else if (step_grid) {
     if (static_cast<double>(block_end) <= static_cast<double>(lane.sequencer_start_sample_frame)) {
@@ -1361,7 +1400,7 @@ bool generateAnchorWalkerLaneEvents(
       }
       const uint32_t pattern_index = static_cast<uint32_t>(tick_index % pattern_length);
       const int32_t gesture_delta = clampInt(walker.gesture_pattern[pattern_index], -7, 7);
-      emitAnchorWalkerTrigger(engine, lane, walker, lane_index, event_sample, tick_index, pattern_index, gesture_delta, 1.0f, pitch_mask);
+      emitAnchorWalkerTrigger(engine, lane, walker, lane_index, event_sample, tick_index, pattern_index, gesture_delta, 1.0f, pitch_mask, false);
     }
   }
   if (!drainPendingRatchets(lane, block_start, block_end, engine, out, engine.telemetry)) {
@@ -1969,7 +2008,10 @@ class ScopedSequencerAudibilityGate {
           ? lane.play_note_voice_masks[midi_step_id]
           : 0u;
       const float trigger_midi_note = drum_lane ? drum_midi_note : sequenced_midi_note;
-      if (!drum_lane && trigger_midi_note >= 0.0f) {
+      // Keep the sequencer-only fallback telemetry for sessions that have not
+      // received a live Harmony gesture. LiveChordGesture events update this
+      // same telemetry at their control-event dispatch point and take priority.
+      if (!drum_lane && trigger_midi_note >= 0.0f && harmony.live_gesture_revision == 0u) {
         harmony.harmony_play_dispatch_count += 1u;
         harmony.harmony_play_last_dispatch_frame = event_sample;
         harmony.harmony_play_last_dispatch_latency_ms = event_sample >= transport.sample_frame
@@ -2141,7 +2183,8 @@ class ScopedSequencerAudibilityGate {
           uint32_t ratchet_index,
           uint32_t ratchet_count,
           uint64_t note_sample,
-          uint32_t arp_step_index = UINT32_MAX) {
+          uint32_t arp_step_index = UINT32_MAX,
+          bool harmony_resolved = false) {
         const uint64_t offset_samples = offset_ms > 0.0f
             ? static_cast<uint64_t>(std::llround(static_cast<double>(offset_ms) * sample_rate / 1000.0))
             : 0u;
@@ -2173,6 +2216,7 @@ class ScopedSequencerAudibilityGate {
             padVoiceIndexFromMask(lane.target_pad_voice_mask, pad_voice_phase);
         event.flags =
             sequencerPadVoiceEventFlags(pad_voice_index) |
+            (harmony_resolved ? kSequencerEventHarmonyResolvedFlag : 0u) |
             ratchet_index |
             (voice_ordinal << 8u);
         PendingRatchetEvent pending{};
@@ -2186,9 +2230,9 @@ class ScopedSequencerAudibilityGate {
         pending.event = event;
         pushPendingRatchet(lane, pending);
       };
-      auto enqueueSequencerNote = [&](float midi_note, float velocity_scale, float offset_ms, uint32_t voice_ordinal, uint32_t ratchet_index) {
+      auto enqueueSequencerNote = [&](float midi_note, float velocity_scale, float offset_ms, uint32_t voice_ordinal, uint32_t ratchet_index, bool harmony_resolved = false) {
         const uint64_t ratchet_sample = event_sample + static_cast<uint64_t>(std::llround(ratchet_spacing * ratchet_index));
-        enqueueSequencerNoteAtSample(midi_note, velocity_scale, offset_ms, voice_ordinal, ratchet_index, ratchet, ratchet_sample);
+        enqueueSequencerNoteAtSample(midi_note, velocity_scale, offset_ms, voice_ordinal, ratchet_index, ratchet, ratchet_sample, UINT32_MAX, harmony_resolved);
       };
       if (synth_arp_enabled) {
         ProductArpRuntimeState& arp = lane.arp;
@@ -2240,7 +2284,8 @@ class ScopedSequencerAudibilityGate {
                 0u,
                 1u,
                 arp_sample,
-                arp_step);
+                arp_step,
+                arp.slot_lane[arp_step] >= 0 && productHarmonySlotHasPool(*this, arp.slot_lane[arp_step]));
           }
           advanceProductArpCursor(arp);
           ++emitted_arp_slots;
@@ -2255,11 +2300,21 @@ class ScopedSequencerAudibilityGate {
                 continue;
               }
               const ProductPlayNoteOverride& note = lane.play_note_overrides[midi_step_id][voice];
-              enqueueSequencerNote(note.midi_note, note.velocity, note.offset_ms, voice_ordinal, ratchet_index);
+              const bool harmony_resolved = note.harmony_slot_id >= 0 && productHarmonySlotHasPool(*this, note.harmony_slot_id);
+              const float resolved_note = note.harmony_slot_id >= 0
+                  ? resolveProductHarmonySlotNote(*this, note.harmony_slot_id, voice, note.midi_note)
+                  : note.midi_note;
+              if (resolved_note >= 0.0f) {
+                enqueueSequencerNote(resolved_note, note.velocity, note.offset_ms, voice_ordinal, ratchet_index, harmony_resolved);
+              }
               ++voice_ordinal;
             }
           } else {
-            enqueueSequencerNote(trigger_midi_note, 1.0f, 0.0f, 0u, ratchet_index);
+            // Harmony morphs can intentionally return a negative sentinel for
+            // a removed voice. Never turn that rest into MIDI 0.
+            if (trigger_midi_note >= 0.0f) {
+              enqueueSequencerNote(trigger_midi_note, 1.0f, 0.0f, 0u, ratchet_index);
+            }
           }
         }
       }
@@ -2275,6 +2330,28 @@ class ScopedSequencerAudibilityGate {
   void KesshoProductEngine::generateSequencerEvents(uint32_t frames, bool include_inactive_sources) {
   sequencer_events.clear();
   if (!transport.running) {
+    // Realtime Anchor Walker gestures are playable independently of transport.
+    // Only gesture-hold lanes participate here; grid and auto-clock modes
+    // remain transport-owned.
+    for (uint32_t lane_index = 0u; lane_index < synth_lane_count; ++lane_index) {
+      LaneState& lane = synth_lanes[lane_index];
+      if (lane.sequencer_mode != kSequencerModeAnchorWalker ||
+          lane.anchor_walker.trigger_mode != 0u ||
+          (!lane.anchor_walker.gesture_held &&
+           lane.anchor_walker.pending_gesture_steps == 0u)) {
+        continue;
+      }
+      if (!generateAnchorWalkerLaneEvents(
+              *this,
+              lane,
+              lane_index,
+              frames,
+              sequencer_events,
+              true)) {
+        break;
+      }
+    }
+    sequencer_events.sortByOffset();
     return;
   }
   generateLaneEvents(synth_lanes, synth_lane_count, frames, sequencer_events);
@@ -2284,8 +2361,9 @@ class ScopedSequencerAudibilityGate {
   sequencer_events.sortByOffset();
 }
 
-  void KesshoProductEngine::triggerSequencerEvent(const KesshoSequencerEvent& event) {
-  if (!sequencerTargetSourceEnabled(*this, event.source_id)) {
+void KesshoProductEngine::triggerSequencerEvent(const KesshoSequencerEvent& event) {
+  const bool transient_audition = (event.flags & kSequencerEventTransientAuditionFlag) != 0u;
+  if (!transient_audition && !sequencerTargetSourceEnabled(*this, event.source_id)) {
     return;
   }
   // Arrangement notes used to enter Product Core through the host manual-note
@@ -2323,6 +2401,12 @@ class ScopedSequencerAudibilityGate {
       (static_cast<uint32_t>(event.step_id) * 2246822519u) ^
       (event.flags * 3266489917u) ^
       static_cast<uint32_t>(transport.sample_frame));
+  if (transient_audition) {
+    // Keep the output gate open for this ephemeral voice's envelope without
+    // changing the authored source.enabled state. Repeated held gestures
+    // simply extend the fixed-capacity deadline.
+    extendSourceTransientAudition(event.source_id, event.hold_seconds);
+  }
   triggerVoice(
       event.source_id,
       event.midi_note,
@@ -2338,5 +2422,7 @@ class ScopedSequencerAudibilityGate {
       event.source_id == KESSHO_PRODUCT_SOURCE_DRUM ? event.send_delay_a : 1.0e10f,
       event.source_id == KESSHO_PRODUCT_SOURCE_DRUM ? event.send_delay_b : 1.0e10f,
       padVoiceIndexFromSequencerEventFlags(event.flags),
-      event.source_id == KESSHO_PRODUCT_SOURCE_DRUM ? 1.0f : event.send_delay_a);
+      event.source_id == KESSHO_PRODUCT_SOURCE_DRUM ? 1.0f : event.send_delay_a,
+      (event.flags & kSequencerEventHarmonyResolvedFlag) != 0u,
+      transient_audition);
 }

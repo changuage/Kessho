@@ -315,7 +315,7 @@ void requireGeneratedSourcePresetFamilyCoverage() {
     if (generatedSourceMatches(preset, "pad")) {
       ++pad_count;
       require(preset.id >= KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT, "generated pad preset id below pad range");
-      require(preset.id <= KESSHO_PRODUCT_SOURCE_PRESET_PAD_SERGE_SWARM, "generated pad preset id above pad range");
+      require(preset.id <= KESSHO_PRODUCT_SOURCE_PRESET_PAD_CLASSIC_MOOG_BASS, "generated pad preset id above pad range");
       continue;
     }
 
@@ -352,7 +352,7 @@ void requireGeneratedSourcePresetFamilyCoverage() {
     require(false, "generated source preset uses unknown source family");
   }
 
-  require(pad_count == 24u, "generated pad preset family count mismatch");
+  require(pad_count == 25u, "generated pad preset family count mismatch");
   require(lead_count == 2u, "generated lead preset family count mismatch");
   require(drum_count == 1u, "generated drum preset family count mismatch");
   require(sample_count == 1u, "generated sample preset family count mismatch");
@@ -371,11 +371,11 @@ void requireExactSourcePresetMetadata() {
       init_patch.exact_pad_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT,
       "generated PadInit exact pad param count missing");
   require(
-      kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT == 53u,
+      kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT == 52u,
       "generated pad param count must match module layout");
-  require(std::fabs(init_patch.exact_pad_params[33] - 6.0f) < 0.00001f, "PadInit exact attack did not match web preset");
-  require(std::fabs(init_patch.exact_pad_params[36] - 12.0f) < 0.00001f, "PadInit exact release did not match web preset");
-  require(std::fabs(init_patch.exact_pad_params[52] - 0.5f) < 0.00001f, "PadInit exact output trim did not match web pad trim");
+  require(std::fabs(init_patch.exact_pad_params[32] - 6.0f) < 0.00001f, "PadInit exact attack did not match web preset");
+  require(std::fabs(init_patch.exact_pad_params[35] - 12.0f) < 0.00001f, "PadInit exact release did not match web preset");
+  require(std::fabs(init_patch.exact_pad_params[51] - 0.5f) < 0.00001f, "PadInit exact output trim did not match web pad trim");
 
   const auto* lead = generatedPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES);
   require(lead != nullptr, "generated lead preset missing");
@@ -492,37 +492,33 @@ void requireSourceRenders(uint32_t source_id, uint32_t stem_id, float midi_note,
 }
 
 void configurePadFilterLfoTelemetryPatch(KesshoProductSourceSnapshot& source, float cutoff_min, float cutoff_max) {
-  constexpr uint32_t kPadParamFilterCutoffMin = 21u;
-  constexpr uint32_t kPadParamFilterCutoffMax = 22u;
-  constexpr uint32_t kPadParamFilterKeyTracking = 26u;
-  constexpr uint32_t kPadParamLfo1Rate = 37u;
-  constexpr uint32_t kPadParamLfo1Depth = 38u;
-  constexpr uint32_t kPadParamLfo1Wave = 39u;
-  constexpr uint32_t kPadParamLfo1Dest = 40u;
-  constexpr uint32_t kPadParamLevel = 52u;
-  appendPadOverride(source, kPadParamFilterCutoffMin, cutoff_min);
-  appendPadOverride(source, kPadParamFilterCutoffMax, cutoff_max);
+  constexpr uint32_t kPadParamFilterCutoff = 21u;
+  constexpr uint32_t kPadParamFilterKeyTracking = 25u;
+  constexpr uint32_t kPadParamLfo1Rate = 36u;
+  constexpr uint32_t kPadParamLfo1Depth = 37u;
+  constexpr uint32_t kPadParamLfo1Wave = 38u;
+  constexpr uint32_t kPadParamLfo1Dest = 39u;
+  constexpr uint32_t kPadParamLevel = 51u;
+  appendPadOverride(source, kPadParamFilterCutoff, std::sqrt(cutoff_min * cutoff_max));
   appendPadOverride(source, kPadParamFilterKeyTracking, 0.0f);
   appendPadOverride(source, kPadParamLfo1Rate, 64.0f);
-  appendPadOverride(source, kPadParamLfo1Depth, 0.85f);
+  appendPadOverride(source, kPadParamLfo1Depth, std::log2(cutoff_max / cutoff_min) * 0.125f);
   appendPadOverride(source, kPadParamLfo1Wave, 6.0f);
   appendPadOverride(source, kPadParamLfo1Dest, 1.0f);
   appendPadOverride(source, kPadParamLevel, 1.0f);
 }
 
 void configurePadLowRateRandomWalkTelemetryPatch(KesshoProductSourceSnapshot& source, float cutoff_min, float cutoff_max) {
-  constexpr uint32_t kPadParamFilterCutoffMin = 21u;
-  constexpr uint32_t kPadParamFilterCutoffMax = 22u;
-  constexpr uint32_t kPadParamFilterKeyTracking = 26u;
-  constexpr uint32_t kPadParamLfo1Rate = 37u;
-  constexpr uint32_t kPadParamLfo1Depth = 38u;
-  constexpr uint32_t kPadParamLfo1Wave = 39u;
-  constexpr uint32_t kPadParamLfo1Dest = 40u;
-  constexpr uint32_t kPadParamLfo2Depth = 42u;
-  constexpr uint32_t kPadParamModEnvEnabled = 45u;
-  constexpr uint32_t kPadParamLevel = 52u;
-  appendPadOverride(source, kPadParamFilterCutoffMin, cutoff_min);
-  appendPadOverride(source, kPadParamFilterCutoffMax, cutoff_max);
+  constexpr uint32_t kPadParamFilterCutoff = 21u;
+  constexpr uint32_t kPadParamFilterKeyTracking = 25u;
+  constexpr uint32_t kPadParamLfo1Rate = 36u;
+  constexpr uint32_t kPadParamLfo1Depth = 37u;
+  constexpr uint32_t kPadParamLfo1Wave = 38u;
+  constexpr uint32_t kPadParamLfo1Dest = 39u;
+  constexpr uint32_t kPadParamLfo2Depth = 41u;
+  constexpr uint32_t kPadParamModEnvEnabled = 44u;
+  constexpr uint32_t kPadParamLevel = 51u;
+  appendPadOverride(source, kPadParamFilterCutoff, cutoff_min + (cutoff_max - cutoff_min) * 0.5f);
   appendPadOverride(source, kPadParamFilterKeyTracking, 0.0f);
   appendPadOverride(source, kPadParamLfo1Rate, 0.09f);
   appendPadOverride(source, kPadParamLfo1Depth, 1.0f);
@@ -534,25 +530,23 @@ void configurePadLowRateRandomWalkTelemetryPatch(KesshoProductSourceSnapshot& so
 }
 
 void configurePadModEnvelopeTelemetryPatch(KesshoProductSourceSnapshot& source, float cutoff_min, float cutoff_max) {
-  constexpr uint32_t kPadParamFilterCutoffMin = 21u;
-  constexpr uint32_t kPadParamFilterCutoffMax = 22u;
-  constexpr uint32_t kPadParamFilterKeyTracking = 26u;
-  constexpr uint32_t kPadParamAttack = 33u;
-  constexpr uint32_t kPadParamDecay = 34u;
-  constexpr uint32_t kPadParamSustain = 35u;
-  constexpr uint32_t kPadParamRelease = 36u;
-  constexpr uint32_t kPadParamLfo1Depth = 38u;
-  constexpr uint32_t kPadParamLfo2Depth = 42u;
-  constexpr uint32_t kPadParamModEnvEnabled = 45u;
-  constexpr uint32_t kPadParamModEnvAttack = 46u;
-  constexpr uint32_t kPadParamModEnvDecay = 47u;
-  constexpr uint32_t kPadParamModEnvSustain = 48u;
-  constexpr uint32_t kPadParamModEnvRelease = 49u;
-  constexpr uint32_t kPadParamModEnvDepth = 50u;
-  constexpr uint32_t kPadParamModEnvDest = 51u;
-  constexpr uint32_t kPadParamLevel = 52u;
-  appendPadOverride(source, kPadParamFilterCutoffMin, cutoff_min);
-  appendPadOverride(source, kPadParamFilterCutoffMax, cutoff_max);
+  constexpr uint32_t kPadParamFilterCutoff = 21u;
+  constexpr uint32_t kPadParamFilterKeyTracking = 25u;
+  constexpr uint32_t kPadParamAttack = 32u;
+  constexpr uint32_t kPadParamDecay = 33u;
+  constexpr uint32_t kPadParamSustain = 34u;
+  constexpr uint32_t kPadParamRelease = 35u;
+  constexpr uint32_t kPadParamLfo1Depth = 37u;
+  constexpr uint32_t kPadParamLfo2Depth = 41u;
+  constexpr uint32_t kPadParamModEnvEnabled = 44u;
+  constexpr uint32_t kPadParamModEnvAttack = 45u;
+  constexpr uint32_t kPadParamModEnvDecay = 46u;
+  constexpr uint32_t kPadParamModEnvSustain = 47u;
+  constexpr uint32_t kPadParamModEnvRelease = 48u;
+  constexpr uint32_t kPadParamModEnvDepth = 49u;
+  constexpr uint32_t kPadParamModEnvDest = 50u;
+  constexpr uint32_t kPadParamLevel = 51u;
+  appendPadOverride(source, kPadParamFilterCutoff, cutoff_min);
   appendPadOverride(source, kPadParamFilterKeyTracking, 0.0f);
   appendPadOverride(source, kPadParamAttack, 0.001f);
   appendPadOverride(source, kPadParamDecay, 0.05f);
@@ -565,7 +559,7 @@ void configurePadModEnvelopeTelemetryPatch(KesshoProductSourceSnapshot& source, 
   appendPadOverride(source, kPadParamModEnvDecay, 0.05f);
   appendPadOverride(source, kPadParamModEnvSustain, 1.0f);
   appendPadOverride(source, kPadParamModEnvRelease, 0.25f);
-  appendPadOverride(source, kPadParamModEnvDepth, 1.0f);
+  appendPadOverride(source, kPadParamModEnvDepth, std::log2(cutoff_max / cutoff_min) * 0.25f);
   appendPadOverride(source, kPadParamModEnvDest, 1.0f);
   appendPadOverride(source, kPadParamLevel, 1.0f);
 }
@@ -1337,7 +1331,7 @@ float maxNormalizedGraphTapDiff(
 }
 
 void requirePadFxSendsFollowPostLpf(uint32_t source_id, uint32_t dry_tap_id, const uint32_t* send_tap_ids, const char* label) {
-  constexpr uint32_t kPadParamLevel = 52u;
+  constexpr uint32_t kPadParamLevel = 51u;
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "pad post-LPF send engine create failed");
   enableGraphTaps(engine, "pad post-LPF graph tap enable failed");
@@ -1572,12 +1566,11 @@ float renderDeltaRmsWithOpenPadFilterAndPostLpf(uint32_t source_id, float intern
   const auto* preset = generatedPreset(preset_id);
   require(preset != nullptr, "Saturated Drift preset missing for pad post-LPF dominance test");
 
-  constexpr uint32_t kPadParamFilterCutoffMin = 21u;
-  constexpr uint32_t kPadParamFilterCutoffMax = 22u;
-  constexpr uint32_t kPadParamLfo1Depth = 38u;
-  constexpr uint32_t kPadParamLfo2Depth = 42u;
-  constexpr uint32_t kPadParamModEnvEnabled = 45u;
-  constexpr uint32_t kPadParamLevel = 52u;
+  constexpr uint32_t kPadParamFilterCutoff = 21u;
+  constexpr uint32_t kPadParamLfo1Depth = 37u;
+  constexpr uint32_t kPadParamLfo2Depth = 41u;
+  constexpr uint32_t kPadParamModEnvEnabled = 44u;
+  constexpr uint32_t kPadParamLevel = 51u;
 
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "pad open-filter post-LPF engine create failed");
@@ -1593,8 +1586,7 @@ float renderDeltaRmsWithOpenPadFilterAndPostLpf(uint32_t source_id, float intern
   source.post_lpf_hz = post_lpf_hz;
   source.stereo_width = 1.0f;
   kessho::product::tests::applyGeneratedSourcePreset(snapshot, source_id, preset_id);
-  appendPadOverride(source, kPadParamFilterCutoffMin, internal_filter_hz);
-  appendPadOverride(source, kPadParamFilterCutoffMax, internal_filter_hz);
+  appendPadOverride(source, kPadParamFilterCutoff, internal_filter_hz);
   appendPadOverride(source, kPadParamLfo1Depth, 0.0f);
   appendPadOverride(source, kPadParamLfo2Depth, 0.0f);
   appendPadOverride(source, kPadParamModEnvEnabled, 0.0f);
@@ -1618,12 +1610,11 @@ float renderHighBandRmsWithOpenPadFilterAndPostLpf(
   const auto* preset = generatedPreset(preset_id);
   require(preset != nullptr, "Saturated Drift preset missing for pad post-LPF high-band test");
 
-  constexpr uint32_t kPadParamFilterCutoffMin = 21u;
-  constexpr uint32_t kPadParamFilterCutoffMax = 22u;
-  constexpr uint32_t kPadParamLfo1Depth = 38u;
-  constexpr uint32_t kPadParamLfo2Depth = 42u;
-  constexpr uint32_t kPadParamModEnvEnabled = 45u;
-  constexpr uint32_t kPadParamLevel = 52u;
+  constexpr uint32_t kPadParamFilterCutoff = 21u;
+  constexpr uint32_t kPadParamLfo1Depth = 37u;
+  constexpr uint32_t kPadParamLfo2Depth = 41u;
+  constexpr uint32_t kPadParamModEnvEnabled = 44u;
+  constexpr uint32_t kPadParamLevel = 51u;
 
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "pad high-band post-LPF engine create failed");
@@ -1639,8 +1630,7 @@ float renderHighBandRmsWithOpenPadFilterAndPostLpf(
   source.post_lpf_hz = post_lpf_hz;
   source.stereo_width = 1.0f;
   kessho::product::tests::applyGeneratedSourcePreset(snapshot, source_id, preset_id);
-  appendPadOverride(source, kPadParamFilterCutoffMin, internal_filter_hz);
-  appendPadOverride(source, kPadParamFilterCutoffMax, internal_filter_hz);
+  appendPadOverride(source, kPadParamFilterCutoff, internal_filter_hz);
   appendPadOverride(source, kPadParamLfo1Depth, 0.0f);
   appendPadOverride(source, kPadParamLfo2Depth, 0.0f);
   appendPadOverride(source, kPadParamModEnvEnabled, 0.0f);

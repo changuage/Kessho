@@ -10,6 +10,7 @@
  */
 
 import type { PresetLibrary } from '../presets/types';
+import type { SliderMode } from '../ui/state';
 import { clampMorphPosition } from './morphUtils';
 
 /** Keys that a pad preset controls (timbre + oscillator + filter + envelope) */
@@ -23,7 +24,7 @@ export const PAD_PRESET_PARAM_KEYS = [
   // Character
   'hardness', 'warmth', 'presence', 'padFoldAmount', 'padFoldMode', 'detune',
   // Filter A
-  'filterType', 'filterCutoffMin', 'filterCutoffMax', 'filterResonance', 'filterQ', 'filterSlope', 'filterKeyTracking',
+  'filterType', 'filterCutoff', 'filterResonance', 'filterQ', 'filterSlope', 'filterKeyTracking',
   // Filter B
   'padFilterBEnabled', 'padFilterBType', 'padFilterBCutoff', 'padFilterBResonance', 'padFilterBQ', 'padFilterRouting',
   // ADSR
@@ -47,7 +48,7 @@ export const PAD1_TO_PAD2_KEY: Record<string, string> = {
   padNoiseType: 'pad2NoiseType', padNoiseLevel: 'pad2NoiseLevel',
   hardness: 'pad2Hardness', warmth: 'pad2Warmth', presence: 'pad2Presence',
   padFoldAmount: 'pad2FoldAmount', padFoldMode: 'pad2FoldMode',
-  filterType: 'pad2FilterType', filterCutoffMin: 'pad2FilterCutoffMin', filterCutoffMax: 'pad2FilterCutoffMax',
+  filterType: 'pad2FilterType', filterCutoff: 'pad2FilterCutoff',
   filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ', filterSlope: 'pad2FilterSlope', filterKeyTracking: 'pad2FilterKeyTracking',
   padFilterBEnabled: 'pad2FilterBEnabled', padFilterBType: 'pad2FilterBType', padFilterBCutoff: 'pad2FilterBCutoff',
   padFilterBResonance: 'pad2FilterBResonance', padFilterBQ: 'pad2FilterBQ', padFilterRouting: 'pad2FilterRouting',
@@ -65,10 +66,16 @@ export const DERIVED_PAD_KEYS = new Set<string>([
   ...Object.values(PAD1_TO_PAD2_KEY),
 ]);
 
+const PAD2_TO_PAD1_KEY = Object.fromEntries(
+  Object.entries(PAD1_TO_PAD2_KEY).map(([pad1Key, pad2Key]) => [pad2Key, pad1Key]),
+) as Record<string, string>;
+
 export interface PadPreset {
   name: string;
   tags: string[];
   params: Record<string, number | string | boolean>;
+  dualRanges?: Record<string, { min: number; max: number }>;
+  sliderModes?: Record<string, SliderMode>;
 }
 
 export interface PadPresetOption {
@@ -79,6 +86,41 @@ export interface PadPresetOption {
   tags?: string[];
   updatedAt?: number;
   rating?: number;
+}
+
+export function createRuntimePadPreset(
+  scope: 'pad1' | 'pad2',
+  name: string,
+  data: Record<string, unknown>,
+  tags: string[] = [],
+  dualRanges?: Record<string, { min: number; max: number }>,
+  sliderModes?: Record<string, SliderMode>,
+): PadPreset {
+  const params: Record<string, number | string | boolean> = {};
+  for (const [key, value] of Object.entries(data)) {
+    const targetKey = scope === 'pad1' ? key : PAD2_TO_PAD1_KEY[key];
+    if (targetKey && (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean')) {
+      params[targetKey] = value;
+    }
+  }
+
+  const canonicalDualRanges: Record<string, { min: number; max: number }> = {};
+  const canonicalSliderModes: Record<string, SliderMode> = {};
+  for (const [key, range] of Object.entries(dualRanges ?? {})) {
+    const targetKey = scope === 'pad1' ? key : PAD2_TO_PAD1_KEY[key];
+    if (!targetKey) continue;
+    canonicalDualRanges[targetKey] = range;
+    const mode = sliderModes?.[key];
+    if (mode === 'walk' || mode === 'sampleHold') canonicalSliderModes[targetKey] = mode;
+  }
+
+  return {
+    name,
+    tags,
+    params,
+    ...(Object.keys(canonicalDualRanges).length > 0 ? { dualRanges: canonicalDualRanges } : {}),
+    ...(Object.keys(canonicalSliderModes).length > 0 ? { sliderModes: canonicalSliderModes } : {}),
+  };
 }
 
 interface RuntimePadPresetEntry extends PadPresetOption {
@@ -94,7 +136,7 @@ export const PAD_PRESET_DEFAULT_PARAMS: Record<string, number | string | boolean
   padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.3,
   padNoiseType: 'white', padNoiseLevel: 0.15,
   hardness: 0.3, warmth: 0.4, presence: 0.3, padFoldAmount: 0, padFoldMode: 0, detune: 8,
-  filterType: 'lowpass', filterCutoffMin: 400, filterCutoffMax: 3000,
+  filterType: 'lowpass', filterCutoff: 1700,
   filterResonance: 0.2, filterQ: 1.0, filterSlope: 12, filterKeyTracking: 0,
   padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 200,
   padFilterBResonance: 0.2, padFilterBQ: 1, padFilterRouting: 'series',
@@ -121,7 +163,7 @@ const SATURATED_DRIFT: PadPreset = {
     padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.3,
     padNoiseType: 'white', padNoiseLevel: 0.36,
     hardness: 0.56, warmth: 0.4, presence: 0.47, detune: 8,
-    filterType: 'lowpass', filterCutoffMin: 40, filterCutoffMax: 1690,
+    filterType: 'lowpass', filterCutoff: 865,
     filterResonance: 0.2, filterQ: 1.0,
     padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 200,
     padFilterBResonance: 0.2, padFilterBQ: 1, padFilterRouting: 'series',
@@ -141,7 +183,7 @@ const DEEP_SUB_DRONE: PadPreset = {
     padSubEnabled: true, padSubOctave: -2, padSubWave: 'sine', padSubLevel: 0.7,
     padNoiseType: 'pink', padNoiseLevel: 0.05,
     hardness: 0.1, warmth: 0.8, presence: 0.1, detune: 3,
-    filterType: 'lowpass', filterCutoffMin: 80, filterCutoffMax: 800,
+    filterType: 'lowpass', filterCutoff: 440,
     filterResonance: 0.15, filterQ: 0.8,
     padFilterBEnabled: false, padFilterBType: 'lowpass', padFilterBCutoff: 400,
     padFilterBResonance: 0.1, padFilterBQ: 0.5, padFilterRouting: 'series',
@@ -161,7 +203,7 @@ const GLASS_SHIMMER: PadPreset = {
     padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.1,
     padNoiseType: 'white', padNoiseLevel: 0.08,
     hardness: 0.05, warmth: 0, presence: 0.7, detune: 15,
-    filterType: 'highpass', filterCutoffMin: 800, filterCutoffMax: 4000,
+    filterType: 'highpass', filterCutoff: 2400,
     filterResonance: 0.25, filterQ: 1.5,
     padFilterBEnabled: true, padFilterBType: 'lowpass', padFilterBCutoff: 6000,
     padFilterBResonance: 0.1, padFilterBQ: 0.8, padFilterRouting: 'series',
@@ -181,7 +223,7 @@ const WARM_ANALOG: PadPreset = {
     padSubEnabled: true, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.4,
     padNoiseType: 'pink', padNoiseLevel: 0.1,
     hardness: 0.15, warmth: 0.7, presence: 0.2, detune: 5,
-    filterType: 'lowpass', filterCutoffMin: 200, filterCutoffMax: 2000,
+    filterType: 'lowpass', filterCutoff: 1100,
     filterResonance: 0.3, filterQ: 1.2,
     padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 80,
     padFilterBResonance: 0.1, padFilterBQ: 0.5, padFilterRouting: 'series',
@@ -201,7 +243,7 @@ const DIGITAL_ICE: PadPreset = {
     padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.2,
     padNoiseType: 'white', padNoiseLevel: 0.12,
     hardness: 0.7, warmth: 0, presence: 0.6, detune: 20,
-    filterType: 'bandpass', filterCutoffMin: 600, filterCutoffMax: 5000,
+    filterType: 'bandpass', filterCutoff: 2800,
     filterResonance: 0.5, filterQ: 3,
     padFilterBEnabled: true, padFilterBType: 'highpass', padFilterBCutoff: 300,
     padFilterBResonance: 0.3, padFilterBQ: 2, padFilterRouting: 'series',
@@ -221,7 +263,7 @@ const BREATH: PadPreset = {
     padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.1,
     padNoiseType: 'pink', padNoiseLevel: 0.6,
     hardness: 0, warmth: 0.5, presence: 0.4, detune: 6,
-    filterType: 'bandpass', filterCutoffMin: 300, filterCutoffMax: 3000,
+    filterType: 'bandpass', filterCutoff: 1650,
     filterResonance: 0.15, filterQ: 0.8,
     padFilterBEnabled: false, padFilterBType: 'lowpass', padFilterBCutoff: 5000,
     padFilterBResonance: 0.1, padFilterBQ: 0.5, padFilterRouting: 'series',
@@ -241,7 +283,7 @@ const CATHEDRAL_ORGAN: PadPreset = {
     padSubEnabled: true, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.5,
     padNoiseType: 'pink', padNoiseLevel: 0.03,
     hardness: 0.2, warmth: 0.6, presence: 0.35, detune: 2,
-    filterType: 'lowpass', filterCutoffMin: 300, filterCutoffMax: 2500,
+    filterType: 'lowpass', filterCutoff: 1400,
     filterResonance: 0.1, filterQ: 0.6,
     padFilterBEnabled: false, padFilterBType: 'lowpass', padFilterBCutoff: 3000,
     padFilterBResonance: 0.1, padFilterBQ: 0.5, padFilterRouting: 'series',
@@ -264,7 +306,7 @@ const PLUCK_BELL: PadPreset = {
     padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.15,
     padNoiseType: 'white', padNoiseLevel: 0.04,
     hardness: 0.1, warmth: 0.2, presence: 0.6, detune: 3,
-    filterType: 'lowpass', filterCutoffMin: 1200, filterCutoffMax: 6000,
+    filterType: 'lowpass', filterCutoff: 3600,
     filterResonance: 0.15, filterQ: 1.0,
     padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 200,
     padFilterBResonance: 0.1, padFilterBQ: 0.5, padFilterRouting: 'series',
@@ -285,7 +327,7 @@ const SOFT_PLUCK: PadPreset = {
     padSubEnabled: true, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.25,
     padNoiseType: 'pink', padNoiseLevel: 0.03,
     hardness: 0.05, warmth: 0.6, presence: 0.25, detune: 6,
-    filterType: 'lowpass', filterCutoffMin: 600, filterCutoffMax: 2200,
+    filterType: 'lowpass', filterCutoff: 1400,
     filterResonance: 0.1, filterQ: 0.8,
     padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 80,
     padFilterBResonance: 0.1, padFilterBQ: 0.5, padFilterRouting: 'series',
@@ -306,7 +348,7 @@ const HARSH_PLUCK: PadPreset = {
     padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.2,
     padNoiseType: 'white', padNoiseLevel: 0.15,
     hardness: 0.65, warmth: 0.1, presence: 0.55, detune: 15,
-    filterType: 'lowpass', filterCutoffMin: 800, filterCutoffMax: 7000,
+    filterType: 'lowpass', filterCutoff: 3900,
     filterResonance: 0.35, filterQ: 2.0,
     padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 100,
     padFilterBResonance: 0.1, padFilterBQ: 0.5, padFilterRouting: 'series',
@@ -327,7 +369,7 @@ const METAL_TINE: PadPreset = {
     padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.15,
     padNoiseType: 'white', padNoiseLevel: 0.02,
     hardness: 0.2, warmth: 0.35, presence: 0.55, detune: 2,
-    filterType: 'lowpass', filterCutoffMin: 2000, filterCutoffMax: 5000,
+    filterType: 'lowpass', filterCutoff: 3500,
     filterResonance: 0.1, filterQ: 0.7,
     padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 150,
     padFilterBResonance: 0.1, padFilterBQ: 0.5, padFilterRouting: 'series',
@@ -348,7 +390,7 @@ const POLY_LEAD: PadPreset = {
     padSubEnabled: true, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.3,
     padNoiseType: 'pink', padNoiseLevel: 0.02,
     hardness: 0.25, warmth: 0.3, presence: 0.5, detune: 10,
-    filterType: 'lowpass', filterCutoffMin: 1500, filterCutoffMax: 4500,
+    filterType: 'lowpass', filterCutoff: 3000,
     filterResonance: 0.2, filterQ: 1.2,
     padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 80,
     padFilterBResonance: 0.1, padFilterBQ: 0.5, padFilterRouting: 'series',
@@ -369,7 +411,7 @@ const ACID_STAB: PadPreset = {
     padSubEnabled: true, padSubOctave: -1, padSubWave: 'square', padSubLevel: 0.3,
     padNoiseType: 'white', padNoiseLevel: 0.0,
     hardness: 0.4, warmth: 0.15, presence: 0.4, detune: 0,
-    filterType: 'lowpass', filterCutoffMin: 200, filterCutoffMax: 6000,
+    filterType: 'lowpass', filterCutoff: 3100,
     filterResonance: 0.7, filterQ: 6,
     padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 80,
     padFilterBResonance: 0.1, padFilterBQ: 0.5, padFilterRouting: 'series',
@@ -390,7 +432,7 @@ const MUTED_KEY: PadPreset = {
     padSubEnabled: true, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.35,
     padNoiseType: 'pink', padNoiseLevel: 0.06,
     hardness: 0.15, warmth: 0.7, presence: 0.15, detune: 4,
-    filterType: 'lowpass', filterCutoffMin: 400, filterCutoffMax: 1800,
+    filterType: 'lowpass', filterCutoff: 1100,
     filterResonance: 0.15, filterQ: 0.8,
     padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 60,
     padFilterBResonance: 0.1, padFilterBQ: 0.5, padFilterRouting: 'series',
@@ -411,7 +453,7 @@ const GLASS_MARIMBA: PadPreset = {
     padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.15,
     padNoiseType: 'white', padNoiseLevel: 0.02,
     hardness: 0.05, warmth: 0.15, presence: 0.65, detune: 0,
-    filterType: 'lowpass', filterCutoffMin: 3000, filterCutoffMax: 7000,
+    filterType: 'lowpass', filterCutoff: 5000,
     filterResonance: 0.08, filterQ: 0.6,
     padFilterBEnabled: true, padFilterBType: 'highpass', padFilterBCutoff: 250,
     padFilterBResonance: 0.05, padFilterBQ: 0.5, padFilterRouting: 'series',
@@ -432,7 +474,7 @@ const SUB_PLUCK: PadPreset = {
     padSubEnabled: true, padSubOctave: -2, padSubWave: 'sine', padSubLevel: 0.6,
     padNoiseType: 'pink', padNoiseLevel: 0.02,
     hardness: 0.2, warmth: 0.8, presence: 0.1, detune: 4,
-    filterType: 'lowpass', filterCutoffMin: 300, filterCutoffMax: 2000,
+    filterType: 'lowpass', filterCutoff: 1150,
     filterResonance: 0.2, filterQ: 1.0,
     padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 40,
     padFilterBResonance: 0.1, padFilterBQ: 0.5, padFilterRouting: 'series',
@@ -440,6 +482,30 @@ const SUB_PLUCK: PadPreset = {
     padLfo1Rate: 0.5, padLfo1Depth: 0, padLfo1Wave: 'sine', padLfo1Dest: 'none',
     padModEnvEnabled: true, padModEnvAttack: 0.01, padModEnvDecay: 0.3,
     padModEnvSustain: 0, padModEnvRelease: 0.5, padModEnvDepth: 0.6, padModEnvDest: 'filterCutoff',
+  },
+};
+
+/** Fat Minimoog-style bass: low triangle fundamental with an upper saw driving the ladder. */
+const CLASSIC_MOOG_BASS: PadPreset = {
+  name: 'Classic Moog Bass',
+  tags: ['bass', 'analog', 'classic', 'moog', 'ladder', 'fat', 'growl'],
+  params: {
+    padOscAWave: 'triangle', padOscAOctave: -1, padOscADetune: 0, padOscALevel: 0.72,
+    padOscBWave: 'sawtooth', padOscBOctave: 0, padOscBDetune: 1, padOscBLevel: 0.48,
+    padOscMix: 0.45,
+    padSubEnabled: false, padSubOctave: -1, padSubWave: 'triangle', padSubLevel: 0.14,
+    padNoiseType: 'white', padNoiseLevel: 0,
+    hardness: 0.38, warmth: 0.8, presence: 0.18,
+    padFoldAmount: 0, padFoldMode: 0, detune: 1,
+    filterType: 'ladderLp', filterCutoff: 170,
+    filterResonance: 0.22, filterQ: 0.8, filterSlope: 24, filterKeyTracking: 0.3,
+    padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 40,
+    padFilterBResonance: 0, padFilterBQ: 0.7, padFilterRouting: 'aOnly',
+    synthAttack: 0.008, synthDecay: 0.3, synthSustain: 0.84, synthRelease: 0.08,
+    padLfo1Rate: 0.5, padLfo1Depth: 0, padLfo1Wave: 'sine', padLfo1Dest: 'none',
+    padLfo2Rate: 0.5, padLfo2Depth: 0, padLfo2Wave: 'sine', padLfo2Dest: 'none',
+    padModEnvEnabled: true, padModEnvAttack: 0.008, padModEnvDecay: 0.55,
+    padModEnvSustain: 0.08, padModEnvRelease: 0.08, padModEnvDepth: 0.65, padModEnvDest: 'filterCutoff',
   },
 };
 
@@ -453,7 +519,7 @@ const SYNC_LEAD: PadPreset = {
     padSubEnabled: true, padSubOctave: -1, padSubWave: 'square', padSubLevel: 0.25,
     padNoiseType: 'white', padNoiseLevel: 0.03,
     hardness: 0.5, warmth: 0.1, presence: 0.7, detune: 5,
-    filterType: 'lowpass', filterCutoffMin: 2000, filterCutoffMax: 6500,
+    filterType: 'lowpass', filterCutoff: 4250,
     filterResonance: 0.25, filterQ: 1.5,
     padFilterBEnabled: true, padFilterBType: 'highpass', padFilterBCutoff: 120,
     padFilterBResonance: 0.1, padFilterBQ: 0.7, padFilterRouting: 'series',
@@ -477,7 +543,7 @@ const BUCHLA_PLUCK: PadPreset = {
     padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.2,
     padNoiseType: 'pink', padNoiseLevel: 0.01,
     hardness: 0.12, warmth: 0.66, presence: 0.32, padFoldAmount: 0.28, padFoldMode: 0, detune: 1,
-    filterType: 'lowpass', filterCutoffMin: 220, filterCutoffMax: 2400,
+    filterType: 'lowpass', filterCutoff: 1310,
     filterResonance: 0.08, filterQ: 0.85, filterSlope: 12, filterKeyTracking: 0.35,
     padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 100,
     padFilterBResonance: 0.1, padFilterBQ: 0.7, padFilterRouting: 'series',
@@ -499,7 +565,7 @@ const SINE_FOLD_KEY: PadPreset = {
     padSubEnabled: true, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.3,
     padNoiseType: 'white', padNoiseLevel: 0.01,
     hardness: 0.05, warmth: 0.6, presence: 0.3, padFoldAmount: 0.28, padFoldMode: 1, detune: 2,
-    filterType: 'lowpass', filterCutoffMin: 600, filterCutoffMax: 4000,
+    filterType: 'lowpass', filterCutoff: 2300,
     filterResonance: 0.1, filterQ: 0.8,
     padFilterBEnabled: false, padFilterBType: 'lowpass', padFilterBCutoff: 3000,
     padFilterBResonance: 0.1, padFilterBQ: 0.7, padFilterRouting: 'series',
@@ -520,7 +586,7 @@ const SERGE_STAB: PadPreset = {
     padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.1,
     padNoiseType: 'white', padNoiseLevel: 0.04,
     hardness: 0.3, warmth: 0.2, presence: 0.6, padFoldAmount: 0.6, padFoldMode: 2, detune: 6,
-    filterType: 'lowpass', filterCutoffMin: 1000, filterCutoffMax: 6000,
+    filterType: 'lowpass', filterCutoff: 3500,
     filterResonance: 0.3, filterQ: 1.5,
     padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 80,
     padFilterBResonance: 0.1, padFilterBQ: 0.7, padFilterRouting: 'series',
@@ -541,7 +607,7 @@ const FOLDED_DRIFT: PadPreset = {
     padSubEnabled: true, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.3,
     padNoiseType: 'pink', padNoiseLevel: 0.08,
     hardness: 0.15, warmth: 0.55, presence: 0.35, padFoldAmount: 0.45, padFoldMode: 0, detune: 10,
-    filterType: 'lowpass', filterCutoffMin: 200, filterCutoffMax: 2500,
+    filterType: 'lowpass', filterCutoff: 1350,
     filterResonance: 0.2, filterQ: 1.0,
     padFilterBEnabled: false, padFilterBType: 'lowpass', padFilterBCutoff: 3000,
     padFilterBResonance: 0.1, padFilterBQ: 0.7, padFilterRouting: 'series',
@@ -563,7 +629,7 @@ const HARMONIC_BLOOM: PadPreset = {
     padSubEnabled: true, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.25,
     padNoiseType: 'white', padNoiseLevel: 0.05,
     hardness: 0.05, warmth: 0.4, presence: 0.5, padFoldAmount: 0.38, padFoldMode: 1, detune: 7,
-    filterType: 'lowpass', filterCutoffMin: 300, filterCutoffMax: 5000,
+    filterType: 'lowpass', filterCutoff: 2650,
     filterResonance: 0.15, filterQ: 1.2,
     padFilterBEnabled: true, padFilterBType: 'highpass', padFilterBCutoff: 100,
     padFilterBResonance: 0.1, padFilterBQ: 0.7, padFilterRouting: 'series',
@@ -585,7 +651,7 @@ const SERGE_SWARM: PadPreset = {
     padSubEnabled: true, padSubOctave: -1, padSubWave: 'triangle', padSubLevel: 0.35,
     padNoiseType: 'pink', padNoiseLevel: 0.1,
     hardness: 0.2, warmth: 0.7, presence: 0.2, padFoldAmount: 0.55, padFoldMode: 2, detune: 12,
-    filterType: 'lowpass', filterCutoffMin: 150, filterCutoffMax: 1800,
+    filterType: 'lowpass', filterCutoff: 975,
     filterResonance: 0.25, filterQ: 1.0,
     padFilterBEnabled: false, padFilterBType: 'lowpass', padFilterBCutoff: 2000,
     padFilterBResonance: 0.1, padFilterBQ: 0.7, padFilterRouting: 'series',
@@ -617,6 +683,7 @@ export const PAD_PRESETS: Record<string, PadPreset> = {
   muted_key: MUTED_KEY,
   glass_marimba: GLASS_MARIMBA,
   sub_pluck: SUB_PLUCK,
+  classic_moog_bass: CLASSIC_MOOG_BASS,
   sync_lead: SYNC_LEAD,
   buchla_pluck: BUCHLA_PLUCK,
   sine_fold_key: SINE_FOLD_KEY,
@@ -809,6 +876,59 @@ export function morphPadPresets(
   }
 
   return result;
+}
+
+export function resolvePadPresetDualState(
+  scope: 'pad1' | 'pad2',
+  presetAId: string,
+  presetBId: string,
+  morph: number,
+): {
+  relevantKeys: string[];
+  dualRanges: Record<string, { min: number; max: number }>;
+  sliderModes: Record<string, SliderMode>;
+} {
+  const presetA = getPadPreset(presetAId, scope);
+  const presetB = getPadPreset(presetBId, scope);
+  const relevantKeys = PAD_PRESET_PARAM_KEYS
+    .map((key) => scope === 'pad2' ? PAD1_TO_PAD2_KEY[key] : key)
+    .filter((key): key is string => Boolean(key));
+  const dualRanges: Record<string, { min: number; max: number }> = {};
+  const sliderModes: Record<string, SliderMode> = {};
+  if (!presetA || !presetB) return { relevantKeys, dualRanges, sliderModes };
+
+  const position = clampMorphPosition(morph);
+  const allDualKeys = new Set([
+    ...Object.keys(presetA.dualRanges ?? {}),
+    ...Object.keys(presetB.dualRanges ?? {}),
+  ]);
+
+  for (const key of allDualKeys) {
+    const targetKey = scope === 'pad2' ? PAD1_TO_PAD2_KEY[key] : key;
+    if (!targetKey) continue;
+    const rangeA = presetA.dualRanges?.[key];
+    const rangeB = presetB.dualRanges?.[key];
+    const valueA = presetA.params[key];
+    const valueB = presetB.params[key];
+    if ((!rangeA && typeof valueA !== 'number') || (!rangeB && typeof valueB !== 'number')) continue;
+
+    const minA = rangeA?.min ?? valueA as number;
+    const maxA = rangeA?.max ?? valueA as number;
+    const minB = rangeB?.min ?? valueB as number;
+    const maxB = rangeB?.max ?? valueB as number;
+    const min = minA + (minB - minA) * position;
+    const max = maxA + (maxB - maxA) * position;
+    if (Math.abs(max - min) <= 0.001) continue;
+
+    const modeA = presetA.sliderModes?.[key] ?? (rangeA ? 'walk' : undefined);
+    const modeB = presetB.sliderModes?.[key] ?? (rangeB ? 'walk' : undefined);
+    dualRanges[targetKey] = { min, max };
+    sliderModes[targetKey] = position < 0.5
+      ? modeA ?? modeB ?? 'walk'
+      : modeB ?? modeA ?? 'walk';
+  }
+
+  return { relevantKeys, dualRanges, sliderModes };
 }
 
 export function applyPadPresetMorphParamsToState<T extends Record<string, unknown>>(

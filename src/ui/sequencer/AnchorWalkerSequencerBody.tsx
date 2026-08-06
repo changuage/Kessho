@@ -59,6 +59,10 @@ export function AnchorWalkerSequencerBody({
   const latchManualAnchorRef = useRef(walker.latchManualAnchor);
   const releaseManualAnchorRef = useRef(walker.releaseManualAnchor);
   const heldKeysRef = useRef(new Set<string>());
+  // Pointer capture does not guarantee a final pointerup when the surface is
+  // unmounted (for example, while navigating away). Keep ownership locally so
+  // cleanup can always release a held Walker gesture.
+  const heldPointersRef = useRef(new Set<number>());
   const [activeGestureDeltas, setActiveGestureDeltas] = useState<Set<number>>(() => new Set());
   gestureDownRef.current = walker.gestureDown;
   gestureUpRef.current = walker.gestureUp;
@@ -96,7 +100,7 @@ export function AnchorWalkerSequencerBody({
     const handleKeyUp = (event: KeyboardEvent) => {
       if (event.code === 'Space') {
         if (!heldKeysRef.current.delete('space')) return;
-        if (config.anchorSource === 'manualLatch') {
+        if (config.anchorSource === 'manualLatch' && heldPointersRef.current.size === 0) {
           releaseManualAnchorRef.current();
           event.preventDefault();
         }
@@ -111,7 +115,9 @@ export function AnchorWalkerSequencerBody({
         next.delete(delta);
         return next;
       });
-      gestureUpRef.current(delta);
+      if (heldKeysRef.current.size === 0 && heldPointersRef.current.size === 0) {
+        gestureUpRef.current(delta);
+      }
       event.preventDefault();
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -119,9 +125,10 @@ export function AnchorWalkerSequencerBody({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
-      if (heldKeysRef.current.size > 0) {
+      if (heldKeysRef.current.size > 0 || heldPointersRef.current.size > 0) {
         gestureUpRef.current();
         heldKeysRef.current.clear();
+        heldPointersRef.current.clear();
         setActiveGestureDeltas(new Set());
       }
     };
@@ -279,6 +286,8 @@ export function AnchorWalkerSequencerBody({
                 data-delta={button.delta}
                 onPointerDown={(event) => {
                   event.preventDefault();
+                  if (heldPointersRef.current.has(event.pointerId)) return;
+                  heldPointersRef.current.add(event.pointerId);
                   event.currentTarget.setPointerCapture(event.pointerId);
                   markGestureActive(button.delta, true);
                   walker.gestureDown(button.delta);
@@ -287,16 +296,20 @@ export function AnchorWalkerSequencerBody({
                   if (event.currentTarget.hasPointerCapture(event.pointerId)) {
                     event.currentTarget.releasePointerCapture(event.pointerId);
                   }
+                  heldPointersRef.current.delete(event.pointerId);
                   markGestureActive(button.delta, false);
-                  walker.gestureUp(button.delta);
+                  if (heldPointersRef.current.size === 0) walker.gestureUp(button.delta);
                 }}
-                onPointerCancel={() => {
+                onPointerCancel={(event) => {
+                  heldPointersRef.current.delete(event.pointerId);
                   markGestureActive(button.delta, false);
-                  walker.gestureUp(button.delta);
+                  if (heldPointersRef.current.size === 0) walker.gestureUp(button.delta);
                 }}
                 onBlur={() => {
                   markGestureActive(button.delta, false);
-                  walker.gestureUp(button.delta);
+                  // Blur is a defensive release path, but another captured
+                  // pointer may still own the gesture.
+                  if (heldPointersRef.current.size === 0) walker.gestureUp(button.delta);
                 }}
               >
                 <span>{button.label}</span>

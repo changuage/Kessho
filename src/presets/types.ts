@@ -13,6 +13,7 @@ import type { ClockDivision } from '../audio/drumSeqTypes';
 import type { PitchBindingMode } from '../audio/drumSeqTypes';
 import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { DiamondPosition } from '../audio/journeyTypes';
+import type { SerializedSeqScatterState } from '../ui/drums/scatter/scatterTypes';
 
 export type PresetLevel = 'engine' | 'kit' | 'source' | 'state' | 'journey';
 export type PresetLibrary = 'stock' | 'user' | 'cloud';
@@ -42,6 +43,36 @@ export type PresetRenameIdentity = Pick<
 > & {
   tags?: string[];
 };
+
+export interface PresetMetadataPatch {
+  creator?: string | null;
+  description?: string | null;
+  visibility?: PresetVisibility;
+  familyName?: string | null;
+  variantName?: string | null;
+  variantRank?: number | null;
+  rating?: number | null;
+  tags?: string[];
+}
+
+/**
+ * Identity and revision information captured with a preset list entry before
+ * editing its metadata. `expectedUpdatedAt` is an opaque value: Supabase
+ * callers must pass the raw PostgreSQL `updated_at` text through unchanged.
+ */
+export interface PresetMetadataUpdateOptions {
+  targetId?: string;
+  expectedUpdatedAt?: string;
+}
+
+/** Minimal identity returned by a current-version reverse-reference lookup. */
+export interface PresetReferenceCandidate {
+  id?: string;
+  name: string;
+  currentVersion: number;
+  /** Opaque backend revision captured with the candidate. */
+  updatedAtRevision?: string;
+}
 
 export interface JourneyPresetPreviewNode {
   position: DiamondPosition;
@@ -84,6 +115,7 @@ export interface PresetVersionMetadata {
   drumPitchSettings?: SerializedPitchSettings[];
   synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
+  drumScatterState?: SerializedSeqScatterState;
   journeyPreview?: JourneyPresetPreview;
   presetPool?: PresetPoolMetadata;
   refs?: Record<string, PresetRef>;
@@ -140,6 +172,8 @@ export interface PresetEntry extends PresetIdentityMetadata {
   currentVersion: number;
   createdAt: number;
   updatedAt: number;
+  /** Opaque backend revision; for Supabase this is the exact PostgreSQL `updated_at` value. */
+  updatedAtRevision?: string;
   recoveryWarnings?: PresetRecoveryWarning[];
 }
 
@@ -185,6 +219,8 @@ export interface PresetSummary {
   versionCount: number;
   currentVersion: number;
   updatedAt: number;
+  /** Opaque backend revision; for Supabase this is the exact PostgreSQL `updated_at` value. */
+  updatedAtRevision?: string;
 }
 
 export interface PresetVariantSummary extends PresetSummary {}

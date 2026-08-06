@@ -128,8 +128,10 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     this.granularPostChain = this.createPadPostChain();
     this.spectralFreezeModule = 0;
     this.spectralFreezeParamCount = 0;
+    this.spectralFreezeEnabled = false;
     this.spectralFreezeRouting = 'pre';
     this.spectralFreezeReverbCrossfade = 0.5;
+    this.spectralFreezeReturnGain = 1;
     this.spectralFreezeOutputLeftPtr = 0;
     this.spectralFreezeOutputRightPtr = 0;
     this.reverbInputLeftPtr = 0;
@@ -1119,19 +1121,14 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
 
   configureSpectralFreezeModule(message) {
     const enabled = Boolean(message.enabled);
+    this.spectralFreezeEnabled = enabled;
     this.spectralFreezeRouting = message.routing === 'post' ? 'post' : 'pre';
     this.spectralFreezeReverbCrossfade = Number.isFinite(Number(message.reverbCrossfade))
       ? Math.max(0, Math.min(1, Number(message.reverbCrossfade)))
       : 0.5;
-
-    if (!enabled) {
-      if (this.spectralFreezeModule) {
-        this.api.moduleDestroy(this.spectralFreezeModule);
-        this.spectralFreezeModule = 0;
-      }
-      this.spectralFreezeParamCount = 0;
-      return;
-    }
+    this.spectralFreezeReturnGain = Number.isFinite(Number(message.returnGain))
+      ? Math.max(0, Math.min(1, Number(message.returnGain)))
+      : 1;
 
     if (!this.spectralFreezeModule) {
       this.spectralFreezeModule = this.api.moduleCreate(KESSHO_MODULE_SPECTRAL_FREEZE, sampleRate, this.frames);
@@ -2349,15 +2346,16 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
   processSpectralFreezePreReverb(frames, fallbackPeak) {
     if (!this.spectralFreezeModule || this.spectralFreezeRouting !== 'pre') return fallbackPeak;
     if (!this.processSpectralFreeze(this.reverbInputLeftPtr, this.reverbInputRightPtr, frames)) return fallbackPeak;
+    if (!this.spectralFreezeEnabled) return fallbackPeak;
     const inputLeftOffset = this.reverbInputLeftPtr >> 2;
     const inputRightOffset = this.reverbInputRightPtr >> 2;
     const freezeLeftOffset = this.spectralFreezeOutputLeftPtr >> 2;
     const freezeRightOffset = this.spectralFreezeOutputRightPtr >> 2;
-    const liveGain = 1 - this.spectralFreezeReverbCrossfade;
+    const reverbSendGain = this.spectralFreezeReverbCrossfade;
     let peak = 0;
     for (let i = 0; i < frames; i += 1) {
-      const left = this.heap[freezeLeftOffset + i] + this.heap[inputLeftOffset + i] * liveGain;
-      const right = this.heap[freezeRightOffset + i] + this.heap[inputRightOffset + i] * liveGain;
+      const left = this.heap[inputLeftOffset + i] + this.heap[freezeLeftOffset + i] * reverbSendGain;
+      const right = this.heap[inputRightOffset + i] + this.heap[freezeRightOffset + i] * reverbSendGain;
       this.heap[inputLeftOffset + i] = left;
       this.heap[inputRightOffset + i] = right;
       peak = Math.max(peak, Math.abs(left), Math.abs(right));
@@ -2368,13 +2366,16 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
   processSpectralFreezePostReverb(frames) {
     if (!this.spectralFreezeModule || this.spectralFreezeRouting !== 'post') return;
     if (!this.processSpectralFreeze(this.reverbOutputLeftPtr, this.reverbOutputRightPtr, frames)) return;
-    const outputLeftOffset = this.reverbOutputLeftPtr >> 2;
-    const outputRightOffset = this.reverbOutputRightPtr >> 2;
+    if (!this.spectralFreezeEnabled) return;
+  }
+
+  addSpectralFreezeReturnToMix(frames) {
+    if (!this.spectralFreezeEnabled || !this.spectralFreezeModule || this.spectralFreezeReturnGain <= 0) return;
     const freezeLeftOffset = this.spectralFreezeOutputLeftPtr >> 2;
     const freezeRightOffset = this.spectralFreezeOutputRightPtr >> 2;
     for (let i = 0; i < frames; i += 1) {
-      this.heap[outputLeftOffset + i] = this.heap[freezeLeftOffset + i];
-      this.heap[outputRightOffset + i] = this.heap[freezeRightOffset + i];
+      this.mixLeft[i] += this.heap[freezeLeftOffset + i] * this.spectralFreezeReturnGain;
+      this.mixRight[i] += this.heap[freezeRightOffset + i] * this.spectralFreezeReturnGain;
     }
   }
 
@@ -2868,6 +2869,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
         this.mixLeft.fill(0, 0, frames);
         this.mixRight.fill(0, 0, frames);
       }
+      this.addSpectralFreezeReturnToMix(frames);
       this.addAuxDryToMix(activeAuxSlots, frames);
       if (!this.sourceModule && activeAuxSlots.length > 0) {
         this.addDelayADryToMix(frames);

@@ -32,6 +32,7 @@ import { midiLiveNoteInputId, midiMessageToProductLiveNoteEvent } from '../../na
 import type { ProductLiveNoteEvent } from '../../audio/product/liveNoteEvents';
 import type { SliderState } from '../state';
 import { MidiLearnContext, type MidiActivityEntry } from './useMidiLearn';
+import { publishHarmonyMidiCaptureFromMessage } from './midiHarmonyCapture';
 import { midiLearnReducer, type MidiLearnGlobalState } from './midiLearnStateMachine';
 import { MidiLearnButton } from './MidiLearnButton';
 import { MidiLearnBar } from './MidiLearnBar';
@@ -167,17 +168,16 @@ export function MidiLearnProvider({
   }, []);
 
   const handleMidiMessage = React.useCallback((message: KesshoMidiMessage) => {
+    // Normalize once for Harmony Draft capture. This intentionally sits outside
+    // note-only audio routing so CC64 sustain down/up reaches the draft bus.
+    publishHarmonyMidiCaptureFromMessage(message);
     const isLiveNoteMessage = message.kind === 'noteOn' || message.kind === 'noteOff';
     let liveNoteHandled = false;
     if (isLiveNoteMessage) {
+      const liveNoteEvent = midiMessageToProductLiveNoteEvent(message);
+      const inputId = midiLiveNoteInputId(message);
       const liveNoteHandler = onLiveNoteEventRef.current;
-      if (liveNoteHandler) {
-        const liveNoteEvent = midiMessageToProductLiveNoteEvent(message);
-        const inputId = midiLiveNoteInputId(message);
-        if (liveNoteEvent && inputId) {
-          liveNoteHandled = liveNoteHandler(liveNoteEvent, inputId);
-        }
-      }
+      if (liveNoteHandler && liveNoteEvent && inputId) liveNoteHandled = liveNoteHandler(liveNoteEvent, inputId);
     }
     if (!liveNoteHandled) onMidiMessageRef.current?.(message);
 

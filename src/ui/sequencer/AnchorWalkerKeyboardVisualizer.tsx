@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   formatMidiNoteName,
   pitchClass,
@@ -106,6 +106,22 @@ export function AnchorWalkerKeyboardVisualizer({
 }: AnchorWalkerKeyboardVisualizerProps) {
   const snapSet = useMemo(() => new Set(snapPitchClasses.map(pitchClass)), [snapPitchClasses]);
   const layerSet = useMemo(() => new Set(layerOutputMidis.map((midi) => Math.round(midi))), [layerOutputMidis]);
+  const soundingMidi = layerOutputMidis.find((midi) => Number.isFinite(midi)) ?? cursorMidi;
+  const [soundingTrail, setSoundingTrail] = useState<{
+    midi: number | null;
+    direction: 'up' | 'down' | 'none';
+  }>({ midi: null, direction });
+  useEffect(() => {
+    setSoundingTrail((previous) => {
+      if (soundingMidi == null) return { midi: null, direction };
+      if (previous.midi == null) return { midi: soundingMidi, direction };
+      if (soundingMidi === previous.midi) return previous;
+      return {
+        midi: soundingMidi,
+        direction: soundingMidi > previous.midi ? 'up' : 'down',
+      };
+    });
+  }, [direction, soundingMidi]);
   const linkedByMidi = useMemo(() => {
     const map = new Map<number, Array<{ slotIndex: number; velocity?: number }>>();
     for (const output of linkedOutputMidis) {
@@ -179,7 +195,7 @@ export function AnchorWalkerKeyboardVisualizer({
     });
     return map;
   }, [anchorMidi, cursorMidi, keys, layerOutputMidis, linkedOutputMidis]);
-  const directionSymbol = direction === 'up' ? '\u2191\uFE0E' : direction === 'down' ? '\u2193\uFE0E' : '\u2022\uFE0E';
+  const directionSymbol = soundingTrail.direction === 'up' ? '\u2191\uFE0E' : soundingTrail.direction === 'down' ? '\u2193\uFE0E' : '\u2022\uFE0E';
   const visibleStart = keys[0] ?? null;
   const visibleEnd = keys[keys.length - 1] ?? null;
   const renderKey = (key: VisibleKeyboardKey) => {
@@ -281,8 +297,16 @@ export function AnchorWalkerKeyboardVisualizer({
     >
       <div className="anchor-walker-keyboard-meta">
         <span>{anchorMidi == null ? 'Anchor' : formatMidiNoteName(anchorMidi)}</span>
-        <span className="anchor-walker-direction-trail">{directionSymbol}</span>
-        <span>{cursorMidi == null ? 'Cursor' : formatMidiNoteName(cursorMidi)}</span>
+        <span
+          className="anchor-walker-direction-trail"
+          title={[
+            soundingMidi == null ? 'Sound output unavailable' : `Sound output ${formatMidiNoteName(soundingMidi)}`,
+            cursorMidi == null ? 'walker cursor unavailable' : `walker cursor ${formatMidiNoteName(cursorMidi)}`,
+          ].join('; ')}
+        >
+          {directionSymbol}
+        </span>
+        <span>{soundingMidi == null ? 'Sound' : `Sound ${formatMidiNoteName(soundingMidi)}`}</span>
       </div>
       <div
         className="anchor-walker-keyboard-grid"

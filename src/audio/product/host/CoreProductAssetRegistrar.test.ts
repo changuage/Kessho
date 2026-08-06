@@ -3,7 +3,17 @@ import assert from 'node:assert/strict';
 import type { DecodedCoreProductAsset } from '../../coreProductAssets';
 import type { CoreProductRuntime } from '../../coreProductRuntime';
 import type { AssetTransferOwnership } from '../../coreProductRuntime';
+import { DEFAULT_STATE } from '../../../ui/state';
 import { CoreProductAssetRegistrar } from './CoreProductAssetRegistrar';
+import { sampleDescriptorForSlotNote } from './CoreProductSampleAssetResolver';
+
+const transientPianoDescriptor = sampleDescriptorForSlotNote(
+  DEFAULT_STATE as unknown as Record<string, unknown>,
+  'sample1',
+  64,
+  0.85,
+);
+assert.equal(transientPianoDescriptor?.assetId, 7244, 'manual sample audition must resolve an asset while the persistent slot is disabled');
 
 let releaseComplete: (assetId: number) => void = () => { throw new Error('release callback was not installed'); };
 let releaseFailed: (assetId: number, result: number) => void = () => { throw new Error('release failure callback was not installed'); };

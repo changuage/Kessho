@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path, { join, resolve } from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 
@@ -24,8 +25,37 @@ const assetDir = argValue('--asset-dir', process.env.LEAD4OPFM_V2_ASSET_DIR || j
 const cloudPayloadPath = join(assetDir, 'kessho-lead4opfm-v2-cloud-upsert-payload.json');
 const localBackupPath = join(assetDir, 'kessho-lead4opfm-v2-local-import-backup.json');
 
+const LEAD4OPFM_PRESET_FORMAT = 'kessho-lead4opfm-preset';
+const LEAD4OPFM_PRESET_FORMAT_VERSION = 1;
+const LEAD4OPFM_PRESET_KEYS = [
+  'id', 'name', 'engine', 'method', 'operators', 'algorithm', 'source', 'xy', 'params',
+];
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Project the audited source patch into the current cloud envelope. The asset
+ * checker owns nested FM-patch validation; this persistence boundary only
+ * removes non-runtime top-level metadata before hashing and writing.
+ */
+export function createCanonicalLead4opFMResolvedData(rawPreset) {
+  assert(isRecord(rawPreset), 'Lead4opFM preset payload must be an object');
+  const preset = Object.fromEntries(
+    LEAD4OPFM_PRESET_KEYS
+      .filter((key) => rawPreset[key] !== undefined)
+      .map((key) => [key, rawPreset[key]]),
+  );
+  return canonicalizeJson({
+    format: LEAD4OPFM_PRESET_FORMAT,
+    formatVersion: LEAD4OPFM_PRESET_FORMAT_VERSION,
+    preset,
+  });
 }
 
 function readJson(filePath) {
@@ -78,12 +108,12 @@ function canonicalizeJson(value) {
   return value;
 }
 
-function stableStringifyCanonical(value) {
-  return JSON.stringify(canonicalizeJson(value));
+function hashCanonicalizedJson(value) {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
-function hashCanonicalJson(value) {
-  return createHash('sha256').update(stableStringifyCanonical(value)).digest('hex');
+export function hashCanonicalJson(value) {
+  return hashCanonicalizedJson(canonicalizeJson(value));
 }
 
 function keyForAction(action) {
@@ -244,7 +274,7 @@ async function savePresetVersion(client, action, row, identity, resolvedData, re
   const payload = {
     hash: resolvedHash,
     payload_kind: 'resolved',
-    payload: canonicalizeJson(resolvedData),
+    payload: resolvedData,
   };
   const { data, error } = await client.rpc('kessho_save_preset_v2', {
     identity_payload: {
@@ -278,6 +308,7 @@ async function archivePreset(client, rowId) {
   return data === true;
 }
 
+async function main() {
 const env = {
   ...readEnvFile(join(root, '.env')),
   ...readEnvFile(join(root, '.env.local')),
@@ -360,8 +391,8 @@ for (const action of cloudPayload.actions) {
     assert(action.payload && typeof action.payload === 'object', `${keyForAction(action)} missing payload`);
     const backupEntry = backupEntryByPresetName.get(action.payload.name);
     const identity = desiredIdentity(action, backupEntry);
-    const resolvedData = canonicalizeJson(action.payload);
-    const resolvedHash = hashCanonicalJson(resolvedData);
+    const resolvedData = createCanonicalLead4opFMResolvedData(action.payload);
+    const resolvedHash = hashCanonicalizedJson(resolvedData);
     const row = action.match?.rowId
       ? await fetchPresetById(client, action.match.rowId)
       : await fetchPresetByName(client, action.name || action.payload.name);
@@ -441,4 +472,9 @@ if (outputJson) {
   console.log(`Authenticated: ${report.authenticated ? 'yes' : 'no'}`);
   if (backup) console.log(`Backup: ${backup.dir}`);
   console.log(`Actions ready/applied: ${report.applied.length}; skipped current: ${report.counts.skippedAlreadyCurrent}; already archived: ${report.counts.alreadyArchived}`);
+}
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main();
 }

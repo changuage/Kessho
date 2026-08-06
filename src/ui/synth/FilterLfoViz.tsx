@@ -4,7 +4,7 @@
  *   2. ADSR amplitude envelope shape (from params) plus optional mod envelope overlay
  *   3. LFO strip showing the engine's real LFO output value
  *
- * Interactive: drag filter min/max markers, drag ADSR breakpoints.
+ * Interactive: drag the base filter cutoff marker and ADSR breakpoints.
  * All live data comes from the engine via props — no local simulation.
  */
 import React, { useRef, useEffect, useCallback } from 'react';
@@ -21,7 +21,7 @@ import {
 
 interface FilterLfoVizProps {
   filterAType: string;
-  filterACutoff: number;      // midpoint of min/max (static reference)
+  filterACutoff: number;
   filterARes: number;
   filterAQ: number;
   filterASlope?: number;
@@ -35,8 +35,7 @@ interface FilterLfoVizProps {
   lfoRate: number;
   lfoDepth: number;
   lfoDest: string;
-  filterCutoffMin: number;
-  filterCutoffMax: number;
+  filterCutoff: number;
   postLpfHz?: number;
   synthAttack: number;
   synthDecay: number;
@@ -56,8 +55,7 @@ interface FilterLfoVizProps {
   liveLfoValue: number;       // real engine LFO output (-1..+1 after depth)
   isRunning: boolean;
   /** Callbacks for interactive dragging */
-  onFilterMinChange?: (value: number) => void;
-  onFilterMaxChange?: (value: number) => void;
+  onFilterCutoffChange?: (value: number) => void;
   onAdsrChange?: (param: 'synthAttack' | 'synthDecay' | 'synthSustain' | 'synthHold' | 'synthRelease', value: number) => void;
   onModEnvChange?: (param: 'attack' | 'decay' | 'sustain' | 'release', value: number) => void;
 }
@@ -109,7 +107,7 @@ function lfoShapeValue(phase: number, wave: string): number {
 const LFO_HISTORY_LEN = 120; // ~2 seconds at 50ms polling + 60fps interp
 
 // Drag target types
-type DragTarget = 'filterMin' | 'filterMax' | 'adsrAttack' | 'adsrDecay' | 'adsrSustain' | 'adsrHold' | 'adsrRelease' | null;
+type DragTarget = 'filterCutoff' | 'adsrAttack' | 'adsrDecay' | 'adsrSustain' | 'adsrHold' | 'adsrRelease' | null;
 const DRAG_HIT_PX = 10; // hit zone radius for drag handles
 
 const hasModEnvelope = (props: FilterLfoVizProps): boolean =>
@@ -124,8 +122,6 @@ const hasFilterModEnvelopeMotion = (props: FilterLfoVizProps): boolean =>
 const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
-  const displayedCutoffRef = useRef<number | null>(null);
-  const lastDrawMsRef = useRef<number>(0);
   // Ring buffer of real engine LFO values for trailing waveform
   const lfoHistoryRef = useRef<number[]>([]);
   // Drag interaction state
@@ -184,28 +180,16 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       ctx.stroke();
     }
 
-    const nowMs = performance.now();
-    // Engine telemetry owns live cutoff, including LFO and mod-envelope motion.
-    // The canvas only smooths display between polling ticks.
-    const targetCutoff = Math.max(
+    // Draw the engine's reported cutoff exactly. Interpolating telemetry makes
+    // discrete key-tracking changes look like envelope motion, especially when
+    // a voice ends and idle telemetry returns to the untracked base cutoff.
+    const liveCutoff = Math.max(
       20,
       Math.min(
         20000,
         props.liveFilterFreq || props.filterACutoff,
       ),
     );
-    const previousCutoff = displayedCutoffRef.current;
-    const previousDrawMs = lastDrawMsRef.current;
-    const elapsedMs = previousDrawMs > 0 ? Math.min(100, Math.max(0, nowMs - previousDrawMs)) : 16.67;
-    const smoothing = props.isRunning ? 1 - Math.exp(-elapsedMs / 80) : 1;
-    let liveCutoff = previousCutoff === null
-      ? targetCutoff
-      : previousCutoff + (targetCutoff - previousCutoff) * smoothing;
-    if (Math.abs(liveCutoff - targetCutoff) < 0.01) {
-      liveCutoff = targetCutoff;
-    }
-    displayedCutoffRef.current = liveCutoff;
-    lastDrawMsRef.current = nowMs;
     const postLpfCutoff = typeof props.postLpfHz === 'number' && Number.isFinite(props.postLpfHz)
       ? Math.max(20, Math.min(20000, props.postLpfHz))
       : null;
@@ -309,44 +293,26 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       ctx.setLineDash([]);
     }
 
-    // Filter Min / Max range markers
-    const fMin = props.filterCutoffMin;
-    const fMax = props.filterCutoffMax;
-    const minX = freqToX(fMin);
-    const maxX = freqToX(fMax);
-
-    // Shaded range band between min and max
-    ctx.fillStyle = 'rgba(16,185,129,0.06)';
-    ctx.fillRect(minX, 2, maxX - minX, filterH - 4);
-
-    // Min line
+    // Base cutoff marker
+    const baseCutoffX = freqToX(props.filterCutoff);
     ctx.beginPath();
     ctx.strokeStyle = 'rgba(16,185,129,0.35)';
     ctx.lineWidth = 1;
     ctx.setLineDash([2, 4]);
-    ctx.moveTo(minX, 2);
-    ctx.lineTo(minX, filterH - 2);
-    ctx.stroke();
-
-    // Max line
-    ctx.beginPath();
-    ctx.moveTo(maxX, 2);
-    ctx.lineTo(maxX, filterH - 2);
+    ctx.moveTo(baseCutoffX, 2);
+    ctx.lineTo(baseCutoffX, filterH - 2);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Min / Max labels
     ctx.font = '7px monospace';
     ctx.globalAlpha = 0.5;
     ctx.fillStyle = '#10b981';
-    ctx.textAlign = 'right';
-    ctx.fillText(`${Math.round(fMin)}`, minX - 2, filterH - 3);
-    ctx.textAlign = 'left';
-    ctx.fillText(`${Math.round(fMax)}`, maxX + 2, filterH - 3);
+    ctx.textAlign = 'center';
+    ctx.fillText(`${Math.round(props.filterCutoff)}`, baseCutoffX, filterH - 3);
     ctx.textAlign = 'start';
     ctx.globalAlpha = 1;
 
-    // Drag handles on min/max lines
+    // Drag handle on the base cutoff line
     const drawHandle = (x: number, y: number, target: DragTarget, color: string) => {
       const isHover = hoverRef.current === target;
       const isDrag = dragRef.current.target === target;
@@ -365,11 +331,8 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       ctx.globalAlpha = 1;
     };
 
-    if (props.onFilterMinChange) {
-      drawHandle(minX, filterH * 0.5, 'filterMin', '#10b981');
-    }
-    if (props.onFilterMaxChange) {
-      drawHandle(maxX, filterH * 0.5, 'filterMax', '#10b981');
+    if (props.onFilterCutoffChange) {
+      drawHandle(baseCutoffX, filterH * 0.5, 'filterCutoff', '#10b981');
     }
 
     // Frequency labels
@@ -597,8 +560,9 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
 
       if (isRW && props.lfoDest === 'filterCutoff') {
         // Random Walk → filter: show unipolar bar with real Hz from engine
-        const minF = props.filterCutoffMin;
-        const maxF = props.filterCutoffMax;
+        const octaveSpan = depth * 4;
+        const minF = Math.max(20, props.filterCutoff / Math.pow(2, octaveSpan));
+        const maxF = Math.min(20000, props.filterCutoff * Math.pow(2, octaveSpan));
         const rangeF = maxF - minF;
         const curHz = liveCutoff;
         const rwPos = rangeF > 0 ? Math.max(0, Math.min(1, (curHz - minF) / rangeF)) : 0.5;
@@ -705,7 +669,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
 
       // Depth numeric feedback — show what 0-1 depth maps to in real units
       // Engine formulas (lfoValue = rawLfo * depth, rawLfo is -1..+1):
-      //   filterCutoff:  ±(maxCutoff - minCutoff) * 0.5 * depth Hz from center
+      //   filterCutoff:  ±4 octaves * depth around the base cutoff
       //   amplitude:     multiplier = 1 ± depth * 0.5  (so 50%-150% at depth=1)
       //   pitch:         ± depth * 200 cents
       //   filterBCutoff: ± depth * 2000 Hz
@@ -713,12 +677,11 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       let depthLine1 = '';
       let depthLine2 = '';
       if (props.lfoDest === 'filterCutoff') {
-        const center = (props.filterCutoffMin + props.filterCutoffMax) / 2;
-        const halfRange = (props.filterCutoffMax - props.filterCutoffMin) * 0.5 * depth;
-        const lo = Math.max(20, Math.round(center - halfRange));
-        const hi = Math.min(20000, Math.round(center + halfRange));
+        const octaves = depth * 4;
+        const lo = Math.max(20, Math.round(props.filterCutoff / Math.pow(2, octaves)));
+        const hi = Math.min(20000, Math.round(props.filterCutoff * Math.pow(2, octaves)));
         depthLine1 = `depth ${(depth * 100).toFixed(0)}%: ${lo}–${hi} Hz`;
-        depthLine2 = `(0%=fixed ${Math.round(center)} Hz, 100%=full ${Math.round(props.filterCutoffMin)}–${Math.round(props.filterCutoffMax)} Hz)`;
+        depthLine2 = `(0%=fixed ${Math.round(props.filterCutoff)} Hz, 100%=±4 octaves)`;
       } else if (props.lfoDest === 'filterBCutoff') {
         const mod = Math.round(2000 * depth);
         depthLine1 = `depth ${(depth * 100).toFixed(0)}%: \u00b1${mod} Hz from base`;
@@ -816,13 +779,11 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     if (w === 0) return null;
 
     const freqToX = (f: number) => (Math.log(f / 20) / Math.log(20000 / 20)) * w;
-    const minX = freqToX(props.filterCutoffMin);
-    const maxX = freqToX(props.filterCutoffMax);
+    const cutoffX = freqToX(props.filterCutoff);
     const filterHandleY = filterH * 0.5;
 
     // Check filter handles first
-    if (props.onFilterMinChange && Math.abs(cx - minX) < DRAG_HIT_PX && Math.abs(cy - filterHandleY) < DRAG_HIT_PX * 2) return 'filterMin';
-    if (props.onFilterMaxChange && Math.abs(cx - maxX) < DRAG_HIT_PX && Math.abs(cy - filterHandleY) < DRAG_HIT_PX * 2) return 'filterMax';
+    if (props.onFilterCutoffChange && Math.abs(cx - cutoffX) < DRAG_HIT_PX && Math.abs(cy - filterHandleY) < DRAG_HIT_PX * 2) return 'filterCutoff';
 
     // Check amp ADSR handles. Fall back to mod-envelope editing only if there
     // is no amp ADSR callback, so the visible ADSR controls stay in sync.
@@ -875,16 +836,12 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     if (w === 0) return;
     const target = dragRef.current.target;
 
-    if (target === 'filterMin' || target === 'filterMax') {
+    if (target === 'filterCutoff') {
       // Convert x position to frequency (log scale)
       const ratio = Math.max(0, Math.min(1, cx / w));
       const freq = 20 * Math.pow(20000 / 20, ratio);
       const clamped = Math.max(20, Math.min(20000, Math.round(freq)));
-      if (target === 'filterMin' && props.onFilterMinChange) {
-        props.onFilterMinChange(Math.min(clamped, props.filterCutoffMax - 10));
-      } else if (target === 'filterMax' && props.onFilterMaxChange) {
-        props.onFilterMaxChange(Math.max(clamped, props.filterCutoffMin + 10));
-      }
+      props.onFilterCutoffChange?.(clamped);
     } else if (target?.startsWith('adsr')) {
       const editModEnv = !props.onAdsrChange && !!props.onModEnvChange && hasModEnvelope(props);
       const a = editModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;

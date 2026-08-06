@@ -3,14 +3,17 @@ import fs from 'node:fs';
 
 import { extractCascade, extractParams, getVersionData } from './codec';
 import { HybridPresetStore } from './HybridPresetStore';
-import type { IPresetStore } from './PresetStore';
+import { LocalStoragePresetStore, PresetMetadataConflictError, type IPresetStore } from './PresetStore';
 import { evictPresetPayloadCacheV2, hashCanonicalJson } from './presetStorageV2';
 import { SupabasePresetStore } from './SupabasePresetStore';
+import { PresetCommandService } from './presetCommands';
 import type { PresetEntry, PresetLevel, PresetSummary } from './types';
 import { DEFAULT_STATE } from '../ui/state';
 import { createDiamondJourney } from '../audio/journeyTypes';
 import { encodeJourneyPresetData, getJourneyNodeRefSlot } from './journeyPresetCodec';
 import { extractOptimizedStatePresetData } from './statePresetOptimization';
+import { DEFAULT_SOFT_RHODES } from '../audio/lead4opfm';
+import { createLead4opFMPresetData } from './lead4opPresetPayload';
 
 type Filter =
   | { kind: 'eq'; column: string; value: unknown }
@@ -262,6 +265,7 @@ class FakeSupabaseClient {
   presetDetailRpcCalls = 0;
   presetLatestManifestRpcCalls = 0;
   presetPayloadRpcCalls = 0;
+  journeyReferrerRpcCalls = 0;
   legacyDetailRpcCalls = 0;
   rpcCalls: Array<{ functionName: string; args: Record<string, unknown> }> = [];
   failNextAtomicRefInsert = false;
@@ -350,12 +354,24 @@ class FakeSupabaseClient {
       return this.renamePresetV2(String(args.target_preset_id), (args.rename_payload as FakeRow | null | undefined) ?? {});
     }
 
+    if (functionName === 'kessho_update_preset_metadata_v2') {
+      return this.updatePresetMetadataV2(
+        String(args.target_preset_id),
+        (args.metadata_payload as FakeRow | null | undefined) ?? {},
+        args.expected_updated_at as string | null | undefined,
+      );
+    }
+
     if (functionName === 'kessho_rename_legacy_preset') {
       return this.renameLegacyPreset(String(args.target_preset_id), (args.rename_payload as FakeRow | null | undefined) ?? {});
     }
 
     if (functionName === 'kessho_find_preset_references_v2') {
       return this.findPresetReferencesV2(String(args.target_type), String(args.target_name));
+    }
+
+    if (functionName === 'kessho_find_journey_state_referrers_v2') {
+      return this.findJourneyStateReferrersV2(String(args.target_preset_id));
     }
 
     if (functionName === 'kessho_get_preset_storage_stats_v2') {
@@ -369,6 +385,50 @@ class FakeSupabaseClient {
     return {
       data: null,
       error: { message: `unsupported fake rpc: ${functionName}` },
+    };
+  }
+
+  private findJourneyStateReferrersV2(targetPresetId: string): { data: unknown; error: { message: string } | null } {
+    this.journeyReferrerRpcCalls += 1;
+    if (!this.authUserId) {
+      return {
+        data: null,
+        error: { message: 'Authentication is required to inspect journey references' },
+      };
+    }
+    const target = this.tables.presets_v2.find(row => (
+      row.id === targetPresetId
+      && row.type === 'state'
+      && !row.deleted_at
+      && this.canReadPresetV2(row)
+    ));
+    if (!target) return { data: [], error: null };
+
+    const candidates = new Map<string, FakePresetV2Row>();
+    for (const ref of this.tables.preset_version_refs_v2) {
+      if (ref.target_preset_id !== targetPresetId) continue;
+      const version = this.tables.preset_versions_v2.find(row => row.id === ref.version_id);
+      if (!version) continue;
+      const parent = this.tables.presets_v2.find(row => (
+        row.id === version.preset_id
+        && row.type === 'journey'
+        && row.latest_version_id === version.id
+        && !row.deleted_at
+        && this.canReadPresetV2(row)
+      ));
+      if (parent) candidates.set(parent.id, parent);
+    }
+
+    return {
+      data: [...candidates.values()]
+        .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id))
+        .map(parent => ({
+          id: parent.id,
+          name: parent.name,
+          currentVersion: parent.latest_version_no,
+          updatedAtRevision: parent.updated_at,
+        })),
+      error: null,
     };
   }
 
@@ -636,6 +696,16 @@ class FakeSupabaseClient {
           && (row.scope ?? null) === scope
           && row.name.trim().toLowerCase() === nameKey
         ));
+
+      if (
+        preset
+        && (
+          preset.owner_key !== identity.owner_key
+          || preset.owner_user_id !== (identity.owner_user_id ?? null)
+        )
+      ) {
+        throw new Error('owner-scoped save cannot update a visible cross-owner preset');
+      }
 
       if (preset) {
         Object.assign(preset, {
@@ -1191,6 +1261,44 @@ class FakeSupabaseClient {
     return { data: target, error: null };
   }
 
+  private updatePresetMetadataV2(
+    targetPresetId: string,
+    payload: FakeRow,
+    expectedUpdatedAt: string | null | undefined,
+  ): { data: unknown; error: { message: string; code?: string } | null } {
+    if (!this.authUserId) {
+      return { data: null, error: { message: 'Authentication is required to update preset metadata' } };
+    }
+    const target = this.tables.presets_v2.find(row => (
+      row.id === targetPresetId
+      && !row.deleted_at
+      && (row.owner_key === 'public' || row.owner_user_id === this.authUserId)
+    ));
+    if (!target) return { data: null, error: null };
+    if (expectedUpdatedAt != null && target.updated_at !== expectedUpdatedAt) {
+      return {
+        data: null,
+        error: {
+          code: '40001',
+          message: `Preset metadata changed concurrently (expected ${expectedUpdatedAt}, found ${target.updated_at})`,
+        },
+      };
+    }
+
+    const has = (key: string) => Object.prototype.hasOwnProperty.call(payload, key);
+    const nullableText = (value: unknown) => typeof value === 'string' && value !== '' ? value : null;
+    if (has('creator')) target.creator = nullableText(payload.creator);
+    if (has('description')) target.description = nullableText(payload.description);
+    if (has('visibility') && payload.visibility !== null) target.visibility = String(payload.visibility);
+    if (has('family_name')) target.family_name = nullableText(payload.family_name);
+    if (has('variant_name')) target.variant_name = nullableText(payload.variant_name);
+    if (has('variant_rank')) target.variant_rank = payload.variant_rank == null ? null : Number(payload.variant_rank);
+    if (has('rating')) target.rating = payload.rating == null ? null : Number(payload.rating);
+    if (has('tags')) target.tags = Array.isArray(payload.tags) ? payload.tags.map(String) : [];
+    target.updated_at = this.now();
+    return { data: target, error: null };
+  }
+
   private renameLegacyPreset(targetPresetId: string, payload: FakeRow): { data: unknown; error: { message: string } | null } {
     if (!this.authUserId) return { data: null, error: { message: 'Authentication is required to rename legacy presets' } };
     const target = this.tables.presets.find(row => (
@@ -1470,9 +1578,11 @@ class NoopPresetStore implements IPresetStore {
   async loadById(_id: string, _version?: number): Promise<PresetEntry | null> { return null; }
   async list(_type: PresetLevel, _scope?: string): Promise<PresetSummary[]> { return []; }
   async rename(_type: PresetLevel, _name: string, _nextName: string, _scope?: string): Promise<PresetEntry | null> { return null; }
+  async updateMetadata(): Promise<boolean> { return false; }
   async delete(_type: PresetLevel, _name: string, _scope?: string): Promise<void> {}
   async exists(_type: PresetLevel, _name: string, _scope?: string): Promise<boolean> { return false; }
   async findReferences(_type: PresetLevel, _name: string): Promise<string[]> { return []; }
+  async findCurrentReferenceCandidates(): Promise<[]> { return []; }
   async getStorageUsed(): Promise<{ bytes: number; count: number }> { return { bytes: 0, count: 0 }; }
   async exportAll(): Promise<Blob> { return new Blob(); }
   async importAll(_json: string): Promise<number> { return 0; }
@@ -1481,6 +1591,375 @@ class NoopPresetStore implements IPresetStore {
 class FailingDeleteStore extends NoopPresetStore {
   async delete(_type: PresetLevel, name: string, _scope?: string): Promise<void> {
     throw new Error(`blocked delete for ${name}`);
+  }
+}
+
+function installMemoryLocalStorage(): () => void {
+  const values = new Map<string, string>();
+  const storage = {
+    get length(): number { return values.size; },
+    clear(): void { values.clear(); },
+    getItem(key: string): string | null { return values.get(key) ?? null; },
+    key(index: number): string | null { return [...values.keys()][index] ?? null; },
+    removeItem(key: string): void { values.delete(key); },
+    setItem(key: string, value: string): void { values.set(key, String(value)); },
+  } as Storage;
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage });
+  return () => {
+    if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor);
+    else Reflect.deleteProperty(globalThis, 'localStorage');
+  };
+}
+
+async function testSupabaseMetadataUpdateUsesExactTimestampCas(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '58585858-5858-4858-8858-585858585858';
+  const name = 'Metadata CAS';
+  client.authUserId = userId;
+  store.setUserId(userId);
+  await store.save(makePresetEntry('engine', 'pad1', name, extractParams(DEFAULT_STATE, 1, 'pad1')));
+
+  const row = findPresetRow(client, 'engine', 'pad1', name);
+  const rawRevision = '2026-07-30T22:50:32.123456+00';
+  row.updated_at = rawRevision;
+  const [summary] = await store.list('engine', 'pad1');
+  assert.ok(summary, 'saved cloud preset should be listed');
+  assert.equal(summary.updatedAtRevision, rawRevision, 'list must retain PostgreSQL microseconds verbatim');
+  const loaded = await store.load('engine', name, 'pad1');
+  assert.equal(loaded?.updatedAtRevision, rawRevision, 'detail loads must retain the same opaque revision');
+
+  const lookupCallsBefore = client.rpcCalls.filter(call => call.functionName === 'kessho_lookup_preset_rows_v2').length;
+  assert.equal(
+    await store.updateMetadata('engine', name, { description: 'Updated with exact CAS' }, 'pad1', {
+      targetId: summary.remoteId,
+      expectedUpdatedAt: summary.updatedAtRevision,
+    }),
+    true,
+  );
+  const updateCalls = client.rpcCalls.filter(call => call.functionName === 'kessho_update_preset_metadata_v2');
+  const updateCall = updateCalls[updateCalls.length - 1];
+  assert.equal(updateCall?.args.expected_updated_at, rawRevision, 'RPC must receive the unrounded PostgreSQL timestamp');
+  assert.equal(
+    client.rpcCalls.filter(call => call.functionName === 'kessho_lookup_preset_rows_v2').length,
+    lookupCallsBefore,
+    'summary identity and revision should avoid a metadata-update preflight query',
+  );
+
+  row.updated_at = '2026-07-30T22:50:33.654321+00';
+  const descriptionBeforeConflict = row.description;
+  await assert.rejects(
+    () => store.updateMetadata('engine', name, { description: 'Stale edit must not win' }, 'pad1', {
+      targetId: summary.remoteId,
+      expectedUpdatedAt: rawRevision,
+    }),
+    (error: unknown) => error instanceof PresetMetadataConflictError,
+    'a stale metadata edit should surface as a typed conflict',
+  );
+  assert.equal(row.description, descriptionBeforeConflict, 'a conflict must not clobber concurrent metadata');
+
+  const directRevision = '2026-07-30T22:50:34.654321+00';
+  row.updated_at = directRevision;
+  assert.equal(await store.updateMetadata('engine', name, { rating: 4 }, 'pad1'), true);
+  const directUpdateCalls = client.rpcCalls.filter(call => call.functionName === 'kessho_update_preset_metadata_v2');
+  const directUpdateCall = directUpdateCalls[directUpdateCalls.length - 1];
+  assert.equal(
+    directUpdateCall?.args.expected_updated_at,
+    directRevision,
+    'callers without a list revision should fetch one before updating instead of sending null',
+  );
+}
+
+async function testSignatureEqualIdentityUsesCasAndNoteCreatesVersion(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '59595959-5959-4959-8959-595959595958';
+  const name = 'Signature Equal Identity';
+  client.authUserId = userId;
+  store.setUserId(userId);
+  const entry = makePresetEntry('engine', 'pad1', name, extractParams(DEFAULT_STATE, 1, 'pad1'));
+  await store.save(entry);
+
+  const preset = findPresetRow(client, 'engine', 'pad1', name);
+  const originalRevision = preset.updated_at;
+  const originalVersionCount = client.tables.preset_versions_v2.filter(row => row.preset_id === preset.id).length;
+  const originalPayloadCount = client.tables.preset_payloads_v2.length;
+  const originalAtomicCalls = client.rpcCalls.filter(call => call.functionName === 'kessho_save_preset_v2').length;
+  const originalMetadataCalls = client.rpcCalls.filter(call => call.functionName === 'kessho_update_preset_metadata_v2').length;
+  entry.description = 'CAS-persisted root metadata';
+  entry.tags = ['identity-only'];
+  entry.versions.push({
+    v: 2,
+    note: '',
+    timestamp: entry.updatedAt + 1,
+    data: structuredClone(entry.versions[0]!.data),
+  });
+  entry.currentVersion = 2;
+  await store.save(entry);
+
+  assert.equal(
+    client.tables.preset_versions_v2.filter(row => row.preset_id === preset.id).length,
+    originalVersionCount,
+    'identity/tag-only save should not create a content version',
+  );
+  assert.equal(client.tables.preset_payloads_v2.length, originalPayloadCount, 'identity/tag-only save should not upload payloads');
+  assert.equal(
+    client.rpcCalls.filter(call => call.functionName === 'kessho_save_preset_v2').length,
+    originalAtomicCalls,
+    'identity/tag-only save should use metadata CAS instead of the version RPC',
+  );
+  const metadataCalls = client.rpcCalls.filter(call => call.functionName === 'kessho_update_preset_metadata_v2');
+  assert.equal(metadataCalls.length, originalMetadataCalls + 1);
+  assert.equal(
+    metadataCalls[metadataCalls.length - 1]?.args.expected_updated_at,
+    originalRevision,
+    'identity fallback must preserve the raw CAS revision',
+  );
+  const identityReload = await store.load('engine', name, 'pad1');
+  assert.equal(identityReload?.currentVersion, 1, 'reload should reflect the unchanged server version');
+  assert.equal(identityReload?.description, entry.description);
+  assert.deepEqual(identityReload?.tags, entry.tags);
+
+  entry.versions[1]!.note = 'Documented semantic no-op';
+  await store.save(entry);
+  const storedVersions = client.tables.preset_versions_v2.filter(row => row.preset_id === preset.id);
+  assert.equal(storedVersions.length, originalVersionCount + 1, 'a nonempty note must create a real version');
+  assert.equal(storedVersions[storedVersions.length - 1]?.note, 'Documented semantic no-op');
+  assert.equal(client.tables.preset_payloads_v2.length, originalPayloadCount, 'note-only version should reuse existing payload hashes');
+  const noteReload = await store.load('engine', name, 'pad1');
+  assert.equal(noteReload?.currentVersion, 2);
+  assert.equal(noteReload?.versions[noteReload.versions.length - 1]?.note, 'Documented semantic no-op');
+}
+
+async function testQueuedImportMatchesCloudCollisionAndNewNameSemantics(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '59595959-5959-4959-8959-595959595957';
+  client.authUserId = userId;
+  store.setUserId(userId);
+  const service = new PresetCommandService(store);
+  const name = 'Cloud Import Collision';
+  await store.save(makePresetEntry('engine', 'pad1', name, { padOscAWave: 'sine' }));
+  const original = findPresetRow(client, 'engine', 'pad1', name);
+  const imported = makePresetEntry('engine', 'pad1', name, { padOscAWave: 'triangle' }, [{
+    v: 1,
+    data: { padOscAWave: 'triangle' },
+    note: 'Imported current',
+  }]);
+
+  const collisionResult = await service.importEntry(imported);
+  const collisionReload = await store.load('engine', name, 'pad1');
+  assert.equal(collisionResult.remoteId, original.id, 'collision import should preserve the existing cloud identity');
+  assert.equal(collisionReload?.currentVersion, 2, 'collision import should append instead of silently reusing version 1');
+  assert.equal(getVersionData(collisionReload!)?.padOscAWave, 'triangle', 'cloud reload should expose imported current data');
+
+  const newName = 'Cloud Import New Name';
+  const newNameImport = makePresetEntry('engine', 'pad1', newName, { padOscAWave: 'sine' }, [
+    { v: 1, data: { padOscAWave: 'sine' }, note: 'Imported v1' },
+    { v: 2, data: { padOscAWave: 'square' }, note: 'Imported v2' },
+  ]);
+  newNameImport.currentVersion = 2;
+  const newNameResult = await service.importEntry(newNameImport);
+  const newNameRow = findPresetRow(client, 'engine', 'pad1', newName);
+  const newNameStoredVersions = client.tables.preset_versions_v2.filter(row => row.preset_id === newNameRow.id);
+  const newNameReload = await store.load('engine', newName, 'pad1', 2);
+  assert.equal(newNameResult.currentVersion, 2);
+  assert.equal(newNameStoredVersions.length, 2, 'new-name cloud import should preserve validated history');
+  assert.equal(newNameReload?.versions.length, 2, 'explicit historical load should materialize imported history');
+  assert.equal(getVersionData(newNameReload!)?.padOscAWave, 'square');
+}
+
+async function testProductionWritesForkVisibleCrossOwnerRows(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const userId = '59595959-5959-4959-8959-595959595956';
+  client.authUserId = userId;
+
+  const sharedStore = new SupabasePresetStore(client as never, { sharedPresetTestMode: true });
+  sharedStore.setUserId(userId);
+  const publicName = 'Visible Stock Fork';
+  const publicEntry = makePresetEntry('engine', 'pad1', publicName, { padOscAWave: 'sine' });
+  publicEntry.author = 'factory';
+  publicEntry.library = 'stock';
+  publicEntry.visibility = 'public';
+  await sharedStore.save(publicEntry);
+  const publicRow = findPresetRow(client, 'engine', 'pad1', publicName);
+  const publicSnapshot = structuredClone(publicRow);
+
+  const store = new SupabasePresetStore(client as never, { sharedPresetTestMode: false });
+  store.setUserId(userId);
+  const service = new PresetCommandService(store);
+  await service.save({
+    type: 'engine',
+    scope: 'pad1',
+    name: publicName,
+    data: { padOscAWave: 'triangle' },
+    note: 'Fork visible stock preset',
+    forkReadOnly: true,
+  });
+
+  let logicalRows = client.tables.presets_v2.filter(row => (
+    row.type === 'engine' && row.scope === 'pad1' && row.name === publicName
+  ));
+  assert.equal(logicalRows.length, 2, 'production save should create a user row beside the visible public row');
+  assert.deepEqual(publicRow, publicSnapshot, 'forking must not mutate the visible public row');
+  const ownRow = logicalRows.find(row => row.owner_user_id === userId);
+  assert.ok(ownRow, 'the fork should have a stable current-owner row');
+  assert.equal(ownRow.owner_key, `user:${userId}`);
+  assert.equal(ownRow.latest_version_no, 1);
+
+  await service.save({
+    type: 'engine',
+    scope: 'pad1',
+    name: publicName,
+    data: { padOscAWave: 'square' },
+    note: 'Update owned fork',
+    forkReadOnly: true,
+  });
+  logicalRows = client.tables.presets_v2.filter(row => (
+    row.type === 'engine' && row.scope === 'pad1' && row.name === publicName
+  ));
+  assert.equal(logicalRows.length, 2, 'subsequent saves should reuse the owned fork row');
+  assert.equal(logicalRows.find(row => row.owner_user_id === userId)?.id, ownRow.id);
+  assert.equal(logicalRows.find(row => row.owner_user_id === userId)?.latest_version_no, 2);
+  assert.deepEqual(publicRow, publicSnapshot, 'updating the fork must leave the public source unchanged');
+  const ownedReload = await store.load('engine', publicName, 'pad1');
+  assert.equal(ownedReload?.remoteId, ownRow.id, 'production reload should prefer the current-owner row');
+  assert.equal(getVersionData(ownedReload!)?.padOscAWave, 'square');
+
+  const importName = 'Visible Stock Import';
+  const publicImportEntry = makePresetEntry('engine', 'pad1', importName, { padOscAWave: 'sine' });
+  publicImportEntry.author = 'factory';
+  publicImportEntry.library = 'stock';
+  publicImportEntry.visibility = 'public';
+  await sharedStore.save(publicImportEntry);
+  const publicImportRow = findPresetRow(client, 'engine', 'pad1', importName);
+  const publicImportSnapshot = structuredClone(publicImportRow);
+  const imported = makePresetEntry('engine', 'pad1', importName, { padOscAWave: 'triangle' }, [{
+    v: 1,
+    data: { padOscAWave: 'triangle' },
+    note: 'Imported visible-name collision',
+  }]);
+  await service.importEntry(imported);
+
+  const importRows = client.tables.presets_v2.filter(row => (
+    row.type === 'engine' && row.scope === 'pad1' && row.name === importName
+  ));
+  assert.equal(importRows.length, 2, 'import collision should fork rather than target the visible public row');
+  assert.ok(importRows.some(row => row.owner_user_id === userId), 'import should create a current-owner row');
+  assert.deepEqual(publicImportRow, publicImportSnapshot, 'import must not mutate the visible public row');
+}
+
+async function testJourneySummariesHydratePreviewsInOnePayloadBatch(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '59595959-5959-4959-8959-595959595959';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const journeyData = encodeJourneyPresetData(createDiamondJourney([])) as unknown as Record<string, unknown>;
+  const sharedMalformedPreview = {
+    nodes: [
+      { position: 'left', filled: true },
+      { position: 'center', filled: 'yes' },
+      { position: 'invalid', filled: true },
+      { position: 'left', filled: false },
+      null,
+    ],
+    connections: [
+      { from: 'left', to: 'center' },
+      { from: 'invalid', to: 'left' },
+      { from: 'left', to: 'invalid' },
+      null,
+    ],
+  };
+  const rightPreview = {
+    nodes: [{ position: 'right', filled: true }],
+    connections: [],
+  };
+  await store.save(makePresetEntry('journey', 'global', 'Journey Summary Preview A', journeyData, [{
+    v: 1,
+    data: journeyData,
+    metadata: { journeyPreview: sharedMalformedPreview },
+  }]));
+  await store.save(makePresetEntry('journey', 'global', 'Journey Summary Preview B', journeyData, [{
+    v: 1,
+    data: journeyData,
+    metadata: { journeyPreview: rightPreview },
+  }]));
+  await store.save(makePresetEntry('journey', 'global', 'Journey Summary Preview C', journeyData, [{
+    v: 1,
+    data: journeyData,
+    metadata: { journeyPreview: sharedMalformedPreview },
+  }]));
+
+  const metadataHashes = client.tables.presets_v2
+    .filter(row => row.type === 'journey')
+    .map(row => row.latest_metadata_hash)
+    .filter((hash): hash is string => typeof hash === 'string');
+  assert.equal(new Set(metadataHashes).size, 2, 'fixture should share one metadata payload across two summaries');
+  for (const hash of metadataHashes) evictPresetPayloadCacheV2(hash);
+
+  const payloadCallsBeforeList = client.presetPayloadRpcCalls;
+  const detailCallsBeforeList = client.presetDetailRpcCalls;
+  const manifestCallsBeforeList = client.presetLatestManifestRpcCalls;
+  const rpcCallCountBeforeList = client.rpcCalls.length;
+  const summaries = await store.list('journey');
+  const listRpcCalls = client.rpcCalls.slice(rpcCallCountBeforeList);
+  const payloadCalls = listRpcCalls.filter(call => (
+    call.functionName === 'kessho_get_missing_preset_payloads_v2'
+    || call.functionName === 'kessho_get_preset_payloads_v2'
+  ));
+
+  assert.equal(client.presetPayloadRpcCalls - payloadCallsBeforeList, 1, 'journey summaries should fetch their metadata in one bounded batch');
+  assert.equal(payloadCalls.length, 1, 'listing must issue one payload RPC rather than one request per journey');
+  const requestedHashes = payloadCalls[0]?.args.target_hashes as string[] | undefined;
+  assert.deepEqual(new Set(requestedHashes), new Set(metadataHashes), 'the payload batch should contain each unique metadata hash once');
+  assert.equal(client.presetDetailRpcCalls, detailCallsBeforeList, 'summary hydration must not fetch per-entry detail bundles');
+  assert.equal(client.presetLatestManifestRpcCalls, manifestCallsBeforeList, 'summary hydration must not fetch per-entry manifests');
+
+  const malformedSummary = summaries.find(summary => summary.name === 'Journey Summary Preview A');
+  assert.deepEqual(malformedSummary?.journeyPreview, {
+    nodes: [
+      { position: 'center', filled: true },
+      { position: 'left', filled: true },
+    ],
+    connections: [{ from: 'left', to: 'center' }],
+  }, 'summary hydration should sanitize the metadata preview before exposing it');
+  assert.deepEqual(
+    summaries.find(summary => summary.name === 'Journey Summary Preview B')?.journeyPreview,
+    rightPreview,
+    'each journey summary should expose its latest metadata preview',
+  );
+}
+
+async function testLocalMetadataUpdateUsesSameCasContract(): Promise<void> {
+  const restoreLocalStorage = installMemoryLocalStorage();
+  try {
+    const store = new LocalStoragePresetStore();
+    const name = 'Local Metadata CAS';
+    await store.save(makePresetEntry('engine', 'pad1', name, extractParams(DEFAULT_STATE, 1, 'pad1')));
+    const [summary] = await store.list('engine', 'pad1');
+    assert.ok(summary?.updatedAtRevision, 'local summaries should expose an opaque metadata revision');
+    const initialRevision = summary.updatedAtRevision!;
+
+    assert.equal(
+      await store.updateMetadata('engine', name, { rating: 3 }, 'pad1', {
+        expectedUpdatedAt: initialRevision,
+      }),
+      true,
+    );
+    const [updatedSummary] = await store.list('engine', 'pad1');
+    assert.notEqual(updatedSummary?.updatedAtRevision, initialRevision, 'a local metadata write should advance its revision');
+    await assert.rejects(
+      () => store.updateMetadata('engine', name, { rating: 1 }, 'pad1', {
+        expectedUpdatedAt: initialRevision,
+      }),
+      (error: unknown) => error instanceof PresetMetadataConflictError,
+      'local metadata updates should reject stale revisions like cloud updates',
+    );
+  } finally {
+    restoreLocalStorage();
   }
 }
 
@@ -1695,7 +2174,7 @@ async function testActiveDependencyBlocksSoftDeleteAcrossL1ToL4(): Promise<void>
   const padEngineData = extractParams(DEFAULT_STATE, 1, 'pad1');
   const padKitData = extractCascade(DEFAULT_STATE, 2, 'pad1Kit');
   const synthData = extractCascade(DEFAULT_STATE, 3, 'synth');
-  const stateData = DEFAULT_STATE as unknown as Record<string, unknown>;
+  const stateData = extractCascade(DEFAULT_STATE, 4, 'global');
   const padKitEntry = makePresetEntry('kit', 'pad1Kit', 'Pad Kit Active Dependency', padKitData);
   padKitEntry.versions[0]!.refs = {
     pad1: { name: 'Pad Engine Active Dependency', scope: 'pad1', version: 'latest' },
@@ -1750,7 +2229,7 @@ async function testDeletingStateRetainsInternalGraphForRestore(): Promise<void> 
   store.setUserId(userId);
 
   const stateName = 'State With Derived Graph';
-  await store.save(makePresetEntry('state', 'global', stateName, DEFAULT_STATE as unknown as Record<string, unknown>));
+  await store.save(makePresetEntry('state', 'global', stateName, extractCascade(DEFAULT_STATE, 4, 'global')));
 
   const state = findPresetRow(client, 'state', 'global', stateName);
   assert.ok(latestRefTarget(client, state, 'synth'), 'state save should create source-derived children');
@@ -1785,8 +2264,8 @@ async function testSharedDerivedChildSurvivesUntilLastRetainedRootPurges(): Prom
 
   const stateAName = 'Shared Derived State A';
   const stateBName = 'Shared Derived State B';
-  await store.save(makePresetEntry('state', 'global', stateAName, DEFAULT_STATE as unknown as Record<string, unknown>));
-  await store.save(makePresetEntry('state', 'global', stateBName, DEFAULT_STATE as unknown as Record<string, unknown>));
+  await store.save(makePresetEntry('state', 'global', stateAName, extractCascade(DEFAULT_STATE, 4, 'global')));
+  await store.save(makePresetEntry('state', 'global', stateBName, extractCascade(DEFAULT_STATE, 4, 'global')));
 
   const stateA = findPresetRow(client, 'state', 'global', stateAName);
   const stateB = findPresetRow(client, 'state', 'global', stateBName);
@@ -1867,7 +2346,7 @@ async function testConcurrentSameIdentitySaveKeepsOneActiveV2Row(): Promise<void
   );
 }
 
-async function testLegacyCaseFoldedNameSemanticsStayConsistent(): Promise<void> {
+async function testLegacyWritesFailClosedWhenV2IsUnavailable(): Promise<void> {
   const client = new FakeSupabaseClient();
   const store = new SupabasePresetStore(client as never);
   const userId = '19191919-1919-4191-8191-191919191919';
@@ -1876,26 +2355,12 @@ async function testLegacyCaseFoldedNameSemanticsStayConsistent(): Promise<void> 
   store['v2SchemaAvailable'] = false;
 
   const data = extractParams(DEFAULT_STATE, 1, 'pad1');
-  await store.save(makePresetEntry('engine', 'pad1', 'Foo', data));
-  await store.save(makePresetEntry('engine', 'pad1', 'foo', mutateFirstNumber(data)));
-  await store.save(makePresetEntry('engine', 'pad1', 'Foo', mutateFirstNumber(mutateFirstNumber(data))));
-
-  const activeLegacyRows = client.tables.presets.filter(row => row.deleted_at == null);
-  assert.equal(activeLegacyRows.length, 1, 'legacy saves should treat Foo/foo/Foo as one logical row');
-  assert.equal((await store.list('engine', 'pad1')).filter(summary => summary.name.toLowerCase() === 'foo').length, 1);
-  assert.ok(await store.load('engine', 'foo', 'pad1'), 'legacy load should use the same case-folded identity as save');
-  assert.ok(client.legacyDetailRpcCalls > 0, 'legacy detail loads should prefer the narrow legacy detail RPC');
-  assert.equal(await store.exists('engine', 'FOO', 'pad1'), true, 'legacy exists should use the same case-folded identity as save');
-
-  await store.delete('engine', 'fOo', 'pad1');
-
-  assert.equal(await store.exists('engine', 'foo', 'pad1'), false, 'legacy delete should remove the case-folded logical row from exists');
-  assert.equal(await store.load('engine', 'Foo', 'pad1'), null, 'legacy delete should remove the case-folded logical row from load');
-  assert.equal(
-    (await store.list('engine', 'pad1')).some(summary => summary.name.toLowerCase() === 'foo'),
-    false,
-    'legacy delete should remove the case-folded logical row from list',
+  await assert.rejects(
+    () => store.save(makePresetEntry('engine', 'pad1', 'Foo', data)),
+    /Current preset storage is unavailable; legacy cloud preset storage is disabled/,
+    'writes must fail closed instead of reviving the retired legacy storage path',
   );
+  assert.equal(client.tables.presets.length, 0, 'failed-closed writes must not create a legacy row');
 }
 
 async function testAutoDerivedParentDoesNotBindVisibleSameHashChild(): Promise<void> {
@@ -1929,7 +2394,7 @@ async function testStaleInternalDerivedRefDoesNotBlockOverwriteSave(): Promise<v
   store.setUserId(userId);
 
   const stateName = 'State Stale Derived Ref Overwrite';
-  await store.save(makePresetEntry('state', 'global', stateName, DEFAULT_STATE as unknown as Record<string, unknown>));
+  await store.save(makePresetEntry('state', 'global', stateName, extractCascade(DEFAULT_STATE, 4, 'global')));
 
   const loaded = await store.load('state', stateName, 'global');
   assert.ok(loaded, 'setup should load the saved state preset with graph refs');
@@ -1986,7 +2451,7 @@ async function testJourneyRefsPersistAsSupabaseV2GraphEdges(): Promise<void> {
 
   const stateName = 'State Used By Journey';
   const journeyName = 'Journey Active Dependency';
-  await store.save(makePresetEntry('state', 'global', stateName, DEFAULT_STATE as unknown as Record<string, unknown>));
+  await store.save(makePresetEntry('state', 'global', stateName, extractCascade(DEFAULT_STATE, 4, 'global')));
   const state = findPresetRow(client, 'state', 'global', stateName);
 
   const config = createDiamondJourney([]);
@@ -2046,6 +2511,87 @@ async function testJourneyRefsPersistAsSupabaseV2GraphEdges(): Promise<void> {
     'active Journey -> State refs should participate in Supabase graph guards',
   );
   assert.equal(state.deleted_at, null, 'blocked state delete should leave the row active until Journey cleanup runs');
+}
+
+async function testJourneyReferrerCandidatesUseStableIdAndLatestVersionOnly(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '78787878-7878-4878-8878-787878787878';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const stateName = 'Stable Referrer Target';
+  await store.save(makePresetEntry('state', 'global', stateName, extractCascade(DEFAULT_STATE, 4, 'global')));
+  const state = findPresetRow(client, 'state', 'global', stateName);
+  const generatedStateId = state.id;
+  state.id = '79797979-7979-4979-8979-797979797979';
+  for (const version of client.tables.preset_versions_v2) {
+    if (version.preset_id === generatedStateId) version.preset_id = state.id;
+  }
+  const slot = getJourneyNodeRefSlot('left');
+  const makeJourney = (name: string): PresetEntry => {
+    const config = createDiamondJourney([]);
+    config.name = name;
+    const left = config.nodes.find(node => node.position === 'left')!;
+    left.presetId = state.id;
+    left.presetName = stateName;
+    const timestamp = Date.parse('2026-05-19T12:00:00.000Z');
+    return {
+      type: 'journey',
+      name,
+      author: 'user',
+      library: 'cloud',
+      visibility: 'public',
+      familyName: name,
+      variantName: name,
+      versions: [{
+        v: 1,
+        note: 'references state',
+        timestamp,
+        data: encodeJourneyPresetData(config) as unknown as Record<string, unknown>,
+        refs: {
+          [slot]: { id: state.id, name: stateName, version: 'latest', scope: 'global' },
+        },
+      }],
+      currentVersion: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+  };
+
+  const activeName = 'Current State Referrer';
+  const historicalName = 'Historical State Referrer';
+  await store.save(makeJourney(activeName));
+  await store.save(makeJourney(historicalName));
+
+  const historical = await store.load('journey', historicalName);
+  assert.ok(historical);
+  const noRefConfig = createDiamondJourney([]);
+  noRefConfig.name = historicalName;
+  historical.versions.push({
+    v: 2,
+    note: 'reference removed',
+    timestamp: historical.updatedAt + 1,
+    data: encodeJourneyPresetData(noRefConfig) as unknown as Record<string, unknown>,
+  });
+  historical.currentVersion = 2;
+  historical.updatedAt += 1;
+  await store.save(historical);
+
+  const candidates = await store.findCurrentReferenceCandidates('state', state.id, 'wrong-name-does-not-drive-the-rpc');
+  assert.deepEqual(candidates.map(candidate => candidate.name), [activeName]);
+  assert.equal(candidates[0]?.currentVersion, 1);
+  assert.ok(candidates[0]?.updatedAtRevision, 'candidate should carry an opaque revision token');
+  assert.equal(client.journeyReferrerRpcCalls, 1, 'candidate discovery should be one ID-addressed RPC');
+  assert.equal(
+    client.tables.preset_version_refs_v2.some(ref => {
+      const version = client.tables.preset_versions_v2.find(candidate => candidate.id === ref.version_id);
+      const parent = version && client.tables.presets_v2.find(candidate => candidate.id === version.preset_id);
+      return parent?.name === historicalName;
+    }),
+    true,
+    'fixture must retain a historical ref so latest-version filtering is exercised',
+  );
 }
 
 async function testUnresolvedJourneyRefFailsClosed(): Promise<void> {
@@ -2110,7 +2656,7 @@ async function testAtomicSaveRollsBackWhenRefInsertFails(): Promise<void> {
 
   const stateName = 'Atomic State Target';
   const journeyName = 'Atomic Journey Rollback';
-  await store.save(makePresetEntry('state', 'global', stateName, DEFAULT_STATE as unknown as Record<string, unknown>));
+  await store.save(makePresetEntry('state', 'global', stateName, extractCascade(DEFAULT_STATE, 4, 'global')));
 
   const config = createDiamondJourney([]);
   const left = config.nodes.find((node) => node.position === 'left')!;
@@ -2317,7 +2863,7 @@ async function testMissingChildPayloadLoadsSilentFallback(): Promise<void> {
   );
 }
 
-async function testLegacyDeleteUsesSoftDeleteRpc(): Promise<void> {
+async function testLegacyDeleteFailsClosedWhenV2IsUnavailable(): Promise<void> {
   const client = new FakeSupabaseClient();
   const store = new SupabasePresetStore(client as never);
   const userId = '99999999-9999-4999-8999-999999999999';
@@ -2325,43 +2871,11 @@ async function testLegacyDeleteUsesSoftDeleteRpc(): Promise<void> {
   store.setUserId(userId);
   store['v2SchemaAvailable'] = false;
 
-  client.insert('presets', {
-    user_id: userId,
-    type: 'engine',
-    scope: 'pad1',
-    name: 'Legacy Soft Delete',
-    author: 'user',
-    library: 'cloud',
-    creator: 'Legacy',
-    description: null,
-    tags: [],
-    visibility: 'public',
-    family_name: 'Legacy Soft Delete',
-    variant_name: 'Legacy Soft Delete',
-    variant_rank: null,
-    versions: [{
-      v: 1,
-      note: 'legacy row should soft delete',
-      timestamp: Date.parse('2026-05-19T12:00:00.000Z'),
-      data: extractParams(DEFAULT_STATE, 1, 'pad1'),
-    }],
-    current_version: 1,
-    rating: null,
-    plays: 0,
-    created_at: client.now(),
-    updated_at: client.now(),
-    deleted_at: null,
-    deleted_by: null,
-    archived: false,
-  });
-
-  await store.delete('engine', 'Legacy Soft Delete', 'pad1');
-
-  const row = client.tables.presets.find(candidate => candidate.name === 'Legacy Soft Delete');
-  assert.ok(row, 'legacy soft delete should keep the legacy row');
-  assert.equal(typeof row.deleted_at, 'string', 'legacy soft delete should set deleted_at');
-  assert.equal(row.deleted_by, userId, 'legacy soft delete should set deleted_by');
-  assert.equal(row.archived, true, 'legacy soft delete should archive the row');
+  await assert.rejects(
+    () => store.delete('engine', 'Legacy Soft Delete', 'pad1'),
+    /Current preset storage is unavailable; legacy cloud preset storage is disabled/,
+    'deletes must fail closed instead of mutating the retired legacy storage path',
+  );
 }
 
 function testRecycleBinSqlContainsGraphGuards(): void {
@@ -2370,6 +2884,25 @@ function testRecycleBinSqlContainsGraphGuards(): void {
   assert.doesNotMatch(sql, /historical_versions_to_prune/, 'purge must not delete historical owner versions to break refs');
   assert.match(sql, /restore visible dependencies first/, 'restore should fail closed on independently visible recycled dependencies');
   assert.match(sql, /preset_version_content_refs_v2/, 'maintenance should treat direct content refs as reachability roots');
+}
+
+function testJourneyReferrerSqlIsCurrentVersionAndLeastPrivilege(): void {
+  const sql = fs.readFileSync(
+    'supabase/migrations/20260731000415_journey_state_referrer_candidates_v2.sql',
+    'utf8',
+  );
+  assert.match(sql, /parent\.latest_version_id\s*=\s*parent_version\.id/i);
+  assert.match(sql, /requested_state_preset_id\s+UUID\s*:=\s*\$1/i);
+  assert.match(sql, /ref\.target_preset_id\s*=\s*requested_state_preset_id/i);
+  assert.match(sql, /SET search_path = ''/i);
+  assert.match(
+    sql,
+    /REVOKE EXECUTE ON FUNCTION public\.kessho_find_journey_state_referrers_v2\(UUID\)\s+FROM PUBLIC, anon/i,
+  );
+  assert.match(
+    sql,
+    /GRANT EXECUTE ON FUNCTION public\.kessho_find_journey_state_referrers_v2\(UUID\)\s+TO authenticated/i,
+  );
 }
 
 async function testHybridSharedDeletePropagatesCloudFailure(): Promise<void> {
@@ -2479,6 +3012,64 @@ async function testSupabaseRenamePreservesPresetId(): Promise<void> {
   );
 }
 
+async function testDirectContentRefsReplaceResolvedSampleCopies(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '56565656-5656-4656-8656-565656565655';
+  const name = 'Content-addressed synth source';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const data = {
+    ...extractCascade(DEFAULT_STATE, 3, 'synth'),
+    sample1Articulation: 'marcato',
+    sample1AttackMs: 321,
+  } as Record<string, unknown>;
+  for (const [key, value] of Object.entries(data)) {
+    if (key.startsWith('sample1')) data[key.replace('sample1', 'sample2')] = value;
+  }
+  await store.save(makePresetEntry('source', 'synth', name, data));
+
+  const preset = findPresetRow(client, 'source', 'synth', name);
+  const version = client.tables.preset_versions_v2.find(row => row.id === preset.latest_version_id);
+  assert.ok(version?.resolved_hash, 'source preset should retain a compact resolved snapshot');
+  const storedResolved = client.tables.preset_payloads_v2.find(row => row.hash === version?.resolved_hash)?.payload as FakeRow;
+  assert.equal('sample1Articulation' in storedResolved, false, 'sample voice content must not be copied into resolved snapshots');
+  assert.equal(storedResolved.sample1Enabled, data.sample1Enabled, 'slot bindings stay with the source snapshot');
+  const sampleRefs = client.tables.preset_version_content_refs_v2.filter(ref => (
+    ref.version_id === version?.id && ref.content_type === 'sampleVoice'
+  ));
+  assert.equal(sampleRefs.length, 2, 'both sample slots should point at content nodes');
+  assert.equal(
+    new Set(sampleRefs.map(ref => ref.content_hash)).size,
+    1,
+    'identical sample slots should share one physical content payload',
+  );
+
+  const loaded = await store.load('source', name, 'synth');
+  const restored = loaded ? getVersionData(loaded) : null;
+  assert.equal(loaded?.recoveryWarnings?.length ?? 0, 0, 'content refs should restore without fallbacks');
+  assert.deepEqual(restored?.sample1Articulation, data.sample1Articulation);
+  assert.deepEqual(restored?.sample1AttackMs, data.sample1AttackMs);
+  assert.deepEqual(restored?.sample2Articulation, data.sample2Articulation);
+  assert.deepEqual(restored?.sample2AttackMs, data.sample2AttackMs);
+
+  const internalName = '__derived__/synth/content-snapshot';
+  const internalEntry = makePresetEntry('source', 'synth', internalName, data);
+  internalEntry.tags = ['internal-derived', 'auto-child'];
+  internalEntry.visibility = 'private';
+  await store.save(internalEntry);
+  const internalPreset = findPresetRow(client, 'source', 'synth', internalName);
+  const internalVersion = client.tables.preset_versions_v2.find(row => row.id === internalPreset.latest_version_id);
+  assert.equal(
+    client.tables.preset_version_content_refs_v2.filter(ref => ref.version_id === internalVersion?.id).length,
+    0,
+    'hidden derived presets retain complete resolved snapshots and must not create unused direct content refs',
+  );
+  const internalResolved = client.tables.preset_payloads_v2.find(row => row.hash === internalVersion?.resolved_hash)?.payload as FakeRow;
+  assert.deepEqual(internalResolved.sample1Articulation, data.sample1Articulation);
+}
+
 async function testGraphOnlyStateLoadWithoutResolvedPayload(): Promise<void> {
   const client = new FakeSupabaseClient();
   const store = new SupabasePresetStore(client as never);
@@ -2504,6 +3095,21 @@ async function testGraphOnlyStateLoadWithoutResolvedPayload(): Promise<void> {
   const version = client.tables.preset_versions_v2.find(row => row.id === preset.latest_version_id);
   assert.equal(version?.resolved_hash, null, 'new L4 versions should not store an expanded resolved payload');
   assert.equal(preset.latest_resolved_hash, null, 'new L4 rollups should remain graph-authoritative');
+  assert.ok(
+    client.tables.preset_version_content_refs_v2.some(ref => (
+      ref.version_id === version?.id && ref.ref_slot === 'harmony.program.chord-bank-active'
+    )),
+    'the active chord bank should be content-addressed instead of embedded in the L4 override',
+  );
+  assert.equal(
+    client.tables.preset_version_content_refs_v2.filter(ref => (
+      ref.version_id === version?.id && ref.content_type === 'lead4opfmPatch'
+    )).length,
+    4,
+    'all four Lead endpoints should be content-addressed',
+  );
+  const override = client.tables.preset_payloads_v2.find(row => row.hash === version?.override_hash)?.payload as FakeRow;
+  assert.equal('harmonyChordSlots' in override, false, 'L4 overrides should omit the active chord-bank payload');
   client.presetLatestManifestRpcCalls = 0;
   client.presetPayloadRpcCalls = 0;
   const loaded = await store.load('state', name, 'global');
@@ -2511,15 +3117,64 @@ async function testGraphOnlyStateLoadWithoutResolvedPayload(): Promise<void> {
   assert.ok(restored, 'graph-only state should load without a resolved payload');
   for (const key of [
     'synthEuclid1Steps', 'synthEuclid1Hits', 'synthEuclid1Source', 'synthEuclid1VoiceMask',
-    'synthEuclid1Level', 'rootNote', 'tension', 'sample1LibraryKey', 'granularV1Mode',
+    'synthEuclid1Level', 'rootNote', 'tension', 'harmonyChordSlots', 'sample1LibraryKey', 'granularV1Mode',
     'dynamicsEq1LowFreq', 'padOscAWave', 'drumKickFreq', 'waterIntensity',
   ]) {
     assert.deepEqual(restored[key], state[key], `graph-only load should restore ${key}`);
   }
+  assert.equal((restored.lead1PresetAData as FakeRow).id, state.lead1PresetA);
+  assert.equal((restored.lead2PresetDData as FakeRow).id, state.lead2PresetD);
   assert.equal(client.presetLatestManifestRpcCalls, 1, 'cold graph load should use one manifest request');
   assert.equal(client.presetPayloadRpcCalls, 1, 'cold graph load should batch all unique payloads into one request');
   await store.load('state', name, 'global');
   assert.equal(client.presetPayloadRpcCalls, 1, 'warm graph load should reuse the verified hash cache');
+}
+
+async function testDeletedLeadLibraryPresetKeepsPinnedKitSound(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '59595959-5959-4959-8959-595959595959';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const customPreset = structuredClone(DEFAULT_SOFT_RHODES);
+  customPreset.id = 'pinned_custom_lead';
+  customPreset.name = 'Pinned Custom Lead';
+  customPreset.params.gain = 0.314;
+  const engineEntry = makePresetEntry(
+    'engine',
+    'lead4opfm',
+    customPreset.name,
+    createLead4opFMPresetData(customPreset),
+  );
+  engineEntry.versions[0]!.dualRanges = { distance: { min: 0.2, max: 0.8 } };
+  engineEntry.versions[0]!.sliderModes = { distance: 'sampleHold' };
+  await store.save(engineEntry);
+  const enginePreset = findPresetRow(client, 'engine', 'lead4opfm', customPreset.name);
+
+  const kitData = {
+    ...extractCascade(DEFAULT_STATE, 2, 'lead1Kit'),
+    lead1PresetA: customPreset.name,
+  };
+  const kitName = 'Pinned Lead Kit';
+  await store.save(makePresetEntry('kit', 'lead1Kit', kitName, kitData));
+  const kitPreset = findPresetRow(client, 'kit', 'lead1Kit', kitName);
+  const endpointRef = client.tables.preset_version_content_refs_v2.find(ref => (
+    ref.version_id === kitPreset.latest_version_id
+    && ref.ref_slot === 'derived.lead.1.endpoint-a'
+    && ref.content_type === 'lead4opfmPatch'
+  ));
+  assert.ok(endpointRef, 'the L2 kit should pin its custom Lead endpoint by content hash');
+
+  await store.delete('engine', customPreset.name, 'lead4opfm');
+  assert.equal(typeof enginePreset.deleted_at, 'string', 'content pinning should allow the library entry to be recycled');
+  const loaded = await store.load('kit', kitName, 'lead1Kit');
+  const restored = loaded ? getVersionData(loaded) : null;
+  const restoredEndpoint = restored?.lead1PresetAData as FakeRow | undefined;
+  assert.equal(restoredEndpoint?.id, customPreset.name, 'the pinned patch should retain the selected lookup identity');
+  assert.equal((restoredEndpoint?.params as FakeRow | undefined)?.gain, 0.314, 'the pinned patch should retain exact FM data');
+  assert.deepEqual(restoredEndpoint?.dualRanges, { distance: { min: 0.2, max: 0.8 } });
+  assert.deepEqual(restoredEndpoint?.sliderModes, { distance: 'sampleHold' });
 }
 
 async function testGraphSemanticNoOpAndBindingIsolation(): Promise<void> {
@@ -2535,18 +3190,19 @@ async function testGraphSemanticNoOpAndBindingIsolation(): Promise<void> {
   await store.save(entry);
   const preset = findPresetRow(client, 'state', 'global', entry.name);
   let versions = client.tables.preset_versions_v2.filter(row => row.preset_id === preset.id);
-  assert.equal(versions.length, 1, 'semantic no-op graph version should not be stored');
+  assert.equal(versions.length, 2, 'a documented semantic no-op should retain its version note');
+  assert.equal(versions[1]?.note, 'semantic no-op');
 
   const bindingChanged = { ...optimized, synthEuclid1Source: 'pad2', synthEuclid1Level: 0.31 };
   entry.versions.push({ v: 3, note: 'binding change', timestamp: entry.updatedAt + 2, data: bindingChanged });
   entry.currentVersion = 3;
   await store.save(entry);
   versions = client.tables.preset_versions_v2.filter(row => row.preset_id === preset.id);
-  assert.equal(versions.length, 2, 'binding change should store a new graph version');
+  assert.equal(versions.length, 3, 'binding change should store a new graph version');
   const hashesFor = (versionId: string) => client.tables.preset_version_content_refs_v2
     .filter(ref => ref.version_id === versionId && String(ref.ref_slot).startsWith('sequencer.synth.1.'))
     .map(ref => `${ref.ref_slot}:${ref.content_hash}`).sort();
-  assert.deepEqual(hashesFor(versions[0]!.id), hashesFor(versions[1]!.id), 'binding changes must reuse sequencer content hashes');
+  assert.deepEqual(hashesFor(versions[0]!.id), hashesFor(versions[2]!.id), 'binding changes must reuse sequencer content hashes');
 }
 
 async function testMissingDerivedEndpointFallsBackWithWarning(): Promise<void> {
@@ -2580,6 +3236,12 @@ async function testMissingDerivedEndpointFallsBackWithWarning(): Promise<void> {
 }
 
 await testSupabaseDeleteMovesPresetToRecycleBin();
+await testSupabaseMetadataUpdateUsesExactTimestampCas();
+await testSignatureEqualIdentityUsesCasAndNoteCreatesVersion();
+await testQueuedImportMatchesCloudCollisionAndNewNameSemantics();
+await testProductionWritesForkVisibleCrossOwnerRows();
+await testJourneySummariesHydratePreviewsInOnePayloadBatch();
+await testLocalMetadataUpdateUsesSameCasContract();
 await testCompactDetailPayloadBundleLoadsByContentHash();
 await testLatestManifestPayloadCacheAvoidsRepeatPayloadRpc();
 await testAtomicSaveDedupesIdenticalPayloadHashes();
@@ -2590,21 +3252,25 @@ await testDeletingStateRetainsInternalGraphForRestore();
 await testSharedDerivedChildSurvivesUntilLastRetainedRootPurges();
 await testOrphanInternalDerivedChainPrunesAllLevels();
 await testConcurrentSameIdentitySaveKeepsOneActiveV2Row();
-await testLegacyCaseFoldedNameSemanticsStayConsistent();
+await testLegacyWritesFailClosedWhenV2IsUnavailable();
 await testAutoDerivedParentDoesNotBindVisibleSameHashChild();
 await testStaleInternalDerivedRefDoesNotBlockOverwriteSave();
 await testJourneyRefsPersistAsSupabaseV2GraphEdges();
+await testJourneyReferrerCandidatesUseStableIdAndLatestVersionOnly();
 await testUnresolvedJourneyRefFailsClosed();
 await testAtomicSaveRollsBackWhenRefInsertFails();
 await testHistoricalOnlyReferenceAllowsSoftDelete();
 await testLatestVersionRollupClearsStaleMetadata();
 await testLoadReportsRecoveryWarningForMissingSelectedCache();
 await testMissingChildPayloadLoadsSilentFallback();
-await testLegacyDeleteUsesSoftDeleteRpc();
+await testLegacyDeleteFailsClosedWhenV2IsUnavailable();
 testRecycleBinSqlContainsGraphGuards();
+testJourneyReferrerSqlIsCurrentVersionAndLeastPrivilege();
 await testHybridSharedDeletePropagatesCloudFailure();
 await testSharedV2DoesNotLeakLegacyRows();
 await testSupabaseRenamePreservesPresetId();
+await testDirectContentRefsReplaceResolvedSampleCopies();
 await testGraphOnlyStateLoadWithoutResolvedPayload();
+await testDeletedLeadLibraryPresetKeepsPinnedKitSound();
 await testGraphSemanticNoOpAndBindingIsolation();
 await testMissingDerivedEndpointFallsBackWithWarning();

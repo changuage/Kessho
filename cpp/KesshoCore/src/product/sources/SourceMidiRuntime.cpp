@@ -17,6 +17,15 @@ void KesshoProductEngine::resetMidiRuntimeState() {
   for (MidiNoteRuntimeSlot& slot : midi_note_slots) {
     slot = {};
   }
+  for (SourceState& source : sources) {
+    source.transient_audition_hold_count = 0u;
+    source.transient_audition_until_frame = 0u;
+    source.transient_audition_gain = 0.0f;
+    source.transient_audition_gain_target = 0.0f;
+    source.transient_audition_gain_delta = 0.0f;
+    source.transient_audition_gain_ramp_remaining = 0u;
+    source.transient_audition_gain_frame = audio_render_sample_frame;
+  }
   for (uint32_t source = 0u; source < kSourceCount; ++source) {
     for (uint32_t channel = 0u; channel < kProductMidiChannelCount; ++channel) {
       resetMidiControllerState(midi_controller_state[source][channel]);
@@ -30,6 +39,9 @@ void KesshoProductEngine::clearMidiRuntimeForSource(uint32_t source_id) {
   const bool clear_all = source_id == 0u;
   for (MidiNoteRuntimeSlot& slot : midi_note_slots) {
     if (slot.active && (clear_all || slot.source_id == source_id)) {
+      if (slot.transient_audition) {
+        releaseSourceTransientAudition(slot.source_id);
+      }
       slot = {};
     }
   }
@@ -53,6 +65,9 @@ void KesshoProductEngine::clearMidiRuntimeForSampleVoice(uint32_t voice_index) {
   }
   for (MidiNoteRuntimeSlot& slot : midi_note_slots) {
     if (slot.active && slot.sample_voice_index == voice_index) {
+      if (slot.transient_audition) {
+        releaseSourceTransientAudition(slot.source_id);
+      }
       slot = {};
     }
   }
@@ -89,6 +104,9 @@ void KesshoProductEngine::releaseMidiSlot(MidiNoteRuntimeSlot& slot) {
       voice.total_frames = std::max<uint32_t>(1u, voice.remaining_frames);
     }
   }
+  if (slot.transient_audition) {
+    releaseSourceTransientAudition(slot.source_id);
+  }
   slot = {};
 }
 
@@ -98,7 +116,9 @@ void KesshoProductEngine::trackMidiNoteOn(
     uint32_t note,
     uint32_t pad_voice_index,
     uint32_t lead_voice_index,
-    uint32_t sample_voice_index) {
+    uint32_t sample_voice_index,
+    uint32_t owner_token,
+    bool transient_audition) {
   if (source_id < 1u || source_id > kSourceCount || channel >= kProductMidiChannelCount || note > 127u) {
     return;
   }
@@ -112,14 +132,23 @@ void KesshoProductEngine::trackMidiNoteOn(
       continue;
     }
     if (pad_voice_index != kProductInvalidVoiceIndex && slot.pad_voice_index == pad_voice_index) {
+      if (slot.transient_audition) {
+        releaseSourceTransientAudition(slot.source_id);
+      }
       slot = {};
       continue;
     }
     if (lead_voice_index != kProductInvalidVoiceIndex && slot.lead_voice_index == lead_voice_index) {
+      if (slot.transient_audition) {
+        releaseSourceTransientAudition(slot.source_id);
+      }
       slot = {};
       continue;
     }
     if (sample_voice_index != kProductInvalidVoiceIndex && slot.sample_voice_index == sample_voice_index) {
+      if (slot.transient_audition) {
+        releaseSourceTransientAudition(slot.source_id);
+      }
       slot = {};
     }
   }
@@ -137,22 +166,32 @@ void KesshoProductEngine::trackMidiNoteOn(
   }
   target->active = true;
   target->sustained = false;
+  target->transient_audition = transient_audition;
   target->source_id = source_id;
   target->channel = channel;
   target->note = note;
+  target->owner_token = owner_token;
   target->pad_voice_index = pad_voice_index;
   target->lead_voice_index = lead_voice_index;
   target->sample_voice_index = sample_voice_index;
 }
 
-void KesshoProductEngine::applyMidiNoteOff(uint32_t source_id, uint32_t channel, uint32_t note) {
+void KesshoProductEngine::applyMidiNoteOff(
+    uint32_t source_id,
+    uint32_t channel,
+    uint32_t note,
+    uint32_t owner_token) {
   if (source_id < 1u || source_id > kSourceCount || channel >= kProductMidiChannelCount || note > 127u) {
     return;
   }
   const bool sustain_down = midi_sustain_down[source_id - 1u][channel];
   bool matched = false;
   for (MidiNoteRuntimeSlot& slot : midi_note_slots) {
-    if (!slot.active || slot.source_id != source_id || slot.channel != channel || slot.note != note) {
+    if (!slot.active ||
+        slot.source_id != source_id ||
+        slot.channel != channel ||
+        slot.note != note ||
+        (owner_token != 0u && slot.owner_token != owner_token)) {
       continue;
     }
     matched = true;

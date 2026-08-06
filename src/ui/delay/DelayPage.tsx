@@ -549,30 +549,26 @@ const DelayPage: React.FC<DelayPageProps> = ({
                             H{head.index}
                           </button>
                           <span className="delay-tape-head-ratio">{ratio.toFixed(3).replace(/^0/, '')}x</span>
-                          <label className="delay-mini-slider">
-                            <span>Level</span>
-                            <input
-                              type="range"
-                              min={0}
-                              max={1}
-                              step={0.01}
+                          <div className="delay-mini-slider">
+                            <Slider
+                              label="Level"
                               value={level}
-                              onChange={(event) => onParamChange(levelKey, Number(event.currentTarget.value))}
-                              {...bindSliderHelp(levelKey, `Head ${head.index} Level`)}
+                              paramKey={levelKey}
+                              onChange={onParamChange}
+                              helpPage="delay"
+                              {...sliderProps(levelKey)}
                             />
-                          </label>
-                          <label className="delay-mini-slider">
-                            <span>Pan</span>
-                            <input
-                              type="range"
-                              min={0}
-                              max={1}
-                              step={0.01}
+                          </div>
+                          <div className="delay-mini-slider">
+                            <Slider
+                              label="Pan"
                               value={pan}
-                              onChange={(event) => onParamChange(panKey, Number(event.currentTarget.value))}
-                              {...bindSliderHelp(panKey, `Head ${head.index} Pan`)}
+                              paramKey={panKey}
+                              onChange={onParamChange}
+                              helpPage="delay"
+                              {...sliderProps(panKey)}
                             />
-                          </label>
+                          </div>
                         </div>
                       );
                     })}

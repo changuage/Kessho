@@ -5,22 +5,15 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
   if (source_id < 1u || source_id > kSourceCount) return;
   SourceState& source = sources[source_id - 1u];
   if (!sourceRenderActive(source)) return;
-  const bool freeze_mutes_pad_dry =
-      fx.spectral_freeze_enabled &&
-      fx.spectral_freeze_active &&
-      (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2);
-  const float freeze_dry_gain = freeze_mutes_pad_dry
-      ? 1.0f - clampFloat(fx.spectral_freeze_reverb_crossfade, 0.0f, 1.0f)
-      : 1.0f;
   const float graph_dry_gain = source.level * source.dry_gain;
   if (!graph_taps_enabled && source.diffuse_send <= 0.0f) {
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;
-      const uint64_t absolute_frame = transport.sample_frame + i;
-      const float source_gate = sourceEnableGainForFrame(source, absolute_frame) *
-          routingMuteGainForFrame(routingMuteRowForSource(source_id), absolute_frame);
-      const float dry_left = dry_l[i] * graph_dry_gain * freeze_dry_gain * source_gate;
-      const float dry_right = dry_r[i] * graph_dry_gain * freeze_dry_gain * source_gate;
+      const uint64_t transport_frame = transport.sample_frame + i;
+      const float source_gate = sourceOutputGainForFrame(source, audio_render_sample_frame + i) *
+          routingMuteGainForFrame(routingMuteRowForSource(source_id), transport_frame);
+      const float dry_left = dry_l[i] * graph_dry_gain * source_gate;
+      const float dry_right = dry_r[i] * graph_dry_gain * source_gate;
       const float send_left = send_l[i] * source_gate;
       const float send_right = send_r[i] * source_gate;
       const float granular_send = granularSendGainForFrame(source_id, source.granular_send, transport.sample_frame + i);
@@ -36,13 +29,13 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
   }
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const uint64_t absolute_frame = transport.sample_frame + i;
-    const float source_gate = sourceEnableGainForFrame(source, absolute_frame) *
-        routingMuteGainForFrame(routingMuteRowForSource(source_id), absolute_frame);
+    const uint64_t transport_frame = transport.sample_frame + i;
+    const float source_gate = sourceOutputGainForFrame(source, audio_render_sample_frame + i) *
+        routingMuteGainForFrame(routingMuteRowForSource(source_id), transport_frame);
     const float graph_dry_left = dry_l[i] * graph_dry_gain * source_gate;
     const float graph_dry_right = dry_r[i] * graph_dry_gain * source_gate;
-    const float dry_left = graph_dry_left * freeze_dry_gain;
-    const float dry_right = graph_dry_right * freeze_dry_gain;
+    const float dry_left = graph_dry_left;
+    const float dry_right = graph_dry_right;
     const float send_left = send_l[i] * source_gate;
     const float send_right = send_r[i] * source_gate;
     const float granular_send = granularSendGainForFrame(source_id, source.granular_send, transport.sample_frame + i);
@@ -77,9 +70,9 @@ void KesshoProductEngine::mixSourceBuffer(
   if (!graph_taps_enabled && source.diffuse_send <= 0.0f) {
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;
-      const uint64_t absolute_frame = transport.sample_frame + i;
-      const float source_gate = sourceEnableGainForFrame(source, absolute_frame) *
-          routingMuteGainForFrame(routingMuteRowForSource(source_id), absolute_frame);
+      const uint64_t transport_frame = transport.sample_frame + i;
+      const float source_gate = sourceOutputGainForFrame(source, audio_render_sample_frame + i) *
+          routingMuteGainForFrame(routingMuteRowForSource(source_id), transport_frame);
       const float dry_left = dry_in_l[i] * dry_gain * source_gate;
       const float dry_right = dry_in_r[i] * dry_gain * source_gate;
       const float send_left = send_in_l[i] * send_gain * source_gate;
@@ -97,9 +90,9 @@ void KesshoProductEngine::mixSourceBuffer(
   }
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const uint64_t absolute_frame = transport.sample_frame + i;
-    const float source_gate = sourceEnableGainForFrame(source, absolute_frame) *
-        routingMuteGainForFrame(routingMuteRowForSource(source_id), absolute_frame);
+    const uint64_t transport_frame = transport.sample_frame + i;
+    const float source_gate = sourceOutputGainForFrame(source, audio_render_sample_frame + i) *
+        routingMuteGainForFrame(routingMuteRowForSource(source_id), transport_frame);
     const float dry_left = dry_in_l[i] * dry_gain * source_gate;
     const float dry_right = dry_in_r[i] * dry_gain * source_gate;
     const float graph_dry_left = dry_in_l[i] * graph_dry_gain * source_gate;

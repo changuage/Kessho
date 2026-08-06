@@ -301,8 +301,27 @@ void armAnchorWalkerGesture(
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_TRIGGER_MODE_ID: {
       const uint32_t trigger_mode = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 2u);
       if (lane.anchor_walker.trigger_mode != trigger_mode) {
+        // A realtime gesture can arrive just before the corresponding Hybrid
+        // play-mode control event. Preserve that bounded pending gesture when
+        // entering gesture-hold mode so the first press remains audible at
+        // offset zero; grid/auto transitions intentionally clear it.
+        const bool preserve_gesture = trigger_mode == 0u;
+        const bool preserved_held = lane.anchor_walker.gesture_held;
+        const int32_t preserved_delta = lane.anchor_walker.held_gesture_delta;
+        const float preserved_velocity = lane.anchor_walker.held_gesture_velocity;
+        const uint64_t preserved_started = lane.anchor_walker.gesture_started_sample;
+        const uint64_t preserved_next = lane.anchor_walker.next_gesture_walk_sample;
+        const uint32_t preserved_pending = lane.anchor_walker.pending_gesture_steps;
         lane.anchor_walker.trigger_mode = trigger_mode;
         resetSequencerLaneRuntime(lane);
+        if (preserve_gesture) {
+          lane.anchor_walker.gesture_held = preserved_held;
+          lane.anchor_walker.held_gesture_delta = preserved_delta;
+          lane.anchor_walker.held_gesture_velocity = preserved_velocity;
+          lane.anchor_walker.gesture_started_sample = preserved_started;
+          lane.anchor_walker.next_gesture_walk_sample = preserved_next;
+          lane.anchor_walker.pending_gesture_steps = preserved_pending;
+        }
       } else {
         lane.anchor_walker.trigger_mode = trigger_mode;
       }
@@ -606,13 +625,15 @@ uint64_t KesshoProductEngine::nextPendingSequencerAudibilityFrame() const {
   }
 
   AnchorWalkerState& walker = lanes[event.index].anchor_walker;
+  const uint64_t gesture_sample_frame =
+      transport.running ? transport.sample_frame : audio_render_sample_frame;
   switch (event.param_id) {
     case KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_TAP:
       armAnchorWalkerGesture(
           walker,
           static_cast<int32_t>(std::lround(event.value)),
           event.value2,
-          transport.sample_frame,
+          gesture_sample_frame,
           false);
       break;
     case KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_DOWN:
@@ -620,7 +641,7 @@ uint64_t KesshoProductEngine::nextPendingSequencerAudibilityFrame() const {
           walker,
           static_cast<int32_t>(std::lround(event.value)),
           event.value2,
-          transport.sample_frame,
+          gesture_sample_frame,
           true);
       break;
     case KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_UP:

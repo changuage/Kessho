@@ -50,6 +50,8 @@ requireTokens('cpp/KesshoCore/tests/ProductHarmonyTests.cpp', [
   'manual harmony pool should feed sequencer voicing',
   'requireTypeScriptHarmonySequenceParity',
   '60-minute harmony event sequence diverged from deterministic TypeScript reference',
+  'kHarmonyLiveEventLatencyBudgetMs',
+  'live gesture dispatch exceeded 20 ms latency budget',
 ]);
 
 requireTokens('cpp/KesshoCore/src/product/music/ScaleEngine.cpp', [
@@ -93,7 +95,8 @@ requireTokens('src/audio/CoreProductHostHarmonyState.ts', [
   'createCoreProductHostHarmonySnapshot',
   'telemetry?.harmonyScaleId',
   'telemetry?.harmonyRootMidi',
-  'telemetryChordMidi',
+  'telemetry?.harmonyNotePoolMidi',
+  'telemetry?.harmonyNextNotePoolMidi',
 ]);
 
 requireTokens('src/audio/coreProductHarmonyParityRegression.test.ts', [

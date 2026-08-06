@@ -5,6 +5,11 @@ import {
   EUCLIDEAN_PATTERN_SOURCE_SEQUENCE_STATE_KEY,
   EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY,
 } from './euclideanPatternBank';
+import {
+  isLead4opFMPresetData,
+  isLegacyLead4opFMPresetData,
+  LEAD4OPFM_PRESET_SCOPE,
+} from './lead4opPresetPayload';
 import { canonicalizePresetScope } from './presetScopeAliases';
 
 export const CURRENT_PRESET_SCHEMA = 'preset-entry-v2';
@@ -45,11 +50,16 @@ const CURRENT_SPECIAL_DATA_KEYS = new Set([
   'mode',
   'controls',
   'reactiveRanges',
+  'vizSliderModes',
   'reaction',
   'performanceMacros',
   'layerMacros',
   'qualityMode',
   'seed',
+  'lead1PresetAData',
+  'lead1PresetBData',
+  'lead2PresetCData',
+  'lead2PresetDData',
 ]);
 const CURRENT_JOURNEY_DATA_KEYS = new Set([
   'formatVersion',
@@ -94,6 +104,16 @@ function validateJsonValue(value: unknown, path: string): void {
 }
 
 function validateVersionData(value: Record<string, unknown>, index: number, type: PresetLevel, scope?: string): void {
+  if (type === 'engine' && scope === LEAD4OPFM_PRESET_SCOPE) {
+    if (!isLead4opFMPresetData(value) && !isLegacyLead4opFMPresetData(value)) {
+      fail(
+        `versions[${index}].data`,
+        'Lead4opFM data must use the current allowlisted lead4opfm preset envelope or a supported legacy payload',
+      );
+    }
+    return;
+  }
+
   const isJourneyData = type === 'journey';
   for (const [key, child] of Object.entries(value)) {
     const allowed = isJourneyData
@@ -113,10 +133,18 @@ function validateVersionData(value: Record<string, unknown>, index: number, type
     }
   }
   if (type === 'source' && scope === 'visualizer') {
-    if (value.format !== 'kessho-visualizer-preset' || value.formatVersion !== 1 ||
+    if (value.format !== 'kessho-visualizer-preset' || (value.formatVersion !== 1 && value.formatVersion !== 2) ||
         typeof value.mode !== 'string' || !isRecord(value.controls) || !isRecord(value.reaction) ||
         !isFiniteNumber(value.seed)) {
       fail(`versions[${index}].data`, 'visualizer data does not match the current format');
+    }
+    if (value.vizSliderModes !== undefined) {
+      if (!isRecord(value.vizSliderModes)) fail(`versions[${index}].data.vizSliderModes`, 'visualizer slider modes must be an object');
+      for (const [key, mode] of Object.entries(value.vizSliderModes)) {
+        if (typeof key !== 'string' || (mode !== 'single' && mode !== 'walk' && mode !== 'sampleHold')) {
+          fail(`versions[${index}].data.vizSliderModes.${key}`, 'visualizer slider mode is invalid');
+        }
+      }
     }
   }
 }
@@ -146,7 +174,14 @@ export function decodeCurrentPresetEntry(input: unknown): PresetEntry {
   if (!AUTHORS.has(input.author as PresetEntry['author'])) fail('author', 'author must be factory, user, or cloud');
   if (!Array.isArray(input.versions) || input.versions.length === 0) fail('versions', 'at least one version is required');
 
-  input.versions.forEach((version, index) => validateVersion(version, index, input.type as PresetLevel, typeof input.scope === 'string' ? input.scope : undefined));
+  const entryScope = typeof input.scope === 'string'
+    ? input.scope
+    : input.type === 'engine' && typeof input.engine === 'string'
+      ? input.engine
+      : input.type !== 'engine' && typeof input.source === 'string'
+        ? input.source
+        : undefined;
+  input.versions.forEach((version, index) => validateVersion(version, index, input.type as PresetLevel, entryScope));
   const versionNumbers = new Set<number>();
   for (const [index, version] of input.versions.entries()) {
     if (versionNumbers.has(version.v)) fail(`versions[${index}].v`, 'version numbers must be unique');

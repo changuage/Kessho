@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { HarmonyState } from '../../audio/harmony';
-import { resolveHarmonyProjection, type HarmonyLiveLayer, type HarmonyProjection } from '../../audio/harmony/harmonyProjection';
+import { type HarmonyLiveLayerChangeHandler, type HarmonyProjection } from '../../audio/harmony/harmonyProjection';
 import type { ProductManualSynthNote } from '../../audio/product/ProductEngineTypes';
+import type { ProductLiveNoteEvent } from '../../audio/product/liveNoteEvents';
 import type { SliderState } from '../state';
 import type { CircleOfFifthsProps } from '../CircleOfFifths';
 import { HarmonyEnginePanel } from './HarmonyEnginePanel';
-import { HarmonySlotStrip } from './HarmonySlotStrip';
 import { HarmonyWorkspaceHeader } from './HarmonyWorkspaceHeader';
-import { deriveHarmonyWorkspaceTonalContext, useHarmonyWorkspaceController } from './useHarmonyWorkspaceController';
+import { deriveHarmonyWorkspaceTonalContext, type HarmonyWorkspaceController } from './useHarmonyWorkspaceController';
 import { captureHarmonyAuthoredSnapshot } from './useHarmonyWorkspaceController';
 import { crossedHarmonyProgressionBoundary, createHarmonyAdoptionController, type HarmonyAdoptionController, type HarmonyBoundaryPosition } from './harmonyAdoptionController';
 import type { TonalContextDisplay } from '../../audio/harmony/tonalContextAnalysis';
@@ -18,9 +18,14 @@ import './HarmonySimple.css';
 export interface HarmonyWorkspaceProps {
   state: SliderState;
   harmonyState?: HarmonyState | null;
-  harmonyProjection?: HarmonyProjection;
+  harmonyProjection: HarmonyProjection;
+  /** App-owned controller persists across Global/Synth tab unmounts. */
+  controller: HarmonyWorkspaceController;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   onAuditionNote?: (note: ProductManualSynthNote) => void;
+  onAuditionNotes?: (notes: readonly ProductManualSynthNote[]) => Promise<void>;
+  onLiveNoteStart?: (event: ProductLiveNoteEvent) => Promise<void>;
+  onLiveNoteStop?: (event: ProductLiveNoteEvent) => void;
   /** Midpoint morph owns Harmony and makes all authored/live actions read-only. */
   morphReadOnly?: boolean;
   CircleOfFifthsComponent?: React.ComponentType<CircleOfFifthsProps>;
@@ -28,7 +33,7 @@ export interface HarmonyWorkspaceProps {
   morphCoFViz?: { cofStep: number; startRoot: number; targetRoot: number } | null;
   morphPosition?: number;
   onResetCofDrift?: () => void;
-  onHarmonyLiveLayerChange?: (layer: HarmonyLiveLayer | null) => void;
+  onHarmonyLiveLayerChange?: HarmonyLiveLayerChangeHandler;
   isRunning?: boolean;
   /** Advisory context only; Engine state remains the sole mutation authority. */
   tonalContext?: TonalContextDisplay | null;
@@ -42,10 +47,9 @@ function viewDescription(view: 'simple' | 'detail' | 'overview'): string {
 
 const HARMONY_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
 
-export function HarmonyWorkspace({ state, harmonyState, harmonyProjection, onStateChange, onAuditionNote, morphReadOnly = false, CircleOfFifthsComponent, cofCurrentStep = 0, morphCoFViz = null, morphPosition = 0, onResetCofDrift, onHarmonyLiveLayerChange, isRunning = false, tonalContext = null }: HarmonyWorkspaceProps) {
-  const projection = useMemo(() => harmonyProjection ?? resolveHarmonyProjection(state, { harmonyState }), [harmonyProjection, harmonyState, state]);
+export function HarmonyWorkspace({ state, harmonyState, harmonyProjection, controller, onStateChange, onAuditionNote, onAuditionNotes, onLiveNoteStart, onLiveNoteStop, morphReadOnly = false, CircleOfFifthsComponent, cofCurrentStep = 0, morphCoFViz = null, morphPosition = 0, onResetCofDrift, onHarmonyLiveLayerChange, isRunning = false, tonalContext = null }: HarmonyWorkspaceProps) {
+  const projection = harmonyProjection;
   const actionsLocked = harmonyWorkspaceActionsLocked(morphReadOnly, projection.engine.morphLocked);
-  const controller = useHarmonyWorkspaceController(state, actionsLocked ? undefined : onStateChange);
   const workspaceTonalContext = useMemo(() => tonalContext ?? deriveHarmonyWorkspaceTonalContext(projection, Date.now(), isRunning), [projection, tonalContext, isRunning]);
   const adoptionControllerRef = useRef<HarmonyAdoptionController | null>(null);
   if (!adoptionControllerRef.current) adoptionControllerRef.current = createHarmonyAdoptionController({ rootNote: state.rootNote, manualScale: state.manualScale, cofCurrentStep: state.cofCurrentStep });
@@ -56,7 +60,7 @@ export function HarmonyWorkspace({ state, harmonyState, harmonyProjection, onSta
   const boundaryRef = useRef<HarmonyBoundaryPosition>(boundaryPosition);
   const editableStateChange = actionsLocked ? undefined : controller.onStateChange;
   const transientStateChange = actionsLocked ? undefined : controller.onTransientStateChange;
-  const activeSlotId = projection.position.eventIndex >= 0 ? projection.progression[projection.position.eventIndex]?.slotId ?? null : null;
+  const [selectedSlotId, setSelectedSlotId] = useState(projection.position.eventIndex >= 0 ? projection.progression[projection.position.eventIndex]?.slotId ?? 0 : 0);
   const historyLabel = controller.history.past.length > 0 ? controller.history.past[controller.history.past.length - 1]?.label : 'No authored edits';
   const surface = harmonyWorkspaceSurfaceForView(controller.view);
   useEffect(() => {
@@ -108,7 +112,6 @@ export function HarmonyWorkspace({ state, harmonyState, harmonyProjection, onSta
   return (
     <section className={`harmony-workspace harmony-workspace--${controller.view}`} aria-label="Harmony workspace" data-harmony-view={controller.view}>
       <HarmonyWorkspaceHeader projection={projection} view={controller.view} onViewChange={controller.setView} morphReadOnly={actionsLocked} tonalContext={workspaceTonalContext} adoption={{ targetLabel: adoptionTargetLabel, mode: visibleAdoptionMode, active: adoptionView.isActive, onAdopt: handleAdopt, onCancel: handleCancelAdopt, disabled: actionsLocked || (!adoptionView.isActive && !adoptionTarget) }} />
-      <HarmonySlotStrip slots={projection.slots} activeSlotId={activeSlotId} />
       <div className="harmony-workspace-toolbar">
         <span>{viewDescription(controller.view)}</span>
         <div className="harmony-workspace-history" aria-label="Harmony history controls">
@@ -155,9 +158,16 @@ export function HarmonyWorkspace({ state, harmonyState, harmonyProjection, onSta
           onStateChange={editableStateChange}
           onTransientStateChange={transientStateChange}
           onAuditionNote={actionsLocked ? undefined : onAuditionNote}
+          onAuditionNotes={actionsLocked ? undefined : onAuditionNotes}
+          onLiveNoteStart={actionsLocked ? undefined : onLiveNoteStart}
+          onLiveNoteStop={actionsLocked ? undefined : onLiveNoteStop}
           onHarmonyLiveLayerChange={onHarmonyLiveLayerChange}
           isRunning={isRunning}
           workspaceView={controller.view}
+          selectedSlotId={selectedSlotId}
+          onSelectedSlotChange={setSelectedSlotId}
+          canUndo={controller.canUndo}
+          onUndo={controller.undo}
         />
       </div>
     </section>

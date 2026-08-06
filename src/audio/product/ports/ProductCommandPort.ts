@@ -2,6 +2,7 @@ import type { DawOutputRoutingConfig } from '../../dawOutputRouting';
 import type { ProductLiveNoteEvent } from '../liveNoteEvents';
 import type {
   ProductDrumVoice,
+  ProductEvent,
   ProductExternalState,
   ProductManualSynthNote,
   ProductMidiMessage,
@@ -13,7 +14,10 @@ export type ProductEngineCommandPort = {
   setDawOutputDeviceId(deviceId: string | null): Promise<boolean>;
   resetCofDrift(): void;
   pushMidiMessage(message: ProductMidiMessage): void;
-  enqueueLiveNoteEvent(event: ProductLiveNoteEvent): Promise<void> | void;
+  enqueueRealtimeEvent(event: ProductEvent): Promise<void>;
+  enqueueRealtimeEvents(events: readonly ProductEvent[]): Promise<void>;
+  enqueueLiveNoteEvent(event: ProductLiveNoteEvent): Promise<void>;
   auditionSynthNote(note: ProductManualSynthNote, externalState?: ProductExternalState): Promise<void>;
+  auditionSynthNotes(notes: ProductManualSynthNote[], externalState?: ProductExternalState): Promise<void>;
   triggerDrumVoice(voice: ProductDrumVoice, velocity?: number, externalState?: ProductExternalState): Promise<void>;
 };

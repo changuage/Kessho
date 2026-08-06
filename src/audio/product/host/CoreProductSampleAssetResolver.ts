@@ -40,7 +40,10 @@ export function sampleDescriptorForSlotNote(
   midiNote: number,
   velocity: number,
 ): SampleAssetDescriptor | null {
-  const slot = readSampleSlotState(state, slotId);
+  // A manual audition is an explicit request to sound this slot even when the
+  // persistent source is disabled. Keep that transient intent local to asset
+  // resolution so auditioning never mutates the saved Product state.
+  const slot = { ...readSampleSlotState(state, slotId), enabled: true };
   const library = getSampleLibraryRegistry().find((candidate) => candidate.libraryKey === slot.libraryKey);
   if (!library) return null;
   const result = resolveSample({ slot, targetMidi: midiNote, velocity: velocityByteFromProductVelocity(velocity) }, [library]);

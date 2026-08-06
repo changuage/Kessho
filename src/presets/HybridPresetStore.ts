@@ -6,7 +6,15 @@
 // - list() merges local stock with cloud presets, deduplicating by name
 // - load() prefers cloud, then falls back to local stock
 
-import type { PresetEntry, PresetLevel, PresetRenameIdentity, PresetSummary } from './types';
+import type {
+  PresetEntry,
+  PresetLevel,
+  PresetMetadataPatch,
+  PresetMetadataUpdateOptions,
+  PresetReferenceCandidate,
+  PresetRenameIdentity,
+  PresetSummary,
+} from './types';
 import type { IPresetStore } from './PresetStore';
 import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 
@@ -21,6 +29,15 @@ function comparePresetSummaryPriority(left: PresetSummary, right: PresetSummary)
   };
   const rankDiff = rank(left) - rank(right);
   if (rankDiff !== 0) return rankDiff;
+  if (
+    left.remoteId
+    && right.remoteId
+    && left.updatedAtRevision
+    && right.updatedAtRevision
+    && left.updatedAtRevision !== right.updatedAtRevision
+  ) {
+    return left.updatedAtRevision.localeCompare(right.updatedAtRevision);
+  }
   return (left.updatedAt ?? 0) - (right.updatedAt ?? 0);
 }
 
@@ -63,10 +80,24 @@ export class HybridPresetStore implements IPresetStore {
     };
   }
 
+  private async deleteLocalMutableMirror(
+    type: PresetLevel,
+    name: string,
+    scope?: string,
+  ): Promise<void> {
+    const localEntry = await this.local.load(type, name, scope);
+    if (!localEntry || localEntry.author === 'factory' || localEntry.library === 'stock') return;
+    await this.local.delete(type, name, scope);
+  }
+
   async save(entry: PresetEntry): Promise<void> {
     if (this.isCloudManagedEntry(entry)) {
       await this.cloud!.save(entry);
-      await this.local.delete(entry.type, entry.name, entry.scope ?? entry.engine ?? entry.source);
+      await this.deleteLocalMutableMirror(
+        entry.type,
+        entry.name,
+        entry.scope ?? entry.engine ?? entry.source,
+      );
       return;
     }
 
@@ -152,14 +183,16 @@ export class HybridPresetStore implements IPresetStore {
         throw new Error('Cloud preset delete is unavailable in shared preset mode.');
       }
       await this.cloud.delete(type, name, scope);
-      await this.local.delete(type, name, scope);
+      await this.deleteLocalMutableMirror(type, name, scope);
       return;
     }
 
-    await this.local.delete(type, name, scope);
     if (this.cloud) {
       await this.cloud.delete(type, name, scope);
+      await this.deleteLocalMutableMirror(type, name, scope);
+      return;
     }
+    await this.local.delete(type, name, scope);
   }
 
   async rename(
@@ -176,13 +209,32 @@ export class HybridPresetStore implements IPresetStore {
       const cloudEntry = await this.cloud.load(type, name, scope);
       if (cloudEntry) {
         const renamed = await this.cloud.rename(type, name, trimmedName, scope, identity);
-        await this.local.delete(type, name, scope);
+        await this.deleteLocalMutableMirror(type, name, scope);
         return renamed;
       }
       if (SHARED_PRESET_TEST_MODE) return null;
     }
 
     return this.local.rename(type, name, trimmedName, scope, identity);
+  }
+
+  async updateMetadata(
+    type: PresetLevel,
+    name: string,
+    metadata: PresetMetadataPatch,
+    scope?: string,
+    options?: PresetMetadataUpdateOptions,
+  ): Promise<boolean> {
+    if (this.cloud) {
+      const updated = await this.cloud.updateMetadata(type, name, metadata, scope, options);
+      if (updated) {
+        await this.deleteLocalMutableMirror(type, name, scope);
+        return true;
+      }
+      if (SHARED_PRESET_TEST_MODE) return false;
+    }
+
+    return this.local.updateMetadata(type, name, metadata, scope, options);
   }
 
   async exists(type: PresetLevel, name: string, scope?: string): Promise<boolean> {
@@ -202,7 +254,34 @@ export class HybridPresetStore implements IPresetStore {
   }
 
   async findReferences(type: PresetLevel, name: string): Promise<string[]> {
-    return this.local.findReferences(type, name);
+    const [local, cloud] = await Promise.all([
+      this.local.findReferences(type, name),
+      this.cloud?.findReferences(type, name) ?? Promise.resolve([]),
+    ]);
+    return [...new Set([...local, ...cloud])];
+  }
+
+  async findCurrentReferenceCandidates(
+    type: PresetLevel,
+    targetId: string | undefined,
+    targetName: string,
+  ): Promise<PresetReferenceCandidate[]> {
+    const [local, cloud] = await Promise.all([
+      this.local.findCurrentReferenceCandidates(type, targetId, targetName),
+      this.cloud?.findCurrentReferenceCandidates(type, targetId, targetName) ?? Promise.resolve([]),
+    ]);
+    const candidates = new Map<string, PresetReferenceCandidate>();
+    for (const candidate of [...local, ...cloud]) {
+      const key = candidate.id ?? candidate.name.trim().toLowerCase();
+      const existing = candidates.get(key);
+      if (!existing || (
+        candidate.updatedAtRevision
+        && (!existing.updatedAtRevision || candidate.updatedAtRevision > existing.updatedAtRevision)
+      )) {
+        candidates.set(key, candidate);
+      }
+    }
+    return [...candidates.values()];
   }
 
   async getStorageUsed(): Promise<{ bytes: number; count: number }> {

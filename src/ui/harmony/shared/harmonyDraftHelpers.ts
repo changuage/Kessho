@@ -15,6 +15,7 @@ import type {
   HarmonyCapturedContext,
   HarmonyChordExtension,
   HarmonyDraftChord,
+  HarmonyRecognitionCandidate,
   SharedHarmonyChord,
   SharedHarmonyChordSlot,
 } from '../../../audio/harmony/harmonyTypes';
@@ -135,6 +136,33 @@ export function updateDraftIntent(draft: HarmonyDraftChord, intent: HarmonyInten
     recognizedLabel: intent ? `${intent.quality}` : 'custom',
     editFocus: 'semantic',
     source: 'manualVoicing',
+    dirty: true,
+  };
+}
+
+/** Confirm a ranked semantic interpretation without normalizing the user's exact voicing. */
+export function adoptDraftRecognitionCandidate(
+  draft: HarmonyDraftChord,
+  candidate: HarmonyRecognitionCandidate,
+): HarmonyDraftChord {
+  const intent = {
+    ...candidate.intent,
+    extensions: [...candidate.intent.extensions],
+    alterations: [...(candidate.intent.alterations ?? [])],
+    capturedMidiNotes: [...candidate.intent.capturedMidiNotes],
+  };
+  return {
+    ...draft,
+    intent,
+    intentSource: 'confirmed',
+    semanticCandidates: [{ intent, confidence: candidate.confidence }],
+    quality: candidate.quality,
+    extensions: [...candidate.extensions],
+    recognizedLabel: candidate.label,
+    playbackBehavior: 'relative',
+    recognitionMismatch: false,
+    requiresSemanticSelection: false,
+    editFocus: 'semantic',
     dirty: true,
   };
 }

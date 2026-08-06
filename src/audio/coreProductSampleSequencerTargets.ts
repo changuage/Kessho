@@ -93,13 +93,6 @@ function synthEuclidRange(state: Record<string, unknown>, laneNumber: number): {
   );
 }
 
-function addChordGeneratorTarget(discovery: CoreProductSequencerTargetDiscovery, state: Record<string, unknown>): void {
-  if (!booleanFromState(state, 'synthChordGeneratorEnabled', false)) return;
-  const sourceId = productSourceIdFromValue(state.synthChordGeneratorSource, CORE_PRODUCT_SOURCE_IDS.sample1);
-  const octaveShift = Math.max(-2, Math.min(2, Math.round(numberFromState(state, 'synthOctave', 0)))) * 12;
-  addSampleRange(discovery, sourceId, 36 + octaveShift, 84 + octaveShift);
-}
-
 function addRandomTimingTarget(discovery: CoreProductSequencerTargetDiscovery, state: Record<string, unknown>): void {
   if (!booleanFromState(state, 'leadRandomEnabled', false)) return;
   const sourceId = productSourceIdFromValue(state.leadRandomSource, CORE_PRODUCT_SOURCE_IDS.lead1);
@@ -193,7 +186,6 @@ export function discoverCoreProductSequencerTargets(
     sampleRanges: [],
   };
   if (!state) return discovery;
-  addChordGeneratorTarget(discovery, state);
   addRandomTimingTarget(discovery, state);
   addNativeSynthSequencerTargets(discovery, state);
   return discovery;

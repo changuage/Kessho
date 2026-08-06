@@ -1,4 +1,5 @@
 import type { SliderState } from '../state';
+import { NATURE_SLOT_KEYS } from '../../audio/natureSlots';
 import {
   levelAboveEpsilon,
   numericStateValue,
@@ -70,6 +71,16 @@ const sourceWithFlags = (
   state: SliderState,
   keys: readonly (keyof SliderState)[],
 ): boolean => routingAnyFlagEnabled(state, keys);
+
+const insectsEnabled = (state: SliderState): boolean => (
+  Boolean(state.insectsMasterEnabled)
+  && sourceWithFlags(state, ['insectsEnabled', 'insects2Enabled'])
+);
+
+const natureEnabled = (state: SliderState): boolean => (
+  Boolean(state.natureMasterEnabled)
+  && NATURE_SLOT_KEYS.some(({ enabledKey }) => Boolean(state[enabledKey]))
+);
 
 const degradeEnabled = (state: SliderState): boolean => sourceWithFlags(state, [
   'degradeEnabled',
@@ -181,6 +192,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     id: 'waves',
     label: 'Waves',
     accent: '#5A7B8A',
+    note: 'Waves is a legacy production stem. In the routing matrix it appears as a child of the canonical Nature family.',
     levelKey: 'oceanSampleLevel',
     enabledKeys: ['oceanSampleEnabled'],
     toggleMode: 'simple-toggle',
@@ -213,6 +225,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     dynamicsBusKey: 'dynamicsInsectsBus',
     snowflakeArmEligible: true,
     muteGroupKeepsEngineRunning: true,
+    isEnabled: insectsEnabled,
   }),
   source({
     id: 'nature',
@@ -226,6 +239,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     dynamicsBusKey: 'dynamicsNatureBus',
     snowflakeArmEligible: true,
     muteGroupKeepsEngineRunning: true,
+    isEnabled: natureEnabled,
   }),
   source({
     id: 'delayAOut',
@@ -284,7 +298,8 @@ export const ROUTING_SOURCE_BY_ID = new Map<RoutingRowId, RoutingSourceDef>(
   ROUTING_SOURCE_REGISTRY.map((row) => [row.id, row]),
 );
 
-export const ROUTING_MATRIX_ROW_IDS = ROUTING_SOURCE_IDS;
+export const ROUTING_MATRIX_ROW_IDS: readonly RoutingRowId[] = ROUTING_SOURCE_IDS
+  .filter((id) => id !== 'waves');
 
 export const SNOWFLAKE_ARM_ELIGIBLE_ROUTING_ROW_IDS = ROUTING_SOURCE_REGISTRY
   .filter((row) => row.snowflakeArmEligible)

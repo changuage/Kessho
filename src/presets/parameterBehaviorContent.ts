@@ -2,6 +2,7 @@ import { PARAM_REGISTRY } from './ParamRegistry';
 import { normalizePresetParameterBehavior, type PresetContentCandidate } from './contentNodes';
 import type { PresetVersionContentRefV2Row } from './presetStorageV2';
 import type { PresetVersionMetadata } from './types';
+import { sanitizePresetParameterBehaviorMetadata } from './versionMetadataHelpers';
 
 export interface ParameterBehaviorInstance {
   id: string;
@@ -17,14 +18,15 @@ function scopeSlug(scope: string): string {
 export function buildParameterBehaviorInstances(
   metadata: PresetVersionMetadata | undefined,
 ): ParameterBehaviorInstance[] {
+  const canonical = sanitizePresetParameterBehaviorMetadata(metadata);
   const keys = new Set([
-    ...Object.keys(metadata?.sliderModes ?? {}),
-    ...Object.keys(metadata?.dualRanges ?? {}),
+    ...Object.keys(canonical.sliderModes ?? {}),
+    ...Object.keys(canonical.dualRanges ?? {}),
   ]);
   const byScope = new Map<string, Record<string, unknown>>();
   for (const key of keys) {
-    const mode = metadata?.sliderModes?.[key];
-    const range = metadata?.dualRanges?.[key];
+    const mode = canonical.sliderModes?.[key];
+    const range = canonical.dualRanges?.[key];
     const behavior = normalizePresetParameterBehavior({ mode, ...(range ? { range } : {}) });
     if (behavior.mode === 'single') continue;
     const scope = PARAM_REGISTRY[key]?.scope ?? 'global';
@@ -51,7 +53,10 @@ export function hydrateParameterBehaviorRefs(
   refs: readonly PresetVersionContentRefV2Row[],
   payloadMap: Map<string, unknown>,
 ): PresetVersionMetadata | undefined {
-  const next: PresetVersionMetadata = { ...(metadata ?? {}) };
+  const next: PresetVersionMetadata = {
+    ...(metadata ?? {}),
+    ...sanitizePresetParameterBehaviorMetadata(metadata),
+  };
   const sliderModes = { ...(next.sliderModes ?? {}) };
   const dualRanges = { ...(next.dualRanges ?? {}) };
   for (const ref of refs) {
@@ -68,8 +73,11 @@ export function hydrateParameterBehaviorRefs(
       }
     }
   }
-  if (Object.keys(sliderModes).length > 0) next.sliderModes = sliderModes;
-  if (Object.keys(dualRanges).length > 0) next.dualRanges = dualRanges;
+  const canonical = sanitizePresetParameterBehaviorMetadata({ sliderModes, dualRanges });
+  if (canonical.sliderModes) next.sliderModes = canonical.sliderModes;
+  else delete next.sliderModes;
+  if (canonical.dualRanges) next.dualRanges = canonical.dualRanges;
+  else delete next.dualRanges;
   return Object.keys(next).length > 0 ? next : undefined;
 }
 

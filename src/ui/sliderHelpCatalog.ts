@@ -589,16 +589,10 @@ const padFoldHelp = entry(
   [sy('Pad 1 / Tone', 'Fold')],
 );
 
-const padFilterMinHelp = entry(
-  'Sets the lower edge of the pad filter sweep.',
-  'Low values let the sweep dip into darker territory. High values keep the moving cutoff from closing down as far.',
-  [sy('Pad 1 / Filter', 'Min')],
-);
-
-const padFilterMaxHelp = entry(
-  'Sets the upper edge of the pad filter sweep.',
-  'Low values cap the filter at a darker ceiling. High values let the sweep open further and reveal more top end.',
-  [sy('Pad 1 / Filter', 'Max')],
+const padFilterCutoffHelp = entry(
+  'Sets the pad filter’s resting cutoff frequency.',
+  'Use single mode for a fixed base cutoff, or switch this slider to Walk or Sample & Hold mode to animate the base within a range. The filter envelope and LFO apply independently around the current base frequency.',
+  [sy('Pad 1 / Filter', 'Cutoff')],
 );
 
 const padFilterResHelp = lowHigh(
@@ -882,8 +876,7 @@ const synthEntries: Record<string, SliderHelpEntry> = {
   hardness: padHardnessHelp,
   padOscMix: padOscMixHelp,
   padFoldAmount: padFoldHelp,
-  filterCutoffMin: padFilterMinHelp,
-  filterCutoffMax: padFilterMaxHelp,
+  filterCutoff: padFilterCutoffHelp,
   filterResonance: padFilterResHelp,
   filterQ: padFilterQHelp,
   filterSlope: padFilterSlopeHelp,
@@ -921,8 +914,7 @@ const synthEntries: Record<string, SliderHelpEntry> = {
   pad2Hardness: cloneEntry(padHardnessHelp, [sy('Pad 2 / Tone', 'Drive')]),
   pad2OscMix: cloneEntry(padOscMixHelp, [sy('Pad 2 / Tone', 'Osc Mix')]),
   pad2FoldAmount: cloneEntry(padFoldHelp, [sy('Pad 2 / Tone', 'Fold')]),
-  pad2FilterCutoffMin: cloneEntry(padFilterMinHelp, [sy('Pad 2 / Filter', 'Min')]),
-  pad2FilterCutoffMax: cloneEntry(padFilterMaxHelp, [sy('Pad 2 / Filter', 'Max')]),
+  pad2FilterCutoff: cloneEntry(padFilterCutoffHelp, [sy('Pad 2 / Filter', 'Cutoff')]),
   pad2FilterResonance: cloneEntry(padFilterResHelp, [sy('Pad 2 / Filter', 'Resonance')]),
   pad2FilterQ: cloneEntry(padFilterQHelp, [sy('Pad 2 / Filter', 'Q')]),
   pad2FilterSlope: cloneEntry(padFilterSlopeHelp, [sy('Pad 2 / Filter', 'Slope')]),
@@ -959,6 +951,12 @@ const synthEntries: Record<string, SliderHelpEntry> = {
   lead1Morph: leadMorphHelp,
   lead1MorphSpeed: leadMorphSpeedHelp,
   lead1Hold: leadHoldHelp,
+  lead1VibratoDepth: cloneEntry(vibratoDepthHelp, [sy('Lead 1 / Expression', 'Vibrato Depth')]),
+  lead1VibratoRate: cloneEntry(vibratoRateHelp, [sy('Lead 1 / Expression', 'Vibrato Rate')]),
+  lead1Glide: cloneEntry(glideHelp, [sy('Lead 1 / Expression', 'Glide')]),
+  lead2VibratoDepth: cloneEntry(vibratoDepthHelp, [sy('Lead 2 / Expression', 'Vibrato Depth')]),
+  lead2VibratoRate: cloneEntry(vibratoRateHelp, [sy('Lead 2 / Expression', 'Vibrato Rate')]),
+  lead2Glide: cloneEntry(glideHelp, [sy('Lead 2 / Expression', 'Glide')]),
   leadVibratoDepth: rewriteEntry(vibratoDepthHelp, [['Lead / Expression', 'Lead']], [
     sy('Lead 1 / Expression', 'Vibrato Depth'),
     sy('Lead 2 / Expression', 'Vibrato Depth'),
@@ -1046,11 +1044,16 @@ const reverbEntries: Record<string, SliderHelpEntry> = {
   reverbPreCompMakeup: entry('Sets the gain added back after the pre-reverb compressor.', 'Low values keep the reverb feed more restrained. High values push more level into the tank so the wet bloom comes forward and feels fuller.', [rv('Input Dynamics', 'Makeup')]),
   reverbReverse: entry('Blends reverse-style ambience into the shared reverb.', 'Low values keep the reverb behaving normally. High values emphasize reverse swells and suction-like blooms.', [rv('Special', 'Reverse Mix')]),
   reverbReverseLength: entry('Sets how long the reverse reverb buffer is.', 'Low values create tighter reverse swells. High values create slower, longer reverse ramps.', [rv('Special', 'Reverse Length')]),
-  spectralFreezeSpeed: entry('Sets how fast slushy spectral freeze refreshes itself.', 'Low values make the frozen texture smear and mutate slowly. High values refresh the held spectrum more actively.', [rv('Spectral Freeze', 'Speed')]),
+  spectralFreezeStretchSpeed: entry('Sets the spectral-memory scan speed.', 'Low values stretch the captured sound into a slow texture. High values move toward natural playback speed.', [rv('Spectral Freeze', 'Speed')]),
+  spectralFreezePosition: entry('Moves the scan head through the captured memory.', 'Use this to explore a particular moment in the rolling 16-second capture.', [rv('Spectral Freeze', 'Position')]),
+  spectralFreezeRefresh: entry('Sets how quickly live spectral detail refreshes the memory.', 'Low values ooze slowly. High values follow new input more actively.', [rv('Spectral Freeze', 'Refresh')]),
+  spectralFreezeInputSensitivity: entry('Sets how strongly incoming spectral changes update the memory.', 'Lower values favor stable holds. Higher values react to quieter details.', [rv('Spectral Freeze', 'Input Sensitivity')]),
   spectralFreezeMix: entry('Sets the wet/dry balance of the spectral freeze module.', 'Low values keep more live signal present. High values let the frozen layer dominate.', [rv('Spectral Freeze', 'Mix')]),
-  spectralFreezeDecay: entry('Sets how long the spectral freeze can hold before melting.', 'Low values let the frozen material dissolve quickly. High values hold it almost indefinitely.', [rv('Spectral Freeze', 'Sustain')]),
-  spectralFreezePhaseJitter: entry('Adds phase randomization inside the frozen spectrum.', 'Low values keep the freeze more static and glassy. High values make the held texture more slushy and unstable.', [rv('Spectral Freeze', 'Phase Jitter')]),
-  spectralFreezeReverbCrossfade: entry('Sets how much pre-reverb spectral freeze isolates itself from the live reverb path.', 'Low values keep more live reverb bleed mixed in. High values isolate the frozen layer more completely.', [rv('Spectral Freeze', 'Reverb Crossfade')]),
+  spectralFreezeSustain: entry('Sets how long the spectral memory remains present.', 'Low values let the captured material dissolve. High values hold it almost indefinitely.', [rv('Spectral Freeze', 'Sustain')]),
+  spectralFreezeDiffusion: entry('Spreads phase detail inside the held spectrum.', 'Low values remain focused and glassy. High values become softer and more cloud-like.', [rv('Spectral Freeze', 'Diffusion')]),
+  spectralFreezeTone: entry('Tilts the spectral memory darker or brighter.', 'Negative values warm and soften the texture; positive values emphasize air and detail.', [rv('Spectral Freeze', 'Tone')]),
+  spectralFreezeWidth: entry('Sets the stereo width of the reconstructed memory.', 'Lower values pull the freeze toward mono. Higher values preserve a spacious image.', [rv('Spectral Freeze', 'Width')]),
+  spectralFreezeReverbCrossfade: entry('Sets how much of the independent spectral-freeze return also feeds the reverb.', 'The frozen layer remains audible directly at every setting. Raise this for a larger reverberant wash.', [rv('Spectral Freeze', 'Freeze → Reverb')]),
 };
 
 const granularEntries: Record<string, SliderHelpEntry> = {
@@ -2058,7 +2061,7 @@ export const SLIDER_AUDIT_SUMMARY: SliderAuditSummary[] = [
   {
     severity: 'limitation',
     scope: 'Earth walk-only parameters',
-    note: 'Water channels and both insect layers coerce sample-and-hold back to walk mode via `WALK_ONLY_DUAL_KEYS` in `App.tsx`.',
+    note: 'Water channels and both insect layers are classified as walk-only by the shared slider capability registry, so sample-and-hold is normalized back to walk mode.',
   },
   {
     severity: 'limitation',

@@ -47,6 +47,38 @@ function createDelegate(overrides: Partial<ProductLifecycleDelegate> = {}) {
 }
 
 {
+  const preloadGate = createDeferred();
+  const { calls, delegate, states } = createDelegate({
+    preloadRuntime: async () => {
+      calls.push('preload');
+      await preloadGate.promise;
+    },
+    startRuntime: async () => { calls.push('start'); },
+  });
+  const controller = new ProductRuntimeLifecycleController(delegate);
+
+  const preload = controller.preload();
+  await Promise.resolve();
+  assert.equal(controller.currentStatus, 'preloading');
+
+  const start = controller.start();
+  assert.deepEqual(calls, ['preload'], 'start must wait for the in-flight preload');
+  assert.equal(
+    controller.lastRejectedTransitionReason,
+    null,
+    'a playback request during preload must not be rejected',
+  );
+
+  preloadGate.resolve();
+  await preload;
+  await start;
+
+  assert.equal(controller.currentStatus, 'running');
+  assert.deepEqual(calls, ['preload', 'start']);
+  assert.deepEqual(states, ['preloading', 'starting', 'running']);
+}
+
+{
   const { calls, delegate, states } = createDelegate();
   const controller = new ProductRuntimeLifecycleController(delegate);
 

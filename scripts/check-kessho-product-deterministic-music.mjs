@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = process.cwd();
-const wasmPath = resolve(root, 'public/worklets/kessho_core.wasm');
+const wasmPath = resolve(root, 'build/kessho-core/parity/kessho_core_parity.wasm');
 
 function assert(condition, message) {
   if (!condition) {
@@ -38,10 +38,29 @@ function generatedConstNumber(name) {
 }
 
 const snapshotEncoderSource = read('src/audio/coreProductSnapshotEncoder.ts');
+const snapshotConstCache = new Map();
 function snapshotConstNumber(name) {
-  const match = snapshotEncoderSource.match(new RegExp(`const ${name} = ([0-9]+);`));
+  if (snapshotConstCache.has(name)) return snapshotConstCache.get(name);
+  const match = snapshotEncoderSource.match(new RegExp(`const ${name} = ([\\s\\S]*?);`));
   assert(match, `snapshot encoder is missing ${name}`);
-  return Number(match[1]);
+  let expression = match[1].replaceAll('Uint32Array.BYTES_PER_ELEMENT', '4');
+  expression = expression.replace(/\b[A-Z][A-Z0-9_]*\b/g, (identifier) => {
+    if (identifier.startsWith('KESSHO_PRODUCT_')) {
+      return String(generatedConstNumber(identifier));
+    }
+    if (identifier === name) {
+      throw new Error(`snapshot encoder constant ${name} is self-referential`);
+    }
+    return String(snapshotConstNumber(identifier));
+  });
+  assert(
+    /^[0-9+\-*/().\s]+$/.test(expression),
+    `snapshot encoder constant ${name} contains unsupported syntax: ${match[1].trim()}`,
+  );
+  const value = Function(`"use strict"; return (${expression});`)();
+  assert(Number.isFinite(value), `snapshot encoder constant ${name} did not resolve to a finite number`);
+  snapshotConstCache.set(name, value);
+  return value;
 }
 
 requireTokens('cpp/KesshoCore/tests/ProductDeterminismTests.cpp', [
@@ -65,7 +84,11 @@ execFileSync(process.execPath, ['scripts/run-kessho-product-cpp-test.mjs', 'Prod
   stdio: 'inherit',
 });
 
-assert(existsSync(wasmPath), 'Missing public/worklets/kessho_core.wasm; run npm run core:build:wasm first.');
+execFileSync(process.execPath, ['scripts/build-kessho-core-wasm.mjs', '--parity'], {
+  cwd: root,
+  stdio: 'inherit',
+});
+assert(existsSync(wasmPath), 'Parity WASM build did not produce kessho_core_parity.wasm.');
 
 const module = await WebAssembly.compile(readFileSync(wasmPath));
 const instance = await WebAssembly.instantiate(module, {
@@ -98,7 +121,7 @@ const SOURCE_SIZE = snapshotConstNumber('SOURCE_BYTES');
 const SOURCE_COUNT = 8;
 const HEADER_BYTES = 8;
 const TRANSPORT_BYTES = 24;
-const HARMONY_BYTES = 396;
+const HARMONY_BYTES = snapshotConstNumber('HARMONY_BYTES');
 const SOURCE_OFFSET = HEADER_BYTES + TRANSPORT_BYTES + HARMONY_BYTES;
 const SYNTH_OFFSET = SOURCE_OFFSET + SOURCE_SIZE * SOURCE_COUNT;
 const LANE_SIZE = snapshotConstNumber('LANE_BYTES');
@@ -141,7 +164,7 @@ const SOUNDSCAPE_TEXTURE_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_SOUN
 const SOUNDSCAPE_MODULE_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT');
 const SOUNDSCAPE_BYTES = 4 + SOUNDSCAPE_TEXTURE_PARAM_COUNT * 4 + 4 + SOUNDSCAPE_MODULE_PARAM_COUNT * 4;
 const ASSET_REF_BYTES = ASSET_REF_COUNT * 4 * 2;
-const ARRANGEMENT_BYTES = 924;
+const ARRANGEMENT_BYTES = snapshotConstNumber('ARRANGEMENT_BYTES');
 const SONIC_RUNTIME_BYTES = 11 * 16;
 const EVOLUTION_AMOUNT_OFFSET = SNAPSHOT_SIZE - SONIC_RUNTIME_BYTES - ARRANGEMENT_BYTES - SOUNDSCAPE_BYTES - ASSET_REF_BYTES - 8;
 const EVOLUTION_STATE_OFFSET = EVOLUTION_AMOUNT_OFFSET + 4;
@@ -197,7 +220,7 @@ function expectedEvolvedLaneValue(stepId, sample, component, base, depth, minVal
 
 const snapshotPtr = malloc(SNAPSHOT_SIZE);
 const eventsPtr = malloc(SEQUENCER_EVENT_SIZE * 8);
-const telemetryPtr = malloc(15448);
+const telemetryPtr = malloc(14512);
 const engine = create(48000, 128, 0);
 assert(snapshotPtr && eventsPtr && telemetryPtr && engine, 'WASM deterministic timeline allocation failed');
 

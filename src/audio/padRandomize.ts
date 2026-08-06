@@ -171,17 +171,13 @@ function getScopedBoolean(
 function stabilizePadSnapshot(scope: PadRandomScope, snapshot: PadScopeSnapshot): PadScopeSnapshot {
   const next = { ...snapshot };
 
-  const filterMinKey = scopeKey(scope, 'filterCutoffMin') as keyof SliderState;
-  const filterMaxKey = scopeKey(scope, 'filterCutoffMax') as keyof SliderState;
-  const filterMin = quantizeNumber(filterMinKey, getScopedNumber(next, scope, 'filterCutoffMin'));
-  const filterMax = quantizeNumber(filterMaxKey, getScopedNumber(next, scope, 'filterCutoffMax'));
-  if (filterMin <= filterMax) {
-    setScopedValue(next, scope, 'filterCutoffMin', filterMin);
-    setScopedValue(next, scope, 'filterCutoffMax', Math.max(filterMin + 40, filterMax));
-  } else {
-    setScopedValue(next, scope, 'filterCutoffMin', filterMax);
-    setScopedValue(next, scope, 'filterCutoffMax', Math.max(filterMax + 40, filterMin));
-  }
+  const filterCutoffKey = scopeKey(scope, 'filterCutoff') as keyof SliderState;
+  setScopedValue(
+    next,
+    scope,
+    'filterCutoff',
+    quantizeNumber(filterCutoffKey, getScopedNumber(next, scope, 'filterCutoff')),
+  );
 
   const filterBCutoffKey = scopeKey(scope, 'padFilterBCutoff') as keyof SliderState;
   setScopedValue(
@@ -339,22 +335,12 @@ export function createPadRandomGoal(
     'padModEnvDecay',
     'padModEnvRelease',
     'padFilterBCutoff',
+    'filterCutoff',
   ] as const;
 
   for (const key of logKeys) {
     setScopedValue(next, scope, key, mutateLogarithmic(rng, scopeKey(scope, key) as keyof SliderState, getScopedNumber(next, scope, key), logRadius));
   }
-
-  const currentMin = getScopedNumber(next, scope, 'filterCutoffMin');
-  const currentMax = getScopedNumber(next, scope, 'filterCutoffMax');
-  const currentCenter = Math.sqrt(Math.max(40, currentMin) * Math.max(50, currentMax));
-  const currentSpread = Math.log2(Math.max(currentMax, currentMin + 40) / Math.max(40, currentMin));
-  const nextCenter = mutateLogarithmic(rng, scopeKey(scope, 'filterCutoffMax') as keyof SliderState, currentCenter, walkMode ? 0.65 : 1.7);
-  const nextSpread = clamp(currentSpread + randomSigned(rng) * (walkMode ? 0.5 : 1.5), 0.8, 6);
-  const nextMin = nextCenter / Math.pow(2, nextSpread / 2);
-  const nextMax = nextCenter * Math.pow(2, nextSpread / 2);
-  setScopedValue(next, scope, 'filterCutoffMin', quantizeNumber(scopeKey(scope, 'filterCutoffMin') as keyof SliderState, nextMin));
-  setScopedValue(next, scope, 'filterCutoffMax', quantizeNumber(scopeKey(scope, 'filterCutoffMax') as keyof SliderState, nextMax));
 
   const lfo1Dest = pickTargetValue(
     rng,

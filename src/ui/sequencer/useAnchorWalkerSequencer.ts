@@ -158,12 +158,14 @@ export function useAnchorWalkerSequencer({
   const gestureDown = useCallback((delta: number, velocity = 1) => {
     const safeDelta = previewDelta(delta);
     if (safeDelta === 0) return;
-    setHeldGestureDelta(safeDelta);
-    emitPerformanceEvent({ action: 'gestureDown', delta: safeDelta, velocity });
     const nextTriggerMode = safeConfig.playMode === 'gridPattern' ? 'stepGrid' : 'gestureHold';
     if (safeConfig.triggerMode !== nextTriggerMode) {
+      // Commit the play-mode clock policy before the realtime gesture so a
+      // first Hybrid press cannot be interpreted by a stale grid scheduler.
       updateConfig({ triggerMode: nextTriggerMode });
     }
+    setHeldGestureDelta(safeDelta);
+    emitPerformanceEvent({ action: 'gestureDown', delta: safeDelta, velocity });
   }, [emitPerformanceEvent, previewDelta, safeConfig.playMode, safeConfig.triggerMode, updateConfig]);
 
   const gestureUp = useCallback((_delta?: number) => {

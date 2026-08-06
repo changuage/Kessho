@@ -481,6 +481,7 @@ type SpectralFreezeModuleConfig = {
   params: number[];
   routing: 'pre' | 'post';
   reverbCrossfade: number;
+  returnGain: number;
   configKey: string;
 };
 
@@ -588,8 +589,8 @@ function createPadPostChainConfig(sliderState: SliderState): Pick<
   };
 }
 
-const PAD_MODULE_PARAM_COUNT = 108;
-const PAD_PARAMS_PER_PAD = 53;
+const PAD_MODULE_PARAM_COUNT = 106;
+const PAD_PARAMS_PER_PAD = 52;
 const PAD_VOICE_COUNT = 8;
 const PAD_VOICE_MASK_ALL = (1 << PAD_VOICE_COUNT) - 1;
 const PAD_VOICE_DEFAULT_MASK = 1 << (PAD_VOICE_COUNT - 1);
@@ -598,7 +599,7 @@ const REVERB_MODULE_PARAM_COUNT = 31;
 const DELAY_A_MODULE_PARAM_COUNT = 16;
 const DELAY_B_MODULE_PARAM_COUNT = 24;
 const GRANULAR_MODULE_PARAM_COUNT = 204;
-const SPECTRAL_FREEZE_MODULE_PARAM_COUNT = 6;
+const SPECTRAL_FREEZE_MODULE_PARAM_COUNT = 13;
 const LEAD_FM_MODULE_PARAM_COUNT = 112;
 const DRUM_MODULE_PARAM_COUNT = 126;
 const CORE_DRUM_DRY_TRIM = 1.0;
@@ -1010,38 +1011,37 @@ const PAD_PARAM_INDEX = {
   foldAmount: 18,
   foldMode: 19,
   filterType: 20,
-  filterCutoffMin: 21,
-  filterCutoffMax: 22,
-  filterResonance: 23,
-  filterQ: 24,
-  filterSlope: 25,
-  filterKeyTracking: 26,
-  filterBEnabled: 27,
-  filterBType: 28,
-  filterBCutoff: 29,
-  filterBResonance: 30,
-  filterBQ: 31,
-  filterRouting: 32,
-  attack: 33,
-  decay: 34,
-  sustain: 35,
-  release: 36,
-  lfo1Rate: 37,
-  lfo1Depth: 38,
-  lfo1Wave: 39,
-  lfo1Dest: 40,
-  lfo2Rate: 41,
-  lfo2Depth: 42,
-  lfo2Wave: 43,
-  lfo2Dest: 44,
-  modEnvEnabled: 45,
-  modEnvAttack: 46,
-  modEnvDecay: 47,
-  modEnvSustain: 48,
-  modEnvRelease: 49,
-  modEnvDepth: 50,
-  modEnvDest: 51,
-  level: 52,
+  filterCutoff: 21,
+  filterResonance: 22,
+  filterQ: 23,
+  filterSlope: 24,
+  filterKeyTracking: 25,
+  filterBEnabled: 26,
+  filterBType: 27,
+  filterBCutoff: 28,
+  filterBResonance: 29,
+  filterBQ: 30,
+  filterRouting: 31,
+  attack: 32,
+  decay: 33,
+  sustain: 34,
+  release: 35,
+  lfo1Rate: 36,
+  lfo1Depth: 37,
+  lfo1Wave: 38,
+  lfo1Dest: 39,
+  lfo2Rate: 40,
+  lfo2Depth: 41,
+  lfo2Wave: 42,
+  lfo2Dest: 43,
+  modEnvEnabled: 44,
+  modEnvAttack: 45,
+  modEnvDecay: 46,
+  modEnvSustain: 47,
+  modEnvRelease: 48,
+  modEnvDepth: 49,
+  modEnvDest: 50,
+  level: 51,
 } as const;
 
 const PAD_WAVE_VALUES: Record<string, number> = { sine: 0, triangle: 1, sawtooth: 2, square: 3 };
@@ -1091,8 +1091,7 @@ const PAD_PARAM_SPECS = [
   ['padFoldAmount', PAD_PARAM_INDEX.foldAmount, null, 0],
   ['padFoldMode', PAD_PARAM_INDEX.foldMode, null, 0],
   ['filterType', PAD_PARAM_INDEX.filterType, PAD_MAIN_FILTER_VALUES, 0],
-  ['filterCutoffMin', PAD_PARAM_INDEX.filterCutoffMin, null, 80],
-  ['filterCutoffMax', PAD_PARAM_INDEX.filterCutoffMax, null, 1800],
+  ['filterCutoff', PAD_PARAM_INDEX.filterCutoff, null, 1700],
   ['filterResonance', PAD_PARAM_INDEX.filterResonance, null, 0.2],
   ['filterQ', PAD_PARAM_INDEX.filterQ, null, 1],
   ['filterSlope', PAD_PARAM_INDEX.filterSlope, null, 12],
@@ -3698,16 +3697,30 @@ function createSpectralFreezeModuleConfig(sliderState: SliderState): SpectralFre
   const enabled = booleanValue(state.spectralFreezeEnabled, false);
   const routing = state.spectralFreezeRouting === 'post' ? 'post' : 'pre';
   const reverbCrossfade = boundedNumber(state.spectralFreezeReverbCrossfade, 0.5, 0, 1);
+  const returnGain = boundedNumber(state.spectralFreezeMix, 1, 0, 1);
   const params = Array.from({ length: SPECTRAL_FREEZE_MODULE_PARAM_COUNT }, () => 0);
-  params[0] = booleanValue(state.spectralFreezeActive, false) ? 1 : 0;
-  params[1] = booleanValue(state.spectralFreezeSlushy, false) ? 1 : 0;
-  params[2] = boundedNumber(state.spectralFreezeSpeed, 0.3, 0, 1);
-  params[3] = boundedNumber(state.spectralFreezeMix, 1, 0, 1);
-  params[4] = 1 - boundedNumber(state.spectralFreezeDecay, 1, 0, 1);
-  params[5] = boundedNumber(state.spectralFreezePhaseJitter, 0, 0, 1);
+  const mode = state.spectralFreezeMode === 'solid' ? 0
+    : state.spectralFreezeMode === 'slushy' ? 1
+      : state.spectralFreezeMode === 'livingStretch' ? 3 : 2;
+  const direction = state.spectralFreezeDirection === 'reverse' ? 1
+    : state.spectralFreezeDirection === 'pingpong' ? 2 : 0;
+  params[0] = enabled && booleanValue(state.spectralFreezeActive, false) ? 1 : 0;
+  params[1] = mode;
+  params[2] = Math.max(0, Math.trunc(boundedNumber(state.spectralFreezeCaptureSerial, 0, 0, 0xffffffff)));
+  params[3] = boundedNumber(state.spectralFreezeStretchSpeed, 0.5, 0, 1);
+  params[4] = direction;
+  params[5] = boundedNumber(state.spectralFreezePosition, 0, 0, 1);
+  params[6] = boundedNumber(state.spectralFreezeRefresh, 0.15, 0, 1);
+  params[7] = boundedNumber(state.spectralFreezeInputSensitivity, 0.5, 0, 1);
+  params[8] = boundedNumber(state.spectralFreezeDiffusion, 0.55, 0, 1);
+  params[9] = boundedNumber(state.spectralFreezeTone, -0.15, -1, 1);
+  params[10] = boundedNumber(state.spectralFreezeWidth, 0.85, 0, 1);
+  params[11] = boundedNumber(state.spectralFreezeSustain, 1, 0, 1);
+  params[12] = 1;
   const routingKey = [
     routing,
     Math.round(reverbCrossfade * 1_000_000) / 1_000_000,
+    Math.round(returnGain * 1_000_000) / 1_000_000,
   ].join(':');
 
   return {
@@ -3715,6 +3728,7 @@ function createSpectralFreezeModuleConfig(sliderState: SliderState): SpectralFre
     params,
     routing,
     reverbCrossfade,
+    returnGain,
     configKey: enabled ? `spectral-freeze:${routingKey}:${paramConfigKey(params)}` : 'spectral-freeze:disabled-v1',
   };
 }
@@ -6507,7 +6521,7 @@ export class CoreEngineHost {
       type: 'configureModule',
       module: 'reverb',
       enabled: config.enabled,
-      params: config.enabled ? config.params : undefined,
+      params: config.params,
       pad1SendGain: config.pad1SendGain,
       pad2SendGain: config.pad2SendGain,
       preCompThresholdDb: config.preCompThresholdDb,
@@ -6603,6 +6617,7 @@ export class CoreEngineHost {
       params: config.enabled ? config.params : undefined,
       routing: config.routing,
       reverbCrossfade: config.reverbCrossfade,
+      returnGain: config.returnGain,
     });
   }
 

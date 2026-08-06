@@ -25,7 +25,11 @@ import {
   type RoutingMuteGroupRuntimeLevelPatch,
   type RoutingMuteGroupScheduler,
 } from './routingMuteGroups';
-import { ROUTING_SOURCE_IDS } from './routingSourceRegistry';
+import {
+  ROUTING_MATRIX_ROW_IDS,
+  ROUTING_SOURCE_IDS,
+  routingSourceIsEnabled,
+} from './routingSourceRegistry';
 
 type LogEntry =
   | { type: 'runtime-patch'; patch: RoutingMuteGroupRuntimeLevelPatch }
@@ -194,6 +198,10 @@ function testRandomSettingsAndSlotMetadataNormalization(): void {
 
 function testSourceEligibilityMatchesRoutingRegistry(): void {
   assert.deepStrictEqual(
+    ROUTING_MATRIX_ROW_IDS,
+    ROUTING_SOURCE_IDS.filter((sourceId) => sourceId !== 'waves'),
+  );
+  assert.deepStrictEqual(
     ROUTING_MUTE_GROUP_SOURCE_IDS,
     ROUTING_SOURCE_IDS.filter((sourceId) => sourceId !== 'waves'),
   );
@@ -211,6 +219,24 @@ function testSourceEligibilityMatchesRoutingRegistry(): void {
   assert.deepStrictEqual(normalized, {
     mutedSourceIds: ['delayAOut', 'delayBOut', 'degrade', 'reverb'],
   });
+}
+
+function testEarthFamilyRoutingPredicates(): void {
+  assert.equal(routingSourceIsEnabled('insects', makeState({ insectsMasterEnabled: true })), false);
+  assert.equal(routingSourceIsEnabled('insects', makeState({ insectsEnabled: true })), false);
+  assert.equal(routingSourceIsEnabled('insects', makeState({ insectsMasterEnabled: true, insectsEnabled: true })), true);
+  assert.equal(routingSourceIsEnabled('insects', makeState({ insectsMasterEnabled: true, insects2Enabled: true })), true);
+
+  assert.equal(routingSourceIsEnabled('nature', makeState({ natureMasterEnabled: true })), false);
+  assert.equal(routingSourceIsEnabled('nature', makeState({ nature1Enabled: true })), false);
+  assert.equal(routingSourceIsEnabled('nature', makeState({ natureMasterEnabled: true, nature1Enabled: true })), true);
+  assert.equal(routingSourceIsEnabled('nature', makeState({ natureMasterEnabled: true, nature4Enabled: true })), true);
+  assert.equal(routingSourceIsEnabled('nature', makeState({
+    natureMasterEnabled: true,
+    birdsEnabled: true,
+    birds2Enabled: true,
+    frogsEnabled: true,
+  })), false);
 }
 
 function testNormalizeFiltersSceneKeysAndDropsLevels(): void {
@@ -789,6 +815,7 @@ function testCancellationPreventsStaleDisables(): void {
 testNormalizeFiltersIneligibleSources();
 testRandomSettingsAndSlotMetadataNormalization();
 testSourceEligibilityMatchesRoutingRegistry();
+testEarthFamilyRoutingPredicates();
 testNormalizeFiltersSceneKeysAndDropsLevels();
 testCaptureUsesRegistryAudibilityAndEligibility();
 testCaptureIncludesPerformanceMuteSceneWithoutSends();

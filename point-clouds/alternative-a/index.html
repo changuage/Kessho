@@ -1,0 +1,958 @@
+<!doctype html>
+<html lang="en" data-preset="string-waves" data-reverb="lite" data-phase="booting" data-transport="stopped" data-morph="0.42" data-telemetry="idle">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#eeeae0">
+  <meta name="description" content="The Living Score — a focused listening instrument for Kessho String Waves.">
+  <title>THE LIVING SCORE — Point Clouds / Kessho</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #eeeae0;
+      --paper-warm: #e5e0d5;
+      --ink: #121212;
+      --muted: rgba(18, 18, 18, .55);
+      --faint: rgba(18, 18, 18, .16);
+      --signal: #f04420;
+      --mono: "DM Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --condensed: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+      --safe-top: max(20px, env(safe-area-inset-top));
+      --safe-right: max(22px, env(safe-area-inset-right));
+      --safe-bottom: max(20px, env(safe-area-inset-bottom));
+      --safe-left: max(22px, env(safe-area-inset-left));
+    }
+
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--paper); }
+    body {
+      color: var(--ink);
+      font-family: var(--mono);
+      overscroll-behavior: none;
+      text-rendering: geometricPrecision;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input { color: inherit; font: inherit; }
+    button { border: 0; background: none; padding: 0; cursor: pointer; }
+    button:focus-visible, input:focus-visible { outline: 1px solid var(--signal); outline-offset: 5px; }
+
+    #scoreCanvas {
+      position: fixed;
+      z-index: 0;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+      background: var(--paper);
+    }
+
+    #kessho-engine {
+      position: fixed;
+      width: 1px;
+      height: 1px;
+      left: -2px;
+      bottom: -2px;
+      border: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .wash {
+      position: fixed;
+      z-index: 1;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(90deg, rgba(238, 234, 224, .45), transparent 17%, transparent 78%, rgba(238, 234, 224, .58)),
+        radial-gradient(ellipse 70% 80% at 51% 46%, transparent 40%, rgba(238, 234, 224, .58) 100%);
+      mix-blend-mode: screen;
+    }
+
+    .grain {
+      position: fixed;
+      z-index: 2;
+      inset: -50%;
+      width: 200%;
+      height: 200%;
+      pointer-events: none;
+      opacity: .075;
+      background-image: radial-gradient(rgba(18,18,18,.24) .65px, transparent .8px), radial-gradient(rgba(18,18,18,.14) .55px, transparent .8px);
+      background-size: 4px 4px, 7px 7px;
+      mix-blend-mode: multiply;
+    }
+
+    .frame {
+      position: fixed;
+      z-index: 4;
+      inset: 0;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+      pointer-events: none;
+    }
+
+    .masthead, .footline {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 22px;
+      pointer-events: auto;
+    }
+    .footline { align-items: flex-end; }
+
+    .micro, .status, .movement-index, .ruler-label, .transport-readout, .drawer h2, .drawer h3, .morph-value, .morph-caption {
+      font-family: var(--mono);
+      font-size: 9px;
+      line-height: 1.45;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+    .micro { margin: 0; }
+    .micro--muted, .status[data-tone="muted"], .movement-note, .ruler-label, .transport-readout, .drawer p, .drawer small { color: var(--muted); }
+    .micro--brand { letter-spacing: .18em; font-weight: 500; }
+    .micro--brand::before {
+      content: "";
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      margin: 0 9px 1px 0;
+      background: var(--signal);
+      border-radius: 50%;
+      box-shadow: 0 0 0 1px rgba(240, 68, 32, .16), 0 0 14px rgba(240, 68, 32, .36);
+    }
+    .meta {
+      display: inline-flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 16px;
+      text-align: right;
+    }
+    .status { color: var(--signal); }
+    html[data-phase="failed"] .status { color: #a52813; }
+    html[data-phase="playing"] .status::before { animation: status-blink 1s steps(2, end) infinite; }
+    .status::before { content: "●"; margin-right: 7px; font-size: 8px; }
+    @keyframes status-blink { 50% { opacity: .22; } }
+
+    .vertical-title {
+      position: fixed;
+      z-index: 1;
+      top: -8vh;
+      left: clamp(-36px, -1.7vw, -12px);
+      height: 116vh;
+      color: rgba(18, 18, 18, .075);
+      font-family: var(--condensed);
+      font-size: clamp(160px, 20.6vw, 310px);
+      font-weight: 600;
+      line-height: .77;
+      letter-spacing: -.045em;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      pointer-events: none;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .score-copy {
+      position: absolute;
+      top: 17vh;
+      left: clamp(78px, 11vw, 190px);
+      width: min(400px, 37vw);
+      pointer-events: none;
+    }
+    .score-copy h1 {
+      margin: 0;
+      font-family: var(--condensed);
+      font-size: clamp(54px, 7.8vw, 116px);
+      line-height: .79;
+      font-weight: 600;
+      letter-spacing: -.045em;
+      text-transform: uppercase;
+    }
+    .score-copy h1 span { display: block; }
+    .score-copy h1 span:nth-child(2) { margin-left: 1.1em; }
+    .score-copy h1 span:nth-child(3) { margin-left: .25em; color: var(--signal); }
+    .score-copy p {
+      max-width: 250px;
+      margin: 28px 0 0 2px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 10px;
+      line-height: 1.75;
+      letter-spacing: .035em;
+    }
+
+    .movement {
+      position: absolute;
+      top: 16.5vh;
+      right: 0;
+      width: min(240px, 17vw);
+      padding-right: 1px;
+      text-align: right;
+      pointer-events: none;
+    }
+    .movement-index { color: var(--signal); }
+    .movement-name {
+      display: block;
+      margin-top: 5px;
+      font-family: var(--condensed);
+      font-size: clamp(23px, 2.25vw, 34px);
+      line-height: 1;
+      letter-spacing: .005em;
+      text-transform: uppercase;
+    }
+    .movement-note { display: block; margin-top: 9px; font-size: 9px; line-height: 1.6; }
+
+    .ruler {
+      position: absolute;
+      left: clamp(78px, 11vw, 190px);
+      right: clamp(24px, 4.5vw, 78px);
+      bottom: 13.5vh;
+      height: 25px;
+      border-top: 1px solid rgba(18,18,18,.46);
+      pointer-events: none;
+    }
+    .ruler::before, .ruler::after { content: ""; position: absolute; top: -1px; width: 1px; height: 8px; background: var(--ink); }
+    .ruler::before { left: 0; }
+    .ruler::after { right: 0; }
+    .ruler-ticks { display: grid; grid-template-columns: repeat(16, 1fr); height: 18px; }
+    .ruler-tick {
+      position: relative;
+      height: 9px;
+      border-left: 1px solid rgba(18,18,18,.28);
+      transition: border-color .15s ease, height .15s ease;
+    }
+    .ruler-tick:nth-child(4n+1) { height: 15px; border-color: rgba(18,18,18,.5); }
+    .ruler-tick.is-active { border-color: var(--signal); height: 21px; }
+    .ruler-tick.is-active::after { content: ""; position: absolute; top: 20px; left: -1px; width: 3px; height: 3px; background: var(--signal); }
+    .ruler-label { position: absolute; top: 18px; left: 0; }
+    .ruler-label span { color: var(--ink); }
+
+    .transport {
+      display: inline-flex;
+      align-items: center;
+      gap: 15px;
+      pointer-events: auto;
+    }
+    .transport-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 25px;
+      color: var(--ink);
+      font-size: 9px;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+    }
+    .transport-button::before {
+      content: "";
+      width: 23px;
+      height: 23px;
+      border: 1px solid var(--ink);
+      border-radius: 50%;
+      background: linear-gradient(90deg, transparent 42%, var(--ink) 42%, var(--ink) 58%, transparent 58%);
+      transition: background .2s ease, border-color .2s ease;
+    }
+    html[data-transport="playing"] .transport-button::before { background: linear-gradient(90deg, var(--signal) 35%, transparent 35%, transparent 65%, var(--signal) 65%); border-color: var(--signal); }
+    .transport-button:hover::before { border-color: var(--signal); }
+    .transport-readout { min-width: 92px; }
+
+    .morph-control {
+      position: absolute;
+      right: clamp(24px, 4.5vw, 78px);
+      bottom: 20vh;
+      display: grid;
+      grid-template-columns: auto 20px;
+      grid-template-rows: auto 130px auto;
+      gap: 7px 10px;
+      align-items: center;
+      pointer-events: auto;
+      text-align: right;
+    }
+    .morph-caption { grid-column: 1 / -1; color: var(--muted); }
+    .morph-rail {
+      grid-column: 2;
+      grid-row: 2;
+      width: 130px;
+      height: 20px;
+      margin: 0 -55px 0 -55px;
+      transform: rotate(-90deg);
+      accent-color: var(--signal);
+      cursor: ns-resize;
+    }
+    .morph-value { grid-column: 1; grid-row: 2; align-self: end; color: var(--signal); font-variant-numeric: tabular-nums; }
+    .morph-scale { grid-column: 1 / -1; display: flex; justify-content: space-between; color: var(--muted); font-size: 8px; }
+
+    .bridge-error {
+      position: absolute;
+      left: clamp(78px, 11vw, 190px);
+      bottom: 7.5vh;
+      max-width: min(440px, 60vw);
+      min-height: 14px;
+      color: #a52813;
+      font-size: 8px;
+      letter-spacing: .05em;
+      line-height: 1.4;
+      pointer-events: none;
+    }
+
+    .drawer {
+      position: fixed;
+      z-index: 9;
+      top: 0;
+      right: 0;
+      width: min(390px, 76vw);
+      height: 100%;
+      padding: calc(var(--safe-top) + 45px) 30px var(--safe-bottom);
+      background: rgba(238, 234, 224, .97);
+      border-left: 1px solid rgba(18,18,18,.3);
+      box-shadow: -25px 0 50px rgba(18,18,18,.07);
+      transform: translateX(101%);
+      transition: transform .55s cubic-bezier(.16,1,.3,1);
+      pointer-events: none;
+      overflow: auto;
+    }
+    .drawer.is-open { transform: translateX(0); pointer-events: auto; }
+    .drawer--left { left: 0; right: auto; border-right: 1px solid rgba(18,18,18,.3); border-left: 0; transform: translateX(-101%); }
+    .drawer--left.is-open { transform: translateX(0); }
+    .drawer-close { position: absolute; top: var(--safe-top); right: 30px; color: var(--muted); font-size: 9px; letter-spacing: .15em; text-transform: uppercase; }
+    .drawer--left .drawer-close { right: auto; left: 30px; }
+    .drawer h2 { margin: 0 0 30px; color: var(--signal); font-weight: 400; }
+    .drawer h3 { margin: 0 0 7px; font-weight: 500; }
+    .drawer section { padding: 0 0 24px; margin-bottom: 24px; border-bottom: 1px solid var(--faint); }
+    .drawer section:last-child { border-bottom: 0; }
+    .drawer p { margin: 0; max-width: 300px; font-size: 10px; line-height: 1.75; letter-spacing: .015em; }
+    .drawer small { display: block; font-size: 8px; line-height: 1.65; letter-spacing: .06em; }
+
+    @media (max-width: 700px) {
+      :root { --safe-right: max(16px, env(safe-area-inset-right)); --safe-left: max(16px, env(safe-area-inset-left)); }
+      .masthead { display: block; }
+      .meta { justify-content: flex-start; margin-top: 12px; text-align: left; }
+      .vertical-title { top: 9vh; left: -30px; height: 85vh; font-size: clamp(134px, 37vw, 205px); opacity: .8; }
+      .score-copy { top: 25vh; left: 27px; width: 56vw; }
+      .score-copy h1 { font-size: clamp(48px, 14.5vw, 74px); }
+      .score-copy p { margin-top: 19px; font-size: 8px; max-width: 195px; }
+      .movement { top: 25vh; width: 150px; }
+      .movement-name { font-size: 24px; }
+      .movement-note { font-size: 8px; }
+      .ruler { left: 27px; right: 17px; bottom: 17vh; }
+      .morph-control { right: 17px; bottom: 27vh; grid-template-rows: auto 105px auto; }
+      .morph-rail { width: 105px; }
+      .bridge-error { left: 27px; bottom: 8.5vh; max-width: 69vw; font-size: 7px; }
+      .transport-readout { display: none; }
+      .drawer { width: 90vw; padding-left: 23px; padding-right: 23px; }
+      .drawer-close { right: 23px; }
+      .drawer--left .drawer-close { left: 23px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+    }
+  </style>
+  <script src="../shared/kessho-site-bridge.js"></script>
+  <script data-point-clouds-bridge-fallback>
+    /* Generated by scripts/generate-point-clouds-embedded-engine.mjs. */
+    if (!window.PointCloudsKessho) {
+      (function(u){"use strict";if(!u)return;const Q="string-waves",J=15e3,X=8e3,ee=8e3,te=60,_=1,j=Object.freeze(["level","peak","onset","transient","activity","phase","pulse"]);function i(t,e,s){return Object.freeze({id:t,signal:e,description:s})}function m(t){const e={...t.provider};for(const s of["fields","indices","tapIds"])Array.isArray(e[s])&&(e[s]=Object.freeze(e[s].slice()));return Object.freeze({...t,children:Object.freeze((t.children??[]).slice()),signals:Object.freeze((t.signals??j).slice()),provider:Object.freeze(e),reactions:Object.freeze(t.reactions.slice())})}const C=Object.freeze([m({id:"master",label:"Master",family:"system",children:[],provider:{kind:"master-output",fields:["masterOutputRms","masterOutputPeak"]},reactions:[i("global-breath","level","Expand and contract the complete point field with the output envelope."),i("luminance-ceiling","peak","Lift point luminance and bloom as the mix approaches its peak ceiling."),i("depth-pressure","transient","Push a short pressure wave through Z depth on mix transients.")]}),m({id:"pads",label:"Pads",family:"source",children:["pad1","pad2"],provider:{kind:"stems",indices:[1,2],aggregation:"max"},reactions:[i("soft-volume","level","Inflate the cloud into a slow, soft-edged volume."),i("harmonic-drift","activity","Increase low-frequency flow-field drift without adding jitter."),i("veil-opacity","peak","Thicken the rear depth veil while leaving foreground points legible.")]}),m({id:"leads",label:"Leads",family:"source",children:["lead1","lead2"],provider:{kind:"stems",indices:[3,4],aggregation:"max"},reactions:[i("filament-attractor","level","Pull nearby points into a directional filament around the lead voice."),i("note-tracer","onset","Launch a short-lived tracer from the current interaction focus."),i("accent-heat","transient","Concentrate the warm accent points at the front of the cloud.")]}),m({id:"samples",label:"Samples",family:"source",children:["sample1","sample2"],provider:{kind:"stems",indices:[6,8],aggregation:"max"},reactions:[i("contour-imprint","level","Reveal a temporary contour or surface imprint inside the cloud."),i("material-displacement","onset","Displace a local patch as if a recorded object struck the point surface."),i("orbit-fragments","transient","Release a small orbiting fragment cluster on sharp sample attacks.")]}),m({id:"drums",label:"Drums",family:"source",children:["drums"],provider:{kind:"stems",indices:[5],aggregation:"max"},reactions:[i("radial-impact","pulse","Send a radial compression ring through the point structure."),i("lattice-snap","onset","Momentarily tighten point spacing, then rebound with spring weight."),i("rotation-impulse","transient","Add a bounded rotational impulse to the shared 3D physics body.")]}),m({id:"earth",label:"Earth",family:"source",children:["waves","water","insects","nature"],provider:{kind:"stems",indices:[7],aggregation:"max"},reactions:[i("topographic-flow","level","Move points along a slow topographic flow field."),i("spatial-weather","activity","Broaden the field and increase depth-dependent atmospheric dropout."),i("terrain-grain","peak","Modulate fine point density like changing terrain texture.")]}),m({id:"effects",label:"Effects",family:"bus",children:["granular","delayAOut","delayBOut","degrade","reverb"],provider:{kind:"stems",indices:[9],aggregation:"max"},reactions:[i("wet-depth","level","Increase the apparent depth and persistence of the complete wet field."),i("return-afterimage","peak","Leave a restrained afterimage behind moving structures."),i("edge-diffusion","activity","Diffuse silhouette edges without changing the dry geometry.")]}),m({id:"granular",label:"Granular",family:"processor",children:["granular"],provider:{kind:"graph-taps",tapIds:[16],fields:["workletGranularReturnPeak"],aggregation:"max"},reactions:[i("fragment-density","level","Break solid forms into denser, smaller point fragments."),i("grain-jitter","activity","Add spatially correlated micro-motion instead of white-noise jitter."),i("grain-trails","onset","Emit short trails whose length follows grain activity.")]}),m({id:"delays",label:"Delays",family:"processor",children:["delayAOut","delayBOut"],provider:{kind:"graph-taps",tapIds:[8,12],fields:["workletDelayReturnPeak"],aggregation:"max"},reactions:[i("echo-ghosts","level","Repeat the current form as depth-offset, decaying ghost layers."),i("recursive-rings","onset","Create successively dimmer rings at the delay cadence."),i("phase-orbit","activity","Offset orbit phase while preserving the main cloud position.")]}),m({id:"degrade",label:"Degrade",family:"processor",children:["degrade"],provider:{kind:"engine-return",fields:["workletDegradeReturnPeak"]},reactions:[i("point-erosion","level","Remove coherent point bands in slowly changing erosion patches."),i("quantized-drift","activity","Quantize selected motion vectors while the rest of the body stays fluid."),i("dropout-scars","transient","Carve momentary gaps that heal with the shared spring system.")]}),m({id:"reverb",label:"Reverb",family:"processor",children:["reverb"],provider:{kind:"graph-taps",tapIds:[21],fields:["workletReverbReturnPeak"],aggregation:"max"},reactions:[i("z-expansion","level","Open the cloud along Z while retaining its 2D silhouette."),i("tail-afterglow","peak","Extend point persistence as an afterglow proportional to the return."),i("fog-dispersion","activity","Move low-opacity points outward into the far depth field.")]}),m({id:"transport",label:"Transport",family:"system",children:[],provider:{kind:"transport",fields:["beatPosition","barIndex","phraseIndex"]},reactions:[i("beat-breath","pulse","Apply a small shared breath impulse at the beat boundary."),i("bar-weight-shift","phase","Shift the body weight across one bar without resetting rotation."),i("phrase-morph","phase","Schedule large topology changes only at phrase boundaries.")]})]),B=Object.freeze({schemaVersion:_,signals:j,availability:Object.freeze({available:"The Product Core provider is authoritative, including when its value is zero.",unavailable:"The exact provider is not being published; consumers must not substitute another channel."}),inputs:C,byId:Object.freeze(Object.fromEntries(C.map(t=>[t.id,t])))});function o(t,e=0){return Number.isFinite(Number(t))?Number(t):e}function p(t){return Math.max(0,Math.min(1,o(t)))}function S(t){return Array.isArray(t)?t.slice():[]}function re(t){return!t||typeof t!="object"?{}:{...t}}function y(t,e){return t!==null&&typeof t=="object"&&Object.prototype.hasOwnProperty.call(t,e)&&Number.isFinite(Number(t[e]))}function M(t){let e=0;for(const s of t)e=Math.max(e,Math.max(0,o(s)));return e}function se(t,e){const s=Array.isArray(t?.workletStemPeaks)?t.workletStemPeaks:null,r=e.indices??[];return!s||r.length===0||r.some(n=>!y(s,n))?{available:!1,peak:0}:{available:!0,peak:M(r.map(n=>s[n]))}}function ie(t,e){const r=(e.fields??[]).filter(c=>y(t,c)).map(c=>t[c]);if(r.length>0)return{available:!0,peak:M(r)};const n=e.tapIds??[],a=Array.isArray(t?.workletGraphTapPeaks)?t.workletGraphTapPeaks:null,h=Array.isArray(t?.workletGraphTapPeakValid)?t.workletGraphTapPeakValid:null,l=Array.isArray(t?.workletGraphTapActiveIds)?t.workletGraphTapActiveIds:[],d=c=>h?.[c]===!0||l.includes(c);return!a||n.length===0||n.some(c=>!d(c)||!y(a,c))?{available:!1,peak:0}:{available:!0,peak:M(n.map(c=>a[c]))}}function N(t,e,s,r,n,a={}){const h=n?.channels?.[t]??null,l=e?Math.max(0,o(s)):0,d=e?Math.max(0,o(r)):0,c=h?.available?o(h.peak):d,b=e?Number.isFinite(Number(a.onset))?p(a.onset):p(Math.max(0,d-c)*4):0,v=e?p(a.pulse):0,E=e?p(Math.max(b,o(a.transient),v)):0,f=e?p(a.activity??Math.sqrt(Math.max(l,d))):0;return{id:t,available:e,availability:e?"available":"unavailable",active:e&&(f>.001||v>0),level:l,peak:d,onset:b,transient:E,activity:f,phase:e&&Number.isFinite(Number(a.phase))?p(a.phase):null,pulse:v}}function ne(t,e,s){const r={},n=y(t,"masterOutputRms")&&y(t,"masterOutputPeak");r.master=N("master",n,s.rms,s.peak,e,{onset:s.onset,transient:s.transient});for(const l of C){if(l.id==="master"||l.id==="transport")continue;const d=l.provider.kind==="stems"?se(t,l.provider):ie(t,l.provider),c=l.id==="drums"&&s.drumHitPulse?1:0;r[l.id]=N(l.id,d.available,d.peak,d.peak,e,{pulse:c})}const a=y(t,"beatPosition"),h=a?Number(t.beatPosition):0;return r.transport=N("transport",a,t?.transportRunning===!0?1:0,s.hitPulse?1:0,e,{activity:t?.transportRunning===!0?1:0,phase:h-Math.floor(h),pulse:s.beatPulse||s.stepPulse||s.hitPulse?1:0}),{schemaVersion:_,channels:r}}function I(t){return t instanceof Error?t.message:String(t)}function ae(t){return new Promise(e=>setTimeout(e,t))}function oe(t){if(!t||t.isRunning!==!0)return!1;const e=t.telemetry;return!(!e||e.transportRunning!==!0||t.lifecycleState!==void 0&&t.lifecycleState!=="running"||t.audioContextState&&t.audioContextState!=="running")}function le(t){return!t||t.lifecycleState==="stopped"&&t.isRunning!==!0?!0:t.isRunning!==!0&&t.telemetry?.transportRunning!==!0}function ue(){const t=u.document,e=t?.currentScript?.src||t?.querySelector?.('script[src*="kessho-site-bridge"]')?.src;if(e)try{return new URL("../../index.html?point-clouds-engine=1",e).href}catch{}try{return new URL("../?point-clouds-engine=1",u.location?.href??"").href}catch{return null}}function A(){const t=u.document,e=t?.currentScript?.src;return e||t?.querySelector?.('script[src*="kessho-site-bridge"]')?.src||u.location?.href||""}function de(){const t=A();try{return new URL("./embedded/kessho-engine.html",t).href}catch{return null}}function he(){const t=A();try{return{assets:new URL("./embedded/kessho-product-core-assets.js",t).href,engine:new URL("./embedded/kessho-engine.iife.js",t).href}}catch{return null}}function ce(){const t=u.document;if(!t?.createElement)return!1;const e=he(),s=t.head||t.body||t.documentElement;if(!e||!s?.appendChild)return!1;const r="__pointCloudsEmbeddedEngineBootstrap";if(u[r])return!0;u.__pointCloudsEmbeddedEngineMode=!0;const n={status:"loading",error:null};u[r]=n;const a=(h,l)=>{const d=t.createElement("script");d.async=!1,d.src=h,d.onload=l,d.onerror=()=>{n.status="failed",n.error=`Unable to load embedded Product Core script: ${h}`},s.appendChild(d)};return a(e.assets,()=>{n.status!=="failed"&&a(e.engine,()=>{n.status!=="failed"&&(n.status="ready")})}),!0}function H(t){return String(t).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}function me(){const t=A();let e,s;try{e=new URL("./embedded/kessho-product-core-assets.js",t).href,s=new URL("./embedded/kessho-engine.iife.js",t).href}catch{throw new Error("Unable to resolve the embedded Product Core bundle from the bridge script.")}return['<!doctype html><html><head><meta charset="utf-8"></head><body>','<div id="kessho-engine-root" aria-hidden="true" style="width:1px;height:1px;overflow:hidden"></div>',"<script>window.__pointCloudsEmbeddedEngineMode = true;<\/script>",`<script src="${H(e)}"><\/script>`,`<script src="${H(s)}"><\/script>`,"</body></html>"].join("")}function V(t){return Array.isArray(t)?t.filter(e=>e&&typeof e.id=="string").map(e=>({id:e.id,name:typeof e.name=="string"?e.name:e.id})):[]}function z(t,e,s){const r=t?.telemetry&&typeof t.telemetry=="object"?t.telemetry:null,n=typeof performance<"u"&&Number.isFinite(performance.now?.())?performance.now():Date.now(),a=Math.max(0,o(r?.masterOutputRms)),h=Math.max(0,o(r?.masterOutputPeak)),l=e?o(e.rms):a,d=e?o(e.peak):h,c=a-l,b=h-d,v=p(Math.max(0,c)*4+Math.max(0,b)*2),E=p(Math.max(0,b,c)),f=S(r?.synthSequencerCurrentSteps),P=S(r?.drumSequencerCurrentSteps),q=S(r?.synthSequencerHitCounts),G=S(r?.drumSequencerHitCounts),x=o(r?.sequencerEventCount),fe=e?o(e.sequencer?.pulses):x,L=Math.max(0,x-fe),w=Number.isFinite(Number(r?.beatPosition))?Number(r.beatPosition):null,K=e&&Number.isFinite(Number(e.beat))?Number(e.beat):null,U=w!==null&&K!==null&&Math.floor(w)!==Math.floor(K),F=f.length>0?o(f[0],null):P.length>0?o(P[0],null):null,ge=e?.sequencer?.synthSteps??[],ye=e?.sequencer?.drumSteps??[],O=f.some((g,T)=>g!==ge[T])||P.some((g,T)=>g!==ye[T]),R=g=>g.reduce((T,Pe)=>T+o(Pe),0),$=Math.max(0,R(q)-R(e?.sequencer?.synthHitCounts??[])),D=Math.max(0,R(G)-R(e?.sequencer?.drumHitCounts??[])),Y=$+D,k=L>0||Y>0,be=D>0,W=S(r?.workletStemPeaks).map(g=>Math.max(0,o(g))),Z={pad:Math.max(0,o(r?.workletPadStemPeak)),lead:Math.max(0,o(r?.workletLeadStemPeak)),fx:Math.max(0,o(r?.workletFxStemPeak)),master:Math.max(0,o(r?.workletMasterStemPeak))},ve=ne(r,e?.visualInputs,{rms:a,peak:h,onset:v,transient:E,beatPulse:U,stepPulse:O,hitPulse:k,drumHitPulse:be});return{raw:r,rms:a,peak:h,rmsDelta:c,peakDelta:b,onset:v,transient:E,beat:w,bar:Number.isFinite(Number(r?.barIndex))?Number(r.barIndex):null,phrase:Number.isFinite(Number(r?.phraseIndex))?Number(r.phraseIndex):null,phraseProgress:Number.isFinite(Number(r?.transportPhraseProgress))?p(r.transportPhraseProgress):null,sequencer:{synthStep:f.length>0?o(f[0],null):null,drumStep:P.length>0?o(P[0],null):null,synthSteps:f,drumSteps:P,synthHitCounts:q,drumHitCounts:G,pulses:x,pulseDelta:L,stepPulse:O,hitPulse:k,hitCountDelta:Y,synthHitCountDelta:$,drumHitCountDelta:D,scatterPulseCount:o(r?.scatterPulseCount)},currentStep:F,sequencerStep:F,step:F,barIndex:Number.isFinite(Number(r?.barIndex))?Number(r.barIndex):null,phraseIndex:Number.isFinite(Number(r?.phraseIndex))?Number(r.phraseIndex):null,beatPulse:U,isBeat:U,beatIndex:w===null?null:Math.floor(w),pulses:x,pulseDelta:L,stepPulse:O,hitPulse:k,isHit:k,trigger:k,level:a,activeVoices:Math.max(0,o(r?.activeVoices)),activeSources:Math.max(0,o(r?.activeSources)),stemPeaks:W,stemPeakValues:W,stemPeaksByName:Z,stems:Z,activeGrains:Math.max(0,o(r?.activeGrains)),visualInputs:ve,transportRunning:r?.transportRunning===!0,playing:t?.isRunning===!0&&r?.transportRunning===!0,contextState:t?.audioContextState??null,lifecycleState:t?.lifecycleState??null,capturedAt:n,intervalMs:s===null?null:Math.max(0,n-s)}}class pe{constructor(e){if(!e||!e.engineFrame)throw new TypeError("PointCloudsKessho.create requires an engineFrame iframe.");this.engineFrame=e.engineFrame,this.presetId=typeof e.presetId=="string"&&e.presetId.trim()?e.presetId.trim():Q,this.overrides=re(e.overrides),this.onStatus=typeof e.onStatus=="function"?e.onStatus:null,this.onTelemetry=typeof e.onTelemetry=="function"?e.onTelemetry:null,this.phase="booting",this.error=null,this.bridge=null,this.bootPromise=null,this.startPromise=null,this.stopPromise=null,this.telemetryTimer=null,this.bootDeadline=null,this.frameLoadHandler=null,this.destroyed=!1,this.previousTelemetry=null,this.previousTelemetryAt=null,this.snapshot={phase:"booting",presetId:this.presetId,presetName:this.presetId,morphAmount:0,isRunning:!1,lifecycleState:null,audioContextState:null,telemetry:z(null,null,null),raw:null,error:null},this.handleReadyMessage=this.handleReadyMessage.bind(this),this.handleVisibilityChange=this.handleVisibilityChange.bind(this),u.addEventListener?.("message",this.handleReadyMessage),u.document?.addEventListener?.("visibilitychange",this.handleVisibilityChange),this.emitStatus("booting")}emitStatus(e,s={}){if(!this.destroyed){this.phase=e,this.snapshot={...this.snapshot,phase:e,error:this.error,...s};try{this.onStatus?.({phase:e,presetId:this.snapshot.presetId,presetName:this.snapshot.presetName,isRunning:this.snapshot.isRunning,error:this.error,snapshot:this.snapshot})}catch{}}}getBridge(){const e=[];try{e.push(this.engineFrame.contentWindow)}catch{}e.push(u);for(const s of e){let r;try{r=s?.__pointCloudsKesshoBridge}catch{continue}if(r&&typeof r.start=="function"&&typeof r.stop=="function"&&typeof r.getStatus=="function"&&typeof r.listPresets=="function"&&typeof r.setMorph=="function")return r}return null}handleReadyMessage(e){if(e?.data?.type==="point-clouds:kessho-ready"){try{if(e.source&&e.source!==this.engineFrame.contentWindow&&e.source!==u)return}catch{return}this.resolveBridge()}}resolveBridge(){if(this.destroyed)return null;const e=this.getBridge();return e?(this.bridge=e,e):null}ensureFrameSource(){if(u.location?.protocol==="file:"){if(ce())return;const r=de();if(r){this.engineFrame.src=r;return}if(!("srcdoc"in this.engineFrame))throw new Error("The Product Core engine iframe does not support srcdoc for direct file playback.");this.engineFrame.srcdoc=me();return}let e="";try{e=this.engineFrame.getAttribute?.("src")||this.engineFrame.src||""}catch{e=""}if(e&&e!=="about:blank")return;const s=ue();if(!s)throw new Error("Unable to resolve the Product Core engine iframe URL.");this.engineFrame.src=s}boot(){return this.destroyed?Promise.reject(new Error("Point Clouds controller has been destroyed.")):this.bridge||this.resolveBridge()?(this.emitStatus("ready"),Promise.resolve(this)):this.bootPromise?this.bootPromise:(this.error=null,this.emitStatus("booting"),this.bootPromise=new Promise((e,s)=>{let r=!1,n=null;const a=(l,d)=>{r||(r=!0,this.bootDeadline!==null&&clearTimeout(this.bootDeadline),n!==null&&clearInterval(n),this.frameLoadHandler&&(this.engineFrame.removeEventListener?.("load",this.frameLoadHandler),this.frameLoadHandler=null),this.bootDeadline=null,this.bootPromise=null,l?(this.error=I(l),this.emitStatus("failed"),s(l)):(this.error=null,this.emitStatus("ready"),e(d)))};try{this.ensureFrameSource()}catch(l){a(l);return}const h=()=>{this.resolveBridge()&&a(null,this)};n=setInterval(h,80),this.bootDeadline=setTimeout(()=>{a(new Error(u.location?.protocol==="file:"?"Product Core embedded file:// bundle could not boot. Regenerate point-clouds/shared/embedded assets and inspect the iframe console.":"Timed out waiting for the Product Core engine iframe."))},J),this.frameLoadHandler=h,this.engineFrame.addEventListener?.("load",this.frameLoadHandler),h()}),this.bootPromise)}readStatus(){const e=this.resolveBridge()??this.bridge;if(!e)throw new Error("Product Core engine is not ready.");const s=e.getStatus();if(!s||typeof s!="object")throw new Error("Product Core returned an invalid status.");return s}updateSnapshot(e,s=null,r=!0){const n=s??z(e,this.previousTelemetry,this.previousTelemetryAt);if(this.previousTelemetry=n,this.previousTelemetryAt=n.capturedAt,this.snapshot={...this.snapshot,presetId:typeof e?.presetId=="string"?e.presetId:this.snapshot.presetId,presetName:typeof e?.presetName=="string"?e.presetName:this.snapshot.presetName,morphAmount:p(e?.morphAmount),isRunning:e?.isRunning===!0,lifecycleState:e?.lifecycleState??null,audioContextState:e?.audioContextState??null,telemetry:n,raw:e},r)try{this.onTelemetry?.(n,this.snapshot)}catch{}return this.snapshot}pollTelemetry(){if(!(this.destroyed||this.phase!=="playing")&&!u.document?.hidden){try{const e=this.readStatus();this.updateSnapshot(e)}catch(e){this.error=I(e),this.emitStatus("failed"),this.stopTelemetryPolling();return}this.telemetryTimer=setTimeout(()=>{this.telemetryTimer=null,this.pollTelemetry()},te)}}startTelemetryPolling(){this.telemetryTimer!==null||this.destroyed||this.phase!=="playing"||this.pollTelemetry()}stopTelemetryPolling(){this.telemetryTimer!==null&&(clearTimeout(this.telemetryTimer),this.telemetryTimer=null)}handleVisibilityChange(){this.destroyed||(u.document?.hidden?this.stopTelemetryPolling():this.phase==="playing"&&this.startTelemetryPolling())}async waitForStatus(e,s,r){const n=Date.now()+s;for(;!this.destroyed&&Date.now()<=n;){const a=this.readStatus();if(this.updateSnapshot(a),e(a))return a;await ae(40)}throw new Error(`Product Core did not reach ${r}.`)}async start(){if(this.destroyed)throw new Error("Point Clouds controller has been destroyed.");return this.phase==="playing"?this.getSnapshot():this.startPromise?this.startPromise:(this.startPromise=(async()=>{!this.bridge&&!this.resolveBridge()&&await this.boot();const e=this.resolveBridge()??this.bridge;if(!e)throw new Error("Product Core engine is not ready.");if(!V(e.listPresets()).some(a=>a.id===this.presetId))throw new Error(`Unknown Point Clouds preset: ${this.presetId}`);this.error=null,this.emitStatus("loading");const r=e.start(this.presetId,this.overrides);await Promise.resolve(r);const n=await this.waitForStatus(oe,X,"a running transport/audio context");return this.error=null,this.updateSnapshot(n),this.emitStatus("playing"),this.startTelemetryPolling(),this.getSnapshot()})().catch(e=>{throw this.error=I(e),this.stopTelemetryPolling(),this.emitStatus("failed"),e}).finally(()=>{this.startPromise=null}),this.startPromise)}async stop(){return this.destroyed?this.getSnapshot():this.stopPromise?this.stopPromise:(this.stopPromise=(async()=>{if(this.startPromise)try{await this.startPromise}catch{}const e=this.resolveBridge()??this.bridge;if(!e)return this.stopTelemetryPolling(),this.emitStatus("ready"),this.getSnapshot();this.error=null,this.emitStatus("stopping");const s=e.stop();await Promise.resolve(s);const r=await this.waitForStatus(le,ee,"a stopped Product Core runtime");return this.stopTelemetryPolling(),this.error=null,this.updateSnapshot(r),this.emitStatus("ready"),this.getSnapshot()})().catch(e=>{throw this.error=I(e),this.emitStatus("failed"),e}).finally(()=>{this.stopPromise=null}),this.stopPromise)}toggle(){return this.phase==="playing"?this.stop():this.start()}setMorph(e){if(!Number.isFinite(Number(e))||Number(e)<0||Number(e)>1)throw new RangeError("Point Clouds morph must be a finite number between 0 and 1.");const s=this.resolveBridge()??this.bridge;if(!s)throw new Error("Product Core engine is not ready.");return s.setMorph(Number(e)),this.snapshot={...this.snapshot,morphAmount:Number(e)},this.snapshot.morphAmount}listPresets(){const e=this.resolveBridge()??this.bridge;return e?V(e.listPresets()):[]}getSnapshot(){if(!this.destroyed)try{(this.resolveBridge()??this.bridge)&&this.updateSnapshot(this.readStatus(),null,!1)}catch{}return this.snapshot}destroy(){if(this.destroyed)return;const e=this.resolveBridge()??this.bridge;if(e&&this.snapshot.isRunning)try{e.stop()}catch{}this.destroyed=!0,this.stopTelemetryPolling(),this.bootDeadline!==null&&clearTimeout(this.bootDeadline),this.bootDeadline=null,this.frameLoadHandler&&(this.engineFrame.removeEventListener?.("load",this.frameLoadHandler),this.frameLoadHandler=null),u.removeEventListener?.("message",this.handleReadyMessage),u.document?.removeEventListener?.("visibilitychange",this.handleVisibilityChange),this.onStatus=null,this.onTelemetry=null,this.bridge=null}}u.PointCloudsKessho={inputLibrary:B,getInputLibrary(){return B},create(t){return new pe(t)}}})(typeof window<"u"?window:globalThis);
+    }
+  </script>
+</head>
+<body>
+  <iframe id="kessho-engine" title="Kessho audio engine" aria-hidden="true"></iframe>
+  <canvas id="scoreCanvas" aria-label="Interactive spatial score for Kessho String Waves"></canvas>
+  <div class="wash" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="vertical-title" aria-hidden="true">POINT CLOUDS</div>
+
+  <div class="frame">
+    <header class="masthead">
+      <p class="micro micro--brand">KESSHO / STRING WAVES</p>
+      <div class="meta">
+        <span class="micro micro--muted">HELSINKI / 60°10′N</span>
+        <span id="phaseValue" class="status" data-tone="muted">BOOTING</span>
+        <button id="notesToggle" class="micro" type="button" aria-controls="notesDrawer" aria-expanded="false">NOTES + CV</button>
+      </div>
+    </header>
+
+    <main aria-label="The Living Score listening instrument">
+      <section class="score-copy" aria-labelledby="scoreTitle">
+        <h1 id="scoreTitle"><span>The</span><span>Living</span><span>Score</span></h1>
+        <p>A point field for strings, room tone, and a clock that refuses to sit still. Press play; read the syncopation.</p>
+      </section>
+
+      <section class="movement" aria-live="polite">
+        <span class="movement-index" id="movementIndex">MOVEMENT 01 / 04</span>
+        <span class="movement-name" id="movementName">Assembly</span>
+        <span class="movement-note" id="movementNote">open terminals / a mark learns its body</span>
+      </section>
+
+      <div id="timeRuler" class="ruler" aria-label="Sixteen-step score ruler">
+        <div id="rulerTicks" class="ruler-ticks"></div>
+        <div class="ruler-label">STEP <span id="stepValue">00</span> / BAR <span id="barValue">00</span></div>
+      </div>
+
+      <div class="morph-control" aria-label="Morph tension control">
+        <label class="morph-caption" for="morphRail">EDGE TENSION / MORPH</label>
+        <output id="morphValue" class="morph-value" for="morphRail">0.42</output>
+        <input id="morphRail" class="morph-rail" type="range" min="0" max="1" step="0.01" value="0.42" aria-valuetext="0.42 edge tension">
+        <div class="morph-scale"><span>OPEN</span><span>TAUT</span></div>
+      </div>
+
+      <p id="bridgeError" class="bridge-error" role="status" aria-live="polite"></p>
+    </main>
+
+    <footer class="footline">
+      <div class="transport">
+        <button id="transportButton" class="transport-button" type="button" aria-label="Toggle playback" data-transport="stopped">PLAY / PAUSE</button>
+        <span id="transportReadout" class="transport-readout">QUIET / AWAITING SIGNAL</span>
+      </div>
+      <button id="creditsToggle" class="micro" type="button" aria-controls="creditsDrawer" aria-expanded="false">CREDITS</button>
+    </footer>
+  </div>
+
+  <aside id="notesDrawer" class="drawer" aria-hidden="true" aria-label="Artist and project notes">
+    <button class="drawer-close" data-close-drawer="notesDrawer" type="button">CLOSE ×</button>
+    <h2>FIELD NOTES / 01</h2>
+    <section>
+      <h3>POINT CLOUDS</h3>
+      <p>A living score is a listening surface: discrete steps become perpendicular planes, hits become brief orange seams, and silence keeps the paper visible.</p>
+    </section>
+    <section>
+      <h3>KESSHO / HELSINKI</h3>
+      <p>Kessho works between generative ambient and field recordings. String Waves holds the grain of bowed wood beside the negative space of a data model.</p>
+    </section>
+    <section>
+      <h3>CV / SELECTED THREADS</h3>
+      <small>GENERATIVE AMBIENT — 2026<br>FIELD RECORDINGS — BALTIC EDGE<br>JAZZ DRUMMING — POLYRHYTHM STUDY<br>DATA SCIENCE — SIGNAL / STRUCTURE</small>
+    </section>
+  </aside>
+
+  <aside id="creditsDrawer" class="drawer drawer--left" aria-hidden="true" aria-label="Credits">
+    <button class="drawer-close" data-close-drawer="creditsDrawer" type="button">CLOSE ×</button>
+    <h2>CREDITS / SCORE</h2>
+    <section>
+      <h3>AUTHOR</h3>
+      <p>Kessho — composition, field capture, system design.</p>
+    </section>
+    <section>
+      <h3>INSTRUMENT</h3>
+      <p>The Living Score / Point Clouds. A browser-native spatial notation for String Waves.</p>
+    </section>
+    <section>
+      <h3>READ THE SIGNAL</h3>
+      <small>WHEEL / MOVE THROUGH FOUR SCORE MOVEMENTS<br>1—4 / SELECT MOVEMENT<br>DRAG / TEAR, ROTATE, REFORM<br>SPACE / TRANSPORT · ESC / CLOSE SHEETS</small>
+    </section>
+  </aside>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const root = document.documentElement;
+      const canvas = document.getElementById("scoreCanvas");
+      const gl = canvas.getContext("webgl2", { antialias: false, alpha: false, depth: false, powerPreference: "high-performance" });
+      const phaseValue = document.getElementById("phaseValue");
+      const bridgeError = document.getElementById("bridgeError");
+      const transportButton = document.getElementById("transportButton");
+      const transportReadout = document.getElementById("transportReadout");
+      const morphRail = document.getElementById("morphRail");
+      const morphValue = document.getElementById("morphValue");
+      const movementIndex = document.getElementById("movementIndex");
+      const movementName = document.getElementById("movementName");
+      const movementNote = document.getElementById("movementNote");
+      const stepValue = document.getElementById("stepValue");
+      const barValue = document.getElementById("barValue");
+      const rulerTicks = document.getElementById("rulerTicks");
+      const engineFrame = document.getElementById("kessho-engine");
+      const reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const mobile = window.matchMedia && window.matchMedia("(max-width: 700px)").matches;
+      const movements = [
+        { name: "Assembly", note: "open terminals / a mark learns its body" },
+        { name: "Fracture", note: "parallel cuts / the pulse finds an edge" },
+        { name: "Tidal", note: "slow pressure / four strings crossing" },
+        { name: "Afterimage", note: "the room remains / the step goes on" }
+      ];
+      let movement = 0;
+      let controller = null;
+      let bridgeInitTimer = 0;
+      let bridgeInitDeadline = 0;
+      let raf = 0;
+      let running = true;
+      let lastFrame = 0;
+      let startedAt = performance.now();
+      let intro = reducedMotion ? 1 : 0;
+      const introDuration = reducedMotion ? 1 : 5400;
+      let morph = Number(morphRail.value);
+      let pointerTarget = [0, 0];
+      let pointer = [0, 0];
+      let dragging = false;
+      let dragLast = [0, 0];
+      let rotX = 0;
+      let rotY = 0;
+      let rotXTarget = 0;
+      let rotYTarget = 0;
+      let tear = 0;
+      let tearTarget = 0;
+      let frameTime = 0;
+      let wheelAccum = 0;
+      let wheelCooldown = 0;
+      const audio = { step: 0, bar: 0, phrase: 0, beat: 0, beatIndex: 0, beatSignal: 0, hit: 0, stepPulse: 0, beatPulse: 0, hitPulse: 0, rms: 0, peak: 0, onset: 0, playing: false, pulseDelta: 0, synthHits: 0, drumHits: 0 };
+
+      for (let i = 0; i < 16; i += 1) {
+        const tick = document.createElement("span");
+        tick.className = "ruler-tick";
+        tick.dataset.step = String(i);
+        rulerTicks.appendChild(tick);
+      }
+      const rulerTickEls = Array.from(rulerTicks.children);
+
+      const scoreState = {
+        phase: "booting",
+        preset: "string-waves",
+        reverb: "lite",
+        telemetry: "idle"
+      };
+
+      function errorMessage(error) {
+        if (error && typeof error === "object") return error.message || error.error || error.detail || JSON.stringify(error);
+        return String(error || "Unknown bridge error");
+      }
+
+      function setPhase(next, message) {
+        const phase = String(next || "ready").toLowerCase();
+        const detail = message && typeof message === "object" ? (message.message || message.error || message.detail) : message;
+        scoreState.phase = phase;
+        root.dataset.phase = phase;
+        phaseValue.textContent = phase.toUpperCase();
+        phaseValue.dataset.tone = phase === "failed" ? "error" : phase === "playing" ? "signal" : "muted";
+        if (phase === "playing") {
+          root.dataset.transport = "playing";
+          transportButton.dataset.transport = "playing";
+          transportReadout.textContent = "LIVE / CORE CLOCK";
+        } else if (phase === "ready" || phase === "stopping") {
+          root.dataset.transport = "stopped";
+          transportButton.dataset.transport = "stopped";
+          transportReadout.textContent = phase === "stopping" ? "STOPPING / RELEASING" : "READY / PRESS PLAY";
+        } else if (phase === "failed") {
+          root.dataset.transport = "failed";
+          transportButton.dataset.transport = "failed";
+          transportReadout.textContent = "BRIDGE / UNAVAILABLE";
+        }
+        // Do not let an early click turn a still-loading bridge into a false
+        // "unavailable" report. Once the bridge settles, normal transport
+        // interaction is restored; failed remains an honest no-audio state.
+        transportButton.disabled = phase === "booting" && !controller;
+        bridgeError.textContent = phase === "failed" ? (detail || "Kessho bridge failed — no substitute audio is running.") : "";
+      }
+
+      function setMorph(value, forceSend) {
+        morph = Math.max(0, Math.min(1, Number(value) || 0));
+        morphRail.value = morph.toFixed(2);
+        morphRail.setAttribute("aria-valuetext", morph.toFixed(2) + " edge tension");
+        morphValue.textContent = morph.toFixed(2);
+        root.dataset.morph = morph.toFixed(2);
+        if (controller && typeof controller.setMorph === "function" && (forceSend || ["ready", "playing"].includes(scoreState.phase))) {
+          try { controller.setMorph(morph); } catch (error) { bridgeError.textContent = "Morph control: " + errorMessage(error); }
+        }
+      }
+
+      function setMovement(next) {
+        movement = (next + movements.length) % movements.length;
+        const item = movements[movement];
+        movementIndex.textContent = "MOVEMENT " + String(movement + 1).padStart(2, "0") + " / 04";
+        movementName.textContent = item.name;
+        movementNote.textContent = item.note;
+        document.body.dataset.movement = String(movement + 1);
+      }
+
+      function openDrawer(id) {
+        ["notesDrawer", "creditsDrawer"].forEach((drawerId) => {
+          const drawer = document.getElementById(drawerId);
+          const open = drawerId === id;
+          drawer.classList.toggle("is-open", open);
+          drawer.setAttribute("aria-hidden", String(!open));
+        });
+        document.getElementById("notesToggle").setAttribute("aria-expanded", String(id === "notesDrawer"));
+        document.getElementById("creditsToggle").setAttribute("aria-expanded", String(id === "creditsDrawer"));
+      }
+
+      function closeDrawers() { openDrawer(""); }
+
+      function numberFrom(value, fallback) {
+        return Number.isFinite(Number(value)) ? Number(value) : fallback;
+      }
+
+      function telemetryValue(t, names, fallback) {
+        for (const name of names) {
+          const value = t && t[name];
+          if (value !== undefined && value !== null) return value;
+          if (t && t.normalized && t.normalized[name] !== undefined) return t.normalized[name];
+          if (t && t.raw && t.raw[name] !== undefined) return t.raw[name];
+        }
+        return fallback;
+      }
+
+      function pulseValue(value) {
+        if (typeof value === "boolean") return value ? 1 : 0;
+        return Math.max(0, Math.min(1, numberFrom(value, 0)));
+      }
+
+      function onTelemetry(payload) {
+        const t = payload || {};
+        const nestedSequence = t.sequencer || (t.normalized && t.normalized.sequencer) || {};
+        const nestedStep = nestedSequence.synthStep ?? nestedSequence.drumStep ?? nestedSequence.step;
+        const nextStep = Math.round(numberFrom(telemetryValue(t, ["currentStep", "sequencerStep", "step", "sequence"], nestedStep ?? audio.step), audio.step));
+        const nextBar = Math.round(numberFrom(telemetryValue(t, ["bar", "barIndex", "measure"], audio.bar), audio.bar));
+        const nextPhrase = numberFrom(telemetryValue(t, ["phrase", "phraseIndex"], audio.phrase), audio.phrase);
+        const beatPosition = numberFrom(telemetryValue(t, ["beat", "beatPosition"], audio.beat), audio.beat);
+        const beatIndex = Math.floor(beatPosition);
+        const beatSignal = pulseValue(telemetryValue(t, ["beatPulse", "isBeat"], 0));
+        const pulseDeltaRaw = nestedSequence.pulseDelta ?? telemetryValue(t, ["pulseDelta"], null);
+        const pulseDelta = numberFrom(pulseDeltaRaw, 0);
+        const hitSignal = pulseValue(telemetryValue(t, ["hitPulse", "isHit", "trigger"], 0));
+        const beatEdge = beatIndex !== audio.beatIndex || (beatSignal > .5 && audio.beatSignal <= .5);
+        const hitEdge = pulseDelta > 0 || (hitSignal > .5 && audio.hit < .5);
+        if (beatEdge) rotYTarget += (beatIndex % 2 ? .014 : -.014);
+        if (nextStep !== audio.step) rotXTarget += (nextStep % 2 ? .009 : -.009);
+        audio.stepPulse = nextStep !== audio.step ? 1 : Math.max(audio.stepPulse, pulseValue(telemetryValue(t, ["stepPulse", "stepTrigger"], 0)));
+        audio.beatPulse = Math.max(audio.beatPulse, beatEdge ? 1 : 0);
+        audio.hitPulse = Math.max(audio.hitPulse, hitEdge ? 1 : 0);
+        audio.step = nextStep;
+        audio.bar = nextBar;
+        audio.phrase = nextPhrase;
+        audio.beat = beatPosition;
+        audio.beatIndex = beatIndex;
+        audio.beatSignal = beatSignal;
+        audio.hit = hitSignal;
+        audio.pulseDelta = pulseDelta;
+        audio.rms = Math.max(0, Math.min(1, numberFrom(telemetryValue(t, ["rms", "level", "amplitude"], audio.rms), audio.rms)));
+        audio.peak = Math.max(0, Math.min(1, numberFrom(telemetryValue(t, ["peak", "peakLevel"], audio.peak), audio.peak)));
+        audio.onset = Math.max(0, Math.min(1, numberFrom(telemetryValue(t, ["onset", "onsetStrength"], audio.onset), audio.onset)));
+        audio.playing = Boolean(telemetryValue(t, ["playing", "isPlaying"], audio.playing));
+        scoreState.telemetry = "live";
+        root.dataset.telemetry = "live";
+        stepValue.textContent = String((audio.step % 16 + 16) % 16).padStart(2, "0");
+        barValue.textContent = String(Math.max(0, audio.bar) % 100).padStart(2, "0");
+        rulerTickEls.forEach((tick, index) => tick.classList.toggle("is-active", index === ((audio.step % 16) + 16) % 16));
+        if (audio.playing) setPhase("playing");
+      }
+
+      function togglePlayback() {
+        if (!controller || typeof controller.toggle !== "function") {
+          initBridge();
+          if (!controller || typeof controller.toggle !== "function") {
+            setPhase("booting", "Kessho bridge is still loading — no substitute audio is running.");
+          }
+          return;
+        }
+        try {
+          const result = controller.toggle();
+          if (result && typeof result.catch === "function") result.catch((error) => setPhase("failed", errorMessage(error)));
+        } catch (error) { setPhase("failed", errorMessage(error)); }
+      }
+
+      function initBridge() {
+        if (controller) return controller;
+        const bridge = window.PointCloudsKessho;
+        if (!bridge || typeof bridge.create !== "function") {
+          if (!bridgeInitDeadline) bridgeInitDeadline = performance.now() + 6000;
+          if (performance.now() < bridgeInitDeadline) {
+            setPhase("booting");
+            if (!bridgeInitTimer) {
+              bridgeInitTimer = window.setTimeout(() => {
+                bridgeInitTimer = 0;
+                initBridge();
+              }, 80);
+            }
+            return null;
+          }
+          setPhase("failed", "Kessho bridge unavailable — no substitute audio is running.");
+          return null;
+        }
+        bridgeInitDeadline = 0;
+        try {
+          controller = window.PointCloudsKessho.create({
+            engineFrame,
+            presetId: "string-waves",
+            overrides: { reverbQuality: "lite" },
+            onStatus: (status) => {
+              const phase = typeof status === "string" ? status : status && (status.phase || status.status);
+              const message = status && (status.error || status.message || status.detail);
+              setPhase(phase || "ready", message);
+            },
+            onTelemetry
+          });
+          const boot = controller && controller.boot && controller.boot();
+          if (boot && typeof boot.then === "function") boot.then(() => setMorph(morph, true)).catch((error) => setPhase("failed", errorMessage(error)));
+        } catch (error) { setPhase("failed", errorMessage(error)); }
+        return controller;
+      }
+
+      function seededRandom(seed) {
+        let s = seed >>> 0;
+        return () => {
+          s = (s * 1664525 + 1013904223) >>> 0;
+          return s / 4294967296;
+        };
+      }
+
+      function makeCloud(count) {
+        const rand = seededRandom(0x4b455353);
+        const start = new Float32Array(count * 3);
+        const logo = new Float32Array(count * 3);
+        const seed = new Float32Array(count);
+        const segments = [];
+        const addLine = (x1, y1, x2, y2) => segments.push([x1, y1, x2, y2]);
+        const addArc = (cx, cy, rx, ry, startAngle, endAngle, steps) => {
+          let previous = [cx + rx * Math.cos(startAngle), cy + ry * Math.sin(startAngle)];
+          for (let i = 1; i <= steps; i += 1) {
+            const t = i / steps;
+            const angle = startAngle + (endAngle - startAngle) * t;
+            const next = [cx + rx * Math.cos(angle), cy + ry * Math.sin(angle)];
+            addLine(previous[0], previous[1], next[0], next[1]);
+            previous = next;
+          }
+        };
+        // Exact connected topology: inverted-U arch, straight bridge, then a U basin with open terminals.
+        addArc(-.70, .05, .40, .60, Math.PI, 0, 56);
+        addLine(-.30, .05, .50, .05);
+        addArc(.90, .05, .40, .60, Math.PI, Math.PI * 2, 56);
+        const lengths = segments.map(([x1,y1,x2,y2]) => Math.hypot(x2-x1, y2-y1));
+        const total = lengths.reduce((a,b) => a + b, 0);
+        const cumulative = [];
+        let acc = 0;
+        lengths.forEach((length) => { acc += length / total; cumulative.push(acc); });
+        for (let i = 0; i < count; i += 1) {
+          const a = i * 3;
+          start[a] = (rand() * 2 - 1) * 2.7;
+          start[a + 1] = (rand() * 2 - 1) * 1.7;
+          start[a + 2] = (rand() * 2 - 1) * 1.5;
+          seed[i] = rand();
+          const pick = rand();
+          let segment = 0;
+          while (segment < cumulative.length - 1 && pick > cumulative[segment]) segment += 1;
+          const prior = segment ? cumulative[segment - 1] : 0;
+          const t = Math.max(0, Math.min(1, (pick - prior) / (cumulative[segment] - prior)));
+          const [x1,y1,x2,y2] = segments[segment];
+          const nx = -(y2-y1) / lengths[segment];
+          const ny = (x2-x1) / lengths[segment];
+          const thickness = (rand() - .5) * .045;
+          logo[a] = x1 + (x2-x1) * t + nx * thickness;
+          logo[a + 1] = y1 + (y2-y1) * t + ny * thickness;
+          logo[a + 2] = (rand() - .5) * .32;
+        }
+        return { start, logo, seed };
+      }
+
+      function shader(type) {
+        if (type === "vertex") return `#version 300 es
+          precision highp float;
+          in vec3 aStart; in vec3 aLogo; in float aSeed;
+          uniform float uTime, uIntro, uMovement, uMorph, uStepPulse, uBeatPulse, uHitPulse, uRms, uPeak, uOnset, uCurrentStep, uBar, uPhrase, uRotX, uRotY, uTear;
+          uniform vec2 uPointer; uniform float uAspect, uPointSize;
+          out float vGlow; out float vSignal;
+          vec3 rotX(vec3 p, float a) { float c=cos(a), s=sin(a); return vec3(p.x, c*p.y-s*p.z, s*p.y+c*p.z); }
+          vec3 rotY(vec3 p, float a) { float c=cos(a), s=sin(a); return vec3(c*p.x+s*p.z, p.y, -s*p.x+c*p.z); }
+          void main() {
+            vec3 p = mix(aStart, aLogo, smoothstep(0.0, 1.0, uIntro));
+            float m = floor(uMovement + 0.5);
+            float local = sin(aSeed * 91.7 + uTime * (.17 + aSeed * .1));
+            if (m > .5 && m < 1.5) {
+              float lane = floor(aSeed * 9.0) - 4.0;
+              p.x += lane * (.035 + uMorph * .045) + local * uTear * .25;
+              p.z += sin(aSeed * 51.0) * .20 + lane * uStepPulse * .10;
+            } else if (m > 1.5 && m < 2.5) {
+              p.y += sin(p.x * 5.0 + uTime * (.22 + uPhrase * .02) + aSeed * 4.0) * (.07 + uMorph * .15);
+              p.z += cos(p.x * 3.2 + uTime * .15) * (.05 + uRms * .12);
+            } else if (m > 2.5) {
+              float ghost = sin(aSeed * 37.0) * (.10 + uMorph * .15);
+              p.x += ghost + uTear * (aSeed - .5) * .40;
+              p.y += cos(aSeed * 29.0) * (.045 + uPeak * .09);
+              p.z += sin(aSeed * 77.0 + uTime * .12) * .18;
+            }
+            float stepBand = 1.0 - smoothstep(.0, .11, abs(fract(aSeed * 16.0) - fract(uCurrentStep / 16.0)));
+            float rail = smoothstep(.988, 1.0, fract(aSeed * 3.0 + .02));
+            p.x += rail * (uStepPulse * .25 + uBeatPulse * .12);
+            p.z += stepBand * (uStepPulse * .52 + uHitPulse * .34);
+            p.y += stepBand * sin(aSeed * 31.0) * uHitPulse * .12;
+            float structure = sin(uBar * .47 + aSeed * 6.0) * (.012 + uMorph * .018);
+            p.xy *= 1.0 + structure;
+            vec2 delta = p.xy - uPointer;
+            float d2 = dot(delta, delta);
+            float repel = exp(-d2 * 3.8) * (.10 + uMorph * .14);
+            p.xy += normalize(delta + vec2(.0001)) * repel;
+            p = rotX(p, uRotX); p = rotY(p, uRotY);
+            float camera = 3.9 / max(.8, 3.9 - p.z);
+            float slowZoom = 1.0 + sin(uBar * .31) * .028 + sin(uPhrase * .19) * .018;
+            vec2 clip = vec2(p.x / uAspect, p.y) * camera * slowZoom;
+            gl_Position = vec4(clip, .0, 1.0);
+            gl_PointSize = uPointSize * camera * (1.0 + uHitPulse * .65 + uRms * .18);
+            vSignal = clamp(stepBand * (uStepPulse + uHitPulse) + rail * uBeatPulse, 0.0, 1.0);
+            vGlow = clamp(.26 + abs(local) * .12 + uRms * .24 + uOnset * .28 + vSignal * .48, 0.0, 1.0);
+          }
+        `;
+        return `#version 300 es
+          precision highp float;
+          in float vGlow; in float vSignal;
+          uniform vec3 uInk; uniform vec3 uSignal; out vec4 outColor;
+          void main() {
+            vec2 p = gl_PointCoord - .5; float d = length(p);
+            if (d > .5) discard;
+            float edge = smoothstep(.5, .05, d);
+            vec3 color = mix(uInk, uSignal, clamp(vSignal * .9 + vGlow * .12, 0.0, 1.0));
+            outColor = vec4(color, edge * (.38 + vGlow * .62));
+          }
+        `;
+      }
+
+      let program = null;
+      let cloud = null;
+      let uniforms = null;
+      let fallbackCtx = null;
+      const count = mobile ? 9000 : Math.min(20000, Math.max(15000, Math.floor(window.innerWidth * window.innerHeight * .016)));
+
+      function compile(type, source) {
+        const shaderObject = gl.createShader(type);
+        gl.shaderSource(shaderObject, source);
+        gl.compileShader(shaderObject);
+        if (!gl.getShaderParameter(shaderObject, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shaderObject) || "shader compile failed");
+        return shaderObject;
+      }
+
+      function initWebGL() {
+        if (!gl) return false;
+        try {
+          const vertex = compile(gl.VERTEX_SHADER, shader("vertex"));
+          const fragment = compile(gl.FRAGMENT_SHADER, shader("fragment"));
+          program = gl.createProgram();
+          gl.attachShader(program, vertex); gl.attachShader(program, fragment); gl.linkProgram(program);
+          if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) || "shader link failed");
+          cloud = makeCloud(count);
+          const startBuffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, startBuffer); gl.bufferData(gl.ARRAY_BUFFER, cloud.start, gl.STATIC_DRAW);
+          const startLoc = gl.getAttribLocation(program, "aStart"); gl.enableVertexAttribArray(startLoc); gl.vertexAttribPointer(startLoc, 3, gl.FLOAT, false, 0, 0);
+          const logoBuffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, logoBuffer); gl.bufferData(gl.ARRAY_BUFFER, cloud.logo, gl.STATIC_DRAW);
+          const logoLoc = gl.getAttribLocation(program, "aLogo"); gl.enableVertexAttribArray(logoLoc); gl.vertexAttribPointer(logoLoc, 3, gl.FLOAT, false, 0, 0);
+          const seedBuffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, seedBuffer); gl.bufferData(gl.ARRAY_BUFFER, cloud.seed, gl.STATIC_DRAW);
+          const seedLoc = gl.getAttribLocation(program, "aSeed"); gl.enableVertexAttribArray(seedLoc); gl.vertexAttribPointer(seedLoc, 1, gl.FLOAT, false, 0, 0);
+          uniforms = {};
+          ["uTime","uIntro","uMovement","uMorph","uStepPulse","uBeatPulse","uHitPulse","uRms","uPeak","uOnset","uCurrentStep","uBar","uPhrase","uRotX","uRotY","uTear","uPointer","uAspect","uPointSize","uInk","uSignal"].forEach((name) => { uniforms[name] = gl.getUniformLocation(program, name); });
+          gl.useProgram(program); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+          return true;
+        } catch (error) {
+          bridgeError.textContent = "WebGL2 unavailable; using a reduced score field. " + (error.message || error);
+          return false;
+        }
+      }
+
+      function resize() {
+        const dpr = Math.min(mobile ? 1.2 : 1.5, window.devicePixelRatio || 1);
+        const width = Math.max(1, Math.floor(window.innerWidth * dpr));
+        const height = Math.max(1, Math.floor(window.innerHeight * dpr));
+        if (canvas.width === width && canvas.height === height) return;
+        canvas.width = width; canvas.height = height;
+        if (gl) gl.viewport(0, 0, width, height);
+      }
+
+      function drawFallback() {
+        if (!fallbackCtx) fallbackCtx = canvas.getContext("2d");
+        if (!fallbackCtx || !cloud) return;
+        const ctx = fallbackCtx; const w = canvas.width; const h = canvas.height; const scale = Math.min(w, h) * .32;
+        ctx.fillStyle = "#eeeae0"; ctx.fillRect(0, 0, w, h); ctx.fillStyle = "#121212";
+        const max = Math.min(cloud.logo.length / 3, mobile ? 2500 : 4500);
+        for (let i = 0; i < max; i += 1) {
+          const a = i * 3; const x = cloud.logo[a] * scale + w * .52; const y = -cloud.logo[a + 1] * scale + h * .51;
+          ctx.globalAlpha = .25 + Math.abs(Math.sin(i * 1.7 + frameTime * .5)) * .45;
+          ctx.fillRect(x, y, 1.4, 1.4);
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      function render(now) {
+        if (!running) return;
+        const dt = Math.min(.05, (now - lastFrame) / 1000 || .016);
+        lastFrame = now;
+        frameTime += dt;
+        wheelCooldown = Math.max(0, wheelCooldown - dt);
+        if (!intro || intro < 1) intro = Math.min(1, (now - startedAt) / introDuration);
+        pointer[0] += (pointerTarget[0] - pointer[0]) * Math.min(1, dt * 6);
+        pointer[1] += (pointerTarget[1] - pointer[1]) * Math.min(1, dt * 6);
+        rotXTarget *= Math.pow(.08, dt); rotYTarget *= Math.pow(.08, dt);
+        rotX += (rotXTarget - rotX) * Math.min(1, dt * 7); rotY += (rotYTarget - rotY) * Math.min(1, dt * 7);
+        tearTarget *= Math.pow(.025, dt); tear += (tearTarget - tear) * Math.min(1, dt * 8);
+        audio.stepPulse = Math.max(0, audio.stepPulse - dt * 3.3);
+        audio.beatPulse = Math.max(0, audio.beatPulse - dt * 4.8);
+        audio.hitPulse = Math.max(0, audio.hitPulse - dt * 5.2);
+        audio.rms *= Math.pow(.18, dt); audio.peak *= Math.pow(.06, dt); audio.onset *= Math.pow(.025, dt);
+        if (gl && program) {
+          gl.clearColor(238 / 255, 234 / 255, 224 / 255, 1); gl.clear(gl.COLOR_BUFFER_BIT); gl.useProgram(program);
+          gl.uniform1f(uniforms.uTime, frameTime); gl.uniform1f(uniforms.uIntro, intro); gl.uniform1f(uniforms.uMovement, movement);
+          gl.uniform1f(uniforms.uMorph, morph); gl.uniform1f(uniforms.uStepPulse, audio.stepPulse); gl.uniform1f(uniforms.uBeatPulse, audio.beatPulse); gl.uniform1f(uniforms.uHitPulse, audio.hitPulse);
+          gl.uniform1f(uniforms.uRms, audio.rms); gl.uniform1f(uniforms.uPeak, audio.peak); gl.uniform1f(uniforms.uOnset, audio.onset); gl.uniform1f(uniforms.uCurrentStep, audio.step); gl.uniform1f(uniforms.uBar, audio.bar); gl.uniform1f(uniforms.uPhrase, audio.phrase);
+          gl.uniform1f(uniforms.uRotX, rotX + pointer[1] * .14); gl.uniform1f(uniforms.uRotY, rotY + pointer[0] * .2); gl.uniform1f(uniforms.uTear, tear); gl.uniform2f(uniforms.uPointer, pointer[0] * 1.8, -pointer[1] * 1.2);
+          gl.uniform1f(uniforms.uAspect, canvas.width / Math.max(1, canvas.height)); gl.uniform1f(uniforms.uPointSize, mobile ? 2.05 : 2.35); gl.uniform3f(uniforms.uInk, 18/255, 18/255, 18/255); gl.uniform3f(uniforms.uSignal, 240/255, 68/255, 32/255);
+          gl.drawArrays(gl.POINTS, 0, count);
+        } else drawFallback();
+        raf = requestAnimationFrame(render);
+      }
+
+      function pointerPosition(event) {
+        const rect = canvas.getBoundingClientRect();
+        return [(event.clientX - rect.left) / rect.width * 2 - 1, (event.clientY - rect.top) / rect.height * 2 - 1];
+      }
+
+      canvas.addEventListener("pointermove", (event) => {
+        const p = pointerPosition(event);
+        pointerTarget = p;
+        if (dragging) {
+          rotYTarget += (event.clientX - dragLast[0]) * .006;
+          rotXTarget += (event.clientY - dragLast[1]) * .006;
+          tearTarget = Math.min(1, tearTarget + Math.hypot(event.clientX - dragLast[0], event.clientY - dragLast[1]) * .012);
+          dragLast = [event.clientX, event.clientY];
+        }
+      }, { passive: true });
+      canvas.addEventListener("pointerdown", (event) => {
+        dragging = true; dragLast = [event.clientX, event.clientY]; tearTarget = .78; canvas.setPointerCapture(event.pointerId);
+      });
+      canvas.addEventListener("pointerup", (event) => { dragging = false; tearTarget = 0; canvas.releasePointerCapture(event.pointerId); });
+      canvas.addEventListener("pointercancel", () => { dragging = false; tearTarget = 0; });
+      canvas.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        wheelAccum = Math.max(-180, Math.min(180, wheelAccum + Math.max(-90, Math.min(90, event.deltaY))));
+        if (wheelCooldown <= 0 && Math.abs(wheelAccum) >= 45) {
+          setMovement(movement + (wheelAccum > 0 ? 1 : -1));
+          wheelAccum = 0;
+          wheelCooldown = .36;
+        }
+      }, { passive: false });
+      morphRail.addEventListener("input", () => setMorph(morphRail.value));
+      transportButton.addEventListener("click", togglePlayback);
+      document.getElementById("notesToggle").addEventListener("click", () => openDrawer("notesDrawer"));
+      document.getElementById("creditsToggle").addEventListener("click", () => openDrawer("creditsDrawer"));
+      document.querySelectorAll("[data-close-drawer]").forEach((button) => button.addEventListener("click", closeDrawers));
+      window.addEventListener("keydown", (event) => {
+        if (event.key >= "1" && event.key <= "4") setMovement(Number(event.key) - 1);
+        else if (event.code === "Space" && !/INPUT|TEXTAREA/.test(document.activeElement && document.activeElement.tagName)) { event.preventDefault(); togglePlayback(); }
+        else if (event.key === "Escape") closeDrawers();
+      });
+      window.addEventListener("resize", resize, { passive: true });
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) { running = false; cancelAnimationFrame(raf); }
+        else if (!running) { running = true; lastFrame = performance.now(); raf = requestAnimationFrame(render); }
+      });
+
+      setMovement(0);
+      setMorph(morph);
+      resize();
+      const webglReady = initWebGL();
+      if (!webglReady) cloud = makeCloud(Math.min(count, mobile ? 2200 : 4500));
+      setPhase("booting");
+      initBridge();
+      raf = requestAnimationFrame(render);
+      window.addEventListener("beforeunload", () => { if (controller && typeof controller.destroy === "function") controller.destroy(); });
+    })();
+  </script>
+</body>
+</html>

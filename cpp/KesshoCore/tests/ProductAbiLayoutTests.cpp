@@ -16,50 +16,51 @@ void require(bool condition, const char* message) {
 } // namespace
 
 int main() {
-  static_assert(sizeof(KesshoProductSourceSnapshot) == 5188, "source snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductSourceSnapshot) == 5176, "source snapshot ABI size changed");
   static_assert(sizeof(KesshoProductSequencerLaneSnapshot) == 100, "sequencer lane snapshot ABI size changed");
-  static_assert(sizeof(KesshoProductSnapshotV2) == 154744, "product snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductSnapshotV2) == 154676, "product snapshot ABI size changed");
   static_assert(sizeof(KesshoProductEvent) == 40, "product event ABI size changed");
   static_assert(sizeof(KesshoSequencerEvent) == 60, "sequencer event ABI size changed");
   static_assert(sizeof(KesshoProductGranularVisualEvent) == 32, "granular visual event ABI size changed");
-  static_assert(sizeof(KesshoProductDebugSourceState) == 32, "product debug source telemetry ABI size changed");
-  static_assert(sizeof(KesshoProductDebugVoiceSpawn) == 48, "product debug voice telemetry ABI size changed");
-  static_assert(sizeof(KesshoProductTelemetry) == 15472, "product telemetry ABI size changed");
+  static_assert(sizeof(KesshoProductTelemetry) == 14512, "product telemetry ABI size changed");
   static_assert(sizeof(KesshoProductSequencerLaneUiState) == 3296, "sequencer UI lane state ABI size changed");
   static_assert(sizeof(KesshoProductSequencerUiState) == 105508, "sequencer UI state ABI size changed");
 
   require(offsetof(KesshoProductSnapshotV2, schema_hash) == 4, "snapshot schema hash offset changed");
   require(offsetof(KesshoProductSnapshotV2, sources) == 2928, "snapshot sources offset changed");
-  require(offsetof(KesshoProductSnapshotV2, sonic_runtime) == 154568, "snapshot sonic runtime offset changed");
+  require(offsetof(KesshoProductSnapshotV2, sonic_runtime) == 154500, "snapshot sonic runtime offset changed");
   require(offsetof(KesshoProductEvent, sample_offset) == 0, "event sample offset changed");
   require(offsetof(KesshoProductEvent, event_kind) == 4, "event kind offset changed");
   require(offsetof(KesshoSequencerEvent, midi_note) == 16, "sequencer event midi offset changed");
   require(offsetof(KesshoSequencerEvent, flags) == 56, "sequencer event flags offset changed");
   require(offsetof(KesshoProductTelemetry, schema_hash) == 0, "telemetry schema hash offset changed");
   require(
-      offsetof(KesshoProductTelemetry, source_morph_automation_enabled_mask) == 15168,
+      offsetof(KesshoProductTelemetry, source_morph_automation_enabled_mask) == 14128,
       "source morph telemetry offset changed");
   require(
-      offsetof(KesshoProductTelemetry, auto_stop_target_sample_frame) == 15224,
+      offsetof(KesshoProductTelemetry, auto_stop_target_sample_frame) == 14184,
       "auto-stop telemetry offset changed");
   require(
-      offsetof(KesshoProductTelemetry, synth_arp_current_midis) == 15232,
+      offsetof(KesshoProductTelemetry, synth_arp_current_midis) == 14192,
       "telemetry synth ARP current MIDI offset changed");
   require(
-      offsetof(KesshoProductTelemetry, scatter_current_phrase_id) == 15296,
+      offsetof(KesshoProductTelemetry, scatter_current_phrase_id) == 14256,
       "telemetry Scatter projection offset changed");
   require(
-      offsetof(KesshoProductTelemetry, scene_program_revision) == 15312,
+      offsetof(KesshoProductTelemetry, scene_program_revision) == 14272,
       "telemetry scene projection offset changed");
   require(
-      offsetof(KesshoProductTelemetry, routing_mute_group_revision) == 15320,
+      offsetof(KesshoProductTelemetry, routing_mute_group_revision) == 14280,
       "telemetry routing mute group projection offset changed");
   require(
-      offsetof(KesshoProductTelemetry, journey_schedule_revision) == 15392,
+      offsetof(KesshoProductTelemetry, journey_schedule_revision) == 14352,
       "telemetry Journey schedule projection offset changed");
   require(
-      offsetof(KesshoProductTelemetry, journey_prepared_total_frames) == 15424,
+      offsetof(KesshoProductTelemetry, journey_prepared_total_frames) == 14384,
       "telemetry Journey prepared-frame offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, harmony_note_pool_count) == 14428,
+      "telemetry harmony note-pool offset changed");
   require(offsetof(KesshoProductTelemetry, rng_seed) == 928, "telemetry rng seed offset changed");
   require(offsetof(KesshoProductTelemetry, master_input_peak) == 968, "telemetry master input peak offset changed");
   require(
@@ -123,71 +124,61 @@ int main() {
       offsetof(KesshoProductTelemetry, granular_visual_events) == 7804,
       "telemetry granular visual events offset changed");
   require(
-      offsetof(KesshoProductTelemetry, debug_source_state_count) == 8828,
-      "telemetry debug source count offset changed");
-  require(
-      offsetof(KesshoProductTelemetry, debug_source_states) == 8832,
-      "telemetry debug source states offset changed");
-  require(
-      offsetof(KesshoProductTelemetry, debug_voice_spawn_count) == 9088,
-      "telemetry debug voice count offset changed");
-  require(
-      offsetof(KesshoProductTelemetry, debug_voice_spawns) == 9096,
-      "telemetry debug voice spawns offset changed");
-  require(
-      offsetof(KesshoProductTelemetry, synth_orbit_visual_note_counts) == 9864,
+      offsetof(KesshoProductTelemetry, synth_orbit_visual_note_counts) == 8828,
       "telemetry synth Orbit visual note-count offset changed");
   require(
-      offsetof(KesshoProductTelemetry, synth_orbit_visual_base_angles) == 9928,
+      offsetof(KesshoProductTelemetry, synth_orbit_visual_base_angles) == 8892,
       "telemetry synth Orbit visual base-angle offset changed");
   require(
-      offsetof(KesshoProductTelemetry, synth_orbit_visual_note_angles) == 9992,
+      offsetof(KesshoProductTelemetry, synth_orbit_visual_note_angles) == 8956,
       "telemetry synth Orbit visual note-angle offset changed");
   require(
-      offsetof(KesshoProductTelemetry, synth_orbit_visual_note_flashes) == 12040,
+      offsetof(KesshoProductTelemetry, synth_orbit_visual_note_flashes) == 11004,
       "telemetry synth Orbit visual note-flash offset changed");
   require(
-      offsetof(KesshoProductTelemetry, synth_anchor_walker_visual_flags) == 14088,
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_visual_flags) == 13052,
       "telemetry synth Anchor Walker visual flags offset changed");
   require(
-      offsetof(KesshoProductTelemetry, synth_anchor_walker_cursor_degrees) == 14152,
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_cursor_degrees) == 13116,
       "telemetry synth Anchor Walker cursor-degree offset changed");
   require(
-      offsetof(KesshoProductTelemetry, synth_anchor_walker_last_gesture_deltas) == 14216,
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_last_gesture_deltas) == 13180,
       "telemetry synth Anchor Walker gesture-delta offset changed");
   require(
-      offsetof(KesshoProductTelemetry, synth_anchor_walker_boundary_events) == 14280,
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_boundary_events) == 13244,
       "telemetry synth Anchor Walker boundary-event offset changed");
   require(
-      offsetof(KesshoProductTelemetry, synth_anchor_walker_output_counts) == 14344,
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_output_counts) == 13308,
       "telemetry synth Anchor Walker output-count offset changed");
   require(
-      offsetof(KesshoProductTelemetry, synth_anchor_walker_anchor_midis) == 14408,
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_anchor_midis) == 13372,
       "telemetry synth Anchor Walker anchor-MIDI offset changed");
   require(
-      offsetof(KesshoProductTelemetry, synth_anchor_walker_cursor_midis) == 14472,
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_cursor_midis) == 13436,
       "telemetry synth Anchor Walker cursor-MIDI offset changed");
   require(
-      offsetof(KesshoProductTelemetry, synth_anchor_walker_previous_cursor_midis) == 14536,
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_previous_cursor_midis) == 13500,
       "telemetry synth Anchor Walker previous-cursor-MIDI offset changed");
   require(
-      offsetof(KesshoProductTelemetry, synth_anchor_walker_output_midis) == 14600,
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_output_midis) == 13564,
       "telemetry synth Anchor Walker output-MIDI offset changed");
   require(
-      offsetof(KesshoProductTelemetry, synth_anchor_walker_output_velocities) == 14856,
+      offsetof(KesshoProductTelemetry, synth_anchor_walker_output_velocities) == 13820,
       "telemetry synth Anchor Walker output-velocity offset changed");
-  require(offsetof(KesshoProductTelemetry, transport_bpm) == 15112, "telemetry transport BPM offset changed");
-  require(offsetof(KesshoProductTelemetry, transport_transition_pending) == 15128, "telemetry pending transition offset changed");
-  require(offsetof(KesshoProductTelemetry, transport_pending_apply_frame) == 15152, "telemetry pending apply frame offset changed");
-  require(offsetof(KesshoProductTelemetry, transport_transition_revision) == 15160, "telemetry transition revision offset changed");
-  require(offsetof(KesshoProductTelemetry, transport_phrase_progress) == 15164, "telemetry phrase progress offset changed");
-  require(offsetof(KesshoProductTelemetry, auto_cycle_revision) == 15356, "telemetry auto-cycle revision offset changed");
-  require(offsetof(KesshoProductTelemetry, auto_cycle_phase_start_frame) == 15368, "telemetry auto-cycle phase-start offset changed");
-  require(offsetof(KesshoProductTelemetry, auto_cycle_phase_end_frame) == 15376, "telemetry auto-cycle phase-end offset changed");
-  require(sizeof(KesshoProductTelemetry) == 15472, "telemetry byte size changed");
-  require(offsetof(KesshoProductTelemetry, harmony_play_dispatch_count) == 15448, "harmony dispatch telemetry offset changed");
-  require(offsetof(KesshoProductTelemetry, harmony_play_last_dispatch_frame) == 15456, "harmony dispatch frame telemetry offset changed");
-  require(offsetof(KesshoProductTelemetry, harmony_play_dispatch_latency_ms) == 15464, "harmony dispatch latency telemetry offset changed");
+  require(offsetof(KesshoProductTelemetry, transport_bpm) == 14076, "telemetry transport BPM offset changed");
+  require(offsetof(KesshoProductTelemetry, transport_transition_pending) == 14092, "telemetry pending transition offset changed");
+  require(offsetof(KesshoProductTelemetry, transport_pending_apply_frame) == 14112, "telemetry pending apply frame offset changed");
+  require(offsetof(KesshoProductTelemetry, transport_transition_revision) == 14120, "telemetry transition revision offset changed");
+  require(offsetof(KesshoProductTelemetry, transport_phrase_progress) == 14124, "telemetry phrase progress offset changed");
+  require(offsetof(KesshoProductTelemetry, auto_cycle_revision) == 14316, "telemetry auto-cycle revision offset changed");
+  require(offsetof(KesshoProductTelemetry, auto_cycle_phase_start_frame) == 14328, "telemetry auto-cycle phase-start offset changed");
+  require(offsetof(KesshoProductTelemetry, auto_cycle_phase_end_frame) == 14336, "telemetry auto-cycle phase-end offset changed");
+  require(sizeof(KesshoProductTelemetry) == 14512, "telemetry byte size changed");
+  require(offsetof(KesshoProductTelemetry, harmony_play_dispatch_count) == 14408, "harmony dispatch telemetry offset changed");
+  require(offsetof(KesshoProductTelemetry, harmony_play_last_dispatch_frame) == 14416, "harmony dispatch frame telemetry offset changed");
+  require(offsetof(KesshoProductTelemetry, harmony_play_dispatch_latency_ms) == 14424, "harmony dispatch latency telemetry offset changed");
+  require(offsetof(KesshoProductTelemetry, harmony_next_note_pool_count) == 14464, "harmony next note-pool count telemetry offset changed");
+  require(offsetof(KesshoProductTelemetry, harmony_next_source) == 14500, "harmony next-source telemetry offset changed");
   require(
       offsetof(KesshoProductSequencerLaneUiState, nudge_override_set_low) == 100,
       "sequencer UI nudge override low offset changed");

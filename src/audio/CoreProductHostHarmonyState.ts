@@ -92,10 +92,11 @@ function phraseSecondsFromState(state: Record<string, unknown>): number {
   return getPhraseDurationForClockSource(state as Partial<SliderState>, source);
 }
 
-function telemetryChordMidi(telemetry: CoreProductTelemetrySnapshot | null | undefined): number[] | null {
-  const notes = telemetry?.harmonyChordMidi;
-  if (!Array.isArray(notes)) return null;
-  const midi = notes.filter((note) => typeof note === 'number' && Number.isFinite(note) && note > 0);
+function telemetryNotePool(
+  values: number[] | undefined,
+): number[] | null {
+  if (!Array.isArray(values)) return null;
+  const midi = values.filter((note) => typeof note === 'number' && Number.isFinite(note) && note >= 0 && note <= 127);
   return midi.length > 0 ? midi : null;
 }
 
@@ -151,10 +152,13 @@ export function createCoreProductHostHarmonySnapshot(
   }
 
   const scaleFamily = telemetryScaleName ? getScaleByName(telemetryScaleName) ?? harmonyState.scaleFamily : harmonyState.scaleFamily;
-  const midiNotes = telemetryChordMidi(telemetry);
-  const currentChord = midiNotes
-    ? { midiNotes, frequencies: midiNotes.map(midiToFreq) }
-    : harmonyState.currentChord;
+  const nativeNotePoolMidi = telemetryNotePool(telemetry?.harmonyNotePoolMidi);
+  const runtimeNextNotePoolMidi = telemetryNotePool(telemetry?.harmonyNextNotePoolMidi);
+  const currentChord = nativeNotePoolMidi
+    ? { midiNotes: nativeNotePoolMidi, frequencies: nativeNotePoolMidi.map(midiToFreq) }
+    : telemetry == null
+      ? harmonyState.currentChord
+      : { midiNotes: [], frequencies: [] };
   const effectiveRoot = telemetryRoot ?? harmonyState.effectiveRoot;
   const resolved: HarmonyState = {
     ...harmonyState,
@@ -165,6 +169,11 @@ export function createCoreProductHostHarmonySnapshot(
     scaleTension: tension,
     currentDegree: finiteInteger(telemetry?.harmonyChordDegree, harmonyState.currentDegree),
     effectiveRoot,
+    runtimeHarmonyReady: nativeNotePoolMidi !== null,
+    runtimeNotePoolMidi: nativeNotePoolMidi ?? undefined,
+    runtimeNextNotePoolMidi: runtimeNextNotePoolMidi ?? undefined,
+    runtimeNextSource: typeof telemetry?.harmonyNextSource === 'number' ? telemetry.harmonyNextSource : undefined,
+    runtimeNextStepIndex: typeof telemetry?.harmonyNextStepIndex === 'number' ? telemetry.harmonyNextStepIndex : undefined,
     cof: {
       ...harmonyState.cof,
       homeRoot,
@@ -180,6 +189,8 @@ export function createCoreProductHostHarmonySnapshot(
     resolved.chordTension.toFixed(4),
     resolved.currentDegree,
     resolved.currentChord.midiNotes.map((note) => note.toFixed(3)).join(','),
+    resolved.runtimeHarmonyReady === undefined ? '' : resolved.runtimeHarmonyReady ? 'ready' : 'pending',
+    runtimeNextNotePoolMidi?.map((note) => note.toFixed(3)).join(',') ?? '',
     telemetry?.barIndex ?? '',
     telemetry?.phraseIndex ?? '',
   ].join('|');

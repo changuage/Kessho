@@ -196,8 +196,16 @@ export class WebProductEngine implements ProductEnginePort {
     coreProductRuntimeHostPort.pushMidiMessage(message);
   }
 
-  enqueueLiveNoteEvent(event: ProductLiveNoteEvent): void {
-    coreProductRuntimeHostPort.enqueueLiveNoteEvent(event);
+  enqueueRealtimeEvent(event: ProductEvent): Promise<void> {
+    return coreProductRuntimeHostPort.enqueueRealtimeEvent(event);
+  }
+
+  enqueueRealtimeEvents(events: readonly ProductEvent[]): Promise<void> {
+    return coreProductRuntimeHostPort.enqueueRealtimeEvents(events);
+  }
+
+  enqueueLiveNoteEvent(event: ProductLiveNoteEvent): Promise<void> {
+    return coreProductRuntimeHostPort.enqueueLiveNoteEvent(event);
   }
 
   registerAsset(asset: ProductAssetRegistration): Promise<ProductAssetHandle> {
@@ -248,6 +256,10 @@ export class WebProductEngine implements ProductEnginePort {
     return coreProductRuntimeHostPort.auditionSynthNote(note, externalState);
   }
 
+  auditionSynthNotes(notes: ProductManualSynthNote[], externalState?: ProductExternalState): Promise<void> {
+    return coreProductRuntimeHostPort.auditionSynthNotes(notes, externalState);
+  }
+
   triggerDrumVoice(voice: ProductDrumVoice, velocity: number = 0.8, externalState?: ProductExternalState): Promise<void> {
     return coreProductRuntimeHostPort.triggerDrumVoice(voice, velocity, externalState);
   }
@@ -266,6 +278,10 @@ export class WebProductEngine implements ProductEnginePort {
 
   requestTelemetryOnce(): void {
     coreProductRuntimeHostPort.requestTelemetryOnce();
+  }
+
+  requestVisualTelemetryAfterRender(): void {
+    coreProductRuntimeHostPort.requestVisualTelemetryAfterRender();
   }
 
   getSequencerUiState(): ProductSequencerUiState | null {
@@ -465,7 +481,7 @@ export class WebProductEngine implements ProductEnginePort {
   private pendingStartOptions: ProductEngineStartOptions | undefined;
 
   private async preloadRuntime(): Promise<void> {
-    return Promise.resolve();
+    await coreProductRuntimeHostPort.preload();
   }
 
   private async startRuntime(): Promise<void> {

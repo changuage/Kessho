@@ -35,6 +35,7 @@ test('legacy Waves and Nature textures migrate to stable Nature slots', () => {
 test('canonical slots allow duplicate selections and serialize identity independently', () => {
   const state = {
     natureMasterEnabled: true,
+    natureLevel: 0.5,
     nature1Enabled: true,
     nature1SampleId: 'birds-alps',
     nature1Level: 0.3,
@@ -59,8 +60,8 @@ test('canonical slots allow duplicate selections and serialize identity independ
   assert.equal(payload.enabled, true);
   assert.equal(payload.textureParams[slot1 + 5], 7102);
   assert.equal(payload.textureParams[slot2 + 5], 7102);
-  assert.equal(payload.textureParams[slot1 + 7], 0.3);
-  assert.equal(payload.textureParams[slot2 + 7], 0.7);
+  assert.equal(payload.textureParams[slot1 + 7], 0.15);
+  assert.equal(payload.textureParams[slot2 + 7], 0.35);
   assert.equal(payload.textureParams[slot1 + 8], 1);
   assert.equal(payload.textureParams[slot2 + 8], 3);
   assert.equal(payload.textureParams[slot1 + 2], 5);

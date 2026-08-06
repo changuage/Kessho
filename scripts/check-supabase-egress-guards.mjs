@@ -121,7 +121,7 @@ function assertSummarySelectExcludesPayload(filePath, text, name) {
 function functionBody(text, name) {
   const freeFunctionMatch = new RegExp(`\\bfunction\\s+${name}\\s*\\(`).exec(text);
   const methodMatch = !freeFunctionMatch
-    ? new RegExp(`(?:private\\s+)?(?:async\\s+)?${name}\\s*\\(`).exec(text)
+    ? new RegExp(`^\\s*(?:private\\s+)?(?:async\\s+)?${name}\\s*\\(`, 'm').exec(text)
     : null;
   const start = freeFunctionMatch?.index ?? methodMatch?.index ?? -1;
   if (start < 0) return null;
@@ -407,22 +407,45 @@ function assertTextIncludes(filePath, text, token, message = `missing required e
 {
   const { filePath, text } = readRepoFile('src/presets/SupabasePresetStore.ts');
   assertFunctionUsesOnlySummarySelect(filePath, text, 'listV2', 'PRESET_V2_SUMMARY_SELECT');
-  assertFunctionUsesOnlySummarySelect(filePath, text, 'listLegacy', 'LEGACY_PRESET_SUMMARY_SELECT');
 
   const listV2Body = functionBody(text, 'listV2');
   if (!listV2Body) {
     fail(filePath, findLine(text, 'listV2'), 'listV2 body not found for payload hydration guard');
-  } else if (listV2Body.includes('fetchPayloadMapV2')) {
-    fail(filePath, findLine(text, 'fetchPayloadMapV2'), 'listV2 must not hydrate payload metadata during summary reads');
-  } else if (listV2Body.includes('data?.length')) {
-    fail(filePath, findLine(text, 'data?.length'), 'listV2 must not fall back to base-table reads when summary views are empty');
-  }
-
-  const listLegacyBody = functionBody(text, 'listLegacy');
-  if (!listLegacyBody) {
-    fail(filePath, findLine(text, 'listLegacy'), 'listLegacy body not found for summary fallback guard');
-  } else if (listLegacyBody.includes('data?.length')) {
-    fail(filePath, findLine(text, 'data?.length'), 'listLegacy must not fall back to base-table reads when summary views are empty');
+  } else {
+    for (const token of [
+      "if (type === 'journey')",
+      'const metadataHashes: string[] = []',
+      'metadataHashes.push(row.latest_metadata_hash)',
+      'const payloads = await this.fetchPayloadMapV2(metadataHashes)',
+      'normalizeJourneyPresetPreview(payload.journeyPreview)',
+    ]) {
+      if (!listV2Body.includes(token)) {
+        fail(filePath, findLine(text, 'listV2'), `listV2 missing batched Journey preview token: ${token}`);
+      }
+    }
+    const payloadBatchCalls = listV2Body.split('this.fetchPayloadMapV2(metadataHashes)').length - 1;
+    if (payloadBatchCalls !== 1) {
+      fail(filePath, findLine(text, 'fetchPayloadMapV2(metadataHashes)'), `listV2 must issue exactly one deduplicated Journey metadata batch, found ${payloadBatchCalls}`);
+    }
+    for (const token of [
+      'this.loadV2(',
+      'this.loadV2ByRow(',
+      'this.fetchDetailBundleRpcV2(',
+      'this.loadLatestManifestV2(',
+      'this.fetchLatestManifestRpcV2(',
+      'kessho_get_preset_detail_v2',
+      'kessho_get_preset_latest_manifest_v2',
+      'listLegacy',
+      'fetchLegacyDetailRpc',
+      'kessho_get_legacy_preset_detail',
+    ]) {
+      if (listV2Body.includes(token)) {
+        fail(filePath, findLine(text, 'listV2'), `listV2 must not perform per-summary/detail/manifest or legacy fallback work: ${token}`);
+      }
+    }
+    if (listV2Body.includes('data?.length')) {
+      fail(filePath, findLine(text, 'data?.length'), 'listV2 must not fall back to base-table reads when summary views are empty');
+    }
   }
 
   for (const token of [
@@ -431,9 +454,7 @@ function assertTextIncludes(filePath, text, token, message = `missing required e
     'const PRESET_LIST_SESSION_CACHE_PREFIX =',
     ".from('preset_summaries_v2')",
     "const functionName = 'kessho_get_preset_detail_v2'",
-    "const functionName = 'kessho_get_legacy_preset_detail'",
     'fetchDetailBundleRpcV2({ type, name, scope, version })',
-    'fetchLegacyDetailRpc(type, name, scope)',
     'materializeDetailBundleV2(rpcBundle, version)',
     "this.client.rpc('kessho_lookup_preset_id_v2'",
     "this.client.rpc('kessho_exists_preset_logical_key_v2'",
@@ -450,6 +471,23 @@ function assertTextIncludes(filePath, text, token, message = `missing required e
     'writePresetListSessionCache(key, summaries)',
   ]) {
     assertTextIncludes(filePath, text, token);
+  }
+
+  for (const name of ['listUncached', 'load']) {
+    const body = functionBody(text, name);
+    if (!body) {
+      fail(filePath, findLine(text, name), `${name} body not found for V2-only runtime guard`);
+      continue;
+    }
+    for (const token of ['listLegacy', 'loadLegacy', 'fetchLegacyDetailRpc', 'kessho_get_legacy_preset_detail']) {
+      if (body.includes(token)) {
+        fail(filePath, findLine(text, name), `${name} must fail closed instead of using runtime legacy fallback: ${token}`);
+      }
+    }
+  }
+  const listUncachedBody = functionBody(text, 'listUncached');
+  if (listUncachedBody && !listUncachedBody.includes('return this.listV2(type, scope)')) {
+    fail(filePath, findLine(text, 'listUncached'), 'listUncached must return the V2 summary path directly');
   }
 
   const renameV2Body = functionBody(text, 'renameV2');

@@ -8,11 +8,14 @@ import {
 } from './kessho-core-build-manifest.mjs';
 
 const root = process.cwd();
-const outputDir = resolve(root, 'public/worklets');
-const wasmOutput = resolve(outputDir, 'kessho_core.wasm');
+const parityBuild = process.argv.includes('--parity');
+const outputDir = parityBuild
+  ? resolve(root, 'build/kessho-core/parity')
+  : resolve(root, 'public/worklets');
+const wasmOutput = resolve(outputDir, parityBuild ? 'kessho_core_parity.wasm' : 'kessho_core.wasm');
 const workletSource = resolve(root, 'cpp/KesshoCore/adapters/wasm/kessho-core.worklet.js');
 const workletOutput = resolve(outputDir, 'kessho-core.worklet.js');
-const sources = resolveKesshoCoreSources(root);
+const sources = resolveKesshoCoreSources(root, { includeDebugApi: parityBuild });
 
 function findCompiler() {
   const candidates = [
@@ -93,6 +96,7 @@ run(findCompiler(), [
   '-Wall',
   '-Wextra',
   '-Werror',
+  ...(parityBuild ? ['-DKESSHO_PRODUCT_ENABLE_DEBUG_API=1'] : []),
   ...kesshoCoreIncludeArgs(root),
   ...sources,
   '--no-entry',
@@ -100,11 +104,13 @@ run(findCompiler(), [
   '-sALLOW_MEMORY_GROWTH=1',
   '-sINITIAL_MEMORY=67108864',
   '-sMAXIMUM_MEMORY=402653184',
-  formatEmscriptenExportedFunctions(),
+  formatEmscriptenExportedFunctions({ includeDebugApi: parityBuild }),
   '-o',
   wasmOutput,
 ]);
 
-copyFileSync(workletSource, workletOutput);
 console.log(`Created ${wasmOutput}`);
-console.log(`Created ${workletOutput}`);
+if (!parityBuild) {
+  copyFileSync(workletSource, workletOutput);
+  console.log(`Created ${workletOutput}`);
+}

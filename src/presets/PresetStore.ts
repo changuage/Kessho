@@ -2,8 +2,16 @@
 // Phase 1 — PresetStore abstraction with localStorage backend.
 // The async interface allows transparent swap to IndexedDB (Phase 12).
 
-import type { PresetEntry, PresetLevel, PresetRenameIdentity, PresetSummary } from './types';
-import { compressVersions } from './codec';
+import type {
+  PresetEntry,
+  PresetLevel,
+  PresetMetadataPatch,
+  PresetMetadataUpdateOptions,
+  PresetReferenceCandidate,
+  PresetRenameIdentity,
+  PresetSummary,
+} from './types';
+import { compressVersions, getVersionData } from './codec';
 import {
   getPresetScope,
   isPresetCompatibleWithSlot,
@@ -20,6 +28,16 @@ const LIBRARY_SORT_ORDER = {
   cloud: 2,
 } as const;
 
+/** A metadata edit lost its compare-and-set race and must be refreshed before retrying. */
+export class PresetMetadataConflictError extends Error {
+  readonly code = 'PRESET_METADATA_CONFLICT';
+
+  constructor(message = 'This preset was changed elsewhere. Refresh it before editing metadata again.') {
+    super(message);
+    this.name = 'PresetMetadataConflictError';
+  }
+}
+
 function getBrowserPresetStorage(): Storage | null {
   if (typeof localStorage === 'undefined') return null;
   return localStorage;
@@ -34,14 +52,31 @@ export interface IPresetStore {
   list(type: PresetLevel, scope?: string): Promise<PresetSummary[]>;
   /** Rename a preset in place, preserving its stable id/versions */
   rename(type: PresetLevel, name: string, nextName: string, scope?: string, identity?: PresetRenameIdentity): Promise<PresetEntry | null>;
+  /** Update identity metadata without creating a preset version. */
+  updateMetadata(
+    type: PresetLevel,
+    name: string,
+    metadata: PresetMetadataPatch,
+    scope?: string,
+    options?: PresetMetadataUpdateOptions,
+  ): Promise<boolean>;
   delete(type: PresetLevel, name: string, scope?: string): Promise<void>;
   exists(type: PresetLevel, name: string, scope?: string): Promise<boolean>;
   /** Find higher-level presets that reference this preset by name */
   findReferences(type: PresetLevel, name: string): Promise<string[]>;
+  /** Find presets whose current version references a stable target identity. */
+  findCurrentReferenceCandidates(
+    type: PresetLevel,
+    targetId: string | undefined,
+    targetName: string,
+  ): Promise<PresetReferenceCandidate[]>;
   getStorageUsed(): Promise<{ bytes: number; count: number }>;
   /** Export all presets as a single JSON blob */
   exportAll(): Promise<Blob>;
-  /** Import all presets from a JSON string; returns count of imported entries */
+  /**
+   * Administrative bulk restore. It rejects active logical-key collisions;
+   * interactive file import uses PresetCommandService.importEntry instead.
+   */
   importAll(json: string): Promise<number>;
 }
 
@@ -65,6 +100,15 @@ function compareEntriesByFreshness(left: PresetEntry, right: PresetEntry): numbe
   return left.versions.length - right.versions.length;
 }
 
+function getLocalMetadataRevision(entry: Pick<PresetEntry, 'updatedAt' | 'updatedAtRevision'>): string {
+  return entry.updatedAtRevision ?? String(entry.updatedAt);
+}
+
+function stampLocalUpdate(entry: PresetEntry): void {
+  entry.updatedAt = Math.max(Date.now(), entry.updatedAt + 1);
+  entry.updatedAtRevision = String(entry.updatedAt);
+}
+
 function containsReferenceValue(value: unknown, needle: string): boolean {
   if (value === needle) return true;
   if (Array.isArray(value)) return value.some(item => containsReferenceValue(item, needle));
@@ -86,7 +130,7 @@ export class LocalStoragePresetStore implements IPresetStore {
 
     // Authoritative version retention/compression lives at the store boundary.
     compressVersions(normalized);
-    normalized.updatedAt = Date.now();
+    stampLocalUpdate(normalized);
 
     const key = getLogicalKey(normalized);
     storage.setItem(key, JSON.stringify(normalized));
@@ -154,7 +198,10 @@ export class LocalStoragePresetStore implements IPresetStore {
         results.set(logicalKey, entry);
       }
     }
-    const summaries = [...results.values()].map(normalizePresetSummary);
+    const summaries = [...results.values()].map(entry => ({
+      ...normalizePresetSummary(entry),
+      updatedAtRevision: getLocalMetadataRevision(entry),
+    }));
     // Sort: stock first, then local user, then cloud mirrors.
     summaries.sort((a, b) => {
       if (a.library !== b.library) return LIBRARY_SORT_ORDER[a.library] - LIBRARY_SORT_ORDER[b.library];
@@ -200,11 +247,10 @@ export class LocalStoragePresetStore implements IPresetStore {
       name: trimmedName,
       tags: identity?.tags ?? entry.tags,
       remoteId: entry.remoteId,
-      updatedAt: Date.now(),
     });
 
     compressVersions(renamed);
-    renamed.updatedAt = Date.now();
+    stampLocalUpdate(renamed);
 
     const nextScope = getPresetScope(renamed, type);
     const nextKey = getLogicalKey(renamed);
@@ -212,6 +258,36 @@ export class LocalStoragePresetStore implements IPresetStore {
     storage.removeItem(makePresetKey(type, trimmedName, nextScope));
     storage.setItem(nextKey, JSON.stringify(renamed));
     return renamed;
+  }
+
+  async updateMetadata(
+    type: PresetLevel,
+    name: string,
+    metadata: PresetMetadataPatch,
+    scope?: string,
+    options?: PresetMetadataUpdateOptions,
+  ): Promise<boolean> {
+    const entry = await this.load(type, name, scope);
+    if (!entry) return false;
+    const targetId = options?.targetId?.trim();
+    if (targetId && targetId !== entry.id && targetId !== entry.remoteId) return false;
+    if (
+      options?.expectedUpdatedAt !== undefined
+      && options.expectedUpdatedAt !== getLocalMetadataRevision(entry)
+    ) {
+      throw new PresetMetadataConflictError();
+    }
+
+    if ('creator' in metadata) entry.creator = metadata.creator ?? undefined;
+    if ('description' in metadata) entry.description = metadata.description ?? undefined;
+    if (metadata.visibility !== undefined) entry.visibility = metadata.visibility;
+    if ('familyName' in metadata) entry.familyName = metadata.familyName ?? undefined;
+    if ('variantName' in metadata) entry.variantName = metadata.variantName ?? undefined;
+    if ('variantRank' in metadata) entry.variantRank = metadata.variantRank ?? undefined;
+    if ('rating' in metadata) entry.rating = metadata.rating ?? undefined;
+    if (metadata.tags !== undefined) entry.tags = metadata.tags;
+    await this.save(entry);
+    return true;
   }
 
   async exists(type: PresetLevel, name: string, scope?: string): Promise<boolean> {
@@ -244,6 +320,45 @@ export class LocalStoragePresetStore implements IPresetStore {
       }
     }
     return [...new Set(refs)];
+  }
+
+  async findCurrentReferenceCandidates(
+    type: PresetLevel,
+    targetId: string | undefined,
+    targetName: string,
+  ): Promise<PresetReferenceCandidate[]> {
+    const storage = getBrowserPresetStorage();
+    if (!storage) return [];
+    const candidates = new Map<string, PresetReferenceCandidate>();
+    const needles = [targetId, targetName].filter((value): value is string => Boolean(value?.trim()));
+
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (!key?.startsWith(PREFIX)) continue;
+      const raw = storage.getItem(key);
+      if (!raw) continue;
+      const entry = readCurrentEntry(raw);
+      if (!entry || (type === 'state' && entry.type !== 'journey')) continue;
+      const version = entry.versions.find(candidate => candidate.v === entry.currentVersion)
+        ?? entry.versions[entry.versions.length - 1];
+      if (!version) continue;
+      const refs = version.refs ? Object.values(version.refs) : [];
+      const data = getVersionData(entry, version.v) ?? version.data;
+      const referencesTarget = refs.some(ref =>
+        needles.some(needle => ref.id === needle || ref.name === needle))
+        || needles.some(needle => containsReferenceValue(data, needle));
+      if (!referencesTarget) continue;
+
+      const identity = entry.id ?? `${entry.type}:${getPresetScope(entry, entry.type) ?? ''}:${entry.name.toLowerCase()}`;
+      candidates.set(identity, {
+        id: entry.id,
+        name: entry.name,
+        currentVersion: entry.currentVersion,
+        updatedAtRevision: getLocalMetadataRevision(entry),
+      });
+    }
+
+    return [...candidates.values()];
   }
 
   async getStorageUsed(): Promise<{ bytes: number; count: number }> {
@@ -298,9 +413,22 @@ export class LocalStoragePresetStore implements IPresetStore {
     if (!parsed.kesshoBackup || !Array.isArray(parsed.entries)) {
       throw new Error('Invalid backup format');
     }
+    const entries = parsed.entries.map((entry: unknown) => decodeCurrentPresetEntry(entry));
+    const logicalKeys = new Set<string>();
+    for (const entry of entries) {
+      const key = getLogicalKey(entry);
+      if (logicalKeys.has(key)) {
+        throw new Error(`Backup contains duplicate preset "${entry.name}".`);
+      }
+      logicalKeys.add(key);
+      if (await this.load(entry.type, entry.name, getPresetScope(entry, entry.type))) {
+        throw new Error(`Backup restore would overwrite existing preset "${entry.name}". Rename or remove it first.`);
+      }
+    }
+
     let count = 0;
-    for (const entry of parsed.entries) {
-      await this.save(decodeCurrentPresetEntry(entry));
+    for (const entry of entries) {
+      await this.save(entry);
       count++;
     }
     return count;

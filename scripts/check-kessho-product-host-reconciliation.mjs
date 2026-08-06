@@ -362,6 +362,14 @@ await runCheckWithReport({
       );
     }
 
+    const preloadHarness = loadCoreProductHostHarness();
+    await preloadHarness.host.preload();
+    assert(preloadHarness.runtime.ensureStartedCount === 1, 'Product preload must initialize the worklet/WASM before a musical gesture');
+    assert(preloadHarness.runtime.events.length === 0, 'Product preload must not post musical events');
+    assert(preloadHarness.runtime.snapshots.length === 1, 'Product preload must prime one stopped bootstrap snapshot before a musical gesture');
+    assert(preloadHarness.host.runtimeReady === true, 'Product preload must mark the initialized worklet ready for realtime input');
+    assert(preloadHarness.host.running === false, 'Product preload must not start musical transport');
+
     const manualFastPathHarness = loadCoreProductHostHarness();
     const manualFastPathHost = manualFastPathHarness.host;
     const manualFastPathRuntime = manualFastPathHarness.runtime;
@@ -385,8 +393,8 @@ await runCheckWithReport({
     ], manualFastPathSliderState);
     await manualFastPathHost.triggerDrumVoice('snare', 0.8, manualFastPathSliderState);
     manualFastPathHost.pushMidiMessage({ data: [0x90, 60, 100], timestamp: 12.5 });
-    manualFastPathHost.enqueueLiveNoteEvent({ kind: 'live-note-on', eventID: 'test-live-on', source: 'ui-pad', instrument: 'lead1', channel: 2, note: 72, velocity: 0.5, timestampMs: 12500 });
-    manualFastPathHost.enqueueLiveNoteEvent({ kind: 'live-note-off', eventID: 'test-live-off', source: 'ui-pad', instrument: 'lead1', channel: 2, note: 72, velocity: 0, timestampMs: 12550 });
+    await manualFastPathHost.enqueueLiveNoteEvent({ kind: 'live-note-on', eventID: 'test-live-on', source: 'ui-pad', instrument: 'lead1', channel: 2, note: 72, velocity: 0.5, timestampMs: 12500 });
+    await manualFastPathHost.enqueueLiveNoteEvent({ kind: 'live-note-off', eventID: 'test-live-off', source: 'ui-pad', instrument: 'lead1', channel: 2, note: 72, velocity: 0, timestampMs: 12550 });
     assert(
       manualFastPathHost.latestProductSnapshot === manualFastPathSnapshot,
       'manual Product note/MIDI fast path must not rebuild or dirty-diff an already compiled runtime snapshot',

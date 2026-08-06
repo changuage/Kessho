@@ -1,16 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getVersionData } from './codec';
 import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 import { PresetRatingStars } from './PresetRatingStars';
 import { PresetTagEditor } from './PresetTagEditor';
 import { blurSelectAfterChange } from '../ui/shared/selectFocus';
 import type { SliderState } from '../ui/state';
-import type { PresetEntry, PresetSummary } from './types';
+import type { PresetEntry, PresetSummary, PresetVersionMetadata } from './types';
 import type { UsePresetsResult } from './usePresets';
+import { getPresetCommandErrorMessage } from './presetCommands';
 
 export type PresetManagerRepository = Pick<
   UsePresetsResult,
-  'presets' | 'save' | 'load' | 'remove' | 'rename' | 'refresh' | 'updateMetadata'
+  'presets' | 'save' | 'load' | 'remove' | 'rename' | 'updateMetadata'
 >;
 
 export interface PresetManagerOption {
@@ -29,6 +30,7 @@ export interface PresetManagerDomainAdapter {
   onSaved?: (entry: PresetEntry) => void | Promise<void>;
   onRenamed?: (entry: PresetEntry, previousName: string) => void | Promise<void>;
   applyToSlot: (slot: 'A' | 'B', value: string) => void;
+  getSaveMetadata?: () => PresetVersionMetadata | undefined;
   canRate: (option: PresetManagerOption, summary: PresetSummary | undefined) => boolean;
   rate: (option: PresetManagerOption, rating: number) => Promise<void>;
 }
@@ -71,6 +73,8 @@ export interface PresetManagerController {
   saveAsName: string;
   saveTags: string[];
   confirm: { message: string; onConfirm: () => void | Promise<void> } | null;
+  mutationBusy: boolean;
+  mutationError: string;
   showVersions: boolean;
   versionEntry: PresetEntry | null;
   lastVersions: PresetEntry['versions'];
@@ -110,6 +114,9 @@ export function usePresetManagerController({
   const [versionEntry, setVersionEntry] = useState<PresetEntry | null>(null);
   const [showVersions, setShowVersions] = useState(false);
   const [localRatings, setLocalRatings] = useState<Record<string, number>>({});
+  const [mutationBusy, setMutationBusy] = useState(false);
+  const [mutationError, setMutationError] = useState('');
+  const mutationBusyRef = useRef(false);
 
   const selectedOption = useMemo(
     () => options.find(option => option.value === selectedValue) ?? null,
@@ -138,7 +145,25 @@ export function usePresetManagerController({
     setConfirm(null);
     setVersionEntry(null);
     setShowVersions(false);
+    setMutationError('');
   }, [initialValue, scopeKey]);
+
+  const runMutation = useCallback(async (operation: () => Promise<void>): Promise<boolean> => {
+    if (mutationBusyRef.current) return false;
+    mutationBusyRef.current = true;
+    setMutationBusy(true);
+    setMutationError('');
+    try {
+      await operation();
+      return true;
+    } catch (error) {
+      setMutationError(getPresetCommandErrorMessage(error));
+      return false;
+    } finally {
+      mutationBusyRef.current = false;
+      setMutationBusy(false);
+    }
+  }, []);
 
   const getVersionDiffs = useCallback((entry: PresetEntry, versionNum: number) => {
     const sorted = [...entry.versions].sort((left, right) => left.v - right.v);
@@ -158,23 +183,23 @@ export function usePresetManagerController({
     return { fromV1, fromPrev };
   }, []);
 
-  const loadSavedEntry = useCallback(async (name: string, mode: 'overwrite' | 'saveAs') => {
-    await repository.refresh();
-    const entry = await repository.load(name);
-    if (!entry) return null;
+  const commitSavedEntry = useCallback(async (entry: PresetEntry, mode: 'overwrite' | 'saveAs') => {
     await adapter.onSaved?.(entry);
     setVersionEntry(entry);
     setSelectedValue(adapter.valueForEntry(entry));
     if (mode === 'saveAs') setSaveAsName('');
     return entry;
-  }, [adapter, repository]);
+  }, [adapter]);
 
   const saveOverwrite = useCallback(async () => {
     if (!saveDialog) return;
-    await repository.save(saveDialog.originalName, state, adapter.overwriteNote, saveTags);
-    await loadSavedEntry(saveDialog.originalName, 'overwrite');
-    setSaveDialog(null);
-  }, [adapter.overwriteNote, loadSavedEntry, repository, saveDialog, saveTags, state]);
+    await runMutation(async () => {
+      const entry = await repository.save(saveDialog.originalName, state, adapter.overwriteNote, saveTags, adapter.getSaveMetadata?.());
+      if (!entry) throw new Error(`Preset "${saveDialog.originalName}" was not saved.`);
+      await commitSavedEntry(entry, 'overwrite');
+      setSaveDialog(null);
+    });
+  }, [adapter.getSaveMetadata, adapter.overwriteNote, commitSavedEntry, repository, runMutation, saveDialog, saveTags, state]);
 
   const saveAs = useCallback(async () => {
     const targetName = saveAsName.trim();
@@ -184,30 +209,38 @@ export function usePresetManagerController({
       setConfirm({
         message: `"${targetName}" already exists. Overwrite?`,
         onConfirm: async () => {
-          await repository.save(targetName, state, adapter.overwriteNote, saveTags);
-          await loadSavedEntry(targetName, 'saveAs');
-          setConfirm(null);
+          await runMutation(async () => {
+            const entry = await repository.save(targetName, state, adapter.overwriteNote, saveTags, adapter.getSaveMetadata?.());
+            if (!entry) throw new Error(`Preset "${targetName}" was not saved.`);
+            await commitSavedEntry(entry, 'saveAs');
+            setConfirm(null);
+          });
         },
       });
       return;
     }
-    await repository.save(targetName, state, adapter.saveAsNote, saveTags);
-    await loadSavedEntry(targetName, 'saveAs');
-    setSaveDialog(null);
-  }, [adapter.overwriteNote, adapter.saveAsNote, loadSavedEntry, repository, saveAsName, saveTags, state]);
+    await runMutation(async () => {
+      const entry = await repository.save(targetName, state, adapter.saveAsNote, saveTags, adapter.getSaveMetadata?.());
+      if (!entry) throw new Error(`Preset "${targetName}" was not saved.`);
+      await commitSavedEntry(entry, 'saveAs');
+      setSaveDialog(null);
+    });
+  }, [adapter.getSaveMetadata, adapter.overwriteNote, adapter.saveAsNote, commitSavedEntry, repository, runMutation, saveAsName, saveTags, state]);
 
   const renamePreset = useCallback(async () => {
     if (!saveDialog) return;
     const targetName = saveAsName.trim();
     if (!targetName || targetName === saveDialog.originalName) return;
-    const renamed = await repository.rename(saveDialog.originalName, targetName, { tags: saveTags });
-    if (!renamed) return;
-    await adapter.onRenamed?.(renamed, saveDialog.originalName);
-    setSelectedValue(adapter.valueForEntry(renamed));
-    setVersionEntry(renamed);
-    setSaveDialog(null);
-    setSaveAsName('');
-  }, [adapter, repository, saveAsName, saveDialog, saveTags]);
+    await runMutation(async () => {
+      const renamed = await repository.rename(saveDialog.originalName, targetName, { tags: saveTags });
+      if (!renamed) throw new Error(`Preset "${saveDialog.originalName}" was not renamed.`);
+      await adapter.onRenamed?.(renamed, saveDialog.originalName);
+      setSelectedValue(adapter.valueForEntry(renamed));
+      setVersionEntry(renamed);
+      setSaveDialog(null);
+      setSaveAsName('');
+    });
+  }, [adapter, repository, runMutation, saveAsName, saveDialog, saveTags]);
 
   const toggleVersions = useCallback(async () => {
     if (showVersions) {
@@ -227,26 +260,35 @@ export function usePresetManagerController({
   const rateSelected = useCallback(async (rating: number) => {
     if (!selectedOption) return;
     const key = selectedSummary?.name ?? selectedOption.label;
-    setLocalRatings(previous => ({ ...previous, [key]: rating }));
-    await adapter.rate(selectedOption, rating);
+    try {
+      await adapter.rate(selectedOption, rating);
+      setLocalRatings(previous => ({ ...previous, [key]: rating }));
+    } catch (ratingError) {
+      console.warn('Failed to update preset rating:', ratingError);
+    }
   }, [adapter, selectedOption, selectedSummary?.name]);
 
   const deleteSelected = useCallback(() => {
     if (!selectedEntryName) return;
+    setMutationError('');
     setConfirm({
       message: `Delete "${selectedEntryName}"?`,
       onConfirm: async () => {
-        const removed = await repository.remove(selectedEntryName);
-        if (!removed) return;
-        setConfirm(null);
-        setSelectedValue('');
-        setShowVersions(false);
-        setVersionEntry(null);
+        await runMutation(async () => {
+          const removed = await repository.remove(selectedEntryName);
+          if (!removed) throw new Error(`Preset "${selectedEntryName}" was not deleted.`);
+          setConfirm(null);
+          setSelectedValue('');
+          setShowVersions(false);
+          setVersionEntry(null);
+        });
       },
     });
-  }, [repository, selectedEntryName]);
+  }, [repository, runMutation, selectedEntryName]);
 
   const openSaveDialog = useCallback(() => {
+    if (mutationBusyRef.current) return;
+    setMutationError('');
     setSaveAsName('');
     setSaveTags(selectedSummary?.tags ?? []);
     setSaveDialog({ originalName: selectedEntryName });
@@ -271,6 +313,8 @@ export function usePresetManagerController({
     saveAsName,
     saveTags,
     confirm,
+    mutationBusy,
+    mutationError,
     showVersions,
     versionEntry,
     lastVersions,
@@ -317,6 +361,7 @@ const s: Record<string, React.CSSProperties> = {
   variationRow: { display: 'flex', alignItems: 'center', gap: 4, padding: '2px 4px 0', fontSize: '0.6rem' },
   variationBtn: { background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 3, cursor: 'pointer', padding: '2px 6px', fontSize: '0.58rem', lineHeight: 1.2 },
   variationStatus: { color: '#777', marginLeft: 3, whiteSpace: 'nowrap' },
+  mutationError: { margin: '4px 4px 0', color: '#e4a0a0', fontSize: '0.62rem', lineHeight: 1.35 },
 };
 
 function renderOptionGroups(options: PresetManagerOption[]) {
@@ -405,8 +450,8 @@ export function PresetManagerPanel({
           <button style={{ ...s.slotBtn, ...s.slotA }} onClick={() => controller.loadToSlot('A')} title={`Load into Slot ${slotALabel}`}>{slotALabel}</button>
           <button style={{ ...s.slotBtn, ...s.slotB }} onClick={() => controller.loadToSlot('B')} title={`Load into Slot ${slotBLabel}`}>{slotBLabel}</button>
           {onOpenPool && <button type="button" style={{ ...s.poolBtn, color, borderColor: `${color}55` }} onClick={onOpenPool} title={poolButtonTitle} aria-label={poolButtonAriaLabel}>{poolButtonLabel}</button>}
-          <button style={s.saveBtn} onClick={controller.openSaveDialog} title={`Save current state as ${controller.selectedEntryName}`}>💾</button>
-          {PRESET_DELETE_ENABLED && (SHARED_PRESET_TEST_MODE || selectedSummary?.library !== 'stock') && <button style={s.deleteBtn} onClick={controller.deleteSelected} title={`Delete ${controller.selectedEntryName}`}>✕</button>}
+          <button style={s.saveBtn} disabled={controller.mutationBusy} onClick={controller.openSaveDialog} title={`Save current state as ${controller.selectedEntryName}`}>💾</button>
+          {PRESET_DELETE_ENABLED && (SHARED_PRESET_TEST_MODE || selectedSummary?.library !== 'stock') && <button style={s.deleteBtn} disabled={controller.mutationBusy} onClick={controller.deleteSelected} title={`Delete ${controller.selectedEntryName}`}>✕</button>}
           {selectedSummary && selectedSummary.versionCount > 1 && <button style={{ ...s.expandBtn, ...(controller.showVersions ? { color: '#a5c4d4' } : {}) }} onClick={() => { void controller.toggleVersions(); }} title="Show version history">+</button>}
         </div>
       )}
@@ -418,28 +463,29 @@ export function PresetManagerPanel({
           {version.v > 1 && diffs.fromV1.length > 0 && <div style={{ ...s.diffSummary, color: '#555' }}>vs v1: {diffs.fromV1.slice(0, 5).join(', ')}{diffs.fromV1.length > 5 && ` +${diffs.fromV1.length - 5}`}</div>}
         </React.Fragment>;
       })}
+      {controller.mutationError && <div role="alert" style={s.mutationError}>{controller.mutationError}</div>}
       {controller.saveDialog && (
-        <div style={s.overlay} onClick={() => controller.setSaveDialog(null)}>
+        <div style={s.overlay} onClick={() => { if (!controller.mutationBusy) controller.setSaveDialog(null); }}>
           <div style={s.dialog} onClick={event => event.stopPropagation()}>
             <div style={s.dialogTitle}>Save Preset</div>
             <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: 4 }}>Current: <strong style={{ color: '#a5c4d4' }}>{controller.saveDialog.originalName}</strong></div>
-            <button onClick={() => { void controller.saveOverwrite(); }} style={{ ...s.dialogBtn, background: 'rgba(184,224,255,0.14)', borderColor: 'rgba(184,224,255,0.34)', color: '#B8E0FF', width: '100%', marginBottom: 10, padding: '8px 16px' }}>Save &quot;{controller.saveDialog.originalName}&quot;</button>
+            <button disabled={controller.mutationBusy} onClick={() => { void controller.saveOverwrite(); }} style={{ ...s.dialogBtn, background: 'rgba(184,224,255,0.14)', borderColor: 'rgba(184,224,255,0.34)', color: '#B8E0FF', width: '100%', marginBottom: 10, padding: '8px 16px' }}>Save &quot;{controller.saveDialog.originalName}&quot;</button>
             <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: 4 }}>New preset name:</div>
-            <input type="text" value={controller.saveAsName} onChange={event => controller.setSaveAsName(event.target.value)} placeholder="New preset name" style={s.input} maxLength={40} onKeyDown={event => { if (event.key === 'Enter' && controller.saveAsName.trim()) void controller.saveAs(); if (event.key === 'Escape') controller.setSaveDialog(null); }} />
+            <input type="text" disabled={controller.mutationBusy} value={controller.saveAsName} onChange={event => controller.setSaveAsName(event.target.value)} placeholder="New preset name" style={s.input} maxLength={40} onKeyDown={event => { if (!controller.mutationBusy && event.key === 'Enter' && controller.saveAsName.trim()) void controller.saveAs(); if (!controller.mutationBusy && event.key === 'Escape') controller.setSaveDialog(null); }} />
             <PresetTagEditor value={controller.saveTags} onChange={controller.setSaveTags} suggestions={controller.tagSuggestions} accentColor={accentColor} />
             <div style={s.dialogBtnRow}>
-              <button onClick={() => controller.setSaveDialog(null)} style={{ ...s.dialogBtn, background: 'rgba(255,255,255,0.05)', color: 'rgba(244,237,228,0.66)' }}>Cancel</button>
-              <button onClick={() => { void controller.rename(); }} disabled={!controller.saveAsName.trim() || controller.saveAsName.trim() === controller.saveDialog.originalName} style={{ ...s.dialogBtn, background: 'rgba(214,178,111,0.14)', color: '#d6b26f' }}>Rename</button>
-              <button onClick={() => { void controller.saveAs(); }} disabled={!controller.saveAsName.trim()} style={{ ...s.dialogBtn, background: 'rgba(159,215,170,0.14)', color: '#9fd7aa' }}>Save As</button>
+              <button disabled={controller.mutationBusy} onClick={() => controller.setSaveDialog(null)} style={{ ...s.dialogBtn, background: 'rgba(255,255,255,0.05)', color: 'rgba(244,237,228,0.66)' }}>Cancel</button>
+              <button onClick={() => { void controller.rename(); }} disabled={controller.mutationBusy || !controller.saveAsName.trim() || controller.saveAsName.trim() === controller.saveDialog.originalName} style={{ ...s.dialogBtn, background: 'rgba(214,178,111,0.14)', color: '#d6b26f' }}>Rename</button>
+              <button onClick={() => { void controller.saveAs(); }} disabled={controller.mutationBusy || !controller.saveAsName.trim()} style={{ ...s.dialogBtn, background: 'rgba(159,215,170,0.14)', color: '#9fd7aa' }}>Save As</button>
             </div>
           </div>
         </div>
       )}
       {controller.confirm && (
-        <div style={s.overlay} onClick={() => controller.setConfirm(null)}>
+        <div style={s.overlay} onClick={() => { if (!controller.mutationBusy) controller.setConfirm(null); }}>
           <div style={{ ...s.dialog, textAlign: 'center' }} onClick={event => event.stopPropagation()}>
             <div>{controller.confirm.message}</div>
-            <div style={s.dialogBtnRow}><button style={{ ...s.dialogBtn, background: 'rgba(196,92,92,0.14)', color: '#d88f8f' }} onClick={() => { void controller.confirm?.onConfirm(); }}>Yes</button><button style={{ ...s.dialogBtn, background: 'rgba(255,255,255,0.05)', color: 'rgba(244,237,228,0.66)' }} onClick={() => controller.setConfirm(null)}>Cancel</button></div>
+            <div style={s.dialogBtnRow}><button disabled={controller.mutationBusy} style={{ ...s.dialogBtn, background: 'rgba(196,92,92,0.14)', color: '#d88f8f' }} onClick={() => { void controller.confirm?.onConfirm(); }}>Yes</button><button disabled={controller.mutationBusy} style={{ ...s.dialogBtn, background: 'rgba(255,255,255,0.05)', color: 'rgba(244,237,228,0.66)' }} onClick={() => controller.setConfirm(null)}>Cancel</button></div>
           </div>
         </div>
       )}

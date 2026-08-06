@@ -6,7 +6,7 @@
 
 #define KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT 65u
 #define KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT 104u
-#define KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT 53u
+#define KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT 52u
 #define KESSHO_PRODUCT_LEAD_OVERRIDE_PARAM_COUNT 112u
 #define KESSHO_PRODUCT_DRUM_OVERRIDE_PARAM_COUNT 245u
 
@@ -177,7 +177,7 @@ typedef struct KesshoProductSourceSnapshot {
   float lead_vibrato_rate;
   float lead_glide;
   uint32_t exact_pad_param_count;
-  float exact_pad_params[53];
+  float exact_pad_params[KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT];
   uint32_t pad_override_count;
   uint32_t pad_override_indices[KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT];
   float pad_override_values[KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT];
@@ -496,10 +496,17 @@ typedef struct KesshoProductFxSnapshot {
   float spectral_freeze_mix;
   uint32_t spectral_freeze_enabled;
   uint32_t spectral_freeze_active;
-  uint32_t spectral_freeze_slushy;
-  float spectral_freeze_speed;
-  float spectral_freeze_decay;
-  float spectral_freeze_phase_jitter;
+  uint32_t spectral_freeze_mode;
+  uint32_t spectral_freeze_capture_serial;
+  float spectral_freeze_stretch_speed;
+  uint32_t spectral_freeze_direction;
+  float spectral_freeze_position;
+  float spectral_freeze_refresh;
+  float spectral_freeze_input_sensitivity;
+  float spectral_freeze_diffusion;
+  float spectral_freeze_tone;
+  float spectral_freeze_width;
+  float spectral_freeze_sustain;
   uint32_t spectral_freeze_routing;
   float spectral_freeze_reverb_crossfade;
   float dynamics_drive;

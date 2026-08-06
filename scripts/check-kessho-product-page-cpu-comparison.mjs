@@ -540,11 +540,18 @@ function reverbPatch() {
     reverbSaturationMode: 'tape',
     spectralFreezeEnabled: true,
     spectralFreezeActive: true,
-    spectralFreezeSlushy: true,
-    spectralFreezeSpeed: 0.2,
+    spectralFreezeMode: 'livingStretch',
+    spectralFreezeCaptureSerial: 1,
+    spectralFreezeStretchSpeed: 0.5,
+    spectralFreezeDirection: 'pingpong',
+    spectralFreezePosition: 0,
+    spectralFreezeRefresh: 0.2,
+    spectralFreezeInputSensitivity: 0.5,
     spectralFreezeMix: 0.45,
-    spectralFreezeDecay: 0.85,
-    spectralFreezePhaseJitter: 0.2,
+    spectralFreezeSustain: 0.85,
+    spectralFreezeDiffusion: 0.2,
+    spectralFreezeTone: -0.15,
+    spectralFreezeWidth: 0.85,
   };
 }
 

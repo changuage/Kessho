@@ -304,6 +304,15 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   require(kessho_product_set_simple_sequencer_visual_demand(
       rng_chord_engine, KESSHO_PRODUCT_SIMPLE_SEQUENCER_VISUAL_CHORD) == KESSHO_PRODUCT_OK,
       "arrangement chord visual demand failed");
+  KesshoProductEvent source_event{};
+  source_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  source_event.param_id = KESSHO_PRODUCT_PARAM_ARRANGEMENT_CHORD_GENERATOR_SOURCE_ID_ID;
+  source_event.value = static_cast<float>(KESSHO_PRODUCT_SOURCE_SAMPLE2);
+  rng_chord_engine->applyParam(source_event);
+  require(rng_chord_engine->arrangement.chord_generator_source_id == KESSHO_PRODUCT_SOURCE_SAMPLE2,
+      "Chord Generator source changes must apply during playback");
+  source_event.value = static_cast<float>(KESSHO_PRODUCT_SOURCE_PAD1);
+  rng_chord_engine->applyParam(source_event);
   SequencerBuffer early_chord_events{};
   rng_chord_engine->generateArrangementEvents(128u, early_chord_events);
   require(early_chord_events.count == 0u,
@@ -346,8 +355,20 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   }
   rng_chord_engine->transport.sample_frame = 384000u;
   rng_chord_engine->advanceHarmonyClock();
+  require(rng_chord_engine->arrangement.chord_generator_pending,
+      "every Harmony tick must retrigger the Harmony-driven chord renderer");
+  SequencerBuffer mid_phrase_chord_events{};
+  rng_chord_engine->generateArrangementEvents(384000u, mid_phrase_chord_events);
+  require(mid_phrase_chord_events.count == 3u,
+      "Chords / Phrase must render the configured voice count at an internal Harmony tick");
+  KesshoProductSimpleSequencerVisualEvent mid_phrase_visual_events[8]{};
+  uint32_t mid_phrase_visual_overflow = 0u;
+  require(kessho_product_drain_simple_sequencer_visual_events(
+      rng_chord_engine, mid_phrase_visual_events, 8u, &mid_phrase_visual_overflow) == 3u
+      && mid_phrase_visual_overflow == 0u,
+      "the internal Harmony-tick visual plan must match the rendered chord");
   require(!rng_chord_engine->arrangement.chord_generator_pending,
-      "an internal harmony tick must not rebuild the chord generator mid-phrase");
+      "the internal Harmony-tick chord request must be consumed exactly once");
   const float current_phrase_voicing_spread = rng_chord_engine->harmony.voicing_spread;
   const float current_phrase_wave_spread = rng_chord_engine->arrangement.wave_spread;
   KesshoProductEvent octave_event{};
@@ -377,7 +398,7 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   requireNear(rng_chord_engine->arrangement.requested_wave_spread, 1.0f, 0.000001f,
       "a running wave-spread change should stage the requested value");
   require(!rng_chord_engine->arrangement.chord_generator_pending,
-      "running chord-control changes must not retrigger inside the current phrase");
+      "running chord-control changes must not add a second trigger after the Harmony tick");
   rng_chord_engine->transport.sample_frame = 768000u;
   rng_chord_engine->advanceHarmonyClock();
   require(rng_chord_engine->arrangement.synth_octave == 1 &&
@@ -427,6 +448,22 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   rng_chord_engine->advanceHarmonyClock();
   require(rng_chord_engine->arrangement.chord_generator_pending,
       "every completed phrase must publish one chord-generator plan even when harmony repeats");
+
+  rng_chord_engine->transport.sample_frame = 2000000u;
+  rng_chord_engine->resetHarmonyClock();
+  rng_chord_engine->resetArrangementRuntime();
+  SequencerBuffer restarted_chord_events{};
+  rng_chord_engine->generateArrangementEvents(128u, restarted_chord_events);
+  KesshoProductSimpleSequencerVisualEvent restarted_visual_events[8]{};
+  uint32_t restarted_visual_overflow = 0u;
+  const uint32_t restarted_visual_count = kessho_product_drain_simple_sequencer_visual_events(
+      rng_chord_engine, restarted_visual_events, 8u, &restarted_visual_overflow);
+  require(restarted_visual_count == 3u && restarted_visual_overflow == 0u,
+      "restarted playback must publish a complete initial Chord Generator plan");
+  for (uint32_t index = 0u; index < restarted_visual_count; ++index) {
+    require(restarted_visual_events[index].phrase_start_sample == 2000000u,
+        "visual phrase windows must anchor to playback start rather than absolute engine time");
+  }
   kessho_product_destroy(rng_chord_engine);
 
   auto rng_lead_snapshot = std::make_unique<KesshoProductSnapshotV2>(
@@ -497,6 +534,32 @@ __attribute__((noinline)) void requireArrangementScheduling() {
     require(lead_visual_events[index].absolute_sample == rng_lead_events.events[index].sample_offset,
         "arrangement random-timing visual sample must match the scheduled event");
   }
+  KesshoProductEvent lead_density_event{};
+  lead_density_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  lead_density_event.param_id = KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_DENSITY_ID;
+  lead_density_event.value = 8.0f;
+  rng_lead_engine->applyParam(lead_density_event);
+  KesshoProductEvent lead_source_event{};
+  lead_source_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  lead_source_event.param_id = KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_RANDOM_SOURCE_ID_ID;
+  lead_source_event.value = static_cast<float>(KESSHO_PRODUCT_SOURCE_SAMPLE2);
+  rng_lead_engine->applyParam(lead_source_event);
+  requireNear(rng_lead_engine->arrangement.lead_density, 8.0f, 0.000001f,
+      "Random Timing density changes must apply during playback");
+  require(rng_lead_engine->arrangement.lead_random_source_id == KESSHO_PRODUCT_SOURCE_SAMPLE2,
+      "Random Timing source changes must apply during playback");
+
+  KesshoProductEvent stop_event{};
+  stop_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_STOP;
+  rng_lead_engine->applyControlEvent(stop_event);
+  rng_lead_engine->transport.sample_frame = 500000u;
+  KesshoProductEvent start_event{};
+  start_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_START;
+  rng_lead_engine->applyControlEvent(start_event);
+  require(rng_lead_engine->arrangement.next_lead_phrase_frame == 500000u,
+      "Random Timing must restart at phrase zero when playback resumes");
+  require(rng_lead_engine->arrangement.chord_phrase_start_frame == 500000u,
+      "Chord Generator and Random Timing must share the resumed phrase-zero anchor");
   kessho_product_destroy(rng_lead_engine);
 
 }
@@ -752,6 +815,223 @@ void requireProductHarmonyAuthoritySemanticParity() {
       "morph Harmony plan must select a valid MIDI anchor instead of a chromatic-cent glide");
   require(engine->harmony.morph_plan_revision == 9u && engine->harmony.scale_id == 2u, "morph Harmony plan endpoint context mismatch");
 
+  // Morph triggers stay on valid integer-MIDI anchors on both sides of the
+  // scale-aware handover. Existing Harmony-resolved held voices use the
+  // bounded render fade below, while unrelated voices retain native envelopes.
+  snapshot.harmony.active_slot_id = -1;
+  snapshot.harmony.morph_voice_pair_count = 1u;
+  snapshot.harmony.morph_voice_pair_source[0] = 60.0f;
+  snapshot.harmony.morph_voice_pair_target[0] = 72.0f;
+  snapshot.harmony.morph_scale_handover_at = 0.7f;
+  snapshot.harmony.morph_plan_phase = 0.6f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "morph source-side snapshot load failed");
+  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 60.0f, 0.01f, "morph source-side anchor mismatch");
+  snapshot.harmony.morph_plan_phase = 0.8f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "morph target-side snapshot load failed");
+  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 72.0f, 0.01f, "morph target-side anchor mismatch");
+
+  snapshot.harmony.morph_voice_pair_count = 0u;
+  snapshot.harmony.morph_unmatched_a_count = 1u;
+  snapshot.harmony.morph_unmatched_a[0] = 60.0f;
+  snapshot.harmony.morph_unmatched_b_count = 0u;
+  snapshot.harmony.morph_plan_phase = 0.8f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "morph removed-voice source snapshot load failed");
+  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), -1.0f, 0.01f, "removed morph voice should stop at handover");
+  snapshot.harmony.morph_unmatched_a_count = 0u;
+  snapshot.harmony.morph_unmatched_b_count = 1u;
+  snapshot.harmony.morph_unmatched_b[0] = 72.0f;
+  snapshot.harmony.morph_plan_phase = 0.8f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "morph added-voice target snapshot load failed");
+  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 72.0f, 0.01f, "added morph voice target anchor mismatch");
+
+  // A held source-side voice is crossfaded out in a bounded fixed-capacity
+  // window when the morph reaches the target side. This exercises actual
+  // render-state continuity rather than only note selection.
+  for (Voice& voice : engine->voices) voice.active = false;
+  engine->active_voice_list_dirty = true;
+  Voice& held_voice = engine->voices[0];
+  held_voice = {};
+  held_voice.active = true;
+  held_voice.source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  held_voice.midi_note = 60.0f;
+  held_voice.harmony_resolved_voice = true;
+  held_voice.frequency = 440.0f;
+  held_voice.amplitude = 1.0f;
+  held_voice.remaining_frames = 2048u;
+  held_voice.total_frames = 2048u;
+  held_voice.phase = 0.25;
+  snapshot.harmony.morph_unmatched_a_count = 1u;
+  snapshot.harmony.morph_unmatched_a[0] = 60.0f;
+  snapshot.harmony.morph_unmatched_b_count = 0u;
+  snapshot.harmony.morph_plan_phase = 0.8f;
+  snapshot.harmony.morph_scale_handover_at = 0.7f;
+  snapshot.harmony.morph_plan_phase = 0.8f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "morph held-voice fade snapshot load failed");
+
+  // Exercise the actual Pad module path (triggerModuleSource), including one
+  // Harmony-resolved voice and an unrelated same-note manual voice.
+  engine->killSourceVoices(KESSHO_PRODUCT_SOURCE_PAD1);
+  require(engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_PAD1, 60.0f, 1.0f, 2.0f,
+      -1.0f, -1.0f, -1.0f, 991u, 0u, true,
+      0.0f, 1.0e10f, 1.0e10f, 0u, 1.0f, true) != kProductInvalidVoiceIndex,
+      "Harmony-resolved Pad module trigger failed");
+  float module_left[1024]{};
+  float module_right[1024]{};
+  engine->renderProductModules(module_left, module_right, 0u, 1024u);
+  float pad_early_peak = 0.0f;
+  float pad_late_peak = 0.0f;
+  for (uint32_t frame = 0u; frame < 256u; ++frame) pad_early_peak = std::max(pad_early_peak, std::abs(module_left[frame]));
+  for (uint32_t frame = 960u; frame < 1024u; ++frame) pad_late_peak = std::max(pad_late_peak, std::abs(module_left[frame]));
+  require(pad_early_peak > 1.0e-5f && pad_late_peak < pad_early_peak * 0.1f,
+      "Pad module morph fade was not a per-sample bounded ramp");
+  float pad_large_energy = 0.0f;
+  for (float sample : module_left) pad_large_energy += std::abs(sample);
+  snapshot.harmony.morph_plan_phase = 0.2f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "Pad morph reverse snapshot load failed");
+  std::fill(std::begin(module_left), std::end(module_left), 0.0f);
+  std::fill(std::begin(module_right), std::end(module_right), 0.0f);
+  engine->renderProductModules(module_left, module_right, 0u, 128u);
+  const float pad_reverse_mid_gain = engine->pad_harmony_voice_states[0].gain;
+  for (uint32_t block = 1u; block < 8u; ++block) {
+    engine->renderProductModules(module_left, module_right, block * 128u, 128u);
+  }
+  float pad_reverse_early = 0.0f;
+  float pad_reverse_late = 0.0f;
+  for (uint32_t frame = 0u; frame < 64u; ++frame) pad_reverse_early = std::max(pad_reverse_early, std::abs(module_left[frame]));
+  for (uint32_t frame = 960u; frame < 1024u; ++frame) pad_reverse_late = std::max(pad_reverse_late, std::abs(module_left[frame]));
+  require(pad_reverse_mid_gain > 0.0f && pad_reverse_mid_gain < 1.0f &&
+      engine->pad_harmony_voice_states[0].gain >= 0.99f,
+      "Pad module morph reversal jumped instead of ramping");
+  snapshot.harmony.morph_plan_phase = 0.8f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "Pad morph target snapshot reload failed");
+  engine->killSourceVoices(KESSHO_PRODUCT_SOURCE_PAD1);
+  require(engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_PAD1, 60.0f, 1.0f, 2.0f,
+      -1.0f, -1.0f, -1.0f, 992u, 0u, true,
+      0.0f, 1.0e10f, 1.0e10f, 0u, 1.0f, true) != kProductInvalidVoiceIndex,
+      "second Harmony-resolved Pad module trigger failed");
+  std::fill(std::begin(module_left), std::end(module_left), 0.0f);
+  std::fill(std::begin(module_right), std::end(module_right), 0.0f);
+  for (uint32_t block = 0u; block < 8u; ++block) {
+    engine->renderProductModules(module_left, module_right, block * 128u, 128u);
+  }
+  float pad_chunked_energy = 0.0f;
+  for (float sample : module_left) pad_chunked_energy += std::abs(sample);
+  require(std::abs(pad_chunked_energy - pad_large_energy) <= std::max(0.01f, pad_large_energy * 0.6f),
+      "Pad 128-frame and large-block morph fades diverged");
+  require(engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_PAD1, 60.0f, 1.0f, 2.0f,
+      -1.0f, -1.0f, -1.0f, 992u, 0u, true,
+      0.0f, 1.0e10f, 1.0e10f, 1u, 1.0f, false) != kProductInvalidVoiceIndex,
+      "unrelated Pad module trigger failed");
+  engine->renderProductModules(module_left, module_right, 0u, 1024u);
+  require(engine->pad_harmony_voice_states[0].gain <= 0.01f,
+      "Harmony-resolved Pad module voice did not crossfade out");
+  require(engine->pad_harmony_voice_states[1].gain >= 0.99f,
+      "unmarked same-note Pad module voice received Harmony fade");
+
+  engine->killSourceVoices(KESSHO_PRODUCT_SOURCE_PAD1);
+  engine->killSourceVoices(KESSHO_PRODUCT_SOURCE_LEAD1);
+  const uint32_t lead_fade_index = engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_LEAD1, 60.0f, 1.0f, 2.0f,
+      -1.0f, -1.0f, -1.0f, 993u, 0u, true,
+      0.0f, 1.0e10f, 1.0e10f, kPadVoiceNoPreference, 1.0f, true);
+  engine->renderProductModules(module_left, module_right, 0u, 1024u);
+  float lead_early_peak = 0.0f;
+  float lead_late_peak = 0.0f;
+  for (uint32_t frame = 0u; frame < 256u; ++frame) lead_early_peak = std::max(lead_early_peak, std::abs(module_left[frame]));
+  for (uint32_t frame = 960u; frame < 1024u; ++frame) lead_late_peak = std::max(lead_late_peak, std::abs(module_left[frame]));
+  require(lead_early_peak > 1.0e-5f && lead_late_peak < lead_early_peak * 0.1f,
+      "Lead module morph fade was not a per-sample bounded ramp");
+  require(lead_fade_index < LEAD_FM_MAX_POLYPHONY &&
+      engine->lead_harmony_voice_states[0][lead_fade_index].gain <= 0.01f,
+      "Lead module Harmony fade metadata did not reach silence");
+  float lead_large_energy = 0.0f;
+  for (float sample : module_left) lead_large_energy += std::abs(sample);
+  snapshot.harmony.morph_plan_phase = 0.2f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "Lead morph reverse snapshot load failed");
+  std::fill(std::begin(module_left), std::end(module_left), 0.0f);
+  std::fill(std::begin(module_right), std::end(module_right), 0.0f);
+  engine->renderProductModules(module_left, module_right, 0u, 128u);
+  const float lead_reverse_mid_gain = engine->lead_harmony_voice_states[0][lead_fade_index].gain;
+  for (uint32_t block = 1u; block < 8u; ++block) {
+    engine->renderProductModules(module_left, module_right, block * 128u, 128u);
+  }
+  require(lead_reverse_mid_gain > 0.0f && lead_reverse_mid_gain < 1.0f &&
+      engine->lead_harmony_voice_states[0][lead_fade_index].gain >= 0.99f,
+      "Lead module morph reversal jumped instead of ramping");
+  snapshot.harmony.morph_plan_phase = 0.8f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "Lead morph target snapshot reload failed");
+  engine->killSourceVoices(KESSHO_PRODUCT_SOURCE_LEAD1);
+  const uint32_t lead_harmony_index = engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_LEAD1, 60.0f, 1.0f, 2.0f,
+      -1.0f, -1.0f, -1.0f, 995u, 0u, true,
+      0.0f, 1.0e10f, 1.0e10f, kPadVoiceNoPreference, 1.0f, true);
+  std::fill(std::begin(module_left), std::end(module_left), 0.0f);
+  std::fill(std::begin(module_right), std::end(module_right), 0.0f);
+  for (uint32_t block = 0u; block < 8u; ++block) {
+    engine->renderProductModules(module_left, module_right, block * 128u, 128u);
+  }
+  float lead_chunked_energy = 0.0f;
+  for (float sample : module_left) lead_chunked_energy += std::abs(sample);
+  require(std::abs(lead_chunked_energy - lead_large_energy) <= std::max(0.01f, lead_large_energy * 0.2f),
+      "Lead 128-frame and large-block morph fades diverged");
+  const uint32_t lead_manual_index = engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_LEAD1, 60.0f, 1.0f, 2.0f,
+      -1.0f, -1.0f, -1.0f, 994u, 0u, true,
+      0.0f, 1.0e10f, 1.0e10f, kPadVoiceNoPreference, 1.0f, false);
+  require(lead_harmony_index != kProductInvalidVoiceIndex && lead_manual_index != kProductInvalidVoiceIndex,
+      "Lead module trigger failed");
+  engine->renderProductModules(module_left, module_right, 0u, 1024u);
+  require(engine->lead_harmony_voice_states[0][lead_harmony_index].gain <= 0.01f,
+      "Harmony-resolved Lead module voice did not crossfade out");
+  require(engine->lead_harmony_voice_states[0][lead_manual_index].gain >= 0.99f,
+      "unmarked same-note Lead module voice received Harmony fade");
+  snapshot.harmony.morph_plan_phase = 0.2f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "morph reverse snapshot load failed");
+  std::fill(std::begin(module_left), std::end(module_left), 0.0f);
+  std::fill(std::begin(module_right), std::end(module_right), 0.0f);
+  engine->renderProductModules(module_left, module_right, 0u, 1024u);
+  require(engine->pad_harmony_voice_states[0].gain >= 0.99f &&
+      engine->lead_harmony_voice_states[0][lead_harmony_index].gain >= 0.99f,
+      "module Harmony fade reversal did not ramp back to unity");
+
+  // loadSnapshot intentionally preserves live voices; restore the test voice
+  // after the state load and let the native renderer advance its fade.
+  snapshot.harmony.morph_plan_phase = 0.8f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "sample morph target snapshot reload failed");
+  held_voice.active = true;
+  held_voice.source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  held_voice.midi_note = 60.0f;
+  held_voice.harmony_resolved_voice = true;
+  held_voice.frequency = 440.0f;
+  held_voice.amplitude = 1.0f;
+  held_voice.remaining_frames = 2048u;
+  held_voice.total_frames = 2048u;
+  held_voice.phase = 0.25;
+  held_voice.harmony_fade_gain = 1.0f;
+  held_voice.harmony_fade_frames_remaining = 0u;
+  Voice& unrelated_voice = engine->voices[1];
+  unrelated_voice = {};
+  unrelated_voice.active = true;
+  unrelated_voice.source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  unrelated_voice.midi_note = 60.0f;
+  unrelated_voice.frequency = 440.0f;
+  unrelated_voice.amplitude = 1.0f;
+  unrelated_voice.remaining_frames = 2048u;
+  unrelated_voice.total_frames = 2048u;
+  unrelated_voice.phase = 0.25;
+  engine->active_voice_list_dirty = true;
+  float fade_left[1024]{};
+  float fade_right[1024]{};
+  engine->renderSampleVoices(fade_left, fade_right, 0u, 1024u);
+  require(held_voice.harmony_fade_gain < 0.1f, "removed held Harmony voice did not fade to silence");
+  require(held_voice.harmony_fade_frames_remaining < 960u, "Harmony fade window was not bounded and advancing");
+  require(unrelated_voice.active, "unmarked same-note voice was incorrectly silenced by Harmony morph");
+  requireNear(unrelated_voice.harmony_fade_gain, 1.0f, 0.01f, "unmarked same-note voice received Harmony fade");
+
+  snapshot.harmony.active_slot_id = 0;
   snapshot.harmony.harmony_slot_intent_quality[0] = 5u; // maj7
   snapshot.harmony.harmony_slot_intent_present[0] = 1u;
   snapshot.harmony.harmony_slot_intent_root_mode[0] = 1u;
@@ -785,6 +1065,7 @@ void requireProductHarmonyAuthoritySemanticParity() {
   snapshot.harmony.takeover_progress = 0.0f;
   snapshot.harmony.live_gesture_scope = kessho::product::generated::KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_SUGGESTION;
   snapshot.harmony.live_gesture_target = kessho::product::generated::KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_SEQ1;
+  snapshot.harmony.morph_plan_phase = 0.0f;
   snapshot.harmony.live_gesture_phase = 0u;
   snapshot.harmony.live_gesture_note_count = 1u;
   snapshot.harmony.live_gesture_notes[0] = 74.0f;
@@ -794,6 +1075,90 @@ void requireProductHarmonyAuthoritySemanticParity() {
   requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 50u), 74.0f, 0.01f, "Seq1 gesture target mismatch");
   require(std::fabs(engine->resolveHarmonyMidi(lane, 1u, 0u, 50u) - 74.0f) > 0.01f, "Seq1 gesture leaked to another lane");
   require(std::fabs(engine->resolveHarmonyMidi(lane, 0u, 0u, 101u) - 74.0f) > 0.01f, "Expired gesture remained active");
+
+  constexpr float kHarmonyLiveEventLatencyBudgetMs = 20.0f;
+  KesshoProductEvent live_header{};
+  live_header.event_kind = KESSHO_PRODUCT_EVENT_KIND_HARMONY_LIVE_CHORD_GESTURE;
+  live_header.target_id = kessho::product::generated::KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_SEQ1;
+  live_header.index = kessho::product::generated::KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_SEQLIVE;
+  live_header.param_id = 44u;
+  live_header.value = 1.0f;
+  live_header.value3 = 2.0f;
+  live_header.flags = KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_HEADER;
+  require(engine->enqueueEvent(live_header) == KESSHO_PRODUCT_OK, "live gesture header event rejected");
+  KesshoProductEvent live_note = live_header;
+  live_note.index = 0u;
+  live_note.value = 69.0f;
+  live_note.value3 = 0.0f;
+  live_note.flags = KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_NOTE;
+  require(engine->enqueueEvent(live_note) == KESSHO_PRODUCT_OK, "live gesture note event rejected");
+  live_note.index = 1u;
+  live_note.value = 76.0f;
+  require(engine->enqueueEvent(live_note) == KESSHO_PRODUCT_OK, "second live gesture note event rejected");
+  float live_left[128]{};
+  float live_right[128]{};
+  engine->render(live_left, live_right, 128u);
+  require(engine->harmony.live_gesture_revision == 44u, "live gesture event revision mismatch");
+  require(engine->harmony.live_gesture_note_count == 2u, "live gesture event note count mismatch");
+  requireNear(engine->harmony.live_gesture_notes[0], 69.0f, 0.01f, "live gesture first note mismatch");
+  requireNear(engine->harmony.live_gesture_notes[1], 76.0f, 0.01f, "live gesture second note mismatch");
+  require(engine->harmony.harmony_play_dispatch_count >= 1u, "live gesture dispatch telemetry did not increment");
+  require(engine->harmony.harmony_play_last_dispatch_latency_ms >= 0.0f, "live gesture dispatch latency was negative");
+  require(engine->harmony.harmony_play_last_dispatch_latency_ms <= kHarmonyLiveEventLatencyBudgetMs, "live gesture dispatch exceeded 20 ms latency budget");
+  live_header.value = 2.0f;
+  live_header.value3 = 0.0f;
+  live_header.flags = KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_HEADER | KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_CLEAR;
+  require(engine->enqueueEvent(live_header) == KESSHO_PRODUCT_OK, "live gesture clear event rejected");
+  engine->render(live_left, live_right, 128u);
+  require(engine->harmony.live_gesture_note_count == 0u, "live gesture clear did not clear notes");
+
+  // Semantic live gestures carry their recipe and capture context as bounded
+  // metadata records; native voicing must consume those fields rather than a
+  // TypeScript-resolved note pool.
+  snapshot.harmony.morph_plan_phase = 0.0f;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "semantic live gesture snapshot reload failed");
+  KesshoProductEvent semantic_header{};
+  semantic_header.event_kind = KESSHO_PRODUCT_EVENT_KIND_HARMONY_LIVE_CHORD_GESTURE;
+  semantic_header.target_id = kessho::product::generated::KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_SEQ1;
+  semantic_header.index = kessho::product::generated::KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_SEQLIVE;
+  semantic_header.param_id = 91u;
+  semantic_header.value = 0.0f;
+  semantic_header.value3 = 2.0f;
+  semantic_header.flags = KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_HEADER;
+  require(engine->enqueueEvent(semantic_header) == KESSHO_PRODUCT_OK, "semantic live header rejected");
+  KesshoProductEvent semantic_intent = semantic_header;
+  semantic_intent.index = 0u;
+  semantic_intent.value = 1.0f;
+  semantic_intent.value2 = 5.0f;
+  semantic_intent.value3 = 1.0f;
+  semantic_intent.value4 = 2.0f;
+  semantic_intent.flags = KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_INTENT;
+  require(engine->enqueueEvent(semantic_intent) == KESSHO_PRODUCT_OK, "semantic live intent row rejected");
+  semantic_intent.index = 1u;
+  semantic_intent.value = 2.0f;
+  semantic_intent.value2 = 0.0f;
+  semantic_intent.value3 = 0.5f;
+  semantic_intent.value4 = 4.0f;
+  require(engine->enqueueEvent(semantic_intent) == KESSHO_PRODUCT_OK, "semantic live voicing row rejected");
+  semantic_intent.index = 2u;
+  semantic_intent.value = 0.0f;
+  semantic_intent.value2 = -1.0f;
+  semantic_intent.value3 = 0.0f;
+  semantic_intent.value4 = 0.0f;
+  require(engine->enqueueEvent(semantic_intent) == KESSHO_PRODUCT_OK, "semantic live extension row rejected");
+  KesshoProductEvent semantic_context = semantic_header;
+  semantic_context.index = 0u;
+  semantic_context.value = 60.0f;
+  semantic_context.value2 = 1.0f;
+  semantic_context.flags = KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_CONTEXT;
+  require(engine->enqueueEvent(semantic_context) == KESSHO_PRODUCT_OK, "semantic live context rejected");
+  engine->render(live_left, live_right, 128u);
+  require(engine->harmony.live_gesture_revision == 91u, "semantic live revision mismatch");
+  require(engine->harmony.live_gesture_intent_present == 1u && engine->harmony.live_gesture_intent_quality == 5u,
+      "semantic live recipe was not applied");
+  require(engine->harmony.live_gesture_intent_root_mode == 1u && engine->harmony.live_gesture_intent_root_note == 2.0f,
+      "semantic live root was not applied");
+  require(engine->harmony.live_gesture_captured_scale_id == 1u, "semantic live capture context was not applied");
 
   snapshot.harmony.live_gesture_playback_behavior = 1u;
   snapshot.harmony.live_gesture_intent_present = 1u;
@@ -1183,7 +1548,21 @@ int main() {
     kessho_product_render(clock_engine, clock_left, clock_right, 128u);
   }
   require(clock_engine->harmony.harmony_tick_index == 1u, "sample-frame harmony clock missed exact boundary");
+  const KesshoProductTelemetry first_clock_telemetry = kessho_product_get_telemetry(clock_engine);
+  require(first_clock_telemetry.harmony_note_pool_count > 0u, "native harmony current pool should be populated after first tick");
+  require(first_clock_telemetry.harmony_next_note_pool_count > 0u, "native harmony next pool should be staged after first tick");
   require(clock_engine->harmony.next_harmony_frame == 960u, "sample-frame harmony clock next boundary mismatch");
+  for (uint32_t block = 0u; block < 4u; ++block) {
+    kessho_product_render(clock_engine, clock_left, clock_right, 128u);
+  }
+  const KesshoProductTelemetry second_clock_telemetry = kessho_product_get_telemetry(clock_engine);
+  require(second_clock_telemetry.harmony_note_pool_count == first_clock_telemetry.harmony_next_note_pool_count,
+      "native harmony next pool count should become current on next tick");
+  for (uint32_t index = 0u; index < second_clock_telemetry.harmony_note_pool_count; ++index) {
+    requireNear(second_clock_telemetry.harmony_note_pool_midi[index], first_clock_telemetry.harmony_next_note_pool_midi[index], 0.001f,
+      "native harmony next pool should become current on next tick");
+  }
+  require(clock_engine->harmony.next_harmony_frame == 1440u, "sample-frame harmony clock third boundary mismatch");
   require(clock_engine->harmony.note_pool_count >= 3u && clock_engine->harmony.note_pool_count <= 6u,
       "sample-frame harmony clock did not generate a chord");
   kessho_product_destroy(clock_engine);

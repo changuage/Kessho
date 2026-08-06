@@ -358,12 +358,20 @@ void KesshoProductEngine::setStepFieldOverride(LaneState& lane, uint32_t field, 
       setStepMask(lane.nudge_override_set_low, lane.nudge_override_set_high, step);
       break;
     case KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE: {
-      const uint32_t voice = clampU32(
+      const uint32_t packed_voice = clampU32(
           static_cast<uint32_t>(std::lround(value4)),
+          0u,
+          (8u * kProductPlayHarmonySlotPackWidth) + (kMaxProductPlayVoicesPerStep - 1u));
+      const uint32_t voice = clampU32(
+          packed_voice % kProductPlayHarmonySlotPackWidth,
           0u,
           kMaxProductPlayVoicesPerStep - 1u);
       ProductPlayNoteOverride& note = lane.play_note_overrides[step][voice];
-      note.midi_note = clampFloat(value, 0.0f, 127.0f);
+      const uint32_t packed_slot = packed_voice / kProductPlayHarmonySlotPackWidth;
+      note.harmony_slot_id = packed_slot == 0u ? -1 : static_cast<int32_t>(packed_slot - 1u);
+      note.midi_note = note.harmony_slot_id >= 0
+          ? clampFloat(value, -1.0f, 127.0f)
+          : clampFloat(value, 0.0f, 127.0f);
       note.offset_ms = clampFloat(value2, 0.0f, 16000.0f);
       note.velocity = clampFloat(value3, 0.05f, 1.0f);
       lane.play_note_voice_masks[step] |= 1u << voice;

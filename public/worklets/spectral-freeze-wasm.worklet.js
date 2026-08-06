@@ -2,8 +2,7 @@
  * Spectral Freeze WASM Worklet Processor
  *
  * AudioWorkletProcessor shell for kessho_spectral_freeze.wasm.
- * Provides STFT-based solid and slushy spectral freeze (inspired by
- * Chase Bliss × Goodhertz Lossy).
+ * Provides shared Product Core Solid, Slushy, Stretch, and Living Stretch modes.
  *
  * Message types received:
  *   'wasmBinary' – ArrayBuffer of compiled WASM module
@@ -107,6 +106,10 @@ class SpectralFreezeWasmProcessor extends AudioWorkletProcessor {
         this.perfSamplesSinceReport = 0;
         break;
 
+      case 'reset':
+        if (this.ready) this.wasm.spectral_freeze_reset();
+        break;
+
       case 'destroy':
         if (this.wasm && this.ready) {
           try { this.wasm.spectral_freeze_destroy(); } catch (e) { /* */ }
@@ -121,12 +124,25 @@ class SpectralFreezeWasmProcessor extends AudioWorkletProcessor {
   applyParams(p) {
     const w = this.wasm;
 
-    if (p.freeze !== undefined) {
-      w.spectral_freeze_set_freeze(p.freeze ? 1 : 0);
+    if (p.mode !== undefined) {
+      const mode = p.mode === 'solid' ? 0 : p.mode === 'slushy' ? 1 : p.mode === 'livingStretch' ? 3 : 2;
+      w.spectral_freeze_set_mode(mode);
     }
-    if (p.slushy !== undefined) {
+    if (p.mode === undefined && p.slushy !== undefined) {
       w.spectral_freeze_set_slushy(p.slushy ? 1 : 0);
     }
+    if (p.stretchSpeed !== undefined) w.spectral_freeze_set_stretch_speed(p.stretchSpeed);
+    if (p.direction !== undefined) {
+      const direction = p.direction === 'reverse' ? 1 : p.direction === 'pingpong' ? 2 : 0;
+      w.spectral_freeze_set_direction(direction);
+    }
+    if (p.position !== undefined) w.spectral_freeze_set_position(p.position);
+    if (p.refresh !== undefined) w.spectral_freeze_set_refresh(p.refresh);
+    if (p.inputSensitivity !== undefined) w.spectral_freeze_set_input_sensitivity(p.inputSensitivity);
+    if (p.diffusion !== undefined) w.spectral_freeze_set_diffusion(p.diffusion);
+    if (p.tone !== undefined) w.spectral_freeze_set_tone(p.tone);
+    if (p.width !== undefined) w.spectral_freeze_set_width(p.width);
+    if (p.sustain !== undefined) w.spectral_freeze_set_sustain(p.sustain);
     if (p.speed !== undefined) {
       w.spectral_freeze_set_speed(p.speed);
     }
@@ -138,6 +154,16 @@ class SpectralFreezeWasmProcessor extends AudioWorkletProcessor {
     }
     if (p.phaseJitter !== undefined) {
       w.spectral_freeze_set_phase_jitter(p.phaseJitter);
+    }
+    const active = p.active !== undefined ? p.active : p.freeze;
+    if (active === false) {
+      w.spectral_freeze_set_freeze(0);
+    } else if (active === true) {
+      if (p.captureSerial !== undefined) {
+        w.spectral_freeze_request_capture(p.captureSerial >>> 0);
+      } else {
+        w.spectral_freeze_set_freeze(1);
+      }
     }
   }
 

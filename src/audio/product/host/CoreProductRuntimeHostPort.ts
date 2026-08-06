@@ -46,6 +46,10 @@ function setCoreProductRuntimeCallback(name: CoreProductRuntimeCallbackName, cal
 }
 
 export const coreProductRuntimeHostPort = {
+  preload(): Promise<void> {
+    return callCoreProductHost<Promise<void>>('preload');
+  },
+
   start(initialState?: ProductEngineStartOptions['initialState']): Promise<void> {
     return callCoreProductHost<Promise<void>>('start', initialState);
   },
@@ -95,8 +99,16 @@ export const coreProductRuntimeHostPort = {
     callCoreProductHost<void>('pushMidiMessage', message);
   },
 
-  enqueueLiveNoteEvent(event: ProductLiveNoteEvent): void {
-    callCoreProductHost<void>('enqueueLiveNoteEvent', event);
+  enqueueRealtimeEvent(event: ProductEvent): Promise<void> {
+    return callCoreProductHost<Promise<void>>('enqueueRealtimeEvent', event);
+  },
+
+  enqueueRealtimeEvents(events: readonly ProductEvent[]): Promise<void> {
+    return callCoreProductHost<Promise<void>>('enqueueRealtimeEvents', events);
+  },
+
+  enqueueLiveNoteEvent(event: ProductLiveNoteEvent): Promise<void> {
+    return callCoreProductHost<Promise<void>>('enqueueLiveNoteEvent', event);
   },
 
   registerAsset(asset: ProductAssetRegistration): ProductAssetHandle { callCoreProductHost<void>('registerAsset', asset); return { assetId: asset.assetId }; },
@@ -116,6 +128,10 @@ export const coreProductRuntimeHostPort = {
     return callCoreProductHost<Promise<void>>('auditionSynthNote', note, externalState);
   },
 
+  auditionSynthNotes(notes: ProductManualSynthNote[], externalState?: ProductExternalState): Promise<void> {
+    return callCoreProductHost<Promise<void>>('auditionSynthNotes', notes, externalState);
+  },
+
   triggerDrumVoice(voice: ProductDrumVoice, velocity: number, externalState?: ProductExternalState): Promise<void> {
     return callCoreProductHost<Promise<void>>('triggerDrumVoice', voice, velocity, externalState);
   },
@@ -130,6 +146,10 @@ export const coreProductRuntimeHostPort = {
 
   requestTelemetryOnce(): void {
     callCoreProductHost<void>('requestProductTelemetryOnce');
+  },
+
+  requestVisualTelemetryAfterRender(): void {
+    callCoreProductHost<void>('requestProductVisualTelemetryAfterRender');
   },
 
   readDynamicsVisualTelemetry(): ProductDynamicsVisualTelemetry {

@@ -107,6 +107,22 @@ void enableFxStress(KesshoProductSnapshotV2& snapshot) {
   snapshot.fx.granular_mix = 0.2f;
   snapshot.fx.granular_voices[0].enabled = 1u;
   snapshot.fx.granular_voices[0].density = 24.0f;
+  snapshot.fx.spectral_freeze_enabled = 1u;
+  snapshot.fx.spectral_freeze_active = 0u;
+  snapshot.fx.spectral_freeze_mode = 3u;
+  snapshot.fx.spectral_freeze_capture_serial = 0u;
+  snapshot.fx.spectral_freeze_stretch_speed = 0.5f;
+  snapshot.fx.spectral_freeze_direction = 2u;
+  snapshot.fx.spectral_freeze_position = 0.0f;
+  snapshot.fx.spectral_freeze_refresh = 0.15f;
+  snapshot.fx.spectral_freeze_input_sensitivity = 0.5f;
+  snapshot.fx.spectral_freeze_diffusion = 0.55f;
+  snapshot.fx.spectral_freeze_tone = -0.15f;
+  snapshot.fx.spectral_freeze_width = 0.85f;
+  snapshot.fx.spectral_freeze_sustain = 1.0f;
+  snapshot.fx.spectral_freeze_mix = 0.5f;
+  snapshot.fx.spectral_freeze_routing = 0u;
+  snapshot.fx.spectral_freeze_reverb_crossfade = 1.0f;
   snapshot.fx.dynamics_enabled = 1u;
   snapshot.fx.dynamics_drive = 0.35f;
   snapshot.fx.dynamics_drift_enabled = 1u;
@@ -151,6 +167,22 @@ double percentile(std::vector<double> values, double percentile_value) {
 
 using EngineSetup = void (*)(KesshoProductEngine*);
 using EngineTick = void (*)(KesshoProductEngine*, uint32_t);
+
+void triggerSpectralFreezeCapture(KesshoProductEngine* engine) {
+  KesshoProductEvent active{};
+  active.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  active.param_id = KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ACTIVE_ID;
+  active.value = 1.0f;
+  require(kessho_product_enqueue_event(engine, &active) == KESSHO_PRODUCT_OK,
+      "spectral freeze CPU active enqueue failed");
+
+  KesshoProductEvent capture{};
+  capture.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  capture.param_id = KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_CAPTURE_SERIAL_ID;
+  capture.value = 1.0f;
+  require(kessho_product_enqueue_event(engine, &capture) == KESSHO_PRODUCT_OK,
+      "spectral freeze CPU capture enqueue failed");
+}
 
 void enableMusicalArpRuntime(KesshoProductEngine* engine) {
   for (uint32_t lane = 0u; lane < 2u; ++lane) {
@@ -510,7 +542,33 @@ int main() {
 
   KesshoProductSnapshotV2 active_snapshot = makeSnapshot();
   enableFxStress(active_snapshot);
-  const RenderCpuStats active_stats = renderCpuStats(active_snapshot, blocks);
+  KesshoProductSnapshotV2 spectral_snapshot = disabled_snapshot;
+  spectral_snapshot.fx.spectral_freeze_enabled = active_snapshot.fx.spectral_freeze_enabled;
+  spectral_snapshot.fx.spectral_freeze_mode = active_snapshot.fx.spectral_freeze_mode;
+  spectral_snapshot.fx.spectral_freeze_stretch_speed = active_snapshot.fx.spectral_freeze_stretch_speed;
+  spectral_snapshot.fx.spectral_freeze_direction = active_snapshot.fx.spectral_freeze_direction;
+  spectral_snapshot.fx.spectral_freeze_refresh = active_snapshot.fx.spectral_freeze_refresh;
+  spectral_snapshot.fx.spectral_freeze_input_sensitivity = active_snapshot.fx.spectral_freeze_input_sensitivity;
+  spectral_snapshot.fx.spectral_freeze_diffusion = active_snapshot.fx.spectral_freeze_diffusion;
+  spectral_snapshot.fx.spectral_freeze_tone = active_snapshot.fx.spectral_freeze_tone;
+  spectral_snapshot.fx.spectral_freeze_width = active_snapshot.fx.spectral_freeze_width;
+  spectral_snapshot.fx.spectral_freeze_sustain = active_snapshot.fx.spectral_freeze_sustain;
+  spectral_snapshot.fx.spectral_freeze_mix = 1.0f;
+  spectral_snapshot.fx.spectral_freeze_reverb_crossfade = 1.0f;
+  spectral_snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].reverb_send = 0.7f;
+  const RenderCpuStats spectral_stats = renderCpuStats(
+      spectral_snapshot, blocks, triggerSpectralFreezeCapture);
+  printCpuStats("Kessho Product CPU measured: Living Stretch", spectral_stats);
+  require(
+      spectral_stats.average_percent - disabled_stats.average_percent < 10.0,
+      "spectral freeze incremental average CPU budget exceeded");
+  require(spectral_stats.p99_ms < quantum_ms, "spectral freeze render p99 budget exceeded");
+  require(
+      spectral_stats.missed_quantum_count <= max_allowed_missed_quantums,
+      "spectral freeze render missed too many simulated quantums");
+
+  const RenderCpuStats active_stats = renderCpuStats(
+      active_snapshot, blocks, triggerSpectralFreezeCapture);
   printCpuStats("Kessho Product CPU measured: active FX", active_stats);
   require(active_stats.average_percent < 35.0, "active-FX product render CPU smoke budget exceeded");
   require(active_stats.p95_ms < quantum_ms * 0.75, "active-FX product render p95 budget exceeded");

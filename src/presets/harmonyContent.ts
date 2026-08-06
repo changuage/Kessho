@@ -11,7 +11,11 @@ const HARMONY_CONTEXT_KEYS = ['rootNote', 'scaleMode', 'manualScale', 'tension',
 
 export function buildHarmonyContentInstances(state: Record<string, unknown>): HarmonyContentInstance[] {
   const instances: HarmonyContentInstance[] = [];
-  for (const [suffix, key] of [['a', 'harmonyChordSlotsA'], ['b', 'harmonyChordSlotsB']] as const) {
+  for (const [suffix, key] of [
+    ['active', 'harmonyChordSlots'],
+    ['a', 'harmonyChordSlotsA'],
+    ['b', 'harmonyChordSlotsB'],
+  ] as const) {
     if (Array.isArray(state[key])) instances.push({
       id: `harmony.chord.${suffix}`,
       refSlot: `harmony.program.chord-bank-${suffix}`,
@@ -50,9 +54,11 @@ export function hydrateHarmonyContentRef(
   content: Record<string, unknown>,
 ): Record<string, unknown> | null {
   if (refSlot === 'harmony.program.context' && contentType === 'harmonyContext') return content;
-  const chord = /^harmony\.program\.chord-bank-([ab])$/.exec(refSlot);
+  const chord = /^harmony\.program\.chord-bank-(active|[ab])$/.exec(refSlot);
   if (chord && contentType === 'harmonyChordBank') {
-    return { [`harmonyChordSlots${chord[1]!.toUpperCase()}`]: content.slots };
+    return chord[1] === 'active'
+      ? { harmonyChordSlots: content.slots }
+      : { [`harmonyChordSlots${chord[1]!.toUpperCase()}`]: content.slots };
   }
   const sequence = /^harmony\.program\.sequence-bank-([ab])$/.exec(refSlot);
   if (sequence && contentType === 'harmonySequenceBank') {
@@ -71,6 +77,7 @@ export function hydrateHarmonyContentRef(
 export function stripHarmonyContentFromL4Override(data: Record<string, unknown>): Record<string, unknown> {
   const moved = new Set<string>([
     ...HARMONY_CONTEXT_KEYS,
+    'harmonyChordSlots',
     'harmonyChordSlotsA', 'harmonyChordSlotsB',
     'harmonyProgression', 'harmonyProgressionA', 'harmonyProgressionB',
   ]);

@@ -88,6 +88,8 @@ export interface HarmonyCapturedContext {
   /** Alias accepted by migrated payloads and useful to callers that name it explicitly. */
   rootMidiAnchor?: number;
   scaleId: number;
+  /** Optional tension context retained by endpoint-aware morph planning. */
+  tension?: number;
   capturedAt?: number;
 }
 
@@ -95,6 +97,8 @@ export interface SharedHarmonyChord {
   intent: HarmonyIntent | null;
   intentSource: HarmonyIntentSource;
   exactMidiNotes: number[];
+  /** Optional per-note MIDI attack velocity retained for exact voicing capture. */
+  exactMidiVelocities?: Record<string, number>;
   recognizedLabel: string;
   playbackBehavior: HarmonyPlaybackBehavior;
   capturedContext: HarmonyCapturedContext;
@@ -113,11 +117,21 @@ export interface SharedHarmonyChordSlot {
   locked: boolean;
 }
 
-/** Legacy Harmony slot shape retained while consumers migrate to `chord`. */
+/** Legacy payload accepted only by the explicit Harmony slot migration boundary. */
+export interface LegacyHarmonyChordSlotInput {
+  id?: number;
+  name?: string;
+  intent?: HarmonyIntent;
+  exactMidiNotes?: number[];
+  capturedMidiNotes?: number[];
+  chord?: unknown;
+  locked?: boolean;
+}
+
+/** Canonical authored/runtime Harmony slot. Semantic intent lives in `chord`. */
 export interface HarmonyChordSlot {
   id: number;
   name: string;
-  intent: HarmonyIntent;
   chord: SharedHarmonyChord | null;
   locked: boolean;
 }
@@ -186,6 +200,8 @@ export interface HarmonyDraftChord {
   intent: HarmonyIntent | null;
   intentSource?: HarmonyIntentSource;
   exactMidiNotes: number[];
+  /** Optional per-note MIDI attack velocity retained for exact voicing capture. */
+  exactMidiVelocities?: Record<string, number>;
   semanticCandidates?: Array<{ intent: HarmonyIntent; confidence: number }>;
   recognitionCandidates?: HarmonyRecognitionCandidate[];
   recognitionMismatch?: boolean;

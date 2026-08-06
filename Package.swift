@@ -23,6 +23,10 @@ let package = Package(
             path: ".",
             exclude: [
                 "build",
+                "cpp/KesshoCore/src/product/KesshoProductDebugApi.cpp",
+                "cpp/KesshoCore/src/product/ProductSonicRuntimeMethods.inc",
+                "cpp/KesshoCore/src/product/ProductSoundscapeMethods.inc",
+                "cpp/KesshoCore/src/product/ProductSourceAuditionMethods.inc",
                 "dist",
                 "docs",
                 "ios",
@@ -52,6 +56,7 @@ let package = Package(
             ],
             cxxSettings: [
                 .headerSearchPath("cpp/KesshoCore/generated"),
+                .headerSearchPath("cpp/KesshoCore/src/modules/spectral_freeze"),
                 .headerSearchPath("wasm/dynamics-drift"),
                 .headerSearchPath("wasm/dynamics-degrade"),
                 .headerSearchPath("wasm/reverb"),

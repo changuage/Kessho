@@ -1,5 +1,21 @@
 #include "../KesshoProductEngineInternal.h"
 
+float KesshoProductEngine::granularCompressorGainDbForLevel(float level_db) const {
+  constexpr float threshold = -24.0f;
+  constexpr float knee = 6.0f;
+  constexpr float ratio = 4.0f;
+  const float lower = threshold - knee * 0.5f;
+  const float upper = threshold + knee * 0.5f;
+  if (level_db <= lower) {
+    return 0.0f;
+  }
+  if (level_db >= upper) {
+    return (threshold + (level_db - threshold) / ratio) - level_db;
+  }
+  const float x = level_db - lower;
+  return ((1.0f / ratio) - 1.0f) * x * x / (2.0f * knee);
+}
+
 #include <cmath>
 
 namespace {
@@ -80,24 +96,24 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
   if (output_filter_armed) {
     std::fill(output_lpf_l, output_lpf_l + frames, 0.0f);
     std::fill(output_lpf_r, output_lpf_r + frames, 0.0f);
-    configureGranularLowpass(granular_output_lpf, fx.granular_output_lpf_hz);
+    updateProductBiquadCoefficients(granular_output_lpf, fx.granular_output_lpf_hz, kProductBiquadLowpass);
   }
   if (reverb_armed) {
     std::fill(reverb_branch_l, reverb_branch_l + frames, 0.0f);
     std::fill(reverb_branch_r, reverb_branch_r + frames, 0.0f);
-    configureGranularLowpass(granular_reverb_lpf, fx.granular_reverb_lpf_hz);
+    updateProductBiquadCoefficients(granular_reverb_lpf, fx.granular_reverb_lpf_hz, kProductBiquadLowpass);
   }
   updateGranularReverbCompressorCoeffs();
   if (output_filter_armed || reverb_armed) {
     for (uint32_t i = 0; i < frames; ++i) {
       if (output_filter_armed) {
-        output_lpf_l[i] = processGranularLowpass(granular_output_lpf, granular_output_lpf.left, module_l[i]);
-        output_lpf_r[i] = processGranularLowpass(granular_output_lpf, granular_output_lpf.right, module_r[i]);
+        output_lpf_l[i] = processProductBiquadSample(granular_output_lpf, granular_output_lpf.left, module_l[i]);
+        output_lpf_r[i] = processProductBiquadSample(granular_output_lpf, granular_output_lpf.right, module_r[i]);
       }
 
       if (reverb_armed) {
-        const float reverb_filtered_l = processGranularLowpass(granular_reverb_lpf, granular_reverb_lpf.left, module_l[i]);
-        const float reverb_filtered_r = processGranularLowpass(granular_reverb_lpf, granular_reverb_lpf.right, module_r[i]);
+        const float reverb_filtered_l = processProductBiquadSample(granular_reverb_lpf, granular_reverb_lpf.left, module_l[i]);
+        const float reverb_filtered_r = processProductBiquadSample(granular_reverb_lpf, granular_reverb_lpf.right, module_r[i]);
         const float detector = std::max(std::max(std::abs(reverb_filtered_l), std::abs(reverb_filtered_r)), 1.0e-9f);
         const float target_gain = detector <= kGranularReverbCompressorLowerGain
             ? 1.0f

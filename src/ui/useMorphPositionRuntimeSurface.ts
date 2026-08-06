@@ -6,6 +6,7 @@ import type { ProductRuntimeParamUpdateOptions } from './useProductRuntimePreset
 import { USER_PREFERENCE_KEYS } from './presetUtils';
 import { DEFAULT_STATE, type SliderMode, type SliderState } from './state';
 import type { ProductAutoCycleRuntimeSurface } from './useProductRuntimeAutoCycleSurface';
+import { createMorphPositionScheduler, type MorphPositionScheduler } from './morphPositionRaf';
 
 type MorphCoFViz = {
   isMorphing: boolean;
@@ -78,7 +79,7 @@ type UseMorphPositionRuntimeSurfaceOptions<TPreset extends MorphRuntimePreset> =
 };
 
 type MorphPositionRuntimeSurface = {
-  handleMorphPositionChange: (newPosition: number) => void;
+  handleMorphPositionChange: (newPosition: number, options?: { flush?: boolean }) => void;
 };
 
 export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePreset>({
@@ -125,6 +126,9 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
   const phaseStartTimeRef = useRef<number>(Date.now());
   const phaseDurationRef = useRef<number>(0);
   const productAutoCycleInitialPositionRef = useRef(morphPosition);
+  const lastAppliedManualPositionRef = useRef<number | null>(null);
+  const morphInputEmitterRef = useRef<MorphPositionScheduler | null>(null);
+  const morphApplyRef = useRef<(position: number) => void>(() => undefined);
 
   useEffect(() => {
     currentCofStepRef.current = currentCofStep;
@@ -218,9 +222,11 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     productRuntimeActive,
   ]);
 
-  const handleMorphPositionChange = useCallback(
+  const applyMorphPositionChange = useCallback(
     (newPosition: number) => {
       const nextMorphPosition = clampMorphPosition(newPosition, true);
+      if (lastAppliedManualPositionRef.current === nextMorphPosition) return;
+      lastAppliedManualPositionRef.current = nextMorphPosition;
       setMorphPosition(nextMorphPosition);
 
       if (!morphPresetA && !morphPresetB) return;
@@ -334,6 +340,35 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
       setState,
       state,
     ],
+  );
+
+  morphApplyRef.current = applyMorphPositionChange;
+
+  if (!morphInputEmitterRef.current) {
+    morphInputEmitterRef.current = createMorphPositionScheduler(
+      (position) => morphApplyRef.current(position),
+      (callback) => requestAnimationFrame(callback),
+      (frameId) => cancelAnimationFrame(frameId),
+    );
+  }
+
+  useEffect(() => () => {
+    morphInputEmitterRef.current?.cancel();
+  }, []);
+
+  const handleMorphPositionChange = useCallback(
+    (newPosition: number, options?: { flush?: boolean }) => {
+      const nextPosition = clampMorphPosition(newPosition, true);
+      const atEndpoint = isAtEndpoint0(nextPosition, true) || isAtEndpoint1(nextPosition, true);
+      // Endpoints must update synchronously so preset capture, CoF drift reset, and
+      // Product scheduler state are committed before the gesture completes.
+      if (options?.flush || atEndpoint) {
+        morphInputEmitterRef.current?.flush(nextPosition);
+      } else {
+        morphInputEmitterRef.current?.schedule(nextPosition);
+      }
+    },
+    [],
   );
 
   useEffect(() => {

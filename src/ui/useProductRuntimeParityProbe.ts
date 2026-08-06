@@ -163,6 +163,7 @@ export function useProductRuntimeParityProbe({
 }: ProductRuntimeParityProbeOptions): void {
   useEffect(() => {
     if (!enabled) return;
+    runtime.setVisualTelemetryActive(true);
     const telemetryOutput = document.createElement('output');
     telemetryOutput.hidden = true;
     telemetryOutput.dataset.testid = PRODUCT_RUNTIME_TELEMETRY_PROBE_SELECTOR;
@@ -343,16 +344,25 @@ export function useProductRuntimeParityProbe({
       },
       readRuntimeWalkProbe(key) {
         runtime.requestTelemetryOnce();
+        runtime.requestVisualTelemetryAfterRender();
+        const telemetry = runtime.getTelemetry();
+        const runtimePosition = telemetry?.productModulationDebug?.randomWalk.find(
+          (entry) => entry.controlName === key,
+        )?.normalizedPosition;
         return {
-          position: getRuntimeSliderPosition(key, 'walk'),
+          // Inactive tabs intentionally have no runtime-slider subscribers, so
+          // the UI store remains empty. Read Product Core's enriched telemetry
+          // directly while retaining the store value for active-tab probes.
+          position: runtimePosition ?? getRuntimeSliderPosition(key, 'walk'),
           runtimeSliderDebug: getRuntimeSliderDebugState(),
           productState: runtime.getProductState(),
-          telemetry: runtime.getTelemetry(),
+          telemetry,
           diagnostics: runtime.getDiagnostics(),
         };
       },
       readSampleHoldProbe(key) {
         runtime.requestTelemetryOnce();
+        runtime.requestVisualTelemetryAfterRender();
         return {
           position: getRuntimeSliderPosition(key, 'sampleHold'),
           flashing: getRuntimeSliderFlashing(key, 'sampleHold'),
@@ -364,6 +374,7 @@ export function useProductRuntimeParityProbe({
     };
     return () => {
       if (telemetryTimer !== null) window.clearInterval(telemetryTimer);
+      runtime.setVisualTelemetryActive(false);
       telemetryOutput.remove();
       delete window.__kesshoProductRuntimeProbe;
     };

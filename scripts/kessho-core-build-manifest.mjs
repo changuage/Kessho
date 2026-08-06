@@ -12,7 +12,6 @@ export const kesshoCoreSourceFiles = Object.freeze([
   'cpp/KesshoCore/src/product/KesshoProductApi.cpp',
   'cpp/KesshoCore/src/product/KesshoProductSequencerVisualApi.cpp',
   'cpp/KesshoCore/src/product/KesshoProductAssetApi.cpp',
-  'cpp/KesshoCore/src/product/KesshoProductDebugApi.cpp',
   'cpp/KesshoCore/src/product/KesshoProductGraph.cpp',
   'cpp/KesshoCore/src/product/KesshoProductRender.cpp',
   'cpp/KesshoCore/src/product/KesshoProductSnapshot.cpp',
@@ -32,6 +31,7 @@ export const kesshoCoreSourceFiles = Object.freeze([
   'cpp/KesshoCore/src/product/sources/ProductSourcePostChain.cpp',
   'cpp/KesshoCore/src/product/sources/PadSource.cpp',
   'cpp/KesshoCore/src/product/sources/SourceEnable.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceTransientAudition.cpp',
   'cpp/KesshoCore/src/product/sources/SourceGraphTaps.cpp',
   'cpp/KesshoCore/src/product/sources/SourceMix.cpp',
   'cpp/KesshoCore/src/product/sources/SourceModulation.cpp',
@@ -64,7 +64,6 @@ export const kesshoCoreSourceFiles = Object.freeze([
   'cpp/KesshoCore/src/product/fx/ProductGranular.cpp',
   'cpp/KesshoCore/src/product/fx/ProductGranularRuntime.cpp',
   'cpp/KesshoCore/src/product/fx/ProductGranularPhraseRuntime.cpp',
-  'cpp/KesshoCore/src/product/fx/ProductGranularFilters.cpp',
   'cpp/KesshoCore/src/product/fx/ProductSpectralFreeze.cpp',
   'cpp/KesshoCore/src/product/fx/ProductDynamics.cpp',
   'cpp/KesshoCore/src/product/fx/ProductDynamicsSidechain.cpp',
@@ -100,6 +99,11 @@ export const kesshoCoreSourceFiles = Object.freeze([
   'cpp/KesshoCore/src/modules/KesshoDynamicsErosionModule.cpp',
   'cpp/KesshoCore/src/modules/KesshoReverbModule.cpp',
   'cpp/KesshoCore/src/modules/KesshoGranularModule.cpp',
+  'cpp/KesshoCore/src/modules/spectral_freeze/SpectralFreezeCaptureBuffer.cpp',
+  'cpp/KesshoCore/src/modules/spectral_freeze/SpectralFreezeEngine.cpp',
+  'cpp/KesshoCore/src/modules/spectral_freeze/SpectralFreezeMemory.cpp',
+  'cpp/KesshoCore/src/modules/spectral_freeze/SpectralFreezeScanHead.cpp',
+  'cpp/KesshoCore/src/modules/spectral_freeze/SpectralFreezeStft.cpp',
   'cpp/KesshoCore/src/modules/KesshoSpectralFreezeModule.cpp',
   'cpp/KesshoCore/src/modules/KesshoLeadFmModule.cpp',
   'cpp/KesshoCore/src/modules/KesshoPadModule.cpp',
@@ -122,6 +126,7 @@ export const kesshoCoreIncludeDirs = Object.freeze([
   'cpp/KesshoCore/include',
   'cpp/KesshoCore/generated',
   'cpp/KesshoCore/src/product/native',
+  'cpp/KesshoCore/src/modules/spectral_freeze',
   'wasm/dynamics-drift',
   'wasm/dynamics-degrade',
   'wasm/reverb',
@@ -202,7 +207,6 @@ export const kesshoCoreWasmExportedFunctions = Object.freeze([
   'kessho_product_copy_telemetry',
   'kessho_product_refresh_telemetry',
   'kessho_product_set_meter_demand',
-  'kessho_product_set_debug_voice_spawn_demand',
   'kessho_product_set_simple_sequencer_visual_demand',
   'kessho_product_get_telemetry_refresh_count',
   'kessho_product_drain_generated_sequencer_capture_events',
@@ -211,11 +215,21 @@ export const kesshoCoreWasmExportedFunctions = Object.freeze([
   'kessho_product_copy_sequencer_ui_state',
   'kessho_product_register_asset_buffer',
   'kessho_product_unregister_asset_buffer',
+]);
+
+export const kesshoCoreDebugSourceFiles = Object.freeze([
+  'cpp/KesshoCore/src/product/KesshoProductDebugApi.cpp',
+]);
+
+export const kesshoCoreDebugWasmExportedFunctions = Object.freeze([
   'kessho_product_debug_render_events',
 ]);
 
-export function resolveKesshoCoreSources(root) {
-  return kesshoCoreSourceFiles.map((file) => resolve(root, file));
+export function resolveKesshoCoreSources(root, { includeDebugApi = false } = {}) {
+  const files = includeDebugApi
+    ? [...kesshoCoreSourceFiles, ...kesshoCoreDebugSourceFiles]
+    : kesshoCoreSourceFiles;
+  return files.map((file) => resolve(root, file));
 }
 
 export function resolveKesshoCoreIncludeDirs(root) {
@@ -226,7 +240,10 @@ export function kesshoCoreIncludeArgs(root) {
   return resolveKesshoCoreIncludeDirs(root).map((dir) => `-I${dir}`);
 }
 
-export function formatEmscriptenExportedFunctions() {
-  const exports = kesshoCoreWasmExportedFunctions.map((name) => `'_${name}'`).join(',');
+export function formatEmscriptenExportedFunctions({ includeDebugApi = false } = {}) {
+  const names = includeDebugApi
+    ? [...kesshoCoreWasmExportedFunctions, ...kesshoCoreDebugWasmExportedFunctions]
+    : kesshoCoreWasmExportedFunctions;
+  const exports = names.map((name) => `'_${name}'`).join(',');
   return `-sEXPORTED_FUNCTIONS=[${exports}]`;
 }

@@ -6,7 +6,7 @@ import {
   normalizeResolvedVersionData,
   type PresetVersionV2Row,
 } from './presetStorageV2';
-import { compressVersions, getVersionData } from './codec';
+import { applyCascade, applyParams, compressVersions, extractParams, getVersionData } from './codec';
 import {
   buildDerivedStatePresetData,
   extractOptimizedStatePresetData,
@@ -17,6 +17,7 @@ import {
   getPresetVersionSnapshot,
   normalizeStatePresetPitchMetadata,
   preparePresetVersionMetadataForV2Storage,
+  sanitizePresetParameterBehaviorMetadata,
 } from './versionMetadataHelpers';
 import { buildJourneyPresetPreview } from './journeyPresetPreview';
 import {
@@ -24,7 +25,7 @@ import {
   reconstructRoutingMuteGroupMetadata,
   routingMuteGroupSceneRefSlot,
 } from './routingMuteGroupPresetStorage';
-import { normalizePresetSummary } from './presetUtils';
+import { normalizePresetSummary, normalizePresetVersion } from './presetUtils';
 import {
   collectPresetPoolTags,
   filterPresetPoolCandidates,
@@ -365,11 +366,11 @@ function testBuildPresetVersionMetadataIncludesAllSupportedFields(): void {
       ],
     },
     dualRanges: {
-      filterCutoffMin: { min: 0.1, max: 0.9 },
+      filterCutoff: { min: 0.1, max: 0.9 },
       ignoredSingle: { min: 0.2, max: 0.8 },
     },
     sliderModes: {
-      filterCutoffMin: 'walk',
+      filterCutoff: 'walk',
       ignoredSingle: 'single',
     },
     drumEvolveConfigs: [{ enabled: true, evolution: 0.5 }] as SavedPreset['drumEvolveConfigs'],
@@ -425,10 +426,10 @@ function testBuildPresetVersionMetadataIncludesAllSupportedFields(): void {
       ],
     },
     dualRanges: {
-      filterCutoffMin: { min: 0.1, max: 0.9 },
+      filterCutoff: { min: 0.1, max: 0.9 },
     },
     sliderModes: {
-      filterCutoffMin: 'walk',
+      filterCutoff: 'walk',
     },
     drumEvolveConfigs: [{ enabled: true, evolution: 0.5 }],
     synthEvolveConfigs: [{ enabled: true, evolution: 0.75 }],
@@ -467,6 +468,78 @@ function testBuildPresetVersionMetadataIncludesAllSupportedFields(): void {
         drumKick: [],
       },
     },
+  });
+}
+
+function testLegacyPadCutoffPairMigratesToBaseAndWalkRange(): void {
+  const version = normalizePresetVersion({
+    v: 1,
+    note: '',
+    timestamp: 1,
+    data: {
+      filterCutoffMin: 100,
+      filterCutoffMax: 2000,
+    },
+  });
+  assert.ok(version);
+  assert.deepStrictEqual(version.dualRanges?.filterCutoff, { min: 100, max: 2000 });
+  assert.equal(version.sliderModes?.filterCutoff, 'walk');
+
+  const state = applyParams(DEFAULT_STATE, version.data, 1, 'pad1');
+  assert.equal(state.filterCutoff, 1050);
+  assert.equal('filterCutoffMin' in state, false);
+  assert.equal('filterCutoffMax' in state, false);
+}
+
+function testLegacySpectralFreezeParamsMigrateWithoutCapturing(): void {
+  const state = applyCascade(DEFAULT_STATE, {
+    spectralFreezeActive: true,
+    spectralFreezeSlushy: true,
+    spectralFreezeSpeed: 0.27,
+    spectralFreezeDecay: 0.82,
+    spectralFreezePhaseJitter: 0.41,
+  }, 3, 'reverb');
+
+  assert.equal(state.spectralFreezeActive, false);
+  assert.equal(state.spectralFreezeMode, 'slushy');
+  assert.equal(state.spectralFreezeRefresh, 0.27);
+  assert.equal(state.spectralFreezeSustain, 0.82);
+  assert.equal(state.spectralFreezeDiffusion, 0.41);
+  assert.equal('spectralFreezeSlushy' in state, false);
+  assert.equal('spectralFreezeSpeed' in state, false);
+  assert.equal('spectralFreezeDecay' in state, false);
+  assert.equal('spectralFreezePhaseJitter' in state, false);
+
+  const serialized = extractParams(state, 1, 'spectralFreeze');
+  assert.equal(serialized.spectralFreezeMode, 'slushy');
+  assert.equal('spectralFreezeSlushy' in serialized, false);
+  assert.equal('spectralFreezeSpeed' in serialized, false);
+  assert.equal('spectralFreezeDecay' in serialized, false);
+  assert.equal('spectralFreezePhaseJitter' in serialized, false);
+}
+
+function testParameterBehaviorMetadataIsCanonicalized(): void {
+  const canonical = sanitizePresetParameterBehaviorMetadata({
+    sliderModes: {
+      singleKey: 'single',
+      walkKey: 'sampleHold',
+      dualKey: 'walk',
+      unknownKey: 'walk',
+    },
+    dualRanges: {
+      singleKey: { min: 0, max: 1 },
+      walkKey: { min: 0.3333333339, max: -0.1000000002 },
+      staleKey: { min: 0, max: 1 },
+      unknownKey: { min: 0, max: 1 },
+    },
+  }, {
+    walkKey: 'walk-only',
+    singleKey: 'single',
+    dualKey: 'dual',
+  });
+  assert.deepStrictEqual(canonical.sliderModes, { dualKey: 'walk', walkKey: 'walk' });
+  assert.deepStrictEqual(canonical.dualRanges, {
+    walkKey: { min: -0.1, max: 0.333333 },
   });
 }
 
@@ -957,14 +1030,25 @@ function testOptimizedStatePresetRoundTripKeepsOnlyOverrides(): void {
     ...baseState,
     hardness: (baseState.hardness ?? 0) + 0.11,
     drumKickFreq: (baseState.drumKickFreq ?? 0) + 7,
+    chordProgressionEnabled: false,
+    chordProgressionPattern: [0, 2, 4],
+    harmonyChordSequenceEnabled: true,
   };
 
   const optimized = extractOptimizedStatePresetData(overriddenState);
 
   assert.equal(optimized.padPresetA, 'harsh_pluck');
-  assert.equal(optimized.granularPreset, 'legacy_cloud');
   assert.equal(optimized.hardness, overriddenState.hardness);
   assert.equal(optimized.drumKickFreq, overriddenState.drumKickFreq);
+  assert.equal('granularPreset' in optimized, false, 'UI preset shortcuts must not enter the current L4 contract');
+  assert.equal('chordProgressionEnabled' in optimized, false, 'retired progression state must remain decode-only');
+  assert.equal('chordProgressionPattern' in optimized, false, 'retired progression arrays must remain decode-only');
+  assert.equal('harmonyChordSequenceEnabled' in optimized, false, 'legacy harmony state must remain decode-only');
+  assert.equal(
+    Object.values(optimized).some(value => value === undefined),
+    false,
+    'current preset snapshots must contain only JSON-compatible defined values',
+  );
   assert.equal('warmth' in optimized, false, 'unchanged pad params should be omitted');
   assert.equal('drumKickDecay' in optimized, false, 'unchanged drum params should be omitted');
   assert.equal('granularV1Mode' in optimized, false, 'unchanged granular params should be omitted');
@@ -1431,6 +1515,9 @@ async function run(): Promise<void> {
   testHarmonyLegacyFieldsAreDecodeOnly();
   testStatePresetPitchMetadataUsesAuthoritativeLaneCounts();
   testBuildPresetVersionMetadataIncludesAllSupportedFields();
+  testLegacyPadCutoffPairMigratesToBaseAndWalkRange();
+  testLegacySpectralFreezeParamsMigrateWithoutCapturing();
+  testParameterBehaviorMetadataIsCanonicalized();
   testPresetPoolDefaultsUseStableIdsAndSharedEngineScopes();
   testPresetPoolMatchingNormalizationAndTags();
   testPresetPoolMetadataRoundTripsThroughL4SavedPreset();

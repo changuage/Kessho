@@ -4,7 +4,7 @@ import {
   PAD1_TO_PAD2_KEY,
   type PadPresetOption,
 } from '../../audio/padPresets';
-import type { PresetIdentityMetadata, PresetSummary, PresetVersionMetadata } from '../../presets/types';
+import type { PresetEntry, PresetIdentityMetadata, PresetSummary, PresetVersionMetadata } from '../../presets/types';
 import { DEFAULT_STATE, type SliderState } from '../state';
 
 type PadScope = 'pad1' | 'pad2';
@@ -16,9 +16,9 @@ type SavePreset = (
   tags?: string[],
   metadata?: PresetVersionMetadata,
   identity?: PresetIdentityMetadata,
-) => Promise<void>;
+) => Promise<PresetEntry | null>;
 
-type UpdateMetadata = (name: string, meta: Partial<PresetIdentityMetadata>) => Promise<void>;
+type UpdateMetadata = (name: string, meta: Partial<PresetIdentityMetadata>) => Promise<boolean>;
 
 function normalizePresetName(name: string): string {
   return name.trim().toLowerCase();
@@ -95,5 +95,6 @@ export async function ratePadPreset({
     );
   }
 
-  await updateMetadata(targetName, { rating });
+  const updated = await updateMetadata(targetName, { rating });
+  if (!updated) throw new Error(`Rating for preset "${targetName}" was not updated.`);
 }

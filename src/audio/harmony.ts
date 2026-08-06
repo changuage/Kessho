@@ -78,6 +78,13 @@ export interface HarmonyState {
   // Circle of Fifths (absorbed from engine)
   cof: CircleOfFifthsState;
   effectiveRoot: number;      // computed from homeRoot + CoF step
+
+  /** Native Product runtime pools, when telemetry is available. */
+  runtimeHarmonyReady?: boolean;
+  runtimeNotePoolMidi?: number[];
+  runtimeNextNotePoolMidi?: number[];
+  runtimeNextSource?: number;
+  runtimeNextStepIndex?: number;
 }
 
 export interface CircleOfFifthsConfig {

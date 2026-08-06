@@ -152,7 +152,12 @@ export function synthChordGeneratorSource(state: Record<string, unknown>): strin
 
 export function synthChordGeneratorSourceEnabled(state: Record<string, unknown>): boolean {
   if (!booleanFromState(state, 'synthChordGeneratorEnabled', false)) return false;
-  return manualNoteSourceEnabled(state, simpleSequencerSourceId(synthChordGeneratorSource(state)));
+  const source = synthChordGeneratorSource(state);
+  if (source === 'both') {
+    return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad1)
+      || manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad2);
+  }
+  return manualNoteSourceEnabled(state, simpleSequencerSourceId(source));
 }
 
 export function runtimeSourceFromSourceId(sourceId: number): SimpleSequencerVizSource {
@@ -283,14 +288,4 @@ export function ensureScheduledSampleAssetForEvent(
     return null;
   }
   return ensureScheduledSampleAsset(slotId, midi, velocity);
-}
-
-export function padChordHasEnabledTarget(state: Record<string, unknown>): boolean {
-  const generatorEnabled = booleanFromState(state, 'synthChordGeneratorEnabled', false);
-  if (!generatorEnabled) return false;
-  const source = String(state.synthChordGeneratorSource ?? 'sample1').trim().toLowerCase();
-  const sourceId = simpleSequencerSourceId(source, 0);
-  if (sourceId !== 0) return manualNoteSourceEnabled(state, sourceId);
-  return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad1) ||
-    manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad2);
 }

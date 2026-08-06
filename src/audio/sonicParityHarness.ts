@@ -9,6 +9,12 @@
  */
 
 import { coreProductEngineHost } from './coreProductEngineHost';
+import { productEngine } from './product/ProductEngineProxy';
+import { commitProductControlPatchForProduct } from '../product-control';
+import {
+  createSpectralFreezeGestureEvents,
+  isSpectralFreezeGesturePatch,
+} from '../ui/spectralFreezeGesture';
 import type { ManualSynthNoteOptions } from './engineSharedTypes';
 import { applyPadPresetMorphParamsToState } from './padPresets';
 import { loadReferenceAudioRuntime } from './referenceAudioRuntime';
@@ -609,6 +615,18 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
 	              paramTarget.sliderState = eventState;
 	              paramTarget._sliderStateJsonDirty = true;
 	              paramTarget.applyParams.call(engine, eventState);
+	              return;
+	            }
+	            if (
+	              runtime.mode === 'core-product' &&
+	              isSpectralFreezeGesturePatch(resolvedEvent.patch)
+	            ) {
+	              void commitProductControlPatchForProduct(productEngine, eventState, resolvedEvent.patch, {
+	                reason: 'fx-control-change',
+	                triggerCritical: true,
+	                applyMode: 'event',
+	                productEvents: createSpectralFreezeGestureEvents(eventState, resolvedEvent.patch),
+	              }).catch((error) => console.error('Spectral Freeze parity gesture failed:', error));
 	              return;
 	            }
 	            if (runtime.mode === 'core-product' && typeof paramTarget.updateSnapshotPatch === 'function') {

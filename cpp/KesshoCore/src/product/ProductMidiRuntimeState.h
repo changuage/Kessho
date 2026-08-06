@@ -9,9 +9,11 @@ namespace kessho::product::internal {
 struct MidiNoteRuntimeSlot {
   bool active = false;
   bool sustained = false;
+  bool transient_audition = false;
   uint32_t source_id = 0u;
   uint32_t channel = 0u;
   uint32_t note = 0u;
+  uint32_t owner_token = 0u;
   uint32_t pad_voice_index = kProductInvalidVoiceIndex;
   uint32_t lead_voice_index = kProductInvalidVoiceIndex;
   uint32_t sample_voice_index = kProductInvalidVoiceIndex;

@@ -12,6 +12,21 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   HarmonyVoicingSpread: 23,
   ArrangementSynthOctave: 43,
   ArrangementWaveSpread: 44,
+  ArrangementChordGeneratorEnabled: 45,
+  ArrangementChordGeneratorSourceId: 46,
+  ArrangementChordGeneratorVoiceCount: 47,
+  ArrangementChordGeneratorPadSplit: 48,
+  ArrangementLeadRandomEnabled: 49,
+  ArrangementLeadRandomSourceId: 50,
+  ArrangementLeadPhraseSeconds: 51,
+  ArrangementLeadDensity: 52,
+  ArrangementLeadOctave: 53,
+  ArrangementLeadOctaveRange: 54,
+  ArrangementLeadHoldSeconds: 55,
+  ArrangementLeadVelocityMin: 56,
+  ArrangementLeadVelocityMax: 57,
+  ArrangementLeadChordBias: 58,
+  ArrangementLeadInitialDelaySeconds: 59,
   JourneyEnabled: 40,
   JourneyMorphPhase: 41,
   JourneyMorphRateBars: 42,
@@ -410,12 +425,19 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   FxReverbResolutionBloom: 387,
   FxSpectralFreezeEnabled: 930,
   FxSpectralFreezeActive: 931,
-  FxSpectralFreezeSlushy: 932,
-  FxSpectralFreezeSpeed: 933,
-  FxSpectralFreezeDecay: 934,
-  FxSpectralFreezePhaseJitter: 935,
+  FxSpectralFreezeMode: 932,
+  FxSpectralFreezeRefresh: 933,
+  FxSpectralFreezeSustain: 934,
+  FxSpectralFreezeDiffusion: 935,
   FxSpectralFreezeRouting: 936,
   FxSpectralFreezeReverbCrossfade: 937,
+  FxSpectralFreezeCaptureSerial: 938,
+  FxSpectralFreezeStretchSpeed: 939,
+  FxSpectralFreezeDirection: 920,
+  FxSpectralFreezePosition: 921,
+  FxSpectralFreezeInputSensitivity: 922,
+  FxSpectralFreezeTone: 923,
+  FxSpectralFreezeWidth: 924,
   FxDynamicsEnabled: 940,
   FxDynamicsDriftEnabled: 941,
   FxDynamicsDriftMode: 942,
@@ -692,6 +714,120 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 44,
     "min": 0,
     "max": 1
+  },
+  {
+    "name": "ArrangementChordGeneratorEnabled",
+    "path": "arrangement.chordGeneratorEnabled",
+    "type": "bool",
+    "id": 45
+  },
+  {
+    "name": "ArrangementChordGeneratorSourceId",
+    "path": "arrangement.chordGeneratorSourceId",
+    "type": "int",
+    "id": 46,
+    "min": 1,
+    "max": 8
+  },
+  {
+    "name": "ArrangementChordGeneratorVoiceCount",
+    "path": "arrangement.chordGeneratorVoiceCount",
+    "type": "int",
+    "id": 47,
+    "min": 1,
+    "max": 8
+  },
+  {
+    "name": "ArrangementChordGeneratorPadSplit",
+    "path": "arrangement.chordGeneratorPadSplit",
+    "type": "bool",
+    "id": 48
+  },
+  {
+    "name": "ArrangementLeadRandomEnabled",
+    "path": "arrangement.leadRandomEnabled",
+    "type": "bool",
+    "id": 49
+  },
+  {
+    "name": "ArrangementLeadRandomSourceId",
+    "path": "arrangement.leadRandomSourceId",
+    "type": "int",
+    "id": 50,
+    "min": 1,
+    "max": 8
+  },
+  {
+    "name": "ArrangementLeadPhraseSeconds",
+    "path": "arrangement.leadPhraseSeconds",
+    "type": "float",
+    "id": 51,
+    "min": 0.001,
+    "max": 4096
+  },
+  {
+    "name": "ArrangementLeadDensity",
+    "path": "arrangement.leadDensity",
+    "type": "float",
+    "id": 52,
+    "min": 0.1,
+    "max": 12
+  },
+  {
+    "name": "ArrangementLeadOctave",
+    "path": "arrangement.leadOctave",
+    "type": "int",
+    "id": 53,
+    "min": -1,
+    "max": 2
+  },
+  {
+    "name": "ArrangementLeadOctaveRange",
+    "path": "arrangement.leadOctaveRange",
+    "type": "int",
+    "id": 54,
+    "min": 1,
+    "max": 4
+  },
+  {
+    "name": "ArrangementLeadHoldSeconds",
+    "path": "arrangement.leadHoldSeconds",
+    "type": "float",
+    "id": 55,
+    "min": 0.02,
+    "max": 24
+  },
+  {
+    "name": "ArrangementLeadVelocityMin",
+    "path": "arrangement.leadVelocityMin",
+    "type": "float",
+    "id": 56,
+    "min": 0.001,
+    "max": 1
+  },
+  {
+    "name": "ArrangementLeadVelocityMax",
+    "path": "arrangement.leadVelocityMax",
+    "type": "float",
+    "id": 57,
+    "min": 0.001,
+    "max": 1
+  },
+  {
+    "name": "ArrangementLeadChordBias",
+    "path": "arrangement.leadChordBias",
+    "type": "float",
+    "id": 58,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "ArrangementLeadInitialDelaySeconds",
+    "path": "arrangement.leadInitialDelaySeconds",
+    "type": "float",
+    "id": 59,
+    "min": 0,
+    "max": 4096
   },
   {
     "name": "JourneyEnabled",
@@ -3780,30 +3916,32 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 931
   },
   {
-    "name": "FxSpectralFreezeSlushy",
-    "path": "fx.spectralFreeze.slushy",
-    "type": "bool",
-    "id": 932
+    "name": "FxSpectralFreezeMode",
+    "path": "fx.spectralFreeze.mode",
+    "type": "uint",
+    "id": 932,
+    "min": 0,
+    "max": 3
   },
   {
-    "name": "FxSpectralFreezeSpeed",
-    "path": "fx.spectralFreeze.speed",
+    "name": "FxSpectralFreezeRefresh",
+    "path": "fx.spectralFreeze.refresh",
     "type": "float",
     "id": 933,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxSpectralFreezeDecay",
-    "path": "fx.spectralFreeze.decay",
+    "name": "FxSpectralFreezeSustain",
+    "path": "fx.spectralFreeze.sustain",
     "type": "float",
     "id": 934,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxSpectralFreezePhaseJitter",
-    "path": "fx.spectralFreeze.phaseJitter",
+    "name": "FxSpectralFreezeDiffusion",
+    "path": "fx.spectralFreeze.diffusion",
     "type": "float",
     "id": 935,
     "min": 0,
@@ -3822,6 +3960,62 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "path": "fx.spectralFreeze.reverbCrossfade",
     "type": "float",
     "id": 937,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSpectralFreezeCaptureSerial",
+    "path": "fx.spectralFreeze.captureSerial",
+    "type": "uint",
+    "id": 938,
+    "min": 0,
+    "max": 4294967295
+  },
+  {
+    "name": "FxSpectralFreezeStretchSpeed",
+    "path": "fx.spectralFreeze.stretchSpeed",
+    "type": "float",
+    "id": 939,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSpectralFreezeDirection",
+    "path": "fx.spectralFreeze.direction",
+    "type": "uint",
+    "id": 920,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "FxSpectralFreezePosition",
+    "path": "fx.spectralFreeze.position",
+    "type": "float",
+    "id": 921,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSpectralFreezeInputSensitivity",
+    "path": "fx.spectralFreeze.inputSensitivity",
+    "type": "float",
+    "id": 922,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSpectralFreezeTone",
+    "path": "fx.spectralFreeze.tone",
+    "type": "float",
+    "id": 923,
+    "min": -1,
+    "max": 1
+  },
+  {
+    "name": "FxSpectralFreezeWidth",
+    "path": "fx.spectralFreeze.width",
+    "type": "float",
+    "id": 924,
     "min": 0,
     "max": 1
   },

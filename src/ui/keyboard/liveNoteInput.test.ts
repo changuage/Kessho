@@ -4,6 +4,7 @@ import type { ProductLiveNoteEvent } from '../../audio/product/liveNoteEvents';
 import {
   midiChannelToProductLiveNoteInstrument,
   midiLiveNoteInputId,
+  midiMessageToHarmonyCaptureEvent,
   midiMessageToProductLiveNoteEvent,
 } from '../../native/midi/midiLiveNoteAdapter';
 import type { KesshoMidiMessage } from '../../native/midi/midiTypes';
@@ -151,6 +152,10 @@ assert.equal(midiChannelToProductLiveNoteInstrument(4), 'sample1');
 assert.equal(midiChannelToProductLiveNoteInstrument(5), null, 'soundscape must retain the raw MIDI path');
 assert.equal(midiChannelToProductLiveNoteInstrument(9), 'drum');
 assert.equal(midiMessageToProductLiveNoteEvent({ ...midiNoteOn, channel: 5 }), null);
+assert.deepEqual(midiMessageToHarmonyCaptureEvent(midiNoteOn), { kind: 'noteOn', midi: 60, velocity: 100 / 127, timestampMs: 1000 });
+assert.deepEqual(midiMessageToHarmonyCaptureEvent(midiNoteOff), { kind: 'noteOff', midi: 60, timestampMs: 2000 });
+assert.deepEqual(midiMessageToHarmonyCaptureEvent({ ...midiNoteOn, kind: 'controlChange', data1: 64, data2: 127 }), { kind: 'sustain', down: true, timestampMs: 1000 });
+assert.deepEqual(midiMessageToHarmonyCaptureEvent({ ...midiNoteOn, kind: 'controlChange', data1: 64, data2: 0 }), { kind: 'sustain', down: false, timestampMs: 1000 });
 
 const midiStopped: ProductLiveNoteEvent[] = [];
 const midiController = new LiveNoteInputController({

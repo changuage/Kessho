@@ -11,7 +11,7 @@ import {
 import { sequencerClockDivisionToNumericValue } from './sequencerClockDivisions';
 export type SequencerKind = 'synth' | 'drum';
 export type SequencerStepToggleOverride = { step: number; value: boolean };
-export type SequencerStepValueOverride = { step: number; field: CoreProductStepValueField; value: number; value2?: number; value3?: number; value4?: number; range?: boolean };
+export type SequencerStepValueOverride = { step: number; field: CoreProductStepValueField; value: number; value2?: number; value3?: number; value4?: number; harmonySlotId?: number; range?: boolean };
 export type SequencerStepValueConfig = SequencerStepValueConfigBase;
 export type SequencerSubLaneConfigState = SequencerSubLaneConfigStateBase;
 const PRODUCT_PLAY_MAX_NOTES_PER_TRIGGER = 32;
@@ -207,13 +207,19 @@ function collectProductPlayNoteValues(
       const velocity = typeof record.velocity === 'number' && Number.isFinite(record.velocity)
         ? Math.max(0.05, Math.min(1, record.velocity))
         : 1;
+      const slotId = typeof record.slotId === 'number' && Number.isFinite(record.slotId)
+        ? Math.max(0, Math.min(7, Math.round(record.slotId)))
+        : null;
       laneOut.push({
         step,
         field: CORE_PRODUCT_STEP_VALUE_FIELDS.playNote,
-        value: Math.max(0, Math.min(127, rawMidi)),
+        // Slot-backed records are resolved by native Product Core at trigger
+        // time. The preview MIDI value is intentionally not authoritative.
+        value: slotId === null ? Math.max(0, Math.min(127, rawMidi)) : -1,
         value2: offsetMs,
         value3: velocity,
         value4: voiceIndex,
+        ...(slotId === null ? {} : { harmonySlotId: slotId }),
       });
     }
   }

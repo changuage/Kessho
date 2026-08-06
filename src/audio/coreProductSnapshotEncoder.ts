@@ -18,8 +18,16 @@ type LegacyExactBridgeSource = ProductSourceSnapshot & {
   exactDrumParams?: unknown;
 };
 
-const SNAPSHOT_BYTES = 154744;
-const SOURCE_BYTES = 5188;
+const HARMONY_BYTES = 2896;
+const ARRANGEMENT_BYTES = 124;
+const SOURCE_FIXED_BYTES = 268;
+const SOURCE_BYTES = SOURCE_FIXED_BYTES + 3 * Uint32Array.BYTES_PER_ELEMENT * (
+  KESSHO_PRODUCT_PAD_PARAM_COUNT
+  + KESSHO_PRODUCT_LEAD_PARAM_COUNT
+  + KESSHO_PRODUCT_DRUM_PARAM_COUNT
+);
+const SNAPSHOT_FIXED_BYTES = 113268;
+const SNAPSHOT_BYTES = SNAPSHOT_FIXED_BYTES + 8 * SOURCE_BYTES;
 const LANE_BYTES = 100;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES + 16 * KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES;
 
@@ -84,7 +92,11 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   u32(snapshot.transport.barsPerPhrase);
   f32(snapshot.transport.swing);
   f32(snapshot.transport.phraseSeconds);
+  const harmonyOffset = offset;
   encodeCoreProductHarmonySnapshot(snapshot.harmony, { u32, i32, f32, fixedUtf8 });
+  if (offset - harmonyOffset !== HARMONY_BYTES) {
+    throw new Error(`Kessho Product Harmony snapshot encoder wrote ${offset - harmonyOffset} bytes; expected ${HARMONY_BYTES}`);
+  }
 
   for (let index = 0; index < 8; index += 1) {
     const source = snapshot.sources[index] ?? sourceDefaults(SOURCE_ORDER[index] ?? CORE_PRODUCT_SOURCE_IDS.pad1);
@@ -336,10 +348,17 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.fx.spectralFreezeMix);
   u32(bool(snapshot.fx.spectralFreezeEnabled));
   u32(bool(snapshot.fx.spectralFreezeActive));
-  u32(bool(snapshot.fx.spectralFreezeSlushy));
-  f32(snapshot.fx.spectralFreezeSpeed);
-  f32(snapshot.fx.spectralFreezeDecay);
-  f32(snapshot.fx.spectralFreezePhaseJitter);
+  u32(snapshot.fx.spectralFreezeMode >>> 0);
+  u32(snapshot.fx.spectralFreezeCaptureSerial >>> 0);
+  f32(snapshot.fx.spectralFreezeStretchSpeed);
+  u32(snapshot.fx.spectralFreezeDirection >>> 0);
+  f32(snapshot.fx.spectralFreezePosition);
+  f32(snapshot.fx.spectralFreezeRefresh);
+  f32(snapshot.fx.spectralFreezeInputSensitivity);
+  f32(snapshot.fx.spectralFreezeDiffusion);
+  f32(snapshot.fx.spectralFreezeTone);
+  f32(snapshot.fx.spectralFreezeWidth);
+  f32(snapshot.fx.spectralFreezeSustain);
   u32(snapshot.fx.spectralFreezeRouting >>> 0);
   f32(snapshot.fx.spectralFreezeReverbCrossfade);
   f32(snapshot.fx.dynamicsDrive);
@@ -532,7 +551,11 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   for (let paramIndex = 0; paramIndex < SOUNDSCAPE_TEXTURE_PARAM_COUNT; paramIndex += 1) f32(soundscape.textureParams[paramIndex] ?? 0);
   u32(Math.min(soundscape.moduleParamCount, SOUNDSCAPES_PRODUCT_PARAM_COUNT));
   for (let paramIndex = 0; paramIndex < SOUNDSCAPES_PRODUCT_PARAM_COUNT; paramIndex += 1) f32(soundscape.moduleParams[paramIndex] ?? 0);
+  const arrangementOffset = offset;
   encodeCoreProductArrangementSnapshot(snapshot.arrangement, { u32, i32, f32 });
+  if (offset - arrangementOffset !== ARRANGEMENT_BYTES) {
+    throw new Error(`Kessho Product Arrangement snapshot encoder wrote ${offset - arrangementOffset} bytes; expected ${ARRANGEMENT_BYTES}`);
+  }
   if (snapshot.sonicRuntime.sourceMorph.length !== 11) {
     throw new RangeError(`Product source morph automation requires 11 targets; received ${snapshot.sonicRuntime.sourceMorph.length}`);
   }

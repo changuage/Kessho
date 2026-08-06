@@ -83,7 +83,7 @@ const surfaces = [
   {
     id: 'module-adapter',
     classification: 'TEMP_COMPAT_WEB_REFERENCE',
-    owner: 'cpp/KesshoCore/src/modules/KesshoModule.h, cpp/KesshoCore/src/product/ProductPresetBridge.h, and Product Core module source wrappers',
+    owner: 'cpp/KesshoCore/src/modules/KesshoModule.h, cpp/KesshoCore/src/product/ProductSourcePresetPatch.h, and Product Core module source wrappers',
     why: (spec) => `Allows generated ${spec.family} preset patches and deprecated snapshot overrides to cross the shared module adapter boundary.`,
     reconstructability: (spec) =>
       `Adapter can receive reconstructed ${spec.family} state from generated preset IDs today; final replacement is structured Product Core ${spec.family} preset/override state without exact arrays.`,
@@ -485,7 +485,7 @@ const reconstructionProofs = [
       'KesshoProductEvent.kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET',
     ],
     proofSurfaces: [
-      'cpp/KesshoCore/src/product/ProductPresetBridge.h',
+      'cpp/KesshoCore/src/product/ProductSourcePresetPatch.h',
       'cpp/KesshoCore/src/product/KesshoProductSnapshot.cpp',
       'cpp/KesshoCore/src/product/sources/ProductSources.cpp',
       'cpp/KesshoCore/src/product/sources/SourcePresetEvents.cpp',
@@ -848,7 +848,7 @@ assert(
 
 const drumSource = read('cpp/KesshoCore/src/product/sources/DrumSource.cpp');
 const sourceVoiceAllocator = read('cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp');
-const productPresetBridge = `${read('cpp/KesshoCore/src/product/ProductPresetBridge.h')}\n${read('cpp/KesshoCore/src/product/ProductSourcePresetPatch.h')}`;
+const productPresetBridge = read('cpp/KesshoCore/src/product/ProductSourcePresetPatch.h');
 const sourcePresetBridge = read('cpp/KesshoCore/src/product/sources/SourcePresetBridge.cpp');
 const productSources = [
   'cpp/KesshoCore/src/product/sources/ProductSources.cpp',

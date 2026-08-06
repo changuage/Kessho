@@ -40,6 +40,7 @@ export const PRESET_VERSION_METADATA_FIELDS = [
   'drumPitchSettings',
   'synthPitchSettings',
   'synthPitchBindingModes',
+  'drumScatterState',
   'journeyPreview',
   'presetPool',
 ] as const;
@@ -309,6 +310,29 @@ export function normalizePresetVersion(input: unknown): PresetVersion | null {
         migrateLegacyDelayAKeys(normalized as Record<string, unknown>);
       }
       (version as unknown as Record<string, unknown>)[field] = normalized;
+    }
+  }
+
+  // Legacy Pad presets stored the cutoff's autonomous range as two audio
+  // parameters. Preserve that intent as generic slider behavior while the
+  // resolved data migrates to one audible base cutoff in codec.ts.
+  if (isPlainObject(input.data)) {
+    const legacyPairs = [
+      ['filterCutoffMin', 'filterCutoffMax', 'filterCutoff'],
+      ['pad2FilterCutoffMin', 'pad2FilterCutoffMax', 'pad2FilterCutoff'],
+    ] as const;
+    for (const [minKey, maxKey, cutoffKey] of legacyPairs) {
+      const min = input.data[minKey];
+      const max = input.data[maxKey];
+      if (typeof min !== 'number' || typeof max !== 'number' || Math.abs(max - min) <= 1) continue;
+      version.dualRanges = {
+        ...(version.dualRanges ?? {}),
+        [cutoffKey]: version.dualRanges?.[cutoffKey] ?? { min: Math.min(min, max), max: Math.max(min, max) },
+      };
+      version.sliderModes = {
+        ...(version.sliderModes ?? {}),
+        [cutoffKey]: version.sliderModes?.[cutoffKey] ?? 'walk',
+      };
     }
   }
 

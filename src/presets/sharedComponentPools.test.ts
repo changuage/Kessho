@@ -8,6 +8,7 @@ import {
   buildPadVoicePoolInstance,
   hydrateSharedComponentRef,
   sharedComponentPoolCandidates,
+  stripSharedComponentContentFromParent,
 } from './sharedComponentPools';
 import { PAD1_TO_PAD2_KEY, PAD_PRESET_PARAM_KEYS } from '../audio/padPresets';
 
@@ -49,6 +50,26 @@ export async function runSharedComponentPoolRegression(): Promise<void> {
   assert.equal(sampleBatch.byId.get('sample.0')?.hash, sampleBatch.byId.get('sample.1')?.hash);
   assert.equal('Enabled' in samples[0]!.content, false);
   assert.equal('ReverbSend' in samples[0]!.content, false);
+  const sampleParentSnapshot = { ...state };
+  const strippedSampleParentSnapshot = stripSharedComponentContentFromParent(
+    sampleParentSnapshot,
+    'source',
+    'synth',
+  );
+  assert.equal('sample1Articulation' in strippedSampleParentSnapshot, false);
+  assert.equal(strippedSampleParentSnapshot.sample1Enabled, sampleParentSnapshot.sample1Enabled);
+  const rehydratedSampleParentSnapshot = samples.reduce<Record<string, unknown>>(
+    (snapshot, instance) => ({
+      ...snapshot,
+      ...(hydrateSharedComponentRef(instance.refSlot, instance.contentType, instance.content) ?? {}),
+    }),
+    strippedSampleParentSnapshot,
+  );
+  assert.deepStrictEqual(
+    rehydratedSampleParentSnapshot,
+    sampleParentSnapshot,
+    'a stripped source snapshot must exactly round-trip through its content refs',
+  );
 
   for (const key of PAD_PRESET_PARAM_KEYS) {
     const pad2Key = PAD1_TO_PAD2_KEY[key];

@@ -1,6 +1,11 @@
 import type { ProductLiveNoteEvent, ProductLiveNoteInstrument } from '../../audio/product/liveNoteEvents';
 import { createMidiID, type KesshoMidiMessage } from './midiTypes';
 
+export type HarmonyMidiCaptureEvent =
+  | { readonly kind: 'noteOn'; readonly midi: number; readonly velocity: number; readonly timestampMs?: number }
+  | { readonly kind: 'noteOff'; readonly midi: number; readonly timestampMs?: number }
+  | { readonly kind: 'sustain'; readonly down: boolean; readonly timestampMs?: number };
+
 export function midiChannelToProductLiveNoteInstrument(channel: number | null): ProductLiveNoteInstrument | null {
   switch (channel ?? 0) {
     case 1: return 'lead2';
@@ -44,4 +49,18 @@ export function midiMessageToProductLiveNoteEvent(
     timestampMs: Number.isFinite(message.timestamp) ? message.timestamp * 1000 : Date.now(),
     timestampHostTime: message.timestampHostTime,
   };
+}
+
+/** Normalize hardware MIDI into the shared Harmony Draft grammar. */
+export function midiMessageToHarmonyCaptureEvent(message: KesshoMidiMessage): HarmonyMidiCaptureEvent | null {
+  const note = midiMessageToProductLiveNoteEvent(message);
+  if (note) {
+    return note.kind === 'live-note-on'
+      ? { kind: 'noteOn', midi: note.note, velocity: note.velocity, timestampMs: note.timestampMs }
+      : { kind: 'noteOff', midi: note.note, timestampMs: note.timestampMs };
+  }
+  if (message.kind === 'controlChange' && message.data1 === 64) {
+    return { kind: 'sustain', down: (message.data2 ?? 0) >= 64, timestampMs: Number.isFinite(message.timestampMs) ? message.timestampMs : message.timestamp * 1000 };
+  }
+  return null;
 }

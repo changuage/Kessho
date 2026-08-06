@@ -32,6 +32,7 @@ import {
 import { hydrateOptimizedStatePresetData } from '../presets/statePresetOptimization';
 import { normalizePresetPoolMetadata } from '../presets/presetPool';
 import type { PresetPoolMetadata } from '../presets/types';
+import type { SerializedSeqScatterState } from './drums/scatter/scatterTypes';
 import {
   createDefaultSynthSequencerFaceState,
   normalizeSynthSequencerFaceState,
@@ -320,6 +321,7 @@ export interface SavedPreset {
   drumPitchSettings?: SerializedPitchSettings[];
   synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
+  drumScatterState?: SerializedSeqScatterState;
   presetPool?: PresetPoolMetadata;
 }
 
@@ -637,6 +639,8 @@ export interface SliderState extends NatureSlotState {
   harmonyProgression: HarmonyProgression;
   harmonyProgressionA: HarmonyProgression | undefined;
   harmonyProgressionB: HarmonyProgression | undefined;
+  /** Canonical authored Seq 1–4 Play configuration shared by Synth and Harmony history. */
+  synthPlayConfigs: ProductPlayConfig[] | undefined;
   // Synth voice ADSR
   synthAttack: number;        // 0.001..16 seconds
   synthDecay: number;         // 0.01..8 seconds
@@ -663,8 +667,7 @@ export interface SliderState extends NatureSlotState {
   // Timbre / Drive
   hardness: number;           // 0..1 step 0.01 — saturation drive + resonance boost
   filterType: 'lowpass' | 'bandpass' | 'highpass' | 'notch' | 'ladderLp';
-  filterCutoffMin: number;    // 40..8000 Hz - lower bound of filter sweep
-  filterCutoffMax: number;    // 40..8000 Hz - upper bound of filter sweep
+  filterCutoff: number;       // 40..8000 Hz - base cutoff; slider mode may animate it
   filterResonance: number;    // 0..1 step 0.01 (resonance peak)
   filterQ: number;            // 0.1..12 step 0.1 (filter bandwidth/angle)
   filterSlope: number;        // 12..48 dB/oct - stop-band rolloff steepness
@@ -762,8 +765,7 @@ export interface SliderState extends NatureSlotState {
   pad2OscMix: number;
   // Filter A
   pad2FilterType: 'lowpass' | 'bandpass' | 'highpass' | 'notch' | 'ladderLp';
-  pad2FilterCutoffMin: number;
-  pad2FilterCutoffMax: number;
+  pad2FilterCutoff: number;
   pad2FilterResonance: number;
   pad2FilterQ: number;
   pad2FilterSlope: number;
@@ -877,13 +879,20 @@ export interface SliderState extends NatureSlotState {
   // Spectral Freeze (STFT-based, separate WASM module)
   spectralFreezeEnabled: boolean;        // master enable
   spectralFreezeActive: boolean;         // freeze engaged
-  spectralFreezeSlushy: boolean;         // false=solid, true=slushy
-  spectralFreezeSpeed: number;           // 0..1 slushy refresh rate
+  spectralFreezeMode: 'solid' | 'slushy' | 'stretch' | 'livingStretch';
+  spectralFreezeCaptureSerial: number;
+  spectralFreezeStretchSpeed: number;
+  spectralFreezeDirection: 'forward' | 'reverse' | 'pingpong';
+  spectralFreezePosition: number;
+  spectralFreezeRefresh: number;
+  spectralFreezeInputSensitivity: number;
+  spectralFreezeDiffusion: number;
+  spectralFreezeTone: number;
+  spectralFreezeWidth: number;
+  spectralFreezeSustain: number;
   spectralFreezeMix: number;             // 0..1 wet/dry
-  spectralFreezeDecay: number;            // 0..1 sustain (0=fast melt, 1=infinite hold)
-  spectralFreezePhaseJitter: number;      // 0..1 phase randomization
   spectralFreezeRouting: 'pre' | 'post'; // pre-reverb or post-reverb
-  spectralFreezeReverbCrossfade: number;  // 0..1 freeze isolation (1=frozen only, 0=full live bleed)
+  spectralFreezeReverbCrossfade: number;  // 0..1 additive freeze-to-reverb send
 
   // Granular (legacy — params kept for migration compatibility)
   maxGrains: number;           // 0..128 step 1 - maximum concurrent grains
@@ -940,6 +949,9 @@ export interface SliderState extends NatureSlotState {
   lead1PostLPFKeyTracking: number; // 0..1 - post LPF follows most recent note
   lead1StereoWidth: number;   // 0..1 post-voice stereo width
   lead1DiffuseSend: number;   // 0..1 diffuse room send
+  lead1VibratoDepth: number;
+  lead1VibratoRate: number;
+  lead1Glide: number;
 
   // Lead 2 — 4op FM preset morph (C ↔ D)
   lead2Enabled: boolean;      // on/off (default off)
@@ -963,6 +975,9 @@ export interface SliderState extends NatureSlotState {
   lead2PostLPFKeyTracking: number;
   lead2StereoWidth: number;
   lead2DiffuseSend: number;
+  lead2VibratoDepth: number;
+  lead2VibratoRate: number;
+  lead2Glide: number;
 
   // Piano sampler
   pianoEnabled: boolean;
@@ -1086,8 +1101,8 @@ export interface SliderState extends NatureSlotState {
   synthEuclid4Probability: number;
   synthEuclid4Source: SynthEuclidSource;
   synthEuclid4VoiceMask: number;
-  
-  // Simple-page automatic chord texture.
+
+  /** Harmony-driven automatic chord texture routing and articulation. */
   synthChordGeneratorEnabled: boolean;
   synthChordGeneratorSource: SynthChordSource;
   synthChordGeneratorVoiceCount: number;
@@ -2078,8 +2093,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'padFitEnvelopeToChord',
   'hardness',
   'filterType',
-  'filterCutoffMin',
-  'filterCutoffMax',
+  'filterCutoff',
   'filterResonance',
   'filterQ',
   'filterSlope',
@@ -2151,8 +2165,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'pad2FoldMode',
   'pad2OscMix',
   'pad2FilterType',
-  'pad2FilterCutoffMin',
-  'pad2FilterCutoffMax',
+  'pad2FilterCutoff',
   'pad2FilterResonance',
   'pad2FilterQ',
   'pad2FilterSlope',
@@ -2250,11 +2263,18 @@ const STATE_KEYS: (keyof SliderState)[] = [
   // Spectral Freeze
   'spectralFreezeEnabled',
   'spectralFreezeActive',
-  'spectralFreezeSlushy',
-  'spectralFreezeSpeed',
+  'spectralFreezeMode',
+  'spectralFreezeCaptureSerial',
+  'spectralFreezeStretchSpeed',
+  'spectralFreezeDirection',
+  'spectralFreezePosition',
+  'spectralFreezeRefresh',
+  'spectralFreezeInputSensitivity',
+  'spectralFreezeDiffusion',
+  'spectralFreezeTone',
+  'spectralFreezeWidth',
+  'spectralFreezeSustain',
   'spectralFreezeMix',
-  'spectralFreezeDecay',
-  'spectralFreezePhaseJitter',
   'spectralFreezeRouting',
   'spectralFreezeReverbCrossfade',
   'maxGrains',
@@ -2305,6 +2325,9 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'lead1PostLPFKeyTracking',
   'lead1StereoWidth',
   'lead1DiffuseSend',
+  'lead1VibratoDepth',
+  'lead1VibratoRate',
+  'lead1Glide',
   // Lead 2 morph
   'lead2Enabled',
   'lead2PresetC',
@@ -2326,6 +2349,9 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'lead2PostLPFKeyTracking',
   'lead2StereoWidth',
   'lead2DiffuseSend',
+  'lead2VibratoDepth',
+  'lead2VibratoRate',
+  'lead2Glide',
   'sample1Enabled',
   'sample1LibraryKey',
   'sample1Role',
@@ -3204,6 +3230,7 @@ export const DEFAULT_STATE: SliderState = {
   }),
   harmonyProgressionA: undefined,
   harmonyProgressionB: undefined,
+  synthPlayConfigs: undefined,
   synthAttack: 6.0,
   synthDecay: 1.0,
   synthSustain: 0.8,
@@ -3228,8 +3255,7 @@ export const DEFAULT_STATE: SliderState = {
   // Timbre / Drive
   hardness: 0.3,
   filterType: 'lowpass' as const,
-  filterCutoffMin: 400,
-  filterCutoffMax: 3000,
+  filterCutoff: 1700,
   filterResonance: 0.2,
   filterQ: 1.0,
   filterSlope: 12,
@@ -3303,8 +3329,7 @@ export const DEFAULT_STATE: SliderState = {
   pad2FoldMode: 0,
   pad2OscMix: 0.5,
   pad2FilterType: 'lowpass' as const,
-  pad2FilterCutoffMin: 400,
-  pad2FilterCutoffMax: 3000,
+  pad2FilterCutoff: 1700,
   pad2FilterResonance: 0.2,
   pad2FilterQ: 1.0,
   pad2FilterSlope: 12,
@@ -3410,11 +3435,18 @@ export const DEFAULT_STATE: SliderState = {
   // Spectral Freeze
   spectralFreezeEnabled: false,
   spectralFreezeActive: false,
-  spectralFreezeSlushy: false,
-  spectralFreezeSpeed: 0.3,
+  spectralFreezeMode: 'stretch' as const,
+  spectralFreezeCaptureSerial: 0,
+  spectralFreezeStretchSpeed: 0.5,
+  spectralFreezeDirection: 'pingpong' as const,
+  spectralFreezePosition: 0,
+  spectralFreezeRefresh: 0.15,
+  spectralFreezeInputSensitivity: 0.5,
+  spectralFreezeDiffusion: 0.55,
+  spectralFreezeTone: -0.15,
+  spectralFreezeWidth: 0.85,
+  spectralFreezeSustain: 1.0,
   spectralFreezeMix: 1.0,
-  spectralFreezeDecay: 1.0,
-  spectralFreezePhaseJitter: 0.0,
   spectralFreezeRouting: 'pre' as const,
   spectralFreezeReverbCrossfade: 1.0,
 
@@ -3472,6 +3504,9 @@ export const DEFAULT_STATE: SliderState = {
   lead1PostLPFKeyTracking: 0,
   lead1StereoWidth: 1,
   lead1DiffuseSend: 0,
+  lead1VibratoDepth: 0,
+  lead1VibratoRate: 0,
+  lead1Glide: 0,
   // Lead 2 — 4op FM preset morph
   lead2Enabled: false,
   lead2PresetC: 'soft_rhodes',
@@ -3494,6 +3529,9 @@ export const DEFAULT_STATE: SliderState = {
   lead2PostLPFKeyTracking: 0,
   lead2StereoWidth: 1,
   lead2DiffuseSend: 0,
+  lead2VibratoDepth: 0,
+  lead2VibratoRate: 0,
+  lead2Glide: 0,
   pianoEnabled: false,
   pianoAttack: 0.005,
   pianoDecay: 0.65,
@@ -3612,8 +3650,8 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclid4Probability: 1.0,
   synthEuclid4Source: 'lead1' as const,
   synthEuclid4VoiceMask: 128,
-  
-  // Simple chord generator routing
+
+  // Harmony-driven automatic chord texture
   synthChordGeneratorEnabled: false,
   synthChordGeneratorSource: 'sample1' as const,
   synthChordGeneratorVoiceCount: 6,
@@ -4337,8 +4375,7 @@ const PAD_SOURCE_STATE_KEY_SUFFIX = {
   padFoldAmount: 'FoldAmount',
   padFoldMode: 'FoldMode',
   padOscMix: 'OscMix',
-  filterCutoffMin: 'FilterCutoffMin',
-  filterCutoffMax: 'FilterCutoffMax',
+  filterCutoff: 'FilterCutoff',
   filterResonance: 'FilterResonance',
   filterQ: 'FilterQ',
   filterSlope: 'FilterSlope',
@@ -4373,18 +4410,11 @@ const PAD_SOURCE_STATE_KEY_SUFFIX = {
 } as const;
 
 export type PadSourceBaseKey = keyof typeof PAD_SOURCE_STATE_KEY_SUFFIX;
-export type PadFilterRangeBaseKey = Extract<PadSourceBaseKey, 'filterCutoffMin' | 'filterCutoffMax'>;
-
 export function padSourceStateKey(spec: PadSourceSpec, baseKey: PadSourceBaseKey): keyof SliderState {
   return (spec.statePrefix === ''
     ? baseKey
     : `${spec.statePrefix}${PAD_SOURCE_STATE_KEY_SUFFIX[baseKey]}`) as keyof SliderState;
 }
-
-export const PAD_FILTER_CUTOFF_KEY_PAIRS = PAD_SOURCE_SPECS.map((spec) => ({
-  minKey: padSourceStateKey(spec, 'filterCutoffMin'),
-  maxKey: padSourceStateKey(spec, 'filterCutoffMax'),
-})) as readonly { minKey: keyof SliderState; maxKey: keyof SliderState }[];
 
 const PAD_SOURCE_NUMERIC_BASE_QUANTIZATION = {
   synthAttack: { min: 0.001, max: 16, step: 0.001 },
@@ -4399,8 +4429,7 @@ const PAD_SOURCE_NUMERIC_BASE_QUANTIZATION = {
   padFoldAmount: { min: 0, max: 1, step: 0.01 },
   padFoldMode: { min: 0, max: 2, step: 1 },
   padOscMix: { min: 0, max: 1, step: 0.01 },
-  filterCutoffMin: { min: 40, max: 8000, step: 10 },
-  filterCutoffMax: { min: 40, max: 8000, step: 10 },
+  filterCutoff: { min: 40, max: 8000, step: 10 },
   filterResonance: { min: 0, max: 1, step: 0.01 },
   filterQ: { min: 0.1, max: 12, step: 0.1 },
   filterSlope: { min: 12, max: 48, step: 12 },
@@ -4696,10 +4725,16 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   reverbPreCompReleaseMs: { min: 20, max: 1000, step: 5 },
   reverbPreCompMakeup: { min: 0.5, max: 4, step: 0.05 },
   // Spectral Freeze
-  spectralFreezeSpeed: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeCaptureSerial: { min: 0, max: 4294967295, step: 1 },
+  spectralFreezeStretchSpeed: { min: 0, max: 1, step: 0.01 },
+  spectralFreezePosition: { min: 0, max: 1, step: 0.001 },
+  spectralFreezeRefresh: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeInputSensitivity: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeDiffusion: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeTone: { min: -1, max: 1, step: 0.01 },
+  spectralFreezeWidth: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeSustain: { min: 0, max: 1, step: 0.01 },
   spectralFreezeMix: { min: 0, max: 1, step: 0.01 },
-  spectralFreezeDecay: { min: 0, max: 1, step: 0.01 },
-  spectralFreezePhaseJitter: { min: 0, max: 1, step: 0.01 },
   spectralFreezeReverbCrossfade: { min: 0, max: 1, step: 0.01 },
   grainProbability: { min: 0, max: 1, step: 0.01 },
   maxGrains: { min: 0, max: 128, step: 1 },
@@ -4893,6 +4928,9 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   lead1PostLPFKeyTracking: { min: 0, max: 1, step: 0.01 },
   lead1StereoWidth: { min: 0, max: 1, step: 0.01 },
   lead1DiffuseSend: { min: 0, max: 1, step: 0.01 },
+  lead1VibratoDepth: { min: 0, max: 1, step: 0.01 },
+  lead1VibratoRate: { min: 0, max: 1, step: 0.01 },
+  lead1Glide: { min: 0, max: 1, step: 0.01 },
   lead2Morph: { min: 0, max: 1, step: 0.01 },
   lead2MorphSpeed: { min: 1, max: 32, step: 1 },
   lead2Level: { min: 0, max: 1, step: 0.01 },
@@ -4907,6 +4945,9 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   lead2PostLPFKeyTracking: { min: 0, max: 1, step: 0.01 },
   lead2StereoWidth: { min: 0, max: 1, step: 0.01 },
   lead2DiffuseSend: { min: 0, max: 1, step: 0.01 },
+  lead2VibratoDepth: { min: 0, max: 1, step: 0.01 },
+  lead2VibratoRate: { min: 0, max: 1, step: 0.01 },
+  lead2Glide: { min: 0, max: 1, step: 0.01 },
   sample1Level: { min: 0, max: 2, step: 0.01 },
   sample1AttackMs: { min: 1, max: 16000, step: 1 },
   sample1DecayMs: { min: 10, max: 8000, step: 1 },
@@ -5395,6 +5436,9 @@ const LEGACY_STATE_KEY_ALIASES = {
   leadDelaySpread: 'delayASpread',
   leadDelayFilter: 'delayAFilter',
   leadDelaySend: 'delayASend',
+  masterSatDrive: 'dynamicsSaturationDrive',
+  masterSatMode: 'dynamicsSaturationMode',
+  masterSatTone: 'dynamicsSaturationTone',
   characterLevel: 'degradeLevel',
   characterPad1Send: 'degradePad1Send',
   characterPad2Send: 'degradePad2Send',
@@ -5466,6 +5510,36 @@ const LEGACY_STATE_KEY_ALIASES = {
   degradeNoise: 'erosionNoise',
   degradeSaturation: 'erosionSaturation',
   degradeCorrosion: 'erosionCorrosion',
+  degradeModSlowWow: 'erosionModSlowWow',
+  degradeModSlowFlutter: 'erosionModSlowFlutter',
+  degradeModSlowLp: 'erosionModSlowLp',
+  degradeModSlowWet: 'erosionModSlowWet',
+  degradeModSlowDropout: 'erosionModSlowDropout',
+  degradeModSlowAlias: 'erosionModSlowAlias',
+  degradeModFlutterWow: 'erosionModFlutterWow',
+  degradeModFlutterFlutter: 'erosionModFlutterFlutter',
+  degradeModFlutterLp: 'erosionModFlutterLp',
+  degradeModFlutterWet: 'erosionModFlutterWet',
+  degradeModFlutterDropout: 'erosionModFlutterDropout',
+  degradeModFlutterAlias: 'erosionModFlutterAlias',
+  degradeModRandomWow: 'erosionModRandomWow',
+  degradeModRandomFlutter: 'erosionModRandomFlutter',
+  degradeModRandomLp: 'erosionModRandomLp',
+  degradeModRandomWet: 'erosionModRandomWet',
+  degradeModRandomDropout: 'erosionModRandomDropout',
+  degradeModRandomAlias: 'erosionModRandomAlias',
+  degradeModEnvWow: 'erosionModEnvWow',
+  degradeModEnvFlutter: 'erosionModEnvFlutter',
+  degradeModEnvLp: 'erosionModEnvLp',
+  degradeModEnvWet: 'erosionModEnvWet',
+  degradeModEnvDropout: 'erosionModEnvDropout',
+  degradeModEnvAlias: 'erosionModEnvAlias',
+  degradeModNoiseWow: 'erosionModNoiseWow',
+  degradeModNoiseFlutter: 'erosionModNoiseFlutter',
+  degradeModNoiseLp: 'erosionModNoiseLp',
+  degradeModNoiseWet: 'erosionModNoiseWet',
+  degradeModNoiseDropout: 'erosionModNoiseDropout',
+  degradeModNoiseAlias: 'erosionModNoiseAlias',
 } as const satisfies Record<string, keyof SliderState>;
 
 const LEGACY_STATE_KEY_FALLBACKS = Object.entries(LEGACY_STATE_KEY_ALIASES).reduce(
@@ -5478,26 +5552,22 @@ const LEGACY_STATE_KEY_FALLBACKS = Object.entries(LEGACY_STATE_KEY_ALIASES).redu
   {} as Partial<Record<keyof SliderState, string>>,
 );
 
-function applyLegacyStateKeyAliases(record: Record<string, unknown>): void {
+export function applyLegacyStateKeyAliases(record: Record<string, unknown>): void {
+  const legacyMasterSatDrive = record.masterSatDrive;
+  if (
+    !('dynamicsSaturationEnabled' in record)
+    && typeof legacyMasterSatDrive === 'number'
+    && legacyMasterSatDrive > 0
+  ) {
+    record.dynamicsSaturationEnabled = true;
+  }
+
   const legacyDegradeEnabled = record.degradeEnabled;
-  const hasLegacyErosionPayload = [
-    'degradeQuality',
-    'degradeEventAmount',
-    'degradeProfileAmount',
-    'degradeDitherAmount',
-    'degradeMix',
-    'degradeAge',
-    'degradeGeneration',
-    'degradeAlias',
-    'degradeWow',
-    'degradeFlutter',
-    'degradeDrift',
-    'degradeWobbleSpeed',
-    'degradeTone',
-    'degradeNoise',
-    'degradeSaturation',
-    'degradeCorrosion',
-  ].some((key) => key in record);
+  const hasLegacyErosionPayload = Object.entries(LEGACY_STATE_KEY_ALIASES).some(
+    ([legacyKey, currentKey]) => legacyKey.startsWith('degrade')
+      && currentKey.startsWith('erosion')
+      && legacyKey in record,
+  );
 
   if (!('erosionEnabled' in record) && hasLegacyErosionPayload && legacyDegradeEnabled !== undefined) {
     record.erosionEnabled = legacyDegradeEnabled;
@@ -5508,6 +5578,16 @@ function applyLegacyStateKeyAliases(record: Record<string, unknown>): void {
       record[currentKey] = record[legacyKey];
     }
     delete record[legacyKey];
+  }
+
+  for (const [sharedKey, lead1Key, lead2Key] of [
+    ['leadVibratoDepth', 'lead1VibratoDepth', 'lead2VibratoDepth'],
+    ['leadVibratoRate', 'lead1VibratoRate', 'lead2VibratoRate'],
+    ['leadGlide', 'lead1Glide', 'lead2Glide'],
+  ] as const) {
+    if (!(sharedKey in record)) continue;
+    if (!(lead1Key in record)) record[lead1Key] = record[sharedKey];
+    if (!(lead2Key in record)) record[lead2Key] = record[sharedKey];
   }
 
   if (!('degradeEnabled' in record) && (record.driftEnabled === true || record.erosionEnabled === true)) {
@@ -6002,10 +6082,10 @@ export function decodeStateFromUrl(search: string): SliderState | null {
         } else if (key === 'synthEuclid4Preset') {
           state.synthEuclid4Preset = value;
         } else if (
-          key === 'synthChordGeneratorSource' &&
-          ['pad1', 'pad2', 'both', 'lead1', 'lead2', 'piano', 'sample1', 'sample2'].includes(value)
+          key === 'synthChordGeneratorSource'
+          && ['pad1', 'pad2', 'both', 'lead1', 'lead2', 'sample1', 'sample2'].includes(value)
         ) {
-          (state as Record<string, unknown>)[key] = value === 'piano' ? 'sample1' : value;
+          state.synthChordGeneratorSource = value as SynthChordSource;
         } else if (key === 'oceanSampleEnabled') {
           state.oceanSampleEnabled = value === 'true';
         } else if (key === 'birdsEnabled') {
@@ -6164,6 +6244,8 @@ const PRESET_MIGRATION_MAP: Array<{
   { minKey: 'lead2MorphMin', maxKey: 'lead2MorphMax', newKey: 'lead2Morph', defaultMode: 'sampleHold', threshold: 0.0001 },
   { minKey: 'leadTimbreMin', maxKey: 'leadTimbreMax', newKey: 'leadTimbre', defaultMode: 'sampleHold', threshold: 0.001 },
   { minKey: 'grainSizeMin', maxKey: 'grainSizeMax', newKey: 'grainSize', defaultMode: 'sampleHold', threshold: 0.5 },
+  { minKey: 'filterCutoffMin', maxKey: 'filterCutoffMax', newKey: 'filterCutoff', defaultMode: 'walk', threshold: 1 },
+  { minKey: 'pad2FilterCutoffMin', maxKey: 'pad2FilterCutoffMax', newKey: 'pad2FilterCutoff', defaultMode: 'walk', threshold: 1 },
 ];
 
 /**
@@ -6473,6 +6555,7 @@ export function migratePreset(preset: any): SavedPreset {
     drumPitchSettings: preset.drumPitchSettings,
     synthPitchSettings: preset.synthPitchSettings,
     synthPitchBindingModes: preset.synthPitchBindingModes,
+    drumScatterState: preset.drumScatterState,
     presetPool: normalizePresetPoolMetadata(preset.presetPool),
   };
 }

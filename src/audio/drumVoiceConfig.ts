@@ -279,6 +279,13 @@ export const DRUM_DELAY_PARAMS: DrumParamDef[] = [
 
 export const DRUM_VOICE_ORDER: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'];
 
+export const DRUM_VOICE_PARAM_KEYS = Object.fromEntries(
+  DRUM_VOICE_ORDER.map((voice) => [
+    voice,
+    Object.values(DRUM_VOICES[voice].sections).flatMap((params) => params.map((param) => param.key)),
+  ]),
+) as Record<DrumVoiceType, string[]>;
+
 export const DRUM_VOICE_SCOPES = {
   sub: 'drumSub',
   kick: 'drumKick',

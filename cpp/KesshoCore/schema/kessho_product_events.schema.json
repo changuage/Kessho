@@ -76,5 +76,6 @@
     { "name": "CommitJourneyTransitionProgram", "id": 74 },
     { "name": "CommitJourneySchedule", "id": 75 },
     { "name": "SetJourneyScheduleEnabled", "id": 76 }
+    ,{ "name": "HarmonyLiveChordGesture", "id": 77 }
   ]
 }

@@ -33,6 +33,10 @@ const migrationPath = path.join(cwd, 'supabase/migrations/20260711214902_preset_
 const migration = fs.readFileSync(migrationPath, 'utf8')
   .replace(/^\s*BEGIN;\s*/i, '')
   .replace(/\s*COMMIT;\s*$/i, '');
+const leadEndpointMigration = fs.readFileSync(
+  path.join(cwd, 'supabase/migrations/20260806224332_preset_lead_endpoint_content_v2.sql'),
+  'utf8',
+).replace(/^\s*BEGIN;\s*/i, '').replace(/\s*COMMIT;\s*$/i, '');
 
 const json = value => JSON.stringify(value);
 async function hash(payload) {
@@ -65,6 +69,7 @@ try {
     "select to_regclass('public.preset_version_content_refs_v2') is not null installed",
   )).rows[0]?.installed === true;
   if (!migrationInstalled) await client.query(migration);
+  await client.query(leadEndpointMigration);
 
   const users = (await client.query('select id::text from auth.users order by created_at desc nulls last limit 2')).rows.map(row => row.id);
   const user = users[0];
@@ -80,6 +85,11 @@ try {
   const metadata = { name: `__derived__/content-ref-${nonce}` };
   const content = { schemaVersion: 1, contentType: 'sequencerTrigger', content: { pattern: [1, 0, 1, 0] } };
   const drumEndpoint = { schemaVersion: 1, contentType: 'drumKickVoice', content: { frequency: 52, decay: 0.4 } };
+  const leadEndpoint = {
+    schemaVersion: 1,
+    contentType: 'lead4opfmPatch',
+    content: { preset: { id: 'regression-lead', algorithm: 'parallel', params: { gain: 0.5 } } },
+  };
   const behaviorContent = {
     schemaVersion: 1,
     contentType: 'parameterBehaviorMap',
@@ -89,6 +99,7 @@ try {
   const metadataHash = await hash(metadata);
   const contentHash = await hash(content);
   const drumEndpointHash = await hash(drumEndpoint);
+  const leadEndpointHash = await hash(leadEndpoint);
   const behaviorContentHash = await hash(behaviorContent);
   const identity = {
     type: 'state', scope: null, name: metadata.name, author: 'cloud', library: 'cloud',
@@ -104,11 +115,13 @@ try {
     { hash: metadataHash, payload_kind: 'metadata', payload: metadata },
     { hash: contentHash, payload_kind: 'content', payload: content },
     { hash: drumEndpointHash, payload_kind: 'content', payload: drumEndpoint },
+    { hash: leadEndpointHash, payload_kind: 'content', payload: leadEndpoint },
     { hash: behaviorContentHash, payload_kind: 'content', payload: behaviorContent },
   ];
   const refs = [
     { ref_slot: 'sequencer.synth.1.trigger', content_hash: contentHash, content_type: 'sequencerTrigger' },
     { ref_slot: 'derived.drum.kick.endpoint-a', content_hash: drumEndpointHash, content_type: 'drumKickVoice' },
+    { ref_slot: 'derived.lead.1.endpoint-a', content_hash: leadEndpointHash, content_type: 'lead4opfmPatch' },
     { ref_slot: 'behavior.scope.granularvoice1.content', content_hash: behaviorContentHash, content_type: 'parameterBehaviorMap' },
   ];
   const saved = (await client.query(
@@ -116,9 +129,15 @@ try {
     [json(identity), json(version), json(payloads), '[]', json(refs)],
   )).rows[0].result;
   if (!saved.content_refs?.some(ref => ref.content_hash === contentHash)
-      || !saved.content_refs?.some(ref => ref.content_hash === drumEndpointHash)) {
+      || !saved.content_refs?.some(ref => ref.content_hash === drumEndpointHash)
+      || !saved.content_refs?.some(ref => ref.content_hash === leadEndpointHash)) {
     throw new Error('Atomic save omitted content refs.');
   }
+  await expectError(/slot_type_check|check constraint/i, () => client.query(
+    `insert into public.preset_version_content_refs_v2(version_id,ref_slot,content_hash,content_type)
+     values ($1,'derived.lead.1.endpoint-c',$2,'lead4opfmPatch')`,
+    [saved.version.id, leadEndpointHash],
+  ));
   await client.query(
     "update public.presets_v2 set owner_user_id=$1, owner_key=$2, visibility='private' where id=$3",
     [user, `content-ref:${user}`, saved.preset.id],
@@ -128,6 +147,7 @@ try {
     'select public.kessho_get_preset_latest_manifest_v2($1::uuid) result', [saved.preset.id],
   )).rows[0].result;
   if (!manifest.required_hashes.includes(contentHash)) throw new Error('Manifest omitted content hash.');
+  if (!manifest.required_hashes.includes(leadEndpointHash)) throw new Error('Manifest omitted Lead endpoint hash.');
   const fetched = (await client.query(
     'select public.kessho_get_missing_preset_payloads_v2($1::text[]) result', [[contentHash]],
   )).rows[0].result;

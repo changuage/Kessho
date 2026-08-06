@@ -63,8 +63,7 @@ struct PadParams {
 
     // Filter A
     int   filter_type = PAD_FILTER_LP;
-    float filter_cutoff_min = 200;
-    float filter_cutoff_max = 4000;
+    float filter_cutoff = 1700;
     float filter_resonance = 0;
     float filter_q = 0.7f;
     float filter_slope = 12.0f; // dB/oct, implemented as cascaded 12 dB/oct SVF stages
@@ -218,6 +217,10 @@ struct PadVoice {
     int   pad_idx = 0;         // 0=pad1, 1=pad2
     float base_freq = 440;
     float velocity = 1;
+    float output_gain = 1.0f;
+    float output_gain_target = 1.0f;
+    float output_gain_step = 0.0f;
+    uint32_t output_gain_remaining = 0u;
 
     // 4 oscillators
     Oscillator osc_a;          // OscA
@@ -452,6 +455,15 @@ static float apply_key_tracking(float cutoff, float base_freq, float amount) {
     return cutoff * powf(ratio, safe_amount);
 }
 
+static float apply_octave_modulation(float cutoff, float modulation) {
+    // One normalized modulation unit spans four octaves. Multiplicative
+    // modulation sounds consistent across the full cutoff range.
+    constexpr float kFilterModulationOctaves = 4.0f;
+    constexpr float kLn2 = 0.6931471805599453f;
+    const float octaves = std::max(-8.0f, std::min(8.0f, modulation * kFilterModulationOctaves));
+    return cutoff * fast_expf(octaves * kLn2);
+}
+
 static float process_filter_a(PadVoice& v, float input, float cutoff, float q, SVFMode mode, int stage_count) {
     float out = v.filter_a.process(input, cutoff, q, g_sample_rate, mode);
     if (stage_count <= 1) return out;
@@ -610,10 +622,7 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
         float sample = (sa + sa2) * 0.5f * osc_a_mix + sb * osc_b_mix + s_sub + noise;
 
         // Filter A
-        const float cutoff_min = std::min(p.filter_cutoff_min, p.filter_cutoff_max);
-        const float cutoff_max = std::max(p.filter_cutoff_min, p.filter_cutoff_max);
-        float filter_cutoff = cutoff_min +
-            (cutoff_max - cutoff_min) * 0.5f * (1.0f + filter_a_mod);
+        float filter_cutoff = apply_octave_modulation(p.filter_cutoff, filter_a_mod);
         filter_cutoff = apply_key_tracking(filter_cutoff, v.base_freq, p.filter_key_tracking);
         filter_cutoff = clamp_hz(filter_cutoff);
         g_current_filter_freq[v.pad_idx] = filter_cutoff;
@@ -628,7 +637,7 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
         float filtered;
         if (p.filter_routing == PAD_ROUTE_B_ONLY && p.filter_b_enabled) {
             // Skip filter A, use B only
-            float fb_cutoff = std::max(20.0f, std::min(18000.0f, p.filter_b_cutoff * (1.0f + filter_b_mod)));
+            float fb_cutoff = clamp_hz(apply_octave_modulation(p.filter_b_cutoff, filter_b_mod));
             filtered = v.filter_b.process(sample, fb_cutoff, p.filter_b_q, g_sample_rate, filt_b_mode);
         } else if (p.filter_routing == PAD_ROUTE_A_ONLY || !p.filter_b_enabled) {
             filtered = p.filter_type == PAD_FILTER_LADDER_LP
@@ -639,7 +648,7 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
             filtered = p.filter_type == PAD_FILTER_LADDER_LP
                 ? v.ladder_a.process(sample, filter_cutoff, eff_q, p.hardness, g_sample_rate)
                 : process_filter_a(v, sample, filter_cutoff, eff_q, filt_a_mode, filter_a_stage_count);
-            float fb_cutoff = std::max(20.0f, std::min(18000.0f, p.filter_b_cutoff * (1.0f + filter_b_mod)));
+            float fb_cutoff = clamp_hz(apply_octave_modulation(p.filter_b_cutoff, filter_b_mod));
             filtered = v.filter_b.process(filtered, fb_cutoff, p.filter_b_q, g_sample_rate, filt_b_mode);
         }
 
@@ -677,7 +686,12 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
         float final_amp = env_val * (1.0f + amp_mod);
         final_amp = std::max(0.0f, final_amp);
 
-        const float prefader_voice = filtered * final_amp * v.velocity;
+        const float prefader_voice = filtered * final_amp * v.velocity * v.output_gain;
+        if (v.output_gain_remaining > 0u) {
+            v.output_gain += v.output_gain_step;
+            --v.output_gain_remaining;
+            if (v.output_gain_remaining == 0u) v.output_gain = v.output_gain_target;
+        }
         const float postfader_voice = prefader_voice
                                     * safe_level
                                     * kPadOutputCalibration
@@ -718,9 +732,7 @@ static void update_idle_pad_telemetry(int pad_idx, int block_size) {
     apply_lfo_modulation(lfo2_val, p.lfo2_depth, p.lfo2_dest,
         filter_a_mod, filter_b_mod, amp_mod, pitch_mod, osc_b_mod, fold_mod);
 
-    const float cutoff_min = std::min(p.filter_cutoff_min, p.filter_cutoff_max);
-    const float cutoff_max = std::max(p.filter_cutoff_min, p.filter_cutoff_max);
-    float filter_cutoff = cutoff_min + (cutoff_max - cutoff_min) * 0.5f * (1.0f + filter_a_mod);
+    const float filter_cutoff = apply_octave_modulation(p.filter_cutoff, filter_a_mod);
     g_current_filter_freq[pad_idx] = clamp_hz(filter_cutoff);
     g_current_lfo1_value[pad_idx] = lfo1_val * p.lfo1_depth;
 }
@@ -757,9 +769,7 @@ int pad_init(float sample_rate) {
     memset(g_postfader_pad1_output, 0, sizeof(g_postfader_pad1_output));
     memset(g_postfader_pad2_output, 0, sizeof(g_postfader_pad2_output));
     for (int pad = 0; pad < PAD_NUM_PADS; ++pad) {
-        const float cutoff_min = std::min(g_pads[pad].filter_cutoff_min, g_pads[pad].filter_cutoff_max);
-        const float cutoff_max = std::max(g_pads[pad].filter_cutoff_min, g_pads[pad].filter_cutoff_max);
-        g_current_filter_freq[pad] = clamp_hz(cutoff_min + (cutoff_max - cutoff_min) * 0.5f);
+        g_current_filter_freq[pad] = clamp_hz(g_pads[pad].filter_cutoff);
         g_current_lfo1_value[pad] = 0.0f;
     }
 
@@ -859,6 +869,10 @@ void pad_note_on(int voice_idx, float frequency, float velocity) {
     v.active = 1;
     v.base_freq = frequency;
     v.velocity = velocity;
+    v.output_gain = 1.0f;
+    v.output_gain_target = 1.0f;
+    v.output_gain_step = 0.0f;
+    v.output_gain_remaining = 0u;
 
     const PadParams& p = g_pads[v.pad_idx];
 
@@ -916,6 +930,25 @@ void pad_set_voice_frequency(int voice_idx, float frequency) {
     v.base_freq = frequency;
 }
 
+void pad_set_voice_gain(int voice_idx, float gain) {
+    if (voice_idx < 0 || voice_idx >= PAD_NUM_VOICES || !std::isfinite(gain)) return;
+    g_voices[voice_idx].output_gain = std::max(0.0f, std::min(1.0f, gain));
+    g_voices[voice_idx].output_gain_target = g_voices[voice_idx].output_gain;
+    g_voices[voice_idx].output_gain_step = 0.0f;
+    g_voices[voice_idx].output_gain_remaining = 0u;
+}
+
+void pad_set_voice_gain_ramp(int voice_idx, float target_gain, uint32_t frames) {
+    if (voice_idx < 0 || voice_idx >= PAD_NUM_VOICES || !std::isfinite(target_gain)) return;
+    PadVoice& voice = g_voices[voice_idx];
+    voice.output_gain_target = std::max(0.0f, std::min(1.0f, target_gain));
+    voice.output_gain_remaining = frames;
+    voice.output_gain_step = frames > 0u
+        ? (voice.output_gain_target - voice.output_gain) / static_cast<float>(frames)
+        : 0.0f;
+    if (frames == 0u) voice.output_gain = voice.output_gain_target;
+}
+
 void pad_note_off(int voice_idx) {
     if (voice_idx < 0 || voice_idx >= PAD_NUM_VOICES) return;
     PadVoice& v = g_voices[voice_idx];
@@ -971,8 +1004,7 @@ void pad_set_fold_amount(int p, float v)     { PAD_CHECK(p); g_pads[p].fold_amou
 void pad_set_fold_mode(int p, int v)         { PAD_CHECK(p); g_pads[p].fold_mode = std::max(PAD_FOLD_BUCHLA, std::min(PAD_FOLD_SERGE, v)); }
 
 void pad_set_filter_type(int p, int v)         { PAD_CHECK(p); g_pads[p].filter_type = pad_clamp_filter_type(v); }
-void pad_set_filter_cutoff_min(int p, float v) { PAD_CHECK(p); g_pads[p].filter_cutoff_min = clamp_hz(v); }
-void pad_set_filter_cutoff_max(int p, float v) { PAD_CHECK(p); g_pads[p].filter_cutoff_max = clamp_hz(v); }
+void pad_set_filter_cutoff(int p, float v)     { PAD_CHECK(p); g_pads[p].filter_cutoff = clamp_hz(v); }
 void pad_set_filter_resonance(int p, float v)  { PAD_CHECK(p); g_pads[p].filter_resonance = v; }
 void pad_set_filter_q(int p, float v)          { PAD_CHECK(p); g_pads[p].filter_q = v; }
 void pad_set_filter_slope(int p, float v)      { PAD_CHECK(p); g_pads[p].filter_slope = std::max(12.0f, std::min(48.0f, v)); }
@@ -1120,6 +1152,18 @@ void pad_instance_set_voice_frequency(KesshoPadInstance* instance, int voice_idx
     pad_set_voice_frequency(voice_idx, frequency);
 }
 
+void pad_instance_set_voice_gain(KesshoPadInstance* instance, int voice_idx, float gain) {
+    if (!instance) return;
+    ScopedPadState scoped(&instance->state);
+    pad_set_voice_gain(voice_idx, gain);
+}
+
+void pad_instance_set_voice_gain_ramp(KesshoPadInstance* instance, int voice_idx, float target_gain, uint32_t frames) {
+    if (!instance) return;
+    ScopedPadState scoped(&instance->state);
+    pad_set_voice_gain_ramp(voice_idx, target_gain, frames);
+}
+
 void pad_instance_note_off(KesshoPadInstance* instance, int voice_idx) {
     if (!instance) return;
     ScopedPadState scoped(&instance->state);
@@ -1179,8 +1223,7 @@ PAD_INSTANCE_SETTER2(set_fold_amount, int, float)
 PAD_INSTANCE_SETTER2(set_fold_mode, int, int)
 
 PAD_INSTANCE_SETTER2(set_filter_type, int, int)
-PAD_INSTANCE_SETTER2(set_filter_cutoff_min, int, float)
-PAD_INSTANCE_SETTER2(set_filter_cutoff_max, int, float)
+PAD_INSTANCE_SETTER2(set_filter_cutoff, int, float)
 PAD_INSTANCE_SETTER2(set_filter_resonance, int, float)
 PAD_INSTANCE_SETTER2(set_filter_q, int, float)
 PAD_INSTANCE_SETTER2(set_filter_slope, int, float)

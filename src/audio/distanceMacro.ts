@@ -237,8 +237,7 @@ export const getPadDistancePreview = (
   const hardnessKey = isPad2 ? 'pad2Hardness' : 'hardness';
   const warmthKey = isPad2 ? 'pad2Warmth' : 'warmth';
   const presenceKey = isPad2 ? 'pad2Presence' : 'presence';
-  const minCutoffKey = isPad2 ? 'pad2FilterCutoffMin' : 'filterCutoffMin';
-  const maxCutoffKey = isPad2 ? 'pad2FilterCutoffMax' : 'filterCutoffMax';
+  const cutoffKey = isPad2 ? 'pad2FilterCutoff' : 'filterCutoff';
   const levelKey = isPad2 ? 'pad2Level' : 'synthLevel';
   const reverbKey = isPad2 ? 'pad2ReverbSend' : 'pad1ReverbSend';
   const postLpfKey = isPad2 ? 'pad2PostLPF' : 'padPostLPF';
@@ -253,8 +252,7 @@ export const getPadDistancePreview = (
     [hardnessKey]: applyParamAdd(hardnessKey, state[hardnessKey], distance, -0.04, -0.22),
     [warmthKey]: applyParamAdd(warmthKey, state[warmthKey], distance, 0.04, 0.18),
     [presenceKey]: applyParamAdd(presenceKey, state[presenceKey], distance, -0.05, -0.30),
-    [minCutoffKey]: applyParamMultiply(minCutoffKey, state[minCutoffKey], distance, 0.85, 0.45),
-    [maxCutoffKey]: applyParamMultiply(maxCutoffKey, state[maxCutoffKey], distance, 0.92, 0.55),
+    [cutoffKey]: applyParamMultiply(cutoffKey, state[cutoffKey], distance, 0.90, 0.50),
     [levelKey]: applyParamAdd(levelKey, state[levelKey], distance, -0.04, -0.18),
     [reverbKey]: applyParamAdd(reverbKey, state[reverbKey], distance, 0.06, 0.20),
     [postLpfKey]: applyParamMultiply(postLpfKey, state[postLpfKey], distance, 0.90, 0.42),
@@ -345,8 +343,7 @@ export const applyPadDistanceToState = (
     next.pad2Hardness = applyParamAdd('pad2Hardness', state.pad2Hardness, distance, -0.04, -0.22);
     next.pad2Warmth = applyParamAdd('pad2Warmth', state.pad2Warmth, distance, 0.04, 0.18);
     next.pad2Presence = applyParamAdd('pad2Presence', state.pad2Presence, distance, -0.05, -0.30);
-    next.pad2FilterCutoffMin = applyParamMultiply('pad2FilterCutoffMin', state.pad2FilterCutoffMin, distance, 0.85, 0.45);
-    next.pad2FilterCutoffMax = applyParamMultiply('pad2FilterCutoffMax', state.pad2FilterCutoffMax, distance, 0.92, 0.55);
+    next.pad2FilterCutoff = applyParamMultiply('pad2FilterCutoff', state.pad2FilterCutoff, distance, 0.90, 0.50);
     next.pad2Level = applyParamAdd('pad2Level', state.pad2Level, distance, -0.04, -0.18);
     next.pad2ReverbSend = applyParamAdd('pad2ReverbSend', state.pad2ReverbSend, distance, 0.06, 0.20);
     next.pad2PostLPF = applyParamMultiply('pad2PostLPF', state.pad2PostLPF, distance, 0.90, 0.42);
@@ -362,8 +359,7 @@ export const applyPadDistanceToState = (
   next.hardness = applyParamAdd('hardness', state.hardness, distance, -0.04, -0.22);
   next.warmth = applyParamAdd('warmth', state.warmth, distance, 0.04, 0.18);
   next.presence = applyParamAdd('presence', state.presence, distance, -0.05, -0.30);
-  next.filterCutoffMin = applyParamMultiply('filterCutoffMin', state.filterCutoffMin, distance, 0.85, 0.45);
-  next.filterCutoffMax = applyParamMultiply('filterCutoffMax', state.filterCutoffMax, distance, 0.92, 0.55);
+  next.filterCutoff = applyParamMultiply('filterCutoff', state.filterCutoff, distance, 0.90, 0.50);
   next.synthLevel = applyParamAdd('synthLevel', state.synthLevel, distance, -0.04, -0.18);
   next.pad1ReverbSend = applyParamAdd('pad1ReverbSend', state.pad1ReverbSend, distance, 0.06, 0.20);
   next.padPostLPF = applyParamMultiply('padPostLPF', state.padPostLPF, distance, 0.90, 0.42);

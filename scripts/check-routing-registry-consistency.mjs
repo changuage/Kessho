@@ -22,6 +22,7 @@ const EXPECTED_ROUTING_ROW_IDS = [
   'degrade',
   'reverb',
 ];
+const EXPECTED_ROUTING_MATRIX_ROW_IDS = EXPECTED_ROUTING_ROW_IDS.filter((id) => id !== 'waves');
 const EXPECTED_DAW_SOURCE_IDS = EXPECTED_ROUTING_ROW_IDS.filter((id) => id !== 'degrade').concat('dynamics');
 
 function read(relativePath) {
@@ -53,6 +54,7 @@ function assert(condition, message) {
 
 const registry = read('src/ui/routing/routingSourceRegistry.ts');
 const routingMatrix = read('src/ui/global/RoutingMatrix.tsx');
+const globalPage = read('src/ui/global/GlobalPage.tsx');
 const engineGroups = read('src/ui/snowflakeV2/engineGroups.ts');
 const snowflakeUi = read('src/ui/SnowflakeUI.tsx');
 const app = read('src/App.tsx');
@@ -66,11 +68,19 @@ const matrixIds = idsFromBlock(routingMatrix, 'const ROWS: MatrixRow[] = [', 'fu
 const dawSourceIds = sourceIdsFromBlock(dawOutputRouting, 'export const DAW_OUTPUT_SOURCE_DEFS = [', '] as const');
 
 assert(sameArray(registryIds, EXPECTED_ROUTING_ROW_IDS), `Routing registry row ids drifted: ${registryIds.join(',')}`);
-assert(sameArray(matrixIds, registryIds), `Routing matrix rows must match registry order. Matrix=${matrixIds.join(',')} Registry=${registryIds.join(',')}`);
+assert(sameArray(matrixIds, EXPECTED_ROUTING_MATRIX_ROW_IDS), `Routing matrix top-level rows drifted: ${matrixIds.join(',')}`);
 assert(sameArray(dawSourceIds, EXPECTED_DAW_SOURCE_IDS), `DAW output sources must match routing registry production taps. DAW=${dawSourceIds.join(',')}`);
 
-assert(registry.includes("enabledKeys: ['insectsEnabled', 'insects2Enabled']"), 'Insects routing predicate must include insects2Enabled.');
-assert(registry.includes("enabledKeys: ['birdsEnabled', 'birds2Enabled', 'frogsEnabled']"), 'Nature routing predicate must include birds2Enabled and frogsEnabled.');
+assert(
+  registry.includes("sourceWithFlags(state, ['insectsEnabled', 'insects2Enabled'])")
+    && registry.includes('isEnabled: insectsEnabled'),
+  'Insects routing predicate must require the master and either insect layer.',
+);
+assert(
+  registry.includes('NATURE_SLOT_KEYS.some(({ enabledKey }) => Boolean(state[enabledKey]))')
+    && registry.includes('isEnabled: natureEnabled'),
+  'Nature routing predicate must require the master and a canonical Nature slot.',
+);
 assert(registry.includes("enabledKeys: ['degradeEnabled', 'driftEnabled', 'erosionEnabled', 'dynamicsSaturationEnabled']"), 'Degrade predicate must include all Degrade/Texture activators.');
 assert(registry.includes("sends: { reverb: 'degradeReverbSend' }"), 'Degrade return row must expose Degrade to Reverb send.');
 assert(registry.includes("sends: { degrade: 'reverbDegradeSend' }"), 'Reverb return row must expose Reverb to Degrade send.');
@@ -81,6 +91,13 @@ assert(
     routingMatrix.includes("label: `${row.label} → Texture Bus`") &&
     routingMatrix.includes('getRoutingSourceDef(row.id)'),
   'RoutingMatrix must use the central routing registry for labels, Texture bus keys, and enablement.',
+);
+assert(
+  globalPage.includes("waves: 'nature'")
+    && !globalPage.includes("createSceneSource('waves'")
+    && globalPage.includes('state.natureMasterEnabled && NATURE_SLOT_KEYS.some')
+    && globalPage.includes('state.insectsMasterEnabled && (state.insectsEnabled || state.insects2Enabled)'),
+  'Routing scene must group Waves under canonical Nature and honor Earth family masters.',
 );
 assert(
   dawOutputSync.includes('getActiveDawOutputSourceIds(state)') &&

@@ -247,11 +247,6 @@ export const behaviorEvidenceByAppVisibleGroup = {
     reason: 'Arrangement controls must enter snapshot-owned Product Core sample-frame scheduling and materialize as generated musical events.',
     evidence: ['core:product:harmony', 'ProductHarmonyTests.cpp#renderEvents', 'ProductHarmonyTests.cpp#journey state event should alter generated sequencer event values'],
   },
-  'music.sequencer|harmony-param-diff': {
-    owner: 'Product Core harmony owner',
-    reason: 'Harmony controls must change Product Core chord telemetry and generated event pitch selection.',
-    evidence: ['core:product:harmony', 'ProductHarmonyTests.cpp#requireDirectMusicCoverage', 'ProductHarmonyTests.cpp#telemetry root mismatch'],
-  },
   'music.sequencer|rng-seed-snapshot-policy': {
     owner: 'Product Core RNG/evolution owner',
     reason: 'Randomness/seed policy must preserve deterministic call-order and seed-sensitive event output.',
@@ -500,6 +495,23 @@ export function collectAppVisibleBehaviorEvidenceGaps(appVisibleLiveUpdatePaths)
 
 export const productDeferredClassifications = [
   {
+    id: 'legacy-harmony-state-aliases',
+    owner: 'Harmony preset and URL migration boundary',
+    reason:
+      'These retired chord-progression and sequence fields are accepted only as migration inputs; canonical Harmony progression content owns current playback state.',
+    patterns: [
+      /^chordProgression(?:ClockSource|Enabled|Pattern|PhraseMultiplier|StepEnabled|Steps)$/,
+      /^harmonyChordSequence(?:A|B|Enabled|Length|StepIndex)?$/,
+    ],
+  },
+  {
+    id: 'sequencer-portable-content-policy',
+    owner: 'Product host sequencer content bridge',
+    reason:
+      'Structured synth play configurations are portable preset content projected into concrete Product sequencer sub-lane and pitch-binding events, not a scalar snapshot parameter.',
+    patterns: [/^synthPlayConfigs$/],
+  },
+  {
     id: 'soundscape-layer-policy',
     owner: 'C++ Product Core soundscape source and asset layer policy',
     allowWiredReferences: true,
@@ -625,6 +637,23 @@ export const productDeferredClassifications = [
 ];
 
 export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
+  'legacy-harmony-state-aliases': [
+    'chordProgressionClockSource',
+    'chordProgressionEnabled',
+    'chordProgressionPattern',
+    'chordProgressionPhraseMultiplier',
+    'chordProgressionStepEnabled',
+    'chordProgressionSteps',
+    'harmonyChordSequence',
+    'harmonyChordSequenceA',
+    'harmonyChordSequenceB',
+    'harmonyChordSequenceEnabled',
+    'harmonyChordSequenceLength',
+    'harmonyChordSequenceStepIndex',
+  ],
+  'sequencer-portable-content-policy': [
+    'synthPlayConfigs',
+  ],
   'soundscape-layer-policy': [
     'birds2DelayASend',
     'birds2DelayBSend',
@@ -802,40 +831,72 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
 
 export const EXPECTED_PARAM_REGISTRY_OMISSIONS = [
   {
-    key: 'sidechainDelayATarget',
-    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+    key: 'spectralFreezeActive',
+    reason: 'Runtime capture gesture state; presets must never restore an active freeze capture.',
   },
   {
-    key: 'sidechainDelayBTarget',
-    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+    key: 'spectralFreezeCaptureSerial',
+    reason: 'Runtime capture edge serial; presets must never replay a historical capture trigger.',
   },
   {
-    key: 'sidechainGranularTarget',
-    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+    key: 'chordProgressionClockSource',
+    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
   },
   {
-    key: 'sidechainLead1Target',
-    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+    key: 'chordProgressionEnabled',
+    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
   },
   {
-    key: 'sidechainLead2Target',
-    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+    key: 'chordProgressionHits',
+    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
   },
   {
-    key: 'sidechainPad1Target',
-    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+    key: 'chordProgressionPattern',
+    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
   },
   {
-    key: 'sidechainPad2Target',
-    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+    key: 'chordProgressionPhraseMultiplier',
+    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
   },
   {
-    key: 'sidechainPianoTarget',
-    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+    key: 'chordProgressionRotation',
+    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
   },
   {
-    key: 'sidechainReverbTarget',
-    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+    key: 'chordProgressionStepEnabled',
+    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
+  },
+  {
+    key: 'chordProgressionSteps',
+    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
+  },
+  {
+    key: 'harmonyChordSequence',
+    reason: 'Legacy Harmony sequence migration field; canonical Harmony progression content owns playback.',
+  },
+  {
+    key: 'harmonyChordSequenceA',
+    reason: 'Legacy Harmony sequence migration field; canonical Harmony progression content owns playback.',
+  },
+  {
+    key: 'harmonyChordSequenceB',
+    reason: 'Legacy Harmony sequence migration field; canonical Harmony progression content owns playback.',
+  },
+  {
+    key: 'harmonyChordSequenceEnabled',
+    reason: 'Legacy Harmony sequence migration field; canonical Harmony progression content owns playback.',
+  },
+  {
+    key: 'harmonyChordSequenceLength',
+    reason: 'Legacy Harmony sequence migration field; canonical Harmony progression content owns playback.',
+  },
+  {
+    key: 'harmonyChordSequenceStepIndex',
+    reason: 'Legacy Harmony sequence migration field; canonical Harmony progression content owns playback.',
+  },
+  {
+    key: 'synthPlayConfigs',
+    reason: 'Portable sequencer content projected by the host into concrete Product sub-lane and pitch-binding events.',
   },
   {
     key: 'granularVisualDetail',

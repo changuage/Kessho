@@ -23,6 +23,7 @@ const HARMONY_KEYS = [
   'rootNote', 'scaleMode', 'manualScale', 'tension', 'cofDriftEnabled', 'cofDriftRate', 'cofDriftDirection', 'cofDriftRange', 'cofCurrentStep',
   'harmonyChordSlots', 'harmonyChordSlotsA', 'harmonyChordSlotsB',
   'harmonyProgression', 'harmonyProgressionA', 'harmonyProgressionB',
+  'synthPlayConfigs',
   'manualHarmonyControl',
 ] as const;
 

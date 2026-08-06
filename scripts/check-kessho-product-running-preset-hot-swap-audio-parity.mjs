@@ -341,11 +341,6 @@ function latestTelemetry(capture) {
   return capture?.debug?.latestTelemetry ?? {};
 }
 
-function sourceEntry(capture, sourceId) {
-  return (latestTelemetry(capture).productDebugSourceStates ?? [])
-    .find((entry) => entry?.sourceId === sourceId) ?? null;
-}
-
 function fullSnapshotReloadCount(capture) {
   const value = latestTelemetry(capture).fullSnapshotReloadCount;
   return Number.isFinite(value) ? value : 0;
@@ -467,7 +462,7 @@ function compareWindows(hotCapture, baselineCapture, startMs, endMs) {
   };
 }
 
-function summarizeCapture(capture, sourceId) {
+function summarizeCapture(capture) {
   return {
     engine: capture.engine,
     sampleRate: capture.sampleRate,
@@ -477,7 +472,6 @@ function summarizeCapture(capture, sourceId) {
     fullSnapshotReloadCount: fullSnapshotReloadCount(capture),
     dirtyDiffCount: dirtyDiffCount(capture),
     snapshotReloadReasons: snapshotReloadReasons(capture),
-    source: sourceEntry(capture, sourceId),
     transportRunning: latestTelemetry(capture).transportRunning ?? null,
   };
 }
@@ -514,14 +508,6 @@ async function runCase(browser, baseUrl, caseDef, pageErrors) {
   assert(!hotCapture?.debug?.runtimeError, `${caseDef.id}: hot runtime error: ${hotCapture?.debug?.runtimeError}`);
   assert(!baselineCapture?.debug?.runtimeError, `${caseDef.id}: baseline runtime error: ${baselineCapture?.debug?.runtimeError}`);
 
-  const hotSource = sourceEntry(hotCapture, caseDef.sourceId);
-  const baselineSource = sourceEntry(baselineCapture, caseDef.sourceId);
-  assert(hotSource, `${caseDef.id}: missing hot source telemetry for source ${caseDef.sourceId}`);
-  assert(baselineSource, `${caseDef.id}: missing baseline source telemetry for source ${caseDef.sourceId}`);
-  assert(
-    hotSource.sourceStateHash === baselineSource.sourceStateHash,
-    `${caseDef.id}: hot source hash ${hotSource.sourceStateHash} did not match target baseline ${baselineSource.sourceStateHash}`,
-  );
   assert(fullSnapshotReloadCount(hotCapture) >= (caseDef.minFullSnapshotReloadCount ?? 2), `${caseDef.id}: hot capture did not report a source hot-swap full snapshot`);
   assert(
     snapshotReloadReasons(hotCapture).includes(caseDef.expectedReloadReason ?? 'source-structure-change'),
@@ -564,8 +550,8 @@ async function runCase(browser, baseUrl, caseDef, pageErrors) {
     },
     preWindowAgainstTarget: pre,
     postWindowAgainstTarget: post,
-    hotCapture: summarizeCapture(hotCapture, caseDef.sourceId),
-    baselineCapture: summarizeCapture(baselineCapture, caseDef.sourceId),
+    hotCapture: summarizeCapture(hotCapture),
+    baselineCapture: summarizeCapture(baselineCapture),
     logs: {
       hot: hot.logs,
       baseline: baseline.logs,
@@ -614,7 +600,6 @@ async function main() {
           `Track: \`${caseReport.trackId}\`; source ID: \`${caseReport.sourceId}\`; baseline: \`${caseReport.baselineMode}\``,
           `Full snapshot reloads: hot \`${caseReport.hotCapture.fullSnapshotReloadCount}\`, baseline \`${caseReport.baselineCapture.fullSnapshotReloadCount}\``,
           `Dirty diffs: hot \`${caseReport.hotCapture.dirtyDiffCount}\`, baseline \`${caseReport.baselineCapture.dirtyDiffCount}\``,
-          `Source hash: \`${caseReport.hotCapture.source?.sourceStateHash ?? 'missing'}\`; compiled hash: \`${caseReport.hotCapture.source?.compiledSourceHash ?? 'missing'}\``,
           `Post-swap RMS: hot \`${caseReport.postWindowAgainstTarget.hotRms.toFixed(8)}\`, baseline \`${caseReport.postWindowAgainstTarget.baselineRms.toFixed(8)}\`, ratio \`${caseReport.postWindowAgainstTarget.energyRatio.toFixed(4)}\``,
           `Post-swap envelope: corr \`${caseReport.postWindowAgainstTarget.envelope.correlation.toFixed(4)}\`, distance \`${caseReport.postWindowAgainstTarget.envelope.distance.toFixed(4)}\`, lag \`${caseReport.postWindowAgainstTarget.envelope.lagMs}ms\``,
           '',

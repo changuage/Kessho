@@ -1,6 +1,6 @@
 {
   "name": "kessho-product",
-  "version": 25,
+  "version": 26,
   "groups": [
     "transport",
     "harmony",
@@ -78,7 +78,7 @@
   },
   "sourceParamLayout": {
     "pad": {
-      "paramCount": 53,
+      "paramCount": 52,
       "presetSnapParamIndices": [
         0,
         4,
@@ -86,15 +86,15 @@
         11,
         13,
         20,
+        26,
         27,
-        28,
-        32,
+        31,
+        38,
         39,
-        40,
+        42,
         43,
         44,
-        45,
-        51
+        50
       ]
     },
     "lead": {
@@ -279,50 +279,44 @@
         "fallback": 0
       },
       {
-        "key": "filterCutoffMin",
+        "key": "filterCutoff",
         "index": 21,
         "enumMap": null,
-        "fallback": 80
-      },
-      {
-        "key": "filterCutoffMax",
-        "index": 22,
-        "enumMap": null,
-        "fallback": 1800
+        "fallback": 1700
       },
       {
         "key": "filterResonance",
-        "index": 23,
+        "index": 22,
         "enumMap": null,
         "fallback": 0.2
       },
       {
         "key": "filterQ",
-        "index": 24,
+        "index": 23,
         "enumMap": null,
         "fallback": 1
       },
       {
         "key": "filterSlope",
-        "index": 25,
+        "index": 24,
         "enumMap": null,
         "fallback": 12
       },
       {
         "key": "filterKeyTracking",
-        "index": 26,
+        "index": 25,
         "enumMap": null,
         "fallback": 0
       },
       {
         "key": "padFilterBEnabled",
-        "index": 27,
+        "index": 26,
         "enumMap": null,
         "fallback": 0
       },
       {
         "key": "padFilterBType",
-        "index": 28,
+        "index": 27,
         "enumMap": {
           "lowpass": 0,
           "bandpass": 1,
@@ -333,25 +327,25 @@
       },
       {
         "key": "padFilterBCutoff",
-        "index": 29,
+        "index": 28,
         "enumMap": null,
         "fallback": 200
       },
       {
         "key": "padFilterBResonance",
-        "index": 30,
+        "index": 29,
         "enumMap": null,
         "fallback": 0.2
       },
       {
         "key": "padFilterBQ",
-        "index": 31,
+        "index": 30,
         "enumMap": null,
         "fallback": 1
       },
       {
         "key": "padFilterRouting",
-        "index": 32,
+        "index": 31,
         "enumMap": {
           "series": 0,
           "aOnly": 1,
@@ -361,43 +355,43 @@
       },
       {
         "key": "synthAttack",
-        "index": 33,
+        "index": 32,
         "enumMap": null,
         "fallback": 4
       },
       {
         "key": "synthDecay",
-        "index": 34,
+        "index": 33,
         "enumMap": null,
         "fallback": 1
       },
       {
         "key": "synthSustain",
-        "index": 35,
+        "index": 34,
         "enumMap": null,
         "fallback": 0.8
       },
       {
         "key": "synthRelease",
-        "index": 36,
+        "index": 35,
         "enumMap": null,
         "fallback": 10
       },
       {
         "key": "padLfo1Rate",
-        "index": 37,
+        "index": 36,
         "enumMap": null,
         "fallback": 0.09
       },
       {
         "key": "padLfo1Depth",
-        "index": 38,
+        "index": 37,
         "enumMap": null,
         "fallback": 0.6
       },
       {
         "key": "padLfo1Wave",
-        "index": 39,
+        "index": 38,
         "enumMap": {
           "sine": 0,
           "triangle": 1,
@@ -411,7 +405,7 @@
       },
       {
         "key": "padLfo1Dest",
-        "index": 40,
+        "index": 39,
         "enumMap": {
           "none": 0,
           "filterCutoff": 1,
@@ -426,19 +420,19 @@
       },
       {
         "key": "padLfo2Rate",
-        "index": 41,
+        "index": 40,
         "enumMap": null,
         "fallback": 0.5
       },
       {
         "key": "padLfo2Depth",
-        "index": 42,
+        "index": 41,
         "enumMap": null,
         "fallback": 0
       },
       {
         "key": "padLfo2Wave",
-        "index": 43,
+        "index": 42,
         "enumMap": {
           "sine": 0,
           "triangle": 1,
@@ -452,7 +446,7 @@
       },
       {
         "key": "padLfo2Dest",
-        "index": 44,
+        "index": 43,
         "enumMap": {
           "none": 0,
           "filterCutoff": 1,
@@ -467,43 +461,43 @@
       },
       {
         "key": "padModEnvEnabled",
-        "index": 45,
+        "index": 44,
         "enumMap": null,
         "fallback": 0
       },
       {
         "key": "padModEnvAttack",
-        "index": 46,
+        "index": 45,
         "enumMap": null,
         "fallback": 0.5
       },
       {
         "key": "padModEnvDecay",
-        "index": 47,
+        "index": 46,
         "enumMap": null,
         "fallback": 2
       },
       {
         "key": "padModEnvSustain",
-        "index": 48,
+        "index": 47,
         "enumMap": null,
         "fallback": 0
       },
       {
         "key": "padModEnvRelease",
-        "index": 49,
+        "index": 48,
         "enumMap": null,
         "fallback": 4
       },
       {
         "key": "padModEnvDepth",
-        "index": 50,
+        "index": 49,
         "enumMap": null,
         "fallback": 0.5
       },
       {
         "key": "padModEnvDest",
-        "index": 51,
+        "index": 50,
         "enumMap": {
           "none": 0,
           "filterCutoff": 1,
@@ -1532,6 +1526,15 @@
       "macroExpression": 1.03
     },
     {
+      "name": "PadClassicMoogBass",
+      "source": "pad",
+      "key": "classic_moog_bass",
+      "id": 1025,
+      "macroMorph": -0.1,
+      "macroDistance": 0,
+      "macroExpression": 1
+    },
+    {
       "name": "LeadSoftRhodes",
       "source": "lead",
       "key": "soft_rhodes",
@@ -2088,10 +2091,17 @@
       "spectralFreezeMix": 0,
       "spectralFreezeEnabled": false,
       "spectralFreezeActive": false,
-      "spectralFreezeSlushy": false,
-      "spectralFreezeSpeed": 0.3,
-      "spectralFreezeDecay": 1,
-      "spectralFreezePhaseJitter": 0,
+      "spectralFreezeMode": 2,
+      "spectralFreezeCaptureSerial": 0,
+      "spectralFreezeStretchSpeed": 0.5,
+      "spectralFreezeDirection": 2,
+      "spectralFreezePosition": 0,
+      "spectralFreezeRefresh": 0.15,
+      "spectralFreezeInputSensitivity": 0.5,
+      "spectralFreezeDiffusion": 0.55,
+      "spectralFreezeTone": -0.15,
+      "spectralFreezeWidth": 0.85,
+      "spectralFreezeSustain": 1,
       "spectralFreezeRouting": 0,
       "spectralFreezeReverbCrossfade": 1,
       "dynamicsDrive": 0,
@@ -2230,9 +2240,27 @@
     "takeoverAnchorCount": 12,
     "morphEndpointCount": 2,
     "morphPlanSlotCapacity": 8,
-    "playbackBehaviors": ["auto", "relative", "exact"],
-    "gestureScopes": ["detail", "overview", "suggestion", "seqDraft", "seqLive"],
-    "takeoverTargets": ["global", "detail", "overview", "seq1", "seq2", "seq3", "seq4"]
+    "playbackBehaviors": [
+      "auto",
+      "relative",
+      "exact"
+    ],
+    "gestureScopes": [
+      "detail",
+      "overview",
+      "suggestion",
+      "seqDraft",
+      "seqLive"
+    ],
+    "takeoverTargets": [
+      "global",
+      "detail",
+      "overview",
+      "seq1",
+      "seq2",
+      "seq3",
+      "seq4"
+    ]
   },
   "limits": {
     "maxBlockSize": 4096,

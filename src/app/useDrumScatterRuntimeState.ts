@@ -9,8 +9,14 @@ import type { DrumVoiceType } from '../audio/drumSynth';
 import type { ProductDrumVoiceTriggerOptions } from '../ui/useProductRuntimeManualTriggers';
 import type { SliderState } from '../ui/state';
 import type { SeqSimpleState } from '../ui/drums/SeqSimple';
-import type { SeqScatterState } from '../ui/drums/scatter/scatterTypes';
-import { normalizeSeqScatterState, seqSimpleStateFromScatterState } from '../ui/drums/scatter/scatterDefaults';
+import type { SeqScatterState, SerializedSeqScatterState } from '../ui/drums/scatter/scatterTypes';
+import {
+  deserializeSeqScatterState,
+  mergeSeqSimpleStateIntoScatterState,
+  normalizeSeqScatterState,
+  seqSimpleStateFromScatterState,
+  serializeSeqScatterState,
+} from '../ui/drums/scatter/scatterDefaults';
 import {
   useScatterPhrasePlayer,
   type ScatterPreviewTriggerOptions,
@@ -49,13 +55,36 @@ export function useDrumScatterRuntimeState({
   const [drumSeqScatterState, setDrumSeqScatterState] = useState<SeqScatterState>(() =>
     normalizeSeqScatterState(undefined, drumSeqSimpleStateRef.current)
   );
+  const drumSeqScatterStateRef = useRef(drumSeqScatterState);
+  drumSeqScatterStateRef.current = drumSeqScatterState;
   const [drumScatterRuntimePulses, setDrumScatterRuntimePulses] = useState<Record<string, number>>({});
   const lastProductScatterPulseRef = useRef(0);
 
   const handleDrumSeqScatterStateChange = useCallback((next: SeqScatterState) => {
-    drumSeqSimpleStateRef.current = seqSimpleStateFromScatterState(next);
-    setDrumSeqScatterState(next);
+    const normalized = normalizeSeqScatterState(next);
+    drumSeqSimpleStateRef.current = seqSimpleStateFromScatterState(normalized);
+    drumSeqScatterStateRef.current = normalized;
+    setDrumSeqScatterState(normalized);
   }, []);
+
+  const handleDrumSeqSimpleStateChange = useCallback((next: SeqSimpleState) => {
+    const normalized = mergeSeqSimpleStateIntoScatterState(drumSeqScatterStateRef.current, next);
+    drumSeqSimpleStateRef.current = seqSimpleStateFromScatterState(normalized);
+    drumSeqScatterStateRef.current = normalized;
+    setDrumSeqScatterState(normalized);
+  }, []);
+
+  const restoreDrumScatterState = useCallback((saved: SerializedSeqScatterState | undefined) => {
+    const normalized = deserializeSeqScatterState(saved);
+    drumSeqSimpleStateRef.current = seqSimpleStateFromScatterState(normalized);
+    drumSeqScatterStateRef.current = normalized;
+    setDrumSeqScatterState(normalized);
+  }, []);
+
+  const getDrumScatterPresetState = useCallback(
+    () => serializeSeqScatterState(drumSeqScatterStateRef.current),
+    [],
+  );
 
   const getDrumScatterBpm = useCallback(() => (
     Number(stateRef.current.sequencerMasterBPM ?? stateRef.current.drumEuclidBaseBPM ?? 120)
@@ -140,6 +169,9 @@ export function useDrumScatterRuntimeState({
     drumSeqSimpleStateRef,
     drumSeqScatterState,
     handleDrumSeqScatterStateChange,
+    handleDrumSeqSimpleStateChange,
+    restoreDrumScatterState,
+    getDrumScatterPresetState,
     drumScatterRuntimePulses,
   };
 }

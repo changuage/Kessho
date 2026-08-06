@@ -1,16 +1,14 @@
-import React, { useMemo, useState } from 'react';
-import type { HarmonyDraftChord, HarmonyChordQuality, HarmonyChordExtension } from '../../../audio/harmony/harmonyTypes';
+import React, { useState } from 'react';
+import type { HarmonyBassMode, HarmonyChordAlteration, HarmonyDraftChord, HarmonyChordQuality, HarmonyChordExtension } from '../../../audio/harmony/harmonyTypes';
 import QualityExtensionControls from '../../harmony/shared/QualityExtensionControls';
-import ExactVoicingEditor from '../../harmony/shared/ExactVoicingEditor';
-import RelativeChordDotMap from '../../harmony/shared/RelativeChordDotMap';
-import { ensureDraftIntent, updateDraftExactNotes, updateDraftIntent } from '../../harmony/shared/harmonyDraftHelpers';
+import RecognitionResolution from '../../harmony/shared/RecognitionResolution';
+import { ensureDraftIntent, updateDraftIntent } from '../../harmony/shared/harmonyDraftHelpers';
 
 export interface SeqDraftControlsProps {
   draft: HarmonyDraftChord;
   locked?: boolean;
   sharedSlotLabel?: string;
   useCount?: number;
-  axis?: readonly number[];
   onChange: (draft: HarmonyDraftChord) => void;
   onCapture: () => void;
   onClear: () => void;
@@ -19,22 +17,42 @@ export interface SeqDraftControlsProps {
 
 export type HarmonyDraftPlayRoute = 'track' | 'harmony';
 
-export const SeqDraftControls: React.FC<SeqDraftControlsProps> = ({ draft, locked = false, sharedSlotLabel = 'Unsaved', useCount = 0, axis, onChange, onCapture, onClear, onPlay }) => {
+export const SeqDraftControls: React.FC<SeqDraftControlsProps> = ({ draft, locked = false, sharedSlotLabel = 'Unsaved', useCount = 0, onChange, onCapture, onClear, onPlay }) => {
   const [route, setRoute] = useState<HarmonyDraftPlayRoute>('track');
+  const semanticIntent = ensureDraftIntent(draft);
   const quality = draft.quality ?? draft.intent?.quality ?? null;
   const extensions = draft.extensions ?? (draft.intent?.extensions as HarmonyChordExtension[] | undefined) ?? [];
-  const mode = draft.intent?.rootMode ?? 'root';
   const status = draft.dirty ? 'Unsaved' : draft.intentSource === 'confirmed' ? 'Confirmed' : draft.intentSource === 'inferred' ? 'Inferred' : 'Custom';
-  const rootLabel = useMemo(() => mode === 'degree' ? `Degree ${(draft.intent?.degree ?? 0) + 1}` : `Root ${draft.intent?.rootNote ?? '--'}`, [draft.intent, mode]);
-  const semanticIntent = ensureDraftIntent(draft);
+  const rootLabel = semanticIntent.rootMode === 'degree' ? `Degree ${semanticIntent.degree + 1}` : `Root ${semanticIntent.rootNote}`;
+  const updateAdvanced = (patch: Partial<typeof semanticIntent>) => onChange(updateDraftIntent(draft, { ...semanticIntent, ...patch }, {}));
+  const alterations = semanticIntent.alterations ?? [];
+  const toggleAlteration = (alteration: HarmonyChordAlteration) => updateAdvanced({
+    alterations: alterations.includes(alteration)
+      ? alterations.filter((entry) => entry !== alteration)
+      : [...alterations, alteration],
+  });
   const ownershipLabel = draft.dirty || sharedSlotLabel === 'Unsaved' ? 'DRAFT · unsaved' : `${sharedSlotLabel} · saved`;
   return <section className="seq-draft-controls" aria-label="Seq draft chord">
-    <header><strong>Draft</strong><span>{ownershipLabel} · Shared · {useCount} uses</span><span>{draft.playbackBehavior ? `${draft.playbackBehavior[0]?.toUpperCase() ?? ''}${draft.playbackBehavior.slice(1)}` : 'Auto'}</span><span>{status}</span></header>
-    <div className="seq-draft-root-row"><button type="button" className={mode === 'root' ? 'active' : ''} disabled={locked} onClick={() => onChange(updateDraftIntent(draft, { ...semanticIntent, rootMode: 'absolute' }, {}))}>Root</button><button type="button" className={mode === 'degree' ? 'active' : ''} disabled={locked} onClick={() => onChange(updateDraftIntent(draft, { ...semanticIntent, rootMode: 'degree' }, {}))}>Degree</button><input type="number" min={0} max={11} value={semanticIntent.rootNote} disabled={locked} aria-label="Draft root note" onChange={(event) => onChange(updateDraftIntent(draft, { ...semanticIntent, rootNote: Number(event.target.value), rootMode: 'absolute' }, {}))} /><input type="number" min={0} max={6} value={semanticIntent.degree} disabled={locked} aria-label="Draft scale degree" onChange={(event) => onChange(updateDraftIntent(draft, { ...semanticIntent, degree: Number(event.target.value), rootMode: 'degree' }, {}))} /><span>{rootLabel}</span><select value={draft.playbackBehavior} disabled={locked} onChange={(event) => onChange({ ...draft, playbackBehavior: event.target.value as HarmonyDraftChord['playbackBehavior'], dirty: true })}><option value="auto">Auto</option><option value="relative">Relative</option><option value="exact">Exact</option></select></div>
+    <header><strong>{rootLabel}</strong><span>{ownershipLabel} · {useCount} uses</span><span>{status}</span></header>
     <QualityExtensionControls quality={quality} extensions={extensions} disabled={locked} onQualityChange={(next: HarmonyChordQuality) => onChange(updateDraftIntent(draft, { ...semanticIntent, quality: next }, {}))} onExtensionsChange={(next) => onChange(updateDraftIntent(draft, { ...semanticIntent, extensions: next }, {}))} />
-    <RelativeChordDotMap notes={draft.exactMidiNotes} axis={axis} />
-    <ExactVoicingEditor notes={draft.exactMidiNotes} axis={axis} locked={locked} onChange={(notes) => onChange(updateDraftExactNotes({ ...draft, source: 'matrix' }, notes))} />
-    <div className="seq-draft-actions"><span className="seq-draft-route" aria-label="Draft play route"><strong>Route</strong><button type="button" className={route === 'track' ? 'active' : ''} onClick={() => setRoute('track')}>Track</button><button type="button" className={route === 'harmony' ? 'active' : ''} onClick={() => setRoute('harmony')}>Harmony</button></span><button type="button" onClick={() => onPlay?.(route)} disabled={!onPlay || draft.exactMidiNotes.length === 0}>Play</button><button type="button" onClick={onClear} disabled={locked}>Clear draft</button><button type="button" onClick={onCapture} disabled={locked || (draft.exactMidiNotes.length === 0 && !draft.intent)}>Capture</button></div>
+    <details className="seq-draft-advanced">
+      <summary>Advanced voicing</summary>
+      <div className="seq-draft-advanced-grid">
+        <label>Playback<select value={draft.playbackBehavior} disabled={locked} onChange={(event) => onChange({ ...draft, playbackBehavior: event.target.value as HarmonyDraftChord['playbackBehavior'], dirty: true })}><option value="auto">Auto</option><option value="relative">Relative</option><option value="exact">Exact</option></select></label>
+        <label>Route<select value={route} onChange={(event) => setRoute(event.target.value as HarmonyDraftPlayRoute)}><option value="track">Track</option><option value="harmony">Harmony</option></select></label>
+        <label>Octave<input type="number" min={0} max={8} value={semanticIntent.octave} disabled={locked} onChange={(event) => updateAdvanced({ octave: Number(event.target.value) })} /></label>
+        <label>Inversion<input type="number" min={0} max={7} value={semanticIntent.inversion} disabled={locked} onChange={(event) => updateAdvanced({ inversion: Number(event.target.value) })} /></label>
+        <label>Spread<input type="range" min={0} max={1} step={0.05} value={semanticIntent.spread} disabled={locked} onChange={(event) => updateAdvanced({ spread: Number(event.target.value) })} /></label>
+        <label>Bass<select value={semanticIntent.bassMode} disabled={locked} onChange={(event) => updateAdvanced({ bassMode: event.target.value as HarmonyBassMode })}><option value="off">Off</option><option value="root">Root</option><option value="fifth">Fifth</option><option value="captured">Captured</option></select></label>
+        {semanticIntent.bassMode === 'captured' && <label>Bass note<input type="number" min={0} max={127} value={semanticIntent.bassNote ?? 36} disabled={locked} onChange={(event) => updateAdvanced({ bassNote: Number(event.target.value) })} /></label>}
+        <label className="seq-draft-preserve"><input type="checkbox" checked={semanticIntent.preserveCapturedVoicing} disabled={locked} onChange={(event) => updateAdvanced({ preserveCapturedVoicing: event.target.checked })} />Preserve exact voicing</label>
+      </div>
+      <div className="seq-draft-alterations" aria-label="Chord alterations">
+        {(['b5', '#5', 'b9', '#9', '#11', 'b13', 'omit3', 'omit5'] as const).map((alteration) => <button key={alteration} type="button" className={alterations.includes(alteration) ? 'active' : ''} disabled={locked} onClick={() => toggleAlteration(alteration)}>{alteration}</button>)}
+      </div>
+    </details>
+    <RecognitionResolution draft={draft} disabled={locked} onChange={onChange} />
+    <div className="seq-draft-actions"><button type="button" onClick={() => onPlay?.(route)} disabled={!onPlay || draft.exactMidiNotes.length === 0}>Play</button><button type="button" onClick={onClear} disabled={locked}>Clear draft</button><button type="button" onClick={onCapture} disabled={locked || (draft.exactMidiNotes.length === 0 && !draft.intent)}>Capture</button></div>
   </section>;
 };
 export default SeqDraftControls;

@@ -48,7 +48,7 @@ const sourceWrapper = requireTokens(sourceWrapperPath, [
 ]);
 
 assert(
-  /pad_count\s*==\s*24u/.test(sourceWrapper),
+  /pad_count\s*==\s*25u/.test(sourceWrapper),
   `${sourceWrapperPath} must assert the full generated Pad preset family count`,
 );
 assert(

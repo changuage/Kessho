@@ -6,6 +6,7 @@ import {
 import { DEFAULT_STATE, serializeState } from '../ui/state';
 import { PRESET_VERSION_METADATA_FIELDS } from './presetUtils';
 import { SYNTH_EUCLIDEAN_LANE_COUNT } from '../audio/sequencerLaneCounts';
+import { canonicalizeStoredPresetEntry } from './storedPresetCompatibility';
 
 const currentStatePayload = JSON.parse(serializeState(DEFAULT_STATE)) as Record<string, unknown>;
 for (const legacyKey of [
@@ -62,6 +63,83 @@ assert.throws(
   () => decodeCurrentPresetEntry({ ...entry, versions: [{ ...entry.versions[0], data: { legacyAlias: 0.5 } }] }),
   UnsupportedPresetVersionError,
   'unknown legacy data keys must be rejected',
+);
+
+const storedLegacyState = decodeCurrentPresetEntry(canonicalizeStoredPresetEntry({
+  ...entry,
+  type: 'state',
+  scope: 'global',
+  engine: undefined,
+  source: 'global',
+  versions: [{
+    ...entry.versions[0],
+    data: {
+      masterVolume: 0.5,
+      masterSatDrive: 0.4,
+      masterSatMode: 'tape',
+      masterSatTone: 0.6,
+      airNoise: 0.15,
+      filterModSpeed: 2,
+      oscBrightness: 2,
+      chordProgressionClockSource: 'phrase',
+      harmonyGenerationSeed: 4,
+      granularPreset: 'legacy_cloud',
+      granularDryWet: 0.42,
+      synthChordSequencerEnabled: true,
+      synthChordSequencer: { steps: [] },
+      spectralFreezeEnabled: false,
+      spectralFreezeActive: true,
+      spectralFreezeCaptureSerial: 41,
+      spectralFreezeDecay: 0.82,
+      characterAge: 0.37,
+      degradeModEnvAlias: 0.24,
+      drumRandomBeepHiProb: 0.2,
+      filterCutoffMin: 100,
+      filterCutoffMax: 2000,
+    },
+  }],
+}));
+assert.deepEqual(storedLegacyState.versions[0]?.data, {
+  masterVolume: 0.5,
+  dynamicsSaturationDrive: 0.4,
+  dynamicsSaturationMode: 'tape',
+  dynamicsSaturationTone: 0.6,
+  dynamicsSaturationEnabled: true,
+  padOscAWave: 'sawtooth',
+  padOscBWave: 'triangle',
+  granularLevel: 0.42,
+  spectralFreezeEnabled: false,
+  driftAge: 0.37,
+  erosionModEnvAlias: 0.24,
+  filterCutoff: 1050,
+});
+assert.deepEqual(storedLegacyState.versions[0]?.dualRanges?.filterCutoff, { min: 100, max: 2000 });
+assert.equal(storedLegacyState.versions[0]?.sliderModes?.filterCutoff, 'walk');
+
+assert.throws(
+  () => decodeCurrentPresetEntry(canonicalizeStoredPresetEntry({
+    ...entry,
+    type: 'state',
+    scope: 'global',
+    engine: undefined,
+    source: 'global',
+    versions: [{ ...entry.versions[0], data: { spectralFreezeEnabled: true, spectralFreezeDecay: 0.5 } }],
+  })),
+  UnsupportedPresetVersionError,
+  'active legacy spectral-freeze data must not be silently discarded',
+);
+
+assert.throws(
+  () => decodeCurrentPresetEntry(canonicalizeStoredPresetEntry({
+    ...entry,
+    type: 'state',
+    scope: 'global',
+    engine: undefined,
+    source: 'global',
+    versions: [{ ...entry.versions[0], data: { genuinelyUnknownField: true } }],
+  })),
+  UnsupportedPresetVersionError,
+  'stored compatibility must keep rejecting genuinely unknown fields',
 );
 
 assert.throws(

@@ -48,6 +48,7 @@ export type {
   ResolvedHarmonyFrame,
   L4HarmonyStateExtension,
   HarmonyChordSlot,
+  LegacyHarmonyChordSlotInput,
   HarmonyCapturedContext,
   HarmonyDraftChord,
   HarmonyPlaybackBehavior,
@@ -242,6 +243,17 @@ function normalizeMidiPool(notes: readonly number[]): number[] {
   return pool.sort((a, b) => a - b);
 }
 
+function sanitizeMidiVelocities(value: unknown): Record<string, number> | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const result: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    const midi = Number(key);
+    if (!Number.isInteger(midi) || midi < 0 || midi > 127 || typeof raw !== 'number' || !Number.isFinite(raw)) continue;
+    result[String(midi)] = clamp(raw, 0, 1);
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 function replaceOrAddInterval(intervals: number[], source: readonly number[], replacements: readonly number[], fallback: number): void {
   let replaced = false;
   for (let index = 0; index < intervals.length; index += 1) {
@@ -341,7 +353,6 @@ export function defaultHarmonyChordSlot(id: number): HarmonyChordSlot {
   return {
     id: clamp(Math.round(id), 0, HARMONY_SLOT_COUNT - 1),
     name: `Slot ${id + 1}`,
-    intent,
     chord: {
       intent,
       intentSource: 'confirmed',
@@ -359,8 +370,6 @@ export function emptyHarmonyChordSlot(id: number): HarmonyChordSlot {
   return {
     id: clamp(Math.round(id), 0, HARMONY_SLOT_COUNT - 1),
     name: `Slot ${id + 1}`,
-    // Keep a non-audible legacy shape for old UI controls; `chord: null` is authoritative.
-    intent: defaultHarmonyIntent('slot', id % 7),
     chord: null,
     locked: false,
   };
@@ -402,9 +411,29 @@ function progressionDurationValue(value: unknown): HarmonyProgressionDurationVal
   return rounded === 2 || rounded === 4 || rounded === 8 ? rounded : 1;
 }
 
-/** Sanitize the sole authored progression.  Legacy sequence payloads are
- * accepted as a version-0 migration and never become a second authority. */
-export function sanitizeHarmonyProgression(value: unknown, legacySequence?: unknown, legacyEnabled?: unknown): HarmonyProgression {
+export interface HarmonyProgressionMigrationDiagnostic {
+  code: 'progression-capacity-exceeded';
+  inputCount: number;
+  retainedCount: number;
+  discardedCount: number;
+  capacity: typeof HARMONY_PROGRESSION_CAPACITY;
+}
+
+export interface HarmonyProgressionMigrationResult {
+  progression: HarmonyProgression;
+  diagnostics: readonly HarmonyProgressionMigrationDiagnostic[];
+}
+
+/**
+ * Migrate/sanitize the sole authored progression and report bounded-input
+ * diagnostics. Legacy sequence payloads are accepted as a version-0
+ * migration and never become a second runtime authority.
+ */
+export function migrateHarmonyProgression(
+  value: unknown,
+  legacySequence?: unknown,
+  legacyEnabled?: unknown,
+): HarmonyProgressionMigrationResult {
   const raw = value && typeof value === 'object' ? value as Record<string, unknown> : null;
   const rawEvents = raw && Array.isArray(raw.events) ? raw.events : Array.isArray(legacySequence) ? legacySequence : [];
   const migratedFromLegacy = !(raw && Array.isArray(raw.events));
@@ -421,7 +450,11 @@ export function sanitizeHarmonyProgression(value: unknown, legacySequence?: unkn
     const durationRecord = record.duration && typeof record.duration === 'object' ? record.duration as Record<string, unknown> : null;
     const legacyMode = record.mode;
     const sourceRecord = record.source && typeof record.source === 'object' ? record.source as Record<string, unknown> : null;
-    const source = sourceRecord?.type === 'slot' || legacyMode === 'slotCopy' || legacyMode === 'slotFollow'
+    // `sanitizeHarmonyProgression` can receive a legacy sequence that has
+    // already passed through `sanitizeHarmonySequence` during URL decoding.
+    // Preserve its normalized `mode: 'slot'` instead of demoting it to Auto
+    // on the second migration pass.
+    const source = sourceRecord?.type === 'slot' || legacyMode === 'slot' || legacyMode === 'slotCopy' || legacyMode === 'slotFollow'
       ? { type: 'slot' as const, slotId: clamp(finiteInteger(sourceRecord?.slotId ?? record.slotId, 0), 0, HARMONY_SLOT_COUNT - 1) }
       : { type: 'auto' as const };
     events.push({
@@ -435,7 +468,29 @@ export function sanitizeHarmonyProgression(value: unknown, legacySequence?: unkn
   }
   const safeEvents = events.length > 0 ? events : [defaultHarmonyProgressionEvent()];
   const current = clamp(finiteInteger(raw?.currentEventIndex, 0), 0, safeEvents.length - 1);
-  return { version: 1, enabled: boolValue(raw?.enabled, Array.isArray(legacySequence) ? boolValue(legacyEnabled, false) : false), events: safeEvents, currentEventIndex: current };
+  const diagnostics: HarmonyProgressionMigrationDiagnostic[] = rawEvents.length > HARMONY_PROGRESSION_CAPACITY
+    ? [{
+      code: 'progression-capacity-exceeded',
+      inputCount: rawEvents.length,
+      retainedCount: events.length,
+      discardedCount: rawEvents.length - HARMONY_PROGRESSION_CAPACITY,
+      capacity: HARMONY_PROGRESSION_CAPACITY,
+    }]
+    : [];
+  return {
+    progression: {
+      version: 1,
+      enabled: boolValue(raw?.enabled, Array.isArray(legacySequence) ? boolValue(legacyEnabled, false) : false),
+      events: safeEvents,
+      currentEventIndex: current,
+    },
+    diagnostics,
+  };
+}
+
+/** Compatibility sanitizer for runtime callers that do not need diagnostics. */
+export function sanitizeHarmonyProgression(value: unknown, legacySequence?: unknown, legacyEnabled?: unknown): HarmonyProgression {
+  return migrateHarmonyProgression(value, legacySequence, legacyEnabled).progression;
 }
 
 /** Resolve the canonical event at an absolute transport position. Bar-based
@@ -529,7 +584,19 @@ export function makeHarmonyProgressionEventUnique(
   if (emptyIndex < 0) return null;
   const sourceSlot = slots[event.source.slotId];
   if (!sourceSlot?.chord) return null;
-  const copied = { ...sourceSlot, id: emptyIndex, name: `Slot ${emptyIndex + 1}`, locked: false, intent: sourceSlot.intent, chord: { ...sourceSlot.chord, intent: sourceSlot.chord.intent ? { ...sourceSlot.chord.intent } : null, exactMidiNotes: [...sourceSlot.chord.exactMidiNotes], capturedContext: { ...sourceSlot.chord.capturedContext } } };
+  // Copy only canonical fields so a legacy migration payload cannot re-enter
+  // runtime state as a second top-level intent authority.
+  const copied: HarmonyChordSlot = {
+    id: emptyIndex,
+    name: `Slot ${emptyIndex + 1}`,
+    locked: false,
+    chord: {
+      ...sourceSlot.chord,
+      intent: sourceSlot.chord.intent ? { ...sourceSlot.chord.intent } : null,
+      exactMidiNotes: [...sourceSlot.chord.exactMidiNotes],
+      capturedContext: { ...sourceSlot.chord.capturedContext },
+    },
+  };
   const nextSlots = slots.map((slot, index) => index === emptyIndex ? copied : slot);
   const nextProgression: HarmonyProgression = {
     ...sanitizeHarmonyProgression(progression),
@@ -642,6 +709,7 @@ export function sanitizeHarmonyChordSlots(value: unknown): HarmonyChordSlot[] {
               : chordIntent ? 'confirmed' : 'inferred')
             : null,
           exactMidiNotes: snapshot,
+          exactMidiVelocities: sanitizeMidiVelocities(chordRecord.exactMidiVelocities),
           recognizedLabel: stringValue(
             chordRecord.recognizedLabel,
             semanticIntent
@@ -649,11 +717,16 @@ export function sanitizeHarmonyChordSlots(value: unknown): HarmonyChordSlot[] {
               : 'custom',
           ),
           playbackBehavior: enumValue(chordRecord.playbackBehavior, ['auto', 'relative', 'exact'] as const, 'auto'),
-          capturedContext: {
-            rootMidi: finiteNumber((chordRecord.capturedContext as Record<string, unknown> | null)?.rootMidi, 60),
-            rootMidiAnchor: finiteNumber((chordRecord.capturedContext as Record<string, unknown> | null)?.rootMidiAnchor, finiteNumber((chordRecord.capturedContext as Record<string, unknown> | null)?.rootMidi, 60)),
-            scaleId: finiteInteger((chordRecord.capturedContext as Record<string, unknown> | null)?.scaleId, 1),
-          },
+          capturedContext: (() => {
+            const capturedRecord = chordRecord.capturedContext as Record<string, unknown> | null;
+            const capturedTension = finiteNumber(capturedRecord?.tension, Number.NaN);
+            return {
+              rootMidi: finiteNumber(capturedRecord?.rootMidi, 60),
+              rootMidiAnchor: finiteNumber(capturedRecord?.rootMidiAnchor, finiteNumber(capturedRecord?.rootMidi, 60)),
+              scaleId: finiteInteger(capturedRecord?.scaleId, 1),
+              ...(Number.isFinite(capturedTension) ? { tension: capturedTension } : {}),
+            };
+          })(),
         };
       }
     } else if (!hasExplicitChord && (legacyIntent || topLevelExactMidiNotes.length > 0)) {
@@ -671,6 +744,7 @@ export function sanitizeHarmonyChordSlots(value: unknown): HarmonyChordSlot[] {
         intent: recognizedIntent,
         intentSource: legacyIntent ? 'confirmed' : recognizedIntent ? 'inferred' : null,
         exactMidiNotes,
+        exactMidiVelocities: sanitizeMidiVelocities(record.exactMidiVelocities),
         recognizedLabel: recognizedIntent
           ? formatHarmonyIntentChordLabel(recognizedIntent, { rootMidi: 60, scaleId: 1 })
           : 'custom',
@@ -681,7 +755,6 @@ export function sanitizeHarmonyChordSlots(value: unknown): HarmonyChordSlot[] {
     return {
       id,
       name: stringValue(record.name, `Slot ${id + 1}`),
-      intent: chord?.intent ?? legacyIntent ?? defaultHarmonyIntent('slot', id % 7),
       chord,
       locked: boolValue(record.locked, false),
     };
@@ -1019,7 +1092,10 @@ export function resolvePresetMorphContext(args: {
   manualControlAvailable: boolean;
   bank: 'A' | 'B';
 } {
-  const morphPercent = clamp(finiteNumber(args.state?.harmonyMorphPercent, args.morphPercent ?? 0), 0, 100);
+  // Callers resolving an endpoint (A=0/B=100) must be able to override the
+  // current authored slider value. The explicit runtime morph is authoritative
+  // when present; state is only the fallback for ordinary frame resolution.
+  const morphPercent = clamp(finiteNumber(args.morphPercent, finiteNumber(args.state?.harmonyMorphPercent, 0)), 0, 100);
   return {
     morphPercent,
     manualControlAvailable: morphPercent === 0 || morphPercent === 100,

@@ -62,6 +62,7 @@ export function useCloudSharedPresetRuntimeSurface({
       drumPitchSettings: wrappedData?.drumPitchSettings,
       synthPitchSettings: wrappedData?.synthPitchSettings,
       synthPitchBindingModes: wrappedData?.synthPitchBindingModes,
+      drumScatterState: wrappedData?.drumScatterState,
     };
   }, []);
 

@@ -25,8 +25,23 @@ export interface EngineScatterState {
 export interface SeqScatterState {
   active: boolean;
   selectedEngine: DrumVoiceType;
+  /** Legacy simple-sequencer rate retained for portable preset round trips. */
+  simpleSpeed: number;
   engines: Record<DrumVoiceType, EngineScatterState>;
   recentPhrasesByEngine: Record<DrumVoiceType, GeneratedDrumPhrase[]>;
+}
+
+/**
+ * Portable preset payload. Generated phrase history is deliberately excluded:
+ * it is transient UI output and can be substantially larger than the authored
+ * scatter configuration.
+ */
+export interface SerializedSeqScatterState {
+  formatVersion: 1;
+  active: boolean;
+  selectedEngine: DrumVoiceType;
+  simpleSpeed: number;
+  engines: Record<DrumVoiceType, EngineScatterState>;
 }
 
 export type ScatterFeelZone = 'pulse' | 'gesture' | 'wave' | 'fracture' | 'scatter';

@@ -112,6 +112,7 @@ export function writeSoundscapeTextureParamsFromState(
   state: Record<string, unknown> | undefined,
 ): void {
   const config = { fadeTime: 5 };
+  const natureLevel = boundedNumber(state?.natureLevel, 1, 0, 1);
   const soundscapeParityFixture = state?.soundscapeParityFixture === true;
   for (let slot = 0; slot < NATURE_SLOT_KEYS.length; slot += 1) {
     const keys = NATURE_SLOT_KEYS[slot]!;
@@ -125,7 +126,7 @@ export function writeSoundscapeTextureParamsFromState(
     params[offset + 4] = seed >>> 16;
     params[offset + 5] = sample.assetId;
     params[offset + 6] = booleanFromState(state, keys.enabledKey, false) ? 1 : 0;
-    params[offset + 7] = boundedNumber(state?.[keys.levelKey], 0.5, 0, 1);
+    params[offset + 7] = boundedNumber(state?.[keys.levelKey], 0.5, 0, 1) * natureLevel;
     const filterType = state?.[keys.filterTypeKey];
     params[offset + 8] = NATURE_FILTER_TYPE_VALUE[filterType === 'bandpass' || filterType === 'highpass' || filterType === 'notch' ? filterType : 'lowpass'];
     params[offset + 9] = boundedNumber(state?.[keys.filterCutoffKey], sample.defaultFilterCutoff, 40, 20000);

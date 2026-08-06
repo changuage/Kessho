@@ -2,6 +2,7 @@
 
 #include "ProductConstants.h"
 #include "ProductFilterState.h"
+#include "ProductSoundscapeTextureRuntimeState.h"
 
 #include <cstdint>
 
@@ -29,6 +30,15 @@ struct SourceState {
   float enabled_gain_delta = 0.0f;
   uint32_t enabled_gain_ramp_remaining = 0u;
   uint64_t enabled_gain_frame = 0u;
+  // Realtime UI audition is runtime-only. It can render a disabled source
+  // without changing the authored enabled state or its snapshot value.
+  uint32_t transient_audition_hold_count = 0u;
+  uint64_t transient_audition_until_frame = 0u;
+  float transient_audition_gain = 0.0f;
+  float transient_audition_gain_target = 0.0f;
+  float transient_audition_gain_delta = 0.0f;
+  uint32_t transient_audition_gain_ramp_remaining = 0u;
+  uint64_t transient_audition_gain_frame = 0u;
   float reverb_send = 0.12f;
   float delay_a_send = 0.0f;
   float delay_b_send = 0.0f;
@@ -122,7 +132,7 @@ struct Voice {
   double sample_position = 0.0;
   double sample_step = 1.0;
   float frequency = 0.0f;
-  float amplitude = 0.0f;
+  float midi_note = 60.0f, amplitude = 0.0f, harmony_fade_gain = 1.0f, harmony_fade_target = 1.0f, harmony_fade_step = 0.0f; uint32_t harmony_fade_frames_remaining = 0u; bool harmony_resolved_voice = false;
   float pan = 0.0f;
   uint32_t age_frames = 0;
   uint32_t remaining_frames = 0;
@@ -144,36 +154,6 @@ struct Voice {
   BiquadState post_stage2_left{};
   BiquadState post_stage2_right{};
   uint32_t start_delay_frames = 0;
-};
-
-enum SoundscapeTextureFallbackReason : uint32_t {
-  kSoundscapeTextureFallbackNone = 0u, kSoundscapeTextureFallbackNotTextureAsset = 1u,
-  kSoundscapeTextureFallbackParityFixture = 2u, kSoundscapeTextureFallbackTextureParamsUnavailable = 3u,
-  kSoundscapeTextureFallbackMissingAsset = 4u, kSoundscapeTextureFallbackInvalidAssetMetadata = 5u,
-  kSoundscapeTextureFallbackAllocatorFull = 6u, kSoundscapeTextureFallbackAssetTooShortForSlice = 7u,
-};
-
-struct SoundscapeTextureRuntime {
-  bool initialized = false; uint32_t asset_id = 0u;
-  uint32_t seed = 0u, rng_state = 0u;
-  uint64_t next_start_frame = 0u;
-  uint32_t next_slice_id = 1u, last_slice_id = 0u;
-  uint64_t last_start_frame = 0u;
-  float last_offset_seconds = 0.0f, last_slice_duration = 0.0f, last_output_duration = 0.0f;
-  float last_detune_cents = 0.0f, last_speed_multiplier = 1.0f, last_total_rate = 1.0f;
-  float last_density = 0.0f, last_fade_time = 0.0f, last_asset_duration = 0.0f, last_max_offset = 0.0f;
-  uint32_t last_fallback_reason = kSoundscapeTextureFallbackNone;
-  uint32_t runtime_reset_count = 0u;
-  float recent_offsets[6]{};
-  uint32_t recent_offset_count = 0u;
-  bool spatial_enabled = false;
-  uint32_t spatial_delay_frames = 0u;
-  float spatial_center_gain = 1.0f;
-  float spatial_side_gain = 0.0f;
-  float spatial_left_branch_l = 1.0f;
-  float spatial_left_branch_r = 0.0f;
-  float spatial_right_branch_l = 0.0f;
-  float spatial_right_branch_r = 1.0f;
 };
 
 } // namespace kessho::product::internal

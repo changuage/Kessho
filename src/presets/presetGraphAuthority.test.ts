@@ -10,13 +10,16 @@ import {
 import {
   buildDrumDerivedEndpointInstances,
   buildGranularAndWaterDerivedEndpointInstances,
+  buildLeadDerivedEndpointInstances,
   buildPadDerivedEndpointInstances,
   derivedEndpointCandidates,
   hydrateDrumDerivedEndpointRefs,
   hydrateGranularAndWaterDerivedEndpointRefs,
+  hydrateLeadDerivedEndpointRefs,
   hydratePadDerivedEndpointRefs,
 } from './derivedEndpointContent';
 import { buildDerivedStatePresetData } from './statePresetOptimization';
+import { applyCascade, applyParams } from './codec';
 
 export async function runPresetGraphAuthorityRegression(): Promise<void> {
   const source = {
@@ -75,6 +78,7 @@ export async function runPresetGraphAuthorityRegression(): Promise<void> {
     ...buildPadDerivedEndpointInstances(source),
     ...buildDrumDerivedEndpointInstances(source),
     ...buildGranularAndWaterDerivedEndpointInstances(source),
+    ...await buildLeadDerivedEndpointInstances(source),
   ];
   const endpointBatch = await preparePresetContentBatch(derivedEndpointCandidates(endpointInstances));
   const endpointRefs = endpointInstances.map(instance => ({
@@ -97,6 +101,7 @@ export async function runPresetGraphAuthorityRegression(): Promise<void> {
   let pinned = hydratePadDerivedEndpointRefs(unresolvedNames, endpointRefs, endpointPayloads);
   pinned = hydrateDrumDerivedEndpointRefs(pinned, endpointRefs, endpointPayloads);
   pinned = hydrateGranularAndWaterDerivedEndpointRefs(pinned, endpointRefs, endpointPayloads);
+  pinned = hydrateLeadDerivedEndpointRefs(pinned, endpointRefs, endpointPayloads);
   const expectedDerived = buildDerivedStatePresetData(source);
   for (const key of ['padOscAWave', 'drumKickFreq', 'waterIntensity']) {
     assert.deepEqual(pinned[key], expectedDerived[key], `pinned endpoints should restore ${key} without selector lookup`);
@@ -105,6 +110,26 @@ export async function runPresetGraphAuthorityRegression(): Promise<void> {
   if (granularEndpoint?.content.granularV1Mode !== undefined) {
     assert.deepEqual(pinned.granularV1Mode, granularEndpoint.content.granularV1Mode);
   }
+  assert.equal(endpointInstances.filter(instance => instance.contentType === 'lead4opfmPatch').length, 4);
+  assert.equal(
+    new Set(endpointInstances
+      .filter(instance => instance.contentType === 'lead4opfmPatch')
+      .map(instance => endpointBatch.byId.get(instance.id)!.hash)).size,
+    2,
+    'the same Lead endpoint selected in both lanes should share one content hash',
+  );
+  assert.equal((pinned.lead1PresetAData as Record<string, unknown>).id, source.lead1PresetA);
+  assert.equal((pinned.lead2PresetDData as Record<string, unknown>).id, source.lead2PresetD);
+  assert.equal(
+    (applyParams(DEFAULT_STATE, pinned, 2, 'lead1Kit') as unknown as Record<string, unknown>).lead1PresetAData,
+    pinned.lead1PresetAData,
+    'L2 loads should carry pinned Lead runtime data',
+  );
+  assert.equal(
+    (applyCascade(DEFAULT_STATE, pinned, 4, 'global') as unknown as Record<string, unknown>).lead2PresetDData,
+    pinned.lead2PresetDData,
+    'L4 loads should carry pinned Lead runtime data',
+  );
 }
 
 await runPresetGraphAuthorityRegression();

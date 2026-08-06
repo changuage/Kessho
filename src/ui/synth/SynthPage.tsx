@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { formatIndexedDelayDivision, getSliderNumericValue, type SerializedStepOverrides, type SliderMode, type SliderState } from '../state';
+import { type SerializedStepOverrides, type SliderMode, type SliderState } from '../state';
 import { useEuclideanSequencer, type EvolveConfig, type SequencerViewMode, type StepOverrides, type SubLaneKind, type SubLaneState, type PitchSettings } from '../sequencer/useEuclideanSequencer';
 import {
   MANUAL_SYNTH_SOURCE_ENABLED_KEYS,
@@ -74,11 +74,10 @@ import {
 } from '../../audio/drumSeqTypes';
 import type { ClockDivision, PitchBindingMode } from '../../audio/drumSeqTypes';
 import {
-  sanitizeHarmonyChordSlots,
   type HarmonyChordSlot,
   type HarmonyIntent,
 } from '../../audio/CoreProductHarmonyControl';
-import { editSharedChordExactNotes, sharedChordResolvedMidiPool } from '../../audio/harmony/harmonyChordAdapters';
+import { sharedChordResolvedMidiPool } from '../../audio/harmony/harmonyChordAdapters';
 import {
   normalizeSequencerPitchBindingMode,
   normalizeSequencerPitchBindingModes,
@@ -88,7 +87,6 @@ import { SequencerResumeQuantizeButton } from '../sequencer/SequencerResumeQuant
 import { SYNTH_EUCLIDEAN_LANE_COUNT } from '../../audio/sequencerLaneCounts';
 import type { HarmonyState } from '../../audio/harmony';
 import type {
-  ProductSimpleSequencerVisualPlanActive,
   ProductSynthAnchorWalkerVisualLaneState,
   ProductSynthOrbitVisualLaneState,
 } from '../../audio/product/ProductEngineTypes';
@@ -125,12 +123,13 @@ import {
   applyEuclideanPatternToSynthLaneState,
   extractEuclideanPatternLaneDataFromSynthState,
 } from '../../presets/euclideanPatternBank';
-import type { PresetEntry, PresetSummary } from '../../presets/types';
+import type { PresetEntry, PresetSummary, PresetVersionMetadata } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
 import {
-  PAD1_TO_PAD2_KEY,
+  createRuntimePadPreset,
   getFactoryPadPresetIdByName,
   getPadPresetOptions,
+  resolvePadPresetDualState,
   upsertUserPadPreset,
   setUserPadPresets,
   type PadPreset,
@@ -145,13 +144,16 @@ import {
   type PadScopeSnapshot,
 } from '../../audio/padRandomize';
 import {
+  applyLead4opPresetOwnedParamsToState,
   getLead4opFMPresetList,
   loadLead4opFMPresetVerified,
   morphPresets,
   overwriteLead4opFMPreset,
+  resolveLead4opPresetDualState,
   saveUserLead4opFMPreset,
   setUserLead4opFMPresets,
   upsertUserLead4opFMPreset,
+  withLead4opPresetOwnedState,
   type Lead4opFMPreset,
 } from '../../audio/lead4opfm';
 import type { ManualSynthNoteOptions, ManualSynthSource } from '../../audio/engineSharedTypes';
@@ -188,11 +190,13 @@ import {
   type ProductArpSlotChoice,
   type ProductArpHarmonyContext,
 } from '../../audio/productArpeggiator';
-import { resolveHarmonyProjection, type HarmonyLiveLayer, type HarmonyProjection } from '../../audio/harmony/harmonyProjection';
+import { type HarmonyLiveLayer, type HarmonyLiveLayerChangeHandler, type HarmonyProjection } from '../../audio/harmony/harmonyProjection';
 import { resolveLiveChordExecution, createLiveChordGesture, shouldEmitLiveChordMonitorNotes } from '../../audio/harmony/liveChordGesture';
 import SeqChordInteractionBay from './chord/SeqChordInteractionBay';
 import SeqChordChoiceLane from './chord/SeqChordChoiceLane';
-import { countSharedSlotUses, draftFromSlot, emptyHarmonyDraft, captureDraftToSlot, resolveLiveReanchoredNotes, updateDraftExactNotes } from '../harmony/shared/harmonyDraftHelpers';
+import { countSharedSlotUses, draftFromSlot, emptyHarmonyDraft, captureDraftToSlot, resolveLiveReanchoredNotes } from '../harmony/shared/harmonyDraftHelpers';
+import { initialHarmonyCaptureState, reduceHarmonyCaptureNoteOff, reduceHarmonyCaptureNoteOn, type HarmonyCaptureState } from '../harmony/harmonyDraftChord';
+import { applySeqSuggestionToDraft, draftFromSeqCaptureState, readSeqHarmonySlots, writeSeqHarmonySlots } from './chord/seqChordState';
 import type { HarmonyDraftChord } from '../../audio/harmony/harmonyTypes';
 import {
   defaultProductPlayConfig,
@@ -207,7 +211,7 @@ import {
   type ProductPlayConfig,
   type ProductPlayMode,
 } from '../../audio/productPlaySequencer';
-import { assignHarmonySuggestionToPlayConfig } from '../harmony/harmonySuggestionActions';
+import { assignHarmonySuggestionToPlayConfig, saveHarmonySuggestion } from '../harmony/harmonySuggestionActions';
 import type { HarmonySuggestion as AudioHarmonySuggestion } from '../../audio/harmony/chordSuggestionEngine';
 import type { HarmonySuggestion as UiHarmonySuggestion } from '../harmony/shared/SuggestionGrid';
 import { generateHarmonySuggestionBank } from '../../audio/harmony/chordSuggestionEngine';
@@ -226,7 +230,10 @@ import {
 } from '../../audio/sampleLibraries/SampleLibraryTypes';
 import { SAMPLE_LIBRARY_REGISTRY_GENERATED } from '../../audio/sampleLibraries/generated/sampleLibraryRegistry.generated';
 import { applySampleLibrarySelectionDefaultsToFlatState } from '../../audio/sampleLibraries/sampleLibrarySelectionDefaults';
-import { readSampleSlotState } from '../../audio/sampleLibraries/sampleSlotState';
+import {
+  readSampleSlotState,
+  SAMPLE_SLOT_LIBRARY_DEFAULT_NUMERIC_KEYS,
+} from '../../audio/sampleLibraries/sampleSlotState';
 import type {
   ProductGeneratedSequencerCaptureRequest,
   ProductRuntimeSynthPageEvents,
@@ -581,12 +588,11 @@ const SIMPLE_SEQUENCER_SOURCES = [
   { value: 'sample2', label: 'Sample 2', color: SOURCE_COLORS.sample2 },
 ] as const;
 
-const CHORD_GENERATOR_SOURCES = SIMPLE_SEQUENCER_SOURCES;
-
 const PAD_VOICE_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 const PAD_VOICE_MASK_ALL = 0xff;
 const PAD_VOICE_DEFAULT_MASK = 1 << 7;
 
+const CHORD_GENERATOR_SOURCES = SIMPLE_SEQUENCER_SOURCES;
 const RANDOM_TIMING_SOURCES = SIMPLE_SEQUENCER_SOURCES;
 
 const MANUAL_KEYBOARD_SOURCES: Array<{ value: ManualSynthSource; label: string; color: string }> = [
@@ -1788,44 +1794,9 @@ const EMPTY_PAD_VARIATION_SESSION: PadVariationSession = {
   walkEnabled: false,
 };
 
-const PAD2_TO_PAD1_KEY = Object.fromEntries(
-  Object.entries(PAD1_TO_PAD2_KEY).map(([pad1Key, pad2Key]) => [pad2Key, pad1Key]),
-) as Record<string, string>;
-
 const SYNTH_SOURCE_CARD_IDS = ['pad1', 'pad2', 'lead1', 'lead2', 'sample1', 'sample2'] as const;
 type SynthSourceCardId = typeof SYNTH_SOURCE_CARD_IDS[number];
 type SynthSourceCardExpansion = Partial<Record<SynthSourceCardId, boolean>>;
-
-function createRuntimePadPreset(
-  scope: 'pad1' | 'pad2',
-  name: string,
-  data: Record<string, unknown>,
-  tags: string[] = [],
-): PadPreset {
-  const params: Record<string, number | string | boolean> = {};
-
-  if (scope === 'pad1') {
-    for (const [key, value] of Object.entries(data)) {
-      if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
-        params[key] = value;
-      }
-    }
-  } else {
-    for (const [key, value] of Object.entries(data)) {
-      const pad1Key = PAD2_TO_PAD1_KEY[key];
-      if (!pad1Key) continue;
-      if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
-        params[pad1Key] = value;
-      }
-    }
-  }
-
-  return {
-    name,
-    tags,
-    params,
-  };
-}
 
 // Inline styles available for future use — currently CSS classes handle layout
 // const inlineStyles = { ... };
@@ -1841,14 +1812,19 @@ export interface SynthPageProps {
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   togglePanel: (id: string) => void;
   sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
+  sliderModes?: Record<string, SliderMode>;
+  dualSliderRanges?: Record<string, { min: number; max: number }>;
+  onDualStateChange?: (
+    relevantKeys: string[],
+    dualRanges?: Record<string, { min: number; max: number }>,
+    sliderModes?: Record<string, SliderMode>,
+  ) => void;
   SliderComponent: React.ComponentType<SliderRendererProps<keyof SliderState>>;
   SelectComponent: SelectRenderer;
   /** Whether audio engine is running */
   isRunning: boolean;
   /** Live transport timing used by simple phrase visualizers */
   transportDebug?: TransportDebugSnapshot | null;
-  /** Enables product runtime visual-only plan snapshots for mounted simple visualizers */
-  onSimpleVisualizerRuntimePlanVisibilityChange?: (active: ProductSimpleSequencerVisualPlanActive) => void;
   onRequestPlaybackStart?: (statePatch?: Partial<SliderState>) => void;
   /** Get morphed lead params for ADSR preview */
   getLeadMorphedParams: (lead: 1 | 2) => { attack: number; decay: number; sustain: number; release: number } | null;
@@ -1927,9 +1903,11 @@ export interface SynthPageProps {
   /** Current harmony snapshot for keyboard note coloring */
   harmonyState?: HarmonyState | null;
   /** Authoritative Harmony projection shared with the Global page and Seq lanes. */
-  harmonyProjection?: HarmonyProjection;
+  harmonyProjection: HarmonyProjection;
   /** Temporary Harmony target for Draft Play; null releases the live layer. */
-  onHarmonyLiveLayerChange?: (layer: HarmonyLiveLayer | null) => void;
+  onHarmonyLiveLayerChange?: HarmonyLiveLayerChangeHandler;
+  /** App-owned authored history callback; remains available while Global is unmounted. */
+  commitHarmonyAuthoredStateChange: (updater: React.SetStateAction<SliderState>, label: string) => void;
 }
 
 // ═══════════════ Component ═══════════════
@@ -1942,12 +1920,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onParamChange,
     onSelectChange,
     sliderProps,
+    sliderModes,
+    dualSliderRanges,
+    onDualStateChange,
     SliderComponent,
     SelectComponent,
     // CollapsiblePanelComponent — available via props if needed
     isRunning,
     transportDebug,
-    onSimpleVisualizerRuntimePlanVisibilityChange,
     onRequestPlaybackStart,
     getLeadMorphedParams,
     liveLeadMorphedParamsAvailable = true,
@@ -1993,14 +1973,19 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     getProductArpAudibleTelemetry,
     harmonyState,
     onHarmonyLiveLayerChange,
+    commitHarmonyAuthoredStateChange: commitHarmonyAuthoredStateChangeProp,
   } = props;
   const onStateChange = props.onStateChange;
+  const commitHarmonyAuthoredStateChange = useCallback((updater: React.SetStateAction<SliderState>, label: string): boolean => {
+    commitHarmonyAuthoredStateChangeProp(updater, label);
+    return true;
+  }, [commitHarmonyAuthoredStateChangeProp]);
 
   const evolvedOverrides = props.evolvedOverrides;
   const initialEvolveConfigs = props.initialEvolveConfigs;
   const presetVersion = props.presetVersion;
-  const simpleChordPhraseVizToggle = useVisualFeatureToggle(
-    'kessho.visualizers.synthSimple.chordGenerator.v2.enabled',
+  const simpleHarmonyVizToggle = useVisualFeatureToggle(
+    'kessho.visualizers.synthSimple.harmony.v1.enabled',
     false,
   );
   const simpleRandomTimingVizToggle = useVisualFeatureToggle(
@@ -2123,7 +2108,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const resolveLeadPresetRuntimeId = useCallback((name: string) => {
     return leadStockIdByName.get(name.trim().toLowerCase()) ?? name;
   }, [leadStockIdByName]);
-  const createRuntimeLeadPreset = useCallback((runtimeId: string, name: string, data: Record<string, unknown>): Lead4opFMPreset | null => {
+  const createRuntimeLeadPreset = useCallback((
+    runtimeId: string,
+    name: string,
+    data: Record<string, unknown>,
+    metadata?: PresetVersionMetadata,
+  ): Lead4opFMPreset | null => {
     const candidate = typeof data.preset === 'object' && data.preset !== null
       ? data.preset as Record<string, unknown>
       : data;
@@ -2143,6 +2133,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       ...(candidate as unknown as Lead4opFMPreset),
       id: runtimeId,
       name,
+      dualRanges: metadata?.dualRanges,
+      sliderModes: metadata?.sliderModes,
     };
   }, []);
   const toggleEdit = (section: string) => setEditingSection(prev => prev === section ? null : section);
@@ -2181,10 +2173,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         slotId,
         value,
       ) as unknown as SliderState);
-      return;
+    } else {
+      onSelectChange(config.libraryKey, value as SampleLibraryKey as SliderState[keyof SliderState]);
     }
-    onSelectChange(config.libraryKey, value as SampleLibraryKey as SliderState[keyof SliderState]);
-  }, [onSelectChange, onStateChange]);
+    onDualStateChange?.(SAMPLE_SLOT_LIBRARY_DEFAULT_NUMERIC_KEYS[slotId]);
+  }, [onDualStateChange, onSelectChange, onStateChange]);
   const { announceHelp } = useSliderHelp();
   const bindHelp = useCallback((helpKey: string, options: { label?: string } = {}) => ({
     onMouseEnter: () => announceHelp(helpKey, options),
@@ -2378,11 +2371,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const livePad2Distance = getRuntimeValue('pad2Distance') ?? (state.pad2Distance ?? 0);
   const liveLead1Distance = getRuntimeValue('lead1Distance') ?? (state.lead1Distance ?? 0);
   const liveLead2Distance = getRuntimeValue('lead2Distance') ?? (state.lead2Distance ?? 0);
-  const pad1FilterMinRuntime = sliderProps('filterCutoffMin') as RuntimeSliderProps;
-  const pad1FilterMaxRuntime = sliderProps('filterCutoffMax') as RuntimeSliderProps;
+  const pad1FilterCutoffRuntime = sliderProps('filterCutoff') as RuntimeSliderProps;
   const pad1PostLpfRuntime = sliderProps('padPostLPF') as RuntimeSliderProps;
-  const pad2FilterMinRuntime = sliderProps('pad2FilterCutoffMin') as RuntimeSliderProps;
-  const pad2FilterMaxRuntime = sliderProps('pad2FilterCutoffMax') as RuntimeSliderProps;
+  const pad2FilterCutoffRuntime = sliderProps('pad2FilterCutoff') as RuntimeSliderProps;
   const pad2PostLpfRuntime = sliderProps('pad2PostLPF') as RuntimeSliderProps;
   const chordRateRuntime = sliderProps('chordRate') as RuntimeSliderProps;
   const voicingSpreadRuntime = sliderProps('voicingSpread') as RuntimeSliderProps;
@@ -2392,11 +2383,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const lead1DensityRuntime = sliderProps('lead1Density') as RuntimeSliderProps;
   const lead1OctaveRuntime = sliderProps('lead1Octave') as RuntimeSliderProps;
   const lead1OctaveRangeRuntime = sliderProps('lead1OctaveRange') as RuntimeSliderProps;
-  const livePad1FilterMinPosition = getRuntimeSliderPosition('filterCutoffMin', pad1FilterMinRuntime.mode ?? 'single') ?? pad1FilterMinRuntime.walkPosition;
-  const livePad1FilterMaxPosition = getRuntimeSliderPosition('filterCutoffMax', pad1FilterMaxRuntime.mode ?? 'single') ?? pad1FilterMaxRuntime.walkPosition;
+  const livePad1FilterCutoffPosition = getRuntimeSliderPosition('filterCutoff', pad1FilterCutoffRuntime.mode ?? 'single') ?? pad1FilterCutoffRuntime.walkPosition;
   const livePad1PostLpfPosition = getRuntimeSliderPosition('padPostLPF', pad1PostLpfRuntime.mode ?? 'single') ?? pad1PostLpfRuntime.walkPosition;
-  const livePad2FilterMinPosition = getRuntimeSliderPosition('pad2FilterCutoffMin', pad2FilterMinRuntime.mode ?? 'single') ?? pad2FilterMinRuntime.walkPosition;
-  const livePad2FilterMaxPosition = getRuntimeSliderPosition('pad2FilterCutoffMax', pad2FilterMaxRuntime.mode ?? 'single') ?? pad2FilterMaxRuntime.walkPosition;
+  const livePad2FilterCutoffPosition = getRuntimeSliderPosition('pad2FilterCutoff', pad2FilterCutoffRuntime.mode ?? 'single') ?? pad2FilterCutoffRuntime.walkPosition;
   const livePad2PostLpfPosition = getRuntimeSliderPosition('pad2PostLPF', pad2PostLpfRuntime.mode ?? 'single') ?? pad2PostLpfRuntime.walkPosition;
   const liveChordRatePosition = getRuntimeSliderPosition('chordRate', chordRateRuntime.mode ?? 'single') ?? chordRateRuntime.walkPosition;
   const liveVoicingSpreadPosition = getRuntimeSliderPosition('voicingSpread', voicingSpreadRuntime.mode ?? 'single') ?? voicingSpreadRuntime.walkPosition;
@@ -2406,11 +2395,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const liveLead1DensityPosition = getRuntimeSliderPosition('lead1Density', lead1DensityRuntime.mode ?? 'single') ?? lead1DensityRuntime.walkPosition;
   const liveLead1OctavePosition = getRuntimeSliderPosition('lead1Octave', lead1OctaveRuntime.mode ?? 'single') ?? lead1OctaveRuntime.walkPosition;
   const liveLead1OctaveRangePosition = getRuntimeSliderPosition('lead1OctaveRange', lead1OctaveRangeRuntime.mode ?? 'single') ?? lead1OctaveRangeRuntime.walkPosition;
-  const livePad1FilterMinBase = resolveRuntimeSliderValue(state.filterCutoffMin ?? 400, pad1FilterMinRuntime, livePad1FilterMinPosition);
-  const livePad1FilterMaxBase = resolveRuntimeSliderValue(state.filterCutoffMax ?? 3000, pad1FilterMaxRuntime, livePad1FilterMaxPosition);
+  const livePad1FilterCutoffBase = resolveRuntimeSliderValue(state.filterCutoff ?? 1700, pad1FilterCutoffRuntime, livePad1FilterCutoffPosition);
   const livePad1PostLpfBase = resolveRuntimeSliderValue(state.padPostLPF ?? 18000, pad1PostLpfRuntime, livePad1PostLpfPosition);
-  const livePad2FilterMinBase = resolveRuntimeSliderValue(state.pad2FilterCutoffMin ?? 400, pad2FilterMinRuntime, livePad2FilterMinPosition);
-  const livePad2FilterMaxBase = resolveRuntimeSliderValue(state.pad2FilterCutoffMax ?? 3000, pad2FilterMaxRuntime, livePad2FilterMaxPosition);
+  const livePad2FilterCutoffBase = resolveRuntimeSliderValue(state.pad2FilterCutoff ?? 1700, pad2FilterCutoffRuntime, livePad2FilterCutoffPosition);
   const livePad2PostLpfBase = resolveRuntimeSliderValue(state.pad2PostLPF ?? 18000, pad2PostLpfRuntime, livePad2PostLpfPosition);
   const liveSimpleSequencerState = useMemo(() => ({
     ...state,
@@ -2443,32 +2430,26 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   ]);
   const livePad1DistanceState = useMemo(() => applyPadDistanceToState({
     ...state,
-    filterCutoffMin: livePad1FilterMinBase,
-    filterCutoffMax: livePad1FilterMaxBase,
+    filterCutoff: livePad1FilterCutoffBase,
     padPostLPF: livePad1PostLpfBase,
   }, 'pad1', livePad1Distance), [
     livePad1Distance,
-    livePad1FilterMaxBase,
-    livePad1FilterMinBase,
+    livePad1FilterCutoffBase,
     livePad1PostLpfBase,
     state,
   ]);
   const livePad2DistanceState = useMemo(() => applyPadDistanceToState({
     ...state,
-    pad2FilterCutoffMin: livePad2FilterMinBase,
-    pad2FilterCutoffMax: livePad2FilterMaxBase,
+    pad2FilterCutoff: livePad2FilterCutoffBase,
     pad2PostLPF: livePad2PostLpfBase,
   }, 'pad2', livePad2Distance), [
     livePad2Distance,
-    livePad2FilterMaxBase,
-    livePad2FilterMinBase,
+    livePad2FilterCutoffBase,
     livePad2PostLpfBase,
     state,
   ]);
-  const livePad1FilterMin = Math.min(livePad1DistanceState.filterCutoffMin, livePad1DistanceState.filterCutoffMax);
-  const livePad1FilterMax = Math.max(livePad1DistanceState.filterCutoffMin, livePad1DistanceState.filterCutoffMax);
-  const livePad2FilterMin = Math.min(livePad2DistanceState.pad2FilterCutoffMin ?? 400, livePad2DistanceState.pad2FilterCutoffMax ?? 3000);
-  const livePad2FilterMax = Math.max(livePad2DistanceState.pad2FilterCutoffMin ?? 400, livePad2DistanceState.pad2FilterCutoffMax ?? 3000);
+  const livePad1FilterCutoff = livePad1DistanceState.filterCutoff ?? livePad1FilterCutoffBase;
+  const livePad2FilterCutoff = livePad2DistanceState.pad2FilterCutoff ?? livePad2FilterCutoffBase;
   const livePad1PostLpf = livePad1DistanceState.padPostLPF ?? livePad1PostLpfBase;
   const livePad2PostLpf = livePad2DistanceState.pad2PostLPF ?? livePad2PostLpfBase;
   const padEnvelopeTimelineSeconds = getPadEnvelopeTimelineSeconds(state);
@@ -2513,17 +2494,45 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     return Math.abs(baseValue - liveValue) > 1e-6 ? liveValue : undefined;
   }, [sliderProps, state]);
 
+  const applyPadPresetDualState = useCallback((nextState: SliderState, scope: 'pad1' | 'pad2') => {
+    if (!onDualStateChange) return;
+    const presetAKey = scope === 'pad2' ? 'pad2PresetA' : 'padPresetA';
+    const presetBKey = scope === 'pad2' ? 'pad2PresetB' : 'padPresetB';
+    const morphKey = scope === 'pad2' ? 'pad2Morph' : 'padMorph';
+    const dualState = resolvePadPresetDualState(
+      scope,
+      String(nextState[presetAKey] ?? 'init'),
+      String(nextState[presetBKey] ?? nextState[presetAKey] ?? 'init'),
+      Number(nextState[morphKey] ?? 0),
+    );
+    onDualStateChange(dualState.relevantKeys, dualState.dualRanges, dualState.sliderModes);
+  }, [onDualStateChange]);
+
   const handlePresetMorphSliderChange = useCallback((key: keyof SliderState, value: number) => {
     removeRuntimeValues([String(key)]);
     onParamChange(key, value);
-  }, [onParamChange]);
+    if (key === 'padMorph' || key === 'pad2Morph') {
+      applyPadPresetDualState({ ...state, [key]: value }, key === 'pad2Morph' ? 'pad2' : 'pad1');
+    }
+  }, [applyPadPresetDualState, onParamChange, state]);
 
   const handlePresetEndpointSelectChange = useCallback((
     key: keyof SliderState,
     value: SliderState[keyof SliderState],
   ) => {
     onSelectChange(key, value);
-  }, [onSelectChange]);
+    if (key === 'padPresetA' || key === 'padPresetB' || key === 'pad2PresetA' || key === 'pad2PresetB') {
+      applyPadPresetDualState(
+        { ...state, [key]: value },
+        key === 'pad2PresetA' || key === 'pad2PresetB' ? 'pad2' : 'pad1',
+      );
+    }
+    if (key === 'lead1PresetA' || key === 'lead1PresetB') {
+      onSelectChange('lead1UseCustomAdsr', false);
+    } else if (key === 'lead2PresetC' || key === 'lead2PresetD') {
+      onSelectChange('lead2UseCustomAdsr', false);
+    }
+  }, [applyPadPresetDualState, onSelectChange, state]);
 
   const chordGeneratorSourceValue = String(state.synthChordGeneratorSource ?? 'sample1');
   const chordGeneratorSourceInfo = CHORD_GENERATOR_SOURCES.find((source) => source.value === chordGeneratorSourceValue) ?? {
@@ -2552,11 +2561,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       (((state.pad2Lfo2Dest ?? 'none') !== 'none') && (state.pad2Lfo2Depth ?? 0) > 0.001) ||
       pad1FilterModEnvActive ||
       pad2FilterModEnvActive ||
-      (state.leadVibratoDepth ?? 0) > 0.001;
+      (state.lead1VibratoDepth ?? 0) > 0.001 ||
+      (state.lead2VibratoDepth ?? 0) > 0.001;
     return hasAnimatedFilterView ? 50 : 180;
   }, [
     state.leadRandomEnabled,
-    state.leadVibratoDepth,
+    state.lead1VibratoDepth,
+    state.lead2VibratoDepth,
     state.pad2ModEnvDepth,
     state.pad2ModEnvDest,
     state.pad2ModEnvEnabled,
@@ -2774,7 +2785,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               id: stockId ?? entry.id ?? entry.name,
               name: entry.name,
               library,
-              preset: createRuntimePadPreset(scope, entry.name, version.data, entry.tags ?? []),
+              preset: createRuntimePadPreset(
+                scope,
+                entry.name,
+                version.data,
+                entry.tags ?? [],
+                version.dualRanges,
+                version.sliderModes,
+              ),
               updatedAt: entry.updatedAt,
               rating: entry.rating,
             };
@@ -2816,7 +2834,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             const version = entry.versions.find(v => v.v === entry.currentVersion)
               || entry.versions[entry.versions.length - 1];
             if (!version) return null;
-            const resolvedPreset = createRuntimeLeadPreset(runtimeId, entry.name, version.data);
+            const resolvedPreset = createRuntimeLeadPreset(runtimeId, entry.name, version.data, version);
             if (!resolvedPreset) return null;
             const runtimeLibrary: 'user' | 'cloud' = entry.library === 'cloud' ? 'cloud' : 'user';
             return {
@@ -3011,6 +3029,55 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     state.lead1PresetB,
     state.lead2PresetC,
     state.lead2PresetD,
+  ]);
+  const lead1PresetAId = resolveLeadPresetSelectionId(state.lead1PresetA);
+  const lead1PresetBId = resolveLeadPresetSelectionId(state.lead1PresetB);
+  const lead2PresetCId = resolveLeadPresetSelectionId(state.lead2PresetC);
+  const lead2PresetDId = resolveLeadPresetSelectionId(state.lead2PresetD);
+  const lead1PresetAData = leadPresetPreviewCache[lead1PresetAId];
+  const lead1PresetBData = leadPresetPreviewCache[lead1PresetBId];
+  const lead2PresetCData = leadPresetPreviewCache[lead2PresetCId];
+  const lead2PresetDData = leadPresetPreviewCache[lead2PresetDId];
+
+  useEffect(() => {
+    const scopes = [
+      { scope: 'lead1' as const, presetA: lead1PresetAData, presetB: lead1PresetBData, morph: state.lead1Morph ?? 0 },
+      { scope: 'lead2' as const, presetA: lead2PresetCData, presetB: lead2PresetDData, morph: state.lead2Morph ?? 0 },
+    ];
+
+    if (onStateChange) {
+      onStateChange((current) => {
+        let next = current;
+        let changed = false;
+        for (const { scope, presetA, presetB, morph } of scopes) {
+          if (!presetA || !presetB) continue;
+          const projected = applyLead4opPresetOwnedParamsToState(next, scope, presetA, presetB, morph);
+          const relevantKeys = resolveLead4opPresetDualState(scope, presetA, presetB, morph).relevantKeys;
+          if (relevantKeys.some((key) => projected[key as keyof SliderState] !== next[key as keyof SliderState])) {
+            next = projected;
+            changed = true;
+          }
+        }
+        return changed ? next : current;
+      });
+    }
+
+    if (onDualStateChange) {
+      for (const { scope, presetA, presetB, morph } of scopes) {
+        if (!presetA || !presetB) continue;
+        const dualState = resolveLead4opPresetDualState(scope, presetA, presetB, morph);
+        onDualStateChange(dualState.relevantKeys, dualState.dualRanges, dualState.sliderModes);
+      }
+    }
+  }, [
+    lead1PresetAData,
+    lead1PresetBData,
+    lead2PresetCData,
+    lead2PresetDData,
+    onDualStateChange,
+    onStateChange,
+    state.lead1Morph,
+    state.lead2Morph,
   ]);
   const getLeadPreviewMorphedParams = useCallback((leadNum: 1 | 2) => {
     if (liveLeadMorphedParamsAvailable) {
@@ -3257,6 +3324,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       });
     } catch (ratingError) {
       console.warn('Failed to update pad preset rating:', ratingError);
+      throw ratingError;
     }
   }, [
     pad1EnginePresets,
@@ -3354,11 +3422,21 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const sourceLibrary = currentOption?.sourceLibrary ?? currentOption?.library;
     const displayName = currentOption?.name || sourceName;
     const runtimeLibrary: 'user' | 'cloud' = sourceLibrary === 'cloud' ? 'cloud' : 'user';
+    const scope = activeSlot.slotKey === 'lead2PresetC' || activeSlot.slotKey === 'lead2PresetD'
+      ? 'lead2'
+      : 'lead1';
+    const presetWithOwnedState = withLead4opPresetOwnedState(
+      request.preset,
+      scope,
+      state,
+      dualSliderRanges,
+      sliderModes,
+    );
 
     if (request.mode === 'slot') {
       const runtimeId = `__lead4opfm_editor:${activeSlot.slotKey}:${Date.now().toString(36)}`;
       const runtimePreset: Lead4opFMPreset = {
-        ...request.preset,
+        ...presetWithOwnedState,
         id: runtimeId,
         name: displayName,
       };
@@ -3392,7 +3470,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       }
 
       const overwritePreset: Lead4opFMPreset = {
-        ...request.preset,
+        ...presetWithOwnedState,
         id: sourceName,
         name: sourceName,
       };
@@ -3431,7 +3509,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
     const targetName = request.name.trim() || displayName;
     const presetToSave: Lead4opFMPreset = {
-      ...request.preset,
+      ...presetWithOwnedState,
       id: targetName,
       name: targetName,
     };
@@ -3455,6 +3533,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     leadPresetOptionById,
     handlePresetEndpointSelectChange,
     refreshLeadFmPresets,
+    dualSliderRanges,
+    sliderModes,
     state,
   ]);
 
@@ -3536,7 +3616,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       id: savedId,
       name: savedEntry.name,
       library: savedEntry.library === 'cloud' ? 'cloud' : 'user',
-      preset: createRuntimePadPreset(scope, savedEntry.name, version.data),
+      preset: createRuntimePadPreset(
+        scope,
+        savedEntry.name,
+        version.data,
+        savedEntry.tags ?? [],
+        version.dualRanges,
+        version.sliderModes,
+      ),
     });
 
     if (String(state[slotKey] ?? '') !== savedId) {
@@ -3713,6 +3800,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [seqLiveLatched, setSeqLiveLatched] = useState<boolean[]>(() => [false, false, false, false]);
   const seqLiveHeldRef = useRef<Array<string[]>>([[], [], [], []]);
   const seqDraftHeldRef = useRef<Array<string[]>>([[], [], [], []]);
+  const seqLiveLayerRef = useRef<Array<HarmonyLiveLayer | null>>([null, null, null, null]);
+  const seqDraftCaptureRef = useRef<HarmonyCaptureState[]>([0, 1, 2, 3].map(() => initialHarmonyCaptureState()));
+  const seqSlotWriteLocked = !onStateChange || !props.harmonyProjection.isEndpoint || props.harmonyProjection.engine.morphLocked;
   const harmonyReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const harmonyGestureRevisionRef = useRef(0);
   const releaseHarmonyLayer = useCallback(() => {
@@ -3721,38 +3811,58 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     harmonyReleaseTimerRef.current = null;
     onHarmonyLiveLayerChange?.(null);
   }, [onHarmonyLiveLayerChange]);
-  const startHarmonyLayer = useCallback((layer: HarmonyLiveLayer) => {
+  /** Seq chord gestures are held by their scoped keyboard/live pad and must
+   * not expire on a UI timer; release/stop owns their lifetime. */
+  const startHeldHarmonyLayer = useCallback((layer: HarmonyLiveLayer) => {
     harmonyGestureRevisionRef.current += 1;
-    const revision = harmonyGestureRevisionRef.current;
     if (harmonyReleaseTimerRef.current !== null) clearTimeout(harmonyReleaseTimerRef.current);
-    onHarmonyLiveLayerChange?.(layer);
-    harmonyReleaseTimerRef.current = setTimeout(() => {
-      if (harmonyGestureRevisionRef.current !== revision) return;
-      harmonyReleaseTimerRef.current = null;
-      onHarmonyLiveLayerChange?.(null);
-    }, 350);
+    harmonyReleaseTimerRef.current = null;
+    onHarmonyLiveLayerChange?.({ ...layer, latched: layer.latched ?? false });
   }, [onHarmonyLiveLayerChange]);
   useEffect(() => () => releaseHarmonyLayer(), [releaseHarmonyLayer]);
-  const arpHarmonyContext = useMemo<ProductArpHarmonyContext>(() => {
-    if (props.harmonyProjection) {
-      return {
-        rootMidi: props.harmonyProjection.engine.rootMidi,
-        scaleId: props.harmonyProjection.engine.scaleId,
-        tension: props.harmonyProjection.tension,
-        notePoolMidi: props.harmonyProjection.activeFrame.currentNotePool,
-        chordSlots: props.harmonyProjection.slots,
-      };
-    }
-    // Compatibility fallback for embedders that have not yet adopted the projection.
-    const projection = resolveHarmonyProjection(state, { harmonyState });
-    return {
-      rootMidi: projection.engine.rootMidi,
-      scaleId: projection.engine.scaleId,
-      tension: projection.tension,
-      notePoolMidi: projection.activeFrame.currentNotePool,
-      chordSlots: projection.slots,
-    };
-  }, [props.harmonyProjection, state, harmonyState]);
+  const arpHarmonyContext = useMemo<ProductArpHarmonyContext>(() => ({
+    rootMidi: props.harmonyProjection.engine.rootMidi,
+    scaleId: props.harmonyProjection.engine.scaleId,
+    tension: props.harmonyProjection.tension,
+    notePoolMidi: props.harmonyProjection.activeFrame.currentNotePool,
+    chordSlots: props.harmonyProjection.slots,
+  }), [props.harmonyProjection]);
+  const emptySeqHarmonyDraft = useCallback(() => emptyHarmonyDraft({
+    rootMidi: arpHarmonyContext.rootMidi,
+    rootMidiAnchor: arpHarmonyContext.rootMidi,
+    scaleId: arpHarmonyContext.scaleId,
+    tension: arpHarmonyContext.tension,
+  }), [
+    arpHarmonyContext.rootMidi,
+    arpHarmonyContext.scaleId,
+    arpHarmonyContext.tension,
+  ]);
+
+  useEffect(() => {
+    setSeqDrafts((current) => {
+      let changed = false;
+      const next = current.map((draft) => {
+        if (draft.exactMidiNotes.length > 0 || draft.intent || draft.dirty) {
+          return draft;
+        }
+        if (
+          draft.capturedContext.rootMidi === arpHarmonyContext.rootMidi
+          && draft.capturedContext.scaleId === arpHarmonyContext.scaleId
+          && draft.capturedContext.tension === arpHarmonyContext.tension
+        ) {
+          return draft;
+        }
+        changed = true;
+        return emptySeqHarmonyDraft();
+      });
+      return changed ? next : current;
+    });
+  }, [
+    arpHarmonyContext.rootMidi,
+    arpHarmonyContext.scaleId,
+    arpHarmonyContext.tension,
+    emptySeqHarmonyDraft,
+  ]);
   const activePlayConfig = playConfigs[seq.activeTab] ?? defaultProductPlayConfig();
   const activeArpConfig = activePlayConfig.arp;
   const activeArpPitchAnchor = arpPitchAnchorMidi(
@@ -3864,6 +3974,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     )));
   }, []);
   const updateChordPlayConfig = useCallback((laneIdx: number, patch: Partial<ProductChordPlayConfig>) => {
+    if (seqSlotWriteLocked) return;
     setPlayConfigs((current) => current.map((config, index) => {
       if (index !== laneIdx) return config;
       const nextPatch: Partial<ProductChordPlayConfig> = { ...patch };
@@ -3875,8 +3986,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       }
       return normalizeProductPlayConfig({ ...config, chord: { ...config.chord, ...nextPatch } });
     }));
-  }, []);
+  }, [seqSlotWriteLocked]);
   const assignSuggestionToActiveChordStep = useCallback((suggestion: UiHarmonySuggestion) => {
+    if (seqSlotWriteLocked) return;
     const laneIdx = seq.activeTab;
     const stepIndex = selectedArpSteps[laneIdx] ?? 0;
     const audioSuggestion: AudioHarmonySuggestion | undefined = suggestion.audioSuggestion;
@@ -3884,17 +3996,18 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const result = assignHarmonySuggestionToPlayConfig({ slots: arpHarmonyContext.chordSlots, seqPlayConfigs: playConfigs }, audioSuggestion, laneIdx, stepIndex, { rootMidi: arpHarmonyContext.rootMidi, rootMidiAnchor: arpHarmonyContext.rootMidi, scaleId: arpHarmonyContext.scaleId });
     if (!result.ok || !result.state.seqPlayConfigs) return;
     const nextConfig = result.state.seqPlayConfigs[laneIdx];
-    if (nextConfig) setPlayConfigs((current) => current.map((config, index) => index === laneIdx ? normalizeProductPlayConfig({ ...config, chord: { ...config.chord, steps: (nextConfig.chord?.steps ?? config.chord.steps).map((step, stepIndex) => ({ slotId: step.slotId ?? config.chord.steps[stepIndex]?.slotId ?? 0 })) } }) : config));
-    if (result.state.slots !== arpHarmonyContext.chordSlots && onStateChange) {
-      const bank = props.harmonyProjection?.bank ?? 'A';
-      onStateChange((previous) => {
+    const nextPlayConfigs = nextConfig ? playConfigs.map((config, index) => index === laneIdx ? normalizeProductPlayConfig({ ...config, chord: { ...config.chord, steps: (nextConfig.chord?.steps ?? config.chord.steps).map((step, stepIndex) => ({ slotId: step.slotId ?? config.chord.steps[stepIndex]?.slotId ?? 0 })) } }) : config) : playConfigs;
+    if (result.state.slots !== arpHarmonyContext.chordSlots || nextConfig) {
+      const bank = props.harmonyProjection.bank;
+      const committed = commitHarmonyAuthoredStateChange((previous) => {
         const record = previous as unknown as Record<string, unknown>;
-        const patch: Record<string, unknown> = { [bank === 'B' ? 'harmonyChordSlotsB' : 'harmonyChordSlotsA']: result.state.slots };
-        if (record.harmonyChordSlotsA === undefined && record.harmonyChordSlotsB === undefined && bank === 'A') patch.harmonyChordSlots = result.state.slots;
-        return { ...previous, ...patch } as SliderState;
-      });
+        const nextRecord = writeSeqHarmonySlots(record, bank, result.state.slots);
+        return { ...nextRecord, synthPlayConfigs: nextPlayConfigs } as unknown as SliderState;
+      }, 'Seq suggestion assignment');
+      if (!committed) return;
     }
-  }, [arpHarmonyContext, onStateChange, playConfigs, props.harmonyProjection?.bank, selectedArpSteps, seq.activeTab]);
+    if (nextConfig) setPlayConfigs(nextPlayConfigs);
+  }, [arpHarmonyContext, commitHarmonyAuthoredStateChange, playConfigs, props.harmonyProjection.bank, selectedArpSteps, seq.activeTab, seqSlotWriteLocked]);
   const updateSeqDraft = useCallback((laneIdx: number, draft: HarmonyDraftChord) => setSeqDrafts((current) => current.map((entry, index) => index === laneIdx ? draft : entry)), []);
   const loadSeqDraftSlot = useCallback((laneIdx: number, slotId: number) => {
     setSeqDraftSlots((current) => current.map((entry, index) => index === laneIdx ? slotId : entry));
@@ -3902,62 +4015,113 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, [arpHarmonyContext.chordSlots, updateSeqDraft]);
   const captureSeqDraft = useCallback((laneIdx: number) => {
     const slotId = seqDraftSlots[laneIdx];
-    const draft = seqDrafts[laneIdx] ?? emptyHarmonyDraft();
-    if (slotId == null || !onStateChange) return;
-    onStateChange((previous) => {
+    const draft = seqDrafts[laneIdx] ?? emptySeqHarmonyDraft();
+    if (slotId == null || seqSlotWriteLocked) return;
+    const committed = commitHarmonyAuthoredStateChange((previous) => {
       const record = previous as unknown as Record<string, unknown>;
-      const slots = sanitizeHarmonyChordSlots(record.harmonyChordSlots ?? []);
+      const slots = readSeqHarmonySlots(record, props.harmonyProjection.bank, props.harmonyProjection.slots);
       const current = slots[slotId];
       if (!current || current.locked) return previous;
       const captured = captureDraftToSlot(current, draft, { rootMidi: arpHarmonyContext.rootMidi, scaleId: arpHarmonyContext.scaleId });
-      return { ...previous, harmonyChordSlots: slots.map((slot) => slot.id === slotId ? { ...slot, chord: captured.chord, intent: captured.chord?.intent ?? slot.intent } : slot) } as SliderState;
-    });
+      const nextSlots = slots.map((slot) => slot.id === slotId ? { ...slot, chord: captured.chord } : slot);
+      return writeSeqHarmonySlots(record, props.harmonyProjection.bank, nextSlots) as unknown as SliderState;
+    }, 'Seq chord capture');
+    if (!committed) return;
     setSeqDrafts((currentDrafts) => currentDrafts.map((entry, index) => index === laneIdx ? { ...entry, dirty: false } : entry));
-  }, [arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId, onStateChange, seqDraftSlots, seqDrafts]);
+  }, [arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId, commitHarmonyAuthoredStateChange, emptySeqHarmonyDraft, props.harmonyProjection.bank, props.harmonyProjection.slots, seqDraftSlots, seqDrafts, seqSlotWriteLocked]);
   const playSeqLiveSlot = useCallback((laneIdx: number, slotId: number) => {
+    if (seqSlotWriteLocked) return;
     seqLiveHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
     const slot = arpHarmonyContext.chordSlots[slotId];
     const notes = slot?.chord ? sharedChordResolvedMidiPool(slot.chord, { rootMidi: arpHarmonyContext.rootMidi, effectiveRootMidi: arpHarmonyContext.rootMidi, scaleId: arpHarmonyContext.scaleId, tension: arpHarmonyContext.tension }) : [];
-    seqLiveHeldRef.current[laneIdx] = notes.map((midi) => { const id = `seq-live-${laneIdx}-${midi}`; liveNoteInput.noteOn(id, { source: 'ui-pad', instrument: 'pad1', note: midi, velocity: 0.82 }); return id; });
+    const layer: HarmonyLiveLayer = { kind: 'seq-live', scope: 'seq-live', target: `seq${laneIdx + 1}`, seqId: laneIdx, slotId, draft: draftFromSlot(slot), frame: { ...props.harmonyProjection.activeFrame, currentNotePool: notes, nextNotePool: notes }, latched: false };
+    seqLiveLayerRef.current[laneIdx] = layer;
+    startHeldHarmonyLayer(layer);
+    const instrument = manualSynthSourceForLaneSource(state[SYNTH_LANE_SOURCE_KEYS[laneIdx] ?? SYNTH_LANE_SOURCE_KEYS[0]] ?? 'lead1', state.pad2VoiceAssign);
+    const monitor = shouldEmitLiveChordMonitorNotes({ target: 'harmony', running: isRunning, bypassesHarmony: false });
+    seqLiveHeldRef.current[laneIdx] = monitor ? notes.map((midi) => { const id = `seq-live-${laneIdx}-${midi}`; liveNoteInput.noteOn(id, { source: 'ui-pad', instrument, note: midi, velocity: 0.82 }); return id; }) : [];
     setSeqLiveSlots((current) => current.map((entry, index) => index === laneIdx ? slotId : entry));
-  }, [arpHarmonyContext, liveNoteInput]);
-  const stopSeqLive = useCallback((laneIdx: number) => {
+  }, [arpHarmonyContext, draftFromSlot, isRunning, liveNoteInput, props.harmonyProjection.activeFrame, seqSlotWriteLocked, startHeldHarmonyLayer, state]);
+  const stopSeqLive = useCallback((laneIdx: number, explicitStop = false) => {
     seqLiveHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
     seqLiveHeldRef.current[laneIdx] = [];
+    seqLiveLayerRef.current[laneIdx] = null;
+    onHarmonyLiveLayerChange?.(null, { explicitStop });
     setSeqLiveSlots((current) => current.map((entry, index) => index === laneIdx ? null : entry));
     setSeqLiveLatched((current) => current.map((entry, index) => index === laneIdx ? false : entry));
-  }, [liveNoteInput]);
+  }, [liveNoteInput, onHarmonyLiveLayerChange]);
   const playSeqLiveReanchored = useCallback((laneIdx: number, slotId: number, pressedRootMidi: number) => {
+    if (seqSlotWriteLocked) return;
     seqLiveHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
     const slot = arpHarmonyContext.chordSlots[slotId];
     const notes = slot?.chord ? resolveLiveReanchoredNotes(slot.chord, pressedRootMidi, arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId) : [];
-    seqLiveHeldRef.current[laneIdx] = notes.map((midi) => { const id = `seq-live-${laneIdx}-${midi}`; liveNoteInput.noteOn(id, { source: 'ui-pad', instrument: 'pad1', note: midi, velocity: 0.82 }); return id; });
-  }, [arpHarmonyContext, liveNoteInput]);
-  const playSeqDraft = useCallback((laneIdx: number, route: 'track' | 'harmony' = 'track') => {
+    const layer: HarmonyLiveLayer = { kind: 'seq-live', scope: 'seq-live', target: `seq${laneIdx + 1}`, seqId: laneIdx, slotId, draft: draftFromSlot(slot), frame: { ...props.harmonyProjection.activeFrame, currentNotePool: notes, nextNotePool: notes }, latched: Boolean(seqLiveLatched[laneIdx]) };
+    seqLiveLayerRef.current[laneIdx] = layer;
+    startHeldHarmonyLayer(layer);
+    const instrument = manualSynthSourceForLaneSource(state[SYNTH_LANE_SOURCE_KEYS[laneIdx] ?? SYNTH_LANE_SOURCE_KEYS[0]] ?? 'lead1', state.pad2VoiceAssign);
+    const monitor = shouldEmitLiveChordMonitorNotes({ target: 'harmony', running: isRunning, bypassesHarmony: false });
+    seqLiveHeldRef.current[laneIdx] = monitor ? notes.map((midi) => { const id = `seq-live-${laneIdx}-${midi}`; liveNoteInput.noteOn(id, { source: 'ui-pad', instrument, note: midi, velocity: 0.82 }); return id; }) : [];
+  }, [arpHarmonyContext, draftFromSlot, isRunning, liveNoteInput, props.harmonyProjection.activeFrame, seqLiveLatched, seqSlotWriteLocked, startHeldHarmonyLayer, state]);
+  const playSeqDraftValue = useCallback((laneIdx: number, draft: HarmonyDraftChord, route: 'track' | 'harmony' = 'track') => {
+    if (route === 'harmony' && seqSlotWriteLocked) return;
     seqDraftHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
-    const draft = seqDrafts[laneIdx] ?? emptyHarmonyDraft();
-    const projection = resolveHarmonyProjection(state, { harmonyState });
     const gesture = createLiveChordGesture({ id: `seq-draft-${laneIdx}-${Date.now()}`, scope: { kind: 'seq', seqId: laneIdx }, target: route, source: 'onscreen', draft });
-    const execution = resolveLiveChordExecution({ gesture, draft, effectiveFrame: projection.activeFrame, currentAudioBlock: 0, running: isRunning, scaleId: arpHarmonyContext.scaleId });
+    const execution = resolveLiveChordExecution({ gesture, draft, effectiveFrame: props.harmonyProjection.activeFrame, currentAudioBlock: 0, running: isRunning, scaleId: arpHarmonyContext.scaleId });
     if (route === 'harmony' && !execution.bypassesHarmony && execution.temporaryHarmonyFrame) {
-      startHarmonyLayer({ kind: 'harmony-takeover', frame: execution.temporaryHarmonyFrame, latched: false });
+      startHeldHarmonyLayer({ kind: 'draft-live', scope: 'seq-draft', target: `seq${laneIdx + 1}`, seqId: laneIdx, draft, frame: execution.temporaryHarmonyFrame, latched: false });
     } else {
       releaseHarmonyLayer();
     }
     const notes = shouldEmitLiveChordMonitorNotes({ target: route, running: isRunning, bypassesHarmony: execution.bypassesHarmony }) ? execution.notes : [];
-    seqDraftHeldRef.current[laneIdx] = notes.map((midi) => { const id = `seq-draft-${laneIdx}-${midi}`; liveNoteInput.noteOn(id, { source: 'ui-pad', instrument: 'pad1', note: midi, velocity: 0.82 }); return id; });
-  }, [arpHarmonyContext.scaleId, harmonyState, isRunning, liveNoteInput, releaseHarmonyLayer, seqDrafts, startHarmonyLayer, state]);
-  const stopSeqChordGestures = useCallback((laneIdx: number) => {
+    const instrument = manualSynthSourceForLaneSource(state[SYNTH_LANE_SOURCE_KEYS[laneIdx] ?? SYNTH_LANE_SOURCE_KEYS[0]] ?? 'lead1', state.pad2VoiceAssign);
+    seqDraftHeldRef.current[laneIdx] = notes.map((midi) => { const id = `seq-draft-${laneIdx}-${midi}`; liveNoteInput.noteOn(id, { source: 'ui-pad', instrument, note: midi, velocity: 0.82 }); return id; });
+  }, [arpHarmonyContext.scaleId, isRunning, liveNoteInput, props.harmonyProjection.activeFrame, releaseHarmonyLayer, seqSlotWriteLocked, startHeldHarmonyLayer, state]);
+  const playSeqDraft = useCallback((laneIdx: number, route: 'track' | 'harmony' = 'track') => {
+    playSeqDraftValue(laneIdx, seqDrafts[laneIdx] ?? emptySeqHarmonyDraft(), route);
+  }, [emptySeqHarmonyDraft, playSeqDraftValue, seqDrafts]);
+  const stopSeqChordGestures = useCallback((laneIdx: number, explicitStop = false) => {
     seqLiveHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
     seqDraftHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
     seqLiveHeldRef.current[laneIdx] = [];
     seqDraftHeldRef.current[laneIdx] = [];
+    seqDraftCaptureRef.current[laneIdx] = initialHarmonyCaptureState();
     releaseHarmonyLayer();
-    stopSeqLive(laneIdx);
+    stopSeqLive(laneIdx, explicitStop);
   }, [liveNoteInput, releaseHarmonyLayer, stopSeqLive]);
   useEffect(() => () => {
     [0, 1, 2, 3].forEach((laneIdx) => stopSeqChordGestures(laneIdx));
-  }, [stopSeqChordGestures, seq.activeTab]);
+  }, [stopSeqChordGestures]);
+  const previewSeqSuggestion = useCallback((suggestion: UiHarmonySuggestion) => {
+    const laneIdx = seq.activeTab;
+    const draft = applySeqSuggestionToDraft(seqDrafts[laneIdx] ?? emptySeqHarmonyDraft(), {
+      notes: suggestion.notes,
+      label: suggestion.label,
+      intent: suggestion.audioSuggestion?.intent ?? null,
+      playbackBehavior: suggestion.audioSuggestion?.playbackBehavior,
+    });
+    updateSeqDraft(laneIdx, draft);
+    playSeqDraftValue(laneIdx, draft, 'track');
+  }, [emptySeqHarmonyDraft, playSeqDraftValue, seq.activeTab, seqDrafts, updateSeqDraft]);
+  const releaseSeqSuggestion = useCallback(() => {
+    const laneIdx = seq.activeTab;
+    seqDraftHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
+    seqDraftHeldRef.current[laneIdx] = [];
+    releaseHarmonyLayer();
+  }, [liveNoteInput, releaseHarmonyLayer, seq.activeTab]);
+  const saveSeqSuggestion = useCallback((suggestion: UiHarmonySuggestion) => {
+    if (seqSlotWriteLocked || !suggestion.audioSuggestion) return;
+    const result = saveHarmonySuggestion(
+      { slots: arpHarmonyContext.chordSlots },
+      suggestion.audioSuggestion,
+      { rootMidi: arpHarmonyContext.rootMidi, rootMidiAnchor: arpHarmonyContext.rootMidi, scaleId: arpHarmonyContext.scaleId },
+    );
+    if (!result.ok) return;
+    commitHarmonyAuthoredStateChange((previous) => writeSeqHarmonySlots(
+      previous as unknown as Record<string, unknown>,
+      props.harmonyProjection.bank,
+      result.state.slots,
+    ) as unknown as SliderState, 'Save Seq suggestion');
+  }, [arpHarmonyContext, commitHarmonyAuthoredStateChange, props.harmonyProjection.bank, seqSlotWriteLocked]);
   const selectArpStep = useCallback((laneIdx: number, step: number) => {
     setSelectedArpSteps((current) => {
       const next = [...current];
@@ -4144,22 +4308,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   useEffect(() => {
     onViewModeChange?.(seq.viewMode);
   }, [seq.viewMode, onViewModeChange]);
-
-  useEffect(() => () => {
-    onSimpleVisualizerRuntimePlanVisibilityChange?.({ padChord: false, randomTiming: false });
-  }, [onSimpleVisualizerRuntimePlanVisibilityChange]);
-
-  useEffect(() => {
-    onSimpleVisualizerRuntimePlanVisibilityChange?.({
-      padChord: seq.viewMode === 'simple' && simpleChordPhraseVizToggle.enabled,
-      randomTiming: seq.viewMode === 'simple' && simpleRandomTimingVizToggle.enabled,
-    });
-  }, [
-    onSimpleVisualizerRuntimePlanVisibilityChange,
-    seq.viewMode,
-    simpleChordPhraseVizToggle.enabled,
-    simpleRandomTimingVizToggle.enabled,
-  ]);
 
   // Sync evolve configs to audio engine
   const evolveConfigsSignature = JSON.stringify(seq.evolveConfigs);
@@ -4419,13 +4567,19 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           anchorMidi: pitchAnchor,
         });
       });
-      const playArps = playConfigs.map((config) => {
+      const playArps = playConfigs.map((config, laneIdx) => {
         const playConfig = normalizeProductPlayConfig(config ?? defaultProductPlayConfig());
+        const pattern = playEnginePatterns[laneIdx];
         return {
           enabled: playConfig.enabled,
           mode: playConfig.mode,
           arp: playConfig.arp,
-          midiPattern: [],
+          // Chord mode sends bounded Harmony slot references plus articulation;
+          // native Product Core resolves the slot pool at trigger time.
+          midiPattern: playConfig.mode === 'chord' ? [] : pattern?.midiPattern ?? [],
+          ...(playConfig.mode === 'chord' && pattern?.playNotes
+            ? { playNotes: pattern.playNotes.map((note) => ({ ...note, midi: -1 })) }
+            : {}),
         };
       });
       const arpPatternSignature = JSON.stringify(playArps);
@@ -4441,6 +4595,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       // Convert pitch offsets to absolute MIDI notes before sending to engine
       // (engine doesn't know pitch mode/root/scale — we convert here)
       const convertedPitch = seq.stepOverrides.pitch.map((offsets, laneIdx) => {
+        if (playConfigs[laneIdx]?.mode === 'chord') return null;
         const playPattern = playEnginePatterns[laneIdx]?.midiPattern;
         if (playPattern) return playPattern;
         if (!offsets) return null;
@@ -4456,15 +4611,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           resolvedPitch.root + scaleDegreeToSemitone(degree, resolvedPitch.scaleIntervals),
         ));
       });
-      const playNotes = playEnginePatterns.map((pattern) => (
-        pattern?.playNotes?.map((event) => ({
-          step: event.step,
-          midi: event.midi,
-          offsetMs: event.offsetMs,
-          velocity: event.velocity,
-          voiceIndex: event.voiceIndex,
-        })) ?? null
-      ));
       const engineSubLaneStates = seq.subLaneStates.map((laneState, laneIdx) => (
         playEnginePatterns[laneIdx]
           ? { ...laneState, pitch: {
@@ -4510,7 +4656,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       const engineOverrides: StepOverrides = {
           ...seq.stepOverrides,
           pitch: convertedPitch,  // Send MIDI notes, not raw offsets
-          playNotes,
           pitchDirection,
           expressionRanges,
           morphRanges,
@@ -5455,9 +5600,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   ]);
 
   const toggleChordGeneratorEnabled = useCallback(() => {
-    const next = !(state.synthChordGeneratorEnabled === true);
+    const next = !state.synthChordGeneratorEnabled;
     const startPatch = next ? enableSourceValueForPlayback(chordGeneratorSourceValue) : {};
-    onSelectChange('synthChordGeneratorEnabled' as keyof SliderState, next);
+    onSelectChange('synthChordGeneratorEnabled', next);
     if (next && !isRunning) {
       onRequestPlaybackStart?.({
         ...startPatch,
@@ -5474,14 +5619,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   ]);
 
   const setChordGeneratorSource = useCallback((sourceValue: string) => {
-    onSelectChange('synthChordGeneratorSource' as keyof SliderState, sourceValue as SliderState[keyof SliderState]);
-    if (state.synthChordGeneratorEnabled !== true) return;
+    const source = sourceValue as SliderState['synthChordGeneratorSource'];
+    onSelectChange('synthChordGeneratorSource', source);
+    if (!state.synthChordGeneratorEnabled) return;
     const startPatch = enableSourceValueForPlayback(sourceValue);
     if (!isRunning) {
       onRequestPlaybackStart?.({
         ...startPatch,
         synthChordGeneratorEnabled: true,
-        synthChordGeneratorSource: sourceValue as SliderState['synthChordGeneratorSource'],
+        synthChordGeneratorSource: source,
       });
     }
   }, [
@@ -6676,6 +6822,17 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const pad2CardExpanded = isSynthSourceCardExpanded('pad2');
   const lead1CardExpanded = isSynthSourceCardExpanded('lead1');
   const lead2CardExpanded = isSynthSourceCardExpanded('lead2');
+  const projectedSeqLiveLayer = props.harmonyProjection.liveLayer?.kind === 'seq-live'
+    ? props.harmonyProjection.liveLayer
+    : null;
+  const projectedActiveSeqSlotId = projectedSeqLiveLayer?.seqId === seq.activeTab
+    ? projectedSeqLiveLayer.slotId ?? null
+    : null;
+  const activeSeqLiveSlotId = seqLiveSlots[seq.activeTab] ?? projectedActiveSeqSlotId;
+  const activeSeqLiveLatched = Boolean(
+    seqLiveLatched[seq.activeTab]
+    || (projectedSeqLiveLayer?.seqId === seq.activeTab && projectedSeqLiveLayer.latched),
+  );
 
   return (
     <div className="synth-root">
@@ -6746,6 +6903,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 slotBKey={'padPresetB' as keyof SliderState}
                 state={state}
                 onSelectChange={handlePresetEndpointSelectChange}
+                sliderModes={sliderModes}
+                dualSliderRanges={dualSliderRanges}
                 color="#4a9eff"
                 repository={pad1PresetRepository}
                 onOpenPool={() => setPadPoolPopupSlot({ scope: 'pad1', slotKey: 'padPresetA' as keyof SliderState })}
@@ -6788,10 +6947,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <span className="sc-morph-tag" style={{ color: '#8b5cf6' }}>B</span>
               </div>
 
-              {/* Interactive Visualization — drag filter min/max & ADSR points */}
+              {/* Interactive Visualization — drag filter cutoff & ADSR points */}
               <FilterLfoViz
                 filterAType={state.filterType}
-                filterACutoff={livePad1FilterMin + (livePad1FilterMax - livePad1FilterMin) * 0.5}
+                filterACutoff={livePad1FilterCutoff}
                 filterARes={state.filterResonance}
                 filterAQ={state.filterQ}
                 filterASlope={state.filterSlope ?? 12}
@@ -6805,8 +6964,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 lfoRate={state.padLfo1Rate ?? 0.5}
                 lfoDepth={state.padLfo1Depth ?? 0}
                 lfoDest={state.padLfo1Dest ?? 'none'}
-                filterCutoffMin={livePad1FilterMin}
-                filterCutoffMax={livePad1FilterMax}
+                filterCutoff={livePad1FilterCutoff}
                 postLpfHz={livePad1PostLpf}
                 synthAttack={state.synthAttack}
                 synthDecay={state.synthDecay}
@@ -6822,11 +6980,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 modEnvRelease={state.padModEnvRelease ?? 0.5}
                 modEnvDepth={state.padModEnvDepth ?? 0}
                 modEnvDest={state.padModEnvDest ?? 'filterCutoff'}
-                liveFilterFreq={liveSourceTelemetryAvailable ? livePadViz.pad1FilterFreq : livePad1FilterMin + (livePad1FilterMax - livePad1FilterMin) * 0.5}
+                liveFilterFreq={liveSourceTelemetryAvailable ? livePadViz.pad1FilterFreq : livePad1FilterCutoff}
                 liveLfoValue={liveSourceTelemetryAvailable ? livePadViz.pad1LfoValue : 0}
                 isRunning={isRunning && liveSourceTelemetryAvailable}
-                onFilterMinChange={(v) => onParamChange('filterCutoffMin', v)}
-                onFilterMaxChange={(v) => onParamChange('filterCutoffMax', v)}
+                onFilterCutoffChange={(v) => onParamChange('filterCutoff', v)}
                 onAdsrChange={(param, v) => onParamChange(param, v)}
                 onModEnvChange={(param, v) => {
                   const modEnvMap: Record<typeof param, keyof SliderState> = {
@@ -6905,8 +7062,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     />
                   </div>
                   <div className="sc-compact-grid-2">
-                    <Slider label="Min" value={state.filterCutoffMin} paramKey="filterCutoffMin" unit="Hz" logarithmic ghostValue={getPreviewValue(pad1DistancePreview, 'filterCutoffMin')} onChange={onParamChange} {...sliderProps('filterCutoffMin')} />
-                    <Slider label="Max" value={state.filterCutoffMax} paramKey="filterCutoffMax" unit="Hz" logarithmic ghostValue={getPreviewValue(pad1DistancePreview, 'filterCutoffMax')} onChange={onParamChange} {...sliderProps('filterCutoffMax')} />
+                    <Slider label="Cutoff" value={state.filterCutoff} paramKey="filterCutoff" unit="Hz" logarithmic ghostValue={getPreviewValue(pad1DistancePreview, 'filterCutoff')} onChange={onParamChange} {...sliderProps('filterCutoff')} />
                   </div>
                   <div className="sc-compact-grid-2">
                     <Slider label="Resonance" value={state.filterResonance} paramKey="filterResonance" onChange={onParamChange} {...sliderProps('filterResonance')} />
@@ -7396,6 +7552,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 slotBKey={'pad2PresetB' as keyof SliderState}
                 state={state}
                 onSelectChange={handlePresetEndpointSelectChange}
+                sliderModes={sliderModes}
+                dualSliderRanges={dualSliderRanges}
                 color="#8b5cf6"
                 repository={pad2PresetRepository}
                 onOpenPool={() => setPadPoolPopupSlot({ scope: 'pad2', slotKey: 'pad2PresetA' as keyof SliderState })}
@@ -7442,7 +7600,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               {/* Interactive Visualization */}
               <FilterLfoViz
                 filterAType={state.pad2FilterType ?? 'lowpass'}
-                filterACutoff={livePad2FilterMin + (livePad2FilterMax - livePad2FilterMin) * 0.5}
+                filterACutoff={livePad2FilterCutoff}
                 filterARes={state.pad2FilterResonance ?? 0.2}
                 filterAQ={state.pad2FilterQ ?? 1}
                 filterASlope={state.pad2FilterSlope ?? 12}
@@ -7456,8 +7614,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 lfoRate={state.pad2Lfo1Rate ?? 0.5}
                 lfoDepth={state.pad2Lfo1Depth ?? 0}
                 lfoDest={state.pad2Lfo1Dest ?? 'none'}
-                filterCutoffMin={livePad2FilterMin}
-                filterCutoffMax={livePad2FilterMax}
+                filterCutoff={livePad2FilterCutoff}
                 postLpfHz={livePad2PostLpf}
                 synthAttack={state.pad2Attack ?? 6}
                 synthDecay={state.pad2Decay ?? 1}
@@ -7473,11 +7630,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 modEnvRelease={state.pad2ModEnvRelease ?? 0.5}
                 modEnvDepth={state.pad2ModEnvDepth ?? 0}
                 modEnvDest={state.pad2ModEnvDest ?? 'filterCutoff'}
-                liveFilterFreq={liveSourceTelemetryAvailable ? livePadViz.pad2FilterFreq : livePad2FilterMin + (livePad2FilterMax - livePad2FilterMin) * 0.5}
+                liveFilterFreq={liveSourceTelemetryAvailable ? livePadViz.pad2FilterFreq : livePad2FilterCutoff}
                 liveLfoValue={liveSourceTelemetryAvailable ? livePadViz.pad2LfoValue : 0}
                 isRunning={isRunning && liveSourceTelemetryAvailable}
-                onFilterMinChange={(v) => onParamChange('pad2FilterCutoffMin', v)}
-                onFilterMaxChange={(v) => onParamChange('pad2FilterCutoffMax', v)}
+                onFilterCutoffChange={(v) => onParamChange('pad2FilterCutoff', v)}
                 onAdsrChange={(param, v) => {
                   const pad2Map: Record<string, string> = {
                     synthAttack: 'pad2Attack', synthDecay: 'pad2Decay',
@@ -7587,8 +7743,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     />
                   </div>
                   <div className="sc-compact-grid-2">
-                    <Slider label="Min" value={state.pad2FilterCutoffMin} paramKey="pad2FilterCutoffMin" unit="Hz" logarithmic ghostValue={getPreviewValue(pad2DistancePreview, 'pad2FilterCutoffMin')} onChange={onParamChange} {...sliderProps('pad2FilterCutoffMin')} />
-                    <Slider label="Max" value={state.pad2FilterCutoffMax} paramKey="pad2FilterCutoffMax" unit="Hz" logarithmic ghostValue={getPreviewValue(pad2DistancePreview, 'pad2FilterCutoffMax')} onChange={onParamChange} {...sliderProps('pad2FilterCutoffMax')} />
+                    <Slider label="Cutoff" value={state.pad2FilterCutoff} paramKey="pad2FilterCutoff" unit="Hz" logarithmic ghostValue={getPreviewValue(pad2DistancePreview, 'pad2FilterCutoff')} onChange={onParamChange} {...sliderProps('pad2FilterCutoff')} />
                   </div>
                   <div className="sc-compact-grid-2">
                     <Slider label="Resonance" value={state.pad2FilterResonance} paramKey="pad2FilterResonance" onChange={onParamChange} {...sliderProps('pad2FilterResonance')} />
@@ -8151,21 +8306,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
                 {/* Expression */}
                 <div className="sc-advanced-section">
-                  <div className="sc-section-label">Expression (per note)</div>
-                  <Slider label="Vibrato Depth" value={state.leadVibratoDepth} paramKey="leadVibratoDepth" unit=" st" onChange={onParamChange} {...sliderProps('leadVibratoDepth')} />
-                  <Slider label="Vibrato Rate" value={state.leadVibratoRate} paramKey="leadVibratoRate" unit=" Hz" onChange={onParamChange} {...sliderProps('leadVibratoRate')} />
-                  <Slider label="Glide" value={state.leadGlide} paramKey="leadGlide" onChange={onParamChange} {...sliderProps('leadGlide')} />
-                </div>
-
-                {/* Delay */}
-                <div className="sc-advanced-section">
-                  <div className="sc-section-label">Delay A</div>
-                  <Slider label="Delay A Send" value={state.lead1DelayASend} paramKey="lead1DelayASend" onChange={onParamChange} {...sliderProps('lead1DelayASend')} />
-                  <Slider label="Left Division" value={getSliderNumericValue('drumDelayNoteL', state.drumDelayNoteL) ?? 0} paramKey="drumDelayNoteL" onChange={onParamChange} format={(value: number) => formatIndexedDelayDivision('drumDelayNoteL', value)} {...sliderProps('drumDelayNoteL')} />
-                  <Slider label="Right Division" value={getSliderNumericValue('drumDelayNoteR', state.drumDelayNoteR) ?? 0} paramKey="drumDelayNoteR" onChange={onParamChange} format={(value: number) => formatIndexedDelayDivision('drumDelayNoteR', value)} {...sliderProps('drumDelayNoteR')} />
-                  <Slider label="Delay Feedback" value={state.delayAFeedback} paramKey="delayAFeedback" onChange={onParamChange} {...sliderProps('delayAFeedback')} />
-                  <Slider label="Delay Mix" value={state.delayAMix} paramKey="delayAMix" onChange={onParamChange} {...sliderProps('delayAMix')} />
-                  <Slider label="Delay Filter" value={state.delayAFilter} paramKey="delayAFilter" unit=" Hz" logarithmic onChange={onParamChange} {...sliderProps('delayAFilter')} />
+                  <div className="sc-section-label">Expression response</div>
+                  <Slider label="Vibrato Depth" value={state.lead1VibratoDepth} paramKey="lead1VibratoDepth" unit=" st" onChange={onParamChange} {...sliderProps('lead1VibratoDepth')} />
+                  <Slider label="Vibrato Rate" value={state.lead1VibratoRate} paramKey="lead1VibratoRate" unit=" Hz" onChange={onParamChange} {...sliderProps('lead1VibratoRate')} />
+                  <Slider label="Glide" value={state.lead1Glide} paramKey="lead1Glide" onChange={onParamChange} {...sliderProps('lead1Glide')} />
                 </div>
               </div>
             )}
@@ -8324,21 +8468,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
                 {/* Expression */}
                 <div className="sc-advanced-section">
-                  <div className="sc-section-label">Expression (per note)</div>
-                  <Slider label="Vibrato Depth" value={state.leadVibratoDepth} paramKey="leadVibratoDepth" unit=" st" onChange={onParamChange} {...sliderProps('leadVibratoDepth')} />
-                  <Slider label="Vibrato Rate" value={state.leadVibratoRate} paramKey="leadVibratoRate" unit=" Hz" onChange={onParamChange} {...sliderProps('leadVibratoRate')} />
-                  <Slider label="Glide" value={state.leadGlide} paramKey="leadGlide" onChange={onParamChange} {...sliderProps('leadGlide')} />
-                </div>
-
-                {/* Delay */}
-                <div className="sc-advanced-section">
-                  <div className="sc-section-label">Delay A</div>
-                  <Slider label="Delay A Send" value={state.lead2DelayASend} paramKey="lead2DelayASend" onChange={onParamChange} {...sliderProps('lead2DelayASend')} />
-                  <Slider label="Left Division" value={getSliderNumericValue('drumDelayNoteL', state.drumDelayNoteL) ?? 0} paramKey="drumDelayNoteL" onChange={onParamChange} format={(value: number) => formatIndexedDelayDivision('drumDelayNoteL', value)} {...sliderProps('drumDelayNoteL')} />
-                  <Slider label="Right Division" value={getSliderNumericValue('drumDelayNoteR', state.drumDelayNoteR) ?? 0} paramKey="drumDelayNoteR" onChange={onParamChange} format={(value: number) => formatIndexedDelayDivision('drumDelayNoteR', value)} {...sliderProps('drumDelayNoteR')} />
-                  <Slider label="Delay Feedback" value={state.delayAFeedback} paramKey="delayAFeedback" onChange={onParamChange} {...sliderProps('delayAFeedback')} />
-                  <Slider label="Delay Mix" value={state.delayAMix} paramKey="delayAMix" onChange={onParamChange} {...sliderProps('delayAMix')} />
-                  <Slider label="Delay Filter" value={state.delayAFilter} paramKey="delayAFilter" unit=" Hz" logarithmic onChange={onParamChange} {...sliderProps('delayAFilter')} />
+                  <div className="sc-section-label">Expression response</div>
+                  <Slider label="Vibrato Depth" value={state.lead2VibratoDepth} paramKey="lead2VibratoDepth" unit=" st" onChange={onParamChange} {...sliderProps('lead2VibratoDepth')} />
+                  <Slider label="Vibrato Rate" value={state.lead2VibratoRate} paramKey="lead2VibratoRate" unit=" Hz" onChange={onParamChange} {...sliderProps('lead2VibratoRate')} />
+                  <Slider label="Glide" value={state.lead2Glide} paramKey="lead2Glide" onChange={onParamChange} {...sliderProps('lead2Glide')} />
                 </div>
               </div>
             )}
@@ -8532,16 +8665,18 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           {/* ══════ SIMPLE MODE ══════ */}
           {seq.viewMode === 'simple' && (
             <div className="synth-simple-seq">
-              {/* ── Chord Generator ── */}
               <div className="synth-simple-section">
                 <div className="synth-simple-header">
                   <span>Chord Generator</span>
                   <button
-                    className={`synth-simple-enable${state.synthChordGeneratorEnabled === true ? ' on' : ''}`}
+                    className={`synth-simple-enable${state.synthChordGeneratorEnabled ? ' on' : ''}`}
                     onClick={toggleChordGeneratorEnabled}
                   >
-                    {state.synthChordGeneratorEnabled === true ? 'ON' : 'OFF'}
+                    {state.synthChordGeneratorEnabled ? 'ON' : 'OFF'}
                   </button>
+                  <span className="synth-harmony-viz-context">
+                    Harmony · Bank {props.harmonyProjection.bank}
+                  </span>
                 </div>
                 <div className="synth-simple-content">
                   <div className="synth-simple-controls">
@@ -8549,8 +8684,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       <select
                         className="synth-source-select"
                         aria-label="Chord generator source"
-                        value={state.synthChordGeneratorSource ?? 'sample1'}
-                        onChange={(e) => setChordGeneratorSource(e.target.value)}
+                        value={state.synthChordGeneratorSource}
+                        onChange={(event) => setChordGeneratorSource(event.target.value)}
                         style={{
                           borderColor: `${chordGeneratorSourceInfo.color}60`,
                           color: chordGeneratorSourceInfo.color,
@@ -8564,8 +8699,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         Voices
                         <select
                           className="synth-source-select"
-                          value={state.synthChordGeneratorVoiceCount ?? 6}
-                          onChange={(e) => onParamChange('synthChordGeneratorVoiceCount', Number(e.target.value))}
+                          value={state.synthChordGeneratorVoiceCount}
+                          onChange={(event) => onParamChange('synthChordGeneratorVoiceCount', Number(event.target.value))}
                         >
                           {PAD_VOICE_NUMBERS.map((voice) => (
                             <option key={voice} value={voice}>{voice}</option>
@@ -8576,35 +8711,29 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     <Slider label="Chords / Phrase" value={state.chordRate} paramKey="chordRate" onChange={onParamChange} {...sliderProps('chordRate')} />
                     <Slider label="Voicing Spread" value={state.voicingSpread} paramKey="voicingSpread" onChange={onParamChange} {...sliderProps('voicingSpread')} />
                     <Slider label="Wave Spread" value={state.waveSpread} paramKey="waveSpread" onChange={onParamChange} {...sliderProps('waveSpread')} />
-                    <div style={{ position: 'relative', height: '14px', marginTop: '-4px', marginBottom: '4px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.5rem', color: '#666', padding: '0 2px' }}>
-                        <span>0</span>
-                        <span style={{ position: 'absolute', left: '6.25%', transform: 'translateX(-50%)' }}>1/16</span>
-                        <span style={{ position: 'absolute', left: '12.5%', transform: 'translateX(-50%)' }}>⅛</span>
-                        <span style={{ position: 'absolute', left: '25%', transform: 'translateX(-50%)' }}>¼</span>
-                        <span style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>½</span>
-                        <span style={{ position: 'absolute', right: 0 }}>1</span>
-                      </div>
+                    <div className="synth-wave-spread-scale" aria-hidden="true">
+                      <span>0</span><span>1/16</span><span>⅛</span><span>¼</span><span>½</span><span>1</span>
                     </div>
                     <Slider label="Detune" value={state.detune} paramKey="detune" unit={'\u00A2'} onChange={onParamChange} {...sliderProps('detune')} />
                     <Slider label="Octave Offset" value={state.synthOctave} paramKey="synthOctave" onChange={onParamChange} {...sliderProps('synthOctave')} />
                   </div>
                   <OptionalVisualizerGate
-                    enabled={simpleChordPhraseVizToggle.enabled}
+                    enabled={simpleHarmonyVizToggle.enabled}
                     title="Chord visualizer"
                     description={isMobile
-                      ? 'Canvas animation is paused by default on mobile to keep playback responsive.'
-                      : 'Canvas animation can be hidden when you want to reduce rendering work.'}
+                      ? 'Harmony animation is paused by default on mobile to keep playback responsive.'
+                      : 'Shows the current and next note pools from the shared Harmony runtime.'}
                     enableLabel="Show visualizer"
                     hideLabel="Hide visualizer"
-                    onEnable={simpleChordPhraseVizToggle.show}
-                    onHide={simpleChordPhraseVizToggle.hide}
+                    onEnable={simpleHarmonyVizToggle.show}
+                    onHide={simpleHarmonyVizToggle.hide}
                   >
                     <SimplePhraseVisualizer
                       kind="padChord"
                       state={liveSimpleSequencerState}
                       isRunning={isRunning}
                       transportDebug={transportDebug}
+                      harmonyProjection={props.harmonyProjection}
                     />
                   </OptionalVisualizerGate>
                 </div>
@@ -9177,48 +9306,66 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                               <SeqChordChoiceLane config={playConfig.chord} harmony={arpHarmonyContext} resolvedSteps={activeChordResolvedSteps} selectedStep={selectedArpStep} activeChoiceIndex={activeChordChoiceIndex} onSelectStep={(step) => selectArpStep(seq.activeTab, step)} onLoadSlot={(slotId) => loadSeqDraftSlot(seq.activeTab, slotId)} onUpdateConfig={(patch) => updateChordPlayConfig(seq.activeTab, patch)} />
                               <SeqChordInteractionBay
                                 seqId={seq.activeTab}
-                                draft={seqDrafts[seq.activeTab] ?? emptyHarmonyDraft()}
+                                draft={seqDrafts[seq.activeTab] ?? emptySeqHarmonyDraft()}
                                 slots={arpHarmonyContext.chordSlots}
-                                activeSlotId={seqLiveSlots[seq.activeTab]}
+                                activeSlotId={activeSeqLiveSlotId}
                                 draftSlotId={seqDraftSlots[seq.activeTab]}
                                 draftLocked={Boolean(seqDraftSlots[seq.activeTab] != null && arpHarmonyContext.chordSlots[seqDraftSlots[seq.activeTab] ?? 0]?.locked)}
                                 useCount={seqDraftSlots[seq.activeTab] == null ? 0 : countSharedSlotUses(seqDraftSlots[seq.activeTab]!, playConfigs, props.harmonyProjection?.progression ?? [])}
-                                liveLatched={seqLiveLatched[seq.activeTab]}
-                                draftActive={seqLiveSlots[seq.activeTab] == null}
-                                liveActive={seqLiveSlots[seq.activeTab] != null}
+                                liveLatched={activeSeqLiveLatched}
+                                draftActive={activeSeqLiveSlotId == null}
+                                liveActive={activeSeqLiveSlotId != null}
                                 onDraftChange={(draft) => updateSeqDraft(seq.activeTab, draft)}
                                 onDraftCapture={() => captureSeqDraft(seq.activeTab)}
-                                onDraftClear={() => updateSeqDraft(seq.activeTab, emptyHarmonyDraft())}
+                                onDraftClear={() => updateSeqDraft(seq.activeTab, emptySeqHarmonyDraft())}
                                 onDraftPlay={(route) => playSeqDraft(seq.activeTab, route)}
-                                onSharedMatrixChange={(notes) => {
-                                  const slotId = seqDraftSlots[seq.activeTab];
-                                  if (slotId == null || !onStateChange) return;
-                                  onStateChange((previous) => {
-                                    const record = previous as unknown as Record<string, unknown>;
-                                    const slots = sanitizeHarmonyChordSlots(record.harmonyChordSlots ?? []);
-                                    const slot = slots[slotId];
-                                    if (!slot?.chord || slot.locked) return previous;
-                                    const nextChord = editSharedChordExactNotes(slot.chord, notes, { rootMidi: arpHarmonyContext.rootMidi, scaleId: arpHarmonyContext.scaleId });
-                                    return { ...previous, harmonyChordSlots: slots.map((entry) => entry.id === slotId ? { ...entry, chord: nextChord, intent: nextChord.intent ?? entry.intent } : entry) } as SliderState;
-                                  });
-                                }}
                                 onLiveSlot={(slotId) => playSeqLiveSlot(seq.activeTab, slotId)}
-                                onLiveHoldChange={(held) => { if (!held && !seqLiveLatched[seq.activeTab]) stopSeqChordGestures(seq.activeTab); }}
-                                onLiveLatch={() => setSeqLiveLatched((current) => current.map((entry, index) => index === seq.activeTab ? !entry : entry))}
-                                onLiveStop={() => stopSeqChordGestures(seq.activeTab)}
-                                onLiveRecord={() => { const slotId = seqLiveSlots[seq.activeTab]; if (slotId != null) updateChordPlayConfig(seq.activeTab, { steps: playConfig.chord.steps.map((step, index) => index === selectedArpStep ? { ...step, slotId } : step) }); }}
-                                onNoteDown={(midi) => {
-                                  if (seqLiveSlots[seq.activeTab] == null) {
-                                    const current = seqDrafts[seq.activeTab] ?? emptyHarmonyDraft();
-                                    updateSeqDraft(seq.activeTab, updateDraftExactNotes(current, [...current.exactMidiNotes, midi]));
+                                onLiveHoldChange={(held) => { if (!held && !activeSeqLiveLatched) stopSeqChordGestures(seq.activeTab); }}
+                                onLiveLatch={() => setSeqLiveLatched((current) => current.map((entry, index) => {
+                                  if (index !== seq.activeTab) return entry;
+                                  const nextLatched = !entry;
+                                  const layer = seqLiveLayerRef.current[index];
+                                  if (layer) {
+                                    const nextLayer = { ...layer, latched: nextLatched };
+                                    seqLiveLayerRef.current[index] = nextLayer;
+                                    onHarmonyLiveLayerChange?.(nextLayer);
+                                  }
+                                  return nextLatched;
+                                }))}
+                                onLiveStop={() => stopSeqChordGestures(seq.activeTab, true)}
+                                onLiveRecord={() => {
+                                  if (seqSlotWriteLocked) return;
+                                  const slotId = activeSeqLiveSlotId;
+                                  if (slotId != null) updateChordPlayConfig(seq.activeTab, { steps: playConfig.chord.steps.map((step, index) => index === selectedArpStep ? { ...step, slotId } : step) });
+                                }}
+                                onNoteDown={(midi, velocity, source) => {
+                                  if (activeSeqLiveSlotId == null) {
+                                    const laneIdx = seq.activeTab;
+                                    const current = seqDrafts[laneIdx] ?? emptySeqHarmonyDraft();
+                                    const capture = reduceHarmonyCaptureNoteOn(seqDraftCaptureRef.current[laneIdx] ?? initialHarmonyCaptureState(), midi, typeof performance === 'undefined' ? Date.now() : performance.now(), velocity);
+                                    seqDraftCaptureRef.current[laneIdx] = capture;
+                                    const nextDraft = draftFromSeqCaptureState(capture, { rootMidi: arpHarmonyContext.rootMidi, rootMidiAnchor: arpHarmonyContext.rootMidi, scaleId: arpHarmonyContext.scaleId }, source, current);
+                                    updateSeqDraft(laneIdx, nextDraft);
                                     return;
                                   }
-                                  playSeqLiveReanchored(seq.activeTab, seqLiveSlots[seq.activeTab]!, midi);
+                                  playSeqLiveReanchored(seq.activeTab, activeSeqLiveSlotId, midi);
                                 }}
-                                onNoteUp={() => { if (seqLiveSlots[seq.activeTab] != null && !seqLiveLatched[seq.activeTab]) stopSeqLive(seq.activeTab); }}
+                                onNoteUp={(midi) => {
+                                  const laneIdx = seq.activeTab;
+                                  if (activeSeqLiveSlotId != null) {
+                                    if (!activeSeqLiveLatched) stopSeqLive(laneIdx);
+                                    return;
+                                  }
+                                  seqDraftCaptureRef.current[laneIdx] = reduceHarmonyCaptureNoteOff(seqDraftCaptureRef.current[laneIdx] ?? initialHarmonyCaptureState(), midi);
+                                  releaseHarmonyLayer();
+                                }}
                                 suggestions={activeSuggestionBank.map((suggestion) => suggestion ? { id: suggestion.id, label: suggestion.label, notes: suggestion.exactMidiNotes, exactMidiNotes: suggestion.exactMidiNotes, category: suggestion.category, triggerKey: suggestion.triggerKey, audioSuggestion: suggestion } : null)}
-                                onSuggestion={(suggestion) => updateSeqDraft(seq.activeTab, { ...(seqDrafts[seq.activeTab] ?? emptyHarmonyDraft()), exactMidiNotes: [...suggestion.notes], recognizedLabel: suggestion.label, source: 'suggestion' })}
+                                onSuggestion={(suggestion) => updateSeqDraft(seq.activeTab, applySeqSuggestionToDraft(seqDrafts[seq.activeTab] ?? emptySeqHarmonyDraft(), { notes: suggestion.notes, label: suggestion.label, intent: suggestion.audioSuggestion?.intent ?? null, playbackBehavior: suggestion.audioSuggestion?.playbackBehavior }))}
+                                onSuggestionPress={previewSeqSuggestion}
+                                onSuggestionRelease={releaseSeqSuggestion}
+                                onSuggestionSave={saveSeqSuggestion}
                                 onSuggestionAssign={assignSuggestionToActiveChordStep}
+                                selectedStep={selectedArpStep}
                               />
                               </>
                             )}

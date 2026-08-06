@@ -1,9 +1,39 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: 'point-clouds-shared-bridge-asset',
+      apply: 'build' as const,
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'point-clouds/shared/kessho-site-bridge.js',
+          source: readFileSync(
+            fileURLToPath(new URL('./point-clouds/shared/kessho-site-bridge.js', import.meta.url)),
+            'utf8',
+          ),
+        });
+        for (const fileName of [
+          'point-clouds/shared/embedded/kessho-engine.html',
+          'point-clouds/shared/embedded/kessho-engine.iife.js',
+          'point-clouds/shared/embedded/kessho-product-core-assets.js',
+        ]) {
+          const sourcePath = fileURLToPath(new URL(`./${fileName}`, import.meta.url));
+          if (!existsSync(sourcePath)) continue;
+          this.emitFile({
+            type: 'asset',
+            fileName,
+            source: readFileSync(sourcePath),
+          });
+        }
+      },
+    },
+  ],
   envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
   ...(process.env.KESSHO_VITE_DISABLE_HMR === '1' || process.env.KESSHO_SEQUENCER_UI_PROOF_DISABLE_HMR === '1'
     ? { server: { hmr: false } }
@@ -35,8 +65,19 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     target: 'esnext',
+    modulePreload: { polyfill: false },
     sourcemap: mode !== 'production',
     rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        pointClouds: fileURLToPath(new URL('./point-clouds/index.html', import.meta.url)),
+        ...(existsSync(fileURLToPath(new URL('./point-clouds/alternative-a/index.html', import.meta.url)))
+          ? { pointCloudsAlternativeA: fileURLToPath(new URL('./point-clouds/alternative-a/index.html', import.meta.url)) }
+          : {}),
+        ...(existsSync(fileURLToPath(new URL('./point-clouds/alternative-b/index.html', import.meta.url)))
+          ? { pointCloudsAlternativeB: fileURLToPath(new URL('./point-clouds/alternative-b/index.html', import.meta.url)) }
+          : {}),
+      },
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/react')) return 'react-vendor';

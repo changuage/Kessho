@@ -4,6 +4,7 @@ import {
   defaultHarmonyChordSlot,
   defaultHarmonyProgression,
   makeHarmonyProgressionEventUnique,
+  migrateHarmonyProgression,
   reduceHarmonyProgression,
   resolveProductHarmonyState,
   sanitizeHarmonyProgression,
@@ -16,6 +17,7 @@ import { DEFAULT_STATE, decodeStateFromUrl, migratePreset } from '../ui/state';
 
 const base = defaultHarmonyProgression();
 const first = base.events[0]!;
+assert.equal(Object.prototype.hasOwnProperty.call(defaultHarmonyChordSlot(0), 'intent'), false, 'default runtime slots must not emit legacy top-level intent');
 
 // The persisted legacy sequence is a migration source, never a second runtime authority.
 const migrated = sanitizeHarmonyProgression(undefined, [
@@ -30,6 +32,25 @@ assert.notEqual(migrated.events[0]?.id, migrated.events[1]?.id);
 assert.equal(sanitizeHarmonyProgression(undefined, [
   { id: 1, enabled: true, mode: 'auto', degree: 0 },
 ], false).enabled, false, 'legacy sequence migration preserves Track Off');
+
+const oversizedMigration = migrateHarmonyProgression({
+  version: 1,
+  enabled: true,
+  currentEventIndex: 0,
+  events: Array.from({ length: HARMONY_PROGRESSION_CAPACITY + 3 }, (_, index) => ({
+    id: `oversized-${index}`,
+    source: { type: 'auto' },
+    duration: { unit: 'bar', value: 1 },
+  })),
+});
+assert.equal(oversizedMigration.progression.events.length, HARMONY_PROGRESSION_CAPACITY);
+assert.deepEqual(oversizedMigration.diagnostics, [{
+  code: 'progression-capacity-exceeded',
+  inputCount: HARMONY_PROGRESSION_CAPACITY + 3,
+  retainedCount: HARMONY_PROGRESSION_CAPACITY,
+  discardedCount: 3,
+  capacity: HARMONY_PROGRESSION_CAPACITY,
+}]);
 
 const withDurations = reduceHarmonyProgression(
   reduceHarmonyProgression(base, { type: 'setDuration', id: first.id, unit: 'bar', value: 2 }),

@@ -1392,15 +1392,15 @@ function assertWorkletSpectralFreezeRoutingBehavior(source, label) {
   const peak = Processor.prototype.processSpectralFreezePreReverb.call(processor, frames, 0.01);
   assertArrayClose(
     readPlanar(processor.reverbInputLeftPtr),
-    inputLeft.map((value) => value * 2 + value * 0.75),
+    inputLeft.map((value) => value * 2 * 0.25 + value * 0.75),
     `${label} spectral pre routing L`,
   );
   assertArrayClose(
     readPlanar(processor.reverbInputRightPtr),
-    inputRight.map((value) => value * -2 + value * 0.75),
+    inputRight.map((value) => value * -2 * 0.25 + value * 0.75),
     `${label} spectral pre routing R`,
   );
-  assert(peak > 0.2, `${label} spectral pre routing must recompute reverb input peak`);
+  assert(peak > 0.1, `${label} spectral pre routing must recompute reverb input peak`);
 
   processor.spectralFreezeRouting = 'post';
   const reverbOutLeft = [0.3, -0.1, 0.2, -0.05];
@@ -1421,9 +1421,23 @@ function assertWorkletSpectralFreezeRoutingBehavior(source, label) {
 
   Processor.prototype.resetParityFx.call(processor);
   assert(resetCalls === 1, `${label} resetParityFx must reset spectral freeze`);
-  Processor.prototype.configureSpectralFreezeModule.call(processor, { enabled: false });
-  assert(destroyCalls === 1, `${label} disabling spectral freeze must destroy the module`);
-  assert(processor.spectralFreezeModule === 0, `${label} disabling spectral freeze must clear the module id`);
+  Processor.prototype.configureSpectralFreezeModule.call(processor, {
+    enabled: false,
+    routing: 'pre',
+    reverbCrossfade: 1,
+    params: [0, 2, 0, 0.5, 2, 0, 0.15, 0.5, 0.55, -0.15, 0.85, 1, 1],
+  });
+  assert(destroyCalls === 0, `${label} disabling spectral freeze must retain the rolling recorder`);
+  assert(processor.spectralFreezeModule === spectralModule, `${label} disabling spectral freeze must retain its module`);
+  assert(processor.spectralFreezeEnabled === false, `${label} disabling spectral freeze must bypass its return`);
+  const bypassInputLeft = [0.07, -0.04, 0.02, -0.01];
+  const bypassInputRight = [-0.03, 0.06, -0.02, 0.01];
+  writePlanar(processor.reverbInputLeftPtr, bypassInputLeft);
+  writePlanar(processor.reverbInputRightPtr, bypassInputRight);
+  const bypassPeak = Processor.prototype.processSpectralFreezePreReverb.call(processor, frames, 0.17);
+  assertArrayClose(readPlanar(processor.reverbInputLeftPtr), bypassInputLeft, `${label} bypassed recorder must not alter L`);
+  assertArrayClose(readPlanar(processor.reverbInputRightPtr), bypassInputRight, `${label} bypassed recorder must not alter R`);
+  assert(Math.abs(bypassPeak - 0.17) <= 1.0e-6, `${label} bypassed recorder must preserve fallback peak`);
   assert(postMessages.length === 0, `${label} spectral freeze emitted unexpected messages: ${JSON.stringify(postMessages)}`);
 }
 
@@ -1950,10 +1964,12 @@ for (const token of [
   'computeGranularMacroModel',
   'GRANULAR_MODULE_PARAM_COUNT = 204',
   'createSpectralFreezeModuleConfig',
-  'SPECTRAL_FREEZE_MODULE_PARAM_COUNT = 6',
+  'SPECTRAL_FREEZE_MODULE_PARAM_COUNT = 13',
   'spectralFreezeReverbCrossfade',
   'spectralFreezeRouting',
-  'spectralFreezePhaseJitter',
+  'spectralFreezeCaptureSerial',
+  'spectralFreezeStretchSpeed',
+  'spectralFreezeDiffusion',
   'resolveDrumEuclidPatternParams',
   'seqEuclidean',
   'morphWaterPresets',

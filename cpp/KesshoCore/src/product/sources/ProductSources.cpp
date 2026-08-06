@@ -19,7 +19,8 @@ void KesshoProductEngine::applySourceParam(const KesshoProductEvent& event) {
   }
   SourceState& source = sources[event.target_id - 1u];
   const bool lead_source = isLeadProductSource(event.target_id);
-  const bool extended_envelope_source = lead_source || isSampleProductSource(event.target_id);
+  const bool extended_envelope_source =
+      isPadProductSource(event.target_id) || lead_source || isSampleProductSource(event.target_id);
   bool release_sample_voices = false;
   const auto sync_drum_module_param = [this, &event](uint32_t param_index, float value) {
     if (event.target_id != KESSHO_PRODUCT_SOURCE_DRUM || param_index >= kProductDrumRuntimeParamCount) {

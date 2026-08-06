@@ -13,26 +13,36 @@
 .global-root * { box-sizing: border-box; }
 .global-root { overflow-x: hidden; max-width: 100%; }
 
-/* ── Two-column layout ── */
+/* Preserve the established summary-left / Harmony-right desktop workspace. */
 .global-root .global-container {
-  max-width: 1200px;
+  max-width: 1480px;
   margin: 0 auto;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
   gap: var(--k-gap-container, 10px);
   align-items: flex-start;
-  flex-wrap: wrap;
 }
 
 .global-root .global-summary-panel {
-  flex: 0 0 460px;
+  order: 1;
   min-width: 0;
   max-width: 100%;
 }
 
 .global-root .global-engine-panel {
-  flex: 1;
-  min-width: 320px;
+  order: 2;
+  min-width: 0;
   max-width: 100%;
+}
+
+@media (min-width: 1500px) {
+  .global-root .global-container {
+    max-width: 1480px;
+    grid-template-columns: minmax(320px, 360px) minmax(980px, 1fr);
+  }
+
+  .global-root .global-summary-panel { order: 1; }
+  .global-root .global-engine-panel { order: 2; }
 }
 
 @media (max-width: 900px) {
@@ -125,8 +135,7 @@
   padding: 10px;
 }
 
-.global-root .harmony-engine-panel .harmony-manual-popup,
-.global-root .harmony-engine-panel .harmony-lab-popup {
+.global-root .harmony-engine-panel .harmony-manual-popup {
   margin: 0 10px 10px;
 }
 

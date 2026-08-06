@@ -142,6 +142,7 @@ function testGraphCoversAllCompositeLevels(): void {
   ]);
   assertChildScopes('source', 'granular', ['kit:granularKit:granularKit']);
   assertChildScopes('source', 'delay', ['kit:delayKit:delayKit']);
+  assertChildScopes('source', 'reverb', ['kit:reverbKit:reverbKit']);
   assertChildScopes('source', 'dynamicsBus', [
     'engine:dynamicsEq1:eq1',
     'engine:dynamicsEq2:eq2',
@@ -181,6 +182,10 @@ function testGraphCoversAllCompositeLevels(): void {
     'engine:leadDelay:leadDelay',
     'engine:echoLine:echoLine',
     'engine:clockedSpace:clockedSpace',
+  ]);
+  assertChildScopes('kit', 'reverbKit', [
+    'engine:reverbEngine:reverbEngine',
+    'engine:spectralFreeze:spectralFreeze',
   ]);
   assertChildScopes('kit', 'earthKit', [
     'engine:water:water',
@@ -343,6 +348,25 @@ function testOverlapIsStrippedAtEachLevel(): void {
   assert.equal('granularSpaceMode' in delayOverride, true, 'source-owned delay params should remain in L3 override');
   assert.equal('delayBToASend' in delayOverride, false, 'L2 delay kit params should move out of delay source override');
   assert.equal('delayBPattern' in delayOverride, false, 'Clocked Space L1 params should move out of delay source override');
+
+  const reverbData = extractCascade(DEFAULT_STATE, 3, 'reverb');
+  const reverbOverride = stripReferencedChildData(
+    reverbData,
+    childRefData(getPresetChildSpecs('source', 'reverb'), reverbData),
+  );
+  assert.equal('reverbEnabled' in reverbOverride, true, 'Reverb enable should remain in the L3 source override');
+  assert.equal('reverbDecay' in reverbOverride, false, 'Regular Reverb tuning should move into the L1 Reverb Engine');
+  assert.equal('spectralFreezeEnabled' in reverbOverride, false, 'Spectral Freeze ownership should move into the L2 Reverb Kit');
+
+  const reverbKitData = extractCascade(DEFAULT_STATE, 2, 'reverbKit');
+  const reverbKitOverride = stripReferencedChildData(
+    reverbKitData,
+    childRefData(getPresetChildSpecs('kit', 'reverbKit'), reverbKitData),
+  );
+  assert.equal('spectralFreezeEnabled' in reverbKitOverride, true, 'Spectral Freeze enable should remain in the L2 Reverb Kit');
+  assert.equal('spectralFreezeRouting' in reverbKitOverride, true, 'Freeze/Reverb routing should remain in the L2 Reverb Kit');
+  assert.equal('reverbDecay' in reverbKitOverride, false, 'Regular Reverb tuning should move out of the L2 kit');
+  assert.equal('spectralFreezeDiffusion' in reverbKitOverride, false, 'Spectral Freeze tuning should move into its L1 engine');
 
   const degradeData = extractCascade(DEFAULT_STATE, 3, 'degrade');
   const degradeOverride = stripReferencedChildData(

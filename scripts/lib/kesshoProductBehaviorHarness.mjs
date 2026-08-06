@@ -333,6 +333,7 @@ export function loadCoreProductHostHarness(options = {}) {
       this.telemetryCallback = null;
       this.visualTelemetryCallback = null;
       this.visualTelemetryActive = false;
+      this.ensureStartedCount = 0;
       runtimeInstances.push(this);
     }
 
@@ -348,7 +349,7 @@ export function loadCoreProductHostHarness(options = {}) {
       this.visualTelemetryActive = active;
     }
 
-    async ensureStarted() {}
+    async ensureStarted() { this.ensureStartedCount += 1; }
     async resume() {}
     async suspend() {}
     dispose() {}
@@ -781,6 +782,8 @@ export function loadCoreProductHostHarness(options = {}) {
     createCoreProductJourneyEvent: (enabled) => event('journey', { enabled }),
     createCoreProductJourneyStateEvent: (enabled, morphPhase = 0, morphRateBars = 4) =>
       event('journey-state', { enabled, morphPhase, morphRateBars }),
+    createCoreProductParamEvent: (paramId, value, targetId = 0, index = 0) =>
+      event('param', { paramId, value, targetId, index }),
     createCoreProductManualNoteEvent: (sourceId, midi, velocity, durationMs) =>
       event('manual-note', { sourceId, midi, velocity, durationMs }),
     createCoreProductHostMidiEvent: (message, timing) =>
@@ -1676,7 +1679,7 @@ globalThis.__generatedProductParams = KESSHO_PRODUCT_PARAMS;`, generatedParamsCo
       { index: 6, paramStart: 92, paramCount: 12 },
     ],
 	    KESSHO_PRODUCT_LEAD_PARAM_COUNT: 112,
-	    KESSHO_PRODUCT_PAD_PARAM_COUNT: 53,
+	    KESSHO_PRODUCT_PAD_PARAM_COUNT: 52,
     KESSHO_PRODUCT_PARAM_IDS: createParamIds(),
     KESSHO_PRODUCT_PARAMS: generatedParamsContext.__generatedProductParams,
     HARMONY_QUALITY_IDS: {

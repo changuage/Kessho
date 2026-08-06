@@ -1,8 +1,10 @@
 import React, { useMemo } from 'react';
-import type { SliderState } from '../state';
+import type { SliderMode, SliderState } from '../state';
 import {
+  createRuntimePadPreset,
   getFactoryPadPresetIdByName,
   getPadPresetOptions,
+  PAD_PRESET_PARAM_KEYS,
   PAD1_TO_PAD2_KEY,
   upsertUserPadPreset,
 } from '../../audio/padPresets';
@@ -16,21 +18,6 @@ import {
 } from '../../presets/PresetManagerController';
 import { canRatePadPreset, findPadPresetSummary, ratePadPreset } from './padPresetRating';
 import { PRESET_POOL_ICON } from '../../presets/presetPool';
-
-const PAD2_TO_PAD1_KEY = Object.fromEntries(
-  Object.entries(PAD1_TO_PAD2_KEY).map(([pad1Key, pad2Key]) => [pad2Key, pad1Key]),
-) as Record<string, string>;
-
-function createRuntimePadPreset(scope: 'pad1' | 'pad2', name: string, data: Record<string, unknown>, tags?: string[]) {
-  const params: Record<string, number | string | boolean> = {};
-  for (const [key, value] of Object.entries(data)) {
-    const targetKey = scope === 'pad1' ? key : PAD2_TO_PAD1_KEY[key];
-    if (targetKey && (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean')) {
-      params[targetKey] = value;
-    }
-  }
-  return { name, tags: tags ?? [], params };
-}
 
 function resolveRuntimePadPresetId(entry: Pick<PresetEntry, 'id' | 'name'>): string {
   return getFactoryPadPresetIdByName(entry.name) ?? entry.id ?? entry.name;
@@ -51,6 +38,8 @@ export interface SynthPresetManagerProps {
   poolButtonAriaLabel?: string;
   poolButtonLabel?: React.ReactNode;
   variationControls?: PresetManagerVariationControls;
+  sliderModes?: Record<string, SliderMode>;
+  dualSliderRanges?: Record<string, { min: number; max: number }>;
 }
 
 const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
@@ -68,6 +57,8 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
   poolButtonAriaLabel = 'Edit preset pool',
   poolButtonLabel = PRESET_POOL_ICON,
   variationControls,
+  sliderModes,
+  dualSliderRanges,
 }) => {
   const padOptions = useMemo(() => getPadPresetOptions(engineScope), [engineScope, repository.presets]);
   const options = useMemo<PresetManagerOption[]>(
@@ -91,7 +82,7 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
         id: resolveRuntimePadPresetId(entry),
         name: entry.name,
         library: entry.library === 'cloud' ? 'cloud' : 'user',
-        preset: createRuntimePadPreset(engineScope, entry.name, version.data, entry.tags),
+        preset: createRuntimePadPreset(engineScope, entry.name, version.data, entry.tags, version.dualRanges, version.sliderModes),
       });
     },
     onRenamed: (entry: PresetEntry) => {
@@ -101,11 +92,28 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
         id: resolveRuntimePadPresetId(entry),
         name: entry.name,
         library: entry.library === 'cloud' ? 'cloud' : 'user',
-        preset: createRuntimePadPreset(engineScope, entry.name, version.data, entry.tags),
+        preset: createRuntimePadPreset(engineScope, entry.name, version.data, entry.tags, version.dualRanges, version.sliderModes),
       });
     },
     applyToSlot: (slot: 'A' | 'B', value: string) => {
       onSelectChange(slot === 'A' ? slotAKey : slotBKey, value as SliderState[keyof SliderState]);
+    },
+    getSaveMetadata: () => {
+      const relevantKeys = PAD_PRESET_PARAM_KEYS
+        .map((key) => engineScope === 'pad2' ? PAD1_TO_PAD2_KEY[key] : key)
+        .filter((key): key is string => Boolean(key));
+      const nextDualRanges: Record<string, { min: number; max: number }> = {};
+      const nextSliderModes: Record<string, SliderMode> = {};
+      for (const key of relevantKeys) {
+        const range = dualSliderRanges?.[key];
+        if (!range) continue;
+        nextDualRanges[key] = range;
+        const mode = sliderModes?.[key];
+        if (mode === 'walk' || mode === 'sampleHold') nextSliderModes[key] = mode;
+      }
+      return Object.keys(nextDualRanges).length > 0
+        ? { dualRanges: nextDualRanges, sliderModes: nextSliderModes }
+        : undefined;
     },
     canRate: (option: PresetManagerOption) => {
       const padOption = padOptions.find(candidate => candidate.id === option.value);
@@ -123,7 +131,7 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
         updateMetadata: repository.updateMetadata,
       });
     },
-  }), [engineScope, onSelectChange, padOptions, repository, slotAKey, slotBKey]);
+  }), [dualSliderRanges, engineScope, onSelectChange, padOptions, repository, sliderModes, slotAKey, slotBKey]);
   const controller = usePresetManagerController({
     repository,
     options,

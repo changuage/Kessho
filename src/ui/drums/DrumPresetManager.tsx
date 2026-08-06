@@ -1,9 +1,8 @@
 import React, { useMemo } from 'react';
-import type { SliderState } from '../state';
+import type { SliderMode, SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
-import type { DrumVoicePreset } from '../../audio/drumPresets';
-import { getFactoryPresetNames, renameUserPreset, upsertUserPreset } from '../../audio/drumPresets';
-import { DRUM_VOICE_SCOPES } from '../../audio/drumVoiceConfig';
+import { createRuntimeDrumPreset, getFactoryPresetNames, renameUserPreset, upsertUserPreset } from '../../audio/drumPresets';
+import { DRUM_VOICE_PARAM_KEYS, DRUM_VOICE_SCOPES } from '../../audio/drumVoiceConfig';
 import { VOICE_MORPH_KEYS } from '../../audio/drumMorph';
 import type { PresetEntry } from '../../presets/types';
 import {
@@ -13,16 +12,8 @@ import {
   type PresetManagerRepository,
 } from '../../presets/PresetManagerController';
 import { canRateDrumPreset, rateDrumPreset } from './drumPresetRating';
-import { applyDrumPresetSlotChange } from './drumPresetApply';
+import { applyDrumPresetSlotChange, resolveDrumPresetDualStateFromState } from './drumPresetApply';
 import { PRESET_POOL_ICON } from '../../presets/presetPool';
-
-function createRuntimeDrumPreset(voice: DrumVoiceType, name: string, data: Record<string, unknown>, tags?: string[]): DrumVoicePreset {
-  const params: Record<string, number | string> = {};
-  for (const [key, value] of Object.entries(data)) {
-    if (typeof value === 'number' || typeof value === 'string') params[key] = value;
-  }
-  return { name, voice, params, tags: tags ?? [] };
-}
 
 export interface DrumPresetManagerProps {
   voice: DrumVoiceType;
@@ -31,6 +22,13 @@ export interface DrumPresetManagerProps {
   onParamChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   repository: PresetManagerRepository;
+  sliderModes?: Record<string, SliderMode>;
+  dualSliderRanges?: Record<string, { min: number; max: number }>;
+  onDualStateChange?: (
+    relevantKeys: string[],
+    dualRanges?: Record<string, { min: number; max: number }>,
+    sliderModes?: Record<string, SliderMode>,
+  ) => void;
   onOpenPool?: () => void;
   poolButtonTitle?: string;
   poolButtonAriaLabel?: string;
@@ -44,6 +42,9 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
   onParamChange,
   onStateChange,
   repository,
+  sliderModes,
+  dualSliderRanges,
+  onDualStateChange,
   onOpenPool,
   poolButtonTitle = 'Edit drum preset pool',
   poolButtonAriaLabel = 'Edit drum preset pool',
@@ -76,18 +77,39 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
     valueForEntry: (entry: PresetEntry) => entry.name,
     onSaved: (entry: PresetEntry) => {
       const version = entry.versions.find(item => item.v === entry.currentVersion) ?? entry.versions[entry.versions.length - 1];
-      if (version) upsertUserPreset(voice, createRuntimeDrumPreset(voice, entry.name, version.data, entry.tags));
+      if (version) upsertUserPreset(voice, createRuntimeDrumPreset(
+        voice, entry.name, version.data, entry.tags, version.dualRanges, version.sliderModes,
+      ));
     },
     onRenamed: (entry: PresetEntry, previousName: string) => {
       const version = entry.versions.find(item => item.v === entry.currentVersion) ?? entry.versions[entry.versions.length - 1];
-      if (version) renameUserPreset(voice, previousName, createRuntimeDrumPreset(voice, entry.name, version.data, entry.tags));
+      if (version) renameUserPreset(voice, previousName, createRuntimeDrumPreset(
+        voice, entry.name, version.data, entry.tags, version.dualRanges, version.sliderModes,
+      ));
     },
     applyToSlot: (slot: 'A' | 'B', value: string) => {
+      const next = applyDrumPresetSlotChange(state, voice, slot, value);
       if (onStateChange) {
         onStateChange(previous => applyDrumPresetSlotChange(previous, voice, slot, value));
       } else {
         onParamChange(morphKeys[slot === 'A' ? 'presetA' : 'presetB'], value as SliderState[keyof SliderState]);
       }
+      const dualState = resolveDrumPresetDualStateFromState(next, voice);
+      onDualStateChange?.(dualState.relevantKeys, dualState.dualRanges, dualState.sliderModes);
+    },
+    getSaveMetadata: () => {
+      const nextDualRanges: Record<string, { min: number; max: number }> = {};
+      const nextSliderModes: Record<string, SliderMode> = {};
+      for (const key of DRUM_VOICE_PARAM_KEYS[voice]) {
+        const range = dualSliderRanges?.[key];
+        if (!range) continue;
+        nextDualRanges[key] = range;
+        const mode = sliderModes?.[key];
+        if (mode === 'walk' || mode === 'sampleHold') nextSliderModes[key] = mode;
+      }
+      return Object.keys(nextDualRanges).length > 0
+        ? { dualRanges: nextDualRanges, sliderModes: nextSliderModes }
+        : undefined;
     },
     canRate: (option: PresetManagerOption) => canRateDrumPreset(voice, option.value, repository.presets),
     rate: async (option: PresetManagerOption, rating: number) => {
@@ -100,7 +122,7 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
         updateMetadata: repository.updateMetadata,
       });
     },
-  }), [morphKeys, onParamChange, onStateChange, repository, voice]);
+  }), [dualSliderRanges, morphKeys, onDualStateChange, onParamChange, onStateChange, repository, sliderModes, state, voice]);
   const controller = usePresetManagerController({
     repository,
     options,

@@ -26,11 +26,8 @@
     }
   }
   spectral_freeze_module->processPlanarStereo(input_l, input_r, output_l, output_r, static_cast<int>(frames));
-  const float mix = clampFloat(fx.spectral_freeze_mix, 0.0f, 1.0f);
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    output_l[i] = input_l[i] * (1.0f - mix) + output_l[i] * mix;
-    output_r[i] = input_r[i] * (1.0f - mix) + output_r[i] * mix;
     if (graph_taps_enabled) {
       graph_spectral_freeze_output_l[frame] = output_l[i];
       graph_spectral_freeze_output_r[frame] = output_r[i];

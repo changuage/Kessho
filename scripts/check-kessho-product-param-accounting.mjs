@@ -420,7 +420,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
   if (key === 'synthVoiceMask' || key === 'pad2VoiceAssign') {
     return {
       path: 'pad-voice-routing-snapshot',
-      evidence: ['src/audio/coreProductSnapshotPadVoiceRouting.ts', 'src/audio/CoreProductRuntimeAdapter.ts#appendSequencerLaneDiffs', 'src/audio/coreProductArrangementPadChord.ts'],
+      evidence: ['src/audio/coreProductSnapshotPadVoiceRouting.ts', 'src/audio/CoreProductRuntimeAdapter.ts#appendSequencerLaneDiffs', 'src/audio/coreProductArrangementVoiceMapping.ts'],
     };
   }
 
@@ -1020,7 +1020,7 @@ const PRODUCT_SNAPSHOT_KEY_PATHS = [
   'src/audio/coreProductSequencerHold.ts',
   'src/audio/coreProductAssets.ts',
   'src/audio/coreProductArrangementSnapshot.ts',
-  'src/audio/coreProductArrangementPadChord.ts',
+  'src/audio/coreProductArrangementVoiceMapping.ts',
   'src/audio/coreProductArrangementSchedulerUtils.ts',
   'src/audio/coreProductChordVoices.ts',
   'src/audio/granularMacroCore.ts',
@@ -1197,6 +1197,10 @@ const defaultsOutsideQuantization = [];
 const postLpfBoundedNumberRangeMismatches = collectPostLpfBoundedNumberRangeMismatches();
 const staleDeferredCoverage = [];
 const liveRangeWithoutSnapshotCoverage = [];
+const eventOnlyTransientRangeKeys = new Set([
+  'spectralFreezeActive',
+  'spectralFreezeCaptureSerial',
+]);
 const deferred = [];
 const unaccounted = [];
 
@@ -1225,7 +1229,7 @@ for (const key of [...sliderKeys].sort()) {
         owner: staleClassification.owner,
       });
     }
-    if (rangeTargetKeys.has(key) && !snapshotReferencedKeys.has(key)) {
+    if (rangeTargetKeys.has(key) && !snapshotReferencedKeys.has(key) && !eventOnlyTransientRangeKeys.has(key)) {
       liveRangeWithoutSnapshotCoverage.push({
         key,
         domain: controlDomain(key),

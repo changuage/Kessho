@@ -10,6 +10,7 @@ export type ProductEngineTelemetryPort = {
   getTelemetry(): ProductTelemetrySnapshot | null;
   getDynamicsVisualTelemetry(): ProductDynamicsVisualTelemetry;
   requestTelemetryOnce(): void;
+  requestVisualTelemetryAfterRender(): void;
   setTelemetryCallback(callback: ((telemetry: ProductTelemetrySnapshot) => void) | null): void;
   setSimpleSequencerVisualPlanActive(active: ProductSimpleSequencerVisualPlanActive): void;
   setVisualTelemetryActive(active: boolean): void;

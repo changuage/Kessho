@@ -128,30 +128,6 @@ export type CoreProductGranularVisualEvent = {
   cloudStyle: number;
 };
 
-export type CoreProductDebugSourceState = {
-  sourceId: number;
-  presetId: number;
-  sourcePresetAId: number;
-  sourcePresetBId: number;
-  sourceRevision: number;
-  sourceStateHash: string;
-  compiledSourceHash: string;
-  overrideBlockHash: string;
-};
-
-export type CoreProductDebugVoiceSpawn = {
-  triggerSample: number;
-  triggerSequence: number;
-  sourceId: number;
-  voiceId: number;
-  presetId: number;
-  sourceRevision: number;
-  sourceStateHash: string;
-  compiledSourceHash: string;
-  overrideBlockHash: string;
-  triggerContextHash: string;
-};
-
 export type CoreProductTelemetrySnapshot = {
   schemaHash: number;
   sampleRate?: number;
@@ -220,8 +196,6 @@ export type CoreProductTelemetrySnapshot = {
   runtimeWalkValues?: Record<number, number>;
   earthTextureDebugState?: import('./engineSharedTypes').EarthTextureDebugState;
   productModulationDebug?: CoreProductModulationDebugSnapshot;
-  productDebugSourceStates?: CoreProductDebugSourceState[];
-  productDebugVoiceSpawns?: CoreProductDebugVoiceSpawn[];
   runtimeWalkDebug?: import('./product/host/CoreProductRuntimeWalkDebug').CoreProductRuntimeWalkDebugState;
   sampleHoldDebug?: import('./product/host/CoreProductSampleHoldFeedbackBridge').CoreProductSampleHoldDebugState;
   rngSeed?: number;
@@ -257,6 +231,9 @@ export type CoreProductTelemetrySnapshot = {
   workletMasterStemPeak?: number;
   workletPadStemPeak?: number;
   workletLeadStemPeak?: number;
+  workletDrumStemPeak?: number;
+  workletSampleStemPeak?: number;
+  workletEarthStemPeak?: number;
   workletFxStemPeak?: number;
   granularWriteHeadPosition?: number;
   granularVoicePositions?: [number, number, number, number];
@@ -414,5 +391,8 @@ export type CoreProductVisualTelemetrySnapshot = Pick<
   | 'workletMasterStemPeak'
   | 'workletPadStemPeak'
   | 'workletLeadStemPeak'
+  | 'workletDrumStemPeak'
+  | 'workletSampleStemPeak'
+  | 'workletEarthStemPeak'
   | 'workletFxStemPeak'
 >;

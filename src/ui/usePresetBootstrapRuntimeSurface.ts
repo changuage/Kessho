@@ -47,7 +47,11 @@ export function usePresetBootstrapRuntimeSurface<TSavedPreset extends { name: st
     loadBundledPresetByName,
   });
 
-  const { cloudPresetStoreReadyPromiseRef, loadCloudAutoStartPreset } = useCloudPresetStoreBootstrap<TSavedPreset>({
+  const {
+    cloudPresetStoreReadyPromiseRef,
+    loadCloudAutoStartPreset,
+    loadCloudAutoStartPresetStrict,
+  } = useCloudPresetStoreBootstrap<TSavedPreset>({
     cloudEnabled,
     defaultAutoStartPresetName,
     shouldInitializeCloudPresetStore,
@@ -66,6 +70,7 @@ export function usePresetBootstrapRuntimeSurface<TSavedPreset extends { name: st
 
   return {
     cloudPresetStoreReadyPromiseRef,
+    loadCloudAutoStartPresetStrict,
     resolveDefaultAutoStartPreset,
   };
 }

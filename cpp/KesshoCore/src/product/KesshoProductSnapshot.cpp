@@ -480,6 +480,7 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   harmony.seed_material[sizeof(harmony.seed_material) - 1u] = '\0';
   harmony.next_phrase_index = static_cast<uint64_t>(snapshot.harmony.next_phrase_index_low) |
       (static_cast<uint64_t>(snapshot.harmony.next_phrase_index_high) << 32u);
+  harmony.next_phrase_index = std::max<uint64_t>(1u, harmony.next_phrase_index);
   harmony.next_progression_phrase_index = static_cast<uint64_t>(snapshot.harmony.next_progression_phrase_index_low) |
       (static_cast<uint64_t>(snapshot.harmony.next_progression_phrase_index_high) << 32u);
   harmony.phrase_length_seconds = clampFloat(snapshot.harmony.phrase_length_seconds, 0.001f, 4096.0f);
@@ -792,11 +793,20 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   fx.reverb_resolution_bloom = snapshot.fx.reverb_resolution_bloom != 0u;
   fx.spectral_freeze_mix = clampFloat(snapshot.fx.spectral_freeze_mix, 0.0f, 1.0f);
   fx.spectral_freeze_enabled = snapshot.fx.spectral_freeze_enabled != 0u;
+  // Stored presets sanitize transient capture state before encoding. Applying
+  // live values here keeps an active capture alive across unrelated snapshots.
   fx.spectral_freeze_active = snapshot.fx.spectral_freeze_active != 0u;
-  fx.spectral_freeze_slushy = snapshot.fx.spectral_freeze_slushy != 0u;
-  fx.spectral_freeze_speed = clampFloat(snapshot.fx.spectral_freeze_speed, 0.0f, 1.0f);
-  fx.spectral_freeze_decay = clampFloat(snapshot.fx.spectral_freeze_decay, 0.0f, 1.0f);
-  fx.spectral_freeze_phase_jitter = clampFloat(snapshot.fx.spectral_freeze_phase_jitter, 0.0f, 1.0f);
+  fx.spectral_freeze_mode = clampU32(snapshot.fx.spectral_freeze_mode, 0u, 3u);
+  fx.spectral_freeze_capture_serial = snapshot.fx.spectral_freeze_capture_serial;
+  fx.spectral_freeze_stretch_speed = clampFloat(snapshot.fx.spectral_freeze_stretch_speed, 0.0f, 1.0f);
+  fx.spectral_freeze_direction = clampU32(snapshot.fx.spectral_freeze_direction, 0u, 2u);
+  fx.spectral_freeze_position = clampFloat(snapshot.fx.spectral_freeze_position, 0.0f, 1.0f);
+  fx.spectral_freeze_refresh = clampFloat(snapshot.fx.spectral_freeze_refresh, 0.0f, 1.0f);
+  fx.spectral_freeze_input_sensitivity = clampFloat(snapshot.fx.spectral_freeze_input_sensitivity, 0.0f, 1.0f);
+  fx.spectral_freeze_diffusion = clampFloat(snapshot.fx.spectral_freeze_diffusion, 0.0f, 1.0f);
+  fx.spectral_freeze_tone = clampFloat(snapshot.fx.spectral_freeze_tone, -1.0f, 1.0f);
+  fx.spectral_freeze_width = clampFloat(snapshot.fx.spectral_freeze_width, 0.0f, 1.0f);
+  fx.spectral_freeze_sustain = clampFloat(snapshot.fx.spectral_freeze_sustain, 0.0f, 1.0f);
   fx.spectral_freeze_routing = clampU32(snapshot.fx.spectral_freeze_routing, 0u, 1u);
   fx.spectral_freeze_reverb_crossfade = clampFloat(snapshot.fx.spectral_freeze_reverb_crossfade, 0.0f, 1.0f);
   fx.dynamics_drive = clampFloat(snapshot.fx.dynamics_drive, 0.0f, 1.0f);
@@ -1037,7 +1047,8 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     const bool lead_source =
         source.source_id == KESSHO_PRODUCT_SOURCE_LEAD1 ||
         source.source_id == KESSHO_PRODUCT_SOURCE_LEAD2;
-    const bool extended_envelope_source = lead_source || isSampleProductSource(source.source_id);
+    const bool extended_envelope_source =
+        isPadProductSource(source.source_id) || lead_source || isSampleProductSource(source.source_id);
     sources[i].attack_seconds = source.attack_seconds > 0.0f && std::isfinite(source.attack_seconds)
         ? clampFloat(source.attack_seconds, 0.001f, extended_envelope_source ? 16.0f : 2.0f)
         : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS;

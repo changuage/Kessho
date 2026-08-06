@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import type { SliderState } from '../state';
+import type { SliderMode, SliderState } from '../state';
 import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumVoiceConfig } from '../../audio/drumVoiceConfig';
@@ -31,6 +31,13 @@ interface VoiceCardProps {
   getAnalyserNode?: (voice: DrumVoiceType) => AnalyserNode | undefined;
   preloadAudioEngine?: () => Promise<unknown>;
   liveCaptureEnabled?: boolean;
+  sliderModes?: Record<string, SliderMode>;
+  dualSliderRanges?: Record<string, { min: number; max: number }>;
+  onDualStateChange?: (
+    relevantKeys: string[],
+    dualRanges?: Record<string, { min: number; max: number }>,
+    sliderModes?: Record<string, SliderMode>,
+  ) => void;
 }
 
 const DELAY_SEND_KEYS: Partial<Record<DrumVoiceType, keyof SliderState>> = {
@@ -70,6 +77,9 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
   getAnalyserNode,
   preloadAudioEngine,
   liveCaptureEnabled = true,
+  sliderModes,
+  dualSliderRanges,
+  onDualStateChange,
 }) => {
   const isEditing = editingVoice === voice;
   const macros = VARIATION_KEYS[voice];
@@ -165,6 +175,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
             poolPopupSlot={poolPopupSlot}
             onPoolPopupSlotChange={setPoolPopupSlot}
             repository={presetRepository}
+            onDualStateChange={onDualStateChange}
           />
 
           {/* Macro sliders: Variation + Distance in 2-column grid */}
@@ -206,6 +217,9 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
             onParamChange={onParamChange}
             onStateChange={onStateChange}
             repository={presetRepository}
+            sliderModes={sliderModes}
+            dualSliderRanges={dualSliderRanges}
+            onDualStateChange={onDualStateChange}
             onOpenPool={() => setPoolPopupSlot('A')}
             poolButtonTitle="Edit drum preset pool"
             poolButtonAriaLabel="Edit drum preset pool"

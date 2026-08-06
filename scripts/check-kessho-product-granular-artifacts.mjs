@@ -295,8 +295,8 @@ requireTokens('cpp/KesshoCore/src/product/fx/ProductGranularPhraseRuntime.cpp', 
 requireTokens('cpp/KesshoCore/src/product/fx/ProductGranular.cpp', [
   'renderGranular',
   'fx.granular_enabled',
-  'configureGranularLowpass(granular_output_lpf',
-  'configureGranularLowpass(granular_reverb_lpf',
+  'updateProductBiquadCoefficients(granular_output_lpf',
+  'updateProductBiquadCoefficients(granular_reverb_lpf',
   'updateGranularReverbCompressorCoeffs',
   'granular_reverb_comp_attack_coeff',
   'granular_reverb_comp_release_coeff',
@@ -304,9 +304,9 @@ requireTokens('cpp/KesshoCore/src/product/fx/ProductGranular.cpp', [
   'routeTerminalSample(routing.dynamics_routes[kDynamicsRouteGranular]',
 ]);
 
-requireTokens('cpp/KesshoCore/src/product/fx/ProductGranularFilters.cpp', [
-  'clampFloat(cutoff_hz',
-  'std::isfinite(y) ? y : 0.0f',
+requireTokens('cpp/KesshoCore/src/product/KesshoProductRender.cpp', [
+  'updateProductBiquadCoefficients(',
+  'processProductBiquadSample(',
 ]);
 
 requireTokens('cpp/KesshoCore/src/product/fx/ProductFxModules.cpp', [

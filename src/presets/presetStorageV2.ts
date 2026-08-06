@@ -687,6 +687,12 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
     ];
   }
 
+  if (type === 'source' && normalizedScope === 'reverb') {
+    return [
+      kitChild('reverbKit', 'reverbKit'),
+    ];
+  }
+
   if (type === 'source' && normalizedScope === 'dynamicsBus') {
     return [
       engineSubsetChild('eq1', 'dynamicsEq1', DYNAMICS_EQ1_PRESET_KEYS),
@@ -734,6 +740,13 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
       engineChild('drumBeepLo', 'drumBeepLo'),
       engineChild('drumNoise', 'drumNoise'),
       engineChild('drumMembrane', 'drumMembrane'),
+    ];
+  }
+
+  if (type === 'kit' && normalizedScope === 'reverbKit') {
+    return [
+      engineChild('reverbEngine', 'reverbEngine'),
+      engineChild('spectralFreeze', 'spectralFreeze'),
     ];
   }
 

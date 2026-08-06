@@ -29,6 +29,10 @@ void KesshoProductEngine::resetArrangementRuntime() {
       ? transport.sample_frame
       : transport.sample_frame + arrangementFrames(sample_rate, arrangement.lead_initial_delay_seconds);
   arrangement.lead_phrase_index = 0u;
+  arrangement.chord_phrase_start_frame = transport.sample_frame;
+  arrangement.chord_phrase_index = harmony.next_phrase_index > 0u
+      ? harmony.next_phrase_index - 1u
+      : 0u;
   arrangement.chord_generator_pending = arrangement.chord_generator_enabled;
   arrangement.pending_count = 0u;
   arrangement.rng_state = arrangement.rng_seed;
@@ -249,9 +253,6 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
 
   if (arrangement.chord_generator_pending) {
     arrangement.chord_generator_pending = false;
-    const uint64_t phrase_frames = arrangementFrames(sample_rate, harmony.phrase_length_seconds);
-    const uint64_t phrase_index = block_start / phrase_frames;
-    const uint64_t phrase_start_sample = phrase_index * phrase_frames;
     queue_chord(
         block_start,
         arrangement.chord_generator_source_id,
@@ -266,8 +267,8 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
         -1.0f,
         -1.0f,
         KESSHO_PRODUCT_SIMPLE_SEQUENCER_VISUAL_CHORD,
-        phrase_start_sample,
-        phrase_index,
+        arrangement.chord_phrase_start_frame,
+        arrangement.chord_phrase_index,
         harmony.phrase_length_seconds,
         harmony.chord_interval_seconds);
   }

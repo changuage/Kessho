@@ -41,7 +41,6 @@ import { applyCoreProductSnapshotUpdate, loadCoreProductSnapshot } from './produ
 import { createCoreProductHostSnapshot } from './product/host/CoreProductHostSnapshotFactory';
 import { CoreProductSonicAutonomyTracker, createCoreProductPerfSnapshot, enrichCoreProductHostTelemetry, mergeCoreProductVisualTelemetry } from './product/host/CoreProductTelemetryAdapter';
 import { createCoreProductEarthTextureDebugState } from './product/host/CoreProductEarthTextureDebug';
-import { logCoreProductDebugTelemetry } from './CoreProductHostDebugTelemetry';
 import { reconcileCoreProductSequencerUiState } from './product/host/CoreProductSequencerUiAdapter';
 import { coreProductSequencerLaneCacheCount, createCoreProductSequencerCacheState, enabledCoreProductSequencerSubLanes, ensureCoreProductSequencerLaneCache, selectCoreProductSequencerCache, type CoreProductSequencerCacheState } from './product/host/CoreProductSequencerCacheBridge';
 import { handleCoreProductSequencerControlEvent } from './product/host/CoreProductSequencerControlEventBridge';
@@ -119,7 +118,7 @@ class CoreProductEngineHost {
   private readonly diagnostics = new CoreProductHostDiagnostics();
   private readonly statePatchQueue = new CoreProductStatePatchQueue({ latestSliderState: () => this.latestSliderState, applyProductState: (sliderState, reason, options) => this.applyProductState(sliderState, reason, options) });
   private readonly resolvedStateCommitService = new CoreProductResolvedStateCommitService({ diagnostics: this.diagnostics, applyProductStatePatch: (patch, reason, options) => this.applyProductStatePatch(patch, reason, options), postProductEvents: (events) => this.postProductEvents(events) });
-  private readonly realtimeInputBootstrap = new CoreProductRealtimeInputBootstrap({ runtime: this.runtime, runtimeReady: () => this.runtimeReady, setRuntimeReady: (ready) => { this.runtimeReady = ready; }, loadLatestSnapshot: () => this.loadLatestSnapshot('runtime-bootstrap'), post: (event) => this.postRuntimeProductEvent(event) });
+  private readonly realtimeInputBootstrap = new CoreProductRealtimeInputBootstrap({ runtime: this.runtime, runtimeReady: () => this.runtimeReady, setRuntimeReady: (ready) => { this.runtimeReady = ready; }, loadLatestSnapshot: () => this.loadLatestSnapshot('runtime-bootstrap'), post: (event) => this.postRuntimeProductEvent(event), postMany: (events) => this.postRuntimeProductEvents(events) });
   private readonly realtimeTimestampMapper = new CoreProductRealtimeTimestampMapper();
   private sequencerTransportStartInFlight = false;
   private pendingSnapshotReloadReason: SnapshotReloadReason | null = null;
@@ -261,6 +260,9 @@ class CoreProductEngineHost {
   }
   requestProductTelemetryOnce(): void {
     this.runtime.requestTelemetryOnce('manual');
+  }
+  requestProductVisualTelemetryAfterRender(): void {
+    this.runtime.requestVisualTelemetryAfterRender();
   }
 
   setMobileWebEvidenceTelemetryObserver(
@@ -425,6 +427,17 @@ class CoreProductEngineHost {
     this.latestProductSnapshot = this.createLatestSnapshot();
   }
 
+  async preload(): Promise<void> {
+    await this.runtime.ensureStarted();
+    this.runtimeReady = true;
+    // Queue the current snapshot while the context is still suspended. The
+    // worklet processes it before any later realtime input because both use
+    // the same MessagePort, without putting snapshot acknowledgement latency
+    // on the first key press.
+    await this.loadLatestSnapshot('runtime-bootstrap', false, false);
+    this.latestProductSnapshot = this.createLatestSnapshot();
+  }
+
   primeAudioContext(): void {
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('parity') === '1') {
       document.documentElement.dataset.coreProductAudioPrime = 'requested';
@@ -544,9 +557,15 @@ class CoreProductEngineHost {
     const event = createCoreProductHostMidiEvent(message, this.realtimeTimestampMapper.midiContext(message, this.runtime.audioContext));
     this.realtimeInputBootstrap.postWhenReady(event, 'midi');
   }
-  enqueueLiveNoteEvent(event: ProductLiveNoteEvent): void {
+  enqueueRealtimeEvent(event: CoreProductEvent): Promise<void> {
+    return this.realtimeInputBootstrap.postWhenReadyAsync(event);
+  }
+  enqueueRealtimeEvents(events: readonly CoreProductEvent[]): Promise<void> {
+    return this.realtimeInputBootstrap.postManyWhenReadyAsync(events);
+  }
+  async enqueueLiveNoteEvent(event: ProductLiveNoteEvent): Promise<void> {
     const productEvent = createCoreProductLiveNoteEvent(event, this.realtimeTimestampMapper.liveNoteContext(event, this.runtime.audioContext));
-    this.realtimeInputBootstrap.postWhenReady(productEvent, 'live-note');
+    await this.realtimeInputBootstrap.postWhenReadyAsync(productEvent);
   }
   setRuntimeWalkPositionsCallback(callback: ((positions: Record<string, number>) => void) | null): void { this.setDisplayCallback('runtimeWalkPositions', callback); callback?.(this.modulationRangeBridge.getRuntimeWalkPositions()); }
   setDrumMorphRange(voice: unknown, range: { min: number; max: number } | null): void {
@@ -587,7 +606,7 @@ class CoreProductEngineHost {
   setDrumStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void { this.setDisplayCallback('drumStepPosition', callback); this.sequencerVisuals.publishStepCallbackRegistration(callback, this.running, this.latestTelemetry, PRODUCT_VISIBLE_DRUM_LANE_COUNT); }
   setSynthStepPositionCallback(callback: ((steps: number[], hitCounts: number[], arpSteps?: number[]) => void) | null): void { this.setDisplayCallback('synthStepPosition', callback); this.sequencerVisuals.publishStepCallbackRegistration(callback, this.running, this.latestTelemetry, PRODUCT_VISIBLE_SYNTH_LANE_COUNT); }
   setSynthOrbitVisualStateCallback(callback: ((lanes: Array<CoreProductOrbitVisualLaneState | null>) => void) | null): void { this.setDisplayCallback('synthOrbitVisualState', callback); callback?.(this.sequencerVisuals.currentSynthOrbitVisualState(this.running ? this.latestTelemetry : null)); }
-  setSynthAnchorWalkerVisualStateCallback(callback: ((lanes: Array<CoreProductAnchorWalkerVisualLaneState | null>) => void) | null): void { this.setDisplayCallback('synthAnchorWalkerVisualState', callback); callback?.(this.sequencerVisuals.currentSynthAnchorWalkerVisualState(this.running ? this.latestTelemetry : null)); }
+  setSynthAnchorWalkerVisualStateCallback(callback: ((lanes: Array<CoreProductAnchorWalkerVisualLaneState | null>) => void) | null): void { this.setDisplayCallback('synthAnchorWalkerVisualState', callback); callback?.(this.sequencerVisuals.currentSynthAnchorWalkerVisualState(this.latestTelemetry)); }
   setDrumEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void { this.setDisplayCallback('drumEuclidEvolve', callback); }
   setSynthEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void { this.setDisplayCallback('synthEuclidEvolve', callback); }
   setGranularUiActive(active: boolean): void { this.displayCallbacks.setValue('granularUiActive', active); this.runtime.setGranularWaveformTelemetryActive(active); }
@@ -744,7 +763,6 @@ class CoreProductEngineHost {
   private createLatestArrangementState(): Record<string, unknown> | null { return this.arrangementBridge.createState(this.latestSliderState, this.adapterState); }
   private handleTelemetry(telemetry: CoreProductTelemetrySnapshot): void {
     const hostTelemetry = this.generatedSequencerCaptureTelemetryHistory.withHistory(this.withHostDiagnostics(telemetry));
-    logCoreProductDebugTelemetry(hostTelemetry);
     this.latestTelemetry = hostTelemetry; this.arrangementBridge.syncTransportTelemetry(hostTelemetry);
     if (this.journeyMorphClock.running && typeof hostTelemetry.journeyMorphPhase === 'number') {
       this.adapterState = {

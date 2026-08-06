@@ -348,14 +348,6 @@ int32_t kessho_product_set_meter_demand(KesshoProductEngine* engine, uint32_t en
   return KESSHO_PRODUCT_OK;
 }
 
-int32_t kessho_product_set_debug_voice_spawn_demand(KesshoProductEngine* engine, uint32_t enabled) {
-  if (engine == nullptr) {
-    return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
-  }
-  engine->debug_voice_spawn_demand_enabled = enabled != 0u;
-  return KESSHO_PRODUCT_OK;
-}
-
 uint64_t kessho_product_get_telemetry_refresh_count(KesshoProductEngine* engine) {
   return engine == nullptr ? 0u : engine->telemetry_refresh_count;
 }

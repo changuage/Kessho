@@ -11,6 +11,7 @@ import {
   morphWaterPresets,
   WATER_MORPH_PARAM_KEYS,
 } from '../audio/waterPresets';
+import { extractCascade } from './codec';
 import { presetValuesEqual } from './presetUtils';
 import {
   getGranularPresetData,
@@ -168,8 +169,11 @@ export function hydrateOptimizedStatePresetData(state: StateRecord): StateRecord
 }
 
 export function extractOptimizedStatePresetData(state: SliderState): Record<string, unknown> {
-  const snapshot: Record<string, unknown> = { ...state };
-  const derived = buildDerivedStatePresetData(snapshot);
+  const derived = buildDerivedStatePresetData(state as StateRecord);
+  // Live SliderState intentionally retains decode-only migration fields and
+  // UI/runtime helpers. Start from the canonical L4 registry so a save cannot
+  // re-author those fields into the current preset contract.
+  const snapshot = extractCascade(state, 4, 'global');
 
   for (const [key, value] of Object.entries(derived)) {
     if (key in snapshot && presetValuesEqual(snapshot[key], value)) {

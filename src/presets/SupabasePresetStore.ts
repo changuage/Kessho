@@ -14,13 +14,16 @@ import {
   buildDrumEuclideanStateFromPatternData,
   buildSynthEuclideanStateFromPatternData,
 } from './euclideanPatternBank';
-import type { IPresetStore } from './PresetStore';
+import { PresetMetadataConflictError, type IPresetStore } from './PresetStore';
 import {
   extractPresetVersionMetadata,
   getPresetScope,
   normalizePresetSummary,
+  presetValuesEqual,
 } from './presetUtils';
+import { normalizeJourneyPresetPreview } from './journeyPresetPreview';
 import { decodeCurrentPresetEntry, UnsupportedPresetVersionError } from './currentPresetSchema';
+import { canonicalizeStoredPresetEntry } from './storedPresetCompatibility';
 import {
   canonicalizePresetScope,
   getPresetScopeReadCandidates,
@@ -89,21 +92,37 @@ import {
   buildPadDerivedEndpointInstances,
   buildDrumDerivedEndpointInstances,
   buildGranularAndWaterDerivedEndpointInstances,
+  buildLeadDerivedEndpointInstances,
   derivedEndpointCandidates,
   hydratePadDerivedEndpointRefs,
   hydrateDrumDerivedEndpointRefs,
   hydrateGranularAndWaterDerivedEndpointRefs,
+  hydrateLeadDerivedEndpointRefs,
   findMissingDerivedEndpointSlots,
 } from './derivedEndpointContent';
+import {
+  LEAD4OPFM_PRESET_SCOPE,
+  readLead4opFMPresetData,
+  sanitizeLead4opFMPresetJson,
+} from './lead4opPresetPayload';
 import {
   buildParameterBehaviorInstances,
   hydrateParameterBehaviorRefs,
   parameterBehaviorCandidates,
   stripParameterBehaviorsFromV2Metadata,
 } from './parameterBehaviorContent';
+import {
+  buildScatterConfigInstance,
+  hydrateScatterConfigRefs,
+  scatterConfigCandidates,
+  stripScatterConfigFromV2Metadata,
+} from './scatterContent';
 import type {
   PresetEntry,
   PresetLevel,
+  PresetMetadataPatch,
+  PresetMetadataUpdateOptions,
+  PresetReferenceCandidate,
   PresetRenameIdentity,
   PresetRecoveryWarning,
   PresetRef,
@@ -249,10 +268,26 @@ function normalizeNameKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
+function postgresTimestampToEpochMilliseconds(timestamp: string): number {
+  const parsed = Date.parse(timestamp);
+  if (Number.isFinite(parsed)) return parsed;
+  // PostgreSQL may serialize a UTC offset as `+00`; normalize it only for the
+  // display/sort millisecond value. The raw text remains the CAS revision.
+  const normalizedOffset = timestamp.replace(/([+-]\d{2})$/, '$1:00');
+  const normalized = Date.parse(normalizedOffset);
+  return Number.isFinite(normalized) ? normalized : 0;
+}
+
 function clonePresetSummaries(summaries: PresetSummary[]): PresetSummary[] {
   return summaries.map(summary => ({
     ...summary,
     tags: summary.tags ? [...summary.tags] : summary.tags,
+    journeyPreview: summary.journeyPreview
+      ? {
+          nodes: summary.journeyPreview.nodes.map(node => ({ ...node })),
+          connections: summary.journeyPreview.connections.map(connection => ({ ...connection })),
+        }
+      : undefined,
   }));
 }
 
@@ -347,19 +382,21 @@ function getV2LogicalKey(row: Pick<PresetV2ComparableRow, 'type' | 'scope' | 'na
   return `${row.type}:${canonicalizePresetScope(row.scope) ?? ''}:${normalizeNameKey(row.name)}`;
 }
 
-function comparePresetV2Priority<T extends PresetV2ComparableRow>(left: T, right: T, userId: string | null): number {
-  if (SHARED_PRESET_TEST_MODE) {
+function comparePresetV2Priority<T extends PresetV2ComparableRow>(
+  left: T,
+  right: T,
+  userId: string | null,
+  sharedPresetTestMode = SHARED_PRESET_TEST_MODE,
+): number {
+  if (sharedPresetTestMode) {
     if (left.latest_version_no !== right.latest_version_no) {
       return right.latest_version_no - left.latest_version_no;
     }
 
-    const leftUpdated = new Date(left.updated_at).getTime();
-    const rightUpdated = new Date(right.updated_at).getTime();
-    if (leftUpdated !== rightUpdated) return rightUpdated - leftUpdated;
+    const updatedComparison = right.updated_at.localeCompare(left.updated_at);
+    if (updatedComparison !== 0) return updatedComparison;
 
-    const leftCreated = new Date(left.created_at).getTime();
-    const rightCreated = new Date(right.created_at).getTime();
-    return rightCreated - leftCreated;
+    return right.created_at.localeCompare(left.created_at);
   }
 
   const leftOwn = !!userId && left.owner_user_id === userId;
@@ -370,29 +407,32 @@ function comparePresetV2Priority<T extends PresetV2ComparableRow>(left: T, right
   const rightVisibilityRank = right.visibility === 'featured' ? 1 : 0;
   if (leftVisibilityRank !== rightVisibilityRank) return rightVisibilityRank - leftVisibilityRank;
 
-  const leftUpdated = new Date(left.updated_at).getTime();
-  const rightUpdated = new Date(right.updated_at).getTime();
-  if (leftUpdated !== rightUpdated) return rightUpdated - leftUpdated;
+  const updatedComparison = right.updated_at.localeCompare(left.updated_at);
+  if (updatedComparison !== 0) return updatedComparison;
 
   if (left.latest_version_no !== right.latest_version_no) {
     return right.latest_version_no - left.latest_version_no;
   }
 
-  const leftCreated = new Date(left.created_at).getTime();
-  const rightCreated = new Date(right.created_at).getTime();
-  return rightCreated - leftCreated;
+  return right.created_at.localeCompare(left.created_at);
 }
 
-function dedupePreferredV2Rows<T extends PresetV2ComparableRow>(rows: T[], userId: string | null): T[] {
+function dedupePreferredV2Rows<T extends PresetV2ComparableRow>(
+  rows: T[],
+  userId: string | null,
+  sharedPresetTestMode = SHARED_PRESET_TEST_MODE,
+): T[] {
   const preferred = new Map<string, T>();
   for (const row of rows) {
     const key = getV2LogicalKey(row);
     const existing = preferred.get(key);
-    if (!existing || comparePresetV2Priority(row, existing, userId) < 0) {
+    if (!existing || comparePresetV2Priority(row, existing, userId, sharedPresetTestMode) < 0) {
       preferred.set(key, row);
     }
   }
-  return Array.from(preferred.values()).sort((left, right) => comparePresetV2Priority(left, right, userId));
+  return Array.from(preferred.values()).sort(
+    (left, right) => comparePresetV2Priority(left, right, userId, sharedPresetTestMode),
+  );
 }
 
 function isActivePresetV2Row(row: Pick<PresetV2SummaryRow, 'deleted_at'>): boolean {
@@ -439,13 +479,22 @@ function isMissingRelationError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const record = error as { code?: string; message?: string; details?: string; hint?: string };
   const text = [record.code, record.message, record.details, record.hint].filter(Boolean).join(' ').toLowerCase();
-  return text.includes('does not exist') || (text.includes('relation') && text.includes('_v2'));
+  return record.code === '42P01'
+    || record.code === 'PGRST205'
+    || (text.includes('relation') && text.includes('_v2') && text.includes('does not exist'));
 }
 
 function isConflictError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const record = error as { code?: string; message?: string };
   return record.code === '23505' || record.message?.toLowerCase().includes('duplicate key') === true;
+}
+
+function isMetadataUpdateConflictError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const record = error as { code?: string; message?: string };
+  return record.code === '40001'
+    || record.message?.toLowerCase().includes('preset metadata changed concurrently') === true;
 }
 
 function getSupabaseErrorText(error: unknown): string {
@@ -513,6 +562,7 @@ let sharedDetailRpcAvailable: boolean | null = null;
 let sharedLatestManifestRpcAvailable: boolean | null = null;
 let sharedMissingPayloadRpcAvailable: boolean | null = null;
 let sharedRuntimeReadRpcAvailable: boolean | null = null;
+let sharedJourneyReferrerRpcAvailable: boolean | null = null;
 
 function isSharedReadCircuitOpen(now = Date.now()): boolean {
   return sharedReadCircuitOpenUntil > now || isSupabaseEgressQuotaCircuitOpen(now);
@@ -525,6 +575,7 @@ function openSharedReadCircuitIfTerminal(error: unknown): void {
 
 export class SupabasePresetStore implements IPresetStore {
   private client: SupabaseClient;
+  private readonly sharedPresetTestMode: boolean;
   private userId: string | null = null;
   private isAnonymous = false;
   private v2SchemaAvailable: boolean | null = null;
@@ -533,8 +584,9 @@ export class SupabasePresetStore implements IPresetStore {
   private listInFlight = new Map<string, Promise<PresetSummary[]>>();
   private listCircuitOpenUntil = 0;
 
-  constructor(client: SupabaseClient) {
+  constructor(client: SupabaseClient, options: { sharedPresetTestMode?: boolean } = {}) {
     this.client = client;
+    this.sharedPresetTestMode = options.sharedPresetTestMode ?? SHARED_PRESET_TEST_MODE;
   }
 
   /** Set the authenticated user ID. Call after auth state changes. */
@@ -546,7 +598,7 @@ export class SupabasePresetStore implements IPresetStore {
   }
 
   private getOwnerKey(): string {
-    if (SHARED_PRESET_TEST_MODE) return 'public';
+    if (this.sharedPresetTestMode) return 'public';
     return this.userId ? `user:${this.userId}` : 'anonymous';
   }
 
@@ -661,6 +713,55 @@ export class SupabasePresetStore implements IPresetStore {
     return payload;
   }
 
+  private buildMetadataPayload(metadata: PresetMetadataPatch): Record<string, unknown> {
+    const payload: Record<string, unknown> = {};
+    if ('creator' in metadata) payload.creator = metadata.creator ?? null;
+    if ('description' in metadata) payload.description = metadata.description ?? null;
+    if (metadata.visibility !== undefined) payload.visibility = metadata.visibility;
+    if ('familyName' in metadata) payload.family_name = metadata.familyName ?? null;
+    if ('variantName' in metadata) payload.variant_name = metadata.variantName ?? null;
+    if ('variantRank' in metadata) payload.variant_rank = metadata.variantRank ?? null;
+    if ('rating' in metadata) payload.rating = metadata.rating ?? null;
+    if (metadata.tags !== undefined) payload.tags = metadata.tags;
+    return payload;
+  }
+
+  private buildChangedIdentityMetadataPatch(
+    row: PresetV2Row,
+    identity: Record<string, unknown>,
+  ): PresetMetadataPatch {
+    const patch: PresetMetadataPatch = {};
+    if (!presetValuesEqual(row.creator, identity.creator)) {
+      patch.creator = typeof identity.creator === 'string' ? identity.creator : null;
+    }
+    if (!presetValuesEqual(row.description, identity.description)) {
+      patch.description = typeof identity.description === 'string' ? identity.description : null;
+    }
+    if (!presetValuesEqual(row.visibility, identity.visibility) && (
+      identity.visibility === 'private'
+      || identity.visibility === 'public'
+      || identity.visibility === 'featured'
+    )) {
+      patch.visibility = identity.visibility;
+    }
+    if (!presetValuesEqual(row.family_name, identity.family_name)) {
+      patch.familyName = typeof identity.family_name === 'string' ? identity.family_name : null;
+    }
+    if (!presetValuesEqual(row.variant_name, identity.variant_name)) {
+      patch.variantName = typeof identity.variant_name === 'string' ? identity.variant_name : null;
+    }
+    if (!presetValuesEqual(row.variant_rank, identity.variant_rank)) {
+      patch.variantRank = typeof identity.variant_rank === 'number' ? identity.variant_rank : null;
+    }
+    if (!presetValuesEqual(row.rating, identity.rating)) {
+      patch.rating = typeof identity.rating === 'number' ? identity.rating : null;
+    }
+    if (!presetValuesEqual(row.tags ?? [], identity.tags ?? [])) {
+      patch.tags = Array.isArray(identity.tags) ? identity.tags.map(String) : [];
+    }
+    return patch;
+  }
+
   private async queryPresetRowsV2(
     type: PresetLevel,
     name: string,
@@ -692,7 +793,11 @@ export class SupabasePresetStore implements IPresetStore {
       'V2 preset lookup RPC',
     );
 
-    return dedupePreferredV2Rows((data ?? []) as unknown as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId);
+    return dedupePreferredV2Rows(
+      (data ?? []) as unknown as PresetV2Row[],
+      this.sharedPresetTestMode ? null : this.userId,
+      this.sharedPresetTestMode,
+    );
   }
 
   private async findPresetRowByIdV2(id: string): Promise<PresetV2Row | null> {
@@ -886,13 +991,22 @@ export class SupabasePresetStore implements IPresetStore {
       },
       'V2 ref lookup RPC',
     );
-    const rows = dedupePreferredV2Rows((data ?? []) as unknown as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId)
+    const rows = dedupePreferredV2Rows(
+      (data ?? []) as unknown as PresetV2Row[],
+      this.sharedPresetTestMode ? null : this.userId,
+      this.sharedPresetTestMode,
+    )
       .filter(row => !options.internalDerivedOnly || isInternalDerivedRow(row))
       .sort((left, right) => {
         const leftDerived = isInternalDerivedRow(left);
         const rightDerived = isInternalDerivedRow(right);
         if (leftDerived !== rightDerived) return leftDerived ? 1 : -1;
-        return comparePresetV2Priority(left, right, SHARED_PRESET_TEST_MODE ? null : this.userId);
+        return comparePresetV2Priority(
+          left,
+          right,
+          this.sharedPresetTestMode ? null : this.userId,
+          this.sharedPresetTestMode,
+        );
       });
     return rows[0] ?? null;
   }
@@ -1021,7 +1135,7 @@ export class SupabasePresetStore implements IPresetStore {
         data,
       }],
       currentVersion: nextVersion,
-      createdAt: new Date(row.created_at).getTime(),
+      createdAt: postgresTimestampToEpochMilliseconds(row.created_at),
       updatedAt: timestamp,
     };
 
@@ -1083,20 +1197,32 @@ export class SupabasePresetStore implements IPresetStore {
               ? [buildPadVoicePoolInstance(state, 1)]
               : [];
     const harmonyInstances = type === 'state' ? buildHarmonyContentInstances(state) : [];
-    const derivedEndpointInstances = type === 'state'
-      ? [
+    const leadEndpointInstances = await buildLeadDerivedEndpointInstances(
+      state,
+      selector => this.loadLeadEndpointContentV2(selector),
+    );
+    const derivedEndpointInstances = [
+      ...leadEndpointInstances,
+      ...(type === 'state' ? [
           ...buildPadDerivedEndpointInstances(state),
           ...buildDrumDerivedEndpointInstances(state),
           ...buildGranularAndWaterDerivedEndpointInstances(state),
-        ]
-      : [];
-    const behaviorInstances = buildParameterBehaviorInstances(metadata);
+        ] : []),
+    ];
+    // Lead4opFM behavior keys are lane-relative patch fields (for example
+    // `distance`), not SliderState keys. Keep that metadata with the engine
+    // preset; composite Lead endpoint nodes hash it with the audio patch.
+    const behaviorInstances = type === 'engine' && scope === LEAD4OPFM_PRESET_SCOPE
+      ? []
+      : buildParameterBehaviorInstances(metadata);
+    const scatterInstance = buildScatterConfigInstance(metadata);
     const candidates = [
       ...groups.flatMap(sequencerContentCandidates),
       ...sharedComponentPoolCandidates(sharedInstances),
       ...harmonyContentCandidates(harmonyInstances),
       ...derivedEndpointCandidates(derivedEndpointInstances),
       ...parameterBehaviorCandidates(behaviorInstances),
+      ...scatterConfigCandidates(scatterInstance),
     ];
     if (candidates.length === 0) return { payloads: [], refs: [] };
     const batch = await preparePresetContentBatch(candidates);
@@ -1124,16 +1250,21 @@ export class SupabasePresetStore implements IPresetStore {
         if (!candidate) throw new Error(`Missing prepared harmony component ${instance.refSlot}`);
         refs.push({ slot: instance.refSlot, contentHash: candidate.hash, contentType: candidate.envelope.contentType });
       }
-      for (const instance of derivedEndpointInstances) {
-        const candidate = batch.byId.get(instance.id);
-        if (!candidate) throw new Error(`Missing prepared derived endpoint ${instance.refSlot}`);
-        refs.push({ slot: instance.refSlot, contentHash: candidate.hash, contentType: candidate.envelope.contentType });
-      }
+    }
+    for (const instance of derivedEndpointInstances) {
+      const candidate = batch.byId.get(instance.id);
+      if (!candidate) throw new Error(`Missing prepared derived endpoint ${instance.refSlot}`);
+      refs.push({ slot: instance.refSlot, contentHash: candidate.hash, contentType: candidate.envelope.contentType });
     }
     for (const instance of behaviorInstances) {
       const candidate = batch.byId.get(instance.id);
       if (!candidate) throw new Error(`Missing prepared parameter behavior ${instance.refSlot}`);
       refs.push({ slot: instance.refSlot, contentHash: candidate.hash, contentType: candidate.envelope.contentType });
+    }
+    if (scatterInstance) {
+      const candidate = batch.byId.get(scatterInstance.id);
+      if (!candidate) throw new Error(`Missing prepared scatter config ${scatterInstance.refSlot}`);
+      refs.push({ slot: scatterInstance.refSlot, contentHash: candidate.hash, contentType: candidate.envelope.contentType });
     }
     return {
       payloads: [...batch.uniqueByHash.values()].map(node => ({
@@ -1142,6 +1273,28 @@ export class SupabasePresetStore implements IPresetStore {
         payload: { ...node.envelope },
       })),
       refs,
+    };
+  }
+
+  private async loadLeadEndpointContentV2(selector: string): Promise<Record<string, unknown> | null> {
+    const entry = isUuid(selector)
+      ? await this.loadById(selector)
+      : await this.load('engine', selector, LEAD4OPFM_PRESET_SCOPE);
+    if (!entry) return null;
+    const version = entry.versions.find(candidate => candidate.v === entry.currentVersion)
+      ?? entry.versions[entry.versions.length - 1];
+    if (!version) return null;
+    const data = getVersionData(entry, version.v);
+    const current = readLead4opFMPresetData(data)?.preset;
+    const legacy = isPlainObject(data)
+      ? sanitizeLead4opFMPresetJson(isPlainObject(data.preset) ? data.preset : data)
+      : null;
+    const preset = current ?? legacy;
+    if (!preset) return null;
+    return {
+      preset: preset as unknown as Record<string, unknown>,
+      ...(version.dualRanges ? { dualRanges: version.dualRanges } : {}),
+      ...(version.sliderModes ? { sliderModes: version.sliderModes } : {}),
     };
   }
 
@@ -1648,31 +1801,30 @@ export class SupabasePresetStore implements IPresetStore {
         previousResolved,
         versionRow.version_no === targetVersionNo ? recoveryWarnings : undefined,
       );
+      const versionContentRefs = contentRefsByVersionId.get(versionRow.id) ?? [];
+      for (const slot of findMissingDerivedEndpointSlots(versionContentRefs, payloadMap)) {
+        if (versionRow.version_no === targetVersionNo) recoveryWarnings.push({
+          slot,
+          reason: 'missing_payload',
+          fallback: 'default',
+          version: versionRow.version_no,
+        });
+      }
+      resolvedData = hydrateLeadDerivedEndpointRefs(resolvedData, versionContentRefs, payloadMap);
       if (row.type === 'state') {
-        for (const slot of findMissingDerivedEndpointSlots(
-          contentRefsByVersionId.get(versionRow.id) ?? [],
-          payloadMap,
-        )) {
-          if (versionRow.version_no === targetVersionNo) recoveryWarnings.push({
-            slot,
-            reason: 'missing_payload',
-            fallback: 'default',
-            version: versionRow.version_no,
-          });
-        }
         resolvedData = hydratePadDerivedEndpointRefs(
           resolvedData,
-          contentRefsByVersionId.get(versionRow.id) ?? [],
+          versionContentRefs,
           payloadMap,
         );
         resolvedData = hydrateDrumDerivedEndpointRefs(
           resolvedData,
-          contentRefsByVersionId.get(versionRow.id) ?? [],
+          versionContentRefs,
           payloadMap,
         );
         resolvedData = hydrateGranularAndWaterDerivedEndpointRefs(
           resolvedData,
-          contentRefsByVersionId.get(versionRow.id) ?? [],
+          versionContentRefs,
           payloadMap,
         );
         resolvedData = canonicalizeRecord(hydrateOptimizedStatePresetData(resolvedData));
@@ -1714,7 +1866,14 @@ export class SupabasePresetStore implements IPresetStore {
       );
       resolvedData = hydratedSequencers.state;
       reconstructedMetadata = hydratedSequencers.metadata;
-      reconstructedMetadata = hydrateParameterBehaviorRefs(
+      if (!(row.type === 'engine' && rowScope === LEAD4OPFM_PRESET_SCOPE)) {
+        reconstructedMetadata = hydrateParameterBehaviorRefs(
+          reconstructedMetadata,
+          contentRefsByVersionId.get(versionRow.id) ?? [],
+          payloadMap,
+        );
+      }
+      reconstructedMetadata = hydrateScatterConfigRefs(
         reconstructedMetadata,
         contentRefsByVersionId.get(versionRow.id) ?? [],
         payloadMap,
@@ -1735,7 +1894,7 @@ export class SupabasePresetStore implements IPresetStore {
       );
     }
 
-    const entry = decodeCurrentPresetEntry({
+    const entry = decodeCurrentPresetEntry(canonicalizeStoredPresetEntry({
       id: row.id,
       remoteId: row.id,
       type: row.type,
@@ -1756,9 +1915,10 @@ export class SupabasePresetStore implements IPresetStore {
       rating: row.rating ?? undefined,
       versions: materializedVersions,
       currentVersion: version ?? row.latest_version_no,
-      createdAt: new Date(row.created_at).getTime(),
-      updatedAt: new Date(row.updated_at).getTime(),
-    });
+      createdAt: postgresTimestampToEpochMilliseconds(row.created_at),
+      updatedAt: postgresTimestampToEpochMilliseconds(row.updated_at),
+      updatedAtRevision: row.updated_at,
+    }));
 
     if (recoveryWarnings.length > 0) {
       entry.recoveryWarnings = recoveryWarnings;
@@ -1942,9 +2102,34 @@ export class SupabasePresetStore implements IPresetStore {
       return [];
     }
 
-    const rows = dedupePreferredV2Rows((data ?? []) as unknown as PresetV2SummaryRow[], SHARED_PRESET_TEST_MODE ? null : this.userId)
+    const rows = dedupePreferredV2Rows(
+      (data ?? []) as unknown as PresetV2SummaryRow[],
+      this.sharedPresetTestMode ? null : this.userId,
+      this.sharedPresetTestMode,
+    )
       .filter(isActivePresetV2Row)
       .filter(row => !isInternalDerivedRow(row));
+    let journeyPreviewByMetadataHash: Map<string, NonNullable<PresetSummary['journeyPreview']>> | undefined;
+    if (type === 'journey') {
+      const metadataHashes: string[] = [];
+      for (const row of rows) {
+        if (typeof row.latest_metadata_hash === 'string' && row.latest_metadata_hash.length > 0) {
+          metadataHashes.push(row.latest_metadata_hash);
+        }
+      }
+
+      if (metadataHashes.length > 0) {
+        const payloads = await this.fetchPayloadMapV2(metadataHashes);
+        for (const [hash, payload] of payloads) {
+          const preview = isPlainObject(payload)
+            ? normalizeJourneyPresetPreview(payload.journeyPreview)
+            : undefined;
+          if (!preview) continue;
+          (journeyPreviewByMetadataHash ??= new Map()).set(hash, preview);
+        }
+      }
+    }
+
     const summaries: PresetSummary[] = rows.map((row) => {
       const rowScope = canonicalizePresetScope(row.scope);
       const familyScope = rowScope ?? 'global';
@@ -1969,9 +2154,13 @@ export class SupabasePresetStore implements IPresetStore {
         playCount: row.play_count ?? undefined,
         rating: row.rating ?? undefined,
         tags: row.tags ?? [],
+        journeyPreview: row.latest_metadata_hash
+          ? journeyPreviewByMetadataHash?.get(row.latest_metadata_hash)
+          : undefined,
         versionCount: row.latest_version_no,
         currentVersion: row.latest_version_no,
-        updatedAt: new Date(row.updated_at).getTime(),
+        updatedAt: postgresTimestampToEpochMilliseconds(row.updated_at),
+        updatedAtRevision: row.updated_at,
       };
     });
 
@@ -1987,7 +2176,7 @@ export class SupabasePresetStore implements IPresetStore {
           placeholderVersions[placeholderVersions.length - 1]!.journeyPreview = summary.journeyPreview;
         }
 
-        return normalizePresetSummary({
+        const normalized = normalizePresetSummary({
           id: summary.id,
           remoteId: summary.remoteId,
           type: summary.type,
@@ -2012,7 +2201,11 @@ export class SupabasePresetStore implements IPresetStore {
           currentVersion: summary.currentVersion,
           createdAt: summary.updatedAt,
           updatedAt: summary.updatedAt,
-        })!;
+        });
+        return {
+          ...normalized,
+          updatedAtRevision: summary.updatedAtRevision,
+        };
       })
       .filter(Boolean) as PresetSummary[];
   }
@@ -2055,12 +2248,12 @@ export class SupabasePresetStore implements IPresetStore {
     const internalDerived = isInternalDerivedEntry(normalized);
     const identityPayload = {
       owner_key: this.getOwnerKey(),
-      owner_user_id: SHARED_PRESET_TEST_MODE ? null : this.userId,
+      owner_user_id: this.sharedPresetTestMode ? null : this.userId,
       type: normalized.type,
       scope: scope ?? null,
       name: normalized.name,
       author: normalized.author || 'user',
-      library: SHARED_PRESET_TEST_MODE && normalized.library !== 'stock'
+      library: this.sharedPresetTestMode && normalized.library !== 'stock'
         ? 'cloud'
         : normalized.library || 'cloud',
       creator: normalized.creator ?? 'Anonymous',
@@ -2068,7 +2261,7 @@ export class SupabasePresetStore implements IPresetStore {
       tags: normalized.tags ?? [],
       visibility: internalDerived
         ? 'private'
-        : SHARED_PRESET_TEST_MODE
+        : this.sharedPresetTestMode
         ? 'public'
         : (this.isAnonymous && !normalized.visibility ? 'public' : (normalized.visibility ?? 'private')),
       family_name: normalized.familyName ?? normalized.name,
@@ -2079,7 +2272,14 @@ export class SupabasePresetStore implements IPresetStore {
     };
 
     const existingRows = await this.queryPresetRowsV2(normalized.type, normalized.name, scope);
-    let presetRow = existingRows[0] ?? null;
+    // Read lookup intentionally includes visible public/featured presets, but
+    // the owner-scoped save RPC may only receive a row owned by this writer.
+    // A same-name public/stock preset therefore becomes the source of a new
+    // user-owned fork instead of an attempted cross-owner update.
+    let presetRow = existingRows.find(row => (
+      row.owner_key === identityPayload.owner_key
+      && row.owner_user_id === identityPayload.owner_user_id
+    )) ?? null;
 
     let storedVersionRows: PresetVersionV2Row[] = [];
     if (presetRow) {
@@ -2097,6 +2297,8 @@ export class SupabasePresetStore implements IPresetStore {
     const versionsToPersist = normalized.versions
       .filter(version => !storedVersionMap.has(version.v))
       .sort((left, right) => left.v - right.v);
+    let persistedVersion = false;
+    let skippedEquivalentVersion = false;
 
     for (const version of versionsToPersist) {
       const snapshot = getResolvedVersionSnapshot(normalized, version.v);
@@ -2108,27 +2310,50 @@ export class SupabasePresetStore implements IPresetStore {
       const resolvedData = isSoundOnlySource
         ? stripSequencerStateFromSoundContent(normalizedResolvedData)
         : normalizedResolvedData;
-      const storageResolvedData = normalized.type === 'state'
+      // Content refs are the authoritative storage for reusable leaf payloads.
+      // Keep hidden derived children self-contained because parent refs consume
+      // their resolved payload directly rather than materializing their refs.
+      const directContentStrippedData = normalized.type === 'state' || internalDerived
+        ? resolvedData
+        : canonicalizeRecord(stripSharedComponentContentFromParent(
+          resolvedData,
+          normalized.type,
+          scope,
+        ));
+      const storageResolvedData = normalized.type === 'state' || internalDerived
         ? canonicalizeRecord(rawResolvedData)
-        : resolvedData;
+        : directContentStrippedData;
       const rawMetadata = snapshot?.metadata ?? extractPresetVersionMetadata(version);
       const metadata = isSoundOnlySource
         ? stripSequencerMetadataFromSoundContent(rawMetadata)
         : rawMetadata;
       const muteGroupStoragePlan = await planRoutingMuteGroupMetadataStorage(metadata);
-      const preparedVersionContent = await this.prepareVersionContentV2(
-        normalized.type,
-        scope,
-        resolvedData,
-        muteGroupStoragePlan.metadata,
-      );
+      const preparedVersionContent: PreparedVersionContentV2 = internalDerived
+        ? { payloads: [], refs: [] }
+        : await this.prepareVersionContentV2(
+          normalized.type,
+          scope,
+          resolvedData,
+          muteGroupStoragePlan.metadata,
+        );
       const metadataForStorage = normalized.type === 'state'
         ? stripSequencerMetadataFromSoundContent(muteGroupStoragePlan.metadata)
         : muteGroupStoragePlan.metadata;
-      const v2MetadataForStorage = preparePresetVersionMetadataForV2Storage(
-        stripParameterBehaviorsFromV2Metadata(metadataForStorage),
+      const isLead4opFmEngine = normalized.type === 'engine' && scope === LEAD4OPFM_PRESET_SCOPE;
+      const contentStrippedMetadata = isLead4opFmEngine
+        ? stripScatterConfigFromV2Metadata(metadataForStorage)
+        : stripScatterConfigFromV2Metadata(stripParameterBehaviorsFromV2Metadata(metadataForStorage));
+      const preparedMetadata = preparePresetVersionMetadataForV2Storage(
+        contentStrippedMetadata,
         normalized.type === 'state',
       );
+      const v2MetadataForStorage = isLead4opFmEngine && metadataForStorage
+        ? {
+            ...(preparedMetadata ?? {}),
+            ...(metadataForStorage?.dualRanges ? { dualRanges: metadataForStorage.dualRanges } : {}),
+            ...(metadataForStorage?.sliderModes ? { sliderModes: metadataForStorage.sliderModes } : {}),
+          }
+        : preparedMetadata;
 
       const childSpecs = getPresetChildSpecs(normalized.type, scope)
         .filter((childSpec) => {
@@ -2215,10 +2440,9 @@ export class SupabasePresetStore implements IPresetStore {
         refsToInsert.push(explicitRef);
       }
 
-      const childStrippedOverrideData = stripSharedComponentContentFromParent(
-        stripReferencedChildData(resolvedData, childRefData),
-        normalized.type,
-        scope,
+      const childStrippedOverrideData = stripReferencedChildData(
+        directContentStrippedData,
+        childRefData,
       );
       const overrideData = normalized.type === 'state'
         ? stripHarmonyContentFromL4Override(stripPortableSequencerContentFromL4Override(childStrippedOverrideData))
@@ -2264,7 +2488,11 @@ export class SupabasePresetStore implements IPresetStore {
         refKeys: pendingRefKeys,
       };
 
-      if (presetVersionStorageSignaturesEqual(previousSignature, nextSignature)) {
+      if (
+        presetVersionStorageSignaturesEqual(previousSignature, nextSignature)
+        && !(version.note ?? '').trim()
+      ) {
+        skippedEquivalentVersion = true;
         previousResolvedRecord = storageResolvedData;
         continue;
       }
@@ -2304,11 +2532,21 @@ export class SupabasePresetStore implements IPresetStore {
         preparedVersionContent.refs,
       );
       presetRow = preset;
+      persistedVersion = true;
       previousStoredVersionRow = versionRow;
       previousResolvedRecord = storageResolvedData;
       previousRefKeys = pendingRefKeys;
     }
 
+    if (presetRow && skippedEquivalentVersion && !persistedVersion) {
+      const metadataPatch = this.buildChangedIdentityMetadataPatch(presetRow, identityPayload);
+      if (Object.keys(metadataPatch).length > 0) {
+        await this.updateMetadata(normalized.type, normalized.name, metadataPatch, scope, {
+          targetId: presetRow.id,
+          expectedUpdatedAt: presetRow.updated_at,
+        });
+      }
+    }
   }
 
   async save(entry: PresetEntry): Promise<void> {
@@ -2422,6 +2660,50 @@ export class SupabasePresetStore implements IPresetStore {
     return renamed;
   }
 
+  async updateMetadata(
+    type: PresetLevel,
+    name: string,
+    metadata: PresetMetadataPatch,
+    scope?: string,
+    options?: PresetMetadataUpdateOptions,
+  ): Promise<boolean> {
+    if (!(await this.supportsV2())) {
+      throw new UnsupportedPresetVersionError('Current preset storage is unavailable; legacy cloud preset storage is disabled.');
+    }
+
+    let resolvedTargetId = options?.targetId?.trim();
+    let expectedUpdatedAt = options?.expectedUpdatedAt;
+    if (!resolvedTargetId || expectedUpdatedAt === undefined) {
+      const target = resolvedTargetId && isUuid(resolvedTargetId)
+        ? await this.findPresetRowByIdV2(resolvedTargetId)
+        : (await this.queryPresetRowsV2(type, name, scope, { scopeAliases: true }))[0] ?? null;
+      if (!target) return false;
+      resolvedTargetId = target.id;
+      expectedUpdatedAt ??= target.updated_at;
+    }
+
+    const { data, error } = await this.client.rpc('kessho_update_preset_metadata_v2', {
+      target_preset_id: resolvedTargetId,
+      metadata_payload: this.buildMetadataPayload(metadata),
+      // Keep PostgreSQL's original text intact: Date parsing rounds away its
+      // microseconds and would turn a valid compare-and-set into a conflict.
+      expected_updated_at: expectedUpdatedAt,
+    });
+    if (error) {
+      if (this.markV2UnavailableIfMissing(error)) throw error;
+      if (isMetadataUpdateConflictError(error)) {
+        this.clearListCache();
+        throw new PresetMetadataConflictError(
+          `Preset metadata for "${name}" changed concurrently. Refresh it before trying again.`,
+        );
+      }
+      throw new Error(`Cloud preset metadata update failed: ${error.message}`);
+    }
+
+    this.clearListCache();
+    return Boolean(data);
+  }
+
   private async listUncached(type: PresetLevel, scope?: string): Promise<PresetSummary[]> {
     const summaries: PresetSummary[] = [];
 
@@ -2465,6 +2747,66 @@ export class SupabasePresetStore implements IPresetStore {
       'V2 reference lookup RPC',
     );
     return [...new Set(data ?? [])];
+  }
+
+  async findCurrentReferenceCandidates(
+    type: PresetLevel,
+    targetId: string | undefined,
+    targetName: string,
+  ): Promise<PresetReferenceCandidate[]> {
+    if (this.shouldSkipReadForCircuit() || !(await this.supportsV2())) return [];
+
+    if (type === 'state' && targetId && isUuid(targetId) && sharedJourneyReferrerRpcAvailable !== false) {
+      const functionName = 'kessho_find_journey_state_referrers_v2';
+      const { data, error } = await this.client.rpc(functionName, {
+        target_preset_id: targetId,
+      });
+      if (!error) {
+        sharedJourneyReferrerRpcAvailable = true;
+        return ((Array.isArray(data) ? data : []) as unknown[])
+          .filter(isPlainObject)
+          .flatMap((candidate): PresetReferenceCandidate[] => {
+            if (
+              typeof candidate.name !== 'string'
+              || !candidate.name.trim()
+              || typeof candidate.currentVersion !== 'number'
+              || !Number.isInteger(candidate.currentVersion)
+              || candidate.currentVersion < 1
+            ) {
+              return [];
+            }
+            return [{
+              id: typeof candidate.id === 'string' ? candidate.id : undefined,
+              name: candidate.name,
+              currentVersion: candidate.currentVersion,
+              updatedAtRevision: typeof candidate.updatedAtRevision === 'string'
+                ? candidate.updatedAtRevision
+                : undefined,
+            }];
+          });
+      }
+      if (isMissingRpcError(error, functionName) || isPermissionDeniedError(error)) {
+        sharedJourneyReferrerRpcAvailable = false;
+      } else {
+        if (this.markV2UnavailableIfMissing(error)) return [];
+        throw new Error(`V2 journey referrer lookup RPC failed: ${error.message}`);
+      }
+    }
+
+    // Safe rollout/legacy fallback: the old name lookup can over-report
+    // historical versions, but never use it as final authority. Return only
+    // matching current summaries; callers reload and verify each candidate.
+    const names = new Set(await this.findReferences(type, targetName));
+    if (names.size === 0) return [];
+    const summaries = await this.list('journey');
+    return summaries
+      .filter(summary => names.has(summary.name))
+      .map(summary => ({
+        id: summary.remoteId ?? summary.id,
+        name: summary.name,
+        currentVersion: summary.currentVersion,
+        updatedAtRevision: summary.updatedAtRevision,
+      }));
   }
 
   async getStorageUsed(): Promise<{ bytes: number; count: number }> {
@@ -2524,10 +2866,26 @@ export class SupabasePresetStore implements IPresetStore {
     if (!parsed.kesshoBackup || !Array.isArray(parsed.entries)) {
       throw new Error('Invalid backup format');
     }
+    if (!(await this.supportsV2())) {
+      throw new UnsupportedPresetVersionError('Current preset storage is unavailable; legacy cloud preset storage is disabled.');
+    }
+    const entries = parsed.entries.map((entry: unknown) => decodeCurrentPresetEntry(entry));
+    const logicalKeys = new Set<string>();
+    for (const entry of entries) {
+      const scope = getPresetScope(entry, entry.type);
+      const key = `${entry.type}:${scope ?? ''}:${entry.name.trim().toLowerCase()}`;
+      if (logicalKeys.has(key)) {
+        throw new Error(`Backup contains duplicate preset "${entry.name}".`);
+      }
+      logicalKeys.add(key);
+      if ((await this.queryPresetRowsV2(entry.type, entry.name, scope, { scopeAliases: true })).length > 0) {
+        throw new Error(`Backup restore would overwrite existing preset "${entry.name}". Rename or remove it first.`);
+      }
+    }
 
     let count = 0;
-    for (const entry of parsed.entries) {
-      await this.save(decodeCurrentPresetEntry(entry));
+    for (const entry of entries) {
+      await this.save(entry);
       count += 1;
     }
     return count;

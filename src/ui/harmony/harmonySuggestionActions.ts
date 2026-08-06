@@ -51,7 +51,7 @@ function exactKey(notes: readonly number[]): string {
 function sameSuggestion(slot: HarmonyChordSlot, suggestion: HarmonySuggestion): boolean {
   const chord = slot.chord;
   return Boolean(chord
-    && semanticKey(chord.intent ?? slot.intent) === semanticKey(suggestion.intent)
+    && semanticKey(chord.intent) === semanticKey(suggestion.intent)
     && exactKey(chord.exactMidiNotes) === exactKey(suggestion.exactMidiNotes)
     && chord.playbackBehavior === (suggestion.playbackBehavior ?? (suggestion.intent.preserveCapturedVoicing ? 'exact' : 'auto')));
 }
@@ -87,7 +87,7 @@ export function saveHarmonySuggestion(state: HarmonySuggestionActionState, sugge
   if (duplicate) return { ok: true, state, slotId: duplicate.id };
   const target = state.slots.find((slot) => !slot.locked && slot.chord == null);
   if (!target) return failure(state, 'No empty Harmony slot is available');
-  const slots = state.slots.map((slot) => slot.id === target.id ? { ...slot, intent: cloneIntent(suggestion.intent), chord: saveChord(suggestion, context) } : slot);
+  const slots = state.slots.map((slot) => slot.id === target.id ? { ...slot, chord: saveChord(suggestion, context) } : slot);
   return { ok: true, state: { ...state, slots }, slotId: target.id };
 }
 

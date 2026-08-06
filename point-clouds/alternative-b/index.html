@@ -1,0 +1,1373 @@
+<!doctype html>
+<html lang="en" data-phase="booting" data-transport="stopped" data-preset="string-waves" data-reverb="lite" data-morph="0.42">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#050c2b">
+  <meta name="description" content="Sonic Weather Atlas — Point Clouds and Kessho in Helsinki.">
+  <title>SONIC WEATHER ATLAS — Point Clouds</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #050a24;
+      --deep: #080e34;
+      --ultra: #10205f;
+      --cyan: #79efff;
+      --cyan-soft: #35d8f4;
+      --orchid: #bf8cff;
+      --violet: #765de5;
+      --phosphor: #ffd685;
+      --paper: #e9eeff;
+      --muted: #91a6d1;
+      --quiet: #647ca9;
+      --line: rgba(151, 187, 255, .24);
+      --mx: 56vw;
+      --my: 48vh;
+      --weather: 0;
+      --front-shift: 0px;
+      font-synthesis: none;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--ink);
+    }
+
+    body {
+      color: var(--paper);
+      font-family: "Avenir Next", "Century Gothic", "Segoe UI", sans-serif;
+      cursor: crosshair;
+      overscroll-behavior: none;
+      text-rendering: geometricPrecision;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, input { color: inherit; font: inherit; }
+    button { cursor: crosshair; }
+
+    #field {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+      cursor: crosshair;
+    }
+
+    #kessho-engine {
+      position: fixed;
+      left: -2px;
+      bottom: -2px;
+      width: 1px;
+      height: 1px;
+      border: 0;
+      opacity: 0;
+      pointer-events: none;
+      visibility: hidden;
+    }
+
+    .atmosphere {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      overflow: hidden;
+      background:
+        radial-gradient(ellipse 56vw 52vh at var(--mx) var(--my), rgba(72, 109, 210, .15), transparent 65%),
+        radial-gradient(ellipse 44vw 38vh at 20% 86%, rgba(112, 55, 186, .18), transparent 72%),
+        linear-gradient(118deg, rgba(3, 8, 35, .56), rgba(11, 24, 74, .11) 52%, rgba(3, 8, 35, .65));
+      mix-blend-mode: screen;
+      opacity: .82;
+    }
+
+    .atmosphere::before,
+    .atmosphere::after {
+      content: "";
+      position: absolute;
+      inset: -28%;
+      background: radial-gradient(ellipse at 38% 60%, transparent 0 24%, rgba(99, 226, 255, .07) 38%, transparent 59%);
+      filter: blur(42px);
+      transform: rotate(-14deg) translate3d(calc(var(--weather) * 2vw), calc(var(--weather) * -1vh), 0);
+      opacity: .72;
+    }
+
+    .atmosphere::after {
+      background: radial-gradient(ellipse at 68% 36%, transparent 0 30%, rgba(190, 121, 255, .09) 43%, transparent 66%);
+      transform: rotate(17deg) translate3d(calc(var(--weather) * -2vw), calc(var(--weather) * 1vh), 0);
+      opacity: .7;
+    }
+
+    .grain {
+      position: fixed;
+      inset: -50%;
+      z-index: 8;
+      width: 200%;
+      height: 200%;
+      pointer-events: none;
+      opacity: .045;
+      background-image: radial-gradient(rgba(255, 255, 255, .55) .55px, transparent .65px);
+      background-size: 5px 5px;
+      transform: translate3d(-1%, 1%, 0);
+      mix-blend-mode: screen;
+    }
+
+    .vignette {
+      position: fixed;
+      inset: 0;
+      z-index: 7;
+      pointer-events: none;
+      background: radial-gradient(ellipse 72% 76% at 57% 49%, transparent 47%, rgba(2, 5, 22, .44) 100%);
+    }
+
+    .orbit-stage {
+      position: fixed;
+      z-index: 2;
+      left: 53.5%;
+      top: 48.5%;
+      width: min(70vw, 980px);
+      aspect-ratio: 1;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .orbit-stage::before,
+    .orbit-stage::after {
+      content: "";
+      position: absolute;
+      inset: 4%;
+      border: 1px solid rgba(116, 191, 255, .18);
+      border-radius: 50%;
+      box-shadow: inset 0 0 90px rgba(61, 90, 204, .08), 0 0 60px rgba(48, 129, 245, .08);
+      transform: rotateX(61deg) rotateZ(-14deg) scaleY(.72);
+      opacity: .82;
+    }
+
+    .orbit-stage::after {
+      inset: 13%;
+      border-color: rgba(190, 138, 255, .17);
+      transform: rotateX(61deg) rotateZ(38deg) scaleY(.68);
+      opacity: .7;
+    }
+
+    .ring {
+      position: absolute;
+      border: 1px solid rgba(119, 229, 255, .13);
+      border-radius: 50%;
+      transform: rotateX(61deg) rotateZ(var(--angle)) scaleY(.76);
+      animation: ring-drift 17s linear infinite;
+    }
+
+    .ring.r1 { inset: 23%; --angle: 12deg; animation-duration: 22s; }
+    .ring.r2 { inset: 34%; --angle: -28deg; animation-duration: 30s; border-color: rgba(201, 144, 255, .15); }
+    .ring.r3 { inset: 44%; --angle: 64deg; animation-duration: 42s; border-color: rgba(255, 214, 133, .11); }
+
+    @keyframes ring-drift {
+      from { rotate: 0deg; }
+      to { rotate: 360deg; }
+    }
+
+    .orbit-crosshair {
+      position: absolute;
+      inset: 49.8% 3% auto;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(124, 232, 255, .24) 18%, rgba(124, 232, 255, .52) 50%, rgba(124, 232, 255, .18) 82%, transparent);
+      transform: rotate(-9deg);
+      opacity: .65;
+    }
+
+    .orbit-crosshair::after {
+      content: "";
+      position: absolute;
+      right: 28%;
+      top: -3px;
+      width: 7px;
+      height: 7px;
+      border: 1px solid var(--phosphor);
+      border-radius: 50%;
+      box-shadow: 0 0 18px rgba(255, 214, 133, .8);
+    }
+
+    .frame {
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      display: grid;
+      grid-template: 1fr auto 1fr / 1fr;
+      padding: max(22px, env(safe-area-inset-top)) max(26px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(26px, env(safe-area-inset-left));
+      pointer-events: none;
+    }
+
+    .edge-top,
+    .edge-bottom {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .edge-bottom {
+      grid-row: 3;
+      align-self: end;
+      align-items: flex-end;
+    }
+
+    .micro,
+    .annotation,
+    .front-kicker,
+    .axis-label,
+    .transport-label,
+    .telemetry-label,
+    .front-meta,
+    .layer-index {
+      font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+      font-size: 9px;
+      line-height: 1.45;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    .micro { color: var(--muted); }
+    .micro b { color: var(--cyan); font-weight: 500; }
+
+    .mark {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--paper);
+      letter-spacing: .3em;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .mark::before {
+      content: "";
+      width: 19px;
+      height: 10px;
+      border: 1px solid var(--cyan);
+      border-bottom: 0;
+      border-radius: 18px 18px 0 0;
+      box-shadow: 12px 8px 0 -5px var(--cyan), 22px 3px 0 -5px var(--cyan);
+      opacity: .9;
+    }
+
+    .coordinate {
+      margin-top: 38px;
+      color: var(--quiet);
+      text-align: right;
+      letter-spacing: .12em;
+    }
+
+    .hero-lockup {
+      position: absolute;
+      left: 7.5vw;
+      top: 50%;
+      width: 23vw;
+      min-width: 245px;
+      transform: translateY(-56%);
+      pointer-events: none;
+    }
+
+    .hero-lockup h1 {
+      margin: 0;
+      max-width: 360px;
+      font-size: clamp(38px, 5.5vw, 86px);
+      line-height: .83;
+      letter-spacing: -.085em;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: rgba(232, 240, 255, .94);
+      text-wrap: balance;
+    }
+
+    .hero-lockup h1 span {
+      display: block;
+      color: transparent;
+      -webkit-text-stroke: 1px rgba(126, 229, 255, .76);
+      text-shadow: 0 0 28px rgba(44, 219, 255, .23);
+    }
+
+    .hero-lockup p {
+      margin: 26px 0 0;
+      max-width: 235px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.7;
+      letter-spacing: .055em;
+    }
+
+    .vertical-note {
+      position: absolute;
+      top: 50%;
+      right: 3.3vw;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      color: var(--quiet);
+      writing-mode: vertical-rl;
+      transform: translateY(-50%) rotate(180deg);
+      pointer-events: none;
+    }
+
+    .vertical-note::before {
+      content: "";
+      display: block;
+      width: 1px;
+      height: 80px;
+      background: linear-gradient(var(--cyan), transparent);
+    }
+
+    .fronts {
+      position: fixed;
+      z-index: 6;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .front {
+      position: absolute;
+      left: 49%;
+      top: 50%;
+      width: min(38vw, 510px);
+      min-height: 230px;
+      padding: 26px 30px 28px;
+      border-left: 1px solid rgba(122, 219, 255, .36);
+      border-top: 1px solid rgba(122, 219, 255, .18);
+      background: linear-gradient(120deg, rgba(8, 17, 58, .83), rgba(9, 21, 70, .4));
+      box-shadow: 18px 22px 80px rgba(2, 5, 24, .45), inset 18px 0 38px rgba(62, 171, 255, .06);
+      backdrop-filter: blur(14px);
+      opacity: 0;
+      transform: translate3d(calc(-50% + var(--front-shift)), -45%, 0) scale(.94);
+      transition: opacity .6s ease, transform .8s cubic-bezier(.16, 1, .3, 1);
+      pointer-events: none;
+    }
+
+    .front.is-active {
+      opacity: 1;
+      transform: translate3d(calc(-50% + var(--front-shift)), -50%, 0) scale(1);
+      pointer-events: auto;
+    }
+
+    .front::before {
+      content: "";
+      position: absolute;
+      top: -1px;
+      left: 0;
+      width: 62px;
+      height: 1px;
+      background: var(--phosphor);
+      box-shadow: 0 0 16px rgba(255, 214, 133, .65);
+    }
+
+    .front-kicker { color: var(--cyan); }
+
+    .front h2 {
+      margin: 13px 0 12px;
+      font-size: clamp(22px, 2.4vw, 38px);
+      line-height: .98;
+      letter-spacing: -.07em;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+
+    .front p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.75;
+      max-width: 38em;
+    }
+
+    .front-meta {
+      display: flex;
+      gap: 20px;
+      margin-top: 22px;
+      color: var(--quiet);
+    }
+
+    .front-meta b { color: var(--phosphor); font-weight: 400; }
+
+    .field-log {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 9px 20px;
+      margin-top: 17px;
+      color: var(--muted);
+      font: 10px/1.35 "SFMono-Regular", Consolas, monospace;
+      letter-spacing: .04em;
+    }
+
+    .field-log span:nth-child(even) { color: var(--phosphor); }
+
+    .front-close {
+      position: absolute;
+      top: 21px;
+      right: 26px;
+      width: 25px;
+      height: 25px;
+      border: 1px solid rgba(126, 229, 255, .4);
+      border-radius: 50%;
+      background: transparent;
+      color: var(--cyan);
+      font-size: 16px;
+      line-height: 20px;
+    }
+
+    .front-close:hover,
+    .front-close:focus-visible { background: rgba(126, 229, 255, .12); }
+
+    .front-index {
+      position: absolute;
+      right: 28px;
+      bottom: 22px;
+      color: var(--quiet);
+    }
+
+    .edge-button {
+      border: 0;
+      border-bottom: 1px solid rgba(132, 211, 255, .48);
+      padding: 0 0 6px;
+      background: transparent;
+      color: var(--paper);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 9px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      pointer-events: auto;
+      transition: color .25s ease, border-color .25s ease;
+    }
+
+    .edge-button:hover,
+    .edge-button:focus-visible { color: var(--cyan); border-color: var(--cyan); }
+
+    .transport {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      pointer-events: auto;
+    }
+
+    .transport-toggle {
+      display: inline-grid;
+      place-items: center;
+      width: 47px;
+      height: 47px;
+      border: 1px solid rgba(122, 219, 255, .68);
+      border-radius: 50%;
+      background: rgba(5, 15, 50, .3);
+      color: var(--cyan);
+      font-size: 16px;
+      transition: box-shadow .3s ease, background .3s ease;
+    }
+
+    .transport-toggle:hover,
+    .transport-toggle:focus-visible { background: rgba(77, 177, 255, .14); box-shadow: 0 0 25px rgba(71, 203, 255, .24); }
+
+    .transport-toggle.is-playing { border-color: var(--phosphor); color: var(--phosphor); }
+
+    .transport-label { color: var(--muted); }
+    .transport-label strong { display: block; margin-top: 5px; color: var(--paper); font-weight: 500; letter-spacing: .2em; }
+
+    .telemetry {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(50px, 1fr));
+      gap: 17px;
+      min-width: min(39vw, 430px);
+      pointer-events: none;
+    }
+
+    .telemetry-item { position: relative; min-width: 0; }
+    .telemetry-item::before { content: ""; display: block; width: 100%; height: 1px; margin-bottom: 8px; background: linear-gradient(90deg, var(--cyan), transparent); opacity: .6; }
+    .telemetry-label { display: block; color: var(--quiet); font-size: 8px; letter-spacing: .11em; white-space: nowrap; }
+    .telemetry-value { display: block; margin-top: 5px; color: var(--cyan); font: 11px "SFMono-Regular", Consolas, monospace; font-variant-numeric: tabular-nums; }
+
+    .morph-control {
+      position: absolute;
+      left: 50%;
+      bottom: 33px;
+      width: min(23vw, 280px);
+      transform: translateX(-50%);
+      pointer-events: auto;
+    }
+
+    .morph-head {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font: 8px "SFMono-Regular", Consolas, monospace;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    .morph-head b { color: var(--phosphor); font-weight: 400; }
+
+    #morph-control {
+      display: block;
+      width: 100%;
+      height: 16px;
+      margin: 0;
+      appearance: none;
+      background: transparent;
+    }
+
+    #morph-control::-webkit-slider-runnable-track {
+      height: 1px;
+      background: linear-gradient(90deg, rgba(126, 229, 255, .28), var(--cyan), rgba(191, 140, 255, .4));
+    }
+
+    #morph-control::-moz-range-track {
+      height: 1px;
+      background: linear-gradient(90deg, rgba(126, 229, 255, .28), var(--cyan), rgba(191, 140, 255, .4));
+    }
+
+    #morph-control::-webkit-slider-thumb {
+      width: 13px;
+      height: 13px;
+      margin-top: -6px;
+      appearance: none;
+      border: 1px solid var(--phosphor);
+      border-radius: 50%;
+      background: var(--deep);
+      box-shadow: 0 0 12px rgba(255, 214, 133, .8);
+    }
+
+    #morph-control::-moz-range-thumb {
+      width: 11px;
+      height: 11px;
+      border: 1px solid var(--phosphor);
+      border-radius: 50%;
+      background: var(--deep);
+      box-shadow: 0 0 12px rgba(255, 214, 133, .8);
+    }
+
+    .status-line {
+      position: absolute;
+      left: 50%;
+      top: 26px;
+      transform: translateX(-50%);
+      color: var(--muted);
+      font: 9px "SFMono-Regular", Consolas, monospace;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    .status-line[data-phase="playing"] { color: var(--phosphor); }
+    .status-line[data-phase="failed"] { color: #ff9b9b; }
+
+    .layer-index {
+      position: absolute;
+      left: 4vw;
+      top: 50%;
+      display: grid;
+      gap: 6px;
+      color: var(--quiet);
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+
+    .layer-index span { display: block; transition: color .3s ease, transform .3s ease; }
+    .layer-index span.is-current { color: var(--cyan); transform: translateX(8px); }
+
+    .assistive {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    :focus-visible { outline: 1px solid var(--phosphor); outline-offset: 5px; }
+
+    @media (max-width: 900px) {
+      .orbit-stage { left: 56%; top: 49%; width: 112vw; }
+      .hero-lockup { left: 7vw; top: 26%; width: 44vw; min-width: 190px; transform: none; }
+      .hero-lockup h1 { font-size: clamp(35px, 8.8vw, 67px); }
+      .hero-lockup p { margin-top: 17px; font-size: 10px; }
+      .vertical-note { right: 2vw; }
+      .telemetry { min-width: min(48vw, 350px); gap: 10px; }
+      .morph-control { bottom: 26px; width: min(32vw, 240px); }
+      .front { width: min(64vw, 510px); }
+    }
+
+    @media (max-width: 620px) {
+      body { cursor: default; }
+      #field { cursor: default; }
+      .atmosphere { background: radial-gradient(ellipse 130vw 80vh at 66% 48%, rgba(64, 94, 200, .2), transparent 70%), linear-gradient(130deg, rgba(3, 8, 35, .62), rgba(11, 24, 74, .16), rgba(3, 8, 35, .72)); }
+      .orbit-stage { left: 60%; top: 51%; width: 145vw; }
+      .hero-lockup { left: 8vw; top: 21%; width: 58vw; }
+      .hero-lockup h1 { font-size: clamp(31px, 11.5vw, 57px); }
+      .hero-lockup p { max-width: 210px; margin-top: 13px; font-size: 9px; line-height: 1.55; }
+      .vertical-note { display: none; }
+      .edge-top { align-items: flex-start; }
+      .edge-top .coordinate { display: none; }
+      .micro, .mark { font-size: 8px; }
+      .edge-bottom { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 20px; }
+      .telemetry { grid-column: 1 / -1; grid-row: 1; width: 100%; min-width: 0; gap: 9px; }
+      .transport { grid-column: 1; grid-row: 2; }
+      .transport-toggle { width: 40px; height: 40px; }
+      .transport-label { font-size: 8px; }
+      .morph-control { position: relative; left: auto; bottom: auto; width: 100%; grid-column: 2; grid-row: 2; transform: none; align-self: end; }
+      .morph-head { font-size: 7px; }
+      .layer-index { left: 4vw; top: 57%; font-size: 8px; }
+      .status-line { top: 67px; font-size: 8px; }
+      .front { left: 8%; top: 53%; width: 84%; min-height: 248px; padding: 22px 22px 24px; transform: translate3d(0, -45%, 0) scale(.94); }
+      .front.is-active { transform: translate3d(0, -50%, 0) scale(1); }
+      .front h2 { font-size: 27px; }
+      .front p { font-size: 11px; }
+      .front-close { right: 18px; top: 17px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+      .grain { display: none; }
+    }
+  </style>
+</head>
+<body data-depth-layer="0" data-weather-layer="quiet-sky" data-phase="booting" data-transport="stopped" data-preset="string-waves" data-reverb="lite" data-morph="0.42">
+  <canvas id="field" aria-label="Procedural point-cloud atlas visual. Drag to bend the sine filament; wheel changes atmospheric layers."></canvas>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <div class="orbit-stage" aria-hidden="true">
+    <i class="ring r1"></i><i class="ring r2"></i><i class="ring r3"></i><i class="orbit-crosshair"></i>
+  </div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <div class="frame">
+    <div class="edge-top">
+      <div>
+        <span class="mark">POINT CLOUDS</span>
+        <div class="micro" style="margin-top:10px"><b>PC—02</b> / HELSINKI / 60°10'N 24°56'E</div>
+      </div>
+      <div class="micro coordinate">ATLAS 01—04<br><span id="depth-readout">QUIET SKY</span></div>
+      <button class="edge-button" type="button" data-front="info" aria-controls="front-info" aria-expanded="false">FIELD NOTES&nbsp; ↗</button>
+    </div>
+
+    <div class="hero-lockup" aria-label="Sonic Weather Atlas">
+      <h1>SONIC<br><span>WEATHER</span><br>ATLAS</h1>
+      <p>Kessho is the climate here: Point Clouds’ living field of pads, tape air, and hand-made pressure. Enter the aperture and listen to the weather think.</p>
+    </div>
+
+    <div class="layer-index" aria-label="Atmospheric layers">
+      <span data-layer-index="0" class="is-current">01&nbsp; QUIET SKY</span>
+      <span data-layer-index="1">02&nbsp; RESONANCE</span>
+      <span data-layer-index="2">03&nbsp; FRONT LINE</span>
+      <span data-layer-index="3">04&nbsp; NIGHT LOG</span>
+    </div>
+
+    <div class="status-line" id="status-line" data-phase="booting" role="status" aria-live="polite">BRIDGE / BOOTING</div>
+
+    <div class="edge-bottom">
+      <div class="transport">
+        <button class="transport-toggle" id="transport-toggle" type="button" aria-label="Start Kessho playback" aria-pressed="false">▶</button>
+        <div class="transport-label">KESSHO / <strong id="transport-text">READYING FIELD</strong><span class="assistive" id="transport-help">Press space to play or stop.</span></div>
+      </div>
+
+      <div class="telemetry" aria-label="Live Product Core telemetry">
+        <div class="telemetry-item"><span class="telemetry-label">RMS</span><span class="telemetry-value" id="rms-value" data-telemetry="rms">0.000</span></div>
+        <div class="telemetry-item"><span class="telemetry-label">PAD / LEAD</span><span class="telemetry-value" id="stem-value" data-telemetry="stems">0.000</span></div>
+        <div class="telemetry-item"><span class="telemetry-label">VOICES</span><span class="telemetry-value" id="voice-value" data-telemetry="voices">00</span></div>
+        <div class="telemetry-item"><span class="telemetry-label">LFO / FILTER</span><span class="telemetry-value" id="lfo-value" data-telemetry="lfo">0.000</span></div>
+      </div>
+
+      <div class="morph-control" data-morph-control>
+        <div class="morph-head"><span>RADIAL / TIDAL MORPH</span><b id="morph-value" data-morph-value>0.42</b></div>
+        <label class="assistive" for="morph-control">Morph the authored atlas aperture</label>
+        <input id="morph-control" data-morph type="range" min="0" max="1" step="0.01" value="0.42" aria-label="Authored radial tidal morph">
+      </div>
+    </div>
+  </div>
+
+  <div class="fronts" aria-live="polite">
+    <section class="front" id="front-info" data-front-panel="info" data-layer="0" aria-labelledby="front-info-title" aria-hidden="true">
+      <button class="front-close" type="button" data-close-front aria-label="Close field notes">×</button>
+      <div class="front-kicker">FIELD NOTE / 0001</div>
+      <h2 id="front-info-title">KESSHO IS THE CLIMATE</h2>
+      <p>Point Clouds is the artist and creator of Kessho, a generative ambient project from Helsinki where field recordings, jazz drumming, and data science share the same weather system. The score is not a backdrop; it is a pressure map that keeps changing under your hand.</p>
+      <div class="front-meta"><span>LAT 60.17° N</span><span>STATE <b id="front-state">LISTENING</b></span></div>
+      <span class="front-index front-meta">01 / 04</span>
+    </section>
+
+    <section class="front" data-front-panel="cv" data-layer="1" aria-labelledby="front-cv-title" aria-hidden="true">
+      <button class="front-close" type="button" data-close-front aria-label="Close practice record">×</button>
+      <div class="front-kicker">PRACTICE RECORD / 2019—NOW</div>
+      <h2 id="front-cv-title">GENERATIVE AMBIENT<br>AS FIELD METHOD</h2>
+      <p>Compositions are built from restraint: long tones, granular weather, small rooms, and the timing of a drummer who knows when not to play. Algorithms are instruments; listening is the measure.</p>
+      <div class="front-meta"><span>FORM <b>LIVE SYSTEM</b></span><span>MEDIUM <b>CODE / AIR</b></span></div>
+      <span class="front-index front-meta">02 / 04</span>
+    </section>
+
+    <section class="front" data-front-panel="log" data-layer="2" aria-labelledby="front-log-title" aria-hidden="true">
+      <button class="front-close" type="button" data-close-front aria-label="Close field log">×</button>
+      <div class="front-kicker">FIELD LOG / TODAY / HELSINKI</div>
+      <h2 id="front-log-title">PRESSURE IS A<br>PERFORMANCE</h2>
+      <div class="field-log"><span>09:12 / tram wire hum</span><span>+0.18 dB</span><span>11:46 / wet stone / Töölö</span><span>−4.2 Hz</span><span>16:03 / kick practice</span><span>63 BPM</span><span>22:17 / window open</span><span>∞ air</span></div>
+      <div class="front-meta"><span>REC <b>FIELD / CONTACT</b></span><span>WEATHER <b>LOW SUN</b></span></div>
+      <span class="front-index front-meta">03 / 04</span>
+    </section>
+
+    <section class="front" data-front-panel="credits" data-layer="3" aria-labelledby="front-credits-title" aria-hidden="true">
+      <button class="front-close" type="button" data-close-front aria-label="Close credits">×</button>
+      <div class="front-kicker">TRANSMISSION / CREDITS</div>
+      <h2 id="front-credits-title">MADE IN THE<br>LOW LIGHT</h2>
+      <p>Point Clouds — artist and creator of Kessho; composition, sound design, field capture, systems, and visual instrument. Built with Product Core, a small room of patient DSP, and the city outside. Thank you for listening closely.</p>
+      <div class="front-meta"><span>VERSION <b>02.04</b></span><span>ORBIT <b id="orbit-readout">000°</b></span></div>
+      <span class="front-index front-meta">04 / 04</span>
+    </section>
+  </div>
+
+  <iframe id="kessho-engine" title="Kessho audio engine" aria-hidden="true" tabindex="-1" src="about:blank"></iframe>
+  <div class="assistive" id="bridge-error" role="alert"></div>
+
+  <script src="../shared/kessho-site-bridge.js"></script>
+  <script data-point-clouds-bridge-fallback>
+    /* Generated by scripts/generate-point-clouds-embedded-engine.mjs. */
+    if (!window.PointCloudsKessho) {
+      (function(u){"use strict";if(!u)return;const Q="string-waves",J=15e3,X=8e3,ee=8e3,te=60,_=1,j=Object.freeze(["level","peak","onset","transient","activity","phase","pulse"]);function i(t,e,s){return Object.freeze({id:t,signal:e,description:s})}function m(t){const e={...t.provider};for(const s of["fields","indices","tapIds"])Array.isArray(e[s])&&(e[s]=Object.freeze(e[s].slice()));return Object.freeze({...t,children:Object.freeze((t.children??[]).slice()),signals:Object.freeze((t.signals??j).slice()),provider:Object.freeze(e),reactions:Object.freeze(t.reactions.slice())})}const C=Object.freeze([m({id:"master",label:"Master",family:"system",children:[],provider:{kind:"master-output",fields:["masterOutputRms","masterOutputPeak"]},reactions:[i("global-breath","level","Expand and contract the complete point field with the output envelope."),i("luminance-ceiling","peak","Lift point luminance and bloom as the mix approaches its peak ceiling."),i("depth-pressure","transient","Push a short pressure wave through Z depth on mix transients.")]}),m({id:"pads",label:"Pads",family:"source",children:["pad1","pad2"],provider:{kind:"stems",indices:[1,2],aggregation:"max"},reactions:[i("soft-volume","level","Inflate the cloud into a slow, soft-edged volume."),i("harmonic-drift","activity","Increase low-frequency flow-field drift without adding jitter."),i("veil-opacity","peak","Thicken the rear depth veil while leaving foreground points legible.")]}),m({id:"leads",label:"Leads",family:"source",children:["lead1","lead2"],provider:{kind:"stems",indices:[3,4],aggregation:"max"},reactions:[i("filament-attractor","level","Pull nearby points into a directional filament around the lead voice."),i("note-tracer","onset","Launch a short-lived tracer from the current interaction focus."),i("accent-heat","transient","Concentrate the warm accent points at the front of the cloud.")]}),m({id:"samples",label:"Samples",family:"source",children:["sample1","sample2"],provider:{kind:"stems",indices:[6,8],aggregation:"max"},reactions:[i("contour-imprint","level","Reveal a temporary contour or surface imprint inside the cloud."),i("material-displacement","onset","Displace a local patch as if a recorded object struck the point surface."),i("orbit-fragments","transient","Release a small orbiting fragment cluster on sharp sample attacks.")]}),m({id:"drums",label:"Drums",family:"source",children:["drums"],provider:{kind:"stems",indices:[5],aggregation:"max"},reactions:[i("radial-impact","pulse","Send a radial compression ring through the point structure."),i("lattice-snap","onset","Momentarily tighten point spacing, then rebound with spring weight."),i("rotation-impulse","transient","Add a bounded rotational impulse to the shared 3D physics body.")]}),m({id:"earth",label:"Earth",family:"source",children:["waves","water","insects","nature"],provider:{kind:"stems",indices:[7],aggregation:"max"},reactions:[i("topographic-flow","level","Move points along a slow topographic flow field."),i("spatial-weather","activity","Broaden the field and increase depth-dependent atmospheric dropout."),i("terrain-grain","peak","Modulate fine point density like changing terrain texture.")]}),m({id:"effects",label:"Effects",family:"bus",children:["granular","delayAOut","delayBOut","degrade","reverb"],provider:{kind:"stems",indices:[9],aggregation:"max"},reactions:[i("wet-depth","level","Increase the apparent depth and persistence of the complete wet field."),i("return-afterimage","peak","Leave a restrained afterimage behind moving structures."),i("edge-diffusion","activity","Diffuse silhouette edges without changing the dry geometry.")]}),m({id:"granular",label:"Granular",family:"processor",children:["granular"],provider:{kind:"graph-taps",tapIds:[16],fields:["workletGranularReturnPeak"],aggregation:"max"},reactions:[i("fragment-density","level","Break solid forms into denser, smaller point fragments."),i("grain-jitter","activity","Add spatially correlated micro-motion instead of white-noise jitter."),i("grain-trails","onset","Emit short trails whose length follows grain activity.")]}),m({id:"delays",label:"Delays",family:"processor",children:["delayAOut","delayBOut"],provider:{kind:"graph-taps",tapIds:[8,12],fields:["workletDelayReturnPeak"],aggregation:"max"},reactions:[i("echo-ghosts","level","Repeat the current form as depth-offset, decaying ghost layers."),i("recursive-rings","onset","Create successively dimmer rings at the delay cadence."),i("phase-orbit","activity","Offset orbit phase while preserving the main cloud position.")]}),m({id:"degrade",label:"Degrade",family:"processor",children:["degrade"],provider:{kind:"engine-return",fields:["workletDegradeReturnPeak"]},reactions:[i("point-erosion","level","Remove coherent point bands in slowly changing erosion patches."),i("quantized-drift","activity","Quantize selected motion vectors while the rest of the body stays fluid."),i("dropout-scars","transient","Carve momentary gaps that heal with the shared spring system.")]}),m({id:"reverb",label:"Reverb",family:"processor",children:["reverb"],provider:{kind:"graph-taps",tapIds:[21],fields:["workletReverbReturnPeak"],aggregation:"max"},reactions:[i("z-expansion","level","Open the cloud along Z while retaining its 2D silhouette."),i("tail-afterglow","peak","Extend point persistence as an afterglow proportional to the return."),i("fog-dispersion","activity","Move low-opacity points outward into the far depth field.")]}),m({id:"transport",label:"Transport",family:"system",children:[],provider:{kind:"transport",fields:["beatPosition","barIndex","phraseIndex"]},reactions:[i("beat-breath","pulse","Apply a small shared breath impulse at the beat boundary."),i("bar-weight-shift","phase","Shift the body weight across one bar without resetting rotation."),i("phrase-morph","phase","Schedule large topology changes only at phrase boundaries.")]})]),B=Object.freeze({schemaVersion:_,signals:j,availability:Object.freeze({available:"The Product Core provider is authoritative, including when its value is zero.",unavailable:"The exact provider is not being published; consumers must not substitute another channel."}),inputs:C,byId:Object.freeze(Object.fromEntries(C.map(t=>[t.id,t])))});function o(t,e=0){return Number.isFinite(Number(t))?Number(t):e}function p(t){return Math.max(0,Math.min(1,o(t)))}function S(t){return Array.isArray(t)?t.slice():[]}function re(t){return!t||typeof t!="object"?{}:{...t}}function y(t,e){return t!==null&&typeof t=="object"&&Object.prototype.hasOwnProperty.call(t,e)&&Number.isFinite(Number(t[e]))}function M(t){let e=0;for(const s of t)e=Math.max(e,Math.max(0,o(s)));return e}function se(t,e){const s=Array.isArray(t?.workletStemPeaks)?t.workletStemPeaks:null,r=e.indices??[];return!s||r.length===0||r.some(n=>!y(s,n))?{available:!1,peak:0}:{available:!0,peak:M(r.map(n=>s[n]))}}function ie(t,e){const r=(e.fields??[]).filter(c=>y(t,c)).map(c=>t[c]);if(r.length>0)return{available:!0,peak:M(r)};const n=e.tapIds??[],a=Array.isArray(t?.workletGraphTapPeaks)?t.workletGraphTapPeaks:null,h=Array.isArray(t?.workletGraphTapPeakValid)?t.workletGraphTapPeakValid:null,l=Array.isArray(t?.workletGraphTapActiveIds)?t.workletGraphTapActiveIds:[],d=c=>h?.[c]===!0||l.includes(c);return!a||n.length===0||n.some(c=>!d(c)||!y(a,c))?{available:!1,peak:0}:{available:!0,peak:M(n.map(c=>a[c]))}}function N(t,e,s,r,n,a={}){const h=n?.channels?.[t]??null,l=e?Math.max(0,o(s)):0,d=e?Math.max(0,o(r)):0,c=h?.available?o(h.peak):d,b=e?Number.isFinite(Number(a.onset))?p(a.onset):p(Math.max(0,d-c)*4):0,v=e?p(a.pulse):0,E=e?p(Math.max(b,o(a.transient),v)):0,f=e?p(a.activity??Math.sqrt(Math.max(l,d))):0;return{id:t,available:e,availability:e?"available":"unavailable",active:e&&(f>.001||v>0),level:l,peak:d,onset:b,transient:E,activity:f,phase:e&&Number.isFinite(Number(a.phase))?p(a.phase):null,pulse:v}}function ne(t,e,s){const r={},n=y(t,"masterOutputRms")&&y(t,"masterOutputPeak");r.master=N("master",n,s.rms,s.peak,e,{onset:s.onset,transient:s.transient});for(const l of C){if(l.id==="master"||l.id==="transport")continue;const d=l.provider.kind==="stems"?se(t,l.provider):ie(t,l.provider),c=l.id==="drums"&&s.drumHitPulse?1:0;r[l.id]=N(l.id,d.available,d.peak,d.peak,e,{pulse:c})}const a=y(t,"beatPosition"),h=a?Number(t.beatPosition):0;return r.transport=N("transport",a,t?.transportRunning===!0?1:0,s.hitPulse?1:0,e,{activity:t?.transportRunning===!0?1:0,phase:h-Math.floor(h),pulse:s.beatPulse||s.stepPulse||s.hitPulse?1:0}),{schemaVersion:_,channels:r}}function I(t){return t instanceof Error?t.message:String(t)}function ae(t){return new Promise(e=>setTimeout(e,t))}function oe(t){if(!t||t.isRunning!==!0)return!1;const e=t.telemetry;return!(!e||e.transportRunning!==!0||t.lifecycleState!==void 0&&t.lifecycleState!=="running"||t.audioContextState&&t.audioContextState!=="running")}function le(t){return!t||t.lifecycleState==="stopped"&&t.isRunning!==!0?!0:t.isRunning!==!0&&t.telemetry?.transportRunning!==!0}function ue(){const t=u.document,e=t?.currentScript?.src||t?.querySelector?.('script[src*="kessho-site-bridge"]')?.src;if(e)try{return new URL("../../index.html?point-clouds-engine=1",e).href}catch{}try{return new URL("../?point-clouds-engine=1",u.location?.href??"").href}catch{return null}}function A(){const t=u.document,e=t?.currentScript?.src;return e||t?.querySelector?.('script[src*="kessho-site-bridge"]')?.src||u.location?.href||""}function de(){const t=A();try{return new URL("./embedded/kessho-engine.html",t).href}catch{return null}}function he(){const t=A();try{return{assets:new URL("./embedded/kessho-product-core-assets.js",t).href,engine:new URL("./embedded/kessho-engine.iife.js",t).href}}catch{return null}}function ce(){const t=u.document;if(!t?.createElement)return!1;const e=he(),s=t.head||t.body||t.documentElement;if(!e||!s?.appendChild)return!1;const r="__pointCloudsEmbeddedEngineBootstrap";if(u[r])return!0;u.__pointCloudsEmbeddedEngineMode=!0;const n={status:"loading",error:null};u[r]=n;const a=(h,l)=>{const d=t.createElement("script");d.async=!1,d.src=h,d.onload=l,d.onerror=()=>{n.status="failed",n.error=`Unable to load embedded Product Core script: ${h}`},s.appendChild(d)};return a(e.assets,()=>{n.status!=="failed"&&a(e.engine,()=>{n.status!=="failed"&&(n.status="ready")})}),!0}function H(t){return String(t).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}function me(){const t=A();let e,s;try{e=new URL("./embedded/kessho-product-core-assets.js",t).href,s=new URL("./embedded/kessho-engine.iife.js",t).href}catch{throw new Error("Unable to resolve the embedded Product Core bundle from the bridge script.")}return['<!doctype html><html><head><meta charset="utf-8"></head><body>','<div id="kessho-engine-root" aria-hidden="true" style="width:1px;height:1px;overflow:hidden"></div>',"<script>window.__pointCloudsEmbeddedEngineMode = true;<\/script>",`<script src="${H(e)}"><\/script>`,`<script src="${H(s)}"><\/script>`,"</body></html>"].join("")}function V(t){return Array.isArray(t)?t.filter(e=>e&&typeof e.id=="string").map(e=>({id:e.id,name:typeof e.name=="string"?e.name:e.id})):[]}function z(t,e,s){const r=t?.telemetry&&typeof t.telemetry=="object"?t.telemetry:null,n=typeof performance<"u"&&Number.isFinite(performance.now?.())?performance.now():Date.now(),a=Math.max(0,o(r?.masterOutputRms)),h=Math.max(0,o(r?.masterOutputPeak)),l=e?o(e.rms):a,d=e?o(e.peak):h,c=a-l,b=h-d,v=p(Math.max(0,c)*4+Math.max(0,b)*2),E=p(Math.max(0,b,c)),f=S(r?.synthSequencerCurrentSteps),P=S(r?.drumSequencerCurrentSteps),q=S(r?.synthSequencerHitCounts),G=S(r?.drumSequencerHitCounts),x=o(r?.sequencerEventCount),fe=e?o(e.sequencer?.pulses):x,L=Math.max(0,x-fe),w=Number.isFinite(Number(r?.beatPosition))?Number(r.beatPosition):null,K=e&&Number.isFinite(Number(e.beat))?Number(e.beat):null,U=w!==null&&K!==null&&Math.floor(w)!==Math.floor(K),F=f.length>0?o(f[0],null):P.length>0?o(P[0],null):null,ge=e?.sequencer?.synthSteps??[],ye=e?.sequencer?.drumSteps??[],O=f.some((g,T)=>g!==ge[T])||P.some((g,T)=>g!==ye[T]),R=g=>g.reduce((T,Pe)=>T+o(Pe),0),$=Math.max(0,R(q)-R(e?.sequencer?.synthHitCounts??[])),D=Math.max(0,R(G)-R(e?.sequencer?.drumHitCounts??[])),Y=$+D,k=L>0||Y>0,be=D>0,W=S(r?.workletStemPeaks).map(g=>Math.max(0,o(g))),Z={pad:Math.max(0,o(r?.workletPadStemPeak)),lead:Math.max(0,o(r?.workletLeadStemPeak)),fx:Math.max(0,o(r?.workletFxStemPeak)),master:Math.max(0,o(r?.workletMasterStemPeak))},ve=ne(r,e?.visualInputs,{rms:a,peak:h,onset:v,transient:E,beatPulse:U,stepPulse:O,hitPulse:k,drumHitPulse:be});return{raw:r,rms:a,peak:h,rmsDelta:c,peakDelta:b,onset:v,transient:E,beat:w,bar:Number.isFinite(Number(r?.barIndex))?Number(r.barIndex):null,phrase:Number.isFinite(Number(r?.phraseIndex))?Number(r.phraseIndex):null,phraseProgress:Number.isFinite(Number(r?.transportPhraseProgress))?p(r.transportPhraseProgress):null,sequencer:{synthStep:f.length>0?o(f[0],null):null,drumStep:P.length>0?o(P[0],null):null,synthSteps:f,drumSteps:P,synthHitCounts:q,drumHitCounts:G,pulses:x,pulseDelta:L,stepPulse:O,hitPulse:k,hitCountDelta:Y,synthHitCountDelta:$,drumHitCountDelta:D,scatterPulseCount:o(r?.scatterPulseCount)},currentStep:F,sequencerStep:F,step:F,barIndex:Number.isFinite(Number(r?.barIndex))?Number(r.barIndex):null,phraseIndex:Number.isFinite(Number(r?.phraseIndex))?Number(r.phraseIndex):null,beatPulse:U,isBeat:U,beatIndex:w===null?null:Math.floor(w),pulses:x,pulseDelta:L,stepPulse:O,hitPulse:k,isHit:k,trigger:k,level:a,activeVoices:Math.max(0,o(r?.activeVoices)),activeSources:Math.max(0,o(r?.activeSources)),stemPeaks:W,stemPeakValues:W,stemPeaksByName:Z,stems:Z,activeGrains:Math.max(0,o(r?.activeGrains)),visualInputs:ve,transportRunning:r?.transportRunning===!0,playing:t?.isRunning===!0&&r?.transportRunning===!0,contextState:t?.audioContextState??null,lifecycleState:t?.lifecycleState??null,capturedAt:n,intervalMs:s===null?null:Math.max(0,n-s)}}class pe{constructor(e){if(!e||!e.engineFrame)throw new TypeError("PointCloudsKessho.create requires an engineFrame iframe.");this.engineFrame=e.engineFrame,this.presetId=typeof e.presetId=="string"&&e.presetId.trim()?e.presetId.trim():Q,this.overrides=re(e.overrides),this.onStatus=typeof e.onStatus=="function"?e.onStatus:null,this.onTelemetry=typeof e.onTelemetry=="function"?e.onTelemetry:null,this.phase="booting",this.error=null,this.bridge=null,this.bootPromise=null,this.startPromise=null,this.stopPromise=null,this.telemetryTimer=null,this.bootDeadline=null,this.frameLoadHandler=null,this.destroyed=!1,this.previousTelemetry=null,this.previousTelemetryAt=null,this.snapshot={phase:"booting",presetId:this.presetId,presetName:this.presetId,morphAmount:0,isRunning:!1,lifecycleState:null,audioContextState:null,telemetry:z(null,null,null),raw:null,error:null},this.handleReadyMessage=this.handleReadyMessage.bind(this),this.handleVisibilityChange=this.handleVisibilityChange.bind(this),u.addEventListener?.("message",this.handleReadyMessage),u.document?.addEventListener?.("visibilitychange",this.handleVisibilityChange),this.emitStatus("booting")}emitStatus(e,s={}){if(!this.destroyed){this.phase=e,this.snapshot={...this.snapshot,phase:e,error:this.error,...s};try{this.onStatus?.({phase:e,presetId:this.snapshot.presetId,presetName:this.snapshot.presetName,isRunning:this.snapshot.isRunning,error:this.error,snapshot:this.snapshot})}catch{}}}getBridge(){const e=[];try{e.push(this.engineFrame.contentWindow)}catch{}e.push(u);for(const s of e){let r;try{r=s?.__pointCloudsKesshoBridge}catch{continue}if(r&&typeof r.start=="function"&&typeof r.stop=="function"&&typeof r.getStatus=="function"&&typeof r.listPresets=="function"&&typeof r.setMorph=="function")return r}return null}handleReadyMessage(e){if(e?.data?.type==="point-clouds:kessho-ready"){try{if(e.source&&e.source!==this.engineFrame.contentWindow&&e.source!==u)return}catch{return}this.resolveBridge()}}resolveBridge(){if(this.destroyed)return null;const e=this.getBridge();return e?(this.bridge=e,e):null}ensureFrameSource(){if(u.location?.protocol==="file:"){if(ce())return;const r=de();if(r){this.engineFrame.src=r;return}if(!("srcdoc"in this.engineFrame))throw new Error("The Product Core engine iframe does not support srcdoc for direct file playback.");this.engineFrame.srcdoc=me();return}let e="";try{e=this.engineFrame.getAttribute?.("src")||this.engineFrame.src||""}catch{e=""}if(e&&e!=="about:blank")return;const s=ue();if(!s)throw new Error("Unable to resolve the Product Core engine iframe URL.");this.engineFrame.src=s}boot(){return this.destroyed?Promise.reject(new Error("Point Clouds controller has been destroyed.")):this.bridge||this.resolveBridge()?(this.emitStatus("ready"),Promise.resolve(this)):this.bootPromise?this.bootPromise:(this.error=null,this.emitStatus("booting"),this.bootPromise=new Promise((e,s)=>{let r=!1,n=null;const a=(l,d)=>{r||(r=!0,this.bootDeadline!==null&&clearTimeout(this.bootDeadline),n!==null&&clearInterval(n),this.frameLoadHandler&&(this.engineFrame.removeEventListener?.("load",this.frameLoadHandler),this.frameLoadHandler=null),this.bootDeadline=null,this.bootPromise=null,l?(this.error=I(l),this.emitStatus("failed"),s(l)):(this.error=null,this.emitStatus("ready"),e(d)))};try{this.ensureFrameSource()}catch(l){a(l);return}const h=()=>{this.resolveBridge()&&a(null,this)};n=setInterval(h,80),this.bootDeadline=setTimeout(()=>{a(new Error(u.location?.protocol==="file:"?"Product Core embedded file:// bundle could not boot. Regenerate point-clouds/shared/embedded assets and inspect the iframe console.":"Timed out waiting for the Product Core engine iframe."))},J),this.frameLoadHandler=h,this.engineFrame.addEventListener?.("load",this.frameLoadHandler),h()}),this.bootPromise)}readStatus(){const e=this.resolveBridge()??this.bridge;if(!e)throw new Error("Product Core engine is not ready.");const s=e.getStatus();if(!s||typeof s!="object")throw new Error("Product Core returned an invalid status.");return s}updateSnapshot(e,s=null,r=!0){const n=s??z(e,this.previousTelemetry,this.previousTelemetryAt);if(this.previousTelemetry=n,this.previousTelemetryAt=n.capturedAt,this.snapshot={...this.snapshot,presetId:typeof e?.presetId=="string"?e.presetId:this.snapshot.presetId,presetName:typeof e?.presetName=="string"?e.presetName:this.snapshot.presetName,morphAmount:p(e?.morphAmount),isRunning:e?.isRunning===!0,lifecycleState:e?.lifecycleState??null,audioContextState:e?.audioContextState??null,telemetry:n,raw:e},r)try{this.onTelemetry?.(n,this.snapshot)}catch{}return this.snapshot}pollTelemetry(){if(!(this.destroyed||this.phase!=="playing")&&!u.document?.hidden){try{const e=this.readStatus();this.updateSnapshot(e)}catch(e){this.error=I(e),this.emitStatus("failed"),this.stopTelemetryPolling();return}this.telemetryTimer=setTimeout(()=>{this.telemetryTimer=null,this.pollTelemetry()},te)}}startTelemetryPolling(){this.telemetryTimer!==null||this.destroyed||this.phase!=="playing"||this.pollTelemetry()}stopTelemetryPolling(){this.telemetryTimer!==null&&(clearTimeout(this.telemetryTimer),this.telemetryTimer=null)}handleVisibilityChange(){this.destroyed||(u.document?.hidden?this.stopTelemetryPolling():this.phase==="playing"&&this.startTelemetryPolling())}async waitForStatus(e,s,r){const n=Date.now()+s;for(;!this.destroyed&&Date.now()<=n;){const a=this.readStatus();if(this.updateSnapshot(a),e(a))return a;await ae(40)}throw new Error(`Product Core did not reach ${r}.`)}async start(){if(this.destroyed)throw new Error("Point Clouds controller has been destroyed.");return this.phase==="playing"?this.getSnapshot():this.startPromise?this.startPromise:(this.startPromise=(async()=>{!this.bridge&&!this.resolveBridge()&&await this.boot();const e=this.resolveBridge()??this.bridge;if(!e)throw new Error("Product Core engine is not ready.");if(!V(e.listPresets()).some(a=>a.id===this.presetId))throw new Error(`Unknown Point Clouds preset: ${this.presetId}`);this.error=null,this.emitStatus("loading");const r=e.start(this.presetId,this.overrides);await Promise.resolve(r);const n=await this.waitForStatus(oe,X,"a running transport/audio context");return this.error=null,this.updateSnapshot(n),this.emitStatus("playing"),this.startTelemetryPolling(),this.getSnapshot()})().catch(e=>{throw this.error=I(e),this.stopTelemetryPolling(),this.emitStatus("failed"),e}).finally(()=>{this.startPromise=null}),this.startPromise)}async stop(){return this.destroyed?this.getSnapshot():this.stopPromise?this.stopPromise:(this.stopPromise=(async()=>{if(this.startPromise)try{await this.startPromise}catch{}const e=this.resolveBridge()??this.bridge;if(!e)return this.stopTelemetryPolling(),this.emitStatus("ready"),this.getSnapshot();this.error=null,this.emitStatus("stopping");const s=e.stop();await Promise.resolve(s);const r=await this.waitForStatus(le,ee,"a stopped Product Core runtime");return this.stopTelemetryPolling(),this.error=null,this.updateSnapshot(r),this.emitStatus("ready"),this.getSnapshot()})().catch(e=>{throw this.error=I(e),this.emitStatus("failed"),e}).finally(()=>{this.stopPromise=null}),this.stopPromise)}toggle(){return this.phase==="playing"?this.stop():this.start()}setMorph(e){if(!Number.isFinite(Number(e))||Number(e)<0||Number(e)>1)throw new RangeError("Point Clouds morph must be a finite number between 0 and 1.");const s=this.resolveBridge()??this.bridge;if(!s)throw new Error("Product Core engine is not ready.");return s.setMorph(Number(e)),this.snapshot={...this.snapshot,morphAmount:Number(e)},this.snapshot.morphAmount}listPresets(){const e=this.resolveBridge()??this.bridge;return e?V(e.listPresets()):[]}getSnapshot(){if(!this.destroyed)try{(this.resolveBridge()??this.bridge)&&this.updateSnapshot(this.readStatus(),null,!1)}catch{}return this.snapshot}destroy(){if(this.destroyed)return;const e=this.resolveBridge()??this.bridge;if(e&&this.snapshot.isRunning)try{e.stop()}catch{}this.destroyed=!0,this.stopTelemetryPolling(),this.bootDeadline!==null&&clearTimeout(this.bootDeadline),this.bootDeadline=null,this.frameLoadHandler&&(this.engineFrame.removeEventListener?.("load",this.frameLoadHandler),this.frameLoadHandler=null),u.removeEventListener?.("message",this.handleReadyMessage),u.document?.removeEventListener?.("visibilitychange",this.handleVisibilityChange),this.onStatus=null,this.onTelemetry=null,this.bridge=null}}u.PointCloudsKessho={inputLibrary:B,getInputLibrary(){return B},create(t){return new pe(t)}}})(typeof window<"u"?window:globalThis);
+    }
+  </script>
+  <script>
+    (() => {
+      'use strict';
+
+      const canvas = document.getElementById('field');
+      const ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
+      const body = document.body;
+      const root = document.documentElement;
+      const transport = document.getElementById('transport-toggle');
+      const transportText = document.getElementById('transport-text');
+      const statusLine = document.getElementById('status-line');
+      const bridgeError = document.getElementById('bridge-error');
+      const morphInput = document.getElementById('morph-control');
+      const morphValue = document.getElementById('morph-value');
+      const depthReadout = document.getElementById('depth-readout');
+      const orbitReadout = document.getElementById('orbit-readout');
+      const frontState = document.getElementById('front-state');
+      const isReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+      const TAU = Math.PI * 2;
+      const mobile = () => Math.min(window.innerWidth, window.innerHeight) < 700 || isCoarse;
+      const layerNames = ['QUIET SKY', 'RESONANCE', 'FRONT LINE', 'NIGHT LOG'];
+
+      let width = 1;
+      let height = 1;
+      let dpr = 1;
+      let rafId = 0;
+      let running = true;
+      let hidden = false;
+      let lastTime = 0;
+      let elapsed = 0;
+      let introElapsed = 0;
+      let weatherLayer = 0;
+      let activeFront = null;
+      let morph = Number(morphInput.value) || .42;
+      let orbitX = -.08;
+      let orbitY = .06;
+      let orbitTargetX = orbitX;
+      let orbitTargetY = orbitY;
+      let wheelEnergy = 0;
+      let wheelAccumulator = 0;
+      let wheelCooldown = 0;
+      let dragKnot = 0;
+      let dragTarget = 0;
+      let pointerX = .56;
+      let pointerY = .48;
+      let dragging = false;
+      let dragStartX = 0;
+      let dragStartY = 0;
+      let dragId = null;
+
+      const telemetry = {
+        rms: 0,
+        pad: 0,
+        lead: 0,
+        fx: 0,
+        lfo: 0,
+        filter: 0,
+        voices: 0,
+        grains: 0,
+        onset: 0,
+        phrase: 0,
+        bar: 0,
+        beat: 0,
+        progress: 0,
+        raw: null,
+        live: false
+      };
+
+      const pointPalette = [
+        'rgb(106, 231, 255)',
+        'rgb(70, 188, 244)',
+        'rgb(164, 122, 255)',
+        'rgb(197, 150, 255)',
+        'rgb(104, 116, 224)',
+        'rgb(255, 214, 133)'
+      ];
+      const pointAlphaBuckets = [.28, .36, .44, .54, .66, .8];
+
+      // 2D fallback intentionally stays below the laptop-Safari hot path. The
+      // visual density comes from deterministic depth, not per-point objects.
+      const maxPoints = () => mobile() ? 7000 : 13800;
+      let pointCount = 0;
+      let baseX;
+      let baseY;
+      let baseZ;
+      let seed;
+      let kind;
+      let pathT;
+      let pathY;
+      let screenX;
+      let screenY;
+      let screenSize;
+      let screenBucket;
+      let pointsDirty = true;
+
+      function hash(n) {
+        const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
+        return x - Math.floor(x);
+      }
+
+      function smoothstep(a, b, v) {
+        const t = Math.max(0, Math.min(1, (v - a) / (b - a)));
+        return t * t * (3 - 2 * t);
+      }
+
+      function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+      function num(v, fallback = 0) { return Number.isFinite(Number(v)) ? Number(v) : fallback; }
+
+      function nested(source, keys, fallback = 0) {
+        if (!source) return fallback;
+        for (const key of keys) {
+          const bits = key.split('.');
+          let value = source;
+          for (const bit of bits) value = value && value[bit];
+          if (Number.isFinite(Number(value))) return Number(value);
+        }
+        return fallback;
+      }
+
+      function updateTelemetry(next) {
+        const raw = next && (next.raw || next);
+        telemetry.raw = raw;
+        telemetry.rms = clamp(nested(next, ['rms', 'envelope.rms', 'levels.rms', 'audio.rms', 'raw.rms'], telemetry.rms), 0, 1);
+        telemetry.pad = clamp(nested(next, ['padPeak', 'stemPeaksByName.pad', 'stems.pad', 'pad.peak', 'levels.pad', 'raw.padPeak', 'raw.workletPadStemPeak'], telemetry.pad), 0, 1);
+        telemetry.lead = clamp(nested(next, ['leadPeak', 'stemPeaksByName.lead', 'stems.lead', 'lead.peak', 'levels.lead', 'raw.leadPeak', 'raw.workletLeadStemPeak'], telemetry.lead), 0, 1);
+        telemetry.fx = clamp(nested(next, ['fxPeak', 'stemPeaksByName.fx', 'stems.fx', 'fx.peak', 'levels.fx', 'raw.fxPeak', 'raw.workletFxStemPeak'], telemetry.fx), 0, 1);
+        const signedLfo = nested(next, ['pad1Lfo1Value', 'raw.pad1Lfo1Value', 'raw.workletPad1Lfo1Value'], Number.NaN);
+        telemetry.lfo = Number.isFinite(signedLfo)
+          ? clamp((signedLfo + 1) * .5, 0, 1)
+          : clamp(nested(next, ['lfo', 'lfoValue', 'modulation.lfo', 'raw.lfo'], telemetry.lfo), 0, 1);
+        const filterHz = nested(next, ['pad1FilterFreq', 'raw.pad1FilterFreq', 'raw.workletPad1FilterFreq'], Number.NaN);
+        telemetry.filter = Number.isFinite(filterHz)
+          ? clamp(Math.log(Math.max(40, filterHz) / 40) / Math.log(450), 0, 1)
+          : clamp(nested(next, ['filter', 'filterCutoff', 'filter.cutoff', 'modulation.filter', 'raw.filter'], telemetry.filter), 0, 1);
+        telemetry.voices = clamp(nested(next, ['activeVoices', 'activeSources', 'voices.active', 'voiceCount', 'raw.activeVoices'], telemetry.voices), 0, 128);
+        telemetry.grains = clamp(nested(next, ['activeGrains', 'grains.active', 'grainCount', 'raw.activeGrains'], telemetry.grains), 0, 256);
+        telemetry.onset = clamp(nested(next, ['onset', 'onsetShape', 'transient', 'envelope.onset', 'raw.onset'], telemetry.onset), 0, 1);
+        telemetry.phrase = clamp(nested(next, ['phraseProgress', 'phrase.progress', 'raw.phraseProgress'], telemetry.phrase), 0, 1);
+        telemetry.bar = nested(next, ['bar', 'barIndex', 'phrase.bar', 'raw.bar', 'raw.barIndex'], telemetry.bar);
+        telemetry.beat = nested(next, ['beat', 'beatPosition', 'beatPhase', 'phrase.beat', 'raw.beat', 'raw.beatPosition'], telemetry.beat);
+        telemetry.progress = clamp(nested(next, ['progress', 'transport.progress', 'raw.progress'], telemetry.progress), 0, 1);
+        telemetry.live = true;
+        paintTelemetry();
+      }
+
+      function paintTelemetry() {
+        document.getElementById('rms-value').textContent = telemetry.rms.toFixed(3);
+        document.getElementById('stem-value').textContent = ((telemetry.pad + telemetry.lead) * .5).toFixed(3);
+        document.getElementById('voice-value').textContent = String(Math.round(telemetry.voices)).padStart(2, '0');
+        document.getElementById('lfo-value').textContent = `${telemetry.lfo.toFixed(2)} / ${telemetry.filter.toFixed(2)}`;
+        const summary = `${telemetry.rms.toFixed(3)},${telemetry.pad.toFixed(3)},${telemetry.lead.toFixed(3)},${Math.round(telemetry.voices)}`;
+        root.dataset.telemetry = summary;
+        body.dataset.telemetry = summary;
+      }
+
+      function readableError(error) {
+        if (!error) return '';
+        return error instanceof Error ? error.message : (typeof error === 'object' && error.message ? String(error.message) : String(error));
+      }
+
+      function onStatus(event) {
+        const phase = typeof event === 'string' ? event : event && (event.phase || event.status);
+        const error = event && (event.error || event.message);
+        const normalized = phase || 'failed';
+        root.dataset.phase = normalized;
+        root.dataset.transport = normalized;
+        body.dataset.transport = normalized;
+        root.dataset.preset = (event && event.presetId) || 'string-waves';
+        root.dataset.reverb = 'lite';
+        statusLine.dataset.phase = normalized;
+        statusLine.textContent = `BRIDGE / ${normalized.toUpperCase()}`;
+        transport.dataset.phase = normalized;
+        transport.dataset.transport = normalized;
+        if (error) root.dataset.bridgeError = readableError(error);
+        if (normalized === 'playing') {
+          transport.classList.add('is-playing');
+          transport.setAttribute('aria-pressed', 'true');
+          transport.setAttribute('aria-label', 'Stop Kessho playback');
+          transport.textContent = '■';
+          transportText.textContent = 'PLAYING / LIVE FIELD';
+          frontState.textContent = 'PLAYING';
+        } else if (normalized === 'ready') {
+          transport.classList.remove('is-playing');
+          transport.setAttribute('aria-pressed', 'false');
+          transport.setAttribute('aria-label', 'Start Kessho playback');
+          transport.textContent = '▶';
+          transportText.textContent = 'READY / PRESS PLAY';
+          frontState.textContent = 'LISTENING';
+        } else if (normalized === 'loading' || normalized === 'booting') {
+          transportText.textContent = normalized === 'loading' ? 'LOADING CORE' : 'READYING FIELD';
+        } else if (normalized === 'stopping') {
+          transport.classList.remove('is-playing');
+          transport.textContent = '▶';
+          transportText.textContent = 'STABILISING';
+        } else if (normalized === 'failed') {
+          transport.classList.remove('is-playing');
+          transport.textContent = '×';
+          transportText.textContent = 'BRIDGE ERROR';
+          bridgeError.textContent = error ? `Kessho bridge error: ${readableError(error)}` : 'Kessho bridge failed to initialise.';
+        }
+      }
+
+      let controller = null;
+      let bridgeInitTimer = 0;
+      let bridgeInitDeadline = 0;
+      function createController() {
+        if (controller) return controller;
+        const bridge = window.PointCloudsKessho;
+        if (!bridge || typeof bridge.create !== 'function') {
+          if (!bridgeInitDeadline) bridgeInitDeadline = performance.now() + 6000;
+          if (performance.now() < bridgeInitDeadline) {
+            onStatus({ phase: 'booting' });
+            if (!bridgeInitTimer) {
+              bridgeInitTimer = window.setTimeout(() => {
+                bridgeInitTimer = 0;
+                createController();
+              }, 80);
+            }
+            return null;
+          }
+          onStatus({ phase: 'failed', message: 'PointCloudsKessho bridge unavailable' });
+          return null;
+        }
+        bridgeInitDeadline = 0;
+        try {
+          controller = window.PointCloudsKessho.create({
+            engineFrame: document.getElementById('kessho-engine'),
+            presetId: 'string-waves',
+            overrides: { reverbQuality: 'lite' },
+            onStatus,
+            onTelemetry: updateTelemetry
+          });
+          if (controller && typeof controller.boot === 'function') {
+            const result = controller.boot();
+            if (result && typeof result.then === 'function') {
+              result.then(() => setMorph(morph, true)).catch(error => onStatus({ phase: 'failed', error }));
+            } else {
+              setMorph(morph, true);
+            }
+          }
+        } catch (error) {
+          onStatus({ phase: 'failed', error });
+        }
+        return controller;
+      }
+
+      function setMorph(next, inform = true) {
+        morph = clamp(num(next, morph), 0, 1);
+        morphInput.value = morph.toFixed(2);
+        morphValue.textContent = morph.toFixed(2);
+        body.dataset.morph = morph.toFixed(2);
+        root.dataset.morph = morph.toFixed(2);
+        if (inform && controller && typeof controller.setMorph === 'function') {
+          try { controller.setMorph(morph); } catch (error) { onStatus({ phase: 'failed', error }); }
+        }
+      }
+
+      function openFront(name) {
+        activeFront = name;
+        document.querySelectorAll('[data-front-panel]').forEach(panel => {
+          const on = panel.dataset.frontPanel === name;
+          panel.classList.toggle('is-active', on);
+          panel.setAttribute('aria-hidden', String(!on));
+        });
+        document.querySelectorAll('[data-front]').forEach(button => button.setAttribute('aria-expanded', String(button.dataset.front === name)));
+      }
+
+      function closeFront() {
+        activeFront = null;
+        document.querySelectorAll('[data-front-panel]').forEach(panel => { panel.classList.remove('is-active'); panel.setAttribute('aria-hidden', 'true'); });
+        document.querySelectorAll('[data-front]').forEach(button => button.setAttribute('aria-expanded', 'false'));
+      }
+
+      function setLayer(next, reveal = false) {
+        weatherLayer = (next + layerNames.length) % layerNames.length;
+        body.dataset.depthLayer = String(weatherLayer);
+        body.dataset.weatherLayer = layerNames[weatherLayer].toLowerCase().replace(/\s+/g, '-');
+        root.style.setProperty('--weather', String(weatherLayer));
+        depthReadout.textContent = layerNames[weatherLayer];
+        document.querySelectorAll('[data-layer-index]').forEach(item => item.classList.toggle('is-current', Number(item.dataset.layerIndex) === weatherLayer));
+        document.querySelectorAll('[data-front-panel]').forEach(panel => { panel.style.setProperty('--front-shift', `${(weatherLayer - Number(panel.dataset.layer || 0)) * 16}px`); });
+        if (reveal) openFront(['info', 'cv', 'log', 'credits'][weatherLayer]);
+      }
+
+      function resize(force = false) {
+        const nextWidth = Math.max(1, Math.floor(window.innerWidth));
+        const nextHeight = Math.max(1, Math.floor(window.innerHeight));
+        if (!force && nextWidth === width && nextHeight === height) return;
+        width = nextWidth;
+        height = nextHeight;
+        dpr = Math.min(window.devicePixelRatio || 1, mobile() ? 1.2 : 1.5);
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        pointsDirty = true;
+      }
+
+      function pushPoint(arrays, index, x, y, z, pointKind, t, py) {
+        arrays.x[index] = x;
+        arrays.y[index] = y;
+        arrays.z[index] = z;
+        arrays.seed[index] = hash(index * 1.37 + pointKind * 44.2);
+        arrays.kind[index] = pointKind;
+        arrays.t[index] = t;
+        arrays.py[index] = py;
+      }
+
+      function buildPointCloud() {
+        pointCount = maxPoints();
+        baseX = new Float32Array(pointCount);
+        baseY = new Float32Array(pointCount);
+        baseZ = new Float32Array(pointCount);
+        seed = new Float32Array(pointCount);
+        kind = new Uint8Array(pointCount);
+        pathT = new Float32Array(pointCount);
+        pathY = new Float32Array(pointCount);
+        screenX = new Float32Array(pointCount);
+        screenY = new Float32Array(pointCount);
+        screenSize = new Float32Array(pointCount);
+        screenBucket = new Uint8Array(pointCount);
+        const arrays = { x: baseX, y: baseY, z: baseZ, seed, kind, t: pathT, py: pathY };
+        const logoBudget = Math.floor(pointCount * .7);
+        let cursor = 0;
+
+        const addPath = (kindId, fn, count, tOffset = 0) => {
+          const start = cursor;
+          for (let j = 0; j < count && cursor < logoBudget; j += 1) {
+            const t = count <= 1 ? 0 : j / (count - 1);
+            const p = fn(t);
+            const jitter = (hash(cursor * 9.1 + kindId) - .5) * (kindId === 1 ? .018 : .055);
+            pushPoint(arrays, cursor, p[0] + jitter, p[1] + jitter * .4, p[2] + (hash(cursor * 3.7) - .5) * .16, kindId, t + tOffset, p[1]);
+            cursor += 1;
+          }
+          return cursor - start;
+        };
+
+        // Connected mark: left inverted-U, bridge, right U basin. Terminals stay open.
+        addPath(0, t => {
+          const a = Math.PI + t * -Math.PI;
+          return [-.70 + .40 * Math.cos(a), .05 + .60 * Math.sin(a), -.04 + Math.cos(a * 2) * .04];
+        }, Math.floor(logoBudget * .24));
+        addPath(0, t => [-.30 + t * .80, .05, -.02 + Math.sin(t * Math.PI) * .03], Math.floor(logoBudget * .09));
+        addPath(0, t => {
+          const a = Math.PI + t * Math.PI;
+          return [.90 + .40 * Math.cos(a), .05 + .60 * Math.sin(a), .02 + Math.cos(a * 2) * .04];
+        }, Math.floor(logoBudget * .24));
+        // Sine topology threads through bridge, deliberately crossing foreground/background.
+        addPath(1, t => {
+          const x = -.30 + t * .80;
+          const y = .05 + Math.sin(t * TAU * 1.55 + .5) * (.095 + morph * .05);
+          const z = Math.sin(t * TAU * 1.55) * .3;
+          return [x, y, z];
+        }, Math.floor(logoBudget * .19));
+
+        for (; cursor < pointCount; cursor += 1) {
+          const u = hash(cursor * 2.2 + 7);
+          const v = hash(cursor * 3.8 + 19);
+          const w = hash(cursor * 5.4 + 31);
+          const radius = Math.pow(u, .55) * (1.35 + .55 * w);
+          const theta = v * TAU;
+          const phi = Math.acos(2 * hash(cursor * 7.7 + 41) - 1);
+          pushPoint(arrays, cursor, Math.cos(theta) * Math.sin(phi) * radius, Math.sin(theta) * Math.sin(phi) * radius * .72, Math.cos(phi) * radius * .72, 2, v, 0);
+        }
+        pointsDirty = false;
+      }
+
+      function drawCloud(now) {
+        if (pointsDirty) buildPointCloud();
+        const dt = Math.min(.05, (now - lastTime) / 1000 || .016);
+        lastTime = now;
+        elapsed += dt;
+        introElapsed += dt;
+        wheelCooldown = Math.max(0, wheelCooldown - dt);
+        orbitX += (orbitTargetX - orbitX) * Math.min(1, dt * 4.5);
+        orbitY += (orbitTargetY - orbitY) * Math.min(1, dt * 4.5);
+        const quietDrift = .5 + .5 * Math.sin(elapsed * .19);
+        const introFocus = smoothstep(0, isReducedMotion ? .4 : 4.8, introElapsed);
+        const loosen = smoothstep(isReducedMotion ? 1.4 : 5.6, isReducedMotion ? 2.4 : 9, introElapsed);
+        const logoMix = introFocus * (1 - loosen * .38);
+        const live = telemetry.live && statusLine.dataset.phase === 'playing';
+        const rms = live ? telemetry.rms : 0;
+        const stems = live ? (telemetry.pad * .65 + telemetry.lead * .85 + telemetry.fx * .45) : 0;
+        const lfo = live ? telemetry.lfo : quietDrift * .08;
+        const filter = live ? telemetry.filter : .26;
+        const onset = live ? telemetry.onset : .02;
+        const phrase = live ? telemetry.phrase : elapsed * .005;
+        const bar = live ? telemetry.bar : elapsed * .002;
+        const beat = live ? telemetry.beat : 0;
+        const voicePressure = live ? clamp(telemetry.voices / 32, 0, 1) : 0;
+        const fog = live ? clamp(rms * .42 + telemetry.fx * .5 + voicePressure * .18, 0, 1) : .08 + quietDrift * .03;
+        const amplitude = .055 + rms * .22 + stems * .11 + onset * .07;
+        const thickness = .68 + rms * .42 + telemetry.grains / 380 + voicePressure * .1;
+        const tidal = .01 + phrase * .022 + beat * .016;
+        const focusAngle = orbitY * .4 + elapsed * (.018 + tidal) + wheelEnergy * .04;
+        const tidalPhase = ((bar + phrase + (Number.isFinite(beat) ? beat * .25 : 0)) % 8 + 8) % 8;
+        const phaseInvert = Math.floor(tidalPhase) % 2 ? -1 : 1;
+        const sinPhase = elapsed * (.34 + lfo * .7) + phrase * TAU + beat * .9;
+        const cx = width * (.535 + orbitX * .02);
+        const cy = height * (.49 + orbitY * .03);
+        const scale = Math.min(width, height) * (mobile() ? .27 : .34);
+
+        ctx.clearRect(0, 0, width, height);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+
+        const f = 2.18;
+        for (let i = 0; i < pointCount; i += 1) {
+          let x = baseX[i];
+          let y = baseY[i];
+          let z = baseZ[i];
+          const s = seed[i];
+          const k = kind[i];
+          const drift = Math.sin(elapsed * (.12 + s * .11) + s * 11) * (.008 + .025 * loosen);
+          if (k !== 2 && introFocus < .999) {
+            // The authored paths begin as the same deterministic star volume,
+            // then resolve into the connected mark instead of popping on.
+            const haze = 1 - introFocus;
+            const hazeAngle = s * TAU + elapsed * .035;
+            const hazeRadius = .38 + s * .82;
+            x = x * introFocus + Math.cos(hazeAngle) * hazeRadius * haze;
+            y = y * introFocus + Math.sin(hazeAngle * 1.27) * hazeRadius * .62 * haze;
+            z = z * introFocus + (s - .5) * haze * .72;
+          }
+          if (k === 2) {
+            const cloudAngle = elapsed * (.024 + s * .018) + s * TAU;
+            const cloudR = 1 - logoMix * .74;
+            x *= cloudR;
+            y *= cloudR;
+            z *= cloudR;
+            x += Math.cos(cloudAngle) * (.06 + .08 * loosen) + drift;
+            y += Math.sin(cloudAngle * 1.2) * (.04 + .07 * loosen) + drift * .6;
+          } else {
+            x += drift * (1 + loosen);
+            y += Math.cos(elapsed * .2 + s * 8) * (.007 + .018 * loosen);
+            const localT = pathT[i];
+            if (k === 1) {
+              const bend = (pointerX - .53) * .15 * Math.exp(-Math.pow((localT - .5) * 3.2, 2));
+              const knot = dragKnot * Math.sin(localT * TAU * 1.3 + .4) * .17;
+              const wave = Math.sin(localT * TAU * 1.55 + sinPhase) * amplitude * thickness * phaseInvert;
+              y = pathY[i] + wave + bend + knot;
+              z += Math.sin(localT * TAU * 1.55 + sinPhase) * (.18 + lfo * .17) + Math.cos(localT * TAU * 2 + elapsed) * .035;
+              x += Math.sin(localT * TAU * 1.1 + dragKnot * 2) * dragKnot * .08;
+            } else {
+              y += Math.sin(elapsed * .23 + s * 5) * (.012 + .026 * loosen);
+            }
+            x *= .92 + logoMix * .08;
+            y *= .92 + logoMix * .08;
+            z += Math.sin(elapsed * .15 + s * 8) * .04 * (1 + loosen);
+          }
+          // Voice/grain pressure opens the volume in depth as well as in
+          // thickness, keeping the point cloud tied to Product Core voices.
+          z += (s - .5) * (voicePressure * .18 + (live ? telemetry.grains / 900 : 0));
+          const bendX = (pointerX - .53) * .12 * Math.exp(-Math.pow((x - (pointerX - .53) * 2) * 2.2, 2));
+          x += bendX * (k === 1 ? 1.8 : .28);
+          const ca = Math.cos(focusAngle + wheelEnergy * .06);
+          const sa = Math.sin(focusAngle + wheelEnergy * .06);
+          const cyy = Math.cos(orbitY * .42);
+          const syy = Math.sin(orbitY * .42);
+          const xr = x * ca - z * sa;
+          const zr = x * sa + z * ca;
+          const yr = y * cyy - zr * syy;
+          const zz = y * syy + zr * cyy + 3.2;
+          const persp = f / zz;
+          const px = cx + xr * scale * persp;
+          const py = cy - yr * scale * persp;
+          const depth = clamp((zz - 2.45) / 1.9, 0, 1);
+          const size = clamp((.58 + (1 - depth) * 1.35 + rms * 1.8 + onset * 1.1) * (k === 1 ? 1.15 : 1), .4, 4.4);
+          const bucket = k === 1
+            ? (filter > .7 ? 5 : (filter > .35 ? 1 : 0))
+            : (s > .78 ? 3 : (s > .57 ? 2 : (s > .26 ? 4 : 1)));
+          screenX[i] = px;
+          screenY[i] = py;
+          screenSize[i] = size;
+          screenBucket[i] = bucket;
+        }
+        for (let bucket = 0; bucket < pointPalette.length; bucket += 1) {
+          ctx.fillStyle = pointPalette[bucket];
+          ctx.globalAlpha = pointAlphaBuckets[bucket] * (0.72 + logoMix * .28) * (0.86 + fog * .28);
+          for (let i = 0; i < pointCount; i += 1) {
+            if (screenBucket[i] !== bucket) continue;
+            const size = screenSize[i];
+            ctx.fillRect(screenX[i] - size * .5, screenY[i] - size * .5, size, size);
+          }
+        }
+        ctx.globalAlpha = 1;
+
+        // A sparse, authored filament pass clarifies front/back crossings without object allocations.
+        ctx.lineWidth = .75 + rms * 1.4;
+        ctx.strokeStyle = `hsla(${184 + filter * 22}, 93%, 78%, ${.16 + rms * .26})`;
+        ctx.beginPath();
+        const filamentY = cy - scale * .035;
+        for (let j = 0; j <= 96; j += 1) {
+          const t = j / 96;
+          const x = cx + (-.30 + t * .80) * scale * f / 3.05;
+          const y = filamentY - Math.sin(t * TAU * 1.55 + sinPhase) * scale * amplitude * .33;
+          if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+        wheelEnergy *= Math.pow(.001, dt);
+        dragKnot += (dragTarget - dragKnot) * Math.min(1, dt * 8);
+      }
+
+      function render(now) {
+        if (!running || hidden) return;
+        drawCloud(now);
+        rafId = requestAnimationFrame(render);
+      }
+
+      function resumeRender() {
+        if (hidden || rafId) return;
+        running = true;
+        lastTime = performance.now();
+        rafId = requestAnimationFrame(render);
+      }
+
+      function pauseRender() {
+        running = false;
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+
+      function updatePointer(event) {
+        pointerX = clamp(event.clientX / Math.max(1, width), 0, 1);
+        pointerY = clamp(event.clientY / Math.max(1, height), 0, 1);
+        root.style.setProperty('--mx', `${pointerX * 100}%`);
+        root.style.setProperty('--my', `${pointerY * 100}%`);
+        if (!dragging) {
+          orbitTargetX = (pointerX - .52) * .42;
+          orbitTargetY = (pointerY - .5) * .27;
+        }
+      }
+
+      canvas.addEventListener('pointermove', event => {
+        updatePointer(event);
+        if (dragging && (dragId === null || event.pointerId === dragId)) {
+          const dx = (event.clientX - dragStartX) / Math.max(1, width);
+          const dy = (event.clientY - dragStartY) / Math.max(1, height);
+          dragTarget = clamp(dx * 2.4 - dy * .8, -1, 1);
+          orbitTargetX = clamp(orbitTargetX + dx * .08, -.6, .6);
+          orbitTargetY = clamp(orbitTargetY + dy * .08, -.42, .42);
+        }
+      }, { passive: true });
+      canvas.addEventListener('pointerdown', event => {
+        dragging = true;
+        dragId = event.pointerId;
+        dragStartX = event.clientX;
+        dragStartY = event.clientY;
+        dragTarget = 0;
+        canvas.setPointerCapture?.(event.pointerId);
+      });
+      const releasePointer = event => {
+        if (dragId !== null && event.pointerId !== dragId) return;
+        dragging = false;
+        dragId = null;
+        dragTarget = 0;
+      };
+      canvas.addEventListener('pointerup', releasePointer);
+      canvas.addEventListener('pointercancel', releasePointer);
+      canvas.addEventListener('pointerleave', event => { if (!isCoarse && !dragging) updatePointer({ clientX: width * .53, clientY: height * .5 }); });
+
+      canvas.addEventListener('wheel', event => {
+        event.preventDefault();
+        const delta = clamp(event.deltaY, -160, 160);
+        wheelAccumulator = clamp(wheelAccumulator + delta, -360, 360);
+        wheelEnergy = clamp(wheelEnergy + Math.sign(delta) * .18, -1, 1);
+        if (wheelCooldown > 0 || Math.abs(wheelAccumulator) < 70) return;
+        const direction = wheelAccumulator > 0 ? 1 : -1;
+        wheelAccumulator = 0;
+        wheelCooldown = .36;
+        setLayer(weatherLayer + direction, true);
+      }, { passive: false });
+
+      document.addEventListener('keydown', event => {
+        const key = event.key.toLowerCase();
+        if (key === ' ' || event.code === 'Space') {
+          event.preventDefault();
+          if (controller && typeof controller.toggle === 'function') {
+            try { Promise.resolve(controller.toggle()).catch(error => onStatus({ phase: 'failed', error })); } catch (error) { onStatus({ phase: 'failed', error }); }
+          } else {
+            createController();
+            onStatus({ phase: 'booting' });
+          }
+          return;
+        }
+        if (key === 'escape') { closeFront(); return; }
+        if (key === 'w' || key === 'arrowup') orbitTargetY = clamp(orbitTargetY - .08, -.55, .55);
+        if (key === 's' || key === 'arrowdown') orbitTargetY = clamp(orbitTargetY + .08, -.55, .55);
+        if (key === 'a' || key === 'arrowleft') orbitTargetX = clamp(orbitTargetX - .1, -.65, .65);
+        if (key === 'd' || key === 'arrowright') orbitTargetX = clamp(orbitTargetX + .1, -.65, .65);
+      });
+
+      transport.addEventListener('click', () => {
+        if (!controller || typeof controller.toggle !== 'function') {
+          createController();
+          onStatus({ phase: 'booting' });
+          return;
+        }
+        try {
+          const result = controller.toggle();
+          if (result && typeof result.catch === 'function') result.catch(error => onStatus({ phase: 'failed', error }));
+        } catch (error) { onStatus({ phase: 'failed', error }); }
+      });
+
+      morphInput.addEventListener('input', event => setMorph(event.target.value));
+      document.querySelectorAll('[data-front]').forEach(button => button.addEventListener('click', () => {
+        const name = button.dataset.front;
+        if (activeFront === name) closeFront(); else openFront(name);
+      }));
+      document.querySelectorAll('[data-close-front]').forEach(button => button.addEventListener('click', closeFront));
+
+      document.addEventListener('visibilitychange', () => {
+        hidden = document.hidden;
+        if (hidden) pauseRender(); else resumeRender();
+      });
+      window.addEventListener('resize', () => { resize(); });
+
+      resize(true);
+      setMorph(morph, false);
+      setLayer(0);
+      buildPointCloud();
+      paintTelemetry();
+      createController();
+      resumeRender();
+
+      window.addEventListener('beforeunload', () => { try { controller?.destroy?.(); } catch (_) {} });
+    })();
+  </script>
+</body>
+</html>

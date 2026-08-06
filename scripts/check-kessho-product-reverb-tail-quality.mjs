@@ -405,7 +405,7 @@ requireTokens('cpp/KesshoCore/src/product/fx/ProductReverb.cpp', [
   'reverb_wash_boost',
   'reverb_bloom_boost',
   'configureReverbModule()',
-  'spectral_freeze_active',
+  'spectral_freeze_enabled',
   'spectral_freeze_reverb_crossfade',
   'reverb_module->processPlanarStereo',
   'routeTerminalSample(routing.dynamics_routes[kDynamicsRouteReverb], out_l, out_r, frame, left, right)',

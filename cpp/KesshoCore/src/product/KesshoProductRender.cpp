@@ -39,7 +39,7 @@ struct SoundscapeRenderBlockCache {
       uint32_t type) {
   const float nyquist_limit = static_cast<float>(sample_rate * 0.499);
   const float cutoff = clampFloat(cutoff_hz, 20.0f, std::max(20.0f, nyquist_limit));
-  if (std::abs(filter.coeff_cutoff - cutoff) <= 0.0001f && filter.coeff_type == type) {
+  if (std::abs(filter.coeff_cutoff - cutoff) <= 0.0001f) {
     return;
   }
 
@@ -61,7 +61,6 @@ struct SoundscapeRenderBlockCache {
   filter.a1 = (-2.0f * cos_omega) / a0;
   filter.a2 = (1.0f - alpha) / a0;
   filter.coeff_cutoff = cutoff;
-  filter.coeff_type = type;
 }
 
   float KesshoProductEngine::processProductBiquadSample(
@@ -176,6 +175,9 @@ struct SoundscapeRenderBlockCache {
           soundscapeLayerRouteSend(soundscape_source, layer, route, soundscape_route_fallbacks[route]);
     }
   }
+  const uint32_t harmony_fade_total_frames = std::max<uint32_t>(1u, static_cast<uint32_t>(std::lround(sample_rate * 0.02)));
+  const float harmony_morph_handover = clampFloat(harmony.morph_scale_handover_at, 0.05f, 0.95f);
+  const bool harmony_morph_target_side = harmony.morph_plan_phase >= harmony_morph_handover;
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
     float source_gates[kSourceCount]{};
@@ -183,11 +185,12 @@ struct SoundscapeRenderBlockCache {
       if ((active_source_mask & (1u << source_index)) == 0u) {
         continue;
       }
-      const uint64_t absolute_frame = transport.sample_frame + i;
-      source_gates[source_index] = sourceEnableGainForFrame(sources[source_index], absolute_frame);
+      const uint64_t transport_frame = transport.sample_frame + i;
+      const uint64_t render_frame = audio_render_sample_frame + i;
+      source_gates[source_index] = sourceOutputGainForFrame(sources[source_index], render_frame);
       const uint32_t mute_row = routingMuteRowForSource(source_index + 1u);
       if (mute_row < kProductRoutingMuteRowCount) {
-        source_gates[source_index] *= routingMuteGainForFrame(mute_row, absolute_frame);
+        source_gates[source_index] *= routingMuteGainForFrame(mute_row, transport_frame);
       }
     }
     for (uint32_t active_i = 0u; active_i < active_voice_count; ++active_i) {
@@ -197,6 +200,44 @@ struct SoundscapeRenderBlockCache {
         continue;
       }
       if (voice.source_id < 1u || voice.source_id > kSourceCount) {
+        voice.active = false;
+        active_voice_list_dirty = true;
+        continue;
+      }
+      // Existing voices removed by a Harmony morph are crossfaded out over a
+      // bounded 20 ms window. New target-side triggers retain integer MIDI
+      // anchors and their normal attack envelope; no pitch interpolation is
+      // performed. All state is fixed-capacity per voice and audio-thread safe.
+      bool removed_harmony_voice = false;
+      if (harmony.morph_plan_phase > 0.0f && harmony_morph_target_side && harmony.morph_unmatched_a_count > 0u) {
+        for (uint32_t note_index = 0u; note_index < harmony.morph_unmatched_a_count; ++note_index) {
+          if (voice.harmony_resolved_voice &&
+              std::abs(voice.midi_note - harmony.morph_unmatched_a[note_index]) <= 0.01f) {
+            removed_harmony_voice = true;
+            break;
+          }
+        }
+      }
+      if (removed_harmony_voice) {
+        if (voice.harmony_fade_target > 0.0f) {
+          voice.harmony_fade_target = 0.0f;
+          voice.harmony_fade_frames_remaining = harmony_fade_total_frames;
+          voice.harmony_fade_step = -voice.harmony_fade_gain / static_cast<float>(harmony_fade_total_frames);
+        }
+      } else if (voice.harmony_fade_target < 1.0f) {
+        voice.harmony_fade_target = 1.0f;
+        voice.harmony_fade_frames_remaining = harmony_fade_total_frames;
+        voice.harmony_fade_step = (1.0f - voice.harmony_fade_gain) / static_cast<float>(harmony_fade_total_frames);
+      }
+      if (voice.harmony_fade_frames_remaining > 0u) {
+        voice.harmony_fade_gain = std::max(0.0f, std::min(1.0f,
+            voice.harmony_fade_gain + voice.harmony_fade_step));
+        --voice.harmony_fade_frames_remaining;
+        if (voice.harmony_fade_frames_remaining == 0u) {
+          voice.harmony_fade_gain = voice.harmony_fade_target;
+        }
+      }
+      if (removed_harmony_voice && voice.harmony_fade_gain <= 0.0f) {
         voice.active = false;
         active_voice_list_dirty = true;
         continue;
@@ -213,6 +254,8 @@ struct SoundscapeRenderBlockCache {
             voice.soundscape_texture_slice_id);
       }
       renderVoiceSample(voice, value_l, value_r);
+      value_l *= voice.harmony_fade_gain;
+      value_r *= voice.harmony_fade_gain;
       SourceState& source = sources[voice.source_id - 1u];
       float source_gate = source_gates[voice.source_id - 1u];
       if (voice.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
@@ -795,6 +838,7 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
       if (transport.running) {
         transport.sample_frame += segment_frames;
       }
+      audio_render_sample_frame += segment_frames;
       local_cursor = next_event_offset;
     }
     cursor = control_segment_end;

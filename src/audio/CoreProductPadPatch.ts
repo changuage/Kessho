@@ -15,8 +15,7 @@ const PAD_PATCH_EPSILON = 0.000001;
 const PAD_HARDNESS_PARAM_INDEX = generatedProductParamIndex(KESSHO_PRODUCT_PAD_PARAM_SPECS, 'hardness');
 const PAD_WARMTH_PARAM_INDEX = generatedProductParamIndex(KESSHO_PRODUCT_PAD_PARAM_SPECS, 'warmth');
 const PAD_PRESENCE_PARAM_INDEX = generatedProductParamIndex(KESSHO_PRODUCT_PAD_PARAM_SPECS, 'presence');
-const PAD_FILTER_CUTOFF_MIN_PARAM_INDEX = generatedProductParamIndex(KESSHO_PRODUCT_PAD_PARAM_SPECS, 'filterCutoffMin');
-const PAD_FILTER_CUTOFF_MAX_PARAM_INDEX = generatedProductParamIndex(KESSHO_PRODUCT_PAD_PARAM_SPECS, 'filterCutoffMax');
+const PAD_FILTER_CUTOFF_PARAM_INDEX = generatedProductParamIndex(KESSHO_PRODUCT_PAD_PARAM_SPECS, 'filterCutoff');
 const PAD_ATTACK_PARAM_INDEX = generatedProductParamIndex(KESSHO_PRODUCT_PAD_PARAM_SPECS, 'synthAttack');
 const PAD_DECAY_PARAM_INDEX = generatedProductParamIndex(KESSHO_PRODUCT_PAD_PARAM_SPECS, 'synthDecay');
 const PAD_SUSTAIN_PARAM_INDEX = generatedProductParamIndex(KESSHO_PRODUCT_PAD_PARAM_SPECS, 'synthSustain');
@@ -88,8 +87,7 @@ function applyPadDistanceParams(params: number[], distance: number): void {
   params[PAD_HARDNESS_PARAM_INDEX] = padDistanceAdd(params[PAD_HARDNESS_PARAM_INDEX] ?? 0, distance, -0.04, -0.22, 0, 2);
   params[PAD_WARMTH_PARAM_INDEX] = padDistanceAdd(params[PAD_WARMTH_PARAM_INDEX] ?? 0, distance, 0.04, 0.18, 0, 1);
   params[PAD_PRESENCE_PARAM_INDEX] = padDistanceAdd(params[PAD_PRESENCE_PARAM_INDEX] ?? 0, distance, -0.05, -0.30, 0, 1);
-  params[PAD_FILTER_CUTOFF_MIN_PARAM_INDEX] = padDistanceMultiply(params[PAD_FILTER_CUTOFF_MIN_PARAM_INDEX] ?? 0, distance, 0.85, 0.45, 40, 8000);
-  params[PAD_FILTER_CUTOFF_MAX_PARAM_INDEX] = padDistanceMultiply(params[PAD_FILTER_CUTOFF_MAX_PARAM_INDEX] ?? 0, distance, 0.92, 0.55, 40, 8000);
+  params[PAD_FILTER_CUTOFF_PARAM_INDEX] = padDistanceMultiply(params[PAD_FILTER_CUTOFF_PARAM_INDEX] ?? 0, distance, 0.90, 0.50, 40, 8000);
 }
 
 function emptyPadParams(): number[] {
@@ -103,7 +101,7 @@ function generatedPadParamsFromPreset(preset: SourcePreset): number[] | undefine
   for (const spec of KESSHO_PRODUCT_PAD_PARAM_SPECS) {
     params[spec.index] = coreProductParamValue(padPreset.params[spec.key], spec.enumMap, spec.fallback);
   }
-  params[52] = KESSHO_PRODUCT_PAD_OUTPUT_TRIM;
+  params[KESSHO_PRODUCT_PAD_PARAM_COUNT - 1] = KESSHO_PRODUCT_PAD_OUTPUT_TRIM;
   return params;
 }
 
@@ -144,8 +142,21 @@ function exactPadParamsFromState(state: Record<string, unknown> | undefined, pad
     params[spec.index] = coreProductParamValue(state?.[key] ?? morphedPresetParams[spec.key], spec.enumMap, spec.fallback);
   }
   applyPadDistanceParams(params, clamp(numberFromState(state, getVoiceDistanceKey(padIndex === 0 ? 'pad1' : 'pad2'), 0), 0, 1));
-  params[52] = KESSHO_PRODUCT_PAD_OUTPUT_TRIM;
+  params[KESSHO_PRODUCT_PAD_PARAM_COUNT - 1] = KESSHO_PRODUCT_PAD_OUTPUT_TRIM;
   return params;
+}
+
+export function padEnvelopeFromState(
+  state: Record<string, unknown> | undefined,
+  padIndex: 0 | 1,
+): { attackSeconds: number; decaySeconds: number; sustain: number; releaseSeconds: number } {
+  const params = exactPadParamsFromState(state, padIndex);
+  return {
+    attackSeconds: params[PAD_ATTACK_PARAM_INDEX]!,
+    decaySeconds: params[PAD_DECAY_PARAM_INDEX]!,
+    sustain: params[PAD_SUSTAIN_PARAM_INDEX]!,
+    releaseSeconds: params[PAD_RELEASE_PARAM_INDEX]!,
+  };
 }
 
 function reconstructedPadParamsFromPresetIds(presetAId: number, presetBId: number, morph: number, distance = 0): number[] {
@@ -153,7 +164,7 @@ function reconstructedPadParamsFromPresetIds(presetAId: number, presetBId: numbe
   const presetAParams = generatedPadParamsFromPresetId(presetAId);
   const presetBParams = generatedPadParamsFromPresetId(presetBId);
   if (!presetAParams || !presetBParams) {
-    params[52] = KESSHO_PRODUCT_PAD_OUTPUT_TRIM;
+    params[KESSHO_PRODUCT_PAD_PARAM_COUNT - 1] = KESSHO_PRODUCT_PAD_OUTPUT_TRIM;
     return params;
   }
 

@@ -583,7 +583,9 @@ export function resolveProductPlayEnginePattern(options: {
             ? strumOffsetMs(voiceIndex, ordered.length, config.chord.strum.spreadMs, config.chord.strum.curve)
             : 0,
         velocity: clamp(1 - voiceIndex * config.chord.strum.velocityFalloff, 0.05, 1),
-        voiceIndex,
+        // The native slot resolver indexes the authored pool; strum order is
+        // represented by offsetMs and therefore must not change that index.
+        voiceIndex: Math.max(0, detail.notes.indexOf(midi)),
       }));
     })
     : resolveProductPlayNoteEvents({ config, harmony: options.harmony, sourceId: options.sourceId, triggerIntervalMs: options.triggerIntervalMs });

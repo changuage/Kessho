@@ -1,4 +1,5 @@
 import { DEFAULT_STATE, type SliderState } from '../ui/state';
+import { PARAM_REGISTRY } from './ParamRegistry';
 
 export interface ProductCorePresetBoundaryIssue {
   key: keyof SliderState;
@@ -21,7 +22,8 @@ export function validateProductCorePresetBoundaryState(state: SliderState): Prod
   const issues: ProductCorePresetBoundaryIssue[] = [];
   const record = state as unknown as Record<string, unknown>;
 
-  for (const key of Object.keys(DEFAULT_STATE) as (keyof SliderState)[]) {
+  for (const key of Object.keys(PARAM_REGISTRY) as (keyof SliderState)[]) {
+    if (!(key in DEFAULT_STATE)) continue;
     const expected = DEFAULT_STATE[key];
     const value = record[String(key)];
 

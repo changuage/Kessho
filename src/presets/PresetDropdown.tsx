@@ -19,8 +19,17 @@ import { PRESET_POOL_ICON, getPresetPoolLabel, type PresetPoolCandidate } from '
 import { DEFAULT_STATE, type SliderMode, type SliderState } from '../ui/state';
 import type { UsePresetsOptions } from './usePresets';
 import { blurSelectAfterChange } from '../ui/shared/selectFocus';
+import { getPresetCommandErrorMessage, getPresetCommandService } from './presetCommands';
 
 type PresetLoadResult = boolean | void | Promise<boolean | void>;
+
+function surfacePresetMutationFailure(message: string): void {
+  if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+    window.alert(message);
+  } else {
+    console.warn(message);
+  }
+}
 
 export interface PresetDropdownProps {
   /** Preset level */
@@ -198,6 +207,8 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
 }) => {
   const { presets, save, load, loadById, remove, rename, refresh, extract, apply, updateMetadata } = usePresets(level, scope, presetOptions);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [showPoolPopup, setShowPoolPopup] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [saveNote, setSaveNote] = useState('');
@@ -371,11 +382,21 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     if (!name) return;
     const requestId = ++loadRequestIdRef.current;
     setSelectedName(name);
-    const entry = await load(name);
-    if (requestId !== loadRequestIdRef.current) return;
-    if (!entry) return;
-    await applyPresetEntry(entry, requestId, true);
-  }, [load, applyPresetEntry]);
+    try {
+      const entry = await load(name);
+      if (requestId !== loadRequestIdRef.current) return;
+      if (!entry) {
+        setSelectedName(currentName ?? '');
+        surfacePresetMutationFailure(`Preset "${name}" could not be loaded.`);
+        return;
+      }
+      await applyPresetEntry(entry, requestId, true);
+    } catch (error) {
+      if (requestId !== loadRequestIdRef.current) return;
+      setSelectedName(currentName ?? '');
+      surfacePresetMutationFailure(getPresetCommandErrorMessage(error));
+    }
+  }, [load, applyPresetEntry, currentName]);
 
   const handlePoolAudition = useCallback(async (candidate: PresetPoolCandidate) => {
     if (!onAudition) return;
@@ -399,7 +420,10 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     const entry = await resolvePresetCandidateEntry(candidate);
     if (!entry) return false;
     const removed = await remove(entry.name);
-    if (!removed) return false;
+    if (!removed) {
+      surfacePresetMutationFailure(`Preset "${entry.name}" could not be deleted.`);
+      return false;
+    }
     if (selectedName === entry.name) {
       setSelectedName('');
       setLoadedEntry(null);
@@ -411,13 +435,22 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   const handlePoolRate = useCallback(async (candidate: PresetPoolCandidate, rating: number) => {
     const entry = await resolvePresetCandidateEntry(candidate);
     if (!entry) return;
+    const previousRating = localRatings[entry.name];
     setLocalRatings(prev => ({ ...prev, [entry.name]: rating }));
     try {
-      await updateMetadata(entry.name, { rating });
+      const updated = await updateMetadata(entry.name, { rating });
+      if (!updated) throw new Error(`Rating for preset "${entry.name}" was not updated.`);
     } catch (ratingError) {
-      console.warn('Failed to update preset rating:', ratingError);
+      setLocalRatings(prev => {
+        const next = { ...prev };
+        if (previousRating === undefined) delete next[entry.name];
+        else next[entry.name] = previousRating;
+        return next;
+      });
+      surfacePresetMutationFailure(getPresetCommandErrorMessage(ratingError));
+      throw ratingError;
     }
-  }, [resolvePresetCandidateEntry, updateMetadata]);
+  }, [localRatings, resolvePresetCandidateEntry, updateMetadata]);
 
   // Open save dialog
   const handleSaveClick = useCallback(() => {
@@ -425,66 +458,77 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     setSaveNote('');
     setSaveTags(selectedPresetSummary?.tags ?? loadedEntry?.tags ?? []);
     setSavePublic(SHARED_PRESET_TEST_MODE || selectedPresetSummary?.visibility === 'public');
+    setSaveError('');
     setShowSaveDialog(true);
   }, [defaultSaveName, selectedName, scope, level, selectedPresetSummary, loadedEntry]);
 
   // Confirm save
   const handleSaveConfirm = useCallback(async () => {
     if (!saveName.trim()) return;
-    const version = loadedEntry ? getSelectedVersion(loadedEntry) : null;
-    const trimmedName = saveName.trim();
-    const currentDualMetadata = extractCurrentDualMetadata(extract(state));
-    const preservedMetadata = extractPresetVersionMetadata(version);
-    const mergedMetadata = {
-      ...(preservedMetadata || {}),
-      ...(currentDualMetadata.dualRanges ? { dualRanges: currentDualMetadata.dualRanges } : {}),
-      ...(currentDualMetadata.sliderModes ? { sliderModes: currentDualMetadata.sliderModes } : {}),
-    };
-    if (!currentDualMetadata.dualRanges) {
-      delete mergedMetadata.dualRanges;
-    }
-    if (!currentDualMetadata.sliderModes) {
-      delete mergedMetadata.sliderModes;
-    }
-    const visibility = SHARED_PRESET_TEST_MODE || savePublic ? 'public' : 'private';
-    await save(
-      trimmedName,
-      state,
-      saveNote.trim() || undefined,
-      saveTags,
-      Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined,
-      { visibility },
-    );
-    await refresh();
-    const savedEntry = await load(trimmedName);
-    setLoadedEntry(savedEntry ?? null);
-    // Update loadedData so dirty flag resets
-    if (savedEntry) {
+    setSaveError('');
+    setSaveBusy(true);
+    try {
+      const version = loadedEntry ? getSelectedVersion(loadedEntry) : null;
+      const trimmedName = saveName.trim();
+      const currentDualMetadata = extractCurrentDualMetadata(extract(state));
+      const preservedMetadata = extractPresetVersionMetadata(version);
+      const mergedMetadata = {
+        ...(preservedMetadata || {}),
+        ...(currentDualMetadata.dualRanges ? { dualRanges: currentDualMetadata.dualRanges } : {}),
+        ...(currentDualMetadata.sliderModes ? { sliderModes: currentDualMetadata.sliderModes } : {}),
+      };
+      if (!currentDualMetadata.dualRanges) delete mergedMetadata.dualRanges;
+      if (!currentDualMetadata.sliderModes) delete mergedMetadata.sliderModes;
+      const visibility = SHARED_PRESET_TEST_MODE || savePublic ? 'public' : 'private';
+      const savedEntry = await save(
+        trimmedName,
+        state,
+        saveNote.trim() || undefined,
+        saveTags,
+        Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined,
+        { visibility },
+      );
+      if (!savedEntry) {
+        setSaveError(`Preset "${trimmedName}" was not saved.`);
+        return;
+      }
+      setLoadedEntry(savedEntry);
       const verData = getVersionData(savedEntry);
       setLoadedData(verData ? canonicalizeLoadedData(verData) : null);
-    } else {
-      setLoadedData(null);
+      setSelectedName(savedEntry.name);
+      setShowSaveDialog(false);
+    } catch (error) {
+      setSaveError(getPresetCommandErrorMessage(error));
+    } finally {
+      setSaveBusy(false);
     }
-    setSelectedName(savedEntry?.name ?? trimmedName);
-    setShowSaveDialog(false);
-  }, [saveName, saveNote, saveTags, savePublic, state, save, loadedEntry, refresh, load, getSelectedVersion, extractCurrentDualMetadata, extract, canonicalizeLoadedData]);
+  }, [saveName, saveNote, saveTags, savePublic, state, save, loadedEntry, getSelectedVersion, extractCurrentDualMetadata, extract, canonicalizeLoadedData]);
 
   const handleRenameConfirm = useCallback(async () => {
     if (!canRenameSelectedPreset || !selectedName) return;
     const trimmedName = saveName.trim();
     if (!trimmedName || trimmedName === selectedName) return;
 
-    const renamedEntry = await rename(selectedName, trimmedName, { tags: saveTags });
-    if (!renamedEntry) return;
-
-    const savedEntry = await load(renamedEntry.name);
-    setLoadedEntry(savedEntry ?? renamedEntry);
-    const verData = getVersionData(savedEntry ?? renamedEntry);
-    setLoadedData(verData ? canonicalizeLoadedData(verData) : null);
-    setSelectedName(renamedEntry.name);
-    setSaveName(renamedEntry.name);
-    setShowSaveDialog(false);
-  }, [canRenameSelectedPreset, selectedName, saveName, saveTags, rename, load, canonicalizeLoadedData]);
+    setSaveError('');
+    setSaveBusy(true);
+    try {
+      const renamedEntry = await rename(selectedName, trimmedName, { tags: saveTags });
+      if (!renamedEntry) {
+        setSaveError(`Preset "${selectedName}" was not renamed.`);
+        return;
+      }
+      setLoadedEntry(renamedEntry);
+      const verData = getVersionData(renamedEntry);
+      setLoadedData(verData ? canonicalizeLoadedData(verData) : null);
+      setSelectedName(renamedEntry.name);
+      setSaveName(renamedEntry.name);
+      setShowSaveDialog(false);
+    } catch (error) {
+      setSaveError(getPresetCommandErrorMessage(error));
+    } finally {
+      setSaveBusy(false);
+    }
+  }, [canRenameSelectedPreset, selectedName, saveName, saveTags, rename, canonicalizeLoadedData]);
 
   // Export current preset
   const handleExport = useCallback(async () => {
@@ -497,6 +541,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
 
   // Import preset from file
   const handleImport = useCallback(async () => {
+    if (saveBusy) return;
     const requestId = ++loadRequestIdRef.current;
     let entry: PresetEntry | null;
     try {
@@ -522,37 +567,47 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
       return;
     }
 
-    // Save to store
+    setSaveBusy(true);
+    setSaveError('');
     const store = getPresetStore();
-    await store.save(entry);
-    await refresh();
+    try {
+      const importedEntry = await getPresetCommandService(store).importEntry(entry);
+      const [savedEntry] = await Promise.all([
+        Promise.resolve(importedEntry),
+        refresh(),
+      ]);
+      if (requestId !== loadRequestIdRef.current) return;
+      const selectedEntry = savedEntry ?? entry;
+      const selectedVersion = getSelectedVersion(selectedEntry);
+      if (!selectedVersion) return;
+      const versionData = getVersionData(selectedEntry);
+      if (requestId !== loadRequestIdRef.current) return;
+      if (!versionData) return;
+      const didLoad = await onLoad(selectedEntry, versionData);
+      if (requestId !== loadRequestIdRef.current) return;
+      if (didLoad === false) {
+        setSelectedName(currentName ?? '');
+        return;
+      }
 
-    // Load it
-    const savedEntry = await load(entry.name);
-    if (requestId !== loadRequestIdRef.current) return;
-    const selectedEntry = savedEntry ?? entry;
-    const selectedVersion = getSelectedVersion(selectedEntry);
-    if (!selectedVersion) return;
-    const versionData = getVersionData(selectedEntry);
-    if (requestId !== loadRequestIdRef.current) return;
-    if (!versionData) return;
-    const didLoad = await onLoad(selectedEntry, versionData);
-    if (requestId !== loadRequestIdRef.current) return;
-    if (didLoad === false) {
-      setSelectedName(currentName ?? '');
-      return;
+      setSelectedName(selectedEntry.name);
+      setLoadedEntry(selectedEntry);
+      setLoadedData(canonicalizeLoadedData(versionData));
+      applyLoadedData(versionData);
+      onDualStateChange?.(
+        Object.keys(versionData),
+        selectedVersion.dualRanges,
+        selectedVersion.sliderModes as Record<string, SliderMode> | undefined,
+      );
+    } catch (error) {
+      const message = getPresetCommandErrorMessage(error);
+      setSaveError(message);
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') window.alert(message);
+      else console.warn(message);
+    } finally {
+      setSaveBusy(false);
     }
-
-    setSelectedName(entry.name);
-    setLoadedEntry(selectedEntry);
-    setLoadedData(canonicalizeLoadedData(versionData));
-    applyLoadedData(versionData);
-    onDualStateChange?.(
-      Object.keys(versionData),
-      selectedVersion.dualRanges,
-      selectedVersion.sliderModes as Record<string, SliderMode> | undefined,
-    );
-  }, [refresh, load, getSelectedVersion, onLoad, onDualStateChange, canonicalizeLoadedData, applyLoadedData, currentName]);
+  }, [saveBusy, refresh, getSelectedVersion, onLoad, onDualStateChange, canonicalizeLoadedData, applyLoadedData, currentName]);
 
   // Delete selected preset
   const handleDelete = useCallback(async () => {
@@ -563,7 +618,10 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     if (!SHARED_PRESET_TEST_MODE && (entry.library === 'stock' || entry.author === 'factory')) return;
     if (!confirm(`Delete preset "${selectedName}"?`)) return;
     const removed = await remove(selectedName);
-    if (!removed) return;
+    if (!removed) {
+      surfacePresetMutationFailure(`Preset "${selectedName}" could not be deleted.`);
+      return;
+    }
     setSelectedName('');
     setLoadedEntry(null);
     setLoadedData(null);
@@ -575,20 +633,35 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     const entry = await load(selectedName);
     if (!entry) return;
 
-    entry.visibility = entry.visibility === 'public' ? 'private' : 'public';
-    await getPresetStore().save(entry);
-    await refresh();
-    setLoadedEntry(entry);
-  }, [selectedName, load, refresh]);
+    const visibility = entry.visibility === 'public' ? 'private' : 'public';
+    try {
+      const updated = await updateMetadata(selectedName, { visibility });
+      if (!updated) {
+        surfacePresetMutationFailure(`Visibility for preset "${selectedName}" was not updated.`);
+        return;
+      }
+      setLoadedEntry({ ...entry, visibility });
+    } catch (error) {
+      surfacePresetMutationFailure(getPresetCommandErrorMessage(error));
+    }
+  }, [selectedName, load, updateMetadata]);
 
   const handleRate = useCallback(async (name: string, rating: number) => {
+    const previousRating = localRatings[name];
     setLocalRatings(prev => ({ ...prev, [name]: rating }));
     try {
-      await updateMetadata(name, { rating });
+      const updated = await updateMetadata(name, { rating });
+      if (!updated) throw new Error(`Rating for preset "${name}" was not updated.`);
     } catch (ratingError) {
-      console.warn('Failed to update preset rating:', ratingError);
+      setLocalRatings(prev => {
+        const next = { ...prev };
+        if (previousRating === undefined) delete next[name];
+        else next[name] = previousRating;
+        return next;
+      });
+      surfacePresetMutationFailure(getPresetCommandErrorMessage(ratingError));
     }
-  }, [updateMetadata]);
+  }, [localRatings, updateMetadata]);
 
   const selectBorderColor = isDirty
     ? '#c9913666'
@@ -717,6 +790,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
             </button>
             <button
               onClick={handleImport}
+              disabled={saveBusy}
               style={dropdownStyles.iconBtn}
               title="Import preset from file"
               onMouseEnter={e => { e.currentTarget.style.color = '#ddd'; }}
@@ -814,6 +888,11 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
                 Share publicly
               </label>
             )}
+            {saveError && (
+              <div role="alert" style={{ color: '#e59a9a', fontSize: '0.72rem', marginTop: 6 }}>
+                {saveError}
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
               <button
                 onClick={() => setShowSaveDialog(false)}
@@ -829,7 +908,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
               {canRenameSelectedPreset && (
                 <button
                   onClick={handleRenameConfirm}
-                  disabled={!saveName.trim() || saveName.trim() === selectedName}
+                  disabled={saveBusy || !saveName.trim() || saveName.trim() === selectedName}
                   style={{
                     ...dropdownStyles.dialogBtn,
                     background: saveName.trim() && saveName.trim() !== selectedName
@@ -849,6 +928,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
               )}
               <button
                 onClick={handleSaveConfirm}
+                disabled={saveBusy || !saveName.trim()}
                 style={{
                   ...dropdownStyles.dialogBtn,
                   background: 'rgba(184,224,255,0.14)',
@@ -856,7 +936,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
                   color: '#B8E0FF',
                 }}
               >
-                Save
+                {saveBusy ? 'Saving…' : 'Save'}
               </button>
             </div>
           </div>

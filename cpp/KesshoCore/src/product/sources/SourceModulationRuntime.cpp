@@ -54,7 +54,8 @@ float smoothRandomWalkPosition(const ModulationRange& range, double seconds) {
       if (range.target_id != 0u &&
           !isSoundscapeAssetLevelRangeTarget(range.target_id) &&
           !isSoundscapeTextureLevelRangeTarget(range.target_id) &&
-          !isSoundscapeTextureParamTarget(range.target_id)) {
+          !isSoundscapeTextureParamTarget(range.target_id) &&
+          !isSoundscapeModuleParamTarget(range.target_id)) {
         continue;
       }
       if (range.sample_hold_trigger_bus != kProductSampleHoldTriggerTimed) {

@@ -125,11 +125,18 @@ KesshoProductSnapshotV2 makeSnapshot() {
   snapshot.fx.reverb_er_lp_freq = 2500.0f;
   snapshot.fx.spectral_freeze_enabled = 0;
   snapshot.fx.spectral_freeze_active = 0;
-  snapshot.fx.spectral_freeze_slushy = 0;
+  snapshot.fx.spectral_freeze_mode = 2u;
+  snapshot.fx.spectral_freeze_capture_serial = 0u;
   snapshot.fx.spectral_freeze_mix = 1.0f;
-  snapshot.fx.spectral_freeze_speed = 0.3f;
-  snapshot.fx.spectral_freeze_decay = 1.0f;
-  snapshot.fx.spectral_freeze_phase_jitter = 0.0f;
+  snapshot.fx.spectral_freeze_stretch_speed = 0.5f;
+  snapshot.fx.spectral_freeze_direction = 2u;
+  snapshot.fx.spectral_freeze_position = 0.0f;
+  snapshot.fx.spectral_freeze_refresh = 0.15f;
+  snapshot.fx.spectral_freeze_input_sensitivity = 0.5f;
+  snapshot.fx.spectral_freeze_diffusion = 0.55f;
+  snapshot.fx.spectral_freeze_tone = -0.15f;
+  snapshot.fx.spectral_freeze_width = 0.85f;
+  snapshot.fx.spectral_freeze_sustain = 1.0f;
   snapshot.fx.spectral_freeze_routing = 0u;
   snapshot.fx.spectral_freeze_reverb_crossfade = 1.0f;
   snapshot.fx.dynamics_drift_bias = 0.5f;
@@ -454,17 +461,38 @@ void applySpectralFreezeParamToSnapshot(KesshoProductSnapshotV2& snapshot, uint3
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ACTIVE_ID:
       snapshot.fx.spectral_freeze_active = value >= 0.5f ? 1u : 0u;
       break;
-    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SLUSHY_ID:
-      snapshot.fx.spectral_freeze_slushy = value >= 0.5f ? 1u : 0u;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MODE_ID:
+      snapshot.fx.spectral_freeze_mode = static_cast<uint32_t>(value);
       break;
-    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SPEED_ID:
-      snapshot.fx.spectral_freeze_speed = value;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_CAPTURE_SERIAL_ID:
+      snapshot.fx.spectral_freeze_capture_serial = static_cast<uint32_t>(value);
       break;
-    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DECAY_ID:
-      snapshot.fx.spectral_freeze_decay = value;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_STRETCH_SPEED_ID:
+      snapshot.fx.spectral_freeze_stretch_speed = value;
       break;
-    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_PHASE_JITTER_ID:
-      snapshot.fx.spectral_freeze_phase_jitter = value;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DIRECTION_ID:
+      snapshot.fx.spectral_freeze_direction = static_cast<uint32_t>(value);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_POSITION_ID:
+      snapshot.fx.spectral_freeze_position = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_REFRESH_ID:
+      snapshot.fx.spectral_freeze_refresh = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_INPUT_SENSITIVITY_ID:
+      snapshot.fx.spectral_freeze_input_sensitivity = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DIFFUSION_ID:
+      snapshot.fx.spectral_freeze_diffusion = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_TONE_ID:
+      snapshot.fx.spectral_freeze_tone = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_WIDTH_ID:
+      snapshot.fx.spectral_freeze_width = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SUSTAIN_ID:
+      snapshot.fx.spectral_freeze_sustain = value;
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ROUTING_ID:
       snapshot.fx.spectral_freeze_routing = value >= 0.5f ? 1u : 0u;
@@ -557,9 +585,10 @@ void configureGranularTestSnapshot(KesshoProductSnapshotV2& snapshot) {
 void configureSpectralFreezeTestSnapshot(KesshoProductSnapshotV2& snapshot) {
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].reverb_send = 1.0f;
   snapshot.fx.spectral_freeze_enabled = 1;
-  snapshot.fx.spectral_freeze_active = 1;
+  snapshot.fx.spectral_freeze_active = 0;
+  snapshot.fx.spectral_freeze_capture_serial = 0u;
   snapshot.fx.spectral_freeze_mix = 1.0f;
-  snapshot.fx.spectral_freeze_decay = 1.0f;
+  snapshot.fx.spectral_freeze_sustain = 1.0f;
   snapshot.fx.spectral_freeze_routing = 0u;
   snapshot.fx.spectral_freeze_reverb_crossfade = 1.0f;
   snapshot.fx.reverb_mix = 0.5f;
@@ -742,7 +771,21 @@ std::vector<float> renderSpectralFreezeParamTrace(uint32_t param_id, float value
     require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "spectral freeze param event enqueue failed");
   }
   triggerPad(engine, 0.4f);
-  std::vector<float> trace = renderMasterTrace(engine, 48);
+  (void)renderMasterTrace(engine, 400);
+
+  KesshoProductEvent active_event{};
+  active_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  active_event.param_id = KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ACTIVE_ID;
+  active_event.value = 1.0f;
+  require(kessho_product_enqueue_event(engine, &active_event) == KESSHO_PRODUCT_OK, "spectral freeze capture active enqueue failed");
+
+  KesshoProductEvent capture_event{};
+  capture_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  capture_event.param_id = KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_CAPTURE_SERIAL_ID;
+  capture_event.value = param_id == KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_CAPTURE_SERIAL_ID ? value : 1.0f;
+  require(kessho_product_enqueue_event(engine, &capture_event) == KESSHO_PRODUCT_OK, "spectral freeze capture serial enqueue failed");
+
+  std::vector<float> trace = renderMasterTrace(engine, 96);
   kessho_product_destroy(engine);
   return trace;
 }
@@ -1245,6 +1288,80 @@ void requireDegradeCanFeedReverbWithoutReverseFeedback() {
   require(mutually_exclusive_peak > 0.00001f, "Degrade-to-Reverb did not survive mutual-exclusion snapshot load");
 }
 
+std::vector<float> renderPadDryTraceWithFreeze(bool active) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "spectral dry-preservation engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configureSpectralFreezeTestSnapshot(snapshot);
+  snapshot.fx.reverb_mix = 0.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "spectral dry-preservation snapshot load failed");
+  require(kessho_product_set_graph_taps_enabled(engine, 1u) == KESSHO_PRODUCT_OK, "spectral dry graph taps enable failed");
+  if (active) {
+    KesshoProductEvent event{};
+    event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+    event.param_id = KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ACTIVE_ID;
+    event.value = 1.0f;
+    require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "spectral dry active enqueue failed");
+    event.param_id = KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_CAPTURE_SERIAL_ID;
+    event.value = 1.0f;
+    require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "spectral dry capture enqueue failed");
+  }
+  triggerPad(engine, 0.4f);
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  std::vector<float> tap_l(128);
+  std::vector<float> tap_r(128);
+  std::vector<float> trace;
+  trace.reserve(64u * 128u * 2u);
+  for (uint32_t block = 0; block < 64u; ++block) {
+    kessho_product_render(engine, left.data(), right.data(), 128);
+    require(
+        kessho_product_get_graph_tap(engine, KESSHO_PRODUCT_GRAPH_TAP_PAD1_DRY, tap_l.data(), tap_r.data(), 128) == KESSHO_PRODUCT_OK,
+        "spectral dry graph tap read failed");
+    for (uint32_t frame = 0; frame < 128u; ++frame) {
+      trace.push_back(tap_l[frame]);
+      trace.push_back(tap_r[frame]);
+    }
+  }
+  kessho_product_destroy(engine);
+  return trace;
+}
+
+void requireSpectralFreezeParallelReturn() {
+  const std::vector<float> inactive_dry = renderPadDryTraceWithFreeze(false);
+  const std::vector<float> active_dry = renderPadDryTraceWithFreeze(true);
+  require(maxAbsDiff(inactive_dry, active_dry) < 0.000001f, "spectral freeze altered the Pad 1 dry path");
+
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "spectral parallel-return engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configureSpectralFreezeTestSnapshot(snapshot);
+  snapshot.fx.reverb_mix = 0.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "spectral parallel-return snapshot load failed");
+  triggerPad(engine, 1.5f);
+  (void)renderMasterPeak(engine, 400u);
+  KesshoProductEvent event{};
+  event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  event.param_id = KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ACTIVE_ID;
+  event.value = 1.0f;
+  require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "spectral parallel active enqueue failed");
+  event.param_id = KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_CAPTURE_SERIAL_ID;
+  event.value = 1.0f;
+  require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "spectral parallel capture enqueue failed");
+  require(
+      renderFxPeak(engine, 160u) > 0.00001f,
+      "spectral return disappeared when the ordinary reverb return was muted");
+  (void)renderFxPeak(engine, 2000u);
+  require(
+      renderFxPeak(engine, 160u) > 0.00001f,
+      "spectral return did not remain audible after the source stopped");
+  kessho_product_destroy(engine);
+}
+
 std::vector<float> renderSnapshotFxTrace(uint32_t param_id, float value) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "snapshot FX event parity engine create failed");
@@ -1533,6 +1650,7 @@ int main() {
   requireDisabledFxBypassKeepsDryAndSilencesFxStem();
   requireProductResetClearsFxTails();
   requireModuleSourceFxSendsArePreFader();
+  requireSpectralFreezeParallelReturn();
   requireFxReturnsCanFeedDegrade();
   requireDegradeCanFeedReverbWithoutReverseFeedback();
 
@@ -1543,21 +1661,21 @@ int main() {
       1.0f,
       "spectral freeze SetParam did not match snapshot-configured render");
   requireSpectralFreezeParamSnapshotEventParity(
-      KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ACTIVE_ID,
-      1.0f,
-      "spectral freeze active SetParam did not match snapshot-configured render");
+      KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_STRETCH_SPEED_ID,
+      0.35f,
+      "spectral freeze stretch speed SetParam did not match snapshot-configured render");
   requireSpectralFreezeParamSnapshotEventParity(
-      KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SLUSHY_ID,
+      KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MODE_ID,
       1.0f,
-      "spectral freeze slushy SetParam did not match snapshot-configured render");
+      "spectral freeze mode SetParam did not match snapshot-configured render");
   requireSpectralFreezeParamSnapshotEventParity(
-      KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DECAY_ID,
+      KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SUSTAIN_ID,
       0.2f,
-      "spectral freeze decay SetParam did not match snapshot-configured render");
+      "spectral freeze sustain SetParam did not match snapshot-configured render");
   requireSpectralFreezeParamSnapshotEventParity(
-      KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_PHASE_JITTER_ID,
+      KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DIFFUSION_ID,
       0.4f,
-      "spectral freeze phase jitter SetParam did not match snapshot-configured render");
+      "spectral freeze diffusion SetParam did not match snapshot-configured render");
   requireFxSnapshotEventParity(
       KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID,
       1.0f,
@@ -1714,6 +1832,11 @@ int main() {
       0.0f,
       1.0f,
       "spectral freeze mix parameter did not change C++ render");
+  requireSpectralFreezeParamChangesTrace(
+      KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SUSTAIN_ID,
+      1.0f,
+      0.1f,
+      "spectral freeze sustain parameter did not change C++ render");
   requireDynamicsParamChangesTrace(
       KESSHO_PRODUCT_PARAM_FX_DYNAMICS_ENABLED_ID,
       0.0f,

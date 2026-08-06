@@ -155,8 +155,7 @@ void pad_set_fold_mode(int pad_idx, int mode);
 
 // Filter A
 void pad_set_filter_type(int pad_idx, int type);
-void pad_set_filter_cutoff_min(int pad_idx, float hz);
-void pad_set_filter_cutoff_max(int pad_idx, float hz);
+void pad_set_filter_cutoff(int pad_idx, float hz);
 void pad_set_filter_resonance(int pad_idx, float resonance);
 void pad_set_filter_q(int pad_idx, float q);
 void pad_set_filter_slope(int pad_idx, float db_per_oct);
@@ -229,6 +228,8 @@ void pad_instance_process_block(KesshoPadInstance* instance, int block_size);
 
 void pad_instance_note_on(KesshoPadInstance* instance, int voice_idx, float frequency, float velocity);
 void pad_instance_set_voice_frequency(KesshoPadInstance* instance, int voice_idx, float frequency);
+void pad_instance_set_voice_gain(KesshoPadInstance* instance, int voice_idx, float gain);
+void pad_instance_set_voice_gain_ramp(KesshoPadInstance* instance, int voice_idx, float target_gain, uint32_t frames);
 void pad_instance_note_off(KesshoPadInstance* instance, int voice_idx);
 void pad_instance_kill_voice(KesshoPadInstance* instance, int voice_idx);
 void pad_instance_set_voice_pad(KesshoPadInstance* instance, int voice_idx, int pad);
@@ -260,8 +261,7 @@ void pad_instance_set_fold_amount(KesshoPadInstance* instance, int pad_idx, floa
 void pad_instance_set_fold_mode(KesshoPadInstance* instance, int pad_idx, int mode);
 
 void pad_instance_set_filter_type(KesshoPadInstance* instance, int pad_idx, int type);
-void pad_instance_set_filter_cutoff_min(KesshoPadInstance* instance, int pad_idx, float hz);
-void pad_instance_set_filter_cutoff_max(KesshoPadInstance* instance, int pad_idx, float hz);
+void pad_instance_set_filter_cutoff(KesshoPadInstance* instance, int pad_idx, float hz);
 void pad_instance_set_filter_resonance(KesshoPadInstance* instance, int pad_idx, float resonance);
 void pad_instance_set_filter_q(KesshoPadInstance* instance, int pad_idx, float q);
 void pad_instance_set_filter_slope(KesshoPadInstance* instance, int pad_idx, float db_per_oct);

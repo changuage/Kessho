@@ -325,7 +325,7 @@ function exactPadParamsForPreset(preset, padPresetModule) {
   for (const [key, index, map, fallback] of padParamSpecs) {
     exactPadParams[index] = padParamValue(padPreset.params[key], map, fallback);
   }
-  exactPadParams[52] = padOutputTrim;
+  exactPadParams[padParamCount - 1] = padOutputTrim;
   return { exactPadParamCount: padParamCount, exactPadParams };
 }
 

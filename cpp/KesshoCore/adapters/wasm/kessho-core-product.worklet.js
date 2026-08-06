@@ -4,13 +4,14 @@ const GENERATED_CAPTURE_EVENT_BYTES = 64;
 const GENERATED_CAPTURE_EVENT_CAPACITY = 256;
 const SIMPLE_SEQUENCER_VISUAL_EVENT_BYTES = 64;
 const SIMPLE_SEQUENCER_VISUAL_EVENT_CAPACITY = 256;
-const TELEMETRY_BYTES = 15448;
-const TELEMETRY_SYNTH_ARP_CURRENT_MIDIS_OFFSET = 15232;
-const TELEMETRY_SCATTER_OFFSET = 15296;
-const TELEMETRY_SCENE_OFFSET = 15312;
-const TELEMETRY_ROUTING_MUTE_GROUP_OFFSET = 15320;
-const TELEMETRY_AUTO_CYCLE_OFFSET = 15356;
-const TELEMETRY_JOURNEY_SCHEDULE_OFFSET = 15392;
+const TELEMETRY_BYTES = 14512;
+const TELEMETRY_HARMONY_NOTE_POOL_OFFSET = 14428;
+const TELEMETRY_SYNTH_ARP_CURRENT_MIDIS_OFFSET = 14192;
+const TELEMETRY_SCATTER_OFFSET = 14256;
+const TELEMETRY_SCENE_OFFSET = 14272;
+const TELEMETRY_ROUTING_MUTE_GROUP_OFFSET = 14280;
+const TELEMETRY_AUTO_CYCLE_OFFSET = 14316;
+const TELEMETRY_JOURNEY_SCHEDULE_OFFSET = 14352;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
 const EXPECTED_PRODUCT_SCHEMA_HASH = 0xae226b36;
 const PRODUCT_ERROR_ASSET_IN_USE = -16;
@@ -97,28 +98,20 @@ const GRANULAR_VISUAL_EVENT_CAPACITY = 32;
 const GRANULAR_VISUAL_EVENT_BYTES = 32;
 const TELEMETRY_GRANULAR_VISUAL_EVENT_COUNT_OFFSET = 7800;
 const TELEMETRY_GRANULAR_VISUAL_EVENTS_OFFSET = 7804;
-const TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET = 8828;
-const TELEMETRY_DEBUG_SOURCE_OFFSET = 8832;
-const TELEMETRY_DEBUG_SOURCE_BYTES = 32;
-const TELEMETRY_DEBUG_SOURCE_CAPACITY = 8;
-const TELEMETRY_DEBUG_VOICE_COUNT_OFFSET = 9088;
-const TELEMETRY_DEBUG_VOICE_OFFSET = 9096;
-const TELEMETRY_DEBUG_VOICE_BYTES = 48;
-const TELEMETRY_DEBUG_VOICE_CAPACITY = 16;
-const TELEMETRY_SYNTH_ORBIT_NOTE_COUNTS_OFFSET = 9864;
-const TELEMETRY_SYNTH_ORBIT_BASE_ANGLES_OFFSET = 9928;
-const TELEMETRY_SYNTH_ORBIT_NOTE_ANGLES_OFFSET = 9992;
-const TELEMETRY_SYNTH_ORBIT_NOTE_FLASHES_OFFSET = 12040;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_FLAGS_OFFSET = 14088;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_DEGREES_OFFSET = 14152;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_LAST_GESTURE_DELTAS_OFFSET = 14216;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_BOUNDARY_EVENTS_OFFSET = 14280;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_COUNTS_OFFSET = 14344;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_ANCHOR_MIDIS_OFFSET = 14408;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_MIDIS_OFFSET = 14472;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_PREVIOUS_CURSOR_MIDIS_OFFSET = 14536;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_MIDIS_OFFSET = 14600;
-const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_VELOCITIES_OFFSET = 14856;
+const TELEMETRY_SYNTH_ORBIT_NOTE_COUNTS_OFFSET = 8828;
+const TELEMETRY_SYNTH_ORBIT_BASE_ANGLES_OFFSET = 8892;
+const TELEMETRY_SYNTH_ORBIT_NOTE_ANGLES_OFFSET = 8956;
+const TELEMETRY_SYNTH_ORBIT_NOTE_FLASHES_OFFSET = 11004;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_FLAGS_OFFSET = 13052;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_DEGREES_OFFSET = 13116;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_LAST_GESTURE_DELTAS_OFFSET = 13180;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_BOUNDARY_EVENTS_OFFSET = 13244;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_COUNTS_OFFSET = 13308;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_ANCHOR_MIDIS_OFFSET = 13372;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_CURSOR_MIDIS_OFFSET = 13436;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_PREVIOUS_CURSOR_MIDIS_OFFSET = 13500;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_MIDIS_OFFSET = 13564;
+const TELEMETRY_SYNTH_ANCHOR_WALKER_OUTPUT_VELOCITIES_OFFSET = 13820;
 const ORBIT_VISUAL_LANES = 16;
 const ORBIT_VISUAL_NOTES = 32;
 const ANCHOR_WALKER_VISUAL_LANES = 16;
@@ -176,8 +169,6 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.coreMeterDemand = null;
     this.hostStemDemand = false;
     this.coreStemsEnabled = null;
-    this.hostDebugVoiceSpawnDemand = false;
-    this.coreDebugVoiceSpawnDemand = null;
     this.hostSimpleSequencerVisualDemandMask = 0;
     this.coreSimpleSequencerVisualDemandMask = null;
     this.graphCaptureAllowed = options.processorOptions?.graphCaptureAllowed === true;
@@ -188,6 +179,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.dawOutputClearToken = 1;
     this.perfEnabled = false;
     this.perfRequested = false;
+    this.visualTelemetryAfterRenderRequested = false;
     this.hostHidden = false;
     this.perfTotalMs = 0;
     this.perfCount = 0;
@@ -292,7 +284,6 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         copyTelemetry: this.resolve('kessho_product_copy_telemetry'),
         refreshTelemetry: this.resolve('kessho_product_refresh_telemetry'),
         setMeterDemand: this.resolve('kessho_product_set_meter_demand'),
-        setDebugVoiceSpawnDemand: this.resolve('kessho_product_set_debug_voice_spawn_demand'),
         setSimpleSequencerVisualDemand: this.resolve('kessho_product_set_simple_sequencer_visual_demand'),
         drainGeneratedSequencerCaptureEvents: this.resolve('kessho_product_drain_generated_sequencer_capture_events'),
         drainSimpleSequencerVisualEvents: this.resolve('kessho_product_drain_simple_sequencer_visual_events'),
@@ -356,7 +347,6 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       if (this.ready) {
         this.syncMeterDemand();
         this.syncStemDemand();
-        this.syncDebugVoiceSpawnDemand();
         this.syncSimpleSequencerVisualDemand();
       }
       return;
@@ -410,6 +400,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         this.postTelemetry();
         return;
       }
+      if (message.type === 'request-visual-telemetry-after-render') {
+        this.visualTelemetryAfterRenderRequested = true;
+        return;
+      }
       if (message.type === 'meter-demand') {
         this.hostMeterDemand = Boolean(message.enabled);
         this.syncMeterDemand();
@@ -418,11 +412,6 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       if (message.type === 'stem-demand') {
         this.hostStemDemand = Boolean(message.enabled);
         this.syncStemDemand();
-        return;
-      }
-      if (message.type === 'debug-voice-spawn-demand') {
-        this.hostDebugVoiceSpawnDemand = Boolean(message.enabled);
-        this.syncDebugVoiceSpawnDemand();
         return;
       }
       if (message.type === 'simple-sequencer-visual-demand') {
@@ -561,17 +550,6 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       throw new Error(`Kessho Product Core meter demand update failed: ${result}`);
     }
     this.coreMeterDemand = enabled;
-  }
-
-  syncDebugVoiceSpawnDemand() {
-    if (!this.api?.setDebugVoiceSpawnDemand || !this.engine) return;
-    const enabled = this.hostDebugVoiceSpawnDemand && !this.hostHidden;
-    if (this.coreDebugVoiceSpawnDemand === enabled) return;
-    const result = this.api.setDebugVoiceSpawnDemand(this.engine, enabled ? 1 : 0);
-    if (result !== 1) {
-      throw new Error(`Kessho Product Core debug voice-spawn demand update failed: ${result}`);
-    }
-    this.coreDebugVoiceSpawnDemand = enabled;
   }
 
   syncSimpleSequencerVisualDemand() {
@@ -972,11 +950,12 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         normalized.targetId = this.optionalUint(event, 'targetId', 0, 0, PRODUCT_MAX_SOURCE_ID);
         if (normalized.targetId !== 0) this.requireSourceId(normalized.targetId, 'targetId');
         normalized.index = this.requireUint(event, 'index', 0, 15);
+        normalized.paramId = this.optionalUint(event, 'paramId', 0, 0, 0xffffffff);
         normalized.value = this.requireFloat(event, 'value', 0, 255);
         normalized.value2 = this.requireFloat(event, 'value2', 0, 127);
         normalized.value3 = this.requireFloat(event, 'value3', 0, 127);
         normalized.value4 = this.optionalFloat(event, 'value4', 0, 0, 1);
-        normalized.flags = this.optionalUint(event, 'flags', 0, 0, 16);
+        normalized.flags = this.optionalUint(event, 'flags', 0, 0, 0xffffffff);
         return normalized;
       case PRODUCT_EVENT_IDS.SetSequencerStep:
         normalized.targetId = this.requireSequencerId(this.requireUint(event, 'targetId', 1, 2), 'targetId');
@@ -1396,10 +1375,6 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     };
   }
 
-  hash32Hex(value) {
-    return (value >>> 0).toString(16).padStart(8, '0');
-  }
-
   maskHas(low, high, step) {
     if (step < 32) return (low & (1 << step)) !== 0;
     return (high & (1 << (step - 32))) !== 0;
@@ -1652,8 +1627,6 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         : null;
     const earthTextureDebugState = this.readEarthTextureDebugState(ptr);
     const productModulationDebug = this.readProductModulationDebug(ptr);
-    const productDebugSourceStates = this.readProductDebugSourceStates(ptr);
-    const productDebugVoiceSpawns = this.readProductDebugVoiceSpawns(ptr);
     const synthOrbitVisualLanes = this.readSynthOrbitVisualLanes(ptr);
     const synthAnchorWalkerVisualLanes = this.readSynthAnchorWalkerVisualLanes(ptr);
     const generatedSequencerCapture = this.readGeneratedSequencerCaptureEvents();
@@ -1667,22 +1640,22 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       beatPosition: this.view.getFloat64(ptr + 32, true),
       barIndex: this.readUint64Number(ptr + 40),
       phraseIndex: this.readUint64Number(ptr + 48),
-      transportBpm: this.view.getFloat32(ptr + 15112, true),
-      transportBeatsPerBar: this.view.getUint32(ptr + 15116, true),
-      transportBarsPerPhrase: this.view.getUint32(ptr + 15120, true),
-      transportPhraseSeconds: this.view.getFloat32(ptr + 15124, true),
-      transportTransitionPending: this.view.getUint32(ptr + 15128, true) !== 0,
-      transportPendingBpm: this.view.getFloat32(ptr + 15132, true),
-      transportPendingBeatsPerBar: this.view.getUint32(ptr + 15136, true),
-      transportPendingBarsPerPhrase: this.view.getUint32(ptr + 15140, true),
-      transportPendingPhraseSeconds: this.view.getFloat32(ptr + 15144, true),
-      transportPendingApplyFrame: this.readUint64Number(ptr + 15152),
-      transportTransitionRevision: this.view.getUint32(ptr + 15160, true),
-      transportPhraseProgress: this.view.getFloat32(ptr + 15164, true),
-      sourceMorphAutomationEnabledMask: this.view.getUint32(ptr + 15168, true),
-      sourceMorphValues: Array.from({ length: 11 }, (_, index) => this.view.getFloat32(ptr + 15172 + index * 4, true)),
-      autoStopEnabled: this.view.getUint32(ptr + 15216, true) !== 0,
-      autoStopTargetSampleFrame: this.readUint64Number(ptr + 15224),
+      transportBpm: this.view.getFloat32(ptr + 14076, true),
+      transportBeatsPerBar: this.view.getUint32(ptr + 14080, true),
+      transportBarsPerPhrase: this.view.getUint32(ptr + 14084, true),
+      transportPhraseSeconds: this.view.getFloat32(ptr + 14088, true),
+      transportTransitionPending: this.view.getUint32(ptr + 14092, true) !== 0,
+      transportPendingBpm: this.view.getFloat32(ptr + 14096, true),
+      transportPendingBeatsPerBar: this.view.getUint32(ptr + 14100, true),
+      transportPendingBarsPerPhrase: this.view.getUint32(ptr + 14104, true),
+      transportPendingPhraseSeconds: this.view.getFloat32(ptr + 14108, true),
+      transportPendingApplyFrame: this.readUint64Number(ptr + 14112),
+      transportTransitionRevision: this.view.getUint32(ptr + 14120, true),
+      transportPhraseProgress: this.view.getFloat32(ptr + 14124, true),
+      sourceMorphAutomationEnabledMask: this.view.getUint32(ptr + 14128, true),
+      sourceMorphValues: Array.from({ length: 11 }, (_, index) => this.view.getFloat32(ptr + 14132 + index * 4, true)),
+      autoStopEnabled: this.view.getUint32(ptr + 14176, true) !== 0,
+      autoStopTargetSampleFrame: this.readUint64Number(ptr + 14184),
       activeSources: this.view.getUint32(ptr + 56, true),
       activeVoices: this.view.getUint32(ptr + 60, true),
       activeAssets: this.view.getUint32(ptr + 64, true),
@@ -1711,13 +1684,17 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         this.view.getFloat32(ptr + 144, true),
         this.view.getFloat32(ptr + 148, true),
       ],
+      harmonyNotePoolMidi: Array.from({ length: this.view.getUint32(ptr + TELEMETRY_HARMONY_NOTE_POOL_OFFSET, true) }, (_, index) =>
+        this.view.getFloat32(ptr + TELEMETRY_HARMONY_NOTE_POOL_OFFSET + 4 + index * 4, true)),
+      harmonyNextNotePoolMidi: Array.from({ length: this.view.getUint32(ptr + TELEMETRY_HARMONY_NOTE_POOL_OFFSET + 36, true) }, (_, index) =>
+        this.view.getFloat32(ptr + TELEMETRY_HARMONY_NOTE_POOL_OFFSET + 40 + index * 4, true)),
+      harmonyNextSource: this.view.getUint32(ptr + TELEMETRY_HARMONY_NOTE_POOL_OFFSET + 72, true),
+      harmonyNextStepIndex: this.view.getInt32(ptr + TELEMETRY_HARMONY_NOTE_POOL_OFFSET + 76, true),
       modulationRangeCount: this.view.getUint32(ptr + 152, true),
       runtimeWalkCount,
       runtimeWalkValues,
       earthTextureDebugState,
       productModulationDebug,
-      productDebugSourceStates,
-      productDebugVoiceSpawns,
       rngSeed: this.view.getUint32(ptr + 928, true),
       rngState: this.view.getUint32(ptr + 932, true),
       sourcePresetIds,
@@ -1935,55 +1912,6 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     return { randomWalk, sampleHold };
   }
 
-  readProductDebugSourceStates(ptr) {
-    const count = Math.min(
-      this.view.getUint32(ptr + TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET, true),
-      TELEMETRY_DEBUG_SOURCE_CAPACITY,
-    );
-    if (count <= 0) return [];
-    const states = [];
-    for (let index = 0; index < count; index += 1) {
-      const offset = ptr + TELEMETRY_DEBUG_SOURCE_OFFSET + index * TELEMETRY_DEBUG_SOURCE_BYTES;
-      states.push({
-        sourceId: this.view.getUint32(offset, true),
-        presetId: this.view.getUint32(offset + 4, true),
-        sourcePresetAId: this.view.getUint32(offset + 8, true),
-        sourcePresetBId: this.view.getUint32(offset + 12, true),
-        sourceRevision: this.view.getUint32(offset + 16, true),
-        sourceStateHash: this.hash32Hex(this.view.getUint32(offset + 20, true)),
-        compiledSourceHash: this.hash32Hex(this.view.getUint32(offset + 24, true)),
-        overrideBlockHash: this.hash32Hex(this.view.getUint32(offset + 28, true)),
-      });
-    }
-    return states;
-  }
-
-  readProductDebugVoiceSpawns(ptr) {
-    const count = Math.min(
-      this.view.getUint32(ptr + TELEMETRY_DEBUG_VOICE_COUNT_OFFSET, true),
-      TELEMETRY_DEBUG_VOICE_CAPACITY,
-    );
-    if (count <= 0) return [];
-    const spawns = [];
-    for (let index = 0; index < count; index += 1) {
-      const offset = ptr + TELEMETRY_DEBUG_VOICE_OFFSET + index * TELEMETRY_DEBUG_VOICE_BYTES;
-      spawns.push({
-        triggerSample: this.readUint64Number(offset),
-        triggerSequence: this.readUint64Number(offset + 8),
-        sourceId: this.view.getUint32(offset + 16, true),
-        voiceId: this.view.getUint32(offset + 20, true),
-        presetId: this.view.getUint32(offset + 24, true),
-        sourceRevision: this.view.getUint32(offset + 28, true),
-        sourceStateHash: this.hash32Hex(this.view.getUint32(offset + 32, true)),
-        compiledSourceHash: this.hash32Hex(this.view.getUint32(offset + 36, true)),
-        overrideBlockHash: this.hash32Hex(this.view.getUint32(offset + 40, true)),
-        triggerContextHash: this.hash32Hex(this.view.getUint32(offset + 44, true)),
-      });
-    }
-    spawns.sort((a, b) => a.triggerSequence - b.triggerSequence);
-    return spawns;
-  }
-
   readGranularWaveform(includeGranularWaveform) {
     if (!includeGranularWaveform || !this.granularWaveformPtr || !this.api.copyGranularWaveform) {
       this.granularWaveformReportCounter = 0;
@@ -2143,22 +2071,22 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       schemaHash: this.view.getUint32(ptr, true),
       transportRunning: this.view.getUint32(ptr + 20, true) !== 0,
       absoluteSampleTime: this.readUint64Number(ptr + 24),
-      transportBpm: this.view.getFloat32(ptr + 15112, true),
-      transportBeatsPerBar: this.view.getUint32(ptr + 15116, true),
-      transportBarsPerPhrase: this.view.getUint32(ptr + 15120, true),
-      transportPhraseSeconds: this.view.getFloat32(ptr + 15124, true),
-      transportTransitionPending: this.view.getUint32(ptr + 15128, true) !== 0,
-      transportPendingBpm: this.view.getFloat32(ptr + 15132, true),
-      transportPendingBeatsPerBar: this.view.getUint32(ptr + 15136, true),
-      transportPendingBarsPerPhrase: this.view.getUint32(ptr + 15140, true),
-      transportPendingPhraseSeconds: this.view.getFloat32(ptr + 15144, true),
-      transportPendingApplyFrame: this.readUint64Number(ptr + 15152),
-      transportTransitionRevision: this.view.getUint32(ptr + 15160, true),
-      transportPhraseProgress: this.view.getFloat32(ptr + 15164, true),
-      sourceMorphAutomationEnabledMask: this.view.getUint32(ptr + 15168, true),
-      sourceMorphValues: Array.from({ length: 11 }, (_, index) => this.view.getFloat32(ptr + 15172 + index * 4, true)),
-      autoStopEnabled: this.view.getUint32(ptr + 15216, true) !== 0,
-      autoStopTargetSampleFrame: this.readUint64Number(ptr + 15224),
+      transportBpm: this.view.getFloat32(ptr + 14076, true),
+      transportBeatsPerBar: this.view.getUint32(ptr + 14080, true),
+      transportBarsPerPhrase: this.view.getUint32(ptr + 14084, true),
+      transportPhraseSeconds: this.view.getFloat32(ptr + 14088, true),
+      transportTransitionPending: this.view.getUint32(ptr + 14092, true) !== 0,
+      transportPendingBpm: this.view.getFloat32(ptr + 14096, true),
+      transportPendingBeatsPerBar: this.view.getUint32(ptr + 14100, true),
+      transportPendingBarsPerPhrase: this.view.getUint32(ptr + 14104, true),
+      transportPendingPhraseSeconds: this.view.getFloat32(ptr + 14108, true),
+      transportPendingApplyFrame: this.readUint64Number(ptr + 14112),
+      transportTransitionRevision: this.view.getUint32(ptr + 14120, true),
+      transportPhraseProgress: this.view.getFloat32(ptr + 14124, true),
+      sourceMorphAutomationEnabledMask: this.view.getUint32(ptr + 14128, true),
+      sourceMorphValues: Array.from({ length: 11 }, (_, index) => this.view.getFloat32(ptr + 14132 + index * 4, true)),
+      autoStopEnabled: this.view.getUint32(ptr + 14176, true) !== 0,
+      autoStopTargetSampleFrame: this.readUint64Number(ptr + 14184),
       activeGrains: this.view.getUint32(ptr + 68, true),
       runtimeWalkCount,
       runtimeWalkValues,
@@ -2301,6 +2229,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.maintainGraphTapMode();
     this.recordPerfBlock(perfStartMs, frames);
     this.renderedFrameCount += frames;
+    if (this.visualTelemetryAfterRenderRequested) {
+      this.visualTelemetryAfterRenderRequested = false;
+      this.postVisualTelemetry(false);
+    }
     return true;
   }
 }

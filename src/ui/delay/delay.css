@@ -446,20 +446,18 @@
 }
 
 .delay-mini-slider {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
   min-width: 0;
-  color: var(--text-secondary);
-  font-size: var(--font-xs);
-  font-weight: 700;
 }
 
 .delay-mini-slider input {
   width: 100%;
   min-width: 0;
   accent-color: var(--accent-clocked);
+}
+
+/* Shared Slider renderer inside the compact tape-head grid. */
+.delay-mini-slider .app-slider-group {
+  min-width: 0;
 }
 
 /* ─── Mobile ─── */

@@ -37,14 +37,16 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
   const bool soundscape_asset_level_target = isSoundscapeAssetLevelRangeTarget(target_id);
   const bool soundscape_texture_level_target = isSoundscapeTextureLevelRangeTarget(target_id);
   const bool soundscape_texture_param_target = isSoundscapeTextureParamTarget(target_id);
+  const bool soundscape_module_param_target = isSoundscapeModuleParamTarget(target_id);
   if (param_id == 0u ||
       (!isSourceTarget(target_id) && !isDrumRangeTarget(target_id) && target_id != 0u &&
        !control_only && !soundscape_asset_level_target && !soundscape_texture_level_target &&
-       !soundscape_texture_param_target)) {
+       !soundscape_texture_param_target && !soundscape_module_param_target)) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
     return;
   }
-  if ((soundscape_asset_level_target || soundscape_texture_level_target || soundscape_texture_param_target) &&
+  if ((soundscape_asset_level_target || soundscape_texture_level_target || soundscape_texture_param_target ||
+       soundscape_module_param_target) &&
       param_id != KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
     return;
@@ -123,7 +125,8 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
     applyParam(param_event);
     return;
   }
-  if (soundscape_asset_level_target || soundscape_texture_level_target || soundscape_texture_param_target) {
+  if (soundscape_asset_level_target || soundscape_texture_level_target || soundscape_texture_param_target ||
+      soundscape_module_param_target) {
     applyModulationRangeValue(*range);
   }
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
@@ -166,6 +169,18 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
         source.soundscape_texture_params[index] = clampFloat(range.current_value, 0.0f, 1.0f);
         source.soundscape_texture_param_count = std::max(
             source.soundscape_texture_param_count, index + 1u);
+      }
+    }
+    return;
+  }
+  if (isSoundscapeModuleParamTarget(range.target_id)) {
+    if (range.param_id == KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID) {
+      const uint32_t index = soundscapeModuleParamIndexForRangeTarget(range.target_id);
+      if (index < kSoundscapeProductModuleParamCount) {
+        SourceState& source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
+        source.soundscape_module_params[index] = range.current_value;
+        source.soundscape_module_param_count = std::max(
+            source.soundscape_module_param_count, index + 1u);
       }
     }
     return;

@@ -23,7 +23,9 @@ import {
   WATER_MORPH_PARAM_KEYS,
   WATER_PRESETS,
   getStockWaterPresetIdByName,
+  getWaterPresetDualRanges,
   getWaterPresetOptions,
+  getWaterPresetSliderModes,
   morphWaterPresets,
   setUserWaterPresets,
   upsertUserWaterPreset,
@@ -52,6 +54,13 @@ export interface EarthPageProps {
     onCycleMode?: (key: keyof SliderState) => void;
     onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
   };
+  sliderModes?: Record<string, SliderMode>;
+  dualSliderRanges?: Record<string, { min: number; max: number }>;
+  onDualStateChange?: (
+    relevantKeys: string[],
+    dualRanges?: Record<string, { min: number; max: number }>,
+    sliderModes?: Record<string, SliderMode>,
+  ) => void;
   isRunning: boolean;
   getEarthTextureDebugState: () => EarthTextureDebugState;
   textureDebugAvailable?: boolean;
@@ -108,12 +117,9 @@ function quantize(key: string, v: number): number {
   return q.min + Math.round((clamped - q.min) / q.step) * q.step;
 }
 
-const WATER_PRESET_METADATA_KEYS: readonly (keyof SliderState)[] = [
-  'waterSurfDuration',
-  'waterSurfInterval',
-  'waterSurfFoam',
-  'waterSurfProximity',
-  'waterSurfDepth',
+const WATER_PRESET_DUAL_KEYS: readonly (keyof SliderState)[] = [
+  'waterMorph',
+  ...WATER_MORPH_PARAM_KEYS,
 ] as const;
 
 const INSECTS1_PARAM_KEYS: readonly (keyof SliderState)[] = [
@@ -138,12 +144,18 @@ const INSECTS2_PARAM_KEYS: readonly (keyof SliderState)[] = [
   'insects2Motion',
 ] as const;
 
+const INSECTS1_DUAL_KEYS = INSECTS1_PARAM_KEYS.slice(1);
+const INSECTS2_DUAL_KEYS = INSECTS2_PARAM_KEYS.slice(1);
+
 export default function EarthPage({
   state,
   onParamChange,
   onSelectChange,
   onStateChange,
   sliderProps,
+  sliderModes,
+  dualSliderRanges,
+  onDualStateChange,
   isRunning: _isRunning,
   getEarthTextureDebugState,
   textureDebugAvailable = true,
@@ -479,18 +491,18 @@ export default function EarthPage({
     setEarthKitPresetName(entry.name);
   }, []);
 
-  const collectWaterPresetMetadata = useCallback(() => {
-    const sliderModes: Record<string, SliderMode> = {};
+  const collectPresetDualMetadata = useCallback((keys: readonly (keyof SliderState)[]) => {
+    const scopedSliderModes: Record<string, SliderMode> = {};
     const dualRanges: Record<string, { min: number; max: number }> = {};
 
-    for (const key of WATER_PRESET_METADATA_KEYS) {
+    for (const key of keys) {
       const sp = sliderProps(key);
-      if (sp.mode !== 'single') sliderModes[key] = sp.mode;
+      if (sp.mode !== 'single') scopedSliderModes[key] = sp.mode;
       if (sp.dualRange) dualRanges[key] = sp.dualRange;
     }
 
     return {
-      sliderModes: Object.keys(sliderModes).length > 0 ? sliderModes : undefined,
+      sliderModes: Object.keys(scopedSliderModes).length > 0 ? scopedSliderModes : undefined,
       dualRanges: Object.keys(dualRanges).length > 0 ? dualRanges : undefined,
     };
   }, [sliderProps]);
@@ -517,8 +529,13 @@ export default function EarthPage({
     const slotIsActive = slot === 'A' ? currentMorph < 0.5 : currentMorph >= 0.5;
     if (slotIsActive) {
       onSelectChange('waterPreset', presetId as SliderState['waterPreset']);
+      onDualStateChange?.(
+        WATER_PRESET_DUAL_KEYS.map(String),
+        getWaterPresetDualRanges(presetId),
+        getWaterPresetSliderModes(presetId),
+      );
     }
-  }, [onSelectChange, state.waterMorph, waterPresetOptions]);
+  }, [onDualStateChange, onSelectChange, state.waterMorph, waterPresetOptions]);
 
   const handleWaterPresetSave = useCallback(async () => {
     const currentId = Number(selectedWaterPreset);
@@ -536,7 +553,7 @@ export default function EarthPage({
       targetName = requestedName.trim();
     }
 
-    const metadata = collectWaterPresetMetadata();
+    const metadata = collectPresetDualMetadata(WATER_PRESET_DUAL_KEYS);
     await saveWaterPreset(
       targetName,
       state,
@@ -572,7 +589,7 @@ export default function EarthPage({
 
     setSelectedWaterPreset(String(savedId));
   }, [
-    collectWaterPresetMetadata,
+    collectPresetDualMetadata,
     loadWaterPreset,
     refreshWaterPresets,
     saveWaterPreset,
@@ -620,11 +637,19 @@ export default function EarthPage({
         || entry.versions[entry.versions.length - 1];
       if (!version) return;
       applyNumericPresetData(scope === 'insects1' ? INSECTS1_PARAM_KEYS : INSECTS2_PARAM_KEYS, version.data);
+      onDualStateChange?.(
+        (scope === 'insects1' ? INSECTS1_DUAL_KEYS : INSECTS2_DUAL_KEYS).map(String),
+        version.dualRanges,
+        version.sliderModes as Record<string, SliderMode> | undefined,
+      );
       return;
     }
 
     if (option.stockIndex != null) {
       applyInsectsStockPreset(scope, option.stockIndex);
+      onDualStateChange?.(
+        (scope === 'insects1' ? INSECTS1_DUAL_KEYS : INSECTS2_DUAL_KEYS).map(String),
+      );
     }
   }, [
     applyInsectsStockPreset,
@@ -633,6 +658,7 @@ export default function EarthPage({
     insects2PresetOptions,
     loadInsects1Preset,
     loadInsects2Preset,
+    onDualStateChange,
   ]);
 
   const handleInsectsPresetSave = useCallback(async (scope: 'insects1' | 'insects2') => {
@@ -654,10 +680,15 @@ export default function EarthPage({
 
     const savePreset = scope === 'insects1' ? saveInsects1Preset : saveInsects2Preset;
     const refreshPresetList = scope === 'insects1' ? refreshInsects1Presets : refreshInsects2Presets;
+    const metadata = collectPresetDualMetadata(
+      scope === 'insects1' ? INSECTS1_DUAL_KEYS : INSECTS2_DUAL_KEYS,
+    );
     await savePreset(
       targetName,
       state,
       currentOption ? 'Updated from insects preset strip' : 'Saved from insects preset strip',
+      undefined,
+      metadata,
     );
     await refreshPresetList();
 
@@ -668,6 +699,7 @@ export default function EarthPage({
     if (scope === 'insects1') setSelectedInsects1Preset(selectedKey);
     else setSelectedInsects2Preset(selectedKey);
   }, [
+    collectPresetDualMetadata,
     insects1PresetOptions,
     insects2PresetOptions,
     refreshInsects1Presets,
@@ -722,24 +754,38 @@ export default function EarthPage({
   return (
     <div className="earth-root">
       <div className="container">
-        <div className="sound-panel">
-          <div className="earth-kit-preset-bar fx-page-header fx-page-header--identity">
-            <span className="earth-kit-label fx-page-title">≈ Earth</span>
-          </div>
+        <div className="earth-kit-preset-bar fx-page-header fx-page-header--identity">
+          <span className="earth-kit-label fx-page-title">≈ Earth</span>
+        </div>
 
-          <div className="earth-kit-preset-card fx-kit-preset-card">
-            <span className="fx-kit-preset-title">Kit</span>
-            <PresetDropdown
-              level="kit"
-              scope="earthKit"
-              state={state}
-              currentName={earthKitPresetName}
-              onLoad={handleEarthKitPresetLoad}
-              onStateChange={onStateChange}
-              compact
-            />
-          </div>
+        <div className="earth-kit-preset-card fx-kit-preset-card">
+          <span className="fx-kit-preset-title">Kit</span>
+          <PresetDropdown
+            level="kit"
+            scope="earthKit"
+            state={state}
+            currentName={earthKitPresetName}
+            onLoad={handleEarthKitPresetLoad}
+            onStateChange={onStateChange}
+            sliderModes={sliderModes}
+            dualSliderRanges={dualSliderRanges}
+            onDualStateChange={onDualStateChange}
+            compact
+          />
+        </div>
 
+        <div className="mixer-panel">
+          <ActiveEarthMatrix
+            state={state}
+            onParamChange={onParamChange}
+            onSelectChange={onSelectChange}
+            sliderProps={sliderProps}
+            getEarthTextureDebugState={getEarthTextureDebugState}
+            textureDebugAvailable={textureDebugAvailable}
+          />
+        </div>
+
+        <div className="sound-panel earth-engine-cards">
           <WaterCard
             state={state}
             ds={ds}
@@ -810,16 +856,6 @@ export default function EarthPage({
           )}
         </div>
 
-        <div className="mixer-panel">
-          <ActiveEarthMatrix
-            state={state}
-            onParamChange={onParamChange}
-            onSelectChange={onSelectChange}
-            sliderProps={sliderProps}
-            getEarthTextureDebugState={getEarthTextureDebugState}
-            textureDebugAvailable={textureDebugAvailable}
-          />
-        </div>
       </div>
     </div>
   );

@@ -52,6 +52,97 @@ assert.equal(isTransportClockStateKey('synthLevel'), false);
 assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
 
 {
+  const liveFreeze = createCoreProductSnapshot({
+    spectralFreezeEnabled: true,
+    spectralFreezeActive: true,
+    spectralFreezeCaptureSerial: 23,
+  });
+  assert.equal(liveFreeze.fx.spectralFreezeActive, true);
+  assert.equal(liveFreeze.fx.spectralFreezeCaptureSerial, 23);
+}
+
+{
+  const generator = createCoreProductSnapshot({
+    synthChordGeneratorEnabled: true,
+    synthChordGeneratorSource: 'sample2',
+    synthChordGeneratorVoiceCount: 5,
+    sample2Enabled: true,
+  });
+  assert.equal(generator.arrangement.chordGeneratorEnabled, true);
+  assert.equal(generator.arrangement.chordGeneratorSourceId, CORE_PRODUCT_SOURCE_IDS.sample2);
+  assert.equal(generator.arrangement.chordGeneratorVoiceCount, 5);
+  const disabledSource = createCoreProductSnapshot({
+    synthChordGeneratorEnabled: true,
+    synthChordGeneratorSource: 'sample2',
+    sample2Enabled: false,
+  });
+  assert.equal(
+    disabledSource.arrangement.chordGeneratorEnabled,
+    false,
+    'Chord Generator must not schedule an explicitly disabled target source',
+  );
+
+  const liveTarget = createCoreProductSnapshot({
+    synthChordGeneratorEnabled: true,
+    synthChordGeneratorSource: 'pad1',
+    synthChordGeneratorVoiceCount: 6,
+    synthEnabled: true,
+  });
+  const liveRetarget = createCoreProductSnapshot({
+    synthChordGeneratorEnabled: true,
+    synthChordGeneratorSource: 'sample2',
+    synthChordGeneratorVoiceCount: 3,
+    synthEnabled: true,
+    sample2Enabled: true,
+  });
+  const retargetDiff = buildCoreProductSnapshotDiff(liveTarget, liveRetarget);
+  assert.equal(retargetDiff.applied, true, 'Chord Generator routing changes should use live dirty diffs');
+  const arrangementParamIds = retargetDiff.applied
+    ? retargetDiff.events.map((event) => event.paramId)
+    : [];
+  assert.ok(
+    arrangementParamIds.includes(KESSHO_PRODUCT_PARAM_IDS.ArrangementChordGeneratorSourceId),
+    'a live source change must reach the arrangement renderer without restarting playback',
+  );
+  assert.ok(
+    arrangementParamIds.includes(KESSHO_PRODUCT_PARAM_IDS.ArrangementChordGeneratorVoiceCount),
+    'a live voice-count change must reach the arrangement renderer',
+  );
+
+  const sparseLead = createCoreProductSnapshot({
+    leadRandomEnabled: true,
+    leadRandomSource: 'lead1',
+    lead1Density: 0.5,
+    lead1Octave: 0,
+    lead1OctaveRange: 1,
+    lead1Enabled: true,
+  });
+  const denseRetargetedLead = createCoreProductSnapshot({
+    leadRandomEnabled: true,
+    leadRandomSource: 'sample2',
+    lead1Density: 8,
+    lead1Octave: 2,
+    lead1OctaveRange: 4,
+    lead1Enabled: true,
+    sample2Enabled: true,
+  });
+  const leadDiff = buildCoreProductSnapshotDiff(sparseLead, denseRetargetedLead);
+  assert.equal(leadDiff.applied, true, 'Random Timing changes should use live dirty diffs');
+  const leadParamIds = leadDiff.applied ? leadDiff.events.map((event) => event.paramId) : [];
+  for (const paramId of [
+    KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadRandomSourceId,
+    KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadDensity,
+    KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadOctave,
+    KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadOctaveRange,
+  ]) {
+    assert.ok(
+      leadParamIds.includes(paramId),
+      `Random Timing live diff is missing arrangement param ${paramId}`,
+    );
+  }
+}
+
+{
   const octaveZero = createCoreProductSnapshot({ synthOctave: 0 });
   const octaveUp = createCoreProductSnapshot({ synthOctave: 1 });
   const octaveDiff = buildCoreProductSnapshotDiff(octaveZero, octaveUp);

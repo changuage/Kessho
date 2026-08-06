@@ -365,6 +365,10 @@ void KesshoProductEngine::advanceHarmonyClock() {
     const uint64_t phrase_index = phrase_boundary
         ? harmony.next_phrase_index++
         : harmony.next_phrase_index > 0u ? harmony.next_phrase_index - 1u : 0u;
+    if (phrase_boundary) {
+      arrangement.chord_phrase_start_frame = harmony.next_harmony_frame;
+      arrangement.chord_phrase_index = phrase_index;
+    }
     const uint64_t progression_index = harmony.next_progression_phrase_index + static_cast<uint64_t>(std::floor(
         static_cast<double>(harmony.harmony_tick_index - 1u) * harmony.phrase_length_seconds /
         std::max(0.001, static_cast<double>(harmony.progression_phrase_seconds))));
@@ -477,13 +481,49 @@ void KesshoProductEngine::advanceHarmonyClock() {
     } else if (phrase_boundary && harmony.phrases_until_change > 0u) {
       --harmony.phrases_until_change;
     }
-    if (phrase_boundary) {
-      arrangement.chord_generator_pending = arrangement.chord_generator_enabled;
-    }
+    // Harmony remains the pitch authority. The arrangement renderer retriggers
+    // the newly resolved pool at every Harmony tick, so Chords / Phrase controls
+    // texture density without creating a second chord engine.
+    arrangement.chord_generator_pending = arrangement.chord_generator_enabled;
     harmony.harmony_rng_state = random.state;
     harmony.chord_sub_tick = (harmony.chord_sub_tick + 1u) % chords_per_phrase;
     harmony.next_harmony_frame += interval;
   }
+  if (!harmony_preview_active) stageNextHarmonyPreview();
+}
+
+void KesshoProductEngine::stageNextHarmonyPreview() {
+  if (harmony_preview_active || !transport.running || harmony.control_mode != 0u ||
+      harmony.next_harmony_frame == UINT64_MAX || harmony.chord_interval_seconds <= 0.0f) {
+    if (harmony.control_mode != 0u || harmony.next_harmony_frame == UINT64_MAX) {
+      harmony.next_note_pool_count = 0u;
+      harmony.next_source = 0u;
+      harmony.next_step_index = -1;
+      for (float& note : harmony.next_note_pool_midi) note = 0.0f;
+    }
+    return;
+  }
+  const HarmonyState saved_harmony = harmony;
+  const int32_t saved_synth_octave = arrangement.synth_octave;
+  const float saved_wave_spread = arrangement.wave_spread;
+  const bool saved_chord_generator_pending = arrangement.chord_generator_pending;
+  harmony_preview_active = true;
+  harmony.next_harmony_frame = transport.sample_frame;
+  advanceHarmonyClock();
+  const uint32_t preview_count = std::min<uint32_t>(harmony.note_pool_count, 8u);
+  float preview_notes[8]{};
+  for (uint32_t index = 0u; index < preview_count; ++index) preview_notes[index] = harmony.note_pool_midi[index];
+  const uint32_t preview_source = harmony.active_source;
+  const int32_t preview_step = harmony.active_step_index;
+  harmony = saved_harmony;
+  harmony.next_note_pool_count = preview_count;
+  for (uint32_t index = 0u; index < 8u; ++index) harmony.next_note_pool_midi[index] = preview_notes[index];
+  harmony.next_source = preview_source;
+  harmony.next_step_index = preview_step;
+  arrangement.synth_octave = saved_synth_octave;
+  arrangement.wave_spread = saved_wave_spread;
+  arrangement.chord_generator_pending = saved_chord_generator_pending;
+  harmony_preview_active = false;
 }
 
 void KesshoProductEngine::updateHarmonyTelemetry(uint64_t absolute_sample) {

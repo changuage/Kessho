@@ -8,12 +8,21 @@
  * - Lead 1 morphs between Preset A ↔ B
  * - Lead 2 morphs between Preset C ↔ D
  * - ADSR, mod params, XY routing, filter, transient, gain all come from presets
- * - Vibrato, glide, delay are SEPARATE (not in presets)
+ * - Placement and expression response are part of the preset
+ * - Effect routing sends are separate from presets
  * - Algorithm is discrete: either snap at 50% morph or always use first preset's
  */
 
 import { getPresetStore } from '../presets/PresetStore';
-import type { PresetEntry, PresetLibrary } from '../presets/types';
+import { getPresetCommandService } from '../presets/presetCommands';
+import type { IPresetStore } from '../presets/PresetStore';
+import type { PresetEntry, PresetLibrary, PresetSummary, PresetVersionMetadata } from '../presets/types';
+import {
+  createLead4opFMPresetData,
+  LEAD4OPFM_PRESET_SCOPE,
+  readLead4opFMPresetData,
+  sanitizeLead4opFMPresetJson,
+} from '../presets/lead4opPresetPayload';
 import { SHARED_PRESET_TEST_MODE } from '../presets/sharedMode';
 import { clampMorphPosition } from './morphUtils';
 import lead4opfmV2PresetBank from './lead4opfmV2PresetBank.json';
@@ -61,6 +70,7 @@ export interface Lead4opFMEnvelope {
   decay: number;
   sustain: number;
   release: number;
+  hold?: number;
 }
 
 export interface Lead4opFMFilter {
@@ -116,6 +126,14 @@ export interface Lead4opFMParams {
   carrier2Waveform?: Lead4opFMWaveform;
   stereoSpread?: number;
   pitchEnv?: Lead4opFMPitchEnv;
+  distance?: number;
+  postLpfHz?: number;
+  postLpfKeyTracking?: number;
+  stereoWidth?: number;
+  diffuseSend?: number;
+  vibratoDepth?: number;
+  vibratoRate?: number;
+  glide?: number;
 }
 
 export interface Lead4opFMPreset {
@@ -128,6 +146,9 @@ export interface Lead4opFMPreset {
   source?: string;
   xy: Lead4opFMPresetXY;
   params: Lead4opFMParams;
+  /** Runtime copy of version metadata; persisted beside, not inside, the audio payload. */
+  dualRanges?: PresetVersionMetadata['dualRanges'];
+  sliderModes?: PresetVersionMetadata['sliderModes'];
 }
 
 export type Lead4opFMAlgorithm = 'parallel' | 'stack' | 'split' | 'cross' | 'dx17';
@@ -229,6 +250,15 @@ export interface Lead4opFMMorphedParams {
   decay: number;
   sustain: number;
   release: number;
+  hold: number;
+  distance: number;
+  postLpfHz: number;
+  postLpfKeyTracking: number;
+  stereoWidth: number;
+  diffuseSend: number;
+  vibratoDepth: number;
+  vibratoRate: number;
+  glide: number;
   filterFreq: number;
   filterQ: number;
   filterType: 'lowpass' | 'highpass' | 'bandpass' | 'notch' | 'peaking';
@@ -267,6 +297,53 @@ const DEFAULT_PITCH_ENV: Required<Lead4opFMPitchEnv> = {
   target: 'carriers',
   velocityDepth: 0,
 };
+
+export const LEAD4OP_PRESET_OWNED_DEFAULTS = {
+  hold: 0.5,
+  distance: 0,
+  postLpfHz: 18000,
+  postLpfKeyTracking: 0,
+  stereoWidth: 1,
+  diffuseSend: 0,
+  vibratoDepth: 0,
+  vibratoRate: 0,
+  glide: 0,
+} as const;
+
+export type Lead4opPresetOwnedParamKey = keyof typeof LEAD4OP_PRESET_OWNED_DEFAULTS;
+export type Lead4opPresetScope = 'lead1' | 'lead2';
+
+const LEAD4OP_PRESET_STATE_KEYS: Record<Lead4opPresetScope, Record<Lead4opPresetOwnedParamKey, string>> = {
+  lead1: {
+    hold: 'lead1Hold',
+    distance: 'lead1Distance',
+    postLpfHz: 'lead1PostLPF',
+    postLpfKeyTracking: 'lead1PostLPFKeyTracking',
+    stereoWidth: 'lead1StereoWidth',
+    diffuseSend: 'lead1DiffuseSend',
+    vibratoDepth: 'lead1VibratoDepth',
+    vibratoRate: 'lead1VibratoRate',
+    glide: 'lead1Glide',
+  },
+  lead2: {
+    hold: 'lead2Hold',
+    distance: 'lead2Distance',
+    postLpfHz: 'lead2PostLPF',
+    postLpfKeyTracking: 'lead2PostLPFKeyTracking',
+    stereoWidth: 'lead2StereoWidth',
+    diffuseSend: 'lead2DiffuseSend',
+    vibratoDepth: 'lead2VibratoDepth',
+    vibratoRate: 'lead2VibratoRate',
+    glide: 'lead2Glide',
+  },
+};
+
+function leadPresetOwnedValue(params: Lead4opFMParams, key: Lead4opPresetOwnedParamKey): number {
+  const value = key === 'hold' ? params.envelope.hold : params[key];
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : LEAD4OP_PRESET_OWNED_DEFAULTS[key];
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -501,6 +578,15 @@ export function morphPresets(
     decay: lerp(a.envelope.decay, b.envelope.decay, morphPosition),
     sustain: lerp(a.envelope.sustain, b.envelope.sustain, morphPosition),
     release: lerp(a.envelope.release, b.envelope.release, morphPosition),
+    hold: lerp(leadPresetOwnedValue(a, 'hold'), leadPresetOwnedValue(b, 'hold'), morphPosition),
+    distance: lerp(leadPresetOwnedValue(a, 'distance'), leadPresetOwnedValue(b, 'distance'), morphPosition),
+    postLpfHz: lerp(leadPresetOwnedValue(a, 'postLpfHz'), leadPresetOwnedValue(b, 'postLpfHz'), morphPosition),
+    postLpfKeyTracking: lerp(leadPresetOwnedValue(a, 'postLpfKeyTracking'), leadPresetOwnedValue(b, 'postLpfKeyTracking'), morphPosition),
+    stereoWidth: lerp(leadPresetOwnedValue(a, 'stereoWidth'), leadPresetOwnedValue(b, 'stereoWidth'), morphPosition),
+    diffuseSend: lerp(leadPresetOwnedValue(a, 'diffuseSend'), leadPresetOwnedValue(b, 'diffuseSend'), morphPosition),
+    vibratoDepth: lerp(leadPresetOwnedValue(a, 'vibratoDepth'), leadPresetOwnedValue(b, 'vibratoDepth'), morphPosition),
+    vibratoRate: lerp(leadPresetOwnedValue(a, 'vibratoRate'), leadPresetOwnedValue(b, 'vibratoRate'), morphPosition),
+    glide: lerp(leadPresetOwnedValue(a, 'glide'), leadPresetOwnedValue(b, 'glide'), morphPosition),
 
     filterFreq: lerp(a.filter.freq, b.filter.freq, morphPosition),
     filterQ: lerp(a.filter.q, b.filter.q, morphPosition),
@@ -531,6 +617,111 @@ export function morphPresets(
     lfoTarget,
     unisonVoices: Math.round(lerp(a.unisonVoices ?? 1, b.unisonVoices ?? 1, morphPosition)),
     unisonDetune: lerp(a.unisonDetune ?? 0, b.unisonDetune ?? 0, morphPosition),
+  };
+}
+
+export function applyLead4opPresetOwnedParamsToState<T extends object>(
+  state: T,
+  scope: Lead4opPresetScope,
+  presetA: Lead4opFMPreset,
+  presetB: Lead4opFMPreset,
+  morph: number,
+): T {
+  const next = { ...state } as Record<string, unknown>;
+  const morphed = morphPresets(presetA, presetB, morph);
+  for (const [presetKey, stateKey] of Object.entries(LEAD4OP_PRESET_STATE_KEYS[scope])) {
+    next[stateKey] = morphed[presetKey as Lead4opPresetOwnedParamKey];
+  }
+  return next as T;
+}
+
+export function resolveLead4opPresetDualState(
+  scope: Lead4opPresetScope,
+  presetA: Lead4opFMPreset,
+  presetB: Lead4opFMPreset,
+  morph: number,
+): {
+  relevantKeys: string[];
+  dualRanges: NonNullable<PresetVersionMetadata['dualRanges']>;
+  sliderModes: NonNullable<PresetVersionMetadata['sliderModes']>;
+} {
+  const stateKeys = LEAD4OP_PRESET_STATE_KEYS[scope];
+  const relevantKeys = Object.values(stateKeys);
+  const dualRanges: NonNullable<PresetVersionMetadata['dualRanges']> = {};
+  const sliderModes: NonNullable<PresetVersionMetadata['sliderModes']> = {};
+  const position = clampMorphPosition(morph);
+  const dualKeys = new Set([
+    ...Object.keys(presetA.dualRanges ?? {}),
+    ...Object.keys(presetB.dualRanges ?? {}),
+  ]);
+
+  for (const key of dualKeys) {
+    if (!(key in LEAD4OP_PRESET_OWNED_DEFAULTS)) continue;
+    const presetKey = key as Lead4opPresetOwnedParamKey;
+    const rangeA = presetA.dualRanges?.[presetKey];
+    const rangeB = presetB.dualRanges?.[presetKey];
+    const valueA = leadPresetOwnedValue(presetA.params, presetKey);
+    const valueB = leadPresetOwnedValue(presetB.params, presetKey);
+    const min = lerp(rangeA?.min ?? valueA, rangeB?.min ?? valueB, position);
+    const max = lerp(rangeA?.max ?? valueA, rangeB?.max ?? valueB, position);
+    if (Math.abs(max - min) <= 0.001) continue;
+
+    const modeA = presetA.sliderModes?.[presetKey] ?? (rangeA ? 'walk' : undefined);
+    const modeB = presetB.sliderModes?.[presetKey] ?? (rangeB ? 'walk' : undefined);
+    const stateKey = stateKeys[presetKey];
+    dualRanges[stateKey] = { min, max };
+    sliderModes[stateKey] = position < 0.5
+      ? modeA ?? modeB ?? 'walk'
+      : modeB ?? modeA ?? 'walk';
+  }
+
+  return { relevantKeys, dualRanges, sliderModes };
+}
+
+export function withLead4opPresetOwnedState(
+  preset: Lead4opFMPreset,
+  scope: Lead4opPresetScope,
+  state: object,
+  dualRanges: Record<string, { min: number; max: number }> = {},
+  sliderModes: NonNullable<PresetVersionMetadata['sliderModes']> = {},
+): Lead4opFMPreset {
+  const stateKeys = LEAD4OP_PRESET_STATE_KEYS[scope];
+  const stateRecord = state as Record<string, unknown>;
+  const ownedValues = Object.fromEntries(
+    Object.entries(stateKeys).map(([presetKey, stateKey]) => {
+      const value = stateRecord[stateKey];
+      return [
+        presetKey,
+        typeof value === 'number' && Number.isFinite(value)
+          ? value
+          : leadPresetOwnedValue(preset.params, presetKey as Lead4opPresetOwnedParamKey),
+      ];
+    }),
+  ) as Record<Lead4opPresetOwnedParamKey, number>;
+  const presetDualRanges: NonNullable<PresetVersionMetadata['dualRanges']> = {};
+  const presetSliderModes: NonNullable<PresetVersionMetadata['sliderModes']> = {};
+
+  for (const [presetKey, stateKey] of Object.entries(stateKeys)) {
+    const range = dualRanges[stateKey];
+    if (!range) continue;
+    presetDualRanges[presetKey] = range;
+    presetSliderModes[presetKey] = sliderModes[stateKey] ?? 'walk';
+  }
+
+  const { hold, ...ownedParams } = ownedValues;
+
+  return {
+    ...preset,
+    params: {
+      ...preset.params,
+      ...ownedParams,
+      envelope: {
+        ...preset.params.envelope,
+        hold,
+      },
+    },
+    dualRanges: Object.keys(presetDualRanges).length > 0 ? presetDualRanges : undefined,
+    sliderModes: Object.keys(presetSliderModes).length > 0 ? presetSliderModes : undefined,
   };
 }
 
@@ -595,8 +786,11 @@ export const DEFAULT_GAMELAN: Lead4opFMPreset = {
 // ─── Preset Cache & Loader ───
 
 const presetCache: Map<string, Lead4opFMPreset> = new Map();
-const USER_LEAD4OP_SCOPE = 'lead4opfm';
+const USER_LEAD4OP_SCOPE = LEAD4OPFM_PRESET_SCOPE;
 const USER_LEAD4OP_PRESETS = new Map<string, { preset: Lead4opFMPreset; library: PresetLibrary }>();
+const USER_LEAD4OP_PRESET_CACHE_KEYS = new Set<string>();
+const lead4opEntryLoadsByStore = new WeakMap<object, Map<string, Promise<PresetEntry | null>>>();
+const lead4opSummaryNameByLookup = new Map<string, string>();
 const FALLBACK_LEAD4OP_PRESETS = [DEFAULT_SOFT_RHODES, DEFAULT_GAMELAN, ...(lead4opfmV2PresetBank as Lead4opFMPreset[])];
 const FALLBACK_LEAD4OP_PRESET_MAP = new Map<string, Lead4opFMPreset>();
 for (const preset of FALLBACK_LEAD4OP_PRESETS) {
@@ -612,11 +806,15 @@ const FALLBACK_LEAD4OP_MANIFEST: Lead4opFMManifest = {
 };
 
 function cloneLead4opPreset(preset: Lead4opFMPreset, id = preset.id, name = preset.name): Lead4opFMPreset {
-  return JSON.parse(JSON.stringify({
-    ...preset,
-    id,
-    name,
-  })) as Lead4opFMPreset;
+  const next = { ...preset, id, name } as Lead4opFMPreset;
+  if (typeof globalThis.structuredClone === 'function') {
+    try {
+      return globalThis.structuredClone(next);
+    } catch {
+      // Fall through for values that crossed a different realm.
+    }
+  }
+  return JSON.parse(JSON.stringify(next)) as Lead4opFMPreset;
 }
 
 function isLead4opFMPresetCandidate(value: unknown): value is Lead4opFMPreset {
@@ -645,7 +843,10 @@ function getLead4opPresetCandidateFromEntry(entry: PresetEntry): Lead4opFMPreset
   if (!version) return null;
 
   const data = version.data as Record<string, unknown>;
-  return isLead4opFMPresetCandidate(version.data)
+  const currentPayload = readLead4opFMPresetData(data);
+  return currentPayload && isLead4opFMPresetCandidate(currentPayload.preset)
+    ? currentPayload.preset as Lead4opFMPreset
+    : isLead4opFMPresetCandidate(version.data)
     ? version.data
     : isLead4opFMPresetCandidate(data.preset)
       ? data.preset
@@ -655,25 +856,17 @@ function getLead4opPresetCandidateFromEntry(entry: PresetEntry): Lead4opFMPreset
 function parseLead4opPresetFromEntry(entry: PresetEntry, lookupName: string): Lead4opFMPreset | null {
   const rawPreset = getLead4opPresetCandidateFromEntry(entry);
   if (!rawPreset) return null;
-
-  return cloneLead4opPreset(rawPreset, lookupName, entry.name);
-}
-
-function leadEntryMatchesLookup(entry: PresetEntry, presetId: string): boolean {
-  const rawPreset = getLead4opPresetCandidateFromEntry(entry);
-  const lookup = normalizeLeadPresetLookup(presetId);
-  return [
-    rawPreset?.id,
-    rawPreset?.name,
-    entry.name,
-    entry.id,
-  ]
-    .filter((value): value is string => typeof value === 'string' && value.length > 0)
-    .some(value => normalizeLeadPresetLookup(value) === lookup);
+  const version = entry.versions.find(candidate => candidate.v === entry.currentVersion)
+    || entry.versions[entry.versions.length - 1];
+  return cloneLead4opPreset({
+    ...rawPreset,
+    dualRanges: version?.dualRanges,
+    sliderModes: version?.sliderModes,
+  }, lookupName, entry.name);
 }
 
 function leadSummaryMatchesLookup(
-  summary: { id?: string; name: string; remoteId?: string },
+  summary: Pick<PresetSummary, 'id' | 'name' | 'remoteId'>,
   presetId: string,
 ): boolean {
   const lookup = normalizeLeadPresetLookup(presetId);
@@ -686,21 +879,86 @@ function leadSummaryMatchesLookup(
     .some(value => normalizeLeadPresetLookup(value) === lookup);
 }
 
-async function loadLead4opPresetEntryFromStore(presetId: string): Promise<PresetEntry | null> {
-  const store = getPresetStore();
-  const direct = await store.load('engine', presetId, USER_LEAD4OP_SCOPE);
-  if (direct && getLead4opPresetCandidateFromEntry(direct)) return direct;
+function lead4opLookupKey(value: unknown): string {
+  return normalizeLeadPresetLookup(String(value ?? ''));
+}
 
-  const summaries = await store.list('engine', USER_LEAD4OP_SCOPE);
-  for (const summary of summaries) {
-    const summaryMatches = leadSummaryMatchesLookup(summary, presetId);
-    const entry = await store.load('engine', summary.name, USER_LEAD4OP_SCOPE);
-    if (!entry) continue;
-    if (summaryMatches && getLead4opPresetCandidateFromEntry(entry)) return entry;
-    if (leadEntryMatchesLookup(entry, presetId)) return entry;
+function rememberLead4opSummary(summary: Pick<PresetSummary, 'id' | 'name' | 'remoteId'>): void {
+  for (const value of [summary.id, summary.remoteId, summary.name]) {
+    const key = lead4opLookupKey(value);
+    if (key) lead4opSummaryNameByLookup.set(key, summary.name);
+  }
+}
+
+function getRememberedLead4opSummaryName(presetId: string): string | undefined {
+  return lead4opSummaryNameByLookup.get(lead4opLookupKey(presetId));
+}
+
+function isCanonicalCloudPresetId(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isLead4opPresetEntry(entry: PresetEntry | null): entry is PresetEntry {
+  return !!entry && entry.type === 'engine' && !!getLead4opPresetCandidateFromEntry(entry);
+}
+
+async function loadLead4opPresetEntryUncached(
+  store: IPresetStore,
+  presetId: string,
+): Promise<PresetEntry | null> {
+  const requestedId = presetId.trim();
+  if (!requestedId) return null;
+
+  const rememberedName = getRememberedLead4opSummaryName(requestedId);
+  if (rememberedName && lead4opLookupKey(rememberedName) !== lead4opLookupKey(requestedId)) {
+    const remembered = await store.load('engine', rememberedName, USER_LEAD4OP_SCOPE);
+    if (isLead4opPresetEntry(remembered)) return remembered;
   }
 
-  return null;
+  if (isCanonicalCloudPresetId(requestedId)) {
+    const byId = await store.loadById(requestedId);
+    if (isLead4opPresetEntry(byId)) return byId;
+  }
+
+  const direct = await store.load('engine', requestedId, USER_LEAD4OP_SCOPE);
+  if (isLead4opPresetEntry(direct)) return direct;
+
+  const summaries = await store.list('engine', USER_LEAD4OP_SCOPE);
+  for (const summary of summaries) rememberLead4opSummary(summary);
+  const matchedSummary = summaries.find(summary => leadSummaryMatchesLookup(summary, requestedId));
+  if (!matchedSummary) return null;
+
+  // The original direct request has already supplied this exact detail. Avoid
+  // immediately re-fetching it; verified loads retain their bounded retry for
+  // genuinely transient misses.
+  if (lead4opLookupKey(matchedSummary.name) === lead4opLookupKey(requestedId)) return null;
+
+  const matched = await store.load('engine', matchedSummary.name, USER_LEAD4OP_SCOPE);
+  return isLead4opPresetEntry(matched) ? matched : null;
+}
+
+async function loadLead4opPresetEntryFromStore(presetId: string): Promise<PresetEntry | null> {
+  const store = getPresetStore();
+  const key = lead4opLookupKey(presetId);
+  if (!key) return null;
+
+  const storeKey = store as object;
+  let loads = lead4opEntryLoadsByStore.get(storeKey);
+  if (!loads) {
+    loads = new Map();
+    lead4opEntryLoadsByStore.set(storeKey, loads);
+  }
+
+  const inFlight = loads.get(key);
+  if (inFlight) return inFlight;
+
+  const load = loadLead4opPresetEntryUncached(store, presetId);
+  loads.set(key, load);
+  try {
+    return await load;
+  } finally {
+    if (loads.get(key) === load) loads.delete(key);
+  }
 }
 
 async function listLead4opStorePresets(): Promise<{ id: string; name: string }[]> {
@@ -710,28 +968,51 @@ async function listLead4opStorePresets(): Promise<{ id: string; name: string }[]
   const seen = new Set<string>();
 
   for (const summary of summaries) {
-    const entry = await store.load('engine', summary.name, USER_LEAD4OP_SCOPE);
-    if (!entry) continue;
-
-    const rawPreset = getLead4opPresetCandidateFromEntry(entry);
-    if (!rawPreset) continue;
-
-    const id = entry.name || rawPreset.name || normalizeLeadPresetLookup(summary.name);
+    rememberLead4opSummary(summary);
+    const id = summary.remoteId?.trim() || summary.id?.trim() || summary.name;
     const key = normalizeLeadPresetLookup(id);
     if (seen.has(key)) continue;
 
     seen.add(key);
-    presets.push({ id, name: entry.name });
+    presets.push({ id, name: summary.name });
   }
 
   return presets;
 }
 
+function clearUserLead4opPresetCache(): void {
+  for (const key of USER_LEAD4OP_PRESET_CACHE_KEYS) {
+    presetCache.delete(key);
+  }
+  USER_LEAD4OP_PRESET_CACHE_KEYS.clear();
+}
+
+function cacheUserLead4opPreset(
+  preset: { id: string; name: string; library: PresetLibrary; preset: Lead4opFMPreset },
+  aliases: Iterable<unknown> = [],
+): void {
+  const keys = new Set<string>();
+  for (const candidate of [preset.id, preset.name, preset.preset.id, preset.preset.name, ...aliases]) {
+    const key = String(candidate ?? '').trim();
+    if (key) keys.add(key);
+  }
+
+  const cached = cloneLead4opPreset(preset.preset, preset.id, preset.name);
+  for (const key of keys) {
+    USER_LEAD4OP_PRESETS.set(key, { preset: cached, library: preset.library });
+  }
+  presetCache.set(preset.id, cached);
+  USER_LEAD4OP_PRESET_CACHE_KEYS.add(preset.id);
+}
+
 async function loadUserLead4opPresetFromStore(presetId: string): Promise<{ preset: Lead4opFMPreset; library: PresetLibrary } | null> {
   const runtime = USER_LEAD4OP_PRESETS.get(presetId);
   if (runtime) {
+    const preset = cloneLead4opPreset(runtime.preset, presetId, runtime.preset.name);
+    presetCache.set(presetId, preset);
+    USER_LEAD4OP_PRESET_CACHE_KEYS.add(presetId);
     return {
-      preset: cloneLead4opPreset(runtime.preset, presetId, runtime.preset.name),
+      preset,
       library: runtime.library,
     };
   }
@@ -743,8 +1024,11 @@ async function loadUserLead4opPresetFromStore(presetId: string): Promise<{ prese
   if (!preset) return null;
 
   const library = entry.library ?? 'user';
-  USER_LEAD4OP_PRESETS.set(presetId, { preset, library });
-  presetCache.set(presetId, preset);
+  const rawPreset = getLead4opPresetCandidateFromEntry(entry);
+  cacheUserLead4opPreset(
+    { id: presetId, name: preset.name, library, preset },
+    [entry.id, entry.remoteId, entry.name, rawPreset?.id, rawPreset?.name],
+  );
   return { preset: cloneLead4opPreset(preset, presetId, preset.name), library };
 }
 
@@ -752,25 +1036,58 @@ export function setUserLead4opFMPresets(
   presets: Array<{ id: string; name: string; library: PresetLibrary; preset: Lead4opFMPreset }>,
 ): void {
   USER_LEAD4OP_PRESETS.clear();
-  for (const preset of presets) {
-    const cloned = cloneLead4opPreset(preset.preset, preset.id, preset.name);
-    USER_LEAD4OP_PRESETS.set(preset.id, {
-      preset: cloned,
-      library: preset.library,
-    });
-    presetCache.set(preset.id, cloned);
-  }
+  clearUserLead4opPresetCache();
+  for (const preset of presets) cacheUserLead4opPreset(preset);
 }
 
 export function upsertUserLead4opFMPreset(
   preset: { id: string; name: string; library: PresetLibrary; preset: Lead4opFMPreset },
 ): void {
-  const cloned = cloneLead4opPreset(preset.preset, preset.id, preset.name);
-  USER_LEAD4OP_PRESETS.set(preset.id, {
-    preset: cloned,
-    library: preset.library,
+  cacheUserLead4opPreset(preset);
+}
+
+function createLead4opPresetSaveData(
+  preset: Lead4opFMPreset,
+  name: string,
+): Record<string, unknown> {
+  // The command service takes the one defensive payload clone it needs before
+  // persistence. Keep this construction shallow so no-op saves avoid another
+  // full FM-patch traversal.
+  const sanitized = sanitizeLead4opFMPresetJson({
+    id: name,
+    name,
+    engine: preset.engine,
+    method: preset.method,
+    operators: preset.operators,
+    algorithm: preset.algorithm,
+    source: preset.source,
+    xy: preset.xy,
+    params: preset.params,
   });
-  presetCache.set(preset.id, cloned);
+  if (!sanitized) throw new Error('Lead4opFM preset does not match the current persistence contract.');
+  return createLead4opFMPresetData(sanitized);
+}
+
+function lead4opPresetBehaviorMetadata(preset: Lead4opFMPreset): PresetVersionMetadata | undefined {
+  if (!preset.dualRanges && !preset.sliderModes) return undefined;
+  return {
+    dualRanges: preset.dualRanges,
+    sliderModes: preset.sliderModes,
+  };
+}
+
+function canUpdateLead4opUserPreset(entry: PresetEntry | null): boolean {
+  return !!entry && (SHARED_PRESET_TEST_MODE || (entry.author === 'user' && entry.library === 'user'));
+}
+
+function cachePersistedLead4opPreset(
+  name: string,
+  preset: Lead4opFMPreset,
+  library: PresetLibrary,
+  aliases: Iterable<unknown> = [],
+): void {
+  const finalPreset = cloneLead4opPreset(preset, name, name);
+  cacheUserLead4opPreset({ id: name, name, library, preset: finalPreset }, aliases);
 }
 
 export async function saveUserLead4opFMPreset(
@@ -778,56 +1095,29 @@ export async function saveUserLead4opFMPreset(
   preset: Lead4opFMPreset,
   note = '',
 ): Promise<string> {
+  const requestedName = name.trim();
   const store = getPresetStore();
-  const existing = await store.load('engine', name, USER_LEAD4OP_SCOPE);
-  const now = Date.now();
-  let actualName = name;
-  const storedPreset = cloneLead4opPreset(preset, name, name);
-
-  if (existing && (SHARED_PRESET_TEST_MODE || (existing.author === 'user' && existing.library === 'user'))) {
-    const maxVersion = Math.max(...existing.versions.map(version => version.v));
-    existing.versions.push({
-      v: maxVersion + 1,
-      note,
-      timestamp: now,
-      data: storedPreset as unknown as Record<string, unknown>,
-    });
-    existing.currentVersion = maxVersion + 1;
-    existing.updatedAt = now;
-    if (SHARED_PRESET_TEST_MODE) existing.visibility = 'public';
-    await store.save(existing);
-  } else {
-    actualName = existing && existing.author !== 'user' ? `${name} (Custom)` : name;
-    const entry: PresetEntry = {
-      type: 'engine',
-      scope: USER_LEAD4OP_SCOPE,
-      engine: USER_LEAD4OP_SCOPE,
-      name: actualName,
-      author: 'user',
-      library: 'user',
-      visibility: SHARED_PRESET_TEST_MODE ? 'public' : 'private',
-      familyName: actualName,
-      variantName: actualName,
-      versions: [{
-        v: 1,
-        note,
-        timestamp: now,
-        data: cloneLead4opPreset(storedPreset, actualName, actualName) as unknown as Record<string, unknown>,
-      }],
-      currentVersion: 1,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await store.save(entry);
-  }
-
-  const finalPreset = cloneLead4opPreset(storedPreset, actualName, actualName);
-  USER_LEAD4OP_PRESETS.set(actualName, {
-    preset: finalPreset,
-    library: 'user',
+  const commands = getPresetCommandService(store);
+  const existing = await store.load('engine', requestedName, USER_LEAD4OP_SCOPE);
+  const targetName = existing && !canUpdateLead4opUserPreset(existing)
+    ? `${requestedName} (Custom)`
+    : requestedName;
+  const result = await commands.save({
+    type: 'engine',
+    scope: USER_LEAD4OP_SCOPE,
+    name: targetName,
+    data: createLead4opPresetSaveData(preset, targetName),
+    note,
+    metadata: lead4opPresetBehaviorMetadata(preset),
+    identity: SHARED_PRESET_TEST_MODE ? { visibility: 'public' } : undefined,
   });
-  presetCache.set(actualName, finalPreset);
-  return actualName;
+
+  cachePersistedLead4opPreset(result.entry.name, preset, 'user', [
+    requestedName,
+    result.entry.id,
+    result.entry.remoteId,
+  ]);
+  return result.entry.name;
 }
 
 export async function overwriteLead4opFMPreset(
@@ -835,39 +1125,33 @@ export async function overwriteLead4opFMPreset(
   preset: Lead4opFMPreset,
   note = 'Updated from lead editor',
 ): Promise<string> {
-  const existing = await loadLead4opPresetEntryFromStore(name);
-  if (!existing) {
-    return saveUserLead4opFMPreset(name, preset, note);
-  }
-  if (existing.author === 'factory' || existing.library === 'stock') {
+  const requestedName = name.trim();
+  const store = getPresetStore();
+  const commands = getPresetCommandService(store);
+  const existing = await loadLead4opPresetEntryFromStore(requestedName);
+  if (existing && (existing.author === 'factory' || existing.library === 'stock')) {
     throw new Error(`Cannot overwrite stock Lead4opFM preset: ${name}`);
   }
+  if (!existing) return saveUserLead4opFMPreset(requestedName, preset, note);
 
-  const now = Date.now();
-  const targetName = existing.name || name;
-  const storedPreset = cloneLead4opPreset(preset, targetName, targetName);
-  const maxVersion = existing.versions.length
-    ? Math.max(...existing.versions.map(version => version.v))
-    : 0;
-
-  existing.versions.push({
-    v: maxVersion + 1,
+  const result = await commands.save({
+    type: 'engine',
+    scope: USER_LEAD4OP_SCOPE,
+    name: existing.name,
+    data: createLead4opPresetSaveData(preset, existing.name),
     note,
-    timestamp: now,
-    data: storedPreset as unknown as Record<string, unknown>,
+    metadata: lead4opPresetBehaviorMetadata(preset),
+    identity: SHARED_PRESET_TEST_MODE ? { visibility: 'public' } : undefined,
   });
-  existing.currentVersion = maxVersion + 1;
-  existing.updatedAt = now;
-  if (SHARED_PRESET_TEST_MODE) existing.visibility = 'public';
-  await getPresetStore().save(existing);
-
   const library = existing.library ?? (existing.author === 'cloud' ? 'cloud' : 'user');
-  USER_LEAD4OP_PRESETS.set(targetName, {
-    preset: storedPreset,
-    library,
-  });
-  presetCache.set(targetName, storedPreset);
-  return targetName;
+  cachePersistedLead4opPreset(result.entry.name, preset, library, [
+    requestedName,
+    existing.id,
+    existing.remoteId,
+    result.entry.id,
+    result.entry.remoteId,
+  ]);
+  return result.entry.name;
 }
 
 /**

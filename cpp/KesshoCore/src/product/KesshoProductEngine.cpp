@@ -171,8 +171,6 @@
   telemetry.schema_hash = KESSHO_PRODUCT_SNAPSHOT_SCHEMA_HASH;
   telemetry.sample_rate = sample_rate;
   telemetry.block_size = max_block_size;
-  debug_voice_spawn_sequence = 0u;
-  telemetry.debug_voice_spawn_count = 0u;
   active_voice_count = 0u;
   active_source_mask = 0u;
   active_voice_list_dirty = true;
@@ -190,6 +188,7 @@
 
   void KesshoProductEngine::reset() {
   transport.reset();
+  audio_render_sample_frame = 0u;
   snapshot_loaded_once = false;
   control_event_count = 0;
   pending_phrase_timing_event_count = 0u;
@@ -235,8 +234,6 @@
   generated_sequencer_capture_event_counter = 1u;
   simple_sequencer_visual_ring.reset();
   simple_sequencer_visual_event_counter = 1u;
-  debug_voice_spawn_sequence = 0u;
-  telemetry.debug_voice_spawn_count = 0u;
   sequencer_evolve_rng_stream_seed = 0u;
   sequencer_evolve_rng_stream_state = 0u;
   sequencer_evolve_rng_stream_initialized = false;

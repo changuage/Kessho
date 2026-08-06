@@ -63,9 +63,8 @@ int32_t kessho_product_debug_render_events(
       out_events[copied_count + i].sample_offset += cursor;
     }
     copied_count += copy_count;
-    if (engine->transport.running) {
-      engine->transport.sample_frame += control_segment_frames;
-    }
+    if (engine->transport.running) engine->transport.sample_frame += control_segment_frames;
+    engine->audio_render_sample_frame += control_segment_frames;
     cursor = control_segment_end;
   }
   engine->sequencer_events.count = std::min<uint32_t>(

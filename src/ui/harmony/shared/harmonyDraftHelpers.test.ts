@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { captureDraftToSlot, countSharedSlotUses, draftFromSlot, emptyHarmonyDraft, resolveDraftNotes, resolveLiveReanchoredNotes, updateDraftExactNotes } from './harmonyDraftHelpers';
+import { adoptDraftRecognitionCandidate, captureDraftToSlot, countSharedSlotUses, draftFromSlot, emptyHarmonyDraft, resolveDraftNotes, resolveLiveReanchoredNotes, updateDraftExactNotes } from './harmonyDraftHelpers';
 import type { SharedHarmonyChordSlot } from '../../../audio/harmony/harmonyTypes';
 
 const slot = (locked = false, populated = true): SharedHarmonyChordSlot => ({
@@ -25,6 +25,18 @@ test('slot load copies exact notes and capture is the only authored write', () =
   const captured = captureDraftToSlot(source, draft);
   assert.deepEqual(captured.chord?.exactMidiNotes, [60, 64, 67, 72]);
   assert.deepEqual(source.chord?.exactMidiNotes, [60, 64, 67]);
+});
+
+test('adopting a recognition candidate preserves exact voicing and activates relative intent', () => {
+  const draft = updateDraftExactNotes(emptyHarmonyDraft({ rootMidi: 60, scaleId: 1 }), [60, 64, 67]);
+  const candidate = draft.recognitionCandidates?.[0];
+  assert.ok(candidate);
+  const adopted = adoptDraftRecognitionCandidate(draft, candidate);
+  assert.deepEqual(adopted.exactMidiNotes, [60, 64, 67]);
+  assert.equal(adopted.intentSource, 'confirmed');
+  assert.equal(adopted.playbackBehavior, 'relative');
+  assert.equal(adopted.recognitionMismatch, false);
+  assert.equal(adopted.requiresSemanticSelection, false);
 });
 
 test('empty draft remains empty until capture and locked slots reject it', () => {

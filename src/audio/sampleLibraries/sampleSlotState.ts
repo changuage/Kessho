@@ -48,6 +48,21 @@ function fieldKey(slotId: SampleSlotId, suffix: string): string {
   return `${slotId}${suffix}`;
 }
 
+const SAMPLE_SLOT_LIBRARY_DEFAULT_NUMERIC_SUFFIXES = [
+  'Level',
+  'AttackMs',
+  'DecayMs',
+  'Sustain',
+  'HoldMs',
+  'ReleaseMs',
+  'MaxVoices',
+] as const;
+
+export const SAMPLE_SLOT_LIBRARY_DEFAULT_NUMERIC_KEYS = Object.freeze({
+  sample1: SAMPLE_SLOT_LIBRARY_DEFAULT_NUMERIC_SUFFIXES.map((suffix) => fieldKey('sample1', suffix)),
+  sample2: SAMPLE_SLOT_LIBRARY_DEFAULT_NUMERIC_SUFFIXES.map((suffix) => fieldKey('sample2', suffix)),
+}) satisfies Record<SampleSlotId, readonly string[]>;
+
 function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, value));

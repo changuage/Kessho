@@ -12,6 +12,8 @@ export interface SimpleSequencerVizEnvelope {
 export interface SimpleSequencerVizNote {
   id: string;
   source: SimpleSequencerVizSource;
+  /** Optional UI-only color override for semantic projections that are not an audio source. */
+  color?: string;
   midi: number;
   label: string;
   voiceIndex?: number;

@@ -51,6 +51,10 @@ export function useAdvancedEditorNavigation({
     activeTabRef.current = activeTab;
   }, [activeTab]);
 
+  useEffect(() => {
+    if (uiMode === 'advanced') preloadAdvancedEditorRuntime();
+  }, [preloadAdvancedEditorRuntime, uiMode]);
+
   const openAdvancedTab = useCallback(
     (tab: AdvancedTab) => {
       if (uiMode === 'snowflake' && !snowflakeActivated) {

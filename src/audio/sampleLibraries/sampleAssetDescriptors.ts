@@ -26,6 +26,14 @@ export interface SampleAssetDescriptor {
 export function resolveSampleAssetUrl(assetBasePath: string, assetPath: string): string {
   const normalizedBasePath = assetBasePath.replace(/^\/+|\/+$/g, '');
   const normalizedAssetPath = assetPath.replace(/^\/+/g, '');
+  const embeddedAssetBaseUrl = typeof window !== 'undefined'
+    ? (window as Window & {
+      __pointCloudsEmbeddedProductCoreAssets?: { assetBaseUrl?: string };
+    }).__pointCloudsEmbeddedProductCoreAssets?.assetBaseUrl
+    : undefined;
+  if (embeddedAssetBaseUrl) {
+    return new URL(`${normalizedBasePath}/${normalizedAssetPath}`, embeddedAssetBaseUrl).toString();
+  }
   const baseUrl = import.meta.env?.BASE_URL ?? '/';
   if (typeof window !== 'undefined' && window.location?.origin) {
     const base = new URL(baseUrl, window.location.origin);

@@ -39,7 +39,7 @@ assert(
 );
 assert(
   productManual.includes("kind: 'synth-note'") &&
-    productManual.includes('note,') &&
+    /note:\s*(?:productNote|firstNote)\b/.test(productManual) &&
     productManual.includes("kind: 'drum-voice'") &&
     productManual.includes('voice,') &&
     productManual.includes('velocity,'),

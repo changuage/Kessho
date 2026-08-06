@@ -3,9 +3,12 @@ import type { HarmonyCapturedContext } from '../../audio/harmony/harmonyTypes';
 import {
   createHarmonyDraft,
   draftFromHarmonyCaptureState,
+  HARMONY_DRAFT_GROUPING_WINDOW_MS,
   initialHarmonyCaptureState,
   reduceHarmonyCaptureNoteOff,
   reduceHarmonyCaptureNoteOn,
+  reduceHarmonyCaptureReleaseAll,
+  reduceHarmonyCaptureSettled,
   reduceHarmonyCaptureSustain,
   resetHarmonyCaptureState,
   type HarmonyCaptureState,
@@ -23,7 +26,7 @@ export interface UseHarmonyChordCaptureOptions {
 export interface HarmonyChordCaptureController {
   readonly draft: HarmonyDraftChord;
   readonly capture: HarmonyCaptureState;
-  readonly noteDown: (midi: number, timestampMs?: number) => HarmonyDraftChord;
+  readonly noteDown: (midi: number, timestampMs?: number, velocity?: number) => HarmonyDraftChord;
   readonly noteUp: (midi: number) => HarmonyCaptureState;
   readonly setSustain: (down: boolean) => void;
   readonly releaseAll: () => void;
@@ -44,17 +47,28 @@ export interface HarmonyChordCaptureController {
 export function useHarmonyChordCapture(options: UseHarmonyChordCaptureOptions = {}): HarmonyChordCaptureController {
   const contextRef = useRef(options.context ?? { rootMidi: 60, rootMidiAnchor: 60, scaleId: 1 });
   const sourceRef = useRef(options.source ?? 'midi');
-  const [capture, setCapture] = useState<HarmonyCaptureState>(() => initialHarmonyCaptureState());
+  contextRef.current = options.context ?? contextRef.current;
+  sourceRef.current = options.source ?? sourceRef.current;
+  const [capture, setCapture] = useState<HarmonyCaptureState>(() => ({
+    ...initialHarmonyCaptureState(),
+    capturedGesture: options.initialDraft?.exactMidiNotes.slice() ?? [],
+  }));
   const [draft, setDraftState] = useState<HarmonyDraftChord>(() => options.initialDraft ?? createHarmonyDraft({ context: contextRef.current, source: sourceRef.current }));
   const captureRef = useRef(capture);
   const draftRef = useRef(draft);
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   captureRef.current = capture;
   draftRef.current = draft;
 
   const emitDraft = useCallback((nextCapture: HarmonyCaptureState, previousDraft = draftRef.current) => {
+    const gestureChanged = nextCapture.capturedGesture.length !== captureRef.current.capturedGesture.length
+      || nextCapture.capturedGesture.some((note, index) => note !== captureRef.current.capturedGesture[index]);
+    captureRef.current = nextCapture;
     const nextDraft = nextCapture.capturedGesture.length === 0
       ? previousDraft
-      : draftFromHarmonyCaptureState(nextCapture, contextRef.current, sourceRef.current, previousDraft);
+      : gestureChanged
+        ? draftFromHarmonyCaptureState(nextCapture, contextRef.current, sourceRef.current, previousDraft)
+        : previousDraft;
     setCapture(nextCapture);
     if (nextDraft !== previousDraft) {
       draftRef.current = nextDraft;
@@ -64,18 +78,38 @@ export function useHarmonyChordCapture(options: UseHarmonyChordCaptureOptions = 
     return nextDraft;
   }, [options.onDraftChange]);
 
-  const noteDown = useCallback((midi: number, timestampMs = typeof performance === 'undefined' ? Date.now() : performance.now()) => {
+  const clearSettleTimer = useCallback(() => {
+    if (settleTimerRef.current === null) return;
+    clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = null;
+  }, []);
+
+  const scheduleSettle = useCallback((nextCapture: HarmonyCaptureState) => {
+    clearSettleTimer();
+    if (nextCapture.pendingStartedAt == null || nextCapture.pendingGesture.length < 3) return;
+    const now = typeof performance === 'undefined' ? Date.now() : performance.now();
+    const delay = Math.max(0, HARMONY_DRAFT_GROUPING_WINDOW_MS - (now - nextCapture.pendingStartedAt));
+    settleTimerRef.current = setTimeout(() => {
+      settleTimerRef.current = null;
+      const settledAt = typeof performance === 'undefined' ? Date.now() : performance.now();
+      emitDraft(reduceHarmonyCaptureSettled(captureRef.current, settledAt));
+    }, delay + 1);
+  }, [clearSettleTimer, emitDraft]);
+
+  const noteDown = useCallback((midi: number, timestampMs = typeof performance === 'undefined' ? Date.now() : performance.now(), velocity?: number) => {
     if (options.enabled === false) return draftRef.current;
-    const nextCapture = reduceHarmonyCaptureNoteOn(captureRef.current, midi, timestampMs);
-    return emitDraft(nextCapture);
-  }, [emitDraft, options.enabled]);
+    const nextCapture = reduceHarmonyCaptureNoteOn(captureRef.current, midi, timestampMs, velocity);
+    const nextDraft = emitDraft(nextCapture);
+    scheduleSettle(nextCapture);
+    return nextDraft;
+  }, [emitDraft, options.enabled, scheduleSettle]);
 
   const noteUp = useCallback((midi: number) => {
     const nextCapture = reduceHarmonyCaptureNoteOff(captureRef.current, midi);
-    captureRef.current = nextCapture;
-    setCapture(nextCapture);
+    clearSettleTimer();
+    emitDraft(nextCapture);
     return nextCapture;
-  }, []);
+  }, [clearSettleTimer, emitDraft]);
 
   const setSustain = useCallback((down: boolean) => {
     const nextCapture = reduceHarmonyCaptureSustain(captureRef.current, down);
@@ -84,12 +118,12 @@ export function useHarmonyChordCapture(options: UseHarmonyChordCaptureOptions = 
   }, []);
 
   const releaseAll = useCallback(() => {
-    const nextCapture = { ...captureRef.current, heldNotes: new Set<number>(), releaseOccurredSinceLastAddition: true };
-    captureRef.current = nextCapture;
-    setCapture(nextCapture);
-  }, []);
+    clearSettleTimer();
+    emitDraft(reduceHarmonyCaptureReleaseAll(captureRef.current));
+  }, [clearSettleTimer, emitDraft]);
 
   const reset = useCallback(() => {
+    clearSettleTimer();
     const nextCapture = resetHarmonyCaptureState();
     const nextDraft = createHarmonyDraft({ context: contextRef.current, source: sourceRef.current });
     captureRef.current = nextCapture;
@@ -97,28 +131,37 @@ export function useHarmonyChordCapture(options: UseHarmonyChordCaptureOptions = 
     setCapture(nextCapture);
     setDraftState(nextDraft);
     options.onDraftChange?.(nextDraft);
-  }, [options.onDraftChange]);
+  }, [clearSettleTimer, options.onDraftChange]);
 
   const setDraft = useCallback((nextDraft: HarmonyDraftChord) => {
+    const nextCapture = {
+      ...captureRef.current,
+      capturedGesture: nextDraft.exactMidiNotes.slice(),
+      pendingGesture: [],
+      pendingStartedAt: null,
+    };
+    captureRef.current = nextCapture;
+    setCapture(nextCapture);
     draftRef.current = nextDraft;
     setDraftState(nextDraft);
     options.onDraftChange?.(nextDraft);
   }, [options.onDraftChange]);
 
   useEffect(() => () => {
-    const nextCapture = { ...captureRef.current, heldNotes: new Set<number>(), releaseOccurredSinceLastAddition: true };
-    captureRef.current = nextCapture;
-  }, []);
+    clearSettleTimer();
+    captureRef.current = reduceHarmonyCaptureReleaseAll(captureRef.current);
+  }, [clearSettleTimer]);
 
   useEffect(() => {
     if (options.enabled !== false) return;
+    clearSettleTimer();
     const nextCapture = resetHarmonyCaptureState();
     const nextDraft = createHarmonyDraft({ context: contextRef.current, source: sourceRef.current });
     captureRef.current = nextCapture;
     draftRef.current = nextDraft;
     setCapture(nextCapture);
     setDraftState(nextDraft);
-  }, [options.enabled]);
+  }, [clearSettleTimer, options.enabled]);
 
   return { draft, capture, noteDown, noteUp, setSustain, releaseAll, reset, setDraft };
 }

@@ -17,6 +17,7 @@ type UseCloudPresetStoreBootstrapOptions<TSavedPreset> = {
 type CloudPresetStoreBootstrap<TSavedPreset> = {
   cloudPresetStoreReadyPromiseRef: MutableRefObject<Promise<void>>;
   loadCloudAutoStartPreset: () => Promise<TSavedPreset | null>;
+  loadCloudAutoStartPresetStrict: () => Promise<TSavedPreset>;
 };
 
 type CachedCloudAutoStartPreset<TSavedPreset> = {
@@ -214,33 +215,41 @@ export function useCloudPresetStoreBootstrap<TSavedPreset>({
     shouldInitializeCloudPresetStore,
   ]);
 
-  const loadCloudAutoStartPreset = useCallback(async (): Promise<TSavedPreset | null> => {
-    try {
-      const { preset, entryName } = await readCloudAutoStartPreset();
-
-      if (preset) {
-        onCloudAutoStartPreset(preset, 'load');
-        const logKey = entryName ?? presetNameForLog(preset) ?? defaultAutoStartPresetName;
-        if (cloudAutoStartLoadLogRef.current !== logKey) {
-          cloudAutoStartLoadLogRef.current = logKey;
-          console.log(`[App] Loaded latest cloud auto-start preset: ${logKey}`);
-        }
-      }
-
-      return preset;
-    } catch (error) {
-      console.warn('Failed to load latest cloud auto-start preset:', error);
-      return null;
+  const loadCloudAutoStartPresetStrict = useCallback(async (): Promise<TSavedPreset> => {
+    const { preset, entryName } = await readCloudAutoStartPreset();
+    if (!preset) {
+      throw new Error(`Cloud preset "${defaultAutoStartPresetName}" is unavailable.`);
     }
+
+    onCloudAutoStartPreset(preset, 'load');
+    const logKey = entryName ?? presetNameForLog(preset) ?? defaultAutoStartPresetName;
+    if (cloudAutoStartLoadLogRef.current !== logKey) {
+      cloudAutoStartLoadLogRef.current = logKey;
+      console.log(`[App] Loaded latest cloud auto-start preset: ${logKey}`);
+    }
+
+    return preset;
   }, [
     defaultAutoStartPresetName,
     onCloudAutoStartPreset,
     readCloudAutoStartPreset,
   ]);
 
+  const loadCloudAutoStartPreset = useCallback(async (): Promise<TSavedPreset | null> => {
+    try {
+      return await loadCloudAutoStartPresetStrict();
+    } catch (error) {
+      console.warn('Failed to load latest cloud auto-start preset:', error);
+      return null;
+    }
+  }, [
+    loadCloudAutoStartPresetStrict,
+  ]);
+
   return {
     cloudPresetStoreReadyPromiseRef: cloudPresetStoreReadyPromiseRef as MutableRefObject<Promise<void>>,
     loadCloudAutoStartPreset,
+    loadCloudAutoStartPresetStrict,
   };
 }
 

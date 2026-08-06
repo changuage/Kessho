@@ -17,11 +17,11 @@ const coreAbiVersion = 2;
 const leadFmParamCount = 112;
 const leadFmParamRelease = 46;
 const leadFmParamOutputSelect = 79;
-const padParamCount = 108;
-const padParamRelease = 36;
-const padParamLevel = 52;
-const padParamReverbSend = 106;
-const padParamOutputSelect = 107;
+const padParamCount = 106;
+const padParamRelease = 35;
+const padParamLevel = 51;
+const padParamReverbSend = 104;
+const padParamOutputSelect = 105;
 const padOutputTapCount = 6;
 const dynamicsDriftParamCount = 99;
 const granularParamCount = 199;
@@ -678,22 +678,29 @@ async function checkWasmExports() {
   refreshMemoryViews();
   assert(spectralModule !== 0, 'WASM failed to create spectral freeze module');
   assert(spectralModuleB !== 0, 'WASM failed to create second spectral freeze module');
-  assert(moduleGetParamCount(spectralModule) === 6, 'WASM spectral freeze module param count mismatch');
-  assert(moduleGetParamCount(spectralModuleB) === 6, 'WASM second spectral freeze module param count mismatch');
+  assert(moduleGetParamCount(spectralModule) === 13, 'WASM spectral freeze module param count mismatch');
+  assert(moduleGetParamCount(spectralModuleB) === 13, 'WASM second spectral freeze module param count mismatch');
   const spectralParamsPtr = moduleGetParamsPtr(spectralModule);
   const spectralParamsPtrB = moduleGetParamsPtr(spectralModuleB);
   assert(spectralParamsPtr !== 0, 'WASM spectral freeze params pointer was null');
   assert(spectralParamsPtrB !== 0, 'WASM second spectral freeze params pointer was null');
   assert(spectralParamsPtr !== spectralParamsPtrB, 'WASM spectral freeze params should be instance-owned');
-  heap[(spectralParamsPtr >> 2) + 3] = 0;
+  heap[(spectralParamsPtr >> 2) + 12] = 0;
   moduleCommitParams(spectralModule);
   const spectralParamsOffsetB = spectralParamsPtrB >> 2;
   heap[spectralParamsOffsetB] = 1;
-  heap[spectralParamsOffsetB + 1] = 1;
-  heap[spectralParamsOffsetB + 2] = 0.35;
-  heap[spectralParamsOffsetB + 3] = 1;
-  heap[spectralParamsOffsetB + 4] = 0.1;
-  heap[spectralParamsOffsetB + 5] = 0.04;
+  heap[spectralParamsOffsetB + 1] = 2;
+  heap[spectralParamsOffsetB + 2] = 1;
+  heap[spectralParamsOffsetB + 3] = 0.35;
+  heap[spectralParamsOffsetB + 4] = 2;
+  heap[spectralParamsOffsetB + 5] = 0.1;
+  heap[spectralParamsOffsetB + 6] = 0.15;
+  heap[spectralParamsOffsetB + 7] = 0.5;
+  heap[spectralParamsOffsetB + 8] = 0.55;
+  heap[spectralParamsOffsetB + 9] = -0.15;
+  heap[spectralParamsOffsetB + 10] = 0.85;
+  heap[spectralParamsOffsetB + 11] = 1;
+  heap[spectralParamsOffsetB + 12] = 1;
   moduleCommitParams(spectralModuleB);
   for (let i = 0; i < frames; i += 1) {
     const sample = Math.sin(i * 0.05) * 0.2;
@@ -706,10 +713,7 @@ async function checkWasmExports() {
     moduleProcessInterleaved(spectralModule, moduleInputPtr, moduleOutputPtr, frames) === 1,
     'WASM spectral freeze dry module process failed',
   );
-  assert(
-    diffRms(heap, moduleInputOffset, moduleOutputOffset, frames * 2) < 1.0e-7,
-    'WASM spectral freeze dry module should pass input',
-  );
+  assert(maxAbs(heap, moduleOutputOffset, frames * 2) < 1.0e-7, 'WASM inactive spectral return should be silent');
   for (let i = 0; i < frames; i += 1) {
     heap[leftOffset + i] = Math.sin(i * 0.05) * 0.2;
     heap[rightOffset + i] = Math.cos(i * 0.04) * 0.1;
@@ -718,12 +722,10 @@ async function checkWasmExports() {
     moduleProcessPlanarStereo(spectralModule, leftPtr, rightPtr, leftPtr, rightPtr, frames) === 1,
     'WASM spectral freeze dry planar module process failed',
   );
-  for (let i = 0; i < frames; i += 1) {
-    assert(Math.abs(heap[leftOffset + i] - Math.sin(i * 0.05) * 0.2) < 1.0e-7, 'WASM spectral planar dry left drifted');
-    assert(Math.abs(heap[rightOffset + i] - Math.cos(i * 0.04) * 0.1) < 1.0e-7, 'WASM spectral planar dry right drifted');
-  }
+  assert(maxAbs(heap, leftOffset, frames) < 1.0e-7, 'WASM inactive spectral planar left return should be silent');
+  assert(maxAbs(heap, rightOffset, frames) < 1.0e-7, 'WASM inactive spectral planar right return should be silent');
   let spectralPeak = 0;
-  for (let block = 0; block < 32; block += 1) {
+  for (let block = 0; block < 400; block += 1) {
     for (let i = 0; i < frames; i += 1) {
       const t = (block * frames + i) / 48000;
       heap[moduleInputOffset + i * 2] = Math.sin(2 * Math.PI * 196 * t) * 0.28;

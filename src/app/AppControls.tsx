@@ -4,10 +4,6 @@ import {
   type SliderMode,
   type SliderState,
   getParamInfo,
-  getSliderNumericValue,
-  getStateValueFromSliderNumber,
-  PAD_FILTER_CUTOFF_KEY_PAIRS,
-  quantize,
 } from '../ui/state';
 import { DualSlider } from '../ui/DualSlider';
 import { SliderPrimitive } from '../ui/sliderSystem';
@@ -16,87 +12,16 @@ import { normToValue, quantizeToStep, valueToNorm } from '../ui/sliderSystem/sca
 import { useSliderHelp } from '../ui/SliderHelpOverlay';
 import { MidiLearnSliderAdornment } from '../ui/midiLearn/MidiLearnSliderAdornment';
 import { useMidiLearn } from '../ui/midiLearn/useMidiLearn';
+import {
+  getSliderCapability,
+  normalizeSliderMode,
+} from '../ui/sliderSystem/sliderCapabilities';
 
 export interface SliderProps extends SliderRendererProps<keyof SliderState> {
 }
 
-export const WALK_ONLY_DUAL_KEYS = new Set<string>([
-  'waterChannelsMorph',
-  'waterChannelsSpeed',
-  'insectsDensity',
-  'insectsTemperature',
-  'insectsDistance',
-  'insectsProximity',
-  'insectsAntiphony',
-  'insectsClickRate',
-  'insectsMotion',
-  'insects2Density',
-  'insects2Temperature',
-  'insects2Distance',
-  'insects2Proximity',
-  'insects2Antiphony',
-  'insects2ClickRate',
-  'insects2Motion',
-]);
-
-export const SINGLE_ONLY_SLIDER_KEYS = new Set<string>();
-
-function clampQuantizedSliderValue(key: keyof SliderState, value: number): number {
-  const info = getParamInfo(key);
-  if (!info) return value;
-  return quantize(key, Math.max(info.min, Math.min(info.max, value)));
-}
-
-export function normalizePadFilterCutoffPairs(state: SliderState, changedKey?: keyof SliderState): SliderState {
-  const record = state as unknown as Record<string, SliderState[keyof SliderState] | number>;
-  const changedKeyStr = changedKey as string | undefined;
-
-  for (const pair of PAD_FILTER_CUTOFF_KEY_PAIRS) {
-    const { minKey, maxKey } = pair;
-    const minKeyName = String(minKey);
-    const maxKeyName = String(maxKey);
-    const minInfo = getParamInfo(minKey);
-    const maxInfo = getParamInfo(maxKey);
-    if (!minInfo || !maxInfo) continue;
-
-    const rawMin = getSliderNumericValue(minKey, state[minKey]);
-    const rawMax = getSliderNumericValue(maxKey, state[maxKey]);
-    if (rawMin === null || rawMax === null) continue;
-
-    const step = Math.max(minInfo.step, maxInfo.step, 1e-6);
-    let min = clampQuantizedSliderValue(minKey, rawMin);
-    let max = clampQuantizedSliderValue(maxKey, rawMax);
-
-    if (min >= max) {
-      if (changedKeyStr === minKeyName) {
-        max = clampQuantizedSliderValue(maxKey, min + step);
-        if (min >= max) min = clampQuantizedSliderValue(minKey, max - step);
-      } else if (changedKeyStr === maxKeyName) {
-        min = clampQuantizedSliderValue(minKey, max - step);
-        if (min >= max) max = clampQuantizedSliderValue(maxKey, min + step);
-      } else {
-        const low = Math.min(min, max);
-        const high = Math.max(min, max);
-        min = clampQuantizedSliderValue(minKey, low);
-        max = clampQuantizedSliderValue(maxKey, high);
-        if (min >= max) {
-          max = clampQuantizedSliderValue(maxKey, min + step);
-          if (min >= max) min = clampQuantizedSliderValue(minKey, max - step);
-        }
-      }
-    }
-
-    record[pair.minKey] = getStateValueFromSliderNumber(minKey, min) as SliderState[keyof SliderState];
-    record[pair.maxKey] = getStateValueFromSliderNumber(maxKey, max) as SliderState[keyof SliderState];
-  }
-
-  return state;
-}
-
 export function normalizeDualSliderMode(key: string, mode?: SliderMode): SliderMode | undefined {
-  if (!mode) return mode;
-  if (SINGLE_ONLY_SLIDER_KEYS.has(key)) return undefined;
-  return WALK_ONLY_DUAL_KEYS.has(key) && mode === 'sampleHold' ? 'walk' : mode;
+  return normalizeSliderMode(key, mode);
 }
 
 export const Slider: React.FC<SliderProps> = ({
@@ -139,7 +64,8 @@ export const Slider: React.FC<SliderProps> = ({
     return quantizeToStep(nextValue, info);
   };
 
-  if (!releaseCommitted && onCycleMode && onDualRangeChange && !SINGLE_ONLY_SLIDER_KEYS.has(String(paramKey))) {
+  const capability = getSliderCapability(String(paramKey));
+  if (!releaseCommitted && onCycleMode && onDualRangeChange && capability !== undefined && capability !== 'single') {
     return (
       <DualSlider<keyof SliderState>
         label={label}

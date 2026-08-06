@@ -1,6 +1,6 @@
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import { getPreset } from '../../audio/drumPresets';
-import type { PresetIdentityMetadata, PresetSummary, PresetVersionMetadata } from '../../presets/types';
+import type { PresetEntry, PresetIdentityMetadata, PresetSummary, PresetVersionMetadata } from '../../presets/types';
 import { DEFAULT_STATE, type SliderState } from '../state';
 
 type SavePreset = (
@@ -10,9 +10,9 @@ type SavePreset = (
   tags?: string[],
   metadata?: PresetVersionMetadata,
   identity?: PresetIdentityMetadata,
-) => Promise<void>;
+) => Promise<PresetEntry | null>;
 
-type UpdateMetadata = (name: string, meta: Partial<PresetIdentityMetadata>) => Promise<void>;
+type UpdateMetadata = (name: string, meta: Partial<PresetIdentityMetadata>) => Promise<boolean>;
 
 function normalizePresetName(name: string): string {
   return name.trim().toLowerCase();
@@ -58,5 +58,6 @@ export async function rateDrumPreset({
     );
   }
 
-  await updateMetadata(name, { rating });
+  const updated = await updateMetadata(name, { rating });
+  if (!updated) throw new Error(`Rating for preset "${name}" was not updated.`);
 }

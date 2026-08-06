@@ -81,12 +81,12 @@ constexpr float kReverbBoostEpsilon = 0.001f;
 }
 
   void KesshoProductEngine::renderReverb(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
-  const bool spectral_freeze_active =
+  const bool spectral_freeze_enabled =
       fx.spectral_freeze_enabled && fx.spectral_freeze_mix > 0.0f;
   const bool degrade_send_active = routing.reverb_to_degrade > 0.0001f && routing.degrade_to_reverb <= 0.0001f;
   const bool reverb_active =
-      reverb_module != nullptr && frames > 0u && (!(fx.reverb_mix <= 0.0f) || degrade_send_active || spectral_freeze_active);
-  if (!graph_taps_enabled && !reverb_active) {
+      reverb_module != nullptr && frames > 0u && (!(fx.reverb_mix <= 0.0f) || degrade_send_active || spectral_freeze_enabled);
+  if (!graph_taps_enabled && !reverb_active && spectral_freeze_module == nullptr) {
     return;
   }
   float reverb_input_peak = 0.0f;
@@ -101,6 +101,14 @@ constexpr float kReverbBoostEpsilon = 0.001f;
     }
   }
   if (!reverb_active) {
+    if (spectral_freeze_module != nullptr && fx.spectral_freeze_routing == 0u) {
+      spectral_freeze_module->processPlanarStereo(
+          reverb_bus_l + start,
+          reverb_bus_r + start,
+          module_l,
+          module_r,
+          static_cast<int>(frames));
+    }
     return;
   }
   processReverbPreconditioner(start, frames, reverb_input_peak);
@@ -111,28 +119,45 @@ constexpr float kReverbBoostEpsilon = 0.001f;
       graph_reverb_preconditioner_output_r[frame] = reverb_bus_r[frame];
     }
   }
-  if (spectral_freeze_active && fx.spectral_freeze_routing == 0u) {
-    std::fill(module_l, module_l + frames, 0.0f);
-    std::fill(module_r, module_r + frames, 0.0f);
-    if (processSpectralFreezeBranch(reverb_bus_l + start, reverb_bus_r + start, module_l, module_r, start, frames)) {
-      const float live_gain = 1.0f - clampFloat(fx.spectral_freeze_reverb_crossfade, 0.0f, 1.0f);
+  if (fx.spectral_freeze_routing == 0u && spectral_freeze_module != nullptr) {
+    if (spectral_freeze_enabled) {
+      std::fill(module_l, module_l + frames, 0.0f);
+      std::fill(module_r, module_r + frames, 0.0f);
+    }
+    if (spectral_freeze_enabled && processSpectralFreezeBranch(
+        reverb_bus_l + start, reverb_bus_r + start, module_tap_l[0], module_tap_r[0], start, frames)) {
+      const float reverb_send_gain = clampFloat(fx.spectral_freeze_reverb_crossfade, 0.0f, 1.0f);
       for (uint32_t i = 0; i < frames; ++i) {
         const uint32_t frame = start + i;
-        reverb_bus_l[frame] = module_l[i] + reverb_bus_l[frame] * live_gain;
-        reverb_bus_r[frame] = module_r[i] + reverb_bus_r[frame] * live_gain;
+        reverb_bus_l[frame] += module_tap_l[0][i] * reverb_send_gain;
+        reverb_bus_r[frame] += module_tap_r[0][i] * reverb_send_gain;
       }
+    } else if (!spectral_freeze_enabled) {
+      // The inactive recording path skips FFT work but preserves the preceding
+      // 16 seconds so Capture is immediate and musically meaningful.
+      spectral_freeze_module->processPlanarStereo(
+          reverb_bus_l + start,
+          reverb_bus_r + start,
+          module_l,
+          module_r,
+          static_cast<int>(frames));
     }
   }
   reverb_module->processPlanarStereo(reverb_bus_l + start, reverb_bus_r + start, module_l, module_r, static_cast<int>(frames));
-  if (spectral_freeze_active && fx.spectral_freeze_routing == 1u) {
-    if (processSpectralFreezeBranch(module_l, module_r, module_tap_l[0], module_tap_r[0], start, frames)) {
-      for (uint32_t i = 0; i < frames; ++i) {
-        module_l[i] = module_tap_l[0][i];
-        module_r[i] = module_tap_r[0][i];
-      }
+  if (fx.spectral_freeze_routing == 1u && spectral_freeze_module != nullptr) {
+    if (spectral_freeze_enabled && processSpectralFreezeBranch(
+        module_l, module_r, module_tap_l[0], module_tap_r[0], start, frames)) {
+    } else if (!spectral_freeze_enabled) {
+      spectral_freeze_module->processPlanarStereo(
+          module_l,
+          module_r,
+          module_tap_l[0],
+          module_tap_r[0],
+          static_cast<int>(frames));
     }
   }
-  const float return_gain = fx.reverb_mix * kessho::product::generated::KESSHO_PRODUCT_GENERATED_REVERB_OUTPUT_TRIM;
+  const float reverb_output_trim = kessho::product::generated::KESSHO_PRODUCT_GENERATED_REVERB_OUTPUT_TRIM;
+  const float return_gain = fx.reverb_mix * reverb_output_trim;
   const float degrade_gain = routing.reverb_to_degrade * kessho::product::generated::KESSHO_PRODUCT_GENERATED_REVERB_OUTPUT_TRIM;
   if (graph_taps_enabled) {
     for (uint32_t i = 0; i < frames; ++i) {
@@ -158,6 +183,20 @@ constexpr float kReverbBoostEpsilon = 0.001f;
     if (captureStems()) {
       stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;
       stem_r[KESSHO_PRODUCT_STEM_FX][frame] += right;
+    }
+  }
+  if (spectral_freeze_enabled) {
+    const float freeze_return_gain = clampFloat(fx.spectral_freeze_mix, 0.0f, 1.0f);
+    for (uint32_t i = 0; i < frames; ++i) {
+      const uint32_t frame = start + i;
+      const float mute_gain = routingMuteGainForFrame(kRoutingMuteRowReverb, transport.sample_frame + i);
+      const float left = module_tap_l[0][i] * freeze_return_gain * mute_gain;
+      const float right = module_tap_r[0][i] * freeze_return_gain * mute_gain;
+      routeTerminalSample(routing.dynamics_routes[kDynamicsRouteReverb], out_l, out_r, frame, left, right);
+      if (captureStems()) {
+        stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;
+        stem_r[KESSHO_PRODUCT_STEM_FX][frame] += right;
+      }
     }
   }
 }

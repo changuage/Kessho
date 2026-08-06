@@ -224,6 +224,17 @@
   margin-bottom: 10px;
 }
 
+.reverb-root .reverb-capture-btn {
+  min-height: 32px;
+}
+
+.reverb-root .reverb-freeze-status {
+  margin: -4px 0 10px;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  letter-spacing: 0.02em;
+}
+
 /* ── Compact toggle button (matches delay-toggle-btn) ── */
 .reverb-root .reverb-toggle-btn {
   padding: 2px 8px;

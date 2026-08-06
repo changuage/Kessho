@@ -9,6 +9,7 @@ import {
   editSharedChordExactNotes,
   editSharedChordIntent,
   legacyHarmonySlotToSharedSlot,
+  sharedSlotResolvedMidiPool,
   sharedChordResolvedMidiPool,
 } from './harmonyChordAdapters';
 
@@ -60,6 +61,16 @@ test('missing and explicitly empty slots stay genuinely empty', () => {
   const custom = sanitizeHarmonyChordSlots([{ id: 0, chord: { exactMidiNotes: [60, 61, 66], playbackBehavior: 'exact' } }]);
   assert.equal(custom[0]?.chord?.intent, null);
   assert.equal(custom[0]?.chord?.recognizedLabel, 'custom');
+});
+
+test('sanitized slots omit legacy top-level intent and playback ignores divergent legacy intent', () => {
+  const canonical = { ...defaultHarmonyIntent('slot', 0), quality: 'maj' as const };
+  const divergent = { ...canonical, quality: 'min' as const };
+  const slots = sanitizeHarmonyChordSlots([{ id: 0, intent: canonical }]);
+  assert.equal(Object.prototype.hasOwnProperty.call(slots[0], 'intent'), false);
+  assert.equal(slots[0]?.chord?.intent?.quality, 'maj');
+  const resolved = sharedSlotResolvedMidiPool({ chord: slots[0]!.chord, intent: divergent } as Parameters<typeof sharedSlotResolvedMidiPool>[0]);
+  assert.deepEqual(resolved, slots[0]!.chord!.exactMidiNotes);
 });
 
 test('Auto keeps exact notes through ±6 and resolves relative beyond it using a continuous anchor', () => {

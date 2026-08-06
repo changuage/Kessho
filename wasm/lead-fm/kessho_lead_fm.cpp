@@ -179,6 +179,10 @@ struct LeadNote {
     float x_level = 1, x_pan = 0;
     float y_level = 1, y_pan = 0;
     float gain = 0.34f;
+    float output_gain = 1.0f;
+    float output_gain_target = 1.0f;
+    float output_gain_step = 0.0f;
+    uint32_t output_gain_remaining = 0u;
 
     // Hold/release timing
     float hold_samples = 0;
@@ -669,12 +673,17 @@ static void render_note(LeadNote& note, float* out_l, float* out_r, int block_si
         float y_pan_l = std::max(0.0f, 1.0f - y_pan) * 0.5f;
         float y_pan_r = std::max(0.0f, 1.0f + y_pan) * 0.5f;
 
-        float gain = note.gain * note.velocity;
+        float gain = note.gain * note.velocity * note.output_gain;
         if (p.lfo_target == LEAD_FM_LFO_AMP) {
             gain *= std::max(0.0f, 1.0f + lfo_val * 0.35f);
         }
         float sample_l = (carrier_sum_x * x_pan_l + carrier_sum_y * y_pan_l + transient) * gain;
         float sample_r = (carrier_sum_x * x_pan_r + carrier_sum_y * y_pan_r + transient) * gain;
+        if (note.output_gain_remaining > 0u) {
+            note.output_gain += note.output_gain_step;
+            --note.output_gain_remaining;
+            if (note.output_gain_remaining == 0u) note.output_gain = note.output_gain_target;
+        }
 
         out_l[n] += sample_l;
         out_r[n] += sample_r;
@@ -1245,6 +1254,29 @@ int lead_fm_instance_note_set_frequency(KesshoLeadFmInstance* instance, int note
     if (!instance) return 0;
     ScopedLeadFmState scoped(&instance->state);
     return lead_fm_note_set_frequency(note_index, frequency);
+}
+
+int lead_fm_instance_set_voice_gain(KesshoLeadFmInstance* instance, int note_index, float gain) {
+    if (!instance || !std::isfinite(gain) || note_index < 0 || note_index >= LEAD_FM_MAX_POLYPHONY) return 0;
+    ScopedLeadFmState scoped(&instance->state);
+    g_notes[note_index].output_gain = std::max(0.0f, std::min(1.0f, gain));
+    g_notes[note_index].output_gain_target = g_notes[note_index].output_gain;
+    g_notes[note_index].output_gain_step = 0.0f;
+    g_notes[note_index].output_gain_remaining = 0u;
+    return 1;
+}
+
+int lead_fm_instance_set_voice_gain_ramp(KesshoLeadFmInstance* instance, int note_index, float target_gain, uint32_t frames) {
+    if (!instance || !std::isfinite(target_gain) || note_index < 0 || note_index >= LEAD_FM_MAX_POLYPHONY) return 0;
+    ScopedLeadFmState scoped(&instance->state);
+    LeadNote& note = g_notes[note_index];
+    note.output_gain_target = std::max(0.0f, std::min(1.0f, target_gain));
+    note.output_gain_remaining = frames;
+    note.output_gain_step = frames > 0u
+        ? (note.output_gain_target - note.output_gain) / static_cast<float>(frames)
+        : 0.0f;
+    if (frames == 0u) note.output_gain = note.output_gain_target;
+    return 1;
 }
 
 void lead_fm_instance_all_notes_off(KesshoLeadFmInstance* instance) {

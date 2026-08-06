@@ -2068,6 +2068,8 @@ void requireAnchorWalkerTriggerAndBoundaryTests() {
     const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 50000u);
     require(event_count == 1, "Anchor Walker step-grid should emit only on valid sequencer hits");
     require(events[0].sample_offset == 24000u, "Anchor Walker step-grid hit offset mismatch");
+    require((events[0].flags & kessho::product::internal::kSequencerEventTransientAuditionFlag) == 0u,
+        "Anchor Walker grid events must remain persistent-source gated");
     kessho_product_destroy(engine);
   }
 
@@ -2156,6 +2158,9 @@ void requireAnchorWalkerTriggerAndBoundaryTests() {
 
     event_count = kessho_product_debug_render_events(engine, events, 8u, 4096u);
     require(event_count == 1, "Anchor Walker gesture tap should emit exactly one step");
+    require(events[0].sample_offset == 0u, "Anchor Walker gesture tap should render at sample offset zero");
+    require((events[0].flags & kessho::product::internal::kSequencerEventTransientAuditionFlag) != 0u,
+        "Anchor Walker gesture tap should be marked as transient audition");
     require(std::fabs(events[0].midi_note - 62.0f) < 0.001f, "Anchor Walker gesture tap should use the held gesture delta");
     const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
     require(telemetry.synth_anchor_walker_output_counts[0] == 1u, "Anchor Walker gesture tap should publish one output note");
@@ -2170,6 +2175,110 @@ void requireAnchorWalkerTriggerAndBoundaryTests() {
         "Anchor Walker gesture tap release should not leave held telemetry set");
     event_count = kessho_product_debug_render_events(engine, events, 8u, 12000u);
     require(event_count == 0, "Anchor Walker gesture tap should not repeat after release with Auto off");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    // A play-mode control can trail the realtime gesture across host queues;
+    // entering Hybrid must preserve the already-armed first press.
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Anchor Walker Hybrid ordering engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeAnchorWalkerSnapshot(1u);
+    KesshoProductAnchorWalkerSnapshot& walker = snapshot.synth_euclid.mode_states[0].anchor_walker;
+    walker.auto_rate = 0u;
+    walker.layer_count = 1u;
+    walker.layers[1].enabled = 0u;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+        "Anchor Walker Hybrid ordering snapshot load failed");
+    KesshoProductEvent down{};
+    down.event_kind = KESSHO_PRODUCT_EVENT_KIND_ANCHOR_WALKER_PERFORMANCE;
+    down.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    down.index = 0u;
+    down.param_id = KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_DOWN;
+    down.value = 1.0f;
+    down.value2 = 1.0f;
+    engine->applyControlEvent(down);
+    KesshoProductEvent mode{};
+    mode.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+    mode.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    mode.index = 0u;
+    mode.param_id = KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_TRIGGER_MODE_ID;
+    mode.value = 0.0f;
+    require(kessho_product_enqueue_event(engine, &mode) == KESSHO_PRODUCT_OK,
+        "Anchor Walker Hybrid ordering mode enqueue failed");
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 1024u);
+    require(event_count == 1 && events[0].sample_offset == 0u,
+        "Anchor Walker Hybrid ordering should preserve immediate first gesture");
+    require((events[0].flags & kessho::product::internal::kSequencerEventTransientAuditionFlag) != 0u,
+        "Anchor Walker Hybrid ordering event should remain transient");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "stopped-transport Anchor Walker engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeAnchorWalkerSnapshot(0u);
+    snapshot.synth_euclid.lanes[0].enabled = 0u;
+    snapshot.synth_euclid.lanes[0].muted = 1u;
+    snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].enabled = 0u;
+    KesshoProductAnchorWalkerSnapshot& walker = snapshot.synth_euclid.mode_states[0].anchor_walker;
+    walker.auto_rate = 0u;
+    walker.layer_count = 1u;
+    walker.layers[1].enabled = 0u;
+    require(
+        kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+        "stopped-transport Anchor Walker snapshot load failed");
+    engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].enabled_gain = 0.0f;
+    engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].enabled_gain_target = 0.0f;
+
+    KesshoProductEvent stop{};
+    stop.event_kind = KESSHO_PRODUCT_EVENT_KIND_STOP;
+    engine->applyControlEvent(stop);
+    require(!engine->transport.running, "Anchor Walker stopped-transport setup should stop transport");
+
+    KesshoProductEvent down{};
+    down.event_kind = KESSHO_PRODUCT_EVENT_KIND_ANCHOR_WALKER_PERFORMANCE;
+    down.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    down.index = 0u;
+    down.param_id = KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_DOWN;
+    down.value = 1.0f;
+    down.value2 = 1.0f;
+    engine->applyControlEvent(down);
+
+    std::array<float, 128> left{};
+    std::array<float, 128> right{};
+    float stopped_walker_peak = 0.0f;
+    for (uint32_t block = 0u; block < 32u; ++block) {
+      std::fill(left.begin(), left.end(), 0.0f);
+      std::fill(right.begin(), right.end(), 0.0f);
+      kessho_product_render(engine, left.data(), right.data(), static_cast<uint32_t>(left.size()));
+      for (uint32_t frame = 0u; frame < left.size(); ++frame) {
+        stopped_walker_peak = std::max(stopped_walker_peak, std::fabs(left[frame]));
+        stopped_walker_peak = std::max(stopped_walker_peak, std::fabs(right[frame]));
+      }
+    }
+    require(stopped_walker_peak > 0.00001f, "Anchor Walker player should render audio with transport stopped");
+    require(!engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].enabled,
+        "transient Walker audition must not mutate persistent source enabled state");
+    require(engine->transport.sample_frame == 0u, "stopped Anchor Walker render should not advance transport");
+    require(engine->audio_render_sample_frame > 0u, "stopped Anchor Walker render should advance the audio clock");
+    const KesshoProductTelemetry stopped_walker_telemetry = kessho_product_get_telemetry(engine);
+    require(
+        stopped_walker_telemetry.synth_anchor_walker_output_counts[0] == 1u,
+        "Anchor Walker player should bypass stopped sequencer lane enable and mute gates");
+    require(
+        std::fabs(stopped_walker_telemetry.synth_anchor_walker_output_midis[0] - 62.0f) < 0.001f,
+        "stopped-transport Anchor Walker should preserve gesture pitch");
+
+    KesshoProductEvent up = down;
+    up.param_id = KESSHO_PRODUCT_ANCHOR_WALKER_ACTION_GESTURE_UP;
+    up.value = 0.0f;
+    up.value2 = 0.0f;
+    engine->applyControlEvent(up);
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 12000u);
+    require(event_count == 0, "released stopped-transport Anchor Walker gesture should not repeat");
     kessho_product_destroy(engine);
   }
 }
@@ -2836,12 +2945,12 @@ float productRuntimeFieldValue(const KesshoProductEngine& engine, uint32_t param
       return engine.fx.reverb_pre_comp_makeup;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID:
       return engine.fx.spectral_freeze_mix;
-    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SPEED_ID:
-      return engine.fx.spectral_freeze_speed;
-    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DECAY_ID:
-      return engine.fx.spectral_freeze_decay;
-    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_PHASE_JITTER_ID:
-      return engine.fx.spectral_freeze_phase_jitter;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_REFRESH_ID:
+      return engine.fx.spectral_freeze_refresh;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SUSTAIN_ID:
+      return engine.fx.spectral_freeze_sustain;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DIFFUSION_ID:
+      return engine.fx.spectral_freeze_diffusion;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_REVERB_CROSSFADE_ID:
       return engine.fx.spectral_freeze_reverb_crossfade;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID:
@@ -3202,26 +3311,6 @@ uint32_t generatedSampleAssetId(
   return 0u;
 }
 
-KesshoProductDebugVoiceSpawn latestDebugVoiceSpawnForSource(
-    const KesshoProductTelemetry& telemetry,
-    uint32_t source_id,
-    const char* message) {
-  bool found = false;
-  KesshoProductDebugVoiceSpawn latest{};
-  for (uint32_t i = 0; i < telemetry.debug_voice_spawn_count; ++i) {
-    const KesshoProductDebugVoiceSpawn& spawn = telemetry.debug_voice_spawns[i];
-    if (spawn.source_id != source_id) {
-      continue;
-    }
-    if (!found || spawn.trigger_sequence > latest.trigger_sequence) {
-      found = true;
-      latest = spawn;
-    }
-  }
-  require(found, message);
-  return latest;
-}
-
 void requireRuntimeWalkMovementAcrossAudioAndFxTargets() {
   struct ProductProbe {
     uint32_t param_id;
@@ -3350,9 +3439,9 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
       {KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_THRESHOLD_ID, -48.0f, -3.0f, -24.0f, "low-rate reverb pre-comp threshold runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_RATIO_ID, 1.2f, 12.0f, 4.0f, "low-rate reverb pre-comp ratio runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID, 0.05f, 0.95f, 0.30f, "low-rate spectral freeze mix runtime walk did not move"},
-      {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SPEED_ID, 0.05f, 0.95f, 0.31f, "low-rate spectral freeze speed runtime walk did not move"},
-      {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DECAY_ID, 0.05f, 0.95f, 0.32f, "low-rate spectral freeze decay runtime walk did not move"},
-      {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_PHASE_JITTER_ID, 0.05f, 0.95f, 0.21f, "low-rate spectral freeze phase-jitter runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_REFRESH_ID, 0.05f, 0.95f, 0.31f, "low-rate spectral freeze refresh runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SUSTAIN_ID, 0.05f, 0.95f, 0.32f, "low-rate spectral freeze sustain runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DIFFUSION_ID, 0.05f, 0.95f, 0.21f, "low-rate spectral freeze diffusion runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID, 0.05f, 0.95f, 0.31f, "low-rate dynamics drive runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_MIX_ID, 0.05f, 0.95f, 0.29f, "low-rate dynamics drift mix runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_RATE_ID, 0.05f, 0.95f, 0.34f, "low-rate dynamics drift rate runtime walk did not move"},
@@ -3537,6 +3626,41 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
     requireTelemetryContainsRuntimeWalk(soundscape_asset_walk->telemetry, 1020u + index, 0.0f, 0.32f, probe.label);
   }
   kessho_product_destroy(soundscape_asset_walk);
+
+  KesshoProductEngine* soundscape_module_walk = kessho_product_create(48000.0, 128, 0);
+  require(soundscape_module_walk != nullptr, "low-rate soundscape module runtime walk engine allocation failed");
+  SourceState& module_source = soundscape_module_walk->sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
+  module_source.enabled = true;
+  constexpr uint32_t kWaterHardDropsParam = 23u;
+  constexpr uint32_t kWaterHardDropsControl = 1040u;
+  const uint32_t module_target = kSoundscapeModuleParamTargetBase + kWaterHardDropsParam;
+  enqueueRuntimeWalkRange(
+      soundscape_module_walk,
+      module_target,
+      KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID,
+      kWaterHardDropsControl,
+      0.1f,
+      0.9f,
+      0.5f,
+      low_rate_flags);
+  renderSilentBlocks(soundscape_module_walk, kLowRateRenderBlocks);
+  require(kessho_product_refresh_telemetry(soundscape_module_walk) == KESSHO_PRODUCT_OK,
+      "soundscape module runtime walk telemetry refresh failed");
+  const ModulationRange* module_range = soundscape_module_walk->findModulationRange(
+      module_target,
+      KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID);
+  require(module_range != nullptr, "low-rate soundscape module runtime walk missing");
+  require(std::fabs(module_range->current_value - 0.5f) > 0.00001f,
+      "low-rate soundscape module runtime walk did not move");
+  require(std::fabs(module_source.soundscape_module_params[kWaterHardDropsParam] - module_range->current_value) < 0.0001f,
+      "low-rate soundscape module runtime walk did not update the exact module parameter");
+  requireTelemetryContainsRuntimeWalk(
+      soundscape_module_walk->telemetry,
+      kWaterHardDropsControl,
+      0.1f,
+      0.9f,
+      "low-rate soundscape module runtime walk telemetry missing");
+  kessho_product_destroy(soundscape_module_walk);
 }
 
 void requireDrumExactRuntimeRangesApplyToSourceAndModule() {
@@ -4282,11 +4406,16 @@ void requireSample2LiveLibrarySwitchUsesNewAsset() {
   kessho_product_destroy(engine);
 }
 
-void requireSampleSourceEnvelopeLongRanges() {
+void requireExtendedSourceEnvelopeLongRanges() {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
-  require(engine != nullptr, "sample envelope range engine allocation failed");
+  require(engine != nullptr, "extended envelope range engine allocation failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
-  for (uint32_t source_id : {KESSHO_PRODUCT_SOURCE_SAMPLE1, KESSHO_PRODUCT_SOURCE_SAMPLE2}) {
+  for (uint32_t source_id : {
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      KESSHO_PRODUCT_SOURCE_PAD2,
+      KESSHO_PRODUCT_SOURCE_SAMPLE1,
+      KESSHO_PRODUCT_SOURCE_SAMPLE2,
+  }) {
     KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
     source.attack_seconds = 12.0f;
     source.decay_seconds = 6.0f;
@@ -4295,29 +4424,34 @@ void requireSampleSourceEnvelopeLongRanges() {
   }
   require(
       kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
-      "sample envelope long-range snapshot load failed");
-  for (uint32_t source_id : {KESSHO_PRODUCT_SOURCE_SAMPLE1, KESSHO_PRODUCT_SOURCE_SAMPLE2}) {
+      "extended envelope long-range snapshot load failed");
+  for (uint32_t source_id : {
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      KESSHO_PRODUCT_SOURCE_PAD2,
+      KESSHO_PRODUCT_SOURCE_SAMPLE1,
+      KESSHO_PRODUCT_SOURCE_SAMPLE2,
+  }) {
     const SourceState& source = engine->sources[source_id - 1u];
-    require(std::fabs(source.attack_seconds - 12.0f) < 0.001f, "sample attack snapshot should keep long range");
-    require(std::fabs(source.decay_seconds - 6.0f) < 0.001f, "sample decay snapshot should keep long range");
-    require(std::fabs(source.hold_seconds - 19.0f) < 0.001f, "sample hold snapshot should keep long range");
-    require(std::fabs(source.release_seconds - 24.0f) < 0.001f, "sample release snapshot should keep long range");
+    require(std::fabs(source.attack_seconds - 12.0f) < 0.001f, "extended attack snapshot should keep long range");
+    require(std::fabs(source.decay_seconds - 6.0f) < 0.001f, "extended decay snapshot should keep long range");
+    require(std::fabs(source.hold_seconds - 19.0f) < 0.001f, "extended hold snapshot should keep long range");
+    require(std::fabs(source.release_seconds - 24.0f) < 0.001f, "extended release snapshot should keep long range");
   }
 
   KesshoProductEvent attack_event{};
   attack_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
-  attack_event.target_id = KESSHO_PRODUCT_SOURCE_SAMPLE2;
+  attack_event.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
   attack_event.param_id = KESSHO_PRODUCT_PARAM_SOURCE_ATTACK_SECONDS_ID;
   attack_event.value = 14.0f;
-  require(kessho_product_enqueue_event(engine, &attack_event) == KESSHO_PRODUCT_OK, "sample2 attack param enqueue failed");
+  require(kessho_product_enqueue_event(engine, &attack_event) == KESSHO_PRODUCT_OK, "Pad 1 attack param enqueue failed");
   KesshoProductEvent release_event = attack_event;
   release_event.param_id = KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID;
   release_event.value = 26.0f;
-  require(kessho_product_enqueue_event(engine, &release_event) == KESSHO_PRODUCT_OK, "sample2 release param enqueue failed");
+  require(kessho_product_enqueue_event(engine, &release_event) == KESSHO_PRODUCT_OK, "Pad 1 release param enqueue failed");
   renderSilentBlocks(engine, 1u);
-  const SourceState& sample2 = engine->sources[KESSHO_PRODUCT_SOURCE_SAMPLE2 - 1u];
-  require(std::fabs(sample2.attack_seconds - 14.0f) < 0.001f, "sample2 live attack param should keep long range");
-  require(std::fabs(sample2.release_seconds - 26.0f) < 0.001f, "sample2 live release param should keep long range");
+  const SourceState& pad1 = engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
+  require(std::fabs(pad1.attack_seconds - 14.0f) < 0.001f, "Pad 1 live attack param should keep long range");
+  require(std::fabs(pad1.release_seconds - 26.0f) < 0.001f, "Pad 1 live release param should keep long range");
   kessho_product_destroy(engine);
 }
 
@@ -4475,27 +4609,6 @@ void requireNativeSequencerBackgroundCadence() {
   kessho_product_destroy(engine);
 }
 
-void requireDebugVoiceSpawnDemandGating() {
-  KesshoProductEngine* engine = kessho_product_create(48000.0, 128u, 0u);
-  require(engine != nullptr, "debug voice-spawn demand engine create failed");
-  engine->recordDebugVoiceSpawn(KESSHO_PRODUCT_SOURCE_PAD1, 3u, 71u);
-  require(engine->telemetry.debug_voice_spawn_count == 0u,
-      "debug voice-spawn hashing must default to disabled");
-  require(kessho_product_set_debug_voice_spawn_demand(engine, 1u) == KESSHO_PRODUCT_OK,
-      "debug voice-spawn demand enable failed");
-  engine->recordDebugVoiceSpawn(KESSHO_PRODUCT_SOURCE_PAD1, 3u, 71u);
-  require(engine->telemetry.debug_voice_spawn_count == 1u,
-      "explicit debug voice-spawn demand did not record a spawn");
-  require(engine->telemetry.debug_voice_spawns[0].source_id == KESSHO_PRODUCT_SOURCE_PAD1,
-      "debug voice-spawn demand recorded the wrong source");
-  require(kessho_product_set_debug_voice_spawn_demand(engine, 0u) == KESSHO_PRODUCT_OK,
-      "debug voice-spawn demand disable failed");
-  engine->recordDebugVoiceSpawn(KESSHO_PRODUCT_SOURCE_PAD1, 4u, 72u);
-  require(engine->telemetry.debug_voice_spawn_count == 1u,
-      "disabled debug voice-spawn demand recorded another spawn");
-  kessho_product_destroy(engine);
-}
-
 void requireActiveModulationRangeIndexing() {
   KesshoProductEngine engine(48000.0, 128u, 0u);
   const auto apply_walk = [&](uint32_t param_id, uint32_t control_id, float current_value) {
@@ -4567,11 +4680,10 @@ int main() {
   requireDirectSequencerCoverage();
   requireControlEventEnqueueOrdering();
   requireSample2LiveLibrarySwitchUsesNewAsset();
-  requireSampleSourceEnvelopeLongRanges();
+  requireExtendedSourceEnvelopeLongRanges();
   requireSequencerMutePreservesRuntimePhase();
   requireQuantizedSequencerUnmuteBoundaries();
   requireNativeSequencerBackgroundCadence();
-  requireDebugVoiceSpawnDemandGating();
   requireActiveModulationRangeIndexing();
   requireRuntimeWalkMovementAcrossAudioAndFxTargets();
   requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets();
@@ -5555,6 +5667,23 @@ int main() {
   snapshot.drum_euclid.lane_count = 0;
   snapshot.synth_euclid.lanes[0].step_count = 1;
   snapshot.synth_euclid.lanes[0].fill_count = 1;
+  snapshot.synth_euclid.lanes[0].manual_step_mask_low = 1u;
+  snapshot.synth_euclid.lanes[0].midi_note = 60.0f;
+  snapshot.harmony.morph_plan_phase = 0.8f;
+  snapshot.harmony.morph_scale_handover_at = 0.7f;
+  snapshot.harmony.morph_unmatched_a_count = 1u;
+  snapshot.harmony.morph_unmatched_a[0] = 60.0f;
+  snapshot.harmony.morph_unmatched_b_count = 0u;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "morph sentinel snapshot load failed");
+  event_count = kessho_product_debug_render_events(engine, events, 16, 512);
+  require(event_count == 0, "removed Harmony morph voices must not enqueue a clamped MIDI 0 note");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.synth_euclid.lanes[0].step_count = 1;
+  snapshot.synth_euclid.lanes[0].fill_count = 1;
   snapshot.synth_euclid.lanes[0].clock_division = 4u;
   snapshot.synth_euclid.lanes[0].manual_step_mask_low = 1u;
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "play-note snapshot load failed");
@@ -5580,6 +5709,106 @@ int main() {
   require(std::fabs(events[1].midi_note - 64.0f) < 0.001f, "second play note should use its stored MIDI note");
   require(std::fabs(events[2].midi_note - 67.0f) < 0.001f, "third play note should use the stored high-index voice MIDI note");
   require(events[1].velocity < events[0].velocity, "play-note velocity scale should affect emitted velocity");
+
+  // Chord play-note records carry a Harmony slot reference in value4 and a
+  // sentinel MIDI value. Product Core resolves the authored tone index from
+  // the current slot pool at trigger time, so a host-side preview cannot own
+  // the audible pitch.
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.synth_euclid.lanes[0].step_count = 1;
+  snapshot.synth_euclid.lanes[0].fill_count = 1;
+  snapshot.synth_euclid.lanes[0].clock_division = 4u;
+  snapshot.synth_euclid.lanes[0].manual_step_mask_low = 1u;
+  snapshot.harmony.harmony_slot_note_count[2] = 3u;
+  snapshot.harmony.harmony_slot_midi[16] = 60.0f;
+  snapshot.harmony.harmony_slot_midi[17] = 64.0f;
+  snapshot.harmony.harmony_slot_midi[18] = 67.0f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "harmony slot play-note snapshot load failed");
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u,
+      KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, -1.0f, 0.0f, 0.8f, 0u, 3u * 32u + 0u);
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u,
+      KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, -1.0f, 5.0f, 0.6f, 0u, 3u * 32u + 1u);
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u,
+      KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, -1.0f, 10.0f, 0.4f, 0u, 3u * 32u + 2u);
+  event_count = kessho_product_debug_render_events(engine, events, 16, 6000);
+  require(event_count == 3, "harmony slot play-note override should fan out exactly one note per authored tone");
+  require(std::fabs(events[0].midi_note - 60.0f) < 0.001f &&
+      std::fabs(events[1].midi_note - 64.0f) < 0.001f &&
+      std::fabs(events[2].midi_note - 67.0f) < 0.001f,
+      "harmony slot play-note overrides should resolve tone indices from the native slot pool");
+  require(events[0].sample_offset == 0u && events[1].sample_offset == 240u && events[2].sample_offset == 480u,
+      "harmony slot play-note offsets should preserve native strum timing");
+  require(events[0].velocity > events[1].velocity && events[1].velocity > events[2].velocity,
+      "harmony slot play-note velocity should preserve authored articulation");
+
+  // Sequence-step edits own the live sequence pool, not the saved Harmony
+  // slot rows. They must never rewrite a referenced chord slot implicitly.
+  KesshoProductEvent sequence_step_set{};
+  sequence_step_set.event_kind = KESSHO_PRODUCT_EVENT_HARMONY_SEQUENCE_SET_STEP_ID;
+  sequence_step_set.index = 0u;
+  sequence_step_set.value = 0.0f;
+  sequence_step_set.value2 = 3.0f;
+  sequence_step_set.value3 = 0.0f;
+  sequence_step_set.value4 = 1.0f;
+  require(kessho_product_enqueue_event(engine, &sequence_step_set) == KESSHO_PRODUCT_OK,
+      "runtime Harmony sequence-step enqueue failed");
+  (void)kessho_product_debug_render_events(engine, events, 16, 64);
+  require(engine->arrangement.harmony_slot_note_count[2] == 3u &&
+      std::fabs(engine->arrangement.harmony_slot_midi[16] - 60.0f) < 0.001f &&
+      std::fabs(engine->arrangement.harmony_slot_midi[17] - 64.0f) < 0.001f &&
+      std::fabs(engine->arrangement.harmony_slot_midi[18] - 67.0f) < 0.001f,
+      "Harmony sequence-step edits must not mutate saved slot authority rows");
+
+  // A subsequent trigger must read the latest native slot cache without
+  // rebuilding the host's preview MIDI payload.
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.synth_euclid.lanes[0].step_count = 1;
+  snapshot.synth_euclid.lanes[0].fill_count = 1;
+  snapshot.synth_euclid.lanes[0].clock_division = 4u;
+  snapshot.synth_euclid.lanes[0].manual_step_mask_low = 1u;
+  snapshot.harmony.root_midi = 72.0f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "updated harmony slot play-note snapshot load failed");
+  KesshoProductEvent harmony_slot_set{};
+  harmony_slot_set.event_kind = KESSHO_PRODUCT_EVENT_HARMONY_SLOT_SET_ID;
+  harmony_slot_set.index = 2u;
+  harmony_slot_set.value = 0.0f;
+  harmony_slot_set.value2 = 3.0f;
+  harmony_slot_set.value3 = 0.0f;
+  harmony_slot_set.value4 = 1.0f;
+  require(kessho_product_enqueue_event(engine, &harmony_slot_set) == KESSHO_PRODUCT_OK,
+      "runtime Harmony slot set enqueue failed");
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u,
+      KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, -1.0f, 0.0f, 0.8f, 0u, 3u * 32u + 0u);
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u,
+      KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, -1.0f, 5.0f, 0.6f, 0u, 3u * 32u + 1u);
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u,
+      KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, -1.0f, 10.0f, 0.4f, 0u, 3u * 32u + 2u);
+  event_count = kessho_product_debug_render_events(engine, events, 16, 6000);
+  require(event_count == 3, "harmony slot play-note override should resolve exactly one note per updated tone");
+  require(std::fabs(events[0].midi_note - 72.0f) < 0.001f &&
+      std::fabs(events[1].midi_note - 76.0f) < 0.001f &&
+      std::fabs(events[2].midi_note - 79.0f) < 0.001f,
+      "harmony slot play-note overrides should resolve the latest native slot pool at trigger time");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.synth_euclid.lanes[0].step_count = 1;
+  snapshot.synth_euclid.lanes[0].fill_count = 1;
+  snapshot.synth_euclid.lanes[0].clock_division = 4u;
+  snapshot.synth_euclid.lanes[0].manual_step_mask_low = 1u;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "empty harmony slot play-note snapshot load failed");
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u,
+      KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, -1.0f, 0.0f, 0.8f, 0u, 3u * 32u + 0u);
+  event_count = kessho_product_debug_render_events(engine, events, 16, 6000);
+  require(event_count == 0, "slot-backed play-note records must rest when their native Harmony slot pool is empty");
 
   setup_pitch_binding_fixture();
   KesshoProductEvent pitch_binding_mode{};
@@ -6637,7 +6866,11 @@ int main() {
   require(
       std::fabs(pad_params[14] - 0.36f) < 0.001f,
       "manual trigger should use active sequencer morph instead of stored source morph");
-  constexpr uint32_t kPadLiveAdsrAttackParamIndex = 33u;
+  constexpr uint32_t kPadLiveAdsrAttackParamIndex = 32u;
+  constexpr uint32_t kPadLiveAdsrDecayParamIndex = 33u;
+  constexpr uint32_t kPadLiveAdsrSustainParamIndex = 34u;
+  constexpr uint32_t kPadLiveAdsrReleaseParamIndex = 35u;
+  constexpr uint32_t kPadLiveLevelParamIndex = 51u;
   constexpr float kPadLiveAdsrAttack = 0.321f;
   KesshoProductEvent pad_live_adsr_event{};
   pad_live_adsr_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
@@ -6648,12 +6881,11 @@ int main() {
   require(
       std::fabs(pad_params[kPadLiveAdsrAttackParamIndex] - kPadLiveAdsrAttack) < 0.001f,
       "pad live ADSR update should refresh module at active sequencer morph");
-  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + 21u, 12000.0f, "pad live ADSR audio cutoff min update failed");
-  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + 22u, 12000.0f, "pad live ADSR audio cutoff max update failed");
-  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + 34u, 0.01f, "pad live ADSR audio decay update failed");
-  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + 35u, 1.0f, "pad live ADSR audio sustain update failed");
-  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + 36u, 0.05f, "pad live ADSR audio release update failed");
-  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + 52u, 1.0f, "pad live ADSR audio level update failed");
+  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + 21u, 12000.0f, "pad live ADSR audio cutoff update failed");
+  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + kPadLiveAdsrDecayParamIndex, 0.01f, "pad live ADSR audio decay update failed");
+  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + kPadLiveAdsrSustainParamIndex, 1.0f, "pad live ADSR audio sustain update failed");
+  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + kPadLiveAdsrReleaseParamIndex, 0.05f, "pad live ADSR audio release update failed");
+  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + kPadLiveLevelParamIndex, 1.0f, "pad live ADSR audio level update failed");
   applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + kPadLiveAdsrAttackParamIndex, 8.0f, "pad live ADSR audio long attack update failed");
   hardStopPadModuleVoices(engine);
   const uint32_t long_attack_voice_index = engine->triggerVoice(
@@ -7013,13 +7245,11 @@ int main() {
   require(
       kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
       "running Pad endpoint hot-swap snapshot load failed");
-  require(kessho_product_set_debug_voice_spawn_demand(engine, 1u) == KESSHO_PRODUCT_OK,
-      "running Pad endpoint hot-swap debug demand enable failed");
   renderSilentBlocks(engine, 60u);
-  KesshoProductTelemetry running_before_telemetry = kessho_product_get_telemetry(engine);
-  const KesshoProductDebugVoiceSpawn running_before_spawn = latestDebugVoiceSpawnForSource(
-      running_before_telemetry,
-      KESSHO_PRODUCT_SOURCE_PAD1,
+  const uint64_t running_hits_before = engine->synth_lanes[0].emitted_hit_count;
+  const uint32_t running_revision_before =
+      engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].source_preset_runtime_revision;
+  require(running_hits_before > 0u,
       "running Pad endpoint hot-swap setup should produce sequencer triggers");
   KesshoProductEvent running_pad_endpoint_event{};
   running_pad_endpoint_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET;
@@ -7031,25 +7261,16 @@ int main() {
       kessho_product_enqueue_event(engine, &running_pad_endpoint_event) == KESSHO_PRODUCT_OK,
       "running Pad endpoint hot-swap event enqueue failed");
   renderSilentBlocks(engine, 60u);
-  KesshoProductTelemetry running_after_telemetry = kessho_product_get_telemetry(engine);
-  const KesshoProductDebugVoiceSpawn running_after_spawn = latestDebugVoiceSpawnForSource(
-      running_after_telemetry,
-      KESSHO_PRODUCT_SOURCE_PAD1,
-      "running Pad endpoint hot-swap should keep producing sequencer triggers");
   require(
-      running_after_spawn.trigger_sequence > running_before_spawn.trigger_sequence,
+      engine->synth_lanes[0].emitted_hit_count > running_hits_before,
       "running Pad endpoint hot-swap should not stop sequencer triggers");
   require(
-      running_after_spawn.source_state_hash != running_before_spawn.source_state_hash ||
-          running_after_spawn.compiled_source_hash != running_before_spawn.compiled_source_hash,
+      engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].source_preset_runtime_revision > running_revision_before,
       "running Pad endpoint hot-swap should change the next sequencer trigger source patch");
   require(
       engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].source_preset_a_id ==
           kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT,
       "running Pad endpoint hot-swap should update endpoint A state");
-  require(kessho_product_set_debug_voice_spawn_demand(engine, 0u) == KESSHO_PRODUCT_OK,
-      "running Pad endpoint hot-swap debug demand disable failed");
-
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
   snapshot.schema_hash = 0;
@@ -7170,6 +7391,84 @@ int main() {
   std::fill(right.begin(), right.end(), 0.0f);
   kessho_product_render(engine, left.data(), right.data(), 128);
   require(maxAbs(left) > 0.001f || maxAbs(right) > 0.001f, "MIDI note event should render through Product Core");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 0;
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].enabled = 0u;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "transient MIDI audition snapshot load failed");
+  KesshoProductEvent disabled_midi_note{};
+  disabled_midi_note.event_kind = KESSHO_PRODUCT_EVENT_KIND_MIDI_EVENT;
+  disabled_midi_note.target_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  disabled_midi_note.index = 0u;
+  disabled_midi_note.value = 0x90;
+  disabled_midi_note.value2 = 60.0f;
+  disabled_midi_note.value3 = 100.0f;
+  disabled_midi_note.flags = 3u;
+  require(
+      kessho_product_enqueue_event(engine, &disabled_midi_note) == KESSHO_PRODUCT_OK,
+      "disabled unflagged MIDI note enqueue failed");
+  std::fill(left.begin(), left.end(), 0.0f);
+  std::fill(right.begin(), right.end(), 0.0f);
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  require(
+      maxAbs(left) <= 0.00001f && maxAbs(right) <= 0.00001f,
+      "unflagged MIDI must still obey authored source enable");
+
+  KesshoProductEvent transient_note_a = disabled_midi_note;
+  transient_note_a.param_id = 1001u;
+  transient_note_a.flags = kProductMidiEventTransientAuditionFlag | 3u;
+  KesshoProductEvent transient_note_b = transient_note_a;
+  transient_note_b.param_id = 1002u;
+  require(
+      kessho_product_enqueue_event(engine, &transient_note_a) == KESSHO_PRODUCT_OK,
+      "first transient MIDI note enqueue failed");
+  require(
+      kessho_product_enqueue_event(engine, &transient_note_b) == KESSHO_PRODUCT_OK,
+      "second transient MIDI note enqueue failed");
+  float transient_peak = 0.0f;
+  for (uint32_t block = 0u; block < 8u; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(engine, left.data(), right.data(), 128);
+    transient_peak = std::max(transient_peak, std::max(maxAbs(left), maxAbs(right)));
+  }
+  SourceState& transient_source = engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
+  require(transient_peak > 0.00001f, "transient MIDI audition should render a disabled source");
+  require(!transient_source.enabled, "transient MIDI audition must not mutate authored source enable");
+  require(
+      transient_source.enabled_gain_target == 0.0f,
+      "transient MIDI audition must not mutate authored source gain");
+  require(
+      transient_source.transient_audition_hold_count == 2u,
+      "same-pitch transient owners should retain independent holds");
+
+  KesshoProductEvent transient_off_a = transient_note_a;
+  transient_off_a.value = 0x80;
+  transient_off_a.value3 = 0.0f;
+  require(
+      kessho_product_enqueue_event(engine, &transient_off_a) == KESSHO_PRODUCT_OK,
+      "first transient MIDI note-off enqueue failed");
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  require(
+      transient_source.transient_audition_hold_count == 1u,
+      "one same-pitch owner release must leave the other held");
+  KesshoProductEvent transient_off_b = transient_note_b;
+  transient_off_b.value = 0x80;
+  transient_off_b.value3 = 0.0f;
+  require(
+      kessho_product_enqueue_event(engine, &transient_off_b) == KESSHO_PRODUCT_OK,
+      "second transient MIDI note-off enqueue failed");
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  require(
+      transient_source.transient_audition_hold_count == 0u,
+      "last same-pitch owner release should close the transient hold");
+  require(
+      transient_source.transient_audition_until_frame > engine->audio_render_sample_frame,
+      "last transient release should preserve the authored release tail");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();

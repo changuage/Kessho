@@ -181,10 +181,6 @@ function readBoolean(record: NativeStateRecord, key: string, fallback: boolean):
   return typeof value === 'boolean' ? value : fallback;
 }
 
-function average(a: number, b: number): number {
-  return (a + b) / 2;
-}
-
 function buildCapacitorAudioSessionState(state: SliderState): NativeStateRecord {
   const record = asRecord(state);
   const leadLevel = readNumber(record, 'leadLevel', state.lead1Level ?? 0);
@@ -193,7 +189,7 @@ function buildCapacitorAudioSessionState(state: SliderState): NativeStateRecord 
   const leadDelayFeedback = readNumber(record, 'leadDelayFeedback', state.delayAFeedback ?? 0.4);
   const leadDelayMix = readNumber(record, 'leadDelayMix', state.delayAMix ?? 0.35);
   const grainSize = state.grainSize ?? 50;
-  const filterCutoff = readNumber(record, 'filterCutoff', average(state.filterCutoffMin, state.filterCutoffMax));
+  const filterCutoff = readNumber(record, 'filterCutoff', state.filterCutoff);
   const brightness = readNumber(record, 'brightness', state.presence ?? 0.3);
   const waterSurfDuration = readNumber(record, 'waterSurfDuration', CAPACITOR_AUDIO_SESSION_STATE_DEFAULTS.oceanDurationMin);
   const waterSurfInterval = readNumber(record, 'waterSurfInterval', CAPACITOR_AUDIO_SESSION_STATE_DEFAULTS.oceanIntervalMin);
@@ -229,12 +225,12 @@ function buildCapacitorAudioSessionState(state: SliderState): NativeStateRecord 
     leadOctaveRange: readNumber(record, 'leadOctaveRange', state.lead1OctaveRange),
     leadTimbreMin: readNumber(record, 'leadTimbreMin', state.leadTimbre),
     leadTimbreMax: readNumber(record, 'leadTimbreMax', state.leadTimbre),
-    leadVibratoDepthMin: readNumber(record, 'leadVibratoDepthMin', state.leadVibratoDepth),
-    leadVibratoDepthMax: readNumber(record, 'leadVibratoDepthMax', state.leadVibratoDepth),
-    leadVibratoRateMin: readNumber(record, 'leadVibratoRateMin', state.leadVibratoRate),
-    leadVibratoRateMax: readNumber(record, 'leadVibratoRateMax', state.leadVibratoRate),
-    leadGlideMin: readNumber(record, 'leadGlideMin', state.leadGlide),
-    leadGlideMax: readNumber(record, 'leadGlideMax', state.leadGlide),
+    leadVibratoDepthMin: readNumber(record, 'leadVibratoDepthMin', state.lead1VibratoDepth),
+    leadVibratoDepthMax: readNumber(record, 'leadVibratoDepthMax', state.lead1VibratoDepth),
+    leadVibratoRateMin: readNumber(record, 'leadVibratoRateMin', state.lead1VibratoRate),
+    leadVibratoRateMax: readNumber(record, 'leadVibratoRateMax', state.lead1VibratoRate),
+    leadGlideMin: readNumber(record, 'leadGlideMin', state.lead1Glide),
+    leadGlideMax: readNumber(record, 'leadGlideMax', state.lead1Glide),
     drumRandomMorphUpdate: readBoolean(record, 'drumRandomMorphUpdate', CAPACITOR_AUDIO_SESSION_STATE_DEFAULTS.drumRandomMorphUpdate),
     drumRandomEnabled: readBoolean(record, 'drumRandomEnabled', CAPACITOR_AUDIO_SESSION_STATE_DEFAULTS.drumRandomEnabled),
     drumRandomDensity: readNumber(record, 'drumRandomDensity', CAPACITOR_AUDIO_SESSION_STATE_DEFAULTS.drumRandomDensity),

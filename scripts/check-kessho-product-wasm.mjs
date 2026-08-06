@@ -96,7 +96,6 @@ const render = resolveExport(wasm, 'kessho_product_render');
 const copyTelemetry = resolveExport(wasm, 'kessho_product_copy_telemetry');
 const refreshTelemetry = resolveExport(wasm, 'kessho_product_refresh_telemetry');
 const setMeterDemand = resolveExport(wasm, 'kessho_product_set_meter_demand');
-const setDebugVoiceSpawnDemand = resolveExport(wasm, 'kessho_product_set_debug_voice_spawn_demand');
 const setStemsEnabled = resolveExport(wasm, 'kessho_product_set_stems_enabled');
 const copySequencerUiState = resolveExport(wasm, 'kessho_product_copy_sequencer_ui_state');
 const EVENT_DICE_SEQUENCER_LANE = 29;
@@ -109,19 +108,13 @@ const SEQUENCER_UI_LANE_BASE_OFFSET = 36;
 const SEQUENCER_UI_LANE_SIZE = 3296;
 const LANE_EXPRESSION_OVERRIDE_SET_LOW_OFFSET = 76;
 const LANE_EXPRESSION_OVERRIDES_OFFSET = 1448;
-const TELEMETRY_BYTES = 15448;
+const TELEMETRY_BYTES = 14512;
 const TELEMETRY_SYNTH_ARP_CURRENT_STEPS_OFFSET = 1296;
-const TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET = 8828;
-const TELEMETRY_DEBUG_SOURCE_OFFSET = 8832;
-const TELEMETRY_DEBUG_SOURCE_BYTES = 32;
-const TELEMETRY_DEBUG_VOICE_COUNT_OFFSET = 9088;
-const TELEMETRY_DEBUG_VOICE_OFFSET = 9096;
-const TELEMETRY_DEBUG_VOICE_BYTES = 48;
-const TELEMETRY_TRANSPORT_BPM_OFFSET = 15112;
-const TELEMETRY_TRANSPORT_PHRASE_SECONDS_OFFSET = 15124;
-const TELEMETRY_TRANSPORT_PENDING_OFFSET = 15128;
-const TELEMETRY_TRANSPORT_PENDING_APPLY_FRAME_OFFSET = 15152;
-const TELEMETRY_TRANSPORT_REVISION_OFFSET = 15160;
+const TELEMETRY_TRANSPORT_BPM_OFFSET = 14076;
+const TELEMETRY_TRANSPORT_PHRASE_SECONDS_OFFSET = 14088;
+const TELEMETRY_TRANSPORT_PENDING_OFFSET = 14092;
+const TELEMETRY_TRANSPORT_PENDING_APPLY_FRAME_OFFSET = 14112;
+const TELEMETRY_TRANSPORT_REVISION_OFFSET = 14120;
 
 const frames = 128;
 const leftPtr = malloc(frames * Float32Array.BYTES_PER_ELEMENT);
@@ -132,7 +125,6 @@ const sequencerUiStatePtr = malloc(105508);
 const engine = create(48000, frames, 0);
 assert(leftPtr && rightPtr && eventPtr && telemetryPtr && sequencerUiStatePtr && engine, 'WASM product smoke allocation failed');
 assert(setMeterDemand(engine, 1) === 1, 'WASM product meter demand enable failed');
-assert(setDebugVoiceSpawnDemand(engine, 1) === 1, 'WASM product debug voice-spawn demand enable failed');
 assert(setStemsEnabled(engine, 1) === 1, 'WASM product stem enable failed');
 
 const view = new DataView(wasm.memory.buffer);
@@ -218,19 +210,6 @@ assert(view.getUint32(telemetryPtr + 60, true) > 0, 'WASM product telemetry did 
 assert(view.getUint32(telemetryPtr + 928, true) > 0, 'WASM product telemetry did not expose RNG seed');
 assert(view.getUint32(telemetryPtr + 932, true) > 0, 'WASM product telemetry did not expose RNG state');
 assert(view.getUint32(telemetryPtr + 936 + 4 * 4, true) > 0, 'WASM product telemetry did not expose source preset IDs');
-assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET, true) === 8, 'WASM product telemetry did not expose debug source count');
-assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_SOURCE_OFFSET, true) === 1, 'WASM product telemetry did not expose Pad debug source id');
-assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_SOURCE_OFFSET + 4, true) > 0, 'WASM product telemetry did not expose Pad debug preset id');
-assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_SOURCE_OFFSET + 16, true) > 0, 'WASM product telemetry did not expose Pad debug source revision');
-assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_SOURCE_OFFSET + 20, true) > 0, 'WASM product telemetry did not expose Pad debug source hash');
-assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_SOURCE_OFFSET + 24, true) > 0, 'WASM product telemetry did not expose Pad debug compiled source hash');
-assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_SOURCE_OFFSET + 28, true) > 0, 'WASM product telemetry did not expose Pad debug override hash');
-assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_VOICE_COUNT_OFFSET, true) > 0, 'WASM product telemetry did not expose debug voice-spawn count');
-assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_VOICE_OFFSET + 16, true) === 3, 'WASM product telemetry did not expose Lead debug voice source id');
-assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_VOICE_OFFSET + 28, true) > 0, 'WASM product telemetry did not expose Lead debug voice source revision');
-assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_VOICE_OFFSET + 32, true) > 0, 'WASM product telemetry did not expose Lead debug voice source hash');
-assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_VOICE_OFFSET + 36, true) > 0, 'WASM product telemetry did not expose Lead debug voice compiled hash');
-assert(setDebugVoiceSpawnDemand(engine, 0) === 1, 'WASM product debug voice-spawn demand disable failed');
 assert(view.getFloat32(telemetryPtr + 972, true) > 0, 'WASM product telemetry did not expose master output peak');
 assert(view.getFloat32(telemetryPtr + 976, true) > 0, 'WASM product telemetry did not expose master output RMS');
 assert(view.getFloat32(telemetryPtr + 992, true) >= view.getFloat32(telemetryPtr + 972, true), 'WASM product telemetry did not expose master true peak');
@@ -416,7 +395,6 @@ function fakeWebAssemblyWithTelemetryHash(schemaHash, hooks = {}) {
     kessho_product_copy_telemetry: copyTelemetry,
     kessho_product_refresh_telemetry: () => 1,
     kessho_product_set_meter_demand: () => 1,
-    kessho_product_set_debug_voice_spawn_demand: (engine, enabled) => hooks.setDebugVoiceSpawnDemand?.(engine, enabled) ?? 1,
     kessho_product_set_simple_sequencer_visual_demand: () => 1,
     kessho_product_drain_generated_sequencer_capture_events: () => 0,
     kessho_product_drain_simple_sequencer_visual_events: () => 0,
@@ -443,29 +421,17 @@ assert(staleWasm.processor.ready === false, 'Product worklet must not become rea
 
 let deferredReleaseAttempts = 0;
 const deferredFreedPointers = [];
-const debugVoiceSpawnDemandValues = [];
 const deferredWorklet = instantiateWorklet({
   wasmBinaryOverride: new ArrayBuffer(8),
   webAssemblyOverride: fakeWebAssemblyWithTelemetryHash(expectedSchemaHash, {
     free: (ptr) => deferredFreedPointers.push(ptr),
     unregisterAsset: () => (++deferredReleaseAttempts === 1 ? -16 : 1),
-    setDebugVoiceSpawnDemand: (_engine, enabled) => {
-      debugVoiceSpawnDemandValues.push(enabled);
-      return 1;
-    },
   }),
 });
 await waitForMessage(deferredWorklet.messages, (message) => message.type === 'ready' || message.type === 'error');
 assert(deferredWorklet.processor.ready, 'Deferred-release worklet fixture did not initialize');
-assert(debugVoiceSpawnDemandValues.length === 0, 'debug voice-spawn demand should remain disabled by default');
-deferredWorklet.processor.handleMessage({ type: 'debug-voice-spawn-demand', enabled: true });
-assert(debugVoiceSpawnDemandValues.join(',') === '1', 'visible explicit debug voice-spawn demand was not enabled');
 deferredWorklet.processor.handleMessage({ type: 'host-visibility', hidden: true });
-assert(debugVoiceSpawnDemandValues.join(',') === '1,0', 'hidden host did not disable debug voice-spawn demand');
 deferredWorklet.processor.handleMessage({ type: 'host-visibility', hidden: false });
-assert(debugVoiceSpawnDemandValues.join(',') === '1,0,1', 'visible host did not restore explicit debug voice-spawn demand');
-deferredWorklet.processor.handleMessage({ type: 'debug-voice-spawn-demand', enabled: false });
-assert(debugVoiceSpawnDemandValues.join(',') === '1,0,1,0', 'explicit debug voice-spawn demand disable was not applied');
 deferredWorklet.processor.handleMessage({
   type: 'register-asset',
   assetId: 42,

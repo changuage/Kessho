@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <cstdint>
 #include <memory>
 
 #include "kessho_spectral_freeze.h"
@@ -10,22 +12,36 @@ namespace kessho::core {
 namespace {
 
 constexpr int kSpectralFreezeBlockSize = KESSHO_SPECTRAL_FREEZE_MAX_BLOCK_SIZE;
-constexpr int kParamFreeze = 0;
-constexpr int kParamSlushy = 1;
-constexpr int kParamSpeed = 2;
-constexpr int kParamMix = 3;
-constexpr int kParamDecay = 4;
-constexpr int kParamPhaseJitter = 5;
-constexpr int kParamCount = 6;
+constexpr int kParamActive = 0;
+constexpr int kParamMode = 1;
+constexpr int kParamCaptureSerial = 2;
+constexpr int kParamStretchSpeed = 3;
+constexpr int kParamDirection = 4;
+constexpr int kParamPosition = 5;
+constexpr int kParamRefresh = 6;
+constexpr int kParamInputSensitivity = 7;
+constexpr int kParamDiffusion = 8;
+constexpr int kParamTone = 9;
+constexpr int kParamWidth = 10;
+constexpr int kParamSustain = 11;
+constexpr int kParamMix = 12;
+constexpr int kParamCount = 13;
 
 std::array<float, kParamCount> makeDefaultParams() {
   std::array<float, kParamCount> params{};
-  params[kParamFreeze] = 0.0f;
-  params[kParamSlushy] = 0.0f;
-  params[kParamSpeed] = 0.0f;
+  params[kParamActive] = 0.0f;
+  params[kParamMode] = static_cast<float>(KESSHO_SPECTRAL_FREEZE_MODE_STRETCH);
+  params[kParamCaptureSerial] = 0.0f;
+  params[kParamStretchSpeed] = 0.5f;
+  params[kParamDirection] = static_cast<float>(KESSHO_SPECTRAL_FREEZE_DIRECTION_PING_PONG);
+  params[kParamPosition] = 0.0f;
+  params[kParamRefresh] = 0.15f;
+  params[kParamInputSensitivity] = 0.5f;
+  params[kParamDiffusion] = 0.55f;
+  params[kParamTone] = -0.15f;
+  params[kParamWidth] = 0.85f;
+  params[kParamSustain] = 1.0f;
   params[kParamMix] = 1.0f;
-  params[kParamDecay] = 0.0f;
-  params[kParamPhaseJitter] = 0.0f;
   return params;
 }
 
@@ -118,12 +134,24 @@ public:
       return;
     }
 
-    spectral_freeze_instance_set_freeze(instance_, params_[kParamFreeze] > 0.5f ? 1 : 0);
-    spectral_freeze_instance_set_slushy(instance_, params_[kParamSlushy] > 0.5f ? 1 : 0);
-    spectral_freeze_instance_set_speed(instance_, params_[kParamSpeed]);
+    spectral_freeze_instance_set_mode(instance_, static_cast<int>(std::lround(params_[kParamMode])));
+    spectral_freeze_instance_set_stretch_speed(instance_, params_[kParamStretchSpeed]);
+    spectral_freeze_instance_set_direction(instance_, static_cast<int>(std::lround(params_[kParamDirection])));
+    spectral_freeze_instance_set_position(instance_, params_[kParamPosition]);
+    spectral_freeze_instance_set_refresh(instance_, params_[kParamRefresh]);
+    spectral_freeze_instance_set_input_sensitivity(instance_, params_[kParamInputSensitivity]);
+    spectral_freeze_instance_set_diffusion(instance_, params_[kParamDiffusion]);
+    spectral_freeze_instance_set_tone(instance_, params_[kParamTone]);
+    spectral_freeze_instance_set_width(instance_, params_[kParamWidth]);
+    spectral_freeze_instance_set_sustain(instance_, params_[kParamSustain]);
     spectral_freeze_instance_set_mix(instance_, params_[kParamMix]);
-    spectral_freeze_instance_set_decay(instance_, params_[kParamDecay]);
-    spectral_freeze_instance_set_phase_jitter(instance_, params_[kParamPhaseJitter]);
+    if (params_[kParamActive] > 0.5f) {
+      spectral_freeze_instance_request_capture(
+          instance_,
+          static_cast<uint32_t>(std::max(0.0f, std::round(params_[kParamCaptureSerial]))));
+    } else {
+      spectral_freeze_instance_set_freeze(instance_, 0);
+    }
   }
 
 private:

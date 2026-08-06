@@ -924,6 +924,12 @@
   gap: 4px;
 }
 
+.visualizer-preset-error {
+  margin-top: 0.35rem;
+  color: #e59a9a;
+  font-size: 0.68rem;
+}
+
 .visualizer-preset-input {
   flex: 1;
   min-width: 0;

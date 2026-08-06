@@ -1,0 +1,1691 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#050505">
+  <meta name="description" content="Point Clouds — generative ambient, field recordings, rhythm, and systems.">
+  <title>Point Clouds — time / space / sound</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poiret+One&display=swap" rel="stylesheet">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+
+    :root {
+      color-scheme: dark;
+      --paper: #e7e5de;
+      --dim: rgba(231, 229, 222, .52);
+      --faint: rgba(231, 229, 222, .18);
+      --signal: #ff3b18;
+      --ink: #050505;
+      --mx: 50vw;
+      --my: 50vh;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--ink);
+    }
+
+    body {
+      color: var(--paper);
+      font-family: "Space Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      cursor: none;
+      overscroll-behavior: none;
+      text-rendering: geometricPrecision;
+    }
+
+    button, a { color: inherit; font: inherit; }
+    button { cursor: none; }
+
+    #field {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+      filter: saturate(.86) contrast(1.08);
+    }
+
+    #kessho-engine {
+      position: fixed;
+      left: -2px;
+      bottom: -2px;
+      width: 1px;
+      height: 1px;
+      border: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .veil {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle 22rem at var(--mx) var(--my), transparent 0%, rgba(0,0,0,.035) 40%, rgba(0,0,0,.34) 100%),
+        linear-gradient(90deg, rgba(0,0,0,.34), transparent 22%, transparent 78%, rgba(0,0,0,.28));
+      mix-blend-mode: multiply;
+    }
+
+    .grain {
+      position: fixed;
+      inset: -60%;
+      width: 220%;
+      height: 220%;
+      pointer-events: none;
+      opacity: .085;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.93' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E");
+      animation: grain .18s steps(2) infinite;
+      mix-blend-mode: soft-light;
+    }
+
+    @keyframes grain {
+      0% { transform: translate3d(-3%, 2%, 0); }
+      25% { transform: translate3d(4%, -5%, 0); }
+      50% { transform: translate3d(-5%, 4%, 0); }
+      75% { transform: translate3d(5%, 3%, 0); }
+      100% { transform: translate3d(-2%, -4%, 0); }
+    }
+
+    .frame {
+      position: fixed;
+      inset: 0;
+      z-index: 3;
+      display: grid;
+      grid-template: auto 1fr auto / 1fr;
+      padding:
+        max(24px, env(safe-area-inset-top))
+        max(30px, env(safe-area-inset-right))
+        max(24px, env(safe-area-inset-bottom))
+        max(30px, env(safe-area-inset-left));
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 1.1s ease, visibility 1.1s;
+    }
+
+    .frame.is-live { opacity: 1; visibility: visible; }
+
+    .topline, .baseline {
+      display: grid;
+      align-items: start;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 28px;
+      pointer-events: auto;
+    }
+
+    .baseline { align-items: end; }
+
+    .eyebrow, .coordinates, .scene-index, .hint, .audio-state {
+      font-size: 9px;
+      letter-spacing: .17em;
+      line-height: 1.5;
+      text-transform: uppercase;
+    }
+
+    .eyebrow {
+      margin: 0;
+      font-weight: 400;
+      white-space: nowrap;
+    }
+
+    .eyebrow span {
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      margin: 0 9px 1px 0;
+      border-radius: 50%;
+      background: var(--signal);
+      box-shadow: 0 0 14px var(--signal);
+    }
+
+    .coordinates {
+      justify-self: center;
+      color: var(--dim);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .text-button {
+      justify-self: end;
+      border: 0;
+      padding: 0 0 4px;
+      background: transparent;
+      text-transform: uppercase;
+      font-size: 9px;
+      letter-spacing: .17em;
+      position: relative;
+    }
+
+    .text-button::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0;
+      height: 1px;
+      background: currentColor;
+      transform: scaleX(.24);
+      transform-origin: right;
+      transition: transform .5s cubic-bezier(.16, 1, .3, 1);
+    }
+
+    .text-button:hover::after,
+    .text-button:focus-visible::after { transform: scaleX(1); }
+
+    .identity {
+      align-self: center;
+      display: grid;
+      grid-template-columns: minmax(170px, .68fr) minmax(360px, 1.45fr) minmax(170px, .68fr);
+      align-items: center;
+      pointer-events: none;
+    }
+
+    .descriptor {
+      grid-column: 2;
+      justify-self: center;
+      margin: clamp(24px, 5vh, 60px) 0 0;
+      max-width: 460px;
+      text-align: center;
+      color: var(--dim);
+      font-size: clamp(8px, .7vw, 11px);
+      line-height: 1.7;
+      letter-spacing: .11em;
+      text-transform: uppercase;
+    }
+
+    .scene-index { color: var(--dim); }
+    .scene-index b { color: var(--paper); font-weight: 400; }
+
+    .hint {
+      justify-self: center;
+      color: var(--dim);
+      text-align: center;
+      transition: opacity .5s ease;
+    }
+
+    .hint::before {
+      content: "";
+      display: inline-block;
+      width: 32px;
+      height: 1px;
+      margin: 0 10px 3px 0;
+      background: var(--paper);
+      transform-origin: right;
+      animation: breathe 2.8s ease-in-out infinite;
+    }
+
+    @keyframes breathe {
+      0%, 100% { transform: scaleX(.24); opacity: .3; }
+      50% { transform: scaleX(1); opacity: 1; }
+    }
+
+    .audio {
+      justify-self: end;
+      display: inline-grid;
+      grid-template-columns: auto 34px;
+      align-items: center;
+      gap: 10px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      text-align: right;
+    }
+
+    .meter {
+      display: flex;
+      height: 13px;
+      align-items: end;
+      justify-content: flex-end;
+      gap: 2px;
+    }
+
+    .meter i {
+      width: 1px;
+      height: calc(3px + var(--level, 0) * 10px);
+      background: currentColor;
+      opacity: .38;
+      transform-origin: bottom;
+      transition: height .08s linear, opacity .3s ease, color .3s ease;
+    }
+
+    .audio[data-active="true"] { color: var(--signal); }
+    .audio[data-active="true"] .meter i { opacity: 1; }
+
+    .intro-play {
+      position: fixed;
+      z-index: 8;
+      left: 50%;
+      top: 50%;
+      width: min(34vw, 270px);
+      aspect-ratio: 1;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, -50%) scale(.88);
+      transition: opacity .7s ease, transform 1.2s cubic-bezier(.16,1,.3,1);
+    }
+
+    .intro-play.is-ready {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    .intro-play::after {
+      content: "";
+      position: absolute;
+      inset: 5%;
+      border: 1px solid transparent;
+      border-radius: inherit;
+      transition: border-color .3s ease, transform .3s ease;
+    }
+
+    .intro-play:hover::after,
+    .intro-play:focus-visible::after {
+      border-color: rgba(231,229,222,.28);
+      transform: scale(1.08);
+    }
+
+    .intro-play:focus-visible { outline: 1px solid var(--paper); outline-offset: 8px; }
+
+    .axis {
+      position: fixed;
+      z-index: 2;
+      left: 50%;
+      top: 50%;
+      width: min(72vw, 1060px);
+      height: 1px;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      background: linear-gradient(90deg, transparent, rgba(231,229,222,.12) 8%, rgba(231,229,222,.22) 49.8%, var(--signal) 50%, rgba(231,229,222,.22) 50.2%, rgba(231,229,222,.12) 92%, transparent);
+      opacity: 0;
+      transition: opacity 1.2s ease;
+      mix-blend-mode: screen;
+    }
+
+    body.is-live .axis { opacity: .68; }
+
+    .cursor {
+      position: fixed;
+      z-index: 30;
+      left: 0;
+      top: 0;
+      width: 28px;
+      height: 28px;
+      margin: -14px 0 0 -14px;
+      border: 1px solid rgba(231, 229, 222, .56);
+      border-radius: 50%;
+      pointer-events: none;
+      transform: translate3d(-50px, -50px, 0);
+      transition: width .25s ease, height .25s ease, margin .25s ease, border-color .25s ease;
+      mix-blend-mode: difference;
+    }
+
+    .cursor::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 2px;
+      height: 2px;
+      border-radius: 50%;
+      background: var(--paper);
+      transform: translate(-50%, -50%);
+    }
+
+    .cursor.is-action {
+      width: 52px;
+      height: 52px;
+      margin: -26px 0 0 -26px;
+      border-color: var(--signal);
+    }
+
+    .info {
+      position: fixed;
+      z-index: 15;
+      inset: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(410px, 43vw);
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    #info-backdrop {
+      grid-column: 1;
+      grid-row: 1;
+      background: rgba(0,0,0,.42);
+      opacity: 0;
+      backdrop-filter: blur(3px);
+      transition: opacity .6s ease;
+    }
+
+    .info-panel {
+      grid-column: 2;
+      grid-row: 1;
+      position: relative;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      padding: max(26px, 4.2vw);
+      background: rgba(8,8,8,.94);
+      border-left: 1px solid rgba(231,229,222,.16);
+      transform: translateX(102%);
+      transition: transform .82s cubic-bezier(.16, 1, .3, 1);
+      overflow: hidden;
+      pointer-events: auto;
+    }
+
+    .info-panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: .07;
+      background: repeating-linear-gradient(0deg, transparent 0 11px, rgba(231,229,222,.3) 12px);
+      pointer-events: none;
+    }
+
+    .info.is-open { visibility: visible; pointer-events: auto; }
+    .info.is-open #info-backdrop { opacity: 1; }
+    .info.is-open .info-panel { transform: translateX(0); }
+
+    .info-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      position: relative;
+    }
+
+    .info-kicker {
+      margin: 0;
+      color: var(--signal);
+      font-size: 8px;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+    }
+
+    .close {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      font-size: 9px;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    .info-copy {
+      align-self: center;
+      position: relative;
+    }
+
+    .info h2 {
+      margin: 0 0 28px;
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: clamp(54px, 7vw, 104px);
+      line-height: .82;
+      letter-spacing: -.045em;
+      font-weight: 400;
+    }
+
+    .lede {
+      max-width: 40ch;
+      margin: 0;
+      color: rgba(231,229,222,.78);
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: clamp(19px, 1.8vw, 27px);
+      line-height: 1.26;
+    }
+
+    .cv {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      padding-top: 28px;
+      border-top: 1px solid rgba(231,229,222,.18);
+    }
+
+    .cv h3 {
+      margin: 0 0 10px;
+      color: var(--dim);
+      font-size: 8px;
+      font-weight: 400;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    .cv p {
+      margin: 0;
+      font-size: 9px;
+      line-height: 1.8;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .noscript {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 30px;
+      background: #050505;
+      color: var(--paper);
+      text-align: center;
+      font: 11px/1.8 "Space Mono", monospace;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    @media (max-width: 760px) {
+      .frame {
+        padding:
+          max(18px, env(safe-area-inset-top))
+          max(18px, env(safe-area-inset-right))
+          max(18px, env(safe-area-inset-bottom))
+          max(18px, env(safe-area-inset-left));
+      }
+      .topline { grid-template-columns: 1fr auto; }
+      .coordinates { display: none; }
+      .identity { grid-template-columns: 1fr; }
+      .descriptor { grid-column: 1; max-width: 31ch; }
+      .baseline { grid-template-columns: 1fr auto; }
+      .hint { display: none; }
+      .info { grid-template-columns: 1fr; padding-top: 8vh; }
+      #info-backdrop { display: none; }
+      .info-panel {
+        grid-column: 1;
+        border-left: 0;
+        border-top: 1px solid rgba(231,229,222,.16);
+        padding: 26px 24px max(24px, env(safe-area-inset-bottom));
+      }
+      .cv { gap: 18px; }
+      .axis { width: 92vw; }
+    }
+
+    @media (hover: none), (pointer: coarse) {
+      body, button { cursor: auto; }
+      .cursor { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .grain { animation: none; }
+      .hint::before { animation: none; transform: scaleX(.65); }
+      .info-panel { transition-duration: .01ms; }
+    }
+  </style>
+</head>
+<body>
+  <iframe id="kessho-engine" title="Kessho audio engine" aria-hidden="true" tabindex="-1" allow="autoplay"></iframe>
+  <script src="./shared/kessho-site-bridge.js"></script>
+  <script data-point-clouds-bridge-fallback>
+    /* Generated by scripts/generate-point-clouds-embedded-engine.mjs. */
+    if (!window.PointCloudsKessho) {
+      (function(u){"use strict";if(!u)return;const Q="string-waves",J=15e3,X=8e3,ee=8e3,te=60,_=1,j=Object.freeze(["level","peak","onset","transient","activity","phase","pulse"]);function i(t,e,s){return Object.freeze({id:t,signal:e,description:s})}function m(t){const e={...t.provider};for(const s of["fields","indices","tapIds"])Array.isArray(e[s])&&(e[s]=Object.freeze(e[s].slice()));return Object.freeze({...t,children:Object.freeze((t.children??[]).slice()),signals:Object.freeze((t.signals??j).slice()),provider:Object.freeze(e),reactions:Object.freeze(t.reactions.slice())})}const C=Object.freeze([m({id:"master",label:"Master",family:"system",children:[],provider:{kind:"master-output",fields:["masterOutputRms","masterOutputPeak"]},reactions:[i("global-breath","level","Expand and contract the complete point field with the output envelope."),i("luminance-ceiling","peak","Lift point luminance and bloom as the mix approaches its peak ceiling."),i("depth-pressure","transient","Push a short pressure wave through Z depth on mix transients.")]}),m({id:"pads",label:"Pads",family:"source",children:["pad1","pad2"],provider:{kind:"stems",indices:[1,2],aggregation:"max"},reactions:[i("soft-volume","level","Inflate the cloud into a slow, soft-edged volume."),i("harmonic-drift","activity","Increase low-frequency flow-field drift without adding jitter."),i("veil-opacity","peak","Thicken the rear depth veil while leaving foreground points legible.")]}),m({id:"leads",label:"Leads",family:"source",children:["lead1","lead2"],provider:{kind:"stems",indices:[3,4],aggregation:"max"},reactions:[i("filament-attractor","level","Pull nearby points into a directional filament around the lead voice."),i("note-tracer","onset","Launch a short-lived tracer from the current interaction focus."),i("accent-heat","transient","Concentrate the warm accent points at the front of the cloud.")]}),m({id:"samples",label:"Samples",family:"source",children:["sample1","sample2"],provider:{kind:"stems",indices:[6,8],aggregation:"max"},reactions:[i("contour-imprint","level","Reveal a temporary contour or surface imprint inside the cloud."),i("material-displacement","onset","Displace a local patch as if a recorded object struck the point surface."),i("orbit-fragments","transient","Release a small orbiting fragment cluster on sharp sample attacks.")]}),m({id:"drums",label:"Drums",family:"source",children:["drums"],provider:{kind:"stems",indices:[5],aggregation:"max"},reactions:[i("radial-impact","pulse","Send a radial compression ring through the point structure."),i("lattice-snap","onset","Momentarily tighten point spacing, then rebound with spring weight."),i("rotation-impulse","transient","Add a bounded rotational impulse to the shared 3D physics body.")]}),m({id:"earth",label:"Earth",family:"source",children:["waves","water","insects","nature"],provider:{kind:"stems",indices:[7],aggregation:"max"},reactions:[i("topographic-flow","level","Move points along a slow topographic flow field."),i("spatial-weather","activity","Broaden the field and increase depth-dependent atmospheric dropout."),i("terrain-grain","peak","Modulate fine point density like changing terrain texture.")]}),m({id:"effects",label:"Effects",family:"bus",children:["granular","delayAOut","delayBOut","degrade","reverb"],provider:{kind:"stems",indices:[9],aggregation:"max"},reactions:[i("wet-depth","level","Increase the apparent depth and persistence of the complete wet field."),i("return-afterimage","peak","Leave a restrained afterimage behind moving structures."),i("edge-diffusion","activity","Diffuse silhouette edges without changing the dry geometry.")]}),m({id:"granular",label:"Granular",family:"processor",children:["granular"],provider:{kind:"graph-taps",tapIds:[16],fields:["workletGranularReturnPeak"],aggregation:"max"},reactions:[i("fragment-density","level","Break solid forms into denser, smaller point fragments."),i("grain-jitter","activity","Add spatially correlated micro-motion instead of white-noise jitter."),i("grain-trails","onset","Emit short trails whose length follows grain activity.")]}),m({id:"delays",label:"Delays",family:"processor",children:["delayAOut","delayBOut"],provider:{kind:"graph-taps",tapIds:[8,12],fields:["workletDelayReturnPeak"],aggregation:"max"},reactions:[i("echo-ghosts","level","Repeat the current form as depth-offset, decaying ghost layers."),i("recursive-rings","onset","Create successively dimmer rings at the delay cadence."),i("phase-orbit","activity","Offset orbit phase while preserving the main cloud position.")]}),m({id:"degrade",label:"Degrade",family:"processor",children:["degrade"],provider:{kind:"engine-return",fields:["workletDegradeReturnPeak"]},reactions:[i("point-erosion","level","Remove coherent point bands in slowly changing erosion patches."),i("quantized-drift","activity","Quantize selected motion vectors while the rest of the body stays fluid."),i("dropout-scars","transient","Carve momentary gaps that heal with the shared spring system.")]}),m({id:"reverb",label:"Reverb",family:"processor",children:["reverb"],provider:{kind:"graph-taps",tapIds:[21],fields:["workletReverbReturnPeak"],aggregation:"max"},reactions:[i("z-expansion","level","Open the cloud along Z while retaining its 2D silhouette."),i("tail-afterglow","peak","Extend point persistence as an afterglow proportional to the return."),i("fog-dispersion","activity","Move low-opacity points outward into the far depth field.")]}),m({id:"transport",label:"Transport",family:"system",children:[],provider:{kind:"transport",fields:["beatPosition","barIndex","phraseIndex"]},reactions:[i("beat-breath","pulse","Apply a small shared breath impulse at the beat boundary."),i("bar-weight-shift","phase","Shift the body weight across one bar without resetting rotation."),i("phrase-morph","phase","Schedule large topology changes only at phrase boundaries.")]})]),B=Object.freeze({schemaVersion:_,signals:j,availability:Object.freeze({available:"The Product Core provider is authoritative, including when its value is zero.",unavailable:"The exact provider is not being published; consumers must not substitute another channel."}),inputs:C,byId:Object.freeze(Object.fromEntries(C.map(t=>[t.id,t])))});function o(t,e=0){return Number.isFinite(Number(t))?Number(t):e}function p(t){return Math.max(0,Math.min(1,o(t)))}function S(t){return Array.isArray(t)?t.slice():[]}function re(t){return!t||typeof t!="object"?{}:{...t}}function y(t,e){return t!==null&&typeof t=="object"&&Object.prototype.hasOwnProperty.call(t,e)&&Number.isFinite(Number(t[e]))}function M(t){let e=0;for(const s of t)e=Math.max(e,Math.max(0,o(s)));return e}function se(t,e){const s=Array.isArray(t?.workletStemPeaks)?t.workletStemPeaks:null,r=e.indices??[];return!s||r.length===0||r.some(n=>!y(s,n))?{available:!1,peak:0}:{available:!0,peak:M(r.map(n=>s[n]))}}function ie(t,e){const r=(e.fields??[]).filter(c=>y(t,c)).map(c=>t[c]);if(r.length>0)return{available:!0,peak:M(r)};const n=e.tapIds??[],a=Array.isArray(t?.workletGraphTapPeaks)?t.workletGraphTapPeaks:null,h=Array.isArray(t?.workletGraphTapPeakValid)?t.workletGraphTapPeakValid:null,l=Array.isArray(t?.workletGraphTapActiveIds)?t.workletGraphTapActiveIds:[],d=c=>h?.[c]===!0||l.includes(c);return!a||n.length===0||n.some(c=>!d(c)||!y(a,c))?{available:!1,peak:0}:{available:!0,peak:M(n.map(c=>a[c]))}}function N(t,e,s,r,n,a={}){const h=n?.channels?.[t]??null,l=e?Math.max(0,o(s)):0,d=e?Math.max(0,o(r)):0,c=h?.available?o(h.peak):d,b=e?Number.isFinite(Number(a.onset))?p(a.onset):p(Math.max(0,d-c)*4):0,v=e?p(a.pulse):0,E=e?p(Math.max(b,o(a.transient),v)):0,f=e?p(a.activity??Math.sqrt(Math.max(l,d))):0;return{id:t,available:e,availability:e?"available":"unavailable",active:e&&(f>.001||v>0),level:l,peak:d,onset:b,transient:E,activity:f,phase:e&&Number.isFinite(Number(a.phase))?p(a.phase):null,pulse:v}}function ne(t,e,s){const r={},n=y(t,"masterOutputRms")&&y(t,"masterOutputPeak");r.master=N("master",n,s.rms,s.peak,e,{onset:s.onset,transient:s.transient});for(const l of C){if(l.id==="master"||l.id==="transport")continue;const d=l.provider.kind==="stems"?se(t,l.provider):ie(t,l.provider),c=l.id==="drums"&&s.drumHitPulse?1:0;r[l.id]=N(l.id,d.available,d.peak,d.peak,e,{pulse:c})}const a=y(t,"beatPosition"),h=a?Number(t.beatPosition):0;return r.transport=N("transport",a,t?.transportRunning===!0?1:0,s.hitPulse?1:0,e,{activity:t?.transportRunning===!0?1:0,phase:h-Math.floor(h),pulse:s.beatPulse||s.stepPulse||s.hitPulse?1:0}),{schemaVersion:_,channels:r}}function I(t){return t instanceof Error?t.message:String(t)}function ae(t){return new Promise(e=>setTimeout(e,t))}function oe(t){if(!t||t.isRunning!==!0)return!1;const e=t.telemetry;return!(!e||e.transportRunning!==!0||t.lifecycleState!==void 0&&t.lifecycleState!=="running"||t.audioContextState&&t.audioContextState!=="running")}function le(t){return!t||t.lifecycleState==="stopped"&&t.isRunning!==!0?!0:t.isRunning!==!0&&t.telemetry?.transportRunning!==!0}function ue(){const t=u.document,e=t?.currentScript?.src||t?.querySelector?.('script[src*="kessho-site-bridge"]')?.src;if(e)try{return new URL("../../index.html?point-clouds-engine=1",e).href}catch{}try{return new URL("../?point-clouds-engine=1",u.location?.href??"").href}catch{return null}}function A(){const t=u.document,e=t?.currentScript?.src;return e||t?.querySelector?.('script[src*="kessho-site-bridge"]')?.src||u.location?.href||""}function de(){const t=A();try{return new URL("./embedded/kessho-engine.html",t).href}catch{return null}}function he(){const t=A();try{return{assets:new URL("./embedded/kessho-product-core-assets.js",t).href,engine:new URL("./embedded/kessho-engine.iife.js",t).href}}catch{return null}}function ce(){const t=u.document;if(!t?.createElement)return!1;const e=he(),s=t.head||t.body||t.documentElement;if(!e||!s?.appendChild)return!1;const r="__pointCloudsEmbeddedEngineBootstrap";if(u[r])return!0;u.__pointCloudsEmbeddedEngineMode=!0;const n={status:"loading",error:null};u[r]=n;const a=(h,l)=>{const d=t.createElement("script");d.async=!1,d.src=h,d.onload=l,d.onerror=()=>{n.status="failed",n.error=`Unable to load embedded Product Core script: ${h}`},s.appendChild(d)};return a(e.assets,()=>{n.status!=="failed"&&a(e.engine,()=>{n.status!=="failed"&&(n.status="ready")})}),!0}function H(t){return String(t).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}function me(){const t=A();let e,s;try{e=new URL("./embedded/kessho-product-core-assets.js",t).href,s=new URL("./embedded/kessho-engine.iife.js",t).href}catch{throw new Error("Unable to resolve the embedded Product Core bundle from the bridge script.")}return['<!doctype html><html><head><meta charset="utf-8"></head><body>','<div id="kessho-engine-root" aria-hidden="true" style="width:1px;height:1px;overflow:hidden"></div>',"<script>window.__pointCloudsEmbeddedEngineMode = true;<\/script>",`<script src="${H(e)}"><\/script>`,`<script src="${H(s)}"><\/script>`,"</body></html>"].join("")}function V(t){return Array.isArray(t)?t.filter(e=>e&&typeof e.id=="string").map(e=>({id:e.id,name:typeof e.name=="string"?e.name:e.id})):[]}function z(t,e,s){const r=t?.telemetry&&typeof t.telemetry=="object"?t.telemetry:null,n=typeof performance<"u"&&Number.isFinite(performance.now?.())?performance.now():Date.now(),a=Math.max(0,o(r?.masterOutputRms)),h=Math.max(0,o(r?.masterOutputPeak)),l=e?o(e.rms):a,d=e?o(e.peak):h,c=a-l,b=h-d,v=p(Math.max(0,c)*4+Math.max(0,b)*2),E=p(Math.max(0,b,c)),f=S(r?.synthSequencerCurrentSteps),P=S(r?.drumSequencerCurrentSteps),q=S(r?.synthSequencerHitCounts),G=S(r?.drumSequencerHitCounts),x=o(r?.sequencerEventCount),fe=e?o(e.sequencer?.pulses):x,L=Math.max(0,x-fe),w=Number.isFinite(Number(r?.beatPosition))?Number(r.beatPosition):null,K=e&&Number.isFinite(Number(e.beat))?Number(e.beat):null,U=w!==null&&K!==null&&Math.floor(w)!==Math.floor(K),F=f.length>0?o(f[0],null):P.length>0?o(P[0],null):null,ge=e?.sequencer?.synthSteps??[],ye=e?.sequencer?.drumSteps??[],O=f.some((g,T)=>g!==ge[T])||P.some((g,T)=>g!==ye[T]),R=g=>g.reduce((T,Pe)=>T+o(Pe),0),$=Math.max(0,R(q)-R(e?.sequencer?.synthHitCounts??[])),D=Math.max(0,R(G)-R(e?.sequencer?.drumHitCounts??[])),Y=$+D,k=L>0||Y>0,be=D>0,W=S(r?.workletStemPeaks).map(g=>Math.max(0,o(g))),Z={pad:Math.max(0,o(r?.workletPadStemPeak)),lead:Math.max(0,o(r?.workletLeadStemPeak)),fx:Math.max(0,o(r?.workletFxStemPeak)),master:Math.max(0,o(r?.workletMasterStemPeak))},ve=ne(r,e?.visualInputs,{rms:a,peak:h,onset:v,transient:E,beatPulse:U,stepPulse:O,hitPulse:k,drumHitPulse:be});return{raw:r,rms:a,peak:h,rmsDelta:c,peakDelta:b,onset:v,transient:E,beat:w,bar:Number.isFinite(Number(r?.barIndex))?Number(r.barIndex):null,phrase:Number.isFinite(Number(r?.phraseIndex))?Number(r.phraseIndex):null,phraseProgress:Number.isFinite(Number(r?.transportPhraseProgress))?p(r.transportPhraseProgress):null,sequencer:{synthStep:f.length>0?o(f[0],null):null,drumStep:P.length>0?o(P[0],null):null,synthSteps:f,drumSteps:P,synthHitCounts:q,drumHitCounts:G,pulses:x,pulseDelta:L,stepPulse:O,hitPulse:k,hitCountDelta:Y,synthHitCountDelta:$,drumHitCountDelta:D,scatterPulseCount:o(r?.scatterPulseCount)},currentStep:F,sequencerStep:F,step:F,barIndex:Number.isFinite(Number(r?.barIndex))?Number(r.barIndex):null,phraseIndex:Number.isFinite(Number(r?.phraseIndex))?Number(r.phraseIndex):null,beatPulse:U,isBeat:U,beatIndex:w===null?null:Math.floor(w),pulses:x,pulseDelta:L,stepPulse:O,hitPulse:k,isHit:k,trigger:k,level:a,activeVoices:Math.max(0,o(r?.activeVoices)),activeSources:Math.max(0,o(r?.activeSources)),stemPeaks:W,stemPeakValues:W,stemPeaksByName:Z,stems:Z,activeGrains:Math.max(0,o(r?.activeGrains)),visualInputs:ve,transportRunning:r?.transportRunning===!0,playing:t?.isRunning===!0&&r?.transportRunning===!0,contextState:t?.audioContextState??null,lifecycleState:t?.lifecycleState??null,capturedAt:n,intervalMs:s===null?null:Math.max(0,n-s)}}class pe{constructor(e){if(!e||!e.engineFrame)throw new TypeError("PointCloudsKessho.create requires an engineFrame iframe.");this.engineFrame=e.engineFrame,this.presetId=typeof e.presetId=="string"&&e.presetId.trim()?e.presetId.trim():Q,this.overrides=re(e.overrides),this.onStatus=typeof e.onStatus=="function"?e.onStatus:null,this.onTelemetry=typeof e.onTelemetry=="function"?e.onTelemetry:null,this.phase="booting",this.error=null,this.bridge=null,this.bootPromise=null,this.startPromise=null,this.stopPromise=null,this.telemetryTimer=null,this.bootDeadline=null,this.frameLoadHandler=null,this.destroyed=!1,this.previousTelemetry=null,this.previousTelemetryAt=null,this.snapshot={phase:"booting",presetId:this.presetId,presetName:this.presetId,morphAmount:0,isRunning:!1,lifecycleState:null,audioContextState:null,telemetry:z(null,null,null),raw:null,error:null},this.handleReadyMessage=this.handleReadyMessage.bind(this),this.handleVisibilityChange=this.handleVisibilityChange.bind(this),u.addEventListener?.("message",this.handleReadyMessage),u.document?.addEventListener?.("visibilitychange",this.handleVisibilityChange),this.emitStatus("booting")}emitStatus(e,s={}){if(!this.destroyed){this.phase=e,this.snapshot={...this.snapshot,phase:e,error:this.error,...s};try{this.onStatus?.({phase:e,presetId:this.snapshot.presetId,presetName:this.snapshot.presetName,isRunning:this.snapshot.isRunning,error:this.error,snapshot:this.snapshot})}catch{}}}getBridge(){const e=[];try{e.push(this.engineFrame.contentWindow)}catch{}e.push(u);for(const s of e){let r;try{r=s?.__pointCloudsKesshoBridge}catch{continue}if(r&&typeof r.start=="function"&&typeof r.stop=="function"&&typeof r.getStatus=="function"&&typeof r.listPresets=="function"&&typeof r.setMorph=="function")return r}return null}handleReadyMessage(e){if(e?.data?.type==="point-clouds:kessho-ready"){try{if(e.source&&e.source!==this.engineFrame.contentWindow&&e.source!==u)return}catch{return}this.resolveBridge()}}resolveBridge(){if(this.destroyed)return null;const e=this.getBridge();return e?(this.bridge=e,e):null}ensureFrameSource(){if(u.location?.protocol==="file:"){if(ce())return;const r=de();if(r){this.engineFrame.src=r;return}if(!("srcdoc"in this.engineFrame))throw new Error("The Product Core engine iframe does not support srcdoc for direct file playback.");this.engineFrame.srcdoc=me();return}let e="";try{e=this.engineFrame.getAttribute?.("src")||this.engineFrame.src||""}catch{e=""}if(e&&e!=="about:blank")return;const s=ue();if(!s)throw new Error("Unable to resolve the Product Core engine iframe URL.");this.engineFrame.src=s}boot(){return this.destroyed?Promise.reject(new Error("Point Clouds controller has been destroyed.")):this.bridge||this.resolveBridge()?(this.emitStatus("ready"),Promise.resolve(this)):this.bootPromise?this.bootPromise:(this.error=null,this.emitStatus("booting"),this.bootPromise=new Promise((e,s)=>{let r=!1,n=null;const a=(l,d)=>{r||(r=!0,this.bootDeadline!==null&&clearTimeout(this.bootDeadline),n!==null&&clearInterval(n),this.frameLoadHandler&&(this.engineFrame.removeEventListener?.("load",this.frameLoadHandler),this.frameLoadHandler=null),this.bootDeadline=null,this.bootPromise=null,l?(this.error=I(l),this.emitStatus("failed"),s(l)):(this.error=null,this.emitStatus("ready"),e(d)))};try{this.ensureFrameSource()}catch(l){a(l);return}const h=()=>{this.resolveBridge()&&a(null,this)};n=setInterval(h,80),this.bootDeadline=setTimeout(()=>{a(new Error(u.location?.protocol==="file:"?"Product Core embedded file:// bundle could not boot. Regenerate point-clouds/shared/embedded assets and inspect the iframe console.":"Timed out waiting for the Product Core engine iframe."))},J),this.frameLoadHandler=h,this.engineFrame.addEventListener?.("load",this.frameLoadHandler),h()}),this.bootPromise)}readStatus(){const e=this.resolveBridge()??this.bridge;if(!e)throw new Error("Product Core engine is not ready.");const s=e.getStatus();if(!s||typeof s!="object")throw new Error("Product Core returned an invalid status.");return s}updateSnapshot(e,s=null,r=!0){const n=s??z(e,this.previousTelemetry,this.previousTelemetryAt);if(this.previousTelemetry=n,this.previousTelemetryAt=n.capturedAt,this.snapshot={...this.snapshot,presetId:typeof e?.presetId=="string"?e.presetId:this.snapshot.presetId,presetName:typeof e?.presetName=="string"?e.presetName:this.snapshot.presetName,morphAmount:p(e?.morphAmount),isRunning:e?.isRunning===!0,lifecycleState:e?.lifecycleState??null,audioContextState:e?.audioContextState??null,telemetry:n,raw:e},r)try{this.onTelemetry?.(n,this.snapshot)}catch{}return this.snapshot}pollTelemetry(){if(!(this.destroyed||this.phase!=="playing")&&!u.document?.hidden){try{const e=this.readStatus();this.updateSnapshot(e)}catch(e){this.error=I(e),this.emitStatus("failed"),this.stopTelemetryPolling();return}this.telemetryTimer=setTimeout(()=>{this.telemetryTimer=null,this.pollTelemetry()},te)}}startTelemetryPolling(){this.telemetryTimer!==null||this.destroyed||this.phase!=="playing"||this.pollTelemetry()}stopTelemetryPolling(){this.telemetryTimer!==null&&(clearTimeout(this.telemetryTimer),this.telemetryTimer=null)}handleVisibilityChange(){this.destroyed||(u.document?.hidden?this.stopTelemetryPolling():this.phase==="playing"&&this.startTelemetryPolling())}async waitForStatus(e,s,r){const n=Date.now()+s;for(;!this.destroyed&&Date.now()<=n;){const a=this.readStatus();if(this.updateSnapshot(a),e(a))return a;await ae(40)}throw new Error(`Product Core did not reach ${r}.`)}async start(){if(this.destroyed)throw new Error("Point Clouds controller has been destroyed.");return this.phase==="playing"?this.getSnapshot():this.startPromise?this.startPromise:(this.startPromise=(async()=>{!this.bridge&&!this.resolveBridge()&&await this.boot();const e=this.resolveBridge()??this.bridge;if(!e)throw new Error("Product Core engine is not ready.");if(!V(e.listPresets()).some(a=>a.id===this.presetId))throw new Error(`Unknown Point Clouds preset: ${this.presetId}`);this.error=null,this.emitStatus("loading");const r=e.start(this.presetId,this.overrides);await Promise.resolve(r);const n=await this.waitForStatus(oe,X,"a running transport/audio context");return this.error=null,this.updateSnapshot(n),this.emitStatus("playing"),this.startTelemetryPolling(),this.getSnapshot()})().catch(e=>{throw this.error=I(e),this.stopTelemetryPolling(),this.emitStatus("failed"),e}).finally(()=>{this.startPromise=null}),this.startPromise)}async stop(){return this.destroyed?this.getSnapshot():this.stopPromise?this.stopPromise:(this.stopPromise=(async()=>{if(this.startPromise)try{await this.startPromise}catch{}const e=this.resolveBridge()??this.bridge;if(!e)return this.stopTelemetryPolling(),this.emitStatus("ready"),this.getSnapshot();this.error=null,this.emitStatus("stopping");const s=e.stop();await Promise.resolve(s);const r=await this.waitForStatus(le,ee,"a stopped Product Core runtime");return this.stopTelemetryPolling(),this.error=null,this.updateSnapshot(r),this.emitStatus("ready"),this.getSnapshot()})().catch(e=>{throw this.error=I(e),this.emitStatus("failed"),e}).finally(()=>{this.stopPromise=null}),this.stopPromise)}toggle(){return this.phase==="playing"?this.stop():this.start()}setMorph(e){if(!Number.isFinite(Number(e))||Number(e)<0||Number(e)>1)throw new RangeError("Point Clouds morph must be a finite number between 0 and 1.");const s=this.resolveBridge()??this.bridge;if(!s)throw new Error("Product Core engine is not ready.");return s.setMorph(Number(e)),this.snapshot={...this.snapshot,morphAmount:Number(e)},this.snapshot.morphAmount}listPresets(){const e=this.resolveBridge()??this.bridge;return e?V(e.listPresets()):[]}getSnapshot(){if(!this.destroyed)try{(this.resolveBridge()??this.bridge)&&this.updateSnapshot(this.readStatus(),null,!1)}catch{}return this.snapshot}destroy(){if(this.destroyed)return;const e=this.resolveBridge()??this.bridge;if(e&&this.snapshot.isRunning)try{e.stop()}catch{}this.destroyed=!0,this.stopTelemetryPolling(),this.bootDeadline!==null&&clearTimeout(this.bootDeadline),this.bootDeadline=null,this.frameLoadHandler&&(this.engineFrame.removeEventListener?.("load",this.frameLoadHandler),this.frameLoadHandler=null),u.removeEventListener?.("message",this.handleReadyMessage),u.document?.removeEventListener?.("visibilitychange",this.handleVisibilityChange),this.onStatus=null,this.onTelemetry=null,this.bridge=null}}u.PointCloudsKessho={inputLibrary:B,getInputLibrary(){return B},create(t){return new pe(t)}}})(typeof window<"u"?window:globalThis);
+    }
+  </script>
+  <canvas id="field" aria-label="An interactive field of points forming the Point Clouds mark"></canvas>
+  <div class="axis" aria-hidden="true"></div>
+  <div class="veil" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
+  <button class="intro-play action" id="intro-play" type="button" aria-label="Play Kessho and enter the Point Clouds field" disabled></button>
+
+  <main class="frame" id="frame">
+    <header class="topline">
+      <h1 class="eyebrow"><span></span>Point Clouds / Helsinki</h1>
+      <div class="coordinates" aria-live="polite"><span id="coord-x">60.1699° N</span> &nbsp;/&nbsp; <span id="coord-y">24.9384° E</span></div>
+      <button class="text-button action" id="about-open" type="button" aria-haspopup="dialog">Field notes</button>
+    </header>
+
+    <section class="identity" aria-label="Point Clouds">
+      <p class="descriptor">Generative ambient / field recordings / rhythmic systems — preserving a moment by letting it move</p>
+    </section>
+
+    <footer class="baseline">
+      <div class="scene-index"><b id="scene-number">01</b> / 04&nbsp;&nbsp; <span id="scene-name">PHASE PORTRAIT</span></div>
+      <div class="hint">Scroll to reform / drag to disturb</div>
+      <button class="audio action" id="audio-toggle" type="button" data-active="false" aria-pressed="false" aria-label="Start Kessho String Waves preset">
+        <span class="audio-state">Kessho / String Waves / <span id="audio-label">booting</span></span>
+        <span class="meter" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </span>
+      </button>
+    </footer>
+  </main>
+
+  <aside class="info" id="info" role="dialog" aria-modal="true" aria-labelledby="info-title">
+    <div id="info-backdrop"></div>
+    <div class="info-panel">
+      <header class="info-head">
+        <p class="info-kicker">Artist / system / organism</p>
+        <button class="close action" id="about-close" type="button">Close ×</button>
+      </header>
+      <div class="info-copy">
+        <h2 id="info-title">Sound as<br><i>weather.</i></h2>
+        <p class="lede">Point Clouds builds environments from generative ambient, recordings of lived places, and the elastic pulse of a jazz drummer. Data becomes form; form returns as sound.</p>
+      </div>
+      <div class="cv">
+        <div>
+          <h3>Current work</h3>
+          <p>Kessho — a generative instrument for music that never resolves the same way twice.</p>
+        </div>
+        <div>
+          <h3>Practice</h3>
+          <p>Composition<br>Field recording<br>Generative systems<br>Live performance</p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="cursor" id="cursor" aria-hidden="true"></div>
+
+  <noscript><div class="noscript">This field is alive in the browser.<br>Please enable JavaScript to enter.</div></noscript>
+
+  <script>
+  (() => {
+    "use strict";
+
+    const canvas = document.getElementById("field");
+    const gl = canvas.getContext("webgl2", {
+      alpha: false,
+      antialias: false,
+      depth: false,
+      stencil: false,
+      powerPreference: "high-performance",
+      preserveDrawingBuffer: false
+    });
+
+    if (!gl) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        canvas.width = innerWidth;
+        canvas.height = innerHeight;
+        ctx.fillStyle = "#050505";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#e7e5de";
+        ctx.font = "11px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("WEBGL 2 IS REQUIRED TO ENTER THIS FIELD", canvas.width / 2, canvas.height / 2);
+      }
+      return;
+    }
+
+    const mobile = matchMedia("(max-width: 760px), (pointer: coarse)").matches;
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const count = reduced ? 9000 : (mobile ? 15000 : 30000);
+    const sceneNames = ["PHASE PORTRAIT", "STRING / WAVE", "RHYTHM BODY", "SPATIAL INDEX"];
+
+    const vertexSource = `#version 300 es
+      precision highp float;
+      in vec4 aSeed;
+      in vec2 aWordTarget;
+      uniform vec2 uResolution;
+      uniform vec2 uPointer;
+      uniform float uTime;
+      uniform float uFrom;
+      uniform float uTo;
+      uniform float uMorph;
+      uniform float uImpact;
+      uniform float uAudio;
+      uniform float uIntroTime;
+      uniform float uIntroRelease;
+      uniform vec3 uWorldRotation;
+      uniform vec3 uWorldVelocity;
+      out float vAlpha;
+      out float vHeat;
+      out float vDepth;
+      out float vDepthFade;
+
+      float hash(float n) { return fract(sin(n) * 43758.5453123); }
+      vec3 rotX(vec3 p, float a) {
+        float s = sin(a), c = cos(a);
+        return vec3(p.x, c*p.y-s*p.z, s*p.y+c*p.z);
+      }
+      vec3 rotY(vec3 p, float a) {
+        float s = sin(a), c = cos(a);
+        return vec3(c*p.x+s*p.z, p.y, -s*p.x+c*p.z);
+      }
+      vec3 rotZ(vec3 p, float a) {
+        float s = sin(a), c = cos(a);
+        return vec3(c*p.x-s*p.y, s*p.x+c*p.y, p.z);
+      }
+
+      float easeOut(float t) {
+        t = clamp(t, 0.0, 1.0);
+        return 1.0 - pow(1.0-t, 3.0);
+      }
+
+      vec3 breatheVolume(vec3 p, vec4 s) {
+        float inhale = sin(uTime*.74);
+        float particleBreath = sin(uTime*.58 + s.x*6.2831853 + s.w*1.7);
+        p.xy *= 1.0 + inhale*.018;
+        p.y += inhale*.025;
+        p.z += particleBreath*.032 + inhale*(s.z-.5)*.025;
+        p += normalize(p + vec3(.0003)) * particleBreath*.006;
+        return p;
+      }
+
+      vec3 logo(float t, float lane, float dust) {
+        vec2 p;
+        if (t < .27) {
+          float q = t / .27;
+          float a = 3.14159265 - q * 3.14159265;
+          p = vec2(-.86 + .61*cos(a), .14 + .64*sin(a));
+        } else if (t < .58) {
+          float q = (t-.27)/.31;
+          p = vec2(mix(-.25,.54,q), .14);
+        } else if (t < .65) {
+          float q = (t-.58)/.07;
+          p = vec2(.54, mix(.14,-.10,q));
+        } else if (t < .91) {
+          float q = (t-.65)/.26;
+          float a = 3.14159265 + q * 3.14159265;
+          p = vec2(1.01 + .47*cos(a), -.10 + .48*sin(a));
+        } else {
+          float q = (t-.91)/.09;
+          p = vec2(1.48, mix(-.10,.14,q));
+        }
+        float thickness = (lane-.5) * (.07 + .06*dust);
+        vec2 tangent = vec2(1., 0.);
+        if (t < .27) {
+          float a = 3.14159265 - (t/.27)*3.14159265;
+          tangent = normalize(vec2(sin(a), -cos(a)));
+        } else if (t > .65 && t < .91) {
+          float a = 3.14159265 + ((t-.65)/.26)*3.14159265;
+          tangent = normalize(vec2(-sin(a), cos(a)));
+        }
+        vec2 normal = vec2(-tangent.y, tangent.x);
+        p += normal * thickness;
+        return vec3(p.x, p.y, (dust-.5)*.18);
+      }
+
+      int glyphRow(int glyph, int row) {
+        if (glyph == 0) {
+          if (row == 0 || row == 6) return 14;
+          return 17;
+        }
+        if (glyph == 1) {
+          if (row == 0 || row == 6) return 31;
+          return 4;
+        }
+        if (glyph == 2) {
+          if (row == 0) return 17;
+          if (row == 1) return 25;
+          if (row == 2) return 21;
+          if (row == 3) return 19;
+          return 17;
+        }
+        if (glyph == 3) return row == 0 ? 31 : 4;
+        if (glyph == 4) return row == 6 ? 31 : 16;
+        if (glyph == 5) return row == 6 ? 14 : 17;
+        if (glyph == 6) {
+          if (row == 0 || row == 6) return 30;
+          return 17;
+        }
+        if (row == 0) return 15;
+        if (row == 1 || row == 2) return 16;
+        if (row == 3) return 14;
+        if (row == 4 || row == 5) return 1;
+        return 30;
+      }
+
+      bool glyphCell(int glyph, int cell) {
+        int row = cell / 5;
+        int col = cell - row * 5;
+        int bits = glyphRow(glyph, row);
+        return ((bits >> (4-col)) & 1) == 1;
+      }
+
+      vec3 glyphPoint(int glyph, float t, float lane, float dust) {
+        int total = 0;
+        for (int cell = 0; cell < 35; cell++) {
+          if (glyphCell(glyph, cell)) total++;
+        }
+        int target = min(total-1, int(floor(t*float(total))));
+        int selected = 0;
+        int seen = 0;
+        for (int cell = 0; cell < 35; cell++) {
+          if (glyphCell(glyph, cell)) {
+            if (seen == target) selected = cell;
+            seen++;
+          }
+        }
+        int row = selected / 5;
+        int col = selected - row * 5;
+        float local = fract(t*float(total));
+        return vec3(
+          (float(col)-2.0)*.060 + (local-.5)*.052,
+          (3.0-float(row))*.060 + (lane-.5)*.046,
+          (dust-.5)*.075
+        );
+      }
+
+      int wordGlyph(bool top, int index) {
+        if (top) {
+          if (index == 0) return 0;
+          if (index == 1) return 1;
+          if (index == 2) return 2;
+          return 3;
+        }
+        if (index == 0) return 4;
+        if (index == 1) return 0;
+        if (index == 2) return 5;
+        if (index == 3) return 6;
+        return 7;
+      }
+
+      vec3 wordLine(vec4 s, bool top) {
+        return vec3(aWordTarget, .50 + (s.z-.5)*.28);
+      }
+
+      vec3 pMark(vec4 s) {
+        float t = s.x;
+        vec2 p;
+        vec2 tangent;
+        if (t < .64) {
+          float q = t/.64;
+          float a = 1.5707963 - q*3.14159265;
+          p = vec2(-1.00 + .23*cos(a), .46 + .23*sin(a));
+          tangent = normalize(vec2(sin(a), -cos(a)));
+        } else {
+          float q = (t-.64)/.36;
+          p = vec2(-1.00, mix(.23, -.23, q));
+          tangent = vec2(0.0, -1.0);
+        }
+        vec2 normal = vec2(-tangent.y, tangent.x);
+        p += normal*(s.y-.5)*.055;
+        return vec3(p, .50 + (s.z-.5)*.32);
+      }
+
+      vec3 cMark(vec4 s) {
+        float a = mix(1.5707963, 4.7123890, s.x);
+        vec2 p = vec2(-1.00 + .23*cos(a), -.62 + .23*sin(a));
+        vec2 tangent = normalize(vec2(-sin(a), cos(a)));
+        vec2 normal = vec2(-tangent.y, tangent.x);
+        p += normal*(s.y-.5)*.055;
+        return vec3(p, .50 + (s.z-.5)*.32);
+      }
+
+      vec3 compactMark(vec4 s) {
+        if (s.w < .22) return pMark(s) + vec3(1.0, 0.0, 0.0);
+        if (s.w < .40) return cMark(s) + vec3(1.0, .16, 0.0);
+        if (s.w < .68) return pMark(s) + vec3(1.0, 0.0, 0.0);
+        return cMark(s) + vec3(1.0, .16, 0.0);
+      }
+
+      vec3 stackedMark(vec4 s, float separation) {
+        float topY = .08*separation;
+        float bottomY = .16 - .08*separation;
+        if (s.w < .22) return pMark(s) + vec3(1.0, topY, 0.0);
+        if (s.w < .40) return cMark(s) + vec3(1.0, bottomY, 0.0);
+        if (s.w < .68) return pMark(s) + vec3(1.0, topY, 0.0);
+        return cMark(s) + vec3(1.0, bottomY, 0.0);
+      }
+
+      vec3 lockup(vec4 s, float expansion) {
+        float markX = mix(1.0, .65, expansion);
+        if (s.w < .22) {
+          vec3 mark = pMark(s) + vec3(markX, .08, 0.0);
+          float stemBaseline = -.15;
+          float compressedY = stemBaseline + (mark.y-stemBaseline)*.80;
+          mark.y = mix(mark.y, compressedY, expansion);
+          return mark;
+        }
+        if (s.w < .40) return cMark(s) + vec3(markX, .08, 0.0);
+        vec3 origin = stackedMark(s, 1.0);
+        vec3 word = wordLine(s, s.w < .68) + vec3(.65, 0.0, 0.0);
+        return mix(origin, word, expansion);
+      }
+
+      vec3 playMark(vec4 s) {
+        float root = sqrt(s.x);
+        float b = s.y*root;
+        vec2 left = vec2(-.33, -.48);
+        vec2 top = vec2(-.33, .48);
+        vec2 tip = vec2(.52, 0.0);
+        vec2 p = mix(left, tip, root);
+        p = mix(p, mix(top, tip, root), b/max(root,.0001));
+        p += (vec2(fract(s.w*47.0), fract(s.z*71.0))-.5)*.025;
+        return vec3(p, (s.z-.5)*.34);
+      }
+
+      vec3 fitIntroTitle(vec3 p) {
+        // The title sits forward in depth; counter its perspective growth in XY.
+        p.xy *= .86;
+        return p;
+      }
+
+      vec3 compactFinalTitle(vec3 p, float amount) {
+        // Preserve Z depth while concentrating the completed lockup in the frame.
+        p.xy *= mix(1.0, .80, clamp(amount, 0.0, 1.0));
+        return p;
+      }
+
+      vec3 introShape(float time, vec4 s) {
+        vec3 vertical = fitIntroTitle(compactMark(s));
+        if (time < 8.35) return vertical;
+        if (time < 10.35) {
+          float separation = smoothstep(0.0, 1.0, (time-8.35)/2.0);
+          return fitIntroTitle(stackedMark(s, separation));
+        }
+        if (time < 11.95) {
+          float expansion = smoothstep(0.0, 1.0, (time-10.35)/1.60);
+          return compactFinalTitle(fitIntroTitle(lockup(s, expansion)), expansion);
+        }
+        vec3 words = compactFinalTitle(fitIntroTitle(lockup(s, 1.0)), 1.0);
+        if (time < 14.95) return words;
+        if (time < 16.65) {
+          float reform = easeOut((time-14.95)/1.70);
+          return mix(words, playMark(s), reform);
+        }
+        return playMark(s);
+      }
+
+      vec3 shape(float id, vec4 s) {
+        float t = s.x, lane = s.y, dust = s.z, ring = s.w;
+        if (id < .5) {
+          return logo(t, lane, dust) * vec3(1.26, 1.24, 2.2);
+        }
+        if (id < 1.5) {
+          if (lane < .42) {
+            vec3 l = logo(t, fract(lane*2.38), dust) * vec3(1.18, 1.12, 1.5);
+            l.z += sin(t*28.0+ring*6.28)*.06;
+            return l;
+          }
+          float x = mix(-1.78, 1.78, t);
+          float envelope = smoothstep(0., .15, t) * smoothstep(1., .85, t);
+          float y = sin(t*12.566+uTime*.24) * .63 * envelope;
+          return vec3(x, y + (lane-.7)*.05, (dust-.5)*.34);
+        }
+        if (id < 2.5) {
+          float beat = floor(t*16.0);
+          float q = fract(t*16.0);
+          float a = beat * 2.399963 + ring*1.2;
+          float radius = .16 + beat/16.0*1.22;
+          float kick = exp(-q*9.0);
+          vec3 p = vec3(cos(a)*radius, (beat-7.5)*.073, sin(a)*radius);
+          p += vec3(cos(a), .25*sin(a*2.0), sin(a)) * kick * .27;
+          p += (vec3(lane,dust,ring)-.5)*.09;
+          return p;
+        }
+        float phi = acos(1.0 - 2.0*t);
+        float theta = 6.2831853 * (t * 233.0 + ring);
+        float r = .72 + .34*(dust-.5) + .08*sin(theta*5.0+uTime*.2);
+        vec3 p = vec3(r*sin(phi)*cos(theta), r*cos(phi), r*sin(phi)*sin(theta));
+        p.x *= 1.46;
+        p += .24*vec3(
+          sin(p.y*5.0+uTime*.12),
+          sin(p.z*4.0-uTime*.1),
+          sin(p.x*4.0+uTime*.08)
+        );
+        return p;
+      }
+
+      void main() {
+        vec3 from = shape(uFrom, aSeed);
+        vec3 to = shape(uTo, aSeed);
+        float e = uMorph*uMorph*(3.0-2.0*uMorph);
+        vec3 field = mix(from, to, e);
+        vec3 intro = introShape(min(uIntroTime, 17.4), aSeed);
+        float release = uIntroRelease > .5 ? smoothstep(17.4, 18.95, uIntroTime) : 0.0;
+        vec3 p = mix(intro, field, release);
+        float burst = sin(release*3.14159265) * (.18 + aSeed.z*.32);
+        p += normalize(intro + vec3(.001))*burst;
+
+        float phase = aSeed.w*6.2831853;
+        float drift = sin(uTime*(.12+aSeed.z*.12)+phase) * .018;
+        p += vec3(
+          sin(p.y*4.0+uTime*.11+phase),
+          sin(p.x*3.0-uTime*.09+phase),
+          cos((p.x+p.y)*3.0+uTime*.07)
+        ) * drift;
+        p = breatheVolume(p, aSeed);
+
+        vec2 mouse = (uPointer-.5) * vec2(uResolution.x/uResolution.y, 1.0) * 2.2;
+        vec2 delta = p.xy - mouse;
+        float proximity = exp(-dot(delta,delta)*2.4) * release;
+        p.xy += normalize(delta + .0001) * proximity * (.10 + uImpact*.28);
+        p.z += proximity * (.28 + uAudio*.85);
+
+        float titleToPlay = smoothstep(14.95, 16.65, uIntroTime);
+        float introPresence = 1.0 - release;
+        vec3 rotationPivot = vec3(
+          0.0,
+          sin(uTime*.74) * .025 * introPresence,
+          .50 * (1.0-titleToPlay) * introPresence
+        );
+        float angularSpeed = min(length(uWorldVelocity), 8.0);
+        vec3 angularAxis = normalize(uWorldVelocity + vec3(.0001, .0002, .0003));
+        vec3 radial = normalize(p - rotationPivot + vec3(.0003));
+        vec3 lagDirection = normalize(cross(angularAxis, radial) + vec3(.0002));
+        float lagPhase = uTime*(7.0 + aSeed.z*3.0) - aSeed.x*4.0 + phase;
+        float elasticLag = sin(lagPhase) * angularSpeed * (.004 + aSeed.z*.015);
+        p += lagDirection * elasticLag;
+        p += angularAxis * cos(lagPhase*.73) * elasticLag * .22;
+
+        p -= rotationPivot;
+        p = rotX(p, uWorldRotation.x);
+        p = rotY(p, uWorldRotation.y);
+        p = rotZ(p, uWorldRotation.z);
+        p += rotationPivot;
+
+        float layerFade = mix(.24, 1.0, smoothstep(.04, .96, aSeed.z));
+        float spatialFade = mix(.62, 1.0, smoothstep(-.55, .72, p.z));
+        vDepthFade = layerFade * spatialFade;
+
+        float camera = 3.65;
+        float perspective = camera / (camera - p.z);
+        vec2 projected = p.xy * perspective;
+        projected.x /= max(1.0, uResolution.x/uResolution.y);
+        gl_Position = vec4(projected, 0.0, 1.0);
+
+        float twinkle = .5 + .5*sin(uTime*(.8+aSeed.w*2.0)+phase*8.0);
+        float size = mix(.62, 2.25, pow(aSeed.z, 4.0)) * perspective;
+        size += proximity*2.5 + uAudio*(.5+aSeed.w);
+        gl_PointSize = min(size * min(uResolution.x/1080.0, 1.45) * 1.32, 7.0);
+        float breathGlow = .94 + .06*(.5 + .5*sin(uTime*.74));
+        vAlpha = (.22 + .78*pow(aSeed.z,.62)) * (.72 + .28*twinkle) * breathGlow;
+        vHeat = step(.982, hash(floor(uTime*3.0)+aSeed.w*191.0)) + proximity*uImpact;
+        vDepth = perspective;
+      }`;
+
+    const fragmentSource = `#version 300 es
+      precision highp float;
+      in float vAlpha;
+      in float vHeat;
+      in float vDepth;
+      in float vDepthFade;
+      out vec4 outColor;
+      void main() {
+        vec2 q = gl_PointCoord-.5;
+        float d = length(q);
+        float core = smoothstep(.5,.06,d);
+        float halo = exp(-d*7.0)*.42;
+        vec3 ivory = vec3(.91,.90,.86);
+        vec3 red = vec3(1.0,.11,.025);
+        vec3 color = mix(ivory, red, clamp(vHeat,0.0,1.0));
+        float alpha = (core+halo) * vAlpha * vDepthFade * clamp(vDepth*.72,.55,1.2);
+        if (alpha < .018) discard;
+        outColor = vec4(color*alpha, alpha);
+      }`;
+
+    function shader(type, source) {
+      const item = gl.createShader(type);
+      gl.shaderSource(item, source);
+      gl.compileShader(item);
+      if (!gl.getShaderParameter(item, gl.COMPILE_STATUS)) {
+        throw new Error(gl.getShaderInfoLog(item) || "Shader compilation failed");
+      }
+      return item;
+    }
+
+    const program = gl.createProgram();
+    gl.attachShader(program, shader(gl.VERTEX_SHADER, vertexSource));
+    gl.attachShader(program, shader(gl.FRAGMENT_SHADER, fragmentSource));
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      throw new Error(gl.getProgramInfoLog(program) || "Shader linking failed");
+    }
+
+    const seeds = new Float32Array(count * 4);
+    let randomState = 0x9e3779b9;
+    const rand = () => {
+      randomState ^= randomState << 13;
+      randomState ^= randomState >>> 17;
+      randomState ^= randomState << 5;
+      return (randomState >>> 0) / 4294967296;
+    };
+    for (let i = 0; i < seeds.length; i++) seeds[i] = rand();
+
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, seeds, gl.STATIC_DRAW);
+    const seedLoc = gl.getAttribLocation(program, "aSeed");
+    gl.enableVertexAttribArray(seedLoc);
+    gl.vertexAttribPointer(seedLoc, 4, gl.FLOAT, false, 0, 0);
+
+    const wordTargets = new Float32Array(count * 2);
+    const wordBuffer = gl.createBuffer();
+    const wordLoc = gl.getAttribLocation(program, "aWordTarget");
+
+    function sampleWord(text, maxWidth, targetHeight, centerY) {
+      const surface = document.createElement("canvas");
+      surface.width = 1200;
+      surface.height = 280;
+      const context = surface.getContext("2d", { willReadFrequently: true });
+      context.clearRect(0, 0, surface.width, surface.height);
+      context.fillStyle = "#fff";
+      context.font = '400 190px "Poiret One", sans-serif';
+      context.textBaseline = "alphabetic";
+      context.fillText(text, 20, 215);
+      const pixels = context.getImageData(0, 0, surface.width, surface.height);
+      const sampled = [];
+      let minX = surface.width, maxX = 0, minY = surface.height, maxY = 0;
+      for (let y = 0; y < surface.height; y += 2) {
+        for (let x = 0; x < surface.width; x += 2) {
+          if (pixels.data[(y * surface.width + x) * 4 + 3] < 72) continue;
+          sampled.push([x, y]);
+          minX = Math.min(minX, x);
+          maxX = Math.max(maxX, x);
+          minY = Math.min(minY, y);
+          maxY = Math.max(maxY, y);
+        }
+      }
+      const sourceWidth = Math.max(1, maxX - minX);
+      const sourceHeight = Math.max(1, maxY - minY);
+      const scale = Math.min(maxWidth / sourceWidth, targetHeight / sourceHeight);
+      const renderedHeight = sourceHeight * scale;
+      return sampled.map(([x, y]) => [
+        -.77 + (x - minX) * scale,
+        centerY + renderedHeight*.5 - (y - minY) * scale,
+      ]);
+    }
+
+    function rebuildWordTargets() {
+      const top = sampleWord("oint", 1.18, .32, .03);
+      const bottom = sampleWord("louds", 1.44, .32, -.61);
+      let topIndex = 0;
+      let bottomIndex = 0;
+      for (let i = 0; i < count; i++) {
+        const group = seeds[i * 4 + 3];
+        let target = [0, 0];
+        if (group >= .40 && group < .68 && top.length) {
+          target = top[(topIndex * 131) % top.length];
+          topIndex++;
+        } else if (group >= .68 && bottom.length) {
+          target = bottom[(bottomIndex * 131) % bottom.length];
+          bottomIndex++;
+        }
+        wordTargets[i * 2] = target[0];
+        wordTargets[i * 2 + 1] = target[1];
+      }
+      gl.bindBuffer(gl.ARRAY_BUFFER, wordBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, wordTargets, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(wordLoc);
+      gl.vertexAttribPointer(wordLoc, 2, gl.FLOAT, false, 0, 0);
+      document.documentElement.dataset.poiretFont = document.fonts?.check('400 72px "Poiret One"') ? "available" : "missing";
+    }
+
+    rebuildWordTargets();
+    document.fonts?.ready.then(rebuildWordTargets).catch(() => {});
+
+    const uniforms = {};
+    ["uResolution","uPointer","uTime","uFrom","uTo","uMorph","uImpact","uAudio","uIntroTime","uIntroRelease","uWorldRotation","uWorldVelocity"].forEach(name => {
+      uniforms[name] = gl.getUniformLocation(program, name);
+    });
+
+    gl.useProgram(program);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.disable(gl.DEPTH_TEST);
+
+    class SpatialPhysics {
+      constructor({ reducedMotion = false } = {}) {
+        const spinSign = Math.random() < .5 ? -1 : 1;
+        this.reducedMotion = reducedMotion;
+        this.turns = spinSign * (2 + Math.floor(Math.random() * 2));
+        this.landingZ = this.turns * Math.PI * 2;
+        this.phaseX = Math.random() * Math.PI * 2;
+        this.phaseY = Math.random() * Math.PI * 2;
+        this.rotation = { x: 0, y: 0, z: -Math.PI * .5 };
+        this.velocity = { x: 0, y: 0, z: 0 };
+        this.target = { x: 0, y: 0, z: this.landingZ };
+        this.dragOffset = { x: 0, y: 0, z: 0 };
+        this.dragging = false;
+        this.pointerVelocity = { x: 0, y: 0 };
+        this.lastPointerX = .5;
+        this.lastPointerY = .5;
+        this.lastPointerTime = performance.now();
+      }
+
+      notePointer(x, y, now = performance.now()) {
+        const dt = Math.max(.008, Math.min(.08, (now - this.lastPointerTime) / 1000));
+        const rawX = Math.max(-3.2, Math.min(3.2, (x - this.lastPointerX) / dt));
+        const rawY = Math.max(-3.2, Math.min(3.2, (y - this.lastPointerY) / dt));
+        this.pointerVelocity.x = this.pointerVelocity.x * .58 + rawX * .42;
+        this.pointerVelocity.y = this.pointerVelocity.y * .58 + rawY * .42;
+        this.lastPointerX = x;
+        this.lastPointerY = y;
+        this.lastPointerTime = now;
+      }
+
+      impulse(x = 0, y = 0, z = 0) {
+        this.velocity.x += x;
+        this.velocity.y += y;
+        this.velocity.z += z;
+      }
+
+      beginDrag() {
+        this.dragging = true;
+      }
+
+      drag(deltaX, deltaY) {
+        this.dragOffset.x = Math.max(-1.15, Math.min(1.15, this.dragOffset.x - deltaY * 2.4));
+        this.dragOffset.y = Math.max(-1.35, Math.min(1.35, this.dragOffset.y + deltaX * 3.0));
+        this.dragOffset.z = Math.max(-.48, Math.min(.48, this.dragOffset.z + (deltaX - deltaY) * .6));
+        this.impulse(-deltaY * 9.0, deltaX * 9.0, (deltaX - deltaY) * 2.4);
+      }
+
+      endDrag() {
+        this.dragging = false;
+      }
+
+      advance(dt, time, isLive, pointer) {
+        const target = this.target;
+        target.x = 0;
+        target.y = 0;
+        target.z = this.landingZ;
+        let stiffness = 12;
+        let damping = 4.8;
+        let pointerTorque = 0;
+
+        if (this.reducedMotion) {
+          this.rotation.x = 0;
+          this.rotation.y = 0;
+          this.rotation.z = this.landingZ;
+          this.velocity.x = this.velocity.y = this.velocity.z = 0;
+          return;
+        }
+
+        if (!isLive && time < 3.05) {
+          target.x = (pointer.y - .5) * -.18 + Math.sin(time*.62) * .035;
+          target.y = (pointer.x - .5) * .24 + Math.sin(time*.47 + 1.1) * .05;
+          target.z = -Math.PI * .5 + (pointer.x + pointer.y - 1) * .045;
+          stiffness = 10;
+          damping = 5.2;
+          pointerTorque = .16;
+        } else if (!isLive && time < 5.55) {
+          const q = Math.max(0, Math.min(1, (time - 3.05) / 2.5));
+          const arc = Math.sin(q * Math.PI);
+          const tilt = Math.pow(arc, .82);
+          const travel = q * q * q * (q * (q * 6 - 15) + 10);
+          const leanX = Math.cos(this.phaseX);
+          const leanY = Math.sin(this.phaseX);
+          target.x = tilt * (leanX * .92 + (pointer.y - .5) * .72);
+          target.y = tilt * (leanY * .92 + (pointer.x - .5) * .88);
+          target.z = -Math.PI * .5 + (this.landingZ + Math.PI * .5) * travel
+            + (pointer.x + pointer.y - 1) * arc * .08;
+          stiffness = 18 - arc * 3.5;
+          damping = 7.4 - arc * 3.6;
+          pointerTorque = .16 + arc * .94;
+        } else if (!isLive) {
+          stiffness = 18;
+          damping = 7.4;
+          pointerTorque = .08;
+        } else {
+          target.x = (pointer.y - .5) * -.54 + Math.sin(time*.17) * .065;
+          target.y = (pointer.x - .5) * .72 + Math.sin(time*.13 + 1.4) * .085;
+          target.z = this.landingZ + (pointer.x + pointer.y - 1) * .16;
+          stiffness = 8.5;
+          damping = 3.7;
+          pointerTorque = 1.45;
+        }
+
+        target.x += this.dragOffset.x;
+        target.y += this.dragOffset.y;
+        target.z += this.dragOffset.z;
+
+        this.velocity.x += this.pointerVelocity.y * pointerTorque * dt;
+        this.velocity.y += this.pointerVelocity.x * pointerTorque * dt;
+        this.velocity.z += (this.pointerVelocity.x - this.pointerVelocity.y) * pointerTorque * .34 * dt;
+
+        const forceX = (target.x - this.rotation.x) * stiffness - this.velocity.x * damping;
+        const forceY = (target.y - this.rotation.y) * stiffness - this.velocity.y * damping;
+        const forceZ = (target.z - this.rotation.z) * stiffness - this.velocity.z * damping;
+        this.velocity.x = Math.max(-13, Math.min(13, this.velocity.x + forceX * dt));
+        this.velocity.y = Math.max(-13, Math.min(13, this.velocity.y + forceY * dt));
+        this.velocity.z = Math.max(-13, Math.min(13, this.velocity.z + forceZ * dt));
+        this.rotation.x += this.velocity.x * dt;
+        this.rotation.y += this.velocity.y * dt;
+        this.rotation.z += this.velocity.z * dt;
+        const pointerDecay = Math.exp(-dt * 8.5);
+        this.pointerVelocity.x *= pointerDecay;
+        this.pointerVelocity.y *= pointerDecay;
+      }
+    }
+
+    window.PointCloudsSpatialPhysics = SpatialPhysics;
+    const spatialPhysics = new SpatialPhysics({ reducedMotion: reduced });
+    window.pointCloudsSpatialPhysics = spatialPhysics;
+    const pointer = { x: .5, y: .5, tx: .5, ty: .5 };
+    const drag = { active: false, id: null, x: 0, y: 0 };
+    let scene = 0;
+    let fromScene = 0;
+    let morphStart = 0;
+    let impact = 0;
+    let wheelSum = 0;
+    let lastFrame = performance.now();
+    let startTime = lastFrame;
+    let frameRequest = 0;
+    let introComplete = false;
+    let introReady = false;
+    let introStarted = lastFrame;
+    let introReleaseStarted = 0;
+    let visible = true;
+    const INTRO_DURATION_SECONDS = 17.4;
+    const INTRO_DURATION_MS = INTRO_DURATION_SECONDS * 1000;
+    const INTRO_RELEASE_SECONDS = 1.7;
+    const introPlay = document.getElementById("intro-play");
+    const frame = document.getElementById("frame");
+
+    function showIntroPlay() {
+      if (introReady || introReleaseStarted) return;
+      introReady = true;
+      introPlay.disabled = false;
+      introPlay.classList.add("is-ready");
+    }
+
+    function skipIntro() {
+      if (introReady || introReleaseStarted) return;
+      introStarted = performance.now() - INTRO_DURATION_MS;
+      showIntroPlay();
+    }
+
+    function releaseIntro() {
+      if (introReleaseStarted) return;
+      if (!introReady) {
+        skipIntro();
+        return;
+      }
+      introReleaseStarted = performance.now();
+      introPlay.disabled = true;
+      introPlay.classList.remove("is-ready");
+      window.setTimeout(() => {
+        introComplete = true;
+        document.body.classList.add("is-live");
+        frame.classList.add("is-live");
+      }, reduced ? 20 : 1250);
+    }
+
+    function resize() {
+      const dpr = Math.min(devicePixelRatio || 1, mobile ? 1.25 : 1.6);
+      const width = Math.max(1, Math.floor(innerWidth * dpr));
+      const height = Math.max(1, Math.floor(innerHeight * dpr));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+        canvas.style.width = innerWidth + "px";
+        canvas.style.height = innerHeight + "px";
+        gl.viewport(0, 0, width, height);
+      }
+    }
+
+    function setScene(next, direction = 1) {
+      const normalized = (next + sceneNames.length) % sceneNames.length;
+      if (normalized === scene) return;
+      fromScene = scene;
+      scene = normalized;
+      morphStart = performance.now();
+      impact = Math.min(1.4, impact + .58);
+      spatialPhysics.impulse(direction * .12, direction * .2, direction * .34);
+      document.getElementById("scene-number").textContent = String(scene + 1).padStart(2, "0");
+      document.getElementById("scene-name").textContent = sceneNames[scene];
+      document.getElementById("scene-name").animate(
+        [
+          { opacity: 0, transform: `translateY(${direction * 8}px)` },
+          { opacity: 1, transform: "translateY(0)" }
+        ],
+        { duration: 520, easing: "cubic-bezier(.16,1,.3,1)" }
+      );
+    }
+
+    function render(now) {
+      if (!visible) return;
+      const dt = Math.min(.05, (now - lastFrame) / 1000);
+      lastFrame = now;
+      resize();
+      pointer.x += (pointer.tx - pointer.x) * Math.min(1, dt * 5.5);
+      pointer.y += (pointer.ty - pointer.y) * Math.min(1, dt * 5.5);
+      impact *= Math.pow(.055, dt);
+
+      const elapsed = (now - startTime) / 1000;
+      const morph = Math.min(1, (now - morphStart) / 1450);
+      const audioLevel = readAudio();
+      const introTime = introReleaseStarted
+        ? INTRO_DURATION_SECONDS + Math.min(INTRO_RELEASE_SECONDS, (now - introReleaseStarted) / 1000)
+        : Math.min(INTRO_DURATION_SECONDS, reduced ? INTRO_DURATION_SECONDS : (now - introStarted) / 1000);
+      if (!introReady && !introReleaseStarted && introTime >= INTRO_DURATION_SECONDS) showIntroPlay();
+      spatialPhysics.advance(dt, introTime, introComplete, pointer);
+
+      gl.clearColor(.018, .018, .018, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.uniform2f(uniforms.uResolution, canvas.width, canvas.height);
+      gl.uniform2f(uniforms.uPointer, pointer.x, 1 - pointer.y);
+      gl.uniform1f(uniforms.uTime, elapsed);
+      gl.uniform1f(uniforms.uFrom, fromScene);
+      gl.uniform1f(uniforms.uTo, scene);
+      gl.uniform1f(uniforms.uMorph, morph);
+      gl.uniform1f(uniforms.uImpact, impact);
+      gl.uniform1f(uniforms.uAudio, audioLevel);
+      gl.uniform1f(uniforms.uIntroTime, introComplete ? 19.1 : introTime);
+      gl.uniform1f(uniforms.uIntroRelease, introReleaseStarted ? 1 : 0);
+      gl.uniform3f(uniforms.uWorldRotation, spatialPhysics.rotation.x, spatialPhysics.rotation.y, spatialPhysics.rotation.z);
+      gl.uniform3f(uniforms.uWorldVelocity, spatialPhysics.velocity.x, spatialPhysics.velocity.y, spatialPhysics.velocity.z);
+      gl.drawArrays(gl.POINTS, 0, count);
+
+      frameRequest = requestAnimationFrame(render);
+    }
+
+    const cursor = document.getElementById("cursor");
+    let cursorX = -50, cursorY = -50, cursorTX = -50, cursorTY = -50;
+    function animateCursor() {
+      cursorX += (cursorTX - cursorX) * .19;
+      cursorY += (cursorTY - cursorY) * .19;
+      cursor.style.transform = `translate3d(${cursorX}px,${cursorY}px,0)`;
+      requestAnimationFrame(animateCursor);
+    }
+    animateCursor();
+
+    function updatePointer(clientX, clientY) {
+      const nextX = Math.max(0, Math.min(1, clientX / innerWidth));
+      const nextY = Math.max(0, Math.min(1, clientY / innerHeight));
+      spatialPhysics.notePointer(nextX, nextY);
+      pointer.tx = nextX;
+      pointer.ty = nextY;
+      cursorTX = clientX;
+      cursorTY = clientY;
+      document.documentElement.style.setProperty("--mx", clientX + "px");
+      document.documentElement.style.setProperty("--my", clientY + "px");
+      document.getElementById("coord-x").textContent = (59.7 + pointer.tx * .94).toFixed(4) + "° N";
+      document.getElementById("coord-y").textContent = (24.1 + (1-pointer.ty) * 1.68).toFixed(4) + "° E";
+    }
+
+    addEventListener("pointermove", event => {
+      updatePointer(event.clientX, event.clientY);
+      if (!drag.active || (drag.id !== null && drag.id !== event.pointerId)) return;
+      const deltaX = (event.clientX - drag.x) / Math.max(1, innerWidth);
+      const deltaY = (event.clientY - drag.y) / Math.max(1, innerHeight);
+      spatialPhysics.drag(deltaX, deltaY);
+      drag.x = event.clientX;
+      drag.y = event.clientY;
+      impact = Math.min(1.4, impact + Math.hypot(deltaX, deltaY) * 4.5);
+    }, { passive: true });
+    canvas.addEventListener("pointerdown", event => {
+      updatePointer(event.clientX, event.clientY);
+      drag.active = true;
+      drag.id = event.pointerId;
+      drag.x = event.clientX;
+      drag.y = event.clientY;
+      spatialPhysics.beginDrag();
+      impact = 1.25;
+      canvas.setPointerCapture?.(event.pointerId);
+    }, { passive: true });
+    const releaseCanvasPointer = event => {
+      if (drag.id !== null && drag.id !== event.pointerId) return;
+      drag.active = false;
+      drag.id = null;
+      spatialPhysics.endDrag();
+      if (canvas.hasPointerCapture?.(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId);
+      }
+    };
+    canvas.addEventListener("pointerup", releaseCanvasPointer, { passive: true });
+    canvas.addEventListener("pointercancel", releaseCanvasPointer, { passive: true });
+
+    addEventListener("wheel", event => {
+      event.preventDefault();
+      if (!introComplete) return;
+      wheelSum += event.deltaY;
+      impact = Math.min(1, impact + Math.abs(event.deltaY) * .002);
+      spatialPhysics.impulse(event.deltaY * .00035, 0, event.deltaY * .0008);
+      if (Math.abs(wheelSum) > 80) {
+        const direction = Math.sign(wheelSum);
+        setScene(scene + direction, direction);
+        wheelSum = 0;
+      }
+    }, { passive: false });
+
+    addEventListener("keydown", event => {
+      if (event.key === " ") {
+        event.preventDefault();
+        if (event.repeat) return;
+        if (!introComplete) {
+          if (introReady) introPlay.click();
+          else skipIntro();
+        } else {
+          audioToggle.click();
+        }
+        return;
+      }
+      if (!introComplete) return;
+      if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+        event.preventDefault();
+        setScene(scene + 1, 1);
+      }
+      if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+        event.preventDefault();
+        setScene(scene - 1, -1);
+      }
+      if (event.key.toLowerCase() === "i") openInfo();
+      if (event.key === "Escape") closeInfo();
+    });
+
+    document.querySelectorAll(".action").forEach(item => {
+      item.addEventListener("mouseenter", () => cursor.classList.add("is-action"));
+      item.addEventListener("mouseleave", () => cursor.classList.remove("is-action"));
+    });
+
+    const info = document.getElementById("info");
+    const aboutOpen = document.getElementById("about-open");
+    const aboutClose = document.getElementById("about-close");
+    function openInfo() {
+      info.classList.add("is-open");
+      aboutOpen.setAttribute("aria-expanded", "true");
+      setTimeout(() => aboutClose.focus(), 300);
+    }
+    function closeInfo() {
+      info.classList.remove("is-open");
+      aboutOpen.setAttribute("aria-expanded", "false");
+      aboutOpen.focus();
+    }
+    aboutOpen.addEventListener("click", openInfo);
+    aboutClose.addEventListener("click", closeInfo);
+    document.getElementById("info-backdrop").addEventListener("click", closeInfo);
+
+    let audioActive = false;
+    let engineReady = false;
+    let audioLevel = 0;
+    let audioTarget = 0;
+    let lastTelemetryRead = 0;
+    let engineDeadline = 0;
+    let bridgeInitTimer = 0;
+    let bridgeInitDeadline = 0;
+    let controller = null;
+    const audioToggle = document.getElementById("audio-toggle");
+    const audioLabel = document.getElementById("audio-label");
+    const engineFrame = document.getElementById("kessho-engine");
+    const meterBars = [...document.querySelectorAll(".meter i")];
+
+    function markEngineReady() {
+      if (!controller) return false;
+      engineReady = true;
+      clearTimeout(engineDeadline);
+      bridgeInitDeadline = 0;
+      if (!audioActive) audioLabel.textContent = "ready";
+      audioToggle.disabled = false;
+      audioToggle.setAttribute("aria-label", "Start Kessho String Waves preset");
+      return true;
+    }
+
+    function readableError(error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+
+    function setEngineFailure(error) {
+      engineReady = false;
+      clearTimeout(engineDeadline);
+      audioToggle.disabled = false;
+      audioLabel.textContent = "failed";
+      audioToggle.dataset.error = readableError(error);
+      audioToggle.setAttribute("aria-label", "Retry Kessho audio engine");
+      console.error("Kessho Product Core failed to boot:", error);
+    }
+
+    function handleControllerStatus(status) {
+      const phase = status && typeof status.phase === "string" ? status.phase : "booting";
+      if (phase === "failed") {
+        setEngineFailure(status.error || "Product Core bridge failed to boot");
+        return;
+      }
+      if (phase === "ready" || phase === "loading" || phase === "playing" || phase === "stopping") {
+        markEngineReady();
+      }
+      if (!audioActive && phase === "ready") audioLabel.textContent = "ready";
+    }
+
+    function bootEngine(forceReload = false) {
+      clearTimeout(engineDeadline);
+      engineReady = false;
+      audioToggle.disabled = true;
+      audioLabel.textContent = "booting";
+
+      if (forceReload && controller) {
+        controller.destroy?.();
+        controller = null;
+      }
+      const bridge = window.PointCloudsKessho;
+      if (!bridge || typeof bridge.create !== "function") {
+        if (!bridgeInitDeadline) bridgeInitDeadline = performance.now() + 6000;
+        if (performance.now() < bridgeInitDeadline && !bridgeInitTimer) {
+          bridgeInitTimer = window.setTimeout(() => {
+            bridgeInitTimer = 0;
+            bootEngine(forceReload);
+          }, 80);
+          return;
+        }
+        setEngineFailure("Point Clouds Kessho bridge unavailable");
+        return;
+      }
+      bridgeInitDeadline = 0;
+      try {
+        controller = bridge.create({
+          engineFrame,
+          presetId: "string-waves",
+          overrides: { reverbQuality: "lite" },
+          onStatus: handleControllerStatus,
+        });
+        const boot = controller.boot();
+        if (boot && typeof boot.then === "function") {
+          boot.then(markEngineReady).catch(setEngineFailure);
+        } else {
+          markEngineReady();
+        }
+      } catch (error) {
+        setEngineFailure(error);
+        return;
+      }
+      engineDeadline = setTimeout(() => {
+        if (markEngineReady()) return;
+        setEngineFailure("Timed out waiting for the Product Core engine");
+      }, 15000);
+    }
+
+    bootEngine();
+
+    function readAudio() {
+      const now = performance.now();
+      if (audioActive && now - lastTelemetryRead > 80) {
+        lastTelemetryRead = now;
+        const snapshot = controller?.getSnapshot?.();
+        const status = snapshot?.raw;
+        const telemetry = status?.telemetry;
+        const visualInputs = snapshot?.telemetry?.visualInputs;
+        const masterInput = visualInputs?.channels?.master;
+        const sourceState = status?.sourceState;
+        const rms = masterInput?.available ? Number(masterInput.level) : 0;
+        const peak = masterInput?.available ? Number(masterInput.peak) : 0;
+        audioToggle.dataset.engineRunning = String(Boolean(status?.isRunning));
+        audioToggle.dataset.presetId = status?.presetId ?? "";
+        audioToggle.dataset.preset = status?.presetName ?? "";
+        audioToggle.dataset.morph = Number(status?.morphAmount ?? 0).toFixed(4);
+        audioToggle.dataset.transport = String(Boolean(telemetry?.transportRunning));
+        audioToggle.dataset.sources = String(telemetry?.activeSources ?? 0);
+        audioToggle.dataset.voices = String(telemetry?.activeVoices ?? 0);
+        audioToggle.dataset.assets = String(telemetry?.activeAssets ?? 0);
+        audioToggle.dataset.stems = JSON.stringify(telemetry?.workletStemPeaks ?? []);
+        audioToggle.dataset.visualInputSchema = String(visualInputs?.schemaVersion ?? "");
+        audioToggle.dataset.masterInputAvailable = String(masterInput?.available === true);
+        audioToggle.dataset.context = String(telemetry?.contextState ?? "");
+        audioToggle.dataset.sourceState = JSON.stringify(sourceState ?? {});
+        audioToggle.dataset.rms = rms.toFixed(6);
+        audioToggle.dataset.peak = peak.toFixed(6);
+        audioTarget = Math.min(1, Math.sqrt(Math.max(0, rms)) * 2.6 + Math.max(0, peak) * .24);
+      }
+      if (!audioActive) audioTarget = 0;
+      audioLevel += (audioTarget - audioLevel) * .16;
+      meterBars.forEach((bar, i) => {
+        const spectralShape = .34 + .66 * Math.abs(Math.sin(now * .0018 + i * .82));
+        bar.style.setProperty("--level", Math.max(.08, audioLevel * spectralShape).toFixed(3));
+      });
+      return audioLevel;
+    }
+
+    audioToggle.addEventListener("click", async () => {
+      delete audioToggle.dataset.error;
+      if (!controller) {
+        bootEngine(true);
+        return;
+      }
+
+      if (audioActive) {
+        audioActive = false;
+        try {
+          await controller.stop();
+        } catch (error) {
+          setEngineFailure(error);
+          return;
+        }
+      } else {
+        audioActive = true;
+        audioLabel.textContent = "loading";
+        impact = 1;
+        try {
+          await controller.start();
+        } catch (error) {
+          audioActive = false;
+          audioToggle.dataset.active = "false";
+          audioToggle.dataset.error = readableError(error);
+          audioToggle.setAttribute("aria-pressed", "false");
+          audioToggle.setAttribute("aria-label", "Kessho String Waves preset failed to load");
+          audioLabel.textContent = "failed";
+          console.error("Kessho String Waves failed to load:", error);
+          return;
+        }
+      }
+
+      audioToggle.dataset.active = String(audioActive);
+      audioToggle.setAttribute("aria-pressed", String(audioActive));
+      audioToggle.setAttribute("aria-label", audioActive ? "Stop Kessho String Waves preset" : "Start Kessho String Waves preset");
+      audioLabel.textContent = audioActive ? "live" : (engineReady ? "ready" : "booting");
+    });
+
+    introPlay.addEventListener("click", () => {
+      if (!introReady || introReleaseStarted) return;
+      releaseIntro();
+      audioToggle.click();
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      visible = !document.hidden;
+      if (visible) {
+        lastFrame = performance.now();
+        cancelAnimationFrame(frameRequest);
+        frameRequest = requestAnimationFrame(render);
+      } else {
+        cancelAnimationFrame(frameRequest);
+      }
+    });
+
+    resize();
+    requestAnimationFrame(render);
+  })();
+  </script>
+</body>
+</html>

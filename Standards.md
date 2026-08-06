@@ -8,12 +8,11 @@ The current proof covers shared numeric quantization and filter cutoff range-pai
 
 ```typescript
 for (const spec of PAD_SOURCE_SPECS) {
-  const minKey = padSourceStateKey(spec, 'filterCutoffMin');
-  const maxKey = padSourceStateKey(spec, 'filterCutoffMax');
+  const cutoffKey = padSourceStateKey(spec, 'filterCutoff');
 }
 ```
 
-Pad 1 keeps legacy keys like `filterCutoffMin` and `synthAttack`; Pad 2 keeps keys like `pad2FilterCutoffMin` and `pad2Attack`. Shared numeric quantization for ADSR, oscillator, filter, LFO, mod-envelope, distance, and post-FX pad fields is generated from the same base-key metadata. Future enum/default metadata can move to the same pattern after preset metadata, Product boundary, and type checks pass.
+Pad 1 keeps unprefixed keys like `filterCutoff` and `synthAttack`; Pad 2 keeps keys like `pad2FilterCutoff` and `pad2Attack`. Shared numeric quantization for ADSR, oscillator, filter, LFO, mod-envelope, distance, and post-FX pad fields is generated from the same base-key metadata. Future enum/default metadata can move to the same pattern after preset metadata, Product boundary, and type checks pass.
 
 ## Morph Endpoint Detection
 
@@ -272,9 +271,9 @@ The preset save handler already serializes `dualRanges` and `sliderModes` generi
 | `synth*` | Chord pad synth | `synthLevel`, `synthReverbSend` |
 | `granular*` / `grain*` | Granular engine | `granularLevel`, `grainSizeMin` |
 | `drum*` | Drum synth (per-voice) | `drumSubDecay`, `drumKickPitch` |
-| `filterCutoffMin/Max` | Intentional paired range (NOT a dual-mode slider) | Always two fields |
+| `filterCutoff` | Base frequency; optional movement uses standard dual-slider metadata | Single / Walk / Sample & Hold |
 
-**Important:** `filterCutoffMin/Max` is a **true min/max range parameter** — it always operates as a pair and is NOT a candidate for the 3-mode slider system. `grainSize` was migrated to a 3-mode slider (default: sampleHold) — the engine sends the dual range as `grainSizeMin`/`grainSizeMax` to the granulator worklet internally.
+**Important:** `filterCutoff` is one audible base frequency. Walk and Sample & Hold ranges belong to the standard slider behavior layer; note envelopes and LFOs modulate independently in the audio engine. `grainSize` likewise uses the 3-mode slider system while the engine sends its resolved internal range to the granulator worklet.
 
 ---
 

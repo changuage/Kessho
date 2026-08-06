@@ -4,7 +4,7 @@ import {
   recognizeHarmonyCandidatesFromMidiPool,
   resolveHarmonyIntentToNotePool,
   sanitizeHarmonyIntent,
-  type HarmonyChordSlot,
+  type LegacyHarmonyChordSlotInput,
   type HarmonyIntent,
 } from '../CoreProductHarmonyControl';
 import type {
@@ -43,6 +43,17 @@ function midiPool(value: unknown): number[] {
     .slice(0, 8);
 }
 
+function sanitizeMidiVelocities(value: unknown): Record<string, number> | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const result: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    const midi = Number(key);
+    if (!Number.isInteger(midi) || midi < 0 || midi > 127 || typeof raw !== 'number' || !Number.isFinite(raw)) continue;
+    result[String(midi)] = Math.max(0, Math.min(1, raw));
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 function contextFor(value: unknown, fallbackRoot = 60, fallbackScale = 1): HarmonyCapturedContext {
   const record = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const rootMidi = finite(record.rootMidi, finite(record.rootMidiAnchor, fallbackRoot));
@@ -66,7 +77,7 @@ export function legacyHarmonySlotToSharedSlot(value: unknown, context: HarmonyCh
   const record = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const id = Math.max(0, Math.min(HARMONY_SLOT_COUNT - 1, Math.round(finite(record.id, 0))));
   const name = typeof record.name === 'string' && record.name.trim() ? record.name : `Slot ${id + 1}`;
-  const legacy = record as Partial<HarmonyChordSlot>;
+  const legacy = record as LegacyHarmonyChordSlotInput;
   const legacyIntent = legacy.intent ? sanitizeHarmonyIntent(legacy.intent, defaultHarmonyIntent('slot', id % 7)) : null;
   const rawChord = record.chord;
   const hasExplicitChord = Object.prototype.hasOwnProperty.call(record, 'chord');
@@ -102,6 +113,7 @@ export function legacyHarmonySlotToSharedSlot(value: unknown, context: HarmonyCh
     intent: inferredIntent,
     intentSource,
     exactMidiNotes,
+    exactMidiVelocities: sanitizeMidiVelocities(chordRecord.exactMidiVelocities),
     recognizedLabel: typeof chordRecord.recognizedLabel === 'string' && chordRecord.recognizedLabel.length > 0
       ? chordRecord.recognizedLabel
       : inferredIntent ? formatHarmonyIntentChordLabel(inferredIntent, { rootMidi: capturedContext.rootMidi, scaleId: capturedContext.scaleId }) : 'custom',
@@ -140,13 +152,16 @@ export function sharedChordResolvedMidiPool(chord: SharedHarmonyChord | null, ar
   });
 }
 
-/** Resolve a saved slot while tolerating legacy callers that mutate `intent` directly. */
-export function sharedSlotResolvedMidiPool(slot: { chord: SharedHarmonyChord | null; intent?: HarmonyIntent }, args: HarmonyChordAdapterContext & { effectiveRootMidi?: number } = {}): number[] {
+/**
+ * Resolve a saved slot from the canonical shared chord only.
+ *
+ * Legacy top-level `slot.intent` is deliberately ignored here. It is accepted
+ * only by the explicit migration adapters and must never become a second live
+ * authority after the slot has entered runtime state.
+ */
+export function sharedSlotResolvedMidiPool(slot: { chord: SharedHarmonyChord | null }, args: HarmonyChordAdapterContext & { effectiveRootMidi?: number } = {}): number[] {
   if (!slot.chord) return [];
-  const chord = slot.intent && slot.chord.intent && slot.intent !== slot.chord.intent
-    ? editSharedChordIntent(slot.chord, slot.intent, args)
-    : slot.chord;
-  return sharedChordResolvedMidiPool(chord, args);
+  return sharedChordResolvedMidiPool(slot.chord, args);
 }
 
 export const resolveSharedChordPlayback = sharedChordResolvedMidiPool;
@@ -211,6 +226,7 @@ export function sharedChordToDraft(chord: SharedHarmonyChord | null): HarmonyDra
     intent: chord?.intent ?? null,
     intentSource: chord?.intentSource ?? null,
     exactMidiNotes: chord ? [...chord.exactMidiNotes] : [],
+    exactMidiVelocities: chord?.exactMidiVelocities ? { ...chord.exactMidiVelocities } : undefined,
     playbackBehavior: chord?.playbackBehavior ?? 'auto',
     capturedContext: chord?.capturedContext ?? { rootMidi: 60, rootMidiAnchor: 60, scaleId: 1 },
     recognizedLabel: chord?.recognizedLabel ?? 'custom',
@@ -228,6 +244,7 @@ export function sharedChordFromDraft(draft: HarmonyDraftChord): SharedHarmonyCho
     intent: draft.intent,
     intentSource: draft.intentSource ?? (draft.intent ? 'confirmed' : null),
     exactMidiNotes: midiPool(draft.exactMidiNotes),
+    exactMidiVelocities: draft.exactMidiVelocities ? { ...draft.exactMidiVelocities } : undefined,
     recognizedLabel: draft.recognizedLabel,
     playbackBehavior: draft.playbackBehavior,
     capturedContext: draft.capturedContext,

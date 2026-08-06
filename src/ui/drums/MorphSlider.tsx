@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import type { SliderState } from '../state';
+import type { SliderMode, SliderState } from '../state';
 import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import { VOICE_MORPH_KEYS } from '../../audio/drumMorph';
@@ -7,10 +7,11 @@ import { DRUM_VOICE_SCOPES } from '../../audio/drumVoiceConfig';
 import type { PresetManagerRepository } from '../../presets/PresetManagerController';
 import { removeRuntimeValues, useRuntimeValue } from '../runtimeValueState';
 import {
+  createRuntimeDrumPreset,
   getFactoryPresetNames,
   setUserPresets,
 } from '../../audio/drumPresets';
-import { applyDrumPresetSlotChange } from './drumPresetApply';
+import { applyDrumPresetSlotChange, resolveDrumPresetDualStateFromState } from './drumPresetApply';
 import { PresetPoolPopup } from '../../presets/PresetPoolPopup';
 import { usePresetPoolCandidates } from '../../presets/PresetPoolContext';
 import { getPresetPoolLabel, type PresetPoolCandidate } from '../../presets/presetPool';
@@ -28,6 +29,11 @@ interface MorphSliderProps {
   poolPopupSlot?: 'A' | 'B' | null;
   onPoolPopupSlotChange?: (slot: 'A' | 'B' | null) => void;
   repository: PresetManagerRepository;
+  onDualStateChange?: (
+    relevantKeys: string[],
+    dualRanges?: Record<string, { min: number; max: number }>,
+    sliderModes?: Record<string, SliderMode>,
+  ) => void;
 }
 
 const DRUM_POOL_PREVIEW_LEVEL_FLOOR = 0.68;
@@ -50,26 +56,6 @@ function applyDrumPoolPreviewLevelFloor(state: SliderState): SliderState {
   };
 }
 
-function createRuntimeDrumPreset(
-  voice: DrumVoiceType,
-  name: string,
-  data: Record<string, unknown>,
-  tags?: string[],
-) {
-  const params: Record<string, number | string> = {};
-  for (const [key, value] of Object.entries(data)) {
-    if (typeof value === 'number' || typeof value === 'string') {
-      params[key] = value;
-    }
-  }
-  return {
-    name,
-    voice,
-    params,
-    tags: tags ?? [],
-  };
-}
-
 const MorphSlider: React.FC<MorphSliderProps> = ({
   voice,
   state,
@@ -82,6 +68,7 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
   poolPopupSlot: controlledPoolPopupSlot,
   onPoolPopupSlotChange,
   repository,
+  onDualStateChange,
 }) => {
   const { presetA, presetB, morph: morphKey } = VOICE_MORPH_KEYS[voice];
   const engineScope = DRUM_VOICE_SCOPES[voice];
@@ -140,26 +127,35 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
   const clearLiveMorphValue = useCallback(() => {
     removeRuntimeValues([String(morphKey)]);
   }, [morphKey]);
+  const applyDualState = useCallback((nextState: SliderState) => {
+    const dualState = resolveDrumPresetDualStateFromState(nextState, voice);
+    onDualStateChange?.(dualState.relevantKeys, dualState.dualRanges, dualState.sliderModes);
+  }, [onDualStateChange, voice]);
   const handleMorphChange = useCallback((key: keyof SliderState, value: number) => {
     clearLiveMorphValue();
     onParamChange(key, value as SliderState[keyof SliderState]);
-  }, [clearLiveMorphValue, onParamChange]);
+    applyDualState({ ...state, [key]: value } as SliderState);
+  }, [applyDualState, clearLiveMorphValue, onParamChange, state]);
   const handlePresetAChange = useCallback((value: string) => {
     clearLiveMorphValue();
+    const next = applyDrumPresetSlotChange(state, voice, 'A', value);
     if (onStateChange) {
       onStateChange((previous) => applyDrumPresetSlotChange(previous, voice, 'A', value));
-      return;
+    } else {
+      onParamChange(presetA, value as SliderState[keyof SliderState]);
     }
-    onParamChange(presetA, value as SliderState[keyof SliderState]);
-  }, [clearLiveMorphValue, onParamChange, onStateChange, presetA, voice]);
+    applyDualState(next);
+  }, [applyDualState, clearLiveMorphValue, onParamChange, onStateChange, presetA, state, voice]);
   const handlePresetBChange = useCallback((value: string) => {
     clearLiveMorphValue();
+    const next = applyDrumPresetSlotChange(state, voice, 'B', value);
     if (onStateChange) {
       onStateChange((previous) => applyDrumPresetSlotChange(previous, voice, 'B', value));
-      return;
+    } else {
+      onParamChange(presetB, value as SliderState[keyof SliderState]);
     }
-    onParamChange(presetB, value as SliderState[keyof SliderState]);
-  }, [clearLiveMorphValue, onParamChange, onStateChange, presetB, voice]);
+    applyDualState(next);
+  }, [applyDualState, clearLiveMorphValue, onParamChange, onStateChange, presetB, state, voice]);
   const handlePoolLoad = useCallback((candidate: PresetPoolCandidate) => {
     if (poolPopupSlot === 'A') {
       handlePresetAChange(candidate.name);
@@ -195,6 +191,7 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
       });
     } catch (ratingError) {
       console.warn(`Failed to update ${voice} preset rating:`, ratingError);
+      throw ratingError;
     }
   }, [enginePresets, save, updateMetadata, voice]);
 
@@ -226,7 +223,9 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
         const version = entry.versions.find(v => v.v === entry.currentVersion)
           || entry.versions[entry.versions.length - 1];
         if (!version) return null;
-        return createRuntimeDrumPreset(voice, entry.name, version.data, entry.tags);
+        return createRuntimeDrumPreset(
+          voice, entry.name, version.data, entry.tags, version.dualRanges, version.sliderModes,
+        );
       }));
 
       if (!cancelled) {

@@ -5,6 +5,10 @@ import { commitProductControlPatchForProduct } from '../product-control';
 import { collectChangedStatePatch } from './audioEngineStatePatch';
 import type { SliderState } from './state';
 import { isTransportClockStateKey } from './transportTimingPolicy';
+import {
+  createSpectralFreezeGestureEvents,
+  isSpectralFreezeGesturePatch,
+} from './spectralFreezeGesture';
 
 const CORE_PRODUCT_PARAM_UPDATE_INTERVAL_MS = 33;
 
@@ -254,6 +258,7 @@ function shouldFlushImmediatelyForResolvedCommit(
   if (requiresSequencerFaceResolvedCommit(patch)) return true;
   if (requiresSampleSlotResolvedCommit(patch)) return true;
   if (requiresSourceCoreResolvedCommit(patch)) return true;
+  if (isSpectralFreezeGesturePatch(patch)) return true;
   if (requiresSourceCoreFullSnapshot(patch, reason, options)) return true;
   return reason === 'preset-load';
 }
@@ -277,13 +282,20 @@ export function useAudioEngineParamSync(): ((
     if (previousState && Object.keys(patch).length === 0) return;
     const reason = inferProductPatchReason(patch, options?.reason);
     const forceFullSnapshot = requiresSourceCoreFullSnapshot(patch, reason, options);
-    if (requiresResolvedCommit(reason, patch, options)) {
-      const triggerCritical = resolvedCommitTriggerCritical(reason, forceFullSnapshot, patch, options) &&
+    const spectralFreezeGesture = previousState !== null && isSpectralFreezeGesturePatch(patch);
+    if (spectralFreezeGesture || requiresResolvedCommit(reason, patch, options)) {
+      const triggerCritical = (spectralFreezeGesture || resolvedCommitTriggerCritical(reason, forceFullSnapshot, patch, options)) &&
         canWaitForProductSnapshotAck();
       void commitProductControlPatchForProduct(productEngine, nextState, patch, {
         reason,
         triggerCritical,
         forceFullSnapshot,
+        ...(spectralFreezeGesture
+          ? {
+              applyMode: 'event' as const,
+              productEvents: createSpectralFreezeGestureEvents(nextState, patch),
+            }
+          : {}),
       }).catch((error) => {
         console.warn('Product resolved-state commit failed:', error);
       });

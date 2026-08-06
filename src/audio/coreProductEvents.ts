@@ -7,6 +7,7 @@ import {
   KESSHO_PRODUCT_LEAD_PARAM_COUNT,
   KESSHO_PRODUCT_PAD_PARAM_COUNT,
   KESSHO_PRODUCT_PAD_PARAM_SPECS,
+  KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT,
   KESSHO_PRODUCT_SOURCE_IDS as GENERATED_PRODUCT_SOURCE_IDS,
 } from './generated/kesshoProductSchema';
 import { delayNoteToSeconds } from './delayBuses';
@@ -35,6 +36,10 @@ import {
 } from './coreProductSoundscapesSnapshot';
 import {
   HARMONY_QUALITY_IDS,
+  HARMONY_ROOT_MODE_IDS,
+  HARMONY_BASS_MODE_IDS,
+  HARMONY_EXTENSION_IDS,
+  HARMONY_ALTERATION_IDS,
   HARMONY_SLOT_COUNT,
   HARMONY_SEQUENCE_STEP_COUNT,
   HARMONY_STRENGTH_IDS,
@@ -43,6 +48,7 @@ import {
 } from './CoreProductHarmonyControl';
 import type { RoutingMuteGroupsState } from '../ui/routing/routingMuteGroups';
 import { resolveSequencerLaneAudibility } from './sequencerAudibility';
+import type { HarmonyLiveLayer } from './harmony/harmonyProjection';
 
 export type CoreProductEvent = {
   sampleOffset?: number;
@@ -56,6 +62,107 @@ export type CoreProductEvent = {
   value4?: number;
   flags?: number;
 };
+
+/** Runtime-only audition flags shared with ProductConstants.h. */
+export const CORE_PRODUCT_TRANSIENT_MANUAL_NOTE_AUDITION_FLAG = 0x20000000;
+export const CORE_PRODUCT_TRANSIENT_MIDI_AUDITION_FLAG = 0x80000000;
+
+/** Flags for the fixed-size HarmonyLiveChordGesture header/note records. */
+export const CORE_PRODUCT_HARMONY_LIVE_GESTURE_FLAGS = Object.freeze({
+  header: 1 << 0,
+  note: 1 << 1,
+  clear: 1 << 2,
+  intent: 1 << 3,
+  context: 1 << 4,
+  takeover: 1 << 5,
+} as const);
+
+function harmonyLiveTarget(layer: HarmonyLiveLayer | null): number {
+  const explicitTarget = typeof layer?.target === 'string' ? layer.target : null;
+  if (explicitTarget === 'global') return 0;
+  if (explicitTarget === 'detail') return 1;
+  if (explicitTarget === 'overview') return 2;
+  if (explicitTarget === 'seq1' || explicitTarget === 'seq2' || explicitTarget === 'seq3' || explicitTarget === 'seq4') return 3 + Number(explicitTarget.slice(3)) - 1;
+  if (layer?.kind === 'seq-live') return 3 + Math.max(0, Math.min(3, layer.seqId ?? 0));
+  if (layer?.kind === 'harmony-takeover') return 2;
+  if (layer?.scope === 'overview' || (layer?.scope && typeof layer.scope === 'object' && (layer.scope as { kind?: unknown }).kind === 'overview')) return 2;
+  if (layer?.scope === 'suggestion') return 0;
+  return 1;
+}
+
+function harmonyLiveScope(layer: HarmonyLiveLayer | null): number {
+  const explicitScope = typeof layer?.scope === 'string' ? layer.scope : null;
+  if (explicitScope === 'detail') return 0;
+  if (explicitScope === 'overview') return 1;
+  if (explicitScope === 'suggestion') return 2;
+  if (explicitScope === 'seq-draft') return 3;
+  if (explicitScope === 'seq-live') return 4;
+  if (layer?.kind === 'seq-live') return 4;
+  if (layer?.kind === 'harmony-takeover') return 1;
+  if (layer?.scope === 'overview' || (layer?.scope && typeof layer.scope === 'object' && (layer.scope as { kind?: unknown }).kind === 'overview')) return 1;
+  if (layer?.scope === 'suggestion') return 2;
+  if (layer?.scope === 'seq-draft') return 3;
+  return 0;
+}
+
+/**
+ * Build the bounded Product-Core gesture batch. The first event is a header;
+ * it is followed by at most eight note records. No authored note list is
+ * copied into a sequencer event, and the batch is safe to enqueue on the audio
+ * thread's existing fixed-capacity control queue.
+ */
+export function createCoreProductHarmonyLiveChordGestureEvents(
+  layer: HarmonyLiveLayer | null,
+  revision: number,
+): CoreProductEvent[] {
+  const safeRevision = requireIntegerInRange(revision, 'revision', 0, Number.MAX_SAFE_INTEGER);
+  const notes = (layer?.frame?.currentNotePool ?? [])
+    .filter((note): note is number => Number.isFinite(note))
+    .slice(0, 8)
+    .map((note) => requireNumberInRange(note, 'note', 0, 127));
+  const clearing = layer === null;
+  const draft = layer?.draft;
+  const intent = draft?.intent ?? null;
+  const intentFlags = intent ? CORE_PRODUCT_HARMONY_LIVE_GESTURE_FLAGS.intent : 0;
+  const isTakeover = layer?.kind === 'harmony-takeover';
+  const capturedRootMidi = draft?.capturedContext.rootMidi ?? layer?.frame?.rootMidi ?? 60;
+  const capturedScaleId = draft?.capturedContext.scaleId ?? layer?.frame?.scaleId ?? 1;
+  const playbackBehavior = draft?.playbackBehavior === 'relative' ? 1 : draft?.playbackBehavior === 'exact' ? 2 : 0;
+  const takeoverProgress = isTakeover ? 1 : 0;
+  const header: CoreProductEvent = {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyLiveChordGesture,
+    targetId: harmonyLiveTarget(layer),
+    index: harmonyLiveScope(layer),
+    paramId: safeRevision,
+    value: clearing ? 2 : layer?.latched ? 1 : 0,
+    value2: playbackBehavior,
+    value3: notes.length,
+    value4: takeoverProgress,
+    flags: CORE_PRODUCT_HARMONY_LIVE_GESTURE_FLAGS.header | (clearing ? CORE_PRODUCT_HARMONY_LIVE_GESTURE_FLAGS.clear : 0) | (isTakeover ? CORE_PRODUCT_HARMONY_LIVE_GESTURE_FLAGS.takeover : 0),
+  };
+  if (clearing) return [header];
+  const events: CoreProductEvent[] = [header];
+  if (intent) {
+    events.push(
+      { eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyLiveChordGesture, targetId: harmonyLiveTarget(layer), index: 0, paramId: safeRevision, value: 1, value2: HARMONY_QUALITY_IDS[intent.quality] ?? 0, value3: HARMONY_ROOT_MODE_IDS[intent.rootMode] ?? 0, value4: intent.degree, flags: intentFlags },
+      { eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyLiveChordGesture, targetId: harmonyLiveTarget(layer), index: 1, paramId: safeRevision, value: intent.rootNote, value2: intent.inversion, value3: intent.spread, value4: intent.octave, flags: intentFlags },
+      { eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyLiveChordGesture, targetId: harmonyLiveTarget(layer), index: 2, paramId: safeRevision, value: HARMONY_BASS_MODE_IDS[intent.bassMode] ?? 0, value2: intent.bassNote ?? -1, value3: (intent.extensions ?? []).reduce((mask, extension) => mask | (1 << (HARMONY_EXTENSION_IDS[extension as keyof typeof HARMONY_EXTENSION_IDS] ?? 0)), 0), value4: (intent.alterations ?? []).reduce((mask, alteration) => mask | (1 << (HARMONY_ALTERATION_IDS[alteration] ?? 0)), 0), flags: intentFlags },
+    );
+  }
+  if (draft || isTakeover) {
+    events.push({ eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyLiveChordGesture, targetId: harmonyLiveTarget(layer), index: 0, paramId: safeRevision, value: capturedRootMidi, value2: capturedScaleId, flags: CORE_PRODUCT_HARMONY_LIVE_GESTURE_FLAGS.context });
+  }
+  events.push(...notes.map((note, index) => ({
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyLiveChordGesture,
+    targetId: harmonyLiveTarget(layer),
+    index,
+    value: note,
+    value2: isTakeover ? (layer?.frame?.nextNotePool?.[index] ?? note) : note,
+    value3: isTakeover ? 1 : 0,
+    flags: CORE_PRODUCT_HARMONY_LIVE_GESTURE_FLAGS.note,
+  })));
+  return events;
+}
 
 export const CORE_PRODUCT_SOURCE_IDS = Object.freeze({
   pad1: GENERATED_PRODUCT_SOURCE_IDS.Pad1,
@@ -728,12 +835,17 @@ function soundscapeAssetLevelTarget(
   };
 }
 
-function soundscapeTextureLevelTarget(slotIndex: number, key: string): CoreProductRangeTarget {
+function soundscapeTextureLevelTarget(
+  slotIndex: number,
+  key: string,
+  mapValue?: (value: number, context: CoreProductRangeValueContext) => number,
+): CoreProductRangeTarget {
   return {
     targetId: CORE_PRODUCT_SOUNDSCAPE_TEXTURE_LEVEL_RANGE_TARGET_BASE +
       requireIntegerInRange(slotIndex, 'soundscape texture slot', 0, 3),
     paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel,
     controlId: stableControlId(key),
+    mapValue,
   };
 }
 
@@ -753,6 +865,90 @@ function soundscapeTextureParamTarget(
     paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel,
     controlId: stableControlId(key),
   };
+}
+
+function soundscapeModuleParamTarget(paramIndex: number, key: string): CoreProductRangeTarget {
+  return {
+    targetId: CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE +
+      requireIntegerInRange(
+        paramIndex,
+        'soundscape module parameter',
+        0,
+        KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT - 1,
+      ),
+    // SourceLevel is the modulation ABI parameter for custom soundscape targets;
+    // the target id selects the exact module parameter.
+    paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel,
+    controlId: stableControlId(key),
+  };
+}
+
+const SOUNDSCAPE_MODULE_RANGE_PARAM_INDICES: Readonly<Record<string, readonly number[]>> = Object.freeze({
+  waterIntensity: [2, 3],
+  waterDistance: [4, 5],
+  waterHardDropBaseFreq: [6, 7],
+  waterWaterDropBaseFreq: [8, 9],
+  waterDropSize: [10, 11],
+  waterHardness: [12, 13],
+  waterGlassThickness: [14, 15],
+  waterHardDropRate: [16],
+  waterHardDropLPF: [17],
+  waterHardDropTone: [18],
+  waterWaterDropRate: [19],
+  waterWaterDropLPF: [20],
+  waterBubblingRate: [21],
+  waterBubblingLPF: [22],
+  waterLayerHardDrops: [23],
+  waterLayerWaterDrops: [24],
+  waterLayerTurbulence: [25],
+  waterLayerBubbling: [26],
+  waterLayerSurf: [27],
+  waterLayerChannels: [28],
+  waterDensityHardSend: [35],
+  waterDensityWaterSend: [36],
+  waterDensityBubbleSend: [37],
+  waterDensityFeedback: [38],
+  waterDensityTone: [39],
+  waterDensityRing: [40],
+  waterDensityWet: [41],
+  waterSurfDuration: [42, 43],
+  waterSurfInterval: [44, 45],
+  waterSurfFoam: [46, 47],
+  waterSurfProximity: [48, 49],
+  waterSurfDepth: [50, 51],
+  waterSurfBody: [52, 53],
+  waterSurfSpray: [54, 55],
+  waterSurfFoamBright: [56, 57],
+  waterChannelsMorph: [58],
+  waterChannelsSpeed: [59],
+  insectsDensity: [63, 64],
+  insectsTemperature: [65, 66],
+  insectsDistance: [67, 68],
+  insectsProximity: [69, 70],
+  insectsAntiphony: [71, 72],
+  insectsClickRate: [73, 74],
+  insectsMotion: [75, 76],
+  insects2Density: [80, 81],
+  insects2Temperature: [82, 83],
+  insects2Distance: [84, 85],
+  insects2Proximity: [86, 87],
+  insects2Antiphony: [88, 89],
+  insects2ClickRate: [90, 91],
+  insects2Motion: [92, 93],
+  waterLevel: [96],
+  insectsLevel: [97],
+  insects2Level: [98],
+  insectsSharedLevel: [99],
+  earthLevel: [100],
+});
+
+function soundscapeModuleRangeTargets(): Record<string, CoreProductRangeTargetResolver> {
+  return Object.fromEntries(
+    Object.entries(SOUNDSCAPE_MODULE_RANGE_PARAM_INDICES).map(([stateKey, indices]) => [
+      stateKey,
+      (key: string) => indices.map((index) => soundscapeModuleParamTarget(index, key)),
+    ]),
+  );
 }
 
 function delayBTapeHeadMaskMap(headIndex: number): (value: number, context: CoreProductRangeValueContext) => number {
@@ -826,6 +1022,18 @@ function soundscapeNatureMasterAssetLevelMap(stateKey: string): (value: number, 
   };
 }
 
+function soundscapeNatureTextureLevelMap(value: number, context: CoreProductRangeValueContext): number {
+  const natureLevel = context.state?.natureLevel;
+  return clamp(value * (typeof natureLevel === 'number' && Number.isFinite(natureLevel) ? natureLevel : 1), 0, 1);
+}
+
+function soundscapeNatureMasterTextureLevelMap(stateKey: string): (value: number, context: CoreProductRangeValueContext) => number {
+  return (value, context) => {
+    const slotLevel = context.state?.[stateKey];
+    return clamp(value * (typeof slotLevel === 'number' && Number.isFinite(slotLevel) ? slotLevel : 0), 0, 1);
+  };
+}
+
 function mapPadExactValueForDistance(
   padIndex: 0 | 1,
   key: string,
@@ -879,6 +1087,19 @@ function normalizedToDrumDelayFilterHz(value: number): number {
 
 function spectralFreezeRoutingValue(value: number | string): number {
   return value === 'post' || Number(value) >= 0.5 ? 1 : 0;
+}
+
+function spectralFreezeModeValue(value: number | string): number {
+  if (value === 'solid') return 0;
+  if (value === 'slushy') return 1;
+  if (value === 'livingStretch') return 3;
+  return typeof value === 'number' ? clamp(Math.round(value), 0, 3) : 2;
+}
+
+function spectralFreezeDirectionValue(value: number | string): number {
+  if (value === 'forward') return 0;
+  if (value === 'reverse') return 1;
+  return typeof value === 'number' ? clamp(Math.round(value), 0, 2) : 2;
 }
 
 function contextBpm(context: CoreProductRangeValueContext): number {
@@ -1118,15 +1339,32 @@ function granularMacroVoiceTargets(
 function padExactRangeTargets(): Record<string, CoreProductRangeTargetResolver> {
   const targets: Record<string, CoreProductRangeTargetResolver> = {};
   for (const spec of KESSHO_PRODUCT_PAD_PARAM_SPECS) {
+    const sourceEnvelopeParamId = spec.key === 'synthAttack'
+      ? KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds
+      : spec.key === 'synthDecay'
+        ? KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds
+        : spec.key === 'synthSustain'
+          ? KESSHO_PRODUCT_PARAM_IDS.SourceSustain
+          : spec.key === 'synthRelease'
+            ? KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds
+            : null;
+    const pad1Map = (value: number, context: CoreProductRangeValueContext) => (
+      mapPadExactValueForDistance(0, spec.key, value, context)
+    );
+    const pad2Map = (value: number, context: CoreProductRangeValueContext) => (
+      mapPadExactValueForDistance(1, spec.pad2Key, value, context)
+    );
     targets[spec.key] = (key) => [
-      productParamTarget(coreProductPadRuntimeParamId(0, spec.index), key, (value, context) => (
-        mapPadExactValueForDistance(0, key, value, context)
-      )),
+      productParamTarget(coreProductPadRuntimeParamId(0, spec.index), key, pad1Map),
+      ...(sourceEnvelopeParamId === null ? [] : [
+        sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, sourceEnvelopeParamId, key, pad1Map),
+      ]),
     ];
     targets[spec.pad2Key] = (key) => [
-      productParamTarget(coreProductPadRuntimeParamId(1, spec.index), key, (value, context) => (
-        mapPadExactValueForDistance(1, key, value, context)
-      )),
+      productParamTarget(coreProductPadRuntimeParamId(1, spec.index), key, pad2Map),
+      ...(sourceEnvelopeParamId === null ? [] : [
+        sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, sourceEnvelopeParamId, key, pad2Map),
+      ]),
     ];
   }
   return targets;
@@ -1135,15 +1373,34 @@ function padExactRangeTargets(): Record<string, CoreProductRangeTargetResolver> 
 function padExactSampleHoldRangeTargets(): Record<string, CoreProductRangeTargetResolver> {
   const targets: Record<string, CoreProductRangeTargetResolver> = {};
   for (const spec of KESSHO_PRODUCT_PAD_PARAM_SPECS) {
+    const sourceEnvelopeParamId = spec.key === 'synthAttack'
+      ? KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds
+      : spec.key === 'synthDecay'
+        ? KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds
+        : spec.key === 'synthSustain'
+          ? KESSHO_PRODUCT_PARAM_IDS.SourceSustain
+          : spec.key === 'synthRelease'
+            ? KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds
+            : null;
     targets[spec.key] = (key) => [
       sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, coreProductPadRuntimeParamId(0, spec.index), key, (value, context) => (
         mapPadExactValueForDistance(0, key, value, context)
       )),
+      ...(sourceEnvelopeParamId === null ? [] : [
+        sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, sourceEnvelopeParamId, key, (value, context) => (
+          mapPadExactValueForDistance(0, key, value, context)
+        )),
+      ]),
     ];
     targets[spec.pad2Key] = (key) => [
       sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, coreProductPadRuntimeParamId(1, spec.index), key, (value, context) => (
         mapPadExactValueForDistance(1, key, value, context)
       )),
+      ...(sourceEnvelopeParamId === null ? [] : [
+        sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, sourceEnvelopeParamId, key, (value, context) => (
+          mapPadExactValueForDistance(1, key, value, context)
+        )),
+      ]),
     ];
   }
   return targets;
@@ -1156,6 +1413,7 @@ const SAMPLE_HOLD_RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolv
 const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   ...padExactRangeTargets(),
   ...granularVoiceRangeTargets(),
+  ...soundscapeModuleRangeTargets(),
   synthLevel: (key) => [
     sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key),
     sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key),
@@ -1173,10 +1431,10 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   ],
   sample1Level: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
   sample2Level: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
-  nature1Level: (key) => [soundscapeTextureLevelTarget(0, key)],
-  nature2Level: (key) => [soundscapeTextureLevelTarget(1, key)],
-  nature3Level: (key) => [soundscapeTextureLevelTarget(2, key)],
-  nature4Level: (key) => [soundscapeTextureLevelTarget(3, key)],
+  nature1Level: (key) => [soundscapeTextureLevelTarget(0, key, soundscapeNatureTextureLevelMap)],
+  nature2Level: (key) => [soundscapeTextureLevelTarget(1, key, soundscapeNatureTextureLevelMap)],
+  nature3Level: (key) => [soundscapeTextureLevelTarget(2, key, soundscapeNatureTextureLevelMap)],
+  nature4Level: (key) => [soundscapeTextureLevelTarget(3, key, soundscapeNatureTextureLevelMap)],
   nature1SliceDuration: (key) => [soundscapeTextureParamTarget(0, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.sliceDuration, key)],
   nature2SliceDuration: (key) => [soundscapeTextureParamTarget(1, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.sliceDuration, key)],
   nature3SliceDuration: (key) => [soundscapeTextureParamTarget(2, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.sliceDuration, key)],
@@ -1194,6 +1452,10 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   nature3FilterResonance: (key) => [soundscapeTextureParamTarget(2, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterResonance, key)],
   nature4FilterResonance: (key) => [soundscapeTextureParamTarget(3, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterResonance, key)],
   natureLevel: (key) => [
+    soundscapeTextureLevelTarget(0, key, soundscapeNatureMasterTextureLevelMap('nature1Level')),
+    soundscapeTextureLevelTarget(1, key, soundscapeNatureMasterTextureLevelMap('nature2Level')),
+    soundscapeTextureLevelTarget(2, key, soundscapeNatureMasterTextureLevelMap('nature3Level')),
+    soundscapeTextureLevelTarget(3, key, soundscapeNatureMasterTextureLevelMap('nature4Level')),
     soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds.assetId, key, soundscapeNatureMasterAssetLevelMap('birdsLevel')),
     soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds2.assetId, key, soundscapeNatureMasterAssetLevelMap('birds2Level')),
     soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.frogs.assetId, key, soundscapeNatureMasterAssetLevelMap('frogsLevel')),
@@ -1202,8 +1464,6 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   birds2Level: (key) => [soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds2.assetId, key, soundscapeNatureAssetLevelMap)],
   frogsLevel: (key) => [soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.frogs.assetId, key, soundscapeNatureAssetLevelMap)],
   oceanSampleLevel: (key) => [soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.ocean.assetId, key)],
-  waterLevel: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
-  insectsSharedLevel: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
   padMorph: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceMorph, key)],
   pad2Morph: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceMorph, key)],
   lead1Morph: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceMorph, key)],
@@ -1231,6 +1491,12 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
     sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceLeadGlide, key),
     sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceLeadGlide, key),
   ],
+  lead1VibratoDepth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoDepth, key)],
+  lead1VibratoRate: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoRate, key)],
+  lead1Glide: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceLeadGlide, key)],
+  lead2VibratoDepth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoDepth, key)],
+  lead2VibratoRate: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoRate, key)],
+  lead2Glide: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceLeadGlide, key)],
   padPostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
   pad2PostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
   lead1PostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
@@ -1245,6 +1511,18 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   sample2StereoWidth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, key)],
   lead1PostLPFKeyTracking: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking, key)],
   lead2PostLPFKeyTracking: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking, key)],
+  lead1Attack: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds, key)],
+  lead2Attack: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds, key)],
+  lead1Decay: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds, key)],
+  lead2Decay: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds, key)],
+  lead1Sustain: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceSustain, key)],
+  lead2Sustain: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceSustain, key)],
+  lead1Hold: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds, key)],
+  lead2Hold: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds, key)],
+  lead1Release: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds, key)],
+  lead2Release: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds, key)],
+  synthHold: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds, key)],
+  pad2Hold: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds, key)],
   sample1AttackMs: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds, key, (value) => value / 1000)],
   sample2AttackMs: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds, key, (value) => value / 1000)],
   sample1DecayMs: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds, key, (value) => value / 1000)],
@@ -1535,9 +1813,19 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   reverbChordWash: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbChordWash, key)],
   reverbResolutionBloom: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbResolutionBloom, key)],
   spectralFreezeMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeMix, key)],
-  spectralFreezeSpeed: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeSpeed, key)],
-  spectralFreezeDecay: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeDecay, key)],
-  spectralFreezePhaseJitter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezePhaseJitter, key)],
+  spectralFreezeEnabled: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeEnabled, key, binaryParamValue)],
+  spectralFreezeActive: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeActive, key, binaryParamValue)],
+  spectralFreezeMode: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeMode, key, spectralFreezeModeValue)],
+  spectralFreezeCaptureSerial: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeCaptureSerial, key)],
+  spectralFreezeStretchSpeed: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeStretchSpeed, key)],
+  spectralFreezeDirection: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeDirection, key, spectralFreezeDirectionValue)],
+  spectralFreezePosition: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezePosition, key)],
+  spectralFreezeRefresh: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeRefresh, key)],
+  spectralFreezeInputSensitivity: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeInputSensitivity, key)],
+  spectralFreezeDiffusion: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeDiffusion, key)],
+  spectralFreezeTone: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeTone, key)],
+  spectralFreezeWidth: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeWidth, key)],
+  spectralFreezeSustain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeSustain, key)],
   spectralFreezeRouting: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeRouting, key, spectralFreezeRoutingValue)],
   spectralFreezeReverbCrossfade: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeReverbCrossfade, key)],
   dynamicsDrive: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDrive, key)],
@@ -1769,8 +2057,10 @@ export function createCoreProductManualNoteEvent(
   velocity: number,
   durationMs: number,
   padVoiceIndex?: number,
+  options: { transientAudition?: boolean } = {},
 ): CoreProductEvent {
-  const flags = coreProductPadVoiceEventFlags(padVoiceIndex);
+  const flags = coreProductPadVoiceEventFlags(padVoiceIndex) |
+    (options.transientAudition ? CORE_PRODUCT_TRANSIENT_MANUAL_NOTE_AUDITION_FLAG : 0);
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.ManualNoteOn,
     targetId: requireSourceId(sourceId),
@@ -1994,6 +2284,23 @@ export function createCoreProductParamEvent(
     index: requireIntegerInRange(index, 'index', 0, Number.MAX_SAFE_INTEGER),
     paramId: requireParamId(paramId),
     value: requireFiniteNumber(value, 'value'),
+  };
+}
+
+export const CORE_PRODUCT_SOURCE_ENABLE_FLAGS = {
+  immediate: 1 << 0,
+} as const;
+
+export function createCoreProductSourceEnabledEvent(
+  sourceId: number,
+  enabled: boolean,
+  options: { immediate?: boolean } = {},
+): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSourceEnabled,
+    targetId: requireIntegerInRange(sourceId, 'sourceId', 1, Number.MAX_SAFE_INTEGER),
+    value: enabled ? 1 : 0,
+    flags: options.immediate ? CORE_PRODUCT_SOURCE_ENABLE_FLAGS.immediate : 0,
   };
 }
 
@@ -2517,6 +2824,7 @@ export function createCoreProductSequencerDiceEvent(
 export function createCoreProductMidiEvent(event: {
   sampleOffset?: number;
   targetId?: number;
+  ownerToken?: number;
   status: number;
   channel?: number;
   data1?: number;
@@ -2533,6 +2841,7 @@ export function createCoreProductMidiEvent(event: {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.MidiEvent,
     targetId,
     index: channel,
+    paramId: requireIntegerInRange(event.ownerToken ?? 0, 'ownerToken', 0, 0xffffffff),
     value: status,
     value2: requireIntegerInRange(event.data1 ?? 0, 'data1', 0, 127),
     value3: requireIntegerInRange(event.data2 ?? 0, 'data2', 0, 127),

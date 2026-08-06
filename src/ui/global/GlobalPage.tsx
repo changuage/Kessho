@@ -1,8 +1,10 @@
 import React from 'react';
 import type { SliderState, SavedPreset } from '../state';
 import type { ProductEngineState, ProductManualSynthNote } from '../../audio/product/ProductEngineTypes';
+import type { ProductLiveNoteEvent } from '../../audio/product/liveNoteEvents';
 import type { TensionArcType } from '../../audio/harmony';
-import type { HarmonyLiveLayer, HarmonyProjection } from '../../audio/harmony/harmonyProjection';
+import type { HarmonyLiveLayerChangeHandler, HarmonyProjection } from '../../audio/harmony/harmonyProjection';
+import type { HarmonyWorkspaceController } from '../harmony/useHarmonyWorkspaceController';
 import type { PresetEntry, PresetVersionMetadata } from '../../presets/types';
 import { PresetDropdown, PresetFamilyTree } from '../../presets';
 import { extractOptimizedStatePresetData } from '../../presets/statePresetOptimization';
@@ -10,6 +12,7 @@ import type { SliderMode } from '../state';
 import { isAtEndpoint0, isAtEndpoint1 } from '../../audio/morphUtils';
 import { getTransportMetrics } from '../../audio/transport';
 import { STEM_RECORD_TRACK_IDS, STEM_RECORD_TRACK_LABELS } from '../../audio/recordingTracks';
+import { NATURE_SLOT_KEYS } from '../../audio/natureSlots';
 import { DYNAMICS_ENGINE_COLORS, SOURCE_COLORS } from '../../designSystem/colors';
 import { APP_TAB_SYMBOLS, TEXT_SYMBOLS } from '../../designSystem/textSymbols';
 import { useSliderHelp } from '../SliderHelpOverlay';
@@ -119,7 +122,6 @@ const SCENE_SIGNAL_POSITIONS: Record<string, { x: number; y: number }> = {
   sample1: { x: 92, y: 318 },
   sample2: { x: 92, y: 366 },
   drums: { x: 248, y: 72 },
-  waves: { x: 248, y: 140 },
   water: { x: 248, y: 208 },
   nature: { x: 248, y: 276 },
   insects: { x: 248, y: 344 },
@@ -145,7 +147,7 @@ const ROUTING_MUTE_SOURCE_TO_SCENE_NODE: Record<RoutingMuteGroupSourceId, string
   sample2: 'sample2',
   drums: 'drums',
   granular: 'granular',
-  waves: 'waves',
+  waves: 'nature',
   water: 'water',
   insects: 'insects',
   nature: 'nature',
@@ -175,7 +177,6 @@ const SCENE_SIGNAL_RGB = {
   sample1: hexToRgbTriplet(SOURCE_COLORS.sample1),
   sample2: hexToRgbTriplet(SOURCE_COLORS.sample2),
   drums: hexToRgbTriplet(SOURCE_COLORS.drums),
-  waves: hexToRgbTriplet(SOURCE_COLORS.waves),
   water: hexToRgbTriplet(SOURCE_COLORS.water),
   nature: hexToRgbTriplet(SOURCE_COLORS.nature),
   insects: hexToRgbTriplet(SOURCE_COLORS.insects),
@@ -243,20 +244,16 @@ const SCENE_SIGNAL_RUNTIME_KEYS = [
   'granularDrumSend',
   'drumReverbSend',
   'earthLevel',
-  'oceanSampleLevel',
-  'oceanDelayASend',
-  'oceanDelayBSend',
-  'granularWavesSend',
-  'oceanReverbSend',
   'waterLevel',
   'waterDelayASend',
   'waterDelayBSend',
   'granularWaterSend',
   'waterReverbSend',
   'natureLevel',
-  'birdsLevel',
-  'birds2Level',
-  'frogsLevel',
+  'nature1Level',
+  'nature2Level',
+  'nature3Level',
+  'nature4Level',
   'natureDelayASend',
   'natureDelayBSend',
   'granularNatureSend',
@@ -592,11 +589,10 @@ function layoutSceneSignalModel(model: SceneSignalModel): SceneSignalModel {
 
 function buildSceneSignalModel(state: SliderState): SceneSignalModel {
   const earthMaster = clamp01(state.earthLevel);
-  const natureSourceLevel = Math.max(
-    state.birdsEnabled ? clamp01(state.birdsLevel) : 0,
-    state.birds2Enabled ? clamp01(state.birds2Level) : 0,
-    state.frogsEnabled ? clamp01(state.frogsLevel) : 0,
-  );
+  const natureActive = state.natureMasterEnabled && NATURE_SLOT_KEYS.some(({ enabledKey }) => state[enabledKey]);
+  const natureSourceLevel = NATURE_SLOT_KEYS.reduce((level, keys) => (
+    state[keys.enabledKey] ? Math.max(level, clamp01(state[keys.levelKey])) : level
+  ), 0);
   const insectsSourceLevel = Math.max(
     state.insectsEnabled ? clamp01(state.insectsLevel) : 0,
     state.insects2Enabled ? clamp01(state.insects2Level) : 0,
@@ -645,25 +641,19 @@ function buildSceneSignalModel(state: SliderState): SceneSignalModel {
       granular: clamp01(state.granularDrumSend),
       reverb: clamp01(state.drumReverbSend),
     }),
-    createSceneSource('waves', 'Waves', 'earth', state.oceanSampleEnabled, earthMaster * clamp01(state.oceanSampleLevel), SCENE_SIGNAL_RGB.waves, {
-      delayA: clamp01(state.oceanDelayASend),
-      delayB: clamp01(state.oceanDelayBSend),
-      granular: clamp01(state.granularWavesSend),
-      reverb: clamp01(state.oceanReverbSend),
-    }),
     createSceneSource('water', 'Water', 'earth', state.waterEnabled, earthMaster * clamp01(state.waterLevel), SCENE_SIGNAL_RGB.water, {
       delayA: clamp01(state.waterDelayASend),
       delayB: clamp01(state.waterDelayBSend),
       granular: clamp01(state.granularWaterSend),
       reverb: clamp01(state.waterReverbSend),
     }),
-    createSceneSource('nature', 'Nature', 'earth', state.birdsEnabled || state.birds2Enabled || state.frogsEnabled, earthMaster * clamp01(state.natureLevel) * natureSourceLevel, SCENE_SIGNAL_RGB.nature, {
+    createSceneSource('nature', 'Nature', 'earth', natureActive, earthMaster * clamp01(state.natureLevel) * natureSourceLevel, SCENE_SIGNAL_RGB.nature, {
       delayA: clamp01(state.natureDelayASend),
       delayB: clamp01(state.natureDelayBSend),
       granular: clamp01(state.granularNatureSend),
       reverb: clamp01(state.natureReverbSend),
     }),
-    createSceneSource('insects', 'Insects', 'earth', state.insectsEnabled || state.insects2Enabled, earthMaster * clamp01(state.insectsSharedLevel) * insectsSourceLevel, SCENE_SIGNAL_RGB.insects, {
+    createSceneSource('insects', 'Insects', 'earth', state.insectsMasterEnabled && (state.insectsEnabled || state.insects2Enabled), earthMaster * clamp01(state.insectsSharedLevel) * insectsSourceLevel, SCENE_SIGNAL_RGB.insects, {
       delayA: clamp01(state.insDelayASend),
       delayB: clamp01(state.insDelayBSend),
       granular: clamp01(state.granularInsectsSend),
@@ -825,7 +815,11 @@ export interface GlobalPageProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onSelectChange: (key: any, value: any) => void;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
+  harmonyWorkspaceController: HarmonyWorkspaceController;
   onAuditionHarmonyNote?: (note: ProductManualSynthNote) => void;
+  onAuditionHarmonyNotes?: (notes: readonly ProductManualSynthNote[]) => Promise<void>;
+  onLiveHarmonyNoteStart?: (event: ProductLiveNoteEvent) => Promise<void>;
+  onLiveHarmonyNoteStop?: (event: ProductLiveNoteEvent) => void;
   sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
   SliderComponent: React.ComponentType<SliderRendererProps<keyof SliderState>>;
   SelectComponent: SelectRenderer;
@@ -833,8 +827,8 @@ export interface GlobalPageProps {
 
   // Engine state
   engineState: ProductEngineState;
-  harmonyProjection?: HarmonyProjection;
-  onHarmonyLiveLayerChange?: (layer: HarmonyLiveLayer | null) => void;
+  harmonyProjection: HarmonyProjection;
+  onHarmonyLiveLayerChange?: HarmonyLiveLayerChangeHandler;
   routingMuteGroupSnapshot?: RoutingMuteGroupRuntimeSnapshot;
   runtimeComparison?: GlobalRuntimeComparisonPanelProps;
   onResetCofDrift: () => void;
@@ -860,7 +854,7 @@ export interface GlobalPageProps {
   onLoadMorphB: (entry: PresetEntry, data: Record<string, unknown>) => boolean | void | Promise<boolean | void>;
   morphSlotBName: string;
   onClearMorphB: () => void;
-  onMorphPositionChange: (value: number) => void;
+  onMorphPositionChange: (value: number, options?: { flush?: boolean }) => void;
   onMorphModeChange: (mode: 'manual' | 'auto') => void;
   onMorphPlayPhrasesChange: (value: number) => void;
   onMorphTransitionPhrasesChange: (value: number) => void;
@@ -900,7 +894,11 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   onParamChange,
   onSelectChange,
   onStateChange,
+  harmonyWorkspaceController,
   onAuditionHarmonyNote,
+  onAuditionHarmonyNotes,
+  onLiveHarmonyNoteStart,
+  onLiveHarmonyNoteStop,
   sliderProps,
   SliderComponent: Slider,
   SelectComponent: Select,
@@ -1191,6 +1189,9 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                       type="range" min="0" max="100" step="1"
                       value={morphPosition}
                       onChange={(e) => onMorphPositionChange(parseInt(e.target.value))}
+                      onPointerUp={(e) => onMorphPositionChange(parseInt(e.currentTarget.value), { flush: true })}
+                      onPointerCancel={(e) => onMorphPositionChange(parseInt(e.currentTarget.value), { flush: true })}
+                      onKeyUp={(e) => onMorphPositionChange(parseInt(e.currentTarget.value), { flush: true })}
                       disabled={!morphPresetA && !morphPresetB}
                     />
                     <span className="morph-endpoint b">B</span>
@@ -1511,8 +1512,12 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
           state={state}
           harmonyState={engineState.harmonyState}
           harmonyProjection={harmonyProjection}
+          controller={harmonyWorkspaceController}
           onStateChange={onStateChange}
           onAuditionNote={onAuditionHarmonyNote}
+          onAuditionNotes={onAuditionHarmonyNotes}
+          onLiveNoteStart={onLiveHarmonyNoteStart}
+          onLiveNoteStop={onLiveHarmonyNoteStop}
           morphReadOnly={Boolean(harmonyProjection?.engine.morphLocked)}
           CircleOfFifthsComponent={CircleOfFifths}
           cofCurrentStep={engineState.cofCurrentStep}

@@ -2,6 +2,7 @@ import { calculateDriftedRoot } from '../harmony';
 import {
   canonicalProgressionIndexAtPosition,
   resolveProductHarmonyState,
+  sanitizeHarmonyChordSlots,
   type HarmonyChordSlot,
   type HarmonyDraftChord,
   type HarmonySequenceStep,
@@ -49,6 +50,25 @@ export interface HarmonyLiveLayer {
   latched?: boolean;
 }
 
+export interface HarmonyLiveLayerChangeOptions {
+  /** Ordinary release/unmount must not clear a latch; only an explicit Stop may. */
+  explicitStop?: boolean;
+}
+
+export type HarmonyLiveLayerChangeHandler = (
+  layer: HarmonyLiveLayer | null,
+  options?: HarmonyLiveLayerChangeOptions,
+) => void;
+
+export function resolveHarmonyLiveLayerChange(
+  current: HarmonyLiveLayer | null,
+  next: HarmonyLiveLayer | null,
+  options?: HarmonyLiveLayerChangeOptions,
+): HarmonyLiveLayer | null {
+  if (next === null && current?.latched && !options?.explicitStop) return current;
+  return next;
+}
+
 export interface HarmonyProjection {
   engine: {
     homeRootNote: number;
@@ -86,6 +106,8 @@ export interface HarmonyProjection {
   /** Endpoint ownership is intentionally exposed separately from the bank. */
   bank: 'A' | 'B';
   isEndpoint: boolean;
+  /** False means Product telemetry has not published a native note pool yet. */
+  runtimeHarmonyReady?: boolean;
 }
 
 export interface HarmonyProjectionRuntimeOverlay {
@@ -95,6 +117,11 @@ export interface HarmonyProjectionRuntimeOverlay {
     scaleFamily?: { name?: string };
     currentDegree?: number;
     currentChord?: { midiNotes?: number[] };
+    runtimeHarmonyReady?: boolean;
+    runtimeNotePoolMidi?: number[];
+    runtimeNextNotePoolMidi?: number[];
+    runtimeNextSource?: number;
+    runtimeNextStepIndex?: number;
     progression?: { step?: number } | null;
   } | null;
   rootMidi?: number;
@@ -157,8 +184,7 @@ function scaleNameFromState(state: Record<string, unknown>, overlay?: HarmonyPro
 }
 
 function sanitizeSlots(value: unknown): HarmonyChordSlot[] {
-  if (!Array.isArray(value)) return [];
-  return value.slice(0, 8) as HarmonyChordSlot[];
+  return sanitizeHarmonyChordSlots(value);
 }
 
 function progressionFrom(progression: HarmonyProgression, state: Record<string, unknown>): HarmonyProgressionEvent[] {
@@ -309,8 +335,10 @@ export function resolveHarmonyProjection(
     }
     : record;
   const runtime = resolveProductHarmonyState({ state: positionedRecord, rootMidi, rootMidiAnchor, scaleId, tension, seed, barIndex: runtimeOverlay?.barIndex, phraseIndex: runtimeOverlay?.phraseIndex, morphPercent });
-  const endpointA = resolveProductHarmonyState({ state: record, rootMidi, rootMidiAnchor, scaleId, tension, seed, morphPercent: 0 }).resolvedHarmonyFrame;
-  const endpointB = resolveProductHarmonyState({ state: record, rootMidi, rootMidiAnchor, scaleId, tension, seed, morphPercent: 100 }).resolvedHarmonyFrame;
+  const endpointAControl = resolveProductHarmonyState({ state: record, rootMidi, rootMidiAnchor, scaleId, tension, seed, morphPercent: 0 });
+  const endpointBControl = resolveProductHarmonyState({ state: record, rootMidi, rootMidiAnchor, scaleId, tension, seed, morphPercent: 100 });
+  const endpointA = endpointAControl.resolvedHarmonyFrame;
+  const endpointB = endpointBControl.resolvedHarmonyFrame;
   const bank: 'A' | 'B' = morphPercent >= 50 ? 'B' : 'A';
   const progression = progressionFrom(runtime.progression, record);
   const eventIndex = progression.length === 0 ? -1 : hasPositionContext
@@ -339,13 +367,30 @@ export function resolveHarmonyProjection(
       phrasePosition: eventIndex === 0 ? 'opening' : eventIndex === progression.length - 1 ? 'ending' : 'middle',
     }).find((candidate) => candidate !== null)
     : null;
-  const suggestionFrame = autoSuggestion ? {
+  const nativeCurrentNotePool = runtimeOverlay?.harmonyState?.runtimeNotePoolMidi;
+  const nativeNextNotePool = runtimeOverlay?.harmonyState?.runtimeNextNotePoolMidi;
+  const nativeRuntimeState = runtimeOverlay?.harmonyState?.runtimeHarmonyReady !== undefined;
+  const runtimeFrame: ResolvedHarmonyFrame = {
     ...runtime.resolvedHarmonyFrame,
+    ...(nativeRuntimeState
+      ? { currentNotePool: nativeCurrentNotePool ? [...nativeCurrentNotePool] : [], nextNotePool: nativeNextNotePool ? [...nativeNextNotePool] : [] }
+      : {}),
+  };
+  const suggestionFrame = autoSuggestion ? {
+    ...runtimeFrame,
     degree: autoSuggestion.intent.degree,
     quality: autoSuggestion.intent.quality,
-    currentNotePool: [...autoSuggestion.exactMidiNotes],
-    nextNotePool: [...autoSuggestion.exactMidiNotes],
-  } : runtime.resolvedHarmonyFrame;
+    currentNotePool: nativeRuntimeState
+      ? nativeCurrentNotePool ? [...nativeCurrentNotePool] : []
+      : nativeCurrentNotePool && nativeCurrentNotePool.length > 0
+      ? [...nativeCurrentNotePool]
+      : [...autoSuggestion.exactMidiNotes],
+    nextNotePool: nativeRuntimeState
+      ? nativeNextNotePool ? [...nativeNextNotePool] : []
+      : nativeNextNotePool && nativeNextNotePool.length > 0
+      ? [...nativeNextNotePool]
+      : runtimeFrame.nextNotePool,
+  } : runtimeFrame;
   const activeFrame = liveLayer?.frame ?? suggestionFrame;
   return {
     engine: { homeRootNote, effectiveRootNote, rootMidi, homeScaleName, homeScaleId, scaleId, scaleName, scaleMode: record.scaleMode === 'manual' ? 'manual' : 'auto', morphLocked: !runtime.resolvedHarmonyFrame.manualControlAvailable },
@@ -366,6 +411,7 @@ export function resolveHarmonyProjection(
     morphPlan: resolveCachedMorphHarmonyPlan(endpointA, endpointB, bank),
     bank,
     isEndpoint,
+    runtimeHarmonyReady: runtimeOverlay?.harmonyState?.runtimeHarmonyReady,
   };
 }
 

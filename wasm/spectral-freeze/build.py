@@ -12,7 +12,16 @@ import os
 import shutil
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SRC = os.path.join(SCRIPT_DIR, "kessho_spectral_freeze.cpp")
+ENGINE_DIR = os.path.normpath(os.path.join(
+    SCRIPT_DIR, "..", "..", "cpp", "KesshoCore", "src", "modules", "spectral_freeze"))
+SOURCES = [
+    os.path.join(SCRIPT_DIR, "kessho_spectral_freeze.cpp"),
+    os.path.join(ENGINE_DIR, "SpectralFreezeCaptureBuffer.cpp"),
+    os.path.join(ENGINE_DIR, "SpectralFreezeEngine.cpp"),
+    os.path.join(ENGINE_DIR, "SpectralFreezeMemory.cpp"),
+    os.path.join(ENGINE_DIR, "SpectralFreezeScanHead.cpp"),
+    os.path.join(ENGINE_DIR, "SpectralFreezeStft.cpp"),
+]
 OUT = os.path.join(SCRIPT_DIR, "kessho_spectral_freeze.wasm")
 
 # Find emcc
@@ -60,6 +69,17 @@ EXPORTS = [
     "_spectral_freeze_set_mix",
     "_spectral_freeze_set_decay",
     "_spectral_freeze_set_phase_jitter",
+    "_spectral_freeze_set_mode",
+    "_spectral_freeze_request_capture",
+    "_spectral_freeze_set_stretch_speed",
+    "_spectral_freeze_set_direction",
+    "_spectral_freeze_set_position",
+    "_spectral_freeze_set_refresh",
+    "_spectral_freeze_set_input_sensitivity",
+    "_spectral_freeze_set_diffusion",
+    "_spectral_freeze_set_tone",
+    "_spectral_freeze_set_width",
+    "_spectral_freeze_set_sustain",
     "_malloc",
     "_free",
 ]
@@ -71,14 +91,15 @@ debug = len(sys.argv) > 1 and sys.argv[1] == "debug"
 if debug:
     print("Building DEBUG...")
     cmd = EMCC + [
-        SRC, "-o", OUT,
+        *SOURCES, "-o", OUT,
+        "-I", ENGINE_DIR,
         "-std=c++17",
         "-O0", "-g",
         "-msimd128",
         "-sASSERTIONS=1",
         "-sALLOW_MEMORY_GROWTH=1",
-        "-sINITIAL_MEMORY=4194304",
-        "-sMAXIMUM_MEMORY=16777216",
+        "-sINITIAL_MEMORY=12582912",
+        "-sMAXIMUM_MEMORY=33554432",
         "-sSTANDALONE_WASM=1",
         "--no-entry",
         f"-sEXPORTED_FUNCTIONS={EXPORTS_STR}",
@@ -86,7 +107,8 @@ if debug:
 else:
     print("Building RELEASE...")
     cmd = EMCC + [
-        SRC, "-o", OUT,
+        *SOURCES, "-o", OUT,
+        "-I", ENGINE_DIR,
         "-std=c++17",
         "-O3", "-flto",
         "-fno-math-errno",
@@ -95,8 +117,8 @@ else:
         "-msimd128",
         "-DNDEBUG",
         "-sALLOW_MEMORY_GROWTH=1",
-        "-sINITIAL_MEMORY=4194304",
-        "-sMAXIMUM_MEMORY=16777216",
+        "-sINITIAL_MEMORY=12582912",
+        "-sMAXIMUM_MEMORY=33554432",
         "-sSTANDALONE_WASM=1",
         "--no-entry",
         f"-sEXPORTED_FUNCTIONS={EXPORTS_STR}",

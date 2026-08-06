@@ -1,23 +1,28 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  createPadChordPhrasePreview,
   createRandomTimingPhrasePreview,
   envelopeAmplitudeAt,
   type SimpleSequencerPhrasePreview,
   type SimpleSequencerVizKind,
   type SimpleSequencerVizNote,
 } from '../../audio/simpleSequencerPhrasePreview';
+import {
+  createHarmonyPhrasePreview,
+} from '../../audio/harmony/harmonyPhrasePreview';
+import type { HarmonyProjection } from '../../audio/harmony/harmonyProjection';
 import type { TransportDebugSnapshot } from '../../audio/transport';
 import type { SliderState } from '../state';
 import { SOURCE_COLORS } from '../../designSystem/colors';
 import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
 
-interface SimplePhraseVisualizerProps {
-  kind: SimpleSequencerVizKind;
+type SimplePhraseVisualizerProps = {
   state: SliderState;
   isRunning: boolean;
   transportDebug?: TransportDebugSnapshot | null;
-}
+} & (
+  | { kind: 'padChord'; harmonyProjection: HarmonyProjection }
+  | { kind: Exclude<SimpleSequencerVizKind, 'padChord'>; harmonyProjection?: never }
+);
 
 type PhaseAnchor = {
   wallSeconds: number;
@@ -74,11 +79,21 @@ function phraseTransitionDurationMs(phraseSeconds: number): number {
   return clamp(phraseSeconds * 1000 * 0.24, PHRASE_TRANSITION_MIN_MS, PHRASE_TRANSITION_MAX_MS);
 }
 
-function phraseProgress(anchor: PhaseAnchor | null, phraseSeconds: number, isRunning: boolean): number {
+function phraseProgress(
+  anchor: PhaseAnchor | null,
+  preview: SimpleSequencerPhrasePreview,
+  isRunning: boolean,
+): number {
   if (!isRunning || !anchor) return 0;
+  if (typeof preview.phraseStartWallSec === 'number' && Number.isFinite(preview.phraseStartWallSec)) {
+    const elapsed = Date.now() / 1000 - preview.phraseStartWallSec;
+    if (elapsed <= 0) return 0;
+    const period = Math.max(0.001, preview.phraseSeconds);
+    return elapsed % period;
+  }
   const now = performance.now() / 1000;
   const elapsed = anchor.elapsedSeconds + (now - anchor.wallSeconds);
-  const period = Math.max(0.001, anchor.phraseSeconds || phraseSeconds);
+  const period = Math.max(0.001, anchor.phraseSeconds || preview.phraseSeconds);
   return ((elapsed % period) + period) % period;
 }
 
@@ -137,6 +152,18 @@ function previousRuntimePlanForKind(
 ): SimpleSequencerPhrasePreview | null {
   const plan = kind === 'padChord' ? transportDebug?.previousPadChordPlan : transportDebug?.previousRandomTimingPlan;
   return plan && plan.kind === kind ? plan : null;
+}
+
+export function selectSimplePhraseRuntimePlan(
+  kind: SimpleSequencerVizKind,
+  transportDebug: TransportDebugSnapshot | null | undefined,
+  harmonyPlan: SimpleSequencerPhrasePreview | null,
+): SimpleSequencerPhrasePreview | null {
+  const nativePlan = runtimePlanForKind(kind, transportDebug);
+  if (nativePlan || kind !== 'padChord' || transportDebug?.simpleSequencerPlansAuthoritative === true) {
+    return nativePlan;
+  }
+  return harmonyPlan;
 }
 
 function rangeFor(current: SimpleSequencerPhrasePreview, previous: SimpleSequencerPhrasePreview | null): { min: number; max: number } {
@@ -287,7 +314,7 @@ function drawVisualizer(
   const transitionActive = Boolean(transition && transition.toKey === current.key && transitionProgress < 1);
   const currentPhraseStartWallSec = current.phraseStartWallSec ?? null;
   const currentWallSeconds = typeof currentPhraseStartWallSec === 'number' && Number.isFinite(currentPhraseStartWallSec)
-    ? currentPhraseStartWallSec + phaseSeconds
+    ? Date.now() / 1000
     : null;
 
   const drawNoteSet = (preview: SimpleSequencerPhrasePreview, isPrevious: boolean) => {
@@ -303,7 +330,7 @@ function drawVisualizer(
       const amp = envelopeAmplitudeAt(age, note.envelope);
       if (isPrevious && age >= 0 && amp <= NOTE_FLOOR) continue;
       const future = age < 0;
-      const color = sourceColor(note.source);
+      const color = note.color ?? sourceColor(note.source);
       let x = noteX(note, current.phraseSeconds, plotX, plotW, currentPhraseStartWallSec ?? preview.phraseStartWallSec);
       let y = noteY(note, range.min, range.max, plotY, plotH);
       const baseAlpha = future ? 0.22 : clamp(0.14 + amp * 0.86, 0, 1);
@@ -361,6 +388,7 @@ export const SimplePhraseVisualizer: React.FC<SimplePhraseVisualizerProps> = ({
   state,
   isRunning,
   transportDebug,
+  harmonyProjection,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const { canAnimate } = useAnimationVisibility(canvasRef, { rootMargin: '120px' });
@@ -401,28 +429,31 @@ export const SimplePhraseVisualizer: React.FC<SimplePhraseVisualizerProps> = ({
     wasRunningRef.current = isRunning;
   }, [isRunning]);
 
-  const allowRuntimePlan = kind !== 'padChord' || state.synthChordGeneratorEnabled === true;
   const runtimePlansAuthoritative = transportDebug?.simpleSequencerPlansAuthoritative === true;
-  const runtimeCurrentPlan = allowRuntimePlan ? runtimePlanForKind(kind, transportDebug) : null;
-  const runtimePreviousPlan = allowRuntimePlan ? previousRuntimePlanForKind(kind, transportDebug) : null;
+  const harmonyCurrentPlan = useMemo(
+    () => kind === 'padChord' && harmonyProjection
+      ? createHarmonyPhrasePreview(state, harmonyProjection, transportDebug)
+      : null,
+    [harmonyProjection, kind, state, transportDebug],
+  );
+  const runtimeCurrentPlan = selectSimplePhraseRuntimePlan(kind, transportDebug, harmonyCurrentPlan);
+  const runtimePreviousPlan = previousRuntimePlanForKind(kind, transportDebug);
   const currentPreview = useMemo(
     () => {
       if (runtimeCurrentPlan) return runtimeCurrentPlan;
-      const modeled = kind === 'padChord'
-        ? createPadChordPhrasePreview(phrasePlan.currentState, phrasePlan.index)
+      const modeled = kind === 'padChord' && harmonyCurrentPlan
+        ? harmonyCurrentPlan
         : createRandomTimingPhrasePreview(phrasePlan.currentState, phrasePlan.index);
       return runtimePlansAuthoritative
         ? { ...modeled, notes: [], key: `${kind}:core:waiting:${phrasePlan.index}` }
         : modeled;
     },
-    [kind, phrasePlan, runtimeCurrentPlan?.key, runtimePlansAuthoritative],
+    [harmonyCurrentPlan?.key, kind, phrasePlan, runtimeCurrentPlan?.key, runtimePlansAuthoritative],
   );
   const previousPreview = useMemo(
-    (): SimpleSequencerPhrasePreview | null => runtimePreviousPlan ?? (runtimePlansAuthoritative ? null : (
+    (): SimpleSequencerPhrasePreview | null => runtimePreviousPlan ?? (kind === 'padChord' || runtimePlansAuthoritative ? null : (
       phrasePlan.index <= 0
         ? null
-        : kind === 'padChord'
-        ? createPadChordPhrasePreview(phrasePlan.previousState, Math.max(0, phrasePlan.index - 1))
         : createRandomTimingPhrasePreview(phrasePlan.previousState, Math.max(0, phrasePlan.index - 1))
     )),
     [kind, phrasePlan, runtimePreviousPlan?.key, runtimePlansAuthoritative],
@@ -436,7 +467,12 @@ export const SimplePhraseVisualizer: React.FC<SimplePhraseVisualizerProps> = ({
       previousCurrent.kind === currentPreview.kind &&
       previousCurrent.enabled &&
       currentPreview.enabled &&
-      previousCurrent.key !== currentPreview.key
+      previousCurrent.key !== currentPreview.key &&
+      !(
+        currentPreview.kind === 'padChord' &&
+        previousCurrent.phraseIndex != null &&
+        previousCurrent.phraseIndex === currentPreview.phraseIndex
+      )
     ) {
       transitionRef.current = {
         toKey: currentPreview.key,
@@ -489,7 +525,7 @@ export const SimplePhraseVisualizer: React.FC<SimplePhraseVisualizerProps> = ({
     if (!canAnimate) return;
 
     const drawFrame = (time: number) => {
-      const phase = phraseProgress(anchorRef.current, currentPreview.phraseSeconds, isRunning);
+      const phase = phraseProgress(anchorRef.current, currentPreview, isRunning);
       if (isRunning && lastPhaseRef.current > currentPreview.phraseSeconds * 0.75 && phase < currentPreview.phraseSeconds * 0.25) {
         setPhrasePlan((plan) => ({
           index: plan.index + 1,

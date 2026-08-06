@@ -9,6 +9,7 @@ import {
   CORE_PRODUCT_PAD2_RUNTIME_PARAM_ID_BASE,
   CORE_PRODUCT_SOURCE_IDS,
   CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE,
+  CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE,
   CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX,
   CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE,
   CORE_PRODUCT_SOUNDSCAPE_TEXTURE_LEVEL_RANGE_TARGET_BASE,
@@ -54,6 +55,10 @@ function assertResolvedTargets(key: string, expected: ExpectedRangeTarget[]): vo
           birdsLevel: 0.32,
           birds2Level: 0.22,
           frogsLevel: 0.18,
+          nature1Level: 0.4,
+          nature2Level: 0.3,
+          nature3Level: 0.2,
+          nature4Level: 0.1,
           natureLevel: 0.5,
         },
       },
@@ -163,12 +168,29 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
     ['nature3FilterResonance', [{ targetId: natureSlotParamTarget(2, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterResonance), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['nature4FilterResonance', [{ targetId: natureSlotParamTarget(3, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_INDEX.filterResonance), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['oceanSampleLevel', [{ targetId: assetTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.ocean.assetId), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
-    ['waterLevel', [{ targetId: CORE_PRODUCT_SOURCE_IDS.soundscape, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
-    ['insectsSharedLevel', [{ targetId: CORE_PRODUCT_SOURCE_IDS.soundscape, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['waterLevel', [{ targetId: CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + 96, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['insectsSharedLevel', [{ targetId: CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + 99, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['waterIntensity', [
+      { targetId: CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + 2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel },
+      { targetId: CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + 3, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel },
+    ]],
+    ['waterLayerHardDrops', [{ targetId: CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + 23, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
+    ['insectsDensity', [
+      { targetId: CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + 63, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel },
+      { targetId: CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + 64, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel },
+    ]],
+    ['insects2Motion', [
+      { targetId: CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + 92, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel },
+      { targetId: CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + 93, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel },
+    ]],
     ['birdsLevel', [{ targetId: assetTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds.assetId), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['birds2Level', [{ targetId: assetTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds2.assetId), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['frogsLevel', [{ targetId: assetTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.frogs.assetId), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel }]],
     ['natureLevel', [
+      { targetId: natureSlotLevelTarget(0), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel },
+      { targetId: natureSlotLevelTarget(1), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel },
+      { targetId: natureSlotLevelTarget(2), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel },
+      { targetId: natureSlotLevelTarget(3), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel },
       { targetId: assetTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds.assetId), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel },
       { targetId: assetTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds2.assetId), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel },
       { targetId: assetTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.frogs.assetId), paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel },
@@ -201,7 +223,25 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
       { targetId: CORE_PRODUCT_SOURCE_IDS.lead1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLeadGlide },
       { targetId: CORE_PRODUCT_SOURCE_IDS.lead2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLeadGlide },
     ]],
+    ['lead1VibratoDepth', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoDepth }]],
+    ['lead1VibratoRate', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoRate }]],
+    ['lead1Glide', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLeadGlide }]],
+    ['lead2VibratoDepth', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoDepth }]],
+    ['lead2VibratoRate', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoRate }]],
+    ['lead2Glide', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLeadGlide }]],
     ['lead1PostLPFKeyTracking', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking }]],
+    ['lead1Attack', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds }]],
+    ['lead1Decay', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds }]],
+    ['lead1Sustain', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceSustain }]],
+    ['lead1Hold', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds }]],
+    ['lead1Release', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds }]],
+    ['lead2Attack', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds }]],
+    ['lead2Decay', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds }]],
+    ['lead2Sustain', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceSustain }]],
+    ['lead2Hold', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds }]],
+    ['lead2Release', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds }]],
+    ['synthHold', [{ targetId: CORE_PRODUCT_SOURCE_IDS.pad1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds }]],
+    ['pad2Hold', [{ targetId: CORE_PRODUCT_SOURCE_IDS.pad2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds }]],
     ['sample1AttackMs', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds }]],
     ['sample1DecayMs', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds }]],
     ['sample1Sustain', [{ targetId: CORE_PRODUCT_SOURCE_IDS.sample1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceSustain }]],
@@ -230,12 +270,17 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
 }
 
 {
-  assertResolvedTargets('synthAttack', [{ targetId: 0, paramId: padRuntimeParamId('synthAttack', 0) }]);
+  assertResolvedTargets('synthAttack', [
+    { targetId: 0, paramId: padRuntimeParamId('synthAttack', 0) },
+    { targetId: CORE_PRODUCT_SOURCE_IDS.pad1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds },
+  ]);
   assertResolvedTargetsForMode('synthAttack', CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold, [
     { targetId: CORE_PRODUCT_SOURCE_IDS.pad1, paramId: padRuntimeParamId('synthAttack', 0) },
+    { targetId: CORE_PRODUCT_SOURCE_IDS.pad1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds },
   ]);
   assertResolvedTargetsForMode('pad2Attack', CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold, [
     { targetId: CORE_PRODUCT_SOURCE_IDS.pad2, paramId: padRuntimeParamId('pad2Attack', 1) },
+    { targetId: CORE_PRODUCT_SOURCE_IDS.pad2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds },
   ]);
 }
 
@@ -260,7 +305,7 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
     ['reverbShimmer', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxReverbShimmerAmount }]],
     ['reverbPreCompRatio', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompRatio }]],
     ['spectralFreezeMix', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeMix }]],
-    ['spectralFreezeSpeed', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeSpeed }]],
+    ['spectralFreezeStretchSpeed', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeStretchSpeed }]],
     ['dynamicsDrive', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDrive }]],
     ['dynamicsEnabled', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEnabled }]],
     ['driftEnabled', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDriftEnabled }]],
@@ -363,21 +408,21 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
 
 {
   const targets = resolveCoreProductRangeTargets('natureLevel');
-  assert.equal(targets.length, 3, 'Shared Nature level must modulate every Product Core nature asset-ref level');
-  const event = createCoreProductModulationRangeEvent(
-    targets[0]!,
+  assert.equal(targets.length, 7, 'Shared Nature level must modulate canonical slots and legacy asset refs');
+  const textureEvent = createCoreProductModulationRangeEvent(
+    targets.find((target) => target.targetId === natureSlotLevelTarget(0))!,
     { min: 0, max: 0.5 },
     CORE_PRODUCT_MODULATION_RANGE_MODE.randomWalk,
     0.25,
     {
       randomWalkMode: 'localBrownian',
       randomWalkSpeed: 1,
-      state: { birdsLevel: 0.32, natureLevel: 0.25 },
+      state: { nature1Level: 0.4, natureLevel: 0.25 },
     },
   );
-  assert.equal(event.value, 0);
-  assert.equal(event.value2, 0.16, 'Shared Nature runtime walk must scale the Birds asset-ref level');
-  assert.equal(event.value4, 0.08, 'Shared Nature current value must map through the active Birds level');
+  assert.equal(textureEvent.value, 0);
+  assert.equal(textureEvent.value2, 0.2, 'Shared Nature runtime walk must scale the canonical slot level');
+  assert.equal(textureEvent.value4, 0.1, 'Shared Nature current value must map through the canonical slot level');
 }
 
 {

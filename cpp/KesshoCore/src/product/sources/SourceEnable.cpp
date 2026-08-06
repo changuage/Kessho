@@ -17,7 +17,12 @@ bool KesshoProductEngine::sourceRenderActive(const SourceState& source) const {
   return source.enabled ||
       source.enabled_gain > 0.0001f ||
       source.enabled_gain_target > 0.0001f ||
-      source.enabled_gain_ramp_remaining > 0u;
+      source.enabled_gain_ramp_remaining > 0u ||
+      source.transient_audition_hold_count > 0u ||
+      audio_render_sample_frame < source.transient_audition_until_frame ||
+      source.transient_audition_gain > 0.0001f ||
+      source.transient_audition_gain_target > 0.0001f ||
+      source.transient_audition_gain_ramp_remaining > 0u;
 }
 
 void KesshoProductEngine::setSourceEnabled(SourceState& source, bool enabled, bool immediate) {
@@ -31,23 +36,23 @@ void KesshoProductEngine::setSourceEnabled(SourceState& source, bool enabled, bo
     source.enabled_gain_target = target;
     source.enabled_gain_delta = 0.0f;
     source.enabled_gain_ramp_remaining = 0u;
-    source.enabled_gain_frame = transport.sample_frame;
+    source.enabled_gain_frame = audio_render_sample_frame;
     return;
   }
 
-  const float current = sourceEnableGainForFrame(source, transport.sample_frame);
+  const float current = sourceEnableGainForFrame(source, audio_render_sample_frame);
   source.enabled = enabled;
   source.enabled_gain_target = target;
   const uint32_t ramp_frames = sourceEnableFadeFrames(source.source_id);
   source.enabled_gain_ramp_remaining = ramp_frames;
   source.enabled_gain_delta = (target - current) / static_cast<float>(ramp_frames);
   source.enabled_gain = current;
-  source.enabled_gain_frame = transport.sample_frame;
+  source.enabled_gain_frame = audio_render_sample_frame;
 }
 
 float KesshoProductEngine::sourceEnableGainForFrame(SourceState& source, uint64_t absolute_frame) {
-  if (source.enabled_gain_frame == 0u && transport.sample_frame > 0u) {
-    source.enabled_gain_frame = transport.sample_frame;
+  if (source.enabled_gain_frame == 0u && audio_render_sample_frame > 0u) {
+    source.enabled_gain_frame = audio_render_sample_frame;
   }
   if (absolute_frame <= source.enabled_gain_frame || source.enabled_gain_ramp_remaining == 0u) {
     if (source.enabled_gain_ramp_remaining == 0u) {

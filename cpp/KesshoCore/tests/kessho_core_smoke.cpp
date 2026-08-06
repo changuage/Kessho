@@ -16,19 +16,24 @@
 #include "kessho_reverb.h"
 #include "kessho_soundscapes.h"
 #include "kessho_spectral_freeze.h"
+#include "SpectralFreezeCaptureBuffer.h"
+#include "SpectralFreezeEngine.h"
+#include "SpectralFreezeMemory.h"
+#include "SpectralFreezeScanHead.h"
+#include "SpectralFreezeStft.h"
 
 namespace {
 
 constexpr int kLeadFmParamCount = 112;
 constexpr int kLeadFmParamRelease = 46;
 constexpr int kLeadFmParamOutputSelect = 79;
-constexpr int kPadParamCount = 108;
-constexpr int kPadParamAttack = 33;
-constexpr int kPadParamRelease = 36;
-constexpr int kPadParamLevel = 52;
-constexpr int kPadParamReverbSend = 106;
-constexpr int kPadParamOutputSelect = 107;
-constexpr int kDrumParamCount = 244;
+constexpr int kPadParamCount = 106;
+constexpr int kPadParamAttack = 32;
+constexpr int kPadParamRelease = 35;
+constexpr int kPadParamLevel = 51;
+constexpr int kPadParamReverbSend = 104;
+constexpr int kPadParamOutputSelect = 105;
+constexpr int kDrumParamCount = 245;
 constexpr int kDrumParamReverbSend = 123;
 constexpr int kDrumParamOutputSelect = 125;
 constexpr int kSoundscapesParamCount = 96;
@@ -109,6 +114,498 @@ float diffRms(const std::vector<float>& a, const std::vector<float>& b) {
 } // namespace
 
 int main() {
+  {
+    using kessho::spectral_freeze::SpectralFreezeCaptureBuffer;
+    SpectralFreezeCaptureBuffer capture;
+    require(capture.prepare(8.0, 2.0), "spectral capture buffer prepare failed");
+    require(capture.capacitySamples() == 16, "spectral capture buffer capacity mismatch");
+    require(!capture.lock(), "empty spectral capture should not lock");
+
+    const std::array<float, 6> initial_l{0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+    const std::array<float, 6> initial_r{100.0f, 101.0f, 102.0f, 103.0f, 104.0f, 105.0f};
+    capture.write(initial_l.data(), initial_r.data(), static_cast<int>(initial_l.size()));
+    require(capture.validSamples() == 6, "spectral partial pre-roll length mismatch");
+    requireNear(capture.readLeft(0.0), 0.0, 1.0e-7, "spectral partial pre-roll oldest sample mismatch");
+    requireNear(capture.readRight(5.0), 105.0, 1.0e-7, "spectral stereo chronology mismatch");
+    requireNear(capture.readLeft(2.5), 2.5, 1.0e-7, "spectral fractional capture read mismatch");
+
+    std::array<float, 20> wrapped_l{};
+    std::array<float, 20> wrapped_r{};
+    for (size_t index = 0; index < wrapped_l.size(); ++index) {
+      wrapped_l[index] = static_cast<float>(6 + index);
+      wrapped_r[index] = static_cast<float>(106 + index);
+    }
+    capture.write(wrapped_l.data(), wrapped_r.data(), static_cast<int>(wrapped_l.size()));
+    require(capture.validSamples() == 16, "spectral capture should retain exactly its capacity");
+    requireNear(capture.readLeft(0.0), 10.0, 1.0e-7, "spectral ring wrap reordered oldest sample");
+    requireNear(capture.readLeft(15.0), 25.0, 1.0e-7, "spectral ring wrap reordered newest sample");
+    require(capture.lock(), "valid spectral capture did not lock");
+
+    const std::array<float, 2> replacement_l{1000.0f, 1001.0f};
+    const std::array<float, 2> replacement_r{2000.0f, 2001.0f};
+    capture.write(replacement_l.data(), replacement_r.data(), 2);
+    requireNear(capture.readLeft(0.0), 10.0, 1.0e-7, "locked spectral capture was overwritten");
+    requireNear(capture.readRight(15.0), 125.0, 1.0e-7, "locked spectral stereo capture changed");
+
+    capture.release();
+    capture.write(replacement_l.data(), replacement_r.data(), 2);
+    requireNear(capture.readLeft(14.0), 1000.0, 1.0e-7, "spectral capture did not resume after release");
+    requireNear(capture.readLeft(15.0), 1001.0, 1.0e-7, "spectral capture resume chronology mismatch");
+  }
+
+  {
+    using kessho::spectral_freeze::SpectralFreezeScanHead;
+    using kessho::spectral_freeze::SpectralScanDirection;
+    SpectralFreezeScanHead scan;
+    require(!scan.configure(4095, 4096, 1024), "short spectral capture should reject scanning");
+    require(scan.configure(16 * 48000, 4096, 1024), "spectral scan head configure failed");
+    const double minimum = scan.minimumPosition();
+    const double maximum = scan.maximumPosition();
+
+    scan.setNormalizedPosition(-1.0f);
+    requireNear(scan.positionSamples(), minimum, 1.0e-9, "spectral position did not clamp low");
+    scan.setNormalizedPosition(2.0f);
+    requireNear(scan.positionSamples(), maximum, 1.0e-9, "spectral position did not clamp high");
+    scan.setNormalizedPosition(0.25f);
+    const double held_position = scan.positionSamples();
+    scan.advance(0.0f);
+    requireNear(scan.positionSamples(), held_position, 1.0e-9, "zero-speed spectral scan moved");
+
+    scan.setDirection(SpectralScanDirection::PingPong);
+    scan.setNormalizedPosition(0.0f);
+    int hop_count = 0;
+    while (scan.directionSign() > 0 && hop_count < 2000) {
+      scan.advance(1.0f);
+      require(
+          scan.positionSamples() >= minimum && scan.positionSamples() <= maximum,
+          "ping-pong spectral scan escaped its bounds");
+      ++hop_count;
+    }
+    require(hop_count > 740 && hop_count < 760, "one-times spectral scan duration was incorrect");
+    require(scan.directionSign() == -1, "ping-pong spectral scan did not reverse");
+
+    scan.setNormalizedPosition(0.5f);
+    for (int index = 0; index < 8; ++index) {
+      scan.advance(1000.0f);
+      require(
+          scan.positionSamples() >= minimum && scan.positionSamples() <= maximum,
+          "large spectral overshoot reflection escaped bounds");
+    }
+
+    scan.setDirection(SpectralScanDirection::Forward);
+    scan.setNormalizedPosition(1.0f);
+    scan.advance(1.0f);
+    require(
+        scan.positionSamples() >= minimum && scan.positionSamples() <= maximum,
+        "forward spectral scan did not wrap safely");
+    scan.setDirection(SpectralScanDirection::Reverse);
+    scan.setNormalizedPosition(0.0f);
+    scan.advance(1.0f);
+    require(
+        scan.positionSamples() >= minimum && scan.positionSamples() <= maximum,
+        "reverse spectral scan did not wrap safely");
+
+    requireNear(
+        SpectralFreezeScanHead::normalizedToRatio(1.0f),
+        1.0,
+        1.0e-7,
+        "spectral speed top ratio mismatch");
+    requireNear(
+        SpectralFreezeScanHead::normalizedToRatio(0.5f),
+        0.125,
+        1.0e-7,
+        "spectral logarithmic speed mapping mismatch");
+    requireNear(
+        SpectralFreezeScanHead::normalizedToRatio(0.0f),
+        0.0,
+        1.0e-7,
+        "spectral stopped speed mapping mismatch");
+  }
+
+  {
+    using kessho::spectral_freeze::SpectralFreezeMemory;
+    SpectralFreezeMemory memory;
+    require(memory.prepare(48000.0, 4096), "spectral memory prepare failed");
+    require(memory.binCount() == 2049, "spectral memory bin count mismatch");
+    int previous_band = 0;
+    for (int bin = 0; bin < memory.binCount(); ++bin) {
+      const int band = memory.bandForBin(bin);
+      require(band >= 0 && band < SpectralFreezeMemory::kBandCount, "spectral bin band was invalid");
+      require(band >= previous_band, "spectral perceptual bands wrapped around frequency");
+      previous_band = band;
+    }
+    require(memory.bandForBin(0) == 0, "spectral DC band mismatch");
+    require(
+        memory.bandForBin(memory.binCount() - 1) == SpectralFreezeMemory::kBandCount - 1,
+        "spectral Nyquist band mismatch");
+
+    std::vector<float> strong(static_cast<size_t>(memory.binCount()), 0.0f);
+    std::vector<float> silence(static_cast<size_t>(memory.binCount()), 0.0f);
+    strong[1000] = 10.0f;
+    memory.capture(strong.data(), strong.data(), memory.binCount());
+    const float captured_log = memory.heldLogMagnitude(0, 1000);
+    for (int hop = 0; hop < 200; ++hop) {
+      memory.updateFromLive(
+          silence.data(),
+          silence.data(),
+          memory.binCount(),
+          1.0f,
+          0.5f,
+          1.0f);
+    }
+    require(
+        memory.heldLogMagnitude(0, 1000) < captured_log * 0.9f,
+        "maximum spectral sustain blocked Slushy downward adaptation");
+    require(
+        memory.heldLogMagnitude(0, 1000) >= 0.0f,
+        "spectral log-magnitude memory became negative");
+
+    memory.capture(silence.data(), silence.data(), memory.binCount());
+    std::vector<float> new_content(static_cast<size_t>(memory.binCount()), 0.0f);
+    new_content[160] = 8.0f;
+    memory.updateFromLive(
+        new_content.data(),
+        new_content.data(),
+        memory.binCount(),
+        0.5f,
+        1.0f,
+        1.0f);
+    require(
+        memory.bandFlux(memory.bandForBin(160)) > 0.0f,
+        "new spectral content did not produce positive band flux");
+    require(
+        memory.heldMagnitude(0, 160) > 0.0f,
+        "new spectral content did not enter memory");
+    requireNear(
+        memory.bandFlux(memory.bandForBin(memory.binCount() - 1)),
+        0.0,
+        1.0e-7,
+        "low spectral update wrapped into the Nyquist band");
+  }
+
+  {
+    using kessho::spectral_freeze::SpectralFreezeStft;
+    SpectralFreezeStft stft;
+    require(stft.prepare(), "spectral STFT prepare failed");
+    constexpr int frame_count = 12;
+    constexpr int render_samples = SpectralFreezeStft::kFftSize +
+        (frame_count - 1) * SpectralFreezeStft::kHopSize;
+    std::vector<float> input(static_cast<size_t>(render_samples), 0.0f);
+    std::vector<float> reconstructed(static_cast<size_t>(render_samples), 0.0f);
+    std::vector<float> frame(static_cast<size_t>(SpectralFreezeStft::kFftSize), 0.0f);
+    std::vector<float> magnitude(static_cast<size_t>(SpectralFreezeStft::kBinCount), 0.0f);
+    std::vector<float> phase(static_cast<size_t>(SpectralFreezeStft::kBinCount), 0.0f);
+    std::vector<float> synthesized(static_cast<size_t>(SpectralFreezeStft::kFftSize), 0.0f);
+    for (int sample = 0; sample < render_samples; ++sample) {
+      input[static_cast<size_t>(sample)] =
+          0.35f * std::sin(2.0 * 3.14159265358979323846 * 440.0 *
+                          static_cast<double>(sample) / 48000.0) +
+          0.1f * std::sin(2.0 * 3.14159265358979323846 * 1733.0 *
+                         static_cast<double>(sample) / 48000.0);
+    }
+    for (int frame_index = 0; frame_index < frame_count; ++frame_index) {
+      const int start = frame_index * SpectralFreezeStft::kHopSize;
+      std::copy_n(input.data() + start, SpectralFreezeStft::kFftSize, frame.data());
+      stft.analyze(frame.data(), magnitude.data(), phase.data());
+      stft.synthesize(magnitude.data(), phase.data(), synthesized.data());
+      for (int sample = 0; sample < SpectralFreezeStft::kFftSize; ++sample) {
+        reconstructed[static_cast<size_t>(start + sample)] +=
+            synthesized[static_cast<size_t>(sample)];
+      }
+    }
+
+    double squared_error = 0.0;
+    double squared_signal = 0.0;
+    const int comparison_start = SpectralFreezeStft::kFftSize;
+    const int comparison_end = render_samples - SpectralFreezeStft::kFftSize;
+    for (int sample = comparison_start; sample < comparison_end; ++sample) {
+      const double expected = input[static_cast<size_t>(sample)];
+      const double actual = reconstructed[static_cast<size_t>(sample)];
+      require(std::isfinite(actual), "spectral STFT reconstruction produced non-finite output");
+      const double difference = actual - expected;
+      squared_error += difference * difference;
+      squared_signal += expected * expected;
+    }
+    require(
+        squared_error / std::max(1.0e-20, squared_signal) < 1.0e-9,
+        "spectral STFT overlap-add reconstruction error was too high");
+  }
+
+  {
+    using kessho::spectral_freeze::SpectralFreezeEngine;
+    using kessho::spectral_freeze::SpectralFreezeMode;
+    using kessho::spectral_freeze::SpectralFreezeParams;
+    using kessho::spectral_freeze::SpectralFreezeRuntimeState;
+    using kessho::spectral_freeze::SpectralScanDirection;
+
+    constexpr int test_sample_rate = 8000;
+    constexpr int test_block_size = 128;
+    SpectralFreezeEngine engine;
+    require(engine.prepare(test_sample_rate), "spectral engine prepare failed");
+
+    SpectralFreezeParams params;
+    params.active = true;
+    params.mode = SpectralFreezeMode::Stretch;
+    params.capture_serial = 1;
+    params.stretch_speed = 0.0f;
+    params.direction = SpectralScanDirection::PingPong;
+    params.position = 0.25f;
+    params.diffusion = 0.55f;
+    params.tone = -0.15f;
+    params.width = 0.85f;
+    params.sustain = 1.0f;
+    params.mix = 1.0f;
+    engine.setParams(params);
+
+    std::array<float, test_block_size> input_l{};
+    std::array<float, test_block_size> input_r{};
+    std::array<float, test_block_size> output_l{};
+    std::array<float, test_block_size> output_r{};
+    int rendered_samples = 0;
+    auto renderSineBlock = [&](float amplitude) {
+      for (int frame = 0; frame < test_block_size; ++frame) {
+        const double phase = 2.0 * 3.14159265358979323846 * 220.0 *
+            static_cast<double>(rendered_samples + frame) /
+            static_cast<double>(test_sample_rate);
+        input_l[static_cast<size_t>(frame)] = amplitude * static_cast<float>(std::sin(phase));
+        input_r[static_cast<size_t>(frame)] = amplitude * static_cast<float>(std::sin(phase + 0.1));
+      }
+      engine.process(
+          input_l.data(), input_r.data(), output_l.data(), output_r.data(), test_block_size);
+      rendered_samples += test_block_size;
+      for (int frame = 0; frame < test_block_size; ++frame) {
+        require(std::isfinite(output_l[static_cast<size_t>(frame)]), "spectral engine produced non-finite left output");
+        require(std::isfinite(output_r[static_cast<size_t>(frame)]), "spectral engine produced non-finite right output");
+      }
+    };
+
+    for (int block = 0; block < 31; ++block) {
+      renderSineBlock(0.4f);
+    }
+    require(
+        engine.runtimeState() == SpectralFreezeRuntimeState::Recording,
+        "spectral startup capture engaged before one second was valid");
+    require(!engine.captureLocked(), "spectral startup pre-roll locked too early");
+
+    for (int block = 0; block < 40; ++block) {
+      renderSineBlock(0.4f);
+    }
+    require(
+        engine.runtimeState() == SpectralFreezeRuntimeState::Frozen,
+        "queued spectral startup capture did not engage when ready");
+    require(engine.captureLocked(), "spectral Stretch capture did not lock");
+    require(engine.validCaptureSamples() >= test_sample_rate, "spectral Stretch capture was too short");
+    const int locked_capture_samples = engine.validCaptureSamples();
+    const float stopped_position = engine.normalizedScanPosition();
+
+    float frozen_peak = 0.0f;
+    for (int block = 0; block < 48; ++block) {
+      renderSineBlock(0.0f);
+      for (float value : output_l) {
+        frozen_peak = std::max(frozen_peak, std::fabs(value));
+      }
+    }
+    require(frozen_peak > 1.0e-4f, "zero-speed spectral Stretch output became silent");
+    require(
+        engine.validCaptureSamples() == locked_capture_samples,
+        "locked spectral PCM capture changed while frozen");
+    requireNear(
+        engine.normalizedScanPosition(),
+        stopped_position,
+        1.0e-6,
+        "zero-speed spectral Stretch scan moved");
+
+    params.active = false;
+    engine.setParams(params);
+    for (int block = 0; block < 10; ++block) {
+      renderSineBlock(0.2f);
+    }
+    require(
+        engine.runtimeState() == SpectralFreezeRuntimeState::Recording,
+        "spectral release did not return to recording after crossfade");
+    require(!engine.captureLocked(), "spectral release did not unlock capture PCM");
+    const int capture_before_resume = engine.validCaptureSamples();
+    renderSineBlock(0.2f);
+    require(
+        engine.validCaptureSamples() > capture_before_resume,
+        "spectral rolling capture did not resume after release");
+
+    params.active = true;
+    engine.setParams(params);
+    for (int block = 0; block < 10; ++block) {
+      renderSineBlock(0.2f);
+    }
+    require(
+        engine.runtimeState() == SpectralFreezeRuntimeState::Recording,
+        "unchanged spectral capture serial retriggered capture");
+
+    params.capture_serial = 2;
+    params.stretch_speed = 1.0f;
+    engine.setParams(params);
+    for (int block = 0; block < 10; ++block) {
+      renderSineBlock(0.2f);
+    }
+    require(
+        engine.runtimeState() == SpectralFreezeRuntimeState::Frozen,
+        "new spectral capture serial did not retrigger capture");
+    const float moving_position = engine.normalizedScanPosition();
+    for (int block = 0; block < 16; ++block) {
+      renderSineBlock(0.0f);
+    }
+    require(
+        std::fabs(engine.normalizedScanPosition() - moving_position) > 1.0e-4f,
+        "one-times spectral Stretch scan did not advance");
+  }
+
+  {
+    using kessho::spectral_freeze::SpectralFreezeEngine;
+    using kessho::spectral_freeze::SpectralFreezeMode;
+    using kessho::spectral_freeze::SpectralFreezeParams;
+    using kessho::spectral_freeze::SpectralFreezeRuntimeState;
+
+    constexpr int test_sample_rate = 8000;
+    constexpr int test_block_size = 128;
+    SpectralFreezeEngine engine;
+    require(engine.prepare(test_sample_rate), "spectral warm recorder prepare failed");
+    SpectralFreezeParams params;
+    params.mode = SpectralFreezeMode::Stretch;
+    params.stretch_speed = 0.5f;
+    params.diffusion = 0.6f;
+    params.sustain = 1.0f;
+    params.mix = 1.0f;
+    engine.setParams(params);
+
+    std::array<float, test_block_size> input_l{};
+    std::array<float, test_block_size> input_r{};
+    std::array<float, test_block_size> output_l{};
+    std::array<float, test_block_size> output_r{};
+    int rendered_samples = 0;
+    auto render = [&]() {
+      for (int frame = 0; frame < test_block_size; ++frame) {
+        const double time = static_cast<double>(rendered_samples + frame) / test_sample_rate;
+        input_l[static_cast<size_t>(frame)] = 0.28f * static_cast<float>(
+            std::sin(2.0 * 3.14159265358979323846 * (140.0 + time * 35.0) * time));
+        input_r[static_cast<size_t>(frame)] = 0.24f * static_cast<float>(
+            std::sin(2.0 * 3.14159265358979323846 * (210.0 + time * 23.0) * time));
+      }
+      engine.process(input_l.data(), input_r.data(), output_l.data(), output_r.data(), test_block_size);
+      rendered_samples += test_block_size;
+    };
+
+    for (int block = 0; block < 125; ++block) render();
+    require(engine.validCaptureSamples() >= test_sample_rate * 2, "bypassed spectral recorder did not retain pre-roll");
+    params.active = true;
+    params.capture_serial = 1;
+    engine.setParams(params);
+    for (int block = 0; block < 8; ++block) render();
+    require(
+        engine.runtimeState() == SpectralFreezeRuntimeState::Frozen,
+        "warm spectral recorder did not capture on the next analysis hop");
+    require(engine.captureLocked(), "warm spectral recorder did not lock its pre-roll");
+    require(
+        engine.validCaptureSamples() >= test_sample_rate * 2,
+        "warm spectral capture discarded the preceding phrase");
+  }
+
+  {
+    using kessho::spectral_freeze::SpectralFreezeEngine;
+    using kessho::spectral_freeze::SpectralFreezeMode;
+    using kessho::spectral_freeze::SpectralFreezeParams;
+    using kessho::spectral_freeze::SpectralScanDirection;
+
+    constexpr int test_sample_rate = 8000;
+    constexpr int test_block_size = 128;
+    SpectralFreezeEngine coherent;
+    SpectralFreezeEngine diffused;
+    require(coherent.prepare(test_sample_rate), "coherent spectral wash prepare failed");
+    require(diffused.prepare(test_sample_rate), "diffused spectral wash prepare failed");
+
+    SpectralFreezeParams coherent_params;
+    coherent_params.mode = SpectralFreezeMode::Stretch;
+    coherent_params.stretch_speed = 0.7f;
+    coherent_params.direction = SpectralScanDirection::PingPong;
+    coherent_params.position = 0.5f;
+    coherent_params.diffusion = 0.0f;
+    coherent_params.sustain = 1.0f;
+    coherent_params.mix = 1.0f;
+    coherent.setParams(coherent_params);
+    SpectralFreezeParams diffused_params = coherent_params;
+    diffused_params.diffusion = 1.0f;
+    diffused.setParams(diffused_params);
+
+    std::array<float, test_block_size> input_l{};
+    std::array<float, test_block_size> input_r{};
+    std::array<float, test_block_size> coherent_l{};
+    std::array<float, test_block_size> coherent_r{};
+    std::array<float, test_block_size> diffused_l{};
+    std::array<float, test_block_size> diffused_r{};
+    int rendered_samples = 0;
+    auto render = [&](bool feed_transients) {
+      for (int frame = 0; frame < test_block_size; ++frame) {
+        const int sample = rendered_samples + frame;
+        const float pulse = feed_transients && sample % 947 == 0 ? 0.9f : 0.0f;
+        input_l[static_cast<size_t>(frame)] = pulse;
+        input_r[static_cast<size_t>(frame)] = pulse * 0.8f;
+      }
+      coherent.process(
+          input_l.data(), input_r.data(), coherent_l.data(), coherent_r.data(), test_block_size);
+      diffused.process(
+          input_l.data(), input_r.data(), diffused_l.data(), diffused_r.data(), test_block_size);
+      rendered_samples += test_block_size;
+    };
+
+    for (int block = 0; block < 96; ++block) render(true);
+    coherent_params.active = true;
+    coherent_params.capture_serial = 1;
+    coherent.setParams(coherent_params);
+    diffused_params.active = true;
+    diffused_params.capture_serial = 1;
+    diffused.setParams(diffused_params);
+    for (int block = 0; block < 64; ++block) render(false);
+
+    double coherent_energy = 0.0;
+    double diffused_energy = 0.0;
+    float coherent_peak = 0.0f;
+    float diffused_peak = 0.0f;
+    constexpr int measured_blocks = 128;
+    constexpr int blocks_per_hop =
+        kessho::spectral_freeze::SpectralFreezeStft::kHopSize / test_block_size;
+    std::array<double, measured_blocks / blocks_per_hop> diffused_hop_energy{};
+    for (int block = 0; block < measured_blocks; ++block) {
+      render(false);
+      for (int frame = 0; frame < test_block_size; ++frame) {
+        const float coherent_sample = coherent_l[static_cast<size_t>(frame)];
+        const float diffused_sample = diffused_l[static_cast<size_t>(frame)];
+        coherent_energy += static_cast<double>(coherent_sample) * coherent_sample;
+        diffused_energy += static_cast<double>(diffused_sample) * diffused_sample;
+        diffused_hop_energy[static_cast<size_t>(block / blocks_per_hop)] +=
+            static_cast<double>(diffused_sample) * diffused_sample;
+        coherent_peak = std::max(coherent_peak, std::fabs(coherent_sample));
+        diffused_peak = std::max(diffused_peak, std::fabs(diffused_sample));
+      }
+    }
+    const double measured_samples = measured_blocks * test_block_size;
+    const double coherent_rms = std::sqrt(coherent_energy / measured_samples);
+    const double diffused_rms = std::sqrt(diffused_energy / measured_samples);
+    const double coherent_crest = coherent_peak / std::max(1.0e-12, coherent_rms);
+    const double diffused_crest = diffused_peak / std::max(1.0e-12, diffused_rms);
+    double minimum_hop_rms = 1.0;
+    double maximum_hop_rms = 0.0;
+    for (const double energy : diffused_hop_energy) {
+      const double rms = std::sqrt(
+          energy / kessho::spectral_freeze::SpectralFreezeStft::kHopSize);
+      minimum_hop_rms = std::min(minimum_hop_rms, rms);
+      maximum_hop_rms = std::max(maximum_hop_rms, rms);
+    }
+    require(diffused_rms > 1.0e-5, "diffused spectral wash became silent");
+    require(
+        diffused_crest < coherent_crest * 0.5,
+        "spectral diffusion preserved hard transient peaks");
+    require(
+        minimum_hop_rms > maximum_hop_rms * 0.65,
+        "diffused spectral wash became choppy between analysis hops");
+  }
+
   constexpr double sample_rate = 48000.0;
   constexpr int block_size = 128;
 
@@ -983,23 +1480,24 @@ int main() {
       kessho_module_create(KESSHO_MODULE_SPECTRAL_FREEZE, sample_rate, block_size);
   require(spectral_module != nullptr, "spectral freeze module create failed");
   require(spectral_module_b != nullptr, "spectral freeze module should allow concurrent instances");
-  require(kessho_module_get_param_count(spectral_module) == 6, "spectral freeze module param count mismatch");
+  require(kessho_module_get_param_count(spectral_module) == 13, "spectral freeze module param count mismatch");
   require(
-      kessho_module_get_param_count(spectral_module_b) == 6,
+      kessho_module_get_param_count(spectral_module_b) == 13,
       "second spectral freeze module param count mismatch");
   float* spectral_params = kessho_module_get_params_ptr(spectral_module);
   float* spectral_params_b = kessho_module_get_params_ptr(spectral_module_b);
   require(spectral_params != nullptr, "spectral freeze module params pointer was null");
   require(spectral_params_b != nullptr, "second spectral freeze module params pointer was null");
   require(spectral_params != spectral_params_b, "spectral freeze module params should be instance-owned");
-  spectral_params[3] = 0.0f; // dry pass-through
+  spectral_params[12] = 0.0f;
   kessho_module_commit_params(spectral_module);
   spectral_params_b[0] = 1.0f; // freeze
-  spectral_params_b[1] = 1.0f; // slushy
-  spectral_params_b[2] = 0.35f; // speed
-  spectral_params_b[3] = 1.0f; // wet
-  spectral_params_b[4] = 0.1f; // decay
-  spectral_params_b[5] = 0.04f; // phase jitter
+  spectral_params_b[1] = 1.0f; // Slushy mode
+  spectral_params_b[2] = 1.0f; // capture serial
+  spectral_params_b[6] = 0.35f; // refresh
+  spectral_params_b[8] = 0.04f; // diffusion
+  spectral_params_b[11] = 0.9f; // sustain
+  spectral_params_b[12] = 1.0f; // wet
   kessho_module_commit_params(spectral_module_b);
 
   std::fill(module_output.begin(), module_output.end(), 0.0f);
@@ -1010,7 +1508,7 @@ int main() {
           module_output.data(),
           block_size) == 1,
       "spectral freeze dry module process failed");
-  require(diffRms(module_input, module_output) < 1.0e-7f, "spectral freeze dry module should pass input");
+  require(maxAbs(module_output) < 1.0e-7f, "inactive spectral return should be silent");
 
   module_left = expected_left;
   module_right = expected_right;
@@ -1023,11 +1521,11 @@ int main() {
           module_right.data(),
           block_size) == 1,
       "spectral freeze dry planar module process failed");
-  require(diffRms(module_left, expected_left) < 1.0e-7f, "spectral freeze planar dry left should pass input");
-  require(diffRms(module_right, expected_right) < 1.0e-7f, "spectral freeze planar dry right should pass input");
+  require(maxAbs(module_left) < 1.0e-7f, "inactive spectral planar left return should be silent");
+  require(maxAbs(module_right) < 1.0e-7f, "inactive spectral planar right return should be silent");
 
   float spectral_peak = 0.0f;
-  for (int block = 0; block < 32; ++block) {
+  for (int block = 0; block < 400; ++block) {
     for (int i = 0; i < block_size; ++i) {
       const float t = static_cast<float>(block * block_size + i) / static_cast<float>(sample_rate);
       module_input[static_cast<size_t>(i) * 2] = std::sin(2.0f * 3.14159265358979323846f * 196.0f * t) * 0.28f;
@@ -1124,8 +1622,8 @@ int main() {
   pad_params[kPadParamLevel] = 0.55f;
   pad_params[kPadParamOutputSelect] = 0.0f;
   kessho_module_commit_params(pad_module);
-  pad_params_b[kPadParamRelease + 53] = 0.01f;
-  pad_params_b[kPadParamLevel + 53] = 0.5f;
+  pad_params_b[kPadParamRelease + 52] = 0.01f;
+  pad_params_b[kPadParamLevel + 52] = 0.5f;
   pad_params_b[kPadParamOutputSelect] = 3.0f; // prefader pad 2
   kessho_module_commit_params(pad_module_b);
 
@@ -1519,8 +2017,8 @@ int main() {
       legacy_spectral_output,
       legacy_spectral_output + module_input.size());
   require(
-      diffRms(module_input, legacy_spectral_render) < 1.0e-7f,
-      "legacy spectral freeze dry path should pass input");
+      maxAbs(legacy_spectral_render) < 1.0e-7f,
+      "legacy inactive spectral return should be silent");
   spectral_freeze_destroy();
 
   require(pad_init(static_cast<float>(sample_rate)) == 0, "legacy pad init failed");

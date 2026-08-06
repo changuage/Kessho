@@ -17,6 +17,7 @@ import type { SelectRenderer } from '../../app/AppControls';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import type { PresetEntry } from '../../presets/types';
 import ReverbEnvelopeCanvas from './ReverbEnvelopeCanvas';
+import SpectralFreezeCard, { nextSpectralFreezeCaptureSerial } from './SpectralFreezeCard';
 import './reverb.css';
 
 // ═══ Reverb Character Presets ═══
@@ -103,19 +104,23 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
     },
   },
   lossyFreeze: {
-    label: 'Lossy Freeze',
+    label: 'Slushy Memory',
     description: 'Slushy spectral freeze — held pad with slow spectral ooze (Chase Bliss Lossy style)',
     params: {
       // Spectral freeze: slushy, held indefinitely, slow spectral drift
       spectralFreezeEnabled: true,
-      spectralFreezeActive: true,
-      spectralFreezeSlushy: true,
-      spectralFreezeSpeed: 0.15,
+      spectralFreezeActive: false,
+      spectralFreezeMode: 'slushy',
+      spectralFreezeCaptureSerial: 0,
+      spectralFreezeRefresh: 0.18,
+      spectralFreezeInputSensitivity: 0.65,
       spectralFreezeMix: 1.0,
-      spectralFreezeDecay: 1.0,          // max sustain — infinite hold
-      spectralFreezePhaseJitter: 0.25,    // gentle phase drift for organic movement
+      spectralFreezeSustain: 0.95,
+      spectralFreezeDiffusion: 0.45,
+      spectralFreezeTone: -0.2,
+      spectralFreezeWidth: 0.8,
       spectralFreezeRouting: 'pre' as const,
-      spectralFreezeReverbCrossfade: 1.0, // fully frozen — no dry bleed
+      spectralFreezeReverbCrossfade: 1.0,
       // Reverb: long warm tail to bloom the frozen pad
       reverbType: 'cathedral' as SliderState['reverbType'],
       reverbDecay: 0.93, reverbSize: 2.5, reverbDiffusion: 0.95, reverbModulation: 0.35,
@@ -130,6 +135,48 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbWarp: 0, reverbCrossFeed: 0.1,
       reverbEarlyReflections: 0.2, reverbAirAbsorption: 0.15, reverbSaturationMode: 'tape' as const,
       reverbErLpFreq: 2500,
+    },
+  },
+  stretchFreeze: {
+    label: 'Stretch Freeze',
+    description: 'Slow ping-pong scan through the rolling spectral memory',
+    params: {
+      spectralFreezeEnabled: true,
+      spectralFreezeActive: false,
+      spectralFreezeMode: 'stretch',
+      spectralFreezeCaptureSerial: 0,
+      spectralFreezeStretchSpeed: 0.5,
+      spectralFreezeDirection: 'pingpong',
+      spectralFreezePosition: 0,
+      spectralFreezeMix: 1,
+      spectralFreezeSustain: 1,
+      spectralFreezeDiffusion: 0.6,
+      spectralFreezeTone: -0.15,
+      spectralFreezeWidth: 0.85,
+      spectralFreezeRouting: 'pre',
+      spectralFreezeReverbCrossfade: 1,
+    },
+  },
+  livingStretch: {
+    label: 'Living Stretch',
+    description: 'A stretched memory that slowly absorbs new spectral detail',
+    params: {
+      spectralFreezeEnabled: true,
+      spectralFreezeActive: false,
+      spectralFreezeMode: 'livingStretch',
+      spectralFreezeCaptureSerial: 0,
+      spectralFreezeStretchSpeed: 0.333333,
+      spectralFreezeDirection: 'pingpong',
+      spectralFreezePosition: 0,
+      spectralFreezeRefresh: 0.12,
+      spectralFreezeInputSensitivity: 0.7,
+      spectralFreezeMix: 1,
+      spectralFreezeSustain: 1,
+      spectralFreezeDiffusion: 0.65,
+      spectralFreezeTone: -0.2,
+      spectralFreezeWidth: 0.9,
+      spectralFreezeRouting: 'pre',
+      spectralFreezeReverbCrossfade: 1,
     },
   },
   reverseWash: {
@@ -494,12 +541,13 @@ export default function ReverbPage({
                 className={`reverb-freeze-btn${(state.spectralFreezeEnabled && state.spectralFreezeActive) ? ' frozen' : ''}`}
                 aria-pressed={Boolean(state.spectralFreezeEnabled && state.spectralFreezeActive)}
                 onClick={() => {
-                  if (!state.spectralFreezeEnabled) {
-                    onSelectChange('spectralFreezeEnabled', true);
-                    onSelectChange('spectralFreezeActive', true);
-                  } else {
-                    onSelectChange('spectralFreezeActive', !state.spectralFreezeActive);
+                  if (state.spectralFreezeEnabled && state.spectralFreezeActive) {
+                    onSelectChange('spectralFreezeActive', false);
+                    return;
                   }
+                  onSelectChange('spectralFreezeEnabled', true);
+                  onParamChange('spectralFreezeCaptureSerial', nextSpectralFreezeCaptureSerial(state.spectralFreezeCaptureSerial));
+                  onSelectChange('spectralFreezeActive', true);
                 }}
               >
                 {(state.spectralFreezeEnabled && state.spectralFreezeActive) ? '❄ FROZEN' : '❄ Freeze'}
@@ -808,82 +856,14 @@ export default function ReverbPage({
             </div>
           </div>
 
-          {/* ── 7. Spectral Freeze card ── */}
-          <div className="reverb-section-card reverb-freeze-card">
-            <div className="reverb-section-head">
-              <span className="reverb-section-title">Spectral Freeze</span>
-              <span className="reverb-section-note">STFT spectral hold effect</span>
-            </div>
-            <div className="reverb-section-body">
-              <div className="reverb-grid-2 reverb-freeze-row">
-                <button
-                  className={`reverb-mode-btn${state.spectralFreezeEnabled ? ' active reverb-mode-btn-freeze' : ''}`}
-                  onClick={() => onSelectChange('spectralFreezeEnabled', !state.spectralFreezeEnabled)}
-                >
-                  {state.spectralFreezeEnabled ? 'Freeze On' : 'Freeze Off'}
-                </button>
-                <button
-                  className={`reverb-mode-btn${state.spectralFreezeActive ? ' active reverb-mode-btn-freeze' : ''}`}
-                  onClick={() => onSelectChange('spectralFreezeActive', !state.spectralFreezeActive)}
-                  disabled={!state.spectralFreezeEnabled}
-                >
-                  {state.spectralFreezeActive ? 'Frozen' : 'Thawed'}
-                </button>
-              </div>
-
-              {state.spectralFreezeEnabled && (
-                <>
-                  <Select
-                    label="Mode"
-                    value={state.spectralFreezeSlushy ? 'slushy' : 'solid'}
-                    options={[
-                      { value: 'solid', label: 'Solid (static hold)' },
-                      { value: 'slushy', label: 'Slushy (spectral refresh)' },
-                    ]}
-                    onChange={(v) => onSelectChange('spectralFreezeSlushy', v === 'slushy')}
-                  />
-                  {state.spectralFreezeSlushy ? (
-                    <div className="reverb-grid-2">
-                      <Slider label="Speed" value={state.spectralFreezeSpeed} paramKey="spectralFreezeSpeed" onChange={onParamChange} {...sp('spectralFreezeSpeed')} />
-                      <Slider label="Mix" value={state.spectralFreezeMix} paramKey="spectralFreezeMix" onChange={onParamChange} {...sp('spectralFreezeMix')} />
-                    </div>
-                  ) : (
-                    <Slider label="Mix" value={state.spectralFreezeMix} paramKey="spectralFreezeMix" onChange={onParamChange} {...sp('spectralFreezeMix')} />
-                  )}
-                  <div className="reverb-grid-2">
-                    <Slider label="Sustain" value={state.spectralFreezeDecay} paramKey="spectralFreezeDecay" onChange={onParamChange} {...sp('spectralFreezeDecay')} />
-                    <Slider label="Phase Jitter" value={state.spectralFreezePhaseJitter} paramKey="spectralFreezePhaseJitter" onChange={onParamChange} {...sp('spectralFreezePhaseJitter')} />
-                  </div>
-                  {state.spectralFreezeRouting === 'pre' ? (
-                    <div className="reverb-grid-2">
-                      <div className="reverb-select-wrap">
-                        <Select
-                          label="Routing"
-                          value={state.spectralFreezeRouting ?? 'pre'}
-                          options={[
-                            { value: 'pre', label: 'Pre-reverb' },
-                            { value: 'post', label: 'Post-reverb' },
-                          ]}
-                          onChange={(v) => onSelectChange('spectralFreezeRouting', v as 'pre' | 'post')}
-                        />
-                      </div>
-                      <Slider label="Reverb Crossfade" value={state.spectralFreezeReverbCrossfade} paramKey="spectralFreezeReverbCrossfade" onChange={onParamChange} {...sp('spectralFreezeReverbCrossfade')} />
-                    </div>
-                  ) : (
-                    <Select
-                      label="Routing"
-                      value={state.spectralFreezeRouting ?? 'pre'}
-                      options={[
-                        { value: 'pre', label: 'Pre-reverb' },
-                        { value: 'post', label: 'Post-reverb' },
-                      ]}
-                      onChange={(v) => onSelectChange('spectralFreezeRouting', v as 'pre' | 'post')}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-          </div>
+          <SpectralFreezeCard
+            state={state}
+            onParamChange={onParamChange}
+            onSelectChange={onSelectChange}
+            sliderProps={sliderProps}
+            SliderComponent={SliderComponent}
+            SelectComponent={SelectComponent}
+          />
 
           </div>
 

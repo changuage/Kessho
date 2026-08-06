@@ -14,6 +14,7 @@ export const PRESET_CONTENT_NODE_TYPES = [
   'granularVoice',
   'granularSelection',
   'padVoice',
+  'lead4opfmPatch',
   'sampleVoice',
   'dynamicsEq',
   'drumSubVoice',
@@ -33,6 +34,7 @@ export const PRESET_CONTENT_NODE_TYPES = [
   'sequencerArrangement',
   'mixRouting',
   'parameterBehaviorMap',
+  'scatterConfig',
 ] as const;
 
 export type PresetContentNodeType = (typeof PRESET_CONTENT_NODE_TYPES)[number];

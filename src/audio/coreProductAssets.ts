@@ -78,6 +78,14 @@ export function cloneDecodedCoreProductAssetForTransfer(asset: DecodedCoreProduc
 }
 
 export function resolveCoreProductAssetUrl(path: string): string {
+  const embeddedAssetBaseUrl = typeof window !== 'undefined'
+    ? (window as Window & {
+      __pointCloudsEmbeddedProductCoreAssets?: { assetBaseUrl?: string };
+    }).__pointCloudsEmbeddedProductCoreAssets?.assetBaseUrl
+    : undefined;
+  if (embeddedAssetBaseUrl) {
+    return new URL(`${CORE_PRODUCT_ASSET_BASE_PATH}/${path}`, embeddedAssetBaseUrl).toString();
+  }
   const base = new URL(import.meta.env?.BASE_URL ?? '/', window.location.origin);
   return new URL(`${CORE_PRODUCT_ASSET_BASE_PATH}/${path}`, base).toString();
 }

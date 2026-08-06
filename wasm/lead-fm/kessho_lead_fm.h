@@ -228,6 +228,8 @@ int lead_fm_instance_note_on_ex(
     int lead_index);
 int lead_fm_instance_note_off(KesshoLeadFmInstance* instance, int note_index);
 int lead_fm_instance_note_set_frequency(KesshoLeadFmInstance* instance, int note_index, float frequency);
+int lead_fm_instance_set_voice_gain(KesshoLeadFmInstance* instance, int note_index, float gain);
+int lead_fm_instance_set_voice_gain_ramp(KesshoLeadFmInstance* instance, int note_index, float target_gain, uint32_t frames);
 void lead_fm_instance_all_notes_off(KesshoLeadFmInstance* instance);
 void lead_fm_instance_refresh_active_notes(KesshoLeadFmInstance* instance);
 

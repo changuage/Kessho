@@ -816,7 +816,7 @@ const PAD1_TO_PAD2_ENGINE: Record<string, string> = {
   padSubEnabled: 'pad2SubEnabled', padSubOctave: 'pad2SubOctave', padSubWave: 'pad2SubWave', padSubLevel: 'pad2SubLevel',
   padNoiseType: 'pad2NoiseType', padNoiseLevel: 'pad2NoiseLevel',
   hardness: 'pad2Hardness', warmth: 'pad2Warmth', presence: 'pad2Presence',
-  filterType: 'pad2FilterType', filterCutoffMin: 'pad2FilterCutoffMin', filterCutoffMax: 'pad2FilterCutoffMax',
+  filterType: 'pad2FilterType', filterCutoff: 'pad2FilterCutoff',
   filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ', filterSlope: 'pad2FilterSlope', filterKeyTracking: 'pad2FilterKeyTracking',
   padFilterBEnabled: 'pad2FilterBEnabled', padFilterBType: 'pad2FilterBType', padFilterBCutoff: 'pad2FilterBCutoff',
   padFilterBResonance: 'pad2FilterBResonance', padFilterBQ: 'pad2FilterBQ', padFilterRouting: 'pad2FilterRouting',
@@ -1106,9 +1106,11 @@ export class AudioEngine {
 
   // Spectral Freeze (STFT WASM)
   private spectralFreezeNode: AudioWorkletNode | null = null;
+  private spectralFreezeCaptureSink: GainNode | null = null;
+  private spectralFreezeRouteGain: GainNode | null = null;
   private wasmSpectralFreezeBinary: ArrayBuffer | null = null;
   private reverbInputBus: GainNode | null = null;   // bus between all sources and reverb (gain always 1)
-  private reverbDirectSend: GainNode | null = null;  // crossfade-controlled direct path to reverb (pre-mode only)
+  private spectralFreezeReverbSend: GainNode | null = null;
 
   private synthBus: GainNode | null = null;
   private dryBus: GainNode | null = null;
@@ -1432,12 +1434,7 @@ export class AudioEngine {
 
   // Dirty-gate caches: skip worklet postMessage when params unchanged
   private _prevReverbParams: Record<string, unknown> | null = null;
-  private _prevSfFreeze = false;
-  private _prevSfSlushy = false;
-  private _prevSfSpeed = 0.3;
-  private _prevSfMix = 1.0;
-  private _prevSfDecay = 0;
-  private _prevSfPhaseJitter = 0;
+  private _prevSfParamsKey = '';
   private _sfParamsInitialized = false;
   private _messageSignatures = new Map<string, unknown>();
 
@@ -2780,12 +2777,7 @@ export class AudioEngine {
 
   private resetWorkletParamCaches(): void {
     this._prevReverbParams = null;
-    this._prevSfFreeze = false;
-    this._prevSfSlushy = false;
-    this._prevSfSpeed = 0.3;
-    this._prevSfMix = 1.0;
-    this._prevSfDecay = 0;
-    this._prevSfPhaseJitter = 0;
+    this._prevSfParamsKey = '';
     this._sfParamsInitialized = false;
     this.currentSpectralFreezeRouting = null;
     this._messageSignatures.clear();
@@ -6131,6 +6123,9 @@ export class AudioEngine {
     if (this.reverbNode && (this.reverbNode as any).port) {
       (this.reverbNode as AudioWorkletNode).port.postMessage({ type: 'reset' });
     }
+    if (this.spectralFreezeNode) {
+      this.spectralFreezeNode.port.postMessage({ type: 'reset' });
+    }
     if (this.driftProcessorNode instanceof AudioWorkletNode) {
       this.driftProcessorNode.port.postMessage({ type: 'reset' });
     }
@@ -6836,6 +6831,14 @@ export class AudioEngine {
       try { this.spectralFreezeNode.disconnect(); } catch { /* */ }
       this.spectralFreezeNode = null;
     }
+    if (this.spectralFreezeCaptureSink) {
+      try { this.spectralFreezeCaptureSink.disconnect(); } catch { /* */ }
+      this.spectralFreezeCaptureSink = null;
+    }
+    if (this.spectralFreezeRouteGain) {
+      try { this.spectralFreezeRouteGain.disconnect(); } catch { /* */ }
+      this.spectralFreezeRouteGain = null;
+    }
 
     // Tear down pad synth WASM worklet
     if (this.padWasmNode) {
@@ -7024,7 +7027,7 @@ export class AudioEngine {
     this.reverbPreConditionerNode = null;
     this.reverbPreConditionerLoaded = false;
     this.reverbInputBus = null;
-    this.reverbDirectSend = null;
+    this.spectralFreezeReverbSend = null;
     this.transportAnchors = null;
     this.prevSynthEuclidLaneEnabled = [false, false, false, false];
     resetSequencerResumeRuntimeState(this.synthResumeRuntime);
@@ -7172,7 +7175,7 @@ export class AudioEngine {
         this.reverbPreConditionerNode = null;
         this.reverbPreConditionerLoaded = false;
         this.reverbInputBus = null;
-        this.reverbDirectSend = null;
+        this.spectralFreezeReverbSend = null;
         this.sharedDelayA?.dispose();
         this.sharedDelayA = null;
         this.sharedDelayB?.dispose();
@@ -7398,9 +7401,8 @@ export class AudioEngine {
       this.reverbPreCompressor.connect(this.reverbPreMakeupGain);
     }
 
-    // Direct send — crossfade-controlled path from sources to reverb (used in pre-mode)
-    this.reverbDirectSend = ctx.createGain();
-    this.reverbDirectSend.gain.value = 1.0;
+    this.spectralFreezeReverbSend = ctx.createGain();
+    this.spectralFreezeReverbSend.gain.value = 0;
 
     // Spectral Freeze WASM worklet
     if (this.wasmSpectralFreezeBinary) {
@@ -7416,6 +7418,11 @@ export class AudioEngine {
       const sfBin = this.wasmSpectralFreezeBinary;
       this.wasmSpectralFreezeBinary = null;
       this.spectralFreezeNode.port.postMessage({ type: 'wasmBinary', binary: sfBin }, [sfBin]);
+      this.spectralFreezeCaptureSink = ctx.createGain();
+      this.spectralFreezeCaptureSink.gain.value = 0;
+      this.spectralFreezeCaptureSink.connect(ctx.destination);
+      this.spectralFreezeRouteGain = ctx.createGain();
+      this.spectralFreezeRouteGain.gain.value = 1;
     }
 
     // Pad Synth WASM worklet — 6 outputs:
@@ -9224,41 +9231,43 @@ export class AudioEngine {
    * Wire spectral freeze node into the audio graph.
    *
    * Pre-reverb routing:
-   *   reverbInputBus → pre-comp/makeup → spectralFreezeNode → reverbNode
-   *   reverbInputBus → pre-comp/makeup → reverbDirectSend  → reverbNode
-   *   reverbNode → reverbOutputGain
+   *   conditioned reverb source → reverbNode → reverbOutputGain
+   *   conditioned reverb source → spectralFreezeNode → independent return
+   *   spectralFreezeNode → spectralFreezeReverbSend → reverbNode
    *
    * Post-reverb routing:
-   *   reverbInputBus → pre-comp/makeup → reverbNode → spectralFreezeNode → reverbOutputGain
+   *   conditioned reverb source → reverbNode → reverbOutputGain
+   *   reverbNode → spectralFreezeNode → independent return
    *
    * Disabled:
    *   reverbInputBus → pre-comp/makeup → reverbNode → reverbOutputGain
    */
   private applySpectralFreezeRouting(): void {
     const reverbSourceNode = this.reverbPreConditionerNode ?? this.reverbPreMakeupGain ?? this.reverbPreCompressor ?? this.reverbInputBus;
-    if (!this.reverbNode || !this.reverbOutputGain || !this.reverbInputBus || !this.reverbDirectSend || !reverbSourceNode) return;
+    if (!this.ctx || !this.masterGain || !this.reverbNode || !this.reverbOutputGain || !this.reverbInputBus || !this.spectralFreezeRouteGain || !this.spectralFreezeReverbSend || !reverbSourceNode) return;
     const state = this.sliderState;
     const routing = state?.spectralFreezeRouting ?? 'pre';
     const enabled = state?.spectralFreezeEnabled ?? false;
+    const freezeReturnTarget = this.getSidechainTargetInput(this.ctx, 'reverb', this.masterGain);
 
     // ── Tear down all variable connections ──
     // Disconnect spectral freeze node outputs
     if (this.spectralFreezeNode) {
       try { this.spectralFreezeNode.disconnect(); } catch (_) { /* */ }
     }
+    if (this.spectralFreezeRouteGain) {
+      try { this.spectralFreezeRouteGain.disconnect(); } catch (_) { /* */ }
+    }
     // Disconnect conditioned reverb source → spectralFreezeNode (pre-mode input)
     if (this.spectralFreezeNode) {
       try { reverbSourceNode.disconnect(this.spectralFreezeNode); } catch (_) { /* */ }
     }
-    // Disconnect conditioned reverb source → reverbNode / reverbDirectSend
+    // Disconnect conditioned reverb source → reverbNode.
     try { reverbSourceNode.disconnect(this.reverbNode); } catch (_) { /* */ }
-    try { reverbSourceNode.disconnect(this.reverbDirectSend); } catch (_) { /* */ }
-    // Disconnect reverbDirectSend → reverbNode
-    try { this.reverbDirectSend.disconnect(this.reverbNode); } catch (_) { /* */ }
+    try { this.spectralFreezeReverbSend.disconnect(); } catch (_) { /* */ }
     // Disconnect reverbNode outputs
     try { this.reverbNode.disconnect(); } catch (_) { /* */ }
 
-    // reverbInputBus gain always stays at 1 — crossfade is on reverbDirectSend
     this.reverbInputBus.gain.value = 1.0;
 
     if (!enabled || !this.spectralFreezeNode) {
@@ -9266,33 +9275,30 @@ export class AudioEngine {
       // conditioned reverb source → reverbNode → reverbOutputGain
       reverbSourceNode.connect(this.reverbNode);
       this.reverbNode.connect(this.reverbOutputGain);
-      this.reverbDirectSend.gain.value = 0;  // unused
+      if (this.spectralFreezeNode && this.spectralFreezeCaptureSink) {
+        if (routing === 'post') this.reverbNode.connect(this.spectralFreezeNode);
+        else reverbSourceNode.connect(this.spectralFreezeNode);
+        this.spectralFreezeNode.connect(this.spectralFreezeCaptureSink);
+      }
+      this.spectralFreezeReverbSend.gain.value = 0;
       this.currentSpectralFreezeRouting = null;
       return;
     }
 
+    reverbSourceNode.connect(this.reverbNode);
+    this.reverbNode.connect(this.reverbOutputGain);
+    this.spectralFreezeNode.connect(this.spectralFreezeRouteGain);
+    this.spectralFreezeRouteGain.connect(freezeReturnTarget);
+    this.spectralFreezeRouteGain.gain.value = state?.spectralFreezeMix ?? 1;
+
     if (routing === 'pre') {
-      // ── Pre-reverb ──
-      // Path 1 (frozen): conditioned reverb source → spectralFreezeNode → reverbNode
       reverbSourceNode.connect(this.spectralFreezeNode);
-      this.spectralFreezeNode.connect(this.reverbNode);
-
-      // Path 2 (live crossfade): conditioned reverb source → reverbDirectSend → reverbNode
-      // crossfade=1 means "fully frozen" = no live bleed, crossfade=0 = full live signal
-      reverbSourceNode.connect(this.reverbDirectSend);
-      this.reverbDirectSend.connect(this.reverbNode);
-      const crossfade = state?.spectralFreezeReverbCrossfade ?? 0.5;
-      this.reverbDirectSend.gain.value = 1.0 - crossfade;
-
-      // Reverb output
-      this.reverbNode.connect(this.reverbOutputGain);
+      this.spectralFreezeNode.connect(this.spectralFreezeReverbSend);
+      this.spectralFreezeReverbSend.connect(this.reverbNode);
+      this.spectralFreezeReverbSend.gain.value = state?.spectralFreezeReverbCrossfade ?? 1;
     } else {
-      // ── Post-reverb ──
-      // conditioned reverb source → reverbNode → spectralFreezeNode → reverbOutputGain
-      reverbSourceNode.connect(this.reverbNode);
       this.reverbNode.connect(this.spectralFreezeNode);
-      this.spectralFreezeNode.connect(this.reverbOutputGain);
-      this.reverbDirectSend.gain.value = 0;  // unused
+      this.spectralFreezeReverbSend.gain.value = 0;
     }
 
     this.currentSpectralFreezeRouting = routing;
@@ -9386,25 +9392,13 @@ export class AudioEngine {
     this.applySidechainTargetGains(state, now, smoothTime);
 
     // Voice parameters
-    // Filter cutoff modulates between filterCutoffMin and filterCutoffMax
-    const minCutoff = Math.min(
-      shv('filterCutoffMin', padState.filterCutoffMin ?? 200),
-      shv('filterCutoffMax', padState.filterCutoffMax ?? 8000),
-    );
-    const maxCutoff = Math.max(
-      shv('filterCutoffMin', padState.filterCutoffMin ?? 200),
-      shv('filterCutoffMax', padState.filterCutoffMax ?? 8000),
-    );
+    const cutoff = shv('filterCutoff', padState.filterCutoff ?? 1700);
 
     // ── LFO computation (Phase 2: all waveshapes, all destinations) ──
     const lfoDepth = shv('padLfo1Depth', padState.padLfo1Depth ?? 0);
     const lfoDest = padState.padLfo1Dest ?? 'none';
     const lfoRate = shv('padLfo1Rate', padState.padLfo1Rate ?? 0.5);
     const lfoWave = padState.padLfo1Wave ?? 'sine';
-
-    // Filter cutoff sits at center of min/max range; LFO adds modulation on top
-    const modAmount = 0.5;
-    const cutoff = minCutoff + (maxCutoff - minCutoff) * modAmount;
 
     // Q (bandwidth/angle) is set directly from filterQ
     const filterQ = shv('filterQ', padState.filterQ);
@@ -9453,9 +9447,9 @@ export class AudioEngine {
     this.currentLfo2Value = lfo2Value;
 
     // ── Build Pad 1 derived param set ──
-    const lfo1FiltMod = lfoDest === 'filterCutoff' ? lfoValue * (maxCutoff - minCutoff) * 0.5 : 0;
-    const lfo2FiltMod = lfo2Dest === 'filterCutoff' ? lfo2Value * (maxCutoff - minCutoff) * 0.5 : 0;
-    let modEnvFilterMod = 0, modEnvPitchCents = 0;
+    const lfo1FilterOctaves = lfoDest === 'filterCutoff' ? lfoValue * 4 : 0;
+    const lfo2FilterOctaves = lfo2Dest === 'filterCutoff' ? lfo2Value * 4 : 0;
+    let modEnvFilterOctaves = 0, modEnvPitchCents = 0;
     if ((padState.padModEnvEnabled ?? false) && (shv('padModEnvDepth', padState.padModEnvDepth ?? 0)) !== 0) {
       const mDest = padState.padModEnvDest ?? 'filterCutoff';
       if (mDest === 'filterCutoff' || mDest === 'pitch') {
@@ -9466,19 +9460,19 @@ export class AudioEngine {
         const mAP = mA / mCycle, mDP = (mA + mD) / mCycle;
         let mV = mPh < mAP ? mPh / mAP : mPh < mDP ? 1 - (1 - mS) * ((mPh - mAP) / (mDP - mAP)) : mS;
         mV *= shv('padModEnvDepth', padState.padModEnvDepth ?? 0);
-        if (mDest === 'filterCutoff') modEnvFilterMod = mV * (maxCutoff - minCutoff) * 0.5;
+        if (mDest === 'filterCutoff') modEnvFilterOctaves = mV * 4;
         else modEnvPitchCents = mV * 400;
       }
     }
 
-    const p1FilterCutoffWithoutEnv = fin(Math.max(20, Math.min(20000, cutoff + lfo1FiltMod + lfo2FiltMod)), 1000);
+    const p1FilterCutoffWithoutEnv = fin(Math.max(20, Math.min(20000, cutoff * Math.pow(2, lfo1FilterOctaves + lfo2FilterOctaves))), 1000);
     const p1 = {
       oscAWave, oscBWave, subEnabled, subWave: (padState.padSubWave ?? 'sine') as OscillatorType,
       effectiveALevel: fin(effectiveALevel, 0), effectiveBLevel: fin(effectiveBLevel, 0),
       subLevel: fin(shv('padSubLevel', padState.padSubLevel ?? 0.3), 0.3), noiseLevel: fin(shv('padNoiseLevel', padState.padNoiseLevel ?? 0.15), 0.15),
       fbEnabled: padState.padFilterBEnabled ?? false,
       filterType: padState.filterType as BiquadFilterType,
-      finalCutoff: fin(Math.max(20, Math.min(20000, cutoff + lfo1FiltMod + lfo2FiltMod + modEnvFilterMod)), 1000),
+      finalCutoff: fin(Math.max(20, Math.min(20000, cutoff * Math.pow(2, lfo1FilterOctaves + lfo2FilterOctaves + modEnvFilterOctaves))), 1000),
       effectiveQ: fin(effectiveQ, 1),
       warmthGain: fin(warmthGain, 0), presenceGain: fin(presenceGain, 0),
       lfoAmpMod: fin(1 + (lfoDest === 'amplitude' ? lfoValue * 0.5 : 0) + (lfo2Dest === 'amplitude' ? lfo2Value * 0.5 : 0), 1),
@@ -9513,13 +9507,11 @@ export class AudioEngine {
       const p2l2Val = this.computeLfoValue(now, shv('pad2Lfo2Rate', padState.pad2Lfo2Rate ?? 0.5), shv('pad2Lfo2Depth', padState.pad2Lfo2Depth ?? 0), padState.pad2Lfo2Wave ?? 'sine', p2l2Dest, this.pad2Lfo2State);
       p2l1ValForUi = p2l1Val;
 
-      const minC2 = Math.min(shv('pad2FilterCutoffMin', padState.pad2FilterCutoffMin), shv('pad2FilterCutoffMax', padState.pad2FilterCutoffMax));
-      const maxC2 = Math.max(shv('pad2FilterCutoffMin', padState.pad2FilterCutoffMin), shv('pad2FilterCutoffMax', padState.pad2FilterCutoffMax));
-      const cut2 = minC2 + (maxC2 - minC2) * 0.5;
+      const cut2 = shv('pad2FilterCutoff', padState.pad2FilterCutoff ?? 1700);
       const res2 = shv('pad2FilterResonance', padState.pad2FilterResonance) * (0.7 + shv('pad2Hardness', padState.pad2Hardness) * 0.6);
       const lcb2 = cut2 < 200 ? (1 - cut2 / 200) * 4 : 0;
 
-      let me2FMod = 0, me2PCents = 0;
+      let me2FilterOctaves = 0, me2PCents = 0;
       if ((padState.pad2ModEnvEnabled ?? false) && (shv('pad2ModEnvDepth', padState.pad2ModEnvDepth ?? 0)) !== 0) {
         const md = padState.pad2ModEnvDest ?? 'filterCutoff';
         if (md === 'filterCutoff' || md === 'pitch') {
@@ -9529,14 +9521,17 @@ export class AudioEngine {
           const mCy = mA + mD + 1, mPh = (now % mCy) / mCy, mAP = mA / mCy, mDP = (mA + mD) / mCy;
           let mV = mPh < mAP ? mPh / mAP : mPh < mDP ? 1 - (1 - mS) * ((mPh - mAP) / (mDP - mAP)) : mS;
           mV *= shv('pad2ModEnvDepth', padState.pad2ModEnvDepth ?? 0);
-          if (md === 'filterCutoff') me2FMod = mV * (maxC2 - minC2) * 0.5; else me2PCents = mV * 400;
+          if (md === 'filterCutoff') me2FilterOctaves = mV * 4; else me2PCents = mV * 400;
         }
       }
 
       const oscMix2 = shv('pad2OscMix', padState.pad2OscMix ?? 0.5);
       const aMx2 = Math.min(1, 2 * (1 - oscMix2)), bMx2 = Math.min(1, 2 * oscMix2);
 
-      const p2FilterCutoffWithoutEnv = fin(Math.max(20, Math.min(20000, cut2 + (p2l1Dest === 'filterCutoff' ? p2l1Val * (maxC2 - minC2) * 0.5 : 0) + (p2l2Dest === 'filterCutoff' ? p2l2Val * (maxC2 - minC2) * 0.5 : 0))), 1000);
+      const p2LfoFilterOctaves =
+        (p2l1Dest === 'filterCutoff' ? p2l1Val * 4 : 0) +
+        (p2l2Dest === 'filterCutoff' ? p2l2Val * 4 : 0);
+      const p2FilterCutoffWithoutEnv = fin(Math.max(20, Math.min(20000, cut2 * Math.pow(2, p2LfoFilterOctaves))), 1000);
       p2FilterCutoffForUi = p2FilterCutoffWithoutEnv;
       p2 = {
         oscAWave: (padState.pad2OscAWave ?? 'sawtooth') as OscillatorType,
@@ -9548,7 +9543,7 @@ export class AudioEngine {
         subLevel: fin(shv('pad2SubLevel', padState.pad2SubLevel ?? 0.3), 0.3), noiseLevel: fin(shv('pad2NoiseLevel', padState.pad2NoiseLevel ?? 0.15), 0.15),
         fbEnabled: padState.pad2FilterBEnabled ?? false,
         filterType: (padState.pad2FilterType ?? 'lowpass') as BiquadFilterType,
-        finalCutoff: fin(Math.max(20, Math.min(20000, cut2 + (p2l1Dest === 'filterCutoff' ? p2l1Val * (maxC2 - minC2) * 0.5 : 0) + (p2l2Dest === 'filterCutoff' ? p2l2Val * (maxC2 - minC2) * 0.5 : 0) + me2FMod)), 1000),
+        finalCutoff: fin(Math.max(20, Math.min(20000, cut2 * Math.pow(2, p2LfoFilterOctaves + me2FilterOctaves))), 1000),
         effectiveQ: fin(shv('pad2FilterQ', padState.pad2FilterQ) + res2 * 8 + lcb2, 1),
         warmthGain: fin(shv('pad2Warmth', padState.pad2Warmth) * 8, 0),
         presenceGain: fin((shv('pad2Presence', padState.pad2Presence) - 0.5) * 12, 0),
@@ -9917,13 +9912,7 @@ export class AudioEngine {
     // Pad reverb sends are additive, not crossfaded.
     // When reverbEnabled is false, mute reverb sends to save CPU
     const padActive = pad1Active || pad2Active;
-    // When spectral freeze is active, attenuate the dry direct path so the
-    // frozen pad isn't masked by the live pad signal modulating through.
-    // Reverb Crossfade=1 → fully frozen → mute dry, Crossfade=0 → full dry.
-    const sfEnabled = state.spectralFreezeEnabled ?? false;
-    const sfActive = state.spectralFreezeActive ?? false;
-    const sfCrossfade = state.spectralFreezeReverbCrossfade ?? 1.0;
-    const dryGain = (sfEnabled && sfActive) ? (1.0 - sfCrossfade) : 1.0;
+    const dryGain = 1.0;
     this.setVoiceSpatialChainState(this.pad1SpatialChain, {
       active: pad1Active,
       postLpf: pad1PostLpf,
@@ -10159,7 +10148,8 @@ export class AudioEngine {
     }
 
     // Reverb output level (mute if disabled)
-    this.reverbOutputGain?.gain.setTargetAtTime(reverbReturnEnabled ? shv('reverbLevel', state.reverbLevel) * ENGINE_TRIMS.reverb : 0, now, smoothTime);
+    const reverbOutputLevel = shv('reverbLevel', state.reverbLevel) * ENGINE_TRIMS.reverb;
+    this.reverbOutputGain?.gain.setTargetAtTime(reverbReturnEnabled ? reverbOutputLevel : 0, now, smoothTime);
 
     const reverbPreCompThreshold = shv('reverbPreCompThreshold', state.reverbPreCompThreshold ?? DEFAULT_REVERB_PRE_COMP.threshold);
     const reverbPreCompKnee = shv('reverbPreCompKnee', state.reverbPreCompKnee ?? DEFAULT_REVERB_PRE_COMP.knee);
@@ -10188,28 +10178,29 @@ export class AudioEngine {
 
     // Spectral Freeze parameters
     if (this.spectralFreezeNode && (this.spectralFreezeNode as any).port) {
-      const sfFreeze = state.spectralFreezeActive ?? false;
-      const sfSlushy = state.spectralFreezeSlushy ?? false;
-      const sfSpeed = state.spectralFreezeSpeed ?? 0.3;
-      const sfMix = state.spectralFreezeMix ?? 1.0;
-      const sfDecay = 1.0 - (state.spectralFreezeDecay ?? 1.0);
-      const sfPhaseJitter = state.spectralFreezePhaseJitter ?? 0.0;
+      const sfParams = {
+        active: Boolean(state.spectralFreezeEnabled && state.spectralFreezeActive),
+        mode: state.spectralFreezeMode ?? 'stretch',
+        captureSerial: state.spectralFreezeCaptureSerial ?? 0,
+        stretchSpeed: state.spectralFreezeStretchSpeed ?? 0.5,
+        direction: state.spectralFreezeDirection ?? 'pingpong',
+        position: state.spectralFreezePosition ?? 0,
+        refresh: state.spectralFreezeRefresh ?? 0.15,
+        inputSensitivity: state.spectralFreezeInputSensitivity ?? 0.5,
+        diffusion: state.spectralFreezeDiffusion ?? 0.55,
+        tone: state.spectralFreezeTone ?? -0.15,
+        width: state.spectralFreezeWidth ?? 0.85,
+        sustain: state.spectralFreezeSustain ?? 1,
+        mix: 1,
+      };
+      const sfParamsKey = Object.values(sfParams).join(':');
 
-      // Dirty-gate: skip postMessage if all 6 params unchanged
-      if (!this._sfParamsInitialized ||
-          sfFreeze !== this._prevSfFreeze || sfSlushy !== this._prevSfSlushy ||
-          sfSpeed !== this._prevSfSpeed || sfMix !== this._prevSfMix ||
-          sfDecay !== this._prevSfDecay || sfPhaseJitter !== this._prevSfPhaseJitter) {
+      if (!this._sfParamsInitialized || sfParamsKey !== this._prevSfParamsKey) {
         this._sfParamsInitialized = true;
-        this._prevSfFreeze = sfFreeze;
-        this._prevSfSlushy = sfSlushy;
-        this._prevSfSpeed = sfSpeed;
-        this._prevSfMix = sfMix;
-        this._prevSfDecay = sfDecay;
-        this._prevSfPhaseJitter = sfPhaseJitter;
+        this._prevSfParamsKey = sfParamsKey;
         (this.spectralFreezeNode as any).port.postMessage({
           type: 'params',
-          params: { freeze: sfFreeze, slushy: sfSlushy, speed: sfSpeed, mix: sfMix, decay: sfDecay, phaseJitter: sfPhaseJitter },
+          params: sfParams,
         });
       }
 
@@ -10220,12 +10211,16 @@ export class AudioEngine {
         this.applySpectralFreezeRouting();
       }
 
-      // Update crossfade in pre-mode (controls reverbDirectSend, not reverbInputBus)
-      // crossfade=1 → gain=0 (no live bleed), crossfade=0 → gain=1 (full live)
-      if (enabled && routing === 'pre' && this.reverbDirectSend) {
-        const crossfade = state.spectralFreezeReverbCrossfade ?? 0.5;
-        this.reverbDirectSend.gain.setTargetAtTime(1.0 - crossfade, now, smoothTime);
-      }
+      this.spectralFreezeRouteGain?.gain.setTargetAtTime(
+        enabled ? (state.spectralFreezeMix ?? 1) : 0,
+        now,
+        smoothTime,
+      );
+      this.spectralFreezeReverbSend?.gain.setTargetAtTime(
+        enabled && routing === 'pre' ? (state.spectralFreezeReverbCrossfade ?? 1) : 0,
+        now,
+        smoothTime,
+      );
     }
 
     // Lead synth parameters — leadDry gates active/inactive; per-lead level on lead1/2LevelGain + WASM per-lead gains
@@ -10959,20 +10954,26 @@ export class AudioEngine {
     const now = ctx.currentTime;
     this.reportFxOnset(useLead2 ? 'lead2' : 'lead1', 'leadNote');
 
-    // ─── Shared expression: vibrato & glide (NOT from presets) ───
-    const vdRange = this.dualRanges['leadVibratoDepth'];
-    const vibratoDepthMin = vdRange ? vdRange.min : (this.sliderState.leadVibratoDepth ?? 0);
-    const vibratoDepthMax = vdRange ? vdRange.max : (this.sliderState.leadVibratoDepth ?? 0);
+    // ─── Per-lead expression response ───
+    const vibratoDepthKey = useLead2 ? 'lead2VibratoDepth' : 'lead1VibratoDepth';
+    const vibratoRateKey = useLead2 ? 'lead2VibratoRate' : 'lead1VibratoRate';
+    const glideKey = useLead2 ? 'lead2Glide' : 'lead1Glide';
+    const vdRange = this.dualRanges[vibratoDepthKey] ?? this.dualRanges.leadVibratoDepth;
+    const vibratoDepthValue = this.sliderState[vibratoDepthKey] ?? this.sliderState.leadVibratoDepth ?? 0;
+    const vibratoDepthMin = vdRange ? vdRange.min : vibratoDepthValue;
+    const vibratoDepthMax = vdRange ? vdRange.max : vibratoDepthValue;
     const vibratoDepthNorm = vibratoDepthMin + Math.random() * (vibratoDepthMax - vibratoDepthMin);
 
-    const vrRange = this.dualRanges['leadVibratoRate'];
-    const vibratoRateMin = vrRange ? vrRange.min : (this.sliderState.leadVibratoRate ?? 0);
-    const vibratoRateMax = vrRange ? vrRange.max : (this.sliderState.leadVibratoRate ?? 0);
+    const vrRange = this.dualRanges[vibratoRateKey] ?? this.dualRanges.leadVibratoRate;
+    const vibratoRateValue = this.sliderState[vibratoRateKey] ?? this.sliderState.leadVibratoRate ?? 0;
+    const vibratoRateMin = vrRange ? vrRange.min : vibratoRateValue;
+    const vibratoRateMax = vrRange ? vrRange.max : vibratoRateValue;
     const vibratoRateNorm = vibratoRateMin + Math.random() * (vibratoRateMax - vibratoRateMin);
 
-    const glRange = this.dualRanges['leadGlide'];
-    const glideMin = glRange ? glRange.min : (this.sliderState.leadGlide ?? 0);
-    const glideMax = glRange ? glRange.max : (this.sliderState.leadGlide ?? 0);
+    const glRange = this.dualRanges[glideKey] ?? this.dualRanges.leadGlide;
+    const glideValue = this.sliderState[glideKey] ?? this.sliderState.leadGlide ?? 0;
+    const glideMin = glRange ? glRange.min : glideValue;
+    const glideMax = glRange ? glRange.max : glideValue;
     const glide = glideMin + Math.random() * (glideMax - glideMin);
 
     // Notify UI of the triggered expression values

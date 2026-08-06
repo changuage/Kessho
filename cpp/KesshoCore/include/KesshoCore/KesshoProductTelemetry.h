@@ -29,8 +29,6 @@ typedef struct KesshoProductCapabilityReport {
 #define KESSHO_PRODUCT_EARTH_TEXTURE_TELEMETRY_CAPACITY 4u
 #define KESSHO_PRODUCT_MODULATION_DEBUG_TELEMETRY_CAPACITY 96u
 #define KESSHO_PRODUCT_GRANULAR_VISUAL_EVENT_CAPACITY 32u
-#define KESSHO_PRODUCT_DEBUG_SOURCE_STATE_CAPACITY 8u
-#define KESSHO_PRODUCT_DEBUG_VOICE_SPAWN_CAPACITY 16u
 #define KESSHO_PRODUCT_SEQUENCER_UI_MUTATION_HAS_OVERRIDES 1u
 #define KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_SNAPSHOT 1u
 #define KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_STEP 2u
@@ -135,30 +133,6 @@ typedef struct KesshoProductGranularVisualEvent {
   int32_t cloud_style;
 } KesshoProductGranularVisualEvent;
 
-typedef struct KesshoProductDebugSourceState {
-  uint32_t source_id;
-  uint32_t preset_id;
-  uint32_t source_preset_a_id;
-  uint32_t source_preset_b_id;
-  uint32_t source_revision;
-  uint32_t source_state_hash;
-  uint32_t compiled_source_hash;
-  uint32_t override_block_hash;
-} KesshoProductDebugSourceState;
-
-typedef struct KesshoProductDebugVoiceSpawn {
-  uint64_t trigger_sample;
-  uint64_t trigger_sequence;
-  uint32_t source_id;
-  uint32_t voice_id;
-  uint32_t preset_id;
-  uint32_t source_revision;
-  uint32_t source_state_hash;
-  uint32_t compiled_source_hash;
-  uint32_t override_block_hash;
-  uint32_t trigger_context_hash;
-} KesshoProductDebugVoiceSpawn;
-
 typedef struct KesshoProductTelemetry {
   uint32_t schema_hash;
   double sample_rate;
@@ -252,10 +226,6 @@ typedef struct KesshoProductTelemetry {
   uint64_t modulation_debug_last_trigger_frames[KESSHO_PRODUCT_MODULATION_DEBUG_TELEMETRY_CAPACITY];
   uint32_t granular_visual_event_count;
   KesshoProductGranularVisualEvent granular_visual_events[KESSHO_PRODUCT_GRANULAR_VISUAL_EVENT_CAPACITY];
-  uint32_t debug_source_state_count;
-  KesshoProductDebugSourceState debug_source_states[KESSHO_PRODUCT_DEBUG_SOURCE_STATE_CAPACITY];
-  uint32_t debug_voice_spawn_count;
-  KesshoProductDebugVoiceSpawn debug_voice_spawns[KESSHO_PRODUCT_DEBUG_VOICE_SPAWN_CAPACITY];
   uint32_t synth_orbit_visual_note_counts[KESSHO_PRODUCT_ORBIT_VISUAL_LANES];
   float synth_orbit_visual_base_angles[KESSHO_PRODUCT_ORBIT_VISUAL_LANES];
   float synth_orbit_visual_note_angles[KESSHO_PRODUCT_ORBIT_VISUAL_LANES * KESSHO_PRODUCT_ORBIT_VISUAL_NOTES];
@@ -328,4 +298,10 @@ typedef struct KesshoProductTelemetry {
   uint64_t harmony_play_dispatch_count;
   uint64_t harmony_play_last_dispatch_frame;
   float harmony_play_dispatch_latency_ms;
+  uint32_t harmony_note_pool_count;
+  float harmony_note_pool_midi[8];
+  uint32_t harmony_next_note_pool_count;
+  float harmony_next_note_pool_midi[8];
+  uint32_t harmony_next_source;
+  int32_t harmony_next_step_index;
 } KesshoProductTelemetry;

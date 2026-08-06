@@ -34,6 +34,60 @@ float soundscapeFamilyGainForFrame(
 
 } // namespace
 
+void KesshoProductEngine::advanceHarmonyModuleVoiceFades(uint32_t frames) {
+  if (frames == 0u) {
+    return;
+  }
+  const uint32_t total_frames = std::max<uint32_t>(
+      1u,
+      static_cast<uint32_t>(std::lround(sample_rate * 0.02)));
+  const float handover = clampFloat(harmony.morph_scale_handover_at, 0.05f, 0.95f);
+  const bool target_side = harmony.morph_plan_phase > 0.0f && harmony.morph_plan_phase >= handover;
+  auto removed = [&](const HarmonyModuleVoiceState& state) {
+    if (!target_side || !state.harmony_resolved || harmony.morph_unmatched_a_count == 0u) {
+      return false;
+    }
+    for (uint32_t index = 0u; index < harmony.morph_unmatched_a_count; ++index) {
+      if (std::abs(state.midi_note - harmony.morph_unmatched_a[index]) <= 0.01f) {
+        return true;
+      }
+    }
+    return false;
+  };
+  auto advance = [&](HarmonyModuleVoiceState& state, kessho::core::IKesshoModule* module, uint32_t voice_index) {
+    if (!state.active || module == nullptr) {
+      return;
+    }
+    const float desired_gain = removed(state) ? 0.0f : 1.0f;
+    if (std::abs(state.target_gain - desired_gain) > 0.0001f) {
+      state.target_gain = desired_gain;
+      state.fade_frames_remaining = total_frames;
+      module->setVoiceGainRamp(static_cast<int>(voice_index), desired_gain, total_frames);
+    }
+    if (state.fade_frames_remaining > 0u) {
+      const uint32_t remaining_before = state.fade_frames_remaining;
+      if (remaining_before <= frames) {
+        state.gain = state.target_gain;
+        state.fade_frames_remaining = 0u;
+      } else {
+        state.gain += (state.target_gain - state.gain) *
+            (static_cast<float>(frames) / static_cast<float>(remaining_before));
+        state.fade_frames_remaining -= frames;
+      }
+    } else {
+      state.gain = state.target_gain;
+    }
+  };
+  for (uint32_t index = 0u; index < static_cast<uint32_t>(PAD_NUM_VOICES); ++index) {
+    advance(pad_harmony_voice_states[index], pad_module.get(), index);
+  }
+  for (uint32_t lead = 0u; lead < 2u; ++lead) {
+    for (uint32_t index = 0u; index < static_cast<uint32_t>(LEAD_FM_MAX_POLYPHONY); ++index) {
+      advance(lead_harmony_voice_states[lead][index], lead_modules[lead].get(), index);
+    }
+  }
+}
+
 void KesshoProductEngine::renderPadModule(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (!pad_module || frames == 0u) {
     return;
@@ -177,9 +231,9 @@ void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t 
   const float degrade_send = std::max(0.0f, source.degrade_send);
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const uint64_t absolute_frame = transport.sample_frame + i;
-    const float source_gate = sourceEnableGainForFrame(source, absolute_frame) *
-        routingMuteGainForFrame(kRoutingMuteRowDrums, absolute_frame);
+    const uint64_t transport_frame = transport.sample_frame + i;
+    const float source_gate = sourceOutputGainForFrame(source, audio_render_sample_frame + i) *
+        routingMuteGainForFrame(kRoutingMuteRowDrums, transport_frame);
     const float dry_l = module_tap_l[0][i] * source_gate;
     const float dry_r = module_tap_r[0][i] * source_gate;
     const float reverb_l = module_tap_l[1][i] * source_gate;
@@ -320,7 +374,7 @@ void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, ui
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
     const uint64_t absolute_frame = transport.sample_frame + i;
-    const float source_gate = sourceEnableGainForFrame(source, absolute_frame);
+    const float source_gate = sourceOutputGainForFrame(source, audio_render_sample_frame + i);
     const float water_family_gate = soundscapeFamilyGainForFrame(
         soundscape_family_gains[0], water_master_enabled, absolute_frame, sample_rate);
     const float insects_family_gate = soundscapeFamilyGainForFrame(
@@ -432,6 +486,7 @@ void KesshoProductEngine::renderProductModules(float* out_l, float* out_r, uint3
     return;
   }
   advancePadVoiceReleases(frames);
+  advanceHarmonyModuleVoiceFades(frames);
   const uint32_t active_module_mask = computeActiveModuleMask();
   if ((active_module_mask & kModulePad) != 0u) {
     renderPadModule(out_l, out_r, start, frames);

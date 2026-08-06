@@ -54,8 +54,7 @@ const PAD1_PARAM_MAP = {
   padFoldMode:        'pad_set_fold_mode',
   // Filter A
   filterType:         'pad_set_filter_type',
-  filterCutoffMin:    'pad_set_filter_cutoff_min',
-  filterCutoffMax:    'pad_set_filter_cutoff_max',
+  filterCutoff:       'pad_set_filter_cutoff',
   filterResonance:    'pad_set_filter_resonance',
   filterQ:            'pad_set_filter_q',
   filterSlope:        'pad_set_filter_slope',
@@ -117,8 +116,7 @@ const PAD2_PARAM_MAP = {
   pad2FoldAmount:     'pad_set_fold_amount',
   pad2FoldMode:        'pad_set_fold_mode',
   pad2FilterType:      'pad_set_filter_type',
-  pad2FilterCutoffMin: 'pad_set_filter_cutoff_min',
-  pad2FilterCutoffMax: 'pad_set_filter_cutoff_max',
+  pad2FilterCutoff:    'pad_set_filter_cutoff',
   pad2FilterResonance: 'pad_set_filter_resonance',
   pad2FilterQ:         'pad_set_filter_q',
   pad2FilterSlope:     'pad_set_filter_slope',
@@ -173,7 +171,7 @@ const PARAM_CLAMPS = {
   padOscMix: [0, 1], padSubOctave: [-4, 1], padSubWave: [0, 3], padSubLevel: [0, 1],
   padNoiseType: [0, 1], padNoiseLevel: [0, 1], hardness: [0, 1], warmth: [0, 1], presence: [0, 1],
   padFoldAmount: [0, 1], padFoldMode: [0, 2], filterType: [0, 3],
-  filterCutoffMin: [20, 18000], filterCutoffMax: [20, 18000], filterResonance: [0, 1], filterQ: [0.01, 20], filterSlope: [12, 48], filterKeyTracking: [0, 1],
+  filterCutoff: [20, 18000], filterResonance: [0, 1], filterQ: [0.01, 20], filterSlope: [12, 48], filterKeyTracking: [0, 1],
   padFilterBType: [0, 3], padFilterBCutoff: [20, 18000], padFilterBResonance: [0, 1], padFilterBQ: [0.01, 20],
   padFilterRouting: [0, 2], synthAttack: [0.001, 20], synthDecay: [0.001, 20], synthSustain: [0, 1], synthRelease: [0.001, 30],
   padLfo1Rate: [0, 40], padLfo1Depth: [0, 1], padLfo1Wave: [0, 6], padLfo1Dest: [0, 6],
@@ -185,7 +183,7 @@ const PARAM_CLAMPS = {
   pad2OscMix: [0, 1], pad2SubOctave: [-4, 1], pad2SubWave: [0, 3], pad2SubLevel: [0, 1],
   pad2NoiseType: [0, 1], pad2NoiseLevel: [0, 1], pad2Hardness: [0, 1], pad2Warmth: [0, 1], pad2Presence: [0, 1],
   pad2FoldAmount: [0, 1], pad2FoldMode: [0, 2], pad2FilterType: [0, 3],
-  pad2FilterCutoffMin: [20, 18000], pad2FilterCutoffMax: [20, 18000], pad2FilterResonance: [0, 1], pad2FilterQ: [0.01, 20], pad2FilterSlope: [12, 48], pad2FilterKeyTracking: [0, 1],
+  pad2FilterCutoff: [20, 18000], pad2FilterResonance: [0, 1], pad2FilterQ: [0.01, 20], pad2FilterSlope: [12, 48], pad2FilterKeyTracking: [0, 1],
   pad2FilterBType: [0, 3], pad2FilterBCutoff: [20, 18000], pad2FilterBResonance: [0, 1], pad2FilterBQ: [0.01, 20],
   pad2FilterRouting: [0, 2], pad2Attack: [0.001, 20], pad2Decay: [0.001, 20], pad2Sustain: [0, 1], pad2Release: [0.001, 30],
   pad2Lfo1Rate: [0, 40], pad2Lfo1Depth: [0, 1], pad2Lfo1Wave: [0, 6], pad2Lfo1Dest: [0, 6],
@@ -423,16 +421,15 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
     const w = this.wasm;
     const p = { ...(data.params || data) };
 
-    const normalizeCutoffPair = (minKey, maxKey) => {
-      if (p[minKey] === undefined || p[maxKey] === undefined) return;
+    const migrateLegacyCutoff = (minKey, maxKey, cutoffKey) => {
+      if (p[cutoffKey] !== undefined || p[minKey] === undefined || p[maxKey] === undefined) return;
       const min = this.resolveValue(minKey, p[minKey]);
       const max = this.resolveValue(maxKey, p[maxKey]);
       if (!Number.isFinite(min) || !Number.isFinite(max)) return;
-      p[minKey] = Math.min(min, max);
-      p[maxKey] = Math.max(min, max);
+      p[cutoffKey] = (min + max) * 0.5;
     };
-    normalizeCutoffPair('filterCutoffMin', 'filterCutoffMax');
-    normalizeCutoffPair('pad2FilterCutoffMin', 'pad2FilterCutoffMax');
+    migrateLegacyCutoff('filterCutoffMin', 'filterCutoffMax', 'filterCutoff');
+    migrateLegacyCutoff('pad2FilterCutoffMin', 'pad2FilterCutoffMax', 'pad2FilterCutoff');
 
     // Reverb send (global, not per-pad)
     if (p.synthReverbSend !== undefined) w.pad_set_reverb_send(this.resolveValue('synthReverbSend', p.synthReverbSend));

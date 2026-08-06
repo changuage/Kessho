@@ -30,10 +30,9 @@ import {
 import { getDrumVoiceParamRoute } from '../ui/drums/drumVoiceParamRouting';
 import { isAtEndpoint0, isAtEndpoint1 } from '../audio/morphUtils';
 import {
-  SINGLE_ONLY_SLIDER_KEYS,
-  WALK_ONLY_DUAL_KEYS,
   normalizeDualSliderMode,
 } from './AppControls';
+import { getSliderCapability } from '../ui/sliderSystem/sliderCapabilities';
 import {
   extractNativeDualRanges,
   type DualSliderState,
@@ -161,7 +160,8 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
       if (isJourneyPlaying) return;
 
       const keyStr = key as string;
-      if (SINGLE_ONLY_SLIDER_KEYS.has(keyStr)) {
+      const capability = getSliderCapability(keyStr);
+      if (!capability || capability === 'single') {
         commitDualConfigAction({ type: 'remove', key: keyStr });
         clearRuntimeWalkPositions([keyStr]);
         removeRuntimeTriggerPositions([keyStr]);
@@ -175,7 +175,11 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
 
       const currentConfig = dualConfigsRef.current[keyStr];
       const current = currentConfig?.mode ?? 'single';
-      const nextMode: SliderMode = current === 'single' ? 'walk' : current === 'walk' ? (WALK_ONLY_DUAL_KEYS.has(keyStr) ? 'single' : 'sampleHold') : 'single';
+      const nextMode: SliderMode = current === 'single'
+        ? 'walk'
+        : current === 'walk'
+          ? (capability === 'walk-only' ? 'single' : 'sampleHold')
+          : 'single';
 
       if (nextMode === 'single') {
         const range = currentConfig
@@ -387,7 +391,8 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
       if (isJourneyPlaying) return;
 
       const keyStr = key as string;
-      if (SINGLE_ONLY_SLIDER_KEYS.has(keyStr)) return;
+      const capability = getSliderCapability(keyStr);
+      if (!capability || capability === 'single') return;
 
       commitDualConfigAction({ type: 'setRange', key: keyStr, range: [min, max] });
 

@@ -400,6 +400,16 @@ function isInternalDerivedPreset(preset) {
     || (Array.isArray(preset?.tags) && preset.tags.includes('internal-derived'));
 }
 
+/**
+ * A recycled visible preset remains a restore root until it is hard-purged.
+ * Its latest graph therefore retains internal descendants just like an active
+ * visible preset does. This deliberately does not include internal rows as
+ * roots: an internal row must be retained by a visible/root preset.
+ */
+function isRetainedVisibleRoot(preset) {
+  return Boolean(preset?.latest_version_id) && !isInternalDerivedPreset(preset);
+}
+
 function reachablePresetIdsFrom(roots) {
   const reachable = new Set();
   const queue = [...roots];
@@ -575,13 +585,14 @@ for (const ref of refs) {
 }
 
 const activeVisibleRoots = presets.filter(preset => (
-  preset.deleted_at == null && preset.latest_version_id && !isInternalDerivedPreset(preset)
+  preset.deleted_at == null && isRetainedVisibleRoot(preset)
 ));
-const retainedVisibleRoots = presets.filter(preset => (
-  preset.latest_version_id && !isInternalDerivedPreset(preset)
-));
+const retainedVisibleRoots = presets.filter(isRetainedVisibleRoot);
 const activeVisibleReachableIds = reachablePresetIdsFrom(activeVisibleRoots);
 const retainedVisibleReachableIds = reachablePresetIdsFrom(retainedVisibleRoots);
+// Lifecycle parity: only an active internal row unreachable from every active
+// or recycled retained root is garbage. Recycled-root-only descendants are
+// expected and remain a nonblocking restore-retention measurement below.
 const activeUnreachableInternalDerived = presets
   .filter((preset) => (
     preset.deleted_at == null
@@ -603,8 +614,7 @@ const activeInternalRetainedOnly = presets
     && retainedVisibleReachableIds.has(preset.id)
     && !activeVisibleReachableIds.has(preset.id)
   ))
-  .map((preset) => ({ type: preset.type, scope: preset.scope, name: preset.name }))
-  .slice(0, 20);
+  .map((preset) => ({ type: preset.type, scope: preset.scope, name: preset.name }));
 
 const recycledRootsWithDeletedInternalDescendants = [];
 for (const root of retainedVisibleRoots.filter(preset => preset.deleted_at != null)) {
@@ -839,7 +849,7 @@ const report = {
     activeUnreachableInternalDerivedCount: activeUnreachableInternalDerived.length,
     activeUnreachableInternalDerived: activeUnreachableInternalDerived.slice(0, 20),
     activeInternalRetainedOnlyCount: activeInternalRetainedOnly.length,
-    activeInternalRetainedOnly,
+    activeInternalRetainedOnly: activeInternalRetainedOnly.slice(0, 20),
     recycledRootRestoreHazardCount: recycledRootsWithDeletedInternalDescendants.length,
     recycledRootRestoreHazards: recycledRootsWithDeletedInternalDescendants.slice(0, 20),
     orphanedPatchRootCount: orphanedPatchRoots.length,
@@ -909,6 +919,7 @@ if (outputJson) {
   console.log(`Fixed ref policy issues: ${report.integrity.fixedRefPolicyIssueCount}`);
   console.log(`Duplicate active logical identities: ${report.duplicateActiveLogicalIdentities.length}`);
   console.log(`Active unreachable internal-derived presets: ${report.integrity.activeUnreachableInternalDerivedCount}`);
+  console.log(`Active internal-derived retained only by recycled roots (nonblocking): ${report.integrity.activeInternalRetainedOnlyCount}`);
   console.log(`Recycled-root restore hazards: ${report.integrity.recycledRootRestoreHazardCount}`);
   console.log(`Orphaned patch roots: ${report.integrity.orphanedPatchRootCount}`);
   console.log(`Active families without a parent: ${report.integrity.activeFamilyWithoutParentCount}`);

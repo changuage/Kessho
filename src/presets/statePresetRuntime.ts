@@ -6,7 +6,9 @@ import { decodeCurrentPresetEntry } from './currentPresetSchema';
 import { enforceProductCorePresetBoundaryState } from './productCorePresetBoundary';
 import { extractPresetVersionMetadata } from './presetUtils';
 import { savedPresetSourceFor } from './savedPresetSource';
+import { sanitizePresetParameterBehaviorMetadata } from './versionMetadataHelpers';
 import type { PresetEntry, PresetSummary } from './types';
+import { completeSpectralFreezePresetState } from './spectralFreezePresetState';
 
 export type SavedPreset = BundledSavedPreset;
 
@@ -37,12 +39,13 @@ export const checkPresetCompatibility = (preset: SavedPreset): string[] => {
 /**
  * Validate and apply only current canonical state semantics.
  *
- * This function deliberately does not merge defaults, rename fields, infer
- * missing values, or migrate an older state shape. The Product boundary
- * validator makes an incomplete or malformed current state fail visibly.
+ * This function deliberately does not generally merge defaults, rename fields,
+ * infer missing values, or migrate an older state shape. It only completes the
+ * unused Spectral Freeze block added after early L4 presets. The Product
+ * boundary validator keeps every other incomplete state visibly invalid.
  */
 export const normalizePresetForWeb = (state: SliderState): SliderState => {
-  const current = enforceProductCorePresetBoundaryState(state);
+  const current = enforceProductCorePresetBoundaryState(completeSpectralFreezePresetState(state));
   return enforceProductCorePresetBoundaryState(normalizeDegradeReverbCrossfeed({ ...current }));
 };
 
@@ -86,8 +89,13 @@ export function statePresetEntryToSavedPreset(entry: PresetEntry, versionSelecti
 
   const versionData = getVersionData(currentEntry, version.v);
   if (!versionData) return null;
-  const state = enforceProductCorePresetBoundaryState(versionData as unknown as SliderState);
+  const state = enforceProductCorePresetBoundaryState(completeSpectralFreezePresetState(versionData));
   const metadata = extractPresetVersionMetadata(version) ?? {};
+  const behavior = sanitizePresetParameterBehaviorMetadata(metadata);
+  if (behavior.sliderModes) metadata.sliderModes = behavior.sliderModes;
+  else delete metadata.sliderModes;
+  if (behavior.dualRanges) metadata.dualRanges = behavior.dualRanges;
+  else delete metadata.dualRanges;
 
   return {
     id: currentEntry.id,

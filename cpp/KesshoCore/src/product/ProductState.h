@@ -1,12 +1,11 @@
 #pragma once
 #include "ProductBuffers.h"
-#include "ProductForwardDecls.h"
 #include "ProductGraphState.h"
 #include "ProductFxState.h"
 #include "ProductMidiRuntimeState.h"
 #include "ProductModulationState.h"
 #include "ProductModuleRuntimeState.h"
-#include "ProductPresetBridge.h"
+#include "ProductSourcePresetPatch.h"
 #include "ProductSequencerState.h"
 #include "ProductScatterRuntimeState.h"
 #include "ProductSceneProgramRuntimeState.h"
@@ -26,6 +25,9 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   uint32_t max_block_size = 128;
   uint32_t flags = 0;
   ProductTransport transport{};
+  // Monotonic audio-thread time keeps realtime performance gestures schedulable
+  // while the musical transport is stopped.
+  uint64_t audio_render_sample_frame = 0u;
   ProductSonicRuntimeState sonic_runtime{};
   ProductScatterRuntimeState scatter_runtime{};
   ProductSceneProgramRuntimeState scene_program_runtime{};
@@ -34,6 +36,7 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   ProductAutoCycleRuntimeState auto_cycle_runtime{};
   ProductRoutingMuteGroupRuntimeState routing_mute_groups{};
   HarmonyState harmony{};
+  bool harmony_preview_active = false;
   SourceState sources[kSourceCount]{};
   LaneState synth_lanes[kMaxLaneCount]{};
   LaneState drum_lanes[kMaxLaneCount]{};
@@ -74,8 +77,6 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   ProductArrangementState arrangement{};
   KesshoProductTelemetry telemetry{};
   uint64_t telemetry_refresh_count = 0u;
-  uint64_t debug_voice_spawn_sequence = 0u;
-  bool debug_voice_spawn_demand_enabled = false;
   float stem_l[kStemCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float stem_r[kStemCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float silent_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
@@ -114,8 +115,8 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   bool reverb_harmony_boost_active_last_block = false;
   uint64_t granular_last_phrase_index = 0u;
   bool granular_phrase_runtime_initialized = false;
-  ProductBiquadLowpassState granular_output_lpf{};
-  ProductBiquadLowpassState granular_reverb_lpf{};
+  ProductBiquadFilterState granular_output_lpf{};
+  ProductBiquadFilterState granular_reverb_lpf{};
   float granular_reverb_comp_gain = 1.0f;
   float granular_reverb_comp_attack_coeff = 0.0f;
   float granular_reverb_comp_release_coeff = 0.0f;
@@ -287,10 +288,13 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   bool isSoundscapeTextureParamTarget(uint32_t target_id) const;
   uint32_t soundscapeTextureParamIndexForRangeTarget(uint32_t target_id) const;
   uint32_t soundscapeTextureSlotForParamRangeTarget(uint32_t target_id) const;
+  bool isSoundscapeModuleParamTarget(uint32_t target_id) const;
+  uint32_t soundscapeModuleParamIndexForRangeTarget(uint32_t target_id) const;
   uint32_t sourceEnableFadeFrames(uint32_t source_id) const;
   bool sourceRenderActive(const SourceState& source) const;
   void setSourceEnabled(SourceState& source, bool enabled, bool immediate);
   float sourceEnableGainForFrame(SourceState& source, uint64_t absolute_frame);
+#include "ProductSourceAuditionMethods.inc"
   ModulationRange* findModulationRange(uint32_t target_id, uint32_t param_id);
   const ModulationRange* findModulationRange(uint32_t target_id, uint32_t param_id) const;
   ModulationRange* findOrAllocateModulationRange(uint32_t target_id, uint32_t param_id);
@@ -353,11 +357,10 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   void updateHarmonyTelemetry(uint64_t absolute_sample);
   void resetHarmonyClock();
   void advanceHarmonyClock();
+  void stageNextHarmonyPreview();
   void markSequencerUiStateChanged(uint32_t target_id, uint32_t lane_index, uint32_t change_kind);
   void copySequencerLaneUiState(const LaneState& lane, KesshoProductSequencerLaneUiState& out) const;
   void copySequencerUiState(KesshoProductSequencerUiState& out) const;
-  KesshoProductDebugSourceState debugSourceState(uint32_t source_id) const;
-  void recordDebugVoiceSpawn(uint32_t source_id, uint32_t voice_id, uint32_t sample_seed);
   float evolutionDepth() const;
   float evolvedLaneValue(
       const LaneState& lane,
@@ -418,7 +421,8 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
       float synth_ratchet_factor,
       uint32_t sample_seed,
       uint32_t pad_voice_index = kPadVoiceNoPreference,
-      uint32_t* out_module_voice_index = nullptr);
+      uint32_t* out_module_voice_index = nullptr,
+      bool harmony_resolved = false);
   uint32_t triggerVoice(
       uint32_t source_id,
       float midi_note,
@@ -434,7 +438,9 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
       float drum_ratchet_decay_cap = 1.0e10f,
       float drum_ratchet_attack_cap = 1.0e10f,
       uint32_t pad_voice_index = kPadVoiceNoPreference,
-      float synth_ratchet_factor = 1.0f);
+      float synth_ratchet_factor = 1.0f,
+      bool harmony_resolved = false,
+      bool allow_disabled_source = false);
   bool applySourceExactRuntimeRanges(uint32_t source_id, uint32_t param_id_base, float* params, uint32_t param_count, uint32_t sample_seed);
   void configurePianoSampleVoiceEnvelope(Voice& voice, const SourceState& source, float velocity, float distance, uint32_t resolved_seed, uint32_t asset_slot);
   void ensureSoundscapeVoice();
@@ -449,8 +455,10 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
       uint32_t note,
       uint32_t pad_voice_index,
       uint32_t lead_voice_index,
-      uint32_t sample_voice_index);
-  void applyMidiNoteOff(uint32_t source_id, uint32_t channel, uint32_t note);
+      uint32_t sample_voice_index,
+      uint32_t owner_token = 0u,
+      bool transient_audition = false);
+  void applyMidiNoteOff(uint32_t source_id, uint32_t channel, uint32_t note, uint32_t owner_token = 0u);
   void applyMidiSustain(uint32_t source_id, uint32_t channel, bool sustain_down);
   void applyMidiControlChange(uint32_t source_id, uint32_t channel, uint32_t controller, uint32_t value);
   void applyMidiPitchBend(uint32_t source_id, uint32_t channel, uint32_t lsb, uint32_t msb);
@@ -463,6 +471,7 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   void schedulePadVoiceRelease(uint32_t pad_index, uint32_t voice_index, float hold_seconds);
   void clearPadVoiceReleases(uint32_t source_id);
   void advancePadVoiceReleases(uint32_t frames);
+  void advanceHarmonyModuleVoiceFades(uint32_t frames);
   void resetPadPostChains();
   float resolveSourcePostLpfHz(uint32_t source_id) const;
   float resolveSourceStereoWidth(uint32_t source_id) const;
@@ -560,8 +569,6 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
       float* out_r,
       uint32_t start,
       uint32_t frames);
-  void configureGranularLowpass(ProductBiquadLowpassState& state, float cutoff_hz) const;
-  float processGranularLowpass(const ProductBiquadLowpassState& filter, BiquadState& state, float input) const;
   float granularCompressorGainDbForLevel(float level_db) const;
   void renderGranular(float* out_l, float* out_r, uint32_t start, uint32_t frames);
   void renderReverb(float* out_l, float* out_r, uint32_t start, uint32_t frames);

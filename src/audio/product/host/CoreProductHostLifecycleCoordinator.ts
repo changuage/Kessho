@@ -65,6 +65,10 @@ export class CoreProductHostLifecycleCoordinator {
   }
 
   async resume(): Promise<void> {
+    // MIDI host timestamps are relative to the current audio clock epoch.
+    // Recalibrate after every explicit resume so events queued across a
+    // suspend cannot inherit a stale wall-clock offset.
+    this.options.realtimeTimestampMapper.reset();
     await this.options.runtime.resume();
     this.options.resetSequencerEvolveState();
     await this.options.loadLatestSnapshot('runtime-start', true, true);
@@ -78,6 +82,7 @@ export class CoreProductHostLifecycleCoordinator {
     this.options.arrangementBridge.stop();
     this.options.postRuntimeProductEvent(createCoreProductStopEvent());
     await this.options.runtime.suspend();
+    this.options.realtimeTimestampMapper.reset();
     this.finishStoppedRuntime();
   }
 
@@ -88,6 +93,7 @@ export class CoreProductHostLifecycleCoordinator {
       this.options.postRuntimeProductEvent(createCoreProductStopEvent());
     }
     await this.options.runtime.suspend();
+    this.options.realtimeTimestampMapper.reset();
     this.finishStoppedRuntime();
   }
 

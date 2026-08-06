@@ -12,7 +12,7 @@ namespace kessho::core {
 namespace {
 
 constexpr int kPadBlockSize = PAD_MAX_BLOCK_SIZE;
-constexpr int kPadParamCount = 53;
+constexpr int kPadParamCount = 52;
 constexpr int kParamReverbSend = kPadParamCount * PAD_NUM_PADS;
 constexpr int kParamOutputSelect = kParamReverbSend + 1;
 constexpr int kParamCount = kParamOutputSelect + 1;
@@ -40,38 +40,37 @@ constexpr int kPresence = 17;
 constexpr int kFoldAmount = 18;
 constexpr int kFoldMode = 19;
 constexpr int kFilterType = 20;
-constexpr int kFilterCutoffMin = 21;
-constexpr int kFilterCutoffMax = 22;
-constexpr int kFilterResonance = 23;
-constexpr int kFilterQ = 24;
-constexpr int kFilterSlope = 25;
-constexpr int kFilterKeyTracking = 26;
-constexpr int kFilterBEnabled = 27;
-constexpr int kFilterBType = 28;
-constexpr int kFilterBCutoff = 29;
-constexpr int kFilterBResonance = 30;
-constexpr int kFilterBQ = 31;
-constexpr int kFilterRouting = 32;
-constexpr int kAttack = 33;
-constexpr int kDecay = 34;
-constexpr int kSustain = 35;
-constexpr int kRelease = 36;
-constexpr int kLfo1Rate = 37;
-constexpr int kLfo1Depth = 38;
-constexpr int kLfo1Wave = 39;
-constexpr int kLfo1Dest = 40;
-constexpr int kLfo2Rate = 41;
-constexpr int kLfo2Depth = 42;
-constexpr int kLfo2Wave = 43;
-constexpr int kLfo2Dest = 44;
-constexpr int kModEnvEnabled = 45;
-constexpr int kModEnvAttack = 46;
-constexpr int kModEnvDecay = 47;
-constexpr int kModEnvSustain = 48;
-constexpr int kModEnvRelease = 49;
-constexpr int kModEnvDepth = 50;
-constexpr int kModEnvDest = 51;
-constexpr int kLevel = 52;
+constexpr int kFilterCutoff = 21;
+constexpr int kFilterResonance = 22;
+constexpr int kFilterQ = 23;
+constexpr int kFilterSlope = 24;
+constexpr int kFilterKeyTracking = 25;
+constexpr int kFilterBEnabled = 26;
+constexpr int kFilterBType = 27;
+constexpr int kFilterBCutoff = 28;
+constexpr int kFilterBResonance = 29;
+constexpr int kFilterBQ = 30;
+constexpr int kFilterRouting = 31;
+constexpr int kAttack = 32;
+constexpr int kDecay = 33;
+constexpr int kSustain = 34;
+constexpr int kRelease = 35;
+constexpr int kLfo1Rate = 36;
+constexpr int kLfo1Depth = 37;
+constexpr int kLfo1Wave = 38;
+constexpr int kLfo1Dest = 39;
+constexpr int kLfo2Rate = 40;
+constexpr int kLfo2Depth = 41;
+constexpr int kLfo2Wave = 42;
+constexpr int kLfo2Dest = 43;
+constexpr int kModEnvEnabled = 44;
+constexpr int kModEnvAttack = 45;
+constexpr int kModEnvDecay = 46;
+constexpr int kModEnvSustain = 47;
+constexpr int kModEnvRelease = 48;
+constexpr int kModEnvDepth = 49;
+constexpr int kModEnvDest = 50;
+constexpr int kLevel = 51;
 
 std::array<float, kParamCount> makeDefaultParams() {
   std::array<float, kParamCount> params{};
@@ -99,8 +98,7 @@ std::array<float, kParamCount> makeDefaultParams() {
     params[base + kFoldAmount] = 0.0f;
     params[base + kFoldMode] = PAD_FOLD_BUCHLA;
     params[base + kFilterType] = PAD_FILTER_LP;
-    params[base + kFilterCutoffMin] = 200.0f;
-    params[base + kFilterCutoffMax] = 4000.0f;
+    params[base + kFilterCutoff] = 1700.0f;
     params[base + kFilterResonance] = 0.0f;
     params[base + kFilterQ] = 0.7f;
     params[base + kFilterSlope] = 12.0f;
@@ -302,8 +300,7 @@ public:
       pad_instance_set_fold_amount(instance_, pad, params_[base + kFoldAmount]);
       pad_instance_set_fold_mode(instance_, pad, clampedRounded(params_[base + kFoldMode], 0, 2));
       pad_instance_set_filter_type(instance_, pad, clampedRounded(params_[base + kFilterType], 0, 4));
-      pad_instance_set_filter_cutoff_min(instance_, pad, params_[base + kFilterCutoffMin]);
-      pad_instance_set_filter_cutoff_max(instance_, pad, params_[base + kFilterCutoffMax]);
+      pad_instance_set_filter_cutoff(instance_, pad, params_[base + kFilterCutoff]);
       pad_instance_set_filter_resonance(instance_, pad, params_[base + kFilterResonance]);
       pad_instance_set_filter_q(instance_, pad, params_[base + kFilterQ]);
       pad_instance_set_filter_slope(instance_, pad, params_[base + kFilterSlope]);
@@ -370,6 +367,20 @@ public:
     return 1;
   }
 
+  int setVoiceGain(int voice_index, float gain) override {
+    if (instance_ == nullptr || voice_index < 0 || voice_index >= PAD_NUM_VOICES || !std::isfinite(gain)) {
+      return 0;
+    }
+    pad_instance_set_voice_gain(instance_, voice_index, std::clamp(gain, 0.0f, 1.0f));
+    return 1;
+  }
+
+  int setVoiceGainRamp(int voice_index, float target_gain, uint32_t frames) override {
+    if (instance_ == nullptr || voice_index < 0 || voice_index >= PAD_NUM_VOICES || !std::isfinite(target_gain)) return 0;
+    pad_instance_set_voice_gain_ramp(instance_, voice_index, std::clamp(target_gain, 0.0f, 1.0f), frames);
+    return 1;
+  }
+
   int setSourceMacros(int source_index, float morph, float distance, float expression) override {
     if (instance_ == nullptr || source_index < 0 || source_index >= PAD_NUM_PADS) {
       return 0;
@@ -383,7 +394,7 @@ public:
     params_[base + kWarmth] = std::clamp(0.82f - d * 0.42f + (1.0f - m) * 0.08f, 0.0f, 1.0f);
     params_[base + kPresence] = std::clamp(0.22f + e * 0.58f + m * 0.16f, 0.0f, 1.0f);
     params_[base + kFoldAmount] = m * m * 0.32f;
-    params_[base + kFilterCutoffMax] = std::clamp(900.0f + e * 4200.0f + m * 3200.0f, 400.0f, 12000.0f);
+    params_[base + kFilterCutoff] = std::clamp(900.0f + e * 2100.0f + m * 1600.0f, 400.0f, 8000.0f);
     params_[base + kFilterResonance] = std::clamp(0.04f + d * 0.32f, 0.0f, 0.95f);
     params_[base + kLfo1Rate] = 0.04f + d * 0.45f;
     params_[base + kLfo1Depth] = m * 0.14f;
@@ -393,7 +404,7 @@ public:
     pad_instance_set_warmth(instance_, source_index, params_[base + kWarmth]);
     pad_instance_set_presence(instance_, source_index, params_[base + kPresence]);
     pad_instance_set_fold_amount(instance_, source_index, params_[base + kFoldAmount]);
-    pad_instance_set_filter_cutoff_max(instance_, source_index, params_[base + kFilterCutoffMax]);
+    pad_instance_set_filter_cutoff(instance_, source_index, params_[base + kFilterCutoff]);
     pad_instance_set_filter_resonance(instance_, source_index, params_[base + kFilterResonance]);
     pad_instance_set_lfo1_rate(instance_, source_index, params_[base + kLfo1Rate]);
     pad_instance_set_lfo1_depth(instance_, source_index, params_[base + kLfo1Depth]);
@@ -543,11 +554,8 @@ private:
       case kFilterType:
         pad_instance_set_filter_type(instance_, pad, clampedRounded(params_[base + kFilterType], 0, 4));
         break;
-      case kFilterCutoffMin:
-        pad_instance_set_filter_cutoff_min(instance_, pad, params_[base + kFilterCutoffMin]);
-        break;
-      case kFilterCutoffMax:
-        pad_instance_set_filter_cutoff_max(instance_, pad, params_[base + kFilterCutoffMax]);
+      case kFilterCutoff:
+        pad_instance_set_filter_cutoff(instance_, pad, params_[base + kFilterCutoff]);
         break;
       case kFilterResonance:
         pad_instance_set_filter_resonance(instance_, pad, params_[base + kFilterResonance]);

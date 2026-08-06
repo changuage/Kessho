@@ -15,6 +15,11 @@ import { CORE_PRODUCT_RUNTIME_ASSET_VERSION } from './generated/coreProductRunti
 import { isIOSLikeDevice, isMobileDevice } from '../platform';
 import { logProductStateDebug } from '../debug/productStateDebug';
 import { ProductBrowserAudioSession } from './product/browser/ProductBrowserAudioSession';
+import {
+  isFileOrOpaqueOrigin,
+  selectEmbeddedProductCoreAssetUrl,
+} from './embeddedProductCoreAssets';
+export { isFileOrOpaqueOrigin } from './embeddedProductCoreAssets';
 
 export type AssetTransferOwnership = 'retain-host-copy' | 'transfer';
 
@@ -73,6 +78,20 @@ type WindowWithWebkitAudioContext = Window & {
   webkitAudioContext?: typeof AudioContext;
 };
 
+type EmbeddedProductCoreAssets = {
+  workletUrl: string;
+  /** Data URLs are accepted by AudioWorklet in Chromium's opaque srcdoc origin. */
+  workletDataUrl?: string;
+  wasmUrl: string;
+  /** Data URL fallback for WASM fetches in file:// and other opaque origins. */
+  wasmDataUrl?: string;
+  wasmBinary: ArrayBuffer;
+};
+
+type WindowWithEmbeddedProductCoreAssets = Window & {
+  __pointCloudsEmbeddedProductCoreAssets?: EmbeddedProductCoreAssets;
+};
+
 type AudioContextWithSinkId = AudioContext & {
   setSinkId?: (sinkId: string) => Promise<void>;
 };
@@ -82,8 +101,11 @@ function createProductAudioContext(): AudioContext {
   if (!AudioContextCtor) {
     throw new Error('Core Product runtime requires AudioContext support');
   }
-  const preferStableMobileBuffers = isMobileDevice() || isIOSLikeDevice();
-  return new AudioContextCtor(preferStableMobileBuffers ? { latencyHint: 'playback' } : undefined);
+  // This context is also the live instrument path. `playback` lets browsers
+  // choose large buffers (often hundreds of milliseconds on mobile), which is
+  // unsuitable for the onscreen keyboard. Background continuity is handled by
+  // ProductBrowserAudioSession rather than by increasing foreground latency.
+  return new AudioContextCtor({ latencyHint: 'interactive' });
 }
 
 function runtimeAssetDelay(ms: number): Promise<void> {
@@ -202,26 +224,51 @@ export class CoreProductRuntime {
     if (this.dawOutputDeviceId) {
       await this.applyDawOutputDeviceId(context);
     }
-    const base = new URL(import.meta.env.BASE_URL, window.location.origin);
+    const embeddedAssets = (window as WindowWithEmbeddedProductCoreAssets)
+      .__pointCloudsEmbeddedProductCoreAssets;
+    const base = embeddedAssets
+      ? null
+      : new URL(import.meta.env.BASE_URL, window.location.origin);
     const productAssetUrl = (path: string, attempt = 0): URL => {
+      if (!base) throw new Error(`Product Core embedded asset is missing: ${path}`);
       const url = new URL(path, base);
       url.searchParams.set('v', CORE_PRODUCT_RUNTIME_ASSET_VERSION);
       if (attempt > 0) url.searchParams.set('retry', String(attempt));
       return url;
     };
-    await withRuntimeAssetRetries((attempt) =>
-      context.audioWorklet.addModule(productAssetUrl('worklets/kessho-core-product.worklet.js', attempt))
-    );
+    if (embeddedAssets) {
+      const directFileOrigin = isFileOrOpaqueOrigin(window.location);
+      const workletUrl = selectEmbeddedProductCoreAssetUrl(
+        'worklet',
+        embeddedAssets.workletUrl,
+        embeddedAssets.workletDataUrl,
+        directFileOrigin,
+      );
+      await context.audioWorklet.addModule(workletUrl);
+    } else {
+      await withRuntimeAssetRetries((attempt) =>
+        context.audioWorklet.addModule(productAssetUrl('worklets/kessho-core-product.worklet.js', attempt))
+      );
+    }
     this.publishParityStartupPhase('worklet-module-loaded');
-    const wasmUrl = productAssetUrl('worklets/kessho_core.wasm');
-    const wasmBinary = await withRuntimeAssetRetries(async (attempt) => {
-      const attemptWasmUrl = productAssetUrl('worklets/kessho_core.wasm', attempt);
-      const response = await fetch(attemptWasmUrl, {
-        cache: attempt > 0 ? 'reload' : 'default',
+    const wasmUrl = embeddedAssets
+      ? selectEmbeddedProductCoreAssetUrl(
+        'wasm',
+        embeddedAssets.wasmUrl,
+        embeddedAssets.wasmDataUrl,
+        isFileOrOpaqueOrigin(window.location),
+      )
+      : productAssetUrl('worklets/kessho_core.wasm').toString();
+    const wasmBinary = embeddedAssets?.wasmBinary
+      ? embeddedAssets.wasmBinary.slice(0)
+      : await withRuntimeAssetRetries(async (attempt) => {
+        const attemptWasmUrl = productAssetUrl('worklets/kessho_core.wasm', attempt);
+        const response = await fetch(attemptWasmUrl, {
+          cache: attempt > 0 ? 'reload' : 'default',
+        });
+        if (!response.ok) throw new Error(`Failed to fetch ${wasmUrl}: ${response.status}`);
+        return response.arrayBuffer();
       });
-      if (!response.ok) throw new Error(`Failed to fetch ${wasmUrl}: ${response.status}`);
-      return response.arrayBuffer();
-    });
     this.publishParityStartupPhase('wasm-fetched');
 
     await new Promise<void>((resolve, reject) => {
@@ -364,7 +411,15 @@ export class CoreProductRuntime {
   }
 
   private publishParityAudioContextState(): void {
-    if (typeof window === 'undefined' || new URLSearchParams(window.location.search).get('parity') !== '1') return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    // The point-clouds website bridge uses the same explicit diagnostic
+    // attribute to prove that Product Core's real AudioContext is running;
+    // ordinary app pages keep the existing parity-only publication policy.
+    const embeddedEngineMode = (window as Window & {
+      __pointCloudsEmbeddedEngineMode?: boolean;
+    }).__pointCloudsEmbeddedEngineMode === true;
+    if (params.get('parity') !== '1' && !params.has('point-clouds-engine') && !embeddedEngineMode) return;
     document.documentElement.dataset.coreProductAudioContextState = this.context?.state ?? 'missing';
   }
 
@@ -520,6 +575,10 @@ export class CoreProductRuntime {
 
   requestTelemetryOnce(_reason: 'visibility-resume' | 'manual' = 'manual'): void {
     this.node?.port.postMessage({ type: 'request-telemetry' });
+  }
+
+  requestVisualTelemetryAfterRender(): void {
+    this.node?.port.postMessage({ type: 'request-visual-telemetry-after-render' });
   }
 
   loadSnapshot(

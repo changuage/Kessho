@@ -8,6 +8,20 @@ type UsePresetPlatformMaintenanceOptions = {
   cloudPresetStoreReadyPromiseRef: MutableRefObject<Promise<void>>;
 };
 
+type EmbeddedEngineWindow = Window & {
+  __pointCloudsEmbeddedEngineMode?: boolean;
+};
+
+/**
+ * The standalone Point Clouds engine carries its exact preset snapshot in the
+ * embedded bundle. It must not run the normal factory maintenance path, which
+ * probes /presets/manifest.json and other public files from a file:// origin.
+ */
+export function isPointCloudsEmbeddedEngineMode(): boolean {
+  return typeof window !== 'undefined'
+    && (window as EmbeddedEngineWindow).__pointCloudsEmbeddedEngineMode === true;
+}
+
 export function usePresetPlatformMaintenance({
   cloudEnabled,
   sonicParityMode,
@@ -15,7 +29,7 @@ export function usePresetPlatformMaintenance({
   cloudPresetStoreReadyPromiseRef,
 }: UsePresetPlatformMaintenanceOptions): void {
   useEffect(() => {
-    if (!cloudEnabled || typeof window === 'undefined' || sonicParityMode || localPresetStoreOverride) return;
+    if (!cloudEnabled || typeof window === 'undefined' || isPointCloudsEmbeddedEngineMode() || sonicParityMode || localPresetStoreOverride) return;
 
     const target = window as typeof window & {
       kesshoPresetV2Migration?: {
@@ -84,6 +98,7 @@ export function usePresetPlatformMaintenance({
     let cancelled = false;
 
     void (async () => {
+      if (isPointCloudsEmbeddedEngineMode()) return;
       if (SHARED_PRESET_TEST_MODE && cloudEnabled) {
         await cloudPresetStoreReadyPromiseRef.current;
         if (!cancelled) {

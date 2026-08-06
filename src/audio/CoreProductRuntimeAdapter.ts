@@ -55,6 +55,38 @@ class CoreProductRuntimeAdapter {
       previous.arrangement?.synthOctave ?? 0, next.arrangement?.synthOctave ?? 0);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementWaveSpread,
       previous.arrangement?.waveSpread ?? 0, next.arrangement?.waveSpread ?? 0);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementChordGeneratorEnabled,
+      previous.arrangement?.chordGeneratorEnabled ?? false, next.arrangement?.chordGeneratorEnabled ?? false);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementChordGeneratorSourceId,
+      previous.arrangement?.chordGeneratorSourceId ?? CORE_PRODUCT_SOURCE_IDS.sample1,
+      next.arrangement?.chordGeneratorSourceId ?? CORE_PRODUCT_SOURCE_IDS.sample1);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementChordGeneratorVoiceCount,
+      previous.arrangement?.chordGeneratorVoiceCount ?? 6, next.arrangement?.chordGeneratorVoiceCount ?? 6);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementChordGeneratorPadSplit,
+      previous.arrangement?.chordGeneratorPadSplit ?? false, next.arrangement?.chordGeneratorPadSplit ?? false);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadRandomEnabled,
+      previous.arrangement?.leadRandomEnabled ?? false, next.arrangement?.leadRandomEnabled ?? false);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadRandomSourceId,
+      previous.arrangement?.leadRandomSourceId ?? CORE_PRODUCT_SOURCE_IDS.lead1,
+      next.arrangement?.leadRandomSourceId ?? CORE_PRODUCT_SOURCE_IDS.lead1);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadPhraseSeconds,
+      previous.arrangement?.leadPhraseSeconds ?? 16, next.arrangement?.leadPhraseSeconds ?? 16);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadDensity,
+      previous.arrangement?.leadDensity ?? 0.5, next.arrangement?.leadDensity ?? 0.5);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadOctave,
+      previous.arrangement?.leadOctave ?? 1, next.arrangement?.leadOctave ?? 1);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadOctaveRange,
+      previous.arrangement?.leadOctaveRange ?? 2, next.arrangement?.leadOctaveRange ?? 2);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadHoldSeconds,
+      previous.arrangement?.leadHoldSeconds ?? 0.5, next.arrangement?.leadHoldSeconds ?? 0.5);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadVelocityMin,
+      previous.arrangement?.leadVelocityMin ?? 0.5, next.arrangement?.leadVelocityMin ?? 0.5);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadVelocityMax,
+      previous.arrangement?.leadVelocityMax ?? 0.9, next.arrangement?.leadVelocityMax ?? 0.9);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadChordBias,
+      previous.arrangement?.leadChordBias ?? 0.78, next.arrangement?.leadChordBias ?? 0.78);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadInitialDelaySeconds,
+      previous.arrangement?.leadInitialDelaySeconds ?? 0, next.arrangement?.leadInitialDelaySeconds ?? 0);
     this.appendJourneyDiffs(events, previous, next);
     this.appendSourceParamDiffs(events, previous.sources, next.sources);
     appendCoreProductSourcePresetEndpointDiffs(events, previous.sources, next.sources); this.appendSourceOverrideDiffs(events, previous.sources, next.sources);

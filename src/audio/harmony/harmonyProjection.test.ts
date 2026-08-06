@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveHarmonyProjection, clearHarmonyProjectionMorphPlanCache } from './harmonyProjection';
+import { resolveHarmonyLiveLayerChange, resolveHarmonyProjection, clearHarmonyProjectionMorphPlanCache } from './harmonyProjection';
 import { defaultHarmonyIntent } from '../CoreProductHarmonyControl';
 import { generateHarmonySuggestionBank } from './chordSuggestionEngine';
+import { createCoreProductHostHarmonySnapshot } from '../CoreProductHostHarmonyState';
 
 function slot(name: string, rootNote: number, notes: number[]) {
   const intent = { ...defaultHarmonyIntent('slot', 0), rootMode: 'absolute' as const, rootNote, quality: 'maj' as const };
@@ -42,8 +43,8 @@ test('common tones stay paired and CoF path is bounded', () => {
   clearHarmonyProjectionMorphPlanCache();
   const aSlot = slot('A', 0, [60, 64, 67]);
   const bSlot = slot('B', 5, [65, 69, 72]);
-  const sequenceA = [{ id: 0, enabled: true, locked: false, mode: 'intent', degree: 0, quality: 'maj', intent: aSlot.intent, slotId: 0, probability: 1 }];
-  const sequenceB = [{ id: 0, enabled: true, locked: false, mode: 'intent', degree: 0, quality: 'maj', intent: bSlot.intent, slotId: 0, probability: 1 }];
+  const sequenceA = [{ id: 0, enabled: true, locked: false, mode: 'intent', degree: 0, quality: 'maj', intent: aSlot.chord?.intent ?? null, slotId: 0, probability: 1 }];
+  const sequenceB = [{ id: 0, enabled: true, locked: false, mode: 'intent', degree: 0, quality: 'maj', intent: bSlot.chord?.intent ?? null, slotId: 0, probability: 1 }];
   const projection = resolveHarmonyProjection({ rootNote: 0, manualScale: 'Major (Ionian)', tension: 0.35, harmonyChordSequenceEnabled: true, harmonyChordSequenceLength: 1, harmonyChordSequenceStepIndex: 0, harmonyChordSequenceA: sequenceA, harmonyChordSequenceB: sequenceB, harmonyChordSlotsA: [aSlot], harmonyChordSlotsB: [bSlot], harmonyMorphPercent: 0 });
   const pairs = projection.morphPlan.commonToneVoicePairs;
   assert.equal(resolveHarmonyProjection({ harmonyMorphPercent: 0, harmonyChordSlotsA: [aSlot] }).slots[0]?.name, 'A');
@@ -67,6 +68,15 @@ test('live layer priority selects takeover and morph suppresses performance laye
   assert.equal(resolveHarmonyProjection({ harmonyMorphPercent: 0 }, { morphPercent: 50 }).bank, 'B');
 });
 
+test('latched live layers survive ordinary release and clear only on explicit Stop', () => {
+  const latched = { kind: 'seq-live' as const, seqId: 2, latched: true };
+  assert.equal(resolveHarmonyLiveLayerChange(latched, null), latched);
+  assert.equal(resolveHarmonyLiveLayerChange(latched, null, { explicitStop: true }), null);
+  const replacement = { kind: 'harmony-takeover' as const, latched: false };
+  assert.equal(resolveHarmonyLiveLayerChange(latched, replacement), replacement);
+  assert.equal(resolveHarmonyLiveLayerChange(replacement, null), null);
+});
+
 test('canonical auto event resolves through the same suggestion bank used by Detail', () => {
   const state = {
     rootNote: 0,
@@ -79,6 +89,66 @@ test('canonical auto event resolves through the same suggestion bank used by Det
   const expected = generateHarmonySuggestionBank({ rootMidi: 60, scaleId: 1, tension: 0.35, phrasePosition: 'opening' }).find((entry) => entry !== null);
   assert.ok(expected);
   assert.deepEqual(projection.activeFrame.currentNotePool, expected.exactMidiNotes);
+});
+
+test('native Product runtime pools remain authoritative for current and next auto frames', () => {
+  const projection = resolveHarmonyProjection({ rootNote: 0, manualScale: 'Major (Ionian)', tension: 0.35 }, {
+    harmonyState: {
+      runtimeNotePoolMidi: [61, 65, 68, 73],
+      runtimeNextNotePoolMidi: [62, 66, 69, 74],
+    },
+  });
+  assert.deepEqual(projection.activeFrame.currentNotePool, [61, 65, 68, 73]);
+  assert.deepEqual(projection.activeFrame.nextNotePool, [62, 66, 69, 74]);
+  assert.deepEqual(projection.underlyingFrame.currentNotePool, [61, 65, 68, 73]);
+  assert.deepEqual(projection.underlyingFrame.nextNotePool, [62, 66, 69, 74]);
+});
+
+test('auto pools stay unavailable until the first native Product pool arrives', () => {
+  const state = { rootNote: 0, manualScale: 'Major (Ionian)', scaleMode: 'manual', tension: 0.35 };
+  const initial = createCoreProductHostHarmonySnapshot(state, {
+    schemaHash: 1,
+    transportRunning: true,
+    activeSources: 0,
+    activeVoices: 0,
+    activeAssets: 0,
+    sequencerEventCount: 0,
+    controlQueueDepth: 0,
+    assetMissingCount: 0,
+    lastErrorCode: 0,
+    harmonyRootMidi: 60,
+    harmonyScaleId: 1,
+    harmonyTension: 0.35,
+    harmonyChordDegree: 0,
+    harmonyChordMidi: [60, 64, 67, 72],
+  });
+  assert.equal(initial.harmonyState?.runtimeHarmonyReady, false);
+  const initialProjection = resolveHarmonyProjection(state, { harmonyState: initial.harmonyState });
+  assert.deepEqual(initialProjection.activeFrame.currentNotePool, []);
+  assert.deepEqual(initialProjection.activeFrame.nextNotePool, []);
+
+  const firstNative = createCoreProductHostHarmonySnapshot(state, {
+    schemaHash: 1,
+    transportRunning: true,
+    activeSources: 0,
+    activeVoices: 0,
+    activeAssets: 0,
+    sequencerEventCount: 0,
+    controlQueueDepth: 0,
+    assetMissingCount: 0,
+    lastErrorCode: 0,
+    harmonyRootMidi: 60,
+    harmonyScaleId: 1,
+    harmonyTension: 0.35,
+    harmonyChordDegree: 0,
+    harmonyChordMidi: [60, 64, 67, 72],
+    harmonyNotePoolMidi: [60, 64, 67, 72],
+    harmonyNextNotePoolMidi: [62, 65, 69, 74],
+  });
+  assert.equal(firstNative.harmonyState?.runtimeHarmonyReady, true);
+  const firstProjection = resolveHarmonyProjection(state, { harmonyState: firstNative.harmonyState });
+  assert.deepEqual(firstProjection.activeFrame.currentNotePool, [60, 64, 67, 72]);
+  assert.deepEqual(firstProjection.activeFrame.nextNotePool, [62, 65, 69, 74]);
 });
 
 test('projection exposes absolute transport bars for canonical adoption boundaries', () => {

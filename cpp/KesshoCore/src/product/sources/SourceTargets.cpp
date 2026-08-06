@@ -91,3 +91,14 @@ uint32_t KesshoProductEngine::soundscapeTextureSlotForParamRangeTarget(uint32_t 
       ? slot
       : kSoundscapeTextureSlotCount;
 }
+
+bool KesshoProductEngine::isSoundscapeModuleParamTarget(uint32_t target_id) const {
+  return target_id >= kSoundscapeModuleParamTargetBase &&
+      target_id < kSoundscapeModuleParamTargetEnd;
+}
+
+uint32_t KesshoProductEngine::soundscapeModuleParamIndexForRangeTarget(uint32_t target_id) const {
+  return isSoundscapeModuleParamTarget(target_id)
+      ? target_id - kSoundscapeModuleParamTargetBase
+      : kSoundscapeProductModuleParamCount;
+}

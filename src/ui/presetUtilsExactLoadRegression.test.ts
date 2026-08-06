@@ -51,6 +51,57 @@ assert.equal(safe.state.drumEuclidMasterEnabled, false);
 assert.equal(safe.state.synthEuclideanMasterEnabled, false);
 assert.equal(safe.state.drumEnabled, false);
 
+const currentWithoutLegacyProgression = makePreset({});
+for (const key of [
+  'chordProgressionEnabled',
+  'chordProgressionPattern',
+  'chordProgressionSteps',
+  'chordProgressionHits',
+  'chordProgressionRotation',
+  'chordProgressionStepEnabled',
+  'chordProgressionPhraseMultiplier',
+  'chordProgressionClockSource',
+] as const) {
+  delete (currentWithoutLegacyProgression.state as Partial<SliderState>)[key];
+}
+assert.doesNotThrow(
+  () => applyPreset(currentWithoutLegacyProgression, { loadMode: 'exact-as-saved', normalize }),
+  'removed legacy progression fields must not be required by the current apply contract',
+);
+
+const currentWithoutSpectralFreezeFields = makePreset({});
+for (const key of [
+  'spectralFreezeMode',
+  'spectralFreezeCaptureSerial',
+  'spectralFreezeStretchSpeed',
+  'spectralFreezeDirection',
+  'spectralFreezePosition',
+  'spectralFreezeRefresh',
+  'spectralFreezeInputSensitivity',
+  'spectralFreezeDiffusion',
+] as const) {
+  delete (currentWithoutSpectralFreezeFields.state as Partial<SliderState>)[key];
+}
+const completedFreeze = applyPreset(currentWithoutSpectralFreezeFields, { loadMode: 'exact-as-saved', normalize });
+assert.equal(completedFreeze.state.spectralFreezeEnabled, false);
+assert.equal(completedFreeze.state.spectralFreezeActive, false);
+assert.equal(completedFreeze.state.spectralFreezeCaptureSerial, 0);
+assert.equal(completedFreeze.state.spectralFreezeMode, DEFAULT_STATE.spectralFreezeMode);
+assert.equal(completedFreeze.state.spectralFreezeDiffusion, DEFAULT_STATE.spectralFreezeDiffusion);
+
+const authoredFreeze = applyPreset(makePreset({
+  spectralFreezeEnabled: true,
+  spectralFreezeActive: true,
+  spectralFreezeCaptureSerial: 99,
+  spectralFreezeMode: 'slushy',
+  spectralFreezeDiffusion: 0.91,
+}), { loadMode: 'exact-as-saved', normalize });
+assert.equal(authoredFreeze.state.spectralFreezeEnabled, true);
+assert.equal(authoredFreeze.state.spectralFreezeMode, 'slushy');
+assert.equal(authoredFreeze.state.spectralFreezeDiffusion, 0.91);
+assert.equal(authoredFreeze.state.spectralFreezeActive, false);
+assert.equal(authoredFreeze.state.spectralFreezeCaptureSerial, 0);
+
 const legacyRaw = makePreset({
   granularDelayEnabled: true,
 } as Partial<SliderState>);

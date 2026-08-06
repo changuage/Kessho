@@ -19,7 +19,7 @@ interface PresetPoolPopupProps {
   onAudition?: (candidate: PresetPoolCandidate) => void | Promise<void>;
   onLoad?: (candidate: PresetPoolCandidate) => void | Promise<void>;
   onDelete?: (candidate: PresetPoolCandidate) => boolean | void | Promise<boolean | void>;
-  onRate?: (candidate: PresetPoolCandidate, rating: number) => void | Promise<void>;
+  onRate?: (candidate: PresetPoolCandidate, rating: number) => boolean | void | Promise<boolean | void>;
 }
 
 const POOL_SORT_SYMBOLS = {
@@ -544,13 +544,31 @@ export function PresetPoolPopup({
     if (selectedId === deleteCandidate.id) setSelectedId('');
     setDeleteCandidate(null);
   };
-  const handleRateCandidate = (candidate: PresetPoolCandidate, rating: number) => {
+  const handleRateCandidate = async (candidate: PresetPoolCandidate, rating: number) => {
+    const previousIdRating = localRatings[candidate.id];
+    const previousNameRating = localRatings[candidate.name];
     setLocalRatings(prev => ({
       ...prev,
       [candidate.id]: rating,
       [candidate.name]: rating,
     }));
-    void onRate?.(candidate, rating);
+    try {
+      const updated = await onRate?.(candidate, rating);
+      if (updated === false) throw new Error(`Rating for preset "${candidate.name}" was not updated.`);
+    } catch {
+      setLocalRatings(prev => {
+        const next = { ...prev };
+        if (next[candidate.id] === rating) {
+          if (previousIdRating === undefined) delete next[candidate.id];
+          else next[candidate.id] = previousIdRating;
+        }
+        if (next[candidate.name] === rating) {
+          if (previousNameRating === undefined) delete next[candidate.name];
+          else next[candidate.name] = previousNameRating;
+        }
+        return next;
+      });
+    }
   };
 
   if (!open) return null;

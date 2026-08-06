@@ -7,7 +7,7 @@
 
 namespace kessho::core {
 
-constexpr uint32_t KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT = 53u;
+constexpr uint32_t KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT = 52u;
 constexpr uint32_t KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT = 112u;
 constexpr uint32_t KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT = 245u;
 
@@ -71,6 +71,17 @@ public:
     (void)voice_index;
     (void)frequency;
     return 0;
+  }
+  // Optional per-voice output gain used by Product Harmony morph cleanup.
+  // Modules without polyphonic gain control keep their native behavior.
+  virtual int setVoiceGain(int voice_index, float gain) {
+    (void)voice_index;
+    (void)gain;
+    return 0;
+  }
+  virtual int setVoiceGainRamp(int voice_index, float target_gain, uint32_t frames) {
+    (void)frames;
+    return setVoiceGain(voice_index, target_gain);
   }
   virtual int setTriggerMacros(float morph, float distance, float expression) {
     (void)morph;

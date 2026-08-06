@@ -271,14 +271,21 @@ async function verifyViewport(chromium, baseUrl, viewport) {
 
     const choiceLane = page.locator('.seq-chord-choice-lane').first();
     await choiceLane.waitFor({ state: 'visible', timeout: 10000 });
-    const choiceCount = await choiceLane.locator('.seq-chord-choice-cell').count();
+    const compactRows = choiceLane.locator('.harmony-compact-chord-row');
+    const compactRowCount = await compactRows.count();
+    const relativeMapCount = await choiceLane.locator('.harmony-relative-dot-map').count();
+    const choiceLaneOverflow = await choiceLane.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
     const bayCount = await page.locator('.seq-chord-interaction-bay').count();
     const keyboardCount = await page.locator('.harmony-live-keyboard').count();
     const whiteKeyCount = await page.locator('.harmony-live-white-keys .harmony-live-key.white').count();
     const blackKeyCount = await page.locator('.harmony-live-black-keys .harmony-live-key.black').count();
     const keyboardBounds = await page.locator('.harmony-live-keyboard').first().boundingBox();
     const oldGridCount = await page.locator('.seq-play-chord-grid').count();
-    assert(choiceCount > 0, 'Extracted Seq chord choice lane should render choices', { viewport, choiceCount });
+    assert(compactRowCount === 8 && relativeMapCount === compactRowCount, 'Seq chord choice lane should render shared compact chord rows', { viewport, compactRowCount, relativeMapCount });
+    assert(choiceLaneOverflow.scrollWidth <= choiceLaneOverflow.clientWidth, 'Seq chord choices should not require horizontal scrolling', { viewport, choiceLaneOverflow });
     assert(bayCount === 1 && keyboardCount === 1, 'Seq should expose one shared interaction bay and piano', { viewport, bayCount, keyboardCount });
     assert(whiteKeyCount === 7 && blackKeyCount === 5, 'Shared piano should expose seven white and five black keys', { viewport, whiteKeyCount, blackKeyCount });
     assert((keyboardBounds?.width ?? 0) > 100 && (keyboardBounds?.height ?? 0) > 50, 'Shared piano should have a visible layout bound', { viewport, keyboardBounds });
@@ -426,7 +433,8 @@ async function verifyViewport(chromium, baseUrl, viewport) {
 
     return {
       viewport,
-      choiceCount,
+      compactRowCount,
+      relativeMapCount,
       bayCount,
       keyboardCount,
     };

@@ -10,12 +10,6 @@ struct BiquadState {
   float x1 = 0.0f, x2 = 0.0f, y1 = 0.0f, y2 = 0.0f;
 };
 
-struct ProductBiquadLowpassState {
-  float coeff_cutoff = -1.0f;
-  float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f, a1 = 0.0f, a2 = 0.0f;
-  BiquadState left{}, right{};
-};
-
 enum ProductBiquadFilterType : uint32_t {
   kProductBiquadLowpass = 0u,
   kProductBiquadHighpass = 1u,
@@ -23,7 +17,6 @@ enum ProductBiquadFilterType : uint32_t {
 
 struct ProductBiquadFilterState {
   float coeff_cutoff = -1.0f;
-  uint32_t coeff_type = kProductBiquadLowpass;
   float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f, a1 = 0.0f, a2 = 0.0f;
   BiquadState left{}, right{};
 };

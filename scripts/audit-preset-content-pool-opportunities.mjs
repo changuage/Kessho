@@ -277,7 +277,64 @@ async function fetchLatestResolvedRows(databaseUrl) {
          and p.latest_resolved_hash is not null
        order by p.type asc, p.scope asc nulls first, p.id asc
     `);
-    return result.rows;
+    let persistedContentRefs = {
+      available: true,
+      byType: {},
+    };
+    try {
+      const contentRefResult = await client.query(`
+        WITH latest_refs AS (
+          SELECT ref.content_type, ref.content_hash
+            FROM public.preset_version_content_refs_v2 ref
+            JOIN public.preset_versions_v2 version ON version.id = ref.version_id
+            JOIN public.presets_v2 preset ON preset.latest_version_id = version.id
+           WHERE preset.deleted_at IS NULL
+        ),
+        per_type AS (
+          SELECT ref.content_type,
+                 count(*) AS reference_count,
+                 count(DISTINCT ref.content_hash) AS unique_hash_count,
+                 sum(payload.payload_bytes) AS bytes_if_unbatched
+            FROM latest_refs ref
+            JOIN public.preset_payloads_v2 payload ON payload.hash = ref.content_hash
+           GROUP BY ref.content_type
+        ),
+        unique_nodes AS (
+          SELECT DISTINCT content_type, content_hash FROM latest_refs
+        ),
+        physical_bytes AS (
+          SELECT node.content_type, sum(payload.payload_bytes) AS unique_payload_bytes
+            FROM unique_nodes node
+            JOIN public.preset_payloads_v2 payload ON payload.hash = node.content_hash
+           GROUP BY node.content_type
+        )
+        SELECT per_type.content_type,
+               per_type.reference_count,
+               per_type.unique_hash_count,
+               per_type.bytes_if_unbatched,
+               physical_bytes.unique_payload_bytes
+          FROM per_type
+          JOIN physical_bytes USING (content_type)
+         ORDER BY per_type.content_type
+      `);
+      persistedContentRefs = {
+        available: true,
+        byType: Object.fromEntries(contentRefResult.rows.map((row) => [row.content_type, {
+          references: Number(row.reference_count),
+          uniqueHashes: Number(row.unique_hash_count),
+          bytesIfUnbatched: Number(row.bytes_if_unbatched),
+          uniquePayloadBytes: Number(row.unique_payload_bytes),
+          duplicatePayloadBytes: Number(row.bytes_if_unbatched) - Number(row.unique_payload_bytes),
+        }])),
+      };
+    } catch (error) {
+      // A pre-content-node deployment is still useful for logical candidate
+      // analysis; report the absent physical graph explicitly instead of
+      // mislabelling the candidate bytes as persisted storage.
+      persistedContentRefs = { available: false, reason: String(error?.message ?? error) };
+    }
+
+    return { rows: result.rows, persistedContentRefs };
   } finally {
     await client.end();
   }
@@ -324,8 +381,8 @@ let database = {
 };
 if (databaseUrl) {
   try {
-    const rows = await fetchLatestResolvedRows(databaseUrl);
-    database = { available: true, ...buildDatabaseReport(rows) };
+    const { rows, persistedContentRefs } = await fetchLatestResolvedRows(databaseUrl);
+    database = { available: true, ...buildDatabaseReport(rows), persistedContentRefs };
   } catch (error) {
     database = { available: false, reason: String(error?.message ?? error) };
   }
@@ -339,7 +396,8 @@ const report = {
   },
   database,
   caveats: [
-    'Content-byte savings exclude ref rows, indexes, authorization, and reconstruction CPU.',
+    'Resolved-field candidate bytes are logical duplication estimates, not proof that content nodes are physically duplicated. Compare them with persistedContentRefs.',
+    'Persisted content-node bytes include canonical envelopes but exclude ref rows, indexes, authorization, and reconstruction CPU.',
     'Latest resolved rows are a current corpus sample, not a projection of historical-version migration.',
     'Sequencer component savings require the canonical component implementation and are not estimated here.',
   ],
@@ -364,8 +422,18 @@ if (outputJson) {
     console.log(`Latest resolved database rows: ${database.latestResolvedRows}`);
     for (const [id, result] of Object.entries(database.pools)) {
       console.log(
-        `- ${id}: ${result.references} refs, ${result.uniqueHashes} unique, ${result.duplicateCanonicalBytes} duplicate bytes (${result.contentByteSavingsPercent}%)`,
-      );
+      `- ${id}: ${result.references} logical occurrences, ${result.uniqueHashes} unique, ${result.duplicateCanonicalBytes} duplicate candidate bytes (${result.contentByteSavingsPercent}%)`,
+    );
+  }
+    if (database.persistedContentRefs?.available) {
+      console.log('Latest persisted content-node refs:');
+      for (const [id, result] of Object.entries(database.persistedContentRefs.byType)) {
+        console.log(
+          `- ${id}: ${result.references} refs, ${result.uniqueHashes} nodes, ${result.uniquePayloadBytes} physical bytes (${result.duplicatePayloadBytes} bytes deduplicated)`,
+        );
+      }
+    } else if (database.persistedContentRefs) {
+      console.log(`Persisted content-node graph unavailable: ${database.persistedContentRefs.reason}`);
     }
   } else {
     console.log(`Database corpus unavailable: ${database.reason}`);

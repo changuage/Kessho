@@ -1,7 +1,7 @@
 #include "../KesshoProductEngineInternal.h"
 
 namespace {
-constexpr uint32_t kPadAttackParamIndex = 33u, kPadDecayParamIndex = 34u, kPadReleaseParamIndex = 36u;
+constexpr uint32_t kPadAttackParamIndex = 32u, kPadDecayParamIndex = 33u, kPadReleaseParamIndex = 35u;
 constexpr uint32_t kLeadAttackParamIndex = 43u, kLeadDecayParamIndex = 44u, kLeadReleaseParamIndex = 46u;
 
 float normalizedSynthRatchetFactor(float factor) {
@@ -83,7 +83,8 @@ static_assert(kLeadAttackParamIndex < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PA
       float synth_ratchet_factor,
       uint32_t sample_seed,
       uint32_t pad_voice_index,
-      uint32_t* out_module_voice_index) {
+      uint32_t* out_module_voice_index,
+      bool harmony_resolved) {
   if (out_module_voice_index != nullptr) {
     *out_module_voice_index = kProductInvalidVoiceIndex;
   }
@@ -138,6 +139,7 @@ static_assert(kLeadAttackParamIndex < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PA
           normalizedSynthRatchetFactor(synth_ratchet_factor));
       if (pad_module->noteOn(frequency, clamped_velocity, effective_hold_seconds, route) != 0) {
         schedulePadVoiceRelease(pad_index, static_cast<uint32_t>(route_voice_index), effective_hold_seconds);
+        HarmonyModuleVoiceState& state = pad_harmony_voice_states[route_voice_index]; state = {}; state.midi_note = clampFloat(midi_note, 0.0f, 127.0f); state.harmony_resolved = harmony_resolved; state.active = true; pad_module->setVoiceGain(route_voice_index, 1.0f);
       }
       return true;
     }
@@ -175,6 +177,7 @@ static_assert(kLeadAttackParamIndex < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PA
         const int lead_voice_index = lead_modules[lead_index]->lastTriggeredVoiceIndex();
         if (lead_voice_index >= 0) {
           *out_module_voice_index = static_cast<uint32_t>(lead_voice_index);
+          HarmonyModuleVoiceState& state = lead_harmony_voice_states[lead_index][lead_voice_index]; state = {}; state.midi_note = clampFloat(midi_note, 0.0f, 127.0f); state.harmony_resolved = harmony_resolved; state.active = true; lead_modules[lead_index]->setVoiceGain(lead_voice_index, 1.0f);
         }
       }
       return true;

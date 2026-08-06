@@ -76,7 +76,8 @@ export const KESSHO_PRODUCT_EVENT_IDS = Object.freeze({
   SetJourneyTransitionCommandValues: 73,
   CommitJourneyTransitionProgram: 74,
   CommitJourneySchedule: 75,
-  SetJourneyScheduleEnabled: 76
+  SetJourneyScheduleEnabled: 76,
+  HarmonyLiveChordGesture: 77
 } as const);
 
 export const KESSHO_PRODUCT_EVENTS = Object.freeze([
@@ -383,6 +384,10 @@ export const KESSHO_PRODUCT_EVENTS = Object.freeze([
   {
     "name": "SetJourneyScheduleEnabled",
     "id": 76
+  },
+  {
+    "name": "HarmonyLiveChordGesture",
+    "id": 77
   }
 ] as const);
 export type KesshoProductEventName = keyof typeof KESSHO_PRODUCT_EVENT_IDS;

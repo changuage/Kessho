@@ -7,6 +7,7 @@ import type { PresetFamilySummary, PresetLevel, PresetEntry, PresetRenameIdentit
 import { usePresets } from './usePresets';
 import { getVersionData } from './codec';
 import { extractCascade, getCascadeKeys } from './codec';
+import { getPresetCommandErrorMessage } from './presetCommands';
 import { presetValuesEqual } from './presetUtils';
 import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 import { PresetRatingStars } from './PresetRatingStars';
@@ -22,6 +23,14 @@ const MAX_CHILDREN = 10;
 const FAMILY_TREE_SELECTION_STORAGE_PREFIX = 'preset-family-tree:selected:';
 
 type SlotLoadResult = boolean | void | Promise<boolean | void>;
+
+function surfacePresetMutationFailure(message: string): void {
+  if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+    window.alert(message);
+  } else {
+    console.warn(message);
+  }
+}
 
 function getFamilyTreeSelectionStorageKey(level: PresetLevel, scope?: string): string {
   return `${FAMILY_TREE_SELECTION_STORAGE_PREFIX}${level}:${scope ?? 'global'}`;
@@ -437,7 +446,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     () => (customExtract ? { customExtract } : undefined),
     [customExtract],
   );
-  const { presets, families, save, load, loadById, remove, rename, refresh, updateMetadata } = usePresets(level, scope, presetOptions);
+  const { presets, families, save, load, loadById, remove, rename, updateMetadata } = usePresets(level, scope, presetOptions);
   const selectionStorageKey = useMemo(() => getFamilyTreeSelectionStorageKey(level, scope), [level, scope]);
   const normalizeDiffData = useCallback((data: Record<string, unknown>): Record<string, unknown> => {
     return level === 'state' ? normalizeStatePresetDiffData(data) : data;
@@ -449,13 +458,21 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   // Optimistic local rating state (keyed by preset name)
   const [localRatings, setLocalRatings] = useState<Record<string, number>>({});
   const handleRate = useCallback(async (name: string, r: number) => {
+    const previousRating = localRatings[name];
     setLocalRatings(prev => ({ ...prev, [name]: r }));
     try {
-      await updateMetadata(name, { rating: r });
+      const updated = await updateMetadata(name, { rating: r });
+      if (!updated) throw new Error(`Rating for preset "${name}" was not updated.`);
     } catch (ratingError) {
-      console.warn('Failed to update preset rating:', ratingError);
+      setLocalRatings(prev => {
+        const next = { ...prev };
+        if (previousRating === undefined) delete next[name];
+        else next[name] = previousRating;
+        return next;
+      });
+      surfacePresetMutationFailure(getPresetCommandErrorMessage(ratingError));
     }
-  }, [updateMetadata]);
+  }, [localRatings, updateMetadata]);
 
   // Selected parent preset (for viewing the tree — does NOT auto-load)
   const [selectedParentName, setSelectedParentName] = useState<string>(() => {
@@ -495,6 +512,8 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   } | null>(null);
   const [saveAsName, setSaveAsName] = useState('');
   const [saveTags, setSaveTags] = useState<string[]>([]);
+  const [saveError, setSaveError] = useState('');
+  const [saveBusy, setSaveBusy] = useState(false);
 
   // Tooltip
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -610,12 +629,23 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     setConfirmAction({
       message: `Load "${name}" to Slot ${slot}?`,
       onConfirm: async () => {
-        const summary = parentPresets.find(p => p.name === name) ?? presets.find(p => p.name === name);
-        const entry = summary?.id ? await loadById(summary.id) : await load(name);
-        if (!entry) return;
-        const data = getVersionData(entry);
-        if (!data) return;
-        await slotCb(entry, data);
+        try {
+          const summary = parentPresets.find(p => p.name === name) ?? presets.find(p => p.name === name);
+          const entry = summary?.id ? await loadById(summary.id) : await load(name);
+          if (!entry) {
+            surfacePresetMutationFailure(`Preset "${name}" could not be loaded.`);
+            return;
+          }
+          const data = getVersionData(entry);
+          if (!data) {
+            surfacePresetMutationFailure(`Preset "${name}" has no loadable version data.`);
+            return;
+          }
+          const loaded = await slotCb(entry, data);
+          if (loaded === false) return;
+        } catch (error) {
+          surfacePresetMutationFailure(getPresetCommandErrorMessage(error));
+        }
       },
     });
   }, [load, loadById, parentPresets, presets]);
@@ -628,20 +658,30 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     const parentName = isChild ? preset?.familyName : undefined;
     setSaveAsName('');
     setSaveTags(preset?.tags ?? []);
+    setSaveError('');
     setSaveDialog({ originalName: name, isChild, parentName });
   }, [presets]);
 
   // Execute save (overwrite)
   const handleSaveOverwrite = useCallback(async () => {
     if (!saveDialog) return;
-    const saveMeta = getCurrentSaveMetadata();
-    await save(saveDialog.originalName, state, undefined, saveTags, saveMeta, undefined);
-    await refresh();
-    // Reload version entry so the version panel updates immediately
-    const updated = await load(saveDialog.originalName);
-    if (updated) setVersionEntries(prev => ({ ...prev, [saveDialog.originalName]: updated }));
-    setSaveDialog(null);
-  }, [saveDialog, save, saveTags, state, refresh, load, getCurrentSaveMetadata]);
+    setSaveError('');
+    setSaveBusy(true);
+    try {
+      const saveMeta = getCurrentSaveMetadata();
+      const updated = await save(saveDialog.originalName, state, undefined, saveTags, saveMeta, undefined);
+      if (!updated) {
+        setSaveError(`Preset "${saveDialog.originalName}" was not saved.`);
+        return;
+      }
+      setVersionEntries(prev => ({ ...prev, [saveDialog.originalName]: updated }));
+      setSaveDialog(null);
+    } catch (error) {
+      setSaveError(getPresetCommandErrorMessage(error));
+    } finally {
+      setSaveBusy(false);
+    }
+  }, [saveDialog, save, saveTags, state, getCurrentSaveMetadata]);
 
   const handleRename = useCallback(async () => {
     if (!saveDialog || !saveAsName.trim()) return;
@@ -658,25 +698,83 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
         tags: saveTags,
       }
       : { tags: saveTags };
-    const renamed = await rename(saveDialog.originalName, targetName, identity);
-    if (!renamed) return;
+    setSaveError('');
+    setSaveBusy(true);
+    try {
+      const renamed = await rename(saveDialog.originalName, targetName, identity);
+      if (!renamed) {
+        setSaveError(`Preset "${saveDialog.originalName}" was not renamed.`);
+        return;
+      }
+      setVersionEntries(prev => {
+        const next = { ...prev };
+        const cached = next[saveDialog.originalName];
+        delete next[saveDialog.originalName];
+        if (cached) next[renamed.name] = { ...cached, name: renamed.name };
+        return next;
+      });
+      setExpandedVersions(prev => {
+        const next = new Set(prev);
+        if (next.delete(saveDialog.originalName)) next.add(renamed.name);
+        return next;
+      });
+      setSelectedParentName(saveDialog.isChild && saveDialog.parentName ? saveDialog.parentName : renamed.name);
+      setSaveDialog(null);
+    } catch (error) {
+      setSaveError(getPresetCommandErrorMessage(error));
+    } finally {
+      setSaveBusy(false);
+    }
+  }, [saveDialog, saveAsName, saveTags, rename]);
 
-    await refresh();
-    setVersionEntries(prev => {
-      const next = { ...prev };
-      const cached = next[saveDialog.originalName];
-      delete next[saveDialog.originalName];
-      if (cached) next[renamed.name] = { ...cached, name: renamed.name };
-      return next;
-    });
-    setExpandedVersions(prev => {
-      const next = new Set(prev);
-      if (next.delete(saveDialog.originalName)) next.add(renamed.name);
-      return next;
-    });
-    setSelectedParentName(saveDialog.isChild && saveDialog.parentName ? saveDialog.parentName : renamed.name);
-    setSaveDialog(null);
-  }, [saveDialog, saveAsName, saveTags, rename, refresh]);
+  // Actual save-as logic (extracted so confirm can call it too)
+  const doSaveAs = useCallback(async (
+    dialog: { originalName: string; isChild: boolean; parentName?: string },
+    newName: string,
+    targetName: string,
+  ) => {
+    setSaveError('');
+    setSaveBusy(true);
+    try {
+      const saveMeta = getCurrentSaveMetadata();
+      let updated: PresetEntry | null;
+
+      if (dialog.isChild && dialog.parentName) {
+        const parentEntry = await load(dialog.parentName);
+        if (!parentEntry) {
+          throw new Error(`Parent preset "${dialog.parentName}" could not be loaded.`);
+        }
+        const parentFamilyId = parentEntry.familyId
+          ?? `${level}:${scope ?? 'global'}:${dialog.parentName.toLowerCase().replace(/\s+/g, '-')}`;
+        const parentFamilyName = parentEntry.familyName ?? dialog.parentName;
+        const identity: PresetSaveIdentity = {
+          familyId: parentFamilyId,
+          familyName: parentFamilyName,
+          variantName: newName,
+        };
+        updated = await save(targetName, state, undefined, saveTags, saveMeta, identity);
+      } else {
+        updated = await save(targetName, state, undefined, saveTags, saveMeta, undefined);
+      }
+
+      if (!updated) {
+        setSaveDialog(dialog);
+        setSaveError(`Preset "${targetName}" was not saved.`);
+        return;
+      }
+      setVersionEntries(prev => ({ ...prev, [targetName]: updated }));
+
+      setSaveDialog(null);
+
+      // Auto-select the new preset in the dropdown
+      setSelectedParentName(dialog.isChild && dialog.parentName ? dialog.parentName : targetName);
+    } catch (error) {
+      console.error('Failed to save preset:', error);
+      setSaveError(getPresetCommandErrorMessage(error));
+    } finally {
+      setSaveBusy(false);
+    }
+  }, [save, saveTags, load, state, level, scope, getCurrentSaveMetadata]);
 
   // Execute save as
   const handleSaveAs = useCallback(async () => {
@@ -703,41 +801,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     }
 
     await doSaveAs(saveDialog, newName, targetName);
-  }, [saveDialog, saveAsName, presets]);
-
-  // Actual save-as logic (extracted so confirm can call it too)
-  const doSaveAs = useCallback(async (
-    dialog: { originalName: string; isChild: boolean; parentName?: string },
-    newName: string,
-    targetName: string,
-  ) => {
-    const saveMeta = getCurrentSaveMetadata();
-
-    if (dialog.isChild && dialog.parentName) {
-      const parentEntry = await load(dialog.parentName);
-      if (parentEntry) {
-        const parentFamilyId = parentEntry.familyId
-          ?? `${level}:${scope ?? 'global'}:${dialog.parentName.toLowerCase().replace(/\s+/g, '-')}`;
-        const parentFamilyName = parentEntry.familyName ?? dialog.parentName;
-        const identity: PresetSaveIdentity = {
-          familyId: parentFamilyId,
-          familyName: parentFamilyName,
-          variantName: newName,
-        };
-        await save(targetName, state, undefined, saveTags, saveMeta, identity);
-      }
-    } else {
-      await save(targetName, state, undefined, saveTags, saveMeta, undefined);
-    }
-    await refresh();
-    // Reload version entry so the version panel updates immediately
-    const updated = await load(targetName);
-    if (updated) setVersionEntries(prev => ({ ...prev, [targetName]: updated }));
-    setSaveDialog(null);
-
-    // Auto-select the new preset in the dropdown
-    setSelectedParentName(dialog.isChild && dialog.parentName ? dialog.parentName : targetName);
-  }, [save, saveTags, load, state, refresh, level, scope, getCurrentSaveMetadata]);
+  }, [saveDialog, saveAsName, presets, doSaveAs]);
 
   // Delete preset (with confirmation)
   const requestDelete = useCallback((name: string) => {
@@ -745,12 +809,14 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
       message: `Delete "${name}"?`,
       onConfirm: async () => {
         const removed = await remove(name);
-        if (!removed) return;
+        if (!removed) {
+          surfacePresetMutationFailure(`Preset "${name}" could not be deleted.`);
+          return;
+        }
         if (selectedParentName === name) setSelectedParentName('');
-        await refresh();
       },
     });
-  }, [remove, selectedParentName, refresh]);
+  }, [remove, selectedParentName]);
 
   // Select parent from dropdown (no auto-load — just show tree)
   const handleSelectParent = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -763,6 +829,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     setChildModifier('');
     setChildDescription('');
     setChildTags(presets.find(preset => preset.name === selectedParentName)?.tags ?? []);
+    setSaveError('');
     setShowChildDialog(true);
   }, [presets, selectedParentName]);
 
@@ -770,30 +837,36 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   const handleSaveChild = useCallback(async () => {
     if (!childModifier.trim() || !selectedParentName) return;
 
-    const parentEntry = await load(selectedParentName);
-    if (!parentEntry) return;
+    setSaveError('');
+    setSaveBusy(true);
+    try {
+      const parentEntry = await load(selectedParentName);
+      if (!parentEntry) throw new Error(`Parent preset "${selectedParentName}" could not be loaded.`);
 
-    const parentFamilyId = parentEntry.familyId
-      ?? `${level}:${scope ?? 'global'}:${selectedParentName.toLowerCase().replace(/\s+/g, '-')}`;
-    const parentFamilyName = parentEntry.familyName ?? selectedParentName;
-
-    const childName = `${selectedParentName} · ${childModifier.trim()}`;
-    const identity: PresetSaveIdentity = {
-      familyId: parentFamilyId,
-      familyName: parentFamilyName,
-      variantName: childModifier.trim(),
-      description: childDescription.trim() || undefined,
-    };
-
-    const saveMeta = getCurrentSaveMetadata();
-
-    await save(childName, state, undefined, childTags, saveMeta, identity);
-    await refresh();
-    // Reload version entry so the version panel updates immediately
-    const updated = await load(childName);
-    if (updated) setVersionEntries(prev => ({ ...prev, [childName]: updated }));
-    setShowChildDialog(false);
-  }, [childModifier, childDescription, childTags, selectedParentName, load, save, state, refresh, level, scope, getCurrentSaveMetadata]);
+      const parentFamilyId = parentEntry.familyId
+        ?? `${level}:${scope ?? 'global'}:${selectedParentName.toLowerCase().replace(/\s+/g, '-')}`;
+      const parentFamilyName = parentEntry.familyName ?? selectedParentName;
+      const childName = `${selectedParentName} · ${childModifier.trim()}`;
+      const identity: PresetSaveIdentity = {
+        familyId: parentFamilyId,
+        familyName: parentFamilyName,
+        variantName: childModifier.trim(),
+        description: childDescription.trim() || undefined,
+      };
+      const saveMeta = getCurrentSaveMetadata();
+      const updated = await save(childName, state, undefined, childTags, saveMeta, identity);
+      if (!updated) {
+        setSaveError(`Preset "${childName}" was not saved.`);
+        return;
+      }
+      setVersionEntries(prev => ({ ...prev, [childName]: updated }));
+      setShowChildDialog(false);
+    } catch (error) {
+      setSaveError(getPresetCommandErrorMessage(error));
+    } finally {
+      setSaveBusy(false);
+    }
+  }, [childModifier, childDescription, childTags, selectedParentName, load, save, state, level, scope, getCurrentSaveMetadata]);
 
   // Update (resave) — now goes through confirmation
   const handleUpdateChild = useCallback((name: string) => {
@@ -844,14 +917,11 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
         const snapshot = getPresetVersionSnapshot(entry, versionNum);
         if (!snapshot) return;
         // Save the selected version's full snapshot and metadata as the new latest version.
-        await save(name, snapshot.data as unknown as SliderState, undefined, undefined, snapshot.metadata, undefined);
-        await refresh();
-        // Reload the entry for version panel
-        const updated = await load(name);
+        const updated = await save(name, snapshot.data as unknown as SliderState, undefined, undefined, snapshot.metadata, undefined);
         if (updated) setVersionEntries(prev => ({ ...prev, [name]: updated }));
       },
     });
-  }, [load, save, refresh, versionEntries]);
+  }, [load, save, versionEntries]);
 
   // Helper: humanize a camelCase param key
   const humanize = useCallback((key: string) => {
@@ -1294,6 +1364,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
             {/* Save (overwrite) */}
             <button
               onClick={handleSaveOverwrite}
+              disabled={saveBusy}
               style={{
                 ...treeStyles.dialogBtn,
                 background: 'rgba(184,224,255,0.14)',
@@ -1335,6 +1406,11 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
               suggestions={tagSuggestions}
               accentColor="#B8E0FF"
             />
+            {saveError && (
+              <div role="alert" style={{ color: '#e59a9a', fontSize: '0.7rem', marginTop: 6 }}>
+                {saveError}
+              </div>
+            )}
             <div style={treeStyles.dialogBtnRow}>
               <button
                 onClick={() => setSaveDialog(null)}
@@ -1349,7 +1425,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
               </button>
               <button
                 onClick={handleRename}
-                disabled={!saveAsName.trim() || (
+                disabled={saveBusy || !saveAsName.trim() || (
                   saveDialog.isChild && saveDialog.parentName
                     ? `${saveDialog.parentName} · ${saveAsName.trim()}` === saveDialog.originalName
                     : saveAsName.trim() === saveDialog.originalName
@@ -1378,7 +1454,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
               </button>
               <button
                 onClick={handleSaveAs}
-                disabled={!saveAsName.trim()}
+                disabled={!saveAsName.trim() || saveBusy}
                 style={{
                   ...treeStyles.dialogBtn,
                   background: saveAsName.trim() ? 'rgba(159,215,170,0.14)' : 'rgba(255,255,255,0.04)',
@@ -1386,7 +1462,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                   color: saveAsName.trim() ? '#9fd7aa' : 'rgba(244,237,228,0.32)',
                 }}
               >
-                Save As
+                {saveBusy ? 'Saving…' : 'Save As'}
               </button>
             </div>
           </div>
@@ -1450,6 +1526,11 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
               suggestions={tagSuggestions}
               accentColor="#9fd7aa"
             />
+            {saveError && (
+              <div role="alert" style={{ color: '#e59a9a', fontSize: '0.7rem', marginTop: 6 }}>
+                {saveError}
+              </div>
+            )}
             <div style={treeStyles.dialogBtnRow}>
               <button
                 onClick={() => setShowChildDialog(false)}
@@ -1464,7 +1545,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
               </button>
               <button
                 onClick={handleSaveChild}
-                disabled={!childModifier.trim()}
+                disabled={!childModifier.trim() || saveBusy}
                 style={{
                   ...treeStyles.dialogBtn,
                   background: childModifier.trim() ? 'rgba(159,215,170,0.14)' : 'rgba(255,255,255,0.04)',
@@ -1472,7 +1553,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                   color: childModifier.trim() ? '#9fd7aa' : 'rgba(244,237,228,0.32)',
                 }}
               >
-                Save Child
+                {saveBusy ? 'Saving…' : 'Save Child'}
               </button>
             </div>
           </div>

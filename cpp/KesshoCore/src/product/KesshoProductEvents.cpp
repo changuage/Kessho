@@ -122,6 +122,47 @@ void writeHarmonyPoolFromIntent(
   (void)root_note;
 }
 
+// Runtime Harmony edits arrive as bounded control events, so mirror the
+// resulting note pool into the fixed-capacity slot authority row immediately.
+// This keeps sequencer slot references sample-accurate without rebuilding a
+// snapshot or allocating on the audio thread, while leaving the authored
+// semantic intent fields untouched for later authority rebuilds.
+void syncHarmonySlotAuthorityRow(KesshoProductEngine& engine, uint32_t slot_id) {
+  if (slot_id >= 8u) return;
+  HarmonyState& harmony = engine.harmony;
+  ProductArrangementState& arrangement = engine.arrangement;
+  const uint32_t count = std::min<uint32_t>(harmony.note_pool_count, 8u);
+  arrangement.harmony_slot_note_count[slot_id] = count;
+  harmony.cached_voice_leading_candidate_note_counts[slot_id] = count;
+  for (uint32_t note = 0u; note < 8u; ++note) {
+    const float midi = note < count ? clampFloat(harmony.note_pool_midi[note], 0.0f, 127.0f) : 0.0f;
+    arrangement.harmony_slot_midi[slot_id * 8u + note] = midi;
+    harmony.cached_voice_leading_candidates[slot_id][note] = midi;
+  }
+  harmony.cached_voice_leading_candidate_count = 0u;
+  for (uint32_t row = 0u; row < 8u; ++row) {
+    if (harmony.cached_voice_leading_candidate_note_counts[row] > 0u) {
+      harmony.cached_voice_leading_candidate_count = row + 1u;
+    }
+  }
+}
+
+void clearHarmonySlotAuthorityRow(KesshoProductEngine& engine, uint32_t slot_id) {
+  if (slot_id >= 8u) return;
+  engine.arrangement.harmony_slot_note_count[slot_id] = 0u;
+  engine.harmony.cached_voice_leading_candidate_note_counts[slot_id] = 0u;
+  for (uint32_t note = 0u; note < 8u; ++note) {
+    engine.arrangement.harmony_slot_midi[slot_id * 8u + note] = 0.0f;
+    engine.harmony.cached_voice_leading_candidates[slot_id][note] = 0.0f;
+  }
+  engine.harmony.cached_voice_leading_candidate_count = 0u;
+  for (uint32_t row = 0u; row < 8u; ++row) {
+    if (engine.harmony.cached_voice_leading_candidate_note_counts[row] > 0u) {
+      engine.harmony.cached_voice_leading_candidate_count = row + 1u;
+    }
+  }
+}
+
 using GranularVoiceParamApplier = void (*)(GranularVoiceState&, float);
 
 struct GranularVoiceParamSpec {
@@ -568,7 +609,10 @@ void retimeSequencerLanePreservingPhase(
     case KESSHO_PRODUCT_EVENT_KIND_SET_PARAM:
       return event.param_id == 0u ? KESSHO_PRODUCT_ERROR_INVALID_PARAM : KESSHO_PRODUCT_OK;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_ENABLED:
-      return valid_source(event.target_id) ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
+      if (!valid_source(event.target_id)) return KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
+      return (event.flags & ~KESSHO_PRODUCT_SOURCE_ENABLE_IMMEDIATE) == 0u
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET:
       return valid_source(event.target_id) && event.value > 0.0f
           ? KESSHO_PRODUCT_OK
@@ -675,7 +719,8 @@ void retimeSequencerLanePreservingPhase(
           !isDrumRangeTarget(event.target_id) &&
           !isSoundscapeAssetLevelRangeTarget(event.target_id) &&
           !isSoundscapeTextureLevelRangeTarget(event.target_id) &&
-          !isSoundscapeTextureParamTarget(event.target_id)) {
+          !isSoundscapeTextureParamTarget(event.target_id) &&
+          !isSoundscapeModuleParamTarget(event.target_id)) {
         return KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
       }
       return KESSHO_PRODUCT_OK;
@@ -726,6 +771,47 @@ void retimeSequencerLanePreservingPhase(
       return valid_sequencer(event.target_id) && event.index < kMaxLaneCount
           ? KESSHO_PRODUCT_OK
           : KESSHO_PRODUCT_ERROR_INVALID_SEQUENCER_LANE;
+    case KESSHO_PRODUCT_EVENT_KIND_HARMONY_LIVE_CHORD_GESTURE:
+      if (event.target_id > kessho::product::generated::KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_SEQ4 || event.param_id > 0x7fffffffu) {
+        return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      }
+      if ((event.flags & KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_NOTE) != 0u) {
+        return event.index < 8u && event.value >= 0.0f && event.value <= 127.0f &&
+                (event.flags & ~(KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_NOTE)) == 0u
+            ? KESSHO_PRODUCT_OK
+            : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      }
+      if ((event.flags & KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_INTENT) != 0u) {
+        const uint32_t valid_flags = KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_INTENT;
+        if ((event.flags & ~valid_flags) != 0u || event.index > 2u) return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+        if (event.index == 0u) {
+          return event.value >= 0.0f && event.value <= 1.0f && event.value2 >= 0.0f && event.value2 <= 14.0f &&
+                  event.value3 >= 0.0f && event.value3 <= 2.0f && event.value4 >= 0.0f && event.value4 <= 6.0f
+              ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+        }
+        if (event.index == 1u) {
+          return event.value >= 0.0f && event.value <= 11.0f && event.value2 >= -4.0f && event.value2 <= 4.0f &&
+                  event.value3 >= 0.0f && event.value3 <= 1.0f && event.value4 >= 0.0f && event.value4 <= 8.0f
+              ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+        }
+        return event.value >= 0.0f && event.value <= 3.0f && event.value2 >= -1.0f && event.value2 <= 127.0f &&
+                event.value3 >= 0.0f && event.value3 <= 0xffffu && event.value4 >= 0.0f && event.value4 <= 0xffffu
+            ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      }
+      if ((event.flags & KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_CONTEXT) != 0u) {
+        return (event.flags & ~KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_CONTEXT) == 0u && event.index == 0u &&
+                event.value >= 0.0f && event.value <= 127.0f && event.value2 >= 1.0f && event.value2 <= 0xffffu
+            ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      }
+      return (event.flags & KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_HEADER) != 0u &&
+              event.index <= kessho::product::generated::KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_SEQLIVE &&
+              event.target_id <= kessho::product::generated::KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_SEQ4 &&
+              event.param_id <= 0x7fffffffu && event.value >= 0.0f && event.value <= 2.0f &&
+              event.value2 >= 0.0f && event.value2 <= 2.0f && event.value3 >= 0.0f && event.value3 <= 8.0f &&
+              event.value4 >= 0.0f && event.value4 <= 1.0f &&
+              (event.flags & ~(KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_HEADER | KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_CLEAR | KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_TAKEOVER)) == 0u
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     default:
       return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
   }
@@ -881,8 +967,12 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
         for (uint32_t i = 0; i < drum_lane_count; ++i) {
           resetSequencerLaneRuntime(drum_lanes[i]);
         }
+        transport.running = true;
+        resetHarmonyClock();
+        resetArrangementRuntime();
+      } else {
+        transport.running = true;
       }
-      transport.running = true;
       configureSoundscapesModuleFromSource();
       break;
     case KESSHO_PRODUCT_EVENT_KIND_STOP:
@@ -1077,7 +1167,10 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_ENABLED:
       if (event.target_id >= 1u && event.target_id <= kSourceCount) {
-        setSourceEnabled(sources[event.target_id - 1u], event.value >= 0.5f, false);
+        setSourceEnabled(
+            sources[event.target_id - 1u],
+            event.value >= 0.5f,
+            (event.flags & KESSHO_PRODUCT_SOURCE_ENABLE_IMMEDIATE) != 0u);
       } else {
         telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
       }
@@ -1090,11 +1183,17 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       break;
     case KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON: {
       const uint32_t source_id = event.target_id;
+      const bool transient_audition =
+          (event.flags & kProductManualNoteTransientAuditionFlag) != 0u;
+      const float hold_seconds = manualNoteHoldSeconds(source_id, event.value3);
+      if (transient_audition) {
+        extendSourceTransientAudition(source_id, hold_seconds);
+      }
       triggerVoice(
           source_id,
           event.value,
           event.value2,
-          manualNoteHoldSeconds(source_id, event.value3),
+          hold_seconds,
           -1.0f,
           -1.0f,
           event.value4 > 0.0f ? event.value4 : -1.0f,
@@ -1104,7 +1203,10 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
           0.0f,
           1.0e10f,
           1.0e10f,
-          padVoiceIndexFromSequencerEventFlags(event.flags));
+          padVoiceIndexFromSequencerEventFlags(event.flags),
+          1.0f,
+          false,
+          transient_audition);
       break;
     }
     case KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_OFF:
@@ -1178,6 +1280,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
             static_cast<uint32_t>(std::lround(event.value3)),
             static_cast<int32_t>(event.index),
             -1);
+        syncHarmonySlotAuthorityRow(*this, event.index);
       }
       break;
     case KESSHO_PRODUCT_EVENT_HARMONY_SLOT_TRIGGER_ID:
@@ -1189,11 +1292,17 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       }
       break;
     case KESSHO_PRODUCT_EVENT_HARMONY_SLOT_CLEAR_ID:
-      if (harmony.active_slot_id == static_cast<int32_t>(event.index)) {
-        harmony.note_pool_count = 0u;
-        harmony.active_source = 0u;
-        harmony.control_mode = 0u;
-        harmony.active_slot_id = -1;
+      {
+        const bool was_active_slot = harmony.active_slot_id == static_cast<int32_t>(event.index);
+        if (was_active_slot) {
+          harmony.note_pool_count = 0u;
+          harmony.active_source = 0u;
+          harmony.control_mode = 0u;
+          harmony.active_slot_id = -1;
+        }
+        if (event.index < 8u) {
+          clearHarmonySlotAuthorityRow(*this, event.index);
+        }
       }
       break;
     case KESSHO_PRODUCT_EVENT_HARMONY_SEQUENCE_SET_STEP_ID:
@@ -1238,6 +1347,97 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
     case KESSHO_PRODUCT_EVENT_KIND_DICE_SEQUENCER_LANE:
       applyDiceSequencerLaneEvent(event);
       break;
+    case KESSHO_PRODUCT_EVENT_KIND_HARMONY_LIVE_CHORD_GESTURE: {
+      const bool morph_locked = harmony.morph_plan_phase > 0.0f && harmony.morph_plan_phase < 1.0f;
+      const bool is_header = (event.flags & KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_HEADER) != 0u;
+      const bool clear_event = is_header && ((event.flags & KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_CLEAR) != 0u || event.value >= 2.0f);
+      // Midpoint morph owns the harmony resolver. A stale UI gesture cannot
+      // reintroduce a manual layer until the runtime reaches an endpoint.
+      if (morph_locked && !clear_event) break;
+      if ((event.flags & KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_NOTE) != 0u) {
+        if (event.index < 8u && (harmony.live_gesture_note_count > event.index || harmony.takeover_progress > 0.0f)) {
+          harmony.live_gesture_notes[event.index] = clampFloat(event.value, 0.0f, 127.0f);
+          if ((harmony.live_gesture_scope == kessho::product::generated::KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_OVERVIEW ||
+               harmony.live_gesture_scope == kessho::product::generated::KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_DETAIL) &&
+              harmony.live_gesture_target <= kessho::product::generated::KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_OVERVIEW) {
+            harmony.takeover_anchor_source[event.index] = clampFloat(event.value, 0.0f, 127.0f);
+            harmony.takeover_anchor_target[event.index] = clampFloat(event.value2, 0.0f, 127.0f);
+            harmony.takeover_anchor_weight[event.index] = std::max(0.0f, event.value3);
+            harmony.takeover_anchor_count = std::max(harmony.takeover_anchor_count, event.index + 1u);
+          }
+        }
+        break;
+      }
+      if ((event.flags & KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_INTENT) != 0u) {
+        if (event.index == 0u) {
+          harmony.live_gesture_intent_present = event.value >= 0.5f ? 1u : 0u;
+          harmony.live_gesture_intent_quality = static_cast<uint32_t>(std::lround(event.value2));
+          harmony.live_gesture_intent_root_mode = static_cast<uint32_t>(std::lround(event.value3));
+          harmony.live_gesture_intent_degree = static_cast<int32_t>(std::lround(event.value4));
+        } else if (event.index == 1u) {
+          harmony.live_gesture_intent_root_note = clampFloat(event.value, 0.0f, 11.0f);
+          harmony.live_gesture_intent_inversion = std::max(-4, std::min(4, static_cast<int32_t>(std::lround(event.value2))));
+          harmony.live_gesture_intent_spread = clampFloat(event.value3, 0.0f, 1.0f);
+          harmony.live_gesture_intent_octave = std::max(0, std::min(8, static_cast<int32_t>(std::lround(event.value4))));
+        } else {
+          harmony.live_gesture_intent_bass_mode = std::min<uint32_t>(static_cast<uint32_t>(std::lround(event.value)), 3u);
+          harmony.live_gesture_intent_bass_note = clampFloat(event.value2, -1.0f, 127.0f);
+          harmony.live_gesture_intent_extension_mask = static_cast<uint32_t>(std::lround(event.value3));
+          harmony.live_gesture_intent_alteration_mask = static_cast<uint32_t>(std::lround(event.value4));
+        }
+        break;
+      }
+      if ((event.flags & KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_CONTEXT) != 0u) {
+        harmony.live_gesture_captured_root_midi = clampFloat(event.value, 0.0f, 127.0f);
+        harmony.live_gesture_captured_scale_id = std::max<uint32_t>(1u, static_cast<uint32_t>(std::lround(event.value2)));
+        if (harmony.takeover_progress > 0.0f) {
+          harmony.takeover_target_root_midi = harmony.live_gesture_captured_root_midi;
+          harmony.takeover_target_scale_id = harmony.live_gesture_captured_scale_id;
+        }
+        break;
+      }
+      harmony.live_gesture_revision = event.param_id;
+      harmony.live_gesture_scope = std::min<uint32_t>(event.index, kessho::product::generated::KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_SEQLIVE);
+      harmony.live_gesture_target = std::min<uint32_t>(event.target_id, kessho::product::generated::KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_SEQ4);
+      harmony.live_gesture_phase = std::min<uint32_t>(static_cast<uint32_t>(std::lround(event.value)), 2u);
+      harmony.live_gesture_playback_behavior = std::min<uint32_t>(static_cast<uint32_t>(std::lround(event.value2)), 2u);
+      harmony.live_gesture_note_count = std::min<uint32_t>(static_cast<uint32_t>(std::lround(event.value3)), 8u);
+      harmony.live_gesture_intent_present = 0u;
+      harmony.live_gesture_intent_quality = 0u;
+      harmony.live_gesture_intent_root_mode = 0u;
+      harmony.live_gesture_intent_degree = 0;
+      harmony.live_gesture_intent_root_note = 0.0f;
+      harmony.live_gesture_intent_inversion = 0;
+      harmony.live_gesture_intent_spread = 0.5f;
+      harmony.live_gesture_intent_octave = 4;
+      harmony.live_gesture_intent_bass_mode = 0u;
+      harmony.live_gesture_intent_bass_note = -1.0f;
+      harmony.live_gesture_intent_extension_mask = 0u;
+      harmony.live_gesture_intent_alteration_mask = 0u;
+      harmony.live_gesture_captured_root_midi = harmony.root_midi;
+      harmony.live_gesture_captured_scale_id = harmony.scale_id;
+      if ((event.flags & KESSHO_PRODUCT_HARMONY_LIVE_GESTURE_TAKEOVER) != 0u) {
+        harmony.live_gesture_note_count = 0u;
+        harmony.takeover_progress = clampFloat(event.value4, 0.0f, 1.0f);
+        harmony.takeover_anchor_count = 0u;
+      } else {
+        harmony.takeover_progress = 0.0f;
+        harmony.takeover_anchor_count = 0u;
+      }
+      if (clear_event) {
+        harmony.live_gesture_note_count = 0u;
+        harmony.live_gesture_expires_at_frame = transport.sample_frame;
+        harmony.takeover_progress = 0.0f;
+        harmony.takeover_anchor_count = 0u;
+      } else {
+        harmony.live_gesture_expires_at_frame = UINT64_MAX;
+      }
+      harmony.harmony_play_dispatch_count += 1u;
+      harmony.harmony_play_last_dispatch_frame = transport.sample_frame + event.sample_offset;
+      harmony.harmony_play_last_dispatch_latency_ms = static_cast<float>(
+          static_cast<double>(event.sample_offset) * 1000.0 / std::max(1.0, sample_rate));
+      break;
+    }
     default:
       telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
       break;
@@ -1278,6 +1478,8 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
   const uint32_t channel = event.index <= 15u ? event.index : (status & 0x0fu);
   const uint32_t midi_note = clampU32(static_cast<uint32_t>(std::lround(data1)), 0u, 127u);
   const uint32_t source_id = resolveMidiTargetSource(event, status);
+  const bool transient_audition =
+      (event.flags & kProductMidiEventTransientAuditionFlag) != 0u;
   if (command == 0x90u && data2 > 0.0f) {
     const float controller_velocity_scale = midiControllerVelocityScale(source_id, channel, midi_note);
     const float trigger_midi_note = clampFloat(data1 + midiPitchBendSemitones(source_id, channel), 0.0f, 127.0f);
@@ -1285,13 +1487,16 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
     uint32_t pad_route_voice_index = kProductInvalidVoiceIndex;
     if ((source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) &&
         source_id >= 1u && source_id <= kSourceCount &&
-        sources[source_id - 1u].enabled &&
+        (sources[source_id - 1u].enabled || transient_audition) &&
         pad_module) {
       const uint32_t pad_index = source_id == KESSHO_PRODUCT_SOURCE_PAD2 ? 1u : 0u;
       pad_voice_index = pad_voice_cursors[pad_index]++ % static_cast<uint32_t>(PAD_VOICES_PER_PAD);
       pad_route_voice_index = pad_index * static_cast<uint32_t>(PAD_VOICES_PER_PAD) + pad_voice_index;
     }
     const float hold_seconds = pad_route_voice_index != kProductInvalidVoiceIndex ? 0.0f : 0.5f;
+    if (transient_audition) {
+      retainSourceTransientAudition(source_id);
+    }
     const uint32_t trigger_voice_index = triggerVoice(
         source_id,
         trigger_midi_note,
@@ -1306,7 +1511,10 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
         0.0f,
         1.0e10f,
         1.0e10f,
-        pad_voice_index);
+        pad_voice_index,
+        1.0f,
+        false,
+        transient_audition);
     uint32_t lead_voice_index = kProductInvalidVoiceIndex;
     uint32_t sample_voice_index = kProductInvalidVoiceIndex;
     if (source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2) {
@@ -1314,13 +1522,26 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
     } else if (isSampleProductSource(source_id) || source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
       sample_voice_index = trigger_voice_index;
     }
-    if (source_id >= 1u && source_id <= kSourceCount && sources[source_id - 1u].enabled) {
-      trackMidiNoteOn(source_id, channel, midi_note, pad_route_voice_index, lead_voice_index, sample_voice_index);
+    if (transient_audition && trigger_voice_index == kProductInvalidVoiceIndex) {
+      releaseSourceTransientAudition(source_id);
+    }
+    if (source_id >= 1u && source_id <= kSourceCount &&
+        (sources[source_id - 1u].enabled || transient_audition) &&
+        trigger_voice_index != kProductInvalidVoiceIndex) {
+      trackMidiNoteOn(
+          source_id,
+          channel,
+          midi_note,
+          pad_route_voice_index,
+          lead_voice_index,
+          sample_voice_index,
+          event.param_id,
+          transient_audition);
     }
     return;
   }
   if (command == 0x80u || (command == 0x90u && data2 <= 0.0f)) {
-    applyMidiNoteOff(source_id, channel, midi_note);
+    applyMidiNoteOff(source_id, channel, midi_note, event.param_id);
     return;
   }
   if (command == 0xb0u) {
@@ -1903,6 +2124,81 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       }
       break;
     }
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_CHORD_GENERATOR_ENABLED_ID:
+      arrangement.chord_generator_enabled = event.value >= 0.5f;
+      if (!arrangement.chord_generator_enabled) {
+        arrangement.chord_generator_pending = false;
+      } else if (!transport.running) {
+        arrangement.chord_generator_pending = true;
+      }
+      break;
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_CHORD_GENERATOR_SOURCE_ID_ID:
+      arrangement.chord_generator_source_id = clampU32(
+          static_cast<uint32_t>(std::lround(event.value)),
+          1u,
+          kSourceCount);
+      break;
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_CHORD_GENERATOR_VOICE_COUNT_ID:
+      arrangement.chord_generator_voice_count = clampU32(
+          static_cast<uint32_t>(std::lround(event.value)),
+          1u,
+          8u);
+      break;
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_CHORD_GENERATOR_PAD_SPLIT_ID:
+      arrangement.chord_generator_pad_split = event.value >= 0.5f;
+      break;
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_RANDOM_ENABLED_ID: {
+      const bool next_enabled = event.value >= 0.5f;
+      if (next_enabled && !arrangement.lead_random_enabled && transport.running) {
+        const uint64_t phrase_frames = std::max<uint64_t>(
+            1u,
+            static_cast<uint64_t>(std::llround(
+                sample_rate * static_cast<double>(arrangement.lead_phrase_seconds))));
+        const uint64_t next_shared_boundary = arrangement.chord_phrase_start_frame + phrase_frames;
+        arrangement.next_lead_phrase_frame = std::max(transport.sample_frame, next_shared_boundary);
+        arrangement.lead_phrase_index = arrangement.chord_phrase_index + 1u;
+      }
+      arrangement.lead_random_enabled = next_enabled;
+      break;
+    }
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_RANDOM_SOURCE_ID_ID:
+      arrangement.lead_random_source_id = clampU32(
+          static_cast<uint32_t>(std::lround(event.value)),
+          1u,
+          kSourceCount);
+      break;
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_PHRASE_SECONDS_ID:
+      arrangement.lead_phrase_seconds = clampFloat(event.value, 0.001f, 4096.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_DENSITY_ID:
+      arrangement.lead_density = clampFloat(event.value, 0.1f, 12.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_OCTAVE_ID:
+      arrangement.lead_octave = std::max(
+          -1,
+          std::min(2, static_cast<int32_t>(std::lround(event.value))));
+      break;
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_OCTAVE_RANGE_ID:
+      arrangement.lead_octave_range = clampU32(
+          static_cast<uint32_t>(std::lround(event.value)),
+          1u,
+          4u);
+      break;
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_HOLD_SECONDS_ID:
+      arrangement.lead_hold_seconds = clampFloat(event.value, 0.02f, 24.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_VELOCITY_MIN_ID:
+      arrangement.lead_velocity_min = clampFloat(event.value, 0.001f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_VELOCITY_MAX_ID:
+      arrangement.lead_velocity_max = clampFloat(event.value, 0.001f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_CHORD_BIAS_ID:
+      arrangement.lead_chord_bias = clampFloat(event.value, 0.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_INITIAL_DELAY_SECONDS_ID:
+      arrangement.lead_initial_delay_seconds = clampFloat(event.value, 0.0f, 4096.0f);
+      break;
     case KESSHO_PRODUCT_PARAM_JOURNEY_ENABLED_ID:
       journey_running = event.value >= 0.5f;
       break;
@@ -2213,20 +2509,48 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       fx.spectral_freeze_active = event.value >= 0.5f;
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SLUSHY_ID:
-      fx.spectral_freeze_slushy = event.value >= 0.5f;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MODE_ID:
+      fx.spectral_freeze_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 3u);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SPEED_ID:
-      fx.spectral_freeze_speed = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_CAPTURE_SERIAL_ID:
+      fx.spectral_freeze_capture_serial = static_cast<uint32_t>(std::max(0.0f, std::round(event.value)));
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DECAY_ID:
-      fx.spectral_freeze_decay = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_STRETCH_SPEED_ID:
+      fx.spectral_freeze_stretch_speed = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_PHASE_JITTER_ID:
-      fx.spectral_freeze_phase_jitter = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DIRECTION_ID:
+      fx.spectral_freeze_direction = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_POSITION_ID:
+      fx.spectral_freeze_position = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_REFRESH_ID:
+      fx.spectral_freeze_refresh = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_INPUT_SENSITIVITY_ID:
+      fx.spectral_freeze_input_sensitivity = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DIFFUSION_ID:
+      fx.spectral_freeze_diffusion = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_TONE_ID:
+      fx.spectral_freeze_tone = clampFloat(event.value, -1.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_WIDTH_ID:
+      fx.spectral_freeze_width = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SUSTAIN_ID:
+      fx.spectral_freeze_sustain = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ROUTING_ID:

@@ -80,9 +80,6 @@ int32_t kessho_product_set_meter_demand(
     KesshoProductEngine* engine,
     uint32_t enabled);
 
-int32_t kessho_product_set_debug_voice_spawn_demand(
-    KesshoProductEngine* engine,
-    uint32_t enabled);
 
 int32_t kessho_product_set_simple_sequencer_visual_demand(
     KesshoProductEngine* engine,
@@ -124,11 +121,13 @@ int32_t kessho_product_unregister_asset_buffer(
     KesshoProductEngine* engine,
     uint32_t asset_id);
 
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
 int32_t kessho_product_debug_render_events(
     KesshoProductEngine* engine,
     KesshoSequencerEvent* out_events,
     uint32_t max_event_count,
     uint32_t frames);
+#endif
 
 #ifdef __cplusplus
 }

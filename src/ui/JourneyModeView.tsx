@@ -11,6 +11,7 @@ import type { UseJourneyResult } from './journeyState';
 import type { SavedPreset } from './state';
 import type { PresetEntry, PresetSummary } from '../presets/types';
 import type { JourneyValidationResult } from '../presets/journeyPresetCodec';
+import { normalizeJourneyPresetNameKey, type SaveJourneyPresetOptions } from '../presets/useJourneyPresets';
 import { PresetRatingStars } from '../presets/PresetRatingStars';
 import { isMobileDevice } from '../platform';
 import { JourneyPresetGlyph } from './JourneyPresetGlyph';
@@ -61,6 +62,30 @@ function journeyPresetHoverTitle(preset: PresetSummary, action: string): string 
     : `${action}: ${preset.name}`;
 }
 
+export interface JourneyPresetActionOutcome {
+  succeeded: boolean;
+  error?: string;
+}
+
+/** Keep UI state open when a store signals failure without throwing. */
+export async function resolveJourneyPresetAction<T>(
+  action: () => Promise<T>,
+  isSuccess: (result: T) => boolean = () => true,
+  failedMessage = 'Journey preset action was not completed.',
+): Promise<JourneyPresetActionOutcome> {
+  try {
+    const result = await action();
+    return isSuccess(result)
+      ? { succeeded: true }
+      : { succeeded: false, error: failedMessage };
+  } catch (error) {
+    return {
+      succeeded: false,
+      error: error instanceof Error ? error.message : 'Journey preset action failed.',
+    };
+  }
+}
+
 interface JourneyModeViewProps {
   presets: SavedPreset[];
   journey: UseJourneyResult;
@@ -69,11 +94,15 @@ interface JourneyModeViewProps {
   activeJourneyHasBackup: boolean;
   journeyValidation: JourneyValidationResult;
   onLoadJourneyPreset: (name: string) => Promise<void>;
-  onSaveJourneyPreset: (name: string, description?: string) => Promise<PresetEntry | null>;
+  onSaveJourneyPreset: (
+    name: string,
+    description?: string,
+    intent?: Pick<SaveJourneyPresetOptions, 'overwriteExisting'>,
+  ) => Promise<PresetEntry | null>;
   onRenameJourneyPreset: (name: string, nextName: string, description?: string) => Promise<PresetEntry | null>;
   onDeleteJourneyPreset: (name: string) => Promise<boolean>;
   onUndoJourneyPreset: () => Promise<void>;
-  onRateJourneyPreset: (name: string, rating: number) => Promise<void>;
+  onRateJourneyPreset: (name: string, rating: number) => Promise<boolean>;
   onJourneyEnd: () => void;
   onStopAudio: () => void;
   onShowSnowflake: () => void;
@@ -120,7 +149,10 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
   const [presetSearch, setPresetSearch] = useState('');
   const [presetSort, setPresetSort] = useState<PresetSortMode>('updated');
   const [localRatings, setLocalRatings] = useState<Record<string, number>>({});
+  const [presetActionBusy, setPresetActionBusy] = useState(false);
+  const [presetActionError, setPresetActionError] = useState('');
   const journeyActiveRef = useRef(false);
+  const presetActionInFlightRef = useRef(false);
 
   useEffect(() => {
     const handleResize = () => {
@@ -191,37 +223,113 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
   }, [journey, onStopAudio]);
 
   const handleSave = useCallback(() => {
-    const currentSummary = journeyPresets.find((preset) => preset.name === currentJourneySaveName);
+    const currentKey = normalizeJourneyPresetNameKey(currentJourneySaveName);
+    const currentSummary = journeyPresets.find((preset) => normalizeJourneyPresetNameKey(preset.name) === currentKey);
     setSaveAsName('');
     setSaveDescription(currentSummary?.description ?? '');
+    setPresetActionError('');
     setSaveDialogOpen(true);
   }, [currentJourneySaveName, journeyPresets]);
 
+  const runPresetAction = useCallback(async <T,>(
+    action: () => Promise<T>,
+    isSuccess: (result: T) => boolean = () => true,
+    failedMessage?: string,
+  ): Promise<boolean> => {
+    if (presetActionInFlightRef.current) return false;
+    presetActionInFlightRef.current = true;
+    setPresetActionBusy(true);
+    setPresetActionError('');
+    try {
+      const outcome = await resolveJourneyPresetAction(action, isSuccess, failedMessage);
+      if (!outcome.succeeded) setPresetActionError(outcome.error ?? 'Journey preset action was not completed.');
+      return outcome.succeeded;
+    } finally {
+      presetActionInFlightRef.current = false;
+      setPresetActionBusy(false);
+    }
+  }, []);
+
   const handleSaveCurrent = useCallback(async () => {
     if (!currentJourneySaveName) return;
-    await onSaveJourneyPreset(currentJourneySaveName, saveDescription);
-    setSaveDialogOpen(false);
-  }, [currentJourneySaveName, onSaveJourneyPreset, saveDescription]);
+    if (await runPresetAction(
+      () => onSaveJourneyPreset(currentJourneySaveName, saveDescription),
+      (entry) => entry !== null,
+      'Journey preset was not saved.',
+    )) {
+      setSaveDialogOpen(false);
+    }
+  }, [currentJourneySaveName, onSaveJourneyPreset, runPresetAction, saveDescription]);
 
   const handleSaveAs = useCallback(async () => {
     const targetName = saveAsName.trim();
     if (!targetName) return;
-    await onSaveJourneyPreset(targetName, saveDescription);
-    setSaveDialogOpen(false);
-  }, [onSaveJourneyPreset, saveAsName, saveDescription]);
+    const targetKey = normalizeJourneyPresetNameKey(targetName);
+    const currentKey = normalizeJourneyPresetNameKey(currentJourneySaveName);
+    const existing = journeyPresets.find((preset) => normalizeJourneyPresetNameKey(preset.name) === targetKey);
+    const overwriteExisting = Boolean(existing && targetKey !== currentKey);
+    if (overwriteExisting && !window.confirm(
+      `A Journey named "${existing!.name}" already exists. Replace it with this Journey?`,
+    )) {
+      return;
+    }
+    if (await runPresetAction(
+      () => onSaveJourneyPreset(
+        targetName,
+        saveDescription,
+        overwriteExisting ? { overwriteExisting: true } : undefined,
+      ),
+      (entry) => entry !== null,
+      'Journey preset was not saved.',
+    )) {
+      setSaveDialogOpen(false);
+    }
+  }, [currentJourneySaveName, journeyPresets, onSaveJourneyPreset, runPresetAction, saveAsName, saveDescription]);
 
   const handleRename = useCallback(async () => {
     if (!currentJourneySaveName) return;
     const targetName = saveAsName.trim();
     if (!targetName || targetName === currentJourneySaveName) return;
-    await onRenameJourneyPreset(currentJourneySaveName, targetName, saveDescription);
-    setSaveDialogOpen(false);
-  }, [currentJourneySaveName, onRenameJourneyPreset, saveAsName, saveDescription]);
+    if (await runPresetAction(
+      () => onRenameJourneyPreset(currentJourneySaveName, targetName, saveDescription),
+      (entry) => entry !== null,
+      'Journey preset was not renamed.',
+    )) {
+      setSaveDialogOpen(false);
+    }
+  }, [currentJourneySaveName, onRenameJourneyPreset, runPresetAction, saveAsName, saveDescription]);
+
+  const handleUndoPreset = useCallback(async () => {
+    await runPresetAction(onUndoJourneyPreset);
+  }, [onUndoJourneyPreset, runPresetAction]);
+
+  const handleDeletePreset = useCallback(async (name: string) => {
+    if (!window.confirm(`Delete journey "${name}"?`)) return;
+    await runPresetAction(
+      () => onDeleteJourneyPreset(name),
+      (deleted) => deleted,
+      'Journey preset was not deleted.',
+    );
+  }, [onDeleteJourneyPreset, runPresetAction]);
 
   const handleRating = useCallback(async (name: string, rating: number) => {
+    const previousRating = localRatings[name]
+      ?? journeyPresets.find((preset) => preset.name === name)?.rating
+      ?? 0;
     setLocalRatings((prev) => ({ ...prev, [name]: rating }));
-    await onRateJourneyPreset(name, rating);
-  }, [onRateJourneyPreset]);
+    const saved = await runPresetAction(
+      () => onRateJourneyPreset(name, rating),
+      (updated) => updated,
+      'Journey rating was not saved.',
+    );
+    if (saved) return;
+    setLocalRatings((prev) => {
+      const next = { ...prev };
+      if (previousRating > 0) next[name] = previousRating;
+      else delete next[name];
+      return next;
+    });
+  }, [journeyPresets, localRatings, onRateJourneyPreset, runPresetAction]);
 
   const backgroundStatus = useMemo(() => {
     const state = backgroundJourney.state;
@@ -354,10 +462,10 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
                   <button
                     type="button"
                     style={{ ...styles.actionButton, ...styles.undoActionButton, opacity: (!activeJourneyPresetName || !activeJourneyHasBackup) ? 0.4 : 1 }}
-                    disabled={!activeJourneyPresetName || !activeJourneyHasBackup}
+                    disabled={presetActionBusy || !activeJourneyPresetName || !activeJourneyHasBackup}
                     title="Undo last save"
                     aria-label="Undo last save"
-                    onClick={() => { void onUndoJourneyPreset(); }}
+                    onClick={() => { void handleUndoPreset(); }}
                   >
                     {PANEL_SYMBOLS.undo}
                   </button>
@@ -425,7 +533,9 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
                     <div style={styles.presetRowActions}>
                       <PresetRatingStars
                         value={localRatings[preset.name] ?? preset.rating ?? 0}
-                        onChange={(r) => { void handleRating(preset.name, r); }}
+                        onChange={(r) => {
+                          if (!presetActionBusy) void handleRating(preset.name, r);
+                        }}
                         color="#B8E0FF"
                         emptyColor="#2a3a4a"
                         size="0.62rem"
@@ -445,9 +555,9 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
                         type="button"
                         title="Delete journey"
                         onClick={() => {
-                          if (!window.confirm(`Delete journey "${preset.name}"?`)) return;
-                          void onDeleteJourneyPreset(preset.name);
+                          void handleDeletePreset(preset.name);
                         }}
+                        disabled={presetActionBusy}
                         style={styles.deleteButton}
                       >
                         {PANEL_SYMBOLS.delete}
@@ -461,6 +571,11 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
               {!journeyValidation.playable && (
                 <div style={styles.validationWarning} title={journeyValidation.issues.join('\n')}>
                   {journeyValidation.issues[0]}
+                </div>
+              )}
+              {presetActionError && (
+                <div role="alert" style={styles.presetActionError}>
+                  {presetActionError}
                 </div>
               )}
             </div>
@@ -486,6 +601,11 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
         <div style={styles.dialogOverlay} onClick={() => setSaveDialogOpen(false)}>
           <div style={styles.dialogPanel} onClick={(e) => e.stopPropagation()}>
             <div style={styles.dialogTitle}>Save Journey</div>
+            {presetActionError && (
+              <div role="alert" style={styles.presetActionError}>
+                {presetActionError}
+              </div>
+            )}
             {currentJourneySaveName && (
               <div style={styles.dialogCurrentLabel}>
                 Current: <strong style={{ color: '#B8E0FF' }}>{currentJourneySaveName}</strong>
@@ -506,6 +626,7 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
               <button
                 type="button"
                 onClick={() => { void handleSaveCurrent(); }}
+                disabled={presetActionBusy}
                 style={styles.dialogSaveCurrentButton}
               >
                 Save "{currentJourneySaveName}"
@@ -548,7 +669,7 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
                       ? '#d6b26f'
                       : 'rgba(244,237,228,0.42)',
                   }}
-                  disabled={!saveAsName.trim() || saveAsName.trim() === currentJourneySaveName}
+                disabled={presetActionBusy || !saveAsName.trim() || saveAsName.trim() === currentJourneySaveName}
                   onClick={() => {
                     void handleRename();
                   }}
@@ -564,12 +685,12 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
                   ...styles.dialogSaveAsButton,
                   opacity: saveAsName.trim() ? 1 : 0.45,
                 }}
-                disabled={!saveAsName.trim()}
+                disabled={presetActionBusy || !saveAsName.trim()}
                 onClick={() => {
                   void handleSaveAs();
                 }}
               >
-                Save As
+                {presetActionBusy ? 'Saving…' : 'Save As'}
               </button>
             </div>
           </div>
@@ -885,6 +1006,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap' as const,
+  },
+  presetActionError: {
+    padding: '7px 12px',
+    color: '#e59a9a',
+    fontSize: '0.7rem',
   },
   bottomNav: {
     position: 'fixed',

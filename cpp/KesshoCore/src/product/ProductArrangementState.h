@@ -43,6 +43,8 @@ struct ProductArrangementState {
   float lead_initial_delay_seconds = 0.0f;
   uint64_t next_lead_phrase_frame = 0u;
   uint64_t lead_phrase_index = 0u;
+  uint64_t chord_phrase_start_frame = 0u;
+  uint64_t chord_phrase_index = 0u;
   bool chord_generator_pending = false;
   ProductArrangementPendingEvent pending[kMaxArrangementPendingEvents]{};
   uint32_t pending_count = 0u;

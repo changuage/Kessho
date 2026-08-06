@@ -33,6 +33,10 @@ constexpr uint32_t kPadVoiceNoPreference = 0xffffffffu;
 constexpr uint32_t kSequencerEventPadVoiceFlag = 0x80000000u;
 constexpr uint32_t kSequencerEventPadVoiceMask = 0x0f000000u;
 constexpr uint32_t kSequencerEventPadVoiceShift = 24u;
+constexpr uint32_t kSequencerEventHarmonyResolvedFlag = 0x40000000u; // Outside the pad-voice nibble.
+constexpr uint32_t kSequencerEventTransientAuditionFlag = 0x20000000u;
+constexpr uint32_t kProductMidiEventTransientAuditionFlag = 0x80000000u;
+constexpr uint32_t kProductManualNoteTransientAuditionFlag = 0x20000000u;
 constexpr uint32_t kProductPadVoiceCount = 8u;
 constexpr uint32_t kProductPadVoiceMaskAll = (1u << kProductPadVoiceCount) - 1u;
 constexpr uint32_t kProductInvalidVoiceIndex = 0xffffffffu;
@@ -53,19 +57,16 @@ constexpr uint32_t kMaxRuntimeWalkTelemetry = KESSHO_PRODUCT_RUNTIME_WALK_TELEME
 constexpr uint32_t kProductPadRuntimeParamIdBase = 2000u;
 constexpr uint32_t kProductPad2RuntimeParamIdBase = 2100u;
 constexpr uint32_t kProductPadRuntimeParamCount = kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
-static_assert(
-    kProductPadRuntimeParamCount == KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT,
+static_assert(kProductPadRuntimeParamCount == KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT,
     "Pad override snapshot ABI count must match module Pad param count");
 constexpr uint32_t kProductLeadRuntimeParamIdBase = 2200u;
 constexpr uint32_t kProductLead2RuntimeParamIdBase = 2300u;
 constexpr uint32_t kProductLeadRuntimeParamCount = kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
-static_assert(
-    kProductLeadRuntimeParamCount == KESSHO_PRODUCT_LEAD_OVERRIDE_PARAM_COUNT,
+static_assert(kProductLeadRuntimeParamCount == KESSHO_PRODUCT_LEAD_OVERRIDE_PARAM_COUNT,
     "Lead override snapshot ABI count must match module Lead param count");
 constexpr uint32_t kProductDrumRuntimeParamIdBase = 3000u;
 constexpr uint32_t kProductDrumRuntimeParamCount = kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT;
-static_assert(
-    kProductDrumRuntimeParamCount == KESSHO_PRODUCT_DRUM_OVERRIDE_PARAM_COUNT,
+static_assert(kProductDrumRuntimeParamCount == KESSHO_PRODUCT_DRUM_OVERRIDE_PARAM_COUNT,
     "Drum override snapshot ABI count must match module Drum param count");
 constexpr uint32_t kProductDrumMasterLevelParam = 122u;
 constexpr uint32_t kProductDrumReverbSendParam = 123u;
@@ -204,6 +205,8 @@ constexpr uint32_t kSoundscapeModuleWaterMasterEnabledParam = kSoundscapeModuleE
 constexpr uint32_t kSoundscapeModuleInsectsMasterEnabledParam = kSoundscapeModuleWaterMasterEnabledParam + 1u;
 constexpr uint32_t kSoundscapeModuleNatureMasterEnabledParam = kSoundscapeModuleInsectsMasterEnabledParam + 1u;
 constexpr uint32_t kSoundscapeProductModuleParamCount = kessho::product::generated::KESSHO_PRODUCT_GENERATED_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT;
+constexpr uint32_t kSoundscapeModuleParamTargetEnd =
+    kSoundscapeModuleParamTargetBase + kSoundscapeProductModuleParamCount;
 static_assert(
     kSoundscapeProductModuleParamCount == KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT,
     "Soundscape module snapshot ABI count must match Product Core module params");

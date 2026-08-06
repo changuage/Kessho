@@ -17,7 +17,11 @@ import type {
   SubLaneState,
 } from '../ui/sequencer/useEuclideanSequencer';
 import type { SavedPresetSource } from './savedPresetSource';
-import type { PresetPoolMetadata } from './types';
+import type { PresetPoolMetadata, PresetVersionMetadata } from './types';
+import type { SerializedSeqScatterState } from '../ui/drums/scatter/scatterTypes';
+import { sanitizePresetParameterBehaviorMetadata } from './versionMetadataHelpers';
+import { canonicalizeStoredPresetEntry } from './storedPresetCompatibility';
+import { completeSpectralFreezePresetState } from './spectralFreezePresetState';
 
 const BUNDLED_PRESET_FALLBACK_FILES = [
   'Ethereal_Ambient.json',
@@ -62,6 +66,7 @@ export interface BundledSavedPreset {
   drumPitchSettings?: PitchSettings[];
   synthPitchSettings?: PitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
+  drumScatterState?: SerializedSeqScatterState;
   presetPool?: PresetPoolMetadata;
 }
 
@@ -70,8 +75,40 @@ function bundledPresetFromFileData(
   fallbackName: string,
   source: SavedPresetSource,
 ): BundledSavedPreset {
+  // The direct-file Point Clouds generator emits the already materialized
+  // SavedPreset shape. Keep that shape as the canonical local asset so the
+  // regular browser build can use the exact same snapshot without contacting
+  // Supabase or rebuilding a V2 graph from an export envelope.
+  if (
+    typeof data.name === 'string'
+    && typeof data.timestamp === 'string'
+    && data.state
+    && typeof data.state === 'object'
+    && !Array.isArray(data.state)
+    && !data.type
+    && !data.versions
+  ) {
+    const metadata = { ...data } as Record<string, unknown>;
+    delete metadata.state;
+    delete metadata.timestamp;
+    delete metadata.name;
+    const behavior = sanitizePresetParameterBehaviorMetadata(metadata as PresetVersionMetadata);
+    if (behavior.sliderModes) metadata.sliderModes = behavior.sliderModes;
+    else delete metadata.sliderModes;
+    if (behavior.dualRanges) metadata.dualRanges = behavior.dualRanges;
+    else delete metadata.dualRanges;
+    return {
+      ...metadata,
+      id: typeof data.id === 'string' ? data.id : undefined,
+      name: data.name,
+      timestamp: new Date(data.timestamp).toISOString(),
+      state: enforceProductCorePresetBoundaryState(completeSpectralFreezePresetState(data.state as SliderState)),
+      source,
+    } as BundledSavedPreset;
+  }
+
   const rawEntry = data.kesshoPreset === true && data.entry ? data.entry : data;
-  const entry = decodeCurrentPresetEntry(rawEntry);
+  const entry = decodeCurrentPresetEntry(canonicalizeStoredPresetEntry(rawEntry));
   if (entry.type !== 'state') {
     throw new Error(`Bundled preset ${fallbackName} is not a state preset`);
   }
@@ -79,6 +116,11 @@ function bundledPresetFromFileData(
   const versionData = version ? getVersionData(entry, version.v) : null;
   if (!version || !versionData) throw new Error(`Bundled preset ${fallbackName} has no current version`);
   const metadata = extractPresetVersionMetadata(version) ?? {};
+  const behavior = sanitizePresetParameterBehaviorMetadata(metadata);
+  if (behavior.sliderModes) metadata.sliderModes = behavior.sliderModes;
+  else delete metadata.sliderModes;
+  if (behavior.dualRanges) metadata.dualRanges = behavior.dualRanges;
+  else delete metadata.dualRanges;
   return {
     id: entry.id,
     name: entry.name,

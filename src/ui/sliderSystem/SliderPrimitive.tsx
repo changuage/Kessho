@@ -73,6 +73,8 @@ export interface SliderPrimitiveProps {
   onValueChange?: (value: number) => void;
   updatePolicy?: SliderUpdatePolicy;
   commitValueOnRelease?: boolean;
+  /** Minimum endpoint separation in the primitive's normalized 0–100 domain. */
+  minRangeGap?: number;
   onRangeChange?: (range: SliderPrimitiveRange) => void;
   onModeCycle?: () => void;
   onAnnounce?: () => void;
@@ -105,6 +107,7 @@ export function SliderPrimitive({
   onValueChange,
   updatePolicy = 'frame',
   commitValueOnRelease = false,
+  minRangeGap = 4,
   onRangeChange,
   onModeCycle,
   onAnnounce,
@@ -132,6 +135,7 @@ export function SliderPrimitive({
   const pendingTouchCleanupRef = React.useRef<(() => void) | null>(null);
   const usesControlledValue = typeof onValueChange === 'function';
   const usesControlledRange = typeof onRangeChange === 'function' && !!range;
+  const resolvedMinRangeGap = clamp(minRangeGap, 0, 100);
 
   React.useEffect(() => {
     if (usesControlledValue) {
@@ -217,14 +221,14 @@ export function SliderPrimitive({
     const currentHandleValue = currentRange[handle];
     if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') nextValue = currentHandleValue + keyboardDelta(event, -1);
     else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') nextValue = currentHandleValue + keyboardDelta(event, 1);
-    else if (event.key === 'Home') nextValue = handle === 'min' ? 0 : currentRange.min + 4;
-    else if (event.key === 'End') nextValue = handle === 'max' ? 100 : currentRange.max - 4;
+    else if (event.key === 'Home') nextValue = handle === 'min' ? 0 : currentRange.min + resolvedMinRangeGap;
+    else if (event.key === 'End') nextValue = handle === 'max' ? 100 : currentRange.max - resolvedMinRangeGap;
     if (nextValue === null) return;
     event.preventDefault();
     event.stopPropagation();
     const nextRange = handle === 'min'
-      ? { min: clamp(nextValue, 0, currentRange.max - 4), max: currentRange.max }
-      : { min: currentRange.min, max: clamp(nextValue, currentRange.min + 4, 100) };
+      ? { min: clamp(nextValue, 0, currentRange.max - resolvedMinRangeGap), max: currentRange.max }
+      : { min: currentRange.min, max: clamp(nextValue, currentRange.min + resolvedMinRangeGap, 100) };
     setLiveRange(nextRange);
     rangeEmitter.flush(nextRange);
     lastEmittedRangeRef.current = null;
@@ -262,8 +266,8 @@ export function SliderPrimitive({
 
     const pointerValue = percentFromClientX(clientX, rect);
     const nextRange = target === 'min'
-      ? { min: Math.min(pointerValue, currentRange.max - 4), max: currentRange.max }
-      : { min: currentRange.min, max: Math.max(pointerValue, currentRange.min + 4) };
+      ? { min: Math.min(pointerValue, currentRange.max - resolvedMinRangeGap), max: currentRange.max }
+      : { min: currentRange.min, max: Math.max(pointerValue, currentRange.min + resolvedMinRangeGap) };
     setLiveRange(nextRange);
     rangeEmitter.flush(nextRange);
     lastEmittedRangeRef.current = null;
@@ -349,9 +353,9 @@ export function SliderPrimitive({
         dragValueRef.current = null;
         dragIndicatorRef.current = null;
         dragThumbPxRef.current = null;
-        if (thumbRef.current) {
-          thumbRef.current.style.transform = '';
-          thumbRef.current.style.left = '';
+        if (cancelled && thumbRef.current) {
+          thumbRef.current.style.transform = `translate3d(${(clamp(value, 0, 100) / 100) * rect.width}px, -50%, 0)`;
+          thumbRef.current.style.left = '0';
         }
         if (cancelled && valueTextRef.current) {
           valueTextRef.current.textContent = displayValue ?? formatValue(value, unit);
@@ -397,8 +401,8 @@ export function SliderPrimitive({
 
       const raw = clamp(target === 'min' ? startRange.min + delta : startRange.max + delta, 0, 100);
       return target === 'min'
-        ? { min: Math.min(raw, startRange.max - 4), max: startRange.max }
-        : { min: startRange.min, max: Math.max(raw, startRange.min + 4) };
+        ? { min: Math.min(raw, startRange.max - resolvedMinRangeGap), max: startRange.max }
+        : { min: startRange.min, max: Math.max(raw, startRange.min + resolvedMinRangeGap) };
     };
 
     const getNextIndicator = (nextRange: SliderPrimitiveRange) => clamp(
@@ -451,9 +455,9 @@ export function SliderPrimitive({
       dragRangeRef.current = null;
       dragIndicatorRef.current = null;
       dragThumbPxRef.current = null;
-      if (thumbRef.current) {
-        thumbRef.current.style.transform = '';
-        thumbRef.current.style.left = '';
+      if (cancelled && thumbRef.current) {
+        thumbRef.current.style.transform = `translate3d(${(indicatorPct / 100) * rect.width}px, -50%, 0)`;
+        thumbRef.current.style.left = '0';
       }
       if (cancelled) rangeEmitter.cancel();
       else rangeEmitter.flush(lastRange);
@@ -707,7 +711,7 @@ export function SliderPrimitive({
               tabIndex={disabled ? -1 : 0}
               aria-label={`${label} minimum`}
               aria-valuemin={0}
-              aria-valuemax={currentRange.max - 4}
+              aria-valuemax={currentRange.max - resolvedMinRangeGap}
               aria-valuenow={currentRange.min}
               aria-valuetext={formatValue(currentRange.min, unit)}
               aria-disabled={disabled}
@@ -720,7 +724,7 @@ export function SliderPrimitive({
               role="slider"
               tabIndex={disabled ? -1 : 0}
               aria-label={`${label} maximum`}
-              aria-valuemin={currentRange.min + 4}
+              aria-valuemin={currentRange.min + resolvedMinRangeGap}
               aria-valuemax={100}
               aria-valuenow={currentRange.max}
               aria-valuetext={formatValue(currentRange.max, unit)}

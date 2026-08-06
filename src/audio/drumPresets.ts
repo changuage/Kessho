@@ -6,6 +6,7 @@
  */
 
 import type { DrumVoiceType } from './drumSynth';
+import type { SliderMode } from '../ui/state';
 export type { DrumVoiceType };
 
 export interface DrumVoicePreset {
@@ -13,6 +14,40 @@ export interface DrumVoicePreset {
   voice: DrumVoiceType;
   params: Record<string, number | string>;
   tags: string[];
+  dualRanges?: Record<string, { min: number; max: number }>;
+  sliderModes?: Record<string, SliderMode>;
+}
+
+export function createRuntimeDrumPreset(
+  voice: DrumVoiceType,
+  name: string,
+  data: Record<string, unknown>,
+  tags: string[] = [],
+  dualRanges?: Record<string, { min: number; max: number }>,
+  sliderModes?: Record<string, SliderMode>,
+): DrumVoicePreset {
+  const params: Record<string, number | string> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (typeof value === 'number' || typeof value === 'string') params[key] = value;
+  }
+
+  const presetDualRanges: Record<string, { min: number; max: number }> = {};
+  const presetSliderModes: Record<string, SliderMode> = {};
+  for (const [key, range] of Object.entries(dualRanges ?? {})) {
+    if (!(key in params)) continue;
+    presetDualRanges[key] = range;
+    const mode = sliderModes?.[key];
+    if (mode === 'walk' || mode === 'sampleHold') presetSliderModes[key] = mode;
+  }
+
+  return {
+    name,
+    voice,
+    params,
+    tags,
+    ...(Object.keys(presetDualRanges).length > 0 ? { dualRanges: presetDualRanges } : {}),
+    ...(Object.keys(presetSliderModes).length > 0 ? { sliderModes: presetSliderModes } : {}),
+  };
 }
 
 export const SUB_PRESETS: DrumVoicePreset[] = [

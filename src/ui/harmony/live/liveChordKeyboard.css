@@ -1,0 +1,279 @@
+.harmony-live-keyboard {
+  padding: 8px;
+  border: 1px solid var(--page-accent-border, var(--k-border));
+  border-radius: var(--k-radius-card, 8px);
+  color: var(--k-text, #f7fafc);
+  background: var(--k-bg-inset, rgba(0, 0, 0, .2));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .035);
+}
+
+.harmony-live-keyboard-header {
+  display: flex;
+  min-height: 22px;
+  align-items: center;
+  gap: 8px;
+  color: var(--k-text-muted, rgba(247, 250, 252, .44));
+  font-size: .62rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.harmony-live-keyboard-header strong {
+  color: var(--k-text-soft, rgba(247, 250, 252, .7));
+  font-size: .66rem;
+}
+
+.harmony-live-keyboard-header span {
+  flex: 1;
+}
+
+.harmony-live-keyboard-header button,
+.harmony-live-keyboard-context button {
+  min-height: 26px;
+  padding: 3px 8px;
+  border: 1px solid var(--k-border, rgba(247, 250, 252, .12));
+  border-radius: var(--k-radius-control, 6px);
+  color: var(--k-text-soft, rgba(247, 250, 252, .7));
+  background: var(--k-control, rgba(255, 255, 255, .055));
+  font: inherit;
+  cursor: pointer;
+}
+
+.harmony-live-keyboard-header button:hover,
+.harmony-live-keyboard-context button:hover {
+  color: var(--k-text, #f7fafc);
+  border-color: var(--page-accent-border, var(--k-border-strong));
+  background: var(--k-control-hover, rgba(255, 255, 255, .09));
+}
+
+.harmony-live-keyboard .harmony-live-keyboard-keys {
+  --live-keyboard-height: clamp(106px, 15vw, 144px);
+  position: relative;
+  height: var(--live-keyboard-height);
+  margin-top: 5px;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid var(--k-border-strong, rgba(247, 250, 252, .24));
+  border-radius: var(--k-radius-control, 6px);
+  background: var(--k-bg-deep, #100f0e);
+  user-select: none;
+  touch-action: none;
+}
+
+.harmony-live-keyboard-keys > .harmony-live-key-slot {
+  position: absolute;
+  top: 0;
+  left: var(--live-key-left);
+  display: block;
+  width: var(--live-key-width);
+  height: 100%;
+  pointer-events: none;
+}
+
+.harmony-live-keyboard-keys > .harmony-live-key-slot.harmony-live-black-keys {
+  z-index: 2;
+  height: 62%;
+}
+
+.harmony-live-keyboard-keys > .harmony-live-key-slot > .harmony-live-key {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 7px 2px 6px;
+  overflow: hidden;
+  border: 1px solid rgba(16, 15, 14, .42);
+  border-radius: 0 0 5px 5px;
+  color: #292724;
+  background: linear-gradient(180deg, var(--k-text, #f7fafc), var(--k-cream, #e8dcc4));
+  box-sizing: border-box;
+  cursor: pointer;
+  pointer-events: auto;
+  text-align: center;
+  transition: filter .1s ease, box-shadow .1s ease;
+}
+
+.harmony-live-keyboard-keys > .harmony-live-key-slot.harmony-live-black-keys > .harmony-live-key {
+  padding: 6px 1px 5px;
+  border-color: rgba(247, 250, 252, .18);
+  color: var(--k-text, #f7fafc);
+  background: linear-gradient(180deg, #34312e, var(--k-bg-deep, #100f0e));
+  box-shadow: 0 3px 5px rgba(0, 0, 0, .42);
+}
+
+.harmony-live-key > span {
+  min-height: 9px;
+  color: rgba(41, 39, 36, .56);
+  font-size: clamp(6px, .65vw, 8px);
+  font-weight: 800;
+  letter-spacing: .04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.harmony-live-key > strong {
+  display: block;
+  font-size: clamp(9px, 1.1vw, 13px);
+  line-height: 1;
+}
+
+.harmony-live-key > small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  color: rgba(41, 39, 36, .62);
+  font-size: clamp(6px, .66vw, 8px);
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.harmony-live-keyboard-keys > .harmony-live-key-slot.harmony-live-black-keys .harmony-live-key > span,
+.harmony-live-keyboard-keys > .harmony-live-key-slot.harmony-live-black-keys .harmony-live-key > small {
+  color: var(--k-text-muted, rgba(247, 250, 252, .44));
+}
+
+.harmony-live-key.semantic:not(.retained) {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--page-accent, var(--k-icy)) 55%, transparent);
+}
+
+.harmony-live-key.root::before {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--k-clay, #c4724e);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--k-clay, #c4724e) 22%, transparent);
+  content: "";
+  transform: translateX(-50%);
+}
+
+.harmony-live-key.retained {
+  color: #171615;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--page-accent, var(--k-icy)) 52%, var(--k-text, #f7fafc)),
+    color-mix(in srgb, var(--page-accent, var(--k-icy)) 72%, var(--k-cream, #e8dcc4))
+  );
+  box-shadow: inset 0 -3px 0 rgba(16, 15, 14, .17);
+}
+
+.harmony-live-keyboard-keys > .harmony-live-key-slot.harmony-live-black-keys .harmony-live-key.retained {
+  color: #171615;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--page-accent, var(--k-icy)) 76%, white),
+    color-mix(in srgb, var(--page-accent, var(--k-icy)) 65%, #34312e)
+  );
+}
+
+.harmony-live-key.held {
+  z-index: 3;
+  filter: brightness(1.14);
+  box-shadow: inset 0 0 0 2px var(--page-accent, var(--k-icy)), var(--k-shadow-glow);
+}
+
+.harmony-live-key.selected,
+.harmony-live-key:focus-visible {
+  z-index: 4;
+  outline: 2px solid var(--k-cream, #e8dcc4);
+  outline-offset: -3px;
+}
+
+.harmony-live-key:hover {
+  filter: brightness(1.08);
+}
+
+.harmony-live-key:disabled {
+  cursor: not-allowed;
+  filter: saturate(.45);
+  opacity: .58;
+}
+
+.harmony-live-keyboard-context {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 5px;
+  padding-top: 6px;
+  overflow-x: auto;
+  color: var(--k-text-muted, rgba(247, 250, 252, .44));
+  font-size: .62rem;
+  white-space: nowrap;
+}
+
+.harmony-live-keyboard-context > strong {
+  margin-right: 3px;
+  color: var(--k-text-soft, rgba(247, 250, 252, .7));
+}
+
+.harmony-live-keyboard-octave-actions {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.harmony-live-keyboard-identity {
+  position: relative;
+}
+
+.harmony-live-keyboard-identity > summary {
+  min-height: 26px;
+  padding: 5px 8px;
+  border: 1px solid var(--k-border, rgba(247, 250, 252, .12));
+  border-radius: var(--k-radius-control, 6px);
+  color: var(--k-text-soft, rgba(247, 250, 252, .7));
+  background: var(--k-control, rgba(255, 255, 255, .055));
+  cursor: pointer;
+  list-style: none;
+}
+
+.harmony-live-keyboard-identity > summary::-webkit-details-marker {
+  display: none;
+}
+
+.harmony-live-keyboard-identity > span {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid var(--k-border-strong, rgba(247, 250, 252, .24));
+  border-radius: var(--k-radius-control, 6px);
+  background: var(--k-glass-strong, rgba(34, 33, 30, .96));
+  box-shadow: var(--k-shadow-glass);
+}
+
+.harmony-live-keyboard-context button:disabled {
+  cursor: default;
+  opacity: .35;
+}
+
+@media (max-width: 680px) {
+  .harmony-live-keyboard .harmony-live-keyboard-keys {
+    --live-keyboard-height: 104px;
+  }
+
+  .harmony-live-key > strong {
+    font-size: 9px;
+  }
+
+  .harmony-live-key > small {
+    font-size: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .harmony-live-key {
+    transition: none;
+  }
+}

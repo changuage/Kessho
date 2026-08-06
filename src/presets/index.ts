@@ -39,6 +39,11 @@ export {
   isCurrentPresetEntry,
 } from './currentPresetSchema';
 export { buildPresetFamilies, getPresetDisplayLabel } from './catalog';
+export {
+  buildPresetVersionMetadata,
+  preparePresetVersionMetadataForV2Storage,
+  sanitizePresetParameterBehaviorMetadata,
+} from './versionMetadataHelpers';
 
 // Phase 1: PresetStore
 export type { IPresetStore } from './PresetStore';

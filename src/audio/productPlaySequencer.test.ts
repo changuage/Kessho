@@ -40,7 +40,7 @@ function chordConfig(overrides: Record<string, unknown> = {}) {
 function seventhHarmony(notes = [60, 64, 67, 70]) {
   const harmony = harmonyWithSlots();
   const intent: HarmonyIntent = {
-    ...harmony.chordSlots[0]!.intent,
+    ...harmony.chordSlots[0]!.chord!.intent!,
     quality: 'dom7',
     rootMode: 'absolute',
     rootNote: 0,
@@ -50,7 +50,6 @@ function seventhHarmony(notes = [60, 64, 67, 70]) {
     bassNote: null,
   };
   const slot = harmony.chordSlots[0]!;
-  slot.intent = intent;
   slot.chord = {
     ...editSharedChordIntent(slot.chord!, intent),
     exactMidiNotes: [...notes],

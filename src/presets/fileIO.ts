@@ -8,6 +8,7 @@ import { generatePresetId } from './presetUtils';
 import { decodeCurrentPresetEntry, UnsupportedPresetVersionError } from './currentPresetSchema';
 import type { ParamLevel } from './ParamRegistry';
 import type { SliderState } from '../ui/state';
+import { canonicalizeStoredPresetEntry } from './storedPresetCompatibility';
 
 const APP_VERSION = '1.0.0';
 
@@ -97,7 +98,7 @@ export function importPresetFromFile(): Promise<PresetEntry | null> {
           throw new UnsupportedPresetVersionError(`Unsupported preset file format version: ${String(parsed.formatVersion)}`);
         }
         if (!parsed.entry) throw new UnsupportedPresetVersionError('Current preset file is missing its entry');
-        resolve(decodeCurrentPresetEntry(parsed.entry));
+        resolve(decodeCurrentPresetEntry(canonicalizeStoredPresetEntry(parsed.entry)));
       } catch (error) {
         reject(error instanceof UnsupportedPresetVersionError
           ? error

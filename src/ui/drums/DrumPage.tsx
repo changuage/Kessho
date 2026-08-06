@@ -6,7 +6,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import './drums.css';
-import type { SerializedStepOverrides, SliderState } from '../state';
+import type { SerializedStepOverrides, SliderMode, SliderState } from '../state';
 import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumStepOverrides } from '../../audio/drumSeqTypes';
@@ -233,6 +233,13 @@ export interface DrumPageProps {
   drumLaneEnableTouchedRef?: React.MutableRefObject<boolean>;
   togglePanel: (id: string) => void;
   sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
+  sliderModes?: Record<string, SliderMode>;
+  dualSliderRanges?: Record<string, { min: number; max: number }>;
+  onDualStateChange?: (
+    relevantKeys: string[],
+    dualRanges?: Record<string, { min: number; max: number }>,
+    sliderModes?: Record<string, SliderMode>,
+  ) => void;
   triggerVoice: (voice: DrumVoiceType, options?: ScatterPreviewTriggerOptions) => void;
   previewTriggerVoice?: (voice: DrumVoiceType, externalState: SliderState, velocity?: number) => void;
   getAnalyserNode?: (voice: DrumVoiceType) => AnalyserNode | undefined;
@@ -302,6 +309,9 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     drumLaneEnableTouchedRef: sharedDrumLaneEnableTouchedRef,
     togglePanel,
     sliderProps,
+    sliderModes,
+    dualSliderRanges,
+    onDualStateChange,
     triggerVoice,
     previewTriggerVoice,
     getAnalyserNode,
@@ -1460,6 +1470,9 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               currentName={kitPresetName}
               onLoad={handleKitPresetLoad}
               onStateChange={onStateChange}
+              sliderModes={sliderModes}
+              dualSliderRanges={dualSliderRanges}
+              onDualStateChange={onDualStateChange}
               compact
             />
           </div>
@@ -1528,6 +1541,9 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               getAnalyserNode={getAnalyserNode}
               preloadAudioEngine={preloadAudioEngine}
               liveCaptureEnabled={drumLiveVizToggle.enabled}
+              sliderModes={sliderModes}
+              dualSliderRanges={dualSliderRanges}
+              onDualStateChange={onDualStateChange}
             />
           </div>
 

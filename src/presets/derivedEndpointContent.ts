@@ -6,6 +6,8 @@ import { interpolatePresets } from '../audio/drumMorph';
 import type { PresetContentNodeType } from './contentNodes';
 import { getGranularPresetData, isGranularDelayBStateKey } from '../ui/granular/granularPresets';
 import { morphWaterPresets, morphWaterPresetStates, WATER_MORPH_PARAM_KEYS } from '../audio/waterPresets';
+import lead4opfmV2PresetBank from '../audio/lead4opfmV2PresetBank.json';
+import { sanitizeLead4opFMPresetJson } from './lead4opPresetPayload';
 
 export interface DerivedEndpointInstance {
   id: string;
@@ -26,6 +28,62 @@ const DRUM_ENDPOINTS: Record<DrumVoiceType, {
   noise: { presetPrefix: 'drumNoisePreset', contentType: 'drumNoiseVoice' },
   membrane: { presetPrefix: 'drumMembranePreset', contentType: 'drumMembraneVoice' },
 };
+
+const LEAD_ENDPOINTS = [
+  { stateKey: 'lead1PresetA', dataKey: 'lead1PresetAData', id: 'derived.lead.1.a', refSlot: 'derived.lead.1.endpoint-a' },
+  { stateKey: 'lead1PresetB', dataKey: 'lead1PresetBData', id: 'derived.lead.1.b', refSlot: 'derived.lead.1.endpoint-b' },
+  { stateKey: 'lead2PresetC', dataKey: 'lead2PresetCData', id: 'derived.lead.2.c', refSlot: 'derived.lead.2.endpoint-c' },
+  { stateKey: 'lead2PresetD', dataKey: 'lead2PresetDData', id: 'derived.lead.2.d', refSlot: 'derived.lead.2.endpoint-d' },
+] as const;
+
+const bundledLeadPresetByLookup = new Map<string, unknown>();
+for (const preset of lead4opfmV2PresetBank) {
+  bundledLeadPresetByLookup.set(normalizeLeadLookup(preset.id), preset);
+  bundledLeadPresetByLookup.set(normalizeLeadLookup(preset.name), preset);
+}
+
+function normalizeLeadLookup(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function normalizeLeadEndpointContent(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  const rawPreset = isRecord(value.preset) ? value.preset : value;
+  const preset = sanitizeLead4opFMPresetJson(rawPreset);
+  if (!preset) return null;
+  return {
+    preset: preset as unknown as Record<string, unknown>,
+    ...(isRecord(value.dualRanges) ? { dualRanges: value.dualRanges } : {}),
+    ...(isRecord(value.sliderModes) ? { sliderModes: value.sliderModes } : {}),
+  };
+}
+
+export async function buildLeadDerivedEndpointInstances(
+  state: Record<string, unknown>,
+  resolvePreset?: (selector: string) => Promise<unknown>,
+): Promise<DerivedEndpointInstance[]> {
+  const resolvedBySelector = new Map<string, Promise<unknown>>();
+  return (await Promise.all(LEAD_ENDPOINTS.map(async (endpoint): Promise<DerivedEndpointInstance | null> => {
+    const selector = presetName(state[endpoint.stateKey]);
+    if (!selector) return null;
+    let content = normalizeLeadEndpointContent(state[endpoint.dataKey])
+      ?? normalizeLeadEndpointContent(bundledLeadPresetByLookup.get(normalizeLeadLookup(selector)));
+    if (!content && resolvePreset) {
+      let pending = resolvedBySelector.get(selector);
+      if (!pending) {
+        pending = resolvePreset(selector);
+        resolvedBySelector.set(selector, pending);
+      }
+      content = normalizeLeadEndpointContent(await pending);
+    }
+    return content ? {
+      id: endpoint.id,
+      refSlot: endpoint.refSlot,
+      contentType: 'lead4opfmPatch' as const,
+      content,
+    } : null;
+  }))).filter((instance): instance is DerivedEndpointInstance => instance !== null);
+}
 
 export function buildDrumDerivedEndpointInstances(state: Record<string, unknown>): DerivedEndpointInstance[] {
   const instances: DerivedEndpointInstance[] = [];
@@ -177,6 +235,30 @@ export function hydrateGranularAndWaterDerivedEndpointRefs(
     const morph = Number(state.waterMorph ?? 0);
     const derived = morphWaterPresetStates(waterA, waterB, Number.isFinite(morph) ? morph : 0);
     for (const key of WATER_MORPH_PARAM_KEYS) if (!(key in next)) next[key] = derived[key];
+  }
+  return next;
+}
+
+export function hydrateLeadDerivedEndpointRefs(
+  state: Record<string, unknown>,
+  refs: readonly PresetVersionContentRefV2Row[],
+  payloadMap: Map<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...state };
+  for (const endpoint of LEAD_ENDPOINTS) {
+    const ref = refs.find(candidate => (
+      candidate.ref_slot === endpoint.refSlot && candidate.content_type === 'lead4opfmPatch'
+    ));
+    const envelope = ref ? payloadMap.get(ref.content_hash) : null;
+    const content = isRecord(envelope) && isRecord(envelope.content) ? envelope.content : null;
+    if (!content || !isRecord(content.preset)) continue;
+    const selector = presetName(state[endpoint.stateKey]);
+    next[endpoint.dataKey] = {
+      ...content.preset,
+      ...(selector ? { id: selector } : {}),
+      ...(isRecord(content.dualRanges) ? { dualRanges: content.dualRanges } : {}),
+      ...(isRecord(content.sliderModes) ? { sliderModes: content.sliderModes } : {}),
+    };
   }
   return next;
 }

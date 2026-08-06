@@ -87,6 +87,8 @@ int nearestOctaveOffset(float center, float root_midi) {
       if (harmony.live_gesture_intent_root_mode == 0u && harmony.cached_scale_degree_count > 0u) {
         const uint32_t degree = static_cast<uint32_t>(std::max(0, harmony.live_gesture_intent_degree)) % harmony.cached_scale_degree_count;
         root = harmony.root_midi + static_cast<float>(harmony.cached_scale_degree_map[degree]);
+      } else if (harmony.live_gesture_intent_root_mode == 2u) {
+        root = harmony.live_gesture_captured_root_midi;
       } else {
         root = 60.0f + static_cast<float>(positiveModulo(static_cast<int>(std::round(harmony.live_gesture_intent_root_note)), 12u));
       }
@@ -129,6 +131,14 @@ int nearestOctaveOffset(float center, float root_midi) {
   }
 
   if (harmony.morph_plan_phase > 0.0f && !activeSlotExact) {
+    // The plan chooses a musical handover point (normally 0.5, or the
+    // scale-aware point selected by the offline projection). New triggers use
+    // one valid integer-MIDI voicing or the other; there is deliberately no
+    // cent glide. Existing Harmony-resolved voices are crossfaded by the
+    // render path when removed at handover; subsequent triggers cross using
+    // integer anchors.
+    const float handover = clampFloat(harmony.morph_scale_handover_at, 0.05f, 0.95f);
+    const bool target_side = harmony.morph_plan_phase >= handover;
     const uint32_t pair_count = harmony.morph_voice_pair_count > 0u
         ? harmony.morph_voice_pair_count
         : harmony.morph_common_pair_count;
@@ -147,19 +157,24 @@ int nearestOctaveOffset(float center, float root_midi) {
       }
       const float source = pair_source[best];
       const float target = pair_target[best];
-      return clampFloat(harmony.morph_plan_phase < 0.5f ? source : target, 0.0f, 127.0f);
+      return clampFloat(target_side ? target : source, 0.0f, 127.0f);
     }
-    if (harmony.morph_unmatched_a_count > 0u && harmony.morph_unmatched_b_count > 0u) {
+    if (harmony.morph_unmatched_a_count > 0u || harmony.morph_unmatched_b_count > 0u) {
+      // Added/removed voices are not paired by a pitch glide. A removed
+      // source is allowed to finish before the handover; an added destination
+      // enters only after the handover. This keeps held pads continuous while
+      // ensuring every newly triggered note is scale-valid.
+      if (!target_side && harmony.morph_unmatched_a_count == 0u) return -1.0f;
+      if (target_side && harmony.morph_unmatched_b_count == 0u) return -1.0f;
+      const float* candidates = target_side ? harmony.morph_unmatched_b : harmony.morph_unmatched_a;
+      const uint32_t candidate_count = target_side ? harmony.morph_unmatched_b_count : harmony.morph_unmatched_a_count;
       uint32_t best = 0u;
-      float distance = std::abs(harmony.morph_unmatched_a[0] - lane.midi_note);
-      for (uint32_t index = 1u; index < harmony.morph_unmatched_a_count; ++index) {
-        const float next_distance = std::abs(harmony.morph_unmatched_a[index] - lane.midi_note);
+      float distance = std::abs(candidates[0] - lane.midi_note);
+      for (uint32_t index = 1u; index < candidate_count; ++index) {
+        const float next_distance = std::abs(candidates[index] - lane.midi_note);
         if (next_distance < distance) { best = index; distance = next_distance; }
       }
-      const uint32_t target_index = std::min(best, harmony.morph_unmatched_b_count - 1u);
-      const float source = harmony.morph_unmatched_a[best];
-      const float target = harmony.morph_unmatched_b[target_index];
-      return clampFloat(harmony.morph_plan_phase < 0.5f ? source : target, 0.0f, 127.0f);
+      return clampFloat(candidates[best], 0.0f, 127.0f);
     }
   }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
-import type { UseJourneyPresetsResult } from '../presets/useJourneyPresets';
+import type { SaveJourneyPresetOptions, UseJourneyPresetsResult } from '../presets/useJourneyPresets';
 import { validateJourneyConfig, type JourneyValidationResult } from '../presets/journeyPresetCodec';
 import type { UseJourneyResult } from './journeyState';
 
@@ -31,7 +31,11 @@ type JourneyPresetActionSurfaceOptions = {
 
 type JourneyPresetActionSurface = {
   handleLoadJourneyPreset: (name: string) => Promise<void>;
-  handleSaveJourneyPreset: (name: string, description?: string) => Promise<Awaited<ReturnType<UseJourneyPresetsResult['save']>>>;
+  handleSaveJourneyPreset: (
+    name: string,
+    description?: string,
+    intent?: Pick<SaveJourneyPresetOptions, 'overwriteExisting'>,
+  ) => Promise<Awaited<ReturnType<UseJourneyPresetsResult['save']>>>;
   handleRenameJourneyPreset: (name: string, nextName: string, description?: string) => Promise<Awaited<ReturnType<UseJourneyPresetsResult['rename']>>>;
   handleDeleteJourneyPreset: (name: string) => Promise<boolean>;
   handleUndoJourneyPreset: () => Promise<void>;
@@ -115,16 +119,31 @@ export function useJourneyPresetActionSurface({
   );
 
   const handleSaveJourneyPreset = useCallback(
-    async (name: string, description?: string) => {
+    async (
+      name: string,
+      description?: string,
+      intent: Pick<SaveJourneyPresetOptions, 'overwriteExisting'> = {},
+    ) => {
       if (!journey.config) return null;
-      const entry = await journeyPresets.save(name, { ...journey.config, name }, description === undefined ? undefined : { description });
+      const entry = await journeyPresets.save(name, journey.config, {
+        ...(description === undefined ? {} : { description }),
+        sourceName: activeJourneyPresetName || undefined,
+        ...intent,
+      });
       if (!entry) return null;
       setActiveJourneyPresetName(entry.name);
       setActiveJourneyValidation(journeyPresets.validate({ ...journey.config, name: entry.name }));
       setActiveJourneyHasBackup(await journeyPresets.hasBackup(entry.name));
       return entry;
     },
-    [journey.config, journeyPresets, setActiveJourneyHasBackup, setActiveJourneyPresetName, setActiveJourneyValidation],
+    [
+      activeJourneyPresetName,
+      journey.config,
+      journeyPresets,
+      setActiveJourneyHasBackup,
+      setActiveJourneyPresetName,
+      setActiveJourneyValidation,
+    ],
   );
 
   const handleRenameJourneyPreset = useCallback(

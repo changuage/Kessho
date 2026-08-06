@@ -9,6 +9,12 @@ import {
   presetContentRefSlot,
 } from './contentNodes';
 import { stableStringifyContent } from './contentCanonicalization';
+import {
+  buildHarmonyContentInstances,
+  harmonyContentCandidates,
+  hydrateHarmonyContentRef,
+  stripHarmonyContentFromL4Override,
+} from './harmonyContent';
 
 const left = createPresetContentNode('sequencerSubLane', {
   values: [1, 2, 3],
@@ -92,5 +98,36 @@ assert.equal(
   await hashPresetContentRefGroup(groupA),
   'b1ee6a20ea3b8c3606f520a2000e3865acdba2cbe6c520a8a0473d814a104bad',
 );
+
+const activeChordSlots = [{ root: 60, quality: 'minor7' }];
+const activeHarmonyInstances = buildHarmonyContentInstances({
+  harmonyChordSlots: activeChordSlots,
+  harmonyChordSlotsA: activeChordSlots,
+});
+const activeChordBank = activeHarmonyInstances.find(instance => (
+  instance.refSlot === 'harmony.program.chord-bank-active'
+));
+assert.deepStrictEqual(activeChordBank?.content, { slots: activeChordSlots });
+assert.deepStrictEqual(
+  hydrateHarmonyContentRef(
+    'harmony.program.chord-bank-active',
+    'harmonyChordBank',
+    activeChordBank?.content ?? {},
+  ),
+  { harmonyChordSlots: activeChordSlots },
+);
+const harmonyBatch = await preparePresetContentBatch(harmonyContentCandidates(activeHarmonyInstances));
+assert.equal(
+  harmonyBatch.byId.get('harmony.chord.active')?.hash,
+  harmonyBatch.byId.get('harmony.chord.a')?.hash,
+  'identical active and A chord banks should share one content node',
+);
+const strippedHarmonyOverride = stripHarmonyContentFromL4Override({
+  harmonyChordSlots: activeChordSlots,
+  rootNote: 60,
+  untouched: true,
+});
+assert.equal('harmonyChordSlots' in strippedHarmonyOverride, false);
+assert.equal(strippedHarmonyOverride.untouched, true);
 
 console.log('preset content node regression passed');

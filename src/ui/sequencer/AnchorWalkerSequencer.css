@@ -260,10 +260,9 @@
 }
 
 .anchor-walker-keyboard-key.cursor {
-  border-color: var(--lane-color);
+  border-color: color-mix(in srgb, var(--lane-color) 42%, rgba(255,255,255,0.12));
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--lane-color) 24%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--lane-color) 10%, transparent);
+    inset 0 0 0 1px color-mix(in srgb, var(--lane-color) 14%, transparent);
 }
 
 .anchor-walker-keyboard-key.natural.cursor {
@@ -279,9 +278,10 @@
 }
 
 .anchor-walker-keyboard-key.layered {
+  border-color: var(--lane-color);
   box-shadow:
-    inset 0 -3px 0 color-mix(in srgb, var(--lane-color) 70%, #e8dcc4),
-    0 0 0 1px color-mix(in srgb, var(--lane-color) 10%, transparent);
+    inset 0 0 0 1px color-mix(in srgb, var(--lane-color) 38%, transparent),
+    0 0 10px color-mix(in srgb, var(--lane-color) 22%, transparent);
 }
 
 .anchor-walker-keyboard-key.relative-output {
@@ -322,12 +322,13 @@
 .anchor-walker-keyboard-cursor-marker {
   left: 50%;
   top: 50%;
-  width: 12px;
-  height: 12px;
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
-  background: var(--lane-color);
+  border: 1px dashed color-mix(in srgb, var(--lane-color) 68%, #e8dcc4);
+  background: transparent;
   transform: translate(-50%, -50%);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--lane-color) 52%, transparent);
+  opacity: 0.72;
   z-index: 2;
 }
 
@@ -344,13 +345,14 @@
 }
 
 .anchor-walker-keyboard-output-marker {
-  left: auto;
-  right: 7px;
-  bottom: 6px;
-  width: 14px;
-  height: 3px;
+  left: 50%;
+  top: 50%;
+  width: 13px;
+  height: 13px;
   border-radius: 999px;
   background: var(--lane-color);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--lane-color) 58%, transparent);
   z-index: 2;
 }
 
@@ -478,28 +480,28 @@
 }
 
 .anchor-walker-micro-key.cursor {
-  border-color: var(--lane-color);
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--lane-color) 42%, transparent),
-    0 0 8px color-mix(in srgb, var(--lane-color) 22%, transparent);
+  border-color: color-mix(in srgb, var(--lane-color) 52%, rgba(255,255,255,0.08));
 }
 
 .anchor-walker-micro-key.cursor::after {
   content: "";
   position: absolute;
   left: 50%;
-  top: 2px;
-  bottom: 2px;
-  width: 2px;
+  top: 3px;
+  width: 3px;
+  height: 3px;
   border-radius: 999px;
-  background: var(--lane-color);
+  border: 1px solid var(--lane-color);
+  background: transparent;
   transform: translateX(-50%);
 }
 
 .anchor-walker-micro-key.layered {
+  border-color: var(--lane-color);
   box-shadow:
-    inset 0 -3px 0 color-mix(in srgb, var(--lane-color) 68%, #e8dcc4),
-    inset 0 2px 0 color-mix(in srgb, var(--lane-color) 18%, transparent);
+    inset 0 -5px 0 color-mix(in srgb, var(--lane-color) 88%, #e8dcc4),
+    inset 0 2px 0 color-mix(in srgb, var(--lane-color) 28%, transparent),
+    0 0 7px color-mix(in srgb, var(--lane-color) 32%, transparent);
 }
 
 .anchor-walker-micro-key span {

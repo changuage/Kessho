@@ -1,22 +1,22 @@
 // src/presets/usePresets.ts
 // Phase 1 — React hook for preset CRUD at any level.
 
-import { useState, useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type {
   PresetEntry,
   PresetFamilySummary,
-  PresetIdentityMetadata,
   PresetLevel,
+  PresetMetadataPatch,
   PresetRenameIdentity,
   PresetSaveIdentity,
   PresetSummary,
   PresetVersionMetadata,
 } from './types';
-import { getPresetStore, subscribePresetStore } from './PresetStore';
-import { extractParams, applyParams, extractCascade, applyCascade, compressVersions, getVersionData } from './codec';
-import { extractPresetVersionMetadata, presetValuesEqual } from './presetUtils';
+import { getPresetStore, PresetMetadataConflictError, subscribePresetStore } from './PresetStore';
+import { extractParams, applyParams, extractCascade, applyCascade } from './codec';
 import { buildPresetFamilies } from './catalog';
 import { normalizePresetTags } from './presetPool';
+import { getPresetCommandService } from './presetCommands';
 import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE, isSharedPresetCloudOnlyMode } from './sharedMode';
 import type { ParamLevel } from './ParamRegistry';
 import type { SliderState } from '../ui/state';
@@ -39,29 +39,27 @@ function normalizePresetNameKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
-function isInternalDerivedPresetRefName(name: string): boolean {
-  return name.startsWith('__derived__/');
-}
-
-function stripInternalDerivedPresetRefs(
-  metadata: PresetVersionMetadata | undefined,
-): PresetVersionMetadata | undefined {
-  if (!metadata?.refs) return metadata;
-
-  const refs = Object.fromEntries(
-    Object.entries(metadata.refs).filter(([, ref]) => !isInternalDerivedPresetRefName(ref.name)),
-  );
-  if (Object.keys(refs).length === Object.keys(metadata.refs).length) return metadata;
-
-  const next: PresetVersionMetadata = { ...metadata };
-  if (Object.keys(refs).length > 0) next.refs = refs;
-  else delete next.refs;
-  return Object.keys(next).length > 0 ? next : undefined;
-}
-
 function findActiveNameConflict(presets: PresetSummary[], name: string): PresetSummary | null {
   const nameKey = normalizePresetNameKey(name);
   return presets.find((preset) => normalizePresetNameKey(preset.name) === nameKey) ?? null;
+}
+
+function samePresetList(left: readonly PresetSummary[], right: readonly PresetSummary[]): boolean {
+  if (left === right || left.length === right.length && left.every((preset, index) => {
+    const candidate = right[index];
+    return candidate !== undefined
+      && preset.id === candidate.id
+      && preset.name === candidate.name
+      && preset.remoteId === candidate.remoteId
+      && preset.library === candidate.library
+      && preset.updatedAt === candidate.updatedAt
+      && preset.updatedAtRevision === candidate.updatedAtRevision
+      && preset.currentVersion === candidate.currentVersion
+      && preset.versionCount === candidate.versionCount;
+  })) {
+    return true;
+  }
+  return false;
 }
 
 function chooseDuplicatePresetNameAction(
@@ -111,7 +109,7 @@ export interface UsePresetsResult {
     tags?: string[],
     metadata?: PresetVersionMetadata,
     identity?: PresetSaveIdentity,
-  ) => Promise<void>;
+  ) => Promise<PresetEntry | null>;
   /** Load a preset by name, returns the full entry */
   load: (name: string, version?: number) => Promise<PresetEntry | null>;
   /** Load a preset by stable id, returns the full entry */
@@ -127,7 +125,7 @@ export interface UsePresetsResult {
   /** Apply preset data to state, returning new state */
   apply: (state: SliderState, data: Record<string, unknown>) => SliderState;
   /** Update metadata on a preset without creating a new version */
-  updateMetadata: (name: string, meta: Partial<PresetIdentityMetadata> & { tags?: string[] }) => Promise<void>;
+  updateMetadata: (name: string, meta: PresetMetadataPatch) => Promise<boolean>;
 }
 
 export interface UsePresetsOptions {
@@ -154,51 +152,103 @@ export interface UsePresetsOptions {
  */
 export function usePresets(type: PresetLevel, scope?: string, options?: UsePresetsOptions): UsePresetsResult {
   const [presets, setPresets] = useState<PresetSummary[]>([]);
-  const [families, setFamilies] = useState<PresetFamilySummary[]>([]);
   const [loading, setLoading] = useState(true);
   const emptySharedListRetryCountRef = useRef(0);
+  const sharedListRetryTimerRef = useRef<number | null>(null);
+  const refreshInFlightRef = useRef<{ generation: number; promise: Promise<void> } | null>(null);
+  const listScopeGenerationRef = useRef(0);
   const store = useSyncExternalStore(subscribePresetStore, getPresetStore, getPresetStore);
+  const commandService = useMemo(() => getPresetCommandService(store), [store]);
   const paramLevel = levelToParamLevel(type);
   const storeScope = scope;
+  const families = useMemo(() => buildPresetFamilies(presets), [presets]);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const list = await getPresetStore().list(type, storeScope);
-      const sharedCloudOnly = isSharedPresetCloudOnlyMode();
-      const visibleList = sharedCloudOnly
-        ? list.filter((preset) => !!preset.remoteId)
-        : list;
-      setPresets(visibleList);
-      setFamilies(buildPresetFamilies(visibleList));
-      if (sharedCloudOnly && visibleList.length === 0 && emptySharedListRetryCountRef.current < 4) {
-        const retryAttempt = ++emptySharedListRetryCountRef.current;
-        window.setTimeout(() => {
-          void refresh();
-        }, retryAttempt * 1500);
-      } else if (visibleList.length > 0) {
-        emptySharedListRetryCountRef.current = 0;
-      }
-    } catch (e) {
-      console.warn('Failed to load preset list:', e);
-      setFamilies([]);
-      if (isSharedPresetCloudOnlyMode() && emptySharedListRetryCountRef.current < 4) {
-        const retryAttempt = ++emptySharedListRetryCountRef.current;
-        window.setTimeout(() => {
-          void refresh();
-        }, retryAttempt * 1500);
-      }
+  const clearSharedListRetry = useCallback(() => {
+    const timer = sharedListRetryTimerRef.current;
+    if (timer !== null && typeof window !== 'undefined') {
+      window.clearTimeout(timer);
     }
-    setLoading(false);
-  }, [type, storeScope, store]);
+    sharedListRetryTimerRef.current = null;
+  }, []);
+
+  const refresh = useCallback((): Promise<void> => {
+    const generation = listScopeGenerationRef.current;
+    const inFlight = refreshInFlightRef.current;
+    if (inFlight?.generation === generation) return inFlight.promise;
+
+    clearSharedListRetry();
+    const scheduleSharedListRetry = () => {
+      if (
+        !isSharedPresetCloudOnlyMode()
+        || emptySharedListRetryCountRef.current >= 4
+        || sharedListRetryTimerRef.current !== null
+        || typeof window === 'undefined'
+      ) {
+        return;
+      }
+      const retryAttempt = ++emptySharedListRetryCountRef.current;
+      sharedListRetryTimerRef.current = window.setTimeout(() => {
+        sharedListRetryTimerRef.current = null;
+        if (
+          listScopeGenerationRef.current !== generation
+          || !isSharedPresetCloudOnlyMode()
+        ) {
+          return;
+        }
+        void refresh();
+      }, retryAttempt * 1500);
+    };
+
+    const request = (async () => {
+      if (listScopeGenerationRef.current === generation) setLoading(true);
+      try {
+        const list = await store.list(type, storeScope);
+        if (listScopeGenerationRef.current !== generation) return;
+
+        const sharedCloudOnly = isSharedPresetCloudOnlyMode();
+        const visibleList = sharedCloudOnly
+          ? list.filter((preset) => !!preset.remoteId)
+          : list;
+        setPresets(current => samePresetList(current, visibleList) ? current : visibleList);
+        if (sharedCloudOnly && visibleList.length === 0) {
+          scheduleSharedListRetry();
+        } else if (visibleList.length > 0) {
+          emptySharedListRetryCountRef.current = 0;
+          clearSharedListRetry();
+        }
+      } catch (error) {
+        if (listScopeGenerationRef.current !== generation) return;
+        console.warn('Failed to load preset list:', error);
+        scheduleSharedListRetry();
+      } finally {
+        if (listScopeGenerationRef.current === generation) setLoading(false);
+      }
+    })();
+
+    refreshInFlightRef.current = { generation, promise: request };
+    void request.finally(() => {
+      if (refreshInFlightRef.current?.promise === request) {
+        refreshInFlightRef.current = null;
+      }
+    });
+    return request;
+  }, [clearSharedListRetry, store, storeScope, type]);
 
   useEffect(() => {
+    const generation = ++listScopeGenerationRef.current;
     emptySharedListRetryCountRef.current = 0;
-  }, [type, storeScope, store]);
+    clearSharedListRetry();
+    return () => {
+      if (listScopeGenerationRef.current === generation) {
+        listScopeGenerationRef.current += 1;
+      }
+      clearSharedListRetry();
+    };
+  }, [clearSharedListRetry, store, storeScope, type]);
 
   // Load on mount and when scope changes
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
 
   const save = useCallback(async (
@@ -208,137 +258,62 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     tags?: string[],
     metadata?: PresetVersionMetadata,
     identity?: PresetSaveIdentity,
-  ) => {
+  ): Promise<PresetEntry | null> => {
     const requestedName = name.trim();
-    if (!requestedName) return;
+    if (!requestedName) return null;
     const nameConflict = findActiveNameConflict(presets, requestedName);
     const targetName = nameConflict
       ? chooseDuplicatePresetNameAction(requestedName, nameConflict.name, presets)
       : requestedName;
-    if (!targetName) return;
+    if (!targetName) return null;
 
     const data = options?.customExtract
       ? options.customExtract(state)
       : (paramLevel >= 3 ? extractCascade(state, paramLevel, scope) : extractParams(state, paramLevel, scope));
-    const now = Date.now();
-
-    // Check if preset already exists → push new version
-    const activeStore = getPresetStore();
-    const existing = await activeStore.load(type, targetName, storeScope);
-    const shouldForkExisting = !SHARED_PRESET_TEST_MODE && !!existing && (existing.author === 'factory' || existing.library === 'stock');
-    const existingVersion = existing?.versions.find(v => v.v === existing.currentVersion)
-      || existing?.versions[existing.versions.length - 1];
-    // Merge: start with preserved metadata from prior version, then overlay any caller-supplied fields
-    const previousMetadata = extractPresetVersionMetadata(existingVersion);
-    const preserved = type === 'journey'
-      ? previousMetadata
-      : stripInternalDerivedPresetRefs(previousMetadata);
-    const mergedMetadata = metadata
-      ? { ...(preserved || {}), ...metadata }
-      : preserved;
-    const preservedMetadata = type === 'journey'
-      ? mergedMetadata
-      : stripInternalDerivedPresetRefs(mergedMetadata);
-    if (existing && !shouldForkExisting) {
-      const currentVersionData = getVersionData(existing) ?? existingVersion?.data ?? {};
-      const sameData = presetValuesEqual(currentVersionData, data);
-      const sameMetadata = presetValuesEqual(preserved ?? {}, preservedMetadata ?? {});
-      const identityUnchanged =
-        identity?.creator === undefined &&
-        identity?.description === undefined &&
-        identity?.familyId === undefined &&
-        identity?.familyName === undefined &&
-        identity?.variantId === undefined &&
-        identity?.variantName === undefined &&
-        identity?.variantRank === undefined &&
-        identity?.rating === undefined &&
-        identity?.visibility === undefined;
-      const normalizedTags = tags === undefined ? undefined : normalizePresetTags(tags);
-      const tagsUnchanged = normalizedTags === undefined
-        || presetValuesEqual(existing.tags ?? [], normalizedTags);
-
-      if (sameData && sameMetadata && identityUnchanged && tagsUnchanged && !note?.trim()) {
-        await refresh();
-        return;
-      }
-
-      const maxV = Math.max(...existing.versions.map(v => v.v));
-      existing.versions.push({
-        v: maxV + 1,
-        note: note || '',
-        timestamp: now,
-        data,
-        ...(preservedMetadata || {}),
-      });
-      existing.currentVersion = maxV + 1;
-      existing.updatedAt = now;
-      if (SHARED_PRESET_TEST_MODE) existing.visibility = 'public';
-      if (normalizedTags !== undefined) existing.tags = normalizedTags;
-      if (identity?.creator !== undefined) existing.creator = identity.creator;
-      if (identity?.description !== undefined) existing.description = identity.description;
-      if (identity?.familyId !== undefined) existing.familyId = identity.familyId;
-      if (identity?.familyName !== undefined) existing.familyName = identity.familyName;
-      if (identity?.variantId !== undefined) existing.variantId = identity.variantId;
-      if (identity?.variantName !== undefined) existing.variantName = identity.variantName;
-      if (identity?.variantRank !== undefined) existing.variantRank = identity.variantRank;
-      if (identity?.rating !== undefined) existing.rating = identity.rating;
-      if (identity?.visibility !== undefined) existing.visibility = identity.visibility;
-      if (!existing.remoteId) {
-        compressVersions(existing);
-      }
-      await activeStore.save(existing);
-    } else {
-      // New preset
-      const entry: PresetEntry = {
-        type,
-        scope: storeScope,
-        engine: type === 'engine' ? storeScope : undefined,
-        source: type !== 'engine' ? storeScope : undefined,
-        name: targetName,
-        author: 'user',
-        library: 'user',
-        creator: identity?.creator ?? existing?.creator,
-        description: identity?.description ?? existing?.description,
-        visibility: identity?.visibility ?? (SHARED_PRESET_TEST_MODE ? 'public' : (shouldForkExisting ? 'private' : existing?.visibility) ?? 'private'),
-        familyId: identity?.familyId ?? existing?.familyId,
-        familyName: identity?.familyName ?? existing?.familyName ?? targetName,
-        variantId: identity?.variantId ?? existing?.variantId,
-        variantName: identity?.variantName ?? existing?.variantName ?? targetName,
-        variantRank: identity?.variantRank ?? existing?.variantRank,
-        rating: identity?.rating ?? existing?.rating,
-        tags: tags !== undefined ? normalizePresetTags(tags) : existing?.tags || [],
-        versions: [{
-          v: 1,
-          note: note || '',
-          timestamp: now,
-          data,
-          ...(preservedMetadata || {}),
-        }],
-        currentVersion: 1,
-        createdAt: now,
-        updatedAt: now,
-      };
-      await activeStore.save(entry);
+    const result = await commandService.save({
+      type,
+      scope: storeScope,
+      name: targetName,
+      data,
+      note,
+      tags,
+      metadata,
+      identity: {
+        ...identity,
+        ...(SHARED_PRESET_TEST_MODE && identity?.visibility === undefined
+          ? { visibility: 'public' as const }
+          : {}),
+      },
+      forkReadOnly: !SHARED_PRESET_TEST_MODE,
+    });
+    let savedEntry = result.entry;
+    if (result.changed && result.kind === 'create') {
+      const [canonicalEntry] = await Promise.all([
+        store.load(type, targetName, storeScope),
+        refresh(),
+      ]);
+      savedEntry = canonicalEntry ?? savedEntry;
+    } else if (result.changed) {
+      await refresh();
     }
-
-    await refresh();
-  }, [type, scope, storeScope, paramLevel, store, refresh, options, presets]);
+    return savedEntry;
+  }, [type, scope, storeScope, paramLevel, commandService, refresh, options, presets]);
 
   const load = useCallback(async (name: string, version?: number): Promise<PresetEntry | null> => {
     const activeStore = getPresetStore();
     const entry = await activeStore.load(type, name, storeScope, version);
-    // Lazy migration: compress uncompressed user presets on first load
+    // Lazy migration is serialized with saves for the same logical preset.
     if (entry && !entry.remoteId && entry.author === 'user' && entry.versions.length > 1) {
       const needsCompression = entry.versions.some(
         (v, i) => i > 0 && !v._isDelta
       );
       if (needsCompression) {
-        compressVersions(entry);
-        activeStore.save(entry).catch(() => {});
+        void commandService.compactLocalVersions(type, name, storeScope)
+          .catch((error) => console.warn('Failed to compact local preset versions:', error));
       }
     }
     return entry;
-  }, [type, storeScope, store]);
+  }, [type, storeScope, store, commandService]);
 
   const loadById = useCallback(async (id: string, version?: number): Promise<PresetEntry | null> => {
     const activeStore = getPresetStore();
@@ -348,58 +323,65 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
         (v, i) => i > 0 && !v._isDelta
       );
       if (needsCompression) {
-        compressVersions(entry);
-        activeStore.save(entry).catch(() => {});
+        const entryScope = entry.scope ?? entry.engine ?? entry.source;
+        void commandService.compactLocalVersions(entry.type, entry.name, entryScope)
+          .catch((error) => console.warn('Failed to compact local preset versions:', error));
       }
     }
     return entry;
-  }, [store]);
+  }, [store, commandService]);
 
   const remove = useCallback(async (name: string): Promise<boolean> => {
     if (!PRESET_DELETE_ENABLED) return false;
-    const activeStore = getPresetStore();
-    const entry = await activeStore.load(type, name, storeScope);
-    if (!entry) return false;
-    if (!SHARED_PRESET_TEST_MODE && (entry.library === 'stock' || entry.author === 'factory')) return false;
+    let refreshRequired = false;
     try {
-      if (type === 'state') {
-        const impacts = await findJourneyPresetsReferencingStatePreset(entry, activeStore);
-        if (impacts.length > 0) {
-          const blocked = impacts
-            .filter((impact) => impact.entry.library === 'stock' || impact.entry.author === 'factory')
-            .map((impact) => impact.journeyName);
-          if (blocked.length > 0) {
-            window.alert(
-              `Cannot delete "${name}" because it is used by read-only journey preset${blocked.length === 1 ? '' : 's'}:\n\n${blocked.join('\n')}`,
+      const removed = await commandService.remove(type, name, storeScope, async () => {
+        const entry = await store.load(type, name, storeScope);
+        if (!entry) return false;
+        if (!SHARED_PRESET_TEST_MODE && (entry.library === 'stock' || entry.author === 'factory')) return false;
+
+        if (type === 'state') {
+          const impacts = await findJourneyPresetsReferencingStatePreset(entry, store);
+          if (impacts.length > 0) {
+            const blocked = impacts
+              .filter((impact) => impact.entry.library === 'stock' || impact.entry.author === 'factory')
+              .map((impact) => impact.journeyName);
+            if (blocked.length > 0) {
+              window.alert(
+                `Cannot delete "${name}" because it is used by read-only journey preset${blocked.length === 1 ? '' : 's'}:\n\n${blocked.join('\n')}`,
+              );
+              return false;
+            }
+            const journeyNames = impacts.map((impact) => impact.journeyName);
+            const confirmed = window.confirm(
+              `Delete "${name}"?\n\nThis state preset is used by ${journeyNames.length} journey preset${journeyNames.length === 1 ? '' : 's'}:\n\n${journeyNames.join('\n')}\n\nDeleting it will remove the referenced node from ${journeyNames.length === 1 ? 'that journey' : 'those journeys'}.`,
             );
-            return false;
+            if (!confirmed) return false;
           }
-          const journeyNames = impacts.map((impact) => impact.journeyName);
-          const confirmed = window.confirm(
-            `Delete "${name}"?\n\nThis state preset is used by ${journeyNames.length} journey preset${journeyNames.length === 1 ? '' : 's'}:\n\n${journeyNames.join('\n')}\n\nDeleting it will remove the referenced node from ${journeyNames.length === 1 ? 'that journey' : 'those journeys'}.`,
-          );
-          if (!confirmed) return false;
-        }
-        if (impacts.length > 0) {
-          const cleanup = await cleanupJourneyRefsForDeletedStatePreset(entry, activeStore);
-          if (cleanup.blocked.length > 0) {
-            window.alert(
-              `Cannot delete "${name}" because these journey presets could not be updated:\n\n${cleanup.blocked.join('\n')}`,
-            );
-            await refresh();
-            return false;
+          if (impacts.length > 0) {
+            // Reuse the confirmed candidate list, but cleanup re-loads each
+            // journey under its own command key before changing it.
+            const cleanup = await cleanupJourneyRefsForDeletedStatePreset(entry, store, impacts);
+            if (cleanup.blocked.length > 0) {
+              window.alert(
+                `Cannot delete "${name}" because these journey presets could not be updated:\n\n${cleanup.blocked.join('\n')}`,
+              );
+              refreshRequired = true;
+              return false;
+            }
           }
         }
-      }
-      await activeStore.delete(type, name, storeScope);
-      await refresh();
-      return true;
+        refreshRequired = true;
+        return true;
+      });
+      if (refreshRequired) await refresh();
+      return removed;
     } catch (error) {
       console.warn('Failed to delete preset:', error);
       await refresh();
       return false;
     }
-  }, [type, storeScope, store, refresh]);
+  }, [type, storeScope, store, commandService, refresh]);
 
   const rename = useCallback(async (
     name: string,
@@ -411,16 +393,6 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     if (!currentName || !trimmedName) return null;
     if (currentName === trimmedName) return load(currentName);
 
-    const activeStore = getPresetStore();
-    const entry = await activeStore.load(type, currentName, storeScope);
-    if (!entry) return null;
-    if (!SHARED_PRESET_TEST_MODE && (entry.library === 'stock' || entry.author === 'factory')) {
-      if (typeof window !== 'undefined') {
-        window.alert(`Cannot rename read-only preset "${currentName}".`);
-      }
-      return null;
-    }
-
     const nameConflict = findActiveNameConflict(presets, trimmedName);
     if (nameConflict && normalizePresetNameKey(nameConflict.name) !== normalizePresetNameKey(currentName)) {
       if (typeof window !== 'undefined') {
@@ -429,10 +401,27 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
       return null;
     }
 
-    const renamed = await activeStore.rename(type, currentName, trimmedName, storeScope, identity);
-    await refresh();
+    const renamed = await commandService.rename(
+      type,
+      currentName,
+      trimmedName,
+      storeScope,
+      identity,
+      async () => {
+        const entry = await store.load(type, currentName, storeScope);
+        if (!entry) return false;
+        if (!SHARED_PRESET_TEST_MODE && (entry.library === 'stock' || entry.author === 'factory')) {
+          if (typeof window !== 'undefined') {
+            window.alert(`Cannot rename read-only preset "${currentName}".`);
+          }
+          return false;
+        }
+        return true;
+      },
+    );
+    if (renamed) await refresh();
     return renamed;
-  }, [type, storeScope, store, refresh, load, presets]);
+  }, [type, storeScope, store, commandService, refresh, load, presets]);
 
   const extract = useCallback((state: SliderState): Record<string, unknown> => {
     return options?.customExtract
@@ -449,20 +438,34 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
       : applyParams(state, data, paramLevel, scope);
   }, [paramLevel, scope, options]);
 
-  const updateMetadata = useCallback(async (name: string, meta: Partial<PresetIdentityMetadata> & { tags?: string[] }) => {
-    const activeStore = getPresetStore();
-    const entry = await activeStore.load(type, name, storeScope);
-    if (!entry) return;
-    if (meta.rating !== undefined) entry.rating = meta.rating;
-    if (meta.description !== undefined) entry.description = meta.description;
-    if (meta.visibility !== undefined) entry.visibility = meta.visibility;
-    else if (SHARED_PRESET_TEST_MODE) entry.visibility = 'public';
-    if (meta.creator !== undefined) entry.creator = meta.creator;
-    if (meta.tags !== undefined) entry.tags = normalizePresetTags(meta.tags);
-    entry.updatedAt = Date.now();
-    await activeStore.save(entry);
-    await refresh();
-  }, [type, storeScope, store, refresh]);
+  const updateMetadata = useCallback(async (name: string, meta: PresetMetadataPatch): Promise<boolean> => {
+    const metadata = {
+      ...meta,
+      ...(meta.tags !== undefined ? { tags: normalizePresetTags(meta.tags) } : {}),
+      ...(SHARED_PRESET_TEST_MODE && meta.visibility === undefined ? { visibility: 'public' as const } : {}),
+    };
+    const target = findActiveNameConflict(presets, name);
+    const updateOptions = target
+      ? {
+        ...(target.remoteId ? { targetId: target.remoteId } : {}),
+        ...(target.updatedAtRevision ? { expectedUpdatedAt: target.updatedAtRevision } : {}),
+      }
+      : undefined;
+    try {
+      const updated = await commandService.updateMetadata(type, name, metadata, storeScope, updateOptions);
+      if (!updated) {
+        await refresh();
+        return false;
+      }
+      await refresh();
+      return true;
+    } catch (error) {
+      if (error instanceof PresetMetadataConflictError) {
+        await refresh();
+      }
+      throw error;
+    }
+  }, [type, storeScope, commandService, presets, refresh]);
 
   return { presets, families, loading, save, load, loadById, remove, rename, refresh, extract, apply, updateMetadata };
 }

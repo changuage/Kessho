@@ -5,7 +5,7 @@ import { getCoreProductSoundscapeAssetDescriptorsForState, getPrimaryCoreProduct
 import { DEFAULT_MASTER_VOLUME, ENGINE_TRIMS, MASTER_OUTPUT_TRIM } from './outputTrims';
 import { delayAFilterTypeId, delayBPatternId, delayBTapeSpacingId, delayBWarpId, dynamicsDriftModeId, dynamicsDriftQualityId, dynamicsErosionQualityId, dynamicsEndCompModeId, dynamicsSaturationModeId, dynamicsSaturationQualityId, granularAnchorPatternId, granularCloudStyleId, granularLegacyPitchModeId, granularPitchModeId, granularQualityId, granularShapeId, granularVoiceModeId, reverbModCharacterId, reverbQualityId, reverbSaturationModeId, reverbTypeId, sidechainKeyId } from './CoreProductModeIds';
 import { assignLeadAlgorithmOverrideFields, assignLeadEnvelopeOverrideFields, assignLeadPresetIds, emptyLeadOverrideIndices, emptyLeadOverrideValues, exactLeadPatchFromState, leadAlgorithmPresetAEnabledFromState, leadEnvelopeGateSecondsFromState, leadEnvelopeOverrideFromState } from './CoreProductLeadPatch';
-import { emptyPadOverrideIndices, emptyPadOverrideValues, exactPadPatchFromState } from './CoreProductPadPatch';
+import { emptyPadOverrideIndices, emptyPadOverrideValues, exactPadPatchFromState, padEnvelopeFromState } from './CoreProductPadPatch';
 import { emptyDrumOverrideIndices, emptyDrumOverrideValues, exactDrumPatchFromState } from './CoreProductDrumPatch';
 import { defaultPresetId, drumVoiceMorphsFromState, drumVoicePresetIdsFromState, endpointPresetId, soundscapePresetIdFromState, sourcePresetId } from './CoreProductPresetIds';
 import { getTransportMetrics } from './transport';
@@ -33,12 +33,7 @@ import {
 import { assignSampleSlotSourceSnapshot } from './coreProductSampleSlotSnapshot';
 import type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductLaneSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 import { resolveSequencerLaneAudibility } from './sequencerAudibility';
-import { resolveCachedMorphHarmonyPlan, type HarmonyLiveLayer } from './harmony/harmonyProjection';
-
-let activeProductHarmonyLiveLayer: HarmonyLiveLayer | null = null;
-export function setCoreProductHarmonyLiveLayer(layer: HarmonyLiveLayer | null): void {
-  activeProductHarmonyLiveLayer = layer;
-}
+import { resolveCachedMorphHarmonyPlan } from './harmony/harmonyProjection';
 import { sequencerResumeQuantizationForLane } from './sequencerResumeQuantization';
 import {
   createSchedulerHarmonyState,
@@ -373,6 +368,8 @@ function sourceFromState(
         source,
         exactPadPatchFromState(state, 0, source.sourcePresetAId, source.sourcePresetBId, source.morph),
       );
+      Object.assign(source, padEnvelopeFromState(state, 0));
+      source.holdSeconds = numberFromState(state, 'synthHold', source.holdSeconds);
       break;
     case CORE_PRODUCT_SOURCE_IDS.pad2:
       source.enabled = booleanFromState(state, 'pad2Enabled', false);
@@ -393,6 +390,8 @@ function sourceFromState(
         source,
         exactPadPatchFromState(state, 1, source.sourcePresetAId, source.sourcePresetBId, source.morph),
       );
+      Object.assign(source, padEnvelopeFromState(state, 1));
+      source.holdSeconds = numberFromState(state, 'pad2Hold', source.holdSeconds);
       break;
     case CORE_PRODUCT_SOURCE_IDS.lead1:
       source.enabled = booleanFromState(state, 'leadEnabled', false);
@@ -409,9 +408,9 @@ function sourceFromState(
       source.postLpfHz = numberFromState(state, 'lead1PostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'lead1StereoWidth', source.stereoWidth);
       source.postLpfKeyTracking = numberFromState(state, 'lead1PostLPFKeyTracking', source.postLpfKeyTracking);
-      source.leadVibratoDepth = numberFromState(state, 'leadVibratoDepth', source.leadVibratoDepth);
-      source.leadVibratoRate = numberFromState(state, 'leadVibratoRate', source.leadVibratoRate);
-      source.leadGlide = numberFromState(state, 'leadGlide', source.leadGlide);
+      source.leadVibratoDepth = numberFromState(state, 'lead1VibratoDepth', numberFromState(state, 'leadVibratoDepth', source.leadVibratoDepth));
+      source.leadVibratoRate = numberFromState(state, 'lead1VibratoRate', numberFromState(state, 'leadVibratoRate', source.leadVibratoRate));
+      source.leadGlide = numberFromState(state, 'lead1Glide', numberFromState(state, 'leadGlide', source.leadGlide));
       assignLeadPresetIds(source, state, 0);
       assignLeadAlgorithmOverrideFields(source, leadAlgorithmPresetAEnabledFromState(state, 0));
       assignLeadEnvelopeOverrideFields(source, leadEnvelopeOverrideFromState(state, 0));
@@ -432,9 +431,9 @@ function sourceFromState(
       source.postLpfHz = numberFromState(state, 'lead2PostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'lead2StereoWidth', source.stereoWidth);
       source.postLpfKeyTracking = numberFromState(state, 'lead2PostLPFKeyTracking', source.postLpfKeyTracking);
-      source.leadVibratoDepth = numberFromState(state, 'leadVibratoDepth', source.leadVibratoDepth);
-      source.leadVibratoRate = numberFromState(state, 'leadVibratoRate', source.leadVibratoRate);
-      source.leadGlide = numberFromState(state, 'leadGlide', source.leadGlide);
+      source.leadVibratoDepth = numberFromState(state, 'lead2VibratoDepth', numberFromState(state, 'leadVibratoDepth', source.leadVibratoDepth));
+      source.leadVibratoRate = numberFromState(state, 'lead2VibratoRate', numberFromState(state, 'leadVibratoRate', source.leadVibratoRate));
+      source.leadGlide = numberFromState(state, 'lead2Glide', numberFromState(state, 'leadGlide', source.leadGlide));
       assignLeadPresetIds(source, state, 1);
       assignLeadAlgorithmOverrideFields(source, leadAlgorithmPresetAEnabledFromState(state, 1));
       assignLeadEnvelopeOverrideFields(source, leadEnvelopeOverrideFromState(state, 1));
@@ -836,23 +835,28 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   // Product Core owns semantic/relative/auto resolution after load.
   const harmonySlotAuthoredPools = harmonyControl.chordSlots.map((slot) => (slot.chord?.exactMidiNotes ?? []).slice(0, HARMONY_POOL_MAX_NOTES));
   const harmonySlotPools = harmonySlotAuthoredPools.map((pool) => fixedHarmonyPool(pool));
-  const liveLayer = activeProductHarmonyLiveLayer;
-  const liveFrame = liveLayer?.frame;
-  const liveNotes = (liveFrame?.currentNotePool ?? []).filter((note) => Number.isFinite(note)).slice(0, 8);
-  const liveTarget = liveLayer?.kind === 'seq-live'
-    ? 3 + Math.max(0, Math.min(3, (liveLayer.seqId ?? 0)))
-    : liveLayer?.kind === 'harmony-takeover' ? 2 : 0;
-  const liveScope = liveLayer?.kind === 'seq-live' ? 4 : liveLayer?.kind === 'harmony-takeover' ? 1 : 0;
-  const liveExpiresAtFrame = liveLayer ? (liveLayer.latched ? Number.MAX_SAFE_INTEGER : numberFromState(sliderState, 'harmonyLiveGestureExpiresAtFrame', Number.MAX_SAFE_INTEGER)) : 0;
-  const endpointA = resolveProductHarmonyState({ state: sliderState, rootMidi, rootMidiAnchor: rootMidi, scaleId, tension, seed: rngSeed, morphPercent: 0 }).resolvedHarmonyFrame;
-  const endpointB = resolveProductHarmonyState({ state: sliderState, rootMidi, rootMidiAnchor: rootMidi, scaleId, tension, seed: rngSeed, morphPercent: 100 }).resolvedHarmonyFrame;
+  const endpointAControl = resolveProductHarmonyState({ state: sliderState, rootMidi, rootMidiAnchor: rootMidi, scaleId, tension, seed: rngSeed, morphPercent: 0 });
+  const endpointBControl = resolveProductHarmonyState({ state: sliderState, rootMidi, rootMidiAnchor: rootMidi, scaleId, tension, seed: rngSeed, morphPercent: 100 });
+  const endpointA = endpointAControl.resolvedHarmonyFrame;
+  const endpointB = endpointBControl.resolvedHarmonyFrame;
+  // Endpoint context comes from the endpoint's authored slot/capture when one
+  // is active. Hidden `harmonyMorphEndpoint*` fields were never authored and
+  // made native morph context silently collapse to the current frame.
+  const endpointContext = (control: typeof endpointAControl, frame: typeof endpointA) => {
+    const event = control.progression.events[control.progression.currentEventIndex];
+    const eventSlotId = event?.source.type === 'slot' ? event.source.slotId : null;
+    const slotId = frame.activeSlotId ?? eventSlotId;
+    const slot = slotId == null ? undefined : control.chordSlots[slotId];
+    const captured = slot?.chord?.capturedContext;
+    return {
+      rootMidi: captured?.rootMidi ?? frame.rootMidi,
+      scaleId: captured?.scaleId ?? frame.scaleId,
+      tension: captured?.tension ?? tension,
+    };
+  };
+  const endpointContextA = endpointContext(endpointAControl, endpointA);
+  const endpointContextB = endpointContext(endpointBControl, endpointB);
   const morphPlan = resolveCachedMorphHarmonyPlan(endpointA, endpointB, numberFromState(sliderState, 'harmonyMorphPercent', journey.morphPhase * 100) >= 50 ? 'B' : 'A');
-  const liveDraft = liveLayer?.draft;
-  const liveIntent = liveDraft?.intent;
-  const livePlaybackBehavior = liveDraft?.playbackBehavior === 'relative' ? 1 : liveDraft?.playbackBehavior === 'exact' ? 2 : 0;
-  const liveQuality = liveIntent?.quality ? HARMONY_QUALITY_IDS[liveIntent.quality as keyof typeof HARMONY_QUALITY_IDS] ?? 0 : 0;
-  const liveRootMode = liveIntent?.rootMode === 'absolute' ? 1 : liveIntent?.rootMode === 'captured' ? 2 : 0;
-
   return {
     transport,
     harmony: {
@@ -932,16 +936,16 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       canonicalProgressionDurationValue: Array.from({ length: 64 }, (_, index) => harmonyControl.progression.events[index]?.duration.value ?? 1),
       morphEndpointCount: 2,
       morphEndpointRootMidi: [
-        numberFromState(sliderState, 'harmonyMorphEndpointARootMidi', rootMidi),
-        numberFromState(sliderState, 'harmonyMorphEndpointBRootMidi', rootMidi),
+        endpointContextA.rootMidi,
+        endpointContextB.rootMidi,
       ],
       morphEndpointScaleId: [
-        numberFromState(sliderState, 'harmonyMorphEndpointAScaleId', scaleId),
-        numberFromState(sliderState, 'harmonyMorphEndpointBScaleId', scaleId),
+        endpointContextA.scaleId,
+        endpointContextB.scaleId,
       ],
       morphEndpointTension: [
-        numberFromState(sliderState, 'harmonyMorphEndpointATension', tension),
-        numberFromState(sliderState, 'harmonyMorphEndpointBTension', tension),
+        endpointContextA.tension,
+        endpointContextB.tension,
       ],
       morphPlanRevision: numberFromState(sliderState, 'harmonyMorphPlanRevision', 0),
       morphPlanPhase: clamp(numberFromState(sliderState, 'harmonyMorphPercent', 0) / 100, 0, 1),
@@ -978,35 +982,37 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       harmonySlotIntentAlterationMask: harmonyControl.chordSlots.map((slot) => (slot.chord?.intent?.alterations ?? []).reduce((mask, alteration) => mask | (1 << (HARMONY_ALTERATION_IDS[alteration] ?? 0)), 0)),
       harmonySlotCapturedRootMidi: harmonyControl.chordSlots.map((slot) => slot.chord?.capturedContext.rootMidi ?? rootMidi),
       harmonySlotCapturedScaleId: harmonyControl.chordSlots.map((slot) => slot.chord?.capturedContext.scaleId ?? scaleId),
-      liveGestureRevision: liveLayer ? numberFromState(sliderState, 'harmonyLiveGestureRevision', 1) + 1 : numberFromState(sliderState, 'harmonyLiveGestureRevision', 0),
-      liveGestureScope: liveLayer ? liveScope : numberFromState(sliderState, 'harmonyLiveGestureScope', 0),
-      liveGestureTarget: liveLayer ? liveTarget : numberFromState(sliderState, 'harmonyLiveGestureTarget', 0),
-      liveGesturePhase: liveLayer ? (liveLayer.latched ? 1 : 0) : numberFromState(sliderState, 'harmonyLiveGesturePhase', 0),
-      liveGesturePlaybackBehavior: liveLayer ? livePlaybackBehavior : numberFromState(sliderState, 'harmonyLiveGesturePlaybackBehavior', 0),
-      liveGestureIntentPresent: liveIntent ? 1 : 0,
-      liveGestureIntentQuality: liveLayer ? liveQuality : numberFromState(sliderState, 'harmonyLiveGestureIntentQuality', 0),
-      liveGestureIntentRootMode: liveLayer ? liveRootMode : numberFromState(sliderState, 'harmonyLiveGestureIntentRootMode', 0),
-      liveGestureIntentDegree: liveLayer ? (liveIntent?.degree ?? 0) : numberFromState(sliderState, 'harmonyLiveGestureIntentDegree', 0),
-      liveGestureIntentRootNote: liveLayer ? (liveIntent?.rootNote ?? 0) : numberFromState(sliderState, 'harmonyLiveGestureIntentRootNote', 0),
-      liveGestureIntentInversion: liveIntent?.inversion ?? 0,
-      liveGestureIntentSpread: liveIntent?.spread ?? 0.5,
-      liveGestureIntentOctave: liveIntent?.octave ?? 4,
-      liveGestureIntentBassMode: liveIntent?.bassMode === 'root' ? 1 : liveIntent?.bassMode === 'fifth' ? 2 : liveIntent?.bassMode === 'captured' ? 3 : 0,
-      liveGestureIntentBassNote: liveIntent?.bassNote ?? -1,
-      liveGestureIntentExtensionMask: (liveIntent?.extensions ?? []).reduce((mask, extension) => mask | (1 << (HARMONY_EXTENSION_IDS[extension as keyof typeof HARMONY_EXTENSION_IDS] ?? 0)), 0),
-      liveGestureIntentAlterationMask: (liveIntent?.alterations ?? []).reduce((mask, alteration) => mask | (1 << (HARMONY_ALTERATION_IDS[alteration] ?? 0)), 0),
-      liveGestureCapturedRootMidi: liveLayer ? (liveDraft?.capturedContext?.rootMidi ?? liveFrame?.rootMidi ?? rootMidi) : numberFromState(sliderState, 'harmonyLiveGestureCapturedRootMidi', rootMidi),
-      liveGestureCapturedScaleId: liveLayer ? (liveDraft?.capturedContext?.scaleId ?? liveFrame?.scaleId ?? scaleId) : numberFromState(sliderState, 'harmonyLiveGestureCapturedScaleId', scaleId),
-      liveGestureNoteCount: liveLayer ? liveNotes.length : numberFromState(sliderState, 'harmonyLiveGestureNoteCount', 0),
-      liveGestureNotes: liveLayer ? liveNotes : Array.from({ length: 8 }, (_, index) => numberFromState(sliderState, `harmonyLiveGestureNote${index}`, 0)),
-      liveGestureExpiresAtFrame: liveLayer ? liveExpiresAtFrame : numberFromState(sliderState, 'harmonyLiveGestureExpiresAtFrame', 0),
-      takeoverAnchorCount: liveLayer?.kind === 'harmony-takeover' ? Math.min(12, liveNotes.length, (liveFrame?.nextNotePool ?? []).length) : numberFromState(sliderState, 'harmonyTakeoverAnchorCount', 0),
-      takeoverAnchorSource: liveLayer?.kind === 'harmony-takeover' ? Array.from({ length: 12 }, (_, index) => liveNotes[index] ?? 0) : Array.from({ length: 12 }, (_, index) => numberFromState(sliderState, `harmonyTakeoverAnchorSource${index}`, 0)),
-      takeoverAnchorTarget: liveLayer?.kind === 'harmony-takeover' ? Array.from({ length: 12 }, (_, index) => liveFrame?.nextNotePool?.[index] ?? 0) : Array.from({ length: 12 }, (_, index) => numberFromState(sliderState, `harmonyTakeoverAnchorTarget${index}`, 0)),
-      takeoverAnchorWeight: liveLayer?.kind === 'harmony-takeover' ? Array.from({ length: 12 }, (_, index) => index < liveNotes.length ? 1 : 0) : Array.from({ length: 12 }, (_, index) => numberFromState(sliderState, `harmonyTakeoverAnchorWeight${index}`, 0)),
-      takeoverTargetRootMidi: liveFrame?.rootMidi ?? numberFromState(sliderState, 'harmonyTakeoverTargetRootMidi', rootMidi),
-      takeoverTargetScaleId: liveFrame?.scaleId ?? numberFromState(sliderState, 'harmonyTakeoverTargetScaleId', scaleId),
-      takeoverProgress: liveLayer?.kind === 'harmony-takeover' ? 1 : numberFromState(sliderState, 'harmonyTakeoverProgress', 0),
+      // Momentary Harmony gestures are Product events, never authored snapshot
+      // state. A snapshot always starts with the fixed-capacity live layer idle.
+      liveGestureRevision: 0,
+      liveGestureScope: 0,
+      liveGestureTarget: 0,
+      liveGesturePhase: 0,
+      liveGesturePlaybackBehavior: 0,
+      liveGestureIntentPresent: 0,
+      liveGestureIntentQuality: 0,
+      liveGestureIntentRootMode: 0,
+      liveGestureIntentDegree: 0,
+      liveGestureIntentRootNote: 0,
+      liveGestureIntentInversion: 0,
+      liveGestureIntentSpread: 0.5,
+      liveGestureIntentOctave: 4,
+      liveGestureIntentBassMode: 0,
+      liveGestureIntentBassNote: -1,
+      liveGestureIntentExtensionMask: 0,
+      liveGestureIntentAlterationMask: 0,
+      liveGestureCapturedRootMidi: rootMidi,
+      liveGestureCapturedScaleId: scaleId,
+      liveGestureNoteCount: 0,
+      liveGestureNotes: Array.from({ length: 8 }, () => 0),
+      liveGestureExpiresAtFrame: 0,
+      takeoverAnchorCount: 0,
+      takeoverAnchorSource: Array.from({ length: 12 }, () => 0),
+      takeoverAnchorTarget: Array.from({ length: 12 }, () => 0),
+      takeoverAnchorWeight: Array.from({ length: 12 }, () => 0),
+      takeoverTargetRootMidi: rootMidi,
+      takeoverTargetScaleId: scaleId,
+      takeoverProgress: 0,
     },
     sources,
     synthLanes,
@@ -1121,10 +1127,33 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       spectralFreezeMix: clamp(numberFromState(sliderState, 'spectralFreezeMix', 1), 0, 1),
       spectralFreezeEnabled,
       spectralFreezeActive: booleanFromState(sliderState, 'spectralFreezeActive', false),
-      spectralFreezeSlushy: booleanFromState(sliderState, 'spectralFreezeSlushy', false),
-      spectralFreezeSpeed: clamp(numberFromState(sliderState, 'spectralFreezeSpeed', 0.3), 0, 1),
-      spectralFreezeDecay: clamp(numberFromState(sliderState, 'spectralFreezeDecay', 1), 0, 1),
-      spectralFreezePhaseJitter: clamp(numberFromState(sliderState, 'spectralFreezePhaseJitter', 0), 0, 1),
+      spectralFreezeMode: sliderState?.spectralFreezeMode === 'solid'
+        ? 0
+        : sliderState?.spectralFreezeMode === 'slushy'
+          ? 1
+          : sliderState?.spectralFreezeMode === 'livingStretch'
+            ? 3
+            : 2,
+      // Preset hydration strips these transient values before snapshot creation;
+      // live snapshots retain them so unrelated edits cannot release a capture.
+      spectralFreezeCaptureSerial: clamp(
+        numberFromState(sliderState, 'spectralFreezeCaptureSerial', 0),
+        0,
+        0xffffffff,
+      ),
+      spectralFreezeStretchSpeed: clamp(numberFromState(sliderState, 'spectralFreezeStretchSpeed', 0.5), 0, 1),
+      spectralFreezeDirection: sliderState?.spectralFreezeDirection === 'forward'
+        ? 0
+        : sliderState?.spectralFreezeDirection === 'reverse'
+          ? 1
+          : 2,
+      spectralFreezePosition: clamp(numberFromState(sliderState, 'spectralFreezePosition', 0), 0, 1),
+      spectralFreezeRefresh: clamp(numberFromState(sliderState, 'spectralFreezeRefresh', 0.15), 0, 1),
+      spectralFreezeInputSensitivity: clamp(numberFromState(sliderState, 'spectralFreezeInputSensitivity', 0.5), 0, 1),
+      spectralFreezeDiffusion: clamp(numberFromState(sliderState, 'spectralFreezeDiffusion', 0.55), 0, 1),
+      spectralFreezeTone: clamp(numberFromState(sliderState, 'spectralFreezeTone', -0.15), -1, 1),
+      spectralFreezeWidth: clamp(numberFromState(sliderState, 'spectralFreezeWidth', 0.85), 0, 1),
+      spectralFreezeSustain: clamp(numberFromState(sliderState, 'spectralFreezeSustain', 1), 0, 1),
       spectralFreezeRouting: sliderState?.spectralFreezeRouting === 'post' ? 1 : 0,
       spectralFreezeReverbCrossfade: clamp(numberFromState(sliderState, 'spectralFreezeReverbCrossfade', 1), 0, 1),
       dynamicsDrive: dynamicsEnabled

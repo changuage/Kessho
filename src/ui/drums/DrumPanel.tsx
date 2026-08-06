@@ -1,5 +1,5 @@
 import React from 'react';
-import type { SliderState } from '../state';
+import type { SliderMode, SliderState } from '../state';
 import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
 import { DRUM_VOICES, DRUM_VOICE_ORDER, DRUM_VOICE_SCOPES } from '../../audio/drumVoiceConfig';
 import type { DrumVoiceType } from '../../audio/drumSynth';
@@ -23,6 +23,13 @@ interface DrumPanelProps {
   getAnalyserNode?: (voice: DrumVoiceType) => AnalyserNode | undefined;
   preloadAudioEngine?: () => Promise<unknown>;
   liveCaptureEnabled?: boolean;
+  sliderModes?: Record<string, SliderMode>;
+  dualSliderRanges?: Record<string, { min: number; max: number }>;
+  onDualStateChange?: (
+    relevantKeys: string[],
+    dualRanges?: Record<string, { min: number; max: number }>,
+    sliderModes?: Record<string, SliderMode>,
+  ) => void;
 }
 
 const DrumPanel: React.FC<DrumPanelProps> = ({
@@ -43,6 +50,9 @@ const DrumPanel: React.FC<DrumPanelProps> = ({
   getAnalyserNode,
   preloadAudioEngine,
   liveCaptureEnabled = true,
+  sliderModes,
+  dualSliderRanges,
+  onDualStateChange,
 }) => {
   return (
     <>
@@ -69,6 +79,9 @@ const DrumPanel: React.FC<DrumPanelProps> = ({
           getAnalyserNode={getAnalyserNode}
           preloadAudioEngine={preloadAudioEngine}
           liveCaptureEnabled={liveCaptureEnabled}
+          sliderModes={sliderModes}
+          dualSliderRanges={dualSliderRanges}
+          onDualStateChange={onDualStateChange}
         />
       ))}
     </>

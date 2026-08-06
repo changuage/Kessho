@@ -186,13 +186,20 @@ void KesshoProductEngine::configureFxModules() {
   }
   if (spectral_freeze_module) {
     float* params = spectral_freeze_module->params();
-    if (params != nullptr && spectral_freeze_module->paramCount() >= 6) {
-      params[0] = fx.spectral_freeze_active ? 1.0f : 0.0f;
-      params[1] = fx.spectral_freeze_slushy ? 1.0f : 0.0f;
-      params[2] = clampFloat(fx.spectral_freeze_speed, 0.0f, 1.0f);
-      params[3] = 1.0f;
-      params[4] = clampFloat(1.0f - fx.spectral_freeze_decay, 0.0f, 1.0f);
-      params[5] = clampFloat(fx.spectral_freeze_phase_jitter, 0.0f, 1.0f);
+    if (params != nullptr && spectral_freeze_module->paramCount() >= 13) {
+      params[0] = fx.spectral_freeze_enabled && fx.spectral_freeze_active ? 1.0f : 0.0f;
+      params[1] = static_cast<float>(clampU32(fx.spectral_freeze_mode, 0u, 3u));
+      params[2] = static_cast<float>(fx.spectral_freeze_capture_serial);
+      params[3] = clampFloat(fx.spectral_freeze_stretch_speed, 0.0f, 1.0f);
+      params[4] = static_cast<float>(clampU32(fx.spectral_freeze_direction, 0u, 2u));
+      params[5] = clampFloat(fx.spectral_freeze_position, 0.0f, 1.0f);
+      params[6] = clampFloat(fx.spectral_freeze_refresh, 0.0f, 1.0f);
+      params[7] = clampFloat(fx.spectral_freeze_input_sensitivity, 0.0f, 1.0f);
+      params[8] = clampFloat(fx.spectral_freeze_diffusion, 0.0f, 1.0f);
+      params[9] = clampFloat(fx.spectral_freeze_tone, -1.0f, 1.0f);
+      params[10] = clampFloat(fx.spectral_freeze_width, 0.0f, 1.0f);
+      params[11] = clampFloat(fx.spectral_freeze_sustain, 0.0f, 1.0f);
+      params[12] = 1.0f;
       spectral_freeze_module->commitParams();
     }
   }

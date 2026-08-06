@@ -21,6 +21,7 @@ const optionalVisualizerGateCss = read('src/ui/components/optionalVisualizerGate
 const ratingStars = read('src/presets/PresetRatingStars.tsx');
 const presetDropdown = read('src/presets/PresetDropdown.tsx');
 const presetFamilyTree = read('src/presets/PresetFamilyTree.tsx');
+const presetManagerController = read('src/presets/PresetManagerController.tsx');
 const drumPresetManager = read('src/ui/drums/DrumPresetManager.tsx');
 const synthPresetManager = read('src/ui/synth/SynthPresetManager.tsx');
 const earthPage = read('src/ui/earth/EarthPage.tsx');
@@ -66,12 +67,14 @@ assert(
 );
 
 assert(
-  synthPage.includes("useVisualFeatureToggle(\n    'kessho.visualizers.synthSimple.chordGenerator.v2.enabled',\n    false") &&
+  synthPage.includes("useVisualFeatureToggle(\n    'kessho.visualizers.synthSimple.harmony.v1.enabled',\n    false") &&
+    synthPage.includes('kind="padChord"') &&
+    synthPage.includes('harmonyProjection={props.harmonyProjection}') &&
+    synthPage.includes('simpleHarmonyVizToggle.enabled') &&
     synthPage.includes("useVisualFeatureToggle(\n    'kessho.visualizers.synthSimple.randomTiming.v2.enabled',\n    false") &&
-    synthPage.includes('simpleChordPhraseVizToggle.enabled') &&
     synthPage.includes('simpleRandomTimingVizToggle.enabled') &&
     synthPage.includes('<OptionalVisualizerGate'),
-  'Synth simple phrase visualizers must stay opt-in and hidden by default'
+  'Synth Harmony and random-timing visualizers must stay projection-driven, opt-in, and hidden by default'
 );
 
 assert(
@@ -136,11 +139,13 @@ assert(
   [
     presetDropdown,
     presetFamilyTree,
-    drumPresetManager,
-    synthPresetManager,
     earthPage,
     synthPage,
-  ].every(source => source.includes('catch (ratingError)')),
+  ].every(source => source.includes('catch (ratingError)')) &&
+    drumPresetManager.includes('usePresetManagerController') &&
+    synthPresetManager.includes('usePresetManagerController') &&
+    presetManagerController.includes('catch (ratingError)') &&
+    presetManagerController.indexOf('await adapter.rate(selectedOption, rating)') < presetManagerController.indexOf('setLocalRatings(previous => ({ ...previous, [key]: rating }))'),
   'Preset rating writes must catch failures before updating local rating state'
 );
 

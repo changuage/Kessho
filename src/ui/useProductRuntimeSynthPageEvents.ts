@@ -2,6 +2,7 @@ import { useCallback, useMemo, type MutableRefObject } from 'react';
 import {
   createCoreProductAnchorWalkerPerformanceEvent,
   createCoreProductGeneratedSequencerCaptureEvent,
+  type CoreProductEvent,
   type CoreProductGeneratedSequencerCaptureMode,
 } from '../audio/coreProductEvents';
 import type { GeneratedSequencerCaptureEvent } from '../audio/coreProductGeneratedSequencerCaptureTypes';
@@ -59,16 +60,23 @@ export function useProductRuntimeSynthPageEvents(
     event: AnchorWalkerPerformanceEvent,
   ): void => {
     if (!productRuntimeActive) return;
+    let performanceEvent: CoreProductEvent;
     try {
-      productEngine.enqueueEvent(createCoreProductAnchorWalkerPerformanceEvent('synth', laneIndex, event.action, {
-        delta: event.delta,
-        velocity: event.velocity,
-        midi: event.midi,
-      }));
+      performanceEvent = createCoreProductAnchorWalkerPerformanceEvent('synth', laneIndex, event.action, {
+          delta: event.delta,
+          velocity: event.velocity,
+          midi: event.midi,
+        });
     } catch (error) {
-      console.warn('Failed to enqueue Anchor Walker performance event', error);
+      console.warn('Failed to create Anchor Walker performance event', error);
+      return;
     }
-  }, [productRuntimeActive]);
+    void productEngine.enqueueRealtimeEvents([performanceEvent])
+      .then(() => productEngine.requestVisualTelemetryAfterRender())
+      .catch((error: unknown) => {
+        console.warn('Failed to enqueue Anchor Walker performance event', error);
+      });
+  }, [productRuntimeActive, stateRef]);
 
   const setProductGeneratedSequencerCaptureEnabled = useCallback((
     request: ProductGeneratedSequencerCaptureRequest,

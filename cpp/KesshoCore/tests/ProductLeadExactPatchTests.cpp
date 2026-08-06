@@ -862,6 +862,44 @@ void requireStableEndpointLeadPatchIsCachedUntilRatchetScratchPatch() {
   kessho_product_destroy(engine);
 }
 
+void requireTransientManualAuditionRendersDisabledLead(uint32_t source_id) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "disabled Lead transient audition engine create failed");
+
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
+  source.enabled = 0u;
+  source.level = 1.0f;
+  source.dry_gain = 1.0f;
+  source.expression = 1.0f;
+  source.distance = 0.0f;
+  source.hold_seconds = 0.9f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "disabled Lead transient audition snapshot load failed");
+  require(!engine->sources[source_id - 1u].enabled, "disabled Lead became authored-enabled during snapshot load");
+
+  KesshoProductEvent note{};
+  note.event_kind = KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON;
+  note.target_id = source_id;
+  note.value = 72.0f;
+  note.value2 = 0.82f;
+  note.value3 = 0.9f;
+  note.flags = kessho::product::internal::kProductManualNoteTransientAuditionFlag;
+  require(
+      kessho_product_enqueue_event(engine, &note) == KESSHO_PRODUCT_OK,
+      "disabled Lead transient audition note enqueue failed");
+
+  const float peak = renderPeakBlocks(engine, 48u);
+  require(peak > 0.0001f, "disabled Lead transient audition rendered silence");
+  require(!engine->sources[source_id - 1u].enabled, "transient audition mutated authored Lead enabled state");
+  require(
+      engine->sources[source_id - 1u].transient_audition_until_frame > 0u,
+      "disabled Lead transient audition did not retain its bounded render window");
+
+  kessho_product_destroy(engine);
+}
+
 } // namespace
 
 int main() {
@@ -884,6 +922,8 @@ int main() {
   requireLeadGainOverrideRefreshesActiveVoice(KESSHO_PRODUCT_SOURCE_LEAD1);
   requireLeadGainOverrideRefreshesActiveVoice(KESSHO_PRODUCT_SOURCE_LEAD2);
   requireStableEndpointLeadPatchIsCachedUntilRatchetScratchPatch();
+  requireTransientManualAuditionRendersDisabledLead(KESSHO_PRODUCT_SOURCE_LEAD1);
+  requireTransientManualAuditionRendersDisabledLead(KESSHO_PRODUCT_SOURCE_LEAD2);
 
   const float low_gain_peak = renderGamelanPeakWithSparseGain(0.05f);
   const float high_gain_peak = renderGamelanPeakWithSparseGain(0.8f);

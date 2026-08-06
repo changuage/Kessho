@@ -348,6 +348,18 @@ public:
     return lead_fm_instance_note_set_frequency(instance_, voice_index, frequency);
   }
 
+  int setVoiceGain(int voice_index, float gain) override {
+    if (instance_ == nullptr || voice_index < 0 || voice_index >= LEAD_FM_MAX_POLYPHONY || !std::isfinite(gain)) {
+      return 0;
+    }
+    return lead_fm_instance_set_voice_gain(instance_, voice_index, std::clamp(gain, 0.0f, 1.0f));
+  }
+
+  int setVoiceGainRamp(int voice_index, float target_gain, uint32_t frames) override {
+    if (instance_ == nullptr || voice_index < 0 || voice_index >= LEAD_FM_MAX_POLYPHONY || !std::isfinite(target_gain)) return 0;
+    return lead_fm_instance_set_voice_gain_ramp(instance_, voice_index, std::clamp(target_gain, 0.0f, 1.0f), frames);
+  }
+
   int setTriggerMacros(float morph, float distance, float expression) override {
     if (instance_ == nullptr) {
       return 0;

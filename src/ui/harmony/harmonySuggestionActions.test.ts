@@ -6,7 +6,7 @@ import type { HarmonyProgression } from '../../audio/harmony/harmonyTypes';
 import { assignHarmonySuggestionToPlayConfig, assignHarmonySuggestionToStep, insertHarmonySuggestion, replaceHarmonySuggestion, saveHarmonySuggestion } from './harmonySuggestionActions';
 
 const suggestion = (): HarmonySuggestion => generateHarmonySuggestionBank({ rootMidi: 60, scaleId: 1, tension: 0.4 }).find((entry): entry is HarmonySuggestion => entry !== null)!;
-const emptySlot = (id: number): HarmonyChordSlot => ({ id, name: `Slot ${id + 1}`, intent: defaultHarmonyIntent('slot', id % 7), chord: null, locked: false });
+const emptySlot = (id: number): HarmonyChordSlot => ({ id, name: `Slot ${id + 1}`, chord: null, locked: false });
 const progression: HarmonyProgression = { version: 1, enabled: true, currentEventIndex: 0, events: [{ id: 'event-0', source: { type: 'auto' }, duration: { unit: 'bar', value: 1 } }] };
 const step = (id: number, locked = false): HarmonySequenceStep => ({ id, enabled: true, locked, mode: 'auto', degree: id, quality: 'auto', intent: null, slotId: null, probability: 1 });
 

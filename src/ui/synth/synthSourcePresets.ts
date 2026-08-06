@@ -8,8 +8,9 @@ export interface SynthSourcePreset {
   description: string;
   tags: string[];
   params: Pick<SliderState,
-    'leadEnabled' | 'leadRandomEnabled' | 'leadVibratoDepth' |
-    'leadVibratoRate' | 'leadGlide'
+    'leadEnabled' | 'leadRandomEnabled' |
+    'lead1VibratoDepth' | 'lead1VibratoRate' | 'lead1Glide' |
+    'lead2VibratoDepth' | 'lead2VibratoRate' | 'lead2Glide'
   >;
 }
 
@@ -21,9 +22,12 @@ export const SYNTH_SOURCE_PRESETS: Record<string, SynthSourcePreset> = {
     params: {
       leadEnabled: false,
       leadRandomEnabled: false,
-      leadVibratoDepth: 0,
-      leadVibratoRate: 0,
-      leadGlide: 0,
+      lead1VibratoDepth: 0,
+      lead1VibratoRate: 0,
+      lead1Glide: 0,
+      lead2VibratoDepth: 0,
+      lead2VibratoRate: 0,
+      lead2Glide: 0,
     },
   },
   leadOn: {
@@ -33,9 +37,12 @@ export const SYNTH_SOURCE_PRESETS: Record<string, SynthSourcePreset> = {
     params: {
       leadEnabled: true,
       leadRandomEnabled: false,
-      leadVibratoDepth: 0.15,
-      leadVibratoRate: 0.3,
-      leadGlide: 0,
+      lead1VibratoDepth: 0.15,
+      lead1VibratoRate: 0.3,
+      lead1Glide: 0,
+      lead2VibratoDepth: 0.15,
+      lead2VibratoRate: 0.3,
+      lead2Glide: 0,
     },
   },
   expressiveLead: {
@@ -45,9 +52,12 @@ export const SYNTH_SOURCE_PRESETS: Record<string, SynthSourcePreset> = {
     params: {
       leadEnabled: true,
       leadRandomEnabled: false,
-      leadVibratoDepth: 0.4,
-      leadVibratoRate: 0.5,
-      leadGlide: 0.6,
+      lead1VibratoDepth: 0.4,
+      lead1VibratoRate: 0.5,
+      lead1Glide: 0.6,
+      lead2VibratoDepth: 0.4,
+      lead2VibratoRate: 0.5,
+      lead2Glide: 0.6,
     },
   },
   randomMelody: {
@@ -57,9 +67,12 @@ export const SYNTH_SOURCE_PRESETS: Record<string, SynthSourcePreset> = {
     params: {
       leadEnabled: true,
       leadRandomEnabled: true,
-      leadVibratoDepth: 0.1,
-      leadVibratoRate: 0.25,
-      leadGlide: 0.2,
+      lead1VibratoDepth: 0.1,
+      lead1VibratoRate: 0.25,
+      lead1Glide: 0.2,
+      lead2VibratoDepth: 0.1,
+      lead2VibratoRate: 0.25,
+      lead2Glide: 0.2,
     },
   },
   smoothGlide: {
@@ -69,9 +82,12 @@ export const SYNTH_SOURCE_PRESETS: Record<string, SynthSourcePreset> = {
     params: {
       leadEnabled: true,
       leadRandomEnabled: false,
-      leadVibratoDepth: 0.2,
-      leadVibratoRate: 0.35,
-      leadGlide: 1.0,
+      lead1VibratoDepth: 0.2,
+      lead1VibratoRate: 0.35,
+      lead1Glide: 1.0,
+      lead2VibratoDepth: 0.2,
+      lead2VibratoRate: 0.35,
+      lead2Glide: 1.0,
     },
   },
 };

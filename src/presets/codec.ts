@@ -9,6 +9,19 @@ import { presetValuesEqual } from './presetUtils';
 import { normalizeDynamicsErosionAliases, normalizeDynamicsQualityFields } from '../audio/dynamicsModel';
 import { canonicalizePresetScope } from './presetScopeAliases';
 
+const LEAD_PRESET_RUNTIME_DATA_KEYS = [
+  'lead1PresetAData', 'lead1PresetBData', 'lead2PresetCData', 'lead2PresetDData',
+] as const;
+
+function applyRuntimePresetData(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+): void {
+  for (const key of LEAD_PRESET_RUNTIME_DATA_KEYS) {
+    if (key in source) target[key] = source[key];
+  }
+}
+
 function getDirectKeys(level: ParamLevel, scope?: string): string[] {
   const normalizedScope = canonicalizePresetScope(scope);
   if (level === 4) {
@@ -17,6 +30,48 @@ function getDirectKeys(level: ParamLevel, scope?: string): string[] {
   return Object.entries(PARAM_REGISTRY)
     .filter(([, info]) => info.level === level && (!normalizedScope || info.scope === normalizedScope))
     .map(([key]) => key);
+}
+
+function migrateLegacyPadCutoffParams(data: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...data };
+  const pairs = [
+    ['filterCutoffMin', 'filterCutoffMax', 'filterCutoff'],
+    ['pad2FilterCutoffMin', 'pad2FilterCutoffMax', 'pad2FilterCutoff'],
+  ] as const;
+  for (const [minKey, maxKey, cutoffKey] of pairs) {
+    if (!(cutoffKey in normalized) && (minKey in normalized || maxKey in normalized)) {
+      const min = typeof normalized[minKey] === 'number' ? normalized[minKey] : normalized[maxKey];
+      const max = typeof normalized[maxKey] === 'number' ? normalized[maxKey] : min;
+      if (typeof min === 'number' && typeof max === 'number') {
+        normalized[cutoffKey] = (min + max) * 0.5;
+      }
+    }
+    delete normalized[minKey];
+    delete normalized[maxKey];
+  }
+  return normalized;
+}
+
+function migrateLegacySpectralFreezeParams(data: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...data };
+  if (!('spectralFreezeMode' in normalized) && typeof normalized.spectralFreezeSlushy === 'boolean') {
+    normalized.spectralFreezeMode = normalized.spectralFreezeSlushy ? 'slushy' : 'solid';
+  }
+  if (!('spectralFreezeRefresh' in normalized) && typeof normalized.spectralFreezeSpeed === 'number') {
+    normalized.spectralFreezeRefresh = normalized.spectralFreezeSpeed;
+  }
+  if (!('spectralFreezeSustain' in normalized) && typeof normalized.spectralFreezeDecay === 'number') {
+    normalized.spectralFreezeSustain = normalized.spectralFreezeDecay;
+  }
+  if (!('spectralFreezeDiffusion' in normalized) && typeof normalized.spectralFreezePhaseJitter === 'number') {
+    normalized.spectralFreezeDiffusion = normalized.spectralFreezePhaseJitter;
+  }
+  normalized.spectralFreezeActive = false;
+  delete normalized.spectralFreezeSlushy;
+  delete normalized.spectralFreezeSpeed;
+  delete normalized.spectralFreezeDecay;
+  delete normalized.spectralFreezePhaseJitter;
+  return normalized;
 }
 
 /** Extract only the params owned by a level+scope from full state */
@@ -44,14 +99,15 @@ export function applyParams(
 ): SliderState {
   const normalizedScope = canonicalizePresetScope(scope);
   const merged: Record<string, unknown> = { ...state };
-  const normalizedData = normalizeDynamicsQualityFields(
+  const normalizedData = migrateLegacySpectralFreezeParams(migrateLegacyPadCutoffParams(normalizeDynamicsQualityFields(
     normalizeDynamicsErosionAliases(presetData),
-  );
+  )));
   for (const [key, info] of Object.entries(PARAM_REGISTRY)) {
     if (info.level === level && (!normalizedScope || info.scope === normalizedScope)) {
       if (key in normalizedData) merged[key] = normalizedData[key];
     }
   }
+  applyRuntimePresetData(merged, normalizedData);
   return merged as unknown as SliderState;
 }
 
@@ -93,6 +149,13 @@ export function validateRegistry(stateKeys: string[]): {
     'sidechainPad2Target',
     'sidechainPianoTarget',
     'sidechainReverbTarget',
+    // Stored as portable sequencer metadata/content, not duplicated in scalar
+    // ParamRegistry extraction.
+    'synthPlayConfigs',
+    // Runtime gesture state. Presets own the authored freeze sound, not an
+    // active capture or its edge-trigger serial.
+    'spectralFreezeActive',
+    'spectralFreezeCaptureSerial',
   ]);
 
   return {
@@ -120,7 +183,9 @@ const CASCADE_CHILDREN: Record<string, { level: ParamLevel; scope: string }[]> =
   delay: [
     { level: 2, scope: 'delayKit' },
   ],
-  reverb: [],
+  reverb: [
+    { level: 2, scope: 'reverbKit' },
+  ],
   granular: [
     { level: 2, scope: 'granularKit' },
   ],
@@ -162,6 +227,10 @@ const CASCADE_CHILDREN: Record<string, { level: ParamLevel; scope: string }[]> =
     { level: 1, scope: 'leadDelay' },
     { level: 1, scope: 'echoLine' },
     { level: 1, scope: 'clockedSpace' },
+  ],
+  reverbKit: [
+    { level: 1, scope: 'reverbEngine' },
+    { level: 1, scope: 'spectralFreeze' },
   ],
   granularKit: [
     { level: 1, scope: 'granularVoice1' },
@@ -231,9 +300,8 @@ export function extractCascade(
   const result: Record<string, unknown> = {};
   const stateRecord = state as unknown as Record<string, unknown>;
   for (const key of getCascadeKeys(level, scope)) {
-    if (key in stateRecord) {
-      result[key] = stateRecord[key];
-    }
+    const value = stateRecord[key];
+    if (value !== undefined) result[key] = value;
   }
   return result;
 }
@@ -246,14 +314,15 @@ export function applyCascade(
   scope?: string,
 ): SliderState {
   const merged: Record<string, unknown> = { ...state };
-  const normalizedData = normalizeDynamicsQualityFields(
+  const normalizedData = migrateLegacySpectralFreezeParams(migrateLegacyPadCutoffParams(normalizeDynamicsQualityFields(
     normalizeDynamicsErosionAliases(presetData),
-  );
+  )));
   for (const key of getCascadeKeys(level, scope)) {
     if (key in normalizedData) {
       merged[key] = normalizedData[key];
     }
   }
+  applyRuntimePresetData(merged, normalizedData);
   return merged as unknown as SliderState;
 }
 
