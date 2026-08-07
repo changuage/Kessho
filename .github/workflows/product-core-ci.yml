@@ -90,6 +90,8 @@ jobs:
             docs/reports/kessho-product-ci-latest.json
             docs/reports/kessho-product-default-gate-v3-latest.json
             docs/reports/kessho-product-default-gate-v3-latest.md
+            docs/reports/kessho-product-web-graph-capture-smoke-fast-latest.json
+            docs/reports/kessho-product-web-graph-capture-smoke-latest.json
 
       - name: Surface Product CPU gate summary
         if: always()
