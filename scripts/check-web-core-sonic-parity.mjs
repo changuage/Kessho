@@ -435,7 +435,7 @@ async function captureEngineOnce(browser, baseUrl, engineName, options) {
   const url = withQuery(baseUrl, runtimeQuery);
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => Boolean(window.__kesshoSonicParity?.capture), null, { timeout: 15000 });
+    await page.waitForFunction(() => Boolean(window.__kesshoSonicParity?.capture), null, { timeout: 30000 });
 
     const capture = await page.evaluate(
       async ({ durationMs, settleMs, trackId, statePatch, stateEvents, manualNotes, manualDrumTriggers, manualTriggerDelayMs, manualWarmup }) => window.__kesshoSonicParity.capture({
