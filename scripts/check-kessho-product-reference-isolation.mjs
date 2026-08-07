@@ -259,6 +259,7 @@ const classifiedRuntimeAllowlist = new Map([
   ['../../coreProductSnapshot', 'product module'],
   ['../../coreProductTelemetry', 'product module'],
   ['./coreProductRuntime', 'product module'],
+  ['./embeddedProductCoreAssets', 'Product runtime embedded asset URL selection boundary'],
   ['./CoreProductPadPatch', 'Product Core Pad preset reconstruction and sparse override bridge'],
   ['./CoreProductSparseOverrides', 'Product Core sparse snapshot override helper'],
   ['./coreProductDelaySnapshot', 'Product delay snapshot serialization helper'],

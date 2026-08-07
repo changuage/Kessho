@@ -158,7 +158,7 @@
             "applySpectralFreezeRouting",
             "spectralFreezeRouting",
             "spectralFreezeReverbCrossfade",
-            "this.reverbDirectSend",
+            "this.spectralFreezeReverbSend",
             "spectralFreezeInput: { node: spectralFreezeInputNode }",
             "spectralFreezeOutput: { node: this.spectralFreezeNode }"
           ]
@@ -168,7 +168,7 @@
         {
           "file": "cpp/KesshoCore/src/product/fx/ProductReverb.cpp",
           "tokens": [
-            "processSpectralFreezeBranch(reverb_bus_l + start",
+            "spectral_freeze_enabled && processSpectralFreezeBranch(",
             "fx.spectral_freeze_routing == 0u",
             "fx.spectral_freeze_routing == 1u"
           ]
@@ -191,9 +191,9 @@
         {
           "file": "cpp/KesshoCore/src/product/sources/SourceMix.cpp",
           "tokens": [
-            "freeze_mutes_pad_dry",
-            "graph_dry_left",
-            "freeze_dry_gain"
+            "const float graph_dry_gain = source.level * source.dry_gain;",
+            "const float dry_left = graph_dry_left;",
+            "source.reverb_send"
           ]
         },
         {

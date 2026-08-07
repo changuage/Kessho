@@ -945,19 +945,36 @@ async function setPitchRoot(page, root, engineMode, tab) {
   await setEditorControlViaDrag(page, 1, root, engineMode, tab, 'pitch root');
 }
 
-async function setPitchNoteRange(page, minMidi, maxMidi, engineMode, tab) {
-  const rails = page.locator('.seq-lane-editor-wrap:visible .seq-note-range-slider .sl-slider-rail');
-  await rails.first().waitFor({ timeout: 5000 });
-  assert(await rails.count() >= 2, `${engineMode}/${tab}: noteRange controls were not visible`);
-  const values = [minMidi, maxMidi];
-  for (const index of [1, 0]) {
-    const rail = rails.nth(index);
-    const box = await rail.boundingBox();
-    assert(box, `${engineMode}/${tab}: could not locate noteRange ${index === 0 ? 'low' : 'high'} rail`);
-    const percent = midiToNoteRangePercent(values[index]);
-    await page.mouse.click(box.x + (box.width * percent) / 100, box.y + box.height / 2);
-    await page.waitForTimeout(300);
+async function dragRangeSliderHandle(page, sliderSelector, index, targetPercent, label) {
+  const handles = page.locator(`${sliderSelector} [role="slider"]`);
+  const handle = handles.nth(index);
+  await handle.waitFor({ timeout: 5000 });
+  const currentPercent = Number(await handle.getAttribute('aria-valuenow'));
+  const rail = page.locator(`${sliderSelector} .sl-slider-rail`).first();
+  const box = await rail.boundingBox();
+  assert(box, `${label}: range slider rail was not measurable`);
+  const y = box.y + box.height / 2;
+  const railX = (percent) => box.x + Math.min(box.width - 1, Math.max(1, (percent / 100) * box.width));
+  await page.mouse.move(railX(currentPercent), y);
+  await page.mouse.down();
+  await page.mouse.move(railX(targetPercent), y, { steps: 6 });
+  await page.mouse.up();
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const nextPercent = Number(await page.locator(`${sliderSelector} [role="slider"]`).nth(index).getAttribute('aria-valuenow'));
+    if (Math.abs(nextPercent - targetPercent) <= 1.5) return;
+    await page.waitForTimeout(50);
   }
+  const finalPercent = Number(await page.locator(`${sliderSelector} [role="slider"]`).nth(index).getAttribute('aria-valuenow'));
+  assert(Math.abs(finalPercent - targetPercent) <= 1.5, `${label}: endpoint did not reach ${targetPercent}%, got ${finalPercent}%`);
+}
+
+async function setPitchNoteRange(page, minMidi, maxMidi, engineMode, tab) {
+  const selector = '.seq-lane-editor-wrap:visible .seq-lane-range-slider';
+  const handles = page.locator(`${selector} [role="slider"]`);
+  await handles.first().waitFor({ timeout: 5000 });
+  assert(await handles.count() >= 2, `${engineMode}/${tab}: noteRange controls were not visible`);
+  await dragRangeSliderHandle(page, selector, 1, midiToNoteRangePercent(maxMidi), `${engineMode}/${tab}: noteRange high`);
+  await dragRangeSliderHandle(page, selector, 0, midiToNoteRangePercent(minMidi), `${engineMode}/${tab}: noteRange low`);
 }
 
 async function setExpressionValueMode(page, mode) {
@@ -966,22 +983,12 @@ async function setExpressionValueMode(page, mode) {
 
 async function setRangeSubLaneRange(page, min, max) {
   await setRangeSubLaneValueMode(page, 'range');
-  const inputs = page.locator('.seq-lane-editor-wrap:visible input[type="range"]');
-  await inputs.first().waitFor({ timeout: 5000 });
-  assert(await inputs.count() >= 2, 'Range sub-lane mode did not expose low/high range sliders');
-  await inputs.nth(0).evaluate((node, value) => {
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-    setter?.call(node, String(value));
-    node.dispatchEvent(new Event('input', { bubbles: true }));
-    node.dispatchEvent(new Event('change', { bubbles: true }));
-  }, min);
-  await page.waitForTimeout(150);
-  await inputs.nth(1).evaluate((node, value) => {
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-    setter?.call(node, String(value));
-    node.dispatchEvent(new Event('input', { bubbles: true }));
-    node.dispatchEvent(new Event('change', { bubbles: true }));
-  }, max);
+  const selector = '.seq-lane-editor-wrap:visible .seq-lane-range-slider';
+  const handles = page.locator(`${selector} [role="slider"]`);
+  await handles.first().waitFor({ timeout: 5000 });
+  assert(await handles.count() >= 2, 'Range sub-lane mode did not expose low/high range sliders');
+  await dragRangeSliderHandle(page, selector, 0, Math.round(min * 100), 'Range sub-lane low');
+  await dragRangeSliderHandle(page, selector, 1, Math.round(max * 100), 'Range sub-lane high');
   await page.waitForTimeout(300);
 }
 
@@ -1018,9 +1025,10 @@ async function readPitchSubLaneEditorState(page) {
   const badgeSteps = String(await sparkStrip(page, pitchSparkIndex).locator('.seq-spark-badge-steps').first().textContent()).trim();
   const stripClass = String(await sparkStrip(page, pitchSparkIndex).getAttribute('class'));
   const noteRangeLabels = mode === 'noteRange'
-    ? await page.locator('.seq-lane-editor-wrap:visible .seq-note-range-slider .app-slider-value').evaluateAll((nodes) =>
-      nodes.slice(0, 2).map((node) => String(node.textContent ?? '').trim())
-    )
+    ? await page.locator('.seq-lane-editor-wrap:visible .seq-lane-range-slider .app-slider-value').evaluateAll((nodes) => {
+      const labels = nodes.map((node) => String(node.textContent ?? '').trim());
+      return labels.length >= 2 ? labels.slice(0, 2) : (labels[0]?.split('–').map((value) => value.trim()) ?? []);
+    })
     : [];
   return {
     lane: 'pitch',
@@ -1049,8 +1057,11 @@ function assertRangeSubLaneState(actual, expected, context) {
   assert(actual.direction === expected.direction, `${context}: expected ${label} direction ${expected.direction}, got ${actual.direction}`);
   assert(actual.mode === expected.mode, `${context}: expected ${label} mode ${expected.mode}, got ${actual.mode}`);
   if (expected.mode === 'range') {
-    assert(actual.bodyText.includes(expected.lowLabel), `${context}: missing range low label ${expected.lowLabel}`);
-    assert(actual.bodyText.includes(expected.highLabel), `${context}: missing range high label ${expected.highLabel}`);
+    const lowValue = expected.lowLabel.replace(/^Low:\s*/, '');
+    const highValue = expected.highLabel.replace(/^High:\s*/, '');
+    const hasLegacyLabels = actual.bodyText.includes(expected.lowLabel) && actual.bodyText.includes(expected.highLabel);
+    const hasSharedRangeLabel = actual.bodyText.includes(`${lowValue}–${highValue}`);
+    assert(hasLegacyLabels || hasSharedRangeLabel, `${context}: missing range labels ${expected.lowLabel} / ${expected.highLabel}`);
   }
 }
 

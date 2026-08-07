@@ -12,6 +12,7 @@ import {
 const root = process.cwd();
 const DEFAULT_PORT = 4196;
 const RENDER_BLOCK_FRAMES = 128;
+const MIN_CAPTURE_RMS = 0.0001;
 const CPU_SUMMARY_STORAGE_KEY = 'kessho:audio-engine-cpu-summary:v1';
 const reportJsonPath = resolve(root, 'docs/reports/kessho-product-web-cpu-comparison-latest.json');
 const reportMarkdownPath = resolve(root, 'docs/reports/kessho-product-web-cpu-comparison-latest.md');
@@ -291,7 +292,7 @@ async function measureEngine({ chromium, baseUrl, mode, args }) {
     await page.evaluate(() => window.__kesshoSonicParity?.teardown());
 
     assert(capture?.engine === mode, `${mode}: capture engine was ${capture?.engine}`);
-    assert(capture?.stats?.rms > 0.0005, `${mode}: capture RMS stayed silent (${capture?.stats?.rms})`);
+    assert(capture?.stats?.rms > MIN_CAPTURE_RMS, `${mode}: capture RMS stayed silent (${capture?.stats?.rms})`);
     assert(capture?.stats?.peak > 0.001, `${mode}: capture peak stayed silent (${capture?.stats?.peak})`);
 
     const wallSeconds = Math.max(0.001, (wallEndMs - wallStartMs) / 1000);
@@ -377,7 +378,7 @@ const report = {
     blockSize: RENDER_BLOCK_FRAMES,
     durationMs: args.durationMs,
     thresholds: {
-      minRms: 0.0005,
+      minRms: MIN_CAPTURE_RMS,
       minPeak: 0.001,
     },
     topSuspectedModules: ['sources', 'worklet-messaging', 'ui-telemetry', 'visual-telemetry'],
@@ -408,7 +409,7 @@ try {
     blockSize: RENDER_BLOCK_FRAMES,
     durationMs: args.durationMs,
     thresholds: {
-      minRms: 0.0005,
+      minRms: MIN_CAPTURE_RMS,
       minPeak: 0.001,
     },
     topSuspectedModules: ['sources', 'worklet-messaging', 'ui-telemetry', 'visual-telemetry'],

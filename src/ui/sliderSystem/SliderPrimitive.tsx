@@ -73,7 +73,6 @@ export interface SliderPrimitiveProps {
   onValueChange?: (value: number) => void;
   updatePolicy?: SliderUpdatePolicy;
   commitValueOnRelease?: boolean;
-  /** Minimum endpoint separation in the primitive's normalized 0–100 domain. */
   minRangeGap?: number;
   onRangeChange?: (range: SliderPrimitiveRange) => void;
   onModeCycle?: () => void;
@@ -133,9 +132,7 @@ export function SliderPrimitive({
   const lastEmittedValueRef = React.useRef<number | null>(null);
   const lastEmittedRangeRef = React.useRef<SliderPrimitiveRange | null>(null);
   const pendingTouchCleanupRef = React.useRef<(() => void) | null>(null);
-  const usesControlledValue = typeof onValueChange === 'function';
-  const usesControlledRange = typeof onRangeChange === 'function' && !!range;
-  const resolvedMinRangeGap = clamp(minRangeGap, 0, 100);
+  const usesControlledValue = typeof onValueChange === 'function'; const usesControlledRange = typeof onRangeChange === 'function' && !!range; const resolvedMinRangeGap = clamp(minRangeGap, 0, 100);
 
   React.useEffect(() => {
     if (usesControlledValue) {

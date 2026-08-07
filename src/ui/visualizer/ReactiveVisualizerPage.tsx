@@ -51,12 +51,8 @@ import {
   resolveVisualizerQualityMode,
   type VisualizerQualitySettings,
 } from './visualizerQuality';
-import {
-  type VisualizerPresetData,
-  listVisualizerPresets,
-  loadVisualizerPreset,
-  saveVisualizerPreset,
-} from './visualizerPresetStore';
+import { listVisualizerPresets, loadVisualizerPreset } from './visualizerPresetStore';
+import { useVisualizerPresetSave } from './useVisualizerPresetSave';
 import type { PresetSummary } from '../../presets/types';
 import {
   getVisualizerPulseSnapshot,
@@ -616,9 +612,6 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
   const [presetList, setPresetList] = useState<PresetSummary[]>([]);
   const [presetName, setPresetName] = useState('');
   const [activePresetName, setActivePresetName] = useState<string | null>(null);
-  const [presetSaving, setPresetSaving] = useState(false);
-  const [presetSaveError, setPresetSaveError] = useState('');
-  const presetSaveInFlightRef = useRef(false);
 
   controlsRef.current = controls;
   seedRef.current = seed;
@@ -986,38 +979,7 @@ const ReactiveVisualizerPageInner: React.FC<ReactiveVisualizerPageInnerProps> = 
 
   useEffect(() => { refreshPresets(); }, [refreshPresets]);
 
-  const handleSavePreset = useCallback(async () => {
-    const name = presetName.trim();
-    if (!name || presetSaveInFlightRef.current) return;
-    presetSaveInFlightRef.current = true;
-    setPresetSaveError('');
-    setPresetSaving(true);
-    try {
-      const data: VisualizerPresetData = {
-        format: 'kessho-visualizer-preset',
-        formatVersion: 2,
-        mode: reaction.mode,
-        controls,
-        reactiveRanges,
-        vizSliderModes,
-        reaction,
-        performanceMacros,
-        layerMacros,
-        qualityMode,
-        seed,
-      };
-      const saved = await saveVisualizerPreset(name, data);
-      if (!saved) throw new Error('Visualizer preset could not be saved.');
-      setActivePresetName(saved.name);
-      _onVisualizerPresetChange(saved.name);
-      refreshPresets();
-    } catch (error) {
-      setPresetSaveError(error instanceof Error ? error.message : 'Visualizer preset save failed.');
-    } finally {
-      presetSaveInFlightRef.current = false;
-      setPresetSaving(false);
-    }
-  }, [presetName, controls, reactiveRanges, reaction, performanceMacros, layerMacros, qualityMode, seed, vizSliderModes, refreshPresets, _onVisualizerPresetChange]);
+  const { presetSaving, presetSaveError, handleSavePreset } = useVisualizerPresetSave({ name: presetName, mode: reaction.mode, controls, reactiveRanges, vizSliderModes, reaction, performanceMacros, layerMacros, qualityMode, seed, setActivePresetName, onVisualizerPresetChange: _onVisualizerPresetChange, refreshPresets });
 
   const handleLoadPreset = useCallback(async (name: string) => {
     const result = await loadVisualizerPreset(name);

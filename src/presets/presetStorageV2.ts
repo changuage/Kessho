@@ -675,11 +675,7 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
     ];
   }
 
-  if (type === 'source' && normalizedScope === 'granular') {
-    return [
-      kitChild('granularKit', 'granularKit'),
-    ];
-  }
+  if (type === 'source' && normalizedScope === 'granular') return [kitChild('granularKit', 'granularKit')];
 
   if (type === 'source' && normalizedScope === 'delay') {
     return [
@@ -687,11 +683,7 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
     ];
   }
 
-  if (type === 'source' && normalizedScope === 'reverb') {
-    return [
-      kitChild('reverbKit', 'reverbKit'),
-    ];
-  }
+  if (type === 'source' && normalizedScope === 'reverb') return [kitChild('reverbKit', 'reverbKit')];
 
   if (type === 'source' && normalizedScope === 'dynamicsBus') {
     return [
@@ -743,12 +735,7 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
     ];
   }
 
-  if (type === 'kit' && normalizedScope === 'reverbKit') {
-    return [
-      engineChild('reverbEngine', 'reverbEngine'),
-      engineChild('spectralFreeze', 'spectralFreeze'),
-    ];
-  }
+  if (type === 'kit' && normalizedScope === 'reverbKit') return [engineChild('reverbEngine', 'reverbEngine'), engineChild('spectralFreeze', 'spectralFreeze')];
 
   if (type === 'kit' && normalizedScope === 'granularKit') {
     return [

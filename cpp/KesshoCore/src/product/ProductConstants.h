@@ -1,10 +1,8 @@
 #pragma once
-
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoCore/KesshoTypes.h"
 
 #include <cstdint>
-
 #include "KesshoProductDefaults.h"
 #include "KesshoProductParamIds.h"
 #include "KesshoProductSchema.h"

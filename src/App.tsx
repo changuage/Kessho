@@ -9,7 +9,7 @@ import {
   getSliderNumericValue,
 } from './ui/state';
 import type { DualSliderRange } from './ui/DualSlider';
-import type { ProductEngineState, ProductTelemetrySnapshot } from './audio/product/ProductEngineTypes';
+import type { ProductEngineState } from './audio/product/ProductEngineTypes';
 import { ProductRuntimeSwitch } from './ui/ProductRuntimeSwitch';
 import { AppFooterMark } from './ui/AppFooterMark';
 import { useProductRuntimeManualTriggers } from './ui/useProductRuntimeManualTriggers';
@@ -24,20 +24,9 @@ import {
   useProductRuntimeSession,
   useProductRuntimeShell,
 } from './ui/useProductRuntimeSession';
-import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/config';
 import { calculateDriftedRoot } from './audio/harmony';
-import {
-  resolveHarmonyLiveLayerChange,
-  resolveHarmonyProjection,
-  type HarmonyLiveLayer,
-  type HarmonyLiveLayerChangeHandler,
-  type HarmonyProjection,
-} from './audio/harmony/harmonyProjection';
 import { useHarmonyWorkspaceController } from './ui/harmony/useHarmonyWorkspaceController';
-import { createCoreProductHarmonyLiveChordGestureEvents, createCoreProductParamEvent } from './audio/coreProductEvents';
-import { isFileOrOpaqueOrigin } from './audio/embeddedProductCoreAssets';
-import { KESSHO_PRODUCT_PARAM_IDS } from './audio/generated/kesshoProductParams';
-import { productEngine } from './audio/product/ProductEngineProxy';
+import { useHarmonyLiveProjection } from './ui/harmony/useHarmonyLiveProjection';
 import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, INSECT_ENGINE_DEFAULTS, getWaterPresetDualRanges, getWaterPresetSliderModes } from './audio/waterPresets';
 import {
@@ -84,7 +73,6 @@ import {
 import { useJourneyPresets } from './presets/useJourneyPresets';
 import { isLocalPresetStoreOverride } from './presets/sharedMode';
 import { loadPresetsFromFolder } from './presets/bundledPresetLoader';
-import { resolvePointCloudsStartPreset } from './ui/pointCloudsPresetFallback';
 import {
   checkPresetCompatibility,
   loadActiveStatePresetStorePresetById,
@@ -128,7 +116,6 @@ import { usePlatformRuntimeCapabilities } from './ui/usePlatformRuntimeCapabilit
 import { usePresetLibraryRuntimeSurface } from './ui/usePresetLibraryRuntimeSurface';
 import { useCloudSharedPresetRuntimeSurface } from './ui/useCloudSharedPresetRuntimeSurface';
 import { useSavedPresetLoadRuntimeSurface } from './ui/useSavedPresetLoadRuntimeSurface';
-import { applyPreset } from './ui/presetUtils';
 import { createDefaultPitchSettings, sanitizeSequencerSubLaneStates } from './ui/usePresetSequencerRestore';
 import { useProductRuntimePageRuntimeBridges } from './ui/useProductRuntimePageRuntimeBridges';
 import { useLazySequencerTransport } from './ui/useLazySequencerTransport';
@@ -144,6 +131,7 @@ import { useProductRuntimeCallbackRegistrations } from './ui/useProductRuntimeCa
 import { useProductRuntimeCoordination } from './ui/useProductRuntimeCoordination';
 import { useProductRuntimePlaybackSurface } from './ui/useProductRuntimePlaybackSurface';
 import { useProductRuntimeGlobalSurface } from './ui/useProductRuntimeGlobalSurface';
+import { useSynthPlayConfigRuntime } from './ui/useSynthPlayConfigRuntime';
 import { useProductRuntimePlatformSurface } from './ui/useProductRuntimePlatformSurface';
 import { usePresetBootstrapRuntimeSurface } from './ui/usePresetBootstrapRuntimeSurface';
 import { usePresetRestoreRuntimeSurface } from './ui/usePresetRestoreRuntimeSurface';
@@ -212,6 +200,7 @@ import {
   ADVANCED_EDITOR_TABS,
 } from './app/appNavigation';
 import { useAdvancedEditorNavigation } from './app/useAdvancedEditorNavigation';
+import { LEAD_VIBRATO_KEYS } from './app/presetInterpolationKeys';
 import {
   applyLiveLeadMorphToChangedPresetSlots,
   applyLiveLeadMorphToPresetChange,
@@ -225,72 +214,14 @@ import {
   rememberPadMorphEndpointState,
   type PadMorphEndpointOverrides,
 } from './features/morph/morphEndpointMath';
+import {
+  POINT_CLOUDS_DEFAULT_PRESET_NAME as DEFAULT_AUTO_START_PRESET_NAME,
+  POINT_CLOUDS_ENGINE_MODE,
+  PRODUCT_CLOUD_ENABLED as CLOUD_ENABLED,
+  usePointCloudsEngineBridge,
+} from './ui/pointCloudsEngineBridge';
 
-const DEFAULT_AUTO_START_PRESET_NAME = 'String Waves';
-const POINT_CLOUDS_EMBEDDED_ENGINE_MODE = window.__pointCloudsEmbeddedEngineMode === true;
-const POINT_CLOUDS_ENGINE_MODE = new URLSearchParams(window.location.search).has('point-clouds-engine')
-  || POINT_CLOUDS_EMBEDDED_ENGINE_MODE;
-// The direct-file bundle carries the exact resolved String Waves snapshot and
-// must not initialize Supabase or any other network-backed preset surface.
-const CLOUD_ENABLED = !POINT_CLOUDS_EMBEDDED_ENGINE_MODE && isCloudPresetConfigEnabled();
 const WATER_PRESET_DUAL_KEYS = ['waterMorph', ...WATER_MORPH_PARAM_KEYS] as const;
-
-type PointCloudsPresetDefinition = {
-  id: string;
-  name: string;
-};
-
-const POINT_CLOUDS_PRESETS: readonly PointCloudsPresetDefinition[] = [
-  {
-    id: 'string-waves',
-    name: DEFAULT_AUTO_START_PRESET_NAME,
-  },
-];
-
-function resolvePointCloudsPreset(idOrName = 'string-waves'): PointCloudsPresetDefinition | null {
-  const query = idOrName.trim().toLowerCase();
-  return POINT_CLOUDS_PRESETS.find((preset) => (
-    preset.id === query || preset.name.toLowerCase() === query
-  )) ?? null;
-}
-
-type PointCloudsKesshoStatus = {
-  ready: true;
-  isRunning: boolean;
-  lifecycleState: ReturnType<typeof productEngine.getLifecycleState>;
-  audioContextState: string | null;
-  presetId: string;
-  presetName: string;
-  morphAmount: number;
-  telemetry: ProductTelemetrySnapshot | null;
-  sourceState: Pick<
-    SliderState,
-    'masterVolume' | 'leadEnabled' | 'leadLevel' | 'lead1Level' | 'lead1Density' |
-    'synthLevel' | 'granularLevel' | 'drumLevel' | 'pianoLevel' | 'waterLevel' |
-    'natureLevel' | 'insectsLevel' | 'natureMasterEnabled' | 'insectsMasterEnabled' |
-    'padEnabled' | 'pad2Enabled' | 'reverbQuality'
-  >;
-};
-
-type PointCloudsKesshoBridge = {
-  start: (presetId?: string, options?: {
-    reverbQuality?: SliderState['reverbQuality'];
-  }) => Promise<void>;
-  stop: () => void;
-  listPresets: () => Array<{ id: string; name: string }>;
-  getStatus: () => PointCloudsKesshoStatus;
-  setMorph: (amount: number) => void;
-};
-
-declare global {
-  interface Window {
-    __pointCloudsKesshoBridge?: PointCloudsKesshoBridge;
-    /** Set by the direct-file srcdoc bootstrap before the bundled App runs. */
-    __pointCloudsEmbeddedEngineMode?: boolean;
-    /** Generated exact SavedPreset snapshot for offline Point Clouds startup. */
-    __pointCloudsEmbeddedStringWavesPreset?: SavedPreset;
-  }
-}
 
 const WATER_CHILD_LEVEL_KEYS = [
   'waterLayerHardDrops',
@@ -366,11 +297,7 @@ const App: React.FC = () => {
   const hasLoadedPresetRef = useRef(false);
   const hasUserInteractedRef = useRef(false);
   const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
-  const {
-    cloudPresetStoreReadyPromiseRef,
-    loadCloudAutoStartPresetStrict,
-    resolveDefaultAutoStartPreset,
-  } = usePresetBootstrapRuntimeSurface<SavedPreset>({
+  const { cloudPresetStoreReadyPromiseRef, loadCloudAutoStartPresetStrict, resolveDefaultAutoStartPreset } = usePresetBootstrapRuntimeSurface<SavedPreset>({
     cloudEnabled: CLOUD_ENABLED,
     cloudPresetAllowed,
     defaultAutoStartPresetName: DEFAULT_AUTO_START_PRESET_NAME,
@@ -526,30 +453,7 @@ const App: React.FC = () => {
     transportDebug: null,
   });
   const playbackIsRunning = engineState.isRunning;
-  const [harmonyLiveLayer, setHarmonyLiveLayer] = useState<HarmonyLiveLayer | null>(null);
-  const harmonyLiveLayerRef = useRef<HarmonyLiveLayer | null>(null);
-  const harmonyLiveEventRevisionRef = useRef(0);
-  const handleHarmonyLiveLayerChange = useCallback<HarmonyLiveLayerChangeHandler>((layer, options) => {
-    const next = resolveHarmonyLiveLayerChange(harmonyLiveLayerRef.current, layer, options);
-    if (next === harmonyLiveLayerRef.current) return;
-    harmonyLiveLayerRef.current = next;
-    setHarmonyLiveLayer(next);
-    harmonyLiveEventRevisionRef.current += 1;
-    // The engine queues bounded Product events until its runtime is ready, so
-    // stopped and starting sessions use the same non-persisted live path.
-    productEngine.enqueueEvents(
-      createCoreProductHarmonyLiveChordGestureEvents(next, harmonyLiveEventRevisionRef.current),
-    );
-  }, []);
-  const harmonyProjection: HarmonyProjection = useMemo(
-    () => resolveHarmonyProjection(state, {
-      harmonyState: engineState.harmonyState,
-      liveLayer: harmonyLiveLayer,
-      barIndex: engineState.harmonyPosition?.absoluteBarIndex ?? undefined,
-      phraseIndex: engineState.harmonyPosition?.phraseIndex ?? undefined,
-    }),
-    [engineState.harmonyPosition, engineState.harmonyState, harmonyLiveLayer, state],
-  );
+  const { harmonyProjection, handleHarmonyLiveLayerChange } = useHarmonyLiveProjection(state, engineState);
 
   const {
     resetProductCofDrift: resetCofDrift,
@@ -674,16 +578,7 @@ const App: React.FC = () => {
     stateRef,
     uiMode,
   });
-  useEffect(() => {
-    setProductSimpleSequencerVisualPlanActive({
-      padChord: state.synthChordGeneratorEnabled === true,
-      randomTiming: state.leadRandomEnabled === true,
-    });
-  }, [
-    setProductSimpleSequencerVisualPlanActive,
-    state.leadRandomEnabled,
-    state.synthChordGeneratorEnabled,
-  ]);
+  useEffect(() => setProductSimpleSequencerVisualPlanActive({ padChord: state.synthChordGeneratorEnabled === true, randomTiming: state.leadRandomEnabled === true }), [setProductSimpleSequencerVisualPlanActive, state.leadRandomEnabled, state.synthChordGeneratorEnabled]);
   const productCoreDebugSummary = useProductCoreDebugSummary(productRuntimeCore);
   const [snowflakeActivated, setSnowflakeActivated] = useState(startInAdvancedEditor);
   const [welcomeDisplayState, setWelcomeDisplayState] = useState<SliderState>(() => createSignedSnowflakeWelcomeState());
@@ -865,10 +760,7 @@ const App: React.FC = () => {
 
   const [drumPresetVersion, setDrumPresetVersion] = useState(0);
   const [synthPresetVersion, setSynthPresetVersion] = useState(0);
-  const canonicalSynthPlayConfigs = useMemo(
-    () => normalizeProductPlayConfigs(state.synthPlayConfigs ?? synthPlayConfigsRef.current, 4),
-    [state.synthPlayConfigs, synthPresetVersion],
-  );
+  const canonicalSynthPlayConfigs = useMemo(() => normalizeProductPlayConfigs(state.synthPlayConfigs ?? synthPlayConfigsRef.current, 4), [state.synthPlayConfigs, synthPresetVersion]);
   const drumLaneEnableTouchedRef = useRef(false);
   const previousDrumLaneIntentPresetVersionRef = useRef(drumPresetVersion);
   useEffect(() => {
@@ -879,10 +771,7 @@ const App: React.FC = () => {
     });
   }, [drumPresetVersion, state]);
 
-  const {
-    applyDualRangesFromPreset,
-    restoreEvolveConfigs: restoreSequencerPresetMetadata,
-  } = usePresetRestoreRuntimeSurface({
+  const { applyDualRangesFromPreset, restoreEvolveConfigs: restoreSequencerPresetMetadata } = usePresetRestoreRuntimeSurface({
     drumClockDivsRef,
     drumEvolveConfigsRef,
     drumLinkedRef,
@@ -919,10 +808,7 @@ const App: React.FC = () => {
     setDualSliderRanges,
     setSliderModes,
   });
-  const restoreEvolveConfigs = useCallback((preset: SavedPreset) => {
-    restoreSequencerPresetMetadata(preset);
-    restoreDrumScatterState(preset.drumScatterState);
-  }, [restoreDrumScatterState, restoreSequencerPresetMetadata]);
+  const restoreEvolveConfigs = useCallback((preset: SavedPreset) => { restoreSequencerPresetMetadata(preset); restoreDrumScatterState(preset.drumScatterState); }, [restoreDrumScatterState, restoreSequencerPresetMetadata]);
 
   const getStatePresetSaveMetadata = useCallback(
     () =>
@@ -1820,176 +1706,7 @@ const App: React.FC = () => {
     fadeProductRuntimeOutput,
   });
 
-  const pointCloudsBridgeRuntimeRef = useRef({
-    applyDualRangesFromPreset,
-    handleStart,
-    handleStop,
-    loadBundledPresetByName,
-    loadCloudAutoStartPresetStrict,
-    morphPosition,
-    playbackIsRunning,
-    primeProductRuntimeAudio,
-    productRuntimeTelemetry,
-    restoreEvolveConfigs,
-    restoreRoutingMuteGroupsFromPreset,
-    setMorphPresetA,
-    setProductVisualTelemetryActive,
-    statePresetName,
-  });
-  const pointCloudsPresetIdRef = useRef('string-waves');
-  pointCloudsBridgeRuntimeRef.current = {
-    applyDualRangesFromPreset,
-    handleStart,
-    handleStop,
-    loadBundledPresetByName,
-    loadCloudAutoStartPresetStrict,
-    morphPosition,
-    playbackIsRunning,
-    primeProductRuntimeAudio,
-    productRuntimeTelemetry,
-    restoreEvolveConfigs,
-    restoreRoutingMuteGroupsFromPreset,
-    setMorphPresetA,
-    setProductVisualTelemetryActive,
-    statePresetName,
-  };
-
-  useEffect(() => {
-    if (!POINT_CLOUDS_ENGINE_MODE) return undefined;
-
-    pointCloudsBridgeRuntimeRef.current.setProductVisualTelemetryActive(true);
-    const bridge: PointCloudsKesshoBridge = {
-      start: async (presetId = 'string-waves', options = {}) => {
-        const definition = resolvePointCloudsPreset(presetId);
-        if (!definition) throw new Error(`Unknown Point Clouds preset: ${presetId}`);
-        const requestedReverbQuality = options.reverbQuality;
-        if (
-          requestedReverbQuality !== undefined &&
-          requestedReverbQuality !== 'ultra' &&
-          requestedReverbQuality !== 'balanced' &&
-          requestedReverbQuality !== 'lite'
-        ) {
-          throw new Error(`Unknown Point Clouds reverb quality: ${String(requestedReverbQuality)}`);
-        }
-
-        const runtime = pointCloudsBridgeRuntimeRef.current;
-        // Chrome expires transient user activation while the cloud preset is
-        // loading. Create/resume the Product AudioContext synchronously inside
-        // the originating click before crossing the first async boundary.
-        runtime.primeProductRuntimeAudio();
-        const preset = await resolvePointCloudsStartPreset({
-          embeddedPreset: window.__pointCloudsEmbeddedStringWavesPreset,
-          presetName: definition.name,
-          loadCloudPreset: runtime.loadCloudAutoStartPresetStrict,
-          loadBundledPreset: runtime.loadBundledPresetByName,
-        });
-        if (!preset) {
-          throw new Error(`Point Clouds preset "${definition.name}" is unavailable from cloud or bundled assets.`);
-        }
-        if (preset.name.trim().toLowerCase() !== definition.name.toLowerCase()) {
-          throw new Error(`Expected Point Clouds preset "${definition.name}", received "${preset.name}".`);
-        }
-
-        const result = applyPreset(preset, {
-          loadMode: 'exact-as-saved',
-          currentState: stateRef.current,
-          updateEngine: false,
-          resetCofDrift: false,
-          normalize: (current) => current,
-        });
-        const pointCloudsState: SliderState = {
-          ...result.state,
-          ...(requestedReverbQuality ? { reverbQuality: requestedReverbQuality } : {}),
-        };
-        const pointCloudsPreset: SavedPreset = {
-          ...result.preset,
-          state: pointCloudsState,
-        };
-        pointCloudsPresetIdRef.current = definition.id;
-        stateRef.current = pointCloudsState;
-        setState(pointCloudsState);
-        setStatePresetName(pointCloudsPreset.name);
-        runtime.setMorphPresetA(pointCloudsPreset);
-        runtime.restoreRoutingMuteGroupsFromPreset(pointCloudsPreset.routingMuteGroups);
-        runtime.applyDualRangesFromPreset(pointCloudsPreset.dualRanges, pointCloudsPreset.sliderModes);
-        runtime.restoreEvolveConfigs(pointCloudsPreset);
-        hasLoadedPresetRef.current = true;
-        await runtime.handleStart(pointCloudsState);
-        if (requestedReverbQuality) {
-          productEngine.enqueueEvents([
-            createCoreProductParamEvent(
-              KESSHO_PRODUCT_PARAM_IDS.FxReverbQuality,
-              requestedReverbQuality === 'ultra' ? 0 : requestedReverbQuality === 'lite' ? 2 : 1,
-            ),
-          ]);
-        }
-        if (productEngine.getLifecycleState() !== 'running') {
-          throw new Error('Kessho Product runtime did not enter the running state.');
-        }
-      },
-      stop: () => pointCloudsBridgeRuntimeRef.current.handleStop(),
-      listPresets: () => POINT_CLOUDS_PRESETS.map(({ id, name }) => ({ id, name })),
-      getStatus: () => {
-        const runtime = pointCloudsBridgeRuntimeRef.current;
-        return {
-          ready: true,
-          isRunning: runtime.playbackIsRunning,
-          lifecycleState: productEngine.getLifecycleState(),
-          // The Product runtime publishes this state for diagnostics in the
-          // engine document. Keep it in the website bridge so consumers can
-          // prove real AudioContext running state before showing "playing".
-          audioContextState: document.documentElement.dataset.coreProductAudioContextState ?? null,
-          presetId: pointCloudsPresetIdRef.current,
-          presetName: runtime.statePresetName || DEFAULT_AUTO_START_PRESET_NAME,
-          morphAmount: runtime.morphPosition / 100,
-          telemetry: runtime.productRuntimeTelemetry.getTelemetry(),
-          sourceState: {
-            masterVolume: stateRef.current.masterVolume,
-            leadEnabled: stateRef.current.leadEnabled,
-            leadLevel: stateRef.current.leadLevel,
-            lead1Level: stateRef.current.lead1Level,
-            lead1Density: stateRef.current.lead1Density,
-            synthLevel: stateRef.current.synthLevel,
-            granularLevel: stateRef.current.granularLevel,
-            drumLevel: stateRef.current.drumLevel,
-            pianoLevel: stateRef.current.pianoLevel,
-            waterLevel: stateRef.current.waterLevel,
-            natureLevel: stateRef.current.natureLevel,
-            insectsLevel: stateRef.current.insectsLevel,
-            natureMasterEnabled: stateRef.current.natureMasterEnabled,
-            insectsMasterEnabled: stateRef.current.insectsMasterEnabled,
-            padEnabled: stateRef.current.padEnabled,
-            pad2Enabled: stateRef.current.pad2Enabled,
-            reverbQuality: stateRef.current.reverbQuality,
-          },
-        };
-      },
-      setMorph: (amount) => {
-        setMorphPosition(Math.max(0, Math.min(1, Number.isFinite(amount) ? amount : 0)) * 100);
-      },
-    };
-
-    window.__pointCloudsKesshoBridge = bridge;
-    if (window.parent !== window && !isFileOrOpaqueOrigin(window.location)) {
-      // A regular file iframe can have an opaque origin in Safari/Chromium;
-      // assigning an arbitrary property on that WindowProxy may throw a
-      // SecurityError. The ready message below is still the authoritative
-      // handshake, so never let this optional convenience assignment prevent
-      // it from being delivered.
-      try {
-        window.parent.__pointCloudsKesshoBridge = bridge;
-      } catch {
-        // The parent can still resolve a same-origin bridge or report a
-        // truthful boot failure if the browser keeps the frame opaque.
-      }
-    }
-    // `about:srcdoc` has an opaque (`"null"`) origin even when its parent is
-    // a local file. Wildcard delivery is required for that direct-file frame;
-    // regular HTTP(S) engine pages keep their exact origin boundary.
-    const readyTargetOrigin = isFileOrOpaqueOrigin(window.location) ? '*' : window.location.origin;
-    window.parent.postMessage({ type: 'point-clouds:kessho-ready' }, readyTargetOrigin);
-    return undefined;
-  }, []);
+  usePointCloudsEngineBridge({ runtime: { applyDualRangesFromPreset, handleStart, handleStop, loadBundledPresetByName, loadCloudAutoStartPresetStrict, morphPosition, playbackIsRunning, primeProductRuntimeAudio, productRuntimeTelemetry, restoreEvolveConfigs, restoreRoutingMuteGroupsFromPreset, setMorphPresetA, setProductVisualTelemetryActive, statePresetName }, stateRef, hasLoadedPresetRef, setState, setStatePresetName, setMorphPosition });
 
   const { requestSequencerPlaybackStart } = useLazySequencerTransport({
     activeTab,
@@ -2094,19 +1811,7 @@ const App: React.FC = () => {
       setProductSynthStepPositionCallback,
     },
   });
-  useEffect(() => {
-    productPageRuntimeSurface.synthPageSequencerBridge.onPlayConfigsChange(canonicalSynthPlayConfigs);
-  }, [canonicalSynthPlayConfigs, productPageRuntimeSurface.synthPageSequencerBridge.onPlayConfigsChange]);
-  const handleSynthPlayConfigsChange = useCallback((configs: ProductPlayConfig[]) => {
-    const next = normalizeProductPlayConfigs(configs, 4);
-    productPageRuntimeSurface.synthPageSequencerBridge.onPlayConfigsChange(next);
-    harmonyWorkspaceController.commitAuthoredStateChange((previous) => {
-      const current = normalizeProductPlayConfigs(previous.synthPlayConfigs, 4);
-      return JSON.stringify(current) === JSON.stringify(next)
-        ? previous
-        : { ...previous, synthPlayConfigs: next };
-    }, undefined, 'Update Seq play configuration');
-  }, [harmonyWorkspaceController, productPageRuntimeSurface.synthPageSequencerBridge.onPlayConfigsChange]);
+  const { handleSynthPlayConfigsChange } = useSynthPlayConfigRuntime({ canonicalSynthPlayConfigs, onPlayConfigsChange: productPageRuntimeSurface.synthPageSequencerBridge.onPlayConfigsChange, harmonyWorkspaceController });
 
   const midiLiveNoteStart = productPageRuntimeSurface.synthPageRuntimeProps.onLiveNoteStart;
   const midiLiveNoteStop = productPageRuntimeSurface.synthPageRuntimeProps.onLiveNoteStop;
@@ -2495,12 +2200,7 @@ const App: React.FC = () => {
           'leadVibratoDepth',
           'leadVibratoRate',
           'leadGlide',
-          'lead1VibratoDepth',
-          'lead1VibratoRate',
-          'lead1Glide',
-          'lead2VibratoDepth',
-          'lead2VibratoRate',
-          'lead2Glide',
+          ...LEAD_VIBRATO_KEYS,
           'lead1ReverbSend',
           'lead2ReverbSend',
           'delayAReverbSend',
@@ -2711,12 +2411,7 @@ const App: React.FC = () => {
         'leadVibratoDepth',
         'leadVibratoRate',
         'leadGlide',
-        'lead1VibratoDepth',
-        'lead1VibratoRate',
-        'lead1Glide',
-        'lead2VibratoDepth',
-        'lead2VibratoRate',
-        'lead2Glide',
+        ...LEAD_VIBRATO_KEYS,
         'synthEuclideanTempo',
         'granularDelayMix',
         'granularDelayReverbSend',
@@ -3447,9 +3142,7 @@ const App: React.FC = () => {
     </PresetPoolProvider>
   );
 
-  if (POINT_CLOUDS_ENGINE_MODE) {
-    return <div aria-hidden="true" style={{ width: 1, height: 1, overflow: 'hidden' }} />;
-  }
+  if (POINT_CLOUDS_ENGINE_MODE) return <div aria-hidden="true" style={{ width: 1, height: 1, overflow: 'hidden' }} />;
 
   // Render journey mode UI
   if (uiMode === 'journey') {

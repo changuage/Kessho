@@ -624,7 +624,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
   }
 
   if (
-    /^(oceanSample|water|birds|birds2|frogs|insects|insects2)(Enabled|Level|MorphA|MorphB|Preset|LayerHardDrops|LayerWaterDrops|LayerTurbulence|LayerBubbling|LayerSurf|LayerChannels)$/.test(key) ||
+    /^(oceanSample|water|birds|birds2|frogs|insects|insects2)(Enabled|Level|SharedLevel|MorphA|MorphB|Preset|LayerHardDrops|LayerWaterDrops|LayerTurbulence|LayerBubbling|LayerSurf|LayerChannels)$/.test(key) ||
     key === 'insectsEngine' ||
     key === 'insects2Engine'
   ) {

@@ -261,9 +261,7 @@ class CoreProductEngineHost {
   requestProductTelemetryOnce(): void {
     this.runtime.requestTelemetryOnce('manual');
   }
-  requestProductVisualTelemetryAfterRender(): void {
-    this.runtime.requestVisualTelemetryAfterRender();
-  }
+  requestProductVisualTelemetryAfterRender(): void { this.runtime.requestVisualTelemetryAfterRender(); }
 
   setMobileWebEvidenceTelemetryObserver(
     observer: ((telemetry: CoreProductTelemetrySnapshot) => void) | null,
@@ -427,16 +425,7 @@ class CoreProductEngineHost {
     this.latestProductSnapshot = this.createLatestSnapshot();
   }
 
-  async preload(): Promise<void> {
-    await this.runtime.ensureStarted();
-    this.runtimeReady = true;
-    // Queue the current snapshot while the context is still suspended. The
-    // worklet processes it before any later realtime input because both use
-    // the same MessagePort, without putting snapshot acknowledgement latency
-    // on the first key press.
-    await this.loadLatestSnapshot('runtime-bootstrap', false, false);
-    this.latestProductSnapshot = this.createLatestSnapshot();
-  }
+  async preload(): Promise<void> { await this.runtime.ensureStarted(); this.runtimeReady = true; await this.loadLatestSnapshot('runtime-bootstrap', false, false); this.latestProductSnapshot = this.createLatestSnapshot(); }
 
   primeAudioContext(): void {
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('parity') === '1') {
@@ -557,16 +546,9 @@ class CoreProductEngineHost {
     const event = createCoreProductHostMidiEvent(message, this.realtimeTimestampMapper.midiContext(message, this.runtime.audioContext));
     this.realtimeInputBootstrap.postWhenReady(event, 'midi');
   }
-  enqueueRealtimeEvent(event: CoreProductEvent): Promise<void> {
-    return this.realtimeInputBootstrap.postWhenReadyAsync(event);
-  }
-  enqueueRealtimeEvents(events: readonly CoreProductEvent[]): Promise<void> {
-    return this.realtimeInputBootstrap.postManyWhenReadyAsync(events);
-  }
-  async enqueueLiveNoteEvent(event: ProductLiveNoteEvent): Promise<void> {
-    const productEvent = createCoreProductLiveNoteEvent(event, this.realtimeTimestampMapper.liveNoteContext(event, this.runtime.audioContext));
-    await this.realtimeInputBootstrap.postWhenReadyAsync(productEvent);
-  }
+  enqueueRealtimeEvent(event: CoreProductEvent): Promise<void> { return this.realtimeInputBootstrap.postWhenReadyAsync(event); }
+  enqueueRealtimeEvents(events: readonly CoreProductEvent[]): Promise<void> { return this.realtimeInputBootstrap.postManyWhenReadyAsync(events); }
+  async enqueueLiveNoteEvent(event: ProductLiveNoteEvent): Promise<void> { const productEvent = createCoreProductLiveNoteEvent(event, this.realtimeTimestampMapper.liveNoteContext(event, this.runtime.audioContext)); await this.realtimeInputBootstrap.postWhenReadyAsync(productEvent); }
   setRuntimeWalkPositionsCallback(callback: ((positions: Record<string, number>) => void) | null): void { this.setDisplayCallback('runtimeWalkPositions', callback); callback?.(this.modulationRangeBridge.getRuntimeWalkPositions()); }
   setDrumMorphRange(voice: unknown, range: { min: number; max: number } | null): void {
     const voiceIndex = drumVoiceIndex(voice);

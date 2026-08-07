@@ -1,9 +1,7 @@
 #include "../KesshoProductEngineInternal.h"
 void KesshoProductEngine::applySourceMorphValue(uint32_t source_id, float value, bool manual_edit) {
   if (source_id < 1u || source_id > kSourceCount) return;
-  if (manual_edit) {
-    disableSourceMorphAutomationForSource(source_id);
-  }
+  if (manual_edit) disableSourceMorphAutomationForSource(source_id);
   SourceState& source = sources[source_id - 1u];
   const float clamped = clampFloat(value, 0.0f, 1.0f);
   if (!manual_edit && std::fabs(source.morph - clamped) < kAutomatedSourceMorphApplyThreshold) return;

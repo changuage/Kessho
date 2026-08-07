@@ -1,4 +1,9 @@
 #include "../KesshoProductEngineInternal.h"
+#include <cmath>
+
+constexpr float kGranularReverbCompressorMakeupGain = 3.037f;
+constexpr float kGranularReverbCompressorLowerGain = 0.04466836f; // -27 dB
+constexpr float kGranularRouteEpsilon = 0.0001f;
 
 float KesshoProductEngine::granularCompressorGainDbForLevel(float level_db) const {
   constexpr float threshold = -24.0f;
@@ -6,25 +11,11 @@ float KesshoProductEngine::granularCompressorGainDbForLevel(float level_db) cons
   constexpr float ratio = 4.0f;
   const float lower = threshold - knee * 0.5f;
   const float upper = threshold + knee * 0.5f;
-  if (level_db <= lower) {
-    return 0.0f;
-  }
-  if (level_db >= upper) {
-    return (threshold + (level_db - threshold) / ratio) - level_db;
-  }
+  if (level_db <= lower) return 0.0f;
+  if (level_db >= upper) return (threshold + (level_db - threshold) / ratio) - level_db;
   const float x = level_db - lower;
   return ((1.0f / ratio) - 1.0f) * x * x / (2.0f * knee);
 }
-
-#include <cmath>
-
-namespace {
-
-constexpr float kGranularReverbCompressorMakeupGain = 3.037f;
-constexpr float kGranularReverbCompressorLowerGain = 0.04466836f; // -27 dB
-constexpr float kGranularRouteEpsilon = 0.0001f;
-
-} // namespace
 
 void KesshoProductEngine::updateGranularReverbCompressorCoeffs() {
   if (sample_rate == granular_reverb_comp_coeff_sample_rate) return;
