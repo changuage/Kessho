@@ -34,7 +34,7 @@ public:
 private:
   void updateChannel(
       int channel,
-      const float* magnitude,
+      const float* live_log_magnitude,
       float refresh,
       float input_sensitivity,
       float sustain) noexcept;
@@ -43,6 +43,7 @@ private:
   std::vector<uint8_t> band_for_bin_;
   std::array<std::vector<float>, 2> held_log_magnitude_;
   std::array<std::vector<float>, 2> previous_live_log_magnitude_;
+  std::array<std::vector<float>, 2> current_live_log_magnitude_;
   std::array<float, kBandCount> band_flux_{};
   std::array<float, kBandCount> smoothed_band_mask_{};
   bool captured_ = false;

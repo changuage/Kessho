@@ -18,12 +18,16 @@ public:
       const float* input_frame,
       float* magnitude,
       float* phase) noexcept;
+  void analyzeMagnitude(
+      const float* input_frame,
+      float* magnitude) noexcept;
   void synthesize(
       const float* magnitude,
       const float* phase,
       float* output_frame) noexcept;
 
 private:
+  void transformInput(const float* input_frame) noexcept;
   void transform(bool inverse) noexcept;
 
   std::vector<float> window_;

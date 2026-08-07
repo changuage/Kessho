@@ -337,7 +337,6 @@ RenderCpuStats renderCpuStats(
   // substantial render window before timing so repeated benchmark processes
   // measure steady render cost rather than process startup effects.
   constexpr uint32_t warmup_blocks = 4096;
-  constexpr uint32_t timed_blocks_per_sample = 5;
   KesshoProductEngine* engine = kessho_product_create(48000.0, frames, 0);
   require(engine != nullptr, "engine create failed");
   const int32_t load_result = kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot));
@@ -357,25 +356,20 @@ RenderCpuStats renderCpuStats(
 
   std::vector<double> block_ms;
   block_ms.reserve(blocks);
-  const std::clock_t start_clock = std::clock();
-  for (uint32_t block = 0; block < blocks;) {
-    const uint32_t sample_blocks = std::min(timed_blocks_per_sample, blocks - block);
-    const std::clock_t sample_start_clock = std::clock();
-    for (uint32_t sample_block = 0; sample_block < sample_blocks; ++sample_block) {
-      if (tick != nullptr) tick(engine, warmup_blocks + block + sample_block);
-      kessho_product_render(engine, left.data(), right.data(), frames);
-    }
-    const std::clock_t sample_end_clock = std::clock();
-    const double sample_ms = 1000.0 * static_cast<double>(sample_end_clock - sample_start_clock) /
-                             static_cast<double>(CLOCKS_PER_SEC);
-    const double per_block_ms = sample_ms / static_cast<double>(sample_blocks);
-    for (uint32_t sample_block = 0; sample_block < sample_blocks; ++sample_block) {
-      block_ms.push_back(per_block_ms);
-    }
-    block += sample_blocks;
+  double elapsed_ms = 0.0;
+  for (uint32_t block = 0; block < blocks; ++block) {
+    // Scenario ticks drive state transitions but run outside the Product Core
+    // render callback; keep them out of the render CPU/deadline measurement.
+    if (tick != nullptr) tick(engine, warmup_blocks + block);
+    const std::clock_t block_start_clock = std::clock();
+    kessho_product_render(engine, left.data(), right.data(), frames);
+    const std::clock_t block_end_clock = std::clock();
+    const double block_elapsed_ms =
+        1000.0 * static_cast<double>(block_end_clock - block_start_clock) /
+        static_cast<double>(CLOCKS_PER_SEC);
+    block_ms.push_back(block_elapsed_ms);
+    elapsed_ms += block_elapsed_ms;
   }
-  const std::clock_t end_clock = std::clock();
-  const double elapsed_ms = 1000.0 * static_cast<double>(end_clock - start_clock) / static_cast<double>(CLOCKS_PER_SEC);
   const double rendered_ms = static_cast<double>(blocks * frames) * 1000.0 / 48000.0;
   const double quantum_ms = static_cast<double>(frames) * 1000.0 / 48000.0;
   RenderCpuStats stats{};

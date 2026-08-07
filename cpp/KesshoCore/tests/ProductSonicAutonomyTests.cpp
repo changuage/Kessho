@@ -970,6 +970,8 @@ void requireGlobalAutoCycleSuspendedHostFixture() {
 void requireRoutingMuteGroupSuspendedHostFixture() {
   KesshoProductSnapshotV2 snapshot = makeAutonomousSequencerSnapshot(1009u);
   snapshot.synth_euclid.lane_count = 0u;
+  snapshot.fx.spectral_freeze_enabled = 0u;
+  snapshot.fx.spectral_freeze_active = 0u;
   KesshoProductEngine* engine = kessho_product_create(kLongRunSampleRate, kBlockSize, 0u);
   require(engine != nullptr, "routing mute autonomy engine creation failed");
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
@@ -994,13 +996,15 @@ void requireRoutingMuteGroupSuspendedHostFixture() {
   runtime.next_change_frame = 0u;
 
   const uint32_t freeze_capture_serial = engine->fx.spectral_freeze_capture_serial;
+  require(!engine->fx.spectral_freeze_enabled && !engine->fx.spectral_freeze_active,
+      "routing mute fixture did not start with spectral freeze disabled");
   engine->scheduleRoutingMuteGroups(kBlockSize);
   require(runtime.active_slot < 2u, "routing mute runtime did not choose an eligible slot");
   require(runtime.non_unity_row_mask != 0u, "routing mute runtime did not mark an active fade row");
-  require(engine->fx.spectral_freeze_enabled && engine->fx.spectral_freeze_active,
-      "routing mute did not engage spectral freeze");
-  require(engine->fx.spectral_freeze_capture_serial == freeze_capture_serial + 1u,
-      "routing mute did not capture spectral memory");
+  require(!engine->fx.spectral_freeze_enabled && !engine->fx.spectral_freeze_active,
+      "routing mute unexpectedly engaged spectral freeze");
+  require(engine->fx.spectral_freeze_capture_serial == freeze_capture_serial,
+      "routing mute unexpectedly changed spectral capture state");
   const uint32_t first_slot = runtime.active_slot;
   const uint64_t first_change = runtime.next_change_frame;
   engine->transport.running = false;
@@ -1017,23 +1021,12 @@ void requireRoutingMuteGroupSuspendedHostFixture() {
   }
   require(previous <= 0.0001f, "routing mute fade-down did not finish at zero");
   engine->recallRoutingMuteGroupAt(first_slot == 0u ? 1u : 0u, 0u, 98u);
-  require(engine->fx.spectral_freeze_capture_serial == freeze_capture_serial + 1u,
-      "switching between muted groups recaptured spectral memory");
+  require(engine->fx.spectral_freeze_capture_serial == freeze_capture_serial,
+      "switching between muted groups changed spectral capture state");
   engine->recallRoutingMuteGroupAt(kProductRoutingMuteNoSlot, 0u, 98u);
-  require(engine->fx.spectral_freeze_enabled && !engine->fx.spectral_freeze_active,
-      "routing unmute did not begin spectral freeze release");
-  const uint64_t freeze_disable_frame = runtime.spectral_freeze_disable_render_frame;
-  require(freeze_disable_frame > engine->audio_render_sample_frame,
-      "routing unmute did not defer spectral freeze shutdown");
+  require(!engine->fx.spectral_freeze_enabled && !engine->fx.spectral_freeze_active,
+      "routing unmute changed spectral freeze state");
   runtime.enabled = false;
-  engine->audio_render_sample_frame = freeze_disable_frame - 1u;
-  engine->scheduleRoutingMuteGroups(kBlockSize);
-  require(engine->fx.spectral_freeze_enabled,
-      "routing unmute disabled spectral freeze before its release completed");
-  engine->audio_render_sample_frame = freeze_disable_frame;
-  engine->scheduleRoutingMuteGroups(kBlockSize);
-  require(!engine->fx.spectral_freeze_enabled,
-      "routing unmute did not disable spectral freeze after its release completed");
   runtime.enabled = true;
   require(engine->routingMuteGainForFrame(row, 99u) == 1.0f, "routing mute reset did not restore unity");
   require(
@@ -1121,6 +1114,223 @@ void requireRoutingMuteGroupSuspendedHostFixture() {
   kessho_product_destroy(suspended);
 }
 
+void requireRoutingMuteGroupConfigAndScenePolicies() {
+  KesshoProductEngine* engine = makeDirectRuntimeEngine(1000.0, 1401u);
+  require(engine != nullptr, "routing mute policy engine creation failed");
+  engine->transport.phrase_seconds = 0.1f;
+
+  const auto upload = [&](KesshoProductEngine& target,
+                          uint32_t revision,
+                          uint32_t seed,
+                          bool enabled,
+                          uint32_t mute_mask,
+                          uint32_t transition,
+                          bool eligible,
+                          bool store_slot = true) {
+    KesshoProductEvent begin{};
+    begin.event_kind = KESSHO_PRODUCT_EVENT_KIND_BEGIN_ROUTING_MUTE_GROUPS;
+    begin.target_id = 1u;
+    begin.value = static_cast<float>(revision);
+    begin.value2 = static_cast<float>(seed);
+    begin.value3 = 1.0f;
+    begin.value4 = enabled ? 1.0f : 0.0f;
+    target.beginRoutingMuteGroups(begin);
+
+    if (store_slot) {
+      KesshoProductEvent slot{};
+      slot.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_ROUTING_MUTE_GROUP_SLOT;
+      slot.index = 0u;
+      slot.target_id = mute_mask;
+      slot.value = 1.0f;
+      slot.value2 = 1.0f;
+      slot.value3 = static_cast<float>(transition);
+      slot.flags = eligible ? KESSHO_PRODUCT_ROUTING_MUTE_SLOT_ELIGIBLE : 0u;
+      target.setRoutingMuteGroupSlot(slot);
+    }
+    target.commitRoutingMuteGroups({});
+  };
+
+  upload(*engine, 1u, 17u, true, 1u << kRoutingMuteRowPad1, 10u, true);
+  engine->recallRoutingMuteGroupAt(0u, 10u, 0u);
+  auto& runtime = engine->routing_mute_groups;
+  runtime.rng_state = 123u;
+  runtime.next_slot = 0u;
+  runtime.next_change_frame = 777u;
+  const ProductRoutingMuteRowRamp ramp_before = runtime.rows[kRoutingMuteRowPad1];
+
+  upload(*engine, 2u, 9999u, true, 1u << kRoutingMuteRowPad1, 10u, true);
+  require(runtime.active_slot == 0u && runtime.rng_state == 123u && runtime.next_slot == 0u,
+      "ordinary routing mute commit reset active slot or RNG");
+  require(runtime.next_change_frame == 777u &&
+          runtime.rows[kRoutingMuteRowPad1].start_frame == ramp_before.start_frame &&
+          runtime.rows[kRoutingMuteRowPad1].end_frame == ramp_before.end_frame,
+      "ordinary routing mute commit reset timing or gain ramp");
+
+  upload(*engine, 3u, 10001u, true, 1u << kRoutingMuteRowPad1, 10u, false);
+  require(runtime.active_slot == 0u && !runtime.pending_recall,
+      "eligibility-only routing mute edit reapplied the active slot");
+
+  const ProductRoutingMuteRowRamp ramp_before_off = runtime.rows[kRoutingMuteRowPad1];
+  engine->setRoutingMuteGroupsEnabled(false);
+  require(!runtime.enabled && runtime.active_slot == 0u && runtime.next_change_frame == UINT64_MAX,
+      "routing mute random off did not preserve the active slot");
+  require(runtime.rows[kRoutingMuteRowPad1].start_frame == ramp_before_off.start_frame &&
+          runtime.rows[kRoutingMuteRowPad1].end_frame == ramp_before_off.end_frame,
+      "routing mute random off reset the active gain ramp");
+  engine->setRoutingMuteGroupsEnabled(true);
+  require(runtime.active_slot == 0u && runtime.next_change_frame == 100u,
+      "routing mute random on did not resume at the next phrase");
+
+  upload(*engine, 4u, 10003u, true, 1u << kRoutingMuteRowPad2, 17u, true);
+  require(runtime.active_slot == 0u && runtime.pending_recall && runtime.pending_slot == 0u &&
+          runtime.pending_transition_frames == 17u && runtime.pending_apply_frame == 100u,
+      "active routing mute definition edit was not deferred to a phrase boundary");
+  engine->transport.sample_frame = 100u;
+  engine->scheduleRoutingMuteGroups(1u);
+  require(!runtime.pending_recall && runtime.active_slot == 0u &&
+          runtime.rows[kRoutingMuteRowPad2].target_gain <= 0.0001f &&
+          runtime.next_change_frame > 100u,
+      "deferred routing mute definition edit did not reapply at the boundary");
+
+  upload(*engine, 5u, 10005u, true, 0u, 0u, true, false);
+  require(runtime.pending_recall && runtime.pending_slot == kProductRoutingMuteNoSlot &&
+          runtime.pending_transition_frames == 17u,
+      "deleted active routing mute slot did not schedule release with its old transition");
+  kessho_product_destroy(engine);
+
+  KesshoProductEngine* baseline_engine = makeDirectRuntimeEngine(1000.0, 1402u);
+  require(baseline_engine != nullptr, "routing mute baseline policy engine creation failed");
+  baseline_engine->synth_lane_count = 1u;
+  baseline_engine->transport.phrase_seconds = 0.1f;
+  const auto uploadBaseline = [&](uint32_t baseline_synth_enabled_mask) {
+    KesshoProductEvent baseline_begin{};
+    baseline_begin.event_kind = KESSHO_PRODUCT_EVENT_KIND_BEGIN_ROUTING_MUTE_GROUPS;
+    baseline_begin.target_id = baseline_synth_enabled_mask;
+    baseline_begin.value = 1.0f;
+    baseline_begin.value2 = 23.0f;
+    baseline_begin.value3 = 1.0f;
+    baseline_begin.value4 = 1.0f;
+    baseline_engine->beginRoutingMuteGroups(baseline_begin);
+    KesshoProductEvent baseline_slot{};
+    baseline_slot.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_ROUTING_MUTE_GROUP_SLOT;
+    baseline_slot.index = 0u;
+    baseline_slot.value = 1.0f;
+    baseline_slot.value2 = 1.0f;
+    baseline_slot.value3 = 11.0f;
+    baseline_slot.flags = KESSHO_PRODUCT_ROUTING_MUTE_SLOT_ELIGIBLE;
+    baseline_engine->setRoutingMuteGroupSlot(baseline_slot);
+    KesshoProductEvent overlay_source{};
+    overlay_source.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_ROUTING_MUTE_GROUP_SLOT;
+    overlay_source.index = 0u;
+    overlay_source.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+    overlay_source.value = 0.0f;
+    overlay_source.value2 = static_cast<float>(KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_ENABLED);
+    overlay_source.value3 = 0.0f;
+    overlay_source.value4 = 0.0f;
+    overlay_source.flags = KESSHO_PRODUCT_ROUTING_MUTE_SCENE_COMMAND;
+    baseline_engine->setRoutingMuteGroupSlot(overlay_source);
+    baseline_engine->commitRoutingMuteGroups({});
+  };
+  uploadBaseline(1u);
+  baseline_engine->recallRoutingMuteGroupAt(0u, 11u, 0u);
+  auto& baseline_runtime = baseline_engine->routing_mute_groups;
+  baseline_runtime.rng_state = 321u;
+  baseline_runtime.next_slot = 0u;
+  baseline_runtime.next_change_frame = 777u;
+  const ProductRoutingMuteRowRamp baseline_ramp = baseline_runtime.rows[kRoutingMuteRowPad1];
+  baseline_engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].enabled = true;
+  baseline_engine->synth_lanes[0].enabled = true;
+  uploadBaseline(2u);
+  require(baseline_runtime.active_slot == 0u && !baseline_runtime.pending_recall,
+      "baseline edit changed active routing mute selection");
+  require(!baseline_engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].enabled,
+      "baseline edit punched through the active routing mute source overlay");
+  require(!baseline_engine->synth_lanes[0].enabled,
+      "baseline edit punched through the active routing mute lane overlay");
+  require(baseline_runtime.rng_state == 321u && baseline_runtime.next_slot == 0u &&
+          baseline_runtime.next_change_frame == 777u &&
+          baseline_runtime.rows[kRoutingMuteRowPad1].start_frame == baseline_ramp.start_frame &&
+          baseline_runtime.rows[kRoutingMuteRowPad1].end_frame == baseline_ramp.end_frame,
+      "baseline edit reset active routing mute timing, ramp, or RNG");
+  kessho_product_destroy(baseline_engine);
+
+  KesshoProductEngine* scene_engine = makeDirectRuntimeEngine(1000.0, 1403u);
+  require(scene_engine != nullptr, "routing mute scene engine creation failed");
+  scene_engine->fx.spectral_freeze_enabled = false;
+  scene_engine->fx.spectral_freeze_active = false;
+  KesshoProductEvent begin{};
+  begin.event_kind = KESSHO_PRODUCT_EVENT_KIND_BEGIN_ROUTING_MUTE_GROUPS;
+  begin.value = 1.0f;
+  begin.value2 = 17.0f;
+  begin.value3 = 1.0f;
+  begin.value4 = 0.0f;
+  scene_engine->beginRoutingMuteGroups(begin);
+  KesshoProductEvent slot{};
+  slot.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_ROUTING_MUTE_GROUP_SLOT;
+  slot.index = 0u;
+  slot.value = 1.0f;
+  slot.value2 = 1.0f;
+  slot.value3 = 0.0f;
+  slot.flags = KESSHO_PRODUCT_ROUTING_MUTE_SLOT_ELIGIBLE;
+  scene_engine->setRoutingMuteGroupSlot(slot);
+  const auto addSceneCommand = [&](uint32_t scene_index, uint32_t param_id, float value) {
+    KesshoProductEvent command{};
+    command.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_ROUTING_MUTE_GROUP_SLOT;
+    command.index = scene_index;
+    command.param_id = param_id;
+    command.value = value;
+    command.value2 = static_cast<float>(KESSHO_PRODUCT_EVENT_KIND_SET_PARAM);
+    command.value3 = 0.0f;
+    command.value4 = 0.0f;
+    command.flags = KESSHO_PRODUCT_ROUTING_MUTE_SCENE_COMMAND;
+    require(scene_engine->validateEvent(command) == KESSHO_PRODUCT_OK,
+        "routing mute scene command validation rejected a bounded SET_PARAM");
+    scene_engine->setRoutingMuteGroupSlot(command);
+  };
+  const auto addSourceCommand = [&](uint32_t scene_index, uint32_t source_id, float value) {
+    KesshoProductEvent command{};
+    command.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_ROUTING_MUTE_GROUP_SLOT;
+    command.index = scene_index;
+    command.target_id = source_id;
+    command.value = value;
+    command.value2 = static_cast<float>(KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_ENABLED);
+    command.value3 = 0.0f;
+    command.value4 = 0.0f;
+    command.flags = KESSHO_PRODUCT_ROUTING_MUTE_SCENE_COMMAND;
+    require(scene_engine->validateEvent(command) == KESSHO_PRODUCT_OK,
+        "routing mute scene command validation rejected a bounded SET_SOURCE_ENABLED");
+    scene_engine->setRoutingMuteGroupSlot(command);
+  };
+  addSceneCommand(0u, KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ENABLED_ID, 1.0f);
+  addSceneCommand(0u, KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ACTIVE_ID, 1.0f);
+  addSourceCommand(0u, KESSHO_PRODUCT_SOURCE_PAD1, 0.0f);
+  addSceneCommand(kProductRoutingMuteNoSlot, KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ENABLED_ID, 0.0f);
+  addSceneCommand(kProductRoutingMuteNoSlot, KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ACTIVE_ID, 0.0f);
+  KesshoProductEvent invalid_scene_command{};
+  invalid_scene_command.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_ROUTING_MUTE_GROUP_SLOT;
+  invalid_scene_command.index = 0u;
+  invalid_scene_command.param_id = KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ACTIVE_ID;
+  invalid_scene_command.value2 = static_cast<float>(KESSHO_PRODUCT_EVENT_KIND_SET_PARAM);
+  invalid_scene_command.flags = KESSHO_PRODUCT_ROUTING_MUTE_SCENE_COMMAND |
+      KESSHO_PRODUCT_ROUTING_MUTE_SLOT_ELIGIBLE;
+  require(scene_engine->validateEvent(invalid_scene_command) == KESSHO_PRODUCT_ERROR_INVALID_EVENT,
+      "routing mute scene command accepted an outer slot flag");
+  scene_engine->commitRoutingMuteGroups({});
+  const uint32_t capture_before = scene_engine->fx.spectral_freeze_capture_serial;
+  scene_engine->recallRoutingMuteGroupAt(0u, 0u, 0u);
+  require(scene_engine->fx.spectral_freeze_enabled && scene_engine->fx.spectral_freeze_active &&
+          scene_engine->fx.spectral_freeze_capture_serial == capture_before + 1u &&
+          !scene_engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].enabled,
+      "routing mute scene freeze commands did not enable and capture once");
+  scene_engine->recallRoutingMuteGroupAt(0u, 0u, 0u);
+  require(scene_engine->fx.spectral_freeze_capture_serial == capture_before + 1u,
+      "routing mute scene freeze command recaptured true-to-true");
+  scene_engine->recallRoutingMuteGroupAt(kProductRoutingMuteNoSlot, 0u, 0u);
+  require(!scene_engine->fx.spectral_freeze_enabled && !scene_engine->fx.spectral_freeze_active,
+      "routing mute baseline scene commands did not release spectral freeze");
+  kessho_product_destroy(scene_engine);
+}
+
 // Migration fixtures are added beside their Product Core owners in phases 8F-8L.
 // The static ownership gate requires those named fixtures before declaring parity.
 void requireBaselineSequencerAutonomyFixture() {
@@ -1156,6 +1366,7 @@ int main() {
   requireScatterForegroundSuspendedParity();
   requireSceneProgramSuspendedHostFixture();
   requireRoutingMuteGroupSuspendedHostFixture();
+  requireRoutingMuteGroupConfigAndScenePolicies();
   requireGlobalAutoCycleEventValidation();
   requireGlobalAutoCycleSuspendedHostFixture();
   std::cout << "Kessho Product sonic autonomy baseline tests passed\n";

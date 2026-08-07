@@ -403,8 +403,7 @@ struct SoundscapeRenderBlockCache {
   }
 }
 
-  void KesshoProductEngine::renderSegment(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
-  scheduleRoutingMuteGroups(frames);
+void KesshoProductEngine::renderSegment(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   renderSidechainGains(start, frames);
   renderProductModules(out_l, out_r, start, frames);
   renderSampleVoices(out_l, out_r, start, frames);
@@ -808,6 +807,26 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
       control_segment_end = std::min<uint32_t>(
           control_segment_end,
           cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_journey, frames - cursor)));
+    }
+    const uint64_t routing_mute_frame = nextRoutingMuteGroupFrame();
+    if (routing_mute_frame != UINT64_MAX && routing_mute_frame > transport.sample_frame) {
+      const uint64_t frames_until_routing_mute = routing_mute_frame - transport.sample_frame;
+      control_segment_end = std::min<uint32_t>(
+          control_segment_end,
+          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_routing_mute, frames - cursor)));
+    }
+    if (control_segment_end <= cursor) {
+      control_segment_end = cursor + 1u;
+    }
+    const uint32_t initial_control_segment_frames = control_segment_end - cursor;
+    scheduleRoutingMuteGroups(initial_control_segment_frames);
+    const uint64_t routing_mute_after_schedule = nextRoutingMuteGroupFrame();
+    if (routing_mute_after_schedule != UINT64_MAX &&
+        routing_mute_after_schedule > transport.sample_frame) {
+      const uint64_t frames_until_routing_mute = routing_mute_after_schedule - transport.sample_frame;
+      control_segment_end = std::min<uint32_t>(
+          control_segment_end,
+          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_routing_mute, frames - cursor)));
     }
     if (control_segment_end <= cursor) {
       control_segment_end = cursor + 1u;

@@ -65,17 +65,26 @@ void SpectralFreezeStft::analyze(
   if (!prepared_ || input_frame == nullptr || magnitude == nullptr || phase == nullptr) {
     return;
   }
-  for (int index = 0; index < kFftSize; ++index) {
-    real_[static_cast<size_t>(index)] =
-        input_frame[index] * window_[static_cast<size_t>(index)];
-    imaginary_[static_cast<size_t>(index)] = 0.0f;
-  }
-  transform(false);
+  transformInput(input_frame);
   for (int bin = 0; bin < kBinCount; ++bin) {
     const float real = real_[static_cast<size_t>(bin)];
     const float imaginary = imaginary_[static_cast<size_t>(bin)];
     magnitude[bin] = std::sqrt(real * real + imaginary * imaginary);
     phase[bin] = std::atan2(imaginary, real);
+  }
+}
+
+void SpectralFreezeStft::analyzeMagnitude(
+    const float* input_frame,
+    float* magnitude) noexcept {
+  if (!prepared_ || input_frame == nullptr || magnitude == nullptr) {
+    return;
+  }
+  transformInput(input_frame);
+  for (int bin = 0; bin < kBinCount; ++bin) {
+    const float real = real_[static_cast<size_t>(bin)];
+    const float imaginary = imaginary_[static_cast<size_t>(bin)];
+    magnitude[bin] = std::sqrt(real * real + imaginary * imaginary);
   }
 }
 
@@ -103,6 +112,15 @@ void SpectralFreezeStft::synthesize(
     output_frame[index] = real_[static_cast<size_t>(index)] *
         window_[static_cast<size_t>(index)] * kOverlapNormalization;
   }
+}
+
+void SpectralFreezeStft::transformInput(const float* input_frame) noexcept {
+  for (int index = 0; index < kFftSize; ++index) {
+    real_[static_cast<size_t>(index)] =
+        input_frame[index] * window_[static_cast<size_t>(index)];
+    imaginary_[static_cast<size_t>(index)] = 0.0f;
+  }
+  transform(false);
 }
 
 void SpectralFreezeStft::transform(bool inverse) noexcept {

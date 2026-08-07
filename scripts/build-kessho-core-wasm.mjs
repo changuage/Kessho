@@ -89,6 +89,7 @@ run(findCompiler(), [
   '-std=c++17',
   '-O3',
   '-flto',
+  '-msimd128',
   '-DNDEBUG',
   '-fno-math-errno',
   '-freciprocal-math',

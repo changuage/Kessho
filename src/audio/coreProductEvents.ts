@@ -7,6 +7,7 @@ import {
   KESSHO_PRODUCT_LEAD_PARAM_COUNT,
   KESSHO_PRODUCT_PAD_PARAM_COUNT,
   KESSHO_PRODUCT_PAD_PARAM_SPECS,
+  KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT,
   KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT,
   KESSHO_PRODUCT_SOURCE_IDS as GENERATED_PRODUCT_SOURCE_IDS,
 } from './generated/kesshoProductSchema';
@@ -33,7 +34,9 @@ import { CORE_PRODUCT_SOUNDSCAPE_ASSETS } from './coreProductAssets';
 import {
   SOUNDSCAPE_TEXTURE_PARAM_START,
   SOUNDSCAPE_TEXTURE_PARAM_STRIDE,
+  soundscapeSnapshotPayloadFromState,
 } from './coreProductSoundscapesSnapshot';
+import { migrateLegacyNatureSlotState } from './natureSlots';
 import {
   HARMONY_QUALITY_IDS,
   HARMONY_ROOT_MODE_IDS,
@@ -315,6 +318,146 @@ const CORE_PRODUCT_ROUTING_MUTE_ROW_BITS = Object.freeze({
   reverb: 1 << 15,
 } as const);
 
+/** SetRoutingMuteGroupSlot records with bit 31 carry one ordinary Product event. */
+export const CORE_PRODUCT_ROUTING_MUTE_SCENE_COMMAND_FLAG = 0x80000000;
+export const CORE_PRODUCT_ROUTING_MUTE_SCENE_BASELINE_INDEX = 0xffffffff;
+export const CORE_PRODUCT_ROUTING_MUTE_MAX_SCENE_COMMANDS = 64;
+
+const CORE_PRODUCT_SOUNDSCAPE_WATER_ACTIVE_MODULE_PARAM_INDEX = 0;
+const CORE_PRODUCT_SOUNDSCAPE_INSECTS_ACTIVE_MODULE_PARAM_INDEX = 61;
+const CORE_PRODUCT_SOUNDSCAPE_INSECTS2_ACTIVE_MODULE_PARAM_INDEX = 78;
+const CORE_PRODUCT_SOUNDSCAPE_WATER_MASTER_MODULE_PARAM_INDEX = KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT + 5;
+const CORE_PRODUCT_SOUNDSCAPE_INSECTS_MASTER_MODULE_PARAM_INDEX = KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT + 6;
+const CORE_PRODUCT_SOUNDSCAPE_NATURE_MASTER_MODULE_PARAM_INDEX = KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT + 7;
+const CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ENABLED_PARAM_OFFSET = 6;
+const ROUTING_MUTE_LEGACY_NATURE_ALIAS_PAIRS = [
+  ['oceanSampleEnabled', 'nature1Enabled'],
+  ['birdsEnabled', 'nature2Enabled'],
+  ['birds2Enabled', 'nature3Enabled'],
+  ['frogsEnabled', 'nature4Enabled'],
+] as const;
+
+function routingMuteBoolean(state: SliderState, key: keyof SliderState): number {
+  return state[key] === true ? 1 : 0;
+}
+
+function routingMuteEffectiveReverbMix(state: SliderState): number {
+  if (state.reverbEnabled !== true) return 0;
+  const level = typeof state.reverbLevel === 'number' && Number.isFinite(state.reverbLevel)
+    ? state.reverbLevel
+    : DEFAULT_STATE.reverbLevel;
+  return Math.max(0, Math.min(1, level));
+}
+
+function routingMuteDynamicsEnabled(state: SliderState): boolean {
+  return state.dynamicsEnabled === true ||
+    state.degradeEnabled === true ||
+    state.driftEnabled === true ||
+    state.erosionEnabled === true ||
+    state.dynamicsSaturationEnabled === true;
+}
+
+function routingMuteSceneState(
+  state: SliderState,
+  statePatch: object | undefined,
+): SliderState {
+  if (!statePatch) return state;
+  const rawPatch = statePatch as unknown as Record<string, unknown>;
+  const migratedPatch = migrateLegacyNatureSlotState(rawPatch);
+  const canonicalPatch: Record<string, unknown> = { ...rawPatch };
+  for (const [legacyKey, canonicalKey] of ROUTING_MUTE_LEGACY_NATURE_ALIAS_PAIRS) {
+    if (
+      Object.prototype.hasOwnProperty.call(rawPatch, legacyKey) &&
+      !Object.prototype.hasOwnProperty.call(rawPatch, canonicalKey)
+    ) {
+      canonicalPatch[canonicalKey] = migratedPatch[canonicalKey];
+    }
+  }
+  return { ...state, ...canonicalPatch } as SliderState;
+}
+
+function routingMuteSceneCommands(state: SliderState): CoreProductEvent[] {
+  const commands: CoreProductEvent[] = [
+    createCoreProductSourceEnabledEvent(CORE_PRODUCT_SOURCE_IDS.pad1, state.padEnabled === true),
+    createCoreProductSourceEnabledEvent(CORE_PRODUCT_SOURCE_IDS.pad2, state.pad2Enabled === true),
+    createCoreProductSourceEnabledEvent(CORE_PRODUCT_SOURCE_IDS.lead1, state.leadEnabled === true),
+    createCoreProductSourceEnabledEvent(CORE_PRODUCT_SOURCE_IDS.lead2, state.lead2Enabled === true),
+    createCoreProductSourceEnabledEvent(CORE_PRODUCT_SOURCE_IDS.sample1, state.sample1Enabled === true),
+    createCoreProductSourceEnabledEvent(CORE_PRODUCT_SOURCE_IDS.sample2, state.sample2Enabled === true),
+    createCoreProductSourceEnabledEvent(CORE_PRODUCT_SOURCE_IDS.drum, state.drumEnabled === true),
+    createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxGranularEnabled, routingMuteBoolean(state, 'granularEnabled')),
+    createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxDelayAEnabled, routingMuteBoolean(state, 'delayAEnabled')),
+    createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxDelayBEnabled, routingMuteBoolean(state, 'granularDelayEnabled')),
+    createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEnabled, routingMuteDynamicsEnabled(state) ? 1 : 0),
+    createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDriftEnabled, routingMuteBoolean(state, 'driftEnabled')),
+    createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsErosionEnabled, routingMuteBoolean(state, 'erosionEnabled')),
+    createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationEnabled, routingMuteBoolean(state, 'dynamicsSaturationEnabled')),
+    createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeEnabled, routingMuteBoolean(state, 'spectralFreezeEnabled')),
+    createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeActive, routingMuteBoolean(state, 'spectralFreezeActive')),
+    createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxReverbMix, routingMuteEffectiveReverbMix(state)),
+  ];
+
+  // The exact soundscape snapshot owns the aggregate gates and child active
+  // values. Reuse its custom target layout so scene commands cannot drift from
+  // snapshot loading.
+  const soundscape = soundscapeSnapshotPayloadFromState(state as unknown as Record<string, unknown>);
+  const module = (index: number): number => soundscape.moduleParams[index] ?? 0;
+  const texture = (index: number): number => soundscape.textureParams[index] ?? 0;
+  const moduleTarget = (index: number): number => CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + index;
+  const textureTarget = (slot: number): number => CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE +
+    SOUNDSCAPE_TEXTURE_PARAM_START + slot * SOUNDSCAPE_TEXTURE_PARAM_STRIDE + CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ENABLED_PARAM_OFFSET;
+  const soundscapeParam = (targetId: number, value: number): CoreProductEvent => (
+    createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.SourceLevel, value, targetId)
+  );
+  commands.push(
+    soundscapeParam(moduleTarget(CORE_PRODUCT_SOUNDSCAPE_WATER_ACTIVE_MODULE_PARAM_INDEX), module(CORE_PRODUCT_SOUNDSCAPE_WATER_ACTIVE_MODULE_PARAM_INDEX)),
+    soundscapeParam(moduleTarget(CORE_PRODUCT_SOUNDSCAPE_WATER_MASTER_MODULE_PARAM_INDEX), module(CORE_PRODUCT_SOUNDSCAPE_WATER_MASTER_MODULE_PARAM_INDEX)),
+    soundscapeParam(moduleTarget(CORE_PRODUCT_SOUNDSCAPE_INSECTS_ACTIVE_MODULE_PARAM_INDEX), module(CORE_PRODUCT_SOUNDSCAPE_INSECTS_ACTIVE_MODULE_PARAM_INDEX)),
+    soundscapeParam(moduleTarget(CORE_PRODUCT_SOUNDSCAPE_INSECTS2_ACTIVE_MODULE_PARAM_INDEX), module(CORE_PRODUCT_SOUNDSCAPE_INSECTS2_ACTIVE_MODULE_PARAM_INDEX)),
+    soundscapeParam(moduleTarget(CORE_PRODUCT_SOUNDSCAPE_INSECTS_MASTER_MODULE_PARAM_INDEX), module(CORE_PRODUCT_SOUNDSCAPE_INSECTS_MASTER_MODULE_PARAM_INDEX)),
+    soundscapeParam(moduleTarget(CORE_PRODUCT_SOUNDSCAPE_NATURE_MASTER_MODULE_PARAM_INDEX), module(CORE_PRODUCT_SOUNDSCAPE_NATURE_MASTER_MODULE_PARAM_INDEX)),
+  );
+  for (let slot = 0; slot < 4; slot += 1) {
+    const textureParamIndex = SOUNDSCAPE_TEXTURE_PARAM_START + slot * SOUNDSCAPE_TEXTURE_PARAM_STRIDE + CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ENABLED_PARAM_OFFSET;
+    commands.push(soundscapeParam(textureTarget(slot), texture(textureParamIndex)));
+  }
+
+  // Legacy Waves is represented as a soundscape asset level rather than a
+  // source gate (the Product soundscape source remains a shared container).
+  const oceanAssetId = CORE_PRODUCT_SOUNDSCAPE_ASSETS.ocean.assetId;
+  const oceanLevel = state.oceanSampleEnabled === true && typeof state.oceanSampleLevel === 'number' && Number.isFinite(state.oceanSampleLevel)
+    ? Math.max(0, Math.min(1, state.oceanSampleLevel))
+    : 0;
+  commands.push(soundscapeParam(CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE + oceanAssetId, oceanLevel));
+  return commands;
+}
+
+function routingMuteSceneCommandRecord(slotIndex: number, command: CoreProductEvent): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.SetRoutingMuteGroupSlot,
+    targetId: command.targetId ?? 0,
+    index: slotIndex,
+    paramId: command.paramId ?? 0,
+    value: command.value ?? 0,
+    value2: command.eventKind,
+    value3: command.index ?? 0,
+    value4: command.flags ?? 0,
+    flags: CORE_PRODUCT_ROUTING_MUTE_SCENE_COMMAND_FLAG,
+  };
+}
+
+function appendRoutingMuteSceneCommands(
+  events: CoreProductEvent[],
+  slotIndex: number,
+  state: SliderState,
+): void {
+  const commands = routingMuteSceneCommands(state);
+  if (commands.length > CORE_PRODUCT_ROUTING_MUTE_MAX_SCENE_COMMANDS) {
+    throw new RangeError(`Routing mute group scene ${slotIndex === CORE_PRODUCT_ROUTING_MUTE_SCENE_BASELINE_INDEX ? 'baseline' : slotIndex} has ${commands.length} commands; maximum is ${CORE_PRODUCT_ROUTING_MUTE_MAX_SCENE_COMMANDS}`);
+  }
+  events.push(...commands.map((command) => routingMuteSceneCommandRecord(slotIndex, command)));
+}
+
 function routingMuteGroupRevision(groups: RoutingMuteGroupsState): number {
   const text = JSON.stringify(groups);
   let hash = 2166136261;
@@ -335,12 +478,19 @@ function routingMuteSequencerMasks(state: SliderState): {
   let drumMuted = 0;
   let granular = 0;
   for (let lane = 1; lane <= 4; lane += 1) {
-    if (state.synthEuclideanMasterEnabled === true) synthEnabled |= 1 << (lane - 1);
+    if (
+      state.synthEuclideanMasterEnabled === true &&
+      state[`synthEuclid${lane}Enabled` as keyof SliderState] === true
+    ) synthEnabled |= 1 << (lane - 1);
     if (resolveSequencerLaneAudibility(state, 'synth', lane).muted) synthMuted |= 1 << (lane - 1);
     if (state[`granularV${lane}Enabled` as keyof SliderState] === true) granular |= 1 << (lane - 1);
   }
   for (let lane = 1; lane <= 6; lane += 1) {
-    if (state.drumEnabled === true && state.drumEuclidMasterEnabled === true) drumEnabled |= 1 << (lane - 1);
+    if (
+      state.drumEnabled === true &&
+      state.drumEuclidMasterEnabled === true &&
+      state[`drumEuclid${lane}Enabled` as keyof SliderState] === true
+    ) drumEnabled |= 1 << (lane - 1);
     if (resolveSequencerLaneAudibility(state, 'drum', lane).muted) drumMuted |= 1 << (lane - 1);
   }
   return {
@@ -378,13 +528,14 @@ export function createCoreProductRoutingMuteGroupEvents(
     value3: random?.avoidRepeat === false ? 0 : 1,
     value4: random?.enabled === true ? 1 : 0,
   }];
+  appendRoutingMuteSceneCommands(events, CORE_PRODUCT_ROUTING_MUTE_SCENE_BASELINE_INDEX, options.state);
   groups.slots.slice(0, 8).forEach((slot, index) => {
     if (!slot) return;
     const range = slot.phraseRange ?? { min: defaultMin, max: defaultMax };
     const muteMask = slot.mutedSourceIds.reduce((mask, id) => (
       mask | (CORE_PRODUCT_ROUTING_MUTE_ROW_BITS[id] ?? 0)
     ), 0);
-    const sceneState = { ...options.state, ...(slot.statePatch ?? {}) } as SliderState;
+    const sceneState = routingMuteSceneState(options.state, slot.statePatch);
     const sceneMasks = routingMuteSequencerMasks(sceneState);
     events.push({
       eventKind: KESSHO_PRODUCT_EVENT_IDS.SetRoutingMuteGroupSlot,
@@ -397,6 +548,7 @@ export function createCoreProductRoutingMuteGroupEvents(
       value4: sceneMasks.drum,
       flags: (eligible === null || eligible.has(index) ? 1 : 0) | (sceneMasks.granular << 8),
     });
+    appendRoutingMuteSceneCommands(events, index, sceneState);
   });
   events.push({ eventKind: KESSHO_PRODUCT_EVENT_IDS.CommitRoutingMuteGroups });
   return events;

@@ -27,6 +27,9 @@ bool SpectralFreezeMemory::prepare(double sample_rate, int fft_size) {
     for (auto& channel : previous_live_log_magnitude_) {
       channel.assign(static_cast<size_t>(bins), 0.0f);
     }
+    for (auto& channel : current_live_log_magnitude_) {
+      channel.assign(static_cast<size_t>(bins), 0.0f);
+    }
   } catch (...) {
     bin_count_ = 0;
     return false;
@@ -61,6 +64,9 @@ void SpectralFreezeMemory::reset() noexcept {
     std::fill(channel.begin(), channel.end(), 0.0f);
   }
   for (auto& channel : previous_live_log_magnitude_) {
+    std::fill(channel.begin(), channel.end(), 0.0f);
+  }
+  for (auto& channel : current_live_log_magnitude_) {
     std::fill(channel.begin(), channel.end(), 0.0f);
   }
   band_flux_.fill(0.0f);
@@ -107,14 +113,17 @@ void SpectralFreezeMemory::updateFromLive(
   const float sensitivity = clampUnit(input_sensitivity);
   for (int bin = 0; bin < bin_count_; ++bin) {
     const int band = bandForBin(bin);
-    const float live_left = std::log1p(std::max(0.0f, magnitude_l[bin]));
-    const float live_right = std::log1p(std::max(0.0f, magnitude_r[bin]));
+    const size_t index = static_cast<size_t>(bin);
+    const float live_left = current_live_log_magnitude_[0][index] =
+        std::log1p(std::max(0.0f, magnitude_l[bin]));
+    const float live_right = current_live_log_magnitude_[1][index] =
+        std::log1p(std::max(0.0f, magnitude_r[bin]));
     const float flux_left = std::max(
         0.0f,
-        live_left - previous_live_log_magnitude_[0][static_cast<size_t>(bin)]);
+        live_left - previous_live_log_magnitude_[0][index]);
     const float flux_right = std::max(
         0.0f,
-        live_right - previous_live_log_magnitude_[1][static_cast<size_t>(bin)]);
+        live_right - previous_live_log_magnitude_[1][index]);
     band_flux_[static_cast<size_t>(band)] += 0.5f * (flux_left + flux_right);
   }
 
@@ -127,8 +136,18 @@ void SpectralFreezeMemory::updateFromLive(
         (target - smoothed_band_mask_[static_cast<size_t>(band)]) * 0.25f;
   }
 
-  updateChannel(0, magnitude_l, refresh_amount, sensitivity, clampUnit(sustain));
-  updateChannel(1, magnitude_r, refresh_amount, sensitivity, clampUnit(sustain));
+  updateChannel(
+      0,
+      current_live_log_magnitude_[0].data(),
+      refresh_amount,
+      sensitivity,
+      clampUnit(sustain));
+  updateChannel(
+      1,
+      current_live_log_magnitude_[1].data(),
+      refresh_amount,
+      sensitivity,
+      clampUnit(sustain));
 }
 
 int SpectralFreezeMemory::bandForBin(int bin) const noexcept {
@@ -158,7 +177,7 @@ float SpectralFreezeMemory::bandFlux(int band) const noexcept {
 
 void SpectralFreezeMemory::updateChannel(
     int channel,
-    const float* magnitude,
+    const float* live_log_magnitude,
     float refresh,
     float input_sensitivity,
     float sustain) noexcept {
@@ -166,7 +185,7 @@ void SpectralFreezeMemory::updateChannel(
   auto& previous = previous_live_log_magnitude_[static_cast<size_t>(channel)];
   const float release_base = 0.0005f + (1.0f - sustain) * 0.08f;
   for (int bin = 0; bin < bin_count_; ++bin) {
-    const float live = std::log1p(std::max(0.0f, magnitude[bin]));
+    const float live = live_log_magnitude[bin];
     const float delta = live - held[static_cast<size_t>(bin)];
     const float band_mask = smoothed_band_mask_[static_cast<size_t>(bandForBin(bin))];
     const float attack = std::min(

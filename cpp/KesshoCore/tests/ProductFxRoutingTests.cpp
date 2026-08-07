@@ -1417,8 +1417,8 @@ void requireDirectFxCoverage() {
   require(
       direct.spectral_freeze_module != nullptr &&
           direct.spectral_freeze_module->paramCount() >= 14 &&
-          std::fabs(direct.spectral_freeze_module->params()[13] - 4.0f) < 0.0001f,
-      "spectral freeze transition was not half a phrase");
+          std::fabs(direct.spectral_freeze_module->params()[13] - 0.1f) < 0.0001f,
+      "spectral freeze DSP transition was not fixed at 100ms");
   for (uint32_t source = 0; source < kDynamicsModSourceCount; ++source) {
     for (uint32_t target = 0; target < kDynamicsModTargetCount; ++target) {
       direct.fx.dynamics_mod[source][target] = 0.0f;

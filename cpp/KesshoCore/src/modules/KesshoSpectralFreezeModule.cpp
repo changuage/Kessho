@@ -105,22 +105,7 @@ public:
       return;
     }
 
-    int rendered = 0;
-    while (rendered < frames) {
-      const int block = std::min(kSpectralFreezeBlockSize, std::min(max_block_size_, frames - rendered));
-      float* input = spectral_freeze_instance_get_input_ptr(instance_);
-      float* output = spectral_freeze_instance_get_output_ptr(instance_);
-      for (int i = 0; i < block; ++i) {
-        input[i * 2] = input_l[rendered + i];
-        input[i * 2 + 1] = input_r[rendered + i];
-      }
-      spectral_freeze_instance_process_block(instance_, block);
-      for (int i = 0; i < block; ++i) {
-        output_l[rendered + i] = output[i * 2];
-        output_r[rendered + i] = output[i * 2 + 1];
-      }
-      rendered += block;
-    }
+    spectral_freeze_instance_process_planar(instance_, input_l, input_r, output_l, output_r, frames);
   }
 
   int paramCount() const override {
@@ -136,25 +121,22 @@ public:
       return;
     }
 
-    spectral_freeze_instance_set_mode(instance_, static_cast<int>(std::lround(params_[kParamMode])));
-    spectral_freeze_instance_set_stretch_speed(instance_, params_[kParamStretchSpeed]);
-    spectral_freeze_instance_set_direction(instance_, static_cast<int>(std::lround(params_[kParamDirection])));
-    spectral_freeze_instance_set_position(instance_, params_[kParamPosition]);
-    spectral_freeze_instance_set_refresh(instance_, params_[kParamRefresh]);
-    spectral_freeze_instance_set_input_sensitivity(instance_, params_[kParamInputSensitivity]);
-    spectral_freeze_instance_set_diffusion(instance_, params_[kParamDiffusion]);
-    spectral_freeze_instance_set_tone(instance_, params_[kParamTone]);
-    spectral_freeze_instance_set_width(instance_, params_[kParamWidth]);
-    spectral_freeze_instance_set_sustain(instance_, params_[kParamSustain]);
-    spectral_freeze_instance_set_mix(instance_, params_[kParamMix]);
-    spectral_freeze_instance_set_transition_seconds(instance_, params_[kParamTransitionSeconds]);
-    if (params_[kParamActive] > 0.5f) {
-      spectral_freeze_instance_request_capture(
-          instance_,
-          static_cast<uint32_t>(std::max(0.0f, std::round(params_[kParamCaptureSerial]))));
-    } else {
-      spectral_freeze_instance_set_freeze(instance_, 0);
-    }
+    spectral_freeze_instance_set_params(
+        instance_,
+        params_[kParamActive] > 0.5f ? 1 : 0,
+        static_cast<int>(std::lround(params_[kParamMode])),
+        static_cast<uint32_t>(std::max(0.0f, std::round(params_[kParamCaptureSerial]))),
+        params_[kParamStretchSpeed],
+        static_cast<int>(std::lround(params_[kParamDirection])),
+        params_[kParamPosition],
+        params_[kParamRefresh],
+        params_[kParamInputSensitivity],
+        params_[kParamDiffusion],
+        params_[kParamTone],
+        params_[kParamWidth],
+        params_[kParamSustain],
+        params_[kParamMix],
+        params_[kParamTransitionSeconds]);
   }
 
 private:

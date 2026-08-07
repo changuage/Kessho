@@ -15,11 +15,15 @@ float clampUnit(float value) noexcept {
 }
 
 float wrapPhase(float phase) noexcept {
-  while (phase > kPi) {
-    phase -= kTwoPi;
+  return std::remainder(phase, kTwoPi);
+}
+
+float wrapBoundedPhase(float phase) noexcept {
+  if (phase > kPi) {
+    return phase - kTwoPi;
   }
-  while (phase < -kPi) {
-    phase += kTwoPi;
+  if (phase < -kPi) {
+    return phase + kTwoPi;
   }
   return phase;
 }
@@ -36,6 +40,7 @@ bool SpectralFreezeEngine::prepare(double sample_rate) {
       !memory_.prepare(sample_rate_, SpectralFreezeStft::kFftSize)) {
     return false;
   }
+  updateSpectralCaches();
   reset();
   return true;
 }
@@ -154,7 +159,11 @@ void SpectralFreezeEngine::setParams(const SpectralFreezeParams& incoming) noexc
       0.01f,
       std::isfinite(incoming.transition_seconds) ? incoming.transition_seconds : 0.1f);
   const bool was_active = params_.active;
+  const bool tone_changed = sanitized.tone != params_.tone;
   params_ = sanitized;
+  if (tone_changed) {
+    updateSpectralCaches();
+  }
   crossfade_step_ = 1.0 /
       std::max(1.0, sample_rate_ * static_cast<double>(params_.transition_seconds));
 
@@ -187,11 +196,13 @@ void SpectralFreezeEngine::requestRelease() noexcept {
 
 void SpectralFreezeEngine::processHop() noexcept {
   const bool capture_now = pending_capture_ && hasMinimumCapture();
+  const bool stretch_mode = params_.mode == SpectralFreezeMode::Stretch ||
+      params_.mode == SpectralFreezeMode::LivingStretch;
   const bool live_memory_mode = runtime_state_ == SpectralFreezeRuntimeState::Frozen &&
       (params_.mode == SpectralFreezeMode::Slushy ||
-       params_.mode == SpectralFreezeMode::LivingStretch);
-  if (capture_now || live_memory_mode) {
-    analyzeLiveFrames();
+       (params_.mode == SpectralFreezeMode::LivingStretch && params_.refresh > 0.0f));
+  if ((capture_now && !stretch_mode) || live_memory_mode) {
+    analyzeLiveFrames(params_.mode != SpectralFreezeMode::LivingStretch);
   }
   if (capture_now) {
     runtime_state_ = SpectralFreezeRuntimeState::Capturing;
@@ -204,14 +215,27 @@ void SpectralFreezeEngine::processHop() noexcept {
   ++spectral_frame_index_;
 }
 
-void SpectralFreezeEngine::analyzeLiveFrames() noexcept {
+void SpectralFreezeEngine::analyzeLiveFrames(bool include_phase) noexcept {
   extractLiveMidSideFrames();
-  stft_.analyze(analysis_frame_mid_.data(), live_magnitude_[0].data(), live_phase_[0].data());
-  stft_.analyze(analysis_frame_side_.data(), live_magnitude_[1].data(), live_phase_[1].data());
+  if (include_phase) {
+    stft_.analyze(analysis_frame_mid_.data(), live_magnitude_[0].data(), live_phase_[0].data());
+    stft_.analyze(analysis_frame_side_.data(), live_magnitude_[1].data(), live_phase_[1].data());
+  } else {
+    stft_.analyzeMagnitude(analysis_frame_mid_.data(), live_magnitude_[0].data());
+    stft_.analyzeMagnitude(analysis_frame_side_.data(), live_magnitude_[1].data());
+  }
 }
 
 void SpectralFreezeEngine::analyzeCaptureFrames(double center_position) noexcept {
   analyzeCaptureFramesInto(center_position, source_magnitude_, source_phase_);
+}
+
+void SpectralFreezeEngine::analyzeCaptureMagnitudes(
+    double center_position,
+    std::array<std::array<float, SpectralFreezeStft::kBinCount>, 2>& magnitude) noexcept {
+  extractCaptureMidSideFrames(center_position);
+  stft_.analyzeMagnitude(analysis_frame_mid_.data(), magnitude[0].data());
+  stft_.analyzeMagnitude(analysis_frame_side_.data(), magnitude[1].data());
 }
 
 void SpectralFreezeEngine::analyzeCaptureFramesInto(
@@ -294,10 +318,11 @@ void SpectralFreezeEngine::updatePhaseAdvance(
     bool reset_phase) noexcept {
   const float absolute_delta = std::fabs(analysis_delta_samples);
   for (int bin = 0; bin < SpectralFreezeStft::kBinCount; ++bin) {
-    const float expected_synthesis = kTwoPi * static_cast<float>(bin) *
-        static_cast<float>(SpectralFreezeStft::kHopSize) /
-        static_cast<float>(SpectralFreezeStft::kFftSize);
     if (reset_phase || !source_phase_valid_) {
+      const float expected_synthesis = wrapPhase(
+          kTwoPi * static_cast<float>(bin) *
+          static_cast<float>(SpectralFreezeStft::kHopSize) /
+          static_cast<float>(SpectralFreezeStft::kFftSize));
       phase_advance_[static_cast<size_t>(channel)][static_cast<size_t>(bin)] = expected_synthesis;
       synthesis_phase_[static_cast<size_t>(channel)][static_cast<size_t>(bin)] = phase[bin];
     } else if (absolute_delta >= 1.0f) {
@@ -308,8 +333,8 @@ void SpectralFreezeEngine::updatePhaseAdvance(
           previous_source_phase_[static_cast<size_t>(channel)][static_cast<size_t>(bin)] -
           expected_analysis);
       const float radians_per_sample = (expected_analysis + residual) / analysis_delta_samples;
-      phase_advance_[static_cast<size_t>(channel)][static_cast<size_t>(bin)] =
-          radians_per_sample * static_cast<float>(SpectralFreezeStft::kHopSize);
+      phase_advance_[static_cast<size_t>(channel)][static_cast<size_t>(bin)] = wrapPhase(
+          radians_per_sample * static_cast<float>(SpectralFreezeStft::kHopSize));
     }
     previous_source_phase_[static_cast<size_t>(channel)][static_cast<size_t>(bin)] = phase[bin];
   }
@@ -413,7 +438,7 @@ void SpectralFreezeEngine::blendEndpointMagnitudes(
   const double outgoing_position = approaching_maximum
       ? endpoint - (transition_samples - distance)
       : endpoint + (transition_samples - distance);
-  analyzeCaptureFramesInto(outgoing_position, endpoint_magnitude_, source_phase_);
+  analyzeCaptureMagnitudes(outgoing_position, endpoint_magnitude_);
 
   const float progress = std::clamp(
       static_cast<float>(1.0 - distance / transition_samples),
@@ -438,12 +463,7 @@ void SpectralFreezeEngine::synthesizeChannel(
   const float width = channel == 1 ? params_.width : 1.0f;
   for (int bin = 0; bin < SpectralFreezeStft::kBinCount; ++bin) {
     const size_t index = static_cast<size_t>(bin);
-    const float frequency = static_cast<float>(bin) * static_cast<float>(sample_rate_) /
-        static_cast<float>(SpectralFreezeStft::kFftSize);
-    float stereo_weight = width;
-    if (channel == 1 && frequency < 300.0f) {
-      stereo_weight *= std::clamp((frequency - 80.0f) / 220.0f, 0.0f, 1.0f);
-    }
+    const float stereo_weight = width * (channel == 1 ? side_weight_[index] : 1.0f);
     const float target_log_magnitude = memory_.heldLogMagnitude(channel, bin);
     float& smoothed_log_magnitude =
         smoothed_log_magnitude_[static_cast<size_t>(channel)][index];
@@ -453,16 +473,17 @@ void SpectralFreezeEngine::synthesizeChannel(
     smoothed_log_magnitude += (target_log_magnitude - smoothed_log_magnitude) * smoothing;
     const float magnitude = std::expm1(smoothed_log_magnitude);
     output_magnitude_[index] = magnitude * held_decay_gain_ *
-        normalization_gain_ * toneGainForBin(bin) * stereo_weight;
+        normalization_gain_ * tone_gain_[index] * stereo_weight;
 
-    float phase = synthesis_phase_[static_cast<size_t>(channel)][index] +
-        phase_advance_[static_cast<size_t>(channel)][index];
+    float phase = wrapBoundedPhase(
+        synthesis_phase_[static_cast<size_t>(channel)][index] +
+        phase_advance_[static_cast<size_t>(channel)][index]);
     if (
         params_.diffusion > 0.0f &&
         bin > 0 && bin + 1 < SpectralFreezeStft::kBinCount) {
       phase += deterministicSignedRandom(channel, bin) * params_.diffusion * kPi;
+      phase = wrapBoundedPhase(phase);
     }
-    phase = wrapPhase(phase);
     synthesis_phase_[static_cast<size_t>(channel)][index] = phase;
     output_phase_[index] = phase;
   }
@@ -517,14 +538,20 @@ float SpectralFreezeEngine::deterministicSignedRandom(int channel, int bin) cons
   return static_cast<float>(value & 0x00ffffffu) * (2.0f / 16777215.0f) - 1.0f;
 }
 
-float SpectralFreezeEngine::toneGainForBin(int bin) const noexcept {
-  const float frequency = std::max(
-      20.0f,
-      static_cast<float>(bin) * static_cast<float>(sample_rate_) /
-          static_cast<float>(SpectralFreezeStft::kFftSize));
-  const float octaves = std::clamp(std::log2(frequency / 800.0f), -4.0f, 4.0f);
-  const float decibels = params_.tone * octaves * 1.5f;
-  return std::exp2(decibels / 6.0205999f);
+void SpectralFreezeEngine::updateSpectralCaches() noexcept {
+  const float fft_size = static_cast<float>(SpectralFreezeStft::kFftSize);
+  const float sample_rate = static_cast<float>(sample_rate_);
+  for (int bin = 0; bin < SpectralFreezeStft::kBinCount; ++bin) {
+    const size_t index = static_cast<size_t>(bin);
+    const float frequency = static_cast<float>(bin) * sample_rate / fft_size;
+    const float tone_frequency = std::max(20.0f, frequency);
+    const float octaves = std::clamp(std::log2(tone_frequency / 800.0f), -4.0f, 4.0f);
+    const float decibels = params_.tone * octaves * 1.5f;
+    tone_gain_[index] = std::exp2(decibels / 6.0205999f);
+    side_weight_[index] = frequency < 300.0f
+        ? std::clamp((frequency - 80.0f) / 220.0f, 0.0f, 1.0f)
+        : 1.0f;
+  }
 }
 
 float SpectralFreezeEngine::decayGainPerHop() const noexcept {

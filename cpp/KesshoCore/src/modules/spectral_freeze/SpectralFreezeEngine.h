@@ -37,8 +37,11 @@ private:
   static constexpr int kOutputRingSize = SpectralFreezeStft::kFftSize * 2;
 
   void processHop() noexcept;
-  void analyzeLiveFrames() noexcept;
+  void analyzeLiveFrames(bool include_phase) noexcept;
   void analyzeCaptureFrames(double center_position) noexcept;
+  void analyzeCaptureMagnitudes(
+      double center_position,
+      std::array<std::array<float, SpectralFreezeStft::kBinCount>, 2>& magnitude) noexcept;
   void analyzeCaptureFramesInto(
       double center_position,
       std::array<std::array<float, SpectralFreezeStft::kBinCount>, 2>& magnitude,
@@ -60,9 +63,9 @@ private:
   void addSynthesizedFrame(int channel) noexcept;
   void finishReleaseIfSilent() noexcept;
   void updatePositionTarget() noexcept;
+  void updateSpectralCaches() noexcept;
 
   [[nodiscard]] float deterministicSignedRandom(int channel, int bin) const noexcept;
-  [[nodiscard]] float toneGainForBin(int bin) const noexcept;
   [[nodiscard]] float decayGainPerHop() const noexcept;
   [[nodiscard]] bool hasMinimumCapture() const noexcept;
 
@@ -103,6 +106,8 @@ private:
   std::array<std::array<float, SpectralFreezeStft::kBinCount>, 2> phase_advance_{};
   std::array<std::array<float, SpectralFreezeStft::kBinCount>, 2> synthesis_phase_{};
   std::array<std::array<float, SpectralFreezeStft::kBinCount>, 2> smoothed_log_magnitude_{};
+  std::array<float, SpectralFreezeStft::kBinCount> tone_gain_{};
+  std::array<float, SpectralFreezeStft::kBinCount> side_weight_{};
   std::array<float, SpectralFreezeStft::kBinCount> output_magnitude_{};
   std::array<float, SpectralFreezeStft::kBinCount> output_phase_{};
   std::array<std::array<float, kOutputRingSize>, 2> output_ring_{};

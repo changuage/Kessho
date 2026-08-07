@@ -352,8 +352,6 @@ static inline float fast_tanh(float x) {
 
 // Branchless vectorized tanh: x*(27+x²)/(27+9x²) clamped to [-1,1]
 static inline v128_t fast_tanh_v4(v128_t x) {
-    const v128_t pos3  = wasm_f32x4_splat(3.0f);
-    const v128_t neg3  = wasm_f32x4_splat(-3.0f);
     const v128_t one   = wasm_f32x4_splat(1.0f);
     const v128_t neg1  = wasm_f32x4_splat(-1.0f);
     const v128_t c27   = wasm_f32x4_splat(27.0f);

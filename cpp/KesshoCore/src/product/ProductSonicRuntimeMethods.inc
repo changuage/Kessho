@@ -55,7 +55,10 @@
   void setRoutingMuteGroupsEnabled(bool enabled);
   void recallRoutingMuteGroup(uint32_t slot_index, uint32_t transition_frames = UINT32_MAX);
   void recallRoutingMuteGroupAt(uint32_t slot_index, uint32_t transition_frames, uint64_t start_frame);
+  void applyRoutingMuteSceneCommands(const ProductRoutingMuteSceneCommands& commands);
+  void applyRoutingMuteDiscreteState(uint32_t slot_index);
   void scheduleRoutingMuteGroups(uint32_t frames);
+  uint64_t nextRoutingMuteGroupFrame() const;
   float routingMuteGainForFrame(uint32_t row, uint64_t absolute_frame);
   bool routingMuteRowSuppressed(uint32_t row) const;
   uint32_t routingMuteRowForSource(uint32_t source_id) const;

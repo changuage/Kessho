@@ -6,6 +6,8 @@ import {
   collectSequencerMuteBooleanKeys,
   createEmptyRoutingMuteGroupsState,
   createRoutingMuteGroupTransitionController,
+  getRoutingMuteGroupBooleanStateSignature,
+  getRoutingMuteGroupSeed,
   normalizeRoutingMuteGroupRandomSettings,
   normalizeRoutingMuteGroupSceneRefSlot,
   normalizeRoutingMuteGroupSlot,
@@ -266,6 +268,50 @@ function testNormalizeFiltersSceneKeysAndDropsLevels(): void {
       waterEnabled: false,
     },
   });
+}
+
+function testSpectralFreezeBooleansAreCapturedAndNormalizedWithoutSerial(): void {
+  const slot = captureRoutingMuteGroupSlot(makeState({
+    spectralFreezeEnabled: true,
+    spectralFreezeActive: true,
+    spectralFreezeCaptureSerial: 41,
+  }));
+
+  assert.equal(slot.statePatch?.spectralFreezeEnabled, true);
+  assert.equal(slot.statePatch?.spectralFreezeActive, true);
+  assert.equal('spectralFreezeCaptureSerial' in (slot.statePatch ?? {}), false);
+
+  const normalized = normalizeRoutingMuteGroupSlot({
+    mutedSourceIds: [],
+    statePatch: {
+      spectralFreezeEnabled: false,
+      spectralFreezeActive: true,
+      spectralFreezeCaptureSerial: 99,
+    },
+  });
+  assert.deepStrictEqual(normalized?.statePatch, {
+    spectralFreezeEnabled: false,
+    spectralFreezeActive: true,
+  });
+}
+
+function testBooleanStateSignatureTracksEveryCapturedBoolean(): void {
+  const initial = makeState({ spectralFreezeEnabled: false, spectralFreezeActive: false });
+  const changed = makeState({ spectralFreezeEnabled: false, spectralFreezeActive: true });
+  const initialSignature = getRoutingMuteGroupBooleanStateSignature(initial);
+  assert.equal(getRoutingMuteGroupBooleanStateSignature(initial), initialSignature);
+  assert.notEqual(getRoutingMuteGroupBooleanStateSignature(changed), initialSignature);
+}
+
+function testRoutingMuteGroupSeedIsDeterministicAndPositive(): void {
+  const explicit = { ...makeState(), seed: 73 } as SliderState & { seed: number };
+  assert.equal(getRoutingMuteGroupSeed(explicit), 73);
+
+  const fallback = makeState();
+  const first = getRoutingMuteGroupSeed(fallback);
+  const second = getRoutingMuteGroupSeed({ ...fallback });
+  assert.equal(first, second);
+  assert.ok(first > 0);
 }
 
 function testCaptureUsesRegistryAudibilityAndEligibility(): void {
@@ -817,6 +863,9 @@ testRandomSettingsAndSlotMetadataNormalization();
 testSourceEligibilityMatchesRoutingRegistry();
 testEarthFamilyRoutingPredicates();
 testNormalizeFiltersSceneKeysAndDropsLevels();
+testSpectralFreezeBooleansAreCapturedAndNormalizedWithoutSerial();
+testBooleanStateSignatureTracksEveryCapturedBoolean();
+testRoutingMuteGroupSeedIsDeterministicAndPositive();
 testCaptureUsesRegistryAudibilityAndEligibility();
 testCaptureIncludesPerformanceMuteSceneWithoutSends();
 testCollectSequencerMuteBooleanKeysFromStateShape();

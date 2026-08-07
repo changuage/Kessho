@@ -91,6 +91,33 @@ void setFreeze(KesshoSpectralFreezeInstance* instance, int active) noexcept {
   commit(instance);
 }
 
+void processPlanarInstance(
+    KesshoSpectralFreezeInstance* instance,
+    const float* input_l,
+    const float* input_r,
+    float* output_l,
+    float* output_r,
+    int frames) noexcept {
+  if (
+      instance == nullptr || !instance->initialized ||
+      input_l == nullptr || input_r == nullptr ||
+      output_l == nullptr || output_r == nullptr || frames <= 0) {
+    return;
+  }
+
+  int rendered = 0;
+  while (rendered < frames) {
+    const int block = std::min(frames - rendered, KESSHO_SPECTRAL_FREEZE_MAX_BLOCK_SIZE);
+    instance->engine.process(
+        input_l + rendered,
+        input_r + rendered,
+        output_l + rendered,
+        output_r + rendered,
+        block);
+    rendered += block;
+  }
+}
+
 void processInstance(KesshoSpectralFreezeInstance* instance, int block_size) noexcept {
   if (instance == nullptr || !instance->initialized || block_size <= 0) {
     return;
@@ -100,7 +127,8 @@ void processInstance(KesshoSpectralFreezeInstance* instance, int block_size) noe
     instance->planar_l[static_cast<size_t>(frame)] = instance->input[static_cast<size_t>(frame * 2)];
     instance->planar_r[static_cast<size_t>(frame)] = instance->input[static_cast<size_t>(frame * 2 + 1)];
   }
-  instance->engine.process(
+  processPlanarInstance(
+      instance,
       instance->planar_l.data(),
       instance->planar_r.data(),
       instance->planar_l.data(),
@@ -256,6 +284,50 @@ float* spectral_freeze_instance_get_output_ptr(KesshoSpectralFreezeInstance* ins
 
 void spectral_freeze_instance_process_block(KesshoSpectralFreezeInstance* instance, int block_size) {
   processInstance(instance, block_size);
+}
+
+void spectral_freeze_instance_process_planar(
+    KesshoSpectralFreezeInstance* instance,
+    const float* input_l,
+    const float* input_r,
+    float* output_l,
+    float* output_r,
+    int frames) {
+  processPlanarInstance(instance, input_l, input_r, output_l, output_r, frames);
+}
+
+void spectral_freeze_instance_set_params(
+    KesshoSpectralFreezeInstance* instance,
+    int active,
+    int mode,
+    uint32_t capture_serial,
+    float stretch_speed,
+    int direction,
+    float position,
+    float refresh,
+    float input_sensitivity,
+    float diffusion,
+    float tone,
+    float width,
+    float sustain,
+    float mix,
+    float transition_seconds) {
+  if (instance == nullptr) return;
+  instance->params.active = active != 0;
+  instance->params.mode = modeFromInt(mode);
+  instance->params.capture_serial = capture_serial;
+  instance->params.stretch_speed = stretch_speed;
+  instance->params.direction = directionFromInt(direction);
+  instance->params.position = position;
+  instance->params.refresh = refresh;
+  instance->params.input_sensitivity = input_sensitivity;
+  instance->params.diffusion = diffusion;
+  instance->params.tone = tone;
+  instance->params.width = width;
+  instance->params.sustain = sustain;
+  instance->params.mix = mix;
+  instance->params.transition_seconds = transition_seconds;
+  commit(instance);
 }
 
 void spectral_freeze_instance_set_freeze(KesshoSpectralFreezeInstance* instance, int active) {

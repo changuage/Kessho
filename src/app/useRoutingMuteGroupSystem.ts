@@ -8,6 +8,8 @@ import {
 import {
   captureRoutingMuteGroupSlot,
   createRoutingMuteGroupTransitionController,
+  getRoutingMuteGroupBooleanStateSignature,
+  getRoutingMuteGroupSeed,
   isRoutingMuteGroupSlotStored,
   normalizeRoutingMuteGroupPhraseRange,
   normalizeRoutingMuteGroupRandomSettings,
@@ -144,16 +146,14 @@ export function useRoutingMuteGroupSystem({
   const [runtimeSnapshot, setRuntimeSnapshot] = useState<RoutingMuteGroupRuntimeSnapshot>(() => (
     emptyRuntimeSnapshot(0)
   ));
-  const productSceneStateSignature = [
-    state.synthEuclideanMasterEnabled,
-    state.drumEnabled,
-    state.drumEuclidMasterEnabled,
-    ...Array.from({ length: 4 }, (_, index) => state[`synthEuclid${index + 1}Enabled` as keyof SliderState]),
-    ...Array.from({ length: 4 }, (_, index) => state[`synthEuclid${index + 1}Solo` as keyof SliderState]),
-    ...Array.from({ length: 6 }, (_, index) => state[`drumEuclid${index + 1}Enabled` as keyof SliderState]),
-    ...Array.from({ length: 6 }, (_, index) => state[`drumEuclid${index + 1}Solo` as keyof SliderState]),
-    ...Array.from({ length: 4 }, (_, index) => state[`granularV${index + 1}Enabled` as keyof SliderState]),
-  ].map((value) => value === true ? '1' : '0').join('');
+  const productSceneStateSignature = useMemo(
+    () => getRoutingMuteGroupBooleanStateSignature(state),
+    [state],
+  );
+  const productSceneSeed = useMemo(
+    () => getRoutingMuteGroupSeed(state),
+    [state],
+  );
 
   const stateRef = useRef(state);
   const muteGroupsRef = useRef(normalizedMuteGroups);
@@ -256,10 +256,10 @@ export function useRoutingMuteGroupSystem({
     productEngine.enqueueEvents(createCoreProductRoutingMuteGroupEvents(normalizedMuteGroups, {
       sampleRate: telemetry?.sampleRate ?? 48_000,
       phraseSeconds: phraseSecondsRef.current,
-      seed: 1,
+      seed: productSceneSeed,
       state: stateRef.current,
     }));
-  }, [phraseSeconds, productRuntimeActive, productSceneStateSignature, routingMuteGroups]);
+  }, [phraseSeconds, productRuntimeActive, productSceneSeed, productSceneStateSignature, routingMuteGroups]);
 
   useEffect(() => {
     if (!productRuntimeActive || typeof window === 'undefined') return undefined;
@@ -515,6 +515,12 @@ export function useRoutingMuteGroupSystem({
     const nextGroups = setRoutingMuteGroupSlot(normalizedGroups, targetSlotIndex, slot);
     muteGroupsRef.current = nextGroups;
     onRoutingMuteGroupsChangeRef.current(nextGroups);
+    // Product re-applies an edited active slot at the next phrase boundary as
+    // part of its config commit. The legacy controller has no native commit,
+    // so reapply the slot immediately to keep its active state in sync.
+    if (!productRuntimeActive && activeSlotIndexRef.current === targetSlotIndex && slot) {
+      controller.recall(slot, targetSlotIndex, isRunningRef.current ? undefined : { transitionMs: 0 });
+    }
     setSelectedSlotIndex(targetSlotIndex);
     if (
       (nextGroups.random ?? normalizeRoutingMuteGroupRandomSettings(undefined)).enabled
@@ -524,7 +530,7 @@ export function useRoutingMuteGroupSystem({
       resumeOrStartRandomCycle();
     }
     return { slotIndex: targetSlotIndex, wasStored };
-  }, [controller, resumeOrStartRandomCycle, setSelectedSlotIndex]);
+  }, [controller, productRuntimeActive, resumeOrStartRandomCycle, setSelectedSlotIndex]);
 
   const pressSlot = useCallback((slotIndex: number) => {
     const targetSlotIndex = clampSlotIndex(slotIndex);

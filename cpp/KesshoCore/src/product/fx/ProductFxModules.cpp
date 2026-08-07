@@ -48,7 +48,7 @@ void KesshoProductEngine::configureSpectralFreezeModule() {
   params[10] = clampFloat(fx.spectral_freeze_width, 0.0f, 1.0f);
   params[11] = clampFloat(fx.spectral_freeze_sustain, 0.0f, 1.0f);
   params[12] = 1.0f;
-  params[13] = static_cast<float>(transport.samplesPerPhrase(sample_rate) / sample_rate * 0.5);
+  params[13] = 0.1f;
   spectral_freeze_module->commitParams();
 }
 

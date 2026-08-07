@@ -91,6 +91,8 @@ const PRODUCT_SEQUENCER_IDS = new Set([1, 2]);
 const PRODUCT_DRUM_VOICE_COUNT = 7;
 const PRODUCT_GRAPH_TAP_COUNT = 116;
 const DAW_OUTPUT_MAX_CHANNELS = 32;
+const PERF_HISTOGRAM_BINS_PER_QUANTUM = 32;
+const PERF_HISTOGRAM_BIN_COUNT = 128;
 const STEM_PEAK_COUNT = 9;
 const EARTH_TEXTURE_CAPACITY = 4;
 const MODULATION_DEBUG_CAPACITY = 96;
@@ -195,7 +197,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.perfCount = 0;
     this.perfPeakMs = 0;
     this.perfMissedQuantumCount = 0;
-    this.perfBlockMs = [];
+    this.perfHistogram = new Uint32Array(PERF_HISTOGRAM_BIN_COUNT);
     this.lastRenderCpuPercent = 0;
     this.lastRenderCpuPeakPercent = 0;
     this.lastRenderP95Ms = 0;
@@ -479,7 +481,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.perfCount = 0;
     this.perfPeakMs = 0;
     this.perfMissedQuantumCount = 0;
-    this.perfBlockMs.length = 0;
+    this.perfHistogram.fill(0);
   }
 
   recordPerfBlock(startMs, frames) {
@@ -492,21 +494,28 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     if (budgetMs > 0 && elapsedMs > budgetMs) {
       this.perfMissedQuantumCount += 1;
     }
-    this.perfBlockMs.push(elapsedMs);
-    if (this.perfBlockMs.length > 2048) {
-      this.perfBlockMs.shift();
+    if (budgetMs > 0) {
+      const bin = Math.min(
+        PERF_HISTOGRAM_BIN_COUNT - 1,
+        Math.floor((elapsedMs / budgetMs) * PERF_HISTOGRAM_BINS_PER_QUANTUM),
+      );
+      this.perfHistogram[bin] += 1;
     }
   }
 
-  percentile(values, percentileValue) {
-    if (values.length === 0) return 0;
-    const sorted = [...values].sort((left, right) => left - right);
-    const rank = percentileValue * (sorted.length - 1);
-    const lo = Math.floor(rank);
-    const hi = Math.ceil(rank);
-    if (lo === hi) return sorted[lo];
-    const t = rank - lo;
-    return sorted[lo] + (sorted[hi] - sorted[lo]) * t;
+  perfPercentile(percentileValue, budgetMs) {
+    if (this.perfCount === 0 || budgetMs <= 0) return 0;
+    const target = Math.ceil(this.perfCount * percentileValue);
+    let observed = 0;
+    for (let bin = 0; bin < PERF_HISTOGRAM_BIN_COUNT; bin += 1) {
+      observed += this.perfHistogram[bin];
+      if (observed >= target) {
+        return bin === PERF_HISTOGRAM_BIN_COUNT - 1
+          ? this.perfPeakMs
+          : ((bin + 1) / PERF_HISTOGRAM_BINS_PER_QUANTUM) * budgetMs;
+      }
+    }
+    return this.perfPeakMs;
   }
 
   flushPerfWindow() {
@@ -515,8 +524,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const averageMs = this.perfTotalMs / this.perfCount;
     this.lastRenderCpuPercent = budgetMs > 0 ? (averageMs / budgetMs) * 100 : 0;
     this.lastRenderCpuPeakPercent = budgetMs > 0 ? (this.perfPeakMs / budgetMs) * 100 : 0;
-    this.lastRenderP95Ms = this.percentile(this.perfBlockMs, 0.95);
-    this.lastRenderP99Ms = this.percentile(this.perfBlockMs, 0.99);
+    this.lastRenderP95Ms = this.perfPercentile(0.95, budgetMs);
+    this.lastRenderP99Ms = this.perfPercentile(0.99, budgetMs);
     this.lastMissedQuantumCount = this.perfMissedQuantumCount;
     this.resetPerfWindow();
   }

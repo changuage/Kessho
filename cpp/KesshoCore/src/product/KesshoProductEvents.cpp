@@ -585,6 +585,30 @@ void retimeSequencerLanePreservingPhase(
           ? KESSHO_PRODUCT_OK
           : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     case KESSHO_PRODUCT_EVENT_KIND_SET_ROUTING_MUTE_GROUP_SLOT:
+      if ((event.flags & KESSHO_PRODUCT_ROUTING_MUTE_SCENE_COMMAND) != 0u) {
+        if ((event.flags & ~KESSHO_PRODUCT_ROUTING_MUTE_SCENE_COMMAND) != 0u ||
+            !finiteEventValues(event) ||
+            (event.index >= kProductRoutingMuteGroupSlotCount && event.index != UINT32_MAX) ||
+            event.value2 < 1.0f || event.value2 > 16777215.0f ||
+            event.value3 < 0.0f || event.value3 > 16777215.0f ||
+            event.value4 < 0.0f || event.value4 > 16777215.0f) {
+          return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+        }
+        const uint32_t nested_kind = static_cast<uint32_t>(std::lround(event.value2));
+        const uint32_t nested_index = static_cast<uint32_t>(std::lround(event.value3));
+        const uint32_t nested_flags = static_cast<uint32_t>(std::lround(event.value4));
+        if (nested_kind == KESSHO_PRODUCT_EVENT_KIND_SET_PARAM) {
+          return event.param_id != 0u ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+        }
+        if (nested_kind == KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_ENABLED) {
+          return valid_source(event.target_id) && event.value >= 0.0f && event.value <= 1.0f &&
+                  (nested_flags & ~KESSHO_PRODUCT_SOURCE_ENABLE_IMMEDIATE) == 0u
+              ? KESSHO_PRODUCT_OK
+              : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+        }
+        (void)nested_index;
+        return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      }
       return event.index < kProductRoutingMuteGroupSlotCount &&
               event.target_id < (1u << kProductRoutingMuteRowCount) &&
               event.value >= 1.0f && event.value <= 800.0f &&
@@ -2499,59 +2523,59 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID:
       fx.spectral_freeze_mix = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureSpectralFreezeModule();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ENABLED_ID:
       fx.spectral_freeze_enabled = event.value >= 0.5f;
-      configureFxModules();
+      configureSpectralFreezeModule();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ACTIVE_ID:
       fx.spectral_freeze_active = event.value >= 0.5f;
-      configureFxModules();
+      configureSpectralFreezeModule();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MODE_ID:
       fx.spectral_freeze_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 3u);
-      configureFxModules();
+      configureSpectralFreezeModule();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_CAPTURE_SERIAL_ID:
       fx.spectral_freeze_capture_serial = static_cast<uint32_t>(std::max(0.0f, std::round(event.value)));
-      configureFxModules();
+      configureSpectralFreezeModule();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_STRETCH_SPEED_ID:
       fx.spectral_freeze_stretch_speed = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureSpectralFreezeModule();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DIRECTION_ID:
       fx.spectral_freeze_direction = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
-      configureFxModules();
+      configureSpectralFreezeModule();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_POSITION_ID:
       fx.spectral_freeze_position = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureSpectralFreezeModule();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_REFRESH_ID:
       fx.spectral_freeze_refresh = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureSpectralFreezeModule();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_INPUT_SENSITIVITY_ID:
       fx.spectral_freeze_input_sensitivity = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureSpectralFreezeModule();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DIFFUSION_ID:
       fx.spectral_freeze_diffusion = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureSpectralFreezeModule();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_TONE_ID:
       fx.spectral_freeze_tone = clampFloat(event.value, -1.0f, 1.0f);
-      configureFxModules();
+      configureSpectralFreezeModule();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_WIDTH_ID:
       fx.spectral_freeze_width = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureSpectralFreezeModule();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SUSTAIN_ID:
       fx.spectral_freeze_sustain = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureSpectralFreezeModule();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ROUTING_ID:
       fx.spectral_freeze_routing = event.value >= 0.5f ? 1u : 0u;

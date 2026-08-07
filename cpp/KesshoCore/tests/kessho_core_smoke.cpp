@@ -294,6 +294,7 @@ int main() {
     std::vector<float> reconstructed(static_cast<size_t>(render_samples), 0.0f);
     std::vector<float> frame(static_cast<size_t>(SpectralFreezeStft::kFftSize), 0.0f);
     std::vector<float> magnitude(static_cast<size_t>(SpectralFreezeStft::kBinCount), 0.0f);
+    std::vector<float> magnitude_only(static_cast<size_t>(SpectralFreezeStft::kBinCount), 0.0f);
     std::vector<float> phase(static_cast<size_t>(SpectralFreezeStft::kBinCount), 0.0f);
     std::vector<float> synthesized(static_cast<size_t>(SpectralFreezeStft::kFftSize), 0.0f);
     for (int sample = 0; sample < render_samples; ++sample) {
@@ -307,6 +308,14 @@ int main() {
       const int start = frame_index * SpectralFreezeStft::kHopSize;
       std::copy_n(input.data() + start, SpectralFreezeStft::kFftSize, frame.data());
       stft.analyze(frame.data(), magnitude.data(), phase.data());
+      stft.analyzeMagnitude(frame.data(), magnitude_only.data());
+      for (int bin = 0; bin < SpectralFreezeStft::kBinCount; ++bin) {
+        requireNear(
+            magnitude_only[static_cast<size_t>(bin)],
+            magnitude[static_cast<size_t>(bin)],
+            1.0e-6,
+            "spectral magnitude-only analysis diverged from full analysis");
+      }
       stft.synthesize(magnitude.data(), phase.data(), synthesized.data());
       for (int sample = 0; sample < SpectralFreezeStft::kFftSize; ++sample) {
         reconstructed[static_cast<size_t>(start + sample)] +=

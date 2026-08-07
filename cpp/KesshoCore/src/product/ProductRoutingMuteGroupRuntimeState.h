@@ -2,11 +2,14 @@
 
 #include <cstdint>
 
+#include "KesshoCore/KesshoProductEvents.h"
+
 namespace kessho::product::internal {
 
 constexpr uint32_t kProductRoutingMuteGroupSlotCount = 8u;
 constexpr uint32_t kProductRoutingMuteRowCount = 16u;
 constexpr uint32_t kProductRoutingMuteNoSlot = UINT32_MAX;
+constexpr uint32_t kProductRoutingMuteGroupMaxSceneCommands = 64u;
 
 enum ProductRoutingMuteRow : uint32_t {
   kRoutingMuteRowPad1 = 0u,
@@ -27,6 +30,11 @@ enum ProductRoutingMuteRow : uint32_t {
   kRoutingMuteRowReverb,
 };
 
+struct ProductRoutingMuteSceneCommands {
+  KesshoProductEvent events[kProductRoutingMuteGroupMaxSceneCommands]{};
+  uint32_t count = 0u;
+};
+
 struct ProductRoutingMuteGroupSlot {
   uint32_t mute_mask = 0u;
   uint32_t min_hold_quarter_phrases = 8u;
@@ -37,6 +45,7 @@ struct ProductRoutingMuteGroupSlot {
   uint32_t drum_lane_enabled_mask = 0u;
   uint32_t drum_lane_muted_mask = 0u;
   uint32_t granular_voice_enabled_mask = 0u;
+  ProductRoutingMuteSceneCommands scene_commands{};
   bool stored = false;
   bool eligible = false;
 };
@@ -63,14 +72,28 @@ struct ProductRoutingMuteGroupRuntimeState {
   uint32_t baseline_drum_lane_enabled_mask = 0u;
   uint32_t baseline_drum_lane_muted_mask = 0u;
   uint32_t baseline_granular_voice_enabled_mask = 0u;
+  ProductRoutingMuteSceneCommands baseline_scene_commands{};
+  ProductRoutingMuteSceneCommands staging_baseline_scene_commands{};
   uint32_t non_unity_row_mask = 0u;
   uint64_t next_change_frame = UINT64_MAX;
   uint64_t fade_end_frame = 0u;
-  uint64_t spectral_freeze_disable_render_frame = UINT64_MAX;
+  uint64_t pending_apply_frame = UINT64_MAX;
+  uint32_t pending_slot = kProductRoutingMuteNoSlot;
+  uint32_t pending_transition_frames = 0u;
+  uint32_t staging_revision = 0u;
+  uint32_t staging_rng_state = 1u;
+  uint32_t staging_baseline_synth_lane_enabled_mask = 0u;
+  uint32_t staging_baseline_synth_lane_muted_mask = 0u;
+  uint32_t staging_baseline_drum_lane_enabled_mask = 0u;
+  uint32_t staging_baseline_drum_lane_muted_mask = 0u;
+  uint32_t staging_baseline_granular_voice_enabled_mask = 0u;
   bool staging_open = false;
   bool enabled = false;
   bool avoid_repeat = true;
-  bool spectral_freeze_engaged = false;
+  bool staging_enabled = false;
+  bool staging_avoid_repeat = true;
+  bool configured = false;
+  bool pending_recall = false;
 };
 
 } // namespace kessho::product::internal

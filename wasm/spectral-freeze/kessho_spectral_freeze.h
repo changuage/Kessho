@@ -58,6 +58,29 @@ float* spectral_freeze_instance_get_input_ptr(KesshoSpectralFreezeInstance* inst
 float* spectral_freeze_instance_get_output_ptr(KesshoSpectralFreezeInstance* instance);
 
 void spectral_freeze_instance_process_block(KesshoSpectralFreezeInstance* instance, int block_size);
+void spectral_freeze_instance_process_planar(
+    KesshoSpectralFreezeInstance* instance,
+    const float* input_l,
+    const float* input_r,
+    float* output_l,
+    float* output_r,
+    int frames);
+void spectral_freeze_instance_set_params(
+    KesshoSpectralFreezeInstance* instance,
+    int active,
+    int mode,
+    uint32_t capture_serial,
+    float stretch_speed,
+    int direction,
+    float position,
+    float refresh,
+    float input_sensitivity,
+    float diffusion,
+    float tone,
+    float width,
+    float sustain,
+    float mix,
+    float transition_seconds);
 void spectral_freeze_instance_set_freeze(KesshoSpectralFreezeInstance* instance, int active);
 void spectral_freeze_instance_set_slushy(KesshoSpectralFreezeInstance* instance, int slushy);
 void spectral_freeze_instance_set_speed(KesshoSpectralFreezeInstance* instance, float speed);

@@ -1,5 +1,6 @@
 import type { SliderState } from '../state';
 import { PARAM_REGISTRY } from '../../presets/ParamRegistry';
+import { xmur3 } from '../../audio/rng';
 import {
   getRoutingSourceDef,
   ROUTING_SOURCE_REGISTRY,
@@ -58,6 +59,12 @@ export const ROUTING_MUTE_GROUP_EARTH_BOOLEAN_KEYS = [
   'insects2Enabled',
 ] as const satisfies readonly (keyof SliderState)[];
 
+/** Product booleans that are part of a saved routing/mute scene. */
+export const ROUTING_MUTE_GROUP_PRODUCT_BOOLEAN_KEYS = [
+  'spectralFreezeEnabled',
+  'spectralFreezeActive',
+] as const satisfies readonly (keyof SliderState)[];
+
 function uniqueStateKeys(keys: readonly (keyof SliderState)[]): (keyof SliderState)[] {
   return [...new Set(keys)];
 }
@@ -71,6 +78,7 @@ export type RoutingMuteGroupSourceBooleanKey = keyof SliderState;
 export const ROUTING_MUTE_GROUP_BOOLEAN_STATE_KEYS: readonly (keyof SliderState)[] = uniqueStateKeys([
   ...ROUTING_MUTE_GROUP_SOURCE_BOOLEAN_KEYS,
   ...ROUTING_MUTE_GROUP_EARTH_BOOLEAN_KEYS,
+  ...ROUTING_MUTE_GROUP_PRODUCT_BOOLEAN_KEYS,
 ]);
 export type RoutingMuteGroupBooleanStateKey = keyof SliderState;
 export type RoutingMuteGroupStatePatchKey = RoutingMuteGroupBooleanStateKey;
@@ -255,7 +263,48 @@ export function getRoutingMuteGroupBooleanStateKeys(state: SliderState): readonl
     ...ROUTING_MUTE_GROUP_SOURCE_BOOLEAN_KEYS,
     ...collectSequencerMuteBooleanKeys(state),
     ...ROUTING_MUTE_GROUP_EARTH_BOOLEAN_KEYS,
+    ...ROUTING_MUTE_GROUP_PRODUCT_BOOLEAN_KEYS,
   ]);
+}
+
+/**
+ * Stable signature for the boolean baseline sent alongside Product mute-group
+ * configuration. Include key names as well as values so a state-shape change
+ * cannot collide with a value-only signature.
+ */
+export function getRoutingMuteGroupBooleanStateSignature(state: SliderState): string {
+  return getRoutingMuteGroupBooleanStateKeys(state)
+    .map((key) => `${String(key)}=${state[key] === true ? '1' : '0'}`)
+    .join('|');
+}
+
+function positiveRoutingMuteGroupSeed(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const rounded = Math.round(value);
+  if (rounded <= 0) return null;
+  const seed = rounded >>> 0;
+  return seed === 0 ? 1 : seed;
+}
+
+/**
+ * Resolve the mute-group stream seed from the Product/root seed carried on
+ * state. Older state snapshots do not expose that field, so use the same
+ * deterministic global inputs as Product's root-seed fallback.
+ */
+export function getRoutingMuteGroupSeed(state: SliderState): number {
+  const record = state as unknown as Record<string, unknown>;
+  const explicitSeed = positiveRoutingMuteGroupSeed(record.rngSeed)
+    ?? positiveRoutingMuteGroupSeed(record.seed);
+  if (explicitSeed !== null) return explicitSeed;
+
+  const seedWindow = record.seedWindow === 'day' ? 'day' : 'hour';
+  const randomness = typeof record.randomness === 'number' && Number.isFinite(record.randomness)
+    ? record.randomness.toFixed(4)
+    : '0.5000';
+  const rootNote = typeof record.rootNote === 'number' && Number.isFinite(record.rootNote)
+    ? record.rootNote
+    : 4;
+  return xmur3(`${seedWindow}:${randomness}:${rootNote}`)() || 1;
 }
 
 function eligibleSourceDefs(sourceIds: readonly RoutingRowId[] = ROUTING_MUTE_GROUP_SOURCE_IDS): RoutingSourceDef[] {
