@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+const captureEnabled = process.env.VITE_KESSHO_ENABLE_GRAPH_CAPTURE === 'true';
+
 export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
@@ -42,7 +44,7 @@ export default defineConfig(({ mode }) => ({
     ? { cacheDir: process.env.KESSHO_VITE_CACHE_DIR }
     : {}),
   resolve: {
-    alias: mode === 'production'
+    alias: mode === 'production' && !captureEnabled
       ? [
         {
           find: /^\.\/audio\/referenceAudioRuntime$/,

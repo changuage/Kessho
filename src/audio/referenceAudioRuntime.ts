@@ -67,7 +67,8 @@ function normalizeEngineMode(mode: string | null): ReferenceAudioRuntimeMode | n
 }
 
 function isDevRuntime(): boolean {
-  return Boolean((import.meta.env as unknown as { DEV?: boolean }).DEV);
+  return Boolean(import.meta.env.DEV) ||
+    import.meta.env.VITE_KESSHO_ENABLE_GRAPH_CAPTURE === 'true';
 }
 
 function getReferenceAudioRuntimeMode(): ReferenceAudioRuntimeMode {
