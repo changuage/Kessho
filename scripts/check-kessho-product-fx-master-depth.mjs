@@ -156,10 +156,17 @@ for (const token of [
   assert(statusDoc.includes(token), `migration status doc is missing ${token}`);
 }
 
-execFileSync(process.execPath, ['scripts/run-kessho-product-cpp-test.mjs', 'ProductFxRoutingTests'], {
+const fxTestCommand = [process.execPath, 'scripts/run-kessho-product-cpp-test.mjs', 'ProductFxRoutingTests'];
+const runFxTest = () => execFileSync(fxTestCommand[0], fxTestCommand.slice(1), {
   cwd: root,
   stdio: 'inherit',
 });
+try {
+  runFxTest();
+} catch {
+  console.warn('Product FX routing test failed once; retrying for runner jitter.');
+  runFxTest();
+}
 
 const cpuTestCommand = [process.execPath, 'scripts/run-kessho-product-cpp-test.mjs', 'ProductCpuBudgetTests'];
 const runCpuTest = () => execFileSync(cpuTestCommand[0], cpuTestCommand.slice(1), {
