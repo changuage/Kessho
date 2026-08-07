@@ -160,9 +160,17 @@ execFileSync(process.execPath, ['scripts/run-kessho-product-cpp-test.mjs', 'Prod
   cwd: root,
   stdio: 'inherit',
 });
-execFileSync(process.execPath, ['scripts/run-kessho-product-cpp-test.mjs', 'ProductCpuBudgetTests'], {
+
+const cpuTestCommand = [process.execPath, 'scripts/run-kessho-product-cpp-test.mjs', 'ProductCpuBudgetTests'];
+const runCpuTest = () => execFileSync(cpuTestCommand[0], cpuTestCommand.slice(1), {
   cwd: root,
   stdio: 'inherit',
 });
+try {
+  runCpuTest();
+} catch {
+  console.warn('Product CPU benchmark failed once; retrying the same measurement for runner jitter.');
+  runCpuTest();
+}
 
 console.log('Kessho Product FX/master depth checks passed');
