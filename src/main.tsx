@@ -5,7 +5,9 @@ import './designSystem/designSystem.css';
 import './ui/sharedSlider.css';
 
 const root = document.getElementById('root')!;
-const parityRoute = new URLSearchParams(window.location.search).get('parity') === '1';
+const searchParams = new URLSearchParams(window.location.search);
+const captureRoute = searchParams.get('capture') === '1';
+const parityRoute = searchParams.get('parity') === '1' && captureRoute;
 const captureEnabled = import.meta.env.DEV || import.meta.env.VITE_KESSHO_ENABLE_GRAPH_CAPTURE === 'true';
 
 if (parityRoute && captureEnabled) {

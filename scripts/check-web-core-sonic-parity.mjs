@@ -451,6 +451,7 @@ async function captureEngineOnce(browser, baseUrl, engineName, options) {
   const runtimeQuery = {
     engine: engineName,
     parity: '1',
+    capture: '1',
   };
   const url = withQuery(baseUrl, runtimeQuery);
   try {
