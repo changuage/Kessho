@@ -13,6 +13,12 @@ const DEFAULT_MIN_LAG_CORRELATION = 0.98;
 const DEFAULT_MANUAL_TRIGGER_DELAY_MS = 0;
 const DEFAULT_CAPTURE_ATTEMPTS = 3;
 const DEFAULT_BROWSER_CAPTURE_TIMEOUT_MS = 60000;
+const BROWSER_LAUNCH_ARGS = [
+  '--autoplay-policy=no-user-gesture-required',
+  '--disable-background-timer-throttling',
+  '--disable-backgrounding-occluded-windows',
+  '--disable-renderer-backgrounding',
+];
 const MOBILE_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1';
 const DEFAULT_TRANSIENT_TIME_TOLERANCE_MS = 8;
 const DEFAULT_TRANSIENT_PEAK_RATIO_TOLERANCE = 0.35;
@@ -393,6 +399,15 @@ async function captureEngine(browser, baseUrl, engineName, options) {
   throw lastError;
 }
 
+async function readPageDiagnostics(page) {
+  return page.evaluate(() => ({
+    parityHarness: Boolean(window.__kesshoSonicParity?.capture),
+    runtimePhase: document.documentElement.dataset.coreProductRuntimePhase ?? null,
+    runtimeError: document.documentElement.dataset.coreProductRuntimeError ?? null,
+    audioContextState: document.documentElement.dataset.coreProductAudioContextState ?? null,
+  })).catch(() => null);
+}
+
 async function captureEngineOnce(browser, baseUrl, engineName, options) {
   const page = await browser.newPage(options.mobileDevice
     ? {
@@ -440,7 +455,15 @@ async function captureEngineOnce(browser, baseUrl, engineName, options) {
   const url = withQuery(baseUrl, runtimeQuery);
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => Boolean(window.__kesshoSonicParity?.capture), null, { timeout: DEFAULT_BROWSER_CAPTURE_TIMEOUT_MS });
+    await page.waitForFunction(
+      () => Boolean(window.__kesshoSonicParity?.capture) || Boolean(document.documentElement.dataset.coreProductRuntimeError),
+      null,
+      { timeout: DEFAULT_BROWSER_CAPTURE_TIMEOUT_MS },
+    );
+    const startupDiagnostics = await readPageDiagnostics(page);
+    if (!startupDiagnostics?.parityHarness) {
+      throw new Error(`Sonic parity harness did not install (${JSON.stringify(startupDiagnostics)}).`);
+    }
 
     const capture = await page.evaluate(
       async ({ durationMs, settleMs, trackId, statePatch, stateEvents, manualNotes, manualDrumTriggers, manualTriggerDelayMs, manualWarmup }) => window.__kesshoSonicParity.capture({
@@ -468,6 +491,12 @@ async function captureEngineOnce(browser, baseUrl, engineName, options) {
     );
     await page.evaluate(() => window.__kesshoSonicParity?.teardown());
     return { capture, logs };
+  } catch (error) {
+    const diagnostics = await readPageDiagnostics(page);
+    const detail = error instanceof Error ? error.message : String(error);
+    const browserLogs = logs.length > 0 ? `\nBrowser logs:\n${logs.join('\n')}` : '';
+    const pageDetail = diagnostics ? `\nPage diagnostics: ${JSON.stringify(diagnostics)}` : '';
+    throw new Error(`${detail}${pageDetail}${browserLogs}`, { cause: error });
   } finally {
     await page.close().catch(() => {});
   }
@@ -1252,7 +1281,7 @@ async function main() {
   try {
     browser = await chromium.launch({
       headless: true,
-      args: ['--autoplay-policy=no-user-gesture-required'],
+      args: BROWSER_LAUNCH_ARGS,
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);

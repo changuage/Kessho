@@ -150,7 +150,7 @@ function runCaseAttempt(caseDef, args, attempt, captureUrl) {
   };
 }
 
-function runCase(caseDef, args, captureUrl) {
+async function runCase(caseDef, args, captureUrl) {
   const maxAttempts = Math.max(1, caseDef.attempts ?? DEFAULT_CASE_ATTEMPTS);
   const attempts = [];
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -163,6 +163,7 @@ function runCase(caseDef, args, captureUrl) {
         attemptResults: attempts,
       };
     }
+    if (attempt < maxAttempts) await delay(Math.min(5000, 500 * attempt));
   }
   const last = attempts[attempts.length - 1];
   return {
@@ -208,7 +209,7 @@ try {
   const results = [];
   for (const [index, caseDef] of selectedCases.entries()) {
     process.stderr.write(`[${index + 1}/${selectedCases.length}] ${caseDef.id}\n`);
-    const result = runCase(caseDef, args, captureUrl);
+    const result = await runCase(caseDef, args, captureUrl);
     process.stderr.write(`[${index + 1}/${selectedCases.length}] ${caseDef.id}: ${result.status}${result.attempts > 1 ? ` after ${result.attempts} attempts` : ''}\n`);
     results.push(result);
   }
