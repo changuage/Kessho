@@ -11,6 +11,7 @@ const root = process.cwd();
 const fullReportPath = resolve(root, 'docs/reports/kessho-product-web-graph-capture-smoke-latest.json');
 const fastReportPath = resolve(root, 'docs/reports/kessho-product-web-graph-capture-smoke-fast-latest.json');
 const selectedReportPath = resolve(root, 'docs/reports/kessho-product-web-graph-capture-smoke-selected-latest.json');
+const capturePreviewOutDir = 'build/kessho-product-web-graph-capture-smoke-dist';
 const DEFAULT_PORT = 4195;
 const DEFAULT_CASE_ATTEMPTS = 2;
 
@@ -60,7 +61,71 @@ function killProcessTree(child) {
   }
 }
 
+function graphCaptureBuildEnv() {
+  return {
+    ...process.env,
+    BROWSER: 'none',
+    VITE_KESSHO_ENABLE_GRAPH_CAPTURE: 'true',
+  };
+}
+
+function buildGraphCapturePreviewBundle() {
+  const result = spawnSync(process.execPath, [
+    'node_modules/.bin/vite',
+    'build',
+    '--outDir',
+    capturePreviewOutDir,
+    '--emptyOutDir',
+  ], {
+    cwd: root,
+    env: graphCaptureBuildEnv(),
+    stdio: 'inherit',
+  });
+  if (result.status !== 0) {
+    throw new Error(`Capture-enabled Product graph smoke build failed with exit code ${result.status ?? 'unknown'}`);
+  }
+}
+
+async function startCapturePreview(port) {
+  buildGraphCapturePreviewBundle();
+  const url = `http://127.0.0.1:${port}/`;
+  const child = spawn('npm', ['run', 'preview', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort', '--outDir', capturePreviewOutDir], {
+    cwd: root,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: graphCaptureBuildEnv(),
+    detached: process.platform !== 'win32',
+  });
+
+  let output = '';
+  let exited = false;
+  const append = (chunk) => {
+    output = `${output}${chunk.toString()}`.slice(-20000);
+  };
+  child.stdout.on('data', append);
+  child.stderr.on('data', append);
+  child.on('exit', () => {
+    exited = true;
+  });
+
+  try {
+    await waitForHttp(url, 120000);
+  } catch (error) {
+    killProcessTree(child);
+    throw new Error(`${error instanceof Error ? error.message : String(error)}\nPreview output:\n${output.trim()}`);
+  }
+
+  return {
+    url,
+    stop: async () => {
+      if (!exited) killProcessTree(child);
+      await delay(500);
+    },
+  };
+}
+
 async function startSharedVite(port) {
+  if (process.env.GITHUB_ACTIONS === 'true') return startCapturePreview(port);
+
   const url = `http://127.0.0.1:${port}/`;
   const child = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(port)], {
     stdio: ['ignore', 'pipe', 'pipe'],
