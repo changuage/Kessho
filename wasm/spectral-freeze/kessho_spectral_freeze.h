@@ -75,6 +75,7 @@ void spectral_freeze_instance_set_diffusion(KesshoSpectralFreezeInstance* instan
 void spectral_freeze_instance_set_tone(KesshoSpectralFreezeInstance* instance, float tone);
 void spectral_freeze_instance_set_width(KesshoSpectralFreezeInstance* instance, float width);
 void spectral_freeze_instance_set_sustain(KesshoSpectralFreezeInstance* instance, float sustain);
+void spectral_freeze_instance_set_transition_seconds(KesshoSpectralFreezeInstance* instance, float seconds);
 
 #ifdef __cplusplus
 }

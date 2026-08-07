@@ -1,6 +1,7 @@
 #include "../KesshoProductEngineInternal.h"
 
 void KesshoProductEngine::retimeTempoSyncedFx(float previous_bpm) {
+  configureSpectralFreezeModule();
   if (!std::isfinite(previous_bpm) || !std::isfinite(transport.bpm) ||
       previous_bpm <= 0.0f || transport.bpm <= 0.0f ||
       std::fabs(previous_bpm - transport.bpm) <= 0.0001f) {
@@ -28,6 +29,27 @@ void KesshoProductEngine::retimeTempoSyncedFx(float previous_bpm) {
       delay_b_module->commitParams();
     }
   }
+}
+
+void KesshoProductEngine::configureSpectralFreezeModule() {
+  if (!spectral_freeze_module) return;
+  float* params = spectral_freeze_module->params();
+  if (params == nullptr || spectral_freeze_module->paramCount() < 14) return;
+  params[0] = fx.spectral_freeze_enabled && fx.spectral_freeze_active ? 1.0f : 0.0f;
+  params[1] = static_cast<float>(clampU32(fx.spectral_freeze_mode, 0u, 3u));
+  params[2] = static_cast<float>(fx.spectral_freeze_capture_serial);
+  params[3] = clampFloat(fx.spectral_freeze_stretch_speed, 0.0f, 1.0f);
+  params[4] = static_cast<float>(clampU32(fx.spectral_freeze_direction, 0u, 2u));
+  params[5] = clampFloat(fx.spectral_freeze_position, 0.0f, 1.0f);
+  params[6] = clampFloat(fx.spectral_freeze_refresh, 0.0f, 1.0f);
+  params[7] = clampFloat(fx.spectral_freeze_input_sensitivity, 0.0f, 1.0f);
+  params[8] = clampFloat(fx.spectral_freeze_diffusion, 0.0f, 1.0f);
+  params[9] = clampFloat(fx.spectral_freeze_tone, -1.0f, 1.0f);
+  params[10] = clampFloat(fx.spectral_freeze_width, 0.0f, 1.0f);
+  params[11] = clampFloat(fx.spectral_freeze_sustain, 0.0f, 1.0f);
+  params[12] = 1.0f;
+  params[13] = static_cast<float>(transport.samplesPerPhrase(sample_rate) / sample_rate * 0.5);
+  spectral_freeze_module->commitParams();
 }
 
 void KesshoProductEngine::configureFxModules() {
@@ -184,24 +206,6 @@ void KesshoProductEngine::configureFxModules() {
       granular_module->commitParams();
     }
   }
-  if (spectral_freeze_module) {
-    float* params = spectral_freeze_module->params();
-    if (params != nullptr && spectral_freeze_module->paramCount() >= 13) {
-      params[0] = fx.spectral_freeze_enabled && fx.spectral_freeze_active ? 1.0f : 0.0f;
-      params[1] = static_cast<float>(clampU32(fx.spectral_freeze_mode, 0u, 3u));
-      params[2] = static_cast<float>(fx.spectral_freeze_capture_serial);
-      params[3] = clampFloat(fx.spectral_freeze_stretch_speed, 0.0f, 1.0f);
-      params[4] = static_cast<float>(clampU32(fx.spectral_freeze_direction, 0u, 2u));
-      params[5] = clampFloat(fx.spectral_freeze_position, 0.0f, 1.0f);
-      params[6] = clampFloat(fx.spectral_freeze_refresh, 0.0f, 1.0f);
-      params[7] = clampFloat(fx.spectral_freeze_input_sensitivity, 0.0f, 1.0f);
-      params[8] = clampFloat(fx.spectral_freeze_diffusion, 0.0f, 1.0f);
-      params[9] = clampFloat(fx.spectral_freeze_tone, -1.0f, 1.0f);
-      params[10] = clampFloat(fx.spectral_freeze_width, 0.0f, 1.0f);
-      params[11] = clampFloat(fx.spectral_freeze_sustain, 0.0f, 1.0f);
-      params[12] = 1.0f;
-      spectral_freeze_module->commitParams();
-    }
-  }
+  configureSpectralFreezeModule();
   configureDynamicsDriftModule();
 }

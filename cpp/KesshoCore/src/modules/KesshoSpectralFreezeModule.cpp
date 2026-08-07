@@ -25,7 +25,8 @@ constexpr int kParamTone = 9;
 constexpr int kParamWidth = 10;
 constexpr int kParamSustain = 11;
 constexpr int kParamMix = 12;
-constexpr int kParamCount = 13;
+constexpr int kParamTransitionSeconds = 13;
+constexpr int kParamCount = 14;
 
 std::array<float, kParamCount> makeDefaultParams() {
   std::array<float, kParamCount> params{};
@@ -42,6 +43,7 @@ std::array<float, kParamCount> makeDefaultParams() {
   params[kParamWidth] = 0.85f;
   params[kParamSustain] = 1.0f;
   params[kParamMix] = 1.0f;
+  params[kParamTransitionSeconds] = 0.1f;
   return params;
 }
 
@@ -145,6 +147,7 @@ public:
     spectral_freeze_instance_set_width(instance_, params_[kParamWidth]);
     spectral_freeze_instance_set_sustain(instance_, params_[kParamSustain]);
     spectral_freeze_instance_set_mix(instance_, params_[kParamMix]);
+    spectral_freeze_instance_set_transition_seconds(instance_, params_[kParamTransitionSeconds]);
     if (params_[kParamActive] > 0.5f) {
       spectral_freeze_instance_request_capture(
           instance_,

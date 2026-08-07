@@ -678,8 +678,8 @@ async function checkWasmExports() {
   refreshMemoryViews();
   assert(spectralModule !== 0, 'WASM failed to create spectral freeze module');
   assert(spectralModuleB !== 0, 'WASM failed to create second spectral freeze module');
-  assert(moduleGetParamCount(spectralModule) === 13, 'WASM spectral freeze module param count mismatch');
-  assert(moduleGetParamCount(spectralModuleB) === 13, 'WASM second spectral freeze module param count mismatch');
+  assert(moduleGetParamCount(spectralModule) === 14, 'WASM spectral freeze module param count mismatch');
+  assert(moduleGetParamCount(spectralModuleB) === 14, 'WASM second spectral freeze module param count mismatch');
   const spectralParamsPtr = moduleGetParamsPtr(spectralModule);
   const spectralParamsPtrB = moduleGetParamsPtr(spectralModuleB);
   assert(spectralParamsPtr !== 0, 'WASM spectral freeze params pointer was null');
@@ -701,6 +701,7 @@ async function checkWasmExports() {
   heap[spectralParamsOffsetB + 10] = 0.85;
   heap[spectralParamsOffsetB + 11] = 1;
   heap[spectralParamsOffsetB + 12] = 1;
+  heap[spectralParamsOffsetB + 13] = 0.1;
   moduleCommitParams(spectralModuleB);
   for (let i = 0; i < frames; i += 1) {
     const sample = Math.sin(i * 0.05) * 0.2;

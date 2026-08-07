@@ -74,8 +74,8 @@ private:
   uint32_t last_capture_serial_ = 0;
   bool pending_capture_ = false;
   bool source_phase_valid_ = false;
-  float active_crossfade_ = 0.0f;
-  float crossfade_step_ = 1.0f;
+  double active_crossfade_ = 0.0;
+  double crossfade_step_ = 1.0;
   float held_decay_gain_ = 1.0f;
   float normalization_gain_ = 1.0f;
   float smoothed_position_ = 0.0f;

@@ -1410,6 +1410,15 @@ void requireFxSnapshotEventParity(uint32_t param_id, float value, const char* me
 void requireDirectFxCoverage() {
   auto direct_storage = std::make_unique<KesshoProductEngine>(48000.0, 128, 0);
   KesshoProductEngine& direct = *direct_storage;
+  direct.transport.bpm = 120.0f;
+  direct.transport.beats_per_bar = 4u;
+  direct.transport.bars_per_phrase = 4u;
+  direct.configureFxModules();
+  require(
+      direct.spectral_freeze_module != nullptr &&
+          direct.spectral_freeze_module->paramCount() >= 14 &&
+          std::fabs(direct.spectral_freeze_module->params()[13] - 4.0f) < 0.0001f,
+      "spectral freeze transition was not half a phrase");
   for (uint32_t source = 0; source < kDynamicsModSourceCount; ++source) {
     for (uint32_t target = 0; target < kDynamicsModTargetCount; ++target) {
       direct.fx.dynamics_mod[source][target] = 0.0f;

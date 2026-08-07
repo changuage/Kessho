@@ -36,7 +36,6 @@ bool SpectralFreezeEngine::prepare(double sample_rate) {
       !memory_.prepare(sample_rate_, SpectralFreezeStft::kFftSize)) {
     return false;
   }
-  crossfade_step_ = 1.0f / std::max(1.0, sample_rate_ * 0.1);
   reset();
   return true;
 }
@@ -121,14 +120,14 @@ void SpectralFreezeEngine::process(
 
     if (runtime_state_ == SpectralFreezeRuntimeState::Capturing ||
         runtime_state_ == SpectralFreezeRuntimeState::Frozen) {
-      active_crossfade_ = std::min(1.0f, active_crossfade_ + crossfade_step_);
+      active_crossfade_ = std::min(1.0, active_crossfade_ + crossfade_step_);
     } else if (runtime_state_ == SpectralFreezeRuntimeState::Releasing) {
-      active_crossfade_ = std::max(0.0f, active_crossfade_ - crossfade_step_);
+      active_crossfade_ = std::max(0.0, active_crossfade_ - crossfade_step_);
     }
 
     const float wet_l = (wet_mid + wet_side) * kInverseSqrtTwo;
     const float wet_r = (wet_mid - wet_side) * kInverseSqrtTwo;
-    const float freeze_mix = clampUnit(params_.mix) * active_crossfade_;
+    const float freeze_mix = clampUnit(params_.mix) * static_cast<float>(active_crossfade_);
     float rendered_l = wet_l * freeze_mix;
     float rendered_r = wet_r * freeze_mix;
     if (!std::isfinite(rendered_l) || std::fabs(rendered_l) > 1.0e6f) rendered_l = 0.0f;
@@ -151,8 +150,13 @@ void SpectralFreezeEngine::setParams(const SpectralFreezeParams& incoming) noexc
   sanitized.width = clampUnit(incoming.width);
   sanitized.sustain = clampUnit(incoming.sustain);
   sanitized.mix = clampUnit(incoming.mix);
+  sanitized.transition_seconds = std::max(
+      0.01f,
+      std::isfinite(incoming.transition_seconds) ? incoming.transition_seconds : 0.1f);
   const bool was_active = params_.active;
   params_ = sanitized;
+  crossfade_step_ = 1.0 /
+      std::max(1.0, sample_rate_ * static_cast<double>(params_.transition_seconds));
 
   if (!params_.active && was_active) {
     requestRelease();

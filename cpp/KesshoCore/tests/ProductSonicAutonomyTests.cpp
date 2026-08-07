@@ -993,9 +993,14 @@ void requireRoutingMuteGroupSuspendedHostFixture() {
   runtime.enabled = true;
   runtime.next_change_frame = 0u;
 
+  const uint32_t freeze_capture_serial = engine->fx.spectral_freeze_capture_serial;
   engine->scheduleRoutingMuteGroups(kBlockSize);
   require(runtime.active_slot < 2u, "routing mute runtime did not choose an eligible slot");
   require(runtime.non_unity_row_mask != 0u, "routing mute runtime did not mark an active fade row");
+  require(engine->fx.spectral_freeze_enabled && engine->fx.spectral_freeze_active,
+      "routing mute did not engage spectral freeze");
+  require(engine->fx.spectral_freeze_capture_serial == freeze_capture_serial + 1u,
+      "routing mute did not capture spectral memory");
   const uint32_t first_slot = runtime.active_slot;
   const uint64_t first_change = runtime.next_change_frame;
   engine->transport.running = false;
@@ -1011,7 +1016,25 @@ void requireRoutingMuteGroupSuspendedHostFixture() {
     previous = gain;
   }
   require(previous <= 0.0001f, "routing mute fade-down did not finish at zero");
+  engine->recallRoutingMuteGroupAt(first_slot == 0u ? 1u : 0u, 0u, 98u);
+  require(engine->fx.spectral_freeze_capture_serial == freeze_capture_serial + 1u,
+      "switching between muted groups recaptured spectral memory");
   engine->recallRoutingMuteGroupAt(kProductRoutingMuteNoSlot, 0u, 98u);
+  require(engine->fx.spectral_freeze_enabled && !engine->fx.spectral_freeze_active,
+      "routing unmute did not begin spectral freeze release");
+  const uint64_t freeze_disable_frame = runtime.spectral_freeze_disable_render_frame;
+  require(freeze_disable_frame > engine->audio_render_sample_frame,
+      "routing unmute did not defer spectral freeze shutdown");
+  runtime.enabled = false;
+  engine->audio_render_sample_frame = freeze_disable_frame - 1u;
+  engine->scheduleRoutingMuteGroups(kBlockSize);
+  require(engine->fx.spectral_freeze_enabled,
+      "routing unmute disabled spectral freeze before its release completed");
+  engine->audio_render_sample_frame = freeze_disable_frame;
+  engine->scheduleRoutingMuteGroups(kBlockSize);
+  require(!engine->fx.spectral_freeze_enabled,
+      "routing unmute did not disable spectral freeze after its release completed");
+  runtime.enabled = true;
   require(engine->routingMuteGainForFrame(row, 99u) == 1.0f, "routing mute reset did not restore unity");
   require(
       (runtime.non_unity_row_mask & (1u << row)) == 0u,

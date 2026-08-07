@@ -175,6 +175,7 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   float dynamicsModRoute(const float sources[kDynamicsModSourceCount], uint32_t target) const;
   void configureDynamicsDriftModule();
   void configureFxModules();
+  void configureSpectralFreezeModule();
   void retimeTempoSyncedFx(float previous_bpm);
   void configureReverbModule();
   void resetReverbHarmonyCoupling();

@@ -38,6 +38,7 @@ struct SpectralFreezeParams {
   float width = 0.85f;
   float sustain = 1.0f;
   float mix = 1.0f;
+  float transition_seconds = 0.1f;
 };
 
 }  // namespace kessho::spectral_freeze

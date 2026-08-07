@@ -365,4 +365,12 @@ void spectral_freeze_instance_set_sustain(KesshoSpectralFreezeInstance* instance
   commit(instance);
 }
 
+void spectral_freeze_instance_set_transition_seconds(
+    KesshoSpectralFreezeInstance* instance,
+    float seconds) {
+  if (instance == nullptr) return;
+  instance->params.transition_seconds = seconds;
+  commit(instance);
+}
+
 }  // extern "C"

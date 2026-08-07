@@ -66,9 +66,11 @@ struct ProductRoutingMuteGroupRuntimeState {
   uint32_t non_unity_row_mask = 0u;
   uint64_t next_change_frame = UINT64_MAX;
   uint64_t fade_end_frame = 0u;
+  uint64_t spectral_freeze_disable_render_frame = UINT64_MAX;
   bool staging_open = false;
   bool enabled = false;
   bool avoid_repeat = true;
+  bool spectral_freeze_engaged = false;
 };
 
 } // namespace kessho::product::internal

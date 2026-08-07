@@ -455,6 +455,18 @@ int main() {
     require(
         std::fabs(engine.normalizedScanPosition() - moving_position) > 1.0e-4f,
         "one-times spectral Stretch scan did not advance");
+
+    params.transition_seconds = 0.5f;
+    params.active = false;
+    engine.setParams(params);
+    for (int block = 0; block < 10; ++block) renderSineBlock(0.0f);
+    require(
+        engine.runtimeState() == SpectralFreezeRuntimeState::Releasing,
+        "spectral release ignored its configured transition duration");
+    for (int block = 0; block < 24; ++block) renderSineBlock(0.0f);
+    require(
+        engine.runtimeState() == SpectralFreezeRuntimeState::Recording,
+        "spectral release did not finish after its configured transition duration");
   }
 
   {
@@ -1480,9 +1492,9 @@ int main() {
       kessho_module_create(KESSHO_MODULE_SPECTRAL_FREEZE, sample_rate, block_size);
   require(spectral_module != nullptr, "spectral freeze module create failed");
   require(spectral_module_b != nullptr, "spectral freeze module should allow concurrent instances");
-  require(kessho_module_get_param_count(spectral_module) == 13, "spectral freeze module param count mismatch");
+  require(kessho_module_get_param_count(spectral_module) == 14, "spectral freeze module param count mismatch");
   require(
-      kessho_module_get_param_count(spectral_module_b) == 13,
+      kessho_module_get_param_count(spectral_module_b) == 14,
       "second spectral freeze module param count mismatch");
   float* spectral_params = kessho_module_get_params_ptr(spectral_module);
   float* spectral_params_b = kessho_module_get_params_ptr(spectral_module_b);

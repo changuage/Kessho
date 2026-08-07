@@ -129,6 +129,26 @@ void KesshoProductEngine::recallRoutingMuteGroupAt(
     slot_index = kProductRoutingMuteNoSlot;
     transition_frames = transition_frames == UINT32_MAX ? 0u : transition_frames;
   }
+  const bool freeze_engaged = target_mask != 0u;
+  if (freeze_engaged != routing_mute_groups.spectral_freeze_engaged) {
+    routing_mute_groups.spectral_freeze_engaged = freeze_engaged;
+    if (freeze_engaged) {
+      routing_mute_groups.spectral_freeze_disable_render_frame = UINT64_MAX;
+      fx.spectral_freeze_enabled = true;
+      fx.spectral_freeze_active = true;
+      ++fx.spectral_freeze_capture_serial;
+    } else {
+      fx.spectral_freeze_active = false;
+      const uint64_t start_offset = start > transport.sample_frame
+          ? start - transport.sample_frame
+          : 0u;
+      const uint64_t release_frames = std::max<uint64_t>(
+          1u, static_cast<uint64_t>(std::llround(transport.samplesPerPhrase(sample_rate) * 0.5)));
+      routing_mute_groups.spectral_freeze_disable_render_frame =
+          audio_render_sample_frame + start_offset + release_frames;
+    }
+    configureSpectralFreezeModule();
+  }
   const uint64_t end = start + transition_frames;
   for (uint32_t row = 0u; row < kProductRoutingMuteRowCount; ++row) {
     auto& ramp = routing_mute_groups.rows[row];
@@ -170,6 +190,14 @@ void KesshoProductEngine::setRoutingMuteGroupsEnabled(bool enabled) {
 }
 
 void KesshoProductEngine::scheduleRoutingMuteGroups(uint32_t frames) {
+  if (routing_mute_groups.spectral_freeze_disable_render_frame != UINT64_MAX &&
+      audio_render_sample_frame >= routing_mute_groups.spectral_freeze_disable_render_frame) {
+    routing_mute_groups.spectral_freeze_disable_render_frame = UINT64_MAX;
+    if (!routing_mute_groups.spectral_freeze_engaged && !fx.spectral_freeze_active) {
+      fx.spectral_freeze_enabled = false;
+      configureSpectralFreezeModule();
+    }
+  }
   if (!routing_mute_groups.enabled || !transport.running || frames == 0u) return;
   const uint64_t block_end = transport.sample_frame + frames;
   if (routing_mute_groups.next_change_frame == UINT64_MAX) {
