@@ -50,7 +50,8 @@ function parseArgs(argv) {
   const args = {
     durationMs: 12000,
     settleMs: 1000,
-    warmupMs: 2500,
+    // Let async preset bootstrap settle before the measured CPU window.
+    warmupMs: 5000,
     port: BASE_PORT,
     reuseReport: false,
     baselineRef: process.env.KESSHO_PRODUCT_PAGE_CPU_BASELINE_REF ?? null,
@@ -63,7 +64,7 @@ function parseArgs(argv) {
     else if (arg.startsWith('--baseline-ref=')) args.baselineRef = arg.slice('--baseline-ref='.length);
     else if (arg === '--reuse-report') args.reuseReport = true;
     else if (arg === '--help' || arg === '-h') {
-      console.log('Usage: node scripts/check-kessho-product-page-cpu-before-after.mjs [--duration-ms=12000] [--settle-ms=1000] [--warmup-ms=2500] [--port=4300] [--baseline-ref=REF]');
+      console.log('Usage: node scripts/check-kessho-product-page-cpu-before-after.mjs [--duration-ms=12000] [--settle-ms=1000] [--warmup-ms=5000] [--port=4300] [--baseline-ref=REF]');
       process.exit(0);
     } else {
       throw new Error(`Unknown argument: ${arg}`);
@@ -383,7 +384,10 @@ try {
       { runCount: RUN_COUNT, outlierRatio: MAX_MEASUREMENT_OUTLIER_RATIO },
     );
     if (!savedQuality.valid) {
-      throw new Error(`Saved page CPU phases are statistically invalid: ${describePairedPageCpuQuality(savedQuality)}`);
+      report.measurementQuality.status = 'inconclusive';
+      throw new PageCpuInconclusiveError(
+        `Saved page CPU phases are statistically invalid: ${describePairedPageCpuQuality(savedQuality)}`,
+      );
     }
     report.measurementQuality.status = 'valid-reused';
   } else {

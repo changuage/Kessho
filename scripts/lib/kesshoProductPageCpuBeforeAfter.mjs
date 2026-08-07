@@ -171,6 +171,9 @@ export function findPageCpuMeasurementOutliers(
     // possible scheduler under/over-count, while three genuinely unstable
     // observations still trigger a paired retry.
     if (minimum <= 0 || median <= 0) return true;
+    // A single tail is acceptable only while it remains bounded. A larger
+    // spread indicates the runner changed load states between samples.
+    if (maximum / minimum > outlierRatio * outlierRatio) return true;
     return median / minimum > outlierRatio && maximum / median > outlierRatio;
   }).map((id) => label ? `${id}:${label}` : id);
 }

@@ -66,6 +66,16 @@ test('one high or low tail sample is accepted by the two-of-three consensus', ()
   }
 });
 
+test('a catastrophic one-sided tail requests a paired retry', () => {
+  const decision = planPairedPageCpuRetry({
+    baselineRuns: runs([10, 10, 16]),
+    currentRuns: runs([10, 11, 10]),
+    basePort: 5306,
+  });
+  assert.equal(decision.retry, true);
+  assert.deepEqual(decision.quality.invalidPhases, ['baseline']);
+});
+
 test('known low browser-process samples from texture and routing remain valid', () => {
   for (const values of [
     [73.711, 73.251, 59.427],

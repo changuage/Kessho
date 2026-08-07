@@ -19,7 +19,6 @@ import { SHARED_PRESET_TEST_MODE } from './sharedMode';
 import { normalizeResolvedVersionData } from './presetStorageV2';
 import { getPresetScope, presetValuesEqual } from './presetUtils';
 import { decodeCurrentPresetEntry } from './currentPresetSchema';
-import { canonicalizeStoredPresetEntry } from './storedPresetCompatibility';
 import {
   buildEuclideanPatternPresetData,
   EUCLIDEAN_PATTERN_LABELS,
@@ -95,7 +94,12 @@ function makeFactory(
   opts?: { engine?: string; source?: string; scope?: string; tags?: string[] },
 ): PresetEntry {
   const now = Date.now();
-  return canonicalizeStoredPresetEntry({
+  const factoryData = 'spectralFreezeActive' in data || 'spectralFreezeCaptureSerial' in data
+    ? { ...data }
+    : data;
+  delete factoryData.spectralFreezeActive;
+  delete factoryData.spectralFreezeCaptureSerial;
+  return {
     type,
     scope: opts?.scope,
     engine: opts?.engine,
@@ -112,12 +116,12 @@ function makeFactory(
       v: 1,
       note: 'factory preset',
       timestamp: now,
-      data,
+      data: factoryData,
     }],
     currentVersion: 1,
     createdAt: now,
     updatedAt: now,
-  }) as PresetEntry;
+  };
 }
 
 function getLatestVersionData(entry: PresetEntry): Record<string, unknown> | null {
