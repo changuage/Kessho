@@ -46,7 +46,8 @@ export class CoreProductStatePatchQueue {
     ) {
       return this.options.applyProductState({ ...(this.options.latestSliderState() ?? {}), ...patch }, fallbackReloadReason, options);
     }
-    this.pendingPatch = { ...(this.pendingPatch ?? {}), ...patch };
+    const pendingPatch = this.pendingPatch ?? (this.pendingPatch = {});
+    Object.assign(pendingPatch, patch);
     this.pendingReason = fallbackReloadReason;
     const receipt = new Promise<CoreProductPatchApplyReceipt>((resolve, reject) => {
       this.pendingReceipts.push({ resolve, reject });

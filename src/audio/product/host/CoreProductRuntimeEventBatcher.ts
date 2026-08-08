@@ -51,6 +51,27 @@ export class CoreProductRuntimeEventBatcher {
     }
   }
 
+  flushWhenRuntimeRunning(): void {
+    this.cancelPendingPostQueueFlush();
+    this.flushPendingPostQueue();
+  }
+
+  dispose(): void {
+    this.cancelPendingPostQueueFlush();
+    this.queue.length = 0;
+    this.pendingPostQueue.length = 0;
+  }
+
+  private cancelPendingPostQueueFlush(): void {
+    if (this.flushTimer !== null) {
+      const clear = typeof window !== 'undefined' && typeof window.clearTimeout === 'function'
+        ? window.clearTimeout.bind(window)
+        : clearTimeout;
+      clear(this.flushTimer);
+      this.flushTimer = null;
+    }
+  }
+
   private flush(): void {
     if (this.queue.length === 0) return;
     const events = this.queue.splice(0);
@@ -74,10 +95,7 @@ export class CoreProductRuntimeEventBatcher {
 
   private flushPendingPostQueue(): void {
     if (this.pendingPostQueue.length === 0) return;
-    if (!this.canFlushPendingPostQueue()) {
-      this.schedulePendingPostQueueFlush();
-      return;
-    }
+    if (!this.canFlushPendingPostQueue()) return;
     const batch = this.pendingPostQueue.splice(0, RUNTIME_EVENT_BATCH_SIZE);
     this.postManyNow(batch);
     if (this.pendingPostQueue.length > 0) this.schedulePendingPostQueueFlush();

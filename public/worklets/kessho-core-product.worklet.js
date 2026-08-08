@@ -146,6 +146,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.api = null;
     this.leftPtr = 0;
     this.rightPtr = 0;
+    this.leftOutputView = null;
+    this.rightOutputView = null;
     this.eventPtr = 0;
     this.snapshotPtr = 0;
     this.telemetryPtr = 0;
@@ -258,6 +260,12 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.heapF32 = new Float32Array(this.exports.memory.buffer);
     this.heapU8 = new Uint8Array(this.exports.memory.buffer);
     this.view = new DataView(this.exports.memory.buffer);
+    if (this.leftPtr && this.rightPtr) {
+      const leftIndex = this.leftPtr >> 2;
+      const rightIndex = this.rightPtr >> 2;
+      this.leftOutputView = this.heapF32.subarray(leftIndex, leftIndex + this.frames);
+      this.rightOutputView = this.heapF32.subarray(rightIndex, rightIndex + this.frames);
+    }
   }
 
   async load(wasmBinary, wasmUrl) {
@@ -318,6 +326,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       this.granularWaveformPtr = this.api.malloc(GRANULAR_WAVEFORM_BYTES);
       this.sequencerUiStatePtr = this.api.malloc(SEQUENCER_UI_STATE_BYTES);
       this.engine = this.api.create(sampleRate, this.frames, 0);
+      this.refreshViews();
       if (
         !this.engine ||
         !this.leftPtr ||
@@ -2237,8 +2246,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     if (this.heapF32.buffer !== this.exports.memory.buffer) {
       this.refreshViews();
     }
-    left.set(this.heapF32.subarray(this.leftPtr >> 2, (this.leftPtr >> 2) + frames));
-    right.set(this.heapF32.subarray(this.rightPtr >> 2, (this.rightPtr >> 2) + frames));
+    left.set(this.leftOutputView);
+    right.set(this.rightOutputView);
     if (this.hostStemDemand && this.shouldSampleStemPeaks()) {
       this.sampleOutputPeak(left, right, frames);
       this.sampleStemPeaks(frames);

@@ -167,6 +167,7 @@ class CoreProductEngineHost {
     updateRuntimeTelemetryPolling: () => this.updateRuntimeTelemetryPolling(),
     loadLatestSnapshot: (reason, includeClockStartDelay, awaitAudioThreadAck) => this.loadLatestSnapshot(reason, includeClockStartDelay, awaitAudioThreadAck),
     postRuntimeProductEvent: (event) => this.postRuntimeProductEvent(event),
+    flushRuntimeProductEvents: () => this.productEventBatcher.flushWhenRuntimeRunning(),
     publishStateChange: (isRunning) => this.stateChangeCallback?.(this.createEngineState(isRunning)),
   });
   readonly engineMode = 'core-product';
@@ -434,6 +435,7 @@ class CoreProductEngineHost {
     }
     void this.runtime.resume().then(() => {
       this.runtimeReady = true;
+      this.productEventBatcher.flushWhenRuntimeRunning();
       if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('parity') === '1') {
         document.documentElement.dataset.coreProductAudioPrime = 'ready';
       }
@@ -459,6 +461,7 @@ class CoreProductEngineHost {
   }
 
   dispose(): void {
+    this.productEventBatcher.dispose();
     this.lifecycleCoordinator.dispose(this.runtimeReady);
   }
 

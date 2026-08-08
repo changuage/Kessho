@@ -2,7 +2,7 @@ import { CORE_PRODUCT_SOURCE_IDS } from '../../coreProductEvents';
 import type { CoreProductSnapshot } from '../../coreProductSnapshot';
 import type { SnapshotReloadReason } from '../../CoreProductRuntimeAdapter';
 import { fnv1a32Bytes, hashJson } from '../../../debug/productStateDebugHash';
-import { logProductStateDebug } from '../../../debug/productStateDebug';
+import { logProductStateDebug, productStateDebugEnabled } from '../../../debug/productStateDebug';
 import type { ProductRuntimeSnapshotMetadata } from '../ProductEngineTypes';
 
 type ProductSourceSnapshot = CoreProductSnapshot['sources'][number];
@@ -53,6 +53,7 @@ export function logEncodedSnapshotForDebug(
   encodedSnapshot: ArrayBuffer,
   metadata?: Omit<ProductRuntimeSnapshotMetadata, 'encodedSnapshotHash'>,
 ): void {
+  if (!productStateDebugEnabled()) return;
   logProductStateDebug({
     stage: 'encoded-product-snapshot',
     reason,

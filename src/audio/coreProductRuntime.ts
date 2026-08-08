@@ -33,6 +33,10 @@ const SNAPSHOT_APPLIED_TIMEOUT_MS = 4000;
 const CORE_PRODUCT_GRAPH_CAPTURE_ALLOWED =
   import.meta.env.DEV || import.meta.env.VITE_KESSHO_ENABLE_GRAPH_CAPTURE === 'true';
 
+function forceStereoProductOutputForBenchmark(): boolean {
+  return new URLSearchParams(window.location.search).get('product-stereo-output') === '1';
+}
+
 type RuntimeMessage =
   | { type: 'ready' }
   | { type: 'error'; message: string }
@@ -569,7 +573,7 @@ export class CoreProductRuntime {
     if (events.length === 0) return;
     this.requireNode('postEvents').port.postMessage({
       type: 'events',
-      events: [...events],
+      events,
     });
   }
 
@@ -751,14 +755,14 @@ export class CoreProductRuntime {
       graphCaptureAllowed: CORE_PRODUCT_GRAPH_CAPTURE_ALLOWED,
     };
 
-    if (isIOSLikeDevice()) {
+    if (isIOSLikeDevice() || forceStereoProductOutputForBenchmark()) {
       return new AudioWorkletNode(context, 'kessho-core-product', {
         numberOfInputs: 0,
         numberOfOutputs: 1,
         outputChannelCount: [2],
         channelCount: 2,
         channelCountMode: 'explicit',
-        channelInterpretation: 'speakers',
+        channelInterpretation: isIOSLikeDevice() ? 'speakers' : 'discrete',
         processorOptions,
       });
     }
@@ -789,7 +793,9 @@ export class CoreProductRuntime {
   }
 
   private configureOutputNode(node: AudioNode): void {
-    const channelCount = isIOSLikeDevice() ? 2 : DAW_OUTPUT_MAX_CHANNELS;
+    const channelCount = isIOSLikeDevice() || forceStereoProductOutputForBenchmark()
+      ? 2
+      : DAW_OUTPUT_MAX_CHANNELS;
     try {
       node.channelCount = channelCount;
     } catch {

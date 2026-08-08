@@ -243,6 +243,7 @@ function createDelegate(overrides: Partial<ProductLifecycleDelegate> = {}) {
       calls.push('loadDone');
     },
     postRuntimeProductEvent: () => { calls.push('postStart'); },
+    flushRuntimeProductEvents: () => { calls.push('flushRuntimeEvents'); },
     publishStateChange: (running) => { calls.push(`publish:${running}`); },
   });
 
@@ -258,6 +259,7 @@ function createDelegate(overrides: Partial<ProductLifecycleDelegate> = {}) {
     [
       'setLatestState',
       'resume',
+      'flushRuntimeEvents',
       'runtimeReady:true',
       'ensureAssets',
       'resetEvolve',

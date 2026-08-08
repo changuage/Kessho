@@ -11,6 +11,7 @@ import { logEncodedSnapshotForDebug } from './CoreProductSnapshotDebug';
 
 type CoreProductSnapshotRuntime = {
   postEvent(event: CoreProductEvent): void;
+  postEvents?(events: readonly CoreProductEvent[]): void;
   loadSnapshot(
     encodedSnapshot: ArrayBuffer,
     metadata?: ProductRuntimeSnapshotMetadata,
@@ -57,9 +58,8 @@ export type CoreProductSnapshotUpdateOptions = {
 export async function loadCoreProductSnapshot(options: CoreProductSnapshotLoadOptions): Promise<CoreProductFullSnapshotResult> {
   const startMs = options.nowMs();
   const encodedSnapshot = encodeCoreProductSnapshot(options.snapshot);
-  const encodedSnapshotHash = fnv1a32Bytes(encodedSnapshot);
-  const metadata = options.metadata
-    ? { ...options.metadata, encodedSnapshotHash }
+  const metadata = options.awaitAudioThreadAck && options.metadata
+    ? { ...options.metadata, encodedSnapshotHash: fnv1a32Bytes(encodedSnapshot) }
     : undefined;
   logEncodedSnapshotForDebug(options.snapshot, options.reason, encodedSnapshot, options.metadata);
   const receiptPromise = options.awaitAudioThreadAck
@@ -101,8 +101,12 @@ export async function applyCoreProductSnapshotUpdate(options: CoreProductSnapsho
       sequencerClockRejoinMask: options.sequencerClockRejoinMask,
     });
     if (diff.applied) {
-      for (const event of diff.events) {
-        options.runtime.postEvent(event);
+      if (diff.events.length > 0) {
+        if (options.runtime.postEvents) {
+          options.runtime.postEvents(diff.events);
+        } else {
+          for (const event of diff.events) options.runtime.postEvent(event);
+        }
       }
       return { mode: 'dirty-diff', snapshot: options.nextSnapshot };
     }

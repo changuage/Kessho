@@ -31,6 +31,7 @@ type CoreProductHostLifecycleCoordinatorOptions = {
   readonly updateRuntimeTelemetryPolling: () => void;
   readonly loadLatestSnapshot: (reason?: SnapshotReloadReason, includeClockStartDelay?: boolean, awaitAudioThreadAck?: boolean) => Promise<void>;
   readonly postRuntimeProductEvent: (event: CoreProductEvent) => void;
+  readonly flushRuntimeProductEvents: () => void;
   readonly publishStateChange: (isRunning: boolean) => void;
 };
 
@@ -47,6 +48,7 @@ export class CoreProductHostLifecycleCoordinator {
       this.options.setLatestSliderState({ ...sliderState });
     }
     await this.options.runtime.resume();
+    this.options.flushRuntimeProductEvents();
     this.publishParityStartupPhase('runtime-resumed');
     this.options.setRuntimeReady(true);
     const assetResult = await this.options.assetRegistrar.ensureDefaultAssetsForState();
@@ -70,6 +72,7 @@ export class CoreProductHostLifecycleCoordinator {
     // suspend cannot inherit a stale wall-clock offset.
     this.options.realtimeTimestampMapper.reset();
     await this.options.runtime.resume();
+    this.options.flushRuntimeProductEvents();
     this.options.resetSequencerEvolveState();
     await this.options.loadLatestSnapshot('runtime-start', true, true);
     this.startRunningSurfaces();
