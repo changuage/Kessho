@@ -326,6 +326,21 @@ def _choose_port(names: Sequence[str], matcher: PortMatcher, direction: str) -> 
     return candidates[0]
 
 
+def resolve_midi_ports(
+    *, input_port: str | None = None, output_port: str | None = None,
+    port_match: PortMatcher = None,
+) -> tuple[str, str]:
+    """Resolve the exact input/output names used for one capture."""
+
+    if input_port and output_port:
+        return input_port, output_port
+    names = list_midi_ports()
+    return (
+        input_port or _choose_port(names["inputs"], port_match, "input"),
+        output_port or _choose_port(names["outputs"], port_match, "output"),
+    )
+
+
 def _message_data(message: Any) -> bytes | None:
     if getattr(message, "type", None) != "sysex":
         return None
@@ -366,12 +381,9 @@ def capture_current_sound(
     outport: Any | None = None
     try:
         port_match = port_match or port or port_name
-        if input_port and output_port:
-            in_name, out_name = input_port, output_port
-        else:
-            names = list_midi_ports()
-            in_name = input_port or _choose_port(names["inputs"], port_match, "input")
-            out_name = output_port or _choose_port(names["outputs"], port_match, "output")
+        in_name, out_name = resolve_midi_ports(
+            input_port=input_port, output_port=output_port, port_match=port_match
+        )
         inport = mido.open_input(in_name)
         outport = mido.open_output(out_name)
     except MidiUnavailableError:
@@ -413,6 +425,7 @@ def capture_current_sound(
                     checked = validate_sound_message(
                         raw,
                         strict_size=validate,
+                        validate_declared_length=validate,
                         validate_checksum=validate,
                     )
                 except SysExError:
@@ -455,6 +468,7 @@ __all__ = [
     "parse_stream",
     "parse_sysex_stream",
     "request_current_sound",
+    "resolve_midi_ports",
     "validate",
     "validate_sound_message",
 ]

@@ -68,3 +68,26 @@ class ModelTests(unittest.TestCase):
             self.assertEqual(record.json_path.suffix, ".json")
             self.assertEqual(load_raw(record.raw_path), make_frame())
             self.assertEqual(load_json(record.json_path)["name"], "TEST SOUND")
+
+            changed = archive_sound(
+                make_frame(), tmp_path, label="A/B", metadata={"take": 2}
+            )
+            self.assertEqual(changed.raw_path.stem, changed.json_path.stem)
+            self.assertNotEqual(record.raw_path, changed.raw_path)
+
+    def test_relaxed_decode_records_bypassed_validation(self) -> None:
+        frame = bytearray(make_frame())
+        frame.extend(b"\0" * 8)
+        frame[-9] = 0xF7
+        frame = frame[:-9] + frame[-8:]
+        # Keep valid framing but deliberately invalidate both trailer fields
+        # and use an unknown total size.
+        frame[-1] = 0xF7
+        frame[-5:-1] = b"\0\0\0\0"
+        sound = decode_sound(
+            frame, strict=False, validate_checksum=False,
+            validate_declared_length=False,
+        )
+        self.assertEqual(sound.provenance["validation"]["mode"], "relaxed")
+        self.assertFalse(sound.raw["size_known"])
+        self.assertEqual(sound.confidence["framing"], "relaxed-unverified")

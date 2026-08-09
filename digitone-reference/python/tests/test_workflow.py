@@ -85,11 +85,24 @@ class WorkflowTests(unittest.TestCase):
             self.assertIn("peak", metadata["pcm16"]["a"])
             self.assertIsNone(metadata["comparison"]["difference_rms"])
 
+            sidecar = root / "reference.json"
+            sidecar.write_text(json.dumps({"capture": {"midi_output": "Digitone"}}), encoding="utf-8")
+            with_sidecar = audio.comparison_metadata(
+                reference, result, reference_metadata=sidecar
+            )
+            self.assertEqual(with_sidecar["reference_capture"]["midi_output"], "Digitone")
+
     def test_sequence_text_normalizes_midi_velocity(self) -> None:
         text = audio.midi_sequence_text(
             [{"note": 60, "start": 0, "duration": 0.5, "velocity": 100}]
         )
         self.assertEqual(text, "60@0:0.5:0.787402")
+        self.assertEqual(
+            audio.midi_sequence_text(
+                [{"note": 60, "start": 0, "duration": 0.5, "velocity": 1}]
+            ),
+            "60@0:0.5:0.00787402",
+        )
 
     def test_pcm16_metrics_and_aligned_difference(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -106,6 +119,30 @@ class WorkflowTests(unittest.TestCase):
                 target.setframerate(48_000)
                 target.writeframes(b"\0\0" * 16)
             self.assertGreater(audio.pcm16_difference_rms(first, second), 0.0)
+
+    def test_onset_alignment_removes_fixed_capture_latency(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            first = root / "first.wav"
+            second = root / "second.wav"
+            signal = [0, 0, 5000, -5000, 2500, -2500]
+            for path, delay in ((first, 0), (second, 3)):
+                with wave.open(str(path), "wb") as target:
+                    target.setnchannels(1)
+                    target.setsampwidth(2)
+                    target.setframerate(48_000)
+                    target.writeframes(b"".join(struct.pack("<h", value) for value in ([0] * delay + signal)))
+            difference, alignment = audio.pcm16_onset_aligned_difference_rms(first, second)
+            self.assertEqual(difference, 0.0)
+            self.assertEqual(alignment["offset_frames"], 3)
+
+    def test_truncated_wav_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "truncated.wav"
+            write_wav(path, frames=16)
+            path.write_bytes(path.read_bytes()[:-2])
+            with self.assertRaisesRegex(ValueError, "truncated PCM"):
+                audio.inspect_wav(path)
 
     def test_midi_reference_capture_uses_fake_backends_and_cleans_up(self) -> None:
         sent: list[object] = []
@@ -155,24 +192,29 @@ class WorkflowTests(unittest.TestCase):
                     sample_rate=1000,
                     channels=2,
                     midi_output="Fake Out",
-                    sequence=[{"note": 60, "start": 0.0, "duration": 0.01, "velocity": 100}],
+                    sequence=[{"note": 60, "start": 0.0, "duration": 0.01, "velocity": 1}],
                 )
                 self.assertEqual(audio.inspect_wav(result).frame_count, 10)
             kinds = [getattr(item, "type", None) for item in sent]
             self.assertIn("note_on", kinds)
             self.assertIn("note_off", kinds)
             self.assertIn("control_change", kinds)
+            note_on = next(item for item in sent if getattr(item, "type", None) == "note_on")
+            self.assertEqual(getattr(note_on, "fields", {}).get("velocity"), 1)
             self.assertIn("midi", closed)
             self.assertIn("audio", closed)
             sent.clear()
             closed.clear()
             with tempfile.TemporaryDirectory() as temp:
+                actual_events: list[dict[str, object]] = []
                 audio.record_reference_sequence_wav(
                     Path(temp) / "overlap.wav",
                     duration=0.06,
                     sample_rate=1000,
                     channels=2,
                     midi_output="Fake Out",
+                    midi_channel=4,
+                    event_log=actual_events,
                     sequence=[
                         {"note": 60, "start": 0.0, "duration": 0.03, "velocity": 100},
                         {"note": 60, "start": 0.01, "duration": 0.04, "velocity": 100},
@@ -182,6 +224,11 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(overlap_kinds.count("note_on"), 2)
             self.assertEqual(overlap_kinds.count("note_off"), 2)
             self.assertEqual(overlap_kinds.count("control_change"), 1)
+            self.assertEqual(
+                [(item["type"], item["actual_frame"]) for item in actual_events],
+                [("note_on", 0), ("note_on", 10), ("note_off", 30), ("note_off", 50)],
+            )
+            self.assertTrue(all(getattr(item, "fields", {}).get("channel") == 4 for item in sent))
             with tempfile.TemporaryDirectory() as temp:
                 stdout = io.StringIO()
                 with contextlib.redirect_stdout(stdout):

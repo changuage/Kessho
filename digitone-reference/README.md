@@ -58,7 +58,7 @@ PYTHONPATH=python python3 -m digitone_ref capture \
 PYTHONPATH=python python3 -m digitone_ref decode recordings/sound.syx
 PYTHONPATH=python python3 -m digitone_ref record --duration 2 --output-dir artifacts
 PYTHONPATH=python python3 -m digitone_ref record-reference --midi-output "Digitone out" \
-  --duration 2 --output-dir artifacts
+  --midi-channel 1 --duration 2 --output-dir artifacts
 PYTHONPATH=python python3 -m digitone_ref import-wav take.wav --output-dir artifacts
 PYTHONPATH=python python3 -m digitone_ref render artifacts/sound.json --renderer ./build/digitone-render
 PYTHONPATH=python python3 -m digitone_ref compare artifacts/sound.json take.wav \
@@ -82,9 +82,15 @@ MIDI output, schedules the shared note-on/off sequence while recording line
 input, sends note cleanup/all-notes-off, and writes the selected port and
 sequence into its metadata.  It requires both optional `mido` and
 `sounddevice`; `record` remains available for unsynchronized microphone/line
-takes.  A/B metadata includes normalized PCM16 peak/RMS and a sample-aligned
-difference RMS when both files have matching rate, channels, width, and frame
-count.
+takes. MIDI events are placed at audio-frame boundaries and the sidecar records
+their actual positions and backend latency. A/B metadata includes normalized
+PCM16 peak/RMS, direct sample-aligned difference RMS, and onset-aligned RMS with
+the measured fixed offset.
+
+For research captures from a future firmware frame whose size/checksum has not
+yet been validated, `capture --relaxed` and `decode --relaxed` preserve the raw
+bytes while clearly recording relaxed validation. Strict mode remains the
+default.
 
 ## Fidelity boundary
 

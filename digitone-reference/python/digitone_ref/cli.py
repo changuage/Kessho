@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import hashlib
 import importlib
 import json
 from pathlib import Path
@@ -122,7 +123,7 @@ def _canonical_value(value: Any) -> Any | None:
     return None
 
 
-def _try_decoder(raw: bytes) -> Any:
+def _try_decoder(raw: bytes, *, relaxed: bool = False) -> Any:
     sysex = _module("sysex")
     calls: list[tuple[Any, tuple[Any, ...], dict[str, Any]]] = []
     for name in (
@@ -144,6 +145,9 @@ def _try_decoder(raw: bytes) -> Any:
     last_error: Exception | None = None
     for function, args, kwargs in calls:
         try:
+            if function.__name__ in {"decode_sound", "from_sysex", "from_bytes", "parse_sound"}:
+                kwargs = {"strict": not relaxed, "validate_checksum": not relaxed,
+                          "validate_declared_length": not relaxed}
             value = function(*args, **kwargs)
             candidate = _canonical_value(value)
             if candidate is not None:
@@ -162,6 +166,7 @@ def _call_capture(
     output_port: str | None = None,
     track: int,
     timeout: float,
+    validate: bool = True,
 ) -> Any:
     """Call protocol implementations across their small prototype variants."""
 
@@ -171,6 +176,7 @@ def _call_capture(
             "output_port": output_port or port,
             "track": track,
             "timeout": timeout,
+            "validate": validate,
         },
         {"input_port": input_port or port, "track": track, "timeout": timeout},
         {"port": port, "track": track, "timeout": timeout},
@@ -180,6 +186,8 @@ def _call_capture(
         {"track": track},
         {},
     )
+    if not validate:
+        variants = variants[:1]
     last: Exception | None = None
     for kwargs in variants:
         kwargs = {key: value for key, value in kwargs.items() if value is not None}
@@ -197,6 +205,7 @@ def _capture_raw(
     *,
     input_port: str | None = None,
     output_port: str | None = None,
+    validate: bool = True,
 ) -> tuple[bytes, Any | None]:
     sysex = _module("sysex")
     for name in (
@@ -215,6 +224,7 @@ def _capture_raw(
                     output_port=output_port,
                     track=track,
                     timeout=timeout,
+                    validate=validate,
                 )
             except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
                 raise CliError(str(exc)) from exc
@@ -264,15 +274,13 @@ def _persist_sound_pair(raw_path: Path, decoded_path: Path, raw: bytes, canonica
     JSON and never overwrites a chosen path.
     """
 
-    try:
-        archive = _module("archive")
-        save_raw = getattr(archive, "save_raw")
-        save_json = getattr(archive, "save_json")
-        save_raw(raw, raw_path.parent, stem=raw_path.stem, validate=False)
-        save_json(canonical, decoded_path, overwrite=False)
-    except (CliError, AttributeError, OSError, TypeError, ValueError):
-        _write_raw(raw_path, raw)
-        _dump_json(decoded_path, canonical)
+    archive = _module("archive")
+    saved_raw = archive.save_raw(raw, raw_path.parent, stem=raw_path.stem, validate=False)
+    if Path(saved_raw) != raw_path:
+        raise CliError(f"artifact collision while saving: {raw_path}")
+    saved_json = archive.save_json(canonical, decoded_path, overwrite=False)
+    if Path(saved_json) != decoded_path:
+        raise CliError(f"artifact collision while saving: {decoded_path}")
 
 
 def _artifact_pair(directory: str | Path, stem: str) -> tuple[Path, Path]:
@@ -294,17 +302,38 @@ def _capture_command(args: argparse.Namespace) -> dict[str, Any]:
         args.output_dir,
         args.stem or f"sound_track{args.track}_{_utc_compact()}",
     )
+    sysex = _module("sysex")
+    selected_input, selected_output = sysex.resolve_midi_ports(
+        input_port=args.input_port, output_port=args.output_port,
+        port_match=args.port,
+    )
     raw_bytes, canonical = _capture_raw(
         args.port,
         args.track,
         args.timeout,
-        input_port=args.input_port,
-        output_port=args.output_port,
+        input_port=selected_input,
+        output_port=selected_output,
+        validate=not args.relaxed,
     )
     if canonical is None:
-        canonical = _try_decoder(raw_bytes)
+        canonical = _try_decoder(raw_bytes, relaxed=args.relaxed)
     else:
         canonical = _canonical(canonical)
+    transport = {
+        "kind": "USB MIDI SysEx",
+        "input_port": selected_input,
+        "output_port": selected_output,
+        "validation": "relaxed" if args.relaxed else "strict",
+        "device_model": "Digitone (inferred from Sound message header)",
+        "firmware": None,
+    }
+    if isinstance(canonical, dict):
+        canonical.setdefault("capture", {}).update(transport)
+        canonical.setdefault("provenance", {}).update({
+            "raw_sha256": hashlib.sha256(raw_bytes).hexdigest(),
+            "raw_archive_path": str(raw),
+            "source_kind": "live_capture",
+        })
     _persist_sound_pair(raw, decoded, raw_bytes, canonical)
     result = {
         "raw_sysex": str(raw),
@@ -312,6 +341,7 @@ def _capture_command(args: argparse.Namespace) -> dict[str, Any]:
         "raw_sha256": audio.sha256_file(raw),
         "created_at": audio.utc_timestamp(),
         "track": args.track,
+        "transport": transport,
     }
     print(json.dumps(result, sort_keys=True))
     return result
@@ -323,11 +353,19 @@ def _decode_command(args: argparse.Namespace) -> dict[str, Any]:
         raw = source.read_bytes()
     except OSError as exc:
         raise CliError(f"cannot read SysEx: {source}") from exc
-    canonical = _try_decoder(raw)
+    canonical = _try_decoder(raw, relaxed=args.relaxed)
     raw_path, decoded_path = _artifact_pair(
         args.output_dir,
         args.stem or f"{audio.safe_stem(source.stem)}_{_utc_compact()}",
     )
+    if isinstance(canonical, dict):
+        canonical.setdefault("provenance", {}).update({
+            "source_kind": "imported_sysex",
+            "source_path": str(source),
+            "raw_archive_path": str(raw_path),
+            "raw_sha256": audio.sha256_file(source),
+            "validation_mode": "relaxed" if args.relaxed else "strict",
+        })
     _persist_sound_pair(raw_path, decoded_path, raw, canonical)
     result = {"raw_sysex": str(raw_path), "canonical_json": str(decoded_path)}
     print(json.dumps(result, sort_keys=True))
@@ -410,6 +448,8 @@ def _record_reference_command(args: argparse.Namespace) -> dict[str, Any]:
         args.stem or f"reference_midi_{_utc_compact()}",
         ".wav",
     )
+    actual_events: list[dict[str, Any]] = []
+    capture_info: dict[str, Any] = {}
     try:
         selected_midi_output = audio.resolve_midi_output(args.midi_output)
         recorded = audio.record_reference_sequence_wav(
@@ -419,7 +459,10 @@ def _record_reference_command(args: argparse.Namespace) -> dict[str, Any]:
             channels=args.channels,
             device=args.device,
             midi_output=selected_midi_output,
+            midi_channel=args.midi_channel - 1,
             sequence=sequence,
+            event_log=actual_events,
+            capture_info=capture_info,
         )
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
         raise CliError(str(exc)) from exc
@@ -437,8 +480,11 @@ def _record_reference_command(args: argparse.Namespace) -> dict[str, Any]:
                 "requested_channels": args.channels,
                 "device": args.device,
                 "midi_output": selected_midi_output,
+                "midi_channel": args.midi_channel,
                 "midi_sequence": [dict(event) for event in sequence],
                 "midi_sequence_text": audio.midi_sequence_text(sequence),
+                "actual_midi_events": actual_events,
+                "stream": capture_info,
             },
         },
     )
@@ -486,6 +532,18 @@ def _sequence(args: argparse.Namespace) -> Sequence[Mapping[str, Any]]:
     required = ("note", "start", "duration")
     if any(any(key not in event for key in required) for event in value):
         raise CliError("sequence events require note, start, and duration")
+    for index, event in enumerate(value):
+        try:
+            note = float(event["note"])
+            start = float(event["start"])
+            duration = float(event["duration"])
+            velocity = float(event.get("velocity", 127))
+        except (TypeError, ValueError) as exc:
+            raise CliError(f"sequence event {index} contains non-numeric values") from exc
+        if note != int(note) or not 0 <= note <= 127 or start < 0 or duration <= 0:
+            raise CliError(f"sequence event {index} has an invalid note or timing")
+        if velocity != int(velocity) or not 0 <= velocity <= 127:
+            raise CliError(f"sequence event {index} velocity must be a MIDI integer 0..127")
     return [dict(item) for item in value]
 
 
@@ -521,6 +579,11 @@ def _render_command(args: argparse.Namespace) -> dict[str, Any]:
 def _compare_command(args: argparse.Namespace) -> dict[str, Any]:
     sequence = _sequence(args)
     try:
+        reference_metadata = Path(args.reference_metadata) if args.reference_metadata else Path(args.reference).with_suffix(".json")
+        if args.reference_metadata and not reference_metadata.is_file():
+            raise CliError(f"reference metadata not found: {reference_metadata}")
+        if not reference_metadata.is_file():
+            reference_metadata = None
         reference = audio.import_reference_wav(
             args.reference,
             args.output_dir,
@@ -544,6 +607,7 @@ def _compare_command(args: argparse.Namespace) -> dict[str, Any]:
             sequence=sequence,
             canonical_json=args.sound,
             raw_sysex=args.raw_sysex,
+            reference_metadata=reference_metadata,
             renderer=args.renderer,
             sample_rate=args.sample_rate,
             duration=args.duration,
@@ -591,12 +655,14 @@ def build_parser() -> argparse.ArgumentParser:
     capture.add_argument("--output-port", help="MIDI output name (overrides --port)")
     capture.add_argument("--track", type=int, default=0)
     capture.add_argument("--timeout", type=float, default=3.0)
+    capture.add_argument("--relaxed", action="store_true", help="accept unknown frame sizes/checksums for research archival")
     capture.set_defaults(handler=_capture_command)
 
     decode = sub.add_parser("decode", aliases=["import-syx"], help="decode a .syx Sound archive")
     decode.add_argument("sysex", help="input .syx file")
     decode.add_argument("--output-dir", "--out-dir", dest="output_dir", default="digitone-artifacts")
     decode.add_argument("--stem")
+    decode.add_argument("--relaxed", action="store_true", help="decode unknown frame sizes/checksums")
     decode.set_defaults(handler=_decode_command)
 
     record = sub.add_parser("record", help="record a reference WAV (optional sounddevice)")
@@ -620,6 +686,7 @@ def build_parser() -> argparse.ArgumentParser:
     reference_record.add_argument("--channels", type=int, default=audio.DEFAULT_CHANNELS)
     reference_record.add_argument("--device")
     reference_record.add_argument("--midi-output", "--midi-port", dest="midi_output")
+    reference_record.add_argument("--midi-channel", type=int, choices=range(1, 17), default=1)
     reference_record.add_argument("--sequence-json")
     reference_record.set_defaults(handler=_record_reference_command)
 
@@ -651,6 +718,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare.add_argument("sound", help="canonical Sound JSON")
     compare.add_argument("reference", help="reference WAV")
     compare.add_argument("--raw-sysex", help="raw .syx provenance")
+    compare.add_argument("--reference-metadata", help="reference recording sidecar (auto-detected by stem)")
     compare.add_argument("--renderer", default="digitone-render")
     compare.add_argument("--output-dir", "--out-dir", dest="output_dir", default="digitone-artifacts")
     compare.add_argument("--stem")
@@ -666,7 +734,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         args.handler(args)
-    except CliError as exc:
+    except (CliError, OSError, RuntimeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:

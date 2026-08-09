@@ -126,6 +126,13 @@ def inspect_wav(path: str | os.PathLike[str]) -> WavInfo:
             sample_width = source.getsampwidth()
             frame_count = source.getnframes()
             compression = source.getcomptype()
+            expected_bytes = frame_count * channels * sample_width
+            actual_bytes = 0
+            while True:
+                payload = source.readframes(8192)
+                if not payload:
+                    break
+                actual_bytes += len(payload)
     except (OSError, EOFError, wave.Error) as exc:
         raise ValueError(f"invalid WAV: {wav_path}: {exc}") from exc
     if compression != "NONE":
@@ -134,6 +141,10 @@ def inspect_wav(path: str | os.PathLike[str]) -> WavInfo:
         raise ValueError(f"invalid WAV dimensions: {wav_path}")
     if sample_width not in (1, 2, 3, 4):
         raise ValueError(f"unsupported PCM sample width {sample_width}: {wav_path}")
+    if actual_bytes != expected_bytes:
+        raise ValueError(
+            f"truncated PCM data: {wav_path} (expected {expected_bytes} bytes, got {actual_bytes})"
+        )
     return WavInfo(
         path=str(wav_path),
         sample_rate=sample_rate,
@@ -244,7 +255,10 @@ def record_reference_sequence_wav(
     channels: int = DEFAULT_CHANNELS,
     device: int | str | None = None,
     midi_output: str | None = None,
+    midi_channel: int = 0,
     sequence: Sequence[Mapping[str, Any]] = DEFAULT_MIDI_SEQUENCE,
+    event_log: list[dict[str, Any]] | None = None,
+    capture_info: dict[str, Any] | None = None,
 ) -> Path:
     """Record audio while scheduling the deterministic MIDI note sequence.
 
@@ -258,6 +272,8 @@ def record_reference_sequence_wav(
         raise ValueError("duration must be greater than zero")
     if sample_rate <= 0 or channels <= 0:
         raise ValueError("sample_rate and channels must be greater than zero")
+    if not 0 <= midi_channel <= 15:
+        raise ValueError("midi_channel must be in the zero-based range 0..15")
     try:
         import mido  # type: ignore
     except ImportError as exc:
@@ -283,15 +299,22 @@ def record_reference_sequence_wav(
     )
     # State lives on each event rather than only on the MIDI note number: two
     # overlapping note-ons at the same pitch need two independent note-offs.
-    scheduled_events = [
-        {
-            **event,
-            "_started": False,
-            "_ended": False,
-            "_end": float(event.get("start", 0.0)) + float(event.get("duration", 0.0)),
-        }
-        for event in events
-    ]
+    scheduled_events = []
+    for index, event in enumerate(events):
+        start = float(event.get("start", 0.0))
+        event_duration = float(event.get("duration", 0.0))
+        if start < 0 or event_duration <= 0:
+            raise ValueError(f"sequence event {index} requires start >= 0 and duration > 0")
+        scheduled_events.append(
+            {
+                **event,
+                "_index": index,
+                "_started": False,
+                "_ended": False,
+                "_start_frame": max(0, int(round(start * sample_rate))),
+                "_end_frame": max(0, int(round((start + event_duration) * sample_rate))),
+            }
+        )
     pcm = bytearray()
     midi_port: Any | None = None
     stream: Any | None = None
@@ -300,7 +323,8 @@ def record_reference_sequence_wav(
     stream_managed = False
     managed_stack: contextlib.ExitStack | None = None
     try:
-        midi_port = _open_output_port(mido, midi_output)
+        selected_midi_output = resolve_midi_output(midi_output)
+        midi_port = _open_output_port(mido, selected_midi_output)
         stream_kwargs: dict[str, Any] = {
             "samplerate": sample_rate,
             "channels": channels,
@@ -310,6 +334,18 @@ def record_reference_sequence_wav(
         if device is not None:
             stream_kwargs["device"] = device
         stream = stream_type(**stream_kwargs)
+        if capture_info is not None:
+            capture_info.update(
+                {
+                    "audio_device": device,
+                    "midi_output": selected_midi_output,
+                    "midi_channel": midi_channel + 1,
+                    "sample_rate": sample_rate,
+                    "channels": channels,
+                    "stream_latency_seconds": getattr(stream, "latency", None),
+                    "overflow_count": 0,
+                }
+            )
         with contextlib.ExitStack() as stack:
             if hasattr(midi_port, "__enter__"):
                 midi_port = stack.enter_context(midi_port)
@@ -324,28 +360,42 @@ def record_reference_sequence_wav(
             event_index = 0
             captured = 0
             while captured < frames:
-                elapsed = captured / sample_rate
                 # Release each started event at most once before starting a
                 # note at the same timestamp.
                 for event in scheduled_events:
-                    if event["_started"] and not event["_ended"] and event["_end"] <= elapsed:
+                    if event["_started"] and not event["_ended"] and event["_end_frame"] <= captured:
                         note = max(0, min(127, int(event.get("note", 60))))
-                        midi_port.send(_midi_message(mido, "note_off", note=note, velocity=0, channel=0))
+                        midi_port.send(_midi_message(mido, "note_off", note=note, velocity=0, channel=midi_channel))
                         event["_ended"] = True
-                while event_index < len(scheduled_events) and float(scheduled_events[event_index].get("start", 0.0)) <= elapsed:
+                        if event_log is not None:
+                            event_log.append({"event_index": event["_index"], "type": "note_off", "note": note, "scheduled_frame": event["_end_frame"], "actual_frame": captured, "timing_error_frames": captured - event["_end_frame"]})
+                while event_index < len(scheduled_events) and scheduled_events[event_index]["_start_frame"] <= captured:
                     event = scheduled_events[event_index]
                     note = max(0, min(127, int(event.get("note", 60))))
                     raw_velocity = float(event.get("velocity", 127.0))
-                    velocity = max(0, min(127, int(round(raw_velocity if raw_velocity > 1.0 else raw_velocity * 127.0))))
-                    midi_port.send(_midi_message(mido, "note_on", note=note, velocity=velocity, channel=0))
+                    velocity = max(0, min(127, int(round(raw_velocity))))
+                    midi_port.send(_midi_message(mido, "note_on", note=note, velocity=velocity, channel=midi_channel))
                     event["_started"] = True
+                    if event_log is not None:
+                        event_log.append({"event_index": event["_index"], "type": "note_on", "note": note, "velocity": velocity, "scheduled_frame": event["_start_frame"], "actual_frame": captured, "timing_error_frames": captured - event["_start_frame"]})
                     event_index += 1
                 block_frames = min(1024, frames - captured)
-                data, _overflowed = stream.read(block_frames)
+                boundaries = [
+                    event["_start_frame"] if not event["_started"] else event["_end_frame"]
+                    for event in scheduled_events
+                    if (not event["_started"] and event["_start_frame"] > captured)
+                    or (event["_started"] and not event["_ended"] and event["_end_frame"] > captured)
+                ]
+                if boundaries:
+                    block_frames = min(block_frames, min(boundaries) - captured)
+                data, overflowed = stream.read(max(1, block_frames))
                 chunk = _bytes_from_recorded(data)
                 frame_bytes = channels * 2
                 if not chunk or len(chunk) % frame_bytes:
                     raise ValueError("recording returned a partial PCM frame")
+                chunk = chunk[: block_frames * frame_bytes]
+                if overflowed and capture_info is not None:
+                    capture_info["overflow_count"] += 1
                 pcm.extend(chunk)
                 captured += len(chunk) // frame_bytes
                 # A backend may return a larger block than requested; never
@@ -357,9 +407,11 @@ def record_reference_sequence_wav(
             for event in scheduled_events:
                 if event["_started"] and not event["_ended"]:
                     note = max(0, min(127, int(event.get("note", 60))))
-                    midi_port.send(_midi_message(mido, "note_off", note=note, velocity=0, channel=0))
+                    midi_port.send(_midi_message(mido, "note_off", note=note, velocity=0, channel=midi_channel))
                     event["_ended"] = True
-            midi_port.send(_midi_message(mido, "control_change", control=123, value=0, channel=0))
+                    if event_log is not None:
+                        event_log.append({"event_index": event["_index"], "type": "note_off", "note": note, "scheduled_frame": event["_end_frame"], "actual_frame": captured, "timing_error_frames": captured - event["_end_frame"], "cleanup": True})
+            midi_port.send(_midi_message(mido, "control_change", control=123, value=0, channel=midi_channel))
             cleanup_sent = True
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
         raise RuntimeError(f"MIDI reference capture failed: {exc}") from exc
@@ -369,9 +421,9 @@ def record_reference_sequence_wav(
                 for event in scheduled_events:
                     if event["_started"] and not event["_ended"]:
                         note = max(0, min(127, int(event.get("note", 60))))
-                        midi_port.send(_midi_message(mido, "note_off", note=note, velocity=0, channel=0))
+                        midi_port.send(_midi_message(mido, "note_off", note=note, velocity=0, channel=midi_channel))
                         event["_ended"] = True
-                midi_port.send(_midi_message(mido, "control_change", control=123, value=0, channel=0))
+                midi_port.send(_midi_message(mido, "control_change", control=123, value=0, channel=midi_channel))
             except Exception:
                 pass
         # ExitStack closes normal context-managed objects.  These guarded calls
@@ -520,8 +572,7 @@ def midi_sequence_text(sequence: Sequence[Mapping[str, Any]] = DEFAULT_MIDI_SEQU
         raw_velocity = float(event.get("velocity", 127.0))
         # Canonical metadata stores MIDI velocity (0..127), while the native
         # renderer consumes a normalized float in its optional third token.
-        velocity = raw_velocity if 0.0 <= raw_velocity <= 1.0 else raw_velocity / 127.0
-        velocity = max(0.0, min(1.0, velocity))
+        velocity = max(0.0, min(1.0, raw_velocity / 127.0))
         parts.append(f"{note}@{start:g}:{duration:g}:{velocity:g}")
     return ",".join(parts)
 
@@ -684,6 +735,76 @@ pcm_metrics = pcm16_metrics
 difference_rms = pcm16_difference_rms
 
 
+def pcm16_onset_frame(
+    path: str | os.PathLike[str], *, threshold: float = 0.01, chunk_frames: int = 4096
+) -> int | None:
+    """Return the first PCM16 frame above a normalized absolute threshold."""
+
+    info = inspect_wav(path)
+    if info.sample_width != 2:
+        return None
+    limit = max(0, min(32767, int(round(threshold * 32768.0))))
+    frame_offset = 0
+    with wave.open(str(path), "rb") as source:
+        while True:
+            payload = source.readframes(chunk_frames)
+            if not payload:
+                return None
+            values = struct.unpack("<" + "h" * (len(payload) // 2), payload)
+            for sample in range(0, len(values), info.channels):
+                if any(abs(value) >= limit for value in values[sample : sample + info.channels]):
+                    return frame_offset + sample // info.channels
+            frame_offset += len(values) // info.channels
+
+
+def pcm16_onset_aligned_difference_rms(
+    first: str | os.PathLike[str],
+    second: str | os.PathLike[str],
+    *,
+    threshold: float = 0.01,
+    chunk_frames: int = 4096,
+) -> tuple[float | None, dict[str, int | None]]:
+    """Compare PCM16 WAVs after removing their independently measured leading latency."""
+
+    left_info = inspect_wav(first)
+    right_info = inspect_wav(second)
+    left_onset = pcm16_onset_frame(first, threshold=threshold, chunk_frames=chunk_frames)
+    right_onset = pcm16_onset_frame(second, threshold=threshold, chunk_frames=chunk_frames)
+    alignment = {
+        "reference_onset_frame": left_onset,
+        "engine_onset_frame": right_onset,
+        "offset_frames": None if left_onset is None or right_onset is None else right_onset - left_onset,
+    }
+    if (
+        left_onset is None
+        or right_onset is None
+        or left_info.sample_width != 2
+        or right_info.sample_width != 2
+        or left_info.sample_rate != right_info.sample_rate
+        or left_info.channels != right_info.channels
+    ):
+        return None, alignment
+    remaining = min(left_info.frame_count - left_onset, right_info.frame_count - right_onset)
+    sum_squares = 0.0
+    samples = 0
+    with wave.open(str(first), "rb") as left, wave.open(str(second), "rb") as right:
+        left.setpos(left_onset)
+        right.setpos(right_onset)
+        while remaining > 0:
+            count_frames = min(chunk_frames, remaining)
+            left_payload = left.readframes(count_frames)
+            right_payload = right.readframes(count_frames)
+            if len(left_payload) != len(right_payload) or len(left_payload) % 2:
+                return None, alignment
+            count = len(left_payload) // 2
+            left_values = struct.unpack("<" + "h" * count, left_payload)
+            right_values = struct.unpack("<" + "h" * count, right_payload)
+            sum_squares += sum(float(a - b) ** 2 for a, b in zip(left_values, right_values))
+            samples += count
+            remaining -= count_frames
+    return (math.sqrt(sum_squares / samples) / 32768.0 if samples else 0.0), alignment
+
+
 def comparison_metadata(
     reference_wav: str | os.PathLike[str],
     rendered_wav: str | os.PathLike[str],
@@ -691,6 +812,7 @@ def comparison_metadata(
     sequence: Sequence[Mapping[str, Any]] = DEFAULT_MIDI_SEQUENCE,
     canonical_json: str | os.PathLike[str] | None = None,
     raw_sysex: str | os.PathLike[str] | None = None,
+    reference_metadata: str | os.PathLike[str] | None = None,
     renderer: str | os.PathLike[str] = "digitone-render",
     sample_rate: int | None = None,
     duration: float | None = None,
@@ -704,6 +826,9 @@ def comparison_metadata(
     reference_pcm = pcm16_metrics(reference_wav)
     engine_pcm = pcm16_metrics(rendered_wav)
     aligned_difference = pcm16_difference_rms(reference_wav, rendered_wav)
+    onset_difference, onset_alignment = pcm16_onset_aligned_difference_rms(
+        reference_wav, rendered_wav
+    )
     if reference_pcm is not None:
         reference_provenance["peak"] = reference_pcm["peak"]
         reference_provenance["rms"] = reference_pcm["rms"]
@@ -732,6 +857,8 @@ def comparison_metadata(
             "same_frame_count": reference.frame_count == rendered.frame_count,
             "sample_aligned": aligned_difference is not None,
             "difference_rms": aligned_difference,
+            "onset_aligned_difference_rms": onset_difference,
+            "onset_alignment": onset_alignment,
         },
         "pcm16": {
             "a": reference_pcm,
@@ -739,6 +866,7 @@ def comparison_metadata(
             "difference_rms": aligned_difference,
         },
         "sample_aligned_difference_rms": aligned_difference,
+        "onset_aligned_difference_rms": onset_difference,
         "provenance": {},
         "disclaimer": "Engine output is a calibrated Digitone-style reference, not a claim of exact undocumented Digitone emulation.",
     }
@@ -749,6 +877,14 @@ def comparison_metadata(
     if raw_sysex is not None:
         provenance["raw_sysex"] = file_provenance(raw_sysex)
         metadata["raw_sysex_provenance"] = provenance["raw_sysex"]
+    if reference_metadata is not None:
+        provenance["reference_capture_metadata"] = file_provenance(reference_metadata)
+        try:
+            sidecar = json.loads(Path(reference_metadata).read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"invalid reference metadata: {reference_metadata}: {exc}") from exc
+        if isinstance(sidecar, Mapping):
+            metadata["reference_capture"] = sidecar.get("capture", sidecar)
     return metadata
 
 

@@ -29,6 +29,10 @@ Capture/decode workflows produce a pair with the same safe stem:
 <stem>.json      canonical DigitoneSound JSON
 ```
 
+The canonical `provenance` object links the exact archived-input SHA-256 to the
+normalized framed-message SHA-256 and records which size, declared-length, and
+checksum validations ran. Relaxed research imports are therefore explicit.
+
 An A/B run produces:
 
 ```text
@@ -38,8 +42,8 @@ An A/B run produces:
 ```
 
 The comparison document is schema `digitone-ab-v1`.  It includes per-file
-SHA-256 and WAV structure, PCM16 peak/RMS values, a sample-aligned difference
-RMS when formats match, a boolean comparison summary, the exact MIDI event
+SHA-256 and WAV structure, PCM16 peak/RMS values, direct sample-aligned and
+onset-aligned difference RMS values, a boolean comparison summary, the exact MIDI event
 list and renderer command inputs, plus `provenance.canonical_sound` and (when
 provided) `provenance.raw_sysex`.  Timestamps are UTC ISO-8601 values.  MIDI
 velocity is retained as 0..127 in JSON and encoded as 0..1 in the native
@@ -53,6 +57,11 @@ object with an `algorithm` number/name and operator/control fields.  The model
 module owns the precise schema and should carry a schema/version field when it
 changes.  CLI code treats decoder objects defensively (`to_dict`, mappings, or
 JSON-safe values) so parser improvements do not require a workflow rewrite.
+Parsing is strict and field-scoped: invalid/missing JSON fails the render, and
+an unrelated key with a familiar name cannot override a synthesis parameter.
+Raw modulation destination IDs remain in the canonical model, but the renderer
+warns and leaves them unmapped until hardware calibration establishes their
+meaning; callers can use the stable `Parameters.routes` API for known routes.
 
 ## Determinism and CPU
 
@@ -66,8 +75,9 @@ Kessho engine.
 
 ## Validation strategy
 
-Python unit tests cover SysEx/archive parsing in their owning modules and the
-workflow with fake MIDI/audio/render backends.  C++ tests cover all eight
+Python unit tests cover SysEx/archive parsing in their owning modules, the
+workflow with fake MIDI/audio backends, and the compiled canonical-JSON-to-DSP
+boundary. C++ tests cover all eight
 topology paths, stable parameter defaults, and deterministic rendering.  WAV
 goldens are useful for regressions, but should be labelled as engine goldens,
 not proof of Digitone identity.

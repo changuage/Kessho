@@ -10,8 +10,11 @@
 #include <initializer_list>
 #include <iterator>
 #include <limits>
+#include <map>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -40,6 +43,17 @@ struct Options {
     float decay = 0.35f;
     float sustain = 0.75f;
     float release = 0.45f;
+    std::array<float, digitone::kNumOperators> levels{{1.0f, 1.0f, 1.0f, 1.0f}};
+    std::array<digitone::EnvelopeParams, digitone::kNumOperators> operatorEnvelopes{};
+    float gain = 0.25f;
+    float drive = 0.0f;
+    float filterCutoffHz = 12000.0f;
+    float filterQ = 0.7f;
+    float filterEnvDepth = 0.0f;
+    digitone::LfoParams lfo1{};
+    digitone::LfoParams lfo2{};
+    bool dumpParameters = false;
+    bool hasUnmappedRouting = false;
 };
 
 void usage(const char* program) {
@@ -48,7 +62,7 @@ void usage(const char* program) {
         << "  --output FILE             PCM16 stereo WAV (default digitone-reference.wav)\n"
         << "  --sample-rate HZ          sample rate (default 48000)\n"
         << "  --duration SEC            render length; otherwise sequence end + release\n"
-        << "  --algorithm 1..8|0..7     Digitone routing algorithm\n"
+        << "  --algorithm 1..8          Digitone routing algorithm\n"
         << "  --ratio C,A,B1,B2         operator ratios\n"
         << "  --harm VALUE              bipolar HARM approximation (-1..1)\n"
         << "  --feedback VALUE          feedback amount (0..1)\n"
@@ -58,13 +72,14 @@ void usage(const char* program) {
         << "  --notes SPEC              alias for --sequence\n"
         << "  --midi-sequence FILE|SPEC alias for --sequence (file contents accepted)\n"
         << "  --sequence-json JSON|FILE list of {note,start,duration,velocity}\n"
-        << "  --input JSON              optional canonical parameter JSON override\n";
+        << "  --input JSON              optional canonical parameter JSON override\n"
+        << "  --dump-parameters         print effective parameters as JSON and exit\n";
 }
 
 bool parseFloat(const std::string& text, float& value) {
     char* end = nullptr;
     const float parsed = std::strtof(text.c_str(), &end);
-    if (end == text.c_str() || *end != '\0') return false;
+    if (end == text.c_str() || *end != '\0' || !std::isfinite(parsed)) return false;
     value = parsed;
     return true;
 }
@@ -72,7 +87,7 @@ bool parseFloat(const std::string& text, float& value) {
 bool parseDouble(const std::string& text, double& value) {
     char* end = nullptr;
     const double parsed = std::strtod(text.c_str(), &end);
-    if (end == text.c_str() || *end != '\0') return false;
+    if (end == text.c_str() || *end != '\0' || !std::isfinite(parsed)) return false;
     value = parsed;
     return true;
 }
@@ -101,7 +116,6 @@ bool parseAlgorithm(const std::string& text, int& algorithm) {
     const long parsed = std::strtol(text.c_str(), &end, 10);
     if (end != text.c_str() && *end == '\0') {
         if (parsed >= 1 && parsed <= 8) algorithm = static_cast<int>(parsed - 1);
-        else if (parsed >= 0 && parsed < 8) algorithm = static_cast<int>(parsed);
         else return false;
         return true;
     }
@@ -111,7 +125,9 @@ bool parseAlgorithm(const std::string& text, int& algorithm) {
     for (std::size_t i = 0; i < digitone::allAlgorithmSpecs().size(); ++i) {
         std::string name = digitone::allAlgorithmSpecs()[i].name;
         for (char& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        if (lower == name || lower == ("algo" + std::to_string(i + 1u))) {
+        const std::string number = std::to_string(i + 1u);
+        if (lower == name || lower == ("algo" + number) ||
+            lower == ("algorithm" + number) || lower == ("algorithm " + number)) {
             algorithm = static_cast<int>(i);
             return true;
         }
@@ -124,8 +140,11 @@ bool parseNoteToken(const std::string& token, NoteSpec& note, double& sequential
     const auto at = token.find('@');
     const auto colon = token.find(':');
     std::string noteText = token.substr(0, std::min(at, colon));
+    char* noteEnd = nullptr;
+    const long parsedNote = std::strtol(noteText.c_str(), &noteEnd, 10);
+    if (noteEnd == noteText.c_str() || *noteEnd != '\0') return false;
+    note.midi = static_cast<int>(parsedNote);
     if (at == std::string::npos && colon == std::string::npos) {
-        note.midi = std::atoi(noteText.c_str());
         note.startSeconds = sequentialStart;
         sequentialStart += note.durationSeconds + 0.05;
         return note.midi >= 0 && note.midi <= 127;
@@ -137,7 +156,6 @@ bool parseNoteToken(const std::string& token, NoteSpec& note, double& sequential
     }
     const auto fields = split(timing, ':');
     if (fields.size() < 2u || fields.size() > 3u) return false;
-    note.midi = std::atoi(noteText.c_str());
     if (!parseDouble(fields[0], note.startSeconds) ||
         !parseDouble(fields[1], note.durationSeconds)) return false;
     if (fields.size() == 3u && !parseFloat(fields[2], note.velocity)) return false;
@@ -161,122 +179,313 @@ std::vector<NoteSpec> parseSequence(const std::string& text) {
     return notes;
 }
 
-bool readJsonNumber(const std::string& json, const std::string& key, float& value) {
-    const std::string quoted = "\"" + key + "\"";
-    const auto position = json.find(quoted);
-    if (position == std::string::npos) return false;
-    const auto colon = json.find(':', position + quoted.size());
-    if (colon == std::string::npos) return false;
-    std::size_t start = colon + 1u;
-    while (start < json.size() && (json[start] == ' ' || json[start] == '\n' || json[start] == '\r' || json[start] == '\t')) ++start;
-    std::size_t end = start;
-    while (end < json.size() && (std::isdigit(static_cast<unsigned char>(json[end])) ||
-                                 json[end] == '-' || json[end] == '+' || json[end] == '.' ||
-                                 json[end] == 'e' || json[end] == 'E')) ++end;
-    return start < end && parseFloat(json.substr(start, end - start), value);
-}
+struct JsonValue {
+    enum class Type { Null, Boolean, Number, String, Object, Array };
+    Type type = Type::Null;
+    bool boolean = false;
+    double number = 0.0;
+    std::string string;
+    std::map<std::string, JsonValue> object;
+    std::vector<JsonValue> array;
+};
 
-std::vector<NoteSpec> parseSequenceJson(const std::string& json) {
-    std::vector<NoteSpec> notes;
-    std::size_t cursor = 0;
-    while (cursor < json.size()) {
-        const auto begin = json.find('{', cursor);
-        if (begin == std::string::npos) break;
-        const auto end = json.find('}', begin + 1u);
-        if (end == std::string::npos) break;
-        const std::string object = json.substr(begin, end - begin + 1u);
-        float value = 0.0f;
-        NoteSpec note;
-        if (readJsonNumber(object, "note", value) || readJsonNumber(object, "midi", value)) {
-            note.midi = static_cast<int>(value);
-            if (readJsonNumber(object, "start", value)) note.startSeconds = value;
-            if (readJsonNumber(object, "duration", value)) note.durationSeconds = value;
-            if (readJsonNumber(object, "velocity", value)) note.velocity = value;
-            if (note.midi >= 0 && note.midi <= 127 && note.durationSeconds > 0.0) {
-                notes.push_back(note);
+class JsonParser {
+public:
+    explicit JsonParser(const std::string& text) : text_(text) {}
+
+    JsonValue parse() {
+        JsonValue value = parseValue();
+        skipSpace();
+        if (cursor_ != text_.size()) fail("trailing data");
+        return value;
+    }
+
+private:
+    [[noreturn]] void fail(const char* message) const {
+        throw std::runtime_error(std::string(message) + " at byte " + std::to_string(cursor_));
+    }
+
+    void skipSpace() {
+        while (cursor_ < text_.size() &&
+               std::isspace(static_cast<unsigned char>(text_[cursor_]))) ++cursor_;
+    }
+
+    bool consume(char expected) {
+        skipSpace();
+        if (cursor_ >= text_.size() || text_[cursor_] != expected) return false;
+        ++cursor_;
+        return true;
+    }
+
+    JsonValue parseValue() {
+        skipSpace();
+        if (cursor_ >= text_.size()) fail("unexpected end of JSON");
+        const char c = text_[cursor_];
+        if (c == '{') return parseObject();
+        if (c == '[') return parseArray();
+        if (c == '"') { JsonValue v; v.type = JsonValue::Type::String; v.string = parseString(); return v; }
+        if (c == '-' || std::isdigit(static_cast<unsigned char>(c))) return parseNumber();
+        if (text_.compare(cursor_, 4, "true") == 0) {
+            cursor_ += 4; JsonValue v; v.type = JsonValue::Type::Boolean; v.boolean = true; return v;
+        }
+        if (text_.compare(cursor_, 5, "false") == 0) {
+            cursor_ += 5; JsonValue v; v.type = JsonValue::Type::Boolean; return v;
+        }
+        if (text_.compare(cursor_, 4, "null") == 0) { cursor_ += 4; return {}; }
+        fail("invalid JSON value");
+    }
+
+    JsonValue parseObject() {
+        JsonValue value; value.type = JsonValue::Type::Object; consume('{');
+        if (consume('}')) return value;
+        while (true) {
+            skipSpace();
+            if (cursor_ >= text_.size() || text_[cursor_] != '"') fail("expected object key");
+            const std::string key = parseString();
+            if (!consume(':')) fail("expected colon");
+            JsonValue member = parseValue();
+            if (!value.object.emplace(key, std::move(member)).second) fail("duplicate object key");
+            if (consume('}')) return value;
+            if (!consume(',')) fail("expected comma");
+        }
+    }
+
+    JsonValue parseArray() {
+        JsonValue value; value.type = JsonValue::Type::Array; consume('[');
+        if (consume(']')) return value;
+        while (true) {
+            value.array.push_back(parseValue());
+            if (consume(']')) return value;
+            if (!consume(',')) fail("expected comma");
+        }
+    }
+
+    std::string parseString() {
+        if (!consume('"')) fail("expected string");
+        std::string result;
+        while (cursor_ < text_.size()) {
+            char c = text_[cursor_++];
+            if (c == '"') return result;
+            if (static_cast<unsigned char>(c) < 0x20u) fail("control byte in string");
+            if (c != '\\') { result.push_back(c); continue; }
+            if (cursor_ >= text_.size()) fail("truncated escape");
+            const char escaped = text_[cursor_++];
+            switch (escaped) {
+            case '"': case '\\': case '/': result.push_back(escaped); break;
+            case 'b': result.push_back('\b'); break;
+            case 'f': result.push_back('\f'); break;
+            case 'n': result.push_back('\n'); break;
+            case 'r': result.push_back('\r'); break;
+            case 't': result.push_back('\t'); break;
+            case 'u':
+                if (cursor_ + 4u > text_.size()) fail("truncated unicode escape");
+                for (int i = 0; i < 4; ++i) {
+                    if (!std::isxdigit(static_cast<unsigned char>(text_[cursor_ + i])))
+                        fail("invalid unicode escape");
+                }
+                cursor_ += 4u;
+                result.push_back('?');
+                break;
+            default: fail("invalid string escape");
             }
         }
-        cursor = end + 1u;
+        fail("unterminated string");
     }
-    std::sort(notes.begin(), notes.end(), [](const NoteSpec& a, const NoteSpec& b) {
-        return a.startSeconds < b.startSeconds;
-    });
-    return notes;
-}
 
-bool readJsonNestedNumber(const std::string& json, const std::string& parent,
-                          const std::string& child, float& value) {
-    const std::string quotedParent = "\"" + parent + "\"";
-    const auto parentPosition = json.find(quotedParent);
-    if (parentPosition == std::string::npos) return false;
-    const auto childPosition = json.find("\"" + child + "\"", parentPosition + quotedParent.size());
-    if (childPosition == std::string::npos || childPosition > parentPosition + 512u) return false;
-    const auto colon = json.find(':', childPosition);
-    if (colon == std::string::npos) return false;
-    std::size_t start = colon + 1u;
-    while (start < json.size() && std::isspace(static_cast<unsigned char>(json[start]))) ++start;
-    std::size_t end = start;
-    while (end < json.size() && (std::isdigit(static_cast<unsigned char>(json[end])) ||
-                                 json[end] == '-' || json[end] == '+' || json[end] == '.' ||
-                                 json[end] == 'e' || json[end] == 'E')) ++end;
-    return start < end && parseFloat(json.substr(start, end - start), value);
-}
+    JsonValue parseNumber() {
+        const std::size_t start = cursor_;
+        if (text_[cursor_] == '-') ++cursor_;
+        if (cursor_ >= text_.size()) fail("truncated number");
+        if (text_[cursor_] == '0') ++cursor_;
+        else {
+            if (!std::isdigit(static_cast<unsigned char>(text_[cursor_]))) fail("invalid number");
+            while (cursor_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[cursor_]))) ++cursor_;
+        }
+        if (cursor_ < text_.size() && text_[cursor_] == '.') {
+            ++cursor_;
+            if (cursor_ >= text_.size() || !std::isdigit(static_cast<unsigned char>(text_[cursor_]))) fail("invalid fraction");
+            while (cursor_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[cursor_]))) ++cursor_;
+        }
+        if (cursor_ < text_.size() && (text_[cursor_] == 'e' || text_[cursor_] == 'E')) {
+            ++cursor_;
+            if (cursor_ < text_.size() && (text_[cursor_] == '+' || text_[cursor_] == '-')) ++cursor_;
+            if (cursor_ >= text_.size() || !std::isdigit(static_cast<unsigned char>(text_[cursor_]))) fail("invalid exponent");
+            while (cursor_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[cursor_]))) ++cursor_;
+        }
+        JsonValue value; value.type = JsonValue::Type::Number;
+        value.number = std::strtod(text_.c_str() + start, nullptr);
+        if (!std::isfinite(value.number)) fail("non-finite number");
+        return value;
+    }
 
-bool readJsonPathNumber(const std::string& json,
-                        std::initializer_list<const char*> path,
-                        float& value) {
-    std::size_t cursor = 0;
+    const std::string& text_;
+    std::size_t cursor_ = 0;
+};
+
+const JsonValue* jsonAt(const JsonValue& root, std::initializer_list<const char*> path) {
+    const JsonValue* value = &root;
     for (const char* key : path) {
-        const std::string quoted = "\"" + std::string(key) + "\"";
-        const auto position = json.find(quoted, cursor);
-        if (position == std::string::npos || position > cursor + 2048u) return false;
-        cursor = position + quoted.size();
+        if (value->type != JsonValue::Type::Object) return nullptr;
+        const auto found = value->object.find(key);
+        if (found == value->object.end()) return nullptr;
+        value = &found->second;
     }
-    const auto colon = json.find(':', cursor);
-    if (colon == std::string::npos) return false;
-    std::size_t start = colon + 1u;
-    while (start < json.size() && std::isspace(static_cast<unsigned char>(json[start]))) ++start;
-    std::size_t end = start;
-    while (end < json.size() && (std::isdigit(static_cast<unsigned char>(json[end])) ||
-                                 json[end] == '-' || json[end] == '+' || json[end] == '.' ||
-                                 json[end] == 'e' || json[end] == 'E')) ++end;
-    return start < end && parseFloat(json.substr(start, end - start), value);
+    return value;
 }
 
-void readJsonOverride(const std::string& path, Options& options) {
+bool jsonNumber(const JsonValue& root, std::initializer_list<const char*> path, float& out) {
+    const JsonValue* value = jsonAt(root, path);
+    if (value == nullptr || value->type != JsonValue::Type::Number) return false;
+    out = static_cast<float>(value->number);
+    return std::isfinite(out);
+}
+
+float normalizedField(const JsonValue& root, std::initializer_list<const char*> path,
+                      float fallback) {
+    const JsonValue* value = jsonAt(root, path);
+    if (value == nullptr) return fallback;
+    if (value->type == JsonValue::Type::Number)
+        return std::max(0.0f, std::min(1.0f, static_cast<float>(value->number)));
+    if (value->type != JsonValue::Type::Object) return fallback;
+    const auto number = [&](const char* key, float scale, float& result) {
+        const auto found = value->object.find(key);
+        if (found == value->object.end() || found->second.type != JsonValue::Type::Number) return false;
+        result = static_cast<float>(found->second.number) * scale;
+        return true;
+    };
+    float result = fallback;
+    if (number("normalized", 1.0f, result) || number("normalized_crossfade", 1.0f, result) ||
+        number("raw", 1.0f / 127.0f, result) || number("value", 1.0f / 127.0f, result))
+        return std::max(0.0f, std::min(1.0f, result));
+    return fallback;
+}
+
+float signedField(const JsonValue& root, std::initializer_list<const char*> path,
+                 float fallback, float range) {
+    const JsonValue* value = jsonAt(root, path);
+    if (value == nullptr || value->type != JsonValue::Type::Object) return fallback;
+    const auto found = value->object.find("value");
+    if (found == value->object.end() || found->second.type != JsonValue::Type::Number) return fallback;
+    return std::max(-1.0f, std::min(1.0f, static_cast<float>(found->second.number) / range));
+}
+
+bool parseSequenceJson(const std::string& json, std::vector<NoteSpec>& notes, std::string& error) {
+    try {
+        const JsonValue root = JsonParser(json).parse();
+        if (root.type != JsonValue::Type::Array) throw std::runtime_error("sequence root must be an array");
+        for (const JsonValue& item : root.array) {
+            if (item.type != JsonValue::Type::Object) throw std::runtime_error("sequence events must be objects");
+            float value = 0.0f;
+            NoteSpec note;
+            if (!(jsonNumber(item, {"note"}, value) || jsonNumber(item, {"midi"}, value)) ||
+                value != std::floor(value)) throw std::runtime_error("sequence event requires an integer note");
+            note.midi = static_cast<int>(value);
+            if (jsonNumber(item, {"start"}, value)) note.startSeconds = value;
+            if (jsonNumber(item, {"duration"}, value)) note.durationSeconds = value;
+            if (jsonNumber(item, {"velocity"}, value)) note.velocity = value;
+            if (note.midi < 0 || note.midi > 127 || note.startSeconds < 0.0 ||
+                note.durationSeconds <= 0.0) throw std::runtime_error("sequence event values are out of range");
+            notes.push_back(note);
+        }
+        std::sort(notes.begin(), notes.end(), [](const NoteSpec& a, const NoteSpec& b) {
+            return a.startSeconds < b.startSeconds;
+        });
+        return true;
+    } catch (const std::exception& exception) {
+        error = exception.what();
+        return false;
+    }
+}
+
+bool readJsonOverride(const std::string& path, Options& options, std::string& error) {
     std::ifstream file(path);
-    if (!file) return;
+    if (!file) { error = "unable to read canonical JSON: " + path; return false; }
     const std::string json((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    float value = 0.0f;
-    if (readJsonNumber(json, "sample_rate", value)) options.sampleRate = value;
-    if (readJsonNumber(json, "duration", value)) options.durationSeconds = value;
-    if (readJsonNumber(json, "algorithm", value)) {
-        options.algorithm = value >= 1.0f && value <= 8.0f
-            ? static_cast<int>(value) - 1 : static_cast<int>(value);
-    }
-    if (readJsonNumber(json, "harm", value)) options.harm = value;
-    if (readJsonPathNumber(json, {"harm", "normalized"}, value)) options.harm = value;
-    else if (readJsonPathNumber(json, {"harm", "value"}, value)) {
-        options.harm = std::fabs(value) > 1.0f ? value / 26.0f : value;
-    }
-    if (readJsonNumber(json, "feedback", value)) options.feedback = value;
-    if (readJsonPathNumber(json, {"feedback", "normalized"}, value)) options.feedback = value;
-    else if (readJsonPathNumber(json, {"feedback", "raw"}, value)) options.feedback = value / 127.0f;
-    if (readJsonNumber(json, "mix", value)) options.mix = std::fabs(value) > 1.0f ? value / 127.0f : value;
-    if (readJsonPathNumber(json, {"mix", "normalized"}, value)) options.mix = value;
-    else if (readJsonPathNumber(json, {"mix", "value"}, value)) options.mix =
-        std::fabs(value) > 1.0f ? (value + 64.0f) / 127.0f : value;
-    else if (readJsonPathNumber(json, {"mix", "raw"}, value)) options.mix = value / 127.0f;
-    if (readJsonNumber(json, "ratio_c", value)) options.ratios[0] = value;
-    if (readJsonNumber(json, "ratio_a", value)) options.ratios[1] = value;
-    if (readJsonNumber(json, "ratio_b1", value)) options.ratios[2] = value;
-    if (readJsonNumber(json, "ratio_b2", value)) options.ratios[3] = value;
-    const char* parents[] = {"c", "a", "b1", "b2"};
-    for (std::size_t i = 0; i < 4u; ++i) {
-        if (readJsonNestedNumber(json, parents[i], "ratio", value)) options.ratios[i] = value;
-    }
-    if (readJsonPathNumber(json, {"envelopes", "b", "level", "normalized"}, value)) {
-        options.bLevel = value;
+    try {
+        const JsonValue root = JsonParser(json).parse();
+        if (root.type != JsonValue::Type::Object) throw std::runtime_error("canonical JSON root must be an object");
+        float value = 0.0f;
+        if (jsonNumber(root, {"sample_rate"}, value)) options.sampleRate = value;
+        if (jsonNumber(root, {"duration"}, value)) options.durationSeconds = value;
+        const JsonValue* algorithm = jsonAt(root, {"algorithm"});
+        if (algorithm != nullptr) {
+            if (algorithm->type == JsonValue::Type::Number) {
+                if (algorithm->number != std::floor(algorithm->number))
+                    throw std::runtime_error("algorithm must be an integer from 1..8");
+                const int raw = static_cast<int>(algorithm->number);
+                if (raw >= 1 && raw <= 8) options.algorithm = raw - 1;
+                else throw std::runtime_error("algorithm must be 1..8");
+            } else if (algorithm->type == JsonValue::Type::String &&
+                       !parseAlgorithm(algorithm->string, options.algorithm)) {
+                throw std::runtime_error("invalid algorithm name");
+            }
+        }
+        options.harm = signedField(root, {"harm"}, options.harm, 26.0f);
+        if (jsonNumber(root, {"harm", "normalized"}, value)) options.harm = value;
+        options.feedback = normalizedField(root, {"feedback"}, options.feedback);
+        options.mix = normalizedField(root, {"mix"}, options.mix);
+        const char* roles[] = {"c", "a", "b1", "b2"};
+        for (std::size_t i = 0; i < 4u; ++i) {
+            if (jsonNumber(root, {"ratios", roles[i], "ratio"}, value)) options.ratios[i] = value;
+        }
+        options.levels[1] = normalizedField(root, {"envelopes", "a", "level"}, options.levels[1]);
+        options.bLevel = normalizedField(root, {"envelopes", "b", "level"}, options.bLevel);
+        const auto mapEnvelope = [&](const char* group, std::size_t first, std::size_t last) {
+            if (jsonAt(root, {"envelopes", group}) == nullptr) return;
+            const float attack = digitone::envelopeSecondsFromNormalized(
+                normalizedField(root, {"envelopes", group, "attack"}, 0.0f));
+            const float decay = digitone::envelopeSecondsFromNormalized(
+                normalizedField(root, {"envelopes", group, "decay"}, 0.0f));
+            const float sustain = normalizedField(root, {"envelopes", group, "end"}, 1.0f);
+            for (std::size_t i = first; i <= last; ++i) {
+                options.operatorEnvelopes[i].attackSeconds = attack;
+                options.operatorEnvelopes[i].decaySeconds = decay;
+                options.operatorEnvelopes[i].sustain = sustain;
+            }
+        };
+        mapEnvelope("a", 1u, 1u);
+        mapEnvelope("b", 2u, 3u);
+        if (jsonAt(root, {"amp", "amp_attack"}) != nullptr)
+            options.attack = digitone::envelopeSecondsFromNormalized(
+                normalizedField(root, {"amp", "amp_attack"}, 0.0f));
+        if (jsonAt(root, {"amp", "amp_decay"}) != nullptr)
+            options.decay = digitone::envelopeSecondsFromNormalized(
+                normalizedField(root, {"amp", "amp_decay"}, 0.0f));
+        if (jsonAt(root, {"amp", "amp_sustain"}) != nullptr)
+            options.sustain = normalizedField(root, {"amp", "amp_sustain"}, options.sustain);
+        if (jsonAt(root, {"amp", "amp_release"}) != nullptr)
+            options.release = digitone::envelopeSecondsFromNormalized(
+                normalizedField(root, {"amp", "amp_release"}, 0.0f));
+        options.gain = normalizedField(root, {"amp", "vol"}, options.gain);
+        options.drive = normalizedField(root, {"amp", "drive"}, options.drive);
+        if (jsonAt(root, {"filter", "filt1_freq"}) != nullptr)
+            options.filterCutoffHz = digitone::filterCutoffFromNormalized(
+                normalizedField(root, {"filter", "filt1_freq"}, 0.75f));
+        if (jsonAt(root, {"filter", "filt1_reso"}) != nullptr)
+            options.filterQ = digitone::filterQFromNormalized(
+                normalizedField(root, {"filter", "filt1_reso"}, 0.01f));
+        if (jsonAt(root, {"filter", "filt_env"}) != nullptr)
+            options.filterEnvDepth = signedField(root, {"filter", "filt_env"}, 0.0f, 64.0f) * 10000.0f;
+        const auto mapLfo = [&](std::size_t index, digitone::LfoParams& lfo) {
+            const JsonValue* list = jsonAt(root, {"lfos"});
+            if (list == nullptr || list->type != JsonValue::Type::Array || index >= list->array.size()) return;
+            const JsonValue& item = list->array[index];
+            lfo.rateHz = digitone::lfoRateFromNormalized(std::fabs(
+                signedField(item, {"speed"}, 0.0f, 64.0f)));
+            lfo.depth = std::fabs(signedField(item, {"depth"}, 0.0f, 64.0f));
+            if (jsonNumber(item, {"waveform", "raw"}, value))
+                lfo.waveform = (static_cast<int>(value) & 1) != 0
+                    ? digitone::LfoWaveform::Triangle : digitone::LfoWaveform::Sine;
+        };
+        mapLfo(0u, options.lfo1);
+        mapLfo(1u, options.lfo2);
+        const JsonValue* routing = jsonAt(root, {"routing"});
+        options.hasUnmappedRouting = routing != nullptr &&
+            routing->type == JsonValue::Type::Object && !routing->object.empty();
+        return true;
+    } catch (const std::exception& exception) {
+        error = "invalid canonical JSON: " + std::string(exception.what());
+        return false;
     }
 }
 
@@ -305,6 +514,39 @@ bool writeWav(const std::string& path, const std::vector<float>& audio, std::uin
     return static_cast<bool>(out);
 }
 
+void dumpParameters(const digitone::Parameters& params, float sampleRate) {
+    std::cout << "{\"sample_rate\":" << sampleRate
+              << ",\"algorithm\":" << (static_cast<int>(params.algorithm) + 1)
+              << ",\"harm\":" << params.harm
+              << ",\"feedback\":";
+    const auto feedbackMask = digitone::algorithmSpec(params.algorithm).feedbackMask;
+    float feedback = 0.0f;
+    for (std::size_t i = 0; i < digitone::kNumOperators; ++i)
+        if ((feedbackMask & (1u << i)) != 0u) feedback = params.operators[i].feedback;
+    std::cout << feedback << ",\"mix\":" << params.mix
+              << ",\"b_level\":" << params.bLevel
+              << ",\"gain\":" << params.gain
+              << ",\"drive\":" << params.drive
+              << ",\"filter_cutoff_hz\":" << params.filterCutoffHz
+              << ",\"filter_q\":" << params.filterQ
+              << ",\"ratios\":[";
+    for (std::size_t i = 0; i < digitone::kNumOperators; ++i) {
+        if (i != 0u) std::cout << ',';
+        std::cout << params.operators[i].ratio;
+    }
+    std::cout << "],\"levels\":[";
+    for (std::size_t i = 0; i < digitone::kNumOperators; ++i) {
+        if (i != 0u) std::cout << ',';
+        std::cout << params.operators[i].level;
+    }
+    std::cout << "],\"amp_envelope\":{"
+              << "\"attack\":" << params.ampEnvelope.attackSeconds
+              << ",\"decay\":" << params.ampEnvelope.decaySeconds
+              << ",\"sustain\":" << params.ampEnvelope.sustain
+              << ",\"release\":" << params.ampEnvelope.releaseSeconds
+              << "}}\n";
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -312,6 +554,7 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string flag = argv[i];
         if (flag == "--help" || flag == "-h") { usage(argv[0]); return 0; }
+        if (flag == "--dump-parameters") { options.dumpParameters = true; continue; }
         if (i + 1 >= argc) { std::cerr << "Missing value for " << flag << "\n"; return 2; }
         const std::string value = argv[++i];
         float parsed = 0.0f;
@@ -332,14 +575,25 @@ int main(int argc, char** argv) {
         else if (flag == "--release" && parseFloat(value, options.release)) {}
         else { std::cerr << "Invalid flag/value: " << flag << " " << value << "\n"; return 2; }
     }
-    if (!options.input.empty()) readJsonOverride(options.input, options);
+    std::string jsonError;
+    if (!options.input.empty() && !readJsonOverride(options.input, options, jsonError)) {
+        std::cerr << jsonError << "\n";
+        return 2;
+    }
+    if (options.hasUnmappedRouting) {
+        std::cerr << "warning: canonical modulation destination IDs are preserved but not "
+                     "mapped until hardware calibration establishes their semantics\n";
+    }
     options.sampleRate = std::max(1000.0f, std::min(384000.0f, options.sampleRate));
     std::vector<NoteSpec> notes;
     if (!options.sequenceJson.empty()) {
         std::ifstream sequenceFile(options.sequenceJson);
         if (sequenceFile) options.sequenceJson.assign((std::istreambuf_iterator<char>(sequenceFile)),
                                                        std::istreambuf_iterator<char>());
-        notes = parseSequenceJson(options.sequenceJson);
+        if (!parseSequenceJson(options.sequenceJson, notes, jsonError)) {
+            std::cerr << "Invalid sequence JSON: " << jsonError << "\n";
+            return 2;
+        }
     }
     if (notes.empty() && !options.sequence.empty() &&
         options.sequence.find_first_of("@:,;") == std::string::npos) {
@@ -353,11 +607,13 @@ int main(int argc, char** argv) {
     for (const auto& note : notes) inferredDuration = std::max(
         inferredDuration, note.startSeconds + note.durationSeconds + options.release + 0.05);
     if (options.durationSeconds <= 0.0) options.durationSeconds = inferredDuration;
-    const std::size_t frames = static_cast<std::size_t>(
-        std::max(1.0, options.durationSeconds * options.sampleRate));
-    if (frames > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max() / 4u)) {
+    const double requestedFrames = options.durationSeconds * options.sampleRate;
+    const double maximumFrames = static_cast<double>(
+        std::numeric_limits<std::uint32_t>::max() / 4u);
+    if (!std::isfinite(requestedFrames) || requestedFrames <= 0.0 || requestedFrames > maximumFrames) {
         std::cerr << "Requested WAV is too large\n"; return 2;
     }
+    const std::size_t frames = static_cast<std::size_t>(std::max(1.0, requestedFrames));
 
     digitone::Engine engine(options.sampleRate);
     digitone::Parameters params = engine.parameters();
@@ -369,15 +625,28 @@ int main(int argc, char** argv) {
     params.ampEnvelope.decaySeconds = options.decay;
     params.ampEnvelope.sustain = options.sustain;
     params.ampEnvelope.releaseSeconds = options.release;
+    params.gain = options.gain;
+    params.drive = options.drive;
+    params.filterCutoffHz = options.filterCutoffHz;
+    params.filterQ = options.filterQ;
+    params.filterEnvDepth = options.filterEnvDepth;
+    params.lfo1 = options.lfo1;
+    params.lfo2 = options.lfo2;
     for (std::size_t i = 0; i < digitone::kNumOperators; ++i) {
         params.operators[i].ratio = options.ratios[i];
         params.operatorRatios[i] = options.ratios[i];
+        params.operators[i].level = options.levels[i];
+        params.operators[i].envelope = options.operatorEnvelopes[i];
     }
     const auto feedbackMask = digitone::algorithmSpec(params.algorithm).feedbackMask;
     for (std::size_t i = 0; i < digitone::kNumOperators; ++i) {
         if ((feedbackMask & (1u << i)) != 0u) params.operators[i].feedback = options.feedback;
     }
     engine.setParameters(params);
+    if (options.dumpParameters) {
+        dumpParameters(engine.parameters(), options.sampleRate);
+        return 0;
+    }
 
     std::vector<float> audio(frames * 2u, 0.0f);
     std::vector<digitone::Event> events;

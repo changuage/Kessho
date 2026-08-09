@@ -8,6 +8,7 @@ cycle-accurate Digitone emulation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 import json
 from typing import Any, Mapping, Sequence
 
@@ -232,6 +233,8 @@ class DigitoneSound:
     raw: dict[str, Any] = field(default_factory=dict)
     confidence: dict[str, str] = field(default_factory=dict)
     uncertain: list[str] = field(default_factory=list)
+    provenance: dict[str, Any] = field(default_factory=dict)
+    capture: dict[str, Any] = field(default_factory=dict)
     schema_version: str = SCHEMA_VERSION
 
     @property
@@ -268,6 +271,8 @@ class DigitoneSound:
             "raw": self.raw,
             "confidence": self.confidence,
             "uncertain": self.uncertain,
+            "provenance": self.provenance,
+            "capture": self.capture,
         }
 
     as_dict = to_dict
@@ -281,7 +286,7 @@ class DigitoneSound:
             raise TypeError("DigitoneSound.from_dict expects a mapping")
         kwargs = {field_name: value[field_name] for field_name in (
             "name", "algorithm", "ratios", "harm", "feedback", "mix", "envelopes", "amp",
-            "filter", "lfos", "routing", "tags", "raw", "confidence", "uncertain", "schema_version",
+            "filter", "lfos", "routing", "tags", "raw", "confidence", "uncertain", "provenance", "capture", "schema_version",
         ) if field_name in value}
         return cls(**kwargs)
 
@@ -290,8 +295,8 @@ class DigitoneSound:
         return cls.from_dict(json.loads(value))
 
     @classmethod
-    def from_sysex(cls, value: bytes | bytearray | memoryview | Sequence[int] | str | SoundMessage, *, strict: bool = True, validate_checksum: bool = True) -> "DigitoneSound":
-        return decode_sound(value, strict=strict, validate_checksum=validate_checksum)
+    def from_sysex(cls, value: bytes | bytearray | memoryview | Sequence[int] | str | SoundMessage, *, strict: bool = True, validate_checksum: bool = True, validate_declared_length: bool = True) -> "DigitoneSound":
+        return decode_sound(value, strict=strict, validate_checksum=validate_checksum, validate_declared_length=validate_declared_length)
 
     from_bytes = from_sysex
 
@@ -312,11 +317,13 @@ def decode_sound(
     *,
     strict: bool = True,
     validate_checksum: bool = True,
+    validate_declared_length: bool = True,
 ) -> DigitoneSound:
     """Decode a validated frame into the canonical model."""
 
     message = value if isinstance(value, SoundMessage) else validate_sound_message(
-        value, strict_size=strict, validate_checksum=validate_checksum
+        value, strict_size=strict, validate_checksum=validate_checksum,
+        validate_declared_length=validate_declared_length,
     )
     frame, data = message.frame, message.data
     unpacked_name = message.name_bytes
@@ -364,7 +371,7 @@ def decode_sound(
         "filter/amp/LFO/controller values preserve raw bytes where transfer curves are undocumented",
     ]
     confidence = {
-        "framing": "validated",
+        "framing": "validated" if strict and validate_checksum and validate_declared_length else "relaxed-unverified",
         "name": "7-bit-unpacked",
         "algorithm": "raw-index",
         "ratios": "calibration-table-index",
@@ -419,18 +426,31 @@ def decode_sound(
             "checksum14": message.checksum,
             "declared_length": message.declared_length,
             "actual_length": message.actual_length,
+            "size_known": message.size_known,
+            "checksum_expected": sum(frame[10:-5]) & 0x3FFF,
+            "checksum_validated": validate_checksum,
+            "declared_length_validated": validate_declared_length,
         },
         confidence=confidence,
         uncertain=uncertain,
+        provenance={
+            "normalized_frame_sha256": hashlib.sha256(frame).hexdigest(),
+            "validation": {
+                "mode": "strict" if strict and validate_checksum and validate_declared_length else "relaxed",
+                "size_known": message.size_known,
+                "checksum_validated": validate_checksum,
+                "declared_length_validated": validate_declared_length,
+            }
+        },
     )
 
 
-def decode(value: bytes | bytearray | memoryview | Sequence[int] | str | SoundMessage, *, strict: bool = True, validate_checksum: bool = True) -> DigitoneSound:
-    return decode_sound(value, strict=strict, validate_checksum=validate_checksum)
+def decode(value: bytes | bytearray | memoryview | Sequence[int] | str | SoundMessage, *, strict: bool = True, validate_checksum: bool = True, validate_declared_length: bool = True) -> DigitoneSound:
+    return decode_sound(value, strict=strict, validate_checksum=validate_checksum, validate_declared_length=validate_declared_length)
 
 
-def parse_sound(value: bytes | bytearray | memoryview | Sequence[int] | str | SoundMessage, *, strict: bool = True, validate_checksum: bool = True) -> DigitoneSound:
-    return decode_sound(value, strict=strict, validate_checksum=validate_checksum)
+def parse_sound(value: bytes | bytearray | memoryview | Sequence[int] | str | SoundMessage, *, strict: bool = True, validate_checksum: bool = True, validate_declared_length: bool = True) -> DigitoneSound:
+    return decode_sound(value, strict=strict, validate_checksum=validate_checksum, validate_declared_length=validate_declared_length)
 
 
 from_sysex = decode_sound

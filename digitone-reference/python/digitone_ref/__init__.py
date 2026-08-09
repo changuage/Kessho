@@ -30,6 +30,7 @@ from .sysex import (
     parse,
     parse_sysex_stream,
     request_current_sound,
+    resolve_midi_ports,
     validate,
     validate_sound_message,
 )
@@ -65,6 +66,7 @@ __all__ = [
     "parse_sysex_stream",
     "parse",
     "request_current_sound",
+    "resolve_midi_ports",
     "save_json",
     "save_raw",
     "validate_sound_message",

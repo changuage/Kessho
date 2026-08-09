@@ -2,3 +2,6 @@
 /build/
 __pycache__/
 *.py[cod]
+!include/
+!include/digitone/
+!include/digitone/*.h

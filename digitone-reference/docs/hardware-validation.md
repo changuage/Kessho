@@ -16,10 +16,15 @@ target hardware/firmware.
    bytes and canonical JSON.
 
 For synchronized line capture, use `record-reference`; it schedules the same
-note events sent to the native renderer and records the MIDI output name in
-the sidecar metadata.  Check the recorded PCM16 peak/RMS before comparing
+note events sent to the native renderer and records the MIDI output, channel,
+actual event sample positions, backend-reported latency, and overflow count in
+the sidecar metadata. Check the recorded PCM16 peak/RMS before comparing
 waveforms so gain or clipping differences are not mistaken for synthesis
 behavior.
+
+Use `--relaxed` only to archive/research a future Sound frame whose size or
+checksum is not yet recognized. Keep that artifact marked as relaxed and add a
+validated fixture before treating the new layout as supported.
 
 ## Unknowns requiring hardware measurements
 
@@ -36,6 +41,11 @@ behavior.
   update timing;
 * output gain, clipping, sample-rate conversion, stereo image, and any
   firmware-specific oversampling or anti-aliasing.
+
+The comparison tool removes fixed leading latency using a threshold-based
+onset measurement and reports both the measured offset and resulting RMS. This
+is not phase alignment: manually inspect or add a better calibration sequence
+when filters/envelopes make onset detection ambiguous.
 
 Until these are measured, comparisons should report structural metadata and
 waveform differences without calling them exact emulation.  Add calibration

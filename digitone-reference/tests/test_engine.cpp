@@ -149,6 +149,39 @@ bool testGroupedB() {
     return ok;
 }
 
+bool testCalibrationCurves() {
+    bool ok = check(digitone::envelopeSecondsFromNormalized(0.0f) == 0.0f,
+                    "zero envelope time");
+    ok &= check(std::fabs(digitone::filterCutoffFromNormalized(0.0f) - 20.0f) < 0.001f,
+                "filter cutoff lower knot");
+    ok &= check(std::fabs(digitone::filterCutoffFromNormalized(1.0f) - 20000.0f) < 0.1f,
+                "filter cutoff upper knot");
+    ok &= check(digitone::lfoRateFromNormalized(1.0f) >
+                digitone::lfoRateFromNormalized(0.5f), "LFO rate curve");
+    return ok;
+}
+
+bool testOverlappingSameNoteReleaseOrder() {
+    auto p = testParameters();
+    p.ampEnvelope.releaseSeconds = 0.001f;
+    for (auto& op : p.operators) op.envelope.releaseSeconds = 0.001f;
+    digitone::Engine engine(48000.0f);
+    engine.setParameters(p);
+    engine.noteOn(60);
+    engine.noteOn(60);
+    engine.noteOff(60);
+    std::vector<float> firstTail(512u * 2u, 0.0f);
+    engine.processInterleaved(firstTail.data(), 512u);
+    bool ok = check(engine.activeVoiceCount() == 1u,
+                    "one note-off must release one overlapping voice");
+    engine.noteOff(60);
+    std::vector<float> secondTail(512u * 2u, 0.0f);
+    engine.processInterleaved(secondTail.data(), 512u);
+    ok &= check(engine.activeVoiceCount() == 0u,
+                "second note-off must release the remaining voice");
+    return ok;
+}
+
 bool testReleaseAndController() {
     auto p = testParameters();
     p.ampEnvelope.releaseSeconds = 0.005f;
@@ -184,6 +217,8 @@ int main() {
     ok &= testTopologies();
     ok &= testDeterminismAndAlgorithms();
     ok &= testGroupedB();
+    ok &= testCalibrationCurves();
+    ok &= testOverlappingSameNoteReleaseOrder();
     ok &= testReleaseAndController();
     if (!ok) return 1;
     std::puts("digitone engine tests: ok");

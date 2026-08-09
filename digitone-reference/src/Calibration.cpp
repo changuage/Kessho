@@ -67,4 +67,22 @@ float b2LevelMacro(float normalized) noexcept {
     return 1.0f;
 }
 
+float envelopeSecondsFromNormalized(float normalized) noexcept {
+    const float x = clampUnit(normalized);
+    return x <= 0.0f ? 0.0f : 0.001f * std::pow(20000.0f, x);
+}
+
+float filterCutoffFromNormalized(float normalized) noexcept {
+    return 20.0f * std::pow(1000.0f, clampUnit(normalized));
+}
+
+float filterQFromNormalized(float normalized) noexcept {
+    return 0.5f + 19.5f * clampUnit(normalized);
+}
+
+float lfoRateFromNormalized(float normalized) noexcept {
+    const float x = clampUnit(normalized);
+    return x <= 0.0f ? 0.0f : 0.01f * std::pow(2000.0f, x);
+}
+
 } // namespace digitone

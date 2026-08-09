@@ -159,12 +159,30 @@ def archive_sound(
         checked or raw,
         strict=validate,
         validate_checksum=validate_checksum if validate else False,
+        validate_declared_length=validate,
     )
     if metadata:
         sound.raw.setdefault("archive_metadata", {}).update(dict(metadata))
     digest = sha256(raw)
-    stem = deterministic_stem(raw, label or sound.name)
+    base_stem = deterministic_stem(raw, label or sound.name)
     root = Path(directory)
+    json_payload = canonical_json(sound)
+    stem = base_stem
+    if not overwrite:
+        index = 1
+        while True:
+            raw_candidate = root / f"{stem}.syx"
+            json_candidate = root / f"{stem}.json"
+            if not raw_candidate.exists() and not json_candidate.exists():
+                break
+            if (
+                raw_candidate.exists() and json_candidate.exists()
+                and raw_candidate.read_bytes() == raw
+                and json_candidate.read_bytes() == json_payload
+            ):
+                return ArchiveRecord(raw_candidate, json_candidate, digest, sound)
+            stem = f"{base_stem}-{index}"
+            index += 1
     raw_path = save_raw(raw, root, stem=stem, validate=False, overwrite=overwrite)
     json_path = save_json(sound, root / f"{stem}.json", overwrite=overwrite)
     return ArchiveRecord(raw_path=raw_path, json_path=json_path, digest=digest, sound=sound)

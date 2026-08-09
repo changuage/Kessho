@@ -270,6 +270,7 @@ void Engine::setParameters(const Parameters& parameters) noexcept {
     parameters_.yLevel = std::max(0.0f, std::min(2.0f, finiteOr(parameters_.yLevel, 1.0f)));
     parameters_.stereoWidth = clampUnit(finiteOr(parameters_.stereoWidth, 0.8f));
     parameters_.gain = std::max(0.0f, std::min(4.0f, finiteOr(parameters_.gain, 0.25f)));
+    parameters_.drive = clampUnit(finiteOr(parameters_.drive, 0.0f));
 }
 
 void Engine::setAlgorithm(AlgorithmId algorithm) noexcept {
@@ -392,13 +393,17 @@ int Engine::noteOnFrequency(float frequencyHz, float velocity) noexcept {
 }
 
 void Engine::noteOff(int midiNote) noexcept {
+    Voice* oldest = nullptr;
     for (auto& voice : voices_) {
-        if (voice.active && voice.midiNote == midiNote) {
-            voice.released = true;
-            releaseEnvelope(voice.ampEnvelope);
-            for (auto& envelope : voice.operatorEnvelopes) releaseEnvelope(envelope);
+        if (voice.active && !voice.released && voice.midiNote == midiNote &&
+            (oldest == nullptr || voice.serial < oldest->serial)) {
+            oldest = &voice;
         }
     }
+    if (oldest == nullptr) return;
+    oldest->released = true;
+    releaseEnvelope(oldest->ampEnvelope);
+    for (auto& envelope : oldest->operatorEnvelopes) releaseEnvelope(envelope);
 }
 
 void Engine::noteOffVoice(int voiceIndex) noexcept {
@@ -566,6 +571,12 @@ void Engine::renderFrame(float& left, float& right) noexcept {
                                           voice.released, sampleRate_,
                                           calibration_.envelopeTimeScale);
         mono *= amp * voice.velocity * params.gain;
+        if (params.drive > 0.000001f) {
+            // Cheap bounded saturation; the hardware transfer remains a
+            // calibration unknown, so keep this stage isolated and optional.
+            const float amount = params.drive * 4.0f;
+            mono = mono * (1.0f + amount) / (1.0f + std::fabs(mono) * amount);
+        }
 
         float coefficient = voice.baseFilterCoefficient;
         if (!voice.filterCoefficientStatic) {
@@ -588,11 +599,11 @@ void Engine::renderFrame(float& left, float& right) noexcept {
         left += filtered * (0.5f * (1.0f - stereoPan));
         right += filtered * (0.5f * (1.0f + stereoPan));
 
-        if (params.lfo1.rateHz > 0.0f) {
+        if (params.lfo1.rateHz > 0.0f && params.lfo1.depth > 0.000001f) {
             voice.lfo1Phase += params.lfo1.rateHz * dt;
             voice.lfo1Phase -= std::floor(voice.lfo1Phase);
         }
-        if (params.lfo2.rateHz > 0.0f) {
+        if (params.lfo2.rateHz > 0.0f && params.lfo2.depth > 0.000001f) {
             voice.lfo2Phase += params.lfo2.rateHz * dt;
             voice.lfo2Phase -= std::floor(voice.lfo2Phase);
         }
