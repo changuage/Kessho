@@ -1,0 +1,456 @@
+/* FX alternate HERO pages — A/B test layer over existing production pages. */
+
+.fx-alt-page {
+  width: 100%;
+  min-width: 0;
+}
+
+.fx-alt-variant-bar {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto 8px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-muted, rgba(247,250,252,.44));
+  font-size: var(--font-xs, .55rem);
+}
+
+.fx-alt-variant-label {
+  margin-right: 5px;
+  color: var(--text-dim, rgba(247,250,252,.32));
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.fx-alt-variant-bar button,
+.fx-alt-view-switch button,
+.fx-alt-hero-tabs button {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--border-subtle, rgba(247,250,252,.12));
+  background: rgba(255,255,255,.035);
+  color: var(--text-muted, rgba(247,250,252,.44));
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.fx-alt-variant-bar button {
+  min-height: 26px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm, 6px);
+}
+
+.fx-alt-variant-bar button:hover,
+.fx-alt-view-switch button:hover,
+.fx-alt-hero-tabs button:hover {
+  background: var(--bg-control-hover, rgba(255,255,255,.09));
+  color: var(--text-primary, #F7FAFC);
+}
+
+.fx-alt-variant-bar button.active {
+  color: var(--text-primary, #F7FAFC);
+  border-color: color-mix(in srgb, var(--page-accent, #B8E0FF) 58%, rgba(247,250,252,.16));
+  background: color-mix(in srgb, var(--page-accent, #B8E0FF) 13%, transparent);
+}
+
+.fx-alt-hero-host {
+  min-width: 0;
+  width: 100%;
+}
+
+.fx-alt-original-viz-hidden {
+  display: none !important;
+}
+
+.fx-alt-hero-card {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  margin-bottom: 8px;
+  border: 1px solid color-mix(in srgb, var(--page-accent, #B8E0FF) 20%, rgba(247,250,252,.08));
+  border-radius: var(--radius-md, 8px);
+  background: var(--k-bg-card, rgba(24,23,21,.85));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+.fx-alt-hero-head {
+  min-height: 36px;
+  padding: 8px 10px 7px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid rgba(247,250,252,.075);
+  background: rgba(255,255,255,.025);
+}
+
+.fx-alt-hero-heading {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.fx-alt-hero-title {
+  color: var(--text-primary, #F7FAFC);
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+.fx-alt-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--page-accent, #B8E0FF);
+  font-size: .48rem;
+  font-weight: 800;
+  letter-spacing: .09em;
+}
+
+.fx-alt-live-badge::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.fx-alt-hero-note {
+  max-width: 60%;
+  color: var(--text-dim, rgba(247,250,252,.32));
+  font-size: .57rem;
+  line-height: 1.3;
+  text-align: right;
+}
+
+.fx-alt-hero-toolbar {
+  min-height: 36px;
+  padding: 5px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid rgba(247,250,252,.055);
+}
+
+.fx-alt-hero-tabs {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.fx-alt-hero-tabs::-webkit-scrollbar { display: none; }
+
+.fx-alt-hero-tabs button {
+  min-height: 28px;
+  padding: 3px 8px;
+  border-color: transparent;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  white-space: nowrap;
+}
+
+.fx-alt-hero-tabs button.active {
+  color: var(--text-primary, #F7FAFC);
+  border-color: color-mix(in srgb, var(--fx-alt-tab-color, var(--page-accent)) 56%, rgba(247,250,252,.12));
+  background: color-mix(in srgb, var(--fx-alt-tab-color, var(--page-accent)) 12%, transparent);
+}
+
+.fx-alt-view-switch {
+  flex: 0 0 auto;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 2px;
+  border: 1px solid var(--border-subtle, rgba(247,250,252,.12));
+  border-radius: var(--radius-sm, 6px);
+  background: rgba(0,0,0,.14);
+}
+
+.fx-alt-view-switch button {
+  min-width: 52px;
+  min-height: 28px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  font-size: .56rem;
+  letter-spacing: .05em;
+}
+
+.fx-alt-view-switch button.active {
+  color: var(--text-primary, #F7FAFC);
+  background: color-mix(in srgb, var(--page-accent, #B8E0FF) 17%, rgba(255,255,255,.025));
+}
+
+.fx-alt-hero-content {
+  min-width: 0;
+  padding: 8px 9px 9px;
+}
+
+.fx-alt-viz-stage {
+  position: relative;
+  width: 100%;
+  height: 228px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(247,250,252,.085);
+  border-radius: var(--radius-md, 8px);
+  background: var(--k-bg-inset, rgba(0,0,0,.2));
+  isolation: isolate;
+}
+
+.fx-alt-viz-stage > .granular-buffer-canvas-wrap,
+.fx-alt-viz-stage > .delay-rhythm-map,
+.fx-alt-viz-stage > .reverb-envelope-canvas-wrap,
+.fx-alt-viz-stage > .dynamics-visualizer,
+.fx-alt-viz-stage > div:not(.fx-alt-gesture-hint):not(.fx-alt-drag-handle) {
+  width: 100%;
+  max-width: none;
+}
+
+.fx-alt-granular-stage .granular-buffer-canvas-wrap,
+.fx-alt-delay-stage .delay-rhythm-map,
+.fx-alt-reverb-stage .reverb-envelope-canvas-wrap {
+  height: 100% !important;
+  min-height: 100% !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+
+.fx-alt-dynamics-stage > div:first-child {
+  min-height: 100%;
+}
+
+/* 44px invisible hit target, 8px visible dot. */
+.fx-alt-drag-handle {
+  --handle-color: var(--page-accent, #B8E0FF);
+  position: absolute;
+  z-index: 8;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--handle-color);
+  cursor: grab;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fx-alt-drag-handle:active { cursor: grabbing; }
+
+.fx-alt-handle-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  transform: translate(-50%,-50%);
+  border: 1px solid rgba(16,15,14,.9);
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 1px currentColor, 0 0 7px color-mix(in srgb, currentColor 32%, transparent);
+}
+
+.fx-alt-handle-label {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 11px);
+  transform: translateX(-50%);
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: rgba(10,10,9,.78);
+  color: var(--text-secondary, rgba(247,250,252,.7));
+  font-size: .48rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  white-space: nowrap;
+  opacity: .72;
+  pointer-events: none;
+}
+
+.fx-alt-drag-handle:hover .fx-alt-handle-label,
+.fx-alt-drag-handle:focus-visible .fx-alt-handle-label,
+.fx-alt-drag-handle:active .fx-alt-handle-label {
+  color: var(--text-primary, #F7FAFC);
+  opacity: 1;
+}
+
+.fx-alt-drag-handle:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: -8px;
+}
+
+.fx-alt-granular-stage .fx-alt-drag-handle:nth-of-type(1) { --handle-color: var(--page-accent); }
+.fx-alt-dynamics-stage.module-eq .fx-alt-drag-handle { --handle-color: #B8E0FF; }
+.fx-alt-dynamics-stage.module-comp .fx-alt-drag-handle { --handle-color: #C4724E; }
+.fx-alt-dynamics-stage.module-sat .fx-alt-drag-handle { --handle-color: #D4A520; }
+.fx-alt-dynamics-stage.module-drift .fx-alt-drag-handle { --handle-color: #7B9A6D; }
+.fx-alt-dynamics-stage.module-erosion .fx-alt-drag-handle { --handle-color: #8B5CF6; }
+
+.fx-alt-gesture-hint {
+  position: absolute;
+  z-index: 7;
+  left: 8px;
+  bottom: 6px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: rgba(10,10,9,.64);
+  color: var(--text-dim, rgba(247,250,252,.32));
+  font-size: .5rem;
+  line-height: 1.25;
+  pointer-events: none;
+}
+
+.fx-alt-slider-grid {
+  min-height: 228px;
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  align-content: start;
+  gap: 9px 14px;
+  padding: 8px 6px 4px;
+}
+
+.fx-alt-slider-grid > * {
+  min-width: 0;
+}
+
+/* Existing SliderPrimitive is retained verbatim; only give it room to breathe. */
+.fx-alt-slider-grid .app-slider-group,
+.fx-alt-slider-grid .sl-slider {
+  min-width: 0;
+}
+
+/* Granular: HERO appears before existing Voices card in the current right panel. */
+.fx-alt-hero-host--granular {
+  margin-bottom: 8px;
+}
+
+/* Delay: HERO replaces/promotes the old first right-column rhythm-map card. */
+.fx-alt-hero-host--delay {
+  margin-bottom: 0;
+}
+
+/* Reverb: span the existing two-column right-side card grid. */
+.fx-alt-hero-host--reverb {
+  grid-column: 1 / -1;
+}
+
+/* Texture keeps the current 3-column system. The HERO owns the top of columns 2–3. */
+.fx-alt-page--dynamics.variant-alt .dynamics-container {
+  grid-template-areas:
+    'left hero hero'
+    'left middle right';
+}
+
+.fx-alt-page--dynamics.variant-alt .dynamics-left {
+  grid-area: left;
+}
+
+.fx-alt-page--dynamics.variant-alt .fx-alt-hero-host--dynamics {
+  grid-area: hero;
+}
+
+.fx-alt-page--dynamics.variant-alt .dynamics-middle {
+  grid-area: middle;
+}
+
+.fx-alt-page--dynamics.variant-alt .dynamics-right {
+  grid-area: right;
+}
+
+@media (pointer: coarse) {
+  .fx-alt-drag-handle {
+    width: 48px;
+    height: 48px;
+    margin-left: -24px;
+    margin-top: -24px;
+  }
+
+  .fx-alt-handle-dot {
+    width: 10px;
+    height: 10px;
+  }
+
+  .fx-alt-handle-label {
+    font-size: .52rem;
+  }
+}
+
+@media (max-width: 900px) {
+  .fx-alt-page--dynamics.variant-alt .dynamics-container {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .fx-alt-page--dynamics.variant-alt .fx-alt-hero-host--dynamics {
+    order: -1;
+    width: 100%;
+  }
+
+  .fx-alt-viz-stage,
+  .fx-alt-slider-grid {
+    min-height: 190px;
+    height: 190px;
+  }
+
+  .fx-alt-slider-grid {
+    height: auto;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 620px) {
+  .fx-alt-variant-bar {
+    padding: 0 2px;
+  }
+
+  .fx-alt-hero-head {
+    align-items: flex-start;
+  }
+
+  .fx-alt-hero-note {
+    max-width: 48%;
+  }
+
+  .fx-alt-hero-toolbar {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .fx-alt-hero-tabs button {
+    min-height: 34px;
+    padding: 4px 9px;
+  }
+
+  .fx-alt-view-switch button {
+    min-width: 48px;
+    min-height: 34px;
+  }
+
+  .fx-alt-viz-stage {
+    height: 176px;
+    min-height: 176px;
+  }
+
+  .fx-alt-slider-grid {
+    min-height: 176px;
+    grid-template-columns: 1fr;
+    gap: 9px;
+    padding: 6px 4px;
+  }
+
+  .fx-alt-gesture-hint {
+    max-width: calc(100% - 16px);
+  }
+}
