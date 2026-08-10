@@ -1,7 +1,13 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import type { DualSliderRange } from '../../DualSlider';
 import { useSliderHelp } from '../../SliderHelpOverlay';
-import { QUANTIZATION, type SliderMode, type SliderState } from '../../state';
+import {
+  WATER_LAYER_ENABLED_BY_LEVEL,
+  WATER_LAYER_LEVEL_EPSILON,
+  WATER_LAYER_LEVEL_KEYS,
+  type WaterLayerLevelKey,
+} from '../../../audio/waterLayerActivation';
+import { QUANTIZATION, type SliderState } from '../../state';
 import { useAnimationVisibility } from '../../hooks/useAnimationVisibility';
 import { useVisibleInterval } from '../../hooks/useVisibleInterval';
 import { useRuntimeSliderIndicator } from '../../runtimeSliderState';
@@ -24,8 +30,10 @@ import {
   trackWidthCalc,
   useRafCoalescedEmitter,
   valueToNorm,
+  ModulationModeIcon,
   type MatrixCellHandle,
   type QuantizationRange,
+  type SliderRuntimeRendererProps,
 } from '../../sliderSystem';
 import '../../sliderSystem/matrixSurface.css';
 import { INSECT_ENGINES } from '../../../audio/waterPresets';
@@ -60,14 +68,7 @@ type PreviewKind =
 type CellHandle = MatrixCellHandle;
 type SharedColumnId = 'level' | 'space' | 'delayA' | 'delayB' | 'granular';
 
-type SliderRuntime = {
-  mode: SliderMode;
-  dualRange?: DualSliderRange;
-  walkPosition?: number;
-  isFlashing?: boolean;
-  onCycleMode?: (key: keyof SliderState) => void;
-  onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
-};
+type SliderRuntime = SliderRuntimeRendererProps<keyof SliderState>;
 
 type MatrixControl = {
   key: NumericSliderKey;
@@ -148,14 +149,7 @@ const SHARED_COLUMNS: Array<{ id: SharedColumnId; label: string }> = [
 ];
 const DEFAULT_SHARED_COLUMN: SharedColumnId = SHARED_COLUMNS[0]?.id ?? 'level';
 
-const WATER_LAYER_KEYS: readonly NumericSliderKey[] = [
-  'waterLayerHardDrops',
-  'waterLayerWaterDrops',
-  'waterLayerBubbling',
-  'waterLayerChannels',
-  'waterLayerTurbulence',
-  'waterLayerSurf',
-] as const;
+const WATER_LAYER_KEYS: readonly WaterLayerLevelKey[] = WATER_LAYER_LEVEL_KEYS;
 
 const routeAccent = (color: string, amount = 40): string => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
 
@@ -184,14 +178,12 @@ function formatValue(control: MatrixControl, value: number, info: QuantizationRa
 }
 
 function rangeReadout(
-  mode: SliderMode,
   control: MatrixControl,
   range: DualSliderRange | undefined,
   info: QuantizationRange,
 ): string {
   if (!range) return formatValue(control, info.min, info);
-  const icon = mode === 'walk' ? '↝' : '⊡';
-  return `${icon}${formatValue(control, range.min, info)}–${formatValue(control, range.max, info)}`;
+  return `${formatValue(control, range.min, info)}–${formatValue(control, range.max, info)}`;
 }
 
 function channelsMorphLabel(value: number): string {
@@ -272,7 +264,7 @@ export function ActiveEarthMatrix({
   textureDebugAvailable = true,
 }: ActiveEarthMatrixProps) {
   const { announceHelp } = useSliderHelp();
-  const anyWaterChildActive = WATER_LAYER_KEYS.some((key) => numeric(state, key) > 0.01);
+  const anyWaterChildActive = WATER_LAYER_KEYS.some((key) => Boolean(state[WATER_LAYER_ENABLED_BY_LEVEL[key]]));
   const anyNatureChildActive = NATURE_SLOT_KEYS.some((keys) => state[keys.enabledKey]);
   const anyInsectChildActive = state.insectsEnabled || state.insects2Enabled;
   const announceMatrixHelp = useCallback(() => {
@@ -280,7 +272,7 @@ export function ActiveEarthMatrix({
   }, [announceHelp]);
 
   const ensureAudibleLevel = useCallback((key: NumericSliderKey, fallback: number) => {
-    if (numeric(state, key) <= 0.01) {
+    if (numeric(state, key) <= WATER_LAYER_LEVEL_EPSILON) {
       onParamChange(key, fallback);
     }
   }, [onParamChange, state]);
@@ -297,19 +289,22 @@ export function ActiveEarthMatrix({
     }
   }, [ensureAudibleLevel, onSelectChange, state]);
 
-  const toggleWaterChild = useCallback((key: NumericSliderKey) => {
-    const current = numeric(state, key);
-    if (current > 0.01) {
-      onParamChange(key, 0);
-      const otherActive = WATER_LAYER_KEYS.some((otherKey) => otherKey !== key && numeric(state, otherKey) > 0.01);
+  const toggleWaterChild = useCallback((key: WaterLayerLevelKey) => {
+    const enabledKey = WATER_LAYER_ENABLED_BY_LEVEL[key];
+    const current = Boolean(state[enabledKey]);
+    onSelectChange(enabledKey, (!current) as SliderState[typeof enabledKey]);
+    if (current) {
+      const otherActive = WATER_LAYER_KEYS.some(
+        (otherKey) => otherKey !== key && Boolean(state[WATER_LAYER_ENABLED_BY_LEVEL[otherKey]]),
+      );
       if (!otherActive) onSelectChange('waterEnabled', false);
       return;
     }
 
     onSelectChange('waterEnabled', true);
     ensureAudibleLevel('waterLevel', 0.65);
-    onParamChange(key, 0.5);
-  }, [ensureAudibleLevel, onParamChange, onSelectChange, state]);
+    ensureAudibleLevel(key, 0.5);
+  }, [ensureAudibleLevel, onSelectChange, state]);
 
   const disableWaterFamily = useCallback(() => {
     onSelectChange('waterEnabled', !state.waterEnabled);
@@ -331,42 +326,42 @@ export function ActiveEarthMatrix({
           id: 'water-hard',
           label: 'Hard Drops',
           accent: EARTH_ENGINE_COLORS.waterHardDrops,
-          active: numeric(state, 'waterLayerHardDrops') > 0.01,
+          active: Boolean(state.waterLayerHardDropsEnabled),
           onToggle: () => toggleWaterChild('waterLayerHardDrops'),
         },
         {
           id: 'water-drops',
           label: 'Water Drops',
           accent: EARTH_ENGINE_COLORS.waterDrops,
-          active: numeric(state, 'waterLayerWaterDrops') > 0.01,
+          active: Boolean(state.waterLayerWaterDropsEnabled),
           onToggle: () => toggleWaterChild('waterLayerWaterDrops'),
         },
         {
           id: 'water-bubbling',
           label: 'Bubbling',
           accent: EARTH_ENGINE_COLORS.waterBubbling,
-          active: numeric(state, 'waterLayerBubbling') > 0.01,
+          active: Boolean(state.waterLayerBubblingEnabled),
           onToggle: () => toggleWaterChild('waterLayerBubbling'),
         },
         {
           id: 'water-channels',
           label: 'Channels',
           accent: EARTH_ENGINE_COLORS.waterChannels,
-          active: numeric(state, 'waterLayerChannels') > 0.01,
+          active: Boolean(state.waterLayerChannelsEnabled),
           onToggle: () => toggleWaterChild('waterLayerChannels'),
         },
         {
           id: 'water-turbulence',
           label: 'Turbulence',
           accent: EARTH_ENGINE_COLORS.waterTurbulence,
-          active: numeric(state, 'waterLayerTurbulence') > 0.01,
+          active: Boolean(state.waterLayerTurbulenceEnabled),
           onToggle: () => toggleWaterChild('waterLayerTurbulence'),
         },
         {
           id: 'water-surf',
           label: 'Surf',
           accent: EARTH_ENGINE_COLORS.waterSurf,
-          active: numeric(state, 'waterLayerSurf') > 0.01,
+          active: Boolean(state.waterLayerSurfEnabled),
           onToggle: () => toggleWaterChild('waterLayerSurf'),
         },
       ],
@@ -474,7 +469,7 @@ export function ActiveEarthMatrix({
   const activeRows = useMemo<ChildRow[]>(() => {
     const rows: ChildRow[] = [];
 
-    if (numeric(state, 'waterLayerHardDrops') > 0.01) {
+    if (state.waterLayerHardDropsEnabled) {
       rows.push({
         id: 'child-water-hard',
         label: 'Hard Drops',
@@ -490,7 +485,7 @@ export function ActiveEarthMatrix({
       });
     }
 
-    if (numeric(state, 'waterLayerWaterDrops') > 0.01) {
+    if (state.waterLayerWaterDropsEnabled) {
       rows.push({
         id: 'child-water-drops',
         label: 'Water Drops',
@@ -506,7 +501,7 @@ export function ActiveEarthMatrix({
       });
     }
 
-    if (numeric(state, 'waterLayerBubbling') > 0.01) {
+    if (state.waterLayerBubblingEnabled) {
       rows.push({
         id: 'child-water-bubbling',
         label: 'Bubbling',
@@ -522,7 +517,7 @@ export function ActiveEarthMatrix({
       });
     }
 
-    if (numeric(state, 'waterLayerChannels') > 0.01) {
+    if (state.waterLayerChannelsEnabled) {
       rows.push({
         id: 'child-water-channels',
         label: 'Channels',
@@ -538,7 +533,7 @@ export function ActiveEarthMatrix({
       });
     }
 
-    if (numeric(state, 'waterLayerTurbulence') > 0.01) {
+    if (state.waterLayerTurbulenceEnabled) {
       rows.push({
         id: 'child-water-turbulence',
         label: 'Turbulence',
@@ -554,7 +549,7 @@ export function ActiveEarthMatrix({
       });
     }
 
-    if (numeric(state, 'waterLayerSurf') > 0.01) {
+    if (state.waterLayerSurfEnabled) {
       rows.push({
         id: 'child-water-surf',
         label: 'Surf',
@@ -1219,7 +1214,7 @@ function EarthMatrixSliderCell({
   const readout = quantization
     ? (mode === 'single'
       ? formatValue(control, value, quantization)
-      : rangeReadout(mode, control, range, quantization))
+      : rangeReadout(control, range, quantization))
     : '—';
 
   const [dragHandle, setDragHandle] = useState<CellHandle | null>(null);
@@ -1369,9 +1364,9 @@ function EarthMatrixSliderCell({
 
   return (
     <div
-      className={`earth-matrix-cell earth-matrix-cell-slider${columnId === 'level' ? ' level-col' : ''}${dragging ? ' dragging' : ''}`}
-      style={{ '--row-accent': accent } as CSSProperties}
-      title={control.label}
+      className={`earth-matrix-cell earth-matrix-cell-slider${columnId === 'level' ? ' level-col' : ''}${dragging ? ' dragging' : ''}${runtime.modulationConfig ? ` mod-${runtime.modulationConfig.source}` : ''}`}
+      style={{ '--row-accent': runtime.modulationConfig?.source === 'b' ? '#e58a2b' : runtime.modulationConfig?.source === 'a' ? '#4d9aba' : accent } as CSSProperties}
+      title={runtime.modulationConfig ? `Mod ${runtime.modulationConfig.source.toUpperCase()}: ${control.label}` : control.label}
       role={mode === 'single' ? 'slider' : undefined}
       tabIndex={mode === 'single' ? 0 : -1}
       aria-label={mode === 'single' ? control.label : undefined}
@@ -1582,8 +1577,11 @@ function EarthMatrixSliderCell({
           <span className="earth-matrix-cell-value">{readout}</span>
         ) : (
           <>
-            <span className="earth-matrix-cell-mode">{mode === 'walk' ? '↝' : '⊡'}</span>
-            <span className="earth-matrix-cell-range">{readout.slice(1)}</span>
+            <span className="earth-matrix-cell-mode">
+              {runtime.modulationConfig?.source.toUpperCase()}
+              <ModulationModeIcon mode={mode} />
+            </span>
+            <span className="earth-matrix-cell-range">{readout}</span>
           </>
         )}
       </span>

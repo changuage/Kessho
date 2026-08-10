@@ -624,7 +624,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
   }
 
   if (
-    /^(oceanSample|water|birds|birds2|frogs|insects|insects2)(Enabled|Level|SharedLevel|MorphA|MorphB|Preset|LayerHardDrops|LayerWaterDrops|LayerTurbulence|LayerBubbling|LayerSurf|LayerChannels)$/.test(key) ||
+    /^(oceanSample|water|birds|birds2|frogs|insects|insects2)(Enabled|Level|SharedLevel|MorphA|MorphB|Preset|LayerHardDrops|LayerHardDropsEnabled|LayerWaterDrops|LayerWaterDropsEnabled|LayerTurbulence|LayerTurbulenceEnabled|LayerBubbling|LayerBubblingEnabled|LayerSurf|LayerSurfEnabled|LayerChannels|LayerChannelsEnabled)$/.test(key) ||
     key === 'insectsEngine' ||
     key === 'insects2Engine'
   ) {
@@ -887,6 +887,12 @@ function addDynamicNatureSlotKeys(keys) {
   }
 }
 
+function addDynamicWaterLayerKeys(keys) {
+  for (const layer of ['HardDrops', 'WaterDrops', 'Turbulence', 'Bubbling', 'Surf', 'Channels']) {
+    keys.add(`waterLayer${layer}Enabled`);
+  }
+}
+
 function addLegacyNatureSnapshotKeys(keys) {
   // These legacy range aliases still have Product snapshot coverage through the
   // state migration bridge, even though canonical Nature slots own new state.
@@ -1088,6 +1094,7 @@ function collectProductSnapshotReferencedKeys(sliderKeys) {
   addDynamicSequencerKeys(keys);
   addDynamicSampleSlotKeys(keys);
   addDynamicNatureSlotKeys(keys);
+  addDynamicWaterLayerKeys(keys);
   addLegacyNatureSnapshotKeys(keys);
   addDynamicGranularVoiceKeys(keys);
   return keys;

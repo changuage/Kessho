@@ -28,16 +28,6 @@ export function sourcePresetId(sourceFamily: string, key: unknown, fallbackKey =
   return KESSHO_PRODUCT_SOURCE_PRESETS.find((preset) => preset.source === sourceFamily && preset.key === normalized)?.id ?? 0;
 }
 
-export function endpointPresetId(
-  sourceFamily: 'pad' | 'lead',
-  morph: number,
-  keyA: unknown,
-  keyB: unknown,
-  fallbackKey: string,
-): number {
-  return sourcePresetId(sourceFamily, clamp(morph, 0, 1) >= 0.5 ? keyB : keyA, fallbackKey);
-}
-
 export function defaultPresetId(sourceId: number): number {
   switch (sourceId) {
     case CORE_PRODUCT_SOURCE_IDS.pad1:

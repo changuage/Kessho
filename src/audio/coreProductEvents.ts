@@ -34,6 +34,7 @@ import { CORE_PRODUCT_SOUNDSCAPE_ASSETS } from './coreProductAssets';
 import {
   SOUNDSCAPE_TEXTURE_PARAM_START,
   SOUNDSCAPE_TEXTURE_PARAM_STRIDE,
+  SOUNDSCAPE_WATER_LAYER_PARAM_START,
   soundscapeSnapshotPayloadFromState,
 } from './coreProductSoundscapesSnapshot';
 import { migrateLegacyNatureSlotState } from './natureSlots';
@@ -52,6 +53,7 @@ import {
 import type { RoutingMuteGroupsState } from '../ui/routing/routingMuteGroups';
 import { resolveSequencerLaneAudibility } from './sequencerAudibility';
 import type { HarmonyLiveLayer } from './harmony/harmonyProjection';
+import type { ProductRuntimeModulationConfig } from './product/ProductEngineTypes';
 
 export type CoreProductEvent = {
   sampleOffset?: number;
@@ -194,15 +196,24 @@ export const CORE_PRODUCT_MODULATION_RANGE_MODE = Object.freeze({
   off: 0,
   sampleHold: 1,
   randomWalk: 2,
+  shapeLfo: 3,
 } as const);
 
 export const CORE_PRODUCT_MODULATION_RANGE_FLAGS = Object.freeze({
   active: 1,
+  shapeShift: 1,
+  shapeMask: 0x6,
+  timingShift: 3,
+  timingMask: 0x18,
+  syncReferencePhrase: 1 << 5,
+  modulationSourceB: 1 << 6,
   triggerDelayA: 1 << 8,
   triggerDelayB: 1 << 9,
   triggerGranular: 1 << 10,
   triggerReverb: 1 << 11,
   randomWalkGlobal: 1 << 12,
+  syncDivisionShift: 13,
+  syncDivisionMask: 0xe000,
   randomWalkSpeedShift: 16,
   randomWalkSpeedScale: 1000,
 } as const);
@@ -870,6 +881,7 @@ export type CoreProductRangeValueContext = {
   mode?: 'localBrownian' | 'globalWalk' | string;
   randomWalkSpeed?: number;
   randomWalkMode?: 'localBrownian' | 'globalWalk' | string;
+  runtimeModulation?: ProductRuntimeModulationConfig;
   state?: Record<string, unknown> | null;
 };
 
@@ -1050,12 +1062,12 @@ const SOUNDSCAPE_MODULE_RANGE_PARAM_INDICES: Readonly<Record<string, readonly nu
   waterWaterDropLPF: [20],
   waterBubblingRate: [21],
   waterBubblingLPF: [22],
-  waterLayerHardDrops: [23],
-  waterLayerWaterDrops: [24],
-  waterLayerTurbulence: [25],
-  waterLayerBubbling: [26],
-  waterLayerSurf: [27],
-  waterLayerChannels: [28],
+  waterLayerHardDrops: [SOUNDSCAPE_WATER_LAYER_PARAM_START],
+  waterLayerWaterDrops: [SOUNDSCAPE_WATER_LAYER_PARAM_START + 1],
+  waterLayerTurbulence: [SOUNDSCAPE_WATER_LAYER_PARAM_START + 2],
+  waterLayerBubbling: [SOUNDSCAPE_WATER_LAYER_PARAM_START + 3],
+  waterLayerSurf: [SOUNDSCAPE_WATER_LAYER_PARAM_START + 4],
+  waterLayerChannels: [SOUNDSCAPE_WATER_LAYER_PARAM_START + 5],
   waterDensityHardSend: [35],
   waterDensityWaterSend: [36],
   waterDensityBubbleSend: [37],
@@ -1212,13 +1224,50 @@ function mapPadExactValueForDistance(
 }
 
 function coreProductRandomWalkFlags(context: CoreProductRangeValueContext): number {
-  const speed = clamp(context.randomWalkSpeed ?? context.speed ?? 1, 0.01, 5);
+  const config = context.runtimeModulation?.mode === 'walk' ? context.runtimeModulation : null;
+  const speed = clamp(config?.speed ?? context.randomWalkSpeed ?? context.speed ?? 1, 0.01, 5);
   const encodedSpeed = Math.round(speed * CORE_PRODUCT_MODULATION_RANGE_FLAGS.randomWalkSpeedScale);
   const speedFlags = encodedSpeed * (2 ** CORE_PRODUCT_MODULATION_RANGE_FLAGS.randomWalkSpeedShift);
-  const modeFlags = (context.randomWalkMode ?? context.mode) === 'globalWalk'
+  const modeFlags = config?.relationship === 'link' || (!config && (context.randomWalkMode ?? context.mode) === 'globalWalk')
     ? CORE_PRODUCT_MODULATION_RANGE_FLAGS.randomWalkGlobal
+      | (CORE_PRODUCT_SHAPE_TIMING_IDS.link << CORE_PRODUCT_MODULATION_RANGE_FLAGS.timingShift)
     : 0;
-  return speedFlags | modeFlags;
+  const sourceFlags = config?.source === 'b' ? CORE_PRODUCT_MODULATION_RANGE_FLAGS.modulationSourceB : 0;
+  return speedFlags | modeFlags | sourceFlags;
+}
+
+const CORE_PRODUCT_SHAPE_IDS = Object.freeze({ sine: 0, triangle: 1, square: 2 } as const);
+const CORE_PRODUCT_SHAPE_TIMING_IDS = Object.freeze({ free: 0, link: 1, sync: 2 } as const);
+const CORE_PRODUCT_SHAPE_DIVISION_IDS = Object.freeze({
+  '4x': 0,
+  '2x': 1,
+  '1': 2,
+  '1/2': 3,
+  '1/4': 4,
+  '1/8': 5,
+  '1/16': 6,
+} as const);
+
+function coreProductShapeLfoFlags(context: CoreProductRangeValueContext): number {
+  const config = context.runtimeModulation?.mode === 'shape' ? context.runtimeModulation : null;
+  if (!config) return 0;
+  const shapeFlags = CORE_PRODUCT_SHAPE_IDS[config.shape] << CORE_PRODUCT_MODULATION_RANGE_FLAGS.shapeShift;
+  const timingFlags = CORE_PRODUCT_SHAPE_TIMING_IDS[config.timing.mode] << CORE_PRODUCT_MODULATION_RANGE_FLAGS.timingShift;
+  const sourceFlags = config.source === 'b' ? CORE_PRODUCT_MODULATION_RANGE_FLAGS.modulationSourceB : 0;
+  if (config.timing.mode === 'sync') {
+    const referenceFlags = config.timing.reference === 'phrase'
+      ? CORE_PRODUCT_MODULATION_RANGE_FLAGS.syncReferencePhrase
+      : 0;
+    const divisionFlags = CORE_PRODUCT_SHAPE_DIVISION_IDS[config.timing.division]
+      << CORE_PRODUCT_MODULATION_RANGE_FLAGS.syncDivisionShift;
+    return shapeFlags | timingFlags | referenceFlags | divisionFlags | sourceFlags;
+  }
+  const speed = clamp(config.timing.speed, 0.01, 5);
+  const encodedSpeed = Math.round(speed * CORE_PRODUCT_MODULATION_RANGE_FLAGS.randomWalkSpeedScale);
+  return shapeFlags
+    | timingFlags
+    | sourceFlags
+    | encodedSpeed * (2 ** CORE_PRODUCT_MODULATION_RANGE_FLAGS.randomWalkSpeedShift);
 }
 
 function normalizedToDelayAModRateHz(value: number): number {
@@ -2496,6 +2545,9 @@ export function createCoreProductModulationRangeEvent(
   const randomWalkFlags = hasRange && mode === CORE_PRODUCT_MODULATION_RANGE_MODE.randomWalk
     ? coreProductRandomWalkFlags(context)
     : 0;
+  const shapeLfoFlags = hasRange && mode === CORE_PRODUCT_MODULATION_RANGE_MODE.shapeLfo
+    ? coreProductShapeLfoFlags(context)
+    : 0;
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.SetModulationRange,
     targetId,
@@ -2505,7 +2557,7 @@ export function createCoreProductModulationRangeEvent(
     value2: max,
     value3: hasRange ? mode : CORE_PRODUCT_MODULATION_RANGE_MODE.off,
     value4: mapValue(currentValue, context),
-    flags: hasRange ? CORE_PRODUCT_MODULATION_RANGE_FLAGS.active | triggerFlag | randomWalkFlags : 0,
+    flags: hasRange ? CORE_PRODUCT_MODULATION_RANGE_FLAGS.active | triggerFlag | randomWalkFlags | shapeLfoFlags : 0,
   };
 }
 

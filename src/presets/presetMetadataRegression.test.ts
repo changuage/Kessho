@@ -537,7 +537,7 @@ function testParameterBehaviorMetadataIsCanonicalized(): void {
     singleKey: 'single',
     dualKey: 'dual',
   });
-  assert.deepStrictEqual(canonical.sliderModes, { dualKey: 'walk', walkKey: 'walk' });
+  assert.deepStrictEqual(canonical.sliderModes, { walkKey: 'walk' });
   assert.deepStrictEqual(canonical.dualRanges, {
     walkKey: { min: -0.1, max: 0.333333 },
   });
@@ -546,8 +546,9 @@ function testParameterBehaviorMetadataIsCanonicalized(): void {
 function testPresetPoolDefaultsUseStableIdsAndSharedEngineScopes(): void {
   const padCandidates: PresetPoolCandidate[] = [
     { id: 'pad-saturated-id', name: 'Saturated Drift', aliases: ['saturated_drift'], tags: ['warm', 'drift'] },
+    { id: 'pad-saturated-ii-id', name: 'Saturated Drift II', aliases: ['saturated_drift_ii'], tags: ['warm', 'drift'] },
     { id: 'pad-buchla-id', name: 'Buchla Pluck', aliases: ['buchla_pluck'], tags: ['pluck'] },
-    { id: 'pad-soft-id', name: 'Soft Pluck', aliases: ['soft_pluck'], tags: ['soft', 'pluck'] },
+    { id: 'pad-moog-id', name: 'Classic Moog Bass', aliases: ['classic_moog_bass'], tags: ['bass', 'moog'] },
     { id: 'pad-extra-id', name: 'Cathedral Organ', tags: ['organ'] },
   ];
   const leadCandidates: PresetPoolCandidate[] = [
@@ -572,7 +573,7 @@ function testPresetPoolDefaultsUseStableIdsAndSharedEngineScopes(): void {
 
   assert.deepStrictEqual(
     getDefaultPresetPoolIds('pad', padCandidates),
-    ['pad-saturated-id', 'pad-buchla-id', 'pad-soft-id'],
+    ['pad-saturated-id', 'pad-saturated-ii-id', 'pad-buchla-id', 'pad-moog-id'],
     'pad/synth pool defaults should store candidate ids, not full presets or display names',
   );
   assert.deepStrictEqual(

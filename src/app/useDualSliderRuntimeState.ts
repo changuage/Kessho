@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
   useReducer,
   useRef,
@@ -32,22 +33,29 @@ import { isAtEndpoint0, isAtEndpoint1 } from '../audio/morphUtils';
 import {
   normalizeDualSliderMode,
 } from './AppControls';
-import { getSliderCapability } from '../ui/sliderSystem/sliderCapabilities';
+import {
+  getSliderCapability,
+  isSliderModeAllowed,
+} from '../ui/sliderSystem/sliderCapabilities';
 import {
   extractNativeDualRanges,
   type DualSliderState,
 } from './nativeDualRanges';
 import {
+  configForModulationSource,
   dualConfigReducer,
   fromLegacyDualState,
   toLegacyDualState,
   type DualSliderConfigAction,
+  type DualSliderConfig,
   type DualSliderConfigMap,
+  type ModulationSlot,
 } from '../ui/sliderSystem/dualConfigReducer';
 
 type MorphPresetDualState = {
   dualRanges?: Record<string, { min: number; max: number }>;
   sliderModes?: Record<string, SliderMode>;
+  dualSliderConfigs?: DualSliderConfigMap<string>;
 };
 
 type UseDualSliderRuntimeStateOptions<TPreset extends MorphPresetDualState> = {
@@ -88,30 +96,48 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
   const legacyReconcileScheduledRef = useRef(false);
 
   const syncLegacyRefs = useCallback((configs: DualSliderConfigMap<string>) => {
-    const legacy = toLegacyDualState(configs);
+    const legacy = toLegacyDualState(configs, state.modulationSourceA, state.modulationSourceB);
     legacyModesRef.current = legacy.sliderModes as Record<string, SliderMode>;
     legacyRangesRef.current = legacy.dualRanges as DualSliderState;
-  }, []);
+  }, [state.modulationSourceA, state.modulationSourceB]);
+
+  const filterAllowedDualConfigs = useCallback((configs: DualSliderConfigMap<string>) => {
+    const allowed: DualSliderConfigMap<string> = {};
+    for (const [key, config] of Object.entries(configs)) {
+      if (!config) continue;
+      const mode = (config.source === 'a' ? state.modulationSourceA : state.modulationSourceB).type;
+      if (isSliderModeAllowed(key, mode)) allowed[key] = config;
+    }
+    return allowed;
+  }, [state.modulationSourceA, state.modulationSourceB]);
 
   const commitDualConfigAction = useCallback((action: DualSliderConfigAction<string>) => {
-    const next = dualConfigReducer(dualConfigsRef.current, action);
-    if (next === dualConfigsRef.current) return;
+    const reduced = dualConfigReducer(dualConfigsRef.current, action);
+    if (reduced === dualConfigsRef.current) return;
+    const next = filterAllowedDualConfigs(reduced);
     dualConfigsRef.current = next;
     syncLegacyRefs(next);
     dispatchDualConfigs({ type: 'replaceScope', configs: next });
-  }, [syncLegacyRefs]);
+  }, [filterAllowedDualConfigs, syncLegacyRefs]);
 
   const scheduleLegacyReconcile = useCallback(() => {
     if (legacyReconcileScheduledRef.current) return;
     legacyReconcileScheduledRef.current = true;
     queueMicrotask(() => {
       legacyReconcileScheduledRef.current = false;
-      const next = fromLegacyDualState(legacyModesRef.current, legacyRangesRef.current);
-      dualConfigsRef.current = next;
-      syncLegacyRefs(next);
-      dispatchDualConfigs({ type: 'replaceScope', configs: next });
+      const next: DualSliderConfigMap<string> = fromLegacyDualState(
+        legacyModesRef.current,
+        legacyRangesRef.current,
+      );
+      for (const [key, config] of Object.entries(next)) {
+        const current = dualConfigsRef.current[key];
+        if (!config || !current) continue;
+        const currentMode = (current.source === 'a' ? state.modulationSourceA : state.modulationSourceB).type;
+        if (legacyModesRef.current[key] === currentMode) next[key] = { ...current, range: config.range };
+      }
+      commitDualConfigAction({ type: 'replaceScope', configs: next });
     });
-  }, [syncLegacyRefs]);
+  }, [commitDualConfigAction, state.modulationSourceA, state.modulationSourceB]);
 
   const setSliderModes: Dispatch<SetStateAction<Record<string, SliderMode>>> = useCallback((update) => {
     legacyModesRef.current = typeof update === 'function'
@@ -127,32 +153,81 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
     scheduleLegacyReconcile();
   }, [scheduleLegacyReconcile]);
 
-  const legacyDualState = useMemo(() => toLegacyDualState(dualConfigs), [dualConfigs]);
+  const setDualSliderConfigs = useCallback((configs: DualSliderConfigMap<string>) => {
+    commitDualConfigAction({ type: 'replaceScope', configs });
+  }, [commitDualConfigAction]);
+
+  const legacyDualState = useMemo(
+    () => toLegacyDualState(dualConfigs, state.modulationSourceA, state.modulationSourceB),
+    [dualConfigs, state.modulationSourceA, state.modulationSourceB],
+  );
   const sliderModes = legacyDualState.sliderModes as Record<string, SliderMode>;
   const dualSliderRanges = legacyDualState.dualRanges as DualSliderState;
   const nativeDualRanges = useMemo(() => extractNativeDualRanges(dualSliderRanges), [dualSliderRanges]);
 
+  useEffect(() => {
+    const next: DualSliderConfigMap<string> = { ...dualConfigsRef.current };
+    const removedKeys: string[] = [];
+    let changed = false;
+    for (const [key, config] of Object.entries(dualConfigsRef.current)) {
+      if (!config?.source) continue;
+      const sourceConfig = config.source === 'a' ? state.modulationSourceA : state.modulationSourceB;
+      if (!isSliderModeAllowed(key, sourceConfig.type)) {
+        delete next[key];
+        removedKeys.push(key);
+        changed = true;
+        continue;
+      }
+    }
+    if (changed) {
+      commitDualConfigAction({ type: 'replaceScope', configs: next });
+      if (removedKeys.length > 0) {
+        clearRuntimeWalkPositions(removedKeys);
+        removeRuntimeTriggerPositions(removedKeys);
+      }
+    }
+  }, [commitDualConfigAction, state.modulationSourceA, state.modulationSourceB]);
+
   const applyScopedDualRangesFromPreset = useCallback(
-    (relevantKeys: string[], dualRanges?: Record<string, { min: number; max: number }>, presetSliderModes?: Record<string, SliderMode>) => {
+    (
+      relevantKeys: string[],
+      dualRanges?: Record<string, { min: number; max: number }>,
+      presetSliderModes?: Record<string, SliderMode>,
+      presetDualConfigs?: DualSliderConfigMap<string>,
+    ) => {
       const relevantKeySet = new Set(relevantKeys);
       const nextWalkPositions: Record<string, number> = {};
 
       const nextConfigs: DualSliderConfigMap<string> = { ...dualConfigsRef.current };
       for (const key of relevantKeySet) delete nextConfigs[key];
-      if (dualRanges) {
+      if (presetDualConfigs) {
+        for (const [key, config] of Object.entries(presetDualConfigs)) {
+          if (!relevantKeySet.has(key)) continue;
+          if (!config) continue;
+          const mode = (config.source === 'a' ? state.modulationSourceA : state.modulationSourceB).type;
+          if (!normalizeDualSliderMode(key, mode)) continue;
+          nextConfigs[key] = config;
+          if (mode === 'walk' || mode === 'shape') nextWalkPositions[key] = 0.5;
+        }
+      } else if (dualRanges) {
         for (const [key, range] of Object.entries(dualRanges)) {
           if (!relevantKeySet.has(key)) continue;
           const mode = normalizeDualSliderMode(key, presetSliderModes?.[key] ?? 'walk') ?? 'walk';
           if (mode === 'single') continue;
-          nextConfigs[key] = { mode, range: [range.min, range.max] };
-          if (mode === 'walk') nextWalkPositions[key] = 0.5;
+          const source: ModulationSlot = mode === 'sampleHold' ? 'b' : 'a';
+          nextConfigs[key] = configForModulationSource(
+            source,
+            source === 'a' ? state.modulationSourceA : state.modulationSourceB,
+            [range.min, range.max],
+          );
+          if (mode === 'walk' || mode === 'shape') nextWalkPositions[key] = 0.5;
         }
       }
       commitDualConfigAction({ type: 'replaceScope', configs: nextConfigs });
 
       resetRuntimeWalkPositionsForKeys(relevantKeySet, nextWalkPositions);
     },
-    [commitDualConfigAction],
+    [commitDualConfigAction, state.modulationSourceA, state.modulationSourceB],
   );
 
   const handleCycleSliderMode = useCallback(
@@ -174,12 +249,22 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
       const drumMorphKey = drumParamRoute?.morphKey ?? null;
 
       const currentConfig = dualConfigsRef.current[keyStr];
-      const current = currentConfig?.mode ?? 'single';
-      const nextMode: SliderMode = current === 'single'
-        ? 'walk'
-        : current === 'walk'
-          ? (capability === 'walk-only' ? 'single' : 'sampleHold')
-          : 'single';
+      const current: SliderMode = currentConfig
+        ? (currentConfig.source === 'a' ? state.modulationSourceA : state.modulationSourceB).type
+        : 'single';
+      const currentSource = currentConfig?.source;
+      const availableSources: ModulationSlot[] = (['a', 'b'] as const).filter((source) => {
+        const sourceConfig = source === 'a' ? state.modulationSourceA : state.modulationSourceB;
+        return isSliderModeAllowed(keyStr, sourceConfig.type);
+      });
+      const currentIndex = currentSource ? availableSources.indexOf(currentSource) : -1;
+      const nextSource = currentSource && currentIndex === availableSources.length - 1
+        ? undefined
+        : availableSources[currentIndex + 1] ?? availableSources[0];
+      const nextSourceConfig = nextSource === 'a'
+        ? state.modulationSourceA
+        : nextSource === 'b' ? state.modulationSourceB : undefined;
+      const nextMode: SliderMode = nextSourceConfig?.type ?? 'single';
 
       if (nextMode === 'single') {
         const range = currentConfig
@@ -211,12 +296,15 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
               if (!prev) return null;
               const newDualRanges = { ...prev.dualRanges };
               const newSliderModes = { ...prev.sliderModes };
+              const newDualConfigs = { ...prev.dualSliderConfigs };
               delete newDualRanges[keyStr];
               delete newSliderModes[keyStr];
+              delete newDualConfigs[keyStr];
               return {
                 ...prev,
                 dualRanges: Object.keys(newDualRanges).length > 0 ? newDualRanges : undefined,
                 sliderModes: Object.keys(newSliderModes).length > 0 ? newSliderModes : undefined,
+                dualSliderConfigs: Object.keys(newDualConfigs).length > 0 ? newDualConfigs : undefined,
               } as TPreset;
             });
           } else if (isAtEndpoint1(morphPosition, true) && morphPresetB) {
@@ -224,12 +312,15 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
               if (!prev) return null;
               const newDualRanges = { ...prev.dualRanges };
               const newSliderModes = { ...prev.sliderModes };
+              const newDualConfigs = { ...prev.dualSliderConfigs };
               delete newDualRanges[keyStr];
               delete newSliderModes[keyStr];
+              delete newDualConfigs[keyStr];
               return {
                 ...prev,
                 dualRanges: Object.keys(newDualRanges).length > 0 ? newDualRanges : undefined,
                 sliderModes: Object.keys(newSliderModes).length > 0 ? newSliderModes : undefined,
+                dualSliderConfigs: Object.keys(newDualConfigs).length > 0 ? newDualConfigs : undefined,
               } as TPreset;
             });
           }
@@ -266,14 +357,14 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
             const rangeSize = (info.max - info.min) * 0.2;
             const min = Math.max(info.min, currentVal - rangeSize / 2);
             const max = Math.min(info.max, currentVal + rangeSize / 2);
+            const nextConfig = configForModulationSource(nextSource!, nextSourceConfig!, [min, max]);
             commitDualConfigAction({
-              type: 'enable',
+              type: 'setConfig',
               key: keyStr,
-              mode: nextMode,
-              range: [min, max],
+              config: nextConfig,
             });
 
-            if (nextMode === 'walk') {
+            if (nextMode === 'walk' || nextMode === 'shape') {
               seedRuntimeWalkPosition(keyStr);
               removeRuntimeTriggerPositions([keyStr]);
             } else {
@@ -295,6 +386,10 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
                           ...prev.sliderModes,
                           [keyStr]: nextMode,
                         },
+                        dualSliderConfigs: {
+                          ...prev.dualSliderConfigs,
+                          [keyStr]: nextConfig,
+                        },
                       } as TPreset)
                     : null,
                 );
@@ -310,6 +405,10 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
                         sliderModes: {
                           ...prev.sliderModes,
                           [keyStr]: nextMode,
+                        },
+                        dualSliderConfigs: {
+                          ...prev.dualSliderConfigs,
+                          [keyStr]: nextConfig,
                         },
                       } as TPreset)
                     : null,
@@ -342,9 +441,15 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
               }
             }
           }
-        } else if (current === 'walk' && nextMode === 'sampleHold') {
-          commitDualConfigAction({ type: 'setMode', key: keyStr, mode: 'sampleHold' });
-          clearRuntimeWalkPositions([keyStr]);
+        } else if (current !== nextMode || currentSource !== nextSource) {
+          const nextConfig = configForModulationSource(nextSource!, nextSourceConfig!, currentConfig!.range);
+          commitDualConfigAction({
+            type: 'setConfig',
+            key: keyStr,
+            config: nextConfig,
+          });
+          if (nextMode === 'walk' || nextMode === 'shape') seedRuntimeWalkPosition(keyStr);
+          else clearRuntimeWalkPositions([keyStr]);
           removeRuntimeTriggerPositions([keyStr]);
 
           if (isMorphActive) {
@@ -354,6 +459,7 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
                   ? ({
                       ...prev,
                       sliderModes: { ...prev.sliderModes, [keyStr]: nextMode },
+                      dualSliderConfigs: { ...prev.dualSliderConfigs, [keyStr]: nextConfig },
                     } as TPreset)
                   : null,
               );
@@ -363,6 +469,7 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
                   ? ({
                       ...prev,
                       sliderModes: { ...prev.sliderModes, [keyStr]: nextMode },
+                      dualSliderConfigs: { ...prev.dualSliderConfigs, [keyStr]: nextConfig },
                     } as TPreset)
                   : null,
               );
@@ -394,6 +501,10 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
       const capability = getSliderCapability(keyStr);
       if (!capability || capability === 'single') return;
 
+      const currentConfig = dualConfigsRef.current[keyStr];
+      const nextConfig = currentConfig
+        ? { ...currentConfig, range: [min, max] as const }
+        : undefined;
       commitDualConfigAction({ type: 'setRange', key: keyStr, range: [min, max] });
 
       const isMorphActive = morphPresetA !== null || morphPresetB !== null;
@@ -404,6 +515,9 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
               ? ({
                   ...prev,
                   dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } },
+                  dualSliderConfigs: nextConfig
+                    ? { ...prev.dualSliderConfigs, [keyStr]: nextConfig }
+                    : prev.dualSliderConfigs,
                 } as TPreset)
               : null,
           );
@@ -413,6 +527,9 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
               ? ({
                   ...prev,
                   dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } },
+                  dualSliderConfigs: nextConfig
+                    ? { ...prev.dualSliderConfigs, [keyStr]: nextConfig }
+                    : prev.dualSliderConfigs,
                 } as TPreset)
               : null,
           );
@@ -463,7 +580,14 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
     ],
   );
 
+  const handleDualConfigChange = useCallback((key: keyof SliderState, config: DualSliderConfig) => {
+    if (isJourneyPlaying) return;
+    commitDualConfigAction({ type: 'setConfig', key: String(key), config });
+  }, [commitDualConfigAction, isJourneyPlaying]);
+
   return {
+    dualConfigs,
+    setDualSliderConfigs,
     sliderModes,
     setSliderModes,
     dualSliderRanges,
@@ -472,5 +596,6 @@ export function useDualSliderRuntimeState<TPreset extends MorphPresetDualState>(
     applyScopedDualRangesFromPreset,
     handleCycleSliderMode,
     handleDualRangeChange,
+    handleDualConfigChange,
   };
 }

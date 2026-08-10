@@ -229,7 +229,7 @@ export const WATER_MORPH_PARAM_KEYS = [
   'waterChannelsMorph', 'waterChannelsSpeed',
 ] as const;
 
-type SliderMode = 'single' | 'walk' | 'sampleHold';
+type SliderMode = 'single' | 'walk' | 'sampleHold' | 'shape';
 
 /** Per-preset dual ranges (only keys that should start in dual mode) */
 export const PRESET_DUAL_RANGES: Record<number, Record<string, { min: number; max: number }>> = {

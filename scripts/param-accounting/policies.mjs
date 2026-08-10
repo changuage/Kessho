@@ -46,11 +46,17 @@ export const EXPECTED_APP_VISIBLE_STRUCTURAL_POLICY_BY_PATH = {
       'waterEnabled',
       'waterLevel',
       'waterLayerBubbling',
+      'waterLayerBubblingEnabled',
       'waterLayerChannels',
+      'waterLayerChannelsEnabled',
       'waterLayerHardDrops',
+      'waterLayerHardDropsEnabled',
       'waterLayerSurf',
+      'waterLayerSurfEnabled',
       'waterLayerTurbulence',
+      'waterLayerTurbulenceEnabled',
       'waterLayerWaterDrops',
+      'waterLayerWaterDropsEnabled',
       'waterMorphA',
       'waterMorphB',
       'waterPreset',
@@ -539,8 +545,8 @@ export const productDeferredClassifications = [
     owner: 'Product Core modulation range scheduler',
     allowWiredReferences: true,
     reason:
-      'Product Core carries random-walk speed/mode as modulation-range scheduler metadata rather than generated scalar Product params.',
-    patterns: [/^randomWalk(Speed|Mode)$/],
+      'Product Core carries linked modulation speed/mode as modulation-range scheduler metadata rather than generated scalar Product params.',
+    patterns: [/^randomWalk(Speed|Mode)$/, /^shapeLfoSpeed$/, /^modulationSource[AB]$/],
   },
   {
     id: 'source-scheduler-ui-policy',
@@ -702,6 +708,9 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
   'runtime-walk-global-policy': [
     'randomWalkMode',
     'randomWalkSpeed',
+    'modulationSourceA',
+    'modulationSourceB',
+    'shapeLfoSpeed',
   ],
   'source-scheduler-ui-policy': [
     'drumBeepHiMorphAuto',

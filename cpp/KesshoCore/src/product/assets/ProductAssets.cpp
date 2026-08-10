@@ -38,7 +38,9 @@
 
   bool KesshoProductEngine::soundscapeModuleParamsAvailable(const SourceState& source) const {
   return source.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE &&
-      source.soundscape_module_param_count >= kSoundscapeProductModuleParamCount;
+      // Snapshots written before the Water layer mask was added have the
+      // original eight Product extra params; infer their mask from raw levels.
+      source.soundscape_module_param_count >= kSoundscapeModuleNatureMasterEnabledParam + 1u;
 }
 
   bool KesshoProductEngine::soundscapeModuleShouldRun(const SourceState& source) const {

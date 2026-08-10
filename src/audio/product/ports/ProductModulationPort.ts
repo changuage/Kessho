@@ -7,6 +7,7 @@ import type {
   ProductLeadPairCallback,
   ProductRange,
   ProductRangeMap,
+  ProductRuntimeModulationRangeMap,
   ProductRuntimeWalkPositionsCallback,
   ProductScalarCallback,
 } from '../ProductEngineTypes';
@@ -17,6 +18,7 @@ export type ProductEngineModulationPort = {
   setDrumParamSHRange(key: string, range: ProductRange | null): void;
   setDualRanges(ranges: ProductRangeMap): void;
   setRuntimeWalkRanges(ranges: ProductRangeMap): void;
+  setRuntimeModulationRanges(ranges: ProductRuntimeModulationRangeMap): void;
   setLeadExpressionCallback(callback: ProductLeadExpressionCallback | null): void;
   setLeadMorphCallback(callback: ProductLeadPairCallback | null): void;
   setPadMorphTriggerCallback(callback: ProductScalarCallback | null): void;

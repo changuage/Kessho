@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import '../../app/parameterCommands.test';
 import '../../audio/reference/webTs/runtimeWalkParameterDiff.test';
+import {
+  CORE_PRODUCT_MODULATION_RANGE_FLAGS,
+  CORE_PRODUCT_MODULATION_RANGE_MODE,
+  createCoreProductModulationRangeEvent,
+} from '../../audio/coreProductEvents';
+import type { CoreProductTelemetrySnapshot } from '../../audio/coreProductTelemetry';
 import { CoreProductModulationRangeBridge } from '../../audio/product/host/CoreProductModulationRangeBridge';
 import {
   getRuntimeSliderPosition,
@@ -21,8 +27,11 @@ import { advanceRandomWalk, type RandomWalkState } from './automationKernel';
 import { resolveEffectiveSliderValue } from './effectiveValue';
 import {
   dualConfigReducer,
+  configForModulationSource,
+  DEFAULT_MODULATION_SOURCE_A,
+  DEFAULT_MODULATION_SOURCE_B,
   fromLegacyDualState,
-  planDualModeCycle,
+  normalizeModulationSourceConfig,
   toLegacyDualState,
 } from './dualConfigReducer';
 import { createRafCoalescedEmitter } from './useRafCoalescedEmitter';
@@ -127,39 +136,92 @@ const legacyDualState = fromLegacyDualState(
   { alpha: { min: 0.8, max: 0.2 }, beta: { min: 0, max: 1 } },
 );
 assert.deepEqual(legacyDualState, {
-  alpha: { mode: 'walk', range: [0.2, 0.8] },
+  alpha: { source: 'a', range: [0.2, 0.8] },
 }, 'legacy adapters must omit single modes and modes without ranges');
 assert.deepEqual(toLegacyDualState(legacyDualState), {
   sliderModes: { alpha: 'walk' },
   dualRanges: { alpha: { min: 0.2, max: 0.8 } },
 }, 'dual configs must round-trip through the existing serialized shape');
 const enabledDualState = dualConfigReducer({}, {
-  type: 'enable', key: 'alpha', mode: 'walk', range: [0.7, 0.3],
+  type: 'setConfig',
+  key: 'alpha',
+  config: configForModulationSource('a', DEFAULT_MODULATION_SOURCE_A, [0.7, 0.3]),
 });
-assert.deepEqual(enabledDualState.alpha, { mode: 'walk', range: [0.3, 0.7] }, 'enable must atomically create mode and range');
-assert.equal(dualConfigReducer({}, {
-  type: 'setMode', key: 'missing', mode: 'sampleHold',
-}).missing, undefined, 'a mode cannot be created without an existing range');
+assert.deepEqual(enabledDualState.alpha, {
+  source: 'a',
+  range: [0.3, 0.7],
+}, 'assigning Mod A must store only the source and normalized range');
 assert.equal(dualConfigReducer({}, {
   type: 'setRange', key: 'missing', range: [0.2, 0.8],
 }).missing, undefined, 'a range cannot be created without an existing mode');
 assert.deepEqual(
-  planDualModeCycle('alpha', enabledDualState.alpha, [0.25, 0.75], 0.61, true),
-  { action: { type: 'setMode', key: 'alpha', mode: 'sampleHold' } },
-  'walk should cycle to sample-and-hold when supported',
-);
-assert.deepEqual(
-  planDualModeCycle('alpha', enabledDualState.alpha, [0.25, 0.75], 0.61, false),
-  { action: { type: 'remove', key: 'alpha' }, commitEffectiveValue: 0.61 },
-  'leaving dual mode must explicitly carry the effective value to commit',
+  dualConfigReducer(enabledDualState, {
+  type: 'setConfig',
+  key: 'alpha',
+  config: configForModulationSource('b', DEFAULT_MODULATION_SOURCE_B, [0.3, 0.7]),
+  }).alpha,
+  { source: 'b', range: [0.3, 0.7] },
+  'switching to Mod B must preserve the range without copying Mod B parameters',
 );
 
-assert.deepEqual(
-  ['single', 'walk', 'sampleHold'].map((mode) => (
-    mode === 'single' ? 'walk' : mode === 'walk' ? 'sampleHold' : 'single'
-  )),
-  ['walk', 'sampleHold', 'single'],
-  'the existing dual-mode cycle order must remain stable',
+const randomWalkA = normalizeModulationSourceConfig({
+  type: 'walk',
+  walk: { relationship: 'free', speed: 0.3 },
+}, DEFAULT_MODULATION_SOURCE_A);
+const randomWalkB = normalizeModulationSourceConfig({
+  type: 'walk',
+  walk: { relationship: 'link', speed: 1.8 },
+}, DEFAULT_MODULATION_SOURCE_B);
+assert.deepEqual(randomWalkA, {
+  type: 'walk', walk: { relationship: 'free', speed: 0.3 },
+}, 'Mod A must retain its independent Random Walk configuration');
+assert.deepEqual(randomWalkB, {
+  type: 'walk', walk: { relationship: 'link', speed: 1.8 },
+}, 'Mod B must independently retain a different linked Random Walk speed');
+assert.deepEqual(normalizeModulationSourceConfig({
+  type: 'shape',
+  shape: { shape: 'square', timing: { mode: 'sync', reference: 'phrase', division: '1/4' } },
+}, DEFAULT_MODULATION_SOURCE_A), {
+  type: 'shape',
+  shape: { shape: 'square', timing: { mode: 'sync', reference: 'phrase', division: '1/4' } },
+}, 'Shape source timing must preserve waveform, Sync reference, and division');
+
+const shapeEvent = createCoreProductModulationRangeEvent(
+  { targetId: 0, paramId: 1, controlId: 17 },
+  { min: 0.2, max: 0.8 },
+  CORE_PRODUCT_MODULATION_RANGE_MODE.shapeLfo,
+  0.5,
+  {
+    runtimeModulation: {
+      mode: 'shape',
+      source: 'b',
+      shape: 'triangle',
+      timing: { mode: 'sync', reference: 'phrase', division: '1/4' },
+    },
+  },
+);
+assert.equal(
+  (shapeEvent.flags! & CORE_PRODUCT_MODULATION_RANGE_FLAGS.shapeMask) >> CORE_PRODUCT_MODULATION_RANGE_FLAGS.shapeShift,
+  1,
+  'Shape ABI flags must encode Triangle',
+);
+assert.equal(
+  (shapeEvent.flags! & CORE_PRODUCT_MODULATION_RANGE_FLAGS.timingMask) >> CORE_PRODUCT_MODULATION_RANGE_FLAGS.timingShift,
+  2,
+  'Shape ABI flags must encode Sync timing',
+);
+assert.ok(
+  (shapeEvent.flags! & CORE_PRODUCT_MODULATION_RANGE_FLAGS.syncReferencePhrase) !== 0,
+  'Shape ABI flags must encode Phrase reference',
+);
+assert.equal(
+  (shapeEvent.flags! & CORE_PRODUCT_MODULATION_RANGE_FLAGS.syncDivisionMask) >> CORE_PRODUCT_MODULATION_RANGE_FLAGS.syncDivisionShift,
+  4,
+  'Shape ABI flags must encode the 1/4 division',
+);
+assert.ok(
+  (shapeEvent.flags! & CORE_PRODUCT_MODULATION_RANGE_FLAGS.modulationSourceB) !== 0,
+  'Shape ABI flags must preserve the Mod B bus identity',
 );
 
 const walkKey = `slider-system:first-position:${Date.now()}`;
@@ -340,4 +402,84 @@ rangeBridge.setRuntimeWalkRanges({
 });
 assert.equal(postedRangeEvents, 7, 'walk-speed changes should refresh every affected walk target once');
 rangeBridge.setRuntimeWalkRanges({ synthLevel: initialBridgeRanges.synthLevel });
-assert.equal(postedRangeEvents, 8, 'removing a range should publish one removal for its target');
+assert.equal(postedRangeEvents, 7, 'removing a shared range should not disable a target still owned by another range');
+
+{
+  let bridgeState: Record<string, unknown> = {
+    chordRate: 0.25,
+    randomWalkMode: 'localBrownian',
+    randomWalkSpeed: 1,
+  };
+  const events: Array<{ value4?: number; value3?: number; targetId?: number; paramId?: number; index?: number }> = [];
+  const publishedPositions: Record<string, number>[] = [];
+  const statePatches: Record<string, number>[] = [];
+  const bridge = new CoreProductModulationRangeBridge({
+    isRuntimeReady: () => true,
+    latestProductSnapshot: () => null,
+    latestSliderState: () => bridgeState,
+    post: (event) => events.push(event),
+    hasCallback: () => true,
+    publish: (name, payload) => {
+      if (name === 'runtimeWalkPositions' && payload && typeof payload === 'object') {
+        publishedPositions.push({ ...(payload as Record<string, number>) });
+      }
+    },
+    reportUnsupportedRangeKey: (key) => { throw new Error(`unexpected unsupported range key: ${key}`); },
+    applyRuntimeWalkStatePatch: (patch) => statePatches.push({ ...patch }),
+  });
+
+  bridge.setRuntimeWalkRanges({ chordRate: { min: 2, max: 8 } });
+  assert.equal(events[0]?.value4, 5, 'a new random walk must seed from its range midpoint');
+  assert.deepEqual(bridge.getRuntimeWalkPositions(), { chordRate: 0.5 }, 'new random walk activation must own a normalized midpoint');
+  assert.deepEqual(publishedPositions[publishedPositions.length - 1], { chordRate: 0.5 }, 'walk midpoint must be published to the UI at activation');
+  assert.deepEqual(statePatches[statePatches.length - 1], { chordRate: 5 }, 'walk midpoint must patch the raw slider state at activation');
+
+  bridge.updateRuntimeWalkPositions({ runtimeWalkValues: { [events[0]!.index!]: 7 } } as CoreProductTelemetrySnapshot, { publish: false });
+  bridgeState = { ...bridgeState, chordRate: 0.25 };
+  bridge.setRuntimeWalkRanges({ chordRate: { min: 4, max: 10 } });
+  assert.equal(events[events.length - 1]?.value4, 7, 'endpoint edits must preserve the running random-walk value instead of the scalar state');
+  assert.deepEqual(bridge.getRuntimeWalkPositions(), { chordRate: 0.5 }, 'preserved walk values must be renormalized into edited endpoints');
+  assert.deepEqual(statePatches[statePatches.length - 1], { chordRate: 7 }, 'endpoint edits must keep the state patch aligned with the running value');
+
+  bridge.setRuntimeWalkRanges({});
+  assert.deepEqual(bridge.getRuntimeWalkPositions(), {}, 'removing a walk must clear its stale normalized position');
+  assert.deepEqual(publishedPositions[publishedPositions.length - 1], {}, 'walk removal must publish stale-position cleanup');
+
+  bridgeState = { ...bridgeState, chordRate: 3 };
+  bridge.setRuntimeWalkRanges({ chordRate: { min: 2, max: 6 } });
+  assert.equal(events[events.length - 1]?.value4, 4, 're-enabling a walk must not reuse a stale prior current value, even when the scalar is inside the range');
+
+  const sampleHoldEvents: Array<{ value4?: number }> = [];
+  const sampleHoldBridge = new CoreProductModulationRangeBridge({
+    isRuntimeReady: () => true,
+    latestProductSnapshot: () => null,
+    latestSliderState: () => ({ synthAttack: 0.95 }),
+    post: (event) => sampleHoldEvents.push(event),
+    publish: () => undefined,
+    reportUnsupportedRangeKey: (key) => { throw new Error(`unexpected unsupported range key: ${key}`); },
+  });
+  sampleHoldBridge.setSampleHoldRanges({ synthAttack: { min: 0.2, max: 0.8 } });
+  assert.equal(sampleHoldEvents[0]?.value4, 0.5, 'a new sample-and-hold range must seed from its range midpoint');
+
+  const modeSwitchEvents: Array<{ value3?: number; value4?: number; index?: number }> = [];
+  const modeSwitchBridge = new CoreProductModulationRangeBridge({
+    isRuntimeReady: () => true,
+    latestProductSnapshot: () => null,
+    latestSliderState: () => ({ delayAMix: 0.1, randomWalkMode: 'localBrownian', randomWalkSpeed: 1 }),
+    post: (event) => modeSwitchEvents.push(event),
+    publish: () => undefined,
+    reportUnsupportedRangeKey: (key) => { throw new Error(`unexpected unsupported range key: ${key}`); },
+  });
+  modeSwitchBridge.setRuntimeWalkRanges({ delayAMix: { min: 0.2, max: 0.8 } });
+  modeSwitchBridge.updateRuntimeWalkPositions({ runtimeWalkValues: { [modeSwitchEvents[0]!.index!]: 0.68 } } as CoreProductTelemetrySnapshot, { publish: false });
+  modeSwitchBridge.setSampleHoldRanges({ delayAMix: { min: 0.2, max: 0.8 } });
+  assert.equal(modeSwitchEvents[modeSwitchEvents.length - 1]?.value4, 0.68, 'mode switches must transfer the running walk current into sample-and-hold');
+  modeSwitchBridge.setRuntimeWalkRanges({});
+  assert.equal(
+    modeSwitchEvents[modeSwitchEvents.length - 1]?.value3,
+    CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold,
+    'walk-to-sample-and-hold removal must not trail the active sample-and-hold event with an off event',
+  );
+  assert.equal(modeSwitchBridge.getRuntimeWalkDebugState().activeControlNameCount, 0, 'walk metadata must be cleared after mode switch');
+  assert.deepEqual(modeSwitchBridge.getRuntimeWalkPositions(), {}, 'mode switch must clear stale walk positions');
+}

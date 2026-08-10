@@ -8,6 +8,7 @@ const tempDir = await mkdtemp(path.join(tmpdir(), 'slider-system-regression-'));
 const entryPoints = [
   'src/ui/sliderSystem/sliderSystem.test.ts',
   'src/ui/sliderSystem/sliderCapabilities.test.ts',
+  'src/ui/global/modulationPreviewTiming.test.ts',
   'src/ui/morphPositionRaf.test.ts',
   'src/ui/drums/seqLaneRange.test.ts',
   'src/ui/drums/drumPresetDualState.test.ts',

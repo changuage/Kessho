@@ -24,7 +24,7 @@ export type VisualizerPresetData = {
   mode: VisualizerMode;
   controls: ReactiveVisualizerControls;
   reactiveRanges: VisualizerReactiveRanges;
-  vizSliderModes?: Record<string, 'single' | 'walk' | 'sampleHold'>;
+  vizSliderModes?: Record<string, 'single' | 'walk' | 'sampleHold' | 'shape'>;
   reaction: VisualizerReactionSettings;
   performanceMacros?: VisualizerPerformanceMacros;
   layerMacros?: VisualizerLayerMacros;
@@ -58,12 +58,12 @@ function sanitizeReactiveRanges(value: unknown): VisualizerReactiveRanges {
   return ranges;
 }
 
-function sanitizeVizSliderModes(value: unknown): Record<string, 'single' | 'walk' | 'sampleHold'> {
+function sanitizeVizSliderModes(value: unknown): Record<string, 'single' | 'walk' | 'sampleHold' | 'shape'> {
   if (!isRecord(value)) return {};
-  const modes: Record<string, 'single' | 'walk' | 'sampleHold'> = {};
+  const modes: Record<string, 'single' | 'walk' | 'sampleHold' | 'shape'> = {};
   for (const [key, mode] of Object.entries(value)) {
     if (!NUMERIC_CONTROL_KEYS.has(key as VisualizerNumericControlKey)) continue;
-    if (mode === 'walk' || mode === 'sampleHold') modes[key] = mode;
+    if (mode === 'walk' || mode === 'sampleHold' || mode === 'shape') modes[key] = mode;
   }
   return modes;
 }

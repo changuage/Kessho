@@ -3,15 +3,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { resolveCoreProductRangeTargets } from '../../audio/coreProductEvents';
-import { DEFAULT_STATE, getParamInfo, type SliderState } from '../state';
+import { EARTH_RANGE_PARAM_KEYS } from '../../presets/ParamRegistry';
+import { DEFAULT_STATE, getParamInfo, getSliderNumericValue, type SliderState } from '../state';
 import {
   getSliderCapability,
+  isSliderModeAllowed,
+  normalizeSliderMode,
   SLIDER_CAPABILITIES,
   SINGLE_ONLY_SLIDER_KEYS,
   WALK_ONLY_DUAL_KEYS,
 } from './sliderCapabilities';
 
 const ROOT = process.cwd();
+const SLIDER_MODES = ['single', 'walk', 'sampleHold', 'shape'] as const;
 
 function sharedLiteralKeys(): Set<string> {
   const keys = new Set<string>();
@@ -51,11 +55,52 @@ test('capability sets stay disjoint and mode policy is stable', () => {
   }
   for (const key of WALK_ONLY_DUAL_KEYS) {
     assert.equal(getSliderCapability(key), 'walk-only');
+    assert.equal(isSliderModeAllowed(key, 'sampleHold'), false, `${key} must reject Sample & Hold`);
+    assert.equal(isSliderModeAllowed(key, 'walk'), true, `${key} must retain Random Walk`);
+    assert.equal(isSliderModeAllowed(key, 'shape'), true, `${key} must allow Shape LFO`);
+    assert.equal(normalizeSliderMode(key, 'sampleHold'), 'walk', `${key} legacy S&H must migrate to Walk`);
   }
   for (const [key, capability] of Object.entries(SLIDER_CAPABILITIES)) {
     if (WALK_ONLY_DUAL_KEYS.has(key)) assert.equal(capability, 'walk-only');
     if (SINGLE_ONLY_SLIDER_KEYS.has(key)) assert.equal(capability, 'single');
   }
+});
+
+test('every classified parameter supports exactly its slider modes and runtime range policy', () => {
+  const failures: string[] = [];
+  const counts = { single: 0, 'walk-only': 0, dual: 0 };
+
+  for (const key of Object.keys(DEFAULT_STATE)) {
+    const info = getParamInfo(key as keyof SliderState);
+    const capability = getSliderCapability(key);
+    if (!info || !capability) continue;
+    counts[capability] += 1;
+
+    const value = getSliderNumericValue(key as keyof SliderState, DEFAULT_STATE[key as keyof SliderState]);
+    if (!Number.isFinite(info.min) || !Number.isFinite(info.max) || !Number.isFinite(info.step)
+      || info.min >= info.max || info.step <= 0) failures.push(`${key}: invalid slider range`);
+    if (value === null || value < info.min || value > info.max) failures.push(`${key}: default outside slider range`);
+    if (capability !== 'single' && resolveCoreProductRangeTargets(key).length === 0) {
+      failures.push(`${key}: missing Product modulation target`);
+    }
+
+    for (const mode of SLIDER_MODES) {
+      const allowed = capability === 'dual'
+        || mode === 'single'
+        || (capability === 'walk-only' && (mode === 'walk' || mode === 'shape'));
+      if (isSliderModeAllowed(key, mode) !== allowed) failures.push(`${key}: incorrect ${mode} policy`);
+
+      const expectedNormalized = mode === 'single'
+        ? 'single'
+        : capability === 'single'
+          ? undefined
+          : capability === 'walk-only' && mode === 'sampleHold' ? 'walk' : mode;
+      if (normalizeSliderMode(key, mode) !== expectedNormalized) failures.push(`${key}: incorrect ${mode} migration`);
+    }
+  }
+
+  assert.ok(counts.single > 0 && counts['walk-only'] > 0 && counts.dual > 0, 'all slider capability families must be exercised');
+  assert.deepEqual(failures, []);
 });
 
 test('dynamic audit families are classified', () => {
@@ -94,14 +139,8 @@ test('the tension family is an explicit single-only custom architecture', () => 
   assert.doesNotMatch(tensionBlock, /sliderProps\(valueKey\)/);
 });
 
-test('generated Earth slider family remains classified and target-backed', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'src/ui/earth/EarthPage.tsx'), 'utf8');
-  const start = source.indexOf('const EARTH_DUAL_KEYS');
-  const end = source.indexOf('] as const;', start);
-  assert.ok(start >= 0 && end > start, 'Earth dynamic inventory declaration missing');
-  const keys = [...source.slice(start, end).matchAll(/['"]([^'"]+)['"]/g)]
-    .map((match) => match[1])
-    .filter((key): key is string => Boolean(key));
+test('parameter-library Earth slider family remains classified and target-backed', () => {
+  const keys = [...EARTH_RANGE_PARAM_KEYS];
   const unclassified = keys.filter((key) => !getSliderCapability(key));
   assert.deepEqual(unclassified, [], `unclassified Earth slider keys: ${unclassified.join(', ')}`);
   const missingTargets = keys.filter((key) => getSliderCapability(key) !== 'single' && resolveCoreProductRangeTargets(key).length === 0);

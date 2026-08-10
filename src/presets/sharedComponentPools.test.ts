@@ -75,11 +75,11 @@ export async function runSharedComponentPoolRegression(): Promise<void> {
     const pad2Key = PAD1_TO_PAD2_KEY[key];
     if (pad2Key) state[pad2Key] = state[key];
   }
-  state.detune = 0;
+  state.padOscAPitch = 0;
   const pads = [buildPadVoicePoolInstance(state, 0), buildPadVoicePoolInstance(state, 1)];
   const padBatch = await preparePresetContentBatch(sharedComponentPoolCandidates(pads));
   assert.equal(padBatch.byId.get('pad.0')?.hash, padBatch.byId.get('pad.1')?.hash);
-  state.detune = 0.25;
+  state.padOscAPitch = 0.25;
   const extendedPad = await preparePresetContentBatch(sharedComponentPoolCandidates([
     buildPadVoicePoolInstance(state, 0),
   ]));

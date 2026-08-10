@@ -7,22 +7,22 @@ export type PadRandomScope = 'pad1' | 'pad2';
 export type PadRandomStyle = 'target' | 'walk';
 export type PadScopeSnapshot = Record<string, number | string | boolean>;
 
-const OSC_WAVES = ['sine', 'triangle', 'sawtooth', 'square'] as const;
+const OSC_WAVES = ['sine', 'triangle', 'sawtooth', 'square', 'harmonic', 'complexSine', 'complexTriangle'] as const;
 const SUB_WAVES = ['sine', 'triangle'] as const;
 const NOISE_TYPES = ['white', 'pink'] as const;
 const FILTER_TYPES = ['lowpass', 'bandpass', 'highpass', 'notch'] as const;
 const FILTER_SLOPES = [12, 24, 36, 48] as const;
 const FILTER_ROUTINGS = ['series', 'aOnly', 'bOnly'] as const;
 const LFO_WAVES = ['sine', 'triangle', 'sawtooth', 'square', 'sampleHold', 'randomSmooth', 'randomWalk'] as const;
-const LFO_DESTS = ['none', 'filterCutoff', 'filterBCutoff', 'amplitude', 'pitch', 'oscBLevel', 'foldAmount'] as const;
-const MOD_ENV_DESTS = ['filterCutoff', 'pitch', 'oscBLevel', 'foldAmount'] as const;
+const LFO_DESTS = ['none', 'filterCutoff', 'filterBCutoff', 'amplitude', 'pitch', 'oscBLevel', 'foldAmount', 'oscAPosition', 'oscBPosition', 'oscAPhaseDistortion', 'oscBPhaseDistortion', 'oscBLinearHzOffset', 'filterResonance'] as const;
+const MOD_ENV_DESTS = ['filterCutoff', 'pitch', 'oscBLevel', 'foldAmount', 'oscAPosition', 'oscBPosition', 'oscAPhaseDistortion', 'oscBPhaseDistortion', 'oscBLinearHzOffset', 'filterResonance'] as const;
 
 const TARGET_LINEAR_RADIUS = 0.28;
 const WALK_LINEAR_RADIUS = 0.09;
 const TARGET_Q_RADIUS = 0.3;
 const WALK_Q_RADIUS = 0.12;
-const TARGET_DETUNE_RADIUS = 28;
-const WALK_DETUNE_RADIUS = 9;
+const TARGET_PITCH_RADIUS = 4;
+const WALK_PITCH_RADIUS = 0.75;
 const TARGET_LOG_RADIUS = 1.45;
 const WALK_LOG_RADIUS = 0.42;
 
@@ -81,12 +81,7 @@ function mutateLinear(
   return quantizeNumber(key, next);
 }
 
-function mutateDetune(
-  rng: () => number,
-  key: keyof SliderState,
-  current: number,
-  radius: number,
-): number {
+function mutatePitch(rng: () => number, key: keyof SliderState, current: number, radius: number): number {
   return quantizeNumber(key, current + randomSigned(rng) * radius);
 }
 
@@ -254,7 +249,7 @@ export function createPadRandomGoal(
   const walkMode = style === 'walk';
   const linearRadius = walkMode ? WALK_LINEAR_RADIUS : TARGET_LINEAR_RADIUS;
   const qRadius = walkMode ? WALK_Q_RADIUS : TARGET_Q_RADIUS;
-  const detuneRadius = walkMode ? WALK_DETUNE_RADIUS : TARGET_DETUNE_RADIUS;
+  const pitchRadius = walkMode ? WALK_PITCH_RADIUS : TARGET_PITCH_RADIUS;
   const logRadius = walkMode ? WALK_LOG_RADIUS : TARGET_LOG_RADIUS;
 
   const next = stabilizePadSnapshot(scope, current);
@@ -285,15 +280,18 @@ export function createPadRandomGoal(
     maybe(rng, walkMode ? 0.08 : 0.18) ? !getScopedBoolean(next, scope, 'padModEnvEnabled') : getScopedBoolean(next, scope, 'padModEnvEnabled'),
   );
 
-  setScopedValue(next, scope, 'padOscAOctave', mutateOctave(rng, getScopedNumber(next, scope, 'padOscAOctave'), -2, 2, walkMode));
-  setScopedValue(next, scope, 'padOscBOctave', mutateOctave(rng, getScopedNumber(next, scope, 'padOscBOctave'), -2, 2, walkMode));
+  setScopedValue(next, scope, 'padOscAPitch', mutatePitch(rng, scopeKey(scope, 'padOscAPitch') as keyof SliderState, getScopedNumber(next, scope, 'padOscAPitch'), pitchRadius));
+  setScopedValue(next, scope, 'padOscBPitch', mutatePitch(rng, scopeKey(scope, 'padOscBPitch') as keyof SliderState, getScopedNumber(next, scope, 'padOscBPitch'), pitchRadius));
   setScopedValue(next, scope, 'padSubOctave', mutateOctave(rng, getScopedNumber(next, scope, 'padSubOctave'), -2, -1, walkMode));
 
-  setScopedValue(next, scope, 'padOscADetune', mutateDetune(rng, scopeKey(scope, 'padOscADetune') as keyof SliderState, getScopedNumber(next, scope, 'padOscADetune'), detuneRadius));
-  setScopedValue(next, scope, 'padOscBDetune', mutateDetune(rng, scopeKey(scope, 'padOscBDetune') as keyof SliderState, getScopedNumber(next, scope, 'padOscBDetune'), detuneRadius));
-  if (scope === 'pad1') {
-    setScopedValue(next, scope, 'detune', mutateDetune(rng, scopeKey(scope, 'detune') as keyof SliderState, getScopedNumber(next, scope, 'detune'), walkMode ? 4 : 12));
-  }
+  setScopedValue(next, scope, 'padOscAPhaseDistortion', mutateLinear(rng, scopeKey(scope, 'padOscAPhaseDistortion') as keyof SliderState, getScopedNumber(next, scope, 'padOscAPhaseDistortion'), pitchRadius / 4));
+  setScopedValue(next, scope, 'padOscBPhaseDistortion', mutateLinear(rng, scopeKey(scope, 'padOscBPhaseDistortion') as keyof SliderState, getScopedNumber(next, scope, 'padOscBPhaseDistortion'), pitchRadius / 4));
+  setScopedValue(next, scope, 'padOscAWavePosition', mutateLinear(rng, scopeKey(scope, 'padOscAWavePosition') as keyof SliderState, getScopedNumber(next, scope, 'padOscAWavePosition'), linearRadius));
+  setScopedValue(next, scope, 'padOscBWavePosition', mutateLinear(rng, scopeKey(scope, 'padOscBWavePosition') as keyof SliderState, getScopedNumber(next, scope, 'padOscBWavePosition'), linearRadius));
+  setScopedValue(next, scope, 'padOscALinearHzOffset', mutateLinear(rng, scopeKey(scope, 'padOscALinearHzOffset') as keyof SliderState, getScopedNumber(next, scope, 'padOscALinearHzOffset'), linearRadius));
+  setScopedValue(next, scope, 'padOscBLinearHzOffset', mutateLinear(rng, scopeKey(scope, 'padOscBLinearHzOffset') as keyof SliderState, getScopedNumber(next, scope, 'padOscBLinearHzOffset'), linearRadius));
+  setScopedValue(next, scope, 'padDrift', mutateLinear(rng, scopeKey(scope, 'padDrift') as keyof SliderState, getScopedNumber(next, scope, 'padDrift'), linearRadius));
+  setScopedValue(next, scope, 'padPhaseReset', pickTargetValue(rng, getScopedNumber(next, scope, 'padPhaseReset'), [0, 1, 2], walkMode ? 0.06 : 0.16));
 
   const linearKeys = [
     'padOscALevel',

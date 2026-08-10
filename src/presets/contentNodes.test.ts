@@ -32,10 +32,10 @@ const right = createPresetContentNode('sequencerSubLane', {
 assert.equal(stableStringifyContent(left), stableStringifyContent(right));
 
 assert.deepStrictEqual(normalizePresetParameterBehavior({
-  mode: 'walk',
+  mode: 'modA',
   range: { min: 0.8, max: 0.2 },
 }), {
-  mode: 'walk',
+  mode: 'modA',
   range: { min: 0.2, max: 0.8 },
 });
 assert.deepStrictEqual(normalizePresetParameterBehavior({

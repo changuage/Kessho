@@ -159,6 +159,10 @@ public:
       return false;
     }
 
+    water_started_ = false;
+    insects_started_ = false;
+    insects2_started_ = false;
+    committed_params_valid_ = false;
     return true;
   }
 
@@ -175,6 +179,7 @@ public:
     water_started_ = false;
     insects_started_ = false;
     insects2_started_ = false;
+    committed_params_valid_ = false;
   }
 
   void processInterleaved(const float* input_interleaved, float* output_interleaved, int frames) override {
@@ -226,83 +231,126 @@ public:
       return;
     }
 
-    maybeSetWaterSeed();
-    water_instance_set_preset(water_, std::clamp(roundedInt(params_[kParamWaterPreset]), 0, 7));
-    water_instance_set_params(
-        water_,
-        params_[kParamWaterParams + 0], params_[kParamWaterParams + 1],
-        params_[kParamWaterParams + 2], params_[kParamWaterParams + 3],
-        params_[kParamWaterParams + 4], params_[kParamWaterParams + 5],
-        params_[kParamWaterParams + 6], params_[kParamWaterParams + 7],
-        params_[kParamWaterParams + 8], params_[kParamWaterParams + 9],
-        params_[kParamWaterParams + 10], params_[kParamWaterParams + 11],
-        params_[kParamWaterParams + 12], params_[kParamWaterParams + 13]);
-    water_instance_set_layer_detail_params(
-        water_,
-        params_[kParamWaterLayerDetail + 0],
-        params_[kParamWaterLayerDetail + 1],
-        params_[kParamWaterLayerDetail + 2],
-        params_[kParamWaterLayerDetail + 3],
-        params_[kParamWaterLayerDetail + 4],
-        params_[kParamWaterLayerDetail + 5],
-        params_[kParamWaterLayerDetail + 6]);
-    water_instance_set_layer_mix(
-        water_,
-        params_[kParamWaterLayerMix + 0],
-        params_[kParamWaterLayerMix + 1],
-        params_[kParamWaterLayerMix + 2],
-        params_[kParamWaterLayerMix + 3],
-        params_[kParamWaterLayerMix + 4],
-        params_[kParamWaterLayerMix + 5]);
-    water_instance_set_layer_density(
-        water_,
-        params_[kParamWaterLayerDensity + 0],
-        params_[kParamWaterLayerDensity + 1],
-        params_[kParamWaterLayerDensity + 2],
-        params_[kParamWaterLayerDensity + 3],
-        params_[kParamWaterLayerDensity + 4],
-        params_[kParamWaterLayerDensity + 5]);
-    water_instance_set_surf_params(
-        water_,
-        params_[kParamWaterSurf + 0], params_[kParamWaterSurf + 1],
-        params_[kParamWaterSurf + 2], params_[kParamWaterSurf + 3],
-        params_[kParamWaterSurf + 4], params_[kParamWaterSurf + 5],
-        params_[kParamWaterSurf + 6], params_[kParamWaterSurf + 7],
-        params_[kParamWaterSurf + 8], params_[kParamWaterSurf + 9],
-        params_[kParamWaterSurf + 10], params_[kParamWaterSurf + 11],
-        params_[kParamWaterSurf + 12], params_[kParamWaterSurf + 13],
-        params_[kParamWaterSurf + 14], params_[kParamWaterSurf + 15]);
-    water_instance_set_channels_params(
-        water_,
-        params_[kParamWaterChannels + 0],
-        params_[kParamWaterChannels + 1]);
-    water_instance_set_density_loop_params(
-        water_,
-        params_[kParamWaterDensityLoop + 0],
-        params_[kParamWaterDensityLoop + 1],
-        params_[kParamWaterDensityLoop + 2],
-        params_[kParamWaterDensityLoop + 3],
-        params_[kParamWaterDensityLoop + 4],
-        params_[kParamWaterDensityLoop + 5],
-        params_[kParamWaterDensityLoop + 6]);
+    const bool water_preset_changed = paramChanged(kParamWaterPreset, 1);
+    const bool water_params_changed = water_preset_changed || paramChanged(kParamWaterParams, 14);
+    const bool water_detail_changed = water_preset_changed || paramChanged(kParamWaterLayerDetail, 7);
+    const bool water_mix_changed = water_preset_changed || paramChanged(kParamWaterLayerMix, 6);
+    const bool water_density_changed = water_preset_changed || paramChanged(kParamWaterLayerDensity, 6);
+    const bool water_density_loop_changed = water_preset_changed || paramChanged(kParamWaterDensityLoop, 7);
+    const bool water_surf_changed = water_preset_changed || paramChanged(kParamWaterSurf, 16);
+    const bool water_channels_changed = water_preset_changed || paramChanged(kParamWaterChannels, 2);
+
+    if (paramChanged(kParamWaterSeed, 1) && shouldSetSeed(kParamWaterSeed)) {
+      water_instance_set_seed(water_, roundedInt(params_[kParamWaterSeed]));
+    }
+    if (water_preset_changed) {
+      water_instance_set_preset(water_, std::clamp(roundedInt(params_[kParamWaterPreset]), 0, 7));
+    }
+    if (water_params_changed) {
+      water_instance_set_params(
+          water_,
+          params_[kParamWaterParams + 0], params_[kParamWaterParams + 1],
+          params_[kParamWaterParams + 2], params_[kParamWaterParams + 3],
+          params_[kParamWaterParams + 4], params_[kParamWaterParams + 5],
+          params_[kParamWaterParams + 6], params_[kParamWaterParams + 7],
+          params_[kParamWaterParams + 8], params_[kParamWaterParams + 9],
+          params_[kParamWaterParams + 10], params_[kParamWaterParams + 11],
+          params_[kParamWaterParams + 12], params_[kParamWaterParams + 13]);
+    }
+    if (water_detail_changed) {
+      water_instance_set_layer_detail_params(
+          water_,
+          params_[kParamWaterLayerDetail + 0],
+          params_[kParamWaterLayerDetail + 1],
+          params_[kParamWaterLayerDetail + 2],
+          params_[kParamWaterLayerDetail + 3],
+          params_[kParamWaterLayerDetail + 4],
+          params_[kParamWaterLayerDetail + 5],
+          params_[kParamWaterLayerDetail + 6]);
+    }
+    if (water_mix_changed) {
+      water_instance_set_layer_mix(
+          water_,
+          params_[kParamWaterLayerMix + 0],
+          params_[kParamWaterLayerMix + 1],
+          params_[kParamWaterLayerMix + 2],
+          params_[kParamWaterLayerMix + 3],
+          params_[kParamWaterLayerMix + 4],
+          params_[kParamWaterLayerMix + 5]);
+    }
+    if (water_density_changed) {
+      water_instance_set_layer_density(
+          water_,
+          params_[kParamWaterLayerDensity + 0],
+          params_[kParamWaterLayerDensity + 1],
+          params_[kParamWaterLayerDensity + 2],
+          params_[kParamWaterLayerDensity + 3],
+          params_[kParamWaterLayerDensity + 4],
+          params_[kParamWaterLayerDensity + 5]);
+    }
+    if (water_surf_changed) {
+      water_instance_set_surf_params(
+          water_,
+          params_[kParamWaterSurf + 0], params_[kParamWaterSurf + 1],
+          params_[kParamWaterSurf + 2], params_[kParamWaterSurf + 3],
+          params_[kParamWaterSurf + 4], params_[kParamWaterSurf + 5],
+          params_[kParamWaterSurf + 6], params_[kParamWaterSurf + 7],
+          params_[kParamWaterSurf + 8], params_[kParamWaterSurf + 9],
+          params_[kParamWaterSurf + 10], params_[kParamWaterSurf + 11],
+          params_[kParamWaterSurf + 12], params_[kParamWaterSurf + 13],
+          params_[kParamWaterSurf + 14], params_[kParamWaterSurf + 15]);
+    }
+    if (water_channels_changed) {
+      water_instance_set_channels_params(
+          water_,
+          params_[kParamWaterChannels + 0],
+          params_[kParamWaterChannels + 1]);
+    }
+    if (water_density_loop_changed) {
+      water_instance_set_density_loop_params(
+          water_,
+          params_[kParamWaterDensityLoop + 0],
+          params_[kParamWaterDensityLoop + 1],
+          params_[kParamWaterDensityLoop + 2],
+          params_[kParamWaterDensityLoop + 3],
+          params_[kParamWaterDensityLoop + 4],
+          params_[kParamWaterDensityLoop + 5],
+          params_[kParamWaterDensityLoop + 6]);
+    }
     syncWaterActive();
 
-    maybeSetInsectsSeed(insects_, kParamInsectsSeed);
-    commitInsectsParams(insects_, kParamInsectsEngine, kParamInsectsParams);
+    if (paramChanged(kParamInsectsSeed, 1) && shouldSetSeed(kParamInsectsSeed)) {
+      insects_instance_set_seed(insects_, roundedInt(params_[kParamInsectsSeed]));
+    }
+    if (paramChanged(kParamInsectsEngine, 1)) {
+      insects_instance_set_engine(insects_, std::clamp(roundedInt(params_[kParamInsectsEngine]), 0, 6));
+    }
+    if (paramChanged(kParamInsectsParams, 14)) {
+      commitInsectsParams(insects_, kParamInsectsParams);
+    }
     syncInsectsActive();
 
-    maybeSetInsects2Seed();
-    insects2_instance_set_engine(insects2_, std::clamp(roundedInt(params_[kParamInsects2Engine]), 0, 6));
-    insects2_instance_set_params(
-        insects2_,
-        params_[kParamInsects2Params + 0], params_[kParamInsects2Params + 1],
-        params_[kParamInsects2Params + 2], params_[kParamInsects2Params + 3],
-        params_[kParamInsects2Params + 4], params_[kParamInsects2Params + 5],
-        params_[kParamInsects2Params + 6], params_[kParamInsects2Params + 7],
-        params_[kParamInsects2Params + 8], params_[kParamInsects2Params + 9],
-        params_[kParamInsects2Params + 10], params_[kParamInsects2Params + 11],
-        params_[kParamInsects2Params + 12], params_[kParamInsects2Params + 13]);
+    if (paramChanged(kParamInsects2Seed, 1) && shouldSetSeed(kParamInsects2Seed)) {
+      insects2_instance_set_seed(insects2_, roundedInt(params_[kParamInsects2Seed]));
+    }
+    if (paramChanged(kParamInsects2Engine, 1)) {
+      insects2_instance_set_engine(insects2_, std::clamp(roundedInt(params_[kParamInsects2Engine]), 0, 6));
+    }
+    if (paramChanged(kParamInsects2Params, 14)) {
+      insects2_instance_set_params(
+          insects2_,
+          params_[kParamInsects2Params + 0], params_[kParamInsects2Params + 1],
+          params_[kParamInsects2Params + 2], params_[kParamInsects2Params + 3],
+          params_[kParamInsects2Params + 4], params_[kParamInsects2Params + 5],
+          params_[kParamInsects2Params + 6], params_[kParamInsects2Params + 7],
+          params_[kParamInsects2Params + 8], params_[kParamInsects2Params + 9],
+          params_[kParamInsects2Params + 10], params_[kParamInsects2Params + 11],
+          params_[kParamInsects2Params + 12], params_[kParamInsects2Params + 13]);
+    }
     syncInsects2Active();
+
+    committed_params_ = params_;
+    committed_params_valid_ = true;
   }
 
   void allNotesOff() override {
@@ -366,11 +414,19 @@ public:
   }
 
 private:
-  void commitInsectsParams(
-      KesshoInsectsInstance* instance,
-      int engine_base,
-      int params_base) {
-    insects_instance_set_engine(instance, std::clamp(roundedInt(params_[engine_base]), 0, 6));
+  bool paramChanged(int base, int count) const {
+    if (!committed_params_valid_) {
+      return true;
+    }
+    for (int index = 0; index < count; ++index) {
+      if (params_[base + index] != committed_params_[base + index]) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void commitInsectsParams(KesshoInsectsInstance* instance, int params_base) {
     insects_instance_set_params(
         instance,
         params_[params_base + 0], params_[params_base + 1],
@@ -390,12 +446,6 @@ private:
     return std::isfinite(params_[seed_index]) && params_[seed_index] >= 0.0f;
   }
 
-  void maybeSetWaterSeed() {
-    if (shouldSetSeed(kParamWaterSeed)) {
-      water_instance_set_seed(water_, roundedInt(params_[kParamWaterSeed]));
-    }
-  }
-
   void syncWaterActive() {
     const bool should_start = params_[kParamWaterActive] > 0.5f;
     if (should_start && !water_started_) {
@@ -407,12 +457,6 @@ private:
     }
   }
 
-  void maybeSetInsectsSeed(KesshoInsectsInstance* instance, int seed_index) {
-    if (shouldSetSeed(seed_index)) {
-      insects_instance_set_seed(instance, roundedInt(params_[seed_index]));
-    }
-  }
-
   void syncInsectsActive() {
     const bool should_start = params_[kParamInsectsActive] > 0.5f;
     if (should_start && !insects_started_) {
@@ -421,12 +465,6 @@ private:
     } else if (!should_start && insects_started_) {
       insects_instance_stop(insects_);
       insects_started_ = false;
-    }
-  }
-
-  void maybeSetInsects2Seed() {
-    if (shouldSetSeed(kParamInsects2Seed)) {
-      insects2_instance_set_seed(insects2_, roundedInt(params_[kParamInsects2Seed]));
     }
   }
 
@@ -554,6 +592,8 @@ private:
   float sample_rate_ = 48000.0f;
   int max_block_size_ = kSoundscapesBlockSize;
   std::array<float, kParamCount> params_ = makeDefaultParams();
+  std::array<float, kParamCount> committed_params_{};
+  bool committed_params_valid_ = false;
   bool water_started_ = false;
   bool insects_started_ = false;
   bool insects2_started_ = false;

@@ -75,12 +75,12 @@ export function WaterCard({
   onWaterPresetRate,
   enabled,
 }: WaterCardProps) {
-  const hardDropsOpen = Number(state.waterLayerHardDrops) > 0.01;
-  const waterDropsOpen = Number(state.waterLayerWaterDrops) > 0.01;
-  const bubblingOpen = Number(state.waterLayerBubbling) > 0.01;
-  const turbulenceOpen = Number(state.waterLayerTurbulence) > 0.01;
-  const surfOpen = Number(state.waterLayerSurf) > 0.01;
-  const channelsOpen = Number(state.waterLayerChannels) > 0.01;
+  const hardDropsOpen = state.waterLayerHardDropsEnabled;
+  const waterDropsOpen = state.waterLayerWaterDropsEnabled;
+  const bubblingOpen = state.waterLayerBubblingEnabled;
+  const turbulenceOpen = state.waterLayerTurbulenceEnabled;
+  const surfOpen = state.waterLayerSurfEnabled;
+  const channelsOpen = state.waterLayerChannelsEnabled;
   const anyWaterOpen = hardDropsOpen || waterDropsOpen || bubblingOpen || turbulenceOpen || surfOpen || channelsOpen;
   const selectedOption = waterPresetOptions.find(item => item.value === selectedWaterPreset);
   const handleToggleWaterEnabled = () => {

@@ -2,6 +2,26 @@
 
 namespace {
 
+uint32_t soundscapeWaterLayerMask(const SourceState& source) {
+  if (source.soundscape_module_param_count > kSoundscapeModuleWaterLayerMaskParam) {
+    const float encoded = source.soundscape_module_params[kSoundscapeModuleWaterLayerMaskParam];
+    if (std::isfinite(encoded)) {
+      return static_cast<uint32_t>(std::lround(clampFloat(encoded, 0.0f, static_cast<float>(kSoundscapeWaterLayerMaskAll)))) &
+          kSoundscapeWaterLayerMaskAll;
+    }
+  }
+  uint32_t mask = 0u;
+  for (uint32_t layer = 0u; layer < kSoundscapeWaterLayerCount; ++layer) {
+    const uint32_t param_index = kSoundscapeWaterLayerParamStart + layer;
+    if (param_index < kSoundscapeModuleParamCount &&
+        std::isfinite(source.soundscape_module_params[param_index]) &&
+        source.soundscape_module_params[param_index] > 0.0001f) {
+      mask |= 1u << layer;
+    }
+  }
+  return mask;
+}
+
 enum ProductModuleMask : uint32_t {
   kModulePad = 1u << 0,
   kModuleLead1 = 1u << 1,
@@ -278,6 +298,25 @@ void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t 
   }
 }
 
+bool KesshoProductEngine::setSoundscapeModuleParamValue(uint32_t index, float value) {
+  if (index >= kSoundscapeProductModuleParamCount) {
+    return false;
+  }
+  SourceState& source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
+  const bool changed = source.soundscape_module_params[index] != value;
+  source.soundscape_module_params[index] = value;
+  source.soundscape_module_param_count = std::max(
+      source.soundscape_module_param_count, index + 1u);
+  const bool affects_module_boundary = index < kSoundscapeModuleParamCount ||
+      index == kSoundscapeModuleWaterMasterEnabledParam ||
+      index == kSoundscapeModuleInsectsMasterEnabledParam ||
+      index == kSoundscapeModuleWaterLayerMaskParam;
+  if (changed && affects_module_boundary) {
+    soundscapes_module_params_dirty = true;
+  }
+  return changed;
+}
+
 void KesshoProductEngine::configureSoundscapesModuleFromSource() {
   if (!soundscapes_module) {
     return;
@@ -300,6 +339,12 @@ void KesshoProductEngine::configureSoundscapesModuleFromSource() {
   for (uint32_t i = 0; i < kSoundscapeModuleParamCount; ++i) {
     desired[i] = std::isfinite(source.soundscape_module_params[i]) ? source.soundscape_module_params[i] : 0.0f;
   }
+  const uint32_t water_layer_mask = soundscapeWaterLayerMask(source);
+  for (uint32_t layer = 0u; layer < kSoundscapeWaterLayerCount; ++layer) {
+    if ((water_layer_mask & (1u << layer)) == 0u) {
+      desired[kSoundscapeWaterLayerParamStart + layer] = 0.0f;
+    }
+  }
   // Keep an insect generator alive until its child gate has completed the
   // release. This avoids stopping oscillator state while it is still audible.
   if (soundscape_insects_layer_gains[0].gain > 0.0001f ||
@@ -320,12 +365,14 @@ void KesshoProductEngine::configureSoundscapesModuleFromSource() {
     }
   }
   if (!changed) {
+    soundscapes_module_params_dirty = false;
     return;
   }
   std::copy(desired.begin(), desired.end(), params);
   soundscapes_module->commitParams();
   soundscapes_module_param_cache = desired;
   soundscapes_module_params_configured = true;
+  soundscapes_module_params_dirty = false;
 }
 
 void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
@@ -484,6 +531,12 @@ uint32_t KesshoProductEngine::computeActiveModuleMask() const {
 void KesshoProductEngine::renderProductModules(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (!modules_ready || frames == 0u) {
     return;
+  }
+  const SourceState& soundscape_source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
+  if (soundscapes_module_params_configured
+          ? soundscapes_module_params_dirty
+          : soundscapeModuleShouldRun(soundscape_source)) {
+    configureSoundscapesModuleFromSource();
   }
   advancePadVoiceReleases(frames);
   advanceHarmonyModuleVoiceFades(frames);

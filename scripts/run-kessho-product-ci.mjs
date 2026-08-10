@@ -8,6 +8,8 @@ const reportPath = resolve(root, 'docs/reports/kessho-product-ci-latest.json');
 
 const prerequisiteSteps = [
   'core:product:generate',
+  'test:pad-synth-tables',
+  'test:pad-synth-dsp',
   'type-check',
   'build',
   'core:product:schema',

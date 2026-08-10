@@ -30,6 +30,12 @@ import { useHarmonyLiveProjection } from './ui/harmony/useHarmonyLiveProjection'
 import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, INSECT_ENGINE_DEFAULTS, getWaterPresetDualRanges, getWaterPresetSliderModes } from './audio/waterPresets';
 import {
+  WATER_LAYER_ENABLED_BY_LEVEL,
+  WATER_LAYER_LEVEL_EPSILON,
+  WATER_LAYER_LEVEL_KEYS,
+  type WaterLayerLevelKey,
+} from './audio/waterLayerActivation';
+import {
   loadDawOutputDeviceSelection,
   loadDawOutputRoutingConfig,
   type DawOutputDeviceSelection,
@@ -42,7 +48,13 @@ import {
 } from './audio/drumMorph';
 import { getProductDrumMorphDualRangeOverrides, interpolateProductDrumMorphDualRanges } from './product-control';
 
-import { clampMorphPosition, isInMidMorph, isAtEndpoint0, isAtEndpoint1 } from './audio/morphUtils';
+import {
+  clampMorphPosition,
+  isInMidMorph,
+  isAtEndpoint0,
+  isAtEndpoint1,
+  selectDiscreteMorphEndpoint,
+} from './audio/morphUtils';
 import {
   getRuntimeSliderFlashing,
   getRuntimeSliderPosition,
@@ -129,6 +141,10 @@ import {
 import { useProductRuntimeLifecycleSurface } from './ui/useProductRuntimeLifecycleSurface';
 import { useProductRuntimeCallbackRegistrations } from './ui/useProductRuntimeCallbackRegistrations';
 import { useProductRuntimeCoordination } from './ui/useProductRuntimeCoordination';
+import {
+  isRuntimeModulationKeyEligible,
+  type RuntimeModulationState,
+} from './ui/runtimeModulationEligibility';
 import { useProductRuntimePlaybackSurface } from './ui/useProductRuntimePlaybackSurface';
 import { useProductRuntimeGlobalSurface } from './ui/useProductRuntimeGlobalSurface';
 import { useSynthPlayConfigRuntime } from './ui/useSynthPlayConfigRuntime';
@@ -147,6 +163,11 @@ import {
   normalizeDualSliderMode,
 } from './app/AppControls';
 import { getSliderCapability } from './ui/sliderSystem/sliderCapabilities';
+import {
+  normalizeDualSliderConfig,
+  type DualSliderConfig,
+  type DualSliderShapeConfig,
+} from './ui/sliderSystem/dualConfigReducer';
 import { createSignedSnowflakeWelcomeState } from './app/signedSnowflakeWelcomeState';
 import { AppDebugPanel } from './app/AppDebugPanel';
 import { BackgroundAudioStatusPill, MacAudioStatusPill } from './app/AppRuntimeStatusPills';
@@ -223,22 +244,13 @@ import {
 
 const WATER_PRESET_DUAL_KEYS = ['waterMorph', ...WATER_MORPH_PARAM_KEYS] as const;
 
-const WATER_CHILD_LEVEL_KEYS = [
-  'waterLayerHardDrops',
-  'waterLayerWaterDrops',
-  'waterLayerBubbling',
-  'waterLayerChannels',
-  'waterLayerTurbulence',
-  'waterLayerSurf',
-] as const satisfies readonly (keyof SliderState)[];
-
 function clearSharedEarthChildren(nextState: SliderState, family: 'water' | 'nature' | 'insects'): void {
   const set = (key: keyof SliderState, value: unknown) => {
     (nextState as unknown as Record<string, unknown>)[key] = value;
   };
 
   if (family === 'water') {
-    WATER_CHILD_LEVEL_KEYS.forEach((key) => set(key, 0));
+    WATER_LAYER_LEVEL_KEYS.forEach((key) => set(WATER_LAYER_ENABLED_BY_LEVEL[key], false));
     return;
   }
   if (family === 'nature') {
@@ -394,6 +406,7 @@ const App: React.FC = () => {
     setProductDrumParamSHRange,
     setProductDualRanges,
     setProductRuntimeWalkRanges,
+    setProductRuntimeModulationRanges,
     setProductJourneyMorphClockCallback: setProductJourneyMorphClockCallbackRuntime,
     startProductJourneyMorphClock: startProductJourneyMorphClockRuntime,
     stopProductJourneyMorphClock: stopProductJourneyMorphClockRuntime,
@@ -522,6 +535,7 @@ const App: React.FC = () => {
   const journeyLastAppliedStateRef = useRef<SliderState | null>(null);
   const journeyLastDualModesRef = useRef<Record<string, SliderMode>>({});
   const journeyLastDualRangesRef = useRef<Partial<Record<keyof SliderState, DualSliderRange>>>({});
+  const journeyLastDualConfigsRef = useRef<Record<string, DualSliderConfig>>({});
   const journeyLastMorphPositionRef = useRef<number | null>(null);
   const journeyLastMorphCoFVizRef = useRef<{
     isMorphing: boolean;
@@ -692,6 +706,8 @@ const App: React.FC = () => {
   });
 
   const {
+    dualConfigs,
+    setDualSliderConfigs,
     sliderModes,
     setSliderModes,
     dualSliderRanges,
@@ -700,6 +716,7 @@ const App: React.FC = () => {
     applyScopedDualRangesFromPreset,
     handleCycleSliderMode,
     handleDualRangeChange,
+    handleDualConfigChange,
   } = useDualSliderRuntimeState<SavedPreset>({
     state,
     stateRef,
@@ -806,6 +823,7 @@ const App: React.FC = () => {
     synthSwingsRef,
     normalizeDualSliderMode,
     setDualSliderRanges,
+    setDualSliderConfigs,
     setSliderModes,
   });
   const restoreEvolveConfigs = useCallback((preset: SavedPreset) => { restoreSequencerPresetMetadata(preset); restoreDrumScatterState(preset.drumScatterState); }, [restoreDrumScatterState, restoreSequencerPresetMetadata]);
@@ -816,6 +834,7 @@ const App: React.FC = () => {
         routingMuteGroups,
         dualRanges: dualSliderRanges as Record<string, { min: number; max: number }>,
         sliderModes,
+        dualSliderConfigs: dualConfigs as Record<string, DualSliderConfig>,
         drumEvolveConfigs: drumEvolveConfigsRef.current,
         synthEvolveConfigs: synthEvolveConfigsRef.current,
         drumStepOverrides: serializeStepOverrides(drumStepOverridesRef.current),
@@ -846,7 +865,7 @@ const App: React.FC = () => {
             }
           : undefined,
       }),
-    [activePresetPool, canonicalSynthPlayConfigs, dualSliderRanges, getDrumScatterPresetState, routingMuteGroups, sliderModes, visualizerPresetName],
+    [activePresetPool, canonicalSynthPlayConfigs, dualConfigs, dualSliderRanges, getDrumScatterPresetState, routingMuteGroups, sliderModes, visualizerPresetName],
   );
 
   const restoreRoutingMuteGroupsFromPreset = useCallback((value: SavedPreset['routingMuteGroups']) => {
@@ -920,6 +939,10 @@ const App: React.FC = () => {
   }, [backgroundJourney]);
   const runtimeSliderDemand = useRuntimeSliderDemand();
   const shouldMirrorRuntimeWalkPositions = runtimeSliderDemand > 0;
+  const runtimeRangeKeyEligible = useCallback(
+    (key: string): boolean => isRuntimeModulationKeyEligible(key, state as RuntimeModulationState),
+    [state],
+  );
 
   const { drumEvolvedOverrides, synthEvolvedOverrides } = useProductRuntimeCoordination({
     activeTab,
@@ -932,9 +955,11 @@ const App: React.FC = () => {
     drumSubLaneStatesRef,
     drumSwingsRef,
     dualSliderRanges,
+    dualConfigs,
+    isRuntimeRangeKeyEligible: runtimeRangeKeyEligible,
     playbackIsRunning,
-    randomWalkMode: state.randomWalkMode,
-    randomWalkSpeed: state.randomWalkSpeed,
+    modulationSourceA: state.modulationSourceA,
+    modulationSourceB: state.modulationSourceB,
     productRuntimeSupportsRangeKey,
     setProductDrumEvolveOverridesChangedCallback,
     setProductDrumMorphRange,
@@ -942,6 +967,7 @@ const App: React.FC = () => {
     setProductDualRanges,
     setProductRuntimeWalkPositionsCallback,
     setProductRuntimeWalkRanges,
+    setProductRuntimeModulationRanges,
     setProductSynthEvolveOverridesChangedCallback,
     setProductSynthNoteRangeEvolvedCallback,
     shouldMirrorRuntimeWalkPositions,
@@ -1326,6 +1352,9 @@ const App: React.FC = () => {
       dualRange?: DualSliderRange;
       walkPosition?: number;
       isFlashing?: boolean;
+      modulationConfig?: DualSliderConfig;
+      shapeConfig?: DualSliderShapeConfig;
+      onModulationConfigChange?: (key: keyof SliderState, config: DualSliderConfig) => void;
       onCycleMode?: (key: keyof SliderState) => void;
       onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
     } => {
@@ -1339,6 +1368,10 @@ const App: React.FC = () => {
       const mode: SliderMode = resolvedDualModeSupported ? (normalizeDualSliderMode(keyStr, sliderModes[keyStr]) ?? 'single') : 'single';
       const walkPos = getRuntimeSliderPosition(keyStr, mode);
       const isFlashing = getRuntimeSliderFlashing(keyStr, mode);
+      const modulationConfig = resolvedDualModeSupported ? dualConfigs[keyStr] : undefined;
+      const modulationSource = modulationConfig?.source === 'a'
+        ? state.modulationSourceA
+        : modulationConfig?.source === 'b' ? state.modulationSourceB : undefined;
 
       return {
         mode,
@@ -1346,11 +1379,14 @@ const App: React.FC = () => {
         dualRange: resolvedDualModeSupported ? dualSliderRanges[paramKey] : undefined,
         walkPosition: resolvedDualModeSupported && productRuntimeRangeSupported ? walkPos : undefined,
         isFlashing: resolvedDualModeSupported && productRuntimeRangeSupported ? isFlashing : false,
+        modulationConfig,
+        shapeConfig: modulationSource?.type === 'shape' ? modulationSource.shape : undefined,
+        onModulationConfigChange: resolvedDualModeSupported ? handleDualConfigChange : undefined,
         onCycleMode: resolvedDualModeSupported ? handleCycleSliderMode : undefined,
         onDualRangeChange: resolvedDualModeSupported ? handleDualRangeChange : undefined,
       };
     },
-    [productRuntimeSupportsRangeKey, sliderModes, dualSliderRanges, handleCycleSliderMode, handleDualRangeChange],
+    [dualConfigs, dualSliderRanges, handleCycleSliderMode, handleDualConfigChange, handleDualRangeChange, productRuntimeSupportsRangeKey, sliderModes, state.modulationSourceA, state.modulationSourceB],
   );
 
   const shouldDisableLeadRandomTiming = useCallback((nextState: SliderState): boolean => {
@@ -1858,6 +1894,7 @@ const App: React.FC = () => {
     state: SliderState;
     dualRanges: DualSliderState;
     dualModes: Record<string, SliderMode>;
+    dualConfigs: Record<string, DualSliderConfig>;
     // CoF morph visualization info
     morphCoFInfo?: {
       isMorphing: boolean;
@@ -1915,6 +1952,20 @@ const App: React.FC = () => {
       // For a musical feel, snap scale when we're halfway or past
       result.scaleMode = tNorm < 0.5 ? stateA.scaleMode : stateB.scaleMode;
       result.manualScale = tNorm < 0.5 ? stateA.manualScale : stateB.manualScale;
+
+      // Modulator definitions are discrete preset settings. Keep ranges moving
+      // continuously below, but switch each complete A/B generator at 50% so
+      // type, relationship/timing, waveform, and speed can never be mixed.
+      result.modulationSourceA = selectDiscreteMorphEndpoint(
+        stateA.modulationSourceA,
+        stateB.modulationSourceA,
+        tNorm,
+      );
+      result.modulationSourceB = selectDiscreteMorphEndpoint(
+        stateA.modulationSourceB,
+        stateB.modulationSourceB,
+        tNorm,
+      );
 
       // Build morph CoF info for visualization
       const morphCoFInfo =
@@ -2089,16 +2140,31 @@ const App: React.FC = () => {
       const dualRangesB = presetB.dualRanges || {};
       const rawModesA = presetA.sliderModes || {};
       const rawModesB = presetB.sliderModes || {};
+      const rawConfigsA = presetA.dualSliderConfigs || {};
+      const rawConfigsB = presetB.dualSliderConfigs || {};
       const resultDualRanges: DualSliderState = {};
       const resultDualModes: Record<string, SliderMode> = {};
+      const resultDualConfigs: Record<string, DualSliderConfig> = {};
 
-      // Get all keys that have dual ranges in either preset
-      const allDualKeys = new Set([...Object.keys(dualRangesA), ...Object.keys(dualRangesB)]);
+      // Canonical configs are authoritative; legacy range/mode maps remain valid
+      // migration inputs. Old morph slot A defaults to Walk and slot B to S&H.
+      const allDualKeys = new Set([
+        ...Object.keys(dualRangesA),
+        ...Object.keys(dualRangesB),
+        ...Object.keys(rawConfigsA),
+        ...Object.keys(rawConfigsB),
+      ]);
 
       for (const keyStr of allDualKeys) {
         const key = keyStr as keyof SliderState;
-        let rangeA = dualRangesA[keyStr];
-        let rangeB = dualRangesB[keyStr];
+        const configA = rawConfigsA[keyStr];
+        const configB = rawConfigsB[keyStr];
+        let rangeA = configA
+          ? { min: configA.range[0], max: configA.range[1] }
+          : dualRangesA[keyStr];
+        let rangeB = configB
+          ? { min: configB.range[0], max: configB.range[1] }
+          : dualRangesB[keyStr];
         const info = getParamInfo(key);
         const fallbackValue = info ? (info.min + info.max) * 0.5 : 0;
         let valA = getSliderNumericValue(key, stateA[key]) ?? fallbackValue;
@@ -2119,8 +2185,14 @@ const App: React.FC = () => {
         // a dualRange exists without an explicit sliderMode (same default used by
         // applyDualRangesFromPreset). Without this, a missing mode causes the ||
         // fallback chain to pick the OTHER preset's mode, defeating the midpoint snap.
-        const modeA = normalizeDualSliderMode(keyStr, rawModesA[keyStr] || (rangeA ? 'walk' : undefined));
-        const modeB = normalizeDualSliderMode(keyStr, rawModesB[keyStr] || (rangeB ? 'walk' : undefined));
+        const configModeA = configA
+          ? (configA.source === 'a' ? stateA.modulationSourceA : stateA.modulationSourceB).type
+          : undefined;
+        const configModeB = configB
+          ? (configB.source === 'a' ? stateB.modulationSourceA : stateB.modulationSourceB).type
+          : undefined;
+        const modeA = normalizeDualSliderMode(keyStr, configModeA || rawModesA[keyStr] || (rangeA ? 'walk' : undefined));
+        const modeB = normalizeDualSliderMode(keyStr, configModeB || rawModesB[keyStr] || (rangeB ? 'sampleHold' : undefined));
 
         let morphedMin: number;
         let morphedMax: number;
@@ -2149,8 +2221,17 @@ const App: React.FC = () => {
 
         if (isEffectivelyDual) {
           // Midpoint snap for discrete mode handoff (same pattern used for other discrete morph keys)
-          resultDualModes[key as string] = tNorm < 0.5 ? modeA || modeB || 'walk' : modeB || modeA || 'walk';
+          const selectedMode = tNorm < 0.5
+            ? modeA || modeB || 'walk'
+            : modeB || modeA || 'sampleHold';
+          if (selectedMode === 'single') continue;
+          const selectedConfig = tNorm < 0.5 ? configA : configB;
+          resultDualModes[key as string] = selectedMode;
           resultDualRanges[key] = { min: morphedMin, max: morphedMax };
+          resultDualConfigs[keyStr] = normalizeDualSliderConfig({
+            source: selectedConfig?.source ?? (selectedMode === 'sampleHold' ? 'b' : 'a'),
+            range: [morphedMin, morphedMax],
+          });
         } else {
           // Collapsed to single value — explicitly mark as 'single' so the merge
           // in handleMorphPositionChange resets any previous 'walk'/'sampleHold' mode
@@ -2591,12 +2672,17 @@ const App: React.FC = () => {
         'pad2FilterQ',
         'pad2FilterSlope',
         'pad2FilterKeyTracking',
-        'pad2OscAOctave',
-        'pad2OscADetune',
+        'pad2OscAWavePosition',
+        'pad2OscAPhaseDistortion',
+        'pad2OscAPitch',
+        'pad2OscALinearHzOffset',
         'pad2OscALevel',
-        'pad2OscBOctave',
-        'pad2OscBDetune',
+        'pad2OscBWavePosition',
+        'pad2OscBPhaseDistortion',
+        'pad2OscBPitch',
+        'pad2OscBLinearHzOffset',
         'pad2OscBLevel',
+        'pad2Drift',
         'pad2SubOctave',
         'pad2SubLevel',
         'pad2NoiseLevel',
@@ -2674,6 +2760,7 @@ const App: React.FC = () => {
         'pad2FilterType',
         'pad2OscAWave',
         'pad2OscBWave',
+        'pad2PhaseReset',
         'pad2SubWave',
         'pad2NoiseType',
         'pad2FilterBType',
@@ -2685,6 +2772,7 @@ const App: React.FC = () => {
         'pad2ModEnvDest',
         'pad2PresetA',
         'pad2PresetB',
+        'padPhaseReset',
       ];
       for (const key of discreteKeys) {
         (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
@@ -2812,11 +2900,24 @@ const App: React.FC = () => {
       }
       const normalizedResult = normalizeDegradeReverbCrossfeed(result);
       normalizeDegradeReverbCrossfeedRanges(normalizedResult, resultDualRanges, resultDualModes);
+      for (const key of Object.keys(resultDualConfigs)) {
+        const range = resultDualRanges[key as keyof SliderState];
+        const mode = resultDualModes[key];
+        if (!range || !mode || mode === 'single') {
+          delete resultDualConfigs[key];
+          continue;
+        }
+        resultDualConfigs[key] = normalizeDualSliderConfig({
+          ...resultDualConfigs[key],
+          range: [range.min, range.max],
+        });
+      }
 
       return {
         state: normalizedResult,
         dualRanges: resultDualRanges,
         dualModes: resultDualModes,
+        dualConfigs: resultDualConfigs,
         morphCoFInfo,
       };
     },
@@ -2828,6 +2929,7 @@ const App: React.FC = () => {
   const morphCapturedStateRef = useRef<SliderState | null>(null);
   const morphCapturedDualRangesRef = useRef<Record<string, { min: number; max: number }> | null>(null);
   const morphCapturedSliderModesRef = useRef<Record<string, SliderMode> | null>(null);
+  const morphCapturedDualConfigsRef = useRef<Record<string, DualSliderConfig> | null>(null);
   // Capture the effective starting root (accounting for CoF drift) when morph begins
   const morphCapturedStartRootRef = useRef<number | null>(null);
   // Track morph direction: 'toB' when going 0→100, 'toA' when going 100→0
@@ -2865,14 +2967,15 @@ const App: React.FC = () => {
     morphCapturedStateRef,
     morphCapturedDualRangesRef,
     morphCapturedSliderModesRef,
+    morphCapturedDualConfigsRef,
     morphCapturedStartRootRef,
     morphDirectionRef,
     lastMorphEndpointRef,
     morphManualOverridesRef,
     setMorphPosition,
     setState,
-    setSliderModes,
-    setDualSliderRanges,
+    dualConfigs,
+    setDualSliderConfigs,
     setMorphCoFViz,
     setMorphCountdown,
     lerpPresets,
@@ -2907,6 +3010,7 @@ const App: React.FC = () => {
     morphCapturedStateRef,
     morphCapturedDualRangesRef,
     morphCapturedSliderModesRef,
+    morphCapturedDualConfigsRef,
     morphCapturedStartRootRef,
     morphDirectionRef,
     setMorphPresetA,
@@ -2914,8 +3018,8 @@ const App: React.FC = () => {
     setMorphSlotAName,
     setMorphSlotBName,
     setState,
-    setSliderModes,
-    setDualSliderRanges,
+    dualConfigs,
+    setDualSliderConfigs,
     setStatePresetName,
     setVisualizerPresetName,
     setLinkedVisualizerPresetRequest,
@@ -2971,11 +3075,12 @@ const App: React.FC = () => {
     journeyLastAppliedStateRef,
     journeyLastDualModesRef,
     journeyLastDualRangesRef,
+    journeyLastDualConfigsRef,
     journeyLastMorphPositionRef,
     journeyLastMorphCoFVizRef,
     setState,
-    setSliderModes,
-    setDualSliderRanges,
+    dualConfigs,
+    setDualSliderConfigs,
     setMorphPresetA,
     setMorphPresetB,
     setMorphSlotAName,
@@ -3079,13 +3184,31 @@ const App: React.FC = () => {
           const key = sourceId === 'insects1' ? 'insectsEnabled' : 'insects2Enabled';
           return { ...prev, [key]: enabled };
         }
-        const waterChildKeys: Record<string, keyof SliderState> = {
+        const waterChildKeys: Record<string, WaterLayerLevelKey> = {
           waterHardDrops: 'waterLayerHardDrops', waterDrops: 'waterLayerWaterDrops',
           waterBubbling: 'waterLayerBubbling', waterChannels: 'waterLayerChannels',
           waterTurbulence: 'waterLayerTurbulence', waterSurf: 'waterLayerSurf',
         };
         const waterChildKey = waterChildKeys[sourceId];
-        if (waterChildKey) return { ...prev, [waterChildKey]: enabled ? 0.5 : 0 };
+        if (waterChildKey) {
+          const enabledKey = WATER_LAYER_ENABLED_BY_LEVEL[waterChildKey];
+          const nextState = { ...prev, [enabledKey]: enabled } as SliderState;
+          if (enabled) {
+            nextState.waterEnabled = true;
+            if (Number(prev.waterLevel ?? 0) <= WATER_LAYER_LEVEL_EPSILON) {
+              nextState.waterLevel = 0.65;
+            }
+            if (Number(prev[waterChildKey] ?? 0) <= WATER_LAYER_LEVEL_EPSILON) {
+              nextState[waterChildKey] = 0.5;
+            }
+          } else {
+            const otherActive = WATER_LAYER_LEVEL_KEYS.some(
+              (otherKey) => otherKey !== waterChildKey && Boolean(prev[WATER_LAYER_ENABLED_BY_LEVEL[otherKey]]),
+            );
+            if (!otherActive) nextState.waterEnabled = false;
+          }
+          return nextState;
+        }
         const source = getRoutingSourceDef(sourceId);
         if (!source) return prev;
         let nextState: SliderState | null = null;

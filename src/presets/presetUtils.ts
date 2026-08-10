@@ -24,6 +24,7 @@ export const PRESET_VERSION_METADATA_FIELDS = [
   'routingMuteGroups',
   'dualRanges',
   'sliderModes',
+  'dualSliderConfigs',
   'drumEvolveConfigs',
   'synthEvolveConfigs',
   'drumStepOverrides',
@@ -306,7 +307,7 @@ export function normalizePresetVersion(input: unknown): PresetVersion | null {
         ? normalizePresetPoolMetadata(input[field])
         : normalizeMetadataField(input[field]);
     if (normalized !== undefined) {
-      if ((field === 'dualRanges' || field === 'sliderModes') && isPlainObject(normalized)) {
+      if ((field === 'dualRanges' || field === 'sliderModes' || field === 'dualSliderConfigs') && isPlainObject(normalized)) {
         migrateLegacyDelayAKeys(normalized as Record<string, unknown>);
       }
       (version as unknown as Record<string, unknown>)[field] = normalized;

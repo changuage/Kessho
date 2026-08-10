@@ -46,6 +46,12 @@ const SEQUENCER_BOOLEAN_SUFFIXES = ['Enabled', 'Solo'] as const;
 export const ROUTING_MUTE_GROUP_EARTH_BOOLEAN_KEYS = [
   'oceanSampleEnabled',
   'waterEnabled',
+  'waterLayerHardDropsEnabled',
+  'waterLayerWaterDropsEnabled',
+  'waterLayerBubblingEnabled',
+  'waterLayerChannelsEnabled',
+  'waterLayerTurbulenceEnabled',
+  'waterLayerSurfEnabled',
   'natureMasterEnabled',
   'nature1Enabled',
   'nature2Enabled',

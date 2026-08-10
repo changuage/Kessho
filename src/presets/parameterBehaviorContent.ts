@@ -2,7 +2,7 @@ import { PARAM_REGISTRY } from './ParamRegistry';
 import { normalizePresetParameterBehavior, type PresetContentCandidate } from './contentNodes';
 import type { PresetVersionContentRefV2Row } from './presetStorageV2';
 import type { PresetVersionMetadata } from './types';
-import { sanitizePresetParameterBehaviorMetadata } from './versionMetadataHelpers';
+import { canonicalizePresetParameterBehaviorMetadata } from './versionMetadataHelpers';
 
 export interface ParameterBehaviorInstance {
   id: string;
@@ -18,16 +18,15 @@ function scopeSlug(scope: string): string {
 export function buildParameterBehaviorInstances(
   metadata: PresetVersionMetadata | undefined,
 ): ParameterBehaviorInstance[] {
-  const canonical = sanitizePresetParameterBehaviorMetadata(metadata);
-  const keys = new Set([
-    ...Object.keys(canonical.sliderModes ?? {}),
-    ...Object.keys(canonical.dualRanges ?? {}),
-  ]);
+  const canonical = canonicalizePresetParameterBehaviorMetadata(metadata);
+  const keys = Object.keys(canonical.dualSliderConfigs ?? {});
   const byScope = new Map<string, Record<string, unknown>>();
   for (const key of keys) {
-    const mode = canonical.sliderModes?.[key];
-    const range = canonical.dualRanges?.[key];
-    const behavior = normalizePresetParameterBehavior({ mode, ...(range ? { range } : {}) });
+    const config = canonical.dualSliderConfigs?.[key];
+    const behavior = normalizePresetParameterBehavior(config ? {
+      mode: config.source === 'a' ? 'modA' : 'modB',
+      range: { min: config.range[0], max: config.range[1] },
+    } : undefined);
     if (behavior.mode === 'single') continue;
     const scope = PARAM_REGISTRY[key]?.scope ?? 'global';
     const values = byScope.get(scope) ?? {};
@@ -55,25 +54,26 @@ export function hydrateParameterBehaviorRefs(
 ): PresetVersionMetadata | undefined {
   const next: PresetVersionMetadata = {
     ...(metadata ?? {}),
-    ...sanitizePresetParameterBehaviorMetadata(metadata),
+    ...canonicalizePresetParameterBehaviorMetadata(metadata),
   };
-  const sliderModes = { ...(next.sliderModes ?? {}) };
-  const dualRanges = { ...(next.dualRanges ?? {}) };
+  const dualSliderConfigs = { ...(next.dualSliderConfigs ?? {}) };
   for (const ref of refs) {
     if (ref.content_type !== 'parameterBehaviorMap') continue;
     const envelope = payloadMap.get(ref.content_hash);
     if (!isRecord(envelope) || !isRecord(envelope.content) || !isRecord(envelope.content.behaviors)) continue;
     for (const [key, rawBehavior] of Object.entries(envelope.content.behaviors)) {
-      if (!isRecord(rawBehavior) || (rawBehavior.mode !== 'walk' && rawBehavior.mode !== 'sampleHold')) continue;
-      sliderModes[key] = rawBehavior.mode;
-      if (isRecord(rawBehavior.range)
-          && typeof rawBehavior.range.min === 'number'
-          && typeof rawBehavior.range.max === 'number') {
-        dualRanges[key] = { min: rawBehavior.range.min, max: rawBehavior.range.max };
-      }
+      if (!isRecord(rawBehavior)) continue;
+      const behavior = normalizePresetParameterBehavior(rawBehavior);
+      if (behavior.mode === 'single' || !behavior.range) continue;
+      dualSliderConfigs[key] = {
+        source: behavior.mode === 'modB' ? 'b' : 'a',
+        range: [behavior.range.min, behavior.range.max],
+      };
     }
   }
-  const canonical = sanitizePresetParameterBehaviorMetadata({ sliderModes, dualRanges });
+  const canonical = canonicalizePresetParameterBehaviorMetadata({ dualSliderConfigs });
+  if (canonical.dualSliderConfigs) next.dualSliderConfigs = canonical.dualSliderConfigs;
+  else delete next.dualSliderConfigs;
   if (canonical.sliderModes) next.sliderModes = canonical.sliderModes;
   else delete next.sliderModes;
   if (canonical.dualRanges) next.dualRanges = canonical.dualRanges;
@@ -86,6 +86,7 @@ export function stripParameterBehaviorsFromV2Metadata(
 ): PresetVersionMetadata | undefined {
   if (!metadata) return undefined;
   const next = { ...metadata };
+  delete next.dualSliderConfigs;
   delete next.sliderModes;
   delete next.dualRanges;
   return Object.keys(next).length > 0 ? next : undefined;

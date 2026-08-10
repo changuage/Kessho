@@ -6,13 +6,15 @@
 #include <memory>
 
 #include "KesshoCore/KesshoTypes.h"
+#include "KesshoProductSchema.h"
 #include "kessho_pad.h"
 
 namespace kessho::core {
 namespace {
 
 constexpr int kPadBlockSize = PAD_MAX_BLOCK_SIZE;
-constexpr int kPadParamCount = 52;
+constexpr int kPadParamCount = static_cast<int>(kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT);
+constexpr int kLegacyPadParamCount = static_cast<int>(KESSHO_LEGACY_SOURCE_PRESET_PAD_PARAM_COUNT);
 constexpr int kParamReverbSend = kPadParamCount * PAD_NUM_PADS;
 constexpr int kParamOutputSelect = kParamReverbSend + 1;
 constexpr int kParamCount = kParamOutputSelect + 1;
@@ -20,12 +22,12 @@ constexpr int kPadOutputTapCount = KESSHO_MODULE_PAD_OUTPUT_TAP_COUNT;
 static_assert(kPadOutputTapCount == KESSHO_MODULE_TAP_POSTFADER_PAD2 + 1, "pad tap count must match tap enum");
 
 constexpr int kOscAWave = 0;
-constexpr int kOscAOctave = 1;
-constexpr int kOscADetune = 2;
+constexpr int kOscAPitch = 1;
+constexpr int kOscAPosition = 2;
 constexpr int kOscALevel = 3;
 constexpr int kOscBWave = 4;
-constexpr int kOscBOctave = 5;
-constexpr int kOscBDetune = 6;
+constexpr int kOscBPitch = 5;
+constexpr int kOscBPosition = 6;
 constexpr int kOscBLevel = 7;
 constexpr int kOscMix = 8;
 constexpr int kSubEnabled = 9;
@@ -70,7 +72,16 @@ constexpr int kModEnvSustain = 47;
 constexpr int kModEnvRelease = 48;
 constexpr int kModEnvDepth = 49;
 constexpr int kModEnvDest = 50;
-constexpr int kLevel = 51;
+constexpr int kOscAPhaseDistortion = 51;
+constexpr int kOscBPhaseDistortion = 52;
+constexpr int kOscAHzOffset = 53;
+constexpr int kOscBHzOffset = 54;
+constexpr int kDrift = 55;
+constexpr int kPhaseReset = 56;
+constexpr int kOutputTrim = 57;
+
+static_assert(kPadParamCount == 58, "Product Pad parameter count must stay locked at 58");
+static_assert(kParamCount == 118, "Product Pad module parameter count must stay locked at 118");
 
 std::array<float, kParamCount> makeDefaultParams() {
   std::array<float, kParamCount> params{};
@@ -78,12 +89,12 @@ std::array<float, kParamCount> makeDefaultParams() {
   for (int pad = 0; pad < PAD_NUM_PADS; ++pad) {
     const int base = pad * kPadParamCount;
     params[base + kOscAWave] = PAD_WAVE_TRIANGLE;
-    params[base + kOscAOctave] = 0.0f;
-    params[base + kOscADetune] = 0.0f;
+    params[base + kOscAPitch] = 0.0f;
+    params[base + kOscAPosition] = 0.0f;
     params[base + kOscALevel] = 1.0f;
     params[base + kOscBWave] = PAD_WAVE_SINE;
-    params[base + kOscBOctave] = 0.0f;
-    params[base + kOscBDetune] = 0.0f;
+    params[base + kOscBPitch] = 0.08f;
+    params[base + kOscBPosition] = 0.0f;
     params[base + kOscBLevel] = 1.0f;
     params[base + kOscMix] = 0.5f;
     params[base + kSubEnabled] = 0.0f;
@@ -128,7 +139,9 @@ std::array<float, kParamCount> makeDefaultParams() {
     params[base + kModEnvRelease] = 0.5f;
     params[base + kModEnvDepth] = 0.0f;
     params[base + kModEnvDest] = PAD_DEST_FILTER_CUTOFF;
-    params[base + kLevel] = 0.8f;
+    params[base + kDrift] = 0.42f;
+    params[base + kPhaseReset] = 2.0f;
+    params[base + kOutputTrim] = 0.8f;
   }
 
   params[kParamReverbSend] = 0.1f;
@@ -279,15 +292,21 @@ public:
 
     for (int pad = 0; pad < PAD_NUM_PADS; ++pad) {
       const int base = pad * kPadParamCount;
-      pad_instance_set_osc_a_wave(instance_, pad, clampedRounded(params_[base + kOscAWave], 0, 3));
-      pad_instance_set_osc_a_octave(instance_, pad, roundedInt(params_[base + kOscAOctave]));
-      pad_instance_set_osc_a_detune(instance_, pad, params_[base + kOscADetune]);
+      pad_instance_set_osc_a_wave(instance_, pad, clampedRounded(params_[base + kOscAWave], 0, 6));
+      pad_instance_set_osc_a_pitch(instance_, pad, params_[base + kOscAPitch]);
+      pad_instance_set_osc_a_position(instance_, pad, params_[base + kOscAPosition]);
       pad_instance_set_osc_a_level(instance_, pad, params_[base + kOscALevel]);
-      pad_instance_set_osc_b_wave(instance_, pad, clampedRounded(params_[base + kOscBWave], 0, 3));
-      pad_instance_set_osc_b_octave(instance_, pad, roundedInt(params_[base + kOscBOctave]));
-      pad_instance_set_osc_b_detune(instance_, pad, params_[base + kOscBDetune]);
+      pad_instance_set_osc_a_phase_distortion(instance_, pad, params_[base + kOscAPhaseDistortion]);
+      pad_instance_set_osc_a_hz_offset(instance_, pad, params_[base + kOscAHzOffset]);
+      pad_instance_set_osc_b_wave(instance_, pad, clampedRounded(params_[base + kOscBWave], 0, 6));
+      pad_instance_set_osc_b_pitch(instance_, pad, params_[base + kOscBPitch]);
+      pad_instance_set_osc_b_position(instance_, pad, params_[base + kOscBPosition]);
       pad_instance_set_osc_b_level(instance_, pad, params_[base + kOscBLevel]);
+      pad_instance_set_osc_b_phase_distortion(instance_, pad, params_[base + kOscBPhaseDistortion]);
+      pad_instance_set_osc_b_hz_offset(instance_, pad, params_[base + kOscBHzOffset]);
       pad_instance_set_osc_mix(instance_, pad, params_[base + kOscMix]);
+      pad_instance_set_drift(instance_, pad, params_[base + kDrift]);
+      pad_instance_set_phase_reset(instance_, pad, clampedRounded(params_[base + kPhaseReset], 0, 2));
       pad_instance_set_sub_enabled(instance_, pad, params_[base + kSubEnabled] > 0.5f ? 1 : 0);
       pad_instance_set_sub_octave(instance_, pad, roundedInt(params_[base + kSubOctave]));
       pad_instance_set_sub_wave(instance_, pad, clampedRounded(params_[base + kSubWave], 0, 3));
@@ -318,19 +337,19 @@ public:
       pad_instance_set_lfo1_rate(instance_, pad, params_[base + kLfo1Rate]);
       pad_instance_set_lfo1_depth(instance_, pad, params_[base + kLfo1Depth]);
       pad_instance_set_lfo1_wave(instance_, pad, clampedRounded(params_[base + kLfo1Wave], 0, 6));
-      pad_instance_set_lfo1_dest(instance_, pad, clampedRounded(params_[base + kLfo1Dest], 0, 6));
+      pad_instance_set_lfo1_dest(instance_, pad, clampedRounded(params_[base + kLfo1Dest], 0, 12));
       pad_instance_set_lfo2_rate(instance_, pad, params_[base + kLfo2Rate]);
       pad_instance_set_lfo2_depth(instance_, pad, params_[base + kLfo2Depth]);
       pad_instance_set_lfo2_wave(instance_, pad, clampedRounded(params_[base + kLfo2Wave], 0, 6));
-      pad_instance_set_lfo2_dest(instance_, pad, clampedRounded(params_[base + kLfo2Dest], 0, 6));
+      pad_instance_set_lfo2_dest(instance_, pad, clampedRounded(params_[base + kLfo2Dest], 0, 12));
       pad_instance_set_mod_env_enabled(instance_, pad, params_[base + kModEnvEnabled] > 0.5f ? 1 : 0);
       pad_instance_set_mod_env_attack(instance_, pad, params_[base + kModEnvAttack]);
       pad_instance_set_mod_env_decay(instance_, pad, params_[base + kModEnvDecay]);
       pad_instance_set_mod_env_sustain(instance_, pad, params_[base + kModEnvSustain]);
       pad_instance_set_mod_env_release(instance_, pad, params_[base + kModEnvRelease]);
       pad_instance_set_mod_env_depth(instance_, pad, params_[base + kModEnvDepth]);
-      pad_instance_set_mod_env_dest(instance_, pad, clampedRounded(params_[base + kModEnvDest], 0, 6));
-      pad_instance_set_level(instance_, pad, params_[base + kLevel]);
+      pad_instance_set_mod_env_dest(instance_, pad, clampedRounded(params_[base + kModEnvDest], 0, 12));
+      pad_instance_set_level(instance_, pad, params_[base + kOutputTrim]);
     }
 
     pad_instance_set_reverb_send(instance_, params_[kParamReverbSend]);
@@ -398,7 +417,7 @@ public:
     params_[base + kFilterResonance] = std::clamp(0.04f + d * 0.32f, 0.0f, 0.95f);
     params_[base + kLfo1Rate] = 0.04f + d * 0.45f;
     params_[base + kLfo1Depth] = m * 0.14f;
-    params_[base + kLevel] = std::clamp(0.35f + e * 0.65f, 0.0f, 1.2f);
+    params_[base + kOutputTrim] = std::clamp(0.35f + e * 0.65f, 0.0f, 1.2f);
 
     pad_instance_set_hardness(instance_, source_index, params_[base + kHardness]);
     pad_instance_set_warmth(instance_, source_index, params_[base + kWarmth]);
@@ -408,24 +427,31 @@ public:
     pad_instance_set_filter_resonance(instance_, source_index, params_[base + kFilterResonance]);
     pad_instance_set_lfo1_rate(instance_, source_index, params_[base + kLfo1Rate]);
     pad_instance_set_lfo1_depth(instance_, source_index, params_[base + kLfo1Depth]);
-    pad_instance_set_level(instance_, source_index, params_[base + kLevel]);
+    pad_instance_set_level(instance_, source_index, params_[base + kOutputTrim]);
     return 1;
   }
 
   int setSourcePresetPatch(int source_index, const KesshoSourcePresetPatch& patch) override {
     if (instance_ == nullptr || source_index < 0 || source_index >= PAD_NUM_PADS ||
-        patch.exact_pad_param_count != KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT) {
+        (patch.exact_pad_param_count != KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT &&
+         patch.exact_pad_param_count != kLegacyPadParamCount)) {
       return 0;
     }
 
     const int base = source_index * kPadParamCount;
+    std::array<float, kPadParamCount> normalized{};
+    if (patch.exact_pad_param_count == kLegacyPadParamCount) {
+      convertLegacyPadPresetParams(patch.exact_pad_params, normalized.data());
+    } else {
+      std::copy_n(patch.exact_pad_params, kPadParamCount, normalized.begin());
+    }
     for (int i = 0; i < kPadParamCount; ++i) {
-      if (!std::isfinite(patch.exact_pad_params[i])) {
+      if (!std::isfinite(normalized[i])) {
         return 0;
       }
     }
     for (int i = 0; i < kPadParamCount; ++i) {
-      params_[base + i] = patch.exact_pad_params[i];
+      params_[base + i] = normalized[i];
     }
     commitParams();
     return 1;
@@ -492,28 +518,46 @@ private:
     const int base = pad * kPadParamCount;
     switch (pad_param) {
       case kOscAWave:
-        pad_instance_set_osc_a_wave(instance_, pad, clampedRounded(params_[base + kOscAWave], 0, 3));
+        pad_instance_set_osc_a_wave(instance_, pad, clampedRounded(params_[base + kOscAWave], 0, 6));
         break;
-      case kOscAOctave:
-        pad_instance_set_osc_a_octave(instance_, pad, roundedInt(params_[base + kOscAOctave]));
+      case kOscAPitch:
+        pad_instance_set_osc_a_pitch(instance_, pad, params_[base + kOscAPitch]);
         break;
-      case kOscADetune:
-        pad_instance_set_osc_a_detune(instance_, pad, params_[base + kOscADetune]);
+      case kOscAPosition:
+        pad_instance_set_osc_a_position(instance_, pad, params_[base + kOscAPosition]);
         break;
       case kOscALevel:
         pad_instance_set_osc_a_level(instance_, pad, params_[base + kOscALevel]);
         break;
       case kOscBWave:
-        pad_instance_set_osc_b_wave(instance_, pad, clampedRounded(params_[base + kOscBWave], 0, 3));
+        pad_instance_set_osc_b_wave(instance_, pad, clampedRounded(params_[base + kOscBWave], 0, 6));
         break;
-      case kOscBOctave:
-        pad_instance_set_osc_b_octave(instance_, pad, roundedInt(params_[base + kOscBOctave]));
+      case kOscBPitch:
+        pad_instance_set_osc_b_pitch(instance_, pad, params_[base + kOscBPitch]);
         break;
-      case kOscBDetune:
-        pad_instance_set_osc_b_detune(instance_, pad, params_[base + kOscBDetune]);
+      case kOscBPosition:
+        pad_instance_set_osc_b_position(instance_, pad, params_[base + kOscBPosition]);
         break;
       case kOscBLevel:
         pad_instance_set_osc_b_level(instance_, pad, params_[base + kOscBLevel]);
+        break;
+      case kOscAPhaseDistortion:
+        pad_instance_set_osc_a_phase_distortion(instance_, pad, params_[base + kOscAPhaseDistortion]);
+        break;
+      case kOscBPhaseDistortion:
+        pad_instance_set_osc_b_phase_distortion(instance_, pad, params_[base + kOscBPhaseDistortion]);
+        break;
+      case kOscAHzOffset:
+        pad_instance_set_osc_a_hz_offset(instance_, pad, params_[base + kOscAHzOffset]);
+        break;
+      case kOscBHzOffset:
+        pad_instance_set_osc_b_hz_offset(instance_, pad, params_[base + kOscBHzOffset]);
+        break;
+      case kDrift:
+        pad_instance_set_drift(instance_, pad, params_[base + kDrift]);
+        break;
+      case kPhaseReset:
+        pad_instance_set_phase_reset(instance_, pad, clampedRounded(params_[base + kPhaseReset], 0, 2));
         break;
       case kOscMix:
         pad_instance_set_osc_mix(instance_, pad, params_[base + kOscMix]);
@@ -609,7 +653,7 @@ private:
         pad_instance_set_lfo1_wave(instance_, pad, clampedRounded(params_[base + kLfo1Wave], 0, 6));
         break;
       case kLfo1Dest:
-        pad_instance_set_lfo1_dest(instance_, pad, clampedRounded(params_[base + kLfo1Dest], 0, 6));
+        pad_instance_set_lfo1_dest(instance_, pad, clampedRounded(params_[base + kLfo1Dest], 0, 12));
         break;
       case kLfo2Rate:
         pad_instance_set_lfo2_rate(instance_, pad, params_[base + kLfo2Rate]);
@@ -621,7 +665,7 @@ private:
         pad_instance_set_lfo2_wave(instance_, pad, clampedRounded(params_[base + kLfo2Wave], 0, 6));
         break;
       case kLfo2Dest:
-        pad_instance_set_lfo2_dest(instance_, pad, clampedRounded(params_[base + kLfo2Dest], 0, 6));
+        pad_instance_set_lfo2_dest(instance_, pad, clampedRounded(params_[base + kLfo2Dest], 0, 12));
         break;
       case kModEnvEnabled:
         pad_instance_set_mod_env_enabled(instance_, pad, params_[base + kModEnvEnabled] > 0.5f ? 1 : 0);
@@ -642,10 +686,10 @@ private:
         pad_instance_set_mod_env_depth(instance_, pad, params_[base + kModEnvDepth]);
         break;
       case kModEnvDest:
-        pad_instance_set_mod_env_dest(instance_, pad, clampedRounded(params_[base + kModEnvDest], 0, 6));
+        pad_instance_set_mod_env_dest(instance_, pad, clampedRounded(params_[base + kModEnvDest], 0, 12));
         break;
-      case kLevel:
-        pad_instance_set_level(instance_, pad, params_[base + kLevel]);
+      case kOutputTrim:
+        pad_instance_set_level(instance_, pad, params_[base + kOutputTrim]);
         break;
       default:
         break;

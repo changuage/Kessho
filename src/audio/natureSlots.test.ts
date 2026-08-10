@@ -7,6 +7,8 @@ import { coreProductStateUsesSoundscape } from './product/host/CoreProductAssetR
 import {
   SOUNDSCAPE_TEXTURE_PARAM_START,
   SOUNDSCAPE_TEXTURE_PARAM_STRIDE,
+  SOUNDSCAPE_WATER_LAYER_MASK_PARAM,
+  SOUNDSCAPE_WATER_LAYER_PARAM_START,
   exactSoundscapesModuleParamsFromState,
   soundscapeSnapshotPayloadFromState,
 } from './coreProductSoundscapesSnapshot';
@@ -75,6 +77,61 @@ test('aggregate module gates are independent from configured child state', () =>
   });
   assert.equal(params[61], 1, 'child remains configured for the fade lifecycle');
   assert.equal(params[102], 0, 'aggregate gate is off');
+});
+
+test('Water layer snapshot carries a compact enable mask without clobbering raw levels', () => {
+  const params = exactSoundscapesModuleParamsFromState({
+    waterLayerHardDrops: 0.4,
+    waterLayerWaterDrops: 0.5,
+    waterLayerTurbulence: 0.6,
+    waterLayerBubbling: 0.7,
+    waterLayerSurf: 0.8,
+    waterLayerChannels: 0.9,
+    waterLayerHardDropsEnabled: false,
+    waterLayerWaterDropsEnabled: true,
+    waterLayerTurbulenceEnabled: false,
+    waterLayerBubblingEnabled: true,
+    waterLayerSurfEnabled: false,
+    waterLayerChannelsEnabled: true,
+  });
+
+  assert.equal(params[SOUNDSCAPE_WATER_LAYER_MASK_PARAM], 42);
+  assert.deepEqual(
+    params.slice(SOUNDSCAPE_WATER_LAYER_PARAM_START, SOUNDSCAPE_WATER_LAYER_PARAM_START + 6),
+    [0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+  );
+});
+
+test('Water layer mask falls back to legacy level presence when booleans are absent', () => {
+  const params = exactSoundscapesModuleParamsFromState({
+    waterLayerHardDrops: 0.00001,
+    waterLayerWaterDrops: 0.2,
+    waterLayerTurbulence: 0,
+    waterLayerBubbling: 0.0002,
+    waterLayerSurf: 0,
+    waterLayerChannels: 0.3,
+  });
+  assert.equal(params[SOUNDSCAPE_WATER_LAYER_MASK_PARAM], 42);
+});
+
+test('disabled Water child flags stop Water module activation while retaining levels', () => {
+  const params = exactSoundscapesModuleParamsFromState({
+    waterLayerHardDrops: 0.4,
+    waterLayerWaterDrops: 0.5,
+    waterLayerTurbulence: 0.6,
+    waterLayerBubbling: 0.7,
+    waterLayerSurf: 0.8,
+    waterLayerChannels: 0.9,
+    waterLayerHardDropsEnabled: false,
+    waterLayerWaterDropsEnabled: false,
+    waterLayerTurbulenceEnabled: false,
+    waterLayerBubblingEnabled: false,
+    waterLayerSurfEnabled: false,
+    waterLayerChannelsEnabled: false,
+  });
+  assert.equal(params[0], 0);
+  assert.equal(params[SOUNDSCAPE_WATER_LAYER_MASK_PARAM], 0);
+  assert.equal(params[SOUNDSCAPE_WATER_LAYER_PARAM_START], 0.4);
 });
 
 test('canonical Nature activation participates in soundscape asset readiness', () => {

@@ -1,6 +1,6 @@
 import type { DualSliderRange } from '../DualSlider';
 import type { SliderPageId } from '../sliderHelpCatalog';
-import type { MatrixCellHandle } from '../sliderSystem';
+import type { MatrixCellHandle, SliderRuntimeRendererProps } from '../sliderSystem';
 import type { SliderMode, SliderState } from '../state';
 
 export type SliderColumnId = 'level' | 'delayA' | 'delayB' | 'granular' | 'degrade' | 'reverb';
@@ -14,11 +14,7 @@ export interface MatrixRow {
 }
 export interface RoutingColumn { id: ColumnId; label: string; helpKey: string; note?: string }
 export interface DynamicsRouteControl { key: keyof SliderState; label: string }
-export interface RoutingSliderRuntime {
-  mode: SliderMode; dualRange?: DualSliderRange; walkPosition?: number; isFlashing?: boolean;
-  onCycleMode?: (key: keyof SliderState) => void;
-  onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
-}
+export type RoutingSliderRuntime = SliderRuntimeRendererProps<keyof SliderState>;
 export interface ColumnDragTarget {
   key: keyof SliderState; mode: SliderMode; startValue: number; startRange?: DualSliderRange;
   onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;

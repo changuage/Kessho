@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, t
 import { calculateDriftedRoot } from '../audio/harmony';
 import { clampMorphPosition, isAtEndpoint0, isAtEndpoint1, isInMidMorph } from '../audio/morphUtils';
 import type { DualSliderRange } from './DualSlider';
+import type { DualSliderConfig } from './sliderSystem/dualConfigReducer';
 import type { ProductRuntimeParamUpdateOptions } from './useProductRuntimePresetSurface';
 import { USER_PREFERENCE_KEYS } from './presetUtils';
 import { DEFAULT_STATE, type SliderMode, type SliderState } from './state';
@@ -23,12 +24,14 @@ type MorphRuntimePreset = {
   state: SliderState;
   dualRanges?: Record<string, { min: number; max: number }>;
   sliderModes?: Record<string, SliderMode>;
+  dualSliderConfigs?: Partial<Record<string, DualSliderConfig>>;
 };
 
 type MorphRuntimeResult = {
   state: SliderState;
   dualRanges: Partial<Record<keyof SliderState, DualSliderRange>>;
   dualModes: Record<string, SliderMode>;
+  dualConfigs: Record<string, DualSliderConfig>;
   morphCoFInfo?: NonNullable<MorphCoFViz> | null;
 };
 
@@ -52,14 +55,15 @@ type UseMorphPositionRuntimeSurfaceOptions<TPreset extends MorphRuntimePreset> =
   morphCapturedStateRef: MutableRefObject<SliderState | null>;
   morphCapturedDualRangesRef: MutableRefObject<Record<string, { min: number; max: number }> | null>;
   morphCapturedSliderModesRef: MutableRefObject<Record<string, SliderMode> | null>;
+  morphCapturedDualConfigsRef: MutableRefObject<Record<string, DualSliderConfig> | null>;
   morphCapturedStartRootRef: MutableRefObject<number | null>;
   morphDirectionRef: MutableRefObject<'toB' | 'toA' | null>;
   lastMorphEndpointRef: MutableRefObject<number>;
   morphManualOverridesRef: MutableRefObject<MorphManualOverrides>;
   setMorphPosition: Dispatch<SetStateAction<number>>;
   setState: Dispatch<SetStateAction<SliderState>>;
-  setSliderModes: Dispatch<SetStateAction<Record<string, SliderMode>>>;
-  setDualSliderRanges: Dispatch<SetStateAction<Partial<Record<keyof SliderState, DualSliderRange>>>>;
+  dualConfigs: Record<string, DualSliderConfig | undefined>;
+  setDualSliderConfigs: (configs: Record<string, DualSliderConfig>) => void;
   setMorphCoFViz: Dispatch<SetStateAction<MorphCoFViz>>;
   setMorphCountdown: Dispatch<SetStateAction<MorphCountdown>>;
   lerpPresets: (
@@ -97,14 +101,15 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
   morphCapturedStateRef,
   morphCapturedDualRangesRef,
   morphCapturedSliderModesRef,
+  morphCapturedDualConfigsRef,
   morphCapturedStartRootRef,
   morphDirectionRef,
   lastMorphEndpointRef,
   morphManualOverridesRef,
   setMorphPosition,
   setState,
-  setSliderModes,
-  setDualSliderRanges,
+  dualConfigs,
+  setDualSliderConfigs,
   setMorphCoFViz,
   setMorphCountdown,
   lerpPresets,
@@ -126,6 +131,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
   const phaseStartTimeRef = useRef<number>(Date.now());
   const phaseDurationRef = useRef<number>(0);
   const productAutoCycleInitialPositionRef = useRef(morphPosition);
+  const productAutoModulationSideRef = useRef<-1 | 0 | 1>(-1);
   const lastAppliedManualPositionRef = useRef<number | null>(null);
   const morphInputEmitterRef = useRef<MorphPositionScheduler | null>(null);
   const morphApplyRef = useRef<(position: number) => void>(() => undefined);
@@ -138,43 +144,25 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     const fallbackState = morphCapturedStateRef.current || DEFAULT_STATE;
     const fallbackDualRanges = morphCapturedDualRangesRef.current || undefined;
     const fallbackSliderModes = morphCapturedSliderModesRef.current || undefined;
+    const fallbackDualConfigs = morphCapturedDualConfigsRef.current || undefined;
     return {
       name: 'Current',
       timestamp: '',
       state: fallbackState,
       dualRanges: fallbackDualRanges,
       sliderModes: fallbackSliderModes,
+      dualSliderConfigs: fallbackDualConfigs,
     } as TPreset;
-  }, [morphCapturedDualRangesRef, morphCapturedSliderModesRef, morphCapturedStateRef]);
+  }, [morphCapturedDualConfigsRef, morphCapturedDualRangesRef, morphCapturedSliderModesRef, morphCapturedStateRef]);
 
   const mergeMorphDualRuntime = useCallback((morphResult: MorphRuntimeResult): void => {
-    setSliderModes((prev) => {
-      const next: Record<string, SliderMode> = {};
-      for (const [key, mode] of Object.entries(prev)) {
-        if (!(key in morphResult.dualModes)) {
-          next[key] = mode;
-        }
-      }
-      for (const [key, mode] of Object.entries(morphResult.dualModes)) {
-        if (mode !== 'single') {
-          next[key] = mode;
-        }
-      }
-      return next;
-    });
-    setDualSliderRanges((prev) => {
-      const next: typeof prev = {};
-      for (const [key, range] of Object.entries(prev)) {
-        if (!(key in morphResult.dualModes)) {
-          next[key as keyof SliderState] = range;
-        }
-      }
-      for (const [key, range] of Object.entries(morphResult.dualRanges)) {
-        next[key as keyof SliderState] = range;
-      }
-      return next;
-    });
-  }, [setDualSliderRanges, setSliderModes]);
+    const next: Record<string, DualSliderConfig> = {};
+    for (const [key, config] of Object.entries(dualConfigs)) {
+      if (config && !(key in morphResult.dualModes)) next[key] = config;
+    }
+    Object.assign(next, morphResult.dualConfigs);
+    setDualSliderConfigs(next);
+  }, [dualConfigs, setDualSliderConfigs]);
 
   useEffect(() => {
     const presetAChanged = morphPresetA !== prevMorphPresetARef.current;
@@ -371,6 +359,41 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     [],
   );
 
+  const applyProductAutoModulationSide = useCallback((position: number): void => {
+    const side: 0 | 1 = position < 0.5 ? 0 : 1;
+    if (productAutoModulationSideRef.current === side || (!morphPresetA && !morphPresetB)) return;
+    productAutoModulationSideRef.current = side;
+
+    const fallbackPreset = buildFallbackPreset();
+    const effectiveA = morphPresetA || fallbackPreset;
+    const effectiveB = morphPresetB || fallbackPreset;
+    const endpointResult = lerpPresets(
+      effectiveA,
+      effectiveB,
+      side === 0 ? 0 : 100,
+      currentCofStepRef.current,
+    );
+
+    // The native scene owns continuous parameter interpolation. Modulator
+    // definitions and parameter bus assignments are discrete preset metadata,
+    // so update them only when the cycle crosses the exact 50% boundary.
+    setState((previous) => ({
+      ...previous,
+      modulationSourceA: endpointResult.state.modulationSourceA,
+      modulationSourceB: endpointResult.state.modulationSourceB,
+    }));
+    mergeMorphDualRuntime(endpointResult);
+    resetRuntimeWalkPositionsForModes(endpointResult.dualModes);
+  }, [
+    buildFallbackPreset,
+    lerpPresets,
+    mergeMorphDualRuntime,
+    morphPresetA,
+    morphPresetB,
+    resetRuntimeWalkPositionsForModes,
+    setState,
+  ]);
+
   useEffect(() => {
     if (morphMode !== 'auto') productAutoCycleInitialPositionRef.current = morphPosition;
   }, [morphMode, morphPosition]);
@@ -398,6 +421,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     const endpointA = endpointState(effectiveA);
     const endpointB = endpointState(effectiveB);
     const abortController = new AbortController();
+    productAutoModulationSideRef.current = -1;
     void productAutoCycleRuntime.start({
       endpointA,
       endpointB,
@@ -453,6 +477,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
       if (!telemetry?.enabled) return;
       const position = Math.round(telemetry.position * 100);
       setMorphPosition(position);
+      applyProductAutoModulationSide(telemetry.position);
       if (telemetry.sampleRate === null) {
         setMorphCountdown(null);
         return;
@@ -472,6 +497,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
   }, [
+    applyProductAutoModulationSide,
     isEngineRunning,
     morphMode,
     productAutoCycleRuntime,

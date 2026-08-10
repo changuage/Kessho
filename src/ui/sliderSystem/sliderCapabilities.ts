@@ -1,3 +1,9 @@
+import {
+  PARAM_MODULATION_CAPABILITIES,
+  SINGLE_ONLY_PARAM_KEYS,
+  WALK_ONLY_PARAM_KEYS,
+  type ParamModulationCapability,
+} from '../../presets/ParamRegistry';
 import { type SliderMode, type SliderState } from '../state';
 
 /**
@@ -5,103 +11,16 @@ import { type SliderMode, type SliderState } from '../state';
  * read from pointer handlers and React render paths, so lookups must stay O(1)
  * and must not enumerate the state object.
  */
-export type SliderCapability = 'single' | 'walk-only' | 'dual';
-
-const WALK_ONLY_KEYS = [
-  'waterIntensity', 'waterDistance', 'waterHardDropBaseFreq', 'waterWaterDropBaseFreq',
-  'waterDropSize', 'waterHardness', 'waterGlassThickness', 'waterHardDropRate',
-  'waterHardDropLPF', 'waterHardDropTone', 'waterWaterDropRate', 'waterWaterDropLPF',
-  'waterBubblingRate', 'waterBubblingLPF', 'waterLayerHardDrops', 'waterLayerWaterDrops',
-  'waterLayerTurbulence', 'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
-  'waterDensityHardSend', 'waterDensityWaterSend', 'waterDensityBubbleSend',
-  'waterDensityFeedback', 'waterDensityTone', 'waterDensityRing', 'waterDensityWet',
-  'waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfFoamBright',
-  'waterSurfProximity', 'waterSurfDepth', 'waterSurfBody', 'waterSurfSpray',
-  'waterChannelsMorph', 'waterChannelsSpeed', 'insectsDensity', 'insectsTemperature',
-  'insectsDistance', 'insectsProximity', 'insectsAntiphony', 'insectsClickRate',
-  'insectsMotion', 'insects2Density', 'insects2Temperature', 'insects2Distance',
-  'insects2Proximity', 'insects2Antiphony', 'insects2ClickRate', 'insects2Motion',
-] as const satisfies readonly (keyof SliderState)[];
-
-/** Intentionally scalar controls and controls without a Product range target. */
-const SINGLE_ONLY_KEYS = [
-  'lead1MorphSpeed', 'lead2MorphSpeed', 'pad2MorphSpeed', 'padMorphSpeed', 'phraseLength',
-  'randomWalkSpeed', 'randomness', 'sequencerMasterBPM',
-  'transportBarsPerPhrase', 'transportBeatsPerBar',
-] as const satisfies readonly (keyof SliderState)[];
-
-/** Shared literal Slider keys with continuously variable Product ranges. */
-const DUAL_KEYS = [
-  'chordRate', 'damping', 'delayACrossFeedFilter', 'delayADuck', 'delayAFeedback',
-  'delayAFilter', 'delayAGranularSend', 'delayAMix', 'delayAModDepth', 'delayAModRate',
-  'delayAReverbSend', 'delayAToBSend', 'delayAWidth', 'delayBGranularSend', 'delayBSpread',
-  'delayBTapeHead1Level', 'delayBTapeHead1Pan', 'delayBTapeHead2Level', 'delayBTapeHead2Pan',
-  'delayBTapeHead3Level', 'delayBTapeHead3Pan', 'delayBTapeHead4Level', 'delayBTapeHead4Pan',
-  'delayBToASend', 'delayBWarpIntensity', 'degradeSample1Send', 'degradeSample2Send',
-  'detune', 'drumDelayBSend', 'drumDelayNoteL',
-  'drumDelayNoteR', 'drumLevel', 'drumReverbSend', 'filterCutoff', 'filterKeyTracking',
-  'filterQ', 'filterResonance', 'filterSlope', 'granularDelayActivity', 'granularDelayFilter',
-  'granularDelayMix', 'granularDelayRepeats', 'granularDelayReverbSend', 'granularDelayTime',
-  'granularDelayVibrato', 'granularLevel', 'granularReverbSend', 'hardness', 'lead1DelayASend',
-  'granularChordBias', 'granularCloudMacro', 'granularDelayBSend', 'granularDiffusion',
-  'granularDrumSend', 'granularFeedback', 'granularFeedbackLPF', 'granularInsectsSend',
-  'granularLead1Send', 'granularLead2Send', 'granularMacroActivity', 'granularMacroChaos',
-  'granularMacroComplexity', 'granularMacroDarkness', 'granularMacroTexture', 'granularMaxGrains',
-  'granularOutputLPF', 'granularPad1Send', 'granularPad2Send', 'granularPitchMacro',
-  'granularSample1Send', 'granularSample2Send',
-  'granularReverbLPF', 'granularSprayMacro', 'granularWaterSend', 'granularWavesSend',
-  'granularNatureSend',
-  'lead1Density', 'lead1DiffuseSend', 'lead1Distance', 'lead1Level', 'lead1Morph', 'lead1Octave',
-  'lead1OctaveRange', 'lead1PostLPF', 'lead1PostLPFKeyTracking', 'lead1ReverbSend',
-  'lead1StereoWidth', 'lead1VibratoDepth', 'lead1VibratoRate', 'lead1Glide',
-  'lead2DelayASend', 'lead2DiffuseSend', 'lead2Distance', 'lead2Level',
-  'lead2Morph', 'lead2PostLPF', 'lead2PostLPFKeyTracking', 'lead2ReverbSend', 'lead2StereoWidth',
-  'lead2VibratoDepth', 'lead2VibratoRate', 'lead2Glide',
-  'leadGlide', 'leadVibratoDepth', 'leadVibratoRate', 'masterVolume', 'pad1ReverbSend',
-  'pad2Attack', 'pad2Decay', 'pad2DiffuseSend', 'pad2Distance', 'pad2FilterBCutoff', 'pad2FilterBQ',
-  'pad2FilterBResonance', 'pad2FilterCutoff', 'pad2FilterKeyTracking', 'pad2FilterQ',
-  'pad2FilterResonance', 'pad2FilterSlope', 'pad2FoldAmount', 'pad2Hardness', 'pad2Level',
-  'pad2Lfo1Depth', 'pad2Lfo1Rate', 'pad2Lfo2Depth', 'pad2Lfo2Rate', 'pad2ModEnvAttack',
-  'pad2ModEnvDecay', 'pad2ModEnvDepth', 'pad2ModEnvRelease', 'pad2ModEnvSustain', 'pad2Morph',
-  'pad2NoiseLevel', 'pad2OscADetune', 'pad2OscALevel', 'pad2OscAOctave', 'pad2OscBDetune',
-  'pad2OscBLevel', 'pad2OscBOctave', 'pad2OscMix', 'pad2PostLPF', 'pad2Presence', 'pad2Release',
-  'pad2ReverbSend', 'pad2StereoWidth', 'pad2SubLevel', 'pad2SubOctave', 'pad2Sustain', 'pad2Warmth', 'pad2Hold',
-  'padDiffuseSend', 'padDistance', 'padFilterBCutoff', 'padFilterBQ', 'padFilterBResonance',
-  'padFoldAmount', 'padLfo1Depth', 'padLfo1Rate', 'padLfo2Depth', 'padLfo2Rate', 'padModEnvAttack',
-  'padModEnvDecay', 'padModEnvDepth', 'padModEnvRelease', 'padModEnvSustain', 'padMorph',
-  'padNoiseLevel', 'padOscADetune', 'padOscALevel', 'padOscAOctave', 'padOscBDetune', 'padOscBLevel',
-  'padOscBOctave', 'padOscMix', 'padPostLPF', 'padStereoWidth', 'padSubLevel', 'padSubOctave',
-  'predelay', 'presence', 'reverbAirAbsorption', 'reverbBloom', 'reverbChorusDepth',
-  'reverbChorusRate', 'reverbCrossFeed', 'reverbCrossoverFreq', 'reverbDampHigh', 'reverbDampLow',
-  'reverbDecay', 'reverbDiffusion', 'reverbEarlyReflections', 'reverbErLpFreq', 'reverbInputTone',
-  'reverbLevel', 'reverbModulation', 'reverbPreCompAttackMs', 'reverbPreCompKnee',
-  'reverbPreCompMakeup', 'reverbPreCompRatio', 'reverbPreCompReleaseMs', 'reverbPreCompThreshold',
-  'reverbReverse', 'reverbReverseLength', 'reverbShimmer', 'reverbShimmerFeedback', 'reverbShimmerPitch',
-  'reverbSize', 'reverbSlowModDepth', 'reverbSlowModRate', 'reverbTransientSmooth', 'reverbWarp',
-  'spectralFreezeDiffusion', 'spectralFreezeInputSensitivity', 'spectralFreezeMix',
-  'spectralFreezePosition', 'spectralFreezeRefresh', 'spectralFreezeReverbCrossfade',
-  'spectralFreezeStretchSpeed', 'spectralFreezeSustain', 'spectralFreezeTone',
-  'spectralFreezeWidth', 'synthHold', 'synthAttack', 'synthDecay', 'synthLevel',
-  'synthOctave', 'synthRelease', 'synthSustain', 'voicingSpread', 'warmth', 'waveSpread', 'width',
-] as const satisfies readonly (keyof SliderState)[];
-
-const EXPLICIT_CAPABILITIES: Record<string, SliderCapability> = Object.freeze({
-  ...Object.fromEntries(WALK_ONLY_KEYS.map((key) => [key, 'walk-only'])),
-  ...Object.fromEntries(SINGLE_ONLY_KEYS.map((key) => [key, 'single'])),
-  ...Object.fromEntries(DUAL_KEYS.map((key) => [key, 'dual'])),
-}) as Record<string, SliderCapability>;
+export type SliderCapability = ParamModulationCapability;
 
 const DYNAMIC_SINGLE_KEYS = new Set<string>([
   'sample1MaxVoices', 'sample2MaxVoices',
   'granularV1Slice', 'granularV2Slice', 'granularV3Slice', 'granularV4Slice',
-  'oceanSliceDuration', 'oceanSliceDensity', 'oceanFilterCutoff', 'oceanFilterResonance',
-  'birdsSliceDuration', 'birdsSliceDensity', 'birds2SliceDuration', 'birds2SliceDensity',
-  'frogsSliceDuration', 'frogsSliceDensity',
   'padTensionValue', 'leadTensionValue', 'synthEuclidTensionValue',
   'granularTensionValue', 'reverbTensionValue', 'drumTensionValue',
 ]);
 
-const WALK_ONLY_KEY_SET = new Set<string>(WALK_ONLY_KEYS);
+const WALK_ONLY_KEY_SET = new Set<string>(WALK_ONLY_PARAM_KEYS);
 
 /**
  * O(1) capability lookup. Dynamic Slider families are intentionally matched
@@ -110,7 +29,7 @@ const WALK_ONLY_KEY_SET = new Set<string>(WALK_ONLY_KEYS);
  * explicit entry or a bounded family rule.
  */
 export function getSliderCapability(key: string): SliderCapability | undefined {
-  const explicit = EXPLICIT_CAPABILITIES[key];
+  const explicit = PARAM_MODULATION_CAPABILITIES[key];
   if (explicit) return explicit;
   if (DYNAMIC_SINGLE_KEYS.has(key)) return 'single';
   if (WALK_ONLY_KEY_SET.has(key)) return 'walk-only';
@@ -135,7 +54,7 @@ export function getSliderCapability(key: string): SliderCapability | undefined {
 export function isSliderModeAllowed(key: string, mode: SliderMode): boolean {
   const capability = getSliderCapability(key);
   if (capability === 'single') return mode === 'single';
-  if (capability === 'walk-only') return mode === 'single' || mode === 'walk';
+  if (capability === 'walk-only') return mode === 'single' || mode === 'walk' || mode === 'shape';
   if (capability === 'dual') return true;
   return mode === 'single';
 }
@@ -154,6 +73,6 @@ export function isSliderRangeCapable(key: keyof SliderState | string): boolean {
   return capability === 'dual' || capability === 'walk-only';
 }
 
-export const SINGLE_ONLY_SLIDER_KEYS: ReadonlySet<string> = new Set(SINGLE_ONLY_KEYS);
-export const WALK_ONLY_DUAL_KEYS: ReadonlySet<string> = new Set(WALK_ONLY_KEYS);
-export const SLIDER_CAPABILITIES: Readonly<Record<string, SliderCapability>> = EXPLICIT_CAPABILITIES;
+export const SINGLE_ONLY_SLIDER_KEYS: ReadonlySet<string> = new Set(SINGLE_ONLY_PARAM_KEYS);
+export const WALK_ONLY_DUAL_KEYS: ReadonlySet<string> = new Set(WALK_ONLY_PARAM_KEYS);
+export const SLIDER_CAPABILITIES: Readonly<Record<string, SliderCapability>> = PARAM_MODULATION_CAPABILITIES;

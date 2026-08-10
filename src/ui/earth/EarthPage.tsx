@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './earth.css';
-import { DualSlider, type DualSliderRange } from '../DualSlider';
+import { DualSlider } from '../DualSlider';
 import type { SliderMode, SliderState } from '../state';
 import { QUANTIZATION } from '../state';
 import type { EarthTextureDebugState } from '../../audio/engineSharedTypes';
@@ -38,22 +38,15 @@ import {
 import { WaterCard } from './components/WaterCard';
 import { NatureCard } from './components/NatureCard';
 import { InsectsCard } from './components/InsectsCard';
-import { WalkSpeedCard } from './components/WalkSpeedCard';
 import { ActiveEarthMatrix } from './components/ActiveEarthMatrix';
+import type { SliderRuntimeRendererProps } from '../sliderSystem';
 
 export interface EarthPageProps {
   state: SliderState;
   onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: <K extends keyof SliderState>(key: K, value: SliderState[K]) => void;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
-  sliderProps: (paramKey: keyof SliderState) => {
-    mode: SliderMode;
-    dualRange?: DualSliderRange;
-    walkPosition?: number;
-    isFlashing?: boolean;
-    onCycleMode?: (key: keyof SliderState) => void;
-    onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
-  };
+  sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
   sliderModes?: Record<string, SliderMode>;
   dualSliderRanges?: Record<string, { min: number; max: number }>;
   onDualStateChange?: (
@@ -65,42 +58,6 @@ export interface EarthPageProps {
   getEarthTextureDebugState: () => EarthTextureDebugState;
   textureDebugAvailable?: boolean;
 }
-
-const EARTH_DUAL_KEYS: readonly (keyof SliderState)[] = [
-  'earthLevel',
-  'waterMorph',
-  'waterIntensity', 'waterDistance', 'waterDropSize',
-  'waterHardness', 'waterGlassThickness', 'waterHardDropBaseFreq',
-  'waterWaterDropBaseFreq', 'waterReverbSend',
-  'oceanSampleLevel', 'oceanSliceDuration', 'oceanSliceDensity',
-  'oceanFilterCutoff', 'oceanFilterResonance',
-  'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend',
-  'birdsLevel', 'birdsSliceDuration', 'birdsSliceDensity',
-  'birds2Level', 'birds2SliceDuration', 'birds2SliceDensity',
-  'frogsLevel', 'frogsSliceDuration', 'frogsSliceDensity',
-  'nature1Level', 'nature1SliceDuration', 'nature1SliceDensity', 'nature1FilterCutoff', 'nature1FilterResonance',
-  'nature2Level', 'nature2SliceDuration', 'nature2SliceDensity', 'nature2FilterCutoff', 'nature2FilterResonance',
-  'nature3Level', 'nature3SliceDuration', 'nature3SliceDensity', 'nature3FilterCutoff', 'nature3FilterResonance',
-  'nature4Level', 'nature4SliceDuration', 'nature4SliceDensity', 'nature4FilterCutoff', 'nature4FilterResonance',
-  'natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend',
-  'insectsDensity', 'insectsTemperature', 'insectsDistance', 'insectsProximity',
-  'insectsAntiphony', 'insectsClickRate', 'insectsMotion',
-  'insects2Density', 'insects2Temperature', 'insects2Distance', 'insects2Proximity',
-  'insects2Antiphony', 'insects2ClickRate', 'insects2Motion',
-  'waterLevel', 'insectsLevel', 'insectsSharedLevel', 'insects2Level',
-  'insectsReverbSend', 'waterDelayASend', 'waterDelayBSend',
-  'granularWavesSend', 'granularNatureSend', 'granularWaterSend', 'granularInsectsSend',
-  'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
-  'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
-  'waterHardDropRate', 'waterHardDropLPF', 'waterHardDropTone',
-  'waterWaterDropRate', 'waterWaterDropLPF',
-  'waterBubblingRate', 'waterBubblingLPF',
-  'waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfFoamBright', 'waterSurfProximity', 'waterSurfDepth',
-  'waterSurfBody', 'waterSurfSpray',
-  'waterDensityHardSend', 'waterDensityWaterSend', 'waterDensityBubbleSend',
-  'waterDensityFeedback', 'waterDensityTone', 'waterDensityRing', 'waterDensityWet',
-  'waterChannelsMorph', 'waterChannelsSpeed',
-] as const;
 
 const EARTH_ENGINE_CARD_IDS = ['water', 'nature1', 'nature2', 'nature3', 'nature4', 'insects1', 'insects2'] as const;
 
@@ -188,11 +145,6 @@ export default function EarthPage({
     refresh: refreshInsects2Presets,
     updateMetadata: updateInsects2PresetMetadata,
   } = usePresets('engine', 'insects2');
-
-  const anyWalkMode = useMemo(
-    () => EARTH_DUAL_KEYS.some(k => sliderProps(k).mode === 'walk'),
-    [sliderProps],
-  );
 
   const defaultExpandedCards = useMemo<Record<EarthEngineCardId, boolean>>(() => ({
     water: Boolean(state.waterEnabled),
@@ -494,16 +446,19 @@ export default function EarthPage({
   const collectPresetDualMetadata = useCallback((keys: readonly (keyof SliderState)[]) => {
     const scopedSliderModes: Record<string, SliderMode> = {};
     const dualRanges: Record<string, { min: number; max: number }> = {};
+    const dualSliderConfigs: NonNullable<import('../../presets/types').PresetVersionMetadata['dualSliderConfigs']> = {};
 
     for (const key of keys) {
       const sp = sliderProps(key);
       if (sp.mode !== 'single') scopedSliderModes[key] = sp.mode;
       if (sp.dualRange) dualRanges[key] = sp.dualRange;
+      if (sp.modulationConfig) dualSliderConfigs[key] = sp.modulationConfig;
     }
 
     return {
       sliderModes: Object.keys(scopedSliderModes).length > 0 ? scopedSliderModes : undefined,
       dualRanges: Object.keys(dualRanges).length > 0 ? dualRanges : undefined,
+      dualSliderConfigs: Object.keys(dualSliderConfigs).length > 0 ? dualSliderConfigs : undefined,
     };
   }, [sliderProps]);
 
@@ -740,6 +695,8 @@ export default function EarthPage({
         dualRange={boundedDualRange}
         walkPosition={sp.walkPosition}
         isFlashing={sp.isFlashing}
+        modulationConfig={sp.modulationConfig}
+        shapeConfig={sp.shapeConfig}
         onChange={onParamChange}
         onCycleMode={sp.onCycleMode ?? (() => undefined)}
         onDualRangeChange={sp.onDualRangeChange ?? (() => undefined)}
@@ -849,11 +806,6 @@ export default function EarthPage({
               onSelectChange('insects2Enabled', !state.insects2Enabled);
             }}
           />
-          {anyWalkMode && (
-            <WalkSpeedCard
-              ds={ds}
-            />
-          )}
         </div>
 
       </div>

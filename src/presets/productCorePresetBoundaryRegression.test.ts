@@ -43,6 +43,17 @@ import {
 }
 
 {
+  const olderPreset = { ...DEFAULT_STATE } as Record<string, unknown>;
+  delete olderPreset.detune;
+
+  assert.equal(
+    normalizePresetForWeb(olderPreset as unknown as SliderState).detune,
+    DEFAULT_STATE.detune,
+    'missing current controls must receive canonical defaults before boundary validation',
+  );
+}
+
+{
   const currentContractOnly = { ...DEFAULT_STATE } as Record<string, unknown>;
   delete currentContractOnly.granularPreset;
   delete currentContractOnly.leadTimbre;
@@ -51,6 +62,29 @@ import {
     validateProductCorePresetBoundaryState(currentContractOnly as unknown as SliderState).valid,
     true,
     'legacy and UI-only state must not be required at the Product Core preset boundary',
+  );
+}
+
+{
+  const legacyState = { ...DEFAULT_STATE } as Record<string, unknown>;
+  delete legacyState.shapeLfoSpeed;
+  delete legacyState.modulationSourceA;
+  delete legacyState.modulationSourceB;
+
+  const migrated = normalizePresetForWeb(legacyState as unknown as SliderState);
+  assert.equal(
+    migrated.shapeLfoSpeed,
+    DEFAULT_STATE.shapeLfoSpeed,
+    'presets saved before Shape LFO must receive the additive linked-speed default',
+  );
+  assert.deepEqual(migrated.modulationSourceA, {
+    type: 'walk',
+    walk: { relationship: 'free', speed: DEFAULT_STATE.randomWalkSpeed },
+  }, 'old presets must assign Mod A to the sound-preserving Random Walk Free default');
+  assert.deepEqual(
+    migrated.modulationSourceB,
+    { type: 'sampleHold' },
+    'old presets must assign Mod B to Sample & Hold',
   );
 }
 

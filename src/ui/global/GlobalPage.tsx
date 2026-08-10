@@ -1,5 +1,6 @@
 import React from 'react';
 import type { SliderState, SavedPreset } from '../state';
+import { getParamInfo } from '../state';
 import type { ProductEngineState, ProductManualSynthNote } from '../../audio/product/ProductEngineTypes';
 import type { ProductLiveNoteEvent } from '../../audio/product/liveNoteEvents';
 import type { TensionArcType } from '../../audio/harmony';
@@ -18,12 +19,29 @@ import { APP_TAB_SYMBOLS, TEXT_SYMBOLS } from '../../designSystem/textSymbols';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { getRuntimeSliderPosition } from '../runtimeSliderState';
 import { resolveEffectiveSliderValue } from '../sliderSystem/effectiveValue';
-import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
+import {
+  ModulationModeIcon,
+  SliderPrimitive,
+  type SliderRendererProps,
+  type SliderRuntimeRendererProps,
+} from '../sliderSystem';
+import { normToValue, quantizeToStep, valueToNorm } from '../sliderSystem/scale';
+import {
+  DEFAULT_MODULATION_SOURCE_A,
+  DEFAULT_MODULATION_SOURCE_B,
+  normalizeModulationSourceConfig,
+  type DualSliderShape,
+  type DualSliderShapeDivision,
+  type DualSliderShapeTiming,
+  type ModulationSlot,
+  type ModulationSourceConfig,
+} from '../sliderSystem/dualConfigReducer';
 import type { SelectRenderer } from '../../app/AppControls';
 import type { CircleOfFifthsProps } from '../CircleOfFifths';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
 import { HarmonyWorkspace } from '../harmony/HarmonyWorkspace';
 import { GlobalRuntimeComparisonPanel, type GlobalRuntimeComparisonPanelProps } from './GlobalRuntimeComparisonPanel';
+import { getModulationPreviewDurationSec, type ModulationPreviewClock } from './modulationPreviewTiming';
 import type { RoutingMuteGroupRuntimeSnapshot, RoutingMuteGroupSourceId } from '../routing';
 import './global.css';
 
@@ -33,6 +51,282 @@ const DEGREE_LABELS = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'];
 const GLOBAL_EXPANDED_SECTIONS_STORAGE_KEY = 'global:expanded-sections:v2';
 const DEFAULT_GLOBAL_EXPANDED_SECTIONS = ['morph', 'state-presets'];
 type SceneHarmonyState = NonNullable<ProductEngineState['harmonyState']>;
+
+const MODULATION_DIVISIONS: DualSliderShapeDivision[] = ['4x', '2x', '1', '1/2', '1/4', '1/8', '1/16'];
+
+const MODULATION_PREVIEW_PATHS = {
+  walk: [
+    'M8 46L32 29L54 39L78 14L101 53L126 34L151 43L177 20L202 48L227 27L253 38L278 16L312 35',
+    'M8 27L34 45L60 22L87 36L114 18L143 48L170 31L199 50L225 24L252 42L281 29L312 47',
+    'M8 56L38 38L66 51L93 33L120 46L149 24L180 40L210 17L242 34L275 22L312 30',
+  ],
+  sampleHold: 'M8 54H50V20H91V43H132V13H177V49H222V27H268V57H312',
+  sine: 'M8 36C24 9 42 9 58 36S92 63 108 36S142 9 158 36S192 63 208 36S242 9 258 36S292 63 312 36',
+  triangle: 'M8 58L58 14L108 58L158 14L208 58L258 14L312 58',
+  square: 'M8 57V15H82V57H158V15H234V57H312',
+} as const;
+
+function formatModulationCycleDuration(seconds: number): string {
+  return seconds < 1 ? `${Math.round(seconds * 1000)}ms` : `${seconds.toFixed(seconds < 10 ? 2 : 1)}s`;
+}
+
+function ModulationSpeedSlider({
+  slot,
+  value,
+  paramKey,
+  onChange,
+}: {
+  slot: ModulationSlot;
+  value: number;
+  paramKey: 'randomWalkSpeed' | 'shapeLfoSpeed';
+  onChange: (value: number) => void;
+}) {
+  const info = getParamInfo(paramKey) ?? { min: 0.1, max: 5, step: 0.1 };
+  const scale = { ...info, scale: 'log' as const };
+  const toSpeed = (percent: number) => quantizeToStep(normToValue(percent / 100, scale), info);
+
+  return (
+    <SliderPrimitive
+      className="modulation-speed-slider"
+      style={{ marginBottom: 0 }}
+      label="Speed"
+      mode="single"
+      value={valueToNorm(value, scale) * 100}
+      hero={slot === 'a' ? '#4d9aba' : '#e58a2b'}
+      variant="full"
+      density="compact"
+      displayValue={`${value.toFixed(1)}×`}
+      formatValue={(percent) => `${toSpeed(percent).toFixed(1)}×`}
+      onValueChange={(percent) => onChange(toSpeed(percent))}
+    />
+  );
+}
+
+function ModulationSourceVisualizer({
+  slot,
+  source,
+  clock,
+}: {
+  slot: ModulationSlot;
+  source: ModulationSourceConfig;
+  clock: ModulationPreviewClock;
+}) {
+  const isFreeWalk = source.type === 'walk' && source.walk.relationship === 'free';
+  const paths = source.type === 'walk'
+    ? (isFreeWalk ? MODULATION_PREVIEW_PATHS.walk : [MODULATION_PREVIEW_PATHS.walk[0]])
+    : source.type === 'sampleHold'
+      ? [MODULATION_PREVIEW_PATHS.sampleHold]
+      : [MODULATION_PREVIEW_PATHS[source.shape.shape]];
+  const cycleDurationSec = getModulationPreviewDurationSec(source, clock);
+  const visibleCycles = source.type === 'shape'
+    ? (source.shape.shape === 'square' ? 2 : 3)
+    : 1;
+  const duration = `${(cycleDurationSec * visibleCycles).toFixed(3)}s`;
+  const descriptor = source.type === 'walk'
+    ? (isFreeWalk ? 'Independent paths' : `Shared Mod ${slot.toUpperCase()} path`)
+    : source.type === 'sampleHold'
+      ? 'Trigger-driven steps'
+      : source.shape.timing.mode === 'sync'
+        ? `${source.shape.timing.reference} · ${source.shape.timing.division} · ${formatModulationCycleDuration(cycleDurationSec)}`
+        : `${source.shape.timing.mode} · ${source.shape.timing.speed.toFixed(1)}× · ${formatModulationCycleDuration(cycleDurationSec)}`;
+  const previewStatus = source.type === 'sampleHold' ? 'TRIGGER PREVIEW' : 'MOTION PREVIEW';
+  const primaryPath = paths[0];
+
+  return (
+    <div className="modulation-scope">
+      <div className="modulation-scope-meta">
+        <span>{source.type === 'walk' ? 'Random Walk' : source.type === 'sampleHold' ? 'Sample & Hold' : source.shape.shape}</span>
+        <span>{descriptor}</span>
+      </div>
+      <svg viewBox="0 0 320 72" role="img" aria-label={`Mod ${slot.toUpperCase()} ${descriptor} visualizer`}>
+        <g className="modulation-scope-grid" aria-hidden="true">
+          <path d="M0 18H320M0 36H320M0 54H320" />
+          <path d="M64 0V72M128 0V72M192 0V72M256 0V72" />
+        </g>
+        {paths.map((path, index) => (
+          <path
+            key={path}
+            className="modulation-scope-trace"
+            d={path}
+            opacity={index === 0 ? 1 : 0.3}
+          />
+        ))}
+        <circle key={`${primaryPath}:${duration}`} className="modulation-scope-dot" r="3.2">
+          {source.type !== 'sampleHold' && (
+            <animateMotion begin="0s" dur={duration} repeatCount="indefinite" path={primaryPath} />
+          )}
+        </circle>
+      </svg>
+      <div className="modulation-scope-footer">
+        <span className="modulation-scope-status"><i />{previewStatus}</span>
+        <span>0</span><span className="modulation-scope-axis" /><span>1</span>
+      </div>
+    </div>
+  );
+}
+
+function ModulationSourceEditor({
+  slot,
+  config,
+  onChange,
+  clock,
+}: {
+  slot: ModulationSlot;
+  config: ModulationSourceConfig;
+  onChange: (config: ModulationSourceConfig) => void;
+  clock: ModulationPreviewClock;
+}) {
+  const fallback = slot === 'a' ? DEFAULT_MODULATION_SOURCE_A : DEFAULT_MODULATION_SOURCE_B;
+  const source = normalizeModulationSourceConfig(config, fallback);
+  const shapeConfig = source.type === 'shape'
+    ? source.shape
+    : { shape: 'sine' as const, timing: { mode: 'free' as const, speed: 1 } };
+  const update = (patch: Partial<ModulationSourceConfig>) => onChange(
+    normalizeModulationSourceConfig({ ...source, ...patch }, fallback),
+  );
+  const updateShapeTiming = (timing: DualSliderShapeTiming) => update({
+    type: 'shape',
+    shape: { ...shapeConfig, timing },
+  });
+
+  return (
+    <section className={`modulation-source modulation-source--${slot}`} aria-labelledby={`modulation-source-${slot}`}>
+      <div className="modulation-source-heading">
+        <span className="modulation-source-icon" aria-hidden="true">
+          <ModulationModeIcon mode={source.type} />
+        </span>
+        <div>
+          <strong id={`modulation-source-${slot}`}>Mod {slot.toUpperCase()}</strong>
+          <span>{slot === 'a' ? 'Blue source' : 'Orange source'}</span>
+        </div>
+      </div>
+
+      <ModulationSourceVisualizer slot={slot} source={source} clock={clock} />
+
+      <label className="modulation-field">
+        <span>Type</span>
+        <select
+          value={source.type}
+          aria-label={`Mod ${slot.toUpperCase()} type`}
+          onChange={(event) => update({ type: event.target.value as ModulationSourceConfig['type'] })}
+        >
+          <option value="walk">Random Walk</option>
+          <option value="sampleHold">Sample &amp; Hold</option>
+          <option value="shape">Shape LFO</option>
+        </select>
+      </label>
+
+      {source.type === 'walk' && source.walk && (
+        <>
+          <label className="modulation-field">
+            <span>Relationship</span>
+            <select
+              value={source.walk.relationship}
+              aria-label={`Mod ${slot.toUpperCase()} Random Walk relationship`}
+              onChange={(event) => update({
+                walk: { ...source.walk!, relationship: event.target.value === 'link' ? 'link' : 'free' },
+              })}
+            >
+              <option value="free">Free</option>
+              <option value="link">Link</option>
+            </select>
+          </label>
+          <div className="modulation-field modulation-field--slider">
+            <ModulationSpeedSlider
+              slot={slot}
+              value={source.walk.speed}
+              paramKey="randomWalkSpeed"
+              onChange={(speed) => update({ walk: { ...source.walk!, speed } })}
+            />
+          </div>
+        </>
+      )}
+
+      {source.type === 'sampleHold' && (
+        <p className="modulation-source-note">Uses the existing trigger timing. No additional controls.</p>
+      )}
+
+      {source.type === 'shape' && source.shape && (
+        <>
+          <label className="modulation-field">
+            <span>Shape</span>
+            <select
+              value={source.shape.shape}
+              aria-label={`Mod ${slot.toUpperCase()} waveform`}
+              onChange={(event) => update({
+                shape: { ...source.shape!, shape: event.target.value as DualSliderShape },
+              })}
+            >
+              <option value="sine">Sine</option>
+              <option value="triangle">Triangle</option>
+              <option value="square">Square</option>
+            </select>
+          </label>
+          <label className="modulation-field">
+            <span>Mode</span>
+            <select
+              value={source.shape.timing.mode}
+              aria-label={`Mod ${slot.toUpperCase()} Shape timing`}
+              onChange={(event) => {
+                const mode = event.target.value as DualSliderShapeTiming['mode'];
+                updateShapeTiming(mode === 'sync'
+                  ? { mode: 'sync', reference: 'bar', division: '1' }
+                  : { mode, speed: source.shape!.timing.mode === 'sync' ? 1 : source.shape!.timing.speed });
+              }}
+            >
+              <option value="free">Free</option>
+              <option value="link">Link</option>
+              <option value="sync">Sync</option>
+            </select>
+          </label>
+          {source.shape.timing.mode === 'sync' ? (
+            <div className="modulation-field-row">
+              <label className="modulation-field">
+                <span>Reference</span>
+                <select
+                  value={source.shape.timing.reference}
+                  aria-label={`Mod ${slot.toUpperCase()} sync reference`}
+                  onChange={(event) => updateShapeTiming({
+                    ...source.shape!.timing as Extract<DualSliderShapeTiming, { mode: 'sync' }>,
+                    reference: event.target.value === 'phrase' ? 'phrase' : 'bar',
+                  })}
+                >
+                  <option value="bar">Bar</option>
+                  <option value="phrase">Phrase</option>
+                </select>
+              </label>
+              <label className="modulation-field">
+                <span>Division / Multiple</span>
+                <select
+                  value={source.shape.timing.division}
+                  aria-label={`Mod ${slot.toUpperCase()} sync division`}
+                  onChange={(event) => updateShapeTiming({
+                    ...source.shape!.timing as Extract<DualSliderShapeTiming, { mode: 'sync' }>,
+                    division: event.target.value as DualSliderShapeDivision,
+                  })}
+                >
+                  {MODULATION_DIVISIONS.map((division) => <option key={division} value={division}>{division}</option>)}
+                </select>
+              </label>
+            </div>
+          ) : (
+            <div className="modulation-field modulation-field--slider">
+              <ModulationSpeedSlider
+                slot={slot}
+                value={source.shape.timing.speed}
+                paramKey="shapeLfoSpeed"
+                onChange={(speed) => updateShapeTiming({
+                  ...source.shape!.timing as Exclude<DualSliderShapeTiming, { mode: 'sync' }>,
+                  speed,
+                })}
+              />
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
 
 function clamp01(value: number | undefined): number {
   return Math.max(0, Math.min(1, typeof value === 'number' && Number.isFinite(value) ? value : 0));
@@ -1531,24 +1825,19 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
         <div className="harmony-card evolution-card">
           <h3 className="harmony-card-title">Evolution</h3>
 
-          {/* Lead Melody + Seed — flat grid, no accordion */}
+          {/* Shared seed controls stay with Evolution; modulation timing lives in
+              the peer Modulation card below so this card does not duplicate the
+              lead timing surface on Synth. */}
           <div className="evolution-block">
             <div className="evolution-block-header">
-              <span className="evolution-block-label">Lead Melody & Variation</span>
+              <span className="evolution-block-label">Seed Variant</span>
             </div>
+            <p className="evolution-block-description">
+              Selects deterministic outcomes for each seed window; it is not a
+              randomness amount or a live probability control.
+            </p>
             <div className="evolution-compact-grid">
-              <Slider label="Walk Speed" value={state.randomWalkSpeed} paramKey="randomWalkSpeed" logarithmic onChange={onParamChange} {...sliderProps('randomWalkSpeed')} />
-              <Slider label="Randomness" value={state.randomness} paramKey="randomness" onChange={onParamChange} {...sliderProps('randomness')} />
-              <Select
-                label="Walk Mode"
-                value={state.randomWalkMode}
-                options={[
-                  { value: 'localBrownian', label: 'Local Brownian' },
-                  { value: 'globalWalk', label: 'Global Epoch Walk' },
-                ]}
-                onChange={(v: string) => onSelectChange('randomWalkMode', v)}
-                {...bindHelp('randomWalkMode')}
-              />
+              <Slider label="Seed Variant" value={state.randomness} paramKey="randomness" onChange={onParamChange} {...sliderProps('randomness')} {...bindHelp('randomness', { label: 'Seed Variant' })} />
               <Select
                 label="Seed Window"
                 value={state.seedWindow}
@@ -1557,6 +1846,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                   { value: 'day', label: 'Daily' },
                 ]}
                 onChange={(v: string) => onSelectChange('seedWindow', v)}
+                {...bindHelp('seedWindow')}
               />
             </div>
           </div>
@@ -1700,30 +1990,6 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                     ]}
                     onChange={(v: string) => onSelectChange('harmonySyncPolicy', v)}
                     {...bindHelp('harmonySyncPolicy')}
-                  />
-                </div>
-                <div className="harmony-grid-2">
-                  <Select
-                    label="Lead Random Clock"
-                    value={state.leadRandomClockSource}
-                    options={[
-                      { value: 'globalPhrase', label: 'Global Phrase' },
-                      { value: 'localPhrase', label: 'Local Phrase' },
-                      { value: 'globalBeat', label: 'Global Beat Phrase' },
-                      { value: 'localBeat', label: 'Local Beat Phrase' },
-                    ]}
-                    onChange={(v: string) => onSelectChange('leadRandomClockSource', v)}
-                    {...bindHelp('leadRandomClockSource')}
-                  />
-                  <Select
-                    label="Lead Random Apply"
-                    value={state.leadRandomSyncPolicy}
-                    options={[
-                      { value: 'nextPhrase', label: 'Next Phrase' },
-                      { value: 'free', label: 'Immediate' },
-                    ]}
-                    onChange={(v: string) => onSelectChange('leadRandomSyncPolicy', v)}
-                    {...bindHelp('leadRandomSyncPolicy')}
                   />
                 </div>
                 <div className="harmony-grid-2">
@@ -1897,6 +2163,35 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
               </div>
             </div>
           )}
+        </div>
+
+        <div className="harmony-card modulation-card">
+          <h3 className="harmony-card-title">Modulation</h3>
+          <div className="modulation-card-body">
+            <p className="modulation-card-description">
+              Assign a dual slider to Mod A or Mod B from its mode button. The slider remains its minimum and maximum output range.
+            </p>
+            <div className="modulation-source-grid">
+              <ModulationSourceEditor
+                slot="a"
+                config={state.modulationSourceA}
+                onChange={(config) => onSelectChange('modulationSourceA', config)}
+                clock={{
+                  barDurationSec: transportMetrics.barDurationSec,
+                  phraseDurationSec: transportMetrics.effectivePhraseDurationSec,
+                }}
+              />
+              <ModulationSourceEditor
+                slot="b"
+                config={state.modulationSourceB}
+                onChange={(config) => onSelectChange('modulationSourceB', config)}
+                clock={{
+                  barDurationSec: transportMetrics.barDurationSec,
+                  phraseDurationSec: transportMetrics.effectivePhraseDurationSec,
+                }}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Recording & Timer Card */}

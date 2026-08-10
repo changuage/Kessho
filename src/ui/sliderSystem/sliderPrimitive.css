@@ -94,10 +94,7 @@
 }
 
 .sl-slider-mode--single::before {
-  width: 8px;
-  height: 8px;
-  background: var(--hero, #cfd9e8);
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.1);
+  display: none;
 }
 
 .sl-slider-mode--walk {
@@ -119,6 +116,18 @@
 }
 
 .sl-slider-mode--sampleHold::before {
+  display: none;
+}
+
+.sl-slider-mode--shape {
+  width: 1.3rem;
+  border-color: rgba(192, 132, 252, 0.5);
+  background: rgba(192, 132, 252, 0.14);
+  color: #c084fc;
+  box-shadow: 0 0 6px rgba(192, 132, 252, 0.18);
+}
+
+.sl-slider-mode--shape::before {
   display: none;
 }
 
@@ -147,14 +156,159 @@
   background: rgba(212, 165, 32, 0.25);
 }
 
-.sl-slider-mode-glyph {
-  font-family: ui-monospace, monospace;
-  font-size: 0.65rem;
-  line-height: 0;
+.sl-slider-mode--shape.interactive:hover,
+.sl-slider-mode--shape.interactive:focus-visible {
+  border-color: rgba(192, 132, 252, 0.8);
+  background: rgba(192, 132, 252, 0.25);
+}
+
+.sl-slider-mode--mod-a {
+  border-color: rgba(77, 154, 186, 0.65);
+  background: rgba(77, 154, 186, 0.18);
+  color: #5eb6dc;
+}
+
+.sl-slider-mode--mod-b {
+  border-color: rgba(229, 138, 43, 0.7);
+  background: rgba(229, 138, 43, 0.18);
+  color: #f29a3d;
+}
+
+.sl-slider-mode-icon {
+  display: block;
+  width: 0.9rem;
+  height: 0.7rem;
+  overflow: visible;
 }
 
 .sl-slider-mode-text {
   display: none;
+}
+
+.sl-slider-context {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.sl-slider-context-button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted, #8d98a8);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.sl-slider-context-button:hover,
+.sl-slider-context-button:focus-visible,
+.sl-slider-context-button[aria-expanded="true"] {
+  border-color: rgba(192, 132, 252, 0.45);
+  background: rgba(192, 132, 252, 0.12);
+  color: #d8b4fe;
+  outline: none;
+}
+
+.sl-slider-context-icon {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.sl-slider-context-panel {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 5px);
+  right: 0;
+  width: min(240px, calc(100vw - 24px));
+  padding: 9px;
+  border: 1px solid rgba(192, 132, 252, 0.34);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--k-bg-card, #171a24) 94%, #c084fc 6%);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+}
+
+.sl-slider-shape-config {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-secondary, #c7cfde);
+  font-size: 0.68rem;
+}
+
+.sl-slider-context-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sl-slider-context-field > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-muted, #8d98a8);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.sl-slider-context-hint {
+  margin: 0;
+  color: var(--sl-muted, #94a3b8);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.sl-slider-context-field output {
+  color: var(--text-primary, #f3f4f6);
+  font-variant-numeric: tabular-nums;
+}
+
+.sl-slider-context-select {
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 6px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 5px;
+  background: rgba(0,0,0,0.24);
+  color: var(--text-primary, #f3f4f6);
+  font: inherit;
+}
+
+.sl-slider-context-select:focus-visible,
+.sl-slider-context-field input:focus-visible {
+  outline: 2px solid rgba(192, 132, 252, 0.65);
+  outline-offset: 1px;
+}
+
+.sl-slider-context-field input[type="range"] {
+  width: 100%;
+  accent-color: #c084fc;
+}
+
+.sl-slider-context-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+@media (max-width: 600px) {
+  .sl-slider-context-panel {
+    position: fixed;
+    top: auto;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: auto;
+    max-height: min(60vh, 360px);
+    overflow: auto;
+  }
 }
 
 .sl-slider-value {
@@ -278,6 +432,17 @@ html.sl-slider-touch-lock * {
     transparent 4px,
     transparent 7px
   );
+}
+
+/* Source identity owns the color, regardless of the source's modulation type. */
+.sl-slider.sl-slider--mod-a .sl-slider-band {
+  background: #4d9aba;
+  box-shadow: inset 0 0 0 1px rgba(94, 182, 220, 0.55), 0 0 6px rgba(77, 154, 186, 0.28);
+}
+
+.sl-slider.sl-slider--mod-b .sl-slider-band {
+  background: #e58a2b;
+  box-shadow: inset 0 0 0 1px rgba(242, 154, 61, 0.6), 0 0 6px rgba(229, 138, 43, 0.3);
 }
 
 .sl-slider-thumb {

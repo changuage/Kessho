@@ -25,19 +25,26 @@ const _perfNow = typeof performance !== 'undefined' ? () => performance.now() : 
 
 const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 const clampNumber = (value, min, max) => Math.max(min, Math.min(max, value));
+const MAX_SCHEDULED_NOTE_OFFS = 16;
 
 // Pad 1 param name → WASM setter function name
 const PAD1_PARAM_MAP = {
   // Oscillators
   padOscAWave:        'pad_set_osc_a_wave',
-  padOscAOctave:      'pad_set_osc_a_octave',
-  padOscADetune:      'pad_set_osc_a_detune',
+  padOscAWavePosition:'pad_set_osc_a_position',
+  padOscAPhaseDistortion:'pad_set_osc_a_phase_distortion',
+  padOscAPitch:       'pad_set_osc_a_pitch',
+  padOscALinearHzOffset:'pad_set_osc_a_hz_offset',
   padOscALevel:       'pad_set_osc_a_level',
   padOscBWave:        'pad_set_osc_b_wave',
-  padOscBOctave:      'pad_set_osc_b_octave',
-  padOscBDetune:      'pad_set_osc_b_detune',
+  padOscBWavePosition:'pad_set_osc_b_position',
+  padOscBPhaseDistortion:'pad_set_osc_b_phase_distortion',
+  padOscBPitch:       'pad_set_osc_b_pitch',
+  padOscBLinearHzOffset:'pad_set_osc_b_hz_offset',
   padOscBLevel:       'pad_set_osc_b_level',
   padOscMix:          'pad_set_osc_mix',
+  padDrift:           'pad_set_drift',
+  padPhaseReset:      'pad_set_phase_reset',
   // Sub
   padSubEnabled:      'pad_set_sub_enabled',
   padSubOctave:       'pad_set_sub_octave',
@@ -89,21 +96,29 @@ const PAD1_PARAM_MAP = {
   padModEnvRelease:   'pad_set_mod_env_release',
   padModEnvDepth:     'pad_set_mod_env_depth',
   padModEnvDest:      'pad_set_mod_env_dest',
-  // Level (synthLevel maps to pad_set_level for pad 1)
+  // Final Pad output trim
+  padOutputTrim:      'pad_set_level',
+  // Standalone/reference host aliases retained for level routing only.
   synthLevel:         'pad_set_level',
 };
 
 // Pad 2 param name → same WASM setter (pad index changes)
 const PAD2_PARAM_MAP = {
   pad2OscAWave:        'pad_set_osc_a_wave',
-  pad2OscAOctave:      'pad_set_osc_a_octave',
-  pad2OscADetune:      'pad_set_osc_a_detune',
+  pad2OscAWavePosition:'pad_set_osc_a_position',
+  pad2OscAPhaseDistortion:'pad_set_osc_a_phase_distortion',
+  pad2OscAPitch:       'pad_set_osc_a_pitch',
+  pad2OscALinearHzOffset:'pad_set_osc_a_hz_offset',
   pad2OscALevel:       'pad_set_osc_a_level',
   pad2OscBWave:        'pad_set_osc_b_wave',
-  pad2OscBOctave:      'pad_set_osc_b_octave',
-  pad2OscBDetune:      'pad_set_osc_b_detune',
+  pad2OscBWavePosition:'pad_set_osc_b_position',
+  pad2OscBPhaseDistortion:'pad_set_osc_b_phase_distortion',
+  pad2OscBPitch:       'pad_set_osc_b_pitch',
+  pad2OscBLinearHzOffset:'pad_set_osc_b_hz_offset',
   pad2OscBLevel:       'pad_set_osc_b_level',
   pad2OscMix:          'pad_set_osc_mix',
+  pad2Drift:           'pad_set_drift',
+  pad2PhaseReset:      'pad_set_phase_reset',
   pad2SubEnabled:      'pad_set_sub_enabled',
   pad2SubOctave:       'pad_set_sub_octave',
   pad2SubWave:         'pad_set_sub_wave',
@@ -146,19 +161,28 @@ const PAD2_PARAM_MAP = {
   pad2ModEnvRelease:   'pad_set_mod_env_release',
   pad2ModEnvDepth:     'pad_set_mod_env_depth',
   pad2ModEnvDest:      'pad_set_mod_env_dest',
+  pad2OutputTrim:      'pad_set_level',
   pad2Level:           'pad_set_level',
 };
 
+// Keep Pad 1/2 aligned with PAD_FILTER_LADDER_LP in kessho_pad.h.
+const FILTER_TYPE_MAX = 4;
 // Filter type string → int
-const FILTER_MAP = { lowpass: 0, bandpass: 1, highpass: 2, notch: 3 };
+const FILTER_MAP = { lowpass: 0, bandpass: 1, highpass: 2, notch: 3, ladderLP: FILTER_TYPE_MAX, ladderLp: FILTER_TYPE_MAX };
 // LFO waveform string → int
 const LFO_WAVE_MAP = { sine: 0, triangle: 1, sawtooth: 2, square: 3, sampleHold: 4, randomSmooth: 5, randomWalk: 6 };
 // LFO/mod destination string → int
-const DEST_MAP = { none: 0, filterCutoff: 1, filterB: 2, filterBCutoff: 2, amplitude: 3, pitch: 4, oscBLevel: 5, foldAmount: 6 };
+const DEST_MAP = {
+  none: 0, filterCutoff: 1, filterB: 2, filterBCutoff: 2, amplitude: 3,
+  pitch: 4, oscBLevel: 5, foldAmount: 6, oscAPosition: 7, oscBPosition: 8,
+  oscAPhaseDistortion: 9, oscBPhaseDistortion: 10, oscBLinearHzOffset: 11,
+  filterResonance: 12,
+};
 // Filter routing string → int
 const ROUTE_MAP = { series: 0, aOnly: 1, bOnly: 2 };
+const PHASE_RESET_MAP = { off: 0, on: 1, random: 2 };
 // Waveform string → int
-const WAVE_MAP = { sine: 0, triangle: 1, sawtooth: 2, square: 3 };
+const WAVE_MAP = { sine: 0, triangle: 1, sawtooth: 2, square: 3, harmonic: 4, complexSine: 5, complexTriangle: 6 };
 
 const BOOLEAN_PARAM_KEYS = new Set([
   'padSubEnabled', 'padFilterBEnabled', 'padModEnvEnabled',
@@ -166,30 +190,30 @@ const BOOLEAN_PARAM_KEYS = new Set([
 ]);
 
 const PARAM_CLAMPS = {
-  padOscAWave: [0, 3], padOscAOctave: [-4, 4], padOscADetune: [-100, 100], padOscALevel: [0, 1],
-  padOscBWave: [0, 3], padOscBOctave: [-4, 4], padOscBDetune: [-100, 100], padOscBLevel: [0, 1],
-  padOscMix: [0, 1], padSubOctave: [-4, 1], padSubWave: [0, 3], padSubLevel: [0, 1],
+  padOscAWave: [0, 6], padOscAWavePosition: [0, 1], padOscAPhaseDistortion: [-1, 1], padOscAPitch: [-24, 24], padOscALinearHzOffset: [-50, 50], padOscALevel: [0, 1],
+  padOscBWave: [0, 6], padOscBWavePosition: [0, 1], padOscBPhaseDistortion: [-1, 1], padOscBPitch: [-24, 24], padOscBLinearHzOffset: [-50, 50], padOscBLevel: [0, 1],
+  padOscMix: [0, 1], padDrift: [0, 1], padPhaseReset: [0, 2], padOutputTrim: [0, 1], synthLevel: [0, 1], padSubOctave: [-4, 1], padSubWave: [0, 3], padSubLevel: [0, 1],
   padNoiseType: [0, 1], padNoiseLevel: [0, 1], hardness: [0, 1], warmth: [0, 1], presence: [0, 1],
-  padFoldAmount: [0, 1], padFoldMode: [0, 2], filterType: [0, 3],
+  padFoldAmount: [0, 1], padFoldMode: [0, 2], filterType: [0, FILTER_TYPE_MAX],
   filterCutoff: [20, 18000], filterResonance: [0, 1], filterQ: [0.01, 20], filterSlope: [12, 48], filterKeyTracking: [0, 1],
   padFilterBType: [0, 3], padFilterBCutoff: [20, 18000], padFilterBResonance: [0, 1], padFilterBQ: [0.01, 20],
   padFilterRouting: [0, 2], synthAttack: [0.001, 20], synthDecay: [0.001, 20], synthSustain: [0, 1], synthRelease: [0.001, 30],
-  padLfo1Rate: [0, 40], padLfo1Depth: [0, 1], padLfo1Wave: [0, 6], padLfo1Dest: [0, 6],
-  padLfo2Rate: [0, 40], padLfo2Depth: [0, 1], padLfo2Wave: [0, 6], padLfo2Dest: [0, 6],
+  padLfo1Rate: [0, 40], padLfo1Depth: [0, 1], padLfo1Wave: [0, 6], padLfo1Dest: [0, 12],
+  padLfo2Rate: [0, 40], padLfo2Depth: [0, 1], padLfo2Wave: [0, 6], padLfo2Dest: [0, 12],
   padModEnvAttack: [0.001, 20], padModEnvDecay: [0.001, 20], padModEnvSustain: [0, 1], padModEnvRelease: [0.001, 30],
-  padModEnvDepth: [-1, 1], padModEnvDest: [0, 6], synthLevel: [0, 1],
-  pad2OscAWave: [0, 3], pad2OscAOctave: [-4, 4], pad2OscADetune: [-100, 100], pad2OscALevel: [0, 1],
-  pad2OscBWave: [0, 3], pad2OscBOctave: [-4, 4], pad2OscBDetune: [-100, 100], pad2OscBLevel: [0, 1],
-  pad2OscMix: [0, 1], pad2SubOctave: [-4, 1], pad2SubWave: [0, 3], pad2SubLevel: [0, 1],
+  padModEnvDepth: [-1, 1], padModEnvDest: [0, 12],
+  pad2OscAWave: [0, 6], pad2OscAWavePosition: [0, 1], pad2OscAPhaseDistortion: [-1, 1], pad2OscAPitch: [-24, 24], pad2OscALinearHzOffset: [-50, 50], pad2OscALevel: [0, 1],
+  pad2OscBWave: [0, 6], pad2OscBWavePosition: [0, 1], pad2OscBPhaseDistortion: [-1, 1], pad2OscBPitch: [-24, 24], pad2OscBLinearHzOffset: [-50, 50], pad2OscBLevel: [0, 1],
+  pad2OscMix: [0, 1], pad2Drift: [0, 1], pad2PhaseReset: [0, 2], pad2OutputTrim: [0, 1], pad2Level: [0, 1], pad2SubOctave: [-4, 1], pad2SubWave: [0, 3], pad2SubLevel: [0, 1],
   pad2NoiseType: [0, 1], pad2NoiseLevel: [0, 1], pad2Hardness: [0, 1], pad2Warmth: [0, 1], pad2Presence: [0, 1],
-  pad2FoldAmount: [0, 1], pad2FoldMode: [0, 2], pad2FilterType: [0, 3],
+  pad2FoldAmount: [0, 1], pad2FoldMode: [0, 2], pad2FilterType: [0, FILTER_TYPE_MAX],
   pad2FilterCutoff: [20, 18000], pad2FilterResonance: [0, 1], pad2FilterQ: [0.01, 20], pad2FilterSlope: [12, 48], pad2FilterKeyTracking: [0, 1],
   pad2FilterBType: [0, 3], pad2FilterBCutoff: [20, 18000], pad2FilterBResonance: [0, 1], pad2FilterBQ: [0.01, 20],
   pad2FilterRouting: [0, 2], pad2Attack: [0.001, 20], pad2Decay: [0.001, 20], pad2Sustain: [0, 1], pad2Release: [0.001, 30],
-  pad2Lfo1Rate: [0, 40], pad2Lfo1Depth: [0, 1], pad2Lfo1Wave: [0, 6], pad2Lfo1Dest: [0, 6],
-  pad2Lfo2Rate: [0, 40], pad2Lfo2Depth: [0, 1], pad2Lfo2Wave: [0, 6], pad2Lfo2Dest: [0, 6],
+  pad2Lfo1Rate: [0, 40], pad2Lfo1Depth: [0, 1], pad2Lfo1Wave: [0, 6], pad2Lfo1Dest: [0, 12],
+  pad2Lfo2Rate: [0, 40], pad2Lfo2Depth: [0, 1], pad2Lfo2Wave: [0, 6], pad2Lfo2Dest: [0, 12],
   pad2ModEnvAttack: [0.001, 20], pad2ModEnvDecay: [0.001, 20], pad2ModEnvSustain: [0, 1], pad2ModEnvRelease: [0.001, 30],
-  pad2ModEnvDepth: [-1, 1], pad2ModEnvDest: [0, 6], pad2Level: [0, 1], synthReverbSend: [0, 1],
+  pad2ModEnvDepth: [-1, 1], pad2ModEnvDest: [0, 12], pad2OutputTrim: [0, 1], synthReverbSend: [0, 1],
 };
 
 class PadSynthWasmProcessor extends AudioWorkletProcessor {
@@ -214,13 +238,24 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
     this.perfSamplesSinceReport = 0;
     this.perfReportInterval = Math.floor(sampleRate * 0.5);
 
+    this.activeCountMessage = { type: 'activeCount', count: 0 };
+    this.perfMessage = {
+      type: 'perf', name: 'pad-wasm', cpuPercent: 0, peakPercent: 0, missPercent: 0,
+      avgTimeMs: 0, peakTimeMs: 0,
+    };
+    this.errorMessage = { type: 'error', stage: '', message: '' };
+
     this.activeCountEnabled = false;
     this.activeCountSamples = 0;
     this.activeCountInterval = Math.floor(sampleRate * 0.2);
 
     this.pendingParams = [];
     this.pendingNotes = [];
-    this.pendingNoteOffs = [];
+    // One fixed timer slot per native voice. The process callback only updates
+    // typed-array values in place; it never creates/filter/pushes arrays.
+    this.pendingNoteOffActive = new Uint8Array(MAX_SCHEDULED_NOTE_OFFS);
+    this.pendingNoteOffSamples = new Int32Array(MAX_SCHEDULED_NOTE_OFFS);
+    this.pendingNoteOffCount = 0;
     this.pendingVoicePads = new Map();
     this.lastNonFiniteReportTime = 0;
 
@@ -231,7 +266,9 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
     const now = _perfNow();
     if (now - this.lastNonFiniteReportTime < 10000) return;
     this.lastNonFiniteReportTime = now;
-    this.port.postMessage({ type: 'error', stage, message: `Non-finite sample detected: ${String(value)}` });
+    this.errorMessage.stage = stage;
+    this.errorMessage.message = `Non-finite sample detected: ${String(value)}`;
+    this.port.postMessage(this.errorMessage);
   }
 
   sanitizeSample(stage, value) {
@@ -378,7 +415,9 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
           this.wasm = null;
           this.pendingParams = [];
           this.pendingNotes = [];
-          this.pendingNoteOffs = [];
+          this.pendingNoteOffActive.fill(0);
+          this.pendingNoteOffSamples.fill(0);
+          this.pendingNoteOffCount = 0;
           this.pendingVoicePads.clear();
           break;
       }
@@ -408,6 +447,9 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
     }
     if (key.includes('Routing') || key.includes('routing')) {
       resolved = typeof value === 'string' ? (ROUTE_MAP[value] ?? 0) : resolved;
+    }
+    if (key.includes('PhaseReset')) {
+      resolved = typeof value === 'string' ? (PHASE_RESET_MAP[value] ?? 2) : resolved;
     }
     if (typeof resolved === 'number') {
       const finite = Number.isFinite(resolved) ? resolved : 0;
@@ -466,27 +508,33 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
   scheduleNoteOff(voiceIndex, holdSeconds) {
     this.clearScheduledNoteOff(voiceIndex);
     const holdSamples = Math.max(0, Math.floor((Number(holdSeconds) || 0) * sampleRate));
-    if (holdSamples > 0) {
-      this.pendingNoteOffs.push({ voiceIndex, samplesUntil: holdSamples });
-    }
+    if (holdSamples <= 0 || voiceIndex < 0 || voiceIndex >= MAX_SCHEDULED_NOTE_OFFS) return;
+    this.pendingNoteOffActive[voiceIndex] = 1;
+    this.pendingNoteOffSamples[voiceIndex] = Math.min(0x7fffffff, holdSamples);
+    this.pendingNoteOffCount += 1;
   }
 
   clearScheduledNoteOff(voiceIndex) {
-    this.pendingNoteOffs = this.pendingNoteOffs.filter((pending) => pending.voiceIndex !== voiceIndex);
+    if (voiceIndex < 0 || voiceIndex >= MAX_SCHEDULED_NOTE_OFFS || !this.pendingNoteOffActive[voiceIndex]) return;
+    this.pendingNoteOffActive[voiceIndex] = 0;
+    this.pendingNoteOffSamples[voiceIndex] = 0;
+    this.pendingNoteOffCount -= 1;
   }
 
   advanceScheduledNoteOffs(frames) {
-    if (!this.ready || !this.wasm || this.pendingNoteOffs.length === 0) return;
-    const remaining = [];
-    for (const pending of this.pendingNoteOffs) {
-      pending.samplesUntil -= frames;
-      if (pending.samplesUntil <= 0) {
-        this.wasm.pad_note_off(pending.voiceIndex);
+    if (!this.ready || !this.wasm || this.pendingNoteOffCount === 0) return;
+    for (let voiceIndex = 0; voiceIndex < MAX_SCHEDULED_NOTE_OFFS; voiceIndex += 1) {
+      if (!this.pendingNoteOffActive[voiceIndex]) continue;
+      const remaining = this.pendingNoteOffSamples[voiceIndex] - frames;
+      if (remaining <= 0) {
+        this.pendingNoteOffActive[voiceIndex] = 0;
+        this.pendingNoteOffSamples[voiceIndex] = 0;
+        this.pendingNoteOffCount -= 1;
+        this.wasm.pad_note_off(voiceIndex);
       } else {
-        remaining.push(pending);
+        this.pendingNoteOffSamples[voiceIndex] = remaining;
       }
     }
-    this.pendingNoteOffs = remaining;
   }
 
   process(_inputs, outputs, _params) {
@@ -572,10 +620,8 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
       if (this.activeCountEnabled) {
         this.activeCountSamples += blockSize;
         if (this.activeCountSamples >= this.activeCountInterval) {
-          this.port.postMessage({
-            type: 'activeCount',
-            count: this.wasm.pad_get_active_count(),
-          });
+          this.activeCountMessage.count = this.wasm.pad_get_active_count();
+          this.port.postMessage(this.activeCountMessage);
           this.activeCountSamples = 0;
         }
       }
@@ -593,15 +639,12 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
 
         if (this.perfSamplesSinceReport >= this.perfReportInterval && this.perfCount > 0) {
           const avgMs = this.perfTotalTime / this.perfCount;
-          this.port.postMessage({
-            type: 'perf',
-            name: 'pad-wasm',
-            cpuPercent: (avgMs / budgetMs) * 100,
-            peakPercent: (this.perfPeakTime / budgetMs) * 100,
-            missPercent: this.perfBlockCount > 0 ? (this.perfOverBudgetCount / this.perfBlockCount) * 100 : 0,
-            avgTimeMs: avgMs,
-            peakTimeMs: this.perfPeakTime,
-          });
+          this.perfMessage.cpuPercent = (avgMs / budgetMs) * 100;
+          this.perfMessage.peakPercent = (this.perfPeakTime / budgetMs) * 100;
+          this.perfMessage.missPercent = this.perfBlockCount > 0 ? (this.perfOverBudgetCount / this.perfBlockCount) * 100 : 0;
+          this.perfMessage.avgTimeMs = avgMs;
+          this.perfMessage.peakTimeMs = this.perfPeakTime;
+          this.port.postMessage(this.perfMessage);
           this.perfTotalTime = 0;
           this.perfPeakTime = 0;
           this.perfOverBudgetCount = 0;
@@ -615,7 +658,9 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('[PadSynth-WASM] Process exception:', error);
-      this.port.postMessage({ type: 'error', stage: 'process', message });
+      this.errorMessage.stage = 'process';
+      this.errorMessage.message = message;
+      this.port.postMessage(this.errorMessage);
       return true;
     }
   }

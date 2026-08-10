@@ -31,8 +31,8 @@ const familySpecs = [
     family: 'Pad',
     snake: 'pad',
     camel: 'Pad',
-    range: '[0..52]',
-    snapshotWhy: 'Retains the former Pad exact patch ABI slots as zero-only reserved fields for binary layout stability.',
+    range: '[0..58]',
+    snapshotWhy: 'Retains the current 58-value Pad exact patch ABI slots; legacy 52-value Pad payloads are converted at the C++ Product boundary before validation.',
     snapshotReconstructability:
       'Generated Pad preset endpoint IDs, morph, source distance, and bounded sparse Pad overrides reconstruct generated-endpoint custom Pad patches; any nonzero exact Pad count or nonzero/non-finite exact Pad value is rejected.',
     snapshotRetirement:
@@ -168,13 +168,13 @@ const padStructuredOverrideEntries = [
     'Generated Pad preset endpoint IDs, morph, source distance, and this bounded override count reconstruct generated-endpoint custom Pad patches without full exact arrays.',
   ),
   padStructuredOverrideEntry(
-    'KesshoProductSourceSnapshot.pad_override_indices[0..52]',
+    'KesshoProductSourceSnapshot.pad_override_indices[0..58]',
     'cpp/KesshoCore/include/KesshoCore/KesshoProductSnapshot.h and cpp/KesshoCore/src/product/KesshoProductSnapshot.cpp',
     'Identifies which generated Pad runtime params are overridden by the bounded sparse Pad override payload.',
     'Generated Pad preset endpoint IDs, morph, and source distance reconstruct the base patch; these indices identify only the differing user controls.',
   ),
   padStructuredOverrideEntry(
-    'KesshoProductSourceSnapshot.pad_override_values[0..52]',
+    'KesshoProductSourceSnapshot.pad_override_values[0..58]',
     'cpp/KesshoCore/include/KesshoCore/KesshoProductSnapshot.h and cpp/KesshoCore/src/product/KesshoProductSnapshot.cpp',
     'Carries bounded sparse Pad user override values across the Product snapshot ABI.',
     'Generated Pad preset endpoint IDs, morph, source distance, and these values reconstruct generated-endpoint custom Pad patches without full exact arrays.',
@@ -186,13 +186,13 @@ const padStructuredOverrideEntries = [
     'Generated Pad preset endpoint IDs, morph, source distance, and this bounded override count reconstruct generated-endpoint custom Pad patches.',
   ),
   padStructuredOverrideEntry(
-    'ProductSourceSnapshot.padOverrideIndices[0..52]',
+    'ProductSourceSnapshot.padOverrideIndices[0..58]',
     'src/audio/coreProductSnapshot.ts and src/audio/CoreProductPadPatch.ts',
     'Web snapshot serialization identifies the sparse Pad controls that differ from generated endpoint reconstruction.',
     'Generated Pad preset endpoint IDs, morph, and source distance reconstruct the base patch; these indices identify only the differing user controls.',
   ),
   padStructuredOverrideEntry(
-    'ProductSourceSnapshot.padOverrideValues[0..52]',
+    'ProductSourceSnapshot.padOverrideValues[0..58]',
     'src/audio/coreProductSnapshot.ts and src/audio/CoreProductPadPatch.ts',
     'Web snapshot serialization carries bounded sparse Pad values instead of full exact Pad arrays for generated-endpoint custom controls.',
     'Generated Pad preset endpoint IDs, morph, source distance, and these values reconstruct generated-endpoint custom Pad patches.',
@@ -204,13 +204,13 @@ const padStructuredOverrideEntries = [
     'Generated endpoint patches are reconstructed in Product Core and then patched by the bounded sparse override count.',
   ),
   padStructuredOverrideEntry(
-    'SourceState.pad_override_indices[0..52]',
+    'SourceState.pad_override_indices[0..58]',
     'cpp/KesshoCore/src/product/ProductVoiceState.h, cpp/KesshoCore/src/product/KesshoProductSnapshot.cpp, and cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp',
     'Stores bounded sparse Pad override param indices in Product Core source state.',
     'Generated endpoint patches are reconstructed in Product Core and then patched only at the indexed overridden params.',
   ),
   padStructuredOverrideEntry(
-    'SourceState.pad_override_values[0..52]',
+    'SourceState.pad_override_values[0..58]',
     'cpp/KesshoCore/src/product/ProductVoiceState.h, cpp/KesshoCore/src/product/KesshoProductSnapshot.cpp, and cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp',
     'Stores bounded sparse Pad override values in Product Core source state.',
     'Generated endpoint patches are reconstructed in Product Core and then patched with the bounded sparse override values.',
@@ -901,7 +901,7 @@ for (const token of [
 }
 assert(
   padModule.includes('patch.exact_pad_param_count != KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT') &&
-    padModule.includes('!std::isfinite(patch.exact_pad_params[i])') &&
+    padModule.includes('!std::isfinite(normalized[i])') &&
     !padModule.includes('PAD_WAVE_SAWTOOTH : tone') &&
     !padModule.includes('PAD_FOLD_SERGE : texture'),
   'Pad module source preset patch path must reject incomplete/non-finite patches instead of synthesizing profile fallback params',

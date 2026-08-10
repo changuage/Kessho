@@ -147,7 +147,7 @@ export function buildPadDerivedEndpointInstances(state: Record<string, unknown>)
         refSlot: `derived.pad.${lane}.endpoint-${endpoint.toLowerCase()}`,
         contentType: 'padVoice',
         content: Object.fromEntries(PAD_PRESET_PARAM_KEYS
-          .filter(key => key !== 'detune' && presetRecord[key] !== undefined)
+          .filter(key => presetRecord[key] !== undefined)
           .map(key => [key, presetRecord[key]])),
       });
     }

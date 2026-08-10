@@ -811,8 +811,8 @@ type GranularWorkletUpdate = {
 
 // Maps pad-preset param keys (pad1 naming) → pad2 state keys for morph override
 const PAD1_TO_PAD2_ENGINE: Record<string, string> = {
-  padOscAWave: 'pad2OscAWave', padOscAOctave: 'pad2OscAOctave', padOscADetune: 'pad2OscADetune', padOscALevel: 'pad2OscALevel',
-  padOscBWave: 'pad2OscBWave', padOscBOctave: 'pad2OscBOctave', padOscBDetune: 'pad2OscBDetune', padOscBLevel: 'pad2OscBLevel',
+  padOscAWave: 'pad2OscAWave', padOscAWavePosition: 'pad2OscAWavePosition', padOscAPhaseDistortion: 'pad2OscAPhaseDistortion', padOscAPitch: 'pad2OscAPitch', padOscALinearHzOffset: 'pad2OscALinearHzOffset', padOscALevel: 'pad2OscALevel',
+  padOscBWave: 'pad2OscBWave', padOscBWavePosition: 'pad2OscBWavePosition', padOscBPhaseDistortion: 'pad2OscBPhaseDistortion', padOscBPitch: 'pad2OscBPitch', padOscBLinearHzOffset: 'pad2OscBLinearHzOffset', padOscBLevel: 'pad2OscBLevel',
   padSubEnabled: 'pad2SubEnabled', padSubOctave: 'pad2SubOctave', padSubWave: 'pad2SubWave', padSubLevel: 'pad2SubLevel',
   padNoiseType: 'pad2NoiseType', padNoiseLevel: 'pad2NoiseLevel',
   hardness: 'pad2Hardness', warmth: 'pad2Warmth', presence: 'pad2Presence',
@@ -979,14 +979,15 @@ const GRANULAR_OWNERSHIP_PREFIX_EXCLUSIONS = [
 
 // Voice structure for poly synth
 interface Voice {
-  osc1: OscillatorNode;       // OscA
-  osc2: OscillatorNode;       // OscA detuned
-  osc3: OscillatorNode;       // OscB
-  osc4: OscillatorNode;       // Sub (or OscB detuned when sub disabled)
-  osc1Gain: GainNode;
-  osc2Gain: GainNode;
-  osc3Gain: GainNode;
-  osc4Gain: GainNode;
+  // The Web Audio fallback keeps one node per Pad source: A, B and Sub.
+  // Product Core/WASM is authoritative in normal runs, but this shape must stay
+  // honest for web-ts parity and manual audition paths.
+  oscA: OscillatorNode;
+  oscB: OscillatorNode;
+  subOsc: OscillatorNode;
+  oscAGain: GainNode;
+  oscBGain: GainNode;
+  subGain: GainNode;
   noise?: AudioBufferSourceNode;
   noiseGain: GainNode;
   filter: BiquadFilterNode;
@@ -6688,10 +6689,9 @@ export class AudioEngine {
     // Stop voices
     for (const voice of this.voices) {
       try {
-        voice.osc1.stop();
-        voice.osc2.stop();
-        voice.osc3.stop();
-        voice.osc4.stop();
+        voice.oscA.stop();
+        voice.oscB.stop();
+        voice.subOsc.stop();
         voice.noise?.stop();
       } catch {
         // Ignore
@@ -9481,8 +9481,8 @@ export class AudioEngine {
       lfoFilterBMod: fin((lfoDest === 'filterBCutoff' ? lfoValue * 2000 : 0) + (lfo2Dest === 'filterBCutoff' ? lfo2Value * 2000 : 0), 0),
       lfoDest, lfo2Dest,
       modEnvEnabled: padState.padModEnvEnabled ?? false, modEnvDest: padState.padModEnvDest ?? 'filterCutoff',
-      oscADetune: shv('padOscADetune', padState.padOscADetune ?? shv('detune', padState.detune)),
-      oscBDetune: shv('padOscBDetune', padState.padOscBDetune ?? shv('detune', padState.detune)),
+      oscAPitch: shv('padOscAPitch', padState.padOscAPitch ?? 0),
+      oscBPitch: shv('padOscBPitch', padState.padOscBPitch ?? 0.08),
       filterBType: (padState.padFilterBType ?? 'highpass') as BiquadFilterType,
       filterBFreq: fin(shv('padFilterBCutoff', padState.padFilterBCutoff ?? 200), 200),
       filterBResBoost: fin(shv('padFilterBResonance', padState.padFilterBResonance ?? 0.2) * 6, 0), filterBQ: fin(shv('padFilterBQ', padState.padFilterBQ ?? 1), 1),
@@ -9553,8 +9553,8 @@ export class AudioEngine {
         lfoFilterBMod: fin((p2l1Dest === 'filterBCutoff' ? p2l1Val * 2000 : 0) + (p2l2Dest === 'filterBCutoff' ? p2l2Val * 2000 : 0), 0),
         lfoDest: p2l1Dest as typeof p1.lfoDest, lfo2Dest: p2l2Dest as typeof p1.lfo2Dest,
         modEnvEnabled: padState.pad2ModEnvEnabled ?? false, modEnvDest: padState.pad2ModEnvDest ?? 'filterCutoff',
-        oscADetune: shv('pad2OscADetune', padState.pad2OscADetune ?? shv('detune', padState.detune)),
-        oscBDetune: shv('pad2OscBDetune', padState.pad2OscBDetune ?? shv('detune', padState.detune)),
+        oscAPitch: shv('pad2OscAPitch', padState.pad2OscAPitch ?? 0),
+        oscBPitch: shv('pad2OscBPitch', padState.pad2OscBPitch ?? 0.08),
         filterBType: (padState.pad2FilterBType ?? 'highpass') as BiquadFilterType,
         filterBFreq: fin(shv('pad2FilterBCutoff', padState.pad2FilterBCutoff ?? 200), 200),
         filterBResBoost: fin(shv('pad2FilterBResonance', padState.pad2FilterBResonance ?? 0.2) * 6, 0), filterBQ: fin(shv('pad2FilterBQ', padState.pad2FilterBQ ?? 1), 1),
@@ -9601,41 +9601,33 @@ export class AudioEngine {
       const p = (pad2On && (pad2Assign & (1 << i))) ? p2 : p1;
 
       // Waveforms
-      voice.osc1.type = p.oscAWave;
-      voice.osc2.type = p.oscAWave;
-      voice.osc3.type = p.oscBWave;
-      voice.osc4.type = p.subEnabled ? p.subWave : p.oscBWave;
+      voice.oscA.type = p.oscAWave;
+      voice.oscB.type = p.oscBWave;
+      voice.subOsc.type = p.subWave;
 
       // Levels (with osc mix crossfade)
       // Use cancelAndHoldAtTime + setValueAtTime for zero targets to ensure silence
       // (setTargetAtTime asymptotically approaches zero but never reaches it)
-      const osc1Target = p.effectiveALevel;
-      const osc2Target = p.effectiveALevel * 0.8;
-      const oscBFinal = Math.max(0, p.effectiveBLevel + p.lfoOscBMod);
-      const osc4Target = p.subEnabled ? p.subLevel : oscBFinal * 0.8;
-      if (osc1Target < 0.001) {
-        voice.osc1Gain.gain.cancelScheduledValues(now);
-        voice.osc1Gain.gain.setTargetAtTime(0, now, 0.01);
+      const oscATarget = p.effectiveALevel;
+      const oscBTarget = Math.max(0, p.effectiveBLevel + p.lfoOscBMod);
+      const subTarget = p.subEnabled ? p.subLevel : 0;
+      if (oscATarget < 0.001) {
+        voice.oscAGain.gain.cancelScheduledValues(now);
+        voice.oscAGain.gain.setTargetAtTime(0, now, 0.01);
       } else {
-        voice.osc1Gain.gain.setTargetAtTime(osc1Target, now, smoothTime);
+        voice.oscAGain.gain.setTargetAtTime(oscATarget, now, smoothTime);
       }
-      if (osc2Target < 0.001) {
-        voice.osc2Gain.gain.cancelScheduledValues(now);
-        voice.osc2Gain.gain.setTargetAtTime(0, now, 0.01);
+      if (oscBTarget < 0.001) {
+        voice.oscBGain.gain.cancelScheduledValues(now);
+        voice.oscBGain.gain.setTargetAtTime(0, now, 0.01);
       } else {
-        voice.osc2Gain.gain.setTargetAtTime(osc2Target, now, smoothTime);
+        voice.oscBGain.gain.setTargetAtTime(oscBTarget, now, smoothTime);
       }
-      if (oscBFinal < 0.001) {
-        voice.osc3Gain.gain.cancelScheduledValues(now);
-        voice.osc3Gain.gain.setTargetAtTime(0, now, 0.01);
+      if (subTarget < 0.001) {
+        voice.subGain.gain.cancelScheduledValues(now);
+        voice.subGain.gain.setTargetAtTime(0, now, 0.01);
       } else {
-        voice.osc3Gain.gain.setTargetAtTime(oscBFinal, now, smoothTime);
-      }
-      if (osc4Target < 0.001) {
-        voice.osc4Gain.gain.cancelScheduledValues(now);
-        voice.osc4Gain.gain.setTargetAtTime(0, now, 0.01);
-      } else {
-        voice.osc4Gain.gain.setTargetAtTime(osc4Target, now, smoothTime);
+        voice.subGain.gain.setTargetAtTime(subTarget, now, smoothTime);
       }
 
       // LFO → amplitude
@@ -9645,10 +9637,9 @@ export class AudioEngine {
 
       // LFO → pitch
       if (p.lfoDest === 'pitch' || p.lfo2Dest === 'pitch' || (p.modEnvEnabled && p.modEnvDest === 'pitch')) {
-        voice.osc1.detune.setTargetAtTime(p.lfoPitchCents, now, smoothTime);
-        voice.osc2.detune.setTargetAtTime(p.lfoPitchCents - p.oscADetune, now, smoothTime);
-        voice.osc3.detune.setTargetAtTime(p.lfoPitchCents + p.oscBDetune, now, smoothTime);
-        voice.osc4.detune.setTargetAtTime(p.lfoPitchCents, now, smoothTime);
+        voice.oscA.detune.setTargetAtTime(p.lfoPitchCents + p.oscAPitch * 100, now, smoothTime);
+        voice.oscB.detune.setTargetAtTime(p.lfoPitchCents + p.oscBPitch * 100, now, smoothTime);
+        voice.subOsc.detune.setTargetAtTime(p.lfoPitchCents, now, smoothTime);
       }
 
       // Main filter (A)

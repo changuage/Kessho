@@ -74,17 +74,21 @@
     "textureSlotCount": 4,
     "textureParamStride": 11,
     "moduleParamCount": 96,
-    "productModuleExtraParamCount": 8
+    "productModuleExtraParamCount": 9,
+    "waterLayerParamStart": 23,
+    "waterLayerCount": 6,
+    "waterLayerMaskParamOffset": 8
   },
   "sourceParamLayout": {
     "pad": {
-      "paramCount": 52,
+      "paramCount": 58,
       "presetSnapParamIndices": [
         0,
         4,
         9,
         11,
         13,
+        19,
         20,
         26,
         27,
@@ -94,7 +98,8 @@
         42,
         43,
         44,
-        50
+        50,
+        56
       ]
     },
     "lead": {
@@ -135,21 +140,32 @@
           "sine": 0,
           "triangle": 1,
           "sawtooth": 2,
-          "square": 3
+          "square": 3,
+          "harmonic": 4,
+          "complexSine": 5,
+          "complexTriangle": 6
         },
         "fallback": 2
       },
       {
-        "key": "padOscAOctave",
+        "key": "padOscAPitch",
         "index": 1,
         "enumMap": null,
-        "fallback": 0
+        "fallback": 0,
+        "unit": "semitones",
+        "min": -24,
+        "max": 24,
+        "step": 0.01
       },
       {
-        "key": "padOscADetune",
+        "key": "padOscAWavePosition",
         "index": 2,
         "enumMap": null,
-        "fallback": 0
+        "fallback": 0,
+        "unit": "normalized",
+        "min": 0,
+        "max": 1,
+        "step": 0.001
       },
       {
         "key": "padOscALevel",
@@ -164,21 +180,32 @@
           "sine": 0,
           "triangle": 1,
           "sawtooth": 2,
-          "square": 3
+          "square": 3,
+          "harmonic": 4,
+          "complexSine": 5,
+          "complexTriangle": 6
         },
         "fallback": 1
       },
       {
-        "key": "padOscBOctave",
+        "key": "padOscBPitch",
         "index": 5,
         "enumMap": null,
-        "fallback": 0
+        "fallback": 0.08,
+        "unit": "semitones",
+        "min": -24,
+        "max": 24,
+        "step": 0.01
       },
       {
-        "key": "padOscBDetune",
+        "key": "padOscBWavePosition",
         "index": 6,
         "enumMap": null,
-        "fallback": 8
+        "fallback": 0,
+        "unit": "normalized",
+        "min": 0,
+        "max": 1,
+        "step": 0.001
       },
       {
         "key": "padOscBLevel",
@@ -414,7 +441,13 @@
           "amplitude": 3,
           "pitch": 4,
           "oscBLevel": 5,
-          "foldAmount": 6
+          "foldAmount": 6,
+          "oscAPosition": 7,
+          "oscBPosition": 8,
+          "oscAPhaseDistortion": 9,
+          "oscBPhaseDistortion": 10,
+          "oscBLinearHzOffset": 11,
+          "filterResonance": 12
         },
         "fallback": 1
       },
@@ -455,7 +488,13 @@
           "amplitude": 3,
           "pitch": 4,
           "oscBLevel": 5,
-          "foldAmount": 6
+          "foldAmount": 6,
+          "oscAPosition": 7,
+          "oscBPosition": 8,
+          "oscAPhaseDistortion": 9,
+          "oscBPhaseDistortion": 10,
+          "oscBLinearHzOffset": 11,
+          "filterResonance": 12
         },
         "fallback": 0
       },
@@ -506,9 +545,85 @@
           "amplitude": 3,
           "pitch": 4,
           "oscBLevel": 5,
-          "foldAmount": 6
+          "foldAmount": 6,
+          "oscAPosition": 7,
+          "oscBPosition": 8,
+          "oscAPhaseDistortion": 9,
+          "oscBPhaseDistortion": 10,
+          "oscBLinearHzOffset": 11,
+          "filterResonance": 12
         },
         "fallback": 1
+      },
+      {
+        "key": "padOscAPhaseDistortion",
+        "index": 51,
+        "enumMap": null,
+        "fallback": 0,
+        "unit": "bipolar",
+        "min": -1,
+        "max": 1,
+        "step": 0.001
+      },
+      {
+        "key": "padOscBPhaseDistortion",
+        "index": 52,
+        "enumMap": null,
+        "fallback": 0,
+        "unit": "bipolar",
+        "min": -1,
+        "max": 1,
+        "step": 0.001
+      },
+      {
+        "key": "padOscALinearHzOffset",
+        "index": 53,
+        "enumMap": null,
+        "fallback": 0,
+        "unit": "hz",
+        "min": -50,
+        "max": 50,
+        "step": 0.1
+      },
+      {
+        "key": "padOscBLinearHzOffset",
+        "index": 54,
+        "enumMap": null,
+        "fallback": 0,
+        "unit": "hz",
+        "min": -50,
+        "max": 50,
+        "step": 0.1
+      },
+      {
+        "key": "padDrift",
+        "index": 55,
+        "enumMap": null,
+        "fallback": 0.42,
+        "unit": "normalized",
+        "min": 0,
+        "max": 1,
+        "step": 0.001
+      },
+      {
+        "key": "padPhaseReset",
+        "index": 56,
+        "enumMap": {
+          "off": 0,
+          "on": 1,
+          "random": 2
+        },
+        "fallback": 2
+      },
+      {
+        "key": "padOutputTrim",
+        "index": 57,
+        "enumMap": null,
+        "fallback": 0.8,
+        "unit": "normalized",
+        "min": 0,
+        "max": 1,
+        "step": 0.001
       }
     ],
     "lead": [

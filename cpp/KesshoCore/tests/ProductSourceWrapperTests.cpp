@@ -371,11 +371,11 @@ void requireExactSourcePresetMetadata() {
       init_patch.exact_pad_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT,
       "generated PadInit exact pad param count missing");
   require(
-      kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT == 52u,
+      kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT == 58u,
       "generated pad param count must match module layout");
   require(std::fabs(init_patch.exact_pad_params[32] - 6.0f) < 0.00001f, "PadInit exact attack did not match web preset");
   require(std::fabs(init_patch.exact_pad_params[35] - 12.0f) < 0.00001f, "PadInit exact release did not match web preset");
-  require(std::fabs(init_patch.exact_pad_params[51] - 0.5f) < 0.00001f, "PadInit exact output trim did not match web pad trim");
+  require(std::fabs(init_patch.exact_pad_params[57] - 0.5f) < 0.00001f, "PadInit exact output trim did not match web pad trim");
 
   const auto* lead = generatedPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES);
   require(lead != nullptr, "generated lead preset missing");
@@ -498,7 +498,7 @@ void configurePadFilterLfoTelemetryPatch(KesshoProductSourceSnapshot& source, fl
   constexpr uint32_t kPadParamLfo1Depth = 37u;
   constexpr uint32_t kPadParamLfo1Wave = 38u;
   constexpr uint32_t kPadParamLfo1Dest = 39u;
-  constexpr uint32_t kPadParamLevel = 51u;
+  constexpr uint32_t kPadParamLevel = 57u;
   appendPadOverride(source, kPadParamFilterCutoff, std::sqrt(cutoff_min * cutoff_max));
   appendPadOverride(source, kPadParamFilterKeyTracking, 0.0f);
   appendPadOverride(source, kPadParamLfo1Rate, 64.0f);
@@ -517,7 +517,7 @@ void configurePadLowRateRandomWalkTelemetryPatch(KesshoProductSourceSnapshot& so
   constexpr uint32_t kPadParamLfo1Dest = 39u;
   constexpr uint32_t kPadParamLfo2Depth = 41u;
   constexpr uint32_t kPadParamModEnvEnabled = 44u;
-  constexpr uint32_t kPadParamLevel = 51u;
+  constexpr uint32_t kPadParamLevel = 57u;
   appendPadOverride(source, kPadParamFilterCutoff, cutoff_min + (cutoff_max - cutoff_min) * 0.5f);
   appendPadOverride(source, kPadParamFilterKeyTracking, 0.0f);
   appendPadOverride(source, kPadParamLfo1Rate, 0.09f);
@@ -545,7 +545,7 @@ void configurePadModEnvelopeTelemetryPatch(KesshoProductSourceSnapshot& source, 
   constexpr uint32_t kPadParamModEnvRelease = 48u;
   constexpr uint32_t kPadParamModEnvDepth = 49u;
   constexpr uint32_t kPadParamModEnvDest = 50u;
-  constexpr uint32_t kPadParamLevel = 51u;
+  constexpr uint32_t kPadParamLevel = 57u;
   appendPadOverride(source, kPadParamFilterCutoff, cutoff_min);
   appendPadOverride(source, kPadParamFilterKeyTracking, 0.0f);
   appendPadOverride(source, kPadParamAttack, 0.001f);
@@ -1331,7 +1331,7 @@ float maxNormalizedGraphTapDiff(
 }
 
 void requirePadFxSendsFollowPostLpf(uint32_t source_id, uint32_t dry_tap_id, const uint32_t* send_tap_ids, const char* label) {
-  constexpr uint32_t kPadParamLevel = 51u;
+  constexpr uint32_t kPadParamLevel = 57u;
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "pad post-LPF send engine create failed");
   enableGraphTaps(engine, "pad post-LPF graph tap enable failed");
@@ -1570,7 +1570,7 @@ float renderDeltaRmsWithOpenPadFilterAndPostLpf(uint32_t source_id, float intern
   constexpr uint32_t kPadParamLfo1Depth = 37u;
   constexpr uint32_t kPadParamLfo2Depth = 41u;
   constexpr uint32_t kPadParamModEnvEnabled = 44u;
-  constexpr uint32_t kPadParamLevel = 51u;
+  constexpr uint32_t kPadParamLevel = 57u;
 
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "pad open-filter post-LPF engine create failed");
@@ -1614,7 +1614,7 @@ float renderHighBandRmsWithOpenPadFilterAndPostLpf(
   constexpr uint32_t kPadParamLfo1Depth = 37u;
   constexpr uint32_t kPadParamLfo2Depth = 41u;
   constexpr uint32_t kPadParamModEnvEnabled = 44u;
-  constexpr uint32_t kPadParamLevel = 51u;
+  constexpr uint32_t kPadParamLevel = 57u;
 
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "pad high-band post-LPF engine create failed");

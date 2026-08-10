@@ -7,6 +7,7 @@ const root = process.cwd();
 const wasmPath = resolve(root, 'public/worklets/kessho_core.wasm');
 const workletPath = resolve(root, 'public/worklets/kessho-core-product.worklet.js');
 const schemaPath = resolve(root, 'src/audio/generated/kesshoProductSchema.ts');
+const capabilityPath = resolve(root, 'src/audio/product/ProductRuntimeCapabilityReport.ts');
 
 if (!existsSync(wasmPath)) {
   throw new Error('Missing public/worklets/kessho_core.wasm; run npm run core:build:wasm first.');
@@ -37,13 +38,25 @@ function parseGeneratedSchemaHash() {
   return Number(match[1]) >>> 0;
 }
 
+function parseProductAbiVersion() {
+  const capabilitySource = readFileSync(capabilityPath, 'utf8');
+  const match = capabilitySource.match(/KESSHO_PRODUCT_ABI_VERSION = (\d+) as const/);
+  assert(match, 'Product runtime capability report is missing KESSHO_PRODUCT_ABI_VERSION');
+  return Number(match[1]);
+}
+
 const expectedSchemaHash = parseGeneratedSchemaHash();
 const expectedSchemaHashHex = `0x${expectedSchemaHash.toString(16).padStart(8, '0')}`;
+const expectedAbiVersion = parseProductAbiVersion();
 const wasmBinary = readFileSync(wasmPath);
 const workletSource = readFileSync(workletPath, 'utf8');
 assert(
   workletSource.includes(`EXPECTED_PRODUCT_SCHEMA_HASH = ${expectedSchemaHashHex}`),
   'Product worklet expected schema hash is stale relative to generated TypeScript schema',
+);
+assert(
+  workletSource.includes(`EXPECTED_PRODUCT_ABI_VERSION = ${expectedAbiVersion}`),
+  'Product worklet expected ABI version is stale relative to the host capability report',
 );
 assert(
   workletSource.includes('const base = ptr + TELEMETRY_EARTH_OFFSET;'),
@@ -89,6 +102,7 @@ for (const exportedFunction of kesshoCoreWasmExportedFunctions) {
 const malloc = resolveExport(wasm, 'malloc');
 const free = resolveExport(wasm, 'free');
 const create = resolveExport(wasm, 'kessho_product_create');
+const getAbiVersion = resolveExport(wasm, 'kessho_product_get_abi_version');
 const destroy = resolveExport(wasm, 'kessho_product_destroy');
 const reset = resolveExport(wasm, 'kessho_product_reset');
 const enqueueEvent = resolveExport(wasm, 'kessho_product_enqueue_event');
@@ -98,6 +112,7 @@ const refreshTelemetry = resolveExport(wasm, 'kessho_product_refresh_telemetry')
 const setMeterDemand = resolveExport(wasm, 'kessho_product_set_meter_demand');
 const setStemsEnabled = resolveExport(wasm, 'kessho_product_set_stems_enabled');
 const copySequencerUiState = resolveExport(wasm, 'kessho_product_copy_sequencer_ui_state');
+assert(getAbiVersion() === expectedAbiVersion, 'WASM Product ABI version does not match the host capability report');
 const EVENT_DICE_SEQUENCER_LANE = 29;
 const SEQUENCER_SYNTH = 1;
 const DICE_FIELD_EXPRESSION = 1 << 4;
@@ -382,6 +397,7 @@ function fakeWebAssemblyWithTelemetryHash(schemaHash, hooks = {}) {
     memory,
     malloc,
     free: (ptr) => hooks.free?.(ptr),
+    kessho_product_get_abi_version: () => hooks.abiVersion ?? expectedAbiVersion,
     kessho_product_create: () => 64,
     kessho_product_reset: () => {},
     kessho_product_reset_parity_fx: () => {},
@@ -407,6 +423,19 @@ function fakeWebAssemblyWithTelemetryHash(schemaHash, hooks = {}) {
     instantiate: async () => ({ instance: { exports } }),
   };
 }
+
+const staleAbi = instantiateWorklet({
+  wasmBinaryOverride: new ArrayBuffer(8),
+  webAssemblyOverride: fakeWebAssemblyWithTelemetryHash(expectedSchemaHash, {
+    abiVersion: expectedAbiVersion - 1,
+  }),
+});
+const staleAbiError = await waitForMessage(staleAbi.messages, (message) => message.type === 'error');
+assert(
+  staleAbiError.message.includes('WASM ABI version mismatch'),
+  'Product worklet did not reject a stale WASM ABI version',
+);
+assert(staleAbi.processor.ready === false, 'Product worklet must not become ready after a stale WASM ABI version');
 
 const staleWasm = instantiateWorklet({
   wasmBinaryOverride: new ArrayBuffer(8),

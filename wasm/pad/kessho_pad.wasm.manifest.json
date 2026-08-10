@@ -1,10 +1,11 @@
 {
   "artifact": "public/worklets/kessho_pad.wasm",
-  "artifactSha256": "ef34a28be5cadda06eed851eff348426120dea7ff77b4ef01973a7d4295f24d7",
+  "artifactSha256": "1f7d06dfbace467f5f070671438914fd79fa693d1f5ebe3c5d95eb0a25ac097b",
   "sources": {
-    "wasm/pad/build.sh": "53c6c2254353b3457501b4ca0f440b3bef75393ef4612d85cc080a0599203c5e",
-    "wasm/pad/kessho_pad.cpp": "0c9b6b622f140f9e68aa8d7d31aadd6d6537c99b4227989baeacb4122a7eb7f3",
-    "wasm/pad/kessho_pad.h": "9c1f457368c64963a5aa486b48fdc514ed50f4feb587a3fea5208bc0ab049acd",
+    "wasm/pad/build.sh": "30754d5987b258d40baf1df3d9a54abd8f5240f196e84d8a90efe9c7f63f4c5d",
+    "wasm/pad/kessho_pad.cpp": "a4927aeef649dd698604caee57346ad3d984c066f8b235285f875341298071d8",
+    "wasm/pad/kessho_pad.h": "1a36133e0e8a8cb3628d673f660ec03819561cc6a66b161c88e01b8c502206c3",
+    "wasm/pad/generated/pad_synth_tables.generated.h": "7f7228d30b508f9576946a724df2344534cb6af6fef070657250b6e827ba2f20",
     "wasm/common/kessho_dsp.h": "96abae7855589b75ac07dfe708b24df0cbdef86e55a71e44752b4477d93f1a79"
   }
 }

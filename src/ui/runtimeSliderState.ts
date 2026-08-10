@@ -266,7 +266,7 @@ export function getRuntimeSliderPosition(
   key: string,
   mode: SliderMode,
 ): number | undefined {
-  if (mode === 'walk') return storeState.walkPositions[key];
+  if (mode === 'walk' || mode === 'shape') return storeState.walkPositions[key];
   if (mode === 'sampleHold') return storeState.triggerPositions[key];
   return undefined;
 }
@@ -328,7 +328,7 @@ export function useRuntimeSliderIndicator(
   const walkPosition = getRuntimeSliderPosition(key, mode) ?? fallbackPosition;
   const isFlashing = getRuntimeSliderFlashing(key, mode) || fallbackFlashing;
   useEffect(() => {
-    if (mode !== 'walk' || typeof walkPosition !== 'number' || !Number.isFinite(walkPosition)) return;
+    if ((mode !== 'walk' && mode !== 'shape') || typeof walkPosition !== 'number' || !Number.isFinite(walkPosition)) return;
     if (!runtimeSliderDiagnosticsEnabled) return;
     runtimeSliderDebugState.walkIndicatorConsumeCount += 1;
     runtimeSliderDebugState.lastWalkIndicatorKey = key;

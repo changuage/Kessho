@@ -42,7 +42,7 @@ const POOL_LABELS: Record<string, string> = {
 };
 
 const DEFAULT_POOL_HINTS: Record<string, string[]> = {
-  [PAD_POOL_KEY]: ['saturated_drift', 'buchla_pluck', 'soft_pluck', 'Saturated Drift', 'Buchla Pluck', 'Soft Pluck'],
+  [PAD_POOL_KEY]: ['saturated_drift', 'saturated_drift_ii', 'buchla_pluck', 'classic_moog_bass', 'Saturated Drift', 'Saturated Drift II', 'Buchla Pluck', 'Classic Moog Bass'],
   [LEAD_POOL_KEY]: ['soft_rhodes', 'gamelan', 'Soft Rhodes', 'Gamelan'],
 };
 

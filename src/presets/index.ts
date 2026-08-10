@@ -41,6 +41,8 @@ export {
 export { buildPresetFamilies, getPresetDisplayLabel } from './catalog';
 export {
   buildPresetVersionMetadata,
+  canonicalizePresetParameterBehaviorMetadata,
+  normalizePresetParameterBehaviorMetadata,
   preparePresetVersionMetadataForV2Storage,
   sanitizePresetParameterBehaviorMetadata,
 } from './versionMetadataHelpers';

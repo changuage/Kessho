@@ -1,5 +1,6 @@
 import type { SliderMode } from '../state';
 import type { SliderPageId } from '../pages/pageAliases';
+import type { DualSliderConfig, DualSliderShapeConfig } from './dualConfigReducer';
 
 export type SliderPrimitiveMode = SliderMode;
 export type SliderVariant = 'full' | 'matrix';
@@ -41,18 +42,28 @@ export interface SliderRendererProps<Key extends PropertyKey = string> {
   step?: number;
   logarithmic?: boolean;
   helpPage?: SliderPageId;
+  title?: string;
+  /** Optional app-unit snapping for pointer and keyboard interaction. */
+  keyboardStep?: number;
+  fineKeyboardStep?: number;
+  dragStep?: number;
+  fineDragStep?: number;
+  resetValue?: number;
   disabled?: boolean;
   commitOnRelease?: boolean;
   mode?: SliderMode;
   dualRange?: SliderPrimitiveRange;
   walkPosition?: number;
   isFlashing?: boolean;
+  modulationConfig?: DualSliderConfig;
+  shapeConfig?: DualSliderShapeConfig;
+  onModulationConfigChange?: (key: Key, config: DualSliderConfig) => void;
   onChange: (key: Key, value: number) => void;
   onCycleMode?: (key: Key) => void;
   onDualRangeChange?: (key: Key, min: number, max: number) => void;
 }
 
-export type SliderRuntimeRendererProps<Key extends PropertyKey = string> = Pick<
+export type SliderRuntimeRendererProps<Key extends PropertyKey = string> = Omit<Pick<
   SliderRendererProps<Key>,
-  'mode' | 'dualRange' | 'walkPosition' | 'isFlashing' | 'onCycleMode' | 'onDualRangeChange'
->;
+  'mode' | 'dualRange' | 'walkPosition' | 'isFlashing' | 'modulationConfig' | 'shapeConfig' | 'onModulationConfigChange' | 'onCycleMode' | 'onDualRangeChange'
+>, 'mode'> & { mode: SliderMode };

@@ -8,6 +8,7 @@ import type {
   SerializedSubLaneState,
   SliderMode,
 } from '../ui/state';
+import type { DualSliderConfig } from '../ui/sliderSystem/dualConfigReducer';
 import type { RoutingMuteGroupsState } from '../ui/routing/routingMuteGroups';
 import type { ClockDivision } from '../audio/drumSeqTypes';
 import type { PitchBindingMode } from '../audio/drumSeqTypes';
@@ -98,6 +99,8 @@ export interface PresetVersionMetadata {
   routingMuteGroups?: RoutingMuteGroupsState;
   dualRanges?: Record<string, { min: number; max: number }>;
   sliderModes?: Record<string, SliderMode>;
+  /** Canonical per-parameter modulation behavior; old maps are projections. */
+  dualSliderConfigs?: Record<string, DualSliderConfig>;
   drumEvolveConfigs?: SerializedEvolveConfig[];
   synthEvolveConfigs?: SerializedEvolveConfig[];
   drumStepOverrides?: SerializedStepOverrides;

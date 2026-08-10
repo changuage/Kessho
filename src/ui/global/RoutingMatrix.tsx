@@ -8,6 +8,7 @@ import { getRoutingSourceDef, ROUTING_SOURCE_REGISTRY } from '../routing';
 import { NATURE_SLOT_KEYS } from '../../audio/natureSlots';
 import { natureSampleLabel } from '../../audio/natureSampleCatalog';
 import { INSECT_ENGINES } from '../../audio/waterPresets';
+import { WATER_LAYER_ENABLED_BY_LEVEL } from '../../audio/waterLayerActivation';
 import {
   LONG_PRESS_MOVE_TOLERANCE_PX,
   LONG_PRESS_MS,
@@ -25,6 +26,7 @@ import {
   trackLeftCalc,
   trackWidthCalc,
   useRafCoalescedEmitter,
+  ModulationModeIcon,
 } from '../sliderSystem';
 import '../sliderSystem/matrixSurface.css';
 import type {
@@ -401,7 +403,7 @@ function activeEarthChildRows(family: NonNullable<MatrixRow['earthFamily']>, sta
     ['waterChannels', 'Channels', 'waterLayerChannels'],
     ['waterTurbulence', 'Turbulence', 'waterLayerTurbulence'],
     ['waterSurf', 'Surf', 'waterLayerSurf'],
-  ] as const).flatMap(([id, label, levelKey]) => Number(state[levelKey]) > 0.0001 ? [{
+  ] as const).flatMap(([id, label, levelKey]) => state[WATER_LAYER_ENABLED_BY_LEVEL[levelKey]] ? [{
     id: `water-child-${id}`,
     childToggleId: id,
     label,
@@ -444,10 +446,9 @@ function getColumnTargets(
   return targets;
 }
 
-function rangeDisplay(mode: SliderMode, range?: DualSliderRange): string {
+function rangeDisplay(range?: DualSliderRange): string {
   if (!range) return '0%';
-  const icon = mode === 'walk' ? '↝' : '⊡';
-  return `${icon}${Math.round(range.min * 100)}–${Math.round(range.max * 100)}`;
+  return `${Math.round(range.min * 100)}–${Math.round(range.max * 100)}`;
 }
 
 function singleDisplay(value: number): string {
@@ -1016,7 +1017,7 @@ export default function RoutingMatrix({
     const fillLeft = range ? trackLeftCalc(range.min) : `${TRACK_PAD_PX}px`;
     const fillWidth = range ? trackWidthCalc(range.max - range.min) : trackWidthCalc(value);
     const readout = cell.kind === 'editable'
-      ? (mode === 'single' ? singleDisplay(value) : rangeDisplay(mode, range))
+      ? (mode === 'single' ? singleDisplay(value) : rangeDisplay(range))
       : (cell.kind === 'self' ? 'Self' : '');
     const isWalk = mode === 'walk' && !!range;
     const isSampleHold = mode === 'sampleHold' && !!range;
@@ -1053,9 +1054,9 @@ export default function RoutingMatrix({
     return (
       <div
         key={cellId}
-        className={`routing-matrix-cell ${cell.kind}${column.id === 'level' ? ' level-col' : ''}${draggingId === cellId ? ' dragging' : ''}${offInAll ? ' source-off' : ''}`}
-        style={{ '--row-accent': offInAll ? '#7e8794' : row.accent } as React.CSSProperties}
-        title={cell.note ?? row.note}
+        className={`routing-matrix-cell ${cell.kind}${column.id === 'level' ? ' level-col' : ''}${draggingId === cellId ? ' dragging' : ''}${offInAll ? ' source-off' : ''}${runtime?.modulationConfig ? ` mod-${runtime.modulationConfig.source}` : ''}`}
+        style={{ '--row-accent': offInAll ? '#7e8794' : runtime?.modulationConfig?.source === 'b' ? '#e58a2b' : runtime?.modulationConfig?.source === 'a' ? '#4d9aba' : row.accent } as React.CSSProperties}
+        title={runtime?.modulationConfig ? `Mod ${runtime.modulationConfig.source.toUpperCase()}: ${route?.label ?? row.label}` : cell.note ?? row.note}
         aria-disabled={cell.kind !== 'editable' || !route}
         role={cell.kind === 'editable' && route && mode === 'single' ? 'slider' : undefined}
         tabIndex={cell.kind === 'editable' && route && mode === 'single' ? 0 : -1}
@@ -1266,7 +1267,10 @@ export default function RoutingMatrix({
                 <span className="routing-matrix-cell-value">{readout}</span>
               ) : (
                 <>
-                  <span className="routing-matrix-cell-mode">{mode === 'walk' ? '↝' : '⊡'}</span>
+                  <span className="routing-matrix-cell-mode">
+                    {runtime?.modulationConfig?.source.toUpperCase()}
+                    <ModulationModeIcon mode={mode} />
+                  </span>
                   <span className="routing-matrix-cell-range">
                     {range ? `${Math.round(range.min * 100)}–${Math.round(range.max * 100)}` : singleDisplay(value)}
                   </span>

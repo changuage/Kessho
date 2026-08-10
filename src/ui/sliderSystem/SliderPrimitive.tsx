@@ -8,6 +8,7 @@ import type {
   SliderStylingModel,
   SliderVariant,
 } from './types';
+import type { ModulationSlot } from './dualConfigReducer';
 import {
   LONG_PRESS_MS,
   axisToNormalized,
@@ -20,24 +21,43 @@ import './sliderPrimitive.css';
 import { useElementWidth } from './useElementWidth';
 import { useRafCoalescedEmitter } from './useRafCoalescedEmitter';
 
-const MODE_LABEL: Record<SliderMode, string> = {
+export type SliderPresentationMode = SliderMode;
+
+const MODE_LABEL: Record<SliderPresentationMode, string> = {
   single: 'Single',
   walk: 'Walk',
-  sampleHold: 'Sample and hold',
+  sampleHold: 'Sample & Hold',
+  shape: 'Shape',
 };
 
-const MODE_GLYPH: Record<SliderMode, string> = {
-  single: '',
-  walk: '~',
-  sampleHold: '‖',
-};
+const SINE_WAVE_PATH = 'M1 8C3 2 6 2 8 8S13 14 15 8S20 2 23 8';
+
+export function ModulationModeIcon({ mode }: { mode: SliderPresentationMode }) {
+  const path = mode === 'walk'
+    ? 'M1 11L4 6L7 9L10 3L13 12L16 7L19 10L23 4'
+    : mode === 'sampleHold'
+      ? 'M1 12H6V4H12V10H18V2H23'
+      : mode === 'shape'
+        ? SINE_WAVE_PATH
+        : undefined;
+
+  return (
+    <svg className="sl-slider-mode-icon" viewBox="0 0 24 16" focusable="false" aria-hidden="true">
+      {path ? (
+        <path d={path} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      ) : (
+        <circle cx="12" cy="8" r="4" fill="currentColor" />
+      )}
+    </svg>
+  );
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
 function indicatorPercent(
-  mode: SliderMode,
+  mode: SliderPresentationMode,
   range: SliderPrimitiveRange,
   value: number,
   position = 0.55,
@@ -52,7 +72,7 @@ function defaultFormatValue(value: number, unit = '%'): string {
 
 export interface SliderPrimitiveProps {
   label: string;
-  mode: SliderMode;
+  mode: SliderPresentationMode;
   value: number;
   range?: SliderPrimitiveRange;
   unit?: string;
@@ -70,6 +90,11 @@ export interface SliderPrimitiveProps {
   className?: string;
   style?: React.CSSProperties;
   title?: string;
+  keyboardStep?: number;
+  fineKeyboardStep?: number;
+  dragStep?: number;
+  fineDragStep?: number;
+  onDoubleClick?: () => void;
   onValueChange?: (value: number) => void;
   updatePolicy?: SliderUpdatePolicy;
   commitValueOnRelease?: boolean;
@@ -79,6 +104,10 @@ export interface SliderPrimitiveProps {
   onAnnounce?: () => void;
   onValueGestureStart?: () => void;
   headAdornment?: React.ReactNode;
+  /** Optional per-slider modulation configuration affordance. */
+  contextConfig?: React.ReactNode;
+  contextConfigLabel?: string;
+  modulationSlot?: ModulationSlot;
 }
 
 export type SliderUpdatePolicy = 'continuous' | 'frame' | 'release';
@@ -103,6 +132,11 @@ export function SliderPrimitive({
   className,
   style,
   title,
+  keyboardStep = 1,
+  fineKeyboardStep,
+  dragStep,
+  fineDragStep,
+  onDoubleClick,
   onValueChange,
   updatePolicy = 'frame',
   commitValueOnRelease = false,
@@ -112,11 +146,15 @@ export function SliderPrimitive({
   onAnnounce,
   onValueGestureStart,
   headAdornment,
+  contextConfig,
+  contextConfigLabel = 'Configure modulation',
+  modulationSlot,
 }: SliderPrimitiveProps) {
   const [liveValue, setLiveValue] = React.useState(value);
   const [liveRange, setLiveRange] = React.useState<SliderPrimitiveRange>(() => range ?? { min: 0, max: value });
   const [dragging, setDragging] = React.useState(false);
   const [activeHandle, setActiveHandle] = React.useState<'min' | 'max' | 'band' | null>(null);
+  const [contextOpen, setContextOpen] = React.useState(false);
   const railRef = React.useRef<HTMLDivElement>(null);
   const railWidth = useElementWidth(railRef);
   const [motionReady, setMotionReady] = React.useState(false);
@@ -192,9 +230,11 @@ export function SliderPrimitive({
     else if (resolvedUpdatePolicy === 'frame') rangeEmitter.schedule(nextRange);
   };
 
-  const keyboardDelta = (event: React.KeyboardEvent, direction: -1 | 1): number => (
-    direction * (event.shiftKey ? 10 : 1)
-  );
+  const keyboardDelta = (event: React.KeyboardEvent, direction: -1 | 1): number => {
+    const fine = event.altKey || event.ctrlKey || event.metaKey;
+    const step = fine ? (fineKeyboardStep ?? keyboardStep) : (event.shiftKey ? keyboardStep * 10 : keyboardStep);
+    return direction * step;
+  };
   const handleSingleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (disabled || mode !== 'single') return;
     let nextValue: number | null = null;
@@ -277,6 +317,7 @@ export function SliderPrimitive({
     startClientX,
     initialClientX,
     rect,
+    fineDrag,
   }: {
     currentTarget: HTMLDivElement;
     pointerId: number;
@@ -284,6 +325,7 @@ export function SliderPrimitive({
     startClientX: number;
     initialClientX: number;
     rect: DOMRect;
+    fineDrag?: boolean;
   }) => {
     const isTouch = pointerType === 'touch';
     if (isTouch) setSliderTouchSelectionLock(true);
@@ -308,7 +350,11 @@ export function SliderPrimitive({
       let lastValue = percentFromClientX(initialClientX, rect);
 
       const applySingleValue = (clientX: number) => {
-        const nextValue = percentFromClientX(clientX, rect);
+        const rawValue = percentFromClientX(clientX, rect);
+        const activeStep = fineDrag ? fineDragStep : dragStep;
+        const nextValue = activeStep && activeStep > 0
+          ? clamp(Math.round(rawValue / activeStep) * activeStep, 0, 100)
+          : rawValue;
         dragValueRef.current = nextValue;
         dragIndicatorRef.current = nextValue;
         dragThumbPxRef.current = (nextValue / 100) * rect.width;
@@ -396,7 +442,11 @@ export function SliderPrimitive({
         return shiftRangePreservingWidth(startRange, delta, 0, 100);
       }
 
-      const raw = clamp(target === 'min' ? startRange.min + delta : startRange.max + delta, 0, 100);
+      const rawValue = clamp(target === 'min' ? startRange.min + delta : startRange.max + delta, 0, 100);
+      const activeStep = fineDrag ? fineDragStep : dragStep;
+      const raw = activeStep && activeStep > 0
+        ? clamp(Math.round(rawValue / activeStep) * activeStep, 0, 100)
+        : rawValue;
       return target === 'min'
         ? { min: Math.min(raw, startRange.max - resolvedMinRangeGap), max: startRange.max }
         : { min: startRange.min, max: Math.max(raw, startRange.min + resolvedMinRangeGap) };
@@ -489,6 +539,7 @@ export function SliderPrimitive({
         startClientX: event.clientX,
         initialClientX: event.clientX,
         rect,
+        fineDrag: event.altKey || event.ctrlKey || event.metaKey,
       });
       return;
     }
@@ -541,6 +592,7 @@ export function SliderPrimitive({
         startClientX: startX,
         initialClientX: moveEvent.clientX,
         rect,
+        fineDrag: moveEvent.altKey || moveEvent.ctrlKey || moveEvent.metaKey,
       });
     };
 
@@ -602,6 +654,7 @@ export function SliderPrimitive({
         `sl-slider--${variant}`,
         `sl-slider--${density}`,
         `sl-slider--mode-${mode}`,
+        modulationSlot ? `sl-slider--mod-${modulationSlot}` : '',
         motionReady ? 'sl-slider--motion-ready' : '',
         disabled ? 'sl-slider--disabled' : '',
         isFlashing ? 'sl-slider--flashing' : '',
@@ -617,16 +670,21 @@ export function SliderPrimitive({
       <div
         className="sl-slider-head"
         onDoubleClick={() => {
-          if (!disabled) onModeCycle?.();
+          if (!disabled) {
+            if (onDoubleClick) onDoubleClick();
+            else onModeCycle?.();
+          }
         }}
       >
         {showsModeControl ? (
           <button
             type="button"
-            className={`sl-slider-mode sl-slider-mode--${mode}${disabled ? '' : ' interactive'}`}
-            aria-label={MODE_LABEL[mode]}
+            className={`sl-slider-mode sl-slider-mode--${mode}${modulationSlot ? ` sl-slider-mode--mod-${modulationSlot}` : ''}${disabled ? '' : ' interactive'}`}
+            aria-label={modulationSlot ? `Mod ${modulationSlot.toUpperCase()}: ${MODE_LABEL[mode]}` : MODE_LABEL[mode]}
             disabled={disabled}
-            title={disabled ? MODE_LABEL[mode] : `Mode: ${MODE_LABEL[mode]}. Click to cycle.`}
+            title={disabled
+              ? MODE_LABEL[mode]
+              : `${modulationSlot ? `Mod ${modulationSlot.toUpperCase()}: ` : 'Mode: '}${MODE_LABEL[mode]}. Click to cycle.`}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -645,7 +703,7 @@ export function SliderPrimitive({
               }
             }}
           >
-            <span className="sl-slider-mode-glyph">{MODE_GLYPH[mode]}</span>
+            <ModulationModeIcon mode={mode} />
             <span className="sl-slider-mode-text">{MODE_LABEL[mode]}</span>
           </button>
         ) : (
@@ -654,6 +712,35 @@ export function SliderPrimitive({
         <span className="sl-slider-label">{label}</span>
         <span ref={valueTextRef} className="sl-slider-value app-slider-value">{valueText}</span>
         {headAdornment}
+        {contextConfig && (
+          <span className="sl-slider-context">
+            <button
+              type="button"
+              className="sl-slider-context-button"
+              aria-label={contextConfigLabel}
+              aria-haspopup="dialog"
+              aria-expanded={contextOpen}
+              title={contextConfigLabel}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setContextOpen((open) => !open);
+              }}
+            >
+              <svg className="sl-slider-context-icon" viewBox="0 0 16 16" focusable="false" aria-hidden="true">
+                <path d="M2 4h12M2 8h12M2 12h12" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+                <circle cx="6" cy="4" r="1.45" fill="currentColor" />
+                <circle cx="10" cy="8" r="1.45" fill="currentColor" />
+                <circle cx="5" cy="12" r="1.45" fill="currentColor" />
+              </svg>
+            </button>
+            {contextOpen && (
+              <div className="sl-slider-context-panel" role="dialog" aria-label={contextConfigLabel}>
+                {contextConfig}
+              </div>
+            )}
+          </span>
+        )}
       </div>
 
       <div
@@ -671,7 +758,10 @@ export function SliderPrimitive({
         onDoubleClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          if (!disabled) onModeCycle?.();
+          if (!disabled) {
+            if (onDoubleClick) onDoubleClick();
+            else onModeCycle?.();
+          }
         }}
         onPointerDown={beginDrag}
       >

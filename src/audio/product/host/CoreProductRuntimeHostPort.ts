@@ -4,7 +4,7 @@ import type { DawOutputRoutingConfig } from '../../dawOutputRouting';
 import type { ProductRuntimeCapabilityReport } from '../ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from '../ProductRuntimeDiagnostics';
 import type { ProductLiveNoteEvent } from '../liveNoteEvents';
-import type { ProductAssetHandle, ProductAssetRegistration, ProductDrumTriggerCallback, ProductDrumVoice, ProductDynamicsVisualTelemetry, ProductEngineStartOptions, ProductEngineState, ProductEvent, ProductEvolveOverridesCallback, ProductExternalState, ProductManualSynthNote, ProductMidiMessage, ProductPerfSnapshot, ProductRange, ProductRangeMap, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductRuntimeWalkPositionsCallback, ProductSequencerEvolveTriggerCallback, ProductSequencerStepPositionCallback, ProductSimpleSequencerVisualPlanActive, ProductSnapshotPatch, ProductSnapshotPatchReason, ProductStateRecord, ProductSynthAnchorWalkerVisualStateCallback, ProductSynthNoteRangeEvolvedCallback, ProductSynthOrbitVisualStateCallback, ProductTelemetrySnapshot } from '../ProductEngineTypes';
+import type { ProductAssetHandle, ProductAssetRegistration, ProductDrumTriggerCallback, ProductDrumVoice, ProductDynamicsVisualTelemetry, ProductEngineStartOptions, ProductEngineState, ProductEvent, ProductEvolveOverridesCallback, ProductExternalState, ProductManualSynthNote, ProductMidiMessage, ProductPerfSnapshot, ProductRange, ProductRangeMap, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductRuntimeModulationRangeMap, ProductRuntimeWalkPositionsCallback, ProductSequencerEvolveTriggerCallback, ProductSequencerStepPositionCallback, ProductSimpleSequencerVisualPlanActive, ProductSnapshotPatch, ProductSnapshotPatchReason, ProductStateRecord, ProductSynthAnchorWalkerVisualStateCallback, ProductSynthNoteRangeEvolvedCallback, ProductSynthOrbitVisualStateCallback, ProductTelemetrySnapshot } from '../ProductEngineTypes';
 import type { BackgroundJourneyPlan } from '../journey/compileBackgroundJourneyPlan';
 import type { ProductBackgroundJourneyReadiness } from '../ports/ProductJourneyPort';
 
@@ -224,6 +224,10 @@ export const coreProductRuntimeHostPort = {
 
   setRuntimeWalkRanges(ranges: ProductRangeMap): void {
     callCoreProductHost<void>('setRuntimeWalkRanges', ranges);
+  },
+
+  setRuntimeModulationRanges(ranges: ProductRuntimeModulationRangeMap): void {
+    callCoreProductHost<void>('setRuntimeModulationRanges', ranges);
   },
 
   setLiveTriggerCallback(

@@ -155,6 +155,17 @@
   for (ModulationRange& range : modulation_ranges) {
     range = {};
   }
+  for (uint32_t slot = 0u; slot < kModulationSourceSlotCount; ++slot) {
+    modulation_link_shape_phase[slot] = 0.0f;
+    modulation_link_shape_speed[slot] = 1.0f;
+    modulation_link_shape_initialized[slot] = false;
+    modulation_link_walk_position[slot] = 0.5f;
+    modulation_link_walk_velocity[slot] = 0.0f;
+    modulation_link_walk_step_accumulator[slot] = 0.0f;
+    modulation_link_walk_speed[slot] = 1.0f;
+    modulation_link_walk_counter[slot] = 0u;
+    modulation_link_walk_initialized[slot] = false;
+  }
   resetModulationRouteCache();
   resetFxSampleHoldOwners();
   resetSidechainRuntime();
@@ -209,6 +220,17 @@
   drum_module_trigger_pending = false;
   for (ModulationRange& range : modulation_ranges) {
     range = {};
+  }
+  for (uint32_t slot = 0u; slot < kModulationSourceSlotCount; ++slot) {
+    modulation_link_shape_phase[slot] = 0.0f;
+    modulation_link_shape_speed[slot] = 1.0f;
+    modulation_link_shape_initialized[slot] = false;
+    modulation_link_walk_position[slot] = 0.5f;
+    modulation_link_walk_velocity[slot] = 0.0f;
+    modulation_link_walk_step_accumulator[slot] = 0.0f;
+    modulation_link_walk_speed[slot] = 1.0f;
+    modulation_link_walk_counter[slot] = 0u;
+    modulation_link_walk_initialized[slot] = false;
   }
   resetModulationRouteCache();
   resetFxSampleHoldOwners();

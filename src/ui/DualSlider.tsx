@@ -12,6 +12,10 @@ import { useSliderHelp } from './SliderHelpOverlay';
 import type { SliderPageId } from './sliderHelpCatalog';
 import { useRuntimeSliderIndicator } from './runtimeSliderState';
 import { SliderPrimitive, type SliderPrimitiveRange } from './sliderSystem';
+import type {
+  DualSliderConfig,
+  DualSliderShapeConfig,
+} from './sliderSystem/dualConfigReducer';
 import { normToValue, valueToNorm } from './sliderSystem/scale';
 import { MidiLearnSliderAdornment } from './midiLearn/MidiLearnSliderAdornment';
 import { useMidiLearn } from './midiLearn/useMidiLearn';
@@ -37,10 +41,25 @@ export interface DualSliderProps<K extends string = string> {
   unit?: string;
   logarithmic?: boolean;
   helpPage?: SliderPageId;
+  title?: string;
+  keyboardStep?: number;
+  fineKeyboardStep?: number;
+  dragStep?: number;
+  fineDragStep?: number;
+  resetValue?: number;
   disabled?: boolean;
   mode: SliderMode;
   dualRange?: DualSliderRange;
   walkPosition?: number;
+  /** Canonical per-parameter modulation config (Shape gets a contextual panel). */
+  modulationConfig?: DualSliderConfig;
+  onModulationConfigChange?: (config: DualSliderConfig) => void;
+  /** @deprecated Use modulationConfig/onModulationConfigChange. */
+  shapeConfig?: DualSliderShapeConfig;
+  onShapeConfigChange?: (config: DualSliderShapeConfig) => void;
+  /** Optional per-slider modulation configuration panel. */
+  contextConfig?: React.ReactNode;
+  contextConfigLabel?: string;
   isFlashing?: boolean;
   format?: (v: number) => string;
   ghostValue?: number;
@@ -79,9 +98,18 @@ export function DualSlider<K extends string = string>({
   mode,
   dualRange,
   walkPosition,
+  modulationConfig,
+  contextConfig,
+  contextConfigLabel,
   isFlashing,
   format: formatProp,
   ghostValue,
+  title,
+  keyboardStep,
+  fineKeyboardStep,
+  dragStep,
+  fineDragStep,
+  resetValue,
   onChange,
   onCycleMode,
   onDualRangeChange,
@@ -91,8 +119,9 @@ export function DualSlider<K extends string = string>({
 }: DualSliderProps<K>) {
   const { announceSlider } = useSliderHelp();
   const midiLearn = useMidiLearn();
-  const runtimeIndicator = useRuntimeSliderIndicator(String(paramKey), mode, walkPosition, isFlashing);
-  const isDualMode = mode !== 'single';
+  const effectiveMode: SliderMode = mode;
+  const runtimeIndicator = useRuntimeSliderIndicator(String(paramKey), effectiveMode, walkPosition, isFlashing);
+  const isDualMode = effectiveMode !== 'single';
   const lastSubmittedValueRef = React.useRef<number | null>(null);
   const lastSubmittedRangeRef = React.useRef<DualSliderRange | null>(null);
 
@@ -150,6 +179,8 @@ export function DualSlider<K extends string = string>({
   const currentValue = dualRange
     ? dualRange.min + clamp(effectiveWalkPosition, 0, 1) * (dualRange.max - dualRange.min)
     : value;
+
+  const resolvedContextConfig = contextConfig;
 
   const previewTolerance = Math.max(info.step * 0.5, (info.max - info.min) * 1e-6);
   const hasGhostShift = ghostValue != null
@@ -211,7 +242,11 @@ export function DualSlider<K extends string = string>({
       value={valuePercent}
       range={normalizedRange}
       unit={unit}
-      hero={mode === 'sampleHold' ? '#d4a520' : fillColor}
+      hero={modulationConfig?.source === 'b'
+        ? '#e58a2b'
+        : modulationConfig?.source === 'a'
+          ? '#4d9aba'
+          : mode === 'sampleHold' ? '#d4a520' : mode === 'shape' ? '#c084fc' : fillColor}
       variant="full"
       density="compact"
       displayValue={displayValue}
@@ -222,9 +257,19 @@ export function DualSlider<K extends string = string>({
       ghostRange={translatedGhostRange ?? undefined}
       disabled={disabled}
       title={isDualMode
-        ? `${label}: ${displayValue} active ${formatValue(currentValue)}${unit || ''}. Click the mode symbol to cycle.`
-        : `${label}: ${displayValue}. Click the mode symbol to cycle.`}
+        ? (title ?? `${label}: ${displayValue} active ${formatValue(currentValue)}${unit || ''}. Click the mode symbol to cycle.`)
+        : (title ?? `${label}: ${displayValue}. Click the mode symbol to cycle.`)}
+      keyboardStep={keyboardStep == null ? undefined : Math.abs(valueToPercent(info.min + keyboardStep) - valueToPercent(info.min))}
+      fineKeyboardStep={fineKeyboardStep == null ? undefined : Math.abs(valueToPercent(info.min + fineKeyboardStep) - valueToPercent(info.min))}
+      dragStep={dragStep == null ? undefined : Math.abs(valueToPercent(info.min + dragStep) - valueToPercent(info.min))}
+      fineDragStep={fineDragStep == null ? undefined : Math.abs(valueToPercent(info.min + fineDragStep) - valueToPercent(info.min))}
+      onDoubleClick={resetValue == null ? undefined : () => {
+        if (!disabled) onChange(paramKey, quantizeFn(paramKey, resetValue));
+      }}
       onAnnounce={announceHelp}
+      contextConfig={resolvedContextConfig}
+      contextConfigLabel={contextConfigLabel ?? (mode === 'shape' ? 'Configure Shape' : 'Configure modulation')}
+      modulationSlot={modulationConfig?.source}
       onValueGestureStart={() => {
         midiLearn.notifySliderDrag(paramKey as keyof SliderState, label);
       }}

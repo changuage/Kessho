@@ -26,6 +26,7 @@ MANIFEST_INPUTS=(
     "$SCRIPT_DIR/build.sh"
     "$SCRIPT_DIR/kessho_pad.cpp"
     "$SCRIPT_DIR/kessho_pad.h"
+    "$SCRIPT_DIR/generated/pad_synth_tables.generated.h"
     "$SCRIPT_DIR/../common/kessho_dsp.h"
 )
 LOCAL_EMSDK="$ROOT_DIR/emsdk"
@@ -149,6 +150,13 @@ EOF
     exit 127
 fi
 
+if command -v node >/dev/null 2>&1; then
+    node "$ROOT_DIR/scripts/generate-pad-synth-tables.mjs" --check
+else
+    echo "Error: Node.js is required to validate generated Pad synth tables." >&2
+    exit 127
+fi
+
 EXPORTS="[
   '_pad_init',
   '_pad_destroy',
@@ -164,14 +172,20 @@ EXPORTS="[
   '_pad_kill_voice',
   '_pad_set_voice_pad',
   '_pad_set_osc_a_wave',
-  '_pad_set_osc_a_octave',
-  '_pad_set_osc_a_detune',
+  '_pad_set_osc_a_position',
+  '_pad_set_osc_a_phase_distortion',
+  '_pad_set_osc_a_pitch',
+  '_pad_set_osc_a_hz_offset',
   '_pad_set_osc_a_level',
   '_pad_set_osc_b_wave',
-  '_pad_set_osc_b_octave',
-  '_pad_set_osc_b_detune',
+  '_pad_set_osc_b_position',
+  '_pad_set_osc_b_phase_distortion',
+  '_pad_set_osc_b_pitch',
+  '_pad_set_osc_b_hz_offset',
   '_pad_set_osc_b_level',
   '_pad_set_osc_mix',
+  '_pad_set_drift',
+  '_pad_set_phase_reset',
   '_pad_set_sub_enabled',
   '_pad_set_sub_octave',
   '_pad_set_sub_wave',

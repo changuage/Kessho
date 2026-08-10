@@ -1,5 +1,8 @@
 #include "KesshoProductEngineInternal.h"
 
+#include <array>
+#include <memory>
+
 namespace {
 bool generatedPadEndpointPatchValid(const KesshoProductSourceSnapshot& source) {
   const auto* endpoint_a = kessho::product::internal::findSourcePreset(source.source_preset_a_id);
@@ -52,6 +55,36 @@ bool exactParamBlockEmpty(uint32_t count, const float* values, uint32_t param_co
     if (!std::isfinite(values[slot]) || values[slot] != 0.0f) {
       return false;
     }
+  }
+  return true;
+}
+
+bool migrateLegacyPadSnapshotSource(KesshoProductSourceSnapshot& source) {
+  if (source.exact_pad_param_count != kessho::core::KESSHO_LEGACY_SOURCE_PRESET_PAD_PARAM_COUNT) {
+    return true;
+  }
+  if (source.source_id != KESSHO_PRODUCT_SOURCE_PAD1 && source.source_id != KESSHO_PRODUCT_SOURCE_PAD2) {
+    return false;
+  }
+  // Legacy exact patches and sparse overrides were mutually exclusive. Keep
+  // that invariant while moving the old 52-value block into the current
+  // reconstructable sparse representation.
+  if (source.pad_override_count != 0u) {
+    return false;
+  }
+  std::array<float, kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT> converted{};
+  if (!kessho::core::convertLegacyPadPresetParams(source.exact_pad_params, converted.data())) {
+    return false;
+  }
+  source.exact_pad_param_count = 0u;
+  source.pad_override_count = kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
+  for (uint32_t index = 0u; index < source.pad_override_count; ++index) {
+    if (!std::isfinite(converted[index])) {
+      return false;
+    }
+    source.pad_override_indices[index] = index;
+    source.pad_override_values[index] = converted[index];
+    source.exact_pad_params[index] = 0.0f;
   }
   return true;
 }
@@ -306,7 +339,11 @@ void KesshoProductEngine::rebuildHarmonyAuthorityCache() {
   }
 }
 
-int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapshot) {
+int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incoming_snapshot) {
+  // Stored snapshots may carry the retired 52-value Pad exact block. Convert
+  // it before the current-count and sparse-block validators run.
+  auto normalized_snapshot = std::make_unique<KesshoProductSnapshotV2>(incoming_snapshot);
+  KesshoProductSnapshotV2& snapshot = *normalized_snapshot;
   pending_phrase_timing_event_count = 0u;
   pending_phrase_timing_apply_frame = 0u;
   if (snapshot.version != KESSHO_PRODUCT_SNAPSHOT_VERSION) {
@@ -316,6 +353,12 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   if (snapshot.schema_hash != KESSHO_PRODUCT_SNAPSHOT_SCHEMA_HASH) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_SCHEMA_HASH_MISMATCH;
     return KESSHO_PRODUCT_ERROR_SCHEMA_HASH_MISMATCH;
+  }
+  for (uint32_t index = 0u; index < kSourceCount; ++index) {
+    if (!migrateLegacyPadSnapshotSource(snapshot.sources[index])) {
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
+      return KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
+    }
   }
   for (const auto& automation : snapshot.sonic_runtime.source_morph) {
     if (automation.enabled > 1u ||

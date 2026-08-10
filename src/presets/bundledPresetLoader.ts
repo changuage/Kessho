@@ -21,7 +21,8 @@ import type { PresetPoolMetadata, PresetVersionMetadata } from './types';
 import type { SerializedSeqScatterState } from '../ui/drums/scatter/scatterTypes';
 import { sanitizePresetParameterBehaviorMetadata } from './versionMetadataHelpers';
 import { canonicalizeStoredPresetEntry } from './storedPresetCompatibility';
-import { completeSpectralFreezePresetState } from './spectralFreezePresetState';
+import { completeCanonicalPresetState } from './presetStateCompatibility';
+import type { DualSliderConfig } from '../ui/sliderSystem/dualConfigReducer';
 
 const BUNDLED_PRESET_FALLBACK_FILES = [
   'Ethereal_Ambient.json',
@@ -50,6 +51,7 @@ export interface BundledSavedPreset {
   routingMuteGroups?: RoutingMuteGroupsState;
   dualRanges?: Record<string, { min: number; max: number }>;
   sliderModes?: Record<string, SliderMode>;
+  dualSliderConfigs?: Partial<Record<string, DualSliderConfig>>;
   drumEvolveConfigs?: EvolveConfig[];
   synthEvolveConfigs?: EvolveConfig[];
   drumStepOverrides?: SerializedStepOverrides;
@@ -97,12 +99,14 @@ function bundledPresetFromFileData(
     else delete metadata.sliderModes;
     if (behavior.dualRanges) metadata.dualRanges = behavior.dualRanges;
     else delete metadata.dualRanges;
+    if (behavior.dualSliderConfigs) metadata.dualSliderConfigs = behavior.dualSliderConfigs;
+    else delete metadata.dualSliderConfigs;
     return {
       ...metadata,
       id: typeof data.id === 'string' ? data.id : undefined,
       name: data.name,
       timestamp: new Date(data.timestamp).toISOString(),
-      state: enforceProductCorePresetBoundaryState(completeSpectralFreezePresetState(data.state as SliderState)),
+      state: enforceProductCorePresetBoundaryState(completeCanonicalPresetState(data.state as SliderState)),
       source,
     } as BundledSavedPreset;
   }
@@ -121,11 +125,13 @@ function bundledPresetFromFileData(
   else delete metadata.sliderModes;
   if (behavior.dualRanges) metadata.dualRanges = behavior.dualRanges;
   else delete metadata.dualRanges;
+  if (behavior.dualSliderConfigs) metadata.dualSliderConfigs = behavior.dualSliderConfigs;
+  else delete metadata.dualSliderConfigs;
   return {
     id: entry.id,
     name: entry.name,
     timestamp: new Date(version.timestamp).toISOString(),
-    state: enforceProductCorePresetBoundaryState(versionData as unknown as SliderState),
+    state: enforceProductCorePresetBoundaryState(completeCanonicalPresetState(versionData)),
     ...metadata,
     source,
     tags: entry.tags,

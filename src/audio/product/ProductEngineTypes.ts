@@ -116,6 +116,38 @@ export type ProductRange = Readonly<{
 
 export type ProductRangeMap = Partial<Record<string, ProductRange>>;
 
+export type ProductModulationShape = 'sine' | 'triangle' | 'square';
+export type ProductModulationRelationship = 'free' | 'link';
+export type ProductModulationSyncReference = 'bar' | 'phrase';
+export type ProductModulationDivision = '4x' | '2x' | '1' | '1/2' | '1/4' | '1/8' | '1/16';
+export type ProductModulationSource = 'a' | 'b';
+
+export type ProductRuntimeModulationConfig =
+  | Readonly<{
+      mode: 'walk';
+      source: ProductModulationSource;
+      relationship: ProductModulationRelationship;
+      speed: number;
+    }>
+  | Readonly<{
+      mode: 'shape';
+      source: ProductModulationSource;
+      shape: ProductModulationShape;
+      timing:
+        | Readonly<{ mode: 'free' | 'link'; speed: number }>
+        | Readonly<{
+            mode: 'sync';
+            reference: ProductModulationSyncReference;
+            division: ProductModulationDivision;
+          }>;
+    }>;
+
+export type ProductRuntimeModulationRange = ProductRange & Readonly<{
+  modulation: ProductRuntimeModulationConfig;
+}>;
+
+export type ProductRuntimeModulationRangeMap = Partial<Record<string, ProductRuntimeModulationRange>>;
+
 export type ProductNumberMap = Readonly<Record<string, number>>;
 
 export type ProductLeadPair = Readonly<{

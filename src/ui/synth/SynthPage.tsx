@@ -168,7 +168,15 @@ import {
   getPadDistancePreview,
 } from '../../audio/distanceMacro';
 import FilterLfoViz from './FilterLfoViz';
-import WaveFoldViz from './WaveFoldViz';
+import PadOscillatorViz from './PadOscillatorViz';
+import PadPostFilterFoldViz from './PadPostFilterFoldViz';
+import {
+  PAD_WAVE_SOURCES,
+  isClassicPadWave,
+  type PadFoldMode,
+  type PadWaveSource,
+} from './padOscillatorVizMath';
+import { formatPadPitch } from './padPitch';
 import LeadAdsrViz from './LeadAdsrViz';
 import { LFO_PRESETS, LFO_PRESET_CATEGORIES } from './lfoPresets';
 import {
@@ -270,6 +278,30 @@ const formatEnvelopeSeconds = (value: number): string => {
 };
 
 const formatEnvelopeSustain = (value: number): string => `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+
+const PAD_WAVE_LABELS: Record<PadWaveSource, string> = {
+  sine: 'Sine',
+  triangle: 'Triangle',
+  sawtooth: 'Saw',
+  square: 'Square',
+  harmonic: 'Harmonic',
+  complexSine: 'Complex - Sine',
+  complexTriangle: 'Complex - Triangle',
+};
+const PAD_WAVE_OPTIONS: Array<{ value: PadWaveSource; label: string }> = PAD_WAVE_SOURCES.map((value) => ({
+  value,
+  label: PAD_WAVE_LABELS[value],
+}));
+
+const PAD_PHASE_RESET_OPTIONS = [
+  { value: 0, label: 'Off' },
+  { value: 1, label: 'On' },
+  { value: 2, label: 'Random' },
+];
+
+const padWave = (value: unknown, fallback: PadWaveSource): PadWaveSource => (
+  PAD_WAVE_SOURCES.includes(value as PadWaveSource) ? value as PadWaveSource : fallback
+);
 
 function getPadEnvelopeTimelineSeconds(state: SliderState): number {
   const phraseLength = Math.max(
@@ -6997,14 +7029,25 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               />
 
               {/* Drive + Osc Mix — same line */}
-              <div className="sc-compact-grid-2">
+              <div className="sc-compact-grid-3">
                 <Slider label="Drive" value={state.hardness} paramKey="hardness" ghostValue={getPreviewValue(pad1DistancePreview, 'hardness')} onChange={onParamChange} {...sliderProps('hardness')} />
                 <Slider label="Osc Mix" value={state.padOscMix ?? 0.5} paramKey="padOscMix" onChange={onParamChange} {...sliderProps('padOscMix')} />
+                <Slider label="Drift" value={state.padDrift ?? 0.42} paramKey="padDrift" onChange={onParamChange} {...sliderProps('padDrift')} />
               </div>
 
-              {/* Wave Fold — viz + slider + mode on one line */}
+              <div className="sc-compact-grid-2" style={{ marginTop: '4px' }}>
+                <Select
+                  label="Phase Reset"
+                  value={state.padPhaseReset ?? 2}
+                  options={PAD_PHASE_RESET_OPTIONS}
+                  onChange={(v: number) => onSelectChange('padPhaseReset' as keyof SliderState, v)}
+                />
+              </div>
+
+              {/* Fold is a combined post-filter voice effect. */}
+              <div className="sc-section-label" style={{ marginTop: '8px' }}>POST-FILTER FOLD</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                <WaveFoldViz foldAmount={state.padFoldAmount ?? 0} foldMode={state.padFoldMode ?? 0} oscAWave={state.padOscAWave ?? 'sine'} oscBWave={state.padOscBWave ?? 'sine'} oscALevel={state.padOscALevel ?? 1} oscBLevel={state.padOscBLevel ?? 1} oscMix={state.padOscMix ?? 0.5} />
+                <PadPostFilterFoldViz foldAmount={state.padFoldAmount ?? 0} foldMode={(state.padFoldMode ?? 0) as PadFoldMode} />
                 <div style={{ flex: 1 }}>
                   <Slider label="Fold" value={state.padFoldAmount ?? 0} paramKey="padFoldAmount" onChange={onParamChange} {...sliderProps('padFoldAmount')} />
                 </div>
@@ -7043,6 +7086,22 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     <Slider label="Release" value={state.synthRelease} paramKey="synthRelease" format={formatEnvelopeSeconds} logarithmic ghostValue={getPreviewValue(pad1DistancePreview, 'synthRelease')} onChange={onParamChange} {...sliderProps('synthRelease')} />
                   </div>
                 </div>
+
+                <PadOscillatorViz
+                  oscAWave={padWave(state.padOscAWave, 'sawtooth')}
+                  oscAPosition={state.padOscAWavePosition ?? 0}
+                  oscAPhaseDistortion={state.padOscAPhaseDistortion ?? 0}
+                  oscAPitchSemitones={state.padOscAPitch ?? 0}
+                  oscAHzOffset={state.padOscALinearHzOffset ?? 0}
+                  oscALevel={state.padOscALevel ?? 0.6}
+                  oscBWave={padWave(state.padOscBWave, 'triangle')}
+                  oscBPosition={state.padOscBWavePosition ?? 0}
+                  oscBPhaseDistortion={state.padOscBPhaseDistortion ?? 0}
+                  oscBPitchSemitones={state.padOscBPitch ?? 0.08}
+                  oscBHzOffset={state.padOscBLinearHzOffset ?? 0}
+                  oscBLevel={state.padOscBLevel ?? 0.4}
+                  oscMix={state.padOscMix ?? 0.5}
+                />
 
                 {/* ─── Filter ─── */}
                 <div className="sc-advanced-section">
@@ -7134,6 +7193,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'pitch', label: 'Pitch' },
                         { value: 'oscBLevel', label: 'Osc B' },
                         { value: 'foldAmount', label: 'Fold' },
+                        { value: 'oscAPosition', label: 'A Position' },
+                        { value: 'oscBPosition', label: 'B Position' },
+                        { value: 'oscAPhaseDistortion', label: 'A Phase Dist' },
+                        { value: 'oscBPhaseDistortion', label: 'B Phase Dist' },
+                        { value: 'oscBLinearHzOffset', label: 'B Hz Offset' },
+                        { value: 'filterResonance', label: 'Resonance' },
                       ]}
                       onChange={(v: string) => onSelectChange('padLfo1Dest' as keyof SliderState, v)}
                       {...bindHelp('synthLfoDestSelect')}
@@ -7205,6 +7270,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'pitch', label: 'Pitch' },
                         { value: 'oscBLevel', label: 'Osc B' },
                         { value: 'foldAmount', label: 'Fold' },
+                        { value: 'oscAPosition', label: 'A Position' },
+                        { value: 'oscBPosition', label: 'B Position' },
+                        { value: 'oscAPhaseDistortion', label: 'A Phase Dist' },
+                        { value: 'oscBPhaseDistortion', label: 'B Phase Dist' },
+                        { value: 'oscBLinearHzOffset', label: 'B Hz Offset' },
+                        { value: 'filterResonance', label: 'Resonance' },
                       ]}
                       onChange={(v: string) => onSelectChange('padLfo2Dest' as keyof SliderState, v)}
                       {...bindHelp('synthLfoDestSelect')}
@@ -7244,23 +7315,25 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       <div className="sc-osc-block-label">Osc A</div>
                       <Select
                         label=""
-                        value={state.padOscAWave ?? 'sawtooth'}
-                        options={[
-                          { value: 'sine', label: 'Sin' },
-                          { value: 'triangle', label: 'Tri' },
-                          { value: 'sawtooth', label: 'Saw' },
-                          { value: 'square', label: 'Sq' },
-                        ]}
+                        value={padWave(state.padOscAWave, 'sawtooth')}
+                        options={PAD_WAVE_OPTIONS}
                         onChange={(v: string) => onSelectChange('padOscAWave' as keyof SliderState, v)}
                       />
                       <div className="sc-inline-slider">
+                        <Slider label="Position" value={state.padOscAWavePosition ?? 0} paramKey="padOscAWavePosition" onChange={onParamChange} {...sliderProps('padOscAWavePosition')} disabled={isClassicPadWave(padWave(state.padOscAWave, 'sawtooth'))} title={isClassicPadWave(padWave(state.padOscAWave, 'sawtooth')) ? 'Position is available only for Harmonic and Complex waves.' : undefined} />
+                        {isClassicPadWave(padWave(state.padOscAWave, 'sawtooth')) && <div className="pad-position-note" role="note">Available for Harmonic and Complex waves.</div>}
+                      </div>
+                      <div className="sc-inline-slider">
+                        <Slider label="Phase Dist" value={state.padOscAPhaseDistortion ?? 0} paramKey="padOscAPhaseDistortion" format={(value) => `${Math.round(value * 100)}%`} onChange={onParamChange} {...sliderProps('padOscAPhaseDistortion')} />
+                      </div>
+                      <div className="sc-inline-slider">
+                        <Slider label="Pitch" value={state.padOscAPitch ?? 0} paramKey="padOscAPitch" format={formatPadPitch} keyboardStep={1} fineKeyboardStep={0.01} dragStep={1} fineDragStep={0.01} resetValue={0} onChange={onParamChange} {...sliderProps('padOscAPitch')} />
+                      </div>
+                      <div className="sc-inline-slider">
+                        <Slider label="Hz Offset" value={state.padOscALinearHzOffset ?? 0} paramKey="padOscALinearHzOffset" unit=" Hz" format={(value) => value.toFixed(1)} onChange={onParamChange} {...sliderProps('padOscALinearHzOffset')} />
+                      </div>
+                      <div className="sc-inline-slider">
                         <Slider label="Lvl" value={state.padOscALevel ?? 0.6} paramKey="padOscALevel" onChange={onParamChange} {...sliderProps('padOscALevel')} />
-                      </div>
-                      <div className="sc-inline-slider">
-                        <Slider label="Oct" value={state.padOscAOctave ?? 0} paramKey="padOscAOctave" onChange={onParamChange} {...sliderProps('padOscAOctave')} />
-                      </div>
-                      <div className="sc-inline-slider">
-                        <Slider label="Det" value={state.padOscADetune ?? 0} paramKey="padOscADetune" onChange={onParamChange} {...sliderProps('padOscADetune')} />
                       </div>
                     </div>
                     {/* Osc B */}
@@ -7268,23 +7341,25 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       <div className="sc-osc-block-label">Osc B</div>
                       <Select
                         label=""
-                        value={state.padOscBWave ?? 'triangle'}
-                        options={[
-                          { value: 'sine', label: 'Sin' },
-                          { value: 'triangle', label: 'Tri' },
-                          { value: 'sawtooth', label: 'Saw' },
-                          { value: 'square', label: 'Sq' },
-                        ]}
+                        value={padWave(state.padOscBWave, 'triangle')}
+                        options={PAD_WAVE_OPTIONS}
                         onChange={(v: string) => onSelectChange('padOscBWave' as keyof SliderState, v)}
                       />
                       <div className="sc-inline-slider">
+                        <Slider label="Position" value={state.padOscBWavePosition ?? 0} paramKey="padOscBWavePosition" onChange={onParamChange} {...sliderProps('padOscBWavePosition')} disabled={isClassicPadWave(padWave(state.padOscBWave, 'triangle'))} title={isClassicPadWave(padWave(state.padOscBWave, 'triangle')) ? 'Position is available only for Harmonic and Complex waves.' : undefined} />
+                        {isClassicPadWave(padWave(state.padOscBWave, 'triangle')) && <div className="pad-position-note" role="note">Available for Harmonic and Complex waves.</div>}
+                      </div>
+                      <div className="sc-inline-slider">
+                        <Slider label="Phase Dist" value={state.padOscBPhaseDistortion ?? 0} paramKey="padOscBPhaseDistortion" format={(value) => `${Math.round(value * 100)}%`} onChange={onParamChange} {...sliderProps('padOscBPhaseDistortion')} />
+                      </div>
+                      <div className="sc-inline-slider">
+                        <Slider label="Pitch" value={state.padOscBPitch ?? 0.08} paramKey="padOscBPitch" format={formatPadPitch} keyboardStep={1} fineKeyboardStep={0.01} dragStep={1} fineDragStep={0.01} resetValue={0} onChange={onParamChange} {...sliderProps('padOscBPitch')} />
+                      </div>
+                      <div className="sc-inline-slider">
+                        <Slider label="Hz Offset" value={state.padOscBLinearHzOffset ?? 0} paramKey="padOscBLinearHzOffset" unit=" Hz" format={(value) => value.toFixed(1)} onChange={onParamChange} {...sliderProps('padOscBLinearHzOffset')} />
+                      </div>
+                      <div className="sc-inline-slider">
                         <Slider label="Lvl" value={state.padOscBLevel ?? 0.4} paramKey="padOscBLevel" onChange={onParamChange} {...sliderProps('padOscBLevel')} />
-                      </div>
-                      <div className="sc-inline-slider">
-                        <Slider label="Oct" value={state.padOscBOctave ?? 0} paramKey="padOscBOctave" onChange={onParamChange} {...sliderProps('padOscBOctave')} />
-                      </div>
-                      <div className="sc-inline-slider">
-                        <Slider label="Det" value={state.padOscBDetune ?? 0} paramKey="padOscBDetune" onChange={onParamChange} {...sliderProps('padOscBDetune')} />
                       </div>
                     </div>
                   </div>
@@ -7366,7 +7441,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     <Slider label="Warmth" value={state.warmth} paramKey="warmth" ghostValue={getPreviewValue(pad1DistancePreview, 'warmth')} onChange={onParamChange} {...sliderProps('warmth')} />
                     <Slider label="Presence" value={state.presence} paramKey="presence" ghostValue={getPreviewValue(pad1DistancePreview, 'presence')} onChange={onParamChange} {...sliderProps('presence')} />
                   </div>
-                  {/* Legacy: global detune — superseded by per-osc detune */}
                 </div>
 
                 {/* ─── Mod Envelope ─── */}
@@ -7391,6 +7465,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           { value: 'pitch', label: 'Pitch' },
                           { value: 'oscBLevel', label: 'Osc B Level' },
                           { value: 'foldAmount', label: 'Fold' },
+                        { value: 'oscAPosition', label: 'A Position' },
+                        { value: 'oscBPosition', label: 'B Position' },
+                        { value: 'oscAPhaseDistortion', label: 'A Phase Dist' },
+                        { value: 'oscBPhaseDistortion', label: 'B Phase Dist' },
+                        { value: 'oscBLinearHzOffset', label: 'B Hz Offset' },
+                        { value: 'filterResonance', label: 'Resonance' },
                         ]}
                         onChange={(v: string) => onSelectChange('padModEnvDest' as keyof SliderState, v)}
                         {...bindHelp('synthModEnvTarget')}
@@ -7653,14 +7733,25 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               />
 
               {/* Drive + Osc Mix */}
-              <div className="sc-compact-grid-2">
+              <div className="sc-compact-grid-3">
                 <Slider label="Drive" value={state.pad2Hardness} paramKey="pad2Hardness" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Hardness')} onChange={onParamChange} {...sliderProps('pad2Hardness')} />
                 <Slider label="Osc Mix" value={state.pad2OscMix ?? 0.5} paramKey="pad2OscMix" onChange={onParamChange} {...sliderProps('pad2OscMix')} />
+                <Slider label="Drift" value={state.pad2Drift ?? 0.42} paramKey="pad2Drift" onChange={onParamChange} {...sliderProps('pad2Drift')} />
               </div>
 
-              {/* Wave Fold — viz + slider + mode on one line */}
+              <div className="sc-compact-grid-2" style={{ marginTop: '4px' }}>
+                <Select
+                  label="Phase Reset"
+                  value={state.pad2PhaseReset ?? 2}
+                  options={PAD_PHASE_RESET_OPTIONS}
+                  onChange={(v: number) => onSelectChange('pad2PhaseReset' as keyof SliderState, v)}
+                />
+              </div>
+
+              {/* Fold is a combined post-filter voice effect. */}
+              <div className="sc-section-label" style={{ marginTop: '8px' }}>POST-FILTER FOLD</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                <WaveFoldViz foldAmount={state.pad2FoldAmount ?? 0} foldMode={state.pad2FoldMode ?? 0} oscAWave={state.pad2OscAWave ?? 'sine'} oscBWave={state.pad2OscBWave ?? 'sine'} oscALevel={state.pad2OscALevel ?? 1} oscBLevel={state.pad2OscBLevel ?? 1} oscMix={state.pad2OscMix ?? 0.5} />
+                <PadPostFilterFoldViz foldAmount={state.pad2FoldAmount ?? 0} foldMode={(state.pad2FoldMode ?? 0) as PadFoldMode} />
                 <div style={{ flex: 1 }}>
                   <Slider label="Fold" value={state.pad2FoldAmount ?? 0} paramKey="pad2FoldAmount" onChange={onParamChange} {...sliderProps('pad2FoldAmount')} />
                 </div>
@@ -7724,6 +7815,22 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     <Slider label="Release" value={state.pad2Release} paramKey="pad2Release" format={formatEnvelopeSeconds} logarithmic ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Release')} onChange={onParamChange} {...sliderProps('pad2Release')} />
                   </div>
                 </div>
+
+                <PadOscillatorViz
+                  oscAWave={padWave(state.pad2OscAWave, 'sawtooth')}
+                  oscAPosition={state.pad2OscAWavePosition ?? 0}
+                  oscAPhaseDistortion={state.pad2OscAPhaseDistortion ?? 0}
+                  oscAPitchSemitones={state.pad2OscAPitch ?? 0}
+                  oscAHzOffset={state.pad2OscALinearHzOffset ?? 0}
+                  oscALevel={state.pad2OscALevel ?? 0.6}
+                  oscBWave={padWave(state.pad2OscBWave, 'triangle')}
+                  oscBPosition={state.pad2OscBWavePosition ?? 0}
+                  oscBPhaseDistortion={state.pad2OscBPhaseDistortion ?? 0}
+                  oscBPitchSemitones={state.pad2OscBPitch ?? 0.08}
+                  oscBHzOffset={state.pad2OscBLinearHzOffset ?? 0}
+                  oscBLevel={state.pad2OscBLevel ?? 0.4}
+                  oscMix={state.pad2OscMix ?? 0.5}
+                />
 
                 {/* ─── Filter ─── */}
                 <div className="sc-advanced-section">
@@ -7815,6 +7922,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'pitch', label: 'Pitch' },
                         { value: 'oscBLevel', label: 'Osc B' },
                         { value: 'foldAmount', label: 'Fold' },
+                        { value: 'oscAPosition', label: 'A Position' },
+                        { value: 'oscBPosition', label: 'B Position' },
+                        { value: 'oscAPhaseDistortion', label: 'A Phase Dist' },
+                        { value: 'oscBPhaseDistortion', label: 'B Phase Dist' },
+                        { value: 'oscBLinearHzOffset', label: 'B Hz Offset' },
+                        { value: 'filterResonance', label: 'Resonance' },
                       ]}
                       onChange={(v: string) => onSelectChange('pad2Lfo1Dest' as keyof SliderState, v)}
                       {...bindHelp('synthLfoDestSelect')}
@@ -7886,6 +7999,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'pitch', label: 'Pitch' },
                         { value: 'oscBLevel', label: 'Osc B' },
                         { value: 'foldAmount', label: 'Fold' },
+                        { value: 'oscAPosition', label: 'A Position' },
+                        { value: 'oscBPosition', label: 'B Position' },
+                        { value: 'oscAPhaseDistortion', label: 'A Phase Dist' },
+                        { value: 'oscBPhaseDistortion', label: 'B Phase Dist' },
+                        { value: 'oscBLinearHzOffset', label: 'B Hz Offset' },
+                        { value: 'filterResonance', label: 'Resonance' },
                       ]}
                       onChange={(v: string) => onSelectChange('pad2Lfo2Dest' as keyof SliderState, v)}
                       {...bindHelp('synthLfoDestSelect')}
@@ -7924,46 +8043,50 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       <div className="sc-osc-block-label">Osc A</div>
                       <Select
                         label=""
-                        value={state.pad2OscAWave ?? 'sawtooth'}
-                        options={[
-                          { value: 'sine', label: 'Sin' },
-                          { value: 'triangle', label: 'Tri' },
-                          { value: 'sawtooth', label: 'Saw' },
-                          { value: 'square', label: 'Sq' },
-                        ]}
+                        value={padWave(state.pad2OscAWave, 'sawtooth')}
+                        options={PAD_WAVE_OPTIONS}
                         onChange={(v: string) => onSelectChange('pad2OscAWave' as keyof SliderState, v)}
                       />
                       <div className="sc-inline-slider">
+                        <Slider label="Position" value={state.pad2OscAWavePosition ?? 0} paramKey="pad2OscAWavePosition" onChange={onParamChange} {...sliderProps('pad2OscAWavePosition')} disabled={isClassicPadWave(padWave(state.pad2OscAWave, 'sawtooth'))} title={isClassicPadWave(padWave(state.pad2OscAWave, 'sawtooth')) ? 'Position is available only for Harmonic and Complex waves.' : undefined} />
+                        {isClassicPadWave(padWave(state.pad2OscAWave, 'sawtooth')) && <div className="pad-position-note" role="note">Available for Harmonic and Complex waves.</div>}
+                      </div>
+                      <div className="sc-inline-slider">
+                        <Slider label="Phase Dist" value={state.pad2OscAPhaseDistortion ?? 0} paramKey="pad2OscAPhaseDistortion" format={(value) => `${Math.round(value * 100)}%`} onChange={onParamChange} {...sliderProps('pad2OscAPhaseDistortion')} />
+                      </div>
+                      <div className="sc-inline-slider">
+                        <Slider label="Pitch" value={state.pad2OscAPitch ?? 0} paramKey="pad2OscAPitch" format={formatPadPitch} keyboardStep={1} fineKeyboardStep={0.01} dragStep={1} fineDragStep={0.01} resetValue={0} onChange={onParamChange} {...sliderProps('pad2OscAPitch')} />
+                      </div>
+                      <div className="sc-inline-slider">
+                        <Slider label="Hz Offset" value={state.pad2OscALinearHzOffset ?? 0} paramKey="pad2OscALinearHzOffset" unit=" Hz" format={(value) => value.toFixed(1)} onChange={onParamChange} {...sliderProps('pad2OscALinearHzOffset')} />
+                      </div>
+                      <div className="sc-inline-slider">
                         <Slider label="Lvl" value={state.pad2OscALevel ?? 0.6} paramKey="pad2OscALevel" onChange={onParamChange} {...sliderProps('pad2OscALevel')} />
-                      </div>
-                      <div className="sc-inline-slider">
-                        <Slider label="Oct" value={state.pad2OscAOctave ?? 0} paramKey="pad2OscAOctave" onChange={onParamChange} {...sliderProps('pad2OscAOctave')} />
-                      </div>
-                      <div className="sc-inline-slider">
-                        <Slider label="Det" value={state.pad2OscADetune ?? 0} paramKey="pad2OscADetune" onChange={onParamChange} {...sliderProps('pad2OscADetune')} />
                       </div>
                     </div>
                     <div className="sc-osc-block">
                       <div className="sc-osc-block-label">Osc B</div>
                       <Select
                         label=""
-                        value={state.pad2OscBWave ?? 'triangle'}
-                        options={[
-                          { value: 'sine', label: 'Sin' },
-                          { value: 'triangle', label: 'Tri' },
-                          { value: 'sawtooth', label: 'Saw' },
-                          { value: 'square', label: 'Sq' },
-                        ]}
+                        value={padWave(state.pad2OscBWave, 'triangle')}
+                        options={PAD_WAVE_OPTIONS}
                         onChange={(v: string) => onSelectChange('pad2OscBWave' as keyof SliderState, v)}
                       />
                       <div className="sc-inline-slider">
+                        <Slider label="Position" value={state.pad2OscBWavePosition ?? 0} paramKey="pad2OscBWavePosition" onChange={onParamChange} {...sliderProps('pad2OscBWavePosition')} disabled={isClassicPadWave(padWave(state.pad2OscBWave, 'triangle'))} title={isClassicPadWave(padWave(state.pad2OscBWave, 'triangle')) ? 'Position is available only for Harmonic and Complex waves.' : undefined} />
+                        {isClassicPadWave(padWave(state.pad2OscBWave, 'triangle')) && <div className="pad-position-note" role="note">Available for Harmonic and Complex waves.</div>}
+                      </div>
+                      <div className="sc-inline-slider">
+                        <Slider label="Phase Dist" value={state.pad2OscBPhaseDistortion ?? 0} paramKey="pad2OscBPhaseDistortion" format={(value) => `${Math.round(value * 100)}%`} onChange={onParamChange} {...sliderProps('pad2OscBPhaseDistortion')} />
+                      </div>
+                      <div className="sc-inline-slider">
+                        <Slider label="Pitch" value={state.pad2OscBPitch ?? 0.08} paramKey="pad2OscBPitch" format={formatPadPitch} keyboardStep={1} fineKeyboardStep={0.01} dragStep={1} fineDragStep={0.01} resetValue={0} onChange={onParamChange} {...sliderProps('pad2OscBPitch')} />
+                      </div>
+                      <div className="sc-inline-slider">
+                        <Slider label="Hz Offset" value={state.pad2OscBLinearHzOffset ?? 0} paramKey="pad2OscBLinearHzOffset" unit=" Hz" format={(value) => value.toFixed(1)} onChange={onParamChange} {...sliderProps('pad2OscBLinearHzOffset')} />
+                      </div>
+                      <div className="sc-inline-slider">
                         <Slider label="Lvl" value={state.pad2OscBLevel ?? 0.4} paramKey="pad2OscBLevel" onChange={onParamChange} {...sliderProps('pad2OscBLevel')} />
-                      </div>
-                      <div className="sc-inline-slider">
-                        <Slider label="Oct" value={state.pad2OscBOctave ?? 0} paramKey="pad2OscBOctave" onChange={onParamChange} {...sliderProps('pad2OscBOctave')} />
-                      </div>
-                      <div className="sc-inline-slider">
-                        <Slider label="Det" value={state.pad2OscBDetune ?? 0} paramKey="pad2OscBDetune" onChange={onParamChange} {...sliderProps('pad2OscBDetune')} />
                       </div>
                     </div>
                   </div>
@@ -8067,6 +8190,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           { value: 'pitch', label: 'Pitch' },
                           { value: 'oscBLevel', label: 'Osc B Level' },
                           { value: 'foldAmount', label: 'Fold' },
+                        { value: 'oscAPosition', label: 'A Position' },
+                        { value: 'oscBPosition', label: 'B Position' },
+                        { value: 'oscAPhaseDistortion', label: 'A Phase Dist' },
+                        { value: 'oscBPhaseDistortion', label: 'B Phase Dist' },
+                        { value: 'oscBLinearHzOffset', label: 'B Hz Offset' },
+                        { value: 'filterResonance', label: 'Resonance' },
                         ]}
                         onChange={(v: string) => onSelectChange('pad2ModEnvDest' as keyof SliderState, v)}
                         {...bindHelp('synthModEnvTarget')}
@@ -8771,6 +8900,33 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     <Slider label="Note Density" value={state.lead1Density} paramKey="lead1Density" unit="/phrase" onChange={onParamChange} {...sliderProps('lead1Density')} />
                     <Slider label="Octave Offset" value={state.lead1Octave} paramKey="lead1Octave" onChange={onParamChange} {...sliderProps('lead1Octave')} />
                     <Slider label="Octave Range" value={state.lead1OctaveRange} paramKey="lead1OctaveRange" unit=" oct" onChange={onParamChange} {...sliderProps('lead1OctaveRange')} />
+                    <details className="synth-random-timing-advanced">
+                      <summary>Advanced timing</summary>
+                      <div className="synth-random-timing-advanced-grid">
+                        <Select
+                          label="Clock"
+                          value={state.leadRandomClockSource}
+                          options={[
+                            { value: 'globalPhrase', label: 'Global Phrase' },
+                            { value: 'localPhrase', label: 'Local Phrase' },
+                            { value: 'globalBeat', label: 'Global Beat Phrase' },
+                            { value: 'localBeat', label: 'Local Beat Phrase' },
+                          ]}
+                          onChange={(value: string) => onSelectChange('leadRandomClockSource', value as SliderState[keyof SliderState])}
+                          {...bindHelp('leadRandomClockSource')}
+                        />
+                        <Select
+                          label="Apply"
+                          value={state.leadRandomSyncPolicy}
+                          options={[
+                            { value: 'nextPhrase', label: 'Next Phrase' },
+                            { value: 'free', label: 'Immediate' },
+                          ]}
+                          onChange={(value: string) => onSelectChange('leadRandomSyncPolicy', value as SliderState[keyof SliderState])}
+                          {...bindHelp('leadRandomSyncPolicy')}
+                        />
+                      </div>
+                    </details>
                   </div>
                   <OptionalVisualizerGate
                     enabled={simpleRandomTimingVizToggle.enabled}

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadBundledPresetByName } from './statePresetRuntime';
+import { DEFAULT_STATE } from '../ui/state';
 
 const assetPath = resolve('public/presets/StringWaves.json');
 const assetBytes = readFileSync(assetPath);
@@ -16,7 +17,7 @@ const asset = JSON.parse(assetBytes.toString('utf8')) as {
 
 assert.equal(
   createHash('sha256').update(assetBytes).digest('hex'),
-  '811c0d02db45c65612c0c66721456c4a9e3629a0a5dd651938515c48571c483c',
+  '22d24a9e5c2c87e95f6c819740ee60bf758f978f25894a9f1c982b57aebb388f',
   'the bundled fallback must remain the canonical String Waves v17 snapshot',
 );
 
@@ -48,8 +49,20 @@ try {
   assert.equal(preset.timestamp, '2026-07-29T22:23:34.190Z');
   assert.equal(preset.currentVersion, 17);
   assert.equal(preset.source, 'bundled', 'local fallback must not retain cloud provenance');
-  assert.deepEqual(preset.state, asset.state, 'local fallback must preserve the materialized state exactly');
-  assert.equal(Object.keys(preset.state).length, 1302);
+  assert.deepEqual(
+    preset.state,
+    {
+      ...asset.state,
+      shapeLfoSpeed: DEFAULT_STATE.shapeLfoSpeed,
+      modulationSourceA: {
+        type: 'walk',
+        walk: { relationship: 'free', speed: asset.state.randomWalkSpeed },
+      },
+      modulationSourceB: { type: 'sampleHold' },
+    },
+    'local fallback must preserve the materialized state and fill additive modulation state',
+  );
+  assert.equal(Object.keys(preset.state).length, 1329);
   assert.deepEqual(fetchCalls, ['/presets/manifest.json', '/presets/StringWaves.json']);
 } finally {
   globalThis.fetch = originalFetch;

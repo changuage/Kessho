@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import type { ProductDrumVoice } from '../audio/product/ProductEngineTypes';
+import type { ProductRuntimeModulationRangeMap } from '../audio/product/ProductEngineTypes';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 
 type ProductRuntimeRange = { min: number; max: number };
@@ -10,6 +11,7 @@ type ProductRuntimeModulationRanges = {
   setProductDrumParamSHRange: (key: string, range: ProductRuntimeRange | null) => void;
   setProductDualRanges: (ranges: Partial<Record<string, ProductRuntimeRange>>) => void;
   setProductRuntimeWalkRanges: (ranges: Partial<Record<string, ProductRuntimeRange>>) => void;
+  setProductRuntimeModulationRanges: (ranges: ProductRuntimeModulationRangeMap) => void;
 };
 
 export function useProductRuntimeModulationRanges(
@@ -42,11 +44,17 @@ export function useProductRuntimeModulationRanges(
     productEngine.setRuntimeWalkRanges(ranges);
   }, [productRuntimeActive]);
 
+  const setProductRuntimeModulationRanges = useCallback((ranges: ProductRuntimeModulationRangeMap): void => {
+    if (!productRuntimeActive) return;
+    productEngine.setRuntimeModulationRanges(ranges);
+  }, [productRuntimeActive]);
+
   return {
     setProductRuntimeWalkPositionsCallback,
     setProductDrumMorphRange,
     setProductDrumParamSHRange,
     setProductDualRanges,
     setProductRuntimeWalkRanges,
+    setProductRuntimeModulationRanges,
   };
 }

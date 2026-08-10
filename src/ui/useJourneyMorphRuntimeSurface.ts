@@ -1,6 +1,7 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { isAtEndpoint0, isAtEndpoint1 } from '../audio/morphUtils';
 import type { DualSliderRange } from './DualSlider';
+import type { DualSliderConfig } from './sliderSystem/dualConfigReducer';
 import type { ProductRuntimeParamUpdateOptions } from './useProductRuntimePresetSurface';
 import type { SliderMode, SliderState } from './state';
 import { USER_PREFERENCE_KEYS } from './presetUtils';
@@ -23,6 +24,7 @@ type JourneyMorphResult = {
   state: SliderState;
   dualModes: Record<string, SliderMode>;
   dualRanges: Partial<Record<keyof SliderState, DualSliderRange>>;
+  dualConfigs: Record<string, DualSliderConfig>;
   morphCoFInfo?: NonNullable<JourneyMorphCoFViz> | null;
 };
 
@@ -32,11 +34,12 @@ type UseJourneyMorphRuntimeSurfaceOptions<TPreset extends JourneyMorphPreset> = 
   journeyLastAppliedStateRef: MutableRefObject<SliderState | null>;
   journeyLastDualModesRef: MutableRefObject<Record<string, SliderMode>>;
   journeyLastDualRangesRef: MutableRefObject<Partial<Record<keyof SliderState, DualSliderRange>>>;
+  journeyLastDualConfigsRef: MutableRefObject<Record<string, DualSliderConfig>>;
   journeyLastMorphPositionRef: MutableRefObject<number | null>;
   journeyLastMorphCoFVizRef: MutableRefObject<JourneyMorphCoFViz>;
   setState: Dispatch<SetStateAction<SliderState>>;
-  setSliderModes: Dispatch<SetStateAction<Record<string, SliderMode>>>;
-  setDualSliderRanges: Dispatch<SetStateAction<Partial<Record<keyof SliderState, DualSliderRange>>>>;
+  dualConfigs: Record<string, DualSliderConfig | undefined>;
+  setDualSliderConfigs: (configs: Record<string, DualSliderConfig>) => void;
   setMorphPresetA: Dispatch<SetStateAction<TPreset | null>>;
   setMorphPresetB: Dispatch<SetStateAction<TPreset | null>>;
   setMorphSlotAName: Dispatch<SetStateAction<string>>;
@@ -82,6 +85,7 @@ type JourneyMorphRuntimeSurface = {
   applyJourneyDualSnapshot: (
     nextDualModes: Record<string, SliderMode>,
     nextDualRanges: Partial<Record<keyof SliderState, DualSliderRange>>,
+    nextDualConfigs: Record<string, DualSliderConfig>,
   ) => void;
   commitJourneyRuntimeState: () => void;
   stopJourneyMorphPlayback: (commitRuntimeState?: boolean) => void;
@@ -95,11 +99,12 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
   journeyLastAppliedStateRef,
   journeyLastDualModesRef,
   journeyLastDualRangesRef,
+  journeyLastDualConfigsRef,
   journeyLastMorphPositionRef,
   journeyLastMorphCoFVizRef,
   setState,
-  setSliderModes,
-  setDualSliderRanges,
+  dualConfigs,
+  setDualSliderConfigs,
   setMorphPresetA,
   setMorphPresetB,
   setMorphSlotAName,
@@ -123,43 +128,29 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
   setIsJourneyPlaying,
   onPresetPoolLoad,
 }: UseJourneyMorphRuntimeSurfaceOptions<TPreset>): JourneyMorphRuntimeSurface {
-  const applyJourneyDualSnapshot = useCallback((nextDualModes: Record<string, SliderMode>, nextDualRanges: Partial<Record<keyof SliderState, DualSliderRange>>) => {
-    setSliderModes((prev) => {
-      const next: Record<string, SliderMode> = {};
-      for (const [key, mode] of Object.entries(prev)) {
-        if (!(key in nextDualModes)) {
-          next[key] = mode;
-        }
-      }
-      for (const [key, mode] of Object.entries(nextDualModes)) {
-        if (mode !== 'single') {
-          next[key] = mode;
-        }
-      }
-      return next;
-    });
-    setDualSliderRanges((prev) => {
-      const next: typeof prev = {};
-      for (const [key, range] of Object.entries(prev)) {
-        if (!(key in nextDualModes)) {
-          next[key as keyof SliderState] = range;
-        }
-      }
-      for (const [key, range] of Object.entries(nextDualRanges)) {
-        if (range) {
-          next[key as keyof SliderState] = range;
-        }
-      }
-      return next;
-    });
-  }, [setDualSliderRanges, setSliderModes]);
+  const applyJourneyDualSnapshot = useCallback((
+    nextDualModes: Record<string, SliderMode>,
+    _nextDualRanges: Partial<Record<keyof SliderState, DualSliderRange>>,
+    nextDualConfigs: Record<string, DualSliderConfig>,
+  ) => {
+    const next: Record<string, DualSliderConfig> = {};
+    for (const [key, config] of Object.entries(dualConfigs)) {
+      if (config && !(key in nextDualModes)) next[key] = config;
+    }
+    Object.assign(next, nextDualConfigs);
+    setDualSliderConfigs(next);
+  }, [dualConfigs, setDualSliderConfigs]);
 
   const commitJourneyRuntimeState = useCallback(() => {
     const nextState = journeyLastAppliedStateRef.current;
     if (nextState) {
       setState(nextState);
     }
-    applyJourneyDualSnapshot(journeyLastDualModesRef.current, journeyLastDualRangesRef.current);
+    applyJourneyDualSnapshot(
+      journeyLastDualModesRef.current,
+      journeyLastDualRangesRef.current,
+      journeyLastDualConfigsRef.current,
+    );
     if (journeyLastMorphPositionRef.current !== null) {
       setMorphPosition(journeyLastMorphPositionRef.current);
     }
@@ -169,6 +160,7 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
     journeyLastAppliedStateRef,
     journeyLastDualModesRef,
     journeyLastDualRangesRef,
+    journeyLastDualConfigsRef,
     journeyLastMorphCoFVizRef,
     journeyLastMorphPositionRef,
     setMorphCoFViz,
@@ -222,6 +214,7 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
       journeyLastAppliedStateRef.current = startState;
       journeyLastDualModesRef.current = {};
       journeyLastDualRangesRef.current = {};
+      journeyLastDualConfigsRef.current = {};
       journeyLastMorphPositionRef.current = 0;
       journeyLastMorphCoFVizRef.current = null;
 
@@ -232,6 +225,7 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
       journeyLastAppliedStateRef,
       journeyLastDualModesRef,
       journeyLastDualRangesRef,
+      journeyLastDualConfigsRef,
       journeyLastMorphCoFVizRef,
       journeyLastMorphPositionRef,
       journeyMorphDirectionRef,
@@ -322,6 +316,7 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
           journeyLastAppliedStateRef.current = stateWithPrefs;
           journeyLastDualModesRef.current = morphResult.dualModes;
           journeyLastDualRangesRef.current = morphResult.dualRanges;
+          journeyLastDualConfigsRef.current = morphResult.dualConfigs;
           journeyLastMorphPositionRef.current = newPosition;
           journeyLastMorphCoFVizRef.current = nextMorphCoFViz;
 
@@ -356,6 +351,7 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
       journeyLastAppliedStateRef,
       journeyLastDualModesRef,
       journeyLastDualRangesRef,
+      journeyLastDualConfigsRef,
       journeyLastMorphCoFVizRef,
       journeyLastMorphPositionRef,
       journeyMorphDirectionRef,

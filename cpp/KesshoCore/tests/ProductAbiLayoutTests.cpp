@@ -16,9 +16,9 @@ void require(bool condition, const char* message) {
 } // namespace
 
 int main() {
-  static_assert(sizeof(KesshoProductSourceSnapshot) == 5176, "source snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductSourceSnapshot) == 5248, "source snapshot ABI size changed");
   static_assert(sizeof(KesshoProductSequencerLaneSnapshot) == 100, "sequencer lane snapshot ABI size changed");
-  static_assert(sizeof(KesshoProductSnapshotV2) == 154676, "product snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductSnapshotV2) == 155256, "product snapshot ABI size changed");
   static_assert(sizeof(KesshoProductEvent) == 40, "product event ABI size changed");
   static_assert(sizeof(KesshoSequencerEvent) == 60, "sequencer event ABI size changed");
   static_assert(sizeof(KesshoProductGranularVisualEvent) == 32, "granular visual event ABI size changed");
@@ -28,7 +28,7 @@ int main() {
 
   require(offsetof(KesshoProductSnapshotV2, schema_hash) == 4, "snapshot schema hash offset changed");
   require(offsetof(KesshoProductSnapshotV2, sources) == 2928, "snapshot sources offset changed");
-  require(offsetof(KesshoProductSnapshotV2, sonic_runtime) == 154500, "snapshot sonic runtime offset changed");
+  require(offsetof(KesshoProductSnapshotV2, sonic_runtime) == 155080, "snapshot sonic runtime offset changed");
   require(offsetof(KesshoProductEvent, sample_offset) == 0, "event sample offset changed");
   require(offsetof(KesshoProductEvent, event_kind) == 4, "event kind offset changed");
   require(offsetof(KesshoSequencerEvent, midi_note) == 16, "sequencer event midi offset changed");
@@ -61,6 +61,14 @@ int main() {
   require(
       offsetof(KesshoProductTelemetry, harmony_note_pool_count) == 14428,
       "telemetry harmony note-pool offset changed");
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128u, 0u);
+  require(engine != nullptr, "product engine creation failed");
+  KesshoProductSnapshotV2 snapshot{};
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot) + 4u) ==
+          KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT,
+      "oversized snapshot ABI payload was accepted");
+  kessho_product_destroy(engine);
   require(offsetof(KesshoProductTelemetry, rng_seed) == 928, "telemetry rng seed offset changed");
   require(offsetof(KesshoProductTelemetry, master_input_peak) == 968, "telemetry master input peak offset changed");
   require(

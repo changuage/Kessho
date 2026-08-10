@@ -19,8 +19,12 @@ type ProductRuntimeCoordination = {
 };
 
 export function useProductRuntimeCoordination(options: ProductRuntimeCoordinationOptions): ProductRuntimeCoordination {
-  useProductRuntimeRangeSync(options);
-  useProductRuntimeWalkSync(options);
+  // Both modulation modes must make the same owner decision for a key. Keep a
+  // single callback reference so disabling a source cannot leave one mode
+  // registered while the other is removed.
+  const isRuntimeRangeKeyEligible = options.isRuntimeRangeKeyEligible ?? (() => true);
+  useProductRuntimeRangeSync({ ...options, isRuntimeRangeKeyEligible });
+  useProductRuntimeWalkSync({ ...options, isRuntimeRangeKeyEligible });
   const evolvedOverrides = useProductRuntimeEvolveOverrideCallbacks(options);
   useProductRuntimeValueCleanup(options.playbackIsRunning);
 

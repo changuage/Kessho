@@ -51,6 +51,17 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   ModulationRange modulation_ranges[kMaxModulationRanges]{};
   uint32_t active_modulation_range_count = 0u;
   uint16_t active_modulation_range_indices[kMaxModulationRanges]{};
+  // One render-owned linked state per global modulation source (A/B). Free
+  // ranges keep their independent state in ModulationRange records.
+  float modulation_link_shape_phase[kModulationSourceSlotCount]{};
+  float modulation_link_shape_speed[kModulationSourceSlotCount]{1.0f, 1.0f};
+  bool modulation_link_shape_initialized[kModulationSourceSlotCount]{};
+  float modulation_link_walk_position[kModulationSourceSlotCount]{0.5f, 0.5f};
+  float modulation_link_walk_velocity[kModulationSourceSlotCount]{};
+  float modulation_link_walk_step_accumulator[kModulationSourceSlotCount]{};
+  float modulation_link_walk_speed[kModulationSourceSlotCount]{1.0f, 1.0f};
+  uint32_t modulation_link_walk_counter[kModulationSourceSlotCount]{};
+  bool modulation_link_walk_initialized[kModulationSourceSlotCount]{};
   uint32_t source_modulation_param_masks[kSourceCount]{};
   uint32_t drum_source_modulation_param_masks[DRUM_NUM_VOICE_TYPES]{};
   uint32_t drum_runtime_modulation_masks[DRUM_NUM_VOICE_TYPES][4]{};
@@ -334,7 +345,8 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   float modulationRangeSample(const ModulationRange& range, float fallback, uint32_t sample_seed) const;
   float resolveModulatedValue(uint32_t target_id, uint32_t param_id, float fallback, uint32_t sample_seed);
   void applyModulationRangeValue(const ModulationRange& range);
-  void applyRuntimeWalkValue(const ModulationRange& range);
+  void applyRuntimeWalkValue(ModulationRange& range);
+  void applyRuntimeModulationValue(ModulationRange& range);
   uint32_t sampleHoldTriggerBusForParam(uint32_t param_id) const;
   uint32_t sampleHoldTriggerBusForEvent(const KesshoProductEvent& event) const;
   void resetFxSampleHoldOwners();
@@ -543,6 +555,7 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
       float* out_r,
       uint32_t start,
       uint32_t frames);
+  bool setSoundscapeModuleParamValue(uint32_t index, float value);
   void renderDrumModule(float* out_l, float* out_r, uint32_t start, uint32_t frames);
   void configureSoundscapesModuleFromSource();
   void renderSoundscapesModule(float* out_l, float* out_r, uint32_t start, uint32_t frames);

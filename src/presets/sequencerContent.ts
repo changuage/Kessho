@@ -568,7 +568,7 @@ export function stripSequencerStateFromSoundContent(
   );
 }
 
-const SEQUENCER_SLOT_BINDING_SUFFIX = /^(?:Enabled|Solo|Level|Source|VoiceMask|Target[A-Z][A-Za-z0-9]*)$/;
+const SEQUENCER_SLOT_BINDING_SUFFIX = /^(?:Enabled|Solo|Level|Source|VoiceMask|ResumeQuantization|NoteMin|NoteMax|Target[A-Z][A-Za-z0-9]*)$/;
 
 export function stripPortableSequencerContentFromL4Override(
   data: Record<string, unknown>,

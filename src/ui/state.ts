@@ -65,6 +65,23 @@ import {
   migrateLegacyNatureSlotState,
   type NatureSlotState,
 } from '../audio/natureSlots';
+import {
+  WATER_LAYER_ENABLED_BY_LEVEL,
+  WATER_LAYER_LEVEL_EPSILON,
+  deriveMissingWaterLayerEnabledFlags,
+  type WaterLayerEnabledKey,
+  type WaterLayerLevelKey,
+} from '../audio/waterLayerActivation';
+import {
+  DEFAULT_MODULATION_SOURCE_A,
+  DEFAULT_MODULATION_SOURCE_B,
+  normalizeDualConfigMap,
+  normalizeDualSliderConfig,
+  normalizeModulationSourceConfig,
+  toLegacyDualState,
+  type DualSliderConfigMap,
+  type ModulationSourceConfig,
+} from './sliderSystem/dualConfigReducer';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
 export type GranularQuality = 'eco' | 'balanced' | 'hq';
@@ -203,7 +220,7 @@ export function getStateValueFromSliderNumber<K extends keyof SliderState>(
  * - 'walk': random walk (Brownian motion) between min/max
  * - 'sampleHold': per-trigger random sample between min/max
  */
-export type SliderMode = 'single' | 'walk' | 'sampleHold';
+export type SliderMode = 'single' | 'walk' | 'sampleHold' | 'shape';
 export type PhraseClockSource = 'localPhrase' | 'globalPhrase' | 'localBeat' | 'globalBeat';
 export type BeatClockSource = 'localBeat' | 'globalBeat';
 export type HarmonySyncPolicy = 'free' | 'nextPhrase' | 'restartNow';
@@ -305,6 +322,8 @@ export interface SavedPreset {
   routingMuteGroups?: RoutingMuteGroupsState;
   dualRanges?: Record<string, { min: number; max: number }>;  // Range values for walk/sampleHold sliders
   sliderModes?: Record<string, SliderMode>;  // Mode per parameter key
+  /** Canonical per-parameter modulation behavior; legacy maps remain projections. */
+  dualSliderConfigs?: DualSliderConfigMap<string>;
   drumEvolveConfigs?: SerializedEvolveConfig[];
   synthEvolveConfigs?: SerializedEvolveConfig[];
   drumStepOverrides?: SerializedStepOverrides;
@@ -661,6 +680,8 @@ export interface SliderState extends NatureSlotState {
   drumEuclidClockSource: BeatClockSource;
   drumEuclidJoinPolicy: SequencerJoinPolicy;
   randomWalkMode: RandomWalkMode;
+  modulationSourceA: ModulationSourceConfig;
+  modulationSourceB: ModulationSourceConfig;
   synthVoiceMask: number;     // 0..255 binary mask for which shared pad voice slots are on
   synthOctave: number;        // -2..+2 octave shift
 
@@ -684,16 +705,22 @@ export interface SliderState extends NatureSlotState {
   padMorph: number;             // 0..1 morph position between A and B
 
   // Oscillator A (primary)
-  padOscAWave: 'sine' | 'triangle' | 'sawtooth' | 'square';
-  padOscAOctave: number;        // -2..+2
-  padOscADetune: number;        // -100..+100 cents
-  padOscALevel: number;         // 0..1
+  padOscAWave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'harmonic' | 'complexSine' | 'complexTriangle';
+  padOscAWavePosition: number;       // 0..1
+  padOscAPhaseDistortion: number;     // -1..+1
+  padOscAPitch: number;               // -24..+24 semitones
+  padOscALinearHzOffset: number;      // -50..+50 Hz
+  padOscALevel: number;               // 0..1
 
   // Oscillator B (secondary)
-  padOscBWave: 'sine' | 'triangle' | 'sawtooth' | 'square';
-  padOscBOctave: number;        // -2..+2
-  padOscBDetune: number;        // -100..+100 cents
-  padOscBLevel: number;         // 0..1
+  padOscBWave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'harmonic' | 'complexSine' | 'complexTriangle';
+  padOscBWavePosition: number;
+  padOscBPhaseDistortion: number;
+  padOscBPitch: number;
+  padOscBLinearHzOffset: number;
+  padOscBLevel: number;
+  padDrift: number;                   // 0..1 shared A/B drift
+  padPhaseReset: 0 | 1 | 2;            // Off / On / Random
 
   // Sub Oscillator
   padSubEnabled: boolean;
@@ -717,13 +744,13 @@ export interface SliderState extends NatureSlotState {
   padLfo1Rate: number;          // 0.05..20 Hz
   padLfo1Depth: number;         // 0..1
   padLfo1Wave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'sampleHold' | 'randomSmooth' | 'randomWalk';
-  padLfo1Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel' | 'foldAmount';
+  padLfo1Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel' | 'foldAmount' | 'oscAPosition' | 'oscBPosition' | 'oscAPhaseDistortion' | 'oscBPhaseDistortion' | 'oscBLinearHzOffset' | 'filterResonance';
 
   // LFO 2
   padLfo2Rate: number;          // 0.05..20 Hz
   padLfo2Depth: number;         // 0..1
   padLfo2Wave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'sampleHold' | 'randomSmooth' | 'randomWalk';
-  padLfo2Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel' | 'foldAmount';
+  padLfo2Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel' | 'foldAmount' | 'oscAPosition' | 'oscBPosition' | 'oscAPhaseDistortion' | 'oscBPhaseDistortion' | 'oscBLinearHzOffset' | 'filterResonance';
 
   // Mod Envelope
   padModEnvEnabled: boolean;
@@ -732,7 +759,7 @@ export interface SliderState extends NatureSlotState {
   padModEnvSustain: number;     // 0..1
   padModEnvRelease: number;     // 0.01..16s
   padModEnvDepth: number;       // -1..+1
-  padModEnvDest: 'filterCutoff' | 'pitch' | 'oscBLevel' | 'foldAmount';
+  padModEnvDest: 'filterCutoff' | 'pitch' | 'oscBLevel' | 'foldAmount' | 'oscAPosition' | 'oscBPosition' | 'oscAPhaseDistortion' | 'oscBPhaseDistortion' | 'oscBLinearHzOffset' | 'filterResonance';
 
   // Pad morph auto
   padMorphAuto: boolean;
@@ -771,14 +798,20 @@ export interface SliderState extends NatureSlotState {
   pad2FilterSlope: number;
   pad2FilterKeyTracking: number;
   // Oscillators
-  pad2OscAWave: 'sine' | 'triangle' | 'sawtooth' | 'square';
-  pad2OscAOctave: number;
-  pad2OscADetune: number;
+  pad2OscAWave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'harmonic' | 'complexSine' | 'complexTriangle';
+  pad2OscAWavePosition: number;
+  pad2OscAPhaseDistortion: number;
+  pad2OscAPitch: number;
+  pad2OscALinearHzOffset: number;
   pad2OscALevel: number;
-  pad2OscBWave: 'sine' | 'triangle' | 'sawtooth' | 'square';
-  pad2OscBOctave: number;
-  pad2OscBDetune: number;
+  pad2OscBWave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'harmonic' | 'complexSine' | 'complexTriangle';
+  pad2OscBWavePosition: number;
+  pad2OscBPhaseDistortion: number;
+  pad2OscBPitch: number;
+  pad2OscBLinearHzOffset: number;
   pad2OscBLevel: number;
+  pad2Drift: number;
+  pad2PhaseReset: 0 | 1 | 2;
   // Sub
   pad2SubEnabled: boolean;
   pad2SubOctave: number;
@@ -798,12 +831,12 @@ export interface SliderState extends NatureSlotState {
   pad2Lfo1Rate: number;
   pad2Lfo1Depth: number;
   pad2Lfo1Wave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'sampleHold' | 'randomSmooth' | 'randomWalk';
-  pad2Lfo1Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel' | 'foldAmount';
+  pad2Lfo1Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel' | 'foldAmount' | 'oscAPosition' | 'oscBPosition' | 'oscAPhaseDistortion' | 'oscBPhaseDistortion' | 'oscBLinearHzOffset' | 'filterResonance';
   // LFO 2
   pad2Lfo2Rate: number;
   pad2Lfo2Depth: number;
   pad2Lfo2Wave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'sampleHold' | 'randomSmooth' | 'randomWalk';
-  pad2Lfo2Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel' | 'foldAmount';
+  pad2Lfo2Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel' | 'foldAmount' | 'oscAPosition' | 'oscBPosition' | 'oscAPhaseDistortion' | 'oscBPhaseDistortion' | 'oscBLinearHzOffset' | 'filterResonance';
   // Mod Envelope
   pad2ModEnvEnabled: boolean;
   pad2ModEnvAttack: number;
@@ -811,7 +844,7 @@ export interface SliderState extends NatureSlotState {
   pad2ModEnvSustain: number;
   pad2ModEnvRelease: number;
   pad2ModEnvDepth: number;
-  pad2ModEnvDest: 'filterCutoff' | 'pitch' | 'oscBLevel' | 'foldAmount';
+  pad2ModEnvDest: 'filterCutoff' | 'pitch' | 'oscBLevel' | 'foldAmount' | 'oscAPosition' | 'oscBPosition' | 'oscAPhaseDistortion' | 'oscBPhaseDistortion' | 'oscBLinearHzOffset' | 'filterResonance';
   // Presets / Morph
   pad2PresetA: string;
   pad2PresetB: string;
@@ -1506,13 +1539,20 @@ export interface SliderState extends NatureSlotState {
   waterDelayASend: number;      // 0..1 water send into shared Delay A
   waterDelayBSend: number;      // 0..1 water send into shared Delay B
   waterLevel: number;           // 0..1 output volume
-  // Water layer levels (0 = disabled, >0 = enabled at that level)
+  // Water layer activity is independent from the stored level so toggles can
+  // mute a layer without destroying its level or dual-slider range.
   waterLayerHardDrops: number;  // 0..1
+  waterLayerHardDropsEnabled: boolean;
   waterLayerWaterDrops: number; // 0..1
+  waterLayerWaterDropsEnabled: boolean;
   waterLayerTurbulence: number; // 0..1
+  waterLayerTurbulenceEnabled: boolean;
   waterLayerBubbling: number;   // 0..1
+  waterLayerBubblingEnabled: boolean;
   waterLayerSurf: number;       // 0..1
+  waterLayerSurfEnabled: boolean;
   waterLayerChannels: number;   // 0..1
+  waterLayerChannelsEnabled: boolean;
   // Per-layer event controls for the three discrete water event layers
   waterHardDropBaseFreq: number;  // 100..8000 Hz hard-drop resonant activity
   waterHardDropRate: number;      // 0..2 source-local event-rate multiplier
@@ -1801,6 +1841,7 @@ export interface SliderState extends NatureSlotState {
 
   // Random Walk (for dual sliders)
   randomWalkSpeed: number;    // 0.1..5 - speed of random walk between dual slider values
+  shapeLfoSpeed: number;      // 0.1..5 cycles per effective phrase (legacy/global fallback)
 }
 
 // Sorted keys for stable serialization
@@ -2052,7 +2093,10 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'seedWindow',
   'randomness',
   'randomWalkSpeed',
+  'shapeLfoSpeed',
   'randomWalkMode',
+  'modulationSourceA',
+  'modulationSourceB',
   'rootNote',
   'cofDriftEnabled',
   'cofDriftRate',
@@ -2107,13 +2151,19 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'padPresetB',
   'padMorph',
   'padOscAWave',
-  'padOscAOctave',
-  'padOscADetune',
+  'padOscAWavePosition',
+  'padOscAPhaseDistortion',
+  'padOscAPitch',
+  'padOscALinearHzOffset',
   'padOscALevel',
   'padOscBWave',
-  'padOscBOctave',
-  'padOscBDetune',
+  'padOscBWavePosition',
+  'padOscBPhaseDistortion',
+  'padOscBPitch',
+  'padOscBLinearHzOffset',
   'padOscBLevel',
+  'padDrift',
+  'padPhaseReset',
   'padSubEnabled',
   'padSubOctave',
   'padSubWave',
@@ -2171,13 +2221,19 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'pad2FilterSlope',
   'pad2FilterKeyTracking',
   'pad2OscAWave',
-  'pad2OscAOctave',
-  'pad2OscADetune',
+  'pad2OscAWavePosition',
+  'pad2OscAPhaseDistortion',
+  'pad2OscAPitch',
+  'pad2OscALinearHzOffset',
   'pad2OscALevel',
   'pad2OscBWave',
-  'pad2OscBOctave',
-  'pad2OscBDetune',
+  'pad2OscBWavePosition',
+  'pad2OscBPhaseDistortion',
+  'pad2OscBPitch',
+  'pad2OscBLinearHzOffset',
   'pad2OscBLevel',
+  'pad2Drift',
+  'pad2PhaseReset',
   'pad2SubEnabled',
   'pad2SubOctave',
   'pad2SubWave',
@@ -2796,6 +2852,8 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'degradeWaterSend', 'waterLevel',
   'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
   'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
+  'waterLayerHardDropsEnabled', 'waterLayerWaterDropsEnabled', 'waterLayerBubblingEnabled',
+  'waterLayerChannelsEnabled', 'waterLayerTurbulenceEnabled', 'waterLayerSurfEnabled',
   'waterHardDropBaseFreq', 'waterHardDropRate', 'waterHardDropLPF', 'waterHardDropTone',
   'waterWaterDropBaseFreq', 'waterWaterDropRate', 'waterWaterDropLPF',
   'waterBubblingRate', 'waterBubblingLPF',
@@ -2811,6 +2869,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'insects2Density', 'insects2Temperature', 'insects2Distance', 'insects2Proximity',
   'insects2Antiphony', 'insects2ClickRate', 'insects2Motion', 'insects2Level',
   'randomWalkSpeed',
+  'shapeLfoSpeed',
   // Granular FX
   'granularEnabled',
   'granularFreeze',
@@ -3249,6 +3308,8 @@ export const DEFAULT_STATE: SliderState = {
   drumEuclidClockSource: 'localBeat',
   drumEuclidJoinPolicy: 'bar',
   randomWalkMode: 'localBrownian',
+  modulationSourceA: DEFAULT_MODULATION_SOURCE_A,
+  modulationSourceB: DEFAULT_MODULATION_SOURCE_B,
   synthVoiceMask: 63,  // Voices 1-6 on; voices 7-8 default Off
   synthOctave: 0,      // No octave shift
 
@@ -3270,13 +3331,19 @@ export const DEFAULT_STATE: SliderState = {
   padPresetB: 'init',
   padMorph: 0,
   padOscAWave: 'sawtooth' as const,
-  padOscAOctave: 0,
-  padOscADetune: 0,
+  padOscAWavePosition: 0,
+  padOscAPhaseDistortion: 0,
+  padOscAPitch: 0,
+  padOscALinearHzOffset: 0,
   padOscALevel: 0.6,
   padOscBWave: 'triangle' as const,
-  padOscBOctave: 0,
-  padOscBDetune: 8,
+  padOscBWavePosition: 0,
+  padOscBPhaseDistortion: 0,
+  padOscBPitch: 0.08,
+  padOscBLinearHzOffset: 0,
   padOscBLevel: 0.4,
+  padDrift: 0.42,
+  padPhaseReset: 2 as const,
   padSubEnabled: false,
   padSubOctave: -1,
   padSubWave: 'sine' as const,
@@ -3335,13 +3402,19 @@ export const DEFAULT_STATE: SliderState = {
   pad2FilterSlope: 12,
   pad2FilterKeyTracking: 0,
   pad2OscAWave: 'sawtooth' as const,
-  pad2OscAOctave: 0,
-  pad2OscADetune: 0,
+  pad2OscAWavePosition: 0,
+  pad2OscAPhaseDistortion: 0,
+  pad2OscAPitch: 0,
+  pad2OscALinearHzOffset: 0,
   pad2OscALevel: 0.6,
   pad2OscBWave: 'triangle' as const,
-  pad2OscBOctave: 0,
-  pad2OscBDetune: 8,
+  pad2OscBWavePosition: 0,
+  pad2OscBPhaseDistortion: 0,
+  pad2OscBPitch: 0.08,
+  pad2OscBLinearHzOffset: 0,
   pad2OscBLevel: 0.4,
+  pad2Drift: 0.42,
+  pad2PhaseReset: 2 as const,
   pad2SubEnabled: false,
   pad2SubOctave: -1,
   pad2SubWave: 'sine' as const,
@@ -4048,11 +4121,17 @@ export const DEFAULT_STATE: SliderState = {
   waterDelayBSend: 0,
   waterLevel: 0.8,
   waterLayerHardDrops: 0.08,
+  waterLayerHardDropsEnabled: true,
   waterLayerWaterDrops: 0.82,
+  waterLayerWaterDropsEnabled: true,
   waterLayerTurbulence: 0.56,
+  waterLayerTurbulenceEnabled: true,
   waterLayerBubbling: 0.92,
+  waterLayerBubblingEnabled: true,
   waterLayerSurf: 0.0,
+  waterLayerSurfEnabled: false,
   waterLayerChannels: 0.0,
+  waterLayerChannelsEnabled: false,
   waterHardDropBaseFreq: 2300,
   waterHardDropRate: 1.0,
   waterHardDropLPF: 12000,
@@ -4335,6 +4414,7 @@ export const DEFAULT_STATE: SliderState = {
 
   // Random Walk
   randomWalkSpeed: 1.0,
+  shapeLfoSpeed: 1.0,
 };
 
 /**
@@ -4382,12 +4462,18 @@ const PAD_SOURCE_STATE_KEY_SUFFIX = {
   filterKeyTracking: 'FilterKeyTracking',
   padMorph: 'Morph',
   padMorphSpeed: 'MorphSpeed',
-  padOscAOctave: 'OscAOctave',
-  padOscADetune: 'OscADetune',
+  padOscAWavePosition: 'OscAWavePosition',
+  padOscAPhaseDistortion: 'OscAPhaseDistortion',
+  padOscAPitch: 'OscAPitch',
+  padOscALinearHzOffset: 'OscALinearHzOffset',
   padOscALevel: 'OscALevel',
-  padOscBOctave: 'OscBOctave',
-  padOscBDetune: 'OscBDetune',
+  padOscBWavePosition: 'OscBWavePosition',
+  padOscBPhaseDistortion: 'OscBPhaseDistortion',
+  padOscBPitch: 'OscBPitch',
+  padOscBLinearHzOffset: 'OscBLinearHzOffset',
   padOscBLevel: 'OscBLevel',
+  padDrift: 'Drift',
+  padPhaseReset: 'PhaseReset',
   padSubOctave: 'SubOctave',
   padSubLevel: 'SubLevel',
   padNoiseLevel: 'NoiseLevel',
@@ -4436,12 +4522,18 @@ const PAD_SOURCE_NUMERIC_BASE_QUANTIZATION = {
   filterKeyTracking: { min: 0, max: 1, step: 0.01 },
   padMorph: { min: 0, max: 1, step: 0.01 },
   padMorphSpeed: { min: 1, max: 32, step: 1 },
-  padOscAOctave: { min: -2, max: 2, step: 1 },
-  padOscADetune: { min: -100, max: 100, step: 1 },
+  padOscAWavePosition: { min: 0, max: 1, step: 0.01 },
+  padOscAPhaseDistortion: { min: -1, max: 1, step: 0.01 },
+  padOscAPitch: { min: -24, max: 24, step: 0.01 },
+  padOscALinearHzOffset: { min: -50, max: 50, step: 0.1 },
   padOscALevel: { min: 0, max: 1, step: 0.01 },
-  padOscBOctave: { min: -2, max: 2, step: 1 },
-  padOscBDetune: { min: -100, max: 100, step: 1 },
+  padOscBWavePosition: { min: 0, max: 1, step: 0.01 },
+  padOscBPhaseDistortion: { min: -1, max: 1, step: 0.01 },
+  padOscBPitch: { min: -24, max: 24, step: 0.01 },
+  padOscBLinearHzOffset: { min: -50, max: 50, step: 0.1 },
   padOscBLevel: { min: 0, max: 1, step: 0.01 },
+  padDrift: { min: 0, max: 1, step: 0.01 },
+  padPhaseReset: { min: 0, max: 2, step: 1 },
   padSubOctave: { min: -2, max: -1, step: 1 },
   padSubLevel: { min: 0, max: 1, step: 0.01 },
   padNoiseLevel: { min: 0, max: 1, step: 0.01 },
@@ -5194,6 +5286,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   insects2Level: { min: 0, max: 1, step: 0.01 },
   // Random Walk
   randomWalkSpeed: { min: 0.1, max: 5, step: 0.1 },
+  shapeLfoSpeed: { min: 0.1, max: 5, step: 0.1 },
   // Circle of Fifths Drift
   cofDriftRate: { min: 1, max: 8, step: 1 },
   cofDriftRange: { min: 1, max: 6, step: 1 },
@@ -5553,6 +5646,8 @@ const LEGACY_STATE_KEY_FALLBACKS = Object.entries(LEGACY_STATE_KEY_ALIASES).redu
 );
 
 export function applyLegacyStateKeyAliases(record: Record<string, unknown>): void {
+  deriveMissingWaterLayerEnabledFlags(record);
+
   const legacyMasterSatDrive = record.masterSatDrive;
   if (
     !('dynamicsSaturationEnabled' in record)
@@ -6115,6 +6210,16 @@ export function decodeStateFromUrl(search: string): SliderState | null {
       }
     }
 
+    // Older share URLs only carried numeric Water layer levels. Preserve
+    // their activity by deriving missing flags from those stored levels.
+    for (const [levelKey, enabledKey] of Object.entries(WATER_LAYER_ENABLED_BY_LEVEL) as [WaterLayerLevelKey, WaterLayerEnabledKey][]) {
+      if (params.has(enabledKey)) continue;
+      const level = state[levelKey];
+      state[enabledKey] = typeof level === 'number' && Number.isFinite(level)
+        ? level > WATER_LAYER_LEVEL_EPSILON
+        : Boolean(DEFAULT_STATE[enabledKey]);
+    }
+
     const legacyPadDelayA = params.get('padDelayASend');
     if (legacyPadDelayA !== null) {
       const parsed = parseFloat(legacyPadDelayA);
@@ -6257,14 +6362,37 @@ export function migratePreset(preset: any): SavedPreset {
   const state: Record<string, any> = { ...preset.state };
   const dualRanges: Record<string, { min: number; max: number }> = { ...(preset.dualRanges || {}) };
   const sliderModes: Record<string, SliderMode> = { ...(preset.sliderModes || {}) };
+  const dualSliderConfigs: DualSliderConfigMap<string> = {
+    ...((preset.dualSliderConfigs && typeof preset.dualSliderConfigs === 'object')
+      ? preset.dualSliderConfigs
+      : {}),
+  };
 
   applyLegacyStateKeyAliases(state as Record<string, unknown>);
   applyLegacyStateKeyAliases(dualRanges as Record<string, unknown>);
   applyLegacyStateKeyAliases(sliderModes as Record<string, unknown>);
+  applyLegacyStateKeyAliases(dualSliderConfigs as Record<string, unknown>);
   Object.assign(state, migrateLegacyNatureSlotState(state));
   if (typeof state.insectsMasterEnabled !== 'boolean') {
     state.insectsMasterEnabled = state.insectsEnabled === true || state.insects2Enabled === true;
   }
+  if (typeof state.shapeLfoSpeed !== 'number' || !Number.isFinite(state.shapeLfoSpeed)) {
+    state.shapeLfoSpeed = DEFAULT_STATE.shapeLfoSpeed;
+  }
+  state.modulationSourceA = normalizeModulationSourceConfig(
+    state.modulationSourceA,
+    {
+      type: 'walk',
+      walk: {
+        relationship: 'free',
+        speed: typeof state.randomWalkSpeed === 'number' ? state.randomWalkSpeed : DEFAULT_STATE.randomWalkSpeed,
+      },
+    },
+  );
+  state.modulationSourceB = normalizeModulationSourceConfig(
+    state.modulationSourceB,
+    DEFAULT_MODULATION_SOURCE_B,
+  );
 
   // Migrate *Min/*Max pairs → single value + dualRanges + sliderModes
   for (const { minKey, maxKey, newKey, defaultMode, threshold } of PRESET_MIGRATION_MAP) {
@@ -6530,6 +6658,49 @@ export function migratePreset(preset: any): SavedPreset {
 
   sanitizeGranularStateCompatibility(state);
 
+  // Apply the same storage aliases to canonical configs before projecting the
+  // old maps, so legacy looper/pad/reverb keys cannot strand behavior details.
+  for (const key of Object.keys(dualSliderConfigs)) {
+    const config = dualSliderConfigs[key];
+    if (key.startsWith('looper')) {
+      const newKey = 'granular' + key.slice(6);
+      if (!(newKey in dualSliderConfigs) && config) dualSliderConfigs[newKey] = config;
+      delete dualSliderConfigs[key];
+    }
+  }
+  for (const [legacyKey, nextKeys] of [
+    ['padDelayASend', ['pad1DelayASend', 'pad2DelayASend']],
+    ['padDelayBSend', ['pad1DelayBSend', 'pad2DelayBSend']],
+    ['synthReverbSend', ['pad1ReverbSend', 'pad2ReverbSend']],
+  ] as const) {
+    const config = dualSliderConfigs[legacyKey];
+    if (!config) continue;
+    for (const nextKey of nextKeys) if (!dualSliderConfigs[nextKey]) dualSliderConfigs[nextKey] = config;
+    delete dualSliderConfigs[legacyKey];
+  }
+
+  // Canonical modulation behavior is authoritative for new callers while the
+  // legacy maps remain populated as a lossless projection for older surfaces.
+  // Legacy walk entries intentionally use a free relationship: the historical
+  // globalWalk switch did not provide the shared position/phase guarantees of
+  // a linked bus, so decoding it as Link would change behavior.
+  const canonicalInputs: DualSliderConfigMap<string> = { ...dualSliderConfigs };
+  const behaviorKeys = new Set([...Object.keys(sliderModes), ...Object.keys(dualRanges)]);
+  for (const key of behaviorKeys) {
+    if (canonicalInputs[key]) continue;
+    const mode = sliderModes[key];
+    const range = dualRanges[key];
+    if ((mode !== 'walk' && mode !== 'sampleHold' && mode !== 'shape') || !range) continue;
+    canonicalInputs[key] = normalizeDualSliderConfig({ mode, range: [range.min, range.max] });
+  }
+  const normalizedDualSliderConfigs = normalizeDualConfigMap(canonicalInputs, {
+    walkSpeed: state.randomWalkSpeed,
+    shapeSpeed: state.shapeLfoSpeed,
+  });
+  const projectedLegacy = toLegacyDualState(normalizedDualSliderConfigs);
+  Object.assign(sliderModes, projectedLegacy.sliderModes);
+  Object.assign(dualRanges, projectedLegacy.dualRanges);
+
   return {
     name: preset.name || 'Untitled',
     timestamp: preset.timestamp || new Date().toISOString(),
@@ -6538,6 +6709,7 @@ export function migratePreset(preset: any): SavedPreset {
     routingMuteGroups: normalizeRoutingMuteGroupsState(preset.routingMuteGroups),
     dualRanges: Object.keys(dualRanges).length > 0 ? dualRanges : undefined,
     sliderModes: Object.keys(sliderModes).length > 0 ? sliderModes : undefined,
+    dualSliderConfigs: Object.keys(normalizedDualSliderConfigs).length > 0 ? normalizedDualSliderConfigs : undefined,
     drumEvolveConfigs,
     synthEvolveConfigs,
     drumStepOverrides: preset.drumStepOverrides,

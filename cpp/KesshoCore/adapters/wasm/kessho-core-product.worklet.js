@@ -13,6 +13,7 @@ const TELEMETRY_ROUTING_MUTE_GROUP_OFFSET = 14280;
 const TELEMETRY_AUTO_CYCLE_OFFSET = 14316;
 const TELEMETRY_JOURNEY_SCHEDULE_OFFSET = 14352;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
+const EXPECTED_PRODUCT_ABI_VERSION = 6;
 const EXPECTED_PRODUCT_SCHEMA_HASH = 0xae226b36;
 const PRODUCT_ERROR_ASSET_IN_USE = -16;
 const SEQUENCER_UI_STATE_LANES = 16;
@@ -281,6 +282,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       this.api = {
         malloc: this.resolve('malloc'),
         free: this.resolve('free'),
+        getAbiVersion: this.resolve('kessho_product_get_abi_version'),
         create: this.resolve('kessho_product_create'),
         reset: this.resolve('kessho_product_reset'),
         resetParityFx: this.resolve('kessho_product_reset_parity_fx'),
@@ -302,6 +304,12 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         registerAsset: this.resolve('kessho_product_register_asset_buffer'),
         unregisterAsset: this.resolve('kessho_product_unregister_asset_buffer'),
       };
+      const abiVersion = this.api.getAbiVersion();
+      if (abiVersion !== EXPECTED_PRODUCT_ABI_VERSION) {
+        throw new Error(
+          `Kessho Product Core WASM ABI version mismatch: expected ${EXPECTED_PRODUCT_ABI_VERSION}, got ${abiVersion}`,
+        );
+      }
       const bytesPerFrame = this.frames * Float32Array.BYTES_PER_ELEMENT;
       this.leftPtr = this.api.malloc(bytesPerFrame);
       this.rightPtr = this.api.malloc(bytesPerFrame);

@@ -16,6 +16,7 @@ type UseCloudSharedPresetRuntimeSurfaceOptions = {
   applyDualRangesFromPreset: (
     dualRanges?: Record<string, { min: number; max: number }>,
     presetSliderModes?: Record<string, SliderMode>,
+    presetDualConfigs?: SavedPreset['dualSliderConfigs'],
   ) => void;
   restoreEvolveConfigs: (preset: SavedPreset) => void;
   onRoutingMuteGroupsLoad?: (state: SavedPreset['routingMuteGroups']) => void;
@@ -47,6 +48,7 @@ export function useCloudSharedPresetRuntimeSurface({
       routingMuteGroups: wrappedData?.routingMuteGroups,
       dualRanges: wrappedData?.dualRanges,
       sliderModes: wrappedData?.sliderModes,
+      dualSliderConfigs: wrappedData?.dualSliderConfigs,
       drumEvolveConfigs: wrappedData?.drumEvolveConfigs,
       synthEvolveConfigs: wrappedData?.synthEvolveConfigs,
       drumStepOverrides: wrappedData?.drumStepOverrides,
@@ -77,7 +79,7 @@ export function useCloudSharedPresetRuntimeSurface({
       syncCoreProductAppliedPreset(result.state);
       setState(result.state);
       onRoutingMuteGroupsLoad?.(result.preset.routingMuteGroups);
-      applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
+      applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes, result.preset.dualSliderConfigs);
       restoreEvolveConfigs(result.preset);
       console.log(`Loaded cloud preset: ${metadata.name} by ${metadata.author}`);
     },

@@ -3,6 +3,10 @@ import {
   hashCanonicalContentText,
   stableStringifyContent,
 } from './contentCanonicalization';
+import type {
+  DualSliderShapeConfig,
+  DualSliderWalkConfig,
+} from '../ui/sliderSystem/dualConfigReducer';
 
 export const PRESET_CONTENT_NODE_SCHEMA_VERSION = 1 as const;
 export const PRESET_CONTENT_HASH_PATTERN = /^[0-9a-f]{64}$/;
@@ -45,11 +49,13 @@ export interface PresetContentNodeEnvelope<T extends Record<string, unknown> = R
   content: T;
 }
 
-export type PresetParameterBehaviorMode = 'single' | 'walk' | 'sampleHold';
+export type PresetParameterBehaviorMode = 'single' | 'modA' | 'modB';
 
 export interface PresetParameterBehavior {
   mode: PresetParameterBehaviorMode;
   range?: { min: number; max: number };
+  walk?: DualSliderWalkConfig;
+  shape?: DualSliderShapeConfig;
 }
 
 export interface PresetContentCandidate {
@@ -139,19 +145,19 @@ export function createPresetContentNode<T extends Record<string, unknown>>(
 export function normalizePresetParameterBehavior(
   value: Partial<PresetParameterBehavior> | null | undefined,
 ): PresetParameterBehavior {
-  const mode: PresetParameterBehaviorMode = value?.mode === 'walk' || value?.mode === 'sampleHold'
-    ? value.mode
-    : 'single';
-  if (mode === 'single' || !value?.range) return { mode };
+  const rawMode = value?.mode as string | undefined;
+  const mode: PresetParameterBehaviorMode = rawMode === 'modA' || rawMode === 'walk' || rawMode === 'shape'
+    ? 'modA'
+    : rawMode === 'modB' || rawMode === 'sampleHold' ? 'modB' : 'single';
+  if (mode === 'single') return { mode };
+  if (!value?.range) return { mode };
   const rawMin = Number.isFinite(value.range.min) ? value.range.min : 0;
   const rawMax = Number.isFinite(value.range.max) ? value.range.max : rawMin;
-  return {
+  const normalized: PresetParameterBehavior = {
     mode,
-    range: {
-      min: Math.min(rawMin, rawMax),
-      max: Math.max(rawMin, rawMax),
-    },
+    range: { min: Math.min(rawMin, rawMax), max: Math.max(rawMin, rawMax) },
   };
+  return normalized;
 }
 
 export function normalizePresetContentComponentRefs(

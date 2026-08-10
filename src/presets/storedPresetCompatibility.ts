@@ -1,5 +1,6 @@
 import type { PresetLevel } from './types';
 import { applyLegacyStateKeyAliases } from '../ui/state';
+import { convertLegacyPadPitchFields } from '../ui/synth/padPitch';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -90,6 +91,14 @@ function canonicalizeLegacyPadCutoffs(version: JsonRecord, data: JsonRecord): vo
       }
       version.dualRanges = dualRanges;
       version.sliderModes = sliderModes;
+      const dualSliderConfigs = isRecord(version.dualSliderConfigs) ? { ...version.dualSliderConfigs } : {};
+      if (!isRecord(dualSliderConfigs[cutoffKey])) {
+        dualSliderConfigs[cutoffKey] = {
+          source: 'a',
+          range: [Math.min(lower, upper), Math.max(lower, upper)],
+        };
+      }
+      version.dualSliderConfigs = dualSliderConfigs;
     }
 
     if (isRecord(version.dualRanges)) {
@@ -162,12 +171,27 @@ function canonicalizeStoredVersion(
       applyLegacyStateKeyAliases(sliderModes);
       version.sliderModes = sliderModes;
     }
+    if (isRecord(version.dualSliderConfigs)) {
+      const dualSliderConfigs = { ...version.dualSliderConfigs };
+      applyLegacyStateKeyAliases(dualSliderConfigs);
+      for (const [key, rawConfig] of Object.entries(dualSliderConfigs)) {
+        if (!isRecord(rawConfig) || !Array.isArray(rawConfig.range)) continue;
+        dualSliderConfigs[key] = {
+          source: rawConfig.source === 'b' || rawConfig.mode === 'sampleHold' ? 'b' : 'a',
+          range: rawConfig.range,
+        };
+      }
+      version.dualSliderConfigs = dualSliderConfigs;
+    }
   }
   if (type === 'state') {
     canonicalizeLegacyOscillatorBrightness(data);
     canonicalizeLegacyGranularMix(data);
     for (const key of RETIRED_INERT_STATE_KEYS) delete data[key];
   }
+  // Pad Octave/Detune is accepted only at this decode boundary. The current
+  // state and preset layers use one continuous Pitch per oscillator.
+  convertLegacyPadPitchFields(data);
   discardInactiveLegacySpectralFreeze(data);
   delete data.spectralFreezeActive;
   delete data.spectralFreezeCaptureSerial;

@@ -8,9 +8,13 @@ import {
   KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_START,
   KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_STRIDE,
   KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_SLOT_COUNT,
+  KESSHO_PRODUCT_SOUNDSCAPE_WATER_LAYER_COUNT,
+  KESSHO_PRODUCT_SOUNDSCAPE_WATER_LAYER_MASK_PARAM_OFFSET,
+  KESSHO_PRODUCT_SOUNDSCAPE_WATER_LAYER_PARAM_START,
 } from './generated/kesshoProductSchema';
 import { getUtcBucket, xmur3 } from './rng';
 import { morphWaterPresets, type WaterPresetState } from './waterPresets';
+import { WATER_LAYER_MASK_KEYS } from './waterLayerActivation';
 import { NATURE_SLOT_KEYS } from './natureSlots';
 import { natureSampleDefinition } from './natureSampleCatalog';
 
@@ -36,6 +40,14 @@ export const SOUNDSCAPE_TEXTURE_PARAM_START = KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_
 export const SOUNDSCAPE_TEXTURE_PARAM_STRIDE = KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_STRIDE;
 export const SOUNDSCAPE_TEXTURE_SLOT_COUNT = KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_SLOT_COUNT;
 export const SOUNDSCAPE_TEXTURE_PARAM_COUNT = KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT;
+export const SOUNDSCAPE_WATER_LAYER_PARAM_START = KESSHO_PRODUCT_SOUNDSCAPE_WATER_LAYER_PARAM_START;
+export const SOUNDSCAPE_WATER_LAYER_COUNT = KESSHO_PRODUCT_SOUNDSCAPE_WATER_LAYER_COUNT;
+export const SOUNDSCAPE_WATER_LAYER_MASK_PARAM =
+  KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT + KESSHO_PRODUCT_SOUNDSCAPE_WATER_LAYER_MASK_PARAM_OFFSET;
+
+export const SOUNDSCAPE_WATER_LAYER_KEYS = WATER_LAYER_MASK_KEYS.map(
+  ([levelKey, enabledKey]) => [enabledKey, levelKey] as const,
+);
 
 const NATURE_FILTER_TYPE_VALUE = { lowpass: 0, bandpass: 1, highpass: 2, notch: 3 } as const;
 
@@ -47,7 +59,7 @@ const SOUNDSCAPES_PARAM_INDEX = {
   waterPreset: 1,
   waterParams: 2,
   waterLayerDetail: 16,
-  waterLayerMix: 23,
+  waterLayerMix: SOUNDSCAPE_WATER_LAYER_PARAM_START,
   waterLayerDensity: 29,
   waterDensityLoop: 35,
   waterSurf: 42,
@@ -157,13 +169,26 @@ function earthLayerActive(
   return booleanFromState(state, enabledKey, false) && numberFromState(state, levelKey, fallbackLevel) > 0.0001;
 }
 
+function waterLayerMaskFromState(
+  state: Record<string, unknown> | undefined,
+  resolvedWater?: WaterPresetState,
+): number {
+  let mask = 0;
+  for (let index = 0; index < SOUNDSCAPE_WATER_LAYER_KEYS.length; index += 1) {
+    const [enabledKey, levelKey] = SOUNDSCAPE_WATER_LAYER_KEYS[index]!;
+    const enabled = typeof state?.[enabledKey] === 'boolean'
+      ? state[enabledKey] as boolean
+      : finiteNumber(state?.[levelKey], finiteNumber(resolvedWater?.[levelKey], 0)) > 0.0001;
+    if (enabled) mask |= 1 << index;
+  }
+  return mask;
+}
+
 export function exactSoundscapesModuleParamsFromState(state: Record<string, unknown> | undefined): number[] {
   const params = Array.from({ length: SOUNDSCAPES_PRODUCT_PARAM_COUNT }, () => 0);
   const water = resolveWaterState(state);
-  const waterActive = numberFromState(state, 'waterLevel', 0.8) > 0.0001 && [
-    water.waterLayerHardDrops, water.waterLayerWaterDrops, water.waterLayerTurbulence,
-    water.waterLayerBubbling, water.waterLayerSurf, water.waterLayerChannels,
-  ].some((value) => finiteNumber(value, 0) > 0.0001);
+  const waterLayerMask = waterLayerMaskFromState(state, water);
+  const waterActive = numberFromState(state, 'waterLevel', 0.8) > 0.0001 && waterLayerMask !== 0;
   const insectsMasterEnabled = booleanFromState(state, 'insectsMasterEnabled',
     booleanFromState(state, 'insectsEnabled', false) || booleanFromState(state, 'insects2Enabled', false));
   const insectsActive = earthLayerActive(state, 'insectsEnabled', 'insectsLevel', 0.7);
@@ -218,6 +243,7 @@ export function exactSoundscapesModuleParamsFromState(state: Record<string, unkn
   ].forEach((value, index) => {
     params[SOUNDSCAPES_PARAM_INDEX.waterLayerMix + index] = finiteNumber(value, 0);
   });
+  params[SOUNDSCAPE_WATER_LAYER_MASK_PARAM] = waterLayerMask;
   [0.5, 0.5, 0.5, 0.5, 1, 1].forEach((value, index) => {
     params[SOUNDSCAPES_PARAM_INDEX.waterLayerDensity + index] = value;
   });

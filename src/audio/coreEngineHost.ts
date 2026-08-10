@@ -105,6 +105,11 @@ import { clampSequencerRatchet } from './seqEvolveCore';
 import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
 import { DEFAULT_REVERB_PRE_COMP, getStateValueFromSliderNumber, quantize, type SliderState } from '../ui/state';
 import { getChangedRuntimeWalkParameterKeys } from './reference/webTs/runtimeWalkParameterDiff';
+import {
+  KESSHO_PRODUCT_PAD_PARAM_COUNT,
+  KESSHO_PRODUCT_PAD_PARAM_SPECS,
+} from './generated/kesshoProductSchema';
+import { generatedProductParamIndex } from './CoreProductGeneratedParamMetadata';
 
 const DYNAMICS_DRIFT_DISABLED_CONFIG_KEY = 'dynamics-drift:disabled-v1';
 const HOST_PIANO_SAMPLE_CACHE_LIMIT_PER_VARIANT = 16;
@@ -589,8 +594,13 @@ function createPadPostChainConfig(sliderState: SliderState): Pick<
   };
 }
 
-const PAD_MODULE_PARAM_COUNT = 106;
-const PAD_PARAMS_PER_PAD = 52;
+const PAD_PARAMS_PER_PAD = KESSHO_PRODUCT_PAD_PARAM_COUNT;
+const PAD_MODULE_PARAM_COUNT = PAD_PARAMS_PER_PAD * 2 + 2;
+const PAD_MODULE_REVERB_SEND_INDEX = PAD_PARAMS_PER_PAD * 2;
+const PAD_MODULE_OUTPUT_INDEX = PAD_MODULE_REVERB_SEND_INDEX + 1;
+if (PAD_MODULE_OUTPUT_INDEX >= PAD_MODULE_PARAM_COUNT) {
+  throw new Error('Pad module parameter layout must reserve reverb-send and output slots after both 58-value pads');
+}
 const PAD_VOICE_COUNT = 8;
 const PAD_VOICE_MASK_ALL = (1 << PAD_VOICE_COUNT) - 1;
 const PAD_VOICE_DEFAULT_MASK = 1 << (PAD_VOICE_COUNT - 1);
@@ -989,146 +999,78 @@ const DRUM_PARAM_SPECS = [
   ['drumMembraneDistance', DRUM_PARAM_INDEX.membrane + 11, null, 0.5],
 ] as const;
 
+const generatedPadParamIndex = (key: string): number =>
+  generatedProductParamIndex(KESSHO_PRODUCT_PAD_PARAM_SPECS, key);
+
 const PAD_PARAM_INDEX = {
-  oscAWave: 0,
-  oscAOctave: 1,
-  oscADetune: 2,
-  oscALevel: 3,
-  oscBWave: 4,
-  oscBOctave: 5,
-  oscBDetune: 6,
-  oscBLevel: 7,
-  oscMix: 8,
-  subEnabled: 9,
-  subOctave: 10,
-  subWave: 11,
-  subLevel: 12,
-  noiseType: 13,
-  noiseLevel: 14,
-  hardness: 15,
-  warmth: 16,
-  presence: 17,
-  foldAmount: 18,
-  foldMode: 19,
-  filterType: 20,
-  filterCutoff: 21,
-  filterResonance: 22,
-  filterQ: 23,
-  filterSlope: 24,
-  filterKeyTracking: 25,
-  filterBEnabled: 26,
-  filterBType: 27,
-  filterBCutoff: 28,
-  filterBResonance: 29,
-  filterBQ: 30,
-  filterRouting: 31,
-  attack: 32,
-  decay: 33,
-  sustain: 34,
-  release: 35,
-  lfo1Rate: 36,
-  lfo1Depth: 37,
-  lfo1Wave: 38,
-  lfo1Dest: 39,
-  lfo2Rate: 40,
-  lfo2Depth: 41,
-  lfo2Wave: 42,
-  lfo2Dest: 43,
-  modEnvEnabled: 44,
-  modEnvAttack: 45,
-  modEnvDecay: 46,
-  modEnvSustain: 47,
-  modEnvRelease: 48,
-  modEnvDepth: 49,
-  modEnvDest: 50,
-  level: 51,
+  oscAWave: generatedPadParamIndex('padOscAWave'),
+  oscAPitch: generatedPadParamIndex('padOscAPitch'),
+  oscAPosition: generatedPadParamIndex('padOscAWavePosition'),
+  oscALevel: generatedPadParamIndex('padOscALevel'),
+  oscBWave: generatedPadParamIndex('padOscBWave'),
+  oscBPitch: generatedPadParamIndex('padOscBPitch'),
+  oscBPosition: generatedPadParamIndex('padOscBWavePosition'),
+  oscBLevel: generatedPadParamIndex('padOscBLevel'),
+  oscMix: generatedPadParamIndex('padOscMix'),
+  subEnabled: generatedPadParamIndex('padSubEnabled'),
+  subOctave: generatedPadParamIndex('padSubOctave'),
+  subWave: generatedPadParamIndex('padSubWave'),
+  subLevel: generatedPadParamIndex('padSubLevel'),
+  noiseType: generatedPadParamIndex('padNoiseType'),
+  noiseLevel: generatedPadParamIndex('padNoiseLevel'),
+  hardness: generatedPadParamIndex('hardness'),
+  warmth: generatedPadParamIndex('warmth'),
+  presence: generatedPadParamIndex('presence'),
+  foldAmount: generatedPadParamIndex('padFoldAmount'),
+  foldMode: generatedPadParamIndex('padFoldMode'),
+  filterType: generatedPadParamIndex('filterType'),
+  filterCutoff: generatedPadParamIndex('filterCutoff'),
+  filterResonance: generatedPadParamIndex('filterResonance'),
+  filterQ: generatedPadParamIndex('filterQ'),
+  filterSlope: generatedPadParamIndex('filterSlope'),
+  filterKeyTracking: generatedPadParamIndex('filterKeyTracking'),
+  filterBEnabled: generatedPadParamIndex('padFilterBEnabled'),
+  filterBType: generatedPadParamIndex('padFilterBType'),
+  filterBCutoff: generatedPadParamIndex('padFilterBCutoff'),
+  filterBResonance: generatedPadParamIndex('padFilterBResonance'),
+  filterBQ: generatedPadParamIndex('padFilterBQ'),
+  filterRouting: generatedPadParamIndex('padFilterRouting'),
+  attack: generatedPadParamIndex('synthAttack'),
+  decay: generatedPadParamIndex('synthDecay'),
+  sustain: generatedPadParamIndex('synthSustain'),
+  release: generatedPadParamIndex('synthRelease'),
+  lfo1Rate: generatedPadParamIndex('padLfo1Rate'),
+  lfo1Depth: generatedPadParamIndex('padLfo1Depth'),
+  lfo1Wave: generatedPadParamIndex('padLfo1Wave'),
+  lfo1Dest: generatedPadParamIndex('padLfo1Dest'),
+  lfo2Rate: generatedPadParamIndex('padLfo2Rate'),
+  lfo2Depth: generatedPadParamIndex('padLfo2Depth'),
+  lfo2Wave: generatedPadParamIndex('padLfo2Wave'),
+  lfo2Dest: generatedPadParamIndex('padLfo2Dest'),
+  modEnvEnabled: generatedPadParamIndex('padModEnvEnabled'),
+  modEnvAttack: generatedPadParamIndex('padModEnvAttack'),
+  modEnvDecay: generatedPadParamIndex('padModEnvDecay'),
+  modEnvSustain: generatedPadParamIndex('padModEnvSustain'),
+  modEnvRelease: generatedPadParamIndex('padModEnvRelease'),
+  modEnvDepth: generatedPadParamIndex('padModEnvDepth'),
+  modEnvDest: generatedPadParamIndex('padModEnvDest'),
+  oscAPhaseDistortion: generatedPadParamIndex('padOscAPhaseDistortion'),
+  oscBPhaseDistortion: generatedPadParamIndex('padOscBPhaseDistortion'),
+  oscAHzOffset: generatedPadParamIndex('padOscALinearHzOffset'),
+  oscBHzOffset: generatedPadParamIndex('padOscBLinearHzOffset'),
+  drift: generatedPadParamIndex('padDrift'),
+  phaseReset: generatedPadParamIndex('padPhaseReset'),
+  level: generatedPadParamIndex('padOutputTrim'),
 } as const;
 
-const PAD_WAVE_VALUES: Record<string, number> = { sine: 0, triangle: 1, sawtooth: 2, square: 3 };
-const PAD_MAIN_FILTER_VALUES: Record<string, number> = { lowpass: 0, bandpass: 1, highpass: 2, notch: 3, ladderLp: 4 };
-const PAD_FILTER_VALUES: Record<string, number> = { lowpass: 0, bandpass: 1, highpass: 2, notch: 3 };
-const PAD_LFO_WAVE_VALUES: Record<string, number> = {
-  sine: 0,
-  triangle: 1,
-  sawtooth: 2,
-  square: 3,
-  sampleHold: 4,
-  randomSmooth: 5,
-  randomWalk: 6,
-};
-const PAD_DEST_VALUES: Record<string, number> = {
-  none: 0,
-  filterCutoff: 1,
-  filterB: 2,
-  filterBCutoff: 2,
-  amplitude: 3,
-  pitch: 4,
-  oscBLevel: 5,
-  foldAmount: 6,
-};
-const PAD_ROUTE_VALUES: Record<string, number> = { series: 0, aOnly: 1, bOnly: 2 };
-const PAD_NOISE_VALUES: Record<string, number> = { white: 0, pink: 1 };
-
-const PAD_PARAM_SPECS = [
-  ['padOscAWave', PAD_PARAM_INDEX.oscAWave, PAD_WAVE_VALUES, 2],
-  ['padOscAOctave', PAD_PARAM_INDEX.oscAOctave, null, 0],
-  ['padOscADetune', PAD_PARAM_INDEX.oscADetune, null, 0],
-  ['padOscALevel', PAD_PARAM_INDEX.oscALevel, null, 0.6],
-  ['padOscBWave', PAD_PARAM_INDEX.oscBWave, PAD_WAVE_VALUES, 1],
-  ['padOscBOctave', PAD_PARAM_INDEX.oscBOctave, null, 0],
-  ['padOscBDetune', PAD_PARAM_INDEX.oscBDetune, null, 8],
-  ['padOscBLevel', PAD_PARAM_INDEX.oscBLevel, null, 0.4],
-  ['padOscMix', PAD_PARAM_INDEX.oscMix, null, 0.5],
-  ['padSubEnabled', PAD_PARAM_INDEX.subEnabled, null, 0],
-  ['padSubOctave', PAD_PARAM_INDEX.subOctave, null, -1],
-  ['padSubWave', PAD_PARAM_INDEX.subWave, PAD_WAVE_VALUES, 0],
-  ['padSubLevel', PAD_PARAM_INDEX.subLevel, null, 0.3],
-  ['padNoiseType', PAD_PARAM_INDEX.noiseType, PAD_NOISE_VALUES, 0],
-  ['padNoiseLevel', PAD_PARAM_INDEX.noiseLevel, null, 0.16],
-  ['hardness', PAD_PARAM_INDEX.hardness, null, 0.45],
-  ['warmth', PAD_PARAM_INDEX.warmth, null, 0.4],
-  ['presence', PAD_PARAM_INDEX.presence, null, 0.4],
-  ['padFoldAmount', PAD_PARAM_INDEX.foldAmount, null, 0],
-  ['padFoldMode', PAD_PARAM_INDEX.foldMode, null, 0],
-  ['filterType', PAD_PARAM_INDEX.filterType, PAD_MAIN_FILTER_VALUES, 0],
-  ['filterCutoff', PAD_PARAM_INDEX.filterCutoff, null, 1700],
-  ['filterResonance', PAD_PARAM_INDEX.filterResonance, null, 0.2],
-  ['filterQ', PAD_PARAM_INDEX.filterQ, null, 1],
-  ['filterSlope', PAD_PARAM_INDEX.filterSlope, null, 12],
-  ['filterKeyTracking', PAD_PARAM_INDEX.filterKeyTracking, null, 0],
-  ['padFilterBEnabled', PAD_PARAM_INDEX.filterBEnabled, null, 0],
-  ['padFilterBType', PAD_PARAM_INDEX.filterBType, PAD_FILTER_VALUES, 2],
-  ['padFilterBCutoff', PAD_PARAM_INDEX.filterBCutoff, null, 200],
-  ['padFilterBResonance', PAD_PARAM_INDEX.filterBResonance, null, 0.2],
-  ['padFilterBQ', PAD_PARAM_INDEX.filterBQ, null, 1],
-  ['padFilterRouting', PAD_PARAM_INDEX.filterRouting, PAD_ROUTE_VALUES, 0],
-  ['synthAttack', PAD_PARAM_INDEX.attack, null, 4],
-  ['synthDecay', PAD_PARAM_INDEX.decay, null, 1],
-  ['synthSustain', PAD_PARAM_INDEX.sustain, null, 0.8],
-  ['synthRelease', PAD_PARAM_INDEX.release, null, 10],
-  ['padLfo1Rate', PAD_PARAM_INDEX.lfo1Rate, null, 0.09],
-  ['padLfo1Depth', PAD_PARAM_INDEX.lfo1Depth, null, 0.6],
-  ['padLfo1Wave', PAD_PARAM_INDEX.lfo1Wave, PAD_LFO_WAVE_VALUES, 6],
-  ['padLfo1Dest', PAD_PARAM_INDEX.lfo1Dest, PAD_DEST_VALUES, 1],
-  ['padLfo2Rate', PAD_PARAM_INDEX.lfo2Rate, null, 0.5],
-  ['padLfo2Depth', PAD_PARAM_INDEX.lfo2Depth, null, 0],
-  ['padLfo2Wave', PAD_PARAM_INDEX.lfo2Wave, PAD_LFO_WAVE_VALUES, 0],
-  ['padLfo2Dest', PAD_PARAM_INDEX.lfo2Dest, PAD_DEST_VALUES, 0],
-  ['padModEnvEnabled', PAD_PARAM_INDEX.modEnvEnabled, null, 0],
-  ['padModEnvAttack', PAD_PARAM_INDEX.modEnvAttack, null, 0.5],
-  ['padModEnvDecay', PAD_PARAM_INDEX.modEnvDecay, null, 2],
-  ['padModEnvSustain', PAD_PARAM_INDEX.modEnvSustain, null, 0],
-  ['padModEnvRelease', PAD_PARAM_INDEX.modEnvRelease, null, 4],
-  ['padModEnvDepth', PAD_PARAM_INDEX.modEnvDepth, null, 0.5],
-  ['padModEnvDest', PAD_PARAM_INDEX.modEnvDest, PAD_DEST_VALUES, 1],
-] as const;
+const PAD_PARAM_SPECS = KESSHO_PRODUCT_PAD_PARAM_SPECS;
 
 function booleanParam(value: unknown, fallback = 0): number {
   if (typeof value === 'boolean') return value ? 1 : 0;
   return finiteNumber(value, fallback);
 }
 
-function enumParam(value: unknown, map: Record<string, number> | null, fallback: number): number {
+function enumParam(value: unknown, map: Readonly<Record<string, number>> | null, fallback: number): number {
   if (typeof value === 'string' && map && value in map) return map[value] ?? fallback;
   if (typeof value === 'boolean') return value ? 1 : 0;
   return finiteNumber(value, fallback);
@@ -1421,10 +1363,10 @@ function writePadParamsForPad(
   const morphed = morphedPadParams(sliderState, padIndex);
   const base = padIndex * PAD_PARAMS_PER_PAD;
 
-  for (const [baseKey, index, enumMap, fallback] of PAD_PARAM_SPECS) {
-    const stateKey = padStateKey(baseKey, padIndex);
-    const raw = state[stateKey] ?? morphed[baseKey] ?? fallback;
-    params[base + index] = enumParam(raw, enumMap, fallback);
+  for (const spec of PAD_PARAM_SPECS) {
+    const stateKey = padIndex === 0 ? spec.key : spec.pad2Key;
+    const raw = state[stateKey] ?? morphed[spec.key] ?? spec.fallback;
+    params[base + spec.index] = enumParam(raw, spec.enumMap, spec.fallback);
   }
 
   params[base + PAD_PARAM_INDEX.subEnabled] = booleanParam(state[padStateKey('padSubEnabled', padIndex)] ?? morphed.padSubEnabled);
@@ -1466,8 +1408,8 @@ function createPadParamsOverride(
   writePadParamsForPad(params, triggerState, 0, pad1Level);
   writePadParamsForPad(params, triggerState, 1, pad2Level);
   const state = triggerState as unknown as Record<string, unknown>;
-  params[PAD_PARAMS_PER_PAD * 2] = boundedNumber(state.pad1ReverbSend ?? state.synthReverbSend, 0.1, 0, 1);
-  params[PAD_PARAMS_PER_PAD * 2 + 1] = 0;
+  params[PAD_MODULE_REVERB_SEND_INDEX] = boundedNumber(state.pad1ReverbSend ?? state.synthReverbSend, 0.1, 0, 1);
+  params[PAD_MODULE_OUTPUT_INDEX] = 0;
   return params;
 }
 
@@ -2106,8 +2048,8 @@ function createPadPreviewSource(
   const params = Array.from({ length: PAD_MODULE_PARAM_COUNT }, () => 0);
   writePadParamsForPad(params, sliderState, 0, pad1Level);
   writePadParamsForPad(params, sliderState, 1, pad2Level);
-  params[PAD_PARAMS_PER_PAD * 2] = boundedNumber(state.pad1ReverbSend ?? state.synthReverbSend, 0.1, 0, 1);
-  params[PAD_PARAMS_PER_PAD * 2 + 1] = 0;
+  params[PAD_MODULE_REVERB_SEND_INDEX] = boundedNumber(state.pad1ReverbSend ?? state.synthReverbSend, 0.1, 0, 1);
+  params[PAD_MODULE_OUTPUT_INDEX] = 0;
   const postChain = createPadPostChainConfig(sliderState);
 
   const padEuclidNotes = rawPadEuclidNotes.map((note) => ({
@@ -2236,8 +2178,8 @@ function createManualPadSourceConfig(
   const params = Array.from({ length: PAD_MODULE_PARAM_COUNT }, () => 0);
   writePadParamsForPad(params, routedState, 0, pad1Level);
   writePadParamsForPad(params, routedState, 1, pad2Level);
-  params[PAD_PARAMS_PER_PAD * 2] = boundedNumber(state.pad1ReverbSend ?? state.synthReverbSend, 0.1, 0, 1);
-  params[PAD_PARAMS_PER_PAD * 2 + 1] = 0;
+  params[PAD_MODULE_REVERB_SEND_INDEX] = boundedNumber(state.pad1ReverbSend ?? state.synthReverbSend, 0.1, 0, 1);
+  params[PAD_MODULE_OUTPUT_INDEX] = 0;
   const postChain = createPadPostChainConfig(routedState);
 
   const safeMidi = boundedInteger(note.midi, 60, 24, 108);
@@ -2297,8 +2239,8 @@ function createManualPadBatchSourceConfig(
   const params = Array.from({ length: PAD_MODULE_PARAM_COUNT }, () => 0);
   writePadParamsForPad(params, routedState, 0, pad1Level);
   writePadParamsForPad(params, routedState, 1, pad2Level);
-  params[PAD_PARAMS_PER_PAD * 2] = boundedNumber(state.pad1ReverbSend ?? state.synthReverbSend, 0.1, 0, 1);
-  params[PAD_PARAMS_PER_PAD * 2 + 1] = 0;
+  params[PAD_MODULE_REVERB_SEND_INDEX] = boundedNumber(state.pad1ReverbSend ?? state.synthReverbSend, 0.1, 0, 1);
+  params[PAD_MODULE_OUTPUT_INDEX] = 0;
   const postChain = createPadPostChainConfig(routedState);
   const triggerNotes = notes.map((note, index) => {
     const voiceIndex = clamp(voiceIndices[index] ?? 0, 0, PAD_VOICE_COUNT - 1);

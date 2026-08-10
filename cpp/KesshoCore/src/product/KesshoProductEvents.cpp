@@ -1931,8 +1931,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
   if (event.target_id >= kSoundscapeModuleParamTargetBase &&
       event.target_id < kSoundscapeModuleParamTargetBase + kSoundscapeProductModuleParamCount) {
     const uint32_t index = event.target_id - kSoundscapeModuleParamTargetBase;
-    soundscape_source.soundscape_module_params[index] = event.value;
-    soundscape_source.soundscape_module_param_count = std::max(soundscape_source.soundscape_module_param_count, index + 1u);
+    setSoundscapeModuleParamValue(index, event.value);
     configureSoundscapesModuleFromSource();
     telemetry.last_error_code = KESSHO_PRODUCT_OK;
     return;

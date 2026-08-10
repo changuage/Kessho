@@ -258,8 +258,8 @@ function assertCoreHostFxConfigContract(source) {
   }
 
   for (const token of [
-    'getCoreHarmonyPreviewTickCount',
-    'advanceCorePreviewHarmonyState',
+    'createSynthEuclidPreview(',
+    'updateHarmonyState(',
     'getCoreHarmonyTickSeconds(sliderState)',
     'getCoreHarmonyInitialChordLeadSeconds',
     'createLeadRandomPreview',
@@ -1919,7 +1919,10 @@ for (const token of [
   'pad2StereoWidth',
   'renderMode: 0',
   'smokeAmplitude: 0',
-  'createPadPreviewChords(sliderState, 1)',
+  // Pad chords now come from the shared Synth Euclid preview. Keep this check
+  // aligned with createPadPreviewSource rather than the removed legacy chord
+  // generator.
+  'const chords = padEuclidNotes.length > 0',
   'const PAD_VOICE_COUNT = 8;',
   "route: source === 'pad2' ? voiceIndex + PAD_VOICE_COUNT : voiceIndex",
   "source: 'lead-fm'",
@@ -2007,8 +2010,8 @@ for (const token of [
 
 for (const token of [
   'onUpdateEngine?.(newState, {',
-  'presetId: migrated.name',
-  'presetName: migrated.name',
+  'presetId: currentPreset.name',
+  'presetName: currentPreset.name',
 ]) {
   assert(presetUtils.includes(token), `preset loader is missing ${token}`);
 }

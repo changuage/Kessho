@@ -27,12 +27,12 @@ namespace {
 constexpr int kLeadFmParamCount = 112;
 constexpr int kLeadFmParamRelease = 46;
 constexpr int kLeadFmParamOutputSelect = 79;
-constexpr int kPadParamCount = 106;
+constexpr int kPadParamCount = 118;
 constexpr int kPadParamAttack = 32;
 constexpr int kPadParamRelease = 35;
-constexpr int kPadParamLevel = 51;
-constexpr int kPadParamReverbSend = 104;
-constexpr int kPadParamOutputSelect = 105;
+constexpr int kPadParamLevel = 57;
+constexpr int kPadParamReverbSend = 116;
+constexpr int kPadParamOutputSelect = 117;
 constexpr int kDrumParamCount = 245;
 constexpr int kDrumParamReverbSend = 123;
 constexpr int kDrumParamOutputSelect = 125;
@@ -1643,8 +1643,8 @@ int main() {
   pad_params[kPadParamLevel] = 0.55f;
   pad_params[kPadParamOutputSelect] = 0.0f;
   kessho_module_commit_params(pad_module);
-  pad_params_b[kPadParamRelease + 52] = 0.01f;
-  pad_params_b[kPadParamLevel + 52] = 0.5f;
+  pad_params_b[kPadParamRelease + 58] = 0.01f;
+  pad_params_b[kPadParamLevel + 58] = 0.5f;
   pad_params_b[kPadParamOutputSelect] = 3.0f; // prefader pad 2
   kessho_module_commit_params(pad_module_b);
 

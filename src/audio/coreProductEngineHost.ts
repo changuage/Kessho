@@ -60,7 +60,7 @@ import { applyCoreProductSequencerStepEventToCache } from './product/host/CorePr
 import { applyCoreProductSequencerSubLaneEnabledEvent } from './product/host/CoreProductSequencerSubLaneEnabledEventBridge';
 import { coreProductStepValueFieldEnabled, syncCoreProductSequencerStepState } from './product/host/CoreProductSequencerStepPostingBridge';
 import { DRUM_EUCLIDEAN_LANE_COUNT, SYNTH_EUCLIDEAN_LANE_COUNT } from './sequencerLaneCounts';
-import type { ProductEngineState, ProductPerfSnapshot, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductSimpleSequencerVisualPlanActive, ProductSnapshotPatchReason } from './product/ProductEngineTypes';
+import type { ProductEngineState, ProductPerfSnapshot, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductRuntimeModulationRangeMap, ProductSimpleSequencerVisualPlanActive, ProductSnapshotPatchReason } from './product/ProductEngineTypes';
 import { createWebProductRuntimeCapabilityReport, type ProductRuntimeCapabilityReport } from './product/ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from './product/ProductRuntimeDiagnostics';
 import { CoreProductArrangementBridge } from './product/host/CoreProductArrangementBridge';
@@ -562,6 +562,9 @@ class CoreProductEngineHost {
   }
   setRuntimeWalkRanges(ranges: Partial<Record<string, { min: number; max: number }>>): void {
     this.modulationRangeBridge.setRuntimeWalkRanges(ranges);
+  }
+  setRuntimeModulationRanges(ranges: ProductRuntimeModulationRangeMap): void {
+    this.modulationRangeBridge.setRuntimeModulationRanges(ranges);
   }
   setJourneyMorphClockCallback(callback: ((now: number) => void) | null): void {
     this.setDisplayCallback('journeyMorphClock', callback);

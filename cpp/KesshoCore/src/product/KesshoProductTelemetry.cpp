@@ -491,7 +491,9 @@ constexpr uint32_t kAnchorWalkerVisualFlagWalking = 1u << 4u;
       continue;
     }
     ++active_range_count;
-    if (range.mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK && walk_count < kMaxRuntimeWalkTelemetry) {
+    if ((range.mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK ||
+         range.mode == KESSHO_PRODUCT_MODULATION_RANGE_SHAPE_LFO) &&
+        walk_count < kMaxRuntimeWalkTelemetry) {
       telemetry.runtime_walk_control_ids[walk_count] = range.control_id;
       telemetry.runtime_walk_values[walk_count] = range.current_value;
       ++walk_count;
@@ -654,7 +656,9 @@ constexpr uint32_t kAnchorWalkerVisualFlagWalking = 1u << 4u;
     telemetry.modulation_debug_max_values[index] = range.max_value;
     telemetry.modulation_debug_current_values[index] = range.current_value;
     telemetry.modulation_debug_normalized_positions[index] = normalizedModulationPosition(range);
-    telemetry.modulation_debug_speeds[index] = range.mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK
+    telemetry.modulation_debug_speeds[index] =
+        (range.mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK ||
+         range.mode == KESSHO_PRODUCT_MODULATION_RANGE_SHAPE_LFO)
         ? range.random_walk_speed
         : 0.0f;
     telemetry.modulation_debug_last_trigger_frames[index] = range.last_trigger_frame;

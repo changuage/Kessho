@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoProductSchema.h"
@@ -139,7 +140,13 @@ PadParams makeSentinelPadParams() {
   params[48] = 0.61f;
   params[49] = 0.27f;
   params[50] = 2.0f;
-  params[51] = 0.5f;
+  params[51] = 0.0f;
+  params[52] = 0.0f;
+  params[53] = 0.0f;
+  params[54] = 0.0f;
+  params[55] = 0.42f;
+  params[56] = 2.0f;
+  params[57] = 0.5f;
   return params;
 }
 
@@ -664,14 +671,151 @@ void requireStableEndpointPadPatchIsCachedAcrossTriggers() {
 
 void requireNamedPluckPresetParams() {
   const PadParams soft = exactPadParamsFromPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SOFT_PLUCK);
-  requireParamClose("PadSoftPluck filter cutoff", 21u, soft[21], 1400.0f);
-  requireParamClose("PadSoftPluck warmth", 16u, soft[16], 0.6f);
-  requireParamClose("PadSoftPluck output trim", 51u, soft[51], 0.5f);
+  requireParamClose("PadSoftPluck oscillator wave", 0u, soft[0], 6.0f);
+  requireParamClose("PadSoftPluck oscillator position", 2u, soft[2], 0.18f);
+  requireParamClose("PadSoftPluck filter cutoff", 21u, soft[21], 1500.0f);
+  requireParamClose("PadSoftPluck warmth", 16u, soft[16], 0.68f);
+  requireParamClose("PadSoftPluck output trim", 57u, soft[57], 0.5f);
 
   const PadParams buchla = exactPadParamsFromPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_BUCHLA_PLUCK);
-  requireParamClose("PadBuchlaPluck fold amount", 18u, buchla[18], 0.28f);
+  requireParamClose("PadBuchlaPluck oscillator wave", 0u, buchla[0], 6.0f);
+  requireParamClose("PadBuchlaPluck oscillator position", 2u, buchla[2], 0.38f);
+  requireParamClose("PadBuchlaPluck fold amount", 18u, buchla[18], 0.32f);
   requireParamClose("PadBuchlaPluck attack", 32u, buchla[32], 0.003f);
   requireParamClose("PadBuchlaPluck mod env enabled", 44u, buchla[44], 1.0f);
+}
+
+void requireLegacyPadExactPatchConversion() {
+  constexpr uint32_t kLegacyPadParamCount = kessho::core::KESSHO_LEGACY_SOURCE_PRESET_PAD_PARAM_COUNT;
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "legacy Pad exact patch engine create failed");
+
+  kessho::core::KesshoSourcePresetPatch patch{};
+  patch.exact_pad_param_count = kLegacyPadParamCount;
+  for (uint32_t index = 0u; index < kLegacyPadParamCount; ++index) {
+    patch.exact_pad_params[index] = static_cast<float>(index) * 0.03125f;
+  }
+  patch.exact_pad_params[0] = 3.0f;
+  patch.exact_pad_params[1] = 1.0f;
+  patch.exact_pad_params[2] = 25.0f;
+  patch.exact_pad_params[5] = -1.0f;
+  patch.exact_pad_params[6] = 50.0f;
+  patch.exact_pad_params[16] = 0.4f;
+  patch.exact_pad_params[51] = 0.77f;
+
+  require(engine->pad_module->setSourcePresetPatch(0, patch) == 1, "legacy Pad exact patch was rejected");
+  const float* params = engine->pad_module->params();
+  require(params != nullptr, "legacy Pad conversion params pointer was null");
+  const float expected_drift = std::clamp(0.20f + 0.4f * 0.55f + 25.0f * 0.0025f, 0.0f, 1.0f);
+  requireParamClose("legacy Pad A pitch", 1u, params[1], 12.25f);
+  requireParamClose("legacy Pad A position", 2u, params[2], 0.0f);
+  requireParamClose("legacy Pad B pitch", 5u, params[5], -11.5f);
+  requireParamClose("legacy Pad B position", 6u, params[6], 0.0f);
+  requireParamClose("legacy Pad drift", 55u, params[55], expected_drift);
+  requireParamClose("legacy Pad phase reset", 56u, params[56], 2.0f);
+  requireParamClose("legacy Pad output trim", 57u, params[57], 0.77f);
+
+  require(engine->pad_module->setSourcePresetPatch(1, patch) == 1, "legacy Pad 2 exact patch was rejected");
+  const float* pad2_params = engine->pad_module->params() + kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT;
+  requireParamClose("legacy Pad 2 pitch", 1u, pad2_params[1], 12.25f);
+  requireParamClose("legacy Pad 2 output trim", 57u, pad2_params[57], 0.77f);
+
+  patch.exact_pad_params[1] = 3.0f;
+  patch.exact_pad_params[2] = 0.0f;
+  patch.exact_pad_params[5] = -3.0f;
+  patch.exact_pad_params[6] = 0.0f;
+  require(engine->pad_module->setSourcePresetPatch(0, patch) == 1, "overshoot legacy Pad exact patch was rejected");
+  params = engine->pad_module->params();
+  requireParamClose("overshoot legacy Pad A pitch", 1u, params[1], 24.0f);
+  requireParamClose("overshoot legacy Pad B pitch", 5u, params[5], -24.0f);
+
+  patch.exact_pad_params[1] = std::numeric_limits<float>::quiet_NaN();
+  patch.exact_pad_params[5] = std::numeric_limits<float>::infinity();
+  require(engine->pad_module->setSourcePresetPatch(0, patch) == 1, "non-finite legacy Pad exact pitch was rejected");
+  params = engine->pad_module->params();
+  requireParamClose("non-finite legacy Pad A pitch", 1u, params[1], 0.0f);
+  requireParamClose("non-finite legacy Pad B pitch", 5u, params[5], 0.0f);
+  kessho_product_destroy(engine);
+}
+
+void requireWrongPadExactPatchCountsRejected() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "wrong-count Pad exact patch engine create failed");
+  kessho::core::KesshoSourcePresetPatch patch{};
+  for (uint32_t count = 0u; count <= 64u; ++count) {
+    if (count == kessho::core::KESSHO_LEGACY_SOURCE_PRESET_PAD_PARAM_COUNT ||
+        count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT) {
+      continue;
+    }
+    patch.exact_pad_param_count = count;
+    require(
+        engine->pad_module->setSourcePresetPatch(0, patch) == 0,
+        "Pad module accepted a non-current/non-legacy exact patch count");
+  }
+  kessho_product_destroy(engine);
+}
+
+void requireLegacyPadSnapshotConversion() {
+  constexpr uint32_t kLegacyPadParamCount = kessho::core::KESSHO_LEGACY_SOURCE_PRESET_PAD_PARAM_COUNT;
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "legacy Pad snapshot engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
+  source.exact_pad_param_count = kLegacyPadParamCount;
+  source.pad_override_count = 0u;
+  for (uint32_t index = 0u; index < kLegacyPadParamCount; ++index) {
+    source.exact_pad_params[index] = static_cast<float>(index) * 0.0175f;
+  }
+  source.exact_pad_params[1] = 2.0f;
+  source.exact_pad_params[2] = -12.0f;
+  source.exact_pad_params[5] = -1.0f;
+  source.exact_pad_params[6] = 8.0f;
+  source.exact_pad_params[16] = 0.5f;
+  source.exact_pad_params[51] = 0.66f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "legacy Pad snapshot was rejected");
+  const auto& loaded = engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
+  require(loaded.pad_override_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT, "legacy Pad snapshot did not become current sparse overrides");
+  require(loaded.source_preset_patch_valid, "legacy Pad snapshot lost generated endpoint patch state");
+  requireParamClose("legacy Pad snapshot A pitch", 1u, loaded.pad_override_values[1], 23.88f);
+  requireParamClose("legacy Pad snapshot B pitch", 5u, loaded.pad_override_values[5], -11.92f);
+  requireParamClose("legacy Pad snapshot output trim", 57u, loaded.pad_override_values[57], 0.66f);
+
+  source.exact_pad_params[1] = 3.0f;
+  source.exact_pad_params[2] = 0.0f;
+  source.exact_pad_params[5] = -3.0f;
+  source.exact_pad_params[6] = 0.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "overshoot legacy Pad snapshot was rejected");
+  requireParamClose("overshoot legacy Pad snapshot A pitch", 1u, loaded.pad_override_values[1], 24.0f);
+  requireParamClose("overshoot legacy Pad snapshot B pitch", 5u, loaded.pad_override_values[5], -24.0f);
+
+  source.exact_pad_params[1] = std::numeric_limits<float>::quiet_NaN();
+  source.exact_pad_params[5] = std::numeric_limits<float>::infinity();
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "non-finite legacy Pad snapshot pitch was rejected");
+  requireParamClose("non-finite legacy Pad snapshot A pitch", 1u, loaded.pad_override_values[1], 0.0f);
+  requireParamClose("non-finite legacy Pad snapshot B pitch", 5u, loaded.pad_override_values[5], 0.0f);
+  kessho_product_destroy(engine);
+}
+
+void requireWrongPadSnapshotCountsRejected() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "wrong-count Pad snapshot engine create failed");
+  for (uint32_t count = 1u; count <= 64u; ++count) {
+    if (count == kessho::core::KESSHO_LEGACY_SOURCE_PRESET_PAD_PARAM_COUNT) continue;
+    KesshoProductSnapshotV2 snapshot = makeSnapshot();
+    KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
+    source.exact_pad_param_count = count;
+    source.pad_override_count = 0u;
+    require(
+        kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT,
+        "Product snapshot accepted a non-legacy exact Pad count");
+  }
+  kessho_product_destroy(engine);
 }
 
 } // namespace
@@ -688,6 +832,10 @@ int main() {
   requirePadRetriggerRespectsLongAttack();
   requirePadExactSampleHoldRangeAppliesOnTrigger();
   requirePadGainSafetyAndLadderRender();
+  requireLegacyPadExactPatchConversion();
+  requireWrongPadExactPatchCountsRejected();
+  requireLegacyPadSnapshotConversion();
+  requireWrongPadSnapshotCountsRejected();
 
   std::cout << "Kessho Product Pad Exact Patch tests passed\n";
   return 0;

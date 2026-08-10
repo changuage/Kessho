@@ -141,10 +141,40 @@ function validateVersionData(value: Record<string, unknown>, index: number, type
     if (value.vizSliderModes !== undefined) {
       if (!isRecord(value.vizSliderModes)) fail(`versions[${index}].data.vizSliderModes`, 'visualizer slider modes must be an object');
       for (const [key, mode] of Object.entries(value.vizSliderModes)) {
-        if (typeof key !== 'string' || (mode !== 'single' && mode !== 'walk' && mode !== 'sampleHold')) {
+        if (typeof key !== 'string' || (mode !== 'single' && mode !== 'walk' && mode !== 'sampleHold' && mode !== 'shape')) {
           fail(`versions[${index}].data.vizSliderModes.${key}`, 'visualizer slider mode is invalid');
         }
       }
+    }
+  }
+}
+
+function validateParameterBehaviorMetadata(value: Record<string, unknown>, index: number): void {
+  if (value.sliderModes !== undefined) {
+    if (!isRecord(value.sliderModes)) fail(`versions[${index}].sliderModes`, 'slider modes must be an object');
+    for (const [key, mode] of Object.entries(value.sliderModes)) {
+      if (mode !== 'single' && mode !== 'walk' && mode !== 'sampleHold' && mode !== 'shape') {
+        fail(`versions[${index}].sliderModes.${key}`, 'slider mode is invalid');
+      }
+    }
+  }
+  if (value.dualRanges !== undefined) {
+    if (!isRecord(value.dualRanges)) fail(`versions[${index}].dualRanges`, 'dual ranges must be an object');
+    for (const [key, range] of Object.entries(value.dualRanges)) {
+      if (!isRecord(range) || !isFiniteNumber(range.min) || !isFiniteNumber(range.max)) {
+        fail(`versions[${index}].dualRanges.${key}`, 'dual range must contain finite min and max');
+      }
+    }
+  }
+  if (value.dualSliderConfigs === undefined) return;
+  if (!isRecord(value.dualSliderConfigs)) fail(`versions[${index}].dualSliderConfigs`, 'canonical configs must be an object');
+  for (const [key, rawConfig] of Object.entries(value.dualSliderConfigs)) {
+    if (!isRecord(rawConfig) || (rawConfig.source !== 'a' && rawConfig.source !== 'b')) {
+      fail(`versions[${index}].dualSliderConfigs.${key}.source`, 'canonical source must be a or b');
+    }
+    if (!Array.isArray(rawConfig.range) || rawConfig.range.length !== 2
+        || !isFiniteNumber(rawConfig.range[0]) || !isFiniteNumber(rawConfig.range[1])) {
+      fail(`versions[${index}].dualSliderConfigs.${key}.range`, 'canonical range must contain two finite values');
     }
   }
 }
@@ -156,6 +186,7 @@ function validateVersion(value: unknown, index: number, type: PresetLevel, scope
   if (!isFiniteNumber(value.timestamp)) fail(`versions[${index}].timestamp`, 'timestamp must be finite');
   if (!isRecord(value.data)) fail(`versions[${index}].data`, 'data must be an object');
   validateVersionData(value.data, index, type, scope);
+  validateParameterBehaviorMetadata(value, index);
   if (value._isDelta !== undefined && typeof value._isDelta !== 'boolean') {
     fail(`versions[${index}]._isDelta`, 'delta marker must be boolean');
   }

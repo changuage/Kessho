@@ -102,14 +102,73 @@ assert.equal(authoredFreeze.state.spectralFreezeDiffusion, 0.91);
 assert.equal(authoredFreeze.state.spectralFreezeActive, false);
 assert.equal(authoredFreeze.state.spectralFreezeCaptureSerial, 0);
 
-const legacyRaw = makePreset({
+const currentWithoutAdditiveSynthLaneFields = makePreset({});
+for (const lane of [1, 2, 3, 4] as const) {
+  for (const suffix of ['ResumeQuantization', 'NoteMin', 'NoteMax'] as const) {
+    delete (currentWithoutAdditiveSynthLaneFields.state as unknown as Record<string, unknown>)[`synthEuclid${lane}${suffix}`];
+  }
+}
+const completedSynthLanes = applyPreset(currentWithoutAdditiveSynthLaneFields, { loadMode: 'exact-as-saved', normalize });
+for (const lane of [1, 2, 3, 4] as const) {
+  for (const suffix of ['ResumeQuantization', 'NoteMin', 'NoteMax'] as const) {
+    const key = `synthEuclid${lane}${suffix}` as keyof SliderState;
+    assert.equal(completedSynthLanes.state[key], DEFAULT_STATE[key]);
+  }
+}
+
+const authoredSynthLaneFields = applyPreset(makePreset({
+  synthEuclid1ResumeQuantization: 'immediate',
+  synthEuclid1NoteMin: 60,
+  synthEuclid1NoteMax: 84,
+}), { loadMode: 'exact-as-saved', normalize });
+assert.equal(authoredSynthLaneFields.state.synthEuclid1ResumeQuantization, 'immediate');
+assert.equal(authoredSynthLaneFields.state.synthEuclid1NoteMin, 60);
+assert.equal(authoredSynthLaneFields.state.synthEuclid1NoteMax, 84);
+
+const currentWithoutDrumResumeQuantization = makePreset({});
+for (const lane of [1, 2, 3, 4, 5, 6] as const) {
+  delete (currentWithoutDrumResumeQuantization.state as unknown as Record<string, unknown>)[`drumEuclid${lane}ResumeQuantization`];
+}
+const completedDrumResumeQuantization = applyPreset(currentWithoutDrumResumeQuantization, {
+  loadMode: 'exact-as-saved',
+  normalize,
+});
+for (const lane of [1, 2, 3, 4, 5, 6] as const) {
+  const key = `drumEuclid${lane}ResumeQuantization` as keyof SliderState;
+  assert.equal(completedDrumResumeQuantization.state[key], DEFAULT_STATE[key]);
+}
+
+const currentWithoutPerLeadPerformanceFields = makePreset({
+  leadVibratoDepth: 0.2,
+  leadVibratoRate: 0.3,
+  leadGlide: 0.4,
+});
+for (const lead of [1, 2] as const) {
+  for (const suffix of ['VibratoDepth', 'VibratoRate', 'Glide'] as const) {
+    delete (currentWithoutPerLeadPerformanceFields.state as unknown as Record<string, unknown>)[`lead${lead}${suffix}`];
+  }
+}
+const completedPerLeadFields = applyPreset(currentWithoutPerLeadPerformanceFields, { loadMode: 'exact-as-saved', normalize });
+assert.equal(completedPerLeadFields.state.lead1VibratoDepth, 0.2);
+assert.equal(completedPerLeadFields.state.lead2VibratoRate, 0.3);
+assert.equal(completedPerLeadFields.state.lead1Glide, 0.4);
+
+const currentWithoutCanonicalFields = makePreset({
   granularDelayEnabled: true,
 } as Partial<SliderState>);
-delete (legacyRaw.state as Partial<SliderState>).granularDelayBSend;
+delete (currentWithoutCanonicalFields.state as Partial<SliderState>).detune;
+delete (currentWithoutCanonicalFields.state as Partial<SliderState>).granularDelayBSend;
+const completedCanonicalFields = applyPreset(currentWithoutCanonicalFields, {
+  loadMode: 'exact-as-saved',
+  normalize,
+});
+assert.equal(completedCanonicalFields.state.detune, DEFAULT_STATE.detune);
+assert.equal(completedCanonicalFields.state.granularDelayBSend, DEFAULT_STATE.granularDelayBSend);
+
 assert.throws(
-  () => applyPreset(legacyRaw, { loadMode: 'exact-as-saved', normalize }),
-  /missing canonical fields/,
-  'legacy/missing current fields must be rejected instead of repaired',
+  () => applyPreset(makePreset({ detune: Number.NaN }), { loadMode: 'exact-as-saved', normalize }),
+  /Product Core preset boundary validation failed/,
+  'authored malformed values must still fail current-contract validation',
 );
 
 console.log('preset exact load regression passed');

@@ -6,6 +6,7 @@ import {
   KESSHO_PRODUCT_SOURCE_PRESETS,
 } from './generated/kesshoProductSchema';
 import { getPadPreset, morphPadPresets } from './padPresets';
+import { normalizePresetKey } from './CoreProductPresetIds';
 import { clamp, coreProductParamValue, numberFromState } from './coreProductSnapshotState';
 import { getVoiceDistanceKey } from './distanceMacro';
 import { emptyParamArray, paramsMatch, sparseParamOverridesFromDiff } from './CoreProductSparseOverrides';
@@ -48,6 +49,13 @@ function canReconstructGeneratedPadParams(presetAId: number, presetBId: number):
 
 function generatedPadPresetId(key: string): number {
   return KESSHO_PRODUCT_SOURCE_PRESETS.find((preset) => preset.source === 'pad' && preset.key === key)?.id ?? 0;
+}
+
+export function padPresetAnchorId(key: unknown, fallbackKey = 'init'): number {
+  // Runtime/Supabase presets own their parameter data; Product Core only needs a reconstructable anchor for sparse overrides.
+  const fallbackId = generatedPadPresetId(fallbackKey);
+  const normalizedKey = normalizePresetKey(key, fallbackKey);
+  return generatedPadPresetId(normalizedKey) || fallbackId;
 }
 
 function scalePadDistance(distance: number): number {

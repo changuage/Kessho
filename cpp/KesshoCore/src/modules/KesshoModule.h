@@ -1,13 +1,53 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <stdint.h>
 
 #include <memory>
 
+#include "KesshoProductSchema.h"
+
 namespace kessho::core {
 
-constexpr uint32_t KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT = 52u;
+constexpr uint32_t KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT =
+    kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT;
+constexpr uint32_t KESSHO_LEGACY_SOURCE_PRESET_PAD_PARAM_COUNT = 52u;
+
+inline float clampLegacyPadPitch(float octave, float detune_cents) {
+  const float safe_octave = std::isfinite(octave) ? octave : 0.0f;
+  const float safe_detune_cents = std::isfinite(detune_cents) ? detune_cents : 0.0f;
+  const float pitch = safe_octave * 12.0f + safe_detune_cents / 100.0f;
+  if (!std::isfinite(pitch)) {
+    return 0.0f;
+  }
+  const float bounded = std::clamp(pitch, -24.0f, 24.0f);
+  return std::round(bounded * 100.0f) / 100.0f;
+}
+
+inline bool convertLegacyPadPresetParams(const float* legacy, float* current) {
+  if (legacy == nullptr || current == nullptr) {
+    return false;
+  }
+  current[0] = legacy[0];
+  current[1] = clampLegacyPadPitch(legacy[1], legacy[2]);
+  current[2] = 0.0f;
+  current[3] = legacy[3];
+  current[4] = legacy[4];
+  current[5] = clampLegacyPadPitch(legacy[5], legacy[6]);
+  current[6] = 0.0f;
+  for (uint32_t index = 7u; index <= 50u; ++index) {
+    current[index] = legacy[index];
+  }
+  current[51] = 0.0f;
+  current[52] = 0.0f;
+  current[53] = 0.0f;
+  current[54] = 0.0f;
+  current[55] = std::clamp(0.20f + legacy[16] * 0.55f + legacy[2] * 0.0025f, 0.0f, 1.0f);
+  current[56] = 2.0f;
+  current[57] = legacy[51];
+  return true;
+}
 constexpr uint32_t KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT = 112u;
 constexpr uint32_t KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT = 245u;
 

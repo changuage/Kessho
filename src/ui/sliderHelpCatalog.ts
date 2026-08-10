@@ -444,24 +444,33 @@ const globalEntries: Record<string, SliderHelpEntry> = {
     'Lower values slow beat-synced engines like synth Euclid and drum Euclid. Higher values tighten the beat grid and, when BPM is the primary clock, also shorten the derived phrase length.',
     [g('Transport & Sync', 'Shared BPM')],
   ),
-  randomness: lowHigh(
-    'Sets how far the generators stray from their most stable choices.',
-    'keep note, rhythm, and modulation choices more repeatable',
-    'allow looser, more varied decisions across the engines',
-    [g('Scale & Tension', 'Randomness')],
+  randomness: entry(
+    'Selects the deterministic variation used for seeded outcomes.',
+    'This is a seed variant, not a live randomness amount: with the same seed window and variant, generators make the same choices. Change it to choose a different repeatable outcome.',
+    [g('Evolution', 'Seed Variant')],
+  ),
+  seedWindow: entry(
+    'Chooses how long the current deterministic seed variant stays stable.',
+    'Hourly refreshes the seeded outcome each UTC hour; Daily keeps it stable for the UTC day. This changes which repeatable material is selected, not the amount of randomness in playback.',
+    [g('Evolution', 'Seed Window', 'single-only', [GLOBAL_SINGLE_NOTE])],
   ),
   randomWalkSpeed: entry(
     'Sets how fast walk-mode sliders drift inside their range.',
     'Low values make walk-mode parameters glide slowly and feel calmer. High values make them roam faster and change character more often.',
     [
-      g('Scale & Tension', 'Walk Speed'),
-      ea('Walk Speed', 'Walk Speed'),
+      g('Modulation', 'Walk Speed'),
+      ea('Modulation', 'Walk Speed'),
     ],
   ),
   randomWalkMode: entry(
-    'Chooses whether walk-mode sliders use local drift or shared epoch drift.',
-    'Local Brownian uses each browser session\'s own wandering motion. Global Epoch Walk reads a deterministic wall-clock curve, so users on the same clock window hear the same walk positions. This only affects sliders in walk mode; it does not change harmony or Euclidean clocks.',
-    [g('Scale & Tension', 'Walk Mode', 'single-only', [GLOBAL_SINGLE_NOTE])],
+    'Chooses whether walk-mode sliders wander independently or share one walk.',
+    'Free gives each Walk parameter its own Brownian state. Link makes all linked Walk parameters follow the same normalized free-running Brownian motion. Neither choice follows transport, bars, phrases, or wall-clock position.',
+    [g('Modulation', 'Walk Mode', 'single-only', [GLOBAL_SINGLE_NOTE])],
+  ),
+  shapeLfoSpeed: entry(
+    'Sets Shape LFO cycles relative to the effective project phrase.',
+    'At 1x one cycle lasts one phrase; 2x gives two cycles per phrase; 0.5x spans two phrases. BPM Master uses Beat Phrase from BPM. Phrase Seconds Master uses Phrase Seconds and its equivalent BPM. Free keeps independent phase, while Link shares phase.',
+    [g('Modulation', 'Linked Shape Speed')],
   ),
   transportPrimaryClock: entry(
     'Chooses which top-level time domain is authoritative.',
@@ -491,12 +500,12 @@ const globalEntries: Record<string, SliderHelpEntry> = {
   leadRandomClockSource: entry(
     'Chooses the phrase clock for the free-running random lead melody.',
     'This only affects the random Lead 1 phrase scheduler. It does not change lead Euclidean lanes, pad chords, or harmony itself. Phrase modes schedule random lead events over phrase windows; beat-phrase modes derive those windows from the BPM transport.',
-    [g('Transport & Sync', 'Lead Random Clock', 'single-only', [GLOBAL_SINGLE_NOTE])],
+    [sy('Random Timing / Advanced', 'Clock', 'single-only', [GLOBAL_SINGLE_NOTE])],
   ),
   leadRandomSyncPolicy: entry(
     'Chooses when the random lead melody adopts timing changes.',
     'Next Phrase defers edits until the next phrase boundary so the current lead phrase can finish cleanly. Immediate clears the pending lead phrase and reschedules right away on the new timing model.',
-    [g('Transport & Sync', 'Lead Random Apply', 'single-only', [GLOBAL_SINGLE_NOTE])],
+    [sy('Random Timing / Advanced', 'Apply', 'single-only', [GLOBAL_SINGLE_NOTE])],
   ),
   synthEuclidClockSource: entry(
     'Chooses the beat clock used by the synth Euclidean sequencer.',
@@ -672,16 +681,40 @@ const oscLevelHelp = lowHigh(
   [sy('Pad 1 / Oscillator', 'Lvl')],
 );
 
-const oscOctaveHelp = entry(
-  'Sets the octave offset of the selected pad oscillator.',
-  'Low values place that oscillator lower and heavier. High values move it up for a brighter, smaller-feeling layer.',
-  [sy('Pad 1 / Oscillator', 'Oct')],
+const oscPitchHelp = entry(
+  'Sets the selected pad oscillator pitch in semitones and cents.',
+  'Whole semitones move the register; fractional values add fine beating without a separate detune control.',
+  [sy('Pad 1 / Oscillator', 'Pitch')],
 );
 
-const oscDetuneHelp = entry(
-  'Detunes the selected pad oscillator away from the others.',
-  'Low values keep the oscillator tightly locked. High values widen beating and chorusing between the layers.',
-  [sy('Pad 1 / Oscillator', 'Det')],
+const oscPositionHelp = entry(
+  'Moves through the selected Harmonic or Complex wave trajectory.',
+  'Classic waves keep this control neutral; Harmonic and Complex sources become richer as position increases.',
+  [sy('Pad 1 / Oscillator', 'Position')],
+);
+
+const oscPhaseDistortionHelp = entry(
+  'Warps the selected oscillator phase before source lookup.',
+  'Zero is transparent. Positive and negative values reshape timing and Square pulse duty independently for each oscillator.',
+  [sy('Pad 1 / Oscillator', 'Phase Distortion')],
+);
+
+const oscHzOffsetHelp = entry(
+  'Adds a linear frequency offset after pitch tracking.',
+  'Small offsets create slow, controllable beating while remaining independent from semitone pitch.',
+  [sy('Pad 1 / Oscillator', 'Hz Offset')],
+);
+
+const padDriftHelp = entry(
+  'Adds shared, independent slow pitch variation to Pad A and B.',
+  'Zero is perfectly stable; higher values add subtle analog-style movement without adding an oscillator.',
+  [sy('Pad 1 / Shared', 'Drift')],
+);
+
+const padPhaseResetHelp = entry(
+  'Chooses oscillator phase behavior at note-on.',
+  'Off free-runs, On starts both phases together, and Random uses independent deterministic starts.',
+  [sy('Pad 1 / Shared', 'Phase Reset')],
 );
 
 const padMorphSpeedHelp = entry(
@@ -891,11 +924,17 @@ const synthEntries: Record<string, SliderHelpEntry> = {
   padLfo2Rate: rewriteEntry(lfoRateHelp, [['LFO 1', 'LFO 2']], [sy('Pad 1 / LFO 2', 'Rate')]),
   padLfo2Depth: rewriteEntry(lfoDepthHelp, [['LFO 1', 'LFO 2']], [sy('Pad 1 / LFO 2', 'Depth')]),
   padOscALevel: rewriteEntry(oscLevelHelp, [['selected', 'Oscillator A']], [sy('Pad 1 / Osc A', 'Lvl')]),
-  padOscAOctave: rewriteEntry(oscOctaveHelp, [['selected', 'Oscillator A']], [sy('Pad 1 / Osc A', 'Oct')]),
-  padOscADetune: rewriteEntry(oscDetuneHelp, [['selected', 'Oscillator A']], [sy('Pad 1 / Osc A', 'Det')]),
+  padOscAWavePosition: rewriteEntry(oscPositionHelp, [['selected', 'Oscillator A']], [sy('Pad 1 / Osc A', 'Position')]),
+  padOscAPhaseDistortion: rewriteEntry(oscPhaseDistortionHelp, [['selected', 'Oscillator A']], [sy('Pad 1 / Osc A', 'PD')]),
+  padOscAPitch: rewriteEntry(oscPitchHelp, [['selected', 'Oscillator A']], [sy('Pad 1 / Osc A', 'Pitch')]),
+  padOscALinearHzOffset: rewriteEntry(oscHzOffsetHelp, [['selected', 'Oscillator A']], [sy('Pad 1 / Osc A', 'Hz Offset')]),
   padOscBLevel: rewriteEntry(oscLevelHelp, [['selected', 'Oscillator B']], [sy('Pad 1 / Osc B', 'Lvl')]),
-  padOscBOctave: rewriteEntry(oscOctaveHelp, [['selected', 'Oscillator B']], [sy('Pad 1 / Osc B', 'Oct')]),
-  padOscBDetune: rewriteEntry(oscDetuneHelp, [['selected', 'Oscillator B']], [sy('Pad 1 / Osc B', 'Det')]),
+  padOscBWavePosition: rewriteEntry(oscPositionHelp, [['selected', 'Oscillator B']], [sy('Pad 1 / Osc B', 'Position')]),
+  padOscBPhaseDistortion: rewriteEntry(oscPhaseDistortionHelp, [['selected', 'Oscillator B']], [sy('Pad 1 / Osc B', 'PD')]),
+  padOscBPitch: rewriteEntry(oscPitchHelp, [['selected', 'Oscillator B']], [sy('Pad 1 / Osc B', 'Pitch')]),
+  padOscBLinearHzOffset: rewriteEntry(oscHzOffsetHelp, [['selected', 'Oscillator B']], [sy('Pad 1 / Osc B', 'Hz Offset')]),
+  padDrift: padDriftHelp,
+  padPhaseReset: padPhaseResetHelp,
   padMorphSpeed: padMorphSpeedHelp,
   padSubLevel: subLevelHelp,
   padSubOctave: subOctaveHelp,
@@ -929,11 +968,17 @@ const synthEntries: Record<string, SliderHelpEntry> = {
   pad2Lfo2Rate: cloneEntry(rewriteEntry(lfoRateHelp, [['LFO 1', 'LFO 2']], [sy('Pad 2 / LFO 2', 'Rate')]), [sy('Pad 2 / LFO 2', 'Rate')]),
   pad2Lfo2Depth: cloneEntry(rewriteEntry(lfoDepthHelp, [['LFO 1', 'LFO 2']], [sy('Pad 2 / LFO 2', 'Depth')]), [sy('Pad 2 / LFO 2', 'Depth')]),
   pad2OscALevel: cloneEntry(rewriteEntry(oscLevelHelp, [['selected', 'Oscillator A']], [sy('Pad 2 / Osc A', 'Lvl')]), [sy('Pad 2 / Osc A', 'Lvl')]),
-  pad2OscAOctave: cloneEntry(rewriteEntry(oscOctaveHelp, [['selected', 'Oscillator A']], [sy('Pad 2 / Osc A', 'Oct')]), [sy('Pad 2 / Osc A', 'Oct')]),
-  pad2OscADetune: cloneEntry(rewriteEntry(oscDetuneHelp, [['selected', 'Oscillator A']], [sy('Pad 2 / Osc A', 'Det')]), [sy('Pad 2 / Osc A', 'Det')]),
+  pad2OscAWavePosition: cloneEntry(rewriteEntry(oscPositionHelp, [['selected', 'Oscillator A']], [sy('Pad 2 / Osc A', 'Position')]), [sy('Pad 2 / Osc A', 'Position')]),
+  pad2OscAPhaseDistortion: cloneEntry(rewriteEntry(oscPhaseDistortionHelp, [['selected', 'Oscillator A']], [sy('Pad 2 / Osc A', 'PD')]), [sy('Pad 2 / Osc A', 'PD')]),
+  pad2OscAPitch: cloneEntry(rewriteEntry(oscPitchHelp, [['selected', 'Oscillator A']], [sy('Pad 2 / Osc A', 'Pitch')]), [sy('Pad 2 / Osc A', 'Pitch')]),
+  pad2OscALinearHzOffset: cloneEntry(rewriteEntry(oscHzOffsetHelp, [['selected', 'Oscillator A']], [sy('Pad 2 / Osc A', 'Hz Offset')]), [sy('Pad 2 / Osc A', 'Hz Offset')]),
   pad2OscBLevel: cloneEntry(rewriteEntry(oscLevelHelp, [['selected', 'Oscillator B']], [sy('Pad 2 / Osc B', 'Lvl')]), [sy('Pad 2 / Osc B', 'Lvl')]),
-  pad2OscBOctave: cloneEntry(rewriteEntry(oscOctaveHelp, [['selected', 'Oscillator B']], [sy('Pad 2 / Osc B', 'Oct')]), [sy('Pad 2 / Osc B', 'Oct')]),
-  pad2OscBDetune: cloneEntry(rewriteEntry(oscDetuneHelp, [['selected', 'Oscillator B']], [sy('Pad 2 / Osc B', 'Det')]), [sy('Pad 2 / Osc B', 'Det')]),
+  pad2OscBWavePosition: cloneEntry(rewriteEntry(oscPositionHelp, [['selected', 'Oscillator B']], [sy('Pad 2 / Osc B', 'Position')]), [sy('Pad 2 / Osc B', 'Position')]),
+  pad2OscBPhaseDistortion: cloneEntry(rewriteEntry(oscPhaseDistortionHelp, [['selected', 'Oscillator B']], [sy('Pad 2 / Osc B', 'PD')]), [sy('Pad 2 / Osc B', 'PD')]),
+  pad2OscBPitch: cloneEntry(rewriteEntry(oscPitchHelp, [['selected', 'Oscillator B']], [sy('Pad 2 / Osc B', 'Pitch')]), [sy('Pad 2 / Osc B', 'Pitch')]),
+  pad2OscBLinearHzOffset: cloneEntry(rewriteEntry(oscHzOffsetHelp, [['selected', 'Oscillator B']], [sy('Pad 2 / Osc B', 'Hz Offset')]), [sy('Pad 2 / Osc B', 'Hz Offset')]),
+  pad2Drift: cloneEntry(padDriftHelp, [sy('Pad 2 / Shared', 'Drift')]),
+  pad2PhaseReset: cloneEntry(padPhaseResetHelp, [sy('Pad 2 / Shared', 'Phase Reset')]),
   pad2MorphSpeed: cloneEntry(padMorphSpeedHelp, [sy('Pad 2 / Auto Morph', 'Speed')]),
   pad2SubLevel: cloneEntry(subLevelHelp, [sy('Pad 2 / Sub Oscillator', 'Level')]),
   pad2SubOctave: cloneEntry(subOctaveHelp, [sy('Pad 2 / Sub Oscillator', 'Octave')]),

@@ -61,6 +61,7 @@ type PointCloudsRuntime = {
   applyDualRangesFromPreset: (
     dualRanges?: Record<string, { min: number; max: number }>,
     sliderModes?: Record<string, SliderMode>,
+    dualSliderConfigs?: SavedPreset['dualSliderConfigs'],
   ) => void;
   handleStart: (state?: SliderState) => Promise<void>;
   handleStop: () => void;
@@ -149,7 +150,7 @@ export function usePointCloudsEngineBridge({
         setStatePresetName(nextPreset.name);
         current.setMorphPresetA(nextPreset);
         current.restoreRoutingMuteGroupsFromPreset(nextPreset.routingMuteGroups);
-        current.applyDualRangesFromPreset(nextPreset.dualRanges, nextPreset.sliderModes);
+        current.applyDualRangesFromPreset(nextPreset.dualRanges, nextPreset.sliderModes, nextPreset.dualSliderConfigs);
         current.restoreEvolveConfigs(nextPreset);
         hasLoadedPresetRef.current = true;
         await current.handleStart(nextState);

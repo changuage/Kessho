@@ -3630,9 +3630,16 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
   KesshoProductEngine* soundscape_module_walk = kessho_product_create(48000.0, 128, 0);
   require(soundscape_module_walk != nullptr, "low-rate soundscape module runtime walk engine allocation failed");
   SourceState& module_source = soundscape_module_walk->sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
-  module_source.enabled = true;
   constexpr uint32_t kWaterHardDropsParam = 23u;
   constexpr uint32_t kWaterHardDropsControl = 1040u;
+  module_source.enabled = true;
+  module_source.soundscape_module_param_count = kSoundscapeProductModuleParamCount;
+  module_source.soundscape_module_params[kSoundscapeModuleWaterActiveParam] = 1.0f;
+  module_source.soundscape_module_params[kSoundscapeModuleWaterMasterEnabledParam] = 1.0f;
+  module_source.soundscape_module_params[kWaterHardDropsParam] = 0.5f;
+  module_source.soundscape_module_params[kSoundscapeModuleWaterLayerMaskParam] =
+      static_cast<float>(kSoundscapeWaterLayerMaskAll & ~kSoundscapeWaterLayerHardDropsBit);
+  soundscape_module_walk->transport.running = true;
   const uint32_t module_target = kSoundscapeModuleParamTargetBase + kWaterHardDropsParam;
   enqueueRuntimeWalkRange(
       soundscape_module_walk,
@@ -3654,6 +3661,25 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
       "low-rate soundscape module runtime walk did not move");
   require(std::fabs(module_source.soundscape_module_params[kWaterHardDropsParam] - module_range->current_value) < 0.0001f,
       "low-rate soundscape module runtime walk did not update the exact module parameter");
+  require(soundscape_module_walk->soundscapes_module != nullptr, "soundscape module missing for runtime walk");
+  const float* module_params = soundscape_module_walk->soundscapes_module->params();
+  require(module_params != nullptr, "soundscape module params missing for runtime walk");
+  require(
+      module_params[kWaterHardDropsParam] == 0.0f,
+      "disabled waterLayerHardDrops must stay zero in the effective module params");
+  require(
+      std::fabs(module_source.soundscape_module_params[kWaterHardDropsParam] - module_range->current_value) < 0.0001f &&
+          std::fabs(module_source.soundscape_module_params[kWaterHardDropsParam]) > 0.0001f,
+      "disabled waterLayerHardDrops must preserve the raw runtime-walk value");
+  soundscape_module_walk->setSoundscapeModuleParamValue(
+      kSoundscapeModuleWaterLayerMaskParam,
+      static_cast<float>(kSoundscapeWaterLayerMaskAll));
+  soundscape_module_walk->configureSoundscapesModuleFromSource();
+  module_params = soundscape_module_walk->soundscapes_module->params();
+  require(
+      module_params != nullptr &&
+          std::fabs(module_params[kWaterHardDropsParam] - module_range->current_value) < 0.0001f,
+      "re-enabled waterLayerHardDrops must restore its preserved raw runtime-walk value");
   requireTelemetryContainsRuntimeWalk(
       soundscape_module_walk->telemetry,
       kWaterHardDropsControl,
@@ -3661,6 +3687,100 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
       0.9f,
       "low-rate soundscape module runtime walk telemetry missing");
   kessho_product_destroy(soundscape_module_walk);
+}
+
+void requireSoundscapeWaterDropsRuntimeWalkRenders() {
+  constexpr uint32_t kWaterDropsParam = 24u;
+  constexpr uint32_t kWaterDropsControl = 1060u;
+  constexpr uint32_t kRenderBlocks = 360u;
+
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "soundscape Water Drops runtime walk engine allocation failed");
+  require(engine->soundscapes_module != nullptr, "soundscape Water Drops module missing");
+  SourceState& source = engine->sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
+  const float* defaults = engine->soundscapes_module->params();
+  require(defaults != nullptr, "soundscape Water Drops module defaults missing");
+  std::fill(
+      source.soundscape_module_params,
+      source.soundscape_module_params + kSoundscapeProductModuleParamCount,
+      0.0f);
+  std::copy(
+      defaults,
+      defaults + kSoundscapeModuleParamCount,
+      source.soundscape_module_params);
+  source.enabled = true;
+  source.level = 1.0f;
+  source.expression = 1.0f;
+  source.dry_gain = 1.0f;
+  source.soundscape_module_param_count = kSoundscapeProductModuleParamCount;
+  source.soundscape_module_params[kSoundscapeModuleWaterActiveParam] = 1.0f;
+  source.soundscape_module_params[kSoundscapeModuleWaterMasterEnabledParam] = 1.0f;
+  source.soundscape_module_params[kSoundscapeModuleWaterLevelParam] = 1.0f;
+  source.soundscape_module_params[kSoundscapeModuleEarthLevelParam] = 1.0f;
+  source.soundscape_module_params[kSoundscapeModuleWaterLayerMaskParam] =
+      static_cast<float>(kSoundscapeWaterLayerMaskAll);
+  source.soundscape_module_params[1u] = 1.0f; // Stream: enough Water Drops events for an audio regression.
+  source.soundscape_module_params[23u] = 0.0f;
+  source.soundscape_module_params[kWaterDropsParam] = 0.45f;
+  for (uint32_t index = 25u; index <= 28u; ++index) {
+    source.soundscape_module_params[index] = 0.0f;
+  }
+  engine->transport.running = true;
+
+  const uint32_t flags = randomWalkSpeedFlags(0.09f);
+  const uint32_t target_id = kSoundscapeModuleParamTargetBase + kWaterDropsParam;
+  enqueueRuntimeWalkRange(
+      engine,
+      target_id,
+      KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID,
+      kWaterDropsControl,
+      0.29f,
+      1.0f,
+      0.45f,
+      flags);
+
+  std::array<float, 128> left{};
+  std::array<float, 128> right{};
+  float water_peak = 0.0f;
+  uint32_t nonzero_blocks = 0u;
+  for (uint32_t block = 0u; block < kRenderBlocks; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(engine, left.data(), right.data(), static_cast<uint32_t>(left.size()));
+    float block_peak = 0.0f;
+    for (uint32_t frame = 0u; frame < left.size(); ++frame) {
+      require(std::isfinite(left[frame]) && std::isfinite(right[frame]),
+          "soundscape Water Drops runtime walk rendered non-finite audio");
+      block_peak = std::max(block_peak, std::fabs(left[frame]));
+      block_peak = std::max(block_peak, std::fabs(right[frame]));
+    }
+    water_peak = std::max(water_peak, block_peak);
+    if (block_peak > 0.000001f) {
+      ++nonzero_blocks;
+    }
+  }
+
+  require(kessho_product_refresh_telemetry(engine) == KESSHO_PRODUCT_OK,
+      "soundscape Water Drops runtime walk telemetry refresh failed");
+  const ModulationRange* range = engine->findModulationRange(
+      target_id,
+      KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID);
+  require(range != nullptr, "soundscape Water Drops runtime walk range missing");
+  require(range->current_value >= 0.29f && range->current_value <= 1.0f,
+      "soundscape Water Drops runtime walk left its authored range");
+  require(std::fabs(range->current_value - 0.45f) > 0.00001f,
+      "soundscape Water Drops runtime walk did not move");
+  require(std::fabs(source.soundscape_module_params[kWaterDropsParam] - range->current_value) < 0.0001f,
+      "soundscape Water Drops runtime walk did not update the module value");
+  require(water_peak > 0.000001f, "active Water Drops runtime walk rendered silence");
+  require(nonzero_blocks >= 2u, "active Water Drops runtime walk rendered only one Water block");
+  requireTelemetryContainsRuntimeWalk(
+      engine->telemetry,
+      kWaterDropsControl,
+      0.29f,
+      1.0f,
+      "soundscape Water Drops runtime walk telemetry missing");
+  kessho_product_destroy(engine);
 }
 
 void requireDrumExactRuntimeRangesApplyToSourceAndModule() {
@@ -4687,6 +4807,7 @@ int main() {
   requireActiveModulationRangeIndexing();
   requireRuntimeWalkMovementAcrossAudioAndFxTargets();
   requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets();
+  requireSoundscapeWaterDropsRuntimeWalkRenders();
   requireDrumExactRuntimeRangesApplyToSourceAndModule();
   requireLiveExactDrumParamsSurviveTriggerPatchSelection();
   requireDrumSequencerMorphBuildsPerHitPresetPatch();

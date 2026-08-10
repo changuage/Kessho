@@ -23,6 +23,7 @@ export type ProductRuntimePlaybackStartStateOptions = {
   applyDualRangesFromPreset: (
     dualRanges?: Record<string, { min: number; max: number }>,
     presetSliderModes?: Record<string, SliderMode>,
+    presetDualConfigs?: SavedPreset['dualSliderConfigs'],
   ) => void;
   restoreEvolveConfigs: (preset: PlaybackStartPreset) => void;
   onRoutingMuteGroupsLoad?: (state: SavedPreset['routingMuteGroups']) => void;
@@ -65,7 +66,7 @@ export function useProductRuntimePlaybackStartState(options: ProductRuntimePlayb
         setMorphPresetA(result.preset);
         stateToStart = result.state;
         onRoutingMuteGroupsLoad?.(result.preset.routingMuteGroups);
-        applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
+        applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes, result.preset.dualSliderConfigs);
         restoreEvolveConfigs(result.preset);
       }
     }

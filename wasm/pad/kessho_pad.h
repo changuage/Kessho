@@ -6,7 +6,7 @@
  *   - Native ARM/x86 for iOS/macOS (via CMake)
  *
  * Dual-pad architecture: Pad 1 + Pad 2, 8 voices each (16 total).
- * Each voice: 4 oscillators (OscA, OscA detuned, OscB, Sub) + noise,
+ * Each voice: exactly two main oscillators (OscA, OscB) + Sub + noise,
  * dual SVF filters (A+B, configurable routing), warmth/presence EQ,
  * saturation waveshaper, ADSR amplitude envelope, 2 LFOs, mod envelope.
  *
@@ -36,6 +36,9 @@ typedef struct KesshoPadInstance KesshoPadInstance;
 #define PAD_WAVE_TRIANGLE  1
 #define PAD_WAVE_SAWTOOTH  2
 #define PAD_WAVE_SQUARE    3
+#define PAD_WAVE_HARMONIC  4
+#define PAD_WAVE_COMPLEX_SINE 5
+#define PAD_WAVE_COMPLEX_TRIANGLE 6
 
 // Filter types
 #define PAD_FILTER_LP      0
@@ -66,6 +69,17 @@ typedef struct KesshoPadInstance KesshoPadInstance;
 #define PAD_DEST_PITCH         4
 #define PAD_DEST_OSC_B_LEVEL   5
 #define PAD_DEST_FOLD_AMOUNT   6
+#define PAD_DEST_OSC_A_POSITION 7
+#define PAD_DEST_OSC_B_POSITION 8
+#define PAD_DEST_OSC_A_PHASE_DISTORTION 9
+#define PAD_DEST_OSC_B_PHASE_DISTORTION 10
+#define PAD_DEST_OSC_B_HZ_OFFSET 11
+#define PAD_DEST_FILTER_RESONANCE 12
+
+// Shared oscillator phase reset policy.
+#define PAD_PHASE_RESET_OFF 0
+#define PAD_PHASE_RESET_ON 1
+#define PAD_PHASE_RESET_RANDOM 2
 
 // Fold modes
 #define PAD_FOLD_BUCHLA  0
@@ -123,18 +137,24 @@ void pad_set_voice_pad(int voice_idx, int pad);
 
 // Oscillator A
 void pad_set_osc_a_wave(int pad_idx, int wave);
-void pad_set_osc_a_octave(int pad_idx, int octave);
-void pad_set_osc_a_detune(int pad_idx, float cents);
+void pad_set_osc_a_position(int pad_idx, float position);
+void pad_set_osc_a_phase_distortion(int pad_idx, float amount);
+void pad_set_osc_a_pitch(int pad_idx, float semitones);
+void pad_set_osc_a_hz_offset(int pad_idx, float hz);
 void pad_set_osc_a_level(int pad_idx, float level);
 
 // Oscillator B
 void pad_set_osc_b_wave(int pad_idx, int wave);
-void pad_set_osc_b_octave(int pad_idx, int octave);
-void pad_set_osc_b_detune(int pad_idx, float cents);
+void pad_set_osc_b_position(int pad_idx, float position);
+void pad_set_osc_b_phase_distortion(int pad_idx, float amount);
+void pad_set_osc_b_pitch(int pad_idx, float semitones);
+void pad_set_osc_b_hz_offset(int pad_idx, float hz);
 void pad_set_osc_b_level(int pad_idx, float level);
 
 // Osc Mix
 void pad_set_osc_mix(int pad_idx, float mix);
+void pad_set_drift(int pad_idx, float amount);
+void pad_set_phase_reset(int pad_idx, int mode);
 
 // Sub oscillator
 void pad_set_sub_enabled(int pad_idx, int enabled);
@@ -235,16 +255,22 @@ void pad_instance_kill_voice(KesshoPadInstance* instance, int voice_idx);
 void pad_instance_set_voice_pad(KesshoPadInstance* instance, int voice_idx, int pad);
 
 void pad_instance_set_osc_a_wave(KesshoPadInstance* instance, int pad_idx, int wave);
-void pad_instance_set_osc_a_octave(KesshoPadInstance* instance, int pad_idx, int octave);
-void pad_instance_set_osc_a_detune(KesshoPadInstance* instance, int pad_idx, float cents);
+void pad_instance_set_osc_a_position(KesshoPadInstance* instance, int pad_idx, float position);
+void pad_instance_set_osc_a_phase_distortion(KesshoPadInstance* instance, int pad_idx, float amount);
+void pad_instance_set_osc_a_pitch(KesshoPadInstance* instance, int pad_idx, float semitones);
+void pad_instance_set_osc_a_hz_offset(KesshoPadInstance* instance, int pad_idx, float hz);
 void pad_instance_set_osc_a_level(KesshoPadInstance* instance, int pad_idx, float level);
 
 void pad_instance_set_osc_b_wave(KesshoPadInstance* instance, int pad_idx, int wave);
-void pad_instance_set_osc_b_octave(KesshoPadInstance* instance, int pad_idx, int octave);
-void pad_instance_set_osc_b_detune(KesshoPadInstance* instance, int pad_idx, float cents);
+void pad_instance_set_osc_b_position(KesshoPadInstance* instance, int pad_idx, float position);
+void pad_instance_set_osc_b_phase_distortion(KesshoPadInstance* instance, int pad_idx, float amount);
+void pad_instance_set_osc_b_pitch(KesshoPadInstance* instance, int pad_idx, float semitones);
+void pad_instance_set_osc_b_hz_offset(KesshoPadInstance* instance, int pad_idx, float hz);
 void pad_instance_set_osc_b_level(KesshoPadInstance* instance, int pad_idx, float level);
 
 void pad_instance_set_osc_mix(KesshoPadInstance* instance, int pad_idx, float mix);
+void pad_instance_set_drift(KesshoPadInstance* instance, int pad_idx, float amount);
+void pad_instance_set_phase_reset(KesshoPadInstance* instance, int pad_idx, int mode);
 
 void pad_instance_set_sub_enabled(KesshoPadInstance* instance, int pad_idx, int enabled);
 void pad_instance_set_sub_octave(KesshoPadInstance* instance, int pad_idx, int octave);

@@ -11,6 +11,12 @@ import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { PitchSettings } from '../ui/sequencer/useEuclideanSequencer';
 import { getParamInfo, quantize, type SliderMode, type SliderState } from '../ui/state';
 import { getSliderCapability, type SliderCapability } from '../ui/sliderSystem/sliderCapabilities';
+import {
+  normalizeDualConfigMap,
+  toLegacyDualState,
+  type DualSliderConfig,
+  type DualSliderConfigMap,
+} from '../ui/sliderSystem/dualConfigReducer';
 
 /**
  * Canonicalizes slider automation metadata before it is persisted or hashed.
@@ -32,15 +38,15 @@ function getCapability(key: string, lookup?: SliderCapabilityLookup): SliderCapa
     : (lookup as Readonly<Record<string, SliderCapabilityMetadata>>)[key];
 }
 
-function normalizeBehaviorMode(value: unknown): 'single' | 'walk' | 'sampleHold' {
-  return value === 'walk' || value === 'sampleHold' ? value : 'single';
+function normalizeBehaviorMode(value: unknown): 'single' | 'walk' | 'sampleHold' | 'shape' {
+  return value === 'walk' || value === 'sampleHold' || value === 'shape' ? value : 'single';
 }
 
 function resolveAllowedMode(
   key: string,
   rawMode: unknown,
   lookup?: SliderCapabilityLookup,
-): 'walk' | 'sampleHold' | undefined {
+): 'walk' | 'sampleHold' | 'shape' | undefined {
   let mode = normalizeBehaviorMode(rawMode);
   if (mode === 'single') return undefined;
   const capability = getCapability(key, lookup);
@@ -79,30 +85,87 @@ function quantizeBehaviorEndpoint(key: string, value: unknown): number | undefin
 }
 
 export function sanitizePresetParameterBehaviorMetadata(
-  metadata: Pick<PresetVersionMetadata, 'sliderModes' | 'dualRanges'> | undefined,
+  metadata: Pick<PresetVersionMetadata, 'sliderModes' | 'dualRanges' | 'dualSliderConfigs'> | undefined,
   capabilities?: SliderCapabilityLookup,
-): Pick<PresetVersionMetadata, 'sliderModes' | 'dualRanges'> {
-  const sliderModes: Record<string, SliderMode> = {};
-  const dualRanges: Record<string, { min: number; max: number }> = {};
+  defaults?: { walkSpeed?: number; shapeSpeed?: number },
+): Pick<PresetVersionMetadata, 'sliderModes' | 'dualRanges' | 'dualSliderConfigs'> {
+  const canonical = buildCanonicalParameterBehaviorConfigs(metadata, capabilities, defaults);
+  const projected = toLegacyDualState(canonical);
+  const result: Pick<PresetVersionMetadata, 'sliderModes' | 'dualRanges' | 'dualSliderConfigs'> = {
+    sliderModes: Object.keys(projected.sliderModes).length ? projected.sliderModes as Record<string, SliderMode> : undefined,
+    dualRanges: Object.keys(projected.dualRanges).length ? projected.dualRanges as Record<string, { min: number; max: number }> : undefined,
+  };
+  // Keep legacy-only callers byte-compatible. New metadata that already has a
+  // canonical map retains it; migration/build paths can request the explicit
+  // canonicalizer below when upgrading old maps.
+  if (metadata?.dualSliderConfigs) result.dualSliderConfigs = canonical as Record<string, DualSliderConfig>;
+  return result;
+}
+
+/** Return canonical configs plus legacy projections for new save/load paths. */
+export function canonicalizePresetParameterBehaviorMetadata(
+  metadata: Pick<PresetVersionMetadata, 'sliderModes' | 'dualRanges' | 'dualSliderConfigs'> | undefined,
+  capabilities?: SliderCapabilityLookup,
+  defaults?: { walkSpeed?: number; shapeSpeed?: number },
+): Pick<PresetVersionMetadata, 'sliderModes' | 'dualRanges' | 'dualSliderConfigs'> {
+  const canonical = buildCanonicalParameterBehaviorConfigs(metadata, capabilities, defaults);
+  const projected = toLegacyDualState(canonical);
+  return {
+    dualSliderConfigs: Object.keys(canonical).length ? canonical as Record<string, DualSliderConfig> : undefined,
+    sliderModes: Object.keys(projected.sliderModes).length ? projected.sliderModes as Record<string, SliderMode> : undefined,
+    dualRanges: Object.keys(projected.dualRanges).length ? projected.dualRanges as Record<string, { min: number; max: number }> : undefined,
+  };
+}
+
+/** Alias kept discoverable for callers that use `normalize*` terminology. */
+export const normalizePresetParameterBehaviorMetadata = canonicalizePresetParameterBehaviorMetadata;
+
+function buildCanonicalParameterBehaviorConfigs(
+  metadata: Pick<PresetVersionMetadata, 'sliderModes' | 'dualRanges' | 'dualSliderConfigs'> | undefined,
+  capabilities?: SliderCapabilityLookup,
+  defaults?: { walkSpeed?: number; shapeSpeed?: number },
+): DualSliderConfigMap<string> {
+  const rawConfigs: DualSliderConfigMap<string> = { ...(metadata?.dualSliderConfigs ?? {}) };
   const keys = new Set([
+    ...Object.keys(metadata?.dualSliderConfigs ?? {}),
     ...Object.keys(metadata?.sliderModes ?? {}),
     ...Object.keys(metadata?.dualRanges ?? {}),
   ]);
   for (const key of keys) {
-    const mode = resolveAllowedMode(key, metadata?.sliderModes?.[key], capabilities);
+    const rawConfig = rawConfigs[key];
+    const mode = resolveAllowedMode(
+      key,
+      metadata?.sliderModes?.[key] ?? (rawConfig?.source === 'b' ? 'sampleHold' : 'walk'),
+      capabilities,
+    );
     if (!mode) continue;
-    sliderModes[key] = mode;
-    const rawRange = metadata?.dualRanges?.[key];
+    const rawRange = rawConfig?.range
+      ? { min: rawConfig.range[0], max: rawConfig.range[1] }
+      : metadata?.dualRanges?.[key];
     const min = quantizeBehaviorEndpoint(key, rawRange?.min);
     const max = quantizeBehaviorEndpoint(key, rawRange?.max);
-    if (min !== undefined && max !== undefined) {
-      dualRanges[key] = { min: Math.min(min, max), max: Math.max(min, max) };
-    }
+    if (min === undefined || max === undefined) continue;
+    rawConfigs[key] = {
+      source: rawConfig?.source ?? (mode === 'sampleHold' ? 'b' : 'a'),
+      range: [Math.min(min, max), Math.max(min, max)],
+    };
   }
-  return {
-    sliderModes: Object.keys(sliderModes).length ? sliderModes : undefined,
-    dualRanges: Object.keys(dualRanges).length ? dualRanges : undefined,
-  };
+  const normalized = normalizeDualConfigMap(rawConfigs, defaults);
+  for (const key of Object.keys(normalized)) {
+    const config = normalized[key];
+    if (!config) continue;
+    const min = quantizeBehaviorEndpoint(key, config.range[0]);
+    const max = quantizeBehaviorEndpoint(key, config.range[1]);
+    if (min === undefined || max === undefined) {
+      delete normalized[key];
+      continue;
+    }
+    normalized[key] = {
+      ...config,
+      range: [Math.min(min, max), Math.max(min, max)],
+    };
+  }
+  return normalized;
 }
 
 function cloneJson<T>(value: T): T {
@@ -151,6 +214,8 @@ export function preparePresetVersionMetadataForV2Storage(
   else delete next.sliderModes;
   if (behavior.dualRanges) next.dualRanges = behavior.dualRanges;
   else delete next.dualRanges;
+  if (behavior.dualSliderConfigs) next.dualSliderConfigs = behavior.dualSliderConfigs;
+  else if (next.dualSliderConfigs) delete next.dualSliderConfigs;
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
@@ -164,6 +229,11 @@ export function buildPresetVersionMetadata(
 
   const behavior = sanitizePresetParameterBehaviorMetadata(source);
   const filteredSliderModes = behavior.sliderModes;
+
+  if (behavior.dualSliderConfigs) {
+    metadata.dualSliderConfigs = cloneJson(behavior.dualSliderConfigs);
+    hasMetadata = true;
+  }
 
   if (source.routingMuteGroups) {
     metadata.routingMuteGroups = cloneJson(source.routingMuteGroups);

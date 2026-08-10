@@ -187,6 +187,8 @@ constexpr float kSoundscapeTexturePitchRangeCents = 200.0f;
 constexpr float kSoundscapeTextureSpeedVariation = 0.2f;
 constexpr uint32_t kSoundscapeTextureHaasDelayMaxFrames = 2400u;
 constexpr uint32_t kSoundscapeModuleParamCount = kessho::product::generated::KESSHO_PRODUCT_GENERATED_SOUNDSCAPE_MODULE_PARAM_COUNT;
+constexpr uint32_t kSoundscapeWaterLayerParamStart = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_WATER_LAYER_PARAM_START;
+constexpr uint32_t kSoundscapeWaterLayerCount = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_WATER_LAYER_COUNT;
 constexpr uint32_t kSoundscapeModuleWaterActiveParam = 0u;
 constexpr uint32_t kSoundscapeModuleWaterSeedParam = 60u;
 constexpr uint32_t kSoundscapeModuleInsectsActiveParam = 61u;
@@ -203,6 +205,24 @@ constexpr uint32_t kSoundscapeModuleWaterMasterEnabledParam = kSoundscapeModuleE
 constexpr uint32_t kSoundscapeModuleInsectsMasterEnabledParam = kSoundscapeModuleWaterMasterEnabledParam + 1u;
 constexpr uint32_t kSoundscapeModuleNatureMasterEnabledParam = kSoundscapeModuleInsectsMasterEnabledParam + 1u;
 constexpr uint32_t kSoundscapeProductModuleParamCount = kessho::product::generated::KESSHO_PRODUCT_GENERATED_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT;
+constexpr uint32_t kSoundscapeModuleWaterLayerMaskParam =
+    kSoundscapeModuleParamCount + kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_WATER_LAYER_MASK_PARAM_OFFSET;
+constexpr uint32_t kSoundscapeWaterLayerHardDropsBit = 1u << 0u;
+constexpr uint32_t kSoundscapeWaterLayerWaterDropsBit = 1u << 1u;
+constexpr uint32_t kSoundscapeWaterLayerTurbulenceBit = 1u << 2u;
+constexpr uint32_t kSoundscapeWaterLayerBubblingBit = 1u << 3u;
+constexpr uint32_t kSoundscapeWaterLayerSurfBit = 1u << 4u;
+constexpr uint32_t kSoundscapeWaterLayerChannelsBit = 1u << 5u;
+constexpr uint32_t kSoundscapeWaterLayerMaskAll =
+    kSoundscapeWaterLayerHardDropsBit |
+    kSoundscapeWaterLayerWaterDropsBit |
+    kSoundscapeWaterLayerTurbulenceBit |
+    kSoundscapeWaterLayerBubblingBit |
+    kSoundscapeWaterLayerSurfBit |
+    kSoundscapeWaterLayerChannelsBit;
+static_assert(kSoundscapeWaterLayerCount == 6u, "Water layer mask ABI must cover six layers");
+static_assert(kSoundscapeModuleWaterLayerMaskParam < kSoundscapeProductModuleParamCount,
+    "Water layer mask must fit inside the Product soundscape snapshot ABI");
 constexpr uint32_t kSoundscapeModuleParamTargetEnd =
     kSoundscapeModuleParamTargetBase + kSoundscapeProductModuleParamCount;
 static_assert(

@@ -43,6 +43,7 @@ struct ProductModuleRuntimeState {
   std::unique_ptr<kessho::core::IKesshoModule> soundscapes_module{};
   std::array<float, kSoundscapeModuleParamCount> soundscapes_module_param_cache{};
   bool soundscapes_module_params_configured = false;
+  bool soundscapes_module_params_dirty = false;
   SoundscapeTextureRuntime soundscape_texture_runtimes[kSoundscapeTextureSlotCount]{};
   float soundscape_texture_delay[kSoundscapeTextureSlotCount][kSoundscapeTextureHaasDelayMaxFrames]{};
   uint32_t soundscape_texture_delay_index[kSoundscapeTextureSlotCount]{};

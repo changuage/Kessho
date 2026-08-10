@@ -24,7 +24,7 @@ import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 import { KESSHO_PRODUCT_SOURCE_IDS, KESSHO_PRODUCT_SOURCE_PRESET_IDS } from './generated/kesshoProductSchema';
 import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES } from './lead4opfm';
-import { applyPadPresetMorphParamsToState } from './padPresets';
+import { applyPadPresetMorphParamsToState, getPadPreset, upsertUserPadPreset } from './padPresets';
 import { drumPitchUiValuesToEngineOffsets } from '../ui/sequencer/drumPitchSequencer';
 import { reactiveVisualizerRootPitchClass } from '../ui/visualizer/reactiveVisualizerHarmony';
 import { DEFAULT_STATE } from '../ui/state';
@@ -1373,6 +1373,27 @@ const distancePadSnapshot = createCoreProductSnapshot({
 });
 const distancePadSource = distancePadSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Pad1);
 assertNoWebExactPatchFields(distancePadSource, 'Product pad distance macro');
+
+const saturatedDriftIIPreset = getPadPreset('saturated_drift_ii');
+assert.ok(saturatedDriftIIPreset, 'Saturated Drift II source data should exist');
+upsertUserPadPreset('pad1', {
+  id: 'supabase-saturated-drift-ii',
+  name: 'Saturated Drift II',
+  library: 'cloud',
+  preset: saturatedDriftIIPreset,
+});
+const saturatedDriftIISnapshot = createCoreProductSnapshot({
+  padEnabled: true,
+  padPresetA: 'supabase-saturated-drift-ii',
+  padPresetB: 'supabase-saturated-drift-ii',
+  padMorph: 0,
+});
+const saturatedDriftIISource = saturatedDriftIISnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Pad1);
+assert.equal(saturatedDriftIISource?.presetId, KESSHO_PRODUCT_SOURCE_PRESET_IDS.PadInit, 'Product pad Saturated Drift II should use a stable core anchor');
+assert.equal(saturatedDriftIISource?.sourcePresetAId, KESSHO_PRODUCT_SOURCE_PRESET_IDS.PadInit, 'Product pad Saturated Drift II endpoint A should use a stable core anchor');
+assert.equal(saturatedDriftIISource?.sourcePresetBId, KESSHO_PRODUCT_SOURCE_PRESET_IDS.PadInit, 'Product pad Saturated Drift II endpoint B should use a stable core anchor');
+assert.ok((saturatedDriftIISource?.padOverrideCount ?? 0) > 0, 'Product pad Saturated Drift II should serialize its preset data as sparse overrides');
+assertNoWebExactPatchFields(saturatedDriftIISource, 'Product pad Saturated Drift II');
 
 const fullDefaultPadPresetSnapshot = createCoreProductSnapshot({
   ...DEFAULT_STATE,

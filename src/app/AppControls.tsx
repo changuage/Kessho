@@ -43,8 +43,17 @@ export const Slider: React.FC<SliderProps> = ({
   dualRange,
   walkPosition,
   isFlashing,
+  modulationConfig,
+  shapeConfig,
+  onModulationConfigChange,
   onCycleMode,
   onDualRangeChange,
+  title,
+  keyboardStep,
+  fineKeyboardStep,
+  dragStep,
+  fineDragStep,
+  resetValue,
 }) => {
   const { announceSlider } = useSliderHelp();
   const midiLearn = useMidiLearn();
@@ -78,11 +87,22 @@ export const Slider: React.FC<SliderProps> = ({
         format={format}
         ghostValue={ghostValue}
         helpPage={helpPage}
+        title={title}
+        keyboardStep={keyboardStep}
+        fineKeyboardStep={fineKeyboardStep}
+        dragStep={dragStep}
+        fineDragStep={fineDragStep}
+        resetValue={resetValue}
         disabled={disabled}
         mode={mode}
         dualRange={dualRange}
         walkPosition={walkPosition}
         isFlashing={isFlashing}
+        modulationConfig={modulationConfig}
+        shapeConfig={shapeConfig}
+        onModulationConfigChange={onModulationConfigChange
+          ? (config) => onModulationConfigChange(paramKey, config)
+          : undefined}
         onChange={onChange}
         onCycleMode={onCycleMode}
         onDualRangeChange={onDualRangeChange}
@@ -96,6 +116,11 @@ export const Slider: React.FC<SliderProps> = ({
       ...info,
       scale: logarithmic ? 'log' : 'linear',
     }) * 100;
+  };
+
+  const percentStep = (actualStep: number | undefined): number | undefined => {
+    if (actualStep == null || !Number.isFinite(actualStep) || actualStep <= 0) return undefined;
+    return Math.abs(valueToPercent(info.min + actualStep) - valueToPercent(info.min));
   };
 
   const percentToValue = (percent: number) => {
@@ -125,6 +150,14 @@ export const Slider: React.FC<SliderProps> = ({
       formatValue={(percent) => `${formatDisplayValue(percentToValue(percent))}${unit || ''}`}
       ghostValue={ghostPercent ?? undefined}
       disabled={disabled}
+      title={title}
+      keyboardStep={percentStep(keyboardStep)}
+      fineKeyboardStep={percentStep(fineKeyboardStep)}
+      dragStep={percentStep(dragStep)}
+      fineDragStep={percentStep(fineDragStep)}
+      onDoubleClick={resetValue == null ? undefined : () => {
+        if (!disabled) onChange(paramKey, quantizeWithInfo(paramKey, resetValue));
+      }}
       onAnnounce={announceHelp}
       onValueGestureStart={() => {
         midiLearn.notifySliderDrag(paramKey, label);

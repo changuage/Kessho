@@ -35,7 +35,11 @@ assert.equal(
 
 assert.equal(getPresetContentOwner('synthEuclid1Steps'), 'portable-content');
 assert.equal(getPresetContentOwner('synthEuclid1Source'), 'slot-binding');
+assert.equal(getPresetContentOwner('synthEuclid1ResumeQuantization'), 'slot-binding');
+assert.equal(getPresetContentOwner('synthEuclid1NoteMin'), 'slot-binding');
+assert.equal(getPresetContentOwner('synthEuclid1NoteMax'), 'slot-binding');
 assert.equal(getPresetContentOwner('drumEuclid6TargetMembrane'), 'slot-binding');
+assert.equal(getPresetContentOwner('drumEuclid6ResumeQuantization'), 'slot-binding');
 assert.equal(getPresetContentOwner('synthSequencerChain'), 'arrangement-global');
 assert.equal(getPresetContentOwner('harmonyChordSlotsA'), 'portable-content');
 assert.equal(getPresetContentOwner('rootNote'), 'portable-content');

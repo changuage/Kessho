@@ -5,9 +5,9 @@ import { getCoreProductSoundscapeAssetDescriptorsForState, getPrimaryCoreProduct
 import { DEFAULT_MASTER_VOLUME, ENGINE_TRIMS, MASTER_OUTPUT_TRIM } from './outputTrims';
 import { delayAFilterTypeId, delayBPatternId, delayBTapeSpacingId, delayBWarpId, dynamicsDriftModeId, dynamicsDriftQualityId, dynamicsErosionQualityId, dynamicsEndCompModeId, dynamicsSaturationModeId, dynamicsSaturationQualityId, granularAnchorPatternId, granularCloudStyleId, granularLegacyPitchModeId, granularPitchModeId, granularQualityId, granularShapeId, granularVoiceModeId, reverbModCharacterId, reverbQualityId, reverbSaturationModeId, reverbTypeId, sidechainKeyId } from './CoreProductModeIds';
 import { assignLeadAlgorithmOverrideFields, assignLeadEnvelopeOverrideFields, assignLeadPresetIds, emptyLeadOverrideIndices, emptyLeadOverrideValues, exactLeadPatchFromState, leadAlgorithmPresetAEnabledFromState, leadEnvelopeGateSecondsFromState, leadEnvelopeOverrideFromState } from './CoreProductLeadPatch';
-import { emptyPadOverrideIndices, emptyPadOverrideValues, exactPadPatchFromState, padEnvelopeFromState } from './CoreProductPadPatch';
+import { emptyPadOverrideIndices, emptyPadOverrideValues, exactPadPatchFromState, padEnvelopeFromState, padPresetAnchorId } from './CoreProductPadPatch';
 import { emptyDrumOverrideIndices, emptyDrumOverrideValues, exactDrumPatchFromState } from './CoreProductDrumPatch';
-import { defaultPresetId, drumVoiceMorphsFromState, drumVoicePresetIdsFromState, endpointPresetId, soundscapePresetIdFromState, sourcePresetId } from './CoreProductPresetIds';
+import { defaultPresetId, drumVoiceMorphsFromState, drumVoicePresetIdsFromState, soundscapePresetIdFromState, sourcePresetId } from './CoreProductPresetIds';
 import { getTransportMetrics } from './transport';
 import { computeGranularMacroModel, type GranularMacroModel } from './granularMacroCore';
 import { applyDistanceValue, getVoiceDistanceKey, type DistanceVoice } from './distanceMacro';
@@ -337,9 +337,10 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
   };
 }
 
-function assignSourcePresetEndpoints(source: ProductSourceSnapshot, sourceFamily: 'pad' | 'lead', morph: number, keyA: unknown, keyB: unknown, fallbackKey: string): void {
-  const presetA = sourcePresetId(sourceFamily, keyA, fallbackKey), presetB = sourcePresetId(sourceFamily, keyB, fallbackKey);
+function assignPadPresetEndpoints(source: ProductSourceSnapshot, morph: number, keyA: unknown, keyB: unknown): void {
+  const presetA = padPresetAnchorId(keyA), presetB = padPresetAnchorId(keyB);
   source.sourcePresetAId = presetA; source.sourcePresetBId = presetB; source.morph = clamp(morph, 0, 1);
+  source.presetId = source.morph >= 0.5 ? presetB : presetA;
 }
 
 function sourceFromState(
@@ -362,8 +363,7 @@ function sourceFromState(
       source.diffuseSend = distanceAdjustedNumberFromState(state, 'padDiffuseSend', 'pad1', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'padPostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'padStereoWidth', source.stereoWidth);
-      source.presetId = endpointPresetId('pad', source.morph, state?.padPresetA, state?.padPresetB, 'init');
-      assignSourcePresetEndpoints(source, 'pad', source.morph, state?.padPresetA, state?.padPresetB, 'init');
+      assignPadPresetEndpoints(source, source.morph, state?.padPresetA, state?.padPresetB);
       Object.assign(
         source,
         exactPadPatchFromState(state, 0, source.sourcePresetAId, source.sourcePresetBId, source.morph),
@@ -384,8 +384,7 @@ function sourceFromState(
       source.diffuseSend = distanceAdjustedNumberFromState(state, 'pad2DiffuseSend', 'pad2', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'pad2PostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'pad2StereoWidth', source.stereoWidth);
-      source.presetId = endpointPresetId('pad', source.morph, state?.pad2PresetA, state?.pad2PresetB, 'init');
-      assignSourcePresetEndpoints(source, 'pad', source.morph, state?.pad2PresetA, state?.pad2PresetB, 'init');
+      assignPadPresetEndpoints(source, source.morph, state?.pad2PresetA, state?.pad2PresetB);
       Object.assign(
         source,
         exactPadPatchFromState(state, 1, source.sourcePresetAId, source.sourcePresetBId, source.morph),

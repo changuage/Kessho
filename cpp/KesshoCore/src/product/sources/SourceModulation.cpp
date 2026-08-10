@@ -25,6 +25,28 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
       kProductRandomWalkMaxSpeed);
 }
 
+uint32_t modulationShapeFromFlags(uint32_t flags) {
+  return std::min<uint32_t>(
+      KESSHO_PRODUCT_MODULATION_SHAPE_SQUARE,
+      (flags & KESSHO_PRODUCT_MODULATION_RANGE_SHAPE_MASK) >>
+          KESSHO_PRODUCT_MODULATION_RANGE_SHAPE_SHIFT);
+}
+
+uint32_t modulationTimingFromFlags(uint32_t flags) {
+  const uint32_t timing = (flags & KESSHO_PRODUCT_MODULATION_RANGE_TIMING_MASK) >>
+      KESSHO_PRODUCT_MODULATION_RANGE_TIMING_SHIFT;
+  return timing <= KESSHO_PRODUCT_MODULATION_TIMING_SYNC
+      ? timing
+      : KESSHO_PRODUCT_MODULATION_TIMING_FREE;
+}
+
+uint32_t modulationSyncDivisionFromFlags(uint32_t flags) {
+  return std::min<uint32_t>(
+      KESSHO_PRODUCT_MODULATION_SYNC_DIVISION_1_16,
+      (flags & KESSHO_PRODUCT_MODULATION_RANGE_SYNC_DIVISION_MASK) >>
+          KESSHO_PRODUCT_MODULATION_RANGE_SYNC_DIVISION_SHIFT);
+}
+
 } // namespace
 
   void KesshoProductEngine::applyModulationRangeEvent(const KesshoProductEvent& event) {
@@ -70,7 +92,11 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
   }
 
   const bool was_random_walk = range->active && range->mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK;
+  const bool was_shape_lfo = range->active && range->mode == KESSHO_PRODUCT_MODULATION_RANGE_SHAPE_LFO;
   const float previous_current_value = range->current_value;
+  const float previous_shape_phase = range->shape_lfo_phase;
+  const bool previous_shape_sync_phase_initialized = range->shape_sync_phase_initialized;
+  const uint32_t previous_timing = range->timing;
   const float previous_velocity = range->velocity;
   const float previous_walk_accumulator = range->random_walk_step_accumulator;
   const uint32_t previous_walk_counter = range->random_walk_counter;
@@ -82,22 +108,43 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
   range->param_id = param_id;
   range->mode = mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK
       ? KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK
+      : mode == KESSHO_PRODUCT_MODULATION_RANGE_SHAPE_LFO
+      ? KESSHO_PRODUCT_MODULATION_RANGE_SHAPE_LFO
       : KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD;
+  range->shape = modulationShapeFromFlags(event.flags);
+  range->timing = modulationTimingFromFlags(event.flags);
+  range->sync_reference = (event.flags & KESSHO_PRODUCT_MODULATION_RANGE_SYNC_REFERENCE) != 0u
+      ? KESSHO_PRODUCT_MODULATION_SYNC_REFERENCE_PHRASE
+      : KESSHO_PRODUCT_MODULATION_SYNC_REFERENCE_BAR;
+  range->sync_division = modulationSyncDivisionFromFlags(event.flags);
+  range->source_slot = (event.flags & KESSHO_PRODUCT_MODULATION_RANGE_SOURCE_B) != 0u ? 1u : 0u;
   range->min_value = min_value;
   range->max_value = max_value;
   const float fallback_current = (min_value + max_value) * 0.5f;
   range->current_value = clampFloat(
-      was_random_walk ? previous_current_value : (std::isfinite(event.value4) ? event.value4 : fallback_current),
+      (was_random_walk || was_shape_lfo)
+          ? previous_current_value
+          : (std::isfinite(event.value4) ? event.value4 : fallback_current),
       min_value,
       max_value);
   range->seed = hashU32(rng_seed ^ range->control_id);
+  range->shape_lfo_phase = was_shape_lfo
+      ? previous_shape_phase
+      : hashUnit(range->seed ^ 0x4f1bbcddu);
+  range->shape_sync_phase_initialized = was_shape_lfo &&
+      previous_timing == KESSHO_PRODUCT_MODULATION_TIMING_SYNC &&
+      range->timing == KESSHO_PRODUCT_MODULATION_TIMING_SYNC &&
+      previous_shape_sync_phase_initialized;
   range->random_walk_speed = 1.0f;
   range->random_walk_global = false;
   range->random_walk_step_accumulator = 0.0f;
   range->random_walk_counter = 0u;
   range->velocity = 0.0f;
-  if (range->mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK) {
+  if (range->mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK ||
+      range->mode == KESSHO_PRODUCT_MODULATION_RANGE_SHAPE_LFO) {
     range->random_walk_speed = randomWalkSpeedFromFlags(event.flags);
+  }
+  if (range->mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK) {
     range->random_walk_global = (event.flags & KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK_GLOBAL) != 0u;
     if (was_random_walk) {
       const float max_velocity = 0.05f * range->random_walk_speed;
@@ -106,6 +153,28 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
       range->random_walk_counter = previous_walk_counter;
     } else {
       range->velocity = (hashUnit(range->seed ^ 0x63d83595u) - 0.5f) * 0.02f;
+    }
+    if (range->timing == KESSHO_PRODUCT_MODULATION_TIMING_LINK) {
+      const uint32_t slot = std::min<uint32_t>(range->source_slot, kModulationSourceSlotCount - 1u);
+      modulation_link_walk_speed[slot] = range->random_walk_speed;
+      if (!modulation_link_walk_initialized[slot]) {
+        const float span = range->max_value - range->min_value;
+        modulation_link_walk_position[slot] = span > 0.0f
+            ? clampFloat((range->current_value - range->min_value) / span, 0.0f, 1.0f)
+            : 0.5f;
+        modulation_link_walk_velocity[slot] = range->velocity;
+        modulation_link_walk_initialized[slot] = true;
+      }
+    }
+  } else if (range->mode == KESSHO_PRODUCT_MODULATION_RANGE_SHAPE_LFO &&
+      range->timing == KESSHO_PRODUCT_MODULATION_TIMING_LINK) {
+    // Link mode intentionally has one authoritative speed/phase. Event order
+    // is deterministic, so the latest linked shape event wins.
+    const uint32_t slot = std::min<uint32_t>(range->source_slot, kModulationSourceSlotCount - 1u);
+    modulation_link_shape_speed[slot] = range->random_walk_speed;
+    if (!modulation_link_shape_initialized[slot]) {
+      modulation_link_shape_phase[slot] = 0.0f;
+      modulation_link_shape_initialized[slot] = true;
     }
   }
   if (range->mode == KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD) {
@@ -128,18 +197,21 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
   if (soundscape_asset_level_target || soundscape_texture_level_target || soundscape_texture_param_target ||
       soundscape_module_param_target) {
     applyModulationRangeValue(*range);
+    range->last_applied_value = range->current_value;
+    range->has_last_applied_value = true;
   }
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
 }
 
-  float KesshoProductEngine::modulationRangeSample(const ModulationRange& range, float fallback, uint32_t sample_seed) const {
+float KesshoProductEngine::modulationRangeSample(const ModulationRange& range, float fallback, uint32_t sample_seed) const {
   if (!range.active) {
     return fallback;
   }
   if (range.max_value <= range.min_value) {
     return range.min_value;
   }
-  if (range.mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK) {
+  if (range.mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK ||
+      range.mode == KESSHO_PRODUCT_MODULATION_RANGE_SHAPE_LFO) {
     return clampFloat(range.current_value, range.min_value, range.max_value);
   }
   const float position = hashUnit(range.seed ^ sample_seed ^ (range.target_id * 2246822519u) ^ (range.param_id * 3266489917u));
@@ -177,10 +249,7 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
     if (range.param_id == KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID) {
       const uint32_t index = soundscapeModuleParamIndexForRangeTarget(range.target_id);
       if (index < kSoundscapeProductModuleParamCount) {
-        SourceState& source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
-        source.soundscape_module_params[index] = range.current_value;
-        source.soundscape_module_param_count = std::max(
-            source.soundscape_module_param_count, index + 1u);
+        setSoundscapeModuleParamValue(index, range.current_value);
       }
     }
     return;
@@ -209,9 +278,24 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
   applyParam(event);
 }
 
-  void KesshoProductEngine::applyRuntimeWalkValue(const ModulationRange& range) {
-  if (!range.active || range.mode != KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK) {
+void KesshoProductEngine::applyRuntimeModulationValue(ModulationRange& range) {
+  if (!range.active ||
+      (range.mode != KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK &&
+       range.mode != KESSHO_PRODUCT_MODULATION_RANGE_SHAPE_LFO)) {
+    return;
+  }
+  if (range.has_last_applied_value &&
+      std::fabs(range.last_applied_value - range.current_value) <= 0.0000001f) {
     return;
   }
   applyModulationRangeValue(range);
+  range.last_applied_value = range.current_value;
+  range.has_last_applied_value = true;
+}
+
+void KesshoProductEngine::applyRuntimeWalkValue(ModulationRange& range) {
+  if (!range.active || range.mode != KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK) {
+    return;
+  }
+  applyRuntimeModulationValue(range);
 }

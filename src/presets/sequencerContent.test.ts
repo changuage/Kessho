@@ -6,6 +6,7 @@ import {
   buildSequencerContentGroup,
   applySequencerContentComponents,
   sequencerContentCandidates,
+  stripPortableSequencerContentFromL4Override,
   stripSequencerStateFromSoundContent,
 } from './sequencerContent';
 import {
@@ -201,6 +202,27 @@ assert.deepStrictEqual(
     drumEuclid1Hits: 4,
   }),
   { padEnabled: true },
+);
+
+assert.deepStrictEqual(
+  stripPortableSequencerContentFromL4Override({
+    synthEuclid1Steps: 8,
+    synthEuclid1Source: 'pad2',
+    synthEuclid1ResumeQuantization: 'immediate',
+    synthEuclid1NoteMin: 48,
+    synthEuclid1NoteMax: 72,
+    drumEuclid1Hits: 4,
+    drumEuclid1ResumeQuantization: 'nextBar',
+    drumEuclid1TargetKick: true,
+  }),
+  {
+    synthEuclid1Source: 'pad2',
+    synthEuclid1ResumeQuantization: 'immediate',
+    synthEuclid1NoteMin: 48,
+    synthEuclid1NoteMax: 72,
+    drumEuclid1ResumeQuantization: 'nextBar',
+    drumEuclid1TargetKick: true,
+  },
 );
 
 console.log('preset sequencer component regression passed');

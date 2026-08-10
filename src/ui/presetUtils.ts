@@ -6,11 +6,11 @@
  * preservation, safe-audition policy, and engine update.
  */
 
-import { SliderState, DEFAULT_STATE, SavedPreset } from './state';
+import { SliderState, SavedPreset } from './state';
 import { getAllMorphedDrumParams } from '../audio/drumMorph';
 import { normalizeDegradeReverbCrossfeed } from './routing';
-import { PARAM_REGISTRY } from '../presets/ParamRegistry';
-import { completeSpectralFreezePresetState } from '../presets/spectralFreezePresetState';
+import { enforceProductCorePresetBoundaryState } from '../presets/productCorePresetBoundary';
+import { completeCanonicalPresetState } from '../presets/presetStateCompatibility';
 
 // User preference keys — audio processing settings that should NOT change
 // when loading presets or morphing between them.
@@ -98,17 +98,10 @@ export function applyPreset(
 
   const currentPreset: SavedPreset = raw as SavedPreset;
 
-  // 1. Normalize only current canonical values; missing fields are incompatible.
-  const normalizedState = normalize(completeSpectralFreezePresetState(currentPreset.state));
-  const missingKeys = (Object.keys(PARAM_REGISTRY) as (keyof SliderState)[])
-    .filter((key) => (
-      key in DEFAULT_STATE
-      && DEFAULT_STATE[key] !== undefined
-      && !Object.prototype.hasOwnProperty.call(normalizedState, key)
-    ));
-  if (missingKeys.length > 0) {
-    throw new Error(`Current preset state is missing canonical fields: ${missingKeys.slice(0, 8).join(', ')}`);
-  }
+  // 1. Complete missing current fields, then reject malformed authored values.
+  const normalizedState = enforceProductCorePresetBoundaryState(
+    normalize(completeCanonicalPresetState(currentPreset.state)),
+  );
   const newState: SliderState = { ...normalizedState };
 
   // 2. Preserve user preference keys from current state

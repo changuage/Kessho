@@ -2,7 +2,7 @@
 // Phase 1 — One-time migration of hardcoded factory presets into PresetStore.
 //
 // Sources:
-//   Pad:     PAD_PRESETS from padPresets.ts         → 24 L1 engine presets
+//   Pad:     PAD_PRESETS from padPresets.ts         → 26 L1 engine presets
 //   Drums:   *_PRESETS from drumPresets.ts           → 161 L1 engine presets
 //   Water:   WATER_PRESETS from waterPresets.ts      → 8 L1 engine presets
 //   Euclid:  shared pattern bank                     → 32 L1 engine presets
@@ -24,7 +24,7 @@ import {
   EUCLIDEAN_PATTERN_LABELS,
 } from './euclideanPatternBank';
 
-const FACTORY_LOADED_KEY = 'preset:factory-loaded:v26';
+const FACTORY_LOADED_KEY = 'preset:factory-loaded:v27';
 
 function canUseLocalStorage(): boolean {
   try {
@@ -198,11 +198,12 @@ async function appendBundledFactoryVersion(existing: PresetEntry, next: PresetEn
 async function loadPadFactory(): Promise<PresetEntry[]> {
   const entries: PresetEntry[] = [];
   try {
-    const { PAD_PRESETS } = await import('../audio/padPresets');
+    const { getPadPreset, PAD_PRESETS } = await import('../audio/padPresets');
     for (const [id, preset] of Object.entries(PAD_PRESETS)) {
-      entries.push(makeFactory('engine', preset.name || id, preset.params as Record<string, unknown>, {
+      const normalized = getPadPreset(id) ?? preset;
+      entries.push(makeFactory('engine', normalized.name || id, normalized.params as Record<string, unknown>, {
         engine: 'pad1',
-        tags: preset.tags,
+        tags: normalized.tags,
       }));
     }
   } catch (e) {

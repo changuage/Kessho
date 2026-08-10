@@ -18,7 +18,7 @@ constexpr uint32_t kOutputMagic = 0x314f474bu; // KGO1
 constexpr double kSampleRate = 48000.0;
 constexpr int kBlockSize = 128;
 constexpr int kTotalFrames = 48000 * 30;
-constexpr int kPadParamCount = 108;
+constexpr int kPadParamCount = 118;
 constexpr int kDynamicsParamCount = 82;
 constexpr int kMaxNotesPerChord = PAD_NUM_VOICES;
 

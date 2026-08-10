@@ -41,6 +41,11 @@ export function clampMorphPosition(position: number, scale100: boolean = false):
   return Math.max(0, Math.min(max, position));
 }
 
+/** Select a complete discrete endpoint; the destination owns the exact midpoint. */
+export function selectDiscreteMorphEndpoint<TA, TB>(endpointA: TA, endpointB: TB, position: number): TA | TB {
+  return clampMorphPosition(position) < 0.5 ? endpointA : endpointB;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ENDPOINT DETECTION
 // ═══════════════════════════════════════════════════════════════════════════

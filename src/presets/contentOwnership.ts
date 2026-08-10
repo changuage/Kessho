@@ -94,6 +94,7 @@ const METADATA_OWNERS: Readonly<Record<string, PresetPersistenceOwner>> = Object
   routingMuteGroups: 'portable-content',
   dualRanges: 'portable-content',
   sliderModes: 'portable-content',
+  dualSliderConfigs: 'portable-content',
   drumEvolveConfigs: 'portable-content',
   synthEvolveConfigs: 'portable-content',
   drumStepOverrides: 'portable-content',
@@ -117,7 +118,7 @@ const METADATA_OWNERS: Readonly<Record<string, PresetPersistenceOwner>> = Object
 });
 
 function isSequencerBindingKey(key: string): boolean {
-  return /^synthEuclid\d+(?:Enabled|Solo|Level|Source|VoiceMask|ResumeQuantization)$/.test(key)
+  return /^synthEuclid\d+(?:Enabled|Solo|Level|Source|VoiceMask|ResumeQuantization|NoteMin|NoteMax)$/.test(key)
     || /^drumEuclid\d+(?:Enabled|Solo|Level|ResumeQuantization|Target[A-Za-z0-9]+)$/.test(key);
 }
 

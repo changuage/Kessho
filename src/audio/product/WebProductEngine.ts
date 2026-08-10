@@ -32,6 +32,7 @@ import type {
   ProductPerfSnapshot,
   ProductRange,
   ProductRangeMap,
+  ProductRuntimeModulationRangeMap,
   ProductResolvedStateCommit,
   ProductStateRecord,
   ProductResolvedStateCommitReceipt,
@@ -357,6 +358,10 @@ export class WebProductEngine implements ProductEnginePort {
 
   setRuntimeWalkRanges(ranges: ProductRangeMap): void {
     coreProductRuntimeHostPort.setRuntimeWalkRanges(ranges);
+  }
+
+  setRuntimeModulationRanges(ranges: ProductRuntimeModulationRangeMap): void {
+    coreProductRuntimeHostPort.setRuntimeModulationRanges(ranges);
   }
 
   setLeadExpressionCallback(callback: ProductLeadExpressionCallback | null): void {

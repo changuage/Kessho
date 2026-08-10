@@ -65,7 +65,7 @@ int32_t kessho_product_load_snapshot_v2(
   if (engine == nullptr) {
     return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
   }
-  if (snapshot_bytes == nullptr || snapshot_byte_count < sizeof(KesshoProductSnapshotV2)) {
+  if (snapshot_bytes == nullptr || snapshot_byte_count != sizeof(KesshoProductSnapshotV2)) {
     engine->telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
     return KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
   }

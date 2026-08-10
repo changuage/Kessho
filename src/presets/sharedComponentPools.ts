@@ -98,12 +98,8 @@ export function buildPadVoicePoolInstance(
   if (laneIndex !== 0 && laneIndex !== 1) throw new Error(`Invalid pad voice index: ${laneIndex}`);
   const content: Record<string, unknown> = {};
   for (const canonicalKey of PAD_PRESET_PARAM_KEYS) {
-    if (canonicalKey === 'detune') continue;
     const runtimeKey = laneIndex === 0 ? canonicalKey : PAD1_TO_PAD2_KEY[canonicalKey];
     if (runtimeKey && state[runtimeKey] !== undefined) content[canonicalKey] = state[runtimeKey];
-  }
-  if (laneIndex === 0 && typeof state.detune === 'number' && state.detune !== 0) {
-    content.extensions = { pad1Detune: state.detune };
   }
   const lane = laneIndex + 1;
   return {
@@ -124,14 +120,7 @@ function hydratePadContent(laneIndex: number, content: Record<string, unknown>):
       : PAD1_TO_PAD2_KEY[canonicalKey as keyof typeof PAD1_TO_PAD2_KEY];
     if (runtimeKey) patch[runtimeKey] = value;
   }
-  if (laneIndex === 0 && isRecord(content.extensions) && typeof content.extensions.pad1Detune === 'number') {
-    patch.detune = content.extensions.pad1Detune;
-  }
   return patch;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function sharedComponentPoolCandidates(

@@ -4,6 +4,8 @@
 
 export type ParamLevel = 1 | 2 | 3 | 4;
 
+/** UI/runtime modulation policy stored with the canonical parameter library. */
+
 export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }> = {
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -196,8 +198,12 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   phraseLength:          { level: 4, scope: 'global' },
   chordRate:             { level: 4, scope: 'global' },
   voicingSpread:         { level: 4, scope: 'global' },
+  detune:                { level: 4, scope: 'global' },
   randomWalkSpeed:       { level: 4, scope: 'global' },
+  shapeLfoSpeed:         { level: 4, scope: 'global' },
   randomWalkMode:        { level: 4, scope: 'global' },
+  modulationSourceA:     { level: 4, scope: 'global' },
+  modulationSourceB:     { level: 4, scope: 'global' },
   harmonyMorphPercent:   { level: 4, scope: 'global' },
   manualHarmonyControl:  { level: 4, scope: 'global' },
   harmonyChordSlots:     { level: 4, scope: 'global' },
@@ -729,13 +735,19 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // L1: Pad 1 Engine
   // ═══════════════════════════════════════════════════════════════════════
   padOscAWave:           { level: 1, scope: 'pad1' },
-  padOscAOctave:         { level: 1, scope: 'pad1' },
-  padOscADetune:         { level: 1, scope: 'pad1' },
+  padOscAWavePosition:   { level: 1, scope: 'pad1' },
+  padOscAPhaseDistortion:{ level: 1, scope: 'pad1' },
+  padOscAPitch:          { level: 1, scope: 'pad1' },
+  padOscALinearHzOffset: { level: 1, scope: 'pad1' },
   padOscALevel:          { level: 1, scope: 'pad1' },
   padOscBWave:           { level: 1, scope: 'pad1' },
-  padOscBOctave:         { level: 1, scope: 'pad1' },
-  padOscBDetune:         { level: 1, scope: 'pad1' },
+  padOscBWavePosition:   { level: 1, scope: 'pad1' },
+  padOscBPhaseDistortion:{ level: 1, scope: 'pad1' },
+  padOscBPitch:          { level: 1, scope: 'pad1' },
+  padOscBLinearHzOffset: { level: 1, scope: 'pad1' },
   padOscBLevel:          { level: 1, scope: 'pad1' },
+  padDrift:              { level: 1, scope: 'pad1' },
+  padPhaseReset:         { level: 1, scope: 'pad1' },
   padSubEnabled:         { level: 1, scope: 'pad1' },
   padSubOctave:          { level: 1, scope: 'pad1' },
   padSubWave:            { level: 1, scope: 'pad1' },
@@ -759,7 +771,6 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   presence:              { level: 1, scope: 'pad1' },
   padFoldAmount:         { level: 1, scope: 'pad1' },
   padFoldMode:           { level: 1, scope: 'pad1' },
-  detune:                { level: 1, scope: 'pad1' },
   synthAttack:           { level: 1, scope: 'pad1' },
   synthDecay:            { level: 1, scope: 'pad1' },
   synthSustain:          { level: 1, scope: 'pad1' },
@@ -809,13 +820,19 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   pad2FilterSlope:       { level: 1, scope: 'pad2' },
   pad2FilterKeyTracking: { level: 1, scope: 'pad2' },
   pad2OscAWave:          { level: 1, scope: 'pad2' },
-  pad2OscAOctave:        { level: 1, scope: 'pad2' },
-  pad2OscADetune:        { level: 1, scope: 'pad2' },
+  pad2OscAWavePosition:  { level: 1, scope: 'pad2' },
+  pad2OscAPhaseDistortion:{ level: 1, scope: 'pad2' },
+  pad2OscAPitch:         { level: 1, scope: 'pad2' },
+  pad2OscALinearHzOffset:{ level: 1, scope: 'pad2' },
   pad2OscALevel:         { level: 1, scope: 'pad2' },
   pad2OscBWave:          { level: 1, scope: 'pad2' },
-  pad2OscBOctave:        { level: 1, scope: 'pad2' },
-  pad2OscBDetune:        { level: 1, scope: 'pad2' },
+  pad2OscBWavePosition:  { level: 1, scope: 'pad2' },
+  pad2OscBPhaseDistortion:{ level: 1, scope: 'pad2' },
+  pad2OscBPitch:         { level: 1, scope: 'pad2' },
+  pad2OscBLinearHzOffset:{ level: 1, scope: 'pad2' },
   pad2OscBLevel:         { level: 1, scope: 'pad2' },
+  pad2Drift:             { level: 1, scope: 'pad2' },
+  pad2PhaseReset:        { level: 1, scope: 'pad2' },
   pad2SubEnabled:        { level: 1, scope: 'pad2' },
   pad2SubOctave:         { level: 1, scope: 'pad2' },
   pad2SubWave:           { level: 1, scope: 'pad2' },
@@ -1244,11 +1261,17 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   waterHardness:         { level: 1, scope: 'water' },
   waterGlassThickness:   { level: 1, scope: 'water' },
   waterLayerHardDrops:   { level: 1, scope: 'water' },
+  waterLayerHardDropsEnabled: { level: 1, scope: 'water' },
   waterLayerWaterDrops:  { level: 1, scope: 'water' },
+  waterLayerWaterDropsEnabled: { level: 1, scope: 'water' },
   waterLayerTurbulence:  { level: 1, scope: 'water' },
+  waterLayerTurbulenceEnabled: { level: 1, scope: 'water' },
   waterLayerBubbling:    { level: 1, scope: 'water' },
+  waterLayerBubblingEnabled: { level: 1, scope: 'water' },
   waterLayerSurf:        { level: 1, scope: 'water' },
+  waterLayerSurfEnabled: { level: 1, scope: 'water' },
   waterLayerChannels:    { level: 1, scope: 'water' },
+  waterLayerChannelsEnabled: { level: 1, scope: 'water' },
   waterHardDropRate:     { level: 1, scope: 'water' },
   waterHardDropLPF:      { level: 1, scope: 'water' },
   waterHardDropTone:     { level: 1, scope: 'water' },
@@ -1540,10 +1563,141 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 
 };
 
+export type ParamModulationCapability = 'single' | 'walk-only' | 'dual';
+
+/** Earth controls rendered from generated card data rather than literal slider calls. */
+export const EARTH_RANGE_PARAM_KEYS = [
+  'earthLevel',
+  'waterMorph',
+  'waterIntensity', 'waterDistance', 'waterDropSize',
+  'waterHardness', 'waterGlassThickness', 'waterHardDropBaseFreq',
+  'waterWaterDropBaseFreq', 'waterReverbSend',
+  'oceanSampleLevel', 'oceanSliceDuration', 'oceanSliceDensity',
+  'oceanFilterCutoff', 'oceanFilterResonance',
+  'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend',
+  'birdsLevel', 'birdsSliceDuration', 'birdsSliceDensity',
+  'birds2Level', 'birds2SliceDuration', 'birds2SliceDensity',
+  'frogsLevel', 'frogsSliceDuration', 'frogsSliceDensity',
+  'nature1Level', 'nature1SliceDuration', 'nature1SliceDensity', 'nature1FilterCutoff', 'nature1FilterResonance',
+  'nature2Level', 'nature2SliceDuration', 'nature2SliceDensity', 'nature2FilterCutoff', 'nature2FilterResonance',
+  'nature3Level', 'nature3SliceDuration', 'nature3SliceDensity', 'nature3FilterCutoff', 'nature3FilterResonance',
+  'nature4Level', 'nature4SliceDuration', 'nature4SliceDensity', 'nature4FilterCutoff', 'nature4FilterResonance',
+  'natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend',
+  'insectsDensity', 'insectsTemperature', 'insectsDistance', 'insectsProximity',
+  'insectsAntiphony', 'insectsClickRate', 'insectsMotion',
+  'insects2Density', 'insects2Temperature', 'insects2Distance', 'insects2Proximity',
+  'insects2Antiphony', 'insects2ClickRate', 'insects2Motion',
+  'waterLevel', 'insectsLevel', 'insectsSharedLevel', 'insects2Level',
+  'insectsReverbSend', 'waterDelayASend', 'waterDelayBSend',
+  'granularWavesSend', 'granularNatureSend', 'granularWaterSend', 'granularInsectsSend',
+  'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
+  'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
+  'waterHardDropRate', 'waterHardDropLPF', 'waterHardDropTone',
+  'waterWaterDropRate', 'waterWaterDropLPF',
+  'waterBubblingRate', 'waterBubblingLPF',
+  'waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfFoamBright', 'waterSurfProximity', 'waterSurfDepth',
+  'waterSurfBody', 'waterSurfSpray',
+  'waterDensityHardSend', 'waterDensityWaterSend', 'waterDensityBubbleSend',
+  'waterDensityFeedback', 'waterDensityTone', 'waterDensityRing', 'waterDensityWet',
+  'waterChannelsMorph', 'waterChannelsSpeed',
+] as const;
+
+export const WALK_ONLY_PARAM_KEYS = [
+  'waterIntensity', 'waterDistance', 'waterHardDropBaseFreq', 'waterWaterDropBaseFreq',
+  'waterDropSize', 'waterHardness', 'waterGlassThickness', 'waterHardDropRate',
+  'waterHardDropLPF', 'waterHardDropTone', 'waterWaterDropRate', 'waterWaterDropLPF',
+  'waterBubblingRate', 'waterBubblingLPF', 'waterLayerHardDrops', 'waterLayerWaterDrops',
+  'waterLayerTurbulence', 'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
+  'waterDensityHardSend', 'waterDensityWaterSend', 'waterDensityBubbleSend',
+  'waterDensityFeedback', 'waterDensityTone', 'waterDensityRing', 'waterDensityWet',
+  'waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfFoamBright',
+  'waterSurfProximity', 'waterSurfDepth', 'waterSurfBody', 'waterSurfSpray',
+  'waterChannelsMorph', 'waterChannelsSpeed', 'insectsDensity', 'insectsTemperature',
+  'insectsDistance', 'insectsProximity', 'insectsAntiphony', 'insectsClickRate',
+  'insectsMotion', 'insects2Density', 'insects2Temperature', 'insects2Distance',
+  'insects2Proximity', 'insects2Antiphony', 'insects2ClickRate', 'insects2Motion',
+] as const;
+
+/** Intentionally scalar controls and controls without a Product range target. */
+export const SINGLE_ONLY_PARAM_KEYS = [
+  'lead1MorphSpeed', 'lead2MorphSpeed', 'pad2MorphSpeed', 'padMorphSpeed', 'phraseLength',
+  'randomWalkSpeed', 'shapeLfoSpeed', 'randomness', 'sequencerMasterBPM',
+  'transportBarsPerPhrase', 'transportBeatsPerBar',
+  'oceanSliceDuration', 'oceanSliceDensity', 'oceanFilterCutoff', 'oceanFilterResonance',
+  'birdsSliceDuration', 'birdsSliceDensity', 'birds2SliceDuration', 'birds2SliceDensity',
+  'frogsSliceDuration', 'frogsSliceDensity',
+  // Legacy fallbacks have no independent Product range target.
+  'birdsReverbSend', 'birdsDelayASend', 'birdsDelayBSend',
+  'birds2ReverbSend', 'birds2DelayASend', 'birds2DelayBSend',
+  'frogsReverbSend', 'frogsDelayASend', 'frogsDelayBSend', 'waterBaseFreq',
+] as const;
+
+/** Shared literal Slider keys with continuously variable Product ranges. */
+export const DUAL_SLIDER_PARAM_KEYS = [
+  'chordRate', 'damping', 'delayACrossFeedFilter', 'delayADuck', 'delayAFeedback',
+  'delayAFilter', 'delayAGranularSend', 'delayAMix', 'delayAModDepth', 'delayAModRate',
+  'delayAReverbSend', 'delayAToBSend', 'delayAWidth', 'delayBGranularSend', 'delayBSpread',
+  'delayBTapeHead1Level', 'delayBTapeHead1Pan', 'delayBTapeHead2Level', 'delayBTapeHead2Pan',
+  'delayBTapeHead3Level', 'delayBTapeHead3Pan', 'delayBTapeHead4Level', 'delayBTapeHead4Pan',
+  'delayBToASend', 'delayBWarpIntensity', 'degradeSample1Send', 'degradeSample2Send',
+  'detune', 'drumDelayBSend', 'drumDelayNoteL',
+  'drumDelayNoteR', 'drumLevel', 'drumReverbSend', 'filterCutoff', 'filterKeyTracking',
+  'filterQ', 'filterResonance', 'filterSlope', 'granularDelayActivity', 'granularDelayFilter',
+  'granularDelayMix', 'granularDelayRepeats', 'granularDelayReverbSend', 'granularDelayTime',
+  'granularDelayVibrato', 'granularLevel', 'granularReverbSend', 'hardness', 'lead1DelayASend',
+  'granularChordBias', 'granularCloudMacro', 'granularDelayBSend', 'granularDiffusion',
+  'granularDrumSend', 'granularFeedback', 'granularFeedbackLPF', 'granularInsectsSend',
+  'granularLead1Send', 'granularLead2Send', 'granularMacroActivity', 'granularMacroChaos',
+  'granularMacroComplexity', 'granularMacroDarkness', 'granularMacroTexture', 'granularMaxGrains',
+  'granularOutputLPF', 'granularPad1Send', 'granularPad2Send', 'granularPitchMacro',
+  'granularSample1Send', 'granularSample2Send',
+  'granularReverbLPF', 'granularSprayMacro', 'granularWaterSend', 'granularWavesSend',
+  'granularNatureSend',
+  'lead1Density', 'lead1DiffuseSend', 'lead1Distance', 'lead1Level', 'lead1Morph', 'lead1Octave',
+  'lead1OctaveRange', 'lead1PostLPF', 'lead1PostLPFKeyTracking', 'lead1ReverbSend',
+  'lead1StereoWidth', 'lead1VibratoDepth', 'lead1VibratoRate', 'lead1Glide',
+  'lead2DelayASend', 'lead2DiffuseSend', 'lead2Distance', 'lead2Level',
+  'lead2Morph', 'lead2PostLPF', 'lead2PostLPFKeyTracking', 'lead2ReverbSend', 'lead2StereoWidth',
+  'lead2VibratoDepth', 'lead2VibratoRate', 'lead2Glide',
+  'leadGlide', 'leadVibratoDepth', 'leadVibratoRate', 'masterVolume', 'pad1ReverbSend',
+  'pad2Attack', 'pad2Decay', 'pad2DiffuseSend', 'pad2Distance', 'pad2FilterBCutoff', 'pad2FilterBQ',
+  'pad2FilterBResonance', 'pad2FilterCutoff', 'pad2FilterKeyTracking', 'pad2FilterQ',
+  'pad2FilterResonance', 'pad2FilterSlope', 'pad2FoldAmount', 'pad2Hardness', 'pad2Level',
+  'pad2Lfo1Depth', 'pad2Lfo1Rate', 'pad2Lfo2Depth', 'pad2Lfo2Rate', 'pad2ModEnvAttack',
+  'pad2ModEnvDecay', 'pad2ModEnvDepth', 'pad2ModEnvRelease', 'pad2ModEnvSustain', 'pad2Morph',
+  'pad2NoiseLevel', 'pad2OscAWavePosition', 'pad2OscAPhaseDistortion', 'pad2OscAPitch', 'pad2OscALinearHzOffset', 'pad2OscALevel', 'pad2OscBWavePosition', 'pad2OscBPhaseDistortion', 'pad2OscBPitch', 'pad2OscBLinearHzOffset',
+  'pad2OscBLevel', 'pad2OscMix', 'pad2PostLPF', 'pad2Presence', 'pad2Release', 'pad2Drift',
+  'pad2ReverbSend', 'pad2StereoWidth', 'pad2SubLevel', 'pad2SubOctave', 'pad2Sustain', 'pad2Warmth', 'pad2Hold',
+  'padDiffuseSend', 'padDistance', 'padFilterBCutoff', 'padFilterBQ', 'padFilterBResonance',
+  'padFoldAmount', 'padLfo1Depth', 'padLfo1Rate', 'padLfo2Depth', 'padLfo2Rate', 'padModEnvAttack',
+  'padModEnvDecay', 'padModEnvDepth', 'padModEnvRelease', 'padModEnvSustain', 'padMorph',
+  'padNoiseLevel', 'padOscAWavePosition', 'padOscAPhaseDistortion', 'padOscAPitch', 'padOscALinearHzOffset', 'padOscALevel', 'padOscBWavePosition', 'padOscBPhaseDistortion', 'padOscBPitch', 'padOscBLinearHzOffset', 'padOscBLevel', 'padDrift',
+  'padOscMix', 'padPostLPF', 'padStereoWidth', 'padSubLevel', 'padSubOctave',
+  'predelay', 'presence', 'reverbAirAbsorption', 'reverbBloom', 'reverbChorusDepth',
+  'reverbChorusRate', 'reverbCrossFeed', 'reverbCrossoverFreq', 'reverbDampHigh', 'reverbDampLow',
+  'reverbDecay', 'reverbDiffusion', 'reverbEarlyReflections', 'reverbErLpFreq', 'reverbInputTone',
+  'reverbLevel', 'reverbModulation', 'reverbPreCompAttackMs', 'reverbPreCompKnee',
+  'reverbPreCompMakeup', 'reverbPreCompRatio', 'reverbPreCompReleaseMs', 'reverbPreCompThreshold',
+  'reverbReverse', 'reverbReverseLength', 'reverbShimmer', 'reverbShimmerFeedback', 'reverbShimmerPitch',
+  'reverbSize', 'reverbSlowModDepth', 'reverbSlowModRate', 'reverbTransientSmooth', 'reverbWarp',
+  'spectralFreezeDiffusion', 'spectralFreezeInputSensitivity', 'spectralFreezeMix',
+  'spectralFreezePosition', 'spectralFreezeRefresh', 'spectralFreezeReverbCrossfade',
+  'spectralFreezeStretchSpeed', 'spectralFreezeSustain', 'spectralFreezeTone',
+  'spectralFreezeWidth', 'synthHold', 'synthAttack', 'synthDecay', 'synthLevel',
+  'synthOctave', 'synthRelease', 'synthSustain', 'voicingSpread', 'warmth', 'waveSpread', 'width',
+] as const;
+
+export const PARAM_MODULATION_CAPABILITIES: Readonly<Record<string, ParamModulationCapability>> = Object.freeze({
+  ...Object.fromEntries(EARTH_RANGE_PARAM_KEYS.map((key) => [key, 'dual'])),
+  ...Object.fromEntries(DUAL_SLIDER_PARAM_KEYS.map((key) => [key, 'dual'])),
+  ...Object.fromEntries(WALK_ONLY_PARAM_KEYS.map((key) => [key, 'walk-only'])),
+  ...Object.fromEntries(SINGLE_ONLY_PARAM_KEYS.map((key) => [key, 'single'])),
+}) as Readonly<Record<string, ParamModulationCapability>>;
+
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1310) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1310`);
+  if (count !== 1331) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1331`);
   }
 }

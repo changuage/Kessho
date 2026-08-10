@@ -46,6 +46,7 @@ type UseSavedPresetLoadRuntimeSurfaceOptions<TPreset extends SavedPreset> = {
   applyDualRangesFromPreset: (
     dualRanges?: Record<string, { min: number; max: number }>,
     presetSliderModes?: Record<string, SliderMode>,
+    presetDualConfigs?: SavedPreset['dualSliderConfigs'],
   ) => void;
   restoreEvolveConfigs: (preset: TPreset) => void;
   onPresetPoolLoad?: (preset: TPreset) => void;
@@ -160,7 +161,7 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
         setState(result.state);
         setStatePresetName(resolvedPreset.name);
         onRoutingMuteGroupsLoad?.(result.preset.routingMuteGroups);
-        applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
+        applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes, result.preset.dualSliderConfigs);
         restoreEvolveConfigs(result.preset as TPreset);
         onPresetPoolLoad?.(result.preset as TPreset);
       }

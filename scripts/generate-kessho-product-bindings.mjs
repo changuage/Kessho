@@ -168,7 +168,7 @@ function normalizeSourceParamSpecs(source, paramCount, specs) {
   }
   const seen = new Set();
   return specs.map((spec) => {
-    const { key, index, enumMap = null, fallback } = spec ?? {};
+    const { key, index, enumMap = null, fallback, unit = null, min = null, max = null, step = null } = spec ?? {};
     if (typeof key !== 'string' || key.length === 0) {
       throw new Error(`Product source param spec for ${source} is missing a string key`);
     }
@@ -185,7 +185,18 @@ function normalizeSourceParamSpecs(source, paramCount, specs) {
     if (enumMap !== null && (typeof enumMap !== 'object' || Array.isArray(enumMap))) {
       throw new Error(`Product source param spec ${source}.${key} has invalid enumMap`);
     }
-    return [key, index, enumMap, fallback];
+    for (const [name, value] of [['min', min], ['max', max], ['step', step]]) {
+      if (value !== null && (!Number.isFinite(Number(value)) || (name === 'step' && Number(value) <= 0))) {
+        throw new Error(`Product source param spec ${source}.${key} has invalid ${name}`);
+      }
+    }
+    if (min !== null && max !== null && Number(min) > Number(max)) {
+      throw new Error(`Product source param spec ${source}.${key} has min greater than max`);
+    }
+    if (unit !== null && typeof unit !== 'string') {
+      throw new Error(`Product source param spec ${source}.${key} has invalid unit`);
+    }
+    return [key, index, enumMap, fallback, { unit, min, max, step }];
   });
 }
 
@@ -275,6 +286,25 @@ function padParamValue(value, map, fallback) {
   return finiteNumber(value, fallback);
 }
 
+function legacyPadPitch(params, octaveKey, detuneKey) {
+  const octave = finiteNumber(params?.[octaveKey], 0);
+  const detuneCents = finiteNumber(params?.[detuneKey], 0);
+  const pitch = octave * 12 + detuneCents / 100;
+  if (!Number.isFinite(pitch)) return 0;
+  return Number(Math.min(24, Math.max(-24, pitch)).toFixed(2));
+}
+
+function padPresetParamValue(params, key, map, fallback) {
+  const source = params ?? {};
+  if (key === 'padOscAPitch' && !Object.prototype.hasOwnProperty.call(source, key)) {
+    return legacyPadPitch(source, 'padOscAOctave', 'padOscADetune');
+  }
+  if (key === 'padOscBPitch' && !Object.prototype.hasOwnProperty.call(source, key)) {
+    return legacyPadPitch(source, 'padOscBOctave', 'padOscBDetune');
+  }
+  return padParamValue(source[key], map, fallback);
+}
+
 function leadParamValue(value, map, fallback) {
   if (typeof value === 'string' && map && Object.prototype.hasOwnProperty.call(map, value)) {
     return map[value];
@@ -323,7 +353,7 @@ function exactPadParamsForPreset(preset, padPresetModule) {
   }
 
   for (const [key, index, map, fallback] of padParamSpecs) {
-    exactPadParams[index] = padParamValue(padPreset.params[key], map, fallback);
+    exactPadParams[index] = padPresetParamValue(padPreset.params, key, map, fallback);
   }
   exactPadParams[padParamCount - 1] = padOutputTrim;
   return { exactPadParamCount: padParamCount, exactPadParams };
@@ -440,27 +470,33 @@ const soundscapeTextureParamCount = soundscapeTextureParamStart + soundscapeText
 const soundscapeModuleParamCount = Number(soundscapeParamLayout.moduleParamCount ?? 96);
 const soundscapeProductModuleExtraParamCount = Number(soundscapeParamLayout.productModuleExtraParamCount ?? 5);
 const soundscapeProductModuleParamCount = soundscapeModuleParamCount + soundscapeProductModuleExtraParamCount;
+const soundscapeWaterLayerParamStart = Number(soundscapeParamLayout.waterLayerParamStart ?? 23);
+const soundscapeWaterLayerCount = Number(soundscapeParamLayout.waterLayerCount ?? 6);
+const soundscapeWaterLayerMaskParamOffset = Number(soundscapeParamLayout.waterLayerMaskParamOffset ?? 8);
 const padPresetModule = await loadPadPresetModule();
 const leadPresetModule = await loadLeadPresetModule();
 const drumPresetModule = await loadDrumPresetModule();
-const padParamSpecRows = padParamSpecs.map(([key, index, enumMap, fallback]) => ({
+const padParamSpecRows = padParamSpecs.map(([key, index, enumMap, fallback, metadata]) => ({
   key,
   pad2Key: padPresetModule.PAD1_TO_PAD2_KEY?.[key] ?? key,
   index,
   fallback,
   enumMap,
+  ...metadata,
 }));
-const leadParamSpecRows = leadParamSpecs.map(([key, index, enumMap, fallback]) => ({
+const leadParamSpecRows = leadParamSpecs.map(([key, index, enumMap, fallback, metadata]) => ({
   key,
   index,
   fallback,
   enumMap,
+  ...metadata,
 }));
-const drumParamSpecRows = drumParamSpecs.map(([key, index, enumMap, fallback]) => ({
+const drumParamSpecRows = drumParamSpecs.map(([key, index, enumMap, fallback, metadata]) => ({
   key,
   index,
   fallback,
   enumMap,
+  ...metadata,
 }));
 const drumVoiceRows = drumVoiceIds.map((voice) => ({
   ...voice,
@@ -575,6 +611,9 @@ inline constexpr uint32_t KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_STRIDE = ${sou
 inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_SOUNDSCAPE_TEXTURE_PARAM_COUNT = ${soundscapeTextureParamCount}u;
 inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_SOUNDSCAPE_MODULE_PARAM_COUNT = ${soundscapeModuleParamCount}u;
 inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT = ${soundscapeProductModuleParamCount}u;
+inline constexpr uint32_t KESSHO_PRODUCT_SOUNDSCAPE_WATER_LAYER_PARAM_START = ${soundscapeWaterLayerParamStart}u;
+inline constexpr uint32_t KESSHO_PRODUCT_SOUNDSCAPE_WATER_LAYER_COUNT = ${soundscapeWaterLayerCount}u;
+inline constexpr uint32_t KESSHO_PRODUCT_SOUNDSCAPE_WATER_LAYER_MASK_PARAM_OFFSET = ${soundscapeWaterLayerMaskParamOffset}u;
 inline constexpr float KESSHO_PRODUCT_GENERATED_PAD_OUTPUT_TRIM = ${numberLiteral(padOutputTrim, 0.5)}f;
 inline constexpr float KESSHO_PRODUCT_GENERATED_LEAD_OUTPUT_TRIM = ${numberLiteral(leadOutputTrim, 0.5)}f;
 inline constexpr float KESSHO_PRODUCT_GENERATED_REVERB_OUTPUT_TRIM = ${numberLiteral(reverbOutputTrim, 2)}f;
@@ -852,6 +891,9 @@ export const KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_STRIDE = ${soundscapeTextur
 export const KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT = ${soundscapeTextureParamCount} as const;
 export const KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT = ${soundscapeModuleParamCount} as const;
 export const KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT = ${soundscapeProductModuleParamCount} as const;
+export const KESSHO_PRODUCT_SOUNDSCAPE_WATER_LAYER_PARAM_START = ${soundscapeWaterLayerParamStart} as const;
+export const KESSHO_PRODUCT_SOUNDSCAPE_WATER_LAYER_COUNT = ${soundscapeWaterLayerCount} as const;
+export const KESSHO_PRODUCT_SOUNDSCAPE_WATER_LAYER_MASK_PARAM_OFFSET = ${soundscapeWaterLayerMaskParamOffset} as const;
 export const KESSHO_PRODUCT_PAD_OUTPUT_TRIM = ${numberLiteral(padOutputTrim, 0.5)} as const;
 export const KESSHO_PRODUCT_LEAD_OUTPUT_TRIM = ${numberLiteral(leadOutputTrim, 0.5)} as const;
 export const KESSHO_PRODUCT_REVERB_OUTPUT_TRIM = ${numberLiteral(reverbOutputTrim, 2)} as const;

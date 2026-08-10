@@ -210,10 +210,19 @@
 
 .global-root .routing-matrix .routing-matrix-cell-mode,
 .earth-root .earth-active-matrix .earth-matrix-cell-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   color: rgba(235, 242, 248, 0.62);
   font-size: 0.54rem;
   font-weight: 800;
   letter-spacing: 0.06em;
+}
+
+.global-root .routing-matrix .routing-matrix-cell-mode .sl-slider-mode-icon,
+.earth-root .earth-active-matrix .earth-matrix-cell-mode .sl-slider-mode-icon {
+  width: 18px;
+  height: 12px;
 }
 
 @keyframes slider-family-sample-hold-flash {
