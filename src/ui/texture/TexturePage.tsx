@@ -1,2 +1,1 @@
-export { default } from '../dynamics/DynamicsPage';
-
+export { TextureVariantPage as default } from '../fxAlt/FxAltPages';
