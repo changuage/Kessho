@@ -7,7 +7,7 @@ export const ReverbPage = React.lazy(() => import('../ui/fxAlt/FxAltPages').then
 export const DrumPage = React.lazy(() => import('../ui/drums/DrumPage'));
 export const GranularPage = React.lazy(() => import('../ui/fxAlt/FxAltPages').then((module) => ({ default: module.GranularVariantPage })));
 export const DelayPage = React.lazy(() => import('../ui/fxAlt/FxAltPages').then((module) => ({ default: module.DelayVariantPage })));
-export const TexturePage = React.lazy(() => import('../ui/fxAlt/FxAltPages').then((module) => ({ default: module.TextureVariantPage })));
+export const TexturePage = React.lazy(() => import('../ui/texture/TexturePage'));
 export const RoutingPage = React.lazy(() => import('../ui/routing/RoutingPage'));
 export const EarthPage = React.lazy(() => import('../ui/earth/EarthPage'));
 export const ReactiveVisualizerPage = React.lazy(() => import('../ui/visualizer/ReactiveVisualizerPage'));
