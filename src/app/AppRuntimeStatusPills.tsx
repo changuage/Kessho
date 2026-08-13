@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { KesshoMacAudioOutputStatus } from '../native/capacitorMacShell';
 import type { NativeProductRendererDiagnosticStatus } from '../ui/useCapacitorAudioSessionDiagnostics';
 import type { ProductRuntimeBackgroundAudioStatus } from '../ui/useProductRuntimeBackgroundAudioSupport';
@@ -18,6 +20,12 @@ type BackgroundAudioStatusPillProps = {
   readonly requestVisiblePageWakeLock: () => void | Promise<void>;
   readonly releaseVisiblePageWakeLock: () => void | Promise<void>;
 };
+
+const activeStatusButtonStyle = {
+  border: '1px solid rgba(94, 234, 212, 0.45)',
+  background: 'rgba(20, 184, 166, 0.18)',
+  color: '#99f6e4',
+} as const;
 
 export function MacAudioStatusPill({
   macShellAvailable,
@@ -41,7 +49,7 @@ export function MacAudioStatusPill({
         type="button"
         style={{
           ...styles.macAudioStatusButton,
-          ...(macAirPlayPerformanceActive ? styles.macAudioStatusButtonActive : {}),
+          ...(macAirPlayPerformanceActive ? activeStatusButtonStyle : {}),
         }}
         aria-pressed={macAirPlayPerformanceActive}
         onClick={onToggleAirPlayPerformance}
@@ -59,41 +67,35 @@ export function MacAudioStatusPill({
 export function BackgroundAudioStatusPill({
   productRuntimeCore,
   backgroundAudioStatus,
-  nativeProductRendererDiagnosticStatus,
   requestVisiblePageWakeLock,
   releaseVisiblePageWakeLock,
 }: BackgroundAudioStatusPillProps) {
-  if (!productRuntimeCore) return null;
+  const [debugPanelTarget, setDebugPanelTarget] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    setDebugPanelTarget(document.querySelector<HTMLElement>('.app-debug-panel'));
+  }, []);
+
+  if (!productRuntimeCore || !debugPanelTarget) return null;
+
   const wakeLockAction = backgroundAudioStatus.wakeLockStatus === 'active'
     ? releaseVisiblePageWakeLock
     : requestVisiblePageWakeLock;
   const wakeLockDisabled = backgroundAudioStatus.wakeLockStatus === 'unsupported' || backgroundAudioStatus.pageStatus !== 'foreground';
   const wakeLockLabel = backgroundAudioStatus.wakeLockStatus === 'active' ? 'Release' : 'Wake';
-  const nativeProbeLabel = nativeProductRendererDiagnosticStatus.active
-    ? nativeProductRendererDiagnosticStatus.probePeak !== null
-      ? ` · Native ${nativeProductRendererDiagnosticStatus.probePeak.toFixed(3)}`
-      : nativeProductRendererDiagnosticStatus.bridgeAvailable
-        ? ' · Native ready'
-        : ' · Native waiting'
-    : '';
 
-  return (
-    <div style={styles.backgroundAudioStatus} aria-label="Browser background audio status" title={backgroundAudioStatus.limitation}>
-      <span style={styles.macAudioStatusText}>
-        {backgroundAudioStatus.pageStatus === 'foreground' ? 'Foreground' : 'Hidden'}
-        {' · '}
-        {backgroundAudioStatus.productLifecycleState}
-        {' · Media '}
-        {backgroundAudioStatus.mediaSessionStatus}
-        {' · Wake '}
-        {backgroundAudioStatus.wakeLockStatus}
-        {nativeProbeLabel}
-      </span>
+  return createPortal(
+    <div
+      style={styles.debugRow}
+      title={backgroundAudioStatus.limitation}
+    >
+      <span style={styles.debugLabel}>Wake Control:</span>
       <button
         type="button"
         style={{
           ...styles.macAudioStatusButton,
-          ...(backgroundAudioStatus.wakeLockStatus === 'active' ? styles.macAudioStatusButtonActive : {}),
+          ...(backgroundAudioStatus.wakeLockStatus === 'active' ? activeStatusButtonStyle : {}),
           ...(wakeLockDisabled ? styles.statusButtonDisabled : {}),
         }}
         onClick={() => void wakeLockAction()}
@@ -102,6 +104,7 @@ export function BackgroundAudioStatusPill({
       >
         {wakeLockLabel}
       </button>
-    </div>
+    </div>,
+    debugPanelTarget,
   );
 }
