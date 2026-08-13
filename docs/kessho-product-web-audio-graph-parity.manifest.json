@@ -125,7 +125,7 @@
     },
     {
       "id": "spectralFreeze",
-      "name": "Spectral freeze graph placement",
+      "name": "Spectral Freeze modular graph placement",
       "status": "proven",
       "requiredBoundaries": [
         "reverbConditionedInput",
@@ -166,17 +166,17 @@
       ],
       "productEvidence": [
         {
-          "file": "cpp/KesshoCore/src/product/fx/ProductReverb.cpp",
+          "file": "cpp/KesshoCore/src/product/fx/ProductFxGraph.cpp",
           "tokens": [
-            "spectral_freeze_enabled && processSpectralFreezeBranch(",
-            "fx.spectral_freeze_routing == 0u",
-            "fx.spectral_freeze_routing == 1u"
+            "case kFxNodeFreeze:",
+            "renderSpectralFreeze(out_l, out_r, start, frames, false)",
+            "routing.fx_edge_mask[node]"
           ]
         },
         {
           "file": "cpp/KesshoCore/src/product/fx/ProductSpectralFreeze.cpp",
           "tokens": [
-            "processSpectralFreezeBranch",
+            "fx_graph_rendering",
             "graph_spectral_freeze_input_l",
             "graph_spectral_freeze_output_l"
           ]
@@ -748,11 +748,12 @@
           ]
         },
         {
-          "file": "cpp/KesshoCore/src/product/fx/ProductFx.cpp",
+          "file": "cpp/KesshoCore/src/product/fx/ProductFxGraph.cpp",
           "tokens": [
-            "granular_feeds_delay",
-            "delay_feeds_granular",
-            "renderDelayModule(delay_a_module.get()"
+            "case kFxNodeDelayA:",
+            "case kFxNodeDelayB:",
+            "renderDelayModule(delay_a_module.get()",
+            "routing.fx_render_order"
           ]
         },
         {

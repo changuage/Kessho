@@ -30,6 +30,10 @@ type KesshoMidiRoutingPlugin = {
     listener: (event: KesshoMidiMessage) => void,
   ): Promise<CapacitorListenerHandle>;
   addListener(
+    eventName: 'midiMessages',
+    listener: (event: { messages: KesshoMidiMessage[] }) => void,
+  ): Promise<CapacitorListenerHandle>;
+  addListener(
     eventName: 'midiActivity',
     listener: (event: KesshoMidiMessage) => void,
   ): Promise<CapacitorListenerHandle>;
@@ -126,9 +130,12 @@ export async function addCapacitorMidiMessageListener(
 ): Promise<(() => Promise<void>) | null> {
   const plugin = getCapacitorMidiRoutingPlugin();
   if (!plugin) return null;
-  const handle = await plugin.addListener('midiMessage', listener);
+  const [messageHandle, batchHandle] = await Promise.all([
+    plugin.addListener('midiMessage', listener),
+    plugin.addListener('midiMessages', ({ messages }) => messages.forEach(listener)),
+  ]);
   return async () => {
-    await handle.remove();
+    await Promise.all([messageHandle.remove(), batchHandle.remove()]);
   };
 }
 

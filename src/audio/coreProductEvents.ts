@@ -7,6 +7,7 @@ import {
   KESSHO_PRODUCT_LEAD_PARAM_COUNT,
   KESSHO_PRODUCT_PAD_PARAM_COUNT,
   KESSHO_PRODUCT_PAD_PARAM_SPECS,
+  KESSHO_PRODUCT_SOUNDSCAPE_LAYER_ROUTE_STRIDE,
   KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT,
   KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT,
   KESSHO_PRODUCT_SOURCE_IDS as GENERATED_PRODUCT_SOURCE_IDS,
@@ -50,10 +51,14 @@ import {
   type HarmonyChordQuality,
   type HarmonyControlStrength,
 } from './CoreProductHarmonyControl';
-import type { RoutingMuteGroupsState } from '../ui/routing/routingMuteGroups';
+import type {
+  RoutingMuteGroupSourceId,
+  RoutingMuteGroupsState,
+} from '../ui/routing/routingMuteGroups';
 import { resolveSequencerLaneAudibility } from './sequencerAudibility';
 import type { HarmonyLiveLayer } from './harmony/harmonyProjection';
 import type { ProductRuntimeModulationConfig } from './product/ProductEngineTypes';
+import { FX_ROUTING_NODE_IDS, type FxRoutingNodeId } from '../ui/routing/fxRoutingGraph';
 
 export type CoreProductEvent = {
   sampleOffset?: number;
@@ -67,6 +72,34 @@ export type CoreProductEvent = {
   value4?: number;
   flags?: number;
 };
+
+export function createCoreProductFxRouteEvents(
+  from: FxRoutingNodeId,
+  to: FxRoutingNodeId,
+  amount: number,
+  enabled: boolean,
+): CoreProductEvent[] {
+  const fromIndex = FX_ROUTING_NODE_IDS.indexOf(from);
+  const toIndex = FX_ROUTING_NODE_IDS.indexOf(to);
+  if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex || !Number.isFinite(amount)) {
+    throw new RangeError(`Invalid FX route ${from}>${to}`);
+  }
+  const targetId = fromIndex * FX_ROUTING_NODE_IDS.length + toIndex;
+  return [
+    {
+      eventKind: KESSHO_PRODUCT_EVENT_IDS.SetParam,
+      targetId,
+      paramId: KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteAmount,
+      value: Math.max(0, Math.min(1, amount)),
+    },
+    {
+      eventKind: KESSHO_PRODUCT_EVENT_IDS.SetParam,
+      targetId,
+      paramId: KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteEnabled,
+      value: enabled ? 1 : 0,
+    },
+  ];
+}
 
 /** Runtime-only audition flags shared with ProductConstants.h. */
 export const CORE_PRODUCT_TRANSIENT_MANUAL_NOTE_AUDITION_FLAG = 0x20000000;
@@ -310,7 +343,7 @@ export function createCoreProductScatterEnabledEvent(enabled: boolean): CoreProd
   };
 }
 
-const CORE_PRODUCT_ROUTING_MUTE_ROW_BITS = Object.freeze({
+export const CORE_PRODUCT_ROUTING_MUTE_ROW_BITS = Object.freeze({
   pad1: 1 << 0,
   pad2: 1 << 1,
   lead1: 1 << 2,
@@ -327,7 +360,18 @@ const CORE_PRODUCT_ROUTING_MUTE_ROW_BITS = Object.freeze({
   delayBOut: 1 << 13,
   degrade: 1 << 14,
   reverb: 1 << 15,
+  freezeOut: 1 << 16,
+  eq1Out: 1 << 17,
+  eq2Out: 1 << 18,
+  sidechainOut: 1 << 19,
+  saturationOut: 1 << 20,
 } as const);
+
+export function routingMuteGroupSourceIdsFromMask(mask: number): RoutingMuteGroupSourceId[] {
+  return (Object.keys(CORE_PRODUCT_ROUTING_MUTE_ROW_BITS) as RoutingMuteGroupSourceId[]).filter((id) => (
+    (mask & (CORE_PRODUCT_ROUTING_MUTE_ROW_BITS[id] ?? 0)) !== 0
+  ));
+}
 
 /** SetRoutingMuteGroupSlot records with bit 31 carry one ordinary Product event. */
 export const CORE_PRODUCT_ROUTING_MUTE_SCENE_COMMAND_FLAG = 0x80000000;
@@ -341,6 +385,7 @@ const CORE_PRODUCT_SOUNDSCAPE_WATER_MASTER_MODULE_PARAM_INDEX = KESSHO_PRODUCT_S
 const CORE_PRODUCT_SOUNDSCAPE_INSECTS_MASTER_MODULE_PARAM_INDEX = KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT + 6;
 const CORE_PRODUCT_SOUNDSCAPE_NATURE_MASTER_MODULE_PARAM_INDEX = KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT + 7;
 const CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ENABLED_PARAM_OFFSET = 6;
+const CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ASSET_ID_PARAM_OFFSET = 5;
 const ROUTING_MUTE_LEGACY_NATURE_ALIAS_PAIRS = [
   ['oceanSampleEnabled', 'nature1Enabled'],
   ['birdsEnabled', 'nature2Enabled'],
@@ -362,6 +407,10 @@ function routingMuteEffectiveReverbMix(state: SliderState): number {
 
 function routingMuteDynamicsEnabled(state: SliderState): boolean {
   return state.dynamicsEnabled === true ||
+    state.dynamicsBusEnabled === true ||
+    state.dynamicsEq1Enabled === true ||
+    state.dynamicsEq2Enabled === true ||
+    state.sidechainEnabled === true ||
     state.degradeEnabled === true ||
     state.driftEnabled === true ||
     state.erosionEnabled === true ||
@@ -403,6 +452,9 @@ function routingMuteSceneCommands(state: SliderState): CoreProductEvent[] {
     createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDriftEnabled, routingMuteBoolean(state, 'driftEnabled')),
     createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsErosionEnabled, routingMuteBoolean(state, 'erosionEnabled')),
     createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationEnabled, routingMuteBoolean(state, 'dynamicsSaturationEnabled')),
+    createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1Enabled, routingMuteBoolean(state, 'dynamicsEq1Enabled')),
+    createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2Enabled, routingMuteBoolean(state, 'dynamicsEq2Enabled')),
+    createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxSidechainEnabled, routingMuteBoolean(state, 'sidechainEnabled')),
     createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeEnabled, routingMuteBoolean(state, 'spectralFreezeEnabled')),
     createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeActive, routingMuteBoolean(state, 'spectralFreezeActive')),
     createCoreProductParamEvent(KESSHO_PRODUCT_PARAM_IDS.FxReverbMix, routingMuteEffectiveReverbMix(state)),
@@ -433,12 +485,20 @@ function routingMuteSceneCommands(state: SliderState): CoreProductEvent[] {
     commands.push(soundscapeParam(textureTarget(slot), texture(textureParamIndex)));
   }
 
-  // Legacy Waves is represented as a soundscape asset level rather than a
-  // source gate (the Product soundscape source remains a shared container).
+  // The asset ref is only a transport gate for canonical Nature slots; their
+  // actual level lives in the texture params. Do not let the retired Waves
+  // alias mute the same Ghetary asset after Play or an Earth-scene update.
   const oceanAssetId = CORE_PRODUCT_SOUNDSCAPE_ASSETS.ocean.assetId;
-  const oceanLevel = state.oceanSampleEnabled === true && typeof state.oceanSampleLevel === 'number' && Number.isFinite(state.oceanSampleLevel)
-    ? Math.max(0, Math.min(1, state.oceanSampleLevel))
-    : 0;
+  const canonicalOceanEnabled = [0, 1, 2, 3].some((slot) => {
+    const offset = SOUNDSCAPE_TEXTURE_PARAM_START + slot * SOUNDSCAPE_TEXTURE_PARAM_STRIDE;
+    return texture(offset + CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ASSET_ID_PARAM_OFFSET) === oceanAssetId &&
+      texture(offset + CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ENABLED_PARAM_OFFSET) >= 0.5;
+  });
+  const oceanLevel = canonicalOceanEnabled
+    ? 1
+    : state.oceanSampleEnabled === true && typeof state.oceanSampleLevel === 'number' && Number.isFinite(state.oceanSampleLevel)
+      ? Math.max(0, Math.min(1, state.oceanSampleLevel))
+      : 0;
   commands.push(soundscapeParam(CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE + oceanAssetId, oceanLevel));
   return commands;
 }
@@ -1027,6 +1087,27 @@ function soundscapeTextureParamTarget(
     // parameter array. SourceLevel is the modulation ABI parameter for these
     // custom targets; the target id selects the actual texture parameter.
     paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel,
+    controlId: stableControlId(key),
+  };
+}
+
+function soundscapeLayerRouteTarget(
+  layerIndex: number,
+  routeIndex: number,
+  paramId: number,
+  key: string,
+): CoreProductRangeTarget {
+  const layer = requireIntegerInRange(layerIndex, 'soundscape layer', 0, 3);
+  const route = requireIntegerInRange(
+    routeIndex,
+    'soundscape layer route',
+    0,
+    KESSHO_PRODUCT_SOUNDSCAPE_LAYER_ROUTE_STRIDE - 1,
+  );
+  return {
+    targetId: CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE +
+      layer * KESSHO_PRODUCT_SOUNDSCAPE_LAYER_ROUTE_STRIDE + route,
+    paramId: requireParamId(paramId),
     controlId: stableControlId(key),
   };
 }
@@ -1792,6 +1873,17 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   degradeWavesSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceDegradeSend, key)],
   degradeWaterSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceDegradeSend, key)],
   degradeInsectsSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceDegradeSend, key)],
+  spectralFreezePad1Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceSpectralFreezeSend, key)],
+  spectralFreezePad2Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceSpectralFreezeSend, key)],
+  spectralFreezeLead1Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceSpectralFreezeSend, key)],
+  spectralFreezeLead2Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceSpectralFreezeSend, key)],
+  spectralFreezeDrumSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.drum, KESSHO_PRODUCT_PARAM_IDS.SourceSpectralFreezeSend, key)],
+  spectralFreezeSample1Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample1, KESSHO_PRODUCT_PARAM_IDS.SourceSpectralFreezeSend, key)],
+  spectralFreezeSample2Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.sample2, KESSHO_PRODUCT_PARAM_IDS.SourceSpectralFreezeSend, key)],
+  spectralFreezeWavesSend: (key) => [soundscapeLayerRouteTarget(0, 5, KESSHO_PRODUCT_PARAM_IDS.SourceSpectralFreezeSend, key)],
+  spectralFreezeWaterSend: (key) => [soundscapeLayerRouteTarget(1, 5, KESSHO_PRODUCT_PARAM_IDS.SourceSpectralFreezeSend, key)],
+  spectralFreezeInsectsSend: (key) => [soundscapeLayerRouteTarget(2, 5, KESSHO_PRODUCT_PARAM_IDS.SourceSpectralFreezeSend, key)],
+  spectralFreezeNatureSend: (key) => [soundscapeLayerRouteTarget(3, 5, KESSHO_PRODUCT_PARAM_IDS.SourceSpectralFreezeSend, key)],
   padDiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)],
   pad2DiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)],
   lead1DiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)],
@@ -2030,6 +2122,12 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   spectralFreezeRouting: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeRouting, key, spectralFreezeRoutingValue)],
   spectralFreezeReverbCrossfade: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeReverbCrossfade, key)],
   dynamicsDrive: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDrive, key)],
+  masterSaturationDrive: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDrive, key)],
+  masterSaturationEnabled: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsMasterSaturationEnabled, key, binaryParamValue)],
+  masterSaturationMode: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsMasterSaturationMode, key, stateBackedEnumParamValue(key, dynamicsSaturationModeId, 4))],
+  masterSaturationQuality: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsMasterSaturationQuality, key, stateBackedEnumParamValue(key, dynamicsSaturationQualityId, 2))],
+  masterSaturationTone: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsMasterSaturationTone, key)],
+  masterSaturationBias: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsMasterSaturationBias, key)],
   dynamicsEnabled: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEnabled, key, binaryParamValue)],
   driftEnabled: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDriftEnabled, key, binaryParamValue)],
   driftMode: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDriftMode, key, stateBackedEnumParamValue(key, dynamicsDriftModeId, 2))],
@@ -2110,6 +2208,7 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   dynamicsEq1Enabled: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1Enabled, key, binaryParamValue)],
   dynamicsEq1InputGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1InputGain, key)],
   dynamicsEq1OutputGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1OutputGain, key)],
+  dynamicsEq1Mix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1Mix, key)],
   dynamicsEq1LowType: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1LowType, key, dynamicsEqEdgeTypeValue)],
   dynamicsEq1LowFreq: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1LowFreq, key)],
   dynamicsEq1LowGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1LowGain, key)],
@@ -2126,6 +2225,7 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   dynamicsEq2Enabled: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2Enabled, key, binaryParamValue)],
   dynamicsEq2InputGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2InputGain, key)],
   dynamicsEq2OutputGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2OutputGain, key)],
+  dynamicsEq2Mix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2Mix, key)],
   dynamicsEq2LowType: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2LowType, key, dynamicsEqEdgeTypeValue)],
   dynamicsEq2LowFreq: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2LowFreq, key)],
   dynamicsEq2LowGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2LowGain, key)],

@@ -6,6 +6,9 @@ import {
   buildGranularVoicePoolInstance,
   buildSampleVoicePoolInstance,
   buildPadVoicePoolInstance,
+  buildSaturatorPoolInstance,
+  extractSaturatorContent,
+  hydrateSaturatorContent,
   hydrateSharedComponentRef,
   sharedComponentPoolCandidates,
   stripSharedComponentContentFromParent,
@@ -30,6 +33,39 @@ export async function runSharedComponentPoolRegression(): Promise<void> {
   assert.equal(new Set(granular.map(item => batch.byId.get(item.id)?.hash)).size, 1);
   assert.equal(new Set(eq.map(item => batch.byId.get(item.id)?.hash)).size, 1);
   assert.equal(batch.uniqueByHash.size, 2);
+  assert.equal(eq[0]?.content.inputGain, state.dynamicsEq1InputGain);
+  assert.equal('dynamicsEq1InputGain' in (eq[0]?.content ?? {}), false);
+
+  state.masterSaturationMode = state.dynamicsSaturationMode;
+  state.masterSaturationQuality = state.dynamicsSaturationQuality;
+  state.masterSaturationDrive = state.dynamicsSaturationDrive;
+  state.masterSaturationTone = state.dynamicsSaturationTone;
+  state.masterSaturationBias = state.dynamicsSaturationBias;
+  const saturators = [
+    buildSaturatorPoolInstance(state, 'dynamics'),
+    buildSaturatorPoolInstance(state, 'master'),
+    buildSaturatorPoolInstance(extractSaturatorContent(state, 'dynamics'), 'neutral'),
+  ];
+  const saturationBatch = await preparePresetContentBatch(sharedComponentPoolCandidates(saturators));
+  assert.equal(new Set(saturators.map(item => saturationBatch.byId.get(item.id)?.hash)).size, 1);
+  assert.equal('dynamicsSaturationDrive' in saturators[0]!.content, false);
+  assert.equal('masterSaturationDrive' in saturators[1]!.content, false);
+  assert.equal(saturators[0]!.content.drive, state.dynamicsSaturationDrive);
+  const hydratedMasterSaturation = hydrateSaturatorContent(saturators[0]!.content, 'master');
+  assert.equal(hydratedMasterSaturation.masterSaturationDrive, state.masterSaturationDrive);
+
+  const masterParent = { ...state };
+  const strippedMasterParent = stripSharedComponentContentFromParent(masterParent, 'source', 'masterFx');
+  assert.equal(strippedMasterParent.masterSaturationEnabled, masterParent.masterSaturationEnabled);
+  assert.equal('masterSaturationDrive' in strippedMasterParent, false);
+  assert.deepStrictEqual(
+    { ...strippedMasterParent, ...hydrateSharedComponentRef(
+      saturators[1]!.refSlot,
+      saturators[1]!.contentType,
+      saturators[1]!.content,
+    ) },
+    masterParent,
+  );
 
   state.granularV1Enabled = false;
   state.granularV1Gain = 0.1;

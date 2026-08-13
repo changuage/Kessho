@@ -1,5 +1,4 @@
 import type { ProductRuntimeSelectionMode } from '../../audio/product/ProductAudioRuntimeSelection';
-import { ProductRuntimeSwitch } from '../ProductRuntimeSwitch';
 import { productRuntimeModeLabel } from '../productRuntimeUi';
 
 export type GlobalRuntimeCpuSummary = {
@@ -33,9 +32,8 @@ export function GlobalRuntimeComparisonPanel({
   modes,
   cpuSummaries,
   visible,
-  onModeChange,
 }: GlobalRuntimeComparisonPanelProps): JSX.Element | null {
-  if (!visible || !onModeChange) return null;
+  if (!visible) return null;
 
   return (
     <div className="scene-card scene-runtime-card">
@@ -46,16 +44,8 @@ export function GlobalRuntimeComparisonPanel({
         </span>
       </div>
       <div className="scene-runtime-switch">
-        <span className="scene-status-label">Runtime</span>
+        <span className="scene-status-label">CPU</span>
         <div className="scene-runtime-switch-stack">
-          <ProductRuntimeSwitch
-            currentMode={currentMode}
-            modes={modes}
-            onModeChange={onModeChange}
-            visible
-            testId="global-product-runtime-switch"
-            variant="scene"
-          />
           <div className="scene-runtime-cpu-compare" aria-label="Product runtime CPU comparison">
             {modes.map((mode) => {
               const summary = cpuSummaries?.[mode];

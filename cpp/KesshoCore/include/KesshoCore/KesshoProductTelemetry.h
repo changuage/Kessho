@@ -304,4 +304,5 @@ typedef struct KesshoProductTelemetry {
   float harmony_next_note_pool_midi[8];
   uint32_t harmony_next_source;
   int32_t harmony_next_step_index;
+  float fx_route_effective_amounts[100];
 } KesshoProductTelemetry;

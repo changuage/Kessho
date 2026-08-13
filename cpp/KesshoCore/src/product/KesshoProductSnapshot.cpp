@@ -89,6 +89,75 @@ bool migrateLegacyPadSnapshotSource(KesshoProductSourceSnapshot& source) {
   return true;
 }
 
+bool loadFxGraphSnapshot(
+    kessho::product::internal::RoutingState& routing,
+    const KesshoProductRoutingSnapshot& snapshot,
+    const KesshoProductFxSnapshot& fx) {
+  using namespace kessho::product::internal;
+  static_assert(KESSHO_PRODUCT_FX_NODE_COUNT == kFxNodeCount, "FX snapshot node count drifted from runtime graph");
+  RoutingState next = routing;
+  next.clearFxGraph();
+
+  const auto add_legacy = [&next](uint8_t from, uint8_t to, float amount) {
+    if (!std::isfinite(amount) || amount <= 0.0001f) return;
+    (void)next.setFxRoute(from, to, clampFloat(amount, 0.0f, 4.0f), true);
+  };
+  if (snapshot.fx_graph_version == 0u) {
+    // Preserve the old forward render order. Any reverse edge that would close
+    // a cycle is intentionally dropped during this one-way migration.
+    add_legacy(kFxNodeDelayA, kFxNodeDelayB, snapshot.delay_a_to_delay_b);
+    add_legacy(kFxNodeDelayA, kFxNodeGranular, snapshot.delay_a_to_granular);
+    add_legacy(kFxNodeDelayA, kFxNodeDegrade, snapshot.delay_a_to_degrade);
+    add_legacy(kFxNodeDelayA, kFxNodeReverb, snapshot.delay_to_reverb);
+    add_legacy(kFxNodeDelayB, kFxNodeGranular, snapshot.delay_b_to_granular);
+    add_legacy(kFxNodeDelayB, kFxNodeDegrade, snapshot.delay_b_to_degrade);
+    add_legacy(kFxNodeDelayB, kFxNodeReverb, snapshot.delay_b_to_reverb);
+    add_legacy(kFxNodeDelayB, kFxNodeDelayA, snapshot.delay_b_to_delay_a);
+    add_legacy(kFxNodeGranular, kFxNodeDegrade, snapshot.granular_to_degrade);
+    add_legacy(kFxNodeGranular, kFxNodeReverb, snapshot.granular_to_reverb);
+    add_legacy(kFxNodeGranular, kFxNodeDelayA, snapshot.granular_to_delay_a);
+    add_legacy(kFxNodeGranular, kFxNodeDelayB, snapshot.granular_to_delay_b);
+    add_legacy(kFxNodeDegrade, kFxNodeReverb, snapshot.degrade_to_reverb);
+    add_legacy(kFxNodeReverb, kFxNodeDegrade, snapshot.reverb_to_degrade);
+    if (fx.spectral_freeze_routing == 0u) {
+      add_legacy(kFxNodeFreeze, kFxNodeReverb, fx.spectral_freeze_reverb_crossfade);
+    } else {
+      add_legacy(kFxNodeReverb, kFxNodeFreeze, 1.0f);
+    }
+    next.fx_dynamics_bus[kFxNodeDelayA] = clampU32(snapshot.dynamics_delay_a_bus, kDynamicsBusSkip, kDynamicsBusSidechain);
+    next.fx_dynamics_bus[kFxNodeDelayB] = clampU32(snapshot.dynamics_delay_b_bus, kDynamicsBusSkip, kDynamicsBusSidechain);
+    next.fx_dynamics_bus[kFxNodeDegrade] = clampU32(snapshot.dynamics_degrade_bus, kDynamicsBusSkip, kDynamicsBusSidechain);
+    next.fx_dynamics_bus[kFxNodeReverb] = clampU32(snapshot.dynamics_reverb_bus, kDynamicsBusSkip, kDynamicsBusSidechain);
+    next.syncLegacyFxRoutes();
+    routing = next;
+    return true;
+  }
+  if (snapshot.fx_graph_version != KESSHO_PRODUCT_FX_GRAPH_VERSION) return false;
+
+  constexpr uint32_t valid_mask = (1u << kFxNodeCount) - 1u;
+  for (uint8_t from = 0u; from < kFxNodeCount; ++from) {
+    const uint32_t mask = snapshot.fx_edge_mask[from];
+    if ((mask & ~valid_mask) != 0u || (mask & (1u << from)) != 0u) return false;
+    next.fx_dynamics_bus[from] = clampU32(snapshot.fx_dynamics_bus[from], kDynamicsBusSkip, kDynamicsBusSidechain);
+    for (uint8_t to = 0u; to < kFxNodeCount; ++to) {
+      const uint32_t edge = from * kFxNodeCount + to;
+      const float amount = snapshot.fx_route_amount[edge];
+      if (!std::isfinite(amount) || amount < 0.0f || amount > 4.0f) return false;
+      if ((mask & (1u << to)) == 0u) continue;
+      if (!next.setFxRoute(from, to, amount, true)) return false;
+      const uint32_t modulation = snapshot.fx_route_modulation[edge];
+      const uint8_t mode = static_cast<uint8_t>(modulation & 0x3u);
+      const float min_value = static_cast<float>((modulation >> 2u) & 0x7fffu) * (4.0f / 32767.0f);
+      const float max_value = static_cast<float>((modulation >> 17u) & 0x7fffu) * (4.0f / 32767.0f);
+      if (min_value > max_value) return false;
+      next.setFxRouteModulation(from, to, mode, min_value, max_value);
+    }
+  }
+  next.syncLegacyFxRoutes();
+  routing = next;
+  return true;
+}
+
 struct SequencerLaneRuntimePhase {
   uint64_t emitted_hit_count = 0u;
   uint64_t sequencer_runtime_sample_frame = 0u;
@@ -853,6 +922,11 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   fx.spectral_freeze_routing = clampU32(snapshot.fx.spectral_freeze_routing, 0u, 1u);
   fx.spectral_freeze_reverb_crossfade = clampFloat(snapshot.fx.spectral_freeze_reverb_crossfade, 0.0f, 1.0f);
   fx.dynamics_drive = clampFloat(snapshot.fx.dynamics_drive, 0.0f, 1.0f);
+  fx.dynamics_master_saturation_enabled = snapshot.fx.dynamics_master_saturation_enabled != 0u;
+  fx.dynamics_master_saturation_mode = clampU32(snapshot.fx.dynamics_master_saturation_mode, 0u, 4u);
+  fx.dynamics_master_saturation_quality = clampU32(snapshot.fx.dynamics_master_saturation_quality, 0u, 2u);
+  fx.dynamics_master_saturation_tone = clampFloat(snapshot.fx.dynamics_master_saturation_tone, 0.0f, 1.0f);
+  fx.dynamics_master_saturation_bias = clampFloat(snapshot.fx.dynamics_master_saturation_bias, 0.0f, 1.0f);
   fx.dynamics_enabled = snapshot.fx.dynamics_enabled != 0u;
   fx.dynamics_drift_enabled = snapshot.fx.dynamics_drift_enabled != 0u;
   fx.dynamics_drift_mode = clampU32(snapshot.fx.dynamics_drift_mode, 0u, 2u);
@@ -944,11 +1018,12 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   fx.dynamics_eq1_enabled = snapshot.fx.dynamics_eq1_enabled != 0u;
   fx.dynamics_eq1_input_gain_db = clampFloat(snapshot.fx.dynamics_eq1_input_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq1_output_gain_db = clampFloat(snapshot.fx.dynamics_eq1_output_gain_db, -24.0f, 24.0f);
+  fx.dynamics_eq1_mix = clampFloat(snapshot.fx.dynamics_eq1_mix, 0.0f, 1.0f);
   fx.dynamics_eq1_low_type = clampU32(snapshot.fx.dynamics_eq1_low_type, kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
   fx.dynamics_eq1_low_freq = clampFloat(snapshot.fx.dynamics_eq1_low_freq, 20.0f, 20000.0f);
   fx.dynamics_eq1_low_gain_db = clampFloat(snapshot.fx.dynamics_eq1_low_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq1_low_q = clampFloat(snapshot.fx.dynamics_eq1_low_q, 0.1f, 18.0f);
-  fx.dynamics_eq1_low_slope = clampFloat(snapshot.fx.dynamics_eq1_low_slope, 0.25f, 4.0f);
+  fx.dynamics_eq1_low_slope = clampFloat(snapshot.fx.dynamics_eq1_low_slope, 0.25f, 1.0f);
   fx.dynamics_eq1_mid_freq = clampFloat(snapshot.fx.dynamics_eq1_mid_freq, 20.0f, 20000.0f);
   fx.dynamics_eq1_mid_gain_db = clampFloat(snapshot.fx.dynamics_eq1_mid_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq1_mid_q = clampFloat(snapshot.fx.dynamics_eq1_mid_q, 0.1f, 18.0f);
@@ -956,15 +1031,16 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   fx.dynamics_eq1_high_freq = clampFloat(snapshot.fx.dynamics_eq1_high_freq, 20.0f, 20000.0f);
   fx.dynamics_eq1_high_gain_db = clampFloat(snapshot.fx.dynamics_eq1_high_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq1_high_q = clampFloat(snapshot.fx.dynamics_eq1_high_q, 0.1f, 18.0f);
-  fx.dynamics_eq1_high_slope = clampFloat(snapshot.fx.dynamics_eq1_high_slope, 0.25f, 4.0f);
+  fx.dynamics_eq1_high_slope = clampFloat(snapshot.fx.dynamics_eq1_high_slope, 0.25f, 1.0f);
   fx.dynamics_eq2_enabled = snapshot.fx.dynamics_eq2_enabled != 0u;
   fx.dynamics_eq2_input_gain_db = clampFloat(snapshot.fx.dynamics_eq2_input_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq2_output_gain_db = clampFloat(snapshot.fx.dynamics_eq2_output_gain_db, -24.0f, 24.0f);
+  fx.dynamics_eq2_mix = clampFloat(snapshot.fx.dynamics_eq2_mix, 0.0f, 1.0f);
   fx.dynamics_eq2_low_type = clampU32(snapshot.fx.dynamics_eq2_low_type, kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
   fx.dynamics_eq2_low_freq = clampFloat(snapshot.fx.dynamics_eq2_low_freq, 20.0f, 20000.0f);
   fx.dynamics_eq2_low_gain_db = clampFloat(snapshot.fx.dynamics_eq2_low_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq2_low_q = clampFloat(snapshot.fx.dynamics_eq2_low_q, 0.1f, 18.0f);
-  fx.dynamics_eq2_low_slope = clampFloat(snapshot.fx.dynamics_eq2_low_slope, 0.25f, 4.0f);
+  fx.dynamics_eq2_low_slope = clampFloat(snapshot.fx.dynamics_eq2_low_slope, 0.25f, 1.0f);
   fx.dynamics_eq2_mid_freq = clampFloat(snapshot.fx.dynamics_eq2_mid_freq, 20.0f, 20000.0f);
   fx.dynamics_eq2_mid_gain_db = clampFloat(snapshot.fx.dynamics_eq2_mid_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq2_mid_q = clampFloat(snapshot.fx.dynamics_eq2_mid_q, 0.1f, 18.0f);
@@ -972,7 +1048,7 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   fx.dynamics_eq2_high_freq = clampFloat(snapshot.fx.dynamics_eq2_high_freq, 20.0f, 20000.0f);
   fx.dynamics_eq2_high_gain_db = clampFloat(snapshot.fx.dynamics_eq2_high_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq2_high_q = clampFloat(snapshot.fx.dynamics_eq2_high_q, 0.1f, 18.0f);
-  fx.dynamics_eq2_high_slope = clampFloat(snapshot.fx.dynamics_eq2_high_slope, 0.25f, 4.0f);
+  fx.dynamics_eq2_high_slope = clampFloat(snapshot.fx.dynamics_eq2_high_slope, 0.25f, 1.0f);
   fx.sidechain_enabled = snapshot.fx.sidechain_enabled != 0u;
   fx.sidechain_key_a = clampU32(snapshot.fx.sidechain_key_a, kSidechainKeyOff, kSidechainKeyMembrane);
   fx.sidechain_key_b = clampU32(snapshot.fx.sidechain_key_b, kSidechainKeyOff, kSidechainKeyMembrane);
@@ -1000,22 +1076,10 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   fx.sidechain_targets[kSidechainDelayB] = clampFloat(snapshot.fx.sidechain_delay_b_target, 0.0f, 1.0f);
   fx.sidechain_targets[kSidechainReverb] = clampFloat(snapshot.fx.sidechain_reverb_target, 0.0f, 1.0f);
   resetSidechainRuntime();
-  routing.delay_a_to_delay_b = clampFloat(snapshot.routing.delay_a_to_delay_b, 0.0f, 1.0f);
-  routing.delay_b_to_delay_a = clampFloat(snapshot.routing.delay_b_to_delay_a, 0.0f, 1.0f);
-  routing.delay_to_reverb = clampFloat(snapshot.routing.delay_to_reverb, 0.0f, 1.0f);
-  routing.granular_to_reverb = clampFloat(snapshot.routing.granular_to_reverb, 0.0f, 4.0f);
-  routing.delay_a_to_granular = clampFloat(snapshot.routing.delay_a_to_granular, 0.0f, 1.0f);
-  routing.delay_b_to_granular = clampFloat(snapshot.routing.delay_b_to_granular, 0.0f, 1.0f);
-  routing.delay_b_to_reverb = clampFloat(snapshot.routing.delay_b_to_reverb, 0.0f, 1.0f);
-  routing.granular_to_delay_a = clampFloat(snapshot.routing.granular_to_delay_a, 0.0f, 1.0f);
-  routing.granular_to_delay_b = clampFloat(snapshot.routing.granular_to_delay_b, 0.0f, 1.0f);
-  routing.delay_a_to_degrade = clampFloat(snapshot.routing.delay_a_to_degrade, 0.0f, 1.0f);
-  routing.delay_b_to_degrade = clampFloat(snapshot.routing.delay_b_to_degrade, 0.0f, 1.0f);
-  routing.granular_to_degrade = clampFloat(snapshot.routing.granular_to_degrade, 0.0f, 1.0f);
-  routing.degrade_to_reverb = clampFloat(snapshot.routing.degrade_to_reverb, 0.0f, 1.0f);
-  routing.reverb_to_degrade = routing.degrade_to_reverb > 0.0001f
-      ? 0.0f
-      : clampFloat(snapshot.routing.reverb_to_degrade, 0.0f, 1.0f);
+  if (!loadFxGraphSnapshot(routing, snapshot.routing, snapshot.fx)) {
+    telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
+    return KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
+  }
   routing.degrade_return_level = clampFloat(snapshot.routing.degrade_return_level, 0.0f, 1.0f);
   routing.dynamics_routes[kDynamicsRoutePad1] = normalizedDynamicsBus(static_cast<float>(snapshot.routing.dynamics_pad1_bus));
   routing.dynamics_routes[kDynamicsRoutePad2] = normalizedDynamicsBus(static_cast<float>(snapshot.routing.dynamics_pad2_bus));
@@ -1064,6 +1128,7 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
     sources[i].delay_b_send = clampFloat(source.delay_b_send, 0.0f, 2.0f);
     sources[i].granular_send = clampFloat(source.granular_send, 0.0f, 2.0f);
     sources[i].degrade_send = clampFloat(source.degrade_send, 0.0f, 2.0f);
+    sources[i].spectral_freeze_send = clampFloat(source.spectral_freeze_send, 0.0f, 2.0f);
     if (first_snapshot) {
       sources[i].granular_send_gain = sources[i].granular_send;
       sources[i].granular_send_gain_frame = UINT64_MAX;

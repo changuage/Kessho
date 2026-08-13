@@ -62,6 +62,9 @@
     fx.granular_voices[i].slice = i * 4u;
   }
   routing = {};
+  std::fill(fx_node_tail_frames, fx_node_tail_frames + kFxNodeCount, 0u);
+  creative_saturation_state_l = {};
+  creative_saturation_state_r = {};
   rng_seed = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
   rng_state = rng_seed;
   resetSonicRuntimeState();
@@ -168,6 +171,8 @@
   }
   resetModulationRouteCache();
   resetFxSampleHoldOwners();
+  creative_saturation_state_l = {};
+  creative_saturation_state_r = {};
   resetSidechainRuntime();
   resetMasterTelemetryState();
   reverb_pre_comp_gain = 1.0f;

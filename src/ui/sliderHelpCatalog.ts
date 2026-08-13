@@ -382,7 +382,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
 const routingEntries: Record<string, SliderHelpEntry> = {
   routingMatrixOverview: entry(
     'Shows source levels and FX sends in one dense grid.',
-    'Rows are sound sources and return buses. Columns are Level, Delay A, Delay B, Granular, Degrade, Reverb, and Texture. Drag an amount cell to trim one route. In walk or sample-and-hold, drag the band edges to resize the range or drag the band body to move the whole range. Double-click on desktop or long-press on touch to cycle modes. Drag an amount column header left or right to trim every editable route in that destination column. Click a Texture cell to cycle Skip, EQ 1, EQ 2, and Sidechain. Use Source all/on to switch between every source and only active sources.',
+    'Rows are sound sources and return buses. Columns are Level, Delay A, Delay B, Granular, Degrade, Freeze, Reverb, and Dynamics. Drag an amount cell to trim one route. In walk or sample-and-hold, drag the band edges to resize the range or drag the band body to move the whole range. Double-click on desktop or long-press on touch to cycle modes. Drag an amount column header left or right to trim every editable route in that destination column. Click a Dynamics cell to cycle Skip, EQ 1, EQ 2, and Sidechain. Use Source all/on to switch between every source and only active sources.',
     [
       rt('FX Routing Matrix', 'FX Routing Matrix', 'full', [
         'Routing uses the neutral MatrixSurface baseline: row/source dots carry identity, while destination columns and cells stay visually neutral.',
@@ -413,6 +413,11 @@ const routingEntries: Record<string, SliderHelpEntry> = {
     'Sends rows into the shared Degrade processor.',
     'The Degrade column controls the feed into the parent Degrade engine, where Drift and Erosion shape the return. Drag one cell to adjust one send, or drag the Degrade header to trim every editable Degrade feed together.',
     [rt('FX Routing Matrix', 'Degrade Column')],
+  ),
+  routingMatrixFreezeColumn: entry(
+    'Sends rows into the shared Spectral Freeze processor.',
+    'The Freeze column controls the independent feed into Spectral Freeze. Drag one cell to adjust one source send, or drag the Freeze header to trim every editable Freeze feed together.',
+    [rt('FX Routing Matrix', 'Freeze Column')],
   ),
   routingMatrixReverbColumn: entry(
     'Sends rows into the shared Reverb return.',
@@ -1093,7 +1098,7 @@ const reverbEntries: Record<string, SliderHelpEntry> = {
   spectralFreezePosition: entry('Moves the scan head through the captured memory.', 'Use this to explore a particular moment in the rolling 16-second capture.', [rv('Spectral Freeze', 'Position')]),
   spectralFreezeRefresh: entry('Sets how quickly live spectral detail refreshes the memory.', 'Low values ooze slowly. High values follow new input more actively.', [rv('Spectral Freeze', 'Refresh')]),
   spectralFreezeInputSensitivity: entry('Sets how strongly incoming spectral changes update the memory.', 'Lower values favor stable holds. Higher values react to quieter details.', [rv('Spectral Freeze', 'Input Sensitivity')]),
-  spectralFreezeMix: entry('Sets the wet/dry balance of the spectral freeze module.', 'Low values keep more live signal present. High values let the frozen layer dominate.', [rv('Spectral Freeze', 'Mix')]),
+  spectralFreezeMix: entry('Sets the output level of the spectral freeze module.', 'The original source stays dry; this controls only the frozen layer.', [rv('Spectral Freeze', 'Level')]),
   spectralFreezeSustain: entry('Sets how long the spectral memory remains present.', 'Low values let the captured material dissolve. High values hold it almost indefinitely.', [rv('Spectral Freeze', 'Sustain')]),
   spectralFreezeDiffusion: entry('Spreads phase detail inside the held spectrum.', 'Low values remain focused and glassy. High values become softer and more cloud-like.', [rv('Spectral Freeze', 'Diffusion')]),
   spectralFreezeTone: entry('Tilts the spectral memory darker or brighter.', 'Negative values warm and soften the texture; positive values emphasize air and detail.', [rv('Spectral Freeze', 'Tone')]),
@@ -1527,9 +1532,13 @@ const dynamicsEntries: Record<string, SliderHelpEntry> = {
   erosionProfileAmount: lowHigh('Blends the media profile EQ.', 'keep the degraded path closer to the raw tone controls', 'add more body bump and presence notch from copied-media profiling', [dn('Degrade', 'Profile')]),
   erosionDitherAmount: lowHigh('Adds dither before Degrade quantization.', 'keep alias damage harder and more stepped', 'soften quantized edges with low-level triangular dither', [dn('Degrade', 'Dither')]),
   dynamicsSaturationVisualizer: entry('Shows the saturation shape.', 'The curve shows how the selected saturation mode bends the bus, while the bars show the harmonic balance and the top meter shows how symmetrical or biased the clipping is.', [dn('Saturation', 'Visualizer', 'single-only', [GLOBAL_SINGLE_NOTE])]),
-  dynamicsSaturationDrive: lowHigh('Sets Dynamics master saturation drive.', 'leave the bus cleaner', 'push harder into the selected saturation color', [dn('Saturation', 'Drive')]),
+  dynamicsSaturationDrive: lowHigh('Sets modular Saturator drive.', 'leave the routed signal cleaner', 'push harder into the selected saturation color', [dn('Saturator', 'Drive')]),
   dynamicsSaturationTone: lowHigh('Sets Dynamics saturation tone.', 'tilt the saturated bus darker', 'tilt the saturated bus brighter', [dn('Saturation', 'Tone')]),
   dynamicsSaturationBias: lowHigh('Sets Dynamics saturation bias.', 'keep clipping more symmetrical', 'lean into asymmetrical even-harmonic color', [dn('Saturation', 'Bias')]),
+  masterSaturationVisualizer: entry('Shows the terminal saturation shape.', 'The curve, harmonic bars, symmetry meter, and quality badge use the same visual language as the modular Saturator while monitoring the terminal Master FX stage.', [dn('Master FX / Master Saturation', 'Visualizer', 'single-only', [GLOBAL_SINGLE_NOTE])]),
+  masterSaturationDrive: lowHigh('Sets terminal Master Saturation drive.', 'leave the final mix cleaner', 'push the full mix harder into the selected saturation color', [dn('Master FX / Master Saturation', 'Drive')]),
+  masterSaturationTone: lowHigh('Sets terminal Master Saturation tone.', 'tilt the saturated master darker', 'tilt the saturated master brighter', [dn('Master FX / Master Saturation', 'Tone')]),
+  masterSaturationBias: lowHigh('Sets terminal Master Saturation bias.', 'keep clipping more symmetrical', 'lean into asymmetrical even-harmonic color', [dn('Master FX / Master Saturation', 'Bias')]),
 };
 
 const granularVoiceBase = {

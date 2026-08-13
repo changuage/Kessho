@@ -866,6 +866,7 @@ function addDynamicSampleSlotKeys(keys) {
     const title = `${slotId[0]?.toUpperCase() ?? ''}${slotId.slice(1)}`;
     keys.add(`granular${title}Send`);
     keys.add(`degrade${title}Send`);
+    keys.add(`spectralFreeze${title}Send`);
   }
 }
 
@@ -1014,6 +1015,7 @@ const PRODUCT_STATE_GETTER_NAMES = new Set([
 
 const PRODUCT_SNAPSHOT_KEY_PATHS = [
   'src/audio/coreProductSnapshot.ts',
+  'src/audio/coreProductSampleSlotSnapshot.ts',
   'src/audio/CoreProductHarmonyControl.ts',
   'src/audio/coreProductSoundscapesSnapshot.ts',
   'src/audio/CoreProductLeadPatch.ts',

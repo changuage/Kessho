@@ -517,19 +517,25 @@ for (const preset of presets) {
   }
 }
 
+const versionIdsWithPresetRefs = new Set(refs.map(ref => ref.version_id));
 const versionStorageIssues = [];
 for (const version of versions) {
   const preset = presetById.get(version.preset_id);
   const context = `${preset?.type}:${preset?.scope ?? ''}:${preset?.name}:v${version.version_no}`;
-  if (!version.resolved_hash) versionStorageIssues.push({ context, issue: 'missing resolved_hash' });
+  const resolvedCacheRequired = preset?.type !== 'state' && (
+    preset?.latest_version_id === version.id || versionIdsWithPresetRefs.has(version.id)
+  );
+  if (!version.resolved_hash && resolvedCacheRequired) {
+    versionStorageIssues.push({ context, issue: 'missing required resolved_hash' });
+  }
   if (version.storage_mode === 'patch' && version.version_no !== 1 && !version.patch_from_prev_hash) {
     versionStorageIssues.push({ context, issue: 'patch version has no patch_from_prev_hash' });
   }
   if (version.storage_mode !== 'patch' && version.patch_from_prev_hash) {
     versionStorageIssues.push({ context, issue: 'checkpoint/snapshot unexpectedly has patch hash' });
   }
-  if (version.version_no > 1 && !version.parent_version_id) {
-    versionStorageIssues.push({ context, issue: 'non-v1 version has no parent_version_id' });
+  if (version.storage_mode === 'patch' && version.version_no > 1 && !version.parent_version_id) {
+    versionStorageIssues.push({ context, issue: 'patch version has no parent_version_id' });
   }
   if (version.parent_version_id && !versionById.has(version.parent_version_id)) {
     versionStorageIssues.push({ context, issue: 'parent_version_id missing' });
@@ -725,14 +731,22 @@ for (const version of versions) {
 for (const ref of refs) {
   if (ref.override_hash) nonHistoricalRefs.add(ref.override_hash);
 }
-const removableHistoricalResolvedHashes = new Set();
+for (const ref of contentRefs) {
+  nonHistoricalRefs.add(ref.content_hash);
+}
+const reclaimableStandaloneHistoricalResolvedHashes = new Set();
+const protectedGraphHistoricalResolvedHashes = new Set();
 for (const version of versions) {
   if (!version.resolved_hash || latestVersionIds.has(version.id)) continue;
-  if (!nonHistoricalRefs.has(version.resolved_hash)) {
-    removableHistoricalResolvedHashes.add(version.resolved_hash);
+  if (versionIdsWithPresetRefs.has(version.id)) {
+    protectedGraphHistoricalResolvedHashes.add(version.resolved_hash);
+  } else if (!nonHistoricalRefs.has(version.resolved_hash)) {
+    reclaimableStandaloneHistoricalResolvedHashes.add(version.resolved_hash);
   }
 }
-const removableHistoricalResolvedBytes = [...removableHistoricalResolvedHashes]
+const reclaimableStandaloneHistoricalResolvedBytes = [...reclaimableStandaloneHistoricalResolvedHashes]
+  .reduce((sum, payloadHash) => sum + payloadBytes(payloadHash, payloadByHash), 0);
+const protectedGraphHistoricalResolvedBytes = [...protectedGraphHistoricalResolvedHashes]
   .reduce((sum, payloadHash) => sum + payloadBytes(payloadHash, payloadByHash), 0);
 
 const useCountsByRole = {};
@@ -872,8 +886,10 @@ const report = {
     uniqueReferencedBytes,
     allPayloadBytes,
     latestResolvedCacheByType: latestResolvedCacheMetrics,
-    removableHistoricalResolvedPayloads: removableHistoricalResolvedHashes.size,
-    removableHistoricalResolvedBytes,
+    reclaimableStandaloneHistoricalResolvedPayloads: reclaimableStandaloneHistoricalResolvedHashes.size,
+    reclaimableStandaloneHistoricalResolvedBytes,
+    protectedGraphHistoricalResolvedPayloads: protectedGraphHistoricalResolvedHashes.size,
+    protectedGraphHistoricalResolvedBytes,
     estimatedSavingsPercent: logicalReferencedBytes
       ? Math.round((1 - uniqueReferencedBytes / logicalReferencedBytes) * 1000) / 10
       : 0,
@@ -912,7 +928,8 @@ if (outputJson) {
   console.log(`Rows: ${report.counts.presets} presets, ${report.counts.versions} versions, ${report.counts.refs} refs, ${report.counts.contentRefs} content refs, ${report.counts.payloads} payloads`);
   console.log(`Dedupe: ${formatBytes(logicalReferencedBytes)} logical -> ${formatBytes(uniqueReferencedBytes)} unique referenced (${report.dedupe.estimatedSavingsPercent}% saved)`);
   console.log(`Payload storage: ${formatBytes(allPayloadBytes)} total, ${formatBytes(report.integrity.unreferencedPayloadBytes)} unreferenced`);
-  console.log(`Removable historical resolved cache: ${formatBytes(report.dedupe.removableHistoricalResolvedBytes)} across ${report.dedupe.removableHistoricalResolvedPayloads} payloads`);
+  console.log(`Reclaimable standalone historical cache: ${formatBytes(report.dedupe.reclaimableStandaloneHistoricalResolvedBytes)} across ${report.dedupe.reclaimableStandaloneHistoricalResolvedPayloads} payloads`);
+  console.log(`Protected graph-history snapshots: ${formatBytes(report.dedupe.protectedGraphHistoricalResolvedBytes)} across ${report.dedupe.protectedGraphHistoricalResolvedPayloads} payloads`);
   console.log('');
   console.log(`Blocking integrity issues: ${blockingIssueCount}`);
   console.log(`Recycled latest rollup tombstones: ${report.integrity.recycledLatestRollupIssueCount}`);

@@ -43,6 +43,7 @@ import { HarmonyWorkspace } from '../harmony/HarmonyWorkspace';
 import { GlobalRuntimeComparisonPanel, type GlobalRuntimeComparisonPanelProps } from './GlobalRuntimeComparisonPanel';
 import { getModulationPreviewDurationSec, type ModulationPreviewClock } from './modulationPreviewTiming';
 import type { RoutingMuteGroupRuntimeSnapshot, RoutingMuteGroupSourceId } from '../routing';
+import FxRoutingGraphView from '../routing/FxRoutingGraphView';
 import './global.css';
 
 // Note names for display
@@ -432,7 +433,7 @@ const SCENE_SIGNAL_POSITIONS: Record<string, { x: number; y: number }> = {
   masterEnd: { x: 668, y: 458 },
 };
 
-const ROUTING_MUTE_SOURCE_TO_SCENE_NODE: Record<RoutingMuteGroupSourceId, string> = {
+const ROUTING_MUTE_SOURCE_TO_SCENE_NODE: Partial<Record<RoutingMuteGroupSourceId, string>> = {
   pad1: 'pad1',
   pad2: 'pad2',
   lead1: 'lead1',
@@ -448,11 +449,14 @@ const ROUTING_MUTE_SOURCE_TO_SCENE_NODE: Record<RoutingMuteGroupSourceId, string
   delayAOut: 'delayA',
   delayBOut: 'delayB',
   degrade: 'degrade',
+  freezeOut: 'freeze',
   reverb: 'reverb',
 };
 
 function muteSceneNodeIdsForSourceIds(sourceIds: readonly RoutingMuteGroupSourceId[]): Set<string> {
-  return new Set(sourceIds.map((sourceId) => ROUTING_MUTE_SOURCE_TO_SCENE_NODE[sourceId]).filter(Boolean));
+  return new Set(sourceIds
+    .map((sourceId) => ROUTING_MUTE_SOURCE_TO_SCENE_NODE[sourceId])
+    .filter((nodeId): nodeId is string => typeof nodeId === 'string'));
 }
 
 function hexToRgbTriplet(hex: string): string {
@@ -985,8 +989,8 @@ function buildSceneSignalModel(state: SliderState): SceneSignalModel {
   const degradeEngineEnabled = !!(state.dynamicsEnabled || state.degradeEnabled) && !!(state.driftEnabled || state.erosionEnabled);
   const driftEnabled = degradeEngineEnabled && !!state.driftEnabled;
   const erosionEnabled = degradeEngineEnabled && !!state.erosionEnabled;
-  const saturationEnabled = !!state.dynamicsSaturationEnabled;
-  const endCompEnabled = !!state.dynamicsEnabled && !!state.endCompEnabled;
+  const saturationEnabled = !!state.masterSaturationEnabled;
+  const endCompEnabled = !!state.endCompEnabled;
   const driftLevel = driftEnabled ? clamp01(state.driftMix) : 0;
   const erosionLevel = erosionEnabled
     ? Math.max(
@@ -996,7 +1000,7 @@ function buildSceneSignalModel(state: SliderState): SceneSignalModel {
         clamp01(state.erosionSaturation),
       )
     : 0;
-  const saturationLevel = saturationEnabled ? clamp01(state.dynamicsSaturationDrive) : 0;
+  const saturationLevel = saturationEnabled ? clamp01(state.masterSaturationDrive) : 0;
   const endCompLevel = endCompEnabled ? clamp01(state.endCompMix ?? 1) : 0;
 
   const fxNodes = [
@@ -1790,6 +1794,14 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                 )}
               </div>
             )}
+          </div>
+
+          <div className="global-routing-architecture">
+            <div className="scene-card-header">
+              <h3 className="scene-card-title">Routing Architecture</h3>
+              <span className="scene-card-note">Read only</span>
+            </div>
+            <FxRoutingGraphView state={state} graph={state.fxRoutingGraph} readOnly />
           </div>
 
           <div className="scene-master-control">

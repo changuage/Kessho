@@ -71,7 +71,7 @@ void configurePeaking(ProductEqBiquadState& state, float sample_rate, float freq
 void configureLowShelf(ProductEqBiquadState& state, float sample_rate, float freq, float gain_db, float slope) {
   const float safe_freq = safeEqFrequency(sample_rate, freq);
   const float safe_gain = clampFloat(gain_db, -24.0f, 24.0f);
-  const float safe_slope = clampFloat(slope, 0.25f, 4.0f);
+  const float safe_slope = clampFloat(slope, 0.25f, 1.0f);
   if (state.coeff_type == kDynamicsEqEdgeShelf &&
       state.coeff_freq == safe_freq &&
       state.coeff_gain_db == safe_gain &&
@@ -106,7 +106,7 @@ void configureLowShelf(ProductEqBiquadState& state, float sample_rate, float fre
 void configureHighShelf(ProductEqBiquadState& state, float sample_rate, float freq, float gain_db, float slope) {
   const float safe_freq = safeEqFrequency(sample_rate, freq);
   const float safe_gain = clampFloat(gain_db, -24.0f, 24.0f);
-  const float safe_slope = clampFloat(slope, 0.25f, 4.0f);
+  const float safe_slope = clampFloat(slope, 0.25f, 1.0f);
   if (state.coeff_type == kDynamicsEqEdgeShelf + 2u &&
       state.coeff_freq == safe_freq &&
       state.coeff_gain_db == safe_gain &&
@@ -162,6 +162,7 @@ void renderEqBus(
     bool enabled,
     float input_gain_db,
     float output_gain_db,
+    float mix,
     uint32_t low_type,
     float low_freq,
     float low_gain_db,
@@ -206,86 +207,111 @@ void renderEqBus(
   }
   const float input_gain = dbToGain(clampFloat(input_gain_db, -24.0f, 24.0f));
   const float output_gain = dbToGain(clampFloat(output_gain_db, -24.0f, 24.0f));
+  const float wet = clampFloat(mix, 0.0f, 1.0f);
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    float left = bus_l[frame] * input_gain;
-    float right = bus_r[frame] * input_gain;
+    const float dry_left = bus_l[frame] * input_gain;
+    const float dry_right = bus_r[frame] * input_gain;
+    float left = dry_left;
+    float right = dry_right;
     left = processEqBiquad(state.low, state.low.left, left);
     right = processEqBiquad(state.low, state.low.right, right);
     left = processEqBiquad(state.mid, state.mid.left, left);
     right = processEqBiquad(state.mid, state.mid.right, right);
     left = processEqBiquad(state.high, state.high.left, left);
     right = processEqBiquad(state.high, state.high.right, right);
-    out_l[frame] += left * output_gain;
-    out_r[frame] += right * output_gain;
+    out_l[frame] += (dry_left + (left - dry_left) * wet) * output_gain;
+    out_r[frame] += (dry_right + (right - dry_right) * wet) * output_gain;
   }
 }
 
 } // namespace
 
+void KesshoProductEngine::renderDynamicsNode(
+    uint8_t node,
+    float* out_l,
+    float* out_r,
+    uint32_t start,
+    uint32_t frames) {
+  if (frames == 0u) return;
+  if (node == kFxNodeEq1) {
+    renderEqBus(
+        dynamics_eq1_state,
+        fx.dynamics_eq1_enabled,
+        fx.dynamics_eq1_input_gain_db,
+        fx.dynamics_eq1_output_gain_db,
+        fx.dynamics_eq1_mix,
+        fx.dynamics_eq1_low_type,
+        fx.dynamics_eq1_low_freq,
+        fx.dynamics_eq1_low_gain_db,
+        fx.dynamics_eq1_low_q,
+        fx.dynamics_eq1_low_slope,
+        fx.dynamics_eq1_mid_freq,
+        fx.dynamics_eq1_mid_gain_db,
+        fx.dynamics_eq1_mid_q,
+        fx.dynamics_eq1_high_type,
+        fx.dynamics_eq1_high_freq,
+        fx.dynamics_eq1_high_gain_db,
+        fx.dynamics_eq1_high_q,
+        fx.dynamics_eq1_high_slope,
+        static_cast<float>(sample_rate),
+        dynamics_eq1_bus_l,
+        dynamics_eq1_bus_r,
+        out_l,
+        out_r,
+        start,
+        frames);
+    return;
+  }
+  if (node == kFxNodeEq2) {
+    renderEqBus(
+        dynamics_eq2_state,
+        fx.dynamics_eq2_enabled,
+        fx.dynamics_eq2_input_gain_db,
+        fx.dynamics_eq2_output_gain_db,
+        fx.dynamics_eq2_mix,
+        fx.dynamics_eq2_low_type,
+        fx.dynamics_eq2_low_freq,
+        fx.dynamics_eq2_low_gain_db,
+        fx.dynamics_eq2_low_q,
+        fx.dynamics_eq2_low_slope,
+        fx.dynamics_eq2_mid_freq,
+        fx.dynamics_eq2_mid_gain_db,
+        fx.dynamics_eq2_mid_q,
+        fx.dynamics_eq2_high_type,
+        fx.dynamics_eq2_high_freq,
+        fx.dynamics_eq2_high_gain_db,
+        fx.dynamics_eq2_high_q,
+        fx.dynamics_eq2_high_slope,
+        static_cast<float>(sample_rate),
+        dynamics_eq2_bus_l,
+        dynamics_eq2_bus_r,
+        out_l,
+        out_r,
+        start,
+        frames);
+    return;
+  }
+  if (node != kFxNodeSidechain ||
+      peakForBus(dynamics_sidechain_bus_l, dynamics_sidechain_bus_r, start, frames) <= kTerminalBusEpsilon) {
+    return;
+  }
+  const bool active = fx.sidechain_enabled && sidechainBusAmount() > 0.0001f;
+  const float wet = clampFloat(fx.sidechain_mix, 0.0f, 1.0f);
+  for (uint32_t i = 0; i < frames; ++i) {
+    const uint32_t frame = start + i;
+    const float duck_gain = active ? sidechainBusGain(frame) : 1.0f;
+    const float gain = 1.0f + (duck_gain - 1.0f) * wet;
+    out_l[frame] += dynamics_sidechain_bus_l[frame] * gain;
+    out_r[frame] += dynamics_sidechain_bus_r[frame] * gain;
+  }
+}
+
 void KesshoProductEngine::renderDynamicsBuses(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (frames == 0u) {
     return;
   }
-  renderEqBus(
-      dynamics_eq1_state,
-      fx.dynamics_eq1_enabled,
-      fx.dynamics_eq1_input_gain_db,
-      fx.dynamics_eq1_output_gain_db,
-      fx.dynamics_eq1_low_type,
-      fx.dynamics_eq1_low_freq,
-      fx.dynamics_eq1_low_gain_db,
-      fx.dynamics_eq1_low_q,
-      fx.dynamics_eq1_low_slope,
-      fx.dynamics_eq1_mid_freq,
-      fx.dynamics_eq1_mid_gain_db,
-      fx.dynamics_eq1_mid_q,
-      fx.dynamics_eq1_high_type,
-      fx.dynamics_eq1_high_freq,
-      fx.dynamics_eq1_high_gain_db,
-      fx.dynamics_eq1_high_q,
-      fx.dynamics_eq1_high_slope,
-      static_cast<float>(sample_rate),
-      dynamics_eq1_bus_l,
-      dynamics_eq1_bus_r,
-      out_l,
-      out_r,
-      start,
-      frames);
-  renderEqBus(
-      dynamics_eq2_state,
-      fx.dynamics_eq2_enabled,
-      fx.dynamics_eq2_input_gain_db,
-      fx.dynamics_eq2_output_gain_db,
-      fx.dynamics_eq2_low_type,
-      fx.dynamics_eq2_low_freq,
-      fx.dynamics_eq2_low_gain_db,
-      fx.dynamics_eq2_low_q,
-      fx.dynamics_eq2_low_slope,
-      fx.dynamics_eq2_mid_freq,
-      fx.dynamics_eq2_mid_gain_db,
-      fx.dynamics_eq2_mid_q,
-      fx.dynamics_eq2_high_type,
-      fx.dynamics_eq2_high_freq,
-      fx.dynamics_eq2_high_gain_db,
-      fx.dynamics_eq2_high_q,
-      fx.dynamics_eq2_high_slope,
-      static_cast<float>(sample_rate),
-      dynamics_eq2_bus_l,
-      dynamics_eq2_bus_r,
-      out_l,
-      out_r,
-      start,
-      frames);
-
-  if (peakForBus(dynamics_sidechain_bus_l, dynamics_sidechain_bus_r, start, frames) <= kTerminalBusEpsilon) {
-    return;
-  }
-  const bool sidechain_active = fx.sidechain_enabled && sidechainBusAmount() > 0.0001f;
-  for (uint32_t i = 0; i < frames; ++i) {
-    const uint32_t frame = start + i;
-    const float gain = sidechain_active ? sidechainBusGain(frame) : 1.0f;
-    out_l[frame] += dynamics_sidechain_bus_l[frame] * gain;
-    out_r[frame] += dynamics_sidechain_bus_r[frame] * gain;
-  }
+  renderDynamicsNode(kFxNodeEq1, out_l, out_r, start, frames);
+  renderDynamicsNode(kFxNodeEq2, out_l, out_r, start, frames);
+  renderDynamicsNode(kFxNodeSidechain, out_l, out_r, start, frames);
 }

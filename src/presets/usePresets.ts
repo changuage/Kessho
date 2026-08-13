@@ -286,17 +286,8 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
       },
       forkReadOnly: !SHARED_PRESET_TEST_MODE,
     });
-    let savedEntry = result.entry;
-    if (result.changed && result.kind === 'create') {
-      const [canonicalEntry] = await Promise.all([
-        store.load(type, targetName, storeScope),
-        refresh(),
-      ]);
-      savedEntry = canonicalEntry ?? savedEntry;
-    } else if (result.changed) {
-      await refresh();
-    }
-    return savedEntry;
+    if (result.changed) await refresh();
+    return result.entry;
   }, [type, scope, storeScope, paramLevel, commandService, refresh, options, presets]);
 
   const load = useCallback(async (name: string, version?: number): Promise<PresetEntry | null> => {

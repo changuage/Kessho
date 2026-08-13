@@ -1,5 +1,5 @@
-import { useRef, type MutableRefObject } from 'react';
-import { useVisibleInterval } from './hooks/useVisibleInterval';
+import { useEffect, useRef, type MutableRefObject } from 'react';
+import { addCapacitorAudioSessionEventListener } from '../native/capacitorAudioSession';
 import type { SliderState } from './state';
 import type { ProductRuntimeLifecycle } from './useProductRuntimeLifecycle';
 
@@ -18,26 +18,28 @@ export function useProductRuntimeMacRecovery({
 }: ProductRuntimeMacRecoveryOptions): void {
   const recoveryInFlightRef = useRef(false);
 
-  useVisibleInterval(() => {
-    if (!productRuntimeLifecycle.supportsBackgroundResume || !macShellAvailable || !playbackIsRunning || recoveryInFlightRef.current) return;
-    if (productRuntimeLifecycle.getProductLifecycleState() !== 'suspended') return;
-
-    recoveryInFlightRef.current = true;
-    const recover = async () => {
-      try {
-        await productRuntimeLifecycle.resumeProductRuntime();
-        if (productRuntimeLifecycle.getProductLifecycleState() === 'stopped') {
-          await productRuntimeLifecycle.startProductRuntime(stateRef.current);
-        }
-      } catch (error) {
-        console.warn('Product audio lifecycle recovery failed:', error);
-      } finally {
-        recoveryInFlightRef.current = false;
-      }
+  useEffect(() => {
+    if (!productRuntimeLifecycle.supportsBackgroundResume || !macShellAvailable || !playbackIsRunning) return;
+    let cancelled = false;
+    let cleanup: (() => Promise<void>) | null = null;
+    void addCapacitorAudioSessionEventListener((event) => {
+      if (event.type !== 'interruption' || event.interruptionType !== 'ended' || recoveryInFlightRef.current) return;
+      recoveryInFlightRef.current = true;
+      void productRuntimeLifecycle.resumeProductRuntime()
+        .then(async () => {
+          if (!cancelled && productRuntimeLifecycle.getProductLifecycleState() === 'stopped') {
+            await productRuntimeLifecycle.startProductRuntime(stateRef.current);
+          }
+        })
+        .catch((error) => console.warn('Product audio lifecycle recovery failed:', error))
+        .finally(() => { recoveryInFlightRef.current = false; });
+    }).then((remove) => {
+      if (cancelled) void remove?.();
+      else cleanup = remove;
+    });
+    return () => {
+      cancelled = true;
+      void cleanup?.();
     };
-    void recover();
-  }, 2000, {
-    enabled: productRuntimeLifecycle.supportsBackgroundResume && macShellAvailable && playbackIsRunning,
-    pauseWhenHidden: false,
-  });
+  }, [macShellAvailable, playbackIsRunning, productRuntimeLifecycle, stateRef]);
 }

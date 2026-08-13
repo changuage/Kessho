@@ -578,8 +578,48 @@ class CoreProductRuntimeAdapter {
     next: CoreProductSnapshot,
     deferTempoSyncedDelayTimes: boolean,
   ): void {
+    const nodeCount = next.routing.fxEdgeMask.length;
+    const edgeEnabled = (routing: CoreProductSnapshot['routing'], from: number, to: number) =>
+      ((routing.fxEdgeMask[from] ?? 0) & (1 << to)) !== 0;
+    for (let from = 0; from < nodeCount; from += 1) {
+      for (let to = 0; to < nodeCount; to += 1) {
+        if (edgeEnabled(previous.routing, from, to) && !edgeEnabled(next.routing, from, to)) {
+          this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteEnabled, 1, 0, from * nodeCount + to);
+        }
+      }
+    }
+    for (let from = 0; from < nodeCount; from += 1) {
+      for (let to = 0; to < nodeCount; to += 1) {
+        const edge = from * nodeCount + to;
+        this.appendParamDiff(
+          events,
+          KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteAmount,
+          previous.routing.fxRouteAmount[edge] ?? 0,
+          next.routing.fxRouteAmount[edge] ?? 0,
+          edge,
+        );
+        this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteMode,
+          previous.routing.fxRouteMode[edge] ?? 0, next.routing.fxRouteMode[edge] ?? 0, edge);
+        this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteMin,
+          previous.routing.fxRouteMin[edge] ?? 0, next.routing.fxRouteMin[edge] ?? 0, edge);
+        this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteMax,
+          previous.routing.fxRouteMax[edge] ?? 0, next.routing.fxRouteMax[edge] ?? 0, edge);
+      }
+    }
+    for (let from = 0; from < nodeCount; from += 1) {
+      for (let to = 0; to < nodeCount; to += 1) {
+        if (!edgeEnabled(previous.routing, from, to) && edgeEnabled(next.routing, from, to)) {
+          this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteEnabled, 0, 1, from * nodeCount + to);
+        }
+      }
+    }
     for (const param of KESSHO_PRODUCT_PARAMS) {
       if (!param.path.startsWith('fx.') && !param.path.startsWith('routing.') && !param.path.startsWith('master.')) continue;
+      if (param.id === KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteAmount ||
+          param.id === KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteEnabled ||
+          param.id === KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteMode ||
+          param.id === KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteMin ||
+          param.id === KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteMax) continue;
       if (deferTempoSyncedDelayTimes && (
         param.id === KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeLeftMs ||
         param.id === KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeRightMs ||

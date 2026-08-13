@@ -4,7 +4,11 @@ import type { DynamicsAnalyserKey, DynamicsVisualTelemetrySnapshot } from '../..
 import { resolveDynamicsTargets } from '../../audio/dynamicsModel';
 import { DYNAMICS_ENGINE_COLORS } from '../../designSystem/colors';
 import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
-import type { SliderState } from '../state';
+import { useRuntimeProjectionVersion } from '../runtimeProjectionState';
+import { getRuntimeValue } from '../runtimeValueState';
+import type { SliderRuntimeRendererProps } from '../sliderSystem';
+import { resolveEffectiveSliderValue } from '../sliderSystem/effectiveValue';
+import { getParamInfo, type SliderState } from '../state';
 
 type DynamicsParamChange = (key: keyof SliderState, value: number) => void;
 
@@ -692,21 +696,28 @@ function saturateSample(input: number, mode: SliderState['dynamicsSaturationMode
   return clamp(output * air, -1.08, 1.08);
 }
 
-export function DynamicsSaturationVisualizer({ state, getDynamicsAnalyser, getDynamicsTelemetry }: VisualizerProps) {
+type SaturationVisualizerProps = VisualizerProps & { variant?: 'modular' | 'master' };
+
+export function DynamicsSaturationVisualizer({
+  state,
+  getDynamicsAnalyser,
+  getDynamicsTelemetry,
+  variant = 'modular',
+}: SaturationVisualizerProps) {
   const preDataRef = useRef<FloatBuffer | null>(null);
   const postDataRef = useRef<FloatBuffer | null>(null);
 
   const draw = useCallback(({ ctx, width, height }: CanvasDrawArgs) => {
     drawBase(ctx, width, height, YELLOW);
 
-    const drive = clamp01(state.dynamicsSaturationDrive ?? 0);
-    const tone = clamp01(state.dynamicsSaturationTone ?? 0.5);
-    const bias = clamp01(state.dynamicsSaturationBias ?? 0.5);
-    const mode = state.dynamicsSaturationMode ?? 'clean';
+    const drive = clamp01(variant === 'master' ? state.masterSaturationDrive : state.dynamicsSaturationDrive);
+    const tone = clamp01(variant === 'master' ? state.masterSaturationTone : state.dynamicsSaturationTone);
+    const bias = clamp01(variant === 'master' ? state.masterSaturationBias : state.dynamicsSaturationBias);
+    const mode = variant === 'master' ? state.masterSaturationMode : state.dynamicsSaturationMode;
     const preSample = sampleAnalyser(getDynamicsAnalyser?.('preSaturation'), preDataRef);
     const postSample = sampleAnalyser(getDynamicsAnalyser?.('postSaturation'), postDataRef);
     const telemetry = getLiveTelemetry(getDynamicsTelemetry);
-    const quality = state.dynamicsSaturationQuality ?? 'smooth';
+    const quality = variant === 'master' ? state.masterSaturationQuality : state.dynamicsSaturationQuality;
     const oversamplingFactor = Math.max(1, telemetry.worklet?.masterSatOversamplingFactor ?? 1);
 
     const pad = 11;
@@ -813,11 +824,17 @@ export function DynamicsSaturationVisualizer({ state, getDynamicsAnalyser, getDy
     state.dynamicsSaturationMode,
     state.dynamicsSaturationQuality,
     state.dynamicsSaturationTone,
+    state.masterSaturationBias,
+    state.masterSaturationDrive,
+    state.masterSaturationMode,
+    state.masterSaturationQuality,
+    state.masterSaturationTone,
+    variant,
   ]);
 
   return (
     <DynamicsCanvasSurface
-      ariaLabel="Dynamics saturation visualizer"
+      ariaLabel={variant === 'master' ? 'Master saturation visualizer' : 'Dynamics saturation visualizer'}
       className="dynamics-viz-saturation"
       draw={draw}
     />
@@ -1314,6 +1331,22 @@ export function DynamicsDriftVisualizer({ state, getDynamicsAnalyser, getDynamic
 type DynamicsEqId = 'eq1' | 'eq2';
 type DynamicsEqBandId = 'low' | 'mid' | 'high';
 type DynamicsEqHandleKind = 'node' | 'q';
+type DynamicsEqSliderProps = (key: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
+
+const DYNAMICS_EQ_RUNTIME_KEYS: Record<DynamicsEqId, readonly string[]> = {
+  eq1: [
+    'dynamicsEq1InputGain', 'dynamicsEq1OutputGain',
+    'dynamicsEq1LowFreq', 'dynamicsEq1LowGain', 'dynamicsEq1LowQ', 'dynamicsEq1LowSlope',
+    'dynamicsEq1MidFreq', 'dynamicsEq1MidGain', 'dynamicsEq1MidQ',
+    'dynamicsEq1HighFreq', 'dynamicsEq1HighGain', 'dynamicsEq1HighQ', 'dynamicsEq1HighSlope',
+  ],
+  eq2: [
+    'dynamicsEq2InputGain', 'dynamicsEq2OutputGain',
+    'dynamicsEq2LowFreq', 'dynamicsEq2LowGain', 'dynamicsEq2LowQ', 'dynamicsEq2LowSlope',
+    'dynamicsEq2MidFreq', 'dynamicsEq2MidGain', 'dynamicsEq2MidQ',
+    'dynamicsEq2HighFreq', 'dynamicsEq2HighGain', 'dynamicsEq2HighQ', 'dynamicsEq2HighSlope',
+  ],
+};
 
 type DynamicsEqHandle = {
   band: DynamicsEqBandId;
@@ -1358,9 +1391,23 @@ function formatEqHz(freq: number): string {
   return `${Math.round(freq)}`;
 }
 
-function readEqNumber(state: SliderState, key: keyof SliderState, fallback: number): number {
+function readEqNumber(
+  state: SliderState,
+  key: keyof SliderState,
+  fallback: number,
+  sliderProps: DynamicsEqSliderProps,
+): number {
   const value = state[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  const authoredValue = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  const runtime = sliderProps(key);
+  return resolveEffectiveSliderValue({
+    authoredValue,
+    mode: runtime.mode,
+    range: runtime.dualRange ? [runtime.dualRange.min, runtime.dualRange.max] : undefined,
+    runtimePosition: runtime.walkPosition,
+    runtimeValue: getRuntimeValue(String(key)),
+    domain: getParamInfo(key) ?? undefined,
+  });
 }
 
 function readEqBandType(state: SliderState, key: keyof SliderState | undefined): 'shelf' | 'bell' {
@@ -1368,7 +1415,11 @@ function readEqBandType(state: SliderState, key: keyof SliderState | undefined):
   return state[key] === 'bell' ? 'bell' : 'shelf';
 }
 
-function getEqBandStates(state: SliderState, eqId: DynamicsEqId): DynamicsEqBandState[] {
+function getEqBandStates(
+  state: SliderState,
+  eqId: DynamicsEqId,
+  sliderProps: DynamicsEqSliderProps,
+): DynamicsEqBandState[] {
   const prefix = eqId === 'eq1' ? 'dynamicsEq1' : 'dynamicsEq2';
   const key = (suffix: string) => `${prefix}${suffix}` as keyof SliderState;
   return [
@@ -1382,10 +1433,10 @@ function getEqBandStates(state: SliderState, eqId: DynamicsEqId): DynamicsEqBand
       typeKey: key('LowType'),
       edge: 'low',
       color: CYAN,
-      freq: readEqNumber(state, key('LowFreq'), eqId === 'eq1' ? 120 : 90),
-      gain: readEqNumber(state, key('LowGain'), 0),
-      q: readEqNumber(state, key('LowQ'), 0.7),
-      slope: readEqNumber(state, key('LowSlope'), 1),
+      freq: readEqNumber(state, key('LowFreq'), eqId === 'eq1' ? 120 : 90, sliderProps),
+      gain: readEqNumber(state, key('LowGain'), 0, sliderProps),
+      q: readEqNumber(state, key('LowQ'), 0.7, sliderProps),
+      slope: readEqNumber(state, key('LowSlope'), 1, sliderProps),
       type: readEqBandType(state, key('LowType')),
     },
     {
@@ -1396,9 +1447,9 @@ function getEqBandStates(state: SliderState, eqId: DynamicsEqId): DynamicsEqBand
       qKey: key('MidQ'),
       edge: null,
       color: AMBER,
-      freq: readEqNumber(state, key('MidFreq'), eqId === 'eq1' ? 1000 : 2200),
-      gain: readEqNumber(state, key('MidGain'), 0),
-      q: readEqNumber(state, key('MidQ'), 0.9),
+      freq: readEqNumber(state, key('MidFreq'), eqId === 'eq1' ? 1000 : 2200, sliderProps),
+      gain: readEqNumber(state, key('MidGain'), 0, sliderProps),
+      q: readEqNumber(state, key('MidQ'), 0.9, sliderProps),
       slope: 1,
       type: 'bell',
     },
@@ -1412,10 +1463,10 @@ function getEqBandStates(state: SliderState, eqId: DynamicsEqId): DynamicsEqBand
       typeKey: key('HighType'),
       edge: 'high',
       color: ROSE,
-      freq: readEqNumber(state, key('HighFreq'), eqId === 'eq1' ? 8000 : 10000),
-      gain: readEqNumber(state, key('HighGain'), 0),
-      q: readEqNumber(state, key('HighQ'), 0.7),
-      slope: readEqNumber(state, key('HighSlope'), 1),
+      freq: readEqNumber(state, key('HighFreq'), eqId === 'eq1' ? 8000 : 10000, sliderProps),
+      gain: readEqNumber(state, key('HighGain'), 0, sliderProps),
+      q: readEqNumber(state, key('HighQ'), 0.7, sliderProps),
+      slope: readEqNumber(state, key('HighSlope'), 1, sliderProps),
       type: readEqBandType(state, key('HighType')),
     },
   ];
@@ -1442,17 +1493,26 @@ function eqBandResponseDb(freq: number, band: DynamicsEqBandState): number {
   return bellResponseDb(freq, band.freq, band.gain, band.q);
 }
 
-function getEqTrimDb(state: SliderState, eqId: DynamicsEqId): number {
+function getEqTrimDb(state: SliderState, eqId: DynamicsEqId, sliderProps: DynamicsEqSliderProps): number {
   const prefix = eqId === 'eq1' ? 'dynamicsEq1' : 'dynamicsEq2';
-  return readEqNumber(state, `${prefix}InputGain` as keyof SliderState, 0) +
-    readEqNumber(state, `${prefix}OutputGain` as keyof SliderState, 0);
+  return readEqNumber(state, `${prefix}InputGain` as keyof SliderState, 0, sliderProps) +
+    readEqNumber(state, `${prefix}OutputGain` as keyof SliderState, 0, sliderProps);
 }
 
-export function DynamicsEqVisualizer({ state, eqId, onParamChange }: EditableVisualizerProps & { eqId: DynamicsEqId }) {
+type DynamicsEqVisualizerProps = EditableVisualizerProps & {
+  eqId: DynamicsEqId;
+  sliderProps: DynamicsEqSliderProps;
+};
+
+export function DynamicsEqVisualizer({ state, eqId, onParamChange, sliderProps }: DynamicsEqVisualizerProps) {
   const layoutRef = useRef<DynamicsEqLayout | null>(null);
   const activeHandleRef = useRef<DynamicsEqHandle | null>(null);
-  const bands = useMemo(() => getEqBandStates(state, eqId), [eqId, state]);
-  const trimDb = getEqTrimDb(state, eqId);
+  const runtimeProjectionVersion = useRuntimeProjectionVersion(DYNAMICS_EQ_RUNTIME_KEYS[eqId]);
+  const bands = useMemo(
+    () => getEqBandStates(state, eqId, sliderProps),
+    [eqId, runtimeProjectionVersion, sliderProps, state],
+  );
+  const trimDb = getEqTrimDb(state, eqId, sliderProps);
   const enabled = Boolean(state[eqId === 'eq1' ? 'dynamicsEq1Enabled' : 'dynamicsEq2Enabled']);
   const accent = eqId === 'eq1' ? CYAN : GREEN;
 

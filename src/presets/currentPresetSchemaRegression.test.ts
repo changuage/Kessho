@@ -101,10 +101,10 @@ const storedLegacyState = decodeCurrentPresetEntry(canonicalizeStoredPresetEntry
 }));
 assert.deepEqual(storedLegacyState.versions[0]?.data, {
   masterVolume: 0.5,
-  dynamicsSaturationDrive: 0.4,
-  dynamicsSaturationMode: 'tape',
-  dynamicsSaturationTone: 0.6,
-  dynamicsSaturationEnabled: true,
+  masterSaturationDrive: 0.4,
+  masterSaturationMode: 'tape',
+  masterSaturationTone: 0.6,
+  masterSaturationEnabled: true,
   padOscAWave: 'sawtooth',
   padOscBWave: 'triangle',
   granularLevel: 0.42,

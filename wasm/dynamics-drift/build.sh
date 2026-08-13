@@ -42,6 +42,7 @@ if [[ "${1:-}" == "debug" ]]; then
     "${EMCC_CMD[@]}" "$SRC" \
         -o "$OUT" \
         -std=c++17 \
+        -I"$REPO_ROOT/cpp/KesshoCore/include" \
         -O0 \
         -g \
         -s ASSERTIONS=1 \
@@ -56,6 +57,7 @@ else
     "${EMCC_CMD[@]}" "$SRC" \
         -o "$OUT" \
         -std=c++17 \
+        -I"$REPO_ROOT/cpp/KesshoCore/include" \
         -O3 \
         -flto \
         -fno-math-errno \

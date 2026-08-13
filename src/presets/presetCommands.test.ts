@@ -139,6 +139,31 @@ test('changed save appends an immutable version and preserves previous data', ()
   assert.equal(plan.entry.versions[1]?.data.padOscAWave, 'square');
 });
 
+test('changed save returns the canonical entry reloaded from the store', async () => {
+  const store = new MemoryStore();
+  store.entry = buildPresetSavePlan(null, baseCommand({
+    data: { padOscAWave: 'sine', padOscBWave: 'saw' },
+  })).entry;
+  const load = store.load.bind(store);
+  store.load = async (type, name) => {
+    const entry = await load(type, name);
+    const latest = entry?.versions[entry.versions.length - 1];
+    if (!entry || entry.currentVersion === 1 || !latest) return entry;
+    latest.data = { padOscAWave: 'sine', ...latest.data };
+    return entry;
+  };
+
+  const result = await new PresetCommandService(store).save(baseCommand({
+    data: { padOscBWave: 'square' },
+    now: 200,
+  }));
+
+  assert.deepEqual(result.entry.versions[1]?.data, {
+    padOscAWave: 'sine',
+    padOscBWave: 'square',
+  });
+});
+
 test('identity-only save uses metadata CAS without appending a version', async () => {
   const store = new MemoryStore();
   store.entry = {

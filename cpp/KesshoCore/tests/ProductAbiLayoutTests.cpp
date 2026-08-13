@@ -16,19 +16,19 @@ void require(bool condition, const char* message) {
 } // namespace
 
 int main() {
-  static_assert(sizeof(KesshoProductSourceSnapshot) == 5248, "source snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductSourceSnapshot) == 5252, "source snapshot ABI size changed");
   static_assert(sizeof(KesshoProductSequencerLaneSnapshot) == 100, "sequencer lane snapshot ABI size changed");
-  static_assert(sizeof(KesshoProductSnapshotV2) == 155256, "product snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductSnapshotV2) == 156216, "product snapshot ABI size changed");
   static_assert(sizeof(KesshoProductEvent) == 40, "product event ABI size changed");
   static_assert(sizeof(KesshoSequencerEvent) == 60, "sequencer event ABI size changed");
   static_assert(sizeof(KesshoProductGranularVisualEvent) == 32, "granular visual event ABI size changed");
-  static_assert(sizeof(KesshoProductTelemetry) == 14512, "product telemetry ABI size changed");
+  static_assert(sizeof(KesshoProductTelemetry) == 14912, "product telemetry ABI size changed");
   static_assert(sizeof(KesshoProductSequencerLaneUiState) == 3296, "sequencer UI lane state ABI size changed");
   static_assert(sizeof(KesshoProductSequencerUiState) == 105508, "sequencer UI state ABI size changed");
 
   require(offsetof(KesshoProductSnapshotV2, schema_hash) == 4, "snapshot schema hash offset changed");
   require(offsetof(KesshoProductSnapshotV2, sources) == 2928, "snapshot sources offset changed");
-  require(offsetof(KesshoProductSnapshotV2, sonic_runtime) == 155080, "snapshot sonic runtime offset changed");
+  require(offsetof(KesshoProductSnapshotV2, sonic_runtime) == 156040, "snapshot sonic runtime offset changed");
   require(offsetof(KesshoProductEvent, sample_offset) == 0, "event sample offset changed");
   require(offsetof(KesshoProductEvent, event_kind) == 4, "event kind offset changed");
   require(offsetof(KesshoSequencerEvent, midi_note) == 16, "sequencer event midi offset changed");
@@ -61,6 +61,9 @@ int main() {
   require(
       offsetof(KesshoProductTelemetry, harmony_note_pool_count) == 14428,
       "telemetry harmony note-pool offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, fx_route_effective_amounts) == 14508,
+      "telemetry FX route feedback offset changed");
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128u, 0u);
   require(engine != nullptr, "product engine creation failed");
   KesshoProductSnapshotV2 snapshot{};
@@ -181,7 +184,7 @@ int main() {
   require(offsetof(KesshoProductTelemetry, auto_cycle_revision) == 14316, "telemetry auto-cycle revision offset changed");
   require(offsetof(KesshoProductTelemetry, auto_cycle_phase_start_frame) == 14328, "telemetry auto-cycle phase-start offset changed");
   require(offsetof(KesshoProductTelemetry, auto_cycle_phase_end_frame) == 14336, "telemetry auto-cycle phase-end offset changed");
-  require(sizeof(KesshoProductTelemetry) == 14512, "telemetry byte size changed");
+  require(sizeof(KesshoProductTelemetry) == 14912, "telemetry byte size changed");
   require(offsetof(KesshoProductTelemetry, harmony_play_dispatch_count) == 14408, "harmony dispatch telemetry offset changed");
   require(offsetof(KesshoProductTelemetry, harmony_play_last_dispatch_frame) == 14416, "harmony dispatch frame telemetry offset changed");
   require(offsetof(KesshoProductTelemetry, harmony_play_dispatch_latency_ms) == 14424, "harmony dispatch latency telemetry offset changed");

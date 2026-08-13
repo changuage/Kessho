@@ -2,9 +2,8 @@ import { useProductRuntimeCapacitorAudioSession } from './useProductRuntimeCapac
 import { useProductRuntimeMacAudioStatus } from './useProductRuntimeMacAudioStatus';
 
 type ProductRuntimePlatformSurfaceOptions =
-  Omit<Parameters<typeof useProductRuntimeMacAudioStatus>[0], 'preloadProductRuntime'> &
+  Parameters<typeof useProductRuntimeMacAudioStatus>[0] &
   Omit<Parameters<typeof useProductRuntimeCapacitorAudioSession>[0], 'startProductPlayback' | 'stopProductPlayback'> & {
-    preloadProductRuntime: Parameters<typeof useProductRuntimeMacAudioStatus>[0]['preloadProductRuntime'];
     startProductPlayback: Parameters<typeof useProductRuntimeCapacitorAudioSession>[0]['startProductPlayback'];
     stopProductPlayback: Parameters<typeof useProductRuntimeCapacitorAudioSession>[0]['stopProductPlayback'];
   };

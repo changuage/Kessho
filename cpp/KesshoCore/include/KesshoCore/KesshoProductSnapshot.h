@@ -4,11 +4,14 @@
 
 #include "KesshoCore/KesshoProductTypes.h"
 
-#define KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT 65u
+#define KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT 69u
 #define KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT 105u
 #define KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT 58u
 #define KESSHO_PRODUCT_LEAD_OVERRIDE_PARAM_COUNT 112u
 #define KESSHO_PRODUCT_DRUM_OVERRIDE_PARAM_COUNT 245u
+#define KESSHO_PRODUCT_FX_NODE_COUNT 10u
+#define KESSHO_PRODUCT_FX_ROUTE_COUNT (KESSHO_PRODUCT_FX_NODE_COUNT * KESSHO_PRODUCT_FX_NODE_COUNT)
+#define KESSHO_PRODUCT_FX_GRAPH_VERSION 1u
 
 typedef struct KesshoProductTransportSnapshot {
   uint32_t running;
@@ -169,6 +172,7 @@ typedef struct KesshoProductSourceSnapshot {
   float delay_b_send;
   float granular_send;
   float degrade_send;
+  float spectral_freeze_send;
   float diffuse_send;
   float post_lpf_hz;
   float stereo_width;
@@ -510,6 +514,11 @@ typedef struct KesshoProductFxSnapshot {
   uint32_t spectral_freeze_routing;
   float spectral_freeze_reverb_crossfade;
   float dynamics_drive;
+  uint32_t dynamics_master_saturation_enabled;
+  uint32_t dynamics_master_saturation_mode;
+  uint32_t dynamics_master_saturation_quality;
+  float dynamics_master_saturation_tone;
+  float dynamics_master_saturation_bias;
   uint32_t dynamics_enabled;
   uint32_t dynamics_drift_enabled;
   uint32_t dynamics_drift_mode;
@@ -601,6 +610,7 @@ typedef struct KesshoProductFxSnapshot {
   uint32_t dynamics_eq1_enabled;
   float dynamics_eq1_input_gain_db;
   float dynamics_eq1_output_gain_db;
+  float dynamics_eq1_mix;
   uint32_t dynamics_eq1_low_type;
   float dynamics_eq1_low_freq;
   float dynamics_eq1_low_gain_db;
@@ -617,6 +627,7 @@ typedef struct KesshoProductFxSnapshot {
   uint32_t dynamics_eq2_enabled;
   float dynamics_eq2_input_gain_db;
   float dynamics_eq2_output_gain_db;
+  float dynamics_eq2_mix;
   uint32_t dynamics_eq2_low_type;
   float dynamics_eq2_low_freq;
   float dynamics_eq2_low_gain_db;
@@ -689,6 +700,11 @@ typedef struct KesshoProductRoutingSnapshot {
   uint32_t dynamics_delay_b_bus;
   uint32_t dynamics_degrade_bus;
   uint32_t dynamics_reverb_bus;
+  uint32_t fx_graph_version;
+  float fx_route_amount[KESSHO_PRODUCT_FX_ROUTE_COUNT];
+  uint32_t fx_route_modulation[KESSHO_PRODUCT_FX_ROUTE_COUNT];
+  uint32_t fx_edge_mask[KESSHO_PRODUCT_FX_NODE_COUNT];
+  uint32_t fx_dynamics_bus[KESSHO_PRODUCT_FX_NODE_COUNT];
 } KesshoProductRoutingSnapshot;
 
 typedef struct KesshoProductMasterSnapshot {

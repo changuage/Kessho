@@ -198,6 +198,7 @@ void KesshoProductEngine::renderSingleModuleSource(
         source.delay_a_send > 0.0f ||
         source.delay_b_send > 0.0f ||
         source.granular_send > 0.0f ||
+        source.spectral_freeze_send > 0.0f ||
         source.diffuse_send > 0.0f ||
         source.degrade_send > 0.0f;
     if (needs_prefx_copy) {
@@ -215,6 +216,7 @@ void KesshoProductEngine::renderSingleModuleSource(
         source.delay_a_send > 0.0f ||
         source.delay_b_send > 0.0f ||
         source.granular_send > 0.0f ||
+        source.spectral_freeze_send > 0.0f ||
         source.diffuse_send > 0.0f ||
         source.degrade_send > 0.0f;
     if (needs_prefx_copy) {
@@ -249,6 +251,7 @@ void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t 
   const float delay_b_send = std::max(0.0f, source.delay_b_send);
   const float granular_send = std::max(0.0f, source.granular_send);
   const float degrade_send = std::max(0.0f, source.degrade_send);
+  const float spectral_freeze_send = std::max(0.0f, source.spectral_freeze_send);
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
     const uint64_t transport_frame = transport.sample_frame + i;
@@ -266,6 +269,8 @@ void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t 
     const float granular_r = dry_r * granular_send;
     const float drift_l = dry_l * degrade_send;
     const float drift_r = dry_r * degrade_send;
+    const float freeze_l = dry_l * spectral_freeze_send;
+    const float freeze_r = dry_r * spectral_freeze_send;
 
     routeTerminalSample(dynamicsBusForSource(KESSHO_PRODUCT_SOURCE_DRUM), out_l, out_r, frame, dry_l, dry_r);
     if (captureStems()) {
@@ -282,6 +287,8 @@ void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t 
     granular_bus_r[frame] += granular_r;
     degrade_bus_l[frame] += drift_l;
     degrade_bus_r[frame] += drift_r;
+    spectral_freeze_bus_l[frame] += freeze_l;
+    spectral_freeze_bus_r[frame] += freeze_r;
 
     if (graph_taps_enabled) {
       graph_drum_dry_l[frame] += dry_l;
@@ -412,11 +419,13 @@ void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, ui
   const float water_delay_b_send = soundscapeLayerRouteSend(source, kSoundscapeLayerWater, kSoundscapeLayerRouteDelayB, 0.0f);
   const float water_granular_send = soundscapeLayerRouteSend(source, kSoundscapeLayerWater, kSoundscapeLayerRouteGranular, 0.0f);
   const float water_degrade_send = soundscapeLayerRouteSend(source, kSoundscapeLayerWater, kSoundscapeLayerRouteDegrade, 0.0f);
+  const float water_spectral_freeze_send = soundscapeLayerRouteSend(source, kSoundscapeLayerWater, kSoundscapeLayerRouteSpectralFreeze, 0.0f);
   const float insects_reverb_send = soundscapeLayerRouteSend(source, kSoundscapeLayerInsects, kSoundscapeLayerRouteReverb, 0.0f);
   const float insects_delay_a_send = soundscapeLayerRouteSend(source, kSoundscapeLayerInsects, kSoundscapeLayerRouteDelayA, 0.0f);
   const float insects_delay_b_send = soundscapeLayerRouteSend(source, kSoundscapeLayerInsects, kSoundscapeLayerRouteDelayB, 0.0f);
   const float insects_granular_send = soundscapeLayerRouteSend(source, kSoundscapeLayerInsects, kSoundscapeLayerRouteGranular, 0.0f);
   const float insects_degrade_send = soundscapeLayerRouteSend(source, kSoundscapeLayerInsects, kSoundscapeLayerRouteDegrade, 0.0f);
+  const float insects_spectral_freeze_send = soundscapeLayerRouteSend(source, kSoundscapeLayerInsects, kSoundscapeLayerRouteSpectralFreeze, 0.0f);
 
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
@@ -499,6 +508,8 @@ void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, ui
     granular_bus_r[frame] += water_r * water_granular_send + insects_prefader_r * insects_granular_send;
     degrade_bus_l[frame] += water_l * water_degrade_send + insects_prefader_l * insects_degrade_send;
     degrade_bus_r[frame] += water_r * water_degrade_send + insects_prefader_r * insects_degrade_send;
+    spectral_freeze_bus_l[frame] += water_l * water_spectral_freeze_send + insects_prefader_l * insects_spectral_freeze_send;
+    spectral_freeze_bus_r[frame] += water_r * water_spectral_freeze_send + insects_prefader_r * insects_spectral_freeze_send;
   }
 }
 

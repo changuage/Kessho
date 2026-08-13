@@ -187,6 +187,7 @@ export const DYNAMICS_SIDECHAIN_PRESET_KEYS: readonly (keyof SliderState)[] = [
 export const DYNAMICS_EQ1_PRESET_KEYS: readonly (keyof SliderState)[] = [
   'dynamicsEq1InputGain',
   'dynamicsEq1OutputGain',
+  'dynamicsEq1Mix',
   'dynamicsEq1LowType',
   'dynamicsEq1LowFreq',
   'dynamicsEq1LowGain',
@@ -205,6 +206,7 @@ export const DYNAMICS_EQ1_PRESET_KEYS: readonly (keyof SliderState)[] = [
 export const DYNAMICS_EQ2_PRESET_KEYS: readonly (keyof SliderState)[] = [
   'dynamicsEq2InputGain',
   'dynamicsEq2OutputGain',
+  'dynamicsEq2Mix',
   'dynamicsEq2LowType',
   'dynamicsEq2LowFreq',
   'dynamicsEq2LowGain',
@@ -427,10 +429,18 @@ export const DYNAMICS_SATURATION_PRESET_KEYS: readonly (keyof SliderState)[] = [
   'dynamicsSaturationBias',
 ];
 
+export const MASTER_SATURATION_PRESET_KEYS: readonly (keyof SliderState)[] = [
+  'masterSaturationMode',
+  'masterSaturationQuality',
+  'masterSaturationDrive',
+  'masterSaturationTone',
+  'masterSaturationBias',
+];
+
 export const DYNAMICS_MASTER_FX_PRESET_KEYS: readonly (keyof SliderState)[] = [
-  'dynamicsSaturationEnabled',
+  'masterSaturationEnabled',
+  ...MASTER_SATURATION_PRESET_KEYS,
   'endCompEnabled',
-  ...DYNAMICS_SATURATION_PRESET_KEYS,
   ...DYNAMICS_END_CHAIN_PRESET_KEYS,
 ];
 
@@ -1416,9 +1426,13 @@ export const DYNAMICS_MASTER_FX_PRESETS: Record<string, DynamicsPresetDefinition
     description: 'Leaves the final color and compression stages bypassed.',
     tags: ['master-fx', 'bypass', 'clean'],
     params: {
-      dynamicsSaturationEnabled: false,
+      masterSaturationEnabled: false,
+      masterSaturationMode: 'clean',
+      masterSaturationQuality: 'smooth',
+      masterSaturationDrive: 0,
+      masterSaturationTone: 0.5,
+      masterSaturationBias: 0.5,
       endCompEnabled: false,
-      ...DYNAMICS_SATURATION_PRESETS.cleanBypass!.params,
       ...DYNAMICS_END_CHAIN_PRESETS.endChainBypass!.params,
     },
   },
@@ -1427,9 +1441,13 @@ export const DYNAMICS_MASTER_FX_PRESETS: Record<string, DynamicsPresetDefinition
     description: 'Tape warmth into gentle final bus glue for a finished but still open master stage.',
     tags: ['master-fx', 'tape', 'glue'],
     params: {
-      dynamicsSaturationEnabled: true,
+      masterSaturationEnabled: true,
+      masterSaturationMode: 'tape',
+      masterSaturationQuality: 'hq',
+      masterSaturationDrive: 0.32,
+      masterSaturationTone: 0.55,
+      masterSaturationBias: 0.6,
       endCompEnabled: true,
-      ...DYNAMICS_SATURATION_PRESETS.tapeGlow!.params,
       ...DYNAMICS_END_CHAIN_PRESETS.glueBus!.params,
     },
   },
@@ -1438,9 +1456,13 @@ export const DYNAMICS_MASTER_FX_PRESETS: Record<string, DynamicsPresetDefinition
     description: 'Soft dark saturation with wide-wash compression that keeps reverb and granular returns controlled.',
     tags: ['master-fx', 'wash', 'ambient'],
     params: {
-      dynamicsSaturationEnabled: true,
+      masterSaturationEnabled: true,
+      masterSaturationMode: 'tape',
+      masterSaturationQuality: 'smooth',
+      masterSaturationDrive: 0.18,
+      masterSaturationTone: 0.32,
+      masterSaturationBias: 0.45,
       endCompEnabled: true,
-      ...DYNAMICS_SATURATION_PRESETS.linenWarmth!.params,
       ...DYNAMICS_END_CHAIN_PRESETS.wideWashGuard!.params,
     },
   },

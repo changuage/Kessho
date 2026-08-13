@@ -14,6 +14,7 @@ import type {
 import { compressVersions, getVersionData } from './codec';
 import {
   getPresetScope,
+  buildPresetKeyCandidates,
   isPresetCompatibleWithSlot,
   makePresetKey,
   normalizePresetSummary,
@@ -139,8 +140,9 @@ export class LocalStoragePresetStore implements IPresetStore {
   async load(type: PresetLevel, name: string, scope?: string, version?: number): Promise<PresetEntry | null> {
     const storage = getBrowserPresetStorage();
     if (!storage) return null;
-    const key = makePresetKey(type, name, scope);
-    const raw = storage.getItem(key);
+    const raw = buildPresetKeyCandidates(type, name, scope)
+      .map(key => storage.getItem(key))
+      .find((candidate): candidate is string => candidate !== null);
     if (!raw) return null;
     const entry = readCurrentEntry(raw);
     if (!entry || entry.type !== type || !isPresetCompatibleWithSlot(entry, type, scope)) return null;
@@ -218,7 +220,7 @@ export class LocalStoragePresetStore implements IPresetStore {
   async delete(type: PresetLevel, name: string, scope?: string): Promise<void> {
     const storage = getBrowserPresetStorage();
     if (!storage) return;
-    storage.removeItem(makePresetKey(type, name, scope));
+    for (const key of buildPresetKeyCandidates(type, name, scope)) storage.removeItem(key);
   }
 
   async rename(
@@ -254,8 +256,8 @@ export class LocalStoragePresetStore implements IPresetStore {
 
     const nextScope = getPresetScope(renamed, type);
     const nextKey = getLogicalKey(renamed);
-    storage.removeItem(makePresetKey(type, name, previousScope));
-    storage.removeItem(makePresetKey(type, trimmedName, nextScope));
+    for (const key of buildPresetKeyCandidates(type, name, previousScope)) storage.removeItem(key);
+    for (const key of buildPresetKeyCandidates(type, trimmedName, nextScope)) storage.removeItem(key);
     storage.setItem(nextKey, JSON.stringify(renamed));
     return renamed;
   }
@@ -293,7 +295,7 @@ export class LocalStoragePresetStore implements IPresetStore {
   async exists(type: PresetLevel, name: string, scope?: string): Promise<boolean> {
     const storage = getBrowserPresetStorage();
     if (!storage) return false;
-    return storage.getItem(makePresetKey(type, name, scope)) !== null;
+    return buildPresetKeyCandidates(type, name, scope).some(key => storage.getItem(key) !== null);
   }
 
   async findReferences(_type: PresetLevel, name: string): Promise<string[]> {

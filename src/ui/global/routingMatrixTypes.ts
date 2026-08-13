@@ -2,14 +2,17 @@ import type { DualSliderRange } from '../DualSlider';
 import type { SliderPageId } from '../sliderHelpCatalog';
 import type { MatrixCellHandle, SliderRuntimeRendererProps } from '../sliderSystem';
 import type { SliderMode, SliderState } from '../state';
+import type { FxRoutingGraphState, FxRoutingNodeId } from '../routing/fxRoutingGraph';
 
-export type SliderColumnId = 'level' | 'delayA' | 'delayB' | 'granular' | 'degrade' | 'reverb';
-export type ColumnId = SliderColumnId | 'texture';
+export type SliderColumnId = 'level' | 'delayA' | 'delayB' | 'granular' | 'degrade' | 'freeze' | 'reverb';
+export type ColumnId = SliderColumnId | 'dynamics';
 export type CellHandle = MatrixCellHandle;
-export interface RouteControl { key: keyof SliderState; label: string } export interface MatrixCell { kind: 'editable' | 'self' | 'blocked'; route?: RouteControl; note?: string }
+export interface RouteControl { key: keyof SliderState; label: string }
+export interface MatrixCell { kind: 'editable' | 'self' | 'blocked' | 'fx'; route?: RouteControl; fxRoute?: readonly [FxRoutingNodeId, FxRoutingNodeId]; note?: string }
 export interface MatrixRow {
   id: string; label: string; accent: string; note?: string; sourceToggle?: 'toggle' | 'disable-only';
   earthFamily?: 'water' | 'insects' | 'nature'; childToggleId?: string;
+  fxNodeId?: FxRoutingNodeId;
   cells: Record<SliderColumnId, MatrixCell>;
 }
 export interface RoutingColumn { id: ColumnId; label: string; helpKey: string; note?: string }
@@ -49,4 +52,6 @@ export interface RoutingMatrixProps {
   onToggleSource?: (sourceId: string, enabled: boolean) => void;
   sliderProps: (paramKey: keyof SliderState) => RoutingSliderRuntime;
   helpPage?: SliderPageId;
+  fxRoutingGraph: FxRoutingGraphState;
+  onFxRoutingGraphChange: (graph: FxRoutingGraphState) => void;
 }

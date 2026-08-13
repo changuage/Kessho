@@ -94,6 +94,12 @@ export const DYNAMICS_SATURATION_CONTROLS: readonly DynamicsSliderControlDefinit
   dynamicsSlider('dynamicsSaturationBias', 'Bias'),
 ];
 
+export const MASTER_SATURATION_CONTROLS: readonly DynamicsSliderControlDefinition[] = [
+  dynamicsSlider('masterSaturationDrive', 'Drive'),
+  dynamicsSlider('masterSaturationTone', 'Tone'),
+  dynamicsSlider('masterSaturationBias', 'Bias'),
+];
+
 const EQ_GAIN_OPTIONS = { unit: ' dB' } as const;
 const EQ_FREQ_OPTIONS = { unit: ' Hz', logarithmic: true, announceHelp: true } as const;
 const EQ_Q_OPTIONS = { announceHelp: true } as const;
@@ -101,6 +107,7 @@ const EQ_Q_OPTIONS = { announceHelp: true } as const;
 const DYNAMICS_EQ1_TRIM_CONTROLS: readonly DynamicsSliderControlDefinition[] = [
   dynamicsSlider('dynamicsEq1InputGain', 'Input', EQ_GAIN_OPTIONS),
   dynamicsSlider('dynamicsEq1OutputGain', 'Output', EQ_GAIN_OPTIONS),
+  dynamicsSlider('dynamicsEq1Mix', 'Dry / Wet', { announceHelp: true }),
 ];
 
 const DYNAMICS_EQ1_LOW_CONTROLS: readonly DynamicsSliderControlDefinition[] = [
@@ -126,6 +133,7 @@ const DYNAMICS_EQ1_HIGH_CONTROLS: readonly DynamicsSliderControlDefinition[] = [
 const DYNAMICS_EQ2_TRIM_CONTROLS: readonly DynamicsSliderControlDefinition[] = [
   dynamicsSlider('dynamicsEq2InputGain', 'Input', EQ_GAIN_OPTIONS),
   dynamicsSlider('dynamicsEq2OutputGain', 'Output', EQ_GAIN_OPTIONS),
+  dynamicsSlider('dynamicsEq2Mix', 'Dry / Wet', { announceHelp: true }),
 ];
 
 const DYNAMICS_EQ2_LOW_CONTROLS: readonly DynamicsSliderControlDefinition[] = [
@@ -200,7 +208,7 @@ export const DYNAMICS_SIDECHAIN_MIX_CONTROLS: readonly DynamicsSliderControlDefi
   dynamicsSlider('sidechainKeyAWeight', 'Key A Weight', { announceHelp: true }),
   dynamicsSlider('sidechainKeyBWeight', 'Key B Weight', { announceHelp: true }),
   dynamicsSlider('sidechainAmount', 'Amount', { announceHelp: true }),
-  dynamicsSlider('sidechainMix', 'Mix', { announceHelp: true }),
+  dynamicsSlider('sidechainMix', 'Dry / Wet', { announceHelp: true }),
 ];
 
 export const DYNAMICS_SIDECHAIN_SHAPE_CONTROLS: readonly DynamicsSliderControlDefinition[] = [

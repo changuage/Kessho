@@ -21,6 +21,7 @@ export const PRESET_CONTENT_NODE_TYPES = [
   'lead4opfmPatch',
   'sampleVoice',
   'dynamicsEq',
+  'saturator',
   'drumSubVoice',
   'drumKickVoice',
   'drumClickVoice',
@@ -37,6 +38,7 @@ export const PRESET_CONTENT_NODE_TYPES = [
   'waterEndpoint',
   'sequencerArrangement',
   'mixRouting',
+  'routingMuteScene',
   'parameterBehaviorMap',
   'scatterConfig',
 ] as const;

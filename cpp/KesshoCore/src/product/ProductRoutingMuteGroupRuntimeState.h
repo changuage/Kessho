@@ -7,7 +7,7 @@
 namespace kessho::product::internal {
 
 constexpr uint32_t kProductRoutingMuteGroupSlotCount = 8u;
-constexpr uint32_t kProductRoutingMuteRowCount = 16u;
+constexpr uint32_t kProductRoutingMuteRowCount = 21u;
 constexpr uint32_t kProductRoutingMuteNoSlot = UINT32_MAX;
 constexpr uint32_t kProductRoutingMuteGroupMaxSceneCommands = 64u;
 
@@ -28,6 +28,11 @@ enum ProductRoutingMuteRow : uint32_t {
   kRoutingMuteRowDelayB,
   kRoutingMuteRowDegrade,
   kRoutingMuteRowReverb,
+  kRoutingMuteRowFreeze,
+  kRoutingMuteRowEq1,
+  kRoutingMuteRowEq2,
+  kRoutingMuteRowSidechain,
+  kRoutingMuteRowCreativeSaturation,
 };
 
 struct ProductRoutingMuteSceneCommands {

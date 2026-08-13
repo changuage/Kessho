@@ -24,8 +24,7 @@ float KesshoProductEngine::sidechainTargetAmount(uint32_t target) const {
     return 0.0f;
   }
   const float raw = clampFloat(fx.sidechain_targets[target], 0.0f, 1.0f) *
-      clampFloat(fx.sidechain_amount, 0.0f, 1.0f) *
-      clampFloat(fx.sidechain_mix, 0.0f, 1.0f);
+      clampFloat(fx.sidechain_amount, 0.0f, 1.0f);
   return clampFloat(1.0f - (1.0f - raw) * (1.0f - raw), 0.0f, 1.0f);
 }
 
@@ -34,8 +33,7 @@ float KesshoProductEngine::sidechainBusAmount() const {
     return 0.0f;
   }
   const float raw =
-      clampFloat(fx.sidechain_amount, 0.0f, 1.0f) *
-      clampFloat(fx.sidechain_mix, 0.0f, 1.0f);
+      clampFloat(fx.sidechain_amount, 0.0f, 1.0f);
   return clampFloat(1.0f - (1.0f - raw) * (1.0f - raw), 0.0f, 1.0f);
 }
 

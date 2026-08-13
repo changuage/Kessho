@@ -2827,6 +2827,43 @@ async function testLoadReportsRecoveryWarningForMissingSelectedCache(): Promise<
   );
 }
 
+async function testHistoricalStandaloneVersionReconstructsWithoutResolvedCacheWarning(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '13131313-1313-4131-8131-131313131313';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const padDataV1 = extractParams(DEFAULT_STATE, 1, 'pad2');
+  const padDataV2 = mutateFirstNumber(padDataV1);
+  await store.save(makePresetEntry(
+    'engine',
+    'pad2',
+    'Reconstructable Historical Cache',
+    padDataV1,
+    [
+      { v: 1, data: padDataV1 },
+      { v: 2, data: padDataV2 },
+    ],
+  ));
+
+  const row = findPresetRow(client, 'engine', 'pad2', 'Reconstructable Historical Cache');
+  const historical = client.tables.preset_versions_v2.find(version => (
+    version.preset_id === row.id && version.version_no === 1
+  ));
+  assert.ok(historical, 'expected historical version to exist');
+  historical.resolved_hash = null;
+
+  const loaded = await store.load('engine', 'Reconstructable Historical Cache', 'pad2', 1);
+  assert.ok(loaded, 'standalone historical version should reconstruct from immutable storage inputs');
+  assert.deepStrictEqual(getVersionData(loaded), padDataV1);
+  assert.equal(
+    loaded.recoveryWarnings?.some(warning => warning.slot === 'resolved') ?? false,
+    false,
+    'intentionally omitted standalone historical cache should not report data loss',
+  );
+}
+
 async function testMissingChildPayloadLoadsSilentFallback(): Promise<void> {
   const client = new FakeSupabaseClient();
   const store = new SupabasePresetStore(client as never);
@@ -3205,6 +3242,87 @@ async function testGraphSemanticNoOpAndBindingIsolation(): Promise<void> {
   assert.deepEqual(hashesFor(versions[0]!.id), hashesFor(versions[2]!.id), 'binding changes must reuse sequencer content hashes');
 }
 
+async function testRoutingMuteScenesUseDirectDeduplicatedContentRefs(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '59595959-5959-4959-8959-595959595959';
+  const name = 'Direct routing mute scenes';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const scene = {
+    mutedSourceIds: ['pad1', 'delayBOut'],
+    statePatch: {
+      delayAEnabled: false,
+      waterEnabled: true,
+    },
+  };
+  await store.save(makePresetEntry(
+    'state',
+    'global',
+    name,
+    extractOptimizedStatePresetData(DEFAULT_STATE),
+    [{
+      v: 1,
+      data: extractOptimizedStatePresetData(DEFAULT_STATE),
+      metadata: {
+        routingMuteGroups: {
+          slots: [
+            { ...scene, phraseRange: { min: 1, max: 2 } },
+            { ...scene, phraseRange: { min: 4, max: 8 } },
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+          ],
+        },
+      },
+    }],
+  ));
+
+  const preset = findPresetRow(client, 'state', 'global', name);
+  const sceneRefs = client.tables.preset_version_content_refs_v2
+    .filter(ref => ref.version_id === preset.latest_version_id && ref.content_type === 'routingMuteScene')
+    .sort((left, right) => String(left.ref_slot).localeCompare(String(right.ref_slot)));
+  assert.deepStrictEqual(
+    sceneRefs.map(ref => ref.ref_slot),
+    ['routing.mute-group.slot-0.content', 'routing.mute-group.slot-1.content'],
+    'mute slots should use the bounded direct content-ref namespace',
+  );
+  assert.equal(
+    new Set(sceneRefs.map(ref => ref.content_hash)).size,
+    1,
+    'identical active scenes should share one physical payload when only phrase timing differs',
+  );
+
+  const scenePayload = client.tables.preset_payloads_v2.find(row => (
+    row.hash === sceneRefs[0]?.content_hash
+  ))?.payload as FakeRow | undefined;
+  assert.equal(scenePayload?.contentType, 'routingMuteScene');
+  assert.equal(scenePayload?.schemaVersion, 1);
+  const positiveScene = scenePayload?.content as FakeRow | undefined;
+  assert.equal(positiveScene?.schemaVersion, 2);
+  assert.ok(Array.isArray(positiveScene?.activeTargetIds));
+  assert.equal('mutedSourceIds' in (positiveScene ?? {}), false, 'new payloads should save active membership only');
+  assert.equal(
+    client.tables.presets_v2.some(row => row.scope === 'routingMuteScene' || row.name.startsWith('__derived__/routingMuteScene/')),
+    false,
+    'direct scene content should not create hidden child presets',
+  );
+
+  const loaded = await store.load('state', name, 'global');
+  const loadedVersion = loaded?.versions.find(version => version.v === loaded.currentVersion);
+  const loadedSlots = loadedVersion?.routingMuteGroups?.slots ?? [];
+  assert.deepStrictEqual(loadedSlots[0]?.mutedSourceIds, ['pad1', 'delayBOut']);
+  assert.deepStrictEqual(loadedSlots[0]?.phraseRange, { min: 1, max: 2 });
+  assert.equal(loadedSlots[0]?.statePatch?.delayAEnabled, false);
+  assert.equal(loadedSlots[0]?.statePatch?.waterEnabled, true);
+  assert.deepStrictEqual(loadedSlots[1]?.phraseRange, { min: 4, max: 8 });
+  assert.equal(loaded?.recoveryWarnings?.length ?? 0, 0);
+}
+
 async function testMissingDerivedEndpointFallsBackWithWarning(): Promise<void> {
   const client = new FakeSupabaseClient();
   const store = new SupabasePresetStore(client as never);
@@ -3262,6 +3380,7 @@ await testAtomicSaveRollsBackWhenRefInsertFails();
 await testHistoricalOnlyReferenceAllowsSoftDelete();
 await testLatestVersionRollupClearsStaleMetadata();
 await testLoadReportsRecoveryWarningForMissingSelectedCache();
+await testHistoricalStandaloneVersionReconstructsWithoutResolvedCacheWarning();
 await testMissingChildPayloadLoadsSilentFallback();
 await testLegacyDeleteFailsClosedWhenV2IsUnavailable();
 testRecycleBinSqlContainsGraphGuards();
@@ -3272,5 +3391,6 @@ await testSupabaseRenamePreservesPresetId();
 await testDirectContentRefsReplaceResolvedSampleCopies();
 await testGraphOnlyStateLoadWithoutResolvedPayload();
 await testDeletedLeadLibraryPresetKeepsPinnedKitSound();
+await testRoutingMuteScenesUseDirectDeduplicatedContentRefs();
 await testGraphSemanticNoOpAndBindingIsolation();
 await testMissingDerivedEndpointFallsBackWithWarning();

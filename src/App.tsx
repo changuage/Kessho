@@ -10,7 +10,6 @@ import {
 } from './ui/state';
 import type { DualSliderRange } from './ui/DualSlider';
 import type { ProductEngineState } from './audio/product/ProductEngineTypes';
-import { ProductRuntimeSwitch } from './ui/ProductRuntimeSwitch';
 import { AppFooterMark } from './ui/AppFooterMark';
 import { useProductRuntimeManualTriggers } from './ui/useProductRuntimeManualTriggers';
 import { useLiveNoteInput } from './ui/keyboard/liveNoteInput';
@@ -69,6 +68,7 @@ import {
 import { VISUALIZER_PRESET_SCOPE } from './ui/visualizer/visualizerPresetStore';
 import { getGranularPresetData, getGranularPresetSliderModes, isGranularDelayBStateKey } from './ui/granular/granularPresets';
 import SnowflakeUI from './ui/SnowflakeUI';
+import { SnowflakePresetLoader } from './ui/SnowflakePresetLoader';
 import { SliderHelpProvider } from './ui/SliderHelpOverlay';
 import { MidiLearnProvider } from './ui/midiLearn/MidiLearnProvider';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
@@ -118,12 +118,15 @@ import { normalizeProductPlayConfigs, sanitizeProductPlayConfigs, type ProductPl
 import {
   getRoutingSourceDef,
   getRoutingSourceToggleKeys,
+  ROUTING_ACTIVE_EPSILON,
   normalizeDegradeReverbCrossfeed,
   normalizeDegradeReverbCrossfeedRanges,
   normalizeRoutingMuteGroupsState,
+  isLegacyFxRoutingKey,
+  updateFxRoutingGraphFromLegacyParam,
   type RoutingMuteGroupsState,
 } from './ui/routing';
-import type { SynthKeyboardUiState } from './ui/synth/SynthPage';
+import type { SynthKeyboardUiState, SynthPresetPoolSource } from './ui/synth/SynthPage';
 import { usePlatformRuntimeCapabilities } from './ui/usePlatformRuntimeCapabilities';
 import { usePresetLibraryRuntimeSurface } from './ui/usePresetLibraryRuntimeSurface';
 import { useCloudSharedPresetRuntimeSurface } from './ui/useCloudSharedPresetRuntimeSurface';
@@ -170,7 +173,7 @@ import {
 } from './ui/sliderSystem/dualConfigReducer';
 import { createSignedSnowflakeWelcomeState } from './app/signedSnowflakeWelcomeState';
 import { AppDebugPanel } from './app/AppDebugPanel';
-import { BackgroundAudioStatusPill, MacAudioStatusPill } from './app/AppRuntimeStatusPills';
+import { MacAudioStatusPill } from './app/AppRuntimeStatusPills';
 import { applySampleLibrarySelectionDefaultsToFlatState } from './audio/sampleLibraries/sampleLibrarySelectionDefaults';
 import type { SampleLibraryKey } from './audio/sampleLibraries/SampleLibraryTypes';
 import {
@@ -666,6 +669,13 @@ const App: React.FC = () => {
     setSnowflakeActivated,
     preloadAdvancedEditorRuntime,
   });
+  const [synthPresetPoolRequest, setSynthPresetPoolRequest] = useState<SynthPresetPoolSource | null>(null);
+  const openSynthPresetPoolFromPatch = useCallback((source: SynthPresetPoolSource) => {
+    setSynthPresetPoolRequest(source);
+  }, []);
+  const closeSynthPresetPoolFromPatch = useCallback(() => {
+    setSynthPresetPoolRequest(null);
+  }, []);
   const [textureVisualTelemetryActive, setTextureVisualTelemetryActive] = useState(false);
   const productVisualTelemetryActive = uiMode === 'advanced' && (
     (activeTab === 'visualizer' && reactiveVisualizerToggle.enabled) ||
@@ -1074,6 +1084,12 @@ const App: React.FC = () => {
         }
 
         newState = applyRoutingActivationForSliderValue(prev, newState as SliderState, key, stateValue);
+        const nextFxRoutingGraph = updateFxRoutingGraphFromLegacyParam(prev.fxRoutingGraph, String(key), stateValue);
+        if (isLegacyFxRoutingKey(String(key)) && nextFxRoutingGraph === prev.fxRoutingGraph && !Object.is(prev[key], stateValue)) {
+          newState[key] = prev[key] as never;
+        } else {
+          newState.fxRoutingGraph = nextFxRoutingGraph;
+        }
         newState = preserveRunningDrumSequencerSource(prev, newState as SliderState);
         newState = normalizeRoutingRuntimeEnabledFlags(newState as SliderState);
 
@@ -1771,7 +1787,6 @@ const App: React.FC = () => {
     isJourneyPlaying,
     state,
     dualRanges: nativeDualRanges,
-    preloadProductRuntime,
     startProductPlayback: handleStart,
     stopProductPlayback: handleStop,
   });
@@ -1991,11 +2006,11 @@ const App: React.FC = () => {
       }> = [
         {
           isOn: (s) => !!s.padEnabled,
-          keys: ['synthLevel', 'pad1ReverbSend', 'pad1DelayASend', 'pad1DelayBSend', 'granularPad1Send', 'degradePad1Send'],
+          keys: ['synthLevel', 'pad1ReverbSend', 'pad1DelayASend', 'pad1DelayBSend', 'granularPad1Send', 'degradePad1Send', 'spectralFreezePad1Send'],
         },
         {
           isOn: (s) => !!s.pad2Enabled,
-          keys: ['pad2Level', 'pad2ReverbSend', 'pad2DelayASend', 'pad2DelayBSend', 'granularPad2Send', 'degradePad2Send'],
+          keys: ['pad2Level', 'pad2ReverbSend', 'pad2DelayASend', 'pad2DelayBSend', 'granularPad2Send', 'degradePad2Send', 'spectralFreezePad2Send'],
         },
         {
           isOn: (s) => !!s.granularEnabled,
@@ -2021,23 +2036,23 @@ const App: React.FC = () => {
         },
         {
           isOn: (s) => !!s.leadEnabled,
-          keys: ['leadLevel', 'lead1Level', 'lead1ReverbSend', 'lead1DelayASend', 'lead1DelayBSend', 'delayAReverbSend', 'delayAMix', 'granularLead1Send', 'degradeLead1Send'],
+          keys: ['leadLevel', 'lead1Level', 'lead1ReverbSend', 'lead1DelayASend', 'lead1DelayBSend', 'delayAReverbSend', 'delayAMix', 'granularLead1Send', 'degradeLead1Send', 'spectralFreezeLead1Send'],
         },
         {
           isOn: (s) => !!s.lead2Enabled,
-          keys: ['lead2Level', 'lead2ReverbSend', 'lead2DelayASend', 'lead2DelayBSend', 'granularLead2Send', 'degradeLead2Send'],
+          keys: ['lead2Level', 'lead2ReverbSend', 'lead2DelayASend', 'lead2DelayBSend', 'granularLead2Send', 'degradeLead2Send', 'spectralFreezeLead2Send'],
         },
         {
           isOn: (s) => !!s.pianoEnabled,
-          keys: ['pianoLevel', 'pianoReverbSend', 'pianoDelayASend', 'pianoDelayBSend', 'granularPianoSend', 'degradePianoSend'],
+          keys: ['pianoLevel', 'pianoReverbSend', 'pianoDelayASend', 'pianoDelayBSend', 'granularPianoSend', 'degradePianoSend', 'spectralFreezePianoSend'],
         },
         {
           isOn: (s) => !!s.drumEnabled,
-          keys: ['drumLevel', 'drumReverbSend', 'drumDelayASend', 'drumDelayBSend', 'granularDrumSend', 'degradeDrumSend'],
+          keys: ['drumLevel', 'drumReverbSend', 'drumDelayASend', 'drumDelayBSend', 'granularDrumSend', 'degradeDrumSend', 'spectralFreezeDrumSend'],
         },
         {
           isOn: (s) => !!s.oceanSampleEnabled,
-          keys: ['oceanSampleLevel', 'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend', 'degradeWavesSend'],
+          keys: ['oceanSampleLevel', 'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend', 'degradeWavesSend', 'spectralFreezeWavesSend'],
         },
         // "Nature" engine = birds OR birds2 OR frogs. Master nature router values
         // collapse to 0 only when ALL nature sub-engines are off on that side.
@@ -2045,16 +2060,16 @@ const App: React.FC = () => {
           isOn: (s) => !!s.natureMasterEnabled && (
             !!s.nature1Enabled || !!s.nature2Enabled || !!s.nature3Enabled || !!s.nature4Enabled
           ),
-          keys: ['natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'granularNatureSend', 'degradeNatureSend'],
+          keys: ['natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'granularNatureSend', 'degradeNatureSend', 'spectralFreezeNatureSend'],
         },
         {
           isOn: (s) => !!s.waterEnabled,
-          keys: ['waterLevel', 'waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'granularWaterSend', 'degradeWaterSend'],
+          keys: ['waterLevel', 'waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'granularWaterSend', 'degradeWaterSend', 'spectralFreezeWaterSend'],
         },
         // Insects share bus sends, but each layer has its own dry carrier level.
         {
           isOn: (s) => !!s.insectsEnabled || !!s.insects2Enabled,
-          keys: ['insectsSharedLevel', 'insectsReverbSend', 'insDelayASend', 'insDelayBSend', 'granularInsectsSend', 'degradeInsectsSend'],
+          keys: ['insectsSharedLevel', 'insectsReverbSend', 'insDelayASend', 'insDelayBSend', 'granularInsectsSend', 'degradeInsectsSend', 'spectralFreezeInsectsSend'],
         },
         { isOn: (s) => !!s.insectsEnabled, keys: ['insectsLevel'] },
         { isOn: (s) => !!s.insects2Enabled, keys: ['insects2Level'] },
@@ -2122,7 +2137,11 @@ const App: React.FC = () => {
           fadeKey: 'dynamicsSaturationDrive',
         },
         {
-          isOn: (s) => Boolean(s.dynamicsEnabled && s.endCompEnabled),
+          isOn: (s) => Boolean(s.masterSaturationEnabled),
+          fadeKey: 'masterSaturationDrive',
+        },
+        {
+          isOn: (s) => Boolean(s.endCompEnabled),
           fadeKey: 'endCompMix',
         },
       ];
@@ -2288,9 +2307,11 @@ const App: React.FC = () => {
           'lead1DelayASend',
           'lead1DelayBSend',
           'degradeLead1Send',
+          'spectralFreezeLead1Send',
           'lead2DelayASend',
           'lead2DelayBSend',
           'degradeLead2Send',
+          'spectralFreezeLead2Send',
         ],
         pianoEnabled: [
           'pianoAttack',
@@ -2304,9 +2325,10 @@ const App: React.FC = () => {
           'pianoDelayBSend',
           'granularPianoSend',
           'degradePianoSend',
+          'spectralFreezePianoSend',
         ],
         synthEuclideanMasterEnabled: ['synthEuclideanTempo'],
-        oceanSampleEnabled: ['oceanFilterCutoff', 'oceanFilterResonance', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend', 'degradeWavesSend', 'oceanSliceDuration', 'oceanSliceDensity'],
+        oceanSampleEnabled: ['oceanFilterCutoff', 'oceanFilterResonance', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend', 'degradeWavesSend', 'spectralFreezeWavesSend', 'oceanSliceDuration', 'oceanSliceDensity'],
         birdsEnabled: ['birdsLevel', 'birdsSliceDuration', 'birdsSliceDensity'],
         birds2Enabled: ['birds2Level', 'birds2SliceDuration', 'birds2SliceDensity'],
         frogsEnabled: ['frogsLevel', 'frogsSliceDuration', 'frogsSliceDensity'],
@@ -2350,23 +2372,29 @@ const App: React.FC = () => {
         'pad1DelayASend',
         'pad1DelayBSend',
         'degradePad1Send',
+        'spectralFreezePad1Send',
         'pad2DelayASend',
         'pad2DelayBSend',
         'degradePad2Send',
+        'spectralFreezePad2Send',
         'lead1DelayASend',
         'lead1DelayBSend',
         'degradeLead1Send',
+        'spectralFreezeLead1Send',
         'lead2DelayASend',
         'lead2DelayBSend',
         'degradeLead2Send',
+        'spectralFreezeLead2Send',
         'pianoLevel',
         'pianoReverbSend',
         'pianoDelayASend',
         'pianoDelayBSend',
         'degradePianoSend',
+        'spectralFreezePianoSend',
         'drumDelayASend',
         'drumDelayBSend',
         'degradeDrumSend',
+        'spectralFreezeDrumSend',
         'delayAToBSend',
         'delayAGranularSend',
         'delayADegradeSend',
@@ -2387,9 +2415,13 @@ const App: React.FC = () => {
         'granularWaterSend',
         'granularInsectsSend',
         'degradeWavesSend',
+        'spectralFreezeWavesSend',
         'degradeNatureSend',
+        'spectralFreezeNatureSend',
         'degradeWaterSend',
+        'spectralFreezeWaterSend',
         'degradeInsectsSend',
+        'spectralFreezeInsectsSend',
         'drumReverbSend',
         'oceanReverbSend',
         'natureLevel',
@@ -2500,6 +2532,9 @@ const App: React.FC = () => {
         'dynamicsSaturationDrive',
         'dynamicsSaturationTone',
         'dynamicsSaturationBias',
+        'masterSaturationDrive',
+        'masterSaturationTone',
+        'masterSaturationBias',
         'sidechainKeyAWeight',
         'sidechainKeyBWeight',
         'sidechainAmount',
@@ -2738,6 +2773,9 @@ const App: React.FC = () => {
         // Dynamics discrete choices
         'driftMode',
         'dynamicsSaturationMode',
+        'dynamicsSaturationQuality',
+        'masterSaturationMode',
+        'masterSaturationQuality',
         'sidechainKeyA',
         'sidechainKeyB',
         // Drum preset names and discrete settings should snap at 50%
@@ -2870,8 +2908,12 @@ const App: React.FC = () => {
           isOn: (s) => Boolean(s.dynamicsEnabled && s.dynamicsSaturationEnabled),
         },
         {
+          key: 'masterSaturationEnabled',
+          isOn: (s) => Boolean(s.masterSaturationEnabled),
+        },
+        {
           key: 'endCompEnabled',
-          isOn: (s) => Boolean(s.dynamicsEnabled && s.endCompEnabled),
+          isOn: (s) => Boolean(s.endCompEnabled),
         },
       ];
       for (const entry of dynamicsToggleKeys) {
@@ -3224,6 +3266,24 @@ const App: React.FC = () => {
         const toggleKeys = getRoutingSourceToggleKeys(sourceId);
         if (source.toggleMode === 'simple-toggle' || source.toggleMode === 'return-row') {
           toggleKeys.forEach((key) => setFlag(key, enabled));
+          if (enabled && sourceId === 'water' && !WATER_LAYER_LEVEL_KEYS.some((key) => Boolean(prev[WATER_LAYER_ENABLED_BY_LEVEL[key]]))) {
+            const firstLayer = WATER_LAYER_LEVEL_KEYS[0]!;
+            setFlag(WATER_LAYER_ENABLED_BY_LEVEL[firstLayer], true);
+            if (Number(prev.waterLevel ?? 0) <= WATER_LAYER_LEVEL_EPSILON) ensureNextState().waterLevel = 0.65;
+            if (Number(prev[firstLayer] ?? 0) <= WATER_LAYER_LEVEL_EPSILON) ensureNextState()[firstLayer] = 0.5;
+          }
+          if (enabled && sourceId === 'nature' && !NATURE_SLOT_KEYS.some(({ enabledKey }) => Boolean(prev[enabledKey]))) {
+            const firstSlot = NATURE_SLOT_KEYS[0]!;
+            setFlag(firstSlot.enabledKey, true);
+            if (Number(prev[firstSlot.levelKey] ?? 0) <= ROUTING_ACTIVE_EPSILON) {
+              ensureNextState()[firstSlot.levelKey] = 0.5;
+            }
+          }
+          if (enabled && sourceId === 'insects' && !prev.insectsEnabled && !prev.insects2Enabled) {
+            setFlag('insectsEnabled', true);
+            if (Number(prev.insectsSharedLevel ?? 0) <= ROUTING_ACTIVE_EPSILON) ensureNextState().insectsSharedLevel = 1;
+            if (Number(prev.insectsLevel ?? 0) <= ROUTING_ACTIVE_EPSILON) ensureNextState().insectsLevel = 0.7;
+          }
           if (!enabled && sourceId === 'water') clearSharedEarthChildren(ensureNextState(), 'water');
           if (!enabled && sourceId === 'nature') clearSharedEarthChildren(ensureNextState(), 'nature');
           if (!enabled && sourceId === 'insects') clearSharedEarthChildren(ensureNextState(), 'insects');
@@ -3308,13 +3368,6 @@ const App: React.FC = () => {
           macAirPlayPerformanceActive={macAirPlayPerformanceActive}
           onToggleAirPlayPerformance={handleMacAirPlayPerformanceToggle}
           onOpenMacSoundSettings={openMacSoundSettings}
-        />
-        <BackgroundAudioStatusPill
-          productRuntimeCore={productRuntimeCore}
-          backgroundAudioStatus={backgroundAudioStatus}
-          nativeProductRendererDiagnosticStatus={nativeProductRendererDiagnosticStatus}
-          requestVisiblePageWakeLock={requestVisiblePageWakeLock}
-          releaseVisiblePageWakeLock={releaseVisiblePageWakeLock}
         />
       </>,
     );
@@ -3418,20 +3471,6 @@ const App: React.FC = () => {
             onToggleAirPlayPerformance={handleMacAirPlayPerformanceToggle}
             onOpenMacSoundSettings={openMacSoundSettings}
           />
-          <BackgroundAudioStatusPill
-            productRuntimeCore={productRuntimeCore}
-            backgroundAudioStatus={backgroundAudioStatus}
-            nativeProductRendererDiagnosticStatus={nativeProductRendererDiagnosticStatus}
-            requestVisiblePageWakeLock={requestVisiblePageWakeLock}
-            releaseVisiblePageWakeLock={releaseVisiblePageWakeLock}
-          />
-          <ProductRuntimeSwitch
-            currentMode={productRuntimeMode}
-            modes={productRuntimeModes}
-            onModeChange={handleProductRuntimeModeChange}
-            visible={showProductRuntimeSwitcher}
-            floating
-          />
           <SnowflakeUI
             state={snowflakeActivated ? state : welcomeDisplayState}
             onChange={snowflakeActivated ? handleRoutingParamChange : handleWelcomeSliderChange}
@@ -3500,13 +3539,6 @@ const App: React.FC = () => {
           onToggleAirPlayPerformance={handleMacAirPlayPerformanceToggle}
           onOpenMacSoundSettings={openMacSoundSettings}
         />
-        <BackgroundAudioStatusPill
-          productRuntimeCore={productRuntimeCore}
-          backgroundAudioStatus={backgroundAudioStatus}
-          nativeProductRendererDiagnosticStatus={nativeProductRendererDiagnosticStatus}
-          requestVisiblePageWakeLock={requestVisiblePageWakeLock}
-          releaseVisiblePageWakeLock={releaseVisiblePageWakeLock}
-        />
         {/* Controls - centered */}
         <div className="app-controls" style={{ ...styles.controls, paddingTop: '12px', ...m?.controls }}>
           {!advancedTransportButton.isPlaying ? (
@@ -3536,6 +3568,13 @@ const App: React.FC = () => {
               {TEXT_SYMBOLS.stop}
             </button>
           )}
+          <SnowflakePresetLoader
+            presets={savedPresets}
+            journeyPresets={journeyPresets.presets}
+            onLoadPreset={handleLoadPresetFromList}
+            onLoadJourneyPreset={handleLoadJourneyPreset}
+            buttonStyle={{ ...styles.iconButton, ...styles.simpleButton, ...m?.iconButton }}
+          />
           {advancedRecordingButton.visible && (
             <button
               style={{
@@ -3607,12 +3646,6 @@ const App: React.FC = () => {
           >
             ❄
           </button>
-          <ProductRuntimeSwitch
-            currentMode={productRuntimeMode}
-            modes={productRuntimeModes}
-            onModeChange={handleProductRuntimeModeChange}
-            visible={showProductRuntimeSwitcher}
-          />
         </div>
 
         {/* Tab Bar */}
@@ -3716,8 +3749,9 @@ const App: React.FC = () => {
             )}
 
             {/* === SYNTH + LEAD TAB === */}
-            {activeTab === 'synth' && (
-              <SynthPage
+            {(activeTab === 'synth' || synthPresetPoolRequest) && (
+              <div style={{ display: activeTab === 'synth' ? 'contents' : 'none' }}>
+                <SynthPage
                 state={state}
                 isMobile={isMobile}
                 expandedPanels={expandedPanels}
@@ -3771,7 +3805,10 @@ const App: React.FC = () => {
                 harmonyState={engineState.harmonyState}
                 harmonyProjection={harmonyProjection}
                 onHarmonyLiveLayerChange={handleHarmonyLiveLayerChange}
-              />
+                presetPoolRequest={synthPresetPoolRequest}
+                onPresetPoolRequestClose={closeSynthPresetPoolFromPatch}
+                />
+              </div>
             )}
 
             {/* === REVERB TAB === */}
@@ -3898,12 +3935,15 @@ const App: React.FC = () => {
                 muteGroupsController={routingMuteGroupsController}
                 onParamChange={handleRoutingParamChange}
                 onColumnParamChange={handleRoutingColumnChange}
+                onBooleanParamChange={handleRoutingBooleanParamChange}
                 onToggleSource={handleRoutingSourceToggle}
                 dawOutputRouting={dawOutputRouting}
                 dawOutputDeviceSelection={dawOutputDevice}
                 onDawOutputRoutingChange={setDawOutputRouting}
                 onDawOutputDeviceSelectionChange={setDawOutputDevice}
                 sliderProps={sliderProps}
+                onFxRoutingGraphChange={(fxRoutingGraph) => handleStateChange((prev) => ({ ...prev, fxRoutingGraph }))}
+                onOpenSynthPresetPool={openSynthPresetPoolFromPatch}
               />
             )}
 
@@ -3928,10 +3968,16 @@ const App: React.FC = () => {
         <AppDebugPanel
           state={state}
           engineState={engineState}
+          productRuntimeMode={productRuntimeMode}
+          productRuntimeModes={productRuntimeModes}
+          showProductRuntimeSwitcher={showProductRuntimeSwitcher}
+          onProductRuntimeModeChange={handleProductRuntimeModeChange}
           productRuntimeCore={productRuntimeCore}
           productCoreDebugSummary={productCoreDebugSummary}
           backgroundAudioStatus={backgroundAudioStatus}
           nativeProductRendererDiagnosticStatus={nativeProductRendererDiagnosticStatus}
+          requestVisiblePageWakeLock={requestVisiblePageWakeLock}
+          releaseVisiblePageWakeLock={releaseVisiblePageWakeLock}
           isJourneyPlaying={isJourneyPlaying}
           journey={journey}
           journeyMorphDirection={journeyMorphDirectionRef.current}

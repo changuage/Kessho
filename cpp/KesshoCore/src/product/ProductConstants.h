@@ -150,6 +150,7 @@ constexpr uint32_t kSoundscapeLayerRouteDelayA = 1u;
 constexpr uint32_t kSoundscapeLayerRouteDelayB = 2u;
 constexpr uint32_t kSoundscapeLayerRouteGranular = 3u;
 constexpr uint32_t kSoundscapeLayerRouteDegrade = 4u;
+constexpr uint32_t kSoundscapeLayerRouteSpectralFreeze = 5u;
 constexpr uint32_t kSoundscapeLayerRouteStride = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_LAYER_ROUTE_STRIDE;
 constexpr uint32_t kSoundscapeLayerRouteParamCount = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_LAYER_ROUTE_PARAM_COUNT;
 constexpr uint32_t kSoundscapeParityFixtureParam = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_PARITY_FIXTURE_PARAM;

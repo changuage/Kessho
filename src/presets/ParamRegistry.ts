@@ -145,11 +145,24 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   degradeNatureSend:     { level: 4, scope: 'global' },
   degradeWaterSend:      { level: 4, scope: 'global' },
   degradeInsectsSend:    { level: 4, scope: 'global' },
+  spectralFreezePad1Send: { level: 4, scope: 'global' },
+  spectralFreezePad2Send: { level: 4, scope: 'global' },
+  spectralFreezeLead1Send: { level: 4, scope: 'global' },
+  spectralFreezeLead2Send: { level: 4, scope: 'global' },
+  spectralFreezeSample1Send: { level: 4, scope: 'global' },
+  spectralFreezeSample2Send: { level: 4, scope: 'global' },
+  spectralFreezePianoSend: { level: 4, scope: 'global' },
+  spectralFreezeDrumSend: { level: 4, scope: 'global' },
+  spectralFreezeWavesSend: { level: 4, scope: 'global' },
+  spectralFreezeNatureSend: { level: 4, scope: 'global' },
+  spectralFreezeWaterSend: { level: 4, scope: 'global' },
+  spectralFreezeInsectsSend: { level: 4, scope: 'global' },
   delayADegradeSend:     { level: 4, scope: 'global' },
   delayBDegradeSend:     { level: 4, scope: 'global' },
   granularDegradeSend:   { level: 4, scope: 'global' },
   reverbDegradeSend:     { level: 4, scope: 'global' },
   degradeReverbSend:     { level: 4, scope: 'global' },
+  fxRoutingGraph:         { level: 4, scope: 'global' },
   pianoLevel:            { level: 4, scope: 'global' },
   pianoReverbSend:       { level: 4, scope: 'global' },
   pianoDelayASend:       { level: 4, scope: 'global' },
@@ -402,12 +415,18 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // ═══════════════════════════════════════════════════════════════════════
   // L3: Master FX Source
   // ═══════════════════════════════════════════════════════════════════════
-  dynamicsSaturationEnabled: { level: 3, scope: 'masterFx' },
+  masterSaturationEnabled:   { level: 3, scope: 'masterFx' },
+  masterSaturationMode:      { level: 1, scope: 'masterSaturation' },
+  masterSaturationQuality:   { level: 1, scope: 'masterSaturation' },
+  masterSaturationDrive:     { level: 1, scope: 'masterSaturation' },
+  masterSaturationTone:      { level: 1, scope: 'masterSaturation' },
+  masterSaturationBias:      { level: 1, scope: 'masterSaturation' },
   endCompEnabled:           { level: 3, scope: 'masterFx' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L1: Dynamics Saturation Engine
   // ═══════════════════════════════════════════════════════════════════════
+  dynamicsSaturationEnabled: { level: 3, scope: 'dynamicsSaturation' },
   dynamicsSaturationMode:    { level: 1, scope: 'dynamicsSaturation' },
   dynamicsSaturationQuality: { level: 1, scope: 'dynamicsSaturation' },
   dynamicsSaturationDrive:   { level: 1, scope: 'dynamicsSaturation' },
@@ -447,6 +466,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // ═══════════════════════════════════════════════════════════════════════
   dynamicsEq1InputGain:   { level: 1, scope: 'dynamicsEq1' },
   dynamicsEq1OutputGain:  { level: 1, scope: 'dynamicsEq1' },
+  dynamicsEq1Mix:         { level: 1, scope: 'dynamicsEq1' },
   dynamicsEq1LowType:     { level: 1, scope: 'dynamicsEq1' },
   dynamicsEq1LowFreq:     { level: 1, scope: 'dynamicsEq1' },
   dynamicsEq1LowGain:     { level: 1, scope: 'dynamicsEq1' },
@@ -466,6 +486,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // ═══════════════════════════════════════════════════════════════════════
   dynamicsEq2InputGain:   { level: 1, scope: 'dynamicsEq2' },
   dynamicsEq2OutputGain:  { level: 1, scope: 'dynamicsEq2' },
+  dynamicsEq2Mix:         { level: 1, scope: 'dynamicsEq2' },
   dynamicsEq2LowType:     { level: 1, scope: 'dynamicsEq2' },
   dynamicsEq2LowFreq:     { level: 1, scope: 'dynamicsEq2' },
   dynamicsEq2LowGain:     { level: 1, scope: 'dynamicsEq2' },
@@ -1681,6 +1702,9 @@ export const DUAL_SLIDER_PARAM_KEYS = [
   'reverbReverse', 'reverbReverseLength', 'reverbShimmer', 'reverbShimmerFeedback', 'reverbShimmerPitch',
   'reverbSize', 'reverbSlowModDepth', 'reverbSlowModRate', 'reverbTransientSmooth', 'reverbWarp',
   'spectralFreezeDiffusion', 'spectralFreezeInputSensitivity', 'spectralFreezeMix',
+  'spectralFreezePad1Send', 'spectralFreezePad2Send', 'spectralFreezeLead1Send', 'spectralFreezeLead2Send',
+  'spectralFreezeSample1Send', 'spectralFreezeSample2Send', 'spectralFreezeDrumSend',
+  'spectralFreezeWavesSend', 'spectralFreezeNatureSend', 'spectralFreezeWaterSend', 'spectralFreezeInsectsSend',
   'spectralFreezePosition', 'spectralFreezeRefresh', 'spectralFreezeReverbCrossfade',
   'spectralFreezeStretchSpeed', 'spectralFreezeSustain', 'spectralFreezeTone',
   'spectralFreezeWidth', 'synthHold', 'synthAttack', 'synthDecay', 'synthLevel',
@@ -1697,7 +1721,7 @@ export const PARAM_MODULATION_CAPABILITIES: Readonly<Record<string, ParamModulat
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1331) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1331`);
+  if (count !== 1352) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1352`);
   }
 }

@@ -32,6 +32,7 @@ export type RoutingSendDestination =
   | 'delayB'
   | 'granular'
   | 'degrade'
+  | 'freeze'
   | 'reverb';
 
 export type ToggleMode = 'simple-toggle' | 'disable-only-family' | 'return-row' | 'computed';
@@ -86,7 +87,6 @@ const degradeEnabled = (state: SliderState): boolean => sourceWithFlags(state, [
   'degradeEnabled',
   'driftEnabled',
   'erosionEnabled',
-  'dynamicsSaturationEnabled',
 ]);
 
 const reverbEnabled = (state: SliderState): boolean => (
@@ -104,7 +104,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     levelKey: 'synthLevel',
     enabledKeys: ['padEnabled'],
     toggleMode: 'simple-toggle',
-    sends: { delayA: 'pad1DelayASend', delayB: 'pad1DelayBSend', granular: 'granularPad1Send', degrade: 'degradePad1Send', reverb: 'pad1ReverbSend' },
+    sends: { delayA: 'pad1DelayASend', delayB: 'pad1DelayBSend', granular: 'granularPad1Send', degrade: 'degradePad1Send', freeze: 'spectralFreezePad1Send', reverb: 'pad1ReverbSend' },
     dynamicsBusKey: 'dynamicsPad1Bus',
     snowflakeArmEligible: true,
   }),
@@ -116,7 +116,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     levelKey: 'pad2Level',
     enabledKeys: ['pad2Enabled'],
     toggleMode: 'simple-toggle',
-    sends: { delayA: 'pad2DelayASend', delayB: 'pad2DelayBSend', granular: 'granularPad2Send', degrade: 'degradePad2Send', reverb: 'pad2ReverbSend' },
+    sends: { delayA: 'pad2DelayASend', delayB: 'pad2DelayBSend', granular: 'granularPad2Send', degrade: 'degradePad2Send', freeze: 'spectralFreezePad2Send', reverb: 'pad2ReverbSend' },
     dynamicsBusKey: 'dynamicsPad2Bus',
     snowflakeArmEligible: true,
   }),
@@ -127,7 +127,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     levelKey: 'lead1Level',
     enabledKeys: ['leadEnabled'],
     toggleMode: 'simple-toggle',
-    sends: { delayA: 'lead1DelayASend', delayB: 'lead1DelayBSend', granular: 'granularLead1Send', degrade: 'degradeLead1Send', reverb: 'lead1ReverbSend' },
+    sends: { delayA: 'lead1DelayASend', delayB: 'lead1DelayBSend', granular: 'granularLead1Send', degrade: 'degradeLead1Send', freeze: 'spectralFreezeLead1Send', reverb: 'lead1ReverbSend' },
     dynamicsBusKey: 'dynamicsLead1Bus',
     snowflakeArmEligible: true,
   }),
@@ -138,7 +138,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     levelKey: 'lead2Level',
     enabledKeys: ['lead2Enabled'],
     toggleMode: 'simple-toggle',
-    sends: { delayA: 'lead2DelayASend', delayB: 'lead2DelayBSend', granular: 'granularLead2Send', degrade: 'degradeLead2Send', reverb: 'lead2ReverbSend' },
+    sends: { delayA: 'lead2DelayASend', delayB: 'lead2DelayBSend', granular: 'granularLead2Send', degrade: 'degradeLead2Send', freeze: 'spectralFreezeLead2Send', reverb: 'lead2ReverbSend' },
     dynamicsBusKey: 'dynamicsLead2Bus',
     snowflakeArmEligible: true,
   }),
@@ -149,7 +149,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     levelKey: 'sample1Level',
     enabledKeys: ['sample1Enabled'],
     toggleMode: 'simple-toggle',
-    sends: { delayA: 'sample1DelayASend', delayB: 'sample1DelayBSend', granular: 'granularSample1Send', degrade: 'degradeSample1Send', reverb: 'sample1ReverbSend' },
+    sends: { delayA: 'sample1DelayASend', delayB: 'sample1DelayBSend', granular: 'granularSample1Send', degrade: 'degradeSample1Send', freeze: 'spectralFreezeSample1Send', reverb: 'sample1ReverbSend' },
     dynamicsBusKey: 'dynamicsSample1Bus',
     snowflakeArmEligible: true,
   }),
@@ -160,7 +160,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     levelKey: 'sample2Level',
     enabledKeys: ['sample2Enabled'],
     toggleMode: 'simple-toggle',
-    sends: { delayA: 'sample2DelayASend', delayB: 'sample2DelayBSend', granular: 'granularSample2Send', degrade: 'degradeSample2Send', reverb: 'sample2ReverbSend' },
+    sends: { delayA: 'sample2DelayASend', delayB: 'sample2DelayBSend', granular: 'granularSample2Send', degrade: 'degradeSample2Send', freeze: 'spectralFreezeSample2Send', reverb: 'sample2ReverbSend' },
     dynamicsBusKey: 'dynamicsSample2Bus',
     snowflakeArmEligible: true,
   }),
@@ -172,7 +172,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     levelKey: 'drumLevel',
     enabledKeys: ['drumEnabled'],
     toggleMode: 'simple-toggle',
-    sends: { delayA: 'drumDelayASend', delayB: 'drumDelayBSend', granular: 'granularDrumSend', degrade: 'degradeDrumSend', reverb: 'drumReverbSend' },
+    sends: { delayA: 'drumDelayASend', delayB: 'drumDelayBSend', granular: 'granularDrumSend', degrade: 'degradeDrumSend', freeze: 'spectralFreezeDrumSend', reverb: 'drumReverbSend' },
     dynamicsBusKey: 'dynamicsDrumBus',
     snowflakeArmEligible: true,
   }),
@@ -196,7 +196,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     levelKey: 'oceanSampleLevel',
     enabledKeys: ['oceanSampleEnabled'],
     toggleMode: 'simple-toggle',
-    sends: { delayA: 'oceanDelayASend', delayB: 'oceanDelayBSend', granular: 'granularWavesSend', degrade: 'degradeWavesSend', reverb: 'oceanReverbSend' },
+    sends: { delayA: 'oceanDelayASend', delayB: 'oceanDelayBSend', granular: 'granularWavesSend', degrade: 'degradeWavesSend', freeze: 'spectralFreezeWavesSend', reverb: 'oceanReverbSend' },
     dynamicsBusKey: 'dynamicsWavesBus',
     snowflakeArmEligible: false,
     muteGroupEligible: false,
@@ -208,7 +208,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     levelKey: 'waterLevel',
     enabledKeys: ['waterEnabled'],
     toggleMode: 'simple-toggle',
-    sends: { delayA: 'waterDelayASend', delayB: 'waterDelayBSend', granular: 'granularWaterSend', degrade: 'degradeWaterSend', reverb: 'waterReverbSend' },
+    sends: { delayA: 'waterDelayASend', delayB: 'waterDelayBSend', granular: 'granularWaterSend', degrade: 'degradeWaterSend', freeze: 'spectralFreezeWaterSend', reverb: 'waterReverbSend' },
     dynamicsBusKey: 'dynamicsWaterBus',
     snowflakeArmEligible: true,
     muteGroupKeepsEngineRunning: true,
@@ -221,7 +221,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     levelKey: 'insectsSharedLevel',
     enabledKeys: ['insectsMasterEnabled'],
     toggleMode: 'simple-toggle',
-    sends: { delayA: 'insDelayASend', delayB: 'insDelayBSend', granular: 'granularInsectsSend', degrade: 'degradeInsectsSend', reverb: 'insectsReverbSend' },
+    sends: { delayA: 'insDelayASend', delayB: 'insDelayBSend', granular: 'granularInsectsSend', degrade: 'degradeInsectsSend', freeze: 'spectralFreezeInsectsSend', reverb: 'insectsReverbSend' },
     dynamicsBusKey: 'dynamicsInsectsBus',
     snowflakeArmEligible: true,
     muteGroupKeepsEngineRunning: true,
@@ -235,7 +235,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     levelKey: 'natureLevel',
     enabledKeys: ['natureMasterEnabled'],
     toggleMode: 'simple-toggle',
-    sends: { delayA: 'natureDelayASend', delayB: 'natureDelayBSend', granular: 'granularNatureSend', degrade: 'degradeNatureSend', reverb: 'natureReverbSend' },
+    sends: { delayA: 'natureDelayASend', delayB: 'natureDelayBSend', granular: 'granularNatureSend', degrade: 'degradeNatureSend', freeze: 'spectralFreezeNatureSend', reverb: 'natureReverbSend' },
     dynamicsBusKey: 'dynamicsNatureBus',
     snowflakeArmEligible: true,
     muteGroupKeepsEngineRunning: true,
@@ -270,7 +270,7 @@ export const ROUTING_SOURCE_REGISTRY = [
     accent: '#A980FF',
     note: 'Degrade is the return for the Drift and Erosion processors. It can feed Reverb, but Reverb and Degrade cannot feed each other at the same time.',
     levelKey: 'degradeLevel',
-    enabledKeys: ['degradeEnabled', 'driftEnabled', 'erosionEnabled', 'dynamicsSaturationEnabled'],
+    enabledKeys: ['degradeEnabled', 'driftEnabled', 'erosionEnabled'],
     toggleMode: 'return-row',
     sends: { reverb: 'degradeReverbSend' },
     dynamicsBusKey: 'dynamicsDegradeBus',

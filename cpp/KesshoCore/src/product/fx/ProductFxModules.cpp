@@ -59,6 +59,7 @@ void KesshoProductEngine::configureFxModules() {
       const bool active =
           fx.delay_a_enabled &&
           (fx.delay_a_mix > 0.0001f ||
+           routing.fx_edge_mask[kFxNodeDelayA] != 0u ||
            routing.delay_a_to_delay_b > 0.0001f ||
            routing.delay_to_reverb > 0.0001f ||
            routing.delay_a_to_granular > 0.0001f ||
@@ -67,7 +68,7 @@ void KesshoProductEngine::configureFxModules() {
       params[1] = clampFloat(fx.delay_a_time_left_ms, 10.0f, 5000.0f);
       params[2] = clampFloat(fx.delay_a_time_right_ms, 10.0f, 5000.0f);
       params[3] = clampFloat(fx.delay_a_feedback, 0.0f, 0.95f);
-      params[4] = clampFloat(fx.delay_a_mix, 0.0f, 1.0f);
+      params[4] = active ? 1.0f : 0.0f;
       params[5] = clampFloat(fx.delay_a_filter_hz, 200.0f, 12000.0f);
       params[6] = static_cast<float>(clampU32(fx.delay_a_filter_type, 0u, 2u));
       params[7] = clampFloat(routing.delay_to_reverb, 0.0f, 1.0f);
@@ -89,6 +90,7 @@ void KesshoProductEngine::configureFxModules() {
       const bool active =
           fx.delay_b_enabled &&
           (fx.delay_b_mix > 0.0001f ||
+           routing.fx_edge_mask[kFxNodeDelayB] != 0u ||
            routing.delay_b_to_delay_a > 0.0001f ||
            routing.delay_b_to_reverb > 0.0001f ||
            routing.delay_b_to_granular > 0.0001f ||
@@ -99,7 +101,7 @@ void KesshoProductEngine::configureFxModules() {
       params[3] = clampFloat(fx.delay_b_base_time_ms, 20.0f, 5000.0f);
       params[4] = clampFloat(fx.delay_b_tone, 0.0f, 1.0f);
       params[5] = clampFloat(fx.delay_b_vibrato, 0.0f, 1.0f);
-      params[6] = clampFloat(fx.delay_b_mix, 0.0f, 1.0f);
+      params[6] = active ? 1.0f : 0.0f;
       params[7] = clampFloat(routing.delay_b_to_reverb, 0.0f, 1.0f);
       params[8] = clampFloat(routing.delay_b_to_granular, 0.0f, 1.0f);
       params[9] = clampFloat(routing.delay_b_to_delay_a, 0.0f, 1.0f);

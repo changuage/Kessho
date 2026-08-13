@@ -194,6 +194,7 @@ export type CoreProductTelemetrySnapshot = {
   modulationRangeCount?: number;
   runtimeWalkCount?: number;
   runtimeWalkValues?: Record<number, number>;
+  fxRouteEffectiveAmounts?: number[];
   earthTextureDebugState?: import('./engineSharedTypes').EarthTextureDebugState;
   productModulationDebug?: CoreProductModulationDebugSnapshot;
   runtimeWalkDebug?: import('./product/host/CoreProductRuntimeWalkDebug').CoreProductRuntimeWalkDebugState;
@@ -337,6 +338,7 @@ export type CoreProductVisualTelemetrySnapshot = Pick<
   | 'activeGrains'
   | 'runtimeWalkCount'
   | 'runtimeWalkValues'
+  | 'fxRouteEffectiveAmounts'
   | 'productModulationDebug'
   | 'masterInputPeak'
   | 'masterOutputPeak'

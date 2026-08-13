@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createCoreProductSnapshot } from './coreProductSnapshot';
+import { encodeCoreProductSnapshot } from './coreProductSnapshotEncoder';
 import { buildCoreProductSnapshotDiff } from './CoreProductRuntimeAdapter';
 import { coreProductSequencerClockRejoinMask } from './CoreProductHostSequencerClock';
 import {
@@ -59,6 +60,33 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
   });
   assert.equal(liveFreeze.fx.spectralFreezeActive, true);
   assert.equal(liveFreeze.fx.spectralFreezeCaptureSerial, 23);
+}
+
+{
+  const single = createCoreProductSnapshot({
+    fxRoutingGraph: { version: 1, edges: [{ from: 'delayA', to: 'reverb', amount: 0.5 }] },
+  });
+  const modulated = createCoreProductSnapshot({
+    fxRoutingGraph: {
+      version: 1,
+      edges: [{ from: 'delayA', to: 'reverb', amount: 0.5, mode: 'sampleHold', min: 0.2, max: 0.8 }],
+    },
+  });
+  assert.equal(encodeCoreProductSnapshot(modulated).byteLength, 156216, 'web snapshot size must match the native ABI');
+  const edge = 5;
+  assert.equal(modulated.routing.fxRouteMode[edge], 3, 'FX Sample & Hold mode did not reach the snapshot');
+  assert.equal(modulated.routing.fxRouteMin[edge], 0.2, 'FX route minimum did not reach the snapshot');
+  assert.equal(modulated.routing.fxRouteMax[edge], 0.8, 'FX route maximum did not reach the snapshot');
+  const diff = buildCoreProductSnapshotDiff(single, modulated);
+  assert.equal(diff.applied, true, 'FX route modulation should use the live dirty-diff path');
+  const paramIds = diff.applied ? diff.events.map((event) => event.paramId) : [];
+  for (const paramId of [
+    KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteMode,
+    KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteMin,
+    KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteMax,
+  ]) {
+    assert.ok(paramIds.includes(paramId), `FX route modulation live diff is missing param ${paramId}`);
+  }
 }
 
 {

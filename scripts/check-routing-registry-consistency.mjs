@@ -53,6 +53,7 @@ function assert(condition, message) {
 }
 
 const registry = read('src/ui/routing/routingSourceRegistry.ts');
+const fxRoutingGraph = read('src/ui/routing/fxRoutingGraph.ts');
 const routingMatrix = read('src/ui/global/RoutingMatrix.tsx');
 const globalPage = read('src/ui/global/GlobalPage.tsx');
 const engineGroups = read('src/ui/snowflakeV2/engineGroups.ts');
@@ -81,16 +82,20 @@ assert(
     && registry.includes('isEnabled: natureEnabled'),
   'Nature routing predicate must require the master and a canonical Nature slot.',
 );
-assert(registry.includes("enabledKeys: ['degradeEnabled', 'driftEnabled', 'erosionEnabled', 'dynamicsSaturationEnabled']"), 'Degrade predicate must include all Degrade/Texture activators.');
+assert(
+  registry.includes("enabledKeys: ['degradeEnabled', 'driftEnabled', 'erosionEnabled']")
+    && fxRoutingGraph.includes("creativeSaturation: { enable: ['dynamicsSaturationEnabled'], disable: ['dynamicsSaturationEnabled'] }"),
+  'Degrade and modular Saturator must retain independent enable ownership.',
+);
 assert(registry.includes("sends: { reverb: 'degradeReverbSend' }"), 'Degrade return row must expose Degrade to Reverb send.');
 assert(registry.includes("sends: { degrade: 'reverbDegradeSend' }"), 'Reverb return row must expose Reverb to Degrade send.');
 
 assert(
   routingMatrix.includes('ROUTING_SOURCE_REGISTRY') &&
     routingMatrix.includes('DYNAMICS_ROUTE_BY_ROW') &&
-    routingMatrix.includes("label: `${row.label} → Texture Bus`") &&
+    routingMatrix.includes("label: `${row.label} → Dynamics`") &&
     routingMatrix.includes('getRoutingSourceDef(row.id)'),
-  'RoutingMatrix must use the central routing registry for labels, Texture bus keys, and enablement.',
+  'RoutingMatrix must use the central routing registry for labels, Dynamics bus keys, and enablement.',
 );
 assert(
   globalPage.includes("waves: 'nature'")
@@ -127,9 +132,9 @@ assert(
   'Snowflake UI must include Degrade send runtime dependencies and star control.',
 );
 assert(
-  helpCatalog.includes('Columns are Level, Delay A, Delay B, Granular, Degrade, Reverb, and Texture') &&
+  helpCatalog.includes('Columns are Level, Delay A, Delay B, Granular, Degrade, Freeze, Reverb, and Dynamics') &&
     helpCatalog.includes('routingMatrixTextureColumn'),
-  'Routing help text must describe the registry columns with Texture terminology.',
+  'Routing help text must describe the registry columns with Dynamics terminology.',
 );
 
 if (failures.length > 0) {

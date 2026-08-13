@@ -5,6 +5,7 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
   if (source_id < 1u || source_id > kSourceCount) return;
   SourceState& source = sources[source_id - 1u];
   if (!sourceRenderActive(source)) return;
+  const bool dynamics_insert = dynamicsBusForSource(source_id) != kDynamicsBusSkip;
   const float graph_dry_gain = source.level * source.dry_gain;
   if (!graph_taps_enabled && source.diffuse_send <= 0.0f) {
     for (uint32_t i = 0; i < frames; ++i) {
@@ -19,11 +20,14 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
       const float granular_send = granularSendGainForFrame(source_id, source.granular_send, transport.sample_frame + i);
       routeTerminalSample(dynamicsBusForSource(source_id), out_l, out_r, frame, dry_left, dry_right);
       if (captureStems()) addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
-      addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
-      addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
-      addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);
-      addStereo(granular_bus_l, granular_bus_r, frame, send_left * granular_send, send_right * granular_send);
-      addStereo(degrade_bus_l, degrade_bus_r, frame, send_left * source.degrade_send, send_right * source.degrade_send);
+      if (!dynamics_insert) {
+        addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
+        addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
+        addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);
+        addStereo(granular_bus_l, granular_bus_r, frame, send_left * granular_send, send_right * granular_send);
+        addStereo(degrade_bus_l, degrade_bus_r, frame, send_left * source.degrade_send, send_right * source.degrade_send);
+        addStereo(spectral_freeze_bus_l, spectral_freeze_bus_r, frame, send_left * source.spectral_freeze_send, send_right * source.spectral_freeze_send);
+      }
     }
     return;
   }
@@ -42,11 +46,14 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
     recordSourceGraphTaps(source_id, frame, source, graph_dry_left, graph_dry_right, dry_left, dry_right, send_left, send_right, granular_send);
     routeTerminalSample(dynamicsBusForSource(source_id), out_l, out_r, frame, dry_left, dry_right);
     if (captureStems()) addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
-    addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
-    addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
-    addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);
-    addStereo(granular_bus_l, granular_bus_r, frame, send_left * granular_send, send_right * granular_send);
-    addStereo(degrade_bus_l, degrade_bus_r, frame, send_left * source.degrade_send, send_right * source.degrade_send);
+    if (!dynamics_insert) {
+      addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
+      addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
+      addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);
+      addStereo(granular_bus_l, granular_bus_r, frame, send_left * granular_send, send_right * granular_send);
+      addStereo(degrade_bus_l, degrade_bus_r, frame, send_left * source.degrade_send, send_right * source.degrade_send);
+      addStereo(spectral_freeze_bus_l, spectral_freeze_bus_r, frame, send_left * source.spectral_freeze_send, send_right * source.spectral_freeze_send);
+    }
   }
 }
 void KesshoProductEngine::mixSourceBuffer(
@@ -62,6 +69,7 @@ void KesshoProductEngine::mixSourceBuffer(
   if (source_id < 1u || source_id > kSourceCount || source_id >= kStemCount) return;
   SourceState& source = sources[source_id - 1u];
   if (!sourceRenderActive(source)) return;
+  const bool dynamics_insert = dynamicsBusForSource(source_id) != kDynamicsBusSkip;
   const float trim = moduleSourceOutputTrim(source_id);
   const float dry_gain = source.level * source.dry_gain * trim;
   const bool lead_source = source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2;
@@ -80,11 +88,14 @@ void KesshoProductEngine::mixSourceBuffer(
       const float granular_send = granularSendGainForFrame(source_id, source.granular_send, transport.sample_frame + i);
       routeTerminalSample(dynamicsBusForSource(source_id), out_l, out_r, frame, dry_left, dry_right);
       if (captureStems()) addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
-      addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
-      addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
-      addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);
-      addStereo(granular_bus_l, granular_bus_r, frame, send_left * granular_send, send_right * granular_send);
-      addStereo(degrade_bus_l, degrade_bus_r, frame, send_left * source.degrade_send, send_right * source.degrade_send);
+      if (!dynamics_insert) {
+        addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
+        addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
+        addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);
+        addStereo(granular_bus_l, granular_bus_r, frame, send_left * granular_send, send_right * granular_send);
+        addStereo(degrade_bus_l, degrade_bus_r, frame, send_left * source.degrade_send, send_right * source.degrade_send);
+        addStereo(spectral_freeze_bus_l, spectral_freeze_bus_r, frame, send_left * source.spectral_freeze_send, send_right * source.spectral_freeze_send);
+      }
     }
     return;
   }
@@ -103,10 +114,13 @@ void KesshoProductEngine::mixSourceBuffer(
     recordSourceGraphTaps(source_id, frame, source, graph_dry_left, graph_dry_right, dry_left, dry_right, send_left, send_right, granular_send);
     routeTerminalSample(dynamicsBusForSource(source_id), out_l, out_r, frame, dry_left, dry_right);
     if (captureStems()) addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
-    addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
-    addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
-    addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);
-    addStereo(granular_bus_l, granular_bus_r, frame, send_left * granular_send, send_right * granular_send);
-    addStereo(degrade_bus_l, degrade_bus_r, frame, send_left * source.degrade_send, send_right * source.degrade_send);
+    if (!dynamics_insert) {
+      addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
+      addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
+      addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);
+      addStereo(granular_bus_l, granular_bus_r, frame, send_left * granular_send, send_right * granular_send);
+      addStereo(degrade_bus_l, degrade_bus_r, frame, send_left * source.degrade_send, send_right * source.degrade_send);
+      addStereo(spectral_freeze_bus_l, spectral_freeze_bus_r, frame, send_left * source.spectral_freeze_send, send_right * source.spectral_freeze_send);
+    }
   }
 }

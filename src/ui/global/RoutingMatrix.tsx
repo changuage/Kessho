@@ -5,6 +5,19 @@ import { useSliderHelp } from '../SliderHelpOverlay';
 import type { SliderMode, SliderState } from '../state';
 import { useRuntimeSliderIndicator } from '../runtimeSliderState';
 import { getRoutingSourceDef, ROUTING_SOURCE_REGISTRY } from '../routing';
+import {
+  FX_ROUTING_NODE_ACCENTS,
+  FX_ROUTING_NODE_IDS,
+  FX_ROUTING_NODE_LEVEL_KEYS,
+  FX_ROUTING_NODE_LABELS,
+  FX_ROUTING_NODE_ROW_IDS,
+  canEnableFxRoute,
+  fxRouteRuntimeKey,
+  isFxRoutingNodeActive,
+  setFxRoutePresence,
+  type FxRoutingConnection,
+  type FxRoutingNodeId,
+} from '../routing/fxRoutingGraph';
 import { NATURE_SLOT_KEYS } from '../../audio/natureSlots';
 import { natureSampleLabel } from '../../audio/natureSampleCatalog';
 import { INSECT_ENGINES } from '../../audio/waterPresets';
@@ -46,10 +59,28 @@ const COLUMNS: RoutingColumn[] = [
   { id: 'delayB', label: 'Delay B', helpKey: 'routingMatrixDelayBColumn', note: 'Drag the header left or right to trim every Delay B send in this column together.' },
   { id: 'granular', label: 'Granular', helpKey: 'routingMatrixGranularColumn', note: 'Drag the header left or right to trim every granular feed in this column together.' },
   { id: 'degrade', label: 'Degrade', helpKey: 'routingMatrixDegradeColumn', note: 'Drag the header left or right to trim every Degrade send in this column together.' },
+  { id: 'freeze', label: 'Freeze', helpKey: 'routingMatrixFreezeColumn', note: 'Drag the header left or right to trim every Spectral Freeze send in this column together.' },
   { id: 'reverb', label: 'Reverb', helpKey: 'routingMatrixReverbColumn', note: 'Drag the header left or right to trim every reverb send in this column together.' },
-  { id: 'texture', label: 'Texture', helpKey: 'routingMatrixTextureColumn', note: 'Click a cell to choose the terminal Texture Bus path: Skip, EQ 1, EQ 2, or Sidechain.' },
+  { id: 'dynamics', label: 'Dynamics', helpKey: 'routingMatrixTextureColumn', note: 'Click a cell to choose the exclusive Dynamics path: Skip, EQ 1, EQ 2, or Sidechain.' },
 ];
 const DEFAULT_COLUMN = COLUMNS[0]!;
+const PROCESSOR_ROW_IDS = new Set(['granular', 'delayAOut', 'delayBOut', 'degrade', 'reverb']);
+
+const FX_ROW_DEFS: ReadonlyArray<{
+  node: FxRoutingNodeId;
+  id: string;
+  accent: string;
+  levelKey: keyof SliderState;
+}> = [
+  ...FX_ROUTING_NODE_IDS.map((node) => ({
+    node,
+    id: FX_ROUTING_NODE_ROW_IDS[node],
+    accent: FX_ROUTING_NODE_ACCENTS[node],
+    levelKey: FX_ROUTING_NODE_LEVEL_KEYS[node],
+  })),
+];
+
+const fxEdgeId = (edge: Pick<FxRoutingConnection, 'from' | 'to'>): string => `${edge.from}>${edge.to}`;
 
 const DYNAMICS_DESTINATIONS = [
   { value: 0, label: 'Skip', className: 'skip' },
@@ -65,7 +96,7 @@ const DYNAMICS_ROUTE_BY_ROW: Record<string, DynamicsRouteControl> = Object.fromE
       row.id,
       {
         key: row.dynamicsBusKey!,
-        label: `${row.label} → Texture Bus`,
+        label: `${row.label} → Dynamics`,
       },
     ]),
 ) as Record<string, DynamicsRouteControl>;
@@ -82,6 +113,7 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'editable', route: { key: 'pad1DelayBSend', label: 'Pad 1 → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularPad1Send', label: 'Pad 1 → Granular' } },
       degrade: { kind: 'editable', route: { key: 'degradePad1Send', label: 'Pad 1 → Degrade' } },
+      freeze: { kind: 'editable', route: { key: 'spectralFreezePad1Send', label: 'Pad 1 → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'pad1ReverbSend', label: 'Pad 1 → Reverb' } },
     },
   },
@@ -96,6 +128,7 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'editable', route: { key: 'pad2DelayBSend', label: 'Pad 2 → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularPad2Send', label: 'Pad 2 → Granular' } },
       degrade: { kind: 'editable', route: { key: 'degradePad2Send', label: 'Pad 2 → Degrade' } },
+      freeze: { kind: 'editable', route: { key: 'spectralFreezePad2Send', label: 'Pad 2 → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'pad2ReverbSend', label: 'Pad 2 → Reverb' } },
     },
   },
@@ -109,6 +142,7 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'editable', route: { key: 'lead1DelayBSend', label: 'Lead 1 → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularLead1Send', label: 'Lead 1 → Granular' } },
       degrade: { kind: 'editable', route: { key: 'degradeLead1Send', label: 'Lead 1 → Degrade' } },
+      freeze: { kind: 'editable', route: { key: 'spectralFreezeLead1Send', label: 'Lead 1 → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'lead1ReverbSend', label: 'Lead 1 → Reverb' } },
     },
   },
@@ -122,6 +156,7 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'editable', route: { key: 'lead2DelayBSend', label: 'Lead 2 → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularLead2Send', label: 'Lead 2 → Granular' } },
       degrade: { kind: 'editable', route: { key: 'degradeLead2Send', label: 'Lead 2 → Degrade' } },
+      freeze: { kind: 'editable', route: { key: 'spectralFreezeLead2Send', label: 'Lead 2 → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'lead2ReverbSend', label: 'Lead 2 → Reverb' } },
     },
   },
@@ -135,6 +170,7 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'editable', route: { key: 'sample1DelayBSend', label: 'Sample 1 -> Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularSample1Send', label: 'Sample 1 -> Granular' } },
       degrade: { kind: 'editable', route: { key: 'degradeSample1Send', label: 'Sample 1 -> Degrade' } },
+      freeze: { kind: 'editable', route: { key: 'spectralFreezeSample1Send', label: 'Sample 1 -> Freeze' } },
       reverb: { kind: 'editable', route: { key: 'sample1ReverbSend', label: 'Sample 1 -> Reverb' } },
     },
   },
@@ -148,6 +184,7 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'editable', route: { key: 'sample2DelayBSend', label: 'Sample 2 -> Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularSample2Send', label: 'Sample 2 -> Granular' } },
       degrade: { kind: 'editable', route: { key: 'degradeSample2Send', label: 'Sample 2 -> Degrade' } },
+      freeze: { kind: 'editable', route: { key: 'spectralFreezeSample2Send', label: 'Sample 2 -> Freeze' } },
       reverb: { kind: 'editable', route: { key: 'sample2ReverbSend', label: 'Sample 2 -> Reverb' } },
     },
   },
@@ -162,6 +199,7 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'editable', route: { key: 'drumDelayBSend', label: 'Drums → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularDrumSend', label: 'Drums → Granular' } },
       degrade: { kind: 'editable', route: { key: 'degradeDrumSend', label: 'Drums → Degrade' } },
+      freeze: { kind: 'editable', route: { key: 'spectralFreezeDrumSend', label: 'Drums → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'drumReverbSend', label: 'Drums → Reverb' } },
     },
   },
@@ -176,6 +214,7 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'editable', route: { key: 'granularDelayBSend', label: 'Granular → Delay B' } },  // overridden dynamically
       granular: { kind: 'self' },
       degrade: { kind: 'editable', route: { key: 'granularDegradeSend', label: 'Granular → Degrade' } },
+      freeze: { kind: 'blocked', note: 'Granular does not currently feed Freeze.' },
       reverb: { kind: 'editable', route: { key: 'granularReverbSend', label: 'Granular → Reverb' } },
     },
   },
@@ -190,6 +229,7 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'editable', route: { key: 'waterDelayBSend', label: 'Water → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularWaterSend', label: 'Water → Granular' } },
       degrade: { kind: 'editable', route: { key: 'degradeWaterSend', label: 'Water → Degrade' } },
+      freeze: { kind: 'editable', route: { key: 'spectralFreezeWaterSend', label: 'Water → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'waterReverbSend', label: 'Water → Reverb' } },
     },
   },
@@ -205,6 +245,7 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'editable', route: { key: 'insDelayBSend', label: 'Insects → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularInsectsSend', label: 'Insects → Granular' } },
       degrade: { kind: 'editable', route: { key: 'degradeInsectsSend', label: 'Insects → Degrade' } },
+      freeze: { kind: 'editable', route: { key: 'spectralFreezeInsectsSend', label: 'Insects → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'insectsReverbSend', label: 'Insects → Reverb' } },
     },
   },
@@ -220,6 +261,7 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'editable', route: { key: 'natureDelayBSend', label: 'Nature → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularNatureSend', label: 'Nature → Granular' } },
       degrade: { kind: 'editable', route: { key: 'degradeNatureSend', label: 'Nature → Degrade' } },
+      freeze: { kind: 'editable', route: { key: 'spectralFreezeNatureSend', label: 'Nature → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'natureReverbSend', label: 'Nature → Reverb' } },
     },
   },
@@ -233,6 +275,7 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'editable', route: { key: 'delayAToBSend', label: 'Delay A → Delay B' } },
       granular: { kind: 'editable', route: { key: 'delayAGranularSend', label: 'Delay A → Granular' } },
       degrade: { kind: 'editable', route: { key: 'delayADegradeSend', label: 'Delay A → Degrade' } },
+      freeze: { kind: 'blocked', note: 'Delay A does not currently feed Freeze.' },
       reverb: { kind: 'editable', route: { key: 'delayAReverbSend', label: 'Delay A → Reverb' } },
     },
   },
@@ -247,6 +290,7 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'self' },
       granular: { kind: 'editable', route: { key: 'delayBGranularSend', label: 'Delay B → Granular' } },  // overridden dynamically
       degrade: { kind: 'editable', route: { key: 'delayBDegradeSend', label: 'Delay B → Degrade' } },
+      freeze: { kind: 'blocked', note: 'Delay B does not currently feed Freeze.' },
       reverb: { kind: 'editable', route: { key: 'granularDelayReverbSend', label: 'Delay B → Reverb' } },
     },
   },
@@ -261,6 +305,7 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'blocked', note: 'Degrade does not currently feed Delay B.' },
       granular: { kind: 'blocked', note: 'Degrade does not currently feed Granular.' },
       degrade: { kind: 'self' },
+      freeze: { kind: 'blocked', note: 'Degrade does not currently feed Freeze.' },
       reverb: { kind: 'editable', route: { key: 'degradeReverbSend', label: 'Degrade → Reverb' } },
     },
   },
@@ -275,10 +320,32 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'blocked', note: 'Reverb does not currently feed Delay B.' },
       granular: { kind: 'blocked', note: 'Reverb does not currently feed Granular.' },
       degrade: { kind: 'editable', route: { key: 'reverbDegradeSend', label: 'Reverb → Degrade' } },
+      freeze: { kind: 'blocked', note: 'Reverb-to-Freeze is controlled by Freeze routing mode.' },
       reverb: { kind: 'self' },
     },
   },
 ];
+
+function fxMatrixRow(def: (typeof FX_ROW_DEFS)[number]): MatrixRow {
+  const cell = (to: FxRoutingNodeId): MatrixRow['cells'][SliderColumnId] => (
+    def.node === to ? { kind: 'self' } : { kind: 'fx', fxRoute: [def.node, to] }
+  );
+  return {
+    id: def.id,
+    label: FX_ROUTING_NODE_LABELS[def.node],
+    accent: def.accent,
+    fxNodeId: def.node,
+    cells: {
+      level: { kind: 'editable', route: { key: def.levelKey, label: `${FX_ROUTING_NODE_LABELS[def.node]} Level` } },
+      delayA: cell('delayA'),
+      delayB: cell('delayB'),
+      granular: cell('granular'),
+      degrade: cell('degrade'),
+      freeze: cell('freeze'),
+      reverb: cell('reverb'),
+    },
+  };
+}
 
 function scaleRangeTowardZero(range: DualSliderRange, delta: number): DualSliderRange {
   const startMin = clamp01(range.min);
@@ -348,7 +415,7 @@ function cellValue(state: SliderState, route: RouteControl | undefined): number 
 }
 
 function isSliderColumnId(columnId: ColumnId): columnId is SliderColumnId {
-  return columnId !== 'texture';
+  return columnId !== 'dynamics';
 }
 
 function dynamicsDestinationIndex(value: unknown): number {
@@ -367,6 +434,7 @@ const blockedChildCells = (levelKey: keyof SliderState, label: string): MatrixRo
   delayB: { kind: 'blocked', note: 'Uses the parent family send.' },
   granular: { kind: 'blocked', note: 'Uses the parent family send.' },
   degrade: { kind: 'blocked', note: 'Uses the parent family send.' },
+  freeze: { kind: 'blocked', note: 'Uses the parent family send.' },
   reverb: { kind: 'blocked', note: 'Uses the parent family send.' },
 });
 
@@ -456,17 +524,30 @@ function singleDisplay(value: number): string {
 }
 
 type RoutingMatrixCellIndicatorLayerProps = {
-  routeKey: keyof SliderState;
+  routeKey: string;
   mode: SliderMode;
+  runtimeStoreMode?: SliderMode;
   value: number;
   range?: DualSliderRange;
   fallbackWalkPosition?: number;
   fallbackFlashing?: boolean;
 };
 
+type FxCellDragState = {
+  id: string;
+  pointerId: number;
+  handle: CellHandle;
+  startAmount: number;
+  startRange?: DualSliderRange;
+  startPointerNorm: number;
+  lastAmount?: number;
+  lastRange?: DualSliderRange;
+};
+
 const RoutingMatrixCellIndicatorLayer = React.memo(function RoutingMatrixCellIndicatorLayer({
   routeKey,
   mode,
+  runtimeStoreMode,
   value,
   range,
   fallbackWalkPosition,
@@ -474,7 +555,7 @@ const RoutingMatrixCellIndicatorLayer = React.memo(function RoutingMatrixCellInd
 }: RoutingMatrixCellIndicatorLayerProps) {
   const runtimeIndicator = useRuntimeSliderIndicator(
     String(routeKey),
-    mode,
+    runtimeStoreMode ?? mode,
     fallbackWalkPosition,
     fallbackFlashing,
   );
@@ -493,7 +574,7 @@ const RoutingMatrixCellIndicatorLayer = React.memo(function RoutingMatrixCellInd
           style={{ left: trackLeftCalc(value) }}
         />
       )}
-      {mode === 'walk' && range && (
+      {(mode === 'walk' || mode === 'shape') && range && (
         <span
           className="routing-matrix-cell-indicator walk"
           style={{ left: trackLeftCalc(indicatorNorm) }}
@@ -517,6 +598,8 @@ export default function RoutingMatrix({
   onToggleSource,
   sliderProps,
   helpPage = 'routing',
+  fxRoutingGraph,
+  onFxRoutingGraphChange,
 }: RoutingMatrixProps) {
   const { announceHelp, announceSlider } = useSliderHelp();
   const [draggingId, setDraggingId] = React.useState<string | null>(null);
@@ -531,6 +614,9 @@ export default function RoutingMatrix({
     }
   });
   const dragStateRef = React.useRef<DragState | null>(null);
+  const fxDragStateRef = React.useRef<FxCellDragState | null>(null);
+  const fxRoutingGraphRef = React.useRef(fxRoutingGraph);
+  fxRoutingGraphRef.current = fxRoutingGraph;
   const pendingCellTouchRef = React.useRef<PendingCellTouchState | null>(null);
   const columnDragMemoryRef = React.useRef<Partial<Record<ColumnId, ColumnDragMemory>>>({});
   const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -566,10 +652,8 @@ export default function RoutingMatrix({
     }
   }, [showActiveOnly]);
 
-  // Bidirectional mutual exclusion: Granular ↔ Delay B
-  const granularToDelayBActive = (state.granularDelayBSend ?? 0) > 0.0001;
-  const delayBToGranularActive = (state.delayBGranularSend ?? 0) > 0.0001;
-  const effectiveRows = React.useMemo(() => ROWS.flatMap(row => {
+  const effectiveRows = React.useMemo(() => {
+    const sourceRows = ROWS.filter((row) => !PROCESSOR_ROW_IDS.has(row.id)).flatMap(row => {
     const source = getRoutingSourceDef(row.id);
     const registryRow = source
       ? {
@@ -580,20 +664,44 @@ export default function RoutingMatrix({
           sourceToggle: source.toggleMode === 'disable-only-family' ? 'disable-only' as const : undefined,
         }
       : row;
-    if (registryRow.id === 'granular' && delayBToGranularActive) {
-      return [{ ...registryRow, cells: { ...registryRow.cells, delayB: { kind: 'blocked' as const, note: 'Blocked while Delay B → Granular is active' } } }];
-    }
-    if (registryRow.id === 'delayBOut' && granularToDelayBActive) {
-      return [{ ...registryRow, cells: { ...registryRow.cells, granular: { kind: 'blocked' as const, note: 'Blocked while Granular → Delay B is active' } } }];
-    }
     return registryRow.earthFamily && expandedEarthFamilies.has(registryRow.earthFamily)
       ? [registryRow, ...activeEarthChildRows(registryRow.earthFamily, state)]
       : [registryRow];
-  }), [expandedEarthFamilies, granularToDelayBActive, delayBToGranularActive, state]);
+    });
+    const processorRows = FX_ROW_DEFS
+      .filter(({ node }) => isFxRoutingNodeActive(state, node))
+      .map(fxMatrixRow);
+    return [...sourceRows, ...processorRows];
+  }, [expandedEarthFamilies, state]);
   const visibleRows = React.useMemo(
     () => (showActiveOnly ? effectiveRows.filter((row) => rowIsEnabled(row, state)) : effectiveRows),
     [effectiveRows, showActiveOnly, state],
   );
+  const updateFxEdge = React.useCallback((id: string, patch: Partial<FxRoutingConnection>) => {
+    const graph = fxRoutingGraphRef.current;
+    const next = {
+      ...graph,
+      edges: graph.edges.map((edge) => fxEdgeId(edge) === id ? { ...edge, ...patch } : edge),
+    };
+    fxRoutingGraphRef.current = next;
+    onFxRoutingGraphChange(next);
+  }, [onFxRoutingGraphChange]);
+
+  const enableFxEdge = React.useCallback((from: FxRoutingNodeId, to: FxRoutingNodeId, amount: number) => {
+    const graph = fxRoutingGraphRef.current;
+    const edges = setFxRoutePresence(graph.edges, from, to, true);
+    if (!edges) return null;
+    const connection: FxRoutingConnection = { from, to, amount };
+    const next = {
+      ...graph,
+      edges: edges.map((edge) => edge.from === from && edge.to === to
+        ? connection
+        : edge as FxRoutingConnection),
+    };
+    fxRoutingGraphRef.current = next;
+    onFxRoutingGraphChange(next);
+    return connection;
+  }, [onFxRoutingGraphChange]);
 
   const clearLongPress = React.useCallback(() => {
     if (longPressTimerRef.current) {
@@ -607,6 +715,7 @@ export default function RoutingMatrix({
   React.useEffect(() => () => {
     clearLongPress();
     pendingCellTouchRef.current = null;
+    fxDragStateRef.current = null;
     setSliderTouchSelectionLock(false);
   }, [clearLongPress]);
 
@@ -651,6 +760,7 @@ export default function RoutingMatrix({
     clearLongPress();
     pendingCellTouchRef.current = null;
     dragStateRef.current = null;
+    fxDragStateRef.current = null;
     setDraggingId(null);
     longPressConsumedRef.current = false;
     setSliderTouchSelectionLock(false);
@@ -828,6 +938,50 @@ export default function RoutingMatrix({
   });
   const cellDragEmitter = useRafCoalescedEmitter(applyCellDrag);
 
+  const applyFxCellDrag = React.useCallback((pointerNorm: number) => {
+    const drag = fxDragStateRef.current;
+    if (!drag) return;
+    if (!drag.startRange || drag.handle === 'single') {
+      const amount = quantize01(pointerNorm);
+      if (drag.lastAmount === amount) return;
+      drag.lastAmount = amount;
+      updateFxEdge(drag.id, { amount });
+      return;
+    }
+
+    let range: DualSliderRange;
+    if (drag.handle === 'min') {
+      range = { min: quantize01(Math.min(pointerNorm, drag.startRange.max)), max: drag.startRange.max };
+    } else if (drag.handle === 'max') {
+      range = { min: drag.startRange.min, max: quantize01(Math.max(pointerNorm, drag.startRange.min)) };
+    } else {
+      const shifted = shiftRangePreservingWidth(drag.startRange, pointerNorm - drag.startPointerNorm);
+      const min = quantize01(shifted.min);
+      range = { min, max: quantize01(min + (drag.startRange.max - drag.startRange.min)) };
+    }
+    if (rangesEqual(drag.lastRange, range)) return;
+    drag.lastRange = range;
+    updateFxEdge(drag.id, range);
+  }, [updateFxEdge]);
+  const fxCellDragEmitter = useRafCoalescedEmitter(applyFxCellDrag);
+
+  const stopFxCellDrag = React.useCallback((id: string, pointerId: number) => {
+    const drag = fxDragStateRef.current;
+    if (!drag || drag.id !== id || drag.pointerId !== pointerId) return;
+    fxDragStateRef.current = null;
+    setDraggingId(null);
+  }, []);
+
+  const cancelFxCellDrag = React.useCallback((id: string, pointerId: number) => {
+    const drag = fxDragStateRef.current;
+    if (!drag || drag.id !== id || drag.pointerId !== pointerId) return;
+    updateFxEdge(id, drag.startRange
+      ? { min: drag.startRange.min, max: drag.startRange.max }
+      : { amount: drag.startAmount });
+    fxDragStateRef.current = null;
+    setDraggingId(null);
+  }, [updateFxEdge]);
+
   const renderRowLabel = React.useCallback((row: MatrixRow, rowEnabled: boolean, suffix = '') => {
     const disableOnly = row.sourceToggle === 'disable-only';
     const canToggle = !!onToggleSource && (!disableOnly || rowEnabled);
@@ -951,6 +1105,53 @@ export default function RoutingMatrix({
   }, [announceHelp, applyColumnDrag, cancelDrag, clearLongPress, draggingId, helpPage, resetInteraction, sliderProps, startColumnDrag, state, stopDrag, visibleRows]);
 
   const renderDynamicsCell = React.useCallback((row: MatrixRow, rowEnabled: boolean, suffix = '') => {
+    if (row.fxNodeId) {
+      const destinations = ['eq1', 'eq2', 'sidechain'] as const;
+      const current = fxRoutingGraph.edges.find((edge) => edge.from === row.fxNodeId && destinations.includes(edge.to as typeof destinations[number]));
+      const value = current ? destinations.indexOf(current.to as typeof destinations[number]) + 1 : 0;
+      const option = DYNAMICS_DESTINATIONS[value] ?? DYNAMICS_DESTINATIONS[0]!;
+      const baseEdges = fxRoutingGraph.edges.filter((edge) => edge.from !== row.fxNodeId || !destinations.includes(edge.to as typeof destinations[number]));
+      const candidates = [1, 2, 3, 0].map((offset) => (value + offset) % 4);
+      const nextValue = candidates.find((candidate) => {
+        if (candidate === 0) return true;
+        const to = destinations[candidate - 1]!;
+        return to !== row.fxNodeId && canEnableFxRoute(baseEdges, row.fxNodeId!, to);
+      }) ?? 0;
+      const nextOption = DYNAMICS_DESTINATIONS[nextValue] ?? DYNAMICS_DESTINATIONS[0]!;
+      const title = `${row.label} → Dynamics: ${option.label}. Click to change to ${nextOption.label}.`;
+      return (
+        <button
+          key={`cell:${row.id}:dynamics${suffix}`}
+          type="button"
+          className={`routing-matrix-cell dynamics-route ${value > 0 ? 'active' : 'skip'} ${option.className}`}
+          style={{ '--row-accent': row.accent } as React.CSSProperties}
+          title={title}
+          aria-label={title}
+          onClick={() => {
+            if (nextValue === 0) {
+              onFxRoutingGraphChange({ ...fxRoutingGraph, edges: baseEdges });
+              return;
+            }
+            const to = destinations[nextValue - 1]!;
+            const next = setFxRoutePresence(baseEdges, row.fxNodeId!, to, true);
+            if (!next) return;
+            onFxRoutingGraphChange({
+              ...fxRoutingGraph,
+              edges: next.map((edge) => edge.from === row.fxNodeId && edge.to === to
+                ? { ...edge, amount: 0.5 }
+                : edge as FxRoutingConnection),
+            });
+          }}
+        >
+          <span className="routing-matrix-dynamics-rail" aria-hidden="true">
+            {DYNAMICS_DESTINATIONS.map((destination) => (
+              <span key={destination.value} className={`routing-matrix-dynamics-dot ${destination.className}${destination.value === value ? ' active' : ''}`} />
+            ))}
+          </span>
+          <span className="routing-matrix-dynamics-label">{option.label}</span>
+        </button>
+      );
+    }
     const route = DYNAMICS_ROUTE_BY_ROW[row.id];
     const offInAll = !showActiveOnly && !rowEnabled;
     if (!route) {
@@ -981,10 +1182,10 @@ export default function RoutingMatrix({
         style={{ '--row-accent': offInAll ? '#7e8794' : row.accent } as React.CSSProperties}
         title={title}
         aria-label={title}
-        onMouseEnter={() => announceHelp('routingMatrixTextureColumn', { page: helpPage, label: 'Texture Column' })}
-        onFocus={() => announceHelp('routingMatrixTextureColumn', { page: helpPage, label: 'Texture Column' })}
+        onMouseEnter={() => announceHelp('routingMatrixTextureColumn', { page: helpPage, label: 'Dynamics Column' })}
+        onFocus={() => announceHelp('routingMatrixTextureColumn', { page: helpPage, label: 'Dynamics Column' })}
         onClick={() => {
-          announceHelp('routingMatrixTextureColumn', { page: helpPage, label: 'Texture Column' });
+          announceHelp('routingMatrixTextureColumn', { page: helpPage, label: 'Dynamics Column' });
           onParamChange(route.key, nextOption.value);
         }}
       >
@@ -999,7 +1200,152 @@ export default function RoutingMatrix({
         <span className="routing-matrix-dynamics-label">{option.label}</span>
       </button>
     );
-  }, [announceHelp, helpPage, onParamChange, showActiveOnly, state]);
+  }, [announceHelp, fxRoutingGraph, helpPage, onFxRoutingGraphChange, onParamChange, showActiveOnly, state]);
+
+  const renderFxRouteCell = React.useCallback((row: MatrixRow, route: readonly [FxRoutingNodeId, FxRoutingNodeId], suffix = '') => {
+    const [from, to] = route;
+    const edge = fxRoutingGraph.edges.find((candidate) => candidate.from === from && candidate.to === to);
+    const locked = !edge && !canEnableFxRoute(fxRoutingGraph.edges, from, to);
+    const amount = clamp01(edge?.amount ?? 0);
+    const mode: SliderMode = edge?.mode === 'range' ? 'shape' : edge?.mode ?? 'single';
+    const range = mode === 'single' ? undefined : {
+      min: clamp01(edge?.min ?? amount),
+      max: clamp01(edge?.max ?? amount),
+    };
+    const id = `${from}>${to}`;
+    const activeHandle = draggingId === id ? fxDragStateRef.current?.handle ?? null : null;
+    const title = locked
+      ? `${FX_ROUTING_NODE_LABELS[from]} → ${FX_ROUTING_NODE_LABELS[to]} is locked by the current chain.`
+      : `${FX_ROUTING_NODE_LABELS[from]} → ${FX_ROUTING_NODE_LABELS[to]}. Drag to adjust; edit routing modes in Nodes view.`;
+    const handleKeyboard = (handle: 'single' | 'min' | 'max', event: React.KeyboardEvent<HTMLElement>) => {
+      if (locked) return;
+      if (!edge) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        enableFxEdge(from, to, 0.5);
+        return;
+      }
+      const increment = event.shiftKey ? 0.1 : 0.01;
+      const current = handle === 'single' ? amount : (range?.[handle] ?? amount);
+      let next: number | null = null;
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') next = current - increment;
+      else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') next = current + increment;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = 1;
+      if (next === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const normalized = quantize01(next);
+      if (handle === 'single' || !range) updateFxEdge(id, { amount: normalized });
+      else if (handle === 'min') updateFxEdge(id, { min: Math.min(normalized, range.max) });
+      else updateFxEdge(id, { max: Math.max(normalized, range.min) });
+    };
+    return (
+      <div
+        key={`cell:${row.id}:${to}${suffix}`}
+        className={`routing-matrix-cell fx-route${edge ? ' connected' : ''}${edge?.muted ? ' muted' : ''}${locked ? ' locked' : ''}${draggingId === id ? ' dragging' : ''}`}
+        style={{ '--row-accent': row.accent } as React.CSSProperties}
+        title={title}
+        aria-label={title}
+        aria-disabled={locked}
+        role={edge ? (range ? undefined : 'slider') : 'button'}
+        tabIndex={locked || range ? -1 : 0}
+        aria-valuemin={edge && !range ? 0 : undefined}
+        aria-valuemax={edge && !range ? 1 : undefined}
+        aria-valuenow={edge && !range ? amount : undefined}
+        onKeyDown={(event) => handleKeyboard('single', event)}
+        onPointerDown={(event) => {
+          if (locked) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          const pointerNorm = pointerToTrackNorm(event.clientX, rect);
+          const activeEdge = edge ?? enableFxEdge(from, to, quantize01(pointerNorm));
+          if (!activeEdge) return;
+          const activeAmount = clamp01(activeEdge.amount);
+          const activeRange = (activeEdge.mode ?? 'single') === 'single' ? undefined : {
+            min: clamp01(activeEdge.min ?? activeAmount),
+            max: clamp01(activeEdge.max ?? activeAmount),
+          };
+          const handle = activeRange ? getDualHandle(pointerNorm, activeRange, rect) : 'single';
+          fxDragStateRef.current = {
+            id,
+            pointerId: event.pointerId,
+            handle,
+            startAmount: activeAmount,
+            startRange: activeRange,
+            startPointerNorm: pointerNorm,
+            lastAmount: activeRange ? undefined : activeAmount,
+            lastRange: activeRange,
+          };
+          setDraggingId(id);
+          fxCellDragEmitter.flush(pointerNorm);
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const drag = fxDragStateRef.current;
+          if (!drag || drag.id !== id || drag.pointerId !== event.pointerId) return;
+          if (event.pointerType === 'touch') event.preventDefault();
+          fxCellDragEmitter.schedule(pointerToTrackNorm(event.clientX, event.currentTarget.getBoundingClientRect()));
+        }}
+        onPointerUp={(event) => {
+          fxCellDragEmitter.flush();
+          stopFxCellDrag(id, event.pointerId);
+          releasePointerCaptureSafely(event.currentTarget, event.pointerId);
+        }}
+        onPointerCancel={(event) => {
+          fxCellDragEmitter.cancel();
+          cancelFxCellDrag(id, event.pointerId);
+          releasePointerCaptureSafely(event.currentTarget, event.pointerId);
+        }}
+      >
+        <span className="routing-matrix-cell-track" />
+        <span className={`routing-matrix-cell-fill${mode === 'walk' ? ' walk' : ''}${mode === 'sampleHold' ? ' sample-hold' : ''}`}
+          style={{
+            left: range ? trackLeftCalc(range.min) : `${TRACK_PAD_PX}px`,
+            width: range ? trackWidthCalc(range.max - range.min) : trackWidthCalc(amount),
+            opacity: 0.15 + (range ? range.max : amount) * 0.85,
+          }} />
+        {edge && !range && <span className="routing-matrix-cell-indicator single" style={{ left: trackLeftCalc(amount) }} />}
+        {range && (
+          <>
+            <span
+              className={`routing-matrix-cell-edge min${activeHandle === 'min' || activeHandle === 'both' ? ' active' : ''}`}
+              style={{ left: trackLeftCalc(range.min) }}
+              role="slider"
+              tabIndex={0}
+              aria-label={`${title} minimum`}
+              aria-valuemin={0}
+              aria-valuemax={range.max}
+              aria-valuenow={range.min}
+              onKeyDown={(event) => handleKeyboard('min', event)}
+            />
+            <span
+              className={`routing-matrix-cell-edge max${activeHandle === 'max' || activeHandle === 'both' ? ' active' : ''}`}
+              style={{ left: trackLeftCalc(range.max) }}
+              role="slider"
+              tabIndex={0}
+              aria-label={`${title} maximum`}
+              aria-valuemin={range.min}
+              aria-valuemax={1}
+              aria-valuenow={range.max}
+              onKeyDown={(event) => handleKeyboard('max', event)}
+            />
+          </>
+        )}
+        {edge && range && <RoutingMatrixCellIndicatorLayer
+          routeKey={fxRouteRuntimeKey(from, to)} runtimeStoreMode="walk" mode={mode} value={amount} range={range} />}
+        <span className="routing-matrix-cell-readout">
+          {edge ? (
+            mode === 'single'
+              ? <span className="routing-matrix-cell-value">{edge.muted ? 'Muted' : singleDisplay(amount)}</span>
+              : <>
+                  <span className="routing-matrix-cell-mode"><ModulationModeIcon mode={mode} /></span>
+                  <span className="routing-matrix-cell-range">{rangeDisplay(range)}</span>
+                </>
+          ) : <span className="routing-matrix-cell-value">0%</span>}
+        </span>
+      </div>
+    );
+  }, [cancelFxCellDrag, draggingId, enableFxEdge, fxCellDragEmitter, fxRoutingGraph.edges, stopFxCellDrag, updateFxEdge]);
 
   const renderCell = React.useCallback((row: MatrixRow, rowEnabled: boolean, column: RoutingColumn, suffix = '') => {
     if (!isSliderColumnId(column.id)) {
@@ -1007,6 +1353,7 @@ export default function RoutingMatrix({
     }
 
     const cell = row.cells[column.id];
+    if (cell.kind === 'fx' && cell.fxRoute) return renderFxRouteCell(row, cell.fxRoute, suffix);
     const route = cell.kind === 'editable' ? (cell.route ?? null) : null;
     const value = cellValue(state, cell.route);
     const cellId = `cell:${row.id}:${column.id}${suffix}`;
@@ -1297,6 +1644,7 @@ export default function RoutingMatrix({
     scheduleLongPress,
     showActiveOnly,
     renderDynamicsCell,
+    renderFxRouteCell,
     sliderProps,
     startCellDrag,
     state,

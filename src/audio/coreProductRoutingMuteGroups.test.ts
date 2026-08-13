@@ -2,17 +2,24 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
-import { KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT } from './generated/kesshoProductSchema';
+import {
+  KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT,
+  KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT,
+} from './generated/kesshoProductSchema';
 import {
   CORE_PRODUCT_ROUTING_MUTE_MAX_SCENE_COMMANDS,
+  CORE_PRODUCT_ROUTING_MUTE_ROW_BITS,
   CORE_PRODUCT_ROUTING_MUTE_SCENE_BASELINE_INDEX,
   CORE_PRODUCT_ROUTING_MUTE_SCENE_COMMAND_FLAG,
   CORE_PRODUCT_SOURCE_IDS,
+  CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE,
   CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE,
   CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE,
   createCoreProductRoutingMuteGroupEvents,
+  routingMuteGroupSourceIdsFromMask,
 } from './coreProductEvents';
 import { SOUNDSCAPE_TEXTURE_PARAM_START, SOUNDSCAPE_TEXTURE_PARAM_STRIDE } from './coreProductSoundscapesSnapshot';
+import { CORE_PRODUCT_SOUNDSCAPE_ASSETS } from './coreProductAssets';
 import { DEFAULT_STATE } from '../ui/state';
 
 function normalSlotEvents(events: readonly ReturnType<typeof createCoreProductRoutingMuteGroupEvents>[number][]) {
@@ -57,6 +64,25 @@ test('compiles all routing rows and quarter-phrase ranges', () => {
   assert.equal(slot?.value3, 192_000);
 });
 
+test('compiles and decodes every modular FX mute row', () => {
+  const mutedSourceIds = [
+    'delayAOut', 'delayBOut', 'granular', 'degrade', 'freezeOut',
+    'reverb', 'eq1Out', 'eq2Out', 'sidechainOut', 'saturationOut',
+  ] as const;
+  const events = createCoreProductRoutingMuteGroupEvents({
+    slots: [{ mutedSourceIds: [...mutedSourceIds] }, null, null, null, null, null, null, null],
+  }, { sampleRate: 48_000, phraseSeconds: 8, seed: 17, state: DEFAULT_STATE });
+  const mask = normalSlotEvents(events)[0]?.targetId ?? 0;
+  const expectedMask = mutedSourceIds.reduce((result, id) => (
+    result | CORE_PRODUCT_ROUTING_MUTE_ROW_BITS[id]
+  ), 0);
+  assert.equal(mask, expectedMask);
+  assert.deepEqual(
+    [...routingMuteGroupSourceIdsFromMask(mask)].sort(),
+    [...mutedSourceIds].sort(),
+  );
+});
+
 test('compiles eligibility and avoid-repeat settings deterministically', () => {
   const groups = {
     slots: Array.from({ length: 8 }, (_, index) => ({ mutedSourceIds: index === 0 ? ['drums' as const] : [] })),
@@ -88,6 +114,10 @@ test('serializes baseline and slot engine state as bounded nested Product events
         driftEnabled: true,
         erosionEnabled: true,
         dynamicsSaturationEnabled: true,
+        dynamicsBusEnabled: true,
+        dynamicsEq1Enabled: true,
+        dynamicsEq2Enabled: true,
+        sidechainEnabled: true,
         spectralFreezeEnabled: true,
         spectralFreezeActive: true,
         reverbEnabled: false,
@@ -133,12 +163,15 @@ test('serializes baseline and slot engine state as bounded nested Product events
   assert.equal(findCommand(commands, CORE_PRODUCT_ROUTING_MUTE_SCENE_BASELINE_INDEX, KESSHO_PRODUCT_EVENT_IDS.SetParam, 0, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeActive)?.value, 0);
   assert.equal(findCommand(commands, 0, KESSHO_PRODUCT_EVENT_IDS.SetParam, 0, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeEnabled)?.value, 1);
   assert.equal(findCommand(commands, 0, KESSHO_PRODUCT_EVENT_IDS.SetParam, 0, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeActive)?.value, 1);
+  assert.equal(findCommand(commands, 0, KESSHO_PRODUCT_EVENT_IDS.SetParam, 0, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1Enabled)?.value, 1);
+  assert.equal(findCommand(commands, 0, KESSHO_PRODUCT_EVENT_IDS.SetParam, 0, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2Enabled)?.value, 1);
+  assert.equal(findCommand(commands, 0, KESSHO_PRODUCT_EVENT_IDS.SetParam, 0, KESSHO_PRODUCT_PARAM_IDS.FxSidechainEnabled)?.value, 1);
   assert.equal(findCommand(commands, CORE_PRODUCT_ROUTING_MUTE_SCENE_BASELINE_INDEX, KESSHO_PRODUCT_EVENT_IDS.SetParam, 0, KESSHO_PRODUCT_PARAM_IDS.FxReverbMix)?.value, 0.42);
   assert.equal(findCommand(commands, 0, KESSHO_PRODUCT_EVENT_IDS.SetParam, 0, KESSHO_PRODUCT_PARAM_IDS.FxReverbMix)?.value, 0);
 
   const waterMasterTarget = CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT - 3;
   const waterActiveTarget = CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE;
-  const natureMasterTarget = CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT - 1;
+  const natureMasterTarget = CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT + 7;
   const nature1EnabledTarget = CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE + SOUNDSCAPE_TEXTURE_PARAM_START + 6;
   assert.equal(findCommand(commands, 0, KESSHO_PRODUCT_EVENT_IDS.SetParam, waterMasterTarget, KESSHO_PRODUCT_PARAM_IDS.SourceLevel)?.value, 1);
   assert.equal(findCommand(commands, 0, KESSHO_PRODUCT_EVENT_IDS.SetParam, waterActiveTarget, KESSHO_PRODUCT_PARAM_IDS.SourceLevel)?.value, 1);
@@ -176,6 +209,34 @@ test('uses individual lane enabled bits while retaining solo mute masks', () => 
   assert.equal(slot.paramId, 0b1101 | (0b1111 << 16));
   assert.equal(slot.value4, 0b110101 | (0b001010 << 16));
   assert.equal((slot.flags ?? 0) >>> 8, 0b0001);
+});
+
+test('keeps canonical Waves audible when Earth scenes refresh during an active freeze', () => {
+  const events = createCoreProductRoutingMuteGroupEvents({
+    slots: [null, null, null, null, null, null, null, null],
+    random: { enabled: false, defaultMinPhrases: 2, defaultMaxPhrases: 6, transitionPhrases: 1, avoidRepeat: true },
+  }, {
+    sampleRate: 48_000,
+    phraseSeconds: 16,
+    seed: 9,
+    state: {
+      ...DEFAULT_STATE,
+      waterEnabled: true,
+      natureMasterEnabled: true,
+      nature1Enabled: true,
+      nature1SampleId: 'ghetary-waves',
+      nature1Level: 0.81,
+      oceanSampleEnabled: false,
+      oceanSampleLevel: 0,
+      spectralFreezeEnabled: true,
+      spectralFreezeActive: true,
+    },
+  });
+  const commands = sceneCommandEvents(events);
+  const oceanLevelTarget = CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE + CORE_PRODUCT_SOUNDSCAPE_ASSETS.ocean.assetId;
+
+  assert.equal(findCommand(commands, CORE_PRODUCT_ROUTING_MUTE_SCENE_BASELINE_INDEX, KESSHO_PRODUCT_EVENT_IDS.SetParam, oceanLevelTarget, KESSHO_PRODUCT_PARAM_IDS.SourceLevel)?.value, 1);
+  assert.equal(findCommand(commands, CORE_PRODUCT_ROUTING_MUTE_SCENE_BASELINE_INDEX, KESSHO_PRODUCT_EVENT_IDS.SetParam, 0, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeActive)?.value, 1);
 });
 
 test('migrates legacy nature aliases while canonical patch keys win', () => {

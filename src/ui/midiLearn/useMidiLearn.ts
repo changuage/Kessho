@@ -21,6 +21,8 @@ export type MidiLearnContextValue = {
   conflicts: MidiRoutingConflict[];
   selectedBindingID: string | null;
   bridgeAvailable: boolean;
+  globalButtonVisible: boolean;
+  setGlobalButtonVisible: (visible: boolean) => void;
   toggleLearn: () => void;
   enableLearn: () => Promise<void>;
   disableLearn: () => void;
@@ -56,6 +58,8 @@ export const MidiLearnContext = React.createContext<MidiLearnContextValue>({
   conflicts: [],
   selectedBindingID: null,
   bridgeAvailable: false,
+  globalButtonVisible: false,
+  setGlobalButtonVisible: () => undefined,
   toggleLearn: () => undefined,
   enableLearn: noopAsync,
   disableLearn: () => undefined,

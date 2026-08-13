@@ -5,6 +5,8 @@
 #include <cstring>
 #include <new>
 
+#include "KesshoCore/ProductSaturationKernel.h"
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -261,10 +263,8 @@ struct DynamicsDriftState {
     float lpg_env = 0.0f;
     float env = 0.0f;
     float compressor_gain = 1.0f;
-    float master_sat_prev_l = 0.0f;
-    float master_sat_prev_r = 0.0f;
-    float master_sat_os_lp_l = 0.0f;
-    float master_sat_os_lp_r = 0.0f;
+    kessho::product::saturation::State master_sat_state_l{};
+    kessho::product::saturation::State master_sat_state_r{};
     float end_comp_gain = 1.0f;
     float end_rms = 0.0f;
     float end_hp_rms = 0.0f;
@@ -414,69 +414,17 @@ float saturate_drift(float x, float amount, float corrosion) {
     return clampf(y, -1.0f, 1.0f);
 }
 
-float master_saturation_curve(float x, int mode, float drive, float bias) {
-    const float asym = (clamp01(bias) - 0.5f) * 0.8f;
-    const float biased = x + asym * (0.24f + drive * 0.22f);
-    float y = biased;
-    switch (mode) {
-        case 1: { // Tape: rounded compression with a little odd/even motion.
-            const float soft = std::tanh(biased);
-            const float harmonic = std::sin(biased * static_cast<float>(M_PI) * (0.32f + drive * 0.12f));
-            y = soft * (0.86f - drive * 0.08f) + harmonic * (0.08f + drive * 0.08f);
-            break;
-        }
-        case 2: { // Tube: even-order warmth before the final soft clip.
-            const float even = biased + biased * biased * asym * (0.24f + drive * 0.18f);
-            y = std::tanh(even * (0.92f + drive * 0.16f));
-            break;
-        }
-        case 3: { // Diode: asymmetric limiting, useful for bright edge.
-            const float pos = std::tanh(biased * (1.0f + drive * 0.2f));
-            const float neg = -std::tanh(-biased * (0.72f - asym * 0.12f));
-            y = biased >= 0.0f ? pos : neg;
-            break;
-        }
-        case 4: { // Fold: restrained wavefolding for more obvious color.
-            const float folded = std::sin(biased * static_cast<float>(M_PI) * (0.64f + drive * 0.28f));
-            y = std::tanh(biased) * (0.74f - drive * 0.08f) + folded * (0.18f + drive * 0.14f);
-            break;
-        }
-        default:
-            y = std::tanh(biased);
-            break;
-    }
-    y -= asym * (0.16f + drive * 0.08f);
-    return clampf(y, -1.25f, 1.25f);
-}
-
-float apply_tone_tilt(float x, float tone, float amount) {
-    const float tilt = (clamp01(tone) - 0.5f) * amount;
-    const float positive = tilt > 0.0f ? tilt : 0.0f;
-    const float negative = tilt < 0.0f ? -tilt : 0.0f;
-    return x * (1.0f + positive * 0.22f - negative * 0.16f);
-}
-
-float process_master_saturation_sample(float x, int mode, float drive, float tone, float bias) {
-    if (drive <= 0.0001f || mode < 0) return x;
-    const float shaped_drive = std::pow(clamp01(drive), 1.15f);
-    const float pre_gain = 1.0f + shaped_drive * shaped_drive * 6.0f + shaped_drive * 1.2f;
-    const float pre_tone = apply_tone_tilt(x, tone, shaped_drive);
-    const float y = master_saturation_curve(pre_tone * pre_gain, mode, shaped_drive, bias);
-    const float auto_gain = 1.0f / (1.0f + shaped_drive * (1.12f + mode * 0.08f));
-    return apply_tone_tilt(y * auto_gain, tone, shaped_drive * 0.85f);
-}
-
 void process_master_saturation(float& l, float& r, const float* p) {
     if (p[P_MASTER_SAT_ACTIVE] < 0.5f) return;
     const float drive = clamp01(p[P_MASTER_SAT_DRIVE]);
     if (drive <= 0.0001f) return;
-    const int mode = static_cast<int>(clampf(std::round(p[P_MASTER_SAT_MODE]), 0.0f, 4.0f));
-    const float tone = clamp01(p[P_MASTER_SAT_TONE]);
-    const float bias = clamp01(p[P_MASTER_SAT_BIAS]);
-    const float sat_quality = clampf(p[P_MASTER_SAT_QUALITY], 0.0f, 2.0f);
-    const bool smooth_aa = sat_quality >= 1.0f;
-    const bool hq_aa = sat_quality >= 2.0f;
-    const int factor = drive > 0.66f ? 4 : drive > (hq_aa ? 0.12f : 0.18f) ? 2 : 1;
+    const kessho::product::saturation::Params params{
+        static_cast<uint32_t>(clampf(std::round(p[P_MASTER_SAT_MODE]), 0.0f, 4.0f)),
+        static_cast<uint32_t>(clampf(p[P_MASTER_SAT_QUALITY], 0.0f, 2.0f)),
+        drive,
+        clamp01(p[P_MASTER_SAT_TONE]),
+        clamp01(p[P_MASTER_SAT_BIAS])};
+    const uint32_t factor = kessho::product::saturation::oversamplingFactor(params);
     g.telemetry[T_MASTER_SAT_OVERSAMPLING_FACTOR] = std::fmax(
         g.telemetry[T_MASTER_SAT_OVERSAMPLING_FACTOR],
         static_cast<float>(factor)
@@ -484,39 +432,8 @@ void process_master_saturation(float& l, float& r, const float* p) {
     const float in_l = l;
     const float in_r = r;
 
-    if (factor == 1) {
-        l = process_master_saturation_sample(in_l, mode, drive, tone, bias);
-        r = process_master_saturation_sample(in_r, mode, drive, tone, bias);
-    } else {
-        float sum_l = 0.0f;
-        float sum_r = 0.0f;
-        for (int step = 1; step <= factor; ++step) {
-            const float frac = static_cast<float>(step) / static_cast<float>(factor);
-            const float os_l = g.master_sat_prev_l + (in_l - g.master_sat_prev_l) * frac;
-            const float os_r = g.master_sat_prev_r + (in_r - g.master_sat_prev_r) * frac;
-            const float shaped_l = process_master_saturation_sample(os_l, mode, drive, tone, bias);
-            const float shaped_r = process_master_saturation_sample(os_r, mode, drive, tone, bias);
-            if (smooth_aa) {
-                const float os_alpha =
-                    1.0f - std::exp(
-                        -2.0f * static_cast<float>(M_PI) *
-                        (g.sample_rate * 0.42f / static_cast<float>(factor)) /
-                        (g.sample_rate * static_cast<float>(factor)));
-                g.master_sat_os_lp_l += (shaped_l - g.master_sat_os_lp_l) * os_alpha;
-                g.master_sat_os_lp_r += (shaped_r - g.master_sat_os_lp_r) * os_alpha;
-                sum_l += g.master_sat_os_lp_l;
-                sum_r += g.master_sat_os_lp_r;
-            } else {
-                sum_l += shaped_l;
-                sum_r += shaped_r;
-            }
-        }
-        l = sum_l / static_cast<float>(factor);
-        r = sum_r / static_cast<float>(factor);
-    }
-
-    g.master_sat_prev_l = in_l;
-    g.master_sat_prev_r = in_r;
+    l = kessho::product::saturation::process(in_l, params, g.master_sat_state_l, g.sample_rate);
+    r = kessho::product::saturation::process(in_r, params, g.master_sat_state_r, g.sample_rate);
 }
 
 void update_end_detector_filter(const float* p) {

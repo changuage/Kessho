@@ -34,6 +34,13 @@ const migrationPath = path.join(cwd, 'supabase/migrations/20260713205616_preset_
 const migration = fs.readFileSync(migrationPath, 'utf8')
   .replace(/^\s*BEGIN;\s*/i, '')
   .replace(/\s*COMMIT;\s*$/i, '');
+const cacheMigrationPath = path.join(
+  cwd,
+  'supabase/migrations/20260812225121_reclaim_standalone_historical_resolved_cache_v2.sql',
+);
+const cacheMigration = fs.readFileSync(cacheMigrationPath, 'utf8')
+  .replace(/^\s*BEGIN;\s*/i, '')
+  .replace(/\s*COMMIT;\s*$/i, '');
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -115,6 +122,7 @@ try {
   if (!installedDefinition.includes('retained_visible_graph')) {
     await client.query(migration);
   }
+  await client.query(cacheMigration);
 
   const userId = (await client.query('select id::text from auth.users order by created_at desc nulls last limit 1')).rows[0]?.id;
   if (!userId) throw new Error('Regression requires one auth.users row.');
@@ -230,11 +238,91 @@ try {
     insert into public.preset_version_content_refs_v2(version_id,ref_slot,content_hash,content_type)
     values ($1,'sequencer.synth.1.trigger',$2,'sequencerTrigger')
   `, [contentRootVersionId, contentHash]);
+
+  const standaloneHistoricalPayload = { historical: 'standalone', nonce };
+  const standaloneLatestPayload = { latest: 'standalone', nonce };
+  const graphHistoricalPayload = { historical: 'graph', nonce };
+  const graphLatestPayload = { latest: 'graph', nonce };
+  const maintenancePayloads = [];
+  for (const payload of [
+    standaloneHistoricalPayload,
+    standaloneLatestPayload,
+    graphHistoricalPayload,
+    graphLatestPayload,
+  ]) {
+    maintenancePayloads.push({ payload, hash: await payloadHash(payload) });
+  }
+  for (const { payload, hash } of maintenancePayloads) {
+    await client.query(`
+      insert into public.preset_payloads_v2(hash,payload_kind,payload)
+      values ($1,'resolved',$2::jsonb)
+    `, [hash, JSON.stringify(payload)]);
+  }
+  const [standaloneHistoricalHash, standaloneLatestHash, graphHistoricalHash, graphLatestHash]
+    = maintenancePayloads.map(({ hash }) => hash);
+
+  const standaloneId = await insertPreset({
+    ownerKey, userId, name: `Standalone History ${nonce}`, type: 'engine', scope: 'pad1',
+  });
+  const standaloneV1 = await insertVersion(standaloneId, 1, { resolvedHash: standaloneHistoricalHash });
+  const standaloneV2 = await insertVersion(standaloneId, 2, {
+    parentVersionId: standaloneV1,
+    resolvedHash: standaloneLatestHash,
+  });
+  await client.query(`
+    update public.presets_v2
+       set latest_version_id=$2, latest_version_no=2, latest_resolved_hash=$3
+     where id=$1
+  `, [standaloneId, standaloneV2, standaloneLatestHash]);
+
+  const graphId = await insertPreset({
+    ownerKey, userId, name: `Graph History ${nonce}`, type: 'state', scope: 'global',
+  });
+  const graphV1 = await insertVersion(graphId, 1, { resolvedHash: graphHistoricalHash });
+  const graphV2 = await insertVersion(graphId, 2, {
+    parentVersionId: graphV1,
+    resolvedHash: graphLatestHash,
+  });
+  await client.query(`
+    insert into public.preset_version_refs_v2(version_id,ref_slot,target_preset_id)
+    values ($1,'synth',$2)
+  `, [graphV1, visibleDependencyId]);
+  await client.query(`
+    update public.presets_v2
+       set latest_version_id=$2, latest_version_no=2, latest_resolved_hash=$3
+     where id=$1
+  `, [graphId, graphV2, graphLatestHash]);
+
+  const maintenanceDryRun = (await client.query(
+    'select * from public.kessho_run_preset_storage_maintenance_v2(true,1000)',
+  )).rows[0];
+  assert(
+    Number(maintenanceDryRun?.historical_resolved_caches_cleared) >= 1,
+    'maintenance dry run did not identify a standalone historical cache',
+  );
+  const dryRunPreserved = (await client.query(
+    'select resolved_hash from public.preset_versions_v2 where id=$1', [standaloneV1],
+  )).rows[0]?.resolved_hash;
+  assert(dryRunPreserved === standaloneHistoricalHash, 'maintenance dry run changed stored history');
+
   await client.query('select * from public.kessho_run_preset_storage_maintenance_v2(false,1000)');
   const contentSurvived = Number((await client.query(
     'select count(*) count from public.preset_payloads_v2 where hash=$1', [contentHash],
   )).rows[0].count);
   assert(contentSurvived === 1, 'maintenance deleted a payload reachable only through a direct content ref');
+  const cacheStates = (await client.query(`
+    select id,resolved_hash from public.preset_versions_v2
+     where id=any($1::uuid[])
+  `, [[standaloneV1, standaloneV2, graphV1, graphV2]])).rows;
+  const cacheByVersion = new Map(cacheStates.map(row => [row.id, row.resolved_hash]));
+  assert(cacheByVersion.get(standaloneV1) == null, 'standalone historical cache was not cleared');
+  assert(cacheByVersion.get(standaloneV2) === standaloneLatestHash, 'latest standalone cache was cleared');
+  assert(cacheByVersion.get(graphV1) === graphHistoricalHash, 'graph historical snapshot was cleared');
+  assert(cacheByVersion.get(graphV2) === graphLatestHash, 'latest graph snapshot was cleared');
+  const standalonePayloadCount = Number((await client.query(
+    'select count(*) count from public.preset_payloads_v2 where hash=$1', [standaloneHistoricalHash],
+  )).rows[0].count);
+  assert(standalonePayloadCount === 0, 'orphaned standalone historical payload was not deleted');
 
   const purgeChildId = await insertPreset({
     ownerKey, userId, name: `__derived__/synth/purge-${nonce}`, type: 'source', scope: 'synth',

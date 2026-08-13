@@ -5,6 +5,7 @@ import {
   normalizeModulationSourceConfig,
 } from '../ui/sliderSystem/dualConfigReducer';
 import { PARAM_REGISTRY } from './ParamRegistry';
+import { normalizeFxRoutingGraphState } from '../ui/routing/fxRoutingGraph';
 
 const CANONICAL_PRESET_STATE_KEYS = Object.keys(PARAM_REGISTRY) as (keyof SliderState)[];
 
@@ -42,6 +43,7 @@ export function completeCanonicalPresetState(
     DEFAULT_MODULATION_SOURCE_B,
   );
   deriveMissingWaterLayerEnabledFlags(completed);
+  completed.fxRoutingGraph = normalizeFxRoutingGraphState(completed.fxRoutingGraph, completed);
   for (const [sharedKey, lead1Key, lead2Key] of SHARED_LEAD_ADDITIVE_KEYS) {
     const sharedValue = completed[sharedKey];
     if (typeof sharedValue !== 'number' || !Number.isFinite(sharedValue)) continue;

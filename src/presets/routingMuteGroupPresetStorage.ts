@@ -4,6 +4,7 @@ import {
   normalizeRoutingMuteGroupSlot,
   normalizeRoutingMuteGroupsState,
   ROUTING_MUTE_GROUP_SCHEMA_VERSION,
+  ROUTING_MUTE_GROUP_SLOT_COUNT,
   routingMuteGroupSlotFromScenePayload,
   routingMuteGroupSlotScenePayload,
   type RoutingMuteGroupScenePayload,
@@ -14,26 +15,38 @@ import {
   canonicalizeRecord,
   hashCanonicalJson,
 } from './presetStorageV2';
-import type {
-  PresetLevel,
-  PresetRecoveryWarning,
-  PresetVersionMetadata,
-} from './types';
+import type { PresetRecoveryWarning, PresetVersionMetadata } from './types';
 
-export const ROUTING_MUTE_GROUP_SCENE_DERIVED_TYPE: PresetLevel = 'journey';
-export const ROUTING_MUTE_GROUP_SCENE_DERIVED_SCOPE = 'routingMuteScene';
+/** Legacy named-child slot prefix retained for read compatibility only. */
 export const ROUTING_MUTE_GROUP_SCENE_REF_PREFIX = 'routingMuteScene:';
+export const ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE = 'routingMuteScene' as const;
+export const ROUTING_MUTE_GROUP_SCENE_CONTENT_SCHEMA_VERSION = 1 as const;
+export const ROUTING_MUTE_GROUP_SCENE_CONTENT_REF_PREFIX = 'routing.mute-group.slot-';
+export const ROUTING_MUTE_GROUP_SCENE_CONTENT_REF_SUFFIX = '.content';
+const ROUTING_MUTE_GROUP_SCENE_CONTENT_REF_SLOT_PATTERN = /^routing\.mute-group\.slot-(\d+)\.content$/;
+
+export interface RoutingMuteGroupSceneContentEnvelope {
+  contentType: typeof ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE;
+  schemaVersion: typeof ROUTING_MUTE_GROUP_SCENE_CONTENT_SCHEMA_VERSION;
+  content: RoutingMuteGroupScenePayload;
+}
 
 export interface RoutingMuteGroupSceneStorageItem {
   slotIndex: number;
   refSlot: string;
   hash: string;
   scene: RoutingMuteGroupScenePayload;
+  envelope: RoutingMuteGroupSceneContentEnvelope;
+  contentType: typeof ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE;
 }
 
 export interface RoutingMuteGroupSceneLookupResult {
   targetFound: boolean;
   payload: unknown;
+  /** Hash recorded by the direct content ref or legacy target row. */
+  contentHash?: string;
+  contentType?: string;
+  source?: 'direct' | 'legacy';
 }
 
 export interface RoutingMuteGroupMetadataStoragePlan {
@@ -42,13 +55,47 @@ export interface RoutingMuteGroupMetadataStoragePlan {
 }
 
 export function routingMuteGroupSceneRefSlot(slotIndex: number): string {
+  return `${ROUTING_MUTE_GROUP_SCENE_CONTENT_REF_PREFIX}${slotIndex}${ROUTING_MUTE_GROUP_SCENE_CONTENT_REF_SUFFIX}`;
+}
+
+export function routingMuteGroupLegacySceneRefSlot(slotIndex: number): string {
   return `${ROUTING_MUTE_GROUP_SCENE_REF_PREFIX}${slotIndex}`;
 }
 
 export function isRoutingMuteGroupSceneRefSlotName(slot: string): boolean {
+  if (isRoutingMuteGroupContentRefSlotName(slot)) return true;
   if (!slot.startsWith(ROUTING_MUTE_GROUP_SCENE_REF_PREFIX)) return false;
   const indexText = slot.slice(ROUTING_MUTE_GROUP_SCENE_REF_PREFIX.length);
   return String(Number(indexText)) === indexText && Number(indexText) >= 0;
+}
+
+export function isRoutingMuteGroupContentRefSlotName(slot: string): boolean {
+  const match = ROUTING_MUTE_GROUP_SCENE_CONTENT_REF_SLOT_PATTERN.exec(slot);
+  const slotIndex = Number(match?.[1] ?? -1);
+  return slotIndex >= 0 && slotIndex < ROUTING_MUTE_GROUP_SLOT_COUNT;
+}
+
+export function createRoutingMuteGroupSceneContentEnvelope(
+  scene: RoutingMuteGroupScenePayload,
+): RoutingMuteGroupSceneContentEnvelope {
+  return {
+    contentType: ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE,
+    schemaVersion: ROUTING_MUTE_GROUP_SCENE_CONTENT_SCHEMA_VERSION,
+    content: scene,
+  };
+}
+
+function normalizeRoutingMuteGroupSceneContentEnvelope(
+  value: unknown,
+): RoutingMuteGroupSceneContentEnvelope | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Partial<RoutingMuteGroupSceneContentEnvelope>;
+  if (raw.contentType !== ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE
+      || raw.schemaVersion !== ROUTING_MUTE_GROUP_SCENE_CONTENT_SCHEMA_VERSION) {
+    return null;
+  }
+  const scene = normalizeRoutingMuteGroupScenePayload(raw.content);
+  return scene ? createRoutingMuteGroupSceneContentEnvelope(scene) : null;
 }
 
 function compactSceneRefSlot(
@@ -84,12 +131,16 @@ export async function planRoutingMuteGroupMetadataStorage(
     }
 
     const sceneRecord = canonicalizeRecord(scene as unknown as Record<string, unknown>) as unknown as RoutingMuteGroupScenePayload;
-    const hash = await hashCanonicalJson(sceneRecord);
+    const envelope = createRoutingMuteGroupSceneContentEnvelope(sceneRecord);
+    const canonicalEnvelope = canonicalizeRecord(envelope as unknown as Record<string, unknown>) as unknown as RoutingMuteGroupSceneContentEnvelope;
+    const hash = await hashCanonicalJson(canonicalEnvelope);
     scenes.push({
       slotIndex: index,
       refSlot: routingMuteGroupSceneRefSlot(index),
       hash,
       scene: sceneRecord,
+      envelope: canonicalEnvelope,
+      contentType: ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE,
     });
     compactSlots[index] = compactSceneRefSlot(hash, slot);
   }
@@ -158,7 +209,30 @@ export function reconstructRoutingMuteGroupMetadata(
       return null;
     }
 
-    const scene = normalizeRoutingMuteGroupScenePayload(result.payload);
+    if (result.contentHash && result.contentHash !== sceneRef.sceneHash) {
+      options.recoveryWarnings?.push({
+        slot: refSlot,
+        reason: 'hash_mismatch',
+        fallback: 'empty',
+        version: options.version,
+      });
+      return null;
+    }
+
+    const typedEnvelope = normalizeRoutingMuteGroupSceneContentEnvelope(result.payload);
+    if (result.source === 'direct' || result.contentType === ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE) {
+      if (!typedEnvelope || result.contentType !== ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE) {
+        options.recoveryWarnings?.push({
+          slot: refSlot,
+          reason: 'invalid_payload_shape',
+          fallback: 'empty',
+          version: options.version,
+        });
+        return null;
+      }
+    }
+
+    const scene = normalizeRoutingMuteGroupScenePayload(typedEnvelope?.content ?? result.payload);
     if (!scene) {
       options.recoveryWarnings?.push({
         slot: refSlot,

@@ -114,6 +114,29 @@ test('dynamic audit families are classified', () => {
   for (const key of ['lead1Attack', 'lead2Hold', 'sample1AttackMs', 'sample2ReleaseMs', 'granularV1Speed', 'granularV4Gain', 'granularNatureSend', 'drumKickDistance', 'earthLevel', 'oceanSampleLevel', 'nature4FilterCutoff', 'insectsLevel']) {
     assert.equal(getSliderCapability(key), 'dual', key);
   }
+  for (const key of [
+    'driftDepth', 'driftRate', 'driftStereo',
+    'erosionAge', 'erosionWow', 'erosionFlutter',
+    'masterSaturationDrive',
+    'endCompThreshold', 'endCompRatio', 'endCompKnee', 'endCompMix',
+  ]) {
+    assert.equal(getSliderCapability(key), 'dual', key);
+    assert.notEqual(resolveCoreProductRangeTargets(key).length, 0, `${key} should resolve a Product range target`);
+  }
+});
+
+test('routing Freeze sends support dual sliders', () => {
+  const keys = [
+    'spectralFreezePad1Send', 'spectralFreezePad2Send',
+    'spectralFreezeLead1Send', 'spectralFreezeLead2Send',
+    'spectralFreezeSample1Send', 'spectralFreezeSample2Send',
+    'spectralFreezeDrumSend', 'spectralFreezeWavesSend',
+    'spectralFreezeNatureSend', 'spectralFreezeWaterSend', 'spectralFreezeInsectsSend',
+  ];
+  for (const key of keys) {
+    assert.equal(getSliderCapability(key), 'dual', key);
+    assert.notEqual(resolveCoreProductRangeTargets(key).length, 0, `${key} should resolve a Product range target`);
+  }
 });
 
 test('dynamic numeric families never advertise dual without a Product target', () => {

@@ -40,6 +40,7 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
     }
   }
   const bool output_armed =
+      fx_graph_rendering ||
       fx.granular_mix > kGranularRouteEpsilon ||
       routing.granular_to_reverb > kGranularRouteEpsilon ||
       routing.granular_to_delay_a > kGranularRouteEpsilon ||
@@ -57,7 +58,7 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
       }
     }
   }
-  const bool active = fx.granular_enabled && (input_armed || output_armed);
+  const bool active = fx.granular_enabled && (fx_graph_rendering || input_armed || output_armed);
   if (granular_module == nullptr || frames == 0u || !active) {
     return;
   }
@@ -69,6 +70,7 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
   float* reverb_branch_l = module_tap_l[1];
   float* reverb_branch_r = module_tap_r[1];
   const bool direct_armed =
+      fx_graph_rendering ||
       fx.granular_mix > kGranularRouteEpsilon ||
       granular_mix_gain > kGranularRouteEpsilon;
   const bool reverb_armed =
@@ -132,6 +134,15 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
     const float delay_b_r = delay_b_armed ? output_lpf_r[i] * granular_delay_b_send_gain * mute_gain : 0.0f;
     const float drift_l = drift_armed ? output_lpf_l[i] * granular_degrade_send_gain * mute_gain : 0.0f;
     const float drift_r = drift_armed ? output_lpf_r[i] * granular_degrade_send_gain * mute_gain : 0.0f;
+    if (fx_graph_rendering) {
+      fx_node_output_l[kFxNodeGranular][frame] = output_lpf_l[i] * mute_gain;
+      fx_node_output_r[kFxNodeGranular][frame] = output_lpf_r[i] * mute_gain;
+      if (graph_taps_enabled) {
+        graph_granular_output_l[frame] = fx_node_output_l[kFxNodeGranular][frame];
+        graph_granular_output_r[frame] = fx_node_output_r[kFxNodeGranular][frame];
+      }
+      continue;
+    }
     if (graph_taps_enabled) {
       graph_granular_output_l[frame] = direct_l;
       graph_granular_output_r[frame] = direct_r;

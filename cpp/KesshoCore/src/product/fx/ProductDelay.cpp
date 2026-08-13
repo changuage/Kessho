@@ -58,6 +58,16 @@
     const float granular_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND][i] * mute_gain;
     const float drift_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_DRIFT_SEND][i] * mute_gain;
     const float drift_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_DRIFT_SEND][i] * mute_gain;
+    if (fx_graph_rendering) {
+      const uint8_t node = is_delay_a ? kFxNodeDelayA : kFxNodeDelayB;
+      fx_node_output_l[node][frame] = output_l_sample;
+      fx_node_output_r[node][frame] = output_r_sample;
+      if (graph_taps_enabled) {
+        graph_output_l[frame] = output_l_sample;
+        graph_output_r[frame] = output_r_sample;
+      }
+      continue;
+    }
     if (graph_taps_enabled) {
       graph_output_l[frame] = output_l_sample;
       graph_output_r[frame] = output_r_sample;

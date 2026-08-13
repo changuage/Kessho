@@ -40,6 +40,7 @@ import './midiLearn.css';
 
 const ACTIVITY_LIMIT = 48;
 const MONITOR_THROTTLE_MS = 48;
+const GLOBAL_BUTTON_VISIBILITY_KEY = 'kessho.midiLearn.globalButtonVisible.v1';
 
 export interface MidiLearnProviderProps {
   children: React.ReactNode;
@@ -66,6 +67,9 @@ export function MidiLearnProvider({
   const [status, setStatus] = React.useState<KesshoMidiStatus | null>(null);
   const [activity, setActivity] = React.useState<MidiActivityEntry[]>([]);
   const [selectedBindingID, setSelectedBindingID] = React.useState<string | null>(null);
+  const [globalButtonVisible, setGlobalButtonVisible] = React.useState(() => {
+    try { return window.localStorage.getItem(GLOBAL_BUTTON_VISIBILITY_KEY) === '1'; } catch { return false; }
+  });
   const profileRef = React.useRef(profile);
   const learnStateRef = React.useRef(learnState);
   const onParamChangeRef = React.useRef(onParamChange);
@@ -81,6 +85,10 @@ export function MidiLearnProvider({
   React.useEffect(() => {
     learnStateRef.current = learnState;
   }, [learnState]);
+
+  React.useEffect(() => {
+    try { window.localStorage.setItem(GLOBAL_BUTTON_VISIBILITY_KEY, globalButtonVisible ? '1' : '0'); } catch { /* optional preference */ }
+  }, [globalButtonVisible]);
 
   React.useEffect(() => {
     onParamChangeRef.current = onParamChange;
@@ -301,6 +309,8 @@ export function MidiLearnProvider({
     conflicts,
     selectedBindingID,
     bridgeAvailable,
+    globalButtonVisible,
+    setGlobalButtonVisible,
     toggleLearn,
     enableLearn,
     disableLearn: () => dispatchLearn({ type: 'DISABLE_LEARN' }),
@@ -320,6 +330,7 @@ export function MidiLearnProvider({
     assignCapturedToSlider,
     bridgeAvailable,
     conflicts,
+    globalButtonVisible,
     inputs,
     learnState,
     onOpenMidiPage,
@@ -339,7 +350,7 @@ export function MidiLearnProvider({
   return (
     <MidiLearnContext.Provider value={value}>
       {children}
-      <MidiLearnButton />
+      {globalButtonVisible && <MidiLearnButton />}
       <MidiLearnBar />
     </MidiLearnContext.Provider>
   );

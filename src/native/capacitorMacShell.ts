@@ -29,11 +29,19 @@ export type KesshoMacShellStatus = {
   audioOutput?: KesshoMacAudioOutputStatus;
 };
 
+type CapacitorListenerHandle = {
+  remove: () => Promise<void> | void;
+};
+
 type KesshoMacShellPlugin = {
   getStatus: () => Promise<KesshoMacShellStatus>;
   getAudioOutputStatus: () => Promise<KesshoMacAudioOutputStatus>;
   openSoundSettings: () => Promise<{ opened: boolean }>;
   setPlaybackState: (options: { isPlaying: boolean; title?: string }) => Promise<KesshoMacShellStatus>;
+  addListener: (
+    eventName: 'audioOutputChanged',
+    listener: (status: KesshoMacAudioOutputStatus) => void,
+  ) => Promise<CapacitorListenerHandle>;
 };
 
 type CapacitorRuntime = {
@@ -68,6 +76,15 @@ export async function getCapacitorMacAudioOutputStatus(): Promise<KesshoMacAudio
   const plugin = getMacShellPlugin();
   if (!plugin?.getAudioOutputStatus) return null;
   return plugin.getAudioOutputStatus();
+}
+
+export async function addCapacitorMacAudioOutputChangedListener(
+  listener: (status: KesshoMacAudioOutputStatus) => void,
+): Promise<(() => Promise<void>) | null> {
+  const plugin = getMacShellPlugin();
+  if (!plugin?.addListener) return null;
+  const handle = await plugin.addListener('audioOutputChanged', listener);
+  return async () => { await handle.remove(); };
 }
 
 export async function openCapacitorMacSoundSettings(): Promise<boolean> {

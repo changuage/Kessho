@@ -12,14 +12,19 @@ import {
   EROSION_MOD_SOURCES,
   EROSION_MOD_TARGETS,
   DYNAMICS_DRIFT_PRESET_KEYS,
-  DYNAMICS_EQ1_PRESET_KEYS,
-  DYNAMICS_EQ2_PRESET_KEYS,
   DYNAMICS_EROSION_PRESET_KEYS,
   DYNAMICS_END_CHAIN_PRESET_KEYS,
   DYNAMICS_MASTER_FX_PRESET_KEYS,
-  DYNAMICS_SATURATION_PRESET_KEYS,
+  MASTER_SATURATION_PRESET_KEYS,
   DYNAMICS_SIDECHAIN_PRESET_KEYS,
 } from './dynamicsPresets';
+import {
+  extractDynamicsEqContent,
+  extractSaturatorContent,
+  hydrateDynamicsEqContent,
+  hydrateSaturatorContent,
+} from '../../presets/sharedComponentPools';
+import { EQUALIZER_SCOPE, SATURATOR_SCOPE } from '../../presets/presetScopeAliases';
 import {
   DynamicsDriftVisualizer,
   DynamicsCompressorVisualizer,
@@ -35,6 +40,7 @@ import {
   DYNAMICS_EROSION_CONTROLS,
   DYNAMICS_EROSION_QUALITY_CONTROLS,
   DYNAMICS_END_CHAIN_CONTROLS,
+  MASTER_SATURATION_CONTROLS,
   DYNAMICS_END_CHAIN_QUALITY_CONTROLS,
   DYNAMICS_SATURATION_CONTROLS,
   DYNAMICS_SIDECHAIN_MIX_CONTROLS,
@@ -110,6 +116,7 @@ type ToggleableDynamicsModule =
   | 'driftEnabled'
   | 'erosionEnabled'
   | 'dynamicsSaturationEnabled'
+  | 'masterSaturationEnabled'
   | 'endCompEnabled';
 
 const END_COMP_MODE_PRESETS: Record<SliderState['endCompMode'], Partial<SliderState>> = {
@@ -211,8 +218,16 @@ function makeSubsetPresetOptions(keys: readonly (keyof SliderState)[]): UsePrese
     },
     customApply: (snapshot, data) => {
       const next = { ...snapshot } as Record<string, unknown>;
+      const migratedData = { ...data };
+      if (keys === DYNAMICS_MASTER_FX_PRESET_KEYS) {
+        for (const key of MASTER_SATURATION_PRESET_KEYS) {
+          const suffix = key.slice('masterSaturation'.length);
+          const legacyKey = `dynamicsSaturation${suffix}`;
+          if (!(key in migratedData) && legacyKey in migratedData) migratedData[key] = migratedData[legacyKey];
+        }
+      }
       const normalizedData = normalizeDynamicsQualityFields(
-        normalizeDynamicsErosionAliases(data),
+        normalizeDynamicsErosionAliases(migratedData),
       );
       const defaultState = DEFAULT_STATE as unknown as Record<string, unknown>;
       const nextEndCompEnabled = 'endCompEnabled' in normalizedData
@@ -227,6 +242,32 @@ function makeSubsetPresetOptions(keys: readonly (keyof SliderState)[]): UsePrese
       }
       return next as unknown as SliderState;
     },
+  };
+}
+
+function makeEqualizerPresetOptions(laneIndex: 0 | 1): UsePresetsOptions {
+  return {
+    customExtract: snapshot => extractDynamicsEqContent(
+      snapshot as unknown as Record<string, unknown>,
+      laneIndex,
+    ),
+    customApply: (snapshot, data) => ({
+      ...snapshot,
+      ...hydrateDynamicsEqContent(data, laneIndex),
+    }),
+  };
+}
+
+function makeSaturatorPresetOptions(target: 'dynamics' | 'master'): UsePresetsOptions {
+  return {
+    customExtract: snapshot => extractSaturatorContent(
+      snapshot as unknown as Record<string, unknown>,
+      target,
+    ),
+    customApply: (snapshot, data) => ({
+      ...snapshot,
+      ...hydrateSaturatorContent(data, target),
+    }),
   };
 }
 
@@ -274,6 +315,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
   const [driftPresetName, setDriftPresetName] = useState<string | undefined>();
   const [erosionPresetName, setErosionPresetName] = useState<string | undefined>();
   const [saturationPresetName, setSaturationPresetName] = useState<string | undefined>();
+  const [masterSaturationPresetName, setMasterSaturationPresetName] = useState<string | undefined>();
   const [erosionMatrixOpen, setErosionMatrixOpen] = useState(false);
 
   const bindHelp = useCallback((helpKey: string, options: { label?: string; page?: SliderPageId } = {}) => ({
@@ -293,6 +335,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
     state.erosionEnabled ||
     state.sidechainEnabled ||
     state.dynamicsSaturationEnabled ||
+    state.masterSaturationEnabled ||
     state.endCompEnabled
   );
 
@@ -304,14 +347,15 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
   }, [onVisualTelemetryActiveChange, visualTelemetryConsumerVisible]);
 
   const activeDrift = DRIFT_MODE_OPTIONS.find((mode) => mode.value === state.driftMode)?.label ?? 'Clean';
-  const eq1PresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_EQ1_PRESET_KEYS), []);
-  const eq2PresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_EQ2_PRESET_KEYS), []);
+  const eq1PresetOptions = useMemo(() => makeEqualizerPresetOptions(0), []);
+  const eq2PresetOptions = useMemo(() => makeEqualizerPresetOptions(1), []);
   const sidechainPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_SIDECHAIN_PRESET_KEYS), []);
   const endChainPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_END_CHAIN_PRESET_KEYS), []);
   const masterFxPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_MASTER_FX_PRESET_KEYS), []);
   const driftPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_DRIFT_PRESET_KEYS), []);
   const erosionPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_EROSION_PRESET_KEYS), []);
-  const saturationPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_SATURATION_PRESET_KEYS), []);
+  const saturationPresetOptions = useMemo(() => makeSaturatorPresetOptions('dynamics'), []);
+  const masterSaturationPresetOptions = useMemo(() => makeSaturatorPresetOptions('master'), []);
 
   const handleDegradePresetLoad = useCallback((entry: PresetEntry) => {
     setDegradePresetName(entry.name);
@@ -348,6 +392,9 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
   }, []);
   const handleSaturationPresetLoad = useCallback((entry: PresetEntry) => {
     setSaturationPresetName(entry.name);
+  }, []);
+  const handleMasterSaturationPresetLoad = useCallback((entry: PresetEntry) => {
+    setMasterSaturationPresetName(entry.name);
   }, []);
 
   const renderDynamicsSlider = useCallback((control: DynamicsSliderControlDefinition) => (
@@ -484,7 +531,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
               <PresetDropdown
                 className="dynamics-preset-toolbar"
                 level="engine"
-                scope={config.scope}
+                scope={EQUALIZER_SCOPE}
                 state={state}
                 currentName={presetName}
                 onLoad={onPresetLoad}
@@ -530,6 +577,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   state={state}
                   eqId={config.id}
                   onParamChange={onParamChange}
+                  sliderProps={sliderProps}
                 />,
               )}
             </div>
@@ -540,8 +588,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
             <div className="dynamics-subsection">Low Band</div>
             <div className="dynamics-grid-2">
               {config.lowControls.map((control) => {
-                if (control.key === 'dynamicsEq1LowSlope' && lowType !== 'shelf') return null;
-                if (control.key === 'dynamicsEq2LowSlope' && lowType !== 'shelf') return null;
+                if (lowType === 'shelf' ? String(control.key).endsWith('Q') : String(control.key).endsWith('Slope')) return null;
                 return renderDynamicsSlider(control);
               })}
             </div>
@@ -552,8 +599,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
             <div className="dynamics-subsection">High Band</div>
             <div className="dynamics-grid-2">
               {config.highControls.map((control) => {
-                if (control.key === 'dynamicsEq1HighSlope' && highType !== 'shelf') return null;
-                if (control.key === 'dynamicsEq2HighSlope' && highType !== 'shelf') return null;
+                if (highType === 'shelf' ? String(control.key).endsWith('Q') : String(control.key).endsWith('Slope')) return null;
                 return renderDynamicsSlider(control);
               })}
             </div>
@@ -907,45 +953,16 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
             )}
           </section>
 
-          <section className="dynamics-section-card dynamics-master-fx-card">
-            <div className="dynamics-section-head">
-              <div className="dynamics-section-label">
-                <span className="dynamics-section-title">Master FX</span>
-              </div>
-              <span className="dynamics-section-note">
-                {state.dynamicsSaturationEnabled || state.endCompEnabled ? 'Active' : 'Off'}
-              </span>
-            </div>
-            <div className="dynamics-section-body">
-              <div className="dynamics-module-preset-row">
-                <PresetDropdown
-                  className="dynamics-preset-toolbar"
-                  level="source"
-                  scope="masterFx"
-                  state={state}
-                  currentName={masterFxPresetName}
-                  onLoad={handleMasterFxPresetLoad}
-                  onStateChange={onStateChange}
-                  presetOptions={masterFxPresetOptions}
-                  compact
-                />
-              </div>
-              <div className="dynamics-preset-description">
-                {masterFxPresetDescription || (masterFxPresetName ? 'No description saved for this preset.' : 'Stores Saturation and End Chain Compression together.')}
-              </div>
-            </div>
-          </section>
-
           <section className="dynamics-section-card dynamics-saturation-card">
             <div className="dynamics-section-head">
               <div className="dynamics-section-label">
-                <span className="dynamics-section-title">Saturation</span>
+                <span className="dynamics-section-title">Saturator</span>
                 <button
                   className={`dynamics-fx-toggle${state.dynamicsSaturationEnabled ? ' on amber' : ''}`}
                   type="button"
                   aria-pressed={state.dynamicsSaturationEnabled}
                   onClick={() => setModuleEnabled('dynamicsSaturationEnabled', !state.dynamicsSaturationEnabled)}
-                  {...bindHelp('dynamicsSaturationEnabled', { label: 'Saturation FX', page: 'texture' })}
+                  {...bindHelp('dynamicsSaturationEnabled', { label: 'Saturator', page: 'texture' })}
                 >
                   {state.dynamicsSaturationEnabled ? 'FX On' : 'FX Off'}
                 </button>
@@ -958,7 +975,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                 <PresetDropdown
                   className="dynamics-preset-toolbar"
                   level="engine"
-                  scope="dynamicsSaturation"
+                  scope={SATURATOR_SCOPE}
                   state={state}
                   currentName={saturationPresetName}
                   onLoad={handleSaturationPresetLoad}
@@ -1009,70 +1026,171 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
             )}
           </section>
 
-          <section className="dynamics-section-card dynamics-end-card">
+          <section className="dynamics-section-card dynamics-master-fx-card">
             <div className="dynamics-section-head">
               <div className="dynamics-section-label">
-                <span className="dynamics-section-title">End Chain Compression</span>
-                <button
-                  className={`dynamics-fx-toggle${state.endCompEnabled ? ' on amber' : ''}`}
-                  type="button"
-                  aria-pressed={state.endCompEnabled}
-                  onClick={() => setModuleEnabled('endCompEnabled', !state.endCompEnabled)}
-                  {...bindHelp('endCompEnabled', { label: 'End Chain FX', page: 'texture' })}
-                >
-                  {state.endCompEnabled ? 'FX On' : 'FX Off'}
-                </button>
+                <span className="dynamics-section-title">Master FX</span>
               </div>
-              <span className="dynamics-section-note">{state.endCompEnabled ? 'Glue' : 'Off'}</span>
+              <span className="dynamics-section-note">
+                {state.masterSaturationEnabled || state.endCompEnabled ? 'Active' : 'Off'}
+              </span>
             </div>
-            {state.endCompEnabled && (
             <div className="dynamics-section-body">
               <div className="dynamics-module-preset-row">
                 <PresetDropdown
                   className="dynamics-preset-toolbar"
-                  level="engine"
-                  scope="dynamicsEndChain"
+                  level="source"
+                  scope="masterFx"
                   state={state}
-                  currentName={endChainPresetName}
-                  onLoad={handleEndChainPresetLoad}
+                  currentName={masterFxPresetName}
+                  onLoad={handleMasterFxPresetLoad}
                   onStateChange={onStateChange}
-                  presetOptions={endChainPresetOptions}
+                  presetOptions={masterFxPresetOptions}
                   compact
                 />
               </div>
-              <div className="dynamics-mode-row" aria-label="End compressor mode">
-                {END_COMP_MODE_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={`dynamics-mode-btn${state.endCompMode === option.value ? ' active' : ''}`}
-                    onClick={() => applyEndCompMode(option.value)}
-                    {...bindHelp(`endCompMode_${option.value}`, { label: option.label, page: 'texture' })}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+              <div className="dynamics-preset-description dynamics-bus-description">
+                {masterFxPresetDescription || (masterFxPresetName ? 'No description saved for this preset.' : 'Terminal saturation, compression, and safety limiting.')}
               </div>
-              <div {...bindHelp('endChainCompressionVisualizer', { label: 'Visualizer', page: 'texture' })}>
-                {renderDynamicsVisualizer(
-                  'end chain meter',
-                  <DynamicsCompressorVisualizer
-                    state={state}
-                    getDynamicsAnalyser={getDynamicsAnalyser}
-                    getDynamicsTelemetry={getDynamicsTelemetry}
-                  />,
-                )}
+
+              <div className="dynamics-bus-module dynamics-master-module">
+                <div className="dynamics-bus-module-head">
+                  <div className="dynamics-section-label">
+                    <span className="dynamics-section-title">Master Saturation</span>
+                    <button
+                      className={`dynamics-fx-toggle${state.masterSaturationEnabled ? ' on amber' : ''}`}
+                      type="button"
+                      aria-pressed={state.masterSaturationEnabled}
+                      onClick={() => setModuleEnabled('masterSaturationEnabled', !state.masterSaturationEnabled)}
+                      {...bindHelp('masterSaturationEnabled', { label: 'Master Saturation', page: 'texture' })}
+                    >
+                      {state.masterSaturationEnabled ? 'FX On' : 'FX Off'}
+                    </button>
+                  </div>
+                  <span className="dynamics-section-note">
+                    {state.masterSaturationEnabled ? state.masterSaturationMode : 'Off'}
+                  </span>
+                </div>
+                {state.masterSaturationEnabled && <div className="dynamics-bus-module-body">
+                  <div className="dynamics-module-preset-row">
+                    <PresetDropdown
+                      className="dynamics-preset-toolbar"
+                      level="engine"
+                      scope={SATURATOR_SCOPE}
+                      state={state}
+                      currentName={masterSaturationPresetName}
+                      onLoad={handleMasterSaturationPresetLoad}
+                      onStateChange={onStateChange}
+                      presetOptions={masterSaturationPresetOptions}
+                      compact
+                    />
+                  </div>
+                  <div className="dynamics-mode-row">
+                    {SAT_MODE_OPTIONS.map((mode) => (
+                      <button
+                        key={mode.value}
+                        className={`dynamics-mode-btn${state.masterSaturationMode === mode.value ? ' active' : ''}`}
+                        onClick={() => onSelectChange('masterSaturationMode', mode.value)}
+                        {...bindHelp(`masterSaturationMode_${mode.value}`, { label: mode.label, page: 'texture' })}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="dynamics-mode-row" aria-label="Master saturation quality">
+                    {SAT_QUALITY_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`dynamics-mode-btn${state.masterSaturationQuality === option.value ? ' active' : ''}`}
+                        onClick={() => onSelectChange('masterSaturationQuality', option.value)}
+                        {...bindHelp(`masterSaturationQuality_${option.value}`, { label: option.label, page: 'texture' })}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div {...bindHelp('masterSaturationVisualizer', { label: 'Master Saturation Visualizer', page: 'texture' })}>
+                    {renderDynamicsVisualizer(
+                      'master saturation meter',
+                      <DynamicsSaturationVisualizer
+                        state={state}
+                        variant="master"
+                        getDynamicsAnalyser={getDynamicsAnalyser}
+                        getDynamicsTelemetry={getDynamicsTelemetry}
+                      />,
+                    )}
+                  </div>
+                  <div className="dynamics-grid-2">
+                    {MASTER_SATURATION_CONTROLS.map(renderDynamicsSlider)}
+                  </div>
+                </div>}
               </div>
-              <div className="dynamics-grid-2">
-                {DYNAMICS_END_CHAIN_CONTROLS.map(renderDynamicsSlider)}
-                {DYNAMICS_END_CHAIN_QUALITY_CONTROLS.map((control) => {
-                  if (control.key === 'endCompTwoBandAmount' && state.endCompMode !== 'twoBand') return null;
-                  if (control.key === 'endCompBandSplit' && state.endCompMode !== 'twoBand') return null;
-                  return renderDynamicsSlider(control);
-                })}
+
+              <div className="dynamics-bus-module dynamics-master-module">
+                <div className="dynamics-bus-module-head">
+                  <div className="dynamics-section-label">
+                    <span className="dynamics-section-title">Master Compression</span>
+                    <button
+                      className={`dynamics-fx-toggle${state.endCompEnabled ? ' on amber' : ''}`}
+                      type="button"
+                      aria-pressed={state.endCompEnabled}
+                      onClick={() => setModuleEnabled('endCompEnabled', !state.endCompEnabled)}
+                      {...bindHelp('endCompEnabled', { label: 'Master Compression', page: 'texture' })}
+                    >
+                      {state.endCompEnabled ? 'FX On' : 'FX Off'}
+                    </button>
+                  </div>
+                  <span className="dynamics-section-note">{state.endCompEnabled ? 'Glue' : 'Off'}</span>
+                </div>
+                {state.endCompEnabled && <div className="dynamics-bus-module-body">
+                  <div className="dynamics-module-preset-row">
+                    <PresetDropdown
+                      className="dynamics-preset-toolbar"
+                      level="engine"
+                      scope="dynamicsEndChain"
+                      state={state}
+                      currentName={endChainPresetName}
+                      onLoad={handleEndChainPresetLoad}
+                      onStateChange={onStateChange}
+                      presetOptions={endChainPresetOptions}
+                      compact
+                    />
+                  </div>
+                  <div className="dynamics-mode-row" aria-label="Master compressor mode">
+                    {END_COMP_MODE_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`dynamics-mode-btn${state.endCompMode === option.value ? ' active' : ''}`}
+                        onClick={() => applyEndCompMode(option.value)}
+                        {...bindHelp(`endCompMode_${option.value}`, { label: option.label, page: 'texture' })}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div {...bindHelp('endChainCompressionVisualizer', { label: 'Master Compression Visualizer', page: 'texture' })}>
+                    {renderDynamicsVisualizer(
+                      'master compression meter',
+                      <DynamicsCompressorVisualizer
+                        state={state}
+                        getDynamicsAnalyser={getDynamicsAnalyser}
+                        getDynamicsTelemetry={getDynamicsTelemetry}
+                      />,
+                    )}
+                  </div>
+                  <div className="dynamics-grid-2">
+                    {DYNAMICS_END_CHAIN_CONTROLS.map(renderDynamicsSlider)}
+                    {DYNAMICS_END_CHAIN_QUALITY_CONTROLS.map((control) => {
+                      if (control.key === 'endCompTwoBandAmount' && state.endCompMode !== 'twoBand') return null;
+                      if (control.key === 'endCompBandSplit' && state.endCompMode !== 'twoBand') return null;
+                      return renderDynamicsSlider(control);
+                    })}
+                  </div>
+                </div>}
               </div>
             </div>
-            )}
           </section>
 
         </div>

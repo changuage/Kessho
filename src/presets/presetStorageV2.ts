@@ -9,7 +9,7 @@ import {
 } from './euclideanPatternBank';
 import { extractPresetVersionMetadata, presetValuesEqual } from './presetUtils';
 import { hydrateOptimizedStatePresetData } from './statePresetOptimization';
-import { canonicalizePresetScope } from './presetScopeAliases';
+import { canonicalizePresetScope, EQUALIZER_SCOPE, SATURATOR_SCOPE } from './presetScopeAliases';
 import type { PresetEntry, PresetLevel, PresetRef, PresetVersion, PresetVersionMetadata } from './types';
 import { DEFAULT_STATE, type SliderState } from '../ui/state';
 import {
@@ -26,10 +26,11 @@ import {
   DYNAMICS_EQ2_PRESET_KEYS,
   DYNAMICS_EROSION_PRESET_KEYS,
   DYNAMICS_END_CHAIN_PRESET_KEYS,
-  DYNAMICS_SATURATION_PRESET_KEYS,
+  MASTER_SATURATION_PRESET_KEYS,
   DYNAMICS_SIDECHAIN_PRESET_KEYS,
 } from '../ui/dynamics/dynamicsPresets';
 import { stripSequencerStateFromSoundContent } from './sequencerContent';
+import { extractDynamicsEqContent, extractSaturatorContent } from './sharedComponentPools';
 
 export type PresetPayloadKind = 'override' | 'metadata' | 'resolved' | 'patch' | 'refs_override' | 'content';
 
@@ -529,6 +530,27 @@ function engineSubsetChild(slot: string, scope: string, keys: readonly (keyof Sl
   };
 }
 
+function equalizerChild(slot: string, laneIndex: 0 | 1): PresetChildSpec {
+  const runtimeKeys = laneIndex === 0 ? DYNAMICS_EQ1_PRESET_KEYS : DYNAMICS_EQ2_PRESET_KEYS;
+  return {
+    slot,
+    type: 'engine',
+    scope: EQUALIZER_SCOPE,
+    extract: state => extractDynamicsEqContent(state as unknown as Record<string, unknown>, laneIndex),
+    strip: (state) => Object.fromEntries(runtimeKeys.map(key => [key, state[key]])),
+  };
+}
+
+function saturatorChild(slot: string): PresetChildSpec {
+  return {
+    slot,
+    type: 'engine',
+    scope: SATURATOR_SCOPE,
+    extract: state => extractSaturatorContent(state as unknown as Record<string, unknown>, 'master'),
+    strip: (state) => Object.fromEntries(MASTER_SATURATION_PRESET_KEYS.map(key => [key, state[key]])),
+  };
+}
+
 function kitSubsetChild(slot: string, scope: string, keys: readonly (keyof SliderState)[]): PresetChildSpec {
   return {
     slot,
@@ -687,8 +709,8 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
 
   if (type === 'source' && normalizedScope === 'dynamicsBus') {
     return [
-      engineSubsetChild('eq1', 'dynamicsEq1', DYNAMICS_EQ1_PRESET_KEYS),
-      engineSubsetChild('eq2', 'dynamicsEq2', DYNAMICS_EQ2_PRESET_KEYS),
+      equalizerChild('eq1', 0),
+      equalizerChild('eq2', 1),
       engineSubsetChild('sidechain', 'dynamicsSidechain', DYNAMICS_SIDECHAIN_PRESET_KEYS),
     ];
   }
@@ -702,7 +724,7 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
 
   if (type === 'source' && normalizedScope === 'masterFx') {
     return [
-      engineSubsetChild('saturation', 'dynamicsSaturation', DYNAMICS_SATURATION_PRESET_KEYS),
+      saturatorChild('saturation'),
       engineSubsetChild('endChain', 'dynamicsEndChain', DYNAMICS_END_CHAIN_PRESET_KEYS),
     ];
   }
@@ -785,6 +807,7 @@ function getPresetParamLevel(type: PresetLevel): 1 | 2 | 3 | 4 | null {
 function getDefaultPresetData(type: PresetLevel, scope?: string): Record<string, unknown> {
   const level = getPresetParamLevel(type);
   if (level === null) return {};
+  if (type === 'engine' && (scope === EQUALIZER_SCOPE || scope === SATURATOR_SCOPE)) return {};
   if (level === 4) return DEFAULT_STATE as unknown as Record<string, unknown>;
   if (level === 1) return extractParams(DEFAULT_STATE, level, scope);
   return extractCascade(DEFAULT_STATE, level, scope);
@@ -889,15 +912,15 @@ function sourceSlotFallbackOverrides(slot: string): Record<string, unknown> {
       };
     case 'masterFx':
       return {
-        dynamicsSaturationEnabled: false,
-        dynamicsSaturationDrive: 0,
+        masterSaturationEnabled: false,
+        masterSaturationDrive: 0,
         endCompEnabled: false,
         endCompMix: 0,
       };
     case 'sidechain':
       return { sidechainMix: 0, sidechainAmount: 0 };
     case 'saturation':
-      return { dynamicsSaturationDrive: 0 };
+      return { drive: 0 };
     case 'endChain':
       return { endCompMix: 0 };
     case 'earth':
@@ -974,21 +997,9 @@ function kitOrEngineSlotFallbackOverrides(slot: string): Record<string, unknown>
     case 'masterFx':
       return sourceSlotFallbackOverrides('masterFx');
     case 'eq1':
-      return {
-        dynamicsEq1InputGain: 0,
-        dynamicsEq1OutputGain: 0,
-        dynamicsEq1LowGain: 0,
-        dynamicsEq1MidGain: 0,
-        dynamicsEq1HighGain: 0,
-      };
+      return { inputGain: 0, outputGain: 0, lowGain: 0, midGain: 0, highGain: 0 };
     case 'eq2':
-      return {
-        dynamicsEq2InputGain: 0,
-        dynamicsEq2OutputGain: 0,
-        dynamicsEq2LowGain: 0,
-        dynamicsEq2MidGain: 0,
-        dynamicsEq2HighGain: 0,
-      };
+      return { inputGain: 0, outputGain: 0, lowGain: 0, midGain: 0, highGain: 0 };
     case 'sidechain':
       return { sidechainMix: 0, sidechainAmount: 0 };
     case 'drift':
@@ -998,7 +1009,7 @@ function kitOrEngineSlotFallbackOverrides(slot: string): Record<string, unknown>
     case 'erosion':
       return { erosionMix: 0 };
     case 'saturation':
-      return { dynamicsSaturationDrive: 0 };
+      return { drive: 0 };
     case 'endChain':
       return { endCompMix: 0 };
     default:
@@ -1031,19 +1042,30 @@ export function normalizeResolvedVersionData(
   scope: string | undefined,
   versionData: Record<string, unknown>,
 ): Record<string, unknown> {
+  let normalizedVersionData = versionData;
+  if (type === 'source' && canonicalizePresetScope(scope) === 'masterFx') {
+    const next = { ...versionData };
+    for (const key of MASTER_SATURATION_PRESET_KEYS) {
+      const suffix = key.slice('masterSaturation'.length);
+      const legacyKey = `dynamicsSaturation${suffix}`;
+      if (!(key in next) && legacyKey in next) next[key] = next[legacyKey];
+      delete next[legacyKey];
+    }
+    normalizedVersionData = next;
+  }
   const defaultData = getDefaultPresetData(type, scope);
   if (type === 'state') {
     return canonicalizeRecord(
       {
         ...defaultData,
-        ...hydrateOptimizedStatePresetData(versionData as unknown as Record<string, unknown>),
+        ...hydrateOptimizedStatePresetData(normalizedVersionData as unknown as Record<string, unknown>),
       },
     );
   }
 
   return canonicalizeRecord({
     ...defaultData,
-    ...versionData,
+    ...normalizedVersionData,
   });
 }
 

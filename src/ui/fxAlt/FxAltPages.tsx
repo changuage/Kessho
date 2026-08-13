@@ -589,7 +589,7 @@ const DynamicsHero: React.FC<DynamicsPageProps> = (props) => {
   };
 
   const visualizer = section === 'eq' ? (
-    <DynamicsEqVisualizer state={state} eqId="eq1" onParamChange={props.onParamChange} />
+    <DynamicsEqVisualizer state={state} eqId="eq1" onParamChange={props.onParamChange} sliderProps={props.sliderProps} />
   ) : section === 'comp' ? (
     <DynamicsCompressorVisualizer state={state} getDynamicsAnalyser={props.getDynamicsAnalyser} getDynamicsTelemetry={props.getDynamicsTelemetry} />
   ) : section === 'sat' ? (

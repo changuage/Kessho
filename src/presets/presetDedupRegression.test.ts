@@ -144,8 +144,8 @@ function testGraphCoversAllCompositeLevels(): void {
   assertChildScopes('source', 'delay', ['kit:delayKit:delayKit']);
   assertChildScopes('source', 'reverb', ['kit:reverbKit:reverbKit']);
   assertChildScopes('source', 'dynamicsBus', [
-    'engine:dynamicsEq1:eq1',
-    'engine:dynamicsEq2:eq2',
+    'engine:equalizer:eq1',
+    'engine:equalizer:eq2',
     'engine:dynamicsSidechain:sidechain',
   ]);
   assertChildScopes('source', 'degrade', [
@@ -153,7 +153,7 @@ function testGraphCoversAllCompositeLevels(): void {
     'kit:degradeErosion:erosion',
   ]);
   assertChildScopes('source', 'masterFx', [
-    'engine:dynamicsSaturation:saturation',
+    'engine:saturator:saturation',
     'engine:dynamicsEndChain:endChain',
   ]);
 
@@ -224,6 +224,34 @@ function testLegacyDegradeChildScopesAliasToCanonical(): void {
   );
 }
 
+function testSharedDynamicsProcessorScopes(): void {
+  for (const legacyScope of ['dynamicsEq1', 'dynamicsEq2']) {
+    assert.equal(
+      isPresetCompatibleWithSlot({ type: 'engine', scope: legacyScope }, 'engine', 'equalizer'),
+      true,
+      `${legacyScope} presets should remain available in the shared Equalizer library`,
+    );
+  }
+  const equalizerCandidates = buildPresetKeyCandidates('engine', 'Warm Shelf', 'equalizer');
+  assert.equal(equalizerCandidates.includes('preset:engine:dynamicsEq1:Warm Shelf'), true);
+  assert.equal(equalizerCandidates.includes('preset:engine:dynamicsEq2:Warm Shelf'), true);
+  assert.equal(
+    isPresetCompatibleWithSlot({ type: 'engine', scope: 'dynamicsSaturation' }, 'engine', 'saturator'),
+    true,
+    'legacy Dynamics Saturator presets should remain available in the shared Saturator library',
+  );
+
+  const migratedMasterFx = normalizeResolvedVersionData('source', 'masterFx', {
+    dynamicsSaturationMode: 'tape',
+    dynamicsSaturationQuality: 'hq',
+    dynamicsSaturationDrive: 0.61,
+    dynamicsSaturationTone: 0.44,
+    dynamicsSaturationBias: 0.53,
+  });
+  assert.equal(migratedMasterFx.masterSaturationDrive, 0.61);
+  assert.equal('dynamicsSaturationDrive' in migratedMasterFx, false);
+}
+
 function testCascadeExtractionIsRecursive(): void {
   const synthKeys = new Set(getCascadeKeys(3, 'synth'));
   assert.equal(synthKeys.has('leadEnabled'), true, 'synth source should include direct L3 params');
@@ -280,9 +308,18 @@ function testCascadeExtractionIsRecursive(): void {
   assert.equal(dynamicsBusKeys.has('endCompThreshold'), false, 'dynamics bus source should not include end-chain params');
 
   const masterFxKeys = new Set(getCascadeKeys(3, 'masterFx'));
-  assert.equal(masterFxKeys.has('dynamicsSaturationEnabled'), true, 'master FX source should own Saturation enable');
+  for (const key of [
+    'masterSaturationMode',
+    'masterSaturationQuality',
+    'masterSaturationDrive',
+    'masterSaturationTone',
+    'masterSaturationBias',
+  ]) {
+    assert.equal(masterFxKeys.has(key), true, `master FX source should own terminal Saturation ${key}`);
+  }
+  assert.equal(masterFxKeys.has('masterSaturationEnabled'), true, 'master FX source should own Master Saturation enable');
   assert.equal(masterFxKeys.has('endCompEnabled'), true, 'master FX source should own End Chain enable');
-  assert.equal(masterFxKeys.has('dynamicsSaturationDrive'), true, 'master FX source should include Saturation child params');
+  assert.equal(masterFxKeys.has('dynamicsSaturationDrive'), false, 'master FX source should not own modular Saturator');
   assert.equal(masterFxKeys.has('endCompThreshold'), true, 'master FX source should include End Chain child params');
   assert.equal(masterFxKeys.has('dynamicsEq1LowFreq'), false, 'master FX source should not include Dynamics Bus params');
   assert.equal(masterFxKeys.has('driftMix'), false, 'master FX source should not include Degrade params');
@@ -401,9 +438,19 @@ function testOverlapIsStrippedAtEachLevel(): void {
     masterFxData,
     childRefData(getPresetChildSpecs('source', 'masterFx'), masterFxData),
   );
-  assert.equal('dynamicsSaturationEnabled' in masterFxOverride, true, 'Saturation enable should remain in Master FX L3 override');
+  for (const key of [
+    'masterSaturationMode',
+    'masterSaturationQuality',
+    'masterSaturationDrive',
+    'masterSaturationTone',
+    'masterSaturationBias',
+  ]) {
+    assert.equal(key in masterFxOverride, false, `terminal saturation ${key} should move into the shared L1 Saturator`);
+  }
+  assert.equal('masterSaturationEnabled' in masterFxOverride, true, 'Master Saturation enable should remain in Master FX L3 override');
   assert.equal('endCompEnabled' in masterFxOverride, true, 'End Chain enable should remain in Master FX L3 override');
   assert.equal('dynamicsSaturationDrive' in masterFxOverride, false, 'Saturation L1 params should move out of Master FX source override');
+  assert.equal('dynamicsSaturationEnabled' in masterFxOverride, false, 'Saturator should remain modular, outside Master FX');
   assert.equal('endCompThreshold' in masterFxOverride, false, 'End Chain L1 params should move out of Master FX source override');
   assert.equal('dynamicsEq1LowFreq' in masterFxOverride, false, 'Dynamics Bus params should not live in Master FX source override');
 
@@ -707,6 +754,7 @@ async function run(): Promise<void> {
   testRegistryCoversPresetOwnedState();
   testGraphCoversAllCompositeLevels();
   testLegacyDegradeChildScopesAliasToCanonical();
+  testSharedDynamicsProcessorScopes();
   testCascadeExtractionIsRecursive();
   testOverlapIsStrippedAtEachLevel();
   await testEuclideanStepOverridesAffectOnlyEuclideanChildHash();

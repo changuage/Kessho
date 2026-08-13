@@ -29,6 +29,7 @@ const paths = {
   productRender: 'cpp/KesshoCore/src/product/KesshoProductRender.cpp',
   productAssets: 'src/audio/coreProductAssets.ts',
   assetRegistrar: 'src/audio/product/host/CoreProductAssetRegistrar.ts',
+  assetDecodeService: 'src/audio/product/host/CoreProductAssetDecodeService.ts',
   browserAudioSession: 'src/audio/product/browser/ProductBrowserAudioSession.ts',
   arrangementScheduler: 'src/audio/product/host/CoreProductArrangementProjection.ts',
   journeyClock: 'src/audio/product/host/CoreProductJourneyMorphClock.ts',
@@ -78,20 +79,24 @@ const productStemsOptIn = has(
   'if (captureStems()) {',
   'if (captureStems() && voice.source_id < kStemCount)',
 );
-const desktopWorkletAlwaysRequestsMaxChannels = has(
+const webWorkletOutputFollowsDawDemand = has(
   'webRuntime',
-  'outputChannelCount: [DAW_OUTPUT_MAX_CHANNELS]',
-  'channelCount: DAW_OUTPUT_MAX_CHANNELS',
+  'if (isIOSLikeDevice() || !this.dawOutputRouting.enabled)',
+  'outputChannelCount: [2]',
+  'outputChannelCount: [channelCount]',
 );
 const decodedAssetsClonedBeforeTransfer = has(
   'productAssets',
   'cloneDecodedCoreProductAssetForTransfer',
   'new Float32Array(channel)',
 );
-const mobileDecodedAssetsTransferOwnership = has(
+const appleDecodedAssetsTransferOwnership = has(
   'assetRegistrar',
-  "const ownership: AssetTransferOwnership = this.mobile ? 'transfer' : 'retain-host-copy';",
-  'this.sampleAssetCache.take(asset.assetId)',
+  'transferAssets = mobile || isCapacitorMacShell()',
+  "this.transferAssets ? 'transfer' : 'retain-host-copy'",
+) && has(
+  'assetDecodeService',
+  'this.options.transferAssets ? (this.options.cache.take(asset.assetId) ?? asset) : asset',
 );
 
 const capabilityDisabled = has('capability', 'report.supports_native_bridge = 0;');
@@ -276,25 +281,28 @@ const findings = [
   },
   {
     id: 'shared-default-output-channel-count',
-    status: desktopWorkletAlwaysRequestsMaxChannels ? 'max-channels-by-default' : 'partial',
-    productionReady: !desktopWorkletAlwaysRequestsMaxChannels,
-    summary: 'Desktop web and the current macOS app request a 32-channel AudioWorklet even when DAW output is disabled; stereo should be the default node shape.',
+    status: webWorkletOutputFollowsDawDemand ? 'demand-driven' : 'partial',
+    productionReady: webWorkletOutputFollowsDawDemand,
+    summary: webWorkletOutputFollowsDawDemand
+      ? 'The Product worklet starts in stereo and requests the configured channel count only when DAW output is enabled.'
+      : 'The Product worklet output channel count is not proven to follow DAW routing demand.',
     evidence: [
-      evidence('webRuntime', 'outputChannelCount: [DAW_OUTPUT_MAX_CHANNELS]', 'Non-iOS Product runtime creates the maximum-channel worklet.'),
+      evidence('webRuntime', 'if (isIOSLikeDevice() || !this.dawOutputRouting.enabled)', 'Ordinary playback creates a stereo worklet.'),
+      evidence('webRuntime', 'outputChannelCount: [channelCount]', 'DAW output creates only its configured channel count.'),
     ],
   },
   {
     id: 'shared-decoded-asset-transfer-copy',
-    status: mobileDecodedAssetsTransferOwnership
-      ? 'mobile-transfer-owned'
+    status: appleDecodedAssetsTransferOwnership
+      ? 'apple-transfer-owned'
       : decodedAssetsClonedBeforeTransfer ? 'full-copy-before-transfer' : 'partial',
-    productionReady: mobileDecodedAssetsTransferOwnership,
-    summary: mobileDecodedAssetsTransferOwnership
-      ? 'Mobile registration transfers the owned decoded buffers directly; desktop may retain and clone its host cache copy.'
+    productionReady: appleDecodedAssetsTransferOwnership,
+    summary: appleDecodedAssetsTransferOwnership
+      ? 'Apple app registration transfers owned decoded buffers directly; ordinary desktop web may retain and clone its host cache copy.'
       : 'Decoded sample channels are fully cloned before transfer to the worklet, increasing preset-load CPU and peak memory, especially on iOS.',
     evidence: [
-      evidence('assetRegistrar', "this.mobile ? 'transfer' : 'retain-host-copy'", 'Mobile and desktop use explicit transfer ownership policies.'),
-      evidence('assetRegistrar', 'this.sampleAssetCache.take(asset.assetId)', 'Mobile removes the host cache entry before transferring ownership.'),
+      evidence('assetRegistrar', 'transferAssets = mobile || isCapacitorMacShell()', 'Apple app hosts opt into direct decoded-buffer transfer.'),
+      evidence('assetDecodeService', 'this.options.cache.take(asset.assetId)', 'Transfer hosts remove the decoded cache entry before transferring ownership.'),
     ],
   },
   {
@@ -341,7 +349,7 @@ const findings = [
     productionReady: snapshotFitsCurrentBridge && bridgeHasProductionControlPlane,
     summary: `The ${snapshotBytes}-byte Product snapshot cannot fit the current ${audioSessionBridgeLimitBytes}-byte audio-session options limit. A binary/chunked contract is required.`,
     evidence: [
-      evidence('abiTests', 'sizeof(KesshoProductSnapshotV2) == 154676', 'The native snapshot ABI is 154,676 bytes.'),
+      evidence('abiTests', 'sizeof(KesshoProductSnapshotV2) == 156216', 'The native snapshot ABI is 156,216 bytes.'),
       evidence('bridgePolicy', 'startPlayback", maxOptionsBytes: 8 * 1024', 'The current playback request permits 8 KiB of JSON options.'),
     ],
   },
@@ -435,10 +443,10 @@ const findings = [
       ? 'misleading-and-overactive'
       : 'partial',
     productionReady: nativeRenderCpuMeasured && iosUnderrunCounterUpdated,
-    summary: 'The native audio thread copies 15,168 bytes of telemetry every block, yet native render CPU is not timed and the published iOS underrun counter is never updated.',
+    summary: 'The native audio thread copies 14,912 bytes of telemetry every block, yet native render CPU is not timed and the published iOS underrun counter is never updated.',
     evidence: [
       evidence('nativeRuntime', 'publishTelemetryOnRenderThread();', 'Full telemetry is published after every render callback.'),
-      evidence('abiTests', 'sizeof(KesshoProductTelemetry) == 14512', 'Each telemetry snapshot is 14,512 bytes.'),
+      evidence('abiTests', 'sizeof(KesshoProductTelemetry) == 14912', 'Each telemetry snapshot is 14,912 bytes.'),
       evidence('iosRenderer', 'private(set) var underrunCount = 0', 'The iOS counter exists without an increment path.'),
     ],
   },
@@ -475,12 +483,14 @@ const findings = [
   },
   {
     id: 'macos-output-route-observation',
-    status: macObservesCoreAudioRouteChanges ? 'partial' : 'missing',
+    status: macObservesCoreAudioRouteChanges ? 'event-driven' : 'missing',
     productionReady: macObservesCoreAudioRouteChanges,
-    summary: 'macOS can inspect the current output device but does not subscribe to CoreAudio device/format changes; app-hidden notifications are counted as route changes instead.',
+    summary: macObservesCoreAudioRouteChanges
+      ? 'The macOS shell subscribes to default-device, format, buffer-size, name, and transport changes and publishes deduplicated status events.'
+      : 'The macOS shell can inspect the current output device but does not subscribe to CoreAudio changes.',
     evidence: [
-      evidence('macApp', 'defaultOutputDeviceID()', 'The shell can query the current default output.'),
-      evidence('macApp', 'handleRouteChange(reason: "appHidden")', 'App hiding is used as diagnostic route-change evidence.'),
+      evidence('macApp', 'AudioObjectAddPropertyListenerBlock', 'CoreAudio property listeners replace periodic route polling.'),
+      evidence('macApp', 'eventName: "audioOutputChanged"', 'Changed output status is published to the web UI.'),
     ],
   },
   {

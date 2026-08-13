@@ -99,6 +99,7 @@ const PAD1_WET_ACTIVE_KEYS = [
   'pad1DelayBSend',
   'granularPad1Send',
   'degradePad1Send',
+  'spectralFreezePad1Send',
 ] as const satisfies readonly (keyof SliderState)[];
 
 const PAD2_WET_ACTIVE_KEYS = [
@@ -108,6 +109,7 @@ const PAD2_WET_ACTIVE_KEYS = [
   'pad2DelayBSend',
   'granularPad2Send',
   'degradePad2Send',
+  'spectralFreezePad2Send',
 ] as const satisfies readonly (keyof SliderState)[];
 
 const LEAD1_WET_ACTIVE_KEYS = [
@@ -117,6 +119,7 @@ const LEAD1_WET_ACTIVE_KEYS = [
   'lead1DelayBSend',
   'granularLead1Send',
   'degradeLead1Send',
+  'spectralFreezeLead1Send',
 ] as const satisfies readonly (keyof SliderState)[];
 
 const LEAD2_WET_ACTIVE_KEYS = [
@@ -126,6 +129,7 @@ const LEAD2_WET_ACTIVE_KEYS = [
   'lead2DelayBSend',
   'granularLead2Send',
   'degradeLead2Send',
+  'spectralFreezeLead2Send',
 ] as const satisfies readonly (keyof SliderState)[];
 
 const PIANO_WET_ACTIVE_KEYS = [
@@ -135,6 +139,7 @@ const PIANO_WET_ACTIVE_KEYS = [
   'pianoDelayBSend',
   'granularPianoSend',
   'degradePianoSend',
+  'spectralFreezePianoSend',
 ] as const satisfies readonly (keyof SliderState)[];
 
 const DRUM_WET_ACTIVE_KEYS = [
@@ -144,6 +149,7 @@ const DRUM_WET_ACTIVE_KEYS = [
   'drumDelayBSend',
   'granularDrumSend',
   'degradeDrumSend',
+  'spectralFreezeDrumSend',
 ] as const satisfies readonly (keyof SliderState)[];
 
 const OCEAN_WET_ACTIVE_KEYS = [
@@ -153,6 +159,7 @@ const OCEAN_WET_ACTIVE_KEYS = [
   'oceanDelayBSend',
   'granularWavesSend',
   'degradeWavesSend',
+  'spectralFreezeWavesSend',
 ] as const satisfies readonly (keyof SliderState)[];
 
 const NATURE_WET_ACTIVE_KEYS = [
@@ -161,6 +168,7 @@ const NATURE_WET_ACTIVE_KEYS = [
   'natureDelayBSend',
   'granularNatureSend',
   'degradeNatureSend',
+  'spectralFreezeNatureSend',
 ] as const satisfies readonly (keyof SliderState)[];
 
 const WATER_WET_ACTIVE_KEYS = [
@@ -176,6 +184,7 @@ const WATER_WET_ACTIVE_KEYS = [
   'waterLayerChannels',
   'granularWaterSend',
   'degradeWaterSend',
+  'spectralFreezeWaterSend',
 ] as const satisfies readonly (keyof SliderState)[];
 
 const INSECTS_SHARED_WET_ACTIVE_KEYS = [
@@ -184,6 +193,7 @@ const INSECTS_SHARED_WET_ACTIVE_KEYS = [
   'insDelayBSend',
   'granularInsectsSend',
   'degradeInsectsSend',
+  'spectralFreezeInsectsSend',
 ] as const satisfies readonly (keyof SliderState)[];
 
 function hasPositiveValue(state: SliderState, keys: readonly (keyof SliderState)[]): boolean {
@@ -278,6 +288,7 @@ export function applyRoutingActivationForSliderValue(
     case 'lead1DelayASend':
     case 'lead1DelayBSend':
     case 'degradeLead1Send':
+    case 'spectralFreezeLead1Send':
       newState.leadEnabled = true;
       if (routeKey === 'lead1DelayBSend') {
         newState.granularDelayEnabled = true;
@@ -292,6 +303,7 @@ export function applyRoutingActivationForSliderValue(
     case 'lead2DelayASend':
     case 'lead2DelayBSend':
     case 'degradeLead2Send':
+    case 'spectralFreezeLead2Send':
       newState.lead2Enabled = true;
       if (routeKey === 'lead2DelayBSend') {
         newState.granularDelayEnabled = true;
@@ -306,6 +318,7 @@ export function applyRoutingActivationForSliderValue(
     case 'pianoDelayASend':
     case 'pianoDelayBSend':
     case 'degradePianoSend':
+    case 'spectralFreezePianoSend':
       newState.pianoEnabled = true;
       if (routeKey === 'pianoDelayBSend') {
         newState.granularDelayEnabled = true;
@@ -320,6 +333,7 @@ export function applyRoutingActivationForSliderValue(
     case 'drumDelayASend':
     case 'drumDelayBSend':
     case 'degradeDrumSend':
+    case 'spectralFreezeDrumSend':
       newState.drumEnabled = true;
       if (routeKey === 'drumDelayBSend') {
         newState.granularDelayEnabled = true;
@@ -334,6 +348,7 @@ export function applyRoutingActivationForSliderValue(
     case 'oceanDelayASend':
     case 'oceanDelayBSend':
     case 'degradeWavesSend':
+    case 'spectralFreezeWavesSend':
     case 'oceanSliceDuration':
     case 'oceanSliceDensity':
       newState.oceanSampleEnabled = true;
@@ -350,6 +365,7 @@ export function applyRoutingActivationForSliderValue(
     case 'natureDelayASend':
     case 'natureDelayBSend':
     case 'degradeNatureSend':
+    case 'spectralFreezeNatureSend':
       if (routeKey === 'natureDelayBSend') {
         newState.granularDelayEnabled = true;
       }
@@ -375,6 +391,7 @@ export function applyRoutingActivationForSliderValue(
     case 'synthLevel':
     case 'pad1ReverbSend':
     case 'degradePad1Send':
+    case 'spectralFreezePad1Send':
     case 'pad1DelayASend':
     case 'pad1DelayBSend':
       newState.padEnabled = true;
@@ -382,6 +399,7 @@ export function applyRoutingActivationForSliderValue(
     case 'pad2Level':
     case 'pad2ReverbSend':
     case 'degradePad2Send':
+    case 'spectralFreezePad2Send':
     case 'pad2DelayASend':
     case 'pad2DelayBSend':
       newState.pad2Enabled = true;
@@ -399,6 +417,7 @@ export function applyRoutingActivationForSliderValue(
     case 'waterDelayASend':
     case 'waterDelayBSend':
     case 'degradeWaterSend':
+    case 'spectralFreezeWaterSend':
     case 'waterLayerHardDrops':
     case 'waterLayerWaterDrops':
     case 'waterLayerTurbulence':
@@ -426,6 +445,7 @@ export function applyRoutingActivationForSliderValue(
     case 'insDelayASend':
     case 'insDelayBSend':
     case 'degradeInsectsSend':
+    case 'spectralFreezeInsectsSend':
       if (routeKey === 'insDelayBSend') {
         newState.granularDelayEnabled = true;
       }

@@ -23,13 +23,19 @@ function applyRuntimePresetData(
 }
 
 function getDirectKeys(level: ParamLevel, scope?: string): string[] {
-  const normalizedScope = canonicalizePresetScope(scope);
+  const normalizedScope = resolveRegistryScope(scope);
   if (level === 4) {
     return Object.keys(PARAM_REGISTRY);
   }
   return Object.entries(PARAM_REGISTRY)
     .filter(([, info]) => info.level === level && (!normalizedScope || info.scope === normalizedScope))
     .map(([key]) => key);
+}
+
+function resolveRegistryScope(scope?: string): string | undefined {
+  if (!scope) return undefined;
+  const hasDirectScope = Object.values(PARAM_REGISTRY).some(info => info.scope === scope);
+  return hasDirectScope ? scope : canonicalizePresetScope(scope);
 }
 
 function migrateLegacyPadCutoffParams(data: Record<string, unknown>): Record<string, unknown> {
@@ -80,7 +86,7 @@ export function extractParams(
   level: ParamLevel,
   scope?: string,
 ): Record<string, unknown> {
-  const normalizedScope = canonicalizePresetScope(scope);
+  const normalizedScope = resolveRegistryScope(scope);
   const result: Record<string, unknown> = {};
   for (const [key, info] of Object.entries(PARAM_REGISTRY)) {
     if (info.level === level && (!normalizedScope || info.scope === normalizedScope)) {
@@ -97,7 +103,7 @@ export function applyParams(
   level: ParamLevel,
   scope?: string,
 ): SliderState {
-  const normalizedScope = canonicalizePresetScope(scope);
+  const normalizedScope = resolveRegistryScope(scope);
   const merged: Record<string, unknown> = { ...state };
   const normalizedData = migrateLegacySpectralFreezeParams(migrateLegacyPadCutoffParams(normalizeDynamicsQualityFields(
     normalizeDynamicsErosionAliases(presetData),
@@ -113,7 +119,7 @@ export function applyParams(
 
 /** Get all keys owned by a level+scope */
 export function getKeysForScope(level: ParamLevel, scope: string): string[] {
-  const normalizedScope = canonicalizePresetScope(scope);
+  const normalizedScope = resolveRegistryScope(scope);
   return Object.entries(PARAM_REGISTRY)
     .filter(([, info]) => info.level === level && info.scope === normalizedScope)
     .map(([key]) => key);
@@ -199,7 +205,7 @@ const CASCADE_CHILDREN: Record<string, { level: ParamLevel; scope: string }[]> =
     { level: 2, scope: 'degradeErosion' },
   ],
   masterFx: [
-    { level: 1, scope: 'dynamicsSaturation' },
+    { level: 1, scope: 'masterSaturation' },
     { level: 1, scope: 'dynamicsEndChain' },
   ],
   pad1Kit: [

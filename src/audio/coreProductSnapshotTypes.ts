@@ -17,6 +17,7 @@ export type ProductSourceSnapshot = {
   delayBSend: number;
   granularSend: number;
   degradeSend: number;
+  spectralFreezeSend: number;
   diffuseSend: number;
   postLpfHz: number;
   stereoWidth: number;
@@ -497,6 +498,11 @@ export type CoreProductSnapshot = {
     spectralFreezeRouting: number;
     spectralFreezeReverbCrossfade: number;
     dynamicsDrive: number;
+    dynamicsMasterSaturationEnabled: boolean;
+    dynamicsMasterSaturationMode: number;
+    dynamicsMasterSaturationQuality: number;
+    dynamicsMasterSaturationTone: number;
+    dynamicsMasterSaturationBias: number;
     dynamicsEnabled: boolean;
     dynamicsDriftEnabled: boolean;
     dynamicsDriftMode: number;
@@ -588,6 +594,7 @@ export type CoreProductSnapshot = {
     dynamicsEq1Enabled: boolean;
     dynamicsEq1InputGain: number;
     dynamicsEq1OutputGain: number;
+    dynamicsEq1Mix: number;
     dynamicsEq1LowType: number;
     dynamicsEq1LowFreq: number;
     dynamicsEq1LowGain: number;
@@ -604,6 +611,7 @@ export type CoreProductSnapshot = {
     dynamicsEq2Enabled: boolean;
     dynamicsEq2InputGain: number;
     dynamicsEq2OutputGain: number;
+    dynamicsEq2Mix: number;
     dynamicsEq2LowType: number;
     dynamicsEq2LowFreq: number;
     dynamicsEq2LowGain: number;
@@ -675,6 +683,13 @@ export type CoreProductSnapshot = {
     dynamicsDelayBBus: number;
     dynamicsDegradeBus: number;
     dynamicsReverbBus: number;
+    fxGraphVersion: number;
+    fxRouteAmount: number[];
+    fxRouteMode: number[];
+    fxRouteMin: number[];
+    fxRouteMax: number[];
+    fxEdgeMask: number[];
+    fxDynamicsBus: number[];
   };
   master: {
     gain: number;

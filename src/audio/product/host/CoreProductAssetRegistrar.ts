@@ -7,6 +7,7 @@ import {
   samplePredictionState,
 } from './CoreProductSampleAssetResolver';
 import { isIOSLikeDevice, isMobileDevice } from '../../../platform';
+import { isCapacitorMacShell } from '../../../native/capacitorMacShell';
 import { CoreProductAssetWorkingSet, MOBILE_PRODUCT_ASSET_BUDGET } from './CoreProductAssetWorkingSet';
 import { predictedDecodedAssetBytes } from './CoreProductAssetPrediction';
 import {
@@ -31,6 +32,7 @@ export class CoreProductAssetRegistrar {
   private readonly pendingRegistrationPromises = new Map<number, Promise<void>>();
   private readonly requiredAssetIds = new Set<number>();
   private readonly mobile: boolean;
+  private readonly transferAssets: boolean;
   private readonly sampleAssetCache: SampleDecodedAssetCache;
   private readonly workingSet = new CoreProductAssetWorkingSet();
   private readonly releaseCoordinator = new CoreProductAssetReleaseCoordinator();
@@ -46,8 +48,10 @@ export class CoreProductAssetRegistrar {
     mobile = isMobileDevice() || isIOSLikeDevice(),
     decodeAsset: AssetDecoder = decodeCoreProductAsset,
     private readonly documentVisible: () => boolean = () => typeof document === 'undefined' || document.visibilityState === 'visible',
+    transferAssets = mobile || isCapacitorMacShell(),
   ) {
     this.mobile = mobile;
+    this.transferAssets = transferAssets;
     this.sampleAssetCache = new SampleDecodedAssetCache(
       mobile ? MOBILE_PRODUCT_ASSET_BUDGET.hostDecodedBytes : defaultSampleDecodedAssetCacheBytes(),
     );
@@ -55,6 +59,7 @@ export class CoreProductAssetRegistrar {
       runtime,
       cache: this.sampleAssetCache,
       mobile,
+      transferAssets,
       decodeAsset,
       registeredAssetIds: this.registeredAssetIds,
       pendingRegistrationAssetIds: this.pendingRegistrationAssetIds,
@@ -79,7 +84,7 @@ export class CoreProductAssetRegistrar {
     }
     if (this.registeredAssetIds.has(asset.assetId)) return;
     const decodedBytes = getDecodedCoreProductAssetByteLength(asset);
-    const ownership: AssetTransferOwnership = this.mobile ? 'transfer' : 'retain-host-copy';
+    const ownership: AssetTransferOwnership = this.transferAssets ? 'transfer' : 'retain-host-copy';
     this.pendingRegistrationAssetIds.add(asset.assetId);
     const registration = (async () => {
       await this.runtime.registerAsset(asset, ownership);

@@ -4,7 +4,9 @@ const GENERATED_CAPTURE_EVENT_BYTES = 64;
 const GENERATED_CAPTURE_EVENT_CAPACITY = 256;
 const SIMPLE_SEQUENCER_VISUAL_EVENT_BYTES = 64;
 const SIMPLE_SEQUENCER_VISUAL_EVENT_CAPACITY = 256;
-const TELEMETRY_BYTES = 14512;
+const TELEMETRY_BYTES = 14912;
+const TELEMETRY_FX_ROUTE_EFFECTIVE_AMOUNTS_OFFSET = 14508;
+const FX_ROUTE_COUNT = 100;
 const TELEMETRY_HARMONY_NOTE_POOL_OFFSET = 14428;
 const TELEMETRY_SYNTH_ARP_CURRENT_MIDIS_OFFSET = 14192;
 const TELEMETRY_SCATTER_OFFSET = 14256;
@@ -13,8 +15,8 @@ const TELEMETRY_ROUTING_MUTE_GROUP_OFFSET = 14280;
 const TELEMETRY_AUTO_CYCLE_OFFSET = 14316;
 const TELEMETRY_JOURNEY_SCHEDULE_OFFSET = 14352;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
-const EXPECTED_PRODUCT_ABI_VERSION = 6;
-const EXPECTED_PRODUCT_SCHEMA_HASH = 0xb68f8632;
+const EXPECTED_PRODUCT_ABI_VERSION = 7;
+const EXPECTED_PRODUCT_SCHEMA_HASH = 0x06dff237;
 const PRODUCT_ERROR_ASSET_IN_USE = -16;
 const SEQUENCER_UI_STATE_LANES = 16;
 const SEQUENCER_UI_STATE_STEPS = 64;
@@ -1729,6 +1731,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       modulationRangeCount: this.view.getUint32(ptr + 152, true),
       runtimeWalkCount,
       runtimeWalkValues,
+      fxRouteEffectiveAmounts: Array.from({ length: FX_ROUTE_COUNT }, (_, index) =>
+        this.view.getFloat32(ptr + TELEMETRY_FX_ROUTE_EFFECTIVE_AMOUNTS_OFFSET + index * 4, true)),
       earthTextureDebugState,
       productModulationDebug,
       rngSeed: this.view.getUint32(ptr + 928, true),
@@ -2126,6 +2130,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       activeGrains: this.view.getUint32(ptr + 68, true),
       runtimeWalkCount,
       runtimeWalkValues,
+      fxRouteEffectiveAmounts: Array.from({ length: FX_ROUTE_COUNT }, (_, index) =>
+        this.view.getFloat32(ptr + TELEMETRY_FX_ROUTE_EFFECTIVE_AMOUNTS_OFFSET + index * 4, true)),
       masterInputPeak: this.view.getFloat32(ptr + 968, true),
       masterOutputPeak: this.view.getFloat32(ptr + 972, true),
       masterOutputRms: this.view.getFloat32(ptr + 976, true),

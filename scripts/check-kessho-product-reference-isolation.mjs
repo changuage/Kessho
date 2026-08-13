@@ -306,12 +306,15 @@ const classifiedRuntimeAllowlist = new Map([
   ['./pianoSamples', 'asset manifest helper'],
   ['./transport', 'transport serialization metrics'],
   ['./waterPresets', 'temporary Water/Soundscape preset morph bridge'],
+  ['./waterLayerActivation', 'canonical Water layer activation mask constants'],
   ['./natureSlots', 'canonical nature slot state normalization'],
   ['./natureSampleCatalog', 'canonical nature sample metadata'],
   ['../platform', 'host platform detection for Product snapshot policy'],
   ['../native/capacitorMidiRouting', 'type-only MIDI message interface'],
+  ['../../../native/capacitorMacShell', 'host platform detection for Product asset transfer ownership'],
   ['../ui/state', 'UI serialization defaults only'],
   ['../ui/routing/routingMuteGroups', 'type-only routing mute-group event input contract'],
+  ['../ui/routing/fxRoutingGraph', 'pure cycle-safe Product FX graph schema and ordering policy'],
 ]);
 
 function assert(condition, message) {

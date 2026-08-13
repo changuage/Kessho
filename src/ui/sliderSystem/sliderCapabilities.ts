@@ -20,6 +20,13 @@ const DYNAMIC_SINGLE_KEYS = new Set<string>([
   'granularTensionValue', 'reverbTensionValue', 'drumTensionValue',
 ]);
 
+const DYNAMIC_DUAL_KEYS = new Set<string>([
+  'driftDepth', 'driftRate', 'driftStereo',
+  'erosionAge', 'erosionWow', 'erosionFlutter',
+  'masterSaturationDrive',
+  'endCompThreshold', 'endCompRatio', 'endCompKnee', 'endCompMix',
+]);
+
 const WALK_ONLY_KEY_SET = new Set<string>(WALK_ONLY_PARAM_KEYS);
 
 /**
@@ -32,6 +39,7 @@ export function getSliderCapability(key: string): SliderCapability | undefined {
   const explicit = PARAM_MODULATION_CAPABILITIES[key];
   if (explicit) return explicit;
   if (DYNAMIC_SINGLE_KEYS.has(key)) return 'single';
+  if (DYNAMIC_DUAL_KEYS.has(key)) return 'dual';
   if (WALK_ONLY_KEY_SET.has(key)) return 'walk-only';
   if (/^dynamicsSample[12]Bus$/.test(key)) return 'single';
   if (/^drum(?:Sub|Kick|Click|BeepHi|BeepLo|Noise|Membrane)MorphSpeed$/.test(key)) return 'single';
@@ -44,7 +52,7 @@ export function getSliderCapability(key: string): SliderCapability | undefined {
   if (/^(?:earth|ocean|birds2?|frogs|nature(?:[1-4])?|water|insects)/.test(key)) return 'dual';
   if (/^sample[12](?:AttackMs|DecayMs|Sustain|HoldMs|ReleaseMs|Level|Distance|PostLPF|StereoWidth|DiffuseSend|ReverbSend|DelayASend|DelayBSend)$/.test(key)) return 'dual';
   if (/^granularV[1-4](?:Speed|ScanRate|Pitch|Attack|Decay|Blur|GrainOct|Spray|PositionSpray|TimingSpray|Lookback|WriteGuard|PitchSpread|PitchJitter|PitchQuantize|ReverseChance|Bloom|Glide|LoopCrossfade|Density|GrainSize|Pan|Gain|PosLFORate|PosLFODepth|PanLFORate|StereoSpread|ReverseLFORate|WriteFollow|RecordLFORate)$/.test(key)) return 'dual';
-  // Drum voice and generated Dynamics schemas are all continuous Product keys.
+  // Drum voice and modular Dynamics schemas are continuous Product keys.
   if (/^(?:drum|dynamics)[A-Za-z0-9]+$/.test(key)) return 'dual';
   // Unknown keys fail the generated audit and are rendered as scalar controls
   // by callers until they receive an explicit registry entry.

@@ -42,7 +42,7 @@ export function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     presetId: defaultPresetId(sourceId),
     sourcePresetAId: 0, sourcePresetBId: 0, leadEnvelopeOverrideEnabled: false, leadAlgorithmPresetAEnabled: false,
     assetId: 0, level: 0.75, morph: 0, distance: 0, expression: 0.75,
-    dryGain: 1, reverbSend: 0.12, delayASend: 0, delayBSend: 0, granularSend: 0, degradeSend: 0, diffuseSend: 0,
+    dryGain: 1, reverbSend: 0.12, delayASend: 0, delayBSend: 0, granularSend: 0, degradeSend: 0, spectralFreezeSend: 0, diffuseSend: 0,
     postLpfHz: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ,
     stereoWidth: KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH,
     postLpfKeyTracking: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING,

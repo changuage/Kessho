@@ -36,6 +36,8 @@
       return 15u;
     case KESSHO_PRODUCT_PARAM_SOURCE_DEGRADE_SEND_ID:
       return 16u;
+    case KESSHO_PRODUCT_PARAM_SOURCE_SPECTRAL_FREEZE_SEND_ID:
+      return 17u;
     default:
       return kSourceModulationParamSlotCount;
   }

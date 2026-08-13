@@ -43,6 +43,56 @@ import {
 import { harmonySeedMaterialFromState } from './harmonySeedMaterial';
 import { coreProductArrangementSnapshotFromState } from './coreProductArrangementSnapshot';
 import { compileProductSourceMorphAutomation } from './product/compileProductSourceMorphAutomation';
+import {
+  FX_ROUTING_NODE_IDS,
+  buildFxRenderOrder,
+  canEnableFxRoute,
+  type FxRoutingConnection,
+  type FxRoutingGraphState,
+} from '../ui/routing/fxRoutingGraph';
+
+const FX_NODE_COUNT = FX_ROUTING_NODE_IDS.length;
+
+function encodeFxRoutingGraph(
+  graph: FxRoutingGraphState,
+): Pick<CoreProductSnapshot['routing'], 'fxGraphVersion' | 'fxRouteAmount' | 'fxRouteMode' | 'fxRouteMin' | 'fxRouteMax' | 'fxEdgeMask' | 'fxDynamicsBus'> {
+  if (graph.version !== 1 || buildFxRenderOrder(graph.edges) === null) {
+    throw new RangeError('FX routing graph must be version 1 and cycle-free');
+  }
+  const fxRouteAmount = Array<number>(FX_NODE_COUNT * FX_NODE_COUNT).fill(0);
+  const fxRouteMode = Array<number>(FX_NODE_COUNT * FX_NODE_COUNT).fill(0);
+  const fxRouteMin = Array<number>(FX_NODE_COUNT * FX_NODE_COUNT).fill(0);
+  const fxRouteMax = Array<number>(FX_NODE_COUNT * FX_NODE_COUNT).fill(0);
+  const fxEdgeMask = Array<number>(FX_NODE_COUNT).fill(0);
+  const seen = new Set<string>();
+  for (const edge of graph.edges) {
+    const from = FX_ROUTING_NODE_IDS.indexOf(edge.from);
+    const to = FX_ROUTING_NODE_IDS.indexOf(edge.to);
+    const key = `${edge.from}>${edge.to}`;
+    if (from < 0 || to < 0 || from === to || seen.has(key) || !Number.isFinite(edge.amount)) {
+      throw new RangeError(`Invalid FX routing edge: ${key}`);
+    }
+    seen.add(key);
+    const index = from * FX_NODE_COUNT + to;
+    const amount = edge.muted ? 0 : clamp(edge.amount, 0, 4);
+    const mode = edge.muted ? 'single' : edge.mode ?? 'single';
+    fxRouteAmount[index] = amount;
+    fxRouteMode[index] = mode === 'range' ? 1 : mode === 'walk' ? 2 : mode === 'sampleHold' ? 3 : 0;
+    fxRouteMin[index] = mode === 'single' ? amount : clamp(edge.min ?? amount, 0, 4);
+    fxRouteMax[index] = mode === 'single' ? amount : clamp(edge.max ?? amount, fxRouteMin[index]!, 4);
+    fxEdgeMask[from] = (fxEdgeMask[from] ?? 0) | (1 << to);
+  }
+  return {
+    fxGraphVersion: 1,
+    fxRouteAmount,
+    fxRouteMode,
+    fxRouteMin,
+    fxRouteMax,
+    fxEdgeMask,
+    fxDynamicsBus: FX_ROUTING_NODE_IDS.map((node) =>
+      clamp(Math.round(graph.dynamicsBuses?.[node] ?? 0), 0, 3) as 0 | 1 | 2 | 3),
+  };
+}
 export type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductHarmonySnapshot, ProductLaneSnapshot, ProductSoundscapeSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 
 // SNAPSHOT_AUTHORITY: GENERATED_SCHEMA_SERIALIZATION - this file maps app/UI state into generated Product Core fields.
@@ -300,6 +350,7 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     delayBSend: 0,
     granularSend: 0,
     degradeSend: 0,
+    spectralFreezeSend: 0,
     diffuseSend: 0,
     postLpfHz: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ,
     stereoWidth: KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH,
@@ -360,6 +411,7 @@ function sourceFromState(
       source.delayBSend = numberFromState(state, 'pad1DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularPad1Send', source.granularSend);
       source.degradeSend = numberFromState(state, 'degradePad1Send', source.degradeSend);
+      source.spectralFreezeSend = numberFromState(state, 'spectralFreezePad1Send', source.spectralFreezeSend);
       source.diffuseSend = distanceAdjustedNumberFromState(state, 'padDiffuseSend', 'pad1', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'padPostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'padStereoWidth', source.stereoWidth);
@@ -381,6 +433,7 @@ function sourceFromState(
       source.delayBSend = numberFromState(state, 'pad2DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularPad2Send', source.granularSend);
       source.degradeSend = numberFromState(state, 'degradePad2Send', source.degradeSend);
+      source.spectralFreezeSend = numberFromState(state, 'spectralFreezePad2Send', source.spectralFreezeSend);
       source.diffuseSend = distanceAdjustedNumberFromState(state, 'pad2DiffuseSend', 'pad2', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'pad2PostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'pad2StereoWidth', source.stereoWidth);
@@ -403,6 +456,7 @@ function sourceFromState(
       source.delayBSend = numberFromState(state, 'lead1DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularLead1Send', source.granularSend);
       source.degradeSend = numberFromState(state, 'degradeLead1Send', source.degradeSend);
+      source.spectralFreezeSend = numberFromState(state, 'spectralFreezeLead1Send', source.spectralFreezeSend);
       source.diffuseSend = distanceAdjustedNumberFromState(state, 'lead1DiffuseSend', 'lead1', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'lead1PostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'lead1StereoWidth', source.stereoWidth);
@@ -426,6 +480,7 @@ function sourceFromState(
       source.delayBSend = numberFromState(state, 'lead2DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularLead2Send', source.granularSend);
       source.degradeSend = numberFromState(state, 'degradeLead2Send', source.degradeSend);
+      source.spectralFreezeSend = numberFromState(state, 'spectralFreezeLead2Send', source.spectralFreezeSend);
       source.diffuseSend = distanceAdjustedNumberFromState(state, 'lead2DiffuseSend', 'lead2', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'lead2PostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'lead2StereoWidth', source.stereoWidth);
@@ -446,6 +501,7 @@ function sourceFromState(
       source.delayBSend = numberFromState(state, 'drumDelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularDrumSend', source.granularSend);
       source.degradeSend = numberFromState(state, 'degradeDrumSend', source.degradeSend);
+      source.spectralFreezeSend = numberFromState(state, 'spectralFreezeDrumSend', source.spectralFreezeSend);
       source.presetId = sourcePresetId('drum', 'default', 'default');
       source.drumVoicePresetAIds = drumVoicePresetIdsFromState(state, 'a');
       source.drumVoicePresetBIds = drumVoicePresetIdsFromState(state, 'b');
@@ -467,6 +523,7 @@ function sourceFromState(
         source.delayBSend = source.enabled ? payload.routePeaks[2] ?? 0 : source.delayBSend;
         source.granularSend = source.enabled ? payload.routePeaks[3] ?? 0 : source.granularSend;
         source.degradeSend = source.enabled ? payload.routePeaks[4] ?? 0 : source.degradeSend;
+        source.spectralFreezeSend = source.enabled ? payload.routePeaks[5] ?? 0 : source.spectralFreezeSend;
         source.presetId = soundscapePresetIdFromState(state);
       }
       break;
@@ -481,6 +538,7 @@ function sourceFromState(
   source.delayBSend = clamp(source.delayBSend, 0, 2);
   source.granularSend = clamp(source.granularSend, 0, 2);
   source.degradeSend = clamp(source.degradeSend, 0, 2);
+  source.spectralFreezeSend = clamp(source.spectralFreezeSend, 0, 2);
   source.diffuseSend = clamp(source.diffuseSend, 0, 2);
   source.level = clamp(source.level, 0, 1.5);
   source.morph = clamp(source.morph, 0, 1);
@@ -826,6 +884,45 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   const erosionEnabled = degradeControlsEnabled && (rawErosionEnabled || (degradeReturnActive && erosionMix > 0.0001));
   const reverbReturnActive = rawReverbEnabled || degradeToReverb > 0.0001;
   const reverbEnabled = reverbReturnActive || reverbToDegrade > 0.0001;
+  const legacyFxEdges: FxRoutingConnection[] = [];
+  const addLegacyFxEdge = (from: FxRoutingConnection['from'], to: FxRoutingConnection['to'], amount: number) => {
+    if (amount <= 0.0001 || !canEnableFxRoute(legacyFxEdges, from, to)) return;
+    legacyFxEdges.push({ from, to, amount });
+  };
+  addLegacyFxEdge('delayA', 'delayB', rawDelayAToB * delayCrossScale);
+  addLegacyFxEdge('delayA', 'granular', clamp(numberFromState(sliderState, 'delayAGranularSend', 0), 0, 1));
+  addLegacyFxEdge('delayA', 'degrade', clamp(numberFromState(sliderState, 'delayADegradeSend', 0), 0, 1));
+  addLegacyFxEdge('delayA', 'reverb', reverbEnabled && delayAEnabled
+    ? clamp(numberFromState(sliderState, 'delayAReverbSend', 0.4), 0, 1)
+    : 0);
+  addLegacyFxEdge('delayB', 'granular', clamp(numberFromState(sliderState, 'delayBGranularSend', 0), 0, 1));
+  addLegacyFxEdge('delayB', 'degrade', clamp(numberFromState(sliderState, 'delayBDegradeSend', 0), 0, 1));
+  addLegacyFxEdge('delayB', 'reverb', clamp(numberFromState(sliderState, 'granularDelayReverbSend', 0.4), 0, 1));
+  addLegacyFxEdge('delayB', 'delayA', rawDelayBToA * delayCrossScale * delayBToATrim);
+  addLegacyFxEdge('granular', 'degrade', clamp(numberFromState(sliderState, 'granularDegradeSend', 0), 0, 1));
+  addLegacyFxEdge('granular', 'reverb', reverbEnabled && granularEnabled
+    ? clamp(numberFromState(sliderState, 'granularReverbSend', 0.3) * ENGINE_TRIMS.granular, 0, 4)
+    : 0);
+  addLegacyFxEdge('granular', 'delayA', granularToDelayA);
+  addLegacyFxEdge('granular', 'delayB', granularToDelayB);
+  addLegacyFxEdge('degrade', 'reverb', degradeToReverb);
+  addLegacyFxEdge('reverb', 'degrade', reverbToDegrade);
+  if (sliderState?.spectralFreezeRouting === 'post') {
+    addLegacyFxEdge('reverb', 'freeze', 1);
+  } else {
+    addLegacyFxEdge('freeze', 'reverb', clamp(numberFromState(sliderState, 'spectralFreezeReverbCrossfade', 1), 0, 1));
+  }
+  const authoredFxGraph = sliderState?.fxRoutingGraph as FxRoutingGraphState | undefined;
+  const fxGraphSnapshot = encodeFxRoutingGraph(authoredFxGraph ?? ({
+    version: 1,
+    edges: legacyFxEdges,
+    dynamicsBuses: {
+      delayA: dynamicsBusFromState(sliderState, 'dynamicsDelayABus'),
+      delayB: dynamicsBusFromState(sliderState, 'dynamicsDelayBBus'),
+      degrade: dynamicsBusFromState(sliderState, 'dynamicsDegradeBus'),
+      reverb: dynamicsBusFromState(sliderState, 'dynamicsReverbBus'),
+    },
+  } as FxRoutingGraphState));
   const granularMacroModel = computeGranularMacroModel((sliderState ?? {}) as unknown as SliderState, (key, fallback) => numberFromState(sliderState, key as string, fallback));
   const granularUsesLegacyRuntimeSeed = usesLegacyGranularRuntimeSeed(sliderState);
   const reverbParams = resolveReverbSnapshotParams(sliderState, tension);
@@ -1155,9 +1252,12 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       spectralFreezeSustain: clamp(numberFromState(sliderState, 'spectralFreezeSustain', 1), 0, 1),
       spectralFreezeRouting: sliderState?.spectralFreezeRouting === 'post' ? 1 : 0,
       spectralFreezeReverbCrossfade: clamp(numberFromState(sliderState, 'spectralFreezeReverbCrossfade', 1), 0, 1),
-      dynamicsDrive: dynamicsEnabled
-        ? clamp(numberFromState(sliderState, 'dynamicsDrive', numberFromState(sliderState, 'dynamicsSaturationDrive', 0)), 0, 1)
-        : 0,
+      dynamicsDrive: clamp(numberFromState(sliderState, 'masterSaturationDrive', 0), 0, 1),
+      dynamicsMasterSaturationEnabled: booleanFromState(sliderState, 'masterSaturationEnabled', false),
+      dynamicsMasterSaturationMode: dynamicsSaturationModeId(sliderState?.masterSaturationMode),
+      dynamicsMasterSaturationQuality: dynamicsSaturationQualityId(sliderState?.masterSaturationQuality),
+      dynamicsMasterSaturationTone: clamp(numberFromState(sliderState, 'masterSaturationTone', 0.5), 0, 1),
+      dynamicsMasterSaturationBias: clamp(numberFromState(sliderState, 'masterSaturationBias', 0.5), 0, 1),
       dynamicsEnabled,
       dynamicsDriftEnabled: dynamicsEnabled && driftEnabled,
       dynamicsDriftMode: dynamicsDriftModeId(sliderState?.driftMode),
@@ -1229,7 +1329,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       dynamicsSaturationDrive: clamp(numberFromState(sliderState, 'dynamicsSaturationDrive', 0), 0, 1),
       dynamicsSaturationTone: clamp(numberFromState(sliderState, 'dynamicsSaturationTone', 0.5), 0, 1),
       dynamicsSaturationBias: clamp(numberFromState(sliderState, 'dynamicsSaturationBias', 0.5), 0, 1),
-      dynamicsEndCompEnabled: dynamicsEnabled && booleanFromState(sliderState, 'endCompEnabled', false),
+      dynamicsEndCompEnabled: booleanFromState(sliderState, 'endCompEnabled', false),
       dynamicsEndCompMode: dynamicsEndCompModeId(sliderState?.endCompMode),
       dynamicsEndCompThreshold: clamp(numberFromState(sliderState, 'endCompThreshold', -18), -60, 0),
       dynamicsEndCompKnee: clamp(numberFromState(sliderState, 'endCompKnee', 12), 0, 40),
@@ -1249,11 +1349,12 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       dynamicsEq1Enabled: booleanFromState(sliderState, 'dynamicsEq1Enabled', false),
       dynamicsEq1InputGain: clamp(numberFromState(sliderState, 'dynamicsEq1InputGain', 0), -24, 24),
       dynamicsEq1OutputGain: clamp(numberFromState(sliderState, 'dynamicsEq1OutputGain', 0), -24, 24),
+      dynamicsEq1Mix: clamp(numberFromState(sliderState, 'dynamicsEq1Mix', 1), 0, 1),
       dynamicsEq1LowType: dynamicsEqEdgeTypeId(sliderState?.dynamicsEq1LowType),
       dynamicsEq1LowFreq: clamp(numberFromState(sliderState, 'dynamicsEq1LowFreq', 120), 20, 20000),
       dynamicsEq1LowGain: clamp(numberFromState(sliderState, 'dynamicsEq1LowGain', 0), -24, 24),
       dynamicsEq1LowQ: clamp(numberFromState(sliderState, 'dynamicsEq1LowQ', 0.7), 0.1, 18),
-      dynamicsEq1LowSlope: clamp(numberFromState(sliderState, 'dynamicsEq1LowSlope', 1), 0.25, 4),
+      dynamicsEq1LowSlope: clamp(numberFromState(sliderState, 'dynamicsEq1LowSlope', 1), 0.25, 1),
       dynamicsEq1MidFreq: clamp(numberFromState(sliderState, 'dynamicsEq1MidFreq', 1000), 20, 20000),
       dynamicsEq1MidGain: clamp(numberFromState(sliderState, 'dynamicsEq1MidGain', 0), -24, 24),
       dynamicsEq1MidQ: clamp(numberFromState(sliderState, 'dynamicsEq1MidQ', 0.9), 0.1, 18),
@@ -1261,15 +1362,16 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       dynamicsEq1HighFreq: clamp(numberFromState(sliderState, 'dynamicsEq1HighFreq', 8000), 20, 20000),
       dynamicsEq1HighGain: clamp(numberFromState(sliderState, 'dynamicsEq1HighGain', 0), -24, 24),
       dynamicsEq1HighQ: clamp(numberFromState(sliderState, 'dynamicsEq1HighQ', 0.7), 0.1, 18),
-      dynamicsEq1HighSlope: clamp(numberFromState(sliderState, 'dynamicsEq1HighSlope', 1), 0.25, 4),
+      dynamicsEq1HighSlope: clamp(numberFromState(sliderState, 'dynamicsEq1HighSlope', 1), 0.25, 1),
       dynamicsEq2Enabled: booleanFromState(sliderState, 'dynamicsEq2Enabled', false),
       dynamicsEq2InputGain: clamp(numberFromState(sliderState, 'dynamicsEq2InputGain', 0), -24, 24),
       dynamicsEq2OutputGain: clamp(numberFromState(sliderState, 'dynamicsEq2OutputGain', 0), -24, 24),
+      dynamicsEq2Mix: clamp(numberFromState(sliderState, 'dynamicsEq2Mix', 1), 0, 1),
       dynamicsEq2LowType: dynamicsEqEdgeTypeId(sliderState?.dynamicsEq2LowType),
       dynamicsEq2LowFreq: clamp(numberFromState(sliderState, 'dynamicsEq2LowFreq', 90), 20, 20000),
       dynamicsEq2LowGain: clamp(numberFromState(sliderState, 'dynamicsEq2LowGain', 0), -24, 24),
       dynamicsEq2LowQ: clamp(numberFromState(sliderState, 'dynamicsEq2LowQ', 0.7), 0.1, 18),
-      dynamicsEq2LowSlope: clamp(numberFromState(sliderState, 'dynamicsEq2LowSlope', 1), 0.25, 4),
+      dynamicsEq2LowSlope: clamp(numberFromState(sliderState, 'dynamicsEq2LowSlope', 1), 0.25, 1),
       dynamicsEq2MidFreq: clamp(numberFromState(sliderState, 'dynamicsEq2MidFreq', 2200), 20, 20000),
       dynamicsEq2MidGain: clamp(numberFromState(sliderState, 'dynamicsEq2MidGain', 0), -24, 24),
       dynamicsEq2MidQ: clamp(numberFromState(sliderState, 'dynamicsEq2MidQ', 0.9), 0.1, 18),
@@ -1277,7 +1379,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       dynamicsEq2HighFreq: clamp(numberFromState(sliderState, 'dynamicsEq2HighFreq', 10000), 20, 20000),
       dynamicsEq2HighGain: clamp(numberFromState(sliderState, 'dynamicsEq2HighGain', 0), -24, 24),
       dynamicsEq2HighQ: clamp(numberFromState(sliderState, 'dynamicsEq2HighQ', 0.7), 0.1, 18),
-      dynamicsEq2HighSlope: clamp(numberFromState(sliderState, 'dynamicsEq2HighSlope', 1), 0.25, 4),
+      dynamicsEq2HighSlope: clamp(numberFromState(sliderState, 'dynamicsEq2HighSlope', 1), 0.25, 1),
       sidechainEnabled: booleanFromState(sliderState, 'sidechainEnabled', false),
       sidechainKeyA: sidechainKeyId(sliderState?.sidechainKeyA),
       sidechainKeyB: sidechainKeyId(sliderState?.sidechainKeyB),
@@ -1340,6 +1442,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       dynamicsDelayBBus: dynamicsBusFromState(sliderState, 'dynamicsDelayBBus'),
       dynamicsDegradeBus: dynamicsBusFromState(sliderState, 'dynamicsDegradeBus'),
       dynamicsReverbBus: dynamicsBusFromState(sliderState, 'dynamicsReverbBus'),
+      ...fxGraphSnapshot,
     },
     master: {
       gain: clamp(numberFromState(sliderState, 'masterVolume', DEFAULT_MASTER_VOLUME) * MASTER_OUTPUT_TRIM, 0, 1.5),

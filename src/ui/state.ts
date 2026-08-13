@@ -49,6 +49,11 @@ import {
   type RoutingMuteGroupsState,
 } from './routing/routingMuteGroups';
 import {
+  DEFAULT_FX_ROUTING_GRAPH_STATE,
+  normalizeFxRoutingGraphState,
+  type FxRoutingGraphState,
+} from './routing/fxRoutingGraph';
+import {
   SAMPLE_DYNAMIC_KEYS,
   SAMPLE_DYNAMIC_MODES,
   SAMPLE_LIBRARY_KEYS,
@@ -345,6 +350,7 @@ export interface SavedPreset {
 }
 
 export interface SliderState extends NatureSlotState {
+  fxRoutingGraph: FxRoutingGraphState;
   // Master Mixer
   masterVolume: number;       // 0..1 step 0.01
   synthLevel: number;         // 0..1 step 0.01 - pad 1 dry level (ENGINE_TRIMS.pad applied in engine)
@@ -421,12 +427,30 @@ export interface SliderState extends NatureSlotState {
   degradeWaterSend: number; // 0..1 Water send into Degrade
   degradeInsectsSend: number; // 0..1 Insects send into Degrade
   degradeNatureSend: number; // 0..1 Nature send into Degrade
+  spectralFreezePad1Send: number;
+  spectralFreezePad2Send: number;
+  spectralFreezeLead1Send: number;
+  spectralFreezeLead2Send: number;
+  spectralFreezeSample1Send: number;
+  spectralFreezeSample2Send: number;
+  spectralFreezePianoSend: number;
+  spectralFreezeDrumSend: number;
+  spectralFreezeWavesSend: number;
+  spectralFreezeWaterSend: number;
+  spectralFreezeInsectsSend: number;
+  spectralFreezeNatureSend: number;
   dynamicsEnabled: boolean;    // master enable for Dynamics page processing
-  dynamicsSaturationEnabled: boolean; // dynamics-page master saturation on/off
+  dynamicsSaturationEnabled: boolean; // modular Saturator on/off
   dynamicsSaturationMode: 'clean' | 'tape' | 'tube' | 'diode' | 'fold';
   dynamicsSaturationDrive: number;
   dynamicsSaturationTone: number;
   dynamicsSaturationBias: number;
+  masterSaturationEnabled: boolean; // fixed terminal saturation before end compression
+  masterSaturationMode: 'clean' | 'tape' | 'tube' | 'diode' | 'fold';
+  masterSaturationQuality: 'eco' | 'smooth' | 'hq';
+  masterSaturationDrive: number;
+  masterSaturationTone: number;
+  masterSaturationBias: number;
   sidechainEnabled: boolean;   // trigger-derived ducking for selected target sources
   sidechainKeyA: 'off' | 'sub' | 'kick' | 'click' | 'beepHi' | 'beepLo' | 'noise' | 'membrane';
   sidechainKeyB: 'off' | 'sub' | 'kick' | 'click' | 'beepHi' | 'beepLo' | 'noise' | 'membrane';
@@ -476,6 +500,7 @@ export interface SliderState extends NatureSlotState {
   dynamicsEq1Enabled: boolean;
   dynamicsEq1InputGain: number;
   dynamicsEq1OutputGain: number;
+  dynamicsEq1Mix: number;
   dynamicsEq1LowType: DynamicsEqEdgeBandType;
   dynamicsEq1LowFreq: number;
   dynamicsEq1LowGain: number;
@@ -492,6 +517,7 @@ export interface SliderState extends NatureSlotState {
   dynamicsEq2Enabled: boolean;
   dynamicsEq2InputGain: number;
   dynamicsEq2OutputGain: number;
+  dynamicsEq2Mix: number;
   dynamicsEq2LowType: DynamicsEqEdgeBandType;
   dynamicsEq2LowFreq: number;
   dynamicsEq2LowGain: number;
@@ -923,7 +949,7 @@ export interface SliderState extends NatureSlotState {
   spectralFreezeTone: number;
   spectralFreezeWidth: number;
   spectralFreezeSustain: number;
-  spectralFreezeMix: number;             // 0..1 wet/dry
+  spectralFreezeMix: number;             // 0..1 frozen return level (legacy key name)
   spectralFreezeRouting: 'pre' | 'post'; // pre-reverb or post-reverb
   spectralFreezeReverbCrossfade: number;  // 0..1 additive freeze-to-reverb send
 
@@ -1846,6 +1872,7 @@ export interface SliderState extends NatureSlotState {
 
 // Sorted keys for stable serialization
 const STATE_KEYS: (keyof SliderState)[] = [
+  'fxRoutingGraph',
   'masterVolume',
   'synthLevel',
   'pad2Level',
@@ -1917,6 +1944,18 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'degradeWaterSend',
   'degradeInsectsSend',
   'degradeNatureSend',
+  'spectralFreezePad1Send',
+  'spectralFreezePad2Send',
+  'spectralFreezeLead1Send',
+  'spectralFreezeLead2Send',
+  'spectralFreezeSample1Send',
+  'spectralFreezeSample2Send',
+  'spectralFreezePianoSend',
+  'spectralFreezeDrumSend',
+  'spectralFreezeWavesSend',
+  'spectralFreezeWaterSend',
+  'spectralFreezeInsectsSend',
+  'spectralFreezeNatureSend',
   'delayADegradeSend',
   'delayBDegradeSend',
   'granularDegradeSend',
@@ -1928,6 +1967,12 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'dynamicsSaturationDrive',
   'dynamicsSaturationTone',
   'dynamicsSaturationBias',
+  'masterSaturationEnabled',
+  'masterSaturationMode',
+  'masterSaturationQuality',
+  'masterSaturationDrive',
+  'masterSaturationTone',
+  'masterSaturationBias',
   'sidechainEnabled',
   'sidechainKeyA',
   'sidechainKeyB',
@@ -1977,6 +2022,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'dynamicsEq1Enabled',
   'dynamicsEq1InputGain',
   'dynamicsEq1OutputGain',
+  'dynamicsEq1Mix',
   'dynamicsEq1LowType',
   'dynamicsEq1LowFreq',
   'dynamicsEq1LowGain',
@@ -1993,6 +2039,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'dynamicsEq2Enabled',
   'dynamicsEq2InputGain',
   'dynamicsEq2OutputGain',
+  'dynamicsEq2Mix',
   'dynamicsEq2LowType',
   'dynamicsEq2LowFreq',
   'dynamicsEq2LowGain',
@@ -2826,7 +2873,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   // Ocean
   'earthLevel',
   'oceanSampleEnabled',
-  'oceanSampleLevel', 'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend', 'degradeWavesSend',
+  'oceanSampleLevel', 'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend', 'degradeWavesSend', 'spectralFreezeWavesSend',
   'oceanSliceDuration', 'oceanSliceDensity',
   'oceanFilterType',
   'oceanFilterCutoff',
@@ -2843,13 +2890,13 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'birdsEnabled', 'birdsLevel', 'birdsReverbSend', 'birdsDelayASend', 'birdsDelayBSend', 'birdsSliceDuration', 'birdsSliceDensity',
   'birds2Enabled', 'birds2Level', 'birds2ReverbSend', 'birds2DelayASend', 'birds2DelayBSend', 'birds2SliceDuration', 'birds2SliceDensity',
   'frogsEnabled', 'frogsLevel', 'frogsReverbSend', 'frogsDelayASend', 'frogsDelayBSend', 'frogsSliceDuration', 'frogsSliceDensity',
-  'natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'degradeNatureSend',
+  'natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'degradeNatureSend', 'spectralFreezeNatureSend',
   // Soundscapes (Water + Insects)
   'waterEnabled',
   'waterPreset', 'waterMorphA', 'waterMorphB', 'waterMorph',
   'waterIntensity', 'waterDistance', 'waterBaseFreq',
   'waterDropSize', 'waterHardness', 'waterGlassThickness',
-  'waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'degradeWaterSend', 'waterLevel',
+  'waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'degradeWaterSend', 'spectralFreezeWaterSend', 'waterLevel',
   'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
   'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
   'waterLayerHardDropsEnabled', 'waterLayerWaterDropsEnabled', 'waterLayerBubblingEnabled',
@@ -2864,7 +2911,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'waterChannelsMorph', 'waterChannelsSpeed',
   'insectsMasterEnabled', 'insectsEnabled', 'insectsEngine',
   'insectsDensity', 'insectsTemperature', 'insectsDistance', 'insectsProximity',
-  'insectsAntiphony', 'insectsClickRate', 'insectsMotion', 'insectsLevel', 'insectsSharedLevel', 'insectsReverbSend', 'insDelayASend', 'insDelayBSend', 'degradeInsectsSend',
+  'insectsAntiphony', 'insectsClickRate', 'insectsMotion', 'insectsLevel', 'insectsSharedLevel', 'insectsReverbSend', 'insDelayASend', 'insDelayBSend', 'degradeInsectsSend', 'spectralFreezeInsectsSend',
   'insects2Enabled', 'insects2Engine',
   'insects2Density', 'insects2Temperature', 'insects2Distance', 'insects2Proximity',
   'insects2Antiphony', 'insects2ClickRate', 'insects2Motion', 'insects2Level',
@@ -2944,6 +2991,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
 ];
 
 const HARMONY_JSON_STATE_KEYS = new Set<keyof SliderState>([
+  'fxRoutingGraph',
   'manualHarmonyControl',
   'harmonyChordSlots',
   'harmonyChordSlotsA',
@@ -2976,6 +3024,7 @@ const LEGACY_HARMONY_JSON_STATE_KEYS = new Set<keyof SliderState>([
  * Default slider state with conservative values for performance
  */
 export const DEFAULT_STATE: SliderState = {
+  fxRoutingGraph: structuredClone(DEFAULT_FX_ROUTING_GRAPH_STATE),
   // Master Mixer
   masterVolume: 0.85,
   synthLevel: 0.6,
@@ -3052,12 +3101,30 @@ export const DEFAULT_STATE: SliderState = {
   degradeWaterSend: 0,
   degradeInsectsSend: 0,
   degradeNatureSend: 0,
+  spectralFreezePad1Send: 0,
+  spectralFreezePad2Send: 0,
+  spectralFreezeLead1Send: 0,
+  spectralFreezeLead2Send: 0,
+  spectralFreezeSample1Send: 0,
+  spectralFreezeSample2Send: 0,
+  spectralFreezePianoSend: 0,
+  spectralFreezeDrumSend: 0,
+  spectralFreezeWavesSend: 0,
+  spectralFreezeWaterSend: 0,
+  spectralFreezeInsectsSend: 0,
+  spectralFreezeNatureSend: 0,
   dynamicsEnabled: false,
   dynamicsSaturationEnabled: false,
   dynamicsSaturationMode: 'clean' as const,
   dynamicsSaturationDrive: 0,
   dynamicsSaturationTone: 0.5,
   dynamicsSaturationBias: 0.5,
+  masterSaturationEnabled: false,
+  masterSaturationMode: 'clean' as const,
+  masterSaturationQuality: 'smooth' as const,
+  masterSaturationDrive: 0,
+  masterSaturationTone: 0.5,
+  masterSaturationBias: 0.5,
   sidechainEnabled: false,
   sidechainKeyA: 'kick' as const,
   sidechainKeyB: 'off' as const,
@@ -3107,6 +3174,7 @@ export const DEFAULT_STATE: SliderState = {
   dynamicsEq1Enabled: false,
   dynamicsEq1InputGain: 0,
   dynamicsEq1OutputGain: 0,
+  dynamicsEq1Mix: 1,
   dynamicsEq1LowType: 'shelf',
   dynamicsEq1LowFreq: 120,
   dynamicsEq1LowGain: 0,
@@ -3123,6 +3191,7 @@ export const DEFAULT_STATE: SliderState = {
   dynamicsEq2Enabled: false,
   dynamicsEq2InputGain: 0,
   dynamicsEq2OutputGain: 0,
+  dynamicsEq2Mix: 1,
   dynamicsEq2LowType: 'shelf',
   dynamicsEq2LowFreq: 90,
   dynamicsEq2LowGain: 0,
@@ -4616,6 +4685,18 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   degradeWaterSend: { min: 0, max: 1, step: 0.01 },
   degradeInsectsSend: { min: 0, max: 1, step: 0.01 },
   degradeNatureSend: { min: 0, max: 1, step: 0.01 },
+  spectralFreezePad1Send: { min: 0, max: 1, step: 0.01 },
+  spectralFreezePad2Send: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeLead1Send: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeLead2Send: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeSample1Send: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeSample2Send: { min: 0, max: 1, step: 0.01 },
+  spectralFreezePianoSend: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeDrumSend: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeWavesSend: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeWaterSend: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeInsectsSend: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeNatureSend: { min: 0, max: 1, step: 0.01 },
   delayADegradeSend: { min: 0, max: 1, step: 0.01 },
   delayBDegradeSend: { min: 0, max: 1, step: 0.01 },
   granularDegradeSend: { min: 0, max: 1, step: 0.01 },
@@ -4624,6 +4705,9 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   dynamicsSaturationDrive: { min: 0, max: 1, step: 0.01 },
   dynamicsSaturationTone: { min: 0, max: 1, step: 0.01 },
   dynamicsSaturationBias: { min: 0, max: 1, step: 0.01 },
+  masterSaturationDrive: { min: 0, max: 1, step: 0.01 },
+  masterSaturationTone: { min: 0, max: 1, step: 0.01 },
+  masterSaturationBias: { min: 0, max: 1, step: 0.01 },
   sidechainKeyAWeight: { min: 0, max: 1, step: 0.01 },
   sidechainKeyBWeight: { min: 0, max: 1, step: 0.01 },
   sidechainAmount: { min: 0, max: 1, step: 0.01 },
@@ -4668,30 +4752,32 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   dynamicsReverbBus: { min: 0, max: 3, step: 1 },
   dynamicsEq1InputGain: { min: -24, max: 24, step: 0.1 },
   dynamicsEq1OutputGain: { min: -24, max: 24, step: 0.1 },
+  dynamicsEq1Mix: { min: 0, max: 1, step: 0.01 },
   dynamicsEq1LowFreq: { min: 20, max: 20000, step: 1 },
   dynamicsEq1LowGain: { min: -18, max: 18, step: 0.1 },
   dynamicsEq1LowQ: { min: 0.1, max: 18, step: 0.1 },
-  dynamicsEq1LowSlope: { min: 0.25, max: 4, step: 0.05 },
+  dynamicsEq1LowSlope: { min: 0.25, max: 1, step: 0.05 },
   dynamicsEq1MidFreq: { min: 20, max: 20000, step: 1 },
   dynamicsEq1MidGain: { min: -18, max: 18, step: 0.1 },
   dynamicsEq1MidQ: { min: 0.1, max: 18, step: 0.1 },
   dynamicsEq1HighFreq: { min: 20, max: 20000, step: 1 },
   dynamicsEq1HighGain: { min: -18, max: 18, step: 0.1 },
   dynamicsEq1HighQ: { min: 0.1, max: 18, step: 0.1 },
-  dynamicsEq1HighSlope: { min: 0.25, max: 4, step: 0.05 },
+  dynamicsEq1HighSlope: { min: 0.25, max: 1, step: 0.05 },
   dynamicsEq2InputGain: { min: -24, max: 24, step: 0.1 },
   dynamicsEq2OutputGain: { min: -24, max: 24, step: 0.1 },
+  dynamicsEq2Mix: { min: 0, max: 1, step: 0.01 },
   dynamicsEq2LowFreq: { min: 20, max: 20000, step: 1 },
   dynamicsEq2LowGain: { min: -18, max: 18, step: 0.1 },
   dynamicsEq2LowQ: { min: 0.1, max: 18, step: 0.1 },
-  dynamicsEq2LowSlope: { min: 0.25, max: 4, step: 0.05 },
+  dynamicsEq2LowSlope: { min: 0.25, max: 1, step: 0.05 },
   dynamicsEq2MidFreq: { min: 20, max: 20000, step: 1 },
   dynamicsEq2MidGain: { min: -18, max: 18, step: 0.1 },
   dynamicsEq2MidQ: { min: 0.1, max: 18, step: 0.1 },
   dynamicsEq2HighFreq: { min: 20, max: 20000, step: 1 },
   dynamicsEq2HighGain: { min: -18, max: 18, step: 0.1 },
   dynamicsEq2HighQ: { min: 0.1, max: 18, step: 0.1 },
-  dynamicsEq2HighSlope: { min: 0.25, max: 4, step: 0.05 },
+  dynamicsEq2HighSlope: { min: 0.25, max: 1, step: 0.05 },
   driftMix: { min: 0, max: 1, step: 0.01 },
   driftAge: { min: 0, max: 1, step: 0.01 },
   driftBias: { min: 0, max: 1, step: 0.01 },
@@ -5529,9 +5615,9 @@ const LEGACY_STATE_KEY_ALIASES = {
   leadDelaySpread: 'delayASpread',
   leadDelayFilter: 'delayAFilter',
   leadDelaySend: 'delayASend',
-  masterSatDrive: 'dynamicsSaturationDrive',
-  masterSatMode: 'dynamicsSaturationMode',
-  masterSatTone: 'dynamicsSaturationTone',
+  masterSatDrive: 'masterSaturationDrive',
+  masterSatMode: 'masterSaturationMode',
+  masterSatTone: 'masterSaturationTone',
   characterLevel: 'degradeLevel',
   characterPad1Send: 'degradePad1Send',
   characterPad2Send: 'degradePad2Send',
@@ -5650,11 +5736,11 @@ export function applyLegacyStateKeyAliases(record: Record<string, unknown>): voi
 
   const legacyMasterSatDrive = record.masterSatDrive;
   if (
-    !('dynamicsSaturationEnabled' in record)
+    !('masterSaturationEnabled' in record)
     && typeof legacyMasterSatDrive === 'number'
     && legacyMasterSatDrive > 0
   ) {
-    record.dynamicsSaturationEnabled = true;
+    record.masterSaturationEnabled = true;
   }
 
   const legacyDegradeEnabled = record.degradeEnabled;
@@ -5735,6 +5821,10 @@ function parseJsonStateValue(value: string): unknown {
 function decodeHarmonyJsonStateValue(state: SliderState, key: keyof SliderState, value: string): boolean {
   if (!HARMONY_JSON_STATE_KEYS.has(key) && !LEGACY_HARMONY_JSON_STATE_KEYS.has(key)) return false;
   const parsed = parseJsonStateValue(value);
+  if (key === 'fxRoutingGraph') {
+    state.fxRoutingGraph = normalizeFxRoutingGraphState(parsed, state as unknown as Record<string, unknown>);
+    return true;
+  }
   if (key === 'manualHarmonyControl') {
     state.manualHarmonyControl = sanitizeManualHarmonyControl(parsed);
     return true;
@@ -6054,11 +6144,18 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.dynamicsEnabled = value === 'true';
         } else if (key === 'dynamicsSaturationEnabled') {
           state.dynamicsSaturationEnabled = value === 'true';
+        } else if (key === 'masterSaturationEnabled') {
+          state.masterSaturationEnabled = value === 'true';
         } else if (
-          key === 'dynamicsSaturationMode' &&
+          (key === 'dynamicsSaturationMode' || key === 'masterSaturationMode') &&
           ['clean', 'tape', 'tube', 'diode', 'fold'].includes(value)
         ) {
-          state.dynamicsSaturationMode = value as SliderState['dynamicsSaturationMode'];
+          (state as Record<string, unknown>)[key] = value;
+        } else if (
+          (key === 'dynamicsSaturationQuality' || key === 'masterSaturationQuality') &&
+          ['eco', 'smooth', 'hq'].includes(value)
+        ) {
+          (state as Record<string, unknown>)[key] = value;
         } else if (key === 'sidechainEnabled') {
           state.sidechainEnabled = value === 'true';
         } else if (key === 'driftEnabled') {
@@ -6634,6 +6731,7 @@ export function migratePreset(preset: any): SavedPreset {
       state[key] = value;
     }
   }
+  state.fxRoutingGraph = normalizeFxRoutingGraphState(state.fxRoutingGraph, state);
 
   // ═══ Evolve configs: migrate intensity → evolution if present ═══
   let drumEvolveConfigs = preset.drumEvolveConfigs as SerializedEvolveConfig[] | undefined;

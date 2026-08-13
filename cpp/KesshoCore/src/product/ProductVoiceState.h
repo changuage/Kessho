@@ -44,6 +44,7 @@ struct SourceState {
   float delay_b_send = 0.0f;
   float granular_send = 0.0f;
   float degrade_send = 0.0f;
+  float spectral_freeze_send = 0.0f;
   float granular_send_gain = 0.0f;
   uint64_t granular_send_gain_frame = UINT64_MAX;
   float diffuse_send = 0.0f;

@@ -12,10 +12,11 @@ if (!testName) {
   throw new Error('Usage: node scripts/run-kessho-product-cpp-test.mjs <TestName>');
 }
 const extraSources = process.argv.slice(3);
+const sanitize = process.env.KESSHO_CPP_TEST_SANITIZE === '1';
 
 const buildDir = resolve(root, 'build/kessho-core/product-tests');
 const testSource = resolve(root, `cpp/KesshoCore/tests/${testName}.cpp`);
-const testBinary = resolve(buildDir, testName);
+const testBinary = resolve(buildDir, sanitize ? `${testName}-sanitize` : testName);
 mkdirSync(buildDir, { recursive: true });
 
 function run(command, args) {
@@ -25,7 +26,8 @@ function run(command, args) {
 
 run('/usr/bin/clang++', [
   '-std=c++17',
-  '-O2',
+  sanitize ? '-O1' : '-O2',
+  ...(sanitize ? ['-g', '-fno-omit-frame-pointer', '-fsanitize=address,undefined'] : []),
   '-Wall',
   '-Wextra',
   '-Werror',

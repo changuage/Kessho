@@ -37,6 +37,14 @@ const leadEndpointMigration = fs.readFileSync(
   path.join(cwd, 'supabase/migrations/20260806224332_preset_lead_endpoint_content_v2.sql'),
   'utf8',
 ).replace(/^\s*BEGIN;\s*/i, '').replace(/\s*COMMIT;\s*$/i, '');
+const sharedDynamicsProcessorMigration = fs.readFileSync(
+  path.join(cwd, 'supabase/migrations/20260812103013_shared_dynamics_processor_content.sql'),
+  'utf8',
+).replace(/^\s*BEGIN;\s*/i, '').replace(/\s*COMMIT;\s*$/i, '');
+const routingMuteSceneMigration = fs.readFileSync(
+  path.join(cwd, 'supabase/migrations/20260812155056_routing_mute_scene_content.sql'),
+  'utf8',
+).replace(/^\s*BEGIN;\s*/i, '').replace(/\s*COMMIT;\s*$/i, '');
 
 const json = value => JSON.stringify(value);
 async function hash(payload) {
@@ -70,6 +78,8 @@ try {
   )).rows[0]?.installed === true;
   if (!migrationInstalled) await client.query(migration);
   await client.query(leadEndpointMigration);
+  await client.query(sharedDynamicsProcessorMigration);
+  await client.query(routingMuteSceneMigration);
 
   const users = (await client.query('select id::text from auth.users order by created_at desc nulls last limit 2')).rows.map(row => row.id);
   const user = users[0];
@@ -95,12 +105,30 @@ try {
     contentType: 'parameterBehaviorMap',
     content: { scope: 'granularVoice1', behaviors: { granularV1Blur: { mode: 'walk', range: { min: 0.2, max: 0.8 } } } },
   };
+  const equalizerContent = {
+    schemaVersion: 1,
+    contentType: 'dynamicsEq',
+    content: { inputGain: 0, outputGain: 0, mix: 1, lowFreq: 120, lowGain: 1.5 },
+  };
+  const saturatorContent = {
+    schemaVersion: 1,
+    contentType: 'saturator',
+    content: { mode: 'tape', quality: 'smooth', drive: 0.42, tone: 0.55, bias: 0.5 },
+  };
+  const routingMuteSceneContent = {
+    schemaVersion: 1,
+    contentType: 'routingMuteScene',
+    content: { schemaVersion: 2, activeTargetIds: ['drums', 'pad1'], activeStateKeys: ['waterEnabled'] },
+  };
   const resolvedHash = await hash(resolved);
   const metadataHash = await hash(metadata);
   const contentHash = await hash(content);
   const drumEndpointHash = await hash(drumEndpoint);
   const leadEndpointHash = await hash(leadEndpoint);
   const behaviorContentHash = await hash(behaviorContent);
+  const equalizerContentHash = await hash(equalizerContent);
+  const saturatorContentHash = await hash(saturatorContent);
+  const routingMuteSceneContentHash = await hash(routingMuteSceneContent);
   const identity = {
     type: 'state', scope: null, name: metadata.name, author: 'cloud', library: 'cloud',
     creator: 'Content Ref Regression', visibility: 'private', owner_key: `content-ref:${user}`,
@@ -117,12 +145,22 @@ try {
     { hash: drumEndpointHash, payload_kind: 'content', payload: drumEndpoint },
     { hash: leadEndpointHash, payload_kind: 'content', payload: leadEndpoint },
     { hash: behaviorContentHash, payload_kind: 'content', payload: behaviorContent },
+    { hash: equalizerContentHash, payload_kind: 'content', payload: equalizerContent },
+    { hash: saturatorContentHash, payload_kind: 'content', payload: saturatorContent },
+    { hash: routingMuteSceneContentHash, payload_kind: 'content', payload: routingMuteSceneContent },
   ];
   const refs = [
     { ref_slot: 'sequencer.synth.1.trigger', content_hash: contentHash, content_type: 'sequencerTrigger' },
     { ref_slot: 'derived.drum.kick.endpoint-a', content_hash: drumEndpointHash, content_type: 'drumKickVoice' },
     { ref_slot: 'derived.lead.1.endpoint-a', content_hash: leadEndpointHash, content_type: 'lead4opfmPatch' },
     { ref_slot: 'behavior.scope.granularvoice1.content', content_hash: behaviorContentHash, content_type: 'parameterBehaviorMap' },
+    { ref_slot: 'equalizer.content', content_hash: equalizerContentHash, content_type: 'dynamicsEq' },
+    { ref_slot: 'master.saturator.content', content_hash: saturatorContentHash, content_type: 'saturator' },
+    ...Array.from({ length: 8 }, (_, slot) => ({
+      ref_slot: `routing.mute-group.slot-${slot}.content`,
+      content_hash: routingMuteSceneContentHash,
+      content_type: 'routingMuteScene',
+    })),
   ];
   const saved = (await client.query(
     'select public.kessho_save_preset_v2($1::jsonb,$2::jsonb,$3::jsonb,$4::jsonb,$5::jsonb) result',
@@ -130,13 +168,25 @@ try {
   )).rows[0].result;
   if (!saved.content_refs?.some(ref => ref.content_hash === contentHash)
       || !saved.content_refs?.some(ref => ref.content_hash === drumEndpointHash)
-      || !saved.content_refs?.some(ref => ref.content_hash === leadEndpointHash)) {
+      || !saved.content_refs?.some(ref => ref.content_hash === leadEndpointHash)
+      || !saved.content_refs?.some(ref => ref.content_hash === equalizerContentHash)
+      || !saved.content_refs?.some(ref => ref.content_hash === saturatorContentHash)
+      || !Array.from({ length: 8 }, (_, slot) => saved.content_refs?.some(ref => (
+        ref.ref_slot === `routing.mute-group.slot-${slot}.content`
+        && ref.content_hash === routingMuteSceneContentHash
+        && ref.content_type === 'routingMuteScene'
+      ))).every(Boolean)) {
     throw new Error('Atomic save omitted content refs.');
   }
   await expectError(/slot_type_check|check constraint/i, () => client.query(
     `insert into public.preset_version_content_refs_v2(version_id,ref_slot,content_hash,content_type)
      values ($1,'derived.lead.1.endpoint-c',$2,'lead4opfmPatch')`,
     [saved.version.id, leadEndpointHash],
+  ));
+  await expectError(/slot_check|slot_type_check|check constraint/i, () => client.query(
+    `insert into public.preset_version_content_refs_v2(version_id,ref_slot,content_hash,content_type)
+     values ($1,'routing.mute-group.slot-8.content',$2,'routingMuteScene')`,
+    [saved.version.id, routingMuteSceneContentHash],
   ));
   await client.query(
     "update public.presets_v2 set owner_user_id=$1, owner_key=$2, visibility='private' where id=$3",
@@ -148,13 +198,28 @@ try {
   )).rows[0].result;
   if (!manifest.required_hashes.includes(contentHash)) throw new Error('Manifest omitted content hash.');
   if (!manifest.required_hashes.includes(leadEndpointHash)) throw new Error('Manifest omitted Lead endpoint hash.');
+  if (!manifest.required_hashes.includes(routingMuteSceneContentHash)) {
+    throw new Error('Manifest omitted routing mute-scene content hash.');
+  }
   const fetched = (await client.query(
     'select public.kessho_get_missing_preset_payloads_v2($1::text[]) result', [[contentHash]],
   )).rows[0].result;
   if (fetched.length !== 1 || fetched[0].payload_kind !== 'content') throw new Error('Content payload was not readable.');
+  const fetchedScene = (await client.query(
+    'select public.kessho_get_missing_preset_payloads_v2($1::text[]) result', [[routingMuteSceneContentHash]],
+  )).rows[0].result;
+  if (fetchedScene.length !== 1
+      || fetchedScene[0].payload_kind !== 'content'
+      || fetchedScene[0].payload?.contentType !== 'routingMuteScene') {
+    throw new Error('Routing mute-scene content payload was not readable.');
+  }
 
   const rowCount = Number((await client.query('select count(*)::int count from public.preset_payloads_v2 where hash=$1', [contentHash])).rows[0].count);
   if (rowCount !== 1) throw new Error(`Expected one content row, received ${rowCount}.`);
+  const sceneRowCount = Number((await client.query(
+    'select count(*)::int count from public.preset_payloads_v2 where hash=$1', [routingMuteSceneContentHash],
+  )).rows[0].count);
+  if (sceneRowCount !== 1) throw new Error(`Expected one routing mute-scene content row, received ${sceneRowCount}.`);
   await expectError(/must include its canonical payload/, () => client.query(
     'select public.kessho_save_preset_v2($1::jsonb,$2::jsonb,$3::jsonb,$4::jsonb,$5::jsonb)',
     [json({ ...identity, name: `${identity.name}-probe` }), json(version), json(payloads.slice(0, 2)), '[]', json(refs)],
@@ -191,6 +256,10 @@ try {
     'select count(*)::int count from public.preset_payloads_v2 where hash=$1', [contentHash],
   )).rows[0].count);
   if (dedupedCount !== 1) throw new Error(`Cross-owner save created ${dedupedCount} content rows.`);
+  const dedupedSceneCount = Number((await client.query(
+    'select count(*)::int count from public.preset_payloads_v2 where hash=$1', [routingMuteSceneContentHash],
+  )).rows[0].count);
+  if (dedupedSceneCount !== 1) throw new Error(`Cross-owner save created ${dedupedSceneCount} routing mute-scene rows.`);
 
   await client.query('set local enable_seqscan = off');
   const versionPlan = JSON.stringify((await client.query(
@@ -210,6 +279,10 @@ try {
 
   await client.query('rollback');
   transactionOpen = false;
+  const rolledBackPresetCount = Number((await client.query(
+    'select count(*)::int count from public.presets_v2 where name=$1', [metadata.name],
+  )).rows[0].count);
+  if (rolledBackPresetCount !== 0) throw new Error('Rollback left the regression preset behind.');
   console.log('preset direct content ref database regression passed (transaction rolled back)');
 } finally {
   if (transactionOpen) await client.query('rollback').catch(() => {});

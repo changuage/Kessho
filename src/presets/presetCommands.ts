@@ -391,6 +391,7 @@ export class PresetCommandService {
         identity: forkIdentity,
         tags: command.tags ?? (writableExisting ? undefined : existing?.tags),
       });
+      let persistedByMetadataUpdate = false;
       if (plan.changed && !plan.versionChanged && writableExisting) {
         const metadataPatch = buildIdentityMetadataPatch(command, plan.entry);
         if (Object.keys(metadataPatch).length > 0) {
@@ -405,18 +406,20 @@ export class PresetCommandService {
             },
           );
           if (!updated) throw new Error(`Preset "${writableExisting.name}" metadata was not updated.`);
-          const canonical = await this.store.load(command.type, writableExisting.name, command.scope);
-          if (canonical) {
-            return {
-              ...plan,
-              entry: canonical,
-              version: canonical.currentVersion,
-            };
-          }
-          return plan;
+          persistedByMetadataUpdate = true;
         }
       }
-      if (plan.changed) await this.store.save(cloneJson(plan.entry));
+      if (plan.changed && !persistedByMetadataUpdate) await this.store.save(cloneJson(plan.entry));
+      if (plan.changed) {
+        const canonical = await this.store.load(command.type, plan.entry.name, command.scope);
+        if (canonical) {
+          return {
+            ...plan,
+            entry: canonical,
+            version: canonical.currentVersion,
+          };
+        }
+      }
       return plan;
     });
   }

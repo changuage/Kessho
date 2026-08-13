@@ -168,6 +168,7 @@ struct SoundscapeRenderBlockCache {
     soundscape_source.delay_b_send,
     soundscape_source.granular_send,
     soundscape_source.degrade_send,
+    soundscape_source.spectral_freeze_send,
   };
   for (uint32_t layer = 0u; layer < kSoundscapeLayerCount; ++layer) {
     for (uint32_t route = 0u; route < kSoundscapeLayerRouteStride; ++route) {
@@ -355,6 +356,7 @@ struct SoundscapeRenderBlockCache {
       float delay_b_send = source.delay_b_send;
       float granular_send = source.granular_send;
       float degrade_send = source.degrade_send;
+      float spectral_freeze_send = source.spectral_freeze_send;
       if (soundscape_sample) {
         if (soundscape_layer < kSoundscapeLayerCount) {
           reverb_send = soundscape_cache.layer_route_sends[soundscape_layer][kSoundscapeLayerRouteReverb];
@@ -362,6 +364,7 @@ struct SoundscapeRenderBlockCache {
           delay_b_send = soundscape_cache.layer_route_sends[soundscape_layer][kSoundscapeLayerRouteDelayB];
           granular_send = soundscape_cache.layer_route_sends[soundscape_layer][kSoundscapeLayerRouteGranular];
           degrade_send = soundscape_cache.layer_route_sends[soundscape_layer][kSoundscapeLayerRouteDegrade];
+          spectral_freeze_send = soundscape_cache.layer_route_sends[soundscape_layer][kSoundscapeLayerRouteSpectralFreeze];
           if (graph_taps_enabled) {
             graph_soundscape_layer_dry_l[soundscape_layer][frame] += graph_dry_left;
             graph_soundscape_layer_dry_r[soundscape_layer][frame] += graph_dry_right;
@@ -399,6 +402,8 @@ struct SoundscapeRenderBlockCache {
       granular_bus_r[frame] += bus_send_right * effective_granular_send;
       degrade_bus_l[frame] += bus_send_left * degrade_send;
       degrade_bus_r[frame] += bus_send_right * degrade_send;
+      spectral_freeze_bus_l[frame] += bus_send_left * spectral_freeze_send;
+      spectral_freeze_bus_r[frame] += bus_send_right * spectral_freeze_send;
     }
   }
 }
@@ -527,12 +532,18 @@ void KesshoProductEngine::renderSegment(float* out_l, float* out_r, uint32_t sta
   clearFrameBuffer(granular_bus_r, frames);
   clearFrameBuffer(degrade_bus_l, frames);
   clearFrameBuffer(degrade_bus_r, frames);
+  clearFrameBuffer(spectral_freeze_bus_l, frames);
+  clearFrameBuffer(spectral_freeze_bus_r, frames);
   clearFrameBuffer(dynamics_eq1_bus_l, frames);
   clearFrameBuffer(dynamics_eq1_bus_r, frames);
   clearFrameBuffer(dynamics_eq2_bus_l, frames);
   clearFrameBuffer(dynamics_eq2_bus_r, frames);
   clearFrameBuffer(dynamics_sidechain_bus_l, frames);
   clearFrameBuffer(dynamics_sidechain_bus_r, frames);
+  clearFrameBuffer(creative_saturation_bus_l, frames);
+  clearFrameBuffer(creative_saturation_bus_r, frames);
+  clearFrameBuffer(fx_node_output_l, frames);
+  clearFrameBuffer(fx_node_output_r, frames);
   clearFrameBuffer(diffuse_bus_l, frames);
   clearFrameBuffer(diffuse_bus_r, frames);
 }
@@ -867,15 +878,7 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
       sequencer_event_total,
       kessho::product::generated::KESSHO_PRODUCT_MAX_SEQUENCER_EVENTS);
   renderDiffuseBus(out_l, out_r, frames);
-  renderFx(out_l, out_r, 0u, frames);
-  if (routing.degrade_to_reverb > 0.0001f) {
-    renderDegradeSend(out_l, out_r, 0u, frames);
-    renderReverb(out_l, out_r, 0u, frames);
-  } else {
-    renderReverb(out_l, out_r, 0u, frames);
-    renderDegradeSend(out_l, out_r, 0u, frames);
-  }
-  renderDynamicsBuses(out_l, out_r, 0u, frames);
+  renderFxGraph(out_l, out_r, 0u, frames);
   applyMaster(out_l, out_r, frames);
   compactControlEvents(frames, control_index);
   advanceJourney(frames);

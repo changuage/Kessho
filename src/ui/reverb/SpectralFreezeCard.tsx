@@ -116,28 +116,14 @@ export default function SpectralFreezeCard({
             )}
 
             <div className="reverb-grid-2">
-              <Slider label="Mix" value={state.spectralFreezeMix} paramKey="spectralFreezeMix" onChange={onParamChange} {...sliderProps('spectralFreezeMix')} />
+              <Slider label="Level" value={state.spectralFreezeMix} paramKey="spectralFreezeMix" onChange={onParamChange} {...sliderProps('spectralFreezeMix')} />
               <Slider label="Sustain" value={state.spectralFreezeSustain} paramKey="spectralFreezeSustain" onChange={onParamChange} {...sliderProps('spectralFreezeSustain')} />
             </div>
             <div className="reverb-grid-2">
               <Slider label="Diffusion" value={state.spectralFreezeDiffusion} paramKey="spectralFreezeDiffusion" onChange={onParamChange} {...sliderProps('spectralFreezeDiffusion')} />
               <Slider label="Tone" value={state.spectralFreezeTone} paramKey="spectralFreezeTone" onChange={onParamChange} {...sliderProps('spectralFreezeTone')} />
             </div>
-            <div className="reverb-grid-2">
-              <Slider label="Width" value={state.spectralFreezeWidth} paramKey="spectralFreezeWidth" onChange={onParamChange} {...sliderProps('spectralFreezeWidth')} />
-              <Select
-                label="Routing"
-                value={state.spectralFreezeRouting}
-                options={[
-                  { value: 'pre', label: 'Pre-reverb' },
-                  { value: 'post', label: 'Post-reverb' },
-                ]}
-                onChange={(value) => onSelectChange('spectralFreezeRouting', value as SliderState['spectralFreezeRouting'])}
-              />
-            </div>
-            {state.spectralFreezeRouting === 'pre' && (
-              <Slider label="Freeze → Reverb" value={state.spectralFreezeReverbCrossfade} paramKey="spectralFreezeReverbCrossfade" onChange={onParamChange} {...sliderProps('spectralFreezeReverbCrossfade')} />
-            )}
+            <Slider label="Width" value={state.spectralFreezeWidth} paramKey="spectralFreezeWidth" onChange={onParamChange} {...sliderProps('spectralFreezeWidth')} />
           </>
         )}
       </div>

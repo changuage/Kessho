@@ -1,9 +1,14 @@
 export const DEGRADE_DRIFT_SCOPE = 'degradeDrift';
 export const DEGRADE_EROSION_SCOPE = 'degradeErosion';
+export const EQUALIZER_SCOPE = 'equalizer';
+export const SATURATOR_SCOPE = 'saturator';
 
 const LEGACY_TO_CANONICAL_SCOPE: Record<string, string> = {
   dynamicsDrift: DEGRADE_DRIFT_SCOPE,
   dynamicsErosion: DEGRADE_EROSION_SCOPE,
+  dynamicsEq1: EQUALIZER_SCOPE,
+  dynamicsEq2: EQUALIZER_SCOPE,
+  dynamicsSaturation: SATURATOR_SCOPE,
 };
 
 const CANONICAL_TO_LEGACY_SCOPES = Object.entries(LEGACY_TO_CANONICAL_SCOPE)

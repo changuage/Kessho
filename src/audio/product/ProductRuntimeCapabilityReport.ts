@@ -6,7 +6,7 @@ import {
 import type { ProductRuntimeDiagnostics } from './ProductRuntimeDiagnostics';
 import type { ProductEngineRuntimeMode } from './ProductRuntimeMode';
 
-export const KESSHO_PRODUCT_ABI_VERSION = 6 as const;
+export const KESSHO_PRODUCT_ABI_VERSION = 7 as const;
 
 export type ProductRuntimeCapabilityReport = {
   mode: ProductEngineRuntimeMode;

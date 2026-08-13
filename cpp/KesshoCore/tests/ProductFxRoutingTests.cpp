@@ -21,6 +21,148 @@ void require(bool condition, const char* message) {
   }
 }
 
+uint32_t fxOrderIndex(const RoutingState& routing, uint8_t node) {
+  for (uint32_t index = 0u; index < kFxNodeCount; ++index) {
+    if (routing.fx_render_order[index] == node) return index;
+  }
+  return kFxNodeCount;
+}
+
+void requireUniversalFxGraphRejectsFeedback() {
+  RoutingState routing{};
+  require(kRoutingMuteRowFreeze != kRoutingMuteRowReverb, "Freeze still shares the Reverb mute row");
+  require(kRoutingMuteRowEq1 == kRoutingMuteRowFreeze + 1u, "EQ 1 mute row is not append-only");
+  require(kRoutingMuteRowEq2 == kRoutingMuteRowEq1 + 1u, "EQ 2 mute row is not append-only");
+  require(kRoutingMuteRowSidechain == kRoutingMuteRowEq2 + 1u, "Sidechain mute row is not append-only");
+  require(
+      kRoutingMuteRowCreativeSaturation == kRoutingMuteRowSidechain + 1u,
+      "Saturator mute row is not append-only");
+  routing.dynamics_routes[kDynamicsRouteReverb] = kDynamicsBusEq1;
+  require(
+      routing.fx_dynamics_bus[kFxNodeFreeze] == kDynamicsBusSkip,
+      "Freeze still inherits the Reverb Dynamics assignment");
+  routing.clearFxGraph();
+  require(
+      routing.setFxEdgeEnabled(kFxNodeReverb, kFxNodeDegrade, true),
+      "universal graph rejected Reverb to Degrade");
+  require(
+      routing.setFxEdgeEnabled(kFxNodeDegrade, kFxNodeFreeze, true),
+      "universal graph rejected Degrade to Freeze");
+  require(
+      !routing.setFxEdgeEnabled(kFxNodeFreeze, kFxNodeReverb, true),
+      "universal graph allowed a three-node feedback cycle");
+  require(
+      !routing.setFxEdgeEnabled(kFxNodeReverb, kFxNodeReverb, true),
+      "universal graph allowed a self route");
+  require(
+      routing.setFxEdgeEnabled(kFxNodeReverb, kFxNodeEq1, true),
+      "universal graph rejected valid Reverb fan-out");
+  require(
+      routing.setFxEdgeEnabled(kFxNodeEq1, kFxNodeFreeze, true),
+      "universal graph rejected a valid merge");
+  require(
+      fxOrderIndex(routing, kFxNodeReverb) < fxOrderIndex(routing, kFxNodeDegrade) &&
+          fxOrderIndex(routing, kFxNodeDegrade) < fxOrderIndex(routing, kFxNodeFreeze) &&
+          fxOrderIndex(routing, kFxNodeReverb) < fxOrderIndex(routing, kFxNodeEq1) &&
+          fxOrderIndex(routing, kFxNodeEq1) < fxOrderIndex(routing, kFxNodeFreeze),
+      "universal graph produced an invalid render order");
+  routing.fx_route_amount[kFxNodeReverb][kFxNodeDegrade] = 0.0f;
+  require(
+      routing.fxEdgeEnabled(kFxNodeReverb, kFxNodeDegrade),
+      "zero instantaneous gain removed a structurally present route");
+  require(
+      routing.setFxEdgeEnabled(kFxNodeReverb, kFxNodeDegrade, false),
+      "universal graph could not remove an edge");
+  require(
+      !routing.setFxEdgeEnabled(kFxNodeFreeze, kFxNodeReverb, true),
+      "universal graph ignored an alternate path while unlocking a reverse edge");
+  require(
+      routing.setFxEdgeEnabled(kFxNodeReverb, kFxNodeEq1, false),
+      "universal graph could not remove a fan-out edge");
+  require(
+      routing.setFxEdgeEnabled(kFxNodeFreeze, kFxNodeReverb, true),
+      "universal graph did not unlock a reverse edge after every cycle path was removed");
+}
+
+void requireModularFxMuteRowsGateGraphOutputs() {
+  auto engine = std::make_unique<KesshoProductEngine>(48000.0, 128, 0);
+  engine->routing.clearFxGraph();
+  std::vector<float> output_l(128, 0.0f);
+  std::vector<float> output_r(128, 0.0f);
+  struct Target {
+    uint8_t node;
+    uint32_t row;
+    float* bus_l;
+    float* bus_r;
+  };
+  const Target targets[] = {
+    {kFxNodeEq1, kRoutingMuteRowEq1, engine->dynamics_eq1_bus_l, engine->dynamics_eq1_bus_r},
+    {kFxNodeEq2, kRoutingMuteRowEq2, engine->dynamics_eq2_bus_l, engine->dynamics_eq2_bus_r},
+    {kFxNodeSidechain, kRoutingMuteRowSidechain, engine->dynamics_sidechain_bus_l, engine->dynamics_sidechain_bus_r},
+    {kFxNodeCreativeSaturation, kRoutingMuteRowCreativeSaturation,
+      engine->creative_saturation_bus_l, engine->creative_saturation_bus_r},
+  };
+
+  for (const auto& target : targets) {
+    std::fill(output_l.begin(), output_l.end(), 0.0f);
+    std::fill(output_r.begin(), output_r.end(), 0.0f);
+    std::fill(target.bus_l, target.bus_l + 128, 0.25f);
+    std::fill(target.bus_r, target.bus_r + 128, 0.25f);
+    auto& ramp = engine->routing_mute_groups.rows[target.row];
+    ramp.start_gain = 0.0f;
+    ramp.target_gain = 0.0f;
+    ramp.start_frame = 0u;
+    ramp.end_frame = 0u;
+    ramp.runtime_muted = true;
+    engine->routing_mute_groups.non_unity_row_mask = 1u << target.row;
+    engine->renderFxGraph(output_l.data(), output_r.data(), 0u, 128u);
+    float output_peak = 0.0f;
+    for (uint32_t frame = 0u; frame < 128u; ++frame) {
+      output_peak = std::max(output_peak, std::fabs(output_l[frame]));
+      output_peak = std::max(output_peak, std::fabs(output_r[frame]));
+    }
+    require(output_peak <= 0.000001f, "modular FX mute row leaked graph output");
+    std::fill(target.bus_l, target.bus_l + 128, 0.0f);
+    std::fill(target.bus_r, target.bus_r + 128, 0.0f);
+    engine->routing_mute_groups.non_unity_row_mask = 0u;
+  }
+}
+
+void requireFxRouteModulationRunsInAudioGraph() {
+  auto engine = std::make_unique<KesshoProductEngine>(48000.0, 128, 0);
+  engine->routing.clearFxGraph();
+  require(
+      engine->routing.setFxRoute(kFxNodeCreativeSaturation, kFxNodeEq1, 0.5f, true),
+      "modulated FX route could not be created");
+  engine->routing.setFxRouteModulation(
+      kFxNodeCreativeSaturation, kFxNodeEq1, 1u, 0.2f, 0.8f);
+  engine->transport.bpm = 60.0f;
+  engine->transport.beats_per_bar = 4u;
+  std::vector<float> output_l(128, 0.0f);
+  std::vector<float> output_r(128, 0.0f);
+  const auto render_at = [&](uint64_t sample_frame) {
+    engine->transport.sample_frame = sample_frame;
+    std::fill(engine->creative_saturation_bus_l, engine->creative_saturation_bus_l + 128, 0.25f);
+    std::fill(engine->creative_saturation_bus_r, engine->creative_saturation_bus_r + 128, 0.25f);
+    engine->renderFxGraph(output_l.data(), output_r.data(), 0u, 128u);
+    const uint32_t route_index = kFxNodeCreativeSaturation * kFxNodeCount + kFxNodeEq1;
+    require(
+        std::fabs(engine->telemetry.fx_route_effective_amounts[route_index] -
+                  engine->routing.fx_route_effective_amount[kFxNodeCreativeSaturation][kFxNodeEq1]) < 0.000001f,
+        "modulated FX route telemetry diverged from the audio graph");
+    return engine->routing.fx_route_effective_amount[kFxNodeCreativeSaturation][kFxNodeEq1];
+  };
+  require(std::fabs(render_at(0u) - 0.2f) < 0.001f, "range route did not start at its minimum");
+  require(std::fabs(render_at(8u * 48000u) - 0.8f) < 0.001f, "range route did not sweep to its maximum");
+
+  engine->routing.setFxRouteModulation(
+      kFxNodeCreativeSaturation, kFxNodeEq1, 3u, 0.2f, 0.8f);
+  const float first_hold = render_at(0u);
+  require(first_hold >= 0.2f && first_hold <= 0.8f, "sample-and-hold route escaped its range");
+  require(std::fabs(render_at(128u) - first_hold) < 0.000001f, "sample-and-hold changed inside one beat");
+  require(std::fabs(render_at(48000u) - first_hold) > 0.000001f, "sample-and-hold did not advance on the next beat");
+}
+
 float peak(const std::vector<float>& left, const std::vector<float>& right) {
   float result = 0.0f;
   for (size_t i = 0; i < left.size(); ++i) {
@@ -29,6 +171,32 @@ float peak(const std::vector<float>& left, const std::vector<float>& right) {
     result = std::max(result, std::fabs(right[i]));
   }
   return result;
+}
+
+void requireMasterAndModularSaturationShareKernel() {
+  const float drive[] = {0.0f, 0.2f, 0.72f};
+  const float tone[] = {0.23f, 0.5f, 0.77f};
+  const float bias[] = {0.17f, 0.5f, 0.83f};
+  const float input[] = {-0.9f, -0.4f, 0.0f, 0.35f, 0.82f, -0.15f, 0.67f};
+  for (uint32_t mode = 0u; mode <= 4u; ++mode) {
+    for (uint32_t quality = 0u; quality <= 2u; ++quality) {
+      for (uint32_t variation = 0u; variation < 3u; ++variation) {
+        const kessho::product::saturation::Params params{
+            mode, quality, drive[variation], tone[variation], bias[variation]};
+        kessho::product::saturation::State modular_state{};
+        kessho::product::saturation::State master_state{};
+        for (const float sample : input) {
+          const float modular = kessho::product::saturation::process(
+              sample, params, modular_state, 48000.0f);
+          const float master = kessho::product::saturation::process(
+              sample, params, master_state, 48000.0f);
+          require(
+              std::fabs(modular - master) < 0.000001f,
+              "master and modular saturation kernels diverged");
+        }
+      }
+    }
+  }
 }
 
 KesshoProductSnapshotV2 makeSnapshot() {
@@ -192,6 +360,57 @@ KesshoProductSnapshotV2 makeSnapshot() {
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_PLUCK_BELL;
   kessho::product::tests::applyGeneratedSourceDefaults(snapshot);
   return snapshot;
+}
+
+void requireFxGraphSnapshotAndRuntimeEvents() {
+  auto engine = std::make_unique<KesshoProductEngine>(48000.0, 128, 0);
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.routing.fx_graph_version = KESSHO_PRODUCT_FX_GRAPH_VERSION;
+  snapshot.routing.fx_edge_mask[kFxNodeReverb] = 1u << kFxNodeDegrade;
+  snapshot.routing.fx_route_amount[kFxNodeReverb * kFxNodeCount + kFxNodeDegrade] = 0.0f;
+  const uint32_t modulation_index = kFxNodeReverb * kFxNodeCount + kFxNodeDegrade;
+  snapshot.routing.fx_route_modulation[modulation_index] =
+      2u | (static_cast<uint32_t>(0.2f * (32767.0f / 4.0f)) << 2u) |
+      (static_cast<uint32_t>(0.8f * (32767.0f / 4.0f)) << 17u);
+  snapshot.routing.fx_dynamics_bus[kFxNodeFreeze] = kDynamicsBusSidechain;
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "valid fixed FX graph snapshot was rejected");
+  require(engine->routing.fxEdgeEnabled(kFxNodeReverb, kFxNodeDegrade), "zero-gain snapshot edge lost authored presence");
+  require(engine->routing.fx_route_amount[kFxNodeReverb][kFxNodeDegrade] == 0.0f, "zero-gain snapshot edge changed amount");
+  require(engine->routing.fx_route_mode[kFxNodeReverb][kFxNodeDegrade] == 2u, "FX route modulation mode did not load");
+  require(engine->routing.fx_route_min[kFxNodeReverb][kFxNodeDegrade] > 0.19f, "FX route modulation minimum did not load");
+  require(engine->routing.fx_route_max[kFxNodeReverb][kFxNodeDegrade] > 0.79f, "FX route modulation maximum did not load");
+  require(engine->routing.fx_dynamics_bus[kFxNodeFreeze] == kDynamicsBusSidechain, "FX graph Dynamics assignment did not load");
+
+  KesshoProductSnapshotV2 cyclic = snapshot;
+  cyclic.routing.fx_edge_mask[kFxNodeDegrade] = 1u << kFxNodeReverb;
+  cyclic.routing.fx_route_amount[kFxNodeDegrade * kFxNodeCount + kFxNodeReverb] = 0.5f;
+  require(engine->loadSnapshot(cyclic) == KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT, "cyclic FX graph snapshot was accepted");
+
+  KesshoProductEvent event{};
+  event.target_id = kFxNodeReverb * kFxNodeCount + kFxNodeDegrade;
+  event.param_id = KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_AMOUNT_ID;
+  event.value = 0.6f;
+  engine->applyParam(event);
+  require(std::fabs(engine->routing.reverb_to_degrade - 0.6f) < 0.001f, "generic FX amount event did not reach legacy render adapter");
+  event.param_id = KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_MODE_ID;
+  event.value = 3.0f;
+  engine->applyParam(event);
+  require(engine->routing.fx_route_mode[kFxNodeReverb][kFxNodeDegrade] == 3u, "generic FX mode event was ignored");
+  event.param_id = KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_MIN_ID;
+  event.value = 0.3f;
+  engine->applyParam(event);
+  event.param_id = KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_MAX_ID;
+  event.value = 0.7f;
+  engine->applyParam(event);
+  require(std::fabs(engine->routing.fx_route_min[kFxNodeReverb][kFxNodeDegrade] - 0.3f) < 0.001f &&
+          std::fabs(engine->routing.fx_route_max[kFxNodeReverb][kFxNodeDegrade] - 0.7f) < 0.001f,
+      "generic FX modulation range events were ignored");
+  event.target_id = kFxNodeDegrade * kFxNodeCount + kFxNodeReverb;
+  event.param_id = KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_ENABLED_ID;
+  event.value = 1.0f;
+  engine->applyParam(event);
+  require(!engine->routing.fxEdgeEnabled(kFxNodeDegrade, kFxNodeReverb), "generic FX event enabled a reverse feedback edge");
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_ERROR_INVALID_EVENT, "blocked FX event did not report rejection");
 }
 
 void triggerPad(KesshoProductEngine* engine, float hold_seconds) {
@@ -583,7 +802,8 @@ void configureGranularTestSnapshot(KesshoProductSnapshotV2& snapshot) {
 }
 
 void configureSpectralFreezeTestSnapshot(KesshoProductSnapshotV2& snapshot) {
-  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].reverb_send = 1.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].reverb_send = 0.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].spectral_freeze_send = 1.0f;
   snapshot.fx.spectral_freeze_enabled = 1;
   snapshot.fx.spectral_freeze_active = 0;
   snapshot.fx.spectral_freeze_capture_serial = 0u;
@@ -1362,6 +1582,66 @@ void requireSpectralFreezeParallelReturn() {
   kessho_product_destroy(engine);
 }
 
+void requireWaterLevelUpdatesRemainSafeWhileFreezeIsActive() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "Water/Freeze regression engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configureSpectralFreezeTestSnapshot(snapshot);
+  snapshot.fx.reverb_mix = 0.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "Water/Freeze regression snapshot load failed");
+
+  triggerPad(engine, 2.0f);
+  (void)renderMasterPeak(engine, 400u);
+  KesshoProductEvent freeze_event{};
+  freeze_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  freeze_event.param_id = KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ACTIVE_ID;
+  freeze_event.value = 1.0f;
+  require(kessho_product_enqueue_event(engine, &freeze_event) == KESSHO_PRODUCT_OK, "Water/Freeze active enqueue failed");
+  freeze_event.param_id = KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_CAPTURE_SERIAL_ID;
+  freeze_event.value = 1.0f;
+  require(kessho_product_enqueue_event(engine, &freeze_event) == KESSHO_PRODUCT_OK, "Water/Freeze capture enqueue failed");
+
+  require(kessho_product_set_stems_enabled(engine, 1u) == KESSHO_PRODUCT_OK, "Water/Freeze stems enable failed");
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  std::vector<float> fx_l(128);
+  std::vector<float> fx_r(128);
+  constexpr uint32_t block_sizes[] = {1u, 7u, 31u, 64u, 127u, 128u};
+  float freeze_peak = 0.0f;
+  float freeze_tail_peak = 0.0f;
+  for (uint32_t iteration = 0u; iteration < 2048u; ++iteration) {
+    KesshoProductEvent water_event{};
+    water_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+    water_event.target_id = kSoundscapeModuleParamTargetBase + kSoundscapeModuleWaterLevelParam;
+    water_event.param_id = KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID;
+    water_event.value = static_cast<float>(iteration % 101u) / 100.0f;
+    require(kessho_product_enqueue_event(engine, &water_event) == KESSHO_PRODUCT_OK, "Water level enqueue failed while Freeze active");
+    const uint32_t frames = block_sizes[iteration % (sizeof(block_sizes) / sizeof(block_sizes[0]))];
+    kessho_product_render(engine, left.data(), right.data(), frames);
+    require(
+        kessho_product_get_stem(engine, KESSHO_PRODUCT_STEM_FX, fx_l.data(), fx_r.data(), frames) == KESSHO_PRODUCT_OK,
+        "Water/Freeze FX stem read failed");
+    for (uint32_t frame = 0u; frame < frames; ++frame) {
+      require(
+          std::isfinite(left[frame]) && std::isfinite(right[frame]) &&
+              std::isfinite(fx_l[frame]) && std::isfinite(fx_r[frame]),
+          "Water level update produced non-finite output while Freeze active");
+      freeze_peak = std::max(freeze_peak, std::max(std::fabs(fx_l[frame]), std::fabs(fx_r[frame])));
+      if (iteration >= 1536u) {
+        freeze_tail_peak = std::max(freeze_tail_peak, std::max(std::fabs(fx_l[frame]), std::fabs(fx_r[frame])));
+      }
+    }
+  }
+  require(freeze_peak > 0.00001f, "direct Freeze send was silent during Water level updates");
+  require(freeze_tail_peak > 0.00001f, "frozen memory stopped after its source ended during Water level updates");
+  require(
+      engine->fx.spectral_freeze_capture_serial == 1u,
+      "Water level updates changed the Freeze capture serial");
+  kessho_product_destroy(engine);
+}
+
 std::vector<float> renderSnapshotFxTrace(uint32_t param_id, float value) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "snapshot FX event parity engine create failed");
@@ -1371,6 +1651,7 @@ std::vector<float> renderSnapshotFxTrace(uint32_t param_id, float value) {
     configureSpectralFreezeTestSnapshot(snapshot);
     snapshot.fx.spectral_freeze_mix = value;
   } else if (param_id == KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID) {
+    snapshot.fx.dynamics_master_saturation_enabled = 1u;
     snapshot.fx.dynamics_drive = value;
   }
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "snapshot FX event parity load failed");
@@ -1387,6 +1668,8 @@ std::vector<float> renderEventFxTrace(uint32_t param_id, float value) {
   snapshot.fx.reverb_mix = 0.0f;
   if (param_id == KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID) {
     configureSpectralFreezeTestSnapshot(snapshot);
+  } else if (param_id == KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID) {
+    snapshot.fx.dynamics_master_saturation_enabled = 1u;
   }
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "live FX event parity load failed");
 
@@ -1419,6 +1702,20 @@ void requireDirectFxCoverage() {
           direct.spectral_freeze_module->paramCount() >= 14 &&
           std::fabs(direct.spectral_freeze_module->params()[13] - 0.1f) < 0.0001f,
       "spectral freeze DSP transition was not fixed at 100ms");
+  direct.fx.dynamics_master_saturation_enabled = true;
+  direct.fx.dynamics_master_saturation_mode = 4u;
+  direct.fx.dynamics_master_saturation_quality = 2u;
+  direct.fx.dynamics_drive = 0.72f;
+  direct.fx.dynamics_master_saturation_tone = 0.23f;
+  direct.fx.dynamics_master_saturation_bias = 0.77f;
+  direct.configureDynamicsDriftModule();
+  const float* terminal_params = direct.dynamics_drift_module->params();
+  require(terminal_params[kDynMasterSatActive] > 0.5f, "Master Saturation enable did not reach terminal DSP");
+  require(std::fabs(terminal_params[kDynMasterSatMode] - 4.0f) < 0.001f, "Master Saturation mode did not reach terminal DSP");
+  require(std::fabs(terminal_params[kDynMasterSatQuality] - 2.0f) < 0.001f, "Master Saturation quality did not reach terminal DSP");
+  require(std::fabs(terminal_params[kDynMasterSatDrive] - 0.72f) < 0.001f, "Master Saturation drive did not reach terminal DSP");
+  require(std::fabs(terminal_params[kDynMasterSatTone] - 0.23f) < 0.001f, "Master Saturation tone did not reach terminal DSP");
+  require(std::fabs(terminal_params[kDynMasterSatBias] - 0.77f) < 0.001f, "Master Saturation bias did not reach terminal DSP");
   for (uint32_t source = 0; source < kDynamicsModSourceCount; ++source) {
     for (uint32_t target = 0; target < kDynamicsModTargetCount; ++target) {
       direct.fx.dynamics_mod[source][target] = 0.0f;
@@ -1484,7 +1781,27 @@ void requireDirectFxCoverage() {
   eq_event.param_id = KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_HIGH_SLOPE_ID;
   eq_event.value = 2.5f;
   require(direct.applyDynamicsEqParamEvent(eq_event), "direct Dynamics EQ2 param event was not handled");
-  require(std::fabs(direct.fx.dynamics_eq2_high_slope - 2.5f) < 0.001f, "direct Dynamics EQ param event mapped wrong slope");
+  require(std::fabs(direct.fx.dynamics_eq2_high_slope - 1.0f) < 0.001f, "direct Dynamics EQ shelf slope was not clamped safely");
+
+  auto shelf_storage = std::make_unique<KesshoProductEngine>(48000.0, 128, 0);
+  KesshoProductEngine& shelf = *shelf_storage;
+  shelf.fx.dynamics_eq1_enabled = true;
+  shelf.fx.dynamics_eq1_high_type = kDynamicsEqEdgeShelf;
+  shelf.fx.dynamics_eq1_high_freq = 8000.0f;
+  shelf.fx.dynamics_eq1_high_gain_db = -18.0f;
+  shelf.fx.dynamics_eq1_high_slope = 4.0f;
+  float shelf_l[128]{};
+  float shelf_r[128]{};
+  shelf.routeTerminalSample(kDynamicsBusEq1, shelf_l, shelf_r, 0u, 1.0f, 1.0f);
+  shelf.renderDynamicsBuses(shelf_l, shelf_r, 0u, 128u);
+  float shelf_late_peak = 0.0f;
+  for (uint32_t frame = 0; frame < 128u; ++frame) {
+    require(std::isfinite(shelf_l[frame]) && std::isfinite(shelf_r[frame]), "Dynamics EQ shelf produced non-finite output");
+    if (frame >= 96u) {
+      shelf_late_peak = std::max(shelf_late_peak, std::max(std::fabs(shelf_l[frame]), std::fabs(shelf_r[frame])));
+    }
+  }
+  require(shelf_late_peak < 0.001f, "Dynamics EQ shelf impulse did not decay");
 
   KesshoProductEvent route_event{};
   route_event.param_id = KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_PAD1_BUS_ID;
@@ -1500,8 +1817,15 @@ void requireDirectFxCoverage() {
   route_event.param_id = KESSHO_PRODUCT_PARAM_ROUTING_REVERB_TO_DEGRADE_ID;
   route_event.value = 1.0f;
   direct.applyParam(route_event);
-  require(direct.routing.reverb_to_degrade > 0.99f, "direct Reverb-to-Degrade routing event mapped wrong amount");
-  require(direct.routing.degrade_to_reverb == 0.0f, "Reverb-to-Degrade routing event did not clear reverse route");
+  require(direct.routing.reverb_to_degrade == 0.0f, "reverse route was not blocked while Degrade fed Reverb");
+  require(direct.routing.degrade_to_reverb > 0.99f, "blocked reverse route changed the existing edge");
+  route_event.param_id = KESSHO_PRODUCT_PARAM_ROUTING_DEGRADE_TO_REVERB_ID;
+  route_event.value = 0.0f;
+  direct.applyParam(route_event);
+  route_event.param_id = KESSHO_PRODUCT_PARAM_ROUTING_REVERB_TO_DEGRADE_ID;
+  route_event.value = 1.0f;
+  direct.applyParam(route_event);
+  require(direct.routing.reverb_to_degrade > 0.99f, "reverse route stayed locked after removing the forward edge");
 
   float terminal_l[4]{};
   float terminal_r[4]{};
@@ -1514,6 +1838,11 @@ void requireDirectFxCoverage() {
 } // namespace
 
 int main() {
+  requireUniversalFxGraphRejectsFeedback();
+  requireMasterAndModularSaturationShareKernel();
+  requireModularFxMuteRowsGateGraphOutputs();
+  requireFxRouteModulationRunsInAudioGraph();
+  requireFxGraphSnapshotAndRuntimeEvents();
   requireDirectFxCoverage();
 
   KesshoProductEngine* reverb_engine = kessho_product_create(48000.0, 128, 0);
@@ -1602,20 +1931,6 @@ int main() {
   }
   kessho_product_destroy(granular_input_only_engine);
 
-  KesshoProductEngine* spectral_engine = kessho_product_create(48000.0, 128, 0);
-  require(spectral_engine != nullptr, "spectral engine create failed");
-  KesshoProductSnapshotV2 spectral_snapshot = makeSnapshot();
-  spectral_snapshot.fx.spectral_freeze_mix = 1.0f;
-  spectral_snapshot.fx.spectral_freeze_enabled = 1;
-  spectral_snapshot.fx.spectral_freeze_active = 1;
-  spectral_snapshot.fx.spectral_freeze_reverb_crossfade = 1.0f;
-  spectral_snapshot.fx.reverb_mix = 0.5f;
-  spectral_snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].reverb_send = 1.0f;
-  require(kessho_product_load_snapshot_v2(spectral_engine, &spectral_snapshot, sizeof(spectral_snapshot)) == KESSHO_PRODUCT_OK, "spectral snapshot load failed");
-  triggerPad(spectral_engine, 0.4f);
-  require(renderFxPeak(spectral_engine, 80) > 0.00001f, "spectral freeze did not reach FX stem");
-  kessho_product_destroy(spectral_engine);
-
   KesshoProductEngine* dynamics_engine = kessho_product_create(48000.0, 128, 0);
   require(dynamics_engine != nullptr, "dynamics engine create failed");
   KesshoProductSnapshotV2 dynamics_snapshot = makeSnapshot();
@@ -1660,6 +1975,7 @@ int main() {
   requireProductResetClearsFxTails();
   requireModuleSourceFxSendsArePreFader();
   requireSpectralFreezeParallelReturn();
+  requireWaterLevelUpdatesRemainSafeWhileFreezeIsActive();
   requireFxReturnsCanFeedDegrade();
   requireDegradeCanFeedReverbWithoutReverseFeedback();
 

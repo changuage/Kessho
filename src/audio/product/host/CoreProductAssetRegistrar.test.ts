@@ -65,6 +65,10 @@ const mobileRegistrar = new CoreProductAssetRegistrar(runtime, () => null, true)
 await mobileRegistrar.registerAsset({ ...asset, assetId: 78 });
 assert.equal(ownerships[ownerships.length - 1], 'transfer', 'mobile registration should transfer original decoded arrays');
 
+const transferRegistrar = new CoreProductAssetRegistrar(runtime, () => null, false, undefined, undefined, true);
+await transferRegistrar.registerAsset({ ...asset, assetId: 80 });
+assert.equal(ownerships[ownerships.length - 1], 'transfer', 'macOS registration should transfer original decoded arrays');
+
 let completeRegistration = (): void => { throw new Error('registration resolver was not installed'); };
 const concurrentRegistrations: number[] = [];
 const concurrentRuntime = {

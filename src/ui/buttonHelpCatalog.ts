@@ -354,9 +354,9 @@ export const BUTTON_HELP_CATALOG: Record<string, SliderHelpEntry> = {
     [app('Tab Bar', 'Delay')],
   ),
   tabRouting: entry(
-    'Shows the FX Routing Matrix page in the advanced editor.',
-    'This switches the visible editor to the dedicated Routing tab so you can edit cross-engine sends in one clean matrix without digging through the Global or Delay pages.',
-    [app('Tab Bar', 'Routing')],
+    'Shows the Patch page in the advanced editor.',
+    'This switches the visible editor to the dedicated Patch tab so you can edit routing nodes, the routing matrix, cross-engine sends, and output routing in one place.',
+    [app('Tab Bar', 'Patch')],
   ),
   driftQuality_eco: entry(
     'Uses the lightest Drift processing.',

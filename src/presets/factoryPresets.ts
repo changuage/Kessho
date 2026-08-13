@@ -23,8 +23,10 @@ import {
   buildEuclideanPatternPresetData,
   EUCLIDEAN_PATTERN_LABELS,
 } from './euclideanPatternBank';
+import { extractDynamicsEqContent, extractSaturatorContent } from './sharedComponentPools';
+import { EQUALIZER_SCOPE, SATURATOR_SCOPE } from './presetScopeAliases';
 
-const FACTORY_LOADED_KEY = 'preset:factory-loaded:v27';
+const FACTORY_LOADED_KEY = 'preset:factory-loaded:v28';
 
 function canUseLocalStorage(): boolean {
   try {
@@ -137,6 +139,7 @@ function isDynamicsFactoryScope(entry: PresetEntry): boolean {
     scope === 'dynamicsBus' ||
     scope === 'dynamicsEq1' ||
     scope === 'dynamicsEq2' ||
+    scope === EQUALIZER_SCOPE ||
     scope === 'degrade' ||
     scope === 'degradeDrift' ||
     scope === 'degradeErosion' ||
@@ -144,6 +147,7 @@ function isDynamicsFactoryScope(entry: PresetEntry): boolean {
     scope === 'dynamicsErosion' ||
     scope === 'masterFx' ||
     scope === 'dynamicsSaturation' ||
+    scope === SATURATOR_SCOPE ||
     scope === 'dynamicsEndChain';
 }
 
@@ -339,14 +343,14 @@ async function loadDynamicsFactory(): Promise<PresetEntry[]> {
       }));
     }
     for (const [, preset] of Object.entries(DYNAMICS_EQ1_PRESETS)) {
-      entries.push(makeFactory('engine', preset.name, preset.params, {
-        engine: 'dynamicsEq1',
+      entries.push(makeFactory('engine', preset.name, extractDynamicsEqContent(preset.params, 0), {
+        engine: EQUALIZER_SCOPE,
         tags: preset.tags,
       }));
     }
     for (const [, preset] of Object.entries(DYNAMICS_EQ2_PRESETS)) {
-      entries.push(makeFactory('engine', preset.name, preset.params, {
-        engine: 'dynamicsEq2',
+      entries.push(makeFactory('engine', preset.name, extractDynamicsEqContent(preset.params, 1), {
+        engine: EQUALIZER_SCOPE,
         tags: preset.tags,
       }));
     }
@@ -369,8 +373,8 @@ async function loadDynamicsFactory(): Promise<PresetEntry[]> {
       }));
     }
     for (const [, preset] of Object.entries(DYNAMICS_SATURATION_PRESETS)) {
-      entries.push(makeFactory('engine', preset.name, preset.params, {
-        engine: 'dynamicsSaturation',
+      entries.push(makeFactory('engine', preset.name, extractSaturatorContent(preset.params, 'dynamics'), {
+        engine: SATURATOR_SCOPE,
         tags: preset.tags,
       }));
     }

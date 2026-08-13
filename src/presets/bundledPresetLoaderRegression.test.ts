@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadBundledPresetByName } from './statePresetRuntime';
-import { DEFAULT_STATE } from '../ui/state';
+import { completeCanonicalPresetState } from './presetStateCompatibility';
 
 const assetPath = resolve('public/presets/StringWaves.json');
 const assetBytes = readFileSync(assetPath);
@@ -51,18 +51,13 @@ try {
   assert.equal(preset.source, 'bundled', 'local fallback must not retain cloud provenance');
   assert.deepEqual(
     preset.state,
-    {
-      ...asset.state,
-      shapeLfoSpeed: DEFAULT_STATE.shapeLfoSpeed,
-      modulationSourceA: {
-        type: 'walk',
-        walk: { relationship: 'free', speed: asset.state.randomWalkSpeed },
-      },
-      modulationSourceB: { type: 'sampleHold' },
-    },
-    'local fallback must preserve the materialized state and fill additive modulation state',
+    completeCanonicalPresetState(asset.state),
+    'local fallback must preserve authored values and fill every additive current-contract field',
   );
-  assert.equal(Object.keys(preset.state).length, 1329);
+  assert.equal(
+    Object.keys(preset.state).length,
+    Object.keys(completeCanonicalPresetState(asset.state)).length,
+  );
   assert.deepEqual(fetchCalls, ['/presets/manifest.json', '/presets/StringWaves.json']);
 } finally {
   globalThis.fetch = originalFetch;

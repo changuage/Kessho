@@ -36,3 +36,36 @@ test('audit keeps recycled visible-root descendants nonblocking while retaining 
   assert.match(blockingExpression, /activeUnreachableInternalDerivedCount/);
   assert.doesNotMatch(blockingExpression, /activeInternalRetainedOnlyCount/);
 });
+
+test('audit only treats standalone historical resolved snapshots as reclaimable', () => {
+  assert.match(
+    source,
+    /const versionIdsWithPresetRefs = new Set\(refs\.map\(ref => ref\.version_id\)\)/,
+    'audit must identify versions whose mutable graph refs require an exact snapshot',
+  );
+  assert.match(
+    source,
+    /versionIdsWithPresetRefs\.has\(version\.id\)[\s\S]*?protectedGraphHistoricalResolvedHashes\.add/,
+    'graph-backed historical snapshots must be reported as protected',
+  );
+  assert.match(
+    source,
+    /else if \(!nonHistoricalRefs\.has\(version\.resolved_hash\)\)[\s\S]*?reclaimableStandaloneHistoricalResolvedHashes\.add/,
+    'only standalone, otherwise-unreferenced snapshots may be reported as reclaimable',
+  );
+  assert.match(
+    source,
+    /for \(const ref of contentRefs\)[\s\S]*?nonHistoricalRefs\.add\(ref\.content_hash\)/,
+    'direct content refs must protect their payload hashes from reclamation',
+  );
+  assert.match(
+    source,
+    /const resolvedCacheRequired = preset\?\.type !== 'state'/,
+    'graph-authoritative state presets must not require a monolithic resolved cache',
+  );
+  assert.match(
+    source,
+    /version\.storage_mode === 'patch'[\s\S]*?!version\.parent_version_id/,
+    'only patch chains require a parent; standalone checkpoints may preserve imported version numbers',
+  );
+});

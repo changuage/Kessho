@@ -12,15 +12,16 @@ import {
   routingMuteGroupSlotColor,
   routingMuteGroupSlotActiveCount,
   routingMuteGroupSlotSeqSummaries,
+  getRoutingMuteGroupTargetDef,
   ROUTING_MUTE_GROUP_SOURCE_IDS,
   type RoutingMuteGroupPhraseRange,
   type RoutingMuteGroupRandomSettings,
   type RoutingMuteGroupRuntimeSnapshot,
   type RoutingMuteGroupsState,
   type RoutingMuteGroupSlot,
+  type RoutingMuteGroupTargetDef,
   type SaveSlotResult,
 } from './routingMuteGroups';
-import { getRoutingSourceDef, type RoutingSourceDef } from './routingSourceRegistry';
 
 type RoutingMuteGroupsPanelProps = {
   muteGroups: RoutingMuteGroupsState;
@@ -350,14 +351,15 @@ const SOURCE_ABBREV: Record<string, string> = {
   sample1: 'Sm1', sample2: 'Sm2', drums: 'Drm', granular: 'Grn',
   waves: 'Wav', water: 'Wtr', insects: 'Ins', nature: 'Nat',
   delayAOut: 'DlA', delayBOut: 'DlB', degrade: 'Dgr', reverb: 'Rev',
+  freezeOut: 'Frz', eq1Out: 'EQ1', eq2Out: 'EQ2', sidechainOut: 'SC', saturationOut: 'Sat',
 };
 
 function SourceDotStrip({ slot }: { slot: RoutingMuteGroupSlot }) {
   const mutedSet = new Set(slot.mutedSourceIds);
   const seqSummaries = routingMuteGroupSlotSeqSummaries(slot);
   const visibleSources = ROUTING_MUTE_GROUP_SOURCE_IDS
-    .map((sourceId) => getRoutingSourceDef(sourceId))
-    .filter((source): source is RoutingSourceDef => source !== null);
+    .map((sourceId) => getRoutingMuteGroupTargetDef(sourceId))
+    .filter((source): source is RoutingMuteGroupTargetDef => source !== null);
   const activeEngines = visibleSources.filter((source) => !mutedSet.has(source.id));
 
   return (

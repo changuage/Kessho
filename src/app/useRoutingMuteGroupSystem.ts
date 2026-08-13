@@ -4,6 +4,7 @@ import { productEngine } from '../audio/product/ProductEngineProxy';
 import {
   createCoreProductRoutingMuteGroupEvents,
   createCoreProductRoutingMuteGroupRecallEvent,
+  routingMuteGroupSourceIdsFromMask,
 } from '../audio/coreProductEvents';
 import {
   captureRoutingMuteGroupSlot,
@@ -17,7 +18,6 @@ import {
   normalizeRoutingMuteGroupSlot,
   ROUTING_MUTE_GROUP_PHRASE_STEP,
   ROUTING_MUTE_GROUP_SLOT_COUNT,
-  ROUTING_MUTE_GROUP_SOURCE_IDS,
   routingMuteGroupSlotColor,
   routingMuteGroupSlotPhraseRange,
   setRoutingMuteGroupRandomSettings,
@@ -265,8 +265,7 @@ export function useRoutingMuteGroupSystem({
     if (!productRuntimeActive || typeof window === 'undefined') return undefined;
     let frame = 0;
     let lastReadMs = 0;
-    const sourceIds = ROUTING_MUTE_GROUP_SOURCE_IDS;
-    const tick = (now: number) => {
+      const tick = (now: number) => {
       frame = window.requestAnimationFrame(tick);
       if (document.visibilityState !== 'visible' || now - lastReadMs < 100) return;
       lastReadMs = now;
@@ -298,7 +297,7 @@ export function useRoutingMuteGroupSystem({
         transitionProgress: progress,
         holdPhrases: null,
         transitionPhrases: muteGroupsRef.current.random?.transitionPhrases ?? 1,
-        currentMutedSourceIds: sourceIds.filter((_, index) => (mask & (1 << index)) !== 0),
+        currentMutedSourceIds: routingMuteGroupSourceIdsFromMask(mask),
         nextMutedSourceIds: next === null ? [] : muteGroupsRef.current.slots[next]?.mutedSourceIds ?? [],
       });
     };

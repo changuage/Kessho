@@ -1940,7 +1940,11 @@ export interface SynthPageProps {
   onHarmonyLiveLayerChange?: HarmonyLiveLayerChangeHandler;
   /** App-owned authored history callback; remains available while Global is unmounted. */
   commitHarmonyAuthoredStateChange: (updater: React.SetStateAction<SliderState>, label: string) => void;
+  presetPoolRequest?: SynthPresetPoolSource | null;
+  onPresetPoolRequestClose?: () => void;
 }
+
+export type SynthPresetPoolSource = 'pad1' | 'pad2' | 'lead1' | 'lead2';
 
 // ═══════════════ Component ═══════════════
 
@@ -2077,6 +2081,27 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     slotKey: keyof SliderState;
   } | null>(null);
   const [leadPoolPopupSlot, setLeadPoolPopupSlot] = useState<LeadPresetSlotKey | null>(null);
+  useEffect(() => {
+    switch (props.presetPoolRequest) {
+      case 'pad1':
+        setPadPoolPopupSlot({ scope: 'pad1', slotKey: state.padMorph >= 0.5 ? 'padPresetB' : 'padPresetA' });
+        break;
+      case 'pad2':
+        setPadPoolPopupSlot({ scope: 'pad2', slotKey: state.pad2Morph >= 0.5 ? 'pad2PresetB' : 'pad2PresetA' });
+        break;
+      case 'lead1':
+        setLeadPoolPopupSlot(state.lead1Morph >= 0.5 ? 'lead1PresetB' : 'lead1PresetA');
+        break;
+      case 'lead2':
+        setLeadPoolPopupSlot(state.lead2Morph >= 0.5 ? 'lead2PresetD' : 'lead2PresetC');
+        break;
+    }
+  }, [props.presetPoolRequest]);
+  const closePresetPool = useCallback(() => {
+    setPadPoolPopupSlot(null);
+    setLeadPoolPopupSlot(null);
+    if (props.presetPoolRequest) props.onPresetPoolRequestClose?.();
+  }, [props.onPresetPoolRequestClose, props.presetPoolRequest]);
   const [livePadViz, setLivePadViz] = useState({
     pad1FilterFreq: 1000,
     pad1LfoValue: 0,
@@ -3312,8 +3337,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const option = options.find(candidateOption => candidateMatchesOption(candidate, [candidateOption.id, candidateOption.name]));
     const presetId = option?.id ?? candidate.id;
     handlePresetEndpointSelectChange(padPoolPopupSlot.slotKey, presetId as SliderState[keyof SliderState]);
-    setPadPoolPopupSlot(null);
-  }, [handlePresetEndpointSelectChange, pad1PresetOptions, pad2PresetOptions, padPoolPopupSlot]);
+    closePresetPool();
+  }, [closePresetPool, handlePresetEndpointSelectChange, pad1PresetOptions, pad2PresetOptions, padPoolPopupSlot]);
 
   const handlePadPoolAudition = useCallback((candidate: PresetPoolCandidate) => {
     if (!padPoolPopupSlot || !onAuditionPresetPreview) return;
@@ -3380,8 +3405,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     ]));
     const presetId = option?.id ?? candidate.aliases?.[0] ?? candidate.id;
     handlePresetEndpointSelectChange(leadPoolPopupSlot, presetId as SliderState[keyof SliderState]);
-    setLeadPoolPopupSlot(null);
-  }, [handlePresetEndpointSelectChange, leadPoolPopupSlot, leadPresetOptions]);
+    closePresetPool();
+  }, [closePresetPool, handlePresetEndpointSelectChange, leadPoolPopupSlot, leadPresetOptions]);
 
   const handleLeadPoolAudition = useCallback((candidate: PresetPoolCandidate) => {
     if (!leadPoolPopupSlot || !onAuditionPresetPreview) return;
@@ -9980,7 +10005,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         accentColor={padPoolPopupSlot?.scope === 'pad2' ? '#8b5cf6' : '#4a9eff'}
         onChange={activePadPool.setPoolIds}
         onReset={activePadPool.resetPoolIds}
-        onClose={() => setPadPoolPopupSlot(null)}
+        onClose={closePresetPool}
         onAudition={handlePadPoolAudition}
         onLoad={handlePadPoolLoad}
         onDelete={handlePadPoolDelete}
@@ -9994,7 +10019,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         accentColor="#f59e0b"
         onChange={leadPool.setPoolIds}
         onReset={leadPool.resetPoolIds}
-        onClose={() => setLeadPoolPopupSlot(null)}
+        onClose={closePresetPool}
         onAudition={handleLeadPoolAudition}
         onLoad={handleLeadPoolLoad}
         onDelete={handleLeadPoolDelete}

@@ -594,12 +594,12 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
     ? 0.012 + Math.pow(erosionWobbleSpeed, 1.35) * 0.11 + drift * 0.035 + contribution.materialWear * 0.025 + modWow * 0.018
     : 0.018 + erosionWobbleSpeed * 0.36 + drift * 0.12 + contribution.materialWear * 0.05 + modWow * 0.04;
   const wowFrequency = driftWowFrequency + (erosionWowFrequency - driftWowFrequency) * erosionMotionWeight;
-  const endEnabled = Boolean(state.dynamicsEnabled && state.endCompEnabled);
+  const endEnabled = Boolean(state.endCompEnabled);
   const endWet = endEnabled ? clampUnitInterval(state.endCompMix ?? 1) : 0;
-  const masterSatActive = Boolean(state.dynamicsSaturationEnabled);
-  const masterSatDrive = masterSatActive ? clampUnitInterval(state.dynamicsSaturationDrive ?? 0) : 0;
-  const masterSatTone = clampUnitInterval(state.dynamicsSaturationTone ?? 0.5);
-  const masterSatBias = clampUnitInterval(state.dynamicsSaturationBias ?? 0.5);
+  const masterSatActive = Boolean(state.masterSaturationEnabled);
+  const masterSatDrive = masterSatActive ? clampUnitInterval(state.masterSaturationDrive ?? 0) : 0;
+  const masterSatTone = clampUnitInterval(state.masterSaturationTone ?? 0.5);
+  const masterSatBias = clampUnitInterval(state.masterSaturationBias ?? 0.5);
   const masterSatModeMap = {
     clean: 0,
     tape: 1,
@@ -607,9 +607,9 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
     diode: 3,
     fold: 4,
   } satisfies Record<SliderState['dynamicsSaturationMode'], number>;
-  const masterSatMode = masterSatModeMap[state.dynamicsSaturationMode ?? 'clean'] ?? 0;
+  const masterSatMode = masterSatModeMap[state.masterSaturationMode ?? 'clean'] ?? 0;
   const masterSatQualityMap = { eco: 0, smooth: 1, hq: 2 } satisfies Record<SliderState['dynamicsSaturationQuality'], number>;
-  const masterSatQuality = masterSatQualityMap[state.dynamicsSaturationQuality ?? 'smooth'] ?? 1;
+  const masterSatQuality = masterSatQualityMap[state.masterSaturationQuality ?? 'smooth'] ?? 1;
   const endCompModeMap = {
     studioClear: 0,
     clarity: 1,

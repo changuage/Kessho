@@ -1,6 +1,6 @@
 {
   "name": "kessho-product",
-  "version": 26,
+  "version": 27,
   "groups": [
     "transport",
     "harmony",
@@ -70,7 +70,7 @@
   },
   "soundscapeParamLayout": {
     "layerCount": 4,
-    "layerRouteStride": 5,
+    "layerRouteStride": 6,
     "textureSlotCount": 4,
     "textureParamStride": 11,
     "moduleParamCount": 96,
@@ -1855,6 +1855,7 @@
       "delayASend": 0,
       "delayBSend": 0,
       "granularSend": 0,
+      "spectralFreezeSend": 0,
       "diffuseSend": 0,
       "postLpfHz": 18000,
       "stereoWidth": 1,
@@ -2220,6 +2221,11 @@
       "spectralFreezeRouting": 0,
       "spectralFreezeReverbCrossfade": 1,
       "dynamicsDrive": 0,
+      "dynamicsMasterSaturationEnabled": false,
+      "dynamicsMasterSaturationMode": 0,
+      "dynamicsMasterSaturationQuality": 1,
+      "dynamicsMasterSaturationTone": 0.5,
+      "dynamicsMasterSaturationBias": 0.5,
       "dynamicsEnabled": false,
       "dynamicsDriftEnabled": false,
       "dynamicsDriftMode": 0,

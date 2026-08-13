@@ -40,7 +40,7 @@ Use `npm run core:product:apple-native-code-audit:strict` as a release gate; it 
 | Background musical scheduling | Host-dependent | Harmony, chord, lead, and scheduled note behavior still runs on JavaScript timers. A native callback alone does not preserve full behavior when the WebView is suspended. |
 | Recording, stems, DAW output, graph taps | Missing from native bridge | These must be designed into the native engine contract before native playback becomes the default. |
 | Native output topology | Stereo master only | The C ABI has stems and graph taps, but the Apple engine exposes one fixed stereo source node. |
-| Native telemetry integrity | Not measurement-ready | A 15,168-byte telemetry struct is copied every render block, native render CPU is not timed, and the iOS underrun counter never increments. |
+| Native telemetry integrity | Not measurement-ready | A 14,912-byte telemetry struct is copied every render block, native render CPU is not timed, and the iOS underrun counter never increments. |
 | iOS renderer ownership | Duplicated diagnostics | The audio-session host owns one native engine and an `IOSProductAudioRenderer` that creates a second engine; lifecycle telemetry can refer to different instances. |
 | Device format lifecycle | Unverified | Oversized callbacks fail and route changes do not rebuild Product Core from the actual output sample rate/block size. |
 | iOS remote command authority | JavaScript-dependent | Control Center updates session state and sends a JavaScript event; it does not directly control the native renderer when the WebView is suspended. |

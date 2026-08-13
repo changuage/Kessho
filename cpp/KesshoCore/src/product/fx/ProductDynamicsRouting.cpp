@@ -103,8 +103,10 @@ void KesshoProductEngine::mixFxBuffer(const float* in_l, const float* in_r, floa
     const float input_left = in_l[i] * gain;
     const float input_right = in_r[i] * gain;
     const float duck_gain = sidechainGain(sidechain_target, frame);
-    const float left = input_left * duck_gain;
-    const float right = input_right * duck_gain;
+    const float wet = clampFloat(fx.sidechain_mix, 0.0f, 1.0f);
+    const float blended_gain = 1.0f + (duck_gain - 1.0f) * wet;
+    const float left = input_left * blended_gain;
+    const float right = input_right * blended_gain;
     if (graph_taps_enabled && sidechain_target < kSidechainTargetCount) {
       graph_sidechain_input_l[sidechain_target][frame] += input_left;
       graph_sidechain_input_r[sidechain_target][frame] += input_right;
@@ -122,6 +124,7 @@ void KesshoProductEngine::mixFxBuffer(const float* in_l, const float* in_r, floa
 
 void KesshoProductEngine::renderDegradeSend(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   const bool degrade_output_active =
+      fx_graph_rendering ||
       routing.degrade_return_level > 0.0001f ||
       routing.degrade_to_reverb > 0.0001f;
   const bool degrade_fx_active =
@@ -153,6 +156,11 @@ void KesshoProductEngine::renderDegradeSend(float* out_l, float* out_r, uint32_t
     const float mute_gain = routingMuteGainForFrame(kRoutingMuteRowDegrade, transport.sample_frame + i);
     const float left = module_l[i] * routing.degrade_return_level * mute_gain;
     const float right = module_r[i] * routing.degrade_return_level * mute_gain;
+    if (fx_graph_rendering) {
+      fx_node_output_l[kFxNodeDegrade][frame] = module_l[i] * mute_gain;
+      fx_node_output_r[kFxNodeDegrade][frame] = module_r[i] * mute_gain;
+      continue;
+    }
     if (routing.degrade_to_reverb > 0.0001f) {
       reverb_bus_l[frame] += module_l[i] * routing.degrade_to_reverb * mute_gain;
       reverb_bus_r[frame] += module_r[i] * routing.degrade_to_reverb * mute_gain;

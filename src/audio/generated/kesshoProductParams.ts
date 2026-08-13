@@ -41,6 +41,7 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SourceDelayBSend: 108,
   SourceGranularSend: 109,
   SourceDegradeSend: 124,
+  SourceSpectralFreezeSend: 134,
   SourceDiffuseSend: 113,
   SourcePostLpfHz: 110,
   SourceStereoWidth: 111,
@@ -615,6 +616,8 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   RoutingDynamicsReverbBus: 428,
   RoutingDegradeToReverb: 429,
   SequencerLaneMuted: 430,
+  RoutingFxRouteAmount: 431,
+  RoutingFxRouteEnabled: 432,
   MasterGain: 500,
   MasterLimiterCeilingDb: 501,
   RngSeed: 600,
@@ -627,7 +630,17 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SequencerChainEntryDurationSeconds: 1208,
   SequencerEvolveRuntimeConfig: 1209,
   SequencerEvolveRuntimeSeedLow: 1210,
-  SequencerEvolveRuntimeSeedHigh: 1211
+  SequencerEvolveRuntimeSeedHigh: 1211,
+  FxDynamicsEq1Mix: 433,
+  FxDynamicsEq2Mix: 434,
+  RoutingFxRouteMode: 435,
+  RoutingFxRouteMin: 436,
+  RoutingFxRouteMax: 437,
+  FxDynamicsMasterSaturationEnabled: 1212,
+  FxDynamicsMasterSaturationMode: 1213,
+  FxDynamicsMasterSaturationQuality: 1214,
+  FxDynamicsMasterSaturationTone: 1215,
+  FxDynamicsMasterSaturationBias: 1216
 } as const);
 
 export const KESSHO_PRODUCT_PARAMS = Object.freeze([
@@ -934,6 +947,14 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "path": "sources.*.degradeSend",
     "type": "float",
     "id": 124,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "SourceSpectralFreezeSend",
+    "path": "sources.*.spectralFreezeSend",
+    "type": "float",
+    "id": 134,
     "min": 0,
     "max": 2
   },
@@ -4773,7 +4794,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "float",
     "id": 1168,
     "min": 0.25,
-    "max": 4
+    "max": 1
   },
   {
     "name": "FxDynamicsEq1MidFreq",
@@ -4837,7 +4858,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "float",
     "id": 1176,
     "min": 0.25,
-    "max": 4
+    "max": 1
   },
   {
     "name": "FxDynamicsEq2Enabled",
@@ -4899,7 +4920,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "float",
     "id": 1184,
     "min": 0.25,
-    "max": 4
+    "max": 1
   },
   {
     "name": "FxDynamicsEq2MidFreq",
@@ -4963,7 +4984,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "float",
     "id": 1192,
     "min": 0.25,
-    "max": 4
+    "max": 1
   },
   {
     "name": "FxSidechainEnabled",
@@ -5418,6 +5439,20 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 430
   },
   {
+    "name": "RoutingFxRouteAmount",
+    "path": "routing.fxRoutes.*.amount",
+    "type": "float",
+    "id": 431,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "RoutingFxRouteEnabled",
+    "path": "routing.fxRoutes.*.enabled",
+    "type": "bool",
+    "id": 432
+  },
+  {
     "name": "MasterGain",
     "path": "master.gain",
     "type": "float",
@@ -5510,6 +5545,84 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 1211,
     "min": 0,
     "max": 65535
+  },
+  {
+    "name": "FxDynamicsEq1Mix",
+    "path": "fx.dynamics.eq1.mix",
+    "type": "float",
+    "id": 433,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsEq2Mix",
+    "path": "fx.dynamics.eq2.mix",
+    "type": "float",
+    "id": 434,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "RoutingFxRouteMode",
+    "path": "routing.fxRoutes.*.mode",
+    "type": "uint",
+    "id": 435,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingFxRouteMin",
+    "path": "routing.fxRoutes.*.min",
+    "type": "float",
+    "id": 436,
+    "min": 0,
+    "max": 4
+  },
+  {
+    "name": "RoutingFxRouteMax",
+    "path": "routing.fxRoutes.*.max",
+    "type": "float",
+    "id": 437,
+    "min": 0,
+    "max": 4
+  },
+  {
+    "name": "FxDynamicsMasterSaturationEnabled",
+    "path": "fx.dynamics.masterSaturation.enabled",
+    "type": "bool",
+    "id": 1212
+  },
+  {
+    "name": "FxDynamicsMasterSaturationMode",
+    "path": "fx.dynamics.masterSaturation.mode",
+    "type": "uint",
+    "id": 1213,
+    "min": 0,
+    "max": 4
+  },
+  {
+    "name": "FxDynamicsMasterSaturationQuality",
+    "path": "fx.dynamics.masterSaturation.quality",
+    "type": "uint",
+    "id": 1214,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "FxDynamicsMasterSaturationTone",
+    "path": "fx.dynamics.masterSaturation.tone",
+    "type": "float",
+    "id": 1215,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsMasterSaturationBias",
+    "path": "fx.dynamics.masterSaturation.bias",
+    "type": "float",
+    "id": 1216,
+    "min": 0,
+    "max": 1
   }
 ] as const);
 export type KesshoProductParamName = keyof typeof KESSHO_PRODUCT_PARAM_IDS;

@@ -32,8 +32,8 @@ import {
   isRoutingMuteGroupSceneRefSlotName,
   planRoutingMuteGroupMetadataStorage,
   reconstructRoutingMuteGroupMetadata,
-  ROUTING_MUTE_GROUP_SCENE_DERIVED_SCOPE,
-  ROUTING_MUTE_GROUP_SCENE_DERIVED_TYPE,
+  routingMuteGroupLegacySceneRefSlot,
+  ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE,
 } from './routingMuteGroupPresetStorage';
 import {
   applyRecordPatch,
@@ -75,7 +75,9 @@ import {
 import { DRUM_EUCLIDEAN_LANE_COUNT, SYNTH_EUCLIDEAN_LANE_COUNT } from '../audio/sequencerLaneCounts';
 import {
   buildDynamicsEqPoolInstance,
+  buildEqualizerPresetPoolInstance,
   buildGranularVoicePoolInstance,
+  buildSaturatorPoolInstance,
   buildSampleVoicePoolInstance,
   buildPadVoicePoolInstance,
   hydrateSharedComponentRef,
@@ -1189,6 +1191,12 @@ export class SupabasePresetStore implements IPresetStore {
       ? Array.from({ length: 4 }, (_, laneIndex) => buildGranularVoicePoolInstance(state, laneIndex))
       : type === 'source' && scope === 'dynamicsBus'
         ? Array.from({ length: 2 }, (_, laneIndex) => buildDynamicsEqPoolInstance(state, laneIndex))
+        : type === 'source' && scope === 'masterFx'
+          ? [buildSaturatorPoolInstance(state, 'master')]
+          : type === 'engine' && scope === 'equalizer'
+            ? [buildEqualizerPresetPoolInstance(state)]
+            : type === 'engine' && scope === 'saturator'
+              ? [buildSaturatorPoolInstance(state, 'neutral')]
         : type === 'source' && scope === 'synth'
           ? Array.from({ length: 2 }, (_, laneIndex) => buildSampleVoicePoolInstance(state, laneIndex))
           : type === 'kit' && scope === 'pad1Kit'
@@ -1361,6 +1369,11 @@ export class SupabasePresetStore implements IPresetStore {
 
       if (error) {
         if (useDirectContentRefs && isMissingRpcError(error, 'kessho_save_preset_v2')) {
+          if (contentRefsToInsert.some(ref => ref.contentType === ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE)) {
+            throw new Error(
+              'Supabase preset save requires the direct routing mute-scene content-ref migration.',
+            );
+          }
           useDirectContentRefs = false;
           continue;
         }
@@ -1428,9 +1441,23 @@ export class SupabasePresetStore implements IPresetStore {
 
     for (const row of (data ?? []) as unknown[]) {
       if (isPlainObject(row) && typeof row.hash === 'string') {
-        existingHashes.add(row.hash);
         if ('payload' in row) {
-          await writePresetPayloadCacheV2(row.hash, row.payload);
+          const normalizedPayload = isPlainObject(row.payload)
+            ? canonicalizeRecord(row.payload)
+            : row.payload;
+          const canonicalJson = isPlainObject(normalizedPayload)
+            ? JSON.stringify(normalizedPayload)
+            : undefined;
+          const computedHash = canonicalJson
+            ? await hashCanonicalJsonText(canonicalJson)
+            : null;
+          if (computedHash !== row.hash) continue;
+          existingHashes.add(row.hash);
+          await writePresetPayloadCacheV2(row.hash, normalizedPayload, {
+            verifiedCanonicalJson: canonicalJson,
+          });
+        } else {
+          existingHashes.add(row.hash);
         }
       }
     }
@@ -1478,8 +1505,20 @@ export class SupabasePresetStore implements IPresetStore {
 
     for (const row of (data ?? []) as unknown[]) {
       if (isPlainObject(row) && typeof row.hash === 'string' && 'payload' in row) {
-        payloadMap.set(row.hash, row.payload);
-        await writePresetPayloadCacheV2(row.hash, row.payload);
+        const normalizedPayload = isPlainObject(row.payload)
+          ? canonicalizeRecord(row.payload)
+          : row.payload;
+        const canonicalJson = isPlainObject(normalizedPayload)
+          ? JSON.stringify(normalizedPayload)
+          : undefined;
+        const computedHash = canonicalJson
+          ? await hashCanonicalJsonText(canonicalJson)
+          : null;
+        if (computedHash !== row.hash) continue;
+        payloadMap.set(row.hash, normalizedPayload);
+        await writePresetPayloadCacheV2(row.hash, normalizedPayload, {
+          verifiedCanonicalJson: canonicalJson,
+        });
         continue;
       }
       if (isPlainObject(row)) {
@@ -1800,6 +1839,7 @@ export class SupabasePresetStore implements IPresetStore {
         targetPresetMap,
         previousResolved,
         versionRow.version_no === targetVersionNo ? recoveryWarnings : undefined,
+        versionRow.id === row.latest_version_id || versionRefs.length > 0,
       );
       const versionContentRefs = contentRefsByVersionId.get(versionRow.id) ?? [];
       for (const slot of findMissingDerivedEndpointSlots(versionContentRefs, payloadMap)) {
@@ -1841,15 +1881,35 @@ export class SupabasePresetStore implements IPresetStore {
       let reconstructedMetadata = reconstructRoutingMuteGroupMetadata(
         metadata,
         (refSlot) => {
-          const refRow = versionRefs.find(candidate => candidate.ref_slot === refSlot);
-          if (!refRow) return { targetFound: false, payload: undefined };
-          const targetPreset = targetPresetMap.get(refRow.target_preset_id);
+          // New mute scenes are graph-independent direct content refs. Keep
+          // the old hidden child preset lookup as a read-only fallback.
+          const directRef = contentRefsByVersionId.get(versionRow.id)?.find(candidate => (
+            candidate.ref_slot === refSlot
+          ));
+          if (directRef) {
+            return {
+              targetFound: true,
+              payload: payloadMap.get(directRef.content_hash),
+              contentHash: directRef.content_hash,
+              contentType: directRef.content_type,
+              source: 'direct',
+            };
+          }
+
+          const legacyRef = versionRefs.find(candidate => (
+            candidate.ref_slot === routingMuteGroupLegacySceneRefSlot(
+              Number(refSlot.match(/slot-(\d+)\.content$/)?.[1] ?? -1),
+            )
+          ));
+          if (!legacyRef) return { targetFound: false, payload: undefined };
+          const targetPreset = targetPresetMap.get(legacyRef.target_preset_id);
           if (!targetPreset) return { targetFound: false, payload: undefined };
+          const contentHash = targetPreset.latest_resolved_hash ?? undefined;
           return {
             targetFound: true,
-            payload: targetPreset.latest_resolved_hash
-              ? payloadMap.get(targetPreset.latest_resolved_hash)
-              : undefined,
+            payload: contentHash ? payloadMap.get(contentHash) : undefined,
+            contentHash,
+            source: 'legacy',
           };
         },
         {
@@ -1936,6 +1996,7 @@ export class SupabasePresetStore implements IPresetStore {
     targetPresetMap: Map<string, PresetV2Row>,
     previousResolved: Record<string, unknown> | null,
     recoveryWarnings?: PresetRecoveryWarning[],
+    resolvedCacheRequired = true,
   ): Promise<Record<string, unknown>> {
     if (row.resolved_hash) {
       const cached = payloadMap.get(row.resolved_hash);
@@ -1946,7 +2007,7 @@ export class SupabasePresetStore implements IPresetStore {
         fallback: 'default',
         version: row.version_no,
       });
-    } else if (parentType !== 'state') {
+    } else if (parentType !== 'state' && resolvedCacheRequired) {
       recoveryWarnings?.push({
         slot: 'resolved',
         reason: 'missing_payload',
@@ -2328,7 +2389,7 @@ export class SupabasePresetStore implements IPresetStore {
         ? stripSequencerMetadataFromSoundContent(rawMetadata)
         : rawMetadata;
       const muteGroupStoragePlan = await planRoutingMuteGroupMetadataStorage(metadata);
-      const preparedVersionContent: PreparedVersionContentV2 = internalDerived
+      const preparedVersionContentBase: PreparedVersionContentV2 = internalDerived
         ? { payloads: [], refs: [] }
         : await this.prepareVersionContentV2(
           normalized.type,
@@ -2336,6 +2397,26 @@ export class SupabasePresetStore implements IPresetStore {
           resolvedData,
           muteGroupStoragePlan.metadata,
         );
+      const preparedVersionContent: PreparedVersionContentV2 = internalDerived
+        ? preparedVersionContentBase
+        : {
+            payloads: [
+              ...preparedVersionContentBase.payloads,
+              ...muteGroupStoragePlan.scenes.map(scene => ({
+                hash: scene.hash,
+                payloadKind: 'content' as const,
+                payload: scene.envelope as unknown as Record<string, unknown>,
+              })),
+            ],
+            refs: [
+              ...preparedVersionContentBase.refs,
+              ...muteGroupStoragePlan.scenes.map(scene => ({
+                slot: scene.refSlot,
+                contentHash: scene.hash,
+                contentType: scene.contentType,
+              })),
+            ],
+          };
       const metadataForStorage = normalized.type === 'state'
         ? stripSequencerMetadataFromSoundContent(muteGroupStoragePlan.metadata)
         : muteGroupStoragePlan.metadata;
@@ -2360,6 +2441,7 @@ export class SupabasePresetStore implements IPresetStore {
           if (isSoundOnlySource && childSpec.slot === 'euclideanPattern') return false;
           if (normalized.type === 'kit' && scope === 'granularKit' && /^granularVoice[1-4]$/.test(childSpec.slot)) return false;
           if (normalized.type === 'source' && scope === 'dynamicsBus' && (childSpec.slot === 'eq1' || childSpec.slot === 'eq2')) return false;
+          if (normalized.type === 'source' && scope === 'masterFx' && childSpec.slot === 'saturation') return false;
           if (normalized.type === 'kit' && scope === 'pad1Kit' && childSpec.slot === 'pad1') return false;
           if (normalized.type === 'kit' && scope === 'pad2Kit' && childSpec.slot === 'pad2') return false;
           return true;
@@ -2397,38 +2479,17 @@ export class SupabasePresetStore implements IPresetStore {
         });
       }
 
-      for (const scene of muteGroupStoragePlan.scenes) {
-        let target = await this.findMatchingPresetV2(
-          ROUTING_MUTE_GROUP_SCENE_DERIVED_TYPE,
-          ROUTING_MUTE_GROUP_SCENE_DERIVED_SCOPE,
-          scene.hash,
-          presetRow?.id,
-          { internalDerivedOnly: true },
-        );
-        if (!target) {
-          target = await this.ensureDerivedChildPresetV2(
-            ROUTING_MUTE_GROUP_SCENE_DERIVED_TYPE,
-            ROUTING_MUTE_GROUP_SCENE_DERIVED_SCOPE,
-            scene.hash,
-            scene.scene as unknown as Record<string, unknown>,
-          );
-        }
-        if (!target) continue;
-
-        refsToInsert.push({
-          slot: scene.refSlot,
-          target,
-          overrideHash: null,
-        });
-      }
-
       const computedRefsBySlot = version.refs
         ? new Map(refsToInsert.map(ref => [ref.slot, ref]))
         : undefined;
       for (const explicitRef of await this.resolveExplicitVersionRefsV2(
         normalized.type,
         scope,
-        version.refs,
+        version.refs
+          ? Object.fromEntries(
+            Object.entries(version.refs).filter(([slot]) => !isRoutingMuteGroupSceneRefSlotName(slot)),
+          )
+          : undefined,
         presetRow?.id,
         computedRefsBySlot,
       )) {

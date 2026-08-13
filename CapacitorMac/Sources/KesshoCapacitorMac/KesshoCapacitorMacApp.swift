@@ -54,14 +54,18 @@ final class KesshoMacRuntime: ObservableObject {
     private let midiRouter = MacMidiRouter()
     private let performanceActivity = MacPerformanceActivity()
     private let audioSessionHost = KesshoMacAudioSessionHost()
+    private let audioOutputObserver = MacAudioOutputObserver()
     private weak var webView: WKWebView?
 
     init() {
         self.server = StaticWebServer(rootURL: Self.resolveWebRoot())
-        midiRouter.onMessage = { [weak self] message in
-            Task { @MainActor in
-                self?.dispatchEvent(plugin: "KesshoMidiRouting", eventName: "midiMessage", data: message.dictionary)
-            }
+        midiRouter.onMessages = { [weak self] messages in
+            guard let self, self.midiRouter.isStarted else { return }
+            self.dispatchEvent(
+                plugin: "KesshoMidiRouting",
+                eventName: "midiMessages",
+                data: ["messages": messages.map(\.dictionary)]
+            )
         }
         midiRouter.onInputsChanged = { [weak self] inputs in
             Task { @MainActor in
@@ -77,6 +81,10 @@ final class KesshoMacRuntime: ObservableObject {
                 self?.dispatchEvent(plugin: "KesshoAudioSession", eventName: "audioSessionEvent", data: event)
             }
         }
+        audioOutputObserver.onChange = { [weak self] status in
+            self?.dispatchEvent(plugin: "KesshoMacShell", eventName: "audioOutputChanged", data: status)
+        }
+        audioOutputObserver.start()
     }
 
     func attach(_ webView: WKWebView) {
@@ -243,7 +251,7 @@ final class KesshoMacRuntime: ObservableObject {
                 "nativeProductCoreDiagnostics": true,
                 "appNapSuppressionWhilePlaying": true,
                 "idleSystemSleepPreventionWhilePlaying": true,
-                "assetMemoryCache": true,
+                "assetMemoryCache": false,
                 "coreAudioOutputDiagnostics": true,
             ],
             "audioOutput": MacAudioOutputInspector.statusPayload(),
@@ -470,6 +478,7 @@ struct KesshoWebView: NSViewRepresentable {
         getAudioOutputStatus: () => call('KesshoMacShell', 'getAudioOutputStatus'),
         openSoundSettings: () => call('KesshoMacShell', 'openSoundSettings'),
         setPlaybackState: (options) => call('KesshoMacShell', 'setPlaybackState', options),
+        addListener: (eventName, callback) => addListener('KesshoMacShell', eventName, callback),
       };
 
       const KesshoAudioSession = {
@@ -899,7 +908,7 @@ enum MacAudioOutputInspector {
         return false
     }
 
-    private static func defaultOutputDeviceID() -> AudioDeviceID? {
+    static func defaultOutputDeviceID() -> AudioDeviceID? {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultOutputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -1029,6 +1038,74 @@ enum MacAudioOutputInspector {
     }
 }
 
+@MainActor
+final class MacAudioOutputObserver {
+    private let systemObject = AudioObjectID(kAudioObjectSystemObject)
+    private var observedDeviceID: AudioDeviceID?
+    private var lastPayloadData: Data?
+    var onChange: (([String: Any]) -> Void)?
+
+    private lazy var defaultDeviceListener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+        self?.bindDefaultDevice()
+        self?.emitIfChanged()
+    }
+    private lazy var deviceListener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+        self?.emitIfChanged()
+    }
+
+    func start() {
+        var address = Self.defaultDeviceAddress
+        AudioObjectAddPropertyListenerBlock(systemObject, &address, .main, defaultDeviceListener)
+        bindDefaultDevice()
+    }
+
+    private func bindDefaultDevice() {
+        let deviceID = MacAudioOutputInspector.defaultOutputDeviceID()
+        guard deviceID != observedDeviceID else { return }
+        unbindDevice()
+        observedDeviceID = deviceID
+        guard let deviceID else { return }
+        for var address in Self.deviceAddresses {
+            AudioObjectAddPropertyListenerBlock(deviceID, &address, .main, deviceListener)
+        }
+    }
+
+    private func unbindDevice() {
+        guard let deviceID = observedDeviceID else { return }
+        for var address in Self.deviceAddresses {
+            AudioObjectRemovePropertyListenerBlock(deviceID, &address, .main, deviceListener)
+        }
+        observedDeviceID = nil
+    }
+
+    private func emitIfChanged() {
+        let payload = MacAudioOutputInspector.statusPayload()
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]), data != lastPayloadData else {
+            return
+        }
+        lastPayloadData = data
+        onChange?(payload)
+    }
+
+    private static let defaultDeviceAddress = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    private static let deviceAddresses = [
+        kAudioObjectPropertyName,
+        kAudioDevicePropertyTransportType,
+        kAudioDevicePropertyNominalSampleRate,
+        kAudioDevicePropertyBufferFrameSize,
+    ].map {
+        AudioObjectPropertyAddress(
+            mSelector: $0,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+    }
+}
+
 final class StaticWebServer {
     let rootURL: URL
 
@@ -1036,8 +1113,6 @@ final class StaticWebServer {
     private var listener: NWListener?
     private var readyURL: URL?
     private var completions: [(Result<URL, Error>) -> Void] = []
-    private var assetCache: [String: StaticAsset] = [:]
-    private let maximumCachedAssetBytes = 3 * 1024 * 1024
 
     init(rootURL: URL) {
         self.rootURL = rootURL
@@ -1151,28 +1226,7 @@ final class StaticWebServer {
             let mimeType = Self.mimeType(for: fileURL)
             let cacheControl = Self.cacheControl(for: fileURL)
 
-            if !headOnly, let cached = assetCache[fileURL.path] {
-                send(
-                    status: 200,
-                    body: cached.body,
-                    mimeType: cached.mimeType,
-                    cacheControl: cached.cacheControl,
-                    contentLength: cached.contentLength,
-                    connection: connection
-                )
-                return
-            }
-
             let body = headOnly ? Data() : try Data(contentsOf: fileURL)
-            if !headOnly, contentLength <= maximumCachedAssetBytes {
-                assetCache[fileURL.path] = StaticAsset(
-                    body: body,
-                    mimeType: mimeType,
-                    cacheControl: cacheControl,
-                    contentLength: contentLength
-                )
-            }
-
             send(
                 status: 200,
                 body: body,
@@ -1217,10 +1271,14 @@ final class StaticWebServer {
 
         """
 
-        var response = Data(header.utf8)
-        response.append(body)
-        connection.send(content: response, completion: .contentProcessed { _ in
-            connection.cancel()
+        connection.send(content: Data(header.utf8), completion: .contentProcessed { error in
+            guard error == nil, !body.isEmpty else {
+                connection.cancel()
+                return
+            }
+            connection.send(content: body, completion: .contentProcessed { _ in
+                connection.cancel()
+            })
         })
     }
 
@@ -1249,13 +1307,6 @@ final class StaticWebServer {
         }
         return "public, max-age=31536000, immutable"
     }
-}
-
-private struct StaticAsset {
-    let body: Data
-    let mimeType: String
-    let cacheControl: String
-    let contentLength: Int
 }
 
 enum StaticWebServerError: LocalizedError {
@@ -1316,7 +1367,7 @@ enum MacMIDIMessageKind: String {
     case unknown
 }
 
-struct MacMIDIEndpointInfo {
+struct MacMIDIEndpointInfo: Equatable {
     let uniqueID: Int32
     let name: String
     let manufacturer: String?
@@ -1400,7 +1451,7 @@ final class MacMidiRouter {
         connectionRefsByID.keys.sorted()
     }
 
-    var onMessage: ((MacMIDIMessage) -> Void)?
+    var onMessages: (@MainActor ([MacMIDIMessage]) -> Void)?
     var onInputsChanged: (([MacMIDIEndpointInfo]) -> Void)?
 
     private var callbackRefCon: UnsafeMutableRawPointer {
@@ -1474,9 +1525,12 @@ final class MacMidiRouter {
     }
 
     func refreshAvailableInputs() {
+        let previousInputs = availableInputs
         guard isStarted else {
             availableInputs = []
-            onInputsChanged?(availableInputs)
+            if previousInputs != availableInputs {
+                onInputsChanged?(availableInputs)
+            }
             return
         }
 
@@ -1510,11 +1564,20 @@ final class MacMidiRouter {
             endpointNamesByID[uniqueID] = name
         }
 
-        availableInputs = discovered.sorted { left, right in
+        reconnectRememberedInputs()
+        availableInputs = discovered.map { input in
+            MacMIDIEndpointInfo(
+                uniqueID: input.uniqueID,
+                name: input.name,
+                manufacturer: input.manufacturer,
+                isConnected: connectionRefsByID[input.uniqueID] != nil
+            )
+        }.sorted { left, right in
             left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
         }
-        reconnectRememberedInputs()
-        onInputsChanged?(availableInputs)
+        if previousInputs != availableInputs {
+            onInputsChanged?(availableInputs)
+        }
     }
 
     func connectInput(uniqueID: Int32) throws {
@@ -1523,7 +1586,6 @@ final class MacMidiRouter {
         }
 
         if connectionRefsByID[uniqueID] != nil {
-            refreshAvailableInputs()
             return
         }
 
@@ -1533,18 +1595,16 @@ final class MacMidiRouter {
                 throw BridgeError.midiSourceNotFound(uniqueID)
             }
             try connect(source: refreshed, uniqueID: uniqueID)
+            refreshAvailableInputs()
             return
         }
 
         try connect(source: source, uniqueID: uniqueID)
+        refreshAvailableInputs()
     }
 
     func disconnectInput(uniqueID: Int32) {
-        if let source = sourceRefsByID[uniqueID], inputPort != 0 {
-            MIDIPortDisconnectSource(inputPort, source)
-        }
-        rememberedInputIDs.remove(uniqueID)
-        connectionRefsByID.removeValue(forKey: uniqueID)
+        disconnect(uniqueID: uniqueID)
         refreshAvailableInputs()
     }
 
@@ -1567,12 +1627,16 @@ final class MacMidiRouter {
     }
 
     func setConnectedInputs(_ uniqueIDs: Set<Int32>) throws {
+        refreshAvailableInputs()
         for connectedID in connectedInputIDs where !uniqueIDs.contains(connectedID) {
-            disconnectInput(uniqueID: connectedID)
+            disconnect(uniqueID: connectedID)
         }
 
-        for uniqueID in uniqueIDs.sorted() {
-            try connectInput(uniqueID: uniqueID)
+        for uniqueID in uniqueIDs.sorted() where connectionRefsByID[uniqueID] == nil {
+            guard let source = sourceRefsByID[uniqueID] else {
+                throw BridgeError.midiSourceNotFound(uniqueID)
+            }
+            try connect(source: source, uniqueID: uniqueID)
         }
 
         rememberedInputIDs = uniqueIDs
@@ -1597,7 +1661,14 @@ final class MacMidiRouter {
 
         lastErrorMessage = nil
         rememberedInputIDs.insert(uniqueID)
-        refreshAvailableInputs()
+    }
+
+    private func disconnect(uniqueID: Int32) {
+        if let source = sourceRefsByID[uniqueID], inputPort != 0 {
+            MIDIPortDisconnectSource(inputPort, source)
+        }
+        rememberedInputIDs.remove(uniqueID)
+        connectionRefsByID.removeValue(forKey: uniqueID)
     }
 
     private func reconnectRememberedInputs() {
@@ -1631,11 +1702,10 @@ final class MacMidiRouter {
             packet = MIDIPacketNext(&packet).pointee
         }
 
+        guard !messages.isEmpty else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, self.isStarted else { return }
-            for message in messages {
-                self.onMessage?(message)
-            }
+            self.onMessages?(messages)
         }
     }
 
@@ -1717,11 +1787,14 @@ final class MacMidiRouter {
 
     private static func hostTimeSeconds(_ hostTime: MIDITimeStamp) -> TimeInterval {
         guard hostTime > 0 else { return Date().timeIntervalSince1970 }
+        return Double(hostTime) * hostTimeToSeconds
+    }
+
+    private static let hostTimeToSeconds: Double = {
         var info = mach_timebase_info_data_t()
         mach_timebase_info(&info)
-        let nanos = Double(hostTime) * Double(info.numer) / Double(info.denom)
-        return nanos / 1_000_000_000.0
-    }
+        return Double(info.numer) / Double(info.denom) / 1_000_000_000.0
+    }()
 
     private static let readProc: MIDIReadProc = { packetList, refCon, sourceConnectionRefCon in
         guard let refCon else { return }

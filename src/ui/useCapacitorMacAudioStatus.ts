@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  addCapacitorMacAudioOutputChangedListener,
   getCapacitorMacAudioOutputStatus,
   openCapacitorMacSoundSettings,
   setCapacitorMacPlaybackState,
   type KesshoMacAudioOutputStatus,
 } from '../native/capacitorMacShell';
-import { useVisibleInterval } from './hooks/useVisibleInterval';
 
 const MAC_AIRPLAY_PERFORMANCE_STORAGE_KEY = 'kessho:mac-airplay-performance:v1';
 
@@ -42,7 +42,6 @@ type UseCapacitorMacAudioStatusOptions = {
   playbackIsRunning: boolean;
   isJourneyPlaying: boolean;
   title: string;
-  preloadProductRuntime: () => Promise<unknown>;
 };
 
 type CapacitorMacAudioStatus = {
@@ -57,7 +56,6 @@ export function useCapacitorMacAudioStatus({
   playbackIsRunning,
   isJourneyPlaying,
   title,
-  preloadProductRuntime,
 }: UseCapacitorMacAudioStatusOptions): CapacitorMacAudioStatus {
   const [macAudioOutputStatus, setMacAudioOutputStatus] = useState<KesshoMacAudioOutputStatus | null>(null);
   const [macAirPlayPerformancePinned, setMacAirPlayPerformancePinned] = useState(readMacAirPlayPerformancePinned);
@@ -74,15 +72,22 @@ export function useCapacitorMacAudioStatus({
     }
   }, [macShellAvailable]);
 
-  useVisibleInterval(refreshMacAudioOutputStatus, playbackIsRunning ? 1500 : 5000, {
-    enabled: macShellAvailable,
-    pauseWhenHidden: false,
-  });
-
   useEffect(() => {
     if (!macShellAvailable) return;
-    void preloadProductRuntime();
-  }, [macShellAvailable, preloadProductRuntime]);
+    let cancelled = false;
+    let cleanup: (() => Promise<void>) | null = null;
+    void addCapacitorMacAudioOutputChangedListener((status) => {
+      if (!cancelled) setMacAudioOutputStatus(status);
+    }).then((remove) => {
+      if (cancelled) void remove?.();
+      else cleanup = remove;
+    });
+    void refreshMacAudioOutputStatus();
+    return () => {
+      cancelled = true;
+      void cleanup?.();
+    };
+  }, [macShellAvailable, refreshMacAudioOutputStatus]);
 
   const handleMacAirPlayPerformanceToggle = useCallback(() => {
     setMacAirPlayPerformancePinned((prev) => {

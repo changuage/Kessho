@@ -1761,6 +1761,9 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_OUTPUT_GAIN_ID:
       fx.dynamics_eq1_output_gain_db = clampFloat(event.value, -24.0f, 24.0f);
       break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_MIX_ID:
+      fx.dynamics_eq1_mix = clampFloat(event.value, 0.0f, 1.0f);
+      break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_LOW_TYPE_ID:
       fx.dynamics_eq1_low_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
       break;
@@ -1774,7 +1777,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       fx.dynamics_eq1_low_q = clampFloat(event.value, 0.1f, 18.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_LOW_SLOPE_ID:
-      fx.dynamics_eq1_low_slope = clampFloat(event.value, 0.25f, 4.0f);
+      fx.dynamics_eq1_low_slope = clampFloat(event.value, 0.25f, 1.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_MID_FREQ_ID:
       fx.dynamics_eq1_mid_freq = clampFloat(event.value, 20.0f, 20000.0f);
@@ -1798,7 +1801,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       fx.dynamics_eq1_high_q = clampFloat(event.value, 0.1f, 18.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_HIGH_SLOPE_ID:
-      fx.dynamics_eq1_high_slope = clampFloat(event.value, 0.25f, 4.0f);
+      fx.dynamics_eq1_high_slope = clampFloat(event.value, 0.25f, 1.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_ENABLED_ID:
       fx.dynamics_eq2_enabled = event.value >= 0.5f;
@@ -1808,6 +1811,9 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_OUTPUT_GAIN_ID:
       fx.dynamics_eq2_output_gain_db = clampFloat(event.value, -24.0f, 24.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_MIX_ID:
+      fx.dynamics_eq2_mix = clampFloat(event.value, 0.0f, 1.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_LOW_TYPE_ID:
       fx.dynamics_eq2_low_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
@@ -1822,7 +1828,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       fx.dynamics_eq2_low_q = clampFloat(event.value, 0.1f, 18.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_LOW_SLOPE_ID:
-      fx.dynamics_eq2_low_slope = clampFloat(event.value, 0.25f, 4.0f);
+      fx.dynamics_eq2_low_slope = clampFloat(event.value, 0.25f, 1.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_MID_FREQ_ID:
       fx.dynamics_eq2_mid_freq = clampFloat(event.value, 20.0f, 20000.0f);
@@ -1846,7 +1852,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       fx.dynamics_eq2_high_q = clampFloat(event.value, 0.1f, 18.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_HIGH_SLOPE_ID:
-      fx.dynamics_eq2_high_slope = clampFloat(event.value, 0.25f, 4.0f);
+      fx.dynamics_eq2_high_slope = clampFloat(event.value, 0.25f, 1.0f);
       break;
     default:
       return false;
@@ -1856,6 +1862,87 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
 }
 
   bool KesshoProductEngine::applyRoutingParamEvent(const KesshoProductEvent& event) {
+  if (event.param_id == KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_AMOUNT_ID ||
+      event.param_id == KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_ENABLED_ID ||
+      event.param_id == KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_MODE_ID ||
+      event.param_id == KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_MIN_ID ||
+      event.param_id == KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_MAX_ID) {
+    if (event.target_id >= kFxNodeCount * kFxNodeCount) {
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      return true;
+    }
+    const uint8_t from = static_cast<uint8_t>(event.target_id / kFxNodeCount);
+    const uint8_t to = static_cast<uint8_t>(event.target_id % kFxNodeCount);
+    const bool topology_changed = event.param_id == KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_ENABLED_ID;
+    if (event.param_id == KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_AMOUNT_ID) {
+      routing.fx_route_amount[from][to] = clampFloat(event.value, 0.0f, 1.0f);
+    } else if (event.param_id == KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_MODE_ID) {
+      routing.setFxRouteModulation(from, to,
+          static_cast<uint8_t>(clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 3u)),
+          routing.fx_route_min[from][to], routing.fx_route_max[from][to]);
+    } else if (event.param_id == KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_MIN_ID) {
+      routing.setFxRouteModulation(from, to, routing.fx_route_mode[from][to],
+          clampFloat(event.value, 0.0f, 4.0f), routing.fx_route_max[from][to]);
+    } else if (event.param_id == KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_MAX_ID) {
+      routing.setFxRouteModulation(from, to, routing.fx_route_mode[from][to],
+          routing.fx_route_min[from][to], clampFloat(event.value, routing.fx_route_min[from][to], 4.0f));
+    } else if (!routing.setFxEdgeEnabled(from, to, event.value >= 0.5f)) {
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      return true;
+    }
+    routing.syncLegacyFxRoutes();
+    if (topology_changed) configureFxModules();
+    telemetry.last_error_code = KESSHO_PRODUCT_OK;
+    return true;
+  }
+
+  uint8_t legacy_from = kFxNodeCount;
+  uint8_t legacy_to = kFxNodeCount;
+  float legacy_max = 1.0f;
+  switch (event.param_id) {
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_DELAY_B_ID:
+      legacy_from = kFxNodeDelayA; legacy_to = kFxNodeDelayB; break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_DELAY_A_ID:
+      legacy_from = kFxNodeDelayB; legacy_to = kFxNodeDelayA; break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_TO_REVERB_ID:
+      legacy_from = kFxNodeDelayA; legacy_to = kFxNodeReverb; break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_REVERB_ID:
+      legacy_from = kFxNodeGranular; legacy_to = kFxNodeReverb; legacy_max = 4.0f; break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_GRANULAR_ID:
+      legacy_from = kFxNodeDelayA; legacy_to = kFxNodeGranular; break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_GRANULAR_ID:
+      legacy_from = kFxNodeDelayB; legacy_to = kFxNodeGranular; break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_REVERB_ID:
+      legacy_from = kFxNodeDelayB; legacy_to = kFxNodeReverb; break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_DELAY_A_ID:
+      legacy_from = kFxNodeGranular; legacy_to = kFxNodeDelayA; break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_DELAY_B_ID:
+      legacy_from = kFxNodeGranular; legacy_to = kFxNodeDelayB; break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_DEGRADE_ID:
+      legacy_from = kFxNodeDelayA; legacy_to = kFxNodeDegrade; break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_DEGRADE_ID:
+      legacy_from = kFxNodeDelayB; legacy_to = kFxNodeDegrade; break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_DEGRADE_ID:
+      legacy_from = kFxNodeGranular; legacy_to = kFxNodeDegrade; break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_REVERB_TO_DEGRADE_ID:
+      legacy_from = kFxNodeReverb; legacy_to = kFxNodeDegrade; break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DEGRADE_TO_REVERB_ID:
+      legacy_from = kFxNodeDegrade; legacy_to = kFxNodeReverb; break;
+    default:
+      break;
+  }
+  if (legacy_from < kFxNodeCount) {
+    const float amount = clampFloat(event.value, 0.0f, legacy_max);
+    if (!routing.setFxRoute(legacy_from, legacy_to, amount, amount > 0.0001f)) {
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      return true;
+    }
+    routing.syncLegacyFxRoutes();
+    configureFxModules();
+    telemetry.last_error_code = KESSHO_PRODUCT_OK;
+    return true;
+  }
+
   uint32_t route = kDynamicsRouteCount;
   switch (event.param_id) {
     case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_PAD1_BUS_ID:
@@ -2019,6 +2106,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
     case KESSHO_PRODUCT_PARAM_SOURCE_DELAY_BSEND_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_GRANULAR_SEND_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_DEGRADE_SEND_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_SPECTRAL_FREEZE_SEND_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_DIFFUSE_SEND_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_HZ_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_STEREO_WIDTH_ID:
@@ -2586,6 +2674,26 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       fx.dynamics_drive = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MASTER_SATURATION_ENABLED_ID:
+      fx.dynamics_master_saturation_enabled = event.value >= 0.5f;
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MASTER_SATURATION_MODE_ID:
+      fx.dynamics_master_saturation_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 4u);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MASTER_SATURATION_QUALITY_ID:
+      fx.dynamics_master_saturation_quality = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MASTER_SATURATION_TONE_ID:
+      fx.dynamics_master_saturation_tone = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MASTER_SATURATION_BIAS_ID:
+      fx.dynamics_master_saturation_bias = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_ENABLED_ID:
       fx.dynamics_enabled = event.value >= 0.5f;
       configureFxModules();
@@ -2898,64 +3006,6 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       break;
     case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_REVERB_TARGET_ID:
       fx.sidechain_targets[kSidechainReverb] = clampFloat(event.value, 0.0f, 1.0f);
-      break;
-    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_DELAY_B_ID:
-      routing.delay_a_to_delay_b = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
-      break;
-    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_DELAY_A_ID:
-      routing.delay_b_to_delay_a = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
-      break;
-    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_TO_REVERB_ID:
-      routing.delay_to_reverb = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
-      break;
-    case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_REVERB_ID:
-      routing.granular_to_reverb = clampFloat(event.value, 0.0f, 4.0f);
-      break;
-    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_GRANULAR_ID:
-      routing.delay_a_to_granular = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
-      break;
-    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_GRANULAR_ID:
-      routing.delay_b_to_granular = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
-      break;
-    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_REVERB_ID:
-      routing.delay_b_to_reverb = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
-      break;
-    case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_DELAY_A_ID:
-      routing.granular_to_delay_a = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
-      break;
-    case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_DELAY_B_ID:
-      routing.granular_to_delay_b = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
-      break;
-    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_DEGRADE_ID:
-      routing.delay_a_to_degrade = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
-      break;
-    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_DEGRADE_ID:
-      routing.delay_b_to_degrade = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
-      break;
-    case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_DEGRADE_ID:
-      routing.granular_to_degrade = clampFloat(event.value, 0.0f, 1.0f);
-      break;
-    case KESSHO_PRODUCT_PARAM_ROUTING_REVERB_TO_DEGRADE_ID:
-      routing.reverb_to_degrade = clampFloat(event.value, 0.0f, 1.0f);
-      if (routing.reverb_to_degrade > 0.0001f) {
-        routing.degrade_to_reverb = 0.0f;
-      }
-      break;
-    case KESSHO_PRODUCT_PARAM_ROUTING_DEGRADE_TO_REVERB_ID:
-      routing.degrade_to_reverb = clampFloat(event.value, 0.0f, 1.0f);
-      if (routing.degrade_to_reverb > 0.0001f) {
-        routing.reverb_to_degrade = 0.0f;
-      }
       break;
     case KESSHO_PRODUCT_PARAM_ROUTING_DEGRADE_RETURN_LEVEL_ID:
       routing.degrade_return_level = clampFloat(event.value, 0.0f, 1.0f);

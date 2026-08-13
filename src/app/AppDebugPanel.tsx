@@ -6,6 +6,7 @@ import type { NativeProductRendererDiagnosticStatus } from '../ui/useCapacitorAu
 import type { ProductCoreDebugSummary } from '../ui/useProductCoreDebugSummary';
 import type { ProductRuntimeBackgroundAudioStatus } from '../ui/useProductRuntimeBackgroundAudioSupport';
 import type { UseJourneyResult } from '../ui/journeyState';
+import { ProductRuntimeSwitch, type ProductRuntimeSwitchMode } from '../ui/ProductRuntimeSwitch';
 import {
   FX_BUS_LABELS,
   FX_ORIGIN_LABELS,
@@ -20,10 +21,16 @@ const FX_BUSES = ['delayA', 'delayB', 'granular', 'reverb'] as const;
 type AppDebugPanelProps = {
   readonly state: SliderState;
   readonly engineState: ProductEngineState;
+  readonly productRuntimeMode: ProductRuntimeSwitchMode;
+  readonly productRuntimeModes: readonly ProductRuntimeSwitchMode[];
+  readonly showProductRuntimeSwitcher: boolean;
+  readonly onProductRuntimeModeChange: (mode: ProductRuntimeSwitchMode) => void;
   readonly productRuntimeCore: boolean;
   readonly productCoreDebugSummary: ProductCoreDebugSummary | null;
   readonly backgroundAudioStatus: ProductRuntimeBackgroundAudioStatus;
   readonly nativeProductRendererDiagnosticStatus: NativeProductRendererDiagnosticStatus;
+  readonly requestVisiblePageWakeLock: () => void | Promise<void>;
+  readonly releaseVisiblePageWakeLock: () => void | Promise<void>;
   readonly isJourneyPlaying: boolean;
   readonly journey: UseJourneyResult;
   readonly journeyMorphDirection: 'toB' | 'toA';
@@ -81,10 +88,16 @@ function formatNativeProductStatus(status: NativeProductRendererDiagnosticStatus
 export function AppDebugPanel({
   state,
   engineState,
+  productRuntimeMode,
+  productRuntimeModes,
+  showProductRuntimeSwitcher,
+  onProductRuntimeModeChange,
   productRuntimeCore,
   productCoreDebugSummary,
   backgroundAudioStatus,
   nativeProductRendererDiagnosticStatus,
+  requestVisiblePageWakeLock,
+  releaseVisiblePageWakeLock,
   isJourneyPlaying,
   journey,
   journeyMorphDirection,
@@ -96,10 +109,20 @@ export function AppDebugPanel({
   const displayedScaleRoot = NOTE_NAMES[engineState.harmonyState?.effectiveRoot ?? (
     state.cofDriftEnabled ? calculateDriftedRoot(state.rootNote, engineState.cofCurrentStep) : state.rootNote
   )];
+  const wakeLockActive = backgroundAudioStatus.wakeLockStatus === 'active';
+  const wakeLockAction = wakeLockActive ? releaseVisiblePageWakeLock : requestVisiblePageWakeLock;
+  const wakeLockDisabled = backgroundAudioStatus.wakeLockStatus === 'unsupported' || backgroundAudioStatus.pageStatus !== 'foreground';
 
   return (
     <div className="app-debug-panel" style={{ ...styles.debugPanel, ...mobileDebugPanelStyle }}>
       <h3 style={{ ...styles.panelTitle, color: '#a855f7' }}>Debug Info</h3>
+      <ProductRuntimeSwitch
+        currentMode={productRuntimeMode}
+        modes={productRuntimeModes}
+        onModeChange={onProductRuntimeModeChange}
+        visible={showProductRuntimeSwitcher}
+        testId="debug-product-runtime-switch"
+      />
       <div style={styles.debugRow}>
         <span style={styles.debugLabel}>UTC Bucket:</span>
         <span style={styles.debugValue}>{engineState.currentBucket || '—'}</span>
@@ -179,6 +202,23 @@ export function AppDebugPanel({
           <div style={styles.debugRow}>
             <span style={styles.debugLabel}>Wake:</span>
             <span style={styles.debugValue}>{backgroundAudioStatus.wakeLockStatus}</span>
+          </div>
+          <div style={styles.debugRow} title={backgroundAudioStatus.limitation}>
+            <span style={styles.debugLabel}>Wake Control:</span>
+            <button
+              type="button"
+              style={{
+                ...styles.macAudioStatusButton,
+                ...(wakeLockActive ? styles.macAudioStatusButtonActive : {}),
+                ...(wakeLockDisabled ? styles.statusButtonDisabled : {}),
+              }}
+              aria-pressed={wakeLockActive}
+              onClick={() => void wakeLockAction()}
+              disabled={wakeLockDisabled}
+              title="Visible-page Wake Lock. Browser/mobile lock-screen and app-background playback remain best-effort."
+            >
+              {wakeLockActive ? 'Release' : 'Wake'}
+            </button>
           </div>
           <div style={styles.debugRow}>
             <span style={styles.debugLabel}>Media:</span>

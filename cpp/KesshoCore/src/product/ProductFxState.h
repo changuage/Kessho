@@ -120,6 +120,11 @@ struct FxState {
   uint32_t spectral_freeze_routing = 0;
   float spectral_freeze_reverb_crossfade = 1.0f;
   float dynamics_drive = 0.0f;
+  bool dynamics_master_saturation_enabled = false;
+  uint32_t dynamics_master_saturation_mode = 0u;
+  uint32_t dynamics_master_saturation_quality = 1u;
+  float dynamics_master_saturation_tone = 0.5f;
+  float dynamics_master_saturation_bias = 0.5f;
   bool dynamics_enabled = false;
   bool dynamics_drift_enabled = false;
   uint32_t dynamics_drift_mode = 0;
@@ -188,6 +193,7 @@ struct FxState {
   bool dynamics_eq1_enabled = false;
   float dynamics_eq1_input_gain_db = 0.0f;
   float dynamics_eq1_output_gain_db = 0.0f;
+  float dynamics_eq1_mix = 1.0f;
   uint32_t dynamics_eq1_low_type = kDynamicsEqEdgeShelf;
   float dynamics_eq1_low_freq = 120.0f;
   float dynamics_eq1_low_gain_db = 0.0f;
@@ -204,6 +210,7 @@ struct FxState {
   bool dynamics_eq2_enabled = false;
   float dynamics_eq2_input_gain_db = 0.0f;
   float dynamics_eq2_output_gain_db = 0.0f;
+  float dynamics_eq2_mix = 1.0f;
   uint32_t dynamics_eq2_low_type = kDynamicsEqEdgeShelf;
   float dynamics_eq2_low_freq = 90.0f;
   float dynamics_eq2_low_gain_db = 0.0f;

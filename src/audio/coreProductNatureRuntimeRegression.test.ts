@@ -307,6 +307,12 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
     ['spectralFreezeMix', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeMix }]],
     ['spectralFreezeStretchSpeed', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeStretchSpeed }]],
     ['dynamicsDrive', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDrive }]],
+    ['masterSaturationDrive', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDrive }]],
+    ['masterSaturationEnabled', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsMasterSaturationEnabled }]],
+    ['masterSaturationMode', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsMasterSaturationMode }]],
+    ['masterSaturationQuality', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsMasterSaturationQuality }]],
+    ['masterSaturationTone', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsMasterSaturationTone }]],
+    ['masterSaturationBias', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsMasterSaturationBias }]],
     ['dynamicsEnabled', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEnabled }]],
     ['driftEnabled', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDriftEnabled }]],
     ['driftMode', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDriftMode }]],
@@ -356,6 +362,10 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
   assertStateBackedEnumValue('dynamicsSaturationMode', 'fold', 4);
   assertStateBackedEnumValue('dynamicsSaturationQuality', 'smooth', 1);
   assertStateBackedEnumValue('dynamicsSaturationQuality', 'hq', 2);
+  assertStateBackedEnumValue('masterSaturationMode', 'clean', 0);
+  assertStateBackedEnumValue('masterSaturationMode', 'fold', 4);
+  assertStateBackedEnumValue('masterSaturationQuality', 'smooth', 1);
+  assertStateBackedEnumValue('masterSaturationQuality', 'hq', 2);
   assertStateBackedEnumValue('endCompMode', 'studioClear', 0);
   assertStateBackedEnumValue('endCompMode', 'twoBand', 4);
   assertStateBackedEnumValue('sidechainKeyA', 'kick', 2);

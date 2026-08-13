@@ -2,7 +2,9 @@ import { PARAM_REGISTRY } from './ParamRegistry';
 import type { PresetContentCandidate, PresetContentNodeType } from './contentNodes';
 import { PAD1_TO_PAD2_KEY, PAD_PRESET_PARAM_KEYS } from '../audio/padPresets';
 
-export type SharedComponentPoolKind = 'granularVoice' | 'dynamicsEq' | 'sampleVoice';
+export type SharedComponentPoolKind = 'granularVoice' | 'dynamicsEq' | 'saturator' | 'sampleVoice';
+
+export type SaturatorTarget = 'dynamics' | 'master' | 'neutral';
 
 export interface SharedComponentPoolInstance {
   id: string;
@@ -26,6 +28,91 @@ function canonicalizePrefixedScope(
 
 function hydratePrefixedContent(prefix: string, content: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(content).map(([key, value]) => [`${prefix}${key}`, value]));
+}
+
+function lowerFirst(value: string): string {
+  return value ? `${value[0]!.toLowerCase()}${value.slice(1)}` : value;
+}
+
+function canonicalizeProcessorContent(
+  state: Record<string, unknown>,
+  runtimePrefixes: readonly string[],
+  suffixes: readonly string[],
+): Record<string, unknown> {
+  const content: Record<string, unknown> = {};
+  for (const suffix of suffixes) {
+    const canonicalKey = lowerFirst(suffix);
+    const value = state[canonicalKey]
+      ?? state[suffix]
+      ?? runtimePrefixes.map(prefix => state[`${prefix}${suffix}`]).find(candidate => candidate !== undefined);
+    if (value !== undefined) content[canonicalKey] = value;
+  }
+  return Object.fromEntries(Object.entries(content).sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function hydrateProcessorContent(
+  runtimePrefix: string,
+  content: Record<string, unknown>,
+  suffixes: readonly string[],
+): Record<string, unknown> {
+  const canonical = canonicalizeProcessorContent(content, ['dynamicsEq1', 'dynamicsEq2', 'dynamicsSaturation', 'masterSaturation'], suffixes);
+  return Object.fromEntries(Object.entries(canonical).map(([key, value]) => [
+    `${runtimePrefix}${key[0]!.toUpperCase()}${key.slice(1)}`,
+    value,
+  ]));
+}
+
+const DYNAMICS_EQ_SUFFIXES = [
+  'InputGain', 'OutputGain', 'Mix',
+  'LowType', 'LowFreq', 'LowGain', 'LowQ', 'LowSlope',
+  'MidFreq', 'MidGain', 'MidQ',
+  'HighType', 'HighFreq', 'HighGain', 'HighQ', 'HighSlope',
+] as const;
+
+const SATURATOR_SUFFIXES = ['Mode', 'Quality', 'Drive', 'Tone', 'Bias'] as const;
+
+export const EQUALIZER_CONTENT_KEYS = DYNAMICS_EQ_SUFFIXES.map(lowerFirst);
+export const SATURATOR_CONTENT_KEYS = SATURATOR_SUFFIXES.map(lowerFirst);
+
+export function extractDynamicsEqContent(
+  state: Record<string, unknown>,
+  laneIndex: 0 | 1,
+): Record<string, unknown> {
+  return canonicalizeProcessorContent(state, [`dynamicsEq${laneIndex + 1}`], DYNAMICS_EQ_SUFFIXES);
+}
+
+export function hydrateDynamicsEqContent(
+  content: Record<string, unknown>,
+  laneIndex: 0 | 1,
+): Record<string, unknown> {
+  return hydrateProcessorContent(`dynamicsEq${laneIndex + 1}`, content, DYNAMICS_EQ_SUFFIXES);
+}
+
+export function extractSaturatorContent(
+  state: Record<string, unknown>,
+  target: SaturatorTarget,
+): Record<string, unknown> {
+  const prefixes = target === 'neutral'
+    ? ['dynamicsSaturation', 'masterSaturation']
+    : [target === 'master' ? 'masterSaturation' : 'dynamicsSaturation'];
+  return canonicalizeProcessorContent(state, prefixes, SATURATOR_SUFFIXES);
+}
+
+export function hydrateSaturatorContent(
+  content: Record<string, unknown>,
+  target: SaturatorTarget,
+): Record<string, unknown> {
+  const canonical = canonicalizeProcessorContent(
+    content,
+    ['dynamicsSaturation', 'masterSaturation'],
+    SATURATOR_SUFFIXES,
+  );
+  if (target === 'neutral') return canonical;
+  return hydrateProcessorContent(
+    target === 'master' ? 'masterSaturation' : 'dynamicsSaturation',
+    canonical,
+    SATURATOR_SUFFIXES,
+  );
 }
 
 export function buildGranularVoicePoolInstance(
@@ -54,13 +141,37 @@ export function buildDynamicsEqPoolInstance(
     throw new Error(`Invalid dynamics EQ index: ${laneIndex}`);
   }
   const lane = laneIndex + 1;
-  const prefix = `dynamicsEq${lane}`;
   return {
     id: `dynamics.eq.${laneIndex}`,
     refSlot: `dynamics.eq.${lane}.content`,
     contentType: 'dynamicsEq',
-    content: canonicalizePrefixedScope(state, `dynamicsEq${lane}`, prefix),
-    hydrate: content => hydratePrefixedContent(prefix, content),
+    content: extractDynamicsEqContent(state, laneIndex as 0 | 1),
+    hydrate: content => hydrateDynamicsEqContent(content, laneIndex as 0 | 1),
+  };
+}
+
+export function buildEqualizerPresetPoolInstance(
+  content: Record<string, unknown>,
+): SharedComponentPoolInstance {
+  return {
+    id: 'equalizer',
+    refSlot: 'equalizer.content',
+    contentType: 'dynamicsEq',
+    content: canonicalizeProcessorContent(content, ['dynamicsEq1', 'dynamicsEq2'], DYNAMICS_EQ_SUFFIXES),
+    hydrate: value => canonicalizeProcessorContent(value, ['dynamicsEq1', 'dynamicsEq2'], DYNAMICS_EQ_SUFFIXES),
+  };
+}
+
+export function buildSaturatorPoolInstance(
+  state: Record<string, unknown>,
+  target: SaturatorTarget,
+): SharedComponentPoolInstance {
+  return {
+    id: `${target}.saturator`,
+    refSlot: target === 'neutral' ? 'saturator.content' : `${target}.saturator.content`,
+    contentType: 'saturator',
+    content: extractSaturatorContent(state, target),
+    hydrate: content => hydrateSaturatorContent(content, target),
   };
 }
 
@@ -144,7 +255,17 @@ export function hydrateSharedComponentRef(
   }
   match = /^dynamics\.eq\.([1-2])\.content$/.exec(refSlot);
   if (match && contentType === 'dynamicsEq') {
-    return hydratePrefixedContent(`dynamicsEq${match[1]}`, content);
+    return hydrateDynamicsEqContent(content, (Number(match[1]) - 1) as 0 | 1);
+  }
+  if (refSlot === 'equalizer.content' && contentType === 'dynamicsEq') {
+    return canonicalizeProcessorContent(content, ['dynamicsEq1', 'dynamicsEq2'], DYNAMICS_EQ_SUFFIXES);
+  }
+  match = /^(dynamics|master)\.saturator\.content$/.exec(refSlot);
+  if (match && contentType === 'saturator') {
+    return hydrateSaturatorContent(content, match[1] as 'dynamics' | 'master');
+  }
+  if (refSlot === 'saturator.content' && contentType === 'saturator') {
+    return hydrateSaturatorContent(content, 'neutral');
   }
   match = /^sample\.voice\.([1-2])\.content$/.exec(refSlot);
   if (match && contentType === 'sampleVoice') {
@@ -176,6 +297,15 @@ export function stripSharedComponentContentFromParent(
     if (parentType === 'kit' && (parentScope === 'pad1Kit' || parentScope === 'pad2Kit')) {
       const targetScope = parentScope === 'pad1Kit' ? 'pad1' : 'pad2';
       if (PARAM_REGISTRY[key]?.scope === targetScope && !/(?:DiffuseSend)$/.test(key)) return false;
+    }
+    if (parentType === 'source' && parentScope === 'masterFx' && /^masterSaturation(?!Enabled$)/.test(key)) {
+      return false;
+    }
+    if (parentType === 'engine' && parentScope === 'equalizer' && DYNAMICS_EQ_SUFFIXES.some(suffix => lowerFirst(suffix) === key)) {
+      return false;
+    }
+    if (parentType === 'engine' && parentScope === 'saturator' && SATURATOR_SUFFIXES.some(suffix => lowerFirst(suffix) === key)) {
+      return false;
     }
     return true;
   }));

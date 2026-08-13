@@ -1035,32 +1035,40 @@ function alignSequencerTime(now: number, stepDuration: number): number {
 
 type MasterSaturationCurveMode = SliderState['dynamicsSaturationMode'] | 'linear';
 
-function makeMasterSaturationCurve(mode: MasterSaturationCurveMode, samples = 8192): Float32Array<ArrayBuffer> {
+function makeMasterSaturationCurve(
+  mode: MasterSaturationCurveMode,
+  bias = 0.5,
+  samples = 8192,
+): Float32Array<ArrayBuffer> {
   const curve = new Float32Array(new ArrayBuffer(samples * Float32Array.BYTES_PER_ELEMENT));
   const half = (samples - 1) / 2;
+  const asymmetry = mode === 'linear' ? 0 : (Math.max(0, Math.min(1, bias)) - 0.5) * 0.48;
   for (let i = 0; i < samples; i++) {
     const x = (i - half) / half;
+    const biased = Math.max(-1, Math.min(1, x + asymmetry));
+    let shaped: number;
     switch (mode) {
       case 'linear':
-        curve[i] = x;
+        shaped = x;
         break;
       case 'tape':
-        curve[i] = Math.tanh(x * 1.5) * 0.9 + x * 0.1;
+        shaped = Math.tanh(biased * 1.5) * 0.9 + biased * 0.1;
         break;
       case 'tube':
-        curve[i] = x / (1 + Math.abs(x));
+        shaped = biased / (1 + Math.abs(biased));
         break;
       case 'diode':
-        curve[i] = x >= 0 ? Math.tanh(x * 1.35) : -Math.tanh(-x * 0.82);
+        shaped = biased >= 0 ? Math.tanh(biased * 1.35) : -Math.tanh(-biased * 0.82);
         break;
       case 'fold':
-        curve[i] = Math.tanh(x) * 0.72 + Math.sin(x * Math.PI * 0.82) * 0.22;
+        shaped = Math.tanh(biased) * 0.72 + Math.sin(biased * Math.PI * 0.82) * 0.22;
         break;
       case 'clean':
       default:
-        curve[i] = Math.tanh(x * 1.05);
+        shaped = Math.tanh(biased * 1.05);
         break;
     }
+    curve[i] = Math.max(-1, Math.min(1, shaped - asymmetry));
   }
   return curve;
 }
@@ -1074,7 +1082,7 @@ export class AudioEngine {
   private satWaveshaper: WaveShaperNode | null = null;
   private satPostTone: BiquadFilterNode | null = null;
   private satPostGain: GainNode | null = null;
-  private lastMasterSatMode: MasterSaturationCurveMode | null = null;
+  private lastMasterSatCurveKey: string | null = null;
   private driftInputGain: GainNode | null = null;
   private driftProcessorNode: AudioWorkletNode | GainNode | null = null;
   private driftProcessorNodeMode: 'gain' | 'worklet' | null = null;
@@ -2760,7 +2768,7 @@ export class AudioEngine {
     this.sharedDelayB?.dispose();
     this.sharedDelayB = null;
     this.sharedDelayGranularLinksWired = false;
-    this.lastMasterSatMode = null;
+    this.lastMasterSatCurveKey = null;
     this.lastPad2VoiceAssign = 0;
     this.voices = [];
     this.resetBootCapabilities();
@@ -3938,13 +3946,13 @@ export class AudioEngine {
     if (this.satWaveshaper && this.satWaveshaper.context !== ctx) {
       try { this.satWaveshaper.disconnect(); } catch { /* */ }
       this.satWaveshaper = null;
-      this.lastMasterSatMode = null;
+      this.lastMasterSatCurveKey = null;
     }
     if (!this.satWaveshaper) {
       this.satWaveshaper = ctx.createWaveShaper();
       this.satWaveshaper.curve = makeMasterSaturationCurve('linear');
       this.satWaveshaper.oversample = 'none';
-      this.lastMasterSatMode = 'linear';
+      this.lastMasterSatCurveKey = 'linear:0.500';
     }
     if (this.satPostTone && this.satPostTone.context !== ctx) {
       try { this.satPostTone.disconnect(); } catch { /* */ }
@@ -4467,31 +4475,34 @@ export class AudioEngine {
   }
 
   private applyMasterSaturation(state: SliderState, now: number): void {
-    const saturationEnabled = Boolean(state.dynamicsSaturationEnabled);
+    const saturationEnabled = Boolean(state.masterSaturationEnabled);
     const saturationHandledByWorklet = Boolean(
       saturationEnabled &&
       this.driftProcessorNodeMode === 'worklet',
     );
     const rawDrive = saturationEnabled
-      ? Math.max(0, Math.min(1, saturationHandledByWorklet ? 0 : (state.dynamicsSaturationDrive ?? 0)))
+      ? Math.max(0, Math.min(1, saturationHandledByWorklet ? 0 : (state.masterSaturationDrive ?? 0)))
       : 0;
     const drive = rawDrive * 0.75;
-    const tone = Math.max(0, Math.min(1, state.dynamicsSaturationTone ?? 0.5));
+    const tone = Math.max(0, Math.min(1, state.masterSaturationTone ?? 0.5));
+    const bias = Math.max(0, Math.min(1, state.masterSaturationBias ?? 0.5));
     const mode = (saturationEnabled
-      ? (state.dynamicsSaturationMode ?? 'clean')
+      ? (state.masterSaturationMode ?? 'clean')
       : 'clean') as SliderState['dynamicsSaturationMode'];
+    const quality = state.masterSaturationQuality ?? 'smooth';
     const preGainValue = 1 + drive * 3;
     const postCompensation = 1 / (1 + drive * 1.5);
     const effectiveTone = rawDrive > 0.0001 ? tone : 0.5;
     const curveMode: MasterSaturationCurveMode = drive > 0.0001 ? mode : 'linear';
+    const curveKey = `${curveMode}:${bias.toFixed(3)}`;
     const tiltDb = (effectiveTone - 0.5) * 12;
 
-    if (this.satWaveshaper && curveMode !== this.lastMasterSatMode) {
-      this.satWaveshaper.curve = makeMasterSaturationCurve(curveMode);
-      this.lastMasterSatMode = curveMode;
+    if (this.satWaveshaper && curveKey !== this.lastMasterSatCurveKey) {
+      this.satWaveshaper.curve = makeMasterSaturationCurve(curveMode, bias);
+      this.lastMasterSatCurveKey = curveKey;
     }
     if (this.satWaveshaper) {
-      this.satWaveshaper.oversample = drive > 0.1 ? '2x' : 'none';
+      this.satWaveshaper.oversample = drive <= 0.0001 || quality === 'eco' ? 'none' : quality === 'hq' ? '4x' : '2x';
     }
     this.satPreGain?.gain.setTargetAtTime(preGainValue, now, 0.05);
     this.satPostGain?.gain.setTargetAtTime(postCompensation, now, 0.05);
@@ -6309,7 +6320,7 @@ export class AudioEngine {
         try { this.satPostGain.disconnect(); } catch { /* */ }
         this.satPostGain = null;
       }
-      this.lastMasterSatMode = null;
+      this.lastMasterSatCurveKey = null;
       this.disposeDriftNodes();
       this.disposeEndCompressorNodes();
       this.disposeSidechainTargetNodes();
@@ -6877,7 +6888,7 @@ export class AudioEngine {
     if (this.satWaveshaper) { try { this.satWaveshaper.disconnect(); } catch { /* */ } this.satWaveshaper = null; }
     if (this.satPostTone) { try { this.satPostTone.disconnect(); } catch { /* */ } this.satPostTone = null; }
     if (this.satPostGain) { try { this.satPostGain.disconnect(); } catch { /* */ } this.satPostGain = null; }
-    this.lastMasterSatMode = null;
+    this.lastMasterSatCurveKey = null;
     this.disposeDriftNodes();
     this.disposeEndCompressorNodes();
     this.disposeSidechainTargetNodes();
@@ -7164,7 +7175,7 @@ export class AudioEngine {
         this.satWaveshaper = null;
         this.satPostTone = null;
         this.satPostGain = null;
-        this.lastMasterSatMode = null;
+        this.lastMasterSatCurveKey = null;
         this.disposeDriftNodes();
         this.disposeEndCompressorNodes();
         this.disposeSidechainTargetNodes();

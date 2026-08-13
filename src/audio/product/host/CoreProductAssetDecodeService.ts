@@ -22,6 +22,7 @@ type CoreProductAssetDecodeServiceOptions = {
   runtime: CoreProductRuntime;
   cache: SampleDecodedAssetCache;
   mobile: boolean;
+  transferAssets: boolean;
   decodeAsset: AssetDecoder;
   registeredAssetIds: ReadonlySet<number>;
   pendingRegistrationAssetIds: Set<number>;
@@ -72,16 +73,16 @@ export class CoreProductAssetDecodeService {
         () => this.options.decodeAsset(context, candidate.assetId, candidate.url, coreProductSampleFlags(candidate)),
       ));
       if (requireCurrent && !this.options.isRequired(asset.assetId)) {
-        if (this.options.mobile) this.options.cache.take(asset.assetId);
+        if (this.options.transferAssets) this.options.cache.take(asset.assetId);
         return;
       }
       const decodedBytes = getDecodedCoreProductAssetByteLength(asset);
       if (!await this.options.prepareAdmission(descriptor.assetId, decodedBytes)) {
-        if (this.options.mobile) this.options.cache.take(asset.assetId);
+        if (this.options.transferAssets) this.options.cache.take(asset.assetId);
         return;
       }
       if (!this.options.registeredAssetIds.has(asset.assetId)) {
-        const ownedAsset = this.options.mobile ? (this.options.cache.take(asset.assetId) ?? asset) : asset;
+        const ownedAsset = this.options.transferAssets ? (this.options.cache.take(asset.assetId) ?? asset) : asset;
         await this.options.registerAsset(ownedAsset);
       }
     } finally {

@@ -27,12 +27,16 @@ try {
           hashCanonicalJson,
         } from './src/presets/presetStorageV2.ts';
         import {
+          EQUALIZER_CONTENT_KEYS,
+          SATURATOR_CONTENT_KEYS,
+        } from './src/presets/sharedComponentPools.ts';
+        import {
           DYNAMICS_DRIFT_PRESET_KEYS,
           DYNAMICS_EQ1_PRESET_KEYS,
           DYNAMICS_EQ2_PRESET_KEYS,
           DYNAMICS_EROSION_PRESET_KEYS,
           DYNAMICS_END_CHAIN_PRESET_KEYS,
-          DYNAMICS_SATURATION_PRESET_KEYS,
+          MASTER_SATURATION_PRESET_KEYS,
           DYNAMICS_SIDECHAIN_PRESET_KEYS,
         } from './src/ui/dynamics/dynamicsPresets.ts';
 
@@ -148,6 +152,8 @@ try {
         function canonicalScope(scope) {
           if (scope === 'dynamicsDrift') return 'degradeDrift';
           if (scope === 'dynamicsErosion') return 'degradeErosion';
+          if (scope === 'dynamicsEq1' || scope === 'dynamicsEq2') return 'equalizer';
+          if (scope === 'dynamicsSaturation') return 'saturator';
           return scope ?? '';
         }
 
@@ -190,16 +196,18 @@ try {
           'kit:degradeDrift',
           'kit:degradeErosion',
           'source:dynamicsBus',
-          'engine:dynamicsEq1',
-          'engine:dynamicsEq2',
+          'engine:equalizer',
           'engine:dynamicsSidechain',
           'source:masterFx',
-          'engine:dynamicsSaturation',
+          'engine:saturator',
           'engine:dynamicsEndChain',
         ];
         const legacyTextureScopeKeys = [
           'kit:dynamicsDrift',
           'kit:dynamicsErosion',
+          'engine:dynamicsEq1',
+          'engine:dynamicsEq2',
+          'engine:dynamicsSaturation',
         ];
 
         const hashMismatches = [];
@@ -474,11 +482,11 @@ try {
         ];
         const degradeParentKeys = ['degradeEnabled', 'degradeHp', 'degradeLp', 'driftEnabled', 'erosionEnabled'];
         const dynamicsBusParentKeys = ['dynamicsBusEnabled', 'dynamicsEq1Enabled', 'dynamicsEq2Enabled', 'sidechainEnabled'];
-        const masterFxParentKeys = ['dynamicsSaturationEnabled', 'endCompEnabled'];
+        const masterFxParentKeys = ['masterSaturationEnabled', 'endCompEnabled'];
         const sourceResolvedAllowed = {
           'source:degrade': [...degradeParentKeys, ...DYNAMICS_DRIFT_PRESET_KEYS, ...DYNAMICS_EROSION_PRESET_KEYS],
           'source:dynamicsBus': [...dynamicsBusParentKeys, ...DYNAMICS_EQ1_PRESET_KEYS, ...DYNAMICS_EQ2_PRESET_KEYS, ...DYNAMICS_SIDECHAIN_PRESET_KEYS],
-          'source:masterFx': [...masterFxParentKeys, ...DYNAMICS_SATURATION_PRESET_KEYS, ...DYNAMICS_END_CHAIN_PRESET_KEYS],
+          'source:masterFx': [...masterFxParentKeys, ...MASTER_SATURATION_PRESET_KEYS, ...DYNAMICS_END_CHAIN_PRESET_KEYS],
         };
         const sourceOverrideAllowed = {
           'source:degrade': degradeParentKeys,
@@ -488,10 +496,9 @@ try {
         const leafAllowed = {
           'kit:degradeDrift': DYNAMICS_DRIFT_PRESET_KEYS,
           'kit:degradeErosion': DYNAMICS_EROSION_PRESET_KEYS,
-          'engine:dynamicsEq1': DYNAMICS_EQ1_PRESET_KEYS,
-          'engine:dynamicsEq2': DYNAMICS_EQ2_PRESET_KEYS,
+          'engine:equalizer': EQUALIZER_CONTENT_KEYS,
           'engine:dynamicsSidechain': DYNAMICS_SIDECHAIN_PRESET_KEYS,
-          'engine:dynamicsSaturation': DYNAMICS_SATURATION_PRESET_KEYS,
+          'engine:saturator': SATURATOR_CONTENT_KEYS,
           'engine:dynamicsEndChain': DYNAMICS_END_CHAIN_PRESET_KEYS,
         };
 

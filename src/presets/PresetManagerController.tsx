@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getVersionData } from './codec';
 import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 import { PresetRatingStars } from './PresetRatingStars';
 import { PresetTagEditor } from './PresetTagEditor';
@@ -8,6 +7,7 @@ import type { SliderState } from '../ui/state';
 import type { PresetEntry, PresetSummary, PresetVersionMetadata } from './types';
 import type { UsePresetsResult } from './usePresets';
 import { getPresetCommandErrorMessage } from './presetCommands';
+import { getPresetVersionDiffKeys } from './presetDiffSemantics';
 
 export type PresetManagerRepository = Pick<
   UsePresetsResult,
@@ -169,17 +169,10 @@ export function usePresetManagerController({
     const sorted = [...entry.versions].sort((left, right) => left.v - right.v);
     const targetIndex = sorted.findIndex(version => version.v === versionNum);
     if (targetIndex < 0) return { fromV1: [], fromPrev: [] };
-    const v1Data = sorted[0]?.data ?? {};
-    const targetData = getVersionData(entry, versionNum) ?? {};
-    const previousData = targetIndex > 0 ? getVersionData(entry, sorted[targetIndex - 1]!.v) : null;
-    const fromV1 = Object.keys(targetData)
-      .filter(key => key !== '_isDelta' && (!(key in v1Data) || v1Data[key] !== targetData[key]))
-      .map(humanize);
-    const fromPrev = previousData
-      ? [...new Set([...Object.keys(targetData), ...Object.keys(previousData)])]
-        .filter(key => key !== '_isDelta' && targetData[key] !== previousData[key])
-        .map(humanize)
-      : [];
+    const v1 = sorted[0];
+    const previous = targetIndex > 0 ? sorted[targetIndex - 1] : undefined;
+    const fromV1 = v1 ? getPresetVersionDiffKeys(entry, v1.v, versionNum).map(humanize) : [];
+    const fromPrev = previous ? getPresetVersionDiffKeys(entry, previous.v, versionNum).map(humanize) : [];
     return { fromV1, fromPrev };
   }, []);
 

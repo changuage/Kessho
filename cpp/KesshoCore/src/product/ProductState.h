@@ -13,6 +13,7 @@
 #include "ProductAutoCycleRuntimeState.h"
 #include "ProductRoutingMuteGroupRuntimeState.h"
 #include "ProductSonicRuntimeState.h"
+#include "KesshoCore/ProductSaturationKernel.h"
 #include "ProductTransportState.h"
 #include "ProductVoiceState.h"
 #include "KesshoCore/KesshoProductGeneratedSequencerCapture.h"
@@ -108,12 +109,24 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   float granular_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float degrade_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float degrade_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float spectral_freeze_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float spectral_freeze_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float spectral_freeze_output_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float spectral_freeze_output_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float dynamics_eq1_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float dynamics_eq1_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float dynamics_eq2_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float dynamics_eq2_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float dynamics_sidechain_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float dynamics_sidechain_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float creative_saturation_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float creative_saturation_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  kessho::product::saturation::State creative_saturation_state_l{};
+  kessho::product::saturation::State creative_saturation_state_r{};
+  float fx_node_output_l[kFxNodeCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float fx_node_output_r[kFxNodeCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  uint32_t fx_node_tail_frames[kFxNodeCount]{};
+  bool fx_graph_rendering = false;
   float diffuse_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float diffuse_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float reverb_pre_comp_gain = 1.0f;
@@ -216,6 +229,7 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   uint32_t dynamicsBusForSoundscapeLayer(uint32_t layer) const;
   void routeTerminalSample(uint32_t bus, float* out_l, float* out_r, uint32_t frame, float left, float right);
   void renderDynamicsBuses(float* out_l, float* out_r, uint32_t start, uint32_t frames);
+  void renderDynamicsNode(uint8_t node, float* out_l, float* out_r, uint32_t start, uint32_t frames);
   void loadDefaults();
   void reset();
   void resetSonicParityFxRuntime();
@@ -586,11 +600,14 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   float granularCompressorGainDbForLevel(float level_db) const;
   void renderGranular(float* out_l, float* out_r, uint32_t start, uint32_t frames);
   void renderReverb(float* out_l, float* out_r, uint32_t start, uint32_t frames);
+  bool prepareReverbInput(uint32_t start, uint32_t frames);
   void renderFx(float* out_l, float* out_r, uint32_t start, uint32_t frames);
+  void renderFxGraph(float* out_l, float* out_r, uint32_t start, uint32_t frames);
+  float resolveFxRouteAmount(uint8_t from, uint8_t to);
   void renderDiffuseBus(float* out_l, float* out_r, uint32_t frames);
   void renderSampleVoices(float* out_l, float* out_r, uint32_t start, uint32_t frames);
   void renderSegment(float* out_l, float* out_r, uint32_t start, uint32_t frames);
-  bool processSpectralFreezeBranch(float* input_l, float* input_r, float* output_l, float* output_r, uint32_t start, uint32_t frames);
+  void renderSpectralFreeze(float* out_l, float* out_r, uint32_t start, uint32_t frames, bool send_to_reverb);
   void renderDegradeSend(float* out_l, float* out_r, uint32_t start, uint32_t frames);
   void renderDynamics(float* out_l, float* out_r, uint32_t frames);
   void applyMaster(float* out_l, float* out_r, uint32_t frames);

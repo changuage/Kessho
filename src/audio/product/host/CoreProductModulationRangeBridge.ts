@@ -7,6 +7,7 @@ import { createCoreProductSampleHoldDebugState, snapshotCoreProductSampleHoldDeb
 import { shouldPublishCoreProductSampleHoldFeedback, type CoreProductSampleHoldFeedbackCallbackLookup } from './CoreProductSampleHoldFeedbackPolicy';
 import { createCoreProductRuntimeWalkDebugState, snapshotCoreProductRuntimeWalkDebugState, type CoreProductRuntimeWalkDebugState } from './CoreProductRuntimeWalkDebug';
 import { recordSliderSystemCounter } from '../../../diagnostics/sliderSystemInstrumentation';
+import { fxRouteRuntimePositions, type FxRoutingGraphState } from '../../../ui/routing/fxRoutingGraph';
 import type {
   ProductRuntimeModulationConfig,
   ProductRuntimeModulationRangeMap,
@@ -138,12 +139,17 @@ export class CoreProductModulationRangeBridge {
   updateRuntimeWalkPositions(telemetry: CoreProductTelemetrySnapshot, options: RuntimeWalkPositionUpdateOptions = {}): void {
     this.runtimeWalkDebugState.telemetryUpdateCount += 1;
     this.runtimeWalkDebugState.telemetryValueCount = telemetry.runtimeWalkValues ? Object.keys(telemetry.runtimeWalkValues).length : 0;
+    const sliderState = this.options.latestSliderState();
     const next = runtimeWalkPositionsFromTelemetry(
       telemetry.runtimeWalkValues,
       this.runtimeWalkControlNames,
       this.runtimeWalkControlRanges,
-    );
-    if (!next) return;
+    ) ?? {};
+    Object.assign(next, fxRouteRuntimePositions(
+      sliderState?.fxRoutingGraph as FxRoutingGraphState | undefined,
+      telemetry.fxRouteEffectiveAmounts,
+    ));
+    if (!telemetry.runtimeWalkValues && !telemetry.fxRouteEffectiveAmounts) return;
     this.updateRuntimeWalkCurrentValues(next);
     this.runtimeWalkPositions = next;
     this.publishRuntimeWalkStatePatch();

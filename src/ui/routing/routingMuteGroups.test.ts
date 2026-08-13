@@ -8,7 +8,9 @@ import {
   createRoutingMuteGroupTransitionController,
   getRoutingMuteGroupBooleanStateSignature,
   getRoutingMuteGroupSeed,
+  getRoutingMuteGroupTargetDef,
   normalizeRoutingMuteGroupRandomSettings,
+  normalizeRoutingMuteGroupScenePayload,
   normalizeRoutingMuteGroupSceneRefSlot,
   normalizeRoutingMuteGroupSlot,
   normalizeRoutingMuteGroupsState,
@@ -32,6 +34,7 @@ import {
   ROUTING_SOURCE_IDS,
   routingSourceIsEnabled,
 } from './routingSourceRegistry';
+import { FX_ROUTING_NODE_IDS, FX_ROUTING_NODE_ROW_IDS } from './fxRoutingGraph';
 
 type LogEntry =
   | { type: 'runtime-patch'; patch: RoutingMuteGroupRuntimeLevelPatch }
@@ -199,28 +202,94 @@ function testRandomSettingsAndSlotMetadataNormalization(): void {
 }
 
 function testSourceEligibilityMatchesRoutingRegistry(): void {
+  const sourceRows = ROUTING_SOURCE_IDS.filter((sourceId) => sourceId !== 'waves');
+  const expectedTargets = [
+    ...sourceRows,
+    ...FX_ROUTING_NODE_IDS
+      .map((node) => FX_ROUTING_NODE_ROW_IDS[node])
+      .filter((sourceId) => !sourceRows.includes(sourceId as never)),
+  ];
   assert.deepStrictEqual(
     ROUTING_MATRIX_ROW_IDS,
-    ROUTING_SOURCE_IDS.filter((sourceId) => sourceId !== 'waves'),
+    sourceRows,
   );
   assert.deepStrictEqual(
     ROUTING_MUTE_GROUP_SOURCE_IDS,
-    ROUTING_SOURCE_IDS.filter((sourceId) => sourceId !== 'waves'),
+    expectedTargets,
   );
-  assert.ok(ROUTING_MUTE_GROUP_SOURCE_IDS.includes('delayAOut'));
-  assert.ok(ROUTING_MUTE_GROUP_SOURCE_IDS.includes('delayBOut'));
-  assert.ok(ROUTING_MUTE_GROUP_SOURCE_IDS.includes('degrade'));
-  assert.ok(ROUTING_MUTE_GROUP_SOURCE_IDS.includes('reverb'));
+  for (const node of FX_ROUTING_NODE_IDS) {
+    assert.ok(ROUTING_MUTE_GROUP_SOURCE_IDS.includes(FX_ROUTING_NODE_ROW_IDS[node]));
+  }
+  assert.deepStrictEqual(getRoutingMuteGroupTargetDef('degrade')?.enabledKeys, [
+    'degradeEnabled', 'driftEnabled', 'erosionEnabled',
+  ]);
+  assert.deepStrictEqual(getRoutingMuteGroupTargetDef('saturationOut')?.enabledKeys, [
+    'dynamicsSaturationEnabled',
+  ]);
 
   const normalized = normalizeRoutingMuteGroupSlot({
-    mutedSourceIds: ['delayAOut', 'delayBOut', 'degrade', 'reverb', 'unknown'],
+    mutedSourceIds: [
+      'delayAOut', 'delayBOut', 'degrade', 'reverb',
+      'freezeOut', 'eq1Out', 'eq2Out', 'sidechainOut', 'saturationOut', 'unknown',
+    ],
     savedAt: '2026-06-27T00:00:00.000Z',
     revision: 4,
   });
 
   assert.deepStrictEqual(normalized, {
-    mutedSourceIds: ['delayAOut', 'delayBOut', 'degrade', 'reverb'],
+    mutedSourceIds: [
+      'delayAOut', 'delayBOut', 'degrade', 'reverb',
+      'freezeOut', 'eq1Out', 'eq2Out', 'sidechainOut', 'saturationOut',
+    ],
   });
+}
+
+function testCaptureCoversEveryModularFxTarget(): void {
+  const slot = captureRoutingMuteGroupSlot(makeState({
+    spectralFreezeEnabled: true,
+    spectralFreezeMix: 1,
+    dynamicsBusEnabled: true,
+    dynamicsEnabled: true,
+    dynamicsEq1Enabled: true,
+    dynamicsEq1Mix: 1,
+    dynamicsEq2Enabled: false,
+    dynamicsEq2Mix: 1,
+    sidechainEnabled: true,
+    sidechainMix: 1,
+    dynamicsSaturationEnabled: true,
+    dynamicsSaturationDrive: 0,
+  }));
+
+  assert.equal(slot.mutedSourceIds.includes('freezeOut'), false);
+  assert.equal(slot.mutedSourceIds.includes('eq1Out'), false);
+  assert.equal(slot.mutedSourceIds.includes('eq2Out'), true);
+  assert.equal(slot.mutedSourceIds.includes('sidechainOut'), false);
+  assert.equal(slot.mutedSourceIds.includes('saturationOut'), false);
+  assert.equal(slot.statePatch?.dynamicsBusEnabled, true);
+  assert.equal(slot.statePatch?.dynamicsEnabled, true);
+  assert.equal(slot.statePatch?.dynamicsEq1Enabled, true);
+  assert.equal(slot.statePatch?.dynamicsEq2Enabled, false);
+  assert.equal(slot.statePatch?.sidechainEnabled, true);
+  assert.equal(slot.statePatch?.dynamicsSaturationEnabled, true);
+
+  const scene = routingMuteGroupSlotScenePayload(slot);
+  assert.ok(scene);
+  assert.deepStrictEqual(scene.activeTargetIds, [...scene.activeTargetIds].sort());
+  assert.deepStrictEqual(scene.activeStateKeys, [...(scene.activeStateKeys ?? [])].sort());
+  const roundTrip = routingMuteGroupSlotFromScenePayload(scene);
+  assert.ok(roundTrip);
+  assert.deepStrictEqual(roundTrip.mutedSourceIds, slot.mutedSourceIds);
+  for (const key of [
+    'spectralFreezeEnabled',
+    'dynamicsBusEnabled',
+    'dynamicsEnabled',
+    'dynamicsEq1Enabled',
+    'dynamicsEq2Enabled',
+    'sidechainEnabled',
+    'dynamicsSaturationEnabled',
+  ] as const) {
+    assert.equal(roundTrip.statePatch?.[key], slot.statePatch?.[key]);
+  }
 }
 
 function testEarthFamilyRoutingPredicates(): void {
@@ -426,17 +495,50 @@ function testSlotScenePayloadAndStoredEmptyScenes(): void {
   });
   assert.deepStrictEqual(scene, {
     schemaVersion: ROUTING_MUTE_GROUP_SCENE_SCHEMA_VERSION,
-    mutedSourceIds: ['pad1', 'delayBOut'],
-    statePatch: { waterEnabled: false },
+    activeTargetIds: ROUTING_MUTE_GROUP_SOURCE_IDS
+      .filter((sourceId) => !['delayBOut', 'pad1'].includes(sourceId))
+      .sort(),
+    activeStateKeys: [],
+  });
+  const sceneRoundTrip = routingMuteGroupSlotFromScenePayload(scene, { phraseRange: { min: 4, max: 2 } });
+  assert.deepStrictEqual(sceneRoundTrip?.mutedSourceIds, ['pad1', 'delayBOut']);
+  assert.deepStrictEqual(sceneRoundTrip?.phraseRange, { min: 2, max: 4 });
+  assert.equal(sceneRoundTrip?.statePatch?.waterEnabled, false);
+  assert.equal(sceneRoundTrip?.statePatch?.spectralFreezeEnabled, false);
+  assert.equal(sceneRoundTrip?.statePatch?.dynamicsBusEnabled, false);
+
+  const noPatchScene = routingMuteGroupSlotScenePayload({ mutedSourceIds: ['pad1'] });
+  assert.deepStrictEqual(noPatchScene, {
+    schemaVersion: ROUTING_MUTE_GROUP_SCENE_SCHEMA_VERSION,
+    activeTargetIds: ROUTING_MUTE_GROUP_SOURCE_IDS.filter((sourceId) => sourceId !== 'pad1').sort(),
   });
   assert.deepStrictEqual(
-    routingMuteGroupSlotFromScenePayload(scene, { phraseRange: { min: 4, max: 2 } }),
-    {
-      mutedSourceIds: ['pad1', 'delayBOut'],
-      statePatch: { waterEnabled: false },
-      phraseRange: { min: 2, max: 4 },
-    },
+    routingMuteGroupSlotFromScenePayload(noPatchScene),
+    { mutedSourceIds: ['pad1'] },
   );
+
+  const legacy = {
+    schemaVersion: 1,
+    mutedSourceIds: ['delayBOut', 'pad1', 'unknown'],
+    statePatch: {
+      synthEuclid2Solo: true,
+      synthEuclid4Enabled: false,
+      unknown: true,
+    },
+  };
+  const normalizedLegacy = normalizeRoutingMuteGroupScenePayload(legacy);
+  assert.deepStrictEqual(normalizedLegacy, {
+    schemaVersion: ROUTING_MUTE_GROUP_SCENE_SCHEMA_VERSION,
+    activeTargetIds: ROUTING_MUTE_GROUP_SOURCE_IDS
+      .filter((sourceId) => !['delayBOut', 'pad1'].includes(sourceId))
+      .sort(),
+    activeStateKeys: ['synthEuclid2Solo'],
+  });
+  const legacyRoundTrip = routingMuteGroupSlotFromScenePayload(legacy);
+  assert.deepStrictEqual(legacyRoundTrip?.mutedSourceIds, ['pad1', 'delayBOut']);
+  assert.equal(legacyRoundTrip?.statePatch?.synthEuclid2Solo, true);
+  assert.equal(legacyRoundTrip?.statePatch?.synthEuclid4Enabled, false);
+  assert.equal('unknown' in (legacyRoundTrip?.statePatch ?? {}), false);
 
   assert.deepStrictEqual(
     normalizeRoutingMuteGroupSceneRefSlot({ sceneHash: ' scene-a ', phraseRange: { min: 7, max: 3 } }),
@@ -861,6 +963,7 @@ function testCancellationPreventsStaleDisables(): void {
 testNormalizeFiltersIneligibleSources();
 testRandomSettingsAndSlotMetadataNormalization();
 testSourceEligibilityMatchesRoutingRegistry();
+testCaptureCoversEveryModularFxTarget();
 testEarthFamilyRoutingPredicates();
 testNormalizeFiltersSceneKeysAndDropsLevels();
 testSpectralFreezeBooleansAreCapturedAndNormalizedWithoutSerial();

@@ -6,7 +6,6 @@ import type {
 } from './product/ProductEngineTypes';
 import type { CoreProductTelemetrySnapshot, CoreProductVisualTelemetrySnapshot } from './coreProductTelemetry';
 import {
-  DAW_OUTPUT_MAX_CHANNELS,
   createDefaultDawOutputRoutingConfig,
   sanitizeDawOutputRoutingConfig,
   type DawOutputRoutingConfig,
@@ -32,10 +31,6 @@ const CORE_PRODUCT_RUNTIME_ASSET_RETRY_COUNT = 2;
 const SNAPSHOT_APPLIED_TIMEOUT_MS = 4000;
 const CORE_PRODUCT_GRAPH_CAPTURE_ALLOWED =
   import.meta.env.DEV || import.meta.env.VITE_KESSHO_ENABLE_GRAPH_CAPTURE === 'true';
-
-function forceStereoProductOutputForBenchmark(): boolean {
-  return new URLSearchParams(window.location.search).get('product-stereo-output') === '1';
-}
 
 type RuntimeMessage =
   | { type: 'ready' }
@@ -755,7 +750,7 @@ export class CoreProductRuntime {
       graphCaptureAllowed: CORE_PRODUCT_GRAPH_CAPTURE_ALLOWED,
     };
 
-    if (isIOSLikeDevice() || forceStereoProductOutputForBenchmark()) {
+    if (isIOSLikeDevice() || !this.dawOutputRouting.enabled) {
       return new AudioWorkletNode(context, 'kessho-core-product', {
         numberOfInputs: 0,
         numberOfOutputs: 1,
@@ -767,11 +762,12 @@ export class CoreProductRuntime {
       });
     }
 
+    const channelCount = this.dawOutputRouting.channelCount;
     const multichannelOptions: AudioWorkletNodeOptions = {
       numberOfInputs: 0,
       numberOfOutputs: 1,
-      outputChannelCount: [DAW_OUTPUT_MAX_CHANNELS],
-      channelCount: DAW_OUTPUT_MAX_CHANNELS,
+      outputChannelCount: [channelCount],
+      channelCount,
       channelCountMode: 'explicit',
       channelInterpretation: 'discrete',
       processorOptions,
@@ -793,9 +789,7 @@ export class CoreProductRuntime {
   }
 
   private configureOutputNode(node: AudioNode): void {
-    const channelCount = isIOSLikeDevice() || forceStereoProductOutputForBenchmark()
-      ? 2
-      : DAW_OUTPUT_MAX_CHANNELS;
+    const channelCount = this.dawOutputRouting.enabled ? this.dawOutputRouting.channelCount : 2;
     try {
       node.channelCount = channelCount;
     } catch {

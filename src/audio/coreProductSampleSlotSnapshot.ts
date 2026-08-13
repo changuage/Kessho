@@ -32,6 +32,11 @@ export function assignSampleSlotSourceSnapshot(
   const slotTitle = slotId === 'sample1' ? 'Sample1' : 'Sample2';
   source.granularSend = numberFromState(state, `granular${slotTitle}Send`, source.granularSend);
   source.degradeSend = numberFromState(state, `degrade${slotTitle}Send`, source.degradeSend);
+  source.spectralFreezeSend = numberFromState(
+    state,
+    slot.libraryKey === 'piano' ? 'spectralFreezePianoSend' : `spectralFreeze${slotTitle}Send`,
+    source.spectralFreezeSend,
+  );
   source.diffuseSend = numberFromSampleState('DiffuseSend', source.diffuseSend);
   source.postLpfHz = numberFromSampleState('PostLPF', source.postLpfHz);
   source.stereoWidth = numberFromSampleState('StereoWidth', source.stereoWidth);

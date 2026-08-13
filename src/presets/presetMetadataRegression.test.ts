@@ -12,6 +12,7 @@ import {
   extractOptimizedStatePresetData,
 } from './statePresetOptimization';
 import { isStatePresetDiffKeyActive, normalizeStatePresetDiffData } from './statePresetDiffs';
+import { getSemanticPresetDiffKeys } from './presetDiffSemantics';
 import {
   buildPresetVersionMetadata,
   getPresetVersionSnapshot,
@@ -23,6 +24,8 @@ import { buildJourneyPresetPreview } from './journeyPresetPreview';
 import {
   planRoutingMuteGroupMetadataStorage,
   reconstructRoutingMuteGroupMetadata,
+  ROUTING_MUTE_GROUP_SCENE_CONTENT_SCHEMA_VERSION,
+  ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE,
   routingMuteGroupSceneRefSlot,
 } from './routingMuteGroupPresetStorage';
 import { normalizePresetSummary, normalizePresetVersion } from './presetUtils';
@@ -1106,6 +1109,69 @@ function testStatePresetDiffIgnoresInactiveMixerValues(): void {
   assert.equal(isStatePresetDiffKeyActive({ ...current, pianoEnabled: true }, 'pianoLevel'), true);
 }
 
+function testPresetDiffUsesCurrentSemanticState(): void {
+  const identity = { type: 'state' as const, scope: 'global' };
+  const older = extractOptimizedStatePresetData(DEFAULT_STATE);
+  for (const key of Object.keys(older)) {
+    if (key.startsWith('spectralFreeze') && key.endsWith('Send')) delete older[key];
+  }
+  const earthOnly = extractOptimizedStatePresetData({ ...DEFAULT_STATE, earthLevel: 0.73 });
+
+  assert.deepStrictEqual(
+    getSemanticPresetDiffKeys(identity, { data: older }, { data: earthOnly }),
+    ['earthLevel'],
+    'missing newer default fields must not appear beside the authored Earth change',
+  );
+  assert.deepStrictEqual(
+    getSemanticPresetDiffKeys(
+      identity,
+      { data: extractOptimizedStatePresetData(DEFAULT_STATE) },
+      { data: { ...DEFAULT_STATE } },
+    ),
+    [],
+    'optimized and hydrated snapshots must compare as the same preset',
+  );
+
+  const rangeKey = 'drumBeepHiBrightness';
+  const rawBehavior = {
+    sliderModes: { [rangeKey]: 'sampleHold' as const },
+    dualRanges: { [rangeKey]: { min: 0.33333337, max: 0.87654329 } },
+  };
+  assert.deepStrictEqual(
+    getSemanticPresetDiffKeys(
+      identity,
+      { data: { ...DEFAULT_STATE }, metadata: rawBehavior },
+      { data: { ...DEFAULT_STATE }, metadata: buildPresetVersionMetadata(rawBehavior) },
+    ),
+    [],
+    'live and saved ranges must use the same quantization before comparison',
+  );
+
+  const genuineChanges = {
+    ...DEFAULT_STATE,
+    spectralFreezePad1Send: 0.4,
+    drumKickDistance: DEFAULT_STATE.drumKickDistance + 0.1,
+  };
+  assert.deepStrictEqual(
+    getSemanticPresetDiffKeys(identity, { data: { ...DEFAULT_STATE } }, { data: genuineChanges }),
+    ['spectralFreezePad1Send', 'drumKickDistance'],
+    'genuine new-field and derived-parameter overrides must remain visible',
+  );
+
+  const padIdentity = { type: 'engine' as const, scope: 'pad1' };
+  const olderPad = extractParams(DEFAULT_STATE, 1, 'pad1');
+  delete olderPad.padOscBWavePosition;
+  assert.deepStrictEqual(
+    getSemanticPresetDiffKeys(
+      padIdentity,
+      { data: olderPad },
+      { data: { ...extractParams(DEFAULT_STATE, 1, 'pad1'), padOscAWave: 'square' } },
+    ),
+    ['padOscAWave'],
+    'lower-level preset diffs must also default missing current fields',
+  );
+}
+
 function testMaterializedV2VersionPreservesAncillaryMetadata(): void {
   const metadata = buildPresetVersionMetadata({
     drumClockDivs: ['1/8', '1/16', '1/4', '1/32T'],
@@ -1436,19 +1502,43 @@ async function testRoutingMuteGroupMetadataSplitsReusableSceneHashes(): Promise<
     plan.scenes[1]?.hash,
     'identical mute scenes should share a reusable scene hash even when phrase timing differs',
   );
-  assert.deepStrictEqual(plan.scenes[0]?.scene, {
-    schemaVersion: 1,
-    mutedSourceIds: ['pad1', 'delayBOut'],
-    statePatch: {
-      delayAEnabled: false,
-      waterEnabled: true,
-    },
+  const firstScene = plan.scenes[0];
+  assert.ok(firstScene);
+  assert.equal(firstScene.contentType, ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE);
+  assert.deepStrictEqual(firstScene.envelope, {
+    content: firstScene.scene,
+    contentType: ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE,
+    schemaVersion: ROUTING_MUTE_GROUP_SCENE_CONTENT_SCHEMA_VERSION,
   });
+  const positiveScene = firstScene.scene as unknown as Record<string, unknown>;
+  assert.equal(positiveScene.schemaVersion, 2, 'new mute scenes use the positive v2 payload');
+  assert.ok(Array.isArray(positiveScene.activeTargetIds), 'v2 scenes carry typed target IDs');
   assert.equal(
     plan.scenes[0]?.hash,
-    await hashCanonicalJson(plan.scenes[0]?.scene),
-    'scene refs should use the canonical payload hash',
+    await hashCanonicalJson(plan.scenes[0]?.envelope),
+    'scene refs should use the canonical typed envelope hash',
   );
+
+  const reordered = await planRoutingMuteGroupMetadataStorage({
+    routingMuteGroups: {
+      ...metadata.routingMuteGroups,
+      slots: [
+        {
+          mutedSourceIds: ['pad1', 'delayBOut'],
+          statePatch: { waterEnabled: true, delayAEnabled: false },
+          phraseRange: { min: 1, max: 2 },
+        },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+      ],
+    },
+  });
+  assert.equal(reordered.scenes[0]?.hash, firstScene.hash, 'scene envelope hashes are key-order stable');
 
   const compactSlots = plan.metadata?.routingMuteGroups?.slots as Array<Record<string, unknown> | null>;
   assert.deepStrictEqual(compactSlots[0], {
@@ -1460,31 +1550,79 @@ async function testRoutingMuteGroupMetadataSplitsReusableSceneHashes(): Promise<
     phraseRange: { min: 4, max: 8 },
   });
 
-  const scenePayloads = new Map(plan.scenes.map(scene => [scene.refSlot, scene.scene]));
+  const scenePayloads = new Map(plan.scenes.map(scene => [scene.refSlot, scene.envelope]));
   const reconstructed = reconstructRoutingMuteGroupMetadata(
     plan.metadata,
     (refSlot) => ({
       targetFound: scenePayloads.has(refSlot),
       payload: scenePayloads.get(refSlot),
+      contentHash: plan.scenes.find(scene => scene.refSlot === refSlot)?.hash,
+      contentType: ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE,
+      source: 'direct',
     }),
   );
 
-  assert.deepStrictEqual(reconstructed?.routingMuteGroups?.slots[0], {
-    mutedSourceIds: ['pad1', 'delayBOut'],
-    statePatch: {
-      delayAEnabled: false,
-      waterEnabled: true,
-    },
-    phraseRange: { min: 1, max: 2 },
+  const reconstructedFirst = reconstructed?.routingMuteGroups?.slots[0] as Record<string, unknown> | null;
+  assert.deepStrictEqual(reconstructedFirst?.phraseRange, { min: 1, max: 2 });
+  assert.deepStrictEqual(
+    [...((reconstructedFirst?.mutedSourceIds ?? []) as string[])].sort(),
+    ['delayBOut', 'pad1'].sort(),
+  );
+  assert.deepStrictEqual(reconstructed?.routingMuteGroups?.slots[1]?.phraseRange, { min: 4, max: 8 });
+
+  const mismatchWarnings: PresetRecoveryWarning[] = [];
+  const mismatch = reconstructRoutingMuteGroupMetadata(
+    plan.metadata,
+    (refSlot) => ({
+      targetFound: true,
+      payload: scenePayloads.get(refSlot),
+      contentHash: '0'.repeat(64),
+      contentType: ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE,
+      source: 'direct',
+    }),
+    { recoveryWarnings: mismatchWarnings, version: 4 },
+  );
+  assert.equal(mismatch?.routingMuteGroups?.slots[0], null);
+  assert.deepStrictEqual(mismatchWarnings[0], {
+    slot: routingMuteGroupSceneRefSlot(0),
+    reason: 'hash_mismatch',
+    fallback: 'empty',
+    version: 4,
   });
-  assert.deepStrictEqual(reconstructed?.routingMuteGroups?.slots[1], {
-    mutedSourceIds: ['pad1', 'delayBOut'],
-    statePatch: {
-      delayAEnabled: false,
-      waterEnabled: true,
+
+  const legacyScene = {
+    schemaVersion: 1,
+    mutedSourceIds: ['delayBOut', 'pad1'],
+    statePatch: { delayAEnabled: false, waterEnabled: true },
+  } as unknown as Record<string, unknown>;
+  const legacyHash = await hashCanonicalJson(legacyScene);
+  const legacyMetadata = {
+    ...plan.metadata,
+    routingMuteGroups: {
+      ...plan.metadata?.routingMuteGroups,
+      slots: [
+        { sceneHash: legacyHash, phraseRange: { min: 1, max: 2 } },
+        ...((plan.metadata?.routingMuteGroups?.slots ?? []).slice(1) as unknown[]),
+      ],
     },
-    phraseRange: { min: 4, max: 8 },
-  });
+  } as PresetVersionMetadata;
+  const legacy = reconstructRoutingMuteGroupMetadata(
+    legacyMetadata,
+    (refSlot) => refSlot === routingMuteGroupSceneRefSlot(0)
+      ? {
+          targetFound: true,
+          payload: legacyScene,
+          contentHash: legacyHash,
+          source: 'legacy',
+        }
+      : { targetFound: false, payload: undefined },
+  );
+  assert.ok(legacy?.routingMuteGroups?.slots[0], 'legacy hidden child remains readable');
+  assert.equal(
+    (legacyMetadata.routingMuteGroups?.slots[0] as unknown as { sceneHash?: string } | null)?.sceneHash,
+    legacyHash,
+    'legacy metadata keeps its original scene hash contract',
+  );
 
   const warnings: PresetRecoveryWarning[] = [];
   const missing = reconstructRoutingMuteGroupMetadata(
@@ -1492,6 +1630,8 @@ async function testRoutingMuteGroupMetadataSplitsReusableSceneHashes(): Promise<
     (refSlot) => ({
       targetFound: refSlot !== routingMuteGroupSceneRefSlot(0),
       payload: refSlot === routingMuteGroupSceneRefSlot(0) ? undefined : scenePayloads.get(refSlot),
+      source: 'direct',
+      contentType: ROUTING_MUTE_GROUP_SCENE_CONTENT_TYPE,
     }),
     { recoveryWarnings: warnings, version: 3 },
   );
@@ -1527,6 +1667,7 @@ async function run(): Promise<void> {
   testDrumPitchPresetRestoreUsesEngineOffsets();
   testOptimizedStatePresetRoundTripKeepsOnlyOverrides();
   testStatePresetDiffIgnoresInactiveMixerValues();
+  testPresetDiffUsesCurrentSemanticState();
   testMaterializedV2VersionPreservesAncillaryMetadata();
   testJourneyPresetCodecUsesRefsWithoutStateBloat();
   testJourneyPresetL4DeleteCleanupRemovesNodeAndConnections();

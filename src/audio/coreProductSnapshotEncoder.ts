@@ -20,13 +20,13 @@ type LegacyExactBridgeSource = ProductSourceSnapshot & {
 
 const HARMONY_BYTES = 2896;
 const ARRANGEMENT_BYTES = 124;
-const SOURCE_FIXED_BYTES = 268;
+const SOURCE_FIXED_BYTES = 272;
 const SOURCE_BYTES = SOURCE_FIXED_BYTES + 3 * Uint32Array.BYTES_PER_ELEMENT * (
   KESSHO_PRODUCT_PAD_PARAM_COUNT
   + KESSHO_PRODUCT_LEAD_PARAM_COUNT
   + KESSHO_PRODUCT_DRUM_PARAM_COUNT
 );
-const SNAPSHOT_FIXED_BYTES = 113272;
+const SNAPSHOT_FIXED_BYTES = 114200;
 const SNAPSHOT_BYTES = SNAPSHOT_FIXED_BYTES + 8 * SOURCE_BYTES;
 const LANE_BYTES = 100;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES + 16 * KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES;
@@ -124,6 +124,7 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
     f32(source.delayBSend);
     f32(source.granularSend);
     f32(source.degradeSend);
+    f32(source.spectralFreezeSend);
     f32(source.diffuseSend);
     f32(source.postLpfHz);
     f32(source.stereoWidth);
@@ -362,6 +363,11 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   u32(snapshot.fx.spectralFreezeRouting >>> 0);
   f32(snapshot.fx.spectralFreezeReverbCrossfade);
   f32(snapshot.fx.dynamicsDrive);
+  u32(bool(snapshot.fx.dynamicsMasterSaturationEnabled));
+  u32(snapshot.fx.dynamicsMasterSaturationMode >>> 0);
+  u32(snapshot.fx.dynamicsMasterSaturationQuality >>> 0);
+  f32(snapshot.fx.dynamicsMasterSaturationTone);
+  f32(snapshot.fx.dynamicsMasterSaturationBias);
   u32(bool(snapshot.fx.dynamicsEnabled));
   u32(bool(snapshot.fx.dynamicsDriftEnabled));
   u32(snapshot.fx.dynamicsDriftMode >>> 0);
@@ -453,6 +459,7 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   u32(bool(snapshot.fx.dynamicsEq1Enabled));
   f32(snapshot.fx.dynamicsEq1InputGain);
   f32(snapshot.fx.dynamicsEq1OutputGain);
+  f32(snapshot.fx.dynamicsEq1Mix);
   u32(snapshot.fx.dynamicsEq1LowType >>> 0);
   f32(snapshot.fx.dynamicsEq1LowFreq);
   f32(snapshot.fx.dynamicsEq1LowGain);
@@ -469,6 +476,7 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   u32(bool(snapshot.fx.dynamicsEq2Enabled));
   f32(snapshot.fx.dynamicsEq2InputGain);
   f32(snapshot.fx.dynamicsEq2OutputGain);
+  f32(snapshot.fx.dynamicsEq2Mix);
   u32(snapshot.fx.dynamicsEq2LowType >>> 0);
   f32(snapshot.fx.dynamicsEq2LowFreq);
   f32(snapshot.fx.dynamicsEq2LowGain);
@@ -538,6 +546,22 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   u32(snapshot.routing.dynamicsDelayBBus >>> 0);
   u32(snapshot.routing.dynamicsDegradeBus >>> 0);
   u32(snapshot.routing.dynamicsReverbBus >>> 0);
+  u32(snapshot.routing.fxGraphVersion >>> 0);
+  if (snapshot.routing.fxRouteAmount.length !== 100 || snapshot.routing.fxRouteMode.length !== 100 ||
+      snapshot.routing.fxRouteMin.length !== 100 || snapshot.routing.fxRouteMax.length !== 100 ||
+      snapshot.routing.fxEdgeMask.length !== 10 || snapshot.routing.fxDynamicsBus.length !== 10) {
+    throw new RangeError('Product FX routing graph snapshot has invalid fixed-array lengths');
+  }
+  for (const amount of snapshot.routing.fxRouteAmount) f32(clamp(amount, 0, 4));
+  for (let edge = 0; edge < 100; edge += 1) {
+    const mode = clamp(Math.round(snapshot.routing.fxRouteMode[edge] ?? 0), 0, 3);
+    const min = clamp(snapshot.routing.fxRouteMin[edge] ?? 0, 0, 4);
+    const max = clamp(snapshot.routing.fxRouteMax[edge] ?? min, min, 4);
+    const quantize = (value: number) => Math.round(value * (0x7fff / 4));
+    u32((mode | (quantize(min) << 2) | (quantize(max) << 17)) >>> 0);
+  }
+  for (const mask of snapshot.routing.fxEdgeMask) u32(mask);
+  for (const bus of snapshot.routing.fxDynamicsBus) u32(clamp(Math.round(bus), 0, 3));
   f32(snapshot.master.gain);
   f32(snapshot.master.limiterCeilingDb);
   u32(snapshot.rng.seed);

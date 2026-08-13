@@ -27,10 +27,10 @@ void KesshoProductEngine::configureDynamicsDriftModule() {
       const auto smoothstep01 = [](float value) {
         const float x = clampFloat(value, 0.0f, 1.0f); return x * x * (3.0f - 2.0f * x);
       };
-      const bool saturation_enabled = include_master_chain && fx.dynamics_saturation_enabled;
+      const bool saturation_enabled = include_master_chain && fx.dynamics_master_saturation_enabled;
       const bool drift_enabled = include_drift_degrade && fx.dynamics_enabled && fx.dynamics_drift_enabled;
       const bool erosion_enabled = include_drift_degrade && fx.dynamics_enabled && fx.dynamics_erosion_enabled;
-      const bool end_comp_enabled = include_master_chain && fx.dynamics_enabled && fx.dynamics_end_comp_enabled;
+      const bool end_comp_enabled = include_master_chain && fx.dynamics_end_comp_enabled;
       const uint32_t drift_mode = drift_enabled ? clampU32(fx.dynamics_drift_mode, 0u, 2u) : 0u;
       const bool mode_active = drift_mode != 0u;
       const float clean_flavor = drift_mode == 0u ? 1.0f : 0.0f;
@@ -364,8 +364,8 @@ void KesshoProductEngine::configureDynamicsDriftModule() {
       const float wow_frequency =
           drift_wow_frequency + (erosion_wow_frequency - drift_wow_frequency) * erosion_motion_weight;
       const bool master_sat_active = saturation_enabled;
-      const float master_sat_drive = master_sat_active ? unit(fx.dynamics_saturation_drive) : 0.0f;
-      const float master_sat_quality = static_cast<float>(clampU32(fx.dynamics_saturation_quality, 0u, 2u));
+      const float master_sat_drive = master_sat_active ? unit(fx.dynamics_drive) : 0.0f;
+      const float master_sat_quality = static_cast<float>(clampU32(fx.dynamics_master_saturation_quality, 0u, 2u));
       const float end_wet = end_comp_enabled ? unit(fx.dynamics_end_comp_mix) : 0.0f;
       const float end_comp_mode = static_cast<float>(clampU32(fx.dynamics_end_comp_mode, 0u, 4u));
       const float end_comp_peak_blend = unit(fx.dynamics_end_comp_peak_blend);
@@ -495,11 +495,11 @@ void KesshoProductEngine::configureDynamicsDriftModule() {
       params[kDynCompressorMakeup] = 1.0f + drift_mix * (shallow_flavor * 0.05f + abyss_flavor * 0.16f);
       params[kDynSaturation] = saturation;
       params[kDynCorrosion] = corrosion;
-      params[kDynMasterSatActive] = master_sat_drive > 0.0001f ? 1.0f : 0.0f;
-      params[kDynMasterSatMode] = static_cast<float>(master_sat_active ? clampU32(fx.dynamics_saturation_mode, 0u, 4u) : 0u);
+      params[kDynMasterSatActive] = master_sat_active ? 1.0f : 0.0f;
+      params[kDynMasterSatMode] = static_cast<float>(clampU32(fx.dynamics_master_saturation_mode, 0u, 4u));
       params[kDynMasterSatDrive] = master_sat_drive;
-      params[kDynMasterSatTone] = master_sat_active ? unit(fx.dynamics_saturation_tone) : 0.5f;
-      params[kDynMasterSatBias] = master_sat_active ? unit(fx.dynamics_saturation_bias) : 0.5f;
+      params[kDynMasterSatTone] = unit(fx.dynamics_master_saturation_tone);
+      params[kDynMasterSatBias] = unit(fx.dynamics_master_saturation_bias);
       params[kDynEndCompActive] = end_comp_enabled && end_wet > 0.0001f ? 1.0f : 0.0f;
       params[kDynEndCompThreshold] = fx.dynamics_end_comp_threshold;
       params[kDynEndCompKnee] = std::max(0.0f, fx.dynamics_end_comp_knee);

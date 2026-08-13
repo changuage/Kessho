@@ -89,7 +89,7 @@ function formatPage(page?: SliderPageId): string {
     case 'texture':
       return 'Texture';
     case 'routing':
-      return 'Routing';
+      return 'Patch';
     default:
       return 'Control Help';
   }

@@ -1,6 +1,4 @@
 import type { KesshoMacAudioOutputStatus } from '../native/capacitorMacShell';
-import type { NativeProductRendererDiagnosticStatus } from '../ui/useCapacitorAudioSessionDiagnostics';
-import type { ProductRuntimeBackgroundAudioStatus } from '../ui/useProductRuntimeBackgroundAudioSupport';
 import { appStyles as styles } from './appStyles';
 
 type MacAudioStatusPillProps = {
@@ -9,14 +7,6 @@ type MacAudioStatusPillProps = {
   readonly macAirPlayPerformanceActive: boolean;
   readonly onToggleAirPlayPerformance: () => void;
   readonly onOpenMacSoundSettings: () => void;
-};
-
-type BackgroundAudioStatusPillProps = {
-  readonly productRuntimeCore: boolean;
-  readonly backgroundAudioStatus: ProductRuntimeBackgroundAudioStatus;
-  readonly nativeProductRendererDiagnosticStatus: NativeProductRendererDiagnosticStatus;
-  readonly requestVisiblePageWakeLock: () => void | Promise<void>;
-  readonly releaseVisiblePageWakeLock: () => void | Promise<void>;
 };
 
 export function MacAudioStatusPill({
@@ -51,56 +41,6 @@ export function MacAudioStatusPill({
       </button>
       <button type="button" style={styles.macAudioStatusButton} onClick={onOpenMacSoundSettings} title="Open macOS Sound settings">
         Sound
-      </button>
-    </div>
-  );
-}
-
-export function BackgroundAudioStatusPill({
-  productRuntimeCore,
-  backgroundAudioStatus,
-  nativeProductRendererDiagnosticStatus,
-  requestVisiblePageWakeLock,
-  releaseVisiblePageWakeLock,
-}: BackgroundAudioStatusPillProps) {
-  if (!productRuntimeCore) return null;
-  const wakeLockAction = backgroundAudioStatus.wakeLockStatus === 'active'
-    ? releaseVisiblePageWakeLock
-    : requestVisiblePageWakeLock;
-  const wakeLockDisabled = backgroundAudioStatus.wakeLockStatus === 'unsupported' || backgroundAudioStatus.pageStatus !== 'foreground';
-  const wakeLockLabel = backgroundAudioStatus.wakeLockStatus === 'active' ? 'Release' : 'Wake';
-  const nativeProbeLabel = nativeProductRendererDiagnosticStatus.active
-    ? nativeProductRendererDiagnosticStatus.probePeak !== null
-      ? ` · Native ${nativeProductRendererDiagnosticStatus.probePeak.toFixed(3)}`
-      : nativeProductRendererDiagnosticStatus.bridgeAvailable
-        ? ' · Native ready'
-        : ' · Native waiting'
-    : '';
-
-  return (
-    <div style={styles.backgroundAudioStatus} aria-label="Browser background audio status" title={backgroundAudioStatus.limitation}>
-      <span style={styles.macAudioStatusText}>
-        {backgroundAudioStatus.pageStatus === 'foreground' ? 'Foreground' : 'Hidden'}
-        {' · '}
-        {backgroundAudioStatus.productLifecycleState}
-        {' · Media '}
-        {backgroundAudioStatus.mediaSessionStatus}
-        {' · Wake '}
-        {backgroundAudioStatus.wakeLockStatus}
-        {nativeProbeLabel}
-      </span>
-      <button
-        type="button"
-        style={{
-          ...styles.macAudioStatusButton,
-          ...(backgroundAudioStatus.wakeLockStatus === 'active' ? styles.macAudioStatusButtonActive : {}),
-          ...(wakeLockDisabled ? styles.statusButtonDisabled : {}),
-        }}
-        onClick={() => void wakeLockAction()}
-        disabled={wakeLockDisabled}
-        title="Visible-page Wake Lock. Browser/mobile lock-screen and app-background playback remain best-effort."
-      >
-        {wakeLockLabel}
       </button>
     </div>
   );
