@@ -21,7 +21,10 @@ let package = Package(
                 .product(name: "KesshoProductCore", package: "KesshoProductCore"),
                 .product(name: "KesshoNativeBridge", package: "KesshoNativeBridge")
             ],
-            path: "Sources/KesshoCapacitorMac"
+            path: "Sources/KesshoCapacitorMac",
+            swiftSettings: [
+                .interoperabilityMode(.Cxx)
+            ]
         )
     ]
 )

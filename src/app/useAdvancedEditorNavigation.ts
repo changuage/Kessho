@@ -35,7 +35,7 @@ export function useAdvancedEditorNavigation({
   setSnowflakeActivated,
   preloadAdvancedEditorRuntime,
 }: UseAdvancedEditorNavigationOptions) {
-  const [activeTab, setActiveTab] = useState<AdvancedTab>('global');
+  const [activeTab, setActiveTab] = useState<AdvancedTab>('routing');
   const activePageAccent = ADVANCED_TAB_COLORS[activeTab];
   const activeTabStyle = useMemo(() => getAdvancedTabActiveStyle(activePageAccent), [activePageAccent]);
   const activeTabRef = useRef(activeTab);

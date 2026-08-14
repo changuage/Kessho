@@ -4,6 +4,9 @@ import path from 'node:path';
 import test from 'node:test';
 import { resolveCoreProductRangeTargets } from '../../audio/coreProductEvents';
 import { EARTH_RANGE_PARAM_KEYS } from '../../presets/ParamRegistry';
+import * as dynamicsControlSchema from '../dynamics/dynamicsControlSchema';
+import { EROSION_MOD_MATRIX_KEYS } from '../dynamics/dynamicsPresets';
+import { ROUTING_SOURCE_REGISTRY } from '../routing/routingSourceRegistry';
 import { DEFAULT_STATE, getParamInfo, getSliderNumericValue, type SliderState } from '../state';
 import {
   getSliderCapability,
@@ -109,6 +112,7 @@ test('dynamic audit families are classified', () => {
     'granularV1Slice', 'granularV2Slice', 'granularV3Slice', 'granularV4Slice',
     'padTensionValue', 'leadTensionValue', 'synthEuclidTensionValue',
     'granularTensionValue', 'reverbTensionValue', 'drumTensionValue',
+    'sidechainSample1Target', 'sidechainSample2Target', 'driftWetHp',
   ];
   for (const key of single) assert.equal(getSliderCapability(key), 'single', key);
   for (const key of ['lead1Attack', 'lead2Hold', 'sample1AttackMs', 'sample2ReleaseMs', 'granularV1Speed', 'granularV4Gain', 'granularNatureSend', 'drumKickDistance', 'earthLevel', 'oceanSampleLevel', 'nature4FilterCutoff', 'insectsLevel']) {
@@ -116,9 +120,11 @@ test('dynamic audit families are classified', () => {
   }
   for (const key of [
     'driftDepth', 'driftRate', 'driftStereo',
+    'degradeHp', 'degradeLp',
     'erosionAge', 'erosionWow', 'erosionFlutter',
     'masterSaturationDrive',
     'endCompThreshold', 'endCompRatio', 'endCompKnee', 'endCompMix',
+    'sidechainThreshold', 'driftMix', 'erosionCorrosion', 'masterSaturationTone',
   ]) {
     assert.equal(getSliderCapability(key), 'dual', key);
     assert.notEqual(resolveCoreProductRangeTargets(key).length, 0, `${key} should resolve a Product range target`);
@@ -139,8 +145,35 @@ test('routing Freeze sends support dual sliders', () => {
   }
 });
 
+test('every target-backed routing matrix control supports dual sliders', () => {
+  const keys = [...new Set(ROUTING_SOURCE_REGISTRY.flatMap((source) => [
+    source.levelKey,
+    ...Object.values(source.sends),
+  ]))];
+  const scalar = keys
+    .filter((key) => resolveCoreProductRangeTargets(key).length > 0)
+    .filter((key) => getSliderCapability(key) !== 'dual');
+  assert.deepEqual(scalar, [], `target-backed routing controls without dual sliders: ${scalar.join(', ')}`);
+});
+
+test('every data-driven Dynamics slider supports dual ranges', () => {
+  const keys = new Set<string>(EROSION_MOD_MATRIX_KEYS);
+  const collect = (value: unknown): void => {
+    if (Array.isArray(value)) return void value.forEach(collect);
+    if (!value || typeof value !== 'object') return;
+    const entry = value as Record<string, unknown>;
+    if (entry.kind === 'slider' && typeof entry.key === 'string') keys.add(entry.key);
+    else Object.values(entry).forEach(collect);
+  };
+  collect(dynamicsControlSchema);
+  const invalid = [...keys].filter((key) => (
+    getSliderCapability(key) !== 'dual' || resolveCoreProductRangeTargets(key).length === 0
+  ));
+  assert.deepEqual(invalid, [], `Dynamics sliders without dual Product ranges: ${invalid.join(', ')}`);
+});
+
 test('dynamic numeric families never advertise dual without a Product target', () => {
-  const dynamicFamily = /^(?:sample[12]|(?:granular|degrade)Sample[12]|granularV[1-4]|lead[12](?:Attack|Decay|Sustain|Hold|Release)$|drum|dynamics)/;
+  const dynamicFamily = /^(?:sample[12]|(?:granular|degrade)Sample[12]|granularV[1-4]|lead[12](?:Attack|Decay|Sustain|Hold|Release)$|drum|dynamics|sidechain|drift|erosion|endComp|masterSaturation)/;
   const missingTargets = Object.keys(DEFAULT_STATE)
     .filter((key) => dynamicFamily.test(key))
     .filter((key) => getParamInfo(key as keyof SliderState))

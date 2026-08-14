@@ -18,10 +18,12 @@ const DYNAMIC_SINGLE_KEYS = new Set<string>([
   'granularV1Slice', 'granularV2Slice', 'granularV3Slice', 'granularV4Slice',
   'padTensionValue', 'leadTensionValue', 'synthEuclidTensionValue',
   'granularTensionValue', 'reverbTensionValue', 'drumTensionValue',
+  'sidechainSample1Target', 'sidechainSample2Target', 'driftWetHp',
 ]);
 
 const DYNAMIC_DUAL_KEYS = new Set<string>([
   'driftDepth', 'driftRate', 'driftStereo',
+  'degradeHp', 'degradeLp',
   'erosionAge', 'erosionWow', 'erosionFlutter',
   'masterSaturationDrive',
   'endCompThreshold', 'endCompRatio', 'endCompKnee', 'endCompMix',
@@ -53,7 +55,7 @@ export function getSliderCapability(key: string): SliderCapability | undefined {
   if (/^sample[12](?:AttackMs|DecayMs|Sustain|HoldMs|ReleaseMs|Level|Distance|PostLPF|StereoWidth|DiffuseSend|ReverbSend|DelayASend|DelayBSend)$/.test(key)) return 'dual';
   if (/^granularV[1-4](?:Speed|ScanRate|Pitch|Attack|Decay|Blur|GrainOct|Spray|PositionSpray|TimingSpray|Lookback|WriteGuard|PitchSpread|PitchJitter|PitchQuantize|ReverseChance|Bloom|Glide|LoopCrossfade|Density|GrainSize|Pan|Gain|PosLFORate|PosLFODepth|PanLFORate|StereoSpread|ReverseLFORate|WriteFollow|RecordLFORate)$/.test(key)) return 'dual';
   // Drum voice and modular Dynamics schemas are continuous Product keys.
-  if (/^(?:drum|dynamics)[A-Za-z0-9]+$/.test(key)) return 'dual';
+  if (/^(?:drum|dynamics|sidechain|drift|erosion|endComp|masterSaturation)[A-Za-z0-9]+$/.test(key)) return 'dual';
   // Unknown keys fail the generated audit and are rendered as scalar controls
   // by callers until they receive an explicit registry entry.
   return undefined;
