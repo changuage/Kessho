@@ -381,6 +381,17 @@ void requireFxGraphSnapshotAndRuntimeEvents() {
   require(engine->routing.fx_route_max[kFxNodeReverb][kFxNodeDegrade] > 0.79f, "FX route modulation maximum did not load");
   require(engine->routing.fx_dynamics_bus[kFxNodeFreeze] == kDynamicsBusSidechain, "FX graph Dynamics assignment did not load");
 
+  KesshoProductSnapshotV2 feedback = snapshot;
+  feedback.routing.fx_edge_mask[kFxNodeDelayA] = 1u << kFxNodeDelayB;
+  feedback.routing.fx_route_amount[kFxNodeDelayA * kFxNodeCount + kFxNodeDelayB] = 0.8f;
+  feedback.routing.delay_a_to_delay_b = 0.6f;
+  feedback.routing.delay_b_to_delay_a = 0.4f;
+  require(engine->loadSnapshot(feedback) == KESSHO_PRODUCT_OK, "restricted delay feedback snapshot was rejected");
+  require(!engine->routing.fxEdgeEnabled(kFxNodeDelayA, kFxNodeDelayB), "feedback edge leaked into the acyclic graph");
+  require(std::fabs(engine->routing.delay_a_to_delay_b_feedback - 0.6f) < 0.001f &&
+          std::fabs(engine->routing.delay_b_to_delay_a_feedback - 0.4f) < 0.001f,
+      "restricted delay feedback amounts did not load");
+
   KesshoProductSnapshotV2 cyclic = snapshot;
   cyclic.routing.fx_edge_mask[kFxNodeDegrade] = 1u << kFxNodeReverb;
   cyclic.routing.fx_route_amount[kFxNodeDegrade * kFxNodeCount + kFxNodeReverb] = 0.5f;

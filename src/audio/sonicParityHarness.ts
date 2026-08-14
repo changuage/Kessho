@@ -19,7 +19,7 @@ import type { ManualSynthNoteOptions } from './engineSharedTypes';
 import { applyPadPresetMorphParamsToState } from './padPresets';
 import { loadReferenceAudioRuntime } from './referenceAudioRuntime';
 import type { SliderState } from '../ui/state';
-import { updateFxRoutingGraphFromLegacyParam } from './fxRoutingGraph';
+import { updateFxRoutingGraphFromLegacyPatch } from './fxRoutingGraph';
 
 type CaptureOptions = {
   durationMs?: number;
@@ -424,10 +424,10 @@ function createCaptureState(
   statePatch: Partial<SliderState> | undefined,
   manualMode: boolean,
 ): SliderState {
-  let fxRoutingGraph = currentState.fxRoutingGraph;
-  for (const [key, value] of Object.entries(statePatch ?? {})) {
-    fxRoutingGraph = updateFxRoutingGraphFromLegacyParam(fxRoutingGraph, key, value);
-  }
+  const fxRoutingGraph = statePatch?.fxRoutingGraph ?? updateFxRoutingGraphFromLegacyPatch(
+    currentState.fxRoutingGraph,
+    statePatch ?? {},
+  );
   const patchedState = applyPadPresetMorphParamsToState({
     ...currentState,
     ...(statePatch ?? {}),
@@ -464,12 +464,18 @@ function createResolvedStateEventPatch(
   manualMode: boolean,
 ): { state: SliderState; patch: Partial<SliderState> } {
   if (!patchRequiresPadPresetResolution(patch)) {
+    const fxRoutingGraph = patch.fxRoutingGraph ?? updateFxRoutingGraphFromLegacyPatch(
+      previousState.fxRoutingGraph,
+      patch,
+    );
+    const graphChanged = fxRoutingGraph !== previousState.fxRoutingGraph;
     return {
       state: {
         ...previousState,
         ...patch,
+        fxRoutingGraph,
       },
-      patch,
+      patch: graphChanged && !patch.fxRoutingGraph ? { ...patch, fxRoutingGraph } : patch,
     };
   }
   const state = createCaptureState(previousState, patch, manualMode);

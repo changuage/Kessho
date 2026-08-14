@@ -577,3 +577,14 @@ export function updateFxRoutingGraphFromLegacyParam(
       : edge as FxRoutingConnection),
   };
 }
+
+export function updateFxRoutingGraphFromLegacyPatch(
+  graph: FxRoutingGraphState,
+  patch: Record<string, unknown>,
+): FxRoutingGraphState {
+  let next = graph;
+  for (const [key, value] of Object.entries(patch)) {
+    next = updateFxRoutingGraphFromLegacyParam(next, key, value);
+  }
+  return next;
+}

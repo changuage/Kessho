@@ -279,15 +279,11 @@ try {
     results.push(result);
   }
   const failed = results.filter((result) => result.status !== 'pass');
-  const fastSonicOnlyFailure = args.tier === 'fast' &&
-    failed.length > 0 &&
-    failed.every((result) => result.exitCode === 1);
   const report = {
     schema: 'kessho-product-web-graph-capture-smoke-v1',
     generatedAt: new Date().toISOString(),
-    status: failed.length === 0 ? 'pass' : fastSonicOnlyFailure ? 'warn' : 'fail',
+    status: failed.length === 0 ? 'pass' : 'fail',
     tier: args.tier,
-    nonBlockingSonicFailure: fastSonicOnlyFailure,
     filteredCaseIds: args.caseIds,
     cases: results.map((result) => ({
       id: result.id,
@@ -319,13 +315,11 @@ try {
     process.stderr.write(result.stderr);
   }
 
-  if (failed.length > 0 && fastSonicOnlyFailure) {
-    console.warn(`Kessho Product Web graph capture smoke had nonblocking fast-tier sonic failure(s): ${failed.map((result) => result.id).join(', ')}. See ${reportPath}`);
-  } else if (failed.length > 0) {
+  if (failed.length > 0) {
     throw new Error(`Kessho Product Web graph capture smoke failed: ${failed.map((result) => result.id).join(', ')}. See ${reportPath}`);
   }
 
-  console.log(`Kessho Product Web graph capture smoke ${fastSonicOnlyFailure ? 'completed with nonblocking fast-tier sonic warning' : 'passed'} (${results.length} cases, report: ${reportPath})`);
+  console.log(`Kessho Product Web graph capture smoke passed (${results.length} cases, report: ${reportPath})`);
 } finally {
   await sharedVite?.stop();
 }

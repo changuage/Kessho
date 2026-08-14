@@ -7,6 +7,8 @@
 namespace kessho::product::internal {
 
 struct RoutingState : FxRoutingGraphState {
+  float delay_a_to_delay_b_feedback = 0.0f;
+  float delay_b_to_delay_a_feedback = 0.0f;
   float delay_a_to_delay_b = 0.0f;
   float delay_b_to_delay_a = 0.0f;
   float delay_to_reverb = 0.4f;

@@ -2,6 +2,7 @@ import { smokeCases } from './kesshoProductWebGraphSmokeCases.mjs';
 
 const fastSmokeCaseOrder = [
   'manual-pad-granular-reverb-send-clean',
+  'manual-pad-delay-a-reverb-send',
   'manual-pad-reverb-return-live-wash-bloom-decay',
 ];
 

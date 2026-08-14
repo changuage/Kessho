@@ -177,7 +177,12 @@
           "file": "cpp/KesshoCore/src/product/fx/ProductSpectralFreeze.cpp",
           "tokens": [
             "fx_graph_rendering",
-            "graph_spectral_freeze_input_l",
+            "graph_spectral_freeze_input_l"
+          ]
+        },
+        {
+          "file": "cpp/KesshoCore/src/product/fx/ProductFxGraph.cpp",
+          "tokens": [
             "graph_spectral_freeze_output_l"
           ]
         },
@@ -764,14 +769,19 @@
           ]
         },
         {
+          "file": "cpp/KesshoCore/src/product/ProductRoutingState.h",
+          "tokens": [
+            "delay_a_to_delay_b_feedback"
+          ]
+        },
+        {
           "file": "src/audio/coreProductSnapshot.ts",
           "tokens": [
             "delayToReverb: reverbEnabled && delayAEnabled",
             "rawDelayAToB",
             "delayCrossScale",
-            "delayBToATrim",
             "delayAToDelayB: rawDelayAToB * delayCrossScale",
-            "delayBToDelayA: rawDelayBToA * delayCrossScale * delayBToATrim"
+            "delayBToDelayA: rawDelayBToA * delayCrossScale"
           ]
         },
         {

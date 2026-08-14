@@ -18,6 +18,7 @@ import {
   sampleFxRoutingVerticalWire,
   setFxRoutePresence,
   updateFxRoutingGraphFromLegacyParam,
+  updateFxRoutingGraphFromLegacyPatch,
   type FxRoutingEdge,
   type FxRoutingNodeId,
 } from './fxRoutingGraph';
@@ -176,4 +177,15 @@ test('legacy routing migrates once into the cycle-safe graph', () => {
   const removed = updateFxRoutingGraphFromLegacyParam(graph, 'degradeReverbSend', 0);
   const reversed = updateFxRoutingGraphFromLegacyParam(removed, 'reverbDegradeSend', 0.8);
   assert.equal(reversed.edges.some((edge) => edge.from === 'reverb' && edge.to === 'degrade'), true);
+});
+
+test('legacy routing patches update the canonical graph in one pass', () => {
+  const graph = updateFxRoutingGraphFromLegacyPatch({ version: 1, edges: [] }, {
+    delayAReverbSend: 0.7,
+    granularDelayASend: 0.4,
+    masterVolume: 0.5,
+  });
+  assert.equal(graph.edges.find((edge) => edge.from === 'delayA' && edge.to === 'reverb')?.amount, 0.7);
+  assert.equal(graph.edges.find((edge) => edge.from === 'granular' && edge.to === 'delayA')?.amount, 0.4);
+  assert.equal(graph.edges.length, 2);
 });

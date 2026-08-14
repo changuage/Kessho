@@ -1088,6 +1088,7 @@ const reverbLiveWashBloomStatePatch = {
 
 const fastSmokeCaseMetadata = new Map([
   ['manual-pad-granular-reverb-send-clean', { domains: ['granular'], coverage: 'active-partial' }],
+  ['manual-pad-delay-a-reverb-send', { domains: ['delayAB'], coverage: 'active-partial' }],
   ['manual-pad-reverb-return-live-wash-bloom-decay', {
     domains: ['reverbMacro'],
     coverage: 'proven-domain-sentinel',
@@ -3275,6 +3276,7 @@ const rawCases = [
     peakTolerance: 0.08,
     minLagCorrelation: 0.96,
     envelopeGate: true,
+    envelopePeakRatioTolerance: 0.4,
     statePatch: delayBidirectionalStatePatch,
   },
   {

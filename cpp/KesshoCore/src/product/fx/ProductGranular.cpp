@@ -137,10 +137,6 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
     if (fx_graph_rendering) {
       fx_node_output_l[kFxNodeGranular][frame] = output_lpf_l[i] * mute_gain;
       fx_node_output_r[kFxNodeGranular][frame] = output_lpf_r[i] * mute_gain;
-      if (graph_taps_enabled) {
-        graph_granular_output_l[frame] = fx_node_output_l[kFxNodeGranular][frame];
-        graph_granular_output_r[frame] = fx_node_output_r[kFxNodeGranular][frame];
-      }
       continue;
     }
     if (graph_taps_enabled) {

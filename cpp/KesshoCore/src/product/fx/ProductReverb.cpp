@@ -127,10 +127,6 @@ void KesshoProductEngine::renderReverb(float* out_l, float* out_r, uint32_t star
       const float mute_gain = routingMuteGainForFrame(kRoutingMuteRowReverb, transport.sample_frame + i);
       fx_node_output_l[kFxNodeReverb][frame] = module_l[i] * reverb_output_trim * mute_gain;
       fx_node_output_r[kFxNodeReverb][frame] = module_r[i] * reverb_output_trim * mute_gain;
-      if (graph_taps_enabled) {
-        graph_reverb_output_l[frame] = fx_node_output_l[kFxNodeReverb][frame] * fx.reverb_mix;
-        graph_reverb_output_r[frame] = fx_node_output_r[kFxNodeReverb][frame] * fx.reverb_mix;
-      }
     }
     return;
   }

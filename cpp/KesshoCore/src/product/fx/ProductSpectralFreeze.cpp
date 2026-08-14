@@ -33,10 +33,6 @@ void KesshoProductEngine::renderSpectralFreeze(
       : 0.0f;
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    if (graph_taps_enabled) {
-      graph_spectral_freeze_output_l[frame] = spectral_freeze_output_l[frame];
-      graph_spectral_freeze_output_r[frame] = spectral_freeze_output_r[frame];
-    }
     if (fx_graph_rendering) {
       const float mute_gain = routingMuteGainForFrame(kRoutingMuteRowFreeze, transport.sample_frame + i);
       fx_node_output_l[kFxNodeFreeze][frame] = spectral_freeze_output_l[frame] * mute_gain;

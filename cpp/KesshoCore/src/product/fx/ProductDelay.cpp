@@ -62,9 +62,23 @@
       const uint8_t node = is_delay_a ? kFxNodeDelayA : kFxNodeDelayB;
       fx_node_output_l[node][frame] = output_l_sample;
       fx_node_output_r[node][frame] = output_r_sample;
-      if (graph_taps_enabled) {
-        graph_output_l[frame] = output_l_sample;
-        graph_output_r[frame] = output_r_sample;
+      const float feedback_amount = is_delay_a
+          ? routing.delay_a_to_delay_b_feedback
+          : routing.delay_b_to_delay_a_feedback;
+      if (feedback_amount > 0.0001f) {
+        const float feedback_l = cross_l_sample * feedback_amount;
+        const float feedback_r = cross_r_sample * feedback_amount;
+        if (is_delay_a) {
+          cross_l[frame] += feedback_l;
+          cross_r[frame] += feedback_r;
+        } else {
+          delay_a_cross_carry_l[i] = feedback_l;
+          delay_a_cross_carry_r[i] = feedback_r;
+        }
+        if (graph_taps_enabled) {
+          graph_cross_l[frame] = feedback_l;
+          graph_cross_r[frame] = feedback_r;
+        }
       }
       continue;
     }

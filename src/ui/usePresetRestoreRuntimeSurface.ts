@@ -35,6 +35,8 @@ export function usePresetRestoreRuntimeSurface({
         if (!config) continue;
         continuousPositions[key] = 0.5;
       }
+      setSliderModes({});
+      setDualSliderRanges({});
       setDualSliderConfigs(presetDualConfigs);
       replaceRuntimeWalkPositionSnapshot(continuousPositions);
       return;
@@ -54,12 +56,14 @@ export function usePresetRestoreRuntimeSurface({
         }
       });
 
+      setDualSliderConfigs({});
       setSliderModes(newSliderModes);
       setDualSliderRanges(newDualRanges);
       replaceRuntimeWalkPositionSnapshot(newWalkPositions);
       return;
     }
 
+    setDualSliderConfigs({});
     setSliderModes({});
     setDualSliderRanges({});
     replaceRuntimeWalkPositionSnapshot({});

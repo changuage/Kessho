@@ -60,10 +60,7 @@ void KesshoProductEngine::configureFxModules() {
           fx.delay_a_enabled &&
           (fx.delay_a_mix > 0.0001f ||
            routing.fx_edge_mask[kFxNodeDelayA] != 0u ||
-           routing.delay_a_to_delay_b > 0.0001f ||
-           routing.delay_to_reverb > 0.0001f ||
-           routing.delay_a_to_granular > 0.0001f ||
-           routing.delay_a_to_degrade > 0.0001f);
+           routing.delay_a_to_delay_b_feedback > 0.0001f);
       params[0] = active ? 1.0f : 0.0f;
       params[1] = clampFloat(fx.delay_a_time_left_ms, 10.0f, 5000.0f);
       params[2] = clampFloat(fx.delay_a_time_right_ms, 10.0f, 5000.0f);
@@ -71,16 +68,18 @@ void KesshoProductEngine::configureFxModules() {
       params[4] = active ? 1.0f : 0.0f;
       params[5] = clampFloat(fx.delay_a_filter_hz, 200.0f, 12000.0f);
       params[6] = static_cast<float>(clampU32(fx.delay_a_filter_type, 0u, 2u));
-      params[7] = clampFloat(routing.delay_to_reverb, 0.0f, 1.0f);
+      params[7] = routing.fxEdgeEnabled(kFxNodeDelayA, kFxNodeReverb) ? 1.0f : 0.0f;
       params[8] = clampFloat(fx.delay_a_mod_rate_hz, 0.0f, 5.0f);
       params[9] = clampFloat(fx.delay_a_mod_depth_ms, 0.0f, 50.0f);
       params[10] = fx.delay_a_ping_pong ? 1.0f : 0.0f;
       params[11] = clampFloat(fx.delay_a_duck, 0.0f, 1.0f);
       params[12] = clampFloat(fx.delay_a_width, 0.0f, 1.0f);
-      params[13] = clampFloat(routing.delay_a_to_delay_b, 0.0f, 1.0f);
+      params[13] = routing.fxEdgeEnabled(kFxNodeDelayA, kFxNodeDelayB) ||
+              routing.delay_a_to_delay_b_feedback > 0.0001f
+          ? 1.0f : 0.0f;
       params[14] = clampFloat(fx.delay_a_cross_feed_filter_hz, 200.0f, 12000.0f);
-      params[15] = clampFloat(routing.delay_a_to_granular, 0.0f, 1.0f);
-      params[16] = clampFloat(routing.delay_a_to_degrade, 0.0f, 1.0f);
+      params[15] = routing.fxEdgeEnabled(kFxNodeDelayA, kFxNodeGranular) ? 1.0f : 0.0f;
+      params[16] = routing.fxEdgeEnabled(kFxNodeDelayA, kFxNodeDegrade) ? 1.0f : 0.0f;
       delay_a_module->commitParams();
     }
   }
@@ -91,10 +90,7 @@ void KesshoProductEngine::configureFxModules() {
           fx.delay_b_enabled &&
           (fx.delay_b_mix > 0.0001f ||
            routing.fx_edge_mask[kFxNodeDelayB] != 0u ||
-           routing.delay_b_to_delay_a > 0.0001f ||
-           routing.delay_b_to_reverb > 0.0001f ||
-           routing.delay_b_to_granular > 0.0001f ||
-           routing.delay_b_to_degrade > 0.0001f);
+           routing.delay_b_to_delay_a_feedback > 0.0001f);
       params[0] = active ? 1.0f : 0.0f;
       params[1] = clampFloat(fx.delay_b_activity, 0.0f, 1.0f);
       params[2] = clampFloat(fx.delay_b_repeats, 0.0f, 0.85f);
@@ -102,9 +98,11 @@ void KesshoProductEngine::configureFxModules() {
       params[4] = clampFloat(fx.delay_b_tone, 0.0f, 1.0f);
       params[5] = clampFloat(fx.delay_b_vibrato, 0.0f, 1.0f);
       params[6] = active ? 1.0f : 0.0f;
-      params[7] = clampFloat(routing.delay_b_to_reverb, 0.0f, 1.0f);
-      params[8] = clampFloat(routing.delay_b_to_granular, 0.0f, 1.0f);
-      params[9] = clampFloat(routing.delay_b_to_delay_a, 0.0f, 1.0f);
+      params[7] = routing.fxEdgeEnabled(kFxNodeDelayB, kFxNodeReverb) ? 1.0f : 0.0f;
+      params[8] = routing.fxEdgeEnabled(kFxNodeDelayB, kFxNodeGranular) ? 1.0f : 0.0f;
+      params[9] = routing.fxEdgeEnabled(kFxNodeDelayB, kFxNodeDelayA) ||
+              routing.delay_b_to_delay_a_feedback > 0.0001f
+          ? 1.0f : 0.0f;
       params[10] = static_cast<float>(clampU32(fx.delay_b_space_mode, 0u, 2u));
       params[11] = static_cast<float>(clampU32(fx.delay_b_pattern, 0u, 3u));
       params[12] = static_cast<float>(clampU32(fx.delay_b_warp, 0u, 3u));
@@ -115,7 +113,7 @@ void KesshoProductEngine::configureFxModules() {
         params[16 + index] = clampFloat(fx.delay_b_tape_head_levels[index], 0.0f, 1.0f);
         params[20 + index] = clampFloat(fx.delay_b_tape_head_pans[index], 0.0f, 1.0f);
       }
-      params[24] = clampFloat(routing.delay_b_to_degrade, 0.0f, 1.0f);
+      params[24] = routing.fxEdgeEnabled(kFxNodeDelayB, kFxNodeDegrade) ? 1.0f : 0.0f;
       delay_b_module->commitParams();
     }
   }

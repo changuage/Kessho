@@ -7,6 +7,12 @@ struct StereoBus {
   float* right;
 };
 
+struct RouteSignal {
+  const float* left;
+  const float* right;
+  bool block_local;
+};
+
 StereoBus inputBus(KesshoProductEngine& engine, uint8_t node) {
   switch (node) {
     case kFxNodeDelayA: return {engine.delay_a_bus_l, engine.delay_a_bus_r};
@@ -49,6 +55,50 @@ float returnGain(const KesshoProductEngine& engine, uint8_t node) {
     case kFxNodeFreeze: return clampFloat(engine.fx.spectral_freeze_mix, 0.0f, 1.0f);
     case kFxNodeReverb: return std::max(0.0f, engine.fx.reverb_mix);
     default: return 1.0f;
+  }
+}
+
+RouteSignal routeSignal(KesshoProductEngine& engine, uint8_t from, uint8_t to) {
+  if (from == kFxNodeDelayA || from == kFxNodeDelayB) {
+    uint32_t tap = KESSHO_MODULE_DELAY_A_TAP_MAIN;
+    if (to == kFxNodeReverb) tap = KESSHO_MODULE_DELAY_A_TAP_REVERB_SEND;
+    else if (to == kFxNodeDelayA || to == kFxNodeDelayB) tap = KESSHO_MODULE_DELAY_A_TAP_DELAY_B_SEND;
+    else if (to == kFxNodeGranular) tap = KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND;
+    else if (to == kFxNodeDegrade) tap = KESSHO_MODULE_DELAY_A_TAP_DRIFT_SEND;
+    return {engine.module_tap_l[tap], engine.module_tap_r[tap], true};
+  }
+  if (from == kFxNodeGranular) {
+    const uint32_t tap = to == kFxNodeReverb ? 1u : 0u;
+    return {engine.module_tap_l[tap], engine.module_tap_r[tap], true};
+  }
+  return {engine.fx_node_output_l[from], engine.fx_node_output_r[from], false};
+}
+
+StereoBus routeTap(KesshoProductEngine& engine, uint8_t from, uint8_t to) {
+  if (from == kFxNodeDelayA) {
+    if (to == kFxNodeReverb) return {engine.graph_delay_a_reverb_send_l, engine.graph_delay_a_reverb_send_r};
+    if (to == kFxNodeDelayB) return {engine.graph_delay_a_to_delay_b_send_l, engine.graph_delay_a_to_delay_b_send_r};
+    if (to == kFxNodeGranular) return {engine.graph_delay_a_to_granular_send_l, engine.graph_delay_a_to_granular_send_r};
+  } else if (from == kFxNodeDelayB) {
+    if (to == kFxNodeReverb) return {engine.graph_delay_b_reverb_send_l, engine.graph_delay_b_reverb_send_r};
+    if (to == kFxNodeDelayA) return {engine.graph_delay_b_to_delay_a_send_l, engine.graph_delay_b_to_delay_a_send_r};
+    if (to == kFxNodeGranular) return {engine.graph_delay_b_to_granular_send_l, engine.graph_delay_b_to_granular_send_r};
+  } else if (from == kFxNodeGranular) {
+    if (to == kFxNodeReverb) return {engine.graph_granular_reverb_send_l, engine.graph_granular_reverb_send_r};
+    if (to == kFxNodeDelayA) return {engine.graph_granular_to_delay_a_send_l, engine.graph_granular_to_delay_a_send_r};
+    if (to == kFxNodeDelayB) return {engine.graph_granular_to_delay_b_send_l, engine.graph_granular_to_delay_b_send_r};
+  }
+  return {nullptr, nullptr};
+}
+
+StereoBus outputTap(KesshoProductEngine& engine, uint8_t node) {
+  switch (node) {
+    case kFxNodeDelayA: return {engine.graph_delay_a_output_l, engine.graph_delay_a_output_r};
+    case kFxNodeDelayB: return {engine.graph_delay_b_output_l, engine.graph_delay_b_output_r};
+    case kFxNodeGranular: return {engine.graph_granular_output_l, engine.graph_granular_output_r};
+    case kFxNodeFreeze: return {engine.graph_spectral_freeze_output_l, engine.graph_spectral_freeze_output_r};
+    case kFxNodeReverb: return {engine.graph_reverb_output_l, engine.graph_reverb_output_r};
+    default: return {nullptr, nullptr};
   }
 }
 
@@ -151,32 +201,37 @@ void KesshoProductEngine::renderFxGraph(
       telemetry.fx_route_effective_amounts[node * kFxNodeCount + to] = amount;
       if (amount <= 0.0f && previous_amount <= 0.0f) continue;
       const StereoBus destination = inputBus(*this, to);
-      const bool granular_reverb = node == kFxNodeGranular && to == kFxNodeReverb;
-      const float* route_l = granular_reverb ? module_tap_l[1] : fx_node_output_l[node];
-      const float* route_r = granular_reverb ? module_tap_r[1] : fx_node_output_r[node];
+      const RouteSignal route = routeSignal(*this, node, to);
+      const StereoBus graph_tap = graph_taps_enabled ? routeTap(*this, node, to) : StereoBus{nullptr, nullptr};
       for (uint32_t i = 0; i < frames; ++i) {
         const uint32_t frame = start + i;
         const float ramp = static_cast<float>(i + 1u) / static_cast<float>(frames);
         const float smoothed_amount = previous_amount + (amount - previous_amount) * ramp;
-        const float routed_l = route_l[granular_reverb ? i : frame] * smoothed_amount;
-        const float routed_r = route_r[granular_reverb ? i : frame] * smoothed_amount;
+        const uint32_t source_frame = route.block_local ? i : frame;
+        const float routed_l = route.left[source_frame] * smoothed_amount;
+        const float routed_r = route.right[source_frame] * smoothed_amount;
         destination.left[frame] += routed_l;
         destination.right[frame] += routed_r;
-        if (graph_taps_enabled && granular_reverb) {
-          graph_granular_reverb_send_l[frame] = routed_l;
-          graph_granular_reverb_send_r[frame] = routed_r;
+        if (graph_tap.left != nullptr) {
+          graph_tap.left[frame] = routed_l;
+          graph_tap.right[frame] = routed_r;
         }
       }
     }
 
     const float level = returnGain(*this, node);
     if (level <= 0.0f) continue;
+    const StereoBus graph_output = graph_taps_enabled ? outputTap(*this, node) : StereoBus{nullptr, nullptr};
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;
       const float left = fx_node_output_l[node][frame] * level;
       const float right = fx_node_output_r[node][frame] * level;
       out_l[frame] += left;
       out_r[frame] += right;
+      if (graph_output.left != nullptr) {
+        graph_output.left[frame] = left;
+        graph_output.right[frame] = right;
+      }
       if (captureStems()) {
         stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;
         stem_r[KESSHO_PRODUCT_STEM_FX][frame] += right;

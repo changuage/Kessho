@@ -97,6 +97,19 @@ bool loadFxGraphSnapshot(
   static_assert(KESSHO_PRODUCT_FX_NODE_COUNT == kFxNodeCount, "FX snapshot node count drifted from runtime graph");
   RoutingState next = routing;
   next.clearFxGraph();
+  next.delay_a_to_delay_b_feedback = 0.0f;
+  next.delay_b_to_delay_a_feedback = 0.0f;
+
+  const auto load_restricted_delay_feedback = [&next, &snapshot]() {
+    if (!std::isfinite(snapshot.delay_a_to_delay_b) || !std::isfinite(snapshot.delay_b_to_delay_a) ||
+        snapshot.delay_a_to_delay_b <= 0.0001f || snapshot.delay_b_to_delay_a <= 0.0001f) {
+      return;
+    }
+    (void)next.setFxRoute(kFxNodeDelayA, kFxNodeDelayB, 0.0f, false);
+    (void)next.setFxRoute(kFxNodeDelayB, kFxNodeDelayA, 0.0f, false);
+    next.delay_a_to_delay_b_feedback = clampFloat(snapshot.delay_a_to_delay_b, 0.0f, 1.0f);
+    next.delay_b_to_delay_a_feedback = clampFloat(snapshot.delay_b_to_delay_a, 0.0f, 1.0f);
+  };
 
   const auto add_legacy = [&next](uint8_t from, uint8_t to, float amount) {
     if (!std::isfinite(amount) || amount <= 0.0001f) return;
@@ -128,6 +141,7 @@ bool loadFxGraphSnapshot(
     next.fx_dynamics_bus[kFxNodeDelayB] = clampU32(snapshot.dynamics_delay_b_bus, kDynamicsBusSkip, kDynamicsBusSidechain);
     next.fx_dynamics_bus[kFxNodeDegrade] = clampU32(snapshot.dynamics_degrade_bus, kDynamicsBusSkip, kDynamicsBusSidechain);
     next.fx_dynamics_bus[kFxNodeReverb] = clampU32(snapshot.dynamics_reverb_bus, kDynamicsBusSkip, kDynamicsBusSidechain);
+    load_restricted_delay_feedback();
     next.syncLegacyFxRoutes();
     routing = next;
     return true;
@@ -153,6 +167,7 @@ bool loadFxGraphSnapshot(
       next.setFxRouteModulation(from, to, mode, min_value, max_value);
     }
   }
+  load_restricted_delay_feedback();
   next.syncLegacyFxRoutes();
   routing = next;
   return true;

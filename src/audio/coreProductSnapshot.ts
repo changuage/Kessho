@@ -840,7 +840,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
     numberFromState(sliderState, 'delayAToBSend', 0) > 0.0001 ||
     granularToDelayB > 0.0001;
   const delayBEnabled = booleanFromState(sliderState, 'granularDelayEnabled', false);
-  const rawDelayAToB = clamp(numberFromState(sliderState, 'delayAToBSend', 0), 0, 1), rawDelayBToA = clamp(numberFromState(sliderState, 'delayBToASend', 0), 0, 1), delayCrossScale = rawDelayAToB * rawDelayBToA > 0.4 ? Math.sqrt(0.4 / (rawDelayAToB * rawDelayBToA)) : 1, delayBToATrim = rawDelayAToB > 0.0001 && rawDelayBToA > 0.0001 ? 0.7 : 1;
+  const rawDelayAToB = clamp(numberFromState(sliderState, 'delayAToBSend', 0), 0, 1), rawDelayBToA = clamp(numberFromState(sliderState, 'delayBToASend', 0), 0, 1), delayCrossScale = rawDelayAToB * rawDelayBToA > 0.4 ? Math.sqrt(0.4 / (rawDelayAToB * rawDelayBToA)) : 1;
   const spectralFreezeEnabled = booleanFromState(sliderState, 'spectralFreezeEnabled', false);
   const degradeToReverb = clamp(numberFromState(sliderState, 'degradeReverbSend', 0), 0, 1);
   const reverbToDegrade = degradeToReverb > 0.0001
@@ -899,7 +899,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   addLegacyFxEdge('delayB', 'granular', clamp(numberFromState(sliderState, 'delayBGranularSend', 0), 0, 1));
   addLegacyFxEdge('delayB', 'degrade', clamp(numberFromState(sliderState, 'delayBDegradeSend', 0), 0, 1));
   addLegacyFxEdge('delayB', 'reverb', clamp(numberFromState(sliderState, 'granularDelayReverbSend', 0.4), 0, 1));
-  addLegacyFxEdge('delayB', 'delayA', rawDelayBToA * delayCrossScale * delayBToATrim);
+  addLegacyFxEdge('delayB', 'delayA', rawDelayBToA * delayCrossScale);
   addLegacyFxEdge('granular', 'degrade', clamp(numberFromState(sliderState, 'granularDegradeSend', 0), 0, 1));
   addLegacyFxEdge('granular', 'reverb', reverbEnabled && granularEnabled
     ? clamp(numberFromState(sliderState, 'granularReverbSend', 0.3) * ENGINE_TRIMS.granular, 0, 4)
@@ -1410,7 +1410,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
     },
     routing: {
       delayAToDelayB: rawDelayAToB * delayCrossScale,
-      delayBToDelayA: rawDelayBToA * delayCrossScale * delayBToATrim,
+      delayBToDelayA: rawDelayBToA * delayCrossScale,
       delayToReverb: reverbEnabled && delayAEnabled
         ? clamp(numberFromState(sliderState, 'delayAReverbSend', 0.4), 0, 1)
         : 0,
