@@ -1462,11 +1462,19 @@ Object.assign(globalThis, {
 	  const sampleHoldFeedbackSource = stripImportsAndExports(readProjectFile(sampleHoldFeedbackPath));
 	  const sampleHoldFeedbackJs = transpileForVm(sampleHoldFeedbackSource, resolve(root, sampleHoldFeedbackPath));
   vm.runInNewContext(`${sampleHoldFeedbackJs}
+	Object.assign(globalThis, {
+	  createCoreProductSampleHoldDebugState,
+	  snapshotCoreProductSampleHoldDebugState,
+	  updateCoreProductSampleHoldTriggerFeedback,
+	});`, context, { filename: sampleHoldFeedbackPath });
+
+  const fxRoutingGraphPath = 'src/audio/fxRoutingGraph.ts';
+  const fxRoutingGraphSource = stripImportsAndExports(readProjectFile(fxRoutingGraphPath));
+  const fxRoutingGraphJs = transpileForVm(fxRoutingGraphSource, resolve(root, fxRoutingGraphPath));
+  vm.runInNewContext(`${fxRoutingGraphJs}
 Object.assign(globalThis, {
-  createCoreProductSampleHoldDebugState,
-  snapshotCoreProductSampleHoldDebugState,
-  updateCoreProductSampleHoldTriggerFeedback,
-});`, context, { filename: sampleHoldFeedbackPath });
+  fxRouteRuntimePositions,
+});`, context, { filename: fxRoutingGraphPath });
 
   const modulationRangeBridgePath = 'src/audio/product/host/CoreProductModulationRangeBridge.ts';
   const modulationRangeBridgeSource = stripImportsAndExports(readProjectFile(modulationRangeBridgePath));

@@ -45,6 +45,7 @@ for (const source of ROUTING_SOURCE_REGISTRY) {
 
 const PAD1_PRESET_KEYS = new Set<string>(PAD_PRESET_PARAM_KEYS as readonly string[]);
 const PAD1_ENVELOPE_KEYS = new Set(['synthAttack', 'synthDecay', 'synthSustain', 'synthHold', 'synthRelease']);
+const ARRANGEMENT_LEAD_KEYS = new Set(['lead1Density', 'lead1Octave', 'lead1OctaveRange']);
 
 const WATER_LAYER_OWNERS: readonly {
   enabledKey: string;
@@ -100,7 +101,7 @@ export function isRuntimeModulationKeyEligible(
   if (key.startsWith('pad2')) addOwner(owners, 'pad2');
   else if (key.startsWith('pad') || PAD1_PRESET_KEYS.has(key) || PAD1_ENVELOPE_KEYS.has(key)) addOwner(owners, 'pad1');
   if (key.startsWith('lead2')) addOwner(owners, 'lead2');
-  else if (key.startsWith('lead')) addOwner(owners, 'lead1');
+  else if (key.startsWith('lead') && !ARRANGEMENT_LEAD_KEYS.has(key)) addOwner(owners, 'lead1');
   if (key.startsWith('sample1')) addOwner(owners, 'sample1');
   if (key.startsWith('sample2')) addOwner(owners, 'sample2');
   if (key.startsWith('ocean')) addOwner(owners, 'waves');

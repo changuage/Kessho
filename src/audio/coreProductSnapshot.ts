@@ -49,7 +49,7 @@ import {
   canEnableFxRoute,
   type FxRoutingConnection,
   type FxRoutingGraphState,
-} from '../ui/routing/fxRoutingGraph';
+} from './fxRoutingGraph';
 
 const FX_NODE_COUNT = FX_ROUTING_NODE_IDS.length;
 
@@ -74,12 +74,13 @@ function encodeFxRoutingGraph(
     }
     seen.add(key);
     const index = from * FX_NODE_COUNT + to;
-    const amount = edge.muted ? 0 : clamp(edge.amount, 0, 4);
+    const gainScale = edge.from === 'granular' && edge.to === 'reverb' ? ENGINE_TRIMS.granular : 1;
+    const amount = edge.muted ? 0 : clamp(edge.amount * gainScale, 0, 4);
     const mode = edge.muted ? 'single' : edge.mode ?? 'single';
     fxRouteAmount[index] = amount;
     fxRouteMode[index] = mode === 'range' ? 1 : mode === 'walk' ? 2 : mode === 'sampleHold' ? 3 : 0;
-    fxRouteMin[index] = mode === 'single' ? amount : clamp(edge.min ?? amount, 0, 4);
-    fxRouteMax[index] = mode === 'single' ? amount : clamp(edge.max ?? amount, fxRouteMin[index]!, 4);
+    fxRouteMin[index] = mode === 'single' ? amount : clamp((edge.min ?? edge.amount) * gainScale, 0, 4);
+    fxRouteMax[index] = mode === 'single' ? amount : clamp((edge.max ?? edge.amount) * gainScale, fxRouteMin[index]!, 4);
     fxEdgeMask[from] = (fxEdgeMask[from] ?? 0) | (1 << to);
   }
   return {

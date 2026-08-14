@@ -615,6 +615,7 @@ class CoreProductRuntimeAdapter {
     }
     for (const param of KESSHO_PRODUCT_PARAMS) {
       if (!param.path.startsWith('fx.') && !param.path.startsWith('routing.') && !param.path.startsWith('master.')) continue;
+      if (param.path.includes('*')) continue;
       if (param.id === KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteAmount ||
           param.id === KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteEnabled ||
           param.id === KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteMode ||

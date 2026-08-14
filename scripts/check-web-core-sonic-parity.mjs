@@ -929,7 +929,7 @@ function compareEnvelopeSummaries(webCapture, coreCapture, comparison, args) {
   const rmsAbsTolerance = Math.max(args.minSignalRms * 25, comparison.webStats.rms * 0.02);
   const peakAbsTolerance = Math.max(args.minSignalRms * 80, comparison.webStats.peak * 0.05);
 
-  for (let startFrame = 0; startFrame < frames; startFrame += windowFrames) {
+  for (let startFrame = 0; startFrame + windowFrames <= frames; startFrame += windowFrames) {
     const webWindow = windowEnvelope(webCapture, startFrame, windowFrames);
     const coreWindow = shiftedWindowEnvelope(coreCapture, startFrame, windowFrames, lagFrames);
     if (webWindow.rms < activeThreshold && coreWindow.rms < activeThreshold) continue;

@@ -6,8 +6,7 @@ import type { FxRoutingGraphState, FxRoutingNodeId } from '../routing/fxRoutingG
 
 export type SliderColumnId = 'level' | 'delayA' | 'delayB' | 'granular' | 'degrade' | 'freeze' | 'reverb';
 export type ColumnId = SliderColumnId | 'dynamics';
-export type CellHandle = MatrixCellHandle;
-export interface RouteControl { key: keyof SliderState; label: string }
+export type CellHandle = MatrixCellHandle; export interface RouteControl { key: keyof SliderState; label: string }
 export interface MatrixCell { kind: 'editable' | 'self' | 'blocked' | 'fx'; route?: RouteControl; fxRoute?: readonly [FxRoutingNodeId, FxRoutingNodeId]; note?: string }
 export interface MatrixRow {
   id: string; label: string; accent: string; note?: string; sourceToggle?: 'toggle' | 'disable-only';

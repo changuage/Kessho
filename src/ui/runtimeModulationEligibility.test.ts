@@ -86,3 +86,9 @@ test('shared routing ownership gates source-local ranges without cross-gating un
     'Granular Delay B controls are owned by Delay B, not the Granular source',
   );
 });
+
+test('arrangement lead timing keys are independent of the Lead 1 source toggle', () => {
+  for (const key of ['lead1Density', 'lead1Octave', 'lead1OctaveRange']) {
+    assert.equal(isRuntimeModulationKeyEligible(key, { leadEnabled: false }), true, `${key} must remain available for arrangement timing`);
+  }
+});

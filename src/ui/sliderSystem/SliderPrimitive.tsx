@@ -9,6 +9,8 @@ import type {
   SliderVariant,
 } from './types';
 import type { ModulationSlot } from './dualConfigReducer';
+import { SliderContextControl } from './SliderContextControl';
+import { SliderModeButton } from './SliderModeButton';
 import {
   LONG_PRESS_MS,
   axisToNormalized,
@@ -22,35 +24,6 @@ import { useElementWidth } from './useElementWidth';
 import { useRafCoalescedEmitter } from './useRafCoalescedEmitter';
 
 export type SliderPresentationMode = SliderMode;
-
-const MODE_LABEL: Record<SliderPresentationMode, string> = {
-  single: 'Single',
-  walk: 'Walk',
-  sampleHold: 'Sample & Hold',
-  shape: 'Shape',
-};
-
-const SINE_WAVE_PATH = 'M1 8C3 2 6 2 8 8S13 14 15 8S20 2 23 8';
-
-export function ModulationModeIcon({ mode }: { mode: SliderPresentationMode }) {
-  const path = mode === 'walk'
-    ? 'M1 11L4 6L7 9L10 3L13 12L16 7L19 10L23 4'
-    : mode === 'sampleHold'
-      ? 'M1 12H6V4H12V10H18V2H23'
-      : mode === 'shape'
-        ? SINE_WAVE_PATH
-        : undefined;
-
-  return (
-    <svg className="sl-slider-mode-icon" viewBox="0 0 24 16" focusable="false" aria-hidden="true">
-      {path ? (
-        <path d={path} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      ) : (
-        <circle cx="12" cy="8" r="4" fill="currentColor" />
-      )}
-    </svg>
-  );
-}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -90,11 +63,7 @@ export interface SliderPrimitiveProps {
   className?: string;
   style?: React.CSSProperties;
   title?: string;
-  keyboardStep?: number;
-  fineKeyboardStep?: number;
-  dragStep?: number;
-  fineDragStep?: number;
-  onDoubleClick?: () => void;
+  keyboardStep?: number; fineKeyboardStep?: number; dragStep?: number; fineDragStep?: number; onDoubleClick?: () => void;
   onValueChange?: (value: number) => void;
   updatePolicy?: SliderUpdatePolicy;
   commitValueOnRelease?: boolean;
@@ -105,9 +74,7 @@ export interface SliderPrimitiveProps {
   onValueGestureStart?: () => void;
   headAdornment?: React.ReactNode;
   /** Optional per-slider modulation configuration affordance. */
-  contextConfig?: React.ReactNode;
-  contextConfigLabel?: string;
-  modulationSlot?: ModulationSlot;
+  contextConfig?: React.ReactNode; contextConfigLabel?: string; modulationSlot?: ModulationSlot;
 }
 
 export type SliderUpdatePolicy = 'continuous' | 'frame' | 'release';
@@ -132,11 +99,7 @@ export function SliderPrimitive({
   className,
   style,
   title,
-  keyboardStep = 1,
-  fineKeyboardStep,
-  dragStep,
-  fineDragStep,
-  onDoubleClick,
+  keyboardStep = 1, fineKeyboardStep, dragStep, fineDragStep, onDoubleClick,
   onValueChange,
   updatePolicy = 'frame',
   commitValueOnRelease = false,
@@ -146,9 +109,7 @@ export function SliderPrimitive({
   onAnnounce,
   onValueGestureStart,
   headAdornment,
-  contextConfig,
-  contextConfigLabel = 'Configure modulation',
-  modulationSlot,
+  contextConfig, contextConfigLabel = 'Configure modulation', modulationSlot,
 }: SliderPrimitiveProps) {
   const [liveValue, setLiveValue] = React.useState(value);
   const [liveRange, setLiveRange] = React.useState<SliderPrimitiveRange>(() => range ?? { min: 0, max: value });
@@ -677,70 +638,14 @@ export function SliderPrimitive({
         }}
       >
         {showsModeControl ? (
-          <button
-            type="button"
-            className={`sl-slider-mode sl-slider-mode--${mode}${modulationSlot ? ` sl-slider-mode--mod-${modulationSlot}` : ''}${disabled ? '' : ' interactive'}`}
-            aria-label={modulationSlot ? `Mod ${modulationSlot.toUpperCase()}: ${MODE_LABEL[mode]}` : MODE_LABEL[mode]}
-            disabled={disabled}
-            title={disabled
-              ? MODE_LABEL[mode]
-              : `${modulationSlot ? `Mod ${modulationSlot.toUpperCase()}: ` : 'Mode: '}${MODE_LABEL[mode]}. Click to cycle.`}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              if (!disabled) onModeCycle?.();
-            }}
-            onDoubleClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            onKeyDown={(event) => {
-              if (disabled) return;
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                event.stopPropagation();
-                onModeCycle?.();
-              }
-            }}
-          >
-            <ModulationModeIcon mode={mode} />
-            <span className="sl-slider-mode-text">{MODE_LABEL[mode]}</span>
-          </button>
+          <SliderModeButton mode={mode} disabled={disabled} modulationSlot={modulationSlot} onModeCycle={onModeCycle} />
         ) : (
           hero && <span className="sl-slider-hero-dot" aria-hidden="true" />
         )}
         <span className="sl-slider-label">{label}</span>
         <span ref={valueTextRef} className="sl-slider-value app-slider-value">{valueText}</span>
         {headAdornment}
-        {contextConfig && (
-          <span className="sl-slider-context">
-            <button
-              type="button"
-              className="sl-slider-context-button"
-              aria-label={contextConfigLabel}
-              aria-haspopup="dialog"
-              aria-expanded={contextOpen}
-              title={contextConfigLabel}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                setContextOpen((open) => !open);
-              }}
-            >
-              <svg className="sl-slider-context-icon" viewBox="0 0 16 16" focusable="false" aria-hidden="true">
-                <path d="M2 4h12M2 8h12M2 12h12" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
-                <circle cx="6" cy="4" r="1.45" fill="currentColor" />
-                <circle cx="10" cy="8" r="1.45" fill="currentColor" />
-                <circle cx="5" cy="12" r="1.45" fill="currentColor" />
-              </svg>
-            </button>
-            {contextOpen && (
-              <div className="sl-slider-context-panel" role="dialog" aria-label={contextConfigLabel}>
-                {contextConfig}
-              </div>
-            )}
-          </span>
-        )}
+        {contextConfig && <SliderContextControl config={contextConfig} label={contextConfigLabel} open={contextOpen} onToggle={() => setContextOpen((open) => !open)} />}
       </div>
 
       <div

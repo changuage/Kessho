@@ -26,7 +26,8 @@ export {
   trackWidthCalc,
   valueToNorm,
 } from './matrixMath';
-export { ModulationModeIcon, SliderPrimitive } from './SliderPrimitive';
+export { SliderPrimitive } from './SliderPrimitive';
+export { ModulationModeIcon } from './SliderModeIcon';
 export { useRafCoalescedEmitter } from './useRafCoalescedEmitter';
 export type { RafCoalescedEmitter } from './useRafCoalescedEmitter';
 export {

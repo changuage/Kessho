@@ -3457,7 +3457,6 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
       {KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_THRESHOLD_ID, -48.0f, -3.0f, -22.0f, "low-rate sidechain threshold runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_RATIO_ID, 1.2f, 12.0f, 4.5f, "low-rate sidechain ratio runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_PAD1_TARGET_ID, 0.05f, 0.95f, 0.58f, "low-rate sidechain target runtime walk did not move"},
-      {KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_DELAY_B_ID, 0.05f, 0.95f, 0.37f, "low-rate Delay A to Delay B routing runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_DELAY_A_ID, 0.05f, 0.95f, 0.26f, "low-rate Delay B to Delay A routing runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_ROUTING_DELAY_TO_REVERB_ID, 0.05f, 0.95f, 0.48f, "low-rate Delay to Reverb routing runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_GRANULAR_ID, 0.05f, 0.95f, 0.33f, "low-rate Delay A to Granular routing runtime walk did not move"},
@@ -3498,6 +3497,19 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
     requireTelemetryContainsRuntimeWalk(product_walk->telemetry, control_id++, probe.min_value, probe.max_value, probe.label);
   }
   kessho_product_destroy(product_walk);
+
+  KesshoProductEngine* delay_a_to_b_walk = kessho_product_create(48000.0, 128, 0);
+  require(delay_a_to_b_walk != nullptr, "Delay A to Delay B runtime walk engine allocation failed");
+  enqueueRuntimeWalkRange(delay_a_to_b_walk, 0u, KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_DELAY_B_ID,
+      control_id, 0.05f, 0.95f, 0.37f, low_rate_flags);
+  renderSilentBlocks(delay_a_to_b_walk, kLowRateRenderBlocks);
+  const ModulationRange* delay_a_to_b_range =
+      delay_a_to_b_walk->findModulationRange(0u, KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_DELAY_B_ID);
+  require(delay_a_to_b_range != nullptr && std::fabs(delay_a_to_b_range->current_value - 0.37f) > 0.00001f,
+      "low-rate Delay A to Delay B routing runtime walk did not move");
+  require(std::fabs(delay_a_to_b_walk->routing.delay_a_to_delay_b - delay_a_to_b_range->current_value) < 0.0001f,
+      "low-rate Delay A to Delay B routing runtime walk did not reach the graph");
+  kessho_product_destroy(delay_a_to_b_walk);
 
   struct SourceProbe {
     uint32_t target_id;
@@ -4780,40 +4792,52 @@ void requireActiveModulationRangeIndexing() {
       "third indexed random walk did not advance across a slot hole");
 }
 
+using ProductSequencerTest = void (*)();
+
+#if defined(__clang__) || defined(__GNUC__)
+__attribute__((noinline))
+#endif
+void runProductSequencerTest(ProductSequencerTest test) {
+  test();
+}
+
 } // namespace
 
 int main() {
-  testPendingTransportTransition();
-  requireProductSequencerRatchetCrossBlockTest();
-  requireProductSequencerRatchetNearBlockEndTest();
-  requireProductSequencerRatchetPendingClearTests();
-  requireProductSequencerSynthArpRuntimeTests();
-  requireProductSequencerNudgeSchedulingTests();
-  requireProductSequencerModeEventTests();
-  requireAnchorWalkerTriggerAndBoundaryTests();
-  requireAnchorWalkerStuckNoteEdgeTests();
-  requireProductSequencerDisabledTargetSourceTests();
-  requireProductSequencerSample2SourceTests();
-  requireSequencedSample2RendersThroughSample2GraphTap();
-  requireOrbitNoteCountEventClearsRuntimeTests();
-  requireProductSequencerModeRuntimePreservationTests();
-  requireDirectSequencerCoverage();
-  requireControlEventEnqueueOrdering();
-  requireSample2LiveLibrarySwitchUsesNewAsset();
-  requireExtendedSourceEnvelopeLongRanges();
-  requireSequencerMutePreservesRuntimePhase();
-  requireQuantizedSequencerUnmuteBoundaries();
-  requireNativeSequencerBackgroundCadence();
-  requireActiveModulationRangeIndexing();
-  requireRuntimeWalkMovementAcrossAudioAndFxTargets();
-  requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets();
-  requireSoundscapeWaterDropsRuntimeWalkRenders();
-  requireDrumExactRuntimeRangesApplyToSourceAndModule();
-  requireLiveExactDrumParamsSurviveTriggerPatchSelection();
-  requireDrumSequencerMorphBuildsPerHitPresetPatch();
-  requireDrumSequencerMembraneMorphHitsPresetB();
-  requireDrumSequencerMembranePresetBChangeUpdatesRunningMorph();
-  requireLowRateGranularRuntimeWalkMovementAcrossEngineParams();
+  const ProductSequencerTest tests[] = {
+    testPendingTransportTransition,
+    requireProductSequencerRatchetCrossBlockTest,
+    requireProductSequencerRatchetNearBlockEndTest,
+    requireProductSequencerRatchetPendingClearTests,
+    requireProductSequencerSynthArpRuntimeTests,
+    requireProductSequencerNudgeSchedulingTests,
+    requireProductSequencerModeEventTests,
+    requireAnchorWalkerTriggerAndBoundaryTests,
+    requireAnchorWalkerStuckNoteEdgeTests,
+    requireProductSequencerDisabledTargetSourceTests,
+    requireProductSequencerSample2SourceTests,
+    requireSequencedSample2RendersThroughSample2GraphTap,
+    requireOrbitNoteCountEventClearsRuntimeTests,
+    requireProductSequencerModeRuntimePreservationTests,
+    requireDirectSequencerCoverage,
+    requireControlEventEnqueueOrdering,
+    requireSample2LiveLibrarySwitchUsesNewAsset,
+    requireExtendedSourceEnvelopeLongRanges,
+    requireSequencerMutePreservesRuntimePhase,
+    requireQuantizedSequencerUnmuteBoundaries,
+    requireNativeSequencerBackgroundCadence,
+    requireActiveModulationRangeIndexing,
+    requireRuntimeWalkMovementAcrossAudioAndFxTargets,
+    requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets,
+    requireSoundscapeWaterDropsRuntimeWalkRenders,
+    requireDrumExactRuntimeRangesApplyToSourceAndModule,
+    requireLiveExactDrumParamsSurviveTriggerPatchSelection,
+    requireDrumSequencerMorphBuildsPerHitPresetPatch,
+    requireDrumSequencerMembraneMorphHitsPresetB,
+    requireDrumSequencerMembranePresetBChangeUpdatesRunningMorph,
+    requireLowRateGranularRuntimeWalkMovementAcrossEngineParams,
+  };
+  for (const auto test : tests) runProductSequencerTest(test);
 
   constexpr double sample_rate = 48000.0;
   KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096, 0);

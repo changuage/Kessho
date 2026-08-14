@@ -161,7 +161,15 @@ function makeSnapshot({ laneCount = 4 } = {}) {
       delayBTapeHeadPans: [0.5, 0.5, 0.5, 0.5],
       granularVoices: Array.from({ length: 4 }, () => ({})),
     },
-    routing: {},
+    routing: {
+      fxGraphVersion: 1,
+      fxRouteAmount: Array(100).fill(0),
+      fxRouteMode: Array(100).fill(0),
+      fxRouteMin: Array(100).fill(0),
+      fxRouteMax: Array(100).fill(0),
+      fxEdgeMask: Array(10).fill(0),
+      fxDynamicsBus: Array(10).fill(0),
+    },
     master: {},
     evolution: {
       amount: 0,

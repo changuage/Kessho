@@ -198,7 +198,7 @@ assert(
 assert(
   routingRegistry.includes("sends: { reverb: 'degradeReverbSend' }") &&
     routingRegistry.includes("sends: { degrade: 'reverbDegradeSend' }") &&
-    routingRegistry.includes("enabledKeys: ['degradeEnabled', 'driftEnabled', 'erosionEnabled', 'dynamicsSaturationEnabled']"),
+    routingRegistry.includes("enabledKeys: ['degradeEnabled', 'driftEnabled', 'erosionEnabled']"),
   'CPU Degrade routing scenario requires registry Degrade/Reverb return sends and predicates',
 );
 assert(

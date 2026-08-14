@@ -131,6 +131,8 @@ const classifiedRuntimeAllowlist = new Map([
   ['./product/host/CoreProductPostSnapshotEventQueue', 'product host post-snapshot event retry queue'],
   ['./product/host/CoreProductLeadPresetDataLoader', 'product host Lead preset data hydration adapter'],
   ['./product/host/CoreProductModulationRangeBridge', 'product host modulation range and runtime-walk bridge'],
+  ['./fxRoutingGraph', 'pure cycle-safe Product FX graph schema and ordering policy'],
+  ['../../fxRoutingGraph', 'pure cycle-safe Product FX graph schema and ordering policy'],
   ['./product/host/CoreProductManualAuditionBridge', 'product host manual audition and trigger bridge'],
   ['./product/host/CoreProductRuntimeEventBatcher', 'product host runtime event batcher'],
   ['./product/host/CoreProductRealtimeInputBootstrap', 'product realtime input cold-start coordinator'],

@@ -7,7 +7,7 @@ import { createCoreProductSampleHoldDebugState, snapshotCoreProductSampleHoldDeb
 import { shouldPublishCoreProductSampleHoldFeedback, type CoreProductSampleHoldFeedbackCallbackLookup } from './CoreProductSampleHoldFeedbackPolicy';
 import { createCoreProductRuntimeWalkDebugState, snapshotCoreProductRuntimeWalkDebugState, type CoreProductRuntimeWalkDebugState } from './CoreProductRuntimeWalkDebug';
 import { recordSliderSystemCounter } from '../../../diagnostics/sliderSystemInstrumentation';
-import { fxRouteRuntimePositions, type FxRoutingGraphState } from '../../../ui/routing/fxRoutingGraph';
+import { fxRouteRuntimePositions, type FxRoutingGraphState } from '../../fxRoutingGraph';
 import type {
   ProductRuntimeModulationConfig,
   ProductRuntimeModulationRangeMap,

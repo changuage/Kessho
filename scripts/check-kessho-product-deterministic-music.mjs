@@ -144,7 +144,7 @@ const SOURCE_EXPRESSION_OFFSET = 44;
 const SOURCE_DRY_GAIN_OFFSET = 48;
 const SOURCE_POST_LPF_HZ_OFFSET = 76;
 const SOURCE_STEREO_WIDTH_OFFSET = 80;
-const SOURCE_COMMON_BYTES = 100;
+const SOURCE_COMMON_BYTES = 104;
 const SOURCE_SAMPLE_CONFIG_BYTES = 40;
 const sparseGeneratedBlockBytes = (paramCount) => 4 + paramCount * 4 + 4 + paramCount * 4 + paramCount * 4;
 const SOURCE_DRUM_VOICE_PRESET_A_OFFSET =

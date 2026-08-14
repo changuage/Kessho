@@ -19,6 +19,7 @@ import type { ManualSynthNoteOptions } from './engineSharedTypes';
 import { applyPadPresetMorphParamsToState } from './padPresets';
 import { loadReferenceAudioRuntime } from './referenceAudioRuntime';
 import type { SliderState } from '../ui/state';
+import { updateFxRoutingGraphFromLegacyParam } from './fxRoutingGraph';
 
 type CaptureOptions = {
   durationMs?: number;
@@ -423,9 +424,14 @@ function createCaptureState(
   statePatch: Partial<SliderState> | undefined,
   manualMode: boolean,
 ): SliderState {
+  let fxRoutingGraph = currentState.fxRoutingGraph;
+  for (const [key, value] of Object.entries(statePatch ?? {})) {
+    fxRoutingGraph = updateFxRoutingGraphFromLegacyParam(fxRoutingGraph, key, value);
+  }
   const patchedState = applyPadPresetMorphParamsToState({
     ...currentState,
     ...(statePatch ?? {}),
+    fxRoutingGraph,
   }, statePatch ?? {});
 
   if (!manualMode) return patchedState;

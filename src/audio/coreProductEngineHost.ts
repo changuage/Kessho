@@ -804,7 +804,7 @@ class CoreProductEngineHost {
 
   private markManualSynthDiceReady(laneIndex: number): void { markCoreProductManualSynthDiceReady(this.manualSynthDiceState, laneIndex, (readyLaneIndex) => this.sequencerHome.markManualDiceReady('synth', readyLaneIndex)); }
   private applyManualSynthDice(laneIndex: number, intensity: number): boolean {
-    this.ensureSequencerLaneCache('synth', laneIndex);
+    ensureCoreProductSequencerLaneCache(this.sequencerCacheState(), 'synth', laneIndex);
     return applyCoreProductManualSynthDice({ state: this.manualSynthDiceState, laneIndex, intensity, cache: this.sequencerCacheState(), adapterState: this.adapterState, latestSliderState: this.latestSliderState, latestProductSnapshot: this.latestProductSnapshot, latestTelemetry: this.latestTelemetry, enabledSubLanes: this.enabledSequencerSubLanes('synth', laneIndex), armManualDice: () => this.sequencerHome.armManualDice('synth', laneIndex), post: (event) => this.postManualSynthDiceEvent(event), publish: (name, ...payload) => this.invokeDisplayCallback(name, ...payload), captureHome: (force = false) => this.captureSequencerHomeLane('synth', laneIndex, force) });
   }
 
@@ -896,7 +896,7 @@ class CoreProductEngineHost {
       manualSynthDiceChanged: (laneIndex, lane) => coreProductManualSynthDiceChanged(this.manualSynthDiceState, laneIndex, lane),
       completeManualSynthDice: (laneIndex) => this.markManualSynthDiceReady(laneIndex),
       consumeManualDrumDice: (laneIndex) => this.sequencerHome.consumeManualDice('drum', laneIndex),
-      ensureLaneCache: (sequencer, laneIndex) => this.ensureSequencerLaneCache(sequencer, laneIndex),
+      ensureLaneCache: (sequencer, laneIndex) => ensureCoreProductSequencerLaneCache(this.sequencerCacheState(), sequencer, laneIndex),
       getLaneState: (sequencer, laneIndex) => {
         const cache = selectCoreProductSequencerCache(this.sequencerCache, sequencer);
         return {
@@ -924,10 +924,6 @@ class CoreProductEngineHost {
       publishNoteRange: (laneIndex, noteMin, noteMax) => this.invokeDisplayCallback('synthNoteRangeEvolved', laneIndex, noteMin, noteMax),
       publish: (name, laneIndex, payload) => this.invokeDisplayCallback(name, laneIndex, payload),
     });
-  }
-
-  private ensureSequencerLaneCache(sequencer: SequencerKind, laneIndex: number): void {
-    ensureCoreProductSequencerLaneCache(this.sequencerCacheState(), sequencer, laneIndex);
   }
 
   private withHostDiagnostics(telemetry: CoreProductTelemetrySnapshot): CoreProductTelemetrySnapshot {

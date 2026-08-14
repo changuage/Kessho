@@ -176,6 +176,8 @@ await build({
   },
   logLevel: 'warning',
 });
+const engineSource = await readFile(engineOutput, 'utf8');
+await writeFile(engineOutput, engineSource.replace(/[ \t]+$/gm, ''));
 
 await writeFile(assetOutput, makeAssetScript(workletSource, wasmBytes, stringWavesSampleBytes, stringWavesPreset));
 

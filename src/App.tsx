@@ -173,6 +173,16 @@ import {
 } from './ui/sliderSystem/dualConfigReducer';
 import { createSignedSnowflakeWelcomeState } from './app/signedSnowflakeWelcomeState';
 import { AppDebugPanel } from './app/AppDebugPanel';
+import {
+  BOOLEAN_MORPH_KEYS,
+  DISCRETE_MORPH_KEYS,
+  DYNAMICS_FADE_BY_MODULE,
+  DYNAMICS_TOGGLE_KEYS,
+  ENGINE_TOGGLE_KEYS,
+  NUMERIC_MORPH_KEYS,
+  PARENT_CHILD_MAP,
+  ROUTER_MATRIX_BY_ENGINE,
+} from './app/morphRoutingTables';
 import { MacAudioStatusPill } from './app/AppRuntimeStatusPills';
 import { applySampleLibrarySelectionDefaultsToFlatState } from './audio/sampleLibraries/sampleLibrarySelectionDefaults';
 import type { SampleLibraryKey } from './audio/sampleLibraries/SampleLibraryTypes';
@@ -224,7 +234,6 @@ import {
   ADVANCED_EDITOR_TABS,
 } from './app/appNavigation';
 import { useAdvancedEditorNavigation } from './app/useAdvancedEditorNavigation';
-import { LEAD_VIBRATO_KEYS } from './app/presetInterpolationKeys';
 import {
   applyLiveLeadMorphToChangedPresetSlots,
   applyLiveLeadMorphToPresetChange,
@@ -2000,107 +2009,12 @@ const App: React.FC = () => {
       // router-matrix values (level + delay/granular/reverb sends) should be
       // treated as 0 on the OFF side so the engine smoothly fades in/out through
       // routing. Computed BEFORE dual-range / numeric loops so both honor it.
-      const routerMatrixByEngine: Array<{
-        isOn: (s: SliderState) => boolean;
-        keys: (keyof SliderState)[];
-      }> = [
-        {
-          isOn: (s) => !!s.padEnabled,
-          keys: ['synthLevel', 'pad1ReverbSend', 'pad1DelayASend', 'pad1DelayBSend', 'granularPad1Send', 'degradePad1Send', 'spectralFreezePad1Send'],
-        },
-        {
-          isOn: (s) => !!s.pad2Enabled,
-          keys: ['pad2Level', 'pad2ReverbSend', 'pad2DelayASend', 'pad2DelayBSend', 'granularPad2Send', 'degradePad2Send', 'spectralFreezePad2Send'],
-        },
-        {
-          isOn: (s) => !!s.granularEnabled,
-          keys: [
-            'granularLevel',
-            'granularReverbSend',
-            'granularDelayASend',
-            'granularDelayBSend',
-            'granularDegradeSend',
-            'delayAGranularSend',
-            'delayBGranularSend',
-            'granularPad1Send',
-            'granularPad2Send',
-            'granularLead1Send',
-            'granularLead2Send',
-            'granularPianoSend',
-            'granularDrumSend',
-            'granularWavesSend',
-            'granularNatureSend',
-            'granularWaterSend',
-            'granularInsectsSend',
-          ],
-        },
-        {
-          isOn: (s) => !!s.leadEnabled,
-          keys: ['leadLevel', 'lead1Level', 'lead1ReverbSend', 'lead1DelayASend', 'lead1DelayBSend', 'delayAReverbSend', 'delayAMix', 'granularLead1Send', 'degradeLead1Send', 'spectralFreezeLead1Send'],
-        },
-        {
-          isOn: (s) => !!s.lead2Enabled,
-          keys: ['lead2Level', 'lead2ReverbSend', 'lead2DelayASend', 'lead2DelayBSend', 'granularLead2Send', 'degradeLead2Send', 'spectralFreezeLead2Send'],
-        },
-        {
-          isOn: (s) => !!s.pianoEnabled,
-          keys: ['pianoLevel', 'pianoReverbSend', 'pianoDelayASend', 'pianoDelayBSend', 'granularPianoSend', 'degradePianoSend', 'spectralFreezePianoSend'],
-        },
-        {
-          isOn: (s) => !!s.drumEnabled,
-          keys: ['drumLevel', 'drumReverbSend', 'drumDelayASend', 'drumDelayBSend', 'granularDrumSend', 'degradeDrumSend', 'spectralFreezeDrumSend'],
-        },
-        {
-          isOn: (s) => !!s.oceanSampleEnabled,
-          keys: ['oceanSampleLevel', 'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend', 'degradeWavesSend', 'spectralFreezeWavesSend'],
-        },
-        // "Nature" engine = birds OR birds2 OR frogs. Master nature router values
-        // collapse to 0 only when ALL nature sub-engines are off on that side.
-        {
-          isOn: (s) => !!s.natureMasterEnabled && (
-            !!s.nature1Enabled || !!s.nature2Enabled || !!s.nature3Enabled || !!s.nature4Enabled
-          ),
-          keys: ['natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'granularNatureSend', 'degradeNatureSend', 'spectralFreezeNatureSend'],
-        },
-        {
-          isOn: (s) => !!s.waterEnabled,
-          keys: ['waterLevel', 'waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'granularWaterSend', 'degradeWaterSend', 'spectralFreezeWaterSend'],
-        },
-        // Insects share bus sends, but each layer has its own dry carrier level.
-        {
-          isOn: (s) => !!s.insectsEnabled || !!s.insects2Enabled,
-          keys: ['insectsSharedLevel', 'insectsReverbSend', 'insDelayASend', 'insDelayBSend', 'granularInsectsSend', 'degradeInsectsSend', 'spectralFreezeInsectsSend'],
-        },
-        { isOn: (s) => !!s.insectsEnabled, keys: ['insectsLevel'] },
-        { isOn: (s) => !!s.insects2Enabled, keys: ['insects2Level'] },
-        // Per-slot Nature levels follow their own toggles.
-        { isOn: (s) => !!s.natureMasterEnabled && !!s.nature1Enabled, keys: ['nature1Level'] },
-        { isOn: (s) => !!s.natureMasterEnabled && !!s.nature2Enabled, keys: ['nature2Level'] },
-        { isOn: (s) => !!s.natureMasterEnabled && !!s.nature3Enabled, keys: ['nature3Level'] },
-        { isOn: (s) => !!s.natureMasterEnabled && !!s.nature4Enabled, keys: ['nature4Level'] },
-        // Legacy preset fields remain migration-only compatibility controls.
-        { isOn: (s) => !!s.birdsEnabled, keys: ['birdsLevel'] },
-        { isOn: (s) => !!s.birds2Enabled, keys: ['birds2Level'] },
-        { isOn: (s) => !!s.frogsEnabled, keys: ['frogsLevel'] },
-        {
-          isOn: (s) => !!s.delayAEnabled,
-          keys: ['delayAMix', 'delayAReverbSend', 'delayAToBSend', 'delayAGranularSend', 'delayADegradeSend'],
-        },
-        {
-          isOn: (s) => !!s.granularDelayEnabled,
-          keys: ['granularDelayMix', 'granularDelayReverbSend', 'delayBToASend', 'delayBGranularSend', 'delayBDegradeSend'],
-        },
-        {
-          isOn: (s) => Boolean(s.dynamicsEnabled && (s.driftEnabled || s.erosionEnabled)),
-          keys: ['degradeLevel', 'degradeReverbSend'],
-        },
-        { isOn: (s) => !!s.reverbEnabled || (s.reverbDegradeSend ?? 0) > 0.0001 || (s.degradeReverbSend ?? 0) > 0.0001, keys: ['reverbLevel', 'reverbDegradeSend', 'degradeReverbSend'] },
-      ];
+
 
       // For router-matrix keys with mismatched engine toggle: record which side is OFF.
       // 'A' means stateA's engine is off (treat valA / rangeA as 0); 'B' means stateB's.
       const routerZeroSide = new Map<keyof SliderState, 'A' | 'B'>();
-      for (const entry of routerMatrixByEngine) {
+      for (const entry of ROUTER_MATRIX_BY_ENGINE) {
         const onA = entry.isOn(stateA);
         const onB = entry.isOn(stateB);
         if (onA === onB) continue; // both on or both off → handled normally
@@ -2116,38 +2030,10 @@ const App: React.FC = () => {
       // When one side has a Dynamics module effectively OFF (master off or module off)
       // and the other has it ON, fade the module's audible carrier from/to zero.
       // Saturation has no wet mix, so its drive is the fade carrier.
-      const dynamicsFadeByModule: Array<{
-        isOn: (s: SliderState) => boolean;
-        fadeKey: keyof SliderState;
-      }> = [
-        {
-          isOn: (s) => Boolean(s.dynamicsEnabled && s.sidechainEnabled),
-          fadeKey: 'sidechainMix',
-        },
-        {
-          isOn: (s) => Boolean(s.dynamicsEnabled && s.driftEnabled),
-          fadeKey: 'driftMix',
-        },
-        {
-          isOn: (s) => Boolean(s.dynamicsEnabled && s.erosionEnabled),
-          fadeKey: 'erosionMix',
-        },
-        {
-          isOn: (s) => Boolean(s.dynamicsEnabled && s.dynamicsSaturationEnabled),
-          fadeKey: 'dynamicsSaturationDrive',
-        },
-        {
-          isOn: (s) => Boolean(s.masterSaturationEnabled),
-          fadeKey: 'masterSaturationDrive',
-        },
-        {
-          isOn: (s) => Boolean(s.endCompEnabled),
-          fadeKey: 'endCompMix',
-        },
-      ];
+
 
       const dynamicsZeroSide = new Map<keyof SliderState, 'A' | 'B'>();
-      for (const entry of dynamicsFadeByModule) {
+      for (const entry of DYNAMICS_FADE_BY_MODULE) {
         const onA = entry.isOn(stateA);
         const onB = entry.isOn(stateB);
         if (onA === onB) continue;
@@ -2260,87 +2146,11 @@ const App: React.FC = () => {
 
       // Define parent-child relationships for conditional morphing
       // If parent boolean is OFF in the target preset, don't morph child sliders
-      const parentChildMap: Record<string, (keyof SliderState)[]> = {
-        granularEnabled: [
-          'granularReverbSend',
-          'granularLevel',
-          'granularReverbLPF',
-          'granularOutputLPF',
-          'granularDelayASend',
-          'granularDelayBSend',
-          'granularDegradeSend',
-          'delayAGranularSend',
-          'delayBGranularSend',
-          'granularPad1Send',
-          'granularPad2Send',
-          'granularLead1Send',
-          'granularLead2Send',
-          'granularPianoSend',
-          'granularDrumSend',
-          'granularWavesSend',
-          'granularNatureSend',
-          'granularWaterSend',
-          'granularInsectsSend',
-        ],
-        leadEnabled: [
-          'lead1Attack',
-          'lead1Decay',
-          'lead1Sustain',
-          'lead1Release',
-          'lead2Attack',
-          'lead2Decay',
-          'lead2Sustain',
-          'lead2Release',
-          'delayATime',
-          'delayAFeedback',
-          'delayAMix',
-          'lead1Density',
-          'lead1Octave',
-          'lead1OctaveRange',
-          'leadVibratoDepth',
-          'leadVibratoRate',
-          'leadGlide',
-          ...LEAD_VIBRATO_KEYS,
-          'lead1ReverbSend',
-          'lead2ReverbSend',
-          'delayAReverbSend',
-          'lead1DelayASend',
-          'lead1DelayBSend',
-          'degradeLead1Send',
-          'spectralFreezeLead1Send',
-          'lead2DelayASend',
-          'lead2DelayBSend',
-          'degradeLead2Send',
-          'spectralFreezeLead2Send',
-        ],
-        pianoEnabled: [
-          'pianoAttack',
-          'pianoDecay',
-          'pianoSustain',
-          'pianoHold',
-          'pianoRelease',
-          'pianoLevel',
-          'pianoReverbSend',
-          'pianoDelayASend',
-          'pianoDelayBSend',
-          'granularPianoSend',
-          'degradePianoSend',
-          'spectralFreezePianoSend',
-        ],
-        synthEuclideanMasterEnabled: ['synthEuclideanTempo'],
-        oceanSampleEnabled: ['oceanFilterCutoff', 'oceanFilterResonance', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend', 'degradeWavesSend', 'spectralFreezeWavesSend', 'oceanSliceDuration', 'oceanSliceDensity'],
-        birdsEnabled: ['birdsLevel', 'birdsSliceDuration', 'birdsSliceDensity'],
-        birds2Enabled: ['birds2Level', 'birds2SliceDuration', 'birds2SliceDensity'],
-        frogsEnabled: ['frogsLevel', 'frogsSliceDuration', 'frogsSliceDensity'],
-        nature1Enabled: ['nature1Level', 'nature1SliceDuration', 'nature1SliceDensity'],
-        nature2Enabled: ['nature2Level', 'nature2SliceDuration', 'nature2SliceDensity'],
-        nature3Enabled: ['nature3Level', 'nature3SliceDuration', 'nature3SliceDensity'],
-        nature4Enabled: ['nature4Level', 'nature4SliceDuration', 'nature4SliceDensity'],
-      };
+
 
       // Router-matrix child keys (per engine toggle) that represent the engine's
       // contribution into the global mix. The OFF-side substitution is handled
-      // above (see routerMatrixByEngine / routerZeroSide); here we only need to
+      // above (see ROUTER_MATRIX_BY_ENGINE / routerZeroSide); here we only need to
       // ensure router keys are excluded from the midpoint-snap behavior so the
       // asymmetric morph (already baked into stateA/stateB-derived values via
       // routerZeroSide) reaches the numeric loop unimpeded.
@@ -2348,7 +2158,7 @@ const App: React.FC = () => {
       // Determine which keys should be snapped (not morphed) based on parent boolean state.
       // Router-matrix keys are excluded here because they get the asymmetric "off=0" morph below.
       const keysToSnap = new Set<keyof SliderState>();
-      for (const [parentKey, childKeys] of Object.entries(parentChildMap)) {
+      for (const [parentKey, childKeys] of Object.entries(PARENT_CHILD_MAP)) {
         const parentA = stateA[parentKey as keyof SliderState];
         const parentB = stateB[parentKey as keyof SliderState];
         // If either preset has the parent OFF, snap the children instead of morphing
@@ -2361,384 +2171,9 @@ const App: React.FC = () => {
       }
 
       // Interpolate all numeric values (except those that should snap)
-      const numericKeys: (keyof SliderState)[] = [
-        'masterVolume',
-        'synthLevel',
-        'pad2Level',
-        'granularLevel',
-        'pad1ReverbSend',
-        'pad2ReverbSend',
-        'granularReverbSend',
-        'pad1DelayASend',
-        'pad1DelayBSend',
-        'degradePad1Send',
-        'spectralFreezePad1Send',
-        'pad2DelayASend',
-        'pad2DelayBSend',
-        'degradePad2Send',
-        'spectralFreezePad2Send',
-        'lead1DelayASend',
-        'lead1DelayBSend',
-        'degradeLead1Send',
-        'spectralFreezeLead1Send',
-        'lead2DelayASend',
-        'lead2DelayBSend',
-        'degradeLead2Send',
-        'spectralFreezeLead2Send',
-        'pianoLevel',
-        'pianoReverbSend',
-        'pianoDelayASend',
-        'pianoDelayBSend',
-        'degradePianoSend',
-        'spectralFreezePianoSend',
-        'drumDelayASend',
-        'drumDelayBSend',
-        'degradeDrumSend',
-        'spectralFreezeDrumSend',
-        'delayAToBSend',
-        'delayAGranularSend',
-        'delayADegradeSend',
-        'delayBToASend',
-        'delayBGranularSend',
-        'delayBDegradeSend',
-        'granularDelayASend',
-        'granularDelayBSend',
-        'granularDegradeSend',
-        'granularPad1Send',
-        'granularPad2Send',
-        'granularLead1Send',
-        'granularLead2Send',
-        'granularPianoSend',
-        'granularDrumSend',
-        'granularWavesSend',
-        'granularNatureSend',
-        'granularWaterSend',
-        'granularInsectsSend',
-        'degradeWavesSend',
-        'spectralFreezeWavesSend',
-        'degradeNatureSend',
-        'spectralFreezeNatureSend',
-        'degradeWaterSend',
-        'spectralFreezeWaterSend',
-        'degradeInsectsSend',
-        'spectralFreezeInsectsSend',
-        'drumReverbSend',
-        'oceanReverbSend',
-        'natureLevel',
-        'natureReverbSend',
-        'waterLevel',
-        'waterReverbSend',
-        'insectsLevel',
-        'insects2Level',
-        'insectsSharedLevel',
-        'insectsReverbSend',
-        'oceanDelayASend',
-        'oceanDelayBSend',
-        'natureDelayASend',
-        'natureDelayBSend',
-        'waterDelayASend',
-        'waterDelayBSend',
-        'insDelayASend',
-        'insDelayBSend',
-        'granularReverbLPF',
-        'granularOutputLPF',
-        'lead1ReverbSend',
-        'lead2ReverbSend',
-        'delayAReverbSend',
-        'reverbLevel',
-        'reverbDegradeSend',
-        'degradeReverbSend',
-        'degradeLevel',
-        'randomness',
-        'tension',
-        'chordRate',
-        'voicingSpread',
-        'waveSpread',
-        'detune',
-        'synthAttack',
-        'synthDecay',
-        'synthSustain',
-        'synthHold',
-        'synthRelease',
-        'padFitEnvelopeToChord',
-        'synthVoiceMask',
-        'synthOctave',
-        'hardness',
-        'filterCutoff',
-        'filterResonance',
-        'filterQ',
-        'filterSlope',
-        'filterKeyTracking',
-        'warmth',
-        'presence',
-        'reverbDecay',
-        'reverbSize',
-        'reverbDiffusion',
-        'reverbModulation',
-        'predelay',
-        'damping',
-        'width',
-        'reverbShimmer',
-        'reverbShimmerPitch',
-        'reverbSlowModRate',
-        'reverbSlowModDepth',
-        'reverbReverse',
-        'reverbReverseLength',
-        'grainProbability',
-        'grainSize',
-        'density',
-        'spray',
-        'jitter',
-        'pitchSpread',
-        'stereoSpread',
-        'feedback',
-        'wetHPF',
-        'wetLPF',
-        'leadLevel',
-        'lead1Level',
-        'lead2Level',
-        'lead1Attack',
-        'lead1Decay',
-        'lead1Sustain',
-        'lead1Release',
-        'lead1PostLPF',
-        'lead1PostLPFKeyTracking',
-        'lead2PostLPF',
-        'lead2PostLPFKeyTracking',
-        'lead2Attack',
-        'lead2Decay',
-        'lead2Sustain',
-        'lead2Release',
-        'pianoAttack',
-        'pianoDecay',
-        'pianoSustain',
-        'pianoHold',
-        'pianoRelease',
-        'pianoPostLPF',
-        'delayATime',
-        'delayAFeedback',
-        'delayAMix',
-        'lead1Density',
-        'lead1Octave',
-        'lead1OctaveRange',
-        'leadVibratoDepth',
-        'leadVibratoRate',
-        'leadGlide',
-        ...LEAD_VIBRATO_KEYS,
-        'synthEuclideanTempo',
-        'granularDelayMix',
-        'granularDelayReverbSend',
-        // Dynamics page
-        'dynamicsSaturationDrive',
-        'dynamicsSaturationTone',
-        'dynamicsSaturationBias',
-        'masterSaturationDrive',
-        'masterSaturationTone',
-        'masterSaturationBias',
-        'sidechainKeyAWeight',
-        'sidechainKeyBWeight',
-        'sidechainAmount',
-        'sidechainThreshold',
-        'sidechainRatio',
-        'sidechainKnee',
-        'sidechainAttackMs',
-        'sidechainHoldMs',
-        'sidechainReleaseMs',
-        'sidechainMakeup',
-        'sidechainMix',
-        'sidechainCurve',
-        'sidechainDetectorHp',
-        'sidechainDetectorLp',
-        'sidechainPad1Target',
-        'sidechainPad2Target',
-        'sidechainLead1Target',
-        'sidechainLead2Target',
-        'sidechainPianoTarget',
-        'sidechainGranularTarget',
-        'sidechainDelayATarget',
-        'sidechainDelayBTarget',
-        'sidechainReverbTarget',
-        'driftMix',
-        'driftAge',
-        'driftBias',
-        'driftLpgAmount',
-        'driftDepth',
-        'driftRate',
-        'driftDamp',
-        'driftEnvFollow',
-        'driftWetHp',
-        'driftStereo',
-        'driftResonance',
-        'erosionMix',
-        'erosionAge',
-        'erosionGeneration',
-        'erosionAlias',
-        'erosionWow',
-        'erosionFlutter',
-        'erosionDrift',
-        'erosionNoise',
-        'degradeHp',
-        'degradeLp',
-        'erosionTone',
-        'erosionSaturation',
-        'erosionCorrosion',
-        'erosionModSlowWow',
-        'erosionModSlowFlutter',
-        'erosionModSlowLp',
-        'erosionModSlowWet',
-        'erosionModSlowDropout',
-        'erosionModSlowAlias',
-        'erosionModFlutterWow',
-        'erosionModFlutterFlutter',
-        'erosionModFlutterLp',
-        'erosionModFlutterWet',
-        'erosionModFlutterDropout',
-        'erosionModFlutterAlias',
-        'erosionModRandomWow',
-        'erosionModRandomFlutter',
-        'erosionModRandomLp',
-        'erosionModRandomWet',
-        'erosionModRandomDropout',
-        'erosionModRandomAlias',
-        'erosionModEnvWow',
-        'erosionModEnvFlutter',
-        'erosionModEnvLp',
-        'erosionModEnvWet',
-        'erosionModEnvDropout',
-        'erosionModEnvAlias',
-        'erosionModNoiseWow',
-        'erosionModNoiseFlutter',
-        'erosionModNoiseLp',
-        'erosionModNoiseWet',
-        'erosionModNoiseDropout',
-        'erosionModNoiseAlias',
-        'endCompThreshold',
-        'endCompKnee',
-        'endCompRatio',
-        'endCompAttackMs',
-        'endCompReleaseMs',
-        'endCompMakeup',
-        'endCompMix',
-        'endCompDetectorHp',
-        'endCompDetectorTilt',
-        'endCompAutoMakeup',
-        'endCompProgramRelease',
-        'oceanSampleLevel',
-        'oceanFilterCutoff',
-        'oceanFilterResonance',
-        'oceanSliceDuration',
-        'oceanSliceDensity',
-        'birdsLevel',
-        'birdsSliceDuration',
-        'birdsSliceDensity',
-        'birds2Level',
-        'birds2SliceDuration',
-        'birds2SliceDensity',
-        'frogsLevel',
-        'frogsSliceDuration',
-        'frogsSliceDensity',
-        'nature1Level',
-        'nature2Level',
-        'nature3Level',
-        'nature4Level',
-        'natureLevel',
-        'natureReverbSend',
-        'natureDelayASend',
-        'natureDelayBSend',
-        'granularNatureSend',
-        'cofDriftRate',
-        'cofDriftRange',
-        // Drum morph positions - should interpolate when master morph changes
-        'drumSubMorph',
-        'drumKickMorph',
-        'drumClickMorph',
-        'drumBeepHiMorph',
-        'drumBeepLoMorph',
-        'drumNoiseMorph',
-        'drumMembraneMorph',
-        // Drum voice params - should interpolate when master morph changes
-        'drumLevel',
-        'drumSubFreq',
-        'drumSubDecay',
-        'drumSubLevel',
-        'drumSubTone',
-        'drumKickFreq',
-        'drumKickPitchEnv',
-        'drumKickPitchDecay',
-        'drumKickDecay',
-        'drumKickLevel',
-        'drumKickClick',
-        'drumClickDecay',
-        'drumClickFilter',
-        'drumClickResonance',
-        'drumClickLevel',
-        'drumClickTone',
-        'drumClickPitch',
-        'drumClickPitchEnv',
-        'drumBeepHiFreq',
-        'drumBeepHiAttack',
-        'drumBeepHiDecay',
-        'drumBeepHiTone',
-        'drumBeepHiLevel',
-        'drumBeepLoFreq',
-        'drumBeepLoAttack',
-        'drumBeepLoDecay',
-        'drumBeepLoTone',
-        'drumBeepLoLevel',
-        'drumNoiseFilterFreq',
-        'drumNoiseFilterQ',
-        'drumNoiseAttack',
-        'drumNoiseDecay',
-        'drumNoiseLevel',
-        // Pad Synth 2
-        'pad2Attack',
-        'pad2Decay',
-        'pad2Sustain',
-        'pad2Hold',
-        'pad2Release',
-        'pad2FitEnvelopeToChord',
-        'pad2Octave',
-        'pad2Hardness',
-        'pad2Warmth',
-        'pad2Presence',
-        'pad2OscMix',
-        'pad2FilterCutoff',
-        'pad2FilterResonance',
-        'pad2FilterQ',
-        'pad2FilterSlope',
-        'pad2FilterKeyTracking',
-        'pad2OscAWavePosition',
-        'pad2OscAPhaseDistortion',
-        'pad2OscAPitch',
-        'pad2OscALinearHzOffset',
-        'pad2OscALevel',
-        'pad2OscBWavePosition',
-        'pad2OscBPhaseDistortion',
-        'pad2OscBPitch',
-        'pad2OscBLinearHzOffset',
-        'pad2OscBLevel',
-        'pad2Drift',
-        'pad2SubOctave',
-        'pad2SubLevel',
-        'pad2NoiseLevel',
-        'pad2FilterBCutoff',
-        'pad2FilterBResonance',
-        'pad2FilterBQ',
-        'pad2Lfo1Rate',
-        'pad2Lfo1Depth',
-        'pad2Lfo2Rate',
-        'pad2Lfo2Depth',
-        'pad2ModEnvAttack',
-        'pad2ModEnvDecay',
-        'pad2ModEnvSustain',
-        'pad2ModEnvRelease',
-        'pad2ModEnvDepth',
-        'pad2Morph',
-        'pad2MorphSpeed',
-        'pad2VoiceAssign',
-      ];
 
-      for (const key of numericKeys) {
+
+      for (const key of NUMERIC_MORPH_KEYS) {
         const valA = stateA[key];
         const valB = stateB[key];
         if (typeof valA === 'number' && typeof valB === 'number') {
@@ -2762,85 +2197,14 @@ const App: React.FC = () => {
 
       // Snap discrete values at 50% (scaleMode and manualScale handled above with rootNote)
       // Note: reverbQuality is excluded - it's a user preference, not a musical parameter
-      const discreteKeys: (keyof SliderState)[] = [
-        'seedWindow',
-        'filterType',
-        'reverbEngine',
-        'reverbType',
-        'grainPitchMode',
-        'cofDriftDirection',
-        'leadRandomSource',
-        // Dynamics discrete choices
-        'driftMode',
-        'dynamicsSaturationMode',
-        'dynamicsSaturationQuality',
-        'masterSaturationMode',
-        'masterSaturationQuality',
-        'sidechainKeyA',
-        'sidechainKeyB',
-        // Drum preset names and discrete settings should snap at 50%
-        'drumSubPresetA',
-        'drumSubPresetB',
-        'drumKickPresetA',
-        'drumKickPresetB',
-        'drumClickPresetA',
-        'drumClickPresetB',
-        'drumBeepHiPresetA',
-        'drumBeepHiPresetB',
-        'drumBeepLoPresetA',
-        'drumBeepLoPresetB',
-        'drumNoisePresetA',
-        'drumNoisePresetB',
-        'drumMembranePresetA',
-        'drumMembranePresetB',
-        'drumNoiseFilterType',
-        // Pad Synth 2 discrete
-        'pad2FilterType',
-        'pad2OscAWave',
-        'pad2OscBWave',
-        'pad2PhaseReset',
-        'pad2SubWave',
-        'pad2NoiseType',
-        'pad2FilterBType',
-        'pad2FilterRouting',
-        'pad2Lfo1Wave',
-        'pad2Lfo1Dest',
-        'pad2Lfo2Wave',
-        'pad2Lfo2Dest',
-        'pad2ModEnvDest',
-        'pad2PresetA',
-        'pad2PresetB',
-        'padPhaseReset',
-      ];
-      for (const key of discreteKeys) {
+
+      for (const key of DISCRETE_MORPH_KEYS) {
         (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
       }
 
       // Snap boolean values at 50% (except engine toggles and cofDriftEnabled which have special handling)
-      const boolKeys: (keyof SliderState)[] = [
-        'lead1UseCustomAdsr',
-        'lead2UseCustomAdsr',
-        'synthEuclideanMasterEnabled',
-        'synthEuclid1Enabled',
-        'synthEuclid2Enabled',
-        'synthEuclid3Enabled',
-        'synthEuclid4Enabled',
-        // Drum synth booleans
-        'drumSubMorphAuto',
-        'drumKickMorphAuto',
-        'drumClickMorphAuto',
-        'drumBeepHiMorphAuto',
-        'drumBeepLoMorphAuto',
-        'drumNoiseMorphAuto',
-        'drumMembraneMorphAuto',
-        // Pad Synth 2 booleans
-        'pad2Enabled',
-        'pad2SubEnabled',
-        'pad2FilterBEnabled',
-        'pad2ModEnvEnabled',
-        'pad2MorphAuto',
-      ];
-      for (const key of boolKeys) {
+
+      for (const key of BOOLEAN_MORPH_KEYS) {
         (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
       }
 
@@ -2850,27 +2214,8 @@ const App: React.FC = () => {
       const atEndpointA = isAtEndpoint0(morphPosition, true);
       const atEndpointB = isAtEndpoint1(morphPosition, true);
 
-      const engineToggleKeys: (keyof SliderState)[] = [
-        'cofDriftEnabled',
-        'padEnabled',
-        'pad2Enabled',
-        'granularEnabled',
-        'leadEnabled',
-        'lead2Enabled',
-        'pianoEnabled',
-        'drumEnabled',
-        'oceanSampleEnabled',
-        'waterEnabled',
-        'insectsEnabled',
-        'insects2Enabled',
-        'birdsEnabled',
-        'birds2Enabled',
-        'frogsEnabled',
-        'delayAEnabled',
-        'granularDelayEnabled',
-        'reverbEnabled',
-      ];
-      for (const key of engineToggleKeys) {
+
+      for (const key of ENGINE_TOGGLE_KEYS) {
         const onA = stateA[key] as boolean;
         const onB = stateB[key] as boolean;
         if (onA && onB) {
@@ -2886,37 +2231,8 @@ const App: React.FC = () => {
         }
       }
 
-      const dynamicsToggleKeys: Array<{
-        key: keyof SliderState;
-        isOn: (s: SliderState) => boolean;
-      }> = [
-        { key: 'dynamicsEnabled', isOn: (s) => Boolean(s.dynamicsEnabled) },
-        {
-          key: 'sidechainEnabled',
-          isOn: (s) => Boolean(s.dynamicsEnabled && s.sidechainEnabled),
-        },
-        {
-          key: 'driftEnabled',
-          isOn: (s) => Boolean(s.dynamicsEnabled && s.driftEnabled),
-        },
-        {
-          key: 'erosionEnabled',
-          isOn: (s) => Boolean(s.dynamicsEnabled && s.erosionEnabled),
-        },
-        {
-          key: 'dynamicsSaturationEnabled',
-          isOn: (s) => Boolean(s.dynamicsEnabled && s.dynamicsSaturationEnabled),
-        },
-        {
-          key: 'masterSaturationEnabled',
-          isOn: (s) => Boolean(s.masterSaturationEnabled),
-        },
-        {
-          key: 'endCompEnabled',
-          isOn: (s) => Boolean(s.endCompEnabled),
-        },
-      ];
-      for (const entry of dynamicsToggleKeys) {
+
+      for (const entry of DYNAMICS_TOGGLE_KEYS) {
         const onA = entry.isOn(stateA);
         const onB = entry.isOn(stateB);
         const rawA = Boolean(stateA[entry.key]);

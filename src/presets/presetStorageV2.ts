@@ -13,12 +13,17 @@ import { canonicalizePresetScope, EQUALIZER_SCOPE, SATURATOR_SCOPE } from './pre
 import type { PresetEntry, PresetLevel, PresetRef, PresetVersion, PresetVersionMetadata } from './types';
 import { DEFAULT_STATE, type SliderState } from '../ui/state';
 import {
-  canonicalizeContentJson,
-  canonicalizeContentRecord,
+  canonicalizeContentRecord as canonicalizeRecord,
   contentUtf8ByteLength,
-  hashCanonicalContent,
   hashCanonicalContentText,
   stableStringifyContent,
+} from './contentCanonicalization';
+export {
+  canonicalizeContentJson as canonicalizeJson,
+  canonicalizeContentRecord as canonicalizeRecord,
+  hashCanonicalContent as hashCanonicalJson,
+  hashCanonicalContentText as hashCanonicalJsonText,
+  stableStringifyContent as stableStringifyCanonical,
 } from './contentCanonicalization';
 import {
   DYNAMICS_DRIFT_PRESET_KEYS,
@@ -31,6 +36,7 @@ import {
 } from '../ui/dynamics/dynamicsPresets';
 import { stripSequencerStateFromSoundContent } from './sequencerContent';
 import { extractDynamicsEqContent, extractSaturatorContent } from './sharedComponentPools';
+import { sourceSlotFallbackOverrides } from './presetSilentFallbacks';
 
 export type PresetPayloadKind = 'override' | 'metadata' | 'resolved' | 'patch' | 'refs_override' | 'content';
 
@@ -163,26 +169,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export function canonicalizeJson(value: unknown): unknown {
-  return canonicalizeContentJson(value);
-}
-
-export function canonicalizeRecord(record: Record<string, unknown>): Record<string, unknown> {
-  return canonicalizeContentRecord(record);
-}
-
-export function stableStringifyCanonical(value: unknown): string {
-  return stableStringifyContent(value);
-}
-
-export async function hashCanonicalJsonText(canonicalJson: string): Promise<string> {
-  return hashCanonicalContentText(canonicalJson);
-}
-
-export async function hashCanonicalJson(value: unknown): Promise<string> {
-  return hashCanonicalContent(value);
-}
-
 function isPresetPayloadCacheHash(hash: string): boolean {
   return PRESET_PAYLOAD_HASH_PATTERN.test(hash);
 }
@@ -203,10 +189,6 @@ function canUsePresetPayloadPersistentCache(): boolean {
 
 function getPresetPayloadCacheStorageKey(hash: string): string {
   return `${PRESET_PAYLOAD_CACHE_KEY_PREFIX}${hash}`;
-}
-
-function getPayloadCacheBytes(payloadJson: string): number {
-  return contentUtf8ByteLength(payloadJson);
 }
 
 function prunePresetPayloadMemoryCache(now = Date.now()): void {
@@ -249,7 +231,7 @@ function prunePresetPayloadPersistentCache(now = Date.now(), force = false): voi
       }
       try {
         const parsed = JSON.parse(raw) as Partial<CachedPresetPayloadStorageEntry> | null;
-        const bytes = typeof parsed?.bytes === 'number' ? parsed.bytes : getPayloadCacheBytes(raw);
+        const bytes = typeof parsed?.bytes === 'number' ? parsed.bytes : contentUtf8ByteLength(raw);
         const lastAccess = typeof parsed?.lastAccess === 'number' ? parsed.lastAccess : 0;
         if (lastAccess + PRESET_PAYLOAD_CACHE_MAX_AGE_MS <= now) {
           localStorage.removeItem(key);
@@ -326,8 +308,8 @@ export async function readVerifiedPresetPayloadCacheV2(hash: string): Promise<un
       return undefined;
     }
 
-    const canonicalJson = stableStringifyCanonical(parsed.payload);
-    const computedHash = await hashCanonicalJsonText(canonicalJson);
+    const canonicalJson = stableStringifyContent(parsed.payload);
+    const computedHash = await hashCanonicalContentText(canonicalJson);
     if (computedHash !== hash) {
       localStorage.removeItem(storageKey);
       presetPayloadMemoryCache.delete(hash);
@@ -378,14 +360,14 @@ export async function writePresetPayloadCacheV2(
   options?: PresetPayloadCacheWriteOptions,
 ): Promise<void> {
   if (!isPresetPayloadCacheHash(hash) || payload === undefined) return;
-  const payloadJson = options?.verifiedCanonicalJson ?? stableStringifyCanonical(payload);
+  const payloadJson = options?.verifiedCanonicalJson ?? stableStringifyContent(payload);
   if (options?.verifiedCanonicalJson === undefined) {
-    const computedHash = await hashCanonicalJsonText(payloadJson);
+    const computedHash = await hashCanonicalContentText(payloadJson);
     if (computedHash !== hash) return;
   }
 
   const now = Date.now();
-  const bytes = getPayloadCacheBytes(payloadJson);
+  const bytes = contentUtf8ByteLength(payloadJson);
   const memoryEntry = { payload, bytes, lastAccess: now };
   presetPayloadSessionVerifiedHashes.add(hash);
   presetPayloadCacheDiagnostics.writes += 1;
@@ -537,7 +519,7 @@ function equalizerChild(slot: string, laneIndex: 0 | 1): PresetChildSpec {
     type: 'engine',
     scope: EQUALIZER_SCOPE,
     extract: state => extractDynamicsEqContent(state as unknown as Record<string, unknown>, laneIndex),
-    strip: (state) => Object.fromEntries(runtimeKeys.map(key => [key, state[key]])),
+    strip: state => Object.fromEntries(runtimeKeys.map(key => [key, state[key]])),
   };
 }
 
@@ -547,7 +529,7 @@ function saturatorChild(slot: string): PresetChildSpec {
     type: 'engine',
     scope: SATURATOR_SCOPE,
     extract: state => extractSaturatorContent(state as unknown as Record<string, unknown>, 'master'),
-    strip: (state) => Object.fromEntries(MASTER_SATURATION_PRESET_KEYS.map(key => [key, state[key]])),
+    strip: state => Object.fromEntries(MASTER_SATURATION_PRESET_KEYS.map(key => [key, state[key]])),
   };
 }
 
@@ -836,116 +818,6 @@ function withGenericSilentFallbacks(data: Record<string, unknown>): Record<strin
   }
 
   return next;
-}
-
-function sourceSlotFallbackOverrides(slot: string): Record<string, unknown> {
-  switch (slot) {
-    case 'synth':
-      return {
-        synthLevel: 0,
-        pad2Level: 0,
-        leadLevel: 0,
-        lead1Level: 0,
-        lead2Level: 0,
-        pianoLevel: 0,
-        leadEnabled: false,
-        leadRandomEnabled: false,
-        pianoEnabled: false,
-        synthEuclideanMasterEnabled: false,
-        padEnabled: false,
-        pad2Enabled: false,
-        lead2Enabled: false,
-      };
-    case 'drums':
-      return {
-        drumLevel: 0,
-        drumEnabled: false,
-        drumDelayEnabled: false,
-        drumEuclidMasterEnabled: false,
-      };
-    case 'granular':
-      return {
-        granularLevel: 0,
-        granularEnabled: false,
-        granularFreeze: false,
-        granularV1Enabled: false,
-        granularV2Enabled: false,
-        granularV3Enabled: false,
-        granularV4Enabled: false,
-      };
-    case 'delay':
-      return {
-        delayAEnabled: false,
-        delayAMix: 0,
-        delayAFeedback: 0,
-        drumDelayEnabled: false,
-        drumDelayMix: 0,
-        drumDelayFeedback: 0,
-        granularDelayEnabled: false,
-        granularDelayMix: 0,
-        granularDelayRepeats: 0,
-      };
-    case 'reverb':
-      return {
-        reverbLevel: 0,
-        reverbEnabled: false,
-        spectralFreezeEnabled: false,
-        spectralFreezeActive: false,
-        spectralFreezeMix: 0,
-      };
-    case 'dynamicsBus':
-      return {
-        dynamicsBusEnabled: false,
-        dynamicsEq1Enabled: false,
-        dynamicsEq2Enabled: false,
-        sidechainEnabled: false,
-        sidechainMix: 0,
-        sidechainAmount: 0,
-      };
-    case 'degrade':
-      return {
-        degradeEnabled: false,
-        driftEnabled: false,
-        driftMix: 0,
-        erosionEnabled: false,
-        erosionMix: 0,
-      };
-    case 'masterFx':
-      return {
-        masterSaturationEnabled: false,
-        masterSaturationDrive: 0,
-        endCompEnabled: false,
-        endCompMix: 0,
-      };
-    case 'sidechain':
-      return { sidechainMix: 0, sidechainAmount: 0 };
-    case 'saturation':
-      return { drive: 0 };
-    case 'endChain':
-      return { endCompMix: 0 };
-    case 'earth':
-      return {
-        earthLevel: 0,
-        natureLevel: 0,
-        waterLevel: 0,
-        insectsLevel: 0,
-        insectsSharedLevel: 0,
-        insects2Level: 0,
-        oceanSampleLevel: 0,
-        birdsLevel: 0,
-        birds2Level: 0,
-        frogsLevel: 0,
-        waterEnabled: false,
-        insectsEnabled: false,
-        insects2Enabled: false,
-        oceanSampleEnabled: false,
-        birdsEnabled: false,
-        birds2Enabled: false,
-        frogsEnabled: false,
-      };
-    default:
-      return {};
-  }
 }
 
 function kitOrEngineSlotFallbackOverrides(slot: string): Record<string, unknown> {

@@ -151,12 +151,21 @@ void KesshoProductEngine::renderFxGraph(
       telemetry.fx_route_effective_amounts[node * kFxNodeCount + to] = amount;
       if (amount <= 0.0f && previous_amount <= 0.0f) continue;
       const StereoBus destination = inputBus(*this, to);
+      const bool granular_reverb = node == kFxNodeGranular && to == kFxNodeReverb;
+      const float* route_l = granular_reverb ? module_tap_l[1] : fx_node_output_l[node];
+      const float* route_r = granular_reverb ? module_tap_r[1] : fx_node_output_r[node];
       for (uint32_t i = 0; i < frames; ++i) {
         const uint32_t frame = start + i;
         const float ramp = static_cast<float>(i + 1u) / static_cast<float>(frames);
         const float smoothed_amount = previous_amount + (amount - previous_amount) * ramp;
-        destination.left[frame] += fx_node_output_l[node][frame] * smoothed_amount;
-        destination.right[frame] += fx_node_output_r[node][frame] * smoothed_amount;
+        const float routed_l = route_l[granular_reverb ? i : frame] * smoothed_amount;
+        const float routed_r = route_r[granular_reverb ? i : frame] * smoothed_amount;
+        destination.left[frame] += routed_l;
+        destination.right[frame] += routed_r;
+        if (graph_taps_enabled && granular_reverb) {
+          graph_granular_reverb_send_l[frame] = routed_l;
+          graph_granular_reverb_send_r[frame] = routed_r;
+        }
       }
     }
 

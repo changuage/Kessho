@@ -41,6 +41,7 @@ const allowedImports = new Set([
   './generated/kesshoProductSchema',
   '../ui/state',
   './CoreProductModeIds',
+  './fxRoutingGraph',
   './CoreProductDrumPatch',
   './CoreProductHarmonyControl',
   './CoreProductLeadPatch',
@@ -92,6 +93,7 @@ const soundscapesAllowedImports = new Set([
   './natureSlots',
   './rng',
   './waterPresets',
+  './waterLayerActivation',
 ]);
 const soundscapesImports = Array.from(soundscapesSnapshot.matchAll(/from '([^']+)'/g), (match) => match[1]);
 for (const source of soundscapesImports) {
@@ -136,6 +138,7 @@ for (const source of drumPatchAllowedImports) {
 
 const padPatchAllowedImports = new Set([
   './generated/kesshoProductSchema',
+  './CoreProductPresetIds',
   './padPresets',
   './coreProductSnapshotState',
   './distanceMacro',
@@ -519,7 +522,7 @@ for (const forbiddenImportUsage of [
 }
 
 assert(
-    snapshot.includes('source.presetId = endpointPresetId') &&
+    snapshot.includes('source.presetId = source.morph >= 0.5') &&
     snapshot.includes('source.presetId = sourcePresetId') &&
     snapshot.includes('sourcePresetAId') &&
     snapshot.includes('sourcePresetBId') &&

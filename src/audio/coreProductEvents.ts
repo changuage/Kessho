@@ -58,7 +58,7 @@ import type {
 import { resolveSequencerLaneAudibility } from './sequencerAudibility';
 import type { HarmonyLiveLayer } from './harmony/harmonyProjection';
 import type { ProductRuntimeModulationConfig } from './product/ProductEngineTypes';
-import { FX_ROUTING_NODE_IDS, type FxRoutingNodeId } from '../ui/routing/fxRoutingGraph';
+import { FX_ROUTING_NODE_IDS, type FxRoutingNodeId } from './fxRoutingGraph';
 
 export type CoreProductEvent = {
   sampleOffset?: number;
