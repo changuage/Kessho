@@ -169,7 +169,12 @@
           "file": "cpp/KesshoCore/src/product/fx/ProductFxGraph.cpp",
           "tokens": [
             "case kFxNodeFreeze:",
-            "renderSpectralFreeze(out_l, out_r, start, frames, false)",
+            "renderSpectralFreeze(out_l, out_r, start, frames, false)"
+          ]
+        },
+        {
+          "file": "cpp/KesshoCore/src/product/fx/ProductFxGraphRouting.cpp",
+          "tokens": [
             "routing.fx_edge_mask[node]"
           ]
         },
