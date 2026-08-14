@@ -296,10 +296,10 @@ struct SoundscapeRenderBlockCache {
       if (!soundscape_sample) {
         processVoicePostChain(voice, dry_left, dry_right);
         if (piano_voice) {
-          send_left = dry_left;
-          send_right = dry_right;
-          dry_left *= source.level * kPianoSampleParityTrim;
-          dry_right *= source.level * kPianoSampleParityTrim;
+          send_left = dry_left * kPianoSampleParityTrim;
+          send_right = dry_right * kPianoSampleParityTrim;
+          dry_left = send_left * source.level;
+          dry_right = send_right * source.level;
         } else {
           dry_left *= source.level;
           dry_right *= source.level;

@@ -74,7 +74,7 @@ void KesshoProductEngine::mixSourceBuffer(
   const float dry_gain = source.level * source.dry_gain * trim;
   const bool lead_source = source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2;
   const float graph_dry_gain = source.level * source.dry_gain * (lead_source ? 1.0f : trim);
-  const float send_gain = source.dry_gain;
+  const float send_gain = source.dry_gain * trim;
   if (!graph_taps_enabled && source.diffuse_send <= 0.0f) {
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;

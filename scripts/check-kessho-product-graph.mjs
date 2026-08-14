@@ -1,6 +1,8 @@
 import { execFileSync } from 'node:child_process';
 
-execFileSync(process.execPath, ['scripts/run-kessho-product-cpp-test.mjs', 'ProductGraphTests'], {
-  cwd: process.cwd(),
-  stdio: 'inherit',
-});
+for (const testName of ['ProductGraphTests', 'ProductCalibrationTests']) {
+  execFileSync(process.execPath, ['scripts/run-kessho-product-cpp-test.mjs', testName], {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+}
