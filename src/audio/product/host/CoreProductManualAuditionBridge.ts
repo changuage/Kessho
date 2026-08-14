@@ -29,8 +29,16 @@ function productSourceEnabled(context: CoreProductManualAuditionContext, sourceI
   return context.latestProductSnapshot()?.sources.some((source) => source.sourceId === sourceIdValue && source.enabled) === true;
 }
 
+function statesMatch(a: Record<string, unknown> | null, b: Record<string, unknown> | null): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => a[key] === b[key]);
+}
+
 function shouldApplyExternalState(context: CoreProductManualAuditionContext, externalState?: Record<string, unknown>): boolean {
-  return externalState != null && externalState !== context.latestSliderState();
+  return externalState != null && !statesMatch(externalState, context.latestSliderState());
 }
 
 function sampleSlotForManualSource(source: RequiredManualSynthNote['source']): SampleSlotId | null {
