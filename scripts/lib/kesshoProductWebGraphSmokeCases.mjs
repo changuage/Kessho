@@ -3051,7 +3051,8 @@ const rawCases = [
     peakTolerance: 0.16,
     minLagCorrelation: 0.88,
     envelopeGate: true,
-    envelopeTimeToleranceMs: 60,
+    envelopeWindowMs: 500,
+    envelopeTimeToleranceMs: 100,
     envelopePeakRatioTolerance: 0.45,
     statePatch: {
       ...granularCleanOutputStatePatch,
