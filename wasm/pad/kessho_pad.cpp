@@ -597,11 +597,16 @@ void renderVoice(PadVoice& voice, float* outL, float* outR,
             --voice.output_gain_remaining;
             if (voice.output_gain_remaining == 0u) voice.output_gain = voice.output_gain_target;
         }
-        const float postfader = prefader * safeLevel * kOutputCalibration * compensation;
+        // Engineering calibration and polyphony compensation belong before the
+        // pad-level dry/send split.  The Product Core keeps the Pad source send
+        // intentionally pre-fader relative to source.level, so its prefader tap
+        // must carry the same fixed transfer as the postfader tap.
+        const float calibrated_prefader = prefader * kOutputCalibration * compensation;
+        const float postfader = calibrated_prefader * safeLevel;
         outL[n] += postfader;
         outR[n] += postfader;
-        targetPfL[n] += prefader;
-        targetPfR[n] += prefader;
+        targetPfL[n] += calibrated_prefader;
+        targetPfR[n] += calibrated_prefader;
         targetPostL[n] += postfader;
         targetPostR[n] += postfader;
     }

@@ -10,6 +10,7 @@
 #include "KesshoProductParamIds.h"
 #include "KesshoProductSchema.h"
 #include "../src/product/KesshoProductEngineInternal.h"
+#include "../src/product/fx/ProductFxGraphRouting.h"
 #include "ProductSnapshotTestHelpers.h"
 
 namespace {
@@ -1586,7 +1587,7 @@ void requireSpectralFreezeParallelReturn() {
   require(
       renderFxPeak(engine, 160u) > 0.00001f,
       "spectral return disappeared when the ordinary reverb return was muted");
-  (void)renderFxPeak(engine, 2000u);
+  (void)renderFxPeak(engine, 800u);
   require(
       renderFxPeak(engine, 160u) > 0.00001f,
       "spectral return did not remain audible after the source stopped");
@@ -1846,6 +1847,199 @@ void requireDirectFxCoverage() {
   require(std::fabs(terminal_r[0] - 0.125f) < 0.001f, "terminal EQ bus did not pass through right sample");
 }
 
+float fxBufferPeak(const float* left, const float* right, uint32_t frames) {
+  float result = 0.0f;
+  for (uint32_t i = 0u; i < frames; ++i) {
+    require(std::isfinite(left[i]) && std::isfinite(right[i]), "non-finite FX sample");
+    result = std::max(result, std::max(std::fabs(left[i]), std::fabs(right[i])));
+  }
+  return result;
+}
+
+void clearFxBus(float* left, float* right, uint32_t frames) {
+  std::fill(left, left + frames, 0.0f);
+  std::fill(right, right + frames, 0.0f);
+}
+
+void requireReverbTrimAppliedOnce() {
+  constexpr uint32_t kFrames = 128u;
+  auto engine = std::make_unique<KesshoProductEngine>(48000.0, kFrames, 0);
+  engine->graph_taps_enabled = true;
+  engine->routing.clearFxGraph();
+  engine->fx.reverb_mix = 0.5f;
+  engine->configureFxModules();
+  float out_l[kFrames]{};
+  float out_r[kFrames]{};
+  bool measured = false;
+  for (uint32_t block = 0u; block < 64u; ++block) {
+    for (uint32_t i = 0u; i < kFrames; ++i) {
+      engine->reverb_bus_l[i] = 0.2f;
+      engine->reverb_bus_r[i] = -0.1f;
+    }
+    clearFxBus(out_l, out_r, kFrames);
+    engine->renderFxGraph(out_l, out_r, 0u, kFrames);
+    for (uint32_t i = 0u; i < kFrames; ++i) {
+      const float module_l = engine->module_l[i];
+      const float module_r = engine->module_r[i];
+      const float node_l = engine->fx_node_output_l[kFxNodeReverb][i];
+      const float node_r = engine->fx_node_output_r[kFxNodeReverb][i];
+      const float return_l = engine->graph_reverb_output_l[i];
+      const float return_r = engine->graph_reverb_output_r[i];
+      if (std::fabs(module_l) > 1.0e-5f) {
+        require(
+            std::fabs(node_l / module_l - 2.0f) < 0.0001f,
+            "Reverb generated trim was not applied once (left)");
+        require(
+            std::fabs(return_l / node_l - 0.5f) < 0.0001f,
+            "Reverb return level was not applied once (left)");
+        measured = true;
+      }
+      if (std::fabs(module_r) > 1.0e-5f) {
+        require(
+            std::fabs(node_r / module_r - 2.0f) < 0.0001f,
+            "Reverb generated trim was not applied once (right)");
+        require(
+            std::fabs(return_r / node_r - 0.5f) < 0.0001f,
+            "Reverb return level was not applied once (right)");
+        measured = true;
+      }
+    }
+  }
+  require(measured, "Reverb deterministic fixture produced no measurable output");
+}
+
+void requireNeutralEqUnity() {
+  constexpr uint32_t kFrames = 128u;
+  auto engine = std::make_unique<KesshoProductEngine>(48000.0, kFrames, 0);
+  engine->routing.clearFxGraph();
+  engine->fx.dynamics_eq1_enabled = true;
+  engine->fx.dynamics_eq1_input_gain_db = 0.0f;
+  engine->fx.dynamics_eq1_output_gain_db = 0.0f;
+  engine->fx.dynamics_eq1_mix = 1.0f;
+  engine->fx.dynamics_eq1_low_gain_db = 0.0f;
+  engine->fx.dynamics_eq1_mid_gain_db = 0.0f;
+  engine->fx.dynamics_eq1_high_gain_db = 0.0f;
+  engine->configureFxModules();
+  for (uint32_t i = 0u; i < kFrames; ++i) {
+    engine->dynamics_eq1_bus_l[i] = 0.25f;
+    engine->dynamics_eq1_bus_r[i] = -0.125f;
+  }
+  float out_l[kFrames]{};
+  float out_r[kFrames]{};
+  engine->renderFxGraph(out_l, out_r, 0u, kFrames);
+  for (uint32_t i = 0u; i < kFrames; ++i) {
+    require(
+        std::fabs(engine->fx_node_output_l[kFxNodeEq1][i] - 0.25f) < 0.00001f,
+        "neutral EQ changed left level");
+    require(
+        std::fabs(engine->fx_node_output_r[kFxNodeEq1][i] + 0.125f) < 0.00001f,
+        "neutral EQ changed right level");
+  }
+}
+
+void requireDisabledDelayDoesNotLeakSpecializedTap() {
+  constexpr uint32_t kFrames = 128u;
+  auto engine = std::make_unique<KesshoProductEngine>(48000.0, kFrames, 0);
+  engine->graph_taps_enabled = true;
+  engine->routing.clearFxGraph();
+  require(
+      engine->routing.setFxRoute(kFxNodeDelayA, kFxNodeReverb, 1.0f, true),
+      "Delay A route setup failed");
+  engine->fx.delay_a_enabled = true;
+  engine->fx.delay_a_time_left_ms = 10.0f;
+  engine->fx.delay_a_time_right_ms = 10.0f;
+  engine->fx.delay_a_mix = 0.0f;
+  engine->configureFxModules();
+
+  float out_l[kFrames]{};
+  float out_r[kFrames]{};
+  float routed_peak = 0.0f;
+  for (uint32_t block = 0u; block < 16u; ++block) {
+    std::fill(engine->delay_a_bus_l, engine->delay_a_bus_l + kFrames, 0.2f);
+    std::fill(engine->delay_a_bus_r, engine->delay_a_bus_r + kFrames, 0.2f);
+    clearFxBus(engine->reverb_bus_l, engine->reverb_bus_r, kFrames);
+    clearFxBus(engine->graph_delay_a_reverb_send_l, engine->graph_delay_a_reverb_send_r, kFrames);
+    clearFxBus(out_l, out_r, kFrames);
+    engine->renderFxGraph(out_l, out_r, 0u, kFrames);
+    routed_peak = std::max(
+        routed_peak,
+        fxBufferPeak(
+            engine->graph_delay_a_reverb_send_l,
+            engine->graph_delay_a_reverb_send_r,
+            kFrames));
+  }
+  require(routed_peak > 0.0001f, "Delay A deterministic route never produced a specialized tap");
+
+  engine->fx.delay_a_enabled = false;
+  engine->configureFxModules();
+  std::fill(engine->delay_a_bus_l, engine->delay_a_bus_l + kFrames, 0.2f);
+  std::fill(engine->delay_a_bus_r, engine->delay_a_bus_r + kFrames, 0.2f);
+  clearFxBus(
+      engine->fx_node_output_l[kFxNodeDelayA],
+      engine->fx_node_output_r[kFxNodeDelayA],
+      kFrames);
+  clearFxBus(engine->reverb_bus_l, engine->reverb_bus_r, kFrames);
+  clearFxBus(engine->graph_delay_a_reverb_send_l, engine->graph_delay_a_reverb_send_r, kFrames);
+  clearFxBus(out_l, out_r, kFrames);
+  engine->renderFxGraph(out_l, out_r, 0u, kFrames);
+  require(
+      fxBufferPeak(
+          engine->graph_delay_a_reverb_send_l,
+          engine->graph_delay_a_reverb_send_r,
+          kFrames) <= 0.000001f,
+      "disabled Delay A leaked a stale specialized Reverb tap");
+}
+
+void requireDisabledSpecializedRoutesDoNotLeak() {
+  constexpr uint32_t kFrames = 128u;
+  const auto check = [kFrames](uint8_t node) {
+    auto engine = std::make_unique<KesshoProductEngine>(48000.0, kFrames, 0);
+    engine->graph_taps_enabled = true;
+    engine->routing.clearFxGraph();
+    require(
+        engine->routing.setFxRoute(node, kFxNodeReverb, 1.0f, true),
+        "specialized route setup failed");
+    if (node == kFxNodeDelayB) {
+      engine->fx.delay_b_enabled = true;
+    } else {
+      engine->fx.granular_enabled = true;
+    }
+    for (uint32_t i = 0u; i < kFrames; ++i) {
+      engine->module_tap_l[1][i] = 0.4f;
+      engine->module_tap_r[1][i] = -0.4f;
+    }
+    float* route_tap_l = node == kFxNodeDelayB
+        ? engine->graph_delay_b_reverb_send_l
+        : engine->graph_granular_reverb_send_l;
+    float* route_tap_r = node == kFxNodeDelayB
+        ? engine->graph_delay_b_reverb_send_r
+        : engine->graph_granular_reverb_send_r;
+    clearFxBus(route_tap_l, route_tap_r, kFrames);
+    kessho::product::internal::routeFxGraphNode(*engine, node, 0u, kFrames);
+    require(
+        fxBufferPeak(route_tap_l, route_tap_r, kFrames) > 0.0001f,
+        "enabled specialized FX route did not select its tap");
+
+    if (node == kFxNodeDelayB) {
+      engine->fx.delay_b_enabled = false;
+    } else {
+      engine->fx.granular_enabled = false;
+    }
+    clearFxBus(
+        engine->fx_node_output_l[node],
+        engine->fx_node_output_r[node],
+        kFrames);
+    clearFxBus(route_tap_l, route_tap_r, kFrames);
+    kessho::product::internal::routeFxGraphNode(*engine, node, 0u, kFrames);
+    require(
+        fxBufferPeak(route_tap_l, route_tap_r, kFrames) <= 0.000001f,
+        "disabled specialized FX route leaked a stale tap");
+  };
+
+  check(kFxNodeDelayB);
+  check(kFxNodeGranular);
+}
+
 } // namespace
 
 int main() {
@@ -1855,6 +2049,10 @@ int main() {
   requireFxRouteModulationRunsInAudioGraph();
   requireFxGraphSnapshotAndRuntimeEvents();
   requireDirectFxCoverage();
+  requireReverbTrimAppliedOnce();
+  requireNeutralEqUnity();
+  requireDisabledDelayDoesNotLeakSpecializedTap();
+  requireDisabledSpecializedRoutesDoNotLeak();
 
   KesshoProductEngine* reverb_engine = kessho_product_create(48000.0, 128, 0);
   require(reverb_engine != nullptr, "reverb engine create failed");

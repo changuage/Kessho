@@ -19,7 +19,9 @@ on:
       - 'public/worklets/kessho_core.wasm'
       - 'public/samples/**'
       - 'wasm/pad/**'
+      - 'wasm/drum/**'
       - 'scripts/check-kessho-product*'
+      - 'docs/reports/kessho-product-level-calibration-contract.json'
       - 'scripts/check-pad-synth-dsp.mjs'
       - 'scripts/check-web-core-sonic-parity.mjs'
       - 'scripts/run-kessho-product-sequencer-evolve-regression.mjs'
@@ -54,7 +56,9 @@ on:
       - 'public/worklets/kessho_core.wasm'
       - 'public/samples/**'
       - 'wasm/pad/**'
+      - 'wasm/drum/**'
       - 'scripts/check-kessho-product*'
+      - 'docs/reports/kessho-product-level-calibration-contract.json'
       - 'scripts/check-web-core-sonic-parity.mjs'
       - 'scripts/check-pad-synth-dsp.mjs'
       - 'scripts/run-kessho-product-sequencer-evolve-regression.mjs'
@@ -112,6 +116,16 @@ jobs:
             docs/reports/kessho-product-default-gate-v3-latest.md
             docs/reports/kessho-product-web-graph-capture-smoke-fast-latest.json
             docs/reports/kessho-product-web-graph-capture-smoke-latest.json
+
+      - name: Upload Product level calibration reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-core-level-calibration-reports
+          if-no-files-found: warn
+          path: |
+            docs/reports/kessho-product-level-calibration-latest.json
+            docs/reports/kessho-product-level-calibration-latest.md
 
       - name: Surface Product CPU gate summary
         if: always()

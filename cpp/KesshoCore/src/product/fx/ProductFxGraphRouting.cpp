@@ -33,6 +33,10 @@ StereoBus inputBus(KesshoProductEngine& engine, uint8_t node) {
 
 RouteSignal routeSignal(KesshoProductEngine& engine, uint8_t from, uint8_t to) {
   if (from == kFxNodeDelayA || from == kFxNodeDelayB) {
+    if ((from == kFxNodeDelayA && !engine.fx.delay_a_enabled) ||
+        (from == kFxNodeDelayB && !engine.fx.delay_b_enabled)) {
+      return {engine.fx_node_output_l[from], engine.fx_node_output_r[from], false};
+    }
     uint32_t tap = KESSHO_MODULE_DELAY_A_TAP_MAIN;
     if (to == kFxNodeReverb) tap = KESSHO_MODULE_DELAY_A_TAP_REVERB_SEND;
     else if (to == kFxNodeDelayA || to == kFxNodeDelayB) tap = KESSHO_MODULE_DELAY_A_TAP_DELAY_B_SEND;
@@ -41,6 +45,9 @@ RouteSignal routeSignal(KesshoProductEngine& engine, uint8_t from, uint8_t to) {
     return {engine.module_tap_l[tap], engine.module_tap_r[tap], true};
   }
   if (from == kFxNodeGranular) {
+    if (!engine.fx.granular_enabled) {
+      return {engine.fx_node_output_l[from], engine.fx_node_output_r[from], false};
+    }
     const uint32_t tap = to == kFxNodeReverb ? 1u : 0u;
     return {engine.module_tap_l[tap], engine.module_tap_r[tap], true};
   }

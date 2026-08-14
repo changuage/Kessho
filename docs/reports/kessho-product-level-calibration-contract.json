@@ -1,0 +1,28 @@
+{
+  "schema": "kessho-product-level-calibration-contract-v1",
+  "sampleRate": 48000,
+  "blockSize": 128,
+  "sourceToleranceDb": 3,
+  "fxStructuralToleranceDb": 3,
+  "preLimiterPeakCeiling": 0.95,
+  "limiterInactivityEpsilonDb": 0.05,
+  "sourceRms": {
+    "sustained_pad_metal_tine_c4": 0.0694266036,
+    "sustained_lead_soft_rhodes_c4": 0.0677174404,
+    "sustained_piano_fixed_asset_c4": 0.0901642367,
+    "drums.master": 0.048689913,
+    "drums.dry": 0.0405749232,
+    "drums.pre_limiter": 0.0405749232,
+    "earth.master": 0.0000212336709,
+    "earth.water_dry": 0.0000176947251
+  },
+  "fxRms": {
+    "delay_a_main": 0.14375487,
+    "delay_a_reverb": 0.14375487,
+    "delay_b_main": 0.0862917602,
+    "delay_b_reverb": 0.0862917602,
+    "granular_main": 0.00161070458,
+    "granular_reverb": 0.00492202397,
+    "reverb_main": 0.0384527668
+  }
+}

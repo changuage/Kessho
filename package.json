@@ -155,6 +155,7 @@
     "core:product:determinism": "node scripts/check-kessho-product-deterministic-music.mjs",
     "core:product:graph": "node scripts/check-kessho-product-graph.mjs",
     "core:product:fx": "node scripts/check-kessho-product-fx-routing.mjs",
+    "core:product:level-calibration": "node scripts/check-kessho-product-level-calibration.mjs",
     "core:product:fx-depth": "node scripts/check-kessho-product-fx-master-depth.mjs",
     "core:product:asset-manifest": "node scripts/check-kessho-product-asset-manifest.mjs",
     "core:product:sources": "node scripts/check-kessho-product-source-wrappers.mjs",

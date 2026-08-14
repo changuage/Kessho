@@ -1,0 +1,283 @@
+{
+  "schema": "kessho-product-level-calibration-report-v1",
+  "generatedAt": "2026-08-14T23:15:06.496Z",
+  "status": "pass",
+  "contract": {
+    "schema": "kessho-product-level-calibration-contract-v1",
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "sourceToleranceDb": 3,
+    "fxStructuralToleranceDb": 3,
+    "preLimiterPeakCeiling": 0.95,
+    "limiterInactivityEpsilonDb": 0.05,
+    "sourceRms": {
+      "sustained_pad_metal_tine_c4": 0.0694266036,
+      "sustained_lead_soft_rhodes_c4": 0.0677174404,
+      "sustained_piano_fixed_asset_c4": 0.0901642367,
+      "drums.master": 0.048689913,
+      "drums.dry": 0.0405749232,
+      "drums.pre_limiter": 0.0405749232,
+      "earth.master": 0.0000212336709,
+      "earth.water_dry": 0.0000176947251
+    },
+    "fxRms": {
+      "delay_a_main": 0.14375487,
+      "delay_a_reverb": 0.14375487,
+      "delay_b_main": 0.0862917602,
+      "delay_b_reverb": 0.0862917602,
+      "granular_main": 0.00161070458,
+      "granular_reverb": 0.00492202397,
+      "reverb_main": 0.0384527668
+    }
+  },
+  "fixture": {
+    "schema": "kessho-product-level-calibration-v1",
+    "sample_rate": 48000,
+    "block_size": 128,
+    "source_tolerance_db": 3,
+    "fx_structural_tolerance_db": 3,
+    "pre_limiter_peak_ceiling": 0.95,
+    "limiter_inactivity_epsilon_db": 0.05,
+    "sources": [
+      {
+        "name": "sustained_pad_metal_tine_c4",
+        "source_id": 1,
+        "rms": 0.0694266036,
+        "peak": 0.167292178,
+        "hash": "6279644678249544283"
+      },
+      {
+        "name": "sustained_lead_soft_rhodes_c4",
+        "source_id": 3,
+        "rms": 0.0677174404,
+        "peak": 0.161133766,
+        "hash": "3857179750729233048"
+      },
+      {
+        "name": "sustained_piano_fixed_asset_c4",
+        "source_id": 6,
+        "rms": 0.0901642367,
+        "peak": 0.132370368,
+        "hash": "10582077885878301487"
+      }
+    ],
+    "drums": {
+      "master": {
+        "rms": 0.048689913,
+        "peak": 0.997235239,
+        "hash": "11406299788198830577"
+      },
+      "dry": {
+        "rms": 0.0405749232,
+        "peak": 0.831029356,
+        "hash": "15606143408854416255"
+      },
+      "pre_limiter": {
+        "rms": 0.0405749232,
+        "peak": 0.831029356,
+        "hash": "15606143408854416255"
+      },
+      "max_limiter_gain_reduction_db": 0
+    },
+    "earth": {
+      "master": {
+        "rms": 0.0000212336709,
+        "peak": 0.000147221668,
+        "hash": "11363013098285621823"
+      },
+      "water_dry": {
+        "rms": 0.0000176947251,
+        "peak": 0.000122684723,
+        "hash": "7315907720730024543"
+      },
+      "max_limiter_gain_reduction_db": 0
+    },
+    "fx": {
+      "delay_a_main": {
+        "rms": 0.14375487,
+        "peak": 0.277115762,
+        "hash": "16452211640836497313"
+      },
+      "delay_a_reverb": {
+        "rms": 0.14375487,
+        "peak": 0.277115762,
+        "hash": "16452211640836497313"
+      },
+      "delay_b_main": {
+        "rms": 0.0862917602,
+        "peak": 0.196784645,
+        "hash": "13574117615330612713"
+      },
+      "delay_b_reverb": {
+        "rms": 0.0862917602,
+        "peak": 0.196784645,
+        "hash": "13574117615330612713"
+      },
+      "granular_main": {
+        "rms": 0.00161070458,
+        "peak": 0.0167201851,
+        "hash": "1843765701816299886"
+      },
+      "granular_reverb": {
+        "rms": 0.00492202397,
+        "peak": 0.051084511,
+        "hash": "13630921489040423247"
+      },
+      "reverb_main": {
+        "rms": 0.0384527668,
+        "peak": 0.115609437,
+        "hash": "11745468131475985329"
+      }
+    },
+    "headroom": {
+      "pre_limiter": {
+        "rms": 0.0750432163,
+        "peak": 0.238512933,
+        "hash": "8799116650998695057"
+      },
+      "output": {
+        "rms": 0.0900518596,
+        "peak": 0.286215544,
+        "hash": "843305457697976264"
+      },
+      "max_limiter_gain_reduction_db": 0
+    }
+  },
+  "repeatFixture": {
+    "schema": "kessho-product-level-calibration-v1",
+    "sample_rate": 48000,
+    "block_size": 128,
+    "source_tolerance_db": 3,
+    "fx_structural_tolerance_db": 3,
+    "pre_limiter_peak_ceiling": 0.95,
+    "limiter_inactivity_epsilon_db": 0.05,
+    "sources": [
+      {
+        "name": "sustained_pad_metal_tine_c4",
+        "source_id": 1,
+        "rms": 0.0694266036,
+        "peak": 0.167292178,
+        "hash": "6279644678249544283"
+      },
+      {
+        "name": "sustained_lead_soft_rhodes_c4",
+        "source_id": 3,
+        "rms": 0.0677174404,
+        "peak": 0.161133766,
+        "hash": "3857179750729233048"
+      },
+      {
+        "name": "sustained_piano_fixed_asset_c4",
+        "source_id": 6,
+        "rms": 0.0901642367,
+        "peak": 0.132370368,
+        "hash": "10582077885878301487"
+      }
+    ],
+    "drums": {
+      "master": {
+        "rms": 0.048689913,
+        "peak": 0.997235239,
+        "hash": "11406299788198830577"
+      },
+      "dry": {
+        "rms": 0.0405749232,
+        "peak": 0.831029356,
+        "hash": "15606143408854416255"
+      },
+      "pre_limiter": {
+        "rms": 0.0405749232,
+        "peak": 0.831029356,
+        "hash": "15606143408854416255"
+      },
+      "max_limiter_gain_reduction_db": 0
+    },
+    "earth": {
+      "master": {
+        "rms": 0.0000212336709,
+        "peak": 0.000147221668,
+        "hash": "11363013098285621823"
+      },
+      "water_dry": {
+        "rms": 0.0000176947251,
+        "peak": 0.000122684723,
+        "hash": "7315907720730024543"
+      },
+      "max_limiter_gain_reduction_db": 0
+    },
+    "fx": {
+      "delay_a_main": {
+        "rms": 0.14375487,
+        "peak": 0.277115762,
+        "hash": "16452211640836497313"
+      },
+      "delay_a_reverb": {
+        "rms": 0.14375487,
+        "peak": 0.277115762,
+        "hash": "16452211640836497313"
+      },
+      "delay_b_main": {
+        "rms": 0.0862917602,
+        "peak": 0.196784645,
+        "hash": "13574117615330612713"
+      },
+      "delay_b_reverb": {
+        "rms": 0.0862917602,
+        "peak": 0.196784645,
+        "hash": "13574117615330612713"
+      },
+      "granular_main": {
+        "rms": 0.00161070458,
+        "peak": 0.0167201851,
+        "hash": "1843765701816299886"
+      },
+      "granular_reverb": {
+        "rms": 0.00492202397,
+        "peak": 0.051084511,
+        "hash": "13630921489040423247"
+      },
+      "reverb_main": {
+        "rms": 0.0384527668,
+        "peak": 0.115609437,
+        "hash": "11745468131475985329"
+      }
+    },
+    "headroom": {
+      "pre_limiter": {
+        "rms": 0.0750432163,
+        "peak": 0.238512933,
+        "hash": "8799116650998695057"
+      },
+      "output": {
+        "rms": 0.0900518596,
+        "peak": 0.286215544,
+        "hash": "843305457697976264"
+      },
+      "max_limiter_gain_reduction_db": 0
+    }
+  },
+  "deterministicHashes": {
+    "sources.sustained_pad_metal_tine_c4": "6279644678249544283",
+    "sources.sustained_lead_soft_rhodes_c4": "3857179750729233048",
+    "sources.sustained_piano_fixed_asset_c4": "10582077885878301487",
+    "drums.master": "11406299788198830577",
+    "drums.dry": "15606143408854416255",
+    "drums.pre_limiter": "15606143408854416255",
+    "earth.master": "11363013098285621823",
+    "earth.water_dry": "7315907720730024543",
+    "headroom.pre_limiter": "8799116650998695057",
+    "headroom.output": "843305457697976264",
+    "fx.delay_a_main": "16452211640836497313",
+    "fx.delay_a_reverb": "16452211640836497313",
+    "fx.delay_b_main": "13574117615330612713",
+    "fx.delay_b_reverb": "13574117615330612713",
+    "fx.granular_main": "1843765701816299886",
+    "fx.granular_reverb": "13630921489040423247",
+    "fx.reverb_main": "11745468131475985329"
+  },
+  "commands": {
+    "calibration": "node scripts/run-kessho-product-cpp-test.mjs ProductGainStagingValidationTests",
+    "repeat": "./build/kessho-core/product-tests/ProductGainStagingValidationTests"
+  },
+  "failures": []
+}
