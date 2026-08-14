@@ -55,6 +55,7 @@ export const kesshoCoreSourceFiles = Object.freeze([
   'cpp/KesshoCore/src/product/assets/ProductAssets.cpp',
   'cpp/KesshoCore/src/product/fx/ProductFx.cpp',
   'cpp/KesshoCore/src/product/fx/ProductFxGraph.cpp',
+  'cpp/KesshoCore/src/product/fx/ProductFxGraphRouting.cpp',
   'cpp/KesshoCore/src/product/fx/ProductFxRouteModulation.cpp',
   'cpp/KesshoCore/src/product/fx/ProductFxModules.cpp',
   'cpp/KesshoCore/src/product/fx/ProductDynamicsModRoutes.cpp',
