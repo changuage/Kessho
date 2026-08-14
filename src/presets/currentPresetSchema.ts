@@ -10,7 +10,11 @@ import {
   isLegacyLead4opFMPresetData,
   LEAD4OPFM_PRESET_SCOPE,
 } from './lead4opPresetPayload';
-import { canonicalizePresetScope } from './presetScopeAliases';
+import {
+  canonicalizePresetScope,
+  EQUALIZER_SCOPE,
+  SATURATOR_SCOPE,
+} from './presetScopeAliases';
 
 export const CURRENT_PRESET_SCHEMA = 'preset-entry-v2';
 
@@ -69,6 +73,15 @@ const CURRENT_JOURNEY_DATA_KEYS = new Set([
   'nodes',
   'connections',
 ]);
+const CURRENT_COMPONENT_DATA_KEYS = new Map<string, ReadonlySet<string>>([
+  [EQUALIZER_SCOPE, new Set([
+    'inputGain', 'outputGain', 'mix',
+    'lowType', 'lowFreq', 'lowGain', 'lowQ', 'lowSlope',
+    'midFreq', 'midGain', 'midQ',
+    'highType', 'highFreq', 'highGain', 'highQ', 'highSlope',
+  ])],
+  [SATURATOR_SCOPE, new Set(['mode', 'quality', 'drive', 'tone', 'bias'])],
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -115,10 +128,13 @@ function validateVersionData(value: Record<string, unknown>, index: number, type
   }
 
   const isJourneyData = type === 'journey';
+  const componentDataKeys = type === 'engine'
+    ? CURRENT_COMPONENT_DATA_KEYS.get(canonicalizePresetScope(scope) ?? '')
+    : undefined;
   for (const [key, child] of Object.entries(value)) {
     const allowed = isJourneyData
       ? CURRENT_JOURNEY_DATA_KEYS.has(key)
-      : CURRENT_PARAMETER_KEYS.has(key) || CURRENT_SPECIAL_DATA_KEYS.has(key);
+      : CURRENT_PARAMETER_KEYS.has(key) || CURRENT_SPECIAL_DATA_KEYS.has(key) || componentDataKeys?.has(key) === true;
     if (!allowed) {
       fail(`versions[${index}].data.${key}`, 'key is not part of the current preset contract');
     }

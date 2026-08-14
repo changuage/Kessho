@@ -59,6 +59,22 @@ const sequenceEntry = decodeCurrentPresetEntry({
 });
 assert.deepEqual(sequenceEntry.versions[0]?.data, laneRelativeSequenceData);
 
+const equalizerEntry = decodeCurrentPresetEntry({
+  ...entry,
+  scope: 'equalizer',
+  engine: 'equalizer',
+  versions: [{ ...entry.versions[0], data: { highFreq: 8000 } }],
+});
+assert.equal(equalizerEntry.versions[0]?.data.highFreq, 8000);
+
+const saturatorEntry = decodeCurrentPresetEntry({
+  ...entry,
+  scope: 'saturator',
+  engine: 'saturator',
+  versions: [{ ...entry.versions[0], data: { mode: 'clean', drive: 0.5 } }],
+});
+assert.equal(saturatorEntry.versions[0]?.data.drive, 0.5);
+
 assert.throws(
   () => decodeCurrentPresetEntry({ ...entry, versions: [{ ...entry.versions[0], data: { legacyAlias: 0.5 } }] }),
   UnsupportedPresetVersionError,
